@@ -81,16 +81,16 @@ class ChainSyncEngineSuite extends munit.FunSuite:
     )
   }
 
-  test("generic intersection encoding enforces the configured candidate count") {
-    val limits = Limits(maxCandidates = 1)
+  test("generic intersection encoding has no candidate-count cap") {
+    val limits = Limits()
     val result = ChainSyncEngine.encode(
       State.Idle,
       Role.Client,
-      Message.FindIntersect(Vector(MockPoint(bytes("80")), MockPoint(bytes("80")))),
+      Message.FindIntersect(Vector.fill(1025)(MockPoint(bytes("80")))),
       point,
       tip,
       payload,
       limits
     )
-    assertEquals(result, Left(ProtocolError.CandidateLimitExceeded))
+    assertEquals(result, Right(bytes("82049f" + "80" * 1025 + "ff")))
   }

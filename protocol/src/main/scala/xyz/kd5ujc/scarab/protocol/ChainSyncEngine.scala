@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, ChunkedBytes}
+import cats.data.Chain
+import cats.syntax.all.*
 
 import ChainSync.{DecodeResult, Limits, Role, State}
 import ProtocolWire.{bad, get, attempt}
@@ -15,17 +17,35 @@ object ChainSyncEngine:
     case AwaitReply
     case RollForward(payload: P, tip: T)
     case RollBackward(point: Q, tip: T)
-    case FindIntersect(points: Vector[Q])
+    case FindIntersect(points: cats.data.Chain[Q])
     case IntersectFound(point: Q, tip: T)
     case IntersectNotFound(tip: T)
     case Done
 
-  /** A value occupies one complete CBOR item on the wire. Specialized codecs can read directly from
-    * the bounded protocol reader to preserve validation order and avoid reparsing.
+  object Message:
+    object FindIntersect:
+      def apply[Q, T, P](points: Vector[Q]): Message[Q, T, P] =
+        FindIntersect(cats.data.Chain.fromSeq(points))
+
+  /** A value occupies one complete CBOR item. Chunked encoding and streaming are the live local
+    * operations; their defaults adapt a bounded contiguous codec. Wide codecs override them.
+    * Specialized readers preserve validation order without reparsing an opaque inner payload.
     */
   trait ItemCodec[A]:
     def encode(value: A): Either[ProtocolError, Bytes]
     def decode(item: Bytes): Either[ProtocolError, A]
+    def encodeChunked(value: A): Either[ProtocolError, ChunkedBytes] = attempt {
+      val bounds = ChainSyncWire.encoding(Limits.NodeToClient)
+      val writer = new ProtocolWire.Writer(bounds)
+      writeTo(writer, value, bounds)
+      ChunkedBytes.fromBytes(writer.result)
+    }
+    def streaming: StreamingDecoder[A] = StreamingDecoder.bounded { input =>
+      ProtocolWire.prefix {
+        val reader = new ChainSyncWire.Reader(input, Limits.NodeToClient)
+        DecodeResult.Decoded(readFrom(reader), reader.position)
+      }
+    }
     private[protocol] def readFrom(reader: ProtocolWire.Reader)(using ProtocolWire.Scope): A =
       get(this.decode(reader.item()))
     private[protocol] def writeTo(
@@ -84,6 +104,53 @@ object ChainSyncEngine:
         Right(Idle)
       case _ => Left(ProtocolError.ChainSyncAgency(state, sender))
 
+  /** The primary encoder retains logical chunks, including every offered point. */
+  def encodeChunked[Q, T, P](
+      state: State,
+      sender: Role,
+      message: Message[Q, T, P],
+      point: PointCodec[Q],
+      tip: TipCodec[T],
+      payload: PayloadCodec[P],
+      limits: Limits = Limits()
+  ): Either[ProtocolError, ChunkedBytes] =
+    def joined(parts: Either[ProtocolError, ChunkedBytes]*): Either[ProtocolError, ChunkedBytes] =
+      parts.toList.sequence.flatMap(_.foldM(ChunkedBytes.empty) { (bytes, next) =>
+        bytes.concat(next).leftMap(ProtocolError.ChunkedRepresentation(_))
+      })
+    def prefix(arity: Int, tag: Int): Either[ProtocolError, ChunkedBytes] = attempt {
+      val writer = new ChainSyncWire.Writer(limits)
+      writer.head(4, arity)
+      writer.head(0, tag)
+      ChunkedBytes.fromBytes(writer.result)
+    }
+    def literal(bytes: Int*): Either[ProtocolError, ChunkedBytes] =
+      Right(ChunkedBytes.fromBytes(Bytes.wrap(bytes.map(_.toByte).toArray)))
+    transition(state, sender, message).flatMap { _ =>
+      message match
+        case Message.RequestNext => prefix(1, 0)
+        case Message.AwaitReply  => prefix(1, 1)
+        case Message.RollForward(value, serverTip) =>
+          joined(prefix(3, 2), payload.encodeChunked(value), tip.encodeChunked(serverTip))
+        case Message.RollBackward(serverPoint, serverTip) =>
+          joined(prefix(3, 3), point.encodeChunked(serverPoint), tip.encodeChunked(serverTip))
+        case Message.FindIntersect(points) =>
+          if points.isEmpty then joined(prefix(2, 4), literal(0x80))
+          else
+            val offered = points.foldM(ChunkedBytes.empty) { (bytes, value) =>
+              point
+                .encodeChunked(value)
+                .flatMap(bytes.concat(_).leftMap(ProtocolError.ChunkedRepresentation(_)))
+            }
+            joined(prefix(2, 4), literal(0x9f), offered, literal(0xff))
+        case Message.IntersectFound(serverPoint, serverTip) =>
+          joined(prefix(3, 5), point.encodeChunked(serverPoint), tip.encodeChunked(serverTip))
+        case Message.IntersectNotFound(serverTip) =>
+          joined(prefix(2, 6), tip.encodeChunked(serverTip))
+        case Message.Done => prefix(1, 7)
+    }
+
+  /** Checked contiguous convenience. Live transport uses [[encodeChunked]]. */
   def encode[Q, T, P](
       state: State,
       sender: Role,
@@ -92,44 +159,9 @@ object ChainSyncEngine:
       tip: TipCodec[T],
       payload: PayloadCodec[P],
       limits: Limits = Limits()
-  ): Either[ProtocolError, Bytes] = attempt {
-    get(transition(state, sender, message))
-    val bounds = ChainSyncWire.checked(limits)
-    val writer = new ChainSyncWire.Writer(limits)
-    def outer(arity: Int, tag: Int): Unit =
-      writer.head(4, arity)
-      writer.head(0, tag)
-    message match
-      case Message.RequestNext => outer(1, 0)
-      case Message.AwaitReply  => outer(1, 1)
-      case Message.RollForward(value, serverTip) =>
-        outer(3, 2)
-        payload.writeTo(writer, value, bounds)
-        tip.writeTo(writer, serverTip, bounds)
-      case Message.RollBackward(serverPoint, serverTip) =>
-        outer(3, 3)
-        point.writeTo(writer, serverPoint, bounds)
-        tip.writeTo(writer, serverTip, bounds)
-      case Message.FindIntersect(points) =>
-        if points.size > limits.maxCandidates then bad(ProtocolError.CandidateLimitExceeded)
-        outer(2, 4)
-        if points.isEmpty then writer.head(4, 0)
-        else
-          writer.byte(159)
-          points.foreach(point.writeTo(writer, _, bounds))
-          writer.byte(255)
-      case Message.IntersectFound(serverPoint, serverTip) =>
-        outer(3, 5)
-        point.writeTo(writer, serverPoint, bounds)
-        tip.writeTo(writer, serverTip, bounds)
-      case Message.IntersectNotFound(serverTip) =>
-        outer(2, 6)
-        tip.writeTo(writer, serverTip, bounds)
-      case Message.Done => outer(1, 7)
-    val result = writer.result
-    get(ProtocolWire.validateItem(result, bounds))
-    result
-  }
+  ): Either[ProtocolError, Bytes] =
+    encodeChunked(state, sender, message, point, tip, payload, limits)
+      .flatMap(_.toBytes(Int.MaxValue).leftMap(ProtocolError.ChunkedRepresentation(_)))
 
   def decodePrefix[Q, T, P](
       state: State,
@@ -142,7 +174,7 @@ object ChainSyncEngine:
   ): DecodeResult[Message[Q, T, P]] = ProtocolWire.prefix {
     val bounds = ChainSyncWire.checked(limits)
     val reader = new ChainSyncWire.Reader(bytes, limits)
-    val arity = reader.arrayLength()
+    val arity = reader.arrayArity()
     val tag = reader.uint().value
     val expectedArity = tag match
       case n if n == 0 || n == 1 || n == 7 => 1
@@ -157,7 +189,8 @@ object ChainSyncEngine:
       case 1 => Message.AwaitReply
       case 2 => Message.RollForward(payload.readFrom(reader), tip.readFrom(reader))
       case 3 => Message.RollBackward(point.readFrom(reader), tip.readFrom(reader))
-      case 4 => Message.FindIntersect(reader.items(limits.maxCandidates)(point.readFrom))
+      // as many points as the message's bytes hold (`decodeList`, #755)
+      case 4 => Message.FindIntersect(cats.data.Chain.fromSeq(reader.items(point.readFrom)))
       case 5 => Message.IntersectFound(point.readFrom(reader), tip.readFrom(reader))
       case 6 => Message.IntersectNotFound(tip.readFrom(reader))
       case 7 => Message.Done
@@ -166,6 +199,39 @@ object ChainSyncEngine:
     get(ProtocolWire.validateItem(bytes.take(reader.position), bounds))
     DecodeResult.Decoded(message, reader.position)
   }
+
+  /** Server responses decoded without collecting their serialized payload into a whole array. The
+    * supplied codecs determine their own representation; bounded adapters remain bounded.
+    */
+  def responseDecoder[Q, T, P](
+      state: State,
+      point: PointCodec[Q],
+      tip: TipCodec[T],
+      payload: PayloadCodec[P]
+  ): StreamingDecoder[Message[Q, T, P]] =
+    ChainSyncAtoms
+      .scalar { reader =>
+        val arity = reader.arrayArity()
+        val tag = reader.uint().value
+        val expected = tag match
+          case n if n == 0 || n == 1 || n == 7 => 1
+          case n if n == 4 || n == 6           => 2
+          case n if n == 2 || n == 3 || n == 5 => 3
+          case _                               => 0
+        if expected == 0 || arity != expected then
+          bad(ProtocolError.UnknownTagOrWrongExactOuterArity)
+        if !legalAgency(state, Role.Server, tag.toInt) then
+          bad(ProtocolError.ChainSyncAgency(state, Role.Server))
+        tag.toInt
+      }
+      .flatMap {
+        case 1 => StreamingDecoder.pure(Message.AwaitReply)
+        case 2 => payload.streaming.flatMap(p => tip.streaming.map(t => Message.RollForward(p, t)))
+        case 3 => point.streaming.flatMap(p => tip.streaming.map(t => Message.RollBackward(p, t)))
+        case 5 => point.streaming.flatMap(p => tip.streaming.map(t => Message.IntersectFound(p, t)))
+        case 6 => tip.streaming.map(Message.IntersectNotFound(_))
+        case _ => StreamingDecoder.failed(ProtocolError.ChainSyncAgency(state, Role.Server))
+      }
 
   private def legalAgency(state: State, sender: Role, tag: Int): Boolean =
     import State.*

@@ -19,7 +19,7 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
   private val magic = 42L
 
   private val source = new ChainSyncServer.Source[IO, Bytes]:
-    def intersect(points: Vector[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
+    def intersect(points: cats.data.Chain[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
     def poll = IO.pure(None)
     def await = IO.never[ChainSyncServer.Update[Bytes]]
   private val handlers = ServerHandlers[IO, Bytes](

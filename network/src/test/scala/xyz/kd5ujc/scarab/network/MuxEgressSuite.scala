@@ -4,7 +4,8 @@ package xyz.kd5ujc.scarab.network
 import cats.effect.{Deferred, IO, Outcome, Ref, Resource}
 import cats.effect.testkit.TestControl
 import fs2.{Chunk, Stream}
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, ChunkedBytes}
+import cats.data.Chain
 import xyz.kd5ujc.scarab.protocol.Mux as WireMux
 
 class MuxEgressSuite extends FailsOnUncaught:
@@ -49,7 +50,11 @@ class MuxEgressSuite extends FailsOnUncaught:
               bulk <- mux.channel(2)
               control <- mux.channel(3)
               duplex <- mux.channel(2, Mux.Role.Responder)
-              _ <- bulk.send(hex("000102030405"))
+              _ <- bulk.sendChunked(
+                ChunkedBytes
+                  .fromChunks(Chain(hex("00"), hex("010203"), hex("0405")))
+                  .fold(e => fail(e.toString), identity)
+              )
               _ <- entered.get
               _ <- bulk.send(hex("0607"))
               _ <- control.send(hex("0809"))
@@ -206,3 +211,37 @@ class MuxEgressSuite extends FailsOnUncaught:
       case Left(_: IllegalArgumentException) => ()
       case other                             => fail(s"expected the budget rejection: $other")
     }
+
+  test("logical egress accounting cannot wrap when two wide admitted messages exceed Long"):
+    val byte = ChunkedBytes.fromBytes(hex("a5"))
+    val huge =
+      (0 until 62).foldLeft(byte)((b, _) => b.concat(b).fold(e => fail(e.toString), identity))
+    for
+      entered <- Deferred[IO, Unit]
+      hold <- Deferred[IO, Unit]
+      third <- Deferred[IO, Unit]
+      bearer = new Bearer[IO]:
+        def reads = Stream.never[IO]
+        def close = IO.unit
+        def write(bytes: Chunk[Byte]) = entered.complete(()).void *> hold.get
+      clock <- TestControl.execute(Peers.typed {
+        Mux
+          .resource(bearer, Set(2), Mux.Config(sduSize = 2, egressBufferBytes = Long.MaxValue))
+          .use { mux =>
+            for
+              channel <- mux.channel(2)
+              _ <- channel.sendChunked(huge)
+              _ <- entered.get
+              _ <- channel.sendChunked(huge)
+              _ <- Resource
+                .make((channel.sendChunked(byte) *> third.complete(()).void).start)(_.cancel)
+                .use { _ =>
+                  IO.sleep(scala.concurrent.duration.DurationInt(1).second) *> third.tryGet
+                    .map(result => assertEquals(result, None))
+                }
+            yield ()
+          }
+      })
+      _ <- clock.tickAll
+      result <- finished(clock)
+    yield assertEquals(result, Right(()))

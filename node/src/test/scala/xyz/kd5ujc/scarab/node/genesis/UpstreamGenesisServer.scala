@@ -78,11 +78,13 @@ final class UpstreamGenesisServer private (
     }
 
   val chainSync: ChainSyncServer.Source[IO, NtNHeader] = new ChainSyncServer.Source[IO, NtNHeader]:
-    def intersect(points: Vector[Point]) = online.get *> available.get.flatMap { (_, state) =>
-      val offered = points.flatMap(p => universe.decode(p).toOption)
-      offered.find(ancestor(_, state.tip)) match
-        case Some(point) => cursor.set(point) *> encoded(point).map(p => Right(p -> tip(state.tip)))
-        case None        => IO.pure(Left(tip(state.tip)))
+    def intersect(points: cats.data.Chain[Point]) = online.get *> available.get.flatMap {
+      (_, state) =>
+        val offered = points.flatMap(p => cats.data.Chain.fromOption(universe.decode(p).toOption))
+        offered.find(ancestor(_, state.tip)) match
+          case Some(point) =>
+            cursor.set(point) *> encoded(point).map(p => Right(p -> tip(state.tip)))
+          case None => IO.pure(Left(tip(state.tip)))
     }
     def poll = reply(true)
     def await = reply(false).flatMap(_.fold(IO.never[Update[NtNHeader]])(IO.pure))

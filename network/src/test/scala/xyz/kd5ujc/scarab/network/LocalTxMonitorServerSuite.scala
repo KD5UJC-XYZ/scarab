@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.protocol.{
   LocalTxMonitor,
   LocalTxSubmission
 }
-import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
+import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.LocalBlock
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Role, UInt64}
 import xyz.kd5ujc.scarab.protocol.LocalTxMonitor.{Kind, Message, State}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.{Held, Snapshot, TxMeasure}
@@ -55,14 +55,14 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
   private def chainSource(
       n: Int,
       size: Int
-  ): Resource[IO, ChainSyncServer.Source[IO, RawNtNBlock]] =
-    def block(i: Int): RawNtNBlock =
-      RawNtNBlock.from(Bytes(Vector.fill(size)(i.toByte))).toOption.get
+  ): Resource[IO, ChainSyncServer.Source[IO, LocalBlock]] =
+    def block(i: Int): LocalBlock =
+      CardanoBlockFetch.localBlock(Bytes.fromArray(Array.fill(size)(i.toByte)))
     def point(i: Int): Point = Point.Block(UInt64.saturating(i), Bytes(Vector.fill(32)(i.toByte)))
     def tip(i: Int) = ChainSync.Tip(point(i), UInt64.saturating(i))
     Resource.eval(Ref.of[IO, Int](0)).map { cursor =>
-      new ChainSyncServer.Source[IO, RawNtNBlock]:
-        def intersect(points: Vector[Point]) =
+      new ChainSyncServer.Source[IO, LocalBlock]:
+        def intersect(points: cats.data.Chain[Point]) =
           points.find(p => p == Point.Origin || (1 to n).exists(point(_) == p)) match
             case Some(Point.Origin) => cursor.set(0).as(Right(Point.Origin -> tip(n)))
             case Some(p) =>
@@ -93,7 +93,7 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
 
   private def connected[A](
       monitor: Option[LocalTxMonitorServer.Source[IO]],
-      chain: Option[Resource[IO, ChainSyncServer.Source[IO, RawNtNBlock]]]
+      chain: Option[Resource[IO, ChainSyncServer.Source[IO, LocalBlock]]]
   )(
       body: (MuxChannel[IO], MuxChannel[IO]) => Handle[IO, NetworkError] ?=> IO[A]
   ): IO[(A, String)] =
@@ -116,29 +116,35 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
         .flatMap { server =>
           Handle
             .allow[NetworkError] {
-              Mux.resource(clientEnd, Set(0, 5, 6, 9), Mux.Config()).use { mux =>
-                for
-                  hs <- mux.channel(0)
-                  _ <- HandshakeClient.run(
-                    hs,
-                    Vector(16, 23).map(v => v -> Handshake.Data(magic)),
-                    suite = Handshake.Suite.NodeToClient
-                  )
-                  monitorChannel <- mux.channel(9)
-                  chainChannel <- mux.channel(5)
-                  submission <- mux.channel(6)
-                  out <- body(monitorChannel, chainChannel)
-                  _ <- sendTo(
-                    submission,
-                    LocalTxSubmission.encode(
-                      LocalTxSubmission.State.Idle,
-                      Role.Client,
-                      LocalTxSubmission.Message.Done
+              Mux
+                .resource(
+                  clientEnd,
+                  Set(0, 5, 6, 9),
+                  Mux.Config.nodeToClient.copy(role = Mux.Role.Initiator)
+                )
+                .use { mux =>
+                  for
+                    hs <- mux.channel(0)
+                    _ <- HandshakeClient.run(
+                      hs,
+                      Vector(16, 23).map(v => v -> Handshake.Data(magic)),
+                      suite = Handshake.Suite.NodeToClient
                     )
-                  )
-                  _ <- submission.flush
-                yield out
-              }
+                    monitorChannel <- mux.channel(9)
+                    chainChannel <- mux.channel(5)
+                    submission <- mux.channel(6)
+                    out <- body(monitorChannel, chainChannel)
+                    _ <- sendTo(
+                      submission,
+                      LocalTxSubmission.encode(
+                        LocalTxSubmission.State.Idle,
+                        Role.Client,
+                        LocalTxSubmission.Message.Done
+                      )
+                    )
+                    _ <- submission.flush
+                  yield out
+                }
             }
             .rescue(e => IO.raiseError[A](RuntimeException(e.message)))
             .flatMap(out => server.cancel.as(out -> "client finished"))
@@ -290,19 +296,28 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
     }
   }
 
-  test("local ChainSync serves whole blocks larger than the node-to-node message bound") {
-    val size = 150000
+  test(
+    "local ChainSync receives long intersections and serves blocks beyond the former 2.5 MB cap"
+  ) {
+    val size = 2600000
     connected(None, Some(chainSource(3, size))) { (_, ch) =>
-      val codec = CardanoBlockFetch.payloadCodec()
+      val codec = CardanoBlockFetch.localPayloadCodec
       val limits = ChainSync.Limits.NodeToClient
-      def send(state: ChainSync.State, m: ChainSync.Message[RawNtNBlock]): IO[Unit] =
+      def send(state: ChainSync.State, m: ChainSync.Message[LocalBlock]): IO[Unit] =
         sendTo(ch, ChainSync.encode(state, Role.Client, m, codec, limits))
       def receive(state: ChainSync.State) =
-        ch.recv(limits.maxMessageBytes)(
+        ch.recvUnbounded(
           ChainSync.decodePrefix(state, Role.Server, _, codec, limits)
         )
       for
-        _ <- send(ChainSync.State.Idle, ChainSync.Message.FindIntersect(Vector(Point.Origin)))
+        _ <- send(
+          ChainSync.State.Idle,
+          ChainSync.Message.FindIntersect(
+            Vector.fill(70000)(
+              Point.Block(UInt64.Zero, Bytes.fromArray(Array.fill(32)(0.toByte)))
+            ) :+ Point.Origin
+          )
+        )
         found <- receive(ChainSync.State.Intersect)
         _ <- send(ChainSync.State.Idle, ChainSync.Message.RequestNext)
         one <- receive(ChainSync.State.NextCanAwait)
@@ -318,9 +333,9 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
         case other                                             => fail(other.toString)
       assertEquals(
         blocks.collect { case ChainSync.Message.RollForward(b, _) =>
-          b.bytes.size -> b.bytes.value.head
+          b.bytes.size -> b.bytes.byteAt(0).getOrElse(fail("empty block"))
         },
-        List(size -> 1.toByte, size -> 2.toByte, size -> 3.toByte)
+        List(size.toLong -> 1.toByte, size.toLong -> 2.toByte, size.toLong -> 3.toByte)
       )
     }
   }

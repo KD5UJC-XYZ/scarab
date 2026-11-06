@@ -43,7 +43,9 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
         chainSync = new ChainSyncClient[IO, NtNHeader]:
           // the session's first FindIntersect is answered; the scripted failure is the producer's
           // restart's, after it
-          def findIntersect(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
+          def findIntersect(points: cats.data.Chain[ChainSync.Point])(using
+              Raise[IO, NetworkError]
+          ) =
             intersections.getAndUpdate(_ + 1).flatMap { asked =>
               if operation == Operation.RestartTimeout && asked > 0 then
                 Raise[IO, NetworkError]
@@ -53,7 +55,7 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
               else if operation == Operation.NoIntersection && asked > 0 then IO.pure(None)
               else
                 IO.pure(
-                  Option.when(points.contains(ChainSync.Point.Origin))(
+                  Option.when(points.exists(_ == ChainSync.Point.Origin))(
                     ChainSync.Point.Origin -> ChainSync.Tip(
                       ChainSync.Point.Origin,
                       ChainSync.UInt64.saturating(0)
@@ -61,7 +63,9 @@ class PeerGenesisLifecycleSuite extends FailsOnUncaught:
                   )
                 )
             }
-          def findIntersectResult(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
+          def findIntersectResult(points: cats.data.Chain[ChainSync.Point])(using
+              Raise[IO, NetworkError]
+          ) =
             findIntersect(points).map(
               _.fold[ChainSyncClient.Intersection](
                 ChainSyncRuntime.Intersection.NotFound(ChainSync.Tip.Origin)

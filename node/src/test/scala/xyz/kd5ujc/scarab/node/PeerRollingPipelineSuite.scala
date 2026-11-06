@@ -92,14 +92,18 @@ class PeerRollingPipelineSuite extends FailsOnUncaught:
           ChainSync.UInt64.from(chain.headers.last.blockNo).fold(e => fail(e.toString), identity)
         )
         pipeline = new ChainSyncClient.Pipeline[IO, NtNHeader]:
-          def findIntersect(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
+          def findIntersect(points: cats.data.Chain[ChainSync.Point])(using
+              Raise[IO, NetworkError]
+          ) =
             IO.pure(
               Some(
                 offeredHeight.fold(ChainSync.Point.Origin)(_ => chain.headers.head.point) ->
                   (if rejectedJump then ChainSync.Tip.Origin else tip)
               )
             )
-          def findIntersectResult(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
+          def findIntersectResult(points: cats.data.Chain[ChainSync.Point])(using
+              Raise[IO, NetworkError]
+          ) =
             if rejectedJump then IO.pure(ChainSyncRuntime.Intersection.NotFound(tip))
             else
               findIntersect(points).map(

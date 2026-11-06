@@ -108,7 +108,7 @@ def scarab(id: String, dir: String = null): Project =
 // CBOR with original-bytes preservation, the byte-string type and exact rationals.
 lazy val codec = scarab("codec")
   .settings(
-    libraryDependencies += Libraries.catsKernel
+    libraryDependencies += Libraries.cats
   )
 
 // Ed25519, VRF, KES, BLS12-381 (jblst, with the start-up check of its native library), Blake2b and

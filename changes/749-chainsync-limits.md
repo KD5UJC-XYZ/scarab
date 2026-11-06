@@ -1,0 +1,4 @@
+### Fixed
+
+- ChainSync removes its outgoing candidate-count and byte policies. Node-to-node receiving retains the reference's 65,535-byte message limit. Node-to-client receiving and serialized blocks no longer inherit the node-to-node byte, item, nesting or hash budgets (#749, #755).
+- The Cardano node-to-client server streams incoming intersection requests and retains candidates in a segmented collection, without accumulating the complete message in one byte array. It validates the complete request before searching the chain and retires a cancelled streaming receive before its buffered suffix can be reused. Other materialized receives and outgoing encodings still have the shared byte representation's capacity ceiling; this is an unresolved capacity boundary, not an approved reference deviation (#749).

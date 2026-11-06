@@ -1,27 +1,80 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, VrfCert, PeerError}
+import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, VrfCert, PeerError, PreprodDeepTx}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, Mux as WireMux}
 import xyz.kd5ujc.scarab.consensus.ChainSelection
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
+import io.circe.{Decoder, Json}
+import io.circe.parser.parse
+import java.nio.file.{Files, Path}
 
 class PeerSuite extends ScalaCheckSuite:
-  property("thinned intersection candidates fit one FindIntersect and keep both ends") {
-    forAll(Gen.choose(0, 5000)) { n =>
-      val all = Vector.range(0, n)
+  private def field[A: Decoder](json: Json, name: String): A =
+    json.hcursor.get[A](name).fold(error => fail(error.message), identity)
+
+  test("intersection selection matches every executed native offset and point case") {
+    val rows = Files
+      .readString(Path.of("fixtures/reference/chainsync-find-intersect/selection.jsonl"))
+      .linesIterator
+      .map(line => parse(line).fold(error => fail(error.message), identity))
+      .toVector
+    assertEquals(rows.size, 17)
+    val hash = Bytes.fromHex("ab" * 32).fold(error => fail(error.toString), identity)
+    def block(slot: Int): ChainSync.Point =
+      ChainSync.Point.Block(ChainSync.UInt64.saturating(slot), hash)
+    def point(json: Json): ChainSync.Point =
+      if field[Option[Boolean]](json, "origin").contains(true) then ChainSync.Point.Origin
+      else
+        ChainSync.Point.Block(
+          ChainSync.UInt64.saturating(field[BigInt](json, "slot")),
+          Bytes.fromHex(field[String](json, "hash")).fold(error => fail(error.toString), identity)
+        )
+    rows.foreach { row =>
+      val length = field[Int](row, "length")
+      val k = field[Int](row, "k")
+      val retained = k.min(length)
+      val offsets = PreprodDeepTx.onSmallStack(Peer.intersectionOffsets(retained))
+      assertEquals(offsets, field[Vector[Int]](row, "offsets"))
+      field[Option[Vector[Json]]](row, "points").foreach { expected =>
+        val blockAnchor = field[Boolean](row, "blockAnchor")
+        val start = if blockAnchor then 10 else 0
+        val anchor = if blockAnchor then block(start) else ChainSync.Point.Origin
+        val newestFirst = Vector.tabulate(length)(i => block(start + length - i)) :+ anchor
+        // VolatileChain retains k blocks; when it prunes, the next older point becomes its anchor.
+        // This also checks the native k=5/length=9 case, with block 4 as the retained anchor.
+        assertEquals(Peer.thin(newestFirst.take(retained + 1)), expected.map(point))
+      }
+    }
+  }
+
+  test("intersection offsets match the native examples, including the anchor-only fragment") {
+    // mkOffsets, ouroboros-consensus 82ecba329 ChainSync/Client.hs:2028-2043.
+    val cases = Vector(
+      0 -> Vector(0, 0),
+      1 -> Vector(0, 1),
+      4 -> Vector(0, 1, 2, 3, 4),
+      5 -> Vector(0, 1, 2, 3, 5),
+      16 -> Vector(0, 1, 2, 3, 5, 8, 13, 16),
+      2160 -> Vector(0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2160)
+    )
+    cases.foreach { (length, expected) =>
+      assertEquals(Peer.thin(Vector.range(0, length + 1)), expected, s"$length blocks")
+    }
+    assertEquals(Peer.thin(Vector.empty[Int]), Vector.empty[Int])
+  }
+
+  property("intersection points keep tip-to-anchor order and both fragment ends") {
+    forAll(Gen.choose(1, 5000)) { n =>
+      val all = Vector.range(0, n + 1)
       val thin = Peer.thin(all)
-      assert(thin.size <= 64)
-      if n > 0 then
-        assertEquals(thin.head, 0)
-        assertEquals(thin.last, n - 1)
+      assertEquals(thin.head, 0)
+      assertEquals(thin.last, n)
       assertEquals(thin, thin.sorted)
       assertEquals(thin, thin.distinct)
-      // The newest candidates are all there: a short rollback finds its intersection at once.
-      assertEquals(thin.take(math.min(n, 16)), all.take(16))
     }
   }
 
@@ -100,6 +153,10 @@ class PeerSuite extends ScalaCheckSuite:
     // limit of the protocol, a message that does not decode, a message in the wrong state, a frame
     // the multiplexer cannot read
     assertEquals(classified(NetworkError.IngressLimit(2, 462100L)), FailureClass.Misbehaved)
+    assertEquals(
+      classified(NetworkError.ReceiveCapacityExceeded(5, 2000L, 1500L)),
+      FailureClass.NotThePeers
+    )
     assertEquals(
       classified(
         NetworkError.TxSubmission(

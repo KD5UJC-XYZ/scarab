@@ -232,13 +232,16 @@
           "HeaderGateSuite",
           "ConnectionManagerSuite",
           "ConnectionStateSuite",
-          "PraosHeaderValidationSuite"
+          "PraosHeaderValidationSuite",
+          "PeerSuite",
+          "PeerIntersectionSuite"
         ],
         "paths": [
           "fixtures/network"
         ],
         "issues": [
-          318
+          318,
+          341
         ]
       },
       "limitations": {
@@ -329,7 +332,7 @@
       "id": "network-resource-limits",
       "component": "Network resource limits (G5)",
       "status": "implemented",
-      "summary": "Per-state byte and time bounds, byte-counted ingress, finite egress queue and absolute deadlines",
+      "summary": "Per-state byte and time bounds, byte-counted ingress, per-lane soft byte egress admission and absolute deadlines",
       "evidence": {
         "suites": [
           "MuxDeadlinesSuite",
@@ -383,10 +386,17 @@
           "NodeToNodeSuite",
           "ChainServerSuite",
           "InboundGovernorSuite",
-          "TxSubmission2Suite"
+          "TxSubmission2Suite",
+          "ChainSyncFindIntersectReferenceSuite"
         ],
         "docs": [
           "docs/design/network-limits.md#reference-and-implementation-matrix"
+        ],
+        "paths": [
+          "fixtures/reference/chainsync-find-intersect/README.md"
+        ],
+        "issues": [
+          755
         ]
       },
       "page": "docs/compatibility/network-servers-duplex.md"
@@ -1483,13 +1493,19 @@
           "DeepQuerySuite",
           "NtcQueryArgumentsSuite",
           "NtcQueryRecordsSuite",
-          "QueryGoldenSuite"
+          "QueryGoldenSuite",
+          "ChainSyncFindIntersectReferenceSuite",
+          "LocalTxMonitorServerSuite",
+          "ChunkedChainSyncSuite",
+          "ChunkedChainSyncClientSuite"
         ],
         "paths": [
           "fixtures/reference/ntc-query-arguments/cases.jsonl",
           "scripts/oracle/ntc-query-arguments/cases.py",
           "fixtures/reference/byron-update-state/cases.jsonl",
-          "scripts/oracle/byron-update-state/cases.py"
+          "scripts/oracle/byron-update-state/cases.py",
+          "fixtures/reference/chainsync-find-intersect/README.md",
+          "fixtures/reference/chainsync-wide-serialised/README.md"
         ]
       },
       "limitations": {
@@ -1499,7 +1515,8 @@
           123,
           330,
           353,
-          356
+          356,
+          749
         ]
       },
       "page": "docs/compatibility/node-to-client.md"

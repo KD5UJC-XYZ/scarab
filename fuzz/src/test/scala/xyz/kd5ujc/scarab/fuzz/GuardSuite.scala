@@ -144,6 +144,15 @@ class GuardSuite extends ScalaCheckSuite:
       assert(after > before, s"pinned upstream fixture seeds were not accepted by $name")
   }
 
+  test("wide streamed ChainSync requests keep the target within its linear allocation budget") {
+    val target = Targets.all
+      .find(_.name == "chainsync-ntc-streamed")
+      .getOrElse(fail("missing streamed request target"))
+    // The trailing bytes make the content-derived chunk size one, exercising the most fragments.
+    val input = hex("82049f" + "80" * 50000 + "ff810714")
+    target.check(input)
+  }
+
   test("previously missing imported CDDL modules supply every constructor without dropped seeds") {
     val rules = Vector(
       "chainsync-header:header" -> (0 to 7).toSet,
@@ -274,4 +283,13 @@ class GuardSuite extends ScalaCheckSuite:
       val verdicts = parts.map(Tx.fromBlock(_, era))
       assert(verdicts.exists(_.isRight), s"$era has no accepted auxiliary seeds")
       assert(verdicts.exists(_.isLeft), s"$era has no refused auxiliary seeds")
+  }
+
+  test("streamed local response fuzzing retains its linear allocation budget") {
+    val target = Targets.all
+      .find(_.name == "chainsync-ntc-response-streamed")
+      .getOrElse(fail("missing streamed response target"))
+    val wire = Array[Byte](0x83.toByte, 2, 0xd8.toByte, 24, 0x5a, 0, 1, 0, 0) ++
+      Array.fill[Byte](65536)(0xa5.toByte) ++ Array[Byte](0x82.toByte, 0x80.toByte, 0)
+    target.check(Input(wire))
   }

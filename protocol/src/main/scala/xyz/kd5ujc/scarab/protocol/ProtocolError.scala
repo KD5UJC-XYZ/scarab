@@ -14,10 +14,13 @@ enum ProtocolError extends DomainError:
   case CBORArgumentOutsideUint64
   case CBORDepthLimitExceeded
   case CBORIntegerOutsideUint64
+  case CBORLengthOutsideInt64(declared: BigInt)
   case CBORItemLimitExceeded
   case CBORResourceLimitExceeded
+  case RepresentationCapacityExceeded(required: BigInt)
+  case ChunkedRepresentation(cause: xyz.kd5ujc.scarab.codec.ChunkedBytes.Error)
   case CandidateLimitExceeded
-  case CardanoPointHashMustContain32Bytes(actual: Int)
+  case CardanoPointHashMustContain32Bytes(actual: BigInt)
   case ClientIsNotAwaitingConfirmation
   case CountOutsideUint16(value: BigInt)
   case DuplicateBodyRequest
@@ -179,17 +182,22 @@ enum ProtocolError extends DomainError:
     case _                                              => false
 
   def message: String = this match
-    case AckExceedsOutstandingInventory(_, _)   => "ack exceeds outstanding inventory"
-    case ArrayLimitExceeded                     => "array limit exceeded"
-    case BatchLimitExceeded(_, _)               => "batch limit exceeded"
-    case BlockFetchIsTerminal                   => "BlockFetch is terminal"
-    case BlockPointOrderMismatch                => "block point/order mismatch"
-    case ByronHeaderRequiresItsWrapper          => "Byron header requires its wrapper"
-    case CBORArgumentOutsideUint64              => "CBOR argument outside uint64"
-    case CBORDepthLimitExceeded                 => "CBOR depth limit exceeded"
-    case CBORIntegerOutsideUint64               => "CBOR integer outside uint64"
-    case CBORItemLimitExceeded                  => "CBOR item limit exceeded"
-    case CBORResourceLimitExceeded              => "CBOR resource limit exceeded"
+    case AckExceedsOutstandingInventory(_, _) => "ack exceeds outstanding inventory"
+    case ArrayLimitExceeded                   => "array limit exceeded"
+    case BatchLimitExceeded(_, _)             => "batch limit exceeded"
+    case BlockFetchIsTerminal                 => "BlockFetch is terminal"
+    case BlockPointOrderMismatch              => "block point/order mismatch"
+    case ByronHeaderRequiresItsWrapper        => "Byron header requires its wrapper"
+    case CBORArgumentOutsideUint64            => "CBOR argument outside uint64"
+    case CBORDepthLimitExceeded               => "CBOR depth limit exceeded"
+    case CBORIntegerOutsideUint64             => "CBOR integer outside uint64"
+    case CBORLengthOutsideInt64(declared) =>
+      s"CBOR length outside the reference Int64 range: $declared"
+    case CBORItemLimitExceeded     => "CBOR item limit exceeded"
+    case CBORResourceLimitExceeded => "CBOR resource limit exceeded"
+    case RepresentationCapacityExceeded(required) =>
+      s"CBOR representation capacity exceeded: $required"
+    case ChunkedRepresentation(cause)           => s"chunked byte representation: $cause"
     case CandidateLimitExceeded                 => "candidate limit exceeded"
     case CardanoPointHashMustContain32Bytes(_)  => "Cardano point hash must contain 32 bytes"
     case ClientIsNotAwaitingConfirmation        => "client is not awaiting confirmation"

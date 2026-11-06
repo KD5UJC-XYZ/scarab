@@ -42,19 +42,22 @@
         "Tree",
         "TreeFold",
         "Interns",
-        "Rational"
+        "Rational",
+        "ChunkedBytes"
       ],
       "suites": [
         "CborSuite",
         "IndexedNodeSuite",
         "InternsSuite",
         "RationalSuite",
+        "ChunkedBytesSuite",
         "DomainErrorContractSuite"
       ],
       "docs": [
         "docs/adr/0005-cbor-codec-and-scodec.md",
         "docs/adr/0013-cbor-documents-are-an-index-over-the-input.md",
-        "docs/adr/0011-stack-safety.md"
+        "docs/adr/0011-stack-safety.md",
+        "docs/design/chunked-bytes.md"
       ]
     },
     {
@@ -188,6 +191,7 @@
       ],
       "suites": [
         "ChainSyncSuite",
+        "ChainSyncLimitsSuite",
         "BlockFetchSuite",
         "HandshakeSuite",
         "TxSubmission2Suite",
@@ -196,7 +200,8 @@
         "KeepAliveSuite",
         "LeiosCodecSuite",
         "LeiosWordSuite",
-        "LeiosFetchDecoderSuite"
+        "LeiosFetchDecoderSuite",
+        "ChunkedChainSyncSuite"
       ],
       "docs": [
         "docs/adr/0008-networking-mirrors-ouroboros-network.md",
@@ -224,10 +229,12 @@
         "NodeToNodeSuite",
         "HandshakeSuite",
         "ChainSyncRuntimeSuite",
+        "ChainSyncStreamingSuite",
         "BlockFetchPipelineSuite",
         "ProtocolResultsSuite",
         "WarmHotSuite",
-        "LeiosFetchClientSuite"
+        "LeiosFetchClientSuite",
+        "ChunkedChainSyncClientSuite"
       ],
       "docs": [
         "docs/adr/0008-networking-mirrors-ouroboros-network.md",
@@ -725,6 +732,8 @@
         "ConfigSuite",
         "InboundGovernorSuite",
         "HeaderGateSuite",
+        "PeerSuite",
+        "PeerIntersectionSuite",
         "OutboundLossReportSuite",
         "OutboundLinkIdentitySuite",
         "ConnectionMonitorSuite",

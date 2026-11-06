@@ -98,7 +98,7 @@ class AdversarialScheduleSuite extends FailsOnUncaught:
       handlers.codec,
       handlers.chainSync.map { inner =>
         new ChainSyncServer.Source[IO, NtNHeader]:
-          def intersect(points: Vector[ChainSync.Point]) = inner.intersect(points)
+          def intersect(points: cats.data.Chain[ChainSync.Point]) = inner.intersect(points)
           def poll = released.get *> inner.poll
           def await = released.get *> inner.await
       },

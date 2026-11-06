@@ -40,7 +40,7 @@ class OutboundGenesisInvariantSuite extends FailsOnUncaught:
   /** A peer whose chain is empty: the session's intersection is the origin. */
   private def handlers: ServerHandlers[IO, NtNHeader] =
     val cursor = new ChainSyncServer.Source[IO, NtNHeader]:
-      def intersect(points: Vector[ChainSync.Point]) =
+      def intersect(points: cats.data.Chain[ChainSync.Point]) =
         IO.pure(Right(ChainSync.Point.Origin -> ChainSync.Tip.Origin))
       def poll = IO.pure(None)
       def await = IO.never[ChainSyncServer.Update[NtNHeader]]

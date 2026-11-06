@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-05",
+  "scope": "Executed native plain runPeer decoding, direct outgoing codec encoding, incremental incomplete declarations, opaque Serialised block transfer and native AF.selectPoints with the exact consensus Fibonacci-offset body; finite compact cases, no arbitrary-size allocation or ledger-block conformance claim; serialized-block incremental prefixes check tag24 and definite-byte-string validation before waiting for payload contents, with a complete empty-block control",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "consensusSourceCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+  "compiler": "GHC 9.10.3",
+  "packages": {
+    "ouroboros-network": "1.2.0.0",
+    "typed-protocols": "1.2.1.0",
+    "cborg": "0.2.10.0",
+    "serialise": "0.2.6.1",
+    "crypton": "1.1.4",
+    "contra-tracer": "0.2.1.1"
+  },
+  "packageArchives": {
+    "ouroboros-network-1.2.0.0.tar.gz": "f94167122d6d7956206626afff2d90ce2637d4c82af8dff8784fae227ddbad70"
+  },
+  "packageIds": [
+    "ouroboros-network-1.2.0.0-l-api-75505d9cab9a701aa9ede07640fa53619dfce10ddedeb2a821868f540f9775ce",
+    "ouroboros-network-1.2.0.0-l-protocols-1a3cef254fbf3f0ef603ee6eae9beba74ab2dadd5865f5321a88dd15f154bbcd",
+    "typed-protocols-1.2.1.0-8c60d8132922c119353bb07538d5c224377175972c7feec3e38631ba7a87d8d5",
+    "ouroboros-network-1.2.0.0-l-framework-7cea284dc91d3c59f9cd043c856ee18a134c0068b2af3e10724f33b61e5e2341",
+    "crypton-1.1.4-08ca7477d08815448156dfdaf12a0a4d26c54910ec5f3081a0ea79b32dc818a2",
+    "contra-tracer-0.2.1.1-ac426f9b4f8afce4ab71ead62194f3a85635ba94764b73ba08f1b48f9bc022a0"
+  ],
+  "sourceFiles": {
+    "chainSyncCodec": {
+      "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Codec.hs",
+      "sourceSha256": "ba2c582fa0e4ae02f26c0e9f412da8a6ce3384599a76f55c671f7a916a8c3fb1",
+      "matchesPin": true,
+      "note": "the released 1.2.0.0 file is the same; MsgFindIntersect is decodeList decodePoint (165-166, 209-214)",
+      "gitBlob": "2e2185e5aeb8d51cb736e6253a5b693493ab5dfb",
+      "url": "https://github.com/IntersectMBO/ouroboros-network/blob/2fb69829a19b5c04e4fb212bdd78fb63f9d2d776/ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Codec.hs"
+    },
+    "block": {
+      "file": "ouroboros-network/api/lib/Ouroboros/Network/Block.hs",
+      "sourceSha256": "83e93f9be5a5bf30600c4d5257f8527bd06adc22d5f92bcc83165a479982a822",
+      "matchesPin": true,
+      "note": "decodePoint; the released 1.2.0.0 file is the same",
+      "gitBlob": "f22325d7558961d26f65a50a28419cec8fc9c6ee",
+      "url": "https://github.com/IntersectMBO/ouroboros-network/blob/2fb69829a19b5c04e4fb212bdd78fb63f9d2d776/ouroboros-network/api/lib/Ouroboros/Network/Block.hs"
+    },
+    "rawHash": {
+      "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Block/Abstract.hs",
+      "sourceSha256": "4c68c5b365de87ae56fe51df85de00436a2380def4bf009dfb2983810d3b0cac",
+      "matchesPin": true,
+      "note": "decodeRawHash (307-314) and fromShortRawHash (276-279), excerpted unchanged in the observer at HashSize 32"
+    },
+    "driver": {
+      "file": "ouroboros-network/framework/lib/Ouroboros/Network/Driver/Simple.hs",
+      "sourceSha256": "6b886ef812b2918b676d50e7af88deb5aa2dc8eb8837f6d56966b9b9dae8d263",
+      "gitBlob": "e9894581de985a68e9c4ce4e35228799225f5b8d",
+      "url": "https://github.com/IntersectMBO/ouroboros-network/blob/2fb69829a19b5c04e4fb212bdd78fb63f9d2d776/ouroboros-network/framework/lib/Ouroboros/Network/Driver/Simple.hs",
+      "matchesPin": true,
+      "note": "Released source and pinned source have identical Git blob; plain runPeer is executed"
+    },
+    "anchoredFragment": {
+      "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+      "sourceSha256": "6f748601705b69b7016d136637426f57e0992a2f0754b11d417f146d752c1195",
+      "gitBlob": "0df818e1a593f45eefa4c5d9f2609cbce22541d9",
+      "url": "https://github.com/IntersectMBO/ouroboros-network/blob/2fb69829a19b5c04e4fb212bdd78fb63f9d2d776/ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+      "matchesPin": true,
+      "note": "Released source and pinned source have identical Git blob; AF.selectPoints is executed"
+    },
+    "nodeToClient": {
+      "gitBlob": "1134ff70d7a10663fb69f830042a431d986d7c5e",
+      "url": "https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToClient.hs",
+      "note": "Source evidence: consensus NtC uses plain runPeer; this consensus module is not built",
+      "sourceLines": "448-452"
+    },
+    "mkOffsets": {
+      "gitBlob": "1e9615d0ba77c9bcc59649a1ef32415fb53fcb52",
+      "url": "https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client.hs",
+      "note": "Exact body executed after removing SecurityParam/NonZero wrappers",
+      "sourceLines": "2039-2043"
+    },
+    "fib": {
+      "gitBlob": "657e4011fe2a043aa02cc82978fadc9ab158c98b",
+      "url": "https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Util.hs",
+      "note": "Exact Double/Binet implementation executed, including Int.MaxValue offset range",
+      "sourceLines": "443-449"
+    }
+  },
+  "observer": {
+    "file": "scripts/oracle/chainsync-find-intersect/Main.hs",
+    "sha256": "6983032ff56bff07ef9e18dc9b18cb292da262e7b88164f62feba85af2110a31",
+    "build": "scripts/oracle/chainsync-find-intersect/build.sh",
+    "buildSha256": "5eed84b321506a4ef1f2e27de2d388a290e505785d82d00001cf5968dea07c6b",
+    "executableSha256": "96e2c441080c42df345b5da382d66397dd6974f2db5cab597e9613c53a36f90e",
+    "image": "scarab-33-genesis-reference-cache:local (sha256:10d59164dce6b49fbeafdc520c1a29d3e4024a5859a3c41bb6181b2e627bebc7)"
+  },
+  "generatorSha256": "167f7d508ca0018c29fdb203b101151eefcd1e72625ba6b0cc3aec876447ac34",
+  "harnessInputSha256": "c1be34d45ec0d226381fc2618392ae165c9663f1bd84395dd4d11727b9f9bddf",
+  "harnessOutputSha256": "6481036e241187063cc9b4b04454aff7c4f377725ffe2b7814e44b13efd3ceb8",
+  "casesSha256": "b03d2e74a6ea5db34238bf6d06c8d9cba429e405857129f3a29c148b08bc4dd7",
+  "cases": 58,
+  "accepted": 22,
+  "refused": 28,
+  "originalBytesRetained": true,
+  "sourceWorktreeBaseCommit": "f44b0940736dc2f3de54be612b33d1892d9ca463",
+  "needMore": 8,
+  "selection": {
+    "cases": 17,
+    "allocatedFragments": 16,
+    "offsetsOnly": 1,
+    "inputSha256": "6da4456a046367220c5b888b11a4bf056c1f51af85b0c447acf6e7cefc3a5ea9",
+    "outputSha256": "0eefbf1149592a019872bb7a008e33253180a99c82e8a1aca3554cfcf4153a32",
+    "casesSha256": "0eefbf1149592a019872bb7a008e33253180a99c82e8a1aca3554cfcf4153a32"
+  },
+  "originalBytesNote": "Compact recipes reconstruct exact input bytes; native wire/payload SHA-256 identities are retained. Bulk expansions and executable are not published."
+}

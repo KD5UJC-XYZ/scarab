@@ -72,7 +72,7 @@ class BackgroundFibersSuite extends FailsOnUncaught:
       val cause =
         if unexpected then new IllegalStateException("injected")
         else new java.io.IOException("closed")
-      val broken = new MuxChannel[IO]:
+      val broken = new ContiguousTestMuxChannel:
         def protocol = 8
         def send(bytes: xyz.kd5ujc.scarab.codec.Bytes)(using cats.mtl.Raise[IO, NetworkError]) =
           IO.raiseError[Unit](cause)

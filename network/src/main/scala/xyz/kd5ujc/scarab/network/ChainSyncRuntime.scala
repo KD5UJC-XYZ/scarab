@@ -8,7 +8,13 @@ import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import scala.concurrent.duration.*
-import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncEngine, NetworkError}
+import xyz.kd5ujc.scarab.protocol.{
+  ChainSync,
+  ChainSyncEngine,
+  ChainSyncRequest,
+  NetworkError,
+  StreamingDecoder
+}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Role, State}
 import xyz.kd5ujc.scarab.protocol.ChainSyncEngine.Message
 
@@ -37,8 +43,16 @@ object ChainSyncRuntime:
     case RollBackward(point: Q, tip: T)
 
   trait Client[F[_], Q, T, P]:
-    def findIntersectResult(points: Vector[Q])(using Raise[F, NetworkError]): F[Intersection[Q, T]]
-    def findIntersect(points: Vector[Q])(using Raise[F, NetworkError]): F[Option[(Q, T)]]
+    def findIntersectResult(points: cats.data.Chain[Q])(using
+        Raise[F, NetworkError]
+    ): F[Intersection[Q, T]]
+    def findIntersect(points: cats.data.Chain[Q])(using Raise[F, NetworkError]): F[Option[(Q, T)]]
+    final def findIntersectResult(points: Vector[Q])(using
+        Raise[F, NetworkError]
+    ): F[Intersection[Q, T]] =
+      findIntersectResult(cats.data.Chain.fromSeq(points))
+    final def findIntersect(points: Vector[Q])(using Raise[F, NetworkError]): F[Option[(Q, T)]] =
+      findIntersect(cats.data.Chain.fromSeq(points))
     def requestNext(using Raise[F, NetworkError]): F[Update[Q, T, P]]
     def requestNextBatch(n: Int)(using Raise[F, NetworkError]): F[Vector[Update[Q, T, P]]]
     def requestNextBatchObserved(n: Int)(onUpdate: Update[Q, T, P] => F[Unit])(using
@@ -93,7 +107,9 @@ object ChainSyncRuntime:
     ChainSyncPipeline.resource(channel, point, tip, payload, abort, settings, maxOutstanding)
 
   trait Source[F[_], Q, T, P]:
-    def intersect(points: Vector[Q]): F[Either[T, (Q, T)]]
+    def intersect(points: cats.data.Chain[Q]): F[Either[T, (Q, T)]]
+    final def intersect(points: Vector[Q]): F[Either[T, (Q, T)]] =
+      intersect(cats.data.Chain.fromSeq(points))
     def poll: F[Option[Update[Q, T, P]]]
     def await: F[Update[Q, T, P]]
 
@@ -160,8 +176,8 @@ object ChainSyncRuntime:
         state.get.flatMap { current =>
           val next = ChainSyncEngine.transition(current, Role.Client, message)
           ChainSyncEngine
-            .encode(current, Role.Client, message, point, tip, payload, settings.limits)
-            .fold(illegal(_), bytes => channel.send(bytes))
+            .encodeChunked(current, Role.Client, message, point, tip, payload, settings.limits)
+            .fold(illegal(_), bytes => channel.sendChunked(bytes))
             .productR(next.fold(illegal(_), state.set))
         }
 
@@ -174,17 +190,20 @@ object ChainSyncRuntime:
           case other => illegal[ProtocolDeadline](RuntimeViolation.ReplyNotExpected(other))
         limit.flatMap { wait =>
           Timed.within(wait, id, current.toString)(
-            channel.recv(settings.limits.maxMessageBytes)(
-              ChainSyncEngine.decodePrefix(
-                current,
-                Role.Server,
-                _,
-                point,
-                tip,
-                payload,
-                settings.limits
+            if settings.limits.local then
+              channel.recvStreaming(ChainSyncEngine.responseDecoder(current, point, tip, payload))
+            else
+              channel.recvWithin(settings.limits.messageByteLimit)(
+                ChainSyncEngine.decodePrefix(
+                  current,
+                  Role.Server,
+                  _,
+                  point,
+                  tip,
+                  payload,
+                  settings.limits
+                )
               )
-            )
           )
         }
 
@@ -211,15 +230,15 @@ object ChainSyncRuntime:
         F.uncancelable(poll => busy.set(true) *> poll(operation).guarantee(busy.set(false)))
 
       new Client[F, Q, T, P]:
-        def findIntersect(points: Vector[Q])(using Raise[F, NetworkError]) =
+        def findIntersect(points: cats.data.Chain[Q])(using Raise[F, NetworkError]) =
           findIntersectResult(points).map(_.toOption)
 
-        def findIntersectResult(points: Vector[Q])(using
+        def findIntersectResult(points: cats.data.Chain[Q])(using
             Raise[F, NetworkError]
         ): F[Intersection[Q, T]] =
           flight {
             send(Message.FindIntersect(points)) *> receive.flatMap {
-              case Message.IntersectFound(point, tip) if points.contains(point) =>
+              case Message.IntersectFound(point, tip) if points.exists(_ == point) =>
                 F.pure(Intersection.Found(point, tip))
               case Message.IntersectFound(_, _) =>
                 illegal(RuntimeViolation.IntersectionNotOffered)
@@ -243,7 +262,7 @@ object ChainSyncRuntime:
             state.get.flatMap {
               case State.Idle =>
                 ChainSyncEngine
-                  .encode(
+                  .encodeChunked(
                     State.Idle,
                     Role.Client,
                     Message.RequestNext,
@@ -252,7 +271,7 @@ object ChainSyncRuntime:
                     payload,
                     settings.limits
                   )
-                  .fold(illegal(_), bytes => List.fill(n)(bytes).traverse_(channel.send))
+                  .fold(illegal(_), bytes => List.fill(n)(bytes).traverse_(channel.sendChunked))
                   .productR(List.fill(n)(()).traverse(_ => collectOne.flatTap(onUpdate)))
                   .map(_.toVector)
               case other => illegal(RuntimeViolation.PipelinedRequest(other))
@@ -298,7 +317,8 @@ object ChainSyncRuntime:
       tip: ChainSyncEngine.TipCodec[T],
       payload: ChainSyncEngine.PayloadCodec[P],
       source: Source[F, Q, T, P],
-      settings: ServerSettings = ServerSettings()
+      settings: ServerSettings = ServerSettings(),
+      requests: Option[StreamingDecoder[ChainSyncRequest[Q]]] = None
   )(using Raise[F, NetworkError]): F[Unit] =
     val F = Temporal[F]
     val id = settings.protocol
@@ -308,14 +328,29 @@ object ChainSyncRuntime:
       illegal(RuntimeViolation.ChainSyncEngineUnexpected(message))
     def send(state: State, message: Message[Q, T, P]): F[State] =
       ChainSyncEngine
-        .encode(state, Role.Server, message, point, tip, payload, settings.limits)
-        .fold(illegal, channel.send)
+        .encodeChunked(state, Role.Server, message, point, tip, payload, settings.limits)
+        .fold(illegal, channel.sendChunked)
         .productR(ChainSyncEngine.transition(state, Role.Server, message).fold(illegal, F.pure))
     def instruction(update: Update[Q, T, P]): Message[Q, T, P] = update match
       case Update.RollForward(value, serverTip) => Message.RollForward(value, serverTip)
       case Update.RollBackward(serverPoint, serverTip) =>
         Message.RollBackward(serverPoint, serverTip)
 
+    val receive: F[ChainSyncRequest[Q]] = requests match
+      case Some(decoder) => channel.recvStreaming(decoder)
+      case None =>
+        channel
+          .recvWithin(settings.limits.messageByteLimit)(
+            ChainSyncEngine
+              .decodePrefix(State.Idle, Role.Client, _, point, tip, payload, settings.limits)
+          )
+          .flatMap {
+            case Message.RequestNext => F.pure(ChainSyncRequest.RequestNext)
+            case Message.Done        => F.pure(ChainSyncRequest.Done)
+            case Message.FindIntersect(points) =>
+              F.pure(ChainSyncRequest.FindIntersect(points))
+            case other => unexpected(other)
+          }
     val step: F[Boolean] =
       Timed
         .within(
@@ -323,20 +358,17 @@ object ChainSyncRuntime:
           id,
           "idle"
         )(
-          channel.recv(settings.limits.maxMessageBytes)(
-            ChainSyncEngine
-              .decodePrefix(State.Idle, Role.Client, _, point, tip, payload, settings.limits)
-          )
+          receive
         )
         .flatMap {
-          case Message.FindIntersect(points) =>
+          case ChainSyncRequest.FindIntersect(points) =>
             source.intersect(points).flatMap {
               case Right((found, serverTip)) =>
                 send(State.Intersect, Message.IntersectFound(found, serverTip)).as(true)
               case Left(serverTip) =>
                 send(State.Intersect, Message.IntersectNotFound(serverTip)).as(true)
             }
-          case Message.RequestNext =>
+          case ChainSyncRequest.RequestNext =>
             source.poll.flatMap {
               case Some(update) => send(State.NextCanAwait, instruction(update)).as(true)
               case None =>
@@ -344,7 +376,6 @@ object ChainSyncRuntime:
                   source.await.flatMap(update => send(waiting, instruction(update))).as(true)
                 )
             }
-          case Message.Done => F.pure(false)
-          case other        => unexpected(other)
+          case ChainSyncRequest.Done => F.pure(false)
         }
     step.iterateWhile(identity).void

@@ -1,0 +1,2 @@
+{"feedChunkBytes":1048576,"payload":{"bytes":2147483649,"sha256":"114193d08794979d627c89a4493957fe87b8f66bd9ed5c1ab56e123d4ff73229"},"scope":"opaque serialized payload; not a ledger-valid block","stage":"encoded","wire":{"bytes":2147483661,"sha256":"39a939abf8a81382ee7228368d99477730822a75a5a3de0b4dcb2b79867ba656"}}
+{"result":{"accepted":true,"encoded":{"bytes":2147483661,"sha256":"39a939abf8a81382ee7228368d99477730822a75a5a3de0b4dcb2b79867ba656"},"payload":{"bytes":2147483649,"sha256":"114193d08794979d627c89a4493957fe87b8f66bd9ed5c1ab56e123d4ff73229"}},"stage":"decoded"}

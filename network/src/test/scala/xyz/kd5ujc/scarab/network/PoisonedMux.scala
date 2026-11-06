@@ -31,7 +31,7 @@ final class PoisonedMux(underlying: Mux[IO], poisoned: Int, injected: Throwable)
 
 object PoisonedMux:
   def channel(underlying: MuxChannel[IO], injected: Throwable): MuxChannel[IO] =
-    new MuxChannel[IO]:
+    new ContiguousTestMuxChannel:
       def protocol: Int = underlying.protocol
       def send(message: Bytes)(using Raise[IO, NetworkError]): IO[Unit] = underlying.send(message)
       def flush: IO[Unit] = underlying.flush

@@ -83,6 +83,8 @@ object Targets:
 
   // --- network -------------------------------------------------------------------------------------
 
+  // The native encoder has no driver byte limit: canonical list encoding can grow a message.
+  // Input probes retain their receive policy; decodeEncoded checks the encoded codec value.
   private def roundTrip[S, R, M, E](
       name: String,
       states: Seq[S],
@@ -90,7 +92,8 @@ object Targets:
       corpus: () => Vector[Array[Byte]],
       decode: (S, R, Bytes) => DecodeResult[M],
       encode: (S, R, M) => Either[E, Bytes],
-      equivalent: (M, M) => Boolean = (left: M, right: M) => left == right
+      equivalent: (M, M) => Boolean = (left: M, right: M) => left == right,
+      decodeEncoded: Option[(S, R, Bytes) => DecodeResult[M]] = None
   ): Target =
     Target(
       name,
@@ -111,10 +114,11 @@ object Targets:
                 "a shorter prefix decodes too"
               )
               encode(s, r, message) match
-                case Left(e) => throw new Violation(s"$s/$r: decoded $message does not encode: $e")
+                case Left(e) =>
+                  req(false, s"$s/$r: decoded $message refuses encoding: $e")
                 case Right(enc) =>
                   req(
-                    decode(s, r, enc) match
+                    decodeEncoded.getOrElse(decode)(s, r, enc) match
                       case DecodeResult.Decoded(again, consumed) =>
                         consumed == enc.size && equivalent(message, again)
                       case _ => false,
@@ -126,6 +130,15 @@ object Targets:
 
   private def netCorpus(rules: String*): () => Vector[Array[Byte]] = () =>
     Corpus.tricky ++ Corpus.networkFixtures ++ rules.toVector.flatMap(Corpus.sampled(_, 80))
+
+  // Exercise the former outgoing candidate caps in both encoding and decoding.
+  private def largeIntersectionSeeds: Vector[Array[Byte]] =
+    Vector(65, 1025).map { size =>
+      val head =
+        if size < 256 then Array[Byte](0x82.toByte, 4, 0x98.toByte, size.toByte)
+        else Array[Byte](0x82.toByte, 4, 0x99.toByte, (size >> 8).toByte, size.toByte)
+      head ++ Array.fill[Byte](size)(0x80.toByte)
+    }
 
   private val chainSyncSeeds: () => Vector[Array[Byte]] = () =>
     val tip = Tip(
@@ -146,7 +159,69 @@ object Targets:
         .map(_.toArray)
     }
     require(state != null)
-    forward ++ netCorpus("chain-sync:chainSyncMessage")()
+    forward ++ largeIntersectionSeeds ++ netCorpus("chain-sync:chainSyncMessage")()
+
+  private val chainSyncRequestSeeds: () => Vector[Array[Byte]] = () =>
+    val literals = Vector(
+      "8100",
+      "8107",
+      "820480",
+      "82049f80ff",
+      "8204828082005820" + "ab" * 32,
+      "82049f82005820" + "ab" * 32 + "80ff8107",
+      "82049f8000ff",
+      "82049b0000000080000000",
+      "82049b8000000000000000",
+      "82049f82005b0000000080000000",
+      "82049f82005821" + "ab" * 33
+    ).map(value => Bytes.fromHex(value).fold(e => throw new Violation(e.toString), _.toArray))
+    literals ++ largeIntersectionSeeds ++ netCorpus("chain-sync:chainSyncMessage")()
+
+  /** Replay distinct chunks while releasing every consumed prefix, as Mux.recvStreaming does.
+    * Slices of the fuzz input avoid making the harness itself quadratic when a token is incomplete.
+    */
+  private def streamed[A](decoder: StreamingDecoder[A], bytes: Bytes, chunk: Int): DecodeResult[A] =
+    @tailrec def feed(
+        at: Int,
+        end: Int,
+        cursor: decoder.Cursor
+    ): DecodeResult[A] =
+      val held = bytes.slice(at, end)
+      decoder.resume(cursor, held) match
+        case StreamingDecoder.Step.Failed(error) => DecodeResult.Failed(error)
+        case StreamingDecoder.Step.Done(value, consumed) =>
+          req(
+            consumed >= 0 && consumed <= held.size,
+            s"stream consumed $consumed of ${held.size} bytes"
+          )
+          DecodeResult.Decoded(value, at + consumed)
+        case StreamingDecoder.Step.More(next, consumed) =>
+          req(
+            consumed >= 0 && consumed <= held.size,
+            s"continuation consumed $consumed of ${held.size} bytes"
+          )
+          if end == bytes.size then DecodeResult.NeedMore
+          else feed(at + consumed, end + (bytes.size - end).min(chunk), next)
+    feed(0, 0, decoder.initial)
+
+  private def bufferedRequest(bytes: Bytes): DecodeResult[ChainSyncRequest[Point]] =
+    ChainSync.decodePrefix(
+      ChainSync.State.Idle,
+      ChainSync.Role.Client,
+      bytes,
+      anyItem,
+      ChainSync.Limits.NodeToClient
+    ) match
+      case DecodeResult.NeedMore      => DecodeResult.NeedMore
+      case DecodeResult.Failed(error) => DecodeResult.Failed(error)
+      case DecodeResult.Decoded(message, consumed) =>
+        val request = message match
+          case ChainSync.Message.RequestNext => ChainSyncRequest.RequestNext
+          case ChainSync.Message.Done        => ChainSyncRequest.Done
+          case ChainSync.Message.FindIntersect(points) =>
+            ChainSyncRequest.FindIntersect(points)
+          case other => throw new Violation(s"idle client decoded unexpected $other")
+        DecodeResult.Decoded(request, consumed)
 
   private val blockFetchSeeds: () => Vector[Array[Byte]] = () =>
     val blocks = Corpus.blocks.take(12).flatMap { b =>
@@ -325,7 +400,7 @@ object Targets:
     val cases = pinnedLines(s"$fixture/chainsync-behavior-cases.tsv").map(_.split("\\t", -1))
     val blocks = pinnedLines(s"$fixture/chainsync-behavior-blocks.tsv").map(_.split("\\t", -1))
     val points = pinnedLines(s"$fixture/chainsync-behavior-points.tsv").map(_.split("\\t", -1))
-    cases.take(12).flatMap { row =>
+    largeIntersectionSeeds ++ cases.take(12).flatMap { row =>
       val seed = row(1)
       val ordinal = row(2)
       val tip = Bytes.fromHex(row(8)).toOption
@@ -638,7 +713,10 @@ object Targets:
       ChainSync.Role.values.toSeq,
       chainSyncSeeds,
       (s, r, b) => ChainSync.decodePrefix(s, r, b, NtNHeader.codec),
-      (s, r, m) => ChainSync.encode(s, r, m, NtNHeader.codec)
+      (s, r, m) => ChainSync.encode(s, r, m, NtNHeader.codec),
+      decodeEncoded = Some((s, r, b) =>
+        ChainSync.decodePrefix(s, r, b, NtNHeader.codec, ChainSync.Limits.NodeToClient)
+      )
     ),
     roundTrip(
       "chainsync-ntc",
@@ -662,6 +740,101 @@ object Targets:
       (s, r, b) => ChainSync.decodePrefix(s, r, b, anyItem, ChainSync.Limits.NodeToClient),
       (s, r, m) => ChainSync.encode(s, r, m, anyItem, ChainSync.Limits.NodeToClient)
     ),
+    Target(
+      "chainsync-ntc-streamed",
+      chainSyncRequestSeeds,
+      probe("chainsync-ntc-streamed") { bytes =>
+        val expected = bufferedRequest(bytes)
+        val chunk = 1 + bytes.foldLeft(0)((sum, byte) => (sum + (byte & 0xff)) & 63)
+        expected match
+          case DecodeResult.Decoded(request, consumed) =>
+            hit("chainsync-ntc-streamed")
+            req(
+              consumed > 0 && consumed <= bytes.size,
+              s"request consumed $consumed of ${bytes.size}"
+            )
+            val done = Bytes.wrap(Array(0x81.toByte, 7.toByte))
+            val coalesced = bytes.take(consumed) ++ done
+            val first = streamed(ChainSyncRequest.decoder, coalesced, chunk)
+            req(
+              first == DecodeResult.Decoded(request, consumed),
+              "a following Done changes request consumption"
+            )
+            req(
+              ChainSyncRequest.decoder.decodePrefix(coalesced.drop(consumed)) == DecodeResult
+                .Decoded(ChainSyncRequest.Done, done.size),
+              "the coalesced suffix does not decode with a fresh cursor"
+            )
+          case _ =>
+            req(
+              streamed(ChainSyncRequest.decoder, bytes, chunk) == expected,
+              s"$chunk-byte chunks differ from buffered rejection or incompleteness"
+            )
+      }
+    ),
+    Target(
+      "chainsync-ntc-response-streamed",
+      () =>
+        Vector(
+          "8101",
+          "8302d81843ff0080828000",
+          "830380828000",
+          "830580828000",
+          "8206828000",
+          "8302d819",
+          "8302d8185f",
+          "8302d8185b8000000000000000",
+          "8302d8185a80000001",
+          "820682820040",
+          "8302d81841ff8280008101"
+        ).map(value =>
+          Bytes.fromHex(value).fold(e => throw new Violation(e.toString), _.toArray)
+        ) ++
+          chainSyncSeeds(),
+      probe("chainsync-ntc-response-streamed") { bytes =>
+        val codec = CardanoBlockFetch.localPayloadCodec
+        val chunk = 1 + bytes.foldLeft(0)((sum, byte) => (sum + (byte & 0xff)) & 63)
+        Vector(
+          ChainSync.State.NextCanAwait,
+          ChainSync.State.NextMustReply,
+          ChainSync.State.Intersect
+        ).foreach { state =>
+          val decoder = ChainSync.responseDecoder(state, codec)
+          val expected = ChainSync.decodePrefix(
+            state,
+            ChainSync.Role.Server,
+            bytes,
+            codec,
+            ChainSync.Limits.NodeToClient
+          )
+          expected match
+            case DecodeResult.Decoded(message, consumed) =>
+              hit("chainsync-ntc-response-streamed")
+              req(
+                consumed > 0 && consumed <= bytes.size,
+                s"response consumed $consumed of ${bytes.size}"
+              )
+              val following = Bytes.wrap(Array(0x81.toByte, 1.toByte))
+              val coalesced = bytes.take(consumed) ++ following
+              req(
+                streamed(decoder, coalesced, chunk) == DecodeResult.Decoded(message, consumed),
+                "fragmented response value or first-message consumption differs"
+              )
+              req(
+                ChainSync
+                  .responseDecoder(ChainSync.State.NextCanAwait, codec)
+                  .decodePrefix(coalesced.drop(consumed)) ==
+                  DecodeResult.Decoded(ChainSync.Message.AwaitReply, following.size),
+                "coalesced response suffix was lost"
+              )
+            case _ =>
+              req(
+                streamed(decoder, bytes, chunk) == expected,
+                s"$chunk-byte response fragments differ from buffered failure or incompleteness"
+              )
+        }
+      }
+    ),
     roundTrip(
       "chainsync-engine-opaque",
       ChainSync.State.values.toSeq,
@@ -669,7 +842,18 @@ object Targets:
       chainSyncEngineSeeds,
       (s, r, b) =>
         ChainSyncEngine.decodePrefix(s, r, b, opaquePoint, opaqueTip, opaqueChainPayload),
-      (s, r, m) => ChainSyncEngine.encode(s, r, m, opaquePoint, opaqueTip, opaqueChainPayload)
+      (s, r, m) => ChainSyncEngine.encode(s, r, m, opaquePoint, opaqueTip, opaqueChainPayload),
+      decodeEncoded = Some((s, r, b) =>
+        ChainSyncEngine.decodePrefix(
+          s,
+          r,
+          b,
+          opaquePoint,
+          opaqueTip,
+          opaqueChainPayload,
+          ChainSync.Limits.NodeToClient
+        )
+      )
     ),
     roundTrip(
       "blockfetch",

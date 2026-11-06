@@ -31,7 +31,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
 
   private def handlers: ServerHandlers[IO, NtNHeader] =
     val cursor = new ChainSyncServer.Source[IO, NtNHeader]:
-      def intersect(points: Vector[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
+      def intersect(points: cats.data.Chain[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
       def poll = IO.pure(None)
       def await = IO.never[ChainSyncServer.Update[NtNHeader]]
     val blocks = new BlockFetchServer.Blocks[IO]:
@@ -232,7 +232,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
               events <- Ref.of[IO, Vector[Event[PeerNetwork.Addr]]](Vector.empty)
               cursor = Resource.eval(Ref.of[IO, Int](0)).map { position =>
                 new ChainSyncServer.Source[IO, NtNHeader]:
-                  def intersect(points: Vector[Point]) = available.get.flatMap { count =>
+                  def intersect(points: cats.data.Chain[Point]) = available.get.flatMap { count =>
                     val selected = chain.headers.take(count)
                     val common = points
                       .find(point => point == Point.Origin || selected.exists(_.point == point))

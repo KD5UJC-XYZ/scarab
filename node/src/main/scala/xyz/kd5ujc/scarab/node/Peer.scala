@@ -351,24 +351,28 @@ object Peer:
       pipelineWindow: ChainSyncPipelineDecision.Window = ChainSyncPipelineDecision.Window.Default
   )
 
-  /** The most intersection candidates one FindIntersect carries. */
-  private val MaxCandidates = 64
-
-  /** At most [[MaxCandidates]] of `candidates` (newest first): the newest 16, then every second,
-    * fourth, eighth... one, and always the last (the oldest, which the anchor is).
+  /** The reference's intersection points (`mkOffsets`, ouroboros-consensus 82ecba329
+    * `ChainSync/Client.hs:1050-1061,2039-2043`; `selectPoints`, ouroboros-network 2fb69829
+    * `AnchoredFragment.hs:374-413`). `candidates` is the local fragment's retained blocks, newest
+    * first, followed by its anchor; the volatile chain already bounds its length by `k`.
+    *
+    * Offset zero is the tip, the Fibonacci offsets start at one, and the fragment length selects
+    * the anchor. An anchor-only fragment therefore offers that point twice, as native offsets
+    * `[0, 0]` do; `selectPoints` preserves duplicates. Long arithmetic avoids overflow while
+    * generating the next offset of an Int-sized vector.
     */
   private[node] def thin[A](candidates: Vector[A]): Vector[A] =
-    if candidates.size <= MaxCandidates then candidates
-    else
-      val picked = Iterator
-        .unfold((0, 1)) { case (i, step) =>
-          Option.when(i < candidates.size)(
-            i -> ((i + step, if i >= 15 then step * 2 else step))
-          )
-        }
-        .take(MaxCandidates - 1)
-        .toVector
-      (picked.map(candidates(_)) ++ candidates.lastOption).distinct
+    if candidates.isEmpty then Vector.empty
+    else intersectionOffsets(candidates.size - 1).map(candidates(_))
+
+  /** Offsets for the nonnegative number of blocks in an already `k`-bounded fragment. */
+  private[node] def intersectionOffsets(length: Int): Vector[Int] =
+    val fibonacci = Iterator
+      .unfold((1L, 2L)) { case (a, b) =>
+        Option.when(a < length)(a.toInt -> (b, a + b))
+      }
+      .toVector
+    Vector(0) ++ fibonacci :+ length
 
   /** The maximal runs of consecutive headers the caller owns (the others were claimed by another
     * session, which fetches them).
@@ -442,6 +446,10 @@ object Peer:
     // and not the node (network 2fb69829 RethrowPolicy.hs 61-70, 99-103; consensus 82ecba329
     // Node/RethrowPolicy.hs, `ourBug`). The peer is not charged (owner decision, issue 567).
     case NetworkError.Defect(cause) => Fault.Failed(PeerError.ConnectionDefect(cause))
+    case failure: NetworkError.ByteRepresentation =>
+      Fault.Failed(PeerError.ConnectionDefect(new NetworkError.InternalFailure(failure)))
+    case failure: NetworkError.ReceiveCapacityExceeded =>
+      Fault.Failed(PeerError.ConnectionDefect(new NetworkError.InternalFailure(failure)))
     case NetworkError.DecoderDefect(protocol, cause) =>
       Fault.Failed(PeerError.InputDefect(PeerError.InputSite.Wire(protocol), cause))
     case NetworkError.BearerDefect(cause) =>

@@ -9,7 +9,7 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.{Chunk, Pull, Stream}
 import fs2.concurrent.SignallingRef
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, ChunkedBytes}
 import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
 import xyz.kd5ujc.scarab.protocol.Mux as WireMux
 import scala.concurrent.duration.*
@@ -28,6 +28,17 @@ trait MuxChannel[F[_]]:
   /** Queue one complete protocol message; it is split into SDUs by the writer. */
   def send(message: Bytes)(using Raise[F, NetworkError]): F[Unit]
 
+  /** Queue without a protocol message-size policy, as the reference ChainSync encoder does.
+    * Transport SDU framing and egress backpressure still apply.
+    */
+  def sendUnbounded(message: Bytes)(using Raise[F, NetworkError]): F[Unit] =
+    sendChunked(ChunkedBytes.fromBytes(message))
+
+  /** Queue one complete logical message without flattening its chunks. The writer packs bounded
+    * SDUs independently of the chunk boundaries; egress admission owns the complete message.
+    */
+  def sendChunked(message: ChunkedBytes)(using Raise[F, NetworkError]): F[Unit]
+
   /** Completes once everything queued on the connection so far has been written to the bearer (or
     * the connection has failed). Used before closing, so that a final message is not lost.
     */
@@ -42,12 +53,34 @@ trait MuxChannel[F[_]]:
       Raise[F, NetworkError]
   ): F[A]
 
+  /** Receive without a mini-protocol byte limit. The default adapter's `Bytes` result can only
+    * contain an `Int` number of bytes; the live mux omits the policy check entirely and retains its
+    * separate receive-buffer capacity check.
+    */
+  def recvUnbounded[A](decode: Bytes => DecodeResult[A])(using Raise[F, NetworkError]): F[A] =
+    recv(Int.MaxValue)(decode)
+
+  def recvWithin[A](limit: Option[Int])(decode: Bytes => DecodeResult[A])(using
+      Raise[F, NetworkError]
+  ): F[A] = limit.fold(recvUnbounded(decode))(recv(_)(decode))
+
   /** [[recv]] with progress retained between prefixes. The default uses the equivalent stateless
     * decoder; the live mux retains its cursor while waiting for more SDUs.
     */
   def recvIncremental[A](maxBytes: Int)(decode: xyz.kd5ujc.scarab.protocol.IncrementalDecoder[A])(
       using Raise[F, NetworkError]
   ): F[A] = recv(maxBytes)(decode.decodePrefix)
+
+  /** Receive without a whole-message budget, releasing the decoder's consumed prefixes. The default
+    * preserves compatibility with finite scripted channels; the live mux releases input after each
+    * continuation and never collects the message into one array. Cancelling a receive that owns the
+    * channel lock retires the channel: its consumed prefix cannot be reconstructed by another
+    * caller. It does not publish a connection failure that could replace the owner's original
+    * error. Cancelling a caller still waiting for the lock does not retire the channel.
+    */
+  def recvStreaming[A](decode: xyz.kd5ujc.scarab.protocol.StreamingDecoder[A])(using
+      Raise[F, NetworkError]
+  ): F[A] = recvUnbounded(decode.decodePrefix)
 
 /** Multiplexer over one [[Bearer]]: a reader fiber routes SDUs into the ingress queue of their
   * mini-protocol and a writer fiber rotates complete SDUs between admitted outbound channels.
@@ -163,9 +196,10 @@ object Mux:
 
   object Config:
     /** The responder of a node-to-client connection. The reference gives every node-to-client
-      * mini-protocol `maximumMiniProtocolLimits` and runs its codecs without byte limits, so a
-      * message is bounded only by what a byte array can hold: a LocalStateQuery answer may be tens
-      * of megabytes (`GetCBOR DebugEpochState` on preprod).
+      * mini-protocol `maximumMiniProtocolLimits` and runs its codecs without message byte limits.
+      * `maxMessageBytes` governs ordinary contiguous sends; streamed ChainSync uses chunked sends
+      * and receives. Other local payload APIs retain their `Bytes` representation boundary (#749),
+      * which is not a reference protocol limit.
       */
     val nodeToClient: Config = Config(
       role = Role.Responder,
@@ -605,7 +639,7 @@ object Mux:
                       sending(lane.role),
                       config.sduSize,
                       lane.protocol,
-                      config.maxMessageBytes
+                      payload.size
                     )
                     .flatMap(_.traverse(WireMux.encode))
                   frames match
@@ -640,6 +674,7 @@ object Mux:
                 // an SDU that did not fit beside the buffered bytes while batching: held for the
                 // next round, after the buffered message has been decoded and consumed
                 pending <- Ref[F].of(Option.empty[Bytes])
+                retired <- Ref[F].of(false)
               yield key -> (
                 channel(
                   protocol,
@@ -650,6 +685,7 @@ object Mux:
                   buffer,
                   lock,
                   pending,
+                  retired,
                   config,
                   dispatch,
                   handshakeInput.filter(_ => (protocol, role) == (Protocols.Handshake, config.role))
@@ -755,6 +791,7 @@ object Mux:
       buffer: ReceiveBuffer,
       lock: Mutex[F],
       pending: Ref[F, Option[Bytes]],
+      retired: Ref[F, Boolean],
       config: Config,
       dispatch: Dispatch[F],
       handshakeInput: Option[HandshakeInput[F]]
@@ -763,10 +800,24 @@ object Mux:
     def protocol = id
 
     private def permitted(using Raise[F, NetworkError]): F[Unit] =
-      dispatch.check((id, role)).flatMap(_.fold(F.unit)(_.raise[F, Unit]))
+      retired.get.flatMap {
+        case true =>
+          closed.tryGet.flatMap(
+            _.getOrElse(NetworkError.BearerClosed(NetworkError.Closure.Aborted)).raise[F, Unit]
+          )
+        case false => dispatch.check((id, role)).flatMap(_.fold(F.unit)(_.raise[F, Unit]))
+      }
 
-    def send(message: Bytes)(using Raise[F, NetworkError]): F[Unit] = permitted *>
-      (if message.size == 0 || message.size > config.maxMessageBytes then
+    def send(message: Bytes)(using Raise[F, NetworkError]): F[Unit] =
+      sendWithin(ChunkedBytes.fromBytes(message), Some(config.maxMessageBytes))
+
+    def sendChunked(message: ChunkedBytes)(using Raise[F, NetworkError]): F[Unit] =
+      sendWithin(message, None)
+
+    private def sendWithin(message: ChunkedBytes, limit: Option[Int])(using
+        Raise[F, NetworkError]
+    ): F[Unit] = permitted *>
+      (if message.size == 0 || limit.exists(message.size > _) then
          NetworkError
            .IllegalTransition(
              id,
@@ -804,14 +855,55 @@ object Mux:
     def recv[A](maxBytes: Int)(decode: Bytes => DecodeResult[A])(using
         Raise[F, NetworkError]
     ): F[A] =
-      receive(maxBytes, ())((_, bytes) => ((), decode(bytes)))
+      receive(Some(maxBytes), ())((_, bytes) => ((), decode(bytes)))
+
+    override def recvUnbounded[A](decode: Bytes => DecodeResult[A])(using
+        Raise[F, NetworkError]
+    ): F[A] = receive(None, ())((_, bytes) => ((), decode(bytes)))
 
     override def recvIncremental[A](maxBytes: Int)(
         decode: xyz.kd5ujc.scarab.protocol.IncrementalDecoder[A]
     )(using Raise[F, NetworkError]): F[A] =
-      receive(maxBytes, decode.initial)(decode.resume)
+      receive(Some(maxBytes), decode.initial)(decode.resume)
 
-    private def receive[S, A](maxBytes: Int, initial: S)(
+    override def recvStreaming[A](decode: xyz.kd5ujc.scarab.protocol.StreamingDecoder[A])(using
+        Raise[F, NetworkError]
+    ): F[A] =
+      import xyz.kd5ujc.scarab.protocol.StreamingDecoder.Step
+      lock.lock.surround {
+        def next(cursor: decode.Cursor): F[A] = permitted *>
+          F.delay(buffer.view).flatMap { held =>
+            Either.catchNonFatal(decode.resume(cursor, held)) match
+              case Left(cause)                => NetworkError.DecoderDefect(id, cause).raise[F, A]
+              case Right(Step.Failed(reason)) => NetworkError.Decode(id, reason).raise[F, A]
+              case Right(Step.Done(value, consumed)) =>
+                F.delay(buffer.consume(consumed)) *>
+                  handshakeInput
+                    .traverse_(input => F.delay(buffer.clear()) *> input.complete)
+                    .as(value)
+              case Right(Step.More(cursor, consumed)) =>
+                F.delay(buffer.consume(consumed)) *> handshakeInput.traverse_(_.continue) *>
+                  pending.getAndSet(None).flatMap(_.fold(nextPayload)(F.pure)).flatMap { payload =>
+                    F.delay(buffer.append(payload)).flatMap { fits =>
+                      if fits then next(cursor)
+                      else
+                        NetworkError
+                          .ReceiveCapacityExceeded(
+                            id,
+                            buffer.size.toLong + payload.size,
+                            buffer.capacity
+                          )
+                          .raise[F, A]
+                    }
+                  }
+          }
+        // Native network-mux Mux.hs:356–364 (2fb69829) does not report asynchronous cancellation
+        // as a mini-protocol exception. Publishing a synthetic mux close here can win the owner's
+        // race while it cancels sibling protocols, replacing the actual failure being unwound.
+        F.onCancel(next(decode.initial), retired.set(true))
+      }
+
+    private def receive[S, A](maxBytes: Option[Int], initial: S)(
         decode: (S, Bytes) => (S, DecodeResult[A])
     )(using
         Raise[F, NetworkError]
@@ -824,7 +916,8 @@ object Mux:
             Either.catchNonFatal(decode(cursor, held)) match
               case Left(cause) => NetworkError.DecoderDefect(id, cause).raise[F, A]
               case Right((_, DecodeResult.Decoded(value, consumed))) =>
-                if consumed > maxBytes then NetworkError.IngressLimit(id, consumed).raise[F, A]
+                if maxBytes.exists(consumed > _) then
+                  NetworkError.IngressLimit(id, consumed).raise[F, A]
                 else
                   F.delay(buffer.consume(consumed)) *>
                     handshakeInput
@@ -833,7 +926,8 @@ object Mux:
               case Right((_, DecodeResult.Failed(reason))) =>
                 NetworkError.Decode(id, reason).raise[F, A]
               case Right((next, DecodeResult.NeedMore)) =>
-                if held.size > maxBytes then NetworkError.IngressLimit(id, held.size).raise[F, A]
+                if maxBytes.exists(held.size > _) then
+                  NetworkError.IngressLimit(id, held.size).raise[F, A]
                 else handshakeInput.traverse_(_.continue) *> await(next, held.size)
           }
 
@@ -853,7 +947,7 @@ object Mux:
           F.delay(buffer.size).flatMap { held =>
             // The handshake mux decodes after every SDU: it must not read ahead into SDUs that
             // belong to the application protocols.
-            if handshakeInput.isDefined || held > maxBytes || held >= 2L * attempted then
+            if handshakeInput.isDefined || maxBytes.exists(held > _) || held >= 2L * attempted then
               decodeNow(cursor)
             else
               permitted *> ingress.tryTake.flatMap {
@@ -871,7 +965,10 @@ object Mux:
         def append(payload: Bytes): F[Unit] =
           F.delay(buffer.append(payload)).flatMap { fits =>
             if fits then F.unit
-            else NetworkError.IngressLimit(id, Int.MaxValue).raise[F, Unit]
+            else
+              NetworkError
+                .ReceiveCapacityExceeded(id, buffer.size.toLong + payload.size, buffer.capacity)
+                .raise[F, Unit]
           }
 
         decodeNow(initial)

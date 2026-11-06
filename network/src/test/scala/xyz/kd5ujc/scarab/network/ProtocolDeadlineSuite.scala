@@ -21,7 +21,7 @@ class ProtocolDeadlineSuite extends FailsOnUncaught:
                 c <- clientMux.channel(Protocols.ChainSync)
                 s <- serverMux.channel(Protocols.ChainSync)
                 source = new ChainSyncServer.Source[IO, Bytes]:
-                  def intersect(points: Vector[ChainSync.Point]) =
+                  def intersect(points: cats.data.Chain[ChainSync.Point]) =
                     IO.pure(Right(ChainSync.Point.Origin -> ChainSync.Tip.Origin))
                   def poll = IO
                     .sleep(2.seconds)

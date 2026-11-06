@@ -32,9 +32,11 @@ class PeerHeaderMetricsSuite extends FailsOnUncaught:
             header = chain.headers.head
             tip = ChainSync.Tip(header.point, ChainSync.UInt64.saturating(header.blockNo))
             client = new ChainSyncClient[IO, NtNHeader]:
-              def findIntersect(points: Vector[ChainSync.Point])(using Raise[IO, NetworkError]) =
+              def findIntersect(points: cats.data.Chain[ChainSync.Point])(using
+                  Raise[IO, NetworkError]
+              ) =
                 IO.pure(Some(ChainSync.Point.Origin -> tip))
-              def findIntersectResult(points: Vector[ChainSync.Point])(using
+              def findIntersectResult(points: cats.data.Chain[ChainSync.Point])(using
                   Raise[IO, NetworkError]
               ) =
                 IO.pure(ChainSyncRuntime.Intersection.Found(ChainSync.Point.Origin, tip))

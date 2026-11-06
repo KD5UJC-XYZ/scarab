@@ -6,12 +6,9 @@
   protocol source pin; actual interoperability uses reference node 11.1.3.
 
 Networking mirrors ouroboros-network in structure and behaviour ([ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md)).
-Every mini-protocol state's time limit is the pinned reference's (`timeLimits*`, cited per row), except
-the BlockFetch client's cumulative request time (the BlockFetch client rework, #430). The TxSubmission
-byte/item profile (the TxSubmission alignment, #477), the BlockFetch client's aggregate bounds (#430), the
-ChainSync intersection-list count (the ChainSync alignment) and the other local bounds that the matrix
-lists remain explicit until they are aligned: each difference from the reference recorded here is
-alignment work, not a permitted deviation, unless ADR 0008 lists it as approved. The node already had ingress budgets, finite outbound queues, bounded codecs and
+The matrix below cites the reference's per-state time and byte limits and records the implementation
+alongside them. Each remaining difference is alignment work, not a permitted deviation, unless
+ADR 0008 lists it as approved. The node already had ingress budgets, finite outbound queues, bounded codecs and
 state timers. G5 adds the missing SDU deadlines, checks completed-message byte limits and bounds
 TxSubmission's retained request state. It changes no persisted format or original transaction bytes.
 
@@ -27,7 +24,8 @@ State names refer to wire agency, so KeepAlive `Client` is the server waiting fo
 | Established mux read | Wait indefinitely for first header bytes; then complete that SDU within 30 s | Same partial-frame rule, using scoped `Pull.timed`; trickled header/payload bytes do not restart the deadline |
 | Mux write | 30s for one SDU on the application bearer, 10s on the handshake bearer (`ConnectionHandler.hs:94-102,335,379,412,451`); a batched write gets SDU-count×timeout (`Bearer/Socket.hs:224`) | 30s per SDU, 10s for the handshake lane, which is the reference's handshake bearer. Each write is one SDU with its own budget: no cross-protocol batch (`Egress.hs:164-186` batches up to 100 SDUs or 131072 bytes under SDU-count×timeout), so no donation from later SDUs. This difference remains |
 | Mux framing | Header 8 bytes, payload at most 65535 accepted; SDUs sent are cut at the bearer's `sduSize`, 12288 for sockets (`Bearer.hs:83-86`, node-to-client `Snocket.hs:455-456`) | Same: `Mux.Config.sduSize` 12288 for sending, `maxSduPayload` 65535 for acceptance; the decoder rejects oversized and zero-byte SDUs, partial EOF and invalid headers |
-| ChainSync active states | 65535 bytes; Intersect/CanAwait10s; Idle `ChainSyncIdleTimeout`, default 3373 s (`Cardano/Network/Protocol/ChainSync/Codec/TimeLimits.hs:59-64`, `Cardano/Network/Diffusion/Configuration.hs` `defaultChainSyncIdleTimeout`); MustReply uses peer trust and per-state random timeout | Same: server Idle3373s; each untrustable MustReply state draws a fresh uniform601–911s budget; trustable outbound peers wait indefinitely. The local-root activation captures trustability; inbound peers are untrustable. Partial message reads retain the sampled budget. Explicit fixed test profiles remain supported. |
+| Node-to-node ChainSync receiving states | 65535 bytes; Intersect/CanAwait10s; Idle `ChainSyncIdleTimeout`, default 3373 s (`Cardano/Network/Protocol/ChainSync/Codec/TimeLimits.hs:59-64`, `Cardano/Network/Diffusion/Configuration.hs` `defaultChainSyncIdleTimeout`); MustReply uses peer trust and per-state random timeout | Same: server Idle3373s; each untrustable MustReply state draws a fresh uniform601–911s budget; trustable outbound peers wait indefinitely. The local-root activation captures trustability; inbound peers are untrustable. Partial message reads retain the sampled budget. Explicit fixed test profiles remain supported. |
+| Node-to-client ChainSync | Plain `runPeer`, without message byte or time limits (`Ouroboros/Consensus/Network/NodeToClient.hs:438`, consensus `82ecba32`); the mux queue has a separate limit | The Cardano server streams incoming requests, and ordinary/rolling local clients stream serialized responses through `recvStreaming`. Offers remain in `Chain`; logical encodings and opaque payloads use `ChunkedBytes`. No aggregate message-byte, item or candidate-count policy applies to these paths. [Representation scope and remaining boundaries](chunked-bytes.md). |
 | BlockFetch Idle/Busy | 65535bytes; Idle indefinite, Busy 60 s (`BlockFetch/Codec.hs:59-68`) | Same byte bound, Busy 60 s and server Idle indefinite |
 | BlockFetch Streaming | 2500000bytes per message,60s per reply | Same per-reply wire limit; no cumulative request deadline or aggregate byte/range-count cap. Full candidate fragments determine request sizes; the server streams any range it holds (ouroboros-consensus `82ecba32`, `MiniProtocol/BlockFetch/Server.hs`). |
 | TxSubmission Init/Idle | 65535bytes; indefinite (`TxSubmission2/Codec.hs:78-88`) | 65535bytes in codec and runtime channel; indefinite in both states |
@@ -64,12 +62,12 @@ budget. Each direction/mini-protocol has its own counter; a slow consumer never 
 On overrun, the connection ends with `NetworkError.IngressLimit`. Zero-byte SDUs are rejected by
 the framing codec, so counting positive payload bytes also bounds the number of queued SDUs.
 
-Egress admission holds at most 65 messages/fences by default: the configured 64 queue slots plus
-one writer allowance. One semaphore covers the inbox, staged per-channel queues and the current
-write, so importing work never frees admission capacity. The default message ceiling is 2500000
-bytes; an explicit positive `Mux.Config.maxMessageBytes` also sets the aggregate segmentation
-bound, independently of the uint16 SDU bound. Protocol-specific ingress and receive limits remain
-separate. `send` waits for a credit. No additional byte budget is introduced without a measured need.
+Egress uses the [per-lane soft byte budget described below](#fair-egress-as-built-258).
+Admitted bytes remain charged through staged/current work until each SDU is written. Ordinary
+`send` applies `Mux.Config.maxMessageBytes` at admission, 2500000 bytes by default. ChainSync uses
+`sendChunked`, without that complete-message policy; its internal storage chunks are packed into
+bounded SDUs without changing lane turns or flush ordering. Protocol-specific ingress and receive
+limits remain separate.
 Node-to-client's separate queue ceiling is 4294967295 bytes, matching the reference local-interface
 allowance; it should not be described as an unbounded queue.
 
@@ -78,6 +76,34 @@ message. A valid oversized message that arrives in one chunk is refused too. Byt
 messages remain buffered: two 100-byte messages coalesced into 200 bytes are legal under a 100-byte
 per-message limit. Codec structural limits remain an independent bound on decoding work.
 
+ChainSync's encoder has no candidate-count or message-byte policy, as in
+`ChainSync/Codec.hs:124-125,204-207` at network `2fb69829`. The node-to-node byte limit
+belongs to receiving, so a definite incoming list can re-encode as a larger indefinite list.
+The [ChainSync oracle corpus](../../fixtures/reference/chainsync-find-intersect/README.md)
+records the exercised encoding and decoding boundaries separately. The Cardano node-to-client
+server uses `ChainSyncRequest` and `recvStreaming`: consumed prefixes leave the receive buffer,
+and candidate points remain in a segmented `Chain` through the production source search.
+Every point and the list terminator are validated before the source is queried, including a
+malformed suffix after an earlier matching point. Oversized hash contents are consumed before
+their length is refused, without retaining those contents. `ChainSyncStreamingSuite` and
+`ChainSyncFindIntersectReferenceSuite` exercise these rules, coalesced following messages and
+small receive buffers.
+
+Local serialized responses use `CardanoBlockFetch.LocalBlock`, `ChainSync.responseDecoder` and
+`recvStreaming`; outgoing encodings use `encodeChunked` and `sendChunked`. The
+[chunked-byte design](chunked-bytes.md) records the primary APIs, checked contiguous conveniences,
+complete-message validation and the [executed native opaque-byte witness](../../fixtures/reference/chainsync-wide-serialised/README.md).
+The witness establishes that serialized API boundary, not validation, forging or storage of a
+multi-gigabyte ledger block. Other local protocol and ledger/storage representations remain under
+[#749](https://github.com/KD5UJC-XYZ/scarab/issues/749); smaller configured block sizes do not approve
+an additional API limit.
+
+The production client samples its captured, newest-first volatile fragment using the reference's
+offsets: zero, Fibonacci offsets below the retained fragment length, and its anchor. This follows
+`ChainSync/Client.hs:1050-1061,2039-2043` at consensus `82ecba32` and
+`AnchoredFragment.hs:374-413` at network `2fb69829`. `PeerSuite` checks the selected offsets;
+`PeerIntersectionSuite` checks the offered points and the server's resulting intersection on forks.
+
 ## Typed failures and cancellation
 
 The reader's timer is disabled between SDUs, starts on a partial frame, stays fixed across progress,
@@ -85,6 +111,15 @@ and resets only after a complete SDU when another partial frame begins. Timed pu
 stream's resource scope and cancels its source/timer on completion, timeout or mux release. The
 writer bounds the actual bearer write, including a stalled handshake flush. A timeout completes
 `Mux.closed` with `NetworkError.SduTimeout(Read|Write)`; it does not throw a domain exception.
+
+Cancelling an acquired streaming receive retires its channel before releasing the receive lock:
+consumed prefixes cannot be reconstructed for a new decoder, so a later call must not interpret
+the retained suffix as a fresh request. Cancelling a caller waiting for that lock does not retire
+the active receiver. Retirement does not publish a new `Mux.closed` event: cancellation during
+sibling cleanup must preserve the owner's original failure. This matches the native mux's
+[asynchronous-exception distinction](https://github.com/IntersectMBO/ouroboros-network/blob/2fb69829a19b5c04e4fb212bdd78fb63f9d2d776/network-mux/src/Network/Mux.hs#L356-L364).
+`MuxSuite` checks retirement, queued callers, sibling-channel use and preservation of a real mux
+failure; `ListenerFailuresSuite` checks that the acquisition fatal follows resource release.
 
 `TxSubmissionPolicy` is pure and immutable. Its closed `Violation` distinguishes bad counts,
 acknowledgement/credit, invalid blocking style, duplicate/unadvertised body IDs and excess/duplicate

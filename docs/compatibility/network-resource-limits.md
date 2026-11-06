@@ -1,11 +1,11 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Network resource limits (G5)
 
-Part of the [compatibility matrix](../compatibility.md); the register entry is `network-resource-limits` in [compatibility.json](../data/compatibility.json). The three sections below are the cells of the former matrix row, unchanged.
+Part of the [compatibility matrix](../compatibility.md); the register entry is `network-resource-limits` in [compatibility.json](../data/compatibility.json). The sections below expand the register entry.
 
 ## Status as recorded
 
-implemented: per-state byte/time bounds, byte-counted nonblocking ingress, finite64-message egress queue, absolute partial-SDU/write deadlines and finite TxSubmission credit10; completed decodes cannot bypass byte limits; closed mux framing/limit errors retain their payloads through the network and node (#82)
+implemented: per-state byte/time bounds, byte-counted nonblocking ingress, per-lane soft byte egress admission, absolute partial-SDU/write deadlines and finite TxSubmission credit10; completed decodes cannot bypass byte limits; closed mux framing/limit errors retain their payloads through the network and node (#82)
 
 ## Evidence
 

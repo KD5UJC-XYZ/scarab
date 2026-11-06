@@ -6,6 +6,7 @@ decisions they rest on are [ADRs](../adr/README.md).
 
 | Document | Status | Issue |
 |---|---|---|
+| [Chunked bytes and large local payloads](chunked-bytes.md) | Codec foundation; consumer migration and capacity parity incomplete | [#749](https://github.com/KD5UJC-XYZ/scarab/issues/749) |
 | [Rolling ChainSync pipeline](chainsync-pipeline.md) | Implementation under review; combined acceptance pending | [#310](https://github.com/KD5UJC-XYZ/scarab/issues/310) |
 | [KES agent mode](kes-agent.md) | Proposal; decisions settled (ADR 0023/0024), not implemented | [#38](https://github.com/KD5UJC-XYZ/scarab/issues/38) |
 | [Ouroboros Genesis](genesis.md) | Implemented; local stage acceptance passed, review/main integration pending | [#33](https://github.com/KD5UJC-XYZ/scarab/issues/33) |

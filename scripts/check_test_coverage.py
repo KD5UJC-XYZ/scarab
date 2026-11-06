@@ -281,7 +281,7 @@ def validate_provenance(root, corpus, components):
 
     for prefix, node in measurement_objects(record):
         counts = {key: value for key, value in node.items()
-                  if key in {"cases", "caseCount", "lines", "accepted", "refused",
+                  if key in {"cases", "caseCount", "lines", "accepted", "refused", "needMore",
                              "observations", "requests", "poolTransitions"}}
         if isinstance(counts.get("cases"), dict):
             counts["cases.count"] = counts.pop("cases").get("count")
@@ -294,9 +294,14 @@ def validate_provenance(root, corpus, components):
         if prefix.endswith("cases."):
             total_field, total = "count", node.get("count")
         admitted, refused = node.get("accepted"), node.get("refused")
-        if integer(total) and integer(admitted) and integer(refused) and admitted + refused != total:
+        # Incremental decoder observations can await another chunk without either accepting or
+        # refusing. Keep that outcome distinct; older complete-message corpora omit it.
+        need_more = node.get("needMore", 0)
+        if (integer(total) and integer(admitted) and integer(refused)
+                and admitted + refused + need_more != total):
+            partial = f" plus needMore {need_more}" if "needMore" in node else ""
             fail(f"{prefix}{total_field}", f"records {total} cases, accepted {admitted} plus refused "
-                                          f"{refused} is {admitted + refused}")
+                                          f"{refused}{partial} is {admitted + refused + need_more}")
         if "batches" in node:
             batches = node["batches"]
             if not isinstance(batches, list) or not batches:

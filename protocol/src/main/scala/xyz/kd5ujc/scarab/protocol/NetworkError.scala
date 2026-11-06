@@ -16,6 +16,8 @@ enum NetworkError extends DomainError:
   case HandshakeRefused(reason: NetworkError.HandshakeFailure)
   case VersionMismatch(offered: Vector[Int], supported: Vector[Int])
   case IngressLimit(protocol: Int, bytes: Long)
+  case ReceiveCapacityExceeded(protocol: Int, required: Long, capacity: Long)
+  case ByteRepresentation(protocol: Int, cause: xyz.kd5ujc.scarab.codec.ChunkedBytes.Error)
   case Decode(protocol: Int, cause: ProtocolError)
   case IllegalTransition(protocol: Int, cause: NetworkError.Violation)
   case QueryRefused(refusal: QueryRefusal[?])
@@ -84,7 +86,10 @@ enum NetworkError extends DomainError:
     case VersionMismatch(o, s) =>
       s"no common version (offered ${o.mkString(",")}, peer supports ${s.mkString(",")})"
     case IngressLimit(p, b) => s"${Protocols.name(p)} exceeded the ingress limit at $b bytes"
-    case Decode(p, r)       => s"${Protocols.name(p)} decode: ${r.message}"
+    case ReceiveCapacityExceeded(p, required, capacity) =>
+      s"${Protocols.name(p)} receive buffer needs $required bytes; representation capacity is $capacity"
+    case ByteRepresentation(p, cause) => s"${Protocols.name(p)} byte representation: $cause"
+    case Decode(p, r)                 => s"${Protocols.name(p)} decode: ${r.message}"
     case IllegalTransition(p, d) =>
       s"${Protocols.name(p)} protocol violation: ${NetworkError.violationMessage(d)}"
     case QueryRefused(r) =>
@@ -141,7 +146,7 @@ object NetworkError:
     case UnexpectedProtocol(protocol: Int)
     case WrongModeBit
     case ApplicationAlreadyInstalled
-    case OutgoingMessageSize(actual: Int, maximum: Int)
+    case OutgoingMessageSize(actual: Long, maximum: Int)
     case IntersectionNotOffered
     case PipelinedRequest(state: ChainSync.State)
     case PipelineCapacity(maximum: Int)

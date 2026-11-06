@@ -9,6 +9,23 @@ class ChainSyncSuite extends munit.FunSuite:
   private def b(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
   private def right[E, A](value: Either[E, A]): A = value.fold(e => fail(e.toString), identity)
   private val payload = ChainSyncFixtures.rawItem
+
+  test("a tip's invalid hash is refused before its missing block number") {
+    val prefixes = Vector(
+      State.NextCanAwait -> "830380",
+      State.Intersect -> "8206"
+    )
+    prefixes.foreach { case (state, prefix) =>
+      assertEquals(
+        decodePrefix(state, Role.Server, b(prefix + "82820040"), payload),
+        DecodeResult.Failed(ProtocolError.CardanoPointHashMustContain32Bytes(0))
+      )
+      assertEquals(
+        decodePrefix(state, Role.Server, b(prefix + "8282005820" + "11" * 32), payload),
+        DecodeResult.NeedMore
+      )
+    }
+  }
   private def decoded[A](value: DecodeResult[A]): A = value match
     case DecodeResult.Decoded(v, _) => v
     case other                      => fail(s"expected decoded: $other")
@@ -143,16 +160,21 @@ class ChainSyncSuite extends munit.FunSuite:
     )
   }
   test("malformed and overlong arguments fail; bounded truncated fields need more") {
+    // a list of 255 points with none written needs more, as the reference's decoder does: the
+    // number of points is bounded by the message's bytes alone (#755)
+    assertEquals(
+      decodePrefix(State.Idle, Role.Client, b("820498ff"), payload),
+      DecodeResult.NeedMore
+    )
     Vector(
       "82045bffffffffffffffff",
       "82049bffffffffffffffff",
-      "820498ff",
       "83025bffffffffffffffff",
       "83021c",
       "8302ff",
       "8302f818",
       "83029fff82800000"
-    ).take(7).foreach { h =>
+    ).take(6).foreach { h =>
       val state = if h.startsWith("8204") then State.Idle else State.NextCanAwait
       val role = if state == State.Idle then Role.Client else Role.Server
       failed(decodePrefix(state, role, b(h), payload))
@@ -180,11 +202,21 @@ class ChainSyncSuite extends munit.FunSuite:
       assertEquals(decoded(decodePrefix(State.NextCanAwait, Role.Server, wire, payload)), m)
     }
   }
-  test("declared lengths, candidates, nesting and item counts are bounded") {
-    val small = Limits(maxMessageBytes = 20, maxStringBytes = 8, maxCandidates = 1)
-    failed(decodePrefix(State.Idle, Role.Client, b("820482"), payload, small))
-    failed(decodePrefix(State.Idle, Role.Client, b("82049f8080ff"), payload, small))
-    failed(decodePrefix(State.NextCanAwait, Role.Server, b("83025809"), payload, small))
+  test("receive profiles bound declared lengths, nesting and item counts") {
+    val small = Limits(maxMessageBytes = 20, maxStringBytes = 8)
+    assertEquals(
+      decodePrefix(State.Idle, Role.Client, b("820482"), payload, small),
+      DecodeResult.NeedMore
+    )
+    assertEquals(
+      decoded(decodePrefix(State.Idle, Role.Client, b("82049f8080ff"), payload, small)),
+      Message.FindIntersect(Vector(Point.Origin, Point.Origin))
+    )
+    failed(decodePrefix(State.Idle, Role.Client, b("8204" + "99001a" + "80" * 26), payload, small))
+    assertEquals(
+      decodePrefix(State.NextCanAwait, Role.Server, b("83025809"), payload, small),
+      DecodeResult.NeedMore
+    )
     assert(
       encode(
         State.Idle,
@@ -192,35 +224,35 @@ class ChainSyncSuite extends munit.FunSuite:
         Message.FindIntersect(Vector.fill(2)(Point.Origin)),
         payload,
         small
-      ).isLeft
+      ).isRight
     )
     assert(validateItem(b("818180"), Limits(maxDepth = 1)).isLeft)
     assert(validateItem(b("820000"), Limits(maxItems = 2)).isLeft)
     assert(validateItem(b("5f44000000004400000000ff"), Limits(maxStringBytes = 7)).isLeft)
-    failed(
+    assertEquals(
       decodePrefix(
         State.NextCanAwait,
         Role.Server,
         b("83025820"),
         payload,
         Limits(maxMessageBytes = 20)
-      )
+      ),
+      DecodeResult.NeedMore
     )
   }
   test("standalone point and tip honor full structural bounds") {
     val p = Point.Block(UInt64.Zero, b("00"))
     val small = Limits(maxDepth = 0, maxItems = 1)
-    assert(encodePoint(p, small).isLeft)
-    assert(encodeTip(Tip.Origin, small).isLeft)
+    assert(encodePoint(p, small).isRight)
+    assert(encodeTip(Tip.Origin, small).isRight)
     failed(decodePoint(b("82004100"), small))
     failed(decodeTip(b("828000"), small))
   }
   test("invalid local limits and exact byte caps fail without throwing") {
     Vector(
       Limits(maxMessageBytes = 0),
-      Limits(maxDepth = 65),
-      Limits(maxItems = 0),
-      Limits(maxCandidates = -1)
+      Limits(maxDepth = -1),
+      Limits(maxItems = 0)
     ).foreach { lim =>
       failed(decodePrefix(State.Idle, Role.Client, b("8100"), payload, lim))
       assert(encode(State.Idle, Role.Client, Message.RequestNext, payload, lim).isLeft)
@@ -231,7 +263,10 @@ class ChainSyncSuite extends munit.FunSuite:
       ),
       Message.RequestNext
     )
-    failed(decodePrefix(State.Idle, Role.Client, b("81"), payload, Limits(maxMessageBytes = 1)))
+    assertEquals(
+      decodePrefix(State.Idle, Role.Client, b("81"), payload, Limits(maxMessageBytes = 1)),
+      DecodeResult.NeedMore
+    )
   }
   test("opaque NtC block adapter stays unvalidated; point policy needs 32-byte hashes") {
     val block = b("d8184f3c43415244414e4f5f424c4f434b3e")
@@ -313,7 +348,7 @@ class ChainSyncSuite extends munit.FunSuite:
       Seq(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo)
     )
   }
-  test("exact 65535-byte message succeeds; one extra byte is rejected") {
+  test("NtN receiving accepts exactly 65535 bytes; encoding has no receive limit") {
     val raw = Bytes(Vector(0x59.toByte, 0xff.toByte, 0xf7.toByte) ++ Vector.fill(65527)(0.toByte))
     val message = Message.RollForward(raw, Tip.Origin)
     val wire = right(encode(State.NextCanAwait, Role.Server, message, payload))
@@ -321,13 +356,14 @@ class ChainSyncSuite extends munit.FunSuite:
     assertEquals(decoded(decodePrefix(State.NextCanAwait, Role.Server, wire, payload)), message)
     val tooLarge =
       Bytes(Vector(0x59.toByte, 0xff.toByte, 0xf8.toByte) ++ Vector.fill(65528)(0.toByte))
-    assert(
+    assertEquals(
       encode(
         State.NextCanAwait,
         Role.Server,
         Message.RollForward(tooLarge, Tip.Origin),
         payload
-      ).isLeft
+      ).map(_.size),
+      Right(65536)
     )
     failed(
       decodePrefix(

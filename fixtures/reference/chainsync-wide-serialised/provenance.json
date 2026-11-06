@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-05",
+  "scope": "One actual 2147483649-byte opaque Serialised payload encoded, decoded through plain runPeer in 1-MiB pieces, and re-encoded. Exact complete payload and wire SHA-256 identities agree. This is not a ledger-valid, forged, stored or NtN-propagated block.",
+  "sourceCommit": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
+  "consensusSourceCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+  "compiler": "GHC 9.10.3",
+  "packages": {
+    "ouroboros-network": "1.2.0.0",
+    "typed-protocols": "1.2.1.0",
+    "cborg": "0.2.10.0",
+    "serialise": "0.2.6.1",
+    "crypton": "1.1.4",
+    "contra-tracer": "0.2.1.1"
+  },
+  "packageIds": [
+    "ouroboros-network-1.2.0.0-l-api-75505d9cab9a701aa9ede07640fa53619dfce10ddedeb2a821868f540f9775ce",
+    "ouroboros-network-1.2.0.0-l-protocols-1a3cef254fbf3f0ef603ee6eae9beba74ab2dadd5865f5321a88dd15f154bbcd",
+    "typed-protocols-1.2.1.0-8c60d8132922c119353bb07538d5c224377175972c7feec3e38631ba7a87d8d5",
+    "ouroboros-network-1.2.0.0-l-framework-7cea284dc91d3c59f9cd043c856ee18a134c0068b2af3e10724f33b61e5e2341",
+    "crypton-1.1.4-08ca7477d08815448156dfdaf12a0a4d26c54910ec5f3081a0ea79b32dc818a2",
+    "contra-tracer-0.2.1.1-ac426f9b4f8afce4ab71ead62194f3a85635ba94764b73ba08f1b48f9bc022a0"
+  ],
+  "packageArchives": {
+    "ouroboros-network-1.2.0.0.tar.gz": "f94167122d6d7956206626afff2d90ce2637d4c82af8dff8784fae227ddbad70"
+  },
+  "sourceFiles": {
+    "chainSyncCodec": {
+      "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Codec.hs",
+      "sourceSha256": "ba2c582fa0e4ae02f26c0e9f412da8a6ce3384599a76f55c671f7a916a8c3fb1",
+      "matchesPin": true,
+      "note": "the released 1.2.0.0 file is the same; MsgFindIntersect is decodeList decodePoint (165-166, 209-214)",
+      "gitBlob": "2e2185e5aeb8d51cb736e6253a5b693493ab5dfb",
+      "url": "https://github.com/IntersectMBO/ouroboros-network/blob/2fb69829a19b5c04e4fb212bdd78fb63f9d2d776/ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Codec.hs"
+    },
+    "block": {
+      "file": "ouroboros-network/api/lib/Ouroboros/Network/Block.hs",
+      "sourceSha256": "83e93f9be5a5bf30600c4d5257f8527bd06adc22d5f92bcc83165a479982a822",
+      "matchesPin": true,
+      "note": "decodePoint; the released 1.2.0.0 file is the same",
+      "gitBlob": "f22325d7558961d26f65a50a28419cec8fc9c6ee",
+      "url": "https://github.com/IntersectMBO/ouroboros-network/blob/2fb69829a19b5c04e4fb212bdd78fb63f9d2d776/ouroboros-network/api/lib/Ouroboros/Network/Block.hs"
+    },
+    "rawHash": {
+      "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Block/Abstract.hs",
+      "sourceSha256": "4c68c5b365de87ae56fe51df85de00436a2380def4bf009dfb2983810d3b0cac",
+      "matchesPin": true,
+      "note": "decodeRawHash (307-314) and fromShortRawHash (276-279), excerpted unchanged in the observer at HashSize 32"
+    },
+    "driver": {
+      "file": "ouroboros-network/framework/lib/Ouroboros/Network/Driver/Simple.hs",
+      "sourceSha256": "6b886ef812b2918b676d50e7af88deb5aa2dc8eb8837f6d56966b9b9dae8d263",
+      "gitBlob": "e9894581de985a68e9c4ce4e35228799225f5b8d",
+      "url": "https://github.com/IntersectMBO/ouroboros-network/blob/2fb69829a19b5c04e4fb212bdd78fb63f9d2d776/ouroboros-network/framework/lib/Ouroboros/Network/Driver/Simple.hs",
+      "matchesPin": true,
+      "note": "Released source and pinned source have identical Git blob; plain runPeer is executed"
+    },
+    "nodeToClient": {
+      "gitBlob": "1134ff70d7a10663fb69f830042a431d986d7c5e",
+      "url": "https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToClient.hs",
+      "note": "Source evidence: consensus NtC uses plain runPeer; this consensus module is not built",
+      "sourceLines": "448-452"
+    }
+  },
+  "observer": {
+    "file": "scripts/oracle/chainsync-wide-serialised/Main.hs",
+    "sha256": "e3f88e1f275bb7fbd0e36fa13cc53028452991f2d7f4c31e60913a2500fde5a6",
+    "build": "scripts/oracle/chainsync-wide-serialised/build.sh",
+    "buildSha256": "f95c8e4c3f947e55a74f3b603f1cc5781c302ceb9e8823f7ab3b40170226a6b5",
+    "executableSha256": "2e059397ef7610d22d60c66c6f406be5406fa565e64fa2ec469183c8b037fab6",
+    "image": "scarab-33-genesis-reference-cache:local (sha256:10d59164dce6b49fbeafdc520c1a29d3e4024a5859a3c41bb6181b2e627bebc7)"
+  },
+  "generatorSha256": "9f5c35b74a74e3a60e040958f5e15d6d6ddbf1c333bf6e840058f8e0892e6456",
+  "runnerSha256": "93a0e7269cefd37551865ce9604538fa5f3264ac60eb72ca3f0b1d547e4a3deb",
+  "executionManifestSha256": "43c52264e4384063964a598f6d23e1c62629b5a5f6809e38b31914461584f97d",
+  "execution": {
+    "imageId": "sha256:10d59164dce6b49fbeafdc520c1a29d3e4024a5859a3c41bb6181b2e627bebc7",
+    "startedAt": "2026-11-05T01:56:36.997374+00:00",
+    "finishedAt": "2026-11-05T01:57:01.480887+00:00",
+    "sourceSha256": {
+      "Main.hs": "e3f88e1f275bb7fbd0e36fa13cc53028452991f2d7f4c31e60913a2500fde5a6",
+      "build.sh": "f95c8e4c3f947e55a74f3b603f1cc5781c302ceb9e8823f7ab3b40170226a6b5",
+      "run.py": "93a0e7269cefd37551865ce9604538fa5f3264ac60eb72ca3f0b1d547e4a3deb"
+    },
+    "rawOutputSha256": "025759f5c6c566a67483cfec80f1c0eed0f9659c90bf92e5b28c4d062092e3c2"
+  },
+  "expectedSha256": "81c6eab9f1b1930e2f1a4b3623c23815809a1d2e8f3a15ada8c08b754c796555",
+  "nativeOutputSha256": "bd3048c03fea66fe1fd7f65514ceb9159fb8fcff04e3851e0defa8d2db1c4fc7",
+  "cases": 1,
+  "accepted": 1,
+  "refused": 0,
+  "originalBytesNote": "The recipe reconstructs all original bytes; only compact observations and identities are published. No bulk payload or build output is retained."
+}

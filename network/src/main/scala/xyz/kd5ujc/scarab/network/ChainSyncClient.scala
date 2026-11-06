@@ -12,10 +12,20 @@ import scala.concurrent.duration.*
 /** Strict Cardano ChainSync client facade over the generic typed runtime. Use from a single fiber.
   */
 trait ChainSyncClient[F[_], P]:
-  def findIntersectResult(points: Vector[Point])(using
+  def findIntersectResult(points: cats.data.Chain[Point])(using
       Raise[F, NetworkError]
   ): F[ChainSyncClient.Intersection]
-  def findIntersect(points: Vector[Point])(using Raise[F, NetworkError]): F[Option[(Point, Tip)]]
+  def findIntersect(points: cats.data.Chain[Point])(using
+      Raise[F, NetworkError]
+  ): F[Option[(Point, Tip)]]
+  final def findIntersectResult(points: Vector[Point])(using
+      Raise[F, NetworkError]
+  ): F[ChainSyncClient.Intersection] =
+    findIntersectResult(cats.data.Chain.fromSeq(points))
+  final def findIntersect(points: Vector[Point])(using
+      Raise[F, NetworkError]
+  ): F[Option[(Point, Tip)]] =
+    findIntersect(cats.data.Chain.fromSeq(points))
   def requestNext(using Raise[F, NetworkError]): F[ChainSyncClient.Update[P]]
   def requestNextBatch(n: Int)(using Raise[F, NetworkError]): F[Vector[ChainSyncClient.Update[P]]]
   def requestNextBatchObserved(n: Int)(onUpdate: ChainSyncClient.Update[P] => F[Unit])(using
@@ -112,11 +122,11 @@ object ChainSyncClient:
               using Raise[F, NetworkError]
           ): F[Unit] =
             runtime.drain(onAwait)(u => onUpdate(translated(u)))
-          def findIntersectResult(points: Vector[Point])(using
+          def findIntersectResult(points: cats.data.Chain[Point])(using
               Raise[F, NetworkError]
           ): F[Intersection] =
             runtime.findIntersectResult(points)
-          def findIntersect(points: Vector[Point])(using
+          def findIntersect(points: cats.data.Chain[Point])(using
               Raise[F, NetworkError]
           ): F[Option[(Point, Tip)]] =
             runtime.findIntersect(points)
@@ -177,11 +187,11 @@ object ChainSyncClient:
       )
       .map { runtime =>
         new ChainSyncClient[F, P]:
-          def findIntersectResult(points: Vector[Point])(using
+          def findIntersectResult(points: cats.data.Chain[Point])(using
               Raise[F, NetworkError]
           ): F[Intersection] =
             runtime.findIntersectResult(points)
-          def findIntersect(points: Vector[Point])(using Raise[F, NetworkError]) =
+          def findIntersect(points: cats.data.Chain[Point])(using Raise[F, NetworkError]) =
             runtime.findIntersect(points)
 
           def requestNext(using Raise[F, NetworkError]): F[Update[P]] =

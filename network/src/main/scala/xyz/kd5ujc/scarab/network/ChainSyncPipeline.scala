@@ -86,17 +86,22 @@ private[network] object ChainSyncPipeline:
             )
             .flatMap(timeout =>
               Timed.within(timeout, id, current.toString)(
-                channel.recv(settings.limits.maxMessageBytes)(
-                  ChainSyncEngine.decodePrefix(
-                    current,
-                    Role.Server,
-                    _,
-                    point,
-                    tip,
-                    payload,
-                    settings.limits
+                if settings.limits.local then
+                  channel.recvStreaming(
+                    ChainSyncEngine.responseDecoder(current, point, tip, payload)
                   )
-                )
+                else
+                  channel.recvWithin(settings.limits.messageByteLimit)(
+                    ChainSyncEngine.decodePrefix(
+                      current,
+                      Role.Server,
+                      _,
+                      point,
+                      tip,
+                      payload,
+                      settings.limits
+                    )
+                  )
               )
             )
             .flatTap(message =>
@@ -196,7 +201,7 @@ private[network] object ChainSyncPipeline:
                         count.update(_ + 1) *>
                           poll(wire {
                             ChainSyncEngine
-                              .encode(
+                              .encodeChunked(
                                 State.Idle,
                                 Role.Client,
                                 Message.RequestNext,
@@ -207,7 +212,7 @@ private[network] object ChainSyncPipeline:
                               )
                               .fold(
                                 cause => NetworkError.IllegalTransition(id, cause).raise[F, Unit],
-                                channel.send
+                                channel.sendChunked
                               )
                           }) *>
                           submissions.offer(Request(hook))
@@ -286,12 +291,12 @@ private[network] object ChainSyncPipeline:
                   }
                 )
 
-              def findIntersect(points: Vector[Q])(using
+              def findIntersect(points: cats.data.Chain[Q])(using
                   Raise[F, NetworkError]
               ): F[Option[(Q, T)]] =
                 findIntersectResult(points).map(_.toOption)
 
-              def findIntersectResult(points: Vector[Q])(using
+              def findIntersectResult(points: cats.data.Chain[Q])(using
                   Raise[F, NetworkError]
               ): F[ChainSyncRuntime.Intersection[Q, T]] =
                 guarded(sending.lock.surround(healthy *> count.get.flatMap { n =>

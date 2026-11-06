@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.{Deferred, IO, Ref}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import fs2.Chunk
@@ -26,6 +26,124 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
 
   private def payload(n: Int, seed: Int = 7): Bytes =
     Bytes(Vector.tabulate(n)(i => ((i * 31 + seed) & 0xff).toByte))
+
+  private def consuming(started: java.util.concurrent.atomic.AtomicBoolean) =
+    new xyz.kd5ujc.scarab.protocol.StreamingDecoder[Unit]:
+      import xyz.kd5ujc.scarab.protocol.StreamingDecoder.Step
+      type Cursor = Boolean
+      def initial = false
+      def resume(cursor: Boolean, input: Bytes): Step[Boolean, Unit] =
+        if !cursor && input.nonEmpty then
+          started.set(true)
+          Step.More(true, 1)
+        else if cursor && input.size >= 3 then Step.Done((), 3)
+        else Step.More(cursor, 0)
+
+  test("cancelling a consuming receive retires its buffered suffix and releases the channel lock") {
+    TestControl
+      .executeEmbed {
+        typed {
+          linked(protocols = Set(2, 3)).use { (client, server) =>
+            val progress = new java.util.concurrent.atomic.AtomicBoolean(false)
+            val suffix = Bytes.fromHex("008100").fold(e => fail(e.toString), identity)
+            for
+              c <- client.channel(2)
+              s <- server.channel(2)
+              _ <- typed(s.recvStreaming(consuming(progress))).background.use { _ =>
+                c.send(suffix) *> (IO.cede *> IO(progress.get())).iterateUntil(identity) *>
+                  IO.sleep(1.second)
+              }
+              // The retained 8100 is a complete RequestNext. A new caller must not decode it after
+              // the consuming cursor was cancelled; completing mux.closed alone still allowed that.
+              replay <- typed(
+                s.recvUnbounded(xyz.kd5ujc.scarab.protocol.ChainSyncRequest.decoder.decodePrefix)
+              )
+              send <- typed(s.send(Bytes.wrap(Array(7.toByte))))
+              reason <- server.failure
+              siblingClient <- client.channel(3)
+              siblingServer <- server.channel(3)
+              _ <- siblingClient.send(Bytes.wrap(Array(8.toByte)))
+              sibling <- siblingServer.recv(1)(exactly(1))
+            yield
+              val aborted = NetworkError.BearerClosed(NetworkError.Closure.Aborted)
+              assertEquals(replay, Left(aborted))
+              assertEquals(send, Left(aborted))
+              assertEquals(reason, None)
+              assertEquals(sibling, Bytes.wrap(Array(8.toByte)))
+          }
+        }.map(result => assertEquals(result, Right(())))
+      }
+      .timeout(10.seconds)
+  }
+
+  test("a streaming owner's cancellation wakes queued receivers without replacing a mux failure") {
+    TestControl
+      .executeEmbed {
+        typed {
+          linked(protocols = Set(2)).use { (client, server) =>
+            val progress = new java.util.concurrent.atomic.AtomicBoolean(false)
+            for
+              c <- client.channel(2)
+              s <- server.channel(2)
+              result <- Resource
+                .make(typed(s.recvStreaming(consuming(progress))).start)(_.cancel)
+                .use { owner =>
+                  c.send(Bytes.fromHex("008100").fold(e => fail(e.toString), identity)) *>
+                    (IO.cede *> IO(progress.get())).iterateUntil(identity) *>
+                    IO.sleep(1.second) *>
+                    typed(
+                      s.recvUnbounded(
+                        xyz.kd5ujc.scarab.protocol.ChainSyncRequest.decoder.decodePrefix
+                      )
+                    ).background.use { joined =>
+                      IO.sleep(1.second) *> owner.cancel *> joined.flatMap(_.embedNever)
+                    }
+                }
+              before <- server.failure
+              defect = NetworkError.Defect(new IllegalStateException("original mux failure"))
+              _ <- server.abort(defect)
+              after <- typed(s.recv(1)(exactly(1)))
+            yield
+              assertEquals(result, Left(NetworkError.BearerClosed(NetworkError.Closure.Aborted)))
+              assertEquals(before, None)
+              assertEquals(after, Left(defect))
+          }
+        }.map(result => assertEquals(result, Right(())))
+      }
+      .timeout(10.seconds)
+  }
+
+  test("cancelling a streaming caller waiting for the lock leaves its active owner usable") {
+    TestControl
+      .executeEmbed {
+        typed {
+          linked(protocols = Set(2)).use { (client, server) =>
+            val progress = new java.util.concurrent.atomic.AtomicBoolean(false)
+            for
+              c <- client.channel(2)
+              s <- server.channel(2)
+              _ <- typed(s.recvStreaming(consuming(progress))).background.use { joined =>
+                for
+                  _ <- c.send(Bytes.fromHex("008100").fold(e => fail(e.toString), identity))
+                  _ <- (IO.cede *> IO(progress.get())).iterateUntil(identity) *> IO.sleep(1.second)
+                  _ <- typed(
+                    s.recvStreaming(consuming(new java.util.concurrent.atomic.AtomicBoolean(false)))
+                  ).background.use(_ => IO.sleep(1.second))
+                  before <- server.failure
+                  _ <- c.send(Bytes.wrap(Array(0.toByte)))
+                  owner <- joined.flatMap(_.embedNever)
+                  after <- server.failure
+                yield
+                  assertEquals(before, None)
+                  assertEquals(owner, Right(()))
+                  assertEquals(after, None)
+              }
+            yield ()
+          }
+        }.map(result => assertEquals(result, Right(())))
+      }
+      .timeout(10.seconds)
+  }
 
   test("messages are routed to their mini-protocol channel"):
     typed {
@@ -268,6 +386,52 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
         yield first.isRight
       }
     }.map(r => assertEquals(r, Right(true)))
+
+  test("unbounded protocol sending retains SDU framing without the local message-size policy"):
+    val config =
+      Mux.Config.nodeToClient.copy(role = Mux.Role.Initiator, maxMessageBytes = 100, sduSize = 200)
+    typed {
+      linked(
+        protocols = Set(Protocols.ChainSync),
+        client = config,
+        server = config.copy(role = Mux.Role.Responder)
+      ).use { (client, server) =>
+        for
+          c <- client.channel(Protocols.ChainSync)
+          s <- server.channel(Protocols.ChainSync)
+          _ <- c.sendUnbounded(payload(500))
+          got <- s.recvUnbounded(exactly(500))
+        yield got
+      }
+    }.map(result => assertEquals(result, Right(payload(500))))
+
+  test("an unbounded local receive reports representation capacity separately from ingress policy"):
+    val config = Mux.Config.nodeToClient.copy(
+      role = Mux.Role.Initiator,
+      sduSize = 1000,
+      receiveBufferLimit = 1500
+    )
+    typed {
+      linked(
+        protocols = Set(Protocols.LocalChainSync),
+        client = config,
+        server = config.copy(role = Mux.Role.Responder)
+      ).use { (client, server) =>
+        for
+          c <- client.channel(Protocols.LocalChainSync)
+          s <- server.channel(Protocols.LocalChainSync)
+          _ <- c.send(payload(2000))
+          _ <- s.recvUnbounded[Unit](_ =>
+            xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult.NeedMore
+          )
+        yield ()
+      }
+    }.map(result =>
+      assertEquals(
+        result,
+        Left(NetworkError.ReceiveCapacityExceeded(Protocols.LocalChainSync, 2000, 1500))
+      )
+    )
 
   test(
     "a queued SDU that would overflow the receive buffer waits until the complete message is delivered"

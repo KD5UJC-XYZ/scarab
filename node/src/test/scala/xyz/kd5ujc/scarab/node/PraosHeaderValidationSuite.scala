@@ -98,8 +98,10 @@ class PraosHeaderValidationSuite extends FailsOnUncaught:
       fetched <- Ref.of[IO, Int](0)
       source = Resource.eval(Ref.of[IO, Boolean](false)).map { sent =>
         new ChainSyncServer.Source[IO, NtNHeader]:
-          def intersect(points: Vector[ChainSync.Point]) =
-            IO.pure(if points.contains(applied.tip) then Right(applied.tip -> tip) else Left(tip))
+          def intersect(points: cats.data.Chain[ChainSync.Point]) =
+            IO.pure(
+              if points.exists(_ == applied.tip) then Right(applied.tip -> tip) else Left(tip)
+            )
           def poll = sent
             .getAndSet(true)
             .map(already => Option.unless(already)(ChainSyncServer.Update.RollForward(wire, tip)))

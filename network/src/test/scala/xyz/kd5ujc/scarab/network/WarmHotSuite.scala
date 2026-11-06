@@ -24,8 +24,10 @@ class WarmHotSuite extends FailsOnUncaught:
   private val handlers: ServerHandlers[IO, Bytes] =
     val source = Resource.eval(Ref.of[IO, Int](0)).map { cursor =>
       new ChainSyncServer.Source[IO, Bytes]:
-        def intersect(points: Vector[Point]) =
-          cursor.set(0).as(Right(points.head -> Peers.tip(3)))
+        def intersect(points: cats.data.Chain[Point]) =
+          cursor
+            .set(0)
+            .as(Right(points.headOption.fold(fail("empty test offer"))(identity) -> Peers.tip(3)))
         def poll = cursor.get.flatMap { at =>
           if at < 3 then
             cursor

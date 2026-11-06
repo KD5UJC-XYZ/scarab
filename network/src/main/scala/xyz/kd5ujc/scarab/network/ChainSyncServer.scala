@@ -14,7 +14,9 @@ object ChainSyncServer:
     case RollBackward(point: Point, tip: Tip)
 
   trait Source[F[_], P]:
-    def intersect(points: Vector[Point]): F[Either[Tip, (Point, Tip)]]
+    def intersect(points: cats.data.Chain[Point]): F[Either[Tip, (Point, Tip)]]
+    final def intersect(points: Vector[Point]): F[Either[Tip, (Point, Tip)]] =
+      intersect(cats.data.Chain.fromSeq(points))
     def poll: F[Option[Update[P]]]
     def await: F[Update[P]]
 
@@ -38,7 +40,7 @@ object ChainSyncServer:
       settings: Settings = Settings()
   )(using Raise[F, NetworkError]): F[Unit] =
     val genericSource = new ChainSyncRuntime.Source[F, Point, Tip, P]:
-      def intersect(points: Vector[Point]) = source.intersect(points)
+      def intersect(points: cats.data.Chain[Point]) = source.intersect(points)
       def poll = source.poll.map(_.map {
         case Update.RollForward(payload, tip) =>
           ChainSyncRuntime.Update.RollForward(payload, tip)
@@ -62,5 +64,7 @@ object ChainSyncServer:
         settings.limits,
         settings.idle,
         settings.protocol
-      )
+      ),
+      requests =
+        Option.when(settings.limits.local)(xyz.kd5ujc.scarab.protocol.ChainSyncRequest.decoder)
     )

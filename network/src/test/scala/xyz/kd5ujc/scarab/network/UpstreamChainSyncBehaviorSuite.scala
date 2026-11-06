@@ -378,7 +378,7 @@ class UpstreamChainSyncBehaviorSuite extends FailsOnUncaught:
     val row = testCase.row
     Ref.of[IO, Cursor](Cursor(-1, row.genesisPoint, rollbackPending = false)).map { cursor =>
       new ChainSyncRuntime.Source[IO, Bytes, Bytes, Bytes]:
-        def intersect(points: Vector[Bytes]): IO[Either[Bytes, (Bytes, Bytes)]] =
+        def intersect(points: cats.data.Chain[Bytes]): IO[Either[Bytes, (Bytes, Bytes)]] =
           val found = points.collectFirst {
             case point if point == row.genesisPoint => point -> -1
             case point if producer.exists(_.point == point) =>

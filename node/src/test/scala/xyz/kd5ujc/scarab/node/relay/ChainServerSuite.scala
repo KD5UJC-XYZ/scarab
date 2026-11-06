@@ -182,7 +182,12 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("the node-to-client cursor serves the stored block bytes, immutable and volatile") {
+  test(
+    "the node-to-client cursor serves the stored block bytes beyond 2.5 MB, immutable and volatile"
+  ) {
+    def stored(n: Int): Bytes =
+      if n == 1 || n == 8 then raw(n) ++ Bytes.fromArray(Array.fill(2600000)(0.toByte))
+      else raw(n)
     tempDir.use { dir =>
       ok {
         FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
@@ -191,10 +196,10 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             persistence = server.persistence[Unit]
             _ <- (1 to 8).toList.traverse_ { i =>
               val immutable = if i > k then Vector(ref(i - k)) else Vector.empty
-              immutable.traverse_(r => store.append(r, raw(r.blockNo.toInt))) *>
+              immutable.traverse_(r => store.append(r, stored(r.blockNo.toInt))) *>
                 persistence.extended(
                   ref(i),
-                  raw(i),
+                  stored(i),
                   immutable,
                   Anchor[Unit](immutable.headOption, ())
                 )
@@ -202,13 +207,14 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             blocks <- server.blockSource.use { source =>
               def loop(acc: List[Bytes]): IO[List[Bytes]] =
                 source.poll.flatMap {
-                  case Some(Update.RollForward(b, _))  => loop(acc :+ b.bytes)
+                  case Some(Update.RollForward(b, _)) =>
+                    loop(acc :+ b.bytes.toBytes(Int.MaxValue).fold(e => fail(e.toString), identity))
                   case Some(Update.RollBackward(_, _)) => loop(acc)
                   case None                            => IO.pure(acc)
                 }
               source.intersect(Vector(Point.Origin)) *> loop(Nil)
             }
-          yield assertEquals(blocks, (1 to 8).toList.map(i => raw(i)))
+          yield assertEquals(blocks, (1 to 8).toList.map(stored))
         }
       }
     }

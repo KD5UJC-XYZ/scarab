@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, ChunkedBytes}
 
 /** Pure, non-pipelined ChainSync envelope. No transport or Cardano payload validation. */
 object ChainSync:
@@ -49,61 +49,97 @@ object ChainSync:
     case AwaitReply
     case RollForward(payload: P, tip: Tip)
     case RollBackward(point: Point, tip: Tip)
-    case FindIntersect(points: Vector[Point])
+    case FindIntersect(points: cats.data.Chain[Point])
     case IntersectFound(point: Point, tip: Tip)
     case IntersectNotFound(tip: Tip)
     case Done
+
+  object Message:
+    object FindIntersect:
+      def apply(points: Vector[Point]): Message[Nothing] =
+        FindIntersect(cats.data.Chain.fromSeq(points))
+
+  /** The bytes of a point's hash: the reference reads it with `decodeRawHash`, which refuses any
+    * other length than the block's `HashSize` (`Ouroboros/Consensus/Block/Abstract.hs:276-279,
+    * 307-314`, ouroboros-consensus 82ecba32), 32 in every Cardano era (`HashSize ByronBlock = 32`,
+    * `Byron/Ledger/Block.hs:84`, the same across eras by `CanHardFork`; #755).
+    */
+  val HashBytes: Int = 32
+
   enum DecodeResult[+A]:
     case NeedMore
     case Failed(error: ProtocolError)
     case Decoded(value: A, consumed: Int)
 
-  /** Bounds are local policy. 65535 is the pinned network smallByteLimit per message on
-    * node-to-node. `local` lifts the message and string bound to the 2.5 MB of a mux message, for
-    * the node-to-client protocol, which carries whole blocks and has no byte limit upstream.
+  /** Receive bounds. Node-to-node's `byteLimitsChainSync` uses `smallByteLimit` (65535) in every
+    * active state (ouroboros-network 2fb69829, `ChainSync/Codec.hs:39-51`). Items, nesting and
+    * strings cannot exceed the bytes that contain them; there is no smaller budget. Encoding has no
+    * such limit (`Codec.hs:124-125,204-207`).
     */
   final case class Limits(
       maxMessageBytes: Int = 65535,
-      maxDepth: Int = 24,
-      maxItems: Int = 8192,
+      maxDepth: Int = 65535,
+      maxItems: Int = 65535,
       maxStringBytes: Int = 65535,
-      maxCandidates: Int = 64,
-      maxHashBytes: Int = 64,
+      maxHashBytes: Int = 65535,
       local: Boolean = false
   ):
+    def messageByteLimit: Option[Int] = Option.unless(local)(maxMessageBytes)
+
     private[protocol] def valid: Boolean =
-      val ceiling = if local then 2500000 else 65535
-      maxMessageBytes > 0 && maxMessageBytes <= ceiling && maxDepth >= 0 && maxDepth <= 64 &&
-      maxItems > 0 && maxItems <= 65535 && maxStringBytes >= 0 && maxStringBytes <= ceiling &&
-      maxCandidates >= 0 && maxCandidates <= 1024 && maxHashBytes >= 0 && maxHashBytes <= 65535
+      val ceiling = if local then Int.MaxValue else 65535
+      maxMessageBytes > 0 && maxMessageBytes <= ceiling && maxDepth >= 0 && maxDepth <= ceiling &&
+      maxItems > 0 && maxItems <= ceiling && maxStringBytes >= 0 && maxStringBytes <= ceiling &&
+      maxHashBytes >= 0 && maxHashBytes <= ceiling
 
   object Limits:
-    /** The node-to-client profile: whole blocks (`RawNtNBlock`s up to 2499991 bytes) and the
-      * longest intersection list a client sends.
+    /** Node-to-client uses `runPeer`, without codec limits (ouroboros-consensus 82ecba32,
+      * `Network/NodeToClient.hs:438-453`). These fields configure the legacy contiguous adapters,
+      * not a reference whole-message limit. Streamed requests and chunked serialized responses do
+      * not inherit that array ceiling; the separate unread mux queue is bounded by 0xffffffff.
       */
     val NodeToClient: Limits =
       Limits(
-        maxMessageBytes = 2500000,
-        maxStringBytes = 2500000,
-        maxCandidates = 1024,
+        maxMessageBytes = Int.MaxValue,
+        maxDepth = Int.MaxValue,
+        maxItems = Int.MaxValue,
+        maxStringBytes = Int.MaxValue,
+        maxHashBytes = Int.MaxValue,
         local = true
       )
 
-  /** A payload adapter receives exactly one bounded syntactically valid CBOR item. */
+  /** A payload adapter reads one CBOR item. `encode` /`decode` are contiguous conveniences. The
+    * default chunked/streaming adapters retain that bounded representation; wide payload codecs
+    * override both primary operations. Reader hooks preserve validation order on partial input.
+    */
   trait PayloadCodec[P]:
     def encode(value: P): Either[ProtocolError, Bytes]
     def decode(bytes: Bytes): Either[ProtocolError, P]
+    def encodeChunked(value: P): Either[ProtocolError, ChunkedBytes] =
+      encode(value).flatMap { bytes =>
+        validateItem(bytes, Limits.NodeToClient).map(_ => ChunkedBytes.fromBytes(bytes))
+      }
+    def streaming: StreamingDecoder[P] = StreamingDecoder.bounded { input =>
+      ProtocolWire.prefix {
+        val reader = new ChainSyncWire.Reader(input, Limits.NodeToClient)
+        DecodeResult.Decoded(readFrom(reader), reader.position)
+      }
+    }
+    private[protocol] def readFrom(reader: ProtocolWire.Reader)(using ProtocolWire.Scope): P =
+      get(decode(reader.item()))
 
   /** Strict Cardano point and tip adapters used by the generic network runtime. Their reader and
     * writer hooks retain the direct validation order of this facade.
     */
   private[scarab] val enginePointCodec: ChainSyncEngine.PointCodec[Point] =
     new ChainSyncEngine.PointCodec[Point]:
+      override def streaming = ChainSyncAtoms.point
       def encode(value: Point): Either[ProtocolError, Bytes] = encodePoint(value)
-      def decode(item: Bytes): Either[ProtocolError, Point] = decoded(decodePoint(item), item.size)
+      def decode(item: Bytes): Either[ProtocolError, Point] =
+        decoded(decodePoint(item), item.size).flatMap(cardano)
       override private[protocol] def readFrom(reader: ProtocolWire.Reader)(using
           ProtocolWire.Scope
-      ): Point = reader.point()
+      ): Point = get(cardano(reader.point()))
       override private[protocol] def writeTo(
           writer: ProtocolWire.Writer,
           value: Point,
@@ -112,11 +148,13 @@ object ChainSync:
 
   private[scarab] val engineTipCodec: ChainSyncEngine.TipCodec[Tip] =
     new ChainSyncEngine.TipCodec[Tip]:
+      override def streaming = ChainSyncAtoms.tip
       def encode(value: Tip): Either[ProtocolError, Bytes] = encodeTip(value)
-      def decode(item: Bytes): Either[ProtocolError, Tip] = decoded(decodeTip(item), item.size)
+      def decode(item: Bytes): Either[ProtocolError, Tip] =
+        decoded(parse(item, Limits())(r => readCardanoTip(r)), item.size)
       override private[protocol] def readFrom(reader: ProtocolWire.Reader)(using
           ProtocolWire.Scope
-      ): Tip = reader.tip()
+      ): Tip = readCardanoTip(reader)
       override private[protocol] def writeTo(
           writer: ProtocolWire.Writer,
           value: Tip,
@@ -128,7 +166,28 @@ object ChainSync:
   ): ChainSyncEngine.PayloadCodec[P] =
     new ChainSyncEngine.PayloadCodec[P]:
       def encode(value: P): Either[ProtocolError, Bytes] = codec.encode(value)
+      override def encodeChunked(value: P) = codec.encodeChunked(value)
+      override def streaming = codec.streaming
       def decode(item: Bytes): Either[ProtocolError, P] = codec.decode(item)
+      override private[protocol] def readFrom(reader: ProtocolWire.Reader)(using
+          ProtocolWire.Scope
+      ): P = codec.readFrom(reader)
+
+  /** A point of the Cardano chain as the reference's codecs read it: its hash, if it has one, is of
+    * [[HashBytes]] (`decodeRawHash`).
+    */
+  private def cardano(point: Point): Either[ProtocolError, Point] = point match
+    case Point.Block(_, hash) if hash.size != HashBytes =>
+      Left(ProtocolError.CardanoPointHashMustContain32Bytes(hash.size))
+    case _ => Right(point)
+
+  /** `decodeTip decodeRawHash` checks the point's hash before reading the block number
+    * (`Ouroboros/Network/Block.hs:319-325`, ouroboros-network 2fb69829).
+    */
+  private def readCardanoTip(reader: ProtocolWire.Reader)(using ProtocolWire.Scope): Tip =
+    if reader.arrayArity() != 2 then bad(ProtocolError.TipArity)
+    val point = get(cardano(reader.point()))
+    Tip(point, reader.uint())
 
   private def decoded[A](result: DecodeResult[A], consumed: Int): Either[ProtocolError, A] =
     result match
@@ -173,14 +232,14 @@ object ChainSync:
     val writer = new ChainSyncWire.Writer(limits)
     writer.point(point)
     val result = writer.result
-    get(validateItem(result, limits))
+    get(ProtocolWire.validateItem(result, ChainSyncWire.encoding(limits)))
     result
   }
   def encodeTip(tip: Tip, limits: Limits = Limits()): Either[ProtocolError, Bytes] = attempt {
     val writer = new ChainSyncWire.Writer(limits)
     writer.tip(tip)
     val result = writer.result
-    get(validateItem(result, limits))
+    get(ProtocolWire.validateItem(result, ChainSyncWire.encoding(limits)))
     result
   }
   def decodePoint(bytes: Bytes, limits: Limits = Limits()): DecodeResult[Point] =
@@ -198,6 +257,24 @@ object ChainSync:
       DecodeResult.Decoded(value, reader.position)
     }
 
+  /** Primary encoding for logical messages; internal chunk boundaries do not affect CBOR. */
+  def encodeChunked[P](
+      state: State,
+      sender: Role,
+      message: Message[P],
+      payload: PayloadCodec[P],
+      limits: Limits = Limits()
+  ): Either[ProtocolError, ChunkedBytes] =
+    ChainSyncEngine.encodeChunked(
+      state,
+      sender,
+      toEngine(message),
+      enginePointCodec,
+      engineTipCodec,
+      enginePayloadCodec(payload),
+      limits
+    )
+
   def encode[P](
       state: State,
       sender: Role,
@@ -214,6 +291,14 @@ object ChainSync:
       enginePayloadCodec(payload),
       limits
     )
+
+  /** Streaming local server-response entrypoint. Payload adapters keep their own representation
+    * contract; CardanoBlockFetch.localPayloadCodec carries opaque serialized bytes in chunks.
+    */
+  def responseDecoder[P](state: State, payload: PayloadCodec[P]): StreamingDecoder[Message[P]] =
+    ChainSyncEngine
+      .responseDecoder(state, enginePointCodec, engineTipCodec, enginePayloadCodec(payload))
+      .map(fromEngine)
 
   def decodePrefix[P](
       state: State,

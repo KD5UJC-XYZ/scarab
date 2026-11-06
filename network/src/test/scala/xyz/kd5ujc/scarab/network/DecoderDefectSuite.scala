@@ -7,7 +7,7 @@ import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures, NtnVersion}
-import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
+import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.LocalBlock
 import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
 
 /** A decoder that throws on a peer's bytes ends that connection with
@@ -30,7 +30,7 @@ class DecoderDefectSuite extends FailsOnUncaught:
     case other => fail(s"expected a DecoderDefect of ${Protocols.name(protocol)}, got $other")
 
   private val source = new ChainSyncServer.Source[IO, Bytes]:
-    def intersect(points: Vector[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
+    def intersect(points: cats.data.Chain[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
     def poll = IO.pure(None)
     def await = IO.never[ChainSyncServer.Update[Bytes]]
   private val handlers = ServerHandlers[IO, Bytes](
@@ -269,8 +269,8 @@ class DecoderDefectSuite extends FailsOnUncaught:
     val mempool = new LocalTxMonitorServer.Source[IO]:
       def acquire = IO.never
       def awaitChange(seen: LocalTxMonitorServer.Snapshot) = IO.never
-    val chain = new ChainSyncServer.Source[IO, RawNtNBlock]:
-      def intersect(points: Vector[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
+    val chain = new ChainSyncServer.Source[IO, LocalBlock]:
+      def intersect(points: cats.data.Chain[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
       def poll = IO.pure(None)
       def await = IO.never
     List(
@@ -284,7 +284,7 @@ class DecoderDefectSuite extends FailsOnUncaught:
         Protocols.LocalChainSync,
         ChainSyncServer.run(
           _,
-          xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.payloadCodec(),
+          xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.localPayloadCodec,
           chain,
           ChainSyncServer.NodeToClient
         )
