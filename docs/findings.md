@@ -18,6 +18,12 @@ source, not authoritative statements. Roadmap IDs (B1, ...) point into [roadmap.
 |---|---|---|
 | Declared budgets were a poor predictor of elapsed parallelism. Most script transactions in the captured preprod window were independent, but full validation gained less than evaluator-only execution because ordinary rules and context collection remain ordered. | Eight sealed preprod chunks, slots 136468829–136641596; authenticated post-snapshot replay of 5,683 blocks | `PlutusReplaySuite`: 68,196 feature-versus-serial complete state comparisons; [measurements and sample limits](performance/rewards-and-evaluation.md#bounded-parallel-plutus-after-ordered-preparation-d2-2026-10-18), [design](design/parallel-plutus.md), D2 #21. Multi-script reference aggregation is separately tracked in [#195](https://github.com/KD5UJC-XYZ/scarab/issues/195). |
 
+## Plutus refusals
+
+| Finding | Where found | Pinned by |
+|---|---|---|
+| A failed script's wire description includes its script/hash, CEK error, protocol version and formatted arguments/context. The provider's short message omits most of the reference's text. | Original context-errors and refusal-corpus captures, reviewed 2026-11-04; ledger `f649f975`, `Evaluate.hs:405-419`, #781. | Whole-byte `ContextRefusalReasonSuite` and `ReferenceRefusalSuite`; [native diagnostic observations](../fixtures/reference/plutus-diagnostics/README.md). |
+
 ## Networking
 
 | Finding | Where found | Pinned by |

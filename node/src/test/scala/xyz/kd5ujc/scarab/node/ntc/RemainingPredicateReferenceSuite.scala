@@ -115,6 +115,7 @@ class RemainingPredicateReferenceSuite extends FunSuite:
           do
             val reason = PredicateFailureCbor
               .applyTxError(era, Vector(PredicateFailure.pool(f)))
+              .fold(error => fail(error.message), identity)
               .getOrElse(fail(s"$name $era encoding"))
             assert(reason.hex.endsWith(bytes.hex), s"$name $era")
         case Left(defect) => fail(s"$name defect: $defect")
@@ -175,6 +176,7 @@ class RemainingPredicateReferenceSuite extends FunSuite:
               .getOrElse(fail("native output predicate failure"))
             val reason = PredicateFailureCbor
               .applyTxError(era, Vector(failure))
+              .fold(error => fail(error.message), identity)
               .getOrElse(fail(s"$major output encoding"))
             // Unwrap hard-fork era, failure list, LEDGER and UTXOW. Preserve the native
             // UTXO bytes, including its original bootstrap output representation.

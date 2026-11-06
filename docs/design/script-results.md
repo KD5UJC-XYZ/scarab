@@ -2,7 +2,8 @@
 
 **Status: Current, as built for evaluation and reconstruction.**
 [I4 #195](https://github.com/KD5UJC-XYZ/scarab/issues/195) is complete for v0.2; exact diagnostic wording
-is optional future work in [#208](https://github.com/KD5UJC-XYZ/scarab/issues/208).
+is required and incomplete under [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796), following the
+[diagnostic-parity decision](../adr/0001-haskell-node-as-reference.md#amendment-2026-11-04-exact-diagnostic-and-refusal-parity).
 
 `Phase2.run` evaluates every collected request in collection order, including scripts after a proven
 script failure. `Report` retains each redeemer, original script/request, typed `EvalResult`, actual
@@ -37,19 +38,18 @@ At the node-to-client wire boundary, a typed failed request reconstructs the ref
 budget and cost model. The failure-description payload is Base64 of those bytes. All 73 requests in
 the retained corpus match exactly, including all V1/V2/V3 arguments and models. Unexpectedly passing
 invalid-tag failures match the complete reference UTXOS predicate bytes. A failing valid-tag predicate
-retains every failure and matching reconstruction payload, but **its diagnostic text still uses
-Scarab's typed-cause rendering rather than Haskell's complete pretty-printed context/error prose**.
-The unchanged-reference full predicate golden is retained without masking this difference. General
-diagnostic-byte compatibility is optional future work in #208; it is outside v0.2 acceptance.
+retains every failure and matching reconstruction payload. `ScriptResultWireSuite` compares each of
+the 25 native aggregation rows as complete validity-tag predicate bytes, including explicit UPLC error
+descriptions. The separate context/refusal controls also compare whole outputs.
+Other CEK/evaluation-error descriptions still use provider text and are incomplete under
+[#796](https://github.com/KD5UJC-XYZ/scarab/issues/796); those fallbacks do not establish conformance.
 
-Possible future work in #208 would render the retained typed evaluator error and immutable
-request into the reference's `explainPlutusEvaluationError`/`Pretty PlutusArgs` presentation, entirely
-at the wire boundary. It must compare complete failing-tag predicate bytes for every retained case,
-then cover budget/scope failures and historical context variants. It must not classify native error
-messages or substitute text for typed causes. A signed multi-script submission control can strengthen
-that presentation gate; the current API-derived cases must keep their narrower claim. This work needs
-no change to scheduling, admission rules, declared budgets, stored formats or ownership of the CEK
-machine (#43).
+[The complete diagnostic plan](diagnostic-parity.md) requires lossless typed evaluator diagnostics,
+full reference document/term/error printers, independent native observations and complete failing-tag
+predicate bytes. Budget/scope failures and historical context variants remain required coverage.
+No text classifies a failure or substitutes for its typed cause. API-derived cases keep their narrower
+claim; signed native submissions establish wire behavior separately. Presentation changes must retain
+scheduling, admission rules, declared budgets, stored formats and ownership of the CEK machine (#43).
 
 The [oracle recipe](../../scripts/oracle/plutus/aggregation/README.md) and
 [fixture provenance](../../fixtures/reference/script-results/README.md) distinguish one original signed
@@ -64,6 +64,9 @@ reconstruction payloads against the reference bytes. The wide-redeemer small-sta
 requires the full suffix to execute after a failure.
 
 ## Accepted gates
+
+This is historical evidence from 2026-10-19. Its then-applicable wording waiver was superseded by
+the [2026-11-04 decision](../adr/0001-haskell-node-as-reference.md#amendment-2026-11-04-exact-diagnostic-and-refusal-parity); the original measured scope below is unchanged.
 
 Level 3, 2026-10-19, source `63a629bc` (runtime change `ea5c4283`). Docker
 `scripts/sbtw check node/runtimeClasspathFile` passed 4,921 tests with 16 skips, zero failures/errors,
@@ -96,5 +99,5 @@ Both scenarios used reference 11.1.3 image `74e849e1b68e` and JDK 21.0.11 image 
 Their 10,782-file frozen runtime inventories exactly matched the checked compilation:
 `e5bb119fc4eb7db8bd6eab1820ccd85874fbdc0c70bf2a9fe49f0bb024f33eed`.
 They ran sequentially under shared-host coordination. All owned cluster/build containers were
-removed afterward. No persisted format changed. Full Haskell failing-tag diagnostic prose remains
-optional under #208; matching reconstruction bytes do not imply full failing-predicate byte parity.
+removed afterward. No persisted format changed. At that date, full Haskell failing-tag diagnostic prose was
+optional under #208; matching reconstruction bytes did not establish full failing-predicate byte parity.

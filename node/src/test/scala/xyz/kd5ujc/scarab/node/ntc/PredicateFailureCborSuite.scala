@@ -16,7 +16,10 @@ import munit.FunSuite
 class PredicateFailureCborSuite extends FunSuite:
   private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => fail(e.message), identity)
   private def reason(failures: PredicateFailure*): String =
-    PredicateFailureCbor.applyTxError(failures.toVector).hex
+    PredicateFailureCbor
+      .applyTxError(failures.toVector)
+      .fold(error => fail(error.message), identity)
+      .hex
 
   private val keyHash = hex("683acdaa374d6ef02de93bea119185477b17c8298d59967b06528a2d")
 
@@ -38,6 +41,7 @@ class PredicateFailureCborSuite extends FunSuite:
     for era <- Vector(Era.Alonzo, Era.Babbage, Era.Conway) do
       val encoded = PredicateFailureCbor
         .applyTxError(era, Vector(failure))
+        .fold(error => fail(error.message), identity)
         .getOrElse(fail(s"missing $era validity-tag encoding"))
       assert(encoded.hex.endsWith(utxos), s"$era: ${encoded.hex}")
     evaluation match
@@ -45,6 +49,40 @@ class PredicateFailureCborSuite extends FunSuite:
         assert(original eq cause)
         assertEquals(logs, Vector("trace"))
       case other => fail(s"changed evaluator cause: $other")
+  }
+
+  test(
+    "malformed contexts retain their typed defect and original evaluator cause in every Plutus era"
+  ) {
+    val original = new scalus.uplc.eval.EvaluationFailure(Vector.empty)
+    val request = xyz.kd5ujc.scarab.plutus.EvalRequest(
+      xyz.kd5ujc.scarab.plutus.PlutusLanguage.V1,
+      10,
+      hex("0102"),
+      Vector.empty,
+      Vector.empty,
+      ExUnits.zero
+    )
+    val failure = PlutusFailure(
+      EvalFailure.Script(ScriptFailure(original, Vector("trace"))),
+      hex("0304"),
+      Some(request)
+    )
+    val predicate = PredicateFailure.utxo(
+      UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(true, Some(Vector(failure))))
+    )
+    for era <- Vector(Era.Alonzo, Era.Babbage, Era.Conway) do
+      PredicateFailureCbor.applyTxError(era, Vector(predicate)) match
+        case Left(RefusalPresentationError.InvalidPlutusContext(retained, cause)) =>
+          assertEquals(cause, PlutusContextText.Error.Arguments(request.language, 0))
+          assert(retained eq failure)
+          retained.cause match
+            case EvalFailure.Script(ScriptFailure(throwable, logs)) =>
+              assert(throwable eq original)
+              assertEquals(logs, Vector("trace"))
+            case other => fail(s"changed evaluator cause: $other")
+        case other => fail(s"$era silently encoded malformed context: $other")
+    assertEquals(PredicateFailureCbor.applyTxError(Era.Shelley, Vector(predicate)), Right(None))
   }
 
   test("an unexpectedly passing script retains the existing validity-tag rejection bytes") {
@@ -213,7 +251,8 @@ class PredicateFailureCborSuite extends FunSuite:
       PredicateFailure.gov(GovFailure.VotersDoNotExist(Vector(Voter.Pool(keyHash))))
     )
     samples.foreach { f =>
-      val bytes = PredicateFailureCbor.applyTxError(Vector(f))
+      val bytes =
+        PredicateFailureCbor.applyTxError(Vector(f)).fold(error => fail(error.message), identity)
       val decoded = Cbor.decode(bytes).fold(e => fail(s"$f: $e"), identity)
       decoded.value match
         case CborValue.Arr(Vector(wrapper)) =>
@@ -241,6 +280,7 @@ class PredicateFailureCborSuite extends FunSuite:
             )
           )
         )
+        .fold(error => fail(error.message), identity)
         .map(_.hex),
       Some(
         "81" + "8206" + "81" + "8201" + "83" + "12" + "82" + "80" + "81" + "581c" + h + "81" + "41a0"
@@ -288,6 +328,7 @@ class PredicateFailureCborSuite extends FunSuite:
             )
           )
         )
+        .fold(error => fail(error.message), identity)
         .map(_.hex),
       Some(recorded)
     )
@@ -311,7 +352,10 @@ class PredicateFailureCborSuite extends FunSuite:
       )
     )
     assertEquals(
-      PredicateFailureCbor.applyTxError(Era.Conway, Vector(failure)).map(_.hex),
+      PredicateFailureCbor
+        .applyTxError(Era.Conway, Vector(failure))
+        .fold(error => fail(error.message), identity)
+        .map(_.hex),
       Some(
         "81" + "8206" + "81" + "8201" + "820a" + "81" + "82" + "8202" + "8201" + "8201" + "581c" + s + "581c" + s
       )

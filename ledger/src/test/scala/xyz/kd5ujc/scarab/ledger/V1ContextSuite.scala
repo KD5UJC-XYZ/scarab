@@ -23,12 +23,14 @@ import xyz.kd5ujc.scarab.plutus.ScalusEvaluator
   *   - the transaction rule of the era (LEDGER) over a ledger holding the outputs the case reads;
   *   - the block rule (BBODY) over a block of the transaction.
   *
-  * A refusal is matched by containment, not as a whole list: the recorded reference texts are cut
-  * at 1,500 characters, so the suite reads from them the one cause they name (the validation-tag
-  * mismatch, or the translation error and its source) and requires the Scala rules to give exactly
-  * that failure. It does not check that the reference listed no other failure, nor the encoded
-  * reason; #434 tracks comparing the whole raw reason (register entry
-  * `v1context-refusal-membership`).
+  * Most refusals are matched by containment, not as a whole list: the recorded reference texts are
+  * cut at 1,500 characters, so the suite reads from them the one cause they name (the
+  * validation-tag mismatch, or the translation error and its source) and requires the Scala rules
+  * to give exactly that failure. For those cases it does not check that the reference listed no
+  * other failure, nor the encoded reason. The refused `context-errors` submissions are the
+  * exception: each records the reference's raw `ApplyTxErr`, and `ContextRefusalReasonSuite` in the
+  * node module compares it with the encoded Scala refusal byte for byte. #434 tracks the same for
+  * the cases that keep no raw reason (register entry `v1context-refusal-membership`).
   */
 class V1ContextSuite extends FunSuite:
   /** What the reference did with a case. */

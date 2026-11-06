@@ -60,7 +60,9 @@ class ContextFailureCborSuite extends FunSuite:
           recorded.collect.swap.fold(_ => fail("collection unexpectedly succeeded"), identity)
         val failure = PredicateFailure.utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(errors)))
         assertEquals(
-          PredicateFailureCbor.applyTxError(Vector(failure)),
+          PredicateFailureCbor
+            .applyTxError(Vector(failure))
+            .fold(error => fail(error.message), identity),
           hex(field[String](reference, "reasonCbor"))
         )
         assertEquals(

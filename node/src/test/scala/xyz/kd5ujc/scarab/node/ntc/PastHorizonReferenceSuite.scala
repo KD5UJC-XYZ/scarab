@@ -204,6 +204,7 @@ class PastHorizonReferenceSuite extends FunSuite:
         Some(
           PreConwayFailureCbor
             .applyTxError(era, failures.toChain.toVector)
+            .fold(error => fail(error.message), identity)
             .getOrElse(fail(s"no encoding for ${failures.iterator.map(_.detail).mkString("; ")}"))
         )
       case Left(defect) => fail(s"not judged: ${defect.message}")

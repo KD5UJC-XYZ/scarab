@@ -5,9 +5,9 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{CollectError, Phase2, Redeemer}
 import xyz.kd5ujc.scarab.plutus.*
 
-/** Comparison values, never rendered diagnostics. Native exception prose is the separately accepted
-  * Haskell presentation gap (#208). Same-backend replay additionally compares native diagnostic
-  * text, concrete exception classes and trace output as test evidence. All other evaluator failures
+/** Typed replay observations with same-backend diagnostic evidence. Replay additionally compares
+  * provider diagnostic text, concrete exception classes and trace output; it does not establish
+  * Haskell presentation parity, which remains required under #796. All other evaluator failures
   * retain their original typed payload.
   */
 object ReplayTrace:

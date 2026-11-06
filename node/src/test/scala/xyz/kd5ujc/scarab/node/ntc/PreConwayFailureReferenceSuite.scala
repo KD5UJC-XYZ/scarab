@@ -125,7 +125,10 @@ class PreConwayFailureReferenceSuite extends FunSuite:
       val reason = Cbor.decode(r.reason).fold(e => fail(s"$e"), identity)
       val failure = failureOf(r, reason)
       assertEquals(
-        PreConwayFailureCbor.applyTxError(r.era, Vector(failure)).map(_.hex),
+        PreConwayFailureCbor
+          .applyTxError(r.era, Vector(failure))
+          .fold(error => fail(error.message), identity)
+          .map(_.hex),
         Some(r.reason.hex)
       )
     }
