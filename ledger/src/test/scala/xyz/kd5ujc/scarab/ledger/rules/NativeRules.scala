@@ -51,13 +51,14 @@ object NativeRules:
     def inEra[E <: EraTag](era: ShelleyBasedEra[E]): EraNes =
       EraNes.InEra(era, stateIn[E](protocolMajor, funds)(using era))
     eraOf(protocolMajor) match
-      case Era.Shelley => inEra(ShelleyBasedEra.SShelley)
-      case Era.Allegra => inEra(ShelleyBasedEra.SAllegra)
-      case Era.Mary    => inEra(ShelleyBasedEra.SMary)
-      case Era.Alonzo  => inEra(ShelleyBasedEra.SAlonzo)
-      case Era.Babbage => inEra(ShelleyBasedEra.SBabbage)
-      case Era.Conway  => inEra(ShelleyBasedEra.SConway)
-      case Era.Byron   => broken(s"protocol version $protocolMajor is not of a Shelley-based era")
+      case Era.Shelley  => inEra(ShelleyBasedEra.SShelley)
+      case Era.Allegra  => inEra(ShelleyBasedEra.SAllegra)
+      case Era.Mary     => inEra(ShelleyBasedEra.SMary)
+      case Era.Alonzo   => inEra(ShelleyBasedEra.SAlonzo)
+      case Era.Babbage  => inEra(ShelleyBasedEra.SBabbage)
+      case Era.Conway   => inEra(ShelleyBasedEra.SConway)
+      case Era.Byron    => broken(s"protocol version $protocolMajor is not of a Shelley-based era")
+      case Era.Dijkstra => broken("the node has no Dijkstra rules (#54)")
 
   /** [[state]] in the era `E`. */
   def stateIn[E <: EraTag](protocolMajor: Int, funds: Vector[(TxIn, TxOut)])(using
@@ -115,6 +116,7 @@ object NativeRules:
         shelley[E](nes, t, ctx, plutus, globals)(using era, summon[PreConway[Alonzo]]).map(after)
       case ShelleyBasedEra.SBabbage =>
         shelley[E](nes, t, ctx, plutus, globals)(using era, summon[PreConway[Babbage]]).map(after)
+      case ShelleyBasedEra.SDijkstra => broken("the node has no Dijkstra rules (#54)")
 
   private def shelley[E <: EraTag](
       nes: NewEpochState[E],
@@ -194,6 +196,7 @@ object NativeRules:
       case ShelleyBasedEra.SConway =>
         nes.es.ls.cert.vState.dreps.valuesIterator.map(_.deposit.toBigInt).sum +
           nes.es.ls.utxo.gov.proposals.totalDeposits
+      case ShelleyBasedEra.SDijkstra => broken("the node has no Dijkstra rules (#54)")
       case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
           ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
         BigInt(0)

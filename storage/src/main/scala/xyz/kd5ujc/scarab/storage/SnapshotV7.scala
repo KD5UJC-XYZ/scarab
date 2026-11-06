@@ -5,8 +5,8 @@ import java.nio.ByteBuffer
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{FormatVersion, StorageError}
 
-/** The snapshot of format version 7, the previous one: the V5 body behind the binding of the
-  * checkpoint the snapshot was written with:
+/** The snapshot of format version 7: the V5 body behind the binding of the checkpoint the snapshot
+  * was written with:
   *
   * {{{
   * "SCRBSNP7" | binding length u32 | binding | V5 body
@@ -31,7 +31,7 @@ object SnapshotV7:
     */
   def fromV5(content: Array[Byte]): Either[StorageError, Array[Byte]] =
     SnapshotV5.sections(content).map { _ =>
-      val bound = SnapshotV8.bindingBytes(CheckpointBinding.Legacy)
+      val bound = SnapshotV9.bindingBytes(CheckpointBinding.Legacy)
       val body = content.length - SnapshotV5.Magic.length
       val out = new Array[Byte](HeaderSize + bound.length + body)
       System.arraycopy(Magic, 0, out, 0, Magic.length)
@@ -42,14 +42,14 @@ object SnapshotV7:
     }
 
   /** A V7 file's content, in one array of its exact size (the previous-version tests write it; the
-    * node writes [[SnapshotV8]]).
+    * node writes [[SnapshotV9]]).
     */
   private[storage] def framed(
       binding: CheckpointBinding,
       sidecar: SnapshotSidecar,
       haskell: Bytes
   ): Array[Byte] =
-    val bound = SnapshotV8.bindingBytes(binding)
+    val bound = SnapshotV9.bindingBytes(binding)
     val side = SnapshotV5.previousSidecarBytes(sidecar)
     val out = new Array[Byte](HeaderSize + bound.length + 4 + side.length + haskell.size)
     System.arraycopy(Magic, 0, out, 0, Magic.length)
@@ -60,7 +60,7 @@ object SnapshotV7:
 
   /** The binding of the content of a V7 file. */
   def bindingOf(content: Array[Byte]): Either[StorageError, CheckpointBinding] =
-    SnapshotV8.boundHeader(Magic, content).map(_._1)
+    SnapshotV9.boundHeader(Magic, content).map(_._1)
 
   /** The sidecar of the content of a V7 file, read into the current types (a V7 file whose Byron
     * update state lost its installer metadata is refused, [[SnapshotSidecarV7]]).
@@ -74,7 +74,7 @@ object SnapshotV7:
   private[storage] def sections(
       content: Array[Byte]
   ): Either[StorageError, (CheckpointBinding, SnapshotSidecar, Bytes)] =
-    SnapshotV8.boundHeader(Magic, content).flatMap { (binding, at) =>
+    SnapshotV9.boundHeader(Magic, content).flatMap { (binding, at) =>
       SnapshotV5
         .body(content, at, SnapshotV5.Schema.Previous(FormatVersion.V7))
         .map((sidecar, haskell) => (binding, sidecar, haskell))

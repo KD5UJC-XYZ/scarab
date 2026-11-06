@@ -163,12 +163,16 @@ class CodecSuite extends ScalaCheckSuite:
       .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
       .fold(e => fail(e.message), _.mirrorStart)
 
-  test("golden: the schema fingerprint of the sidecar of the V5 body (V8)") {
+  test("golden: the schema fingerprint of the sidecar of the V5 body (V9)") {
     assertEquals(hex(SnapshotSidecar.fingerprint), GoldenSidecarFingerprint)
   }
 
   test("golden: the frozen sidecar schema of V5 and V7 files keeps its fingerprint") {
     assertEquals(hex(SnapshotSidecarV7.fingerprint), GoldenPreviousSidecarFingerprint)
+  }
+
+  test("golden: the frozen sidecar schema of V8 files keeps its fingerprint") {
+    assertEquals(hex(SnapshotSidecarV8.fingerprint), GoldenV8SidecarFingerprint)
   }
 
   test("golden: the schema fingerprint and encodings of the V7 checkpoint binding") {
@@ -212,10 +216,12 @@ class CodecSuite extends ScalaCheckSuite:
   // the Byron ledger state (UTxO, delegation, update system) carried in NodeState, and the idle
   // pools of a stake snapshot (K1: the pool distribution lists a pool whose delegators have no stake).
   // and the installer metadata of the Byron update state's software proposals and application
-  // versions (V8, #726).
-  private val GoldenSidecarFingerprint = "31718eaf81232a77"
+  // versions (V8, #726), and the Dijkstra era among the eras (V9, #54).
+  private val GoldenSidecarFingerprint = "24b88a70b1cd2442"
   // The sidecar schema of V5 and V7 files (`SnapshotSidecarV7`), frozen at V8: never regenerated.
   private val GoldenPreviousSidecarFingerprint = "7c483457b06802d6"
+  // The sidecar schema of V8 files (`SnapshotSidecarV8`), frozen at V9: never regenerated.
+  private val GoldenV8SidecarFingerprint = "31718eaf81232a77"
   // The V7 binding in front of the V5 body (#395): a change to it is a new version too.
   private val GoldenBindingFingerprint = "bd43aa08b4fae886"
   private val GoldenSidecar =

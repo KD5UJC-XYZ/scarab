@@ -59,7 +59,8 @@ class DetachedRecordsReferenceSuite extends FunSuite:
         }
 
   test("the corpus covers every era and kind, refused and accepted") {
-    assertEquals(rows.map(_.era).toSet, Era.values.toSet - Era.Byron)
+    // Dijkstra has no corpus here: its transactions are not decoded yet (#54)
+    assertEquals(rows.map(_.era).toSet, Era.values.toSet - Era.Byron - Era.Dijkstra)
     assertEquals(rows.map(_.kind).toSet, Kind.values.toSet - Kind.GovActionIds)
     assertEquals(rows.map(_.name).distinct.size, rows.size)
     for era <- rows.map(_.era).distinct do

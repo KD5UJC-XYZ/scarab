@@ -45,10 +45,10 @@ enum HfcHeaderError:
 
 object HfcHeader:
   /** The index of Dijkstra in the hard-fork combinator's list of eras, after Conway's 6. */
-  val DijkstraIndex: Int = 7
+  val DijkstraIndex: Int = Era.Dijkstra.index
 
   /** The BlockFetch block tag of a Dijkstra block (`[8, block]`), after Conway's 7. */
-  val DijkstraBlockTag: Int = 8
+  val DijkstraBlockTag: Int = Era.Dijkstra.blockTag
 
   /** Local envelope payload ceiling, shared with [[NtNHeader]]. Consensus header-size validation
     * belongs to the ledger/header layer; the ChainSync codec bounds the message's bytes, and the
@@ -70,12 +70,12 @@ object HfcHeader:
         case Value.UInt(i) => Right(i)
         case _             => Left(HfcHeaderError.NotAnEnvelope)
       header <- Era.fromIndex(era) match
+        case Some(Era.Dijkstra) => embedded(payload).map(Dijkstra(_))
         case Some(known) =>
           NtNHeader.codec
             .decode(bytes)
             .bimap(HfcHeaderError.Supported(known, _), Supported(_))
-        case None if era == DijkstraIndex => embedded(payload).map(Dijkstra(_))
-        case None                         => Right(Unrecognised(era, payload.original))
+        case None => Right(Unrecognised(era, payload.original))
     yield header
 
   /** Whether the item was written with a definite length. The decoder of the reference reads the

@@ -25,6 +25,7 @@ object DecoderVersion:
     case Era.Alonzo              => 5
     case Era.Babbage             => 7
     case Era.Conway              => 9
+    case Era.Dijkstra            => Dijkstra
 
   /** Dijkstra's `eraProtVerLow`, 12 (`type ProtVerLow DijkstraEra = 12`,
     * `libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs:140`,

@@ -57,6 +57,9 @@ object LedgerSnapshotImport:
     case InstantStakeMismatch
     case LedgerTablesNotEmpty
     case EraMismatch(ledger: Era, header: Era)
+
+    /** A part of the Dijkstra era this build does not implement yet. */
+    case NotYet(part: xyz.kd5ujc.scarab.protocol.DijkstraNotYet)
     def message: String = this match
       case Storage(e) => e.message
       case State(e)   => e.render
@@ -218,10 +221,15 @@ object LedgerSnapshotImport:
             given ShelleyBasedEra[e] = i.era
             val state = i.state.nes.es.ls.utxo
             val stamp = anchor.blockNo.toLong
-            val params =
-              Params.complete(i.era, EraLedger.curPParams(state.gov), config.genesisParams)
-            val previous =
-              Params.complete(i.era, EraLedger.prevPParams(state.gov), config.genesisParams)
+            val completed = for
+              params <- Params.complete(
+                i.era,
+                EraLedger.curPParams(state.gov),
+                config.genesisParams
+              )
+              previous <- Params
+                .complete(i.era, EraLedger.prevPParams(state.gov), config.genesisParams)
+            yield (params, previous)
             val observed = (ext.ledgerState.past.map(_.start) :+ ext.ledgerState.current.start)
               .zip(Era.values)
               .map((bound, era) => era -> bound.epoch)
@@ -236,6 +244,8 @@ object LedgerSnapshotImport:
               )
             )
             for
+              both <- lift(completed.leftMap(Error.NotYet(_)))
+              (params, previous) = both
               _ <- lift(Either.cond(state.utxo.utxo.isEmpty, (), Error.LedgerTablesNotEmpty))
               result <- RocksUtxoStore.resource[F](stage / "artifacts" / "utxo" / "live").use {
                 store =>
@@ -263,8 +273,8 @@ object LedgerSnapshotImport:
                 Set.empty,
                 SnapshotSidecar.Chain.InShelley(utxo, params, Some(previous), extras)
               )
-              content = SnapshotV8.framed(binding, sidecar, raw)
-              back <- SnapshotV8.format[F](SnapshotCheck.Structure).decode(content)
+              content = SnapshotV9.framed(binding, sidecar, raw)
+              back <- SnapshotV9.format[F](SnapshotCheck.Structure).decode(content)
               _ <- lift(back.leftMap(Error.Storage(_)).void)
               snapshots = stage / "artifacts" / "snapshots"
               _ <- files.createDirectories(snapshots)

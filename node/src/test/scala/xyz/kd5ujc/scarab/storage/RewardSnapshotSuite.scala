@@ -20,7 +20,7 @@ class RewardSnapshotSuite extends CatsEffectSuite:
   private val setup =
     NodeSetup.fromDirectory(Path.of("fixtures/eras/genesis")).fold(e => fail(e.toString), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-  private val format = SnapshotV8.format[IO](SnapshotCheck.Full)
+  private val format = SnapshotV9.format[IO](SnapshotCheck.Full)
   private given ProtVer = Versions.eraLow(ShelleyBasedEra.SConway)
 
   private def pending(state: MirrorState): PulsingRewUpdate =
@@ -42,14 +42,18 @@ class RewardSnapshotSuite extends CatsEffectSuite:
     HaskellStateCodecs.pulsingRewUpdate.write(update).fold(e => fail(e.toString), identity)
 
   test(
-    "pre-change opaque V5 bytes load through the V7 and V8 conversions and retain pending rewards"
+    "pre-change opaque V5 bytes load through the V7, V8 and V9 conversions and retain pending rewards"
   ) {
     val stream = Option(getClass.getClassLoader.getResourceAsStream("rewards-pending-v5.bin"))
       .getOrElse(fail("missing old V5 fixture"))
     val v5 =
       try stream.readAllBytes()
       finally stream.close()
-    val old = SnapshotV7.fromV5(v5).flatMap(SnapshotV8.fromV7).fold(e => fail(e.toString), identity)
+    val old = SnapshotV7
+      .fromV5(v5)
+      .flatMap(SnapshotV8.fromV7)
+      .flatMap(SnapshotV9.fromV8)
+      .fold(e => fail(e.toString), identity)
     for
       restored <- format.decode(old).map(_.fold(e => fail(e.toString), identity))
       initial = pending(restored.state)
@@ -81,6 +85,7 @@ class RewardSnapshotSuite extends CatsEffectSuite:
         SnapshotV7
           .fromV5(stream.readAllBytes())
           .flatMap(SnapshotV8.fromV7)
+          .flatMap(SnapshotV9.fromV8)
           .fold(e => fail(e.toString), identity)
       finally stream.close()
     val rows = load("results.json").filter { row =>

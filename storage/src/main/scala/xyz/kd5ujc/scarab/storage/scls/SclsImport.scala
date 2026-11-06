@@ -38,7 +38,7 @@ import xyz.kd5ujc.scarab.storage.{
   RocksUtxoStore,
   SnapshotCheck,
   SnapshotSidecar,
-  SnapshotV8,
+  SnapshotV9,
   StateBacking,
   StateSnapshot,
   UtxoStore
@@ -250,8 +250,8 @@ object SclsImport:
               )
             )
           case _ => Error.UnsupportedBase.raise[F, SnapshotSidecar]
-        content = SnapshotV8.framed(binding, sidecar, haskell)
-        readback <- SnapshotV8.format[F](SnapshotCheck.Full).decode(content)
+        content = SnapshotV9.framed(binding, sidecar, haskell)
+        readback <- SnapshotV9.format[F](SnapshotCheck.Full).decode(content)
         back <- lift(readback.leftMap(Error.Storage(_)))
         backFile <- lift(HaskellLedgerFile.of(back.state.ext).leftMap(Error.Telescope(_)))
         backBytes <- lift(HaskellLedgerFile.encode(backFile).leftMap(Error.NotWritable(_)))

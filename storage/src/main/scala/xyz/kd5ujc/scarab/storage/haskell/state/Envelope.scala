@@ -16,7 +16,7 @@ import xyz.kd5ujc.scarab.models.runtime.{
   Writer,
   at
 }
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
 
 import DecodeError.Kind
 import Wire.*
@@ -154,6 +154,12 @@ object Envelope:
         Arr.nonEmpty(n, Era.values.length).flatMap { xs =>
           val era = Era.values(xs.length - 1)
           for
+            // a telescope in Dijkstra holds states this build does not read yet
+            _ <- Either.cond(
+              era != Era.Dijkstra,
+              (),
+              DecodeError.at(n, Kind.Domain(DijkstraNotYet.LedgerState))
+            )
             pasts <- Elements.decodeAll(xs.init, past).at("past")
             cur <- current(stateOf(era)).decode(xs.last).at("current")
             t <- Telescope.make(pasts, cur).left.map(refused(n, _))

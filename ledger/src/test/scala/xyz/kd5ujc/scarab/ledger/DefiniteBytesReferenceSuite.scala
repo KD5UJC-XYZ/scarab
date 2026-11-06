@@ -96,7 +96,10 @@ class DefiniteBytesReferenceSuite extends FunSuite:
 
   test("a repeated withdrawal account keeps its last amount before version 9 and fails from it") {
     val lastWins = rows.filter(_.withdrawals.isDefined)
-    assertEquals(lastWins.map(_.era).toSet, Era.values.toSet -- Set(Era.Byron, Era.Conway))
+    assertEquals(
+      lastWins.map(_.era).toSet,
+      Era.values.toSet -- Set(Era.Byron, Era.Conway, Era.Dijkstra)
+    )
     val refused = rows.filter(_.expect.contains(Refusal.DuplicateElement))
     assertEquals(refused.map(_.era).toSet, Set(Era.Conway))
     for row <- refused do
@@ -107,9 +110,12 @@ class DefiniteBytesReferenceSuite extends FunSuite:
       )
   }
 
-  test("no era is read at decoder version 12 or above, so every era reads definite strings") {
-    for era <- Era.values do
+  test(
+    "no era before Dijkstra is read at decoder version 12 or above: they read definite strings"
+  ) {
+    for era <- Era.values if era != Era.Dijkstra do
       assertEquals(ByteStrings.of(DecoderVersion.of(era)), ByteStrings.Definite, era.toString)
+    assertEquals(DecoderVersion.of(Era.Dijkstra), DecoderVersion.Dijkstra)
   }
 
   /** The output of the body of `row`, which has one output. */

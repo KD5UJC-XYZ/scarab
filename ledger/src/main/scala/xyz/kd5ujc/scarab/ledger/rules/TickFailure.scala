@@ -36,8 +36,16 @@ enum TickFailure derives Eq, Show:
     */
   case UndecodableAddress(in: TxIn)
 
+  /** The chain would enter an era this build does not translate into yet: Dijkstra. The hard-fork
+    * configuration never decides that transition while the maximum major protocol version is 11
+    * (`xyz.kd5ujc.scarab.consensus.HardForkConfig.transition`).
+    */
+  case NotYet(part: xyz.kd5ujc.scarab.protocol.DijkstraNotYet)
+
 object TickFailure:
   private given Eq[VocabError] = Eq.fromUniversalEquals
   private given Show[VocabError] = Show.fromToString
   private given Eq[TxIn] = Eq.fromUniversalEquals
   private given Show[TxIn] = Show.fromToString
+  private given Eq[xyz.kd5ujc.scarab.protocol.DijkstraNotYet] = Eq.fromUniversalEquals
+  private given Show[xyz.kd5ujc.scarab.protocol.DijkstraNotYet] = Show.fromToString

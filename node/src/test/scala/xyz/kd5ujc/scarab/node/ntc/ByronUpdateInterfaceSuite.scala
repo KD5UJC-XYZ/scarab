@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorState}
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
-import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, SnapshotV8}
+import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, SnapshotV9}
 import xyz.kd5ujc.scarab.ledger.byron.{
   AppVersion,
   ByronParams,
@@ -186,12 +186,12 @@ class ByronUpdateInterfaceSuite extends FunSuite:
       )
       .map(_.hex)
 
-  /** The state of a V8 fixture of the eras chain. */
+  /** The state of a V9 fixture of the eras chain. */
   private def fixture(name: String): MirrorState =
     val content = FileLedgerSnapshots
-      .verified(Files.readAllBytes(Path.of("fixtures/snapshot-v8/eras").resolve(name)))
+      .verified(Files.readAllBytes(Path.of("fixtures/snapshot-v9/eras").resolve(name)))
       .fold(e => fail(e.message), identity)
-    SnapshotV8.decode(setup.mirrorEnv(), content).fold(e => fail(e.message), _.state)
+    SnapshotV9.decode(setup.mirrorEnv(), content).fold(e => fail(e.message), _.state)
 
   private def update(state: MirrorState): UpdateState = state.ext.ledgerState.state match
     case EraLedgerState.ByronCurrent(b) => b.ledger.map(_.update).getOrElse(fail("no ledger"))
