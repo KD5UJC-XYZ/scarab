@@ -263,15 +263,10 @@ object QueryAnswers:
       val eras = EraHistory.eras(view.read.summary(view.state)(placement))
       Right(CborOut.build(EraHistory.encode(_, eras)))
     case NtcQuery.EraStart(index) =>
+      // the start of an era the state has entered, from the same history as `GetInterpreter`
       val era = view.era
-      val eras = EraHistory.summary(
-        geometry(env, view),
-        env.byron,
-        env.forks,
-        view.read.provenance(view.state).observed,
-        era,
-        BigInt(0)
-      )
+      val placement = Placement(geometry(env, view), env.byron, env.forks)
+      val eras = EraHistory.eras(view.read.summary(view.state)(placement))
       Right(CborOut.build { w =>
         eras.lift(index.index).filter(_ => index.index <= era.index) match
           case Some(e) =>

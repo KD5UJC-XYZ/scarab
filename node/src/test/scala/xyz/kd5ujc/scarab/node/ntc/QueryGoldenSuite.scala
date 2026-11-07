@@ -4,6 +4,8 @@ package xyz.kd5ujc.scarab.node.ntc
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.consensus.state.{AnnTip, TipInfo}
+import xyz.kd5ujc.scarab.ledger.state.{BlockNo, Hash32, ShelleyBasedEra, SlotNo, WithOrigin}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -41,7 +43,24 @@ class QueryGoldenSuite extends FunSuite:
     networkMagic = setup.genesis.networkMagic.toLong
   )
 
-  private val view = QueryView(point, Some(1), setup.mirrorStart)
+  // The state's tip is the point the reference answered at, as for every state the node acquires.
+  private val view =
+    val start = setup.mirrorStart
+    val tip = AnnTip(
+      SlotNo.fromBigInt(slot).fold(e => fail(e.toString), identity),
+      BlockNo.fromUnsigned(1L),
+      TipInfo.ShelleyBasedTip(
+        ShelleyBasedEra.SConway,
+        Hash32
+          .fromBytes(hex(golden.get[String]("hash").toOption.get))
+          .fold(e => fail(e.toString), identity)
+      )
+    )
+    val atTip =
+      start.copy(ext =
+        start.ext.copy(headerState = start.ext.headerState.copy(tip = WithOrigin.At(tip)))
+      )
+    QueryView(point, Some(1), atTip)
 
   private val entries = golden.downField("queries").values.toVector.flatten.map(_.hcursor)
 
