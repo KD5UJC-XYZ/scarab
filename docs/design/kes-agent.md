@@ -45,7 +45,7 @@ resolves is 1.3.0.0 (a CHaP release with no git tag), and **1.4.0.0 is outside t
 the commit 1.3.0.0 was cut from (`19ffbb01d4a6514b67af62d59b3cd4e0b4682beb`), so that commit is the pin, and
 it is what the test image is built from. The file paths this design cites are those of the 1.4.0.0 tag, the
 newest tagged source; 1.3.0.0 keeps the same modules under `kes-agent/src/` rather than `src/kes-agent/`.
-Apart from language pragmas, these files are identical at the two commits: `Serialization/RawUtil.hs`,
+These files are byte-identical at the two commits: `Serialization/RawUtil.hs`,
 `Processes/ServiceClient.hs`, `Protocols/Service/V2/{Driver,Protocol}.hs`,
 `Protocols/VersionHandshake/Driver.hs`, `Protocols/RecvResult.hs` and `Processes/Agent/ServiceDrivers.hs`.
 The `Service:2.0` protocol is also byte-identical to 1.1.0.0's apart from pragmas and lambda syntax, and
@@ -354,9 +354,11 @@ bundle that moved the credentials backwards, comparing counter first, then absol
 (`startPeriod + index`), and remembering the value across reconnects. The reference has no such rule, and it
 refused bundles the ledger accepts: a key installed with the same counter and a certificate whose
 `startPeriod` is earlier than the absolute period in force is still valid for the current period, yet it would
-have been refused while the agent believed it installed. It also added nothing to step 5: a lower counter
-fails the counter check, a certificate outside its window fails the window check, and an earlier evolution of
-the same key is evolved forward to the current period by the node before it signs.
+have been refused while the agent believed it installed. What it refused beyond step 5 is only what the
+ledger still accepts: a counter below the chain's fails the counter check, while a counter below the one the
+node holds but not below the chain's (the held certificate never forged) is valid on chain (`m <= n <= m+1`,
+`OCertRules.checkCounter`); a certificate outside its window fails the window check; and an earlier evolution
+of the same key is evolved forward to the current period by the node before it signs.
 
 **Replies mirror the reference.** The protocol expects one `Word32` per key or drop:
 
@@ -643,8 +645,8 @@ A review against the pinned source changed four things; none reverses ADR 0023 o
   per-connection timestamp rule — and reports a refused key in telemetry. The earlier per-failure codes rested
   on the claim that the agent acts on the reply; it discards it.
 - **Progress rule withdrawn.** The cross-connection counter-then-period rule is replaced by the reference's
-  per-connection timestamp rule. It refused keys the ledger accepts and added nothing to the window and
-  counter checks.
+  per-connection timestamp rule. It refused keys the ledger accepts; beyond the window and counter checks it
+  refused only certificates that are still valid on chain.
 - **Agent pin.** The pin is 1.3.0.0, the version cardano-node 11.1.3 resolves, at the commit CHaP records
   (`19ffbb01d4`); the published test image is built from it, and its wire files match the 1.4.0.0 tag the
   paths are cited at.
