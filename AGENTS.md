@@ -154,7 +154,8 @@ scala code … I love the use of type parameters when I can use them"*.
 - Name the level of your change and run its gates, no more
   ([CONTRIBUTING.md](CONTRIBUTING.md#gates-and-ceremony-by-level-of-change)): at least `check`
   (formatting, `-Werror`, every module's tests, scalafix), plus one scenario per area touched.
-  A documentation-only change (level 0) needs only that its relative links resolve.
+  A documentation-only change (level 0) needs only that its relative links resolve, and a design document
+  or ADR also has its reference claims checked against the pinned source ([CONTRIBUTING.md](CONTRIBUTING.md#levels)).
   Soak, repeats and the long network replays are nightly CI's, not yours, unless your stage's design
   names them as its jump gate.
 - A persisted format must not change without a version bump, a migration and a test that reads the

@@ -189,7 +189,7 @@ everything else is caught within a day by CI. Land in minutes, not hours.
 
 | Level | Examples | Before landing | Paperwork |
 |---|---|---|---|
-| **0. Docs, notes, comments** | wording, a typo, a new section of a design doc | relative links resolve | none |
+| **0. Docs, notes, comments** | wording, a typo, a new section of a design doc | relative links resolve; a design document or ADR also has its reference claims checked (below) | none |
 | **1. Small code change** | refactor, test-only change, tooling, a local fix with no change in behaviour visible outside the module | `scripts/sbtw check` (formatting, `-Werror`, every module's tests, the fuzz suite and scalafix) | commit message; a changelog fragment only if a user could notice |
 | **2. Behaviour change in one area** | a bug fix, a new query, a new flag or event, a performance change | `check` plus **one** scenario for the area (table below) | changelog fragment; a test that fails without the change; `docs/running.md` if a flag, event or metric changed; a `docs/findings.md` row if it was found on real data |
 | **3. Consensus-critical or cross-cutting** | ledger rules, chain selection, a persisted format, the rules switch, anything forging | `check` plus the area scenarios, run in parallel | as level 2, plus the compatibility matrix row and the design document "as built" |
@@ -197,6 +197,13 @@ everything else is caught within a day by CI. Land in minutes, not hours.
 
 A persisted format change is level 3 and also needs a version bump, a migration and a test that
 reads the previous version ([ADR 0006](docs/adr/0006-versioned-formats-migrate-on-open.md)).
+
+A design document or ADR is level 0 by its files, but it decides what later code will do. Before it is
+approved, every claim it makes about the reference (what the pinned source defines, sends, checks or
+ignores) is checked against that source at its pinned version, by someone other than its author, citing
+the file and symbol that shows it. A claim the source does not show is corrected or marked as
+unverified; it is not approved on the design's own reasoning. A section derived from source rather than
+from a capture says so.
 
 ### The one scenario per area
 
