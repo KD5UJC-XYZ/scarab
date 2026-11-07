@@ -303,10 +303,22 @@
   {
    "name": "kes-agent",
    "repository": "input-output-hk/kes-agent",
+   "version": "1.3.0.0",
+   "revision": "19ffbb01d4a6514b67af62d59b3cd4e0b4682beb",
+   "urlPattern": "https://github.com/input-output-hk/kes-agent/commit/{revision}",
+   "role": "Upstream KES agent at the version cardano-node 11.1.3 resolves (kes-agent ^>=1.3; the commit CHaP records for 1.3.0.0, which has no git tag): the Service:2.0 key-handover protocol, the 724-byte bundle encoding and the node-side client this design conforms to. Built by our two-stage recipe and republished as a test image.",
+   "dependents": [
+    "docs/design/kes-agent.md",
+    "docs/adr/0024-adopt-the-upstream-kes-agent.md"
+   ]
+  },
+  {
+   "name": "kes-agent",
+   "repository": "input-output-hk/kes-agent",
    "version": "1.4.0.0",
    "revision": "44fdcec892e2868053f964cad87fc32c590c81e4",
    "urlPattern": "https://github.com/input-output-hk/kes-agent/tree/kes-agent-{version}",
-   "role": "Upstream KES agent: the Service:2.0 key-handover protocol, the 724-byte bundle encoding and the node-side client this design conforms to. Built by our two-stage recipe and republished as a test image.",
+   "role": "Citation source for the KES agent design's file paths: the newest tagged source, outside cardano-node 11.1.3's kes-agent ^>=1.3 range; its wire-relevant files match 1.3.0.0's. Not built or run.",
    "dependents": [
     "docs/design/kes-agent.md",
     "docs/adr/0024-adopt-the-upstream-kes-agent.md"
