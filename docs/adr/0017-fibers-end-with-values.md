@@ -568,8 +568,15 @@ What can reach that case at cardano-ledger `f649f975`
 - **The Conway genesis deposits can.** `govActionDeposit` and `dRepDeposit` are an unbounded `Coin` in the genesis
   and are compacted when the chain enters Conway (`asCompactCoinHKD`). Out of range, `Translate.babbageToConway`
   ends with `TickFailure.Vocab`, which is the no-verdict outcome above at the point where the reference aborts.
-- Rewards, MIR transfers and enacted withdrawals are bounded by the total supply, as upstream's own comments argue,
-  and the `Word32` transition counter would need 2^32 epochs.
+- Rewards, MIR transfers and enacted withdrawals are bounded by the total supply, as upstream's own comments argue.
+  A withdrawal's amount and a proposal's deposit are a `Coin` decoded as `Word64` from the transaction, so the
+  shared account update (`updateAccountBalances`, `State/Account.hs:311-330`) and the governance refund cannot fail
+  either.
+- **The transition counter can only with a malformed genesis.** The `Word32` counter counts the blocks after the
+  voting deadline of one epoch and starts again each epoch (ouroboros-consensus `82ecba32`
+  `Shelley/Ledger/Ledger.hs:570-573, 713-717`), so it counts at most one block per slot of an epoch. Only an epoch
+  of 2^32 slots or more reaches the bound; mainnet and preprod have 432,000. That case, too, ends as no verdict
+  (`StateMirrorError.TransitionCounterOverflow`).
 
 Tests: `GenesisSchemaSuite` against the reference's verdicts in `fixtures/reference/genesis-fields` (the
 negative, `Word64` maximum and past-`Word64` values of each field), and `TickRulesSuite` (the upgrade into Conway).
