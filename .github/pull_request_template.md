@@ -6,7 +6,7 @@
 
 - Level: 0 docs / 1 small code / 2 behaviour in one area / 3 consensus-critical / 4 stage boundary
 - [ ] `scripts/sbtw check` passes (level 1 and above)
-- [ ] Level 0: relative links in the changed documents resolve (nothing else is required)
+- [ ] Level 0: relative links in the changed documents resolve; a design document or ADR also has its reference claims checked against the pinned source (CONTRIBUTING.md, "Levels")
 - [ ] One scenario per area touched (level 2 and above), with its result:
 - [ ] Persisted format: version bump, migration, a test that reads the previous version (ADR 0006)
 
