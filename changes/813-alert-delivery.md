@@ -6,3 +6,7 @@
 ### Changed (monitoring, #813)
 
 - The agent turns the container label `scarab.role` into the series label `role`. The forging, leadership and KES-period alerts select `role="pool"`, so a node that does not forge no longer fires `PoolNotCheckingSlots` and `PoolNoBlocksFor48h`; run a producer with `--label scarab.role=pool`.
+
+### Fixed (monitoring, #813)
+
+- `deploy.sh agent` keeps the host's `TEXTFILE_DIR` when it rewrites the agent's `.env`; a redeploy no longer drops the KES rotation driver's metrics, which set off `PoolKesRotationMetricsMissing`.
