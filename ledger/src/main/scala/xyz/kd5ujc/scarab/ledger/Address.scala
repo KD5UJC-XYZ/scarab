@@ -591,7 +591,7 @@ final case class TxOut(
         field <- f
           .get(3)
           .toRight(LedgerDecodeError.MissingField(DecodeField.Output, DecodeField.ReferenceScript))
-        script <- Script.decodeWrappedWithBytes(field)
+        script <- Script.decodeWrappedWithBytes(field, ScriptKind.newestKnown)
       yield script
       reread.toOption.orElse(Some(kept))
     }
@@ -677,10 +677,15 @@ object TxOut:
       else if era.ordinal < Era.Babbage.ordinal then PairOrDatumHash
       else PairDatumHashOrMap
 
+  /** An output of a block or transaction, or a stored one (`forms`); its reference script is of a
+    * language no newer than `newest` ([[ScriptKind.newest]] of the era, [[ScriptKind.newestKnown]]
+    * for a stored output).
+    */
   def decode(
       n: Node,
       mode: Address.Mode,
-      forms: Forms
+      forms: Forms,
+      newest: ScriptKind
   )(using ByteStrings): Either[LedgerDecodeError, TxOut] =
     n.value match
       case xyz.kd5ujc.scarab.codec.Value.Arr(xs) if forms.arities.contains(xs.size) =>
@@ -711,7 +716,7 @@ object TxOut:
             LedgerDecodeError.UnknownFields(DecodeField.Output, f.keySet -- Set(0, 1, 2, 3))
           )
           d <- f.get(2).traverse(datumOption(_, forms != Forms.Stored))
-          s <- f.get(3).traverse(Script.decodeWrapped)
+          s <- f.get(3).traverse(Script.decodeWrapped(_, newest))
         yield TxOut(n.original, a, v, d.getOrElse(Datum.NoDatum), s, vn.original.size)
       case _ => Left(LedgerDecodeError.OutputForm(forms, n.value))
 
@@ -750,7 +755,7 @@ object TxOut:
   )(using ByteStrings): Either[LedgerDecodeError, TxOut] =
     DetachedRecords.read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.storedOutput)(
       LedgerDecodeError.Syntax(_)
-    )(decode(_, mode, Forms.Stored))
+    )(decode(_, mode, Forms.Stored, ScriptKind.newestKnown))
 
   /** The encoding of an output read again, as an item: framed as it was read when its value is a
     * detached record ([[DetachedRecords]]). Read without the records, such an output is refused or

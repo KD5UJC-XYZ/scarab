@@ -851,5 +851,1037 @@
    "accepted": false,
    "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 129 \"An error occured while decoding Duplicate key:.\\nError: 16 while decoding type PParamsUpdate BabbageEra\")"
   }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses: key 0 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses: key 0 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses: key 1 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses: key 1 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses: key 2 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses: key 2 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses: tag 258 on the native scripts is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses: tag 258 on the bootstrap witnesses is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body: key 0 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body: key 1 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body: key 4 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley body: key 5 empty map",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley update: repeated proposer, same update",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley update: repeated proposer, other update",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "body",
+  "name": "shelley update: the last proposal alone",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses: key 0 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses: key 0 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses: key 1 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses: key 1 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses: key 2 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses: key 2 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses: tag 258 on the native scripts is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses: tag 258 on the bootstrap witnesses is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body: key 0 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body: key 1 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body: key 4 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra body: key 5 empty map",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra update: repeated proposer, same update",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra update: repeated proposer, other update",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "body",
+  "name": "allegra update: the last proposal alone",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses: key 0 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses: key 0 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses: key 1 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses: key 1 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses: key 2 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses: key 2 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses: tag 258 on the native scripts is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses: tag 258 on the bootstrap witnesses is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body: key 0 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body: key 1 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body: key 4 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body: key 5 empty map",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary body: key 9 empty map",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary update: repeated proposer, same update",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary update: repeated proposer, other update",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "body",
+  "name": "mary update: the last proposal alone",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: key 0 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: key 0 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: key 1 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: key 1 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: key 2 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: key 2 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: key 3 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: key 3 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: key 4 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: key 4 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: key 5 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: key 5 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: redeemers as a map",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: tag 258 on the native scripts is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: tag 258 on the bootstrap witnesses is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body: key 0 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body: key 1 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body: key 4 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body: key 13 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body: key 14 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body: key 5 empty map",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo body: key 9 empty map",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo update: repeated proposer, same update",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo update: repeated proposer, other update",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "body",
+  "name": "alonzo update: the last proposal alone",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: key 0 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: key 0 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: key 1 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: key 1 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: key 2 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: key 2 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: key 3 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: key 3 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: key 4 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: key 4 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: key 5 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: key 5 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: key 6 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: key 6 empty, indefinite",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: redeemers as a map",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: tag 258 on the native scripts is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: tag 258 on the bootstrap witnesses is not read",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxWits\" (DeserialiseFailure 2 \"expected list len or indef\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: key 0 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: key 1 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: key 4 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: key 13 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: key 14 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: key 18 empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: key 5 empty map",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: key 9 empty map",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage update: repeated proposer, same update",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage update: repeated proposer, other update",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage update: the last proposal alone",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses: key 3 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxWits\" (DeserialiseFailure 2 \"An error occured while decoding (Int,(Annotator Void)) not a valid key:.\\nError: 3\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses: key 7 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxWits\" (DeserialiseFailure 2 \"An error occured while decoding (Int,(Annotator Void)) not a valid key:.\\nError: 7\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses: key 8 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxWits\" (DeserialiseFailure 2 \"An error occured while decoding (Int,(Annotator Void)) not a valid key:.\\nError: 8\")"
+  }
+ },
+ {
+  "era": "shelley",
+  "kind": "witnesses",
+  "name": "shelley witnesses: repeated key",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Shelley TxWits\" (DeserialiseFailure 105 \"An error occured while decoding Duplicate key:.\\nError: 0 while decoding type ShelleyTxWitsRaw\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses: key 3 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxWits\" (DeserialiseFailure 2 \"An error occured while decoding (Int,(Annotator Void)) not a valid key:.\\nError: 3\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses: key 8 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxWits\" (DeserialiseFailure 2 \"An error occured while decoding (Int,(Annotator Void)) not a valid key:.\\nError: 8\")"
+  }
+ },
+ {
+  "era": "allegra",
+  "kind": "witnesses",
+  "name": "allegra witnesses: repeated key",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Allegra TxWits\" (DeserialiseFailure 105 \"An error occured while decoding Duplicate key:.\\nError: 0 while decoding type ShelleyTxWitsRaw\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses: key 3 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxWits\" (DeserialiseFailure 2 \"An error occured while decoding (Int,(Annotator Void)) not a valid key:.\\nError: 3\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses: key 8 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxWits\" (DeserialiseFailure 2 \"An error occured while decoding (Int,(Annotator Void)) not a valid key:.\\nError: 8\")"
+  }
+ },
+ {
+  "era": "mary",
+  "kind": "witnesses",
+  "name": "mary witnesses: repeated key",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Mary TxWits\" (DeserialiseFailure 105 \"An error occured while decoding Duplicate key:.\\nError: 0 while decoding type ShelleyTxWitsRaw\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: key 8 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxWits\" (DeserialiseFailure 2 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 8\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: repeated key",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxWits\" (DeserialiseFailure 105 \"An error occured while decoding Duplicate key:.\\nError: 0 while decoding type AlonzoTxWits\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: key 6, a later language, empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: key 6, a later language, with a script",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxWits\" (DeserialiseFailure 13 \"PlutusV2 isn't supported in the Alonzo era\")"
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: key 7, a later language, empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "alonzo",
+  "kind": "witnesses",
+  "name": "alonzo witnesses: key 7, a later language, with a script",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Alonzo TxWits\" (DeserialiseFailure 13 \"PlutusV3 isn't supported in the Alonzo era\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: key 8 is not a field of the era",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxWits\" (DeserialiseFailure 2 \"An error occured while decoding (Int,Void) not a valid key:.\\nError: 8\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: repeated key",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxWits\" (DeserialiseFailure 105 \"An error occured while decoding Duplicate key:.\\nError: 0 while decoding type AlonzoTxWits\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: key 7, a later language, empty",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "witnesses",
+  "name": "babbage witnesses: key 7, a later language, with a script",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxWits\" (DeserialiseFailure 13 \"PlutusV3 isn't supported in the Babbage era\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: a reference script of language 0",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: a reference script of language 1",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: a reference script of language 2",
+  "result": {
+   "accepted": true
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: a reference script of language 3",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 96 \"Script: DecoderErrorDeserialiseFailure \\\"Script\\\" (DeserialiseFailure 12 \\\"PlutusV3 isn't supported in the Babbage era\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: a reference script of language 4",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 96 \"Script: DecoderErrorDeserialiseFailure \\\"Script\\\" (DeserialiseFailure 12 \\\"PlutusV4 isn't supported in the Babbage era\\\")\")"
+  }
+ },
+ {
+  "era": "babbage",
+  "kind": "body",
+  "name": "babbage body: a reference script of tag 5",
+  "result": {
+   "accepted": false,
+   "failure": "DecoderErrorDeserialiseFailure \"Babbage TxBody\" (DeserialiseFailure 96 \"Script: DecoderErrorDeserialiseFailure \\\"Script\\\" (DeserialiseFailure 2 \\\"An error occured while decoding (Int,(Annotator (AlonzoScript BabbageEra))) not a valid key:.\\\\nError: 5\\\")\")"
+  }
  }
 ]

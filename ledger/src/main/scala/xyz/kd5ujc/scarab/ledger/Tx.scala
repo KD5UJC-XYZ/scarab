@@ -410,7 +410,7 @@ object TxBody:
         .get(1)
         .toRight(LedgerDecodeError.MissingField(DecodeField.TransactionBody, DecodeField.Outputs))
         .flatMap(CborRead.array(_, DecodeField.Outputs))
-        .flatMap(_.traverse(TxOut.decode(_, mode, forms)))
+        .flatMap(_.traverse(TxOut.decode(_, mode, forms, ScriptKind.newest(era))))
       fee <- f
         .get(2)
         .toRight(LedgerDecodeError.MissingField(DecodeField.TransactionBody, DecodeField.Fee))
@@ -475,7 +475,7 @@ object TxBody:
           )
       )
       network <- f.get(15).traverse(CborRead.uint(_, DecodeField.NetworkId))
-      collateralReturn <- f.get(16).traverse(TxOut.decode(_, mode, forms))
+      collateralReturn <- f.get(16).traverse(TxOut.decode(_, mode, forms, ScriptKind.newest(era)))
       totalCollateral <- f.get(17).traverse(CborRead.uint(_, DecodeField.TotalCollateral))
       refs <- present(DecodeField.ReferenceInputs)(
         f.get(18).traverse(CborRead.set(_, DecodeField.ReferenceInputs, version)(TxIn.decode))
@@ -590,15 +590,17 @@ object Witnesses:
     val version = DecoderVersion.of(era)
     given ByteStrings = ByteStrings.of(version)
     val strict = version.atLeast(9)
+    // Shelley, Allegra and Mary read keys 0 to 2 (`Shelley/TxWits.hs`); the Alonzo witness set of
+    // every later era reads 0 to 7, and a Plutus script of a language newer than the era's is
+    // refused (`alonzoPlutusScriptDecoder`, `Alonzo/TxWits.hs:725-740`, f649f975)
+    val newest = ScriptKind.newest(era)
+    val keys = if newest == ScriptKind.Native then Set(0, 1, 2) else Set(0, 1, 2, 3, 4, 5, 6, 7)
     for
       f <- CborRead.fields(root, DecodeField.WitnessSet)
       _ <- Either.cond(
-        f.keySet.subsetOf(Set(0, 1, 2, 3, 4, 5, 6, 7)),
+        f.keySet.subsetOf(keys),
         (),
-        LedgerDecodeError.UnknownFields(
-          DecodeField.WitnessSet,
-          f.keySet -- Set(0, 1, 2, 3, 4, 5, 6, 7)
-        )
+        LedgerDecodeError.UnknownFields(DecodeField.WitnessSet, f.keySet -- keys)
       )
       vkeys <- f
         .get(0)
@@ -643,7 +645,13 @@ object Witnesses:
                 CborRead.bytes(_, DecodeField.PlutusScript)
               )
               .flatMap(CborRead.nonEmpty(_, DecodeField.PlutusScripts, strict))
-              .map(_.map(Script.plutus(kind, _)))
+              .flatMap(scripts =>
+                Either.cond(
+                  scripts.isEmpty || kind.tag <= newest.tag,
+                  scripts.map(Script.plutus(kind, _)),
+                  LedgerDecodeError.UnsupportedLanguage(kind, newest)
+                )
+              )
           )
       v1 <- plutus(3, ScriptKind.PlutusV1)
       v2 <- plutus(6, ScriptKind.PlutusV2)

@@ -70,6 +70,7 @@ private[ledger] object ReferenceCorpus:
     case Zero extends Refusal("Zero")
     case PoolRelay extends Refusal("PoolRelay")
     case TextTooLong extends Refusal("TextTooLong")
+    case UnsupportedLanguage extends Refusal("UnsupportedLanguage")
 
   object Refusal:
     /** The tag of the case of an error, if the corpus names it; a voting-procedure structure error
@@ -99,6 +100,7 @@ private[ledger] object ReferenceCorpus:
       case LedgerDecodeError.Zero(_)                      => Some(Zero)
       case LedgerDecodeError.PoolRelay(_)                 => Some(PoolRelay)
       case LedgerDecodeError.TextTooLong(_, _, _)         => Some(TextTooLong)
+      case LedgerDecodeError.UnsupportedLanguage(_, _)    => Some(UnsupportedLanguage)
       case LedgerDecodeError.Voting(VotingProcedures.DecodeError.InvalidStructure(cause)) =>
         of(cause)
       case LedgerDecodeError.NativeScript(NativeScript.DecodeError.Malformed(cause)) => of(cause)
@@ -141,6 +143,7 @@ private[ledger] object ReferenceCorpus:
     case ExpectedWord32 extends Rule("expected word32")
     case AddressRootLength extends Rule("Bytes not expected length")
     case DuplicateKey extends Rule("Duplicate key:")
+    case LanguageUnsupported extends Rule("isn't supported in the")
     case ExpectedWord extends Rule("expected word")
     case ExUnitsBound extends Rule("values must not exceed maxBound :: Int64")
     case ExpectedTag extends Rule("Expected tag")
