@@ -1041,7 +1041,7 @@
       "title": "Integrate the upstream KES agent as a separate process",
       "priority": null,
       "issues": [
-        38
+        808
       ],
       "notes": "Integrate the upstream KES agent as a separate process. A typed Unix-socket client receives the current key/certificate and keeps node-local signing; agent-held state survives node restarts without signing-key files. Pin the negotiated upstream service protocol, cover reconnect/rotation and agent-loss recovery, and review the Scala secret-memory boundary before making equivalent security claims. The existing evolved-key file mode remains supported under ADR 0015."
     },
@@ -1075,7 +1075,7 @@
       "issues": [
         120
       ],
-      "folded_into": 38,
+      "folded_into": 808,
       "notes": "Mainnet pool: the cold key stays offline, so rotation prepares the new KES key and an unsigned request, notifies the operator before expiry and installs the certificate once signed (follow-up of H2a)."
     },
     {

@@ -38,7 +38,6 @@
   "35": ["closed", "completed", false],
   "36": ["closed", "completed", false],
   "37": ["closed", "completed", false],
-  "38": ["open", "reopened", false],
   "39": ["open", "", false],
   "40": ["closed", "completed", false],
   "41": ["closed", "completed", false],
@@ -158,6 +157,7 @@
   "288": ["closed", "completed", false],
   "290": ["closed", "completed", false],
   "349": ["open", "", false],
-  "491": ["open", "", false]
+  "491": ["open", "", false],
+  "808": ["open", "", false]
  }
 }
