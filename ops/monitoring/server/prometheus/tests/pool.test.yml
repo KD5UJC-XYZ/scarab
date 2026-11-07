@@ -77,7 +77,9 @@ tests:
         values: '0+0x40'
       - series: 'cardano_node_metrics_Forge_didnt_adopt_counter{container="n", host="h", role="pool"}'
         values: '0+0x40'
-      - series: 'process_start_time_seconds{container="n", host="h"}'
+      - series: 'process_start_time_seconds{container="n", host="h", job="scarab"}'
+        values: '1000+0x10 2000+0x30'
+      - series: 'process_start_time_seconds{job="prometheus", instance="localhost:9090"}'
         values: '1000+0x10 2000+0x30'
     alert_rule_test:
       - eval_time: 25m
@@ -129,7 +131,7 @@ tests:
       - eval_time: 11m
         alertname: PoolRestarted
         exp_alerts:
-          - exp_labels: {severity: warning, container: n, host: h}
+          - exp_labels: {severity: warning, container: n, host: h, job: scarab}
             exp_annotations:
               summary: "n: the process restarted"
               description: Uptime was reset (a crash, a deploy or a stall exit). It may need to replay before it forges again.

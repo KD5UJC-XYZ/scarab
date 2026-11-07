@@ -75,7 +75,7 @@ them in the file (`promtool test rules` covers them: `ops/monitoring/server/prom
 | `PoolNotCheckingSlots` | no `about_to_lead` increase in 15 m while Following, 5 m | warning | The forger is not running. |
 | `PoolNoBlocksFor48h` | no adopted block in 48 h and uptime above 48 h, 1 h | info | 14 blocks in 5 days leave 48 h empty under 1 percent of the time. Fires before the stake is active (epoch 321 on Preprod): silence it until then. |
 | `PoolNodeDown` | `up{job="scarab"} == 0`, 2 m | critical | `/metrics` does not answer. |
-| `PoolRestarted` | `changes(process_start_time_seconds[15m]) > 0` | warning | Uptime was reset. |
+| `PoolRestarted` | `changes(process_start_time_seconds{job="scarab"}[15m]) > 0` | warning | Uptime was reset (a node's, not the monitoring stack's own). |
 | `PoolBehindPeers` | peers' tip slot minus ours > 120, 10 m | warning | Not synced: a block forged now is on a stale chain. 120 slots is about six blocks at Preprod's density. |
 | `PoolNoHotPeers` | `peerSelection_Hot_int == 0`, 5 m | critical | The node follows no one. |
 | `PoolFollowerStalled` | `scarab_follower_stalled == 1`, 10 m | critical | The stall watchdog fired and did not clear. |

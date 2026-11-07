@@ -10,3 +10,4 @@
 ### Fixed (monitoring, #813)
 
 - `deploy.sh agent` keeps the host's `TEXTFILE_DIR` when it rewrites the agent's `.env`; a redeploy no longer drops the KES rotation driver's metrics, which set off `PoolKesRotationMetricsMissing`.
+- `PoolRestarted` selects the node's own series (`job="scarab"`); a restart of the monitoring stack's Prometheus no longer fires it.
