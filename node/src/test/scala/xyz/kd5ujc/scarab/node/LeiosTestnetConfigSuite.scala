@@ -112,4 +112,30 @@ class LeiosTestnetConfigSuite extends FunSuite:
     assertEquals(forks.trigger(Era.Dijkstra), None)
     assertEquals(setup.mirrorStart.ext.ledgerState.era, Era.Conway)
   }
+  test("the node setup reads the Dijkstra genesis the configuration names") {
+    val setup =
+      NodeSetup.fromConfigFile(dir.resolve("config.json")).fold(e => fail(e.message), identity)
+    val dijkstra = setup.globals.dijkstra.fold(fail("no Dijkstra genesis was read"))(identity)
+    assertEquals(dijkstra.params.leiosCommitteeSize, BigInt(900))
+    assertEquals(dijkstra.params.refScriptCostStride, BigInt(25600))
+    assertEquals(dijkstra.plutusV4CostModel.size, 251)
+  }
+
+  test("a Dijkstra genesis the reference refuses stops the node setup") {
+    // the hash is left out, so the file's content is what refuses
+    val unhashed = config.copy(hashes = config.hashes.copy(dijkstra = None))
+    def withDijkstra(text: String)(name: String) =
+      if name == "dijkstra-genesis.json" then Some(text.getBytes("UTF-8")) else read(name)
+    val refused = NodeSetup.assemble(unhashed, withDijkstra("""{"maxRefScriptSizePerBlock": 1}"""))
+    assertEquals(
+      refused.left.map(_.problem),
+      Left(
+        xyz.kd5ujc.scarab.ledger.ConfigProblem.GenesisField(
+          xyz.kd5ujc.scarab.ledger.GenesisFile.Dijkstra,
+          Vector("maxRefScriptSizePerTx"),
+          xyz.kd5ujc.scarab.ledger.GenesisFieldError.Missing
+        )
+      )
+    )
+  }
 end LeiosTestnetConfigSuite
