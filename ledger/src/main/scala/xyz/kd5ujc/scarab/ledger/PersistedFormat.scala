@@ -19,7 +19,8 @@ import cats.data.NonEmptyList
   * snapshot with a checkpoint binding in front of the V5 body (the UTxO key layout and the digest
   * of the RocksDB checkpoint the snapshot was written with, issue #395); `V8` is the same layout
   * with the Byron update state's installer metadata in the sidecar (issue #726); `V9` is the same
-  * layout whose sidecar names the eras with Dijkstra among them (#54). New versions are appended.
+  * layout whose sidecar names the eras with Dijkstra among them and holds the protocol parameters
+  * with the fields Dijkstra adds (#54). New versions are appended.
   */
 enum FormatVersion derives CanEqual:
   case V1, V2, V3, V4, V5, V6, V7, V8, V9
@@ -83,7 +84,7 @@ enum FileKind(
     * next) the text `CSLSNAP1 v<n>`: `SCRBSNP3`, `SCRBSNP4` and `SCRBSNP5` are the Haskell ledger
     * state with a sidecar, `SCRBSNP7` is the V5 body behind a checkpoint binding, `SCRBSNP8` is the
     * V7 layout whose sidecar keeps the Byron update state's installer metadata, and `SCRBSNP9` the
-    * V8 layout whose sidecar's eras include Dijkstra.
+    * V8 layout whose sidecar's eras include Dijkstra and whose parameters have Dijkstra's fields.
     */
   case SnapshotFile
       extends FileKind(

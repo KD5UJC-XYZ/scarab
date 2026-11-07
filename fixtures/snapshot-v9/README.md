@@ -5,16 +5,17 @@ keys/signatures only, with no signing keys or operational node data; see [NOTICE
 
 These complete checksummed native V9 files are the maintained snapshot test inputs. V9 is the V8
 layout (the V5 body behind a checkpoint binding, the Byron update state's installer metadata in the
-sidecar) whose sidecar names the eras with Dijkstra among them (issue
-[#54](https://github.com/KD5UJC-XYZ/scarab/issues/54)). The encoding of every era V8 could name is
-unchanged; the sidecar's schema fingerprint is new.
+sidecar) whose sidecar names the eras with Dijkstra among them and holds the protocol parameters
+with the fields Dijkstra adds (issue [#54](https://github.com/KD5UJC-XYZ/scarab/issues/54)). The
+encoding of every era V8 could name is unchanged; the sidecar's schema fingerprint is new.
 
 Every file here is the output of the registered V8 → V9 migration step (`SnapshotMigration.toCurrent`
 through `Migrate`, i.e. `SnapshotV9.fromV8`) applied to the file of the same name in
 [`fixtures/snapshot-v8`](../snapshot-v8/README.md), whose own conversion provenance stays pinned
 there. The step keeps the binding and the Haskell bytes, reads the sidecar in the frozen V8 schema
-and writes it in the current one, so the converted files differ from their sources only in the magic
-and the sidecar's schema fingerprint. `manifest.json` lists each source and target hash;
+and writes it in the current one, so the converted files differ from their sources only in the magic,
+the sidecar's schema fingerprint and, in the Shelley-based files, the Dijkstra fields of the sidecar's
+parameters, written at their pre-Dijkstra defaults (a Byron sidecar holds no parameters). `manifest.json` lists each source and target hash;
 `SnapshotGoldenSuite` re-derives every target from its source and compares the bytes, and
 `SHA256SUMS` binds the files.
 

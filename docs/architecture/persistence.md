@@ -69,7 +69,7 @@ built from the upstream encoding rules (`fixtures/eras`); no Byron Haskell datab
 **Snapshot format** (`<db>/snapshots/snapshot-<slot>-<blockNo>.bin`, the newest `--keep-snapshots`,
 default 2, are kept). A file is the content of a `SnapshotFormat` and the SHA-256 of that content;
 the store (`FileLedgerSnapshots`) does the framing, the atomic write and the pruning, and the format
-decides what the content is. Format version 9 (`SnapshotV9`, #54) is format version 8 with a sidecar schema whose eras include Dijkstra; format version 8 (`SnapshotV8`, #726) is format version 7 (`SnapshotV7`, #395) with a sidecar schema that keeps the Byron update state's installer metadata; version 7 is the body of format version 5
+decides what the content is. Format version 9 (`SnapshotV9`, #54) is format version 8 with a sidecar schema whose eras include Dijkstra and whose protocol parameters have the fields Dijkstra adds; format version 8 (`SnapshotV8`, #726) is format version 7 (`SnapshotV7`, #395) with a sidecar schema that keeps the Byron update state's installer metadata; version 7 is the body of format version 5
 (`SnapshotV5`, J2.9; versions 3 and 4, `SCRBSNP3` and `SCRBSNP4`, had the same layout and sidecars that held the node's chain-dependent state in its former shape and, in version 4, the old rules' flat state) behind the binding of the UTxO checkpoint the snapshot was written with:
 
 ```

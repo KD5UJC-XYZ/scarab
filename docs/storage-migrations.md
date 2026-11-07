@@ -44,7 +44,7 @@ used. `SnapshotV9.format[F](SnapshotCheck.Full).decode(content)` reads current c
 `SnapshotV7` and `SnapshotV8` are the previous readers: the body parser is shared and takes the
 sidecar schema (`SnapshotV5.Schema`), V5 and V7 sidecars being read in the frozen
 `SnapshotSidecarV7` schema and V8 sidecars in the frozen `SnapshotSidecarV8` one, both with the
-frozen eras of `FrozenEra`; `SnapshotV7.fromV5`, `SnapshotV8.fromV7` and `SnapshotV9.fromV8` are the
+frozen eras of `FrozenEra` and the frozen parameters of `FrozenProtocolParams`; `SnapshotV7.fromV5`, `SnapshotV8.fromV7` and `SnapshotV9.fromV8` are the
 migration steps. The `Full` choice controls encode-time read-back
 checking; decoding itself validates the current file in either mode.
 A converter must carry the source `observed` eras and `gaps` exactly. Missing non-myopic data must
@@ -89,9 +89,10 @@ the old checksum, reads the sidecar in the frozen V7 schema, keeps the binding a
 and atomically writes V8; `SnapshotMigration.preflight`, `run` and `detect` (which the generic
 `Migrate` calls for every file before it converts any) read the sidecar of every V5 and V7 file and
 refuse one whose conversion would invent state, and each step refuses it too. Global V9 changes
-only the sidecar's eras (#54): `step(file, V8, V9)` reads the sidecar in the frozen V8 schema and
-writes it in the current one, whose encoding of every era V8 could name is unchanged; every V8 file
-converts. `Migrate` then has no work for V9.
+only the sidecar's eras and protocol parameters (#54): `step(file, V8, V9)` reads the sidecar in the
+frozen V8 schema and writes it in the current one, whose encoding of every era V8 could name is
+unchanged and whose parameters take the fields Dijkstra adds at their pre-Dijkstra defaults; every V8
+file converts. `Migrate` then has no work for V9.
 The identity kind remains at V6 and unchanged kinds retain their own current versions. A future
 snapshot change appends global `V10`. Retire the V5
 reader only after the inventory and conversion conditions below hold, then advance the snapshot
@@ -146,7 +147,11 @@ The V8 → V9 change (#54) added an era to `Era`, whose derived codec's shape li
 every sidecar fingerprint that holds an era moves with it, the frozen previous ones too unless they
 stop sharing the live codec. `FrozenEra` is the Byron-to-Conway enum under the name `Era`, so its
 derived shape and bytes are those the files were written with, read totally into the live era;
-`SnapshotSidecarV7` and the new `SnapshotSidecarV8` take it, and their goldens did not move.
+`SnapshotSidecarV7` and the new `SnapshotSidecarV8` take it, and their goldens did not move. The
+same change added the fields Dijkstra adds (`DijkstraPParams`, cardano-ledger 9df9f98c) to the node's
+`ProtocolParams`, which the sidecar holds; `FrozenProtocolParams` is the Conway-era record under the
+name `ProtocolParams`, read into the live one with those fields at their pre-Dijkstra defaults (zero
+or none), and both frozen schemas take it too.
 `SnapshotV9.fromV8` keeps the binding, the sidecar's values and the Haskell bytes;
 `fixtures/snapshot-v9` is the registered conversion of `fixtures/snapshot-v8`
 (`SnapshotV9FixtureMain`, re-derived by `SnapshotGoldenSuite`), and `SnapshotV9MigrationSuite` reads

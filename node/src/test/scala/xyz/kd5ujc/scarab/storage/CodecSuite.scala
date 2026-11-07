@@ -216,8 +216,9 @@ class CodecSuite extends ScalaCheckSuite:
   // the Byron ledger state (UTxO, delegation, update system) carried in NodeState, and the idle
   // pools of a stake snapshot (K1: the pool distribution lists a pool whose delegators have no stake).
   // and the installer metadata of the Byron update state's software proposals and application
-  // versions (V8, #726), and the Dijkstra era among the eras (V9, #54).
-  private val GoldenSidecarFingerprint = "24b88a70b1cd2442"
+  // versions (V8, #726), and the Dijkstra era among the eras and the fields Dijkstra adds to the
+  // protocol parameters (V9, #54).
+  private val GoldenSidecarFingerprint = "7650a759442924ec"
   // The sidecar schema of V5 and V7 files (`SnapshotSidecarV7`), frozen at V8: never regenerated.
   private val GoldenPreviousSidecarFingerprint = "7c483457b06802d6"
   // The sidecar schema of V8 files (`SnapshotSidecarV8`), frozen at V9: never regenerated.

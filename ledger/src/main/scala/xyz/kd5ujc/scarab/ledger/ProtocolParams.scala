@@ -91,6 +91,14 @@ object DRepVotingThresholds:
   *   Alonzo minimum lovelace per 8-byte word of output.
   * @param costModels
   *   Cost model values by language tag (0 = PlutusV1), in the canonical parameter order.
+  * @param maxRefScriptSizePerBlock
+  *   The first of the fields Dijkstra adds (`DijkstraPParams`, cardano-ledger 9df9f98c
+  *   `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:228-299`), in the order of the
+  *   record and of their update keys 34 to 56. Before Dijkstra they are zero or none.
+  * @param maxPledgeLeverage
+  *   `MaxPledgeLeverage`, a `NonNegativeInterval` or none (`Core/PParams.hs:369-373`).
+  * @param perasBootstrapRound
+  *   a `Word32` or none.
   */
 final case class ProtocolParams(
     minFeeA: BigInt,
@@ -129,7 +137,30 @@ final case class ProtocolParams(
     poolVotingThresholds: PoolVotingThresholds = PoolVotingThresholds.zero,
     drepVotingThresholds: DRepVotingThresholds = DRepVotingThresholds.zero,
     committeeMinSize: BigInt = 0,
-    committeeMaxTermLength: BigInt = 0
+    committeeMaxTermLength: BigInt = 0,
+    maxRefScriptSizePerBlock: BigInt = 0,
+    maxRefScriptSizePerTx: BigInt = 0,
+    refScriptCostStride: BigInt = 0,
+    refScriptCostMultiplier: Rational = Rational.zero,
+    maxPledgeLeverage: Option[Rational] = None,
+    minPoolMargin: Rational = Rational.zero,
+    leiosAnnouncementPeriodLength: BigInt = 0,
+    leiosVotePeriodLength: BigInt = 0,
+    leiosDiffusionPeriodLength: BigInt = 0,
+    leiosCommitteeSize: BigInt = 0,
+    leiosQuorumStakeThreshold: Rational = Rational.zero,
+    maxEndorserBlockReferencesSize: BigInt = 0,
+    maxEndorserBlockTxsSize: BigInt = 0,
+    maxEndorserBlockExUnits: ExUnits = ExUnits.zero,
+    maxRefScriptSizePerEndorserBlock: BigInt = 0,
+    perasMinCandidateBlockAge: BigInt = 0,
+    perasHealingFactor: Rational = Rational.zero,
+    perasCertBoost: BigInt = 0,
+    perasTargetCommitteeSize: BigInt = 0,
+    perasBootstrapRound: Option[BigInt] = None,
+    perasQuorumThresholdSafetyMargin: Rational = Rational.zero,
+    refInputsCostPerMultiAssetPolicy: BigInt = 0,
+    refInputsCostPerDatumByte: BigInt = 0
 ):
   /** The effective decentralisation parameter (Babbage removed `d`). */
   def effectiveD: Rational = if protocolMajor >= 7 then Rational.zero else d

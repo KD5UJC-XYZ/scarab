@@ -7,16 +7,20 @@ import java.nio.file.{Files as JFiles, Path as JPath}
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.BinaryError
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
-import xyz.kd5ujc.scarab.ledger.{FileKind, FormatVersion}
+import xyz.kd5ujc.scarab.codec.Rational
+import xyz.kd5ujc.scarab.ledger.{FileKind, FormatVersion, ProtocolParams}
+import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.node.{NativeSnapshots, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.Era
 
 import StorageTestKit.*
 
-/** V9 names Dijkstra among the eras of the sidecar (#54); V8 and the versions before it named Byron
-  * to Conway. The readers of those versions take the frozen era codec ([[FrozenEra]]), so a V8 file
-  * reads as it was written and converts to V9 with no loss: every era it can name is an era of V9,
-  * encoded the same way (ADR 0006).
+/** V9 names Dijkstra among the eras of the sidecar and holds the protocol parameters with the
+  * fields Dijkstra adds (#54); V8 and the versions before it named Byron to Conway and held
+  * Conway's parameters. The readers of those versions take the frozen era and parameter codecs
+  * ([[FrozenEra]], [[FrozenProtocolParams]]), so a V8 file reads as it was written and converts to
+  * V9 with no loss: every era it can name is an era of V9, encoded the same way, and its parameters
+  * take Dijkstra's fields at their pre-Dijkstra defaults (ADR 0006).
   */
 class SnapshotV9MigrationSuite extends CatsEffectSuite:
   private val env: ConsensusMirrorEnv = NodeSetup
@@ -113,5 +117,54 @@ class SnapshotV9MigrationSuite extends CatsEffectSuite:
       Codec.decode(Codec.encode(dijkstra)(using codec))(using codec) match
         case Left(BinaryError.InvalidVariant("Era", 7L, 7)) => ()
         case other => fail(s"a frozen schema read a Dijkstra era: $other")
+    }
+  }
+
+  private def shelleyParams(sidecar: SnapshotSidecar): ProtocolParams = sidecar.chain match
+    case SnapshotSidecar.Chain.InShelley(_, params, _, _) => params
+    case other => fail(s"not a Shelley-based sidecar: $other")
+
+  test("a V8 sidecar's parameters read with the fields Dijkstra adds at their defaults") {
+    val (_, sidecar, _) = SnapshotV8
+      .sections(content("fixtures/snapshot-v8", "eras/conway-730.bin"))
+      .fold(e => fail(e.message), identity)
+    val params = shelleyParams(sidecar)
+    assertEquals(
+      FrozenProtocolParams.live(FrozenProtocolParams.previous(params)),
+      params,
+      "a V8 sidecar's parameters are a node's before Dijkstra"
+    )
+    assertEquals(params.maxRefScriptSizePerBlock, BigInt(0))
+    assertEquals(params.refScriptCostMultiplier, Rational.zero)
+    assertEquals(params.maxPledgeLeverage, None)
+    assertEquals(params.maxEndorserBlockExUnits, ExUnits.zero)
+    assertEquals(params.perasBootstrapRound, None)
+    assertEquals(params.refInputsCostPerDatumByte, BigInt(0))
+  }
+
+  test("V9 keeps Dijkstra's parameter fields; the frozen schema of V5 to V8 drops them") {
+    val v9 = content("fixtures/snapshot-v9", "eras/conway-730.bin")
+    val (_, sidecar, _) = SnapshotV9.sections(v9).fold(e => fail(e.message), identity)
+    val dijkstra = shelleyParams(sidecar).copy(
+      maxRefScriptSizePerBlock = 1048576,
+      refScriptCostMultiplier = Rational(6, 5),
+      maxPledgeLeverage = Some(Rational(3, 1)),
+      leiosCommitteeSize = 900,
+      maxEndorserBlockExUnits = ExUnits(7000000000L, 2000000000000L),
+      perasBootstrapRound = Some(BigInt(0)),
+      refInputsCostPerDatumByte = 7
+    )
+    val withDijkstra = sidecar.chain match
+      case c: SnapshotSidecar.Chain.InShelley => sidecar.copy(chain = c.copy(params = dijkstra))
+      case other                              => fail(s"not a Shelley-based sidecar: $other")
+    val back = Codec
+      .decode(Codec.encode(withDijkstra)(using SnapshotSidecar.codec))(using SnapshotSidecar.codec)
+      .fold(e => fail(e.toString), identity)
+    assertEquals(shelleyParams(back), dijkstra)
+    Vector(SnapshotSidecarV8.codec, SnapshotSidecarV7.codec).foreach { codec =>
+      val frozen = Codec
+        .decode(Codec.encode(withDijkstra)(using codec))(using codec)
+        .fold(e => fail(e.toString), identity)
+      assertEquals(shelleyParams(frozen), shelleyParams(sidecar))
     }
   }

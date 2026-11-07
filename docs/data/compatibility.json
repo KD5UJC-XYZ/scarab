@@ -1456,7 +1456,7 @@
       "id": "persistence-snapshot-v9",
       "component": "Persistence: ledger snapshot format (V9)",
       "status": "implemented",
-      "summary": "Native snapshot format V9: the V8 layout whose sidecar names the Dijkstra era among the eras; V8 files, and V5 and V7 files through V8, migrate on open with no loss, the previous readers taking a frozen era codec",
+      "summary": "Native snapshot format V9: the V8 layout whose sidecar names the Dijkstra era among the eras and holds the protocol parameters with the fields Dijkstra adds; V8 files, and V5 and V7 files through V8, migrate on open with no loss, the previous readers taking a frozen era codec and a frozen parameter codec",
       "evidence": {
         "suites": [
           "SnapshotV9MigrationSuite",

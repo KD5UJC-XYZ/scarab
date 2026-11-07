@@ -13,7 +13,8 @@
 
 ### Changed (storage, #54)
 
-- Ledger snapshots are format V9 (`SCRBSNP9`): the V8 layout whose sidecar's eras include Dijkstra.
-  V8 snapshots, and V5 and V7 snapshots through V8, migrate on open with their binding, sidecar values
-  and Haskell bytes unchanged; the previous readers read eras with a frozen codec, so every previous
-  file reads as it was written.
+- Ledger snapshots are format V9 (`SCRBSNP9`): the V8 layout whose sidecar's eras include Dijkstra
+  and whose protocol parameters have the fields Dijkstra adds. V8 snapshots, and V5 and V7 snapshots
+  through V8, migrate on open with their binding, sidecar values and Haskell bytes unchanged, the new
+  parameter fields at their pre-Dijkstra defaults; the previous readers read eras and parameters with
+  frozen codecs, so every previous file reads as it was written.

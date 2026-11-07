@@ -64,9 +64,9 @@ class SnapshotGoldenSuite extends CatsEffectSuite:
   private val previewV8 = "f5e2584a862e521162c2098a99dd3268e74300f7aae6fd069279cbe94d831ad0"
   private val conwayV8 = "2eba1699708be0c1c99a2224f596ebedfced2043e5c92354e7413a534f443e95"
   private val nativeV8 = "c27be6850661f3fe1c01e5662d55873cf7f60074a5a16f285a62ca806908b647"
-  private val previewV9 = "e6d66c0c4fc7145915172d0dda973c30183838f15dfe6bd7b3454cb72be12cbf"
-  private val conwayV9 = "ca43eda41c4b54c31b13e5745004557d8f2ea9238efcfc2626e18f7be04cc995"
-  private val nativeV9 = "bddc83e850b58dd673bf0f4e5b003bd4992c844f2f332320cbd6f872235adb72"
+  private val previewV9 = "ddaad24d00de33e82cd4459f2f86fa9cb0d9bafc1681fc01ca639f3283bf6acf"
+  private val conwayV9 = "399826ff08ab1945ae258f53d7e3d23d060d587b6902a403107f5c656690d954"
+  private val nativeV9 = "a91a5009ff79d542fb1a63bb6e59433b952b0047b3df0266580736f8f0ce74bc"
   private def all(
       file: String,
       hashes: (String, String, String, String),
@@ -205,13 +205,13 @@ class SnapshotGoldenSuite extends CatsEffectSuite:
       val sourceContent = FileLedgerSnapshots.verified(source).fold(e => fail(e.message), identity)
       assertEquals(SnapshotV9.bindingOf(content), SnapshotV8.bindingOf(sourceContent), file)
       assertEquals(SnapshotV9.sidecarOf(content), SnapshotV8.sidecarOf(sourceContent), file)
-      // the binding, the sidecar's encoding and the Haskell bytes are kept; only the magic and
-      // the sidecar's schema fingerprint differ, the eras of a V8 file being encoded as before
+      // the binding, the sidecar's values and the Haskell bytes are kept; the magic, the sidecar's
+      // schema fingerprint and its parameters' encoding differ, the parameters gaining the fields
+      // Dijkstra adds at their defaults, the eras of a V8 file being encoded as before
       val (_, _, haskell) = SnapshotV9.sections(content).fold(e => fail(e.message), identity)
       val (_, _, sourceHaskell) =
         SnapshotV8.sections(sourceContent).fold(e => fail(e.message), identity)
       assertEquals(haskell, sourceHaskell, file)
-      assertEquals(content.length, sourceContent.length, file)
       assertEquals(content.drop(8).take(4).toVector, sourceContent.drop(8).take(4).toVector, file)
     }
   }

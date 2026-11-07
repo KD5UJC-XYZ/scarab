@@ -11,7 +11,8 @@ import xyz.kd5ujc.scarab.ledger.{FileKind, StorageError}
 
 /** The snapshot of format version 9 (the current one): the V5 body behind the binding of the
   * checkpoint the snapshot was written with, as V7 and V8 have it, whose sidecar names the eras
-  * with Dijkstra among them (#54); V8's named Byron to Conway ([[SnapshotSidecarV8]]):
+  * with Dijkstra among them and holds the protocol parameters with the fields Dijkstra adds (#54);
+  * V8's named Byron to Conway and held Conway's parameters ([[SnapshotSidecarV8]]):
   *
   * {{{
   * "SCRBSNP9" | binding length u32 | binding | V5 body
@@ -115,7 +116,8 @@ object SnapshotV9:
 
   /** The V9 content of a V8 file's content: its binding and Haskell bytes unchanged, its sidecar
     * read in the V8 schema and written in the current one. Every V8 sidecar converts: its eras are
-    * all eras of the current schema, and their encodings are unchanged.
+    * all eras of the current schema, and their encodings are unchanged; its parameters take the
+    * fields Dijkstra adds at their pre-Dijkstra defaults ([[FrozenProtocolParams.live]]).
     */
   def fromV8(content: Array[Byte]): Either[StorageError, Array[Byte]] =
     SnapshotV8

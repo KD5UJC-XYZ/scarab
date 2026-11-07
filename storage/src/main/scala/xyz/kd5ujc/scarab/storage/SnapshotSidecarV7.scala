@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets
 import xyz.kd5ujc.scarab.codec.{BinaryError, Bytes}
 import xyz.kd5ujc.scarab.consensus.state.MirrorExtras
 import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState, ConsensusExtras}
+import xyz.kd5ujc.scarab.ledger.ProtocolParams
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{FileKind, FormatLoss, FormatVersion, StorageError}
 import xyz.kd5ujc.scarab.ledger.byron.{
@@ -25,8 +26,8 @@ import xyz.kd5ujc.scarab.ledger.byron.{
   * [[StorageError.ResyncRequired]], because its metadata cannot be recovered and the node does not
   * invent it (ADR 0006). The schema fingerprint golden of `CodecSuite` keeps it the one those files
   * were written with: the frozen types below carry the names of the V7 types, the eras are those of
-  * the files before V9 ([[FrozenEra]]), and the other types are shared with the current schema,
-  * unchanged at V8 and V9.
+  * the files before V9 ([[FrozenEra]]), so are the protocol parameters ([[FrozenProtocolParams]]),
+  * and the other types are shared with the current schema, unchanged at V8 and V9.
   */
 private[storage] object SnapshotSidecarV7:
 
@@ -49,7 +50,8 @@ private[storage] object SnapshotSidecarV7:
 
   // The givens below that contain the update state or an era are named as those of `NodeCodecs`,
   // which they shadow: the derivations here find them, and the other givens of `NodeCodecs`,
-  // unchanged. The eras are the frozen ones of the files before V9 ([[FrozenEra]]).
+  // unchanged. The eras and the parameters are the frozen ones of the files before V9
+  // ([[FrozenEra]], [[FrozenProtocolParams]]).
   import NodeCodecs.given
 
   private val frozen: Codec[Frozen.UpdateState] = Codec.auto
@@ -98,6 +100,7 @@ private[storage] object SnapshotSidecarV7:
     def shape: String = frozen.shape
 
   given era: Codec[Era] = FrozenEra.codec
+  given protocolParams: Codec[ProtocolParams] = FrozenProtocolParams.codec
   given bootstrap: Codec[BootstrapState] = Codec.auto
   given byron: Codec[ByronState] = Codec.auto
   given consensusExtras: Codec[ConsensusExtras] = Codec.auto
