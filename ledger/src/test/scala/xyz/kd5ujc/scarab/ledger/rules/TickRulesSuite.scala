@@ -7,6 +7,7 @@ import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.TestLedger
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraFixture
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -266,12 +267,30 @@ class TickRulesSuite extends FunSuite:
     assertEquals(enteredAt.toEra, Era.Conway)
   }
 
-  test("a transition out of Conway is refused: the translation into Dijkstra is not implemented") {
+  test(
+    "a transition out of Conway translates into Dijkstra, whose EPOCH is refused; without a Dijkstra genesis it is refused"
+  ) {
     val leaveConway: Hfc.Transition = p => Option.when(p.era == Era.Conway)(BigInt(7))
     val from = EraNes.InEra(ShelleyBasedEra.SConway, enterConway(babbage(conway(5, 10, 2))))
+    val withGenesis =
+      globals.copy(ledger = globals.ledger.copy(dijkstra = Some(DijkstraFixture.genesis)))
+    // the state is of epoch 6: a slot of epoch 7 crosses its boundary in Dijkstra, one of epoch 8
+    // does not (NEWEPOCH moves only to the next epoch)
+    assertEquals(
+      Hfc
+        .tick(withGenesis, leaveConway)(from, 0L, ok(SlotNo.fromBigInt(first(7) + 10)))
+        .map(_.toEra),
+      Left(TickFailure.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Rules))
+    )
+    assertEquals(
+      Hfc
+        .tick(withGenesis, leaveConway)(from, 0L, ok(SlotNo.fromBigInt(first(8) + 10)))
+        .map(_.toEra),
+      Right(Era.Dijkstra)
+    )
     assertEquals(
       Hfc.tick(globals, leaveConway)(from, 0L, ok(SlotNo.fromBigInt(first(8) + 10))).map(_.toEra),
-      Left(TickFailure.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Translation))
+      Left(TickFailure.NoDijkstraGenesis)
     )
   }
 

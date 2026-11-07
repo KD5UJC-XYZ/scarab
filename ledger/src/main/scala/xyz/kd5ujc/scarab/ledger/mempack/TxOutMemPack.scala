@@ -115,6 +115,32 @@ object TxOutMemPack:
           else CborRead.bytes(two(1), DecodeField.PlutusScript).leftMap(Failure.ScriptRefused(_))
       yield RefScript(kind, bytes)
 
+  /** `out` with the native reference script `script` encoded as `original` in place of the one it
+    * has, and the encoding the reference writes for an output it holds in compact form as its
+    * original bytes (the translation into Dijkstra memoizes a native script's encoding anew,
+    * `xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraScript.upgradeTimelock`).
+    */
+  def withNativeReference(
+      out: TxOut,
+      original: Bytes,
+      script: xyz.kd5ujc.scarab.ledger.NativeScript
+  ): TxOut =
+    val p = TxOutParts(
+      out.address.raw,
+      out.value,
+      out.datum,
+      Some(RefScript(ScriptKind.Native, original))
+    )
+    val valueCbor = CanonicalCbor.value(p.value)
+    TxOut(
+      CanonicalCbor.output(p, valueCbor),
+      out.address,
+      out.value,
+      out.datum,
+      Some(Script.nativeOf(original, script)),
+      valueCbor.size
+    )
+
   /** The node's output for `p`, with the canonical encoding (the legacy array without an inline
     * datum or a script, else the keyed map) as its original bytes.
     */
