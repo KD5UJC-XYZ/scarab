@@ -29,6 +29,12 @@ discovery.relabel "scarab" {
     target_label = "host"
     replacement  = sys.env("SCARAB_HOST")
   }
+  rule {
+    // a long-lived node declares what it is with the container label scarab.role (pool for a producer);
+    // the pool alert rules select role="pool", and PoolNodeMetricsMissing watches every node with a role
+    source_labels = ["__meta_docker_container_label_scarab_role"]
+    target_label  = "role"
+  }
 }
 
 // ---- logs: what each node writes to stdout (the readable rolling segment) -------------------
