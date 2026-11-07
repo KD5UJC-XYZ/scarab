@@ -12,6 +12,10 @@ Setup (all runs): multi-core host, Docker, JDK 21 Temurin, Preview via
 from the running node and aggregated over `jdk.ExecutionSample`; JFR samples a few threads per
 interval, so shares below are shares of samples.
 
+## Retained mutation
+
+The mutation the main sources still keep — every `@SuppressWarnings` that holds a `var` in place — is indexed in [retained mutable state](performance/mutable-state.md): the cluster, the declarations it keeps, the reason for each, and the section here that measures it, or the issue that owns the missing measurement.
+
 ## Log
 
 One row per measurement section, in the order the sections were written; the section number is the one other documents and code comments cite.
