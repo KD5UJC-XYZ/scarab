@@ -48,6 +48,7 @@ enum TickFailure derives Eq, Show:
     * `DijkstraGenesisFile` (`NodeConfig`), and the node refuses that setting as unsupported for
     * now. The reference would translate with `emptyDijkstraGenesis` (cardano-node b004fe0c
     * `Protocol/Cardano.hs:137-144`) instead, so this refusal stands where Scarab has no genesis.
+    * That difference is a deviation the owner approved on 2026-11-07 (#54, `docs/decisions.md`).
     */
   case NoDijkstraGenesis
 
