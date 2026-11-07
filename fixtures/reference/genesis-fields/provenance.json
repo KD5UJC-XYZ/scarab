@@ -1,6 +1,4 @@
 {
-  "schemaVersion": 1,
-  "scope": "Unchanged released FromJSON parsers of the Shelley, Alonzo and Conway genesis files: whole repository genesis files, a single field removed or replaced, and values the types decide; parser verdicts only, no state or rule execution",
   "bases": {
     "fixtures/chain-dep/genesis/alonzo-genesis.json": "4291b3e5fbcdd1f1daed9ab8f78e4d0181eb7eac4506e34c8aa0fecab6051f3b",
     "fixtures/chain-dep/genesis/conway-genesis.json": "2a60e746879c56d36719b00f845d420cd5ee695278b1d318593edb319129b09b",
@@ -64,7 +62,7 @@
     "fixtures/reference/refusals/genesis/d026fc894a092109affb78366bff668c0367e8a65c7a356b2fe812e01e41e366-conway-genesis.json": "d026fc894a092109affb78366bff668c0367e8a65c7a356b2fe812e01e41e366",
     "fixtures/reference/refusals/genesis/e99e4cd9ee4018023eb83aad69566b39a30120ddf98decc16e7dc4cd6d96f423-shelley-genesis.json": "e99e4cd9ee4018023eb83aad69566b39a30120ddf98decc16e7dc4cd6d96f423"
   },
-  "cases": 279,
+  "cases": 301,
   "image": "scarab-genesis-fields497-oracle:local",
   "imageId": "sha256:901c3a426eb87c360d5e359ad623303d9a92b5d0a45106fa24b6730af7495e7c",
   "ledger": {
@@ -77,5 +75,7 @@
     "revision": "f649f975"
   },
   "program": "scripts/oracle/genesis-fields/Main.hs",
-  "programSha256": "a6268169331d2935a9d37323eb8e5c81b08ed791a1ce65df79c22e40bc218569"
+  "programSha256": "a6268169331d2935a9d37323eb8e5c81b08ed791a1ce65df79c22e40bc218569",
+  "schemaVersion": 1,
+  "scope": "Unchanged released FromJSON parsers of the Shelley, Alonzo and Conway genesis files: whole repository genesis files, a single field removed or replaced, and values the types decide; parser verdicts only, no state or rule execution"
 }

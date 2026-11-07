@@ -142,6 +142,14 @@ def specials():
     # the quorum is a Word64
     for value, label in ((2**31, "past31Bits"), (WORD64_MAX, "word64Max"), (WORD64_MAX + 1, "pastWord64")):
         out.append(case("shelley", MUTATED, "replace", ["updateQuorum"], value, label))
+    # the Shelley parameters held as `CompactForm Coin` (a Word64, `CoinPerByte` for minFeeA), and
+    # the Conway deposits, which the genesis holds as an unbounded `Coin` (#573)
+    for key in ("minFeeA", "minFeeB", "keyDeposit", "poolDeposit", "minUTxOValue", "minPoolCost"):
+        for value, label in ((-1, "negative"), (WORD64_MAX, "word64Max"), (WORD64_MAX + 1, "pastWord64")):
+            out.append(case("shelley", MUTATED, "replace", ["protocolParams", key], value, label))
+    for key in ("dRepDeposit", "govActionDeposit"):
+        for value, label in ((-1, "negative"), (WORD64_MAX + 1, "pastWord64")):
+            out.append(case("conway", MUTATED, "replace", [key], value, label))
     # the optional fields and the map entries, on files that have them
     staked = "devnet-lsq"
     out += [
@@ -247,6 +255,10 @@ def main():
         CASES_FILE.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in results))
         image = subprocess.check_output(["docker", "image", "inspect", IMAGE, "--format", "{{.Id}}"], text=True).strip()
         PROVENANCE.write_text(json.dumps({
+            "schemaVersion": 1,
+            "scope": "Unchanged released FromJSON parsers of the Shelley, Alonzo and Conway genesis files: "
+                     "whole repository genesis files, a single field removed or replaced, and values the types "
+                     "decide; parser verdicts only, no state or rule execution",
             "image": IMAGE,
             "imageId": image,
             "ledger": {"repository": "IntersectMBO/cardano-ledger", "revision": "f649f975",

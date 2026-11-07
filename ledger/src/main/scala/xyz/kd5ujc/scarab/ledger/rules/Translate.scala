@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{
   Committee,
   Constitution,
@@ -205,6 +206,22 @@ object Translate:
       )
     )
 
+  /** `upgradeConwayPParamsHKD` (`Conway/PParams.hs:1143-1144`, cardano-ledger f649f975) compacts
+    * the Conway genesis deposits with `compactCoinOrError` (`asCompactCoinHKD`, `:1258-1259`): the
+    * genesis holds them as an unbounded `Coin` (`:752-753`), so one outside `Word64` aborts the
+    * reference when the chain enters Conway. That is this state leaving its vocabulary
+    * ([[TickFailure.Vocab]]), the governance deposit first, as the record has them. It is the only
+    * reachable case of a deposit out of range: the Shelley genesis and every parameter update read
+    * the others as `Word64` (#573).
+    */
+  private def conwayDeposits(globals: Globals): Either[TickFailure, Unit] =
+    globals.ledger.conway.fold(Right(()))(c =>
+      (CompactCoin.fromBigInt(c.govActionDeposit) *> CompactCoin.fromBigInt(
+        c.drepDeposit
+      )).void.left
+        .map(TickFailure.Vocab(_))
+    )
+
   /** `TranslateEra ConwayEra NewEpochState` (`Conway/Translation.hs:69,131,156,165`): the accounts
     * lose their pointers and have no DRep delegation, the pointer stake goes, the governance state
     * is new (the committee and the constitution of the genesis, no proposals) with the pulser
@@ -260,7 +277,7 @@ object Translate:
         ls.cert.dState.iRewards
       )
     )
-    Right(
+    conwayDeposits(globals).as(
       NewEpochState[Conway](
         nes.epoch,
         nes.bprev,

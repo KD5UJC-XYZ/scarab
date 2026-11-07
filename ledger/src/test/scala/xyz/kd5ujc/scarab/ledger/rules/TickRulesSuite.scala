@@ -299,6 +299,36 @@ class TickRulesSuite extends FunSuite:
     assertEquals(after.avvm, ())
   }
 
+  test(
+    "into Conway, a genesis deposit outside Word64 leaves the vocabulary, as compactCoinOrError aborts"
+  ) {
+    val babbage = NativeRules.stateIn[Babbage](7, Vector.empty)
+    val word64Max = BigInt(2).pow(64) - 1
+    def conway(govActionDeposit: BigInt, drepDeposit: BigInt): Globals =
+      val g = NativeRules.globals(NativeRules.ledgerGlobals)
+      val params = xyz.kd5ujc.scarab.ledger.ConwayParams(
+        drepDeposit,
+        20,
+        govActionDeposit,
+        10,
+        xyz.kd5ujc.scarab.codec.Rational(0)
+      )
+      g.copy(ledger = g.ledger.copy(conway = Some(params)))
+    def outcome(g: Globals): Either[TickFailure, Unit] =
+      Translate.babbageToConway(g, babbage).map(_ => ())
+    assertEquals(outcome(conway(word64Max, word64Max)), Right(()))
+    for (gov, drep) <- List(
+        (word64Max + 1, BigInt(0)),
+        (BigInt(0), word64Max + 1),
+        (BigInt(-1), BigInt(0))
+      )
+    do
+      assert(
+        outcome(conway(gov, drep)).left.exists(_.isInstanceOf[TickFailure.Vocab]),
+        s"$gov $drep"
+      )
+  }
+
   test("the hand-over from Byron: the UTxO without the empty outputs, the redeem outputs stashed") {
     import xyz.kd5ujc.scarab.ledger as node
     import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronOut}
