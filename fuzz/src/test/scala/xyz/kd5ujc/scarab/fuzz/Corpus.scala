@@ -100,6 +100,54 @@ object Corpus extends munit.Assertions:
   /** Blocks of tag 7 and 8 of the same chain. */
   lazy val leiosBlocks: Vector[Array[Byte]] = leiosColumn("blocks-rc-2026w44.tsv", 5)
 
+  /** A column (hex) of a tab-separated file of the Conway to Dijkstra devnet chain, header skipped.
+    */
+  private def dijkstraColumn(file: String, column: Int): Vector[Array[Byte]] =
+    Files
+      .readAllLines(Path.of("fixtures", "dijkstra-devnet", file))
+      .asScala
+      .toVector
+      .drop(1)
+      .filter(_.startsWith("8\t"))
+      .flatMap(l => Bytes.fromHex(l.split('\t')(column)).toOption.map(_.toArray))
+
+  /** The Dijkstra blocks `[8, block]` of the devnet chain and the public Leios testnet. */
+  lazy val dijkstraBlocks: Vector[Array[Byte]] =
+    dijkstraColumn("blocks.tsv", 4) ++ leiosBlocks
+
+  /** The Dijkstra headers of the devnet chain and the Leios testnet. */
+  lazy val dijkstraHeaders: Vector[Array[Byte]] = dijkstraColumn("headers.tsv", 4) ++ leiosHeaders
+
+  /** The transactions of the Dijkstra blocks in their block form, `is_valid` last. */
+  lazy val dijkstraInBlock: Vector[Array[Byte]] =
+    dijkstraBlocks.flatMap(b =>
+      xyz.kd5ujc.scarab.ledger.LeiosBlock
+        .decode(Bytes.fromArray(b))
+        .toOption
+        .toVector
+        .flatMap(_.transactions.map(_.raw.toArray))
+    )
+
+  /** The devnet's transaction in the mempool form (`transaction.json`) and the block forms. */
+  lazy val dijkstraSubmitted: Vector[Array[Byte]] =
+    "\"cborHex\"\\s*:\\s*\"([0-9a-f]+)\"".r
+      .findFirstMatchIn(
+        Files.readString(Path.of("fixtures", "dijkstra-devnet", "transaction.json"))
+      )
+      .flatMap(m => Bytes.fromHex(m.group(1)).toOption.map(_.toArray))
+      .toVector ++ dijkstraInBlock
+
+  /** The bodies and the witness sets of those transactions. */
+  def dijkstraParts(index: Int): Vector[Array[Byte]] =
+    dijkstraInBlock.flatMap(t =>
+      Cbor
+        .decode(Bytes.fromArray(t))
+        .toOption
+        .flatMap(_.value match
+          case Value.Arr(xs) => xs.lift(index).map(_.original.toArray)
+          case _             => None)
+    )
+
   def txBodies(era: Era): Vector[Array[Byte]] =
     shelleyBlocks.filter(_.era == era).flatMap(_.transactions.map(_.body.toArray)) ++
       lines("fixtures/reference/remaining-predicates/metadata-bodies.hex")
