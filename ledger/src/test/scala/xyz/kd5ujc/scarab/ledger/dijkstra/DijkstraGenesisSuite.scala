@@ -93,7 +93,7 @@ class DijkstraGenesisSuite extends FunSuite:
     assertEquals(p.refInputsCostPerDatumByte, int("refInputsCostPerDatumByte"))
 
   test("the fixture holds both files whole, refusals and acceptances") {
-    assertEquals(rows.size, 107)
+    assertEquals(rows.size, 133)
     assertEquals(rows.count(r => field[String](r, "op") == "none" && accepted(r)), 2)
     assert(rows.exists(r => !accepted(r)))
     assert(rows.exists(r => field[String](r, "op") == "replace" && accepted(r)))

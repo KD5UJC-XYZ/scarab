@@ -3,7 +3,7 @@
 """Reference verdicts of the Dijkstra genesis parser of the Leios testnet build (#54).
 
 Each case is a Dijkstra genesis file of the repository, whole or with one change: a field removed,
-a field of the wrong JSON type, or a value the reference's type refuses. The fixture keeps the
+a field of the wrong JSON type or null, or a value the reference's type refuses. The fixture keeps the
 change, not the changed file, so the suite rebuilds the input from the base file.
 
   run.py            offline: the generated cases equal the recorded ones; the base files are unchanged
@@ -57,7 +57,7 @@ def case(base, op, path, value=None, label=None):
 
 
 def mutations():
-    """Each field removed and given the wrong type, and one level into the execution units."""
+    """Each field removed, given the wrong type and given null, and one level into the execution units."""
     document = load(MUTATED)
     out = []
     for prefix in ["", "maxEndorserBlockExecutionUnits"]:
@@ -68,6 +68,7 @@ def mutations():
         for key, value in node.items():
             out.append(case(MUTATED, "remove", path + [key]))
             out.append(case(MUTATED, "replace", path + [key], wrong(value), "wrongType"))
+            out.append(case(MUTATED, "replace", path + [key], None, "null"))
     return out
 
 

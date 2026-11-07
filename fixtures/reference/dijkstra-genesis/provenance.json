@@ -3,8 +3,8 @@
     "fixtures/dijkstra-devnet/genesis/dijkstra-genesis.json": "9417f82cc2405de8e834222818f45c23759d6ac6c6c6f515f68c689eaa597fc0",
     "fixtures/leios/testnet/config/dijkstra-genesis.json": "9895c096a45225e99630b3fb866e5b115ce3d28c6ecd45ceda8feb0e29306127"
   },
-  "cases": 107,
-  "casesSha256": "d2de1b2b217925b3cf6a2a047cdb67cf6a2270cf2b21a1cd616e3c91a37ddb7f",
+  "cases": 133,
+  "casesSha256": "90a8e6107bd13b29bd82aa5b3cc436cbd06c2641c6fafc454cbc78fe43198569",
   "image": "scarab-dijkstra-genesis-oracle:local",
   "imageId": "sha256:233d7324b3b5d288ab7fe7a1d7b1ecb6797887079b10705cdf249e0a3fb9ac0e",
   "ledger": {
