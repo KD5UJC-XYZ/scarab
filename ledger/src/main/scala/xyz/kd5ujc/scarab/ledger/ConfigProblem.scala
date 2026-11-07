@@ -164,12 +164,13 @@ enum AvvmKeyError:
 
 /** A genesis file of the Shelley-based eras. */
 enum GenesisFile:
-  case Shelley, Alonzo, Conway
+  case Shelley, Alonzo, Conway, Dijkstra
 
   def label: String = this match
-    case Shelley => "Shelley"
-    case Alonzo  => "Alonzo"
-    case Conway  => "Conway"
+    case Shelley  => "Shelley"
+    case Alonzo   => "Alonzo"
+    case Conway   => "Conway"
+    case Dijkstra => "Dijkstra"
 
 /** Why the reference's genesis parser refuses a field ([[GenesisSchema]]). */
 enum GenesisFieldError:
