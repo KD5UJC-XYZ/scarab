@@ -47,7 +47,10 @@ enum BlockNoVerdict:
   case Verification(defect: xyz.kd5ujc.scarab.ledger.VerificationDefect)
 
   /** A quantity of the ledger state the block's rules convert is outside its implementation type
-    * (`ChainError.StateOutOfRange`); what the protocol specification says is #573.
+    * (`ChainError.StateOutOfRange`). The specification gives no verdict (`Coin` is a natural
+    * number); only a malformed genesis reaches it: a Conway genesis deposit outside `Word64` at the
+    * upgrade into Conway, or an epoch of 2^32 slots or more for the transition counter (#573, ADR
+    * 0017's amendment of 2026-11-07).
     */
   case StateOutOfRange(error: xyz.kd5ujc.scarab.ledger.ChainError)
 

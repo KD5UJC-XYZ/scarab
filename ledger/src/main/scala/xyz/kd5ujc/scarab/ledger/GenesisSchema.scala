@@ -231,14 +231,20 @@ object GenesisSchema:
         .filter(_ == Json.fromString("Nonce"))
         .traverse_(_ => obj(req("contents", hash(32)))(json))
 
+  /** The Shelley genesis parameters (`instance FromJSON LegacyJSONPParams`,
+    * `Shelley/Genesis.hs:403-425`, cardano-ledger f649f975). The fees, deposits and minimums are
+    * read into `CompactForm Coin` and `CoinPerByte`, both `FromJSON Word64` (`Coin.hs:150, 222`): a
+    * negative value or one above `Word64` refuses the file, so no deposit of the ledger state can
+    * leave that range (#573).
+    */
   private val shelleyParams: Check = obj(
-    req("minFeeA", integer),
-    req("minFeeB", integer),
+    req("minFeeA", word64),
+    req("minFeeB", word64),
     req("maxBlockBodySize", word(32)),
     req("maxTxSize", word(32)),
     req("maxBlockHeaderSize", word(16)),
-    req("keyDeposit", integer),
-    req("poolDeposit", integer),
+    req("keyDeposit", word64),
+    req("poolDeposit", word64),
     req("eMax", word(32)),
     req("nOpt", word(16)),
     req("a0", bounded(BoundedRatio.NonNegative)),
@@ -247,8 +253,8 @@ object GenesisSchema:
     req("decentralisationParam", bounded(BoundedRatio.Unit)),
     req("extraEntropy", nonce),
     req("protocolVersion", obj(req("major", version), req("minor", natural))),
-    opt("minUTxOValue", integer),
-    opt("minPoolCost", integer)
+    opt("minUTxOValue", word64),
+    opt("minPoolCost", word64)
   )
 
   private def address(hex: String): Either[GenesisFieldError, Unit] =
