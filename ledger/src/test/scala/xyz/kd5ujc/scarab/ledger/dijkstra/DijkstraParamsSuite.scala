@@ -27,13 +27,18 @@ class DijkstraParamsSuite extends FunSuite:
     )
 
   test("each key present replaces its field and the others are kept") {
+    val committeeSize300 = 43 -> "19012c"
+    val pledgeLeverageHalf = 38 -> "d81e820102"
+    val endorserUnits5And6 = 47 -> "820506"
+    val bootstrapRound5 = 53 -> "05"
+    // a Conway key is the flat parameters' and is left alone here
+    val conwayMinFeeA = 0 -> "1901f4"
     val u = update(
-      43 -> "19012c", // leiosCommitteeSize 300
-      38 -> "d81e820102", // maxPledgeLeverage 1/2
-      47 -> "820506", // maxEndorserBlockExUnits (5, 6)
-      53 -> "05", // perasBootstrapRound 5
-      // a Conway key is the flat parameters' and is left alone here
-      0 -> "1901f4"
+      committeeSize300,
+      pledgeLeverageHalf,
+      endorserUnits5And6,
+      bootstrapRound5,
+      conwayMinFeeA
     )
     val updated = DijkstraParams.update(genesis, u).fold(e => fail(e.toString), identity)
     assertEquals(
@@ -69,7 +74,8 @@ class DijkstraParamsSuite extends FunSuite:
       Left(LedgerDecodeError.NumberOutOfRange(what, 65536, 0, 65535))
     )
     // a PositiveInterval is not zero
-    assert(DijkstraParams.update(genesis, update(37 -> "d81e820001")).isLeft)
+    val zeroMultiplier = 37 -> "d81e820001"
+    assert(DijkstraParams.update(genesis, update(zeroMultiplier)).isLeft)
     assertEquals(
       DijkstraParams.update(genesis, update(57 -> "00")),
       Left(LedgerDecodeError.UnknownKey(what, 57))

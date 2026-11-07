@@ -66,21 +66,31 @@ object DijkstraParams:
   private val w32 = word(V12.Word32Max)
   private val w64 = word(V12.Word64Max)
 
+  /** `NonZero Word32` (`BaseTypes/NonZero.hs:102-103`). */
+  private val stride: Set = (p, n) =>
+    V12
+      .word32(n, what)
+      .flatMap(v =>
+        Either.cond(v != 0, p.copy(refScriptCostStride = v), LedgerDecodeError.Zero(what))
+      )
+
+  /** `ExUnits` from version 12 (`Plutus/ExUnits.hs:208-230`): two `Word64` within `Int64`. */
+  private val endorserUnits: Set = (p, n) =>
+    def part(x: Node) = V12.word(x, DecodeField.ExUnits, V12.Int64Max)
+    V12
+      .record(n, 2, DecodeField.ExUnits)
+      .flatMap(xs => (part(xs(0)), part(xs(1))).mapN(ExUnits(_, _)))
+      .map(v => p.copy(maxEndorserBlockExUnits = v))
+
   /** The setter of each update key, its value read by the decoder of [[DijkstraParamUpdate]]:
     * `decCBOR` of the field's type, the Peras bootstrap round null or a `Word32`
-    * (`ppPerasBootstrapRound`'s `EraCodec`, `PParams.hs:1074-1078`).
+    * (`ppPerasBootstrapRound`'s `EraCodec`, `PParams.hs:1074-1078`), a `Coin` by `decodeWord64`
+    * (`Coin.hs:107-112`) and a `CoinPerByte` as a compact coin, a `Word64`.
     */
   private val setters: Map[Int, Set] = Map(
     34 -> w32((p, v) => p.copy(maxRefScriptSizePerBlock = v)),
     35 -> w32((p, v) => p.copy(maxRefScriptSizePerTx = v)),
-    // `NonZero Word32` (`BaseTypes/NonZero.hs:102-103`)
-    36 -> ((p, n) =>
-      V12
-        .word32(n, what)
-        .flatMap(v =>
-          Either.cond(v != 0, p.copy(refScriptCostStride = v), LedgerDecodeError.Zero(what))
-        )
-    ),
+    36 -> stride,
     37 -> ratio(Interval.Positive)((p, v) => p.copy(refScriptCostMultiplier = v)),
     38 -> ((p, n) =>
       V12
@@ -95,14 +105,7 @@ object DijkstraParams:
     44 -> ratio(Interval.Unit)((p, v) => p.copy(leiosQuorumStakeThreshold = v)),
     45 -> w32((p, v) => p.copy(maxEndorserBlockReferencesSize = v)),
     46 -> w32((p, v) => p.copy(maxEndorserBlockTxsSize = v)),
-    // `ExUnits` from version 12 (`Plutus/ExUnits.hs:208-230`): two `Word64` within `Int64`
-    47 -> ((p, n) =>
-      def part(x: Node) = V12.word(x, DecodeField.ExUnits, V12.Int64Max)
-      V12
-        .record(n, 2, DecodeField.ExUnits)
-        .flatMap(xs => (part(xs(0)), part(xs(1))).mapN(ExUnits(_, _)))
-        .map(v => p.copy(maxEndorserBlockExUnits = v))
-    ),
+    47 -> endorserUnits,
     48 -> w32((p, v) => p.copy(maxRefScriptSizePerEndorserBlock = v)),
     49 -> w32((p, v) => p.copy(perasMinCandidateBlockAge = v)),
     50 -> ratio(Interval.Positive)((p, v) => p.copy(perasHealingFactor = v)),
@@ -112,7 +115,6 @@ object DijkstraParams:
       V12.nullable(n)(V12.word(_, what, V12.Word32Max)).map(v => p.copy(perasBootstrapRound = v))
     ),
     54 -> ratio(Interval.Unit)((p, v) => p.copy(perasQuorumThresholdSafetyMargin = v)),
-    // `Coin` (`decodeWord64`, `Coin.hs:107-112`) and `CoinPerByte` (a compact coin)
     55 -> w64((p, v) => p.copy(refInputsCostPerMultiAssetPolicy = v)),
     56 -> w64((p, v) => p.copy(refInputsCostPerDatumByte = v))
   )
