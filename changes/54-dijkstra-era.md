@@ -6,10 +6,9 @@
   `TestDijkstraHardForkAtEpoch` is carried into the hard-fork configuration.
 - The node does not enter Dijkstra: its trigger never fires while the maximum major protocol version
   is 11, so the chain stays in Conway and the era summary announces no end of Conway. A Dijkstra
-  header in the closed header codec, a block of tag 8, a Dijkstra transaction, a Dijkstra ledger state
-  in the Haskell `state` layout, the translation from Conway, a genesis start in Dijkstra and its
-  EPOCH rule are refused with a typed `DijkstraNotYet` cause. The Leios header envelope keeps reading
-  index 7 as raw bytes.
+  ledger state in the Haskell `state` layout, the translation from Conway, a genesis start in Dijkstra
+  and its ledger rules are refused with a typed `DijkstraNotYet` cause. The Leios header envelope
+  keeps reading index 7 as raw bytes.
 
 ### Changed (storage, #54)
 
