@@ -1,0 +1,17 @@
+{
+  "cases": 2,
+  "consensusRepository": "IntersectMBO/ouroboros-consensus",
+  "consensusSourceCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+  "executableSha256": "1c16288245e3e68527e8c58f27bb6e6f53b01f097ec85fe7d07470f83e7a7c39",
+  "genesis": {
+    "fixtures/preprod/genesis/byron-genesis.json": "d88fbffdf78daaccfaddf504e95840c73ce527c06fa4140aefb55d3f91c00cef",
+    "fixtures/preprod/genesis/shelley-genesis.json": "4b9d32c09159c2948e4386ba1f59db5a249a89b43b84dfd8368f465e650095de"
+  },
+  "image": "scarab-v02-49-protocols-cache:peer-acceptance-20261019",
+  "imageId": "sha256:b9e81590371f7d1784b0e4a62eac7560e0da3498d8b1a6b791e50f6420ae15fb",
+  "planSha256": "cf7d78edc6a2c573690361d188fea35e1ded68603cf3f4c28ca222effd5fe4db",
+  "program": "scripts/oracle/era-history/Main.hs",
+  "programSha256": "35015c23ed135748c0792b212ba35eea1b6b14fc4497a1f78f0d6e4c86033e21",
+  "schemaVersion": 1,
+  "scope": "The reference's GetInterpreter answer (reconstructSummary, mkInterpreter, Serialise) for hard-fork states of a chain with the preprod genesis; the era parameters are the production byronEraParams and shelleyEraParams of those files"
+}
