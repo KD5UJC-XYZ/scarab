@@ -16,6 +16,11 @@ enum BlockTransportError extends DomainError:
   case ByronBodyDecode(cause: LedgerDecodeError)
   case ByronBodyProof(cause: ByronError)
 
+  /** A Dijkstra block whose certificate disagrees with its header's flag, or that carries a
+    * certificate and transactions ([[LeiosBlock.Fault]]).
+    */
+  case LeiosBody(fault: LeiosBlock.Fault)
+
   def message: String = this match
     case Decode(cause)                 => cause.message
     case WrongEra(expected, actual)    => s"fetched $actual block for $expected header"
@@ -26,6 +31,7 @@ enum BlockTransportError extends DomainError:
       s"fetched transaction ${id.hex} does not decode: ${cause.message}"
     case ByronBodyDecode(cause) => s"fetched Byron body does not decode: ${cause.message}"
     case ByronBodyProof(cause)  => cause.message
+    case LeiosBody(fault)       => s"fetched Dijkstra body does not match its header: $fault"
 
 /** The pinned BlockFetch client's point/body checks, before storage or ledger selection.
   * Shelley/Ledger/Block.hs:211 checks the body hash, not its declared size. Byron delegates to
@@ -60,6 +66,22 @@ object BlockTransport:
             (),
             BlockTransportError.WrongBodyHash(header.bodyHash, body.bodyHash)
           )
+        // `blockMatchesHeader` of Praos2 (ouroboros-consensus 2416493b
+        // `Shelley/Ledger/Block.hs:224-231`): the body hash, the certificate flag, and no
+        // certificate with transactions; the body size is BBODY's. The transactions were decoded
+        // whole with the block ([[LeiosBlock]]).
+        case (header: Header.Shelley, body: Block.Dijkstra) =>
+          Either.cond(
+            body.bodyHash == header.bodyHash,
+            (),
+            BlockTransportError.WrongBodyHash(header.bodyHash, body.bodyHash)
+          ) *> body.block.faults
+            .collectFirst {
+              case f @ (LeiosBlock.Fault.CertificateFlagDiffers(_, _) |
+                  LeiosBlock.Fault.CertificateWithTransactions(_)) =>
+                BlockTransportError.LeiosBody(f)
+            }
+            .toLeft(())
         case (header: Header.Byron, body: Block.Byron) =>
           ByronTransport
             .check(body.body, body.extra, header.boundary)

@@ -58,6 +58,8 @@ a later block than the first Dijkstra block above; `firstDijkstraBlock` is taken
 
 `scripts/tests/test_devnet_dijkstra.py` checks that the files are what the capture code writes
 from the blocks, that the chain is contiguous, and the transaction's place and forms.
+`DijkstraCodecsSuite` (ledger) reads every block, header and the transaction with the node's
+decoders, and the `dijkstra-*` fuzz targets take them as seeds.
 
 ## Cross-check with the pinned ledger
 
