@@ -12,7 +12,10 @@ import xyz.kd5ujc.scarab.ledger.{
   TxBody,
   Witnesses
 }
+import xyz.kd5ujc.scarab.consensus.{ForkTrigger, HardForkConfig}
+import xyz.kd5ujc.scarab.ledger.EnvelopeError
 import xyz.kd5ujc.scarab.ledger.mempack.{MemPack, TxOutMemPack}
+import xyz.kd5ujc.scarab.ledger.rules.Hfc
 import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.models.runtime.DecodeError
 import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, HfcHeader, NtNHeader}
@@ -59,6 +62,47 @@ class DijkstraNotYetSuite extends FunSuite:
     assertEquals(Tx.fromEnvelope(empty, Era.Dijkstra), refused)
     assert(
       Block.decodeShelley(cbor(Value.Arr(Vector(node(Value.UInt(8)), node(Value.Null))))).isLeft
+    )
+  }
+
+  test("a decoded Dijkstra header of the devnet chain is refused by the hard-fork envelope") {
+    val rows = java.nio.file.Files
+      .readAllLines(java.nio.file.Path.of("fixtures", "dijkstra-devnet", "headers.tsv"))
+      .toArray(Array.empty[String])
+      .toVector
+      .map(_.split('\t'))
+      .filter(_(0) == "8")
+    assert(rows.nonEmpty)
+    val raw = Bytes.fromHex(rows(0)(4)).fold(e => fail(e.toString), identity)
+    val header = xyz.kd5ujc.scarab.ledger.Header
+      .fromRaw(Era.Dijkstra, raw)
+      .fold(e => fail(e.message), identity)
+    assertEquals(header.era, Era.Dijkstra)
+    // the devnet's trigger, Dijkstra at epoch 1, under this build's maximum major version of 11
+    val forks = HardForkConfig(
+      Map(
+        Era.Conway -> ForkTrigger.AtEpoch(BigInt(0)),
+        Era.Dijkstra -> ForkTrigger.AtEpoch(BigInt(1))
+      ),
+      HardForkConfig.MaxMajorProtVer
+    )
+    val epoch = BigInt(1)
+    val expected = forks.eraOf(BigInt(5))(Hfc.Pending(Era.Conway, BigInt(0), None, 0L), epoch)
+    assertEquals(expected, Era.Conway)
+    assertEquals(
+      forks.check(
+        header.era,
+        expected,
+        epoch,
+        header.protocolVersion._1,
+        BigInt(12),
+        BigInt(raw.size),
+        BigInt(1100),
+        header.bodySize,
+        BigInt(90112),
+        mainnet = false
+      ),
+      Left(EnvelopeError.WrongEra(Era.Dijkstra, Era.Conway, epoch, BigInt(12)))
     )
   }
 
