@@ -88,13 +88,13 @@ class HotPathEquivalenceSuite extends ScalaCheckSuite:
     }
   }
 
-  property("credentials sort as they did by kind, then the hex of the hash") {
+  property("credentials sort by kind, a script before a key, then the hex of the hash") {
     val genCredential = for
       hash <- genBytes
       script <- Gen.oneOf(true, false)
     yield if script then Credential.Script(hash) else Credential.Key(hash)
     forAll(Gen.listOf(genCredential)) { cs =>
-      cs.sorted == cs.sortBy(c => (c.ordinal, c.hash.hex))
+      cs.sorted == cs.sortBy(c => (c.isKey, c.hash.hex))
     }
   }
 

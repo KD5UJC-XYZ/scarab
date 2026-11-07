@@ -67,18 +67,9 @@ object Voter:
   /** [[order]] for the standard library's sorts. */
   given ordering: Ordering[Voter] = order.toOrdering
 
-  /** The derived `Ord (Credential r)`: a script before a key, then the hash. Not the legacy
-    * `Ordering[Credential]`, which puts the key first.
-    */
-  private def credential(x: Credential, y: Credential): Int = x match
-    case Credential.Script(a) =>
-      y match
-        case Credential.Script(b) => a.compareTo(b)
-        case Credential.Key(_)    => -1
-    case Credential.Key(a) =>
-      y match
-        case Credential.Key(b)    => a.compareTo(b)
-        case Credential.Script(_) => 1
+  /** The derived `Ord (Credential r)`: the companion's `Ordering[Credential]`. */
+  private def credential(x: Credential, y: Credential): Int =
+    summon[Ordering[Credential]].compare(x, y)
 
   /** `[0, keyhash] / [1, scripthash]` (committee), `[2, ..] / [3, ..]` (DRep), `[4, keyhash]`. */
   def decode(n: Node)(using ByteStrings): Either[LedgerDecodeError, Voter] =

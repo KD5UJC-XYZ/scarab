@@ -6,10 +6,13 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{PlutusData, PlutusLanguage}
 
 /** Direct withdrawal-field translation checks, derived from cardano-ledger f649f975:
-  * Alonzo/Plutus/TxInfo.hs:301-309 collapses by staking credential in V1/V2;
-  * Conway/TxInfo.hs:549-551, 697-699 retains every account-map entry in V3. Mixed networks are
-  * intentional inputs to this translation API; these tests do not claim that a ledger accepts the
-  * resulting transaction.
+  * Alonzo/Plutus/TxInfo.hs:301-309 collapses by staking credential in V1/V2, into a map in the
+  * order of plutus-ledger-api's `Credential` (plutus 507cab8c
+  * PlutusLedgerApi/V1/Credential.hs:30-37: a public key before a script); Conway/TxInfo.hs:549-551,
+  * 697-699 retains every account-map entry in V3, in the ledger's order (Address.hs:182-187,
+  * Credential.hs:98-101: the network, then a script before a key). Mixed networks are intentional
+  * inputs to this translation API; these tests do not claim that a ledger accepts the resulting
+  * transaction.
   */
 class WithdrawalContextsSuite extends FunSuite:
   import PlutusData.{B, I}
@@ -68,4 +71,95 @@ class WithdrawalContextsSuite extends FunSuite:
       assertEquals(tx.body.raw, body.raw)
       assertEquals(tx.body.id, body.id)
     }
+  }
+
+  // A key hash on each side of the script hash, so that the kind, not the hash, decides.
+  private val lowKeyHash = Bytes.fromHex("00" * 28).fold(e => fail(e.message), identity)
+  private val highKeyHash = Bytes.fromHex("ff" * 28).fold(e => fail(e.message), identity)
+  private val lowKey = Credential.Key(lowKeyHash)
+  private val highKey = Credential.Key(highKeyHash)
+  private val lowKeyData = constr(0, B(lowKeyHash))
+  private val highKeyData = constr(0, B(highKeyHash))
+
+  private def field(info: PlutusData, at: Int): PlutusData = info match
+    case PlutusData.Constr(_, fields) => fields.lift(at).getOrElse(fail(s"no field $at"))
+    case other                        => fail(s"not TxInfo: $other")
+
+  test("credentials order as the ledger's derived Ord: a script before a key, then the hash") {
+    val unsigned = Credential.Key(Bytes.fromHex("80" * 28).fold(e => fail(e.message), identity))
+    val below = Credential.Key(Bytes.fromHex("7f" * 28).fold(e => fail(e.message), identity))
+    assertEquals(
+      Vector(highKey, unsigned, lowKey, script, below).sorted,
+      Vector(script, lowKey, below, unsigned, highKey)
+    )
+  }
+
+  test("a rewarding redeemer indexes the withdrawals with the script before both keys") {
+    val withdrawals = Map(
+      RewardAccount(0, highKey) -> state.Coin(6),
+      RewardAccount(0, script) -> state.Coin(123456),
+      RewardAccount(0, lowKey) -> state.Coin(5)
+    )
+    assertEquals(
+      Purpose.sortedWithdrawals(withdrawals).map(_._1.credential),
+      Vector(script, lowKey, highKey)
+    )
+  }
+
+  Vector(PlutusLanguage.V1, PlutusLanguage.V2, PlutusLanguage.V3).foreach { language =>
+    test(s"$language: keys on each side of a script hash order by the credential's kind") {
+      val mixed = Map(
+        RewardAccount(0, highKey) -> BigInt(6),
+        RewardAccount(0, script) -> BigInt(123456),
+        RewardAccount(0, lowKey) -> BigInt(5)
+      )
+      val body = TestLedger.body("mixed kinds", Vector.empty, Vector.empty, 0, withdrawals = mixed)
+      val env = ScriptContexts.Environment(10, Map.empty, Map.empty, n => Right(n))
+      val info = ScriptContexts
+        .txInfo(language, Tx(body, Witnesses.empty, 0, true, None), env)
+        .fold(e => fail(e.toString), identity)
+      val plutusOrder =
+        Vector(lowKeyData -> I(5), highKeyData -> I(6), scriptData -> I(123456))
+      val expected = language match
+        case PlutusLanguage.V4 => fail("no PlutusV4 context before Dijkstra")
+        case PlutusLanguage.V1 =>
+          PlutusData.List(plutusOrder.map((c, amount) => constr(0, constr(0, c), amount)))
+        case PlutusLanguage.V2 =>
+          PlutusData.Map(plutusOrder.map((c, amount) => (constr(0, c): PlutusData) -> amount))
+        case PlutusLanguage.V3 =>
+          PlutusData.Map(Vector(scriptData -> I(123456), lowKeyData -> I(5), highKeyData -> I(6)))
+      assertEquals(field(info, if language == PlutusLanguage.V1 then 5 else 6), expected)
+    }
+  }
+
+  test("V3: treasury withdrawals of a proposal are in the order of their accounts, network first") {
+    val withdrawals = Vector(
+      RewardAccount(1, script) -> BigInt(7),
+      RewardAccount(0, lowKey) -> BigInt(8),
+      RewardAccount(0, script) -> BigInt(9),
+      RewardAccount(1, highKey) -> BigInt(10)
+    )
+    val proposal = Proposal(
+      BigInt(100000000000L),
+      RewardAccount(0, key),
+      GovAction.TreasuryWithdrawals(withdrawals, Some(scriptHash))
+    )
+    val body =
+      TestLedger.body("treasury", Vector.empty, Vector.empty, 0, proposals = Vector(proposal))
+    val env = ScriptContexts.Environment(10, Map.empty, Map.empty, n => Right(n))
+    val info = ScriptContexts
+      .txInfo(PlutusLanguage.V3, Tx(body, Witnesses.empty, 0, true, None), env)
+      .fold(e => fail(e.toString), identity)
+    val entries = field(info, 13) match
+      case PlutusData.List(Vector(PlutusData.Constr(_, Vector(_, _, action)))) =>
+        action match
+          case PlutusData.Constr(tag, Vector(map, _)) if tag == 2 => map
+          case other => fail(s"not TreasuryWithdrawals: $other")
+      case other => fail(s"not one proposal procedure: $other")
+    assertEquals(
+      entries,
+      PlutusData.Map(
+        Vector(scriptData -> I(9), lowKeyData -> I(8), scriptData -> I(7), highKeyData -> I(10))
+      )
+    )
   }

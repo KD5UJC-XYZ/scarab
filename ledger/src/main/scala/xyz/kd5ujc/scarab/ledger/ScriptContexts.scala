@@ -367,15 +367,18 @@ object ScriptContexts:
       case GovAction.HardFork(prev, major, minor) =>
         Right(constr(1, previous(prev), constr(0, I(major), I(minor))))
       case GovAction.TreasuryWithdrawals(withdrawals, script) =>
-        val entries = withdrawals
-          .sortBy(w => (w._1.credential.isKey, w._1.credential.hash.hex))
+        // `transMap transAccountAddress` over the `Map AccountAddress Coin` (f649f975
+        // Conway/TxInfo.hs:671-673, 697-699): the accounts in their own order, network first, and
+        // an entry for each account even where two share a credential.
+        val entries = withdrawals.toMap.toVector
+          .sortBy(_._1)
           .map { case (a, amount) =>
             (credential(a.credential): PlutusData) -> (I(amount): PlutusData)
           }
         Right(constr(2, PlutusData.Map(entries), policy(script)))
       case GovAction.NoConfidence(prev) => Right(constr(3, previous(prev)))
       case GovAction.UpdateCommittee(prev, removed, added, quorum) =>
-        val ordered = (c: Vector[Credential]) => c.sortBy(c => (c.isKey, c.hash.hex))
+        val ordered = (c: Vector[Credential]) => c.sorted
         Right(
           constr(
             4,
@@ -552,6 +555,10 @@ object ScriptContexts:
     // `transWithdrawals` folds the account map in ledger order into a second map keyed only by
     // staking credential. If networks differ, the later account replaces the earlier amount
     // (f649f975 Alonzo/Plutus/TxInfo.hs:301-309); V3's `transMap` instead retains the list entries.
+    // That second map is a `Data.Map PV1.StakingCredential Integer`, listed by `Map.toList` (V1,
+    // `:308-309`) or `unsafeFromList` of that list (V2, Babbage/TxInfo.hs:390), so it is in the
+    // derived `Ord` of plutus-ledger-api's `Credential = PubKeyCredential | ScriptCredential`
+    // (plutus 507cab8c PlutusLedgerApi/V1/Credential.hs:30-37), then the hash's bytes.
     val entries = Purpose
       .sortedWithdrawals(body)
       .map { case (a, amount) => (a.credential, amount) }

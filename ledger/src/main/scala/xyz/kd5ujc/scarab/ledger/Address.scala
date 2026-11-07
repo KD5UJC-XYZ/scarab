@@ -29,10 +29,16 @@ enum Credential:
     case Script(h) => s"scriptHash-${h.hex}"
 
 object Credential:
-  /** The kind first (key before script), then the hash: the order of the ledger's `Credential`. */
+  /** The ledger's derived `Ord (Credential kr)`: a script before a key (`data Credential =
+    * ScriptHashObj | KeyHashObj`, cardano-ledger f649f975 `Cardano/Ledger/Credential.hs:98-101`),
+    * then the hash, whose `Ord` is its bytes', unsigned and lexicographic: the order of [[Bytes]].
+    */
   given Ordering[Credential] = (a, b) =>
-    val kinds = Integer.compare(a.ordinal, b.ordinal)
-    if kinds != 0 then kinds else a.hash.compareTo(b.hash)
+    (a, b) match
+      case (Script(x), Script(y)) => x.compareTo(y)
+      case (Key(x), Key(y))       => x.compareTo(y)
+      case (Script(_), Key(_))    => -1
+      case (Key(_), Script(_))    => 1
 
   /** Conway credential encoding `[0, keyhash] / [1, scripthash]`. */
   def decode(n: Node, what: DecodeSite)(using ByteStrings): Either[LedgerDecodeError, Credential] =
@@ -326,6 +332,15 @@ object Address:
 final case class RewardAccount(network: Int, credential: Credential)
 
 object RewardAccount:
+  /** The derived `Ord AccountAddress` (`Cardano/Ledger/Address.hs:182-187`, cardano-ledger
+    * f649f975): the network, `Testnet` (0) before `Mainnet` (1) (`BaseTypes.hs:878-881`), then the
+    * credential.
+    */
+  given Ordering[RewardAccount] = (a, b) =>
+    val networks = Integer.compare(a.network, b.network)
+    if networks != 0 then networks
+    else summon[Ordering[Credential]].compare(a.credential, b.credential)
+
   /** `decodeAccountAddress` (`libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs:906-955`,
     * cardano-ledger f649f975), what every era reads a reward account with
     * (`fromCborAccountAddress`, `:913-916`): the header is `0b111x000y` (`headerIsAccountAddress`,

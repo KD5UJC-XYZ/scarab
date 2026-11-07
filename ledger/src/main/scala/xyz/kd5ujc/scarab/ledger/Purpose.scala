@@ -57,21 +57,12 @@ object Purpose:
       case Certificate.CommitteeResign(cold, _)    => script(cold)
       case _                                       => None
 
-  /** Withdrawals in the ledger's order: by reward account, script credentials first. */
+  /** Withdrawals in the ledger's order: the `Map AccountAddress Coin`'s, by [[RewardAccount]]. */
   def sortedWithdrawals(body: TxBody): Vector[(RewardAccount, Coin)] =
     sortedWithdrawals(body.withdrawals)
 
   def sortedWithdrawals(withdrawals: Map[RewardAccount, Coin]): Vector[(RewardAccount, Coin)] =
-    withdrawals.toVector.sorted(using withdrawalOrder)
-
-  /** By network, script credentials before key credentials, then the hash. */
-  private val withdrawalOrder: Ordering[(RewardAccount, Coin)] = (a, b) =>
-    val (x, y) = (a._1, b._1)
-    val networks = Integer.compare(x.network, y.network)
-    if networks != 0 then networks
-    else
-      val kinds = java.lang.Boolean.compare(x.credential.isKey, y.credential.isKey)
-      if kinds != 0 then kinds else x.credential.hash.compareTo(y.credential.hash)
+    withdrawals.toVector.sortBy(_._1)
 
   def sortedVoters(body: TxBody): Vector[Voter] = body.votes.map(_._1).sorted(using Voter.ordering)
 
