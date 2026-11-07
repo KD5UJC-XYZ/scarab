@@ -7,8 +7,7 @@ keeps both credential paths with the file path exactly as
 [ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md) adopts the upstream agent as it is — client only, no
 agent of our own, no remote signing. A review against the pinned source on 2026-11-07 corrected the reply
 codes, the progress rule and the agent pin, and lists every difference from the reference in
-[Deviations from the reference](#deviations-from-the-reference); a row marked there as awaiting approval is
-not implemented until the owner approves it.
+[Deviations from the reference](#deviations-from-the-reference); every row there is approved (2026-11-07).
 
 ## Why
 
@@ -581,16 +580,16 @@ uses, and public packages are free to store and serve.
 ## Deviations from the reference
 
 Every behaviour in agent mode that differs from the reference node, with where its approval is recorded. A row
-awaiting approval is not implemented until the owner approves it; if the approval is refused, the reference
-behaviour in the last column is what lands.
+awaiting approval would not be implemented until the owner approves it; all seven were approved on
+2026-11-07 ([decisions](../decisions.md)).
 
 | Row | Scarab | Reference | Approval |
 |---|---|---|---|
-| D1 | checks 1 to 5 on every bundle (shape, binding, consistency probe, certificate signature under the `--opcert` cold key, window and counter); a refused key is not adopted | adopts every bundle that passes the timestamp rule (`Shelley.hs` TODO; `mkHotKeyWith`'s `set`) | approved with this design (#444, 2026-10-25) |
+| D1 | checks 1 to 5 on every bundle (shape, binding, consistency probe, certificate signature under the `--opcert` cold key, window and counter); a refused key is not adopted | adopts every bundle that passes the timestamp rule (`Shelley.hs` TODO; `mkHotKeyWith`'s `set`) | approved with this design (#444, 2026-10-25); recorded in [decisions](../decisions.md), 2026-11-07 |
 | D2 | `--kes-skey` with `--kes-agent-socket` is a configuration error | `asum` takes the file alternative first | [decisions](../decisions.md), 2026-10-25, #38 |
 | D3 | one-time `kesFileMode` warning in file mode on a public network | no warning | [decisions](../decisions.md), 2026-10-25, #38 |
 | D4 | start-up warning when the service socket is group- or world-accessible | no warning | approved with this design (#444, "Confirmations") |
-| D5 | peer-credential check on the socket (`SO_PEERCRED`): the node's uid or root is accepted, another uid warns, and a new flag `--kes-agent-peer-uid` makes a mismatch a refusal | no peer check, no flag | **awaiting approval** — reference behaviour: no check and no flag |
+| D5 | peer-credential check on the socket (`SO_PEERCRED`): the node's uid or root is accepted, another uid warns, and a new flag `--kes-agent-peer-uid` makes a mismatch a refusal | no peer check, no flag | [decisions](../decisions.md), 2026-11-07, #38 |
 | D6 | the flag is `--kes-agent-socket` | `--shelley-kes-agent-socket` | #222 mapping, approved with this design (#444, "Confirmations") |
 | D7 | accepts `Service:2.0` only in the handshake | accepts `Service:2.0`, `Service:1.0` and `Service:0.0` for the standard crypto (`availableServiceClientDrivers`, `Processes/ServiceClient.hs`); every agent since 1.0.0.0 offers 2.0 first, so the outcome against a real agent is the same | approved with this design (#444, "Confirmations") |
 
@@ -604,8 +603,8 @@ path's own difference (the write-back) is [ADR 0015](../adr/0015-kes-key-written
 
 ### Decided 2026-10-25
 
-These stand, as revised on 2026-11-07 below. Row D5 of [the deviations](#deviations-from-the-reference) is
-the one decision still open.
+These stand, as revised on 2026-11-07 below; the revision and every row of
+[the deviations](#deviations-from-the-reference) were approved on 2026-11-07. No decision remains open.
 
 - **Credential sources.** [ADR 0023](../adr/0023-two-kes-credential-sources.md): both stay, the file path is
   unchanged, the agent path is preferred and documented as such.
