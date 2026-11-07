@@ -6,6 +6,7 @@ import cats.{Eq, Show}
 import cats.derived.*
 import xyz.kd5ujc.scarab.consensus.{ForkTrigger, HardForkConfig}
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Horizon}
+import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronLedgerState}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** One era of the history (`EraSummary`, `HardFork/History/Summary.hs:198-205`): where it starts,
@@ -151,6 +152,25 @@ object EraHistory:
     * @param tip
     *   the slot of the last block, none at Origin
     */
+  /** What a Byron ledger state at a tip tells of the end of Byron (`singleEraTransition` of
+    * `ByronHFC.hs:240-247`, ouroboros-consensus 82ecba32): a configured epoch
+    * (`TestShelleyHardForkAtEpoch`, a Byron span that is not derived) is known from the start;
+    * otherwise the trigger is version 2 (`TriggerHardForkAtVersion`, as the node configures it) and
+    * `byronTransition` (`:161-190`) reports the adoption epoch of a stable candidate update to it
+    * ([[ByronLedger.transition]]) (#804).
+    */
+  def byronTransition(
+      geometry: EpochGeometry,
+      byron: ByronParams,
+      ledger: Option[ByronLedgerState],
+      tip: Option[BigInt]
+  ): Horizon.Transition =
+    if !geometry.byron.derived then Horizon.Transition.Known(geometry.firstShelleyEpoch)
+    else
+      ledger
+        .flatMap(ByronLedger.transition(byron.k, byron.epochSlots, ByronLedger.ShelleyMajor, _))
+        .fold(Horizon.Transition.Unknown(tip))(Horizon.Transition.Known(_))
+
   def transition(
       forks: HardForkConfig,
       securityParam: BigInt,

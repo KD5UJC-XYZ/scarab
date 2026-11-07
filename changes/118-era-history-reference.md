@@ -7,3 +7,6 @@
   next era.
 - `EraHistoryNetworksSuite` compares with answers captured from the unchanged ouroboros-consensus
   (`fixtures/reference/era-history`), no longer with bytes written by hand.
+- **In Byron, a stable update to Shelley's protocol version makes the transition known (#804).** As the
+  reference's `byronTransition` does, the era history then ends Byron at the update's adoption epoch and lists
+  Shelley. This holds for `GetInterpreter` and for the header clock's horizon in Byron's last epochs.

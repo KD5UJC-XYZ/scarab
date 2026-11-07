@@ -4,9 +4,16 @@ package xyz.kd5ujc.scarab.node.ntc
 import cats.syntax.all.*
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.state.{AnnTip, ChainDepState, GenesisMirror, PraosState, TipInfo}
+import xyz.kd5ujc.scarab.consensus.state.{
+  AnnTip,
+  ChainDepState,
+  EraLedgerState,
+  GenesisMirror,
+  PraosState,
+  TipInfo
+}
 import xyz.kd5ujc.scarab.ledger.{Nonce, TxIn}
-import xyz.kd5ujc.scarab.ledger.byron.ByronOut
+import xyz.kd5ujc.scarab.ledger.byron.{ByronOut, ByronVersion, CandidateUpdate}
 import xyz.kd5ujc.scarab.ledger.rules.{EraNes, GenesisStart, Globals, Handover}
 import xyz.kd5ujc.scarab.ledger.state.{
   BlockNo,
@@ -149,5 +156,44 @@ class EraHistoryNetworksSuite extends FunSuite:
         .getOrElse(fail("GetInterpreter is not answered at the origin"))
         .hex,
       reference("byron-origin")
+    )
+  }
+
+  /** In Byron with a candidate update to version 2 at slot 60,000 that is stable (the tip 2k slots
+    * later): `byronTransition` reports its adoption epoch, `(60,000 + 4k) / 21,600 + 1 = 4`, so the
+    * summary ends Byron there and lists Shelley with its safe zone from its start (#804).
+    */
+  test(
+    "GetInterpreter in Byron with a stable update to Shelley: Byron ends at its adoption epoch"
+  ) {
+    val start = setup.mirrorStart
+    val known = start.ext.ledgerState.state match
+      case EraLedgerState.ByronCurrent(byron) =>
+        val ledger = byron.ledger.getOrElse(fail("the preprod start has a Byron ledger"))
+        val two = ByronVersion.from(2, 0, 0).fold(e => fail(e.message), identity)
+        val candidate = CandidateUpdate(60000, two, ledger.update.adoptedParams)
+        val updated = ledger.copy(
+          lastSlot = 70000,
+          update = ledger.update.copy(candidates = Vector(candidate))
+        )
+        start.copy(ext =
+          start.ext.copy(ledgerState =
+            start.ext.ledgerState.withState(
+              EraLedgerState.ByronCurrent(byron.copy(ledger = Some(updated)))
+            )
+          )
+        )
+      case other => fail(s"the preprod start is in Byron: $other")
+    val view = QueryView(
+      Point.Block(UInt64.saturating(BigInt(70000)), Bytes(Vector.fill(32)(2.toByte))),
+      Some(1),
+      known
+    )
+    assertEquals(
+      QueryAnswers
+        .answer(env, view, Map.empty, NtcQuery.HardFork(HardForkQuery.GetInterpreter))
+        .getOrElse(fail("GetInterpreter is not answered in Byron"))
+        .hex,
+      reference("byron-known-4")
     )
   }

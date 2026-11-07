@@ -478,13 +478,22 @@ object ByronLedger:
     * (`Ouroboros.Consensus.Byron.ByronHFC.byronTransition`).
     */
   def transition(config: Config, st: ByronLedgerState): Option[BigInt] =
-    st.update.candidates
-      .filter(_.version.major == ShelleyMajor)
-      .collectFirst {
-        case c if st.lastSlot - c.slot >= 2 * config.k => adoptionEpoch(config, c)
-        case c if st.candidateBlocks.get(c.version).exists(b => st.tipBlockNo - b >= config.k) =>
-          adoptionEpoch(config, c)
-      }
+    transition(config.k, config.epochSlots, ShelleyMajor, st)
 
-  private def adoptionEpoch(config: Config, c: CandidateUpdate): BigInt =
-    epochOf(config, c.slot + 4 * config.k) + 1
+  /** [[transition]] for the security parameter `k`, the epoch size and the Shelley major version
+    * the configuration triggers on (`TriggerHardForkAtVersion`).
+    */
+  def transition(
+      k: BigInt,
+      epochSlots: BigInt,
+      shelleyMajor: BigInt,
+      st: ByronLedgerState
+  ): Option[BigInt] =
+    def adoptionEpoch(c: CandidateUpdate): BigInt = (c.slot + 4 * k) / epochSlots + 1
+    st.update.candidates
+      .filter(_.version.major == shelleyMajor)
+      .collectFirst {
+        case c if st.lastSlot - c.slot >= 2 * k => adoptionEpoch(c)
+        case c if st.candidateBlocks.get(c.version).exists(b => st.tipBlockNo - b >= k) =>
+          adoptionEpoch(c)
+      }

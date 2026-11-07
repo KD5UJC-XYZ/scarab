@@ -69,5 +69,6 @@ main = do
       cases =
         [ case_ "conway-tip-100000000" "Byron to epoch 4, Shelley to Babbage empty, Conway from epoch 4" inConway (tip 100000000)
         , case_ "byron-origin" "still in Byron, at the origin" inByron (TransitionUnknown Origin)
+        , case_ "byron-known-4" "in Byron, the transition to Shelley known at epoch 4" inByron (TransitionKnown (EpochNo 4))
         ]
   BL.writeFile output $ BL.unlines (map encode cases)

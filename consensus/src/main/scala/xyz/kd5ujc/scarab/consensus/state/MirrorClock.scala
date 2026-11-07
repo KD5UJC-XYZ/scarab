@@ -92,6 +92,8 @@ object MirrorClock:
           BigInt(i.state.transition.afterVoting.toLong),
           tip
         )
+      case EraLedgerState.ByronCurrent(byron) if era == telescope.era =>
+        EraHistory.byronTransition(placement.geometry, placement.byron, byron.ledger, tip)
       case _ =>
         EraHistory.transition(
           placement.forks,
