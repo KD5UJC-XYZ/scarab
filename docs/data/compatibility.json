@@ -878,7 +878,6 @@
       },
       "limitations": {
         "issues": [
-          374,
           328
         ]
       },
@@ -895,6 +894,10 @@
         ],
         "paths": [
           "fixtures/reference/pre-conway-sets"
+        ],
+        "issues": [
+          329,
+          374
         ]
       },
       "page": "docs/compatibility/ledger-pre-conway-set-decoding.md"

@@ -9,7 +9,9 @@ implemented: below version 9 a set of the body (inputs, collateral, required sig
 
 ## Evidence
 
-`PreConwaySetsReferenceSuite`: 60 original encodings for Shelley, Allegra, Mary, Alonzo and Babbage (`fixtures/reference/pre-conway-sets`), each with what the unchanged released decoder of the era did with it: 50 accepted (repeated elements in identical and different encodings collapse to one) and the 10 tagged sets refused; the replays of recorded Shelley to Babbage blocks in `check` are unchanged
+`PreConwaySetsReferenceSuite`: 60 original encodings for Shelley, Allegra, Mary, Alonzo and Babbage (`fixtures/reference/pre-conway-sets`), each with what the unchanged released decoder of the era did with it: 50 accepted (repeated elements in identical and different encodings collapse to one) and the 10 tagged sets refused; the replays of recorded Shelley to Babbage blocks in `check` are unchanged.
+
+The same corpus also holds the parameter-update key sets and, for #374, empty collections, tag 258 on the other witness lists, the witness set's key set of each era, the script languages of each era (witness scripts and a Babbage output's reference script) and a repeated proposer: 227 cases in all, every verdict the reference's ([corpus README](../../fixtures/reference/pre-conway-sets/README.md)). A Shelley, Allegra or Mary witness set reads keys 0 to 2 only, and a Plutus script of a language newer than the era's is refused (`UnsupportedLanguage`).
 
 ## Explicitly unchecked or unconfirmed
 

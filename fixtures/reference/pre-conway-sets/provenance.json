@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "measuredAt": "2026-10-23",
+  "measuredAt": "2026-11-07",
   "scope": "Unchanged released decoders (decodeFullAnnotator) of a transaction body (with its sets and its key-6 parameter update) and a witness set of each era from Shelley to Babbage, at the era's decoder version (2, 3, 4, 5, 7); no ledger rule, signature or script is run",
   "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
   "compiler": "GHC 9.10.3",
@@ -52,13 +52,13 @@
       "archiveSha256": "8a0466673e9de9f0a2375cd137fb1b6368c901929865b0def41abd83a200730d"
     }
   },
-  "harnessSha256": "bfb45c453f16726765809651d438e1c1a7d0be5a2fadf5d662b10a25bc64e07c",
-  "generatorSha256": "d0d185e32455dcc3b1bdf1d6ea0aed58f113af2d581551f86ba47e375e8d82d0",
-  "casesSha256": "ad882f8e87f3bfcc446d5aa8a3b1c37f1ceff93f1f97f977f2cbd6fcd3d08fa3",
-  "referenceSha256": "91042a64d6aa9be935da55c63dd7447d967fdcedf27d06a0a18568acc89ff34d",
-  "cases": 102,
-  "accepted": 65,
-  "refused": 37,
+  "harnessSha256": "b86a9d8a3ad9f03264d8735ad729bbab9ba80bb181792f0db1fcc84f5c82099c",
+  "generatorSha256": "b4143a672a16857175055cd878fa30eabfeb3b1134458941f810e7a06a359e9e",
+  "casesSha256": "3d261badfb8ecf448e53fe1a552a6377ad5963a47f43a19fa1a4fece61a683c0",
+  "referenceSha256": "3370726b7f61292184039bcd5dc6a7f945ed538ce50aa55408b09eaff62da5a0",
+  "cases": 227,
+  "accepted": 158,
+  "refused": 69,
   "originalBytesRetained": true,
   "network": "none",
   "keysRetained": false

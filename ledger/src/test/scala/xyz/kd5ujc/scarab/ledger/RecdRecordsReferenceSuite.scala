@@ -95,11 +95,28 @@ class RecdRecordsReferenceSuite extends FunSuite:
       // The output that holds the record: the one the block's rule refuses.
       val pairs = outputs(row.raw)
         .zip(outputs(twin.raw))
-        .filter((o, _) => TxOut.decode(o, Address.Mode.of(row.era), TxOut.Forms.of(row.era)).isLeft)
+        .filter((o, _) =>
+          TxOut
+            .decode(
+              o,
+              Address.Mode.of(row.era),
+              TxOut.Forms.of(row.era),
+              ScriptKind.newest(row.era)
+            )
+            .isLeft
+        )
       assertEquals(pairs.size, 1, row.name)
       for (indefinite, definite) <- pairs do
         assertEquals(
-          TxOut.decode(indefinite, Address.Mode.of(row.era), TxOut.Forms.of(row.era)).left.toOption,
+          TxOut
+            .decode(
+              indefinite,
+              Address.Mode.of(row.era),
+              TxOut.Forms.of(row.era),
+              ScriptKind.newest(row.era)
+            )
+            .left
+            .toOption,
           Some(LedgerDecodeError.IndefiniteLength(DecodeField.OutputValue)),
           s"${row.name}: the block's rule"
         )

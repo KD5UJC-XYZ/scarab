@@ -1087,8 +1087,8 @@ object Targets:
             .sampled("conway:script", 40) ++ Corpus.tricky,
         probe("script") { b =>
           xyz.kd5ujc.scarab.codec.Cbor.decode(b).foreach { n =>
-            seen("script", Script.decode(n).isRight)
-            Script.decodeWrapped(n)
+            seen("script", Script.decode(n, ScriptKind.newestKnown).isRight)
+            Script.decodeWrapped(n, ScriptKind.newestKnown)
             NativeScript.decode(n)
           }
         }

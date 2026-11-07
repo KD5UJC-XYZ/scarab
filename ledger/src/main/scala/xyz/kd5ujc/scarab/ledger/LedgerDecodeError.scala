@@ -34,6 +34,11 @@ enum LedgerDecodeError extends DomainError:
   case UnknownKey(site: DecodeSite, key: BigInt)
   case DuplicateKey(site: DecodeSite)
   case UnsupportedCostModelLanguage(language: Int)
+
+  /** A Plutus script of a language newer than the era's (`eraUnsupportedLanguage`, cardano-ledger
+    * f649f975 `Alonzo/Scripts.hs:738-741`): `newest` is the era's `eraMaxLanguage`.
+    */
+  case UnsupportedLanguage(language: ScriptKind, newest: ScriptKind)
   case CostModelLength(language: Int, expected: Int, actual: Int)
   case DuplicateElement(site: DecodeSite)
   case Zero(site: DecodeSite)

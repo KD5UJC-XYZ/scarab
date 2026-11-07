@@ -60,7 +60,7 @@ class LedgerDecodeErrorSuite extends FunSuite:
       Left(LedgerDecodeError.TaggedArity(DecodeField.Certificate, 99, 1))
     )
     assertEquals(
-      Script.decode(node("82186300")),
+      Script.decode(node("82186300"), ScriptKind.newestKnown),
       Left(LedgerDecodeError.UnknownTag(DecodeField.ScriptType, 99))
     )
   }

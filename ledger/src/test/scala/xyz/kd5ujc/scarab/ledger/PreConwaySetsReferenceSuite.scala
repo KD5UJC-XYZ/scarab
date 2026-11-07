@@ -38,6 +38,19 @@ class PreConwaySetsReferenceSuite extends FunSuite:
       row.rule.foreach(r => assert(row.failure.exists(r.explains), s"${row.name}: ${row.failure}"))
   }
 
+  /** Below version 9 the proposers' map is `Map.fromList` (`decodeMapByKey`, `Decoder.hs:815-823`,
+    * f649f975): a repeated genesis key keeps its last update.
+    */
+  test("a repeated proposer keeps the last update, as the reference's Map.fromList does") {
+    def update(name: String) =
+      val row = rows.find(_.name == name).getOrElse(fail(s"no case $name"))
+      TxBody.decode(row.raw, row.era).fold(e => fail(s"$name: $e"), _.update)
+    for era <- List("shelley", "allegra", "mary", "alonzo", "babbage") do
+      val repeated = update(s"$era update: repeated proposer, other update")
+      assertEquals(repeated.map(_.proposals.size), Some(1), era)
+      assertEquals(repeated, update(s"$era update: the last proposal alone"), era)
+  }
+
   for row <- rows do
     test(s"${row.era} ${row.kind}: ${row.name}") {
       (row.expect, scarab(row)) match

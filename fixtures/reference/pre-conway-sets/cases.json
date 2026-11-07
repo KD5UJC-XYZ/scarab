@@ -1018,5 +1018,1255 @@
   "expect": "DuplicateKey",
   "size": null,
   "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400682a1581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa210011b0000000000000010020a"
+ },
+ {
+  "id": "shelley-witnesses-key-0-empty",
+  "name": "shelley witnesses: key 0 empty",
+  "era": "shelley",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10080"
+ },
+ {
+  "id": "shelley-witnesses-key-0-empty-indefinite",
+  "name": "shelley witnesses: key 0 empty, indefinite",
+  "era": "shelley",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1009fff"
+ },
+ {
+  "id": "shelley-witnesses-key-1-empty",
+  "name": "shelley witnesses: key 1 empty",
+  "era": "shelley",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10180"
+ },
+ {
+  "id": "shelley-witnesses-key-1-empty-indefinite",
+  "name": "shelley witnesses: key 1 empty, indefinite",
+  "era": "shelley",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1019fff"
+ },
+ {
+  "id": "shelley-witnesses-key-2-empty",
+  "name": "shelley witnesses: key 2 empty",
+  "era": "shelley",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10280"
+ },
+ {
+  "id": "shelley-witnesses-key-2-empty-indefinite",
+  "name": "shelley witnesses: key 2 empty, indefinite",
+  "era": "shelley",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1029fff"
+ },
+ {
+  "id": "shelley-witnesses-tag-258-on-the-native-scripts-is-not-read",
+  "name": "shelley witnesses: tag 258 on the native scripts is not read",
+  "era": "shelley",
+  "kind": "witnesses",
+  "rule": "expected list len or indef",
+  "expect": "Expected",
+  "size": null,
+  "bytes": "a101d90102818200581c33333333333333333333333333333333333333333333333333333333"
+ },
+ {
+  "id": "shelley-witnesses-tag-258-on-the-bootstrap-witnesses-is-not-read",
+  "name": "shelley witnesses: tag 258 on the bootstrap witnesses is not read",
+  "era": "shelley",
+  "kind": "witnesses",
+  "rule": "expected list len or indef",
+  "expect": "Expected",
+  "size": null,
+  "bytes": "a102d901028184582091919191919191919191919191919191919191919191919191919191919191915840a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a15820929292929292929292929292929292929292929292929292929292929292929241a0"
+ },
+ {
+  "id": "shelley-body-key-0-empty",
+  "name": "shelley body: key 0 empty",
+  "era": "shelley",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a40080018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d40031903e8"
+ },
+ {
+  "id": "shelley-body-key-1-empty",
+  "name": "shelley body: key 1 empty",
+  "era": "shelley",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a400818258201111111111111111111111111111111111111111111111111111111111111111000180021a00030d40031903e8"
+ },
+ {
+  "id": "shelley-body-key-4-empty",
+  "name": "shelley body: key 4 empty",
+  "era": "shelley",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a50081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d40031903e80480"
+ },
+ {
+  "id": "shelley-body-key-5-empty-map",
+  "name": "shelley body: key 5 empty map",
+  "era": "shelley",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a50081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d40031903e805a0"
+ },
+ {
+  "id": "shelley-update-repeated-proposer-same-update",
+  "name": "shelley update: repeated proposer, same update",
+  "era": "shelley",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a50081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d40031903e80682a2581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa100182c581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa100182c0a"
+ },
+ {
+  "id": "shelley-update-repeated-proposer-other-update",
+  "name": "shelley update: repeated proposer, other update",
+  "era": "shelley",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a50081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d40031903e80682a2581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa100182c581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa101182d0a"
+ },
+ {
+  "id": "shelley-update-the-last-proposal-alone",
+  "name": "shelley update: the last proposal alone",
+  "era": "shelley",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a50081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d40031903e80682a1581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa101182d0a"
+ },
+ {
+  "id": "allegra-witnesses-key-0-empty",
+  "name": "allegra witnesses: key 0 empty",
+  "era": "allegra",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10080"
+ },
+ {
+  "id": "allegra-witnesses-key-0-empty-indefinite",
+  "name": "allegra witnesses: key 0 empty, indefinite",
+  "era": "allegra",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1009fff"
+ },
+ {
+  "id": "allegra-witnesses-key-1-empty",
+  "name": "allegra witnesses: key 1 empty",
+  "era": "allegra",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10180"
+ },
+ {
+  "id": "allegra-witnesses-key-1-empty-indefinite",
+  "name": "allegra witnesses: key 1 empty, indefinite",
+  "era": "allegra",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1019fff"
+ },
+ {
+  "id": "allegra-witnesses-key-2-empty",
+  "name": "allegra witnesses: key 2 empty",
+  "era": "allegra",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10280"
+ },
+ {
+  "id": "allegra-witnesses-key-2-empty-indefinite",
+  "name": "allegra witnesses: key 2 empty, indefinite",
+  "era": "allegra",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1029fff"
+ },
+ {
+  "id": "allegra-witnesses-tag-258-on-the-native-scripts-is-not-read",
+  "name": "allegra witnesses: tag 258 on the native scripts is not read",
+  "era": "allegra",
+  "kind": "witnesses",
+  "rule": "expected list len or indef",
+  "expect": "Expected",
+  "size": null,
+  "bytes": "a101d90102818200581c33333333333333333333333333333333333333333333333333333333"
+ },
+ {
+  "id": "allegra-witnesses-tag-258-on-the-bootstrap-witnesses-is-not-read",
+  "name": "allegra witnesses: tag 258 on the bootstrap witnesses is not read",
+  "era": "allegra",
+  "kind": "witnesses",
+  "rule": "expected list len or indef",
+  "expect": "Expected",
+  "size": null,
+  "bytes": "a102d901028184582091919191919191919191919191919191919191919191919191919191919191915840a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a15820929292929292929292929292929292929292929292929292929292929292929241a0"
+ },
+ {
+  "id": "allegra-body-key-0-empty",
+  "name": "allegra body: key 0 empty",
+  "era": "allegra",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a30080018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d40"
+ },
+ {
+  "id": "allegra-body-key-1-empty",
+  "name": "allegra body: key 1 empty",
+  "era": "allegra",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a300818258201111111111111111111111111111111111111111111111111111111111111111000180021a00030d40"
+ },
+ {
+  "id": "allegra-body-key-4-empty",
+  "name": "allegra body: key 4 empty",
+  "era": "allegra",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400480"
+ },
+ {
+  "id": "allegra-body-key-5-empty-map",
+  "name": "allegra body: key 5 empty map",
+  "era": "allegra",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d4005a0"
+ },
+ {
+  "id": "allegra-update-repeated-proposer-same-update",
+  "name": "allegra update: repeated proposer, same update",
+  "era": "allegra",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400682a2581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa100182c581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa100182c0a"
+ },
+ {
+  "id": "allegra-update-repeated-proposer-other-update",
+  "name": "allegra update: repeated proposer, other update",
+  "era": "allegra",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400682a2581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa100182c581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa101182d0a"
+ },
+ {
+  "id": "allegra-update-the-last-proposal-alone",
+  "name": "allegra update: the last proposal alone",
+  "era": "allegra",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400682a1581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa101182d0a"
+ },
+ {
+  "id": "mary-witnesses-key-0-empty",
+  "name": "mary witnesses: key 0 empty",
+  "era": "mary",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10080"
+ },
+ {
+  "id": "mary-witnesses-key-0-empty-indefinite",
+  "name": "mary witnesses: key 0 empty, indefinite",
+  "era": "mary",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1009fff"
+ },
+ {
+  "id": "mary-witnesses-key-1-empty",
+  "name": "mary witnesses: key 1 empty",
+  "era": "mary",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10180"
+ },
+ {
+  "id": "mary-witnesses-key-1-empty-indefinite",
+  "name": "mary witnesses: key 1 empty, indefinite",
+  "era": "mary",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1019fff"
+ },
+ {
+  "id": "mary-witnesses-key-2-empty",
+  "name": "mary witnesses: key 2 empty",
+  "era": "mary",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10280"
+ },
+ {
+  "id": "mary-witnesses-key-2-empty-indefinite",
+  "name": "mary witnesses: key 2 empty, indefinite",
+  "era": "mary",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1029fff"
+ },
+ {
+  "id": "mary-witnesses-tag-258-on-the-native-scripts-is-not-read",
+  "name": "mary witnesses: tag 258 on the native scripts is not read",
+  "era": "mary",
+  "kind": "witnesses",
+  "rule": "expected list len or indef",
+  "expect": "Expected",
+  "size": null,
+  "bytes": "a101d90102818200581c33333333333333333333333333333333333333333333333333333333"
+ },
+ {
+  "id": "mary-witnesses-tag-258-on-the-bootstrap-witnesses-is-not-read",
+  "name": "mary witnesses: tag 258 on the bootstrap witnesses is not read",
+  "era": "mary",
+  "kind": "witnesses",
+  "rule": "expected list len or indef",
+  "expect": "Expected",
+  "size": null,
+  "bytes": "a102d901028184582091919191919191919191919191919191919191919191919191919191919191915840a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a15820929292929292929292929292929292929292929292929292929292929292929241a0"
+ },
+ {
+  "id": "mary-body-key-0-empty",
+  "name": "mary body: key 0 empty",
+  "era": "mary",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a30080018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d40"
+ },
+ {
+  "id": "mary-body-key-1-empty",
+  "name": "mary body: key 1 empty",
+  "era": "mary",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a300818258201111111111111111111111111111111111111111111111111111111111111111000180021a00030d40"
+ },
+ {
+  "id": "mary-body-key-4-empty",
+  "name": "mary body: key 4 empty",
+  "era": "mary",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400480"
+ },
+ {
+  "id": "mary-body-key-5-empty-map",
+  "name": "mary body: key 5 empty map",
+  "era": "mary",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d4005a0"
+ },
+ {
+  "id": "mary-body-key-9-empty-map",
+  "name": "mary body: key 9 empty map",
+  "era": "mary",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d4009a0"
+ },
+ {
+  "id": "mary-update-repeated-proposer-same-update",
+  "name": "mary update: repeated proposer, same update",
+  "era": "mary",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400682a2581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa100182c581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa100182c0a"
+ },
+ {
+  "id": "mary-update-repeated-proposer-other-update",
+  "name": "mary update: repeated proposer, other update",
+  "era": "mary",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400682a2581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa100182c581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa101182d0a"
+ },
+ {
+  "id": "mary-update-the-last-proposal-alone",
+  "name": "mary update: the last proposal alone",
+  "era": "mary",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400682a1581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa101182d0a"
+ },
+ {
+  "id": "alonzo-witnesses-key-0-empty",
+  "name": "alonzo witnesses: key 0 empty",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10080"
+ },
+ {
+  "id": "alonzo-witnesses-key-0-empty-indefinite",
+  "name": "alonzo witnesses: key 0 empty, indefinite",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1009fff"
+ },
+ {
+  "id": "alonzo-witnesses-key-1-empty",
+  "name": "alonzo witnesses: key 1 empty",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10180"
+ },
+ {
+  "id": "alonzo-witnesses-key-1-empty-indefinite",
+  "name": "alonzo witnesses: key 1 empty, indefinite",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1019fff"
+ },
+ {
+  "id": "alonzo-witnesses-key-2-empty",
+  "name": "alonzo witnesses: key 2 empty",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10280"
+ },
+ {
+  "id": "alonzo-witnesses-key-2-empty-indefinite",
+  "name": "alonzo witnesses: key 2 empty, indefinite",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1029fff"
+ },
+ {
+  "id": "alonzo-witnesses-key-3-empty",
+  "name": "alonzo witnesses: key 3 empty",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10380"
+ },
+ {
+  "id": "alonzo-witnesses-key-3-empty-indefinite",
+  "name": "alonzo witnesses: key 3 empty, indefinite",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1039fff"
+ },
+ {
+  "id": "alonzo-witnesses-key-4-empty",
+  "name": "alonzo witnesses: key 4 empty",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10480"
+ },
+ {
+  "id": "alonzo-witnesses-key-4-empty-indefinite",
+  "name": "alonzo witnesses: key 4 empty, indefinite",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1049fff"
+ },
+ {
+  "id": "alonzo-witnesses-key-5-empty",
+  "name": "alonzo witnesses: key 5 empty",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10580"
+ },
+ {
+  "id": "alonzo-witnesses-key-5-empty-indefinite",
+  "name": "alonzo witnesses: key 5 empty, indefinite",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1059fff"
+ },
+ {
+  "id": "alonzo-witnesses-redeemers-as-a-map",
+  "name": "alonzo witnesses: redeemers as a map",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": "expected list len or indef",
+  "expect": "Expected",
+  "size": null,
+  "bytes": "a105a0"
+ },
+ {
+  "id": "alonzo-witnesses-tag-258-on-the-native-scripts-is-not-read",
+  "name": "alonzo witnesses: tag 258 on the native scripts is not read",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": "expected list len or indef",
+  "expect": "Expected",
+  "size": null,
+  "bytes": "a101d90102818200581c33333333333333333333333333333333333333333333333333333333"
+ },
+ {
+  "id": "alonzo-witnesses-tag-258-on-the-bootstrap-witnesses-is-not-read",
+  "name": "alonzo witnesses: tag 258 on the bootstrap witnesses is not read",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": "expected list len or indef",
+  "expect": "Expected",
+  "size": null,
+  "bytes": "a102d901028184582091919191919191919191919191919191919191919191919191919191919191915840a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a15820929292929292929292929292929292929292929292929292929292929292929241a0"
+ },
+ {
+  "id": "alonzo-body-key-0-empty",
+  "name": "alonzo body: key 0 empty",
+  "era": "alonzo",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a30080018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d40"
+ },
+ {
+  "id": "alonzo-body-key-1-empty",
+  "name": "alonzo body: key 1 empty",
+  "era": "alonzo",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a300818258201111111111111111111111111111111111111111111111111111111111111111000180021a00030d40"
+ },
+ {
+  "id": "alonzo-body-key-4-empty",
+  "name": "alonzo body: key 4 empty",
+  "era": "alonzo",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400480"
+ },
+ {
+  "id": "alonzo-body-key-13-empty",
+  "name": "alonzo body: key 13 empty",
+  "era": "alonzo",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400d80"
+ },
+ {
+  "id": "alonzo-body-key-14-empty",
+  "name": "alonzo body: key 14 empty",
+  "era": "alonzo",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400e80"
+ },
+ {
+  "id": "alonzo-body-key-5-empty-map",
+  "name": "alonzo body: key 5 empty map",
+  "era": "alonzo",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d4005a0"
+ },
+ {
+  "id": "alonzo-body-key-9-empty-map",
+  "name": "alonzo body: key 9 empty map",
+  "era": "alonzo",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d4009a0"
+ },
+ {
+  "id": "alonzo-update-repeated-proposer-same-update",
+  "name": "alonzo update: repeated proposer, same update",
+  "era": "alonzo",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400682a2581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa100182c581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa100182c0a"
+ },
+ {
+  "id": "alonzo-update-repeated-proposer-other-update",
+  "name": "alonzo update: repeated proposer, other update",
+  "era": "alonzo",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400682a2581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa100182c581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa101182d0a"
+ },
+ {
+  "id": "alonzo-update-the-last-proposal-alone",
+  "name": "alonzo update: the last proposal alone",
+  "era": "alonzo",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400682a1581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa101182d0a"
+ },
+ {
+  "id": "babbage-witnesses-key-0-empty",
+  "name": "babbage witnesses: key 0 empty",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10080"
+ },
+ {
+  "id": "babbage-witnesses-key-0-empty-indefinite",
+  "name": "babbage witnesses: key 0 empty, indefinite",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1009fff"
+ },
+ {
+  "id": "babbage-witnesses-key-1-empty",
+  "name": "babbage witnesses: key 1 empty",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10180"
+ },
+ {
+  "id": "babbage-witnesses-key-1-empty-indefinite",
+  "name": "babbage witnesses: key 1 empty, indefinite",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1019fff"
+ },
+ {
+  "id": "babbage-witnesses-key-2-empty",
+  "name": "babbage witnesses: key 2 empty",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10280"
+ },
+ {
+  "id": "babbage-witnesses-key-2-empty-indefinite",
+  "name": "babbage witnesses: key 2 empty, indefinite",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1029fff"
+ },
+ {
+  "id": "babbage-witnesses-key-3-empty",
+  "name": "babbage witnesses: key 3 empty",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10380"
+ },
+ {
+  "id": "babbage-witnesses-key-3-empty-indefinite",
+  "name": "babbage witnesses: key 3 empty, indefinite",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1039fff"
+ },
+ {
+  "id": "babbage-witnesses-key-4-empty",
+  "name": "babbage witnesses: key 4 empty",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10480"
+ },
+ {
+  "id": "babbage-witnesses-key-4-empty-indefinite",
+  "name": "babbage witnesses: key 4 empty, indefinite",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1049fff"
+ },
+ {
+  "id": "babbage-witnesses-key-5-empty",
+  "name": "babbage witnesses: key 5 empty",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10580"
+ },
+ {
+  "id": "babbage-witnesses-key-5-empty-indefinite",
+  "name": "babbage witnesses: key 5 empty, indefinite",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1059fff"
+ },
+ {
+  "id": "babbage-witnesses-key-6-empty",
+  "name": "babbage witnesses: key 6 empty",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10680"
+ },
+ {
+  "id": "babbage-witnesses-key-6-empty-indefinite",
+  "name": "babbage witnesses: key 6 empty, indefinite",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a1069fff"
+ },
+ {
+  "id": "babbage-witnesses-redeemers-as-a-map",
+  "name": "babbage witnesses: redeemers as a map",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": "expected list len or indef",
+  "expect": "Expected",
+  "size": null,
+  "bytes": "a105a0"
+ },
+ {
+  "id": "babbage-witnesses-tag-258-on-the-native-scripts-is-not-read",
+  "name": "babbage witnesses: tag 258 on the native scripts is not read",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": "expected list len or indef",
+  "expect": "Expected",
+  "size": null,
+  "bytes": "a101d90102818200581c33333333333333333333333333333333333333333333333333333333"
+ },
+ {
+  "id": "babbage-witnesses-tag-258-on-the-bootstrap-witnesses-is-not-read",
+  "name": "babbage witnesses: tag 258 on the bootstrap witnesses is not read",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": "expected list len or indef",
+  "expect": "Expected",
+  "size": null,
+  "bytes": "a102d901028184582091919191919191919191919191919191919191919191919191919191919191915840a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a15820929292929292929292929292929292929292929292929292929292929292929241a0"
+ },
+ {
+  "id": "babbage-body-key-0-empty",
+  "name": "babbage body: key 0 empty",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a30080018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d40"
+ },
+ {
+  "id": "babbage-body-key-1-empty",
+  "name": "babbage body: key 1 empty",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a300818258201111111111111111111111111111111111111111111111111111111111111111000180021a00030d40"
+ },
+ {
+  "id": "babbage-body-key-4-empty",
+  "name": "babbage body: key 4 empty",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400480"
+ },
+ {
+  "id": "babbage-body-key-13-empty",
+  "name": "babbage body: key 13 empty",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400d80"
+ },
+ {
+  "id": "babbage-body-key-14-empty",
+  "name": "babbage body: key 14 empty",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400e80"
+ },
+ {
+  "id": "babbage-body-key-18-empty",
+  "name": "babbage body: key 18 empty",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d401280"
+ },
+ {
+  "id": "babbage-body-key-5-empty-map",
+  "name": "babbage body: key 5 empty map",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d4005a0"
+ },
+ {
+  "id": "babbage-body-key-9-empty-map",
+  "name": "babbage body: key 9 empty map",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d4009a0"
+ },
+ {
+  "id": "babbage-update-repeated-proposer-same-update",
+  "name": "babbage update: repeated proposer, same update",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400682a2581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa100182c581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa100182c0a"
+ },
+ {
+  "id": "babbage-update-repeated-proposer-other-update",
+  "name": "babbage update: repeated proposer, other update",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400682a2581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa100182c581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa101182d0a"
+ },
+ {
+  "id": "babbage-update-the-last-proposal-alone",
+  "name": "babbage update: the last proposal alone",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a40081825820111111111111111111111111111111111111111111111111111111111111111100018182581d61222222222222222222222222222222222222222222222222222222221a001e8480021a00030d400682a1581c5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa101182d0a"
+ },
+ {
+  "id": "shelley-witnesses-key-3-is-not-a-field-of-the-era",
+  "name": "shelley witnesses: key 3 is not a field of the era",
+  "era": "shelley",
+  "kind": "witnesses",
+  "rule": "not a valid key",
+  "expect": "UnknownFields",
+  "size": null,
+  "bytes": "a10380"
+ },
+ {
+  "id": "shelley-witnesses-key-7-is-not-a-field-of-the-era",
+  "name": "shelley witnesses: key 7 is not a field of the era",
+  "era": "shelley",
+  "kind": "witnesses",
+  "rule": "not a valid key",
+  "expect": "UnknownFields",
+  "size": null,
+  "bytes": "a10780"
+ },
+ {
+  "id": "shelley-witnesses-key-8-is-not-a-field-of-the-era",
+  "name": "shelley witnesses: key 8 is not a field of the era",
+  "era": "shelley",
+  "kind": "witnesses",
+  "rule": "not a valid key",
+  "expect": "UnknownFields",
+  "size": null,
+  "bytes": "a10880"
+ },
+ {
+  "id": "shelley-witnesses-repeated-key",
+  "name": "shelley witnesses: repeated key",
+  "era": "shelley",
+  "kind": "witnesses",
+  "rule": "Duplicate key:",
+  "expect": "DuplicateKey",
+  "size": null,
+  "bytes": "a2008182582090909090909090909090909090909090909090909090909090909090909090905840a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0008182582091919191919191919191919191919191919191919191919191919191919191915840a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+ },
+ {
+  "id": "allegra-witnesses-key-3-is-not-a-field-of-the-era",
+  "name": "allegra witnesses: key 3 is not a field of the era",
+  "era": "allegra",
+  "kind": "witnesses",
+  "rule": "not a valid key",
+  "expect": "UnknownFields",
+  "size": null,
+  "bytes": "a10380"
+ },
+ {
+  "id": "allegra-witnesses-key-8-is-not-a-field-of-the-era",
+  "name": "allegra witnesses: key 8 is not a field of the era",
+  "era": "allegra",
+  "kind": "witnesses",
+  "rule": "not a valid key",
+  "expect": "UnknownFields",
+  "size": null,
+  "bytes": "a10880"
+ },
+ {
+  "id": "allegra-witnesses-repeated-key",
+  "name": "allegra witnesses: repeated key",
+  "era": "allegra",
+  "kind": "witnesses",
+  "rule": "Duplicate key:",
+  "expect": "DuplicateKey",
+  "size": null,
+  "bytes": "a2008182582090909090909090909090909090909090909090909090909090909090909090905840a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0008182582091919191919191919191919191919191919191919191919191919191919191915840a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+ },
+ {
+  "id": "mary-witnesses-key-3-is-not-a-field-of-the-era",
+  "name": "mary witnesses: key 3 is not a field of the era",
+  "era": "mary",
+  "kind": "witnesses",
+  "rule": "not a valid key",
+  "expect": "UnknownFields",
+  "size": null,
+  "bytes": "a10380"
+ },
+ {
+  "id": "mary-witnesses-key-8-is-not-a-field-of-the-era",
+  "name": "mary witnesses: key 8 is not a field of the era",
+  "era": "mary",
+  "kind": "witnesses",
+  "rule": "not a valid key",
+  "expect": "UnknownFields",
+  "size": null,
+  "bytes": "a10880"
+ },
+ {
+  "id": "mary-witnesses-repeated-key",
+  "name": "mary witnesses: repeated key",
+  "era": "mary",
+  "kind": "witnesses",
+  "rule": "Duplicate key:",
+  "expect": "DuplicateKey",
+  "size": null,
+  "bytes": "a2008182582090909090909090909090909090909090909090909090909090909090909090905840a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0008182582091919191919191919191919191919191919191919191919191919191919191915840a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+ },
+ {
+  "id": "alonzo-witnesses-key-8-is-not-a-field-of-the-era",
+  "name": "alonzo witnesses: key 8 is not a field of the era",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": "not a valid key",
+  "expect": "UnknownFields",
+  "size": null,
+  "bytes": "a10880"
+ },
+ {
+  "id": "alonzo-witnesses-repeated-key",
+  "name": "alonzo witnesses: repeated key",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": "Duplicate key:",
+  "expect": "DuplicateKey",
+  "size": null,
+  "bytes": "a2008182582090909090909090909090909090909090909090909090909090909090909090905840a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0008182582091919191919191919191919191919191919191919191919191919191919191915840a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+ },
+ {
+  "id": "alonzo-witnesses-key-6-a-later-language-empty",
+  "name": "alonzo witnesses: key 6, a later language, empty",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10680"
+ },
+ {
+  "id": "alonzo-witnesses-key-6-a-later-language-with-a-script",
+  "name": "alonzo witnesses: key 6, a later language, with a script",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": "isn't supported in the",
+  "expect": "UnsupportedLanguage",
+  "size": null,
+  "bytes": "a10681494e4d01000022220011"
+ },
+ {
+  "id": "alonzo-witnesses-key-7-a-later-language-empty",
+  "name": "alonzo witnesses: key 7, a later language, empty",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10780"
+ },
+ {
+  "id": "alonzo-witnesses-key-7-a-later-language-with-a-script",
+  "name": "alonzo witnesses: key 7, a later language, with a script",
+  "era": "alonzo",
+  "kind": "witnesses",
+  "rule": "isn't supported in the",
+  "expect": "UnsupportedLanguage",
+  "size": null,
+  "bytes": "a10781494e4d01000022220011"
+ },
+ {
+  "id": "babbage-witnesses-key-8-is-not-a-field-of-the-era",
+  "name": "babbage witnesses: key 8 is not a field of the era",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": "not a valid key",
+  "expect": "UnknownFields",
+  "size": null,
+  "bytes": "a10880"
+ },
+ {
+  "id": "babbage-witnesses-repeated-key",
+  "name": "babbage witnesses: repeated key",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": "Duplicate key:",
+  "expect": "DuplicateKey",
+  "size": null,
+  "bytes": "a2008182582090909090909090909090909090909090909090909090909090909090909090905840a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0008182582091919191919191919191919191919191919191919191919191919191919191915840a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+ },
+ {
+  "id": "babbage-witnesses-key-7-a-later-language-empty",
+  "name": "babbage witnesses: key 7, a later language, empty",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": null,
+  "expect": null,
+  "size": 0,
+  "bytes": "a10780"
+ },
+ {
+  "id": "babbage-witnesses-key-7-a-later-language-with-a-script",
+  "name": "babbage witnesses: key 7, a later language, with a script",
+  "era": "babbage",
+  "kind": "witnesses",
+  "rule": "isn't supported in the",
+  "expect": "UnsupportedLanguage",
+  "size": null,
+  "bytes": "a10781494e4d01000022220011"
+ },
+ {
+  "id": "babbage-body-a-reference-script-of-language-0",
+  "name": "babbage body: a reference script of language 0",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a300818258201111111111111111111111111111111111111111111111111111111111111111000181a300581d6122222222222222222222222222222222222222222222222222222222011a001e848003d818582282008200581c33333333333333333333333333333333333333333333333333333333021a00030d40"
+ },
+ {
+  "id": "babbage-body-a-reference-script-of-language-1",
+  "name": "babbage body: a reference script of language 1",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a300818258201111111111111111111111111111111111111111111111111111111111111111000181a300581d6122222222222222222222222222222222222222222222222222222222011a001e848003d8184c8201494e4d01000022220011021a00030d40"
+ },
+ {
+  "id": "babbage-body-a-reference-script-of-language-2",
+  "name": "babbage body: a reference script of language 2",
+  "era": "babbage",
+  "kind": "body",
+  "rule": null,
+  "expect": null,
+  "size": 1,
+  "bytes": "a300818258201111111111111111111111111111111111111111111111111111111111111111000181a300581d6122222222222222222222222222222222222222222222222222222222011a001e848003d8184c8202494e4d01000022220011021a00030d40"
+ },
+ {
+  "id": "babbage-body-a-reference-script-of-language-3",
+  "name": "babbage body: a reference script of language 3",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "isn't supported in the",
+  "expect": "UnsupportedLanguage",
+  "size": null,
+  "bytes": "a300818258201111111111111111111111111111111111111111111111111111111111111111000181a300581d6122222222222222222222222222222222222222222222222222222222011a001e848003d8184c8203494e4d01000022220011021a00030d40"
+ },
+ {
+  "id": "babbage-body-a-reference-script-of-language-4",
+  "name": "babbage body: a reference script of language 4",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "isn't supported in the",
+  "expect": "UnknownTag",
+  "size": null,
+  "bytes": "a300818258201111111111111111111111111111111111111111111111111111111111111111000181a300581d6122222222222222222222222222222222222222222222222222222222011a001e848003d8184c8204494e4d01000022220011021a00030d40"
+ },
+ {
+  "id": "babbage-body-a-reference-script-of-tag-5",
+  "name": "babbage body: a reference script of tag 5",
+  "era": "babbage",
+  "kind": "body",
+  "rule": "not a valid key",
+  "expect": "UnknownTag",
+  "size": null,
+  "bytes": "a300818258201111111111111111111111111111111111111111111111111111111111111111000181a300581d6122222222222222222222222222222222222222222222222222222222011a001e848003d8184c8205494e4d01000022220011021a00030d40"
  }
 ]
