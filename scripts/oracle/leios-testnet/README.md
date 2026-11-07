@@ -38,6 +38,13 @@ copies the node's repository, index state and `source-repository-package` stanza
   (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:175-182`), as the block body's `decodeSeq`
   reads each of its transactions: body, witness set, auxiliary data and sub-transactions.
 
+- a transaction with the outputs it spends (`kind` "context", #54): the Plutus script contexts the
+  ledger collects for it before evaluation (`mkDijkstraStAnnTopTx`,
+  `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra.hs:113-169`), at protocol version 12.0 with a
+  PlutusV4 cost model, each the `ToCBOR PlutusWithContext` encoding, or the collection's failure.
+  The cases come from `leios_context_cases.py`; the
+  [fixtures](../../../fixtures/reference/leios-testnet-contexts/README.md) retain them.
+
 For an accepted block it records the header's hash, size, signed bytes (the header body's original
 bytes, `getSignableRepresentation = originalBytes`, `Leios/BlockHeader.hs:164-165`) and fields, the
 block body's hash and size as the ledger computes them, each transaction's id and validity flag, and

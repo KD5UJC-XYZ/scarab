@@ -25,7 +25,8 @@ enum TxOutSource:
   * The cases the reference has no constructor for (it holds the data decoded and the cost models
   * complete) are the node's own: [[Undecodable]], [[NoScriptBytes]],
   * [[CostModelParameterTooLarge]], [[NoEraHistory]], [[NoClockSample]] (a recorded clock without
-  * the slot; the translation past the horizon is [[PastHorizon]]) and [[NativeScriptRedeemer]].
+  * the slot; the translation past the horizon is [[PastHorizon]]), [[NativeScriptRedeemer]] and
+  * [[LanguageWithoutContext]].
   */
 enum TranslationError:
   /** A redeemer names no purpose of the transaction (`RedeemerPointerPointsToNothing`). */
@@ -75,6 +76,12 @@ enum TranslationError:
   /** A redeemer names a native script. */
   case NativeScriptRedeemer
 
+  /** The transaction's era has no script context for the language: PlutusV4, whose context is the
+    * Dijkstra era's (`EraPlutusTxInfo 'PlutusV4 DijkstraEra`, cardano-ledger 9df9f98c), in a
+    * transaction of an earlier era, which the reference's types rule out.
+    */
+  case LanguageWithoutContext(language: xyz.kd5ujc.scarab.plutus.PlutusLanguage)
+
   /** A cost model parameter does not fit 64 bits. */
   case CostModelParameterTooLarge
 
@@ -117,6 +124,7 @@ enum TranslationError:
     case Undecodable(site)          => s"the ${site.toString.toLowerCase} does not decode"
     case NoScriptBytes(script)      => s"script ${script.hex} has no bytes"
     case NativeScriptRedeemer       => "a redeemer names a native script"
+    case LanguageWithoutContext(l)  => s"no script context for $l in this era"
     case CostModelParameterTooLarge => "cost model parameter exceeds 64 bits"
     case NoEraHistory               => "no era history for slot times"
     case NoClockSample(slot)        => s"no clock sample for slot $slot"

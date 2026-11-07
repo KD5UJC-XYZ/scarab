@@ -217,6 +217,20 @@
    ]
   },
   {
+   "name": "plutus",
+   "aliases": [
+    "plutus-core"
+   ],
+   "repository": "IntersectMBO/plutus",
+   "version": "1.71.0.0",
+   "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+   "urlPattern": "https://github.com/IntersectMBO/plutus/commit/{revision}",
+   "role": "Leios testnet reference: the build of the public Leios testnet (release rc-2026w44, #711): the plutus-core and plutus-ledger-api 1.71.0.0 its node binary links (CHaP index-state 2026-10-09), which define PlutusV4, case on Data and the protocol 12 semantics variants.",
+   "dependents": [
+    "plutus/src/test/resources/plutus-reference/releases.json"
+   ]
+  },
+  {
    "name": "Scalus",
    "aliases": [
     "scalus"

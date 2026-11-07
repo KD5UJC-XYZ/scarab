@@ -137,8 +137,8 @@ private[ntc] object ContextFailureCbor:
         TranslationError.CurrentTreasuryFieldNotSupported(_) |
         TranslationError.ReferenceInputsNotDisjointFromInputs(_) | TranslationError.Undecodable(_) |
         TranslationError.NoScriptBytes(_) | TranslationError.NativeScriptRedeemer |
-        TranslationError.CostModelParameterTooLarge | TranslationError.NoEraHistory |
-        TranslationError.NoClockSample(_) =>
+        TranslationError.LanguageWithoutContext(_) | TranslationError.CostModelParameterTooLarge |
+        TranslationError.NoEraHistory | TranslationError.NoClockSample(_) =>
       None
 
   /** The `ContextError` of the era. Alonzo's `AlonzoContextError` has the one translation failure
@@ -193,8 +193,8 @@ private[ntc] object ContextFailureCbor:
     // pre-Conway eras answer `None`.
     case TranslationError.DelegationWithoutDelegatee | TranslationError.Undecodable(_) |
         TranslationError.NoScriptBytes(_) | TranslationError.NativeScriptRedeemer |
-        TranslationError.CostModelParameterTooLarge | TranslationError.NoEraHistory |
-        TranslationError.NoClockSample(_) =>
+        TranslationError.LanguageWithoutContext(_) | TranslationError.CostModelParameterTooLarge |
+        TranslationError.NoEraHistory | TranslationError.NoClockSample(_) =>
       None
 
   private def votingProcedures(

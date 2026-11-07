@@ -531,6 +531,7 @@ object ScriptContexts:
           PlutusData.maybe(body.currentTreasury.map(I(_))),
           PlutusData.maybe(Option.when(body.donation > 0)(I(body.donation)))
         )
+      case PlutusLanguage.V4 => Left(TranslationError.LanguageWithoutContext(language))
 
   private def guardNoConway(body: TxBody): Result[Unit] =
     if body.votes.nonEmpty then fail(TranslationError.VotingProceduresFieldNotSupported(body.votes))
@@ -572,6 +573,7 @@ object ScriptContexts:
   ): Result[Vector[PlutusData]] =
     decodeRedeemer(redeemer).flatMap { rdmr =>
       language match
+        case PlutusLanguage.V4 => Left(TranslationError.LanguageWithoutContext(language))
         case PlutusLanguage.V3 =>
           for
             datum <- spendingDatum(tx, purpose)

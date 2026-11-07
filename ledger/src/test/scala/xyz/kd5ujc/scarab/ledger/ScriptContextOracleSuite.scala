@@ -82,6 +82,7 @@ class ScriptContextOracleSuite extends FunSuite:
             sl.ExUnits(r.exUnits.mem.toLong, r.exUnits.steps.toLong)
           )
           lang match
+            case PlutusLanguage.V4 => fail("no PlutusV4 context before Dijkstra")
             case PlutusLanguage.V1 =>
               dataOf(Oracle.getScriptContextV1(sr, tx, utxos, cfg, pv))
             case PlutusLanguage.V2 =>

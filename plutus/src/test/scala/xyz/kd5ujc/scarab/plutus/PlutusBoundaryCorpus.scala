@@ -174,7 +174,9 @@ object PlutusBoundaryCorpus:
   private def conformance(name: String): String =
     PlutusConformanceSuite.reference.read(s"${PlutusConformanceSuite.Conformance}/$name")
 
-  def costModel(language: PlutusLanguage, protocol: Int): Vector[Long] =
+  def costModel(plutusLanguage: PlutusLanguage, protocol: Int): Vector[Long] =
+    // a PlutusV4 cost model is a PlutusV3 one (`plutusVXParamNames`, cardano-ledger 9df9f98c)
+    val language = plutusLanguage.evaluatedAs
     val variant =
       if language == PlutusLanguage.V3 then (if protocol < 11 then "C" else "E")
       else if protocol < 11 then "B"
@@ -203,7 +205,7 @@ object PlutusBoundaryCorpus:
     val decoder = ScalusEvaluator.pureDecoder
     val rows = for
       probe <- probes
-      language <- PlutusLanguage.values.toVector
+      language <- PlutusLanguage.values.toVector.filterNot(_ == PlutusLanguage.V4)
       protocol <- Vector(9, 10, 11)
     yield
       val model = costModel(language, protocol)

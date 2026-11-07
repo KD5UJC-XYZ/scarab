@@ -6,9 +6,16 @@ import scalus.uplc.DefaultFun.*
 
 /** What a Plutus script may use in each (ledger language, protocol major version): the builtin
   * functions and the UPLC program versions the reference ledger accepts. It transcribes
-  * `PlutusLedgerApi.Common.Versions` of plutus-ledger-api 1.70.0.0 (`builtinsIntroducedIn`,
-  * `plcVersionsIntroducedIn`, `ledgerLanguageIntroducedIn`); the tables of 1.68.0.0 and the default
-  * branch are identical. Batches that were deployed never change, new builtins are a new batch.
+  * `PlutusLedgerApi.Common.Versions` of plutus-ledger-api 1.71.0.0 (`261766ad`, the plutus of the
+  * Leios testnet build: `builtinsIntroducedIn`, `plcVersionsIntroducedIn`,
+  * `ledgerLanguageIntroducedIn`). Below protocol 12 its tables are those of 1.70.0.0 (`507cab8c`,
+  * the reference node 11.1.3's); 1.71.0.0 adds only program version 1.2.0 at protocol 12 (lines
+  * 362-385). Batches that were deployed never change, new builtins are a new batch; batch 7
+  * (`MultiIndexArray`, `Policies`, `AssetCount`, `KeepPolicies`, `DropPolicies`) is introduced at
+  * `futurePV` only, which no protocol version reaches, and is therefore in no table here.
+  *
+  * A PlutusV4 script is admitted as the reference ledger admits it: by plutus's PlutusV3 tables
+  * ([[PlutusLanguage.evaluatedAs]]), from protocol 12, where they equal plutus's own PlutusV4 row.
   *
   * The ledger applies the builtin table when it deserialises a script (`deserialiseScript`): a
   * script that uses a builtin outside its table does not decode. From Babbage that is a phase-1
@@ -153,8 +160,8 @@ object PlutusAvailability:
     ScaleValue
   )
 
-  /** The protocol major versions the table names: Alonzo, Vasil, Valentine, Chang, Plomin and van
-    * Rossem.
+  /** The protocol major versions the table names: Alonzo, Vasil, Valentine, Chang, Plomin, van
+    * Rossem and Dijkstra (`PlutusLedgerApi/Common/ProtocolVersions.hs:50-91`, 1.71.0.0).
     */
   val Alonzo = 5
   val Vasil = 7
@@ -162,6 +169,7 @@ object PlutusAvailability:
   val Chang = 9
   val Plomin = 10
   val VanRossem = 11
+  val Dijkstra = 12
 
   /** The builtins a language gained, by the protocol major version that introduced them. */
   def introducedIn(language: PlutusLanguage): Map[Int, Set[DefaultFun]] = language match
@@ -183,29 +191,37 @@ object PlutusAvailability:
         Plomin -> batch5.toSet,
         VanRossem -> batch6.toSet
       )
+    case PlutusLanguage.V4 => introducedIn(PlutusLanguage.V3)
 
   /** The builtins `language` may use at protocol major version `protocolMajor`. */
   def builtinsAvailableIn(language: PlutusLanguage, protocolMajor: Int): Set[DefaultFun] =
     introducedIn(language).collect { case (pv, fs) if pv <= protocolMajor => fs }.flatten.toSet
 
-  /** The protocol major version a ledger language first exists in. */
+  /** The protocol major version a ledger language first exists in. PlutusV4 is refused below
+    * Dijkstra by the ledger's decoder (`guardPlutus`), the only gate the reference has for it,
+    * since its scripts are deserialised as PlutusV3 ones.
+    */
   def languageIntroducedIn(language: PlutusLanguage): Int = language match
     case PlutusLanguage.V1 => Alonzo
     case PlutusLanguage.V2 => Vasil
     case PlutusLanguage.V3 => Chang
+    case PlutusLanguage.V4 => Dijkstra
 
   /** UPLC program versions by the protocol major version that introduced them (`1.1.0` adds
-    * `constr` and `case`). Version `1.2.0`, introduced for Dijkstra on the plutus default branch,
-    * is in no released table the reference node 11.1.3 can contain, so it is never available.
+    * `constr` and `case`; `1.2.0` adds `case` on `Data`, [[caseOnData]]).
     */
-  private val V100 = (1, 0, 0)
-  private val V110 = (1, 1, 0)
+  val V100 = (1, 0, 0)
+  val V110 = (1, 1, 0)
+  val V120 = (1, 2, 0)
 
   def programVersionsIntroducedIn(language: PlutusLanguage): Map[Int, Set[(Int, Int, Int)]] =
     language match
-      case PlutusLanguage.V1 => Map(Alonzo -> Set(V100), VanRossem -> Set(V110))
-      case PlutusLanguage.V2 => Map(Vasil -> Set(V100), VanRossem -> Set(V110))
-      case PlutusLanguage.V3 => Map(Chang -> Set(V100, V110))
+      case PlutusLanguage.V1 =>
+        Map(Alonzo -> Set(V100), VanRossem -> Set(V110), Dijkstra -> Set(V120))
+      case PlutusLanguage.V2 =>
+        Map(Vasil -> Set(V100), VanRossem -> Set(V110), Dijkstra -> Set(V120))
+      case PlutusLanguage.V3 => Map(Chang -> Set(V100, V110), Dijkstra -> Set(V120))
+      case PlutusLanguage.V4 => programVersionsIntroducedIn(PlutusLanguage.V3)
 
   def programVersionsAvailableIn(
       language: PlutusLanguage,
@@ -238,6 +254,15 @@ object PlutusAvailability:
   ): Option[Failure] =
     if programVersionsAvailableIn(language, protocolMajor).contains(version) then None
     else Some(Failure.VersionUnavailable(version, language, protocolMajor))
+
+  /** Whether the machine may `case` on a `Data` value (`defaultCaserBuiltinFor`,
+    * `PlutusLedgerApi/Common/Eval.hs:144-148`, 1.71.0.0): `caseBuiltin` from Dijkstra for a program
+    * of version 1.2.0 or later, `caseBuiltinNoData` otherwise. The rule ignores the ledger
+    * language. Below van Rossem the caser is `unavailableCaserBuiltin`, which `case` on a built-in
+    * value never reaches there (`caseOnBuiltins` is off).
+    */
+  def caseOnData(protocolMajor: Int, version: (Int, Int, Int)): Boolean =
+    protocolMajor >= Dijkstra && summon[Ordering[(Int, Int, Int)]].gteq(version, V120)
 
   /** Header size of a constant's type and fields of a `constr` from protocol 11 (`maxBoundsByPV`:
     * 32 and 1024); below it the decoder has no bound.

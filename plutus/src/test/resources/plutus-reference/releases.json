@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "repository": "IntersectMBO/plutus",
-  "base": "1.70.0.0",
+  "base": "1.71.0.0",
   "releases": [
     {
       "tag": "1.70.0.0",
@@ -9,6 +9,14 @@
       "archiveSha256": "6c28dcb7a36b14a2dd29c9f6320ca8395aff352bdfbf6cf7cfc2f1c79ab0f7ed",
       "files": 3040,
       "digest": "a3c9434f0f00c25b6e95d7ed6dfd0794ce2d0577efdc99959b1c3e3393ff0b92",
+      "absent": []
+    },
+    {
+      "tag": "1.71.0.0",
+      "commit": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+      "archiveSha256": "5235bf2db188f254998808a7338ef921c5743f513754efaf474d848883d060f1",
+      "files": 3040,
+      "digest": "e5e3e75b9f179d588ec3c720b0d9206f92f5abd24bcf855534a066b96ecf5d37",
       "absent": []
     }
   ],
