@@ -1,0 +1,22 @@
+{
+  "bases": {
+    "fixtures/dijkstra-devnet/genesis/dijkstra-genesis.json": "9417f82cc2405de8e834222818f45c23759d6ac6c6c6f515f68c689eaa597fc0",
+    "fixtures/leios/testnet/config/dijkstra-genesis.json": "9895c096a45225e99630b3fb866e5b115ce3d28c6ecd45ceda8feb0e29306127"
+  },
+  "cases": 107,
+  "casesSha256": "d2de1b2b217925b3cf6a2a047cdb67cf6a2270cf2b21a1cd616e3c91a37ddb7f",
+  "image": "scarab-dijkstra-genesis-oracle:local",
+  "imageId": "sha256:233d7324b3b5d288ab7fe7a1d7b1ecb6797887079b10705cdf249e0a3fb9ac0e",
+  "ledger": {
+    "packages": [
+      "cardano-ledger-dijkstra 0.5.0.0"
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c"
+  },
+  "measuredAt": "2026-11-07",
+  "program": "scripts/oracle/dijkstra-genesis/Main.hs",
+  "programSha256": "e84b1ba4740ee2c2ec0ed497820337ad6c7ef1e165ed4efb84eb7c4d18fff10d",
+  "schemaVersion": 1,
+  "scope": "The unchanged FromJSON DijkstraGenesis of the Leios testnet build: the repository's Dijkstra genesis files whole, a single field removed or replaced, and values the types decide; parser verdicts and the values read, no translation or rule execution"
+}
