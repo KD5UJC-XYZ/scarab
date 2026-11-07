@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+# Example Alertmanager configuration for the pool rules (prometheus/rules/pool.yml). deploy.sh copies it to
+# alertmanager.yml on the server when that file is missing; edit the copy there, it is never overwritten or
+# committed. As shipped it routes every alert to receivers with no integration, so nothing is sent.
+#
+# Routing: one notification group per host; `critical` alerts go to `critical`, `warning` to `warning`, `info`
+# only to the dashboard. Resolved notices are sent. While a node or its host reports nothing, the alerts that
+# depend on its series are inhibited.
+#
+# To deliver through ntfy (https://ntfy.sh, or a self-hosted server), add a webhook to each receiver; ntfy's
+# predefined `alertmanager` template formats the payload and `priority` sets how loudly it arrives:
+#
+#   - name: critical
+#     webhook_configs:
+#       - url: http://<ntfy host>:<port>/<topic>?template=alertmanager&priority=urgent
+#         send_resolved: true
+#   - name: warning
+#     webhook_configs:
+#       - url: http://<ntfy host>:<port>/<topic>?template=alertmanager&priority=default
+#         send_resolved: true
+#
+# Check the file with `amtool check-config alertmanager.yml` (in the prom/alertmanager image).
+route:
+  receiver: discard
+  group_by: [host]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 12h
+  routes:
+    - matchers: ['severity="critical"']
+      receiver: critical
+      repeat_interval: 4h
+    - matchers: ['severity="warning"']
+      receiver: warning
+    - matchers: ['severity="info"']
+      receiver: discard
+
+inhibit_rules:
+  # a node that does not answer or is missing explains its own forging, KES and peer alerts
+  - source_matchers: ['alertname=~"PoolNodeDown|PoolNodeMetricsMissing"']
+    target_matchers: ['alertname=~"Pool.*"', 'alertname!~"PoolNodeDown|PoolNodeMetricsMissing"']
+    equal: [host]
+  # a silent host explains every alert of its nodes and of its rotation driver
+  - source_matchers: ['alertname="HostMetricsMissing"']
+    target_matchers: ['alertname!="HostMetricsMissing"']
+    equal: [host]
+
+receivers:
+  - name: discard
+  - name: critical
+  - name: warning

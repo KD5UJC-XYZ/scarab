@@ -13,8 +13,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 ssh_() { ssh $SSH_OPTS -o BatchMode=yes "$@"; }
 SSH_OPTS=${SSH_OPTS:-}
 
-copy() { # <part> <dest> <dir>: the part's files, keeping .env and data on the remote side
-  tar -C "$here/$1" --exclude=.env --exclude=data --exclude=.docker -czf - . | ssh_ "$2" "mkdir -p '$3' && tar -C '$3' -xzf -"
+copy() { # <part> <dest> <dir>: the part's files, keeping .env, data and the receivers on the remote side
+  tar -C "$here/$1" --exclude=.env --exclude=data --exclude=.docker --exclude=alertmanager/alertmanager.yml -czf - . | ssh_ "$2" "mkdir -p '$3' && tar -C '$3' -xzf -"
 }
 
 case "${1:-}" in
@@ -33,8 +33,13 @@ if [ ! -f .env ]; then
   chmod 600 .env
   echo "wrote $dir/.env (Grafana admin password inside)"
 fi
-mkdir -p data/prometheus data/loki data/grafana grafana/dashboards/imported
-chown -R 65534:65534 data/prometheus; chown -R 10001:10001 data/loki; chown -R 472:0 data/grafana
+mkdir -p data/prometheus data/alertmanager data/loki data/grafana grafana/dashboards/imported
+chown -R 65534:65534 data/prometheus data/alertmanager; chown -R 10001:10001 data/loki; chown -R 472:0 data/grafana
+# the receivers are the operator's: start from the example (which sends nothing), never overwrite
+if [ ! -f alertmanager/alertmanager.yml ]; then
+  cp alertmanager/alertmanager.example.yml alertmanager/alertmanager.yml
+  echo "wrote $dir/alertmanager/alertmanager.yml from the example (no receivers): add yours"
+fi
 # community dashboards, fetched rather than committed: Node Exporter Full (grafana.com 1860)
 if [ ! -s grafana/dashboards/imported/node-exporter-full.json ]; then
   curl -fsSL https://grafana.com/api/dashboards/1860/revisions/latest/download \
@@ -57,8 +62,12 @@ cd "$dir"
 # an ssh session (Docker Desktop over ssh) is never asked
 mkdir -p .docker && [ -f .docker/config.json ] || echo '{}' > .docker/config.json
 export DOCKER_CONFIG=$PWD/.docker
+# the rotation driver's textfile directory is the host's own setting: keep it across deploys
+textfile=
+if [ -f .env ]; then textfile=$(sed -n 's/^TEXTFILE_DIR=//p' .env | tail -n 1); fi
 printf 'SCARAB_HOST=%s\nPROMETHEUS_PUSH_URL=http://%s:9090/api/v1/write\nLOKI_PUSH_URL=http://%s:3100/loki/api/v1/push\nUNIX_DISABLED_COLLECTORS=%s\n' \
   "$name" "$server" "$server" "$disabled" > .env
+if [ -n "$textfile" ]; then printf 'TEXTFILE_DIR=%s\n' "$textfile" >> .env; fi
 docker compose up -d --remove-orphans
 docker compose ps --format '{{.Name}} {{.Status}}'
 REMOTE

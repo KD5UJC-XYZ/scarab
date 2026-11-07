@@ -53,8 +53,11 @@ next to its `compose.yaml`; mounted at `/host/textfile`, read through `prometheu
 series then carry the agent's `host` label. Any other node exporter works with `--collector.textfile.directory`.
 Without the file `PoolKesRotationMetricsMissing` fires after an hour.
 
-**Alerts.** Labels are `severity` (`info`, `warning`, `critical`) and the series' own `host` and `container`; the rules name
-no receiver. Thresholds are first guesses for a single Preprod pool with a 1 s slot and an hourly driver timer; tune
+**Alerts.** Labels are `severity` (`info`, `warning`, `critical`) and the series' own `host`, `container` and `role`; the
+rules name no receiver. The forging, leadership and KES-period rules (`PoolKesPeriods*`, `PoolKesPersistFailed`,
+`PoolForgedBlockNotAdopted`, `PoolBlockLost`, `PoolForgeFailed`, `PoolForgingDisabled`, `PoolNotCheckingSlots`,
+`PoolNoBlocksFor48h`) select `role="pool"`: run a producer with `--label scarab.role=pool`
+([ops/monitoring/README.md](../../ops/monitoring/README.md#runs)). The other rules apply to every node. Thresholds are first guesses for a single Preprod pool with a 1 s slot and an hourly driver timer; tune
 them in the file (`promtool test rules` covers them: `ops/monitoring/server/prometheus/tests/pool.test.yml`).
 
 | Alert | Expression, for | Severity | Why |
@@ -72,13 +75,19 @@ them in the file (`promtool test rules` covers them: `ops/monitoring/server/prom
 | `PoolNotCheckingSlots` | no `about_to_lead` increase in 15 m while Following, 5 m | warning | The forger is not running. |
 | `PoolNoBlocksFor48h` | no adopted block in 48 h and uptime above 48 h, 1 h | info | 14 blocks in 5 days leave 48 h empty under 1 percent of the time. Fires before the stake is active (epoch 321 on Preprod): silence it until then. |
 | `PoolNodeDown` | `up{job="scarab"} == 0`, 2 m | critical | `/metrics` does not answer. |
-| `PoolRestarted` | `changes(process_start_time_seconds[15m]) > 0` | warning | Uptime was reset. |
+| `PoolRestarted` | `changes(process_start_time_seconds{job="scarab"}[15m]) > 0` | warning | Uptime was reset (a node's, not the monitoring stack's own). |
 | `PoolBehindPeers` | peers' tip slot minus ours > 120, 10 m | warning | Not synced: a block forged now is on a stale chain. 120 slots is about six blocks at Preprod's density. |
 | `PoolNoHotPeers` | `peerSelection_Hot_int == 0`, 5 m | critical | The node follows no one. |
 | `PoolFollowerStalled` | `scarab_follower_stalled == 1`, 10 m | critical | The stall watchdog fired and did not clear. |
+| `PoolNodeMetricsMissing` | a node with a `role` reported in 7 d and has no `up` series now, 5 m | critical | Its series vanished (container gone, labels lost, scrape stopped), which `PoolNodeDown` cannot see. |
+| `HostMetricsMissing` | a host's agent reported in 7 d and pushes nothing now, 5 m | critical | The host is down or off the network; its node alerts are blind. |
 
-Notifications are the operator's: point an Alertmanager (or Grafana alerting on the same expressions) at the Prometheus of
-this stack and route on `severity`. The stack ships none, so no address or credential is in the repository.
+Notifications: the stack's Prometheus sends alerts to its Alertmanager, which groups them by `host`, routes on `severity`
+(`critical` and `warning` to their receivers, `info` to the dashboard only), sends resolved notices, and holds back a
+node's other alerts while `PoolNodeDown`, `PoolNodeMetricsMissing` or `HostMetricsMissing` explains them. The receivers
+are the operator's: the server's own `alertmanager.yml`, which `deploy.sh` starts from the committed
+`ops/monitoring/server/alertmanager/alertmanager.example.yml` (it sends nothing and shows ntfy webhooks), so no
+address or credential is in the repository. `amtool check-config` in the `prom/alertmanager` image checks it.
 Checks: `promtool check rules` and `promtool test rules` in the `prom/prometheus` image, and
 `python3 -m unittest scripts/tests/test_dashboards.py` (the generated JSON is the committed JSON, and every metric a
 panel or a rule reads exists in the catalogue or is written by the driver).

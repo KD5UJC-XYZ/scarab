@@ -1,15 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
-# Alerts for a Scarab block producer (docs/running/monitoring.md). Labels are Alertmanager-neutral:
-# `severity` is info, warning or critical, and nothing here names a receiver; wire notifications privately
-# (an Alertmanager route on `severity`, or Grafana alerting on the same expressions).
+# Alerts for a Scarab block producer and the nodes beside it (docs/running/monitoring.md). `severity` is info,
+# warning or critical, and nothing here names a receiver: the stack's Alertmanager routes on `severity` to the
+# operator's receivers (alertmanager/alertmanager.yml, not committed).
 #
-# The node's series carry `host` and `container` (the agent adds them). The rotation driver's series
-# (scarab_kes_rotation_*) come from the host's node exporter textfile collector and carry `host` only.
+# The node's series carry `host` and `container` (the agent adds them), and `role` when the container has
+# the label `scarab.role` (`pool` for a producer). The forging, leadership and KES-period rules select
+# `role="pool"`, so a node that does not forge never fires them; the node-health rules apply to every node.
+# The rotation driver's series (scarab_kes_rotation_*) come from the host's node exporter textfile collector
+# and carry `host` only; the driver runs only beside a producer.
 groups:
   - name: pool-kes
     rules:
       - alert: PoolKesPeriodsLow
-        expr: cardano_node_metrics_remainingKESPeriods_int < 10 and cardano_node_metrics_remainingKESPeriods_int >= 3
+        expr: cardano_node_metrics_remainingKESPeriods_int{role="pool"} < 10 and cardano_node_metrics_remainingKESPeriods_int{role="pool"} >= 3
         for: 5m
         labels: {severity: warning}
         annotations:
@@ -19,7 +22,7 @@ groups:
             threshold (10 by default), so it has not succeeded; see PoolKesRotationFailing and
             PoolKesRotationStale. When the certificate expires the pool forges no more blocks.
       - alert: PoolKesPeriodsCritical
-        expr: cardano_node_metrics_remainingKESPeriods_int < 3
+        expr: cardano_node_metrics_remainingKESPeriods_int{role="pool"} < 3
         for: 1m
         labels: {severity: critical}
         annotations:
@@ -54,7 +57,7 @@ groups:
             Exit status 1 the node refused the new credentials, 2 not confirmed in time, 3 the node's socket does
             not answer, 4 configuration or tools wrong. The timer runs it again; see the unit's journal.
       - alert: PoolKesPersistFailed
-        expr: increase(scarab_kes_persist_failures_total[15m]) > 0
+        expr: increase(scarab_kes_persist_failures_total{role="pool"}[15m]) > 0
         for: 0m
         labels: {severity: critical}
         annotations:
@@ -66,9 +69,9 @@ groups:
     rules:
       - alert: PoolForgedBlockNotAdopted
         expr: >-
-          increase(cardano_node_metrics_Forge_forged_counter[30m])
-          - increase(cardano_node_metrics_Forge_adopted_counter[30m])
-          - increase(cardano_node_metrics_Forge_didnt_adopt_counter[30m]) > 0
+          increase(cardano_node_metrics_Forge_forged_counter{role="pool"}[30m])
+          - increase(cardano_node_metrics_Forge_adopted_counter{role="pool"}[30m])
+          - increase(cardano_node_metrics_Forge_didnt_adopt_counter{role="pool"}[30m]) > 0
         for: 10m
         labels: {severity: critical}
         annotations:
@@ -77,7 +80,7 @@ groups:
             A block was forged and ten minutes later is neither adopted nor counted as lost. Look for `forged`
             without `adopted` in the node log.
       - alert: PoolBlockLost
-        expr: increase(cardano_node_metrics_Forge_didnt_adopt_counter[15m]) > 0
+        expr: increase(cardano_node_metrics_Forge_didnt_adopt_counter{role="pool"}[15m]) > 0
         for: 0m
         labels: {severity: warning}
         annotations:
@@ -87,8 +90,8 @@ groups:
             replaced later is counted in scarab_forge_replaced_total.
       - alert: PoolForgeFailed
         expr: >-
-          delta(cardano_node_metrics_nodeCannotForge_int[15m]) > 0
-          or increase(scarab_forge_failed_total[15m]) > 0
+          delta(cardano_node_metrics_nodeCannotForge_int{role="pool"}[15m]) > 0
+          or increase(scarab_forge_failed_total{role="pool"}[15m]) > 0
         for: 0m
         labels: {severity: critical}
         annotations:
@@ -97,7 +100,7 @@ groups:
             `nodeCannotForge` (the pool led the slot and the certificate's window has not begun) or `forgeFailed`
             (a refusal of Scarab's own: the ledger view, the protocol, the block's assembly) in the node log.
       - alert: PoolForgingDisabled
-        expr: cardano_node_metrics_forging_enabled_int == 0
+        expr: cardano_node_metrics_forging_enabled_int{role="pool"} == 0
         for: 5m
         labels: {severity: critical}
         annotations:
@@ -105,7 +108,7 @@ groups:
           description: The node runs without forging credentials (or they were not loaded).
       - alert: PoolNotCheckingSlots
         expr: >-
-          increase(cardano_node_metrics_Forge_about_to_lead_counter[15m]) < 1
+          increase(cardano_node_metrics_Forge_about_to_lead_counter{role="pool"}[15m]) < 1
           and on (host, container) scarab_node_phase{phase="Following"} == 1
         for: 5m
         labels: {severity: warning}
@@ -114,7 +117,7 @@ groups:
           description: A following node checks about one slot per second; none means the forger is not running.
       - alert: PoolNoBlocksFor48h
         expr: >-
-          increase(cardano_node_metrics_Forge_adopted_counter[48h]) < 1
+          increase(cardano_node_metrics_Forge_adopted_counter{role="pool"}[48h]) < 1
           and on (host, container) (time() - process_start_time_seconds > 48 * 3600)
         for: 1h
         labels: {severity: info}
@@ -134,7 +137,7 @@ groups:
           summary: "{{ $labels.container }}: /metrics does not answer"
           description: The node is down, restarting, or its metrics listener is unreachable from the agent.
       - alert: PoolRestarted
-        expr: changes(process_start_time_seconds[15m]) > 0
+        expr: changes(process_start_time_seconds{job="scarab"}[15m]) > 0
         for: 0m
         labels: {severity: warning}
         annotations:
@@ -167,3 +170,28 @@ groups:
           description: >-
             The stall watchdog (--stall-minutes) fired and has not cleared for 10 minutes; consider --stall-exit-after
             so a supervisor restarts it.
+  - name: monitoring
+    rules:
+      - alert: PoolNodeMetricsMissing
+        expr: >-
+          count by (host, container) (last_over_time(up{job="scarab", role!=""}[7d]))
+          unless count by (host, container) (up{job="scarab", role!=""})
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.container }}: no metrics from this node"
+          description: >-
+            A node with a `scarab.role` label reported in the last 7 days and has no series now, so PoolNodeDown
+            (`up == 0`) cannot fire: the container is gone, lost its labels, or the agent stopped scraping it. Fires
+            for 7 days after a node is removed on purpose; silence it then.
+      - alert: HostMetricsMissing
+        expr: >-
+          count by (host) (last_over_time(up{job="integrations/unix"}[7d]))
+          unless count by (host) (up{job="integrations/unix"})
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.host }}: the agent has pushed nothing"
+          description: >-
+            The host's agent reported in the last 7 days and has pushed no host metrics since: the host is down,
+            off the network, or its agent stopped. Every alert of its nodes is blind until it returns.

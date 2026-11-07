@@ -1,6 +1,6 @@
 # Monitoring the long runs
 
-Prometheus, Loki and Grafana on one always-on host (the *server*), and a Grafana Alloy *agent* on
+Prometheus, Alertmanager, Loki and Grafana on one always-on host (the *server*), and a Grafana Alloy *agent* on
 each machine that runs Scarab containers. Agents push outward, so a worker opens no port (Docker
 Desktop on Windows cannot publish one to the network without a firewall rule).
 
@@ -9,6 +9,7 @@ worker (worker-a, worker-b, ...)                 server (monitor-host)
   scarab-* containers ── stdout ──┐                 Loki        :3100  log streams, 30 days
   host /proc, /sys, docker ───────┼── Alloy ──push──▶ Prometheus  :9090  metrics, 180 days
   scarab-* /metrics ─────────────┘                 Grafana     :3000  dashboards
+                                                   Alertmanager :9093 Prometheus's alerts to your receivers
 ```
 
 ## What is collected
@@ -27,6 +28,7 @@ worker (worker-a, worker-b, ...)                 server (monitor-host)
   `/proc/net` for the agent, hence `UNIX_DISABLED_COLLECTORS` for that host.
 - **Node metrics**: the node's `/metrics` (roadmap J3, [#47](https://github.com/KD5UJC-XYZ/scarab/issues/47)),
   scraped every 15 s from every `scarab-*` container that carries the label `scarab.metrics.port=<port>`.
+  A container label `scarab.role` becomes the series label `role` ([Runs](#runs)).
 
 ## Dashboards
 
@@ -118,8 +120,11 @@ Prometheus image. Neither verification changes the nodes or monitoring data.
 [`server/prometheus/rules/pool.yml`](server/prometheus/rules/pool.yml) holds the alert rules for a block producer
 (KES periods, the rotation driver, forged blocks that were not adopted, sync, peers, stalls, restarts); the server's
 Prometheus loads them (`rule_files`) and `server/prometheus/tests/pool.test.yml` tests them
-(`promtool test rules`). The stack has no Alertmanager and the rules name no receiver: route on the `severity` label
-with your own Alertmanager, or build Grafana alerts on the same expressions. The rotation driver's metrics reach
+(`promtool test rules`). The forging and KES-period rules select `role="pool"` (see [Runs](#runs)); the node-health
+rules apply to every node. Prometheus sends firing alerts to the stack's Alertmanager, which routes on `severity` to the
+receivers in `server/alertmanager/alertmanager.yml`. That file is the operator's: `deploy.sh` writes it from
+[`alertmanager.example.yml`](server/alertmanager/alertmanager.example.yml), which sends nothing, when it is missing, and
+never overwrites it; it is not committed. The example shows ntfy webhooks. The rotation driver's metrics reach
 Prometheus through the agent's textfile directory (`TEXTFILE_DIR`). The alert table, the thresholds and their reasons
 are in [docs/running/monitoring.md](../../docs/running/monitoring.md).
 
@@ -154,6 +159,11 @@ see [docs/running/metrics.md](../../docs/running/metrics.md)):
 docker run --name scarab-<run> --label scarab.metrics.port=12798 ... \
   ... follow --metrics-listen 0.0.0.0:12798 ...
 ```
+
+A long-lived node also declares its role with `--label scarab.role=<role>`; the agent turns it into the series
+label `role`. A producer uses `scarab.role=pool`, which the forging and KES-period alerts select. Any node with a role
+is watched by `PoolNodeMetricsMissing`, which fires when its series stop arriving (the container is gone or lost its
+labels), the case `PoolNodeDown` cannot see. Short runs leave the label off.
 
 The port is not published. The agent runs on Docker's default bridge, like the runs, and reaches the
 port on the container's bridge address. The "Node metrics" row of the dashboard reads these series.
