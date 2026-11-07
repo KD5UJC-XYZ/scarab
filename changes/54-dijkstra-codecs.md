@@ -15,3 +15,6 @@
   enter Dijkstra: a decoded Dijkstra block is refused by the ledger rules (`DijkstraNotYet.Rules`),
   as is a Dijkstra transaction read into the transaction types the rules consume, and BlockFetch
   checks a Dijkstra block against its header as the reference's `blockMatchesHeader` does.
+- `import-haskell-db` refuses a Dijkstra block before storing it (`EraNotYet`), as it did before the
+  block decoded, rather than storing a block that the node would then refuse when it replays the
+  chain.

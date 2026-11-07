@@ -404,10 +404,10 @@ object DetachedRecords:
     *   picks that reader for `ValidityInterval` (`Allegra/Scripts.hs:166`), `MaryValue`
     *   (`Mary/Value.hs:312`), the list form of auxiliary data (`Alonzo/TxAuxData.hs:220`),
     *   `ExUnits` and `Prices` (`Plutus/ExUnits.hs:210, 237`), `Anchor` (`BaseTypes.hs:1005`), and
-    *   `GovActionId`, `VotingProcedure`, `ProposalProcedure` and `Constitution`
-    *   (`Conway/Governance/Procedures.hs:183, 497, 569, 1046`), all cardano-ledger 9df9f98c, and
-    *   Dijkstra's own transaction decoders use no `RecD`. So an era read at version 12 has the
-    *   shape [[Shape.Item]] throughout.
+    *   `GovActionId`, `VotingProcedure`, `ProposalProcedure`, `Committee`, `GovAction` and
+    *   `Constitution` (`Conway/Governance/Procedures.hs:183, 497, 569, 638, 937, 1046`), all
+    *   cardano-ledger 9df9f98c, and Dijkstra's own transaction decoders use no `RecD`. So an era
+    *   read at version 12 has the shape [[Shape.Item]] throughout.
     */
   object Shapes:
     private def since(era: Era, first: Era): Boolean = era.ordinal >= first.ordinal
