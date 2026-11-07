@@ -116,8 +116,8 @@ class LeiosTestnetConfigSuite extends FunSuite:
     val setup =
       NodeSetup.fromConfigFile(dir.resolve("config.json")).fold(e => fail(e.message), identity)
     val dijkstra = setup.globals.dijkstra.fold(fail("no Dijkstra genesis was read"))(identity)
-    assertEquals(dijkstra.params.leiosCommitteeSize, BigInt(900))
-    assertEquals(dijkstra.params.refScriptCostStride, BigInt(25600))
+    assertEquals(dijkstra.leiosCommitteeSize, BigInt(900))
+    assertEquals(dijkstra.refScriptCostStride, BigInt(25600))
     assertEquals(dijkstra.plutusV4CostModel.size, 251)
   }
 

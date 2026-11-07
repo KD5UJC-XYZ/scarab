@@ -5,7 +5,7 @@ import io.circe.parser
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
-import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError, ParamUpdate}
+import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError, ParamUpdate, ProtocolParams}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 /** The update of the parameters Dijkstra adds (`dijkstraApplyPPUpdates`, cardano-ledger 9df9f98c
@@ -13,13 +13,13 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
   * each value is read as [[DijkstraParamUpdate.decode]] reads it.
   */
 class DijkstraParamsSuite extends FunSuite:
-  private val genesis: DijkstraParams =
+  private val genesis: ProtocolParams =
     parser
       .parse(Files.readString(Path.of("fixtures/leios/testnet/config/dijkstra-genesis.json")))
       .left
       .map(_.message)
       .flatMap(j => DijkstraGenesis.read(j).left.map(_.message))
-      .fold(fail(_), _.params)
+      .fold(fail(_), _.upgrade(Params.base))
 
   private def update(fields: (Int, String)*): ParamUpdate =
     ParamUpdate(
@@ -31,7 +31,7 @@ class DijkstraParamsSuite extends FunSuite:
     val pledgeLeverageHalf = 38 -> "d81e820102"
     val endorserUnits5And6 = 47 -> "820506"
     val bootstrapRound5 = 53 -> "05"
-    // a Conway key is the flat parameters' and is left alone here
+    // a Conway key is applied by `ProtocolParams.update` and is left alone here
     val conwayMinFeeA = 0 -> "1901f4"
     val u = update(
       committeeSize300,
@@ -81,3 +81,27 @@ class DijkstraParamsSuite extends FunSuite:
       Left(LedgerDecodeError.UnknownKey(what, 57))
     )
   }
+
+private object Params:
+  val base: ProtocolParams = ProtocolParams(
+    44,
+    155381,
+    16384,
+    65536,
+    5000,
+    4310,
+    2000000,
+    500000000,
+    18,
+    500,
+    Rational(3, 10),
+    Rational(3, 1000),
+    Rational(1, 5),
+    170000000,
+    10,
+    500000000,
+    20,
+    100000000000L,
+    6,
+    Rational(15)
+  )

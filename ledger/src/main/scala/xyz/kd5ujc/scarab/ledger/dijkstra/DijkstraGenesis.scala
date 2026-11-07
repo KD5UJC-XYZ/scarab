@@ -13,24 +13,81 @@ import xyz.kd5ujc.scarab.ledger.{
   GenesisSchema,
   ProtocolParams
 }
+import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.json.{BoundedRatio, FromJson, JsonKind, NumberError}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 /** The Dijkstra genesis (`DijkstraGenesis`, cardano-ledger 9df9f98c
   * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Genesis.hs:32-35`): a newtype of the parameters
-  * the translation from Conway introduces (`UpgradeDijkstraPParams`,
-  * `Dijkstra/PParams.hs:410-435`), which is the translation's context (`TranslationContext
-  * DijkstraEra`, `Dijkstra/Translation.hs:51`). They are the fields Dijkstra adds and the PlutusV4
-  * cost model.
+  * the translation from Conway introduces (`UpgradeDijkstraPParams`, `Dijkstra/PParams.hs:410-435`,
+  * whose fields these are, in its order), which is the translation's context (`TranslationContext
+  * DijkstraEra`, `Dijkstra/Translation.hs:51`). They are the values of the fields Dijkstra adds to
+  * the parameters ([[ProtocolParams]], from `maxRefScriptSizePerBlock`) and the PlutusV4 cost
+  * model.
+  *
+  * @param maxPledgeLeverage
+  *   `MaxPledgeLeverage`, a `NonNegativeInterval` or none (`Core/PParams.hs:369-373`).
+  * @param perasBootstrapRound
+  *   a `Word32` or none.
   */
-final case class DijkstraGenesis(params: DijkstraParams, plutusV4CostModel: Vector[Long]):
+final case class DijkstraGenesis(
+    maxRefScriptSizePerBlock: BigInt,
+    maxRefScriptSizePerTx: BigInt,
+    refScriptCostStride: BigInt,
+    refScriptCostMultiplier: Rational,
+    maxPledgeLeverage: Option[Rational],
+    minPoolMargin: Rational,
+    plutusV4CostModel: Vector[Long],
+    leiosAnnouncementPeriodLength: BigInt,
+    leiosVotePeriodLength: BigInt,
+    leiosDiffusionPeriodLength: BigInt,
+    leiosCommitteeSize: BigInt,
+    leiosQuorumStakeThreshold: Rational,
+    maxEndorserBlockReferencesSize: BigInt,
+    maxEndorserBlockTxsSize: BigInt,
+    maxEndorserBlockExUnits: ExUnits,
+    maxRefScriptSizePerEndorserBlock: BigInt,
+    perasMinCandidateBlockAge: BigInt,
+    perasHealingFactor: Rational,
+    perasCertBoost: BigInt,
+    perasTargetCommitteeSize: BigInt,
+    perasBootstrapRound: Option[BigInt],
+    perasQuorumThresholdSafetyMargin: Rational,
+    refInputsCostPerMultiAssetPolicy: BigInt,
+    refInputsCostPerDatumByte: BigInt
+):
 
-  /** The part of `upgradeDijkstraPParams` (`PParams.hs:593-665`) that changes Conway's fields: the
-    * PlutusV4 model laid over the cost models (`updateCostModels`), every other field kept.
+  /** `upgradeDijkstraPParams` (`PParams.hs:593-665`) of Conway's parameters: every Conway field
+    * kept, the PlutusV4 model laid over the cost models (`hkdAlignWith` of both present,
+    * `updateCostModels`), and each field Dijkstra adds the genesis value.
     */
   def upgrade(p: ProtocolParams): ProtocolParams =
-    p.copy(costModels =
-      p.costModels.updated(CostModelLanguage.PlutusV4.tag, plutusV4CostModel.map(BigInt(_)))
+    p.copy(
+      costModels =
+        p.costModels.updated(CostModelLanguage.PlutusV4.tag, plutusV4CostModel.map(BigInt(_))),
+      maxRefScriptSizePerBlock = maxRefScriptSizePerBlock,
+      maxRefScriptSizePerTx = maxRefScriptSizePerTx,
+      refScriptCostStride = refScriptCostStride,
+      refScriptCostMultiplier = refScriptCostMultiplier,
+      maxPledgeLeverage = maxPledgeLeverage,
+      minPoolMargin = minPoolMargin,
+      leiosAnnouncementPeriodLength = leiosAnnouncementPeriodLength,
+      leiosVotePeriodLength = leiosVotePeriodLength,
+      leiosDiffusionPeriodLength = leiosDiffusionPeriodLength,
+      leiosCommitteeSize = leiosCommitteeSize,
+      leiosQuorumStakeThreshold = leiosQuorumStakeThreshold,
+      maxEndorserBlockReferencesSize = maxEndorserBlockReferencesSize,
+      maxEndorserBlockTxsSize = maxEndorserBlockTxsSize,
+      maxEndorserBlockExUnits = maxEndorserBlockExUnits,
+      maxRefScriptSizePerEndorserBlock = maxRefScriptSizePerEndorserBlock,
+      perasMinCandidateBlockAge = perasMinCandidateBlockAge,
+      perasHealingFactor = perasHealingFactor,
+      perasCertBoost = perasCertBoost,
+      perasTargetCommitteeSize = perasTargetCommitteeSize,
+      perasBootstrapRound = perasBootstrapRound,
+      perasQuorumThresholdSafetyMargin = perasQuorumThresholdSafetyMargin,
+      refInputsCostPerMultiAssetPolicy = refInputsCostPerMultiAssetPolicy,
+      refInputsCostPerDatumByte = refInputsCostPerDatumByte
     )
 
 object DijkstraGenesis:
@@ -81,32 +138,30 @@ object DijkstraGenesis:
       perPolicy <- req(o, "refInputsCostPerMultiAssetPolicy")(FromJson.integer)
       perDatumByte <- req(o, "refInputsCostPerDatumByte")(j => FromJson.word64(j).map(_.toBigInt))
     yield DijkstraGenesis(
-      DijkstraParams(
-        blockScripts,
-        txScripts,
-        stride,
-        multiplier,
-        leverage,
-        margin,
-        announcement,
-        vote,
-        diffusion,
-        committee,
-        quorum,
-        references,
-        ebTxs,
-        ebUnits,
-        ebScripts,
-        candidateAge,
-        healing,
-        boost,
-        perasCommittee,
-        bootstrap,
-        margin2,
-        perPolicy,
-        perDatumByte
-      ),
-      v4
+      blockScripts,
+      txScripts,
+      stride,
+      multiplier,
+      leverage,
+      margin,
+      v4,
+      announcement,
+      vote,
+      diffusion,
+      committee,
+      quorum,
+      references,
+      ebTxs,
+      ebUnits,
+      ebScripts,
+      candidateAge,
+      healing,
+      boost,
+      perasCommittee,
+      bootstrap,
+      margin2,
+      perPolicy,
+      perDatumByte
     )
 
   private def fieldError(path: Vector[String], cause: GenesisFieldError): ConfigError =

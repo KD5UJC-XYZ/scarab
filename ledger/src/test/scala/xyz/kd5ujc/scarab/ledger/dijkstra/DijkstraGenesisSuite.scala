@@ -57,7 +57,7 @@ class DijkstraGenesisSuite extends FunSuite:
     json.hcursor.downField(key).focus.filterNot(_.isNull).map(f)
 
   private def same(g: DijkstraGenesis, r: Json): Unit =
-    val p = g.params
+    val p = g
     def int(key: String) = field[BigInt](r, key)
     def rat(key: String) = ratio(field[Json](r, key))
     assertEquals(p.maxRefScriptSizePerBlock, int("maxRefScriptSizePerBlock"))
@@ -123,7 +123,9 @@ class DijkstraGenesisSuite extends FunSuite:
       scarab.foreach(same(_, field[Json](reference(row), "result")))
     }
 
-  test("the upgrade lays the PlutusV4 model over the cost models and keeps the others") {
+  test(
+    "the upgrade lays the PlutusV4 model over the cost models, keeps Conway's fields and sets Dijkstra's"
+  ) {
     val g = DijkstraGenesis
       .read(parse(Files.readString(Path.of("fixtures/leios/testnet/config/dijkstra-genesis.json"))))
       .fold(e => fail(e.message), identity)
@@ -153,5 +155,15 @@ class DijkstraGenesisSuite extends FunSuite:
     val upgraded = g.upgrade(conway)
     assertEquals(upgraded.costModels(3), g.plutusV4CostModel.map(BigInt(_)))
     assertEquals(upgraded.costModels - 3, conway.costModels - 3)
-    assertEquals(upgraded.copy(costModels = conway.costModels), conway)
+    // Conway's fields, the first 37, are kept but for the cost models; the fields Dijkstra adds
+    // are the genesis values, in the genesis' order less its cost model
+    val conwayFields = 37
+    assertEquals(
+      upgraded.copy(costModels = conway.costModels).productIterator.take(conwayFields).toVector,
+      conway.productIterator.take(conwayFields).toVector
+    )
+    assertEquals(
+      upgraded.productIterator.drop(conwayFields).toVector,
+      g.productIterator.zipWithIndex.collect { case (v, i) if i != 6 => v }.toVector
+    )
   }
