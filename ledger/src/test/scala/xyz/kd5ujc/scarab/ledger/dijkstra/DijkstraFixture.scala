@@ -8,9 +8,7 @@ import munit.Assertions
 /** The Dijkstra genesis of the public Leios testnet (`fixtures/leios/testnet/config`). */
 object DijkstraFixture extends Assertions:
   val genesis: DijkstraGenesis =
-    parser
+    val json = parser
       .parse(Files.readString(Path.of("fixtures/leios/testnet/config/dijkstra-genesis.json")))
-      .left
-      .map(_.message)
-      .flatMap(j => DijkstraGenesis.read(j).left.map(_.message))
-      .fold(fail(_), identity)
+      .fold(e => fail(e.message), identity)
+    DijkstraGenesis.read(json).fold(e => fail(e.message), identity)
