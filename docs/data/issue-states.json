@@ -54,7 +54,7 @@
   "51": ["open", "", true],
   "52": ["open", "", false],
   "53": ["closed", "completed", false],
-  "54": ["open", "", false],
+  "54": ["open", "", true],
   "55": ["closed", "completed", false],
   "56": ["closed", "completed", false],
   "57": ["closed", "completed", false],
@@ -73,7 +73,7 @@
   "71": ["closed", "completed", false],
   "72": ["closed", "completed", false],
   "73": ["open", "", false],
-  "74": ["open", "", false],
+  "74": ["closed", "completed", false],
   "75": ["open", "", false],
   "76": ["open", "", false],
   "77": ["closed", "completed", false],
@@ -158,6 +158,6 @@
   "288": ["closed", "completed", false],
   "290": ["closed", "completed", false],
   "349": ["open", "", false],
-  "491": ["open", "", false]
+  "491": ["open", "", true]
  }
 }
