@@ -85,9 +85,9 @@ them in the file (`promtool test rules` covers them: `ops/monitoring/server/prom
 Notifications: the stack's Prometheus sends alerts to its Alertmanager, which groups them by `host`, routes on `severity`
 (`critical` and `warning` to their receivers, `info` to the dashboard only), sends resolved notices, and holds back a
 node's other alerts while `PoolNodeDown`, `PoolNodeMetricsMissing` or `HostMetricsMissing` explains them. The receivers
-are the operator's: `ops/monitoring/server/alertmanager/alertmanager.yml` on the server, started from the committed
-`alertmanager.example.yml` (which sends nothing and shows ntfy webhooks), so no address or credential is in the
-repository. `amtool check-config` in the `prom/alertmanager` image checks it.
+are the operator's: the server's own `alertmanager.yml`, which `deploy.sh` starts from the committed
+`ops/monitoring/server/alertmanager/alertmanager.example.yml` (it sends nothing and shows ntfy webhooks), so no
+address or credential is in the repository. `amtool check-config` in the `prom/alertmanager` image checks it.
 Checks: `promtool check rules` and `promtool test rules` in the `prom/prometheus` image, and
 `python3 -m unittest scripts/tests/test_dashboards.py` (the generated JSON is the committed JSON, and every metric a
 panel or a rule reads exists in the catalogue or is written by the driver).
