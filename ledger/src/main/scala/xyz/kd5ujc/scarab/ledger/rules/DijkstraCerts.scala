@@ -94,7 +94,7 @@ object DijkstraSts:
     * [Conway.conwayGovTransition]`, `Dijkstra/Rules/Gov.hs:220`): the Conway rule's judgment as
     * this rule's, its predicate failures taken into the Dijkstra failure by `select` (the
     * reference's `conwayToDijkstra*PredFailure`, one to one). A failure `select` has no case for
-    * halts the judgment ([[DijkstraHalt.Unmapped]]), as does a defect of the Conway rule
+    * halts the judgment ([[DijkstraHalt.NoDijkstraCase]]), as does a defect of the Conway rule
     * ([[DijkstraHalt.Conway]]).
     */
   private[rules] def asConway[F[_]: Monad, Env, S, S0, Sig, Rec](
@@ -114,7 +114,7 @@ object DijkstraSts:
       def tell(failures: Chain[PredicateFailure]): F[Unit] =
         failures
           .traverse(f => select.lift(f).toRight(f))
-          .fold(f => raise.raise[DijkstraHalt, Unit](DijkstraHalt.Unmapped(f)), judge.tell)
+          .fold(f => raise.raise[DijkstraHalt, Unit](DijkstraHalt.NoDijkstraCase(f)), judge.tell)
       def failing: F[Boolean] = judge.failing
       def nest[A](fa: F[A]): F[A] = judge.nest(fa)
     sub.transition[F](env, signal)(using
@@ -132,7 +132,7 @@ object DijkstraSts:
       test: Test[PredicateFailure]
   ): Either[DijkstraHalt, Test[Rec]] =
     test.fold(
-      _.traverse(f => select.lift(f).toRight(DijkstraHalt.Unmapped(f)))
+      _.traverse(f => select.lift(f).toRight(DijkstraHalt.NoDijkstraCase(f)))
         .map(cats.data.Validated.invalid[NonEmptyChain[Rec], Unit](_)),
       _ => Right(Test.pass[Rec])
     )

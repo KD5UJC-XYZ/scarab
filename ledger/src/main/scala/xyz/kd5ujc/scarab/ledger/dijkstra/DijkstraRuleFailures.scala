@@ -219,7 +219,7 @@ enum DijkstraHalt:
   /** A predicate failure of a reused Conway rule that the Dijkstra rule has no case for. The reused
     * rules record none; it is a defect of the mapping.
     */
-  case Unmapped(failure: PredicateFailure)
+  case NoDijkstraCase(failure: PredicateFailure)
 
 object DijkstraHalt:
   /** The refusal of a part not implemented yet (`DijkstraNotYet.Rules`). */
