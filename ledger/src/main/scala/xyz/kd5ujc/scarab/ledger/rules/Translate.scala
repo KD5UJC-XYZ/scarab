@@ -10,7 +10,9 @@ import xyz.kd5ujc.scarab.ledger.{
   PulsingSnapshot,
   RatifyState
 }
+import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.ConwayGenesis
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraScript
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -59,21 +61,20 @@ object EraNes:
 
 /** The translation of the state of an era into the next (`TranslateEra era NewEpochState`:
   * `Allegra/Translation.hs:58`, `Mary/Translation.hs:50`, `Alonzo/Translation.hs:51`,
-  * `Babbage/Translation.hs:48`, `Conway/Translation.hs:69`), as the hard-fork combinator applies it
-  * when the chain enters the era: on the state that is about to tick into the new epoch, before the
-  * new era's NEWEPOCH rule (`extendToSlot`, `HardFork/Combinator/State.hs:219`).
+  * `Babbage/Translation.hs:48`, `Conway/Translation.hs:69`; Dijkstra's at cardano-ledger 9df9f98c,
+  * `Dijkstra/Translation.hs:70-80`), as the hard-fork combinator applies it when the chain enters
+  * the era: on the state that is about to tick into the new epoch, before the new era's NEWEPOCH
+  * rule (`extendToSlot`, `HardFork/Combinator/State.hs:219`).
   *
   * The parameters of every era are the node's one flat [[ProtocolParams]], so what a translation
   * does to the parameters (`upgradePParams`) is what changes in the flat record: the fields the new
   * era introduces take their genesis values and those it drops are zeroed, as the era's view of the
   * parameters has them. The contexts the translations need are in [[Globals]]
-  * (`TranslationContext`: the Alonzo and Conway genesis values).
+  * (`TranslationContext`: the Alonzo, Conway and Dijkstra genesis values).
   */
 object Translate:
 
-  /** The next era's state, or none in the last era (Dijkstra; the translation into it is refused,
-    * [[TickFailure.NotYet]]).
-    */
+  /** The next era's state, or none in the last era (Dijkstra). */
   def next(globals: Globals, e: EraNes): Either[TickFailure, Option[EraNes]] = e match
     case i: EraNes.InEra[e] =>
       i.era match
@@ -87,10 +88,10 @@ object Translate:
           Right(Some(EraNes.InEra(ShelleyBasedEra.SBabbage, alonzoToBabbage(i.nes))))
         case ShelleyBasedEra.SBabbage =>
           babbageToConway(globals, i.nes).map(n => Some(EraNes.InEra(ShelleyBasedEra.SConway, n)))
-        // `TranslateEra DijkstraEra NewEpochState` (cardano-ledger 9df9f98c
-        // `Dijkstra/Translation.hs:71-88`) is not implemented yet
         case ShelleyBasedEra.SConway =>
-          Left(TickFailure.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Translation))
+          conwayToDijkstra(globals, i.nes).map(n =>
+            Some(EraNes.InEra(ShelleyBasedEra.SDijkstra, n))
+          )
         case ShelleyBasedEra.SDijkstra => Right(None)
 
   // ---- the parameters
@@ -310,3 +311,145 @@ object Translate:
         ()
       )
     )
+
+  // ---- Conway to Dijkstra (cardano-ledger 9df9f98c `eras/dijkstra/impl/src/Cardano/Ledger/
+  // Dijkstra/Translation.hs`)
+
+  /** `TranslateEra DijkstraEra NewEpochState` (`Translation.hs:70-80`): the state with its records
+    * as they are (Dijkstra's families are Conway's records, so the `coerce` s of the accounts
+    * (109-111), the voting state (118-119), the committee and the constitution (176-177, 204, 206)
+    * and the instant stake (221) change nothing), the stake snapshots unchanged (96-97), and these
+    * translated:
+    *   - the parameters, current, previous and future, and those of the enact state the pulser
+    *     reached, by the Dijkstra genesis
+    *     ([[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraGenesis.upgrade]], 86-94, 172-183, 200-211);
+    *   - the pools' VRF key hashes, counted again ([[populateVRFKeyHashes]], 113-116);
+    *   - the UTxO, each output by `upgradeTxOut` ([[upgradeUtxo]], 213-227).
+    *
+    * The proposals, in the governance state (`translateProposals`, 159-160), the pulser's snapshot
+    * (162-170) and the enacted list (185-193), are upgraded by `upgradeGovAction`
+    * (`Dijkstra/TxBody.hs:1230-1242`), whose only change is to the parameter update of a
+    * `ParameterChange`, upgraded with the empty Dijkstra upgrade
+    * (`emptyDijkstraUpgradePParamsUpdate`, `PParams.hs:565-591`): its Conway fields kept and the
+    * Dijkstra fields absent, which is the node's [[xyz.kd5ujc.scarab.ledger.ConwayParamUpdate]]
+    * unchanged. The pulser the node holds is already complete, so `finishDRepPulser` (195-198) is
+    * the identity.
+    *
+    * The context is the Dijkstra genesis (`TranslationContext DijkstraEra`, 51), which a strict
+    * configuration that enables `ExperimentalHardForksEnabled` must name; without one the
+    * translation is refused ([[TickFailure.NoDijkstraGenesis]]).
+    */
+  def conwayToDijkstra(
+      globals: Globals,
+      nes: NewEpochState[Conway]
+  ): Either[TickFailure, NewEpochState[Dijkstra]] =
+    for
+      genesis <- globals.ledger.dijkstra.toRight(TickFailure.NoDijkstraGenesis)
+      pools <- populateVRFKeyHashes(nes.es.ls.cert.pState).left.map(TickFailure.Vocab(_))
+    yield
+      val ls = nes.es.ls
+      val gov = ls.utxo.gov
+      val upgrade = genesis.upgrade
+      val pulser = gov.drepPulsing
+      val enact = pulser.ratify.enact
+      val dijkstraGov = gov.copy(
+        curPParams = upgrade(gov.curPParams),
+        prevPParams = upgrade(gov.prevPParams),
+        futurePParams = FuturePParams.map(gov.futurePParams)(upgrade),
+        drepPulsing = pulser.copy(ratify =
+          pulser.ratify.copy(enact =
+            enact.copy(params = upgrade(enact.params), prevParams = upgrade(enact.prevParams))
+          )
+        )
+      )
+      NewEpochState[Dijkstra](
+        nes.epoch,
+        nes.bprev,
+        nes.bcur,
+        EpochState[Dijkstra](
+          nes.es.chainAccount,
+          LedgerState[Dijkstra](
+            ls.cert.copy(pState = pools),
+            UTxOState[Dijkstra](
+              UtxoTables(upgradeUtxo(ls.utxo.utxo.utxo)),
+              ls.utxo.deposited,
+              ls.utxo.fees,
+              dijkstraGov,
+              ls.utxo.instantStake,
+              ls.utxo.donation
+            )
+          ),
+          nes.es.snapshots,
+          nes.es.nonMyopic
+        ),
+        nes.ru,
+        nes.pd,
+        ()
+      )
+
+  /** `populateVRFKeyHashes` of cardano-ledger 9df9f98c
+    * (`libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs:528-539`), which the
+    * translation applies to the pools (`Dijkstra/Translation.hs:113-116`): the count of each VRF
+    * key hash recomputed from nothing, one for each registered pool that uses it and one more for
+    * each re-registration waiting for the boundary whose key hash differs from its pool's (or whose
+    * pool is not registered), saturating at the largest word (`addVRFKeyHashOccurrence`, 501-510).
+    * Not Conway's of f649f975 ([[HardFork.populateVRFKeyHashes]]), which adds to the map it has and
+    * counts every waiting re-registration.
+    */
+  def populateVRFKeyHashes(pools: PState): Either[VocabError, PState] =
+    def add(
+        counts: SortedMap[VRFVerKeyHash, NonZero[Word64]],
+        vrf: VRFVerKeyHash
+    ): SortedMap[VRFVerKeyHash, NonZero[Word64]] =
+      counts.get(vrf) match
+        case None => counts.updated(vrf, NonZero.oneWord)
+        case Some(n) =>
+          NonZero
+            .from(Word64.fromUnsigned(n.value.bits + 1))
+            .fold(_ => counts, counts.updated(vrf, _))
+    val active =
+      pools.stakePools.valuesIterator.foldLeft(Sorted.empty[VRFVerKeyHash, NonZero[Word64]])(
+        (counts, pool) => add(counts, pool.vrf)
+      )
+    pools.future.toVector
+      .traverse((id, params) => VRFVerKeyHash.fromBytes(params.vrfKeyHash).map(id -> _))
+      .map { future =>
+        val counts = future.foldLeft(active) { case (counts, (id, vrf)) =>
+          if pools.stakePools.get(id).map(_.vrf).contains(vrf) then counts else add(counts, vrf)
+        }
+        pools.copy(vrfKeyHashes = counts)
+      }
+
+  /** `TranslateEra DijkstraEra UTxO` (`Dijkstra/Translation.hs:225-227`), `upgradeTxOut` of every
+    * output (`upgradeBabbageTxOut`, `Conway/TxOut.hs:68-81`): the address, the value and the datum
+    * kept (`translateDatum` keeps the bytes of an inline datum), and a reference script upgraded
+    * (`upgradeScript`, `Dijkstra/Scripts.hs:423-428`): a Plutus script's bytes kept, a native
+    * script's encoding made anew ([[DijkstraScript.upgradeTimelock]]), so that its bytes, its size
+    * and its hash are those of the new encoding. The consensus layer applies the same
+    * `upgradeTxOut` to the outputs of the ledger tables (ouroboros-consensus 2416493b
+    * `Cardano/CanHardFork.hs:757-765`).
+    *
+    * Only the outputs this value decides are upgraded (the changes since the backing store's
+    * flushed point and the read set), recorded as changes so that the store's copies are replaced
+    * when they are flushed. An output with a native reference script that the backing store holds
+    * and that is not in the read set is not seen here: the node that enters Dijkstra must fetch
+    * those first (#54). The reference keeps each stored output with its era (`CardanoTxOut`,
+    * ouroboros-consensus 2416493b `Cardano/Ledger.hs:104-112`) and upgrades a Conway one whenever
+    * it is read in Dijkstra (`ejectHardForkTxOut`, 146-157), while an output written in Dijkstra
+    * keeps its bytes; the node's store keeps no era, so upgrading on read would also re-encode
+    * those.
+    */
+  def upgradeUtxo(utxo: xyz.kd5ujc.scarab.ledger.Utxo): xyz.kd5ujc.scarab.ledger.Utxo =
+    utxo
+      .matching(_.scriptRef.exists(_.native.isDefined))
+      .toVector
+      .foldLeft(utxo) { case (u, (in, out)) => u.updated(in, upgradeTxOut(out)) }
+
+  /** `upgradeTxOut` of one output (see [[upgradeUtxo]]); an output without a native reference
+    * script is the same output.
+    */
+  def upgradeTxOut(out: xyz.kd5ujc.scarab.ledger.TxOut): xyz.kd5ujc.scarab.ledger.TxOut =
+    out.scriptRef.flatMap(_.native).fold(out) { script =>
+      xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack
+        .withNativeReference(out, DijkstraScript.upgradeTimelock(script), script)
+    }

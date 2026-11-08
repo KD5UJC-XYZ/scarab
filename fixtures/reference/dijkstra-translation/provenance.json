@@ -1,0 +1,18 @@
+{
+  "cases": 19,
+  "casesSha256": "31405ae558c65be581ef8fd8ac391897b4677481f12c6e8a7a1e7a2ec390215a",
+  "image": "scarab-dijkstra-translation-oracle:local",
+  "imageId": "sha256:345a664bf9579f1db0f0dbe330aa9881dae8893a064766b487af67a2cfc6677e",
+  "ledger": {
+    "packages": [
+      "cardano-ledger-dijkstra 0.5.0.0"
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c"
+  },
+  "measuredAt": "2026-11-07",
+  "program": "scripts/oracle/dijkstra-translation/Main.hs",
+  "programSha256": "0d99992189b419fa655d32a49a8e9d87c82c66026c342dcf8c40f0ab83a78de1",
+  "schemaVersion": 1,
+  "scope": "Dijkstra's upgradeTxOut of the Leios testnet build on Conway outputs, most with a native reference script in a form upgradeTimelock does not keep: the Conway output decoded, the upgraded output's CBOR and the reference script's bytes and hash before and after; not the rest of the NewEpochState translation"
+}

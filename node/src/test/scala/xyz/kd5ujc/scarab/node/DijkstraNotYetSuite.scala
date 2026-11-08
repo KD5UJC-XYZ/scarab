@@ -22,8 +22,8 @@ import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, HfcHeader, NtNHeader}
 import xyz.kd5ujc.scarab.storage.haskell.state.{Envelope, HaskellStateCodecs, Params}
 
 /** The Dijkstra era is named (index 7, block tag 8) and its blocks, headers and transactions
-  * decode, but it is not implemented (#54): the rules, the ledger state and the translation refuse
-  * it with a typed [[DijkstraNotYet]], and the raw-bytes Leios paths keep working.
+  * decode, but it is not implemented (#54): the rules and the ledger state refuse it with a typed
+  * [[DijkstraNotYet]], and the raw-bytes Leios paths keep working.
   */
 class DijkstraNotYetSuite extends FunSuite:
   private val raw = Bytes.fromArray(Array(0x82.toByte, 0x01, 0x02))
