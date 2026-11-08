@@ -377,10 +377,11 @@
     {
       "module": "ledger",
       "path": "ledger/dijkstra",
-      "responsibility": "Decoding of Dijkstra transactions at decoder version 12, in the block and the mempool form, as the Leios testnet's build reads them; no ledger rule",
+      "responsibility": "Decoding of Dijkstra transactions at decoder version 12, in the block and the mempool form, as the Leios testnet's build reads them, and the predicate failures of the Dijkstra rules",
       "entryPoints": [
         "DijkstraTx",
-        "V12"
+        "V12",
+        "DijkstraLedgerFailure"
       ],
       "suites": [
         "LeiosTestnetBlockReferenceSuite",
@@ -426,7 +427,7 @@
     {
       "module": "ledger",
       "path": "ledger/rules",
-      "responsibility": "Shelley to Conway rule interpreter: LEDGER, UTXO, BBODY, epoch, tick, rewards, governance",
+      "responsibility": "Shelley to Conway rule interpreter: LEDGER, UTXO, BBODY, epoch, tick, rewards, governance; Dijkstra's BBODY, LEDGER, UTXOW, UTXO, CERT, POOL and GOV, reached from tests only",
       "entryPoints": [
         "Ledger",
         "Utxo",
@@ -437,7 +438,10 @@
         "Sts",
         "Gov",
         "Rewards",
-        "GenesisStart"
+        "GenesisStart",
+        "DijkstraBbody",
+        "DijkstraLedgerRule",
+        "DijkstraUtxow"
       ],
       "suites": [
         "BbodySuite",
@@ -446,7 +450,9 @@
         "EpochBoundarySuite",
         "RewardPulserSuite",
         "TxDependenciesSuite",
-        "DuplicateWithdrawalsLedgerSuite"
+        "DuplicateWithdrawalsLedgerSuite",
+        "DijkstraRulesSuite",
+        "DijkstraRulesOracleSuite"
       ],
       "docs": [
         "docs/design/rule-interpreter-as-built.md",
