@@ -5,11 +5,11 @@ Part of the [compatibility matrix](../compatibility.md); the register entry is `
 
 ## Status as recorded
 
-implemented: delegate signature (Byron Ed25519 profile, #392 row below), current delegation (genesis and on-chain certificates), last-signed-slot rule, `k`-block signature window and threshold, body proofs, epoch length from genesis; every main block is fully checked (no `unchecked` outcome)
+implemented: delegate signature (Byron Ed25519 profile, #392 row below), current delegation (genesis and on-chain certificates), last-signed-slot rule, `k`-block signature window and threshold, body proofs, epoch length from genesis; every main block is fully checked (no `unchecked` outcome). A block's slot is its epoch and slot count flattened as `toSlotNumber` flattens them (`Slotting/EpochAndSlotCount.hs:71-81`, cardano-ledger `f649f975`), in `Word64` arithmetic, which wraps, with no check of the slot count against the epoch's length; a boundary block's is `boundaryBlockSlot` (`Block/Block.hs:533-539`); a block's epoch for the era checks is its flattened slot's (`slotNumberEpoch`). Blocks are ordered by the envelope's rules, ouroboros-consensus `82ecba32` `Byron/Ledger/HeaderValidation.hs:40-69` (`minimumNextSlotNo`, `UnexpectedEBBInSlot`), so a boundary block may follow a boundary block across an epoch with no blocks (#818)
 
 ## Evidence
 
-`ByronPreprodSuite` (the whole preprod Byron era replayed from genesis), `EraTransitionSuite`, devnet e2e (all Byron blocks verified, on schedule); preprod sync
+`ByronSlotSuite` (the flattened slot against the values the reference's `toSlotNumber` gives in GHC, a signed main block whose slot count is the epoch's length applied, a boundary block after a boundary block, a wrapped boundary slot refused); `ByronPreprodSuite` (the whole preprod Byron era replayed from genesis), `EraTransitionSuite`, devnet e2e (all Byron blocks verified, on schedule); preprod sync
 
 ## Explicitly unchecked or unconfirmed
 

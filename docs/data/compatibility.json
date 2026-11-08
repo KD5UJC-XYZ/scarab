@@ -538,7 +538,8 @@
       "evidence": {
         "suites": [
           "ByronPreprodSuite",
-          "EraTransitionSuite"
+          "EraTransitionSuite",
+          "ByronSlotSuite"
         ]
       },
       "limitations": {
