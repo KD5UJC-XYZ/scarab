@@ -29,6 +29,9 @@ enum ByronChainError:
 
   /** A boundary block's slot is not a multiple of the epoch's slots (`UnexpectedEBBInSlot`). */
   case BoundarySlot(slot: BigInt, epochSlots: BigInt)
+
+  /** The chain's first block is not numbered 0 (`expectedFirstBlockNo`). */
+  case FirstBlockNumber(actual: BigInt)
   case SignatureRejected
   case SignatureInput(cause: WitnessInputError)
 
@@ -48,5 +51,6 @@ enum ByronChainError:
     case GenesisPredecessor(e) => s"boundary block names the genesis, not the tip ${e.hex}"
     case SlotOrder(s, m)       => s"slot $s is below the least next slot $m"
     case BoundarySlot(s, n)    => s"boundary block at slot $s, not a multiple of $n"
+    case FirstBlockNumber(n)   => s"the first block is numbered $n, not 0"
     case SignatureRejected     => "block signature rejected"
     case SignatureInput(e)     => s"signature input failed: $e"

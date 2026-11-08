@@ -296,7 +296,9 @@ object ByronLedger:
         candidateBlocks = candidateBlocks
       )
 
-  /** An epoch-boundary block changes only the last slot (the first slot of its epoch). */
+  /** An epoch-boundary block changes only the last slot, to its own: `boundaryBlockSlot` of its
+    * epoch, the flattened slot (`Byron/API/Validation.hs:190-196`, cardano-ledger f649f975, #818).
+    */
   def applyBoundary(
       ticked: ByronLedgerState,
       header: Header.Byron,
@@ -304,7 +306,6 @@ object ByronLedger:
   ): Either[ByronError, ByronLedgerState] =
     Either.cond(
       blockSize <= 2000000,
-      // `boundaryBlockSlot` of its epoch, the flattened slot (`Byron/API/Validation.hs:196`, #818)
       ticked.copy(lastSlot = header.slot, tipBlockNo = header.blockNo),
       ByronError.BlockTooLarge(2000000, blockSize)
     )

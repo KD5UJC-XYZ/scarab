@@ -208,7 +208,7 @@ object NodeRules:
         }
       (next, check) = validated
     yield
-      val sameEpoch = state.stats.filter(_.epoch == header.epoch)
+      val sameEpoch = state.stats.filter(_.epoch == header.slotEpoch)
       val base = if sameEpoch.isEmpty then state.finish else state
       (
         base.copy(
@@ -216,7 +216,7 @@ object NodeRules:
           ledger = Some(next.ledger),
           pbft = next.pbft,
           stats = Some(
-            sameEpoch.getOrElse(ByronEpochStats(header.epoch, 0, 0, 0, 0)).record(check)
+            sameEpoch.getOrElse(ByronEpochStats(header.slotEpoch, 0, 0, 0, 0)).record(check)
           )
         ),
         boot.copy(era = Some(Era.Byron))

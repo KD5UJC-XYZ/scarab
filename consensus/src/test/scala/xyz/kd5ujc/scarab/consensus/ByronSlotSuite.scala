@@ -37,14 +37,21 @@ class ByronSlotSuite extends FunSuite:
       case b: Block.Byron => b
       case other          => fail(s"not a Byron block: $other")
 
-  /** A boundary block of `epoch` after `prev` (its body empty, no attributes). */
-  private def boundary(epoch: BigInt, prev: Bytes): Block.Byron =
+  /** A boundary block of `epoch` after `prev`, numbered `number`, with `attributes` (its body
+    * empty).
+    */
+  private def boundary(
+      epoch: BigInt,
+      prev: Bytes,
+      number: Long = 1,
+      attributes: Bytes = map()
+  ): Block.Byron =
     val header = arr(
       uint(Magic),
       bytes(prev),
       bytes(Bytes(Vector.fill(32)(0x22.toByte))),
-      arr(ByronCbor.uint(epoch), arr(uint(1))),
-      arr(map())
+      arr(ByronCbor.uint(epoch), arr(uint(number))),
+      arr(attributes)
     )
     decoded(arr(uint(0), arr(header, indef(), arr(map()))))
 
@@ -104,6 +111,25 @@ class ByronSlotSuite extends FunSuite:
     assert(slot >= 1, "the wrapped slot is after the tip")
     assertEquals(
       after(tip, boundary(epoch, tip.hash)).left.toOption,
+      Some(ByronChainError.BoundarySlot(slot, epochSlots))
+    )
+  }
+
+  test("the first block is numbered 0, and a first boundary block's slot is a multiple too") {
+    // `expectedFirstBlockNo` and `additionalEnvelopeChecks`, which `validateEnvelope` runs at
+    // Origin too (`Ouroboros/Consensus/HeaderValidation.hs:364-376`)
+    def first(block: Block.Byron) =
+      ByronRules.update(ByronRules.State(None, initial, PBftState.empty), block, rulesConfig)
+    val genesisTag = map(uint(255) -> bytes(Bytes.fromArray("Genesis".getBytes("US-ASCII"))))
+    assert(first(boundary(0, genesis.hash, number = 0)).isRight)
+    assertEquals(
+      first(boundary(0, genesis.hash, number = 1)).left.toOption,
+      Some(ByronChainError.FirstBlockNumber(1))
+    )
+    val epoch = ((BigInt(1) << 64) / epochSlots) + 1
+    val slot = (epoch * epochSlots).mod(BigInt(1) << 64)
+    assertEquals(
+      first(boundary(epoch, genesis.hash, number = 0, attributes = genesisTag)).left.toOption,
       Some(ByronChainError.BoundarySlot(slot, epochSlots))
     )
   }
