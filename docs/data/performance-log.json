@@ -4263,12 +4263,14 @@
    "section": "54",
    "heading": "54. The log router's one sink lock (#233)",
    "subject": "The log router's one sink lock (#233)",
-   "date": "2026-11-05",
+   "date": "2026-11-08",
    "dateSource": "text",
    "issues": [
     "#233"
    ],
-   "commits": [],
+   "commits": [
+    "122786612"
+   ],
    "links": [],
    "page": "logging-and-the-router",
    "results": [
@@ -4276,47 +4278,47 @@
      "id": "perf-60.t1",
      "header": [
       "Sink configuration",
-      "Writers requested (one fiber ran)",
-      "µs per line",
-      "Lines a second"
+      "Writer fibers",
+      "µs per line, run 1 / run 2",
+      "Lines a second, run 1 / run 2"
      ],
      "separator": "|---|---:|---:|---:|",
      "rows": [
       [
-       "`file`: admitted path — render, append, lock and clock",
+       "`file`: admitted — render, append, lock and clock",
        "1",
-       "12.19",
-       "82,059"
+       "2.31 / 2.17",
+       "433,564 / 460,331"
       ],
       [
-       "`file`: admitted path — render, append, lock and clock",
+       "`file`: admitted — render, append, lock and clock",
        "4",
-       "11.89",
-       "84,092"
+       "15.23 / 16.11",
+       "65,649 / 62,061"
       ],
       [
-       "`file`: admitted path — render, append, lock and clock",
+       "`file`: admitted — render, append, lock and clock",
        "16",
-       "11.76",
-       "85,005"
+       "16.13 / 15.91",
+       "62,005 / 62,844"
       ],
       [
-       "`silenced`: route filter only, no render, no lock",
+       "`silenced`: route filter only, no lock",
        "1",
-       "0.05",
-       "19,844,198"
+       "0.016 / 0.016",
+       "61,228,160 / 64,195,720"
       ],
       [
-       "`silenced`: route filter only, no render, no lock",
+       "`silenced`: route filter only, no lock",
        "4",
-       "0.05",
-       "19,946,989"
+       "0.007 / 0.005",
+       "153,739,423 / 198,950,206"
       ],
       [
-       "`silenced`: route filter only, no render, no lock",
+       "`silenced`: route filter only, no lock",
        "16",
-       "0.045",
-       "22,051,687"
+       "0.005 / 0.004",
+       "213,605,229 / 274,349,991"
       ]
      ]
     }
@@ -4326,13 +4328,23 @@
      "id": "perf-60.c1",
      "fence": "```text",
      "lines": [
-      "METRIC config=file writers=1 lines=240000 us_per_line=12.186 lines_per_s=82059",
-      "METRIC config=file writers=4 lines=240000 us_per_line=11.892 lines_per_s=84092",
-      "METRIC config=file writers=16 lines=240000 us_per_line=11.764 lines_per_s=85005",
-      "DIGEST config=file bytes=207357801",
-      "METRIC config=silenced writers=1 lines=240000 us_per_line=0.050 lines_per_s=19844198",
-      "METRIC config=silenced writers=4 lines=240000 us_per_line=0.050 lines_per_s=19946989",
-      "METRIC config=silenced writers=16 lines=240000 us_per_line=0.045 lines_per_s=22051687",
+      "HOST processors=8",
+      "METRIC config=file writers=1 lines=240000 us_per_line=2.306 lines_per_s=433564",
+      "METRIC config=file writers=4 lines=240000 us_per_line=15.232 lines_per_s=65649",
+      "METRIC config=file writers=16 lines=240000 us_per_line=16.128 lines_per_s=62005",
+      "DIGEST config=file bytes=69119303",
+      "METRIC config=silenced writers=1 lines=240000 us_per_line=0.016 lines_per_s=61228160",
+      "METRIC config=silenced writers=4 lines=240000 us_per_line=0.007 lines_per_s=153739423",
+      "METRIC config=silenced writers=16 lines=240000 us_per_line=0.005 lines_per_s=213605229",
+      "DIGEST config=silenced bytes=0",
+      "HOST processors=8",
+      "METRIC config=file writers=1 lines=240000 us_per_line=2.172 lines_per_s=460331",
+      "METRIC config=file writers=4 lines=240000 us_per_line=16.113 lines_per_s=62061",
+      "METRIC config=file writers=16 lines=240000 us_per_line=15.912 lines_per_s=62844",
+      "DIGEST config=file bytes=69119229",
+      "METRIC config=silenced writers=1 lines=240000 us_per_line=0.016 lines_per_s=64195720",
+      "METRIC config=silenced writers=4 lines=240000 us_per_line=0.005 lines_per_s=198950206",
+      "METRIC config=silenced writers=16 lines=240000 us_per_line=0.004 lines_per_s=274349991",
       "DIGEST config=silenced bytes=0"
      ],
      "close": "```"
