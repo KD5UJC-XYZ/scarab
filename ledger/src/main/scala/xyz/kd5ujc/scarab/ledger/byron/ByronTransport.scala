@@ -220,7 +220,7 @@ object ByronTransport:
     yield values.exists((key, value) => key == GenesisTagKey && value == GenesisTag)
 
   /** A main header's extra data as the reference reads it at decoder version 1
-    * (`decCBORBlockVersions`, `Block/Header.hs:390-393`, cardano-ledger f649f975): a definite list
+    * (`decCBORBlockVersions`, `Block/Header.hs:392-395`, cardano-ledger f649f975): a definite list
     * of four items (`enforceSize`), the `ProtocolVersion` (`Update/ProtocolVersion.hs:64-67`: a
     * definite list of a `Word16`, a `Word16` and a `Word8`), the `SoftwareVersion`
     * (`Update/SoftwareVersion.hs:73-76`: a definite list of the application name, definite text of

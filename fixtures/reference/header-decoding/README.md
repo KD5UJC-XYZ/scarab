@@ -69,7 +69,7 @@ whose final value is chunked; it exceeds the old item budget and still fails sem
   map, a key of 256 or a negative one, a chunked, text or tagged value, and duplicate, descending
   or non-minimally written descending keys.
 - the rest of the Byron header grammar (#634), each case the retained mainnet main header or a
-  boundary header with one part rewritten. `decCBORAHeader` (`Block/Header.hs:351-393`) reads every
+  boundary header with one part rewritten. `decCBORAHeader` (`Block/Header.hs:351-395`) reads every
   list with `enforceSize`, so the header, its consensus data, slot, difficulty, signature, the
   signature's proxy and delegation certificate, the extra data, the protocol version and the
   software version written indefinite are refused, as are the boundary header, its consensus data

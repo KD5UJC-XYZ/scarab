@@ -224,7 +224,11 @@ class ByronHeaderBytesSuite extends FunSuite:
         List(3, 3, 1, 0) -> DecodeField.DelegationCertificate,
         List(4) -> DecodeField.BlockVersions,
         List(4, 0) -> DecodeField.ProtocolVersion,
-        List(4, 1) -> DecodeField.SoftwareVersion
+        List(4, 1) -> DecodeField.SoftwareVersion,
+        // the body proof's lists, read since #574
+        List(2) -> DecodeField.BodyProof,
+        List(2, 0) -> DecodeField.TxProof,
+        List(2, 1) -> DecodeField.SSCProof
       )
     do
       assertEquals(
@@ -238,7 +242,9 @@ class ByronHeaderBytesSuite extends FunSuite:
     for (path, site) <- Vector(
         Nil -> DecodeField.Header,
         List(3) -> DecodeField.Header,
-        List(3, 1) -> DecodeField.ChainDifficulty
+        List(3, 1) -> DecodeField.ChainDifficulty,
+        // the extra data, read since #754
+        List(4) -> DecodeField.BoundaryExtraData
       )
     do
       assertEquals(

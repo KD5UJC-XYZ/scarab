@@ -298,7 +298,7 @@ BIG = b"\xc2\x49\x01" + b"\x00" * 8  # 2^64 as a bignum: no Word64 reads it
 # #634: the rest of the Byron header grammar. `decCBORAHeader` reads every list with `enforceSize`
 # (definite only), the magic as a `Word32`, epoch, slot count and difficulty as `Word64`, the
 # signature's kind as a `Word8`, and the extra data as `[ProtocolVersion, SoftwareVersion,
-# empty attributes, bytes]` (`Block/Header.hs:351-393`, `Slotting/EpochAndSlotCount.hs:65-68`,
+# empty attributes, bytes]` (`Block/Header.hs:351-395`, `Slotting/EpochAndSlotCount.hs:65-68`,
 # `Common/ChainDifficulty.hs:47-50`, `Update/ProtocolVersion.hs:64-67`,
 # `Update/SoftwareVersion.hs:73-76`, `Common/Attributes.hs:241-244`, `Crypto/ProtocolMagic.hs:58-62`).
 H = original_header
