@@ -825,7 +825,8 @@ the configuration and validation follow-ups are linked below.
 1. The node has no `Era.Dijkstra` and its follower does not use `HfcHeader`, `LeiosHeader` or
    `LeiosBlock` (X1, X2): on this chain it stops at block 0, as every header is of era index 7.
 2. `NodeConfig` reads the Dijkstra genesis file/hash and epoch/version triggers when experimental
-   hard forks are enabled, and `NodeSetup.verifyHashes` checks the supplied file. The Leios and
+   hard forks are enabled, `NodeSetup.verifyHashes` checks the supplied file, and `NodeSetup`
+   reads it as the reference's `FromJSON DijkstraGenesis` does (#54). The Leios and
    `LedgerDB` settings are retained with the pinned reader's types and defaults and reported as
    recognised and unused; they do not activate Dijkstra or configure its services (#745).
    [Configuration behavior](running/configuration.md#configuration-and-topology-files) describes

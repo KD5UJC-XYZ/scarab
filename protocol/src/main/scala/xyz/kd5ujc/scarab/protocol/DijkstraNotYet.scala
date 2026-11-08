@@ -20,7 +20,9 @@ enum DijkstraNotYet extends DomainError:
   case Translation
 
   /** A chain started from its genesis in Dijkstra: the era's `injectIntoTestState` also seats the
-    * Leios committee (9df9f98c `Dijkstra/Transition.hs:59-62`). Genesis and parameters.
+    * Leios committee (9df9f98c `Dijkstra/Transition.hs:59-62`, `seatInitialLeiosCommittee` 80-100),
+    * which needs the Leios fields of the mark snapshot (`State/SnapShots.hs:386-467`) and the
+    * pools' BLS keys that the stake snapshots do not hold yet. Ledger rules.
     */
   case Genesis
 
