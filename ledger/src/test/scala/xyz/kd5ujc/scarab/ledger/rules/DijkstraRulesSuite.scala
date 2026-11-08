@@ -326,3 +326,27 @@ class DijkstraRulesSuite extends FunSuite:
       Vector(0, 6, 4, 5, 20, 9, 23, 3, 2)
     )
   }
+
+  // the order of `certs/mixed-failures` of the oracle (`Judgment.flatten`)
+  test("CERTS reports the failures of several certificates in the reference's order") {
+    val mixed = Vector(
+      DijkstraCert.Register(key(1), pp.keyDeposit),
+      DijkstraCert.Register(key(1), pp.keyDeposit),
+      DijkstraCert.RegisterDRep(key(2), 1, None),
+      DijkstraCert.Unregister(key(7), pp.keyDeposit)
+    )
+    assertEquals(
+      certs(mixed).map(_.left.map(_.map(_.failure).toChain.toVector)),
+      Right(
+        Left(
+          Vector(
+            DijkstraCertFailure.Deleg(DelegFailure.StakeKeyNotRegistered(key(7))),
+            DijkstraCertFailure.Deleg(DelegFailure.StakeKeyRegistered(key(1))),
+            DijkstraCertFailure.GovCert(
+              GovCertFailure.DRepIncorrectDeposit(Mismatch(BigInt(1), pp.drepDeposit))
+            )
+          )
+        )
+      )
+    )
+  }

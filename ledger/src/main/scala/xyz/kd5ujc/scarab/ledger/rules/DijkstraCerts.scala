@@ -73,12 +73,31 @@ object DijkstraSts:
       )
     )
 
-  /** A Conway rule run where Dijkstra's rule is Conway's: its predicate failures are taken into the
-    * Dijkstra failure by `select` (the reference's `conwayToDijkstra*PredFailure`, one to one); a
-    * failure `select` has no case for halts the judgment ([[DijkstraHalt.Unmapped]]), as does a
-    * defect of the Conway rule ([[DijkstraHalt.Conway]]).
+  /** `trans @sub` of a Conway rule that Dijkstra reuses as its sub-rule: [[asConway]] as one block
+    * of the enclosing rule's failures.
     */
   private[rules] def conway[F[_]: Monad, Env, S, S0, Sig, Rec](
+      sub: JudgedSts[Env, S, Sig, PredicateFailure, LedgerFailure],
+      env: Env,
+      signal: Sig,
+      lens: Lens[S0, S],
+      select: PartialFunction[PredicateFailure, Rec]
+  )(using
+      ask: Ask[F, Globals],
+      state: Stateful[F, S0],
+      raise: Raise[F, DijkstraHalt],
+      judge: Judge[F, Rec]
+  ): F[Unit] =
+    judge.nest(asConway[F, Env, S, S0, Sig, Rec](sub, env, signal, lens, select))
+
+  /** A Dijkstra rule whose transition is Conway's (`transitionRules =
+    * [Conway.conwayGovTransition]`, `Dijkstra/Rules/Gov.hs:220`): the Conway rule's judgment as
+    * this rule's, its predicate failures taken into the Dijkstra failure by `select` (the
+    * reference's `conwayToDijkstra*PredFailure`, one to one). A failure `select` has no case for
+    * halts the judgment ([[DijkstraHalt.Unmapped]]), as does a defect of the Conway rule
+    * ([[DijkstraHalt.Conway]]).
+    */
+  private[rules] def asConway[F[_]: Monad, Env, S, S0, Sig, Rec](
       sub: JudgedSts[Env, S, Sig, PredicateFailure, LedgerFailure],
       env: Env,
       signal: Sig,
@@ -98,14 +117,12 @@ object DijkstraSts:
           .fold(f => raise.raise[DijkstraHalt, Unit](DijkstraHalt.Unmapped(f)), judge.tell)
       def failing: F[Boolean] = judge.failing
       def nest[A](fa: F[A]): F[A] = judge.nest(fa)
-    judge.nest(
-      sub.transition[F](env, signal)(using
-        summon[Monad[F]],
-        ask,
-        state.focus(lens),
-        raise.contramap(DijkstraHalt.Conway(_)),
-        taken
-      )
+    sub.transition[F](env, signal)(using
+      summon[Monad[F]],
+      ask,
+      state.focus(lens),
+      raise.contramap(DijkstraHalt.Conway(_)),
+      taken
     )
 
   private[rules] def same[S]: Lens[S, S] = Lens[S, S](identity)(s => _ => s)
@@ -220,7 +237,7 @@ object DijkstraPool
           raise.contramap(DijkstraHalt.Conway(_))
         )
         .flatMap(p =>
-          DijkstraSts.conway[F, CertEnv, PState, PState, PoolCert, DijkstraPoolFailure](
+          DijkstraSts.asConway[F, CertEnv, PState, PState, PoolCert, DijkstraPoolFailure](
             Pool,
             env,
             PoolCert.RetirePool(p, epoch),
@@ -384,7 +401,7 @@ object DijkstraGov
       .fold(
         DijkstraSts.halt[F, Unit](_),
         proposals =>
-          DijkstraSts.conway[F, GovEnv, Proposals, Proposals, GovSignal, GovFailure](
+          DijkstraSts.asConway[F, GovEnv, Proposals, Proposals, GovSignal, GovFailure](
             Gov,
             env,
             GovSignal(votes, proposals, unregistrations),

@@ -23,7 +23,9 @@ import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
 // encoders themselves belong to the node-to-client queries. Where a Dijkstra failure type is a
 // one-to-one copy of Conway's (`conwayToDijkstraGovPredFailure`, `Gov.hs:222-243`;
 // `conwayToDijkstraGovCertPredFailure`, `GovCert.hs:118-126`), Conway's type is reused: the cases
-// and their numbers are the same. The arms of the reference that are `error "Impossible"` have no
+// and their numbers are the same. Their encodings are not: Dijkstra's types write a `Mismatch` as
+// a record of its two values (`To mm`, e.g. `Gov.hs:168-169`), where Conway's write it in line
+// (`ToGroup mm`, `Conway/Rules/Gov.hs:269-270`). The arms of the reference that are `error "Impossible"` have no
 // case here.
 
 /** `DijkstraBbodyPredFailure` (`Rules/Bbody.hs:79-88`, encoded at 109-117). */
