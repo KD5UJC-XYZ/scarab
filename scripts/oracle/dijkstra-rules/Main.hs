@@ -13,8 +13,10 @@
 -- interpreter applies a rule (`libs/small-steps/src/Control/State/Transition/Extended.hs`):
 --
 --   kind "bbody": BBODY (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs`) over a
---     block, `[8, block]` as BlockFetch carries it, on the default ledger state, with the
---     parameters of the case and a chain account of zero;
+--     block, `[8, block]` as BlockFetch carries it, on the default ledger state with the UTxO set
+--     of the case, with the parameters of the case and a chain account of zero;
+--   kind "utxow": UTXOW (`Dijkstra/Rules/Utxow.hs`) of a transaction as a block body holds it, on
+--     the UTxO set of the case and the default certificate state, at the slot of the case;
 --   kind "certs": CERTS (Conway's, with Dijkstra's CERT, POOL and GOVCERT) over the certificates of
 --     the case on the default certificate state, in the current epoch of the case;
 --   kind "gov": CERTS over `setup` first, which must pass, then GOV
@@ -28,29 +30,32 @@ module Main (main) where
 
 import Cardano.Binary (DecoderError (..), enforceSize)
 import qualified Cardano.Crypto.Hash as Hash
-import Cardano.Ledger.BaseTypes (BlocksMade (..), EpochInterval (..), Globals (..), Network (Testnet), ProtVer (..), StrictMaybe (..), boundRational, mkActiveSlotCoeff, mkVersion, natVersion, unsafeNonZero)
+import Cardano.Ledger.BaseTypes (BlocksMade (..), BoundedRational, EpochInterval (..), nonZero, Globals (..), Network (Testnet), ProtVer (..), StrictMaybe (..), boundRational, mkActiveSlotCoeff, mkVersion, natVersion, unsafeNonZero)
 import qualified Cardano.Ledger.Binary as Binary
 import qualified Cardano.Ledger.Binary.Plain as Plain
 import Cardano.Ledger.Block (Block (..), LeiosBbodySignal (..))
-import Cardano.Ledger.Alonzo.PParams (ppMaxBlockExUnitsL)
-import Cardano.Ledger.Coin (Coin (..))
+import Cardano.Ledger.Alonzo.PParams (ppCollateralPercentageL, ppMaxBlockExUnitsL, ppMaxCollateralInputsL, ppMaxTxExUnitsL, ppMaxValSizeL, ppPricesL)
+import Cardano.Ledger.Babbage.PParams (ppCoinsPerUTxOByteL)
+import Cardano.Ledger.Coin (Coin (..), CoinPerByte (..), CompactForm (CompactCoin))
 import Cardano.Ledger.Conway.Governance (ProposalProcedure, VotingProcedures (..))
-import Cardano.Ledger.Conway.PParams (ppDRepDepositL, ppGovActionDepositL, ppGovActionLifetimeL)
+import Cardano.Ledger.Conway.PParams (ppDRepDepositL, ppGovActionDepositL, ppGovActionLifetimeL, ppMinFeeRefScriptCostPerByteL)
 import qualified Cardano.Ledger.Conway.Rules as Conway
-import Cardano.Ledger.Core (PParams, TxCert, emptyPParams, eraDecoder, ppEMaxL, ppKeyDepositL, ppMinPoolCostL, ppPoolDepositL, ppProtocolVersionL)
-import Cardano.Ledger.Dijkstra (DijkstraEra)
-import Cardano.Ledger.Dijkstra.Era (BBODY, GOV)
-import Cardano.Ledger.Dijkstra.PParams (ppMaxRefScriptSizePerBlockL)
+import Cardano.Ledger.Core (PParams, Tx, TxCert, TxLevel (TopTx), emptyPParams, eraDecoder, ppEMaxL, ppKeyDepositL, ppMaxTxSizeL, ppMinPoolCostL, ppPoolDepositL, ppProtocolVersionL, ppTxFeeFixedL, ppTxFeePerByteL)
+import Cardano.Ledger.Dijkstra (DijkstraEra, mkDijkstraStAnnTopTx)
+import Cardano.Ledger.Dijkstra.Era (BBODY, GOV, UTXOW)
+import Cardano.Ledger.Dijkstra.PParams (ppMaxRefScriptSizePerBlockL, ppRefScriptCostMultiplierL, ppRefScriptCostStrideL)
+import Cardano.Ledger.Dijkstra.Rules (UtxoEnv (..))
+import Cardano.Ledger.Dijkstra.Tx (Tx (MkDijkstraTx), decodeDijkstraTopTxInBlock)
 import Cardano.Ledger.Hashes (unsafeMakeSafeHash)
-import Cardano.Ledger.Plutus.ExUnits (ExUnits (..))
-import Cardano.Ledger.Shelley.LedgerState (LedgerState)
+import Cardano.Ledger.Plutus.ExUnits (ExUnits (..), Prices (..))
+import Cardano.Ledger.Shelley.LedgerState (LedgerState (..), smartUTxOState)
 import qualified Cardano.Ledger.Shelley.Rules as Shelley
-import Cardano.Ledger.State (CertState, ChainAccountState (..))
+import Cardano.Ledger.State (CertState, ChainAccountState (..), UTxO (..), certPStateL)
 import Cardano.Ledger.TxIn (TxId (..))
 import Cardano.Protocol.Crypto (StandardCrypto)
 import qualified Cardano.Protocol.Leios.BlockHeader as Leios
 import Cardano.Slotting.EpochInfo (fixedEpochInfo)
-import Cardano.Slotting.Slot (EpochNo (..), EpochSize (..))
+import Cardano.Slotting.Slot (EpochNo (..), EpochSize (..), SlotNo (..))
 import Cardano.Slotting.Time (SystemStart (..), mkSlotLength)
 import qualified Codec.CBOR.Decoding as CBOR
 import Control.Monad.Reader (runReader)
@@ -70,9 +75,10 @@ import qualified Data.Sequence.Strict as SSeq
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import Data.Word (Word32, Word64)
+import Data.Ratio ((%))
+import Data.Word (Word16, Word32, Word64)
 import GHC.Generics (Generic)
-import Lens.Micro ((&), (.~))
+import Lens.Micro ((&), (.~), (^.))
 import Numeric.Natural (Natural)
 import System.Environment (getArgs)
 import System.Exit (die)
@@ -88,6 +94,18 @@ data Params = Params
   , govActionLifetime :: Word32
   , eMax :: Word32
   , minPoolCost :: Integer
+  , minFeeA :: Integer
+  , minFeeB :: Integer
+  , maxTxSize :: Word32
+  , maxValSize :: Word32
+  , coinsPerUTxOByte :: Word64
+  , maxTxExUnits :: (Natural, Natural)
+  , collateralPercentage :: Word16
+  , maxCollateralInputs :: Word16
+  , minFeeRefScriptCostPerByte :: Integer
+  , refScriptCostStride :: Word32
+  , refScriptCostMultiplier :: (Integer, Integer)
+  , prices :: ((Integer, Integer), (Integer, Integer))
   }
   deriving (Generic)
 
@@ -103,6 +121,9 @@ data Case = Case
   , setup :: Maybe [Text.Text]
   , votes :: Maybe Text.Text
   , proposals :: Maybe Text.Text
+  , utxo :: Maybe [(Text.Text, Text.Text)]
+  , tx :: Maybe Text.Text
+  , slot :: Maybe Word64
   }
   deriving (Generic)
 
@@ -138,6 +159,21 @@ pparams p =
     & ppGovActionLifetimeL .~ EpochInterval (govActionLifetime p)
     & ppEMaxL .~ EpochInterval (eMax p)
     & ppMinPoolCostL .~ Coin (minPoolCost p)
+    & ppTxFeePerByteL .~ CoinPerByte (CompactCoin (fromInteger (minFeeA p)))
+    & ppTxFeeFixedL .~ Coin (minFeeB p)
+    & ppMaxTxSizeL .~ maxTxSize p
+    & ppMaxValSizeL .~ maxValSize p
+    & ppCoinsPerUTxOByteL .~ CoinPerByte (CompactCoin (coinsPerUTxOByte p))
+    & ppMaxTxExUnitsL .~ ExUnits (fst (maxTxExUnits p)) (snd (maxTxExUnits p))
+    & ppCollateralPercentageL .~ collateralPercentage p
+    & ppMaxCollateralInputsL .~ maxCollateralInputs p
+    & ppMinFeeRefScriptCostPerByteL .~ bounded (minFeeRefScriptCostPerByte p, 1)
+    & ppRefScriptCostStrideL .~ maybe (error "stride") id (nonZero (refScriptCostStride p))
+    & ppRefScriptCostMultiplierL .~ bounded (refScriptCostMultiplier p)
+    & ppPricesL .~ Prices (bounded (fst (prices p))) (bounded (snd (prices p)))
+  where
+    bounded :: BoundedRational r => (Integer, Integer) -> r
+    bounded (n, d) = maybe (error "ratio") id (boundRational (n % d))
 
 hexBytes :: BS.ByteString -> Text.Text
 hexBytes = Text.decodeUtf8 . Hex.encode
@@ -182,6 +218,21 @@ runCerts c cs st =
     (applySTS @(Conway.CERTS DijkstraEra) (TRC (certsEnv c, st, Seq.fromList (map decode12 cs :: [TxCert DijkstraEra]))))
     globals
 
+-- | The UTxO set of a case: each input and output encoded at version 12.
+utxoOf :: Case -> UTxO DijkstraEra
+utxoOf c = UTxO (Map.fromList [(decode12 i, decode12 o) | (i, o) <- maybe [] id (utxo c)])
+
+-- | A transaction as a Dijkstra block body holds it (`decodeDijkstraTopTxInBlock`,
+-- `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:175-182`).
+topTx :: Text.Text -> Tx TopTx DijkstraEra
+topTx t =
+  MkDijkstraTx $
+    either (error . show) id $
+      Binary.decodeFullAnnotator (natVersion @12) "DijkstraTx" decodeDijkstraTopTxInBlock (LBS.fromStrict (unhex t))
+
+ledgerOf :: Case -> LedgerState DijkstraEra
+ledgerOf c = LedgerState (smartUTxOState (pparams (params c)) (utxoOf c) (Coin 0) (Coin 0) def (Coin 0)) def
+
 txId :: TxId
 txId = TxId (unsafeMakeSafeHash (maybe (error "hash") id (Hash.hashFromBytes (BS.replicate 32 6))))
 
@@ -196,7 +247,7 @@ runCase c = object ["name" .= name c, "kind" .= kind c, "reference" .= result]
             ( applySTS @(BBODY DijkstraEra)
                 ( TRC
                     ( Shelley.BbodyEnv pp (ChainAccountState (Coin 0) (Coin 0))
-                    , Shelley.BbodyState (def :: LedgerState DijkstraEra) (BlocksMade Map.empty)
+                    , Shelley.BbodyState (ledgerOf c) (BlocksMade Map.empty)
                     , LeiosBbodySignal (dijkstraBlock (maybe (error "block") id (block c)))
                     )
                 )
@@ -214,6 +265,25 @@ runCase c = object ["name" .= name c, "kind" .= kind c, "reference" .= result]
               runReader
                 ( applySTS @(GOV DijkstraEra)
                     (TRC (Conway.GovEnv txId (EpochNo (epoch c)) pp SNothing certState SNothing, def, signal))
+                )
+                globals
+      -- UTXOW (`Dijkstra/Rules/Utxow.hs`) of a transaction on the UTxO set of the case, with the
+      -- default certificate state, at the case's slot; the transaction annotated as the ledger
+      -- annotates it (`mkDijkstraStAnnTopTx`, `Dijkstra.hs:113-169`)
+      "utxow" ->
+        let u = utxoOf c
+            annotated =
+              mkDijkstraStAnnTopTx (epochInfo globals) (systemStart globals) pp u mempty (topTx (maybe (error "tx") id (tx c)))
+            certState = def :: CertState DijkstraEra
+         in verdict (const []) $
+              runReader
+                ( applySTS @(UTXOW DijkstraEra)
+                    ( TRC
+                        ( UtxoEnv (SlotNo (maybe 0 id (slot c))) pp (certState ^. certPStateL) certState u
+                        , smartUTxOState pp u (Coin 0) (Coin 0) def (Coin 0)
+                        , annotated
+                        )
+                    )
                 )
                 globals
       other -> error ("unsupported kind " <> other)

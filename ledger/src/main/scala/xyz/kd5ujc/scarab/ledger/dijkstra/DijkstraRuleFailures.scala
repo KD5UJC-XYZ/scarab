@@ -11,8 +11,11 @@ import xyz.kd5ujc.scarab.ledger.{
   Mismatch,
   Nonce,
   PredicateFailure,
+  LedgerDecodeError,
+  TxIn,
   TxOut,
-  UtxosFailure
+  UtxosFailure,
+  Value
 }
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
@@ -87,7 +90,7 @@ enum DijkstraUtxowFailure(val tag: Int):
   case NotAllowedSupplementalDatums(unallowed: Set[Bytes], acceptable: Set[Bytes])
       extends DijkstraUtxowFailure(12)
   case PPViewHashesDontMatch(mismatch: Mismatch[Option[Bytes]]) extends DijkstraUtxowFailure(13)
-  case UnspendableUTxONoDatumHash(inputs: Set[DijkstraTxIn]) extends DijkstraUtxowFailure(14)
+  case UnspendableUTxONoDatumHash(inputs: Set[TxIn]) extends DijkstraUtxowFailure(14)
   case ExtraRedeemers(purposes: Vector[(Int, Int)]) extends DijkstraUtxowFailure(15)
   case MalformedScriptWitnesses(hashes: Set[Bytes]) extends DijkstraUtxowFailure(16)
   case MalformedReferenceScripts(hashes: Set[Bytes]) extends DijkstraUtxowFailure(17)
@@ -100,12 +103,13 @@ enum DijkstraUtxowFailure(val tag: Int):
   /** Required top-level guards whose datum's presence does not fit the credential's kind. */
   case MalformedGuardDatums(credentials: Set[Credential]) extends DijkstraUtxowFailure(20)
 
-/** `DijkstraUtxoPredFailure` (`Rules/Utxo.hs:110-171`, encoded at 497-520; 8 is unused). An output
-  * of the transaction is a [[DijkstraTxOut]]; one of the UTxO set is a [[TxOut]].
+/** `DijkstraUtxoPredFailure` (`Rules/Utxo.hs:110-171`, encoded at 497-520; 8 is unused). Inputs,
+  * outputs and values are the node's ([[TxIn]], [[TxOut]], [[Value]]), the forms the UTxO set
+  * holds.
   */
 enum DijkstraUtxoFailure(val tag: Int):
   case UtxosFailure(failure: xyz.kd5ujc.scarab.ledger.UtxosFailure) extends DijkstraUtxoFailure(0)
-  case BadInputs(inputs: Set[DijkstraTxIn]) extends DijkstraUtxoFailure(1)
+  case BadInputs(inputs: Set[TxIn]) extends DijkstraUtxoFailure(1)
 
   /** The validity interval (`invalidBefore`, `invalidHereafter`) and the current slot. */
   case OutsideValidityInterval(notBefore: Option[BigInt], before: Option[BigInt], slot: BigInt)
@@ -115,28 +119,26 @@ enum DijkstraUtxoFailure(val tag: Int):
   case FeeTooSmall(mismatch: Mismatch[BigInt]) extends DijkstraUtxoFailure(5)
 
   /** Consumed (supplied) against produced (expected). */
-  case ValueNotConserved(mismatch: Mismatch[DijkstraValue]) extends DijkstraUtxoFailure(6)
+  case ValueNotConserved(mismatch: Mismatch[Value]) extends DijkstraUtxoFailure(6)
   case WrongNetwork(expected: Int, addresses: Set[Bytes]) extends DijkstraUtxoFailure(7)
-  case OutputBootAddrAttrsTooBig(outputs: Vector[DijkstraTxOut]) extends DijkstraUtxoFailure(9)
-  case OutputTooBig(outputs: Vector[(Int, Int, DijkstraTxOut)]) extends DijkstraUtxoFailure(10)
+  case OutputBootAddrAttrsTooBig(outputs: Vector[TxOut]) extends DijkstraUtxoFailure(9)
+  case OutputTooBig(outputs: Vector[(Int, Int, TxOut)]) extends DijkstraUtxoFailure(10)
   case InsufficientCollateral(balance: BigInt, required: BigInt) extends DijkstraUtxoFailure(11)
-  case ScriptsNotPaid(outputs: Map[DijkstraTxIn, TxOut]) extends DijkstraUtxoFailure(12)
+  case ScriptsNotPaid(outputs: Map[TxIn, TxOut]) extends DijkstraUtxoFailure(12)
   case ExUnitsTooBig(mismatch: Mismatch[ExUnits]) extends DijkstraUtxoFailure(13)
-  case CollateralContainsNonAda(value: DijkstraValue) extends DijkstraUtxoFailure(14)
+  case CollateralContainsNonAda(value: Value) extends DijkstraUtxoFailure(14)
   case WrongNetworkInTxBody(mismatch: Mismatch[Int]) extends DijkstraUtxoFailure(15)
   case OutsideForecast(slot: BigInt) extends DijkstraUtxoFailure(16)
   case TooManyCollateralInputs(mismatch: Mismatch[Int]) extends DijkstraUtxoFailure(17)
   case NoCollateralInputs extends DijkstraUtxoFailure(18)
   case IncorrectTotalCollateralField(provided: BigInt, declared: BigInt)
       extends DijkstraUtxoFailure(19)
-  case BabbageOutputTooSmall(outputs: Vector[(DijkstraTxOut, BigInt)])
-      extends DijkstraUtxoFailure(20)
-  case BabbageNonDisjointRefInputs(inputs: Vector[DijkstraTxIn]) extends DijkstraUtxoFailure(21)
-  case PtrPresentInCollateralReturn(output: DijkstraTxOut) extends DijkstraUtxoFailure(22)
+  case BabbageOutputTooSmall(outputs: Vector[(TxOut, BigInt)]) extends DijkstraUtxoFailure(20)
+  case BabbageNonDisjointRefInputs(inputs: Vector[TxIn]) extends DijkstraUtxoFailure(21)
+  case PtrPresentInCollateralReturn(output: TxOut) extends DijkstraUtxoFailure(22)
 
   /** A legacy-mode top-level transaction that does not balance on its own. */
-  case ValueNotConservedInLegacyMode(mismatch: Mismatch[DijkstraValue])
-      extends DijkstraUtxoFailure(23)
+  case ValueNotConservedInLegacyMode(mismatch: Mismatch[Value]) extends DijkstraUtxoFailure(23)
 
 /** `DijkstraPoolPredFailure` (`Rules/Pool.hs:57-85`, encoded at 87-105; 2 is unused). */
 enum DijkstraPoolFailure(val tag: Int):
@@ -178,8 +180,22 @@ enum DijkstraPending:
     */
   case Entities
 
-  /** UTXOW and UTXO of a Dijkstra transaction (`Rules/Utxow.hs`, `Rules/Utxo.hs`). */
-  case Utxow
+  /** Plutus scripts, redeemers or datums: their evaluation with Dijkstra's script contexts and the
+    * checks of their witnesses (`Rules/Utxow.hs`, `Rules/Utxos.hs`).
+    */
+  case Phase2
+
+  /** Guards or required top-level guards (`guardsTxBodyL`, `requiredTopLevelGuardsTxBodyL`). */
+  case Guards
+
+  /** Direct deposits or account balance intervals: ENTITIES', and the batch's produced value. */
+  case AccountFields
+
+  /** A part of the transaction that the node's Conway forms, which its UTxO set and the reused
+    * Conway checks hold, cannot hold: a PlutusV4 script, a Dijkstra native script, or another
+    * encoding the Conway decoder of the same bytes refuses.
+    */
+  case ConwayForm(cause: LedgerDecodeError)
 
   /** A pool registration: the pool state of the node holds the original encodings of a
     * registration's relays and metadata and no BLS key (`StakePoolParams`, `sppBlsKey`), which a

@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# Dijkstra rules: BBODY, CERTS and GOV
+# Dijkstra rules: BBODY, UTXOW, CERTS and GOV
 
 **Status: Current** — optional offline reference oracle for [#54](https://github.com/KD5UJC-XYZ/scarab/issues/54).
 

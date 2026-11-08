@@ -8,23 +8,32 @@ import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{
+  Address,
   Block,
+  ByteStrings,
   CertFailure,
   CertsFailure,
   EpochGeometry,
   LedgerGlobals,
+  Mismatch,
   PoolFailure,
   PredicateFailure,
   Proposals,
   ProtocolParams,
+  ScriptKind,
   TestGeometry,
-  TestLedger
+  TestLedger,
+  TxIn,
+  TxOut,
+  Utxo,
+  UtxoFailure,
+  UtxowFailure
 }
 import xyz.kd5ujc.scarab.ledger.dijkstra.*
 import xyz.kd5ujc.scarab.ledger.rules.*
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.plutus.ExUnits
-import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
 
 /** The Dijkstra BBODY, CERTS and GOV rules of the node against the reference's verdicts on the same
   * cases (`fixtures/reference/dijkstra-rules`, cardano-ledger 9df9f98c, recipe in
@@ -73,12 +82,52 @@ class DijkstraRulesOracleSuite extends FunSuite:
         govActionDeposit = num(p.downField("govActionDeposit")),
         govActionLifetime = num(p.downField("govActionLifetime")),
         eMax = num(p.downField("eMax")),
-        minPoolCost = num(p.downField("minPoolCost"))
+        minPoolCost = num(p.downField("minPoolCost")),
+        minFeeA = num(p.downField("minFeeA")),
+        minFeeB = num(p.downField("minFeeB")),
+        maxTxSize = num(p.downField("maxTxSize")),
+        maxValueSize = num(p.downField("maxValSize")),
+        coinsPerUTxOByte = num(p.downField("coinsPerUTxOByte")),
+        maxTxExUnits = ExUnits(
+          num(p.downField("maxTxExUnits").downN(0)),
+          num(p.downField("maxTxExUnits").downN(1))
+        ),
+        collateralPercentage = num(p.downField("collateralPercentage")),
+        maxCollateralInputs = num(p.downField("maxCollateralInputs")),
+        minFeeRefScriptCostPerByte = Rational(num(p.downField("minFeeRefScriptCostPerByte"))),
+        refScriptCostStride = num(p.downField("refScriptCostStride")),
+        refScriptCostMultiplier = ratio(p.downField("refScriptCostMultiplier")),
+        priceMem = ratio(p.downField("prices").downN(0)),
+        priceSteps = ratio(p.downField("prices").downN(1))
       )
 
-  private def ledger(pp: ProtocolParams, epoch: BigInt): DijkstraLedger =
+  private def ratio(c: ACursor): Rational = Rational(num(c.downN(0)), num(c.downN(1)))
+
+  /** The UTxO set of a case: each input and output as the node's Conway forms read them. */
+  private def utxoOf(c: Json): Utxo =
+    given ByteStrings = ByteStrings.Chunked
+    Utxo(
+      c.hcursor
+        .downField("utxo")
+        .as[Vector[(String, String)]]
+        .getOrElse(Vector.empty)
+        .map { (i, o) =>
+          ok(TxIn.decode(node(hex(i)))) -> ok(
+            TxOut.decode(
+              node(hex(o)),
+              Address.Mode.of(Era.Conway),
+              TxOut.Forms.of(Era.Conway),
+              ScriptKind.PlutusV3
+            )
+          )
+        }
+        .toMap
+    )
+
+  private def ledger(pp: ProtocolParams, epoch: BigInt, utxo: Utxo = Utxo.empty): DijkstraLedger =
+    val ls = NewEpochState.empty[Dijkstra](ok(EpochNo.fromBigInt(epoch)), pp).es.ls
     Counted(
-      NewEpochState.empty[Dijkstra](ok(EpochNo.fromBigInt(epoch)), pp).es.ls,
+      ls.copy[Dijkstra](utxo = ls.utxo.copy[Dijkstra](utxo = UtxoTables(utxo))),
       xyz.kd5ujc.scarab.ledger.PlutusStats.zero
     )
 
@@ -101,6 +150,9 @@ class DijkstraRulesOracleSuite extends FunSuite:
     case Value.Arr(Vector(_, item)) => item.original
     case other                      => fail(s"not a constructor of one field: $other")
 
+  /** The one field of a constructor `[tag, field]`: through the LEDGER constructor, and through
+    * UTXOW's `UtxoFailure`.
+    */
   private def conway(f: PredicateFailure): Bytes =
     payload(CborOut.build(w => PredicateFailureCbor.ledger(w, f)))
 
@@ -181,6 +233,52 @@ class DijkstraRulesOracleSuite extends FunSuite:
   private def uint(n: BigInt): Node = item(Value.UInt(n))
   private def item(v: Value): Node = Node(v, Bytes.empty)
 
+  /** A UTXOW failure as Dijkstra's encoder writes it, for the cases the oracle reaches. A failure
+    * without a `Mismatch` is Conway's encoding of the same failure; one with is the constructor's
+    * tag and the record of the supplied and the expected value (`To mm`,
+    * `Dijkstra/Rules/Utxo.hs:501-504`), where Conway writes them in line and, for the fee, swapped.
+    */
+  private def utxow(f: DijkstraUtxowFailure): Bytes =
+    // Conway's encoding of the payload, under the Dijkstra constructor's tag (Dijkstra numbers its
+    // UTXO failures anew: `Utxo.hs:497-520`)
+    def conwayUtxo(tag: Int, u: UtxoFailure): Bytes =
+      val conway =
+        payload(
+          payload(CborOut.build(w => PredicateFailureCbor.ledger(w, PredicateFailure.utxo(u))))
+        )
+      node(conway).value match
+        case Value.Arr(items) =>
+          ok(Cbor.encode(Value.Arr(uint(tag) +: items.drop(1))))
+        case other => fail(s"not a constructor: $other")
+    def mismatch[A](tag: Int, m: Mismatch[A])(each: (CborOut, A) => Unit): Bytes =
+      CborOut.build { w =>
+        w.array(2).uint(tag).array(2)
+        each(w, m.supplied)
+        each(w, m.expected)
+      }
+    def utxo(u: DijkstraUtxoFailure): Bytes = u match
+      case DijkstraUtxoFailure.FeeTooSmall(m) => mismatch(u.tag, m)(PredicateFailureCbor.coin)
+      case DijkstraUtxoFailure.MaxTxSize(m)   => mismatch(u.tag, m)(PredicateFailureCbor.coin)
+      case DijkstraUtxoFailure.ValueNotConserved(m) =>
+        mismatch(u.tag, m)(PredicateFailureCbor.value)
+      case DijkstraUtxoFailure.BadInputs(i)     => conwayUtxo(u.tag, UtxoFailure.BadInputs(i))
+      case DijkstraUtxoFailure.OutputTooBig(os) => conwayUtxo(u.tag, UtxoFailure.OutputTooBig(os))
+      case DijkstraUtxoFailure.BabbageOutputTooSmall(os) =>
+        conwayUtxo(u.tag, UtxoFailure.BabbageOutputTooSmall(os))
+      case DijkstraUtxoFailure.UtxosFailure(x) => conwayUtxo(u.tag, UtxoFailure.Utxos(x))
+      case other                               => fail(s"no case of the oracle reaches $other")
+    f match
+      case DijkstraUtxowFailure.UtxoFailure(u) =>
+        CborOut.build(w => w.array(2).uint(f.tag).raw(utxo(u)))
+      case DijkstraUtxowFailure.MissingVKeyWitnesses(hs) =>
+        payload(
+          CborOut.build(w =>
+            PredicateFailureCbor
+              .ledger(w, PredicateFailure.utxow(UtxowFailure.MissingVKeyWitnesses(hs)))
+          )
+        )
+      case other => fail(s"no case of the oracle reaches $other")
+
   private def bbody(f: DijkstraBbodyFailure): Bytes = f match
     case DijkstraBbodyFailure.WrongBlockBodySize(m) =>
       mismatch(f.tag, Value.UInt(m.supplied), Value.UInt(m.expected))
@@ -227,7 +325,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
         Sts(DijkstraBbody)(
           globals,
           BbodyEnv(TestLedger.env.copy(epoch = epoch), pp, Coin(0)),
-          DijkstraBbodyState(ledger(pp, epoch), BlocksMade.empty),
+          DijkstraBbodyState(ledger(pp, epoch, utxoOf(c)), BlocksMade.empty),
           DijkstraBbody.Signal(block, issuer)
         ) match
           case Right(_)                                 => Verdict.Accepted
@@ -259,14 +357,36 @@ class DijkstraRulesOracleSuite extends FunSuite:
             DijkstraGovSignal(votes, proposals, Vector.empty)
           )
         )(g => dijkstra(conway(PredicateFailure.Gov(g))))
+      case "utxow" =>
+        val raw = hex(str(h.downField("tx")))
+        val tx = ok(DijkstraTx.inBlock(node(raw)))
+        val utxo = utxoOf(c)
+        val start = ledger(pp, epoch, utxo)
+        judged(
+          DijkstraSts.judge(DijkstraUtxow, Judgment.Policy.Accumulate)(
+            globals,
+            DijkstraUtxoEnv(
+              TestLedger.env.copy(slot = num(h.downField("slot")), epoch = epoch),
+              pp,
+              start.state.cert.pState,
+              start.state.cert,
+              utxo
+            ),
+            Counted(start.state.utxo, xyz.kd5ujc.scarab.ledger.PlutusStats.zero),
+            tx
+          )
+        )(f => utxow(f))
       case other => fail(s"kind $other")
 
   /** The cases that reach a rule this build does not run yet, with the part they reach. */
   private val incomplete: Map[String, DijkstraPending] =
-    Map("bbody/devnet-37" -> DijkstraPending.Entities)
+    Map(
+      "bbody/devnet-37" -> DijkstraPending.Entities,
+      "bbody/devnet-37-genesis-utxo" -> DijkstraPending.Entities
+    )
 
   test("the fixture holds the oracle's cases") {
-    assertEquals(cases.size, 48)
+    assertEquals(cases.size, 58)
   }
 
   test("every case the node's rules complete agrees with the reference") {

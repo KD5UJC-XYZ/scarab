@@ -78,9 +78,10 @@ object DijkstraTxMeasures:
   *     transaction; both recorded (`runTest`).
   *   - for a phase-2-valid transaction ENTITIES, then GOV (`Ledger.hs:426-471`): ENTITIES halts
   *     ([[DijkstraPending.Entities]]), so GOV ([[DijkstraGov]]) is not reached from here yet.
-  *   - UTXOW (`Ledger.hs:475-486`): halts ([[DijkstraPending.Utxow]]).
+  *   - UTXOW (`Ledger.hs:475-486`), [[DijkstraUtxow]], on the UTxO state.
   *
-  * A judgment of this rule therefore ends in a halt; what it records before is the reference's.
+  * So a phase-2-valid transaction halts, and a phase-2-invalid one is judged in full when UTXOW has
+  * its Conway form ([[DijkstraStAnnTx]]).
   */
 object DijkstraLedgerRule
     extends JudgedSts[LedgerEnv, DijkstraLedger, DijkstraTx, DijkstraLedgerFailure, DijkstraHalt]:
@@ -126,7 +127,17 @@ object DijkstraLedgerRule
       _ <-
         if tx.isValid then DijkstraSts.halt[F, Unit](DijkstraPending.Entities)
         else Monad[F].unit
-      _ <- DijkstraSts.halt[F, Unit](DijkstraPending.Utxow)
+      // `UtxoEnv slot pp (certStateAfterSubLedgers ^. certPStateL) (lsCertState ledgerState)
+      // originalUtxo` (`Ledger.hs:475-486`): with no sub-transaction, both are the state before
+      _ <- DijkstraSts.trans[F, DijkstraUtxoEnv, Counted[
+        UTxOState[Dijkstra]
+      ], DijkstraLedger, DijkstraTx, DijkstraUtxowFailure, DijkstraLedgerFailure](
+        DijkstraUtxow,
+        DijkstraUtxoEnv(env.ctx, pp, before.state.cert.pState, before.state.cert, utxo),
+        tx,
+        Counted.utxoOfEra[Dijkstra],
+        DijkstraLedgerFailure.UtxowFailure(_)
+      )
     yield ()
 
 /** LEDGERS of Dijkstra, Shelley's (`Babbage.LEDGERS`, `Dijkstra/Era.hs:296`;

@@ -125,6 +125,25 @@ object DijkstraSts:
       taken
     )
 
+  /** A Conway predicate's failures taken into a Dijkstra failure by `select`, or the halt of the
+    * first it has no case for.
+    */
+  private[rules] def taken[Rec](select: PartialFunction[PredicateFailure, Rec])(
+      test: Test[PredicateFailure]
+  ): Either[DijkstraHalt, Test[Rec]] =
+    test.fold(
+      _.traverse(f => select.lift(f).toRight(DijkstraHalt.Unmapped(f)))
+        .map(cats.data.Validated.invalid[NonEmptyChain[Rec], Unit](_)),
+      _ => Right(Test.pass[Rec])
+    )
+
+  /** Records the checks in order: every failure of each, or the first halt. */
+  private[rules] def record[F[_]: Monad, Rec](checks: Vector[Either[DijkstraHalt, Test[Rec]]])(using
+      raise: Raise[F, DijkstraHalt],
+      judge: Judge[F, Rec]
+  ): F[Unit] =
+    checks.traverse_(c => Sts.lift[F, DijkstraHalt, Test[Rec]](c).flatMap(Sts.runTest[F, Rec](_)))
+
   private[rules] def same[S]: Lens[S, S] = Lens[S, S](identity)(s => _ => s)
 
   private[rules] def halt[F[_], A](what: DijkstraPending)(using

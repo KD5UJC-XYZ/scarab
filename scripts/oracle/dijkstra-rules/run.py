@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Reference verdicts of the Dijkstra BBODY, CERTS and GOV rules of the Leios testnet build (#54).
+"""Reference verdicts of the Dijkstra BBODY, UTXOW, CERTS and GOV rules of the Leios testnet build (#54).
 
 The cases are the Dijkstra blocks of the reference cluster's chain (`fixtures/dijkstra-devnet`), as
 they are and with a header or the parameters changed, and certificates, votes and proposals in their
@@ -40,7 +40,27 @@ PARAMS = {
     "govActionLifetime": 120,
     "eMax": 18,
     "minPoolCost": 170000000,
+    "minFeeA": 44,
+    "minFeeB": 155381,
+    "maxTxSize": 16384,
+    "maxValSize": 5000,
+    # Babbage's upgrade of Alonzo's lovelacePerUTxOWord 34482 (`coinsPerUTxOWordToCoinsPerUTxOByte`)
+    "coinsPerUTxOByte": 4310,
+    "maxTxExUnits": [16500000, 10000000000],
+    "collateralPercentage": 150,
+    "maxCollateralInputs": 3,
+    "minFeeRefScriptCostPerByte": 15,
+    "refScriptCostStride": 25600,
+    "refScriptCostMultiplier": [6, 5],
+    "prices": [[577, 10000], [721, 10000000]],
 }
+
+# The devnet transaction's input: the Shelley genesis's initial funds of `607be6…` (its
+# `extraConfig.initialFunds`), whose input is the Blake2b-256 of the address, index 0.
+GENESIS_ADDRESS = bytes.fromhex("607be6f4db9b5c16681157f9c2e15e57e341e21ecf94e553896f897a44")
+GENESIS_COIN = 900000000000000
+DEVNET_TX_BLOCK = 37
+DEVNET_TX_SLOT = 225
 
 
 def head(major, n):
@@ -148,6 +168,24 @@ def generate():
     assert blob.count(marker) == 1
     case("bbody/other-body-hash", "bbody", block=blob.replace(marker, bytes([9]) * 32).hex())
 
+    tx_block = bytes.fromhex(dict(chain)[DEVNET_TX_BLOCK])
+    case(f"bbody/devnet-{DEVNET_TX_BLOCK}-genesis-utxo", "bbody", block=tx_block.hex(), utxo=genesis_utxo())
+    body, wits, aux, flag = devnet_tx(tx_block)
+    tx = arr(body, wits, aux, flag)
+    utxow = {
+        "devnet": ({}, tx, genesis_utxo()),
+        "no-utxo": ({}, tx, []),
+        "fee-floor": ({"minFeeB": PARAMS["minFeeB"] + 1000000}, tx, genesis_utxo()),
+        "max-tx-size": ({"maxTxSize": 100}, tx, genesis_utxo()),
+        "max-value-size": ({"maxValSize": 1}, tx, genesis_utxo()),
+        "coins-per-byte": ({"coinsPerUTxOByte": 10**9}, tx, genesis_utxo()),
+        "no-witnesses": ({}, arr(body, cmap([]), aux, flag), genesis_utxo()),
+        "invalid-flag": ({}, arr(body, wits, aux, b"\xf4"), genesis_utxo()),
+        "max-tx-ex-units-zero": ({"maxTxExUnits": [0, 0]}, tx, genesis_utxo()),
+    }
+    for name, (params, t, u) in utxow.items():
+        case(f"utxow/{name}", "utxow", params=params, tx=t.hex(), utxo=u, slot=DEVNET_TX_SLOT)
+
     certs = {
         "register": [reg(1)],
         "register-twice": [reg(1), reg(1)],
@@ -214,6 +252,58 @@ def generate():
     names = [c["name"] for c in cases]
     assert len(names) == len(set(names)), "case names must be unique"
     return cases
+
+
+def genesis_utxo():
+    txin = arr(bstr(hashlib.blake2b(GENESIS_ADDRESS, digest_size=32).digest()), uint(0))
+    txout = arr(bstr(GENESIS_ADDRESS), uint(GENESIS_COIN))
+    return [[txin.hex(), txout.hex()]]
+
+
+def _item(b, i):
+    ib = b[i]
+    major, info = ib >> 5, ib & 31
+    i += 1
+    if info < 24:
+        return major, info, i
+    width = {24: 1, 25: 2, 26: 4, 27: 8}[info]
+    return major, int.from_bytes(b[i:i + width], "big"), i + width
+
+
+def _skip(b, i):
+    major, n, i = _item(b, i)
+    if major in (2, 3):
+        return i + n
+    if major in (4, 5):
+        for _ in range(n * (2 if major == 5 else 1)):
+            i = _skip(b, i)
+        return i
+    if major == 6:
+        return _skip(b, i)
+    return i
+
+
+def _items(b, i):
+    """The items of the definite list at `i`, as their bytes."""
+    _, n, i = _item(b, i)
+    out = []
+    for _ in range(n):
+        j = _skip(b, i)
+        out.append(b[i:j])
+        i = j
+    return out
+
+
+def devnet_tx(block):
+    """The parts of the one transaction of a block, `[body, witnesses, auxiliary data, is_valid]`
+    as a Dijkstra body holds it (cardano-ledger 9df9f98c `Dijkstra/Tx.hs:175-182`)."""
+    _, _, i = _item(block, 0)        # [tag, block]
+    _, _, i = _item(block, i)        # 8
+    _, _, i = _item(block, i)        # [header, body]
+    i = _skip(block, i)              # the header
+    _, _, i = _item(block, i)        # [txs, leios_cert, peras_cert]
+    (tx,) = _items(block, i)
+    return _items(tx, 0)
 
 
 def declared_body_hash(block):
@@ -294,11 +384,11 @@ def main():
         image = subprocess.check_output(["docker", "image", "inspect", IMAGE, "--format", "{{.Id}}"], text=True).strip()
         PROVENANCE.write_text(json.dumps({
             "schemaVersion": 1,
-            "scope": "Dijkstra's BBODY, CERTS (with Dijkstra's CERT, POOL and GOVCERT) and GOV of the Leios "
-                     "testnet build, each applied on its own with every check run: BBODY over the devnet's "
-                     "Dijkstra blocks on the default ledger state, CERTS on the default certificate state, "
-                     "GOV after a CERTS setup on the default store of proposals; not LEDGER, UTXOW, UTXO, "
-                     "ENTITIES or the SUB rules",
+            "scope": "Dijkstra's BBODY, UTXOW (with UTXO and UTXOS), CERTS (with Dijkstra's CERT, POOL and "
+                     "GOVCERT) and GOV of the Leios testnet build, each applied on its own with every check "
+                     "run: BBODY over the devnet's Dijkstra blocks, UTXOW over the devnet transaction and its "
+                     "variants, CERTS on the default certificate state, GOV after a CERTS setup on the "
+                     "default store of proposals; not LEDGER on its own, ENTITIES or the SUB rules",
             "image": IMAGE,
             "imageId": image,
             "ledger": {"repository": "IntersectMBO/cardano-ledger",

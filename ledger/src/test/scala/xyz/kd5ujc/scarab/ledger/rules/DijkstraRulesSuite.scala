@@ -239,7 +239,7 @@ class DijkstraRulesSuite extends FunSuite:
     )
   }
 
-  test("a pool registration halts: the pool state holds no BLS key") {
+  test("a pool registration halts: the pool state cannot hold a Dijkstra registration") {
     val params = DijkstraPoolParams(
       Bytes.fromArray(Array.fill(28)(4.toByte)),
       Bytes.fromArray(Array.fill(32)(5.toByte)),
@@ -317,7 +317,7 @@ class DijkstraRulesSuite extends FunSuite:
         DijkstraUtxoFailure.OutputBootAddrAttrsTooBig(Vector.empty).tag,
         DijkstraUtxoFailure
           .ValueNotConservedInLegacyMode(
-            Mismatch(DijkstraValue(0, Map.empty), DijkstraValue(0, Map.empty))
+            Mismatch(xyz.kd5ujc.scarab.ledger.Value.zero, xyz.kd5ujc.scarab.ledger.Value.zero)
           )
           .tag,
         DijkstraPoolFailure.StakePoolCostTooLow(m).tag,
@@ -344,6 +344,98 @@ class DijkstraRulesSuite extends FunSuite:
             DijkstraCertFailure.Deleg(DelegFailure.StakeKeyRegistered(key(1))),
             DijkstraCertFailure.GovCert(
               GovCertFailure.DRepIncorrectDeposit(Mismatch(BigInt(1), pp.drepDeposit))
+            )
+          )
+        )
+      )
+    )
+  }
+
+  // ---- UTXOW, UTXO and LEDGER
+
+  /** The devnet transaction (block 37) and the genesis output it spends: the initial funds of
+    * `607be6…` (the devnet's Shelley genesis, `extraConfig.initialFunds`), whose input is the
+    * Blake2b-256 of the address, index 0.
+    */
+  private lazy val devnetTx: DijkstraTx =
+    dijkstraBlocks.flatMap(_._2.transactions).headOption.getOrElse(fail("no transaction"))
+
+  private val genesisAddress =
+    Bytes.fromHex("607be6f4db9b5c16681157f9c2e15e57e341e21ecf94e553896f897a44").getOrElse(fail(""))
+
+  private lazy val genesisUtxo: xyz.kd5ujc.scarab.ledger.Utxo =
+    val address = xyz.kd5ujc.scarab.ledger.Address.decode(genesisAddress).getOrElse(fail("address"))
+    xyz.kd5ujc.scarab.ledger.Utxo(
+      Map(
+        xyz.kd5ujc.scarab.ledger
+          .TxIn(xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(genesisAddress), 0) ->
+          xyz.kd5ujc.scarab.ledger.TxOut(
+            address,
+            xyz.kd5ujc.scarab.ledger.Value.coin(BigInt("900000000000000"))
+          )
+      )
+    )
+
+  private def funded(params: ProtocolParams): DijkstraLedger =
+    val l = ledger(params)
+    Counted(
+      l.state.copy[Dijkstra](utxo = l.state.utxo.copy[Dijkstra](utxo = UtxoTables(genesisUtxo))),
+      PlutusStats.zero
+    )
+
+  private def utxow(tx: DijkstraTx, from: DijkstraLedger = funded(pp)) =
+    DijkstraSts.judge(DijkstraUtxow, Judgment.Policy.Accumulate)(
+      globals,
+      DijkstraUtxoEnv(
+        TestLedger.env.copy(slot = 225),
+        pp,
+        from.state.cert.pState,
+        from.state.cert,
+        from.state.utxo.utxo.utxo
+      ),
+      Counted(from.state.utxo, PlutusStats.zero),
+      tx
+    )
+
+  test("UTXOW applies the devnet transaction: its input spent, its outputs created, its fee kept") {
+    val after = utxow(devnetTx).fold(h => fail(s"$h"), _.fold(f => fail(s"$f"), identity)).state
+    val id = devnetTx.id
+    assertEquals(
+      after.utxo.utxo.keys.toSet,
+      devnetTx.body.outputs.indices.map(i => xyz.kd5ujc.scarab.ledger.TxIn(id, i)).toSet
+    )
+    assertEquals(Some(after.fees.value), devnetTx.body.fee)
+  }
+
+  test("UTXOW halts on what the Conway form of a transaction cannot carry") {
+    val guarded = devnetTx.copy(body = devnetTx.body.copy(guards = Vector(key(1))))
+    val deposit = devnetTx.copy(body =
+      devnetTx.body.copy(directDeposits = Vector(RewardAccount(0, key(1)) -> BigInt(1)))
+    )
+    def halted(p: DijkstraPending) = Left(DijkstraHalt.NotYet(DijkstraNotYet.Rules, p))
+    assertEquals(utxow(guarded), halted(DijkstraPending.Guards))
+    assertEquals(utxow(deposit), halted(DijkstraPending.AccountFields))
+  }
+
+  test("LEDGER judges a phase-2-invalid transaction through UTXOW in full") {
+    val invalid = devnetTx.copy(isValid = false)
+    val judged = DijkstraSts.judge(DijkstraLedgerRule, Judgment.Policy.Accumulate)(
+      globals,
+      LedgerEnv(TestLedger.env.copy(slot = 225), Coin(0)),
+      funded(pp),
+      invalid
+    )
+    assertEquals(
+      judged.map(_.left.map(_.toChain.toVector)),
+      Right(
+        Left(
+          Vector(
+            DijkstraLedgerFailure.UtxowFailure(
+              DijkstraUtxowFailure.UtxoFailure(
+                DijkstraUtxoFailure.UtxosFailure(
+                  xyz.kd5ujc.scarab.ledger.UtxosFailure.ValidationTagMismatch(false, None)
+                )
+              )
             )
           )
         )
