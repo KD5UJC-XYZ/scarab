@@ -387,6 +387,27 @@ final case class Value(coin: BigInt, assets: Map[Bytes, Map[Bytes, BigInt]]):
       1 + uintSize(coin) + mapHead(assets.size) + inner
 
 object Value:
+  /** The assets a mint field creates, its positive quantities: what the value consumed counts
+    * (`filterMultiAsset (> 0)` in `getConsumedMaryValue`, cardano-ledger f649f975
+    * `Mary/UTxO.hs:72-82`).
+    */
+  def minted(mint: Map[Bytes, Map[Bytes, BigInt]]): Value =
+    Value(0, select(mint)(q => Option.when(q > 0)(q)))
+
+  /** The assets a mint field destroys, its negative quantities negated: what the value produced
+    * counts (`burnedMultiAssets`, `Mary/UTxO.hs:93-97`).
+    */
+  def burned(mint: Map[Bytes, Map[Bytes, BigInt]]): Value =
+    Value(0, select(mint)(q => Option.when(q < 0)(-q)))
+
+  private def select(mint: Map[Bytes, Map[Bytes, BigInt]])(
+      keep: BigInt => Option[BigInt]
+  ): Map[Bytes, Map[Bytes, BigInt]] =
+    mint.view
+      .map((policy, assets) => policy -> assets.flatMap((name, q) => keep(q).map(name -> _)))
+      .filter(_._2.nonEmpty)
+      .toMap
+
   /** Size of a CBOR head carrying `n` (a length or an unsigned integer up to 2^32). */
   private[ledger] def headSize(n: BigInt): Int =
     if n < 24 then 1
