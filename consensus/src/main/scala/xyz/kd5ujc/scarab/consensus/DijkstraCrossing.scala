@@ -119,7 +119,7 @@ object DijkstraCrossing:
   ): (PoolDistr, ProtocolParams) =
     val now = slot.toBigInt
     val epoch = globals.epochOf(now)
-    val pointOfNoReturn = (globals.firstSlot(epoch + 1) - 2 * globals.stabilityWindow).max(0)
+    val pointOfNoReturn = globals.slotOfNoReturn(epoch)
     val gov = nes.es.ls.utxo.gov
     val future = gov.futurePParams
     val solid = if now < pointOfNoReturn then future else EraLedger.solidify(future)

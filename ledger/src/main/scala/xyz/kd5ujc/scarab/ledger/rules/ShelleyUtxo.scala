@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{
   Address,
   Certificate,
+  EpochGeometry,
   LedgerFailure,
   Mismatch,
   PpupFailure,
@@ -77,8 +78,8 @@ object ShelleyPpup
       def refuse(f: PpupFailure): PredicateFailure = PredicateFailure.utxo(UtxoFailure.Update(f))
       val known = env.genDelegs.keysIterator.map(_.bytes).toSet
       // `getTheSlotOfNoReturn` (cardano-ledger f649f975, `Slot.hs:106-114`, used by
-      // `Shelley/Rules/Ppup.hs:177`): `*-` is monus, so it does not go below slot 0
-      val tooLate = (ctx.firstSlotNextEpoch - 2 * ctx.stabilityWindow).max(0)
+      // `Shelley/Rules/Ppup.hs:177`)
+      val tooLate = EpochGeometry.slotOfNoReturn(ctx.firstSlotNextEpoch, ctx.stabilityWindow)
       val current = ctx.slot < tooLate
       // `firstIllegalProtVerUpdate`: the first proposal, in the order of the genesis keys, whose
       // protocol version cannot follow the one in force (`Ppup.hs:163-168`)

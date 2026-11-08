@@ -206,6 +206,26 @@ class EpochGeometrySuite extends ScalaCheckSuite:
     )
   }
 
+  test("the slot of no return doubles the stability window as a Word64, then stops at slot 0") {
+    // `getTheSlotOfNoReturn` (cardano-ledger f649f975, `Slot.hs:106-114`): k = 1 and
+    // f = 3 / (2^63 + 10) give the window 2^63 + 10, whose doubling keeps 20 (#825)
+    val wide = geometry(0, 1, 200).copy(
+      securityParam = TestGeometry.k(1),
+      activeSlotsCoeff = TestGeometry.f(Rational(3, BigInt(2).pow(63) + 10))
+    )
+    assertEquals(wide.stabilityWindow.toBigInt, BigInt(2).pow(63) + 10)
+    assertEquals(wide.slotOfNoReturn(0), BigInt(180))
+    assertEquals(wide.slotOfNoReturn(1), BigInt(380))
+    // an ordinary window: 3k/f = 30 with k = 1 and f = 1/10, so 60 before the next epoch
+    val narrow = geometry(0, 1, 200).copy(
+      securityParam = TestGeometry.k(1),
+      activeSlotsCoeff = TestGeometry.f(Rational(1, 10))
+    )
+    assertEquals(narrow.slotOfNoReturn(0), BigInt(140))
+    // `*-` is monus: a window longer than the epochs before it stops at slot 0
+    assertEquals(EpochGeometry.slotOfNoReturn(BigInt(100), BigInt(60)), BigInt(0))
+  }
+
   private def shelley(edit: io.circe.JsonObject => io.circe.JsonObject) =
     val text = Files.readString(Path.of("fixtures/preview/genesis/shelley-genesis.json"))
     val json = io.circe.parser.parse(text).fold(e => fail(e.message), identity)
