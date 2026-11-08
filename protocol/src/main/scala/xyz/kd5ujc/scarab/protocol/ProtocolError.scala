@@ -134,6 +134,9 @@ enum ProtocolError extends DomainError:
   case UnknownBlockFetchTag
   case UnknownByronSubtag
   case UnknownEraIndex
+
+  /** A part of the Dijkstra era this build does not implement yet. */
+  case NotYet(part: DijkstraNotYet)
   case UnknownKeepAliveTagStateOrExactArity
   case UndecodableQuery
   case UnknownLocalStateQueryFailure
@@ -312,6 +315,7 @@ enum ProtocolError extends DomainError:
     case UnknownBlockFetchTag                 => "unknown BlockFetch tag"
     case UnknownByronSubtag                   => "unknown Byron subtag"
     case UnknownEraIndex                      => "unknown era index"
+    case NotYet(part)                         => part.message
     case UnknownKeepAliveTagStateOrExactArity => "unknown KeepAlive tag, state or exact arity"
     case UndecodableQuery                     => "the query's decoder refuses it"
     case UnknownLocalStateQueryFailure        => "unknown LocalStateQuery failure"

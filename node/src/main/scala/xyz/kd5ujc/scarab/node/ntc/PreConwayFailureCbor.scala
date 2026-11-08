@@ -78,7 +78,7 @@ object PreConwayFailureCbor:
       case Era.Mary    => allegra(failures)(using Versions.eraLow(ShelleyBasedEra.SMary))
       case Era.Alonzo  => alonzo(failures)(using Versions.eraLow(ShelleyBasedEra.SAlonzo))
       case Era.Babbage => babbage(failures)(using Versions.eraLow(ShelleyBasedEra.SBabbage))
-      case Era.Byron | Era.Conway => None
+      case Era.Byron | Era.Conway | Era.Dijkstra => None
     encoded.map { es =>
       CborOut.build { w =>
         w.array(1).array(2).uint(era.index)

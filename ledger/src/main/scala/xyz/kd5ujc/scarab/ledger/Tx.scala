@@ -346,6 +346,8 @@ object TxBody:
       case Era.Alonzo              => alonzo
       case Era.Babbage             => babbage
       case Era.Conway              => babbage - 6 ++ Set(19, 20, 21, 22)
+      // refused before the body is read ([[TxBody.decode]])
+      case Era.Dijkstra => Set.empty
 
   /** Allegra reads the key 9 as `()`, whose `DecCBOR` is `decodeNull` (`AllegraTxBodyRaw () l`,
     * `eras/allegra/impl/src/Cardano/Ledger/Allegra/TxBody.hs`;
@@ -380,9 +382,10 @@ object TxBody:
     * `decodeOSet`).
     */
   def decode(raw: Bytes, era: Era): Either[LedgerDecodeError, TxBody] =
-    DetachedRecords.read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.body(era))(
-      LedgerDecodeError.Syntax(_)
-    )(read(raw, era, _))
+    LedgerDecodeError.implemented(era) *>
+      DetachedRecords.read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.body(era))(
+        LedgerDecodeError.Syntax(_)
+      )(read(raw, era, _))
 
   private def read(raw: Bytes, era: Era, root: Node): Either[LedgerDecodeError, TxBody] =
     val mode = Address.Mode.of(era)
@@ -582,9 +585,10 @@ object Witnesses:
     * `addrWitsSetDecoder`, `nativeScriptsDecoder`, `scriptDecoderV9`, `TxDatsRaw`, `RedeemersRaw`).
     */
   def decode(raw: Bytes, era: Era): Either[LedgerDecodeError, Witnesses] =
-    DetachedRecords.read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.witnesses(era))(
-      LedgerDecodeError.Syntax(_)
-    )(read(raw, era, _))
+    LedgerDecodeError.implemented(era) *>
+      DetachedRecords.read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.witnesses(era))(
+        LedgerDecodeError.Syntax(_)
+      )(read(raw, era, _))
 
   private def read(raw: Bytes, era: Era, root: Node): Either[LedgerDecodeError, Witnesses] =
     val version = DecoderVersion.of(era)
@@ -743,9 +747,10 @@ object Tx:
     * block's parts are ([[fromBlock]]).
     */
   def fromEnvelope(bytes: Bytes, era: Era): Either[LedgerDecodeError, Tx] =
-    DetachedRecords.read(bytes, Cbor.Limits.Unbounded, DetachedRecords.Shapes.transaction(era))(
-      LedgerDecodeError.Syntax(_)
-    )(node => envelopeParts(node, era).flatMap(fromBlock(_, era)))
+    LedgerDecodeError.implemented(era) *>
+      DetachedRecords.read(bytes, Cbor.Limits.Unbounded, DetachedRecords.Shapes.transaction(era))(
+        LedgerDecodeError.Syntax(_)
+      )(node => envelopeParts(node, era).flatMap(fromBlock(_, era)))
 
   /** The parts of a whole transaction `node` of `era`, each as its original bytes, with the
     * validity flag it is read with. A whole transaction is reached through submission only: a block
@@ -761,6 +766,9 @@ object Tx:
     * three (#699).
     */
   def envelopeParts(node: Node, era: Era): Either[LedgerDecodeError, Block.Transaction] =
+    LedgerDecodeError.implemented(era) *> parts(node, era)
+
+  private def parts(node: Node, era: Era): Either[LedgerDecodeError, Block.Transaction] =
     def transaction(body: Node, witnesses: Node, aux: Node, valid: Boolean) =
       val auxBytes = aux.value match
         case xyz.kd5ujc.scarab.codec.Value.Null => None

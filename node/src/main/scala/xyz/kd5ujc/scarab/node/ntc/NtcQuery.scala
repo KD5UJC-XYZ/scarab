@@ -104,13 +104,14 @@ enum QueryEra:
 
 object QueryEra:
   def of(era: Era): QueryEra = era match
-    case Era.Byron   => Byron
-    case Era.Shelley => Shelley
-    case Era.Allegra => Allegra
-    case Era.Mary    => Mary
-    case Era.Alonzo  => Alonzo
-    case Era.Babbage => Babbage
-    case Era.Conway  => Conway
+    case Era.Byron    => Byron
+    case Era.Shelley  => Shelley
+    case Era.Allegra  => Allegra
+    case Era.Mary     => Mary
+    case Era.Alonzo   => Alonzo
+    case Era.Babbage  => Babbage
+    case Era.Conway   => Conway
+    case Era.Dijkstra => Dijkstra
 
   /** The era of an index, as `nsFromIndex` finds it; none past the last. */
   def fromIndex(index: Int): Option[QueryEra] = values.lift(index)

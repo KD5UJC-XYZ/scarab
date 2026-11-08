@@ -120,7 +120,7 @@ object EraHistory:
     * summary of the reference reconstructs them (`reconstructSummary`,
     * `HardFork/Combinator/State/Infra.hs`): every era has the parameters of the configuration
     * (Byron's own, the Shelley-based ones' 3k/f safe zone and genesis window,
-    * `Shelley/Ledger/Ledger.hs` `shelleyEraParams`), and the last era the node knows (Conway) has
+    * `Shelley/Ledger/Ledger.hs` `shelleyEraParams`), and the last era the node knows (Dijkstra) has
     * no successor.
     */
   def horizonHistory(
@@ -141,7 +141,7 @@ object EraHistory:
     * next era is known from the start; a version trigger is known once the parameters for the next
     * epoch have the next era's first protocol version and at least k blocks have been applied after
     * the voting deadline of the epoch (`shelleyTransition`). The era after the last the node knows
-    * is never known.
+    * is never known, nor one the node does not enter ([[HardForkConfig.trigger]]).
     *
     * @param epoch
     *   the epoch of the new-epoch state (the parameters take effect in the next one)
@@ -181,7 +181,7 @@ object EraHistory:
       tip: Option[BigInt]
   ): Horizon.Transition =
     val unknown = Horizon.Transition.Unknown(tip)
-    Era.values.lift(era.index + 1).flatMap(forks.triggers.get).fold(unknown) {
+    Era.values.lift(era.index + 1).flatMap(forks.trigger).fold(unknown) {
       case ForkTrigger.AtEpoch(e) => Horizon.Transition.Known(e)
       case ForkTrigger.AtVersion(v) =>
         if futureMajor.contains(BigInt(v)) && afterVoting >= securityParam then

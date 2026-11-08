@@ -23,10 +23,11 @@ checkout with a hashed manifest and reproducible provenance.
 
 The snapshot fingerprint golden in `CodecSuite` must change together with the version, migration and
 previous-version regression. Regenerating a fingerprint to make a test pass is not a migration.
-Native snapshots are V8: the V5 body (Haskell ledger CBOR plus a typed binary sidecar) behind a
+Native snapshots are V9: the V5 body (Haskell ledger CBOR plus a typed binary sidecar) behind a
 checkpoint binding, with framing and checksum, as V7 has it, with a sidecar schema that keeps the
-Byron update state's installer metadata (#726); stored values remain CBOR. The binding has its own
-fingerprint golden in `CodecSuite`, next to the sidecar's and the frozen V5/V7 sidecar's. MemPack is an import/export format, not a replacement stored value.
+Byron update state's installer metadata (#726) and names the Dijkstra era (#54); stored values
+remain CBOR. The binding has its own fingerprint golden in `CodecSuite`, next to the sidecar's and
+the frozen V5/V7 and V8 sidecars'. MemPack is an import/export format, not a replacement stored value.
 
 ## Convert typed values without inventing state
 
@@ -38,11 +39,13 @@ and all semantic state the old file actually held. Hashes and signatures continu
 transaction/block bytes; re-encoding diagnostics or a container format does not replace those bytes.
 
 For ledger snapshots, `FileLedgerSnapshots.verified` checks the file checksum before a payload is
-used. `SnapshotV8.format[F](SnapshotCheck.Full).decode(content)` reads current content, and
-`SnapshotV8.sidecarOf` and `SnapshotV8.bindingOf` expose carried metadata. `SnapshotV5` and
-`SnapshotV7` are the previous readers: the body parser is shared and takes the sidecar schema
-(`SnapshotV5.Schema`), V5 and V7 sidecars being read in the frozen `SnapshotSidecarV7` schema;
-`SnapshotV7.fromV5` and `SnapshotV8.fromV7` are the migration steps. The `Full` choice controls encode-time read-back
+used. `SnapshotV9.format[F](SnapshotCheck.Full).decode(content)` reads current content, and
+`SnapshotV9.sidecarOf` and `SnapshotV9.bindingOf` expose carried metadata. `SnapshotV5`,
+`SnapshotV7` and `SnapshotV8` are the previous readers: the body parser is shared and takes the
+sidecar schema (`SnapshotV5.Schema`), V5 and V7 sidecars being read in the frozen
+`SnapshotSidecarV7` schema and V8 sidecars in the frozen `SnapshotSidecarV8` one, both with the
+frozen eras of `FrozenEra` and the frozen parameters of `FrozenProtocolParams`; `SnapshotV7.fromV5`, `SnapshotV8.fromV7` and `SnapshotV9.fromV8` are the
+migration steps. The `Full` choice controls encode-time read-back
 checking; decoding itself validates the current file in either mode.
 A converter must carry the source `observed` eras and `gaps` exactly. Missing non-myopic data must
 remain missing; the caller's newer environment is not evidence that the old file observed an era.
@@ -85,11 +88,15 @@ writes V7. Global V8 changes only the snapshot's sidecar schema (#726): `step(fi
 the old checksum, reads the sidecar in the frozen V7 schema, keeps the binding and the Haskell bytes,
 and atomically writes V8; `SnapshotMigration.preflight`, `run` and `detect` (which the generic
 `Migrate` calls for every file before it converts any) read the sidecar of every V5 and V7 file and
-refuse one whose conversion would invent state, and each step refuses it too. `Migrate` then has no work for V8.
+refuse one whose conversion would invent state, and each step refuses it too. Global V9 changes
+only the sidecar's eras and protocol parameters (#54): `step(file, V8, V9)` reads the sidecar in the
+frozen V8 schema and writes it in the current one, whose encoding of every era V8 could name is
+unchanged and whose parameters take the fields Dijkstra adds at their pre-Dijkstra defaults; every V8
+file converts. `Migrate` then has no work for V9.
 The identity kind remains at V6 and unchanged kinds retain their own current versions. A future
-snapshot change appends global `V9`. Retire the V5
+snapshot change appends global `V10`. Retire the V5
 reader only after the inventory and conversion conditions below hold, then advance the snapshot
-kind's `readableFrom` to V7 (and retire the V7 reader the same way, to V8). Use caller-scoped `Raise[F, StorageError]` for every migration operation;
+kind's `readableFrom` to V7 (and retire the V7 and V8 readers the same way). Use caller-scoped `Raise[F, StorageError]` for every migration operation;
 do not capture an earlier caller's error interpreter in a long-lived migration object.
 
 Acquire `DatabaseOwnership` before inspecting a database that could have another writer. Its lock
@@ -135,6 +142,20 @@ of `fixtures/snapshot-v7` (`SnapshotV8FixtureMain`), re-derived by `SnapshotGold
 migrate and refuse cases at every entry point (`preflight`, `run`, `detect`, `step` and the generic
 `Migrate`, a refused file beside a convertible one left unchanged) are `SnapshotV8MigrationSuite`,
 on the startup path `SnapshotPreflightSuite`.
+
+The V8 → V9 change (#54) added an era to `Era`, whose derived codec's shape lists every variant:
+every sidecar fingerprint that holds an era moves with it, the frozen previous ones too unless they
+stop sharing the live codec. `FrozenEra` is the Byron-to-Conway enum under the name `Era`, so its
+derived shape and bytes are those the files were written with, read totally into the live era;
+`SnapshotSidecarV7` and the new `SnapshotSidecarV8` take it, and their goldens did not move. The
+same change added the fields Dijkstra adds (`DijkstraPParams`, cardano-ledger 9df9f98c) to the node's
+`ProtocolParams`, which the sidecar holds; `FrozenProtocolParams` is the Conway-era record under the
+name `ProtocolParams`, read into the live one with those fields at their pre-Dijkstra defaults (zero
+or none), and both frozen schemas take it too.
+`SnapshotV9.fromV8` keeps the binding, the sidecar's values and the Haskell bytes;
+`fixtures/snapshot-v9` is the registered conversion of `fixtures/snapshot-v8`
+(`SnapshotV9FixtureMain`, re-derived by `SnapshotGoldenSuite`), and `SnapshotV9MigrationSuite` reads
+the committed V8 files, migrates them and shows that the frozen schemas refuse a Dijkstra era.
 
 A RocksDB layout change goes through the same steps plus the checkpoint rules of the next section.
 The change is level 3 ([CONTRIBUTING](../CONTRIBUTING.md#gates-and-ceremony-by-level-of-change));

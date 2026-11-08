@@ -164,7 +164,7 @@ scala code … I love the use of type parameters when I can use them"*.
 - Record evidence where the [definition of done](docs/process.md#definition-of-done) says, and track
   every gap you leave as an issue or roadmap item.
 - Maintained native snapshot fixtures and ordinary snapshot test builders use the current native
-  format (V8, `fixtures/snapshot-v8`; the V5 and V7 files are the previous-version inputs), and
+  format (V9, `fixtures/snapshot-v9`; the V5, V7 and V8 files are the previous-version inputs), and
   assertions read typed native state directly instead of completing flat-state adapters. Keep pinned conversion provenance and preserve original private archives outside the
   checkout. A future persisted-format change still needs its previous-version read test and
   migration; generic toy-format migration framework tests remain independent of native fixtures.

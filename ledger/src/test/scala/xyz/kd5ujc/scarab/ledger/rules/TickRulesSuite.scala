@@ -251,7 +251,10 @@ class TickRulesSuite extends FunSuite:
 
   test("the tick asks the transition of the state before it, with the counter it is given") {
     val enough: Hfc.Transition =
-      p => Option.when(p.update.contains(BigInt(9)) && p.afterVoting >= 3)(p.epoch + 1)
+      p =>
+        Option.when(p.era == Era.Babbage && p.update.contains(BigInt(9)) && p.afterVoting >= 3)(
+          p.epoch + 1
+        )
     val from = EraNes.InEra(ShelleyBasedEra.SBabbage, babbage(conway(5, 10, 2)))
     // the definite update only, of the state before the tick
     assertEquals(Hfc.pending(from, 2L), Hfc.Pending(Era.Babbage, 5, Some(9), 2L))
@@ -261,6 +264,15 @@ class TickRulesSuite extends FunSuite:
     val enteredAt =
       Hfc.tick(globals, enough)(from, 3L, slot).fold(e => fail(s"refused: $e"), identity)
     assertEquals(enteredAt.toEra, Era.Conway)
+  }
+
+  test("a transition out of Conway is refused: the translation into Dijkstra is not implemented") {
+    val leaveConway: Hfc.Transition = p => Option.when(p.era == Era.Conway)(BigInt(7))
+    val from = EraNes.InEra(ShelleyBasedEra.SConway, enterConway(babbage(conway(5, 10, 2))))
+    assertEquals(
+      Hfc.tick(globals, leaveConway)(from, 0L, ok(SlotNo.fromBigInt(first(8) + 10))).map(_.toEra),
+      Left(TickFailure.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Translation))
+    )
   }
 
   test("the translation into Conway of 150,000 accounts runs on a 256 KiB stack") {

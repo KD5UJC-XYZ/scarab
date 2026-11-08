@@ -96,6 +96,33 @@ class HardForkSuite extends ScalaCheckSuite:
     assertEquals(c.eraOf(k)(pending(Era.Shelley, None, 0, epoch = 1), 2), Era.Mary)
   }
 
+  test("Dijkstra's trigger is carried but never fires while the maximum major version is 11") {
+    val atEpoch = HardForkConfig.fromEpochs(Map(Era.Dijkstra -> 3))
+    assertEquals(HardForkConfig.MaxMajorProtVer, 11)
+    assertEquals(HardForkConfig.eraProtVerLow(Era.Dijkstra), 12)
+    assertEquals(HardForkConfig.next(Era.Conway), Some(Era.Dijkstra))
+    // carried as `toTriggerHardFork` makes it: the configured epoch, else Dijkstra's first version
+    assertEquals(atEpoch.triggers(Era.Dijkstra), ForkTrigger.AtEpoch(3))
+    assertEquals(byVersion.triggers(Era.Dijkstra), ForkTrigger.AtVersion(12))
+    assertEquals(atEpoch.trigger(Era.Dijkstra), None)
+    assertEquals(byVersion.trigger(Era.Dijkstra), None)
+    // neither trigger moves the chain out of Conway, at a boundary or from genesis
+    assertEquals(atEpoch.transition(k)(pending(Era.Conway, None, 0, epoch = 2)), None)
+    assertEquals(atEpoch.eraOf(k)(pending(Era.Conway, None, 0, epoch = 2), 100), Era.Conway)
+    assertEquals(byVersion.transition(k)(pending(Era.Conway, Some(12))), None)
+    assertEquals(byVersion.eraOf(k)(pending(Era.Conway, Some(12)), 100), Era.Conway)
+    val genesis = HardForkConfig.fromEpochs(eras.tail.map(_ -> BigInt(0)).toMap)
+    assertEquals(genesis.initialEra(genesisK)(0), Era.Conway)
+    // nor does the era summary announce the end of Conway
+    assertEquals(
+      state.EraHistory.transition(atEpoch, k, Era.Conway, 2, None, 0, Some(BigInt(5))),
+      xyz.kd5ujc.scarab.ledger.Horizon.Transition.Unknown(Some(BigInt(5)))
+    )
+    // the refusal is the maximum's: at 12 the same trigger fires
+    val twelve = HardForkConfig.fromEpochs(Map(Era.Dijkstra -> 3), maxMajorProtVer = 12)
+    assertEquals(twelve.transition(k)(pending(Era.Conway, None, 0, epoch = 2)), Some(BigInt(3)))
+  }
+
   // ---- envelope
 
   private def check(

@@ -93,7 +93,7 @@ class IdentitySnapshotPreflightSuite extends CatsEffectSuite:
 
   test("unknown snapshot version leaves an adoption candidate byte-for-byte unchanged") {
     tempDir.use { dir =>
-      val futureSnapshot = "SCRBSNP9".getBytes(StandardCharsets.US_ASCII)
+      val futureSnapshot = "SCRBSNPA".getBytes(StandardCharsets.US_ASCII)
       for
         _ <- seed(dir, futureSnapshot)
         original <- tree(dir)
@@ -116,7 +116,7 @@ class IdentitySnapshotPreflightSuite extends CatsEffectSuite:
   test("Main refuses an unknown snapshot before acquiring its UTXO backing") {
     tempDir.use { dir =>
       for
-        _ <- seed(dir, "SCRBSNP9".getBytes(StandardCharsets.US_ASCII))
+        _ <- seed(dir, "SCRBSNPA".getBytes(StandardCharsets.US_ASCII))
         original <- tree(dir)
         code <- Main.run(
           List(

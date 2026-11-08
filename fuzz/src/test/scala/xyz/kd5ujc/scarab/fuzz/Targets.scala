@@ -852,7 +852,10 @@ object Targets:
 
   // --- node: blocks, headers, transactions ---------------------------------------------------------
 
-  private val shelleyEras: Vector[Era] = Era.values.toVector.filter(_ != Era.Byron)
+  // Dijkstra's blocks and transactions are refused by these decoders until its codecs land (#54);
+  // the Leios targets cover its raw forms
+  private val shelleyEras: Vector[Era] =
+    Era.values.toVector.filter(e => e != Era.Byron && e != Era.Dijkstra)
 
   private def eraSeeds(
       fixtures: Era => Vector[Array[Byte]],
@@ -1466,7 +1469,8 @@ object Targets:
       SnapshotCheck,
       SnapshotSidecar,
       SnapshotV7,
-      SnapshotV8
+      SnapshotV8,
+      SnapshotV9
     }
     import scala.jdk.CollectionConverters.*
     lazy val env = NodeSetup
@@ -1474,10 +1478,10 @@ object Targets:
       .fold(e => throw new Violation(e.message), _.mirrorEnv())
     lazy val format =
       given Ask[SyncIO, ConsensusMirrorEnv] = Ask.const(env)
-      SnapshotV8.format[SyncIO](SnapshotCheck.Full)
+      SnapshotV9.format[SyncIO](SnapshotCheck.Full)
     Vector(
       Target(
-        "native-snapshot-v8",
+        "native-snapshot-v9",
         () =>
           // Keep decoder allocations visible to Probe's caller-thread counter.
           val caller = Thread.currentThread()
@@ -1485,7 +1489,7 @@ object Targets:
             Sync[SyncIO].blocking(Thread.currentThread()).unsafeRunSync() eq caller,
             "snapshot fuzz interpreter moved off the allocation-guard thread"
           )
-          val listing = java.nio.file.Files.list(java.nio.file.Path.of("fixtures/snapshot-v8/eras"))
+          val listing = java.nio.file.Files.list(java.nio.file.Path.of("fixtures/snapshot-v9/eras"))
           val eraSeeds =
             try
               listing.iterator.asScala.toVector.sorted.map { file =>
@@ -1501,6 +1505,7 @@ object Targets:
               )
             )
             .flatMap(SnapshotV8.fromV7)
+            .flatMap(SnapshotV9.fromV8)
             .fold(e => throw new Violation(e.message), identity)
           req(
             seeds.forall(b => format.decode(b).unsafeRunSync().isRight),
@@ -1508,10 +1513,10 @@ object Targets:
           )
           seeds
         ,
-        probe("native-snapshot-v8") { bytes =>
+        probe("native-snapshot-v9") { bytes =>
           format.decode(bytes.toArray).unsafeRunSync().foreach { snapshot =>
-            hit("native-snapshot-v8")
-            val sidecar = SnapshotV8
+            hit("native-snapshot-v9")
+            val sidecar = SnapshotV9
               .sidecarOf(bytes.toArray)
               .fold(e => throw new Violation(e.message), identity)
             req(

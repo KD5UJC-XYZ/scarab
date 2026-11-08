@@ -24,6 +24,7 @@ import xyz.kd5ujc.scarab.models.runtime.{
   at
 }
 import xyz.kd5ujc.scarab.plutus.ExUnits
+import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
 
 import DecodeError.{Arity, Kind}
 import Wire.*
@@ -526,6 +527,13 @@ object Params:
     case ShelleyBasedEra.SAlonzo                                                     => alonzo
     case ShelleyBasedEra.SBabbage                                                    => babbage
     case ShelleyBasedEra.SConway                                                     => conway
+    case ShelleyBasedEra.SDijkstra                                                   => dijkstra
+
+  /** Dijkstra's `PParams` add the Leios and Peras fields (cardano-ledger 9df9f98c
+    * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs`), which this build does not read
+    * or write yet: refused both ways.
+    */
+  private val dijkstra: Codec[ProtocolParams] = Versions.notYet("PParams")
 
   /** Preserve every field encoded by this era, including zero; only fields the era lacks come from
     * genesis. Comparing values with zero would lose legitimate zero-valued parameters.
@@ -534,14 +542,15 @@ object Params:
       era: ShelleyBasedEra[E],
       read: ProtocolParams,
       genesis: ProtocolParams
-  ): ProtocolParams =
+  ): Either[DijkstraNotYet, ProtocolParams] =
     val fields = era match
       case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary =>
-        shelleyList
-      case ShelleyBasedEra.SAlonzo  => alonzoList
-      case ShelleyBasedEra.SBabbage => babbageList
-      case ShelleyBasedEra.SConway  => conwayList
-    fields.foldLeft(genesis)((full, field) => field.copyValue(read, full))
+        Right(shelleyList)
+      case ShelleyBasedEra.SAlonzo   => Right(alonzoList)
+      case ShelleyBasedEra.SBabbage  => Right(babbageList)
+      case ShelleyBasedEra.SConway   => Right(conwayList)
+      case ShelleyBasedEra.SDijkstra => Left(DijkstraNotYet.LedgerState)
+    fields.map(_.foldLeft(genesis)((full, field) => field.copyValue(read, full)))
 
   /** The Conway `PParams` codec: the parameters of the governance state and of its enact state. */
   val conwayCodec: Codec[ProtocolParams] = conway

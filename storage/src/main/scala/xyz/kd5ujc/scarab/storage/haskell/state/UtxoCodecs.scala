@@ -212,6 +212,9 @@ object UtxoCodecs:
       case ShelleyBasedEra.SMary                               => WithAssets
       case ShelleyBasedEra.SAlonzo                             => WithDatumHash
       case ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway  => Babbage
+      // `type TxOut DijkstraEra = BabbageTxOut DijkstraEra` (cardano-ledger 9df9f98c
+      // `Dijkstra/TxOut.hs:29`)
+      case ShelleyBasedEra.SDijkstra => Babbage
 
   /** An output of `era`: [[txOut]], refusing to write an output with a part the era's `TxOut` does
     * not hold.

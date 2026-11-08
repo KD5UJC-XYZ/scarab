@@ -39,7 +39,8 @@ class AddressHeadersReferenceSuite extends FunSuite:
 
   test("the corpus covers every era, both places of a header, and the bodies") {
     val alone = rows.collect { case a: Row.Alone => a }
-    for era <- Era.values.toVector if era != Era.Byron do
+    // Dijkstra has no corpus here: its transactions are not decoded yet (#54)
+    for era <- Era.values.toVector if era != Era.Byron && era != Era.Dijkstra do
       for place <- Place.values do
         assertEquals(
           alone.filter(r => r.era == era && r.place == place).map(_.kind).sorted,
@@ -48,7 +49,7 @@ class AddressHeadersReferenceSuite extends FunSuite:
         )
     val bodies = rows.collect { case b: Row.Body => b }
     assert(bodies.exists(_.accepted) && bodies.exists(!_.accepted))
-    assertEquals(bodies.map(_.era).toSet, Era.values.toSet - Era.Byron)
+    assertEquals(bodies.map(_.era).toSet, Era.values.toSet - Era.Byron - Era.Dijkstra)
   }
 
   for row <- rows do

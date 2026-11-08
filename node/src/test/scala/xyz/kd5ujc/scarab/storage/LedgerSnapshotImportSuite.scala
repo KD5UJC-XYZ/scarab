@@ -137,7 +137,7 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
     yield (ledger, db, state, raw)
 
   private def restored(db: Path, state: MirrorState): IO[StateSnapshot[MirrorState]] = ok {
-    val format = SnapshotV8.format[IO](SnapshotCheck.Full)
+    val format = SnapshotV9.format[IO](SnapshotCheck.Full)
     val path = db / "snapshots" / FileLedgerSnapshots.nameOf(anchor(state))
     for
       bytes <- IO.blocking(JFiles.readAllBytes(path.toNioPath))
@@ -147,7 +147,8 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
     yield read
   }
 
-  Era.values.filter(_ != Era.Byron).foreach { era =>
+  // a Dijkstra ledger state is refused by its reader (#54)
+  Era.values.filter(e => e != Era.Byron && e != Era.Dijkstra).foreach { era =>
     test(
       s"$era imports its state and tables into unchanged V5, preserving original bytes and immutable input"
     ) {
@@ -166,7 +167,7 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
               )
               .dropRight(32)
             assert(content.takeRight(original.size).sameElements(original.toArray))
-            val sidecar = SnapshotV8.sidecarOf(content).fold(e => fail(e.message), identity)
+            val sidecar = SnapshotV9.sidecarOf(content).fold(e => fail(e.message), identity)
             assertEquals(sidecar.gaps, Set.empty)
             assertEquals(read.state.provenance.gaps, Set.empty)
             assertEquals(read.state.provenance.observed, sidecar.observed)

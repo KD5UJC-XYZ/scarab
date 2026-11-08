@@ -32,8 +32,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
 
 /** The snapshot of format version 5, the Haskell ledger state with a sidecar, and the body of the
-  * versions after it ([[SnapshotV7]], and the current [[SnapshotV8]]), which put a checkpoint
-  * binding in front of it:
+  * versions after it ([[SnapshotV7]], [[SnapshotV8]] and the current [[SnapshotV9]]), which put a
+  * checkpoint binding in front of it:
   *
   * {{{
   * "SCRBSNP5" | sidecar length u32 | sidecar | Haskell state bytes
@@ -59,15 +59,16 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
   *
   * A V5 file is read only to be migrated ([[SnapshotV7.fromV5]]): the body after its magic becomes
   * the body of the V7 file byte for byte, so the sidecar and Haskell readers here are those of all
-  * three versions. V5 and V7 sidecars have the frozen schema [[SnapshotSidecarV7]], V8 sidecars the
-  * current one ([[SnapshotSidecar]]): which one a body is read with is its [[Schema]], and the
-  * fingerprint goldens of both (`CodecSuite`) keep guarding them.
+  * versions. V5 and V7 sidecars have the frozen schema [[SnapshotSidecarV7]], V8 sidecars the
+  * frozen [[SnapshotSidecarV8]] and V9 sidecars the current one ([[SnapshotSidecar]]): which one a
+  * body is read with is its [[Schema]], and the fingerprint goldens of all three (`CodecSuite`)
+  * keep guarding them.
   */
 object SnapshotV5:
   val Magic: Array[Byte] = "SCRBSNP5".getBytes("US-ASCII")
 
   /** The sidecar schema a body is read with: the current one, or the frozen one of a file of a
-    * previous version `found` (V5 or V7).
+    * previous version `found` (V5, V7 or V8).
     */
   private[storage] enum Schema:
     case Current
@@ -128,6 +129,12 @@ object SnapshotV5:
   private[storage] def previousSidecarBytes(sidecar: SnapshotSidecar): Array[Byte] =
     SnapshotSidecarV7.fingerprint ++ Codec.encode(sidecar)(using SnapshotSidecarV7.codec)
 
+  /** The encoded sidecar with its fingerprint as a V8 file holds it ([[SnapshotSidecarV8]]): what
+    * the migration from V7 and the previous-version tests write.
+    */
+  private[storage] def v8SidecarBytes(sidecar: SnapshotSidecar): Array[Byte] =
+    SnapshotSidecarV8.fingerprint ++ Codec.encode(sidecar)(using SnapshotSidecarV8.codec)
+
   /** Write the body (`sidecar length u32 | sidecar | Haskell bytes`) into `out` at `at`. */
   private[storage] def writeBody(
       out: Array[Byte],
@@ -140,7 +147,7 @@ object SnapshotV5:
     haskell.copyTo(out, at + 4 + sidecar.length)
 
   /** A V5 file's content, in one array of its exact size (the previous-version tests and fixture
-    * recipes write it; the node writes [[SnapshotV8]]).
+    * recipes write it; the node writes [[SnapshotV9]]).
     */
   private[storage] def framed(sidecar: SnapshotSidecar, haskell: Bytes): Array[Byte] =
     val side = previousSidecarBytes(sidecar)
@@ -255,8 +262,9 @@ object SnapshotV5:
     else
       val length = ByteBuffer.wrap(content, at, 4).getInt
       val fingerprint = schema match
-        case Schema.Current     => SnapshotSidecar.fingerprint
-        case Schema.Previous(_) => SnapshotSidecarV7.fingerprint
+        case Schema.Current                    => SnapshotSidecar.fingerprint
+        case Schema.Previous(FormatVersion.V8) => SnapshotSidecarV8.fingerprint
+        case Schema.Previous(_)                => SnapshotSidecarV7.fingerprint
       val start = at + 4
       val end = start.toLong + length
       if length < fingerprint.length || end > content.length then
@@ -278,7 +286,8 @@ object SnapshotV5:
               Codec
                 .decode[SnapshotSidecar](bytes)(using SnapshotSidecar.codec)
                 .leftMap(DecodeFailure.binary("snapshot sidecar", _))
-            case Schema.Previous(found) => SnapshotSidecarV7.decode(bytes, found)
+            case Schema.Previous(FormatVersion.V8) => SnapshotSidecarV8.decode(bytes)
+            case Schema.Previous(found)            => SnapshotSidecarV7.decode(bytes, found)
           sidecar.map(_ -> Bytes.wrap(content).drop(end.toInt))
 
   /** The ledger state with the node's UTxO set put back where the Haskell section has `map(0)`. */

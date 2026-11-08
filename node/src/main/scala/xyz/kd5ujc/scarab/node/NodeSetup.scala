@@ -346,7 +346,12 @@ object NodeSetup:
       _ <- GenesisSchema.conway(files.conway)
       injections <- GenesisInjections.read(files)
       globals <- GenesisState.globals(files, genesis)
-      forks = HardForkConfig.fromEpochs(config.hardForkEpochs)
+      // Dijkstra's trigger is carried as the reference carries it (`TestDijkstraHardForkAtEpoch`,
+      // read with `ExperimentalHardForksEnabled`), and never fires below a maximum major protocol
+      // version of 12 (`HardForkConfig.trigger`)
+      forks = HardForkConfig.fromEpochs(
+        config.hardForkEpochs ++ config.settings.dijkstraHardForkEpoch.map(Era.Dijkstra -> _)
+      )
       // The era the first slot is in: Byron unless Shelley starts at epoch 0, then the eras whose
       // transition the genesis state decides (`HardForkConfig.initialEra`), never the Shelley
       // genesis's protocol version.

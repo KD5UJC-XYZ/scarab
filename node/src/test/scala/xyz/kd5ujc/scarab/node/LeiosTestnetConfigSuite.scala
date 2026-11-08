@@ -97,4 +97,19 @@ class LeiosTestnetConfigSuite extends FunSuite:
     // the pool's `blsKey` is null in the genesis, and PoolParams has no field for one anyway
     assertEquals(distribution.total, BigInt(900000000))
   }
+
+  test(
+    "Dijkstra's epoch-0 trigger is carried, and the node starts in Conway: it does not enter it"
+  ) {
+    val setup =
+      NodeSetup.fromConfigFile(dir.resolve("config.json")).fold(e => fail(e.message), identity)
+    val forks = setup.praos.forks
+    assertEquals(
+      forks.triggers.get(Era.Dijkstra),
+      Some(xyz.kd5ujc.scarab.consensus.ForkTrigger.AtEpoch(0))
+    )
+    assertEquals(forks.maxMajorProtVer, 11)
+    assertEquals(forks.trigger(Era.Dijkstra), None)
+    assertEquals(setup.mirrorStart.ext.ledgerState.era, Era.Conway)
+  }
 end LeiosTestnetConfigSuite

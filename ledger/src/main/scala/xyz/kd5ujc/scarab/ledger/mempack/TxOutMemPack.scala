@@ -64,7 +64,7 @@ object TxOutMemPack:
     decodeParts(bytes).flatMap(toTxOut)
 
   def encodeParts[E <: EraTag](p: TxOutParts)(using era: ShelleyBasedEra[E]): Result[Bytes] =
-    choose(p).map { rep =>
+    implemented[E] *> choose(p).map { rep =>
       val packer = new Packer(size(rep))
       pack(rep, packer)
       packer.result
@@ -72,7 +72,15 @@ object TxOutMemPack:
 
   def decodeParts[E <: EraTag](bytes: Bytes)(using ShelleyBasedEra[E]): Result[TxOutParts] =
     val in = Unpacker.of(bytes)
-    unpackRep(in).flatMap(rep => in.finished.flatMap(_ => fromRep(rep)))
+    implemented[E] *> unpackRep(in).flatMap(rep => in.finished.flatMap(_ => fromRep(rep)))
+
+  /** Dijkstra's outputs are refused ([[Failure.NotYet]]). */
+  private def implemented[E <: EraTag](using era: ShelleyBasedEra[E]): Result[Unit] =
+    Either.cond(
+      era != ShelleyBasedEra.SDijkstra,
+      (),
+      Failure.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.LedgerState)
+    )
 
   // ---- the output and its parts
 
@@ -177,12 +185,13 @@ object TxOutMemPack:
   // ---- what an era has
 
   private def eraOf[E <: EraTag](using era: ShelleyBasedEra[E]): Era = era match
-    case ShelleyBasedEra.SShelley => Era.Shelley
-    case ShelleyBasedEra.SAllegra => Era.Allegra
-    case ShelleyBasedEra.SMary    => Era.Mary
-    case ShelleyBasedEra.SAlonzo  => Era.Alonzo
-    case ShelleyBasedEra.SBabbage => Era.Babbage
-    case ShelleyBasedEra.SConway  => Era.Conway
+    case ShelleyBasedEra.SShelley  => Era.Shelley
+    case ShelleyBasedEra.SAllegra  => Era.Allegra
+    case ShelleyBasedEra.SMary     => Era.Mary
+    case ShelleyBasedEra.SAlonzo   => Era.Alonzo
+    case ShelleyBasedEra.SBabbage  => Era.Babbage
+    case ShelleyBasedEra.SConway   => Era.Conway
+    case ShelleyBasedEra.SDijkstra => Era.Dijkstra
 
   /** The highest constructor tag of the era's `TxOut`. */
   private def maxTag[E <: EraTag](using ShelleyBasedEra[E]): Int = eraOf[E] match
