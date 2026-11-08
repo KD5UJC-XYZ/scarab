@@ -441,10 +441,9 @@ object Translate:
     * as they are (`implDuplicateWithDiffs` and `implRead`,
     * `ouroboros-consensus/src/ouroboros-consensus-lsm/Ouroboros/Consensus/Storage/LedgerDB/V2/LSM.hs`
     * 262-336). The node's store keeps no era and is the immutable tip, so it is not rewritten at
-    * the crossing: the node that enters Dijkstra first fetches the stored outputs this changes into
-    * the read set (`xyz.kd5ujc.scarab.storage.UtxoStore.enteringDijkstra`), and they are upgraded
-    * here with the others. An output that [[reencodedInDijkstra]] does not select is its own
-    * upgrade.
+    * the crossing: once the crossing block is validated, the node upgrades the stored outputs that
+    * this does not see (`xyz.kd5ujc.scarab.storage.UtxoStore.enteredDijkstra`). An output that
+    * [[reencodedInDijkstra]] does not select is its own upgrade.
     */
   def upgradeUtxo(utxo: xyz.kd5ujc.scarab.ledger.Utxo): xyz.kd5ujc.scarab.ledger.Utxo =
     utxo

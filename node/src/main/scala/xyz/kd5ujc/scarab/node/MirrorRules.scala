@@ -96,7 +96,11 @@ final class MirrorRules[F[_]: Monad](
       Raise[F, xyz.kd5ujc.scarab.ledger.StorageError],
       Raise[F, xyz.kd5ujc.scarab.ledger.ChainError]
   ): F[MirrorState] =
-    def run(s: MirrorState, prepared: Option[Prepared]): F[MirrorState] =
+    def run(
+        s: MirrorState,
+        prepared: Option[Prepared],
+        entered: MirrorRules.DijkstraCrossing => F[MirrorState] = c => c.after.pure[F]
+    ): F[MirrorState] =
       val applied = parallelPlutus match
         case None =>
           cpu.timed(MirrorRules.stepLabel(s))(
@@ -135,7 +139,11 @@ final class MirrorRules[F[_]: Monad](
               MirrorRules.stateOutOfRange(header, failure) match
                 case Some(fault) => fault.raise[F, MirrorState]
                 case None        => ValidationError(header.point, failure).raise[F, MirrorState],
-            next => afterBlock.fold(next.pure[F])(f => f(header, s, next).as(next))
+            accepted =>
+              MirrorRules.DijkstraCrossing
+                .of(s, accepted)
+                .fold(accepted.pure[F])(entered)
+                .flatTap(next => afterBlock.fold(().pure[F])(f => f(header, s, next)))
           )
         )
     (utxoStore, header) match
@@ -156,12 +164,64 @@ final class MirrorRules[F[_]: Monad](
             if wanted.isEmpty || inByron then
               Map.empty[xyz.kd5ujc.scarab.ledger.TxIn, xyz.kd5ujc.scarab.ledger.TxOut].pure[F]
             else store.read(wanted)
-          next <- run(MirrorStep.mapUtxo(state)(_.withResident(fetched)), prepared)
+          // A block that enters Dijkstra upgrades the stored outputs its tick did not see, once the
+          // rules have accepted it (`MirrorRules.DijkstraCrossing`), so a header or a body that
+          // fails them never starts the pass over the store. The mempool, the forger and the local
+          // state queries tick the state on their own: until the crossing block is applied, a
+          // state they tick into Dijkstra reads the stored outputs with their Conway bytes.
+          next <- run(
+            MirrorStep.mapUtxo(state)(_.withResident(fetched)),
+            prepared,
+            MirrorRules.entered(store, _)
+          )
           flushed <- store.flushed
         yield MirrorStep.mapUtxo(next)(_.settled(flushed))
       case _ => run(state, None)
 
 object MirrorRules:
+  /** A block that took the chain from Conway into Dijkstra and that the rules accepted: the tick,
+    * the header checks against the ticked state and the body all passed. Only
+    * [[DijkstraCrossing.of]] builds one, from the state before the block and the state the rules
+    * produced, so a block refused anywhere (a header that claims Dijkstra but fails its checks
+    * among them) has none.
+    *
+    * @param after
+    *   the state after the block, in Dijkstra
+    * @param utxo
+    *   its UTxO set
+    */
+  final case class DijkstraCrossing private (
+      after: MirrorState,
+      utxo: xyz.kd5ujc.scarab.ledger.Utxo
+  )
+
+  /** The state after `crossing` with the stored outputs its tick did not see upgraded
+    * ([[UtxoStore.enteredDijkstra]]), as changes of the crossing block.
+    */
+  def entered[F[_]: cats.Functor](
+      store: xyz.kd5ujc.scarab.storage.UtxoReadView[F],
+      crossing: DijkstraCrossing
+  )(using Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]): F[MirrorState] =
+    UtxoStore
+      .enteredDijkstra(store, crossing.utxo)
+      .map(u => MirrorStep.mapUtxo(crossing.after)(_ => u))
+
+  object DijkstraCrossing:
+    /** The crossing from `before` to `after`, the state the rules made of a block on it; none when
+      * the block stays in an era or crosses another boundary.
+      */
+    private[node] def of(before: MirrorState, after: MirrorState): Option[DijkstraCrossing] =
+      for
+        b <- MirrorStep.nesOf(before)
+        a <- MirrorStep.nesOf(after)
+        utxo <- MirrorStep.utxoOf(after).filter(_ => crosses(b, a))
+      yield DijkstraCrossing(after, utxo)
+
+    /** Whether `before` is a Conway state and `after` a Dijkstra one. */
+    def crosses(before: EraNes, after: EraNes): Boolean = (before, after) match
+      case (b: EraNes.InEra[x], a: EraNes.InEra[y]) =>
+        b.era == ShelleyBasedEra.SConway && a.era == ShelleyBasedEra.SDijkstra
+
   /** A quantity of the ledger state outside its vocabulary type, met by the tick or by a rule of a
     * transaction ([[BlockFailure.stateOutOfRange]]), or the consensus state's per-epoch transition
     * counter past `Word32` ([[StateMirrorError.TransitionCounterOverflow]]): no verdict on the

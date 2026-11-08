@@ -23,13 +23,13 @@ import xyz.kd5ujc.scarab.ledger.rules.{RewardPulserFixture, Translate}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, NewEpochState, UtxoTables}
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** Outputs that the backing store holds when the chain enters Dijkstra (#815): fetched by
-  * [[UtxoStore.enteringDijkstra]] before the translation, upgraded by [[Translate.upgradeUtxo]] as
-  * the reference's default backend upgrades every stored output on the first block of the era
-  * (ouroboros-consensus 2416493b `upgradeTables`, `HardFork/Combinator/Ledger.hs:1250-1287`), and
-  * written back when the crossing block's changes are flushed. The outputs and what the reference
-  * makes of them are the cases of `fixtures/reference/dijkstra-translation`, in the memory and the
-  * RocksDB store.
+/** Outputs that the backing store holds when the chain enters Dijkstra (#815): the translation
+  * ([[Translate.upgradeUtxo]]) does not see them, and [[UtxoStore.enteredDijkstra]] upgrades them
+  * after it, as the reference's default backend upgrades every stored output on the first block of
+  * the era (ouroboros-consensus 2416493b `upgradeTables`,
+  * `HardFork/Combinator/Ledger.hs:1250-1287`), and written back when the crossing block's changes
+  * are flushed. The outputs and what the reference makes of them are the cases of
+  * `fixtures/reference/dijkstra-translation`, in the memory and the RocksDB store.
   */
 class DijkstraStoredOutputsSuite extends FunSuite:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
@@ -91,6 +91,9 @@ class DijkstraStoredOutputsSuite extends FunSuite:
       .map(_.conway)
       .getOrElse(fail("no case"))
 
+  /** An output a Dijkstra transaction of the crossing block creates. */
+  private val created: (TxIn, TxOut) = key(2000) -> spent._2
+
   /** The Conway state before the tick: everything is in the store (flushed at stamp 0), and its
     * diff, at the crossing block's stamp 1, holds only the deletion of [[spent]].
     */
@@ -108,22 +111,23 @@ class DijkstraStoredOutputsSuite extends FunSuite:
       .fold(e => fail(e.toString), _.es.ls.utxo.utxo.utxo)
 
   private final case class Observed(
-      fetched: Utxo,
+      translated: Utxo,
       crossed: Utxo,
       beforeFlush: Map[TxIn, TxOut],
       volatile: Utxo,
       afterFlush: Map[TxIn, TxOut],
-      throughState: Map[TxIn, TxOut],
-      unfetched: Utxo
+      throughState: Map[TxIn, TxOut]
   )
 
   private def cross(store: UtxoStore[IO])(using Handle[IO, StorageError]): IO[Observed] =
     val keys = cases.map(_.in) :+ spent._1
     val diff = Utxo.empty.copy(flushed = 0).at(1).removeKnown(Map(spent))
+    // the crossing block's own transaction creates an output with a native reference script, which
+    // keeps its bytes in Dijkstra
+    val translated = translate(diff) ++ Map(created)
     for
       _ <- store.write(cases.map(c => c.in -> Some(c.conway)) :+ (spent._1 -> Some(spent._2)), 0)
-      fetched <- UtxoStore.enteringDijkstra(store, diff)
-      crossed = translate(fetched)
+      crossed <- UtxoStore.enteredDijkstra(store, translated)
       beforeFlush <- store.read(keys)
       volatile <- UtxoStore.complete(Some(store), crossed.settled(0, force = true), keys)
       _ <- UtxoStore.advance(store, crossed)
@@ -132,13 +136,12 @@ class DijkstraStoredOutputsSuite extends FunSuite:
       settled = crossed.settled(flushed, force = true)
       completed <- UtxoStore.complete(Some(store), settled, keys)
     yield Observed(
-      fetched,
+      translated,
       crossed,
       beforeFlush,
       volatile,
       afterFlush,
-      keys.flatMap(k => completed.get(k).map(k -> _)).toMap,
-      translate(diff)
+      keys.flatMap(k => completed.get(k).map(k -> _)).toMap
     )
 
   private def orFail[A](program: Handle[IO, StorageError] ?=> IO[A]): A =
@@ -174,9 +177,18 @@ class DijkstraStoredOutputsSuite extends FunSuite:
   for (label, run) <- Vector("memory" -> (() => memory), "rocksdb" -> (() => rocks)) do
     lazy val observed = run()
 
-    test(s"$label: the stored native reference scripts, and only those, are fetched") {
+    test(s"$label: the translation alone does not see the stored outputs") {
+      assertEquals(observed.translated.diff.keySet, Set(spent._1, created._1))
+    }
+
+    test(s"$label: the stored native reference scripts, and only those, become changes") {
       val wanted = cases.filter(c => Translate.reencodedInDijkstra(c.conway)).map(_.in).toSet
-      assertEquals(observed.fetched.resident.keySet, wanted)
+      assertEquals(observed.crossed.diff.keySet, wanted + spent._1 + created._1)
+      assert(observed.crossed.diff.valuesIterator.forall(_.stamp == 1L))
+    }
+
+    test(s"$label: an output the state decides keeps its bytes") {
+      assertEquals(observed.crossed.get(created._1), Some(created._2))
     }
 
     test(s"$label: the store keeps the Conway outputs until the crossing block is flushed") {
@@ -211,10 +223,6 @@ class DijkstraStoredOutputsSuite extends FunSuite:
     }
 
     test(s"$label: the upgrades leave the totals unchanged") {
-      val (b, a) = (observed.fetched, observed.crossed)
+      val (b, a) = (observed.translated, observed.crossed)
       assertEquals((a.coin, a.count, a.stake, a.ptrStake), (b.coin, b.count, b.stake, b.ptrStake))
-    }
-
-    test(s"$label: without the fetch the translation does not see the stored outputs") {
-      assertEquals(observed.unfetched.diff.keySet, Set(spent._1))
     }
