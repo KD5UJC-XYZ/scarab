@@ -26,7 +26,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ValidationError
 }
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraFixture
-import xyz.kd5ujc.scarab.ledger.rules.{EraNes, RewardPulserFixture, Translate}
+import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, RewardPulserFixture, Translate}
 import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
 import xyz.kd5ujc.scarab.storage.{MemoryUtxoStore, UtxoPinnedReadView, UtxoStore}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -68,11 +68,20 @@ class DijkstraCrossingSuite extends CatsEffectSuite:
       )
       .fold(e => fail(e.toString), _.getOrElse(fail("no next era")))
 
-  test("Conway to Dijkstra is the crossing; staying in either era is not") {
-    assert(MirrorRules.DijkstraCrossing.crosses(conway, dijkstra))
-    assert(!MirrorRules.DijkstraCrossing.crosses(conway, conway))
-    assert(!MirrorRules.DijkstraCrossing.crosses(dijkstra, dijkstra))
-    assert(!MirrorRules.DijkstraCrossing.crosses(dijkstra, conway))
+  test("entering Dijkstra from any earlier era is the crossing; staying in an era is not") {
+    applied.map { (states, _, _) =>
+      val babbage = states
+        .flatMap(MirrorStep.nesOf)
+        .findLast { case i: EraNes.InEra[x] => i.era == ShelleyBasedEra.SBabbage }
+        .getOrElse(fail("no Babbage state"))
+      assert(MirrorRules.DijkstraCrossing.crosses(Some(conway), dijkstra))
+      assert(MirrorRules.DijkstraCrossing.crosses(Some(babbage), dijkstra))
+      assert(MirrorRules.DijkstraCrossing.crosses(None, dijkstra))
+      assert(!MirrorRules.DijkstraCrossing.crosses(Some(conway), conway))
+      assert(!MirrorRules.DijkstraCrossing.crosses(Some(babbage), conway))
+      assert(!MirrorRules.DijkstraCrossing.crosses(Some(dijkstra), dijkstra))
+      assert(!MirrorRules.DijkstraCrossing.crosses(Some(dijkstra), conway))
+    }
   }
 
   /** A store that counts its passes over the set. */
@@ -161,18 +170,24 @@ class DijkstraCrossingSuite extends CatsEffectSuite:
     }
   }
 
-  private val withGenesis = RewardPulserFixture.globals.copy(ledger =
-    RewardPulserFixture.globals.ledger.copy(dijkstra = Some(DijkstraFixture.genesis))
-  )
+  private lazy val withGenesis: Globals =
+    Globals(setup.globals.copy(dijkstra = Some(DijkstraFixture.genesis)), setup.praos.geometry)
 
-  /** `m`, the capture's last state, with its ledger state translated into Dijkstra: the state a
-    * crossing block would leave, which no block can make yet (OD-4).
+  /** `m` with its ledger state translated into Dijkstra through every era after its own, as one
+    * tick that crosses several boundaries translates it: the state a crossing block would leave,
+    * which no block can make yet (OD-4).
     */
   private def inDijkstra(m: MirrorState): MirrorState =
     m.ext.ledgerState.state match
       case i: EraLedgerState.InShelleyEra[e] =>
-        Translate.next(withGenesis, EraNes.InEra(i.era, i.state.nes)) match
-          case Right(Some(d: EraNes.InEra[x])) =>
+        val start: EraNes = EraNes.InEra(i.era, i.state.nes)
+        // at most one step for each era after Shelley
+        val translated = (1 to 6).foldLeft(start) { (e, _) =>
+          if MirrorRules.DijkstraCrossing.crosses(None, e) then e
+          else Translate.next(withGenesis, e).fold(f => fail(f.toString), _.getOrElse(e))
+        }
+        translated match
+          case d: EraNes.InEra[x] if MirrorRules.DijkstraCrossing.crosses(Some(start), d) =>
             val state = EraLedgerState.InShelleyEra(
               d.era,
               ShelleyLedgerState(i.state.tip, d.nes, i.state.transition, i.state.peras)
@@ -181,49 +196,76 @@ class DijkstraCrossingSuite extends CatsEffectSuite:
           case other => fail(s"no Dijkstra state: $other")
       case other => fail(s"not a Shelley-based state: $other")
 
-  test("the crossing upgrades the stored outputs its state does not decide, and only those") {
-    val name = "refScript/allOf/indefinite-short"
-    val row = Files
+  private def eraOf(m: MirrorState): Option[ShelleyBasedEra[?]] =
+    MirrorStep.nesOf(m).map { case i: EraNes.InEra[x] => i.era }
+
+  private val upgradedCase = "refScript/anyOf/indefinite-empty"
+
+  private lazy val row: io.circe.Json =
+    Files
       .readAllLines(Path.of("fixtures/reference/dijkstra-translation/cases.jsonl"))
       .asScala
-      .find(_.contains(s"\"$name\""))
+      .find(_.contains(s"\"$upgradedCase\""))
+      .flatMap(io.circe.parser.parse(_).toOption)
       .getOrElse(fail("no case"))
-    val raw = io.circe.parser
-      .parse(row)
-      .flatMap(_.hcursor.get[String]("txOut"))
-      .fold(e => fail(e.getMessage), identity)
-    val out = {
-      given xyz.kd5ujc.scarab.ledger.ByteStrings =
-        xyz.kd5ujc.scarab.ledger.ByteStrings.of(
-          xyz.kd5ujc.scarab.ledger.DecoderVersion.of(xyz.kd5ujc.scarab.protocol.Era.Conway)
+
+  private def field(path: String*): Bytes =
+    path
+      .foldLeft(row.hcursor: io.circe.ACursor)(_.downField(_))
+      .as[String]
+      .toOption
+      .flatMap(Bytes.fromHex(_).toOption)
+      .getOrElse(fail(path.mkString(".")))
+
+  for (label, era) <- Vector(
+      "Conway" -> ShelleyBasedEra.SConway,
+      "Babbage, through Conway," -> ShelleyBasedEra.SBabbage
+    )
+  do
+    test(
+      s"a block from $label into Dijkstra upgrades the stored outputs its state does not decide"
+    ) {
+      val out = {
+        given xyz.kd5ujc.scarab.ledger.ByteStrings =
+          xyz.kd5ujc.scarab.ledger.ByteStrings.of(
+            xyz.kd5ujc.scarab.ledger.DecoderVersion.of(xyz.kd5ujc.scarab.protocol.Era.Conway)
+          )
+        TxOut
+          .fromBytes(
+            field("txOut"),
+            xyz.kd5ujc.scarab.ledger.Address.Mode.of(xyz.kd5ujc.scarab.protocol.Era.Conway)
+          )
+          .fold(e => fail(e.toString), identity)
+      }
+      val in = TxIn(RewardPulserFixture.bytes(7, 32), 0)
+      for
+        states <- applied.map(_._1)
+        before <- IO(states.filter(eraOf(_).contains(era)).lastOption.getOrElse(fail("no state")))
+        after = inDijkstra(before)
+        crossing <- IO(
+          MirrorRules.DijkstraCrossing.of(before, after).getOrElse(fail("not a crossing"))
         )
-      TxOut
-        .fromBytes(
-          Bytes.fromHex(raw).fold(e => fail(e.message), identity),
-          xyz.kd5ujc.scarab.ledger.Address.Mode.of(xyz.kd5ujc.scarab.protocol.Era.Conway)
+        store <- MemoryUtxoStore[IO]
+        upgraded <- Handle
+          .allow[StorageError](
+            store.write(Vector(in -> Some(out)), 0) *> MirrorRules.entered(store, crossing)
+          )
+          .rescue(e => IO(fail(e.message)))
+      yield
+        val (was, now) =
+          (MirrorStep.utxoOf(after).getOrElse(fail("no set")), MirrorStep.utxoOf(upgraded))
+        val stored = now.flatMap(_.get(in))
+        assertEquals(stored, Some(Translate.upgradeTxOut(out)))
+        assertEquals(stored.map(_.raw), Some(field("reference", "dijkstraTxOut")))
+        assertEquals(
+          stored.flatMap(_.scriptRef).map(_.hash),
+          Some(field("reference", "dijkstraScript", "hash"))
         )
-        .fold(e => fail(e.toString), identity)
+        assertNotEquals(stored, Some(out))
+        assertEquals(now.map(_.diff.keySet -- was.diff.keySet), Some(Set(in)))
+        assertEquals(
+          now.map(u => (u.coin, u.count, u.stake)),
+          Some((was.coin, was.count, was.stake))
+        )
+        assertEquals(eraOf(upgraded), Some(ShelleyBasedEra.SDijkstra))
     }
-    val in = TxIn(RewardPulserFixture.bytes(7, 32), 0)
-    for
-      states <- applied.map(_._1)
-      before = states.last
-      after = inDijkstra(before)
-      crossing <- IO(
-        MirrorRules.DijkstraCrossing.of(before, after).getOrElse(fail("not a crossing"))
-      )
-      store <- MemoryUtxoStore[IO]
-      upgraded <- Handle
-        .allow[StorageError](
-          store.write(Vector(in -> Some(out)), 0) *> MirrorRules.entered(store, crossing)
-        )
-        .rescue(e => IO(fail(e.message)))
-    yield
-      val (was, now) =
-        (MirrorStep.utxoOf(after).getOrElse(fail("no set")), MirrorStep.utxoOf(upgraded))
-      assertEquals(now.flatMap(_.get(in)), Some(Translate.upgradeTxOut(out)))
-      assertNotEquals(now.flatMap(_.get(in)), Some(out))
-      assertEquals(now.map(_.diff.keySet -- was.diff.keySet), Some(Set(in)))
-      assertEquals(now.map(u => (u.coin, u.count, u.stake)), Some((was.coin, was.count, was.stake)))
-      assert(MirrorStep.nesOf(upgraded).exists(MirrorRules.DijkstraCrossing.crosses(conway, _)))
-  }

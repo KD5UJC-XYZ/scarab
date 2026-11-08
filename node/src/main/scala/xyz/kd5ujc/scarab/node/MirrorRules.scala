@@ -179,11 +179,23 @@ final class MirrorRules[F[_]: Monad](
       case _ => run(state, None)
 
 object MirrorRules:
-  /** A block that took the chain from Conway into Dijkstra and that the rules accepted: the tick,
-    * the header checks against the ticked state and the body all passed. Only
+  /** A block that took the chain into Dijkstra from an earlier era and that the rules accepted: the
+    * tick, the header checks against the ticked state and the body all passed. Only
     * [[DijkstraCrossing.of]] builds one, from the state before the block and the state the rules
     * produced, so a block refused anywhere (a header that claims Dijkstra but fails its checks
     * among them) has none.
+    *
+    * The state before may be of any earlier era: a tick can cross several boundaries at once
+    * (`extendToSlot`, ouroboros-consensus 2416493b `HardFork/Combinator/State.hs:195-218`), and the
+    * reference upgrades the whole table whenever the eras before and after a block differ
+    * (`upgradeTables`, `HardFork/Combinator/Ledger.hs:1254-1287`), each output by the translations
+    * of every boundary between its era and the new one, composed (`ejectHardForkTxOut`,
+    * `Cardano/Ledger.hs:150-162`, through `txOutTranslations`, `HardFork/Combinator/Ledger.hs:
+    * 1242-1248`, and `inPairsToTails` /`extendWithTails`, sop-extras 0.4.2.0
+    * `src/Data/SOP/Tails.hs:104-140`). Before Dijkstra those translations keep a native script's
+    * bytes (`translateTimelock`, cardano-ledger 9df9f98c `eras/allegra/impl/src/Cardano/Ledger/
+    * Allegra/Scripts.hs:214-230`, the `upgradeScript` of Babbage and Conway) and the node's output
+    * is unchanged by them, so the composition is Dijkstra's `upgradeTxOut` alone.
     *
     * @param after
     *   the state after the block, in Dijkstra
@@ -208,19 +220,22 @@ object MirrorRules:
 
   object DijkstraCrossing:
     /** The crossing from `before` to `after`, the state the rules made of a block on it; none when
-      * the block stays in an era or crosses another boundary.
+      * the block stays in an era or crosses only boundaries before Dijkstra.
       */
     private[node] def of(before: MirrorState, after: MirrorState): Option[DijkstraCrossing] =
       for
-        b <- MirrorStep.nesOf(before)
         a <- MirrorStep.nesOf(after)
-        utxo <- MirrorStep.utxoOf(after).filter(_ => crosses(b, a))
+        utxo <- MirrorStep.utxoOf(after).filter(_ => crosses(MirrorStep.nesOf(before), a))
       yield DijkstraCrossing(after, utxo)
 
-    /** Whether `before` is a Conway state and `after` a Dijkstra one. */
-    def crosses(before: EraNes, after: EraNes): Boolean = (before, after) match
-      case (b: EraNes.InEra[x], a: EraNes.InEra[y]) =>
-        b.era == ShelleyBasedEra.SConway && a.era == ShelleyBasedEra.SDijkstra
+    /** Whether `after` is a Dijkstra state and `before` is not: a state of an earlier Shelley-based
+      * era, or none (Byron's).
+      */
+    def crosses(before: Option[EraNes], after: EraNes): Boolean =
+      inDijkstra(after) && !before.exists(inDijkstra)
+
+    private def inDijkstra(e: EraNes): Boolean = e match
+      case i: EraNes.InEra[x] => i.era == ShelleyBasedEra.SDijkstra
 
   /** A quantity of the ledger state outside its vocabulary type, met by the tick or by a rule of a
     * transaction ([[BlockFailure.stateOutOfRange]]), or the consensus state's per-epoch transition
