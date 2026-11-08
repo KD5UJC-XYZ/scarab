@@ -29,15 +29,21 @@ class FakeRunner:
 class FakeGitHub:
     """`gh issue view/comment/edit` against one parent issue held in memory."""
 
-    def __init__(self, body, state="OPEN", keeps_edit=True):
-        self.body, self.state, self.keeps_edit, self.calls = body, state, keeps_edit, []
+    def __init__(self, body, state="OPEN", keeps_edit=True, url="https://github.com/KD5UJC-XYZ/scarab/issues/124",
+                 edit_code=0):
+        self.body, self.state, self.keeps_edit, self.url, self.edit_code = body, state, keeps_edit, url, edit_code
+        self.calls = []
 
     def __call__(self, command, input=None, **_):
         self.calls.append((command[2], input))
         if command[2] == "view":
-            return subprocess.CompletedProcess(command, 0, json.dumps({"state": self.state, "body": self.body}), "")
-        if command[2] == "edit" and self.keeps_edit:
-            self.body = input
+            seen = {"state": self.state, "url": self.url, "body": self.body}
+            return subprocess.CompletedProcess(command, 0, json.dumps(seen), "")
+        if command[2] == "edit":
+            if self.edit_code:
+                return subprocess.CompletedProcess(command, self.edit_code, "", "HTTP 502\n")
+            if self.keeps_edit:
+                self.body = input
         return subprocess.CompletedProcess(command, 0, LINK + "\n" if command[2] == "comment" else "", "")
 
 
@@ -150,7 +156,7 @@ class ParentCase(unittest.TestCase):
         self.assertEqual(to_parent(github)[0], 0)
         self.assertEqual(github.body, "Intro\n\n## Checklist (as of 2026-10-17)\n- [x] #126 done\n- [ ] #127 open\n"
                                       + line() + "\n\n## Notes\nend\n")
-        self.assertEqual([step for step, _ in github.calls], ["view", "comment", "edit", "view"])
+        self.assertEqual([step for step, _ in github.calls], ["view", "comment", "view", "edit", "view"])
         self.assertEqual(github.calls[1][1], "Follow-up (priority:P2): **Network: a gap**\n\nWhat and why.\n")
 
     def test_a_parent_without_a_checklist_gets_a_follow_ups_section(self):
@@ -160,6 +166,35 @@ class ParentCase(unittest.TestCase):
         github = FakeGitHub("Top\n\n## Follow-ups\n\n## Done when\nx\n")
         self.assertEqual(to_parent(github)[0], 0)
         self.assertEqual(github.body, "Top\n\n## Follow-ups\n\n" + line() + "\n\n## Done when\nx\n")
+
+    def test_follow_ups_win_and_otherwise_the_last_section_with_items_takes_the_line(self):
+        github = FakeGitHub("## Sub-items\n- [ ] a\n\n## Follow-ups\n\n- [ ] b\n\n## Folded in\n- [x] c\n")
+        self.assertEqual(to_parent(github)[0], 0)
+        self.assertEqual(github.body, "## Sub-items\n- [ ] a\n\n## Follow-ups\n\n- [ ] b\n" + line()
+                         + "\n\n## Folded in\n- [x] c\n")
+        github = FakeGitHub("## Sub-items (Leios)\n- [ ] a\n\n## Folded in (triage)\n- [x] c\n\n## Done when\nx\n")
+        self.assertEqual(to_parent(github)[0], 0)
+        self.assertEqual(github.body, "## Sub-items (Leios)\n- [ ] a\n\n## Folded in (triage)\n- [x] c\n" + line()
+                         + "\n\n## Done when\nx\n")
+
+    def test_a_pull_request_is_not_a_parent(self):
+        github = FakeGitHub("body", url="https://github.com/KD5UJC-XYZ/scarab/pull/820")
+        code, err = to_parent(github)
+        self.assertEqual(code, 1)
+        self.assertIn("#124 is a pull request", err)
+        self.assertEqual([step for step, _ in github.calls], ["view"])
+
+    def test_only_a_p2_item_takes_a_parent(self):
+        for priority in ("P0", "P1"):
+            with self.subTest(priority=priority):
+                self.assertIn("drop --parent", refused(BASE + ["--priority", priority, "--parent", "124"])[1])
+
+    def test_a_failed_edit_says_where_the_posted_details_are(self):
+        code, err = to_parent(FakeGitHub("body\n", edit_code=1))
+        self.assertEqual(code, 1)
+        self.assertIn("editing #124 failed", err)
+        self.assertIn(LINK, err)
+        self.assertIn(line(), err)
 
     def test_a_closed_parent_is_refused_before_anything_is_posted(self):
         github = FakeGitHub("body", state="CLOSED")

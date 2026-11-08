@@ -10,13 +10,14 @@
     python3 scripts/file_issue.py ... --label audit --dry-run      print the commands without running them
 
 A P2 item is a checklist line of the issue it follows up, not an issue of its own (docs/process.md, "Keeping
-the open list short"). With `--parent N` the body is posted as a comment on open issue N and a line
-`- [ ] <title> (<date>, <comment link>)` is added to N's `## Checklist` or `## Follow-ups` section (a
-`## Follow-ups` section is added at the end when there is neither); the parent's labels and milestone stand, so
-`--area`, `--status`, `--milestone` and `--label` are refused there. The body is read again after the edit, and
-the run fails if the line is missing (another edit of the parent raced it). A P2 item that needs its own issue
-gives the reason with `--own-issue`, which is recorded at the end of the issue's body. P0 and P1 items are
-filed as issues without either.
+the open list short"). With `--parent N` the body is posted as a comment on open issue N (not a pull request)
+and a line `- [ ] <title> (<date>, <comment link>)` is added after the last item of N's `## Follow-ups`
+section, or else of the last `##` section that holds checklist items, or else in a new `## Follow-ups` section at
+the end. The parent's labels and milestone stand, so `--area`, `--status`, `--milestone` and `--label` are
+refused there. The body is read just before the edit and again after it, and the run fails if the line is
+missing; that narrows, but does not close, the window in which another edit of N can be lost. A P2 item that
+needs its own issue gives the reason with `--own-issue`, which is recorded at the end of the issue's body. P0
+and P1 items are issues, filed without either option.
 
 `--area` (one or more), `--priority` and `--status` take the value with or without its prefix (`P2` or
 `priority:P2`) and must be in the vocabulary of `status.py`: an area is an sbt module of docs/codemap.md or
@@ -39,7 +40,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from status import AREAS, MILESTONES, PRIORITIES, STATUSES, WITHOUT_MILESTONE
 
 OWN_ISSUE = "Filed as an issue of its own, not as a checklist line of a parent:"
-CHECKLIST_HEADING = re.compile(r"^##\s+(Checklist|Follow-ups)\b.*$", re.MULTILINE)
+SECTION = re.compile(r"^##\s+.*$", re.MULTILINE)
+ITEM = re.compile(r"^\s*[-*] \[[ xX]\].*$", re.MULTILINE)
 
 
 def value(raw: str, prefix: str, vocabulary: tuple[str, ...], parser: argparse.ArgumentParser) -> str:
@@ -69,6 +71,8 @@ def options(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     args.priority = value(args.priority, "priority", PRIORITIES, parser)
     if args.parent is not None:
+        if args.priority != "P2":
+            parser.error(f"a priority:{args.priority} item is an issue of its own; drop --parent")
         given = [flag for flag, v in (("--area", args.area), ("--status", args.status),
                                       ("--milestone", args.milestone), ("--label", args.label)) if v]
         if given:
@@ -115,19 +119,25 @@ def create_command(args: argparse.Namespace) -> list[str]:
 
 
 def with_line(body: str, line: str) -> str:
-    """The parent body with `line` after the last item of its first checklist section, or in a new section."""
-    heading = CHECKLIST_HEADING.search(body)
-    if heading is None:
+    """The parent body with `line` added: after the last item of its `## Follow-ups` section, or else of its last
+    `##` section with checklist items, or else in a new `## Follow-ups` section at the end."""
+    headings = list(SECTION.finditer(body))
+    sections = [(h, body[h.end():headings[i + 1].start() if i + 1 < len(headings) else len(body)])
+                for i, h in enumerate(headings)]
+    follow_ups = [(h, text) for h, text in sections if re.match(r"##\s+Follow-ups\b", h.group())]
+    with_items = [(h, text) for h, text in sections if ITEM.search(text)]
+    if follow_ups:
+        heading, text = follow_ups[0]
+    elif with_items:
+        heading, text = with_items[-1]
+    else:
         return f"{body.rstrip()}\n\n## Follow-ups\n\n{line}\n"
-    rest = body[heading.end():]
-    following = re.search(r"^#{1,2}\s", rest, re.MULTILINE)
-    section = rest[:following.start()] if following else rest
-    items = list(re.finditer(r"^\s*[-*] \[[ xX]\].*$", section, re.MULTILINE))
+    items = list(ITEM.finditer(text))
     if items:
         at = heading.end() + items[-1].end()
         return f"{body[:at]}\n{line}{body[at:]}"
-    after = rest.lstrip("\n")
-    return f"{body[:heading.end()]}\n\n{line}\n" + (f"\n{after}" if after else "")
+    tail = body[heading.end():].lstrip("\n")
+    return f"{body[:heading.end()]}\n\n{line}\n" + (f"\n{tail}" if tail else "")
 
 
 def show(command: list[str]) -> None:
@@ -137,7 +147,7 @@ def show(command: list[str]) -> None:
 def add_to_parent(args: argparse.Namespace, run) -> int:
     """Post the item as a comment on the parent and add its checklist line; checked by reading the body again."""
     n = str(args.parent)
-    view = ["gh", "issue", "view", n, "--json", "state,body"]
+    view = ["gh", "issue", "view", n, "--json", "state,url,body"]
     comment = ["gh", "issue", "comment", n, "--body-file", "-"]
     edit = ["gh", "issue", "edit", n, "--body-file", "-"]
     details = f"Follow-up (priority:{args.priority}): **{args.title}**\n\n{body_text(args).rstrip()}\n"
@@ -153,6 +163,9 @@ def add_to_parent(args: argparse.Namespace, run) -> int:
         print(seen.stderr, end="", file=sys.stderr)
         return seen.returncode
     parent = json.loads(seen.stdout)
+    if "/pull/" in (parent.get("url") or ""):
+        print(f"#{n} is a pull request: give the issue it follows up, or --own-issue", file=sys.stderr)
+        return 1
     if parent.get("state") != "OPEN":
         print(f"#{n} is {str(parent.get('state')).lower()}: give an open parent, or --own-issue", file=sys.stderr)
         return 1
@@ -161,18 +174,25 @@ def add_to_parent(args: argparse.Namespace, run) -> int:
     if posted.returncode != 0:
         print(posted.stderr, end="", file=sys.stderr)
         return posted.returncode
-    link = posted.stdout.strip()
+    link = posted.stdout.strip() or f"the newest comment on #{n}"
     line = f"- [ ] {args.title} ({datetime.date.today().isoformat()}, {link})"
+
+    def by_hand(why: str) -> int:
+        print(f"{why}; the details are in {link}; add this line to #{n} by hand:\n{line}", file=sys.stderr)
+        return 1
+
+    fresh = run(view, check=False, capture_output=True, text=True)
+    if fresh.returncode != 0:
+        return by_hand(f"#{n} could not be read again before the edit")
     show(edit)
-    edited = run(edit, input=with_line(parent.get("body") or "", line), check=False, capture_output=True, text=True)
+    body = json.loads(fresh.stdout).get("body") or ""
+    edited = run(edit, input=with_line(body, line), check=False, capture_output=True, text=True)
     if edited.returncode != 0:
         print(edited.stderr, end="", file=sys.stderr)
-        return edited.returncode
+        return by_hand(f"editing #{n} failed")
     again = run(view, check=False, capture_output=True, text=True)
     if again.returncode != 0 or line not in (json.loads(again.stdout).get("body") or ""):
-        print(f"the checklist line is not in #{n} after the edit (another edit raced it?); the details are in "
-              f"{link}; add this line by hand:\n{line}", file=sys.stderr)
-        return 1
+        return by_hand(f"the checklist line is not in #{n} after the edit (another edit raced it?)")
     print(f"added to #{n}: {line}")
     return 0
 
