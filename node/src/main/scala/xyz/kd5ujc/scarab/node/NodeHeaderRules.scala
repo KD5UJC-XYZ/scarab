@@ -211,10 +211,10 @@ final class NodeHeaderRules[S](
           case Right(_)
               if cfg.configuredShelleyEpoch
                 .orElse(ByronLedger.transition(cfg.ledger, ledger))
-                .exists(header.epoch >= _) =>
+                .exists(header.slotEpoch >= _) =>
             Prepared.Invalid(
               HeaderError.Envelope(
-                EnvelopeError.WrongEra(Era.Byron, Era.Shelley, header.epoch, BigInt(2))
+                EnvelopeError.WrongEra(Era.Byron, Era.Shelley, header.slotEpoch, BigInt(2))
               )
             )
           case Right(_) =>

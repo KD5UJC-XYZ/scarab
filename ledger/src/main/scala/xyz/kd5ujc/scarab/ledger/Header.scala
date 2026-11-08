@@ -80,7 +80,7 @@ object Header:
       blockVersion: ByronVersion = ByronVersion.zero,
       genesisTag: Boolean = false
   ):
-    def slot: BigInt = epoch * epochSlots + slotInEpoch
+    def slot: BigInt = Header.byronSlot(epoch, epochSlots, slotInEpoch)
     def withSizeHint(blockSizeHint: Unsigned[Unsigned.Width.W32]): Byron = Byron(
       raw,
       hash,
@@ -120,7 +120,13 @@ object Header:
       genesisTag: Boolean = false
   ) extends Header:
     def era: Era = Era.Byron
-    def slot: BigInt = epoch * epochSlots + slotInEpoch
+    def slot: BigInt = Header.byronSlot(epoch, epochSlots, slotInEpoch)
+
+    /** The epoch of the flattened slot (`slotNumberEpoch`, `Slotting/EpochAndSlotCount.hs:98-99`,
+      * cardano-ledger f649f975), which the reference reads where it needs a block's epoch; it is
+      * [[epoch]] unless the slot count is at least the epoch's length or the slot wrapped.
+      */
+    def slotEpoch: BigInt = slot / epochSlots
     override def isBoundary: Boolean = boundary
 
     /** The header names the genesis as its predecessor, not a block: a boundary header of epoch 0
@@ -370,6 +376,17 @@ object Header:
       out <- CborRead.bytes(xs(0), DecodeField.Header)(using strings).leftMap(fail)
       proof <- bytes(xs(1), 80, strings)
     yield VrfCert(out, proof)
+
+  /** A Byron block's slot as the reference flattens it: `toSlotNumber`
+    * (`Slotting/EpochAndSlotCount.hs:71-81`, cardano-ledger f649f975) adds the slot count to
+    * `epoch * epochSlots` in `Word64` arithmetic, which wraps modulo 2^64, and checks no slot count
+    * against the epoch's length; a boundary block's slot is `boundaryBlockSlot`
+    * (`Block/Block.hs:533-539`), the same product (#818).
+    */
+  def byronSlot(epoch: BigInt, epochSlots: BigInt, slotInEpoch: BigInt): BigInt =
+    (epoch * epochSlots + slotInEpoch).mod(Word64Modulus)
+
+  private val Word64Modulus = BigInt(1) << 64
 
   /** Byron header. Main: `[magic, prev, bodyProof,
     * [[epoch, slot], pubkey, [difficulty], sig], extra]`; boundary: `[magic, prev, bodyProof, [epoch, [difficulty]],

@@ -191,13 +191,14 @@ object NodeRules:
         (),
         BlockFailure.HeaderDiffers
       )
-      // once the transition is settled (known and stable) no Byron block may be in or after it
+      // once the transition is settled (known and stable) no Byron block may be in or after it; the
+      // epoch is the flattened slot's, as the era history places a block by its slot (#818)
       _ <- cfg.configuredShelleyEpoch
         .orElse(ByronLedger.transition(cfg.ledger, ledger))
-        .filter(_ <= header.epoch)
+        .filter(_ <= header.slotEpoch)
         .toLeft(())
         .leftMap { first =>
-          BlockFailure.ByronAfterTransition(header.epoch, first)
+          BlockFailure.ByronAfterTransition(header.slotEpoch, first)
         }
       validated <- ByronRules
         .update(ByronRules.State(state.tip, ledger, state.pbft), block, cfg)

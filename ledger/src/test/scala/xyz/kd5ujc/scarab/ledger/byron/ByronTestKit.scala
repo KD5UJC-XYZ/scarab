@@ -192,7 +192,8 @@ object ByronTestKit:
 
   /** The first main block after the genesis boundary: one signed transaction and one signed
     * proposal, a header of `headerVersion` signed by `delegate` for the genesis key `leader`, and
-    * body proofs that match. The genesis must delegate from `leader` to `delegate`.
+    * body proofs that match, at `slot` (epoch and slot count). The genesis must delegate from
+    * `leader` to `delegate`.
     */
   def signedBlock(
       config: ByronLedger.Config,
@@ -201,7 +202,8 @@ object ByronTestKit:
       delegate: Key,
       transaction: ByronTxAux,
       proposal: Bytes,
-      headerVersion: (Long, Long, Long)
+      headerVersion: (Long, Long, Long),
+      slot: (Long, Long) = (0L, 1L)
   ): Bytes =
     val blake = xyz.kd5ujc.scarab.crypto.Blake2b.hash256
     val updates = Cb.arr(Cb.arr(proposal), Cb.arr())
@@ -218,7 +220,7 @@ object ByronTestKit:
       Cb.bytes(blake.hash(delegation)),
       Cb.bytes(blake.hash(updates))
     )
-    val slot = Cb.arr(Cb.uint(0), Cb.uint(1))
+    val slotId = Cb.arr(Cb.uint(slot._1), Cb.uint(slot._2))
     val difficulty = Cb.arr(Cb.uint(1))
     val extra = Cb.arr(
       encodedVersion(headerVersion._1, headerVersion._2, headerVersion._3),
@@ -227,7 +229,7 @@ object ByronTestKit:
       Cb.bytes(blake.hash(Cb.arr()))
     )
     val previous = Cb.bytes(genesis.hash)
-    val signed = Cb.arr(previous, proof, slot, difficulty, extra)
+    val signed = Cb.arr(previous, proof, slotId, difficulty, extra)
     val signature = delegate.sign(
       ByronCbor.of(0x30, 0x31) ++ leader.extended ++ ByronCbor.of(0x09) ++ config.magic ++ signed
     )
@@ -241,7 +243,7 @@ object ByronTestKit:
       Cb.bytes(certificate)
     )
     val consensus = Cb.arr(
-      slot,
+      slotId,
       Cb.bytes(leader.extended),
       difficulty,
       Cb.arr(Cb.uint(2), Cb.arr(proxy, Cb.bytes(signature)))

@@ -298,14 +298,14 @@ object ByronLedger:
 
   /** An epoch-boundary block changes only the last slot (the first slot of its epoch). */
   def applyBoundary(
-      config: Config,
       ticked: ByronLedgerState,
       header: Header.Byron,
       blockSize: Int
   ): Either[ByronError, ByronLedgerState] =
     Either.cond(
       blockSize <= 2000000,
-      ticked.copy(lastSlot = header.epoch * config.epochSlots, tipBlockNo = header.blockNo),
+      // `boundaryBlockSlot` of its epoch, the flattened slot (`Byron/API/Validation.hs:196`, #818)
+      ticked.copy(lastSlot = header.slot, tipBlockNo = header.blockNo),
       ByronError.BlockTooLarge(2000000, blockSize)
     )
 
