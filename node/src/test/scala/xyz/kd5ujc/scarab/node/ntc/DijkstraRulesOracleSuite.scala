@@ -76,6 +76,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
         protocolMajor = num(p.downField("major")),
         maxBlockExUnits = ExUnits(num(units.downN(0)), num(units.downN(1))),
         maxRefScriptSizePerBlock = num(p.downField("maxRefScriptSizePerBlock")),
+        maxRefScriptSizePerTx = num(p.downField("maxRefScriptSizePerTx")),
         keyDeposit = num(p.downField("keyDeposit")),
         poolDeposit = num(p.downField("poolDeposit")),
         drepDeposit = num(p.downField("drepDeposit")),
@@ -256,6 +257,9 @@ class DijkstraRulesOracleSuite extends FunSuite:
         each(w, m.supplied)
         each(w, m.expected)
       }
+    // the UTXOW failures without a `Mismatch` keep Conway's tags and payloads (`Utxow.hs:381-401`)
+    def conwayUtxow(c: UtxowFailure): Bytes =
+      payload(CborOut.build(w => PredicateFailureCbor.ledger(w, PredicateFailure.utxow(c))))
     def utxo(u: DijkstraUtxoFailure): Bytes = u match
       case DijkstraUtxoFailure.FeeTooSmall(m) => mismatch(u.tag, m)(PredicateFailureCbor.coin)
       case DijkstraUtxoFailure.MaxTxSize(m)   => mismatch(u.tag, m)(PredicateFailureCbor.coin)
@@ -271,12 +275,13 @@ class DijkstraRulesOracleSuite extends FunSuite:
       case DijkstraUtxowFailure.UtxoFailure(u) =>
         CborOut.build(w => w.array(2).uint(f.tag).raw(utxo(u)))
       case DijkstraUtxowFailure.MissingVKeyWitnesses(hs) =>
-        payload(
-          CborOut.build(w =>
-            PredicateFailureCbor
-              .ledger(w, PredicateFailure.utxow(UtxowFailure.MissingVKeyWitnesses(hs)))
-          )
-        )
+        conwayUtxow(UtxowFailure.MissingVKeyWitnesses(hs))
+      case DijkstraUtxowFailure.MissingScriptWitnesses(hs) =>
+        conwayUtxow(UtxowFailure.MissingScriptWitnesses(hs))
+      case DijkstraUtxowFailure.ExtraneousScriptWitnesses(hs) =>
+        conwayUtxow(UtxowFailure.ExtraneousScriptWitnesses(hs))
+      case DijkstraUtxowFailure.ScriptWitnessNotValidating(hs) =>
+        conwayUtxow(UtxowFailure.ScriptWitnessNotValidating(hs))
       case other => fail(s"no case of the oracle reaches $other")
 
   private def bbody(f: DijkstraBbodyFailure): Bytes = f match
@@ -286,6 +291,9 @@ class DijkstraRulesOracleSuite extends FunSuite:
       mismatch(f.tag, Value.ByteString(m.supplied), Value.ByteString(m.expected))
     case DijkstraBbodyFailure.HeaderProtVerTooLow(m) =>
       mismatch(f.tag, Value.UInt(m.supplied), Value.UInt(m.expected))
+    // `ShelleyLedgersPredFailure`'s `LedgerFailure` is written as the LEDGER failure itself
+    case DijkstraBbodyFailure.LedgersFailure(DijkstraLedgerFailure.UtxowFailure(u)) =>
+      CborOut.build(w => w.array(2).uint(f.tag).array(2).uint(1).raw(utxow(u)))
     case other => fail(s"no case of the oracle refuses a block with $other")
 
   private def judged[R](
@@ -324,7 +332,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
         val issuer = DijkstraBbody.issuer(block).getOrElse(fail("issuer"))
         Sts(DijkstraBbody)(
           globals,
-          BbodyEnv(TestLedger.env.copy(epoch = epoch), pp, Coin(0)),
+          BbodyEnv(TestLedger.env.copy(slot = block.header.slot, epoch = epoch), pp, Coin(0)),
           DijkstraBbodyState(ledger(pp, epoch, utxoOf(c)), BlocksMade.empty),
           DijkstraBbody.Signal(block, issuer)
         ) match
@@ -386,7 +394,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
     )
 
   test("the fixture holds the oracle's cases") {
-    assertEquals(cases.size, 58)
+    assertEquals(cases.size, 64)
   }
 
   test("every case the node's rules complete agrees with the reference") {

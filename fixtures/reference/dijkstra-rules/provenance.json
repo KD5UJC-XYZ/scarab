@@ -1,9 +1,9 @@
 {
   "blocksSha256": "e1da0c447af50129c782b5f6bdc08582ca7f289f75a87fa895e2792b39dec446",
-  "cases": 58,
-  "casesSha256": "f304cb2691b4f4889c4759b1258c9616c781b9379b5fea98422b5e36bd6ea9b5",
+  "cases": 64,
+  "casesSha256": "e6b3000646bce9dfbca4bfa65cfa7f1f8bfda4e4ffb5ddd5f4723b8ebca8f6db",
   "image": "scarab-dijkstra-rules-oracle:local",
-  "imageId": "sha256:65ecc1e868995b3ee43e7e4e43f81ac97fdbec6e53d0e0a90c112999fb0d2fcc",
+  "imageId": "sha256:f95e263dba6f4f51a6b9b033b859998e76753323c01b972241bac394f92e983d",
   "ledger": {
     "packages": [
       "cardano-ledger-dijkstra 0.5.0.0"
@@ -13,7 +13,7 @@
   },
   "measuredAt": "2026-11-08",
   "program": "scripts/oracle/dijkstra-rules/Main.hs",
-  "programSha256": "cde813c5c14ed1f2b16563e7c4536656c8e26e18d0d9c2fd42354c93b027b2ad",
+  "programSha256": "93aa56231247efda8b3f7f747594a1729217b6e2c050e101435a19492e27f2db",
   "schemaVersion": 1,
   "scope": "Dijkstra's BBODY, UTXOW (with UTXO and UTXOS), CERTS (with Dijkstra's CERT, POOL and GOVCERT) and GOV of the Leios testnet build, each applied on its own with every check run: BBODY over the devnet's Dijkstra blocks, UTXOW over the devnet transaction and its variants, CERTS on the default certificate state, GOV after a CERTS setup on the default store of proposals; not LEDGER on its own, ENTITIES or the SUB rules"
 }

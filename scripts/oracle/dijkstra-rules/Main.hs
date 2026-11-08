@@ -43,7 +43,7 @@ import qualified Cardano.Ledger.Conway.Rules as Conway
 import Cardano.Ledger.Core (PParams, Tx, TxCert, TxLevel (TopTx), emptyPParams, eraDecoder, ppEMaxL, ppKeyDepositL, ppMaxTxSizeL, ppMinPoolCostL, ppPoolDepositL, ppProtocolVersionL, ppTxFeeFixedL, ppTxFeePerByteL)
 import Cardano.Ledger.Dijkstra (DijkstraEra, mkDijkstraStAnnTopTx)
 import Cardano.Ledger.Dijkstra.Era (BBODY, GOV, UTXOW)
-import Cardano.Ledger.Dijkstra.PParams (ppMaxRefScriptSizePerBlockL, ppRefScriptCostMultiplierL, ppRefScriptCostStrideL)
+import Cardano.Ledger.Dijkstra.PParams (ppMaxRefScriptSizePerBlockL, ppMaxRefScriptSizePerTxL, ppRefScriptCostMultiplierL, ppRefScriptCostStrideL)
 import Cardano.Ledger.Dijkstra.Rules (UtxoEnv (..))
 import Cardano.Ledger.Dijkstra.Tx (Tx (MkDijkstraTx), decodeDijkstraTopTxInBlock)
 import Cardano.Ledger.Hashes (unsafeMakeSafeHash)
@@ -87,6 +87,7 @@ data Params = Params
   { major :: Natural
   , maxBlockExUnits :: (Natural, Natural)
   , maxRefScriptSizePerBlock :: Word32
+  , maxRefScriptSizePerTx :: Word32
   , keyDeposit :: Integer
   , poolDeposit :: Integer
   , drepDeposit :: Integer
@@ -152,6 +153,7 @@ pparams p =
     & ppProtocolVersionL .~ ProtVer (maybe (error "major") id (mkVersion (major p))) 0
     & ppMaxBlockExUnitsL .~ ExUnits (fst (maxBlockExUnits p)) (snd (maxBlockExUnits p))
     & ppMaxRefScriptSizePerBlockL .~ maxRefScriptSizePerBlock p
+    & ppMaxRefScriptSizePerTxL .~ maxRefScriptSizePerTx p
     & ppKeyDepositL .~ Coin (keyDeposit p)
     & ppPoolDepositL .~ Coin (poolDeposit p)
     & ppDRepDepositL .~ Coin (drepDeposit p)

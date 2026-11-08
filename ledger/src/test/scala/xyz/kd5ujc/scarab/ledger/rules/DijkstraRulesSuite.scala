@@ -79,7 +79,7 @@ class DijkstraRulesSuite extends FunSuite:
     val issuer = DijkstraBbody.issuer(block).getOrElse(fail("issuer"))
     Sts(DijkstraBbody)(
       globals,
-      BbodyEnv(TestLedger.env, params, Coin(0)),
+      BbodyEnv(TestLedger.env.copy(slot = block.header.slot, epoch = 1), params, Coin(0)),
       from,
       DijkstraBbody.Signal(block, issuer)
     )

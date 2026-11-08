@@ -53,6 +53,7 @@ PARAMS = {
     "refScriptCostStride": 25600,
     "refScriptCostMultiplier": [6, 5],
     "prices": [[577, 10000], [721, 10000000]],
+    "maxRefScriptSizePerTx": 204800,
 }
 
 # The devnet transaction's input: the Shelley genesis's initial funds of `607be6…` (its
@@ -171,6 +172,16 @@ def generate():
     tx_block = bytes.fromhex(dict(chain)[DEVNET_TX_BLOCK])
     case(f"bbody/devnet-{DEVNET_TX_BLOCK}-genesis-utxo", "bbody", block=tx_block.hex(), utxo=genesis_utxo())
     body, wits, aux, flag = devnet_tx(tx_block)
+    # the block with its transaction flagged phase-2-invalid (`f4` for `f5`, the last item of the
+    # transaction), and the header's body hash the Blake2b-256 of the body so changed
+    old_body = block_body(tx_block)
+    assert old_body.count(arr(body, wits, aux, flag)) == 1 and flag == b"\xf5"
+    new_body = old_body.replace(arr(body, wits, aux, flag), arr(body, wits, aux, b"\xf4"))
+    old_hash = bytes.fromhex(declared_body_hash(tx_block))
+    assert old_hash == hashlib.blake2b(old_body, digest_size=32).digest()
+    flipped = tx_block.replace(old_body, new_body).replace(
+        old_hash, hashlib.blake2b(new_body, digest_size=32).digest())
+    case(f"bbody/devnet-{DEVNET_TX_BLOCK}-invalid-flag", "bbody", block=flipped.hex(), utxo=genesis_utxo())
     tx = arr(body, wits, aux, flag)
     utxow = {
         "devnet": ({}, tx, genesis_utxo()),
@@ -183,6 +194,34 @@ def generate():
         "invalid-flag": ({}, arr(body, wits, aux, b"\xf4"), genesis_utxo()),
         "max-tx-ex-units-zero": ({"maxTxExUnits": [0, 0]}, tx, genesis_utxo()),
     }
+    # A transaction spending an input locked by a native script (an enterprise script address),
+    # its fee in a fixed-width head, so its size does not depend on the scripts tried.
+    def locked(script):
+        return bytes([0x70]) + hashlib.blake2b(b"\x00" + script, digest_size=28).digest()
+
+    def script_tx(lock, provided, coin=10_000_000, fee=1_000_000):
+        txin = arr(bstr(bytes([0x11]) * 32), uint(0))
+        out = arr(bstr(GENESIS_ADDRESS), uint(coin - fee))
+        body = cmap([(uint(0), tagged_set([txin])), (uint(1), arr(out)),
+                     (uint(2), b"\x1a" + fee.to_bytes(4, "big"))])
+        wits = cmap([(uint(1), tagged_set(provided))]) if provided else cmap([])
+        utxo = [[txin.hex(), arr(bstr(locked(lock)), uint(coin)).hex()]]
+        return arr(body, wits, NULL, b"\xf5"), utxo
+
+    all_of = arr(uint(1), arr())
+    any_of = arr(uint(2), arr())
+    signature = arr(uint(0), bstr(h28(7)))
+    starting = arr(uint(4), uint(1000))
+    for name, (lock, provided) in {
+        "native-all-of": (all_of, [all_of]),
+        "native-missing": (all_of, []),
+        "native-extraneous": (all_of, [all_of, any_of]),
+        "native-unsigned": (signature, [signature]),
+        "native-time-start": (starting, [starting]),
+    }.items():
+        t, u = script_tx(lock, provided)
+        utxow[name] = ({}, t, u)
+
     for name, (params, t, u) in utxow.items():
         case(f"utxow/{name}", "utxow", params=params, tx=t.hex(), utxo=u, slot=DEVNET_TX_SLOT)
 
@@ -304,6 +343,15 @@ def devnet_tx(block):
     _, _, i = _item(block, i)        # [txs, leios_cert, peras_cert]
     (tx,) = _items(block, i)
     return _items(tx, 0)
+
+
+def block_body(block):
+    """The body of a `[8, [header, body]]` block, as its bytes."""
+    _, _, i = _item(block, 0)
+    _, _, i = _item(block, i)
+    _, _, i = _item(block, i)
+    i = _skip(block, i)
+    return block[i:_skip(block, i)]
 
 
 def declared_body_hash(block):

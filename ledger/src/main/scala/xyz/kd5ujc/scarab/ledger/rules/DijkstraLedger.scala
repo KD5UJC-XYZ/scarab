@@ -190,6 +190,10 @@ final case class DijkstraBbodyState(ledger: DijkstraLedger, blocksMade: BlocksMa
   *
   * then the block counted for its issuer (`incrBlocks`; the decentralisation parameter is zero from
   * Babbage, so no slot is an overlay slot).
+  *
+  * The caller's `env.ctx` is the context of the block's transactions, as [[EraBlock]] builds it for
+  * Conway: its slot the header's and its epoch that slot's (`LedgersEnv bhSlot curEpoch`,
+  * `Bbody.hs:388-393`).
   */
 object DijkstraBbody
     extends Sts[BbodyEnv, DijkstraBbodyState, DijkstraBbody.Signal, DijkstraBlockFailure]:
