@@ -28,8 +28,9 @@
    reachable and where the cache lives; its output names local paths, so it stays on the terminal.
 4. Fill in the [pull request template](../../.github/pull_request_template.md): the level, each gate
    with its result on the head it ran on, and the deviations from the plan. Every gap the body names is
-   tracked by an issue or a roadmap item ([definition of done](../process.md#definition-of-done)); file a
-   new issue with `python3 scripts/file_issue.py` (`--help` lists its required options) or an issue form.
+   tracked by an issue or a roadmap item ([definition of done](../process.md#definition-of-done)); file it
+   with `python3 scripts/file_issue.py` (`--help` lists its required options), which adds a P2 gap to its
+   parent issue's checklist with `--parent N`, or with an issue form.
 5. Wait for CI on that same head. Then `gh pr ready <number>`.
 6. After any later rebase or merge of the base, go back to step 2: the level's gates, including its
    scenarios, and preflight run again on the new head, and every factual claim the change makes is
