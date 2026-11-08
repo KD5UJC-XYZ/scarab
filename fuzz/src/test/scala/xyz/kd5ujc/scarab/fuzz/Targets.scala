@@ -852,10 +852,93 @@ object Targets:
 
   // --- node: blocks, headers, transactions ---------------------------------------------------------
 
-  // Dijkstra's blocks and transactions are refused by these decoders until its codecs land (#54);
-  // the Leios targets cover its raw forms
+  // Dijkstra's transactions are not of the shape these decoders read: the `dijkstra-*` targets cover
+  // them, and its header is the Leios header
   private val shelleyEras: Vector[Era] =
     Era.values.toVector.filter(e => e != Era.Byron && e != Era.Dijkstra)
+
+  /** The decoding entry points of Dijkstra (#54): the block of tag 8 through the node's block
+    * decoder, the header by its era, the transaction in its mempool and block forms, and its body
+    * at each level and its witness set, each seeded with the Conway to Dijkstra devnet chain and
+    * the Leios testnet's blocks and sampled from the pinned `dijkstra.cddl`.
+    */
+  private val dijkstra: Vector[Target] =
+    import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraLevel, DijkstraTx, DijkstraWitnesses}
+    def tree(name: String)(read: xyz.kd5ujc.scarab.codec.Node => Boolean): Input => Unit =
+      probe(name)(b => Cbor.decode(b).foreach(n => seen(name, read(n))))
+    Vector(
+      Target(
+        "dijkstra-block",
+        () => Corpus.dijkstraBlocks ++ Corpus.sampled("dijkstra:block", 20) ++ Corpus.tricky,
+        probe("dijkstra-block") { b =>
+          val decoded = Block.decodeShelley(b)
+          seen("dijkstra-block", decoded.isRight)
+          decoded.foreach {
+            case d: Block.Dijkstra =>
+              req(d.header.era == Era.Dijkstra, "a Dijkstra block's header is of another era")
+              req(
+                LeiosBlock.decode(b) == Right(d.block),
+                "the node's block decoder and the Leios block decoder disagree"
+              )
+            case _ => ()
+          }
+        }
+      ),
+      Target(
+        "dijkstra-header",
+        () => Corpus.dijkstraHeaders ++ Corpus.sampled("dijkstra:header", 40) ++ Corpus.tricky,
+        probe("dijkstra-header") { b =>
+          val decoded = Header.fromRaw(Era.Dijkstra, b)
+          seen("dijkstra-header", decoded.isRight)
+          decoded.foreach { h =>
+            req(h.raw == b, "the header does not keep its original bytes")
+            req(h.hash == Blake2b.hash256.hash(b), "the header hash is not over the input")
+            req(
+              LeiosHeader.decode(b).map(_.dijkstraView) == decoded,
+              "the header by its era is not the Leios header"
+            )
+          }
+        }
+      ),
+      Target(
+        "dijkstra-tx-submitted",
+        () =>
+          Corpus.dijkstraSubmitted ++ Corpus
+            .sampled("dijkstra:mempool_transaction", 40) ++ Corpus.tricky,
+        probe("dijkstra-tx-submitted") { b =>
+          val decoded = DijkstraTx.fromSubmission(b)
+          seen("dijkstra-tx-submitted", decoded.isRight)
+          decoded.foreach(t => req(t.isValid, "a submitted transaction is not valid"))
+        }
+      ),
+      Target(
+        "dijkstra-tx-in-block",
+        () =>
+          Corpus.dijkstraInBlock ++ Corpus
+            .sampled("dijkstra:block_transaction", 40) ++ Corpus.tricky,
+        tree("dijkstra-tx-in-block")(DijkstraTx.inBlock(_).isRight)
+      ),
+      Target(
+        "dijkstra-tx-body",
+        () =>
+          Corpus.dijkstraParts(0) ++ Corpus.sampled("dijkstra:transaction_body", 60) ++
+            Corpus.tricky,
+        tree("dijkstra-tx-body") { n =>
+          val top = DijkstraTx.body(n, DijkstraLevel.Top)
+          val sub = DijkstraTx.body(n, DijkstraLevel.Sub)
+          top.foreach(t => req(t.fee.isDefined, "a top-level body has no fee"))
+          sub.foreach(t => req(t.fee.isEmpty, "a sub-transaction's body has a fee"))
+          top.isRight || sub.isRight
+        }
+      ),
+      Target(
+        "dijkstra-tx-witnesses",
+        () =>
+          Corpus.dijkstraParts(1) ++ Corpus.sampled("dijkstra:transaction_witness_set", 60) ++
+            Corpus.tricky,
+        tree("dijkstra-tx-witnesses")(DijkstraWitnesses.decode(_).isRight)
+      )
+    )
 
   private def eraSeeds(
       fixtures: Era => Vector[Array[Byte]],
@@ -2098,7 +2181,7 @@ object Targets:
     )
 
   val all: Vector[Target] =
-    network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++ sclsFraming ++
+    network ++ node ++ dijkstra ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++ sclsFraming ++
       Vector(
         sclsValues,
         genesisInjections,

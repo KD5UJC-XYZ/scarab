@@ -285,7 +285,7 @@ class ChainSyncSuite extends munit.FunSuite:
     // Cases in order: unknown era, wrong tag, truncated payload, wrong arity, indefinite array,
     // indefinite bytes, missing Byron wrapper, unknown Byron subtag and trailing bytes.
     Vector(
-      "8207d8184100",
+      "8208d8184100",
       "8206d8174100",
       "8206d81800",
       "8306d818410000",

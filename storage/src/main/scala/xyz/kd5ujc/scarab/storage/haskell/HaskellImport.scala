@@ -11,6 +11,7 @@ import fs2.io.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Block, ChainError, NetworkIdentity, StorageError}
 import xyz.kd5ujc.scarab.consensus.BlockRef
+import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
 import xyz.kd5ujc.scarab.storage.{
   DatabaseOwnership,
   ChainStorage,
@@ -36,6 +37,11 @@ enum HaskellImportError:
   /** A block that does not decode. */
   case Undecodable(slot: Long, cause: ChainError)
 
+  /** A block of an era whose rules this build does not have yet: it decodes, but a node replaying
+    * it would refuse it, so it is not stored.
+    */
+  case EraNotYet(slot: Long, part: DijkstraNotYet)
+
   /** The block's own header hash differs from the hash the index lists. */
   case HeaderHashDisagrees(slot: Long, indexed: String, computed: String)
 
@@ -59,6 +65,7 @@ enum HaskellImportError:
     case MagicMismatch(f, e) =>
       s"the Haskell database was written for protocol magic $f, this node is configured for $e"
     case Undecodable(s, r) => s"block at slot $s does not decode: ${r.message}"
+    case EraNotYet(s, p)   => s"block at slot $s: ${p.message}"
     case HeaderHashDisagrees(s, i, c) =>
       s"block at slot $s: the index lists hash $i, the block's header hashes to $c"
     case SlotDisagrees(i, b) => s"the index places a block at slot $i, its header says $b"
@@ -152,6 +159,9 @@ object HaskellImport:
     def decode(b: HaskellBlock): F[(Block, BlockRef)] =
       Block.decode(b.bytes, config.byronEpochSlots) match
         case Left(e) => fail(HaskellImportError.Undecodable(b.slot, e))
+        // the ledger rules refuse a Dijkstra block (`MirrorRules`), so the import does not store one
+        case Right(_: Block.Dijkstra) =>
+          fail(HaskellImportError.EraNotYet(b.slot, DijkstraNotYet.Rules))
         case Right(block) =>
           val h = block.header
           for

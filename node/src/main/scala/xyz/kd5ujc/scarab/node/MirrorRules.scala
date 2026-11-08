@@ -38,6 +38,7 @@ import xyz.kd5ujc.scarab.ledger.state.{EpochNo, ShelleyBasedEra, VocabError}
 import xyz.kd5ujc.scarab.node.read.MirrorEraRead
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.storage.UtxoStore
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
 
 /** Full block validation on the era-indexed state: the rules of [[NodeRules]] with the Haskell
   * ledger state in place of the node's flat one (design `ledger-mirror-step2.md` §4, J2.8).
@@ -346,6 +347,9 @@ object MirrorRules:
       )
       block <- decoded match
         case b: Block.Shelley if b.era == announced.era => Right(b)
+        // a Dijkstra block decodes, and no ledger rule of Dijkstra applies it yet
+        case _: Block.Dijkstra if announced.era == Era.Dijkstra =>
+          Left(BlockFailure.NotYet(DijkstraNotYet.Rules))
         case b => Left(BlockFailure.EraAnnounced(b.era, announced.era))
       _ <- Either.cond(
         block.header.hash == announced.hash,

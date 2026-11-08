@@ -9,17 +9,6 @@ import xyz.kd5ujc.scarab.codec.DomainError
   * that implements it.
   */
 enum DijkstraNotYet extends DomainError:
-  /** A node-to-node header of index 7 in the closed decoder of the eras the node follows
-    * ([[NtNHeader]]); [[HfcHeader]] keeps it as raw bytes. Block and header codecs.
-    */
-  case Header
-
-  /** A block of tag 8 read by the ledger's block decoder. Block and header codecs. */
-  case Block
-
-  /** A transaction, body or witness set read in Dijkstra. Codecs and rules. */
-  case Transaction
-
   /** A Dijkstra ledger state in the Haskell `state` file layout. Persisted formats and the
     * translation.
     */
@@ -36,15 +25,13 @@ enum DijkstraNotYet extends DomainError:
   case Genesis
 
   /** A ledger rule of Dijkstra whose reference differs from Conway's: EPOCH, SNAP, POOL and
-    * POOLREAP seat the Leios committee (cardano-ledger 9df9f98c `eras/dijkstra/impl/src/Cardano/
-    * Ledger/Dijkstra/Rules`). Ledger rules.
+    * POOLREAP seat the Leios committee, and BBODY, LEDGER and UTXOW read Dijkstra's block body and
+    * transactions (cardano-ledger 9df9f98c `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules`).
+    * A decoded Dijkstra block or transaction reaches no rule. Ledger rules.
     */
   case Rules
 
   def message: String = this match
-    case Header      => "a Dijkstra header is not decoded by this build"
-    case Block       => "a Dijkstra block is not decoded by this build"
-    case Transaction => "a Dijkstra transaction is not decoded by this build"
     case LedgerState => "a Dijkstra ledger state is not read or written by this build"
     case Translation => "the translation of a Conway ledger state into Dijkstra is not implemented"
     case Genesis     => "a chain cannot start in Dijkstra from its genesis in this build"

@@ -32,7 +32,6 @@ object NtNHeader:
       w.head(4, 2)
       w.head(0, value.era.index)
       (value.era, value.byron) match
-        case (Era.Dijkstra, _) => bad(ProtocolError.NotYet(DijkstraNotYet.Header))
         case (Era.Byron, Some(info)) =>
           w.head(4, 2)
           w.head(4, 2)
@@ -57,8 +56,6 @@ object NtNHeader:
           val r = new ChainSyncWire.Reader(bytes, Limits())
           if r.arrayLength() != 2 then bad(ProtocolError.ExpectedEraHeader)
           val era = Era.fromIndex(r.uint().value).getOrElse(bad(ProtocolError.UnknownEraIndex))
-          // the closed form is of the eras the node follows; a Dijkstra header is [[HfcHeader]]'s
-          if era == Era.Dijkstra then bad(ProtocolError.NotYet(DijkstraNotYet.Header))
           val header =
             if era == Era.Byron then
               if r.arrayLength() != 2 then bad(ProtocolError.ExpectedByronSubtagSizeHeader)
