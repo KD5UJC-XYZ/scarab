@@ -48,9 +48,13 @@ final case class VolatileChain[S](
     val connected = tipRef match
       case None    => header.prevHash == origin
       case Some(t) =>
-        // A boundary block repeats its predecessor's number; the block after it may share its slot.
-        val number = if header.isBoundary then t.blockNo else t.blockNo + 1
-        val later = header.slot > t.slot || (header.slot == t.slot && t.boundary)
+        // A boundary block after a main block repeats its number (`expectedNextBlockNo`), and a main
+        // block after a boundary block may share its slot (`minimumNextSlotNo`); a boundary block
+        // after a boundary block has the next number and a later slot, as any other block does
+        // (ouroboros-consensus 82ecba32 `Byron/Ledger/HeaderValidation.hs:42-52`, #818).
+        val number = if header.isBoundary && !t.boundary then t.blockNo else t.blockNo + 1
+        val later =
+          header.slot > t.slot || (header.slot == t.slot && t.boundary && !header.isBoundary)
         header.prevHash.contains(t.hash) && header.blockNo == number && later
     if !connected then Left(ChainError.NotConnected(header.point, tip))
     else
