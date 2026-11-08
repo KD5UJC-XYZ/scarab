@@ -126,6 +126,22 @@ object UtxoStore:
       if wanted.isEmpty then Sync[F].pure(utxo) else s.read(wanted).map(utxo.withResident)
     }
 
+  /** `utxo` with every stored output that the translation into Dijkstra encodes anew (a native
+    * reference script, [[xyz.kd5ujc.scarab.ledger.rules.Translate.reencodedInDijkstra]]) and that
+    * `utxo` does not decide fetched into its read set, in one pass over the store. Applied to the
+    * state before the tick that enters Dijkstra, it lets
+    * [[xyz.kd5ujc.scarab.ledger.rules.Translate.upgradeUtxo]] upgrade every output of the set, as
+    * the reference's default backend does on the first block of the era (ouroboros-consensus
+    * 2416493b `upgradeTables`, `HardFork/Combinator/Ledger.hs:1250-1287`); the upgrades are changes
+    * of that block, and replace the store's copies when it becomes immutable.
+    */
+  def enteringDijkstra[F[_]: Sync](store: UtxoReadView[F], utxo: Utxo)(using
+      cats.mtl.Raise[F, StorageError]
+  ): F[Utxo] =
+    store
+      .select(xyz.kd5ujc.scarab.ledger.rules.Translate.reencodedInDijkstra)
+      .map(stored => utxo.withResident(stored -- utxo.diff.keys -- utxo.resident.keys))
+
   /** The complete set as of `utxo`: the backing store with the state's changes on top. */
   def materialize[F[_]: Sync](store: UtxoReadView[F], utxo: Utxo)(using
       cats.mtl.Raise[F, StorageError]
