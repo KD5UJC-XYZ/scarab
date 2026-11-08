@@ -99,9 +99,12 @@ object ByronRules:
     val header = block.header
     val genesis = config.ledger.genesis
     val expectedPrev = state.tip.map(_.hash).getOrElse(genesis.hash)
+    // Only a main block's magic is compared (`updateBlock`, cardano-ledger f649f975
+    // `Block/Validation.hs:520-525`): a boundary header drops its magic as it is read
+    // (`dropInt32`, `Block/Header.hs:617`) and `updateChainBoundary` (`:271-297`) has none to compare.
     for
       _ <- Either.cond(
-        header.protocolMagic == config.ledger.magicId,
+        header.boundary || header.protocolMagic == config.ledger.magicId,
         (),
         ByronChainError.ProtocolMagic(header.protocolMagic, genesis.protocolMagic)
       )
