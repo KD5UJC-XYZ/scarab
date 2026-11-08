@@ -7,7 +7,7 @@ import cats.{Eq, Show}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.ledger.rules.TickFailure
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
 
 /** The rule family a block was refused by. The names are those the JSON log has always carried in
   * its `rule` field (the devnet tools and the remote runs parse them), so [[name]] is fixed.
@@ -131,6 +131,9 @@ enum BlockFailure:
     */
   case Mirror[E <: DomainError](cause: E) extends BlockFailure
 
+  /** A Dijkstra block, which decodes, but which no ledger rule of this build applies (#54). */
+  case NotYet(part: DijkstraNotYet)
+
   /** The rule family, as the log names it. */
   def rule: BlockRule = this match
     case HeaderDiffers | Transport(_) | BodyCommitment | EraAnnounced(_, _) |
@@ -144,7 +147,7 @@ enum BlockFailure:
     case Praos(_)           => BlockRule.Praos
     case Unverifiable(r, _) => r
     case Lite(_) | Handover(_) | SupplyInvariant(_, _, _) | RefScriptsTooLarge(_) |
-        BlockExUnitsTooBig(_, _) | Tx(_) | Tick(_) | Mirror(_) =>
+        BlockExUnitsTooBig(_, _) | Tx(_) | Tick(_) | Mirror(_) | NotYet(_) =>
       BlockRule.Ledger
 
   /** The reason, as the log renders it (the text of the old `(rule, reason)` pair, unchanged). */
@@ -180,6 +183,7 @@ enum BlockFailure:
     case Tx(failure)   => failure.message
     case Tick(failure) => s"tick refused: ${Show[TickFailure].show(failure)}"
     case Mirror(text)  => s"the state cannot be held: $text"
+    case NotYet(part)  => part.message
 
 object BlockFailure:
   extension (failure: BlockFailure)

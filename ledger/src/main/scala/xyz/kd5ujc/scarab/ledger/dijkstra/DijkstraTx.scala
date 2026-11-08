@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.dijkstra
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{Credential, DecodeField, LedgerDecodeError, RewardAccount}
 
@@ -98,6 +98,50 @@ object DijkstraTx:
           V12.bool(xs(3), DecodeField.IsValid)
         ).mapN(DijkstraTx(n.original, _, _, _, _))
       )
+
+  /** A transaction as a client or a peer submits it, the CBOR of `raw` read whole with no budget of
+    * items, string bytes or nesting, as [[xyz.kd5ujc.scarab.ledger.Tx.fromEnvelope]] reads one of
+    * an earlier era ([[submitted]]).
+    */
+  def fromSubmission(raw: Bytes): Result[DijkstraTx] =
+    Cbor
+      .decode(raw, Cbor.Limits.Unbounded)
+      .leftMap(LedgerDecodeError.Syntax(_))
+      .flatMap(submitted)
+
+  /** `decodeDijkstraTopTx` (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:152-169`,
+    * cardano-ledger 9df9f98c), the mempool form: `decodeRecordNamed "DijkstraTx"` of the body, the
+    * witness set and the auxiliary data or null, three items, or with a boolean third item, which
+    * the reference peeks at, four, that boolean then the validity flag before the auxiliary data. A
+    * flag of `false` is refused ([[LedgerDecodeError.InvalidFlagSubmitted]]); a transaction read
+    * here is valid. The order differs from the block form ([[inBlock]]), whose flag comes last.
+    */
+  def submitted(n: Node): Result[DijkstraTx] =
+    V12.list(n, DecodeField.Transaction).flatMap { xs =>
+      val flagged = xs
+        .lift(2)
+        .exists(_.value match
+          case Value.Bool(_) => true
+          case _             => false)
+      val size = if flagged then 4 else 3
+      for
+        _ <- Either.cond(
+          xs.size == size,
+          (),
+          LedgerDecodeError.ArrayLength(DecodeField.Transaction, size, xs.size)
+        )
+        _ <- Either.cond(
+          !flagged || xs(2).value == Value.Bool(true),
+          (),
+          LedgerDecodeError.InvalidFlagSubmitted
+        )
+        tx <- (
+          body(xs(0), DijkstraLevel.Top),
+          DijkstraWitnesses.decode(xs(1)),
+          V12.nullable(xs(size - 1))(DijkstraAuxData.decode)
+        ).mapN(DijkstraTx(n.original, _, _, _, true))
+      yield tx
+    }
 
   /** `DijkstraSubTx` (`Tx.hs:184-193`): `decodeRecordNamed "DijkstraSubTx" (const 3)` of a body of
     * the sub-transaction level, a witness set and auxiliary data or null.

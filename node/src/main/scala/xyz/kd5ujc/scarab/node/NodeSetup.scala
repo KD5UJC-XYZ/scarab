@@ -43,6 +43,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ProviderDefect
 }
 import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraGenesis
 import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold
 
 /** Everything the follower derives from a genesis directory before it sees a block: the era
@@ -344,8 +345,13 @@ object NodeSetup:
       _ <- GenesisSchema.shelley(files.shelley)
       _ <- GenesisSchema.alonzo(files.alonzo)
       _ <- GenesisSchema.conway(files.conway)
+      // the Dijkstra genesis, read after the others as the reference reads it (cardano-node
+      // b004fe0c `Protocol/Cardano.hs:137-144`); its hash was checked with theirs
+      dijkstra <- names.dijkstra.traverse(name =>
+        required("Dijkstra", name).flatMap(json(name, _)).flatMap(DijkstraGenesis.read)
+      )
       injections <- GenesisInjections.read(files)
-      globals <- GenesisState.globals(files, genesis)
+      globals <- GenesisState.globals(files, genesis).map(_.copy(dijkstra = dijkstra))
       // Dijkstra's trigger is carried as the reference carries it (`TestDijkstraHardForkAtEpoch`,
       // read with `ExperimentalHardForksEnabled`), and never fires below a maximum major protocol
       // version of 12 (`HardForkConfig.trigger`)

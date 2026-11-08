@@ -27,6 +27,17 @@ object Block:
       bodyHash: Bytes
   ) extends Block
 
+  /** A Dijkstra block, tag 8: the Leios header and the body `[transactions, leios_cert / nil,
+    * peras_cert / nil]` of the build the Leios testnet runs ([[LeiosBlock]]), each transaction
+    * decoded whole ([[dijkstra.DijkstraTx]]). The header is its [[LeiosHeader.dijkstraView]]. No
+    * ledger rule of Dijkstra consumes it yet (#54).
+    */
+  final case class Dijkstra(block: LeiosBlock) extends Block:
+    def era: Era = Era.Dijkstra
+    def header: Header.Shelley = block.header.dijkstraView
+    def bodySize: Long = block.bodySize
+    def bodyHash: Bytes = block.bodyHash
+
   /** Byron main or epoch-boundary block: the header is decoded, the body stays raw (the ledger
     * decodes it, see `ByronBody`). `size` is the block's encoded size.
     */
@@ -86,18 +97,15 @@ object Block:
       era <- Era
         .fromBlockTag(tag)
         .toRight(fail(LedgerDecodeError.UnknownTag(DecodeField.BlockEra, tag)))
-      // a Dijkstra block (`[txs, leios_cert / nil, peras_cert / nil]` body) is [[LeiosBlock]]'s
-      _ <- Either.cond(
-        era != Era.Dijkstra,
-        (),
-        fail(LedgerDecodeError.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Block))
-      )
-      block <-
-        if era == Era.Byron then
+      block <- era match
+        case Era.Byron =>
           byronEpochSlots
             .toRight(fail(LedgerDecodeError.ByronBlockUnexpected))
             .flatMap(byron(tag == 0, outer(1), _))
-        else shelley(era, outer(1))
+        // `[header, [txs, leios_cert / nil, peras_cert / nil]]`, read as the Leios testnet's build
+        // reads it: the envelope again (a definite list), then the block at decoder version 12
+        case Era.Dijkstra => LeiosBlock.read(root).map(Dijkstra(_))
+        case _            => shelley(era, outer(1))
     yield block
 
   private def byron(
