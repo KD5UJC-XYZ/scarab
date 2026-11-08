@@ -2,7 +2,8 @@
 package xyz.kd5ujc.scarab.node.log
 
 import java.nio.file.{Files, Path}
-import cats.effect.{IO, IOApp}
+import scala.jdk.CollectionConverters.*
+import cats.effect.{IO, IOApp, Resource}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent}
@@ -12,15 +13,16 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
   * against a file sink that admits every line (`file`), and against the same sink with every line
   * silenced (`silenced`), where the route filter drops the line before the lock, the clock, the
   * render and the write. The difference between `writers = 1` and more writers includes the
-  * contention the lock causes, the fiber dispatch, and the writers sharing cores for the render;
-  * what is lost between `file` and `silenced` is the render, the write, the lock and the clock
-  * together, which this harness does not separate.
+  * contention the writers cause on the one lock, the fiber dispatch, and the writers sharing cores
+  * for the render; what is lost between `file` and `silenced` is the render, the write, the lock
+  * and the clock together, which this harness does not separate.
   *
   * Not part of `check`: run it with `bash scripts/sbtw "node/Test/runMain
-  * xyz.kd5ujc.scarab.node.log.LogRouterBenchMain"`. It prints a `METRIC` line per configuration and
-  * writer count, and a `DIGEST` line per configuration with the bytes that reached the file, so a
-  * reader can see the work happened rather than trust the timing. The figures are recorded in
-  * `docs/performance/logging-and-the-router.md`.
+  * xyz.kd5ujc.scarab.node.log.LogRouterBenchMain"`. It prints a `HOST` line with the processors the
+  * JVM sees, a `METRIC` line per configuration and writer count, and a `DIGEST` line per
+  * configuration with the bytes that reached the file, so a reader can see the work happened rather
+  * than trust the timing. The temporary directory it writes to is removed when it ends. The figures
+  * are recorded in `docs/performance/logging-and-the-router.md`.
   */
 object LogRouterBenchMain extends IOApp.Simple:
   /** The lines one round writes, all writers together. */
@@ -32,7 +34,7 @@ object LogRouterBenchMain extends IOApp.Simple:
   /** A real line: the per-block `Extended` event, through the router's own renderer. The block and
     * the tip are a plain thirty-two-byte hash and a slot, so the harness reads no fixture.
     */
-  private val hash: Bytes = Bytes.fromHex("ab" * 32).fold(e => sys.error(e.toString), identity)
+  private val hash: Bytes = Bytes.fromArray(Array.fill(32)(0xab.toByte))
 
   private val block: BlockRef = BlockRef(BigInt(4200), hash, BigInt(17))
 
@@ -91,16 +93,26 @@ object LogRouterBenchMain extends IOApp.Simple:
       ()
     }
 
+  /** The directory the sinks write to, and its files, removed on release. */
+  private val scratch: Resource[IO, Path] =
+    Resource.make(IO.blocking(Files.createTempDirectory("scarab-logrouter-bench"))) { dir =>
+      IO.blocking(Files.list(dir))
+        .bracket(files => IO.blocking(files.iterator.asScala.foreach(Files.deleteIfExists)))(
+          files => IO.blocking(files.close())
+        ) *> IO.blocking(Files.deleteIfExists(dir)).void
+    }
+
   def run: IO[Unit] =
-    IO.blocking(Files.createTempDirectory("scarab-logrouter-bench")).flatMap { dir =>
-      val configs = List(
-        "file" -> dir.resolve("file.jsonl"),
-        "silenced" -> dir.resolve("silenced.jsonl")
-      )
-      configs.traverse_ { (name, file) =>
-        // each round starts from an empty file, so a configuration's rounds are independent
-        val s = settings(file, silenced = name == "silenced")
-        writers.traverse_(w => measure(name, s, w, file)) *>
-          bytes(file).map(n => println(s"DIGEST config=$name bytes=$n"))
-      }
+    IO(println(s"HOST processors=${Runtime.getRuntime.availableProcessors}")) *> scratch.use {
+      dir =>
+        val configs = List(
+          "file" -> dir.resolve("file.jsonl"),
+          "silenced" -> dir.resolve("silenced.jsonl")
+        )
+        configs.traverse_ { (name, file) =>
+          // each round starts from an empty file, so a configuration's rounds are independent
+          val s = settings(file, silenced = name == "silenced")
+          writers.traverse_(w => measure(name, s, w, file)) *>
+            bytes(file).map(n => println(s"DIGEST config=$name bytes=$n"))
+        }
     }
