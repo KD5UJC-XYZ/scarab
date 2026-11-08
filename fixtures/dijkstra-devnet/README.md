@@ -54,10 +54,12 @@ a later block than the first Dijkstra block above; `firstDijkstraBlock` is taken
 | `headers.tsv` | The original header bytes of the last three Conway blocks and every Dijkstra block, as above with the header in the last column. Each header is also in its block. |
 | `transaction.json` | The transaction as `cardano-cli dijkstra transaction sign` wrote it: a text envelope of type `Tx DijkstraEra` whose CBOR is the 3-element mempool form. In block 37 the same transaction is the 4-element block form, `is_valid` last (cardano-ledger `9df9f98c` `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:152-182`). Its id is in `manifest.json`. |
 | `manifest.json` | Image, binary versions, blocks per era, the first Dijkstra block, the transaction's id, block and slot, the plan, the protocol major per epoch, the cluster parameters and the SHA-256 of `blocks.tsv`. |
-| `genesis/*.json` | The exact genesis files and node configuration the nodes read. `shelley-genesis.json` must stay byte-identical: the initial Praos nonce is its Blake2b-256 hash. |
+| `genesis/*.json` | The exact genesis files and node configuration the nodes read. `shelley-genesis.json` must stay byte-identical: the initial Praos nonce is its Blake2b-256 hash. `dijkstra-genesis.json` is also a base of the Dijkstra genesis oracle (`fixtures/reference/dijkstra-genesis`, read by `DijkstraGenesisSuite`). |
 
 `scripts/tests/test_devnet_dijkstra.py` checks that the files are what the capture code writes
 from the blocks, that the chain is contiguous, and the transaction's place and forms.
+`DijkstraCodecsSuite` (ledger) reads every block, header and the transaction with the node's
+decoders, and the `dijkstra-*` fuzz targets take them as seeds.
 
 ## Cross-check with the pinned ledger
 

@@ -178,6 +178,14 @@ object GenesisCostModels:
       values <- parseAsArray(lenient = false, CostModelLanguage.PlutusV3, array)
     yield values
 
+  /** The PlutusV4 cost model of a Dijkstra genesis file, the value of its `plutusV4CostModel`
+    * (`parseCostModelAsArray False PlutusV4`, cardano-ledger 9df9f98c `Dijkstra/PParams.hs:450`).
+    */
+  def plutusV4(value: Json): Either[CostModelProblem, Vector[Long]] =
+    value.asArray
+      .toRight(CostModelProblem.NotArray(value))
+      .flatMap(parseAsArray(lenient = false, CostModelLanguage.PlutusV4, _))
+
   /** `parseCostModels` (`CostModels.hs` lines 141-165).
     *
     * @param lenient

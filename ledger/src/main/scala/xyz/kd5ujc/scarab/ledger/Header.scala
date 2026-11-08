@@ -235,21 +235,19 @@ object Header:
     * A VRF certificate is a definite list in both (`enforceSize`, `Decoding/DecCBOR.hs:568-573`).
     * The body size is a `Word32`, the protocol version a `Version` (a `Word32` up to
     * [[DecoderVersion.MaxVersion]], `decodeVersion`, `Decoding/Decoder.hs:462-463`) and a `Word32`.
-    * The hash is over `raw`.
+    * The hash is over `raw`. A Dijkstra header is the Leios header of the build the Leios testnet
+    * runs, read by [[LeiosHeader.decode]] (ouroboros-consensus 2416493b: `ShelleyProtocolHeader
+    * (Praos2 c) = Leios.Header c`, `Ouroboros/Consensus/Protocol/Praos2.hs:57`).
     */
   def fromRaw(era: Era, raw: Bytes): Either[ChainError, Header.Shelley] =
-    for
-      _ <- Either.cond(era != Era.Byron, (), fail(LedgerDecodeError.ByronLayout))
-      // a Dijkstra header has twelve fields (Praos2), not Praos's ten
-      _ <- Either.cond(
-        era != Era.Dijkstra,
-        (),
-        fail(LedgerDecodeError.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Header))
-      )
-      header <- DetachedRecords.read(raw, headerLimits, DetachedRecords.Shapes.header(era))(e =>
-        fail(LedgerDecodeError.Syntax(e))
-      )(read(era, raw, _))
-    yield header
+    era match
+      case Era.Byron => Left(fail(LedgerDecodeError.ByronLayout))
+      // the twelve-field Leios header of Praos2, signed over its body's original bytes
+      case Era.Dijkstra => LeiosHeader.decode(raw).map(_.dijkstraView)
+      case _ =>
+        DetachedRecords.read(raw, headerLimits, DetachedRecords.Shapes.header(era))(e =>
+          fail(LedgerDecodeError.Syntax(e))
+        )(read(era, raw, _))
 
   private def read(era: Era, raw: Bytes, root: Node): Either[ChainError, Header.Shelley] =
     val strings = ByteStrings.of(DecoderVersion.of(era))

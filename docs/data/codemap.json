@@ -377,14 +377,15 @@
     {
       "module": "ledger",
       "path": "ledger/dijkstra",
-      "responsibility": "Decoding of a Leios block's Dijkstra transactions at decoder version 12, as the Leios testnet's build reads them; no ledger rule",
+      "responsibility": "Decoding of Dijkstra transactions at decoder version 12, in the block and the mempool form, as the Leios testnet's build reads them; no ledger rule",
       "entryPoints": [
         "DijkstraTx",
         "V12"
       ],
       "suites": [
         "LeiosTestnetBlockReferenceSuite",
-        "DijkstraTxDepthSuite"
+        "DijkstraTxDepthSuite",
+        "DijkstraCodecsSuite"
       ],
       "docs": [
         "docs/leios.md"

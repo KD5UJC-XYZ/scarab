@@ -6,6 +6,7 @@ import cats.syntax.show.*
 import xyz.kd5ujc.scarab.codec.DomainError
 import xyz.kd5ujc.scarab.codec.{Cbor, Value}
 import xyz.kd5ujc.scarab.ledger.byron.{ByronVersion, DelegationError}
+import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
 
 /** Failures while reading ledger values. A [[DecodeSite]] identifies the place; cases identify
   * failures.
@@ -84,7 +85,13 @@ enum LedgerDecodeError extends DomainError:
   case LeiosCertificate(cause: xyz.kd5ujc.scarab.crypto.bls.BlsError)
 
   /** A part of the Dijkstra era this build does not decode yet. */
-  case NotYet(part: xyz.kd5ujc.scarab.protocol.DijkstraNotYet)
+  case NotYet(part: DijkstraNotYet)
+
+  /** A submitted Dijkstra transaction whose validity flag is `false`: the flag may only be supplied
+    * as `true` outside a block (`decodeDijkstraTopTx`,
+    * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:152-169`, cardano-ledger 9df9f98c).
+    */
+  case InvalidFlagSubmitted
 
   /** A datum, a redeemer's data or an inline datum that is not Plutus `Data` as Plutus's
     * `decodeData` reads it (#721).
@@ -117,12 +124,16 @@ object LedgerDecodeError:
     */
   given Show[LedgerDecodeError] = Show.show(repr)
 
-  /** A transaction of Dijkstra is refused ([[NotYet]]); one of any other era is read on. */
+  /** The transaction types of Shelley to Conway ([[TxBody]], [[Witnesses]], [[Tx]]) are what the
+    * ledger rules consume, and no rule of Dijkstra exists yet: a Dijkstra transaction is decoded by
+    * [[dijkstra.DijkstraTx]], and read into those types it is refused ([[NotYet]] of the rules).
+    * One of any other era is read on.
+    */
   def implemented(era: xyz.kd5ujc.scarab.protocol.Era): Either[LedgerDecodeError, Unit] =
     Either.cond(
       era != xyz.kd5ujc.scarab.protocol.Era.Dijkstra,
       (),
-      NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Transaction)
+      NotYet(DijkstraNotYet.Rules)
     )
 
   private def repr(x: Any): String = x match

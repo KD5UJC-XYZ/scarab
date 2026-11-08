@@ -763,10 +763,18 @@ object Tx:
     * `decodeRecordNamed "AlonzoTx"` (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs:532-553`),
     * definite or indefinite: the third item is the validity flag when it is a boolean, the list
     * then holding four items, and otherwise the auxiliary data or null of a valid transaction of
-    * three (#699).
+    * three (#699). In Dijkstra it is `decodeDijkstraTopTx` ([[dijkstra.DijkstraTx.submitted]]).
     */
   def envelopeParts(node: Node, era: Era): Either[LedgerDecodeError, Block.Transaction] =
-    LedgerDecodeError.implemented(era) *> parts(node, era)
+    era match
+      // the mempool form of Dijkstra, decoded whole: the flag, if given, must be `true`
+      case Era.Dijkstra =>
+        dijkstra.DijkstraTx
+          .submitted(node)
+          .map(t =>
+            Block.Transaction(t.body.raw, t.witnesses.raw, t.auxiliary.map(_.raw), t.isValid)
+          )
+      case _ => parts(node, era)
 
   private def parts(node: Node, era: Era): Either[LedgerDecodeError, Block.Transaction] =
     def transaction(body: Node, witnesses: Node, aux: Node, valid: Boolean) =

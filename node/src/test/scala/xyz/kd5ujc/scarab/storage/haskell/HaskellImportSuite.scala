@@ -6,7 +6,7 @@ import fs2.io.file.Path
 import java.nio.file.{Files as JFiles, Path as JPath, StandardCopyOption}
 import java.security.MessageDigest
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.ChainSync
+import xyz.kd5ujc.scarab.protocol.{ChainSync, DijkstraNotYet}
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.storage.{FileImmutableStore, ImmutableStore}
@@ -329,6 +329,41 @@ class HaskellImportSuite extends CatsEffectSuite:
         assertEquals(out.map(_.raw), erasRaw)
         assert(out.head.ref.boundary)
         assertEquals(out.count(_.ref.boundary), blocks.count(_.isEbb))
+    }
+  }
+
+  test("a Dijkstra block is refused before it is stored: no build yet has its rules") {
+    val row = JFiles
+      .readAllLines(JPath.of("fixtures/dijkstra-devnet/blocks.tsv"))
+      .asScala
+      .drop(1)
+      .map(_.split('\t'))
+      .find(_(0) == "8")
+      .getOrElse(fail("the devnet fixture holds a Dijkstra block"))
+    val raw = Bytes.fromHex(row(4)).fold(e => fail(e.message), identity)
+    val h = Block
+      .decode(raw, erasSetup.geometry.byron.epochSlots)
+      .fold(e => fail(e.message), identity)
+      .header
+    val item = Item(
+      BlockPosition.Regular(h.slot.toLong),
+      raw.toArray,
+      h.hash,
+      raw.toArray.indexOfSlice(h.raw.toArray),
+      h.raw.size
+    )
+    tempDir.use { dir =>
+      val haskell = dir.toNioPath.resolve("haskell")
+      write(haskell, erasSetup.identity.magic, erasChunk, Vector(item))
+      val db = dir.toNioPath.resolve("scala-db")
+      attempt(HaskellImport.run[IO](config(haskell, db, erasSetup, erasChunk), _ => IO.unit))
+        .flatMap { r =>
+          assertEquals(
+            r.map(_ => ()),
+            Left(HaskellImportError.EraNotYet(h.slot.toLong, DijkstraNotYet.Rules))
+          )
+          stored(db).map(blocks => assertEquals(blocks, Vector.empty))
+        }
     }
   }
 
