@@ -32,15 +32,21 @@ final case class LegacyNetworkIdentity(
         .fold("none")(_.hex.take(16))}"
 
 /** Complete identity of a database: the protocol magic and the exact genesis inputs from which this
-  * node assembled its initial state. The raw Shelley/Alonzo/Conway file bytes are hashed with
-  * Blake2b-256; Byron keeps the existing canonical-genesis hash and chain-start semantics.
+  * node assembled its initial state. The raw Shelley/Alonzo/Conway/Dijkstra file bytes are hashed
+  * with Blake2b-256; Byron keeps the existing canonical-genesis hash and chain-start semantics.
+  *
+  * @param dijkstraGenesis
+  *   The Dijkstra genesis the configuration names (read with `ExperimentalHardForksEnabled`); none
+  *   when it names none, which is the whole binding of such a configuration, not a gap (format V9,
+  *   #824).
   */
 final case class NetworkIdentity(
     magic: Long,
     shelleyGenesis: Bytes,
     byronGenesis: Option[Bytes],
     alonzoGenesis: GenesisFileHash,
-    conwayGenesis: GenesisFileHash
+    conwayGenesis: GenesisFileHash,
+    dijkstraGenesis: Option[GenesisFileHash]
 ):
 
   def render: String = renderAs(FileKind.IdentityFile.current)
@@ -48,6 +54,48 @@ final case class NetworkIdentity(
   def renderAs(version: FormatVersion): String =
     if version.ordinal < FormatVersion.V6.ordinal then legacy.renderAs(version)
     else renderAs(version, IdentityProvenance.Fresh)
+
+  /** The text of format `version`: V9 with the Dijkstra binding, V6 without it (its fields up to
+    * Conway, [[beforeDijkstra]]).
+    */
+  def renderAs(version: FormatVersion, provenance: IdentityProvenance): String =
+    if version.ordinal < FormatVersion.V9.ordinal then beforeDijkstra.renderAs(version, provenance)
+    else
+      s"""${FileKind.IdentityFile.identifier(version)}
+         |magic $magic
+         |shelley-genesis ${shelleyGenesis.hex}
+         |byron-genesis ${byronGenesis.fold("none")(_.hex)}
+         |alonzo-genesis ${NetworkIdentity.renderGenesisHash(alonzoGenesis)}
+         |conway-genesis ${NetworkIdentity.renderGenesisHash(conwayGenesis)}
+         |dijkstra-genesis ${dijkstraGenesis.fold("none")(NetworkIdentity.renderGenesisHash)}
+         |provenance ${IdentityProvenance.render(provenance)}
+         |""".stripMargin
+
+  def legacy: LegacyNetworkIdentity = LegacyNetworkIdentity(magic, shelleyGenesis, byronGenesis)
+
+  /** The fields format V6 records. */
+  def beforeDijkstra: IdentityBeforeDijkstra =
+    IdentityBeforeDijkstra(magic, shelleyGenesis, byronGenesis, alonzoGenesis, conwayGenesis)
+
+  def describe: String =
+    s"${beforeDijkstra.describe}, dijkstra genesis ${dijkstraGenesis.fold("none")(NetworkIdentity.describeBinding)}"
+
+/** The fields of identity format V6: complete for the genesis inputs up to Conway, from before the
+  * Dijkstra genesis binding of V9. A V6 file gets that binding at its first open, from the
+  * configuration ([[bind]]): the configured Dijkstra genesis, whose file the node setup checks
+  * against `DijkstraGenesisHash`, is the trust the reference places in its configuration (OD-2 of
+  * #54, approved 2026-11-07).
+  */
+final case class IdentityBeforeDijkstra(
+    magic: Long,
+    shelleyGenesis: Bytes,
+    byronGenesis: Option[Bytes],
+    alonzoGenesis: GenesisFileHash,
+    conwayGenesis: GenesisFileHash
+):
+  /** The complete identity with the Dijkstra binding `dijkstra`. */
+  def bind(dijkstra: Option[GenesisFileHash]): NetworkIdentity =
+    NetworkIdentity(magic, shelleyGenesis, byronGenesis, alonzoGenesis, conwayGenesis, dijkstra)
 
   def renderAs(version: FormatVersion, provenance: IdentityProvenance): String =
     s"""${FileKind.IdentityFile.identifier(version)}
@@ -59,11 +107,9 @@ final case class NetworkIdentity(
        |provenance ${IdentityProvenance.render(provenance)}
        |""".stripMargin
 
-  def legacy: LegacyNetworkIdentity = LegacyNetworkIdentity(magic, shelleyGenesis, byronGenesis)
-
   def describe: String =
-    s"${legacy.describe}, alonzo genesis ${NetworkIdentity.describeBinding(alonzoGenesis)}, " +
-      s"conway genesis ${NetworkIdentity.describeBinding(conwayGenesis)}"
+    s"${LegacyNetworkIdentity(magic, shelleyGenesis, byronGenesis).describe}, alonzo genesis ${NetworkIdentity
+        .describeBinding(alonzoGenesis)}, conway genesis ${NetworkIdentity.describeBinding(conwayGenesis)}"
 
 object NetworkIdentity:
   def renderGenesisHash(binding: GenesisFileHash): String = s"file:${binding.hash.hex}"
@@ -80,7 +126,9 @@ object NetworkIdentity:
       .flatMap(hash)
       .map(GenesisFileHash(_))
 
-  /** Parse v1/v2 as incomplete legacy data; v6 is a complete identity with an adoption record. */
+  /** Parse v1/v2 as incomplete legacy data; v6 is complete up to Conway, with an adoption record
+    * and no Dijkstra binding; v9 is a complete identity with an adoption record.
+    */
   def parseVersioned(
       what: String,
       text: String
@@ -95,6 +143,10 @@ object NetworkIdentity:
           if version.ordinal < FormatVersion.V6.ordinal then
             parseLegacyBody(what, body)
               .map(legacy => version -> StoredNetworkIdentity.Legacy(version, legacy))
+          else if version.ordinal < FormatVersion.V9.ordinal then
+            parseBodyBeforeDijkstra(what, body).map((identity, provenance) =>
+              (version, StoredNetworkIdentity.BeforeDijkstra(identity, provenance))
+            )
           else
             parseCurrentBody(what, body).map((identity, provenance) =>
               (version, StoredNetworkIdentity.Complete(identity, provenance))
@@ -121,42 +173,74 @@ object NetworkIdentity:
           case _ => corrupt(StorageStructureError.UnexpectedIdentityLines)
       case _ => corrupt(StorageStructureError.UnexpectedIdentityLines)
 
+  private def parseBodyBeforeDijkstra(
+      what: String,
+      body: List[String]
+  ): Either[StorageError, (IdentityBeforeDijkstra, IdentityProvenance)] =
+    body match
+      case magic :: shelley :: byron :: alonzo :: conway :: provenance :: Nil =>
+        parseFields(what, magic, shelley, byron, alonzo, conway, provenance)
+      case _ => Left(StorageError.Corrupt(what, StorageStructureError.UnexpectedIdentityLines))
+
   private def parseCurrentBody(
       what: String,
       body: List[String]
   ): Either[StorageError, (NetworkIdentity, IdentityProvenance)] =
     def corrupt(reason: StorageStructureError) = Left(StorageError.Corrupt(what, reason))
     body match
-      case magic :: shelley :: byron :: alonzo :: conway :: provenance :: Nil =>
+      case magic :: shelley :: byron :: alonzo :: conway :: dijkstra :: provenance :: Nil =>
+        val parsedDijkstra = dijkstra.split(' ').toList match
+          case "dijkstra-genesis" :: "none" :: Nil => Right(None)
+          case "dijkstra-genesis" :: d :: Nil =>
+            binding(d).map(Some(_)).toRight(StorageStructureError.InvalidIdentityFields)
+          case _ => Left(StorageStructureError.UnexpectedIdentityLines)
+        parsedDijkstra.fold(
+          corrupt,
+          d =>
+            parseFields(what, magic, shelley, byron, alonzo, conway, provenance).map(
+              (identity, p) => (identity.bind(d), p)
+            )
+        )
+      case _ => corrupt(StorageStructureError.UnexpectedIdentityLines)
+
+  private def parseFields(
+      what: String,
+      magic: String,
+      shelley: String,
+      byron: String,
+      alonzo: String,
+      conway: String,
+      provenance: String
+  ): Either[StorageError, (IdentityBeforeDijkstra, IdentityProvenance)] =
+    def corrupt(reason: StorageStructureError) = Left(StorageError.Corrupt(what, reason))
+    (
+      magic.split(' ').toList,
+      shelley.split(' ').toList,
+      byron.split(' ').toList,
+      alonzo.split(' ').toList,
+      conway.split(' ').toList,
+      provenance.split(' ').toList
+    ) match
+      case (
+            "magic" :: m :: Nil,
+            "shelley-genesis" :: s :: Nil,
+            "byron-genesis" :: b :: Nil,
+            "alonzo-genesis" :: a :: Nil,
+            "conway-genesis" :: c :: Nil,
+            "provenance" :: p :: Nil
+          ) =>
+        val parsedByron = if b == "none" then Some(None) else hash(b).map(Some(_))
         (
-          magic.split(' ').toList,
-          shelley.split(' ').toList,
-          byron.split(' ').toList,
-          alonzo.split(' ').toList,
-          conway.split(' ').toList,
-          provenance.split(' ').toList
+          m.toLongOption,
+          hash(s),
+          parsedByron,
+          binding(a),
+          binding(c),
+          IdentityProvenance.parse(p)
         ) match
-          case (
-                "magic" :: m :: Nil,
-                "shelley-genesis" :: s :: Nil,
-                "byron-genesis" :: b :: Nil,
-                "alonzo-genesis" :: a :: Nil,
-                "conway-genesis" :: c :: Nil,
-                "provenance" :: p :: Nil
-              ) =>
-            val parsedByron = if b == "none" then Some(None) else hash(b).map(Some(_))
-            (
-              m.toLongOption,
-              hash(s),
-              parsedByron,
-              binding(a),
-              binding(c),
-              IdentityProvenance.parse(p)
-            ) match
-              case (Some(mm), Some(ss), Some(bb), Some(aa), Some(cc), Some(pp)) =>
-                Right((NetworkIdentity(mm, ss, bb, aa, cc), pp))
-              case _ => corrupt(StorageStructureError.InvalidIdentityFields)
-          case _ => corrupt(StorageStructureError.UnexpectedIdentityLines)
+          case (Some(mm), Some(ss), Some(bb), Some(aa), Some(cc), Some(pp)) =>
+            Right((IdentityBeforeDijkstra(mm, ss, bb, aa, cc), pp))
+          case _ => corrupt(StorageStructureError.InvalidIdentityFields)
       case _ => corrupt(StorageStructureError.UnexpectedIdentityLines)
 
   /** Parse any registered identity format. */
@@ -201,4 +285,9 @@ object IdentityProvenance:
 
 enum StoredNetworkIdentity derives CanEqual:
   case Legacy(version: FormatVersion, identity: LegacyNetworkIdentity)
+
+  /** A V6 file: complete up to Conway, with no Dijkstra binding yet (see
+    * [[IdentityBeforeDijkstra]]).
+    */
+  case BeforeDijkstra(identity: IdentityBeforeDijkstra, provenance: IdentityProvenance)
   case Complete(identity: NetworkIdentity, provenance: IdentityProvenance)

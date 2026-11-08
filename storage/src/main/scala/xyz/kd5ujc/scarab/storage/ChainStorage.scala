@@ -281,7 +281,7 @@ object ChainStorage:
         )
       )
       _ <- Resource.eval(config.identity.traverse_(NetworkIdentityFile.admit[F](dir, _, admission)))
-      migratedIdentity <- Resource.eval(NetworkIdentityFile.migrate[F](dir))
+      migratedIdentity <- Resource.eval(NetworkIdentityFile.migrate[F](dir, config.identity))
       _ <- Resource.eval(
         migratedIdentity.traverse_(m => events.emit(StorageEvent.FormatMigrated(m)))
       )

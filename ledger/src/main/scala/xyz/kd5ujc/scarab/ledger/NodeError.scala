@@ -527,6 +527,11 @@ enum StorageError extends NodeError:
   /** A matching but incomplete v1/v2 identity needs an explicit operator acknowledgement. */
   case LegacyIdentityNeedsConfirmation(version: FormatVersion)
 
+  /** A V6 identity, which records no Dijkstra genesis binding, reached a migration without the
+    * node's configuration to take the binding from: only an open with it binds the file (#824).
+    */
+  case IdentityNeedsDijkstraBinding(version: FormatVersion)
+
   /** Populated data has no identity; associating it with a network needs explicit confirmation. */
   case MissingIdentityNeedsConfirmation(database: String)
 
@@ -570,6 +575,8 @@ enum StorageError extends NodeError:
       s"the legacy database identity differs from this node: it records ${f.describe}, configured identity is ${e.describe}; use the matching genesis configuration or another --db"
     case LegacyIdentityNeedsConfirmation(version) =>
       s"the database identity format ${FileKind.IdentityFile.identifier(version)} lacks Alonzo and Conway genesis bindings; rerun with --adopt-legacy-network-identity after verifying the database's origin (this acknowledgement is not historical proof)"
+    case IdentityNeedsDijkstraBinding(version) =>
+      s"the database identity format ${FileKind.IdentityFile.identifier(version)} has no Dijkstra genesis binding, which its first open with the node's configuration records"
     case MissingIdentityNeedsConfirmation(database) =>
       s"database $database contains data but has no network identity; rerun with --adopt-legacy-network-identity only after verifying its origin (this acknowledgement is not historical proof)"
     case IdentityBackupConflict(path) =>

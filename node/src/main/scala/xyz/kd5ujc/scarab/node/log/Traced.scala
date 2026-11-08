@@ -212,6 +212,9 @@ object Traced:
         "conwayGenesis" -> xyz.kd5ujc.scarab.ledger.NetworkIdentity
           .renderGenesisHash(id.conwayGenesis)
           .asJson,
+        "dijkstraGenesis" -> id.dijkstraGenesis
+          .map(xyz.kd5ujc.scarab.ledger.NetworkIdentity.renderGenesisHash)
+          .asJson,
         "adoptedExisting" -> adopted.asJson
       )
     case StorageEvent.VolatileOpened(r) =>

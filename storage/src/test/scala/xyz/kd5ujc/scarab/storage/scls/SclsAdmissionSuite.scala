@@ -41,7 +41,8 @@ class SclsAdmissionSuite extends FunSuite:
       zero,
       None,
       GenesisFileHash(zero),
-      GenesisFileHash(zero)
+      GenesisFileHash(zero),
+      None
     )
   )
 

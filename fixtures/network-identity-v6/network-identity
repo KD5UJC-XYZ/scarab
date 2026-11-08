@@ -1,0 +1,7 @@
+scarab network identity v6
+magic 1082026
+shelley-genesis b4d7d1b0bc994146444aded206103dbef7cddade2d416903d9de327978a67dca
+byron-genesis none
+alonzo-genesis file:331b45fdf8a36e6cf4d62fd473c3299b65603019472dcaff6e5ae92bc929ea76
+conway-genesis file:a75e92a67a1d9f5ab1caa98608deaff90947c7317c7c3d4c0eccceff6f51f0ae
+provenance fresh

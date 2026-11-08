@@ -930,6 +930,34 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  test(
+    "network identity: a V6 file is bound at the next open, and a later Dijkstra genesis refused"
+  ) {
+    tempDir.use { dir =>
+      val id = setup.identity
+      val file = (dir / NetworkIdentityFile.FileName).toNioPath
+      val withDijkstra = id.copy(dijkstraGenesis =
+        Some(
+          xyz.kd5ujc.scarab.ledger.GenesisFileHash(
+            xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(Bytes.fromArray(Array[Byte](9)))
+          )
+        )
+      )
+      for
+        _ <- session(dir, 40)
+        _ <- IO.blocking(
+          JFiles.writeString(file, id.renderAs(xyz.kd5ujc.scarab.ledger.FormatVersion.V6))
+        )
+        _ <- session(dir, 60)
+        migrated <- IO.blocking(JFiles.readString(file))
+        message <- refusal(session(dir, 60, identity = Some(withDijkstra)))
+      yield
+        assertEquals(id.dijkstraGenesis, None)
+        assertEquals(migrated, id.render)
+        assert(message.contains("belongs to another network"), message)
+    }
+  }
+
   test("network identity: recorded at creation, accepted on reopen, refused on mismatch") {
     tempDir.use { dir =>
       val id = setup.identity
@@ -952,6 +980,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           id.copy(shelleyGenesis = hashOf(1)),
           id.copy(alonzoGenesis = xyz.kd5ujc.scarab.ledger.GenesisFileHash(hashOf(3))),
           id.copy(conwayGenesis = xyz.kd5ujc.scarab.ledger.GenesisFileHash(hashOf(4))),
+          id.copy(dijkstraGenesis = Some(xyz.kd5ujc.scarab.ledger.GenesisFileHash(hashOf(5)))),
           id.copy(byronGenesis = None),
           id.copy(byronGenesis = Some(hashOf(2)))
         )
@@ -1107,7 +1136,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     )
     assert(NetworkIdentity.parse("f", "garbage").isLeft)
     assert(NetworkIdentity.parse("f", id.render.replace("magic", "magick")).isLeft)
-    assert(NetworkIdentity.parse("f", id.render.replace("v6", "v3")).isLeft)
+    assert(NetworkIdentity.parse("f", id.render.replace("v9", "v3")).isLeft)
+    assert(NetworkIdentity.parse("f", id.render.replace("dijkstra-genesis", "dijkstra")).isLeft)
   }
 
   // ---- V5 and V7 snapshots paired with current and pre-K6 checkpoint key layouts (#145, #395)

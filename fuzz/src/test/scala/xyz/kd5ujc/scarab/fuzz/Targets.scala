@@ -1692,19 +1692,22 @@ object Targets:
       Bytes.fromArray(Array.fill[Byte](32)(1)),
       Some(Bytes.fromArray(Array.fill[Byte](32)(2))),
       GenesisFileHash(rawHash),
-      GenesisFileHash(Bytes.fromArray(Array.fill[Byte](32)(3)))
+      GenesisFileHash(Bytes.fromArray(Array.fill[Byte](32)(3))),
+      Some(GenesisFileHash(Bytes.fromArray(Array.fill[Byte](32)(4))))
     )
     val legacyV1 = identity.legacy.renderAs(FormatVersion.V1)
     val legacyV2 = identity.legacy.renderAs(FormatVersion.V2)
-    val current = identity.renderAs(FormatVersion.V6)
+    val current = identity.renderAs(FormatVersion.V9)
     val confirmedMissing = identity.renderAs(
-      FormatVersion.V6,
+      FormatVersion.V9,
       IdentityProvenance.OperatorConfirmedMissing
     )
     val confirmedLegacy = identity.renderAs(
-      FormatVersion.V6,
+      FormatVersion.V9,
       IdentityProvenance.OperatorConfirmedLegacy(FormatVersion.V2, rawHash)
     )
+    val beforeDijkstra = identity.renderAs(FormatVersion.V6)
+    val withoutDijkstra = identity.copy(dijkstraGenesis = None).renderAs(FormatVersion.V9)
     val malformed = Vector(
       current.replace(
         "provenance fresh",
@@ -1713,7 +1716,16 @@ object Targets:
       current.replace("provenance fresh", "provenance operator-confirmed-legacy:v2"),
       current.replace("provenance fresh", "provenance operator-confirmed-legacy:v2:blake2b256=00")
     )
-    val seeds = Vector(legacyV1, legacyV2, current, confirmedMissing, confirmedLegacy) ++ malformed
+    val valid = Vector(
+      legacyV1,
+      legacyV2,
+      current,
+      confirmedMissing,
+      confirmedLegacy,
+      beforeDijkstra,
+      withoutDijkstra
+    )
+    val seeds = valid ++ malformed
     Vector(
       Target(
         "network-identity-file",
@@ -1726,13 +1738,15 @@ object Targets:
               hit("network-identity-file")
               val canonical = parsed._2 match
                 case StoredNetworkIdentity.Legacy(_, value) => value.renderAs(parsed._1)
+                case StoredNetworkIdentity.BeforeDijkstra(value, provenance) =>
+                  value.renderAs(parsed._1, provenance)
                 case StoredNetworkIdentity.Complete(value, provenance) =>
                   value.renderAs(parsed._1, provenance)
               req(
                 NetworkIdentity.parseVersioned("fuzz identity", canonical) == Right(parsed),
                 "identity parse/render/parse changed its version or stored value"
               )
-            case Left(_) => req(!seeds.take(5).contains(text), "valid identity seed was refused")
+            case Left(_) => req(!valid.contains(text), "valid identity seed was refused")
         }
       )
     )

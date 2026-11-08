@@ -93,7 +93,10 @@ only the sidecar's eras and protocol parameters (#54): `step(file, V8, V9)` read
 frozen V8 schema and writes it in the current one, whose encoding of every era V8 could name is
 unchanged and whose parameters take the fields Dijkstra adds at their pre-Dijkstra defaults; every V8
 file converts. `Migrate` then has no work for V9.
-The identity kind remains at V6 and unchanged kinds retain their own current versions. A future
+Global V9 also changes the network identity (#824): it adds the Dijkstra genesis binding, and
+`NetworkIdentityFile.migration` steps a V6 file to V9 with the binding of the configured identity once
+its other fields are found equal to it, keeping its provenance; without a configured identity the step
+is refused (`IdentityNeedsDijkstraBinding`). Unchanged kinds retain their own current versions. A future
 snapshot change appends global `V10`. Retire the V5
 reader only after the inventory and conversion conditions below hold, then advance the snapshot
 kind's `readableFrom` to V7 (and retire the V7 and V8 readers the same way). Use caller-scoped `Raise[F, StorageError]` for every migration operation;
@@ -105,7 +108,9 @@ network identity read-only, then supported snapshot headers and any immutable fo
 required for identity adoption. `Main` runs this before acquiring RocksDB backing;
 `ChainStorage.open` also runs it before identity admission/migration, immutable/volatile recovery or
 backing reset. Preserve network mismatch precedence when several files are wrong. Complete identity
-binds the protocol magic and exact Byron, Shelley, Alonzo and Conway genesis inputs. Incomplete or
+binds the protocol magic and exact Byron, Shelley, Alonzo, Conway and (when configured) Dijkstra
+genesis inputs; a V6 identity, complete up to Conway, needs no adoption and is bound to the configured
+Dijkstra genesis by its migration. Incomplete or
 missing identities require explicit adoption under #159, with original-byte backup and the existing
 first-block/predecessor checks; reader retirement must not weaken those admission requirements.
 

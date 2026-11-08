@@ -347,9 +347,10 @@ object NodeSetup:
       _ <- GenesisSchema.conway(files.conway)
       // the Dijkstra genesis, read after the others as the reference reads it (cardano-node
       // b004fe0c `Protocol/Cardano.hs:137-144`); its hash was checked with theirs
-      dijkstra <- names.dijkstra.traverse(name =>
-        required("Dijkstra", name).flatMap(json(name, _)).flatMap(DijkstraGenesis.read)
-      )
+      dijkstraBytes <- names.dijkstra.traverse(required("Dijkstra", _))
+      dijkstra <- names.dijkstra
+        .zip(dijkstraBytes)
+        .traverse((name, bytes) => json(name, bytes).flatMap(DijkstraGenesis.read))
       injections <- GenesisInjections.read(files)
       globals <- GenesisState.globals(files, genesis).map(_.copy(dijkstra = dijkstra))
       // Dijkstra's trigger is carried as the reference carries it (`TestDijkstraHardForkAtEpoch`,
@@ -436,7 +437,8 @@ object NodeSetup:
         ),
         GenesisFileHash(
           Blake2b.hash256.hash(Bytes.fromArray(conwayBytes))
-        )
+        ),
+        dijkstraBytes.map(bytes => GenesisFileHash(Blake2b.hash256.hash(Bytes.fromArray(bytes))))
       ),
       chainStoreK = chainStoreK,
       byronParams = Some(byronGenesis),

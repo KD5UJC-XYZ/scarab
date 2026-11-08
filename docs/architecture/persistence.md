@@ -178,15 +178,15 @@ identity, the immutable store's `format` file, every chunk `.index` and every le
 identifiers, per version (`FileKind.identifier`, `ledger/.../PersistedFormat.scala`); a kind has a
 new identifier only at a version at which its layout changed, and `FileKind.current` is the newest:
 
-| file | format 1 (until the rename) | format 2 | format 3 | format 4 | format 5 | format 6 | format 7 |
-|---|---|---|---|---|---|---|---|
-| `network-identity`, first line | `cardano-scala-lab network identity v1` | `scarab network identity v2` | (as 2) | (as 2) | (as 2) | `scarab network identity v6` | (as 6) |
-| `immutable/format`, before ` chunkSlots=<n>` | `cardano-scala-lab immutable store v1` | `scarab immutable store v2` | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) |
-| `immutable/<c>.index`, 8-byte magic | `CSLIDX01` | `SCRBIDX2` | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) |
-| `snapshots/snapshot-*.bin`, 8-byte magic | `CSLSNAP1`, number 1 | `CSLSNAP1`, number 2 | `SCRBSNP3` | `SCRBSNP4` | `SCRBSNP5` | (as 5) | `SCRBSNP7` |
+| file | format 1 (until the rename) | format 2 | format 3 | format 4 | format 5 | format 6 | format 7 | format 8 | format 9 |
+|---|---|---|---|---|---|---|---|---|---|
+| `network-identity`, first line | `cardano-scala-lab network identity v1` | `scarab network identity v2` | (as 2) | (as 2) | (as 2) | `scarab network identity v6` | (as 6) | (as 6) | `scarab network identity v9` |
+| `immutable/format`, before ` chunkSlots=<n>` | `cardano-scala-lab immutable store v1` | `scarab immutable store v2` | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) |
+| `immutable/<c>.index`, 8-byte magic | `CSLIDX01` | `SCRBIDX2` | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) |
+| `snapshots/snapshot-*.bin`, 8-byte magic | `CSLSNAP1`, number 1 | `CSLSNAP1`, number 2 | `SCRBSNP3` | `SCRBSNP4` | `SCRBSNP5` | (as 5) | `SCRBSNP7` | `SCRBSNP8` | `SCRBSNP9` |
 
 The immutable format and index layouts are unchanged after the V2 rename. V6 extends the identity
-record with Alonzo/Conway bindings and adoption provenance. Formats 3 to 5 are the snapshot as the
+record with Alonzo/Conway bindings and adoption provenance, and V9 with the Dijkstra genesis binding. Formats 3 to 5 are the snapshot as the
 Haskell ledger state plus a sidecar (see
 "Snapshot format"; 4 and 5 changed the sidecar), and format 7 puts the checkpoint binding in front
 of the V5 body. The versions are a closed `enum FormatVersion` (a version this build does not
@@ -237,30 +237,43 @@ operational transition (#37/#115 for preprod). The procedure and required checks
 migration have separate dependencies.
 
 **Network identity** (`<db>/network-identity`). A plain-text file, written atomically when the
-database is created. V6 is complete; V1 and V2 are retained as explicitly incomplete legacy
-records:
+database is created. V9 is complete; V6 is complete up to Conway and gets its Dijkstra binding at
+its first open; V1 and V2 are retained as explicitly incomplete legacy records:
 
 ```
-scarab network identity v6
+scarab network identity v9
 magic 2
 shelley-genesis <blake2b-256 of the Shelley genesis file as read>
 byron-genesis <hash, or none for a chain that starts in Shelley>
 alonzo-genesis file:<blake2b-256 of the exact loaded file bytes>
 conway-genesis file:<blake2b-256 of the exact loaded file bytes>
+dijkstra-genesis file:<blake2b-256 of the exact loaded file bytes, or none without a Dijkstra genesis>
 provenance fresh
 ```
+
+The Dijkstra binding is the configured `DijkstraGenesisFile` (read with `ExperimentalHardForksEnabled`),
+whose bytes node setup checks against `DijkstraGenesisHash` when the configuration lists one. A
+configuration without a Dijkstra genesis records `none`, which is its complete identity, not a gap.
+A V6 file is migrated when `ChainStorage.open` runs `NetworkIdentityFile.migrate` with the configured
+identity (the registered migration is `NetworkIdentityFile.migration`): when its other fields equal the
+configured identity it is rewritten as V9 with the configured binding and its provenance unchanged,
+otherwise the open is refused with `NetworkMismatch` (whose recorded side shows the V6 fields with the
+configured binding) and the file is left as it is. `verify` and the read-only preflight accept a
+matching V6 file without writing it (OD-2 of #54, [decisions](../decisions.md)). The binding
+is then compared like every other field: a V6 database first opened without a Dijkstra genesis records
+`none`, and a later configuration that names one is a mismatch.
 
 `ChainStorage.open` compares the complete record with the identity built from the files node setup
 loaded; a mismatch raises `StorageError.NetworkMismatch` (use the matching `--genesis-dir` or
 another `--db`). V1/V2 records do not contain Alonzo or Conway bindings and are never upgraded
 automatically. A populated legacy identity or an identity-less database requires the explicit
-`--adopt-legacy-network-identity` option. Before it writes a V6 identity, the node checks every
+`--adopt-legacy-network-identity` option. Before it writes a current identity, the node checks every
 known legacy field, checks the first immutable block's predecessor when available, and preflights
 snapshot and immutable-format headers read-only. The original legacy identity bytes are retained
-beside the new file; V6 records operator confirmation separately from identity equality and does
+beside the new file; the record keeps operator confirmation separately from identity equality and does
 not claim that adoption proves the database's historical genesis. A Shelley-start chain's first
 block has no Byron predecessor, so that check cannot distinguish historical Shelley-start networks.
-Fresh databases receive V6 immediately. Global V6 changes no snapshot or immutable layout, so
+Fresh databases receive V9 immediately. Global V6 changes no snapshot or immutable layout, so
 unchanged file kinds are not rewritten.
 
 Tests (`storage/src/test/.../storage`, and `ChainStorageSuite` in `node/src/test`): round-trip properties for every persisted type from generators

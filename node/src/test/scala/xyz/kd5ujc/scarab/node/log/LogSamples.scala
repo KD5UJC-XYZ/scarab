@@ -605,7 +605,8 @@ object LogSamples:
     hash,
     Some(hash),
     xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash),
-    xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash)
+    xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash),
+    Some(xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash))
   )
   val storage: List[StorageEvent] = List(
     StorageEvent.ImmutableOpened(ImmutableStore.OpenReport(anchor, 100L, 2, 1, 64L)),
@@ -639,7 +640,8 @@ object LogSamples:
         hash,
         None,
         xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash),
-        xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash)
+        xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash),
+        None
       ),
       adopted = true
     ),

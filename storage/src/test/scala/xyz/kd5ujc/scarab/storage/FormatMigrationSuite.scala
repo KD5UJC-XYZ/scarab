@@ -17,7 +17,6 @@ import xyz.kd5ujc.scarab.ledger.{
   FormatVersion,
   FirstImmutableProblem,
   IdentityProvenance,
-  LegacyNetworkIdentity,
   NetworkIdentity,
   StorageError,
   StoredNetworkIdentity
@@ -389,27 +388,32 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
     ),
     xyz.kd5ujc.scarab.ledger.GenesisFileHash(
       Bytes.fromArray(Array.tabulate[Byte](32)(i => (i + 3).toByte))
+    ),
+    Some(
+      xyz.kd5ujc.scarab.ledger.GenesisFileHash(
+        Bytes.fromArray(Array.tabulate[Byte](32)(i => (i + 4).toByte))
+      )
     )
   )
   private val v1Header = "cardano-scala-lab network identity v1"
 
   test("the identity text of each version round trips and carries its version") {
     assertEquals(identity.renderAs(FormatVersion.V1).linesIterator.next(), v1Header)
-    assertEquals(identity.render.linesIterator.next(), "scarab network identity v6")
-    for v <- FileKind.IdentityFile.history.toList.map(_._1) do
-      val expected =
-        if v == FormatVersion.V6 then
-          StoredNetworkIdentity.Complete(identity, IdentityProvenance.Fresh)
-        else StoredNetworkIdentity.Legacy(v, identity.legacy)
-      assertEquals(NetworkIdentity.parseVersioned("f", identity.renderAs(v)), Right((v, expected)))
-      val shelleyOnly = identity.copy(byronGenesis = None)
-      val expectedShelleyOnly =
-        if v == FormatVersion.V6 then
-          StoredNetworkIdentity.Complete(shelleyOnly, IdentityProvenance.Fresh)
-        else
-          StoredNetworkIdentity.Legacy(v, LegacyNetworkIdentity(42L, identity.shelleyGenesis, None))
-      assertEquals(NetworkIdentity.parse("f", shelleyOnly.renderAs(v)), Right(expectedShelleyOnly))
-    val unknown = identity.render.replace("v6", "v9")
+    assertEquals(identity.render.linesIterator.next(), "scarab network identity v9")
+    def stored(id: NetworkIdentity, v: FormatVersion) =
+      if v == FormatVersion.V9 then StoredNetworkIdentity.Complete(id, IdentityProvenance.Fresh)
+      else if v == FormatVersion.V6 then
+        StoredNetworkIdentity.BeforeDijkstra(id.beforeDijkstra, IdentityProvenance.Fresh)
+      else StoredNetworkIdentity.Legacy(v, id.legacy)
+    for
+      v <- FileKind.IdentityFile.history.toList.map(_._1)
+      id <- List(
+        identity,
+        identity.copy(byronGenesis = None),
+        identity.copy(dijkstraGenesis = None)
+      )
+    do assertEquals(NetworkIdentity.parseVersioned("f", id.renderAs(v)), Right((v, stored(id, v))))
+    val unknown = identity.render.replace("v9", "v10")
     assert(
       NetworkIdentity.parse("f", unknown).left.exists(_.isInstanceOf[StorageError.UnknownVersion])
     )
@@ -457,7 +461,7 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
           )
         )
         read <- ok(NetworkIdentityFile.read[IO](dir))
-        refused <- attempt(NetworkIdentityFile.migrate[IO](dir))
+        refused <- attempt(NetworkIdentityFile.migrate[IO](dir, Some(identity)))
         plan <- ok(
           NetworkIdentityFile.preflight[IO](dir, identity, populated = true, confirmLegacy = true)
         )
@@ -475,7 +479,7 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
             FormatVersion.V2,
             Blake2b.hash256.hash(Bytes.fromArray(legacy.getBytes(StandardCharsets.UTF_8)))
           )
-          assertEquals(text(file), identity.renderAs(FormatVersion.V6, provenance))
+          assertEquals(text(file), identity.renderAs(FormatVersion.V9, provenance))
           assertEquals(text(backup), legacy)
           assert(!JFiles.exists(dir.toNioPath.resolve(NetworkIdentityFile.FileName + ".tmp")))
         }
@@ -517,10 +521,10 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
   test("an identity file of an unknown version is refused and left alone") {
     tempDir.use { dir =>
       val file = dir / NetworkIdentityFile.FileName
-      val unknown = identity.render.replace("v6", "v9")
+      val unknown = identity.render.replace("v9", "v10")
       for
         _ <- IO(JFiles.write(file.toNioPath, unknown.getBytes(StandardCharsets.UTF_8)))
-        r <- attempt(NetworkIdentityFile.migrate[IO](dir))
+        r <- attempt(NetworkIdentityFile.migrate[IO](dir, Some(identity)))
         _ <- IO {
           assert(r.left.exists(_.isInstanceOf[StorageError.UnknownVersion]), r.toString)
           assertEquals(text(file), unknown)
@@ -591,13 +595,15 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
       ) =
         IO.raiseError(new AssertionError("nothing is stale"))
 
-  test("global V6 changes only identity, V7 to V9 only snapshots; a current kind is a no-op") {
-    assertEquals(FileKind.IdentityFile.current, FormatVersion.V6)
+  test(
+    "global V6 changes only identity, V7 and V8 only snapshots, V9 both; a current kind is a no-op"
+  ) {
+    assertEquals(FileKind.IdentityFile.current, FormatVersion.V9)
     assertEquals(FileKind.SnapshotFile.current, FormatVersion.V9)
     assertEquals(FileKind.SnapshotFile.nextChangedVersion(FormatVersion.V5), Some(FormatVersion.V7))
     assertEquals(FileKind.SnapshotFile.nextChangedVersion(FormatVersion.V7), Some(FormatVersion.V8))
     assertEquals(FileKind.SnapshotFile.nextChangedVersion(FormatVersion.V8), Some(FormatVersion.V9))
-    assertEquals(FileKind.IdentityFile.nextChangedVersion(FormatVersion.V6), None)
+    assertEquals(FileKind.IdentityFile.nextChangedVersion(FormatVersion.V6), Some(FormatVersion.V9))
     assertEquals(FileKind.FormatFile.current, FormatVersion.V2)
     assertEquals(FileKind.IndexFile.current, FormatVersion.V2)
     FileKind.values.foreach(kind => assertEquals(kind.nextChangedVersion(kind.current), None))
