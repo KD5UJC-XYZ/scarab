@@ -259,9 +259,13 @@ identity (the registered migration is `NetworkIdentityFile.migration`): when its
 configured identity it is rewritten as V9 with the configured binding and its provenance unchanged,
 otherwise the open is refused with `NetworkMismatch` (whose recorded side shows the V6 fields with the
 configured binding) and the file is left as it is. `verify` and the read-only preflight accept a
-matching V6 file without writing it (OD-2 of #54, [decisions](../decisions.md)). The binding
-is then compared like every other field: a V6 database first opened without a Dijkstra genesis records
-`none`, and a later configuration that names one is a mismatch.
+matching V6 file without writing it (OD-2 of #54, [decisions](../decisions.md)). A
+recorded `none` adopts a configured Dijkstra genesis once: `ChainStorage.open` rewrites the identity with
+the configured binding, its provenance and other fields unchanged (`NetworkIdentityFile.adoptDijkstra`),
+and logs `networkRecorded` with `adoptedDijkstraGenesis: true`; `verify` and the read-only preflight
+accept that case without writing. A recorded binding is compared like every other field: one that
+differs from the configured one, or that the configuration no longer names (as a recorded Byron
+genesis), is a `NetworkMismatch`.
 
 `ChainStorage.open` compares the complete record with the identity built from the files node setup
 loaded; a mismatch raises `StorageError.NetworkMismatch` (use the matching `--genesis-dir` or

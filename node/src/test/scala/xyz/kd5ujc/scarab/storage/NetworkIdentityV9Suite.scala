@@ -149,20 +149,105 @@ class NetworkIdentityV9Suite extends CatsEffectSuite:
     }
   }
 
-  test(
-    "a V6 file opened without a Dijkstra genesis records none, which a Dijkstra one then refuses"
-  ) {
+  test("a V6 file opened without a Dijkstra genesis records none, which adopts one once") {
     val withoutDijkstra = setup.identity.copy(dijkstraGenesis = None)
     tempDir.use { dir =>
       for
         _ <- seeded(dir, v6)
         _ <- ok(NetworkIdentityFile.migrate[IO](dir, Some(withoutDijkstra)))
         written <- text(dir)
-        later <- attempt(NetworkIdentityFile.verify[IO](dir, setup.identity))
+        // the read-only checks accept the configured genesis and write nothing
+        verified <- ok(NetworkIdentityFile.verify[IO](dir, setup.identity))
+        plan <- ok(
+          NetworkIdentityFile.preflight[IO](
+            dir,
+            setup.identity,
+            populated = true,
+            confirmLegacy = false
+          )
+        )
+        unchanged <- text(dir)
+        adopted <- ok(NetworkIdentityFile.adoptDijkstra[IO](dir, setup.identity))
+        rewritten <- text(dir)
+        read <- ok(NetworkIdentityFile.read[IO](dir))
+        again <- ok(NetworkIdentityFile.adoptDijkstra[IO](dir, setup.identity))
+        last <- text(dir)
       yield
         assertEquals(written, withoutDijkstra.render)
         assert(written.linesIterator.contains("dijkstra-genesis none"), written)
-        assertEquals(later, Left(StorageError.NetworkMismatch(withoutDijkstra, setup.identity)))
+        assert(verified)
+        assertEquals(plan, NetworkIdentityFile.Admission.Unchanged)
+        assertEquals(unchanged, written)
+        assertEquals(adopted, Some(setup.identity))
+        assertEquals(rewritten, setup.identity.render)
+        assertEquals(
+          read,
+          Some(StoredNetworkIdentity.Complete(setup.identity, IdentityProvenance.Fresh))
+        )
+        assertEquals(again, None)
+        assertEquals(last, rewritten)
+    }
+  }
+
+  test("the adoption keeps the operator's adoption record") {
+    val adopted = IdentityProvenance.OperatorConfirmedMissing
+    tempDir.use { dir =>
+      for
+        _ <- seeded(
+          dir,
+          setup.identity.copy(dijkstraGenesis = None).renderAs(FormatVersion.V9, adopted)
+        )
+        _ <- ok(NetworkIdentityFile.adoptDijkstra[IO](dir, setup.identity))
+        written <- text(dir)
+      yield assertEquals(written, setup.identity.renderAs(FormatVersion.V9, adopted))
+    }
+  }
+
+  test("a recorded Dijkstra genesis is never replaced: another one, or none, is a mismatch") {
+    val other = setup.identity.copy(dijkstraGenesis =
+      Some(GenesisFileHash(Bytes.fromArray(Array.fill[Byte](32)(5))))
+    )
+    val withoutDijkstra = setup.identity.copy(dijkstraGenesis = None)
+    tempDir.use { dir =>
+      for
+        _ <- seeded(dir, setup.identity.render)
+        results <- List(other, withoutDijkstra).traverse { expected =>
+          for
+            verified <- attempt(NetworkIdentityFile.verify[IO](dir, expected))
+            plan <- attempt(
+              NetworkIdentityFile.preflight[IO](
+                dir,
+                expected,
+                populated = true,
+                confirmLegacy = true
+              )
+            )
+            adopted <- ok(NetworkIdentityFile.adoptDijkstra[IO](dir, expected))
+          yield (expected, verified, plan, adopted)
+        }
+        after <- text(dir)
+      yield
+        results.foreach { (expected, verified, plan, adopted) =>
+          val mismatch = Left(StorageError.NetworkMismatch(setup.identity, expected))
+          assertEquals(verified, mismatch)
+          assertEquals(plan, mismatch)
+          assertEquals(adopted, None)
+        }
+        assertEquals(after, setup.identity.render)
+    }
+  }
+
+  test("a recorded none with no Dijkstra genesis configured stays none") {
+    tempDir.use { dir =>
+      for
+        _ <- seeded(dir, eras.identity.render)
+        verified <- ok(NetworkIdentityFile.verify[IO](dir, eras.identity))
+        adopted <- ok(NetworkIdentityFile.adoptDijkstra[IO](dir, eras.identity))
+        after <- text(dir)
+      yield
+        assert(verified)
+        assertEquals(adopted, None)
+        assertEquals(after, eras.identity.render)
     }
   }
 

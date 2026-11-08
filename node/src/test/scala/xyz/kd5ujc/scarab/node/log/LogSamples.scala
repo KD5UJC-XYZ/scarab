@@ -633,7 +633,8 @@ object LogSamples:
     StorageEvent.ReplayStarted(None, anchor),
     StorageEvent.ReplayProgress(block, 1000L, 2000L),
     StorageEvent.ReplayFinished(anchor, 1000L, 2500L),
-    StorageEvent.NetworkRecorded(network, adopted = false),
+    StorageEvent.NetworkRecorded(network, adopted = false, dijkstraAdopted = false),
+    StorageEvent.NetworkRecorded(network, adopted = false, dijkstraAdopted = true),
     StorageEvent.NetworkRecorded(
       NetworkIdentity(
         1L,
@@ -643,7 +644,8 @@ object LogSamples:
         xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash),
         None
       ),
-      adopted = true
+      adopted = true,
+      dijkstraAdopted = false
     ),
     StorageEvent.VolatileOpened(VolatileStore.OpenReport(10, 2, 0L, 0)),
     StorageEvent.VolatileResumed(10, 1, 300L),

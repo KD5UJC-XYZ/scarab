@@ -25,7 +25,8 @@ Caveats:
 - A `--db` records the network it was created for (`<db>/network-identity`). Format V9 binds the
   protocol magic, Byron and Shelley genesis hashes, and BLAKE2b-256 of the exact loaded Alonzo,
   Conway and (when the configuration names one) Dijkstra genesis bytes; a V6 record gets the
-  Dijkstra binding of the configuration at its first open. A mismatch refuses to open with `NetworkMismatch`. V1/V2 identity records
+  Dijkstra binding of the configuration at its first open, and a record of `none` adopts a Dijkstra
+  genesis configured later, once (logged as `adoptedDijkstraGenesis`). A mismatch refuses to open with `NetworkMismatch`. V1/V2 identity records
   lack the Alonzo and Conway bindings and are never upgraded automatically. A populated legacy
   identity or database without an identity requires `--adopt-legacy-network-identity`; the original
   legacy identity bytes are retained beside the new file, and the recorded operator confirmation is

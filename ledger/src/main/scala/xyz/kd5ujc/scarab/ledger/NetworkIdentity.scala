@@ -73,6 +73,18 @@ final case class NetworkIdentity(
 
   def legacy: LegacyNetworkIdentity = LegacyNetworkIdentity(magic, shelleyGenesis, byronGenesis)
 
+  /** This identity records no Dijkstra genesis and `expected`, the configured one, differs from it
+    * only by naming one: the binding a database adopts once, at its next open (OD-2 of #54, refined
+    * 2026-11-08). A recorded binding that differs from the configured one, or one the configuration
+    * no longer names, is a mismatch, as a differing Byron genesis is.
+    */
+  def adopts(expected: NetworkIdentity): Boolean =
+    dijkstraGenesis.isEmpty && expected.dijkstraGenesis.isDefined &&
+      copy(dijkstraGenesis = expected.dijkstraGenesis) == expected
+
+  /** This recorded identity is that of the configuration, or adopts its Dijkstra genesis. */
+  def consistentWith(expected: NetworkIdentity): Boolean = this == expected || adopts(expected)
+
   /** The fields format V6 records. */
   def beforeDijkstra: IdentityBeforeDijkstra =
     IdentityBeforeDijkstra(magic, shelleyGenesis, byronGenesis, alonzoGenesis, conwayGenesis)

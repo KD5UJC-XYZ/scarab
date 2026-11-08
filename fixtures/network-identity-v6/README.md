@@ -16,8 +16,8 @@ that it is byte for byte what a V6 build records for the identity the node assem
 identity, as `ChainStorage.open` does: the V9 file it writes binds the Dijkstra genesis file of that
 configuration, whose Blake2b-256 is the configuration's `DijkstraGenesisHash` (`ccd5fd42…`), and keeps
 the provenance. The suite also migrates it with the same identity without a Dijkstra binding (it
-records `none`, which a later Dijkstra binding then refuses) and checks it against the identity of
+records `none`, which then adopts the Dijkstra binding once) and checks it against the identity of
 another network's configuration, `fixtures/eras/genesis` (refused and left as it is).
-`ChainStorageSuite` covers the same migration through `ChainStorage.open`.
+`ChainStorageSuite` covers the same migration, and the later adoption, through `ChainStorage.open`.
 
 No key, chain data or third-party content; original Apache-2.0 work of this repository.

@@ -167,7 +167,7 @@ final class EventMetrics[F[_]: Sync] private (
         replayReached(Some(at), replayed, millis)
       case StorageEvent.ReplayFinished(at, replayed, millis) =>
         replayReached(at, replayed, millis)
-      case StorageEvent.NetworkRecorded(_, _) | StorageEvent.VolatileOpened(_) |
+      case StorageEvent.NetworkRecorded(_, _, _) | StorageEvent.VolatileOpened(_) |
           StorageEvent.VolatileResumed(_, _, _) | StorageEvent.ShutdownSnapshot(_, _) =>
         Sync[F].unit
 

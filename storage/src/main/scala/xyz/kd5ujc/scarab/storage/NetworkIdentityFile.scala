@@ -79,8 +79,9 @@ object NetworkIdentityFile:
       case None if !populated    => Sync[F].pure(Admission.WriteFresh)
       case None if confirmLegacy => Sync[F].pure(Admission.AdoptMissing)
       case None => StorageError.MissingIdentityNeedsConfirmation(dir.toString).raise[F, Admission]
+      // a recorded `none` adopts the configured Dijkstra genesis at the open ([[adoptDijkstra]])
       case Some(StoredNetworkIdentity.Complete(found, _)) =>
-        if found == expected then Sync[F].pure(Admission.Unchanged)
+        if found.consistentWith(expected) then Sync[F].pure(Admission.Unchanged)
         else StorageError.NetworkMismatch(found, expected).raise[F, Admission]
       // bound by the migration that follows admission ([[migrate]])
       case Some(StoredNetworkIdentity.BeforeDijkstra(found, _)) =>
@@ -218,6 +219,22 @@ object NetworkIdentityFile:
         }
     }
 
+  /** The configured Dijkstra genesis adopted by a current identity that records none and is
+    * otherwise the configured identity (OD-2 of #54, refined 2026-11-08): the file is rewritten
+    * with the binding, its provenance and other fields unchanged, and the identity written is
+    * returned, for the open to log. `expected` 's binding is the hash of the configured file, which
+    * node setup checks against `DijkstraGenesisHash` when the configuration lists one. Any other
+    * file is left to the checks of [[preflight]] and [[migrate]], and nothing is written.
+    */
+  def adoptDijkstra[F[_]: Sync](dir: Path, expected: NetworkIdentity)(using
+      Raise[F, StorageError]
+  ): F[Option[NetworkIdentity]] =
+    read[F](dir).flatMap {
+      case Some(StoredNetworkIdentity.Complete(found, provenance)) if found.adopts(expected) =>
+        writeWith[F](dir, expected, provenance).as(Some(expected))
+      case _ => Sync[F].pure(None)
+    }
+
   /** Compare complete identity on every open. Missing identity is handled by the admission plan. A
     * V6 file matches when its fields are the configured ones: the binding its migration will record
     * is the configured one, and nothing is written here.
@@ -228,7 +245,7 @@ object NetworkIdentityFile:
     read[F](dir).flatMap {
       case None => Sync[F].pure(false)
       case Some(StoredNetworkIdentity.Complete(found, _)) =>
-        if found == expected then Sync[F].pure(true)
+        if found.consistentWith(expected) then Sync[F].pure(true)
         else StorageError.NetworkMismatch(found, expected).raise[F, Boolean]
       case Some(StoredNetworkIdentity.BeforeDijkstra(found, _)) =>
         bound(found, expected).as(true)

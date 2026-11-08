@@ -189,7 +189,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `volatileOpened` | `Storage.VolatileOpened` | Info | `blocks`, `files`, `truncatedBytes`, `removedFiles` |
 | `receivedBlockDiscarded` | `Storage.ReceivedBlockDiscarded` | Warning | Malformed unselected received cache entry discarded at restart. |
 | `volatileResumed` | `Storage.VolatileResumed` | Info | `resumed`, `dropped`, `millis` |
-| `networkRecorded` | `Storage.NetworkRecorded` | Info | `magic`, `shelleyGenesis`, `byronGenesis`, `alonzoGenesis`, `conwayGenesis`, `dijkstraGenesis` (null without one), `adoptedExisting` |
+| `networkRecorded` | `Storage.NetworkRecorded` | Info | `magic`, `shelleyGenesis`, `byronGenesis`, `alonzoGenesis`, `conwayGenesis`, `dijkstraGenesis` (null without one), `adoptedExisting`, `adoptedDijkstraGenesis` (the identity recorded no Dijkstra genesis and adopted the configured one) |
 | `snapshotSkipped` | `Storage.SnapshotSkipped` | Warning | `file`, `reason` |
 | `snapshotRestored` | `Storage.SnapshotRestored` | Info | `file`, `anchor` |
 | `snapshotUnbound` | `Storage.SnapshotUnbound` | Warning | `file`, `anchor`: the restored snapshot predates checkpoint binding (V5 migrated through V7 and V8 to V9) and its checkpoint was admitted by directory name. |
