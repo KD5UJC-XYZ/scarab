@@ -30,7 +30,7 @@ of its own to a reader that counts them, and a header is bounded only by the Cha
 bytes a message and, after decoding, by `maxBHSize` (#749). Below decoder version 12 a chunked
 string is refused ("expected bytes"), so only a Leios header can be written so.
 
-The 2026-11-03 corpus in `cases.jsonl` holds 156 lines, one case each, written by
+The 2026-11-07 corpus in `cases.jsonl` holds 210 lines, one case each, written by
 `scripts/oracle/header-decoding/header_cases.py`, for Shelley and Alonzo (TPraos), Babbage and
 Conway (Praos), and Byron. The boundary cases include a refused 200-attribute header
 whose final value is chunked; it exceeds the old item budget and still fails semantic decoding:
@@ -68,12 +68,27 @@ whose final value is chunked; it exceeds the old item budget and still fails sem
   refused indefinite, not a list, of no fields or two, with attributes not a map or an indefinite
   map, a key of 256 or a negative one, a chunked, text or tagged value, and duplicate, descending
   or non-minimally written descending keys.
+- the rest of the Byron header grammar (#634), each case the retained mainnet main header or a
+  boundary header with one part rewritten. `decCBORAHeader` (`Block/Header.hs:351-393`) reads every
+  list with `enforceSize`, so the header, its consensus data, slot, difficulty, signature, the
+  signature's proxy and delegation certificate, the extra data, the protocol version and the
+  software version written indefinite are refused, as are the boundary header, its consensus data
+  and difficulty. A main header's magic is a `Word32`: 2^32 - 1 and a non-minimal head accepted,
+  2^32 and -1 refused. A boundary header's is dropped with `dropInt32`: -1, -2^31 and 2^31 - 1
+  accepted, -2^31 - 1 and 2^31 refused. Epochs, slot counts (a slot count of 2^16 too), difficulties
+  and the delegation epoch at 2^64 - 1 are accepted, as a bignum of 2^64 refused; a signature kind of
+  258 refused. The extra data (`decCBORBlockVersions`): three or five fields, attributes of one entry
+  or an indefinite empty map, a protocol major of 2^16, an alternative of 256, a protocol version of
+  two fields, a software number of 2^32, a chunked or byte-string application name, a software
+  version of three fields, a chunked or text extra proof refused; a minor of 2^16 - 1, a software
+  number of 2^32 - 1, an application name of 13 characters and an extra proof of three bytes
+  accepted.
 
 The verdict (`accepted` and the complete `failure`) is what the unchanged released decoders did with
 each, at the era's decoder version (2, 5, 7, 9): `decodeFullAnnotator` for a header
 and a block, `decodeFull` for a body. An accepted header or block also records the header hash
 (`hash`), and a block its block body hash (`bodyHash`); a Byron boundary header records its verdict
-only. In all, 86 accepted and 70 refused.
+only. In all, 103 accepted and 107 refused.
 `HeaderDecodingReferenceSuite` requires the same verdict from `Header.fromRaw`,
 `Block.decodeShelley` (a body alone inside a definite header with a signature) or
 `Header.byronFromRaw`, the same hashes
@@ -101,8 +116,8 @@ python3 scripts/oracle/header-decoding/header_cases.py --inputs /tmp/header-inpu
 - No KES signature, and no VRF proof of a header, is checked: their signatures and keys are filler
   bytes; the KES check over the signed bytes is `HeaderDecodingReferenceSuite`'s own key, and the VRF
   check is the "vrfcheck" cases'.
-- Byron main headers, the forms of a Byron header's byte strings and the rest of a boundary
-  header's grammar ([#574](https://github.com/KD5UJC-XYZ/scarab/issues/574)).
+- The forms of a Byron header's byte strings ([#574](https://github.com/KD5UJC-XYZ/scarab/issues/574)):
+  `ByronHeaderBytesSuite` holds them on the real headers.
 - The byte bounds themselves: a header's bytes are bounded by the ChainSync codec, which
   `ChainSyncSuite` and the network suites exercise, not by a decoder.
 - The Leios header: until 2026-11-03 this corpus held 25 Leios header cases of the released
