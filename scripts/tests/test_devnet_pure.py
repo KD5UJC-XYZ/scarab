@@ -856,6 +856,12 @@ class RestartScenarioTest(unittest.TestCase):
         self.assertIn("SCRBSNP8", format_problem([b"SCRBSNP9", b"SCRBSNP8"]))
         self.assertIn("no snapshot", format_problem([]))
 
+    def test_restart_identity_is_current(self):
+        from devnet.scenarios.restart import identity_problem
+        self.assertIsNone(identity_problem("scarab network identity v9\nmagic 42\n"))
+        self.assertIn("v6", identity_problem("scarab network identity v6\nmagic 42\n"))
+        self.assertIn("no network identity", identity_problem(None))
+
     def test_retired_migration_flag_is_refused_before_starting_a_cluster(self):
         import io
         from unittest.mock import patch

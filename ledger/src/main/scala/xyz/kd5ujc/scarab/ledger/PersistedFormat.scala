@@ -20,7 +20,9 @@ import cats.data.NonEmptyList
   * of the RocksDB checkpoint the snapshot was written with, issue #395); `V8` is the same layout
   * with the Byron update state's installer metadata in the sidecar (issue #726); `V9` is the same
   * layout whose sidecar names the eras with Dijkstra among them and holds the protocol parameters
-  * with the fields Dijkstra adds (#54). New versions are appended.
+  * with the fields Dijkstra adds (#54), and the network identity with the Dijkstra genesis binding
+  * (#824), which a V6 identity gets from the configuration at its first open. New versions are
+  * appended.
   */
 enum FormatVersion derives CanEqual:
   case V1, V2, V3, V4, V5, V6, V7, V8, V9
@@ -54,7 +56,8 @@ enum FileKind(
         NonEmptyList.of(
           FormatVersion.V1 -> "cardano-scala-lab network identity v1",
           FormatVersion.V2 -> "scarab network identity v2",
-          FormatVersion.V6 -> "scarab network identity v6"
+          FormatVersion.V6 -> "scarab network identity v6",
+          FormatVersion.V9 -> "scarab network identity v9"
         )
       )
 

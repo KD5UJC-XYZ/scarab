@@ -201,7 +201,7 @@ object Traced:
         "replayed" -> replayed.asJson,
         "millis" -> millis.asJson
       )
-    case StorageEvent.NetworkRecorded(id, adopted) =>
+    case StorageEvent.NetworkRecorded(id, adopted, dijkstraAdopted) =>
       EventKind.NetworkRecorded.line(
         "magic" -> id.magic.asJson,
         "shelleyGenesis" -> id.shelleyGenesis.hex.asJson,
@@ -212,7 +212,11 @@ object Traced:
         "conwayGenesis" -> xyz.kd5ujc.scarab.ledger.NetworkIdentity
           .renderGenesisHash(id.conwayGenesis)
           .asJson,
-        "adoptedExisting" -> adopted.asJson
+        "dijkstraGenesis" -> id.dijkstraGenesis
+          .map(xyz.kd5ujc.scarab.ledger.NetworkIdentity.renderGenesisHash)
+          .asJson,
+        "adoptedExisting" -> adopted.asJson,
+        "adoptedDijkstraGenesis" -> dijkstraAdopted.asJson
       )
     case StorageEvent.VolatileOpened(r) =>
       EventKind.VolatileOpened.line(

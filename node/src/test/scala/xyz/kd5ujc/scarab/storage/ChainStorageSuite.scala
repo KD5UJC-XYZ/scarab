@@ -930,6 +930,41 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  test(
+    "network identity: a V6 file is bound at the next open, and adopts a later Dijkstra genesis once"
+  ) {
+    tempDir.use { dir =>
+      val id = setup.identity
+      val file = (dir / NetworkIdentityFile.FileName).toNioPath
+      def hash(b: Byte) = Some(
+        xyz.kd5ujc.scarab.ledger.GenesisFileHash(
+          xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(Bytes.fromArray(Array[Byte](b)))
+        )
+      )
+      val withDijkstra = id.copy(dijkstraGenesis = hash(9))
+      def recorded(s: Session) =
+        s.events.collect { case StorageEvent.NetworkRecorded(i, a, d) => (i, a, d) }
+      for
+        _ <- session(dir, 40)
+        _ <- IO.blocking(
+          JFiles.writeString(file, id.renderAs(xyz.kd5ujc.scarab.ledger.FormatVersion.V6))
+        )
+        _ <- session(dir, 60)
+        migrated <- IO.blocking(JFiles.readString(file))
+        adopting <- session(dir, 60, identity = Some(withDijkstra))
+        adopted <- IO.blocking(JFiles.readString(file))
+        again <- session(dir, 60, identity = Some(withDijkstra))
+        other <- refusal(session(dir, 60, identity = Some(id.copy(dijkstraGenesis = hash(8)))))
+      yield
+        assertEquals(id.dijkstraGenesis, None)
+        assertEquals(migrated, id.render)
+        assertEquals(adopted, withDijkstra.render)
+        assertEquals(recorded(adopting), Vector((withDijkstra, false, true)))
+        assertEquals(recorded(again), Vector.empty)
+        assert(other.contains("belongs to another network"), other)
+    }
+  }
+
   test("network identity: recorded at creation, accepted on reopen, refused on mismatch") {
     tempDir.use { dir =>
       val id = setup.identity
@@ -982,7 +1017,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         _ <- IO(assertState(adopted.chain.state, states(140)))
         _ <- IO(
           assertEquals(
-            adopted.events.collect { case StorageEvent.NetworkRecorded(_, a) => a },
+            adopted.events.collect { case StorageEvent.NetworkRecorded(_, a, _) => a },
             Vector(true)
           )
         )
@@ -1107,7 +1142,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     )
     assert(NetworkIdentity.parse("f", "garbage").isLeft)
     assert(NetworkIdentity.parse("f", id.render.replace("magic", "magick")).isLeft)
-    assert(NetworkIdentity.parse("f", id.render.replace("v6", "v3")).isLeft)
+    assert(NetworkIdentity.parse("f", id.render.replace("v9", "v3")).isLeft)
+    assert(NetworkIdentity.parse("f", id.render.replace("dijkstra-genesis", "dijkstra")).isLeft)
   }
 
   // ---- V5 and V7 snapshots paired with current and pre-K6 checkpoint key layouts (#145, #395)

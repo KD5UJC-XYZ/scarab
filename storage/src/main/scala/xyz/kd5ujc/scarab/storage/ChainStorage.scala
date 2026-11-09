@@ -55,7 +55,11 @@ enum StorageEvent:
   case ReplayStarted(from: Option[BlockRef], tip: Option[BlockRef])
   case ReplayProgress(at: BlockRef, replayed: Long, millis: Long)
   case ReplayFinished(at: Option[BlockRef], replayed: Long, millis: Long)
-  case NetworkRecorded(identity: NetworkIdentity, adopted: Boolean)
+
+  /** The identity written: at creation or an operator's adoption (`adopted`), or with the
+    * configured Dijkstra genesis adopted by an identity that recorded none (`dijkstraAdopted`).
+    */
+  case NetworkRecorded(identity: NetworkIdentity, adopted: Boolean, dijkstraAdopted: Boolean)
   case VolatileOpened(report: VolatileStore.OpenReport)
 
   /** The volatile chain was rebuilt from the log: `resumed` blocks applied on top of the immutable
@@ -281,9 +285,19 @@ object ChainStorage:
         )
       )
       _ <- Resource.eval(config.identity.traverse_(NetworkIdentityFile.admit[F](dir, _, admission)))
-      migratedIdentity <- Resource.eval(NetworkIdentityFile.migrate[F](dir))
+      migratedIdentity <- Resource.eval(NetworkIdentityFile.migrate[F](dir, config.identity))
       _ <- Resource.eval(
         migratedIdentity.traverse_(m => events.emit(StorageEvent.FormatMigrated(m)))
+      )
+      adoptedDijkstra <- Resource.eval(
+        config.identity.flatTraverse(NetworkIdentityFile.adoptDijkstra[F](dir, _))
+      )
+      _ <- Resource.eval(
+        adoptedDijkstra.traverse_(identity =>
+          events.emit(
+            StorageEvent.NetworkRecorded(identity, adopted = false, dijkstraAdopted = true)
+          )
+        )
       )
       opened <- FileImmutableStore.open[F](dir / "immutable", config.chunkSlots)
       (store, report) = opened
@@ -297,6 +311,7 @@ object ChainStorage:
             events.emit(
               StorageEvent.NetworkRecorded(
                 identity,
+                dijkstraAdopted = false,
                 adopted = admission match
                   case NetworkIdentityFile.Admission.AdoptLegacy(_, _) |
                       NetworkIdentityFile.Admission.AdoptMissing =>

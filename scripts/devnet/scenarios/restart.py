@@ -44,6 +44,20 @@ def format_problem(magics):
     return None
 
 
+# the first line of the network identity this build writes (FileKind.IdentityFile current, #824)
+IDENTITY_HEADER = "scarab network identity v9"
+
+
+def identity_problem(text):
+    """Why the database's network identity is not in the current format, else None (`text`: the file, or None)."""
+    if text is None:
+        return "no network identity in the database"
+    first = text.split("\n", 1)[0].strip()
+    if first != IDENTITY_HEADER:
+        return f"network identity not in the current format: {first!r}"
+    return None
+
+
 def _start(args):
     command = [sys.executable, str(ENTRY), "--name", args.name, "follow", "--db", *arguments(args)]
     return subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
@@ -104,6 +118,10 @@ def restart(args):
             if problem:
                 failures.append(problem)
     problem = format_problem([f.read_bytes()[:8] for f in sorted((root / "db" / "snapshots").glob("snapshot-*.bin"))])
+    if problem:
+        failures.append(problem)
+    identity = root / "db" / "network-identity"
+    problem = identity_problem(identity.read_text() if identity.exists() else None)
     if problem:
         failures.append(problem)
     print(json.dumps({"stopSeconds": stops, "failed": failures}), flush=True)

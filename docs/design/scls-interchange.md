@@ -24,7 +24,7 @@ construct a complete node state without an explicit complete base.
 
 `SclsBase.resource` holds an offline ownership scope over a verified native snapshot and its
 exact immutable UTxO checkpoint. Its base context includes the complete network identity (including
-Alonzo and Conway genesis hashes) and the exact block reference. The supplied expected context must
+Alonzo, Conway and, when configured, Dijkstra genesis hashes) and the exact block reference. The supplied expected context must
 agree with both. A matching slot alone does not establish a matching chain point.
 
 Before publication, the service must project **all twelve** namespaces from that same base and

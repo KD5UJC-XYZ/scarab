@@ -605,7 +605,8 @@ object LogSamples:
     hash,
     Some(hash),
     xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash),
-    xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash)
+    xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash),
+    Some(xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash))
   )
   val storage: List[StorageEvent] = List(
     StorageEvent.ImmutableOpened(ImmutableStore.OpenReport(anchor, 100L, 2, 1, 64L)),
@@ -632,16 +633,19 @@ object LogSamples:
     StorageEvent.ReplayStarted(None, anchor),
     StorageEvent.ReplayProgress(block, 1000L, 2000L),
     StorageEvent.ReplayFinished(anchor, 1000L, 2500L),
-    StorageEvent.NetworkRecorded(network, adopted = false),
+    StorageEvent.NetworkRecorded(network, adopted = false, dijkstraAdopted = false),
+    StorageEvent.NetworkRecorded(network, adopted = false, dijkstraAdopted = true),
     StorageEvent.NetworkRecorded(
       NetworkIdentity(
         1L,
         hash,
         None,
         xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash),
-        xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash)
+        xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash),
+        None
       ),
-      adopted = true
+      adopted = true,
+      dijkstraAdopted = false
     ),
     StorageEvent.VolatileOpened(VolatileStore.OpenReport(10, 2, 0L, 0)),
     StorageEvent.VolatileResumed(10, 1, 300L),
