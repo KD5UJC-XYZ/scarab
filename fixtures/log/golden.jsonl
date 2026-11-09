@@ -197,6 +197,7 @@
 {"event":"immutableOpened","at":"2026-10-16T12:00:00Z","tip":null,"blocks":0,"chunks":0,"truncatedEntries":0,"truncatedBytes":0}
 {"event":"formatMigrated","at":"2026-10-16T12:00:00Z","kind":"SnapshotFile","from":"V3","to":"V4","count":3}
 {"event":"snapshotSkipped","at":"2026-10-16T12:00:00Z","file":"4200-abab","reason":"corrupt snapshot: UnexpectedEnd(0)"}
+{"event":"snapshotDeleted","at":"2026-10-16T12:00:00Z","file":"4200-abab"}
 {"event":"snapshotRestored","at":"2026-10-16T12:00:00Z","file":"4200-abab","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"snapshotRestored","at":"2026-10-16T12:00:00Z","file":"genesis","anchor":null}
 {"event":"snapshotUnbound","at":"2026-10-16T12:00:00Z","file":"4200-abab","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}

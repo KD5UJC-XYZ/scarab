@@ -376,16 +376,20 @@ class SnapshotV10Suite extends CatsEffectSuite:
         damaged = original.updated(original.length - 1, (original.last ^ 1).toByte)
         _ <- IO(JFiles.write(current.toNioPath, damaged))
         unchanged <- ok(SnapshotMigration.toCurrent[IO].run(dir))
+        migrated <- IO.blocking(JFiles.readAllBytes(current.toNioPath))
         restored <- ok(
           FileLedgerSnapshots.open[IO, MirrorState](dir).flatMap(_.restore(_ => IO.pure(Right(()))))
         )
       yield
-        // Migration probes only current-version headers; the ordinary reader verifies the checksum.
+        // Migration probes only current-version headers; the ordinary reader verifies the checksum,
+        // and the restore deletes the damaged temporary snapshot, as the reference does
         assertEquals(unchanged, SnapshotMigration.Report.empty)
-        assert(java.util.Arrays.equals(JFiles.readAllBytes(current.toNioPath), damaged))
+        assert(java.util.Arrays.equals(migrated, damaged))
         assert(FileLedgerSnapshots.verified(damaged).isLeft)
         assertEquals(restored.snapshot, None)
         assertEquals(restored.skipped.map(_.name), Vector(current.fileName.toString))
+        assertEquals(restored.skipped.map(_.unused), Vector(LedgerSnapshots.Unused.Deleted))
+        assert(!JFiles.exists(current.toNioPath))
     }
   }
 

@@ -170,6 +170,8 @@ object Traced:
       EventKind.SnapshotSkipped.line("file" -> name.asJson, "reason" -> error.message.asJson)
     case StorageEvent.SnapshotRestored(name, a) =>
       EventKind.SnapshotRestored.line("file" -> name.asJson, "anchor" -> anchor(a))
+    case StorageEvent.SnapshotDeleted(name) =>
+      EventKind.SnapshotDeleted.line("file" -> name.asJson)
     case StorageEvent.SnapshotUnbound(name, a) =>
       EventKind.SnapshotUnbound.line("file" -> name.asJson, "anchor" -> anchor(a))
     case StorageEvent.SnapshotWritten(name, a, bytes, millis) =>

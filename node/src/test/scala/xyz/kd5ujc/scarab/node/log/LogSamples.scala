@@ -618,6 +618,7 @@ object LogSamples:
       "4200-abab",
       StorageError.Corrupt("snapshot", xyz.kd5ujc.scarab.codec.BinaryError.UnexpectedEnd(0))
     ),
+    StorageEvent.SnapshotDeleted("4200-abab"),
     StorageEvent.SnapshotRestored("4200-abab", anchor),
     StorageEvent.SnapshotRestored("genesis", None),
     StorageEvent.SnapshotUnbound("4200-abab", anchor),

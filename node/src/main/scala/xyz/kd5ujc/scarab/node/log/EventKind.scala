@@ -219,6 +219,9 @@ enum EventKind(val area: Area, val severity: Severity):
   case VolatileResumed extends EventKind(Area.Storage, Severity.Info)
   case NetworkRecorded extends EventKind(Area.Storage, Severity.Info)
   case SnapshotSkipped extends EventKind(Area.Storage, Severity.Warning)
+
+  /** A skipped snapshot was deleted, as the reference's `DeletedSnapshot`. */
+  case SnapshotDeleted extends EventKind(Area.Storage, Severity.Info)
   case SnapshotRestored extends EventKind(Area.Storage, Severity.Info)
   case SnapshotUnbound extends EventKind(Area.Storage, Severity.Warning)
   case SnapshotWritten extends EventKind(Area.Storage, Severity.Info)

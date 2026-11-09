@@ -37,6 +37,12 @@ enum StorageEvent:
     */
   case FormatMigrated(migrated: Migrated)
   case SnapshotSkipped(name: String, error: StorageError)
+
+  /** A snapshot the restore did not use was deleted, with its checkpoint, as the reference deletes
+    * a temporary snapshot it cannot use (`deleteSnapshotIfTemporary`, which traces
+    * `DeletedSnapshot`, ouroboros-consensus 82ecba32 `Storage/LedgerDB/Snapshots.hs:320-328`).
+    */
+  case SnapshotDeleted(name: String)
   case SnapshotRestored(name: String, anchor: Option[BlockRef])
 
   /** The restored snapshot was written before snapshots recorded their checkpoint
@@ -355,7 +361,18 @@ object ChainStorage:
         )
       )
       _ <- Resource.eval(
-        restored.skipped.traverse_(s => events.emit(StorageEvent.SnapshotSkipped(s.name, s.error)))
+        restored.skipped.traverse_(s =>
+          events.emit(StorageEvent.SnapshotSkipped(s.name, s.error)) *>
+            F.whenA(s.unused == LedgerSnapshots.Unused.Deleted)(
+              events.emit(StorageEvent.SnapshotDeleted(s.name))
+            )
+        )
+      )
+      // the checkpoints of the deleted snapshots go too, by the trim path of a write
+      _ <- Resource.eval(
+        F.whenA(restored.skipped.exists(_.unused == LedgerSnapshots.Unused.Deleted))(
+          snapshots.list.flatMap(names => backing.retain(names.map(_.stripSuffix(".bin")).toSet))
+        )
       )
       start <- Resource.eval(
         restored.snapshot.fold(F.pure((Option.empty[BlockRef], initial)))((_, s) =>

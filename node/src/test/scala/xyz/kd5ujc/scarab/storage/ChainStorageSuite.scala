@@ -1297,7 +1297,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("a V7 snapshot whose checkpoint is not the one it recorded is skipped for an older one") {
+  test(
+    "a snapshot whose checkpoint is not the one it recorded is deleted with it, for an older one"
+  ) {
     tempDir.use { dir =>
       for
         left <- checkpointDatabase(dir, CheckpointLayout.Current, 600, 60, 4, 1)
@@ -1308,7 +1310,15 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         log <- events(dir)
         _ <- runWith(dir, 731, 120, log, Some("rocksdb"), 4, migrate = true)
         seen <- log.get
+        checkpointLeft <- IO.blocking(JFiles.exists(checkpointOf(dir, newest).toNioPath))
       yield
+        // the reference deletes a temporary snapshot it cannot use (82ecba32 API.hs:628-631), and
+        // the trim path takes its checkpoint with it
+        assertEquals(
+          seen.collect { case StorageEvent.SnapshotDeleted(name) => name }.toList,
+          List(newest)
+        )
+        assert(!checkpointLeft, s"the checkpoint of $newest is still there")
         val skipped = seen.collect { case StorageEvent.SnapshotSkipped(name, e) => name -> e }
         assertEquals(skipped.map(_._1).toList, List(newest))
         skipped.headOption.map(_._2) match

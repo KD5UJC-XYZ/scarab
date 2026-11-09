@@ -180,10 +180,16 @@ class SnapshotV10MigrationSuite extends CatsEffectSuite:
       }
     yield
       assertEquals(both.snapshot.map(_._1), Some(older))
-      assertEquals(both.skipped, Vector(LedgerSnapshots.Skipped(newer, mismatch)))
+      assertEquals(
+        both.skipped,
+        Vector(LedgerSnapshots.Skipped(newer, mismatch, LedgerSnapshots.Unused.Deleted))
+      )
       assert(mismatch.message.contains("leios-b004fe0c"), mismatch.message)
       assert(mismatch.message.contains("11.1 (stable, cardano-node 11.1.3)"), mismatch.message)
       // with nothing else to restore, the stored blocks are replayed from genesis
       assertEquals(alone.snapshot, None)
-      assertEquals(alone.skipped, Vector(LedgerSnapshots.Skipped(newer, mismatch)))
+      assertEquals(
+        alone.skipped,
+        Vector(LedgerSnapshots.Skipped(newer, mismatch, LedgerSnapshots.Unused.Deleted))
+      )
   }

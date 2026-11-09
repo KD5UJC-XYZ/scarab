@@ -9,7 +9,7 @@ import cats.syntax.all.*
 import fs2.io.file.{Files, Path}
 import java.security.MessageDigest
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.ledger.{CheckpointProblem, StorageError}
 
 /** The node state at an immutable point: `anchor` is the newest block applied (none: genesis), and
   * `checkpoint` what the snapshot records of the store that holds the rest of the state
@@ -28,8 +28,9 @@ trait LedgerSnapshots[F[_], S]:
 
   /** The newest snapshot that decodes, passes its checksum and that `usable` admits (its anchor is
     * stored, its checkpoint is the one it was written with); `usable` gives the reason it refuses
-    * one. Corrupt or unusable snapshots are reported and skipped. Unknown or retired format
-    * versions raise a storage error, preventing fallback replay from bypassing format admission.
+    * one. A snapshot not used is reported and the next older one tried, and deleted when the
+    * reference deletes it ([[LedgerSnapshots.Unused.of]]). Unknown or retired format versions raise
+    * a storage error, preventing fallback replay from bypassing format admission.
     */
   def restore(usable: StateSnapshot[S] => F[Either[StorageError, Unit]])(using
       cats.mtl.Raise[F, StorageError]
@@ -40,7 +41,54 @@ trait LedgerSnapshots[F[_], S]:
 
 object LedgerSnapshots:
   final case class Written(name: String, bytes: Long, anchor: Option[BlockRef])
-  final case class Skipped(name: String, error: StorageError)
+
+  /** A snapshot the restore did not use, why, and whether it was deleted. */
+  final case class Skipped(name: String, error: StorageError, unused: Unused)
+
+  /** What the restore does with a snapshot it does not use: what the reference's `tryNewestFirst`
+    * does (ouroboros-consensus 82ecba32 `Storage/LedgerDB/API.hs:599-646`). A snapshot ahead of the
+    * immutable tip, or one that fails for any reason but three, is deleted if it is temporary
+    * (`deleteSnapshotIfTemporary`, `:602, 628-631`), and the next older one is tried; a snapshot
+    * without its metadata file, of another backend, or of the legacy layout is kept (`:607-625`). A
+    * snapshot is temporary when its name has no suffix (`diskSnapshotIsTemporary`,
+    * `Storage/LedgerDB/Snapshots.hs:288-297`): every native snapshot is
+    * `snapshot-<slot>-<blockNo>.bin`, the node's, an import's and an SCLS import's alike, with no
+    * suffix, so every one is temporary.
+    */
+  enum Unused derives CanEqual:
+    /** Deleted, with its checkpoint (the trim path, [[StateBacking.retain]]). */
+    case Deleted
+
+    /** Kept on disk. */
+    case Kept
+
+  object Unused:
+    /** What becomes of a snapshot refused with `error`. The line between the reference's cases and
+      * Scarab's envelope: the format version of the file is Scarab's own and ADR 0006 governs it,
+      * so an unknown or retired version is raised before this ([[FileLedgerSnapshots.restore]]) and
+      * a binding or sidecar of another schema (`VersionMismatch`) is kept, as a file of a known but
+      * incompatible version is not ordinary corrupt input. Everything a snapshot holds of the
+      * reference's state, and the snapshot's integrity, is the reference's catch-all:
+      *
+      *   - an anchor missing from the immutable store is the reference's too-recent snapshot:
+      *     deleted (`:600-604`);
+      *   - a checksum, a framing, a sidecar or a state that does not decode, and a state recorded
+      *     under a build of another layout or an unknown one, are `ReadSnapshotDataCorruption` and
+      *     `ReadSnapshotFailed`: deleted (`:628-631`);
+      *   - a checkpoint of another key layout, or none where this node keeps a store, is the
+      *     reference's `MetadataBackendMismatch`: kept (`:613-617`); any other checkpoint problem
+      *     (absent, its digest not the recorded one, keys it cannot hold) is corruption: deleted;
+      *   - a file that could not be read (`Io`) is not a decoding failure: the reference's file
+      *     system errors are exceptions, not a `Left`; kept.
+      */
+    def of(error: StorageError): Unused = error match
+      case _: StorageError.VersionMismatch | _: StorageError.Io => Kept
+      case StorageError.UtxoCheckpoint(
+            _,
+            CheckpointProblem.LayoutMismatch(_, _) | CheckpointProblem.Unbound
+          ) =>
+        Kept
+      case _ => Deleted
   final case class Restored[S](
       snapshot: Option[(String, StateSnapshot[S])],
       skipped: Vector[Skipped]
@@ -161,6 +209,12 @@ object FileLedgerSnapshots:
       def restore(usable: StateSnapshot[S] => F[Either[StorageError, Unit]])(using
           cats.mtl.Raise[F, StorageError]
       ): F[LedgerSnapshots.Restored[S]] =
+        /** Skip `name`, refused with `error`, deleting it when the reference would. */
+        def unused(name: String, error: StorageError): F[LedgerSnapshots.Skipped] =
+          val unused = LedgerSnapshots.Unused.of(error)
+          F.whenA(unused == LedgerSnapshots.Unused.Deleted)(
+            guard((dir / name).toString)(files.deleteIfExists(dir / name).void)
+          ).as(LedgerSnapshots.Skipped(name, error, unused))
         def go(
             rest: List[String],
             skipped: Vector[LedgerSnapshots.Skipped]
@@ -171,13 +225,13 @@ object FileLedgerSnapshots:
               case Left(error) if DecodeFailure.terminal(error) => fail(error)
               case Left(error: StorageError.UnknownVersion)     => fail(error)
               case Left(error: StorageError.RetiredVersion)     => fail(error)
-              case Left(error) => go(tail, skipped :+ LedgerSnapshots.Skipped(name, error))
+              case Left(error) => unused(name, error).flatMap(s => go(tail, skipped :+ s))
               case Right(snapshot) =>
                 usable(snapshot).flatMap {
                   case Right(()) =>
                     F.pure(LedgerSnapshots.Restored(Some(name -> snapshot), skipped))
                   case Left(error) if DecodeFailure.terminal(error) => fail(error)
-                  case Left(error) => go(tail, skipped :+ LedgerSnapshots.Skipped(name, error))
+                  case Left(error) => unused(name, error).flatMap(s => go(tail, skipped :+ s))
                 }
             }
         names.flatMap(ns => go(ns.toList, Vector.empty)))
