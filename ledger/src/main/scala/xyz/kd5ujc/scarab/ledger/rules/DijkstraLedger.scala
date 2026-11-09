@@ -240,12 +240,13 @@ object DijkstraBbody
                 .map(r => TxIn(body.id, BigInt(body.outputs.size)) -> r)
                 .toVector
           val size = DijkstraTxMeasures.refScriptsSize(
-            in => added.get(in).orElse(DijkstraTxMeasures.inUtxo(utxo)(in)),
+            in => DijkstraTxMeasures.inUtxo(utxo)(in).orElse(added.get(in)),
             body
           )
           val sizes =
             created.map((in, o) => in -> o.referenceScript.fold(0L)(DijkstraTxMeasures.scriptSize))
-          (added ++ sizes, sum + size)
+          // The reference's Map.union keeps the existing entry (Conway/Rules/Bbody.hs:379-384).
+          (sizes.toMap ++ added, sum + size)
         }
         ._2
 

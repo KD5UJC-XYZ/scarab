@@ -389,25 +389,37 @@ class DijkstraRulesOracleSuite extends FunSuite:
         )(f => utxow(f))
       case other => fail(s"kind $other")
 
-  /** The cases that reach a rule this build does not run yet, with the part they reach. */
-  private val incomplete: Map[String, DijkstraPending] =
-    Map(
-      "bbody/devnet-37" -> DijkstraPending.Entities,
-      "bbody/devnet-37-genesis-utxo" -> DijkstraPending.Entities
-    )
+  private lazy val observations: Vector[(String, Verdict, Verdict)] = cases.map { c =>
+    (str(c.hcursor.downField("name")), scarab(c), reference(c))
+  }
 
   test("the fixture holds the oracle's cases") {
     assertEquals(cases.size, 68)
   }
 
-  test("every case the node's rules complete agrees with the reference") {
-    val differing = cases.flatMap { c =>
-      val name = str(c.hcursor.downField("name"))
-      val expected = incomplete
-        .get(name)
-        .fold(reference(c))(part => Verdict.Halted(DijkstraHalt.NotYet(DijkstraNotYet.Rules, part)))
-      val ours = scarab(c)
-      Option.when(ours != expected)(s"$name: $ours, the reference $expected")
+  test("every completed case agrees with the unchanged reference verdict") {
+    val completed = observations.filter { (_, ours, _) =>
+      ours match
+        case Verdict.Halted(_) => false
+        case _                 => true
+    }
+    assertEquals(completed.size, 66, "completed oracle comparisons; halted cases are incomplete")
+    val differing = completed.collect {
+      case (name, ours, expected) if ours != expected => s"$name: $ours, the reference $expected"
     }
     assertEquals(differing, Vector.empty[String])
+  }
+
+  test("unfinished ENTITIES cases are reported separately from reference agreement") {
+    val incomplete = observations.collect { case (name, Verdict.Halted(cause), expected) =>
+      (name, cause, expected)
+    }
+    assertEquals(incomplete.size, 2, "incomplete oracle comparisons, not conformance passes")
+    incomplete.foreach { (name, cause, expected) =>
+      assertEquals(
+        cause,
+        DijkstraHalt.NotYet(DijkstraNotYet.Rules, DijkstraPending.Entities),
+        s"$name remains incomplete; the unchanged reference verdict is $expected"
+      )
+    }
   }
