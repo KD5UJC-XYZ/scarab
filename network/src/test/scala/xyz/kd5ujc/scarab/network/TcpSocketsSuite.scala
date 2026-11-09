@@ -173,8 +173,10 @@ class TcpSocketsSuite extends FailsOnUncaught:
   private def states(local: Port, remote: Port): IO[List[Int]] =
     List("/proc/net/tcp", "/proc/net/tcp6")
       .flatTraverse(table =>
+        // a kernel without IPv6 has no `/proc/net/tcp6`, and no socket in it
         IO.blocking(java.nio.file.Files.readAllLines(java.nio.file.Path.of(table)))
           .map(_.toArray(Array.empty[String]).toList.drop(1))
+          .recover { case _: java.nio.file.NoSuchFileException => Nil }
       )
       .map(_.flatMap { line =>
         line.trim.split("\\s+").toList match
