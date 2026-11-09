@@ -18,6 +18,25 @@ SCALA_PORT = 3350   # the Scala node's node-to-node listener (loopback, shared n
 RELAY_PORT = 3351   # the Haskell relay, whose only upstream peer is the Scala node
 RELAY_DIR = "/work/relay"
 RELAY_SOCKET = f"{RELAY_DIR}/sock"
+RELAY_REMOTE = f"127.0.0.1:{RELAY_PORT}"   # the relay dials from its listening address (bound, duplex)
+TOPOLOGY = "scala-relay-topology.json"
+# the outbound side's use of the peer's own connection (ouroboros-network 2fb69829,
+# ConnectionManager/Core.hs 1335-1370): `Awake^{Duplex}_{Local}` or `PromotedToWarm^{Duplex}_{Local}`
+REUSE = {("InboundIdleSt Duplex", "OutboundDupSt Ticking"), ("InboundSt Duplex", "DuplexSt")}
+
+
+def relay_root(behind_firewall):
+    """The Haskell relay as a local root of the Scala node. Behind a firewall its provenance is inbound: the
+    Scala node never dials it and can only use the relay's own connection (Core.hs 1390-1399)."""
+    return {"accessPoints": [{"address": "127.0.0.1", "port": RELAY_PORT}], "advertise": False,
+            "behindFirewall": behind_firewall, "trustable": False, "diffusionMode": "InitiatorAndResponder",
+            "hotValency": 1, "warmValency": 1}
+
+
+def write_topology(root, groups):
+    """The Scala node's topology file, read at start and again on SIGHUP."""
+    topology = {"bootstrapPeers": None, "publicRoots": [], "useLedgerAfterSlot": -1, "localRoots": groups}
+    (root / "genesis" / TOPOLOGY).write_text(json.dumps(topology, indent=2))
 
 
 def start_scala_relay(args, root, peers):
@@ -31,15 +50,19 @@ def start_scala_relay(args, root, peers):
     sock.mkdir(exist_ok=True)
     sock.chmod(0o777)
     program = ["follow", "--genesis-dir", "/genesis", "--query-port", str(QUERY_PORT),
-               "--listen", f"127.0.0.1:{SCALA_PORT}", "--db", "/db", "--local-socket", "/sock/node.socket",
-               # this scenario checks that the node follows the relay over the relay's inbound connection;
-               # the flag is off by default
-               "--inbound-sync", "on"]
+               "--listen", f"127.0.0.1:{SCALA_PORT}", "--db", "/db", "--local-socket", "/sock/node.socket"]
+    # a topology the run extends with the relay once it has connected (SIGHUP); in Genesis mode it is the
+    # trusted pools', else the pools stay CLI peers and the topology starts empty
     if getattr(args, "consensus_mode", None) == "GenesisMode":
-        program += trusted_pools(root, peers)
+        trusted_pools(root, peers)
+        pools = json.loads((root / "genesis" / "scala-consensus-topology.json").read_text())["localRoots"]
     else:
+        pools = []
         for port in peers:
             program += ["--peer", f"127.0.0.1:{port}"]
+    write_topology(root, pools)
+    (root / "genesis" / "scala-pool-roots.json").write_text(json.dumps(pools))
+    program += ["--topology", f"/genesis/{TOPOLOGY}"]
     # The Scala node takes part in peer sharing, as the Haskell relay does by default (a node without producer
     # credentials), and reads ExperimentalProtocolsEnabled, which decides the highest node-to-node version it
     # offers: cardano-testnet writes `true`, so the key is set from --max-ntn-version either way (15, the
@@ -109,15 +132,27 @@ def scala_connections(args):
         return None
 
 
-def inbound_session(connections):
-    """The inbound session of the Haskell relay (the only inbound peer), if it exists."""
-    sessions = (connections or {}).get("inboundSessions") or []
-    return sessions[0] if sessions else None
+def relay_connections(connections):
+    """The entries of the Scala node's connection table for the Haskell relay's address."""
+    return [c for c in (connections or {}).get("connections", []) if c.get("remote") == RELAY_REMOTE]
 
 
-def wait_inbound_session(args):
-    """Wait for the Scala node's own ChainSync client to follow the Haskell relay over the relay's
-    inbound duplex connection: an intersection found and headers received.
+def relay_temperature(connections):
+    """The relay's temperature in the Scala node's peer selection, if it is known."""
+    peers = ((connections or {}).get("peerSelection") or {}).get("peers") or []
+    return next((p.get("temperature") for p in peers if p.get("peer") == RELAY_REMOTE), None)
+
+
+def reuse_events(path):
+    """The Scala node's `connection` changes of the relay's connection that are the outbound side's reuse."""
+    events, _ = read_log(path)
+    return [e for e in events if e.get("event") == "connection" and e.get("what") == "changed"
+            and e.get("remote") == RELAY_REMOTE and (e.get("from"), e.get("to")) in REUSE]
+
+
+def wait_reuse(args, log):
+    """Wait until the outbound governor promoted the relay over the relay's own connection: a reuse transition
+    logged and the relay hot, on one connection.
 
     A relay initially behind our immutable anchor can return NoMoreIntersection normally.
     The pinned consensus Node/ExitPolicy.hs29-30 waits 120 seconds before repromotion;
@@ -127,8 +162,20 @@ def wait_inbound_session(args):
     seen = None
     while time.monotonic() < deadline:
         seen = scala_connections(args)
-        session = inbound_session(seen)
-        if session and session.get("intersection") and session.get("headers", 0) > 0:
+        if reuse_events(log) and relay_temperature(seen) == "hot" and len(relay_connections(seen)) == 1:
+            return seen
+        time.sleep(1)
+    return seen
+
+
+def wait_relay_connected(args):
+    """Wait for the relay's own duplex connection to the Scala node, negotiated."""
+    deadline = time.monotonic() + args.sync_timeout
+    seen = None
+    while time.monotonic() < deadline:
+        seen = scala_connections(args)
+        states = [c["state"] for c in relay_connections(seen)]
+        if any(state in ("InboundIdleSt Duplex", "InboundSt Duplex") for state in states):
             return seen
         time.sleep(1)
     return seen
@@ -239,9 +286,18 @@ def relay(args):
         if synced_at is None:
             raise SystemExit(f"the Haskell relay did not sync from the Scala node within {args.sync_timeout} s")
         print(json.dumps({"relaySynced": tip_at(args.name, RELAY_SOCKET)}), flush=True)
-        # G2: the Haskell relay connected to us; our own clients follow it over that same connection
+        # G2: the Haskell relay connected to us. Its address becomes a local root behind a firewall (SIGHUP):
+        # the outbound governor promotes it, and the only way to reach it is the relay's own connection
         duplex = args.relay_mode == "InitiatorAndResponder"
-        at_sync = wait_inbound_session(args) if duplex else scala_connections(args)
+        at_sync, reused = scala_connections(args), None
+        if duplex:
+            connected = wait_relay_connected(args)
+            print(json.dumps({"relayConnected": relay_connections(connected)}), flush=True)
+            pools = json.loads((root / "genesis" / "scala-pool-roots.json").read_text())
+            write_topology(root, pools + [relay_root(behind_firewall=True)])
+            docker("kill", "-s", "HUP", f"{args.name}-scala", check=False)
+            reused = wait_reuse(args, log)
+            at_sync = reused
         print(json.dumps({"connectionsAtSync": at_sync}), flush=True)
         local = submit_through_local_socket(args, root)
         print(json.dumps({"localSubmit": local}), flush=True)
@@ -292,7 +348,9 @@ def relay(args):
         # the versions the Haskell relay proposed to us and the one we accepted (its handshake trace)
         handshakes = relay_handshakes(in_ref(args.name, f"cat {RELAY_DIR}/node.log").stdout)
         final_connections = scala_connections(args)
-        first, last = inbound_session(at_sync), inbound_session(final_connections)
+        reuses = reuse_events(log)
+        dialled = [e for e in events if e["event"] == "connection" and e.get("what") == "opened"
+                   and e.get("remote") == RELAY_REMOTE and e.get("provenance") == "Outbound"]
         local["adopted"] = any(e["event"] == "mempoolAdopted" and e["tx"] == local["txid"] for e in events)
         local["addedToMempool"] = any(e["event"] == "mempoolAdded" and e["tx"] == local["txid"] for e in events)
         summary = {
@@ -322,11 +380,10 @@ def relay(args):
                 "mode": args.relay_mode,
                 "connectionsAtSync": at_sync,
                 "connectionsAtEnd": final_connections,
-                "sessionHeadersAtSync": first and first.get("headers"),
-                "sessionHeadersAtEnd": last and last.get("headers"),
+                "reused": [(e.get("from"), e.get("to")) for e in reuses],
+                "relayTemperatureAtEnd": relay_temperature(final_connections),
                 "events": {k: sum(1 for e in events if e["event"] == "inbound" and e.get("state") == k)
-                           for k in ("accepted", "duplex", "unidirectional", "following", "sessionEnded",
-                                     "sessionDropped", "refused", "reused", "closed")},
+                           for k in ("accepted", "duplex", "unidirectional", "refused", "closed")},
             },
         }
         if not agree:
@@ -349,21 +406,20 @@ def relay(args):
         if local["exitCode"] != 0 or not local["addedToMempool"] or not local["adopted"]:
             failures.append(f"the transaction submitted over the node-to-client socket did not reach a block: {local}")
         if duplex:
-            # the relay's inbound connection is duplex and our client on it followed the relay all along
-            states = [c["state"].replace(" ", "") for c in (final_connections or {}).get("connections", [])]
-            # the reference's state names; remote activity on it is tracked from #854's second step
-            if not any(x in ("InboundIdleStDuplex", "InboundStDuplex") for x in states):
-                failures.append(f"no established inbound duplex connection at the end: {states}")
-            if not first or not first.get("intersection") or first.get("headers", 0) < 1:
-                failures.append("the Scala node did not follow the Haskell relay over its inbound connection")
-            elif not last or last.get("ended") or last.get("headers", 0) <= first.get("headers", 0):
-                failures.append(f"the session on the inbound connection did not keep following: {first} -> {last}")
-            else:
-                pool_tip = (final.get("pool1") or {}).get("block", 0)
-                if last.get("peerTipBlock") is None or pool_tip - int(last["peerTipBlock"]) > 3:
-                    failures.append(f"the relay's tip seen over the inbound connection ({last.get('peerTipBlock')}) "
-                                    f"is behind the pool's ({pool_tip})")
-            if summary["inbound"]["events"]["duplex"] < 1 or summary["inbound"]["events"]["following"] < 1:
+            # the outbound governor promoted the relay over the relay's own connection: a reuse transition,
+            # never a dial, one connection to it, and the relay hot (its chain followed) at the end
+            relay_states = [c["state"] for c in relay_connections(final_connections)]
+            if not reuses:
+                failures.append("the Scala node did not reuse the relay's own connection (no reuse transition)")
+            if dialled:
+                failures.append(f"the Scala node dialled the relay, which is behind a firewall: {dialled[:2]}")
+            if len(relay_states) != 1:
+                failures.append(f"not exactly one connection to the relay at the end: {relay_states}")
+            elif relay_states[0] not in ("DuplexSt", "OutboundDupSt Ticking", "OutboundDupSt Expired"):
+                failures.append(f"the relay's connection is not in duplex use at the end: {relay_states}")
+            if relay_temperature(final_connections) != "hot":
+                failures.append(f"the relay is not hot at the end: {relay_temperature(final_connections)}")
+            if summary["inbound"]["events"]["duplex"] < 1:
                 failures.append(f"missing inbound events: {summary['inbound']['events']}")
         wanted = f"NodeToNodeV_{getattr(args, 'max_ntn_version', 15)}"
         if not handshakes["accepted"] or any(not a.startswith(f"MsgAcceptVersion {wanted} ") for a in handshakes["accepted"]):
