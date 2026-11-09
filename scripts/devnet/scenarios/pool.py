@@ -301,6 +301,68 @@ def open_outbound_after_blocks(name, root, socket, ports, blocks, stop):
     (root / "outbound-opened.txt").write_text(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "\n")
 
 
+def haskell_seat(args):
+    """Issue 609 control: the `pool` setup with a Haskell node in the Scala node's seat (pool 1's keys, listening on
+    the Scala node's port, so the other pools' topologies are unchanged). With `--outbound-after-blocks`, its own
+    dialling goes through the held proxy ports, as the Scala node's does. Reports when it first forged against when
+    its dialling opened, its connection-manager traces for the pools, and the final tips."""
+    root = data_root(args.name)
+    if root.exists():
+        raise SystemExit(f"{root} exists; run `devnet.py --name {args.name} down` first")
+    root.mkdir(parents=True)
+    start_reference(args.name)
+    others = [2, 3]
+    stop = threading.Event()
+    try:
+        ports, _ = pool_environment(args)
+        pool_topology(args.name, others, {n: ports[n] for n in others})
+        held = args.outbound_after_blocks is not None
+        dial = [OUTBOUND_PROXY_BASE + n if held else ports[n] for n in others]
+        topology = {"bootstrapPeers": None,
+                    "localRoots": [{"accessPoints": [{"address": "127.0.0.1", "port": p} for p in dial],
+                                    "advertise": False, "behindFirewall": False, "trustable": True,
+                                    "diffusionMode": "InitiatorAndResponder", "hotValency": len(dial), "warmValency": len(dial)}],
+                    "publicRoots": [{"accessPoints": [], "advertise": False}], "useLedgerAfterSlot": -1}
+        put_file(args.name, f"{ENV}/node-data/node1/topology-seat.json", json.dumps(topology, indent=2))
+        start_nodes(args.name, tuple(others))
+        in_ref(args.name, f"mkdir -p {ENV}/socket/node1")
+        key = f"{ENV}/pools-keys/pool1"
+        docker("exec", "-d", ref(args.name), "/bin/sh", "-c",
+               f"cd {ENV} && cardano-node run --config {ENV}/configuration.yaml "
+               f"--topology {ENV}/node-data/node1/topology-seat.json --database-path {ENV}/node-data/node1/db "
+               f"--shelley-kes-key {key}/kes.skey --shelley-vrf-key {key}/vrf.skey "
+               f"--shelley-operational-certificate {key}/opcert.cert "
+               f"--byron-delegation-certificate {key}/byron-delegation.cert --byron-signing-key {key}/byron-delegate.key "
+               f"--socket-path {ENV}/socket/node1/sock --port {SCALA_PORT} --host-addr 127.0.0.1 > /work/node1.log 2>&1")
+        if held:
+            threading.Thread(target=open_outbound_after_blocks, daemon=True,
+                             args=(args.name, root, f"{ENV}/socket/node2/sock", {n: ports[n] for n in others},
+                                   args.outbound_after_blocks, stop)).start()
+        time.sleep(args.seconds)
+        log = in_ref(args.name, "cat /work/node1.log").stdout.splitlines()
+        forged, connections = [], []
+        for line in log:
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            ns = e.get("ns", "")
+            if ns.endswith("ForgedBlock") or ns.endswith("Forge.Loop.ForgedBlock"):
+                forged.append(e["at"])
+            if ns.startswith("Net.ConnectionManager") and ("Reused" in line or "IncludeConnection" in line
+                                                           or "ConnectionExists" in line or "ConnectError" in line):
+                connections.append({"at": e["at"], "ns": ns, "data": e.get("data")})
+        opened = (root / "outbound-opened.txt").read_text().strip() if (root / "outbound-opened.txt").exists() else None
+        tips = {n: tip_at(args.name, f"{ENV}/socket/node{n}/sock") for n in (1, 2, 3)}
+        print(json.dumps({"outboundOpened": opened, "forged": len(forged), "firstForged": forged[:3],
+                          "connections": connections[:20], "tips": tips}, indent=2), flush=True)
+    finally:
+        stop.set()
+        docker("rm", "-f", f"{args.name}-proxy", check=False)
+        if not args.keep:
+            docker("rm", "-f", ref(args.name), check=False)
+
+
 def pool(args):
     """Fresh 3-pool cluster in which pool `--pool` is the Scala node. Its Haskell node is never started
     (so no two producers ever hold the keys), the other two pools get the Scala node in their topology, and

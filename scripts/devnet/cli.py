@@ -71,7 +71,7 @@ from .scenarios.governor import governor
 from .scenarios.ntc import ntc
 from .scenarios.peercut import peercut
 from .scenarios.inbound_flood import inbound_flood
-from .scenarios.pool import kes_rotate_scenario, pool
+from .scenarios.pool import haskell_seat, kes_rotate_scenario, pool
 from .scenarios.relay import relay
 from .scenarios.peer_sharing import peer_sharing
 from .scenarios.restart import restart
@@ -338,6 +338,10 @@ def main():
     pl = sub.add_parser("pool", parents=[scala_options], help="the Scala node as a block-producing pool among two Haskell pools")
     pool_flags(pl)
     pl.set_defaults(run=pool)
+    hs = sub.add_parser("pool-haskell-seat", parents=[scala_options],
+                        help="issue 609 control: pool with a Haskell node in the Scala node's seat")
+    pool_flags(hs)
+    hs.set_defaults(run=haskell_seat)
     kr = sub.add_parser("kes-rotate", parents=[scala_options],
                         help="pool, with the KES key rotated unattended (scripts/pool/rotate_kes.py) while the node forges")
     pool_flags(kr)
