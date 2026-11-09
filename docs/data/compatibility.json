@@ -1480,6 +1480,24 @@
       "page": "docs/compatibility/persistence-snapshot-v9.md"
     },
     {
+      "id": "persistence-network-identity-v9",
+      "component": "Persistence: network identity format (V9)",
+      "status": "implemented",
+      "summary": "The database's network identity V9 also binds the configured Dijkstra genesis file, or records none; V6 identities get the configured binding at their first open, and a recorded none adopts a Dijkstra genesis configured later, once; a recorded binding that differs or is no longer configured is refused",
+      "evidence": {
+        "suites": [
+          "NetworkIdentityV9Suite",
+          "ChainStorageSuite",
+          "FormatMigrationSuite"
+        ],
+        "issues": [
+          824,
+          54
+        ]
+      },
+      "page": "docs/compatibility/persistence-network-identity-v9.md"
+    },
+    {
       "id": "persistence-haskell-immutabledb",
       "component": "Persistence: Haskell ImmutableDB format",
       "status": "partial",

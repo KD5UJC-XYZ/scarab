@@ -16,12 +16,16 @@ from devnet.scenarios import restart
 
 
 class RestartTranscriptTests(unittest.TestCase):
-    def run_gate(self, diagnostics):
+    def run_gate(self, diagnostics, identity=restart.IDENTITY_HEADER + "\nmagic 42\n"):
+        """The gate over a database the follower left: a current snapshot and `identity` as its network identity
+        (none: no identity file)."""
         with tempfile.TemporaryDirectory(prefix="scarab-restart-transcript-") as temporary:
             root = pathlib.Path(temporary)
             snapshots = root / "db" / "snapshots"
             snapshots.mkdir(parents=True)
             (snapshots / "snapshot-1.bin").write_bytes(restart.SNAPSHOT_MAGIC)
+            if identity is not None:
+                (root / "db" / "network-identity").write_text(identity)
             transcript = root / "follower.jsonl"
             rounds = 0
             original = []
@@ -71,6 +75,17 @@ class RestartTranscriptTests(unittest.TestCase):
         })
         self.assertEqual(code, 0)
         self.assertEqual(result["failed"], [])
+
+    def test_an_identity_left_in_a_previous_format_fails_the_gate(self):
+        code, result = self.run_gate({}, identity="scarab network identity v6\nmagic 42\n")
+        self.assertEqual(code, 1)
+        self.assertEqual(result["failed"],
+                         ["network identity not in the current format: 'scarab network identity v6'"])
+
+    def test_a_database_without_an_identity_fails_the_gate(self):
+        code, result = self.run_gate({}, identity=None)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["failed"], ["no network identity in the database"])
 
 
 if __name__ == "__main__":
