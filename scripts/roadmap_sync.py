@@ -4,8 +4,14 @@
 
     python3 scripts/roadmap_sync.py merge --app-slug scarab-sync            merge if every condition holds
     python3 scripts/roadmap_sync.py merge --app-slug scarab-sync --dry-run  say what it would do
+    python3 scripts/roadmap_sync.py environment                             whether the sync job may start
 
-The triage workflow runs it with the sync App's token, on its schedule or a manual dispatch only. It merges the open
+The sync App's private key is a secret of the `roadmap-sync` environment only, which only `main` may deploy from, so a
+workflow started from any other branch cannot read it. Naming an environment that does not exist creates it without
+that restriction, so the triage workflow first runs `environment` with its own token (reads only) and starts the sync
+job only when the environment exists and deploys from `main` alone; otherwise the run says why and skips it.
+
+The triage workflow runs `merge` with the sync App's token, on its schedule or a manual dispatch only. It merges the open
 pull request from `bot/roadmap-sync` when all of these hold, and otherwise leaves it for a person:
 
   - its author is the sync App (`app/<slug>`, `<slug>[bot]`);
@@ -25,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -33,6 +40,8 @@ from dataclasses import dataclass
 
 REPOSITORY = "KD5UJC-XYZ/scarab"
 BRANCH = "bot/roadmap-sync"
+ENVIRONMENT = "roadmap-sync"
+SELECTED_BRANCHES = {"protected_branches": False, "custom_branch_policies": True}
 SYNC_FILES = frozenset({"docs/data/issue-states.json", "docs/roadmap.md"})
 PASSED = frozenset({"SUCCESS", "SKIPPED", "NEUTRAL"})
 MERGEABLE_ATTEMPTS = 6
@@ -73,11 +82,36 @@ def verdict(pr: dict, slug: str) -> Verdict:
     return Verdict(True, "the sync App's snapshot and render only, every check passed")
 
 
+def environment_verdict(environments: Sequence[dict], branch_policies: Sequence[dict]) -> Verdict:
+    """Whether the sync job may name its environment: it exists and only `main` may deploy from it.
+
+    `environments` is the repository's list (`GET /environments`), `branch_policies` the environment's deployment
+    branch policies (`GET /environments/<name>/deployment-branch-policies`), empty when it does not exist."""
+    found = [e for e in environments if e.get("name") == ENVIRONMENT]
+    if not found:
+        return Verdict(False, f"the {ENVIRONMENT} environment does not exist")
+    if found[0].get("deployment_branch_policy") != SELECTED_BRANCHES:
+        return Verdict(False, f"the {ENVIRONMENT} environment does not restrict deployments to selected branches")
+    rules = sorted((rule.get("type", "branch"), rule.get("name", "")) for rule in branch_policies)
+    if rules != [("branch", "main")]:
+        return Verdict(False, f"the {ENVIRONMENT} environment deploys from {rules}, not from main alone")
+    return Verdict(True, f"the {ENVIRONMENT} environment deploys from main alone")
+
+
 def gh(args: Sequence[str]) -> str:
     done = subprocess.run(["gh", *args], capture_output=True, text=True, check=False)
     if done.returncode != 0:
         raise RuntimeError(f"gh {' '.join(args[:2])}: {done.stderr.strip()}")
     return done.stdout
+
+
+def environment(run: Run = gh) -> Verdict:
+    listed = json.loads(run(["api", f"repos/{REPOSITORY}/environments", "--jq", ".environments"]))
+    if not any(e.get("name") == ENVIRONMENT for e in listed):
+        return environment_verdict(listed, [])
+    policies = json.loads(run(["api", f"repos/{REPOSITORY}/environments/{ENVIRONMENT}/deployment-branch-policies",
+                               "--jq", ".branch_policies"]))
+    return environment_verdict(listed, policies)
 
 
 def view(number: str, run: Run, sleep: Sleep) -> dict:
@@ -110,12 +144,22 @@ def merge(slug: str, dry_run: bool, run: Run = gh, sleep: Sleep = time.sleep) ->
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("command", choices=["merge"])
-    parser.add_argument("--app-slug", required=True, help="the sync App's slug")
-    parser.add_argument("--dry-run", action="store_true")
+    commands = parser.add_subparsers(dest="command", required=True)
+    merging = commands.add_parser("merge", help="merge the sync pull request if every condition holds")
+    merging.add_argument("--app-slug", required=True, help="the sync App's slug")
+    merging.add_argument("--dry-run", action="store_true")
+    commands.add_parser("environment", help="whether the sync job may start; writes ok=true|false to $GITHUB_OUTPUT")
     args = parser.parse_args(argv)
     try:
-        print(merge(args.app_slug, args.dry_run))
+        if args.command == "merge":
+            print(merge(args.app_slug, args.dry_run))
+        else:
+            decided = environment()
+            print(f"roadmap sync: {decided.reason}")
+            output = os.environ.get("GITHUB_OUTPUT")
+            if output:
+                with open(output, "a", encoding="utf-8") as stream:
+                    stream.write(f"ok={'true' if decided.merge else 'false'}\n")
     except RuntimeError as error:
         print(error, file=sys.stderr)
         return 2
