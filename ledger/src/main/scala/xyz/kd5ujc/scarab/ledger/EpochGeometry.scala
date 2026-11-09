@@ -123,12 +123,13 @@ final case class EpochGeometry(
 
 object EpochGeometry:
   /** `firstSlotNextEpoch *- Duration (2 * stabilityWindow)` (cardano-ledger f649f975,
-    * `Slot.hs:113`): the window is a `Word64`, so its doubling keeps the low 64 bits, and `*-` is a
-    * monus that stops at slot 0 (`Slot.hs:62-64`). Only a genesis whose window is at least 2^63
-    * sees the wrap (#825).
+    * `Slot.hs:113`), computed exactly: `*-` is a monus that stops at slot 0 (`Slot.hs:62-64`). The
+    * reference doubles the window as a `Word64`, which wraps from a window of 2^63; Scarab does not
+    * reproduce that wrap (#825): an approved deviation, recorded in
+    * https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849.
     */
   def slotOfNoReturn(firstSlotNextEpoch: BigInt, stabilityWindow: BigInt): BigInt =
-    (firstSlotNextEpoch - Word64.fromUnsigned((2 * stabilityWindow).toLong).toBigInt).max(0)
+    (firstSlotNextEpoch - 2 * stabilityWindow).max(0)
 
   /** The geometry of the Shelley genesis values. `securityParam` and `activeSlotsCoeff` are bounded
     * by their types as the reference's `FromJSON` reads them. A slot length and an epoch length
