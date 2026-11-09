@@ -10,17 +10,19 @@ partial: the era is named and the node refuses to enter it. Its maximum major pr
 - block, header and transaction decoding (#806);
 - the Dijkstra genesis and its protocol parameters (#807);
 - the translation of a Conway ledger state into Dijkstra (#816);
+- the upgrade of stored outputs with native reference scripts after a validated crossing block, preserving outputs created in Dijkstra (#815);
 - the other parts of the crossing (#823): the mempool's transaction translation and rematch, the ledger-view forecast across the boundary, and the Praos to Praos2 chain-dependent state.
 
 None of these is reachable from the node's own chain yet.
 
 ## Evidence
 
-- **Unit tests:** `DijkstraNotYetSuite`, `DijkstraCodecsSuite`, `DijkstraGenesisSuite`, `DijkstraTranslationSuite`, `DijkstraTxTranslationSuite` and `DijkstraCrossingSuite`.
+- **Unit tests:** `DijkstraNotYetSuite`, `DijkstraCodecsSuite`, `DijkstraGenesisSuite`, `DijkstraTranslationSuite`, `DijkstraTxTranslationSuite`, `DijkstraCrossingSuite` and `DijkstraStoredOutputsSuite`.
 - **Reference oracles** on the Leios build, each with its recorded cases:
   - `scripts/oracle/dijkstra-genesis` (`fixtures/reference/dijkstra-genesis`);
   - `scripts/oracle/dijkstra-translation` (`fixtures/reference/dijkstra-translation`);
   - `scripts/oracle/dijkstra-crossing` (`fixtures/reference/dijkstra-crossing`).
+- **Stored-output translation:** `DijkstraStoredOutputsSuite` checks the reference translation cases against both memory and RocksDB stores, including bytes, hashes, sizes, totals and spent outputs. The node crossing suite checks entry from earlier eras and that an invalid block never triggers the store pass.
 - **The Leios devnet chain `fixtures/dijkstra-devnet`** (Conway to Dijkstra, from the reference-only cluster of #791):
   - its blocks and headers decode;
   - its Conway blocks replay through the node's rules;
@@ -35,5 +37,5 @@ None of these is reachable from the node's own chain yet.
   - a crossing made by the Scala node on a devnet.
 - **Persistence:**
   - the Dijkstra ledger state in the Haskell `state` layout (#826);
-  - the upgrade of stored outputs at the crossing (#815).
+  - before the crossing block, the mempool, forger and node-to-client paths that tick into Dijkstra still need the stored-output upgrade wired into their reads (#54, T11).
 - **The eras before Dijkstra on a Leios network** still follow cardano-node 11.1.3 (ledger f649f975, consensus 82ecba32). The Leios build changes their state layout and some of their rules. A Leios node's database cannot be imported yet (#826, owner decision on #54). Its endorser-block store has no counterpart either (#830).

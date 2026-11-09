@@ -1757,7 +1757,7 @@
       "id": "dijkstra",
       "component": "Dijkstra (next era)",
       "status": "partial",
-      "summary": "Named and refused (OD-4); decoding, genesis, the Conway translation and the crossing pieces as the Leios testnet build",
+      "summary": "Named and refused (OD-4); decoding, genesis, the Conway translation and the crossing pieces as the Leios testnet build, including stored-output upgrades",
       "evidence": {
         "suites": [
           "DijkstraNotYetSuite",
@@ -1765,7 +1765,8 @@
           "DijkstraGenesisSuite",
           "DijkstraTranslationSuite",
           "DijkstraTxTranslationSuite",
-          "DijkstraCrossingSuite"
+          "DijkstraCrossingSuite",
+          "DijkstraStoredOutputsSuite"
         ],
         "paths": [
           "fixtures/reference/dijkstra-genesis",
@@ -1775,12 +1776,12 @@
         ],
         "issues": [
           54,
-          823
+          823,
+          815
         ]
       },
       "limitations": {
         "issues": [
-          815,
           824,
           826,
           830
