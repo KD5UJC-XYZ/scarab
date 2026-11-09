@@ -366,6 +366,8 @@ object ConnectionManager:
       extends ConnectionManager[F]:
     // `includeInboundConnectionImpl` accepts while `numberOfCons + 1 <= hardLimit`
     private val hardLimit = limits.accepted.acceptedConnectionsHardLimit.toLong
+    // the cause a commit stops the mux with: the protocol idle timeout, which is also the outbound
+    // idle timeout (`Diffusion.hs` 508 and 752 set both to `dcProtocolIdleTimeout`)
     private val idleCause = NetworkError.ProtocolIdleTimeout(limits.outboundIdle)
 
     private def emit(event: ConnectionEvent): F[Unit] = events.traverse_(_.emit(event))
@@ -979,10 +981,7 @@ object ConnectionManager:
         remote: SocketAddress[IpAddress],
         provenance: Provenance,
         created: Entry[F]
-    )(
-        t: Table[F],
-        @scala.annotation.unused now: FiniteDuration
-    ): (Table[F], Effects[F], (Dispatch[F], Long)) =
+    ): (Table[F], FiniteDuration) => (Table[F], Effects[F], (Dispatch[F], Long)) = (t, _) =>
       val (found, rng) = byRemote(t, remote)
       val drawn = t.copy(rng = rng)
       val (next, effects, decision) = found match
