@@ -407,9 +407,9 @@ object UtxoChecks:
     val minFee = pp.minFeeA * tx.size + pp.minFeeB + scriptFee
     val withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
     val consumed = ann.spent.foldLeft(Value.zero)(_ + _.value) +
-      Value.coin(withdrawn + refunds) + Value(0, body.mint)
+      Value.coin(withdrawn + refunds) + Value.minted(body.mint)
     val produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
-      Value.coin(body.fee + deposits)
+      Value.coin(body.fee + deposits) + Value.burned(body.mint)
     val defect = Option.unless(!body.hasGovernance && body.donation == 0)(
       LedgerFailure.Undecodable(ann.id, TxDefect.GovernanceFieldsBeforeConway)
     )

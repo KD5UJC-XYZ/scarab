@@ -207,9 +207,9 @@ object Utxo
         )
     val withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
     val consumed = ann.spent.foldLeft(Value.zero)(_ + _.value) +
-      Value.coin(withdrawn + refunds) + Value(0, body.mint)
+      Value.coin(withdrawn + refunds) + Value.minted(body.mint)
     val produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
-      Value.coin(body.fee + deposits + body.donation)
+      Value.coin(body.fee + deposits + body.donation) + Value.burned(body.mint)
     UtxoTests.babbage(pp, env.ctx, ann, minFee, consumed, produced)
 
   /** `updateUTxOState` and `updateTreasuryDonation` (`Babbage/Rules/Utxo.hs:449`,
