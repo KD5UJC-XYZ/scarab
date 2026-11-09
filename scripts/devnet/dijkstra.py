@@ -25,7 +25,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from cleanup import container_labels
 from . import cborspan
-from .util import ENV, MAGIC, REPO, USER, data_root, docker, in_ref, put_file, read_json, ref
+from .util import ENV, MAGIC, REPO, USER, data_root, docker, in_ref, put_file, read_json, ref, without_resource_statistics
 
 LEIOS_TAG = "ghcr.io/input-output-hk/ouroboros-leios/cardano-node-testnet:rc-2026w44"
 LEIOS_DIGEST = "sha256:70439665b4b93c58ecaa8f73c8919ac7b358f938dd262b6644cd515270773fca"
@@ -218,7 +218,8 @@ def up_dijkstra(args):
     if r.returncode != 0:
         raise SystemExit("create-testnet-data failed; see /work/create-testnet-data.log in the reference container")
     hashes = genesis_hashes(args.name)
-    config = node_config(read_json(args.name, f"{IMAGE_CONFIG}/config.json"), hashes, args.dijkstra_epoch)
+    config = without_resource_statistics(
+        args.name, node_config(read_json(args.name, f"{IMAGE_CONFIG}/config.json"), hashes, args.dijkstra_epoch))
     put_file(args.name, f"{ENV}/config.json", json.dumps(config, indent=2))
     for n in range(1, args.pools + 1):
         in_ref(args.name, f"mkdir -p {ENV}/node-data/node{n} {ENV}/socket/node{n}")

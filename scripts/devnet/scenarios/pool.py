@@ -14,7 +14,7 @@ from ..cluster import database_mounts, freeze_classes, scala_container, start_no
 from ..compare import Comparisons, compare_or_error, whole_failures, whole_state
 from ..scenarios.relay import SCALA_PORT, log_counts, tip_at
 from .. import util
-from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, data_root, docker, in_ref, put_file, read_json, read_log, ref, scheduling_summary
+from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, adapt_reference_config, data_root, docker, in_ref, put_file, read_json, read_log, ref, scheduling_summary
 
 
 # ---------------------------------------------------------------- the Scala node as a block producer
@@ -102,6 +102,7 @@ def pool_environment(args):
     """create-env, a short KES period and a system start a few seconds ahead; returns the node ports and the genesis as the network's clock sees it."""
     in_ref(args.name, f"cardano-testnet create-env --num-pool-nodes 3 --testnet-magic {MAGIC} "
                       f"--epoch-length {args.epoch_length} --output {ENV} > /work/create-env.log 2>&1")
+    adapt_reference_config(args.name, f"{ENV}/configuration.yaml")
     start = int(time.time()) + args.start_delay
     shelley = read_json(args.name, f"{ENV}/shelley-genesis.json")
     shelley["systemStart"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(start))

@@ -183,6 +183,32 @@ def read_json(name, path):
     return json.loads(in_ref(name, f"cat {path}").stdout)
 
 
+
+def without_resource_statistics(name, config):
+    """The reference node's configuration, unchanged where its kernel has per-task I/O accounting.
+
+    cardano-node starts a linked thread that reads `/proc/self/io` every `TraceOptionResourceFrequency`
+    milliseconds (default 1000), and the thread's exception stops the node
+    (`Cardano/Node/Tracing/Tracers/Resources.hs:23-36`, cardano-node 938cba99). A kernel built without
+    `CONFIG_TASKSTATS` has no `/proc/<pid>/io`: the WSL 6.18.54.1 kernel of WSL 3.0.3, fixed in 6.18.58.1
+    (WSL 3.0.5). There, and only there, the frequency is set to 0, which the node takes as "no resource
+    statistics" and starts no thread; nothing else about the node changes. The check runs in the reference
+    container, whose kernel is the one that matters (Docker Desktop's is not the WSL distribution's)."""
+    if in_ref(name, "test -e /proc/self/io", check=False).returncode == 0:
+        return config
+    print(json.dumps({"referenceResourceStatistics": "off",
+                      "reason": "the kernel has no /proc/self/io (CONFIG_TASKSTATS is not set)"}), flush=True)
+    return dict(config, TraceOptionResourceFrequency=0)
+
+
+def adapt_reference_config(name, path):
+    """Rewrite the reference configuration at `path` with [[without_resource_statistics]] when the kernel needs it."""
+    config = read_json(name, path)
+    adapted = without_resource_statistics(name, config)
+    if adapted is not config:
+        put_file(name, path, json.dumps(adapted, indent=2))
+
+
 CLI = "cardano-cli conway"
 SOCKET = f"--testnet-magic {MAGIC} --socket-path {ENV}/socket/node1/sock"
 LOAD = "/work/load"
