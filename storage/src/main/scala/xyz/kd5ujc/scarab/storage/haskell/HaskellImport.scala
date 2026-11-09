@@ -213,7 +213,10 @@ object HaskellImport:
                         )
                       )
                     case Some(p) =>
-                      val number = if h.isBoundary then p.blockNo else p.blockNo + 1
+                      // only a boundary block after a main block repeats its number
+                      // (`expectedNextBlockNo`, ouroboros-consensus 82ecba32
+                      // `Byron/Ledger/HeaderValidation.hs:43-46`, #818)
+                      val number = if h.isBoundary && !p.boundary then p.blockNo else p.blockNo + 1
                       F.unlessA(h.prevHash.contains(p.hash))(
                         fail[Unit](
                           HaskellImportError.BrokenLink(b.slot, p.hash.hex, show(h.prevHash))

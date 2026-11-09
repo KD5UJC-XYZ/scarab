@@ -36,7 +36,9 @@ class ByronBoundaryPredecessorSuite extends FunSuite:
       magic,
       bytes(prev),
       bytes(Bytes(Vector.fill(32)(0x22.toByte))),
-      arr(uint(epoch), arr(uint(epoch))),
+      // the chain's first block is numbered 0 (`expectedFirstBlockNo`); the block rules check no
+      // later number, which is chain selection's
+      arr(uint(epoch), arr(uint(0))),
       arr(attributes)
     )
     val raw = arr(uint(0), arr(header, indef(), arr(map())))

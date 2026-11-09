@@ -113,12 +113,7 @@ object ByronRules:
         (),
         ByronChainError.PreviousHash(header.prevHash, expectedPrev)
       )
-      _ <- Either.cond(
-        header.slotInEpoch < config.ledger.epochSlots,
-        (),
-        ByronChainError.SlotOutsideEpoch(header.slotInEpoch, config.ledger.epochSlots)
-      )
-      _ <- orderOk(state.tip, header)
+      _ <- orderOk(state.tip, header, config.ledger.epochSlots)
       result <-
         if header.boundary then boundary(state, block, config)
         else main(state, block, config)
@@ -134,7 +129,7 @@ object ByronRules:
     val header = block.header
     val ticked = ByronLedger.tick(config.ledger, state.ledger, header.slot)
     ByronLedger
-      .applyBoundary(config.ledger, ticked, header, block.size)
+      .applyBoundary(ticked, header, block.size)
       .leftMap(ByronChainError.Ledger(_))
       .map(ledger => State(Some(tipOf(header)), ledger, state.pbft) -> ByronCheck.Boundary)
 
@@ -199,29 +194,49 @@ object ByronRules:
         )
       yield pbft
 
-  private def orderOk(tip: Option[ByronTip], h: Header.Byron): Either[ByronChainError, Unit] =
+  /** The order of a block, on the slots as the reference flattens them ([[Header.Byron.slot]],
+    * #818). The first block is a boundary block that names the genesis (epoch 0, or the "Genesis"
+    * tag), numbered 0 (`expectedFirstBlockNo`), and a later boundary block names its predecessor:
+    * `updateChainBoundary` (`Chain/Block/Validation.hs:276-287`, cardano-ledger f649f975, #754).
+    * The rest is the envelope, which the extended ledger's block application runs on every block
+    * (ouroboros-consensus 82ecba32: `applyBlockLedgerResultWithValidation`,
+    * `Ouroboros/Consensus/Ledger/Extended.hs:189-211`, calls `validateHeader`,
+    * `Ouroboros/Consensus/HeaderValidation.hs:508-514`, which runs `validateEnvelope`, `:364-376`):
+    * a main block after a boundary block may share its slot and any other block comes at a later
+    * slot (`minimumNextSlotNo`), and a boundary block, the first one too, is at a multiple of the
+    * epoch's slots (`additionalEnvelopeChecks`, `UnexpectedEBBInSlot`,
+    * `ouroboros-consensus-cardano/src/byron/Ouroboros/Consensus/Byron/Ledger/HeaderValidation.hs:40-69`).
+    * The block numbers after the first are chain selection's ([[VolatileChain.extend]]). No epoch
+    * is compared, and no slot count is checked against the epoch's length.
+    */
+  private def orderOk(
+      tip: Option[ByronTip],
+      h: Header.Byron,
+      epochSlots: BigInt
+  ): Either[ByronChainError, Unit] =
+    val boundarySlot = Either.cond(
+      !h.boundary || h.slot.mod(epochSlots) == 0,
+      (),
+      ByronChainError.BoundarySlot(h.slot, epochSlots)
+    )
     tip match
-      // the first block is a boundary block that names the genesis (epoch 0, or the "Genesis" tag),
-      // and a later boundary block names its predecessor: `updateChainBoundary`
-      // (`Chain/Block/Validation.hs:276-287`, cardano-ledger f649f975, #754)
       case None =>
-        Either.cond(
-          h.namesGenesis,
-          (),
-          ByronChainError.InitialBoundaryRequired
-        )
-      case Some(t) if h.boundary =>
-        Either.cond(
-          h.epoch > t.epoch && !t.boundary,
-          (),
-          ByronChainError.BoundaryOrder(h.epoch, t.epoch, t.boundary)
-        ) *> Either.cond(!h.namesGenesis, (), ByronChainError.GenesisPredecessor(t.hash))
+        for
+          _ <- Either.cond(h.namesGenesis, (), ByronChainError.InitialBoundaryRequired)
+          _ <- Either.cond(h.blockNo == 0, (), ByronChainError.FirstBlockNumber(h.blockNo))
+          _ <- boundarySlot
+        yield ()
       case Some(t) =>
-        Either.cond(
-          h.epoch >= t.epoch && (h.slot > t.slot || (t.boundary && h.slot == t.slot)),
-          (),
-          ByronChainError.SlotOrder(h.slot, t.slot)
-        )
+        val minimum = if t.boundary && !h.boundary then t.slot else t.slot + 1
+        for
+          _ <- Either.cond(h.slot >= minimum, (), ByronChainError.SlotOrder(h.slot, minimum))
+          _ <- boundarySlot
+          _ <- Either.cond(
+            !(h.boundary && h.namesGenesis),
+            (),
+            ByronChainError.GenesisPredecessor(t.hash)
+          )
+        yield ()
 
   /** The delegate's signature over `[prev, proof, slot, difficulty, extra]` under the heavy block
     * tag of the genesis key and the protocol magic, and the genesis key's certificate.

@@ -94,3 +94,40 @@ class VolatileChainSuite extends ScalaCheckSuite:
     assert(VolatileChain.genesis[Int](k, 0).extend(orphan, 0).isLeft)
     assertEquals(VolatileChain.genesis[Int](k, 0).tip, ChainSync.Point.Origin)
   }
+
+  /** A Byron header of `epoch` and slot count `count` after `prev`, numbered `blockNo`. */
+  private def byron(
+      boundary: Boolean,
+      epoch: BigInt,
+      count: BigInt,
+      blockNo: BigInt,
+      prev: Option[xyz.kd5ujc.scarab.codec.Bytes],
+      tag: Byte
+  ): Header.Byron =
+    Header.Byron(
+      xyz.kd5ujc.scarab.codec.Bytes(Vector(tag)),
+      xyz.kd5ujc.scarab.codec.Bytes(Vector.fill(32)(tag)),
+      boundary,
+      epoch,
+      count,
+      10,
+      blockNo,
+      prev,
+      xyz.kd5ujc.scarab.ledger.Unsigned
+        .from[xyz.kd5ujc.scarab.ledger.Unsigned.Width.W32](1)
+        .getOrElse(fail("size hint"))
+    )
+
+  test("a Byron boundary block after a boundary block has the next number and slot (#818)") {
+    // `expectedNextBlockNo` and `minimumNextSlotNo` (`Byron/Ledger/HeaderValidation.hs:42-52`,
+    // ouroboros-consensus 82ecba32): only a boundary block after a main block repeats its number,
+    // and only a main block after a boundary block may share its slot
+    val first = byron(boundary = true, 4, 0, 7, None, 1)
+    val chain =
+      VolatileChain.genesis[BigInt](k, -1).extend(first, 0).fold(e => fail(e.message), _._1)
+    val prev = Some(first.hash)
+    assert(chain.extend(byron(boundary = true, 6, 0, 8, prev, 2), 1).isRight, "the next number")
+    assert(chain.extend(byron(boundary = true, 6, 0, 7, prev, 3), 1).isLeft, "its own number")
+    assert(chain.extend(byron(boundary = true, 4, 0, 8, prev, 4), 1).isLeft, "its own slot")
+    assert(chain.extend(byron(boundary = false, 4, 0, 8, prev, 5), 1).isRight, "a main block")
+  }
