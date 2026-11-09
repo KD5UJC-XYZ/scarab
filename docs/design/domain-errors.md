@@ -206,7 +206,7 @@ installing its handler ([v1.7.0, Handle.scala:238–243](https://github.com/type
 without deferral, a synchronous constructor defect escapes before the adapter can classify it.
 Strict-construction regressions cover the public TCP listener, snapshot adapter and shared worker.
 
-`ChainStorage` runs each periodic snapshot and shutdown snapshot in a fresh `Handle[StorageError]`
+`ChainStorage` runs each periodic snapshot in a fresh `Handle[StorageError]`
 scope. The snapshot call path takes the caller's `Raise`: immutable-store sync, snapshot write/list,
 backing advance/settle/checkpoint/retain, and the UTxO write/stamp/checkpoint calls they use. These
 operations no longer raise through the scope that opened the service. The broader rule/store

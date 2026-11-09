@@ -198,6 +198,11 @@ range fetch is saved. A `kill -9` earlier in this branch's life, with the newest
 epoch behind, replayed 4,014 stored blocks in 66 s on a cold JVM and the loaded host; the shutdown
 snapshot is what removes that case for a graceful stop.
 
+Since [#839](https://github.com/KD5UJC-XYZ/scarab/issues/839) (2026-11-09) a graceful stop writes no
+snapshot, as the reference's `closeDB` writes none: a start after it replays the stored blocks since the
+newest periodic snapshot, as the start after `kill -9` in the table does. The rows above are the
+measurements of the earlier behaviour.
+
 Cost of the volatile log on the sync path (D4 only, `--cpu-threads 0`, 6 CPUs, started with the base):
 30,423 blocks against 31,617 after 120 s (-3.8%) and 69,809 against 70,787 after 300 s (-1.4%). The log forces
 the immutable store and collects its old files every 4,096 immutable blocks; at every 512 it was a flush

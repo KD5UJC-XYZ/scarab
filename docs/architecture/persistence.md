@@ -28,7 +28,7 @@ follow --genesis-dir <dir> --peer <host>:<port> --db <dir> [--snapshot-every <N|
 Without `--db` nothing changes: the node is in-memory and replays from genesis. With `--db` the
 JSON log gains `immutableOpened`, `snapshotRestored`, `snapshotSkipped`, `snapshotWritten`,
 `snapshotFailed`, `replayStarted`, `replayProgress`, `replayFinished`, `networkRecorded`,
-`volatileOpened`, `volatileResumed`, `shutdownSnapshot`, `snapshotRefused` (`file`, `anchor`, `reason`: the
+`volatileOpened`, `volatileResumed`, `closedDB`, `snapshotRefused` (`file`, `anchor`, `reason`: the
 format refused the state, nothing was written) and, the first time an older database is opened,
 `formatMigrated` (`kind`, `from`, `to`, `count`; see "Format versions and migration").
 
@@ -162,16 +162,21 @@ blocks:
   boundary. The states are not stored (they are a pure function of the blocks), only re-derived.
 
 **Shutdown.** Releasing the storage resource (SIGTERM or SIGINT through the IOApp's cancellation,
-`--seconds`, or a fatal error) first waits for a snapshot in flight and then, unless the newest
-snapshot already is at the immutable tip, forces the immutable store and writes a snapshot with its
-UTxO checkpoint at the tip (`shutdownSnapshot`). The stores are released after that. Persisting one
-block (log, pending list, immutable append, backing store, tip bookkeeping) is uncancelable, so
-cooperative cancellation waits for that sequence. This is not a transaction across the stores;
-storage failure and abrupt process termination still require recovery. After a successful shutdown
-snapshot, the next start restores it, replays no immutable block
-(`replayFinished` with `replayed` 0) and resumes the volatile chain from the log. After `kill -9`
-nothing of this runs: the start restores the newest periodic snapshot, replays the stored blocks after
-it, and resumes the volatile chain from whatever the log holds.
+`--seconds`, or a fatal error) writes no snapshot, as the reference's `closeDB` writes none
+(ouroboros-consensus 82ecba32, `Storage/ChainDB/Impl.hs:408-436`). A snapshot in flight is cancelled
+first, not awaited, as `closeDB` kills the reference's snapshot thread (`killBgThreads`, lines
+423-424; `ChainDB/Impl/Background.hs:127-142`); then the stores are released, and `closedDB` logs
+the immutable tip and the tip of the chain (the reference's `ClosedDB`, `Impl.hs:430-436`). A
+cancelled write leaves at most the temporary `<file>.tmp`, which the next open deletes and no restore
+reads, and a UTxO checkpoint that no snapshot names, which the next write's `retain` deletes. The
+reference writes a snapshot's files in place, `meta` last (`Storage/LedgerDB/V2/InMemory.hs:216-225`),
+and skips a snapshot without `meta` on the next start (`Storage/LedgerDB/API.hs:610-612`): in both,
+no partial snapshot is restored. Persisting one block (log, pending list, immutable append, backing
+store, tip bookkeeping) is uncancelable, so cooperative cancellation waits for that sequence. This is
+not a transaction across the stores; storage failure and abrupt process termination still require
+recovery. The next start, after a graceful stop or after `kill -9`, restores the newest periodic
+snapshot, replays the stored blocks after it to the immutable tip, and resumes the volatile chain
+from whatever the log holds.
 
 **Format versions and migration.** The files whose first bytes name their format are the network
 identity, the immutable store's `format` file, every chunk `.index` and every ledger snapshot. Their
@@ -271,7 +276,9 @@ chunk), snapshot corruption at many points and fallback, and restart equivalence
 Conway capture (`fixtures/eras`) through the real follower. `VolatileStoreSuite` checks the log against
 its pure model over random appends, rollbacks, collections and reopens, every crash cut point of the
 newest file, and damage in an older file. `ChainStorageSuite` adds restart equivalence with and
-without the volatile log, a graceful stop followed by a start that replays 0 blocks, copies of the
-database taken at 12 points of a run (standing in for a crash there) that all restart to the same
-final state, the volatile log torn at every record boundary, a logged block that does not apply, and
-the identity cases (created, reopened, four kinds of mismatch, adoption, refusal).
+without the volatile log, a graceful stop that writes no snapshot followed by a start that replays
+from the newest periodic snapshot to the state of a run without a restart, a snapshot in flight at the
+stop cancelled, copies of the database taken at 12 points of a run (standing in for a crash there)
+that all restart to the same final state, the volatile log torn at every record boundary, a logged
+block that does not apply, and the identity cases (created, reopened, four kinds of mismatch,
+adoption, refusal).

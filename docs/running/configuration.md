@@ -248,7 +248,7 @@ the flags above a 31 min sync had none, at the same blocks per second as the bas
 growing it. The node keeps its follower on its own pool (`--cpu-threads`, default one worker per CPU)
 and reports the worst timer lateness and the longest CPU-bound step of every epoch in the log.
 
-Stopping: SIGTERM or SIGINT (`docker stop`, Ctrl-C) cancels the node, which closes its servers and
-writes a snapshot at the immutable tip before it exits (a second or two on Preview; allow
-`docker stop -t 60`). `kill -9` is recovered from, at the cost of replaying the stored blocks since the
-newest periodic snapshot.
+Stopping: SIGTERM or SIGINT (`docker stop`, Ctrl-C) cancels the node, which closes its servers and its
+database and exits. Like the reference node, it writes no snapshot when it stops, and a snapshot being
+written is abandoned: the next start replays the stored blocks since the newest periodic snapshot. `kill -9`
+is recovered from at the same cost.

@@ -280,7 +280,7 @@
       "id": "snapshot-listener-failures",
       "component": "Snapshot and listener failure ownership (G7-F2/G7-F4)",
       "status": "implemented",
-      "summary": "Periodic and shutdown snapshots and TCP/Unix handlers own their error scopes and report typed causes",
+      "summary": "Periodic snapshots and TCP/Unix handlers own their error scopes and report typed causes",
       "evidence": {
         "suites": [
           "SnapshotFailureSuite",

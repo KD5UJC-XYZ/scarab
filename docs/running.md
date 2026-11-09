@@ -74,7 +74,7 @@ java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED -c
 (Inside the JDK image with the checkout mounted, or on a host with JDK 25.) The sbt form is
 `sbt "node/runMain xyz.kd5ujc.scarab.node.Main follow ..."`. The node logs one JSON object per line on stdout
 (`started`, `extended`, `eraTransition`, `epochValidated`, `ledgerEpoch`, `snapshotWritten`,
-`volatileResumed`, `shutdownSnapshot`, `forged`, ...). The epoch lines carry a `scheduling` object
+`volatileResumed`, `closedDB`, `forged`, ...). The epoch lines carry a `scheduling` object
 (timer lateness and the longest CPU-bound step of that epoch, see "Scheduling" below). Each line has a namespace and a
 severity, and the `--log-*` flags send them to stdout, stderr and a rotated file, filtered and sampled by namespace
 (see "Logging" below).

@@ -141,7 +141,9 @@ boundary, not of the block before it (we do not keep the earlier state), and is 
 delay of 5 to 10 minutes (which spreads the work of a node that is at the tip; ours is in the background already).
 `--snapshot-every` (`SnapshotPolicy.EverySlots`, the distance from the previous snapshot as before) and `--keep-snapshots`
 override. The decision is the pure `SnapshotPolicy.due`, tested in `SnapshotPolicySuite` (the boundary, the rate limit, a
-simulated bulk sync that takes at most one snapshot per rate limit, the override). The graceful stop still writes a snapshot.
+simulated bulk sync that takes at most one snapshot per rate limit, the override). The graceful stop wrote a snapshot of its
+own when this was measured; since [#839](https://github.com/KD5UJC-XYZ/scarab/issues/839) it writes none, as the reference's
+does not.
 
 Measured on the one fixture at hand, Preprod from genesis to slot 8,596,914 (chunks 0 to 399, 173,304 blocks, 2 CPUs,
 2 GB heap, two runs each): the old default (`--snapshot-every 1epochs`) wrote 19 snapshots and a shutdown snapshot, the new

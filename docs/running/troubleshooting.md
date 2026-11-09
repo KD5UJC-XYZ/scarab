@@ -31,7 +31,7 @@ the follower stalled. Copy `<run>/stall/` out before `down` removes the run dire
 
 A stalled process is alive, so a supervisor never restarts it. `--stall-exit-after 30m` (a number and `s`,
 `m` or `h`; off by default) ends the node when the stall has lasted that long: one `stallExit` event, then the
-same close-down as a signal (the stores close and the shutdown snapshot is taken), then exit code 4 (1 is an
+same close-down as a signal (the stores close), then exit code 4 (1 is an
 error, 2 a bad command line; 3 was a halt on a rules divergence and is no longer used). With Docker's `unless-stopped` that is a clean
 restart from the newest snapshot. It cannot loop on a healthy start: the watchdog starts counting only when the
 node is following (not while it restores or replays), only a peer's announced tip ahead of ours counts, and
@@ -53,7 +53,7 @@ rules refuse are tried again after the exit policy's delay. Four outcomes stop t
 | an exception nobody expected (a bug, a library that threw) | `defect` | 7 |
 | this build cannot evaluate a script or its encoding, during replay or live adoption; no ledger verdict exists | `unavailable` | 8 |
 
-The run closes down as it does for a stall (the stores close, the shutdown snapshot is taken), logs one `fatal`
+The run closes down as it does for a stall (the stores close), logs one `fatal`
 event, and exits with the code; a supervisor that restarts the node (Docker `unless-stopped`) brings it back from
 the database, where the storage layer recovers as the reference's does (`consensusRethrowPolicy` makes a storage
 failure `ShutdownNode`). Exit code 4 stays the stall's, 1 an error, 2 a bad command line. Fatal outcomes release the link and do not

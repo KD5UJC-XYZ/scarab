@@ -77,12 +77,13 @@ Caveats:
   deleting the only recoverable state. Historical #145 involved a bad restore producing mixed key
   layouts; current restoration rejects that condition rather than silently using it.
 - The volatile blocks (the last `k`) are kept in `<db>/volatile/` and applied again on start
-  (`volatileResumed`), and a graceful stop (SIGTERM, SIGINT, `--seconds`) writes a snapshot at the
-  immutable tip (`shutdownSnapshot`): the next start replays no immutable block when that snapshot
-  is usable, reapplies the retained volatile log through the rules, and continues at the
-  previous tip. After `kill -9` the node resumes from the newest periodic snapshot, replays the stored
-  blocks after it, and takes the volatile chain from the log as far as the log reached the disk.
-  Run the node so that the signal reaches the JVM (`docker stop`, not a shell wrapper that eats it).
+  (`volatileResumed`). A graceful stop (SIGTERM, SIGINT, `--seconds`) writes no snapshot, as the
+  reference node's does not ([#839](https://github.com/KD5UJC-XYZ/scarab/issues/839)): a snapshot
+  being written is abandoned, the stores are closed and `closedDB` is logged. The next start restores
+  the newest periodic snapshot, replays the stored blocks after it, reapplies the retained volatile
+  log through the rules, and continues at the previous tip. After `kill -9` it does the same, taking
+  the volatile chain from the log as far as the log reached the disk. Run the node so that the signal
+  reaches the JVM (`docker stop`, not a shell wrapper that eats it).
 - **When a snapshot is taken** (`SnapshotPolicy`, the Haskell node's default policy: ouroboros-consensus 4.2.0.0,
   `Storage/LedgerDB/Snapshots.hs` `defaultSnapshotPolicy` and `mithrilSnapshotPolicyArgs`, with `NumOfDiskSnapshots 2`):
   when the immutable tip passes a multiple of `40 * k` slots (86,400 on mainnet and Preprod, a day on mainnet) and the
@@ -90,8 +91,7 @@ Caveats:
   snapshot per 10 minutes (each costs about 50 s of background CPU on mainnet) and a node at the tip writes one a day;
   a crossing that falls inside the 10 minutes is skipped. Two snapshots are kept. `--snapshot-every` replaces the
   policy by "once the tip is this far past the previous snapshot" with no time limit (`--snapshot-every 1epochs` is
-  the earlier default), and `--keep-snapshots` the number kept. The snapshot at a graceful stop is independent of
-  both. Details and numbers: [performance.md](../performance.md) section 13.
+  the earlier default), and `--keep-snapshots` the number kept. Details and numbers: [performance.md](../performance.md) section 13.
 
 **Checking a database before a node is moved to this build.** First inventory its snapshot versions.
 This procedure requires V5, V7, V8 or V9 snapshots and their associated checkpoints (V5, V7 and V8
@@ -128,8 +128,8 @@ touch "$LEASE"
 docker run -d --name check-old-db -v "$C":/db -v "$LEASE":/.db.scarab-lock ... \
   follow --genesis-dir /config --peer <relay> --db /db --keep-snapshots 2000 > node.log
 until [ "$(grep -c '"event":"replayProgress"' node.log)" -ge 5 ] || grep -q '"event":"error"' node.log; do sleep 10; done
-docker stop -t 120 check-old-db                                 # a graceful stop writes a snapshot
-grep -E '"event":"(formatMigrated|snapshotRestored|snapshotUnbound|replayStarted|replayProgress|snapshotRefused|snapshotSkipped|error|shutdownSnapshot)"' node.log | cut -c1-300
+docker stop -t 120 check-old-db                                 # a graceful stop writes no snapshot
+grep -E '"event":"(formatMigrated|snapshotRestored|snapshotUnbound|replayStarted|replayProgress|snapshotRefused|snapshotSkipped|error|snapshotWritten|closedDB)"' node.log | cut -c1-300
 ```
 
 What shows the current-format database opens: `snapshotRestored` with the `anchor` of the newest
@@ -137,8 +137,9 @@ snapshot; `replayStarted` from that anchor; `replayProgress` lines whose `tip` m
 `replayed` growing by the progress interval each time and no `"event":"error"` (a `ValidationError ... BadInputsUTxO` right after the restore is this
 bug); no `snapshotRefused`, no `snapshotSkipped`, no `UtxoCheckpoint` error; for a V5 database, one
 `formatMigrated` from `V5` to `V9` and a `snapshotUnbound` for the restored file (it was written
-before checkpoint binding); and, after the stop, a
-`snapshotWritten`/`shutdownSnapshot` at a block past the restored anchor. A replay from the newest
+before checkpoint binding); a `snapshotWritten` at a block past the restored anchor, which the snapshot
+policy writes where the replay passes one of its boundaries (a check whose replay is shorter than the
+interval can add `--snapshot-every 1000slots`); and `closedDB` after the stop. A replay from the newest
 snapshot of a mainnet follower that is a day behind covers some thousands of blocks, so
 `replayFinished` appears; for a database whose newest snapshot is older, five progress lines (the
 `replayed` counts) are enough. Remove the copy afterwards.

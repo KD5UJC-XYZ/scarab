@@ -570,7 +570,7 @@
       "issues": [
         23
       ],
-      "notes": "Volatile blocks. The last k blocks are logged (`VolatileStore`) and applied again on start, and a graceful stop snapshots the immutable tip. Tested: restart equivalence with and without the log, a stop followed by a start that replays 0 blocks, copies of a running database at 12 points, the log torn at every record boundary; Preview restarts in [performance.md](performance.md). Remaining: no fault injection at the filesystem level (only truncated and flipped bytes), and a SIGKILL during the shutdown snapshot is the ordinary `kill -9` case."
+      "notes": "Volatile blocks. The last k blocks are logged (`VolatileStore`) and applied again on start. A graceful stop writes no snapshot, as the reference's `closeDB` writes none ([#839](https://github.com/KD5UJC-XYZ/scarab/issues/839)): the next start replays the immutable blocks after the newest periodic snapshot. Tested: restart equivalence with and without the log, a stop that writes no snapshot followed by a start that replays from the newest periodic one, a snapshot in flight at the stop cancelled, copies of a running database at 12 points, the log torn at every record boundary; Preview restarts in [performance.md](performance.md). Remaining: no fault injection at the filesystem level (only truncated and flipped bytes)."
     },
     {
       "id": "D5",
