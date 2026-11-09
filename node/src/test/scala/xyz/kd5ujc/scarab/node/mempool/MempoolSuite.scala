@@ -22,6 +22,12 @@ import Capacity.fits
 
 /** Real transaction bytes over a synthetic Conway ledger. */
 object TxKit:
+  /** `n` as a `MempoolCapacityBytesOverride`, which is a `Word32`. */
+  def word32(n: Long): xyz.kd5ujc.scarab.network.Word32 =
+    xyz.kd5ujc.scarab.network.Word32
+      .fromLong(n)
+      .getOrElse(munit.Assertions.fail(s"$n is not a Word32"))
+
   val alice: Key = key()
   val bob: Key = key()
   val ada: BigInt = 1000000
@@ -155,7 +161,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
   import TxKit.*
 
   private def pool(ledger: MempoolLedger, capacityOverride: Option[Long] = None) =
-    MempoolState.empty(Right(ledger), 1000, capacityOverride)
+    MempoolState.empty(Right(ledger), 1000, capacityOverride.map(word32))
 
   private def add(s: MempoolState, raw: Bytes): Either[Rejection, MempoolState] =
     s.add(raw, env, Source.Local).map(_._1)

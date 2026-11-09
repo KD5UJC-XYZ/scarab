@@ -339,7 +339,7 @@ class ConfigSuite extends FunSuite:
       .fold(e => fail(e.message), _.settings)
     assertEquals(
       (settings.socketPath, settings.databasePath, settings.mempoolCapacityBytes),
-      (Some("/s/node.socket"), Some("db"), Some(2000000L))
+      (Some("/s/node.socket"), Some("db"), Word32.fromLong(2000000))
     )
     assertEquals(
       NodeConfig
@@ -452,6 +452,44 @@ class ConfigSuite extends FunSuite:
     )
     assert(NodeConfig.parse("[]").isLeft)
     assert(NodeConfig.parse("{").isLeft)
+  }
+
+  test("MempoolCapacityBytesOverride is a Word32, as cardano-node 11.1.3 reads it") {
+    // `parseMempoolCapacityBytesOverride` (`POM.hs:475-487`): `FromJSON Word32`, or `NoOverride`
+    val base = parser.parse(text("preview", "config.json")).toOption.get
+    def read(value: Json) = NodeConfig
+      .parse(base.deepMerge(Json.obj("MempoolCapacityBytesOverride" -> value)).noSpaces)
+      .map(_.settings.mempoolCapacityBytes.map(_.toLong))
+    val held = List(
+      Json.fromLong(0) -> Some(0L),
+      Json.fromLong(4294967295L) -> Some(4294967295L),
+      Json.fromBigDecimal(BigDecimal("5.12e2")) -> Some(512L),
+      Json.fromString("NoOverride") -> None,
+      Json.Null -> None
+    )
+    held.foreach((json, expected) => assertEquals(read(json), Right(expected), json.noSpaces))
+    List(Json.fromLong(4294967296L), Json.fromLong(-1), Json.fromBigDecimal(BigDecimal("1.5")))
+      .foreach(json =>
+        assertEquals(
+          read(json),
+          Left(ConfigError(ConfigProblem.MempoolCapacity(json))),
+          json.noSpaces
+        )
+      )
+    assertEquals(
+      ConfigProblem.MempoolCapacity(Json.fromLong(4294967296L)).message,
+      "configuration MempoolCapacityBytesOverride: 4294967296 is neither a number of bytes from 0 to 4294967295 nor NoOverride"
+    )
+    // `--mempool-bytes` takes the same width
+    def flag(value: String) = Main
+      .parse(
+        List("follow", "--genesis-dir", "/g", "--peer", "127.0.0.1:9", "--mempool-bytes", value)
+      )
+      .map(_.mempoolBytes.map(_.toLong))
+    assertEquals(flag("0"), Right(Some(0L)))
+    assertEquals(flag("4294967295"), Right(Some(4294967295L)))
+    assert(flag("4294967296").isLeft)
+    assert(flag("-1").isLeft)
   }
 
   test("Genesis sync targets and trusted-state threshold are typed settings") {
@@ -721,10 +759,11 @@ class ConfigSuite extends FunSuite:
     val (fromFile, _, _) = Main.configured(bare).fold(e => fail(e.message), identity)
     assertEquals(fromFile.localSocket, Some("/s/node.socket"))
     assertEquals(fromFile.db, Some(Path.of("/d")))
-    assertEquals(fromFile.mempoolBytes, Some(3000000L))
-    val flagged = bare.copy(db = Some(Path.of("/mine")), mempoolBytes = Some(5L))
+    assertEquals(fromFile.mempoolBytes, Word32.fromLong(3000000))
+    val five = Word32.fromLong(5)
+    val flagged = bare.copy(db = Some(Path.of("/mine")), mempoolBytes = five)
     val (overridden, _, _) = Main.configured(flagged).fold(e => fail(e.message), identity)
-    assertEquals((overridden.db, overridden.mempoolBytes), (Some(Path.of("/mine")), Some(5L)))
+    assertEquals((overridden.db, overridden.mempoolBytes), (Some(Path.of("/mine")), five))
     // a topology that names no peer, and no --peer: nothing to follow
     val empty = Files.createTempFile("topology", ".json")
     Files.writeString(

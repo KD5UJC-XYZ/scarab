@@ -23,7 +23,7 @@ import TxKit.*
   */
 class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
   private def pool(ledger: MempoolLedger, capacityOverride: Option[Long] = None) =
-    MempoolState.empty(Right(ledger), 1000, capacityOverride)
+    MempoolState.empty(Right(ledger), 1000, capacityOverride.map(word32))
 
   private def add(s: MempoolState, raw: Bytes): Either[Rejection, MempoolState] =
     s.add(raw, env, Source.Local).map(_._1)
@@ -378,4 +378,60 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
           PredicateFailureCbor.applyTxError(Vector(PredicateFailure.Mempool(full.problem)))
         )
       case other => fail(s"expected a full pool, received $other")
+  }
+
+  /** A pool whose block takes 64 KiB of transactions (a body of 66,560 bytes less the overhead of
+    * 1,024) under an override of `bytes`.
+    */
+  private def sixtyFourKiB(l: MempoolLedger, bytes: Long): MempoolState =
+    pool(l.withParams(_.copy(maxBlockBodySize = 66560)), Some(bytes))
+
+  // The reference takes the capacity in `Word32` and wraps (ouroboros-consensus 82ecba32
+  // `Mempool/Capacity.hs:62-79`, `Ledger/SupportsMempool.hs:468-504`); Scarab does not (approved
+  // deviation, https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849).
+  test("the capacity does not wrap: 4,096 blocks of 1 MiB of reference scripts are 2^32 bytes") {
+    val l = ledger(2)
+    val units = l.params.maxBlockExUnits
+    assertEquals(
+      sixtyFourKiB(l, 268435456L).capacity,
+      TxMeasure(268435456L, 4096 * units.mem, 4096 * units.steps, 4294967296L)
+    )
+    // the number of blocks is the exact ceiling at the top of the override's range, where the
+    // reference's rounds down (65,535)
+    assertEquals(sixtyFourKiB(l, 4294967295L).capacity.bytes, 65536L * 65536)
+  }
+
+  test("a reference-script spend the reference's wrapped capacity would hold back is held") {
+    val l = withRefScript(ledger(2), 1000)
+    // with the reference's wrap the pool's reference-script capacity would be 0
+    val s = sixtyFourKiB(l, 268435456L)
+    val (spend, spent) =
+      tx(Vector(txIn(50)), Vector(alice.address() -> (98 * ada)), ada, Vector(bob))
+    assertEquals(
+      add(s, spend).map(_.entries.map(e => (e.id, e.refScriptBytes))),
+      Right(Vector((spent, 1000L)))
+    )
+  }
+
+  test("LocalTxMonitor saturates a capacity above a Word32 in GetSizes, and the reply encodes") {
+    val snapshot = LocalMonitor.snapshot(sixtyFourKiB(ledger(2), 4294967295L))
+    assertEquals(snapshot.capacity.bytes, 4294967296L)
+    assertEquals(snapshot.sizes.capacityInBytes, 4294967295L)
+    assert(
+      xyz.kd5ujc.scarab.protocol.LocalTxMonitor
+        .encode(
+          xyz.kd5ujc.scarab.protocol.LocalTxMonitor.State
+            .Busy(xyz.kd5ujc.scarab.protocol.LocalTxMonitor.Kind.GetSizes),
+          xyz.kd5ujc.scarab.protocol.ChainSync.Role.Server,
+          xyz.kd5ujc.scarab.protocol.LocalTxMonitor.Message.ReplyGetSizes(snapshot.sizes)
+        )
+        .isRight
+    )
+    assertEquals(
+      xyz.kd5ujc.scarab.network.LocalTxMonitorServer
+        .measures(snapshot.txs, snapshot.capacity)
+        .byName("reference_scripts_bytes")
+        .capacity,
+      BigInt(65536L) << 20
+    )
   }

@@ -5,6 +5,7 @@ import xyz.kd5ujc.scarab.ledger.{CapacityDimension, TransactionDecodeProblem, Me
 import cats.data.NonEmptyList
 import cats.syntax.all.*
 import cats.Id
+import xyz.kd5ujc.scarab.network.Word32
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -311,7 +312,7 @@ final case class MempoolState(
     entries: Vector[Entry],
     bytes: Long,
     nextTicket: Long,
-    capacityOverride: Option[Long],
+    capacityOverride: Option[Word32],
     tipHash: Option[Bytes] = None
 ):
   /** The capacity: `computeMempoolCapacity` of the parameters of the ticked ledger at the base of
@@ -501,7 +502,7 @@ object MempoolState:
   def empty(
       ledger: Either[ConwayView.Unavailable, MempoolLedger],
       tipSlot: BigInt,
-      capacityOverride: Option[Long],
+      capacityOverride: Option[Word32],
       tipHash: Option[Bytes] = None
   ): MempoolState =
     MempoolState(ledger, tipSlot, ledger, Vector.empty, 0L, 1L, capacityOverride, tipHash)

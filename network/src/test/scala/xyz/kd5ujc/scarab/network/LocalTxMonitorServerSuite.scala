@@ -145,6 +145,40 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
         }
     }
 
+  test("GetSizes saturates a capacity or a size above a Word32; the measures are exact") {
+    def snapshot(capacity: Long, sizes: Vector[Long]): Snapshot =
+      val held = sizes.zipWithIndex.map((b, i) => Held(txItem(i), TxMeasure(b, 0, 0, 0)))
+      Snapshot(0, held, _ => false, TxMeasure(capacity, 0, 0, capacity), (BigInt(0), Vector.empty))
+    // at 2^32 - 1, as it is
+    assertEquals(
+      snapshot(4294967295L, Vector(4294967295L)).sizes,
+      LocalTxMonitor.Sizes(4294967295L, 4294967295L, 1)
+    )
+    // above it, 2^32 - 1, and the reply encodes (a `Word32` field, `LocalTxMonitor/Codec.hs:95-101`)
+    val over = snapshot(1L << 32, Vector.fill(3)(1L << 31))
+    assertEquals(over.sizes, LocalTxMonitor.Sizes(4294967295L, 4294967295L, 3))
+    assert(
+      LocalTxMonitor
+        .encode(State.Busy(Kind.GetSizes), Role.Server, Message.ReplyGetSizes(over.sizes))
+        .isRight
+    )
+    // a measure is an integer of any size on the wire, so it is sent as it is
+    val measures = LocalTxMonitorServer.measures(over.txs, over.capacity)
+    assertEquals(
+      measures.byName("transaction_bytes"),
+      LocalTxMonitor.Measure(BigInt(3L << 31), BigInt(1L << 32))
+    )
+    assertEquals(
+      measures.byName("reference_scripts_bytes"),
+      LocalTxMonitor.Measure(0, BigInt(1L << 32))
+    )
+    assert(
+      LocalTxMonitor
+        .encode(State.Busy(Kind.GetMeasures), Role.Server, Message.ReplyGetMeasures(measures))
+        .isRight
+    )
+  }
+
   test("acquire, walk the transactions, ask for a member, the sizes and the measures") {
     toy(7, 1, 2, 3).flatMap { t =>
       connected(Some(t.source), None) { (ch, _) =>
