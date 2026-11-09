@@ -210,7 +210,7 @@ class DijkstraStoredOutputsSuite extends FunSuite:
         c.dijkstra match
           case Some((bytes, hash, txOut)) =>
             assertEquals(stored.flatMap(_.scriptRef).map(_.hash), Some(hash))
-            assertEquals(stored.map(_.referenceScriptSize), Some(bytes.size))
+            assertEquals(stored.map(_.referenceScriptSize), Some(bytes.size.toLong))
             if c.conway.scriptRef.exists(_.native.isDefined) then
               assertEquals(stored.map(_.raw), Some(txOut))
           case None => assertEquals(stored, Some(c.conway))
