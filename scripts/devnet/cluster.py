@@ -157,6 +157,32 @@ def start_nodes(name, which=(1, 2, 3)):
     return ports
 
 
+
+def listening_ports(proc_net_tcp):
+    """The local ports in the LISTEN state (`0A`) of a `/proc/net/tcp` text."""
+    ports = set()
+    for line in proc_net_tcp.splitlines()[1:]:
+        fields = line.split()
+        if len(fields) > 3 and fields[3] == "0A":
+            ports.add(int(fields[1].rsplit(":", 1)[1], 16))
+    return ports
+
+
+def wait_listening(name, ports, seconds=120):
+    """Wait until each of `ports` is listening in the reference container's network namespace. Read from
+    `/proc/net/tcp`, so no probe connection reaches the nodes. A node dialled before it listens refuses the
+    connection, and the dialler's backoff can outlast its first leader slot, after which it forges a fork from
+    genesis (issue 609)."""
+    deadline = time.monotonic() + seconds
+    pending = set(ports)
+    while time.monotonic() < deadline:
+        pending -= listening_ports(in_ref(name, "cat /proc/net/tcp").stdout)
+        if not pending:
+            return
+        time.sleep(0.2)
+    raise SystemExit(f"the reference nodes did not listen on {sorted(pending)} within {seconds} s")
+
+
 class EraDriver:
     """Submits the transactions that move the chain through the eras and records each transition.
 
