@@ -550,6 +550,84 @@ byte-identical preprod table proof and successful Haskell load/replay. Gap track
 J3.1/[#129](https://github.com/KD5UJC-XYZ/scarab/issues/129), and the private pending-versus-eager
 reward representation remains J3.5/M11. Those limits are neither masked nor relaxed by #140.
 
+**2026-11-09 rerun on main.** The acceptance was rerun on main `cae900077df88952b32470662171a5ac5ca18c1f`
+against `cardano-node` 11.1.3, whose consensus is 4.2.1.0.
+The images were `scarab-jdk:local`
+`sha256:67175c090fcc5b21ee5411055d7c6e89d42b6a7b90c77399f71632ada6c4c5b5` and
+`cardano-reference-11.1.3:local`
+`sha256:63bb366ad306366653fd9dfb23e16cceadd1ab68de6556c1e761358a5364bb1e`. The chain is a fresh
+`devnet.py up` cluster: 3 pools, Conway from genesis, 500-slot epochs of 0.1 s, k = 5, f = 0.05, with
+232 transactions from `load --seed 5` in 120 of its blocks. Its 183 blocks (0 to 182, 73 chunks) end at
+slot **3,617**, block **182**, hash `644bf1ad6a7168aa0f2c2e067968c202177c70221669a83e876a0dc795cb97a1`,
+and span epochs 0 to 7. The SHA-256 manifest of the recording's 220 files has SHA-256
+`e678c15d67a0a3176172ee368dfbcaf70bd5c072e558ff35d3d118a74e32e05c`. The recording and the raw run
+artifacts are not published. Every item passed:
+
+1. A `db-analyser --store-ledger 302 --full-ledger-validation` snapshot imports. It has 14 outputs at
+   block 10, hash `686564ae0732c7b307039ba4f83a8d514a1ffed7254a292a1acb31d444b4a0d0`.
+2. The export `302_scarab` loads in both reference tools:
+   - db-analyser reads no chunk before slot 302's, chunk 6, and replays to a tip state byte-identical
+     to a run from genesis (`state` `55e09e32b96a69a48091ca02e7ac22d7c092f1657dce832e0881e5e7e9ad2bb6`);
+   - `cardano-node` logs `ReplayFromSnapshot` at slot 302.
+3. Scarab replays from the import with zero oracle differences at all 7 epoch boundaries and at
+   slots 3,494 and 3,617. At 3,494 the reference state holds a pulsing reward update, and both
+   projections hold a null `rewardUpdate`. Scala's digest names only a complete update, so the eager
+   `Complete` difference recorded above did not occur.
+4. A replay from genesis also matches at all 7 boundaries. Its periodic snapshot at slot 2,431 (M)
+   exports with `state` `260c3b6979f235c5101d8a262989d409f2a02b09c5a8513f08388b7a6ff5340a`. From
+   that export, db-analyser reads no chunk before M's, chunk 48, and `cardano-node` logs
+   `ReplayFromSnapshot` at 2,431.
+5. `302_scarab` is byte-identical to db-analyser's snapshot at the same slot: `state`
+   `608518f066819c4d5c8ae946cd56c1cfdbd7351ed916d7190a34f8f4b5c962fa`, `tables`
+   `4ed4e5e67c1f2c9a20ded2cacd7efd74c8d644535a6147494ba891c81e4abb12`, `meta`
+   `407ee3676eb250c69f0d279bbcd3a5307af81edaf50b6eca737bf563bb6759de`.
+
+Nine periodic snapshots export on each path, the replay from genesis and an import-started replay with
+a 300-slot policy. Each is byte-identical to db-analyser's full-validation state at its slot. None of
+these snapshots carries a gap flag. Some snapshots refused to export with `Unsettled`:
+- the shutdown snapshot at 3,617, in all three runs (`Unsettled(182,174,0)`);
+- the import-started periodic snapshots at 400 (`Unsettled(15,14,0)`) and 1,533 (`Unsettled(69,68,0)`).
+
+Each refused snapshot is of a block without transactions: blocks 15, 69 and 182. The UTxO store's stamp
+had stayed at the last block with a change: 14, 68 and 174.
+[#838](https://github.com/KD5UJC-XYZ/scarab/issues/838) brings the store to the snapshot's own block, so
+these snapshots are now settled when written.
+
+Items 2 and 4 were rerun the same day on the same recording, with that fix applied to `cae900077` and
+the shutdown snapshot at 3,617 as M:
+- All 10 snapshots of the replay from genesis export. So do all 12 of the import-started 300-slot
+  replay, 1,533 included. Each `state`, `tables` and `meta` is byte-identical to db-analyser's
+  full-validation state at its slot.
+- The export at 3,617 has `state` `55e09e32b96a69a48091ca02e7ac22d7c092f1657dce832e0881e5e7e9ad2bb6`,
+  `tables` `703bd06e486b38ad5207bd6aa24771c7b0500ada5e7d8b4a423d1e4b0e76e27e` and `meta`
+  `eda3256cb2de8c1a6477c9fcd3d75be9f1a9bbd41edc7dbf7888467a3b13f0af`.
+- From that export, `cardano-node` logs `ReplayFromSnapshot` at slot 3,617, hash `644bf1ad…`, with no
+  `InvalidSnapshot` or `ReplayFromGenesis`. db-analyser `--analyse-from 3617` reads M's chunk, 72, and
+  no earlier one.
+- The 7 boundary digests of the replay from genesis match projections made by
+  `oracle_compare.py reference --network-none --full-ledger-validation`. Item 2 repeats the results
+  above, with the same hashes.
+
+**Load evidence.** Neither `db-analyser --count-blocks` nor an exit status shows that a snapshot was
+loaded:
+- `--count-blocks --analyse-from 302` prints the same count with an empty `ledger/`, and exits 0.
+- With a snapshot whose `meta` checksum is altered, or whose `state` is one byte short,
+  `db-analyser --store-ledger` replays from genesis without a warning. It exits 0, with the same tip
+  bytes.
+- With a snapshot whose `state` is one byte short, `cardano-node` logs `InvalidSnapshot` and
+  `ReplayFromGenesis`, and still exits 0.
+
+The criteria for a load:
+- for `cardano-node`, a `ReplayFromSnapshot` trace at the snapshot's point, and neither
+  `InvalidSnapshot` nor `ReplayFromGenesis`;
+- for db-analyser, the `--verbose` ImmutableDB chunk reads. After a load it reads only from the
+  snapshot's own chunk on. After a fallback it reads from chunk 0.
+
+A control should show that the pattern discriminates: a copy of the same export with `state`
+truncated by one byte. The controls were run on main for `302_scarab`, and with the fix for the
+export at 3,617, in both tools. Each showed the fallback. The `--count-blocks` result for slot 7 above
+rests on the weaker evidence.
+
 ## 13. The reference build and snapshot V10 as built (#826 step a)
 
 Owner decisions of 2026-11-08 ([#54](https://github.com/KD5UJC-XYZ/scarab/issues/54), refining OD-6,
