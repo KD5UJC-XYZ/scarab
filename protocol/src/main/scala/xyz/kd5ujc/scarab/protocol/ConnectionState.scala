@@ -7,8 +7,8 @@ package xyz.kd5ujc.scarab.protocol
   * handle, error), which the manager holds beside the state. No transport, no time.
   *
   * `OutboundDup` carries whether the outbound idle timeout has fired (`TimeoutExpired`,
-  * `ConnectionManager/Types.hs:228`). A connection the manager has removed is not in its table;
-  * the reference calls that `UnknownConnectionSt`.
+  * `ConnectionManager/Types.hs:228`). A connection the manager has removed is not in its table; the
+  * reference calls that `UnknownConnectionSt`.
   */
 enum ConnectionState:
   /** An outbound connection is reserved for an address and not yet connected. */
@@ -80,7 +80,9 @@ object ConnectionState:
     /** `Connected`: the transport of a reserved outbound connection is up. */
     case Connected
 
-    /** `Negotiated^{flow}_{Outbound}` or `Negotiated^{flow}_{Inbound}`: the handshake agreed `flow`. */
+    /** `Negotiated^{flow}_{Outbound}` or `Negotiated^{flow}_{Inbound}`: the handshake agreed
+      * `flow`.
+      */
     case Negotiated(flow: DataFlow)
 
     /** `Overwritten`: an accepted connection takes the place of an outbound reservation for the
@@ -88,11 +90,12 @@ object ConnectionState:
       */
     case Overwritten
 
-    /** `Awake^{Duplex}_{Local}`: the outbound side starts using an idle inbound duplex connection. */
+    /** `Awake^{Duplex}_{Local}`: the outbound side starts using an idle inbound duplex connection.
+      */
     case AwakeLocal
 
-    /** `PromotedToWarm^{Duplex}_{Local}`: the outbound side starts using an inbound duplex connection
-      * the peer is using.
+    /** `PromotedToWarm^{Duplex}_{Local}`: the outbound side starts using an inbound duplex
+      * connection the peer is using.
       */
     case PromotedToWarmLocal
 
@@ -154,7 +157,7 @@ object ConnectionState:
     import DataFlow.{Duplex as DuplexFlow, Unidirectional}
     import TimeoutExpired.{Expired, Ticking}
     (state, event) match
-      case (ReservedOutbound, Event.Connected) => Right(Unnegotiated(Provenance.Outbound))
+      case (ReservedOutbound, Event.Connected)   => Right(Unnegotiated(Provenance.Outbound))
       case (ReservedOutbound, Event.Overwritten) => Right(Unnegotiated(Provenance.Inbound))
       case (Unnegotiated(Provenance.Outbound), Event.Negotiated(Unidirectional)) =>
         Right(OutboundUni)
@@ -163,7 +166,7 @@ object ConnectionState:
       case (Unnegotiated(Provenance.Inbound), Event.Negotiated(flow)) => Right(InboundIdle(flow))
       case (InboundIdle(DuplexFlow), Event.AwakeLocal)                => Right(OutboundDup(Ticking))
       case (Inbound(DuplexFlow), Event.PromotedToWarmLocal)           => Right(Duplex)
-      case (OutboundUni, Event.DemotedToColdLocal) => Right(OutboundIdle(Unidirectional))
+      case (OutboundUni, Event.DemotedToColdLocal)          => Right(OutboundIdle(Unidirectional))
       case (OutboundDup(Ticking), Event.DemotedToColdLocal) => Right(InboundIdle(DuplexFlow))
       case (OutboundDup(Expired), Event.DemotedToColdLocal) => Right(OutboundIdle(DuplexFlow))
       case (Duplex, Event.DemotedToColdLocal)               => Right(Inbound(DuplexFlow))
@@ -176,13 +179,15 @@ object ConnectionState:
       // connection of either flow, although `verifyAbstractTransition` admits only the duplex one
       case (OutboundDup(_) | OutboundIdle(_) | InboundIdle(_), Event.DemotedToColdRemote) =>
         Right(state)
-      case (Unnegotiated(Provenance.Outbound), Event.SelfConn) => Right(Unnegotiated(Provenance.Inbound))
+      case (Unnegotiated(Provenance.Outbound), Event.SelfConn) =>
+        Right(Unnegotiated(Provenance.Inbound))
       case (Unnegotiated(Provenance.Inbound), Event.SelfConnReversed) =>
         Right(Unnegotiated(Provenance.Outbound))
       case (InboundIdle(Unidirectional), Event.SelfConnReversed) => Right(OutboundUni)
       case (InboundIdle(DuplexFlow), Event.SelfConnReversed)     => Right(OutboundDup(Ticking))
-      case (Unnegotiated(Provenance.Outbound), Event.SelfConnNegotiated(flow)) => Right(InboundIdle(flow))
-      case (OutboundDup(Ticking), Event.TimeoutExpired)                     => Right(OutboundDup(Expired))
+      case (Unnegotiated(Provenance.Outbound), Event.SelfConnNegotiated(flow)) =>
+        Right(InboundIdle(flow))
+      case (OutboundDup(Ticking), Event.TimeoutExpired) => Right(OutboundDup(Expired))
       case (InboundIdle(_), Event.Commit) | (OutboundIdle(_), Event.Commit) => Right(Terminating)
       case (Unnegotiated(_), Event.HandshakeFailed)                         => Right(Terminating)
       case (s, Event.Fail) if s.isLive                                      => Right(Terminated)
@@ -198,19 +203,21 @@ object ConnectionState:
   def closing(state: ConnectionState, timeWait: Boolean): Vector[Event] =
     import Event.*
     state match
-      case Terminating | Terminated       => Vector.empty
-      case ReservedOutbound               => Vector(Fail)
-      case _ if !timeWait                 => Vector(Fail)
-      case Unnegotiated(_)                => Vector(HandshakeFailed)
-      case OutboundUni | OutboundDup(_)   => Vector(DemotedToColdLocal, Commit)
-      case OutboundIdle(_)                => Vector(Commit)
-      case InboundIdle(_)                 => Vector(Commit)
-      case Inbound(_)                     => Vector(DemotedToColdRemote, Commit)
-      case Duplex                         => Vector(DemotedToColdLocal, DemotedToColdRemote, Commit)
+      case Terminating | Terminated     => Vector.empty
+      case ReservedOutbound             => Vector(Fail)
+      case _ if !timeWait               => Vector(Fail)
+      case Unnegotiated(_)              => Vector(HandshakeFailed)
+      case OutboundUni | OutboundDup(_) => Vector(DemotedToColdLocal, Commit)
+      case OutboundIdle(_)              => Vector(Commit)
+      case InboundIdle(_)               => Vector(Commit)
+      case Inbound(_)                   => Vector(DemotedToColdRemote, Commit)
+      case Duplex                       => Vector(DemotedToColdLocal, DemotedToColdRemote, Commit)
 
   /** Apply `events` in order. */
   def through(state: ConnectionState, events: Vector[Event]): Either[Illegal, ConnectionState] =
-    events.foldLeft[Either[Illegal, ConnectionState]](Right(state))((s, e) => s.flatMap(transition(_, e)))
+    events.foldLeft[Either[Illegal, ConnectionState]](Right(state))((s, e) =>
+      s.flatMap(transition(_, e))
+    )
 
   /** Whether the reference accepts the move from `from` to `to`: `verifyAbstractTransition`
     * (`Test/Ouroboros/Network/ConnectionManager/Utils.hs`, ouroboros-network `2fb69829`), with
@@ -222,47 +229,47 @@ object ConnectionState:
     import Provenance.{Inbound as In, Outbound as Out}
     import TimeoutExpired.{Expired, Ticking}
     (from, to) match
-      case (Some(Terminated) | None, Some(ReservedOutbound))                  => true
-      case (Some(ReservedOutbound), Some(Unnegotiated(Out)))                  => true
-      case (Some(Unnegotiated(Out)), Some(OutboundUni))                       => true
-      case (Some(Unnegotiated(Out)), Some(OutboundDup(Ticking)))              => true
-      case (Some(Unnegotiated(_)), Some(Terminating))                         => true
-      case (Some(OutboundUni), Some(OutboundIdle(Unidirectional)))            => true
-      case (Some(OutboundDup(Ticking)), Some(OutboundDup(Expired)))           => true
-      case (Some(OutboundDup(Expired)), Some(OutboundIdle(DuplexFlow)))       => true
-      case (Some(OutboundIdle(a)), Some(OutboundIdle(b)))                     => a == b
-      case (Some(OutboundDup(Ticking)), Some(InboundIdle(DuplexFlow)))        => true
-      case (Some(InboundIdle(DuplexFlow)), Some(OutboundDup(Ticking)))        => true
-      case (Some(OutboundDup(_)), Some(Duplex))                               => true
-      case (Some(OutboundDup(a)), Some(OutboundDup(b)))                       => a == b
-      case (Some(Inbound(DuplexFlow)), Some(Duplex))                          => true
-      case (Some(Duplex), Some(OutboundDup(Ticking)))                         => true
-      case (Some(Duplex), Some(Inbound(DuplexFlow)))                          => true
-      case (Some(Terminated) | None, Some(Unnegotiated(In)))                  => true
-      case (Some(ReservedOutbound), Some(Unnegotiated(In)))                   => true
-      case (Some(Unnegotiated(In)), Some(InboundIdle(_)))                     => true
-      case (Some(Unnegotiated(Out)), Some(InboundIdle(_)))                    => true
-      case (Some(InboundIdle(DuplexFlow)), Some(InboundIdle(DuplexFlow)))     => true
-      case (Some(InboundIdle(a)), Some(Inbound(b)))                           => a == b
-      case (Some(InboundIdle(_)), Some(Terminating))                          => true
-      case (Some(Inbound(a)), Some(InboundIdle(b)))                           => a == b
-      case (Some(OutboundIdle(DuplexFlow)), Some(Inbound(DuplexFlow)))        => true
-      case (Some(OutboundIdle(_)), Some(Terminating))                         => true
-      case (Some(Unnegotiated(Out)), Some(Unnegotiated(In)))                  => true
-      case (Some(Unnegotiated(In)), Some(Unnegotiated(Out)))                  => true
-      case (Some(InboundIdle(Unidirectional)), Some(OutboundUni))             => true
-      case (Some(Terminating), Some(Terminated))                              => true
-      case (Some(Terminated), Some(Terminated))                               => false
-      case (_, Some(Terminated))                                              => true
-      case (None, None)                                                       => false
-      case (_, None)                                                          => true
-      case (Some(Terminating), Some(Unnegotiated(In)))                        => true
-      case _                                                                  => false
+      case (Some(Terminated) | None, Some(ReservedOutbound))              => true
+      case (Some(ReservedOutbound), Some(Unnegotiated(Out)))              => true
+      case (Some(Unnegotiated(Out)), Some(OutboundUni))                   => true
+      case (Some(Unnegotiated(Out)), Some(OutboundDup(Ticking)))          => true
+      case (Some(Unnegotiated(_)), Some(Terminating))                     => true
+      case (Some(OutboundUni), Some(OutboundIdle(Unidirectional)))        => true
+      case (Some(OutboundDup(Ticking)), Some(OutboundDup(Expired)))       => true
+      case (Some(OutboundDup(Expired)), Some(OutboundIdle(DuplexFlow)))   => true
+      case (Some(OutboundIdle(a)), Some(OutboundIdle(b)))                 => a == b
+      case (Some(OutboundDup(Ticking)), Some(InboundIdle(DuplexFlow)))    => true
+      case (Some(InboundIdle(DuplexFlow)), Some(OutboundDup(Ticking)))    => true
+      case (Some(OutboundDup(_)), Some(Duplex))                           => true
+      case (Some(OutboundDup(a)), Some(OutboundDup(b)))                   => a == b
+      case (Some(Inbound(DuplexFlow)), Some(Duplex))                      => true
+      case (Some(Duplex), Some(OutboundDup(Ticking)))                     => true
+      case (Some(Duplex), Some(Inbound(DuplexFlow)))                      => true
+      case (Some(Terminated) | None, Some(Unnegotiated(In)))              => true
+      case (Some(ReservedOutbound), Some(Unnegotiated(In)))               => true
+      case (Some(Unnegotiated(In)), Some(InboundIdle(_)))                 => true
+      case (Some(Unnegotiated(Out)), Some(InboundIdle(_)))                => true
+      case (Some(InboundIdle(DuplexFlow)), Some(InboundIdle(DuplexFlow))) => true
+      case (Some(InboundIdle(a)), Some(Inbound(b)))                       => a == b
+      case (Some(InboundIdle(_)), Some(Terminating))                      => true
+      case (Some(Inbound(a)), Some(InboundIdle(b)))                       => a == b
+      case (Some(OutboundIdle(DuplexFlow)), Some(Inbound(DuplexFlow)))    => true
+      case (Some(OutboundIdle(_)), Some(Terminating))                     => true
+      case (Some(Unnegotiated(Out)), Some(Unnegotiated(In)))              => true
+      case (Some(Unnegotiated(In)), Some(Unnegotiated(Out)))              => true
+      case (Some(InboundIdle(Unidirectional)), Some(OutboundUni))         => true
+      case (Some(Terminating), Some(Terminated))                          => true
+      case (Some(Terminated), Some(Terminated))                           => false
+      case (_, Some(Terminated))                                          => true
+      case (None, None)                                                   => false
+      case (_, None)                                                      => true
+      case (Some(Terminating), Some(Unnegotiated(In)))                    => true
+      case _                                                              => false
 
   /** The reference's `ConnectionManagerCounters` (`ConnectionManager/Types.hs:694-703`), counted
     * per state as `connectionStateToCounters` does (`ConnectionManager/Core.hs:173-212`): a
-    * connection counts by what it is used for now, so a duplex connection both sides use counts
-    * as inbound and as outbound, a reservation counts nothing and a closing one counts only as
+    * connection counts by what it is used for now, so a duplex connection both sides use counts as
+    * inbound and as outbound, a reservation counts nothing and a closing one counts only as
     * terminating.
     */
   final case class Counters(
@@ -297,17 +304,17 @@ object ConnectionState:
 
     /** `connectionStateToCounters`. */
     def ofState(state: ConnectionState): Counters = state match
-      case ReservedOutbound                    => zero
-      case Unnegotiated(Provenance.Inbound)    => inboundConn
-      case Unnegotiated(Provenance.Outbound)   => outboundConn
-      case OutboundUni                         => unidirectionalConn + outboundConn
-      case OutboundDup(_)                      => duplexConn + outboundConn
-      case OutboundIdle(flow)                  => flowConn(flow) + outboundConn
-      case InboundIdle(flow)                   => flowConn(flow) + inboundConn
-      case Inbound(flow)                       => flowConn(flow) + inboundConn
-      case Duplex => zero.copy(fullDuplex = 1) + duplexConn + inboundConn + outboundConn
-      case Terminating                         => zero.copy(terminating = 1)
-      case Terminated                          => zero
+      case ReservedOutbound                  => zero
+      case Unnegotiated(Provenance.Inbound)  => inboundConn
+      case Unnegotiated(Provenance.Outbound) => outboundConn
+      case OutboundUni                       => unidirectionalConn + outboundConn
+      case OutboundDup(_)                    => duplexConn + outboundConn
+      case OutboundIdle(flow)                => flowConn(flow) + outboundConn
+      case InboundIdle(flow)                 => flowConn(flow) + inboundConn
+      case Inbound(flow)                     => flowConn(flow) + inboundConn
+      case Duplex      => zero.copy(fullDuplex = 1) + duplexConn + inboundConn + outboundConn
+      case Terminating => zero.copy(terminating = 1)
+      case Terminated  => zero
 
     /** `connectionManagerStateToCounters`. */
     def of(states: Iterable[ConnectionState]): Counters =

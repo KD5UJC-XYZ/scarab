@@ -335,7 +335,11 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
       assert(failed)
       assertEquals(afterFailure.connections, Vector.empty, "the failed owner's entry is gone")
       assertEquals(during.counters, Counters.zero, "a reservation counts in no direction")
-      assertEquals(afterCancel.connections, Vector.empty, "the cancelled owner's reservation is gone")
+      assertEquals(
+        afterCancel.connections,
+        Vector.empty,
+        "the cancelled owner's reservation is gone"
+      )
     }
   }
 
@@ -447,8 +451,9 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
                       .allow[ConnectionError] {
                         for
                           s <- c.state
-                          _ <- (if s == ConnectionState.ReservedOutbound then c.connected
-                                else IO.unit)
+                          _ <-
+                            (if s == ConnectionState.ReservedOutbound then c.connected
+                             else IO.unit)
                           _ <- c
                             .negotiated(if duplex then DataFlow.Duplex else DataFlow.Unidirectional)
                         yield ()

@@ -59,7 +59,7 @@ class ConnectionStateSuite extends ScalaCheckSuite:
     */
   private def leavesAsIs(s: ConnectionState, e: Event): Boolean = (s, e) match
     case (OutboundDup(_) | OutboundIdle(_) | InboundIdle(_), Event.DemotedToColdRemote) => true
-    case _                                                                               => false
+    case _                                                                              => false
 
   property("every move the model makes is one the reference accepts") {
     forAll(reachable, event) { (s, e) =>
@@ -73,11 +73,14 @@ class ConnectionStateSuite extends ScalaCheckSuite:
   test("the identity moves are the reference's, and its oracle admits all but one") {
     every.foreach { s =>
       val result = ConnectionState.transition(s, Event.DemotedToColdRemote)
-      if leavesAsIs(s, Event.DemotedToColdRemote) then assertEquals(result, Right(s), s.abstractName)
+      if leavesAsIs(s, Event.DemotedToColdRemote) then
+        assertEquals(result, Right(s), s.abstractName)
     }
     // the runtime leaves an idle unidirectional inbound connection as it is (`Core.hs:2302-2305`);
     // `verifyAbstractTransition` admits that identity for the duplex flow only
-    assert(ConnectionState.valid(Some(InboundIdle(DataFlow.Duplex)), Some(InboundIdle(DataFlow.Duplex))))
+    assert(
+      ConnectionState.valid(Some(InboundIdle(DataFlow.Duplex)), Some(InboundIdle(DataFlow.Duplex)))
+    )
     assert(
       !ConnectionState.valid(
         Some(InboundIdle(DataFlow.Unidirectional)),
@@ -105,7 +108,10 @@ class ConnectionStateSuite extends ScalaCheckSuite:
     )
     cases.foreach { (from, e, to) =>
       assertEquals(ConnectionState.transition(from, e), Right(to), s"${from.abstractName} $e")
-      assert(ConnectionState.valid(Some(from), Some(to)), s"${from.abstractName} -> ${to.abstractName}")
+      assert(
+        ConnectionState.valid(Some(from), Some(to)),
+        s"${from.abstractName} -> ${to.abstractName}"
+      )
     }
   }
 
@@ -113,7 +119,9 @@ class ConnectionStateSuite extends ScalaCheckSuite:
     every.filter(_.isLive).foreach { s =>
       val ordered = ConnectionState.closing(s, timeWait = true)
       val ends = ordered.foldLeft(Vector(s))((path, e) =>
-        path :+ ConnectionState.transition(path.last, e).fold(problem => fail(problem.message), identity)
+        path :+ ConnectionState
+          .transition(path.last, e)
+          .fold(problem => fail(problem.message), identity)
       )
       assert(ends.zip(ends.drop(1)).forall((a, b) => ConnectionState.valid(Some(a), Some(b))), ends)
       val expected = if s == ReservedOutbound then Terminated else Terminating
@@ -163,8 +171,14 @@ class ConnectionStateSuite extends ScalaCheckSuite:
       ConnectionState.transition(InboundIdle(DataFlow.Duplex), Event.AwakeLocal),
       Right(OutboundDup(TimeoutExpired.Ticking))
     )
-    assertEquals(ConnectionState.transition(Inbound(DataFlow.Duplex), Event.PromotedToWarmLocal), Right(Duplex))
-    assertEquals(ConnectionState.transition(Duplex, Event.DemotedToColdLocal), Right(Inbound(DataFlow.Duplex)))
+    assertEquals(
+      ConnectionState.transition(Inbound(DataFlow.Duplex), Event.PromotedToWarmLocal),
+      Right(Duplex)
+    )
+    assertEquals(
+      ConnectionState.transition(Duplex, Event.DemotedToColdLocal),
+      Right(Inbound(DataFlow.Duplex))
+    )
     assertEquals(
       ConnectionState.transition(OutboundDup(TimeoutExpired.Ticking), Event.DemotedToColdLocal),
       Right(InboundIdle(DataFlow.Duplex))
@@ -176,8 +190,12 @@ class ConnectionStateSuite extends ScalaCheckSuite:
   }
 
   test("a unidirectional inbound connection cannot be reused") {
-    assert(ConnectionState.transition(InboundIdle(DataFlow.Unidirectional), Event.AwakeLocal).isLeft)
-    assert(ConnectionState.transition(Inbound(DataFlow.Unidirectional), Event.PromotedToWarmLocal).isLeft)
+    assert(
+      ConnectionState.transition(InboundIdle(DataFlow.Unidirectional), Event.AwakeLocal).isLeft
+    )
+    assert(
+      ConnectionState.transition(Inbound(DataFlow.Unidirectional), Event.PromotedToWarmLocal).isLeft
+    )
   }
 
   test("an event the state does not allow is refused") {
@@ -224,6 +242,11 @@ class ConnectionStateSuite extends ScalaCheckSuite:
     assert(!ConnectionState.valid(Some(Terminated), Some(Terminated)))
     assert(!ConnectionState.valid(None, None))
     assert(!ConnectionState.valid(Some(OutboundUni), Some(Duplex)))
-    assert(!ConnectionState.valid(Some(InboundIdle(DataFlow.Unidirectional)), Some(Inbound(DataFlow.Duplex))))
+    assert(
+      !ConnectionState.valid(
+        Some(InboundIdle(DataFlow.Unidirectional)),
+        Some(Inbound(DataFlow.Duplex))
+      )
+    )
     assert(ConnectionState.valid(Some(Terminating), Some(Unnegotiated(Provenance.Inbound))))
   }

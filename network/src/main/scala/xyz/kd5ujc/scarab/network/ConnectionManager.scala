@@ -175,8 +175,13 @@ object ConnectionManager:
           connection.close(ConnectionEnd.Failed(refused)) *> outer.raise[NetworkError, A](e)
         case _ => outer.raise[NetworkError, A](e)
 
-  /** An admitted connection with the generation of its entry and the signal its release completes. */
-  private final case class Admitted[F[_]](connection: Connection[F], id: Long, closed: Deferred[F, Unit])
+  /** An admitted connection with the generation of its entry and the signal its release completes.
+    */
+  private final case class Admitted[F[_]](
+      connection: Connection[F],
+      id: Long,
+      closed: Deferred[F, Unit]
+  )
 
   private final case class Entry[F[_]](
       id: Long,
@@ -230,13 +235,18 @@ object ConnectionManager:
                   Left(
                     ConnectionError.IllegalTransition(
                       remote.toString,
-                      ConnectionState.Illegal(ConnectionState.Terminated, events.headOption.getOrElse(Event.Fail))
+                      ConnectionState.Illegal(
+                        ConnectionState.Terminated,
+                        events.headOption.getOrElse(Event.Fail)
+                      )
                     )
                   )
                 )
               case Some(entry) =>
                 events
-                  .foldLeft[Either[ConnectionState.Illegal, (ConnectionState, Vector[ConnectionState])]](
+                  .foldLeft[
+                    Either[ConnectionState.Illegal, (ConnectionState, Vector[ConnectionState])]
+                  ](
                     Right((entry.state, Vector(entry.state)))
                   )((walked, event) =>
                     walked.flatMap((current, path) =>
@@ -265,8 +275,8 @@ object ConnectionManager:
         apply(key, id, Vector(event)).flatMap(_.fold(refuse[Unit](_), _ => F.unit))
 
       /** Record `reason` as the end of our entry and close it, in one change of the table: an
-        * orderly end (`timeWait`) enters time-wait through the reference's demotions and `Commit`, a
-        * failure ends at once ([[ConnectionState.closing]]). An entry that already has an end is
+        * orderly end (`timeWait`) enters time-wait through the reference's demotions and `Commit`,
+        * a failure ends at once ([[ConnectionState.closing]]). An entry that already has an end is
         * left as it is. Returns the end that stands.
         */
       def closeEntry(
@@ -295,7 +305,10 @@ object ConnectionManager:
                 walked match
                   case Right(path) =>
                     val reached = path.lastOption.getOrElse(e.state)
-                    (m.updated(key, e.copy(reason = Some(reason), state = reached)), (reason, Right(path)))
+                    (
+                      m.updated(key, e.copy(reason = Some(reason), state = reached)),
+                      (reason, Right(path))
+                    )
                   case Left(problem) =>
                     (m.updated(key, e.copy(reason = Some(reason))), (reason, Left(problem)))
               case Some(e) => (m, (e.reason.getOrElse(reason), Right(Vector.empty)))
@@ -306,12 +319,15 @@ object ConnectionManager:
               .fold(
                 problem =>
                   emit(
-                    ConnectionEvent.Refused(ConnectionError.IllegalTransition(remote.toString, problem))
+                    ConnectionEvent
+                      .Refused(ConnectionError.IllegalTransition(remote.toString, problem))
                   ),
                 path =>
                   path
                     .zip(path.drop(1))
-                    .traverse_((from, to) => emit(ConnectionEvent.Changed(remote.toString, from, to)))
+                    .traverse_((from, to) =>
+                      emit(ConnectionEvent.Changed(remote.toString, from, to))
+                    )
               )
               .as(stands)
           }
@@ -443,21 +459,27 @@ object ConnectionManager:
           .map(_.get(key).exists(e => e.id == id && e.releasedAt.isEmpty))
           .flatMap { ours =>
             // an end nobody recorded is a teardown, with no time-wait
-            (closeEntry(key, id, ConnectionEnd.Released, timeWait = false).flatMap(stands =>
-              held *> emit(ConnectionEvent.Closed(at.toString, c.provenance, stands))
-            )).whenA(ours)
+            (closeEntry(key, id, ConnectionEnd.Released, timeWait = false)
+              .flatMap(stands =>
+                held *> emit(ConnectionEvent.Closed(at.toString, c.provenance, stands))
+              ))
+              .whenA(ours)
           } *> admitted.closed.complete(()).void
 
       new ConnectionManager[F]:
         def inbound(remote: SocketAddress[IpAddress], alongsideOutbound: Boolean)(using
             Raise[F, ConnectionError]
         ) =
-          Resource.make(admit(remote, Provenance.Inbound, alongsideOutbound))(release).map(_.connection)
+          Resource
+            .make(admit(remote, Provenance.Inbound, alongsideOutbound))(release)
+            .map(_.connection)
 
         def outbound(remote: SocketAddress[IpAddress], alongsideInbound: Boolean)(using
             Raise[F, ConnectionError]
         ) =
-          Resource.make(admit(remote, Provenance.Outbound, alongsideInbound))(release).map(_.connection)
+          Resource
+            .make(admit(remote, Provenance.Outbound, alongsideInbound))(release)
+            .map(_.connection)
 
         def lookup(remote: SocketAddress[IpAddress]) =
           table.get.map { m =>
