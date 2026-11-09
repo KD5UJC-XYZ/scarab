@@ -180,6 +180,24 @@ class PredicateFailureCborSuite extends FunSuite:
     )
   }
 
+  test("reference scripts over the limit: supplied, then the limit, each an Int") {
+    // [6 ConwayTxRefScriptsSizeTooBig, supplied, expected] (`Conway/Rules/Ledger.hs:237`)
+    assertEquals(
+      reason(PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(300000, 204800))),
+      "8182068183061a000493e01a00032000"
+    )
+    // `Mismatch RelLTEQ Int` (`Conway/Rules/Ledger.hs:123`): a size past a 32-bit Int, in the
+    // shortest head (four bytes for 2^31, eight for 2^32)
+    assertEquals(
+      reason(PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(1L << 31, 204800L))),
+      "8182068183061a800000001a00032000"
+    )
+    assertEquals(
+      reason(PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(1L << 32, 204800L))),
+      "8182068183061b00000001000000001a00032000"
+    )
+  }
+
   test("a transaction of another era gets the hard-fork combinator's era mismatch") {
     // Babbage transaction against a Conway ledger: [[5, "Babbage"], [6, "Conway"]]
     assertEquals(

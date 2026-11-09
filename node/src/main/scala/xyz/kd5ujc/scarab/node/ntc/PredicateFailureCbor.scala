@@ -162,6 +162,9 @@ object PredicateFailureCbor:
   private[ntc] def coin(w: W, c: BigInt): Unit = { w.uint(c); () }
   private[ntc] def small(w: W, n: Int): Unit = { w.uint(n); () }
 
+  /** A Haskell `Int` as `encodeInt` writes it: signed, up to 64 bits, in the shortest head. */
+  private[ntc] def int(w: W, n: Long): Unit = { w.int(n); () }
+
   private[ntc] def voter(w: W, v: Voter): W = v match
     case Voter.CommitteeHot(Credential.Key(h))    => w.array(2).uint(0).bytes(h)
     case Voter.CommitteeHot(Credential.Script(h)) => w.array(2).uint(1).bytes(h)
@@ -193,7 +196,7 @@ object PredicateFailureCbor:
     case PredicateFailure.TreasuryValueMismatch(m) =>
       w.array(3).uint(5); swapped(w, m)(coin)
     case PredicateFailure.TxRefScriptsSizeTooBig(m) =>
-      w.array(3).uint(6); group(w, m)(small)
+      w.array(3).uint(6); group(w, m)(int)
     case PredicateFailure.Mempool(text) => w.array(2).uint(7).text(text.message)
     case PredicateFailure.WithdrawalsMissingAccounts(ws) =>
       w.array(2).uint(8)

@@ -82,11 +82,14 @@ object Ledger extends JudgedSts[LedgerEnv, ConwayLedger, Tx, PredicateFailure, L
       )
     )
 
-  /** `validateRefScriptSize` (`Ledger.hs:455-472`). */
-  private def refScriptSize(refSize: Int): Test[PredicateFailure] =
+  /** `validateRefScriptSize` (`Ledger.hs:455-472`): the size and the limit compared as the
+    * reference's 64-bit `Int` (`fromIntegral @Word32 @Int`).
+    */
+  private def refScriptSize(refSize: Long): Test[PredicateFailure] =
+    val limit = RefScripts.MaxRefScriptSizePerTx.toLong
     Test.failureUnless(
-      refSize <= RefScripts.MaxRefScriptSizePerTx,
-      PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(refSize, RefScripts.MaxRefScriptSizePerTx))
+      refSize <= limit,
+      PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(refSize, limit))
     )
 
   /** `validateWithdrawalsDelegated` (`Ledger.hs:474-488`): the key-hash reward accounts withdrawn

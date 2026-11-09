@@ -220,7 +220,7 @@ class ConwayRulesSuite extends FunSuite:
     val spend = txIn(1)
     val ref = txIn(2)
     val script = outputWithScript(bob.address(), 5 * ada, 30000)
-    assertEquals(script.referenceScriptSize, 30000)
+    assertEquals(script.referenceScriptSize, 30000L)
     val s = conway(Vector(spend -> out(alice.address(), 100 * ada), ref -> script))
     val extra = BigInt(25600) * 15 + BigInt(4400) * 18
     def attempt(fee: BigInt) =
@@ -256,6 +256,36 @@ class ConwayRulesSuite extends FunSuite:
       rule(run(s, tx(b, Vector(alice))))
     assertEquals(attempt(refs.take(1)), "accepted")
     assertEquals(attempt(refs), "ConwayTxRefScriptsSizeTooBig")
+  }
+
+  test("the reference scripts of a transaction are added up in 64 bits, as the reference's Int") {
+    // `txNonDistinctRefScriptsSize :: ... -> Int` (`Conway/UTxO.hs:166-170`): 2048 reference
+    // inputs, each naming a script of 1 MiB, hold 2^31 bytes, one more than a 32-bit Int holds
+    val script = outputWithScript(bob.address(), 5 * ada, 1 << 20)
+    val refs = Vector.tabulate(2048)(i => TxIn(txIn(2).id, i))
+    val spend = txIn(1)
+    val s = conway(
+      Vector(spend -> out(alice.address(), 100 * ada)) ++ refs.map(_ -> script),
+      conwayParams.copy(minFeeRefScriptCostPerByte = Rational.zero)
+    )
+    val b = body(
+      "wide",
+      Vector(spend),
+      Vector(out(alice.address(), 99 * ada)),
+      ada,
+      referenceInputs = refs
+    )
+    val total = BigInt(1) << 31
+    val result = run(s, tx(b, Vector(alice)))
+    assertEquals(rule(result), "ConwayTxRefScriptsSizeTooBig")
+    result match
+      case Left(LedgerFailure.Rejected.Single(_, PredicateFailure.TxRefScriptsSizeTooBig(m))) =>
+        assertEquals(
+          (BigInt(m.supplied), BigInt(m.expected)),
+          (total, BigInt(RefScripts.MaxRefScriptSizePerTx))
+        )
+      case other => fail(s"expected the size of the reference scripts refused, got $other")
+    assertEquals(BigInt(RefScripts.refScriptsSize(utxo(s), b)), total)
   }
 
   test("an input may not also be a reference input before protocol version 11") {

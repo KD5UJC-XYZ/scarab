@@ -94,7 +94,7 @@ class DijkstraTranslationSuite extends FunSuite:
             case Some(native) =>
               assertEquals(DijkstraScript.upgradeTimelock(native), bytes)
               assertEquals(upgraded.raw, hex(string(row, "reference", "dijkstraTxOut")))
-              assertEquals(upgraded.referenceScriptSize, bytes.size)
+              assertEquals(upgraded.referenceScriptSize, bytes.size.toLong)
               assertEquals(upgraded.scriptRef.flatMap(_.native), Some(native))
               assertEquals(upgraded.address, out.address)
               assertEquals(upgraded.value, out.value)

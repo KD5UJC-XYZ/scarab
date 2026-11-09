@@ -179,7 +179,8 @@ class BbodySuite extends FunSuite:
     def head(major: Int, n: Int): Vector[Byte] =
       if n < 24 then Vector(((major << 5) | n).toByte)
       else if n < 256 then Vector(((major << 5) | 24).toByte, n.toByte)
-      else Vector(((major << 5) | 25).toByte, (n >> 8).toByte, n.toByte)
+      else if n < 65536 then Vector(((major << 5) | 25).toByte, (n >> 8).toByte, n.toByte)
+      else ((major << 5) | 26).toByte +: Vector(24, 16, 8, 0).map(s => (n >> s).toByte)
     def cborBytes(b: Vector[Byte]) = head(2, b.size) ++ b
     val wrapped = head(4, 2) ++ Vector(0x03.toByte) ++ cborBytes(Vector.fill(size)(0x42.toByte))
     val raw = head(5, 3) ++ Vector(0x00.toByte) ++ cborBytes(address.raw.value) ++
@@ -208,6 +209,27 @@ class BbodySuite extends FunSuite:
       Bbody.refScriptsSize(pp.copy(protocolMajor = 11), utxo, Vector(first, second)),
       800L
     )
+  }
+
+  test("the reference scripts of one transaction are added up in 64 bits, as the reference's Int") {
+    // `totalRefScriptSizeInBlock` sums `txNonDistinctRefScriptsSize :: ... -> Int` (Conway
+    // `Rules/Bbody.hs:357-370`): 2048 reference inputs, each naming a script of 1 MiB, hold 2^31
+    // bytes, one more than a 32-bit Int holds
+    val alice = key()
+    val script = withScript(alice.address(), 1 << 20)
+    val held = Vector.tabulate(2048)(i => TxIn(Bytes.fromArray(Array.fill(32)(9.toByte)), i))
+    val utxo = Utxo.empty ++ held.map(_ -> script)
+    val naming = tx(
+      body("naming", Vector(txIn(1)), Vector.empty, 0, referenceInputs = held),
+      Vector.empty
+    )
+    Vector(pp, pp.copy(protocolMajor = 11)).foreach { p =>
+      assertEquals(Bbody.refScriptsSize(p, utxo, Vector(naming)), 1L << 31)
+      assertEquals(
+        run(p, Vector(naming), state(p, utxo)),
+        Left(BlockFailure.RefScriptsTooLarge(RefScripts.MaxRefScriptSizePerBlock.toLong))
+      )
+    }
   }
 
   test("a block of 10,000 transactions runs on a 256 KiB stack") {

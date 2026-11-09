@@ -123,7 +123,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
   test("reference scripts over the per-transaction maximum are refused with that failure alone") {
     val size = RefScripts.MaxRefScriptSizePerTx + 1
     val l = withRefScript(ledger(1), size)
-    assertEquals(l.utxo.get(txIn(50)).map(_.referenceScriptSize), Some(size))
+    assertEquals(l.utxo.get(txIn(50)).map(_.referenceScriptSize), Some(size.toLong))
     val (raw, id) = spendRefScript
     val expected = PredicateFailure.TxRefScriptsSizeTooBig(
       Mismatch(size, RefScripts.MaxRefScriptSizePerTx)
@@ -134,6 +134,52 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
       refused(result.left.getOrElse(fail("accepted"))),
       PredicateFailureCbor.applyTxError(Vector(expected))
     )
+  }
+
+  test("the reference scripts of a transaction are measured in 64 bits, as the reference's Int") {
+    // `txMeasureRefScripts` measures `txNonDistinctRefScriptsSize :: ... -> Int`
+    // (`Shelley/Ledger/Mempool.hs:714-726`): 2048 inputs, each naming a script of 1 MiB, hold 2^31
+    // bytes, one more than a 32-bit Int holds
+    val script = refScriptOutput(1 << 20)
+    val inputs = Vector.tabulate(2048)(i => TxIn(txIn(60).id, i))
+    val base = ledger(1).withParams(_.copy(maxTxSize = 1 << 17))
+    val l = base.withUtxo(inputs.foldLeft(base.utxo)(_.updated(_, script)))
+    val (raw, _) = tx(inputs, Vector(bob.address() -> (99 * ada)), ada, Vector(alice))
+    val parsed = MempoolState.parse(raw).fold(r => fail(r.message), _._2)
+    val total = BigInt(1) << 31
+    assertEquals(BigInt(MempoolState.refScriptBytes(l, parsed)), total)
+    add(pool(l), raw) match
+      case Left(
+            Rejection.Ledger(
+              LedgerFailure.Rejected.Single(_, PredicateFailure.TxRefScriptsSizeTooBig(m))
+            )
+          ) =>
+        assertEquals(
+          (BigInt(m.supplied), BigInt(m.expected)),
+          (total, BigInt(RefScripts.MaxRefScriptSizePerTx))
+        )
+      case other => fail(s"expected the size of the reference scripts refused, got $other")
+  }
+
+  test(
+    "an output that is both spent and a reference input is measured once, as the reference does"
+  ) {
+    // `txNonDistinctRefScriptsSize` measures the union of the inputs and the reference inputs
+    // (`Conway/UTxO.hs:164-170`); from protocol version 11 an input may also be a reference input.
+    // Its script of 150 000 bytes is within the per-transaction maximum once, not twice.
+    val size = 150000
+    val l = withRefScript(ledger(1), size).withProtocol(11)
+    val (raw, id) = tx(
+      Vector(txIn(50)),
+      Vector(alice.address() -> (89 * ada)),
+      10 * ada,
+      Vector(bob),
+      referenceInputs = Vector(txIn(50))
+    )
+    val parsed = MempoolState.parse(raw).fold(r => fail(r.message), _._2)
+    assertEquals(MempoolState.refScriptBytes(l, parsed), size.toLong)
+    val admitted = add(pool(l), raw).fold(r => fail(r.message), identity)
+    assertEquals(admitted.entries.map(e => (e.id, e.refScriptBytes)), Vector((id, size.toLong)))
   }
 
   test("the reference scripts are measured in the state after the held transactions") {

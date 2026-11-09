@@ -619,10 +619,12 @@ object RefScripts:
   private val RefScriptStride = 25600
   private val RefScriptMultiplier = Rational(6, 5)
 
-  /** `tierRefScriptFee`: the price per byte starts at `base` and grows by 1.2 for every 25 KiB. */
-  def tierRefScriptFee(base: Rational, size: Int): BigInt =
+  /** `tierRefScriptFee`: the price per byte starts at `base` and grows by 1.2 for every 25 KiB. The
+    * size is a `Long`, as the reference's is a 64-bit `Int` (`Conway/Tx.hs:122-142`).
+    */
+  def tierRefScriptFee(base: Rational, size: Long): BigInt =
     @annotation.tailrec
-    def go(acc: Rational, price: Rational, n: Int): BigInt =
+    def go(acc: Rational, price: Rational, n: Long): BigInt =
       if n < RefScriptStride then (acc + Rational(n) * price).floor
       else
         go(
@@ -632,8 +634,11 @@ object RefScripts:
         )
     go(Rational.zero, base, size)
 
-  /** Total size of the reference scripts of the distinct inputs and reference inputs. */
-  def refScriptsSize(utxo: Utxo, body: TxBody): Int =
+  /** Total size of the reference scripts of the distinct inputs and reference inputs
+    * (`txNonDistinctRefScriptsSize`, `Conway/UTxO.hs:166-170`), added up in 64 bits as the
+    * reference's `Int`.
+    */
+  def refScriptsSize(utxo: Utxo, body: TxBody): Long =
     (body.inputs.toSet ++ body.referenceInputs.toSet).iterator
       .flatMap(utxo.get)
       .map(_.referenceScriptSize)

@@ -61,7 +61,7 @@ object Capacity:
     */
   def measure(entry: Entry): TxMeasure =
     val units = entry.tx.witnesses.totalExUnits
-    TxMeasure(entry.tx.size + PerTxOverhead, units.mem, units.steps, entry.refScriptBytes.toLong)
+    TxMeasure(entry.tx.size + PerTxOverhead, units.mem, units.steps, entry.refScriptBytes)
 
   /** The first phase (`txMeasurePhase1`, `txMeasureAlonzo`): the transaction's size against the
     * maximum and its execution units, pointwise, against the maximum. The two checks accumulate,
@@ -82,14 +82,15 @@ object Capacity:
 
   /** The second phase (`txMeasurePhase2`, `txMeasureRefScripts`, Conway): the reference-script
     * bytes of the transaction's inputs and reference inputs in the state after the held
-    * transactions against the per-transaction maximum.
+    * transactions against the per-transaction maximum, both the reference's 64-bit `Int`.
     */
-  def phase2(ledger: MempoolLedger, tx: Tx): Either[PredicateFailure, Int] =
+  def phase2(ledger: MempoolLedger, tx: Tx): Either[PredicateFailure, Long] =
     val size = MempoolState.refScriptBytes(ledger, tx)
+    val limit = RefScripts.MaxRefScriptSizePerTx.toLong
     Either.cond(
-      size <= RefScripts.MaxRefScriptSizePerTx,
+      size <= limit,
       size,
-      PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(size, RefScripts.MaxRefScriptSizePerTx))
+      PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(size, limit))
     )
 
   extension (m: TxMeasure)

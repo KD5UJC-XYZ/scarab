@@ -633,10 +633,13 @@ final case class TxOut(
     }
 
   /** Size in bytes of the reference script as the ledger counts it for the reference-script fee:
-    * the Plutus script bytes, or the encoding of a native script.
+    * the Plutus script bytes, or the encoding of a native script. A `Long`, as the reference's
+    * `originalBytesSize` (`Hashes.hs:379`) is a 64-bit `Int`, so that the sizes of a transaction's
+    * scripts add up as the reference adds them (`txNonDistinctRefScriptsSize`,
+    * `Conway/UTxO.hs:166-170`, cardano-ledger f649f975).
     */
-  def referenceScriptSize: Int =
-    if scriptRef.isEmpty then 0
+  def referenceScriptSize: Long =
+    if scriptRef.isEmpty then 0L
     else
       val size = for
         node <- TxOut.node(raw)
@@ -655,8 +658,8 @@ final case class TxOut(
         payload <-
           if tag == 0 then Right(parts(1).original.size)
           else CborRead.bytes(parts(1), DecodeField.PlutusScript).map(_.size)
-      yield payload
-      size.getOrElse(0)
+      yield payload.toLong
+      size.getOrElse(0L)
 
   /** Size of the output for the Babbage and Conway minimum: the length of its original encoding.
     * The reference measures the output as it was decoded, `Sized` by the span the decoder consumed
