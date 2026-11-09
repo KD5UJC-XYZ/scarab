@@ -1,0 +1,27 @@
+{
+  "cases": 188,
+  "casesSha256": "c5adefc0022c8b4e3dce43423fc87296fb3591e5e16811e6e86231e3c9459e20",
+  "consensus": {
+    "repository": "IntersectMBO/ouroboros-consensus",
+    "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b"
+  },
+  "image": "scarab-dijkstra-crossing-oracle:local",
+  "imageId": "sha256:7ad1ad8b0a83111387b539508914a97163d1f2729387a7b0d21d33a2310af473",
+  "inputs": {
+    "fixtures/preview/conway-governance.hex": "6d32f782714266e8a82936409d10cdd5ca41ad6fe59ed896822f4cc24814265a",
+    "fixtures/preview/conway.hex": "dd1df52ac755915efacbd33ffafb5257e8a8bfd7c593b33f9d7809c0ab68c5ff",
+    "fixtures/reference/conway-decoding/cases.json": "c0d59b073b13de1513994a8ab1e2658dd44136628700ef368038dddb837d8fbb"
+  },
+  "ledger": {
+    "packages": [
+      "cardano-ledger-dijkstra 0.5.0.0"
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c"
+  },
+  "measuredAt": "2026-11-08",
+  "program": "scripts/oracle/dijkstra-crossing/Main.hs",
+  "programSha256": "ed227251632c819e74afba559948fcb45459b27861023f848575bec2d1752f51",
+  "schemaVersion": 1,
+  "scope": "Conway transactions carried into Dijkstra by the Leios testnet build: the ledger's TranslateEra DijkstraEra (Tx TopTx) and the hard-fork mempool's rematchValidatedTxs, each part's bytes, the flag, the id and the mempool form, or the refusal and the part it names; not the mempool's reapplication of the translated transaction"
+}

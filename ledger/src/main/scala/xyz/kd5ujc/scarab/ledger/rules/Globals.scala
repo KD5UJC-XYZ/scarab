@@ -36,6 +36,9 @@ final case class Globals(ledger: LedgerGlobals, geometry: EpochGeometry):
     */
   def stabilityWindow: BigInt = geometry.stabilityWindow.toBigInt
 
+  /** `getTheSlotOfNoReturn`'s slot for the epoch `epoch` ([[EpochGeometry.slotOfNoReturn]]). */
+  def slotOfNoReturn(epoch: BigInt): BigInt = geometry.slotOfNoReturn(epoch)
+
   /** `randomnessStabilisationWindow` (4k/f): slots before the end of the epoch at which the
     * candidate nonce stops updating.
     */

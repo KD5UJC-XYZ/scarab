@@ -13,6 +13,8 @@ unit/property; devnet soak (24/24, 41/41 and, with the extended governance load,
 
 `ValueNotConservedUTxO` counts minted tokens as consumed and burned ones as produced, as the reference does (`getConsumedMaryValue` and `burnedMultiAssets`, cardano-ledger f649f975 `Mary/UTxO.hs:72-97`; #828, `ValueConservationSuite`). The verdict was already the reference's; the failure's payload now is too.
 
+The slot of no return (`getTheSlotOfNoReturn`, cardano-ledger f649f975 `Slot.hs:106-114`), which TICK's solidifying of the future parameters uses, is computed exactly (`EpochGeometrySuite`). The reference's `Word64` doubling of the stability window wraps for a window of 2^63 slots or more, which Scarab does not reproduce (#825): an approved deviation ([owner decision](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849)).
+
 ## Explicitly unchecked or unconfirmed
 
 native pool rules maintain the reference-counted VRF registry, and the protocol-11 transition populates it. Fresh native genesis retains injected pools with an empty registry, as the reference does; previously written or imported state still needs its own provenance checks ([#129](https://github.com/KD5UJC-XYZ/scarab/issues/129)); Plutus V3 reference-input refusal only replayed in a unit test, not from the refused bytes; see governance row

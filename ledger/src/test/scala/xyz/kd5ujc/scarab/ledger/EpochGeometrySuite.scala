@@ -206,6 +206,43 @@ class EpochGeometrySuite extends ScalaCheckSuite:
     )
   }
 
+  test("the slot of no return doubles the stability window exactly, then stops at slot 0") {
+    // `getTheSlotOfNoReturn` (cardano-ledger f649f975, `Slot.hs:106-114`) doubles a `Word64`
+    // window, which wraps from 2^63, so its slots below would be 200, 180 and 380; Scarab does not
+    // reproduce the wrap (#825). k = 1 and f = 3 / 2^63 give the window 2^63, and
+    // f = 3 / (2^63 + 10) gives 2^63 + 10.
+    val at = geometry(0, 1, 200).copy(
+      securityParam = TestGeometry.k(1),
+      activeSlotsCoeff = TestGeometry.f(Rational(3, BigInt(2).pow(63)))
+    )
+    assertEquals(at.stabilityWindow.toBigInt, BigInt(2).pow(63))
+    assertEquals(at.slotOfNoReturn(0), BigInt(0))
+    val wide = geometry(0, 1, 200).copy(
+      securityParam = TestGeometry.k(1),
+      activeSlotsCoeff = TestGeometry.f(Rational(3, BigInt(2).pow(63) + 10))
+    )
+    assertEquals(wide.stabilityWindow.toBigInt, BigInt(2).pow(63) + 10)
+    assertEquals(wide.slotOfNoReturn(0), BigInt(0))
+    assertEquals(wide.slotOfNoReturn(1), BigInt(0))
+    // past any `Word64` slot, so that no reduction modulo 2^64 can hide behind the monus
+    assertEquals(
+      EpochGeometry.slotOfNoReturn(BigInt(2).pow(65), BigInt(2).pow(63)),
+      BigInt(2).pow(64)
+    )
+    assertEquals(
+      EpochGeometry.slotOfNoReturn(BigInt(2).pow(65), BigInt(2).pow(63) + 10),
+      BigInt(2).pow(64) - 20
+    )
+    // an ordinary window: 3k/f = 30 with k = 1 and f = 1/10, so 60 before the next epoch
+    val narrow = geometry(0, 1, 200).copy(
+      securityParam = TestGeometry.k(1),
+      activeSlotsCoeff = TestGeometry.f(Rational(1, 10))
+    )
+    assertEquals(narrow.slotOfNoReturn(0), BigInt(140))
+    // `*-` is monus: a window longer than the epochs before it stops at slot 0
+    assertEquals(EpochGeometry.slotOfNoReturn(BigInt(100), BigInt(60)), BigInt(0))
+  }
+
   private def shelley(edit: io.circe.JsonObject => io.circe.JsonObject) =
     val text = Files.readString(Path.of("fixtures/preview/genesis/shelley-genesis.json"))
     val json = io.circe.parser.parse(text).fold(e => fail(e.message), identity)

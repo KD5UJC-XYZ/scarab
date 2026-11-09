@@ -916,3 +916,10 @@ text is retained but its rendering is outside the comparison. Supplied genesis s
 the capture's first two epochs; these results do not establish Dijkstra ledger-forecast, block-body,
 committee/certificate-aggregation or live-node conformance. The [maintained results](../fixtures/reference/leios-praos2/README.md)
 and [reproduction harness](../scripts/oracle/leios-praos2/README.md) record that scope and the source pins.
+
+The crossing from Conway is in `consensus.DijkstraCrossing` (#823): the Praos state carried into
+Praos2 with no announcement (`TranslateProto (Praos c) (Praos2 c)`, `Protocol/Praos2.hs:189-200`) and
+the Dijkstra ledger view forecast from a Conway ledger state
+(`crossEraForecastConwayToDijkstraWrapper`, `Cardano/CanHardFork.hs:767-808`). `DijkstraCrossingSuite`
+validates the eight Dijkstra headers of [the devnet chain](../fixtures/dijkstra-devnet/README.md) with
+them from its Conway blocks; neither is wired into the node, which does not enter Dijkstra.
