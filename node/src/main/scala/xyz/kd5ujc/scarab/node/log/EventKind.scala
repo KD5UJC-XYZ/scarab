@@ -219,7 +219,7 @@ enum EventKind(val area: Area, val severity: Severity):
   case ReplayStarted extends EventKind(Area.Storage, Severity.Info)
   case ReplayProgress extends EventKind(Area.Storage, Severity.Info)
   case ReplayFinished extends EventKind(Area.Storage, Severity.Info)
-  case ShutdownSnapshot extends EventKind(Area.Storage, Severity.Info)
+  case ClosedDB extends EventKind(Area.Storage, Severity.Info)
 
   // the libraries
   case Slf4j extends EventKind(Area.Library, Severity.Info)

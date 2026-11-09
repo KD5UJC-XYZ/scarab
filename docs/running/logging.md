@@ -199,5 +199,5 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `replayStarted` | `Storage.ReplayStarted` | Info | `from`, `immutableTip` |
 | `replayProgress` | `Storage.ReplayProgress` | Info | `tip`, `replayed`, `millis` |
 | `replayFinished` | `Storage.ReplayFinished` | Info | `tip`, `replayed`, `millis` |
-| `shutdownSnapshot` | `Storage.ShutdownSnapshot` | Info | `anchor`, `written` |
+| `closedDB` | `Storage.ClosedDB` | Info | `immutableTip`, `tip`: the database closed, after its stores (the reference's `ClosedDB`) |
 | `slf4j` | `Library.Slf4j` | Info (the library's level: TRACE and DEBUG are Debug, WARN is Warning) | `logger`, `level`, `message`, `thrown` |

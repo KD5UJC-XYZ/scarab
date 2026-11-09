@@ -63,7 +63,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
   private val geometry = setup.geometry
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-  private given SnapshotFormat[IO, MirrorState] = SnapshotV9.format[IO](SnapshotCheck.Full)
+  private val fullFormat: SnapshotFormat[IO, MirrorState] =
+    SnapshotV9.format[IO](SnapshotCheck.Full)
+  private given SnapshotFormat[IO, MirrorState] = fullFormat
   private val k = geometry.k.toInt
 
   private val raws: Vector[Bytes] =
@@ -124,7 +126,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private final case class Rollback(at: Int, back: Int)
 
   /** As [[run]], with the UTxO set in a store (`memory` or `rocksdb`) under the database directory;
-    * the last component is the complete UTxO set at the end.
+    * the last component is the complete UTxO set at the end. `beforeStop` runs once the blocks are
+    * followed, before the storage is released.
     */
   private def runWith(
       dir: Path,
@@ -134,7 +137,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       store: Option[String],
       keep: Int = 4,
       migrate: Boolean = false,
-      rollback: Option[Rollback] = None
+      rollback: Option[Rollback] = None,
+      beforeStop: IO[Unit] = IO.unit
   ): IO[
     (
         Option[BlockRef],
@@ -234,6 +238,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                     .timeout(60.seconds)
                   // Snapshots are written in the background; let them land.
                   _ <- IO.sleep(500.millis)
+                  _ <- beforeStop
                   chain <- chainRef.get
                   all <- utxoStore.fold(IO.pure(chain.state.utxo.toMap))(s =>
                     UtxoStore.materialize(s, chain.state.utxo)
@@ -512,30 +517,28 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       .rescue(e => IO.pure(Left(e)))
 
   // In this chain only eight Shelley-based blocks change the UTxO set, so nearly every snapshot is
-  // of a block that changed nothing, the shutdown snapshots among them.
-  test("every snapshot exports, the shutdown one included, also of a block that changed no UTxO") {
+  // of a block that changed nothing.
+  test("every snapshot exports, also of a block that changed no UTxO") {
     tempDir.use { root =>
       val dir = root / "db"
       for
         log1 <- events(dir)
         _ <- runWith(dir, 500, 120, log1, Some("rocksdb"), keep = 100)
+        newest <- snapshotsIn(dir).map(_.headOption.map(_.fileName.toString))
         log2 <- events(dir)
         second <- runWith(dir, 731, 120, log2, Some("rocksdb"), keep = 100)
         e1 <- log1.get
         e2 <- log2.get
         written = (e1 ++ e2).collect { case StorageEvent.SnapshotWritten(_, Some(a), _, _) => a }
-        shutdowns = (e1 ++ e2).collect { case StorageEvent.ShutdownSnapshot(Some(a), true) => a }
-        restored = e2.collectFirst { case StorageEvent.SnapshotRestored(_, a) => a }.flatten
+        restored = e2.collectFirst { case StorageEvent.SnapshotRestored(name, _) => name }
         results <- written.distinct.traverse(a => exported(dir, root / "out", a).map(a -> _))
       yield
-        assertEquals(shutdowns.map(_.blockNo), Vector(BigInt(500 - k - 1), BigInt(731 - k - 1)))
-        assert(shutdowns.forall(a => !changesUtxo(a.blockNo.toInt)), shutdowns)
         assert(
-          written.exists(a => !shutdowns.contains(a) && !changesUtxo(a.blockNo.toInt)),
+          written.exists(a => !changesUtxo(a.blockNo.toInt)),
           s"a periodic snapshot of a block that changed nothing, among $written"
         )
-        // the restart restores the first shutdown snapshot and reaches the replayed state
-        assertEquals(restored, shutdowns.headOption)
+        // the restart restores the newest snapshot of the first run and reaches the replayed state
+        assertEquals(restored, newest)
         assertState(second._2.state, states(731))
         assertEquals(second._3, states(731).utxo.toMap)
         assertEquals(results.collect { case (a, Left(e)) => a.blockNo -> e }, Vector.empty)
@@ -543,7 +546,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  // ---- volatile blocks, the shutdown snapshot and the network identity (D4, D5) ----
+  // ---- volatile blocks, the stop and the network identity (D4, D5) ----
 
   private def volatileConfig(every: Int, identity: Option[NetworkIdentity]) =
     config(every).copy(identity = identity, volatileFileBlocks = 8, volatileCollectBlocks = 8)
@@ -562,9 +565,10 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   )
 
   /** Open the database as `Main` does (storage, then resume the volatile chain), follow the blocks
-    * up to `until` with the real follower (those after the resumed tip), and release the storage (a
-    * graceful stop). `tap(n)` runs before the follower's n-th event (0-based); the tests copy the
-    * database there to stand in for a crash at that point.
+    * up to `until` with the real follower (those after the resumed tip), run `beforeStop`, and
+    * release the storage (a graceful stop). `tap(n)` runs before the follower's n-th event
+    * (0-based); the tests copy the database there to stand in for a crash at that point. Snapshots
+    * are written in `format`.
     */
   private def session(
       dir: Path,
@@ -574,7 +578,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       tap: Int => IO[Unit] = _ => IO.unit,
       adoptLegacy: Boolean = false,
       selectionOnStartup: Boolean = false,
-      wrapRules: BlockRules[IO, MirrorState] => BlockRules[IO, MirrorState] = identity
+      wrapRules: BlockRules[IO, MirrorState] => BlockRules[IO, MirrorState] = identity,
+      format: SnapshotFormat[IO, MirrorState] = fullFormat,
+      beforeStop: IO[Unit] = IO.unit
   ): IO[Session] =
     Ref.of[IO, Vector[StorageEvent]](Vector.empty).flatMap { log =>
       Handle
@@ -589,6 +595,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               setup.byronHistory
             )
           )
+          given SnapshotFormat[IO, MirrorState] = format
           ChainStorage
             .open[IO, MirrorState](
               dir,
@@ -669,12 +676,13 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   .pool(follower)
                   .flatMap(blocks => WorkerTesting.follow(follower, blocks, peer, done.get))
                   .timeout(60.seconds)
+                _ <- beforeStop
                 chain <- chainRef.get
                 offers <- offered.get
               yield (resumed, recovered.anchor, chain, offers, startupReplayed)
             }
             .flatMap { (resumed, anchor, chain, offers, startupReplayed) =>
-              // the storage is released by now: the shutdown snapshot has been taken
+              // the storage is released by now: its last event is `ClosedDB`
               log.get.map { events =>
                 Session(
                   resumed.size,
@@ -753,6 +761,12 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         // the first intersection offered the previous tip, not the immutable anchor
         _ <- IO(assertEquals(second.offered.head.head, headers(499).point))
         _ <- IO(assertEquals(second.anchor.map(_.hash), Some(ref(500 - k - 1).hash)))
+        _ <- IO(
+          assertEquals(
+            second.events.lastOption,
+            Some(StorageEvent.ClosedDB(Some(ref(731 - k - 1)), Some(ref(730))))
+          )
+        )
         // a restart without the log (the behaviour before D4) ends in the same state
         _ <- files.deleteRecursively(dir / "volatile")
         third <- session(dir, 731)
@@ -763,41 +777,138 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("a graceful stop writes a snapshot at the immutable tip: the restart replays nothing") {
+  // The reference writes no snapshot when it closes (ouroboros-consensus 82ecba32 `closeDB`,
+  // Storage/ChainDB/Impl.hs:408-436): only the snapshot policy does, through the background thread
+  // (ChainDB/Impl/Background.hs:330-340), and the next start replays from the newest snapshot.
+  test("a graceful stop writes no snapshot: the restart replays the stored blocks") {
     tempDir.use { dir =>
       for
-        // the periodic policy never fires (a huge interval): only the shutdown snapshot exists
+        // the periodic policy never fires (a huge interval)
         first <- session(dir, 500, every = 1000000)
-        _ <- IO(assertEquals(first.replayed, 0L))
-        shutdown = first.events.collect { case e: StorageEvent.ShutdownSnapshot => e }
-        _ <- IO(assertEquals(shutdown.map(_.written), Vector(true)))
         snaps <- snapshotsIn(dir)
-        _ <- IO(assertEquals(snaps.size, 1))
         second <- session(dir, 500, every = 1000000)
-        _ <- IO(assertEquals(second.replayed, 0L))
-        _ <- IO(assertEquals(second.restoredAnchor.map(_.hash), Some(ref(500 - k - 1).hash)))
-        _ <- IO(assertEquals(second.resumed, k))
-        _ <- IO(assertState(second.chain.state, states(500)))
-        // nothing new: the stop does not write the same snapshot again
-        _ <- IO(
-          assertEquals(
-            second.events.collect { case e: StorageEvent.ShutdownSnapshot => e.written },
-            Vector(false)
-          )
+      yield
+        assertEquals(snaps, Nil)
+        assertEquals(
+          first.events.collect { case e: StorageEvent.SnapshotWritten => e },
+          Vector.empty
         )
-      yield ()
+        // after the stores, as the reference traces `ClosedDB` (Storage/ChainDB/Impl.hs:426-436)
+        assertEquals(
+          first.events.lastOption,
+          Some(StorageEvent.ClosedDB(Some(ref(500 - k - 1)), Some(ref(499))))
+        )
+        assertEquals(second.restoredAnchor, None)
+        assertEquals(second.replayed, (500 - k).toLong)
+        assertEquals(second.resumed, k)
+        assertState(second.chain.state, states(500))
     }
   }
 
-  test("without the shutdown snapshot the restart replays the stored blocks after the last one") {
+  /** A format whose writes never finish: each says that it started, then waits. */
+  private def neverWritten(started: Deferred[IO, Unit]): SnapshotFormat[IO, MirrorState] =
+    new SnapshotFormat[IO, MirrorState]:
+      def encode(
+          snapshot: StateSnapshot[MirrorState]
+      ): IO[Either[SnapshotRefusal, Array[Byte]]] =
+        started.complete(()) *> IO.never
+      def decode(content: Array[Byte]): IO[Either[StorageError, StateSnapshot[MirrorState]]] =
+        fullFormat.decode(content)
+
+  // `closeDB` kills the reference's snapshot thread rather than wait for it (`killBgThreads`,
+  // Storage/ChainDB/Impl.hs:423-424; ChainDB/Impl/Background.hs:127-142).
+  test(
+    "a snapshot in flight at the stop is cancelled, not awaited, and nothing of it is restored"
+  ) {
     tempDir.use { dir =>
       for
-        _ <- session(dir, 500, every = 1000000)
+        started <- Deferred[IO, Unit]
+        first <- session(dir, 500, format = neverWritten(started), beforeStop = started.get)
+          .timeout(90.seconds)
+        left <- files.list(dir / "snapshots").compile.toList
+        second <- session(dir, 500)
+      yield
+        assertEquals(left, Nil)
+        assertEquals(
+          first.events.collect { case e: StorageEvent.SnapshotFailed => e },
+          Vector.empty
+        )
+        assertEquals(
+          first.events.lastOption,
+          Some(StorageEvent.ClosedDB(Some(ref(500 - k - 1)), Some(ref(499))))
+        )
+        assertEquals(second.restoredAnchor, None)
+        assertEquals(second.replayed, (500 - k).toLong)
+        assertState(second.chain.state, states(500))
+    }
+  }
+
+  /** Polls `log` until it holds an event that `wanted` accepts. */
+  private def logged(
+      log: Ref[IO, Vector[StorageEvent]]
+  )(wanted: StorageEvent => Boolean): IO[Unit] =
+    (IO.sleep(20.millis) *> log.get
+      .map(_.exists(wanted))).iterateUntil(identity).timeout(60.seconds).void
+
+  test("a restart replays from the newest periodic snapshot to the state of a run without one") {
+    tempDir.use { root =>
+      val immutableTip = 500 - k - 1
+      // The first run's immutable tip passes this many slots once: the policy writes one snapshot,
+      // of the first block at or past it, and the first run stops once that snapshot is written.
+      val every = 1200
+      val crossing = headers.indexWhere(_.slot >= every)
+      val dir = root / "restarted"
+      for
+        log1 <- events(root)
+        _ <- runWith(
+          dir,
+          500,
+          every,
+          log1,
+          Some("rocksdb"),
+          beforeStop = logged(log1) {
+            case _: StorageEvent.SnapshotWritten => true
+            case _                               => false
+          }
+        )
+        e1 <- log1.get
         snaps <- snapshotsIn(dir)
-        _ <- snaps.traverse_(files.delete)
-        second <- session(dir, 500, every = 1000000)
-        _ <- IO(assertEquals(second.replayed, (500 - k).toLong))
-      yield ()
+        log2 <- events(root)
+        restarted <- runWith(dir, 731, every, log2, Some("rocksdb"))
+        e2 <- log2.get
+        log3 <- events(root)
+        uninterrupted <- runWith(root / "uninterrupted", 731, every, log3, Some("rocksdb"))
+      yield
+        assert(
+          crossing > 0 && crossing < immutableTip && headers(immutableTip).slot < 2 * every,
+          s"one crossing, at block $crossing, before the immutable tip $immutableTip"
+        )
+        assertEquals(
+          e1.collect { case StorageEvent.SnapshotWritten(_, a, _, _) => a },
+          Vector(Some(ref(crossing)))
+        )
+        // the stop added no snapshot
+        assertEquals(
+          snaps.map(_.fileName.toString),
+          List(FileLedgerSnapshots.nameOf(ref(crossing)))
+        )
+        assertEquals(
+          e2.collectFirst { case StorageEvent.SnapshotRestored(_, a) => a },
+          Some(Some(ref(crossing)))
+        )
+        assertEquals(
+          e2.collectFirst { case StorageEvent.ReplayStarted(f, _) => f },
+          Some(Some(ref(crossing)))
+        )
+        // the stored blocks after the snapshot, up to the immutable tip of the first run
+        assertEquals(
+          e2.collectFirst { case StorageEvent.ReplayFinished(at, n, _) => (at, n) },
+          Some((Some(ref(immutableTip)), (immutableTip - crossing).toLong))
+        )
+        assertState(restarted._2.state, uninterrupted._2.state)
+        assertEquals(restarted._3, uninterrupted._3)
+        assertState(restarted._2.state, states(731))
+        assertEquals(restarted._3, states(731).utxo.toMap)
     }
   }
 

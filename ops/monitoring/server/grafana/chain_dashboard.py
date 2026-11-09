@@ -270,7 +270,7 @@ def chain_dashboard(ui):
     p.line((24, logs('Storage, startup and shutdown event history',
         'started|finished|snapshotRestored|snapshotWritten|snapshotSkipped|snapshotRefused|snapshotFailed|'
         'formatMigrated|immutableOpened|volatileOpened|volatileResumed|replayStarted|replayProgress|'
-        'replayFinished|shutdownSnapshot|exited|error|fatal',
+        'replayFinished|closedDB|exited|error|fatal',
         'Storage lifecycle events are retained without per-block sampling. Raw details describe '
         'migration, restore and any recovery truncation.')), h=10)
 

@@ -3771,7 +3771,7 @@
                 "type": "loki",
                 "uid": "loki"
               },
-              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"started|finished|snapshotRestored|snapshotWritten|snapshotSkipped|snapshotRefused|snapshotFailed|formatMigrated|immutableOpened|volatileOpened|volatileResumed|replayStarted|replayProgress|replayFinished|shutdownSnapshot|exited|error|fatal\"}",
+              "expr": "{host=~\"$host\", container=~\"$container\", event=~\"started|finished|snapshotRestored|snapshotWritten|snapshotSkipped|snapshotRefused|snapshotFailed|formatMigrated|immutableOpened|volatileOpened|volatileResumed|replayStarted|replayProgress|replayFinished|closedDB|exited|error|fatal\"}",
               "refId": "A"
             }
           ],

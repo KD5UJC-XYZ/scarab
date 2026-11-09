@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.storage
 
 import cats.effect.{Async, Clock, Ref, Resource}
 import scala.util.Using
-import cats.effect.std.{Mutex, Supervisor}
+import cats.effect.std.Supervisor
 import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
@@ -64,10 +64,11 @@ enum StorageEvent:
     */
   case VolatileResumed(resumed: Int, dropped: Int, millis: Long)
 
-  /** The shutdown snapshot: `written` is false when the last snapshot already was at the immutable
-    * tip (or there was nothing to snapshot).
+  /** The database was closed, once its stores were: its immutable tip and the tip of its chain
+    * (none: genesis), as the reference traces `ClosedDB` (ouroboros-consensus 82ecba32,
+    * `Storage/ChainDB/Impl.hs:430-436`, `Storage/ChainDB/Impl/Types.hs:811-816`).
     */
-  case ShutdownSnapshot(anchor: Option[BlockRef], written: Boolean)
+  case ClosedDB(immutableTip: Option[BlockRef], tip: Option[BlockRef])
 
 trait StorageEvents[F[_]]:
   def emit(event: StorageEvent): F[Unit]
@@ -116,9 +117,10 @@ object ChainPersistence:
   *
   * The volatile part (the last `k` blocks) lives in memory, with a log of its updates on disk:
   * after a restart [[resume]] applies the logged blocks on top of the immutable state, so the node
-  * continues at its previous tip. A graceful stop (the resource is released) writes a snapshot at
-  * the immutable tip when the state is writable. The next start restores it and replays the
-  * retained volatile suffix; without a usable snapshot it also replays immutable blocks.
+  * continues at its previous tip. Only the snapshot policy writes snapshots: releasing the resource
+  * (a graceful stop) writes none, as the reference's `closeDB` writes none
+  * (`Storage/ChainDB/Impl.hs:408-436`, ouroboros-consensus 82ecba32). The next start restores the
+  * newest usable snapshot and replays the immutable blocks after it, then the volatile suffix.
   *
   * Layout: `<dir>/network-identity`, `<dir>/immutable/`, `<dir>/snapshots/`, `<dir>/volatile/`.
   */
@@ -141,7 +143,7 @@ object ChainStorage:
   private val AdvanceEvery = 128
 
   /** @param snapshotPolicy
-    *   When a snapshot is taken (the immutable tip also gets one on a graceful stop).
+    *   When a snapshot is taken.
     * @param byronEpochSlots
     *   10k of the Byron genesis, to place Byron blocks on the slot axis when blocks are decoded.
     * @param progressEvery
@@ -281,6 +283,21 @@ object ChainStorage:
         )
       )
       _ <- Resource.eval(config.identity.traverse_(NetworkIdentityFile.admit[F](dir, _, admission)))
+      pending <- Resource.eval(Ref.of[F, Vector[(BlockRef, Bytes)]](Vector.empty))
+      immutableTip <- Resource.eval(Ref.of[F, Option[Option[BlockRef]]](None))
+      // Released after every store: the reference traces `ClosedDB` once its ImmutableDB,
+      // VolatileDB and LedgerDB are closed, with the anchor and the head of its chain
+      // (`Impl.hs:426-436`), and only for a database that opened (`withDB` brackets `openDB`,
+      // `Impl.hs:113`).
+      _ <- Resource.onFinalize(
+        immutableTip.get.flatMap(
+          _.traverse_(anchor =>
+            pending.get.flatMap(p =>
+              events.emit(StorageEvent.ClosedDB(anchor, p.lastOption.map(_._1).orElse(anchor)))
+            )
+          )
+        )
+      )
       migratedIdentity <- Resource.eval(NetworkIdentityFile.migrate[F](dir))
       _ <- Resource.eval(
         migratedIdentity.traverse_(m => events.emit(StorageEvent.FormatMigrated(m)))
@@ -327,6 +344,12 @@ object ChainStorage:
       snapshots <- Resource.eval(
         FileLedgerSnapshots.open[F, S](dir / "snapshots", config.keepSnapshots)
       )
+      // Released before the stores: a snapshot in flight is cancelled, not awaited, as `closeDB`
+      // kills the reference's snapshot thread before it closes its databases (`killBgThreads`,
+      // `Impl.hs:423-428`; `ChainDB/Impl/Background.hs:127-142`). The write is atomic
+      // ([[FileLedgerSnapshots]]): a cancelled one leaves at most a temporary file, which the next
+      // open deletes, and a checkpoint that no snapshot names, which the next write's `retain`
+      // deletes.
       supervisor <- Supervisor[F](await = false)
       restored <- Resource.eval(
         snapshots.restore(snapshot =>
@@ -358,15 +381,11 @@ object ChainStorage:
       _ <- Resource.eval(
         restored.snapshot.fold(backing.reset)((_, s) => backing.restore(s.anchor).void)
       )
-      pending <- Resource.eval(Ref.of[F, Vector[(BlockRef, Bytes)]](Vector.empty))
       lastSlot <- Resource.eval(Ref.of[F, BigInt](start._1.fold(BigInt(0))(_.slot)))
       previousSlot <- Resource.eval(Ref.of[F, BigInt](start._1.fold(BigInt(0))(_.slot)))
       lastTaken <- Resource.eval(Ref.of[F, Option[FiniteDuration]](None))
       busy <- Resource.eval(Ref.of[F, Boolean](false))
-      latest <- Resource.eval(Ref.of[F, Option[(BlockRef, S)]](None))
-      written <- Resource.eval(Ref.of[F, Option[BlockRef]](start._1))
       sinceCollect <- Resource.eval(Ref.of[F, Int](0))
-      snapshotLock <- Resource.eval(Mutex[F])
       advancedAt <- Resource.eval(Ref.of[F, BigInt](BigInt(-1)))
       persistence = new Persistence[F, S](
         store,
@@ -381,15 +400,11 @@ object ChainStorage:
         previousSlot,
         lastTaken,
         busy,
-        latest,
-        written,
+        immutableTip,
         sinceCollect,
-        snapshotLock,
         backing,
         advancedAt
       )
-      // Released before the stores: a graceful stop leaves a snapshot at the immutable tip.
-      _ <- Resource.onFinalize(persistence.shutdownSnapshot)
       end <- Resource.eval(store.tip)
       _ <- Resource.eval(events.emit(StorageEvent.ReplayStarted(start._1, end)))
       began <- Resource.eval(Clock[F].monotonic)
@@ -398,6 +413,7 @@ object ChainStorage:
           replay(store, rules, persistence, config, events, prepare, start._1, start._2, began)
         )
       )
+      _ <- Resource.eval(immutableTip.set(Some(replayed._1)))
     yield Recovered(
       replayed._1,
       replayed._2,
@@ -540,10 +556,9 @@ object ChainStorage:
     *   The slot of the immutable tip before the block being advanced to.
     * @param lastTaken
     *   When (monotonic) the previous snapshot was requested; none yet since the start.
-    * @param latest
-    *   The immutable tip and the state after it, as the backing store stands.
-    * @param written
-    *   The anchor of the newest snapshot on disk.
+    * @param immutableTip
+    *   The immutable tip once the database is open (none before: [[StorageEvent.ClosedDB]] is
+    *   traced only for a database that opened).
     * @param sinceCollect
     *   Blocks that became immutable since the volatile log was last collected.
     * @param advancedAt
@@ -562,10 +577,8 @@ object ChainStorage:
       previousSlot: Ref[F, BigInt],
       lastTaken: Ref[F, Option[FiniteDuration]],
       busy: Ref[F, Boolean],
-      latest: Ref[F, Option[(BlockRef, S)]],
-      written: Ref[F, Option[BlockRef]],
+      immutableTip: Ref[F, Option[Option[BlockRef]]],
       sinceCollect: Ref[F, Int],
-      snapshotLock: Mutex[F],
       backing: StateBacking[F, S],
       advancedAt: Ref[F, BigInt]
   ) extends ChainPersistence[F, S]:
@@ -637,7 +650,7 @@ object ChainStorage:
             SnapshotPolicy.Facts(previous, ref.slot, last, taken.map(now - _))
           )
           F.uncancelable(_ =>
-            advanceBacking(ref, state, snapshotDue) *> latest.set(Some(ref -> state))
+            advanceBacking(ref, state, snapshotDue) *> immutableTip.update(_.as(Some(ref)))
           ) *>
             afterAdvance(ref, state, snapshotDue)
       }
@@ -670,9 +683,7 @@ object ChainStorage:
               binding <- backing.checkpoint(ref)
               _ <- supervisor.supervise(
                 SnapshotFailure
-                  .capture {
-                    snapshotLock.lock.surround(snapshot(ref, settled, binding))
-                  }
+                  .capture(snapshot(ref, settled, binding))
                   .guarantee(busy.set(false))
                   .flatMap(reportSnapshot)
               )
@@ -680,7 +691,7 @@ object ChainStorage:
         }
       }
 
-    /** Write under `snapshotLock`, using the capability of this snapshot worker/finalizer. */
+    /** Write, using the capability of this snapshot worker. */
     private def snapshot(ref: BlockRef, state: S, binding: CheckpointBinding)(using
         Raise[F, StorageError]
     ): F[Boolean] =
@@ -698,7 +709,6 @@ object ChainStorage:
               .as(false),
           written0 =>
             for
-              _ <- written.set(Some(ref))
               names <- snapshots.list
               _ <- backing.retain(names.map(_.stripSuffix(".bin")).toSet)
               t1 <- Clock[F].monotonic
@@ -716,28 +726,3 @@ object ChainStorage:
 
     private def reportSnapshot[A](result: Either[SnapshotFailure, A]): F[Unit] =
       result.fold(error => events.emit(StorageEvent.SnapshotFailed(error)), _ => F.unit)
-
-    /** On release: wait for a snapshot in flight, then snapshot the immutable tip unless the newest
-      * snapshot already is there. Storage failures and defects are reported as values; a snapshot
-      * that cannot be written only costs the next start a replay.
-      */
-    def shutdownSnapshot: F[Unit] =
-      SnapshotFailure
-        .capture {
-          val idle = (F.sleep(20.millis) *> busy.get).iterateUntil(b => !b)
-          val body = snapshotLock.lock.surround {
-            (latest.get, written.get).flatMapN {
-              case (Some((ref, state)), done) if !done.contains(ref) =>
-                for
-                  _ <- backing.advance(state)
-                  settled <- backing.settled(state)
-                  binding <- backing.checkpoint(ref)
-                  ok <- snapshot(ref, settled, binding)
-                  _ <- events.emit(StorageEvent.ShutdownSnapshot(Some(ref), ok))
-                yield ()
-              case (_, done) => events.emit(StorageEvent.ShutdownSnapshot(done, false))
-            }
-          }
-          idle.timeoutTo(2.minutes, F.pure(true)) *> body
-        }
-        .flatMap(reportSnapshot)

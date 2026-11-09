@@ -26,7 +26,7 @@ import cats.syntax.all.*
   *
   * The writes are serialised (one lock for every sink), as `println` was: a line is whole, the
   * order is the same in every sink, and a line is written when `tell` returns, so the last lines of
-  * a run (`shutdownSnapshot`, `finished`, `error`) are out before the process exits.
+  * a run (`finished`, `closedDB`, `error`) are out before the process exits.
   */
 object LogRouter:
   /** One sink: its format, where its text goes, and per kind (by ordinal) its threshold and its

@@ -645,7 +645,7 @@ object LogSamples:
     ),
     StorageEvent.VolatileOpened(VolatileStore.OpenReport(10, 2, 0L, 0)),
     StorageEvent.VolatileResumed(10, 1, 300L),
-    StorageEvent.ShutdownSnapshot(anchor, written = true)
+    StorageEvent.ClosedDB(anchor, anchor)
   )
 
   val errors: List[xyz.kd5ujc.scarab.ledger.NodeError] = List(

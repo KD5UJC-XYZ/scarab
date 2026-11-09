@@ -92,8 +92,8 @@ enum NodeEvent:
     */
   case StallDumped(state: StallDiagnostics.Dump, fibers: StallDiagnostics.Dump)
 
-  /** The stall went on for `--stall-exit-after`: the node ends (after its shutdown snapshot, exit
-    * code 4) so that its supervisor restarts it from the newest snapshot.
+  /** The stall went on for `--stall-exit-after`: the node ends (after its stores close, exit code
+    * 4) so that its supervisor restarts it from the newest snapshot.
     */
   case StallExit(idle: FiniteDuration, ours: BigInt, peers: BigInt)
 

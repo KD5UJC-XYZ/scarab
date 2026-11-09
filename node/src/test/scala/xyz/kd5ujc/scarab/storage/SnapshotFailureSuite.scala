@@ -56,10 +56,9 @@ class SnapshotFailureSuite extends FailsOnUncaught:
     Handle.allow[NodeError](body).rescue(error => IO(fail(error.message)))
 
   private def backing(
-      retainBody: Raise[IO, StorageError] ?=> IO[Unit] = IO.unit,
-      advanceBody: Raise[IO, StorageError] ?=> IO[Unit] = IO.unit
+      retainBody: Raise[IO, StorageError] ?=> IO[Unit]
   ): StateBacking[IO, Int] = new StateBacking[IO, Int]:
-    def advance(state: Int)(using Raise[IO, StorageError]) = advanceBody
+    def advance(state: Int)(using Raise[IO, StorageError]) = IO.unit
     def settled(state: Int)(using Raise[IO, StorageError]) = IO.pure(state)
     def checkpoint(anchor: BlockRef)(using Raise[IO, StorageError]) =
       IO.pure(CheckpointBinding.Unbacked)
@@ -107,44 +106,63 @@ class SnapshotFailureSuite extends FailsOnUncaught:
             yield ()
           }
         }
-        // The shutdown and store finalizers completed; reopening uses the same directory safely.
+        // The store finalizers completed; reopening uses the same directory safely.
         _ <- StorageTestKit.ok(FileImmutableStore.open[IO](dir / "immutable").use(_ => IO.unit))
       yield ()
     }
   }
 
+  // The stop writes no snapshot (ouroboros-consensus 82ecba32 `closeDB`,
+  // Storage/ChainDB/Impl.hs:408-436): a failure is a periodic snapshot's, and the stop still
+  // releases the stores.
   for defect <- List(false, true) do
-    test(s"shutdown preserves ${
-        if defect then "defects" else "storage failures"
-      } and releases the store") {
+    test(s"a periodic snapshot keeps its ${
+        if defect then "defect" else "storage failure"
+      }, and the stop writes no snapshot and releases the store") {
       StorageTestKit.tempDir.use { dir =>
-        val cause = new IllegalStateException("shutdown failure")
-        val error = StorageError.Missing("shutdown backing")
+        val cause = new IllegalStateException("retain failure")
+        val error = StorageError.Missing("retained checkpoints")
+        def failed(events: Vector[StorageEvent]) =
+          events.exists(_.isInstanceOf[StorageEvent.SnapshotFailed])
         for
-          calls <- Ref.of[IO, Int](0)
           events <- Ref.of[IO, Vector[StorageEvent]](Vector.empty)
           _ <- typed {
             opened(
               dir,
               event => events.update(_ :+ event),
-              backing(advanceBody = calls.getAndUpdate(_ + 1).flatMap {
-                case 0 => IO.unit
-                case _ => if defect then IO.raiseError(cause) else error.raise[IO, Unit]
-              }),
-              every = 1000
-            ).use(recovered => extend(recovered, 1))
+              backing(retainBody = if defect then IO.raiseError(cause) else error.raise[IO, Unit]),
+              every = 1
+            ).use(recovered =>
+              extend(recovered, 1) *>
+                (IO.sleep(20.millis) *> events.get.map(failed))
+                  .iterateUntil(identity)
+                  .timeout(3.seconds)
+            )
           }
           observed <- events.get
-          failures = observed.collect { case StorageEvent.SnapshotFailed(failure) => failure }
+          files <- fs2.io.file
+            .Files[IO]
+            .list(dir / "snapshots")
+            .map(_.fileName.toString)
+            .compile
+            .toList
           _ <- IO(
             assertEquals(
-              failures,
+              observed.collect { case StorageEvent.SnapshotFailed(failure) => failure },
               Vector(
                 if defect then SnapshotFailure.Defect(cause) else SnapshotFailure.Storage(error)
               )
             )
           )
           _ <- IO(assert(!observed.exists(_.isInstanceOf[StorageEvent.SnapshotWritten])))
+          // the periodic snapshot's file, written before `retain` failed, and none of the stop
+          _ <- IO(assertEquals(files, List(FileLedgerSnapshots.nameOf(point(1)))))
+          _ <- IO(
+            assertEquals(
+              observed.lastOption,
+              Some(StorageEvent.ClosedDB(Some(point(1)), Some(point(1))))
+            )
+          )
           _ <- StorageTestKit.ok(FileImmutableStore.open[IO](dir / "immutable").use(_ => IO.unit))
         yield ()
       }

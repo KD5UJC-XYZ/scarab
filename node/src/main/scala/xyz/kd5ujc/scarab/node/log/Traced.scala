@@ -227,8 +227,8 @@ object Traced:
         "dropped" -> dropped.asJson,
         "millis" -> millis.asJson
       )
-    case StorageEvent.ShutdownSnapshot(a, written) =>
-      EventKind.ShutdownSnapshot.line("anchor" -> anchor(a), "written" -> written.asJson)
+    case StorageEvent.ClosedDB(immutableTip, tip) =>
+      EventKind.ClosedDB.line("immutableTip" -> anchor(immutableTip), "tip" -> anchor(tip))
 
   /** A `DiffTime` as an exact number of seconds. */
   private def seconds(delay: DiffTime): BigDecimal =

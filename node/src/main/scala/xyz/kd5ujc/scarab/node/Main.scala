@@ -325,8 +325,8 @@ object Main extends IOApp:
     *   `<dir>/fiber-dump-<epoch ms>-<n>.txt` ([[StallDiagnostics.fiberDump]]); the `stallState`
     *   event is logged either way. Off by default; the devnet scenarios turn it on.
     * @param stallExitAfter
-    *   End the node (exit code [[StallExitCode]], after the shutdown snapshot) when a stall has
-    *   lasted this long; needs `--stall-minutes` and is longer than it. Off by default.
+    *   End the node (exit code [[StallExitCode]], after the stores close) when a stall has lasted
+    *   this long; needs `--stall-minutes` and is longer than it. Off by default.
     * @param readAhead
     *   Maximum headers per ordered body-publication chunk; ChainSync request watermarks are
     *   separate.
@@ -867,8 +867,8 @@ object Main extends IOApp:
         // (and, from issue 371, where its report reads from once the block pool exists)
         stall <- StallDiagnostics.Watch.create[IO](options.stallDump, e => logged(e), background)
         // a session that ends in a way no peer policy handles stops the node ([[Fatal]]): the event
-        // is logged where it happens, and the run ends like a signal does (the stores close, the
-        // shutdown snapshot is taken) with an exit code of its own
+        // is logged where it happens, and the run ends like a signal does (the stores close) with
+        // an exit code of its own
         faulted <- Deferred[IO, Fatal]
         fatalReporter <- FatalReporter.create[IO](
           fault => logged(NodeEvent.Faulted(fault)),
@@ -1819,7 +1819,7 @@ object Main extends IOApp:
       )
       _ <- advisory.traverse_(logged)
       // a stall that lasts --stall-exit-after ends the run like a signal does: the stores
-      // close and the shutdown snapshot is taken, then the process exits with its own code
+      // close, then the process exits with its own code
       // SIGINT while the node runs ends the run as the reference's `UserInterrupt` does: traced
       // as `DiffusionErrored` (`Diffusion.hs` 905-911), the process then exits as interrupted
       interrupted <- Deferred[IO, Unit]
