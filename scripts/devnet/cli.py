@@ -40,8 +40,9 @@
     devnet.py oracle               compare the Scala node's epoch-boundary state digests (written by
                                    `e2e --oracle`, `soak --oracle` or `follow --dump-state`) with the
                                    Haskell ledger state db-analyser stores in the reference container
-    devnet.py restart              up + follow --db, stop it with SIGTERM (the JVM must exit within 30 s, issue 89),
-                                   start it again (it must restore the snapshot, and the files are V9)
+    devnet.py restart              up + follow --db until a periodic snapshot, stop it with SIGTERM (the JVM must
+                                   exit within 30 s, issue 89, and write no snapshot), start it again (it must
+                                   replay from the newest periodic snapshot, and the files are V9)
     devnet.py faults --seed N      the Scala node as pool 1 next to two Haskell pools, under a seeded schedule of network faults
                                    (tc netem latency and loss, partitions and heals, node crashes and restarts);
                                    convergence, growth, no fatal outcome and rejoin are checked, and the schedule
@@ -375,8 +376,11 @@ def main():
                          "witness refusals) from the run directory of a finished `e2e`")
     rf.set_defaults(run=refused_fixture)
     rs = sub.add_parser("restart", parents=[scala_options],
-                        help="up + follow --db, SIGTERM (must exit within 30 s), follow --db again (must restore the snapshot)")
-    rs.add_argument("--seconds", type=int, default=20, help="seconds the follower runs after its first block, before each stop")
+                        help="up + follow --db until a periodic snapshot, SIGTERM (must exit within 30 s and write no "
+                             "snapshot), follow --db again (must replay from the newest periodic snapshot)")
+    rs.add_argument("--seconds", type=int, default=20,
+                    help="seconds the follower runs after its first block (the first run: after its first periodic "
+                         "snapshot), before each stop")
     rs.set_defaults(run=restart)
     vc = sub.add_parser("v1-context", help="the Plutus V1 script context case by case against the reference "
                                            "(reference inputs, reference scripts, inline datums, Byron addresses, "

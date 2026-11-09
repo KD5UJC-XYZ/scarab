@@ -15,6 +15,22 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from devnet.scenarios import restart
 
 
+ANCHOR = {"slot": 480, "blockNo": 24, "hash": "aa" * 32}
+IMMUTABLE_TIP = {"slot": 690, "blockNo": 34, "hash": "bb" * 32}
+TIP = {"slot": 790, "blockNo": 39, "hash": "cc" * 32}
+
+
+def round_events(round_):
+    """A graceful stop of each run, a periodic snapshot in the first and a replay from it in the second."""
+    closed = {"event": "closedDB", "immutableTip": IMMUTABLE_TIP, "tip": TIP}
+    if round_ == 1:
+        return [{"event": "extended"}, {"event": "snapshotWritten", "file": "snapshot-1.bin", "anchor": ANCHOR},
+                closed]
+    return [{"event": "snapshotRestored", "file": "snapshot-1.bin", "anchor": ANCHOR},
+            {"event": "replayStarted", "from": ANCHOR, "immutableTip": IMMUTABLE_TIP},
+            {"event": "replayFinished", "tip": IMMUTABLE_TIP, "replayed": 10}, {"event": "extended"}, closed]
+
+
 class RestartTranscriptTests(unittest.TestCase):
     def run_gate(self, diagnostics):
         with tempfile.TemporaryDirectory(prefix="scarab-restart-transcript-") as temporary:
@@ -29,10 +45,7 @@ class RestartTranscriptTests(unittest.TestCase):
             def stopped(_name, _process):
                 nonlocal rounds
                 rounds += 1
-                events = [{"event": "extended"}, {"event": "shutdownSnapshot"}]
-                if rounds == 2:
-                    events.append({"event": "snapshotRestored"})
-                lines = [json.dumps(event) for event in events] + diagnostics.get(rounds, [])
+                lines = [json.dumps(event) for event in round_events(rounds)] + diagnostics.get(rounds, [])
                 text = "\n".join(lines) + "\n"
                 original.append(text)
                 with transcript.open("a") as output:
@@ -71,6 +84,8 @@ class RestartTranscriptTests(unittest.TestCase):
         })
         self.assertEqual(code, 0)
         self.assertEqual(result["failed"], [])
+        self.assertEqual(result["restored"], "snapshot-1.bin")
+        self.assertEqual(result["replayed"], 10)
 
 
 if __name__ == "__main__":

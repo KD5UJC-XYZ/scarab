@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The `restart` scenario: a graceful stop ends the JVM promptly, and the next start restores the snapshot."""
+"""The `restart` scenario: a graceful stop ends the JVM promptly and writes no snapshot, and the next start
+replays from the newest periodic snapshot, as the reference does (ouroboros-consensus 82ecba32 `closeDB`,
+Storage/ChainDB/Impl.hs:408-436; `initialize`, Storage/LedgerDB/API.hs:599-645)."""
 import json
 import subprocess
 import sys
@@ -12,21 +14,48 @@ from ..util import ENTRY, data_root, docker, read_log
 STOP_LIMIT = 30
 # issue 89: a stop that ran into the limit was killed (exit 137), not ended
 STOP_BUDGET = STOP_LIMIT - 5
+# seconds the first run may take to write its first periodic snapshot (the immutable tip must pass the
+# first epoch boundary: about a minute after the start of a fresh cluster)
+SNAPSHOT_WAIT = 300
 
 
-def stop_problem(elapsed, wrote_snapshot):
-    """Why a graceful stop failed (taking `elapsed` seconds), else None."""
+def stop_problem(elapsed, closed):
+    """Why a graceful stop failed (taking `elapsed` seconds; `closed`: the database logged `closedDB`), else None."""
     if elapsed >= STOP_BUDGET:
         return f"the node needed {elapsed:.1f} s to stop (budget {STOP_BUDGET} s): the JVM did not exit on SIGTERM"
-    if not wrote_snapshot:
-        return "the node stopped without a shutdown snapshot"
+    if not closed:
+        return "the node stopped without closing its database (no closedDB)"
     return None
 
 
-def restore_problem(events):
-    """Why the second start did not restore the first one's snapshot, else None."""
-    if not any(e["event"] == "snapshotRestored" for e in events):
+def written_problem(before, after):
+    """Why the stop wrote a snapshot, else None: `before` and `after` are the snapshot files before and after it."""
+    added = sorted(set(after) - set(before))
+    if added:
+        return f"the stop wrote {', '.join(added)}: only the snapshot policy writes snapshots"
+    return None
+
+
+def first(events, name):
+    return next((e for e in events if e["event"] == name), None)
+
+
+def restore_problem(events, newest, closed):
+    """Why the second start did not replay from the first one's newest snapshot to its immutable tip, else None.
+
+    `newest` is the first run's last `snapshotWritten` and `closed` its `closedDB`.
+    """
+    if newest is None:
+        return "the first run wrote no periodic snapshot"
+    restored, started, finished = (first(events, n) for n in ("snapshotRestored", "replayStarted", "replayFinished"))
+    if restored is None:
         return "the restart did not restore a snapshot"
+    if restored["file"] != newest["file"]:
+        return f"the restart restored {restored['file']}, not the newest snapshot {newest['file']}"
+    if started is None or started["from"] != restored["anchor"]:
+        return f"the replay did not start from the restored snapshot: {started}"
+    if closed is None or finished is None or finished["tip"] != closed["immutableTip"]:
+        return f"the replay did not end at the immutable tip the stop logged: {finished}"
     return None
 
 
@@ -67,11 +96,16 @@ def _stop(name, process):
     return time.monotonic() - began
 
 
+def _snapshot_files(root):
+    return sorted((root / "db" / "snapshots").glob("snapshot-*.bin"))
+
+
 def restart(args):
-    """Follow with current V9 snapshots, SIGTERM, then restore the snapshot on restart."""
+    """Follow with current V9 snapshots until the snapshot policy writes one, SIGTERM, then replay from it."""
     root = data_root(args.name)
     up(args)
     failures, stops = [], []
+    newest = closed = replayed = None
     for round_ in (1, 2):
         prior_events, prior_other = read_log(root / "follower.jsonl")
         before, other_before = len(prior_events), len(prior_other)
@@ -81,7 +115,15 @@ def restart(args):
             docker("rm", "-f", f"{args.name}-scala", check=False)
             process.wait()
             break
+        # the first run stops after a periodic snapshot (`--snapshot-every 1epochs` in the harness), with
+        # blocks after it, so that the second start has blocks to replay from it
+        if round_ == 1 and not _wait_for(root, "snapshotWritten", SNAPSHOT_WAIT, before):
+            failures.append(f"round 1: no periodic snapshot within {SNAPSHOT_WAIT} s")
+            docker("rm", "-f", f"{args.name}-scala", check=False)
+            process.wait()
+            break
         time.sleep(args.seconds)
+        files_before = [f.name for f in _snapshot_files(root)]
         elapsed = _stop(args.name, process)
         events, other = read_log(root / "follower.jsonl")
         fresh = events[before:]
@@ -96,15 +138,22 @@ def restart(args):
             for line in other[other_before:]
         )
         stops.append(round(elapsed, 1))
-        problem = stop_problem(elapsed, any(e["event"] == "shutdownSnapshot" for e in fresh))
-        if problem:
-            failures.append(f"round {round_}: {problem}")
-        if round_ == 2:
-            problem = restore_problem(fresh)
+        closing = [e for e in fresh if e["event"] == "closedDB"]
+        for problem in (stop_problem(elapsed, bool(closing)),
+                        written_problem(files_before, [f.name for f in _snapshot_files(root)])):
+            if problem:
+                failures.append(f"round {round_}: {problem}")
+        if round_ == 1:
+            newest = next((e for e in reversed(fresh) if e["event"] == "snapshotWritten"), None)
+            closed = closing[-1] if closing else None
+        else:
+            problem = restore_problem(fresh, newest, closed)
             if problem:
                 failures.append(problem)
-    problem = format_problem([f.read_bytes()[:8] for f in sorted((root / "db" / "snapshots").glob("snapshot-*.bin"))])
+            replayed = (first(fresh, "replayFinished") or {}).get("replayed")
+    problem = format_problem([f.read_bytes()[:8] for f in _snapshot_files(root)])
     if problem:
         failures.append(problem)
-    print(json.dumps({"stopSeconds": stops, "failed": failures}), flush=True)
+    print(json.dumps({"stopSeconds": stops, "restored": newest and newest["file"], "replayed": replayed,
+                      "failed": failures}), flush=True)
     sys.exit(1 if failures else 0)

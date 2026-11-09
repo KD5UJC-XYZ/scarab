@@ -841,12 +841,35 @@ class RestartScenarioTest(unittest.TestCase):
         from devnet.scenarios.restart import stop_problem
         self.assertIsNone(stop_problem(3.2, True))
         self.assertIn("did not exit", stop_problem(30.0, True))
-        self.assertIn("without a shutdown snapshot", stop_problem(3.0, False))
+        self.assertIn("without closing its database", stop_problem(3.0, False))
 
-    def test_the_restart_must_restore(self):
+    def test_the_stop_writes_no_snapshot(self):
+        from devnet.scenarios.restart import written_problem
+        self.assertIsNone(written_problem(["snapshot-1.bin"], ["snapshot-1.bin"]))
+        # a snapshot pruned while the node ran is not one the stop wrote
+        self.assertIsNone(written_problem(["snapshot-1.bin", "snapshot-2.bin"], ["snapshot-2.bin"]))
+        added = written_problem(["snapshot-2.bin"], ["snapshot-2.bin", "snapshot-3.bin"])
+        self.assertIn("the stop wrote snapshot-3.bin", added)
+
+    def test_the_restart_must_replay_from_the_newest_periodic_snapshot(self):
         from devnet.scenarios.restart import restore_problem
-        self.assertIsNone(restore_problem([{"event": "snapshotRestored"}]))
-        self.assertIn("did not restore", restore_problem([{"event": "extended"}]))
+        anchor, older = {"slot": 480, "blockNo": 24, "hash": "aa"}, {"slot": 2, "blockNo": 1, "hash": "dd"}
+        immutable = {"slot": 690, "blockNo": 34, "hash": "bb"}
+        newest = {"event": "snapshotWritten", "file": "snapshot-480.bin", "anchor": anchor}
+        closed = {"event": "closedDB", "immutableTip": immutable, "tip": None}
+        replay = [{"event": "snapshotRestored", "file": "snapshot-480.bin", "anchor": anchor},
+                  {"event": "replayStarted", "from": anchor, "immutableTip": immutable},
+                  {"event": "replayFinished", "tip": immutable, "replayed": 10}]
+        self.assertIsNone(restore_problem(replay, newest, closed))
+        self.assertIn("did not restore", restore_problem([{"event": "extended"}], newest, closed))
+        self.assertIn("wrote no periodic snapshot", restore_problem(replay, None, closed))
+        restored_older = [dict(replay[0], file="snapshot-2.bin", anchor=older)] + replay[1:]
+        self.assertIn("not the newest snapshot", restore_problem(restored_older, newest, closed))
+        from_elsewhere = [replay[0], dict(replay[1], **{"from": older}), replay[2]]
+        self.assertIn("did not start from the restored snapshot", restore_problem(from_elsewhere, newest, closed))
+        short = replay[:2] + [dict(replay[2], tip=anchor)]
+        self.assertIn("did not end at the immutable tip", restore_problem(short, newest, closed))
+        self.assertIn("did not end at the immutable tip", restore_problem(replay, newest, None))
 
     def test_the_snapshots_must_be_of_the_current_format(self):
         from devnet.scenarios.restart import format_problem
