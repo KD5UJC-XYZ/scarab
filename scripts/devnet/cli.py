@@ -328,6 +328,8 @@ def main():
         pl.add_argument("--pools-after", type=int, default=0,
                         help="start the Scala node first and the Haskell pools this many seconds later: its first connections are "
                              "refused, and it may forge from genesis before it follows them (issue 609)")
+        pl.add_argument("--reference-debug", action="store_true",
+                        help="the Haskell pools trace ChainSync, BlockFetch and peer selection at Debug (issue 609)")
 
     pl = sub.add_parser("pool", parents=[scala_options], help="the Scala node as a block-producing pool among two Haskell pools")
     pool_flags(pl)

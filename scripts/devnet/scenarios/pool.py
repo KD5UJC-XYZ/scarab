@@ -119,6 +119,12 @@ def pool_environment(args):
         shelley["securityParam"] = k
         byron["protocolConsts"]["k"] = k
     put_file(args.name, f"{ENV}/byron-genesis.json", json.dumps(byron, indent=2))
+    if getattr(args, "reference_debug", False):  # issue 609: what the pools did with the Scala node's chain
+        config = read_json(args.name, f"{ENV}/configuration.yaml")
+        for namespace in ("ChainSync.Client", "BlockFetch.Client", "BlockFetch.Decision", "Net.PeerSelection",
+                          "Net.ConnectionManager.Remote", "Net.InboundGovernor.Remote", "ChainDB.AddBlockEvent"):
+            config.setdefault("TraceOptions", {}).setdefault(namespace, {})["severity"] = "Debug"
+        put_file(args.name, f"{ENV}/configuration.yaml", json.dumps(config, indent=2))
     put_file(args.name, f"{ENV}/shelley-genesis.json", json.dumps(shelley, indent=2))
     # what the rest of the scenario measures slots against: the network's clock
     shelley = dict(shelley, systemStart=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(byron["startTime"])))
