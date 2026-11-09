@@ -156,6 +156,6 @@ class UpstreamEpochConformanceSuite extends FunSuite:
               _
             )
           ) =>
-        assertEquals(path, List("pd", "totalActiveStake"))
+        assertEquals(path, List("layout", "pd", "totalActiveStake"))
       case other => fail(s"expected the original zero total-active-stake domain gap, got $other")
   }
