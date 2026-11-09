@@ -207,6 +207,61 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
     assertEquals(read(LeiosStateCodecs.blsKey(using v12), chunked), Right(key))
   }
 
+  private def indefiniteAt(n: Node, path: List[Int]): Bytes = bytesOf { w =>
+    val xs = items(n)
+    path match
+      case Nil =>
+        w.indefiniteArray()
+        xs.foreach(x => w.raw(x.original))
+        w.break()
+      case index :: rest =>
+        w.arrayHead(xs.size)
+        xs.zipWithIndex.foreach { (x, i) =>
+          w.raw(if i == index then indefiniteAt(x, rest) else x.original)
+        }
+  }
+
+  // Consensus uses decodeListLen/enforceSize; ledger decodeRecordNamedT permits indefinite arrays.
+  Vector(
+    "version" -> List.empty[Int],
+    "extended state" -> List(1),
+    "ledger telescope" -> List(1, 0),
+    "past" -> List(1, 0, 0),
+    "bound" -> List(1, 0, 0, 0),
+    "current ledger" -> List(1, 0, 6),
+    "ledger version" -> List(1, 0, 6, 1),
+    "Shelley ledger state" -> List(1, 0, 6, 1, 1),
+    "ledger tip maybe" -> List(1, 0, 6, 1, 1, 0),
+    "Shelley tip" -> List(1, 0, 6, 1, 1, 0, 0),
+    "header state" -> List(1, 1),
+    "header tip maybe" -> List(1, 1, 0),
+    "header tip era" -> List(1, 1, 0, 0),
+    "header tip" -> List(1, 1, 0, 0, 1),
+    "header telescope" -> List(1, 1, 1),
+    "current header" -> List(1, 1, 1, 6),
+    "Praos version" -> List(1, 1, 1, 6, 1),
+    "Praos state" -> List(1, 1, 1, 6, 1, 1),
+    "Praos last slot" -> List(1, 1, 1, 6, 1, 1, 0),
+    "Peras state" -> List(1, 2),
+    "Peras resolver" -> List(1, 2, 0),
+    "current Peras context" -> List(1, 2, 0, 1),
+    "previous Peras context" -> List(1, 2, 0, 2),
+    "Peras round" -> List(1, 2, 1)
+  ).foreach { (label, path) =>
+    test(s"Leios consensus $label requires a definite array") {
+      val bytes = indefiniteAt(tree(conway), path)
+      assert(
+        failure(LeiosStateCodecs.haskellLedgerFile, bytes).kind.isInstanceOf[Kind.TypeMismatch],
+        label
+      )
+    }
+  }
+
+  test("Leios ledger records retain the reference's indefinite-array acceptance") {
+    val bytes = indefiniteAt(tree(conway), List(1, 0, 6, 1, 1, 1))
+    assert(read(LeiosStateCodecs.haskellLedgerFile, bytes).isRight, "NewEpochState")
+  }
+
   // ---- the captured state files
 
   test("slot 195, the last Conway state, is read in the Leios layout and written byte for byte") {

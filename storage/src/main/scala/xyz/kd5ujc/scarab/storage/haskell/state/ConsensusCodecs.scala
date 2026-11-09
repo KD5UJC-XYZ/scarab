@@ -28,7 +28,7 @@ trait ConsensusCodecs extends EpochStateCodecs:
   // ---- the ledger state of a Shelley-based era
 
   /** `ShelleyTip` (`Shelley/Ledger/Ledger.hs:828-840`): `[slot, block number, hash]`. */
-  given shelleyTip: Codec[ShelleyTip] = Record.auto[ShelleyTip]
+  given shelleyTip: Codec[ShelleyTip] = arrayIn(stateLayout, Record.auto[ShelleyTip])
 
   /** `ShelleyTransition` (`Ledger.hs:855-864`): a bare `Word32`. */
   given shelleyTransition: Codec[ShelleyTransition] =
@@ -63,14 +63,17 @@ trait ConsensusCodecs extends EpochStateCodecs:
     * (`toCBOR`, [[Versions]]).
     */
   def shelleyLedgerState[E <: EraTag](using ShelleyBasedEra[E]): Codec[ShelleyLedgerState[E]] =
-    versioned(
+    versionedIn(stateLayout)(
       2,
-      Record.of[ShelleyLedgerState[E]](
-        (
-          withOriginMaybe(shelleyTip),
-          newEpochState[E],
-          shelleyTransition,
-          shelleyLedgerLayout
+      arrayIn(
+        stateLayout,
+        Record.of[ShelleyLedgerState[E]](
+          (
+            withOriginMaybe(shelleyTip, stateLayout),
+            newEpochState[E],
+            shelleyTransition,
+            shelleyLedgerLayout
+          )
         )
       )
     )
@@ -161,7 +164,7 @@ trait ConsensusCodecs extends EpochStateCodecs:
     */
   given pbftState: Codec[PBftState] =
     val keyed = plainMapOf(keyHash[Genesis], signerSlots)
-    versioned(
+    versionedIn(stateLayout)(
       1,
       new Codec[PBftState]:
         def decode(n: Node): Decoded[PBftState] =
@@ -204,24 +207,33 @@ trait ConsensusCodecs extends EpochStateCodecs:
     * last slot is written by `encodeWithOrigin` (`[]` or `[slot]`), unlike Praos's (`toCBOR`).
     */
   given tpraosState: Codec[TPraosState] =
-    versioned(1, Record.of[TPraosState]((withOriginMaybe(slotNo), tpraosLedgerState)))
+    versionedIn(stateLayout)(
+      1,
+      arrayIn(
+        stateLayout,
+        Record.of[TPraosState]((withOriginMaybe(slotNo, stateLayout), tpraosLedgerState))
+      )
+    )
 
   /** `PraosState` (`Protocol/Praos.hs:281-308`): `[0, [last slot, counters, six nonces]]`, the
     * counters in the plain (definite-length) form.
     */
   given praosState: Codec[PraosState] =
-    versioned(
+    versionedIn(stateLayout)(
       0,
-      Record.of[PraosState](
-        (
-          withOriginTagged(slotNo),
-          plainMapOf(keyHash[BlockIssuer], word64),
-          nonce,
-          nonce,
-          nonce,
-          nonce,
-          nonce,
-          nonce
+      arrayIn(
+        stateLayout,
+        Record.of[PraosState](
+          (
+            arrayIn(stateLayout, withOriginTagged(slotNo)),
+            plainMapOf(keyHash[BlockIssuer], word64),
+            nonce,
+            nonce,
+            nonce,
+            nonce,
+            nonce,
+            nonce
+          )
         )
       )
     )

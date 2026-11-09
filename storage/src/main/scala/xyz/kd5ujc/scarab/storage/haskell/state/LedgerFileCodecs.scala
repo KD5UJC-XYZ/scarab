@@ -29,7 +29,7 @@ trait LedgerFileCodecs extends ConsensusCodecs:
       .imap(i => Era.values(i.toInt))(e => BigInt(e.index))
 
   private def byronTip(n: Node): Decoded[AnnTip] =
-    Arr.exact(n, 4).flatMap { ys =>
+    arrayNode(stateLayout, n).flatMap(Arr.exact(_, 4)).flatMap { ys =>
       for
         slot <- slotNo.decode(ys(0)).at("slot")
         hash <- hash32.decode(ys(1)).at("hash")
@@ -39,7 +39,7 @@ trait LedgerFileCodecs extends ConsensusCodecs:
     }
 
   private def shelleyTipIn(era: Era, at: Node)(n: Node): Decoded[AnnTip] =
-    Arr.exact(n, 3).flatMap { ys =>
+    arrayNode(stateLayout, n).flatMap(Arr.exact(_, 3)).flatMap { ys =>
       for
         slot <- slotNo.decode(ys(0)).at("slot")
         hash <- hash32.decode(ys(1)).at("hash")
@@ -60,7 +60,7 @@ trait LedgerFileCodecs extends ConsensusCodecs:
     */
   given annTip: Codec[AnnTip] = new Codec[AnnTip]:
     def decode(n: Node): Decoded[AnnTip] =
-      Arr.exact(n, 2).flatMap { xs =>
+      arrayNode(stateLayout, n).flatMap(Arr.exact(_, 2)).flatMap { xs =>
         eraIndex.decode(xs(0)).at("era").flatMap { era =>
           // the tip of a Dijkstra chain: its state is not read by this build
           if era == Era.Dijkstra then
@@ -88,10 +88,10 @@ trait LedgerFileCodecs extends ConsensusCodecs:
 
   /** `HeaderState` (`HeaderValidation.hs:715-727`): `[tip, chain-dependent state telescope]`. */
   given headerState: Codec[HeaderState] = new Codec[HeaderState]:
-    private val tip = withOriginMaybe(annTip)
+    private val tip = withOriginMaybe(annTip, stateLayout)
     private val chainDep = telescope(stateLayout, chainDepStateOf)
     def decode(n: Node): Decoded[HeaderState] =
-      Arr.exact(n, 2).flatMap { xs =>
+      arrayNode(stateLayout, n).flatMap(Arr.exact(_, 2)).flatMap { xs =>
         for
           t <- tip.decode(xs(0)).at("tip")
           c <- chainDep.decode(xs(1)).at("chainDep")
@@ -116,7 +116,7 @@ trait LedgerFileCodecs extends ConsensusCodecs:
     */
   private val noEpochContext: Codec[Unit] = new Codec[Unit]:
     def decode(n: Node): Decoded[Unit] =
-      Arr.between(n, 0, 1).flatMap { xs =>
+      arrayNode(StateLayout.Leios, n).flatMap(Arr.between(_, 0, 1)).flatMap { xs =>
         xs.headOption.fold[Decoded[Unit]](Right(())) { context =>
           (for
             bounded <- Arr.exact(context, 3)
@@ -139,7 +139,7 @@ trait LedgerFileCodecs extends ConsensusCodecs:
   given perasResolver: Codec[PerasResolver] = new Codec[PerasResolver]:
     private val reason = Codec.bytesSized(0, Int.MaxValue)
     def decode(n: Node): Decoded[PerasResolver] =
-      variant(n).flatMap {
+      arrayNode(StateLayout.Leios, n).flatMap(variant).flatMap {
         case (t, Vector(r)) if t == 0 =>
           (if r.isIndefinite then Left(Codec.mismatch("definite byte string", r))
            else reason.decode(r)).map(PerasResolver.Failed(_)).at("reason")
@@ -165,7 +165,10 @@ trait LedgerFileCodecs extends ConsensusCodecs:
     * `StrictMaybe` (`encodeStrictMaybe`, `Util/CBOR.hs:358-362`).
     */
   given perasState: Codec[PerasState] =
-    Record.of[PerasState]((perasResolver, strictMaybe(perasRound)))
+    arrayIn(
+      StateLayout.Leios,
+      Record.of[PerasState]((perasResolver, arrayIn(StateLayout.Leios, strictMaybe(perasRound))))
+    )
 
   /** `ExtLedgerState` in the snapshot (`LedgerDB/Snapshots.hs`): `[1, ext]`. In the 11.1 layout
     * `ext` is `[ledger state telescope, header state]` (ouroboros-consensus 82ecba32
@@ -179,19 +182,19 @@ trait LedgerFileCodecs extends ConsensusCodecs:
     def leiosPeras(a: HaskellLedgerFile): Option[PerasState] = a.layout match
       case ExtLedgerState.Layout.Leios(peras) => Some(peras)
       case ExtLedgerState.Layout.Node11_1     => None
-    versioned(
+    versionedIn(stateLayout)(
       1,
       new Codec[HaskellLedgerFile]:
         def decode(n: Node): Decoded[HaskellLedgerFile] = stateLayout match
           case StateLayout.Node11_1 =>
-            Arr.exact(n, 2).flatMap { xs =>
+            arrayNode(stateLayout, n).flatMap(Arr.exact(_, 2)).flatMap { xs =>
               for
                 l <- ledger.decode(xs(0)).at("ledgerState")
                 h <- headerState.decode(xs(1)).at("headerState")
               yield HaskellLedgerFile(l, h, ExtLedgerState.Layout.Node11_1)
             }
           case StateLayout.Leios =>
-            Arr.between(n, 2, 3).flatMap { xs =>
+            arrayNode(stateLayout, n).flatMap(Arr.between(_, 2, 3)).flatMap { xs =>
               for
                 l <- ledger.decode(xs(0)).at("ledgerState")
                 h <- headerState.decode(xs(1)).at("headerState")

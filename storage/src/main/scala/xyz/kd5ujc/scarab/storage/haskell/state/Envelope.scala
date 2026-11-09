@@ -27,12 +27,25 @@ import Wire.*
   * Sources: `ouroboros-consensus` 4.2.1.0 (the pinned tree), each combinator names its file.
   */
 object Envelope:
+  /** Consensus array framing in the selected layout; ledger record framing is independent. */
+  def arrayNode(layout: StateLayout, n: Node): Decoded[Node] =
+    if layout == StateLayout.Leios && n.isIndefinite then Left(Codec.mismatch("definite array", n))
+    else Right(n)
+
+  def arrayIn[A](layout: StateLayout, inner: Codec[A]): Codec[A] = new Codec[A]:
+    def decode(n: Node): Decoded[A] = arrayNode(layout, n).flatMap(inner.decode)
+    def encode(a: A, out: Writer): Unit = inner.encode(a, out)
+    override def check(a: A): Option[ConstraintViolation] = inner.check(a)
+
   /** `encodeVersion v` (`Util/Versioned.hs:94-103`): `[v, item]`. A version this decoder does not
     * know, or the older unversioned layout, is an error that names where.
     */
-  def versioned[A](version: Int, inner: Codec[A]): Codec[A] = new Codec[A]:
+  def versioned[A](version: Int, inner: Codec[A]): Codec[A] =
+    versionedIn(StateLayout.Node11_1)(version, inner)
+
+  def versionedIn[A](layout: StateLayout)(version: Int, inner: Codec[A]): Codec[A] = new Codec[A]:
     def decode(n: Node): Decoded[A] =
-      Arr.exact(n, 2).flatMap { xs =>
+      arrayNode(layout, n).flatMap(Arr.exact(_, 2)).flatMap { xs =>
         for
           _ <- Lit.uint(xs(0), version.toLong).at("version")
           a <- inner.decode(xs(1))
@@ -47,9 +60,14 @@ object Envelope:
   /** `WithOrigin` as `encodeWithOrigin` writes it (`Util/CBOR.hs:344-345`, over `Maybe`): `[]` or
     * `[x]`. The ledger tip and the header state's tip.
     */
-  def withOriginMaybe[A](inner: Codec[A]): Codec[WithOrigin[A]] = new Codec[WithOrigin[A]]:
+  def withOriginMaybe[A](
+      inner: Codec[A],
+      layout: StateLayout = StateLayout.Node11_1
+  ): Codec[WithOrigin[A]] = new Codec[WithOrigin[A]]:
     def decode(n: Node): Decoded[WithOrigin[A]] =
-      strictMaybe(inner).decode(n).map(_.fold(WithOrigin.Origin: WithOrigin[A])(WithOrigin.At(_)))
+      arrayNode(layout, n)
+        .flatMap(strictMaybe(inner).decode)
+        .map(_.fold(WithOrigin.Origin: WithOrigin[A])(WithOrigin.At(_)))
     def encode(a: WithOrigin[A], out: Writer): Unit = a match
       case WithOrigin.Origin => out.arrayHead(0)
       case WithOrigin.At(x) =>
@@ -124,7 +142,7 @@ object Envelope:
     */
   def bound(layout: StateLayout): Codec[Bound] = new Codec[Bound]:
     def decode(n: Node): Decoded[Bound] =
-      Arr.between(n, 3, 4).flatMap { xs =>
+      arrayNode(layout, n).flatMap(Arr.between(_, 3, 4)).flatMap { xs =>
         for
           time <- integer.decode(xs(0)).at("boundTime")
           slot <- bound64.decode(xs(1)).at("boundSlot")
@@ -163,13 +181,14 @@ object Envelope:
         .orElse(bound64.check(a.epoch))
 
   /** `Past` (`State/Instances.hs:141-147`): `[start, end]`. */
-  def past(layout: StateLayout): Codec[Past] = Record.of[Past]((bound(layout), bound(layout)))
+  def past(layout: StateLayout): Codec[Past] =
+    arrayIn(layout, Record.of[Past]((bound(layout), bound(layout))))
 
   /** `Current` (`State/Instances.hs:126-132`): `[start, state]`. */
   def current[A](layout: StateLayout, state: Codec[A]): Codec[Current[A]] = new Codec[Current[A]]:
     private val start = bound(layout)
     def decode(n: Node): Decoded[Current[A]] =
-      Arr.exact(n, 2).flatMap { xs =>
+      arrayNode(layout, n).flatMap(Arr.exact(_, 2)).flatMap { xs =>
         for
           s0 <- start.decode(xs(0)).at("start")
           s <- state.decode(xs(1)).at("state")
@@ -200,7 +219,7 @@ object Envelope:
     new Codec[Telescope[A]]:
       private val pastIn = past(layout)
       def decode(n: Node): Decoded[Telescope[A]] =
-        Arr.nonEmpty(n, Era.values.length).flatMap { xs =>
+        arrayNode(layout, n).flatMap(Arr.nonEmpty(_, Era.values.length)).flatMap { xs =>
           val era = Era.values(xs.length - 1)
           for
             // a telescope in Dijkstra holds states this build does not read yet
