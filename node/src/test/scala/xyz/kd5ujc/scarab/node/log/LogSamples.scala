@@ -393,7 +393,7 @@ object LogSamples:
     ConnectionEvent.Opened("10.0.0.1:3001", ConnectionState.Provenance.Outbound),
     ConnectionEvent.Changed(
       "10.0.0.1:3001",
-      ConnectionState.Reserved,
+      ConnectionState.ReservedOutbound,
       ConnectionState.Unnegotiated(ConnectionState.Provenance.Outbound)
     ),
     ConnectionEvent.Refused(ConnectionError.InboundLimit("10.0.0.2:4000", 64)),

@@ -170,7 +170,9 @@ final class OutboundPeers[F[_]: Async, A] private (
           for
             slot <- manager.outbound(remote, alongsideInbound = true)
             bearer <- transport.bearer(peer, remote)
-            // a handshake that agrees no version holds the slot's time-wait
+            // `Connected` as soon as the transport is up, before the handshake (`Core.hs`
+            // 1540-1547): a handshake that agrees no version then holds the slot's time-wait
+            _ <- Resource.eval(slot.connected)
             warm <- NodeToNode.warmOverWithResults[F, NtNHeader, SessionEnd](
               bearer,
               hot.magic,
@@ -183,7 +185,7 @@ final class OutboundPeers[F[_]: Async, A] private (
             )(using summon, ConnectionManager.recordingRefusal(slot))
             children <- Supervisor[F](await = false)
             _ <- Resource.eval(
-              slot.connected *> slot.negotiated(
+              slot.negotiated(
                 if warm.duplex then ConnectionState.DataFlow.Duplex
                 else ConnectionState.DataFlow.Unidirectional
               )

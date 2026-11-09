@@ -520,15 +520,13 @@ class InboundGovernorSuite extends FailsOnUncaught:
             Some(forged.raws.map(_.size.toLong).sum)
           )
           assertEquals(tip, last.point)
-          assertEquals(table.counters, ConnectionState.Counters(1, 0, 1, 1))
+          assertEquals(
+            table.counters,
+            ConnectionState.Counters.zero.copy(duplex = 1, inbound = 1)
+          )
           assertEquals(
             table.connections.map(_._2),
-            Vector(
-              ConnectionState.Established(
-                ConnectionState.Provenance.Inbound,
-                ConnectionState.DataFlow.Duplex
-              )
-            )
+            Vector(ConnectionState.InboundIdle(ConnectionState.DataFlow.Duplex))
           )
           assertEquals(sessions.size, 1)
           assert(sessions.head.headers >= forged.headers.size.toLong, sessions.head.toString)
@@ -648,10 +646,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
           outcome <- connect(None, us) { _ =>
             eventually("the connection is established")(us.manager.snapshot)(
               _.connections.exists(
-                _._2 == ConnectionState.Established(
-                  ConnectionState.Provenance.Inbound,
-                  ConnectionState.DataFlow.Unidirectional
-                )
+                _._2 == ConnectionState.InboundIdle(ConnectionState.DataFlow.Unidirectional)
               )
             ).flatMap(snapshot => IO.sleep(200.millis).as(snapshot))
           }
@@ -659,7 +654,10 @@ class InboundGovernorSuite extends FailsOnUncaught:
           chain <- us.chain.get
           metrics <- us.metrics.get
         yield
-          assertEquals(outcome._1.counters, ConnectionState.Counters(1, 0, 0, 1))
+          assertEquals(
+            outcome._1.counters,
+            ConnectionState.Counters.zero.copy(unidirectional = 1, inbound = 1)
+          )
           assertEquals(sessions, Vector.empty)
           assertEquals(metrics.sizes, (0, 0))
           assertEquals(chain.tip, ChainSync.Point.Origin)
@@ -1186,17 +1184,18 @@ class InboundGovernorSuite extends FailsOnUncaught:
   test("a connection we opened to the peer does not refuse the peer's own inbound connection") {
     for nodeTestResult <- local().use { us =>
         for outcome <- Handle
-            .allow[ConnectionError](
-              us.manager.outbound(remote).use { _ =>
-                connect(None, us) { _ =>
-                  eventually("the inbound connection is established")(us.manager.snapshot)(
-                    _.counters.inbound == 1
-                  ).map(_.counters)
-                }
+          .allow[ConnectionError](
+            us.manager.outbound(remote).use { _ =>
+              connect(None, us) { _ =>
+                eventually("the inbound connection is established")(us.manager.snapshot)(
+                  _.counters.inbound == 1
+                ).map(_.counters)
               }
-            )
-            .rescue(e => IO(fail(e.message)))
-        yield assertEquals(outcome._1.outbound -> outcome._1.inbound, (1, 1))
+            }
+          )
+          .rescue(e => IO(fail(e.message)))
+        // a reservation counts in no direction (`connectionStateToCounters`)
+        yield assertEquals(outcome._1.outbound -> outcome._1.inbound, (0, 1))
       }
     yield nodeTestResult
   }

@@ -351,7 +351,8 @@ def relay(args):
         if duplex:
             # the relay's inbound connection is duplex and our client on it followed the relay all along
             states = [c["state"].replace(" ", "") for c in (final_connections or {}).get("connections", [])]
-            if not any("Established(Inbound,Duplex)" in x for x in states):
+            # the reference's state names; remote activity on it is tracked from #854's second step
+            if not any(x in ("InboundIdleStDuplex", "InboundStDuplex") for x in states):
                 failures.append(f"no established inbound duplex connection at the end: {states}")
             if not first or not first.get("intersection") or first.get("headers", 0) < 1:
                 failures.append("the Scala node did not follow the Haskell relay over its inbound connection")

@@ -34,7 +34,8 @@ trait ConnectionEvents[F[_]]:
   def emit(event: ConnectionEvent): F[Unit]
 
 /** One connection as its owner sees it. Every change goes through the pure
-  * [[ConnectionState.transition]]; an event the state does not allow is a typed error.
+  * [[ConnectionState.transition]], the reference's named transitions; an event the state does not
+  * allow is a typed error.
   */
 trait Connection[F[_]]:
   def remote: SocketAddress[IpAddress]
@@ -47,7 +48,10 @@ trait Connection[F[_]]:
   /** The handshake agreed `flow`. */
   def negotiated(flow: DataFlow)(using Raise[F, ConnectionError]): F[Unit]
 
-  /** Mark the connection closing with a reason (kept for the log); the owner then ends it. */
+  /** Close the connection with a reason (kept for the log); the owner then releases it. An orderly
+    * end ([[ConnectionManager.holdsTimeWait]]) leaves it `Terminating`, in time-wait; a failure
+    * leaves it `Terminated`.
+    */
   def close(reason: ConnectionEnd): F[Unit]
 
   /** Completes once the connection has been released (its entry may stay for the time-wait). */
@@ -171,6 +175,14 @@ object ConnectionManager:
           connection.close(ConnectionEnd.Failed(refused)) *> outer.raise[NetworkError, A](e)
         case _ => outer.raise[NetworkError, A](e)
 
+  /** An admitted connection with the generation of its entry and the signal its release completes.
+    */
+  private final case class Admitted[F[_]](
+      connection: Connection[F],
+      id: Long,
+      closed: Deferred[F, Unit]
+  )
+
   private final case class Entry[F[_]](
       id: Long,
       provenance: Provenance,
@@ -207,11 +219,11 @@ object ConnectionManager:
       ): Map[ConnectionManager.Key, Entry[F]] =
         m.filterNot((_, e) => e.releasedAt.isDefined && !e.waiting(now, limits.timeWait))
 
-      /** Apply `event` to our entry. */
+      /** Apply `events` to our entry in one change of the table, reporting each step. */
       def apply(
           key: ConnectionManager.Key,
           id: Long,
-          event: Event
+          events: Vector[Event]
       ): F[Either[ConnectionError, Unit]] =
         val remote = key._1
         table
@@ -223,29 +235,102 @@ object ConnectionManager:
                   Left(
                     ConnectionError.IllegalTransition(
                       remote.toString,
-                      ConnectionState.Illegal(ConnectionState.Terminated, event)
+                      ConnectionState.Illegal(
+                        ConnectionState.Terminated,
+                        events.headOption.getOrElse(Event.Fail)
+                      )
                     )
                   )
                 )
               case Some(entry) =>
-                ConnectionState.transition(entry.state, event) match
+                events
+                  .foldLeft[
+                    Either[ConnectionState.Illegal, (ConnectionState, Vector[ConnectionState])]
+                  ](
+                    Right((entry.state, Vector(entry.state)))
+                  )((walked, event) =>
+                    walked.flatMap((current, path) =>
+                      ConnectionState.transition(current, event).map(next => (next, path :+ next))
+                    )
+                  ) match
                   case Left(problem) =>
                     (m, Left(ConnectionError.IllegalTransition(remote.toString, problem)))
-                  case Right(next) =>
-                    (m.updated(key, entry.copy(state = next)), Right((entry.state, next)))
+                  case Right((reached, path)) =>
+                    (m.updated(key, entry.copy(state = reached)), Right(path))
           }
           .flatMap {
             case Left(error) => F.pure(Left(error))
-            case Right((from, to)) =>
-              emit(ConnectionEvent.Changed(remote.toString, from, to))
-                .whenA(from != to)
+            case Right(path) =>
+              path
+                .zip(path.drop(1))
+                .traverse_((from, to) =>
+                  emit(ConnectionEvent.Changed(remote.toString, from, to)).whenA(from != to)
+                )
                 .as(Right(()))
           }
 
       def step(key: ConnectionManager.Key, id: Long, event: Event)(using
           Raise[F, ConnectionError]
       ): F[Unit] =
-        apply(key, id, event).flatMap(_.fold(refuse[Unit](_), _ => F.unit))
+        apply(key, id, Vector(event)).flatMap(_.fold(refuse[Unit](_), _ => F.unit))
+
+      /** Record `reason` as the end of our entry and close it, in one change of the table: an
+        * orderly end (`timeWait`) enters time-wait through the reference's demotions and `Commit`,
+        * a failure ends at once ([[ConnectionState.closing]]). An entry that already has an end is
+        * left as it is. Returns the end that stands.
+        */
+      def closeEntry(
+          key: ConnectionManager.Key,
+          id: Long,
+          reason: ConnectionEnd,
+          timeWait: Boolean
+      ): F[ConnectionEnd] =
+        val remote = key._1
+        table
+          .modify(m =>
+            m.get(key).filter(_.id == id) match
+              case Some(e) if e.reason.isEmpty =>
+                val walked = ConnectionState
+                  .closing(e.state, timeWait)
+                  .foldLeft[Either[ConnectionState.Illegal, Vector[ConnectionState]]](
+                    Right(Vector(e.state))
+                  )((path, event) =>
+                    path.flatMap(states =>
+                      states.lastOption
+                        .toRight(ConnectionState.Illegal(e.state, event))
+                        .flatMap(ConnectionState.transition(_, event))
+                        .map(states :+ _)
+                    )
+                  )
+                walked match
+                  case Right(path) =>
+                    val reached = path.lastOption.getOrElse(e.state)
+                    (
+                      m.updated(key, e.copy(reason = Some(reason), state = reached)),
+                      (reason, Right(path))
+                    )
+                  case Left(problem) =>
+                    (m.updated(key, e.copy(reason = Some(reason))), (reason, Left(problem)))
+              case Some(e) => (m, (e.reason.getOrElse(reason), Right(Vector.empty)))
+              case None    => (m, (reason, Right(Vector.empty)))
+          )
+          .flatMap { (stands, walked) =>
+            walked
+              .fold(
+                problem =>
+                  emit(
+                    ConnectionEvent
+                      .Refused(ConnectionError.IllegalTransition(remote.toString, problem))
+                  ),
+                path =>
+                  path
+                    .zip(path.drop(1))
+                    .traverse_((from, to) =>
+                      emit(ConnectionEvent.Changed(remote.toString, from, to))
+                    )
+              )
+              .as(stands)
+          }
 
       def handle(
           at: SocketAddress[IpAddress],
@@ -265,11 +350,7 @@ object ConnectionManager:
         def negotiated(flow: DataFlow)(using Raise[F, ConnectionError]) =
           step(key, id, Event.Negotiated(flow))
         def close(reason: ConnectionEnd) =
-          table.update(m =>
-            m.get(key)
-              .filter(e => e.id == id && e.reason.isEmpty)
-              .fold(m)(e => m.updated(key, e.copy(reason = Some(reason))))
-          ) *> apply(key, id, Event.Close).void
+          closeEntry(key, id, reason, holdsTimeWait(Some(reason))).void
         def closed = done.get
 
       /** Take the slot for `remote` or say why not (atomically, with the limits). */
@@ -277,7 +358,7 @@ object ConnectionManager:
           remote: SocketAddress[IpAddress],
           provenance: Provenance,
           alongside: Boolean
-      )(using Raise[F, ConnectionError]): F[Connection[F]] =
+      )(using Raise[F, ConnectionError]): F[Admitted[F]] =
         for
           closed <- Deferred[F, Unit]
           id <- ids.updateAndGet(_ + 1)
@@ -320,7 +401,11 @@ object ConnectionManager:
                 )(ConnectionError.AddressLimit(remote.toString, limits.maxInboundPerAddress))
               )
               .orElse(
-                Option.when(provenance == Provenance.Outbound && c.outbound >= limits.maxOutbound)(
+                Option.when(
+                  provenance == Provenance.Outbound &&
+                    m.iterator.count((k, e) => k._2 == Provenance.Outbound && e.state.isLive) >=
+                    limits.maxOutbound
+                )(
                   ConnectionError.OutboundLimit(remote.toString, limits.maxOutbound)
                 )
               )
@@ -335,10 +420,10 @@ object ConnectionManager:
             )(reason => (m, Left(reason)))
           }
           connection <- admitted.fold(
-            refuse[Connection[F]](_),
+            refuse[Admitted[F]](_),
             _ =>
               emit(ConnectionEvent.Opened(remote.toString, provenance))
-                .as(handle(remote, id, provenance, closed))
+                .as(Admitted(handle(remote, id, provenance, closed), id, closed))
           )
         yield connection
 
@@ -348,39 +433,53 @@ object ConnectionManager:
         * removed after, as the reference's connection thread waits `timeWaitTimeout` after closing
         * the socket (`ConnectionManager/Core.hs`); otherwise it is removed at once.
         */
-      def release(c: Connection[F]): F[Unit] =
+      def release(admitted: Admitted[F]): F[Unit] =
+        val c = admitted.connection
         val at = c.remote
         val key = (at, c.provenance)
-        table.get.map(_.get(key).filter(_.releasedAt.isEmpty)).flatMap {
-          _.traverse_ { e =>
-            val reason = e.reason.getOrElse(ConnectionEnd.Released)
-            val held =
-              if limits.timeWait <= Duration.Zero || !holdsTimeWait(e.reason) then
-                apply(key, e.id, Event.Released) *>
-                  table.update(m => m.get(key).filter(_.id == e.id).fold(m)(_ => m - key))
-              else
-                F.monotonic.flatMap(now =>
-                  table.update(m =>
-                    m.get(key)
-                      .filter(_.id == e.id)
-                      .fold(m)(entry => m.updated(key, entry.copy(releasedAt = Some(now))))
-                  )
-                )
-            c.close(reason) *> held *> e.closed.complete(()) *>
-              emit(ConnectionEvent.Closed(at.toString, e.provenance, reason))
-          }
+        val id = admitted.id
+        val remove = table.update(m => m.get(key).filter(_.id == id).fold(m)(_ => m - key))
+        // a connection the close left in `Terminating` is in time-wait; one in `Terminated` is
+        // removed at once
+        val held = table.get.map(_.get(key).filter(_.id == id).map(_.state)).flatMap {
+          case Some(ConnectionState.Terminating) if limits.timeWait > Duration.Zero =>
+            F.monotonic.flatMap(now =>
+              table.update(m =>
+                m.get(key)
+                  .filter(_.id == id)
+                  .fold(m)(entry => m.updated(key, entry.copy(releasedAt = Some(now))))
+              )
+            )
+          case Some(ConnectionState.Terminating) =>
+            apply(key, id, Vector(Event.Released)) *> remove
+          case _ => remove
         }
+        // only this generation of the address's entry: one that replaced it is another connection
+        table.get
+          .map(_.get(key).exists(e => e.id == id && e.releasedAt.isEmpty))
+          .flatMap { ours =>
+            // an end nobody recorded is a teardown, with no time-wait
+            (closeEntry(key, id, ConnectionEnd.Released, timeWait = false)
+              .flatMap(stands =>
+                held *> emit(ConnectionEvent.Closed(at.toString, c.provenance, stands))
+              ))
+              .whenA(ours)
+          } *> admitted.closed.complete(()).void
 
       new ConnectionManager[F]:
         def inbound(remote: SocketAddress[IpAddress], alongsideOutbound: Boolean)(using
             Raise[F, ConnectionError]
         ) =
-          Resource.make(admit(remote, Provenance.Inbound, alongsideOutbound))(release)
+          Resource
+            .make(admit(remote, Provenance.Inbound, alongsideOutbound))(release)
+            .map(_.connection)
 
         def outbound(remote: SocketAddress[IpAddress], alongsideInbound: Boolean)(using
             Raise[F, ConnectionError]
         ) =
-          Resource.make(admit(remote, Provenance.Outbound, alongsideInbound))(release)
+          Resource
+            .make(admit(remote, Provenance.Outbound, alongsideInbound))(release)
+            .map(_.connection)
 
         def lookup(remote: SocketAddress[IpAddress]) =
           table.get.map { m =>

@@ -1020,7 +1020,7 @@
     },
     {
       "type": "stat",
-      "title": "Connections established",
+      "title": "Connections negotiated",
       "description": "",
       "datasource": {
         "type": "prometheus",
@@ -1032,7 +1032,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (host, container) (scarab_connections{host=~\"$host\", container=~\"$container\", state=\"Established\"})",
+          "expr": "sum by (host, container) (scarab_connections{host=~\"$host\", container=~\"$container\", state=~\"OutboundUni|OutboundDup|OutboundIdle|InboundIdle|Inbound|Duplex\"})",
           "legendFormat": "{{host}} {{container}}",
           "refId": "A",
           "instant": true

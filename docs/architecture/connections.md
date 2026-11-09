@@ -9,15 +9,20 @@ A peer that connects to us is also a source of blocks. Before this, an inbound d
 (InitiatorAndResponder) was accepted and served, but only the connections the node opened ran our
 clients. Now:
 
-**`ConnectionState`** (`network`, pure). The life of one connection: `Reserved` (an outbound slot
-is taken), `Unnegotiated(provenance)`, `Established(provenance, flow)` with the flow the handshake
-agreed (`Unidirectional` or `Duplex`), `Terminating`, `Terminated`; `transition(state, event)`
-allows `Connected`, `Negotiated(flow)`, `Close` (from any live state, idempotent) and `Released`
-and returns a typed `Illegal` for anything else. `canRunClients` is the rule for who may run our
-clients: every established outbound connection and an inbound one that agreed duplex. `Counters.of`
-gives inbound, outbound, duplex and established counts from a table. `ConnectionStateSuite`
-checks the transitions, the idempotent close, that nothing but `Close`/`Released` is allowed once
-terminating, and the counters.
+**`ConnectionState`** (`protocol`, pure). The reference connection manager's states without their
+runtime fields (ouroboros-network `2fb69829`, `ConnectionManager/State.hs:191-217`): `ReservedOutbound`,
+`Unnegotiated(provenance)`, `OutboundUni`, `OutboundDup(Ticking|Expired)`, `OutboundIdle(flow)`,
+`InboundIdle(flow)`, `Inbound(flow)`, `Duplex`, `Terminating` and `Terminated`. `transition(state, event)` takes the
+reference's named transitions (`Connected`, `Negotiated`, `Overwritten`, `AwakeLocal`, `PromotedToWarmLocal`,
+`DemotedToColdLocal`, `AwakeRemote`, `DemotedToColdRemote`, `TimeoutExpired`, `Commit`, a refused handshake, a
+failure and `Released`) and returns a typed `Illegal` for anything else. `closing(state, timeWait)` is how a
+connection ends: an orderly end goes through the reference's demotions and `Commit` into `Terminating` (time-wait),
+a failure to `Terminated` at once. `valid(from, to)` is the reference's `verifyAbstractTransition`
+(`Test/Ouroboros/Network/ConnectionManager/Utils.hs`), and `Counters` its `ConnectionManagerCounters` as
+`connectionStateToCounters` computes them. `ConnectionStateSuite` checks every move the model makes against
+`valid`, every state's closing, and the counters of every state. The manager drives the connect, negotiate and
+close transitions; reuse of an inbound duplex connection, the demotions and the remote side's activity are
+[#854](https://github.com/KD5UJC-XYZ/scarab/issues/854)'s next steps.
 
 **`ConnectionManager`** (`network`). A `Ref` table from the peer's socket address to its
 connection (the key is the address and the direction). `inbound(remote)` and `outbound(remote)` are

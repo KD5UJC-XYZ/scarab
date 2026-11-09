@@ -60,8 +60,8 @@ class CatalogueSuite extends FunSuite:
 
   test("an enum label is written as the name of its case, a rule family as the log names it") {
     assertEquals(
-      Catalogue.connectionsByState.labels.values(ConnectionStateLabel.Established),
-      List("Established")
+      Catalogue.connectionsByState.labels.values(ConnectionStateLabel.OutboundDup),
+      List("OutboundDup")
     )
     assertEquals(Catalogue.currentEra.labels.values(Era.Conway), List("Conway"))
     assertEquals(Catalogue.validationErrors.labels.values(BlockRule.TPraos), List("tpraos"))

@@ -178,8 +178,8 @@ def runs_dashboard():
         (4, stat("Snapshots refused or failed", PROM,
                  f'sum by (host, container) (increase(scarab_snapshot_problems_total{{{M}, kind=~"Refused|Failed"}}[$__range]))',
                  decimals=0, thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}])),
-        (5, stat("Connections established", PROM,
-                 f'sum by (host, container) (scarab_connections{{{M}, state="Established"}})', decimals=0)),
+        (5, stat("Connections negotiated", PROM,
+                 f'sum by (host, container) (scarab_connections{{{M}, state=~"OutboundUni|OutboundDup|OutboundIdle|InboundIdle|Inbound|Duplex"}})', decimals=0)),
         h=5)
     p.line(
         (8, series("Blocks applied per second", PROM, [(

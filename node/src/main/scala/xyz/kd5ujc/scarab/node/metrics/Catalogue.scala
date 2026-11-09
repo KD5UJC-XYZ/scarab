@@ -23,15 +23,24 @@ object AreaLabel:
 
 /** What state a connection is in, without the data of the state ([[ConnectionState]]). */
 enum ConnectionStateLabel derives LabelValue:
-  case Reserved, Unnegotiated, Established, Terminating, Terminated
+  case ReservedOutbound, Unnegotiated, OutboundUni, OutboundDup, OutboundIdle, InboundIdle, Inbound,
+    Duplex, Terminating, Terminated
 
 object ConnectionStateLabel:
+  /** The reference's connection states (`ConnectionManager/State.hs:191-217`), without their
+    * fields.
+    */
   def of(state: ConnectionState): ConnectionStateLabel = state match
-    case ConnectionState.Reserved          => Reserved
-    case ConnectionState.Unnegotiated(_)   => Unnegotiated
-    case ConnectionState.Established(_, _) => Established
-    case ConnectionState.Terminating       => Terminating
-    case ConnectionState.Terminated        => Terminated
+    case ConnectionState.ReservedOutbound => ReservedOutbound
+    case ConnectionState.Unnegotiated(_)  => Unnegotiated
+    case ConnectionState.OutboundUni      => OutboundUni
+    case ConnectionState.OutboundDup(_)   => OutboundDup
+    case ConnectionState.OutboundIdle(_)  => OutboundIdle
+    case ConnectionState.InboundIdle(_)   => InboundIdle
+    case ConnectionState.Inbound(_)       => Inbound
+    case ConnectionState.Duplex           => Duplex
+    case ConnectionState.Terminating      => Terminating
+    case ConnectionState.Terminated       => Terminated
 
 /** Where the start has got to: reading the snapshot and opening the stores, applying the stored
   * blocks again, or following the chain. Exactly one is current.
