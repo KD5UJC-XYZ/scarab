@@ -463,7 +463,7 @@ class ServerSuite extends FailsOnUncaught:
         .listen[IO, NetworkError](Some(ip"127.0.0.1"), None)((_, error) =>
           IO(fail(error.toString))
         ) { (bearer, _) =>
-          typed(NodeToNodeServer.accept(bearer, magic, handlers(chain))).void
+          typed(Served.accept(bearer, magic, handlers(chain))).void
         }
         .flatMap(bound =>
           NodeToNode.connect[IO, Bytes](
@@ -500,7 +500,7 @@ class ServerSuite extends FailsOnUncaught:
         .listen[IO, NetworkError](Some(ip"127.0.0.1"), None)((_, error) =>
           IO(fail(error.toString))
         ) { (bearer, _) =>
-          typed(NodeToNodeServer.accept(bearer, magic, handlers(chain))).void
+          typed(Served.accept(bearer, magic, handlers(chain))).void
         }
         .flatMap(bound =>
           NodeToNode.connect[IO, Bytes](

@@ -115,30 +115,6 @@ class ConnectionStateSuite extends ScalaCheckSuite:
     }
   }
 
-  test("every state's closing reaches Terminating with time-wait and Terminated without") {
-    every.filter(_.isLive).foreach { s =>
-      val ordered = ConnectionState.closing(s, timeWait = true)
-      val ends = ordered.foldLeft(Vector(s))((path, e) =>
-        path :+ ConnectionState
-          .transition(path.last, e)
-          .fold(problem => fail(problem.message), identity)
-      )
-      assert(ends.zip(ends.drop(1)).forall((a, b) => ConnectionState.valid(Some(a), Some(b))), ends)
-      val expected = if s == ReservedOutbound then Terminated else Terminating
-      assertEquals(ends.last, expected, s.abstractName)
-      assertEquals(
-        ConnectionState.through(s, ConnectionState.closing(s, timeWait = false)),
-        Right(Terminated),
-        s.abstractName
-      )
-    }
-  }
-
-  test("a connection that is not live needs no closing") {
-    assertEquals(ConnectionState.closing(Terminating, timeWait = true), Vector.empty)
-    assertEquals(ConnectionState.closing(Terminated, timeWait = false), Vector.empty)
-  }
-
   test("outbound: Reserve, Connected and Negotiated^{flow}_{Outbound}") {
     assertEquals(
       ConnectionState.through(

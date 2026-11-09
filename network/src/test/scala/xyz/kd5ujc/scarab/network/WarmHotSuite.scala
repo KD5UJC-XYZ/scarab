@@ -65,7 +65,7 @@ class WarmHotSuite extends FailsOnUncaught:
     Resource
       .eval(Bearer.inMemory[IO]())
       .flatMap { (ours, theirs) =>
-        typed(NodeToNodeServer.accept(theirs, magic, handlers)).void.background
+        typed(Served.accept(theirs, magic, handlers)).void.background
           .flatMap(_ =>
             NodeToNode.warmOver[IO, Bytes](
               ours,
@@ -127,7 +127,7 @@ class WarmHotSuite extends FailsOnUncaught:
                       yield (found, next, ended)
                     }
 
-                NodeToNodeServer
+                Served
                   .accept[IO, Bytes](
                     theirs,
                     magic,

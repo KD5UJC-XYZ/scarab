@@ -6,10 +6,9 @@ import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent}
 import xyz.kd5ujc.scarab.network.{ConnectionEnd, ConnectionEvent}
-import xyz.kd5ujc.scarab.ledger.PeerError
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.{Churn, FetchMode}
-import xyz.kd5ujc.scarab.node.{HeaderGate, InboundEvent, InboundGovernor, Output, Peer}
+import xyz.kd5ujc.scarab.node.{HeaderGate, InboundEvent, Output, Peer}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeTrace, KesEvolutionError, KesInfo}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents, Rejection}
@@ -237,31 +236,15 @@ class EventMetricsSuite extends CatsEffectSuite:
             ConnectionEnd.Released
           )
         )
-        _ <- em.inbound.emit(
-          "b",
-          InboundEvent.SessionEnded(
-            InboundGovernor.SessionFailure
-              .Peer(PeerError.NoIntersection),
-            dropped = true
-          )
-        )
-        _ <- em.inbound.emit(
-          "b",
-          InboundEvent.SessionEnded(
-            InboundGovernor.SessionFailure
-              .Peer(PeerError.NoIntersection),
-            dropped = false
-          )
-        )
+        _ <- em.connection.emit(ConnectionEvent.Pruned(Vector("a"), 1, 2))
+        _ <- em.inbound.emit("b", InboundEvent.Duplex)
+        _ <- em.inbound.emit("b", InboundEvent.Duplex)
         s <- metrics.snapshot
       yield
         assertEquals(counter(s, Catalogue.connectionEvents, ConnectionEventLabel.Opened), Some(1.0))
         assertEquals(counter(s, Catalogue.connectionEvents, ConnectionEventLabel.Closed), Some(1.0))
-        assertEquals(
-          counter(s, Catalogue.inboundEvents, InboundEventLabel.SessionDropped),
-          Some(1.0)
-        )
-        assertEquals(counter(s, Catalogue.inboundEvents, InboundEventLabel.SessionEnded), Some(1.0))
+        assertEquals(counter(s, Catalogue.connectionEvents, ConnectionEventLabel.Pruned), Some(1.0))
+        assertEquals(counter(s, Catalogue.inboundEvents, InboundEventLabel.Duplex), Some(2.0))
     }
   }
 

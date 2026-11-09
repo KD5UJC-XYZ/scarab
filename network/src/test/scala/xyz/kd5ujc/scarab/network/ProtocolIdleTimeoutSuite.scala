@@ -2,16 +2,20 @@
 package xyz.kd5ujc.scarab.network
 
 import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures
-import cats.effect.{IO, Resource}
+import cats.effect.{IO, Ref, Resource}
 import cats.effect.testkit.TestControl
+import cats.syntax.all.*
+import cats.mtl.Handle
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures, Handshake}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures, ConnectionState, Handshake}
+import xyz.kd5ujc.scarab.protocol.ConnectionState.{DataFlow, Provenance, TimeoutExpired}
 
-/** ouroboros-network 2fb69829 `Ouroboros/Network/ConnectionManager/Core.hs`
-  * (`defaultProtocolIdleTimeout = 5`) and `InboundGovernor.hs`: an accepted connection that sends
-  * nothing on a remote-initiated mini-protocol for the idle timeout after its handshake is
-  * released.
+/** ouroboros-network 2fb69829 `Ouroboros/Network/InboundGovernor.hs` (329-335, 463-481, 499-570)
+  * and `ConnectionManager/Core.hs` (1110-1248, 1889-2048, 2048-2320), with
+  * `defaultProtocolIdleTimeout = 5`: the peer's side of a connection is tracked; an accepted
+  * connection that the peer leaves idle for the idle timeout is released, unless our outbound side
+  * uses it, which keeps it (`TimeoutExpired`) until it lets go.
   */
 class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
   import Peers.*
@@ -34,28 +38,59 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
       ) = IO.unit
   )
 
-  /** Accept on one side, run the client handshake on the other, and hand the client's mux to `body`
-    * together with the server's eventual end and the time the handshake completed.
+  /** What a scenario sees: the peer's mux, the server's end once there is one, when the handshake
+    * finished, the manager and every state change it reported.
+    */
+  private final case class Seen(
+      mux: Mux[IO],
+      ended: IO[Option[ConnectionEnd]],
+      began: FiniteDuration,
+      manager: ConnectionManager[IO],
+      changes: IO[Vector[(ConnectionState, ConnectionState)]]
+  )
+
+  /** Accept on one side, run the peer's handshake on the other (duplex when `duplex`), and hand
+    * what is seen to `body`.
     */
   private def scenario[A](
-      body: Net ?=> (Mux[IO], IO[Option[ConnectionEnd]], FiniteDuration) => IO[A],
-      ownClients: Boolean = false
+      body: Net ?=> Seen => IO[A],
+      duplex: Boolean = false
   ): IO[Either[NetworkError, A]] =
     typed {
       Resource
-        .eval(Bearer.inMemory[IO]())
-        .flatMap { (ours, theirs) =>
+        .eval(
+          (
+            Bearer.inMemory[IO](),
+            Ref.of[IO, Vector[(ConnectionState, ConnectionState)]](Vector.empty)
+          ).tupled
+        )
+        .flatMap { case ((ours, theirs), log) =>
           for
+            manager <- Resource.eval(
+              ConnectionManager.create[IO](
+                ConnectionManager.Limits(timeWait = Duration.Zero),
+                Some {
+                  case ConnectionEvent.Changed(_, from, to) => log.update(_ :+ (from -> to))
+                  case _                                    => IO.unit
+                }
+              )
+            )
             ended <- Resource.eval(IO.deferred[Either[NetworkError, ConnectionEnd]])
             _ <- typed(
-              NodeToNodeServer.accept(theirs, magic, handlers, ownClients = _ => ownClients)
+              Handle
+                .allow[ConnectionError](
+                  manager
+                    .include(Served.remote, None)
+                    .use(NodeToNodeServer.accept(theirs, magic, handlers, _))
+                )
+                .rescue(e => IO.pure(ConnectionEnd.Refused(e)))
             )
               .flatMap(ended.complete)
               .background
             mux <- Mux.handshakeResource(
               ours,
               NodeToNodeServer.Protocol,
-              Mux.Config(role = Mux.Role.Initiator)
+              Mux.Config(role = Mux.Role.Initiator, duplex = duplex)
             )
             _ <- Resource.eval(
               mux
@@ -65,33 +100,56 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
                     _,
                     Handshake.nodeToNodeOffers(
                       xyz.kd5ujc.scarab.protocol.NtnVersion.LatestReleased,
-                      Handshake.Data(magic, initiatorOnly = true)
+                      Handshake.Data(magic, initiatorOnly = !duplex)
                     ),
                     10.seconds
                   )
                 ) *> mux.installApplication(
                 NodeToNodeServer.applicationProtocols(false),
-                Set.empty
+                if duplex then NodeToNodeServer.applicationProtocols(false) else Set.empty
               )
             )
             began <- Resource.eval(IO.monotonic)
-          yield (mux, ended, began)
+          yield Seen(mux, ended.tryGet.map(_.flatMap(_.toOption)), began, manager, log.get)
         }
-        .use { (mux, ended, began) =>
-          body(mux, ended.tryGet.map(_.flatMap(_.toOption)), began)
-        }
+        .use(seen => body(seen))
     }
+
+  /** The peer's KeepAlive client on its mux: a remote responder of ours starts on its first byte.
+    */
+  private def keepAlive(mux: Mux[IO])(using Net): IO[KeepAliveClient[IO]] =
+    mux.channel(xyz.kd5ujc.scarab.protocol.Protocols.KeepAlive).flatMap(KeepAliveClient[IO](_))
+
+  /** The outbound side's reuse of the accepted connection. */
+  private def reuse(manager: ConnectionManager[IO]): IO[Connection[IO]] =
+    Handle
+      .allow[ConnectionError](
+        manager.acquire(Served.remote, Provenance.Outbound).allocated.map(_._1).flatMap {
+          case Acquired.Reused(connection, _) => IO.pure(connection)
+          case Acquired.Reserved(_)           => IO.raiseError(new AssertionError("not reused"))
+        }
+      )
+      .rescue(e => IO.raiseError(new AssertionError(e.message)))
+
+  private def state(manager: ConnectionManager[IO]): IO[Option[ConnectionState]] =
+    manager.lookup(Served.remote).map(_.map(_.state))
+
+  /** Every change the manager reported is one the reference accepts. */
+  private def allValid(changes: Vector[(ConnectionState, ConnectionState)]): Unit =
+    changes.foreach((from, to) =>
+      assert(ConnectionState.valid(Some(from), Some(to)), s"invalid $from -> $to")
+    )
 
   test("a connection silent after the handshake is released at the idle timeout"):
     TestControl
-      .executeEmbed(scenario { (_, ended, began) =>
+      .executeEmbed(scenario { seen =>
         for
           _ <- IO.sleep(4900.millis)
-          early <- ended
+          early <- seen.ended
           _ <- IO.sleep(200.millis)
-          late <- ended
+          late <- seen.ended
           now <- IO.monotonic
-        yield (early, late, now - began)
+        yield (early, late, now - seen.began)
       })
       .map {
         case Right((early, late, elapsed)) =>
@@ -103,57 +161,69 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
 
   test("a responder SDU at 4.9 s keeps the connection past the idle timeout"):
     TestControl
-      .executeEmbed(scenario { (mux, ended, _) =>
+      .executeEmbed(scenario { seen =>
         for
           _ <- IO.sleep(4900.millis)
-          channel <- mux.channel(xyz.kd5ujc.scarab.protocol.Protocols.KeepAlive)
-          client <- KeepAliveClient[IO](channel)
+          client <- keepAlive(seen.mux)
           _ <- client.ping
           _ <- IO.sleep(2.seconds)
-          open <- ended
-        yield open
+          open <- seen.ended
+          now <- state(seen.manager)
+        yield (open, now)
       })
       .map {
-        case Right(open) => assertEquals(open, None)
+        case Right((open, now)) =>
+          assertEquals(open, None)
+          assertEquals(now, Some(ConnectionState.Inbound(DataFlow.Unidirectional)))
         case Left(error) => fail(error.message)
       }
 
   // `WaitIdleRemote`: the timer is armed again when the last running responder ends (issue 461)
   test("the timer is armed again when the last responder ends: released one timeout later"):
     TestControl
-      .executeEmbed(scenario { (mux, ended, began) =>
+      .executeEmbed(scenario { seen =>
         for
           _ <- IO.sleep(1.second)
-          channel <- mux.channel(xyz.kd5ujc.scarab.protocol.Protocols.KeepAlive)
-          client <- KeepAliveClient[IO](channel)
+          client <- keepAlive(seen.mux)
           _ <- client.ping
           _ <- IO.sleep(1.second)
           _ <- client.done
           endedAt <- IO.monotonic
           _ <- IO.sleep(4900.millis)
-          early <- ended
+          early <- seen.ended
           _ <- IO.sleep(200.millis)
-          late <- ended
-        yield (early, late, endedAt - began)
+          late <- seen.ended
+          changes <- seen.changes
+        yield (early, late, endedAt - seen.began, changes)
       })
       .map {
-        case Right((early, late, endedAt)) =>
+        case Right((early, late, endedAt, changes)) =>
           assertEquals(endedAt, 2.seconds)
           assertEquals(early, None)
           assertEquals(late, Some(ConnectionEnd.Released))
+          allValid(changes)
+          assertEquals(
+            changes.map(_._2),
+            Vector(
+              ConnectionState.InboundIdle(DataFlow.Unidirectional),
+              ConnectionState.Inbound(DataFlow.Unidirectional),
+              ConnectionState.InboundIdle(DataFlow.Unidirectional),
+              ConnectionState.Terminating,
+              ConnectionState.Terminated
+            )
+          )
         case Left(error) => fail(error.message)
       }
 
   test("no timer while a responder runs: an open KeepAlive keeps the connection"):
     TestControl
-      .executeEmbed(scenario { (mux, ended, _) =>
+      .executeEmbed(scenario { seen =>
         for
           _ <- IO.sleep(1.second)
-          channel <- mux.channel(xyz.kd5ujc.scarab.protocol.Protocols.KeepAlive)
-          client <- KeepAliveClient[IO](channel)
+          client <- keepAlive(seen.mux)
           _ <- client.ping
           _ <- IO.sleep(30.seconds)
-          open <- ended
+          open <- seen.ended
         yield open
       })
       .map {
@@ -161,24 +231,148 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
         case Left(error) => fail(error.message)
       }
 
-  test("a connection our own clients use is not released when its remote side goes idle"):
+  // `TimeoutExpired` (`Core.hs` 1148-1157), `KeepTr` and `RemoteCold` (`InboundGovernor.hs`
+  // 547-563)
+  test("expiry while the outbound side uses the connection keeps it: Ticking becomes Expired"):
     TestControl
       .executeEmbed(
         scenario(
-          (mux, ended, _) =>
+          seen =>
             for
               _ <- IO.sleep(1.second)
-              channel <- mux.channel(xyz.kd5ujc.scarab.protocol.Protocols.KeepAlive)
-              client <- KeepAliveClient[IO](channel)
-              _ <- client.ping
-              _ <- client.done
+              _ <- reuse(seen.manager)
+              reused <- state(seen.manager)
               _ <- IO.sleep(30.seconds)
-              open <- ended
-            yield open,
-          ownClients = true
+              open <- seen.ended
+              now <- state(seen.manager)
+              changes <- seen.changes
+            yield (reused, open, now, changes),
+          duplex = true
         )
       )
       .map {
-        case Right(open) => assertEquals(open, None)
+        case Right((reused, open, now, changes)) =>
+          assertEquals(reused, Some(ConnectionState.OutboundDup(TimeoutExpired.Ticking)))
+          assertEquals(open, None)
+          assertEquals(now, Some(ConnectionState.OutboundDup(TimeoutExpired.Expired)))
+          allValid(changes)
+        case Left(error) => fail(error.message)
+      }
+
+  // `DemotedToCold^{Duplex}_{Local}` before the timer fired: `InboundIdle`, released by the same
+  // timer (`Core.hs` 1952-1985, 1188-1201)
+  test("an outbound release before expiry leaves the connection to the idle timer"):
+    TestControl
+      .executeEmbed(
+        scenario(
+          seen =>
+            for
+              _ <- IO.sleep(1.second)
+              connection <- reuse(seen.manager)
+              _ <- IO.sleep(1.second)
+              released <- connection.releaseOutbound
+              after <- state(seen.manager)
+              _ <- IO.sleep(2900.millis)
+              early <- seen.ended
+              _ <- IO.sleep(200.millis)
+              late <- seen.ended
+              changes <- seen.changes
+            yield (released, after, early, late, changes),
+          duplex = true
+        )
+      )
+      .map {
+        case Right((released, after, early, late, changes)) =>
+          assertEquals(
+            released,
+            OperationResult.Success(ConnectionState.OutboundDup(TimeoutExpired.Ticking))
+          )
+          assertEquals(after, Some(ConnectionState.InboundIdle(DataFlow.Duplex)))
+          assertEquals(early, None)
+          assertEquals(late, Some(ConnectionEnd.Released))
+          allValid(changes)
+        case Left(error) => fail(error.message)
+      }
+
+  // `DemotedToCold^{Duplex}_{Local}` after it fired: `OutboundIdle`, closed after the outbound
+  // idle timeout (`Core.hs` 1937-1950, 2017-2048)
+  test("an outbound release after expiry closes the connection one outbound idle timeout later"):
+    TestControl
+      .executeEmbed(
+        scenario(
+          seen =>
+            for
+              _ <- IO.sleep(1.second)
+              connection <- reuse(seen.manager)
+              _ <- IO.sleep(10.seconds)
+              start <- IO.monotonic
+              released <- connection.releaseOutbound
+              end <- IO.monotonic
+              _ <- IO.sleep(100.millis)
+              closed <- seen.ended
+              changes <- seen.changes
+            yield (released, end - start, closed, changes),
+          duplex = true
+        )
+      )
+      .map {
+        case Right((released, waited, closed, changes)) =>
+          assertEquals(released, OperationResult.Success(ConnectionState.Terminating))
+          assertEquals(waited, 5.seconds)
+          assertEquals(closed, Some(ConnectionEnd.Released))
+          allValid(changes)
+          assert(
+            changes.contains(
+              ConnectionState.OutboundDup(TimeoutExpired.Expired) ->
+                ConnectionState.OutboundIdle(DataFlow.Duplex)
+            )
+          )
+        case Left(error) => fail(error.message)
+      }
+
+  // `PromotedToWarm^{Duplex}_{Remote}` after `RemoteCold`, `DemotedToCold^{Duplex}_{Remote}`, and
+  // `Awake^{Duplex}_{Remote}` of an outbound idle connection (`Core.hs` 2085-2192, 2286-2320)
+  test("remote activity restores duplex use, and wakes an outbound idle connection"):
+    TestControl
+      .executeEmbed(
+        scenario(
+          seen =>
+            for
+              _ <- IO.sleep(1.second)
+              connection <- reuse(seen.manager)
+              _ <- IO.sleep(10.seconds)
+              client <- keepAlive(seen.mux)
+              _ <- client.ping
+              busy <- state(seen.manager)
+              _ <- client.done
+              _ <- IO.sleep(100.millis)
+              quiet <- state(seen.manager)
+              _ <- IO.sleep(10.seconds)
+              // expired again; released: `OutboundIdle`, then the peer wakes it up
+              released <- connection.releaseOutbound.start
+              _ <- IO.sleep(1.second)
+              idle <- state(seen.manager)
+              again <- keepAlive(seen.mux)
+              _ <- again.ping
+              outcome <- released.joinWithNever
+              woken <- state(seen.manager)
+              open <- seen.ended
+              changes <- seen.changes
+            yield (busy, quiet, idle, outcome, woken, open, changes),
+          duplex = true
+        )
+      )
+      .map {
+        case Right((busy, quiet, idle, outcome, woken, open, changes)) =>
+          assertEquals(busy, Some(ConnectionState.Duplex))
+          assertEquals(quiet, Some(ConnectionState.OutboundDup(TimeoutExpired.Ticking)))
+          assertEquals(idle, Some(ConnectionState.OutboundIdle(DataFlow.Duplex)))
+          assertEquals(
+            outcome,
+            OperationResult.Unsupported(Some(ConnectionState.Inbound(DataFlow.Duplex)))
+          )
+          assertEquals(woken, Some(ConnectionState.Inbound(DataFlow.Duplex)))
+          assertEquals(open, None)
+          allValid(changes)
         case Left(error) => fail(error.message)
       }

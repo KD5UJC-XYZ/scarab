@@ -163,7 +163,7 @@ class PipelineBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
       pair <- Bearer.inMemory[IO](256)
       (theirs, ours) = pair
       result <- Handle
-        .allow[NetworkError](NodeToNodeServer.accept(theirs, magic, handlers).void)
+        .allow[NetworkError](Served.accept(theirs, magic, handlers).void)
         .rescue(_ => IO.unit)
         .background
         .use { _ =>

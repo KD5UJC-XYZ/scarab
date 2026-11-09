@@ -194,25 +194,6 @@ object ConnectionState:
       case (Terminating, Event.Released)                                    => Right(Terminated)
       case (s, e)                                                           => Left(Illegal(s, e))
 
-  /** The events that close a connection in `state`. With `timeWait` it is an orderly end (released
-    * by its owner, or a handshake that agreed no version): the reference's demotions to idle, then
-    * `Commit`, which enters `Terminating` (time-wait); a refused handshake enters it directly.
-    * Without, it is a failure, which goes to `Terminated` at once. A connection that is not live
-    * needs none.
-    */
-  def closing(state: ConnectionState, timeWait: Boolean): Vector[Event] =
-    import Event.*
-    state match
-      case Terminating | Terminated     => Vector.empty
-      case ReservedOutbound             => Vector(Fail)
-      case _ if !timeWait               => Vector(Fail)
-      case Unnegotiated(_)              => Vector(HandshakeFailed)
-      case OutboundUni | OutboundDup(_) => Vector(DemotedToColdLocal, Commit)
-      case OutboundIdle(_)              => Vector(Commit)
-      case InboundIdle(_)               => Vector(Commit)
-      case Inbound(_)                   => Vector(DemotedToColdRemote, Commit)
-      case Duplex                       => Vector(DemotedToColdLocal, DemotedToColdRemote, Commit)
-
   /** Apply `events` in order. */
   def through(state: ConnectionState, events: Vector[Event]): Either[Illegal, ConnectionState] =
     events.foldLeft[Either[Illegal, ConnectionState]](Right(state))((s, e) =>
@@ -265,6 +246,58 @@ object ConnectionState:
       case (_, None)                                                      => true
       case (Some(Terminating), Some(Unnegotiated(In)))                    => true
       case _                                                              => false
+
+  /** `isInboundConn` (`ConnectionManager/Core.hs:259-269`): the connections pruning chooses from,
+    * in agreement with the inbound counter of [[Counters.ofState]].
+    */
+  def isInboundConn(state: ConnectionState): Boolean = state match
+    case Unnegotiated(provenance)             => provenance == Provenance.Inbound
+    case InboundIdle(_) | Inbound(_) | Duplex => true
+    case ReservedOutbound | OutboundUni | OutboundDup(_) | OutboundIdle(_) | Terminating |
+        Terminated =>
+      false
+
+  /** The reference's `ConnectionType` (`ConnectionManager/Types.hs:239-261`), what a prune policy
+    * sees of a connection; its derived order is the constructor order, then the fields.
+    */
+  enum ConnectionType:
+    case UnnegotiatedConn(provenance: Provenance)
+    case InboundIdleConn(flow: DataFlow)
+    case OutboundIdleConn(flow: DataFlow)
+    case NegotiatedConn(provenance: Provenance, flow: DataFlow)
+    case DuplexConn
+
+    /** `isUpstream` of the reference's `prunePolicy` (`Diffusion/Policies.hs:296-305`): the
+      * connections the outbound side opened or uses, which are pruned last.
+      */
+    def upstream: Boolean = this match
+      case UnnegotiatedConn(p)  => p == Provenance.Outbound
+      case InboundIdleConn(_)   => false
+      case OutboundIdleConn(_)  => true
+      case NegotiatedConn(p, _) => p == Provenance.Outbound
+      case DuplexConn           => true
+
+  object ConnectionType:
+    /** The derived `Ord` of the reference's type. */
+    given Ordering[ConnectionType] = Ordering.by {
+      case UnnegotiatedConn(p)  => (0, p.ordinal, 0)
+      case InboundIdleConn(f)   => (1, f.ordinal, 0)
+      case OutboundIdleConn(f)  => (2, f.ordinal, 0)
+      case NegotiatedConn(p, f) => (3, p.ordinal, f.ordinal)
+      case DuplexConn           => (4, 0, 0)
+    }
+
+    /** `getConnType` (`ConnectionManager/Core.hs:242-253`). */
+    def of(state: ConnectionState): Option[ConnectionType] = state match
+      case ReservedOutbound   => None
+      case Unnegotiated(p)    => Some(UnnegotiatedConn(p))
+      case OutboundUni        => Some(NegotiatedConn(Provenance.Outbound, DataFlow.Unidirectional))
+      case OutboundDup(_)     => Some(NegotiatedConn(Provenance.Outbound, DataFlow.Duplex))
+      case OutboundIdle(flow) => Some(OutboundIdleConn(flow))
+      case InboundIdle(flow)  => Some(InboundIdleConn(flow))
+      case Inbound(flow)      => Some(NegotiatedConn(Provenance.Inbound, flow))
+      case Duplex             => Some(DuplexConn)
+      case Terminating | Terminated => None
 
   /** The reference's `ConnectionManagerCounters` (`ConnectionManager/Types.hs:694-703`), counted
     * per state as `connectionStateToCounters` does (`ConnectionManager/Core.hs:173-212`): a

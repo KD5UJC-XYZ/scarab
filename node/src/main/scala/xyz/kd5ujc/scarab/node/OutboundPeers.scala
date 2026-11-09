@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.consensus.ChainSelection
 import xyz.kd5ujc.scarab.ledger.{GenesisInternalProblem, NodeError, PeerError, ValidationError}
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.network.selection.*
-import xyz.kd5ujc.scarab.protocol.{ConnectionState, NtNHeader}
+import xyz.kd5ujc.scarab.protocol.NtNHeader
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
 /** How a peer's address becomes a bearer: the TCP connection in the node, an in-memory pair in the
@@ -97,7 +97,9 @@ final class OutboundPeers[F[_]: Async, A] private (
           F.uncancelable { poll =>
             for
               ready <- Deferred[F, Either[EstablishmentError, PeerStateActions.Connection[F]]]
-              acquiring <- supervisor.supervise(connection(peer, remote, mode, generation, ready))
+              acquiring <- supervisor.supervise(
+                connection(peer, remote, mode, provenance, generation, ready)
+              )
               result <- poll(ready.get).onCancel(acquiring.cancel)
             yield result
           }
@@ -106,14 +108,103 @@ final class OutboundPeers[F[_]: Async, A] private (
       // counts nothing against the peer for it ([[PeerGovernor]], issue 567)
       .handleErrorWith(cause => F.pure(Left(EstablishmentError.Defect(cause))))
 
+  /** The outbound use of a connection to `peer` (`acquireOutboundConnection`, `Core.hs` 1250-1755):
+    * the peer's duplex connection reused, or one dialled by a fiber of its own under the outer
+    * supervisor, which owns its transport as the reference's connection thread does and keeps it
+    * while the peer still uses it after we let go. Its release ends only our use: after a clean
+    * close the manager decides about the connection ([[Connection.releaseOutbound]]); otherwise the
+    * shared mux is stopped, as the reference stops it on a protocol failure or a close timeout
+    * (`PeerStateActions.hs` 1079-1104).
+    */
+  private def outboundUse(
+      peer: A,
+      remote: SocketAddress[IpAddress],
+      mode: DiffusionMode,
+      provenance: Provenance,
+      demoted: Ref[F, Boolean]
+  )(using Raise[F, PeerError]): Resource[F, (Connection[F], Negotiated[F])] =
+    Resource.makeFull[F, (Connection[F], Negotiated[F])] { poll =>
+      Deferred[F, Either[Fault, (Connection[F], Negotiated[F])]].flatMap { ready =>
+        supervisor
+          .supervise(dial(peer, remote, mode, provenance, ready))
+          // waiting for the dial, we own it: a cancelled establishment leaves no connection
+          .flatMap(thread => poll(ready.get).onCancel(thread.cancel))
+          .flatMap(Fault.land(_))
+      }
+    } { (connection, handle) =>
+      // the stopped connection is closed by its owner before our use of it counts as released
+      demoted.get.flatMap(clean =>
+        (handle.mux.abort(NetworkError.BearerClosed(NetworkError.Closure.Aborted)) *>
+          connection.closed).unlessA(clean)
+      )
+    }
+
+  /** The connection thread of an outbound acquisition: the reused connection is handed over at
+    * once; a reservation is connected (`Connected` as soon as the transport is up, before the
+    * handshake, `Core.hs` 1540-1547), negotiated and held until its mux closes or the manager ends
+    * it. It runs in an error scope of its own and hands its fault to the waiting establishment.
+    */
+  private def dial(
+      peer: A,
+      remote: SocketAddress[IpAddress],
+      mode: DiffusionMode,
+      provenance: Provenance,
+      ready: Deferred[F, Either[Fault, (Connection[F], Negotiated[F])]]
+  ): F[Unit] =
+    Fault
+      .fiber {
+        given Raise[F, ConnectionError] =
+          Peer.contramapped[F, PeerError, ConnectionError](summon)(e =>
+            PeerError.Unavailable(PeerError.Unavailability.Connection(e))
+          )
+        manager.acquire(remote, provenance).use {
+          case Acquired.Reused(connection, handle) =>
+            ready.complete(Right((connection, handle))).void
+          case Acquired.Reserved(connection) =>
+            // a defect of the transport's own release stops the node, as on any connection
+            ConnectionResources
+              .retainReleaseDefects(transport.bearer(peer, remote))(hot.fatal)
+              .use { bearer =>
+                bearer.connectionId
+                  .fold(F.pure(Option.empty[ConnectionId.Endpoint]))(_.map(_.toOption.map(_.local)))
+                  .flatMap(connection.connected) *>
+                  NodeToNode
+                    .negotiate[F, NtNHeader](
+                      bearer,
+                      hot.magic,
+                      connection,
+                      hot.network,
+                      serve = mode match
+                        case DiffusionMode.InitiatorOnly         => None
+                        case DiffusionMode.InitiatorAndResponder => hot.serve
+                    )
+                    .use { handle =>
+                      ready.complete(Right((connection, handle))) *>
+                        F.race(handle.mux.closed, connection.stopped)
+                          .flatMap(end =>
+                            connection.close(end.fold(ConnectionEnd.fromNetwork, identity))
+                          )
+                          .guarantee(
+                            handle.mux
+                              .abort(NetworkError.BearerClosed(NetworkError.Closure.Aborted))
+                          )
+                    }
+              }
+        }
+      }
+      .flatMap(_.fold(fault => ready.complete(Left(fault)).void, F.pure))
+
   /** The life of one connection: opened, registered, held until the governor lets go of it or the
     * bearer closes, and released in every case. It runs in a fiber of its own, in an error scope of
-    * its own: what it meets is a value ([[Fault]]) that it reports, never an exception.
+    * its own: what it meets is a value ([[Fault]]) that it reports, never an exception. The peer is
+    * cold once the outbound side holds the connection no more (`waitForOutboundDemotion`, `Core.hs`
+    * 438-457).
     */
   private def connection(
       peer: A,
       remote: SocketAddress[IpAddress],
       mode: DiffusionMode,
+      provenance: Provenance,
       generation: BigInt,
       ready: Deferred[F, Either[EstablishmentError, PeerStateActions.Connection[F]]]
   ): F[Unit] =
@@ -121,8 +212,10 @@ final class OutboundPeers[F[_]: Async, A] private (
       Deferred[F, Unit],
       Deferred[F, Unit],
       Ref.of[F, Option[Link[F]]](None),
-      Ref.of[F, Vector[Fatal.Defect]](Vector.empty)
-    ).tupled.flatMap { (release, gone, linked, releaseDefects) =>
+      Ref.of[F, Vector[Fatal.Defect]](Vector.empty),
+      Ref.of[F, Boolean](false),
+      Ref.of[F, F[Unit]](F.unit)
+    ).tupled.flatMap { (release, gone, linked, releaseDefects, demoted, demotion) =>
       def releaseOwnership: F[Unit] =
         table.update { current =>
           if current.get(peer).exists(_.release eq release) then current - peer else current
@@ -159,37 +252,21 @@ final class OutboundPeers[F[_]: Async, A] private (
         }
 
       val body: Raise[F, PeerError] ?=> F[Option[EstablishmentError]] =
-        given Raise[F, ConnectionError] =
-          Peer.contramapped[F, PeerError, ConnectionError](summon)(e =>
-            PeerError.Unavailable(PeerError.Unavailability.Connection(e))
-          )
         val open: Resource[
           F,
           (Connection[F], WarmConnection[F, NtNHeader, SessionEnd], Supervisor[F])
         ] =
           for
-            slot <- manager.outbound(remote, alongsideInbound = true)
-            bearer <- transport.bearer(peer, remote)
-            // `Connected` as soon as the transport is up, before the handshake (`Core.hs`
-            // 1540-1547): a handshake that agrees no version then holds the slot's time-wait
-            _ <- Resource.eval(slot.connected)
-            warm <- NodeToNode.warmOverWithResults[F, NtNHeader, SessionEnd](
-              bearer,
-              hot.magic,
+            used <- outboundUse(peer, remote, mode, provenance, demoted)
+            (slot, handle) = used
+            _ <- Resource.eval(demotion.set(slot.awaitOutboundDemotion))
+            warm <- NodeToNode.attach[F, NtNHeader, SessionEnd](
+              handle,
               NtNHeader.codec,
               SessionEnd.Returned,
-              hot.network,
-              serve = mode match
-                case DiffusionMode.InitiatorOnly         => None
-                case DiffusionMode.InitiatorAndResponder => hot.serve
-            )(using summon, ConnectionManager.recordingRefusal(slot))
-            children <- Supervisor[F](await = false)
-            _ <- Resource.eval(
-              slot.negotiated(
-                if warm.duplex then ConnectionState.DataFlow.Duplex
-                else ConnectionState.DataFlow.Unidirectional
-              )
+              hot.network
             )
+            children <- Supervisor[F](await = false)
           yield (slot, warm, children)
 
         ConnectionResources
@@ -210,7 +287,8 @@ final class OutboundPeers[F[_]: Async, A] private (
                 identity,
                 terminal,
                 transitions,
-                children
+                children,
+                demoted
               )
               handle = PeerStateActions.Connection(
                 identity,
@@ -242,6 +320,8 @@ final class OutboundPeers[F[_]: Async, A] private (
                     }).as(None)
             yield result
           }
+          // cold once the outbound side holds the connection no more
+          .flatTap(_ => demotion.get.flatten)
 
       def failed(error: EstablishmentError): F[Unit] =
         ready.tryGet.flatMap {
@@ -910,10 +990,10 @@ final class OutboundPeers[F[_]: Async, A] private (
           F.timeoutTo(stopApplications.map(Some(_)), config.closeTimeout, F.pure(None)).flatMap {
             case Some(ProtocolResults.LastToFinish.SomeErrored(errors)) =>
               abortAction(link, PeerActionError.ApplicationFailures(errors)).map(Left(_))
-            // every application returned: the reference's idle release, which holds the
-            // time-wait ([[ConnectionManager.holdsTimeWait]])
+            // every application returned: `releaseOutboundConnection` (`PeerStateActions.hs`
+            // 1094-1105); the connection stays while the peer uses it
             case Some(ProtocolResults.LastToFinish.AllSucceeded(_)) =>
-              link.connection.close(ConnectionEnd.Released) *>
+              link.demoted.set(true) *> link.connection.releaseOutbound *>
                 link.release.complete(()).void *> completed()
             case None =>
               val error = NetworkError.Timeout(Protocols.KeepAlive, "close")
@@ -1039,12 +1119,13 @@ object OutboundPeers:
   /** A connection of ours, and what its owner can do to it.
     *
     * @param connection
-    *   The manager's slot, where a clean close records its end
-    *   ([[ConnectionManager.holdsTimeWait]]).
+    *   The manager's connection, which a clean close releases from the outbound side.
     * @param release
     *   Completed to let go of the connection.
     * @param gone
-    *   Completed once the connection has been released everywhere.
+    *   Completed once the outbound side holds the connection no more.
+    * @param demoted
+    *   Set once a clean close released the outbound use; letting go otherwise stops the mux.
     */
   private[node] final class Link[F[_]](
       val connection: Connection[F],
@@ -1056,7 +1137,8 @@ object OutboundPeers:
       val identity: BigInt,
       val terminal: Deferred[F, SessionEnd],
       val transitions: Mutex[F],
-      val children: Supervisor[F]
+      val children: Supervisor[F],
+      val demoted: Ref[F, Boolean]
   ):
     def transition[B](body: F[B])(using F: Async[F]): F[B] =
       transitions.lock.surround(F.uncancelable(_ => body))

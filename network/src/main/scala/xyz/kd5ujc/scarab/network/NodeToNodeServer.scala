@@ -175,27 +175,57 @@ object NodeToNodeServer:
   private[network] object Responders:
     def create[F[_]: Async]: F[Responders[F]] = SignallingRef.of[F, Int](0).map(new Responders(_))
 
-  /** The idle timer of the reference's inbound governor: end the connection with
-    * [[NetworkError.ProtocolIdleTimeout]] when no responder runs for `after`, first after the
-    * handshake and, when `rearm`, again each time the last running responder ends
-    * (`WaitIdleRemote`, `InboundGovernor.hs` and `ConnectionManager/Core.hs`, ouroboros-network
-    * `2fb69829`). A connection that our own clients use is not released when its remote side goes
-    * idle (the reference keeps a duplex connection in outbound use), so it is armed once only.
+  /** What the inbound governor knows of the peer's side of a connection (`RemoteState`,
+    * `InboundGovernor/State.hs:218-256`): idle since `since` with its timer running, using the
+    * connection, or idle and kept because our outbound side uses it.
     */
-  private[network] def idleWatch[F[_]: Async](
+  private enum RemoteState:
+    case Idle(since: FiniteDuration)
+    case Warm
+    case Cold
+
+  /** The inbound governor's handling of one duplex or accepted connection (`InboundGovernor.hs`
+    * 329-335, 463-481, 499-570, and its mux tracer 629-708, ouroboros-network `2fb69829`): the
+    * first responder that starts is `AwakeRemote` (`promotedToWarmRemote`), the last one that ends
+    * `WaitIdleRemote` (`demotedToColdRemote`, which arms the idle timer again), and a timer that
+    * expires is `CommitRemote` (`releaseInbound`): the manager closes the connection, or keeps it
+    * because our outbound side uses it, and the peer's next responder wakes it up again. It runs on
+    * every connection whose responders the peer can start, the ones we dial included.
+    */
+  private[network] def remoteActivity[F[_]: Async](
       mux: Mux[F],
       responders: Responders[F],
-      after: FiniteDuration,
-      rearm: Boolean
+      idleTimeout: FiniteDuration,
+      connection: Connection[F]
   ): Resource[F, Unit] =
     val F = Async[F]
-    // whether the window passed with no responder started
-    val window: F[Boolean] = F.race(responders.awaitBusy, F.sleep(after)).map(_.isRight)
-    val watch: F[Unit] = F.tailRecM(()) { _ =>
-      window.flatMap {
-        case true           => mux.abort(NetworkError.ProtocolIdleTimeout(after)).as(Right(()))
-        case false if rearm => responders.awaitIdle.as(Left(()))
-        case false          => F.pure(Right(()))
+    def awake: F[Either[RemoteState, Unit]] =
+      connection.promotedToWarmRemote.as(Left(RemoteState.Warm))
+    val watch: F[Unit] = F.monotonic.flatMap { start =>
+      F.tailRecM[RemoteState, Unit](RemoteState.Idle(start)) {
+        case RemoteState.Idle(since) =>
+          F.monotonic.flatMap { now =>
+            val left = (since + idleTimeout - now).max(Duration.Zero)
+            F.race(responders.awaitBusy, F.sleep(left)).flatMap {
+              case Left(_) => awake
+              case Right(_) =>
+                connection.releaseInbound.flatMap {
+                  case OperationResult.Success(RemoteRelease.Commit) => F.pure(Right(()))
+                  case OperationResult.Success(RemoteRelease.Keep) =>
+                    F.pure(Left(RemoteState.Cold))
+                  // the reference leaves the expired timer as it is, and commits again
+                  case OperationResult.Unsupported(Some(state)) if state.isLive =>
+                    F.pure(Left(RemoteState.Idle(since)))
+                  case OperationResult.Unsupported(_) => F.pure(Right(()))
+                }
+            }
+          }
+        case RemoteState.Warm =>
+          responders.awaitIdle *> connection.demotedToColdRemote.flatMap {
+            case OperationResult.Success(_) => F.monotonic.map(now => Left(RemoteState.Idle(now)))
+            case OperationResult.Unsupported(_) => F.pure(Right(()))
+          }
+        case RemoteState.Cold => responders.awaitBusy *> awake
       }
     }
     Fibers
@@ -204,25 +234,21 @@ object NodeToNodeServer:
       .background
       .void
 
-  /** An inbound connection: negotiate, serve, and return the reason it ended. `negotiated` runs
-    * once the handshake succeeded and may use the multiplexer (a duplex connection also carries our
-    * clients, see [[Mux.Config.duplex]]).
-    *
-    * @param ownClients
-    *   whether our own clients run on the connection once negotiated; the protocol-idle timer is
-    *   then armed once only ([[idleWatch]])
+  /** An inbound connection: negotiate, publish it to the manager, serve, and return the reason it
+    * ended: the peer or a failure closed it, or the manager ended it ([[Connection.stopped]]).
+    * `negotiated` runs once the handshake succeeded and may use the multiplexer.
     */
   def accept[F[_]: Async, P](
       bearer: Bearer[F],
       magic: Long,
       handlers: ServerHandlers[F, P],
+      connection: Connection[F],
       settings: Settings = Settings(),
       negotiated: (HandshakeClient.Agreed, Mux[F]) => Resource[F, Unit] = (_, _: Mux[F]) =>
-        Resource.unit[F],
-      ownClients: HandshakeClient.Agreed => Boolean = _ => false
+        Resource.unit[F]
   )(using Raise[F, NetworkError]): F[ConnectionEnd] =
     val config = settings.mux.copy(role = Mux.Role.Responder, duplex = settings.duplex)
-    Mux.handshakeResource(bearer, Protocol, config).use { mux =>
+    val served = Mux.handshakeResource(bearer, Protocol, config).use { mux =>
       for
         agreed <- mux
           .channel(Protocols.Handshake)
@@ -236,7 +262,7 @@ object NodeToNodeServer:
                 settings.maxVersion
               ),
               ProtocolDeadline.After(settings.handshakeTimeout)
-            )
+            )(using summon, ConnectionManager.recordingRefusal(connection))
           )
         responders <- Responders.create[F]
         reason <- (
@@ -247,15 +273,30 @@ object NodeToNodeServer:
             agreed.data.peerSharing,
             initiators = !agreed.data.initiatorOnly,
             responders = Some(responders)
-          ) *> idleWatch(
-            mux,
-            responders,
-            settings.protocolIdleTimeout,
-            rearm = !ownClients(agreed)
-          ) *> negotiated(agreed, mux)
-        ).surround(mux.closed)
+          ) *> published(connection, Negotiated(mux, agreed)) *>
+            negotiated(agreed, mux) *>
+            remoteActivity(mux, responders, settings.protocolIdleTimeout, connection)
+        ).surround(Async[F].race(mux.closed, connection.stopped))
         result <- reason match
-          case defect: NetworkError.Defect => defect.raise[F, ConnectionEnd]
-          case other                       => Async[F].pure(ConnectionEnd.fromNetwork(other))
+          case Left(defect: NetworkError.Defect) => defect.raise[F, ConnectionEnd]
+          case Left(other)                       => Async[F].pure(ConnectionEnd.fromNetwork(other))
+          case Right(end)                        => Async[F].pure(end)
       yield result
     }
+    // a connection the manager ends while it negotiates (a prune) ends there
+    Async[F].race(connection.stopped, served).map(_.merge)
+
+  /** Publish the negotiated `handle` with its state; a connection the manager refuses now is
+    * stopped (the reference's handler fails, and its mux with it).
+    */
+  private[network] def published[F[_]: Async](
+      connection: Connection[F],
+      handle: Negotiated[F]
+  ): Resource[F, Unit] =
+    Resource.eval(
+      Handle
+        .allow[ConnectionError](connection.negotiated(handle))
+        .rescue(error =>
+          handle.mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
+        )
+    )

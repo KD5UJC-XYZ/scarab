@@ -118,9 +118,7 @@ class PraosHeaderValidationSuite extends FailsOnUncaught:
       (theirs, ours) = bearers
       result <- Handle
         .allow[NetworkError](
-          NodeToNodeServer
-            .accept(theirs, 42, ServerHandlers(NtNHeader.codec, source, blocks, sink))
-            .void
+          Served.accept(theirs, 42, ServerHandlers(NtNHeader.codec, source, blocks, sink)).void
         )
         .rescue(_ => IO.unit)
         .background

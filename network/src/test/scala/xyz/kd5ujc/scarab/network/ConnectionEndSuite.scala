@@ -38,7 +38,7 @@ class ConnectionEndSuite extends CatsEffectSuite:
       )
       _ <- Handle
         .allow[ConnectionError] {
-          manager.inbound(SocketAddress(ip"10.1.2.3", port"3001")).use { connection =>
+          manager.include(SocketAddress(ip"10.1.2.3", port"3001"), None).use { connection =>
             connection
               .close(ConnectionEnd.Failed(failure)) *> connection.close(ConnectionEnd.Released)
           }

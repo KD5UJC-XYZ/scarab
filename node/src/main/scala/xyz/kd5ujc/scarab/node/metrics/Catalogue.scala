@@ -50,12 +50,11 @@ enum PhaseLabel derives LabelValue:
 
 /** What the connection manager did ([[xyz.kd5ujc.scarab.network.ConnectionEvent]]). */
 enum ConnectionEventLabel derives LabelValue:
-  case Opened, Changed, Refused, Closed
+  case Opened, Changed, Refused, Closed, Pruned
 
 /** What the inbound governor did on a connection ([[xyz.kd5ujc.scarab.node.InboundEvent]]). */
 enum InboundEventLabel derives LabelValue:
-  case Accepted, Duplex, Unidirectional, Following, SessionEnded, SessionReturned, SessionDropped,
-    CachedBlockRejected, Closed, Refused
+  case Accepted, Duplex, Unidirectional, Closed, Refused
 
 /** What the peer governor did to a peer, or learnt of it
   * ([[xyz.kd5ujc.scarab.network.selection.Trace]]).
