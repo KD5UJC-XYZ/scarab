@@ -126,7 +126,8 @@ def pool_environment(args):
     if getattr(args, "reference_debug", False):  # issue 609: what the pools did with the Scala node's chain
         config = read_json(args.name, f"{ENV}/configuration.yaml")
         for namespace in ("ChainSync.Client", "BlockFetch.Client", "BlockFetch.Decision", "Net.PeerSelection",
-                          "Net.ConnectionManager.Remote", "Net.InboundGovernor.Remote", "ChainDB.AddBlockEvent"):
+                          "Net.ConnectionManager.Remote", "Net.InboundGovernor.Remote", "ChainDB.AddBlockEvent",
+                          "Forge.Loop"):
             config.setdefault("TraceOptions", {}).setdefault(namespace, {})["severity"] = "Debug"
         put_file(args.name, f"{ENV}/configuration.yaml", json.dumps(config, indent=2))
     put_file(args.name, f"{ENV}/shelley-genesis.json", json.dumps(shelley, indent=2))
