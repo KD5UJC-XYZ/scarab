@@ -33,7 +33,7 @@ interface".
 
 This supersedes the struck-through sentence of the decision, "Where Scala allows a real improvement
 … it is taken and the reason is written down". That wording was applied as permission to deviate,
-which was never intended. Behaviour is mirrored exactly. Agents may not deviate from the reference
+which was never intended. ~~Behaviour is mirrored exactly.~~ Behaviour is mirrored exactly, except for the class of [the 2026-11-09 amendment](#amendment-2026-11-09-a-bug-of-the-reference-is-not-reproduced). Agents may not deviate from the reference
 on their own accord: a deviation, even for a measured performance benefit or another strong reason,
 needs the owner's explicit approval first, requested with clearly defined trade-offs and reasoning.
 Only after that approval is it implemented, with a written reason that records the approval.
@@ -45,10 +45,25 @@ Networking is mirrored in structure and behaviour too
 
 ## Amendment (2026-11-09): a bug of the reference is not reproduced
 
-The owner's standing rule, restated on [#474](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849): Scarab never reproduces a bug of the
-reference. Where the reference wraps, overflows, crashes or hangs on an edge case, or produces a
-reply that cannot be encoded, Scarab does the correct thing instead, provided interoperability holds:
-the same chain-validity verdicts, the same wire bytes for every value the reference produces, and the
-same meaning of configuration. Such an improvement is approved by this rule and needs no further
-request. It is still listed in its PR's deviations table, with the rule as its approval. Every other
-deviation still needs the approval the 2026-10-25 amendment describes.
+The owner's standing rule, restated on [#474](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849), gives standing approval to one
+class of deviation: correcting a demonstrated **overflow, underflow or wrap, an edge-case crash or
+hang, or a reply that cannot be encoded** in the reference. Scarab does not reproduce such a bug:
+
+- **An out-of-range value** is never wrapped or truncated:
+  - Where it decides a block's or a transaction's validity, or the ledger state, Scarab computes
+    exactly, and gives the no-verdict outcome ([#573](https://github.com/KD5UJC-XYZ/scarab/issues/573)) when the result does not fit the
+    reference's type.
+  - In configuration, genesis or any other input, it is refused with a typed error naming the
+    field and its range.
+  - A reply field that cannot hold a value is saturated at its maximum, so that the reply always
+    encodes.
+- **An edge-case crash or hang** becomes a typed outcome.
+- **Everywhere else, interoperability holds as before:** the same chain-validity verdicts, the same
+  wire bytes for every value the reference produces, and the same meaning of configuration. Only on
+  the inputs where the reference's own result comes from the bug does this rule take precedence:
+  Scarab withholds a verdict, or refuses the input, instead of reproducing a wrapped one.
+- **Records:** every such site is listed, with the reason, in the compatibility register, and is a
+  row of its PR's deviations table with this amendment as its approval.
+
+Performance, style, design preferences and any other behaviour change are not in this class. They
+still need the approval the 2026-10-25 amendment describes,.
