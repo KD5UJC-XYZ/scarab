@@ -844,25 +844,36 @@ class RestartScenarioTest(unittest.TestCase):
         self.assertIn("without closing its database", stop_problem(3.0, False))
 
     def test_the_stop_writes_no_snapshot(self):
-        from devnet.scenarios.restart import written_problem
-        self.assertIsNone(written_problem(["snapshot-1.bin"], ["snapshot-1.bin"]))
-        # a snapshot pruned while the node ran is not one the stop wrote
-        self.assertIsNone(written_problem(["snapshot-1.bin", "snapshot-2.bin"], ["snapshot-2.bin"]))
-        added = written_problem(["snapshot-2.bin"], ["snapshot-2.bin", "snapshot-3.bin"])
-        self.assertIn("the stop wrote snapshot-3.bin", added)
+        from devnet.scenarios.restart import instant, written_problem
+        signal = instant("2026-11-09T12:00:00Z")
 
-    def test_the_restart_must_replay_from_the_newest_periodic_snapshot(self):
+        def written(file, at, millis):
+            return {"event": "snapshotWritten", "file": file, "at": at, "millis": millis}
+        # logged before the signal
+        self.assertIsNone(written_problem({"snapshot-1.bin": signal + 5},
+                                          [written("snapshot-1.bin", "2026-11-09T11:59:59.5Z", 100)], signal))
+        # renamed and logged after the signal, begun before it
+        self.assertIsNone(written_problem({"snapshot-2.bin": signal + 1},
+                                          [written("snapshot-2.bin", "2026-11-09T12:00:01Z", 3000)], signal))
+        # cancelled after its rename, before its event: last written before the signal
+        self.assertIsNone(written_problem({"snapshot-3.bin": signal - 1}, [], signal))
+        begun_after = written_problem({"snapshot-4.bin": signal + 2},
+                                      [written("snapshot-4.bin", "2026-11-09T12:00:02Z", 500)], signal)
+        self.assertIn("the stop wrote snapshot-4.bin", begun_after)
+        self.assertIn("the stop wrote snapshot-5.bin", written_problem({"snapshot-5.bin": signal + 1}, [], signal))
+
+    def test_the_restart_must_replay_from_the_newest_snapshot_on_disk(self):
         from devnet.scenarios.restart import restore_problem
         anchor, older = {"slot": 480, "blockNo": 24, "hash": "aa"}, {"slot": 2, "blockNo": 1, "hash": "dd"}
         immutable = {"slot": 690, "blockNo": 34, "hash": "bb"}
-        newest = {"event": "snapshotWritten", "file": "snapshot-480.bin", "anchor": anchor}
+        newest = "snapshot-480.bin"
         closed = {"event": "closedDB", "immutableTip": immutable, "tip": None}
         replay = [{"event": "snapshotRestored", "file": "snapshot-480.bin", "anchor": anchor},
                   {"event": "replayStarted", "from": anchor, "immutableTip": immutable},
                   {"event": "replayFinished", "tip": immutable, "replayed": 10}]
         self.assertIsNone(restore_problem(replay, newest, closed))
         self.assertIn("did not restore", restore_problem([{"event": "extended"}], newest, closed))
-        self.assertIn("wrote no periodic snapshot", restore_problem(replay, None, closed))
+        self.assertIn("left no snapshot", restore_problem(replay, None, closed))
         restored_older = [dict(replay[0], file="snapshot-2.bin", anchor=older)] + replay[1:]
         self.assertIn("not the newest snapshot", restore_problem(restored_older, newest, closed))
         from_elsewhere = [replay[0], dict(replay[1], **{"from": older}), replay[2]]

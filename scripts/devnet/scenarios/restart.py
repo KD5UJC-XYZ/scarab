@@ -2,6 +2,7 @@
 """The `restart` scenario: a graceful stop ends the JVM promptly and writes no snapshot, and the next start
 replays from the newest periodic snapshot, as the reference does (ouroboros-consensus 82ecba32 `closeDB`,
 Storage/ChainDB/Impl.hs:408-436; `initialize`, Storage/LedgerDB/API.hs:599-645)."""
+import datetime
 import json
 import subprocess
 import sys
@@ -28,11 +29,26 @@ def stop_problem(elapsed, closed):
     return None
 
 
-def written_problem(before, after):
-    """Why the stop wrote a snapshot, else None: `before` and `after` are the snapshot files before and after it."""
-    added = sorted(set(after) - set(before))
-    if added:
-        return f"the stop wrote {', '.join(added)}: only the snapshot policy writes snapshots"
+def instant(text):
+    """Seconds since the epoch of an event's `at` (ISO 8601 in UTC)."""
+    return datetime.datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+
+
+def written_problem(files, written, signal):
+    """Why the stop wrote a snapshot, else None.
+
+    `files` maps each snapshot file after the stop to its modification time, `written` holds the run's
+    `snapshotWritten` events and `signal` is when the stop was signalled (seconds since the epoch). A
+    snapshot the policy wrote began before the signal: its `snapshotWritten` says when the write began
+    (`at` less `millis`), also when it is logged after the signal. A write the stop cancelled after its
+    rename logs nothing; its file was last written before the signal unless the write was still under way
+    at the signal and cancelled in the moment between its rename and its event, which this check cannot
+    tell from a write of the stop.
+    """
+    began = {e["file"] for e in written if instant(e["at"]) - e["millis"] / 1000 < signal}
+    late = sorted(name for name, modified in files.items() if name not in began and modified >= signal)
+    if late:
+        return f"the stop wrote {', '.join(late)}: only the snapshot policy writes snapshots"
     return None
 
 
@@ -41,17 +57,18 @@ def first(events, name):
 
 
 def restore_problem(events, newest, closed):
-    """Why the second start did not replay from the first one's newest snapshot to its immutable tip, else None.
+    """Why the second start did not replay from the newest snapshot to the first run's immutable tip, else None.
 
-    `newest` is the first run's last `snapshotWritten` and `closed` its `closedDB`.
+    `newest` is the newest snapshot file on disk after the first stop (a write the stop cancelled after its
+    rename is complete, and the start restores it like any other) and `closed` the first run's `closedDB`.
     """
     if newest is None:
-        return "the first run wrote no periodic snapshot"
+        return "the first run left no snapshot"
     restored, started, finished = (first(events, n) for n in ("snapshotRestored", "replayStarted", "replayFinished"))
     if restored is None:
         return "the restart did not restore a snapshot"
-    if restored["file"] != newest["file"]:
-        return f"the restart restored {restored['file']}, not the newest snapshot {newest['file']}"
+    if restored["file"] != newest:
+        return f"the restart restored {restored['file']}, not the newest snapshot {newest}"
     if started is None or started["from"] != restored["anchor"]:
         return f"the replay did not start from the restored snapshot: {started}"
     if closed is None or finished is None or finished["tip"] != closed["immutableTip"]:
@@ -123,8 +140,9 @@ def restart(args):
             process.wait()
             break
         time.sleep(args.seconds)
-        files_before = [f.name for f in _snapshot_files(root)]
+        signal = time.time()
         elapsed = _stop(args.name, process)
+        files = {f.name: f.stat().st_mtime for f in _snapshot_files(root)}
         events, other = read_log(root / "follower.jsonl")
         fresh = events[before:]
         # Match follower_problem's diagnostic policy: read_log already excludes expected SLF4J
@@ -139,12 +157,12 @@ def restart(args):
         )
         stops.append(round(elapsed, 1))
         closing = [e for e in fresh if e["event"] == "closedDB"]
-        for problem in (stop_problem(elapsed, bool(closing)),
-                        written_problem(files_before, [f.name for f in _snapshot_files(root)])):
+        written = [e for e in fresh if e["event"] == "snapshotWritten"]
+        for problem in (stop_problem(elapsed, bool(closing)), written_problem(files, written, signal)):
             if problem:
                 failures.append(f"round {round_}: {problem}")
         if round_ == 1:
-            newest = next((e for e in reversed(fresh) if e["event"] == "snapshotWritten"), None)
+            newest = max(files, default=None)
             closed = closing[-1] if closing else None
         else:
             problem = restore_problem(fresh, newest, closed)
@@ -154,6 +172,6 @@ def restart(args):
     problem = format_problem([f.read_bytes()[:8] for f in _snapshot_files(root)])
     if problem:
         failures.append(problem)
-    print(json.dumps({"stopSeconds": stops, "restored": newest and newest["file"], "replayed": replayed,
+    print(json.dumps({"stopSeconds": stops, "restored": newest, "replayed": replayed,
                       "failed": failures}), flush=True)
     sys.exit(1 if failures else 0)

@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """Restart gate outcomes must retain failures even after successful progress and snapshots."""
+import datetime
 import io
 import json
 import pathlib
 import sys
 import tempfile
+import time
 import unittest
 from contextlib import redirect_stdout
 from types import SimpleNamespace
@@ -16,28 +18,41 @@ from devnet.scenarios import restart
 
 
 ANCHOR = {"slot": 480, "blockNo": 24, "hash": "aa" * 32}
+NEWER = {"slot": 610, "blockNo": 30, "hash": "dd" * 32}
 IMMUTABLE_TIP = {"slot": 690, "blockNo": 34, "hash": "bb" * 32}
 TIP = {"slot": 790, "blockNo": 39, "hash": "cc" * 32}
+LONG_AGO = "2026-01-01T00:00:00Z"
 
 
-def round_events(round_):
-    """A graceful stop of each run, a periodic snapshot in the first and a replay from it in the second."""
+def iso(seconds):
+    return datetime.datetime.fromtimestamp(seconds, datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def written(file, anchor, at=LONG_AGO, millis=100):
+    return {"event": "snapshotWritten", "at": at, "file": file, "anchor": anchor, "bytes": 8, "millis": millis}
+
+
+def round_events(round_, restored=("snapshot-1.bin", ANCHOR)):
+    """A graceful stop of each run, a periodic snapshot in the first and a replay from `restored` in the second."""
     closed = {"event": "closedDB", "immutableTip": IMMUTABLE_TIP, "tip": TIP}
     if round_ == 1:
-        return [{"event": "extended"}, {"event": "snapshotWritten", "file": "snapshot-1.bin", "anchor": ANCHOR},
-                closed]
-    return [{"event": "snapshotRestored", "file": "snapshot-1.bin", "anchor": ANCHOR},
-            {"event": "replayStarted", "from": ANCHOR, "immutableTip": IMMUTABLE_TIP},
+        return [{"event": "extended"}, written("snapshot-1.bin", ANCHOR), closed]
+    file, anchor = restored
+    return [{"event": "snapshotRestored", "file": file, "anchor": anchor},
+            {"event": "replayStarted", "from": anchor, "immutableTip": IMMUTABLE_TIP},
             {"event": "replayFinished", "tip": IMMUTABLE_TIP, "replayed": 10}, {"event": "extended"}, closed]
 
 
 class RestartTranscriptTests(unittest.TestCase):
-    def run_gate(self, diagnostics):
+    def run_gate(self, diagnostics, restored=("snapshot-1.bin", ANCHOR), files=(), at_stop=None):
+        """The gate over a scripted run: `files` are snapshot files present from the start, and `at_stop(snapshots,
+        now)` runs as the first stop ends and returns more events of that run."""
         with tempfile.TemporaryDirectory(prefix="scarab-restart-transcript-") as temporary:
             root = pathlib.Path(temporary)
             snapshots = root / "db" / "snapshots"
             snapshots.mkdir(parents=True)
-            (snapshots / "snapshot-1.bin").write_bytes(restart.SNAPSHOT_MAGIC)
+            for name in ("snapshot-1.bin", *files):
+                (snapshots / name).write_bytes(restart.SNAPSHOT_MAGIC)
             transcript = root / "follower.jsonl"
             rounds = 0
             original = []
@@ -45,7 +60,10 @@ class RestartTranscriptTests(unittest.TestCase):
             def stopped(_name, _process):
                 nonlocal rounds
                 rounds += 1
-                lines = [json.dumps(event) for event in round_events(rounds)] + diagnostics.get(rounds, [])
+                events = round_events(rounds, restored)
+                if rounds == 1 and at_stop is not None:
+                    events += at_stop(snapshots, time.time())
+                lines = [json.dumps(event) for event in events] + diagnostics.get(rounds, [])
                 text = "\n".join(lines) + "\n"
                 original.append(text)
                 with transcript.open("a") as output:
@@ -86,6 +104,45 @@ class RestartTranscriptTests(unittest.TestCase):
         self.assertEqual(result["failed"], [])
         self.assertEqual(result["restored"], "snapshot-1.bin")
         self.assertEqual(result["replayed"], 10)
+
+    def test_a_snapshot_written_by_the_stop_fails_the_round(self):
+        # begun once the node had the signal
+        def stop_snapshot(snapshots, now):
+            (snapshots / "snapshot-2.bin").write_bytes(restart.SNAPSHOT_MAGIC)
+            return [written("snapshot-2.bin", IMMUTABLE_TIP, at=iso(now + 1.0), millis=50)]
+        code, result = self.run_gate({}, restored=("snapshot-2.bin", IMMUTABLE_TIP), at_stop=stop_snapshot)
+        self.assertEqual(code, 1)
+        self.assertIn("round 1: the stop wrote snapshot-2.bin: only the snapshot policy writes snapshots",
+                      result["failed"])
+
+    def test_a_file_with_no_event_written_at_the_stop_fails_the_round(self):
+        def unlogged(snapshots, _now):
+            (snapshots / "snapshot-2.bin").write_bytes(restart.SNAPSHOT_MAGIC)
+            return []
+        code, result = self.run_gate({}, restored=("snapshot-2.bin", NEWER), at_stop=unlogged)
+        self.assertEqual(code, 1)
+        self.assertIn("round 1: the stop wrote snapshot-2.bin: only the snapshot policy writes snapshots",
+                      result["failed"])
+
+    def test_a_periodic_snapshot_begun_before_the_signal_and_logged_after_it_is_the_policys(self):
+        # renamed after the signal, its event says the write began 5 s before it
+        def periodic(snapshots, now):
+            (snapshots / "snapshot-2.bin").write_bytes(restart.SNAPSHOT_MAGIC)
+            return [written("snapshot-2.bin", NEWER, at=iso(now + 0.5), millis=5000)]
+        code, result = self.run_gate({}, restored=("snapshot-2.bin", NEWER), at_stop=periodic)
+        self.assertEqual(code, 0, result)
+        self.assertEqual(result["failed"], [])
+        self.assertEqual(result["restored"], "snapshot-2.bin")
+
+    def test_a_snapshot_cancelled_after_its_rename_is_the_one_the_restart_restores(self):
+        # complete on disk before the signal, without the event its cancelled write did not log
+        code, result = self.run_gate({}, restored=("snapshot-2.bin", NEWER), files=("snapshot-2.bin",))
+        self.assertEqual(code, 0, result)
+        self.assertEqual(result["restored"], "snapshot-2.bin")
+        code, result = self.run_gate({}, files=("snapshot-2.bin",))
+        self.assertEqual(code, 1)
+        self.assertEqual(result["failed"],
+                         ["the restart restored snapshot-1.bin, not the newest snapshot snapshot-2.bin"])
 
 
 if __name__ == "__main__":
