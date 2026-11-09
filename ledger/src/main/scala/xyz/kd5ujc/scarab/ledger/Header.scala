@@ -382,6 +382,17 @@ object Header:
     * ([[verificationKey]]), and the body proof ([[byron.ByronTransport.bodyProof]]), whose original
     * bytes are kept. A boundary header's extra data is its attributes, read as
     * `decCBORABoundaryHeader` reads them ([[byron.ByronTransport.boundaryExtra]], #754).
+    *
+    * Every list is definite and of its exact length (`enforceSize`, #634): the header, its
+    * consensus data, the slot, the difficulty (`Common/ChainDifficulty.hs:47-50`), the signature
+    * and its delegation certificate (`Block/Header.hs:691-700`,
+    * `Delegation/Certificate.hs:209-217`) and a boundary header's consensus data
+    * (`Block/Boundary.hs:33-38`). A main header's magic is a `Word32` (`ProtocolMagicId`,
+    * `Crypto/ProtocolMagic.hs:58-62`); a boundary header's is dropped with `dropInt32`
+    * (`Block/Header.hs:617`), so it is any `Int32`, and nothing checks it. Epochs, slot counts and
+    * difficulties are `Word64` (`Slotting/EpochAndSlotCount.hs:65-68`), the signature's kind a
+    * `Word8`. A main header's extra data is read as `decCBORBlockVersions` reads it
+    * ([[byron.ByronTransport.blockVersions]]).
     */
   def byronFromRaw(
       raw: Bytes,
@@ -390,35 +401,30 @@ object Header:
   ): Either[ChainError, Header.UnsizedByron] =
     for
       root <- CborRead.decode(raw, headerLimits).leftMap(fail)
-      h <- array(root, 5)
+      h <- byronList(root, 5, DecodeField.Header)
+      magic <- if boundary then int32(h(0)) else word(h(0), 32, DecodeField.NetworkMagic)
       prev <- bytes(h(1), 32, ByteStrings.Definite)
-      magic <- uint(h(0))
       proof <- ByronTransport
         .bodyProof(h(2), boundary)
         .leftMap(fail)
         .as(Bytes(h(2).original.value))
-      consensus <- array(h(3), if boundary then 2 else 4)
+      consensus <- byronList(h(3), if boundary then 2 else 4, DecodeField.Header)
       parsed <-
         if boundary then
           for
-            epoch <- uint(consensus(0))
-            diff <- array(consensus(1), 1)
-            no <- uint(diff(0))
+            epoch <- word(consensus(0), 64, DecodeField.Header)
+            no <- difficulty(consensus(1))
             tagged <- ByronTransport.boundaryExtra(h(4)).leftMap(fail)
           yield (epoch, BigInt(0), no, None, ByronVersion.zero, tagged)
         else
           for
-            slotId <- array(consensus(0), 2)
-            epoch <- uint(slotId(0))
-            inEpoch <- uint(slotId(1))
+            slotId <- byronList(consensus(0), 2, DecodeField.EpochAndSlot)
+            epoch <- word(slotId(0), 64, DecodeField.EpochAndSlot)
+            inEpoch <- word(slotId(1), 64, DecodeField.EpochAndSlot)
             leader <- verificationKey(consensus(1))
-            diff <- array(consensus(2), 1)
-            no <- uint(diff(0))
+            no <- difficulty(consensus(2))
             signature <- byronSignature(consensus(3))
-            extra <- array(h(4), 4)
-            version <- ByronVersion
-              .decode(extra(0))
-              .leftMap(e => fail(LedgerDecodeError.Version(e)))
+            version <- ByronTransport.blockVersions(h(4)).leftMap(fail)
             signed = Bytes(
               Vector(0x85.toByte) ++ Vector(h(1), h(2), consensus(0), consensus(2), h(4))
                 .flatMap(_.original.value)
@@ -452,24 +458,55 @@ object Header:
     ByronTransport.canonicalBytes(n, DecodeField.Header).leftMap(fail) *>
       bytes(n, 64, ByteStrings.Definite)
 
-  /** `[2, [[epoch, issuer, delegate, cert], sig]]`: heavyweight delegation, the only kind. */
+  /** `[2, [[epoch, issuer, delegate, cert], sig]]`: heavyweight delegation, the only kind; the kind
+    * is a `Word8` (`Block/Header.hs:691-700`).
+    */
   private def byronSignature(n: Node): Either[ChainError, ByronSignature] =
     for
-      outer <- array(n, 2)
-      kind <- uint(outer(0))
+      outer <- byronList(n, 2, DecodeField.ByronBlockSignature)
+      kind <- word(outer(0), 8, DecodeField.ByronBlockSignature)
       _ <- Either.cond(
         kind == 2,
         (),
         fail(LedgerDecodeError.UnknownTag(DecodeField.ByronBlockSignature, kind))
       )
-      proxy <- array(outer(1), 2)
-      psk <- array(proxy(0), 4)
-      epoch <- uint(psk(0))
+      proxy <- byronList(outer(1), 2, DecodeField.ByronBlockSignature)
+      psk <- byronList(proxy(0), 4, DecodeField.DelegationCertificate)
+      epoch <- word(psk(0), 64, DecodeField.DelegationEpoch)
       issuer <- verificationKey(psk(1))
       delegate <- verificationKey(psk(2))
       cert <- bytes(psk(3), 64, ByteStrings.Definite)
       sig <- bytes(proxy(1), 64, ByteStrings.Definite)
     yield ByronSignature.Delegated(epoch, issuer, delegate, cert, sig)
+
+  /** A Byron list: definite and of `size` items (`enforceSize`). */
+  private def byronList(n: Node, size: Int, site: DecodeSite): Either[ChainError, Vector[Node]] =
+    ByronTransport.tuple(n, size, site).leftMap(fail)
+
+  private def word(n: Node, bits: Int, site: DecodeSite): Either[ChainError, BigInt] =
+    ByronTransport.word(n, bits, site).leftMap(fail)
+
+  /** `ChainDifficulty`: a definite list of one `Word64` (`Common/ChainDifficulty.hs:47-50`). */
+  private def difficulty(n: Node): Either[ChainError, BigInt] =
+    byronList(n, 1, DecodeField.ChainDifficulty).flatMap(d =>
+      word(d(0), 64, DecodeField.ChainDifficulty)
+    )
+
+  /** `decodeInt32`: an unsigned or negative integer within `Int32`. */
+  private def int32(n: Node): Either[ChainError, BigInt] =
+    CborRead
+      .int(n, DecodeField.NetworkMagic)
+      .flatMap(v =>
+        Either.cond(
+          v >= Int32Min && v <= Int32Max,
+          v,
+          LedgerDecodeError.NumberOutOfRange(DecodeField.NetworkMagic, v, Int32Min, Int32Max)
+        )
+      )
+      .leftMap(fail)
+
+  private val Int32Min = BigInt(Int.MinValue)
+  private val Int32Max = BigInt(Int.MaxValue)
 
   private[ledger] def optHash(n: Node): Either[ChainError, Option[Bytes]] =
     optHash(n, ByteStrings.Chunked)

@@ -23,10 +23,17 @@ class ByronBoundaryPredecessorSuite extends FunSuite:
   private val initial = ByronLedger.initial(config).fold(e => fail(e.toString), identity)
   private val genesisTag = map(uint(255) -> bytes(Bytes.fromArray("Genesis".getBytes("US-ASCII"))))
 
-  /** A boundary block of `epoch` after `prev`, with `attributes` in its header's extra data. */
-  private def boundary(epoch: Long, prev: Bytes, attributes: Bytes): Block.Byron =
+  /** A boundary block of `epoch` after `prev`, with `attributes` in its header's extra data and
+    * `magic` (encoded) as its protocol magic.
+    */
+  private def boundary(
+      epoch: Long,
+      prev: Bytes,
+      attributes: Bytes,
+      magic: Bytes = uint(Magic)
+  ): Block.Byron =
     val header = arr(
-      uint(Magic),
+      magic,
       bytes(prev),
       bytes(Bytes(Vector.fill(32)(0x22.toByte))),
       arr(uint(epoch), arr(uint(epoch))),
@@ -68,4 +75,14 @@ class ByronBoundaryPredecessorSuite extends FunSuite:
       after(tip, boundary(5, tip.hash, genesisTag)).left.toOption,
       Some(ByronChainError.GenesisPredecessor(tip.hash))
     )
+  }
+
+  test("a boundary block's magic is not compared: it is dropped as it is read (#634)") {
+    // `dropInt32` (`Block/Header.hs:617`) and `updateChainBoundary` (`Validation.hs:271-297`);
+    // only a main block's magic is compared (`updateBlock`, `:520-525`)
+    val other = first(boundary(0, genesis.hash, map(), uint(Magic + 1)))
+    assert(other.isRight, other.toString)
+    // a negative magic, -1 (`0x20`), is an `Int32` too
+    val negative = first(boundary(0, genesis.hash, map(), Bytes(Vector(0x20.toByte))))
+    assert(negative.isRight, negative.toString)
   }

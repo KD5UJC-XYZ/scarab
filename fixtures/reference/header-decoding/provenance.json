@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "measuredAt": "2026-11-03",
-  "scope": "Unchanged released decoders of block headers: the TPraos BHeader of Shelley and Alonzo (decoder versions 2 and 5), the Praos Header of Babbage and Conway (7 and 9), each read with decodeFullAnnotator, a Byron epoch boundary header read with decCBORABoundaryHeader at byronProtVer, a header body alone with decodeFull, and a ledger Block holding a Shelley-to-Conway header; definite, indefinite, detached (an empty indefinite list with the fields after it) and non-minimal forms of the header, its body, a VRF certificate, the operational certificate and the protocol version, with the refusals around them and the bounds of the body size and protocol version; chunked issuer keys, refused below version 12, and a Byron boundary header with 200 attributes, which no decoder counts (#749); for each accepted case the header hash over the bytes read, the block body hash of a block, and getSignableRepresentation of the header body, the bytes the KES signature is checked over; and, for a Praos VRF key made of a seed, whether a certificate with its output replaced decodes and passes verifyCertified; no ledger rule or KES signature is checked; the forms of a Byron boundary header's extra data, accepted and refused, and its Genesis tag (#754); Byron main headers read by decCBORAHeader, including an SSC proof of 5000 bytes beyond the former 4096-byte decode budget (#749)",
+  "measuredAt": "2026-11-07",
+  "scope": "Unchanged released decoders of block headers: the TPraos BHeader of Shelley and Alonzo (decoder versions 2 and 5), the Praos Header of Babbage and Conway (7 and 9), each read with decodeFullAnnotator, a Byron epoch boundary header read with decCBORABoundaryHeader at byronProtVer, a header body alone with decodeFull, and a ledger Block holding a Shelley-to-Conway header; definite, indefinite, detached (an empty indefinite list with the fields after it) and non-minimal forms of the header, its body, a VRF certificate, the operational certificate and the protocol version, with the refusals around them and the bounds of the body size and protocol version; chunked issuer keys, refused below version 12, and a Byron boundary header with 200 attributes, which no decoder counts (#749); for each accepted case the header hash over the bytes read, the block body hash of a block, and getSignableRepresentation of the header body, the bytes the KES signature is checked over; and, for a Praos VRF key made of a seed, whether a certificate with its output replaced decodes and passes verifyCertified; no ledger rule or KES signature is checked; the forms of a Byron boundary header's extra data, accepted and refused, and its Genesis tag (#754); Byron main headers read by decCBORAHeader, including an SSC proof of 5000 bytes beyond the former 4096-byte decode budget (#749); the rest of the Byron header grammar (#634): every list of a main and a boundary header definite and of its length, a main header's magic a Word32 and a boundary header's an Int32 (dropInt32), epochs, slot counts and difficulties Word64, the signature's kind a Word8, and a main header's extra data read by decCBORBlockVersions, each case a real mainnet main header or a boundary header with one part rewritten",
   "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
   "compiler": "GHC 9.10.3",
   "packages": {
@@ -84,7 +84,7 @@
       "file": "eras/byron/ledger/impl/src/Cardano/Chain/Block/Header.hs",
       "sourceSha256": "04ff9d11582a59a1cd7cff051af6de206b195493c4b5a9e432edb5a62679601e",
       "matchesPin": true,
-      "note": "decCBORABoundaryHeader (613-626); the released 1.3.0.0 file is the same"
+      "note": "decCBORAHeader (351-390), decCBORBlockVersions (392-395), decCBORABoundaryHeader (613-626) and the block signature (691-700); the released 1.3.0.0 file is the same"
     },
     "byronBoundary": {
       "file": "eras/byron/ledger/impl/src/Cardano/Chain/Block/Boundary.hs",
@@ -97,6 +97,48 @@
       "sourceSha256": "08edd940ea9b31d46cb5e5e1e7c0812376570d77479a9610ffae7fedaccde182",
       "matchesPin": true,
       "note": "decCBORAttributes reads a Map Word8 LByteString and keeps the entries it does not parse (213-232)"
+    },
+    "byronChainDifficulty": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Common/ChainDifficulty.hs",
+      "sourceSha256": "5dc88b3f03c1d1c10d8843583b5aaa706958d264280fa102280c4043428b102c",
+      "matchesPin": true,
+      "note": "a definite list of one Word64 (47-50); the released 1.3.0.0 file is the same"
+    },
+    "byronEpochAndSlotCount": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Slotting/EpochAndSlotCount.hs",
+      "sourceSha256": "943cc81cdefc5525b90aaa7d49a4c4e497d61ad9ef2615b9dbb09e351d4f3bed",
+      "matchesPin": true,
+      "note": "a definite pair of Word64s (65-68); the released 1.3.0.0 file is the same"
+    },
+    "byronProtocolVersion": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/ProtocolVersion.hs",
+      "sourceSha256": "a6e73d7006de1339012c37ac6bb1bdbd92ad2f83b3d445d486d71333573d4a29",
+      "matchesPin": true,
+      "note": "a definite list of a Word16, a Word16 and a Word8 (64-67); the released 1.3.0.0 file is the same"
+    },
+    "byronSoftwareVersion": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/SoftwareVersion.hs",
+      "sourceSha256": "c37be4f6d9769e1772fb30878413ca4cfd8b0681ab157e5396cacd711dae658b",
+      "matchesPin": true,
+      "note": "a definite list of an application name and a Word32 (73-76); the released 1.3.0.0 file is the same"
+    },
+    "byronApplicationName": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/ApplicationName.hs",
+      "sourceSha256": "6ce1abbe9f93bfba05665b283d8afabb69f2ce781b84c90b1720a4dd649ac535",
+      "matchesPin": true,
+      "note": "text, its length not checked as it is read (61-62); the released 1.3.0.0 file is the same"
+    },
+    "byronDelegationCertificate": {
+      "file": "eras/byron/ledger/impl/src/Cardano/Chain/Delegation/Certificate.hs",
+      "sourceSha256": "9c22e8925ff18aff411916865cc730e78d1fabba2a7befee8dae80d5c8088c0c",
+      "matchesPin": true,
+      "note": "a definite list of four (209-217); the released 1.3.0.0 file is the same"
+    },
+    "byronProtocolMagic": {
+      "file": "eras/byron/crypto/src/Cardano/Crypto/ProtocolMagic.hs",
+      "sourceSha256": "a97f486b994e4e04d788c91ffd1eee561354ac7c508fe089991ba61f6738a457",
+      "matchesPin": true,
+      "note": "ProtocolMagicId is a Word32 with its DecCBOR (58-62); the released cardano-crypto-wrapper 1.7.0.0 file is the same"
     }
   },
   "sourceArchive": {
@@ -107,17 +149,17 @@
   "harness": {
     "file": "scripts/oracle/header-decoding/Main.hs",
     "sha256": "17145bf3ec9dcbfe50f95da06bf8538166dcd424091f3af0bf5a3279995273d4",
-    "image": "scarab-header-codex749:local (sha256:6963f7c24542f05dc6d3af41a07ab5e8643f1cce8fb0a8d0cd1ee3074aacfe61)",
-    "invocation": "docker run --rm --network none --read-only -v \"$ORACLE_FIXTURES:/fixtures:ro\" scarab-header-codex749:local /fixtures/inputs.json",
+    "image": "scarab-header-decoding-634:local (sha256:f3b9b3ca4bd2494bb20cae946f26c65a733db04549329e0e899010ea4ec7e8bb)",
+    "invocation": "docker run --rm --network none --read-only -v \"$ORACLE_FIXTURES:/fixtures:ro\" scarab-header-decoding-634:local /fixtures/inputs.json",
     "unchanged": true
   },
-  "generatorSha256": "787563b004bf668e5bc11688bd10670cdb7cd1863b317baf04c2284e8d7d6c1a",
-  "harnessInputSha256": "2d71762c31bdbed2e167decb0ee85d7523d49dc70a69a0d45ef9b5dc1841ef5c",
-  "harnessOutputSha256": "ccf22edce4bc577b54c13fed66c0b94670176d7f5c5f446b02dcf9d2cf025168",
-  "casesSha256": "e5a773c38710d5972e0c37af893ad9277fa698cb7d87591bf45ac207e09dc9ce",
-  "cases": 156,
-  "accepted": 86,
-  "refused": 70,
+  "generatorSha256": "d631bbbd57baecb222d7a2b79900b9d605a6fa514b1b14c84148441d9e26ebfc",
+  "harnessInputSha256": "94b6e165aaaf8fe0e4ec2cf9a5402ff80af8c5748db4e0f066578e75e1910a1e",
+  "harnessOutputSha256": "26355cfd14229b82dcb060a55a3d6ff1264171667510adc3322fd995de430282",
+  "casesSha256": "f1bceda98f39b60e18e23ef09cfc75c18c93c8f7922139f278d7a5bed8a33592",
+  "cases": 210,
+  "accepted": 103,
+  "refused": 107,
   "originalBytesRetained": true,
   "leiosCasesMoved": "The 25 Leios header cases left this corpus on 2026-11-03 (#711): the Leios reference is the build of the public Leios testnet, whose cases are fixtures/reference/leios-testnet-blocks; the other cases were regenerated unchanged",
   "mainHeaderInput": {

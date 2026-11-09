@@ -594,6 +594,29 @@
       "page": "docs/compatibility/byron-version-widths.md"
     },
     {
+      "id": "ledger-byron-header-grammar",
+      "component": "Ledger: the Byron header grammar (#634)",
+      "status": "implemented",
+      "summary": "A Byron main or boundary header is read as decCBORAHeader and decCBORABoundaryHeader read it: definite lists of their exact length, a Word32 main magic and an Int32 boundary magic, Word64 epochs, slot counts and difficulties, and the extra data of decCBORBlockVersions; a boundary block's magic is not compared",
+      "evidence": {
+        "suites": [
+          "HeaderDecodingReferenceSuite",
+          "ByronHeaderBytesSuite",
+          "ByronBoundaryPredecessorSuite"
+        ],
+        "paths": [
+          "fixtures/reference/header-decoding/cases.jsonl",
+          "scripts/oracle/header-decoding/header_cases.py"
+        ]
+      },
+      "page": "docs/compatibility/ledger-byron-header-grammar.md",
+      "limitations": {
+        "issues": [
+          818
+        ]
+      }
+    },
+    {
       "id": "header-arrival-time",
       "component": "Header arrival time (wall-clock eligibility)",
       "status": "implemented",
