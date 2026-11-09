@@ -108,10 +108,11 @@ class TcpSocketsSuite extends FailsOnUncaught:
         (outbound, release) <- right(dial(node.address, peer.address)).allocated
         reset <- right(peer.accept).use { inbound =>
           for
-            // both ends read while the closer closes, as a live connection's do
+            // both ends read while the closer closes, as a live connection's do; whether the
+            // closer's read has blocked yet or not, linger 0 sends a reset, so nothing here waits
+            // on scheduling
             peerReads <- inbound.bearer.reads.compile.drain.attempt.start
             ownReads <- outbound.bearer.reads.compile.drain.attempt.start
-            _ <- IO.sleep(100.millis)
             _ <- release
             _ <- ownReads.join
             seen <- peerReads.joinWithNever.timeout(timeout)
@@ -195,11 +196,13 @@ class TcpSocketsSuite extends FailsOnUncaught:
       for
         // the outbound socket closes first, as the end that would otherwise enter TIME_WAIT
         (_, release) <- right(dial(node.address, peer.address)).allocated
+        // the four-tuple's sockets go once both ends have closed; a TIME_WAIT would hold one for
+        // 60 s, and the wait would fail showing it
         lingering <- right(peer.accept).use { inbound =>
-          release *> IO.sleep(100.millis) *> inbound.bearer.close.attempt *>
-            states(node.address.port, peer.address.port)
+          release *> inbound.bearer.close.attempt *>
+            Wait.until(states(node.address.port, peer.address.port))(_.isEmpty)
         }
-        _ <- IO(assertEquals(lingering.filter(_ == TimeWait), Nil))
+        _ <- IO(assertEquals(lingering, Nil))
         _ <- right(dial(node.address, peer.address)).use(again =>
           right(peer.accept).use(inbound => IO(assertEquals(inbound.remote, again.local)))
         )
@@ -211,8 +214,10 @@ class TcpSocketsSuite extends FailsOnUncaught:
           .allocated
           .flatMap((socket, close) =>
             right(peer.accept).use { inbound =>
-              close *> IO.sleep(100.millis) *> inbound.bearer.close *> IO.sleep(100.millis) *>
-                states(socket.address.asIpUnsafe.port, peer.address.port)
+              close *> inbound.bearer.close *>
+                Wait.until(states(socket.address.asIpUnsafe.port, peer.address.port))(
+                  _ == List(TimeWait)
+                )
             }
           )
         _ <- IO(assertEquals(plain, List(TimeWait)))
