@@ -9,7 +9,8 @@ import xyz.kd5ujc.scarab.models.runtime.{
   DecodeError,
   Decoded,
   Node,
-  Writer
+  Writer,
+  at
 }
 import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, StateLayout}
 
@@ -124,12 +125,12 @@ trait EpochStateCodecs extends RewardCodecs:
     new Codec[NewEpochState.Layout]:
       private val pd = poolDistr
       def decode(n: Node): Decoded[NewEpochState.Layout] =
-        pd.decode(n).map(NewEpochState.Layout.Node11_1(_))
+        pd.decode(n).map(NewEpochState.Layout.Node11_1(_)).at("pd")
       def encode(a: NewEpochState.Layout, out: Writer): Unit = a match
         case NewEpochState.Layout.Node11_1(stored) => pd.encode(stored, out)
         case NewEpochState.Layout.Leios            => () // refused by `check`
       override def check(a: NewEpochState.Layout): Option[ConstraintViolation] = a match
-        case NewEpochState.Layout.Node11_1(stored) => pd.check(stored)
+        case NewEpochState.Layout.Node11_1(stored) => pd.check(stored).map(_.at("pd"))
         case NewEpochState.Layout.Leios            => ofThisLayout("NewEpochState", a)
 
   /** `NewEpochState` (`Types.hs:397-405`): `[epoch, blocks of the previous epoch, blocks of this
