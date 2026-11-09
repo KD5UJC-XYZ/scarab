@@ -16,6 +16,12 @@
   V9, migrate on open as `11.1`, with the binding, the sidecar and the Haskell bytes unchanged. A
   snapshot recorded under a build of another layout is not read: the restore skips it, naming both
   builds, and tries an older one.
+- The restore treats a snapshot it does not use as the reference's `tryNewestFirst` does: one too
+  recent or that does not decode, of another build among them, is deleted with its UTxO checkpoint
+  (`snapshotDeleted`), as the reference deletes a temporary snapshot, and every native snapshot is
+  temporary; one whose checkpoint has another key layout is kept. Earlier builds kept them all.
+- A hard-fork `Bound` of four items, with a Peras round, is read and written back, as the 11.1
+  reference reads it; it was refused.
 - `import-ledger-snapshot` refuses a `state` file that does not decode completely in the layout of
   the build that wrote it, and records that build with the unchanged bytes. `export-ledger-snapshot`
   writes the recorded bytes unchanged, reports their build, refuses a requested build of another

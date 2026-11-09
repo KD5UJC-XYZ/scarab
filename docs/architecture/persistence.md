@@ -92,9 +92,8 @@ sidecar rewritten in the V8 schema, a V8 file to V9 with its sidecar rewritten i
 V9 file to V10 with the 11.1 build recorded and everything else kept byte for byte. A V10 file
 recorded under a build whose layout is not the configured one is not decoded
 (`StorageError.ReferenceBuildMismatch`, or `UnknownReferenceBuild` for a name this build does not
-know): there is no conversion between builds, and the restore skips it with `snapshotSkipped`
-naming both builds, then tries the next older snapshot, as it does any snapshot that does not
-decode.
+know): there is no conversion between builds, and the restore treats it as any snapshot that does
+not decode (Recovery, below).
 
 The Haskell state bytes are a `state` file of a Haskell node (`[1, [ledger state telescope, header
 state]]`, `HaskellLedgerFile`) of the chain's state `MirrorState.ext`, byte-proven against real files;
@@ -134,9 +133,15 @@ packages were renamed). A write goes to `*.tmp`, is fsynced, renamed (atomic) an
 fsynced; leftover `*.tmp` files are removed on open. Snapshots are written by a background fiber
 from the immutable (structurally shared) anchor state, so following does not pause.
 
-**Recovery.** Snapshots are tried newest first. One that fails its checksum, decodes badly, has
-another schema or names an anchor missing from the immutable store is reported (`snapshotSkipped`)
-and the next older one is tried; with none usable the stored blocks are replayed from genesis. The
+**Recovery.** Snapshots are tried newest first, as the reference's `tryNewestFirst` tries them
+(ouroboros-consensus 82ecba32 `Storage/LedgerDB/API.hs:599-646`). One that fails its checksum,
+decodes badly, is recorded under a build of another layout, names an anchor missing from the
+immutable store, or whose checkpoint is absent or not the one it recorded, is reported
+(`snapshotSkipped`), deleted with its checkpoint (`snapshotDeleted`: every native snapshot is
+temporary in the reference's sense, `Snapshots.hs:288-297`) and the next older one is tried; one
+whose checkpoint has another key layout or none, whose binding or sidecar has another schema, or
+that cannot be read is reported and kept (`LedgerSnapshots.Unused`). With none usable the stored
+blocks are replayed from genesis. An unknown or retired format version refuses the open (ADR 0006). The
 stored blocks after the chosen snapshot are re-applied through the same `MirrorRules` with no
 network, then ChainSync resumes with the replayed anchor as the intersection candidate.
 

@@ -600,18 +600,28 @@ existed before #826): inferred from the history, not re-verified per file.
 **A snapshot recorded under another build.** No conversion between builds exists or is planned.
 `SnapshotV10.decode` refuses a file whose recorded build's layout is not the configured one
 (`StorageError.ReferenceBuildMismatch`), or whose recorded name is unknown
-(`StorageError.UnknownReferenceBuild`), before its Haskell bytes are read; the restore then skips it,
-logs `snapshotSkipped` with a reason naming both builds, and tries the next older snapshot, replaying
-from genesis when none is left: what Scarab does with any snapshot that does not decode
-(`FileLedgerSnapshots.restore`). The reference, for a snapshot it cannot decode (82ecba32
-`Storage/LedgerDB/API.hs:599-646`), traces `InvalidSnapshot`, tries the next older snapshot and
-replays from genesis when none is left, and also deletes the snapshot if it is temporary
-(`deleteSnapshotIfTemporary`, `:628-631`), which a snapshot the node took periodically is
-(`Storage/LedgerDB/Snapshots.hs:290-297, 320-327`). Scarab does not delete it, so its handling does
-not mirror the reference's exactly; the difference is reported to the owner and not changed here. In
-step a the case is reachable only in tests. An unknown recorded name (a newer build's) is skipped as
-a mismatch is; refusing it at open, as ADR 0006 refuses an unknown format version, would need the
-snapshot preflight to read the build, and is left to the owner.
+(`StorageError.UnknownReferenceBuild`), before its Haskell bytes are read, and the restore treats it
+as the reference treats a snapshot it cannot decode (the owner's decision on #826). The reference's
+`tryNewestFirst` (82ecba32 `Storage/LedgerDB/API.hs:599-646`) deletes a snapshot ahead of the
+immutable tip if it is temporary and tries the next older one (`:600-604`); keeps a snapshot
+without its metadata file, of another backend or of the legacy layout, traces `InvalidSnapshot`
+and tries the next older one (`:607-623`); deletes a snapshot that fails for any other reason, a
+decoding failure among them, if it is temporary, traces `InvalidSnapshot` and tries the next older
+one (`:625-631`); and replays from genesis when none is left (`:582-598`). A snapshot is temporary
+when its name has no suffix (`diskSnapshotIsTemporary`, `Storage/LedgerDB/Snapshots.hs:288-297`);
+every native snapshot is `snapshot-<slot>-<blockNo>.bin`, whether the node, an import or an SCLS
+import wrote it, so every one is temporary. `FileLedgerSnapshots.restore` and
+`LedgerSnapshots.Unused.of` mirror it: a snapshot whose anchor is not in the immutable store (the
+too-recent one), whose checksum, framing, sidecar or state does not decode, whose recorded build is
+of another layout or unknown, or whose checkpoint is absent, not the one recorded or holds keys it
+cannot, is deleted, `snapshotDeleted` logged after `snapshotSkipped`, and its checkpoint goes by the
+trim path of a write (`StateBacking.retain`); a checkpoint of another key layout or none (the
+reference's backend mismatch) is kept. Where the line falls: the snapshot's format version is
+Scarab's envelope, which ADR 0006 governs, so an unknown or retired version is raised before any
+store opens and nothing is deleted, and a binding or sidecar of another schema (`VersionMismatch`)
+is kept; a file that cannot be read (`Io`) is kept, as the reference's file-system errors are
+exceptions rather than a `Left`. Snapshot file names do not change. In step a a snapshot of
+another build is reachable only in tests. `SnapshotFallbackSuite` has a test per case.
 
 **Import and export.** Import decodes the `state` file with the codec of the build named by
 `--reference-build`, the build that wrote the input database; input that does not decode completely

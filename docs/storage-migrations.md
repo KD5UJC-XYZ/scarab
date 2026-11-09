@@ -21,8 +21,10 @@ reproduction proves that writer's format; it does not establish an unknown captu
 Keep small public fixtures in Git. Large captures, checkpoint directories and logs stay outside the
 checkout with a hashed manifest and reproducible provenance.
 
-The snapshot fingerprint golden in `CodecSuite` must change together with the version, migration and
-previous-version regression. Regenerating a fingerprint to make a test pass is not a migration.
+The snapshot goldens in `CodecSuite` move only together with the version, migration and
+previous-version regression: the schema fingerprints of the sidecar and the checkpoint binding guard
+the typed sections, and the header golden the V10 header's recorded reference build, which sits
+outside both schemas. Regenerating a golden to make a test pass is not a migration.
 Native snapshots are V10: the V5 body (Haskell ledger CBOR plus a typed binary sidecar) behind a
 checkpoint binding, with framing and checksum, as V7 has it, with a sidecar schema that keeps the
 Byron update state's installer metadata (#726) and names the Dijkstra era (#54), and in front of the
