@@ -42,7 +42,8 @@ def compare_cmd(args):
 def reference_cmd(args):
     rows = reference.run(args.config, args.db, args.work, args.out, args.epoch_slots, args.first_epoch,
                          args.last_epoch, jobs=args.jobs, seed_every=args.seed_every, cpus=args.cpus,
-                         memory=args.memory, live=args.live, log=lambda m: print(json.dumps(m), flush=True))
+                         memory=args.memory, live=args.live, log=lambda m: print(json.dumps(m), flush=True),
+                         network_none=args.network_none, full_ledger_validation=args.full_ledger_validation)
     print(json.dumps({"epochsProjected": len(rows)}))
 
 
@@ -95,6 +96,9 @@ def main():
     rf.add_argument("--cpus", type=int, default=2, help="CPUs per db-analyser")
     rf.add_argument("--memory", default="16g", help="memory per db-analyser")
     rf.add_argument("--live", action="store_true", help="--db is a running node's: copy its finished chunks first")
+    rf.add_argument("--network-none", action="store_true", help="run db-analyser with Docker networking disabled")
+    rf.add_argument("--full-ledger-validation", action="store_true",
+                    help="db-analyser applies every block with the full ledger rules instead of reapplying it")
     rf.set_defaults(run=reference_cmd)
     ex = sub.add_parser("export", help="write the Scala node's immutable store (--db <dir>/immutable) as a Haskell "
                                        "ImmutableDB")
