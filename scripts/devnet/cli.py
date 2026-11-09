@@ -330,11 +330,10 @@ def main():
                              "refused, and it may forge from genesis before it follows them (issue 609)")
         pl.add_argument("--reference-debug", action="store_true",
                         help="the Haskell pools trace ChainSync, BlockFetch and peer selection at Debug (issue 609)")
-        pl.add_argument("--scala-after-blocks", type=int, default=0,
-                        help="start the Scala node only once the pools' chain has this many blocks (issue 609)")
-        pl.add_argument("--outbound-after-forge", type=float, default=None,
-                        help="the Scala node dials the pools through proxy ports that open this many seconds after its "
-                             "first forged block; until then its outbound connections are refused (issue 609)")
+        pl.add_argument("--outbound-after-blocks", type=int, default=None,
+                        help="the Scala node dials the pools through proxy ports that open once the pools' chain has this "
+                             "many blocks; until then its outbound connections are refused while the pools' connections to "
+                             "it are open, so it forges alone from genesis (issue 609)")
 
     pl = sub.add_parser("pool", parents=[scala_options], help="the Scala node as a block-producing pool among two Haskell pools")
     pool_flags(pl)

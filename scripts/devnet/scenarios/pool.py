@@ -277,28 +277,17 @@ def kes_rotate_scenario(args):
 OUTBOUND_PROXY_BASE = 3460  # issue 609: the Scala node's outbound connections to pool n go through port 3460 + n
 
 
-def wait_for_blocks(name, socket, blocks, seconds=300):
-    """Issue 609: wait until the observer pool's chain has `blocks` blocks."""
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
+def open_outbound_after_blocks(name, root, socket, ports, blocks, stop):
+    """Issue 609: start the proxies the Scala node dials once the observer pool's chain has `blocks` blocks (or
+    after 300 s), so that until then its outbound connections are refused while the pools' connections to it are
+    open and it forges alone from genesis."""
+    deadline = time.monotonic() + 300
+    while time.monotonic() < deadline and not stop.is_set():
         tip = tip_at(name, socket)
         if tip and tip["block"] >= blocks:
-            return tip
-        time.sleep(0.2)
-    raise SystemExit(f"the pools did not reach block {blocks} within {seconds} s")
-
-
-def open_outbound_after_forge(name, root, log, ports, delay, stop):
-    """Issue 609: start the proxies the Scala node dials `delay` seconds after its first forged block (or after
-    120 s without one), so that until then its outbound connections are refused while the pools' connections to
-    it are open."""
-    deadline = time.monotonic() + 120
-    while time.monotonic() < deadline and not stop.is_set():
-        counts, _, _ = log_counts(log)
-        if counts.get("forged"):
             break
-        time.sleep(0.05)
-    if stop.wait(delay):
+        time.sleep(0.2)
+    if stop.is_set():
         return
     (root / "proxy").mkdir(exist_ok=True)
     command = ["run", "-d", "--rm", "--pull=never", "--name", f"{name}-proxy", *container_labels("devnet", name),
@@ -379,7 +368,7 @@ def pool(args):
             sockets.mkdir(mode=0o777)
             sockets.chmod(0o777)
         program += ["--local-socket", "/ipc/node.socket"]
-        outbound_after = getattr(args, "outbound_after_forge", None)
+        outbound_after = getattr(args, "outbound_after_blocks", None)
         for n in others:
             port = OUTBOUND_PROXY_BASE + n if outbound_after is not None else ports[n]
             program += ["--peer", f"127.0.0.1:{port}"]
@@ -388,11 +377,10 @@ def pool(args):
                                   mounts=[f"{root / 'genesis'}:/genesis:ro", *database_mounts(db), f"{root / 'keys'}:/keys",
                                           f"{sockets}:/ipc"], name=f"{args.name}-scala")
         log = root / "follower.jsonl"
-        if getattr(args, "scala_after_blocks", 0):
-            wait_for_blocks(args.name, f"{ENV}/socket/node{observer}/sock", args.scala_after_blocks)
         if outbound_after is not None:
-            opener = threading.Thread(target=open_outbound_after_forge, daemon=True,
-                                      args=(args.name, root, log, {n: ports[n] for n in others}, outbound_after, opener_stop))
+            opener = threading.Thread(target=open_outbound_after_blocks, daemon=True,
+                                      args=(args.name, root, f"{ENV}/socket/node{observer}/sock",
+                                            {n: ports[n] for n in others}, outbound_after, opener_stop))
             opener.start()
         scala = subprocess.Popen(["docker", *command], stdout=log.open("a"), stderr=subprocess.STDOUT, text=True)
         if pools_after:  # issue 609: the pools come up after the Scala node, whose first connections are refused
