@@ -110,6 +110,21 @@ object ConnectionState:
     /** `TimeoutExpired`: the outbound idle timeout of an outbound duplex connection fired. */
     case TimeoutExpired
 
+    /** `SelfConn`: our own outbound connection reached our listener; its inbound side takes the
+      * entry (`includeInboundConnectionImpl`, `ConnectionManager/Core.hs:845-855`).
+      */
+    case SelfConn
+
+    /** `SelfConn⁻¹`: the outbound side takes back an entry the inbound side took (`Core.hs`
+      * 1552-1561 for an unnegotiated one, 1633-1652 for a negotiated one).
+      */
+    case SelfConnReversed
+
+    /** `SelfConnNegotiated^{flow}_{Inbound}`: the inbound side of a self-connection negotiated
+      * `flow` (`Core.hs:924-930`).
+      */
+    case SelfConnNegotiated(flow: DataFlow)
+
     /** `Commit^{flow}`: an idle connection is closed; it enters time-wait. */
     case Commit
 
@@ -157,9 +172,16 @@ object ConnectionState:
       case (OutboundIdle(DuplexFlow), Event.AwakeRemote)    => Right(Inbound(DuplexFlow))
       case (Duplex, Event.DemotedToColdRemote)              => Right(OutboundDup(Ticking))
       case (Inbound(flow), Event.DemotedToColdRemote)       => Right(InboundIdle(flow))
-      // `demotedToColdRemote` leaves these as they are
-      case (OutboundDup(_) | OutboundIdle(_) | InboundIdle(DuplexFlow), Event.DemotedToColdRemote) =>
+      // `demotedToColdRemote` leaves these as they are (`Core.hs:2286-2305`); for an idle inbound
+      // connection of either flow, although `verifyAbstractTransition` admits only the duplex one
+      case (OutboundDup(_) | OutboundIdle(_) | InboundIdle(_), Event.DemotedToColdRemote) =>
         Right(state)
+      case (Unnegotiated(Provenance.Outbound), Event.SelfConn) => Right(Unnegotiated(Provenance.Inbound))
+      case (Unnegotiated(Provenance.Inbound), Event.SelfConnReversed) =>
+        Right(Unnegotiated(Provenance.Outbound))
+      case (InboundIdle(Unidirectional), Event.SelfConnReversed) => Right(OutboundUni)
+      case (InboundIdle(DuplexFlow), Event.SelfConnReversed)     => Right(OutboundDup(Ticking))
+      case (Unnegotiated(Provenance.Outbound), Event.SelfConnNegotiated(flow)) => Right(InboundIdle(flow))
       case (OutboundDup(Ticking), Event.TimeoutExpired)                     => Right(OutboundDup(Expired))
       case (InboundIdle(_), Event.Commit) | (OutboundIdle(_), Event.Commit) => Right(Terminating)
       case (Unnegotiated(_), Event.HandshakeFailed)                         => Right(Terminating)

@@ -28,9 +28,12 @@ class ConnectionStateSuite extends ScalaCheckSuite:
       Event.Commit,
       Event.HandshakeFailed,
       Event.Fail,
-      Event.Released
+      Event.Released,
+      Event.SelfConn,
+      Event.SelfConnReversed
     ),
-    flow.map(Event.Negotiated(_))
+    flow.map(Event.Negotiated(_)),
+    flow.map(Event.SelfConnNegotiated(_))
   )
 
   /** A state reached from an initial one by events that were allowed. */
@@ -51,12 +54,58 @@ class ConnectionStateSuite extends ScalaCheckSuite:
       Vector(TimeoutExpired.Ticking, TimeoutExpired.Expired).map(OutboundDup(_)) ++
       flows.map(OutboundIdle(_)) ++ flows.map(InboundIdle(_)) ++ flows.map(Inbound(_))
 
+  /** The moves that leave a state as it is: `demotedToColdRemote` on a connection the remote side
+    * already left (`ConnectionManager/Core.hs:2286-2305`).
+    */
+  private def leavesAsIs(s: ConnectionState, e: Event): Boolean = (s, e) match
+    case (OutboundDup(_) | OutboundIdle(_) | InboundIdle(_), Event.DemotedToColdRemote) => true
+    case _                                                                               => false
+
   property("every move the model makes is one the reference accepts") {
     forAll(reachable, event) { (s, e) =>
       ConnectionState.transition(s, e) match
-        case Right(next) if next == s => true
+        case Right(next) if next == s => leavesAsIs(s, e)
         case Right(next)              => ConnectionState.valid(Some(s), Some(next))
         case Left(_)                  => true
+    }
+  }
+
+  test("the identity moves are the reference's, and its oracle admits all but one") {
+    every.foreach { s =>
+      val result = ConnectionState.transition(s, Event.DemotedToColdRemote)
+      if leavesAsIs(s, Event.DemotedToColdRemote) then assertEquals(result, Right(s), s.abstractName)
+    }
+    // the runtime leaves an idle unidirectional inbound connection as it is (`Core.hs:2302-2305`);
+    // `verifyAbstractTransition` admits that identity for the duplex flow only
+    assert(ConnectionState.valid(Some(InboundIdle(DataFlow.Duplex)), Some(InboundIdle(DataFlow.Duplex))))
+    assert(
+      !ConnectionState.valid(
+        Some(InboundIdle(DataFlow.Unidirectional)),
+        Some(InboundIdle(DataFlow.Unidirectional))
+      )
+    )
+  }
+
+  test("self-connection: SelfConn, SelfConn⁻¹ and SelfConnNegotiated are the reference's edges") {
+    val cases = Vector(
+      (Unnegotiated(Provenance.Outbound), Event.SelfConn, Unnegotiated(Provenance.Inbound)),
+      (Unnegotiated(Provenance.Inbound), Event.SelfConnReversed, Unnegotiated(Provenance.Outbound)),
+      (InboundIdle(DataFlow.Unidirectional), Event.SelfConnReversed, OutboundUni),
+      (InboundIdle(DataFlow.Duplex), Event.SelfConnReversed, OutboundDup(TimeoutExpired.Ticking)),
+      (
+        Unnegotiated(Provenance.Outbound),
+        Event.SelfConnNegotiated(DataFlow.Duplex),
+        InboundIdle(DataFlow.Duplex)
+      ),
+      (
+        Unnegotiated(Provenance.Outbound),
+        Event.SelfConnNegotiated(DataFlow.Unidirectional),
+        InboundIdle(DataFlow.Unidirectional)
+      )
+    )
+    cases.foreach { (from, e, to) =>
+      assertEquals(ConnectionState.transition(from, e), Right(to), s"${from.abstractName} $e")
+      assert(ConnectionState.valid(Some(from), Some(to)), s"${from.abstractName} -> ${to.abstractName}")
     }
   }
 

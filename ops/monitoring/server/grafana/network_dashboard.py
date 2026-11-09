@@ -72,7 +72,9 @@ def network_dashboard(ui):
                     desc='Ordinary plus big-ledger established peers; includes hot and warm.')),
         (4, ui.stat('Known · total', P, total('Known'), decimals=0,
                     desc='All peers currently known to the governor, including cold peers.')),
-        (4, ui.stat('Manager negotiated', P, gauge('scarab_connections', 'state=~"OutboundUni|OutboundDup|OutboundIdle|InboundIdle|Inbound|Duplex"'), decimals=0,
+        (4, ui.stat('Manager negotiated', P,
+                    'sum by (host, container) (max by (host, container, state) (scarab_connections{'
+                    + m + ', state=~"OutboundUni|OutboundDup|OutboundIdle|InboundIdle|Inbound|Duplex"}))', decimals=0,
                     desc='Connection-manager entries whose handshake is done, in any use. This separate layer is not '
                          'the hot peer count.')),
         (4, ui.stat('Peer slot lag', P,

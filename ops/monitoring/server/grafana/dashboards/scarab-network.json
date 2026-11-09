@@ -423,7 +423,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (host, container) (scarab_connections{host=~\"$host\", container=~\"$container\", state=~\"OutboundUni|OutboundDup|OutboundIdle|InboundIdle|Inbound|Duplex\"})",
+          "expr": "sum by (host, container) (max by (host, container, state) (scarab_connections{host=~\"$host\", container=~\"$container\", state=~\"OutboundUni|OutboundDup|OutboundIdle|InboundIdle|Inbound|Duplex\"}))",
           "legendFormat": "{{host}} {{container}}",
           "refId": "A",
           "instant": true

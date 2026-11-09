@@ -98,7 +98,8 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
       defectInResolution: Boolean = false,
       connected: Option[(PeerNetwork.Addr, SocketAddress[IpAddress]) => IO[Unit]] = None,
       finalizeBearer: IO[Unit] = IO.unit,
-      afterBearer: IO[Unit] = IO.unit
+      afterBearer: IO[Unit] = IO.unit,
+      serverMagic: Long = magic
   ): Resource[IO, Fixture] =
     for
       node <- NodeScope.resource
@@ -108,7 +109,7 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
         for
           pool <- BlockPool.create[IO]
           _ <- supervisor.supervise(pool.fetchCoordinator.run)
-          transport <- InMemoryPeers.create(magic)
+          transport <- InMemoryPeers.create(serverMagic)
           _ <- transport.serve(peer, handlers)
           manager <- ConnectionManager.create[IO](ConnectionManager.Limits(maxOutbound = 4))
           metrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
@@ -151,6 +152,34 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
         yield Fixture(outbound, transport, manager)
       }
     yield fixture
+
+  // `Connected` before the handshake (`ConnectionManager/Core.hs` 1540-1547): a handshake the peer
+  // refuses then leaves the connection `Terminating`, in time-wait (`computeConnStateOnError`)
+  test("a handshake the peer refuses holds the outbound slot in time-wait") {
+    (Deferred[IO, Unit], Deferred[IO, Unit]).tupled.flatMap { (started, release) =>
+      release.complete(()) *> fixture(
+        started,
+        release,
+        failFirst = false,
+        follow = (_, _) => IO.unit,
+        serverMagic = magic + 1
+      ).use { current =>
+        for
+          result <- current.outbound.establish(
+            peer,
+            DiffusionMode.InitiatorAndResponder,
+            Provenance.Outbound
+          )
+          snapshot <- current.manager.snapshot
+        yield
+          assert(result.isLeft, result.toString)
+          assertEquals(
+            snapshot.connections.map(_._2),
+            Vector(xyz.kd5ujc.scarab.protocol.ConnectionState.Terminating)
+          )
+      }
+    }
+  }
 
   private def overlap(failFirst: Boolean): IO[Unit] =
     (Deferred[IO, Unit], Deferred[IO, Unit]).tupled.flatMap { (firstStarted, releaseFirst) =>

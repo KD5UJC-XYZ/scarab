@@ -329,13 +329,13 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
         )
         _ <- fiber.cancel
         afterCancel <- cm.snapshot
-      yield (failed.isLeft, afterFailure.counters, during.counters, afterCancel.counters)
+      yield (failed.isLeft, afterFailure, during, afterCancel)
     }.map { r =>
       val (failed, afterFailure, during, afterCancel) = result(r)
       assert(failed)
-      assertEquals(afterFailure, Counters.zero)
-      assertEquals(during, Counters.zero, "a reservation counts in no direction")
-      assertEquals(afterCancel, Counters.zero)
+      assertEquals(afterFailure.connections, Vector.empty, "the failed owner's entry is gone")
+      assertEquals(during.counters, Counters.zero, "a reservation counts in no direction")
+      assertEquals(afterCancel.connections, Vector.empty, "the cancelled owner's reservation is gone")
     }
   }
 
@@ -461,10 +461,10 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
                 _ <- script.traverse_(op => step(op) *> check(cm))
                 _ <- held.get.flatMap(_.values.toList.traverse_(_._2))
                 last <- cm.snapshot
-              // released connections may still be in time-wait, counted as terminating only
-              yield last.counters == Counters.zero.copy(
-                terminating = last.connections.count(_._2 == ConnectionState.Terminating)
-              )
+              // released connections may still be in time-wait, counted as terminating only; nothing
+              // else is left, a reservation included (it counts in no direction)
+              yield last.connections.forall(_._2 == ConnectionState.Terminating) &&
+                last.counters == Counters.zero.copy(terminating = last.connections.size)
             }
           }
         }
