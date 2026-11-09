@@ -109,7 +109,7 @@ class PeerSnapshotQuerySuite extends FunSuite:
     })
     val poolState = base.es.ls.cert.pState.copy(stakePools = Sorted.map(changed))
     val nes = base.copy[Conway](
-      pd = PoolDistr.empty.copy(distribution = distribution),
+      layout = NewEpochState.Layout.Node11_1(PoolDistr.empty.copy(distribution = distribution)),
       es = base.es
         .copy[Conway](ls = base.es.ls.copy[Conway](cert = base.es.ls.cert.copy(pState = poolState)))
     )
@@ -173,7 +173,7 @@ class PeerSnapshotQuerySuite extends FunSuite:
       Vector(id -> IndividualPoolStake(Rational.one, CompactCoin.fromUnsigned(1L), pool.vrf))
     )
     val nes = base.copy[Conway](
-      pd = PoolDistr.empty.copy(distribution = distribution),
+      layout = NewEpochState.Layout.Node11_1(PoolDistr.empty.copy(distribution = distribution)),
       es = base.es
         .copy[Conway](ls = base.es.ls.copy[Conway](cert = base.es.ls.cert.copy(pState = pstate)))
     )

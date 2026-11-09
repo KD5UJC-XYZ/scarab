@@ -7,7 +7,7 @@ import cats.{Eq, Show}
 import cats.derived.*
 import cats.syntax.all.*
 import monocle.{Focus, Lens}
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, LayoutPart, StateLayout}
 
 // The hard-fork combinator's state, as the mirror holds it. Haskell indexes the telescope by a
 // type-level list of eras (`xs`); here the index is the era a state is in (`Era`: Byron, then the
@@ -15,31 +15,44 @@ import xyz.kd5ujc.scarab.protocol.Era
 // era `n` has `n` past eras, is the one the smart constructor [[Telescope.make]] enforces.
 
 /** A point on the era history (`Bound`, `HardFork/History/Summary.hs:82-88`): time since the system
-  * start in picoseconds, slot, epoch, and the Peras round (`boundPerasRound :: PerasEnabled
-  * PerasRoundNo`, ouroboros-consensus 82ecba32): none is `NoPerasEnabled`, as on every Cardano era
-  * today, and a round is `PerasEnabled`.
+  * start in picoseconds, slot, epoch, and the Peras round, by layout ([[Bound.Layout]]).
   *
   * A deviation from Haskell, for the node-to-client answer that already uses this type
   * (`EraHistory`): the three numbers are `BigInt` s rather than `RelativeTime` /`SlotNo`/`EpochNo`.
   */
-final case class Bound(
-    timePs: BigInt,
-    slot: BigInt,
-    epoch: BigInt,
-    perasRound: Option[PerasRoundNo] = None
-) derives Eq,
+final case class Bound(timePs: BigInt, slot: BigInt, epoch: BigInt, layout: Bound.Layout)
+    derives Eq,
       Show,
       Diff
 
 object Bound:
+  /** The Peras round of a bound, by layout. */
+  enum Layout extends LayoutPart derives Eq, Show, Diff:
+    /** `boundPerasRound :: PerasEnabled PerasRoundNo` (ouroboros-consensus 82ecba32
+      * `Summary.hs:526-549`): none is `NoPerasEnabled`, as on every Cardano era, written as three
+      * items; a round is `PerasEnabled`, the fourth.
+      */
+    case Node11_1(perasRound: Option[PerasRoundNo])
+
+    /** `boundNextPerasRound :: PerasRoundNo` (ouroboros-consensus 2416493b `Summary.hs:90-99`),
+      * always written, the fourth item (`:573-581`); a bound of three items is read as round zero
+      * (`:583-601`).
+      */
+    case Leios(nextPerasRound: PerasRoundNo)
+
+    def stateLayout: StateLayout = this match
+      case Node11_1(_) => StateLayout.Node11_1
+      case Leios(_)    => StateLayout.Leios
+
   /** The bound of a telescope the node holds before it is put on the era history: see
     * [[Telescope.unplaced]].
     */
-  val zero: Bound = Bound(0, 0, 0)
+  val zero: Bound = Bound(0, 0, 0, Layout.Node11_1(None))
 
   val timePsLens: Lens[Bound, BigInt] = Focus[Bound](_.timePs)
   val slotLens: Lens[Bound, BigInt] = Focus[Bound](_.slot)
   val epochLens: Lens[Bound, BigInt] = Focus[Bound](_.epoch)
+  val layoutLens: Lens[Bound, Layout] = Focus[Bound](_.layout)
 
 /** A past era (`Past`, `HardFork/Combinator/State/Types.hs:97-101`): where it started and ended. */
 final case class Past(start: Bound, end: Bound) derives Eq, Show, Diff

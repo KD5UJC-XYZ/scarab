@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.models.runtime.{
   Node,
   Writer
 }
-import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, StateLayout}
 
 import Envelope.*
 import Wire.*
@@ -39,9 +39,28 @@ trait ConsensusCodecs extends EpochStateCodecs:
   /** `PerasCertRound` (`SupportsPeras.hs:85`, a `Word64`). */
   given perasRound: Codec[PerasRoundNo] = word64.imap(PerasRoundNo(_))(_.word)
 
+  /** The fourth field of the Shelley ledger state in this codec's layout
+    * ([[ShelleyLedgerState.Layout]]): the latest Peras certificate round, a `StrictMaybe`
+    * (`encodeStrictMaybe`, 82ecba32 `Ledger.hs:866-912`), in the 11.1 layout; the cumulative
+    * transaction bytes, a `Word64` (`toCBOR`/`fromCBOR`, 2416493b `Ledger.hs:885-922`), in the
+    * Leios layout.
+    */
+  private val shelleyLedgerLayout: Codec[ShelleyLedgerState.Layout] =
+    new Codec[ShelleyLedgerState.Layout]:
+      private val round = strictMaybe(perasRound)
+      def decode(n: Node): Decoded[ShelleyLedgerState.Layout] = stateLayout match
+        case StateLayout.Node11_1 => round.decode(n).map(ShelleyLedgerState.Layout.Node11_1(_))
+        case StateLayout.Leios    => word64.decode(n).map(ShelleyLedgerState.Layout.Leios(_))
+      def encode(a: ShelleyLedgerState.Layout, out: Writer): Unit = a match
+        case ShelleyLedgerState.Layout.Node11_1(r) => round.encode(r, out)
+        case ShelleyLedgerState.Layout.Leios(b)    => word64.encode(b, out)
+      override def check(a: ShelleyLedgerState.Layout): Option[ConstraintViolation] =
+        ofThisLayout("ShelleyLedgerState", a)
+
   /** `LedgerState (ShelleyBlock proto era)` (`Ledger.hs:866-912`): `[2, [tip, new-epoch state,
-    * transition, latest Peras certificate round]]`. Only version 2 is read (the pinned decoder
-    * reads no other). The state is written at the era's own version (`toCBOR`, [[Versions]]).
+    * transition, fourth field]]`, the fourth by layout ([[shelleyLedgerLayout]]). Only version 2 is
+    * read (the decoders of both pins read no other). The state is written at the era's own version
+    * (`toCBOR`, [[Versions]]).
     */
   def shelleyLedgerState[E <: EraTag](using ShelleyBasedEra[E]): Codec[ShelleyLedgerState[E]] =
     versioned(
@@ -51,7 +70,7 @@ trait ConsensusCodecs extends EpochStateCodecs:
           withOriginMaybe(shelleyTip),
           newEpochState[E],
           shelleyTransition,
-          strictMaybe(perasRound)
+          shelleyLedgerLayout
         )
       )
     )

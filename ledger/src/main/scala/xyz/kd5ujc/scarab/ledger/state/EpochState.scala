@@ -7,6 +7,7 @@ import cats.syntax.show.*
 import monocle.{Focus, Iso, Lens}
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.ProtocolParams
+import xyz.kd5ujc.scarab.protocol.{LayoutPart, StateLayout}
 
 // The top of the ledger-state mirror: `NewEpochState` and the `EpochState` it holds
 // (`Shelley/LedgerState/Types.hs` of the pinned shelley impl 1.19.0.1, rev 4c81e90). The snapshots
@@ -91,7 +92,8 @@ object EpochState:
 /** `NewEpochState era` (`LedgerState/Types.hs:302-330`, encoding `397-405`: `array(7)`): the whole
   * ledger state of an era. `ru` is a `StrictMaybe`, which is an `Option` here; `avvm` is the AVVM
   * addresses stashed on the Byron to Shelley boundary (the UTxO in Shelley, `()` after,
-  * `Types.hs:357-359`).
+  * `Types.hs:357-359`). The pool distribution is in [[NewEpochState.Layout]]: the 11.1 layout holds
+  * it, the Leios layout derives it ([[pd]]).
   */
 final case class NewEpochState[E <: EraTag](
     epoch: EpochNo,
@@ -99,12 +101,33 @@ final case class NewEpochState[E <: EraTag](
     bcur: BlocksMade,
     es: EpochState[E],
     ru: Option[PulsingRewUpdate],
-    pd: PoolDistr,
+    layout: NewEpochState.Layout,
     avvm: StashedAVVM[E]
-)
+):
+  /** The stake distribution of the pools that leader election uses: `nesPd` in the 11.1 layout; in
+    * the Leios layout the one of the set snapshot (`nesStakePoolDistrG`, cardano-ledger 9df9f98c
+    * `Shelley/LedgerState/Types.hs:643-644`), which the reference derives from it when it reads it
+    * (`calculatePoolDistr`, `State/SnapShots.hs:495-505`). The Leios `IndividualPoolStake` also
+    * holds the pool's voting key (`State/PoolDistr.hs:73`), which this distribution does not.
+    */
+  def pd: PoolDistr = layout match
+    case NewEpochState.Layout.Node11_1(stored) => stored
+    case NewEpochState.Layout.Leios            => PoolDistr.of(es.snapshots.set)
 
 object NewEpochState:
   import EraInstances.given
+
+  /** The `NewEpochState` by layout: the 11.1 layout writes the pool distribution, `nesPd`, sixth of
+    * seven fields; the Leios layout has no such field and writes six (cardano-ledger 9df9f98c
+    * `Shelley/LedgerState/Types.hs:393-402`).
+    */
+  enum Layout extends LayoutPart derives Eq, Show, Diff:
+    case Node11_1(pd: PoolDistr)
+    case Leios
+
+    def stateLayout: StateLayout = this match
+      case Node11_1(_) => StateLayout.Node11_1
+      case Leios       => StateLayout.Leios
 
   given [E <: EraTag](using ShelleyBasedEra[E]): Eq[NewEpochState[E]] = Eq.instance((a, b) =>
     Eq[EpochNo].eqv(a.epoch, b.epoch) &&
@@ -112,7 +135,7 @@ object NewEpochState:
       Eq[BlocksMade].eqv(a.bcur, b.bcur) &&
       Eq[EpochState[E]].eqv(a.es, b.es) &&
       Eq[Option[PulsingRewUpdate]].eqv(a.ru, b.ru) &&
-      Eq[PoolDistr].eqv(a.pd, b.pd) &&
+      Eq[Layout].eqv(a.layout, b.layout) &&
       Eq[StashedAVVM[E]].eqv(a.avvm, b.avvm)
   )
 
@@ -122,13 +145,13 @@ object NewEpochState:
     Diff.at("bcur")(_.bcur),
     Diff.at("es")(_.es),
     Diff.at("ru")(_.ru),
-    Diff.at("pd")(_.pd),
+    Diff.at("layout")(_.layout),
     Diff.at("avvm")(_.avvm)
   )
 
   given [E <: EraTag](using ShelleyBasedEra[E]): Show[NewEpochState[E]] = Show.show(n =>
     s"NewEpochState(epoch = ${n.epoch.show}, bprev = ${n.bprev.show}, bcur = ${n.bcur.show}, " +
-      s"es = ${Show[EpochState[E]].show(n.es)}, ru = ${n.ru.show}, pd = ${n.pd.show}, " +
+      s"es = ${Show[EpochState[E]].show(n.es)}, ru = ${n.ru.show}, layout = ${n.layout.show}, " +
       s"avvm = ${Show[StashedAVVM[E]].show(n.avvm)})"
   )
 
@@ -157,7 +180,7 @@ object NewEpochState:
       BlocksMade.empty,
       Empty.epochState[E](params),
       None,
-      PoolDistr.empty,
+      Layout.Node11_1(PoolDistr.empty),
       Empty.stashedAvvm[E]
     )
 
@@ -167,7 +190,7 @@ object NewEpochState:
   def es[E <: EraTag]: Lens[NewEpochState[E], EpochState[E]] = Focus[NewEpochState[E]](_.es)
   def ru[E <: EraTag]: Lens[NewEpochState[E], Option[PulsingRewUpdate]] =
     Focus[NewEpochState[E]](_.ru)
-  def pd[E <: EraTag]: Lens[NewEpochState[E], PoolDistr] = Focus[NewEpochState[E]](_.pd)
+  def layout[E <: EraTag]: Lens[NewEpochState[E], Layout] = Focus[NewEpochState[E]](_.layout)
   def avvm[E <: EraTag]: Lens[NewEpochState[E], StashedAVVM[E]] = Focus[NewEpochState[E]](_.avvm)
 
   /** The ledger state of the epoch state, whatever the era. */

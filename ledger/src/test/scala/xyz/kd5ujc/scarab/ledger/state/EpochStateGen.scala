@@ -49,7 +49,9 @@ object EpochStateGen:
         arb[Word64],
         arb[Credential[Staking]]
       )
-      .map((s, r, o, os, v, p, c, m, n, a) => StakePoolSnapShot(s, r, o, os, v, p, c, m, n, a))
+      .map((s, r, o, os, v, p, c, m, n, a) =>
+        StakePoolSnapShot(s, r, o, os, v, PoolBlsKey.Node11_1, p, c, m, n, a)
+      )
   )
 
   given Arbitrary[SnapShot] = Arbitrary(
@@ -59,7 +61,9 @@ object EpochStateGen:
   )
 
   given Arbitrary[SnapShots] = Arbitrary(
-    Gen.zip(arb[SnapShot], arb[SnapShot], arb[SnapShot], arb[Coin]).map(SnapShots(_, _, _, _))
+    Gen
+      .zip(arb[SnapShot], arb[SnapShot], arb[SnapShot], arb[Coin])
+      .map(SnapShots(_, _, _, _, SnapShots.Layout.Node11_1))
   )
 
   given Arbitrary[IndividualPoolStake] = Arbitrary(
@@ -223,7 +227,9 @@ object EpochStateGen:
         Gen.option(arb[PulsingRewUpdate]),
         arb[PoolDistr]
       )
-      .map((e, bp, bc, es, ru, pd) => NewEpochState[Babbage](e, bp, bc, es, ru, pd, ()))
+      .map((e, bp, bc, es, ru, pd) =>
+        NewEpochState[Babbage](e, bp, bc, es, ru, NewEpochState.Layout.Node11_1(pd), ())
+      )
   )
 
   given conwayNewEpochState: Arbitrary[NewEpochState[Conway]] = Arbitrary(
@@ -236,5 +242,7 @@ object EpochStateGen:
         Gen.option(arb[PulsingRewUpdate]),
         arb[PoolDistr]
       )
-      .map((e, bp, bc, es, ru, pd) => NewEpochState[Conway](e, bp, bc, es, ru, pd, ()))
+      .map((e, bp, bc, es, ru, pd) =>
+        NewEpochState[Conway](e, bp, bc, es, ru, NewEpochState.Layout.Node11_1(pd), ())
+      )
   )

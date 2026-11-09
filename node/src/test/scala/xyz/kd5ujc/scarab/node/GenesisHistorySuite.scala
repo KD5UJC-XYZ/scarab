@@ -41,7 +41,7 @@ class GenesisHistorySuite extends FunSuite:
   }
 
   test("past bounds and current era start come from the immutable ledger telescope") {
-    val end = Bound(0, 300, 3)
+    val end = Bound(0, 300, 3, Bound.Layout.Node11_1(None))
     val past = Vector(Past(Bound.zero, end))
     val current = Current(Era.Shelley, end, None)
     def at(slot: BigInt) = query(past, current, 300, slot, parameters)
@@ -75,7 +75,7 @@ class GenesisHistorySuite extends FunSuite:
         expected <- c.get[Option[BigInt]]("window")
         rendering <- c.get[String]("completeOutcomeRendering")
       yield
-        val end = Bound(0, 300, 3)
+        val end = Bound(0, 300, 3, Bound.Layout.Node11_1(None))
         val history = if past then Vector(Past(Bound.zero, end)) else Vector.empty
         val current = Current(
           if past then Era.Shelley else Era.Byron,

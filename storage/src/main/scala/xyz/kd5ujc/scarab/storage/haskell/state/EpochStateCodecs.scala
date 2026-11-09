@@ -11,9 +11,19 @@ import xyz.kd5ujc.scarab.models.runtime.{
   Node,
   Writer
 }
-import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, StateLayout}
 
 import Wire.*
+
+/** `NewEpochState` of the Leios layout: the six fields it writes, in their order. */
+private[state] final case class NewEpochStateLeios[E <: EraTag](
+    epoch: EpochNo,
+    bprev: BlocksMade,
+    bcur: BlocksMade,
+    es: EpochState[E],
+    ru: Option[PulsingRewUpdate],
+    avvm: StashedAVVM[E]
+)
 
 /** The encoding version an era's state is written at: the lowest protocol version of the era
   * (`eraProtVerLow`, which `toEraCBOR` uses, `Core/Era.hs:233`). A Conway state at protocol 11 is
@@ -109,25 +119,60 @@ trait EpochStateCodecs extends RewardCodecs:
   def epochState[E <: EraTag](using era: ShelleyBasedEra[E], v: ProtVer): Codec[EpochState[E]] =
     Record.of[EpochState[E]]((chainAccountState, ledgerState[E], snapShots, nonMyopic))
 
+  /** The pool distribution of the 11.1 layout, `nesPd`, as its [[NewEpochState.Layout]]. */
+  def storedPoolDistr(using ProtVer): Codec[NewEpochState.Layout] =
+    new Codec[NewEpochState.Layout]:
+      private val pd = poolDistr
+      def decode(n: Node): Decoded[NewEpochState.Layout] =
+        pd.decode(n).map(NewEpochState.Layout.Node11_1(_))
+      def encode(a: NewEpochState.Layout, out: Writer): Unit = a match
+        case NewEpochState.Layout.Node11_1(stored) => pd.encode(stored, out)
+        case NewEpochState.Layout.Leios            => () // refused by `check`
+      override def check(a: NewEpochState.Layout): Option[ConstraintViolation] = a match
+        case NewEpochState.Layout.Node11_1(stored) => pd.check(stored)
+        case NewEpochState.Layout.Leios            => ofThisLayout("NewEpochState", a)
+
   /** `NewEpochState` (`Types.hs:397-405`): `[epoch, blocks of the previous epoch, blocks of this
     * one, epoch state, reward update, pool distribution, stashed AVVM addresses]`, at the version
-    * `v`. [[newEpochState]] is the given at the era's own.
+    * `v`. The Leios layout has no pool distribution: six fields (cardano-ledger 9df9f98c
+    * `Shelley/LedgerState/Types.hs:393-422`). [[newEpochState]] is the given at the era's own.
     */
   def newEpochStateAt[E <: EraTag](using
       era: ShelleyBasedEra[E],
       v: ProtVer
-  ): Codec[NewEpochState[E]] =
-    Record.of[NewEpochState[E]](
-      (
-        epochNo,
-        blocksMade,
-        blocksMade,
-        epochState[E],
-        strictMaybe(pulsingRewUpdate),
-        poolDistr,
-        stashedAvvm[E]
+  ): Codec[NewEpochState[E]] = stateLayout match
+    case StateLayout.Node11_1 =>
+      Record.of[NewEpochState[E]](
+        (
+          epochNo,
+          blocksMade,
+          blocksMade,
+          epochState[E],
+          strictMaybe(pulsingRewUpdate),
+          storedPoolDistr,
+          stashedAvvm[E]
+        )
       )
-    )
+    case StateLayout.Leios =>
+      val record = Record.of[NewEpochStateLeios[E]](
+        (
+          epochNo,
+          blocksMade,
+          blocksMade,
+          epochState[E],
+          strictMaybe(pulsingRewUpdate),
+          stashedAvvm[E]
+        )
+      )
+      new Codec[NewEpochState[E]]:
+        def decode(n: Node): Decoded[NewEpochState[E]] = record.decode(n).map { s =>
+          NewEpochState(s.epoch, s.bprev, s.bcur, s.es, s.ru, NewEpochState.Layout.Leios, s.avvm)
+        }
+        private def view(s: NewEpochState[E]): NewEpochStateLeios[E] =
+          NewEpochStateLeios(s.epoch, s.bprev, s.bcur, s.es, s.ru, s.avvm)
+        def encode(a: NewEpochState[E], out: Writer): Unit = record.encode(view(a), out)
+        override def check(a: NewEpochState[E]): Option[ConstraintViolation] =
+          ofThisLayout("NewEpochState", a.layout).map(_.at("layout")).orElse(record.check(view(a)))
 
   /** The codec of the state of an era, at the version the reference writes it at. Dijkstra's state
     * is refused both ways ([[Versions.notYet]]): its parameters and its EPOCH's committee are not

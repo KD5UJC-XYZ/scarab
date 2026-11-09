@@ -163,7 +163,7 @@ object LedgerSnapshotImportCommand:
                 .toRight(ConfigError(ConfigProblem.MissingFlag("--ancillary-manifest")))
                 .map(path => LedgerSnapshotImport.Trust.Verify(FsPath.fromNioPath(path), key))
             }
-      layout <- ReferenceBuildFlag.layout(options.build)
+      layout = ReferenceBuildFlag.layout(options.build)
     yield LedgerSnapshotImport.Config(
       FsPath.fromNioPath(options.ledger),
       FsPath.fromNioPath(options.db),

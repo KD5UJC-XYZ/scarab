@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.node.{Fatal, Follower}
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
-import xyz.kd5ujc.scarab.ledger.state.PoolDistr
+import xyz.kd5ujc.scarab.ledger.state.{NewEpochState, PoolDistr}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.node.mempool.{Source, TxKit}
@@ -850,10 +850,12 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     val half = BigInt(500000)
     val ledger = TxKit
       .native(1)
-      .copy(pd =
-        PoolDistr.of(
-          ForgedChain.snapshotOf(
-            Vector((p.stake.credential, p.creds, half), (q.stake.credential, q.creds, half))
+      .copy(layout =
+        NewEpochState.Layout.Node11_1(
+          PoolDistr.of(
+            ForgedChain.snapshotOf(
+              Vector((p.stake.credential, p.creds, half), (q.stake.credential, q.creds, half))
+            )
           )
         )
       )

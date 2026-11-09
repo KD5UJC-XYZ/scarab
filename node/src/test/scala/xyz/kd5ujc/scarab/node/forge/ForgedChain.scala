@@ -154,8 +154,10 @@ class ForgedChainSetup(val geometry: EpochGeometry):
     val nes = TxKit.native(1)
     nes.copy(
       epoch = vocab(EpochNo.fromBigInt(epoch)),
-      es = nes.es.copy(snapshots = SnapShots(dist, dist, dist, nes.es.snapshots.fee)),
-      pd = PoolDistr.of(dist)
+      es = nes.es.copy(snapshots =
+        SnapShots(dist, dist, dist, nes.es.snapshots.fee, SnapShots.Layout.Node11_1)
+      ),
+      layout = NewEpochState.Layout.Node11_1(PoolDistr.of(dist))
     )
 
   private def vocab[A](e: Either[VocabError, A]): A =

@@ -75,10 +75,12 @@ object DState:
     Focus[DState[A]](_.iRewards)
 
 /** `StakePoolState` (`State/StakePool.hs:138-159`): a registered pool; `PoolParams` without the
-  * pool id (the map key) and with the deposit and the delegators.
+  * pool id (the map key) and with the deposit and the delegators. The Leios layout has the voting
+  * key after the VRF key hash ([[PoolBlsKey]], 9df9f98c `State/StakePool.hs:165`).
   */
 final case class StakePoolState(
     vrf: VRFVerKeyHash,
+    blsKey: PoolBlsKey,
     pledge: Coin,
     cost: Coin,
     margin: Rational,
@@ -94,6 +96,7 @@ final case class StakePoolState(
 
 object StakePoolState:
   val vrf: Lens[StakePoolState, VRFVerKeyHash] = Focus[StakePoolState](_.vrf)
+  val blsKey: Lens[StakePoolState, PoolBlsKey] = Focus[StakePoolState](_.blsKey)
   val pledge: Lens[StakePoolState, Coin] = Focus[StakePoolState](_.pledge)
   val cost: Lens[StakePoolState, Coin] = Focus[StakePoolState](_.cost)
   val margin: Lens[StakePoolState, Rational] = Focus[StakePoolState](_.margin)

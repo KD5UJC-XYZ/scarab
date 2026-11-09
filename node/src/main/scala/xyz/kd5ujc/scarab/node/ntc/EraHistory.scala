@@ -34,7 +34,8 @@ object EraHistory:
 
   /** The eras of a summary in the order [[encode]] writes them. */
   def eras(horizon: Horizon): Vector[EraSummary] =
-    def bound(e: Horizon.Edge): Bound = Bound(e.timePs, e.slot, e.epoch)
+    def bound(e: Horizon.Edge): Bound =
+      Bound(e.timePs, e.slot, e.epoch, Bound.Layout.Node11_1(None))
     horizon.eras.toVector.map(e =>
       EraSummary(
         bound(e.start),

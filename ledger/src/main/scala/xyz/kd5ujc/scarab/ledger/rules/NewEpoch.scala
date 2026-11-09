@@ -65,7 +65,7 @@ object NewEpoch:
               bprev = before.bcur,
               bcur = BlocksMade.empty,
               ru = None,
-              pd = before.es.snapshots.markPoolDistr
+              layout = NewEpochState.Layout.Node11_1(before.es.snapshots.markPoolDistr)
             )
           )
         yield ()

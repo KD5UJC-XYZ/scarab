@@ -54,6 +54,7 @@ object Convert:
     ).mapN((vrf, account, owners) =>
       StakePoolState(
         vrf,
+        PoolBlsKey.Node11_1,
         Coin(params.pledge),
         Coin(params.cost),
         params.margin,

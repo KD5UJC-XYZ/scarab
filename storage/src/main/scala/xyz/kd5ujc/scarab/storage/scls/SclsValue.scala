@@ -394,6 +394,7 @@ object SclsValue:
         )
         S.StakePoolState(
           vrf,
+          S.PoolBlsKey.Node11_1,
           pledge,
           cost,
           margin,

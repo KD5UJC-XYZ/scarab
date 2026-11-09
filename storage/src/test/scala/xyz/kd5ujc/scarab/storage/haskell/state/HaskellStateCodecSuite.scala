@@ -459,6 +459,7 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
         Sorted.emptySet[KeyHash[Staking]],
         coinOf(0),
         VRFVerKeyHash.fromBytes(Bytes(Vector.fill(32)(1.toByte))).toOption.get,
+        PoolBlsKey.Node11_1,
         coinOf(0),
         coinOf(0),
         Rational.zero,
