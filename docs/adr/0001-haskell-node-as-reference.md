@@ -42,3 +42,20 @@ seems impossible, stop and ask the owner.
 
 Networking is mirrored in structure and behaviour too
 ([0008](0008-networking-mirrors-ouroboros-network.md)).
+
+## Amendment (2026-11-09): checked arithmetic and compatibility
+
+The owner clarified the application of the [standing decision on reference bugs](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849)
+during review of [#849](https://github.com/KD5UJC-XYZ/scarab/pull/849). This procedure applies the
+interoperability condition; it does not grant a blanket exception for inputs that trigger a bug.
+
+Use checked or exact arithmetic to avoid accidental overflow and narrowing. At each affected
+boundary, establish the reference behavior, reachability, and effect on consensus, persisted state,
+wire data, or configuration. Preserve supported behavior unless a specific owner decision authorizes
+the difference. Existing decisions apply within their recorded scope; they do not authorize unrelated
+refusal, saturation, or no-verdict behavior.
+
+Record the evidence and any applicable owner decision in the compatibility register and the pull
+request's deviations table. If the effect on interoperability or the scope of an existing decision
+is unclear, ask the owner before changing the boundary behavior. The approval requirement in the
+2026-10-25 amendment continues to apply.

@@ -113,7 +113,10 @@ scala code … I love the use of type parameters when I can use them"*.
   requested with clearly defined trade-offs and reasoning. Only after that approval is it
   implemented, with a written reason that records the approval. Existing code, earlier PRs, review
   notes and design documents are not approval. If exact fidelity seems impossible, stop and ask the
-  owner.
+  owner. For overflow, underflow and narrowing, follow
+  [ADR 0001's arithmetic procedure](docs/adr/0001-haskell-node-as-reference.md#amendment-2026-11-09-checked-arithmetic-and-compatibility)
+  before choosing the boundary behavior; a reference bug is not blanket permission to change it.
+  Decisions recorded by the owner's `ottobot-ai` account are the owner's.
 - Pure rules; exact `Rational` arithmetic; anything hashed or signed is hashed over its original bytes,
   except where the reference itself signs a re-encoding: a header's KES signature covers its body
   encoded again (`Praos/BlockHeader.hs:113-117`, cardano-ledger f649f975), its hash the original
