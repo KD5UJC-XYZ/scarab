@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.ledger.{
   BlockFailure,
   EpochGeometry,
   LedgerGlobals,
+  Mismatch,
   PlutusStats,
   Redeemer,
   RefScripts,
@@ -122,7 +123,9 @@ class BbodySuite extends FunSuite:
       case other                    => fail(s"expected the transaction's refusal, got $other")
   }
 
-  test("the reference scripts of the block are checked before the body commitment") {
+  test(
+    "the reference scripts of the block are checked before the body commitment, and the failure carries the block's total"
+  ) {
     val alice = key()
     val held = Vector.tabulate(18)(i => TxIn(Bytes.fromArray(Array.fill(32)(i.toByte)), 0))
     val utxo = Utxo.empty ++ held.map(_ -> withScript(alice.address(), 60000))
@@ -130,12 +133,15 @@ class BbodySuite extends FunSuite:
       body("naming", Vector(txIn(1)), Vector.empty, 0, referenceInputs = held),
       Vector.empty
     )
-    assert(
-      Bbody.refScriptsSize(pp, utxo, Vector(naming)) > RefScripts.MaxRefScriptSizePerBlock.toLong
-    )
+    // `BodyRefScriptsSizeTooBig` (Conway `Rules/Bbody.hs:342-355`): 18 scripts of 60,000 bytes
+    // supplied, against the limit of 1 MiB expected
     assertEquals(
       run(pp, Vector(naming), state(pp, utxo), BodyCommitment(101, commitment.hash)),
-      Left(BlockFailure.RefScriptsTooLarge(RefScripts.MaxRefScriptSizePerBlock.toLong))
+      Left(
+        BlockFailure.RefScriptsTooLarge(
+          Mismatch(1080000L, RefScripts.MaxRefScriptSizePerBlock.toLong)
+        )
+      )
     )
   }
 
@@ -227,7 +233,11 @@ class BbodySuite extends FunSuite:
       assertEquals(Bbody.refScriptsSize(p, utxo, Vector(naming)), 1L << 31)
       assertEquals(
         run(p, Vector(naming), state(p, utxo)),
-        Left(BlockFailure.RefScriptsTooLarge(RefScripts.MaxRefScriptSizePerBlock.toLong))
+        Left(
+          BlockFailure.RefScriptsTooLarge(
+            Mismatch(1L << 31, RefScripts.MaxRefScriptSizePerBlock.toLong)
+          )
+        )
       )
     }
   }

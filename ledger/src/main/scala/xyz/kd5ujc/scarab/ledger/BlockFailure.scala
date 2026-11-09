@@ -111,8 +111,11 @@ enum BlockFailure:
   /** The total supply is not the maximum entering an epoch (before Conway). */
   case SupplyInvariant(epoch: BigInt, total: BigInt, maximum: BigInt)
 
-  /** The reference scripts of the block exceed the Conway limit. */
-  case RefScriptsTooLarge(limit: Long)
+  /** The reference scripts of the block exceed the Conway limit: `BodyRefScriptsSizeTooBig`
+    * (`Conway/Rules/Bbody.hs:103`, cardano-ledger f649f975), the block's total supplied and the
+    * limit expected, each the reference's 64-bit `Int`.
+    */
+  case RefScriptsTooLarge(mismatch: Mismatch[Long])
 
   /** The execution units of the block exceed the maximum of its parameters. */
   case BlockExUnitsTooBig(used: ExUnits, maximum: ExUnits)
@@ -177,7 +180,8 @@ enum BlockFailure:
     case Handover(error)         => error.message
     case SupplyInvariant(epoch, total, maximum) =>
       s"supply invariant broken entering epoch $epoch: $total != $maximum"
-    case RefScriptsTooLarge(limit) => s"reference scripts of the block exceed $limit bytes"
+    case RefScriptsTooLarge(m) =>
+      s"reference scripts of the block total ${m.supplied} bytes, over the limit of ${m.expected}"
     case BlockExUnitsTooBig(used, maximum) =>
       s"block execution units ${used.mem} mem / ${used.steps} steps exceed the maximum ${maximum.mem} / ${maximum.steps}"
     case Tx(failure)   => failure.message

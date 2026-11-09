@@ -96,8 +96,8 @@ class BlockFailureSuite extends FunSuite:
       "ledger" -> "supply invariant broken entering epoch 5: 10 != 11"
     )
     assertEquals(
-      rendered(BlockFailure.RefScriptsTooLarge(1048576L)),
-      "ledger" -> "reference scripts of the block exceed 1048576 bytes"
+      rendered(BlockFailure.RefScriptsTooLarge(Mismatch(1080000L, 1048576L))),
+      "ledger" -> "reference scripts of the block total 1080000 bytes, over the limit of 1048576"
     )
     assertEquals(
       rendered(BlockFailure.BlockExUnitsTooBig(ExUnits(7, 8), ExUnits(5, 6))),
