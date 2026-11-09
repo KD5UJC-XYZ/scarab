@@ -43,6 +43,12 @@ enum StorageEvent:
     * `DeletedSnapshot`, ouroboros-consensus 82ecba32 `Storage/LedgerDB/Snapshots.hs:320-328`).
     */
   case SnapshotDeleted(name: String)
+
+  /** A skipped snapshot could not be deleted (`error`); the restore went on, as the reference's
+    * `defaultDeleteSnapshotIfTemporary` catches the failure of its deletion
+    * (`Snapshots.hs:320-330`).
+    */
+  case SnapshotNotDeleted(name: String, error: StorageError)
   case SnapshotRestored(name: String, anchor: Option[BlockRef])
 
   /** The restored snapshot was written before snapshots recorded their checkpoint
@@ -141,6 +147,36 @@ object ChainStorage:
     def apply(store: ImmutableStore[F], anchor: Option[BlockRef], state: S)(using
         Raise[F, StorageError]
     ): F[S]
+
+  /** The events of a snapshot the restore or the migration did not use. */
+  private def skippedEvents[F[_]: cats.Monad](
+      events: StorageEvents[F],
+      skipped: LedgerSnapshots.Skipped
+  ): F[Unit] =
+    events.emit(StorageEvent.SnapshotSkipped(skipped.name, skipped.error)) *>
+      (skipped.unused match
+        case LedgerSnapshots.Unused.Deleted =>
+          events.emit(StorageEvent.SnapshotDeleted(skipped.name))
+        case LedgerSnapshots.Unused.NotDeleted(error) =>
+          events.emit(StorageEvent.SnapshotNotDeleted(skipped.name, error))
+        case LedgerSnapshots.Unused.Kept => cats.Monad[F].unit)
+
+  /** The store made equal to the checkpoint of `anchor`, or the refusal of a checkpoint whose keys
+    * no layout has, which the fallback deletes as the reference deletes a snapshot whose tables do
+    * not decode ([[LedgerSnapshots.Fallback]]). Any other failure, a file system error among them,
+    * is raised, as the reference raises it.
+    */
+  private def restoredInto[F[_]: Async, S](backing: StateBacking[F, S], anchor: Option[BlockRef])(
+      using Raise[F, StorageError]
+  ): F[Either[StorageError, Unit]] =
+    Handle
+      .allow[StorageError](backing.restore(anchor).as(().asRight[StorageError]))
+      .rescue {
+        case e: StorageError.UtxoCheckpoint
+            if LedgerSnapshots.Fallback.of(e) == LedgerSnapshots.Fallback.Delete =>
+          Async[F].pure(Left(e))
+        case e => e.raise[F, Either[StorageError, Unit]]
+      }
 
   /** Stored blocks are prepared this many at a time during replay. */
   private val ReplayBatch = 64
@@ -343,12 +379,14 @@ object ChainStorage:
         migratedSnapshots.migrated.traverse_(m => events.emit(StorageEvent.FormatMigrated(m))) *>
           migratedSnapshots.refused.traverse_(r =>
             events.emit(StorageEvent.SnapshotRefused(r.name, None, r.refusal))
-          )
+          ) *> migratedSnapshots.skipped.traverse_(skippedEvents(events, _))
       )
       snapshots <- Resource.eval(
         FileLedgerSnapshots.open[F, S](dir / "snapshots", config.keepSnapshots)
       )
       supervisor <- Supervisor[F](await = false)
+      // a snapshot is used once its anchor is stored and its checkpoint is admitted and restored
+      // into the store: a checkpoint whose keys do not decode is refused there, inside the fallback
       restored <- Resource.eval(
         snapshots.restore(snapshot =>
           snapshot.anchor
@@ -356,23 +394,20 @@ object ChainStorage:
             .flatMap {
               case false =>
                 F.pure(Left(StorageError.Missing("snapshot anchor in the immutable store")))
-              case true => backing.admit(snapshot.anchor, snapshot.checkpoint)
+              case true =>
+                backing.admit(snapshot.anchor, snapshot.checkpoint).flatMap {
+                  case Left(error) => F.pure(Left(error))
+                  case Right(())   => restoredInto(backing, snapshot.anchor)
+                }
             }
         )
       )
+      _ <- Resource.eval(restored.skipped.traverse_(skippedEvents(events, _)))
+      _ <- Resource.eval(restored.snapshot.fold(backing.reset)(_ => F.unit))
+      // the checkpoints that no snapshot lists go, by the trim path of a write: those of the
+      // snapshots just deleted, and any a cancelled or failed earlier start left behind
       _ <- Resource.eval(
-        restored.skipped.traverse_(s =>
-          events.emit(StorageEvent.SnapshotSkipped(s.name, s.error)) *>
-            F.whenA(s.unused == LedgerSnapshots.Unused.Deleted)(
-              events.emit(StorageEvent.SnapshotDeleted(s.name))
-            )
-        )
-      )
-      // the checkpoints of the deleted snapshots go too, by the trim path of a write
-      _ <- Resource.eval(
-        F.whenA(restored.skipped.exists(_.unused == LedgerSnapshots.Unused.Deleted))(
-          snapshots.list.flatMap(names => backing.retain(names.map(_.stripSuffix(".bin")).toSet))
-        )
+        snapshots.list.flatMap(names => backing.retain(names.map(_.stripSuffix(".bin")).toSet))
       )
       start <- Resource.eval(
         restored.snapshot.fold(F.pure((Option.empty[BlockRef], initial)))((_, s) =>
@@ -386,9 +421,6 @@ object ChainStorage:
               events.emit(StorageEvent.SnapshotUnbound(name, s.anchor))
             )
         )
-      )
-      _ <- Resource.eval(
-        restored.snapshot.fold(backing.reset)((_, s) => backing.restore(s.anchor).void)
       )
       pending <- Resource.eval(Ref.of[F, Vector[(BlockRef, Bytes)]](Vector.empty))
       lastSlot <- Resource.eval(Ref.of[F, BigInt](start._1.fold(BigInt(0))(_.slot)))

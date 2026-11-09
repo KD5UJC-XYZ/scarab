@@ -135,15 +135,17 @@ object SnapshotV10:
     SnapshotV5.writeBody(out, at + 4 + bound.length, side, haskell)
     out
 
-  /** The V10 content of a V9 file's content: the 11.1 build recorded, the binding, the sidecar and
-    * the Haskell bytes unchanged. Every V9 file converts, its Haskell bytes being in the 11.1
-    * layout (see above).
+  /** The V10 content of a V9 file's content: the 11.1 build recorded, and the binding, the sidecar
+    * and the Haskell bytes copied as they were, after they have been read (so a file that does not
+    * read does not convert). Nothing after the magic is encoded again: a V9 file whose binding or
+    * sidecar is in an encoding the reader takes but the writer would not produce keeps it. Every V9
+    * file converts, its Haskell bytes being in the 11.1 layout (see above).
     */
   def fromV9(content: Array[Byte]): Either[StorageError, Array[Byte]] =
     SnapshotV9
       .sections(content)
-      .map((binding, sidecar, haskell) =>
-        framed(ReferenceBuild.Release11_1, binding, sidecar, haskell)
+      .map(_ =>
+        Magic ++ buildBytes(ReferenceBuild.Release11_1) ++ content.drop(SnapshotV9.Magic.length)
       )
 
   // ---- read
@@ -226,8 +228,22 @@ object SnapshotV10:
     if content.length < Magic.length + 1 || !content.startsWith(Magic) then
       SnapshotMigration
         .versionOf("snapshot format", content)
-        .flatMap(version => FileKind.SnapshotFile.readable("snapshot format", version))
-        .flatMap(_ => Left(corrupt(SnapshotReadError.BadMagic)))
+        .flatMap(version =>
+          FileKind.SnapshotFile.readable("snapshot format", version).flatMap { _ =>
+            val current = FileKind.SnapshotFile.current
+            // a previous file its migration did not convert (its sidecar or binding is of another
+            // schema): of another version, not corrupt
+            if version != current then
+              Left(
+                StorageError.VersionMismatch(
+                  "snapshot format",
+                  FileKind.SnapshotFile.identifier(version),
+                  FileKind.SnapshotFile.identifier(current)
+                )
+              )
+            else Left(corrupt(SnapshotReadError.BadMagic))
+          }
+        )
     else
       val length = content(Magic.length) & 0xff
       val start = Magic.length + 1

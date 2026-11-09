@@ -462,7 +462,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       }
     }
 
-  test("a snapshot whose UTxO checkpoint is missing is skipped, the older one is used") {
+  test("a snapshot whose UTxO checkpoint is missing stops the start, and nothing is deleted") {
+    // the reference's missing tables file raises from readIncremental (82ecba32 Util/CBOR.hs:206),
+    // outside the failures tryNewestFirst falls back on: a briefly absent mount never deletes state
     tempDir.use { dir =>
       for
         log1 <- events(dir)
@@ -476,17 +478,73 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           )
         )
         log2 <- events(dir)
-        again <- runWith(dir, 650, 120, log2, Some("rocksdb"))
+        again <- runWith(dir, 650, 120, log2, Some("rocksdb")).attempt
+        after <- snapshotsIn(dir)
         e2 <- log2.get
-        _ <- IO(
-          assertEquals(
-            e2.collect { case e: StorageEvent.SnapshotSkipped => e.name }.toList,
-            List(snaps.head.fileName.toString)
+        _ <- IO {
+          assert(
+            again.left.exists(_.getMessage.contains("checkpoint directory does not exist")),
+            again.toString
           )
-        )
-        _ <- IO(sameLedger(again._2.state, states(650)))
-        _ <- IO(assertEquals(again._3, states(650).utxo.toMap))
+          assertEquals(after, snaps)
+          assert(!e2.exists(_.isInstanceOf[StorageEvent.SnapshotDeleted]))
+        }
       yield ()
+    }
+  }
+
+  test("a migrated snapshot whose checkpoint mixes key layouts is deleted at its restore") {
+    // its Legacy binding admits it by its directory; the keys refuse at the restore, which the
+    // fallback treats as tables that do not decode (82ecba32 API.hs:625-631)
+    tempDir.use { dir =>
+      for
+        left <- checkpointDatabase(dir, CheckpointLayout.BeforeK6, 600, 60, 4, 1, previous = true)
+        _ <- IO(assert(left.size >= 2, s"snapshots left: ${left.size}"))
+        newest = FileLedgerSnapshots.nameOf(left.head)
+        _ <- IO {
+          org.rocksdb.RocksDB.loadLibrary()
+          val options = new org.rocksdb.Options()
+          val db = org.rocksdb.RocksDB.open(options, checkpointOf(dir, newest).toNioPath.toString)
+          try db.put(Array.fill[Byte](34)(7), Array[Byte](1))
+          finally
+            db.close()
+            options.close()
+        }
+        log <- events(dir)
+        _ <- runWith(dir, 731, 120, log, Some("rocksdb"), 4, migrate = true)
+        seen <- log.get
+        snapshotLeft <- IO.blocking(JFiles.exists((dir / "snapshots" / newest).toNioPath))
+        checkpointLeft <- IO.blocking(JFiles.exists(checkpointOf(dir, newest).toNioPath))
+      yield
+        val skipped = seen.collect { case StorageEvent.SnapshotSkipped(name, e) => name -> e }
+        assertEquals(skipped.map(_._1).toList, List(newest))
+        skipped.headOption.map(_._2) match
+          case Some(StorageError.UtxoCheckpoint(_, CheckpointProblem.MixedKeyLayouts)) => ()
+          case other => fail(s"expected mixed key layouts, got $other")
+        assertEquals(
+          seen.collect { case StorageEvent.SnapshotDeleted(name) => name }.toList,
+          List(newest)
+        )
+        assertEquals(
+          seen.collect { case StorageEvent.SnapshotRestored(_, a) => a }.toList,
+          List(left.lift(1))
+        )
+        assert(!snapshotLeft && !checkpointLeft)
+    }
+  }
+
+  test("a checkpoint no snapshot lists is removed at every successful open") {
+    tempDir.use { dir =>
+      val orphan = dir / "utxo" / "checkpoints" / "snapshot-00000000000000000001-1"
+      for
+        log1 <- events(dir)
+        _ <- runWith(dir, 600, 60, log1, Some("rocksdb"))
+        // what a start cancelled between deleting a snapshot and trimming its checkpoint leaves
+        _ <- IO.blocking(JFiles.createDirectories(orphan.toNioPath))
+        log2 <- events(dir)
+        _ <- runWith(dir, 650, 120, log2, Some("rocksdb"))
+        left <- IO.blocking(JFiles.exists(orphan.toNioPath))
+      yield assert(!left, s"$orphan is still there")
     }
   }
 

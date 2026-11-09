@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 
-import LedgerSnapshots.Unused
+import LedgerSnapshots.{Fallback, Unused}
 import StorageTestKit.*
 
 /** The restore's fallback mirrors the reference's `tryNewestFirst` (ouroboros-consensus 82ecba32
@@ -163,9 +163,10 @@ class SnapshotFallbackSuite extends CatsEffectSuite:
     )
   }
 
-  test("a snapshot whose checkpoint is absent or not the recorded one is deleted (:628-631)") {
+  test(
+    "a snapshot whose checkpoint is not the recorded one, or whose keys do not decode, is deleted"
+  ) {
     Vector(
-      CheckpointProblem.Absent,
       CheckpointProblem.DigestMismatch(Bytes.empty, Bytes.wrap(Array(1.toByte))),
       CheckpointProblem.MixedKeyLayouts
     ).traverse_ { problem =>
@@ -209,17 +210,67 @@ class SnapshotFallbackSuite extends CatsEffectSuite:
     }
   }
 
-  test("a file that cannot be read is not a decoding failure: kept") {
+  /** The older snapshot, then the newer one as `file` (none: a directory, which cannot be read);
+    * the restore stops with what `stopped` accepts, and both files are still there.
+    */
+  private def stops(
+      file: Option[Array[Byte]],
+      stopped: StorageError => Boolean,
+      refuse: StateSnapshot[MirrorState] => Option[StorageError] = _ => None
+  ): IO[Unit] =
     tempDir.use { dir =>
       for
         _ <- write(dir, older, FileLedgerSnapshots.closed(olderContent))
-        _ <- IO.blocking(JFiles.createDirectory((dir / newer).toNioPath))
-        restored <- restore(dir).map(_.fold(e => fail(e.message), identity))
+        _ <- file.fold(IO.blocking(JFiles.createDirectory((dir / newer).toNioPath)).void)(
+          write(dir, newer, _)
+        )
+        result <- restore(dir, refuse)
+        present <- IO.blocking(JFiles.exists((dir / newer).toNioPath))
+        olderPresent <- IO.blocking(JFiles.exists((dir / older).toNioPath))
+      yield
+        assert(result.left.exists(stopped), result.toString)
+        assert(present, s"$newer was deleted")
+        assert(olderPresent, s"$older was deleted")
+    }
+
+  test("a file that cannot be read stops the start, as the reference raises it; nothing deleted") {
+    stops(None, _.isInstanceOf[StorageError.Io])
+  }
+
+  test("an absent checkpoint is the reference's missing tables, which raise: the start stops") {
+    // readIncremental opens the tables outside its ExceptT (82ecba32 Util/CBOR.hs:206)
+    val absent = StorageError.UtxoCheckpoint(newer, CheckpointProblem.Absent)
+    stops(
+      Some(FileLedgerSnapshots.closed(newerContent)),
+      _ == absent,
+      s => Option.when(newerOnly(s))(absent)
+    )
+  }
+
+  test("a deletion that fails does not stop the fallback (Snapshots.hs:320-330): reported, kept") {
+    tempDir.use { dir =>
+      val closed = FileLedgerSnapshots.closed(newerContent)
+      val damaged = closed.updated(closed.length - 1, (closed.last ^ 1).toByte)
+      val readOnly = java.nio.file.attribute.PosixFilePermissions.fromString("r-xr-xr-x")
+      val writable = java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x")
+      for
+        _ <- write(dir, older, FileLedgerSnapshots.closed(olderContent))
+        _ <- write(dir, newer, damaged)
+        _ <- IO.blocking(JFiles.setPosixFilePermissions(dir.toNioPath, readOnly))
+        restored <- restore(dir).guarantee(
+          IO.blocking(JFiles.setPosixFilePermissions(dir.toNioPath, writable)).void
+        )
         present <- IO.blocking(JFiles.exists((dir / newer).toNioPath))
       yield
-        assertEquals(restored.snapshot.map(_._1), Some(older))
-        assertEquals(restored.skipped.map(s => (s.name, s.unused)), Vector(newer -> Unused.Kept))
-        assert(restored.skipped.forall(_.error.isInstanceOf[StorageError.Io]))
+        val result = restored.fold(e => fail(e.message), identity)
+        assertEquals(result.snapshot.map(_._1), Some(older))
+        assertEquals(result.skipped.map(s => (s.name, s.error)), Vector(newer -> corrupt))
+        assert(
+          result.skipped.forall(_.unused match
+            case Unused.NotDeleted(_: StorageError.Io) => true
+            case _                                     => false),
+          result.skipped.toString
+        )
         assert(present)
     }
   }
@@ -271,7 +322,6 @@ class SnapshotFallbackSuite extends CatsEffectSuite:
         ReferenceBuild.Release11_1
       ),
       StorageError.UnknownReferenceBuild("snapshot", "x", ReferenceBuild.Release11_1),
-      StorageError.UtxoCheckpoint("c", CheckpointProblem.Absent),
       StorageError.UtxoCheckpoint("c", CheckpointProblem.DigestMismatch(Bytes.empty, Bytes.empty)),
       StorageError.UtxoCheckpoint("c", CheckpointProblem.MixedKeyLayouts),
       StorageError.UtxoCheckpoint("c", CheckpointProblem.IndexTooLarge(70000L)),
@@ -279,13 +329,95 @@ class SnapshotFallbackSuite extends CatsEffectSuite:
     )
     val kept = Vector(
       StorageError.VersionMismatch("snapshot sidecar schema", "00", "01"),
-      StorageError.Io("snapshot", new java.io.IOException("unreadable")),
       StorageError.UtxoCheckpoint("c", CheckpointProblem.Unbound),
       StorageError.UtxoCheckpoint(
         "c",
         CheckpointProblem.LayoutMismatch(UtxoKeyLayout.TxIdIndex16, UtxoKeyLayout.TxIdIndex16)
       )
     )
-    deleted.foreach(e => assertEquals(Unused.of(e), Unused.Deleted, e.message))
-    kept.foreach(e => assertEquals(Unused.of(e), Unused.Kept, e.message))
+    val stopped = Vector(
+      StorageError.Io("snapshot", new java.io.IOException("unreadable")),
+      StorageError.UtxoCheckpoint("c", CheckpointProblem.Absent),
+      StorageError.DecoderDefect("snapshot", new RuntimeException("defect")),
+      StorageError.UnknownVersion("snapshot", xyz.kd5ujc.scarab.ledger.FileKind.SnapshotFile, "x")
+    )
+    deleted.foreach(e => assertEquals(Fallback.of(e), Fallback.Delete, e.message))
+    kept.foreach(e => assertEquals(Fallback.of(e), Fallback.Keep, e.message))
+    stopped.foreach(e => assertEquals(Fallback.of(e), Fallback.Stop, e.message))
+  }
+
+  // ---- the migration of previous files goes through the same fallback
+
+  private def v9(file: String): Array[Byte] =
+    FileLedgerSnapshots
+      .verified(JFiles.readAllBytes(JPath.of("fixtures/snapshot-v9").resolve(file)))
+      .fold(e => fail(e.message), identity)
+
+  test("a damaged V9 newest is deleted by its migration; the good V9 older migrates and restores") {
+    tempDir.use { dir =>
+      val closed = FileLedgerSnapshots.closed(v9("eras/conway-730.bin"))
+      for
+        _ <- write(dir, older, FileLedgerSnapshots.closed(v9("eras/conway-729.bin")))
+        _ <- write(dir, newer, closed.updated(closed.length - 1, (closed.last ^ 1).toByte))
+        report <- ok(SnapshotMigration.toCurrent[IO].run(dir))
+        restored <- restore(dir).map(_.fold(e => fail(e.message), identity))
+        present <- IO.blocking(JFiles.exists((dir / newer).toNioPath))
+      yield
+        assertEquals(
+          report.migrated,
+          List(
+            Migrated(
+              xyz.kd5ujc.scarab.ledger.FileKind.SnapshotFile,
+              xyz.kd5ujc.scarab.ledger.FormatVersion.V9,
+              xyz.kd5ujc.scarab.ledger.FormatVersion.V10,
+              1
+            )
+          )
+        )
+        assertEquals(
+          report.skipped,
+          List(LedgerSnapshots.Skipped(newer, corrupt, Unused.Deleted))
+        )
+        assert(!present)
+        assertEquals(restored.snapshot.map(_._1), Some(older))
+    }
+  }
+
+  test("a V9 file of another sidecar schema is kept unconverted, and the restore skips it") {
+    tempDir.use { dir =>
+      val source = v9("eras/conway-730.bin")
+      val body = 12 + java.nio.ByteBuffer.wrap(source, 8, 4).getInt
+      val otherSchema = source.updated(body + 4, (source(body + 4) ^ 1).toByte)
+      for
+        _ <- write(dir, older, FileLedgerSnapshots.closed(v9("eras/conway-729.bin")))
+        _ <- write(dir, newer, FileLedgerSnapshots.closed(otherSchema))
+        report <- ok(SnapshotMigration.toCurrent[IO].run(dir))
+        after <- IO.blocking(JFiles.readAllBytes((dir / newer).toNioPath))
+        restored <- restore(dir).map(_.fold(e => fail(e.message), identity))
+      yield
+        assertEquals(report.skipped.map(s => (s.name, s.unused)), List(newer -> Unused.Kept))
+        assert(report.skipped.forall(_.error.isInstanceOf[StorageError.VersionMismatch]))
+        assertEquals(after.toVector, FileLedgerSnapshots.closed(otherSchema).toVector)
+        assertEquals(restored.snapshot.map(_._1), Some(older))
+        assertEquals(restored.skipped.map(s => (s.name, s.unused)), Vector(newer -> Unused.Kept))
+    }
+  }
+
+  test("V9 to V10 copies a binding the writer would encode otherwise, byte for byte") {
+    // the Legacy binding's variant index as the two-byte LEB128 80 00, which the reader takes and
+    // the writer would write as 00
+    val source = v9("eras/conway-730.bin")
+    val length = java.nio.ByteBuffer.wrap(source, 8, 4).getInt
+    val binding = source.slice(12, 12 + length)
+    assertEquals(binding.drop(8).toVector, Vector(0.toByte), "a Legacy binding")
+    val stretched = source.take(8) ++ java.nio.ByteBuffer.allocate(4).putInt(length + 1).array() ++
+      binding.take(8) ++ Array(0x80.toByte, 0x00.toByte) ++ source.drop(12 + length)
+    assertEquals(SnapshotV9.bindingOf(stretched), Right(CheckpointBinding.Legacy))
+    val converted = SnapshotV10.fromV9(stretched).fold(e => fail(e.message), identity)
+    assertEquals(
+      converted.toVector,
+      (SnapshotV10.Magic ++ SnapshotV10.buildBytes(ReferenceBuild.Release11_1) ++
+        stretched.drop(SnapshotV9.Magic.length)).toVector
+    )
+    assertEquals(SnapshotV10.bindingOf(converted), Right(CheckpointBinding.Legacy))
   }

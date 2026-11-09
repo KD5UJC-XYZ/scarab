@@ -83,8 +83,10 @@ class SnapshotFailureSuite extends FailsOnUncaught:
           opened(
             dir,
             event => events.offer(event),
+            // the first retain is the open's trim of checkpoints no snapshot lists; the second,
+            // that of the first periodic snapshot, fails
             backing(retainBody = calls.getAndUpdate(_ + 1).flatMap {
-              case 0 => error.raise[IO, Unit]
+              case 1 => error.raise[IO, Unit]
               case _ => IO.unit
             }),
             every = 1

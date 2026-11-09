@@ -169,7 +169,7 @@ final class EventMetrics[F[_]: Sync] private (
         replayReached(at, replayed, millis)
       case StorageEvent.NetworkRecorded(_, _, _) | StorageEvent.VolatileOpened(_) |
           StorageEvent.VolatileResumed(_, _, _) | StorageEvent.ShutdownSnapshot(_, _) |
-          StorageEvent.SnapshotDeleted(_) =>
+          StorageEvent.SnapshotDeleted(_) | StorageEvent.SnapshotNotDeleted(_, _) =>
         Sync[F].unit
 
   val connection: ConnectionEvents[F] = new ConnectionEvents[F]:

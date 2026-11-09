@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.storage
 
 import xyz.kd5ujc.scarab.ledger.StorageStructureError
-import cats.effect.Async
+import cats.effect.{Async, Sync}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -29,8 +29,8 @@ trait LedgerSnapshots[F[_], S]:
   /** The newest snapshot that decodes, passes its checksum and that `usable` admits (its anchor is
     * stored, its checkpoint is the one it was written with); `usable` gives the reason it refuses
     * one. A snapshot not used is reported and the next older one tried, and deleted when the
-    * reference deletes it ([[LedgerSnapshots.Unused.of]]). Unknown or retired format versions raise
-    * a storage error, preventing fallback replay from bypassing format admission.
+    * reference deletes it ([[LedgerSnapshots.Fallback.of]]). Unknown or retired format versions
+    * raise a storage error, preventing fallback replay from bypassing format admission.
     */
   def restore(usable: StateSnapshot[S] => F[Either[StorageError, Unit]])(using
       cats.mtl.Raise[F, StorageError]
@@ -42,53 +42,84 @@ trait LedgerSnapshots[F[_], S]:
 object LedgerSnapshots:
   final case class Written(name: String, bytes: Long, anchor: Option[BlockRef])
 
-  /** A snapshot the restore did not use, why, and whether it was deleted. */
+  /** A snapshot the restore did not use, why, and what became of it. */
   final case class Skipped(name: String, error: StorageError, unused: Unused)
 
-  /** What the restore does with a snapshot it does not use: what the reference's `tryNewestFirst`
-    * does (ouroboros-consensus 82ecba32 `Storage/LedgerDB/API.hs:599-646`). A snapshot ahead of the
-    * immutable tip, or one that fails for any reason but three, is deleted if it is temporary
-    * (`deleteSnapshotIfTemporary`, `:602, 628-631`), and the next older one is tried; a snapshot
-    * without its metadata file, of another backend, or of the legacy layout is kept (`:607-625`). A
-    * snapshot is temporary when its name has no suffix (`diskSnapshotIsTemporary`,
-    * `Storage/LedgerDB/Snapshots.hs:288-297`): every native snapshot is
-    * `snapshot-<slot>-<blockNo>.bin`, the node's, an import's and an SCLS import's alike, with no
-    * suffix, so every one is temporary.
-    */
+  /** What became of a snapshot the restore did not use. */
   enum Unused derives CanEqual:
     /** Deleted, with its checkpoint (the trim path, [[StateBacking.retain]]). */
     case Deleted
 
+    /** Not deleted: the deletion failed (`cause`), and the fallback went on, as the reference's
+      * `defaultDeleteSnapshotIfTemporary` catches every exception of its deletion
+      * (ouroboros-consensus 82ecba32 `Storage/LedgerDB/Snapshots.hs:320-330`).
+      */
+    case NotDeleted(cause: StorageError)
+
     /** Kept on disk. */
     case Kept
 
-  object Unused:
-    /** What becomes of a snapshot refused with `error`. The line between the reference's cases and
-      * Scarab's envelope: the format version of the file is Scarab's own and ADR 0006 governs it,
-      * so an unknown or retired version is raised before this ([[FileLedgerSnapshots.restore]]) and
-      * a binding or sidecar of another schema (`VersionMismatch`) is kept, as a file of a known but
-      * incompatible version is not ordinary corrupt input. Everything a snapshot holds of the
-      * reference's state, and the snapshot's integrity, is the reference's catch-all:
+  /** What the restore does with a snapshot it refuses with an error: what the reference's
+    * `tryNewestFirst` does (ouroboros-consensus 82ecba32 `Storage/LedgerDB/API.hs:599-646`). A
+    * snapshot ahead of the immutable tip, or one whose loading returns a failure other than three,
+    * is deleted if it is temporary (`deleteSnapshotIfTemporary`, `:600-604, 625-631`) and the next
+    * older one is tried; one without its metadata file, of another backend or of the legacy layout
+    * is kept (`:607-623`). What the reference raises instead of returning, a file system error
+    * above all (`readIncremental` opens the file outside its `ExceptT`, `Util/CBOR.hs:181-230`),
+    * escapes `tryNewestFirst` and stops the start: nothing is deleted for it. A snapshot is
+    * temporary when its name has no suffix (`diskSnapshotIsTemporary`,
+    * `Storage/LedgerDB/Snapshots.hs:288-297`): every native snapshot is
+    * `snapshot-<slot>-<blockNo>.bin`, the node's, an import's and an SCLS import's alike, so every
+    * one is temporary.
+    */
+  enum Fallback derives CanEqual:
+    /** Delete it and try the next older one. */
+    case Delete
+
+    /** Keep it and try the next older one. */
+    case Keep
+
+    /** Stop the start with the error. */
+    case Stop
+
+  object Fallback:
+    /** What the reference does with what `error` corresponds to. The line between the reference's
+      * cases and Scarab's envelope: the format version of the file is Scarab's own and ADR 0006
+      * governs it, so an unknown or retired version, or a previous file whose state cannot be
+      * converted, stops the start, and a binding, a sidecar or a format of another version or
+      * schema (`VersionMismatch`, a previous file the migration could not convert) is kept.
       *
-      *   - an anchor missing from the immutable store is the reference's too-recent snapshot:
-      *     deleted (`:600-604`);
-      *   - a checksum, a framing, a sidecar or a state that does not decode, and a state recorded
+      *   - An anchor missing from the immutable store is the reference's too-recent snapshot:
+      *     deleted (`:600-604`).
+      *   - A checksum, a framing, a sidecar or a state that does not decode, and a state recorded
       *     under a build of another layout or an unknown one, are `ReadSnapshotDataCorruption` and
-      *     `ReadSnapshotFailed`: deleted (`:628-631`);
-      *   - a checkpoint of another key layout, or none where this node keeps a store, is the
-      *     reference's `MetadataBackendMismatch`: kept (`:613-617`); any other checkpoint problem
-      *     (absent, its digest not the recorded one, keys it cannot hold) is corruption: deleted;
-      *   - a file that could not be read (`Io`) is not a decoding failure: the reference's file
-      *     system errors are exceptions, not a `Left`; kept.
+      *     `ReadSnapshotFailed`: deleted (`:625-631`).
+      *   - A checkpoint whose digest is not the recorded one, or that holds keys no layout has, is
+      *     a tables file that fails its check or does not decode: deleted. A checkpoint of another
+      *     key layout, or none where this node keeps a store, is the reference's
+      *     `MetadataBackendMismatch`: kept (`:613-617`).
+      *   - An absent checkpoint is the reference's missing tables file, which `readIncremental`
+      *     raises (`Util/CBOR.hs:206`): it stops the start, and so does a file that cannot be read
+      *     (`Io`), a decoder defect, and any other error.
       */
-    def of(error: StorageError): Unused = error match
-      case _: StorageError.VersionMismatch | _: StorageError.Io => Kept
+    def of(error: StorageError): Fallback = error match
+      case _: StorageError.Corrupt[?] | _: StorageError.Missing |
+          _: StorageError.ReferenceBuildMismatch | _: StorageError.UnknownReferenceBuild =>
+        Delete
+      case StorageError.UtxoCheckpoint(
+            _,
+            CheckpointProblem.DigestMismatch(_, _) | CheckpointProblem.MixedKeyLayouts |
+            CheckpointProblem.IndexTooLarge(_) | CheckpointProblem.UnknownKeyLength(_)
+          ) =>
+        Delete
+      case _: StorageError.VersionMismatch => Keep
       case StorageError.UtxoCheckpoint(
             _,
             CheckpointProblem.LayoutMismatch(_, _) | CheckpointProblem.Unbound
           ) =>
-        Kept
-      case _ => Deleted
+        Keep
+      case _ => Stop
+
   final case class Restored[S](
       snapshot: Option[(String, StateSnapshot[S])],
       skipped: Vector[Skipped]
@@ -137,6 +168,22 @@ object FileLedgerSnapshots:
 
   /** Whether `name` is the name of a snapshot file. */
   def isSnapshot(name: String): Boolean = name.startsWith(Prefix) && name.endsWith(Suffix)
+
+  /** Delete `file`, a temporary snapshot the restore does not use, best effort: a failure is
+    * [[LedgerSnapshots.Unused.NotDeleted]], never an error, as the reference's
+    * `defaultDeleteSnapshotIfTemporary` catches the exceptions of its deletion (ouroboros-consensus
+    * 82ecba32 `Storage/LedgerDB/Snapshots.hs:320-330`).
+    */
+  private[storage] def deleted[F[_]: Sync](file: Path): F[LedgerSnapshots.Unused] =
+    Sync[F]
+      .blocking(java.nio.file.Files.deleteIfExists(file.toNioPath))
+      .attempt
+      .map(
+        _.fold(
+          e => LedgerSnapshots.Unused.NotDeleted(StorageError.Io(file.toString, e)),
+          _ => LedgerSnapshots.Unused.Deleted
+        )
+      )
 
   def open[F[_]: Async, S](dir: Path, keep: Int = 3)(using
       format: SnapshotFormat[F, S],
@@ -209,12 +256,23 @@ object FileLedgerSnapshots:
       def restore(usable: StateSnapshot[S] => F[Either[StorageError, Unit]])(using
           cats.mtl.Raise[F, StorageError]
       ): F[LedgerSnapshots.Restored[S]] =
-        /** Skip `name`, refused with `error`, deleting it when the reference would. */
-        def unused(name: String, error: StorageError): F[LedgerSnapshots.Skipped] =
-          val unused = LedgerSnapshots.Unused.of(error)
-          F.whenA(unused == LedgerSnapshots.Unused.Deleted)(
-            guard((dir / name).toString)(files.deleteIfExists(dir / name).void)
-          ).as(LedgerSnapshots.Skipped(name, error, unused))
+        /** Skip `name`, refused with `error`, deleting it or stopping where the reference would. */
+        def refused(
+            name: String,
+            error: StorageError,
+            tail: List[String],
+            skipped: Vector[LedgerSnapshots.Skipped]
+        ): F[LedgerSnapshots.Restored[S]] =
+          LedgerSnapshots.Fallback.of(error) match
+            case LedgerSnapshots.Fallback.Stop => fail(error)
+            case LedgerSnapshots.Fallback.Keep =>
+              go(tail, skipped :+ LedgerSnapshots.Skipped(name, error, LedgerSnapshots.Unused.Kept))
+            case LedgerSnapshots.Fallback.Delete =>
+              FileLedgerSnapshots
+                .deleted[F](dir / name)
+                .flatMap(unused =>
+                  go(tail, skipped :+ LedgerSnapshots.Skipped(name, error, unused))
+                )
         def go(
             rest: List[String],
             skipped: Vector[LedgerSnapshots.Skipped]
@@ -222,16 +280,12 @@ object FileLedgerSnapshots:
           case Nil => F.pure(LedgerSnapshots.Restored(None, skipped))
           case name :: tail =>
             readFile(name).flatMap {
-              case Left(error) if DecodeFailure.terminal(error) => fail(error)
-              case Left(error: StorageError.UnknownVersion)     => fail(error)
-              case Left(error: StorageError.RetiredVersion)     => fail(error)
-              case Left(error) => unused(name, error).flatMap(s => go(tail, skipped :+ s))
+              case Left(error) => refused(name, error, tail, skipped)
               case Right(snapshot) =>
                 usable(snapshot).flatMap {
                   case Right(()) =>
                     F.pure(LedgerSnapshots.Restored(Some(name -> snapshot), skipped))
-                  case Left(error) if DecodeFailure.terminal(error) => fail(error)
-                  case Left(error) => unused(name, error).flatMap(s => go(tail, skipped :+ s))
+                  case Left(error) => refused(name, error, tail, skipped)
                 }
             }
         names.flatMap(ns => go(ns.toList, Vector.empty)))

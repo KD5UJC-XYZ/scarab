@@ -222,6 +222,9 @@ enum EventKind(val area: Area, val severity: Severity):
 
   /** A skipped snapshot was deleted, as the reference's `DeletedSnapshot`. */
   case SnapshotDeleted extends EventKind(Area.Storage, Severity.Info)
+
+  /** A skipped snapshot could not be deleted; the restore went on, as the reference's does. */
+  case SnapshotNotDeleted extends EventKind(Area.Storage, Severity.Warning)
   case SnapshotRestored extends EventKind(Area.Storage, Severity.Info)
   case SnapshotUnbound extends EventKind(Area.Storage, Severity.Warning)
   case SnapshotWritten extends EventKind(Area.Storage, Severity.Info)

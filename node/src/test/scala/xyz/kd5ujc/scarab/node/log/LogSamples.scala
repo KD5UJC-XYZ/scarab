@@ -619,6 +619,10 @@ object LogSamples:
       StorageError.Corrupt("snapshot", xyz.kd5ujc.scarab.codec.BinaryError.UnexpectedEnd(0))
     ),
     StorageEvent.SnapshotDeleted("4200-abab"),
+    StorageEvent.SnapshotNotDeleted(
+      "4200-abab",
+      StorageError.Io("4200-abab", new java.nio.file.AccessDeniedException("4200-abab"))
+    ),
     StorageEvent.SnapshotRestored("4200-abab", anchor),
     StorageEvent.SnapshotRestored("genesis", None),
     StorageEvent.SnapshotUnbound("4200-abab", anchor),
