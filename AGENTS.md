@@ -118,6 +118,9 @@ scala code … I love the use of type parameters when I can use them"*.
   be encoded, Scarab does the correct thing instead, provided interoperability holds: the same
   chain-validity verdicts, the same wire bytes for every value the reference produces, and the same
   meaning of configuration. List each such improvement in the PR's deviations table with that link.
+  In particular, an overflow, underflow or wrap of the reference is never reproduced: an
+  out-of-range value gets a typed refusal, or the no-verdict outcome where it decides validity, and
+  every such site is listed, with the reason, in the compatibility register.
   Decisions recorded by the owner's `ottobot-ai` account are the owner's.
 - Pure rules; exact `Rational` arithmetic; anything hashed or signed is hashed over its original bytes,
   except where the reference itself signs a re-encoding: a header's KES signature covers its body
