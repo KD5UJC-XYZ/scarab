@@ -35,6 +35,5 @@ None of these is reachable from the node's own chain yet.
   - a crossing made by the Scala node on a devnet.
 - **Persistence:**
   - the Dijkstra ledger state in the Haskell `state` layout (#826);
-  - the network identity's Dijkstra genesis binding (#824);
   - the upgrade of stored outputs at the crossing (#815).
 - **The eras before Dijkstra on a Leios network** still follow cardano-node 11.1.3 (ledger f649f975, consensus 82ecba32). The Leios build changes their state layout and some of their rules. A Leios node's database cannot be imported yet (#826, owner decision on #54). Its endorser-block store has no counterpart either (#830).
