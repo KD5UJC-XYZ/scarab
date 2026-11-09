@@ -3,7 +3,9 @@
 Scarab fixture encodings are Apache-2.0. These throwaway-network states contain public
 keys/signatures only, with no signing keys or operational node data; see [NOTICE](../../NOTICE).
 
-These complete checksummed native V9 files are the maintained snapshot test inputs. V9 is the V8
+These complete checksummed native V9 files were the maintained snapshot test inputs until V10
+(issue [#826](https://github.com/KD5UJC-XYZ/scarab/issues/826)); they are now previous-version
+inputs, and [`fixtures/snapshot-v10`](../snapshot-v10/README.md) is their registered conversion. V9 is the V8
 layout (the V5 body behind a checkpoint binding, the Byron update state's installer metadata in the
 sidecar) whose sidecar names the eras with Dijkstra among them and holds the protocol parameters
 with the fields Dijkstra adds (issue [#54](https://github.com/KD5UJC-XYZ/scarab/issues/54)). The
@@ -19,11 +21,12 @@ parameters, written at their pre-Dijkstra defaults (a Byron sidecar holds no par
 `SnapshotGoldenSuite` re-derives every target from its source and compares the bytes, and
 `SHA256SUMS` binds the files.
 
-Recipe (in the JDK image, from the checkout, into a directory that does not exist yet):
+Recipe (in the JDK image, from the checkout, into a directory that does not exist yet; it runs
+the V8 → V9 `step` of the registered migration, which before V10 was the whole migration):
 
 ```sh
 bash scripts/sbtw 'node/Test/runMain xyz.kd5ujc.scarab.storage.SnapshotV9FixtureMain /work/fixtures/snapshot-v8 /work/fixtures/snapshot-v9'
 ```
 
-The V8, V7 and V5 files remain the previous-version inputs of the migration tests (ADR 0006); they
-are not read as current files.
+The V9, V8, V7 and V5 files remain the previous-version inputs of the migration tests (ADR 0006);
+they are not read as current files.

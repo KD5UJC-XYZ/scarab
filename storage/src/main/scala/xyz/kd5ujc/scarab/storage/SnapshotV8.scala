@@ -26,7 +26,7 @@ object SnapshotV8:
   private val HeaderSize = Magic.length + 4
 
   /** A V8 file's content, in one array of its exact size: what the migration from V7 writes, and
-    * the previous-version tests (the node writes [[SnapshotV9]]).
+    * the previous-version tests (the node writes [[SnapshotV10]]).
     */
   private[storage] def framed(
       binding: CheckpointBinding,

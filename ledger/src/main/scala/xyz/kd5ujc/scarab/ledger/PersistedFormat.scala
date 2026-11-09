@@ -21,11 +21,12 @@ import cats.data.NonEmptyList
   * with the Byron update state's installer metadata in the sidecar (issue #726); `V9` is the same
   * layout whose sidecar names the eras with Dijkstra among them and holds the protocol parameters
   * with the fields Dijkstra adds (#54), and the network identity with the Dijkstra genesis binding
-  * (#824), which a V6 identity gets from the configuration at its first open. New versions are
-  * appended.
+  * (#824), which a V6 identity gets from the configuration at its first open; `V10` is the ledger
+  * snapshot that records, before its binding, the reference build whose layout its Haskell state
+  * bytes are in (#826). New versions are appended.
   */
 enum FormatVersion derives CanEqual:
-  case V1, V2, V3, V4, V5, V6, V7, V8, V9
+  case V1, V2, V3, V4, V5, V6, V7, V8, V9, V10
 
   /** The version a migration step from this one produces; none for the newest. */
   def next: Option[FormatVersion] = FormatVersion.values.drop(ordinal + 1).headOption
@@ -86,8 +87,12 @@ enum FileKind(
     * the two versions that share one (`CSLSNAP1`, which holds its format number as a 32-bit integer
     * next) the text `CSLSNAP1 v<n>`: `SCRBSNP3`, `SCRBSNP4` and `SCRBSNP5` are the Haskell ledger
     * state with a sidecar, `SCRBSNP7` is the V5 body behind a checkpoint binding, `SCRBSNP8` is the
-    * V7 layout whose sidecar keeps the Byron update state's installer metadata, and `SCRBSNP9` the
-    * V8 layout whose sidecar's eras include Dijkstra and whose parameters have Dijkstra's fields.
+    * V7 layout whose sidecar keeps the Byron update state's installer metadata, `SCRBSNP9` the V8
+    * layout whose sidecar's eras include Dijkstra and whose parameters have Dijkstra's fields, and
+    * `SCRBSNPA` the V9 layout with the reference build of its Haskell state bytes recorded before
+    * the binding. From V10 the last character is the format number as one base-36 digit (`A` is
+    * 10), so the magic keeps its eight bytes and its family, and a build that knows only `SCRBSNP9`
+    * reads a newer file as an unknown version of its own kind.
     */
   case SnapshotFile
       extends FileKind(
@@ -101,7 +106,8 @@ enum FileKind(
           FormatVersion.V5 -> "SCRBSNP5",
           FormatVersion.V7 -> "SCRBSNP7",
           FormatVersion.V8 -> "SCRBSNP8",
-          FormatVersion.V9 -> "SCRBSNP9"
+          FormatVersion.V9 -> "SCRBSNP9",
+          FormatVersion.V10 -> "SCRBSNPA"
         )
       )
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.IO
 import cats.mtl.{Ask, Handle}
 import cats.syntax.all.*
@@ -81,7 +82,9 @@ class PreprodSnapshotImportSuite extends CatsEffectSuite:
           original <- IO.blocking(
             JFiles.readAllBytes((source / "ledger" / "136511997" / "state").toNioPath)
           )
-          back <- SnapshotV9.format[IO](SnapshotCheck.Full).decode(content.dropRight(32))
+          back <- SnapshotV10
+            .format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+            .decode(content.dropRight(32))
           _ <- StorageTestKit.ok {
             RocksUtxoStore.resource[IO](temp / "readback").use { store =>
               for
@@ -104,7 +107,7 @@ class PreprodSnapshotImportSuite extends CatsEffectSuite:
           assert(content.dropRight(32).takeRight(original.length).sameElements(original))
           assert(back.isRight, back.left.map(_.message).toString)
           val sidecar =
-            SnapshotV9.sidecarOf(content.dropRight(32)).fold(e => fail(e.message), identity)
+            SnapshotV10.sidecarOf(content.dropRight(32)).fold(e => fail(e.message), identity)
           assertEquals(sidecar.gaps, Set.empty)
           println(
             s"PREPROD_IMPORT slot=${report.anchor.slot} outputs=${report.count} coin=${report.coin} authenticated=true originalState=true elapsed=$elapsed"

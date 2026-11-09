@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.{IO, Outcome}
 import cats.mtl.{Ask, Handle}
 import cats.syntax.all.*
@@ -17,7 +18,7 @@ import xyz.kd5ujc.scarab.crypto.witness.PublicKey32
 import xyz.kd5ujc.scarab.ledger.{Block, StorageError}
 import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.haskell.state.*
 import xyz.kd5ujc.scarab.storage.scls.{
   SclsBase,
@@ -137,7 +138,7 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
     yield (ledger, db, state, raw)
 
   private def restored(db: Path, state: MirrorState): IO[StateSnapshot[MirrorState]] = ok {
-    val format = SnapshotV9.format[IO](SnapshotCheck.Full)
+    val format = SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
     val path = db / "snapshots" / FileLedgerSnapshots.nameOf(anchor(state))
     for
       bytes <- IO.blocking(JFiles.readAllBytes(path.toNioPath))
@@ -159,6 +160,7 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
           before <- IO(fingerprint(db / "immutable"))
           report <- attempt(LedgerSnapshotImport.run[IO](config(ledger, db)))
           _ <- IO(assertEquals(report.map(_.evidence), Right(Evidence.Unverified)))
+          _ <- IO(assertEquals(report.map(_.build), Right(ReferenceBuild.Release11_1)))
           read <- restored(db, state)
           _ <- IO {
             val content = JFiles
@@ -167,7 +169,9 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
               )
               .dropRight(32)
             assert(content.takeRight(original.size).sameElements(original.toArray))
-            val sidecar = SnapshotV9.sidecarOf(content).fold(e => fail(e.message), identity)
+            // the build that wrote the input is recorded with its bytes
+            assertEquals(SnapshotV10.recordedOf(content), Right("11.1"))
+            val sidecar = SnapshotV10.sidecarOf(content).fold(e => fail(e.message), identity)
             assertEquals(sidecar.gaps, Set.empty)
             assertEquals(read.state.provenance.gaps, Set.empty)
             assertEquals(read.state.provenance.observed, sidecar.observed)
@@ -215,6 +219,35 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
       JFiles.writeString(path.toNioPath, signed.noSpaces)
       path -> key
     }
+
+  test(
+    "a state that does not decode completely in the layout of its build is refused, nothing published"
+  ) {
+    // the Leios build's `ExtLedgerState` has a third part, the Peras state (ouroboros-consensus
+    // 2416493b `Ledger/Extended.hs:420-442`): the 11.1 codec does not read it, nor trailing bytes
+    tempDir.use { root =>
+      for
+        input <- source(root, Era.Conway)
+        (ledger, db, _, original) = input
+        before <- IO(fingerprint(db))
+        bytes = original.toArray
+        _ <- IO(assertEquals(bytes(2) & 0xff, 0x82))
+        threeParts = bytes.updated(2, 0x83.toByte) :+ 0xf6.toByte
+        results <- Vector(threeParts, bytes :+ 0x00.toByte).traverse { state =>
+          IO.blocking(JFiles.write((ledger / "state").toNioPath, state)) *>
+            attempt(LedgerSnapshotImport.run[IO](config(ledger, db)))
+        }
+        _ <- IO {
+          results.foreach {
+            case Left(Error.State(build, _)) => assertEquals(build, ReferenceBuild.Release11_1)
+            case other                       => fail(s"not refused as undecodable: $other")
+          }
+          assertEquals(fingerprint(db), before)
+          assert(!JFiles.exists((db / "snapshots").toNioPath))
+        }
+      yield ()
+    }
+  }
 
   test("signature and all file digests are required by the verified trust path") {
     tempDir.use { root =>

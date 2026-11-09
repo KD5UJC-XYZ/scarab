@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.preview
 
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.{ExitCode, IO, IOApp, Ref}
 import cats.mtl.{Ask, Handle, Raise}
 import cats.mtl.syntax.all.*
@@ -135,7 +136,8 @@ object K1OfflineMain extends IOApp:
         ).tupled.use { (store, cache) =>
           val setup = loaded.copy(praos = loaded.praos.copy(verdicts = cache))
           given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-          given SnapshotFormat[IO, MirrorState] = SnapshotV9.format[IO](SnapshotCheck.Full)
+          given SnapshotFormat[IO, MirrorState] =
+            SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
           val backing = new UtxoBacking[IO, MirrorState](
             store,
             FsPath.fromNioPath(c.db.resolve("utxo/checkpoints"))

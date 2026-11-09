@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraLedgerState, Mi
 import xyz.kd5ujc.scarab.ledger.{NetworkIdentity, StorageError, TxIn, TxOut, Utxo}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, Gap, NewEpochState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import xyz.kd5ujc.scarab.storage.{
   CheckpointDigest,
   AtomicFile,
@@ -25,7 +26,7 @@ import xyz.kd5ujc.scarab.storage.{
   RocksUtxoStore,
   SnapshotCheck,
   SnapshotSidecar,
-  SnapshotV9,
+  SnapshotV10,
   StateBacking,
   StateSnapshot,
   UtxoCheckpoint
@@ -109,8 +110,10 @@ object SclsBase:
       _ <- lift(Either.cond(exists, (), Error.MissingSource(path)))
       raw <- guard(path)(Files.readAllBytes(path.toNioPath))
       content <- lift(FileLedgerSnapshots.verified(raw).leftMap(Error.Storage(_)))
-      sections <- lift(SnapshotV9.sections(content).leftMap(Error.Storage(_)))
-      (binding, sidecar, _) = sections
+      sections <- lift(
+        SnapshotV10.sections(content, ReferenceLayout.Release11_1).leftMap(Error.Storage(_))
+      )
+      (_, binding, sidecar, _) = sections
       _ <- lift(Either.cond(sidecar.gaps.isEmpty, (), Error.Gaps(sidecar.gaps)))
       _ <- lift(
         Either.cond(
@@ -136,7 +139,9 @@ object SclsBase:
           Error.Unsettled(utxo.stamp, utxo.flushed, utxo.diff.size)
         )
       )
-      decoded <- SnapshotV9.format[F](SnapshotCheck.Full).decode(content)
+      decoded <- SnapshotV10
+        .format[F](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+        .decode(content)
       snapshot <- lift(decoded.leftMap(Error.Storage(_)))
       ledgerEra = snapshot.state.ext.ledgerState.era
       headerEra = snapshot.state.ext.headerState.chainDep.era

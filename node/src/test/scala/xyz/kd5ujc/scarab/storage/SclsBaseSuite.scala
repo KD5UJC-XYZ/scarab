@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.mtl.{Ask, Handle}
 import cats.syntax.all.*
@@ -115,7 +117,8 @@ class SclsBaseSuite extends CatsEffectSuite:
                     Files.write(
                       (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath,
                       FileLedgerSnapshots.closed(
-                        SnapshotV9.framed(
+                        SnapshotV10.framed(
+                          ReferenceBuild.Release11_1,
                           StorageTestKit.boundTo(
                             db / "utxo" / "checkpoints" / StateBacking.stem(anchor)
                           ),
@@ -374,15 +377,19 @@ class SclsBaseSuite extends CatsEffectSuite:
                       .verified(snapshotBytes)
                       .leftMap(e => new AssertionError(e.toString))
                   )
-                  native <- ok(SnapshotV9.format[IO](SnapshotCheck.Full).decode(content)).flatMap(
-                    result => IO.fromEither(result.leftMap(e => new AssertionError(e.toString)))
+                  native <- ok(
+                    SnapshotV10
+                      .format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+                      .decode(content)
+                  ).flatMap(result =>
+                    IO.fromEither(result.leftMap(e => new AssertionError(e.toString)))
                   )
                 yield
                   assertEquals(checkpointRows, baseRows)
                   assertEquals(prepared.snapshot.anchor, Some(anchor))
                   assertEquals(native.anchor, Some(anchor))
                   assertEquals(prepared.utxo.count, 3L)
-                  assertEquals(SnapshotV9.sidecarOf(content).map(_.gaps), Right(Set.empty[Gap]))
+                  assertEquals(SnapshotV10.sidecarOf(content).map(_.gaps), Right(Set.empty[Gap]))
                   prepared.directory
               }
           )

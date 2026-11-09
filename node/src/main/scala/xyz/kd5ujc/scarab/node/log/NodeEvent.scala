@@ -58,6 +58,16 @@ enum NodeEvent:
     */
   case PraosSyncUntrusted(position: SyncAdvisory.Position)
 
+  /** The reference build the node mirrors (`--reference-build`): its name, stability and pins, the
+    * exact pinned release among them.
+    */
+  case ReferenceBuildChosen(build: xyz.kd5ujc.scarab.protocol.ReferenceBuild)
+
+  /** `build` is unstable and the configuration does not set `ExperimentalHardForksEnabled`, which
+    * it is meant for.
+    */
+  case UnstableReferenceBuild(build: xyz.kd5ujc.scarab.protocol.ReferenceBuild)
+
   /** The start-up check of the native library of the Plutus builtins passed (ADR 0020). */
   case PlutusCrypto(report: NativeCryptoReport)
 
@@ -375,6 +385,13 @@ object NodeEvent:
           case SyncAdvisory.Position.Behind(slots) => Some(slots)
           case _                                   => None
         ).asJson
+      )
+    case ReferenceBuildChosen(build) =>
+      EventKind.ReferenceBuild.line(xyz.kd5ujc.scarab.node.ReferenceBuildFlag.fields(build)*)
+    case UnstableReferenceBuild(build) =>
+      EventKind.UnstableReferenceBuild.line(
+        "build" -> build.name.asJson,
+        "experimentalHardForksEnabled" -> false.asJson
       )
     case PlutusCrypto(report) =>
       EventKind.PlutusCrypto.line(

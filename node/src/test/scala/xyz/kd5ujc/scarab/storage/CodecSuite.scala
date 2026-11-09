@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.storage
 
 import cats.Eq
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.BootstrapState
 import xyz.kd5ujc.scarab.consensus.ByronState
@@ -163,7 +163,7 @@ class CodecSuite extends ScalaCheckSuite:
       .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
       .fold(e => fail(e.message), _.mirrorStart)
 
-  test("golden: the schema fingerprint of the sidecar of the V5 body (V9)") {
+  test("golden: the schema fingerprint of the sidecar of the V5 body (V9 and V10)") {
     assertEquals(hex(SnapshotSidecar.fingerprint), GoldenSidecarFingerprint)
   }
 
@@ -188,6 +188,17 @@ class CodecSuite extends ScalaCheckSuite:
         )
       ),
       "020020" + (0 until 32).map(i => f"$i%02x").mkString
+    )
+  }
+
+  // V10 (#826) records the reference build in its header, outside the fingerprinted binding and
+  // sidecar schemas, whose goldens above are unchanged from V9: a length byte and the flag string
+  test("golden: the reference build a V10 file records after its magic, before the binding") {
+    assertEquals(new String(SnapshotV10.Magic, "US-ASCII"), "SCRBSNPA")
+    assertEquals(hex(SnapshotV10.buildBytes(ReferenceBuild.Release11_1)), "0431312e31")
+    assertEquals(
+      hex(SnapshotV10.buildBytes(ReferenceBuild.LeiosB004fe0c)),
+      "0e6c65696f732d6230303466653063"
     )
   }
 

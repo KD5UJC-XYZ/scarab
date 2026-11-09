@@ -53,7 +53,7 @@ object LedgerSnapshots:
   * }}}
   *
   * The content is a [[SnapshotFormat]]'s and starts with the magic that names the format (see
-  * [[SnapshotV9]]); the store adds the checksum, atomic write, pruning and restore. Corrupt files
+  * [[SnapshotV10]]); the store adds the checksum, atomic write, pruning and restore. Corrupt files
   * can be skipped; known retired or unknown versions refuse restoration rather than cause replay.
   * Opening this generic store tidies temporary files: callers requiring admission before any
   * mutation must first run [[ChainStorage.preflight]], as the node does.

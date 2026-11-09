@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import java.lang.management.ManagementFactory
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
@@ -50,17 +51,21 @@ object SnapshotCodecBench extends Assertions:
     )
     val env = checked(NodeSetup.fromDirectory(Path.of(args(2)))).mirrorEnv()
     println(s"INPUT $label bytes=${raw.length} sha256=${sha(raw)}")
-    val initial = checked(SnapshotV9.decode(env, content))
+    val initial = checked(SnapshotV10.decode(env, ReferenceLayout.Release11_1, content))
     println(s"INPUT_STATE $label ${sha(initial.toString.getBytes("UTF-8"))}")
-    val expected = checked(SnapshotV9.encoded(initial))
-    val encoded = measure(s"$label.encode")(SnapshotV9.encoded(initial)) { result =>
-      assert(java.util.Arrays.equals(checked(result), expected))
-    }
+    val expected = checked(SnapshotV10.encoded(initial, ReferenceLayout.Release11_1))
+    val encoded =
+      measure(s"$label.encode")(SnapshotV10.encoded(initial, ReferenceLayout.Release11_1)) {
+        result =>
+          assert(java.util.Arrays.equals(checked(result), expected))
+      }
     println(s"DIGEST $label.encode bytes=${expected.length} sha256=${sha(checked(encoded))}")
-    val decoded = measure(s"$label.decode")(SnapshotV9.decode(env, content)) { result =>
-      assertEquals(checked(result), initial)
-    }
+    val decoded =
+      measure(s"$label.decode")(SnapshotV10.decode(env, ReferenceLayout.Release11_1, content)) {
+        result =>
+          assertEquals(checked(result), initial)
+      }
     println(s"DIGEST $label.decode ${sha(checked(decoded).toString.getBytes("UTF-8"))}")
-    val truncated = SnapshotV9.decode(env, content.dropRight(1))
+    val truncated = SnapshotV10.decode(env, ReferenceLayout.Release11_1, content.dropRight(1))
     assert(truncated.isLeft)
     println(s"DIGEST $label.truncated ${sha(truncated.toString.getBytes("UTF-8"))}")

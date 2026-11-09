@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.{IO, IOApp}
 import cats.mtl.{Ask, Handle}
 import cats.syntax.all.*
@@ -15,7 +16,7 @@ import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorStep}
 import xyz.kd5ujc.scarab.ledger.{Block, PlutusStats, StorageError, TxIn, TxOut, Utxo}
 import xyz.kd5ujc.scarab.ledger.rules.{EraBlock, EraNes, Globals, Hfc}
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, RocksUtxoStore, SnapshotCheck, SnapshotV9}
+import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, RocksUtxoStore, SnapshotCheck, SnapshotV10}
 
 /** Opt-in test-side benchmark. Decoding, store reads, assertions and complete result rendering are
   * outside timing. Every timed call receives an identical immutable historical input.
@@ -82,8 +83,8 @@ object PreviewRuleBench extends IOApp.Simple with Assertions:
         for
           raw <- IO.blocking(Files.readAllBytes(JPath.of(s"/native/$name.bin")))
           _ <- IO.println(s"INPUT native sha256=${hash(raw)}")
-          snapshot <- SnapshotV9
-            .format[IO](SnapshotCheck.Full)
+          snapshot <- SnapshotV10
+            .format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
             .decode(checked(FileLedgerSnapshots.verified(raw).flatMap(NativeSnapshots.current)))
             .map(checked(_))
           initial <- IO(MirrorStep.nesOf(snapshot.state).getOrElse(fail("Shelley input required")))

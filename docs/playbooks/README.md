@@ -13,6 +13,7 @@ JDK image, as [CONTRIBUTING](../../CONTRIBUTING.md#build-docker-only) shows; the
 | Confirm a decoding rule with the reference decoders | [confirm-with-the-decoding-oracle.md](confirm-with-the-decoding-oracle.md) | ledger, codec, models |
 | Add a fuzz target | [add-a-fuzz-target.md](add-a-fuzz-target.md) | fuzz, codec |
 | Add a devnet scenario | [add-a-devnet-scenario.md](add-a-devnet-scenario.md) | scripts |
+| Add a reference build, or promote a Leios build to stable | [add-a-reference-build.md](add-a-reference-build.md) | storage, ledger, consensus, node |
 | Run the gates and preflight, then mark a pull request ready | [run-the-gates-to-ready.md](run-the-gates-to-ready.md) | any |
 | Raise a deviation question or an audit finding | [raise-a-deviation-or-audit-finding.md](raise-a-deviation-or-audit-finding.md) | any |
 | Rebase after a squash merge | [rebase-after-a-squash-merge.md](rebase-after-a-squash-merge.md) | any |

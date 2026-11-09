@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.IO
 import cats.mtl.Ask
 import cats.syntax.all.*
@@ -54,7 +55,9 @@ class MithrilBootstrapAcceptanceSuite extends CatsEffectSuite:
         finally candidates.close()
       val bytes = Files.readAllBytes(selected)
       for
-        decoded <- SnapshotV9.format[IO](SnapshotCheck.Full).decode(bytes.dropRight(32))
+        decoded <- SnapshotV10
+          .format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+          .decode(bytes.dropRight(32))
         restored = decoded.fold(e => fail(e.message), identity)
         anchor = restored.anchor.getOrElse(fail("snapshot origin"))
         _ <- IO { assertEquals(anchor.slot, slot); assertEquals(anchor.hash.hex, hash) }

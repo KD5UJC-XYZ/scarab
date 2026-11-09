@@ -29,11 +29,12 @@ import xyz.kd5ujc.scarab.ledger.state.{
   UTxOState,
   UtxoTables
 }
-import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
+import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState, ReferenceLayout}
 
 /** The snapshot of format version 5, the Haskell ledger state with a sidecar, and the body of the
-  * versions after it ([[SnapshotV7]], [[SnapshotV8]] and the current [[SnapshotV9]]), which put a
-  * checkpoint binding in front of it:
+  * versions after it ([[SnapshotV7]], [[SnapshotV8]], [[SnapshotV9]] and the current
+  * [[SnapshotV10]]), which put a checkpoint binding (and from V10 the reference build) in front of
+  * it:
   *
   * {{{
   * "SCRBSNP5" | sidecar length u32 | sidecar | Haskell state bytes
@@ -60,9 +61,11 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
   * A V5 file is read only to be migrated ([[SnapshotV7.fromV5]]): the body after its magic becomes
   * the body of the V7 file byte for byte, so the sidecar and Haskell readers here are those of all
   * versions. V5 and V7 sidecars have the frozen schema [[SnapshotSidecarV7]], V8 sidecars the
-  * frozen [[SnapshotSidecarV8]] and V9 sidecars the current one ([[SnapshotSidecar]]): which one a
-  * body is read with is its [[Schema]], and the fingerprint goldens of all three (`CodecSuite`)
-  * keep guarding them.
+  * frozen [[SnapshotSidecarV8]] and V9 and V10 sidecars the current one ([[SnapshotSidecar]]):
+  * which one a body is read with is its [[Schema]], and the fingerprint goldens of all three
+  * (`CodecSuite`) keep guarding them. The Haskell section is read and written with the codec of the
+  * configured reference build ([[ReferenceLayout]]); the bodies before V10 hold 11.1-layout bytes
+  * only.
   */
 object SnapshotV5:
   val Magic: Array[Byte] = "SCRBSNP5".getBytes("US-ASCII")
@@ -77,11 +80,12 @@ object SnapshotV5:
   /** Magic and the length of the sidecar. */
   private val HeaderSize = Magic.length + 4
 
-  /** The sidecar and the Haskell section of a snapshot (the body the V5 and V7 files share), or the
-    * refusal of the state.
+  /** The sidecar and the Haskell section of a snapshot (the body the V5 to V10 files share), the
+    * Haskell section in the layout of `layout`, or the refusal of the state.
     */
   private[storage] def parts(
-      snapshot: StateSnapshot[MirrorState]
+      snapshot: StateSnapshot[MirrorState],
+      layout: ReferenceLayout
   ): Either[SnapshotRefusal, (SnapshotSidecar, Bytes)] =
     val m = snapshot.state
     def sidecar(chain: SnapshotSidecar.Chain) =
@@ -107,7 +111,7 @@ object SnapshotV5:
           file <- HaskellLedgerFile
             .of(m.ext)
             .leftMap(e => SnapshotRefusal.Mirror(StateMirrorError.Telescope(e)))
-          haskell <- HaskellLedgerFile.encode(file).leftMap(SnapshotRefusal.NotWritable(_))
+          haskell <- layout.encode(file).leftMap(SnapshotRefusal.NotWritable(_))
         yield sidecar(
           SnapshotSidecar.Chain.InShelley(
             i.state.nes.es.ls.utxo.utxo.utxo,
@@ -147,7 +151,7 @@ object SnapshotV5:
     haskell.copyTo(out, at + 4 + sidecar.length)
 
   /** A V5 file's content, in one array of its exact size (the previous-version tests and fixture
-    * recipes write it; the node writes [[SnapshotV9]]).
+    * recipes write it; the node writes [[SnapshotV10]]).
     */
   private[storage] def framed(sidecar: SnapshotSidecar, haskell: Bytes): Array[Byte] =
     val side = previousSidecarBytes(sidecar)
@@ -161,9 +165,12 @@ object SnapshotV5:
   private def corrupt[E <: DomainError](reason: E): StorageError =
     StorageError.Corrupt("snapshot", reason)
 
-  /** The state of a body that starts at `at`: the anchor and the mirror. */
+  /** The state of a body that starts at `at`, its Haskell section in the layout of `layout`: the
+    * anchor and the mirror.
+    */
   private[storage] def decodeBody(
       env: ConsensusMirrorEnv,
+      layout: ReferenceLayout,
       content: Array[Byte],
       at: Int
   ): Either[StorageError, (Option[BlockRef], MirrorState)] =
@@ -186,6 +193,7 @@ object SnapshotV5:
             }
         case shelley: SnapshotSidecar.Chain.InShelley =>
           shelleyState(
+            layout,
             sidecar.anchor,
             haskell,
             shelley.utxo,
@@ -211,6 +219,7 @@ object SnapshotV5:
     * parameters put back from the sidecar.
     */
   private def shelleyState(
+      layout: ReferenceLayout,
       anchor: Option[BlockRef],
       haskell: Bytes,
       utxo: Utxo,
@@ -220,7 +229,7 @@ object SnapshotV5:
       provenance: MirrorProvenance
   ): Either[StorageError, MirrorState] =
     for
-      file <- HaskellLedgerFile.decode(haskell).leftMap(DecodeFailure.native("snapshot", _))
+      file <- layout.decode(haskell).leftMap(DecodeFailure.native("snapshot", _))
       decoded <- file.ext.toRight(corrupt(SnapshotReadError.ByronLedgerInShelley))
       ext <- withUtxo(decoded, utxo)
       _ <- Either.cond(

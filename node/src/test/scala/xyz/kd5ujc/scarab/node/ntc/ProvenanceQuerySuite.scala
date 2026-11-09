@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.IO
 import cats.mtl.Ask
 import java.nio.file.{Files, Path}
@@ -15,14 +16,14 @@ import xyz.kd5ujc.scarab.consensus.state.{
 }
 import xyz.kd5ujc.scarab.node.{NativeSnapshots, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.storage.{SnapshotCheck, SnapshotV9, StateSnapshot}
+import xyz.kd5ujc.scarab.storage.{SnapshotCheck, SnapshotV10, StateSnapshot}
 
 class ProvenanceQuerySuite extends CatsEffectSuite:
   private val setup = NodeSetup
     .fromDirectory(Path.of("fixtures/eras/genesis"))
     .fold(e => fail(e.message), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-  private val format = SnapshotV9.format[IO](SnapshotCheck.Full)
+  private val format = SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
 
   private def queryEnv(observed: Map[Era, BigInt]): QueryEnv = QueryEnv(
     setup.geometry.systemStart,

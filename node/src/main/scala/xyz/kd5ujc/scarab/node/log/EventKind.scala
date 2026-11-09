@@ -66,6 +66,14 @@ enum EventKind(val area: Area, val severity: Severity):
   case Started extends EventKind(Area.Node, Severity.Notice)
   case Blst extends EventKind(Area.Node, Severity.Info)
   case PraosSyncUntrusted extends EventKind(Area.Node, Severity.Warning)
+
+  /** The reference build the node mirrors (`--reference-build`, #826), with its pins. */
+  case ReferenceBuild extends EventKind(Area.Node, Severity.Notice)
+
+  /** An unstable reference build runs without `ExperimentalHardForksEnabled`, which it is meant
+    * for.
+    */
+  case UnstableReferenceBuild extends EventKind(Area.Node, Severity.Warning)
   case PlutusCrypto extends EventKind(Area.Node, Severity.Info)
   case Listening extends EventKind(Area.Node, Severity.Notice)
   // the node-to-client socket as the network layer sets it up, the reference's

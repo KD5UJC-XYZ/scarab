@@ -10,13 +10,19 @@ import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraLedgerState, MirrorExtras}
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
-import xyz.kd5ujc.scarab.node.NodeSetup
+import xyz.kd5ujc.scarab.node.{NodeSetup, ReferenceBuildFlag}
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.LedgerSnapshotImport
 import xyz.kd5ujc.scarab.storage.haskell.state.AncillaryManifest
 
 object LedgerSnapshotImportCommand:
   val Usage =
-    "usage: import-ledger-snapshot --haskell-ledger <dir> --db <dir> (--config <file> | --genesis-dir <dir>) [--ancillary-manifest <file>] (--ancillary-verification-key <file> | --no-verify-ancillary)"
+    "usage: import-ledger-snapshot --haskell-ledger <dir> --db <dir> (--config <file> | --genesis-dir <dir>) [--ancillary-manifest <file>] (--ancillary-verification-key <file> | --no-verify-ancillary) [--reference-build <build>]\n" +
+      "--reference-build names the build that wrote the input database. " + ReferenceBuildFlag.Help
+
+  /** @param build
+    *   The reference build that wrote the input database (`--reference-build`).
+    */
   final case class Options(
       ledger: Path,
       db: Path,
@@ -24,7 +30,8 @@ object LedgerSnapshotImportCommand:
       genesis: Option[Path],
       manifest: Option[Path],
       key: Option[Path],
-      unverified: Boolean
+      unverified: Boolean,
+      build: ReferenceBuild = ReferenceBuild.Default
   )
   private val flags = Set(
     "haskell-ledger",
@@ -32,7 +39,8 @@ object LedgerSnapshotImportCommand:
     "config",
     "genesis-dir",
     "ancillary-manifest",
-    "ancillary-verification-key"
+    "ancillary-verification-key",
+    "reference-build"
   )
 
   def parse(args: List[String]): Either[ConfigError, Options] =
@@ -89,6 +97,7 @@ object LedgerSnapshotImportCommand:
         (),
         ConfigError(ConfigProblem.AncillaryVerificationRequired)
       )
+      build <- ReferenceBuildFlag.parse(values.get("reference-build"), Usage)
     yield Options(
       Path.of(ledger),
       Path.of(db),
@@ -96,18 +105,32 @@ object LedgerSnapshotImportCommand:
       values.get("genesis-dir").map(Path.of(_)),
       values.get("ancillary-manifest").map(Path.of(_)),
       values.get("ancillary-verification-key").map(Path.of(_)),
-      unverified
+      unverified,
+      build
     )
 
+  /** The configuration and the genesis the import reads. */
+  private[tools] def setupOf(options: Options): Either[ConfigError, NodeSetup] =
+    options.config.fold(
+      options.genesis
+        .toRight(ConfigError(ConfigProblem.MissingGenesis))
+        .flatMap(NodeSetup.fromDirectory)
+    )(NodeSetup.fromConfigFile(_, options.genesis))
+
+  /** The configuration and what the import needs from it (the Mithril bootstrap's import). */
   private[tools] def inputs(
       options: Options
   ): Either[ConfigError, (NodeSetup, LedgerSnapshotImport.Config)] =
+    setupOf(options).flatMap(setup => inputs(options, setup).map(setup -> _))
+
+  /** What the import needs from `setup`: the build's codec is last, so its refusal comes after the
+    * configuration has been read and the warnings about it given.
+    */
+  private[tools] def inputs(
+      options: Options,
+      setup: NodeSetup
+  ): Either[ConfigError, LedgerSnapshotImport.Config] =
     for
-      setup <- options.config.fold(
-        options.genesis
-          .toRight(ConfigError(ConfigProblem.MissingGenesis))
-          .flatMap(NodeSetup.fromDirectory)
-      )(NodeSetup.fromConfigFile(_, options.genesis))
       params <- setup.handOver
         .map(_.protocolParams)
         .orElse(setup.mirrorStart.ext.ledgerState.state match
@@ -140,42 +163,53 @@ object LedgerSnapshotImportCommand:
                 .toRight(ConfigError(ConfigProblem.MissingFlag("--ancillary-manifest")))
                 .map(path => LedgerSnapshotImport.Trust.Verify(FsPath.fromNioPath(path), key))
             }
-    yield setup -> LedgerSnapshotImport.Config(
+      layout <- ReferenceBuildFlag.layout(options.build)
+    yield LedgerSnapshotImport.Config(
       FsPath.fromNioPath(options.ledger),
       FsPath.fromNioPath(options.db),
       setup.identity,
       setup.geometry.byron.epochSlots,
       params,
       boot,
-      trust
+      trust,
+      layout
     )
 
   def run(args: List[String]): IO[ExitCode] = parse(args) match
     case Left(error) => IO.println(error.message).as(ExitCode(2))
     case Right(options) =>
-      IO.blocking(inputs(options)).flatMap {
-        case Left(error) => IO.println(error.message).as(ExitCode(2))
-        case Right((setup, config)) =>
-          given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(IO.pure(Map.empty))
-          Handle
-            .allow[LedgerSnapshotImport.Error](LedgerSnapshotImport.run[IO](config).map(Some(_)))
-            .rescue(error => log("error", "message" -> Json.fromString(error.message)).as(None))
-            .flatMap {
-              case None => IO.pure(ExitCode(1))
-              case Some(report) =>
-                val verified = report.evidence match
-                  case LedgerSnapshotImport.Evidence.Verified(_, _) => true
-                  case LedgerSnapshotImport.Evidence.Unverified     => false
-                log(
-                  "done",
-                  "slot" -> Json.fromBigInt(report.anchor.slot),
-                  "hash" -> Json.fromString(report.anchor.hash.hex),
-                  "era" -> Json.fromString(report.era.toString),
-                  "outputs" -> Json.fromLong(report.count),
-                  "coin" -> Json.fromBigInt(report.coin),
-                  "ancillaryVerified" -> Json.fromBoolean(verified)
-                ).as(ExitCode.Success)
-            }
+      def refused(error: ConfigError) = IO.println(error.message).as(ExitCode(2))
+      log("referenceBuild", ReferenceBuildFlag.fields(options.build)*) *>
+        IO.blocking(setupOf(options)).flatMap {
+          case Left(error) => refused(error)
+          case Right(setup) =>
+            val experimental = setup.config.settings.experimentalHardForksEnabled
+            log("unstableReferenceBuild", "build" -> Json.fromString(options.build.name))
+              .whenA(ReferenceBuildFlag.warns(options.build, experimental)) *>
+              IO.blocking(inputs(options, setup)).flatMap(_.fold(refused, imported(setup, _)))
+        }
+
+  private def imported(setup: NodeSetup, config: LedgerSnapshotImport.Config): IO[ExitCode] =
+    given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(IO.pure(Map.empty))
+    Handle
+      .allow[LedgerSnapshotImport.Error](LedgerSnapshotImport.run[IO](config).map(Some(_)))
+      .rescue(error => log("error", "message" -> Json.fromString(error.message)).as(None))
+      .flatMap {
+        case None => IO.pure(ExitCode(1))
+        case Some(report) =>
+          val verified = report.evidence match
+            case LedgerSnapshotImport.Evidence.Verified(_, _) => true
+            case LedgerSnapshotImport.Evidence.Unverified     => false
+          log(
+            "done",
+            "slot" -> Json.fromBigInt(report.anchor.slot),
+            "hash" -> Json.fromString(report.anchor.hash.hex),
+            "era" -> Json.fromString(report.era.toString),
+            "outputs" -> Json.fromLong(report.count),
+            "coin" -> Json.fromBigInt(report.coin),
+            "ancillaryVerified" -> Json.fromBoolean(verified),
+            "referenceBuild" -> Json.fromString(report.build.name)
+          ).as(ExitCode.Success)
       }
 
   private def log(event: String, fields: (String, Json)*): IO[Unit] =

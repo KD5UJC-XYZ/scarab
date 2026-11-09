@@ -6,10 +6,10 @@ contain public keys/signatures only, with no signing keys or operational node da
 These complete checksummed native V5 files were the maintained snapshot test inputs until V7
 (#395); they are now the previous-version inputs of the V5 → V7 migration tests, and
 [`fixtures/snapshot-v7`](../snapshot-v7/README.md) holds their registered conversions, which are in
-turn converted to [`fixtures/snapshot-v8`](../snapshot-v8/README.md) and then to the maintained V9 inputs of [`fixtures/snapshot-v9`](../snapshot-v9/README.md). They replace `fixtures/snapshot-v3`; the historical originals remain in Git at
+turn converted to [`fixtures/snapshot-v8`](../snapshot-v8/README.md) then to [`fixtures/snapshot-v9`](../snapshot-v9/README.md) and then to the maintained V10 inputs of [`fixtures/snapshot-v10`](../snapshot-v10/README.md). They replace `fixtures/snapshot-v3`; the historical originals remain in Git at
 the blobs in `manifest.json`.
 The current registry recognizes V1–V4 identifiers and refuses their retired payload formats; it
-migrates native V5 to V7, V7 to V8 and V8 to V9. The original readers are retained in pinned historical source, not on the
+migrates native V5 to V7, V7 to V8, V8 to V9 and V9 to V10. The original readers are retained in pinned historical source, not on the
 runtime classpath. Future format changes still require migration and previous-version tests under
 [ADR 0006](../../docs/adr/0006-versioned-formats-migrate-on-open.md). Operational writer upgrades
 remain [#37](https://github.com/KD5UJC-XYZ/scarab/issues/37) /

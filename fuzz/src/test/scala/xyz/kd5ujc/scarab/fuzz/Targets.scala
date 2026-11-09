@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.fuzz
 
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.syntax.all.*
 import fs2.Chunk
 import java.nio.file.Files
@@ -1553,7 +1554,8 @@ object Targets:
       SnapshotSidecar,
       SnapshotV7,
       SnapshotV8,
-      SnapshotV9
+      SnapshotV9,
+      SnapshotV10
     }
     import scala.jdk.CollectionConverters.*
     lazy val env = NodeSetup
@@ -1561,10 +1563,10 @@ object Targets:
       .fold(e => throw new Violation(e.message), _.mirrorEnv())
     lazy val format =
       given Ask[SyncIO, ConsensusMirrorEnv] = Ask.const(env)
-      SnapshotV9.format[SyncIO](SnapshotCheck.Full)
+      SnapshotV10.format[SyncIO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
     Vector(
       Target(
-        "native-snapshot-v9",
+        "native-snapshot-v10",
         () =>
           // Keep decoder allocations visible to Probe's caller-thread counter.
           val caller = Thread.currentThread()
@@ -1572,7 +1574,8 @@ object Targets:
             Sync[SyncIO].blocking(Thread.currentThread()).unsafeRunSync() eq caller,
             "snapshot fuzz interpreter moved off the allocation-guard thread"
           )
-          val listing = java.nio.file.Files.list(java.nio.file.Path.of("fixtures/snapshot-v9/eras"))
+          val listing =
+            java.nio.file.Files.list(java.nio.file.Path.of("fixtures/snapshot-v10/eras"))
           val eraSeeds =
             try
               listing.iterator.asScala.toVector.sorted.map { file =>
@@ -1589,6 +1592,7 @@ object Targets:
             )
             .flatMap(SnapshotV8.fromV7)
             .flatMap(SnapshotV9.fromV8)
+            .flatMap(SnapshotV10.fromV9)
             .fold(e => throw new Violation(e.message), identity)
           req(
             seeds.forall(b => format.decode(b).unsafeRunSync().isRight),
@@ -1596,10 +1600,10 @@ object Targets:
           )
           seeds
         ,
-        probe("native-snapshot-v9") { bytes =>
+        probe("native-snapshot-v10") { bytes =>
           format.decode(bytes.toArray).unsafeRunSync().foreach { snapshot =>
-            hit("native-snapshot-v9")
-            val sidecar = SnapshotV9
+            hit("native-snapshot-v10")
+            val sidecar = SnapshotV10
               .sidecarOf(bytes.toArray)
               .fold(e => throw new Violation(e.message), identity)
             req(

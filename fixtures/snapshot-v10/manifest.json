@@ -1,0 +1,145 @@
+{
+  "format" : "SCRBSNPA",
+  "conversion" : "registered SnapshotMigration V9 -> V10 step (SnapshotV10.fromV9): the reference build 11.1 recorded after the magic; the binding, the sidecar and the Haskell bytes unchanged",
+  "migrated" : [
+    "SnapshotFile V9 -> V10: 17"
+  ],
+  "files" : [
+    {
+      "file" : "conway-native-730.bin",
+      "sourceFile" : "fixtures/snapshot-v9/conway-native-730.bin",
+      "sourceSha256" : "a91a5009ff79d542fb1a63bb6e59433b952b0047b3df0266580736f8f0ce74bc",
+      "targetSha256" : "01d2ad4f9b2ab0962aafe20625620747f5e33c653016521bed46729805ceb859",
+      "sourceBytes" : 15898,
+      "targetBytes" : 15903
+    },
+    {
+      "file" : "eras/allegra-151.bin",
+      "sourceFile" : "fixtures/snapshot-v9/eras/allegra-151.bin",
+      "sourceSha256" : "792bfb05d8eacdf11074fbdc37099bdd946606979c7049166a28850373cf2c00",
+      "targetSha256" : "3180b8f3e054d6967a74b3f907f92323c818287f7ee7653c4ba5967ee2c56525",
+      "sourceBytes" : 6802,
+      "targetBytes" : 6807
+    },
+    {
+      "file" : "eras/allegra-249.bin",
+      "sourceFile" : "fixtures/snapshot-v9/eras/allegra-249.bin",
+      "sourceSha256" : "b61783a430dfcdd160ee258a4a91cca2166ec025a7f1232e20d2bae923179b40",
+      "targetSha256" : "0819a7b2045b2c9f139cb22fb66601bf53add5269cdbfe44c1d7df6579379132",
+      "sourceBytes" : 7042,
+      "targetBytes" : 7047
+    },
+    {
+      "file" : "eras/alonzo-349.bin",
+      "sourceFile" : "fixtures/snapshot-v9/eras/alonzo-349.bin",
+      "sourceSha256" : "2f6164eaf34348b899063159b64453d9de3ad18105edf0f28597d4f2d45667ec",
+      "targetSha256" : "4c1151ce6438e4ff5ea7b285a4a3b63d051ca429c259632eb932736efedcced0",
+      "sourceBytes" : 10668,
+      "targetBytes" : 10673
+    },
+    {
+      "file" : "eras/alonzo-539.bin",
+      "sourceFile" : "fixtures/snapshot-v9/eras/alonzo-539.bin",
+      "sourceSha256" : "67d2d62d93fb52007576a5bcc0c018a1b214173033f1ce0f9ca3a5c060d28405",
+      "targetSha256" : "e067ba5f0bead11a97afa070f3f3cd3bd5a3e19d9ee4f17ecff6750bc5ebec0b",
+      "sourceBytes" : 12240,
+      "targetBytes" : 12245
+    },
+    {
+      "file" : "eras/babbage-541.bin",
+      "sourceFile" : "fixtures/snapshot-v9/eras/babbage-541.bin",
+      "sourceSha256" : "fb473b7991f18f2cf246ac2e84360cfc77eec48a22fa95f69336f90663debdaf",
+      "targetSha256" : "8cd626be1d21f5fde793e2cfc8547b44cb9c6a22f8a616827fb419b780f7e1ef",
+      "sourceBytes" : 10987,
+      "targetBytes" : 10992
+    },
+    {
+      "file" : "eras/babbage-727.bin",
+      "sourceFile" : "fixtures/snapshot-v9/eras/babbage-727.bin",
+      "sourceSha256" : "f8a88120828b0c744970fb906a15dcbad3b1e228eed5ea3f69a7cdda9387f9d5",
+      "targetSha256" : "7803eb43820faf38829050fdeefe7d327c86dbf71a2a52060954d86d9db1decb",
+      "sourceBytes" : 12527,
+      "targetBytes" : 12532
+    },
+    {
+      "file" : "eras/byron-1.bin",
+      "sourceFile" : "fixtures/snapshot-v9/eras/byron-1.bin",
+      "sourceSha256" : "14e4f3a6be66505f929c37693a80f77f3bda498d1d1748d7c4e2e3eddb15866c",
+      "targetSha256" : "19a215df346b075c2da8c29743174667f0598b901a4379252189f1189ad7d49f",
+      "sourceBytes" : 1436,
+      "targetBytes" : 1441
+    },
+    {
+      "file" : "eras/byron-25.bin",
+      "sourceFile" : "fixtures/snapshot-v9/eras/byron-25.bin",
+      "sourceSha256" : "9df0e2d8de31136629b857ead40441e195722b2a2f50487e4fe5cf6723502861",
+      "targetSha256" : "afabcea56beb1f254d652e0e1abf9cde0adc4790bfc4c460129f887e724b2b16",
+      "sourceBytes" : 1658,
+      "targetBytes" : 1663
+    },
+    {
+      "file" : "eras/byron-49.bin",
+      "sourceFile" : "fixtures/snapshot-v9/eras/byron-49.bin",
+      "sourceSha256" : "b847410bf3bab642f69ef43db82fcd9fc3c3c4def48247f71bc21e04c9fc5daa",
+      "targetSha256" : "1791ba433badc84ed177b5020d188e7dc29e006bce908bb88d43411e838bf9aa",
+      "sourceBytes" : 1658,
+      "targetBytes" : 1663
+    },
+    {
+      "file" : "eras/conway-729.bin",
+      "sourceFile" : "fixtures/snapshot-v9/eras/conway-729.bin",
+      "sourceSha256" : "5333481bff5bc9c848e3eb23059b6ca10e9c93f64a6b266dd7568cd451e13385",
+      "targetSha256" : "c2898dd0b2964d515a1d3a70b2bedcab1bb0ae0b506fc0b92df9de4eb1ae6aab",
+      "sourceBytes" : 15868,
+      "targetBytes" : 15873
+    },
+    {
+      "file" : "eras/conway-730.bin",
+      "sourceFile" : "fixtures/snapshot-v9/eras/conway-730.bin",
+      "sourceSha256" : "399826ff08ab1945ae258f53d7e3d23d060d587b6902a403107f5c656690d954",
+      "targetSha256" : "3fc6824aeedfda88e54fc8bd9ac1664681778086a757d38a70aa390d3c2a3ed9",
+      "sourceBytes" : 15899,
+      "targetBytes" : 15904
+    },
+    {
+      "file" : "eras/mary-251.bin",
+      "sourceFile" : "fixtures/snapshot-v9/eras/mary-251.bin",
+      "sourceSha256" : "0402743701207e351a1ef3f51c8229963fab83e6beb07268f94d3d50617acd7b",
+      "targetSha256" : "3bfaa83e0f9f0af00bc51dea63d9e907f58d22dd8a099b09ef022f36bd88e17e",
+      "sourceBytes" : 7873,
+      "targetBytes" : 7878
+    },
+    {
+      "file" : "eras/mary-347.bin",
+      "sourceFile" : "fixtures/snapshot-v9/eras/mary-347.bin",
+      "sourceSha256" : "5bb8085bdffa54f4b96af36cf7dc40bd9690964f2b2c2b487b989e09ab7e6068",
+      "targetSha256" : "a788c9ee08ab5342d396b155db30f97b815257ef0edcdfd0d215090df5f131bb",
+      "sourceBytes" : 8130,
+      "targetBytes" : 8135
+    },
+    {
+      "file" : "eras/shelley-149.bin",
+      "sourceFile" : "fixtures/snapshot-v9/eras/shelley-149.bin",
+      "sourceSha256" : "50b0ed352b86d8d457267938c28cf953e492d8a56dcb309db29178f23f864d54",
+      "targetSha256" : "3870b992ab8ca9b5ce5d53bec92e79bdcdd40a4f00df2771719bae3043b25b62",
+      "sourceBytes" : 5211,
+      "targetBytes" : 5216
+    },
+    {
+      "file" : "eras/shelley-51.bin",
+      "sourceFile" : "fixtures/snapshot-v9/eras/shelley-51.bin",
+      "sourceSha256" : "4333439494631d795b2fa12e95eb88cd42a17870c781e827fbefbe31ae3b8d0a",
+      "targetSha256" : "ae06f16995ed4caba7a463ed48266447fcea6d409b27755e8d4a533d56d1e05e",
+      "sourceBytes" : 3481,
+      "targetBytes" : 3486
+    },
+    {
+      "file" : "preview-4320.bin",
+      "sourceFile" : "fixtures/snapshot-v9/preview-4320.bin",
+      "sourceSha256" : "ddaad24d00de33e82cd4459f2f86fa9cb0d9bafc1681fc01ca639f3283bf6acf",
+      "targetSha256" : "d1017fff1b9c58415115206fb825b45950ac8cb2826dac6e176aa48b237a47bb",
+      "sourceBytes" : 6802,
+      "targetBytes" : 6807
+    }
+  ]
+}
