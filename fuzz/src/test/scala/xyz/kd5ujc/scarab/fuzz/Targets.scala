@@ -1452,8 +1452,9 @@ object Targets:
               .encode(file, StateLayout.Leios)
               .fold(e => throw new Violation(s"leios-state: ${e.violation.render}"), identity)
             req(
-              HaskellLedgerFile.decode(written, StateLayout.Leios).map(_.layout) ==
-                Right(file.layout) &&
+              HaskellLedgerFile
+                .decode(written, StateLayout.Leios)
+                .exists(back => cats.Eq[HaskellLedgerFile].eqv(back, file)) &&
                 HaskellLedgerFile.encode(file, StateLayout.Node11_1).isLeft,
               "leios-state: a decoded file does not decode as itself, or 11.1 writes it"
             )

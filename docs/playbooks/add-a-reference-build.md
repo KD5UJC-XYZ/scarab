@@ -63,14 +63,25 @@ as 4.2.1.0 does (`ntc/GenesisConfig.scala`).
 2. **The pins.** Each revision in `docs/data/reference-pins.json`, with `ReferenceBuild.scala` among
    its dependents; `ReferenceBuildSuite` checks that every pin of every value is registered there.
 3. **The codecs.** `StateLayout.of` in
-   [`ReferenceLayout.scala`](../../storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ReferenceLayout.scala)
-   maps the value to a layout: an existing one if the build writes the same bytes (check every type of
-   the `state` file at the build's pins, not only the release notes), or a new `StateLayout` case.
-   A new layout gets its codec in `ReferenceLayout.of`, and until it exists a `ReferenceBuildNotYet`
-   refusal, so the build is refused at start rather than read with another build's codec. The
-   snapshot format does not change: V10 records the name as text.
+   [`StateLayout.scala`](../../protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/StateLayout.scala)
+   maps the value to a layout: an existing one if the build writes the same bytes (diff the encoders
+   and decoders of every type of the `state` file at the build's pins against the existing layout's,
+   era by era, not only the release notes, and check them on a `state` file the build wrote), or a
+   new `StateLayout` case. A new layout needs:
+   - for each record it writes differently, a case in that record's layout part (the closed enums
+     that extend `LayoutPart`: `Bound.Layout`, `ShelleyLedgerState.Layout`, `ExtLedgerState.Layout`,
+     `NewEpochState.Layout`, `SnapShots.Layout`, `PoolBlsKey`), with the record's codecs in
+     `storage/.../haskell/state` branching on `stateLayout` and refusing to write another layout's
+     part;
+   - an object of the codecs (`LedgerFileCodecs` with its `stateLayout`, as `HaskellStateCodecs` and
+     `LeiosStateCodecs` in `HaskellStateCodecs.scala`) and its case in `HaskellLedgerFile.codecs`;
+   - round trips on `state` files of that build, and the refusal of them by every other layout.
+
+   The snapshot format does not change: V10 records the name as text.
 4. **The rules.** From #826 step c, the value also selects the ledger and consensus rules; map it
-   there as for the codecs.
+   there as for the codecs. Until then `ReferenceBuildFlag.follows` refuses it at start with
+   `ReferenceBuildNotYet.Rules`, while `import-ledger-snapshot` and `export-ledger-snapshot` read
+   and write its layout; the rules this build runs produce values of the 11.1 layout.
 5. **The help text.** `ReferenceBuildFlag.Help` lists the values from the enum; check the usage lines
    of `follow`, `import-ledger-snapshot` and `export-ledger-snapshot` read correctly.
 6. **The docs and the register.** The `--reference-build` row of

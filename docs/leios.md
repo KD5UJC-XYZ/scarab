@@ -9,8 +9,8 @@ were never answered (sections 8, 10 and 11.7). The Leios reference is the build 
 (section 12, #711); the testnet was restarted on 2026-10-18, so section 11 describes the network
 before it. The node names that build `--reference-build leios-b004fe0c`
 ([flags](running/flags.md)): an **unstable** prototype build, meant for `ExperimentalHardForksEnabled`,
-which can change or go away at any time; this build refuses it at start until its ledger state layout
-is implemented (#826). The protocol is
+which can change or go away at any time; this build imports and exports its ledger state layout up to
+Conway, and `follow` refuses it at start until its rules are implemented (#826). The protocol is
 still moving: every statement below carries the source and revision it was read from, and where
 the sources disagree the disagreement is recorded rather than resolved. Unofficial research
 software, not audited. Read together with [architecture.md](architecture.md),
