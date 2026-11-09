@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.storage
 import xyz.kd5ujc.scarab.node.WorkerTesting
 import scala.annotation.unused
 import cats.effect.{Deferred, IO, Ref, Resource}
-import cats.effect.std.Queue
+import cats.effect.std.{Mutex, Queue}
 import cats.mtl.{Ask, Handle, Raise, Stateful}
 import cats.syntax.all.*
 import fs2.io.file.{Files, Path}
@@ -93,6 +93,59 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private def storageEvents(log: Ref[IO, Vector[StorageEvent]]): StorageEvents[IO] =
     e => log.update(_ :+ e)
 
+  /** `underlying`, counting in `started` the checkpoints it takes: each starts one snapshot write
+    * (`ChainStorage` takes it just before the write), which ends with one of [[ended]]'s events
+    * unless the stop cancels it.
+    */
+  private final class Counted[S](underlying: StateBacking[IO, S], started: Ref[IO, Int])
+      extends StateBacking[IO, S]:
+    def advance(state: S)(using Raise[IO, StorageError]) = underlying.advance(state)
+    def settled(state: S)(using Raise[IO, StorageError]) = underlying.settled(state)
+    def checkpoint(anchor: BlockRef)(using Raise[IO, StorageError]) =
+      underlying.checkpoint(anchor) <* started.update(_ + 1)
+    def admit(anchor: Option[BlockRef], binding: CheckpointBinding)(using
+        Raise[IO, StorageError]
+    ) = underlying.admit(anchor, binding)
+    def restore(anchor: Option[BlockRef])(using Raise[IO, StorageError]) =
+      underlying.restore(anchor)
+    def reset(using Raise[IO, StorageError]) = underlying.reset
+    def retain(stems: Set[String])(using Raise[IO, StorageError]) = underlying.retain(stems)
+
+  /** The snapshot writes in `log` that ended: written, refused or failed. */
+  private def ended(log: Vector[StorageEvent]): Int = log.count {
+    case _: StorageEvent.SnapshotWritten | _: StorageEvent.SnapshotFailed => true
+    case StorageEvent.SnapshotRefused(_, Some(_), _)                      => true
+    case _                                                                => false
+  }
+
+  /** Until every write `started` counts has ended (`before`: the writes `log` held as ended when
+    * the count began). Writes start only as blocks become immutable, so once the blocks are stored
+    * no other starts.
+    */
+  private def writesEnded(
+      started: Ref[IO, Int],
+      log: Ref[IO, Vector[StorageEvent]],
+      before: Int
+  ): IO[Unit] =
+    (IO.sleep(10.millis) *> (started.get, log.get).mapN((n, l) => ended(l) - before >= n))
+      .iterateUntil(identity)
+      .timeout(60.seconds)
+      .void
+
+  /** `persistence` whose blocks wait while `gate` is held: holding it, no block is being stored. */
+  private def gated[S](
+      persistence: ChainPersistence[IO, S],
+      gate: Mutex[IO]
+  ): ChainPersistence[IO, S] = new ChainPersistence[IO, S]:
+    def extended(ref: BlockRef, raw: Bytes, immutable: Vector[BlockRef], anchor: Anchor[S])(using
+        Raise[IO, StorageError],
+        Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
+    ) = gate.lock.surround(persistence.extended(ref, raw, immutable, anchor))
+    def rolledBack(to: ChainSync.Point)(using
+        Raise[IO, StorageError],
+        Raise[IO, xyz.kd5ujc.scarab.ledger.ChainError]
+    ) = gate.lock.surround(persistence.rolledBack(to))
+
   private def config(every: Int, keep: Int = 4) =
     ChainStorage.Config(
       snapshotPolicy = SnapshotPolicy.EverySlots(every),
@@ -111,7 +164,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       setup.byronHistory
     )
 
-  /** Open the storage, follow blocks `[from, until)` with the real follower, wait for snapshots. */
+  /** Open the storage, follow blocks `[from, until)` with the real follower, wait for the snapshots
+    * being written to end, and release the storage.
+    */
   private def run(
       dir: Path,
       until: Int,
@@ -126,8 +181,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private final case class Rollback(at: Int, back: Int)
 
   /** As [[run]], with the UTxO set in a store (`memory` or `rocksdb`) under the database directory;
-    * the last component is the complete UTxO set at the end. `beforeStop` runs once the blocks are
-    * followed, before the storage is released.
+    * the last component is the complete UTxO set at the end.
     */
   private def runWith(
       dir: Path,
@@ -137,8 +191,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       store: Option[String],
       keep: Int = 4,
       migrate: Boolean = false,
-      rollback: Option[Rollback] = None,
-      beforeStop: IO[Unit] = IO.unit
+      rollback: Option[Rollback] = None
   ): IO[
     (
         Option[BlockRef],
@@ -146,110 +199,116 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         Map[xyz.kd5ujc.scarab.ledger.TxIn, xyz.kd5ujc.scarab.ledger.TxOut]
     )
   ] =
-    Handle
-      .allow[NodeError] {
-        val backed: Resource[IO, (Option[UtxoStore[IO]], StateBacking[IO, MirrorState])] =
-          store match
-            case None => Resource.pure((None, StateBacking.none[IO, MirrorState]))
-            case Some("memory") =>
-              Resource.eval(MemoryUtxoStore[IO]).map { s =>
-                (
-                  Some(s: UtxoStore[IO]),
-                  new UtxoBacking[IO, MirrorState](s, dir / "utxo" / "checkpoints")
+    (Ref.of[IO, Int](0), log.get.map(ended)).flatMapN { (started, before) =>
+      Handle
+        .allow[NodeError] {
+          val backed: Resource[IO, (Option[UtxoStore[IO]], StateBacking[IO, MirrorState])] =
+            store match
+              case None => Resource.pure((None, StateBacking.none[IO, MirrorState]))
+              case Some("memory") =>
+                Resource.eval(MemoryUtxoStore[IO]).map { s =>
+                  (
+                    Some(s: UtxoStore[IO]),
+                    new UtxoBacking[IO, MirrorState](s, dir / "utxo" / "checkpoints")
+                  )
+                }
+              case Some(_) =>
+                RocksUtxoStore.resource[IO](dir / "utxo" / "live", 8L * 1024 * 1024).map { s =>
+                  (
+                    Some(s: UtxoStore[IO]),
+                    new UtxoBacking[IO, MirrorState](s, dir / "utxo" / "checkpoints")
+                  )
+                }
+          // `closing` before the backing store: `ClosedDB` follows its release, as in `Main`
+          (ChainStorage.Closing.resource[IO], backed).tupled
+            .use { case (closing, (utxoStore, backing)) =>
+              val rules =
+                MirrorRules[IO](
+                  setup.praos,
+                  setup.globals,
+                  setup.byronRules,
+                  setup.handOver,
+                  setup.byronHistory,
+                  utxoStore = utxoStore
                 )
-              }
-            case Some(_) =>
-              RocksUtxoStore.resource[IO](dir / "utxo" / "live", 8L * 1024 * 1024).map { s =>
-                (
-                  Some(s: UtxoStore[IO]),
-                  new UtxoBacking[IO, MirrorState](s, dir / "utxo" / "checkpoints")
+              ChainStorage
+                .open[IO, MirrorState](
+                  dir,
+                  config(every, keep),
+                  rules,
+                  setup.mirrorStart,
+                  storageEvents(log),
+                  Counted(backing, started),
+                  _ => IO.unit,
+                  snapshotMigration = Option.when(migrate)(SnapshotMigration.toCurrent[IO]),
+                  closing = Some(closing)
                 )
-              }
-        backed
-          .use { (utxoStore, backing) =>
-            val rules =
-              MirrorRules[IO](
-                setup.praos,
-                setup.globals,
-                setup.byronRules,
-                setup.handOver,
-                setup.byronHistory,
-                utxoStore = utxoStore
-              )
-            ChainStorage
-              .open[IO, MirrorState](
-                dir,
-                config(every, keep),
-                rules,
-                setup.mirrorStart,
-                storageEvents(log),
-                backing,
-                _ => IO.unit,
-                snapshotMigration = Option.when(migrate)(SnapshotMigration.toCurrent[IO])
-              )
-              .use { recovered =>
-                for
-                  chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
-                    VolatileChain(
-                      k,
-                      Anchor(recovered.anchor, recovered.state),
-                      Vector.empty,
-                      setup.origin
+                .use { recovered =>
+                  for
+                    chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
+                      VolatileChain(
+                        k,
+                        Anchor(recovered.anchor, recovered.state),
+                        Vector.empty,
+                        setup.origin
+                      )
                     )
-                  )
-                  given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
-                  queue <- Queue.unbounded[IO, SyncEvent]
-                  resumeFrom = recovered.anchor
-                    .fold(0)(a => headers.indexWhere(_.hash == a.hash) + 1)
-                  forward = (from: Int, to: Int) =>
-                    (from until to).toList.traverse_(i =>
-                      queue.offer(SyncEvent.RollForward(headers(i), ChainSync.Tip.Origin))
+                    given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
+                    queue <- Queue.unbounded[IO, SyncEvent]
+                    resumeFrom = recovered.anchor
+                      .fold(0)(a => headers.indexWhere(_.hash == a.hash) + 1)
+                    forward = (from: Int, to: Int) =>
+                      (from until to).toList.traverse_(i =>
+                        queue.offer(SyncEvent.RollForward(headers(i), ChainSync.Tip.Origin))
+                      )
+                    _ <- rollback match
+                      case None                     => forward(resumeFrom, until)
+                      case Some(Rollback(at, back)) =>
+                        // the peer announces blocks up to `at`, takes the last `back` of them
+                        // back, and announces them again
+                        forward(resumeFrom, at) *>
+                          queue.offer(
+                            SyncEvent
+                              .RollBackward(headers(at - back - 1).point, ChainSync.Tip.Origin)
+                          ) *> forward(at - back, until)
+                    done <- Deferred[IO, Unit]
+                    offered <- Ref.of[IO, Vector[Vector[ChainSync.Point]]](Vector.empty)
+                    bodies = headers.map(_.hash).zip(raws).toMap
+                    peer = new WorkerTesting.Scripted[IO]:
+                      def intersect(candidates: Vector[ChainSync.Point])(using
+                          Raise[IO, PeerError]
+                      ) =
+                        offered.update(_ :+ candidates).as(candidates.headOption)
+                      def next(using Raise[IO, PeerError]) = queue.tryTake.flatMap {
+                        case Some(event) => IO.pure(event)
+                        case None        => done.complete(()) *> IO.never[SyncEvent]
+                      }
+                      def fetch(header: Header)(using Raise[IO, PeerError]) =
+                        IO.pure(bodies(header.hash))
+                    follower <- Follower.create[IO, MirrorState](
+                      rules,
+                      noEvents,
+                      geometry,
+                      persistence = Some(recovered.persistence)
                     )
-                  _ <- rollback match
-                    case None                     => forward(resumeFrom, until)
-                    case Some(Rollback(at, back)) =>
-                      // the peer announces blocks up to `at`, takes the last `back` of them
-                      // back, and announces them again
-                      forward(resumeFrom, at) *>
-                        queue.offer(
-                          SyncEvent.RollBackward(headers(at - back - 1).point, ChainSync.Tip.Origin)
-                        ) *> forward(at - back, until)
-                  done <- Deferred[IO, Unit]
-                  offered <- Ref.of[IO, Vector[Vector[ChainSync.Point]]](Vector.empty)
-                  bodies = headers.map(_.hash).zip(raws).toMap
-                  peer = new WorkerTesting.Scripted[IO]:
-                    def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
-                      offered.update(_ :+ candidates).as(candidates.headOption)
-                    def next(using Raise[IO, PeerError]) = queue.tryTake.flatMap {
-                      case Some(event) => IO.pure(event)
-                      case None        => done.complete(()) *> IO.never[SyncEvent]
-                    }
-                    def fetch(header: Header)(using Raise[IO, PeerError]) =
-                      IO.pure(bodies(header.hash))
-                  follower <- Follower.create[IO, MirrorState](
-                    rules,
-                    noEvents,
-                    geometry,
-                    persistence = Some(recovered.persistence)
-                  )
-                  _ <- xyz.kd5ujc.scarab.node.WorkerTesting
-                    .pool(follower)
-                    .flatMap(blocks => WorkerTesting.follow(follower, blocks, peer, done.get))
-                    .timeout(60.seconds)
-                  // Snapshots are written in the background; let them land.
-                  _ <- IO.sleep(500.millis)
-                  _ <- beforeStop
-                  chain <- chainRef.get
-                  all <- utxoStore.fold(IO.pure(chain.state.utxo.toMap))(s =>
-                    UtxoStore.materialize(s, chain.state.utxo)
-                  )
-                yield (recovered.anchor, chain.copy(blocks = chain.blocks), all)
-              }
-          }
-          .map(_.asRight[NodeError])
-      }
-      .rescue(e => IO.pure(e.asLeft))
-      .flatMap(_.fold(e => IO.raiseError(new AssertionError(e.message)), IO.pure))
+                    _ <- xyz.kd5ujc.scarab.node.WorkerTesting
+                      .pool(follower)
+                      .flatMap(blocks => WorkerTesting.follow(follower, blocks, peer, done.get))
+                      .timeout(60.seconds)
+                    // Snapshots are written in the background: the stop would cancel them.
+                    _ <- writesEnded(started, log, before)
+                    chain <- chainRef.get
+                    all <- utxoStore.fold(IO.pure(chain.state.utxo.toMap))(s =>
+                      UtxoStore.materialize(s, chain.state.utxo)
+                    )
+                  yield (recovered.anchor, chain.copy(blocks = chain.blocks), all)
+                }
+            }
+            .map(_.asRight[NodeError])
+        }
+        .rescue(e => IO.pure(e.asLeft))
+        .flatMap(_.fold(e => IO.raiseError(new AssertionError(e.message)), IO.pure))
+    }
 
   private def events(@unused dir: Path): IO[Ref[IO, Vector[StorageEvent]]] =
     Ref.of[IO, Vector[StorageEvent]](Vector.empty)
@@ -565,145 +624,150 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   )
 
   /** Open the database as `Main` does (storage, then resume the volatile chain), follow the blocks
-    * up to `until` with the real follower (those after the resumed tip), run `beforeStop`, and
-    * release the storage (a graceful stop). `tap(n)` runs before the follower's n-th event
-    * (0-based); the tests copy the database there to stand in for a crash at that point. Snapshots
-    * are written in `format`.
+    * up to `until` with the real follower (those after the resumed tip), run `beforeStop`, wait for
+    * the snapshots being written to end unless `settle` is false, and release the storage (a
+    * graceful stop). `tap(n, quiet)` runs before the follower's n-th event (0-based), and `quiet`
+    * runs its action while no block is stored and no snapshot written; the tests copy the database
+    * there to stand in for a crash at that point. Snapshots are written in `format`.
     */
   private def session(
       dir: Path,
       until: Int,
       every: Int = 120,
       identity: Option[NetworkIdentity] = Some(setup.identity),
-      tap: Int => IO[Unit] = _ => IO.unit,
+      tap: (Int, IO[Unit] => IO[Unit]) => IO[Unit] = (_, _) => IO.unit,
       adoptLegacy: Boolean = false,
       selectionOnStartup: Boolean = false,
       wrapRules: BlockRules[IO, MirrorState] => BlockRules[IO, MirrorState] = identity,
       format: SnapshotFormat[IO, MirrorState] = fullFormat,
-      beforeStop: IO[Unit] = IO.unit
+      beforeStop: IO[Unit] = IO.unit,
+      settle: Boolean = true
   ): IO[Session] =
-    Ref.of[IO, Vector[StorageEvent]](Vector.empty).flatMap { log =>
-      Handle
-        .allow[NodeError] {
-          val backing = StateBacking.none[IO, MirrorState]
-          val nodeRules = wrapRules(
-            MirrorRules[IO](
-              setup.praos,
-              setup.globals,
-              setup.byronRules,
-              setup.handOver,
-              setup.byronHistory
+    (Ref.of[IO, Vector[StorageEvent]](Vector.empty), Ref.of[IO, Int](0), Mutex[IO]).flatMapN {
+      (log, started, gate) =>
+        val quiet = (action: IO[Unit]) => gate.lock.surround(writesEnded(started, log, 0) *> action)
+        Handle
+          .allow[NodeError] {
+            val backing = Counted(StateBacking.none[IO, MirrorState], started)
+            val nodeRules = wrapRules(
+              MirrorRules[IO](
+                setup.praos,
+                setup.globals,
+                setup.byronRules,
+                setup.handOver,
+                setup.byronHistory
+              )
             )
-          )
-          given SnapshotFormat[IO, MirrorState] = format
-          ChainStorage
-            .open[IO, MirrorState](
-              dir,
-              volatileConfig(every, identity).copy(adoptLegacyNetworkIdentity = adoptLegacy),
-              nodeRules,
-              setup.mirrorStart,
-              storageEvents(log),
-              backing,
-              _ => IO.unit
-            )
-            .use { recovered =>
-              for
-                resumed <- ChainStorage.resume[IO, MirrorState](
-                  recovered,
-                  k,
-                  setup.origin,
-                  nodeRules,
-                  geometry.byron.epochSlots,
-                  storageEvents(log),
-                  _ => IO.unit
-                )
-                chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
-                  VolatileChain(
+            given SnapshotFormat[IO, MirrorState] = format
+            ChainStorage
+              .open[IO, MirrorState](
+                dir,
+                volatileConfig(every, identity).copy(adoptLegacyNetworkIdentity = adoptLegacy),
+                nodeRules,
+                setup.mirrorStart,
+                storageEvents(log),
+                backing,
+                _ => IO.unit
+              )
+              .use { recovered =>
+                for
+                  resumed <- ChainStorage.resume[IO, MirrorState](
+                    recovered,
                     k,
-                    Anchor(recovered.anchor, recovered.state),
-                    resumed.map(r => r.ref -> r.state),
-                    setup.origin
+                    setup.origin,
+                    nodeRules,
+                    geometry.byron.epochSlots,
+                    storageEvents(log),
+                    _ => IO.unit
                   )
-                )
-                given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
-                start <- chainRef.get.map(
-                  _.tipRef.fold(0)(t => headers.indexWhere(_.hash == t.hash) + 1)
-                )
-                queue <- Queue.unbounded[IO, SyncEvent]
-                _ <- (start until until).toList.traverse_(i =>
-                  queue.offer(SyncEvent.RollForward(headers(i), ChainSync.Tip.Origin))
-                )
-                done <- Deferred[IO, Unit]
-                offered <- Ref.of[IO, Vector[Vector[ChainSync.Point]]](Vector.empty)
-                count <- Ref.of[IO, Int](0)
-                bodies = headers.map(_.hash).zip(raws).toMap
-                peer = new WorkerTesting.Scripted[IO]:
-                  def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
-                    offered.update(_ :+ candidates).as(candidates.headOption)
-                  def next(using Raise[IO, PeerError]) =
-                    count.getAndUpdate(_ + 1).flatMap(tap) *> queue.tryTake.flatMap {
-                      case Some(event) => IO.pure(event)
-                      case None        => done.complete(()) *> IO.never[SyncEvent]
-                    }
-                  def fetch(header: Header)(using Raise[IO, PeerError]) =
-                    IO.pure(bodies(header.hash))
-                startupApplications <- Ref.of[IO, Int](0)
-                follower <- Follower.create[IO, MirrorState](
-                  BlockRules.from((state, header, raw) =>
-                    startupApplications.update(_ + 1) *> nodeRules(state, header, raw)
-                  ),
-                  noEvents,
-                  geometry,
-                  persistence = Some(recovered.persistence),
-                  initialViews = resumed.map(r => r.ref.hash -> r.view).toMap
-                )
-                startupReplayed <-
-                  (if selectionOnStartup then
-                     xyz.kd5ujc.scarab.node.RestartSelectionControl
-                       .resource(
-                         follower,
-                         resumed.map(r =>
-                           headers
-                             .find(_.hash == r.ref.hash)
-                             .getOrElse(
-                               fail("resumed block missing its original fixture header")
-                             ) -> bodies(r.ref.hash)
+                  chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
+                    VolatileChain(
+                      k,
+                      Anchor(recovered.anchor, recovered.state),
+                      resumed.map(r => r.ref -> r.state),
+                      setup.origin
+                    )
+                  )
+                  given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
+                  start <- chainRef.get.map(
+                    _.tipRef.fold(0)(t => headers.indexWhere(_.hash == t.hash) + 1)
+                  )
+                  queue <- Queue.unbounded[IO, SyncEvent]
+                  _ <- (start until until).toList.traverse_(i =>
+                    queue.offer(SyncEvent.RollForward(headers(i), ChainSync.Tip.Origin))
+                  )
+                  done <- Deferred[IO, Unit]
+                  offered <- Ref.of[IO, Vector[Vector[ChainSync.Point]]](Vector.empty)
+                  count <- Ref.of[IO, Int](0)
+                  bodies = headers.map(_.hash).zip(raws).toMap
+                  peer = new WorkerTesting.Scripted[IO]:
+                    def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
+                      offered.update(_ :+ candidates).as(candidates.headOption)
+                    def next(using Raise[IO, PeerError]) =
+                      count.getAndUpdate(_ + 1).flatMap(tap(_, quiet)) *> queue.tryTake.flatMap {
+                        case Some(event) => IO.pure(event)
+                        case None        => done.complete(()) *> IO.never[SyncEvent]
+                      }
+                    def fetch(header: Header)(using Raise[IO, PeerError]) =
+                      IO.pure(bodies(header.hash))
+                  startupApplications <- Ref.of[IO, Int](0)
+                  follower <- Follower.create[IO, MirrorState](
+                    BlockRules.from((state, header, raw) =>
+                      startupApplications.update(_ + 1) *> nodeRules(state, header, raw)
+                    ),
+                    noEvents,
+                    geometry,
+                    persistence = Some(gated(recovered.persistence, gate)),
+                    initialViews = resumed.map(r => r.ref.hash -> r.view).toMap
+                  )
+                  startupReplayed <-
+                    (if selectionOnStartup then
+                       xyz.kd5ujc.scarab.node.RestartSelectionControl
+                         .resource(
+                           follower,
+                           resumed.map(r =>
+                             headers
+                               .find(_.hash == r.ref.hash)
+                               .getOrElse(
+                                 fail("resumed block missing its original fixture header")
+                               ) -> bodies(r.ref.hash)
+                           )
                          )
-                       )
-                       .use(_ => startupApplications.get)
-                   else startupApplications.get)
-                _ <- xyz.kd5ujc.scarab.node.WorkerTesting
-                  .pool(follower)
-                  .flatMap(blocks => WorkerTesting.follow(follower, blocks, peer, done.get))
-                  .timeout(60.seconds)
-                _ <- beforeStop
-                chain <- chainRef.get
-                offers <- offered.get
-              yield (resumed, recovered.anchor, chain, offers, startupReplayed)
-            }
-            .flatMap { (resumed, anchor, chain, offers, startupReplayed) =>
-              // the storage is released by now: its last event is `ClosedDB`
-              log.get.map { events =>
-                Session(
-                  resumed.size,
-                  events
-                    .collectFirst { case StorageEvent.VolatileResumed(_, d, _) => d }
-                    .getOrElse(-1),
-                  events
-                    .collectFirst { case StorageEvent.ReplayFinished(_, n, _) => n }
-                    .getOrElse(-1L),
-                  events.collectFirst { case StorageEvent.SnapshotRestored(_, a) => a }.flatten,
-                  anchor,
-                  chain,
-                  offers,
-                  events,
-                  startupReplayed
-                ).asRight[NodeError]
+                         .use(_ => startupApplications.get)
+                     else startupApplications.get)
+                  _ <- xyz.kd5ujc.scarab.node.WorkerTesting
+                    .pool(follower)
+                    .flatMap(blocks => WorkerTesting.follow(follower, blocks, peer, done.get))
+                    .timeout(60.seconds)
+                  _ <- beforeStop
+                  _ <- IO.whenA(settle)(writesEnded(started, log, 0))
+                  chain <- chainRef.get
+                  offers <- offered.get
+                yield (resumed, recovered.anchor, chain, offers, startupReplayed)
               }
-            }
-        }
-        .rescue(e => IO.pure(e.asLeft))
-        .flatMap(_.fold(e => IO.raiseError(new SessionRefused(e)), IO.pure))
+              .flatMap { (resumed, anchor, chain, offers, startupReplayed) =>
+                // the storage is released by now: its last event is `ClosedDB`
+                log.get.map { events =>
+                  Session(
+                    resumed.size,
+                    events
+                      .collectFirst { case StorageEvent.VolatileResumed(_, d, _) => d }
+                      .getOrElse(-1),
+                    events
+                      .collectFirst { case StorageEvent.ReplayFinished(_, n, _) => n }
+                      .getOrElse(-1L),
+                    events.collectFirst { case StorageEvent.SnapshotRestored(_, a) => a }.flatten,
+                    anchor,
+                    chain,
+                    offers,
+                    events,
+                    startupReplayed
+                  ).asRight[NodeError]
+                }
+              }
+          }
+          .rescue(e => IO.pure(e.asLeft))
+          .flatMap(_.fold(e => IO.raiseError(new SessionRefused(e)), IO.pure))
     }
 
   /** A session that ended in a typed error of the node, which a test can inspect. */
@@ -777,6 +841,45 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  // The reference traces `ClosedDB` once its LedgerDB has released its backend's resources
+  // (ouroboros-consensus 82ecba32, Storage/ChainDB/Impl.hs:426-436,
+  // Storage/LedgerDB/V2.hs:421-437).
+  test("ClosedDB is traced after the backing store the database was given is released") {
+    tempDir.use { dir =>
+      for
+        order <- Ref.of[IO, Vector[String]](Vector.empty)
+        recorded = new StorageEvents[IO]:
+          def emit(event: StorageEvent) = event match
+            case StorageEvent.ClosedDB(_, _) => order.update(_ :+ "closedDB")
+            case _                           => IO.unit
+        released = Resource.make(MemoryUtxoStore[IO])(_ => order.update(_ :+ "backing released"))
+        opened <- Handle
+          .allow[NodeError] {
+            (ChainStorage.Closing.resource[IO], released).tupled
+              .use { (closing, utxo) =>
+                ChainStorage
+                  .open[IO, MirrorState](
+                    dir,
+                    config(120),
+                    rules,
+                    setup.mirrorStart,
+                    recorded,
+                    new UtxoBacking[IO, MirrorState](utxo, dir / "utxo" / "checkpoints"),
+                    _ => IO.unit,
+                    closing = Some(closing)
+                  )
+                  .use(_ => IO.unit)
+              }
+              .map(_.asRight[NodeError])
+          }
+          .rescue(e => IO.pure(e.asLeft))
+        seen <- order.get
+      yield
+        assertEquals(opened.left.map(_.message), Right(()))
+        assertEquals(seen, Vector("backing released", "closedDB"))
+    }
+  }
+
   // The reference writes no snapshot when it closes (ouroboros-consensus 82ecba32 `closeDB`,
   // Storage/ChainDB/Impl.hs:408-436): only the snapshot policy does, through the background thread
   // (ChainDB/Impl/Background.hs:330-340), and the next start replays from the newest snapshot.
@@ -823,7 +926,13 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     tempDir.use { dir =>
       for
         started <- Deferred[IO, Unit]
-        first <- session(dir, 500, format = neverWritten(started), beforeStop = started.get)
+        first <- session(
+          dir,
+          500,
+          format = neverWritten(started),
+          beforeStop = started.get,
+          settle = false
+        )
           .timeout(90.seconds)
         left <- files.list(dir / "snapshots").compile.toList
         second <- session(dir, 500)
@@ -843,34 +952,17 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  /** Polls `log` until it holds an event that `wanted` accepts. */
-  private def logged(
-      log: Ref[IO, Vector[StorageEvent]]
-  )(wanted: StorageEvent => Boolean): IO[Unit] =
-    (IO.sleep(20.millis) *> log.get
-      .map(_.exists(wanted))).iterateUntil(identity).timeout(60.seconds).void
-
   test("a restart replays from the newest periodic snapshot to the state of a run without one") {
     tempDir.use { root =>
       val immutableTip = 500 - k - 1
       // The first run's immutable tip passes this many slots once: the policy writes one snapshot,
-      // of the first block at or past it, and the first run stops once that snapshot is written.
+      // of the first block at or past it, and the first run stops once that write has ended.
       val every = 1200
       val crossing = headers.indexWhere(_.slot >= every)
       val dir = root / "restarted"
       for
         log1 <- events(root)
-        _ <- runWith(
-          dir,
-          500,
-          every,
-          log1,
-          Some("rocksdb"),
-          beforeStop = logged(log1) {
-            case _: StorageEvent.SnapshotWritten => true
-            case _                               => false
-          }
-        )
+        _ <- runWith(dir, 500, every, log1, Some("rocksdb"))
         e1 <- log1.get
         snaps <- snapshotsIn(dir)
         log2 <- events(root)
@@ -932,10 +1024,11 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       for
         _ <- files.createDirectories(live)
         taken <- Ref.of[IO, Vector[Int]](Vector.empty)
-        // background snapshots land before the copy, which stands in for the files at the crash
-        tap = (n: Int) =>
+        // the copy, which stands in for the files at the crash, is taken between two stored
+        // blocks with no snapshot being written
+        tap = (n: Int, quiet: IO[Unit] => IO[Unit]) =>
           if points.contains(n) then
-            IO.sleep(60.millis) *> copyTree(live, root / s"crash-$n") *> taken.update(_ :+ n)
+            quiet(copyTree(live, root / s"crash-$n")) *> taken.update(_ :+ n)
           else IO.unit
         _ <- session(live, 731, tap = tap)
         copies <- taken.get

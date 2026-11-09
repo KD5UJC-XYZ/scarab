@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import cats.effect.{IO, Outcome, Ref, Resource}
+import cats.effect.{Deferred, IO, Outcome, Ref, Resource}
 import cats.effect.std.Queue
 import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
@@ -15,14 +15,16 @@ import xyz.kd5ujc.scarab.network.FailsOnUncaught
 class SnapshotFailureSuite extends FailsOnUncaught:
   private def point(n: Int): BlockRef = StorageTestKit.block(n)._1
 
+  /** The state as one byte behind the current snapshot magic, which a reopened database admits. */
   private given SnapshotFormat[IO, Int] with
-    def encode(snapshot: StateSnapshot[Int]) = IO.pure(Right(Array(snapshot.state.toByte)))
+    def encode(snapshot: StateSnapshot[Int]) =
+      IO.pure(Right(SnapshotV9.Magic :+ snapshot.state.toByte))
     def decode(content: Array[Byte]) =
       IO.pure(
         Right(
           StateSnapshot(
             Some(point(1)),
-            content.headOption.fold(0)(_.toInt),
+            content.lastOption.fold(0)(_.toInt),
             CheckpointBinding.Unbacked
           )
         )
@@ -167,6 +169,43 @@ class SnapshotFailureSuite extends FailsOnUncaught:
         yield ()
       }
     }
+
+  // `retain` comes after the snapshot file's rename (`ChainStorage` lists the files and retains
+  // their checkpoints once the write returned): a write the stop cancels there is complete.
+  test("a snapshot the stop cancels after its rename is complete, and the next start restores it") {
+    StorageTestKit.tempDir.use { dir =>
+      for
+        reached <- Deferred[IO, Unit]
+        first <- Ref.of[IO, Vector[StorageEvent]](Vector.empty)
+        _ <- typed {
+          opened(
+            dir,
+            event => first.update(_ :+ event),
+            backing(retainBody = reached.complete(()) *> IO.never),
+            every = 1
+          ).use(recovered => extend(recovered, 1) *> reached.get.timeout(3.seconds))
+        }
+        stopped <- first.get
+        second <- Ref.of[IO, Vector[StorageEvent]](Vector.empty)
+        _ <- typed {
+          opened(dir, event => second.update(_ :+ event), backing(retainBody = IO.unit), 1000)
+            .use(_ => IO.unit)
+        }
+        restarted <- second.get
+      yield
+        assertEquals(
+          stopped.collect {
+            case e: StorageEvent.SnapshotWritten => e
+            case e: StorageEvent.SnapshotFailed  => e
+          },
+          Vector.empty
+        )
+        assertEquals(
+          restarted.collect { case StorageEvent.SnapshotRestored(name, a) => name -> a },
+          Vector(FileLedgerSnapshots.nameOf(point(1)) -> Some(point(1)))
+        )
+    }
+  }
 
   test("snapshot operations use a fresh caller scope after their opening scope has ended") {
     StorageTestKit.tempDir.use { dir =>

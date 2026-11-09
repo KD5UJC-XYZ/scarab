@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import cats.effect.{Async, Clock, Ref, Resource}
+import cats.effect.{Async, Clock, Ref, Resource, Sync}
 import scala.util.Using
 import cats.effect.std.Supervisor
 import cats.effect.syntax.all.*
@@ -134,6 +134,24 @@ object ChainStorage:
         Raise[F, StorageError]
     ): F[S]
 
+  /** Where [[StorageEvent.ClosedDB]] is traced from: on release, after everything acquired after
+    * it. The reference traces `ClosedDB` once its ImmutableDB, VolatileDB and LedgerDB are closed
+    * and the LedgerDB has released its backend's resources (ouroboros-consensus 82ecba32,
+    * `Storage/ChainDB/Impl.hs:426-436`, `Storage/LedgerDB/V2.hs:421-437`), and only for a database
+    * that opened (`withDB` brackets `openDB`, `Impl.hs:113`). A caller whose [[StateBacking]] holds
+    * resources of its own (the RocksDB UTxO store) acquires one before them and gives it to
+    * [[open]].
+    */
+  final class Closing[F[_]] private (trace: Ref[F, Option[F[Unit]]]):
+    /** The database opened: `closed` is what is traced on release. */
+    private[storage] def opened(closed: F[Unit]): F[Unit] = trace.set(Some(closed))
+
+  object Closing:
+    def resource[F[_]: Sync]: Resource[F, Closing[F]] =
+      Resource
+        .make(Ref.of[F, Option[F[Unit]]](None))(_.get.flatMap(_.sequence_))
+        .map(new Closing(_))
+
   /** Stored blocks are prepared this many at a time during replay. */
   private val ReplayBatch = 64
 
@@ -252,6 +270,9 @@ object ChainStorage:
     * @param snapshotMigration
     *   Brings the snapshot files of an older format to the current one, before they are opened
     *   (once the identity of the database is checked): [[SnapshotMigration.toCurrent]].
+    * @param closing
+    *   What traces [[StorageEvent.ClosedDB]], acquired before `backing` 's own resources; none: the
+    *   database acquires one before its stores (a backing with no resources of its own).
     */
   def open[F[_]: Async, S](
       dir: Path,
@@ -263,7 +284,8 @@ object ChainStorage:
       prepare: Vector[Bytes] => F[Unit],
       compute: Option[Compute[F]] = None,
       snapshotMigration: Option[SnapshotMigration[F]] = None,
-      reopen: Option[Reopen[F, S]] = None
+      reopen: Option[Reopen[F, S]] = None,
+      closing: Option[Closing[F]] = None
   )(using
       SnapshotFormat[F, S],
       Raise[F, StorageError],
@@ -283,21 +305,8 @@ object ChainStorage:
         )
       )
       _ <- Resource.eval(config.identity.traverse_(NetworkIdentityFile.admit[F](dir, _, admission)))
-      pending <- Resource.eval(Ref.of[F, Vector[(BlockRef, Bytes)]](Vector.empty))
-      immutableTip <- Resource.eval(Ref.of[F, Option[Option[BlockRef]]](None))
-      // Released after every store: the reference traces `ClosedDB` once its ImmutableDB,
-      // VolatileDB and LedgerDB are closed, with the anchor and the head of its chain
-      // (`Impl.hs:426-436`), and only for a database that opened (`withDB` brackets `openDB`,
-      // `Impl.hs:113`).
-      _ <- Resource.onFinalize(
-        immutableTip.get.flatMap(
-          _.traverse_(anchor =>
-            pending.get.flatMap(p =>
-              events.emit(StorageEvent.ClosedDB(anchor, p.lastOption.map(_._1).orElse(anchor)))
-            )
-          )
-        )
-      )
+      // Released after every store (and after the caller's backing store, when it gave one)
+      closed <- closing.fold(Closing.resource[F])(Resource.pure)
       migratedIdentity <- Resource.eval(NetworkIdentityFile.migrate[F](dir))
       _ <- Resource.eval(
         migratedIdentity.traverse_(m => events.emit(StorageEvent.FormatMigrated(m)))
@@ -347,9 +356,10 @@ object ChainStorage:
       // Released before the stores: a snapshot in flight is cancelled, not awaited, as `closeDB`
       // kills the reference's snapshot thread before it closes its databases (`killBgThreads`,
       // `Impl.hs:423-428`; `ChainDB/Impl/Background.hs:127-142`). The write is atomic
-      // ([[FileLedgerSnapshots]]): a cancelled one leaves at most a temporary file, which the next
-      // open deletes, and a checkpoint that no snapshot names, which the next write's `retain`
-      // deletes.
+      // ([[FileLedgerSnapshots]]). Cancelled before its rename, it leaves at most a temporary file,
+      // which the next open deletes, and a checkpoint that no snapshot names, which the next
+      // write's `retain` deletes. Cancelled after it, it leaves a complete snapshot and its
+      // checkpoint, which the next start restores like any other.
       supervisor <- Supervisor[F](await = false)
       restored <- Resource.eval(
         snapshots.restore(snapshot =>
@@ -381,6 +391,8 @@ object ChainStorage:
       _ <- Resource.eval(
         restored.snapshot.fold(backing.reset)((_, s) => backing.restore(s.anchor).void)
       )
+      pending <- Resource.eval(Ref.of[F, Vector[(BlockRef, Bytes)]](Vector.empty))
+      immutableTip <- Resource.eval(Ref.of[F, Option[BlockRef]](start._1))
       lastSlot <- Resource.eval(Ref.of[F, BigInt](start._1.fold(BigInt(0))(_.slot)))
       previousSlot <- Resource.eval(Ref.of[F, BigInt](start._1.fold(BigInt(0))(_.slot)))
       lastTaken <- Resource.eval(Ref.of[F, Option[FiniteDuration]](None))
@@ -413,7 +425,14 @@ object ChainStorage:
           replay(store, rules, persistence, config, events, prepare, start._1, start._2, began)
         )
       )
-      _ <- Resource.eval(immutableTip.set(Some(replayed._1)))
+      // the anchor and the head of the chain, as the reference's `ClosedDB` (`Impl.hs:430-436`)
+      _ <- Resource.eval(
+        closed.opened(
+          (immutableTip.get, pending.get).flatMapN((anchor, p) =>
+            events.emit(StorageEvent.ClosedDB(anchor, p.lastOption.map(_._1).orElse(anchor)))
+          )
+        )
+      )
     yield Recovered(
       replayed._1,
       replayed._2,
@@ -557,8 +576,7 @@ object ChainStorage:
     * @param lastTaken
     *   When (monotonic) the previous snapshot was requested; none yet since the start.
     * @param immutableTip
-    *   The immutable tip once the database is open (none before: [[StorageEvent.ClosedDB]] is
-    *   traced only for a database that opened).
+    *   The immutable tip: the restored anchor, then each block that became immutable.
     * @param sinceCollect
     *   Blocks that became immutable since the volatile log was last collected.
     * @param advancedAt
@@ -577,7 +595,7 @@ object ChainStorage:
       previousSlot: Ref[F, BigInt],
       lastTaken: Ref[F, Option[FiniteDuration]],
       busy: Ref[F, Boolean],
-      immutableTip: Ref[F, Option[Option[BlockRef]]],
+      immutableTip: Ref[F, Option[BlockRef]],
       sinceCollect: Ref[F, Int],
       backing: StateBacking[F, S],
       advancedAt: Ref[F, BigInt]
@@ -650,7 +668,7 @@ object ChainStorage:
             SnapshotPolicy.Facts(previous, ref.slot, last, taken.map(now - _))
           )
           F.uncancelable(_ =>
-            advanceBacking(ref, state, snapshotDue) *> immutableTip.update(_.as(Some(ref)))
+            advanceBacking(ref, state, snapshotDue) *> immutableTip.set(Some(ref))
           ) *>
             afterAdvance(ref, state, snapshotDue)
       }

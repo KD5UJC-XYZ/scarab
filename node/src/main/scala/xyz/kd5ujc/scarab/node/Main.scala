@@ -710,12 +710,15 @@ object Main extends IOApp:
     )
     val keys =
       options.forge.fold(Resource.unit[IO])(f => KeyGuard.held[IO](f.kesSkey, options.keyLock))
+    // The database traces `ClosedDB` once the UTxO store is closed too, as the reference's once
+    // its LedgerDB has released its backend: `closing` is acquired before the store.
     (ownership *> keys *> compatible *> (
+      ChainStorage.Closing.resource[IO],
       utxoBacking(options),
       VerificationCache.resource[IO](),
       Scheduling.resource[IO](options.cpuThreads),
       Supervisor[IO](await = false)
-    ).tupled).use { case ((store, checkpoints), cache, scheduling, supervisor) =>
+    ).tupled).use { case (closing, (store, checkpoints), cache, scheduling, supervisor) =>
       followWith(
         options,
         cliPeers,
@@ -723,6 +726,7 @@ object Main extends IOApp:
         topology,
         store,
         backing(store, checkpoints),
+        closing,
         cache,
         scheduling,
         StallDiagnostics.abandoning(supervisor),
@@ -740,6 +744,7 @@ object Main extends IOApp:
       setup: NodeSetup,
       topology: Option[Topology],
       store: UtxoStore[IO],
+      closing: ChainStorage.Closing[IO],
       cache: VerificationCache,
       scheduling: Scheduling[IO],
       credentials: Option[PoolCredentials]
@@ -817,6 +822,7 @@ object Main extends IOApp:
       topology: Option[Topology],
       store: UtxoStore[IO],
       backing: StateBacking[IO, MirrorState],
+      closing: ChainStorage.Closing[IO],
       cache: VerificationCache,
       scheduling: Scheduling[IO],
       background: IO[Unit] => IO[Unit],
@@ -827,7 +833,18 @@ object Main extends IOApp:
   ): IO[ExitCode] =
     val setup = loaded.copy(praos = loaded.praos.copy(verdicts = cache))
     val run =
-      Startup(options, cliPeers, loaded, setup, topology, store, cache, scheduling, credentials)
+      Startup(
+        options,
+        cliPeers,
+        loaded,
+        setup,
+        topology,
+        store,
+        closing,
+        cache,
+        scheduling,
+        credentials
+      )
     instrumented(run, background).flatMap { instruments =>
       given Metrics[IO] = instruments.metrics
       ruled(run).flatMap { rules =>
@@ -1009,7 +1026,8 @@ object Main extends IOApp:
           rules.warm,
           Some(scheduling.compute),
           Some(SnapshotMigration.toCurrent[IO]),
-          Some(TransitionRecount.reopen[IO](genesis.geometry))
+          Some(TransitionRecount.reopen[IO](genesis.geometry)),
+          Some(run.closing)
         )
         .evalMap { r =>
           ChainStorage
