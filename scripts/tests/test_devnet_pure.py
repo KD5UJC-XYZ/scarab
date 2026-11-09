@@ -1672,3 +1672,28 @@ class PeercutPolicyTest(unittest.TestCase):
         for field, bad in [("failure", "Misbehaved"), ("action", "done"),
                            ("peer", "127.0.0.1:3001"), ("event", "reconnecting")]:
             self.assertFalse(peercut.transient_proxy_loss([dict(event, **{field: bad})]))
+
+
+class WaitListeningTest(unittest.TestCase):
+    """Issue 609: the pool scenario starts the Scala node only once the Haskell pools listen."""
+
+    TABLE = ("  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
+             "   0: 0100007F:9C4B 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 1 1\n"
+             "   1: 0100007F:0D16 0100007F:9C4B 01 00000000:00000000 00:00000000 00000000  1000        0 2 1\n")
+
+    def test_only_listening_sockets_count(self):
+        self.assertEqual(cluster.listening_ports(self.TABLE), {0x9C4B})
+
+    def test_returns_once_every_port_listens(self):
+        tables = iter(["  sl  local_address\n", self.TABLE])
+        with patch.object(cluster, "in_ref", side_effect=lambda *_: types.SimpleNamespace(stdout=next(tables))), \
+                patch.object(cluster.time, "sleep"):
+            cluster.wait_listening("n", [0x9C4B])
+
+    def test_a_port_that_never_listens_fails(self):
+        clock = iter(range(0, 1000, 50))
+        with patch.object(cluster, "in_ref", return_value=types.SimpleNamespace(stdout=self.TABLE)), \
+                patch.object(cluster.time, "monotonic", side_effect=lambda: next(clock)), \
+                patch.object(cluster.time, "sleep"):
+            with self.assertRaises(SystemExit):
+                cluster.wait_listening("n", [0x9C4B, 3001], seconds=120)

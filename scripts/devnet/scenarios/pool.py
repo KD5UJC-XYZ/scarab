@@ -10,7 +10,7 @@ import sys
 import time
 from .. import metrics as node_metrics
 from . import kes_rotate
-from ..cluster import database_mounts, freeze_classes, scala_container, start_nodes, start_reference
+from ..cluster import database_mounts, freeze_classes, scala_container, start_nodes, start_reference, wait_listening
 from ..compare import Comparisons, compare_or_error, whole_failures, whole_state
 from ..scenarios.relay import SCALA_PORT, log_counts, tip_at
 from .. import util
@@ -315,6 +315,8 @@ def pool(args):
                 path.write_bytes(raw)
                 path.chmod(0o600 if key == "kes.skey" else 0o400)  # the node writes the evolved KES key back
         start_nodes(args.name, tuple(others))
+        # the Scala node dials the pools at once: it starts only once they listen (issue 609)
+        wait_listening(args.name, [ports[n] for n in others])
         classpath = freeze_classes(root)
         db = root / "scala-db"
         db.mkdir()
