@@ -21,6 +21,9 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from devnet import cborspan  # noqa: E402
 FIXTURE = ROOT / "fixtures/reference/dijkstra-rules"
 CASES_FILE = FIXTURE / "cases.jsonl"
 PROVENANCE = FIXTURE / "provenance.json"
@@ -322,116 +325,46 @@ def genesis_utxo():
     return [[txin.hex(), txout.hex()]]
 
 
-def _item(b, i):
-    ib = b[i]
-    major, info = ib >> 5, ib & 31
-    i += 1
-    if info < 24:
-        return major, info, i
-    width = {24: 1, 25: 2, 26: 4, 27: 8}[info]
-    return major, int.from_bytes(b[i:i + width], "big"), i + width
+# The parts of a block `[8, [header, body]]`, `header = [header_body, body_signature]`, as paths of
+# `cborspan`, whose walker keeps an explicit stack, so a nesting of any depth in a block's
+# transactions does not reach Python's recursion limit.
+HEADER_BODY = [1, 0, 0]
+BODY = [1, 1]
+TRANSACTIONS = [1, 1, 0]
 
 
-def _skip(b, i):
-    major, n, i = _item(b, i)
-    if major in (2, 3):
-        return i + n
-    if major in (4, 5):
-        for _ in range(n * (2 if major == 5 else 1)):
-            i = _skip(b, i)
-        return i
-    if major == 6:
-        return _skip(b, i)
-    return i
-
-
-def _items(b, i):
-    """The items of the definite list at `i`, as their bytes."""
-    _, n, i = _item(b, i)
-    out = []
-    for _ in range(n):
-        j = _skip(b, i)
-        out.append(b[i:j])
-        i = j
-    return out
+def _bytes(b, path):
+    ((start, end),) = cborspan.resolve(b, path)
+    return b[start:end]
 
 
 def devnet_tx(block):
     """The parts of the one transaction of a block, `[body, witnesses, auxiliary data, is_valid]`
     as a Dijkstra body holds it (cardano-ledger 9df9f98c `Dijkstra/Tx.hs:175-182`)."""
-    _, _, i = _item(block, 0)        # [tag, block]
-    _, _, i = _item(block, i)        # 8
-    _, _, i = _item(block, i)        # [header, body]
-    i = _skip(block, i)              # the header
-    _, _, i = _item(block, i)        # [txs, leios_cert, peras_cert]
-    (tx,) = _items(block, i)
-    return _items(tx, 0)
+    (tx,) = cborspan.resolve(block, TRANSACTIONS + ["*"])
+    return [block[s:e] for s, e in cborspan.children(block, tx[0])]
 
 
 def block_body(block):
     """The body of a `[8, [header, body]]` block, as its bytes."""
-    _, _, i = _item(block, 0)
-    _, _, i = _item(block, i)
-    _, _, i = _item(block, i)
-    i = _skip(block, i)
-    return block[i:_skip(block, i)]
+    return _bytes(block, BODY)
 
 
 def with_body_size(block, delta):
     """The block with its header's `block_body_size` (field 6 of the header body) changed by
     `delta`."""
-    _, _, i = _item(block, 0)
-    _, _, i = _item(block, i)
-    _, _, i = _item(block, i)
-    _, _, i = _item(block, i)
-    _, _, i = _item(block, i)
-    for _ in range(6):
-        i = _skip(block, i)
-    major, n, j = _item(block, i)
+    ((start, end),) = cborspan.resolve(block, HEADER_BODY + [6])
+    major, n, _ = cborspan.head(block, start)
     assert major == 0
-    return block[:i] + uint(n + delta) + block[j:]
+    return block[:start] + uint(n + delta) + block[end:]
 
 
 def declared_body_hash(block):
-    """The header's `block_body_hash`: field 7 of the header body, read with a small CBOR walker."""
-    def item(b, i):
-        ib = b[i]
-        major, info = ib >> 5, ib & 31
-        i += 1
-        if info < 24:
-            n = info
-        else:
-            width = {24: 1, 25: 2, 26: 4, 27: 8}[info]
-            n = int.from_bytes(b[i:i + width], "big")
-            i += width
-        return major, n, i
-
-    def skip(b, i):
-        major, n, i = item(b, i)
-        if major in (2, 3):
-            return i + n
-        if major == 4:
-            for _ in range(n):
-                i = skip(b, i)
-            return i
-        if major == 5:
-            for _ in range(2 * n):
-                i = skip(b, i)
-            return i
-        if major == 6:
-            return skip(b, i)
-        return i
-
-    _, _, i = item(block, 0)          # [tag, block]
-    _, _, i = item(block, i)          # 8
-    _, _, i = item(block, i)          # [header, body]
-    _, _, i = item(block, i)          # [header_body, signature]
-    _, _, i = item(block, i)          # header_body, 12 fields
-    for _ in range(7):
-        i = skip(block, i)
-    major, n, i = item(block, i)
-    assert major == 2 and n == 32
-    return block[i:i + 32].hex()
+    """The header's `block_body_hash`: field 7 of the header body."""
+    (span,) = cborspan.resolve(block, HEADER_BODY + [7])
+    digest = cborspan.payload(block, span)
+    assert len(digest) == 32
+    return digest.hex()
 
 
 def run_image(cases):
