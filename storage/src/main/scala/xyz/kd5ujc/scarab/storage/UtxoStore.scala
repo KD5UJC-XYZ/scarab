@@ -94,15 +94,20 @@ trait UtxoStore[F[_]] extends UtxoReadView[F]:
   def memory(using cats.mtl.Raise[F, StorageError]): F[Map[String, Long]]
 
 object UtxoStore:
-  /** Flush the diff of an immutable state: write every change the store does not have yet. */
+  /** Flush the diff of an immutable state: write every change the store does not have yet. The
+    * store is then at the state's block, also when its newest blocks changed nothing, so a snapshot
+    * of that block is settled (`utxo.flushed == utxo.stamp`): the reference writes a snapshot's
+    * state and tables from one immutable state (ouroboros-consensus 82ecba32
+    * `Storage/LedgerDB/V2.hs` 379-383, `Storage/LedgerDB/V2/InMemory.hs` 216-219).
+    */
   def advance[F[_]: Sync](store: UtxoStore[F], utxo: Utxo)(using Raise[F, StorageError]): F[Unit] =
     store.flushed.flatMap { at =>
       if utxo.stamp <= at && !utxo.diff.exists(_._2.stamp > at) then Sync[F].unit
       else
-        // One walk of the diff for both: the changes to write and the stamp the store is then at
-        // (the state's newest change; stamps only grow along a chain).
+        // One walk of the diff for both: the changes to write and the newest stamp among them,
+        // which is the state's block or older (stamps only grow along a chain).
         val (changes, newest) = utxo.changesSince(at)
-        store.write(changes, newest)
+        store.write(changes, math.max(newest, utxo.stamp))
     }
 
   /** What a transaction can read from the UTxO set: inputs, reference inputs and collateral. */
