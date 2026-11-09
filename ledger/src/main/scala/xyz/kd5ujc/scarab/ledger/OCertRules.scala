@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
 /** Why an operational certificate (or its KES signature) is rejected. */
 enum OCertError:
   case KesPeriodOutsideWindow(period: BigInt, start: BigInt, evolutions: BigInt)
+  case KesWindowOverflow(start: BigInt, evolutions: BigInt)
   case KesFailure(cause: Sum6Kes.Failure)
   case KesSignatureRejected
   case OpCertFailure(cause: OperationalCertificate.Failure)
@@ -20,6 +21,8 @@ enum OCertError:
   def message: String = this match
     case KesPeriodOutsideWindow(p, s, e) =>
       s"KES period $p outside opcert window [$s, ${s + e})"
+    case KesWindowOverflow(s, e) =>
+      s"opcert window end ${s + e} exceeds Word64 (start $s, evolutions $e)"
     case KesFailure(e)           => e.toString
     case KesSignatureRejected    => "KES signature rejected"
     case OpCertFailure(e)        => e.message
@@ -71,9 +74,21 @@ object OCertRules:
   ): Either[OCertError | ProviderDefect, Unit] =
     val kesPeriod = header.slot / slotsPerKesPeriod
     val start = header.opCert.kesPeriod
+    // f649f975 TPraos/Rules/OCert.hs:84-90 refuses a Word64 end that wraps below start.
+    val end = start + maxKesEvolutions
     for
       _ <- Either.cond(
-        start <= kesPeriod && kesPeriod < start + maxKesEvolutions,
+        start <= kesPeriod,
+        (),
+        OCertError.KesPeriodOutsideWindow(kesPeriod, start, maxKesEvolutions)
+      )
+      _ <- Either.cond(
+        end.bitLength <= 64,
+        (),
+        OCertError.KesWindowOverflow(start, maxKesEvolutions)
+      )
+      _ <- Either.cond(
+        kesPeriod < end,
         (),
         OCertError.KesPeriodOutsideWindow(kesPeriod, start, maxKesEvolutions)
       )

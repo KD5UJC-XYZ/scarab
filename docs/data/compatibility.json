@@ -494,7 +494,8 @@
         "suites": [
           "PraosHeaderValidationSuite",
           "PraosLeaderThresholdSuite",
-          "PraosVrfCertificateSuite"
+          "PraosVrfCertificateSuite",
+          "ProviderDefectSuite"
         ]
       },
       "page": "docs/compatibility/consensus-praos-headers.md"
@@ -506,7 +507,8 @@
       "summary": "TPraos header checks for Shelley to Alonzo: overlay schedule, two VRF certificates, 512-bit leader value",
       "evidence": {
         "suites": [
-          "TPraosSuite"
+          "TPraosSuite",
+          "ProviderDefectSuite"
         ]
       },
       "page": "docs/compatibility/consensus-tpraos-headers.md"
