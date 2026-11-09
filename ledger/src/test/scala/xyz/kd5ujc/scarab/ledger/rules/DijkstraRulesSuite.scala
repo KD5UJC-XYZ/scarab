@@ -75,14 +75,16 @@ class DijkstraRulesSuite extends FunSuite:
       block: LeiosBlock,
       params: ProtocolParams = pp,
       from: DijkstraBbodyState = DijkstraBbodyState(ledger(pp), BlocksMade.empty)
-  ): Either[DijkstraBlockFailure, DijkstraBbodyState] =
+  ): Either[DijkstraHalt, Either[Vector[DijkstraBbodyFailure], DijkstraBbodyState]] =
     val issuer = DijkstraBbody.issuer(block).getOrElse(fail("issuer"))
-    Sts(DijkstraBbody)(
-      globals,
-      BbodyEnv(TestLedger.env.copy(slot = block.header.slot, epoch = 1), params, Coin(0)),
-      from,
-      DijkstraBbody.Signal(block, issuer)
-    )
+    DijkstraSts
+      .judge(DijkstraBbody, Judgment.Policy.Accumulate)(
+        globals,
+        BbodyEnv(TestLedger.env.copy(slot = block.header.slot, epoch = 1), params, Coin(0)),
+        from,
+        DijkstraBbody.Signal(block, issuer)
+      )
+      .map(_.left.map(_.toChain.toVector))
 
   test("the devnet's Dijkstra blocks are its eight, one of them with a valid transaction") {
     assertEquals(dijkstraBlocks.map(_._1), (33 to 40).map(BigInt(_)).toVector)
@@ -91,7 +93,8 @@ class DijkstraRulesSuite extends FunSuite:
 
   test("BBODY accepts every empty Dijkstra block of the devnet and counts it for its issuer") {
     dijkstraBlocks.filter(_._2.transactions.isEmpty).foreach { (n, block) =>
-      val after = bbody(block).fold(f => fail(s"block $n: $f"), identity)
+      val after =
+        bbody(block).fold(h => fail(s"block $n: $h"), _.fold(f => fail(s"block $n: $f"), identity))
       val issuer = DijkstraBbody.issuer(block).getOrElse(fail("issuer"))
       assertEquals(after.blocksMade.blocks.get(issuer).map(_.bits), Some(1L), s"block $n")
       assertEquals(after.ledger, ledger(pp), s"block $n changes no ledger state")
@@ -102,11 +105,7 @@ class DijkstraRulesSuite extends FunSuite:
     val (_, block) = dijkstraBlocks.find(_._2.transactions.nonEmpty).getOrElse(fail("block 37"))
     assertEquals(
       bbody(block),
-      Left(
-        DijkstraBlockFailure.Halted(
-          DijkstraHalt.NotYet(DijkstraNotYet.Rules, DijkstraPending.Entities)
-        )
-      )
+      Left(DijkstraHalt.NotYet(DijkstraNotYet.Rules, DijkstraPending.Entities))
     )
   }
 
@@ -116,7 +115,7 @@ class DijkstraRulesSuite extends FunSuite:
     }
     .getOrElse(fail("no empty block"))
 
-  private def rejected(f: DijkstraBbodyFailure) = Left(DijkstraBlockFailure.Rejected(f))
+  private def rejected(fs: DijkstraBbodyFailure*) = Right(Left(fs.toVector))
 
   test("BBODY refuses a header whose body size is not the body's") {
     val header = empty.header.copy(bodySize = empty.header.bodySize + 1)
@@ -128,7 +127,8 @@ class DijkstraRulesSuite extends FunSuite:
     )
   }
 
-  test("BBODY refuses a header whose body hash is not the body's, after its size") {
+  // the reference records both and reports them in reverse (`Extended.hs:610-622`)
+  test("BBODY refuses a header whose body hash is not the body's, and records a wrong size too") {
     val other = Bytes.fromArray(Array.fill(32)(9.toByte))
     val header = empty.header.copy(bodyHash = other)
     assertEquals(
@@ -136,11 +136,13 @@ class DijkstraRulesSuite extends FunSuite:
       rejected(DijkstraBbodyFailure.InvalidBodyHash(Mismatch(empty.bodyHash, other)))
     )
     assertEquals(
-      bbody(empty.copy(header = header.copy(bodySize = header.bodySize + 1))).left.map {
-        case DijkstraBlockFailure.Rejected(f) => f.tag
-        case other                            => fail(s"$other")
-      },
-      Left(0)
+      bbody(empty.copy(header = header.copy(bodySize = header.bodySize + 1))),
+      rejected(
+        DijkstraBbodyFailure.InvalidBodyHash(Mismatch(empty.bodyHash, other)),
+        DijkstraBbodyFailure.WrongBlockBodySize(
+          Mismatch(BigInt(empty.bodySize), header.bodySize + 1)
+        )
+      )
     )
   }
 
@@ -167,9 +169,11 @@ class DijkstraRulesSuite extends FunSuite:
     assertEquals(
       bbody(empty, params, DijkstraBbodyState(ledger(params), BlocksMade.empty)),
       Right(
-        DijkstraBbodyState(
-          ledger(params),
-          bbody(empty).toOption.map(_.blocksMade).getOrElse(fail(""))
+        Right(
+          DijkstraBbodyState(
+            ledger(params),
+            bbody(empty).toOption.flatMap(_.toOption).map(_.blocksMade).getOrElse(fail(""))
+          )
         )
       )
     )

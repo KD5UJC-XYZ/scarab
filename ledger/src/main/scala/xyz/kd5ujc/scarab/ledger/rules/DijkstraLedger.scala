@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.ledger.rules
 
 import cats.Monad
 import cats.mtl.{Ask, Raise, Stateful}
-import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{
@@ -142,34 +141,45 @@ object DijkstraLedgerRule
 
 /** LEDGERS of Dijkstra, Shelley's (`Babbage.LEDGERS`, `Dijkstra/Era.hs:296`;
   * `Shelley/Rules/Ledgers.hs`): the transactions of a block in order, each by LEDGER with its
-  * position. The block's verdict is the first failure ([[Judge.raising]]), raised as
-  * `LedgersFailure (LedgerFailure _)`.
+  * position, a sub-rule (`trans`), on the state the transactions before it left. A transaction's
+  * failures are recorded and the next still runs, as the reference interprets every rule
+  * (`Extended.hs:715-720`). `ShelleyLedgersPredFailure` has the one case `LedgerFailure`, so its
+  * failure is LEDGER's.
   */
 object DijkstraLedgers
-    extends Sts[LedgersEnv, DijkstraLedger, Vector[DijkstraTx], DijkstraBlockFailure]:
+    extends JudgedSts[LedgersEnv, DijkstraLedger, Vector[
+      DijkstraTx
+    ], DijkstraLedgerFailure, DijkstraHalt]:
   def transition[F[_]: Monad](env: LedgersEnv, txs: Vector[DijkstraTx])(using
       ask: Ask[F, Globals],
       st: Stateful[F, DijkstraLedger],
-      raise: Raise[F, DijkstraBlockFailure]
+      raise: Raise[F, DijkstraHalt],
+      judge: Judge[F, DijkstraLedgerFailure]
   ): F[Unit] =
     TxIx.enumerate(txs).traverse_ { (tx, ix) =>
-      DijkstraLedgerRule
-        .transition[F](LedgerEnv(env.ctx.copy(txIndex = ix.index), env.treasury), tx)(using
-          summon[Monad[F]],
-          ask,
-          st,
-          raise.contramap(DijkstraBlockFailure.Halted(_)),
-          Judge.raising[F, DijkstraLedgerFailure, DijkstraBlockFailure](f =>
-            DijkstraBlockFailure.Rejected(DijkstraBbodyFailure.LedgersFailure(f))
-          )
-        )
+      DijkstraSts.trans[
+        F,
+        LedgerEnv,
+        DijkstraLedger,
+        DijkstraLedger,
+        DijkstraTx,
+        DijkstraLedgerFailure,
+        DijkstraLedgerFailure
+      ](
+        DijkstraLedgerRule,
+        LedgerEnv(env.ctx.copy(txIndex = ix.index), env.treasury),
+        tx,
+        DijkstraSts.same,
+        identity
+      )
     }
 
 /** `BbodyState` of Dijkstra: the ledger state and the blocks the pools made in the epoch. */
 final case class DijkstraBbodyState(ledger: DijkstraLedger, blocksMade: BlocksMade)
 
 /** BBODY of Dijkstra (`Dijkstra/Rules/Bbody.hs:368-404`, `dijkstraBbodyTransition`, cardano-ledger
-  * 9df9f98c), in the reference's order, each check a failure of the block:
+  * 9df9f98c), in the reference's order. Every check records its failure and the rule goes on (`?!`,
+  * `Bbody.hs:362-400`), LEDGERS is a sub-rule, so a block's refusal lists all its failures:
   *
   *   - the body's size and hash against its header's (`validateBlockBodySize`,
   *     `validateBlockBodyHash`, `Shelley/Rules/Bbody.hs:251-295`); the size is that of the body's
@@ -196,15 +206,18 @@ final case class DijkstraBbodyState(ledger: DijkstraLedger, blocksMade: BlocksMa
   * `Bbody.hs:388-393`).
   */
 object DijkstraBbody
-    extends Sts[BbodyEnv, DijkstraBbodyState, DijkstraBbody.Signal, DijkstraBlockFailure]:
+    extends JudgedSts[
+      BbodyEnv,
+      DijkstraBbodyState,
+      DijkstraBbody.Signal,
+      DijkstraBbodyFailure,
+      DijkstraHalt
+    ]:
   /** The block and the pool that made it ([[issuer]]). */
   final case class Signal(block: LeiosBlock, issuer: KeyHash[StakePool])
 
-  given Embed[DijkstraLedger, DijkstraBbodyState, DijkstraBlockFailure, DijkstraBlockFailure] =
-    Embed(
-      monocle.Lens[DijkstraBbodyState, DijkstraLedger](_.ledger)(l => s => s.copy(ledger = l)),
-      identity
-    )
+  private val ledger: monocle.Lens[DijkstraBbodyState, DijkstraLedger] =
+    monocle.Lens[DijkstraBbodyState, DijkstraLedger](_.ledger)(l => s => s.copy(ledger = l))
 
   /** `totalRefScriptSizeInBlock` (`Conway/Rules/Bbody.hs:371-384`). */
   def refScriptsSize(pp: ProtocolParams, utxo: NodeUtxo, txs: Vector[DijkstraTx]): Long =
@@ -231,12 +244,11 @@ object DijkstraBbody
         }
         ._2
 
-  private def fail(f: DijkstraBbodyFailure): DijkstraBlockFailure = DijkstraBlockFailure.Rejected(f)
-
   def transition[F[_]: Monad](env: BbodyEnv, signal: Signal)(using
       ask: Ask[F, Globals],
       st: Stateful[F, DijkstraBbodyState],
-      raise: Raise[F, DijkstraBlockFailure]
+      raise: Raise[F, DijkstraHalt],
+      judge: Judge[F, DijkstraBbodyFailure]
   ): F[Unit] =
     val pp = env.pp
     val block = signal.block
@@ -245,45 +257,44 @@ object DijkstraBbody
     val highest = header.leios.versionInfo.highestSupportedMajor
     val units = txs.foldLeft(ExUnits.zero)(_ + DijkstraTxMeasures.totalExUnits(_))
     for
-      _ <- Sts.check[F, DijkstraBlockFailure](
+      _ <- Sts.predicate[F, DijkstraBbodyFailure](
         BigInt(block.bodySize) == header.bodySize,
-        fail(
-          DijkstraBbodyFailure.WrongBlockBodySize(Mismatch(BigInt(block.bodySize), header.bodySize))
-        )
+        DijkstraBbodyFailure.WrongBlockBodySize(Mismatch(BigInt(block.bodySize), header.bodySize))
       )
-      _ <- Sts.check[F, DijkstraBlockFailure](
+      _ <- Sts.predicate[F, DijkstraBbodyFailure](
         block.bodyHash == header.bodyHash,
-        fail(DijkstraBbodyFailure.InvalidBodyHash(Mismatch(block.bodyHash, header.bodyHash)))
+        DijkstraBbodyFailure.InvalidBodyHash(Mismatch(block.bodyHash, header.bodyHash))
       )
-      _ <- Sts.check[F, DijkstraBlockFailure](
+      _ <- Sts.predicate[F, DijkstraBbodyFailure](
         highest >= pp.protocolMajor,
-        fail(DijkstraBbodyFailure.HeaderProtVerTooLow(Mismatch(highest, pp.protocolMajor)))
+        DijkstraBbodyFailure.HeaderProtVerTooLow(Mismatch(highest, pp.protocolMajor))
       )
       before <- st.get
-      _ <- Sts.trans[F, LedgersEnv, DijkstraLedger, DijkstraBbodyState, Vector[
+      _ <- DijkstraSts.trans[F, LedgersEnv, DijkstraLedger, DijkstraBbodyState, Vector[
         DijkstraTx
-      ], DijkstraBlockFailure, DijkstraBlockFailure](
+      ], DijkstraLedgerFailure, DijkstraBbodyFailure](
         DijkstraLedgers,
         LedgersEnv(env.ctx, env.treasury),
-        txs
+        txs,
+        ledger,
+        DijkstraBbodyFailure.LedgersFailure(_)
       )
-      _ <- Sts.check[F, DijkstraBlockFailure](
+      _ <- Sts.predicate[F, DijkstraBbodyFailure](
         units.fits(pp.maxBlockExUnits),
-        fail(DijkstraBbodyFailure.TooManyExUnits(Mismatch(units, pp.maxBlockExUnits)))
+        DijkstraBbodyFailure.TooManyExUnits(Mismatch(units, pp.maxBlockExUnits))
       )
       // `ls ^. utxoL`: the UTxO set the block met (`Bbody.hs:396`)
       refBytes = refScriptsSize(pp, before.ledger.state.utxo.utxo.utxo, txs)
-      _ <- Sts.check[F, DijkstraBlockFailure](
+      _ <- Sts.predicate[F, DijkstraBbodyFailure](
         BigInt(refBytes) <= pp.maxRefScriptSizePerBlock,
-        fail(
-          DijkstraBbodyFailure.BodyRefScriptsSizeTooBig(
-            Mismatch(refBytes, pp.maxRefScriptSizePerBlock.toLong)
-          )
+        DijkstraBbodyFailure.BodyRefScriptsSizeTooBig(
+          Mismatch(refBytes, pp.maxRefScriptSizePerBlock.toLong)
         )
       )
       _ <- block.perasCertificate.fold(Monad[F].unit)(cert =>
-        fail(DijkstraBbodyFailure.PerasCertValidationFailed(cert, Nonce.Neutral))
-          .raise[F, Unit]
+        Sts.failBecause[F, DijkstraBbodyFailure](
+          DijkstraBbodyFailure.PerasCertValidationFailed(cert, Nonce.Neutral)
+        )
       )
       _ <- st.modify(s =>
         s.copy(blocksMade =

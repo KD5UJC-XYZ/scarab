@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.{
   Address,
   Block,
+  Certificate,
   LedgerFailure,
   PlutusStats,
   PredicateFailure,
@@ -15,6 +16,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Tx,
   TxEnv,
   TxChecks,
+  TxBody,
   TxIn,
   TxOut,
   UtxoFailure,
@@ -222,6 +224,18 @@ object DijkstraUtxo
         DijkstraTxMeasures.refScriptsSize(DijkstraTxMeasures.inUtxo(utxo), ann.tx.body)
       )
 
+  /** `dijkstraTotalRefundsTxCerts` (`Dijkstra/TxCert.hs:262-271`): the refunds the certificates
+    * declare, which Dijkstra's consumed value and deposit change count (`getTotalRefundsTxCerts _
+    * _`, `TxCert.hs:319`), not the deposits the state holds; DELEG and GOVCERT check them. A
+    * Dijkstra deregistration always declares one (tags 0 and 1 are refused).
+    */
+  def declaredRefunds(body: TxBody): BigInt =
+    body.certificates.iterator.map {
+      case Certificate.Unregister(_, refund)     => refund.getOrElse(BigInt(0))
+      case Certificate.UnregisterDRep(_, refund) => refund
+      case _                                     => BigInt(0)
+    }.sum
+
   private def pointer(out: TxOut): Boolean = out.address.kind match
     case Address.Kind.Shelley(_, _, _, Some(_)) => true
     case _                                      => false
@@ -252,10 +266,12 @@ object DijkstraUtxo
     val original = env.originalUtxo
     val outs = body.outputs ++ body.collateralReturn.toVector
     val withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
+    // `dijkstraConsumed` and `dijkstraProducedValue` (`Dijkstra/UTxO.hs:71-146`): the minted
+    // assets consumed, the burned produced (`getConsumedMaryValue`, `burnedMultiAssets`)
     val consumed = body.inputs.distinct.flatMap(original.get).foldLeft(Value.zero)(_ + _.value) +
-      Value.coin(withdrawn + refunds) + Value(0, body.mint)
+      Value.coin(withdrawn + refunds) + Value.minted(body.mint)
     val produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
-      Value.coin(body.fee + deposits + body.donation)
+      Value.coin(body.fee + deposits + body.donation) + Value.burned(body.mint)
     val static = ctx.validation == TxEnv.Validation.All
     Vector(
       conway(UtxoTests.validityInterval(body, ctx.slot)),
@@ -327,7 +343,8 @@ object DijkstraUtxo
       judge: Judge[F, DijkstraUtxoFailure]
   ): F[Unit] =
     val tx = ann.conway.tx
-    val (deposits, refunds) = Deposits.of(env.pp, env.original, tx.body)
+    val (deposits, _) = Deposits.of(env.pp, env.original, tx.body)
+    val refunds = declaredRefunds(tx.body)
     val collateral = TxChecks.collateral(env.originalUtxo, env.pp, tx)
     for
       before <- st.get

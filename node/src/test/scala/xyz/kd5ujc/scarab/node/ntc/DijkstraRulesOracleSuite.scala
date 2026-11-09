@@ -330,15 +330,14 @@ class DijkstraRulesOracleSuite extends FunSuite:
           case Right(Block.Dijkstra(b)) => b
           case other                    => fail(s"not a Dijkstra block: $other")
         val issuer = DijkstraBbody.issuer(block).getOrElse(fail("issuer"))
-        Sts(DijkstraBbody)(
-          globals,
-          BbodyEnv(TestLedger.env.copy(slot = block.header.slot, epoch = epoch), pp, Coin(0)),
-          DijkstraBbodyState(ledger(pp, epoch, utxoOf(c)), BlocksMade.empty),
-          DijkstraBbody.Signal(block, issuer)
-        ) match
-          case Right(_)                                 => Verdict.Accepted
-          case Left(DijkstraBlockFailure.Rejected(f))   => Verdict.Refused(Vector(bbody(f)))
-          case Left(DijkstraBlockFailure.Halted(cause)) => Verdict.Halted(cause)
+        judged(
+          DijkstraSts.judge(DijkstraBbody, Judgment.Policy.Accumulate)(
+            globals,
+            BbodyEnv(TestLedger.env.copy(slot = block.header.slot, epoch = epoch), pp, Coin(0)),
+            DijkstraBbodyState(ledger(pp, epoch, utxoOf(c)), BlocksMade.empty),
+            DijkstraBbody.Signal(block, issuer)
+          )
+        )(bbody)
       case "certs" =>
         val cs = decoded(strings(h.downField("certs")))(DijkstraCert.decode)
         judged(runCerts(pp, epoch, cs))(f => dijkstra(certs(f)))
@@ -370,14 +369,18 @@ class DijkstraRulesOracleSuite extends FunSuite:
         val tx = ok(DijkstraTx.inBlock(node(raw)))
         val utxo = utxoOf(c)
         val start = ledger(pp, epoch, utxo)
+        val setup = decoded(strings(h.downField("setup")))(DijkstraCert.decode)
+        val cert = runCerts(pp, epoch, setup) match
+          case Right(Right(s)) => s
+          case other           => fail(s"the setup does not pass: $other")
         judged(
           DijkstraSts.judge(DijkstraUtxow, Judgment.Policy.Accumulate)(
             globals,
             DijkstraUtxoEnv(
               TestLedger.env.copy(slot = num(h.downField("slot")), epoch = epoch),
               pp,
-              start.state.cert.pState,
-              start.state.cert,
+              cert.pState,
+              cert,
               utxo
             ),
             Counted(start.state.utxo, xyz.kd5ujc.scarab.ledger.PlutusStats.zero),
@@ -394,7 +397,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
     )
 
   test("the fixture holds the oracle's cases") {
-    assertEquals(cases.size, 64)
+    assertEquals(cases.size, 68)
   }
 
   test("every case the node's rules complete agrees with the reference") {

@@ -168,6 +168,8 @@ def generate():
     marker = bytes.fromhex(declared_body_hash(blob))
     assert blob.count(marker) == 1
     case("bbody/other-body-hash", "bbody", block=blob.replace(marker, bytes([9]) * 32).hex())
+    case("bbody/other-body-size-and-hash", "bbody",
+         block=with_body_size(blob, 1).replace(marker, bytes([9]) * 32).hex())
 
     tx_block = bytes.fromhex(dict(chain)[DEVNET_TX_BLOCK])
     case(f"bbody/devnet-{DEVNET_TX_BLOCK}-genesis-utxo", "bbody", block=tx_block.hex(), utxo=genesis_utxo())
@@ -199,13 +201,15 @@ def generate():
     def locked(script):
         return bytes([0x70]) + hashlib.blake2b(b"\x00" + script, digest_size=28).digest()
 
-    def script_tx(lock, provided, coin=10_000_000, fee=1_000_000):
+    def script_tx(lock, provided, coin=10_000_000, fee=1_000_000, out_coin=None, held=None,
+                  extra=(), assets=None):
         txin = arr(bstr(bytes([0x11]) * 32), uint(0))
-        out = arr(bstr(GENESIS_ADDRESS), uint(coin - fee))
+        out = arr(bstr(GENESIS_ADDRESS), uint(coin - fee if out_coin is None else out_coin))
         body = cmap([(uint(0), tagged_set([txin])), (uint(1), arr(out)),
-                     (uint(2), b"\x1a" + fee.to_bytes(4, "big"))])
+                     (uint(2), b"\x1a" + fee.to_bytes(4, "big"))] + list(extra))
         wits = cmap([(uint(1), tagged_set(provided))]) if provided else cmap([])
-        utxo = [[txin.hex(), arr(bstr(locked(lock)), uint(coin)).hex()]]
+        value = uint(coin) if assets is None else arr(uint(coin), assets)
+        utxo = [[txin.hex(), arr(bstr(locked(lock)), value).hex()]]
         return arr(body, wits, NULL, b"\xf5"), utxo
 
     all_of = arr(uint(1), arr())
@@ -224,6 +228,25 @@ def generate():
 
     for name, (params, t, u) in utxow.items():
         case(f"utxow/{name}", "utxow", params=params, tx=t.hex(), utxo=u, slot=DEVNET_TX_SLOT)
+
+    # A deregistration whose declared refund (3 ada) is not the deposit held (2 ada): Dijkstra's
+    # consumed value counts the declared one (`dijkstraTotalRefundsTxCerts`, `Dijkstra/TxCert.hs`).
+    # The stake credential is the script that locks the input, which witnesses both.
+    script_hash = hashlib.blake2b(b"\x00" + all_of, digest_size=28).digest()
+    stake = arr(uint(1), bstr(script_hash))
+    registered = [arr(uint(7), stake, uint(DEPOSIT)).hex()]
+    dereg = (uint(4), tagged_set([arr(uint(8), stake, uint(3_000_000))]))
+    for name, out_coin in {"refund-declared-balanced": 12_000_000,
+                           "refund-held-balanced": 11_000_000}.items():
+        t, u = script_tx(all_of, [all_of], out_coin=out_coin, extra=[dereg])
+        case(f"utxow/{name}", "utxow", tx=t.hex(), utxo=u, slot=DEVNET_TX_SLOT, setup=registered)
+
+    # A burn of two tokens of a policy, of which the input holds one: Mary's consumed value counts
+    # the minted tokens and its produced value the burned ones (`Mary/UTxO.hs:72-97`).
+    token = cmap([(bstr(script_hash), cmap([(bstr(b"\x01"), uint(1))]))])
+    burn = (uint(9), cmap([(bstr(script_hash), cmap([(bstr(b"\x01"), head(1, 1))]))]))
+    t, u = script_tx(all_of, [all_of], extra=[burn], assets=token)
+    case("utxow/burn-beyond-held", "utxow", tx=t.hex(), utxo=u, slot=DEVNET_TX_SLOT)
 
     certs = {
         "register": [reg(1)],
@@ -352,6 +375,21 @@ def block_body(block):
     _, _, i = _item(block, i)
     i = _skip(block, i)
     return block[i:_skip(block, i)]
+
+
+def with_body_size(block, delta):
+    """The block with its header's `block_body_size` (field 6 of the header body) changed by
+    `delta`."""
+    _, _, i = _item(block, 0)
+    _, _, i = _item(block, i)
+    _, _, i = _item(block, i)
+    _, _, i = _item(block, i)
+    _, _, i = _item(block, i)
+    for _ in range(6):
+        i = _skip(block, i)
+    major, n, j = _item(block, i)
+    assert major == 0
+    return block[:i] + uint(n + delta) + block[j:]
 
 
 def declared_body_hash(block):

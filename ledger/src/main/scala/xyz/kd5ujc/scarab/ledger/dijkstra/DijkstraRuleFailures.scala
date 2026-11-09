@@ -224,8 +224,3 @@ enum DijkstraHalt:
 object DijkstraHalt:
   /** The refusal of a part not implemented yet (`DijkstraNotYet.Rules`). */
   def pending(what: DijkstraPending): DijkstraHalt = NotYet(DijkstraNotYet.Rules, what)
-
-/** A block refused by Dijkstra's BBODY, or halted. */
-enum DijkstraBlockFailure:
-  case Rejected(failure: DijkstraBbodyFailure)
-  case Halted(cause: DijkstraHalt)

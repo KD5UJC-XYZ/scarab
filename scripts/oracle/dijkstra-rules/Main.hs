@@ -16,7 +16,8 @@
 --     block, `[8, block]` as BlockFetch carries it, on the default ledger state with the UTxO set
 --     of the case, with the parameters of the case and a chain account of zero;
 --   kind "utxow": UTXOW (`Dijkstra/Rules/Utxow.hs`) of a transaction as a block body holds it, on
---     the UTxO set of the case and the default certificate state, at the slot of the case;
+--     the UTxO set of the case and the certificate state CERTS makes of `setup` (which must pass),
+--     at the slot of the case;
 --   kind "certs": CERTS (Conway's, with Dijkstra's CERT, POOL and GOVCERT) over the certificates of
 --     the case on the default certificate state, in the current epoch of the case;
 --   kind "gov": CERTS over `setup` first, which must pass, then GOV
@@ -276,7 +277,7 @@ runCase c = object ["name" .= name c, "kind" .= kind c, "reference" .= result]
         let u = utxoOf c
             annotated =
               mkDijkstraStAnnTopTx (epochInfo globals) (systemStart globals) pp u mempty (topTx (maybe (error "tx") id (tx c)))
-            certState = def :: CertState DijkstraEra
+            certState = either (error . show) id (runCerts c (maybe [] id (setup c)) def)
          in verdict (const []) $
               runReader
                 ( applySTS @(UTXOW DijkstraEra)
