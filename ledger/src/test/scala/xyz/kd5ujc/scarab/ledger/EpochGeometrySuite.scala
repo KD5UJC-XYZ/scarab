@@ -186,24 +186,28 @@ class EpochGeometrySuite extends ScalaCheckSuite:
     }
   }
 
-  test("the windows are Word64: ceiling of the exact 3k/f and 4k/f, low 64 bits kept") {
+  test("a genesis whose windows the reference would take modulo 2^64 is refused") {
+    // `ceiling` into `Word64` keeps the low 64 bits in the reference; here the windows, and twice
+    // the stability window, must fit (overflow-improvements.md#epoch-geometry-windows)
     val maxWord = BigInt(2).pow(64) - 1
-    def windows(k: BigInt, f: Rational) =
-      val g = geometry(0, 1, 1000).copy(
-        securityParam = TestGeometry.k(k.toLong),
-        activeSlotsCoeff = TestGeometry.f(f)
+    def checked(k: BigInt, f: Rational) =
+      EpochGeometry.checked(Instant.EPOCH, 1000, 1000, TestGeometry.k(k.toLong), TestGeometry.f(f))
+    def twice(k: BigInt, f: Rational) =
+      2 * (Rational(3 * k) / f).ceil
+    def refused(k: BigInt, f: Rational) =
+      assertEquals(
+        checked(k, f).left.map(_.problem),
+        Left(ConfigProblem.OutOfRange("genesis: twice the stability window", twice(k, f), 64))
       )
-      (g.stabilityWindow.toBigInt, g.randomnessStabilisationWindow.toBigInt)
-    val modulus = BigInt(2).pow(64)
-    // 3 * 2^63 and 4 * 2^63 do not fit: 2^63 and 0 remain
-    assertEquals(windows(BigInt(2).pow(63), Rational.one), (BigInt(2).pow(63), BigInt(0)))
-    // 8 * (2^64 - 1) = 2^64 - 8 modulo 2^64
-    assertEquals(windows(maxWord, Rational(1, 2))._2, modulus - 8)
-    // the smallest coefficient, 10^-19: 3 * 2160 * 10^19 modulo 2^64
-    assertEquals(
-      windows(2160, Rational(1, BigInt(10).pow(19))),
-      ((3 * 2160 * BigInt(10).pow(19)) % modulus, (4 * 2160 * BigInt(10).pow(19)) % modulus)
-    )
+    // 3 * 2^63 and 4 * 2^63 do not fit; the reference keeps 2^63 and 0
+    refused(BigInt(2).pow(63), Rational.one)
+    refused(maxWord, Rational(1, 2))
+    // the smallest coefficient, 10^-19, with the mainnet k
+    refused(2160, Rational(1, BigInt(10).pow(19)))
+    // the largest k whose doubled window fits, at f = 1: 6k = 2^64 - 4
+    val largest =
+      checked(BigInt("3074457345618258602"), Rational.one).fold(e => fail(e.message), identity)
+    assertEquals(largest.randomnessStabilisationWindow.toBigInt, 4 * BigInt("3074457345618258602"))
   }
 
   private def shelley(edit: io.circe.JsonObject => io.circe.JsonObject) =

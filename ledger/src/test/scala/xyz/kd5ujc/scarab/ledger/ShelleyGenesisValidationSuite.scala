@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import cats.data.NonEmptyList
+import cats.syntax.all.*
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Rational
@@ -10,7 +11,8 @@ import xyz.kd5ujc.scarab.ledger.state.Word64
 
 /** `validateGenesis` (cardano-ledger f649f975, `Shelley/Genesis.hs:673-762`). The expected minimum
   * epoch lengths are IEEE double results, computed independently as
-  * `ceil(float((3 * k) % 2**64) / float(Fraction(f))) % 2**64`.
+  * `ceil(float(3 * k) / float(Fraction(f)))`: where the reference's `Word64` would wrap `3 * k` or
+  * the ceiling, the minimum here is exact (overflow-improvements.md#shelley-genesis-validation).
   */
 class ShelleyGenesisValidationSuite extends FunSuite:
   private def word(n: BigInt): Word64 =
@@ -48,7 +50,12 @@ class ShelleyGenesisValidationSuite extends FunSuite:
       epochCheck(129599, 2160, Rational(1, 20)),
       Left(
         NonEmptyList.one(
-          ValidationErr.EpochNotLongEnough(word(129599), word(2160), Rational(1, 20), word(129600))
+          ValidationErr.EpochNotLongEnough(
+            word(129599),
+            word(2160),
+            Rational(1, 20),
+            BigInt(129600)
+          )
         )
       )
     )
@@ -57,34 +64,40 @@ class ShelleyGenesisValidationSuite extends FunSuite:
       epochCheck(30, 7, Rational(7, 10)),
       Left(
         NonEmptyList.one(
-          ValidationErr.EpochNotLongEnough(word(30), word(7), Rational(7, 10), word(31))
+          ValidationErr.EpochNotLongEnough(word(30), word(7), Rational(7, 10), BigInt(31))
         )
       )
     )
     assertEquals(epochCheck(31, 7, Rational(7, 10)), Right(()))
   }
 
-  test("3 * k wraps in Word64 before the division, and the ceiling wraps in Word64") {
-    // k = ceiling(2^64 / 3): 3k wraps to 2, and 2 / 0.3 rounds up to 7
+  test(
+    "3 * k and the ceiling do not wrap: the minimum is the true one (the reference wraps them)"
+  ) {
+    // k = ceiling(2^64 / 3): the reference's 3k wraps to 2, and 2 / 0.3 rounds up to 7; the exact
+    // 3k is 2^64 + 2, so the minimum is ceil(float(2^64 + 2) / 0.3) slots and no epoch length meets it
     val k = BigInt("6148914691236517206")
-    assertEquals(epochCheck(7, k, Rational(3, 10)), Right(()))
+    val exact = BigInt("61489146912365174784")
     assertEquals(
-      epochCheck(6, k, Rational(3, 10)),
+      epochCheck(7, k, Rational(3, 10)),
       Left(
-        NonEmptyList.one(
-          ValidationErr.EpochNotLongEnough(word(6), word(k), Rational(3, 10), word(7))
-        )
+        NonEmptyList.one(ValidationErr.EpochNotLongEnough(word(7), word(k), Rational(3, 10), exact))
       )
     )
-    // the stability window of the same k is computed in Rational, without the early wrap
-    val geometry = TestGeometry(java.time.Instant.EPOCH, 1000, 7, 1, "1")
-      .copy(
-        securityParam = TestGeometry.k(word(k).bits),
-        activeSlotsCoeff = TestGeometry.f(Rational(3, 10))
-      )
-    assertEquals(geometry.stabilityWindow.toBigInt, BigInt("6148914691236517212"))
-    // k = 2^64 - 1, f = 10^-19: the Double quotient is a multiple of 2^64, so the minimum is 0
-    assertEquals(epochCheck(0, maxWord, Rational(1, BigInt(10).pow(19))), Right(()))
+    assertEquals(
+      epochCheck(maxWord, k, Rational(3, 10))
+        .leftMap(_.head.description.contains(s"EpochSize $exact")),
+      Left(true)
+    )
+    // below the boundary nothing changes: k = 2^61 at f = 1, 3k < 2^64 and exact in a Double
+    val below = BigInt(2).pow(61)
+    assertEquals(epochCheck(3 * below, below, Rational.one), Right(()))
+    assert(epochCheck(3 * below - 1, below, Rational.one).isLeft)
+    // k = 2^64 - 1, f = 10^-19: the Double quotient is above 2^64, which the reference's ceiling
+    // wraps to 0; exactly it is the Double's integer
+    val huge = ShelleyGenesisValidation.ceilingInteger(maxWord.toDouble / 1e-19)
+    assert(huge > maxWord, huge.toString)
+    assertEquals(epochCheck(maxWord, maxWord, Rational(1, BigInt(10).pow(19))).isLeft, true)
   }
 
   test("at most 64 KES evolutions, the periods of Sum6KES") {
@@ -121,7 +134,7 @@ class ShelleyGenesisValidationSuite extends FunSuite:
       ShelleyGenesisValidation.validate(all),
       Left(
         NonEmptyList.of(
-          ValidationErr.EpochNotLongEnough(word(1), word(1), Rational.one, word(3)),
+          ValidationErr.EpochNotLongEnough(word(1), word(1), Rational.one, BigInt(3)),
           ValidationErr.MaxKESEvolutionsUnsupported(word(65), 64),
           ValidationErr.QuorumTooSmall(word(1), word(1), word(2))
         )
@@ -132,7 +145,7 @@ class ShelleyGenesisValidationSuite extends FunSuite:
   test("the descriptions are describeValidationErr's texts") {
     assertEquals(
       ValidationErr
-        .EpochNotLongEnough(word(129599), word(2160), Rational(1, 20), word(129600))
+        .EpochNotLongEnough(word(129599), word(2160), Rational(1, 20), BigInt(129600))
         .description,
       "Epoch length is too low. Your epoch length of EpochSize 129599 does not meet the minimum " +
         "epoch length of EpochSize 129600 required by your choice of parameters for k and f: 2160 " +
@@ -163,8 +176,12 @@ class ShelleyGenesisValidationSuite extends FunSuite:
       (two53 + 4).toDouble
     )
     assertEquals(ShelleyGenesisValidation.unsignedToDouble(word(maxWord)), 1.8446744073709552e19)
-    assertEquals(ShelleyGenesisValidation.ceilingWord64(1.8446744073709552e19).toBigInt, BigInt(0))
-    assertEquals(ShelleyGenesisValidation.ceilingWord64(30.000000000000004).toBigInt, BigInt(31))
+    assertEquals(ShelleyGenesisValidation.ceilingInteger(1.8446744073709552e19), BigInt(2).pow(64))
+    assertEquals(ShelleyGenesisValidation.ceilingInteger(30.000000000000004), BigInt(31))
+    assertEquals(
+      ShelleyGenesisValidation.ceilingInteger(Double.PositiveInfinity),
+      BigInt(2).pow(1024)
+    )
   }
 
   test("the real network configurations pass validateGenesis") {

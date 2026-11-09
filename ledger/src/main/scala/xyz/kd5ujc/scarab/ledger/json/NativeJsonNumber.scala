@@ -5,8 +5,10 @@ import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** aeson 2.2.5.0 `scanNumberLiteral` (`Decoding/ByteString.hs:182-273`), after the sign that
-  * `tokenCase` reads (`48-50`): strict numeric grammar and machine-Int Scientific exponent
-  * arithmetic, without normalizing the coefficient/exponent pair.
+  * `tokenCase` reads (`48-50`): strict numeric grammar, without normalizing the
+  * coefficient/exponent pair. The reference's exponent is a machine `Int`, read modulo 2^64 and
+  * reduced by the fraction's width in `Int` arithmetic; here it is exact
+  * (overflow-improvements.md#json-number-exponents).
   */
 private[json] object NativeJsonNumber:
   import NativeJson.{Error, byte}
@@ -35,10 +37,11 @@ private[json] object NativeJsonNumber:
           Right((end, end - first))
     else Right((at, 0))
 
-  // `go_sci`, `go_sci_pos` and `go_sci_neg` (`235-270`): the exponent, read modulo 2^64 as
-  // `fromInteger` to `Int` does; a refused byte is a `Char`.
-  private def exponent(input: Bytes, at: Int): Either[Error, (Int, Long)] =
-    if !byte(input, at).exists(c => c == 101 || c == 69) then Right((at, 0L))
+  // `go_sci`, `go_sci_pos` and `go_sci_neg` (`235-270`): the exponent, exactly (the reference
+  // takes it modulo 2^64, `fromInteger` to `Int`, overflow-improvements.md#json-number-exponents);
+  // a refused byte is a `Char`.
+  private def exponent(input: Bytes, at: Int): Either[Error, (Int, BigInt)] =
+    if !byte(input, at).exists(c => c == 101 || c == 69) then Right((at, BigInt(0)))
     else
       val sign = byte(input, at + 1)
       val negative = sign.contains(45)
@@ -49,7 +52,9 @@ private[json] object NativeJsonNumber:
         case Some(c) if !digit(c) => Left(Error.NumberChar(c))
         case Some(_) =>
           val end = digits(input, first)
-          val magnitude = input.slice(first, end).foldLeft(0L)((n, b) => n * 10 + b - 48)
+          val magnitude = BigInt(
+            new String(input.slice(first, end).toArray, java.nio.charset.StandardCharsets.US_ASCII)
+          )
           Right((end, if negative then -magnitude else magnitude))
 
   def read(input: Bytes, start: Int): Either[Error, (JsonValue, Int)] =

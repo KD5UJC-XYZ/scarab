@@ -24,7 +24,9 @@ import xyz.kd5ujc.scarab.ledger.json.CanonicalJson.Kind
   * amount of each output). The non-AVVM addresses cover each way `decodeAddressBase58` refuses one
   * and the encodings it takes that are not minimal (#728); the AVVM keys each form `fromAvvmVK`
   * takes and refuses, and the amounts each form `readEither` takes as a `Word64` and refuses
-  * (#729).
+  * (#729). An amount outside `0 .. 2^64 - 1`, which the reference takes modulo 2^64, is refused
+  * (overflow-improvements.md#byron-genesis-words): there the reference's lovelace is the amount
+  * modulo 2^64, and Scarab's refusal names the amount.
   */
 class ByronGenesisBalancesReferenceSuite extends FunSuite:
   private final case class Output(txid: String, index: Int, address: String, lovelace: String)
@@ -70,6 +72,8 @@ class ByronGenesisBalancesReferenceSuite extends FunSuite:
     case (Refusal.Address, ConfigProblem.Base58Address(_))                                   => true
     case (Refusal.Address, ConfigProblem.ByronGenesisAddress(_, _))                          => true
     case (Refusal.Amount, ConfigProblem.ByronGenesisValue(_, ByronFieldError.NumberText(_))) => true
+    case (Refusal.Amount, ConfigProblem.ByronGenesisValue(_, ByronFieldError.OutOfRange(_, 64))) =>
+      true
     case (
           Refusal.Amount,
           ConfigProblem.ByronGenesisValue(_, ByronFieldError.Kind(Kind.String, _))
@@ -111,8 +115,17 @@ class ByronGenesisBalancesReferenceSuite extends FunSuite:
         case (Some(utxo), Right((avvm, nonAvvm))) =>
           assertEquals(outputs(nonAvvm, avvm = false), utxo.nonAvvm.toSet, "non-AVVM outputs")
           assertEquals(outputs(avvm, avvm = true), utxo.avvm.toSet, "AVVM outputs")
-        case (Some(_), Left(e)) => fail(s"the reference takes this genesis: ${e.problem}")
-        case (None, Right(_))   => fail(s"the reference refuses this genesis: ${row.failure}")
+        case (Some(utxo), Left(e)) =>
+          e.problem match
+            case ConfigProblem.ByronGenesisValue(_, ByronFieldError.OutOfRange(amount, 64)) =>
+              assert(amount.signum < 0 || amount.bitLength > 64, amount.toString)
+              val wrapped = amount.mod(BigInt(1) << 64).toString
+              assert(
+                (utxo.nonAvvm ++ utxo.avvm).exists(_.lovelace == wrapped),
+                s"the reference's lovelace is $amount modulo 2^64"
+              )
+            case other => fail(s"the reference takes this genesis: $other")
+        case (None, Right(_)) => fail(s"the reference refuses this genesis: ${row.failure}")
         case (None, Left(e)) =>
           assert(row.refusal.exists(matches(_, e.problem)), s"${e.problem} for ${row.failure}")
     }

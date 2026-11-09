@@ -69,6 +69,12 @@ enum ConfigProblem:
     */
   case SecurityParamBeyondStorage(k: BigInt)
 
+  /** A quantity that the configuration determines, named by `context`, outside `0 .. 2^bits - 1`:
+    * the reference would take it modulo 2^`bits` (overflow-improvements.md#epoch-geometry-windows
+    * and overflow-improvements.md#byron-pbft-window-threshold).
+    */
+  case OutOfRange(context: String, value: BigInt, bits: Int)
+
   case ExpectedObject(context: String, actual: io.circe.Json)
   case Selection(context: String, value: String, allowed: Set[String])
   case ConflictingFields(fields: Set[String])
@@ -116,7 +122,8 @@ enum ConfigProblem:
       s"${file.label} genesis ${path.mkString(".")}: ${cause.message}"
     case SecurityParamBeyondStorage(k) =>
       s"genesis securityParam $k: the chain store counts at most ${Int.MaxValue} blocks"
-    case JsonSyntax(context, cause) => s"$context is not JSON: ${cause.message}"
+    case OutOfRange(context, value, bits) => s"$context $value is outside 0 to 2^$bits - 1"
+    case JsonSyntax(context, cause)       => s"$context is not JSON: ${cause.message}"
     case CanonicalJsonSyntax(context, cause) =>
       s"$context is not canonical JSON: unexpected input at byte ${cause.offset}"
     case JsonField(context, field, cause) => s"$context $field: ${cause.message}"

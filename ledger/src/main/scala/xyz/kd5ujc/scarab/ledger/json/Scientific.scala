@@ -6,16 +6,20 @@ import cats.data.NonEmptyList
 import scala.annotation.tailrec
 
 /** scientific 0.3.8.1 `Scientific` (`Data/Scientific.hs:139-167`):
-  * `coefficient * 10^base10Exponent` with a machine-Int exponent, stored as parsed and never
-  * normalized. Equality, ordering and hashing normalize first, as the reference's `Eq`, `Ord` and
-  * `Hashable` do (`Data/Scientific.hs:194-241`), so `Scientific(1, 1) == Scientific(10, 0)`; read
-  * the fields to observe the representation. `toString` is the reference's `show`.
+  * `coefficient * 10^base10Exponent`, stored as parsed and never normalized. The reference's
+  * exponent is a machine `Int`, whose arithmetic wraps at 2^63; here it is exact, so a value whose
+  * exponent the reference would wrap keeps its true exponent
+  * (overflow-improvements.md#json-number-exponents). Equality, ordering and hashing normalize
+  * first, as the reference's `Eq`, `Ord` and `Hashable` do (`Data/Scientific.hs:194-241`), so
+  * `Scientific(1, 1) == Scientific(10, 0)`; read the fields to observe the representation.
+  * `toString` is the reference's `show`.
   */
-final case class Scientific(coefficient: BigInt, base10Exponent: Long):
+final case class Scientific(coefficient: BigInt, base10Exponent: BigInt):
   /** `normalize` (`Data/Scientific.hs:1101-1111`): trailing decimal zeros of the coefficient move
-    * into the exponent, which wraps as the reference's 64-bit `Int` does; zero is `Scientific 0 0`.
-    * Its logarithmic number of divisions, instead of the reference's one per zero, is an
-    * owner-approved implementation difference with the same result, recorded in #474 (2026-10-27).
+    * into the exponent, exactly (the reference's `Int` would wrap,
+    * overflow-improvements.md#json-number-exponents); zero is `Scientific 0 0`. Its logarithmic
+    * number of divisions, instead of the reference's one per zero, is an owner-approved
+    * implementation difference with the same result, recorded in #474 (2026-10-27).
     */
   def normalize: Scientific =
     if coefficient == 0 then Scientific(0, 0)
@@ -24,16 +28,15 @@ final case class Scientific(coefficient: BigInt, base10Exponent: Long):
       Scientific(stripped, base10Exponent + zeros)
 
   /** `toBoundedInteger` (`Data/Scientific.hs:771-802`): the whole number in `[min, max]`, or `None`
-    * for a floating value or one outside the bounds. Check the stored exponent as `dangerouslyBig`
-    * does: normalization can wrap it into a negative machine Int. A normalized exponent exceeding
-    * the bounds' digits also proves the value is outside them without expansion.
+    * for a floating value or one outside the bounds. A normalized exponent exceeding the bounds'
+    * digits proves the value is outside them without expansion.
     */
   def toBoundedInteger(min: BigInt, max: BigInt): Option[BigInt] =
     if coefficient == 0 then Option.when(min <= 0 && 0 <= max)(BigInt(0))
     else
       val n = normalize
-      val digits = min.abs.max(max.abs).toString.length.toLong
-      if base10Exponent < 0 && n.base10Exponent < 0 then None
+      val digits = BigInt(min.abs.max(max.abs).toString.length)
+      if n.base10Exponent < 0 then None
       else if base10Exponent > digits || n.base10Exponent > digits then None
       else
         Some(n.coefficient * BigInt(10).pow(n.base10Exponent.toInt)).filter(i =>
@@ -69,8 +72,8 @@ final case class Scientific(coefficient: BigInt, base10Exponent: Long):
         whole + "." + (if fraction.isEmpty then "0" else fraction)
 
   /** `toDecimalDigits` (`Data/Scientific.hs:1080-1091`) of a non-negative value. */
-  private def decimalDigits: (String, Long) =
-    if coefficient == 0 then ("0", 0L)
+  private def decimalDigits: (String, BigInt) =
+    if coefficient == 0 then ("0", BigInt(0))
     else
       val n = normalize
       val ds = n.coefficient.toString
@@ -135,12 +138,13 @@ object Scientific:
 
   /** `instance Ord Scientific` (`Data/Scientific.hs:218-241`): compares digit counts and only
     * divides by `10^d` for the difference `d` of the coefficients' digit counts, never by a power
-    * from the exponents. Exponent sums wrap as the reference's `Int` does.
+    * from the exponents. Exponent sums are exact (the reference's `Int` would wrap,
+    * overflow-improvements.md#json-number-exponents).
     */
   private def compare(s1: Scientific, s2: Scientific): Int =
     val Scientific(c1, e1) = s1.normalize
     val Scientific(c2, e2) = s2.normalize
-    def cmp(cx: BigInt, ex: Long, cy: BigInt, ey: Long): Int =
+    def cmp(cx: BigInt, ex: BigInt, cy: BigInt, ey: BigInt): Int =
       val log10cx = integerLog10(cx)
       val log10cy = integerLog10(cy)
       val log10sx = log10cx + ex
@@ -163,13 +167,14 @@ object Scientific:
   given Show[Scientific] = Show.fromToString
 
   /** `toDecimalDigits` (`Data/Scientific.hs:1078-1089`) of a non-negative number: the digits of the
-    * normalized coefficient and the exponent of `0.d1d2…dn`, summed in the reference's `Int`.
+    * normalized coefficient and the exponent of `0.d1d2…dn`, summed exactly (the reference's `Int`
+    * would wrap, overflow-improvements.md#json-number-exponents).
     */
-  private def toDecimalDigits(s: Scientific): (NonEmptyList[Int], Long) =
-    if s.coefficient == 0 then (NonEmptyList.one(0), 0)
+  private def toDecimalDigits(s: Scientific): (NonEmptyList[Int], BigInt) =
+    if s.coefficient == 0 then (NonEmptyList.one(0), BigInt(0))
     else
       val Scientific(c, e) = s.normalize
-      @tailrec def go(i: BigInt, n: Long, ds: NonEmptyList[Int]): (NonEmptyList[Int], Long) =
+      @tailrec def go(i: BigInt, n: Long, ds: NonEmptyList[Int]): (NonEmptyList[Int], BigInt) =
         if i == 0 then (ds, n + e)
         else
           val (q, r) = i /% 10
@@ -183,7 +188,7 @@ object Scientific:
     if e < 0 || e > 7 then fmtAsExponent(is, e) else fmtAsFixed(is, e.toInt)
 
   /** `fmtAsExponent` (`Data/Scientific.hs:975-985`). */
-  private def fmtAsExponent(is: NonEmptyList[Int], e: Long): String =
+  private def fmtAsExponent(is: NonEmptyList[Int], e: BigInt): String =
     val showE = (e - 1).toString
     is.map(Character.forDigit(_, 10)) match
       case NonEmptyList('0', Nil) => "0.0e0"

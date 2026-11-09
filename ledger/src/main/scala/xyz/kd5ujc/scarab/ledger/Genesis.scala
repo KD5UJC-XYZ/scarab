@@ -124,9 +124,10 @@ final case class ByronDelegation(epoch: BigInt, issuer: Bytes, delegate: Bytes, 
   *   hard-fork combinator (it may differ from the Shelley genesis `systemStart` by the sub-second
   *   part).
   * @param securityParam
-  *   `k`, a `BlockCount` (`Word64`) taken from an `Int54` by `fromIntegral`.
+  *   `k`, a `BlockCount` (`Word64`) taken from an `Int54` by `fromIntegral`, which wraps a negative
+  *   one; it is refused here (overflow-improvements.md#byron-genesis-words), so `k` is below 10^15.
   * @param protocolMagic
-  *   a `Word32` taken from an `Int54` by `fromIntegral`.
+  *   a `Word32` taken from an `Int54` by `fromIntegral`, refused outside `0 .. 2^32 - 1`.
   */
 final case class ByronGenesis(
     hash: Bytes,
@@ -139,8 +140,11 @@ final case class ByronGenesis(
     protocolMagic: Long,
     avvm: Vector[(Bytes, BigInt)]
 ):
-  /** `kEpochSlots` (`Cardano/Chain/ProtocolConstants.hs:44-45`): 10k slots, a `Word64`. */
-  def epochSlots: BigInt = (securityParam * 10).mod(BigInt(1) << 64)
+  /** `kEpochSlots` (`Cardano/Chain/ProtocolConstants.hs:44-45`): 10k slots, a `Word64`, which the
+    * reference's multiplication would wrap only for a `k` the genesis reader refuses
+    * (overflow-improvements.md#byron-genesis-words).
+    */
+  def epochSlots: BigInt = securityParam * 10
 
   /** `ppSlotDuration`, in milliseconds (`fromByronSlotLength`, ouroboros-consensus 82ecba32
     * `Ouroboros/Consensus/Byron/Ledger/Conversions.hs:50-52`).
@@ -212,8 +216,9 @@ object ByronGenesisFile:
     * first in the text holds. A key is `decodeAddressBase58`
     * (`Cardano/Chain/Common/Address.hs:188-189, 233-243`), a whole Byron address, kept as the
     * reference encodes it again ([[ByronAddress.reencoded]], #728); an amount is a `Word64` read by
-    * `readEither` ([[HaskellRead.word64]], #729). Measured with
-    * `scripts/oracle/byron-genesis-balances`.
+    * `readEither` ([[HaskellRead.integer]], #729), which the reference takes modulo 2^64 and which
+    * is refused here outside `0 .. 2^64 - 1` (overflow-improvements.md#byron-genesis-words).
+    * Measured with `scripts/oracle/byron-genesis-balances`.
     */
   def nonAvvmBalances(value: CanonicalJson): Either[ConfigError, Vector[(Bytes, BigInt)]] =
     balances(value, ByronGenesisField.NonAvvmBalances)(k =>
@@ -243,7 +248,11 @@ object ByronGenesisFile:
     def amount(v: CanonicalJson): Either[ConfigError, BigInt] = v match
       case CanonicalJson.Str(b) =>
         val text = CanonicalJson.string(b)
-        HaskellRead.word64(text).fold(refuse(ByronFieldError.NumberText(text)))(Right(_))
+        HaskellRead
+          .integer(text)
+          .fold(refuse(ByronFieldError.NumberText(text)))(n =>
+            ByronGenesisRead.inRange(field, n, 64)
+          )
       case other => refuse(ByronFieldError.Kind(CanonicalJson.Kind.String, other.kind))
     for
       _ <- ByronGenesisRead.entries(ByronGenesisField.Top, value)

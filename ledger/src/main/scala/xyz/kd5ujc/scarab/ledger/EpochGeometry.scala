@@ -112,8 +112,10 @@ final case class EpochGeometry(
 
   // `ceiling $ (n * fromIntegral k) /. f`: the product and the quotient are exact `Rational`s, and
   // `ceiling` into `Word64` goes through `properFraction`, whose `fromInteger` keeps the low 64 bits.
+  // `EpochGeometry.checked` refuses a genesis whose windows, or twice the stability window, do not
+  // fit 64 bits, so the conversion is exact (overflow-improvements.md#epoch-geometry-windows).
   private def windowOf(factor: Int): Word64 =
-    Word64.fromUnsigned((Rational(factor * k) / activeSlotsCoeff.rational).ceil.toLong)
+    Word64.fromUnsigned(EpochGeometry.window(factor, k, activeSlotsCoeff).toLong)
 
 object EpochGeometry:
   /** The geometry of the Shelley genesis values. `securityParam` and `activeSlotsCoeff` are bounded
@@ -129,11 +131,22 @@ object EpochGeometry:
       securityParam: NonZero[Word64],
       activeSlotsCoeff: PositiveUnitInterval
   ): Either[ConfigError, EpochGeometry] =
+    val twice = 2 * window(3, securityParam.value.toBigInt, activeSlotsCoeff)
     if slotLengthMillis <= 0 then
       Left(ConfigError(ConfigProblem.NonPositive("slot length", BigDecimal(slotLengthMillis))))
     else if epochLength <= 0 then
       Left(ConfigError(ConfigProblem.NonPositive("epoch length", BigDecimal(epochLength))))
+    else if twice.bitLength > 64 then
+      // The reference takes the windows, and twice the stability window (`2 * swindow` of the
+      // voting deadline, `Ledger.hs:740-741`, ouroboros-consensus 82ecba32; the slot of no return,
+      // `Slot.hs:106-114`), modulo 2^64. Twice 3k/f is the largest of them, so below 2^64 none
+      // wraps (overflow-improvements.md#epoch-geometry-windows).
+      Left(ConfigError(ConfigProblem.OutOfRange("genesis: twice the stability window", twice, 64)))
     else
       Right(
         EpochGeometry(systemStart, slotLengthMillis, epochLength, securityParam, activeSlotsCoeff)
       )
+
+  /** `ceiling (factor * k / f)`, exactly. */
+  private[ledger] def window(factor: Int, k: BigInt, f: PositiveUnitInterval): BigInt =
+    (Rational(factor * k) / f.rational).ceil

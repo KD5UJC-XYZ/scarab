@@ -27,7 +27,7 @@ object ShelleyGenesisValidation:
         epochLength: Word64,
         securityParam: Word64,
         activeSlotsCoeff: Rational,
-        minEpochLength: Word64
+        minEpochLength: BigInt
     )
     case MaxKESEvolutionsUnsupported(requested: Word64, supported: Long)
     case QuorumTooSmall(quorum: Word64, maxTooSmall: Word64, genesisNodes: Word64)
@@ -38,7 +38,7 @@ object ShelleyGenesisValidation:
     def description: String = this match
       case EpochNotLongEnough(es, secParam, asc, minEpochSize) =>
         "Epoch length is too low. Your epoch length of " + epochSize(es) +
-          " does not meet the minimum epoch length of " + epochSize(minEpochSize) +
+          " does not meet the minimum epoch length of " + s"EpochSize $minEpochSize" +
           " required by your choice of parameters for k and f: " + secParam.decimal + " and " +
           FromJson.showRational(asc) + ". Epochs should be at least 10k/f slots long."
       case MaxKESEvolutionsUnsupported(reqKES, supportedKES) =>
@@ -80,18 +80,18 @@ object ShelleyGenesisValidation:
       .toLeft(())
 
   /** `minLength = ceiling (fromIntegral @_ @Double (3 * k) / fromRational f)`, rejected when it is
-    * greater than the epoch length (`Genesis.hs:737-751`). `3 * k` is `Word64` and wraps before the
-    * conversion; the conversions to `Double` round to nearest, ties to even, as GHC's do; `ceiling`
-    * into `Word64` keeps the low 64 bits of the exact integer (`properFractionDouble`, GHC 9.6.7
-    * `GHC/Float.hs:629-634, 656-689`, with no rewrite rule for `Word64`).
+    * greater than the epoch length (`Genesis.hs:737-751`). The reference's `3 * k` is `Word64` and
+    * wraps before the conversion, and its `ceiling` into `Word64` keeps the low 64 bits of the
+    * exact integer (`properFractionDouble`, GHC 9.6.7 `GHC/Float.hs:629-634, 656-689`); here both
+    * are exact, so the minimum is the true one
+    * (overflow-improvements.md#shelley-genesis-validation). The conversions to `Double` round to
+    * nearest, ties to even, as GHC's do.
     */
   private def checkEpochLength(input: Input): Option[ValidationErr] =
     val k = input.securityParam.value
     val f = input.activeSlotsCoeff.rational
-    val minLength = ceilingWord64(
-      unsignedToDouble(Word64.wrappingMultiply(Word64.fromUnsigned(3L), k)) / rationalToDouble(f)
-    )
-    Option.when(Word64.order.gt(minLength, input.epochLength))(
+    val minLength = ceilingInteger((3 * k.toBigInt).toDouble / rationalToDouble(f))
+    Option.when(minLength > input.epochLength.toBigInt)(
       ValidationErr.EpochNotLongEnough(input.epochLength, k, f, minLength)
     )
 
@@ -123,8 +123,9 @@ object ShelleyGenesisValidation:
     val sticky = if quotient(1).signum == 0 then quotient(0) else quotient(0).setBit(0)
     Math.scalb(sticky.doubleValue, -shift)
 
-  /** `ceiling :: Double -> Word64` of a finite, non-negative double: the exact ceiling, its low 64
-    * bits.
+  /** `ceiling :: Double -> Integer` of a non-negative double: the exact ceiling; infinity is
+    * 2^1024, the integer GHC makes of its `decodeFloat` (mantissa 2^52, exponent 972).
     */
-  private[ledger] def ceilingWord64(x: Double): Word64 =
-    Word64.fromUnsigned(new java.math.BigDecimal(Math.ceil(x)).toBigInteger.longValue)
+  private[ledger] def ceilingInteger(x: Double): BigInt =
+    if x.isInfinite then BigInt(1) << 1024
+    else BigInt(new java.math.BigDecimal(Math.ceil(x)).toBigInteger)

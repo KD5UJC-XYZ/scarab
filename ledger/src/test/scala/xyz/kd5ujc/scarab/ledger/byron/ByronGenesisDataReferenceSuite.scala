@@ -24,7 +24,11 @@ import xyz.kd5ujc.scarab.ledger.json.CanonicalJson
   * and edits of the devnet genesis that cover, field by field, each form the field's canonical-JSON
   * instance takes and refuses, and the order in which the fields are read. For each, what the
   * unchanged released reader did: the fields it read (for an edit, those that differ from the
-  * unedited genesis), or the field it refused and why.
+  * unedited genesis), or the field it refused and why. A number outside its field's word, which the
+  * reference takes modulo 2^bits, is refused instead
+  * (overflow-improvements.md#byron-genesis-words): where the reference took such a genesis, what it
+  * read is the number modulo 2^bits, and where it refused it, its refusal names that wrapped
+  * number.
   */
 class ByronGenesisDataReferenceSuite extends FunSuite:
   private given Decoder[CanonicalJson.Kind] =
@@ -137,10 +141,12 @@ class ByronGenesisDataReferenceSuite extends FunSuite:
   private def matches(refusal: Refusal, problem: ConfigProblem): Boolean = problem match
     case ConfigProblem.ByronGenesisValue(field, cause) if field == refusal.field =>
       (refusal.problem, cause) match
-        case (Problem.Missing, ByronFieldError.Missing)                       => true
-        case (Problem.Kind(e, a), ByronFieldError.Kind(f, b))                 => e == f && a == b
-        case (Problem.NumberText, ByronFieldError.NumberText(_))              => true
-        case (Problem.Portion(v), ByronFieldError.Portion(n))                 => BigInt(v) == n
+        case (Problem.Missing, ByronFieldError.Missing)          => true
+        case (Problem.Kind(e, a), ByronFieldError.Kind(f, b))    => e == f && a == b
+        case (Problem.NumberText, ByronFieldError.NumberText(_)) => true
+        case (Problem.Portion(v), ByronFieldError.Portion(n))    => BigInt(v) == n
+        case (Problem.Portion(v), ByronFieldError.OutOfRange(n, bits)) =>
+          BigInt(v) == n.mod(BigInt(1) << bits)
         case (Problem.Hex, ByronFieldError.Hex(_, _))                         => true
         case (Problem.HashLength(n), ByronFieldError.HashLength(_, m))        => n == m
         case (Problem.Base64, ByronFieldError.Base64(_))                      => true
@@ -183,7 +189,17 @@ class ByronGenesisDataReferenceSuite extends FunSuite:
             row.changed.fold(base)(_.toIterable.foldLeft(base)((o, kv) => o.add(kv._1, kv._2)))
           )
           assertEquals(project(genesis).asJson, expected.asJson)
-        case (true, Left(e))   => fail(s"the reference takes this genesis: ${e.problem}")
+        case (true, Left(e)) =>
+          e.problem match
+            case ConfigProblem.ByronGenesisValue(_, ByronFieldError.OutOfRange(n, bits)) =>
+              assert(n.signum < 0 || n.bitLength > bits, s"$n fits $bits bits")
+              val wrapped = n.mod(BigInt(1) << bits).toString
+              val changed = row.changed.fold("")(_.asJson.noSpaces)
+              assert(
+                row.changed.forall(_.isEmpty) || changed.contains(s"\"$wrapped\""),
+                s"the reference read $n modulo 2^$bits: $changed"
+              )
+            case other => fail(s"the reference takes this genesis: $other")
         case (false, Right(_)) => fail(s"the reference refuses this genesis: ${row.failure}")
         case (false, Left(e)) =>
           assert(

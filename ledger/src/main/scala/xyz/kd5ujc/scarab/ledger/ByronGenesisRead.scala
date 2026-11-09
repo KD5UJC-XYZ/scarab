@@ -62,6 +62,12 @@ enum ByronFieldError:
   /** A string `readEither` does not read as the field's `Word64`, `Natural` or `Integer`. */
   case NumberText(text: String)
 
+  /** A number outside `0 .. 2^bits - 1`, the range of the field's `Word16`, `Word32` or `Word64`.
+    * The reference takes it modulo 2^`bits` (`fromIntegral`, `fromInteger`); it is refused here
+    * (overflow-improvements.md#byron-genesis-words).
+    */
+  case OutOfRange(value: BigInt, bits: Int)
+
   /** A `LovelacePortion` above 10^15 (`Cardano/Chain/Common/LovelacePortion.hs:91-100`). */
   case Portion(value: BigInt)
 
@@ -93,6 +99,7 @@ enum ByronFieldError:
     case Kind(expected, actual) =>
       s"expected ${expected.toString.toLowerCase} but got ${actual.toString.toLowerCase}"
     case NumberText(text)         => s"cannot read \"$text\" as a number"
+    case OutOfRange(value, bits)  => s"$value is outside 0 to 2^$bits - 1"
     case Portion(value)           => s"$value is above 10^15"
     case Hex(text, _)             => s"\"$text\" is not base16"
     case HashLength(text, n)      => s"\"$text\" is $n bytes, a key hash is 28"
@@ -118,8 +125,6 @@ private[ledger] object ByronGenesisRead:
   private def refuse[A](field: ByronGenesisField, error: ByronFieldError): Read[A] =
     Left(ConfigError(ConfigProblem.ByronGenesisValue(field, error)))
 
-  private val Word64Modulus = BigInt(1) << 64
-
   /** The fields of the genesis, in the order of `GenesisData`. */
   final case class Fields(
       genesisKeys: Vector[Bytes],
@@ -143,11 +148,10 @@ private[ledger] object ByronGenesisRead:
       params <- field(top, F.BlockVersionData).flatMap(protocolParameters)
       k <- entries(F.ProtocolConsts, consts)
         .flatMap(field(_, F.K))
-        .flatMap(int54(F.K, _))
-        .map(n => BigInt(n).mod(Word64Modulus))
+        .flatMap(word(F.K, _, 64))
       magic <- entries(F.ProtocolConsts, consts)
         .flatMap(field(_, F.ProtocolMagic))
-        .flatMap(wrapped(F.ProtocolMagic, _, 32))
+        .flatMap(word(F.ProtocolMagic, _, 32))
       avvm <- ByronGenesisFile.avvmBalances(value)
     yield Fields(keys, delegations, start, nonAvvm, params, k, magic.toLong, avvm)
 
@@ -176,9 +180,16 @@ private[ledger] object ByronGenesisRead:
     case CanonicalJson.Num(n) => Right(n)
     case other                => refuse(field, E.Kind(CanonicalJson.Kind.Number, other.kind))
 
-  /** `FromJSON Word16` and `FromJSON Word32`: a number, `fromIntegral` modulo 2^`bits`. */
-  private def wrapped(field: ByronGenesisField, value: CanonicalJson, bits: Int): Read[BigInt] =
-    int54(field, value).map(n => BigInt(n).mod(BigInt(1) << bits))
+  /** `FromJSON Word16` and `FromJSON Word32`, and `k` (a `BlockCount`, a `Word64`, read as an
+    * `Int54`): a number, which the reference takes modulo 2^`bits` (`fromIntegral`). A number
+    * outside `0 .. 2^bits - 1` is refused instead (overflow-improvements.md#byron-genesis-words).
+    */
+  private def word(field: ByronGenesisField, value: CanonicalJson, bits: Int): Read[BigInt] =
+    int54(field, value).flatMap(n => inRange(field, BigInt(n), bits))
+
+  /** `n` if it is in `0 .. 2^bits - 1`, the field's word, else its refusal. */
+  private[ledger] def inRange(field: ByronGenesisField, n: BigInt, bits: Int): Read[BigInt] =
+    if n.signum < 0 || n.bitLength > bits then refuse(field, E.OutOfRange(n, bits)) else Right(n)
 
   /** A string's characters as `fromJSString` gives them: one per byte. */
   private def text(field: ByronGenesisField, value: CanonicalJson): Read[String] = value match
@@ -191,8 +202,12 @@ private[ledger] object ByronGenesisRead:
   ): Read[BigInt] =
     text(field, value).flatMap(t => read(t).fold(refuse(field, E.NumberText(t)))(Right(_)))
 
-  /** `FromJSON Word64`, `FromJSON Natural` and `FromJSON Integer`: `readEither` of a string. */
-  private val word64 = readText(HaskellRead.word64)
+  /** `FromJSON Word64`, `FromJSON Natural` and `FromJSON Integer`: `readEither` of a string. The
+    * reference's `Read Word64` takes the integer modulo 2^64 (`fromInteger`); one outside
+    * `0 .. 2^64 - 1` is refused here (overflow-improvements.md#byron-genesis-words).
+    */
+  private def word64(field: ByronGenesisField, value: CanonicalJson): Read[BigInt] =
+    integer(field, value).flatMap(inRange(field, _, 64))
   private val natural = readText(HaskellRead.natural)
   private val integer = readText(HaskellRead.integer)
 
@@ -228,7 +243,7 @@ private[ledger] object ByronGenesisRead:
     * `Map KeyHash Word16`, in ascending order.
     */
   private def stakeholders(value: CanonicalJson): Read[Vector[Bytes]] =
-    map(F.BootStakeholders, value)(wrapped(F.BootStakeholders, _, 16)).map(_.map(_._1))
+    map(F.BootStakeholders, value)(word(F.BootStakeholders, _, 16)).map(_.map(_._1))
 
   /** `FromJSON GenesisDelegation` (`Cardano/Chain/Genesis/Delegation.hs:50-58`): a
     * `Map KeyHash Certificate`, then `recreateGenesisDelegation` (`:114-127`) in the order of the
@@ -249,16 +264,17 @@ private[ledger] object ByronGenesisRead:
 
   /** `FromJSON Certificate` (`Cardano/Chain/Delegation/Certificate.hs:257-263`): `omega` an `Int54`
     * taken as an `EpochNumber` (`Word64`), the two keys, and the signature, which is not checked
-    * here.
+    * here. A negative `omega`, which the reference takes modulo 2^64, is refused
+    * (overflow-improvements.md#byron-genesis-words).
     */
   private def certificate(value: CanonicalJson): Read[ByronDelegation] =
     for
       fields <- entries(F.HeavyDelegation, value)
-      omega <- field(fields, F.Omega).flatMap(int54(F.Omega, _))
+      omega <- field(fields, F.Omega).flatMap(word(F.Omega, _, 64))
       issuer <- field(fields, F.IssuerPk).flatMap(verificationKey(F.IssuerPk, _))
       delegate <- field(fields, F.DelegatePk).flatMap(verificationKey(F.DelegatePk, _))
       cert <- field(fields, F.Cert).flatMap(signature)
-    yield ByronDelegation(BigInt(omega).mod(Word64Modulus), issuer, delegate, cert)
+    yield ByronDelegation(omega, issuer, delegate, cert)
 
   /** `FromJSON VerificationKey` (`Cardano/Crypto/Signing/VerificationKey.hs:75-76, 137-140`):
     * base64 of a 64-byte extended key.
@@ -289,7 +305,7 @@ private[ledger] object ByronGenesisRead:
   private def protocolParameters(value: CanonicalJson): Read[ByronParams] =
     for
       fields <- entries(F.BlockVersionData, value)
-      scriptVersion <- field(fields, F.ScriptVersion).flatMap(wrapped(F.ScriptVersion, _, 16))
+      scriptVersion <- field(fields, F.ScriptVersion).flatMap(word(F.ScriptVersion, _, 16))
       slotDuration <- field(fields, F.SlotDuration).flatMap(natural(F.SlotDuration, _))
       maxBlockSize <- field(fields, F.MaxBlockSize).flatMap(natural(F.MaxBlockSize, _))
       maxHeaderSize <- field(fields, F.MaxHeaderSize).flatMap(natural(F.MaxHeaderSize, _))

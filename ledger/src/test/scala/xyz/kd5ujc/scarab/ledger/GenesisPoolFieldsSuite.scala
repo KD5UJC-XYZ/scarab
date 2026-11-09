@@ -9,7 +9,9 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 
 /** Native `StakePoolParams` JSON decisions and every accepted field, captured from the pinned
   * Haskell library. Each pool is read under a fixed genesis key, which the parameters do not
-  * determine.
+  * determine. A pool with a number whose exponent the reference's machine `Int` wraps is refused,
+  * whatever the reference made of the wrapped number
+  * (overflow-improvements.md#json-number-exponents).
   */
 class GenesisPoolFieldsSuite extends FunSuite:
   private val cases = Files
@@ -36,11 +38,26 @@ class GenesisPoolFieldsSuite extends FunSuite:
       )
     )
 
+  /** Whether `j` holds a number whose exponent, read exactly, leaves the machine `Int`. */
+  private def wrapsExponent(j: Json): Boolean =
+    j.fold(
+      false,
+      _ => false,
+      n =>
+        json.FromJson
+          .scientific(Json.fromJsonNumber(n))
+          .fold(e => fail(e.toString), s => !s.base10Exponent.isValidLong),
+      _ => false,
+      _.exists(wrapsExponent),
+      _.values.exists(wrapsExponent)
+    )
+
   cases.foreach { c =>
     test(field[String](c, "name")) {
       val pool = parser.parse(field[String](c, "poolJson")).fold(e => fail(e.message), identity)
       val decoded = GenesisState.pool(genesisKey, pool)
-      if field[Boolean](c, "accepted") then
+      if wrapsExponent(pool) then assert(decoded.isLeft, s"a wrapped exponent is refused: $decoded")
+      else if field[Boolean](c, "accepted") then
         val (id, params) = decoded.fold(e => fail(e.message), identity)
         assertEquals(id, hex(genesisKey))
         assertEquals(params.operator, hex(field[String](c, "poolId")))

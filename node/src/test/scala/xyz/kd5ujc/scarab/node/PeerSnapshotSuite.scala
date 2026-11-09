@@ -145,6 +145,19 @@ class PeerSnapshotSuite extends FunSuite:
     assertEquals(p.stake.share, Rational(1, 10))
   }
 
+  test("a port outside 0 to 65535 is refused, where the reference wraps it into a Word16") {
+    // overflow-improvements.md#peer-snapshot-port
+    val malformed = PeerSnapshotError.Malformed("bigLedgerPools[0].relays[0].port")
+    def relays(port: String) = v2(pool(s"""[{"address": "a.example", "port": $port}]"""))
+    assertEquals(
+      ok(relays("65535")).pools.head.relays.head,
+      LedgerRelay.Domain("a.example.", port(65535))
+    )
+    assertEquals(ok(relays("0")).pools.head.relays.head, LedgerRelay.Domain("a.example.", port(0)))
+    assertEquals(refused(relays("65536")), malformed)
+    assertEquals(refused(relays("-1")), malformed)
+  }
+
   test("what is wrong is named") {
     import PeerSnapshotError.*
     assert(refused("{").isInstanceOf[NotJson])

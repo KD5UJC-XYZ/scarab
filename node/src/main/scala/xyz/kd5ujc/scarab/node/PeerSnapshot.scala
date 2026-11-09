@@ -102,7 +102,7 @@ enum SnapshotUse:
   *     a port, or with a port that is not an integer, it is an SRV domain, written with the dot
   *     added too. (The ledger's own relays do not get the dot: `PeerSelection.hs:50-57` of
   *     ouroboros-consensus.) A port outside 0 to 65535, which the reference wraps into a `Word16`,
-  *     is refused here.
+  *     is refused here (overflow-improvements.md#peer-snapshot-port).
   */
 object PeerSnapshot:
   type Result[A] = Either[PeerSnapshotError, A]

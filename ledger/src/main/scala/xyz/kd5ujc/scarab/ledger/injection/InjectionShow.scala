@@ -39,11 +39,12 @@ private[injection] object InjectionShow:
       "(-" + positive(Scientific(-value.coefficient, value.base10Exponent)) + ")"
     else positive(value)
 
-  // `fmtAsGeneric . toDecimalDigits`; the exponent arithmetic wraps as the reference's `Int`.
-  // Zero has exponent 0, so `fmtAsExponent`'s zero case is never reached.
+  // `fmtAsGeneric . toDecimalDigits`; the exponent arithmetic is exact, where the reference's `Int`
+  // would wrap (overflow-improvements.md#json-number-exponents). Zero has exponent 0, so
+  // `fmtAsExponent`'s zero case is never reached.
   private def positive(value: Scientific): String =
     val (digits, exponent) =
-      if value.coefficient == 0 then ("0", 0L)
+      if value.coefficient == 0 then ("0", BigInt(0))
       else
         val normal = value.normalize
         val text = normal.coefficient.toString

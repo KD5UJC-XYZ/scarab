@@ -18,12 +18,12 @@ class InjectionDecimalSuite extends FunSuite:
     read(InjectionJson.initial.pull, raw)
 
   // The stored pair, observed field by field: `Scientific` equality would normalize it.
-  private def number(text: String, chunkSize: Int): (BigInt, Long) = value(text, chunkSize) match
+  private def number(text: String, chunkSize: Int): (BigInt, BigInt) = value(text, chunkSize) match
     case JsonValue.Number(n) => (n.coefficient, n.base10Exponent)
     case other               => fail(s"not a number: $other")
 
   private def exactInteger(text: String, chunkSize: Int): Unit =
-    assertEquals(number(text, chunkSize), (BigInt(text), 0L))
+    assertEquals(number(text, chunkSize), (BigInt(text), BigInt(0)))
 
   test("integer coefficients are exact around large decimal boundaries") {
     val sizes =
@@ -40,16 +40,16 @@ class InjectionDecimalSuite extends FunSuite:
   test("signs, leading zeros and fractions give the reference's coefficient and exponent") {
     val long = "1234567890" * 2048
     val cases = Vector(
-      "007" -> (BigInt(7), 0L),
-      "-0" -> (BigInt(0), 0L),
-      "-000" -> (BigInt(0), 0L),
-      "+0" -> (BigInt(0), 0L),
-      "1.5e1" -> (BigInt(15), 0L),
-      "-00120.0e1" -> (BigInt(-1200), 0L),
-      ("0" * 20000) -> (BigInt(0), 0L),
-      ("-" + "0" * 20000) -> (BigInt(0), 0L),
-      ("+" + "0" * 20000 + long) -> (BigInt(long), 0L),
-      ("-" + "0" * 20000 + long + ".00e2") -> (-BigInt(s"${long}00"), 0L)
+      "007" -> (BigInt(7), BigInt(0)),
+      "-0" -> (BigInt(0), BigInt(0)),
+      "-000" -> (BigInt(0), BigInt(0)),
+      "+0" -> (BigInt(0), BigInt(0)),
+      "1.5e1" -> (BigInt(15), BigInt(0)),
+      "-00120.0e1" -> (BigInt(-1200), BigInt(0)),
+      ("0" * 20000) -> (BigInt(0), BigInt(0)),
+      ("-" + "0" * 20000) -> (BigInt(0), BigInt(0)),
+      ("+" + "0" * 20000 + long) -> (BigInt(long), BigInt(0)),
+      ("-" + "0" * 20000 + long + ".00e2") -> (-BigInt(s"${long}00"), BigInt(0))
     )
     cases.foreach { (input, expected) =>
       assertEquals(number(input, input.length + 6), expected, input.take(40))
@@ -58,21 +58,25 @@ class InjectionDecimalSuite extends FunSuite:
 
   test("exponents at the ends of the machine Int are kept as parsed") {
     val cases = Vector(
-      "-000123e9223372036854775807" -> (BigInt(-123), Long.MaxValue),
-      "-0e9223372036854775807" -> (BigInt(0), Long.MaxValue),
-      "+00e-9223372036854775807" -> (BigInt(0), -Long.MaxValue)
+      "-000123e9223372036854775807" -> (BigInt(-123), BigInt(Long.MaxValue)),
+      "-0e9223372036854775807" -> (BigInt(0), BigInt(Long.MaxValue)),
+      "+00e-9223372036854775807" -> (BigInt(0), -BigInt(Long.MaxValue))
     )
     cases.foreach { (input, expected) =>
       assertEquals(number(input, input.length + 6), expected, input)
     }
   }
 
-  test("fraction digits and wrapped Scientific exponents remain unnormalized") {
+  test("fraction digits and exponents past the machine Int remain unnormalized and exact") {
+    // the reference's `Int` wraps 2^64 - 2 to -2 (overflow-improvements.md#json-number-exponents)
     val digits = "1" * 32768
     val cases = Vector(
-      s"$digits.00" -> (BigInt(s"${digits}00"), -2L),
-      s"-$digits.00e18446744073709551616" -> (-BigInt(s"${digits}00"), -2L),
-      s"$digits.00e9223372036854775808" -> (BigInt(s"${digits}00"), 9223372036854775806L)
+      s"$digits.00" -> (BigInt(s"${digits}00"), BigInt(-2)),
+      s"-$digits.00e18446744073709551616" -> (
+        -BigInt(s"${digits}00"),
+        BigInt("18446744073709551614")
+      ),
+      s"$digits.00e9223372036854775808" -> (BigInt(s"${digits}00"), BigInt("9223372036854775806"))
     )
     cases.foreach { (input, expected) =>
       assertEquals(number(input, 65536), expected)
@@ -129,14 +133,15 @@ class InjectionDecimalSuite extends FunSuite:
       val text = coefficient.toString
       // One supplied chunk; separate fixed-size-feed controls keep the native partial-number
       // boundary.
-      assertEquals(number(text, text.length + 6), (coefficient, 0L))
+      assertEquals(number(text, text.length + 6), (coefficient, BigInt(0)))
     }
   }
 
   // `parseNumber` (`CLexer.hs:130-172`) as written: the whole and fraction digits folded one at a
-  // time into an Integer, combined as `num * 10^frdigits + frac` with exponent `texp - frdigits`;
-  // the exponent folds in the 64-bit `Int` and wraps.
-  private def referenceNumber(text: String): Option[(BigInt, Long)] =
+  // time into an Integer, combined as `num * 10^frdigits + frac` with exponent `texp - frdigits`.
+  // The reference folds the exponent in the 64-bit `Int`, which wraps; this folds it exactly, as
+  // the node does (overflow-improvements.md#json-number-exponents).
+  private def referenceNumber(text: String): Option[(BigInt, BigInt)] =
     def sign(at: Int): (Int, Int) =
       if at < text.length && text(at) == '+' then (1, at + 1)
       else if at < text.length && text(at) == '-' then (-1, at + 1)
@@ -145,7 +150,7 @@ class InjectionDecimalSuite extends FunSuite:
       if at < text.length && text(at) >= '0' && text(at) <= '9' then
         digits(at + 1, value * 10 + (text(at) - '0'), count + 1)
       else (value, count, at)
-    @tailrec def int(at: Int, value: Long): (Long, Int) =
+    @tailrec def int(at: Int, value: BigInt): (BigInt, Int) =
       if at < text.length && text(at) >= '0' && text(at) <= '9' then
         int(at + 1, value * 10 + (text(at) - '0'))
       else (value, at)
@@ -158,12 +163,12 @@ class InjectionDecimalSuite extends FunSuite:
         val (esign, r4) = sign(r3 + 1)
         val (dnum, r5) = int(r4, 0)
         (dnum * esign, r5)
-      else (0L, r3)
+      else (BigInt(0), r3)
     Option.when(numdigits != 0 && rest == text.length)(
       (csign * (num * BigInt(10).pow(frdigits) + frac), texp - frdigits)
     )
 
-  private def general(text: String): Option[(BigInt, Long)] =
+  private def general(text: String): Option[(BigInt, BigInt)] =
     InjectionLexer.generalNumber(text).map(n => (n.coefficient, n.base10Exponent))
 
   test("midpoint coefficients equal the reference's one-pass digit fold at the split boundaries") {

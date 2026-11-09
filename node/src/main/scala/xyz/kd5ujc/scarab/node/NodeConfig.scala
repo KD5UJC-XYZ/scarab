@@ -193,7 +193,8 @@ object NodeConfig:
 
   /** aeson's `FromJSON DiffTime` (aeson 2.2 `Data/Aeson/Types/FromJSON.hs`, `withBoundedScientific`
     * and `realToFrac`): a JSON number of seconds whose exponent is at most 1024, of any sign,
-    * floored to a picosecond (`Fixed` `fromRational`).
+    * floored to a picosecond (`Fixed` `fromRational`). The exponent is read exactly, where aeson's
+    * machine `Int` would wrap it (overflow-improvements.md#json-number-exponents).
     */
   private val diffTimeDecoder: Decoder[DiffTime] = Decoder.decodeJson.emap(json =>
     json.asNumber

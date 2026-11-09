@@ -111,7 +111,7 @@ private[injection] object InjectionLexer:
       .map { a =>
         val signed = if a.negative then -a.value else a.value
         if a.decimals == 0 then Token.Integer(signed)
-        else Token.Value(Scalar.Number(Scientific(signed, -a.decimals.toLong)))
+        else Token.Value(Scalar.Number(Scientific(signed, -a.decimals)))
       }
 
   private val scientific = "([+-]?)([0-9]+)(?:\\.([0-9]*))?(?:[eE]([+-]?)([0-9]*))?".r
@@ -153,8 +153,9 @@ private[injection] object InjectionLexer:
   private[injection] def generalNumber(text: String): Option[Scientific] = text match
     case scientific(sign, whole, decimal, exponentSign, power) =>
       val fraction = Option(decimal).getOrElse("")
-      // Haskell's Scientific exponent is machine Int; the pinned 64-bit parser wraps arithmetic.
-      val magnitude = Option(power).getOrElse("").foldLeft(0L)((n, c) => n * 10 + (c - '0'))
+      // Haskell's Scientific exponent is a machine `Int`, whose arithmetic the pinned 64-bit parser
+      // wraps; here it is exact (overflow-improvements.md#json-number-exponents).
+      val magnitude = Option(power).filter(_.nonEmpty).fold(BigInt(0))(BigInt(_))
       val exponent = (if exponentSign == "-" then -magnitude else magnitude) - fraction.length
       val digits = whole + fraction
       val unsigned = decimalCoefficient(digits)

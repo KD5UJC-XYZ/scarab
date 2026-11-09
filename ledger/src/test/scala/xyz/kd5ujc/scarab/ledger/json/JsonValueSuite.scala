@@ -142,7 +142,7 @@ class JsonValueSuite extends FunSuite:
 
   private val (max, min) = (Long.MaxValue, Long.MinValue)
 
-  private val scientifics = List[(BigInt, Long)](
+  private val scientifics = List[(BigInt, BigInt)](
     (15, -1),
     (1, -2),
     (0, 5),
@@ -273,13 +273,17 @@ class JsonValueSuite extends FunSuite:
       assertEquals(n.base10Exponent, expected.base10Exponent)
   }
 
-  test("the normalized exponent wraps as the reference's machine Int does") {
+  test("the normalized exponent is exact where the reference's machine Int wraps") {
+    // the reference's `Int` wraps 2^63 + 1 to -2^63 + 1
+    // (overflow-improvements.md#json-number-exponents)
     val n = Scientific(100, Long.MaxValue).normalize
     assertEquals(n.coefficient, BigInt(1))
-    assertEquals(n.base10Exponent, Long.MinValue + 1)
+    assertEquals(n.base10Exponent, BigInt(Long.MaxValue) + 2)
+    // below the boundary the exponent is the reference's
+    assertEquals(Scientific(100, Long.MaxValue - 2).normalize.base10Exponent, BigInt(Long.MaxValue))
   }
 
-  test("bounded integers reject huge stored exponents even when normalization wraps") {
+  test("bounded integers reject huge stored exponents, whose normalization the reference wraps") {
     // Executed with scientific 0.3.8.1: toBoundedInteger checks the stored exponent first.
     for
       zeros <- 1 to 3
@@ -291,15 +295,58 @@ class JsonValueSuite extends FunSuite:
       )
     do
       val value = Scientific(sign * BigInt(10).pow(zeros), Long.MaxValue - zeros + 1)
-      assertEquals(value.normalize.base10Exponent, Long.MinValue)
+      assertEquals(value.normalize.base10Exponent, BigInt(Long.MaxValue) + 1)
       assertEquals(value.toBoundedInteger(min, max), None, value)
     assertEquals(Scientific(0, Long.MaxValue).toBoundedInteger(0, 65535), Some(BigInt(0)))
   }
 
+  /** `e` as a 64-bit `Int` holds it: modulo 2^64, signed. */
+  private def machineInt(e: BigInt): BigInt =
+    (e + (BigInt(1) << 63)).mod(BigInt(1) << 64) - (BigInt(1) << 63)
+
+  /** Whether the reference's `Int` exponent arithmetic of `s` wraps: its normalized exponent, or
+    * the decimal exponent of its leading digit, leaves the machine `Int`
+    * (overflow-improvements.md#json-number-exponents).
+    */
+  private def wraps(s: Scientific): Boolean =
+    s.coefficient != 0 && {
+      val n = s.normalize
+      val lead = BigInt(n.coefficient.abs.toString.length) + n.base10Exponent
+      List(n.base10Exponent, lead, lead - 1).exists(!_.isValidLong)
+    }
+
+  /** The order of the exact values, independently of [[Scientific]]'s: the sign, then the decimal
+    * exponent of the leading digit, then the digits.
+    */
+  private def exactCompare(a: Scientific, b: Scientific): Int =
+    def key(s: Scientific): (Int, BigInt, String) =
+      val n = s.normalize
+      val digits = n.coefficient.abs.toString
+      (n.coefficient.signum, BigInt(digits.length) + n.base10Exponent, digits)
+    val ((sa, la, da), (sb, lb, db)) = (key(a), key(b))
+    if sa != sb then sa.compare(sb)
+    else if sa == 0 then 0
+    else
+      val width = da.length.max(db.length)
+      val magnitude =
+        if la != lb then la.compare(lb) else da.padTo(width, '0').compare(db.padTo(width, '0'))
+      sa * magnitude.sign
+
   test("Scientific shows as the reference's show and showsPrec 11") {
+    // where the reference's exponent arithmetic wraps, the node shows the exact exponent and the
+    // reference that exponent as its `Int` holds it
+    val shown = """(\(?-?\d\.\d+e)(-?\d+)(\)?)""".r
     assertEquals(scientifics.size, scientificShown.size)
     scientifics.lazyZip(scientificShown).foreach { (s, expected) =>
-      assertEquals(List(s.toString, s.showsPrec(11)), expected)
+      val obtained = List(s.toString, s.showsPrec(11))
+      if wraps(s) then
+        obtained.lazyZip(expected).foreach { (ours, theirs) =>
+          (ours, theirs) match
+            case (shown(p, e, q), shown(p2, e2, q2)) =>
+              assertEquals((p, machineInt(BigInt(e)), q), (p2, BigInt(e2), q2), s)
+            case _ => fail(s"$ours against $theirs")
+        }
+      else assertEquals(obtained, expected)
     }
   }
 
@@ -348,7 +395,25 @@ class JsonValueSuite extends FunSuite:
         )
         .mkString
     }
-    assertEquals(symbols, comparisons.toList)
+    // where the reference's exponent arithmetic wraps, its order of two numbers is that of the
+    // wrapped logarithms; the node's is that of the exact values
+    // (overflow-improvements.md#json-number-exponents)
+    val expected = cmpValues.zip(comparisons).map { (a, row) =>
+      cmpValues
+        .zip(row)
+        .map { case (b, symbol) =>
+          (a, b) match
+            case (JsonValue.Number(x), JsonValue.Number(y)) if wraps(x) || wraps(y) =>
+              exactCompare(x, y).sign match
+                case -1 => '<'
+                case 0  => '='
+                case _  => '>'
+            case _ => symbol
+        }
+        .mkString
+    }
+    assertEquals(symbols, expected)
+    assert(cmpValues.exists { case JsonValue.Number(x) => wraps(x); case _ => false })
     for a <- cmpValues; b <- cmpValues do
       assertEquals(Order[JsonValue].compare(a, b) == 0, a == b, (a, b))
   }
@@ -419,7 +484,7 @@ class JsonValueSuite extends FunSuite:
       NativeJson.decodeStrict(bytes(text)).fold(e => fail(e.message), identity)
     parse("1.50") match
       case JsonValue.Number(n) =>
-        assertEquals((n.coefficient, n.base10Exponent), (BigInt(150), -2L))
+        assertEquals((n.coefficient, n.base10Exponent), (BigInt(150), BigInt(-2)))
       case other => fail(s"not a number: $other")
     assertEquals(parse("1.50"), parse("15e-1"))
   }

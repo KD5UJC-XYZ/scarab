@@ -10,20 +10,20 @@ import scala.annotation.tailrec
   * (`Cardano/Chain/Common/Lovelace.hs:117-118`, cardano-ledger f649f975) and most of the Byron
   * genesis parameters (#734).
   *
-  * `Read Word64` reads an `Integer` and takes it modulo 2^64 (`fromInteger`); `Read Natural` reads
-  * an `Integer` and keeps it only if it is not negative (ghc-internal 9.1003.0
-  * `GHC/Internal/Read.hs`, so `-0` is 0). The `Integer` is `readNumber convertInt` (ghc-internal
-  * 9.1003.0 `GHC/Internal/Read.hs`): any number of parentheses around an optional `-` lexeme and a
-  * number lexeme, whitespace (`isSpace`) before each lexeme and at the end. A number lexeme
-  * (`Text/Read/Lex.hs`, `lexNumber`) is `0x` /`0X` and hex digits, `0o` /`0O` and octal digits, or
-  * decimal digits; a decimal with a fraction or an exponent is lexed but is not an integer
-  * (`numberToInteger`), and so is refused, as is anything after the lexemes. `+`, a binary literal,
-  * an underscore and a second `-` are refused. Measured against the reference with
-  * `scripts/oracle/byron-genesis-balances` (#729) and `scripts/oracle/byron-genesis-data` (#734).
+  * `Read Word64` reads an `Integer` and takes it modulo 2^64 (`fromInteger`); its callers read the
+  * `Integer` here and refuse one outside `0 .. 2^64 - 1` instead
+  * (overflow-improvements.md#byron-genesis-words). `Read Natural` reads an `Integer` and keeps it
+  * only if it is not negative (ghc-internal 9.1003.0 `GHC/Internal/Read.hs`, so `-0` is 0). The
+  * `Integer` is `readNumber convertInt` (ghc-internal 9.1003.0 `GHC/Internal/Read.hs`): any number
+  * of parentheses around an optional `-` lexeme and a number lexeme, whitespace (`isSpace`) before
+  * each lexeme and at the end. A number lexeme (`Text/Read/Lex.hs`, `lexNumber`) is `0x` /`0X` and
+  * hex digits, `0o` /`0O` and octal digits, or decimal digits; a decimal with a fraction or an
+  * exponent is lexed but is not an integer (`numberToInteger`), and so is refused, as is anything
+  * after the lexemes. `+`, a binary literal, an underscore and a second `-` are refused. Measured
+  * against the reference with `scripts/oracle/byron-genesis-balances` (#729) and
+  * `scripts/oracle/byron-genesis-data` (#734).
   */
 object HaskellRead:
-  private val Modulus = BigInt(1) << 64
-
   /** `Data.Char.isSpace` (ghc-internal 9.1003.0 `GHC/Internal/Unicode.hs`): space, `\t` to `\r` and
     * no-break space in Latin-1, the `Space` general category above it.
     */
@@ -88,9 +88,6 @@ object HaskellRead:
     else
       val j = spaces(s, i)
       if j < s.size && s(j) == ')' then closing(s, j + 1, depth - 1) else None
-
-  /** The `Word64` that `readEither` reads from `text`, or `None` where it refuses it. */
-  def word64(text: String): Option[BigInt] = integer(text).map(_.mod(Modulus))
 
   /** The `Natural` that `readEither` reads from `text`, or `None` where it refuses it. */
   def natural(text: String): Option[BigInt] = integer(text).filter(_ >= 0)

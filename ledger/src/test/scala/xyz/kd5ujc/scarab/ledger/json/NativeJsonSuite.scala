@@ -18,7 +18,33 @@ class NativeJsonSuite extends FunSuite:
     case Visit(value: JsonValue)
     case Key(value: String)
 
-  private def valueEvents(value: JsonValue): Vector[Json] =
+  /** `e` as a 64-bit `Int` holds it: modulo 2^64, signed. */
+  private def machineInt(e: BigInt): BigInt =
+    (e + (BigInt(1) << 63)).mod(BigInt(1) << 64) - (BigInt(1) << 63)
+
+  /** The exact exponents of the number lexemes of `input` with an exponent part: its digits, signed,
+    * less the fraction's width, read here independently of the parser.
+    */
+  private def lexemeExponents(input: Bytes): Set[BigInt] =
+    """-?\d+(?:\.(\d+))?[eE]([+-]?)(\d+)""".r
+      .findAllMatchIn(new String(input.toArray, java.nio.charset.StandardCharsets.ISO_8859_1))
+      .map(m =>
+        BigInt(m.group(3)) * (if m.group(2) == "-" then -1 else 1) -
+          Option(m.group(1)).fold(0)(_.length)
+      )
+      .toSet
+
+  /** The exponent as the reference's machine `Int` holds it, once it is shown exact: only an
+    * exponent outside `Int64` differs, and it must be one of the input's
+    * (overflow-improvements.md#json-number-exponents).
+    */
+  private def asReference(e: BigInt, exact: Set[BigInt]): BigInt =
+    if e.isValidLong then e
+    else
+      assert(exact.contains(e), s"exponent $e is none of the input's exact exponents $exact")
+      machineInt(e)
+
+  private def valueEvents(value: JsonValue, exact: Set[BigInt]): Vector[Json] =
     def row(tag: String, values: Json*): Json = Json.arr((Json.fromString(tag) +: values)*)
     @tailrec def walk(todo: List[Work], acc: List[Json]): Vector[Json] = todo match
       case Nil                   => acc.reverse.toVector
@@ -27,13 +53,16 @@ class NativeJsonSuite extends FunSuite:
         val (event, children) = value match
           case JsonValue.Null    => (row("null"), Nil)
           case JsonValue.Bool(b) => (row("bool", Json.fromBoolean(b)), Nil)
-          // The stored representation, neither wrapped nor normalized here.
+          // The stored representation, not normalized here. The node's exponent is exact; the
+          // reference's machine `Int` holds it modulo 2^64, so it is compared as that `Int`
+          // holds it: a case differs from the reference by the wrap alone
+          // (overflow-improvements.md#json-number-exponents).
           case JsonValue.Number(n) =>
             (
               row(
                 "number",
                 Json.fromString(n.coefficient.toString),
-                Json.fromString(n.base10Exponent.toString)
+                Json.fromString(asReference(n.base10Exponent, exact).toString)
               ),
               Nil
             )
@@ -67,7 +96,7 @@ class NativeJsonSuite extends FunSuite:
     test(field[String](c, "name")) {
       val raw = Bytes.fromHex(field[String](c, "inputHex")).fold(e => fail(e.toString), identity)
       val native = field[Json](c, "native")
-      val result = PreprodDeepTx.onSmallStack(NativeJson.decodeStrict(raw).map(valueEvents))
+      val result = PreprodDeepTx.onSmallStack(NativeJson.decodeStrict(raw).map(valueEvents(_, lexemeExponents(raw))))
       assertEquals(result.isRight, field[Boolean](native, "accepted"))
       result match
         case Right(events) => assertEquals(events, field[Vector[Json]](native, "events"))
