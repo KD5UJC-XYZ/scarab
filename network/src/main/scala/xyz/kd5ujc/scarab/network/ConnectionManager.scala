@@ -34,7 +34,8 @@ trait ConnectionEvents[F[_]]:
   def emit(event: ConnectionEvent): F[Unit]
 
 /** One connection as its owner sees it. Every change goes through the pure
-  * [[ConnectionState.transition]]; an event the state does not allow is a typed error.
+  * [[ConnectionState.transition]], the reference's named transitions; an event the state does not
+  * allow is a typed error.
   */
 trait Connection[F[_]]:
   def remote: SocketAddress[IpAddress]
@@ -47,7 +48,10 @@ trait Connection[F[_]]:
   /** The handshake agreed `flow`. */
   def negotiated(flow: DataFlow)(using Raise[F, ConnectionError]): F[Unit]
 
-  /** Mark the connection closing with a reason (kept for the log); the owner then ends it. */
+  /** Close the connection with a reason (kept for the log); the owner then releases it. An orderly
+    * end ([[ConnectionManager.holdsTimeWait]]) leaves it `Terminating`, in time-wait; a failure
+    * leaves it `Terminated`.
+    */
   def close(reason: ConnectionEnd): F[Unit]
 
   /** Completes once the connection has been released (its entry may stay for the time-wait). */
@@ -207,11 +211,11 @@ object ConnectionManager:
       ): Map[ConnectionManager.Key, Entry[F]] =
         m.filterNot((_, e) => e.releasedAt.isDefined && !e.waiting(now, limits.timeWait))
 
-      /** Apply `event` to our entry. */
+      /** Apply `events` to our entry in one change of the table, reporting each step. */
       def apply(
           key: ConnectionManager.Key,
           id: Long,
-          event: Event
+          events: Vector[Event]
       ): F[Either[ConnectionError, Unit]] =
         val remote = key._1
         table
@@ -223,29 +227,61 @@ object ConnectionManager:
                   Left(
                     ConnectionError.IllegalTransition(
                       remote.toString,
-                      ConnectionState.Illegal(ConnectionState.Terminated, event)
+                      ConnectionState.Illegal(ConnectionState.Terminated, events.headOption.getOrElse(Event.Fail))
                     )
                   )
                 )
               case Some(entry) =>
-                ConnectionState.transition(entry.state, event) match
+                events
+                  .foldLeft[Either[ConnectionState.Illegal, (ConnectionState, Vector[ConnectionState])]](
+                    Right((entry.state, Vector(entry.state)))
+                  )((walked, event) =>
+                    walked.flatMap((current, path) =>
+                      ConnectionState.transition(current, event).map(next => (next, path :+ next))
+                    )
+                  ) match
                   case Left(problem) =>
                     (m, Left(ConnectionError.IllegalTransition(remote.toString, problem)))
-                  case Right(next) =>
-                    (m.updated(key, entry.copy(state = next)), Right((entry.state, next)))
+                  case Right((reached, path)) =>
+                    (m.updated(key, entry.copy(state = reached)), Right(path))
           }
           .flatMap {
             case Left(error) => F.pure(Left(error))
-            case Right((from, to)) =>
-              emit(ConnectionEvent.Changed(remote.toString, from, to))
-                .whenA(from != to)
+            case Right(path) =>
+              path
+                .zip(path.drop(1))
+                .traverse_((from, to) =>
+                  emit(ConnectionEvent.Changed(remote.toString, from, to)).whenA(from != to)
+                )
                 .as(Right(()))
           }
 
       def step(key: ConnectionManager.Key, id: Long, event: Event)(using
           Raise[F, ConnectionError]
       ): F[Unit] =
-        apply(key, id, event).flatMap(_.fold(refuse[Unit](_), _ => F.unit))
+        apply(key, id, Vector(event)).flatMap(_.fold(refuse[Unit](_), _ => F.unit))
+
+      /** Record `reason` as the end of our entry and close it: an orderly end (`timeWait`) enters
+        * time-wait through the reference's demotions and `Commit`, a failure ends at once
+        * ([[ConnectionState.closing]]). A connection already closed is left as it is.
+        */
+      def closeEntry(
+          key: ConnectionManager.Key,
+          id: Long,
+          reason: ConnectionEnd,
+          timeWait: Boolean
+      ): F[Unit] =
+        table
+          .modify(m =>
+            m.get(key).filter(e => e.id == id && e.reason.isEmpty) match
+              case Some(e) =>
+                (
+                  m.updated(key, e.copy(reason = Some(reason))),
+                  ConnectionState.closing(e.state, timeWait)
+                )
+              case None => (m, Vector.empty[Event])
+          )
+          .flatMap(events => apply(key, id, events).void.whenA(events.nonEmpty))
 
       def handle(
           at: SocketAddress[IpAddress],
@@ -265,11 +301,7 @@ object ConnectionManager:
         def negotiated(flow: DataFlow)(using Raise[F, ConnectionError]) =
           step(key, id, Event.Negotiated(flow))
         def close(reason: ConnectionEnd) =
-          table.update(m =>
-            m.get(key)
-              .filter(e => e.id == id && e.reason.isEmpty)
-              .fold(m)(e => m.updated(key, e.copy(reason = Some(reason))))
-          ) *> apply(key, id, Event.Close).void
+          closeEntry(key, id, reason, holdsTimeWait(Some(reason)))
         def closed = done.get
 
       /** Take the slot for `remote` or say why not (atomically, with the limits). */
@@ -320,7 +352,11 @@ object ConnectionManager:
                 )(ConnectionError.AddressLimit(remote.toString, limits.maxInboundPerAddress))
               )
               .orElse(
-                Option.when(provenance == Provenance.Outbound && c.outbound >= limits.maxOutbound)(
+                Option.when(
+                  provenance == Provenance.Outbound &&
+                    m.iterator.count((k, e) => k._2 == Provenance.Outbound && e.state.isLive) >=
+                    limits.maxOutbound
+                )(
                   ConnectionError.OutboundLimit(remote.toString, limits.maxOutbound)
                 )
               )
@@ -354,11 +390,11 @@ object ConnectionManager:
         table.get.map(_.get(key).filter(_.releasedAt.isEmpty)).flatMap {
           _.traverse_ { e =>
             val reason = e.reason.getOrElse(ConnectionEnd.Released)
-            val held =
-              if limits.timeWait <= Duration.Zero || !holdsTimeWait(e.reason) then
-                apply(key, e.id, Event.Released) *>
-                  table.update(m => m.get(key).filter(_.id == e.id).fold(m)(_ => m - key))
-              else
+            val remove = table.update(m => m.get(key).filter(_.id == e.id).fold(m)(_ => m - key))
+            // a connection the close left in `Terminating` is in time-wait; one in `Terminated` is
+            // removed at once
+            val held = table.get.map(_.get(key).filter(_.id == e.id).map(_.state)).flatMap {
+              case Some(ConnectionState.Terminating) if limits.timeWait > Duration.Zero =>
                 F.monotonic.flatMap(now =>
                   table.update(m =>
                     m.get(key)
@@ -366,7 +402,11 @@ object ConnectionManager:
                       .fold(m)(entry => m.updated(key, entry.copy(releasedAt = Some(now))))
                   )
                 )
-            c.close(reason) *> held *> e.closed.complete(()) *>
+              case Some(ConnectionState.Terminating) =>
+                apply(key, e.id, Vector(Event.Released)) *> remove
+              case _ => remove
+            }
+            closeEntry(key, e.id, reason, holdsTimeWait(e.reason)) *> held *> e.closed.complete(()) *>
               emit(ConnectionEvent.Closed(at.toString, e.provenance, reason))
           }
         }

@@ -521,13 +521,15 @@ object InboundGovernor:
     import io.circe.syntax.*
     Json.obj(
       "counters" -> Json.obj(
+        "fullDuplex" -> snapshot.counters.fullDuplex.asJson,
+        "duplex" -> snapshot.counters.duplex.asJson,
+        "unidirectional" -> snapshot.counters.unidirectional.asJson,
         "inbound" -> snapshot.counters.inbound.asJson,
         "outbound" -> snapshot.counters.outbound.asJson,
-        "duplex" -> snapshot.counters.duplex.asJson,
-        "established" -> snapshot.counters.established.asJson
+        "terminating" -> snapshot.counters.terminating.asJson
       ),
       "connections" -> snapshot.connections.map { (remote, state) =>
-        Json.obj("remote" -> remote.toString.asJson, "state" -> state.toString.asJson)
+        Json.obj("remote" -> remote.toString.asJson, "state" -> state.abstractName.asJson)
       }.asJson,
       "inboundSessions" -> sessions.map { s =>
         Json.obj(

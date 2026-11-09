@@ -263,8 +263,8 @@ object Traced:
       EventKind.Connection.line(
         "remote" -> remote.asJson,
         "what" -> "changed".asJson,
-        "from" -> from.toString.asJson,
-        "to" -> to.toString.asJson
+        "from" -> from.abstractName.asJson,
+        "to" -> to.abstractName.asJson
       )
     case ConnectionEvent.Refused(error) =>
       EventKind.Connection

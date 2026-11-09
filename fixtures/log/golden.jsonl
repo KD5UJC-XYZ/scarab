@@ -112,7 +112,7 @@
 {"event":"fetchModeChanged","at":"2026-10-16T12:00:00Z","mode":"BulkSync"}
 {"event":"fetchModeChanged","at":"2026-10-16T12:00:00Z","mode":"Deadline"}
 {"event":"connection","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","what":"opened","provenance":"Outbound"}
-{"event":"connection","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","what":"changed","from":"Reserved","to":"Unnegotiated(Outbound)"}
+{"event":"connection","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","what":"changed","from":"ReservedOutboundSt","to":"UnnegotiatedSt Outbound"}
 {"event":"connection","at":"2026-10-16T12:00:00Z","what":"refused","reason":"refused inbound connection from 10.0.0.2:4000: 64 connections accepted already"}
 {"event":"connection","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","what":"closed","provenance":"Inbound","reason":"connection closed: closed by peer"}
 {"event":"connection","at":"2026-10-16T12:00:00Z","what":"acceptRateLimited","delaySeconds":2.5,"connections":448}

@@ -103,8 +103,9 @@ Meanings and units worth knowing before building a dashboard:
 
 **Label values.** Each label is a member of a closed set, so a dashboard can list them: `era` is `Byron`,
 `Shelley`, `Allegra`, `Mary`, `Alonzo`, `Babbage` or `Conway`; `rule` is `byron`, `structure`, `decode`, `envelope`,
-`ledger`, `tpraos` or `praos`; `state` (of a connection) is `Reserved`, `Unnegotiated`, `Established`, `Terminating`
-or `Terminated`; `event` is, for `scarab_connection_events_total`, `Opened`, `Changed`, `Refused` or `Closed`, and for
+`ledger`, `tpraos` or `praos`; `state` (of a connection) is one of the reference connection manager's states, `ReservedOutbound`,
+`Unnegotiated`, `OutboundUni`, `OutboundDup`, `OutboundIdle`, `InboundIdle`, `Inbound`, `Duplex`, `Terminating`
+or `Terminated` (`ConnectionManager/State.hs`, ouroboros-network `2fb69829`); `event` is, for `scarab_connection_events_total`, `Opened`, `Changed`, `Refused` or `Closed`, and for
 `scarab_inbound_events_total`, `Accepted`, `Duplex`, `Unidirectional`, `Following`, `SessionEnded`, `SessionReturned`,
 `SessionDropped`, `CachedBlockRejected`, `Closed` or `Refused`; `reason` is, for `scarab_mempool_rejected_total`, `Malformed`,
 `AlreadyHeld`, `Ledger`, `Full`, `WrongEra`, `NoLedger`, `InputDefect` or `RulesDefect`, and for `scarab_forge_skipped_total`, `SlotIsImmutable`,
@@ -123,8 +124,9 @@ of an enum label that never happened are absent, except `scarab_era` (written fo
   `Cardano/Node/Tracing/Tracers/ChainDB.hs`; the formula is from the source as remembered, not read line by
   line in this work, and the two agree in magnitude on the devnet).
 - `cardano_node_metrics_connectionManager_{inbound,outbound,duplex}Conns_int` count the connections of our
-  connection manager (one per peer address, either direction); the Haskell manager has more states and counts
-  all of them.
+  connection manager as the reference's `connectionStateToCounters` does (`ConnectionManager/Core.hs:173-212`,
+  ouroboros-network `2fb69829`): by what each connection is used for now, so one both sides use counts as inbound
+  and as outbound, a reservation counts in neither, and one in time-wait counts only as terminating.
 - The forger's series mean what the reference's do: the `Forge_*_counter` counters count the forging loop's
   traces of the same name (cardano-node 11.1.3 `Tracers/Consensus.hs` 1507-1538), and `blocksForged_int`,
   `nodeIsLeader_int`, `nodeCannotForge_int` and `slotsMissed_int` are the reference's `ForgingStats`

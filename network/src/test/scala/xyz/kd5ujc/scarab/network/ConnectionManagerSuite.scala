@@ -41,14 +41,18 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
       .allow[ConnectionError](cm.outbound(remote).use(_ => IO.unit).as(None))
       .rescue(e => IO.pure(Some(e)))
 
-  /** Open an outbound connection to `remote` and release it after recording `end`. */
+  /** Open an outbound connection to `remote`, negotiate it unidirectional and release it after
+    * recording `end`.
+    */
   private def ended(
       cm: ConnectionManager[IO],
       remote: SocketAddress[IpAddress],
       end: ConnectionEnd
   )(using
       Handle[IO, ConnectionError]
-  ) = cm.outbound(remote).use(_.close(end))
+  ) = cm
+    .outbound(remote)
+    .use(c => c.connected *> c.negotiated(DataFlow.Unidirectional) *> c.close(end))
 
   // ouroboros-network 2fb69829 `ConnectionManager/Core.hs`: a connection released from
   // `TerminatingState` stays there for `timeWaitTimeout` (60 s), refusing a new outbound one to
@@ -68,7 +72,11 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
       })
       .map { r =>
         val (during, early, late, after) = result(r)
-        assertEquals(during.counters, Counters.zero, "a time-wait entry counts in no direction")
+        assertEquals(
+          during.counters,
+          Counters.zero.copy(terminating = 1),
+          "a time-wait entry counts only as terminating"
+        )
         assertEquals(during.connections, Vector(peer(1) -> ConnectionState.Terminating))
         assertEquals(early, Some(ConnectionError.TimeWait(peer(1).toString)))
         assertEquals(late, None)
@@ -127,7 +135,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
           _ <- cm
             .outbound(peer(1))
             .use(c =>
-              Handle
+              c.connected *> Handle
                 .allow[NetworkError](
                   ConnectionManager.recordingRefusal(c).raise[NetworkError, Unit](mismatch)
                 )
@@ -137,7 +145,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
           _ <- cm
             .outbound(peer(2))
             .use(c =>
-              Handle
+              c.connected *> Handle
                 .allow[NetworkError](
                   ConnectionManager
                     .recordingRefusal(c)
@@ -170,11 +178,11 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
         .flatMap(r => cm.snapshot.map(after => (r, after.counters)))
     }.map { r =>
       val ((before, s0, s1, during), after) = result(r)
-      assertEquals(before, Counters(1, 0, 0, 0))
+      assertEquals(before, Counters.zero.copy(inbound = 1))
       assertEquals(s0, ConnectionState.Unnegotiated(Provenance.Inbound))
-      assertEquals(s1, ConnectionState.Established(Provenance.Inbound, DataFlow.Duplex))
-      assertEquals(during, Counters(1, 0, 1, 1))
-      assertEquals(after, Counters.zero)
+      assertEquals(s1, ConnectionState.InboundIdle(DataFlow.Duplex))
+      assertEquals(during, Counters.zero.copy(duplex = 1, inbound = 1))
+      assertEquals(after, Counters.zero, "an unrecorded end is removed at once")
     }
   }
 
@@ -201,7 +209,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
       assert(second.exists(_.isInstanceOf[ConnectionError.AlreadyConnected]), second.toString)
       assert(third.exists(_.isInstanceOf[ConnectionError.AlreadyConnected]), third.toString)
       assert(other)
-      assertEquals(counters, Counters(1, 0, 0, 0))
+      assertEquals(counters, Counters.zero.copy(inbound = 1))
     }
   }
 
@@ -222,7 +230,8 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
       }
     }.map { r =>
       val (counters, again) = result(r)
-      assertEquals(counters, Counters(1, 1, 0, 0))
+      // a reservation counts in no direction (`connectionStateToCounters`)
+      assertEquals(counters, Counters.zero.copy(inbound = 1))
       assert(again.exists(_.isInstanceOf[ConnectionError.AlreadyConnected]), again.toString)
     }
   }
@@ -315,7 +324,9 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
           .rescue(e => IO.pure(e.asLeft[Unit]))
           .start
         // wait for the fiber to hold the slot, rather than betting 50 ms on it
-        during <- Wait.until(cm.snapshot)(_.counters == Counters(0, 1, 0, 0))
+        during <- Wait.until(cm.snapshot)(
+          _.connections == Vector(peer(2) -> ConnectionState.ReservedOutbound)
+        )
         _ <- fiber.cancel
         afterCancel <- cm.snapshot
       yield (failed.isLeft, afterFailure.counters, during.counters, afterCancel.counters)
@@ -323,7 +334,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
       val (failed, afterFailure, during, afterCancel) = result(r)
       assert(failed)
       assertEquals(afterFailure, Counters.zero)
-      assertEquals(during, Counters(0, 1, 0, 0))
+      assertEquals(during, Counters.zero, "a reservation counts in no direction")
       assertEquals(afterCancel, Counters.zero)
     }
   }
@@ -344,7 +355,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
     }.map { r =>
       val (early, state, late) = result(r)
       assert(early.exists(_.isInstanceOf[ConnectionError.IllegalTransition]), early.toString)
-      assertEquals(state, ConnectionState.Established(Provenance.Outbound, DataFlow.Unidirectional))
+      assertEquals(state, ConnectionState.OutboundUni)
       assert(late.exists(_.isInstanceOf[ConnectionError.IllegalTransition]), late.toString)
     }
   }
@@ -436,7 +447,8 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
                       .allow[ConnectionError] {
                         for
                           s <- c.state
-                          _ <- (if s == ConnectionState.Reserved then c.connected else IO.unit)
+                          _ <- (if s == ConnectionState.ReservedOutbound then c.connected
+                                else IO.unit)
                           _ <- c
                             .negotiated(if duplex then DataFlow.Duplex else DataFlow.Unidirectional)
                         yield ()
@@ -449,7 +461,10 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
                 _ <- script.traverse_(op => step(op) *> check(cm))
                 _ <- held.get.flatMap(_.values.toList.traverse_(_._2))
                 last <- cm.snapshot
-              yield last.counters == Counters.zero
+              // released connections may still be in time-wait, counted as terminating only
+              yield last.counters == Counters.zero.copy(
+                terminating = last.connections.count(_._2 == ConnectionState.Terminating)
+              )
             }
           }
         }
