@@ -16,9 +16,10 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.TestLedger.*
 import xyz.kd5ujc.scarab.ledger.state.*
 
-/** The value consumed and produced of Conway's UTXO with a mint field: the minted assets consumed
-  * and the burned produced (`getConsumedMaryValue` and `burnedMultiAssets`, cardano-ledger f649f975
-  * `Mary/UTxO.hs:72-97`), not the signed field on one side.
+/** The value consumed and produced of the UTXO rule with a mint field, in Conway ([[Utxo]]) and in
+  * Mary, Alonzo and Babbage ([[UtxoChecks]]): the minted assets consumed and the burned produced
+  * (`getConsumedMaryValue` and `burnedMultiAssets`, cardano-ledger f649f975 `Mary/UTxO.hs:72-97`),
+  * not the signed field on one side.
   */
 class ValueConservationSuite extends FunSuite:
   private val policy = Bytes.fromArray(Array.fill(28)(5.toByte))
@@ -58,6 +59,45 @@ class ValueConservationSuite extends FunSuite:
         )
       )
     )
+  }
+
+  private val held = TxOut(owner.address(), Value(10, Map(policy -> Map(name -> BigInt(1)))))
+
+  private val burnTwo = tx(
+    body(
+      "burn",
+      Vector(txIn(1)),
+      Vector(out(owner.address(), 9)),
+      1,
+      mint = Map(policy -> Map(name -> BigInt(-2)))
+    ),
+    Vector(owner)
+  )
+
+  private val oneConsumedTwoProduced = Vector(
+    UtxoFailure.ValueNotConserved(
+      Mismatch(
+        Value(10, Map(policy -> Map(name -> BigInt(1)))),
+        Value(10, Map(policy -> Map(name -> BigInt(2))))
+      )
+    )
+  )
+
+  private def preConway[E <: EraTag](using ShelleyBasedEra[E], PreConway[E]) =
+    val pp = params(10)
+    val cert = PreConway[E].cert.get(NewEpochState.empty[E](EpochNo.fromUnsigned(5), pp).es.ls)
+    val checks = UtxoChecks.of[E](
+      UtxoEnv(TestLedger.env, pp, cert),
+      StAnnTx(burnTwo, NodeUtxo(Map(txIn(1) -> held))),
+      0,
+      0
+    )
+    valueFailure(Test.failures(checks.beforePpup).fold(Vector.empty)(_.toChain.toVector))
+
+  test("Mary, Alonzo and Babbage also report one consumed and two produced for that burn") {
+    assertEquals(preConway[Mary], oneConsumedTwoProduced, "Mary")
+    assertEquals(preConway[Alonzo], oneConsumedTwoProduced, "Alonzo")
+    assertEquals(preConway[Babbage], oneConsumedTwoProduced, "Babbage")
   }
 
   test("the minted assets are the positive quantities, the burned the negative ones negated") {
