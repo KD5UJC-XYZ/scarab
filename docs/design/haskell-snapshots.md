@@ -628,6 +628,43 @@ truncated by one byte. The controls were run on main for `302_scarab`, and with 
 export at 3,617, in both tools. Each showed the fallback. The `--count-blocks` result for slot 7 above
 rests on the weaker evidence.
 
+**2026-11-09 preprod rerun.** The preprod items were rerun on the preserved inputs: the Mithril
+snapshot at slot 136,511,997, block 5,300,868, `1f6f537b…`, and two recordings after it.
+- **R1** is the initial recording: 2,377 blocks, to slot 136,565,931, block 5,303,245, `deb213bc…`.
+- **R2** is a later capture of the same chain: 5,683 blocks, to slot 136,641,596, block 5,306,551,
+  `5dd3f38675715db46501daccc10b7b7ae15c6ff28e9c5dfd5028e6d2ca92fdd0`. It holds the epoch-320 points
+  above (136,598,413 and 136,602,570), so it covers the 3,980-block capture, but it is not that capture.
+
+Both revisions used the same images as the devnet rerun above. They are `cae900077` (A) and this
+change applied to it (B). Every result below is B's unless it says A.
+
+1. The authenticated import loads 4,526,058 outputs, 30,022,461,204,412,072 lovelace, and verifies the
+   ancillary manifest.
+2. The export of the import is byte-identical to the Mithril files: `state` `7ecbc476…`, `tables`
+   `62ee546d…`, `meta` `b27a7d1a…`.
+   - `cardano-node` 11.1.3 logs `ReplayFromSnapshot` at 136,511,997 and replays to each tip.
+   - db-analyser reads only from chunk 6319 on. On R2 it never reads chunk 6318, which is present.
+   - The truncated-`state` controls fall back in both tools.
+   - On these sparse ImmutableDBs (no chunk 0), `cardano-node` was given the empty `clean` marker a
+     clean stop leaves. Without it, the node validates every chunk, truncates the database to genesis
+     at the missing chunk 0, and then reports `InvalidSnapshot` and `ReplayFromGenesis`.
+3. Scarab replays from the import with zero oracle differences:
+   - at 136,565,931;
+   - at the epoch-320 boundary (4,532,164 outputs);
+   - at 136,602,570 and 136,641,596.
+
+   The reference holds a complete reward update at 136,565,931, equal to Scala's, and none at the
+   epoch-320 points.
+4. Every one of Scarab's own snapshots exports: 3 on R1 and 7 on R2, the shutdown snapshots included.
+   - A refuses one on each recording: block 5,301,749 at 136,532,011, which has no transactions,
+     with `Unsettled(5301749,5301748,0)`.
+   - The latest periodic export and the shutdown export of each recording load in both tools.
+5. All 75 compared files are byte-identical to the reference's state at their slots, A's exports and
+   B's alike.
+
+The private chain's recording (slot 3,436) and the synced-point capture to 136,651,599 are not among
+the preserved inputs, so they were not rerun.
+
 ## 13. The reference build and snapshot V10 as built (#826 step a)
 
 Owner decisions of 2026-11-08 ([#54](https://github.com/KD5UJC-XYZ/scarab/issues/54), refining OD-6,
