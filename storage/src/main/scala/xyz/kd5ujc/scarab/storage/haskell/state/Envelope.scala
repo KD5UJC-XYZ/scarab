@@ -3,7 +3,8 @@ package xyz.kd5ujc.scarab.storage.haskell.state
 
 import cats.Order
 import scala.collection.immutable.SortedMap
-import xyz.kd5ujc.scarab.consensus.state.{Bound, Current, EraIndexed, Past, Telescope}
+import cats.syntax.traverse.*
+import xyz.kd5ujc.scarab.consensus.state.{Bound, Current, EraIndexed, Past, PerasRoundNo, Telescope}
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Word64, WithOrigin}
 import xyz.kd5ujc.scarab.models.runtime.{
   Arr,
@@ -110,12 +111,33 @@ object Envelope:
   private val word64Max = (BigInt(1) << 64) - 1
   private val bound64: Codec[BigInt] = Codec.uintBig(word64Max)
 
-  /** `Bound` (`HardFork/History/Summary.hs:526-550`): `[time in picoseconds, slot, epoch]`. The
-    * time is an `Integer` (a bignum from 2^64 picoseconds, a few months, on), the slot and the
-    * epoch `Word64` s. The four-item form with a Peras round (`PerasEnabled`) is not one of the
-    * Cardano eras' and is refused as a wrong length.
+  /** `PerasRoundNo` (`Block/SupportsPeras.hs:85`, a `Word64`). */
+  private val boundPerasRound: Codec[PerasRoundNo] = word64.imap(PerasRoundNo(_))(_.word)
+
+  /** `Bound` (`HardFork/History/Summary.hs:526-549`, ouroboros-consensus 82ecba32):
+    * `[time in picoseconds, slot, epoch]` under `NoPerasEnabled`, and the Peras round fourth under
+    * `PerasEnabled`; the decoder takes three or four items and refuses any other length. The time
+    * is an `Integer` (a bignum from 2^64 picoseconds, a few months, on), the slot, the epoch and
+    * the round `Word64` s.
     */
-  given bound: Codec[Bound] = Record.of[Bound]((integer, bound64, bound64))
+  given bound: Codec[Bound] = new Codec[Bound]:
+    def decode(n: Node): Decoded[Bound] =
+      Arr.between(n, 3, 4).flatMap { xs =>
+        for
+          time <- integer.decode(xs(0)).at("boundTime")
+          slot <- bound64.decode(xs(1)).at("boundSlot")
+          epoch <- bound64.decode(xs(2)).at("boundEpoch")
+          round <- xs.lift(3).traverse(boundPerasRound.decode(_).at("boundPerasRound"))
+        yield Bound(time, slot, epoch, round)
+      }
+    def encode(a: Bound, out: Writer): Unit =
+      out.arrayHead(if a.perasRound.isDefined then 4 else 3)
+      integer.encode(a.timePs, out)
+      bound64.encode(a.slot, out)
+      bound64.encode(a.epoch, out)
+      a.perasRound.foreach(boundPerasRound.encode(_, out))
+    override def check(a: Bound): Option[ConstraintViolation] =
+      integer.check(a.timePs).orElse(bound64.check(a.slot)).orElse(bound64.check(a.epoch))
 
   /** `Past` (`State/Instances.hs:141-147`): `[start, end]`. */
   given past: Codec[Past] = Record.of[Past]((bound, bound))
