@@ -17,4 +17,4 @@ No persisted format changes, and a header's hash is over its original bytes, so 
 
 ## Explicitly unchecked or unconfirmed
 
-The slot a main header names is not compared here. The reference flattens the epoch and slot count with `Word64` arithmetic (`toSlotNumber`, `Slotting/EpochAndSlotCount.hs:71-81`) and checks no slot count against the epoch's length; Scarab computes it exactly and refuses a slot count at or past the epoch's length (`ByronChainError.SlotOutsideEpoch`). The check runs before the signature's, but the verdicts differ only for a header a genesis delegate signed; any other the reference refuses at its signature: [#818](https://github.com/KD5UJC-XYZ/scarab/issues/818).
+The slot a main header names is not compared here. Scarab flattens the epoch and slot count as the reference does, with `Word64` arithmetic and no check of the slot count against the epoch's length (`toSlotNumber`, `Slotting/EpochAndSlotCount.hs:71-81`), since [#818](https://github.com/KD5UJC-XYZ/scarab/issues/818); [the Byron PBFT page](consensus-byron-pbft.md) records that and the order of blocks.
