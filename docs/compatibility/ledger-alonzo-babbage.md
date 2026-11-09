@@ -13,7 +13,7 @@ implemented incl. collateral, inline datums, reference inputs and scripts; Babba
 
 `ValueNotConservedUTxO` counts minted tokens as consumed and burned ones as produced, as the reference does (`getConsumedMaryValue` and `burnedMultiAssets`, cardano-ledger f649f975 `Mary/UTxO.hs:72-97`; #828, `ValueConservationSuite`). The verdict was already the reference's; the failure's payload now is too.
 
-The slot of no return (`getTheSlotOfNoReturn`, cardano-ledger f649f975 `Slot.hs:106-114`), which TICK's solidifying of the future parameters and the PPUP too-late check use, doubles the stability window as a `Word64`, as the reference does (#825, `EpochGeometrySuite`). Only a genesis whose stability window exceeds 2^63 slots sees the wrap.
+The slot of no return (`getTheSlotOfNoReturn`, cardano-ledger f649f975 `Slot.hs:106-114`), which TICK's solidifying of the future parameters and the PPUP too-late check use, doubles the stability window as a `Word64`, as the reference does (#825, `EpochGeometrySuite`). Only a genesis whose stability window is at least 2^63 slots sees the wrap.
 
 ## Explicitly unchecked or unconfirmed
 

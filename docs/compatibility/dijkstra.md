@@ -29,6 +29,7 @@ None of these is reachable from the node's own chain yet.
 ## Explicitly unchecked or unconfirmed
 
 - **Not implemented:**
+  - a chain started in Dijkstra from its genesis: the Dijkstra genesis file is read and checked (#807), but the genesis start is refused with `DijkstraNotYet.Genesis`, because it would seat the Leios committee (`GenesisStart`);
   - Dijkstra's ledger rules (they refuse with `DijkstraNotYet.Rules`);
   - the node-to-client queries and failure encoders;
   - a crossing made by the Scala node on a devnet.

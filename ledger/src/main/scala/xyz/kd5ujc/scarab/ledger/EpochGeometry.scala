@@ -124,8 +124,8 @@ final case class EpochGeometry(
 object EpochGeometry:
   /** `firstSlotNextEpoch *- Duration (2 * stabilityWindow)` (cardano-ledger f649f975,
     * `Slot.hs:113`): the window is a `Word64`, so its doubling keeps the low 64 bits, and `*-` is a
-    * monus that stops at slot 0 (`Slot.hs:62-64`). Only a genesis whose window exceeds 2^63 sees
-    * the wrap (#825).
+    * monus that stops at slot 0 (`Slot.hs:62-64`). Only a genesis whose window is at least 2^63
+    * sees the wrap (#825).
     */
   def slotOfNoReturn(firstSlotNextEpoch: BigInt, stabilityWindow: BigInt): BigInt =
     (firstSlotNextEpoch - Word64.fromUnsigned((2 * stabilityWindow).toLong).toBigInt).max(0)
