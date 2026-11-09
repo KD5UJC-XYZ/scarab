@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timezone
 from . import util
 from cleanup import container_labels
-from .util import ENV, cache_dir, jdk_image, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, data_root, docker, in_ref, put_file, query, read_json, ref
+from .util import ENV, cache_dir, jdk_image, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, adapt_reference_config, data_root, docker, in_ref, put_file, query, read_json, ref, without_resource_statistics
 
 
 def start_reference(name):
@@ -31,6 +31,7 @@ def up(args):
     start_reference(args.name)
     in_ref(args.name, f"cardano-testnet create-env --num-pool-nodes 3 --testnet-magic {MAGIC} "
                       f"--output {ENV} > /work/create-env.log 2>&1")
+    adapt_reference_config(args.name, f"{ENV}/configuration.yaml")
     ports = {n: int(in_ref(args.name, f"cat {ENV}/node-data/node{n}/port").stdout) for n in (1, 2, 3)}
     (root / "ports.json").write_text(json.dumps(ports))
     docker("exec", "-d", ref(args.name), "/bin/sh", "-c",
@@ -110,7 +111,8 @@ def prepare_eras_env(name, args):
                  f"--epoch-length {args.epoch_length} --active-slots-coeff {args.active_slots_coeff} "
                  f"--output {ENV} > /work/create-env.log 2>&1")
     start = int(time.time()) + 10
-    config = place_hard_forks(read_json(name, f"{ENV}/configuration.yaml"), era_plan(args), args.byron_epochs)
+    config = without_resource_statistics(
+        name, place_hard_forks(read_json(name, f"{ENV}/configuration.yaml"), era_plan(args), args.byron_epochs))
     put_file(name, f"{ENV}/configuration.yaml", json.dumps(config, indent=2))
     byron = read_json(name, f"{ENV}/byron-genesis.json")
     byron["startTime"] = start
