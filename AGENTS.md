@@ -32,6 +32,8 @@ Then:
   for `dev` -> `main`; do not treat a shared commit's green check as source-branch authority.
   #161 tracks enforcement;
   do not claim protections are enabled or change repository settings.
+- Follow [SECURITY.md](SECURITY.md#reporting) for security reports and fixes; its disclosure
+  procedure depends on whether releases have been published.
 - Feedback from the owner arrives as inline commit comments and issues labelled `owner-review`; triage
   it as [CONTRIBUTING.md](CONTRIBUTING.md#owner-review-feedback) says, and a general rule goes into this
   file together with a sweep of the tree.

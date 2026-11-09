@@ -73,7 +73,7 @@ PINNED_IMAGE = re.compile(r"[a-z0-9][a-z0-9./_-]*(?::[A-Za-z0-9._-]+)?@sha256:[0
 REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 TAR_MODE = 0o644
 EXCLUSIONS = ("Security-sensitive reproductions, exploit details and private captures are not part of "
-              "this packet; they are exchanged privately under SECURITY.md. Large or private inputs "
+              "this packet; disclosure of security-sensitive reproductions follows SECURITY.md. Large or private inputs "
               "are named by the variables that select them and by their recorded digests, never embedded.")
 SCOPE = ("Inventory of one committed revision. Recorded evidence belongs to its recorded source "
          "revisions and is not a run of this candidate. Gate commands are listed, not executed; "

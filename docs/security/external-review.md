@@ -86,21 +86,21 @@ node-local signing and a secret-memory boundary that require review.
    review checklist mapped to B1–B10 and a named reviewer plan or schedule with estimated effort.
    If substantive crypto review cannot yet be commissioned, record this checkpoint and its unresolved
    review requirements under #230; it must not be described as completed specialist review.
-2. **Focused crypto/native assessment.** Prioritize packages 1 and 2, escalate exploitable findings
-   privately as they are found, and return the secret-flow/constant-time posture and library-replacement
+2. **Focused crypto/native assessment.** Prioritize packages 1 and 2, report exploitable findings
+   as they are found under [SECURITY.md](../../SECURITY.md#reporting), and return the secret-flow/constant-time posture and library-replacement
    decision record. State which properties remain untested and which need a different specialist.
 3. **Node integration assessment.** Review packages 3–5 against the agreed candidate, adding failure,
    parser and adversarial-schedule controls. Provide a coverage matrix with reviewed code paths,
    assumptions, methods, findings and explicit unreviewed areas.
 4. **Fix verification and closeout.** Retest agreed fixes on named revisions; classify each finding
-   as fixed, mitigated, accepted risk or unresolved. Deliver private reproductions, regression tests,
-   an executive summary and a technically reproducible report suitable for eventual redacted publication.
+   as fixed, mitigated, accepted risk or unresolved. Deliver reproductions, regression tests,
+   an executive summary and a technically reproducible report, with disclosure handled under [SECURITY.md](../../SECURITY.md#reporting).
 
 Each finding should name its boundary, attacker capability, trusted assumptions, violated invariant,
 impact/severity reasoning, affected revisions/platforms, source locations, reproduction and acceptance
 criteria. Distinguish a source hypothesis from an executed reproduction. Follow the
-[audit issue process](../process.md#findings-from-an-independent-audit); keep exploit details private
-under [SECURITY.md](../../SECURITY.md) and agree on disclosure and retesting before starting.
+[audit issue process](../process.md#findings-from-an-independent-audit) and the release-phase
+disclosure procedure in [SECURITY.md](../../SECURITY.md#reporting); agree on retesting before starting.
 
 ## Quote and budget questions for reviewers
 
@@ -178,5 +178,5 @@ inline `gitleaks:allow` markers ignored. The scan uses neutral file names, so th
 path allowlists cannot exempt packet content; its path-only rules (such as `*.skey`) are applied to
 the real member paths. A finding fails the run and nothing is written or redacted; a scanner that cannot run makes the
 `secret-scan` gate incomplete, never passed. Security-sensitive reproductions and
-private captures are never embedded: they are exchanged privately under
-[SECURITY.md](../../SECURITY.md) and identified by digest.
+private captures are never embedded; they are identified by digest. Handle disclosure of
+security-sensitive reproductions under [SECURITY.md](../../SECURITY.md#reporting).

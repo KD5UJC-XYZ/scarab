@@ -39,12 +39,21 @@ unsupported.
 
 ## Reporting
 
-Please report privately through GitHub: on the repository, **Security -> Report a vulnerability**
-(a private security advisory). Do not open a public issue for an exploitable problem. You will get
-an acknowledgement as soon as a maintainer reads it; this is a research project run by a small
-team, so there is no response-time guarantee. A divergence that does not endanger anyone (for
-example a rejected valid transaction found on a testnet) can be reported with the public "bug"
-issue template.
+The owner approved the following disclosure policy on 2026-11-09:
+
+- Before the first published release, security reports, reproductions and fixes may use ordinary
+  public issues and pull requests. No separate public/private approval is required in this phase.
+- After releases are published, report exploitable problems privately through GitHub's
+  **Security -> Report a vulnerability** (a private security advisory). Keep exploit reproductions
+  private and coordinate disclosure with a maintainer before publishing them or the fix. A public
+  tracking issue may describe the missing property without reproduction details.
+
+Private reporting remains available in either phase. Never publish keys, secrets or another party's
+private information. A divergence that does not endanger anyone (for example a rejected valid
+transaction found on a testnet) can use the public "bug" issue template in either phase.
+
+A maintainer will acknowledge a report when they read it; this is a research project run by a
+small team, so there is no response-time guarantee.
 
 ## Keys and secrets
 

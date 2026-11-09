@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Security vulnerability
-    url: https://github.com/KD5UJC-XYZ/scarab/security/advisories/new
-    about: Report exploitable problems privately, not as a public issue (see SECURITY.md).
+  - name: Security reporting policy
+    url: https://github.com/KD5UJC-XYZ/scarab/blob/main/SECURITY.md#reporting
+    about: Follow the release-phase policy for public reports or private security advisories.
