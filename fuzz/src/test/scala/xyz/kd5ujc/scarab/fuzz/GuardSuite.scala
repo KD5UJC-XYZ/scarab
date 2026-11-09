@@ -14,6 +14,47 @@ import org.scalacheck.Prop.forAll
 class GuardSuite extends ScalaCheckSuite:
   private val unknownEra = Gen.choose(HfcHeader.DijkstraIndex + 1, 23)
 
+  private def leiosLikelihood(weight: String): Bytes =
+    val original = Bytes.wrap(
+      java.nio.file.Files.readAllBytes(
+        java.nio.file.Path.of("fixtures/leios/state/conway-195/state")
+      )
+    )
+    val sample = "fa40eba34c"
+    assert(original.hex.contains(sample), "the fixture must contain the likelihood sample")
+    Bytes
+      .fromHex(original.hex.replaceFirst(sample, s"fa$weight"))
+      .fold(e => fail(e.toString), identity)
+
+  for (name, weight) <- Vector(
+      "NaN" -> "7fc00000",
+      "positive infinity" -> "7f800000",
+      "negative infinity" -> "ff800000"
+    )
+  do
+    test(s"Leios state fuzzing preserves a $name likelihood without numeric equality") {
+      import xyz.kd5ujc.scarab.protocol.StateLayout
+      import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
+
+      val bytes = leiosLikelihood(weight)
+      val file = HaskellLedgerFile
+        .decode(bytes, StateLayout.Leios)
+        .fold(e => fail(e.render), identity)
+      assertEquals(HaskellLedgerFile.encode(file, StateLayout.Leios), Right(bytes))
+      val target = Targets.all.find(_.name == "leios-state").getOrElse(fail("missing target"))
+      target.check(new Input(bytes.toArray))
+    }
+
+  test("Leios state fuzzing accepts the signaling NaN likelihood found by seed 2") {
+    import xyz.kd5ujc.scarab.protocol.StateLayout
+    import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
+
+    val bytes = leiosLikelihood("7fa2c7ed")
+    assert(HaskellLedgerFile.decode(bytes, StateLayout.Leios).isRight)
+    val target = Targets.all.find(_.name == "leios-state").getOrElse(fail("missing target"))
+    target.check(new Input(bytes.toArray))
+  }
+
   private def checkUnknownEnvelope(era: Int, payload: Bytes, value: Value): Bytes =
     val envelope = Bytes.wrap(Array(((4 << 5) | 2).toByte, era.toByte)) ++ payload
     val header = HfcHeader.decode(envelope).fold(e => fail(e.toString), identity)

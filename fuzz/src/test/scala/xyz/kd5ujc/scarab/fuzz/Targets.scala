@@ -1408,8 +1408,9 @@ object Targets:
 
   /** The `state` file in the layout of the Leios build (#826): the whole file, and the two
     * envelopes of the extended state that are the Leios layout's own (the Peras state, the bound).
-    * What decodes is written again and decodes to the same value; a whole file written by this
-    * decoder's writer is also its bytes when it read three parts and four-item bounds.
+    * What decodes is writable and its encoding is stable after another decode/write. Whole-file
+    * domain equality is unsuitable here: likelihood equality normalises IEEE floats, including NaN.
+    * Finite generated values also have a semantic equality law in LeiosLayoutSuite.
     */
   private val leiosState: Vector[Target] =
     import xyz.kd5ujc.scarab.protocol.StateLayout
@@ -1451,12 +1452,16 @@ object Targets:
             val written = HaskellLedgerFile
               .encode(file, StateLayout.Leios)
               .fold(e => throw new Violation(s"leios-state: ${e.violation.render}"), identity)
+            val back = HaskellLedgerFile
+              .decode(written, StateLayout.Leios)
+              .fold(e => throw new Violation(s"leios-state: ${e.render}"), identity)
             req(
-              HaskellLedgerFile
-                .decode(written, StateLayout.Leios)
-                .exists(back => cats.Eq[HaskellLedgerFile].eqv(back, file)) &&
-                HaskellLedgerFile.encode(file, StateLayout.Node11_1).isLeft,
-              "leios-state: a decoded file does not decode as itself, or 11.1 writes it"
+              HaskellLedgerFile.encode(back, StateLayout.Leios) == Right(written),
+              "leios-state: the whole-file encoding is not stable after decoding"
+            )
+            req(
+              HaskellLedgerFile.encode(file, StateLayout.Node11_1).isLeft,
+              "leios-state: the 11.1 writer accepts a Leios file"
             )
           }
         }
