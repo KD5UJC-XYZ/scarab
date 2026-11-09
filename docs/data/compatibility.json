@@ -705,10 +705,12 @@
         "suites": [
           "RewardsSuite",
           "PreConwayRulesSuite",
-          "ValueConservationSuite"
+          "ValueConservationSuite",
+          "EpochGeometrySuite"
         ],
         "issues": [
-          828
+          828,
+          825
         ]
       },
       "page": "docs/compatibility/ledger-shelley-to-mary.md"
@@ -804,7 +806,8 @@
           "PreviewEmptyRedeemersSuite",
           "ScriptIntegritySuite",
           "ShelleyBbodySuite",
-          "ValueConservationSuite"
+          "ValueConservationSuite",
+          "EpochGeometrySuite"
         ],
         "paths": [
           "fixtures/reference/instant-stake/README.md",
@@ -815,7 +818,8 @@
           331,
           299,
           344,
-          828
+          828,
+          825
         ]
       },
       "page": "docs/compatibility/ledger-alonzo-babbage.md"
@@ -829,10 +833,12 @@
         "suites": [
           "DevnetRefusedTxSuite",
           "BbodySuite",
-          "ValueConservationSuite"
+          "ValueConservationSuite",
+          "EpochGeometrySuite"
         ],
         "issues": [
-          828
+          828,
+          825
         ]
       },
       "limitations": {
@@ -1723,13 +1729,40 @@
     {
       "id": "dijkstra",
       "component": "Dijkstra (next era)",
-      "status": "not implemented",
-      "summary": "The next era is not implemented",
+      "status": "partial",
+      "summary": "Named and refused (OD-4); decoding, genesis, the Conway translation and the crossing pieces as the Leios testnet build",
+      "evidence": {
+        "suites": [
+          "DijkstraNotYetSuite",
+          "DijkstraCodecsSuite",
+          "DijkstraGenesisSuite",
+          "DijkstraTranslationSuite",
+          "DijkstraTxTranslationSuite",
+          "DijkstraCrossingSuite"
+        ],
+        "paths": [
+          "fixtures/reference/dijkstra-genesis",
+          "fixtures/reference/dijkstra-translation",
+          "fixtures/reference/dijkstra-crossing",
+          "fixtures/dijkstra-devnet"
+        ],
+        "issues": [
+          54,
+          823
+        ]
+      },
       "limitations": {
+        "issues": [
+          815,
+          824,
+          826,
+          830
+        ],
         "roadmap": [
           "L1"
         ]
-      }
+      },
+      "page": "docs/compatibility/dijkstra.md"
     },
     {
       "id": "ouroboros-leios",
