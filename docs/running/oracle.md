@@ -61,6 +61,9 @@ snapshot load, one epoch of blocks and one snapshot write (5 s with a tiny state
 million UTxO entries); the snapshot is projected, the previous one deleted, and the projection written to
 `<out>/<slot>-<hash>.json` with a line in `<out>/index.jsonl`; a restart skips the epochs in the index.
 `db-analyser` needs a ChainDB of its own (it opens the newest chunk for writing), which `--work` holds.
+`--network-none` runs each `db-analyser` with Docker networking disabled, and `--full-ledger-validation`
+has it apply every block with the full ledger rules instead of reapplying it, as the reference-loading
+acceptance does ([haskell-snapshots.md](../design/haskell-snapshots.md) section 12).
 
 The Scala side does not need the network either: a Scala `--db` directory that holds only `immutable/` is
 replayed from genesis (about 200 to 1,100 blocks/s depending on load and era) and writes the same digests.

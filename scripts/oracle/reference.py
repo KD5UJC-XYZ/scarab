@@ -49,11 +49,17 @@ def sync_immutable(source, target):
     return max(len(chunks) - 1, 0)
 
 
-def docker_launch(config_dir, db, cpus, memory, name):
+def docker_launch(config_dir, db, cpus, memory, name, network_none=False, full_ledger_validation=False):
+    """`launch(args)` for an `Analyser`: db-analyser in a one-shot reference container. `network_none` runs it with
+    Docker networking disabled (`--network none`); `full_ledger_validation` applies every block with the full ledger
+    rules, signatures and scripts included, instead of reapplying it (db-analyser's `--full-ledger-validation`, an
+    option of `--store-ledger`)."""
     def launch(args):
-        return ["docker", "run", "--rm", "--name", name, f"--cpus={cpus}", f"--memory={memory}",
+        network = ["--network", "none"] if network_none else []
+        validation = ["--full-ledger-validation"] if full_ledger_validation else []
+        return ["docker", "run", "--rm", "--name", name, *network, f"--cpus={cpus}", f"--memory={memory}",
                 "--user", f"{os.getuid()}:{os.getgid()}", "-v", f"{config_dir}:/config:ro", "-v", f"{db}:/db",
-                "--entrypoint", "db-analyser", REFERENCE_IMAGE, *args]
+                "--entrypoint", "db-analyser", REFERENCE_IMAGE, *args, *validation]
     return launch
 
 
@@ -91,8 +97,9 @@ def project_into(snapshot, out, epoch, target, started, utxo_workers):
 
 
 def run(config_dir, db, work, out, epoch_slots, first_epoch, last_epoch, jobs=4, seed_every=50, cpus=2,
-        memory="16g", utxo_workers=2, live=False, log=print):
-    """Project the Haskell ledger state at the start of epochs `first_epoch..last_epoch` (all the chain has)."""
+        memory="16g", utxo_workers=2, live=False, log=print, network_none=False, full_ledger_validation=False):
+    """Project the Haskell ledger state at the start of epochs `first_epoch..last_epoch` (all the chain has).
+    `network_none` and `full_ledger_validation` are passed to every db-analyser run (`docker_launch`)."""
     work = pathlib.Path(work)
     work.mkdir(parents=True, exist_ok=True)
     base = work / "base"
@@ -138,7 +145,8 @@ def run(config_dir, db, work, out, epoch_slots, first_epoch, last_epoch, jobs=4,
 
     def seed_chain():
         d = chain_dir("seed")
-        analyser = Analyser(docker_launch(config_dir, d, cpus, memory, "scarab-k1-seed"), "/db", "/config/config.json")
+        analyser = Analyser(docker_launch(config_dir, d, cpus, memory, "scarab-k1-seed", network_none,
+                                          full_ledger_validation), "/db", "/config/config.json")
         previous = None
         try:
             for i, segment in enumerate(segments):
@@ -170,7 +178,8 @@ def run(config_dir, db, work, out, epoch_slots, first_epoch, last_epoch, jobs=4,
         d = chain_dir(f"seg{i}")
         shutil.copytree(src, d / "ledger", dirs_exist_ok=True)
         previous = int(next(src.iterdir()).name.split("_")[0])
-        analyser = Analyser(docker_launch(config_dir, d, cpus, memory, f"scarab-k1-seg{i}"), "/db", "/config/config.json")
+        analyser = Analyser(docker_launch(config_dir, d, cpus, memory, f"scarab-k1-seg{i}", network_none,
+                                          full_ledger_validation), "/db", "/config/config.json")
         try:
             for epoch, target in segments[i][1:]:
                 try:
