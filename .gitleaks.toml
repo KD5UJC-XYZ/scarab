@@ -35,6 +35,7 @@ paths = [
   '''^fixtures/devnet/lsq/genesis/shelley-genesis\.json$''',
   '''^fixtures/dijkstra-devnet/genesis/shelley-genesis\.json$''',
   '''^fixtures/leios/testnet/config/shelley-genesis\.json$''',
+  '''^fixtures/leios/state/genesis/shelley-genesis\.json$''',
   '''^fixtures/mainnet/byron-genesis-trimmed\.json$''',
   '''^fixtures/mainnet/genesis/byron-genesis\.json$''',
   '''^fixtures/preview/conway-governance\.json$''',

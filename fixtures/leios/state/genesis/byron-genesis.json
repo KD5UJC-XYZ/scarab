@@ -1,0 +1,67 @@
+{ "bootStakeholders":
+    { "028e2233dc0fb32cccdd62026dfc93337880b465a141d53aa8daebf9": 1
+    , "6731d3d79f45fe0790da454d1a914111946f2c59e2edcc056ed9cacb": 1
+    , "8fc1064994da3af1e8b31de111bcaf1e6c495884cbaef33ad2f0671c": 1
+    }
+, "heavyDelegation":
+    { "028e2233dc0fb32cccdd62026dfc93337880b465a141d53aa8daebf9":
+        { "omega": 0
+        , "issuerPk":
+            "1XmP+TcrK5F1z78objSBbZVfsnGb9Q5gIF9VqMWPquPXo+VsPz+qXaQy/fUBMTqlxINuFEB3f7u4F3SMZz02ng=="
+        , "delegatePk":
+            "HNOMVJDysVBv6m0avISH32JLbfSKO7GK9wzsHB5PvV988BHKMDLJs7hrdqdSnmGIIrwlJk138TCerlgB1aB5hg=="
+        , "cert":
+            "86a98c247730ba4d95531c65ac7129408c35439fee613a16992442abc072262070336ea1d038944d59963ad60e3aec0df26ab55d86e3e6785a73eec40d163b04"
+        }
+    , "6731d3d79f45fe0790da454d1a914111946f2c59e2edcc056ed9cacb":
+        { "omega": 0
+        , "issuerPk":
+            "T8yifHmm9WjHQXU7UkyqiG36xPBZMWX5fz2n+HMIfR0WACOlpc4S289x1P/8rVbRBLNTNOPaCEje9odc5XPCWg=="
+        , "delegatePk":
+            "Vy77yahTRwGVyciLq6uaA33At/0YARygomE7Ou30fZHUpDudDwGxRRHimwBGtTiXEixgmtaFmumpJoVB3p63kg=="
+        , "cert":
+            "5cd90d03c7ee80c13692cfa62deea083c4249df29089b8ad8c83dff773c46a12a2d9f5cfec686739d91e6f4110c5c106c268e5016fed3db75ad7b2c742610709"
+        }
+    , "8fc1064994da3af1e8b31de111bcaf1e6c495884cbaef33ad2f0671c":
+        { "omega": 0
+        , "issuerPk":
+            "pZLceq3dqUqG2AyibKFBtTJxQkkO52cWJrno73OfLrEhRj1UHri3DyXISRtQrIRQkAMGBCoiWmsBQt7xMUbRkg=="
+        , "delegatePk":
+            "LJiEDxv8yHucKCjX3nm/EiRAl+GzJZtavzxj3X5dQ9dOiNJH97Y+XeAN2THB9Av8M2Te8nvDGXlUbVBg4v+5AQ=="
+        , "cert":
+            "da2fbbc2ad0ced077dba3b0b841f356112eefaa25bdf18f227a52a912de876862b2604f7ab6e10c5b4d697a8dcbbc3cf8c63c7f21864b84d8f3cb51b5e0c6a00"
+        }
+    }
+, "startTime": 1794161062
+, "nonAvvmBalances":
+    { "2cWKMJemoBajjxiAATarRgoK9gLH9SU4kFyfXiNTEymD7cdzYdt1cHVfX61nCoZoR3rd1":
+        "3000000000"
+    , "2cWKMJemoBakLzSJdQ89H8CfqFJuTRsYqV2PF5BNTMScqkPBmPNv88uj1CruBdjy6C9AJ":
+        "3000000000"
+    , "2cWKMJemoBakxoddmnpUvZehc8wd3tTKEu4TdcuARMfMPmhobAQUkp7s8YUaqLannfEvs":
+        "3000000000"
+    }
+, "blockVersionData":
+    { "scriptVersion": 0
+    , "slotDuration": "1000"
+    , "maxBlockSize": "2000000"
+    , "maxHeaderSize": "2000000"
+    , "maxTxSize": "4096"
+    , "maxProposalSize": "700"
+    , "mpcThd": "20000000000000"
+    , "heavyDelThd": "300000000000"
+    , "updateVoteThd": "1000000000000"
+    , "updateProposalThd": "100000000000000"
+    , "updateImplicit": "10000"
+    , "softforkRule":
+        { "initThd": "900000000000000"
+        , "minThd": "600000000000000"
+        , "thdDecrement": "50000000000000"
+        }
+    , "txFeePolicy":
+        { "summand": "155381000000000" , "multiplier": "43946000000" }
+    , "unlockStakeEpoch": "18446744073709551615"
+    }
+, "protocolConsts": { "k": 5 , "protocolMagic": 1082026 }
+, "avvmDistr": {}
+}
