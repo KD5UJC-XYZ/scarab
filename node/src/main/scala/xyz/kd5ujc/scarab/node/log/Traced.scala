@@ -174,6 +174,11 @@ object Traced:
       EventKind.SnapshotDeleted.line("file" -> name.asJson)
     case StorageEvent.SnapshotNotDeleted(name, error) =>
       EventKind.SnapshotNotDeleted.line("file" -> name.asJson, "reason" -> error.message.asJson)
+    case StorageEvent.CheckpointNotDeleted(name, error) =>
+      EventKind.CheckpointNotDeleted.line(
+        "checkpoint" -> name.asJson,
+        "reason" -> error.message.asJson
+      )
     case StorageEvent.SnapshotUnbound(name, a) =>
       EventKind.SnapshotUnbound.line("file" -> name.asJson, "anchor" -> anchor(a))
     case StorageEvent.SnapshotWritten(name, a, bytes, millis) =>

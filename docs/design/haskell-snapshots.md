@@ -627,9 +627,11 @@ decoder defect. Where the line falls: the snapshot's format version is Scarab's 
 stops the start, and a binding or sidecar of another schema (`VersionMismatch`) is kept. The
 migration of previous files takes the same fallback for what fails on a file's own content: a V9
 file whose checksum or sidecar fails is deleted, and one of another sidecar schema is left
-unconverted, which the restore then keeps and skips. The checkpoints no snapshot lists are trimmed
-at every successful open (`StateBacking.retain`), so a start interrupted between deleting a snapshot
-and trimming leaves nothing behind for long. Snapshot file names do not change, and the V9 to V10
+unconverted, which the restore then keeps and skips. The checkpoints no snapshot lists, those of
+the snapshots just deleted and any a stopped earlier start left behind, are deleted when the
+database opens (`StateBacking.trim`), each best effort as the reference's deletion of a snapshot's
+tables is: one that cannot be deleted is logged (`checkpointNotDeleted`) and the start goes on.
+Deletion during a periodic write keeps its own failure handling. Snapshot file names do not change, and the V9 to V10
 step copies everything after the magic as it was. In step a a snapshot of another build is
 reachable only in tests. `SnapshotFallbackSuite` and `ChainStorageSuite` have a test per case.
 

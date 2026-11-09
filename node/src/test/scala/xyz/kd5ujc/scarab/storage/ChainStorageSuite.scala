@@ -533,18 +533,89 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("a checkpoint no snapshot lists is removed at every successful open") {
+  /** `inside` run while the database in `dir` is open over RocksDB, before any block is followed.
+    */
+  private def whileOpen[A](dir: Path, log: Ref[IO, Vector[StorageEvent]])(inside: IO[A]): IO[A] =
+    Handle
+      .allow[NodeError] {
+        RocksUtxoStore
+          .resource[IO](dir / "utxo" / "live", 8L * 1024 * 1024)
+          .use { store =>
+            ChainStorage
+              .open[IO, MirrorState](
+                dir,
+                config(120, 4),
+                MirrorRules[IO](
+                  setup.praos,
+                  setup.globals,
+                  setup.byronRules,
+                  setup.handOver,
+                  setup.byronHistory,
+                  utxoStore = Some(store)
+                ),
+                setup.mirrorStart,
+                storageEvents(log),
+                new UtxoBacking[IO, MirrorState](store, dir / "utxo" / "checkpoints"),
+                _ => IO.unit
+              )
+              .use(_ => inside)
+          }
+          .map(_.asRight[NodeError])
+      }
+      .rescue(e => IO.pure(e.asLeft))
+      .flatMap(_.fold(e => IO.raiseError(new AssertionError(e.message)), IO.pure))
+
+  /** What a start stopped between deleting a snapshot and trimming its checkpoint leaves. */
+  private def orphanOf(dir: Path): Path =
+    dir / "utxo" / "checkpoints" / "snapshot-00000000000000000001-1"
+
+  test("a checkpoint no snapshot lists is removed when the database opens") {
     tempDir.use { dir =>
-      val orphan = dir / "utxo" / "checkpoints" / "snapshot-00000000000000000001-1"
+      val orphan = orphanOf(dir)
       for
         log1 <- events(dir)
         _ <- runWith(dir, 600, 60, log1, Some("rocksdb"))
-        // what a start cancelled between deleting a snapshot and trimming its checkpoint leaves
         _ <- IO.blocking(JFiles.createDirectories(orphan.toNioPath))
         log2 <- events(dir)
-        _ <- runWith(dir, 650, 120, log2, Some("rocksdb"))
+        // before any block is followed or any snapshot written
+        left <- whileOpen(dir, log2)(IO.blocking(JFiles.exists(orphan.toNioPath)))
+      yield assert(!left, s"$orphan is still there once the database is open")
+    }
+  }
+
+  test("a checkpoint that cannot be deleted at the start is reported and the start goes on") {
+    // the reference's deletion of a temporary snapshot directory, tables included, is best effort
+    // (82ecba32 Snapshots.hs:316-330)
+    tempDir.use { dir =>
+      val orphan = orphanOf(dir)
+      val locked = java.nio.file.attribute.PosixFilePermissions.fromString("r-xr-xr-x")
+      val open = java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x")
+      for
+        log1 <- events(dir)
+        _ <- runWith(dir, 600, 60, log1, Some("rocksdb"))
+        snaps <- snapshotsIn(dir)
+        _ <- IO.blocking {
+          JFiles.createDirectories(orphan.toNioPath)
+          JFiles.write((orphan / "CURRENT").toNioPath, Array[Byte](1))
+          JFiles.setPosixFilePermissions(orphan.toNioPath, locked)
+        }
+        log2 <- events(dir)
+        restoredWhileOpen <- whileOpen(dir, log2)(
+          log2.get.map(_.collect { case StorageEvent.SnapshotRestored(name, _) => name })
+        ).guarantee(IO.blocking(JFiles.setPosixFilePermissions(orphan.toNioPath, open)).void)
+        seen <- log2.get
         left <- IO.blocking(JFiles.exists(orphan.toNioPath))
-      yield assert(!left, s"$orphan is still there")
+      yield
+        assertEquals(restoredWhileOpen.toList, List(snaps.head.fileName.toString))
+        assertEquals(
+          seen.collect { case StorageEvent.CheckpointNotDeleted(name, _) => name }.toList,
+          List(orphan.fileName.toString)
+        )
+        assert(seen.collect { case StorageEvent.CheckpointNotDeleted(_, e) => e }.forall {
+          case _: StorageError.Io => true
+          case _                  => false
+        })
+        assert(left)
     }
   }
 

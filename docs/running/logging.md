@@ -195,6 +195,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `snapshotSkipped` | `Storage.SnapshotSkipped` | Warning | `file`, `reason` |
 | `snapshotDeleted` | `Storage.SnapshotDeleted` | Info | `file`: a skipped snapshot deleted with its checkpoint, as the reference deletes a temporary snapshot it cannot use (`DeletedSnapshot`); every native snapshot is temporary |
 | `snapshotNotDeleted` | `Storage.SnapshotNotDeleted` | Warning | `file`, `reason`: a skipped snapshot that could not be deleted; the restore goes on, as the reference's best-effort deletion does |
+| `checkpointNotDeleted` | `Storage.CheckpointNotDeleted` | Warning | `checkpoint`, `reason`: a UTxO checkpoint that no snapshot lists could not be deleted at the start; the start goes on, as the reference's best-effort deletion of a snapshot's tables does |
 | `snapshotRestored` | `Storage.SnapshotRestored` | Info | `file`, `anchor` |
 | `snapshotUnbound` | `Storage.SnapshotUnbound` | Warning | `file`, `anchor`: the restored snapshot predates checkpoint binding (V5 migrated through V7, V8 and V9 to V10) and its checkpoint was admitted by directory name. |
 | `snapshotWritten` | `Storage.SnapshotWritten` | Info | `file`, `anchor`, `bytes`, `millis` |

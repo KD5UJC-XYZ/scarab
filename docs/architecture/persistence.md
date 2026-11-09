@@ -144,7 +144,7 @@ layout or none, or whose binding or sidecar has another schema, is reported and 
 (`LedgerSnapshots.Fallback`). With none usable the stored blocks are replayed from genesis. What the
 reference raises stops the start and deletes nothing: a file that cannot be read, an absent
 checkpoint, and an unknown or retired format version (ADR 0006). Checkpoints no snapshot lists are
-trimmed at every successful open. The
+deleted when the database opens, each best effort (`checkpointNotDeleted` when one cannot be). The
 stored blocks after the chosen snapshot are re-applied through the same `MirrorRules` with no
 network, then ChainSync resumes with the replayed anchor as the intersection candidate.
 

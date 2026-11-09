@@ -49,6 +49,12 @@ enum StorageEvent:
     * (`Snapshots.hs:320-330`).
     */
   case SnapshotNotDeleted(name: String, error: StorageError)
+
+  /** A checkpoint that no snapshot lists could not be deleted at the start (`error`); the start
+    * went on, as the reference's best-effort deletion of a snapshot's tables does
+    * (`Snapshots.hs:316-330`).
+    */
+  case CheckpointNotDeleted(name: String, error: StorageError)
   case SnapshotRestored(name: String, anchor: Option[BlockRef])
 
   /** The restored snapshot was written before snapshots recorded their checkpoint
@@ -407,7 +413,13 @@ object ChainStorage:
       // the checkpoints that no snapshot lists go, by the trim path of a write: those of the
       // snapshots just deleted, and any a cancelled or failed earlier start left behind
       _ <- Resource.eval(
-        snapshots.list.flatMap(names => backing.retain(names.map(_.stripSuffix(".bin")).toSet))
+        snapshots.list
+          .flatMap(names => backing.trim(names.map(_.stripSuffix(".bin")).toSet))
+          .flatMap(
+            _.traverse_((name, error) =>
+              events.emit(StorageEvent.CheckpointNotDeleted(name, error))
+            )
+          )
       )
       start <- Resource.eval(
         restored.snapshot.fold(F.pure((Option.empty[BlockRef], initial)))((_, s) =>

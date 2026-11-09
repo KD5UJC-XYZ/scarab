@@ -24,7 +24,8 @@
   the reference raises now stops the start, deleting nothing: an unreadable snapshot file or an
   absent UTxO checkpoint, which earlier builds skipped. A damaged previous-version snapshot no
   longer stops its migration: it is deleted, or kept unconverted when its sidecar is of another
-  schema, and an older one is used. Checkpoints no snapshot lists are removed at every open.
+  schema, and an older one is used. Checkpoints no snapshot lists are removed when the database
+  opens, each best effort (`checkpointNotDeleted` when one cannot be).
 - A hard-fork `Bound` of four items, with a Peras round, is read and written back, as the 11.1
   reference reads it; it was refused.
 - `import-ledger-snapshot` refuses a `state` file that does not decode completely in the layout of

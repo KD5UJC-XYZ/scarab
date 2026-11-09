@@ -623,6 +623,10 @@ object LogSamples:
       "4200-abab",
       StorageError.Io("4200-abab", new java.nio.file.AccessDeniedException("4200-abab"))
     ),
+    StorageEvent.CheckpointNotDeleted(
+      "4200-abab",
+      StorageError.Io("4200-abab", new java.nio.file.AccessDeniedException("4200-abab"))
+    ),
     StorageEvent.SnapshotRestored("4200-abab", anchor),
     StorageEvent.SnapshotRestored("genesis", None),
     StorageEvent.SnapshotUnbound("4200-abab", anchor),

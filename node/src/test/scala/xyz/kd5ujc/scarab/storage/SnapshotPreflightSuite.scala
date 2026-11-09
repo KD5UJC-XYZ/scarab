@@ -91,6 +91,8 @@ class SnapshotPreflightSuite extends CatsEffectSuite:
         def restore(anchor: Option[BlockRef])(using Raise[IO, StorageError]) = IO.pure(true)
         def reset(using Raise[IO, StorageError]) = resets.update(_ + 1)
         def retain(stems: Set[String])(using Raise[IO, StorageError]) = IO.unit
+        def trim(stems: Set[String])(using Raise[IO, StorageError]) =
+          IO.pure(Vector.empty[(String, StorageError)])
       result <- attemptNode {
         ChainStorage
           .open[IO, MirrorState](

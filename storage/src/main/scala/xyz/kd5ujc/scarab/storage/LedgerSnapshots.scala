@@ -47,7 +47,7 @@ object LedgerSnapshots:
 
   /** What became of a snapshot the restore did not use. */
   enum Unused derives CanEqual:
-    /** Deleted, with its checkpoint (the trim path, [[StateBacking.retain]]). */
+    /** Deleted; its checkpoint goes by the open's best-effort trim ([[StateBacking.trim]]). */
     case Deleted
 
     /** Not deleted: the deletion failed (`cause`), and the fallback went on, as the reference's
