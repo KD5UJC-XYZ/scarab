@@ -31,7 +31,8 @@ injections or native refusals. The Scala reader exposes the same state. Separate
 not implement hash checking, effectful file reads or genesis source integration, and the permissive
 json-stream mechanism is separate from strict raw-genesis JSON admission (#497).
 
-`InjectionJsonSuite` compares every recorded native trace, including the refusal text, and
+`InjectionJsonSuite` compares every recorded native trace, including the refusal text (an exponent
+the reference's `Int` wraps compared as that `Int` holds it, once its exact value is checked), and
 checks entry ordering and 20,000-level small-stack parsing; the portable native replay compares
 the same recorded outputs. On 2026-10-27 at 2f4994c03 the deterministic resource guards passed
 and `fuzz 100000 2 1 injection-json` completed its 100,000 cases; an independent differential
@@ -93,11 +94,13 @@ decimal places once normalized, refused when negative or with an exponent above 
 `Word64` components and to `[10^-19, 1]`. The failures are typed (`NumberError`), one case for each way the
 reference refuses a value; the rendered text is not a conformance claim. The local `GetGenesisConfig` answer reads the coefficient the same way.
 `stabilityWindow` and `randomnessStabilisationWindow` are `Word64`: the ceiling of the exact
-`3k/f` and `4k/f`, low 64 bits kept (`StabilityWindow.hs:14-35`); callers convert them for their
-own slot arithmetic.
+`3k/f` and `4k/f` (`StabilityWindow.hs:14-35`); callers convert them for their own slot arithmetic.
+The reference keeps their low 64 bits; a genesis whose doubled stability window reaches 2^64 is
+refused instead ([overflow improvements](overflow-improvements.md#epoch-geometry-windows)).
 
 `ShelleyGenesisValidation` mirrors `validateGenesis` and `describeValidationErr`
-(`Shelley/Genesis.hs:673-762`): `ceiling (3k / f)` in `Double` with `3 * k` wrapping in `Word64`,
+(`Shelley/Genesis.hs:673-762`): `ceiling (3k / f)` in `Double`, with `3 * k` and the ceiling exact where the
+reference's `Word64` wraps them ([overflow improvements](overflow-improvements.md#shelley-genesis-validation)),
 at most 64 KES evolutions (`Sum6KES`), and an update quorum above half the genesis nodes. The node
 start does not call it, because the reference node does not: cardano-node 11.1.3 instantiates only
 the Cardano protocol (`Cardano/Node/Protocol.hs:22-45`), which reads the Shelley genesis without
@@ -115,14 +118,16 @@ the reference too: a header forecast into an epoch two or more past the ledger k
 distribution and parameters (TICKF, `Shelley/Rules/Tick.hs:185-242`, `Conway/Rules/Tickf.hs:34-66`;
 `HeaderRulesSuite`), and the after-voting count uses the release `subSlots`, which wraps rather than
 stopping at zero (consensus `82ecba32` `Shelley/Ledger/Ledger.hs:737-741`,
-`HardFork/History/Util.hs:25-26`; `MirrorProvenanceSuite`).
+`HardFork/History/Util.hs:25-26`; `MirrorProvenanceSuite`); that wrap is kept, as a genesis the
+reference takes reaches it ([overflow improvements](overflow-improvements.md#voting-deadline)).
 
 Evidence: `PositiveUnitIntervalSuite` (19 against 20 decimal places, `1e-19`, negative before
 precision, `0`, `1`, `1e19`, `1e20`, the object form's reduction and `Word64` limits, missing,
 floating and over-exponent components, zero denominator, `Word64` and `NonZero` limits, `Show
-Scientific`), `EpochGeometrySuite` (the Mainnet, Preprod and Preview windows unchanged, `Word64`
-wrap of the windows, the genesis readers), `ShelleyGenesisValidationSuite` (each check at its
-boundary, the `Double` case `21 / 0.7`, the `3 * k` wrap, the order of several failures, and the three network configurations passing).
+Scientific`), `EpochGeometrySuite` (the Mainnet, Preprod and Preview windows unchanged, the
+refusal of windows that do not fit `Word64`, the genesis readers), `ShelleyGenesisValidationSuite`
+(each check at its boundary, the `Double` case `21 / 0.7`, the exact `3 * k`, the order of several
+failures, and the three network configurations passing).
 
 Not the reference's and kept: `EpochGeometry.checked` refuses a slot length or epoch length that is
 not positive (an approved deviation, recorded in #474); slot lengths are whole

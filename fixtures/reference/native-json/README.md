@@ -23,7 +23,10 @@ signed-64 exponent, including zero and trailing decimal zeros, without normaliza
 
 `NativeJsonSuite` compares all 356 native admission results and complete accepted Value event
 streams on a small-stack thread. Native errors are retained and reproduced exactly by the portable
-oracle; Scala's closed typed errors render the same text, and the suite compares all 214. On
+oracle; Scala's closed typed errors render the same text, and the suite compares all 214. Scarab
+reads an exponent exactly where the reference's machine `Int` wraps it
+([overflow improvements](../../../docs/compatibility/overflow-improvements.md#json-number-exponents)): such an exponent is checked against the
+input's own digits and then compared as that `Int` holds it. On
 2026-10-27 one temporary variant combining last-wins duplicate collapse
 (`JsonObject.fromList(fields.reverse)`), UTF-16 code-unit key order (`String.compareTo`) and
 `Scientific` normalization at parse failed 22 of the 356 cases; exact source restoration passes all

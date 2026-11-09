@@ -15,7 +15,9 @@ and native Word64 block-number overflow. Grid rows are decision-function inputs,
 claim that every consecutive row represents a lawful transport execution.
 
 `client` and `server` are optional unsigned block numbers: JSON null means Origin. At Origin,
-native `bnoPlus Origin n` is `At (1+n)`; an ordinary block number addition wraps Word64. A
+native `bnoPlus Origin n` is `At (1+n)`; an ordinary block number addition wraps Word64. Scarab's
+sum is exact ([overflow improvements](../../../docs/compatibility/overflow-improvements.md#chain-sync-pipelining)):
+where the reference's wraps, the low mark collects, and the suite expects that instead. A
 nonzero request stays outstanding through AwaitReply until its RollForward/RollBackward
 arrives. Those transport callbacks and optional-collection readiness are outside this pure
 function corpus and require separate runtime tests.

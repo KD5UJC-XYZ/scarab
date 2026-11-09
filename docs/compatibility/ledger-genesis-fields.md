@@ -25,8 +25,8 @@ Scarab accepts exactly what the reference accepts. A removed field, or one of an
 ### Bounded integer exponents
 
 The shared `Scientific.toBoundedInteger` also reads node configuration fields. Its overflow guard
-uses the stored exponent as well as the normalized one: moving trailing coefficient zeros into
-a 64-bit exponent can wrap it. The reference's `dangerouslyBig` guard reads the stored exponent
+uses the stored exponent as well as the normalized one, as the reference's `dangerouslyBig` guard
+reads the stored exponent
 ([scientific 0.3.8.1, `Data/Scientific.hs:771-802`](https://github.com/basvandijk/scientific/blob/v0.3.8.1/src/Data/Scientific.hs#L771)).
 
 On 2026-11-04, the executed Leios oracle image's aeson 2.3.1.0 / scientific 0.3.8.1 reader refused
@@ -34,8 +34,9 @@ On 2026-11-04, the executed Leios oracle image's aeson 2.3.1.0 / scientific 0.3.
 and signed `Int`. Scarab previously read them as `1`. `JsonValueSuite` preserves the failing
 regression for signed and unsigned bounds, and `LeiosSettingsSuite` exercises the real node reader.
 Zero remains accepted, while the same nonzero positive inputs read as `Double` remain infinity.
-The parser's existing machine-Int exponent wrapping is preserved: `1e18446744073709551616` reads
-as `1` in both implementations.
+The reference's parser wraps the exponent in its machine `Int`, so it reads `1e18446744073709551616`
+as `1`; Scarab reads the exponent exactly and refuses the value as out of range
+([overflow improvements](overflow-improvements.md#json-number-exponents)).
 
 Reproduce a refusal inside the [pinned Leios oracle](../../scripts/oracle/leios-testnet/README.md):
 

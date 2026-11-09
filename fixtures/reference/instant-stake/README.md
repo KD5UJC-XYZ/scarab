@@ -14,6 +14,10 @@ arithmetic: the released source file matches pinned cardano-ledger
 under the Shelley and the Babbage `TxOut`, and the two results agree for all of them. The same
 sixteen cases run with the stake held under a base-address credential and under a pointer.
 
+`ShelleyInstantStakeReferenceSuite` replays each case in exact arithmetic too: where an entry
+leaves `Word64`, which the reference wraps, Scarab has no verdict
+([overflow improvements](../../../docs/compatibility/overflow-improvements.md#instant-stake)); every other case gives the reference's result.
+
 Coverage: deletion underflow modulo 2^64, addition overflow to exactly zero and past zero,
 deletion to exactly zero, insertion of the output amount into a missing entry for addition and
 for deletion, zero amounts, zero removal followed by deletion and by reinsertion, deletion in

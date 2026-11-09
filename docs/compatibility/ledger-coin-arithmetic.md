@@ -18,27 +18,33 @@ by `CborRead.integer` (#707). `MirAmountsReferenceSuite` holds each form in a bo
 Shelley to Babbage against the reference's verdict ([fixtures](../../fixtures/reference/mir-amounts/README.md));
 before #707 the bignum forms were refused.
 
-Compact account additions and subtotals wrap modulo 2^64. MIR combines Coin amounts before
-compaction; reward delivery compacts each reward before grouping. POOLREAP combines compact
-refund subtotals before subtracting from deposited Coin. Account, pool and DRep obligation
-subtotals wrap separately before their Coin sum. The reference boundaries are
-`State/Account.hs:119–147`, `Shelley/Rules/Mir.hs:122–135`,
+Compact account additions and subtotals are checked: where the reference's `Word64` arithmetic
+wraps modulo 2^64, the node's sum is a `VocabError` and the epoch rules give no verdict
+([overflow improvements](overflow-improvements.md#compact-coin-arithmetic)); below 2^64 every
+result is the reference's. MIR combines Coin amounts before compaction; reward delivery compacts
+each reward before grouping. POOLREAP combines compact refund subtotals before subtracting from
+deposited Coin. Account, pool and DRep obligation subtotals are summed separately before their
+Coin sum. The reference boundaries are `State/Account.hs:119–147`, `Shelley/Rules/Mir.hs:122–135`,
 `Shelley/Rules/PoolReap.hs:179–221`, `Shelley/Rewards.hs:205–210` and
 `Conway/Rules/Epoch.hs:181–240`.
 
-Stake resolution retains native unchecked NonZero values when compact addition wraps to zero
-(`State/Stake.hs:220–245`, `Shelley/State/Stake.hs:148–172`,
-`BaseTypes/NonZero.hs:140–141`). Pool/owner and DRep subtotals wrap; total active stake remains
-an unbounded Coin, with zero replaced by one (`State/Stake.hs:157–166`,
-`State/SnapShots.hs:187–226`, `Conway/Governance/DRepPulser.hs:209–232`). Proposal deposits
-use the reference's zero on failed compaction before credential grouping
-(`Conway/Governance/Proposals.hs:566–580`).
+Stake resolution keeps the reference's unchecked NonZero values, which a checked sum of amounts of
+which one is not zero never makes zero (`State/Stake.hs:220–245`, `Shelley/State/Stake.hs:148–172`,
+`BaseTypes/NonZero.hs:140–141`); where the reference's sum wraps, even to zero, the node has no
+verdict. Pool/owner and DRep subtotals are checked the same way; total active stake remains an
+unbounded Coin, with zero replaced by one (`State/Stake.hs:157–166`,
+`State/SnapShots.hs:187–226`, `Conway/Governance/DRepPulser.hs:209–232`). A proposal deposit that
+does not compact, which the reference makes zero before credential grouping
+(`Conway/Governance/Proposals.hs:566–580`), is no verdict too; a deposit equals the parameters'
+compact `govActionDeposit`, so none is reached.
 
 ## Evidence
 
 The [eleven native API cases](../../fixtures/reference/coin-arithmetic/cases.jsonl) and
 [provenance](../../fixtures/reference/coin-arithmetic/provenance.json) record actual signed Coin
-encoding/compaction, compact arithmetic, account sums/credit and credential stake resolution.
+encoding/compaction, compact arithmetic, account sums/credit and credential stake resolution. A
+case where the reference wraps is told by the exact sum: its result is the exact one modulo 2^64,
+and the node's is no verdict.
 Six installed reference source files were compared byte-for-byte with the pinned Git objects.
 `CoinArithmeticReferenceSuite` compares native results, and `HaskellStateCodecSuite` compares
 exact Coin bytes while retaining bounded decoder refusal. The portable
@@ -47,9 +53,9 @@ exact Coin bytes while retaining bounded decoder refusal. The portable
 `CompactCoinRulesSuite`, `CompactStakeSuite` and `TickRulesSuite` additionally cover source-derived
 rule boundaries, both account families, sparse/dense credit, pointer stake, pool owners,
 proposal deposits and DRep sums. The balanced reward-update test preserves treasury -1.
-Removing wrapped-zero stake retention fails four focused assertions; clamping signed Coin
-fails three. Restored source passes both sets of regressions. These are scoped arithmetic
-checks, not full-ledger equivalence.
+Each boundary is held below 2^64, where the result is the reference's, and at it, where it is no
+verdict; clamping signed Coin fails three assertions. These are scoped arithmetic checks, not
+full-ledger equivalence.
 
 ## Explicitly unchecked or unconfirmed
 

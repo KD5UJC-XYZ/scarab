@@ -35,4 +35,6 @@ Scope: the parse of the whole file, its hash, and the two balance fields with th
 of them. The other fields, as `FromJSON GenesisData` reads them, are the
 [data corpus](../byron-genesis-data/README.md) (#734). `ByronGenesisBalancesReferenceSuite` runs
 every case through Scarab's reader (`ByronGenesisFile.read` and `genesisBalances`) and
-`ByronLedger.genesisUtxo`.
+`ByronLedger.genesisUtxo`. An amount the reference takes modulo 2^64 is refused by Scarab
+([overflow improvements](../../../docs/compatibility/overflow-improvements.md#byron-genesis-words)); the suite checks that the reference's lovelace
+is that amount modulo 2^64.

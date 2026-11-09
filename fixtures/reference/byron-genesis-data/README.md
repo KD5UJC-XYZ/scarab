@@ -40,3 +40,6 @@ edits, and the order cases pin which of two edited fields is reported.
 Scope: the parse of the whole file, its hash and every field of `GenesisData`; the balances by their
 count, which the [balances corpus](../byron-genesis-balances/README.md) covers entry by entry.
 `ByronGenesisDataReferenceSuite` runs every case through Scarab's reader (`ByronGenesisFile.parse`).
+A number the reference takes modulo 2^bits is refused by Scarab ([overflow improvements](../../../docs/compatibility/overflow-improvements.md#byron-genesis-words)):
+the suite checks that it is outside the field's range and that what the reference read, or the
+value its refusal names, is that number modulo 2^bits.

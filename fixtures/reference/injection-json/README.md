@@ -28,7 +28,9 @@ produce with this lexer: `TokFailed` before and after the outer object opens, on
 and value) and multi-part decoding failures, and the unexpected-element messages with the Haskell
 `show` of each element they print (fast-path `JInteger` versus `JValue` numbers, Scientific
 formatting at the exponent boundaries and wrapped exponents, and the rest of the chunk with every
-escape form). The independent ordering test stops at an entry before a later syntax failure; a small-stack test reads 20,000
+escape form). Scarab reads an exponent exactly where the reference's machine `Int` wraps it
+([overflow improvements](../../../docs/compatibility/overflow-improvements.md#json-number-exponents)): `InjectionJsonSuite` checks such an exponent
+against the input's own digits and then compares it as that `Int` holds it. The independent ordering test stops at an entry before a later syntax failure; a small-stack test reads 20,000
 nested arrays. `injection-json` fuzzing checks crashes and termination of individual pull steps;
 it is not differential native fuzzing.
 

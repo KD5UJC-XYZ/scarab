@@ -1224,7 +1224,7 @@
       "id": "ledger-coin-arithmetic",
       "component": "Ledger: signed Coin and compact arithmetic (#492)",
       "status": "partial",
-      "summary": "Signed Coin and wrapped native compact account/stake arithmetic; accumulated MIR regression awaits interpreter integration",
+      "summary": "Signed Coin and checked compact account/stake arithmetic (no verdict where the reference wraps); accumulated MIR regression awaits interpreter integration",
       "evidence": {
         "suites": [
           "CoinArithmeticReferenceSuite",
@@ -1254,6 +1254,39 @@
         ]
       },
       "page": "docs/compatibility/ledger-coin-arithmetic.md"
+    },
+    {
+      "id": "overflow-improvements",
+      "component": "Overflow improvements over the reference (#474)",
+      "status": "partial",
+      "summary": "No wrap of the reference is reproduced on a value from outside: configuration refused, ledger and consensus no verdict; five reachable or channel-less sites kept, each named",
+      "evidence": {
+        "suites": [
+          "OverflowConfigSuite",
+          "CompactCoinRulesSuite",
+          "CompactStakeSuite",
+          "CoinArithmeticReferenceSuite",
+          "ShelleyInstantStakeReferenceSuite",
+          "ByronParamsNativeSuite",
+          "ByronWindowThresholdSuite",
+          "ShelleyDelegsPointerSuite",
+          "ChainSyncPipelineDecisionSuite",
+          "Praos2ReferenceSuite"
+        ],
+        "paths": [
+          "scripts/check_overflow_register.py"
+        ],
+        "issues": [
+          474,
+          573
+        ]
+      },
+      "limitations": {
+        "issues": [
+          474
+        ]
+      },
+      "page": "docs/compatibility/overflow-improvements.md"
     },
     {
       "id": "ledger-conway-governance",

@@ -18,7 +18,8 @@ their CBOR decoder's length limits. Released binary 1.9.1.0 encodes IPv4 in netw
 provenance distinguishes that fix from the older pinned binary source.
 
 `GenesisPoolFieldsSuite` reads every pool under a fixed genesis key and compares every acceptance
-decision and every accepted field; an empty relay sequence (`80`) is held as `Bytes.empty`, the
+decision and every accepted field, but a pool with a number whose exponent the reference's machine
+`Int` wraps, which Scarab refuses ([overflow improvements](../../../docs/compatibility/overflow-improvements.md#json-number-exponents)); an empty relay sequence (`80`) is held as `Bytes.empty`, the
 form the snapshot codec reads it back as. `WalletPeerReferenceSuite` checks that Scarab's genesis
 bootstrap of the [native peer-relays cluster](../ntc-wallet-peers-11.1.3/README.md) yields the
 relay and metadata bytes of that cluster's own pool state. This corpus does not establish a

@@ -3,10 +3,11 @@
 
 Part of [Architecture](../architecture.md).
 
-Native `Coin` is a signed arbitrary-precision integer; `CompactCoin` uses Word64 arithmetic.
-Decoder/conversion bounds and rule predicates apply at their reference boundaries. Compact
-account and stake folds wrap before conversion to Coin, while total active stake remains
-unbounded. See the [arithmetic contracts and evidence](../compatibility/ledger-coin-arithmetic.md).
+Native `Coin` is a signed arbitrary-precision integer; `CompactCoin` is a `Word64` whose
+arithmetic is checked. Decoder/conversion bounds and rule predicates apply at their reference
+boundaries. Compact account and stake folds that the reference wraps are no verdict here, while
+total active stake remains unbounded. See the [arithmetic contracts and evidence](../compatibility/ledger-coin-arithmetic.md)
+and the [overflow register](../compatibility/overflow-improvements.md).
 
 ## Era history and Byron
 
