@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.{IO, Outcome, Resource}
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -132,7 +133,9 @@ class LedgerSnapshotExportSuite extends CatsEffectSuite:
     JFiles.createDirectories((db / "snapshots").toNioPath)
     JFiles.write(
       (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath,
-      FileLedgerSnapshots.closed(SnapshotV9.framed(bindingOf(db, anchor), sidecar, raw))
+      FileLedgerSnapshots.closed(
+        SnapshotV10.framed(ReferenceBuild.Release11_1, bindingOf(db, anchor), sidecar, raw)
+      )
     )
     ()
   }
@@ -206,6 +209,77 @@ class LedgerSnapshotExportSuite extends CatsEffectSuite:
       }
     }
 
+  test("an export names the recorded build; a V9 file not yet migrated exports as 11.1 bytes") {
+    tempDir.use { root =>
+      for
+        input <- fixture(root, "conway-4593")
+        (db, sidecar, raw) = input
+        current <- attempt(
+          LedgerSnapshotExport.run[IO](LedgerSnapshotExport.Config(db, root / "current"))
+        )
+        _ <- IO(assertEquals(current.map(_.build), Right(ReferenceBuild.Release11_1)))
+        anchor = sidecar.anchor.getOrElse(fail("anchor"))
+        _ <- IO.blocking(
+          JFiles.write(
+            (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath,
+            FileLedgerSnapshots.closed(SnapshotV9.framed(bindingOf(db, anchor), sidecar, raw))
+          )
+        )
+        previous <- attempt(
+          LedgerSnapshotExport.run[IO](LedgerSnapshotExport.Config(db, root / "previous"))
+        )
+        report = previous.fold(e => fail(e.message), identity)
+        _ <- IO {
+          assertEquals(report.build, ReferenceBuild.Release11_1)
+          assertEquals(
+            JFiles.readAllBytes((report.directory / "state").toNioPath).toVector,
+            raw.toArray.toVector
+          )
+        }
+      yield ()
+    }
+  }
+
+  test("a snapshot recorded under a build of another layout is refused, not converted") {
+    tempDir.use { root =>
+      for
+        input <- fixture(root, "conway-4593")
+        (db, sidecar, raw) = input
+        anchor = sidecar.anchor.getOrElse(fail("anchor"))
+        _ <- IO.blocking(
+          JFiles.write(
+            (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath,
+            FileLedgerSnapshots.closed(
+              SnapshotV10.framed(ReferenceBuild.LeiosB004fe0c, bindingOf(db, anchor), sidecar, raw)
+            )
+          )
+        )
+        before <- IO(fingerprint(db))
+        refused <- attempt(
+          LedgerSnapshotExport.run[IO](LedgerSnapshotExport.Config(db, root / "out"))
+        )
+        _ <- IO {
+          assertEquals(
+            refused,
+            Left(
+              LedgerSnapshotExport.Error.Storage(
+                StorageError.ReferenceBuildMismatch(
+                  "snapshot",
+                  ReferenceBuild.LeiosB004fe0c,
+                  ReferenceBuild.Release11_1
+                )
+              )
+            )
+          )
+          assertEquals(fingerprint(db), before)
+          val outputs = JFiles.list((root / "out").toNioPath)
+          try assert(!outputs.iterator().asScala.exists(!_.getFileName.toString.startsWith(".")))
+          finally outputs.close()
+        }
+      yield ()
+    }
+  }
+
   test("a nonexistent source is refused without creating a source or ownership inode") {
     tempDir.use { root =>
       val db = root / "absent-parent" / "db"
@@ -275,7 +349,8 @@ class LedgerSnapshotExportSuite extends CatsEffectSuite:
         path = db / "snapshots" / FileLedgerSnapshots.nameOf(
           sidecar.anchor.getOrElse(fail("anchor"))
         )
-        content = SnapshotV9.framed(
+        content = SnapshotV10.framed(
+          ReferenceBuild.Release11_1,
           bindingOf(db, sidecar.anchor.getOrElse(fail("anchor"))),
           sidecar,
           raw

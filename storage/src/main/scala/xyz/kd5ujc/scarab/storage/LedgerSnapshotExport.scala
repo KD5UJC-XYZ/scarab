@@ -12,15 +12,16 @@ import fs2.io.file.{Files, Path}
 import java.io.{BufferedOutputStream, FileOutputStream}
 import java.nio.channels.FileChannel
 import java.nio.file.{Files as JFiles, LinkOption, StandardCopyOption, StandardOpenOption}
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, StateMirror}
 import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.ledger.state.{Gap, ShelleyBasedEra, SlotNo}
 import xyz.kd5ujc.scarab.models.runtime.DecodeError
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.haskell.state.{
-  HaskellLedgerFile,
   MetaError,
+  ReferenceLayout,
   SnapshotCrc,
   SnapshotMeta,
   SnapshotTableStream,
@@ -31,14 +32,39 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   * consensus 82ecba3 Storage/LedgerDB/Snapshots.hs:395-408,457-463. Only the tables are converted,
   * at the interchange boundary. A suffixed directory is retained by the reference's policy
   * (Snapshots.hs:296-297,432-437).
+  *
+  * The `state` file is the Haskell section unchanged, in the layout of the reference build the
+  * snapshot recorded ([[SnapshotV10]]; a V9 file, not yet migrated, holds 11.1 bytes), and the
+  * report names that build. Nothing is converted between builds: a snapshot recorded under a build
+  * of another layout than the requested one ([[Config.layout]], `--reference-build`) is refused.
   */
 object LedgerSnapshotExport:
-  final case class Config(db: Path, out: Path, slot: Option[SlotNo] = None)
-  final case class Report(anchor: BlockRef, era: Era, outputs: Long, directory: Path)
+  /** @param layout
+    *   The codec of the reference build the output is for.
+    */
+  final case class Config(
+      db: Path,
+      out: Path,
+      slot: Option[SlotNo] = None,
+      layout: ReferenceLayout = ReferenceLayout.Release11_1
+  )
+
+  /** @param build
+    *   The reference build whose layout the exported `state` is in: the one the snapshot recorded.
+    */
+  final case class Report(
+      anchor: BlockRef,
+      era: Era,
+      outputs: Long,
+      directory: Path,
+      build: ReferenceBuild
+  )
 
   enum Error:
     case Storage(cause: StorageError)
-    case State(cause: DecodeError)
+
+    /** The recorded state bytes do not decode in the layout of `build`. */
+    case State(build: ReferenceBuild, cause: DecodeError)
     case Tables(cause: SnapshotTables.Error)
     case Metadata(cause: MetaError)
     case MissingSnapshot(slot: Option[SlotNo])
@@ -56,8 +82,9 @@ object LedgerSnapshotExport:
     case OutputWithinSource(path: Path)
 
     def message: String = this match
-      case Storage(cause)              => cause.message
-      case State(cause)                => cause.render
+      case Storage(cause) => cause.message
+      case State(build, cause) =>
+        s"the snapshot's ledger state does not decode in the layout of the reference build ${build.describe}: ${cause.render}"
       case Tables(cause)               => cause.toString
       case Metadata(cause)             => cause.toString
       case MissingSnapshot(Some(slot)) => "no stored snapshot at slot " + slot.toBigInt
@@ -139,12 +166,30 @@ object LedgerSnapshotExport:
             )
         }
 
+    /** The recorded build and the sections of a V10 file, or of a V9 file (which holds 11.1 bytes
+      * only) of a database this build has not opened yet; refused unless the requested layout reads
+      * the recorded build's.
+      */
+    def recorded(
+        content: Array[Byte]
+    ): Either[StorageError, (ReferenceBuild, CheckpointBinding, SnapshotSidecar, Bytes)] =
+      if content.startsWith(SnapshotV9.Magic) then
+        SnapshotV9.sections(content).flatMap { (binding, sidecar, haskell) =>
+          val build = ReferenceBuild.Release11_1
+          Either.cond(
+            config.layout.reads(build),
+            (build, binding, sidecar, haskell),
+            StorageError.ReferenceBuildMismatch("snapshot", build, config.layout.build)
+          )
+        }
+      else SnapshotV10.sections(content, config.layout)
+
     def writeSnapshot(snapshot: Path, stage: Path): F[Report] =
       for
         fileBytes <- files.readAll(snapshot).compile.to(Chunk).map(_.toArray)
         content <- lift(FileLedgerSnapshots.verified(fileBytes).leftMap(Error.Storage(_)))
-        sections <- lift(SnapshotV9.sections(content).leftMap(Error.Storage(_)))
-        (binding, sidecar, raw) = sections
+        sections <- lift(recorded(content).leftMap(Error.Storage(_)))
+        (build, binding, sidecar, raw) = sections
         _ <- lift(Either.cond(sidecar.gaps.isEmpty, (), Error.Gaps(sidecar.gaps)))
         utxo <- sidecar.chain match
           case SnapshotSidecar.Chain.InByron(_, _) =>
@@ -158,7 +203,7 @@ object LedgerSnapshotExport:
             Error.NameMismatch(FileLedgerSnapshots.nameOf(anchor), snapshot.fileName.toString)
           )
         )
-        haskell <- lift(HaskellLedgerFile.decode(raw).leftMap(Error.State(_)))
+        haskell <- lift(config.layout.decode(raw).leftMap(Error.State(build, _)))
         ext <- lift(haskell.ext.toRight(Error.Byron))
         _ <- lift(
           Either.cond(
@@ -234,7 +279,7 @@ object LedgerSnapshotExport:
           Seq(text.getBytes("UTF-8"))
         )
         _ <- publish(stage, config.out, directory, DirectorySync.native[F])
-      yield Report(anchor, haskell.era, summary.entries, directory)
+      yield Report(anchor, haskell.era, summary.entries, directory, build)
 
     val stage = Resource.make(
       guard(config.out.toString) {

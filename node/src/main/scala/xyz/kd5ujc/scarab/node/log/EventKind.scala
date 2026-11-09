@@ -66,6 +66,14 @@ enum EventKind(val area: Area, val severity: Severity):
   case Started extends EventKind(Area.Node, Severity.Notice)
   case Blst extends EventKind(Area.Node, Severity.Info)
   case PraosSyncUntrusted extends EventKind(Area.Node, Severity.Warning)
+
+  /** The reference build the node mirrors (`--reference-build`, #826), with its pins. */
+  case ReferenceBuild extends EventKind(Area.Node, Severity.Notice)
+
+  /** An unstable reference build runs without `ExperimentalHardForksEnabled`, which it is meant
+    * for.
+    */
+  case UnstableReferenceBuild extends EventKind(Area.Node, Severity.Warning)
   case PlutusCrypto extends EventKind(Area.Node, Severity.Info)
   case Listening extends EventKind(Area.Node, Severity.Notice)
   // the node-to-client socket as the network layer sets it up, the reference's
@@ -211,6 +219,15 @@ enum EventKind(val area: Area, val severity: Severity):
   case VolatileResumed extends EventKind(Area.Storage, Severity.Info)
   case NetworkRecorded extends EventKind(Area.Storage, Severity.Info)
   case SnapshotSkipped extends EventKind(Area.Storage, Severity.Warning)
+
+  /** A skipped snapshot was deleted, as the reference's `DeletedSnapshot`. */
+  case SnapshotDeleted extends EventKind(Area.Storage, Severity.Info)
+
+  /** A skipped snapshot could not be deleted; the restore went on, as the reference's does. */
+  case SnapshotNotDeleted extends EventKind(Area.Storage, Severity.Warning)
+
+  /** A checkpoint no snapshot lists could not be deleted at the start; the start went on. */
+  case CheckpointNotDeleted extends EventKind(Area.Storage, Severity.Warning)
   case SnapshotRestored extends EventKind(Area.Storage, Severity.Info)
   case SnapshotUnbound extends EventKind(Area.Storage, Severity.Warning)
   case SnapshotWritten extends EventKind(Area.Storage, Severity.Info)

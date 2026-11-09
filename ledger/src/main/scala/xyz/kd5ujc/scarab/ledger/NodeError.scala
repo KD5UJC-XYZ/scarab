@@ -13,7 +13,13 @@ import xyz.kd5ujc.scarab.crypto.vrf.{
   PraosLeaderThreshold as Leader,
   PraosVrfCertificate as Vrf
 }
-import xyz.kd5ujc.scarab.protocol.{ChainSync, Mux as WireMux, NetworkError, ProtocolError}
+import xyz.kd5ujc.scarab.protocol.{
+  ChainSync,
+  Mux as WireMux,
+  NetworkError,
+  ProtocolError,
+  ReferenceBuild
+}
 
 /** Closed hierarchy of node failures. Algebras raise the narrowest subtype; because cats-mtl
   * `Raise` is contravariant in its error, one `Raise[F, NodeError]` serves them all.
@@ -512,6 +518,18 @@ enum StorageError extends NodeError:
     */
   case ResyncRequired(what: String, kind: FileKind, found: FormatVersion, loss: FormatLoss)
 
+  /** A ledger snapshot whose Haskell state bytes were written under the reference build `recorded`,
+    * whose layout is not that of the `configured` one. No conversion between builds exists, so the
+    * snapshot is not read, as the reference does not read a snapshot it cannot decode.
+    */
+  case ReferenceBuildMismatch(what: String, recorded: ReferenceBuild, configured: ReferenceBuild)
+
+  /** A ledger snapshot that records a reference build this build does not know (`recorded`, as
+    * written): written by a newer build, most likely. It is not the `configured` build, so it is
+    * treated as [[ReferenceBuildMismatch]] is.
+    */
+  case UnknownReferenceBuild(what: String, recorded: String, configured: ReferenceBuild)
+
   /** A requested block or point is not stored. */
   case Missing(what: String)
 
@@ -567,6 +585,10 @@ enum StorageError extends NodeError:
       s"$w: retired ${k.label} format '${k.identifier(f)}'; use the archived migration build to convert a copy to '${k.identifier(oldest)}' before opening it"
     case ResyncRequired(w, k, f, loss) =>
       s"$w: the ${k.label} format '${k.identifier(f)}' did not keep ${loss.message}, which '${k.identifier(k.current)}' keeps and no migration can recover; sync the chain again from genesis: replay it from the immutable chunks (stop the node, remove <db>/snapshots and <db>/utxo, start it again) or sync a new database"
+    case ReferenceBuildMismatch(w, recorded, configured) =>
+      s"$w was recorded under the reference build ${recorded.describe}, which is not the configured ${configured.describe}; no conversion between builds exists"
+    case UnknownReferenceBuild(w, recorded, configured) =>
+      s"$w was recorded under the reference build '$recorded', which this build does not know; the configured build is ${configured.describe}"
     case Missing(w)    => s"missing $w"
     case OutOfOrder(r) => s"out of order: $r"
     case NetworkMismatch(f, e) =>

@@ -69,6 +69,8 @@ class SnapshotFailureSuite extends FailsOnUncaught:
     def restore(anchor: Option[BlockRef])(using Raise[IO, StorageError]) = IO.pure(true)
     def reset(using Raise[IO, StorageError]) = IO.unit
     def retain(stems: Set[String])(using Raise[IO, StorageError]) = retainBody
+    def trim(stems: Set[String])(using Raise[IO, StorageError]) =
+      IO.pure(Vector.empty[(String, StorageError)])
 
   test(
     "a periodic storage failure keeps its cause, frees the worker and allows the next snapshot"

@@ -108,6 +108,12 @@ enum ConfigProblem:
   case AncillaryVerificationRequired
   case AncillaryKeyRequired
 
+  /** A `--reference-build` value that names no build this build knows. */
+  case ReferenceBuildUnknown(cause: xyz.kd5ujc.scarab.protocol.UnknownReferenceBuild)
+
+  /** A `--reference-build` value that names a build not implemented yet (#826). */
+  case ReferenceBuildNotYet(cause: xyz.kd5ujc.scarab.protocol.ReferenceBuildNotYet)
+
   def message: String = this match
     case ActiveSlotsCoefficient(e)   => e.message
     case GenesisNumber(field, cause) => s"genesis ${field.key}: ${cause.message}"
@@ -149,8 +155,10 @@ enum ConfigProblem:
       s"byron genesis avvmDistr: $value is not base64(url)"
     case AvvmKey(value, AvvmKeyError.Length(n)) =>
       s"byron genesis avvmDistr: $value is $n bytes, a redeem key is 32"
-    case WithUsage(cause, usage) => s"${cause.message}\n$usage"
-    case _                       => toString
+    case ReferenceBuildUnknown(cause) => s"--reference-build: ${cause.message}"
+    case ReferenceBuildNotYet(cause)  => s"--reference-build: ${cause.message}"
+    case WithUsage(cause, usage)      => s"${cause.message}\n$usage"
+    case _                            => toString
 
 /** Why `fromAvvmVK` refuses an AVVM key (`AvvmVKError`,
   * `Cardano/Crypto/Signing/Redeem/VerificationKey.hs:94-98`, cardano-crypto-wrapper 1.7.0.0).

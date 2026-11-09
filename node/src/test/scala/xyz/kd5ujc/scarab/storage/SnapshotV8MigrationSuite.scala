@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.consensus.state.EraLedgerState
 import xyz.kd5ujc.scarab.ledger.{FileKind, FormatLoss, FormatVersion, StorageError}
 import xyz.kd5ujc.scarab.ledger.byron.{AppVersion, SoftwareProposal, UpdateState}
 import xyz.kd5ujc.scarab.node.NodeSetup
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 
 import StorageTestKit.*
 
@@ -125,17 +126,17 @@ class SnapshotV8MigrationSuite extends CatsEffectSuite:
         assertEquals(
           report,
           SnapshotMigration.Report(
-            List(Migrated(FileKind.SnapshotFile, FormatVersion.V7, FormatVersion.V9, 1)),
+            List(Migrated(FileKind.SnapshotFile, FormatVersion.V7, FormatVersion.V10, 1)),
             Nil
           )
         )
         assertEquals(
           after,
-          JFiles.readAllBytes(JPath.of("fixtures/snapshot-v9").resolve(byron)).toVector
+          JFiles.readAllBytes(JPath.of("fixtures/snapshot-v10").resolve(byron)).toVector
         )
         val sidecar = FileLedgerSnapshots
           .verified(after.toArray)
-          .flatMap(SnapshotV9.sidecarOf)
+          .flatMap(SnapshotV10.sidecarOf)
           .fold(e => fail(e.message), identity)
         assertEquals(sidecar, v7._2)
     }
@@ -194,7 +195,9 @@ class SnapshotV8MigrationSuite extends CatsEffectSuite:
       assertEquals(SnapshotV7.fromV5(v5Content), refusal(FormatVersion.V5))
   }
 
-  test("V8 and V9 keep the installer metadata of software proposals and application versions") {
+  test(
+    "V8, V9 and V10 keep the installer metadata of software proposals and application versions"
+  ) {
     val (binding, sidecar, haskell) = v7
     val update = (u: UpdateState) =>
       u.copy(
@@ -204,9 +207,14 @@ class SnapshotV8MigrationSuite extends CatsEffectSuite:
     val changed = withUpdate(sidecar)(update)
     val v8 = SnapshotV8.framed(binding, changed, haskell)
     assertEquals(SnapshotV8.sidecarOf(v8).map(updateOf), Right(updateOf(changed)))
-    val written = SnapshotV9.fromV8(v8).fold(e => fail(e.message), identity)
-    assertEquals(SnapshotV9.sidecarOf(written).map(updateOf), Right(updateOf(changed)))
-    val state = SnapshotV9.decode(env, written).fold(e => fail(e.message), identity).state
+    val v9 = SnapshotV9.fromV8(v8).fold(e => fail(e.message), identity)
+    assertEquals(SnapshotV9.sidecarOf(v9).map(updateOf), Right(updateOf(changed)))
+    val written = SnapshotV10.fromV9(v9).fold(e => fail(e.message), identity)
+    assertEquals(SnapshotV10.sidecarOf(written).map(updateOf), Right(updateOf(changed)))
+    val state = SnapshotV10
+      .decode(env, ReferenceLayout.Release11_1, written)
+      .fold(e => fail(e.message), identity)
+      .state
     state.ext.ledgerState.state match
       case EraLedgerState.ByronCurrent(b) =>
         assertEquals(b.ledger.map(_.update), Some(updateOf(changed)))

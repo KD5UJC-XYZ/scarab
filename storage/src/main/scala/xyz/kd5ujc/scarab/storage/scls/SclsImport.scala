@@ -38,12 +38,17 @@ import xyz.kd5ujc.scarab.storage.{
   RocksUtxoStore,
   SnapshotCheck,
   SnapshotSidecar,
-  SnapshotV9,
+  SnapshotV10,
   StateBacking,
   StateSnapshot,
   UtxoStore
 }
-import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, StateNotWritable}
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.storage.haskell.state.{
+  HaskellLedgerFile,
+  ReferenceLayout,
+  StateNotWritable
+}
 
 /** Import into resource-owned staging against an exact complete base. This component has no
   * publication capability. All metadata is folded directly into the typed immutable builder and
@@ -250,8 +255,10 @@ object SclsImport:
               )
             )
           case _ => Error.UnsupportedBase.raise[F, SnapshotSidecar]
-        content = SnapshotV9.framed(binding, sidecar, haskell)
-        readback <- SnapshotV9.format[F](SnapshotCheck.Full).decode(content)
+        content = SnapshotV10.framed(ReferenceBuild.Release11_1, binding, sidecar, haskell)
+        readback <- SnapshotV10
+          .format[F](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+          .decode(content)
         back <- lift(readback.leftMap(Error.Storage(_)))
         backFile <- lift(HaskellLedgerFile.of(back.state.ext).leftMap(Error.Telescope(_)))
         backBytes <- lift(HaskellLedgerFile.encode(backFile).leftMap(Error.NotWritable(_)))

@@ -1292,12 +1292,6 @@
   {
    "kind": "unregistered-pin",
    "path": "docs/design/peer-selection/g1-3-as-built.md",
-   "key": "cardano-ledger@048b78d",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/design/peer-selection/g1-3-as-built.md",
    "key": "ouroboros-consensus 4.2.1.0",
    "count": 1
   },

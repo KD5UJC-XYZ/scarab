@@ -160,12 +160,13 @@ scala code … I love the use of type parameters when I can use them"*.
   names them as its jump gate.
 - A persisted format must not change without a version bump, a migration and a test that reads the
   previous version ([ADR 0006](docs/adr/0006-versioned-formats-migrate-on-open.md)). The snapshot
-  fingerprint golden in `node/src/test/.../storage/CodecSuite.scala` guards this.
+  goldens in `node/src/test/.../storage/CodecSuite.scala` guard this: the schema fingerprints of the
+  sidecar and the checkpoint binding, and the bytes of the V10 header's recorded reference build.
 - Record evidence where the [definition of done](docs/process.md#definition-of-done) says, and track
   every gap you leave as an issue or roadmap item; a P2 gap goes into its parent issue's checklist
   (`python3 scripts/file_issue.py --parent N`, [process](docs/process.md#lifecycle-of-an-item)).
 - Maintained native snapshot fixtures and ordinary snapshot test builders use the current native
-  format (V9, `fixtures/snapshot-v9`; the V5, V7 and V8 files are the previous-version inputs), and
+  format (V10, `fixtures/snapshot-v10`; the V5, V7, V8 and V9 files are the previous-version inputs), and
   assertions read typed native state directly instead of completing flat-state adapters. Keep pinned conversion provenance and preserve original private archives outside the
   checkout. A future persisted-format change still needs its previous-version read test and
   migration; generic toy-format migration framework tests remain independent of native fixtures.

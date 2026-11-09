@@ -21,12 +21,15 @@ reproduction proves that writer's format; it does not establish an unknown captu
 Keep small public fixtures in Git. Large captures, checkpoint directories and logs stay outside the
 checkout with a hashed manifest and reproducible provenance.
 
-The snapshot fingerprint golden in `CodecSuite` must change together with the version, migration and
-previous-version regression. Regenerating a fingerprint to make a test pass is not a migration.
-Native snapshots are V9: the V5 body (Haskell ledger CBOR plus a typed binary sidecar) behind a
+The snapshot goldens in `CodecSuite` move only together with the version, migration and
+previous-version regression: the schema fingerprints of the sidecar and the checkpoint binding guard
+the typed sections, and the header golden the V10 header's recorded reference build, which sits
+outside both schemas. Regenerating a golden to make a test pass is not a migration.
+Native snapshots are V10: the V5 body (Haskell ledger CBOR plus a typed binary sidecar) behind a
 checkpoint binding, with framing and checksum, as V7 has it, with a sidecar schema that keeps the
-Byron update state's installer metadata (#726) and names the Dijkstra era (#54); stored values
-remain CBOR. The binding has its own fingerprint golden in `CodecSuite`, next to the sidecar's and
+Byron update state's installer metadata (#726) and names the Dijkstra era (#54), and in front of the
+binding the reference build whose layout the Haskell bytes are in (#826); stored values remain
+CBOR. The binding has its own fingerprint golden in `CodecSuite`, next to the sidecar's and
 the frozen V5/V7 and V8 sidecars'. MemPack is an import/export format, not a replacement stored value.
 
 ## Convert typed values without inventing state
@@ -39,13 +42,15 @@ and all semantic state the old file actually held. Hashes and signatures continu
 transaction/block bytes; re-encoding diagnostics or a container format does not replace those bytes.
 
 For ledger snapshots, `FileLedgerSnapshots.verified` checks the file checksum before a payload is
-used. `SnapshotV9.format[F](SnapshotCheck.Full).decode(content)` reads current content, and
-`SnapshotV9.sidecarOf` and `SnapshotV9.bindingOf` expose carried metadata. `SnapshotV5`,
-`SnapshotV7` and `SnapshotV8` are the previous readers: the body parser is shared and takes the
+used. `SnapshotV10.format[F](SnapshotCheck.Full, layout).decode(content)` reads current content in
+the layout of the configured reference build (`ReferenceLayout`), and `SnapshotV10.recordedOf`,
+`SnapshotV10.sidecarOf` and `SnapshotV10.bindingOf` expose carried metadata. `SnapshotV5`,
+`SnapshotV7`, `SnapshotV8` and `SnapshotV9` are the previous readers: the body parser is shared and takes the
 sidecar schema (`SnapshotV5.Schema`), V5 and V7 sidecars being read in the frozen
 `SnapshotSidecarV7` schema and V8 sidecars in the frozen `SnapshotSidecarV8` one, both with the
-frozen eras of `FrozenEra` and the frozen parameters of `FrozenProtocolParams`; `SnapshotV7.fromV5`, `SnapshotV8.fromV7` and `SnapshotV9.fromV8` are the
-migration steps. The `Full` choice controls encode-time read-back
+frozen eras of `FrozenEra` and the frozen parameters of `FrozenProtocolParams`, and V9 and V10
+sidecars in the current one; `SnapshotV7.fromV5`, `SnapshotV8.fromV7`, `SnapshotV9.fromV8` and
+`SnapshotV10.fromV9` are the migration steps. The `Full` choice controls encode-time read-back
 checking; decoding itself validates the current file in either mode.
 A converter must carry the source `observed` eras and `gaps` exactly. Missing non-myopic data must
 remain missing; the caller's newer environment is not evidence that the old file observed an era.
@@ -96,8 +101,13 @@ file converts. `Migrate` then has no work for V9.
 Global V9 also changes the network identity (#824): it adds the Dijkstra genesis binding, and
 `NetworkIdentityFile.migration` steps a V6 file to V9 with the binding of the configured identity once
 its other fields are found equal to it, keeping its provenance; without a configured identity the step
-is refused (`IdentityNeedsDijkstraBinding`). Unchanged kinds retain their own current versions. A future
-snapshot change appends global `V10`. Retire the V5
+is refused (`IdentityNeedsDijkstraBinding`). Global V10 changes only the snapshot's header (#826):
+`step(file, V9, V10)` records the `11.1` reference build after the magic and keeps the binding, the
+sidecar and the Haskell bytes byte for byte; every V9 file converts, its Haskell bytes being in the
+11.1 layout (every V9 writer encodes with the 11.1 codec or keeps bytes that codec decoded
+completely). `Migrate` then has no work for V10. Unchanged kinds retain their own current versions.
+A future snapshot change appends global `V11`, the magic `SCRBSNPB` (the last character of a
+snapshot magic is its format number as one base-36 digit). Retire the V5
 reader only after the inventory and conversion conditions below hold, then advance the snapshot
 kind's `readableFrom` to V7 (and retire the V7 and V8 readers the same way). Use caller-scoped `Raise[F, StorageError]` for every migration operation;
 do not capture an earlier caller's error interpreter in a long-lived migration object.
@@ -161,6 +171,14 @@ or none), and both frozen schemas take it too.
 `fixtures/snapshot-v9` is the registered conversion of `fixtures/snapshot-v8`
 (`SnapshotV9FixtureMain`, re-derived by `SnapshotGoldenSuite`), and `SnapshotV9MigrationSuite` reads
 the committed V8 files, migrates them and shows that the frozen schemas refuse a Dijkstra era.
+
+The V9 → V10 change (#826) added no field to a fingerprinted schema: the build is a length byte and
+the `--reference-build` name, ASCII, in the header before the binding, so the sidecar and binding
+goldens did not move and `CodecSuite` pins the header bytes instead. `fixtures/snapshot-v10` is the
+registered conversion of `fixtures/snapshot-v9` (`SnapshotV10FixtureMain`, re-derived by
+`SnapshotGoldenSuite`, which also checks the sections byte for byte), and `SnapshotV10MigrationSuite`
+reads the committed V9 files, migrates them and shows that a file recorded under a build of another
+layout is not decoded. `SnapshotV9FixtureMain` now runs only the V8 → V9 `step`.
 
 A RocksDB layout change goes through the same steps plus the checkpoint rules of the next section.
 The change is level 3 ([CONTRIBUTING](../CONTRIBUTING.md#gates-and-ceremony-by-level-of-change));

@@ -197,6 +197,9 @@
 {"event":"immutableOpened","at":"2026-10-16T12:00:00Z","tip":null,"blocks":0,"chunks":0,"truncatedEntries":0,"truncatedBytes":0}
 {"event":"formatMigrated","at":"2026-10-16T12:00:00Z","kind":"SnapshotFile","from":"V3","to":"V4","count":3}
 {"event":"snapshotSkipped","at":"2026-10-16T12:00:00Z","file":"4200-abab","reason":"corrupt snapshot: UnexpectedEnd(0)"}
+{"event":"snapshotDeleted","at":"2026-10-16T12:00:00Z","file":"4200-abab"}
+{"event":"snapshotNotDeleted","at":"2026-10-16T12:00:00Z","file":"4200-abab","reason":"io 4200-abab: java.nio.file.AccessDeniedException: 4200-abab"}
+{"event":"checkpointNotDeleted","at":"2026-10-16T12:00:00Z","checkpoint":"4200-abab","reason":"io 4200-abab: java.nio.file.AccessDeniedException: 4200-abab"}
 {"event":"snapshotRestored","at":"2026-10-16T12:00:00Z","file":"4200-abab","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"snapshotRestored","at":"2026-10-16T12:00:00Z","file":"genesis","anchor":null}
 {"event":"snapshotUnbound","at":"2026-10-16T12:00:00Z","file":"4200-abab","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
@@ -218,3 +221,6 @@
 {"event":"verificationCache","at":"2026-10-16T12:00:00Z","summary":"witness=1/2 opCert=3/4 vrf=5/6"}
 {"event":"slf4j","at":"2026-10-16T12:00:00Z","logger":"org.http4s.ember","level":"Warning","message":"connection reset","thrown":null}
 {"event":"slf4j","at":"2026-10-16T12:00:00Z","logger":"fs2.io","level":"Error","message":"failed","thrown":"java.io.IOException: x"}
+{"event":"referenceBuild","at":"2026-10-16T12:00:00Z","build":"11.1","stability":"stable","node":"11.1.3","ledger":"f649f9751074d2ab3de033fc3912f29c9862c1f5","ledgerBinary":"048b78d2807ce9644dbe483c605625824f6be88f","consensus":"82ecba329d7d054340bf707d44fe6e9ac27cec40"}
+{"event":"referenceBuild","at":"2026-10-16T12:00:00Z","build":"leios-b004fe0c","stability":"unstable","node":"b004fe0c50913dcdaa827a98e68a43d0ccce152a","ledger":"9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c","ledgerBinary":"9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c","consensus":"2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b"}
+{"event":"unstableReferenceBuild","at":"2026-10-16T12:00:00Z","build":"leios-b004fe0c","experimentalHardForksEnabled":false}

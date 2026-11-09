@@ -152,7 +152,7 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
     }
   }
 
-  test("every truncation point of the newest snapshot is detected, never raised") {
+  test("every truncation point of the newest snapshot is detected, never raised, and deleted") {
     tempDir.use { dir =>
       ok {
         for
@@ -162,9 +162,19 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
           full <- files.readAll(dir / name).compile.to(Array)
           cuts = (0 until full.length by math.max(1, full.length / 40)).toList
           _ <- cuts.traverse_ { cut =>
-            corrupt(dir / name, _ => full.take(cut)) *> s.restore(anyAnchor).map { r =>
-              assertEquals(r.snapshot.map(_._2), Some(snap(1)), s"cut at $cut")
-            }
+            // the restore deletes the damaged temporary snapshot, as the reference does
+            Stream.emits(full.take(cut).toSeq).through(files.writeAll(dir / name)).compile.drain *>
+              s.restore(anyAnchor).flatMap { r =>
+                files.exists(dir / name).map { present =>
+                  assertEquals(r.snapshot.map(_._2), Some(snap(1)), s"cut at $cut")
+                  assertEquals(
+                    r.skipped.map(_.unused),
+                    Vector(LedgerSnapshots.Unused.Deleted),
+                    s"cut at $cut"
+                  )
+                  assert(!present, s"cut at $cut: the damaged snapshot is still there")
+                }
+              }
           }
         yield ()
       }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import xyz.kd5ujc.scarab.node.WorkerTesting
 import scala.annotation.unused
 import cats.effect.{Deferred, IO, Ref, Resource}
@@ -63,7 +64,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
   private val geometry = setup.geometry
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-  private given SnapshotFormat[IO, MirrorState] = SnapshotV9.format[IO](SnapshotCheck.Full)
+  private given SnapshotFormat[IO, MirrorState] =
+    SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
   private val k = geometry.k.toInt
 
   private val raws: Vector[Bytes] =
@@ -460,7 +462,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       }
     }
 
-  test("a snapshot whose UTxO checkpoint is missing is skipped, the older one is used") {
+  test("a snapshot whose UTxO checkpoint is missing stops the start, and nothing is deleted") {
+    // the reference's missing tables file raises from readIncremental (82ecba32 Util/CBOR.hs:206),
+    // outside the failures tryNewestFirst falls back on: a briefly absent mount never deletes state
     tempDir.use { dir =>
       for
         log1 <- events(dir)
@@ -474,17 +478,144 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           )
         )
         log2 <- events(dir)
-        again <- runWith(dir, 650, 120, log2, Some("rocksdb"))
+        again <- runWith(dir, 650, 120, log2, Some("rocksdb")).attempt
+        after <- snapshotsIn(dir)
         e2 <- log2.get
-        _ <- IO(
-          assertEquals(
-            e2.collect { case e: StorageEvent.SnapshotSkipped => e.name }.toList,
-            List(snaps.head.fileName.toString)
+        _ <- IO {
+          assert(
+            again.left.exists(_.getMessage.contains("checkpoint directory does not exist")),
+            again.toString
           )
-        )
-        _ <- IO(sameLedger(again._2.state, states(650)))
-        _ <- IO(assertEquals(again._3, states(650).utxo.toMap))
+          assertEquals(after, snaps)
+          assert(!e2.exists(_.isInstanceOf[StorageEvent.SnapshotDeleted]))
+        }
       yield ()
+    }
+  }
+
+  test("a migrated snapshot whose checkpoint mixes key layouts is deleted at its restore") {
+    // its Legacy binding admits it by its directory; the keys refuse at the restore, which the
+    // fallback treats as tables that do not decode (82ecba32 API.hs:625-631)
+    tempDir.use { dir =>
+      for
+        left <- checkpointDatabase(dir, CheckpointLayout.BeforeK6, 600, 60, 4, 1, previous = true)
+        _ <- IO(assert(left.size >= 2, s"snapshots left: ${left.size}"))
+        newest = FileLedgerSnapshots.nameOf(left.head)
+        _ <- IO {
+          org.rocksdb.RocksDB.loadLibrary()
+          val options = new org.rocksdb.Options()
+          val db = org.rocksdb.RocksDB.open(options, checkpointOf(dir, newest).toNioPath.toString)
+          try db.put(Array.fill[Byte](34)(7), Array[Byte](1))
+          finally
+            db.close()
+            options.close()
+        }
+        log <- events(dir)
+        _ <- runWith(dir, 731, 120, log, Some("rocksdb"), 4, migrate = true)
+        seen <- log.get
+        snapshotLeft <- IO.blocking(JFiles.exists((dir / "snapshots" / newest).toNioPath))
+        checkpointLeft <- IO.blocking(JFiles.exists(checkpointOf(dir, newest).toNioPath))
+      yield
+        val skipped = seen.collect { case StorageEvent.SnapshotSkipped(name, e) => name -> e }
+        assertEquals(skipped.map(_._1).toList, List(newest))
+        skipped.headOption.map(_._2) match
+          case Some(StorageError.UtxoCheckpoint(_, CheckpointProblem.MixedKeyLayouts)) => ()
+          case other => fail(s"expected mixed key layouts, got $other")
+        assertEquals(
+          seen.collect { case StorageEvent.SnapshotDeleted(name) => name }.toList,
+          List(newest)
+        )
+        assertEquals(
+          seen.collect { case StorageEvent.SnapshotRestored(_, a) => a }.toList,
+          List(left.lift(1))
+        )
+        assert(!snapshotLeft && !checkpointLeft)
+    }
+  }
+
+  /** `inside` run while the database in `dir` is open over RocksDB, before any block is followed.
+    */
+  private def whileOpen[A](dir: Path, log: Ref[IO, Vector[StorageEvent]])(inside: IO[A]): IO[A] =
+    Handle
+      .allow[NodeError] {
+        RocksUtxoStore
+          .resource[IO](dir / "utxo" / "live", 8L * 1024 * 1024)
+          .use { store =>
+            ChainStorage
+              .open[IO, MirrorState](
+                dir,
+                config(120, 4),
+                MirrorRules[IO](
+                  setup.praos,
+                  setup.globals,
+                  setup.byronRules,
+                  setup.handOver,
+                  setup.byronHistory,
+                  utxoStore = Some(store)
+                ),
+                setup.mirrorStart,
+                storageEvents(log),
+                new UtxoBacking[IO, MirrorState](store, dir / "utxo" / "checkpoints"),
+                _ => IO.unit
+              )
+              .use(_ => inside)
+          }
+          .map(_.asRight[NodeError])
+      }
+      .rescue(e => IO.pure(e.asLeft))
+      .flatMap(_.fold(e => IO.raiseError(new AssertionError(e.message)), IO.pure))
+
+  /** What a start stopped between deleting a snapshot and trimming its checkpoint leaves. */
+  private def orphanOf(dir: Path): Path =
+    dir / "utxo" / "checkpoints" / "snapshot-00000000000000000001-1"
+
+  test("a checkpoint no snapshot lists is removed when the database opens") {
+    tempDir.use { dir =>
+      val orphan = orphanOf(dir)
+      for
+        log1 <- events(dir)
+        _ <- runWith(dir, 600, 60, log1, Some("rocksdb"))
+        _ <- IO.blocking(JFiles.createDirectories(orphan.toNioPath))
+        log2 <- events(dir)
+        // before any block is followed or any snapshot written
+        left <- whileOpen(dir, log2)(IO.blocking(JFiles.exists(orphan.toNioPath)))
+      yield assert(!left, s"$orphan is still there once the database is open")
+    }
+  }
+
+  test("a checkpoint that cannot be deleted at the start is reported and the start goes on") {
+    // the reference's deletion of a temporary snapshot directory, tables included, is best effort
+    // (82ecba32 Snapshots.hs:316-330)
+    tempDir.use { dir =>
+      val orphan = orphanOf(dir)
+      val locked = java.nio.file.attribute.PosixFilePermissions.fromString("r-xr-xr-x")
+      val open = java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x")
+      for
+        log1 <- events(dir)
+        _ <- runWith(dir, 600, 60, log1, Some("rocksdb"))
+        snaps <- snapshotsIn(dir)
+        _ <- IO.blocking {
+          JFiles.createDirectories(orphan.toNioPath)
+          JFiles.write((orphan / "CURRENT").toNioPath, Array[Byte](1))
+          JFiles.setPosixFilePermissions(orphan.toNioPath, locked)
+        }
+        log2 <- events(dir)
+        restoredWhileOpen <- whileOpen(dir, log2)(
+          log2.get.map(_.collect { case StorageEvent.SnapshotRestored(name, _) => name })
+        ).guarantee(IO.blocking(JFiles.setPosixFilePermissions(orphan.toNioPath, open)).void)
+        seen <- log2.get
+        left <- IO.blocking(JFiles.exists(orphan.toNioPath))
+      yield
+        assertEquals(restoredWhileOpen.toList, List(snaps.head.fileName.toString))
+        assertEquals(
+          seen.collect { case StorageEvent.CheckpointNotDeleted(name, _) => name }.toList,
+          List(orphan.fileName.toString)
+        )
+        assert(seen.collect { case StorageEvent.CheckpointNotDeleted(_, e) => e }.forall {
+          case _: StorageError.Io => true
+          case _                  => false
+        })
+        assert(left)
     }
   }
 
@@ -1071,9 +1202,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 stream.iterator().asScala.exists { file =>
                   JFiles.isRegularFile(file) &&
                   new String(JFiles.readAllBytes(file).take(8), StandardCharsets.ISO_8859_1) ==
-                    "SCRBSNP9"
+                    "SCRBSNPA"
                 },
-                "expected a current V9 snapshot before the immutable-header refusal"
+                "expected a current V10 snapshot before the immutable-header refusal"
               )
             finally stream.close()
           }
@@ -1189,8 +1320,10 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             IO(LegacyUtxoCheckpoint.rewrite(checkpointOf(dir, n).toNioPath))
           )
           _ <- IO.whenA(previous) {
-            val (_, sidecar, haskell) =
-              SnapshotV9.sections(content).fold(e => fail(e.message), identity)
+            val (_, _, sidecar, haskell) =
+              SnapshotV10
+                .sections(content, ReferenceLayout.Release11_1)
+                .fold(e => fail(e.message), identity)
             IO.blocking(
               JFiles.write(
                 file.toNioPath,
@@ -1236,7 +1369,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           case StorageEvent.FormatMigrated(m) if m.kind == FileKind.SnapshotFile => m
         }.toList,
         if previous then
-          List(Migrated(FileKind.SnapshotFile, FormatVersion.V5, FormatVersion.V9, left.size))
+          List(Migrated(FileKind.SnapshotFile, FormatVersion.V5, FormatVersion.V10, left.size))
         else List.empty[Migrated],
         s"$label: only V5 snapshot files are rewritten, once"
       )
@@ -1293,7 +1426,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("a V7 snapshot whose checkpoint is not the one it recorded is skipped for an older one") {
+  test(
+    "a snapshot whose checkpoint is not the one it recorded is deleted with it, for an older one"
+  ) {
     tempDir.use { dir =>
       for
         left <- checkpointDatabase(dir, CheckpointLayout.Current, 600, 60, 4, 1)
@@ -1304,7 +1439,15 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         log <- events(dir)
         _ <- runWith(dir, 731, 120, log, Some("rocksdb"), 4, migrate = true)
         seen <- log.get
+        checkpointLeft <- IO.blocking(JFiles.exists(checkpointOf(dir, newest).toNioPath))
       yield
+        // the reference deletes a temporary snapshot it cannot use (82ecba32 API.hs:628-631), and
+        // the trim path takes its checkpoint with it
+        assertEquals(
+          seen.collect { case StorageEvent.SnapshotDeleted(name) => name }.toList,
+          List(newest)
+        )
+        assert(!checkpointLeft, s"the checkpoint of $newest is still there")
         val skipped = seen.collect { case StorageEvent.SnapshotSkipped(name, e) => name -> e }
         assertEquals(skipped.map(_._1).toList, List(newest))
         skipped.headOption.map(_._2) match

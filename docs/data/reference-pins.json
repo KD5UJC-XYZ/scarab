@@ -10,7 +10,18 @@
    "dependents": [
     "scripts/prepare_reference_image.py",
     "scripts/oracle_compare.py",
-    "docs/conformance-source-review.md"
+    "docs/conformance-source-review.md",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
+   ]
+  },
+  {
+   "name": "cardano-node",
+   "repository": "IntersectMBO/cardano-node",
+   "version": "10.7.0",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-node/releases/tag/{version}",
+   "role": "Release notes cited by the reference-build naming rule: a full chain replay required inside the 10.x line (TablesCodecVersion1).",
+   "dependents": [
+    "docs/playbooks/add-a-reference-build.md"
    ]
   },
   {
@@ -24,7 +35,8 @@
     "fixtures/dijkstra-devnet/README.md",
     "scripts/devnet/dijkstra.py",
     "scripts/oracle/leios-testnet/cabal.project",
-    "scripts/oracle/leios-testnet/README.md"
+    "scripts/oracle/leios-testnet/README.md",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
    ]
   },
   {
@@ -35,7 +47,19 @@
    "role": "Conway governance/certificate conformance corpus and wallet-query encoders.",
    "dependents": [
     "node/src/test/resources/upstream/conway-govcert/manifest.json",
-    "fixtures/reference/wallet-queries/manifest.json"
+    "fixtures/reference/wallet-queries/manifest.json",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
+   ]
+  },
+  {
+   "name": "cardano-ledger",
+   "repository": "IntersectMBO/cardano-ledger",
+   "revision": "048b78d2807ce9644dbe483c605625824f6be88f",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-ledger/commit/{revision}",
+   "role": "cardano-ledger-binary of cardano-node 11.1.3 (released as 1.9.1.0; the release notes name it 1.9.0.1): IPv4 addresses in network order. Part of the 11.1 reference build's pins.",
+   "dependents": [
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala",
+    "docs/playbooks/add-a-reference-build.md"
    ]
   },
   {
@@ -70,7 +94,8 @@
     "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LeiosBlock.scala",
     "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos2.scala",
     "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/PraosLeaderThreshold.scala",
-    "scripts/oracle/leios-praos2/README.md"
+    "scripts/oracle/leios-praos2/README.md",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
    ]
   },
   {
@@ -142,7 +167,18 @@
    "urlPattern": "https://github.com/IntersectMBO/ouroboros-consensus/commit/{revision}",
    "role": "Genesis-density test sources the native genesis fixtures mirror.",
    "dependents": [
-    "fixtures/reference/genesis-density/manifest.json"
+    "fixtures/reference/genesis-density/manifest.json",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
+   ]
+  },
+  {
+   "name": "ouroboros-consensus",
+   "repository": "IntersectMBO/ouroboros-consensus",
+   "version": "4.1.0.0",
+   "urlPattern": "https://github.com/IntersectMBO/ouroboros-consensus/releases/tag/release-ouroboros-consensus-{version}",
+   "role": "The consensus of cardano-node 11.1.0, cited for the GetGenesisConfig difference inside the 11.1 reference build.",
+   "dependents": [
+    "docs/playbooks/add-a-reference-build.md"
    ]
   },
   {
@@ -178,7 +214,8 @@
     "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LeiosBlock.scala",
     "scripts/oracle/leios-testnet/README.md",
     "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos2.scala",
-    "scripts/oracle/leios-praos2/README.md"
+    "scripts/oracle/leios-praos2/README.md",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
    ]
   },
   {

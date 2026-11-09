@@ -1,7 +1,7 @@
 # Ledger snapshots in the Haskell node's directory layout (Step D)
 
 **Status**: Accepted (owner approved D1-D9, 2026-10-18). Stage S1 (the MemPack `TxOut` codec, [#143](https://github.com/KD5UJC-XYZ/scarab/issues/143))
-is built and measured (section 8: the codec is checked against the 4,526,058 outputs of a real preprod table and 1,731,810 of this node's own stored outputs, and is not adopted as the stored value); S2 is implemented and reference-checked (section 9); S3 import is implemented (section 10); S4 export is implemented and reference-byte-checked (section 11); S5 is reference-checked on six private epoch boundaries, preprod epoch 320 and the captured point reported by an existing synced preprod node (section 12). Tracked in
+is built and measured (section 8: the codec is checked against the 4,526,058 outputs of a real preprod table and 1,731,810 of this node's own stored outputs, and is not adopted as the stored value); S2 is implemented and reference-checked (section 9); S3 import is implemented (section 10); S4 export is implemented and reference-byte-checked (section 11); S5 is reference-checked on six private epoch boundaries, preprod epoch 320 and the captured point reported by an existing synced preprod node (section 12); the reference-build setting and snapshot V10 of #826 step a are in section 13. Tracked in
 [#140](https://github.com/KD5UJC-XYZ/scarab/issues/140) (roadmap E2, D16); the first consumer is the Mithril import
 ([#27](https://github.com/KD5UJC-XYZ/scarab/issues/27), E1), then mainnet from a Mithril snapshot
 ([#69](https://github.com/KD5UJC-XYZ/scarab/issues/69), D9). Part of "Step D" of
@@ -549,3 +549,101 @@ post-replay endpoint table/CRC export claim; the gap-free imported baseline reta
 byte-identical preprod table proof and successful Haskell load/replay. Gap tracking remains
 J3.1/[#129](https://github.com/KD5UJC-XYZ/scarab/issues/129), and the private pending-versus-eager
 reward representation remains J3.5/M11. Those limits are neither masked nor relaxed by #140.
+
+## 13. The reference build and snapshot V10 as built (#826 step a)
+
+Owner decisions of 2026-11-08 ([#54](https://github.com/KD5UJC-XYZ/scarab/issues/54), refining OD-6,
+and [#826](https://github.com/KD5UJC-XYZ/scarab/issues/826)): import and export only strip or add
+Scarab's envelope around the reference's bytes, and Scarab stores no ledger-state format of its own;
+the layout is chosen by the reference build, never by an era. Step a adds the setting and the
+envelope with the 11.1 codec only; nothing an existing node or file does changes.
+
+**The setting.** `ReferenceBuild` (`protocol`) is a closed enum of the builds of `cardano-node`
+Scarab mirrors, each with its stability and its pins, which `docs/data/reference-pins.json`
+registers with the enum as a dependent: `11.1`, the stable 11.1 release line behaving as its pinned
+release 11.1.3 (cardano-ledger f649f975, cardano-ledger-binary at 048b78d2, ouroboros-consensus
+82ecba32), and `leios-b004fe0c`, the unstable public Leios testnet build (cardano-node b004fe0c,
+cardano-ledger 9df9f98c, ouroboros-consensus 2416493b). Parsing the flag string is total, with
+`UnknownReferenceBuild` for any other text. `--reference-build` is on `follow`,
+`import-ledger-snapshot` and `export-ledger-snapshot`, `11.1` without it; the help text and
+[flags.md](../running/flags.md) say that the value has to be the build the network runs. A build
+selects a layout (`StateLayout`, `storage/.../haskell/state/ReferenceLayout.scala`); several builds
+may share one. A layout's codec (`ReferenceLayout`) is the only way to a snapshot format, an import
+or an export, and `ReferenceLayout.of` refuses a layout without one: in step a the Leios build is
+refused at start with `ConfigProblem.ReferenceBuildNotYet(ReferenceBuildNotYet.StateLayout(...))`,
+after `follow` has logged `referenceBuild` with the pins and, for an unstable build without
+`ExperimentalHardForksEnabled`, `unstableReferenceBuild`. The naming rule and every place a new
+build touches are in [the playbook](../playbooks/add-a-reference-build.md).
+
+**Snapshot V10.** `SnapshotV10` (`SCRBSNPA`) is `SnapshotV9`'s layout with
+`build length u8 | build name` between the magic and the binding. The build goes in the header, not
+the binding: the binding is what admits the UTxO checkpoint (`CheckpointBinding`, a schema of its own
+behind a fingerprint that the V7 to V10 readers share), whereas the build is a property of the
+Haskell bytes and must be read first, because it decides their codec. Recording the flag string
+rather than a numeric tag lets a file say what wrote it to a build that does not know the name. The
+binding, the sidecar and the Haskell section are V9's byte for byte, and so are the sidecar and
+binding fingerprints; `CodecSuite` pins the header bytes. The magic's last character is the format
+number as one base-36 digit, so the magic keeps eight bytes and its family and a V9 build reads a V10
+file as an unknown version.
+
+**V9 migrates as 11.1.** `SnapshotV10.fromV9` records `11.1` and keeps everything else. A V9 file
+can hold only 11.1-layout bytes: the node writes them with the 11.1 codec (`SnapshotV5.parts`), the
+imports keep only bytes that codec decoded completely (`Codec.decodeBytes` refuses trailing bytes),
+and that codec refuses a Dijkstra telescope, era state or tip (`DijkstraNotYet.LedgerState`, in
+`Envelope.telescope`, `ConsensusCodecs` and `LedgerFileCodecs.annTip`) and the Leios build's three-part `ExtLedgerState`
+(`[1, [ledger, header, perasState]]`, ouroboros-consensus 2416493b `Ledger/Extended.hs:420-442`)
+by its arity, as the reference's 11.1 decoder does (`decodeListLenOf 2`, 82ecba32
+`Ledger/Extended.hs:268-280`). Checked against the pinned sources; migrated V9 files written by
+earlier builds hold bytes of those builds' codecs, which were all of the 11.1 line (no Leios codec
+existed before #826): inferred from the history, not re-verified per file.
+
+**A snapshot recorded under another build.** No conversion between builds exists or is planned.
+`SnapshotV10.decode` refuses a file whose recorded build's layout is not the configured one
+(`StorageError.ReferenceBuildMismatch`), or whose recorded name is unknown
+(`StorageError.UnknownReferenceBuild`), before its Haskell bytes are read, and the restore treats it
+as the reference treats a snapshot it cannot decode (the owner's decision on #826). The reference's
+`tryNewestFirst` (82ecba32 `Storage/LedgerDB/API.hs:599-646`) deletes a snapshot ahead of the
+immutable tip if it is temporary and tries the next older one (`:600-604`); keeps a snapshot
+without its metadata file, of another backend or of the legacy layout, traces `InvalidSnapshot`
+and tries the next older one (`:607-623`); deletes a snapshot that fails for any other reason, a
+decoding failure among them, if it is temporary, traces `InvalidSnapshot` and tries the next older
+one (`:625-631`); and replays from genesis when none is left (`:582-598`). A snapshot is temporary
+when its name has no suffix (`diskSnapshotIsTemporary`, `Storage/LedgerDB/Snapshots.hs:288-297`);
+every native snapshot is `snapshot-<slot>-<blockNo>.bin`, whether the node, an import or an SCLS
+import wrote it, so every one is temporary. `FileLedgerSnapshots.restore` and
+`LedgerSnapshots.Fallback.of` mirror it case by case. What the reference returns as a failure goes
+through the fallback: a snapshot whose anchor is not in the immutable store (the too-recent one),
+whose checksum, framing, sidecar or state does not decode, whose recorded build is of another
+layout or unknown, or whose checkpoint is not the one recorded or holds keys that do not decode
+(found when the checkpoint is restored into the store, inside the fallback) is deleted,
+`snapshotDeleted` logged after `snapshotSkipped`, and the next older one tried; a checkpoint of
+another key layout or none (the reference's backend mismatch) is kept. Deletion is best effort, as
+`defaultDeleteSnapshotIfTemporary` catches its failures (`Snapshots.hs:320-330`): one that fails is
+logged (`snapshotNotDeleted`) and the fallback goes on. What the reference raises stops the start
+with a typed error and deletes nothing: a file that cannot be read (`Io`), an absent checkpoint
+(the reference's missing tables file, which `readIncremental` raises, `Util/CBOR.hs:206`), a
+decoder defect. Where the line falls: the snapshot's format version is Scarab's envelope, which ADR
+0006 governs, so an unknown or retired version, or a previous file whose state cannot be converted,
+stops the start, and a binding or sidecar of another schema (`VersionMismatch`) is kept. The
+migration of previous files takes the same fallback for what fails on a file's own content: a V9
+file whose checksum or sidecar fails is deleted, and one of another sidecar schema is left
+unconverted, which the restore then keeps and skips. The checkpoints no snapshot lists, those of
+the snapshots just deleted and any a stopped earlier start left behind, are deleted when the
+database opens (`StateBacking.trim`), each best effort as the reference's deletion of a snapshot's
+tables is: one that cannot be deleted is logged (`checkpointNotDeleted`) and the start goes on.
+Deletion during a periodic write keeps its own failure handling. Snapshot file names do not change, and the V9 to V10
+step copies everything after the magic as it was. In step a a snapshot of another build is
+reachable only in tests. `SnapshotFallbackSuite` and `ChainStorageSuite` have a test per case.
+
+**Import and export.** Import decodes the `state` file with the codec of the build named by
+`--reference-build`, the build that wrote the input database; input that does not decode completely
+is `LedgerSnapshotImport.Error.State(build, cause)`, and the bytes go into the snapshot unchanged
+with the build recorded. Export writes the recorded bytes unchanged and reports their build
+(`referenceBuild` in its JSON); a requested build of another layout than the recorded one is refused
+with `ReferenceBuildMismatch`. Export also reads a V9 file of a database this build has not opened
+yet, as 11.1 bytes, so an existing database exports as before; the SCLS base (`export-scls`,
+`import-scls`) reads such a V9 file as its V10 migration would write it, in memory, and writes V10 in
+the 11.1 layout.
+
+Not in step a: the Leios codec and the model fields behind it (step b), and rules selected by the
+build (step c).

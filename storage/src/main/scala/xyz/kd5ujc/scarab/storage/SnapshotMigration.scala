@@ -39,19 +39,48 @@ object SnapshotMigration:
       FileKind.SnapshotFile.versionOf(what, identifier)
 
   final case class Refused(name: String, refusal: SnapshotRefusal)
-  final case class Report(migrated: List[Migrated], refused: List[Refused])
+
+  /** @param skipped
+    *   The previous files whose conversion failed on their own content, deleted or kept as the
+    *   restore treats a snapshot that does not decode ([[LedgerSnapshots.Fallback]]).
+    */
+  final case class Report(
+      migrated: List[Migrated],
+      refused: List[Refused],
+      skipped: List[LedgerSnapshots.Skipped] = Nil
+  )
 
   object Report:
     val empty: Report = Report(Nil, Nil)
 
+  /** The current content of a previous file's verified content at `version`, through the registered
+    * steps in turn, in memory: what [[NodeSnapshotMigration.step]] writes, step by step.
+    */
+  private[storage] def converted(
+      version: FormatVersion,
+      content: Array[Byte]
+  ): Either[StorageError, Array[Byte]] = version match
+    case FormatVersion.V5 =>
+      SnapshotV7
+        .fromV5(content)
+        .flatMap(SnapshotV8.fromV7)
+        .flatMap(SnapshotV9.fromV8)
+        .flatMap(SnapshotV10.fromV9)
+    case FormatVersion.V7 =>
+      SnapshotV8.fromV7(content).flatMap(SnapshotV9.fromV8).flatMap(SnapshotV10.fromV9)
+    case FormatVersion.V8 => SnapshotV9.fromV8(content).flatMap(SnapshotV10.fromV9)
+    case FormatVersion.V9 => SnapshotV10.fromV9(content)
+    case _                => Right(content)
+
   /** The native snapshot migration registration: V5 files are brought to V7 ([[SnapshotV7.fromV5]]:
     * the V5 body unchanged behind a [[CheckpointBinding.Legacy]] binding), V7 files to V8
     * ([[SnapshotV8.fromV7]]: the sidecar read in the frozen V7 schema and written in the frozen V8
-    * one), and V8 files to V9 ([[SnapshotV9.fromV8]]: the sidecar read in the frozen V8 schema and
-    * written in the current one), each step atomically. A future format adds its frozen previous
-    * reader and atomic conversion here; retired V1–V4 identifiers remain recognized and refuse
-    * admission before any mutable store opens, and so does a V5 or V7 file that no migration can
-    * convert without inventing state ([[StorageError.ResyncRequired]]).
+    * one), V8 files to V9 ([[SnapshotV9.fromV8]]: the sidecar read in the frozen V8 schema and
+    * written in the current one), and V9 files to V10 ([[SnapshotV10.fromV9]]: the 11.1 reference
+    * build recorded, everything else kept byte for byte), each step atomically. A future format
+    * adds its frozen previous reader and atomic conversion here; retired V1–V4 identifiers remain
+    * recognized and refuse admission before any mutable store opens, and so does a V5 or V7 file
+    * that no migration can convert without inventing state ([[StorageError.ResyncRequired]]).
     */
   def toCurrent[F[_]: Sync]: NodeSnapshotMigration[F] =
     new NodeSnapshotMigration[F]
@@ -200,6 +229,20 @@ object SnapshotMigration:
                       .replaceAll[F](file, Seq(content, FileLedgerSnapshots.digest(content)))
                 )
             )
+        case (FormatVersion.V9, FormatVersion.V10) =>
+          AtomicFile
+            .guard[F, Array[Byte]](file.toString)(JFiles.readAllBytes(file.toNioPath))
+            .flatMap(raw =>
+              FileLedgerSnapshots
+                .verified(raw)
+                .flatMap(SnapshotV10.fromV9)
+                .fold(
+                  e => named(file, e).raise[F, Unit],
+                  content =>
+                    AtomicFile
+                      .replaceAll[F](file, Seq(content, FileLedgerSnapshots.digest(content)))
+                )
+            )
         case _ =>
           StorageError
             .VersionMismatch(
@@ -209,15 +252,47 @@ object SnapshotMigration:
             )
             .raise[F, Unit])
 
+    /** Whether the previous file `name` at `version` converts. A conversion that fails on the
+      * file's own content (its checksum, its framing, a sidecar that does not decode or is of
+      * another schema) is treated as the restore treats a snapshot that does not decode: the file
+      * is deleted, or kept unconverted for the restore to skip, and the other files migrate; any
+      * other failure is raised ([[LedgerSnapshots.Fallback]]). A current file converts.
+      */
+    private def checked(dir: Path, name: String, version: FormatVersion)(using
+        Raise[F, StorageError]
+    ): F[Either[LedgerSnapshots.Skipped, String]] =
+      if version == kind.current then F.pure(Right(name))
+      else
+        AtomicFile
+          .guard[F, Array[Byte]]((dir / name).toString)(JFiles.readAllBytes((dir / name).toNioPath))
+          .flatMap { raw =>
+            FileLedgerSnapshots.verified(raw).flatMap(converted(version, _)) match
+              case Right(_) => F.pure(Right(name))
+              case Left(error) =>
+                LedgerSnapshots.Fallback.of(error) match
+                  case LedgerSnapshots.Fallback.Stop =>
+                    named(dir / name, error).raise[F, Either[LedgerSnapshots.Skipped, String]]
+                  case LedgerSnapshots.Fallback.Keep =>
+                    F.pure(Left(LedgerSnapshots.Skipped(name, error, LedgerSnapshots.Unused.Kept)))
+                  case LedgerSnapshots.Fallback.Delete =>
+                    FileLedgerSnapshots
+                      .deleted[F](dir / name)
+                      .map(unused => Left(LedgerSnapshots.Skipped(name, error, unused)))
+          }
+
     def run(dir: Path)(using Raise[F, StorageError]): F[Report] =
       for
         names <- files(dir)
         found <- names.traverse(name => admissible(dir / name).map(name -> _))
         _ <- refusals(found)
-        migrated <- Migrate(this, found.collect { case (name, Right(_)) => dir / name })
+        checkedFiles <- found
+          .collect { case (name, Right(v)) => name -> v }
+          .traverse(checked(dir, _, _))
+        migrated <- Migrate(this, checkedFiles.collect { case Right(name) => dir / name })
       yield Report(
         migrated,
         found.collect { case (name, Left(error)) =>
           Refused(name, SnapshotRefusal.Unreadable(error))
-        }
+        },
+        checkedFiles.collect { case Left(skipped) => skipped }
       )

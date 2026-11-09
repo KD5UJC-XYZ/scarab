@@ -50,7 +50,7 @@ class SnapshotV9MigrationSuite extends CatsEffectSuite:
     }
   }
 
-  test("a committed V8 file migrates once to V9 and reads as the maintained V9 file") {
+  test("a committed V8 file migrates once, through V9, and reads as the maintained V10 file") {
     names.traverse_ { name =>
       tempDir.use { dir =>
         val file = dir / "snapshot-00000000000000000025-25.bin"
@@ -63,12 +63,12 @@ class SnapshotV9MigrationSuite extends CatsEffectSuite:
           after <- IO.blocking(JFiles.readAllBytes(file.toNioPath))
           migrated <- NativeSnapshots.decode[IO](after, env)
           maintained <- NativeSnapshots
-            .read[IO](JPath.of("fixtures/snapshot-v9").resolve(name), env)
+            .read[IO](JPath.of("fixtures/snapshot-v10").resolve(name), env)
         yield
           assertEquals(
             first,
             SnapshotMigration.Report(
-              List(Migrated(FileKind.SnapshotFile, FormatVersion.V8, FormatVersion.V9, 1)),
+              List(Migrated(FileKind.SnapshotFile, FormatVersion.V8, FormatVersion.V10, 1)),
               Nil
             ),
             name
@@ -76,14 +76,14 @@ class SnapshotV9MigrationSuite extends CatsEffectSuite:
           assertEquals(second, SnapshotMigration.Report.empty, name)
           assertEquals(
             after.toVector,
-            JFiles.readAllBytes(JPath.of("fixtures/snapshot-v9").resolve(name)).toVector,
+            JFiles.readAllBytes(JPath.of("fixtures/snapshot-v10").resolve(name)).toVector,
             name
           )
           assert(migrated.isRight, s"$name: the migrated file does not read")
           assertEquals(migrated, maintained, name)
           assertEquals(
             SnapshotV8.sidecarOf(content("fixtures/snapshot-v8", name)),
-            SnapshotV9.sidecarOf(
+            SnapshotV10.sidecarOf(
               FileLedgerSnapshots.verified(after).fold(e => fail(e.message), identity)
             ),
             s"$name: the sidecar converts with no loss"

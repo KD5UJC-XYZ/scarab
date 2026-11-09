@@ -389,7 +389,8 @@ class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         Era.Conway,
         1L,
         1,
-        LedgerSnapshotImport.Evidence.Unverified
+        LedgerSnapshotImport.Evidence.Unverified,
+        xyz.kd5ujc.scarab.protocol.ReferenceBuild.Release11_1
       )
       val evidence = Bootstrap.provenance(config(root, Client.Source.Download), verified, ledger)
       val sync = new Bootstrap.DirectorySync[F]:

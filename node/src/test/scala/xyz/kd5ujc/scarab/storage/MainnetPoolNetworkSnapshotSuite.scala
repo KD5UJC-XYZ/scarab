@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.IO
 import cats.mtl.Ask
 import java.nio.file.{Files as JFiles, Path}
@@ -72,7 +73,8 @@ class MainnetPoolNetworkSnapshotSuite extends CatsEffectSuite:
     e.copy(ledger = e.ledger.copy(network = Mainnet))
 
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(env)
-  private val format: SnapshotFormat[IO, MirrorState] = SnapshotV9.format[IO](SnapshotCheck.Full)
+  private val format: SnapshotFormat[IO, MirrorState] =
+    SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
 
   /** The state after the first Shelley block of the capture. */
   private lazy val shelley: StateSnapshot[MirrorState] =

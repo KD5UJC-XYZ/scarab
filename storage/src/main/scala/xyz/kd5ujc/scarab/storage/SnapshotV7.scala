@@ -42,7 +42,7 @@ object SnapshotV7:
     }
 
   /** A V7 file's content, in one array of its exact size (the previous-version tests write it; the
-    * node writes [[SnapshotV9]]).
+    * node writes [[SnapshotV10]]).
     */
   private[storage] def framed(
       binding: CheckpointBinding,

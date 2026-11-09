@@ -15,13 +15,21 @@ import xyz.kd5ujc.scarab.protocol.Era
 // era `n` has `n` past eras, is the one the smart constructor [[Telescope.make]] enforces.
 
 /** A point on the era history (`Bound`, `HardFork/History/Summary.hs:82-88`): time since the system
-  * start in picoseconds, slot and epoch.
+  * start in picoseconds, slot, epoch, and the Peras round (`boundPerasRound :: PerasEnabled
+  * PerasRoundNo`, ouroboros-consensus 82ecba32): none is `NoPerasEnabled`, as on every Cardano era
+  * today, and a round is `PerasEnabled`.
   *
-  * Deviations from Haskell, both for the node-to-client answer that already uses this type
-  * (`EraHistory`): the three numbers are `BigInt` s rather than `RelativeTime` /`SlotNo`/`EpochNo`,
-  * and the Peras round (`boundPerasRound`, `NoPerasEnabled` on every Cardano era today) is absent.
+  * A deviation from Haskell, for the node-to-client answer that already uses this type
+  * (`EraHistory`): the three numbers are `BigInt` s rather than `RelativeTime` /`SlotNo`/`EpochNo`.
   */
-final case class Bound(timePs: BigInt, slot: BigInt, epoch: BigInt) derives Eq, Show, Diff
+final case class Bound(
+    timePs: BigInt,
+    slot: BigInt,
+    epoch: BigInt,
+    perasRound: Option[PerasRoundNo] = None
+) derives Eq,
+      Show,
+      Diff
 
 object Bound:
   /** The bound of a telescope the node holds before it is put on the era history: see

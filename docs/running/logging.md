@@ -86,6 +86,8 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `started` | `Node.Started` | Notice | `build`, `peer`, `peers`, `networkMagic`, `systemStart`, `epochLength`, `securityParam`, `byronEpochs`, `byronEpochSlots`, `hardForkEpochs`, `genesisHashes`, `configUnsupported`, `topology` |
 | `blst` | `Node.Blst` | Info | `platform`, `cpu`, `library` |
 | `praosSyncUntrusted` | `Node.PraosSyncUntrusted` | Warning | `consensusMode`, `start` (`origin` or `behind`), `slotsBehind` |
+| `referenceBuild` | `Node.ReferenceBuild` | Notice | `build` (the `--reference-build` value), `stability` (`stable` or `unstable`), `node` (the pinned release tag, or the node commit of an unstable build), `ledger`, `ledgerBinary`, `consensus` (pinned commits); logged at start, before any store opens; see [flags](flags.md) |
+| `unstableReferenceBuild` | `Node.UnstableReferenceBuild` | Warning | `build`, `experimentalHardForksEnabled` (`false`): an unstable build runs without `ExperimentalHardForksEnabled`, which it is meant for |
 | `plutusCrypto` | `Node.PlutusCrypto` | Info | `platform`, `library` (`source`, `path`, `sha256`) |
 | `listening` | `Node.Listening` | Notice | `address` |
 | `createSystemdSocketForSnocketPath` | `Node.CreateSystemdSocketForSnocketPath` | Info | `path`; the node-to-client socket is about to be created. Like the rest of these lines, the reference's `Startup.DiffusionInit` trace of that name: `path` is the reference's `show` of the address, `LocalAddress "<path>"`, the path as configured; see [node-to-client](node-to-client.md#the-socket-path) |
@@ -191,8 +193,11 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `volatileResumed` | `Storage.VolatileResumed` | Info | `resumed`, `dropped`, `millis` |
 | `networkRecorded` | `Storage.NetworkRecorded` | Info | `magic`, `shelleyGenesis`, `byronGenesis`, `alonzoGenesis`, `conwayGenesis`, `dijkstraGenesis` (null without one), `adoptedExisting`, `adoptedDijkstraGenesis` (the identity recorded no Dijkstra genesis and adopted the configured one) |
 | `snapshotSkipped` | `Storage.SnapshotSkipped` | Warning | `file`, `reason` |
+| `snapshotDeleted` | `Storage.SnapshotDeleted` | Info | `file`: a skipped snapshot deleted with its checkpoint, as the reference deletes a temporary snapshot it cannot use (`DeletedSnapshot`); every native snapshot is temporary |
+| `snapshotNotDeleted` | `Storage.SnapshotNotDeleted` | Warning | `file`, `reason`: a skipped snapshot that could not be deleted; the restore goes on, as the reference's best-effort deletion does |
+| `checkpointNotDeleted` | `Storage.CheckpointNotDeleted` | Warning | `checkpoint`, `reason`: a UTxO checkpoint that no snapshot lists could not be deleted at the start; the start goes on, as the reference's best-effort deletion of a snapshot's tables does |
 | `snapshotRestored` | `Storage.SnapshotRestored` | Info | `file`, `anchor` |
-| `snapshotUnbound` | `Storage.SnapshotUnbound` | Warning | `file`, `anchor`: the restored snapshot predates checkpoint binding (V5 migrated through V7 and V8 to V9) and its checkpoint was admitted by directory name. |
+| `snapshotUnbound` | `Storage.SnapshotUnbound` | Warning | `file`, `anchor`: the restored snapshot predates checkpoint binding (V5 migrated through V7, V8 and V9 to V10) and its checkpoint was admitted by directory name. |
 | `snapshotWritten` | `Storage.SnapshotWritten` | Info | `file`, `anchor`, `bytes`, `millis` |
 | `snapshotFailed` | `Storage.SnapshotFailed` | Error | `reason` |
 | `snapshotRefused` | `Storage.SnapshotRefused` | Error | `file`, `anchor`, `reason` |

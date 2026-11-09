@@ -596,14 +596,20 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
         IO.raiseError(new AssertionError("nothing is stale"))
 
   test(
-    "global V6 changes only identity, V7 and V8 only snapshots, V9 both; a current kind is a no-op"
+    "global V6 changes only identity, V7, V8 and V10 only snapshots, V9 both; a current kind is a no-op"
   ) {
     assertEquals(FileKind.IdentityFile.current, FormatVersion.V9)
-    assertEquals(FileKind.SnapshotFile.current, FormatVersion.V9)
+    assertEquals(FileKind.SnapshotFile.current, FormatVersion.V10)
     assertEquals(FileKind.SnapshotFile.nextChangedVersion(FormatVersion.V5), Some(FormatVersion.V7))
     assertEquals(FileKind.SnapshotFile.nextChangedVersion(FormatVersion.V7), Some(FormatVersion.V8))
     assertEquals(FileKind.SnapshotFile.nextChangedVersion(FormatVersion.V8), Some(FormatVersion.V9))
+    assertEquals(
+      FileKind.SnapshotFile.nextChangedVersion(FormatVersion.V9),
+      Some(FormatVersion.V10)
+    )
+    assertEquals(FileKind.SnapshotFile.identifier(FormatVersion.V10), "SCRBSNPA")
     assertEquals(FileKind.IdentityFile.nextChangedVersion(FormatVersion.V6), Some(FormatVersion.V9))
+    assertEquals(FileKind.IdentityFile.nextChangedVersion(FormatVersion.V9), None)
     assertEquals(FileKind.FormatFile.current, FormatVersion.V2)
     assertEquals(FileKind.IndexFile.current, FormatVersion.V2)
     FileKind.values.foreach(kind => assertEquals(kind.nextChangedVersion(kind.current), None))

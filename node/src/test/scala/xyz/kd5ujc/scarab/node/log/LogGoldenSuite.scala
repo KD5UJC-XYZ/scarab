@@ -224,6 +224,11 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(
           NodeEvent.Library("fs2.io", Severity.Error, "failed", Some("java.io.IOException: x"))
         )
+        _ <- xyz.kd5ujc.scarab.protocol.ReferenceBuild.values.toList
+          .traverse_(b => node(NodeEvent.ReferenceBuildChosen(b)))
+        _ <- node(
+          NodeEvent.UnstableReferenceBuild(xyz.kd5ujc.scarab.protocol.ReferenceBuild.LeiosB004fe0c)
+        )
         all <- lines.get
       yield all
     }

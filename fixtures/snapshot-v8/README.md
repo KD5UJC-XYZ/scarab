@@ -5,8 +5,8 @@ keys/signatures only, with no signing keys or operational node data; see [NOTICE
 
 These complete checksummed native V8 files were the maintained snapshot test inputs until V9 (#54);
 they are now the previous-version inputs of the V8 → V9 migration tests, and
-[`fixtures/snapshot-v9`](../snapshot-v9/README.md) holds their registered conversions, which are the
-maintained inputs. V8 is the V7
+[`fixtures/snapshot-v9`](../snapshot-v9/README.md) holds their registered conversions, whose own
+conversions in [`fixtures/snapshot-v10`](../snapshot-v10/README.md) are the maintained inputs. V8 is the V7
 layout (the V5 body behind a checkpoint binding) whose sidecar keeps the installer metadata of the
 Byron update state's software proposals and application versions (issue
 [#726](https://github.com/KD5UJC-XYZ/scarab/issues/726)).

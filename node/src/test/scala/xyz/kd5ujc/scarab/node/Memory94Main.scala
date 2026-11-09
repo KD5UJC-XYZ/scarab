@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.mtl.Ask
@@ -8,7 +9,7 @@ import java.nio.ByteBuffer
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
-import xyz.kd5ujc.scarab.storage.{SnapshotCheck, SnapshotV9}
+import xyz.kd5ujc.scarab.storage.{SnapshotCheck, SnapshotV10}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
 
 /** SPIKE for issue #94 (docs/design/memory-lean-decoding.md): what the snapshot read-back costs in
@@ -329,8 +330,8 @@ object Memory94Main:
             .fromDirectory(Path.of(args.lift(2).getOrElse("fixtures/preprod/genesis")))
             .fold(e => sys.error(e.message), identity)
           given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-          SnapshotV9
-            .format[IO](SnapshotCheck.Full)
+          SnapshotV10
+            .format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
             .decode(NativeSnapshots.current(content).fold(e => sys.error(e.toString), identity))
             .unsafeRunSync()
             .fold(e => sys.error(e.toString), identity)
@@ -340,7 +341,7 @@ object Memory94Main:
             .fromDirectory(Path.of(args.lift(2).getOrElse("fixtures/preprod/genesis")))
             .fold(e => sys.error(e.message), identity)
           given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-          val format = SnapshotV9.format[IO](SnapshotCheck.Full)
+          val format = SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
           val snapshot =
             format
               .decode(NativeSnapshots.current(content).fold(e => sys.error(e.toString), identity))

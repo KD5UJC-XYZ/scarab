@@ -1538,6 +1538,33 @@
       "page": "docs/compatibility/persistence-network-identity-v9.md"
     },
     {
+      "id": "persistence-snapshot-v10",
+      "component": "Persistence: ledger snapshot format (V10) and the reference build",
+      "status": "implemented",
+      "summary": "Native snapshot format V10 records the reference build (`--reference-build`) whose layout the Haskell state bytes are in; V9 files migrate as 11.1 with every other byte kept; import and export keep the reference's bytes and convert nothing; only the 11.1 layout is implemented, the Leios build is refused at start",
+      "evidence": {
+        "suites": [
+          "SnapshotV10MigrationSuite",
+          "SnapshotGoldenSuite",
+          "CodecSuite",
+          "ReferenceBuildSuite",
+          "LedgerSnapshotImportSuite",
+          "LedgerSnapshotExportSuite"
+        ],
+        "issues": [
+          826
+        ]
+      },
+      "limitations": {
+        "issues": [
+          826,
+          129,
+          37
+        ]
+      },
+      "page": "docs/compatibility/persistence-snapshot-v10.md"
+    },
+    {
       "id": "persistence-haskell-immutabledb",
       "component": "Persistence: Haskell ImmutableDB format",
       "status": "partial",

@@ -27,12 +27,17 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, EraLedger}
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.haskell.state.*
 
 /** Offline import of the Mem backend. The source and immutable database are read-only; all writes
   * happen in an owned sibling staging directory. A snapshot is published last, after its durable
   * checkpoint, and no existing ledger artifact is replaced.
+  *
+  * The `state` file is in the layout of the reference build that wrote the input database
+  * ([[Config.layout]], `--reference-build`): it must decode completely in that layout, and its
+  * bytes go into the snapshot unchanged, with that build recorded ([[SnapshotV10]]). Nothing is
+  * converted between builds.
   */
 object LedgerSnapshotImport:
   enum Trust:
@@ -47,7 +52,9 @@ object LedgerSnapshotImport:
     case Storage(error: StorageError)
     case Ancillary(error: AncillaryManifest.Error)
     case Metadata(error: MetaError)
-    case State(error: xyz.kd5ujc.scarab.models.runtime.DecodeError)
+
+    /** The `state` file does not decode completely in the layout of `build`. */
+    case State(build: ReferenceBuild, error: xyz.kd5ujc.scarab.models.runtime.DecodeError)
     case SourceNotRegular(file: String)
     case Tables(error: SnapshotTables.Error)
     case Byron, Origin
@@ -62,9 +69,13 @@ object LedgerSnapshotImport:
     case NotYet(part: xyz.kd5ujc.scarab.protocol.DijkstraNotYet)
     def message: String = this match
       case Storage(e) => e.message
-      case State(e)   => e.render
-      case other      => other.toString
+      case State(build, e) =>
+        s"the ledger state does not decode completely in the layout of the reference build ${build.describe}: ${e.render}"
+      case other => other.toString
 
+  /** @param layout
+    *   The codec of the reference build that wrote the input database.
+    */
   final case class Config(
       ledger: Path,
       db: Path,
@@ -72,9 +83,21 @@ object LedgerSnapshotImport:
       byronEpochSlots: BigInt,
       genesisParams: ProtocolParams,
       bootstrap: BootstrapState,
-      trust: Trust
+      trust: Trust,
+      layout: ReferenceLayout = ReferenceLayout.Release11_1
   )
-  final case class Report(anchor: BlockRef, era: Era, count: Long, coin: BigInt, evidence: Evidence)
+
+  /** @param build
+    *   The reference build recorded with the state bytes.
+    */
+  final case class Report(
+      anchor: BlockRef,
+      era: Era,
+      count: Long,
+      coin: BigInt,
+      evidence: Evidence,
+      build: ReferenceBuild
+  )
 
   private final case class Batch(utxo: Utxo, pending: Vector[(TxIn, TxOut)])
   private val BatchSize = 1024
@@ -183,10 +206,10 @@ object LedgerSnapshotImport:
     def prepare(stage: Path, source: Path, evidence: Evidence): F[Report] =
       for
         raw <- files.readAll(source / "state").compile.to(Chunk).map(c => Bytes.wrap(c.toArray))
-        file <- lift(HaskellLedgerFile.decode(raw).leftMap { error =>
+        file <- lift(config.layout.decode(raw).leftMap { error =>
           val classified = DecodeFailure.native("native ledger state", error)
           if DecodeFailure.terminal(classified) then Error.Storage(classified)
-          else Error.State(error)
+          else Error.State(config.layout.build, error)
         })
         ext <- lift(file.ext.toRight(Error.Byron))
         _ <- lift(
@@ -273,15 +296,15 @@ object LedgerSnapshotImport:
                 Set.empty,
                 SnapshotSidecar.Chain.InShelley(utxo, params, Some(previous), extras)
               )
-              content = SnapshotV9.framed(binding, sidecar, raw)
-              back <- SnapshotV9.format[F](SnapshotCheck.Structure).decode(content)
+              content = SnapshotV10.framed(config.layout.build, binding, sidecar, raw)
+              back <- SnapshotV10.format[F](SnapshotCheck.Structure, config.layout).decode(content)
               _ <- lift(back.leftMap(Error.Storage(_)).void)
               snapshots = stage / "artifacts" / "snapshots"
               _ <- files.createDirectories(snapshots)
               hash = MessageDigest.getInstance("SHA-256").digest(content)
               _ <- AtomicFile
                 .replaceAll[F](snapshots / FileLedgerSnapshots.nameOf(anchor), Seq(content, hash))
-            yield Report(anchor, file.era, utxo.count, utxo.coin, evidence)
+            yield Report(anchor, file.era, utxo.count, utxo.coin, evidence, config.layout.build)
       yield report
 
     DatabaseOwnership

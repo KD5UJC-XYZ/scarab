@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraLedgerState, Mi
 import xyz.kd5ujc.scarab.ledger.{NetworkIdentity, StorageError, TxIn, TxOut, Utxo}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, Gap, NewEpochState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import xyz.kd5ujc.scarab.storage.{
   CheckpointDigest,
   AtomicFile,
@@ -26,6 +27,7 @@ import xyz.kd5ujc.scarab.storage.{
   SnapshotCheck,
   SnapshotSidecar,
   SnapshotV9,
+  SnapshotV10,
   StateBacking,
   StateSnapshot,
   UtxoCheckpoint
@@ -108,9 +110,17 @@ object SclsBase:
       exists <- guard(path)(Files.isRegularFile(path.toNioPath, LinkOption.NOFOLLOW_LINKS))
       _ <- lift(Either.cond(exists, (), Error.MissingSource(path)))
       raw <- guard(path)(Files.readAllBytes(path.toNioPath))
-      content <- lift(FileLedgerSnapshots.verified(raw).leftMap(Error.Storage(_)))
-      sections <- lift(SnapshotV9.sections(content).leftMap(Error.Storage(_)))
-      (binding, sidecar, _) = sections
+      verified <- lift(FileLedgerSnapshots.verified(raw).leftMap(Error.Storage(_)))
+      // a V9 snapshot of a database this build has not opened yet is read as its V10 migration
+      // would write it, in memory: nothing is written to the source
+      content <- lift(
+        (if verified.startsWith(SnapshotV9.Magic) then SnapshotV10.fromV9(verified)
+         else Right(verified)).leftMap(Error.Storage(_))
+      )
+      sections <- lift(
+        SnapshotV10.sections(content, ReferenceLayout.Release11_1).leftMap(Error.Storage(_))
+      )
+      (_, binding, sidecar, _) = sections
       _ <- lift(Either.cond(sidecar.gaps.isEmpty, (), Error.Gaps(sidecar.gaps)))
       _ <- lift(
         Either.cond(
@@ -136,7 +146,9 @@ object SclsBase:
           Error.Unsettled(utxo.stamp, utxo.flushed, utxo.diff.size)
         )
       )
-      decoded <- SnapshotV9.format[F](SnapshotCheck.Full).decode(content)
+      decoded <- SnapshotV10
+        .format[F](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+        .decode(content)
       snapshot <- lift(decoded.leftMap(Error.Storage(_)))
       ledgerEra = snapshot.state.ext.ledgerState.era
       headerEra = snapshot.state.ext.headerState.chainDep.era

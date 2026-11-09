@@ -38,7 +38,7 @@ import xyz.kd5ujc.scarab.storage.{
   SnapshotCheck,
   SnapshotMigration,
   SnapshotPolicy,
-  SnapshotV9,
+  SnapshotV10,
   StateBacking,
   UtxoBacking,
   UtxoHandle,
@@ -49,7 +49,8 @@ import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState}
 import cats.syntax.all.*
 import java.nio.file.Path
 import com.comcast.ip4s.{Host, Port, SocketAddress}
-import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, ReferenceBuild}
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import xyz.kd5ujc.scarab.protocol.NtNHeader
 import xyz.kd5ujc.scarab.network.{
   AcceptedConnectionsLimit,
@@ -397,7 +398,8 @@ object Main extends IOApp:
       chainSyncWindow: xyz.kd5ujc.scarab.network.ChainSyncPipelineDecision.Window =
         xyz.kd5ujc.scarab.network.ChainSyncPipelineDecision.Window.Default,
       stallDump: Option[Path] = None,
-      keyLock: Boolean = true
+      keyLock: Boolean = true,
+      referenceBuild: ReferenceBuild = ReferenceBuild.Default
   ):
     /** The configuration's limits, with the hard limit of `--max-inbound` where given. */
     def accepted(settings: ConfigSettings): AcceptedConnectionsLimit =
@@ -664,6 +666,10 @@ object Main extends IOApp:
         KeyGuard.permissions[IO](files.vrfSkey, Log.sink[ForgeEvents, ForgeEvent, IO])
       )
       setup <- IO.blocking(nodeSetup(requested)).flatMap(admitted)
+      layout <- referenceLayout(
+        requested.referenceBuild,
+        setup.config.settings.experimentalHardForksEnabled
+      )
       pool <- requested.forge.traverse(credentials)
       removal <- removedStale(setup)
       code <- removal.fold(
@@ -674,10 +680,26 @@ object Main extends IOApp:
           IO.blocking(completed(requested, setup))
             .flatMap(admitted)
             .flatMap((options, setup, topology) =>
-              started(options, setup, topology, requested.peers, pool)
+              started(options, setup, topology, requested.peers, pool, layout)
             )
       )
     yield code
+
+  /** The reference build the node mirrors, logged with its pins, and a warning when an unstable
+    * build runs without `ExperimentalHardForksEnabled`; then the codec of its layout, or the
+    * refusal of a build not implemented yet, before any store opens.
+    */
+  private def referenceLayout(build: ReferenceBuild, experimentalHardForksEnabled: Boolean)(using
+      Handle[IO, NodeError],
+      Log[IO]
+  ): IO[ReferenceLayout] =
+    Log[IO].emit[NodeEvent](NodeEvent.ReferenceBuildChosen(build)) *>
+      Log[IO]
+        .emit[NodeEvent](NodeEvent.UnstableReferenceBuild(build))
+        .whenA(ReferenceBuildFlag.warns(build, experimentalHardForksEnabled)) *>
+      ReferenceBuildFlag
+        .layout(build)
+        .fold(e => Handle[IO, NodeError].raise[NodeError, ReferenceLayout](e), IO.pure)
 
   /** The node from its completed options on: the database, the stores and the run. */
   private def started(
@@ -685,7 +707,8 @@ object Main extends IOApp:
       setup: NodeSetup,
       topology: Option[Topology],
       cliPeers: List[SocketAddress[Host]],
-      credentials: Option[PoolCredentials]
+      credentials: Option[PoolCredentials],
+      layout: ReferenceLayout
   )(using Handle[IO, NodeError], Log[IO]): IO[ExitCode] =
     val ownership = options.db.fold(Resource.unit[IO])(db =>
       xyz.kd5ujc.scarab.storage.DatabaseOwnership.resource[IO](fs2.io.file.Path.fromNioPath(db))
@@ -726,7 +749,8 @@ object Main extends IOApp:
         cache,
         scheduling,
         StallDiagnostics.abandoning(supervisor),
-        credentials
+        credentials,
+        layout
       )
     }
 
@@ -820,7 +844,8 @@ object Main extends IOApp:
       cache: VerificationCache,
       scheduling: Scheduling[IO],
       background: IO[Unit] => IO[Unit],
-      credentials: Option[PoolCredentials]
+      credentials: Option[PoolCredentials],
+      layout: ReferenceLayout
   )(using
       handle: Handle[IO, NodeError],
       log: Log[IO]
@@ -834,7 +859,8 @@ object Main extends IOApp:
         // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
         // node has seen begin so far.
         given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(instruments.eraStarts.get)
-        given SnapshotFormat[IO, MirrorState] = SnapshotV9.format[IO](options.snapshotCheck)
+        given SnapshotFormat[IO, MirrorState] =
+          SnapshotV10.format[IO](options.snapshotCheck, layout)
         // What a scrape reads besides the counters the events keep: each source answers for itself
         // and is added when it exists, so the endpoint can listen before the stores are opened (a
         // collector that is not there yet leaves its gauges absent).
@@ -1947,7 +1973,8 @@ object Main extends IOApp:
       values.find(r => argument == s"--${r.flag}")
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--key-lock on|off]] " + LogSettings.Usage
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--key-lock on|off]] [--reference-build <build>] " + LogSettings.Usage +
+      "\n" + ReferenceBuildFlag.Help
 
   /** Flags that take a value and may repeat. */
   private val RepeatedFlags = Set("peer") ++ LogSettings.RepeatedFlags
@@ -1989,7 +2016,8 @@ object Main extends IOApp:
     "vrf-skey",
     "kes-skey",
     "opcert",
-    "key-lock"
+    "key-lock",
+    "reference-build"
   )
 
   private[node] def parse(args: List[String]): Either[ConfigError, Options] =
@@ -2195,6 +2223,7 @@ object Main extends IOApp:
           log <- LogSettings
             .parse(flags, multi)
             .leftMap(e => ConfigError(ConfigProblem.WithUsage(e.problem, Usage)))
+          referenceBuild <- ReferenceBuildFlag.parse(flags.get("reference-build"), Usage)
         yield Options(
           dir,
           peers,
@@ -2231,6 +2260,7 @@ object Main extends IOApp:
           plutusWorkers = plutusWorkers,
           chainSyncWindow = chainSyncWindow,
           adoptLegacyNetworkIdentity = flags.contains("adopt-legacy-network-identity"),
-          keyLock = keyLock
+          keyLock = keyLock,
+          referenceBuild = referenceBuild
         )
       case _ => Left(usage)

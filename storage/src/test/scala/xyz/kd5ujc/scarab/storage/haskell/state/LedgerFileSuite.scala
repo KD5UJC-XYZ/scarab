@@ -139,6 +139,14 @@ class LedgerFileSuite extends ScalaCheckSuite:
   laws("PraosState", ConsensusGen.praosState, praosState)
   laws("AnnTip", annTipGen, annTip)
   laws("Bound", arb[Bound], Envelope.bound)
+  laws(
+    "Bound under PerasEnabled",
+    for
+      b <- arb[Bound]
+      round <- Gen.choose(0L, Long.MaxValue)
+    yield b.copy(perasRound = Some(PerasRoundNo(Word64.fromUnsigned(round)))),
+    Envelope.bound
+  )
 
   property("HaskellLedgerFile: decode after encode is the identity, on bytes, in every era") {
     forAll(fileGen) { file =>
@@ -203,6 +211,21 @@ class LedgerFileSuite extends ScalaCheckSuite:
     assertEquals(annTip.encodeUnchecked(b).hex, byron.filterNot(_.isWhitespace))
   }
 
+  test("Bound: three items under NoPerasEnabled, four under PerasEnabled (Summary.hs:526-549)") {
+    // ouroboros-consensus 82ecba32 encodes the round fourth only when Peras is enabled, decodes
+    // three or four items and refuses any other length
+    val three = hex("83030501")
+    val four = hex("8403050107")
+    assertEquals(readOk(Envelope.bound, three), Bound(BigInt(3), BigInt(5), BigInt(1)))
+    val enabled = readOk(Envelope.bound, four)
+    assertEquals(enabled.perasRound, Some(PerasRoundNo(Word64.fromUnsigned(7L))))
+    assertEquals(Envelope.bound.encodeUnchecked(readOk(Envelope.bound, three)), three)
+    assertEquals(Envelope.bound.encodeUnchecked(enabled), four)
+    Vector("820305", "850305010700").foreach { refused =>
+      assert(failure(Envelope.bound, hex(refused)).kind.isInstanceOf[Kind.BadArity], refused)
+    }
+  }
+
   test("Bound: the time is an Integer, a bignum from 2^64 picoseconds (Summary.hs:526-550)") {
     val big = Bound(BigInt(1) << 64, BigInt(5), BigInt(1))
     assertEquals(Envelope.bound.encodeUnchecked(big).hex, "83c249010000000000000000" + "0501")
@@ -262,12 +285,12 @@ class LedgerFileSuite extends ScalaCheckSuite:
   }
 
   test(
-    "a Bound with a Peras round, a snapshot of the older layout and a wrong version are refused"
+    "a Bound of five items, a snapshot of the older layout and a wrong version are refused"
   ) {
-    val four = bytesOf { w =>
-      w.arrayHead(4); w.uint(0L); w.uint(0L); w.uint(0L); w.uint(0L)
+    val five = bytesOf { w =>
+      w.arrayHead(5); w.uint(0L); w.uint(0L); w.uint(0L); w.uint(0L); w.uint(0L)
     }
-    assert(failure(Envelope.bound, four).kind.isInstanceOf[Kind.BadArity])
+    assert(failure(Envelope.bound, five).kind.isInstanceOf[Kind.BadArity])
     val legacy = bytesOf { w =>
       w.arrayHead(3); w.nul(); w.nul(); w.nul()
     }

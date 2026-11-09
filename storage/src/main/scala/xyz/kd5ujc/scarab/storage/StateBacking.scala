@@ -48,6 +48,15 @@ trait StateBacking[F[_], S]:
     */
   def retain(stems: Set[String])(using Raise[F, StorageError]): F[Unit]
 
+  /** [[retain]] at a start, best effort: each checkpoint that no listed snapshot refers to is
+    * deleted on its own, and one that cannot be is returned with why, never raised, as the
+    * reference's deletion of a temporary snapshot directory, its tables included, catches every
+    * failure (`defaultDeleteSnapshotIfTemporary`, ouroboros-consensus 82ecba32
+    * `Storage/LedgerDB/Snapshots.hs:316-330`). The checkpoints are those of snapshots the restore
+    * deleted and any a stopped earlier start left behind.
+    */
+  def trim(stems: Set[String])(using Raise[F, StorageError]): F[Vector[(String, StorageError)]]
+
 object StateBacking:
   def none[F[_]: Applicative, S]: StateBacking[F, S] = new StateBacking[F, S]:
     private val unit = Applicative[F].unit
@@ -62,6 +71,8 @@ object StateBacking:
       Applicative[F].pure(true)
     def reset(using cats.mtl.Raise[F, StorageError]) = unit
     def retain(stems: Set[String])(using Raise[F, StorageError]) = unit
+    def trim(stems: Set[String])(using Raise[F, StorageError]) =
+      Applicative[F].pure(Vector.empty[(String, StorageError)])
 
   /** The name shared by a snapshot file (`<stem>.bin`) and its checkpoint directory. */
   def stem(a: BlockRef): String = f"snapshot-${a.slot}%020d-${a.blockNo}"
@@ -152,3 +163,27 @@ final class UtxoBacking[F[_]: Sync, S](store: UtxoStore[F], root: Path)(using
         }
       }
   }
+
+  def trim(stems: Set[String])(using
+      Raise[F, StorageError]
+  ): F[Vector[(String, StorageError)]] =
+    val nio = root.toNioPath
+    guard(root.toString) {
+      if !java.nio.file.Files.isDirectory(nio) then Vector.empty
+      else
+        Using.resource(java.nio.file.Files.list(nio)) { dirs =>
+          import scala.jdk.CollectionConverters.*
+          dirs.iterator.asScala
+            .filter(d =>
+              StateBacking.isStem(d.getFileName.toString) &&
+                !stems.contains(d.getFileName.toString)
+            )
+            .toVector
+        }
+    }.flatMap(
+      _.traverseFilter(d =>
+        F.blocking(RocksUtxoStore.deleteTree(d))
+          .attempt
+          .map(_.left.toOption.map(e => d.getFileName.toString -> StorageError.Io(d.toString, e)))
+      )
+    )

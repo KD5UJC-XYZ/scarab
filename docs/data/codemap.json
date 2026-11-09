@@ -565,7 +565,7 @@
         "LedgerSnapshots",
         "UtxoStore",
         "RocksUtxoStore",
-        "SnapshotV9",
+        "SnapshotV10",
         "Migrate"
       ],
       "suites": [
@@ -575,7 +575,7 @@
         "UtxoStoreSuite",
         "LedgerSnapshotsSuite",
         "FormatMigrationSuite",
-        "SnapshotV9Suite"
+        "SnapshotV10Suite"
       ],
       "docs": [
         "docs/adr/0006-versioned-formats-migrate-on-open.md",

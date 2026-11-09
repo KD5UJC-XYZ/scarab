@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.{IO, Ref}
 import cats.mtl.{Ask, Handle, Raise}
 import cats.syntax.all.*
@@ -24,12 +25,13 @@ class SnapshotPreflightSuite extends CatsEffectSuite:
     .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
     .fold(e => fail(e.message), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-  private given SnapshotFormat[IO, MirrorState] = SnapshotV9.format[IO](SnapshotCheck.Full)
+  private given SnapshotFormat[IO, MirrorState] =
+    SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
   private val snapshotName = "snapshot-99999999999999999999-1.bin"
 
   private val versions =
     Vector(FormatVersion.V1, FormatVersion.V2, FormatVersion.V3, FormatVersion.V4)
-      .map(v => Some(v) -> FileKind.SnapshotFile.identifier(v)) :+ (None -> "SCRBSNPA")
+      .map(v => Some(v) -> FileKind.SnapshotFile.identifier(v)) :+ (None -> "SCRBSNPB")
 
   private def header(version: Option[FormatVersion], identifier: String): Array[Byte] =
     version match
@@ -89,6 +91,8 @@ class SnapshotPreflightSuite extends CatsEffectSuite:
         def restore(anchor: Option[BlockRef])(using Raise[IO, StorageError]) = IO.pure(true)
         def reset(using Raise[IO, StorageError]) = resets.update(_ + 1)
         def retain(stems: Set[String])(using Raise[IO, StorageError]) = IO.unit
+        def trim(stems: Set[String])(using Raise[IO, StorageError]) =
+          IO.pure(Vector.empty[(String, StorageError)])
       result <- attemptNode {
         ChainStorage
           .open[IO, MirrorState](
