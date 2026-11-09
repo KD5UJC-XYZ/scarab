@@ -611,17 +611,27 @@ one (`:625-631`); and replays from genesis when none is left (`:582-598`). A sna
 when its name has no suffix (`diskSnapshotIsTemporary`, `Storage/LedgerDB/Snapshots.hs:288-297`);
 every native snapshot is `snapshot-<slot>-<blockNo>.bin`, whether the node, an import or an SCLS
 import wrote it, so every one is temporary. `FileLedgerSnapshots.restore` and
-`LedgerSnapshots.Unused.of` mirror it: a snapshot whose anchor is not in the immutable store (the
-too-recent one), whose checksum, framing, sidecar or state does not decode, whose recorded build is
-of another layout or unknown, or whose checkpoint is absent, not the one recorded or holds keys it
-cannot, is deleted, `snapshotDeleted` logged after `snapshotSkipped`, and its checkpoint goes by the
-trim path of a write (`StateBacking.retain`); a checkpoint of another key layout or none (the
-reference's backend mismatch) is kept. Where the line falls: the snapshot's format version is
-Scarab's envelope, which ADR 0006 governs, so an unknown or retired version is raised before any
-store opens and nothing is deleted, and a binding or sidecar of another schema (`VersionMismatch`)
-is kept; a file that cannot be read (`Io`) is kept, as the reference's file-system errors are
-exceptions rather than a `Left`. Snapshot file names do not change. In step a a snapshot of
-another build is reachable only in tests. `SnapshotFallbackSuite` has a test per case.
+`LedgerSnapshots.Fallback.of` mirror it case by case. What the reference returns as a failure goes
+through the fallback: a snapshot whose anchor is not in the immutable store (the too-recent one),
+whose checksum, framing, sidecar or state does not decode, whose recorded build is of another
+layout or unknown, or whose checkpoint is not the one recorded or holds keys that do not decode
+(found when the checkpoint is restored into the store, inside the fallback) is deleted,
+`snapshotDeleted` logged after `snapshotSkipped`, and the next older one tried; a checkpoint of
+another key layout or none (the reference's backend mismatch) is kept. Deletion is best effort, as
+`defaultDeleteSnapshotIfTemporary` catches its failures (`Snapshots.hs:320-330`): one that fails is
+logged (`snapshotNotDeleted`) and the fallback goes on. What the reference raises stops the start
+with a typed error and deletes nothing: a file that cannot be read (`Io`), an absent checkpoint
+(the reference's missing tables file, which `readIncremental` raises, `Util/CBOR.hs:206`), a
+decoder defect. Where the line falls: the snapshot's format version is Scarab's envelope, which ADR
+0006 governs, so an unknown or retired version, or a previous file whose state cannot be converted,
+stops the start, and a binding or sidecar of another schema (`VersionMismatch`) is kept. The
+migration of previous files takes the same fallback for what fails on a file's own content: a V9
+file whose checksum or sidecar fails is deleted, and one of another sidecar schema is left
+unconverted, which the restore then keeps and skips. The checkpoints no snapshot lists are trimmed
+at every successful open (`StateBacking.retain`), so a start interrupted between deleting a snapshot
+and trimming leaves nothing behind for long. Snapshot file names do not change, and the V9 to V10
+step copies everything after the magic as it was. In step a a snapshot of another build is
+reachable only in tests. `SnapshotFallbackSuite` and `ChainStorageSuite` have a test per case.
 
 **Import and export.** Import decodes the `state` file with the codec of the build named by
 `--reference-build`, the build that wrote the input database; input that does not decode completely

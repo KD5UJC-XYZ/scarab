@@ -17,9 +17,14 @@
   snapshot recorded under a build of another layout is not read: the restore skips it, naming both
   builds, and tries an older one.
 - The restore treats a snapshot it does not use as the reference's `tryNewestFirst` does: one too
-  recent or that does not decode, of another build among them, is deleted with its UTxO checkpoint
-  (`snapshotDeleted`), as the reference deletes a temporary snapshot, and every native snapshot is
-  temporary; one whose checkpoint has another key layout is kept. Earlier builds kept them all.
+  recent or that does not decode, of another build or with checkpoint keys that do not decode among
+  them, is deleted with its UTxO checkpoint (`snapshotDeleted`, or `snapshotNotDeleted` when the
+  deletion fails, which does not stop the fallback), as the reference deletes a temporary snapshot,
+  and every native snapshot is temporary; one whose checkpoint has another key layout is kept. What
+  the reference raises now stops the start, deleting nothing: an unreadable snapshot file or an
+  absent UTxO checkpoint, which earlier builds skipped. A damaged previous-version snapshot no
+  longer stops its migration: it is deleted, or kept unconverted when its sidecar is of another
+  schema, and an older one is used. Checkpoints no snapshot lists are removed at every open.
 - A hard-fork `Bound` of four items, with a Peras round, is read and written back, as the 11.1
   reference reads it; it was refused.
 - `import-ledger-snapshot` refuses a `state` file that does not decode completely in the layout of

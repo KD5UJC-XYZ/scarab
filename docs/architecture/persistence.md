@@ -136,12 +136,15 @@ from the immutable (structurally shared) anchor state, so following does not pau
 **Recovery.** Snapshots are tried newest first, as the reference's `tryNewestFirst` tries them
 (ouroboros-consensus 82ecba32 `Storage/LedgerDB/API.hs:599-646`). One that fails its checksum,
 decodes badly, is recorded under a build of another layout, names an anchor missing from the
-immutable store, or whose checkpoint is absent or not the one it recorded, is reported
-(`snapshotSkipped`), deleted with its checkpoint (`snapshotDeleted`: every native snapshot is
-temporary in the reference's sense, `Snapshots.hs:288-297`) and the next older one is tried; one
-whose checkpoint has another key layout or none, whose binding or sidecar has another schema, or
-that cannot be read is reported and kept (`LedgerSnapshots.Unused`). With none usable the stored
-blocks are replayed from genesis. An unknown or retired format version refuses the open (ADR 0006). The
+immutable store, or whose checkpoint is not the one it recorded or holds keys that do not decode,
+is reported (`snapshotSkipped`), deleted with its checkpoint (`snapshotDeleted`, best effort:
+`snapshotNotDeleted` when it fails; every native snapshot is temporary in the reference's sense,
+`Snapshots.hs:288-297`) and the next older one is tried; one whose checkpoint has another key
+layout or none, or whose binding or sidecar has another schema, is reported and kept
+(`LedgerSnapshots.Fallback`). With none usable the stored blocks are replayed from genesis. What the
+reference raises stops the start and deletes nothing: a file that cannot be read, an absent
+checkpoint, and an unknown or retired format version (ADR 0006). Checkpoints no snapshot lists are
+trimmed at every successful open. The
 stored blocks after the chosen snapshot are re-applied through the same `MirrorRules` with no
 network, then ChainSync resumes with the replayed anchor as the intersection candidate.
 
