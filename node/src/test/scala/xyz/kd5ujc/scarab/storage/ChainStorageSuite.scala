@@ -619,6 +619,61 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  /** Whether block `i` changed the UTxO set: a Shelley-based block whose changes carry its number.
+    */
+  private def changesUtxo(i: Int): Boolean = headers(i) match
+    case _: Header.Shelley =>
+      states(i + 1).utxo.diff.exists(_._2.stamp == headers(i).blockNo.toLong)
+    case _ => false
+
+  private def exported(
+      dir: Path,
+      out: Path,
+      anchor: BlockRef
+  ): IO[Either[LedgerSnapshotExport.Error, LedgerSnapshotExport.Report]] =
+    val slot = xyz.kd5ujc.scarab.ledger.state.SlotNo
+      .fromBigInt(anchor.slot)
+      .fold(e => fail(e.toString), identity)
+    Handle
+      .allow[LedgerSnapshotExport.Error](
+        LedgerSnapshotExport
+          .run[IO](LedgerSnapshotExport.Config(dir, out, Some(slot)))
+          .map(_.asRight[LedgerSnapshotExport.Error])
+      )
+      .rescue(e => IO.pure(Left(e)))
+
+  // In this chain only eight Shelley-based blocks change the UTxO set, so nearly every snapshot is
+  // of a block that changed nothing, the shutdown snapshots among them.
+  test("every snapshot exports, the shutdown one included, also of a block that changed no UTxO") {
+    tempDir.use { root =>
+      val dir = root / "db"
+      for
+        log1 <- events(dir)
+        _ <- runWith(dir, 500, 120, log1, Some("rocksdb"), keep = 100)
+        log2 <- events(dir)
+        second <- runWith(dir, 731, 120, log2, Some("rocksdb"), keep = 100)
+        e1 <- log1.get
+        e2 <- log2.get
+        written = (e1 ++ e2).collect { case StorageEvent.SnapshotWritten(_, Some(a), _, _) => a }
+        shutdowns = (e1 ++ e2).collect { case StorageEvent.ShutdownSnapshot(Some(a), true) => a }
+        restored = e2.collectFirst { case StorageEvent.SnapshotRestored(_, a) => a }.flatten
+        results <- written.distinct.traverse(a => exported(dir, root / "out", a).map(a -> _))
+      yield
+        assertEquals(shutdowns.map(_.blockNo), Vector(BigInt(500 - k - 1), BigInt(731 - k - 1)))
+        assert(shutdowns.forall(a => !changesUtxo(a.blockNo.toInt)), shutdowns)
+        assert(
+          written.exists(a => !shutdowns.contains(a) && !changesUtxo(a.blockNo.toInt)),
+          s"a periodic snapshot of a block that changed nothing, among $written"
+        )
+        // the restart restores the first shutdown snapshot and reaches the replayed state
+        assertEquals(restored, shutdowns.headOption)
+        assertState(second._2.state, states(731))
+        assertEquals(second._3, states(731).utxo.toMap)
+        assertEquals(results.collect { case (a, Left(e)) => a.blockNo -> e }, Vector.empty)
+        assertEquals(results.collect { case (a, Right(r)) if r.anchor != a => a }, Vector.empty)
+    }
+  }
+
   // ---- volatile blocks, the shutdown snapshot and the network identity (D4, D5) ----
 
   private def volatileConfig(every: Int, identity: Option[NetworkIdentity]) =
