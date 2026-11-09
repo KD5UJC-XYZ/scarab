@@ -59,7 +59,11 @@ enum DijkstraLedgerFailure(val tag: Int):
   case UtxowFailure(failure: DijkstraUtxowFailure) extends DijkstraLedgerFailure(1)
   case GovFailure(failure: xyz.kd5ujc.scarab.ledger.GovFailure) extends DijkstraLedgerFailure(3)
   case TreasuryValueMismatch(mismatch: Mismatch[BigInt]) extends DijkstraLedgerFailure(4)
-  case TxRefScriptsSizeTooBig(mismatch: Mismatch[Int]) extends DijkstraLedgerFailure(5)
+
+  /** The reference scripts' total of the batch against the limit, both of the reference's 64-bit
+    * `Int` (`Mismatch RelLTEQ Int`, `Rules/Ledger.hs:103`).
+    */
+  case TxRefScriptsSizeTooBig(mismatch: Mismatch[Long]) extends DijkstraLedgerFailure(5)
 
 /** The tags of `DijkstraLedgerPredFailure` whose sub-rules this build does not run yet. */
 object DijkstraLedgerFailure:

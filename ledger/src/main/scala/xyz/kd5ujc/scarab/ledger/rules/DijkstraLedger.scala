@@ -48,11 +48,11 @@ object DijkstraTxMeasures:
     in => utxo.get(in).map(_.referenceScriptSize.toLong)
 
   /** `batchNonDistinctRefScriptsSize` (`Dijkstra/UTxO.hs:301-314`): the transaction's and each of
-    * its sub-transactions'.
+    * its sub-transactions', `size` as for [[refScriptsSize]].
     */
-  def batchRefScriptsSize(utxo: NodeUtxo, tx: DijkstraTx): Long =
-    refScriptsSize(inUtxo(utxo), tx.body) +
-      tx.body.subTransactions.map(s => refScriptsSize(inUtxo(utxo), s.body)).sum
+  def batchRefScriptsSize(size: TxIn => Option[Long], tx: DijkstraTx): Long =
+    refScriptsSize(size, tx.body) +
+      tx.body.subTransactions.map(s => refScriptsSize(size, s.body)).sum
 
   private def redeemers(w: DijkstraWitnesses): ExUnits =
     w.redeemers.foldLeft(ExUnits.zero)((acc, r) => acc + ExUnits(r.memory, r.steps))
@@ -94,18 +94,21 @@ object DijkstraLedgerRule
       )
     )
 
-  /** `validateAllRefScriptSize` (`Ledger.hs:346-362`). */
+  /** `validateAllRefScriptSize` (`Ledger.hs:346-362`): the total in the reference's 64-bit `Int`,
+    * against `maxRefScriptSizePerTx`, a `Word32` that the reference widens to `Int` and the
+    * parameters' decoders bound. `size` gives the size of the reference script of the output an
+    * input names, if the UTxO set before the transaction holds it ([[DijkstraTxMeasures.inUtxo]]).
+    */
   def refScriptSize(
       pp: ProtocolParams,
-      utxo: NodeUtxo,
+      size: TxIn => Option[Long],
       tx: DijkstraTx
   ): Test[DijkstraLedgerFailure] =
-    val total = DijkstraTxMeasures.batchRefScriptsSize(utxo, tx)
+    val total = DijkstraTxMeasures.batchRefScriptsSize(size, tx)
+    val limit = pp.maxRefScriptSizePerTx.toLong
     Test.failureUnless(
-      BigInt(total) <= pp.maxRefScriptSizePerTx,
-      DijkstraLedgerFailure.TxRefScriptsSizeTooBig(
-        Mismatch(total.toInt, pp.maxRefScriptSizePerTx.toInt)
-      )
+      total <= limit,
+      DijkstraLedgerFailure.TxRefScriptsSizeTooBig(Mismatch(total, limit))
     )
 
   def transition[F[_]: Monad](env: LedgerEnv, tx: DijkstraTx)(using
@@ -122,7 +125,9 @@ object DijkstraLedgerRule
         if tx.body.subTransactions.isEmpty then Monad[F].unit
         else DijkstraSts.halt[F, Unit](DijkstraPending.SubLedgers)
       _ <- Sts.runTest[F, DijkstraLedgerFailure](treasuryValue(tx.body, env.treasury.value))
-      _ <- Sts.runTest[F, DijkstraLedgerFailure](refScriptSize(pp, utxo, tx))
+      _ <- Sts.runTest[F, DijkstraLedgerFailure](
+        refScriptSize(pp, DijkstraTxMeasures.inUtxo(utxo), tx)
+      )
       _ <-
         if tx.isValid then DijkstraSts.halt[F, Unit](DijkstraPending.Entities)
         else Monad[F].unit

@@ -316,7 +316,7 @@ class DijkstraRulesSuite extends FunSuite:
         DijkstraBbodyFailure.WrongBlockBodySize(m).tag,
         DijkstraBbodyFailure.HeaderProtVerTooLow(m).tag,
         DijkstraLedgerFailure.TreasuryValueMismatch(m).tag,
-        DijkstraLedgerFailure.TxRefScriptsSizeTooBig(Mismatch(0, 0)).tag,
+        DijkstraLedgerFailure.TxRefScriptsSizeTooBig(Mismatch(0L, 0L)).tag,
         DijkstraUtxowFailure.MalformedGuardDatums(Set.empty).tag,
         DijkstraUtxoFailure.OutputBootAddrAttrsTooBig(Vector.empty).tag,
         DijkstraUtxoFailure
@@ -444,5 +444,23 @@ class DijkstraRulesSuite extends FunSuite:
           )
         )
       )
+    )
+  }
+
+  test("LEDGER carries the batch's reference-script total in 64 bits, as the reference's Int") {
+    // the devnet transaction with a reference input beside its input, and itself as a
+    // sub-transaction: three inputs, each naming an output whose reference script is
+    // Int.MaxValue bytes, a total past a 32-bit Int
+    assertEquals((devnetTx.body.inputs.size, devnetTx.body.referenceInputs.size), (1, 0))
+    val reference = DijkstraTxIn(Bytes.fromArray(Array.fill(32)(0x11)), 0)
+    val sub = DijkstraSubTx(devnetTx.body.raw, devnetTx.body, devnetTx.witnesses, None)
+    val tx = devnetTx.copy(body =
+      devnetTx.body.copy(referenceInputs = Vector(reference), subTransactions = Vector(sub))
+    )
+    val each: xyz.kd5ujc.scarab.ledger.TxIn => Option[Long] = _ => Some(Int.MaxValue.toLong)
+    assertEquals(DijkstraTxMeasures.batchRefScriptsSize(each, tx), 6442450941L)
+    assertEquals(
+      DijkstraLedgerRule.refScriptSize(pp, each, tx).toEither.left.map(_.toChain.toVector),
+      Left(Vector(DijkstraLedgerFailure.TxRefScriptsSizeTooBig(Mismatch(6442450941L, 204800L))))
     )
   }
