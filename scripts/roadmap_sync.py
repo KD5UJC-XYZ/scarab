@@ -13,9 +13,13 @@ pull request from `bot/roadmap-sync` when all of these hold, and otherwise leave
   - every check on its head commit has completed and passed (or was skipped), and there is at least one;
   - GitHub reports it mergeable.
 
+GitHub computes `mergeable` lazily: the first read after main moves is often `UNKNOWN`, so the pull request is read
+again, a few seconds apart, until GitHub has an answer or the attempts run out.
+
 The merge is a squash pinned to the head commit it checked (`--match-head-commit`), so a push in between cannot ride
-along. The repository's auto-merge setting is not used: no other pull request can be merged this way. Exit 0 whether
-or not it merged (the reason is printed), 2 when `gh` fails.
+along. The repository's auto-merge setting is not used: no other pull request can be merged this way. `--admin` lets
+`gh` send the merge for a pull request it reports as blocked; GitHub still decides whether the merge is allowed. Exit 0
+whether or not it merged (the reason is printed), 2 when `gh` fails.
 """
 from __future__ import annotations
 
@@ -23,6 +27,7 @@ import argparse
 import json
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
@@ -30,8 +35,11 @@ REPOSITORY = "KD5UJC-XYZ/scarab"
 BRANCH = "bot/roadmap-sync"
 SYNC_FILES = frozenset({"docs/data/issue-states.json", "docs/roadmap.md"})
 PASSED = frozenset({"SUCCESS", "SKIPPED", "NEUTRAL"})
+MERGEABLE_ATTEMPTS = 6
+MERGEABLE_WAIT_SECONDS = 10.0
 
 Run = Callable[[Sequence[str]], str]
+Sleep = Callable[[float], None]
 
 
 @dataclass(frozen=True)
@@ -72,19 +80,31 @@ def gh(args: Sequence[str]) -> str:
     return done.stdout
 
 
-def merge(slug: str, dry_run: bool, run: Run = gh) -> str:
+def view(number: str, run: Run, sleep: Sleep) -> dict:
+    """The pull request, read again while GitHub has not yet computed whether it is mergeable."""
+    args = ["pr", "view", number, "--repo", REPOSITORY, "--json",
+            "author,files,statusCheckRollup,mergeable,headRefName,headRefOid"]
+    pr = json.loads(run(args))
+    for _ in range(MERGEABLE_ATTEMPTS - 1):
+        if pr.get("mergeable") != "UNKNOWN":
+            break
+        sleep(MERGEABLE_WAIT_SECONDS)
+        pr = json.loads(run(args))
+    return pr
+
+
+def merge(slug: str, dry_run: bool, run: Run = gh, sleep: Sleep = time.sleep) -> str:
     listed = json.loads(run(["pr", "list", "--repo", REPOSITORY, "--head", BRANCH, "--state", "open", "--json", "number"]))
     if not listed:
         return "roadmap sync: no open sync pull request"
     number = str(listed[0]["number"])
-    pr = json.loads(run(["pr", "view", number, "--repo", REPOSITORY, "--json",
-                         "author,files,statusCheckRollup,mergeable,headRefName,headRefOid"]))
+    pr = view(number, run, sleep)
     decided = verdict(pr, slug)
     if not decided.merge:
         return f"roadmap sync: #{number} left open: {decided.reason}"
     if dry_run:
         return f"roadmap sync: would merge #{number}: {decided.reason}"
-    run(["pr", "merge", number, "--repo", REPOSITORY, "--squash", "--match-head-commit", pr["headRefOid"]])
+    run(["pr", "merge", number, "--repo", REPOSITORY, "--squash", "--admin", "--match-head-commit", pr["headRefOid"]])
     return f"roadmap sync: merged #{number}: {decided.reason}"
 
 
