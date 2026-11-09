@@ -7,8 +7,8 @@ Part of [Running the node and the devnet scenarios](../running.md).
 
 A node that is up but no longer extends its chain looks healthy from outside (the process is alive and
 idle, the metrics are served). The watchdog (`StallWatchdog`) compares three facts: when a block was
-last extended, our tip, and the highest tip any peer announced (every ChainSync batch of every outbound
-and inbound session reports its peer's tip). When no block has been extended for `--stall-minutes`
+last extended, our tip, and the highest tip any peer announced (every ChainSync batch of every hot
+session reports its peer's tip). When no block has been extended for `--stall-minutes`
 (default 10, `0` turns it off) while an announced tip is ahead of ours, it logs one `stalled` event
 (`idleSeconds`, `ourBlock`, `peerBlock`, Warning), adds one to `scarab_follower_stalls_total` and sets
 `scarab_follower_stalled` to 1 until the next block is extended. A node at the tip of every peer never

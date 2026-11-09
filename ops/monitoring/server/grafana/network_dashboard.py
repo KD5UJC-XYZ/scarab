@@ -219,10 +219,10 @@ def network_dashboard(ui):
                  'in neither. Duplex counts negotiated duplex connections and overlaps the direction counts. '
                  'Do not add duplex to a connection total.')))
     p.line(
-        (12, lines('Inbound session outcomes · per minute', [
+        (12, lines('Inbound connection outcomes · per minute', [
             (f'60 * sum by (host, container, event) '
              f'(rate(scarab_inbound_events_total{{{m}}}[$__rate_interval]))', '{{event}}')],
-            desc='Accepted, negotiated capability, following, ended/dropped, refused/closed inbound events. '
+            desc='Accepted, negotiated data flow, refused and closed inbound connections. '
                  'An outbound-only node can legitimately have no inbound event series.')),
         (12, lines('ChainSync activity', [
             (f'sum by (host, container) (rate(scarab_chainsync_headers_total{{{m}}}[$__rate_interval]))', 'headers / second'),

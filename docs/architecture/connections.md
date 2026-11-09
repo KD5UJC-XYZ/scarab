@@ -5,78 +5,76 @@ Part of [Architecture](../architecture.md).
 
 ## Connections: the manager and the inbound governor (G2)
 
-A peer that connects to us is also a source of blocks. Before this, an inbound duplex connection
-(InitiatorAndResponder) was accepted and served, but only the connections the node opened ran our
-clients. Now:
+One connection serves both sides of a peer, as in the reference (ouroboros-network `2fb69829`,
+`ConnectionManager/Core.hs`): the outbound side reuses a duplex connection the peer opened, and the
+peer's protocols run on a duplex connection we opened. Our clients run only where the outbound governor
+promotes a peer.
 
 **`ConnectionState`** (`protocol`, pure). The reference connection manager's states without their
-runtime fields (ouroboros-network `2fb69829`, `ConnectionManager/State.hs:191-217`): `ReservedOutbound`,
-`Unnegotiated(provenance)`, `OutboundUni`, `OutboundDup(Ticking|Expired)`, `OutboundIdle(flow)`,
-`InboundIdle(flow)`, `Inbound(flow)`, `Duplex`, `Terminating` and `Terminated`. `transition(state, event)` takes the
-reference's named transitions (`Connected`, `Negotiated`, `Overwritten`, `AwakeLocal`, `PromotedToWarmLocal`,
-`DemotedToColdLocal`, `AwakeRemote`, `DemotedToColdRemote`, `TimeoutExpired`, `Commit`, a refused handshake, a
-failure and `Released`) and returns a typed `Illegal` for anything else. `closing(state, timeWait)` is how a
-connection ends: an orderly end goes through the reference's demotions and `Commit` into `Terminating` (time-wait),
-a failure to `Terminated` at once. `valid(from, to)` is the reference's `verifyAbstractTransition`
-(`Test/Ouroboros/Network/ConnectionManager/Utils.hs`), and `Counters` its `ConnectionManagerCounters` as
-`connectionStateToCounters` computes them. `ConnectionStateSuite` checks every move the model makes against
-`valid`, every state's closing, and the counters of every state. The manager drives the connect, negotiate and
-close transitions; reuse of an inbound duplex connection, the demotions and the remote side's activity are
-[#854](https://github.com/KD5UJC-XYZ/scarab/issues/854)'s next steps.
+runtime fields (`ConnectionManager/State.hs:191-217`): `ReservedOutbound`, `Unnegotiated(provenance)`,
+`OutboundUni`, `OutboundDup(Ticking|Expired)`, `OutboundIdle(flow)`, `InboundIdle(flow)`, `Inbound(flow)`,
+`Duplex`, `Terminating` and `Terminated`. `transition(state, event)` takes the reference's named
+transitions and returns a typed `Illegal` for anything else; `valid(from, to)` is the reference's
+`verifyAbstractTransition` (`Test/Ouroboros/Network/ConnectionManager/Utils.hs`), `Counters` its
+`ConnectionManagerCounters` as `connectionStateToCounters` computes them, and `isInboundConn` and
+`ConnectionType` what pruning sees of a connection.
 
-**`ConnectionManager`** (`network`). A `Ref` table from the peer's socket address to its
-connection (the key is the address and the direction). `inbound(remote)` and `outbound(remote)` are
-`Resource`s: admission is atomic with the checks (one live connection per address and direction, and
-none in the other direction while our clients use it: an outbound connection waits for an inbound
-duplex one that runs our clients, and with `--inbound-sync off` (the default) the two coexist; an inbound
-connection is never refused because we have an outbound one, see below; `accepted` (the reference's
-`AcceptedConnectionsLimit`), `maxInboundPerAddress` and `maxOutbound`), the
-refusals are typed (`ConnectionError.InboundLimit`, `AddressLimit`, `OutboundLimit`, `AlreadyConnected`) and raised
-through `Raise`, and releasing the resource, however it ends (normally, by failure or by
-cancellation), always runs `Close` and `Released` and removes the entry, so the accounting cannot
-leak. Every change of state is reported (`ConnectionEvent`, logged as `connection` lines);
-`lookup` lets a caller wait for a connection to end; `snapshot` is the table for `GET /connections`.
-A peer that dials from its own listening port (the reference node does) is thereby the same
-address we would dial; one that dials from an ephemeral port is not recognised as the peer we also
-dial (the limits still apply).
+**`ConnectionManager`** (`network`). A table from the remote and the local address (`ConnMap.hs` 45-50) to one
+connection's state, its negotiated handle (the mux, the agreed version and peer sharing, the transport's
+identity) and its generation. Every operation acts on one generation of an entry, and every change is
+reported (`ConnectionEvent`, logged as `connection` lines).
+- `include(remote, local)` admits an accepted connection (`includeInboundConnection`): refused at the hard
+  limit and the per-address limit (an approved deviation, ADR 0008), it overwrites an outbound
+  reservation with its identity (`Overwritten`, `SelfConn`) and replaces one that is terminating.
+- `acquire(remote, provenance)` is `acquireOutboundConnection`: it reuses an `InboundIdle Duplex`
+  (`Awake^{Duplex}_{Local}`) or `Inbound Duplex` (`PromotedToWarm^{Duplex}_{Local}`) connection and returns
+  its published handle; waits, without holding the table, for an unnegotiated accepted connection's
+  handshake (and settles as `Disconnected` if it ends) and for a terminating one to leave the table; refuses
+  a unidirectional one (`ForbiddenConnection`), an `OutboundIdle` one (`ForbiddenOperation`) and one the
+  outbound side holds already (`AlreadyConnected`, the reference's `ConnectionExists`); never dials a peer
+  of inbound provenance (`InboundConnectionNotFound`); and otherwise reserves the address to dial
+  (`maxOutbound` limits the reservations).
+- The owner of a connection's transport (the accept loop's handler, or the fiber that dialled it) holds its
+  resource; releasing it ends the connection through time-wait when it was left `Terminating`, at once
+  otherwise. A handshake that agreed no version takes the entry out of the table at once.
+- `releaseOutbound` ends the outbound side's use: `Duplex` becomes `Inbound Duplex`, `OutboundDup Ticking`
+  becomes `InboundIdle Duplex`, and `OutboundUni` or `OutboundDup Expired` becomes `OutboundIdle`, closed after
+  the outbound idle timeout (5 s) unless the peer wakes it up. `awaitOutboundDemotion` is the reference's
+  `waitForOutboundDemotion`: the peer is cold once the outbound side holds the connection no more.
+- `promotedToWarmRemote`, `demotedToColdRemote` and `releaseInbound` follow the peer's activity; a remote
+  promotion and an outbound release can prune inbound connections to stay within the hard limit, with the
+  reference's prune policy (upstream connections last).
 
-**`InboundGovernor`** (`node`). `serve(bearer, remote)` is the inbound handler of `--listen`: it
-admits the connection to the manager, runs `NodeToNodeServer.accept` (handshake, our servers) and,
-when the handshake agreed duplex and `--inbound-sync on` was given (the default is off), starts in the `negotiated` hook the
-same pieces that run on a connection we open: `NodeToNode.clients` (ChainSync, BlockFetch,
-KeepAlive and the TxSubmission2 client on the side of the mini-protocols that is ours), then
-`Peer.over` (the pipelined producer, header-first validation, ranges of blocks) and the follower
-session of `Follower`, so the peer's chain competes in chain selection like any other candidate.
-The session is a background fiber of the connection: when the multiplexer closes the clients, the
-producer and every supervised fiber are released with it. A session that ends because the peer broke
-the protocol, announced an invalid header or sent a block our rules refuse aborts the connection; one that ends
-for any other reason of the peer (the peer does not serve ChainSync, say) leaves the serving side running. A
-session ends with a `SessionEnd` (a value: `SessionEnd.scoped` runs it in an error scope of its own and catches
-caller-scoped rule and store capabilities), and `FailurePolicy.disposition` says what is
-done about it: forget the peer, try it again later, or stop the node (storage, an internal failure,
-a defect or implementation unavailability; exit codes 5, 6, 7 and 8,
-`running.md` "Failures that stop the node"). Each session counts the
-headers and rollbacks it saw and the peer's tip (`GET /connections`, `inbound` log events
-`accepted`, `duplex`, `following`, `sessionEnded`, `sessionDropped`, `closed`).
+**The peer's activity** (`NodeToNodeServer.remoteActivity`). On every connection whose responders the
+peer can start, the accepted ones and the duplex ones we dial: the first responder that starts is
+`AwakeRemote`, the last that ends `WaitIdleRemote` (which arms the idle timer, 5 s), and an expired timer is
+`CommitRemote`: the manager closes an idle connection, or keeps one the outbound side uses
+(`OutboundDup Ticking` becomes `Expired`) until a later responder wakes it up (`InboundGovernor.hs` 329-335,
+463-481, 499-570).
 
-**Outbound.** `OutboundPeers` puts the connections we open through the same manager. If the
-peer we are asked to dial already has a duplex connection to us on which our client runs, no second
-connection is opened: the dialler waits until that connection ends (the `reused` log event) and then
-dials; a manager refusal becomes a recoverable connection failure. Outbound peers configured with
-`InitiatorAndResponder` receive the node's responder handlers and can read our chain on that same
-bearer when duplex is negotiated. `InitiatorOnly` peers do not receive those handlers.
-Admission distinguishes address and direction, permits an inbound connection alongside an outbound
-one, and permits the reverse when inbound sync is disabled. When two sessions do follow one peer,
-chain selection treats their candidates independently.
+**`InboundGovernor`** (`node`). `serve(bearer, remote)` is the inbound handler of `--listen`: it admits the
+connection to the manager, runs `NodeToNodeServer.accept` (handshake, our servers, the peer's activity),
+publishes the negotiated handle and reports the data flow (`inbound` log events `accepted`, `duplex`,
+`unidirectional`, `closed`, `refused`). It runs none of our clients.
 
-Tests: `ConnectionManagerSuite` (admission, one connection per address, limits per direction,
-release after failure and cancellation, illegal events, waiting for a connection to end, and a
-model-based property over random open/negotiate/release sequences that checks the counters against
-the table and the limits after every step); `InboundGovernorSuite` (a duplex peer that only connects
-to us over in-memory bearers is followed to its tip and its blocks applied; an initiator-only peer is
-served and not followed; a second connection from one address is refused; the table is empty again
-when the peer lets go). The devnet `relay` scenario asserts it against the reference node (see
-[running.md](../running.md)).
+**Outbound.** `OutboundPeers.establish` acquires through the manager with the peer's provenance. A reused
+connection's handle gets our initiators attached (`NodeToNode.attach`: KeepAlive, PeerSharing; the hot
+protocols on activation), with no handshake and no responder installed again. A reservation is dialled by a
+fiber of its own under the outer supervisor, which owns the transport as the reference's connection thread
+does: `NodeToNode.negotiate` runs the handshake, publishes the handle and, on a duplex connection, our
+responders and the peer's activity. A clean close releases the outbound use only; a protocol failure or a
+close timeout stops the shared mux (`PeerStateActions.hs` 1079-1104). Outbound peers configured with
+`InitiatorAndResponder` offer duplex; `InitiatorOnly` peers do not.
+
+Tests: `ConnectionStateSuite` (every move against `valid`, the counters); `ConnectionManagerSuite`
+(admission and its limits, inbound-first and outbound-first acquisition, a reservation racing an accept, a
+self-connection, the wait for a handshake and its failure, the wait for a time-wait and the replacement
+during one, the releases of both sides, an inbound close ending the outbound use, pruning, and a property over
+random sequences of all of these that checks every reported change against `valid` and the counters against
+the table and the hard limit); `ProtocolIdleTimeoutSuite` (the peer's activity and the idle timer, expiry
+before and after an outbound release, remote reactivation); `InboundGovernorSuite`; `OutboundReuseSuite`
+(the outbound governor's use of a peer's own connection). The devnet `relay` scenario asserts reuse against
+the reference node (see [running.md](../running.md)).
 
 ## Peer selection: the outbound peers (G1.1)
 

@@ -105,9 +105,8 @@ Meanings and units worth knowing before building a dashboard:
 `Shelley`, `Allegra`, `Mary`, `Alonzo`, `Babbage` or `Conway`; `rule` is `byron`, `structure`, `decode`, `envelope`,
 `ledger`, `tpraos` or `praos`; `state` (of a connection) is one of the reference connection manager's states, `ReservedOutbound`,
 `Unnegotiated`, `OutboundUni`, `OutboundDup`, `OutboundIdle`, `InboundIdle`, `Inbound`, `Duplex`, `Terminating`
-or `Terminated` (`ConnectionManager/State.hs`, ouroboros-network `2fb69829`); `event` is, for `scarab_connection_events_total`, `Opened`, `Changed`, `Refused` or `Closed`, and for
-`scarab_inbound_events_total`, `Accepted`, `Duplex`, `Unidirectional`, `Following`, `SessionEnded`, `SessionReturned`,
-`SessionDropped`, `CachedBlockRejected`, `Closed` or `Refused`; `reason` is, for `scarab_mempool_rejected_total`, `Malformed`,
+or `Terminated` (`ConnectionManager/State.hs`, ouroboros-network `2fb69829`); `event` is, for `scarab_connection_events_total`, `Opened`, `Changed`, `Refused`, `Closed` or `Pruned`, and for
+`scarab_inbound_events_total`, `Accepted`, `Duplex`, `Unidirectional`, `Closed` or `Refused`; `reason` is, for `scarab_mempool_rejected_total`, `Malformed`,
 `AlreadyHeld`, `Ledger`, `Full`, `WrongEra`, `NoLedger`, `InputDefect` or `RulesDefect`, and for `scarab_forge_skipped_total`, `SlotIsImmutable`,
 `BlockFromFuture`, `NoLedgerView` or `Other`; `kind` (snapshots) is `Skipped`, `Failed` or `Refused`; `over_ms` is
 `50` or `100`; `area` is `heap` or `nonheap`; `gc` is the name the JVM gives the collector (`G1 Young

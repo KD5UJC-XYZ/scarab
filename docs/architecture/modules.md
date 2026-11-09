@@ -56,7 +56,7 @@ several modules).
 | Errors | `NodeError.scala` | Closed hierarchy, see "Error model" |
 | Peer | `Peer.scala` | `Peer[F]` algebra (intersect / next / fetch) with a node-to-node interpreter over `network`: `Peer.nodeToNode` for a connection we open, `Peer.over` for any negotiated connection (also an inbound duplex one) |
 | Header-first | `HeaderGate.scala`, `NodeHeaderRules.scala`, `HeaderValidation.scala`, `consensus/HeaderRules.scala` | `HeaderCheck`/`HeaderGate` validate each ChainSync batch before its blocks are fetched; the pure `HeaderRules[S, H]` (`NodeHeaderRules`) forecasts the ledger view; `HeaderChain` is the candidate chain's header states (G6) |
-| Connections | `InboundGovernor.scala`, `network/ConnectionManager.scala`, `protocol/ConnectionState.scala` | Pure connection life cycle, the manager's table (one connection per address and direction, admission limits and typed refusals), and the governor that runs our clients on inbound duplex connections (G2) |
+| Connections | `InboundGovernor.scala`, `network/ConnectionManager.scala`, `protocol/ConnectionState.scala` | The reference connection manager's states, the manager's table (one connection serves both sides of a peer: reuse, releases, waits, admission limits, pruning, typed refusals), and the inbound governor that serves accepted connections and tracks the peer's activity (G2) |
 | Peer selection | `network/selection/*.scala`, `PeerGovernor.scala`, `OutboundPeers.scala`, `PeerNetwork.scala`, `GsmRunner.scala`, `FailurePolicy.scala` | The pure peer governor (state, decision, events, targets, local roots, sensitive state, the Genesis State Machine), its loop and its interpreter over the connection manager, the follower and the block pool (G1.1) |
 | Decoding | `Header.scala`, `Block.scala` | Era-aware: `Header.Shelley` (TPraos or Praos `HeaderVrf`) and `Header.Byron`; blocks decoded per era with the body hash recomputed from the original bytes |
 | Chain | `VolatileChain.scala` | Pure last-k chain of `(block, state)`; rollback restores the exact retained state |
@@ -71,7 +71,7 @@ several modules).
 | Scheduling | `Scheduling.scala` | `Compute[F]` (the CPU pool the follower runs on, a `Resource`), timer-lateness monitor, `SchedulingStats` |
 | Relay | `relay/`, `mempool/`, `network` servers | Serves the node's chain, collects and offers transactions, accepts local submissions |
 | Forging | `forge/`, `Follower.adoptForged`, `crypto/.../vrf/Draft03Prover`, `crypto/.../kes/Sum6KesSigning` | Praos block production |
-| Query | `Query.scala` | `ChainView[F, S]` plus a loopback http4s server: `GET /tip`, `GET /state?slot=&hash=[&utxo=summary|full]` (summary by default; the devnet comparator asks for `full`; used by the devnet comparator), `GET /scheduling`, `GET /connections` (connection table and inbound sessions), `GET /metrics` (Prometheus text format; `MetricsServer` serves it alone on `--metrics-listen`) |
+| Query | `Query.scala` | `ChainView[F, S]` plus a loopback http4s server: `GET /tip`, `GET /state?slot=&hash=[&utxo=summary|full]` (summary by default; the devnet comparator asks for `full`; used by the devnet comparator), `GET /scheduling`, `GET /connections` (connection table and peer selection), `GET /metrics` (Prometheus text format; `MetricsServer` serves it alone on `--metrics-listen`) |
 
 All configuration (epoch geometry, k, f, KES parameters, protocol parameters, initial UTxO and
 staking) is read from the genesis files; nothing assumes a particular network. Ledger arithmetic

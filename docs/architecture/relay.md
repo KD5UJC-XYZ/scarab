@@ -36,8 +36,8 @@ multiplexer with the error as a value.
 reports the agreed data. `initiatorOnly` in the agreed data is false only if both sides allow a
 duplex connection. `NodeToNode.over(..., serve = Some(handlers))` offers InitiatorAndResponder and
 runs our servers next to our clients when the peer agrees; `NodeToNodeServer.accept` is the inbound
-side: the node's inbound connections are served, and on a duplex one the inbound governor also
-runs our clients (see "Connections" below).
+side: the node's inbound connections are served, and on a duplex one our clients run when the
+outbound governor promotes the peer and reuses the connection (see "Connections" below).
 
 **Servers.** `ChainSyncServer.run` answers FindIntersect and RequestNext in order (so pipelining
 clients work), sends AwaitReply at the tip and then waits for the chain to change. It reads through
