@@ -5,7 +5,7 @@
   database it reads and writes and, later, the rules it follows. The value has to be the build the
   network runs; another value is like running another binary. `11.1` (the default) is the stable
   11.1 release line, behaving as its pinned release 11.1.3. `leios-b004fe0c` is the unstable public
-  Leios testnet build; it is refused at start until its ledger state layout is implemented.
+  Leios testnet build; `follow` refuses it at start until its rules are implemented.
 - The start logs `referenceBuild` with the build and its pinned revisions, and warns
   (`unstableReferenceBuild`) when an unstable build runs without `ExperimentalHardForksEnabled`.
 

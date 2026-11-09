@@ -567,11 +567,12 @@ cardano-ledger 9df9f98c, ouroboros-consensus 2416493b). Parsing the flag string 
 `UnknownReferenceBuild` for any other text. `--reference-build` is on `follow`,
 `import-ledger-snapshot` and `export-ledger-snapshot`, `11.1` without it; the help text and
 [flags.md](../running/flags.md) say that the value has to be the build the network runs. A build
-selects a layout (`StateLayout`, `storage/.../haskell/state/ReferenceLayout.scala`); several builds
-may share one. A layout's codec (`ReferenceLayout`) is the only way to a snapshot format, an import
-or an export, and `ReferenceLayout.of` refuses a layout without one: in step a the Leios build is
-refused at start with `ConfigProblem.ReferenceBuildNotYet(ReferenceBuildNotYet.StateLayout(...))`,
-after `follow` has logged `referenceBuild` with the pins and, for an unstable build without
+selects a layout (`StateLayout`, in `protocol` since step b); several builds may share one. A
+layout's codec (`ReferenceLayout`) is the only way to a snapshot format, an import or an export. In
+step a the Leios build was refused at start for want of its layout's codec; since step b
+(section 14) `ReferenceLayout.of` is total, and `follow` refuses the Leios build with
+`ConfigProblem.ReferenceBuildNotYet(ReferenceBuildNotYet.Rules(...))` until its rules exist, after it
+has logged `referenceBuild` with the pins and, for an unstable build without
 `ExperimentalHardForksEnabled`, `unstableReferenceBuild`. The naming rule and every place a new
 build touches are in [the playbook](../playbooks/add-a-reference-build.md).
 
@@ -645,5 +646,61 @@ yet, as 11.1 bytes, so an existing database exports as before; the SCLS base (`e
 `import-scls`) reads such a V9 file as its V10 migration would write it, in memory, and writes V10 in
 the 11.1 layout.
 
-Not in step a: the Leios codec and the model fields behind it (step b), and rules selected by the
-build (step c).
+Not in step a: the Leios codec and the model fields behind it (step b, section 14), and rules
+selected by the build (step c).
+
+## 14. The Leios build's layout as built (#826 step b)
+
+The `state` file of `leios-b004fe0c` (cardano-ledger 9df9f98c, ouroboros-consensus 2416493b) is read
+and written in every Shelley-based era up to Conway. The encoders and decoders of every type a
+Shelley-to-Conway `state` file holds were diffed between the pins of the two builds, era by era; the
+records below are those that differ. Everything else, the binary layer below version 12 among it
+(the encoder is 048b78d2's line for line; the decoder accepts chunked strings from version 12 only),
+is the same.
+
+| Record | 11.1 (f649f975, 82ecba32) | Leios (9df9f98c, 2416493b) |
+|---|---|---|
+| `ExtLedgerState` | `[ledger, header]` (`Ledger/Extended.hs:233-280`) | `[ledger, header, perasState]`, two parts read with `defaultPerasState`, three always written (`Ledger/Extended.hs:420-512`) |
+| `PerasState` | none | `[resolver, latest certificate round]`, the resolver `[0, reason]` or `[1, current, previous]` (`Ledger/Peras.hs:45-101`, `Peras/Context.hs:237-301`) |
+| HFC `Bound` | three items, or four with `PerasEnabled` round (`HardFork/History/Summary.hs:526-549`) | four written; three read as round zero (`Summary.hs:90-99, 573-601`) |
+| `ShelleyLedgerState` field 4 | latest Peras certificate round, `StrictMaybe` | `shelleyCumulativeTxBytes :: Word64` (`Shelley/Ledger/Ledger.hs:308, 885-922`) |
+| `NewEpochState` | seven fields, `nesPd` sixth | six; the pool distribution is the set snapshot's (`Shelley/LedgerState/Types.hs:393-422, 643-644`) |
+| `SnapShots` | `[mark, set, go, fee]`, bare snapshots | `[MarkSnapShot [snapshot, epoch, committee size, maximum key age], SetSnapShot [snapshot, committee], GoSnapShot [snapshot], fee]` (`State/SnapShots.hs:386-594`) |
+| `StakePoolSnapShot` | ten fields | eleven, `spssBlsKey :: StrictMaybe BlsKeyState` after the VRF key hash (`State/SnapShots.hs:280-315`) |
+| `StakePoolState` | ten fields | eleven, `spsBlsKey` after the VRF key hash (`State/StakePool.hs:165, 220-266`) |
+| `BlsKeyState`, `BlsKey`, `LeiosCommittee` | none | `[key, epoch]`; `[96-byte G2 key, 48-byte G1 proof]` read by `decodeFixedSized`; the list of seats `[weight, StrictMaybe key]` (`State/StakePool.hs:532-570`, `Binary/Encoding/EncCBOR.hs:487-496`) |
+
+Not differences in these eras: `StakePoolParams` (the BLS key is in it from version 12 only,
+`State/StakePool.hs:716-771`); `IndividualPoolStake` (three or four items, `State/PoolDistr.hs:86-116`,
+but no longer in the `state` file, `nesPd` being gone); `RatifyEnv` (`VotingStakePoolDistr`, but the
+DRep pulser is written completed, `Conway/Governance/DRepPulser.hs:468-472`); `PParams` and
+`PParamsUpdate`; `PraosState` (version 0 and eight fields for Praos, `Protocol/PolyPraos.hs:362-420`).
+
+**The model.** Each record that differs holds one part that the layout decides, a closed enum with a
+case per layout extending `LayoutPart`: `Bound.Layout`, `ShelleyLedgerState.Layout`,
+`ExtLedgerState.Layout` (the `PerasState`), `NewEpochState.Layout` (the stored distribution of 11.1),
+`SnapShots.Layout` (the mark's epoch, committee size and key age, and the set's committee) and
+`PoolBlsKey` (a pool's voting key, in its state and its stake snapshot). The 11.1 case of a part holds
+only what 11.1 writes, so no field is shared between the layouts' values. `NewEpochState.pd` is the
+stored distribution in 11.1 and the set snapshot's in Leios, without the voting keys the reference's
+`IndividualPoolStake` adds. A `PerasResolver` with an epoch context is not modelled: the eras before
+Dijkstra have a `Void` voting committee, refused as the reference refuses it, and Dijkstra's is
+`DijkstraNotYet.LedgerState`.
+
+**The codecs.** The codec traits take the layout (`stateLayout`); `HaskellStateCodecs` is 11.1's
+and `LeiosStateCodecs` the Leios build's. Each record that differs branches on it, and each codec's
+`check` refuses a part of the other layout, naming where it is, so a value read in one layout is
+never written in the other: `HaskellLedgerFile.encode` returns `StateNotWritable`. There is no
+conversion. Records that do not differ are shared.
+
+**The setting.** `ReferenceLayout.of` is total; `import-ledger-snapshot` and
+`export-ledger-snapshot` take `leios-b004fe0c` and add or strip the envelope as for `11.1`.
+`follow` refuses it (`ReferenceBuildFlag.follows`) until step c. The rules this build runs produce
+values of the 11.1 layout; running them on a Leios state is step c's to change.
+
+**Evidence.** The last Conway state of a Leios devnet (`fixtures/leios/state/conway-195`) is read
+and written byte for byte, imported and exported with `state`, `tables` and `meta` unchanged, and
+refused by the 11.1 layout; the first Dijkstra state is refused at its telescope with its Peras
+state and past bounds read (`LeiosLayoutSuite`, `LeiosLayoutImportSuite`, the `leios-*` fuzz
+targets). Only Conway is checked on reference bytes; the other eras on the diff of the sources and
+on property laws.

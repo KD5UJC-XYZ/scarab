@@ -123,9 +123,7 @@ object LedgerSnapshotImportCommand:
   ): Either[ConfigError, (NodeSetup, LedgerSnapshotImport.Config)] =
     setupOf(options).flatMap(setup => inputs(options, setup).map(setup -> _))
 
-  /** What the import needs from `setup`: the build's codec is last, so its refusal comes after the
-    * configuration has been read and the warnings about it given.
-    */
+  /** What the import needs from `setup`, the codec of the build's layout last. */
   private[tools] def inputs(
       options: Options,
       setup: NodeSetup
