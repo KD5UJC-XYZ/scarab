@@ -47,7 +47,9 @@ class TickRulesSuite extends FunSuite:
     val es = nes.es
     es.chainAccount.treasury.value + es.chainAccount.reserves.value + es.ls.utxo.fees.value +
       es.ls.utxo.deposited.value +
-      CompactCoin.sum(es.ls.cert.dState.accounts.states.valuesIterator.map(_.balance)).toBigInt
+      CompactCoin
+        .sum(es.ls.cert.dState.accounts.states.valuesIterator.map(_.balance))
+        .fold(e => fail(e.toString), _.toBigInt)
 
   private def onSmallStack[A](body: => A): A =
     var result: Option[Either[Throwable, A]] = None
@@ -137,7 +139,9 @@ class TickRulesSuite extends FunSuite:
     assertEquals(after.es.snapshots.fee, after.es.ls.utxo.fees)
     // the pools made blocks and the accounts were given rewards
     val balances = (s: NewEpochState[Conway]) =>
-      CompactCoin.sum(s.es.ls.cert.dState.accounts.states.valuesIterator.map(_.balance)).toBigInt
+      CompactCoin
+        .sum(s.es.ls.cert.dState.accounts.states.valuesIterator.map(_.balance))
+        .fold(e => fail(e.toString), _.toBigInt)
     assert(balances(after) > balances(before))
     assertEquals(pots(after), pots(before))
   }

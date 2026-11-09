@@ -15,7 +15,8 @@ enum FieldKeys:
   case FullWidth
 
   /** As the builds before #379 read them, as their low 32 bits: what such a build stored still
-    * reads as it read then (ADR 0006). The stores' re-reads of their own outputs alone.
+    * reads as it read then (ADR 0006). The stores' re-reads of their own outputs alone, never a
+    * value from outside (overflow-improvements.md#stored-data).
     */
   case Stored
 

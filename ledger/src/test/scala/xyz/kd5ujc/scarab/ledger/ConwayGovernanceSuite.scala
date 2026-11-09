@@ -179,9 +179,10 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       val pending = registered.copy(es = registered.es.copy(ls = governed))
       val deposited = native.Coin(NativeRules.obligation(pending))
       val withDeposits = governed.copy[Conway](utxo = governed.utxo.copy(deposited = deposited))
-      val mark = StakeDistribution.snapshot(
-        EraLedger.activeStake(withDeposits),
-        withDeposits.cert.pState.stakePools
+      val mark = must(
+        EraLedger
+          .activeStake(withDeposits)
+          .flatMap(StakeDistribution.snapshot(_, withDeposits.cert.pState.stakePools))
       )
       val unreserved = Step(
         registered.copy(es =
@@ -314,13 +315,13 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       Vector.empty,
       s"$label: pool delegators"
     )
-    val instant = must(
-      InstantStakeOps.update(
+    val instant = InstantStakeOps
+      .update(
         Empty.instantStake[Conway],
         st.nes.es.ls.utxo.utxo.utxo.valuesIterator.toVector,
         Nil
       )
-    )
+      .fold(e => fail(s"$e"), identity)
     assertEquals(st.nes.es.ls.utxo.instantStake, instant, s"$label: instant stake")
 
   /** The id of governance action `index` of the last transaction submitted. */

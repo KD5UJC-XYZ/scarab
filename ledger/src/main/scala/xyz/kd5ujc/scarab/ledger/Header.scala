@@ -379,7 +379,9 @@ object Header:
     * (`Slotting/EpochAndSlotCount.hs:71-81`, cardano-ledger f649f975) adds the slot count to
     * `epoch * epochSlots` in `Word64` arithmetic, which wraps modulo 2^64, and checks no slot count
     * against the epoch's length; a boundary block's slot is `boundaryBlockSlot`
-    * (`Block/Block.hs:533-539`), the same product (#818).
+    * (`Block/Block.hs:533-539`), the same product (#818). Unchanged: a header has no outcome that
+    * is no verdict, and an exact slot from 2^64 up does not fit the stores' and the wire's slots
+    * (overflow-improvements.md#byron-header-slot).
     */
   def byronSlot(epoch: BigInt, epochSlots: BigInt, slotInEpoch: BigInt): BigInt =
     (epoch * epochSlots + slotInEpoch).mod(Word64Modulus)

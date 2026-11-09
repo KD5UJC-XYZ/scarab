@@ -82,7 +82,9 @@ object Rewards:
     }.toVector
 
   /** `aggregateCompactRewards` (`Shelley/Rewards.hs:205–210`): convert each delivered reward before
-    * the compact fold. A negative or oversized individual reward still fails conversion.
+    * the compact fold. A negative or oversized individual reward still fails conversion, and a sum
+    * the reference's `Word64` would wrap fails too
+    * (overflow-improvements.md#compact-coin-arithmetic).
     */
   def aggregateCompact(
       major: BigInt,
@@ -92,7 +94,7 @@ object Rewards:
       .traverse { (credential, rewards) =>
         delivered(major, rewards).toList
           .foldLeftM(CompactCoin.zero)((sum, reward) =>
-            CompactCoin.fromCoin(reward.rewardAmount).map(sum.add(_))
+            CompactCoin.fromCoin(reward.rewardAmount).flatMap(sum.add(_))
           )
           .map(credential -> _)
       }

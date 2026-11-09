@@ -5,22 +5,65 @@ import java.nio.file.{Files, Path}
 import io.circe.parser.parse
 import munit.FunSuite
 
+/** The Byron linear fee and parameter decoders against the pinned native ones. Where the reference
+  * converts the scaled size into `Word64` modulo 2^64, the node gives no verdict
+  * ([[TxFeePolicy.Error.ScaledOutOfRange]]); where the reference's `Word64` sum of the summand and
+  * the scaled size wraps, both refuse it, and the node's refusal names the exact sum
+  * (overflow-improvements.md#byron-linear-fee).
+  */
 class ByronParamsNativeSuite extends FunSuite:
-  test("native signed ceiling and Word64 conversion precede checked fee addition") {
+  private val modulus = BigInt(1) << 64
+
+  test("the signed ceiling outside a Word64 is no verdict, where the reference wraps it") {
     assertEquals(TxFeePolicy(0, -1).minimumFee(1), Right(BigInt(0)))
+    // the reference wraps a ceiling of -1 to 2^64 - 1 and then refuses the sum as an overflow
     assertEquals(
       TxFeePolicy(0, -1000000000).minimumFee(1),
-      Left(TxFeePolicy.Error.Overflow((BigInt(1) << 64) - 1))
+      Left(TxFeePolicy.Error.ScaledOutOfRange(-1))
     )
     assertEquals(
       TxFeePolicy(1000000000, -1000000000).minimumFee(1),
-      Left(TxFeePolicy.Error.Overflow(BigInt(0)))
+      Left(TxFeePolicy.Error.ScaledOutOfRange(-1))
     )
-    assertEquals(TxFeePolicy(0, (BigInt(1) << 64) * 1000000000).minimumFee(1), Right(BigInt(0)))
+    // the reference wraps a ceiling of 2^64 to 0 and takes a fee of the summand alone
+    assertEquals(
+      TxFeePolicy(0, modulus * 1000000000).minimumFee(1),
+      Left(TxFeePolicy.Error.ScaledOutOfRange(modulus))
+    )
+    // below the boundary the reference's own overflow refusal stands
+    assertEquals(
+      TxFeePolicy(0, (modulus - 1) * 1000000000).minimumFee(1),
+      Left(TxFeePolicy.Error.Overflow(modulus - 1))
+    )
+    assertEquals(
+      TxFeePolicy(2000000000, (modulus - 1) * 1000000000).minimumFee(1),
+      Left(TxFeePolicy.Error.Overflow(modulus + 1))
+    )
+    assertEquals(TxFeePolicy(0, 1000000000).minimumFee(7), Right(BigInt(7)))
     assertEquals(TxFeePolicy(0, 0).minimumFee(-1), Left(TxFeePolicy.Error.SizeTooSmall(BigInt(-1))))
     assertEquals(
       TxFeePolicy(0, 0).minimumFee(ByronLedger.MaxLovelace + 1),
       Left(TxFeePolicy.Error.SizeTooLarge(ByronLedger.MaxLovelace + 1))
+    )
+  }
+
+  test("a scaled size out of range is no verdict on the block, never a refusal") {
+    val error = xyz.kd5ujc.scarab.ledger.state.VocabError
+      .OutOfRange(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.Coin, modulus)
+    assertEquals(
+      xyz.kd5ujc.scarab.ledger.BlockFailure
+        .Byron(xyz.kd5ujc.scarab.ledger.ByronChainError.Ledger(ByronError.StateOutOfRange(error)))
+        .stateOutOfRange,
+      Some(error)
+    )
+    assertEquals(
+      xyz.kd5ujc.scarab.ledger.BlockFailure
+        .Byron(
+          xyz.kd5ujc.scarab.ledger.ByronChainError
+            .Ledger(ByronError.FeeCalculation(TxFeePolicy.Error.Overflow(1)))
+        )
+        .stateOutOfRange,
+      None
     )
   }
 
@@ -84,6 +127,10 @@ class ByronParamsNativeSuite extends FunSuite:
           val fee = value.hcursor
           val expected = fee.downField("result")
           val size = field[BigInt](fee, "size")
+          val summand = field[BigInt](row, "summandLovelace")
+          val scaled = policy.multiplierNano * size
+          val ceiling = scaled / TxFeePolicy.Nano + (if scaled % TxFeePolicy.Nano > 0 then 1 else 0)
+          val sized = size >= 0 && size <= ByronLedger.MaxLovelace
           val outcome =
             if field[Boolean](expected, "accepted") then Right(field[BigInt](expected, "lovelace"))
             else
@@ -94,10 +141,21 @@ class ByronParamsNativeSuite extends FunSuite:
               val problem = field[String](error, "constructor") match
                 case "LovelaceTooLarge" => TxFeePolicy.Error.SizeTooLarge(operand)
                 case "LovelaceTooSmall" => TxFeePolicy.Error.SizeTooSmall(operand)
-                case "LovelaceOverflow" => TxFeePolicy.Error.Overflow(operand)
-                case other              => fail(s"unsupported native fee error $other")
+                case "LovelaceOverflow" =>
+                  // the reference's operand is the `Word64` sum; the node's is the exact one
+                  if sized && ceiling >= 0 && ceiling < modulus then
+                    assertEquals(operand, (summand + ceiling).mod(modulus), label)
+                    TxFeePolicy.Error.Overflow(summand + ceiling)
+                  else TxFeePolicy.Error.Overflow(operand)
+                case other => fail(s"unsupported native fee error $other")
               Left(problem)
-          assertEquals(policy.minimumFee(size), outcome, s"$label size=$size")
+          // a ceiling the reference wraps into `Word64` is no verdict, whatever the reference made
+          // of it (overflow-improvements.md#byron-linear-fee)
+          val node =
+            if sized && (ceiling < 0 || ceiling >= modulus) then
+              Left(TxFeePolicy.Error.ScaledOutOfRange(ceiling))
+            else outcome
+          assertEquals(policy.minimumFee(size), node, s"$label size=$size")
         }
     }
   }

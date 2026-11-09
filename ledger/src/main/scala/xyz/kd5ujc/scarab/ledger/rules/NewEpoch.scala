@@ -112,11 +112,11 @@ object NewEpoch:
     )
     val reserves = Coin(es.chainAccount.reserves.value + update.deltaR.value)
     val fees = Coin(es.ls.utxo.fees.value + update.deltaF.value)
-    Rewards.aggregateCompact(major, registered).map { delivered =>
-      val credited = EraLedger.creditAscending(es.ls, delivered)
-      es.copy(
-        chainAccount = ChainAccountState(treasury, reserves),
-        ls = credited.copy[E](utxo = credited.utxo.copy(fees = fees)),
-        nonMyopic = update.nonMyopic
-      )
-    }
+    for
+      delivered <- Rewards.aggregateCompact(major, registered)
+      credited <- EraLedger.creditAscending(es.ls, delivered)
+    yield es.copy(
+      chainAccount = ChainAccountState(treasury, reserves),
+      ls = credited.copy[E](utxo = credited.utxo.copy(fees = fees)),
+      nonMyopic = update.nonMyopic
+    )

@@ -389,19 +389,26 @@ object NodeSetup:
       lite <- LiteLedger.fromGenesis(files.shelley, firstShelley.getOrElse(BigInt(0)))
       byronRules <- byron.traverse { b =>
         val ledgerConfig = ByronLedger.Config(b, requiresMagic)
-        ByronLedger
-          .initial(ledgerConfig)
-          .leftMap {
-            case e: LedgerDecodeError => ConfigError(ConfigProblem.LedgerValue(e))
-            case d: ProviderDefect    => ConfigError(ConfigProblem.GenesisUnverifiable(d))
-          }
-          .map { ledger =>
-            ledger -> ByronRulesConfig(
-              ledgerConfig,
-              config.pbftSignatureThreshold.getOrElse(NodeConfig.DefaultPBftSignatureThreshold),
-              firstShelley
+        val threshold =
+          config.pbftSignatureThreshold.getOrElse(NodeConfig.DefaultPBftSignatureThreshold)
+        // the reference takes the window threshold modulo 2^64
+        // (overflow-improvements.md#byron-pbft-window-threshold)
+        val floor = ByronRules.windowFloor(threshold, b.securityParam)
+        for
+          _ <- Either.cond(
+            floor.signum >= 0 && floor.bitLength <= 64,
+            (),
+            ConfigError(
+              ConfigProblem.OutOfRange("PBftSignatureThreshold times the Byron k,", floor, 64)
             )
-          }
+          )
+          ledger <- ByronLedger
+            .initial(ledgerConfig)
+            .leftMap {
+              case e: LedgerDecodeError => ConfigError(ConfigProblem.LedgerValue(e))
+              case d: ProviderDefect    => ConfigError(ConfigProblem.GenesisUnverifiable(d))
+            }
+        yield ledger -> ByronRulesConfig(ledgerConfig, threshold, firstShelley)
       }
       genDelegs <- LiteLedger.fromGenesis(files.shelley).map(_.genDelegs)
       fromByron = FromByron(genDelegs, params, globals.maxSupply)

@@ -39,6 +39,8 @@ object Rupd:
           globals <- Sts.globals[F]
           s = slot.toBigInt
           epoch = globals.epochOf(s)
+          // `+*` (`Rupd.hs:115-119`) wraps in `Word64`; these sums are exact
+          // (overflow-improvements.md#slot-arithmetic)
           start = globals.firstSlot(epoch) + globals.randomnessStabilisationWindow
           current <- ru.get
           next <- Sts.lift[F, TickFailure, Option[PulsingRewUpdate]](

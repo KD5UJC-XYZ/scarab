@@ -191,12 +191,21 @@ object BlockFailure:
       * reports one: the tick's ([[TickFailure.Vocab]]) or a transaction rule's
       * ([[LedgerFailure.StateOutOfRange]]). The reference aborts there (`compactCoinOrError`), so
       * it is the node's stop ([[ChainError.StateOutOfRange]]) and never a refusal. A number taken
-      * from the block ([[TickFailure.Input]], [[LedgerFailure.Vocab]]) is a refusal.
+      * from the block ([[TickFailure.Input]], [[LedgerFailure.Vocab]]) is a refusal. The Byron
+      * rules report one too ([[ByronChainError.StateOutOfRange]],
+      * [[xyz.kd5ujc.scarab.ledger.byron.ByronError.StateOutOfRange]]) where the reference would
+      * wrap a quantity it computes (overflow-improvements.md#byron-pbft-window-threshold and
+      * overflow-improvements.md#byron-linear-fee).
       */
     def stateOutOfRange: Option[xyz.kd5ujc.scarab.ledger.state.VocabError] = failure match
-      case Tick(TickFailure.Vocab(error))              => Some(error)
-      case Tx(LedgerFailure.StateOutOfRange(_, error)) => Some(error)
-      case _                                           => None
+      case Tick(TickFailure.Vocab(error))                => Some(error)
+      case Tx(LedgerFailure.StateOutOfRange(_, error))   => Some(error)
+      case Byron(ByronChainError.StateOutOfRange(error)) => Some(error)
+      case Byron(
+            ByronChainError.Ledger(xyz.kd5ujc.scarab.ledger.byron.ByronError.StateOutOfRange(error))
+          ) =>
+        Some(error)
+      case _ => None
 
   // Plain data all through (Bytes and the ledger's failure records compare structurally).
   given Eq[BlockFailure] = Eq.fromUniversalEquals

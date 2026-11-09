@@ -19,8 +19,10 @@ import xyz.kd5ujc.scarab.ledger.state.*
 
 /** The pointer DELEGS gives a certificate (cardano-ledger f649f975
   * `Shelley/Rules/Delegs.hs:192-194`): `Ptr (SlotNo32 (fromIntegral slot64)) txIx certIx`, so the
-  * slot is its low 32 bits (`Credential.hs:233`), and the transaction index is the bounded `TxIx`
-  * LEDGERS enumerates (`Shelley/Rules/Ledgers.hs:201-211`, `BaseTypes.hs:918-921`).
+  * reference keeps the low 32 bits of the slot (`Credential.hs:233`) and 16 of the certificate
+  * index, where the node gives no verdict (overflow-improvements.md#delegs-pointer); the
+  * transaction index is the bounded `TxIx` LEDGERS enumerates (`Shelley/Rules/Ledgers.hs:201-211`,
+  * `BaseTypes.hs:918-921`).
   */
 class ShelleyDelegsPointerSuite extends FunSuite:
   private type F[A] = RuleT[PredicateFailure, LedgerFailure, ShelleyCertState, A]
@@ -79,17 +81,38 @@ class ShelleyDelegsPointerSuite extends FunSuite:
       case other                        => fail(s"expected a refusal, got $other")
   }
 
-  test("the slot of a pointer is the low 32 bits of the slot of the transaction") {
+  test("a registration past slot 2^32 - 1 is no verdict, where the reference keeps 32 bits") {
     val slot = (BigInt(1) << 32) + 7
-    assertEquals(pointers(slot, 3), Set(Ptr(7, 3, 0)))
+    assertEquals(
+      delegs(slot, 3),
+      Left(
+        LedgerFailure.StateOutOfRange(
+          Bytes.empty,
+          VocabError.OutOfRange(VocabError.Kind.Word32, slot)
+        )
+      )
+    )
+    assertEquals(
+      delegs(BigInt(1) << 32, 3),
+      Left(
+        LedgerFailure.StateOutOfRange(
+          Bytes.empty,
+          VocabError.OutOfRange(VocabError.Kind.Word32, BigInt(1) << 32)
+        )
+      )
+    )
   }
 
   test("a slot that fits 32 bits is kept") {
     assertEquals(pointers(BigInt(0xffffffffL), 0), Set(Ptr(BigInt(0xffffffffL), 0, 0)))
   }
 
-  test("the certificate index is cut to 16 bits") {
-    assertEquals(Ptr.ofCertificate(10, 1, 0x10002), Ptr(10, 1, 2))
+  test("a certificate index past 16 bits is refused, where the reference keeps its low 16 bits") {
+    assertEquals(
+      Ptr.ofCertificate(10, 1, 0x10002),
+      Left(VocabError.OutOfRange(VocabError.Kind.Word16, 0x10002))
+    )
+    assertEquals(Ptr.ofCertificate(10, 1, 0xffff), Right(Ptr(10, 1, 0xffff)))
   }
 
   // `zip [minBound ..] txs`: `[minBound ..] :: [TxIx]` ends at 65,535 and `zip` stops there

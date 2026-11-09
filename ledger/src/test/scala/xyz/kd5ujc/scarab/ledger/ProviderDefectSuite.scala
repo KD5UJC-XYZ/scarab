@@ -247,6 +247,33 @@ class ProviderDefectSuite extends FunSuite:
     )
   }
 
+  test("a KES window that reaches 2^64 is refused, as the reference's wrapped window refuses it") {
+    // overflow-improvements.md#kes-window: `c0 + maxKESEvo` in a machine word wraps below `c0`
+    val start = header.opCert.kesPeriod
+    val kesPeriod = header.slot / SlotsPerKesPeriod
+    def window(max: BigInt) =
+      OCertRules.verifySignaturesWith(header, SlotsPerKesPeriod, max, okKes, okCert)
+    val fits = (BigInt(1) << 64) - 1 - start
+    assertEquals(window(fits), Right(()))
+    assertEquals(
+      window(fits + 1),
+      Left(OCertError.KesPeriodOutsideWindow(kesPeriod, start, fits + 1))
+    )
+    // a period past `Int` reaches the KES verifier as one past Sum6KES's 64, never wrapped
+    val periods = Vector.newBuilder[Int]
+    OCertRules.verifySignaturesWith(
+      header.copy(slot = header.slot + (BigInt(1) << 32) * SlotsPerKesPeriod),
+      SlotsPerKesPeriod,
+      fits,
+      (_, period, _, _) =>
+        periods += period
+        Right(Sum6Kes.Result.SuppliedMessageSignatureVerified)
+      ,
+      okCert
+    )
+    assertEquals(periods.result(), Vector(Int.MaxValue))
+  }
+
   test("the real verifiers accept the real header and reject a tampered KES signature") {
     assertEquals(
       OCertRules.verifySignatures(header, SlotsPerKesPeriod, MaxKesEvolutions),

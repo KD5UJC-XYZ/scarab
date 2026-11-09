@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.ledger.Header.ByronSignature
 import xyz.kd5ujc.scarab.ledger.byron.*
 import xyz.kd5ujc.scarab.ledger.byron.ByronLedger.refusedAs
 import xyz.kd5ujc.scarab.consensus.state.{PBftSigner, PBftState}
-import xyz.kd5ujc.scarab.ledger.state.{Genesis, KeyHash, SlotNo}
+import xyz.kd5ujc.scarab.ledger.state.{Genesis, KeyHash, SlotNo, VocabError, Word64}
 import xyz.kd5ujc.scarab.crypto.witness.VerificationResult
 
 /** How a Byron block was established. Every main block is fully checked (there is no "unchecked"
@@ -78,14 +78,22 @@ object ByronRules:
   /** The most blocks a genesis key may sign in the window: `pbftWindowParams` 's
     * `floor (pbftSignatureThreshold * fromIntegral winSize) :: Word64` (ouroboros-consensus
     * 82ecba32 `Ouroboros/Consensus/Protocol/PBFT.hs:403-412`). GHC 9.10.3 floors through `Integer`
-    * and takes the result modulo 2^64, so a window of 2^64 - 1 (a `k` of -1 in the genesis, #734)
-    * at a threshold of 1 is 0; a product that is not finite decodes to a multiple of 2^64 and is 0
-    * too.
+    * and takes the result modulo 2^64; a product that is not finite floors to the integer of its
+    * `decodeFloat`. A floor outside `0 .. 2^64 - 1` is refused here instead
+    * (overflow-improvements.md#byron-pbft-window-threshold): the node's configuration refuses it,
+    * so the rules never meet one ([[ByronChainError.StateOutOfRange]]).
     */
-  def windowThreshold(threshold: Double, window: BigInt): BigInt =
+  def windowThreshold(threshold: Double, window: BigInt): Either[VocabError, BigInt] =
+    Word64.fromBigInt(VocabError.Kind.BlockCount, windowFloor(threshold, window)).map(_.toBigInt)
+
+  /** `floor (pbftSignatureThreshold * fromIntegral winSize) :: Integer`, before the reference's
+    * conversion into `Word64`.
+    */
+  def windowFloor(threshold: Double, window: BigInt): BigInt =
     val product = threshold * window.toDouble
-    if product.isNaN || product.isInfinite then BigInt(0)
-    else BigDecimal.exact(math.floor(product)).toBigInt.mod(BigInt(1) << 64)
+    if product.isNaN then -(BigInt(3) << 1023)
+    else if product.isInfinite then BigInt(product.sign.toInt) << 1024
+    else BigDecimal.exact(math.floor(product)).toBigInt
 
   /** The genesis key that is the round-robin leader of `slot`. */
   def scheduledLeader(genesis: ByronGenesis, slot: BigInt): Bytes =
@@ -185,7 +193,9 @@ object ByronRules:
         signer <- KeyHash.fromBytes[Genesis](genesisKey).leftMap(ByronChainError.Vocabulary(_))
         k = config.ledger.genesis.securityParam
         pbft = previous.append(PBftSigner(slot, signer), k)
-        threshold = ByronRules.windowThreshold(config.signatureThreshold, k)
+        threshold <- ByronRules
+          .windowThreshold(config.signatureThreshold, k)
+          .leftMap(ByronChainError.StateOutOfRange(_))
         signed = pbft.countSignedBy(signer).toBigInt
         _ <- Either.cond(
           signed <= threshold,

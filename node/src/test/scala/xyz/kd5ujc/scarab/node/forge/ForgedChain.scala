@@ -185,9 +185,11 @@ class ForgedChainSetup(val geometry: EpochGeometry):
       val pool = vocab(Convert.poolState(params, deposit, Sorted.set(List(staking))))
       (staking -> StakeWithDelegation(stake, id), id -> pool)
     }
-    StakeDistribution.snapshot(
-      ActiveStake(Sorted.map(delegated.map(_._1))),
-      Sorted.map(delegated.map(_._2))
+    vocab(
+      StakeDistribution.snapshot(
+        ActiveStake(Sorted.map(delegated.map(_._1))),
+        Sorted.map(delegated.map(_._2))
+      )
     )
 
   /** The chain's state at the origin: `ledger` in Conway, its epoch nonce [[epochNonce]]. */

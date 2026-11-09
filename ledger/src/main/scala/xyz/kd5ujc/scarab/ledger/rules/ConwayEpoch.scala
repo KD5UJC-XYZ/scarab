@@ -138,11 +138,12 @@ object ConwayEpoch:
   /** The deposit pot implied by the complete certificate and proposal state. Snapshot interchange
     * uses the same obligation as the epoch rule when checking reconstructed state.
     */
-  def totalObligation(ls: LedgerState[Conway]): BigInt =
-    EraLedger.keyDeposits(ls) +
-      CompactCoin.sum(ls.cert.pState.stakePools.valuesIterator.map(_.deposit)).toBigInt +
-      CompactCoin.sum(ls.cert.vState.dreps.valuesIterator.map(_.deposit)).toBigInt +
-      ls.utxo.gov.proposals.totalDeposits
+  def totalObligation(ls: LedgerState[Conway]): Either[VocabError, BigInt] =
+    for
+      keys <- EraLedger.keyDeposits(ls)
+      pools <- CompactCoin.sum(ls.cert.pState.stakePools.valuesIterator.map(_.deposit))
+      dreps <- CompactCoin.sum(ls.cert.vState.dreps.valuesIterator.map(_.deposit))
+    yield keys + pools.toBigInt + dreps.toBigInt + ls.utxo.gov.proposals.totalDeposits
 
   /** The rest of the rule once SNAP and POOLREAP have run: `es0` is the state the rule began with
     * (its pulser, governance state and donations), `es1` the one after the two sub-rules.
@@ -177,8 +178,8 @@ object ConwayEpoch:
     )
     for
       withdrawn <- successful.traverse((c, n) => CompactCoin.fromCoin(Coin(n)).map(c -> _))
-      withdrawnTotal = CompactCoin.sum(withdrawn.iterator.map(_._2)).toBigInt
-      afterWithdrawals = EraLedger.credit(ls1, withdrawn.toMap)
+      withdrawnTotal <- CompactCoin.sum(withdrawn.iterator.map(_._2)).map(_.toBigInt)
+      afterWithdrawals <- EraLedger.credit(ls1, withdrawn.toMap)
       // proposal deposits go back to their accounts, or to the treasury where there is none
       refunds <- removed.traverse { gas =>
         Convert
@@ -189,10 +190,8 @@ object ConwayEpoch:
         EraLedger.isRegistered(afterWithdrawals, c)
       )
       compactRefunds <- refundable.traverse((c, n) => CompactCoin.fromCoin(n).map(c -> _))
-      refunded = EraLedger.credit(
-        afterWithdrawals,
-        compactRefunds.groupMapReduce(_._1)(_._2)((a, b) => a.add(b))
-      )
+      grouped <- CompactCoin.sumByKey(compactRefunds)
+      refunded <- EraLedger.credit(afterWithdrawals, grouped)
       unclaimed = unclaimedRefunds.foldLeft(BigInt(0))(_ + _._2.value)
       dormant <- {
         val active = proposals.actions.exists(epoch.toBigInt <= _.expiresAfter)
@@ -212,19 +211,18 @@ object ConwayEpoch:
         )
       )
       ls2 = LedgerState[Conway](cert2, ls1.utxo.copy(gov = gov1))
-      deposited = Coin(totalObligation(ls2))
+      deposited <- totalObligation(ls2).map(Coin(_))
       ls3 = ls2.copy[Conway](utxo = ls2.utxo.copy(deposited = deposited, donation = Coin.zero))
       es2 = es1.copy(chainAccount = es1.chainAccount.copy(treasury = treasury), ls = ls3)
-    yield
       // the hard fork rule, if the protocol version changed
-      val forked =
+      forked =
         if gov1.curPParams.version != gov1.prevPParams.version then
           HardFork(es2, gov1.curPParams.protocolMajor.toInt)
         else es2
-      val pulser = ConwayPulser.fresh(globals, forked, epoch)
-      forked.copy(ls =
-        forked.ls.copy[Conway](utxo =
-          forked.ls.utxo
-            .copy(gov = predictFuturePParams(forked.ls.utxo.gov.copy(drepPulsing = pulser)))
-        )
+      pulser <- ConwayPulser.fresh(globals, forked, epoch)
+    yield forked.copy(ls =
+      forked.ls.copy[Conway](utxo =
+        forked.ls.utxo
+          .copy(gov = predictFuturePParams(forked.ls.utxo.gov.copy(drepPulsing = pulser)))
       )
+    )

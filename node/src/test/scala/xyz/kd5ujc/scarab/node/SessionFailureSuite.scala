@@ -9,7 +9,7 @@ import cats.mtl.{Raise, Stateful}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits}
-import xyz.kd5ujc.scarab.ledger.{LedgerFailure, Redeemer, ScriptLocation}
+import xyz.kd5ujc.scarab.ledger.{ByronChainError, LedgerFailure, Redeemer, ScriptLocation}
 import xyz.kd5ujc.scarab.consensus.BlockNoVerdict
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, FollowerEvent, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{
@@ -564,6 +564,26 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       None
     )
     assertEquals(MirrorRules.stateOutOfRange(header, BlockFailure.HeaderDiffers), None)
+    // a quantity the Byron rules compute in a word the reference wraps: no verdict on the block
+    // (overflow-improvements.md#byron-pbft-window-threshold and
+    // overflow-improvements.md#byron-linear-fee), a rule of the block a refusal
+    assertEquals(
+      MirrorRules.stateOutOfRange(header, BlockFailure.Byron(ByronChainError.StateOutOfRange(pot))),
+      fault
+    )
+    assertEquals(
+      MirrorRules.stateOutOfRange(
+        header,
+        BlockFailure.Byron(
+          ByronChainError.Ledger(xyz.kd5ujc.scarab.ledger.byron.ByronError.StateOutOfRange(pot))
+        )
+      ),
+      fault
+    )
+    assertEquals(
+      MirrorRules.stateOutOfRange(header, BlockFailure.Byron(ByronChainError.SignatureRejected)),
+      None
+    )
   }
 
   // the per-epoch transition counter of the consensus state is a Word32 whose `succ` throws at

@@ -56,9 +56,13 @@ object Epoch:
   /** `totalObligation` (`Shelley/LedgerState/Types.hs`): what the certificates and the governance
     * state hold in deposits. Before Conway: the accounts' and the pools'.
     */
-  private def obligation[E <: EraTag](ls: LedgerState[E])(using ShelleyBasedEra[E]): BigInt =
-    EraLedger.keyDeposits(ls) +
-      CompactCoin.sum(EraLedger.pState(ls).stakePools.valuesIterator.map(_.deposit)).toBigInt
+  private def obligation[E <: EraTag](ls: LedgerState[E])(using
+      ShelleyBasedEra[E]
+  ): Either[VocabError, BigInt] =
+    for
+      keys <- EraLedger.keyDeposits(ls)
+      pools <- CompactCoin.sum(EraLedger.pState(ls).stakePools.valuesIterator.map(_.deposit))
+    yield keys + pools.toBigInt
 
   /** EPOCH of Shelley to Babbage (`Shelley/Rules/Epoch.hs:142`): SNAP, POOLREAP and UPEC, then the
     * deposits are counted again and the parameters of the next epoch are in force.
@@ -80,7 +84,9 @@ object Epoch:
           _ <- within(Upec.sts[E], es1.ls, (), shelleyGov[E])
           es2 <- es.get
           // the governance state of these eras holds no deposits
-          deposited = Coin(obligation(es2.ls))
+          deposited <- Sts.lift[F, TickFailure, Coin](
+            obligation(es2.ls).bimap(TickFailure.Vocab(_), Coin(_))
+          )
           _ <- es.set(
             es2.copy(ls = es2.ls.copy[E](utxo = es2.ls.utxo.copy(deposited = deposited)))
           )

@@ -28,7 +28,7 @@ object VocabError:
   enum Kind derives Show:
     case Coin, CompactCoin, EpochNo, SlotNo, BlockNo, BlockCount, KeyHash, ScriptHash,
       VRFVerKeyHash, Hash32, NonZero, OcertCounter, RewardPulseSize, RewardBlockCount,
-      ProtocolMajor, ProtocolMinor, Word32
+      ProtocolMajor, ProtocolMinor, Word32, Word16
 
 // ---- key roles (`Cardano.Ledger.Keys`: `KeyRole`, a phantom of key hashes and credentials)
 
@@ -162,13 +162,34 @@ object CompactCoin:
     def toBigInt: BigInt = Word64.toBigInt(c)
     def toCoin: Coin = Coin(toBigInt)
 
-    /** `addCompactCoin` and `subtractCompactCoin` (`Coin.hs:202–219`): Word64 arithmetic. */
-    def add(other: CompactCoin): CompactCoin = Word64.wrappingAdd(c, other)
-    def subtract(amount: CompactCoin): CompactCoin = Word64.wrappingSubtract(c, amount)
+    /** `addCompactCoin` and `subtractCompactCoin` (`Coin.hs:202–219`): the reference's `Word64`
+      * arithmetic wraps; here a result outside `0 .. 2^64 - 1` is a [[VocabError]], which the rules
+      * report as no verdict (overflow-improvements.md#compact-coin-arithmetic).
+      */
+    def add(other: CompactCoin): Either[VocabError, CompactCoin] =
+      Word64.add(VocabError.Kind.CompactCoin, c, other)
+    def subtract(amount: CompactCoin): Either[VocabError, CompactCoin] =
+      Word64.subtract(VocabError.Kind.CompactCoin, c, amount)
 
-  /** `sumCompactCoin` (`Coin.hs:205–206`): wrap before conversion to Coin. */
-  def sum(values: IterableOnce[CompactCoin]): CompactCoin =
-    values.iterator.foldLeft(zero)((total, amount) => total.add(amount))
+  /** `sumCompactCoin` (`Coin.hs:205–206`): the reference's sum wraps; here one of 2^64 or more is a
+    * [[VocabError]] (overflow-improvements.md#compact-coin-arithmetic).
+    */
+  def sum(values: IterableOnce[CompactCoin]): Either[VocabError, CompactCoin] =
+    values.iterator.foldLeft[Either[VocabError, CompactCoin]](Right(zero))((total, amount) =>
+      total.flatMap(_.add(amount))
+    )
+
+  /** The amounts of each key added up, as `Map.fromListWith (<>)` or `groupMapReduce` with [[add]]
+    * makes them, checked: a sum of 2^64 or more for any key is a [[VocabError]]. The amounts are
+    * not negative, so whether a sum overflows does not depend on the order.
+    */
+  def sumByKey[K](
+      entries: IterableOnce[(K, CompactCoin)]
+  ): Either[VocabError, Map[K, CompactCoin]] =
+    entries.iterator.foldLeft[Either[VocabError, Map[K, CompactCoin]]](Right(Map.empty)) {
+      case (acc, (key, amount)) =>
+        acc.flatMap(m => m.get(key).fold(Right(amount))(_.add(amount)).map(m.updated(key, _)))
+    }
 
   given HasZero[CompactCoin] = HasZero.instance(Word64.isZero(_))
   given Order[CompactCoin] = Word64.order

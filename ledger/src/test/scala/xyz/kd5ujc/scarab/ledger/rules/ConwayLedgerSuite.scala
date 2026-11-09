@@ -124,7 +124,9 @@ class ConwayLedgerSuite extends FunSuite:
     val utxo = ls.utxo.utxo.utxo.valuesIterator.toVector
     assertEquals(
       ConwayLedgerState.instantStake.get(ls),
-      ok(InstantStakeOps.update(ConwayInstantStake(Sorted.empty), utxo, Nil))
+      InstantStakeOps
+        .update(ConwayInstantStake(Sorted.empty), utxo, Nil)
+        .fold(e => fail(e.toString), identity)
     )
     assertEquals(ls.utxo.deposited.value, NativeRules.obligation(nes))
 

@@ -21,9 +21,15 @@ object ConwayPulser:
   /** The snapshot the pulser takes of epoch state `es` entering epoch `epoch`, and the ratification
     * of the proposals over it: the DRep distribution is the stake (instant stake and balance) of
     * the accounts delegated to each DRep, with their proposal deposits; the pool distribution is
-    * the new `mark` snapshot's, with the deposits of the accounts that delegate to those pools.
+    * the new `mark` snapshot's, with the deposits of the accounts that delegate to those pools. The
+    * reference adds them in `Word64` (`DRepPulser.hs:209-232`), which wraps; a sum that would leave
+    * it is a [[VocabError]] here, no verdict (overflow-improvements.md#compact-coin-arithmetic).
     */
-  def fresh(globals: Globals, es: EpochState[Conway], epoch: EpochNo): DRComplete =
+  def fresh(
+      globals: Globals,
+      es: EpochState[Conway],
+      epoch: EpochNo
+  ): Either[VocabError, DRComplete] =
     val ls = es.ls
     val gov = ls.utxo.gov
     val accounts = ls.cert.dState.accounts.states
@@ -43,70 +49,81 @@ object ConwayPulser:
           d.delegators.iterator.map(Convert.back).toSet
         )
       )
-    val deposits = gov.proposals.depositsByCredential
     val instant = ls.utxo.instantStake.credentialStake
     // the accounts in the order of the credential, and the instant stake walked beside them; the
     // sum for each DRep is built as `groupMapReduce` builds it
     val stakes = Sorted.Cursor(instant)
-    val sums = accounts.iterator.foldLeft(Map.empty[node.DRep, CompactCoin]) {
-      case (sums, (c, a)) =>
-        a.drep.fold(sums) { drep =>
-          val d = Convert.drepBack(drep)
-          val known = d match
-            case node.DRep.Registered(r) => flatDReps.contains(r)
-            case _                       => true
-          if known then
-            val proposals =
-              deposits.getOrElse(Convert.back(c), CompactCoin.zero)
-            val stake = stakes.at(c).getOrElse(CompactCoin.zero).add(proposals).add(a.balance)
-            sums.updated(d, sums.get(d).fold(stake)(_.add(stake)))
-          else sums
-        }
-    }
-    val drepDistr: Map[node.DRep, BigInt] =
-      sums.iterator.map((d, amount) => d -> amount.toBigInt).toMap
-    val mark = es.snapshots.mark
-    val base: Map[Bytes, CompactCoin] =
-      mark.pools.iterator.collect {
+    for
+      deposits <- gov.proposals.depositsByCredential
+      sums <- accounts.iterator.foldLeft[Either[VocabError, Map[node.DRep, CompactCoin]]](
+        Right(Map.empty)
+      ) { case (acc, (c, a)) =>
+        acc.flatMap(sums =>
+          a.drep.fold(Right(sums)) { drep =>
+            val d = Convert.drepBack(drep)
+            val known = d match
+              case node.DRep.Registered(r) => flatDReps.contains(r)
+              case _                       => true
+            if known then
+              val proposals = deposits.getOrElse(Convert.back(c), CompactCoin.zero)
+              for
+                withProposals <- stakes.at(c).getOrElse(CompactCoin.zero).add(proposals)
+                stake <- withProposals.add(a.balance)
+                total <- sums.get(d).fold(Right(stake))(_.add(stake))
+              yield sums.updated(d, total)
+            else Right(sums)
+          }
+        )
+      }
+      mark = es.snapshots.mark
+      base = mark.pools.iterator.collect {
         case (id, p) if !p.numDelegators.isZero => id.bytes -> p.stake
       }.toMap
-    val baseTotal = mark.activeStake.total.value.value
-    // proposals hold no deposits most of the time, and then no account adds to a pool
-    val (poolDistr, totalPoolStake) =
-      if deposits.isEmpty then (base, baseTotal)
-      else
-        accounts.iterator.foldLeft((base, baseTotal)) { case (acc @ (dist, total), (c, a)) =>
-          (a.pool.map(_.bytes), deposits.get(Convert.back(c))) match
-            case (Some(pool), Some(d)) if dist.contains(pool) =>
-              (dist.updated(pool, dist(pool).add(d)), total + d.toBigInt)
-            case _ => acc
+      baseTotal = mark.activeStake.total.value.value
+      // proposals hold no deposits most of the time, and then no account adds to a pool
+      distribution <-
+        if deposits.isEmpty then Right((base, baseTotal))
+        else
+          accounts.iterator.foldLeft[Either[VocabError, (Map[Bytes, CompactCoin], BigInt)]](
+            Right((base, baseTotal))
+          ) { case (acc, (c, a)) =>
+            acc.flatMap { case current @ (dist, total) =>
+              (a.pool.map(_.bytes), deposits.get(Convert.back(c))) match
+                case (Some(pool), Some(d)) if dist.contains(pool) =>
+                  dist(pool).add(d).map(sum => (dist.updated(pool, sum), total + d.toBigInt))
+                case _ => Right(current)
+            }
+          }
+    yield
+      val (poolDistr, totalPoolStake) = distribution
+      val drepDistr: Map[node.DRep, BigInt] =
+        sums.iterator.map((d, amount) => d -> amount.toBigInt).toMap
+      val poolAmounts = poolDistr.view.mapValues(_.toBigInt).toMap
+      val snapshot =
+        node.PulsingSnapshot(gov.proposals.actions, drepDistr, flatDReps, poolAmounts)
+      val committeeState: Map[node.Credential, node.CommitteeAuth] =
+        FlatView.stakeMap(ls.cert.vState.committeeState.creds) {
+          case CommitteeAuthorization.CommitteeHotCredential(h) =>
+            node.CommitteeAuth.Hot(Convert.back(h))
+          case CommitteeAuthorization.CommitteeMemberResigned(a) => node.CommitteeAuth.Resigned(a)
         }
-    val poolAmounts = poolDistr.view.mapValues(_.toBigInt).toMap
-    val snapshot =
-      node.PulsingSnapshot(gov.proposals.actions, drepDistr, flatDReps, poolAmounts)
-    val committeeState: Map[node.Credential, node.CommitteeAuth] =
-      FlatView.stakeMap(ls.cert.vState.committeeState.creds) {
-        case CommitteeAuthorization.CommitteeHotCredential(h) =>
-          node.CommitteeAuth.Hot(Convert.back(h))
-        case CommitteeAuthorization.CommitteeMemberResigned(a) => node.CommitteeAuth.Resigned(a)
-      }
-    val env = node.Ratify.Env(
-      drepDistr = drepDistr,
-      drepState = flatDReps,
-      poolDistr = poolAmounts,
-      totalPoolStake = totalPoolStake,
-      epoch = epoch.toBigInt,
-      committeeState = committeeState,
-      accounts = flatAccounts,
-      pools = FlatView.pools(globals.networkId, ls.cert.pState.stakePools)
-    )
-    val enact = node.EnactState(
-      committee = gov.committee,
-      constitution = gov.constitution,
-      params = gov.curPParams,
-      prevParams = gov.prevPParams,
-      treasury = es.chainAccount.treasury.value,
-      withdrawals = Map.empty,
-      prevIds = gov.proposals.roots
-    )
-    DRComplete(snapshot, node.Ratify.ratify(env, enact, gov.proposals.actions))
+      val env = node.Ratify.Env(
+        drepDistr = drepDistr,
+        drepState = flatDReps,
+        poolDistr = poolAmounts,
+        totalPoolStake = totalPoolStake,
+        epoch = epoch.toBigInt,
+        committeeState = committeeState,
+        accounts = flatAccounts,
+        pools = FlatView.pools(globals.networkId, ls.cert.pState.stakePools)
+      )
+      val enact = node.EnactState(
+        committee = gov.committee,
+        constitution = gov.constitution,
+        params = gov.curPParams,
+        prevParams = gov.prevPParams,
+        treasury = es.chainAccount.treasury.value,
+        withdrawals = Map.empty,
+        prevIds = gov.proposals.roots
+      )
+      DRComplete(snapshot, node.Ratify.ratify(env, enact, gov.proposals.actions))

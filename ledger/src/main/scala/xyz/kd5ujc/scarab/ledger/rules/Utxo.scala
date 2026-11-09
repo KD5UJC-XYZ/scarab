@@ -40,30 +40,54 @@ import xyz.kd5ujc.scarab.ledger.state.*
   */
 final case class UtxoEnv[+C](ctx: TxEnv, pp: ProtocolParams, cert: C)
 
+/** Why the instant stake cannot take a transaction's outputs. */
+enum InstantStakeError:
+  /** A value of an output is outside its vocabulary type: a refusal of the transaction. */
+  case Output(error: VocabError)
+
+  /** An entry of the instant stake would leave `Word64`, where the reference's arithmetic wraps: no
+    * verdict (overflow-improvements.md#instant-stake).
+    */
+  case Stake(error: VocabError)
+
+object InstantStakeError:
+  /** As the transaction `id` 's rules report it: [[LedgerFailure.Vocab]], a refusal, or
+    * [[LedgerFailure.StateOutOfRange]], no verdict.
+    */
+  def failure(id: Bytes)(error: InstantStakeError): LedgerFailure = error match
+    case Output(e) => LedgerFailure.Vocab(e)
+    case Stake(e)  => LedgerFailure.StateOutOfRange(id, e)
+
+  /** The entry `old` with `amount` added (`sign` above 0) or taken away, checked
+    * (overflow-improvements.md#instant-stake).
+    */
+  private[rules] def adjusted(
+      old: CompactCoin,
+      amount: CompactCoin,
+      sign: Int
+  ): Either[InstantStakeError, CompactCoin] =
+    (if sign > 0 then old.add(amount) else old.subtract(amount)).leftMap(Stake(_))
+
 /** What the instant stake of the UTxO becomes as outputs are created and spent
   * (`addConwayInstantStake`, `deleteConwayInstantStake`, `Conway/State/Stake.hs:87-120` at
-  * f649f975): the lovelace uses native Word64 arithmetic, and an entry that reaches zero is
-  * removed. An absent credential receives the output amount for either operation, as native
-  * Map.alter specifies. An output of an address with no stake credential (an enterprise address, a
-  * pointer address, a Byron address) is not in it.
+  * f649f975): an entry that reaches zero is removed. An absent credential receives the output
+  * amount for either operation, as native Map.alter specifies. An output of an address with no
+  * stake credential (an enterprise address, a pointer address, a Byron address) is not in it. The
+  * reference's arithmetic is `Word64`, which wraps; here an entry that would leave it is no verdict
+  * (overflow-improvements.md#instant-stake).
   */
 object InstantStakeOps:
   private def adjust(
       stake: SortedMap[Credential[Staking], CompactCoin],
       out: TxOut,
       sign: Int
-  ): Either[VocabError, SortedMap[Credential[Staking], CompactCoin]] =
+  ): Either[InstantStakeError, SortedMap[Credential[Staking], CompactCoin]] =
     out.address.kind match
       case Address.Kind.Shelley(_, _, Some(credential), _) =>
         for
-          c <- Convert.credential[Staking](credential)
-          amount <- CompactCoin.fromBigInt(out.value.coin)
-          next = stake.get(c).fold(amount) { old =>
-            val word =
-              if sign > 0 then Word64.wrappingAdd(old.word, amount.word)
-              else Word64.wrappingSubtract(old.word, amount.word)
-            CompactCoin.fromUnsigned(word.bits)
-          }
+          c <- Convert.credential[Staking](credential).leftMap(InstantStakeError.Output(_))
+          amount <- CompactCoin.fromBigInt(out.value.coin).leftMap(InstantStakeError.Output(_))
+          next <- stake.get(c).fold(Right(amount))(InstantStakeError.adjusted(_, amount, sign))
         yield if next.word.isZero then stake.removed(c) else stake.updated(c, next)
       case _ => Right(stake)
 
@@ -72,10 +96,11 @@ object InstantStakeOps:
       is: ConwayInstantStake,
       added: Iterable[TxOut],
       deleted: Iterable[TxOut]
-  ): Either[VocabError, ConwayInstantStake] =
-    val withAdded = added.foldLeft[Either[VocabError, SortedMap[Credential[Staking], CompactCoin]]](
-      Right(is.credentialStake)
-    )((m, out) => m.flatMap(adjust(_, out, 1)))
+  ): Either[InstantStakeError, ConwayInstantStake] =
+    val withAdded =
+      added.foldLeft[Either[InstantStakeError, SortedMap[Credential[Staking], CompactCoin]]](
+        Right(is.credentialStake)
+      )((m, out) => m.flatMap(adjust(_, out, 1)))
     deleted
       .foldLeft(withAdded)((m, out) => m.flatMap(adjust(_, out, -1)))
       .map(ConwayInstantStake(_))
@@ -221,7 +246,7 @@ object Utxo
       collateral: TxChecks.Collateral,
       deposits: BigInt,
       refunds: BigInt
-  ): Either[VocabError, UTxOState[Conway]] =
+  ): Either[InstantStakeError, UTxOState[Conway]] =
     val tx = ann.tx
     val body = tx.body
     val id = ann.id
@@ -273,8 +298,10 @@ object Utxo
         UTxOState[Conway]
       ], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](Utxos, env, ann)
       s <- st.get
-      next <- Refuse.vocab[F, UTxOState[Conway]](
-        update(s.state, ann, collateral, deposits, refunds)
+      next <- Sts.lift[F, LedgerFailure, UTxOState[Conway]](
+        update(s.state, ann, collateral, deposits, refunds).leftMap(
+          InstantStakeError.failure(ann.id)
+        )
       )
       _ <- st.set(s.copy(state = next))
     yield ()

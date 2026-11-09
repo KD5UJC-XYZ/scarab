@@ -207,6 +207,8 @@ object TPraos:
           protocol = chain.protocol.copy(
             ocertCounters = chain.protocol.ocertCounters.updated(issuerKey, sequence),
             evolvingNonce = evolving,
+            // `s +* Duration sp` (`Updn.hs:72`) wraps in `Word64`; the sum here is exact
+            // (overflow-improvements.md#slot-arithmetic)
             candidateNonce =
               if slot + geometry.stabilityWindow.toBigInt < nextEpoch then evolving
               else chain.protocol.candidateNonce

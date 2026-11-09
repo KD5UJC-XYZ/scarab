@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.UInt64
 class ChainSyncPipelineDecisionSuite extends FunSuite:
   import ChainSyncPipelineDecision.*
 
-  test("all actual native stateful decisions agree, including Word64 wrapping and hysteresis") {
+  test("all actual native stateful decisions agree but where Word64 wraps, and the hysteresis") {
     val lines =
       Files.readAllLines(Path.of("fixtures/network/chainsync-pipeline/decisions.jsonl")).asScala
     assertEquals(lines.size, 7)
@@ -27,10 +27,20 @@ class ChainSyncPipelineDecisionSuite extends FunSuite:
           c.get[A](name).fold(e => fail(e.message), identity)
         def tip(name: String): Option[UInt64] =
           get[Option[BigInt]](name).map(n => UInt64.from(n).fold(e => fail(e.message), identity))
+        val outstanding = get[Int]("outstanding")
         val (action, next) = policy
-          .decide(get[Int]("outstanding"), tip("client"), tip("server"))
+          .decide(outstanding, tip("client"), tip("server"))
           .fold(e => fail(e.toString), identity)
-        assertEquals(action.toString, get[String]("decision"), entry.toString)
+        // the reference adds the client's block number and the outstanding requests in `Word64`;
+        // where that wraps, the exact sum reaches every server tip, so the low mark collects
+        // (overflow-improvements.md#chain-sync-pipelining)
+        val wraps = outstanding > 0 && policy.phase == Phase.Low &&
+          get[Option[BigInt]]("client").exists(_ + outstanding > UInt64.Max)
+        assertEquals(
+          action.toString,
+          if wraps then "Collect" else get[String]("decision"),
+          entry.toString
+        )
         next
       }
       steps.size

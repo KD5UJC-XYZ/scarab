@@ -46,7 +46,7 @@ class ShelleyMirAccumulationSuite extends FunSuite:
           Bytes(Vector.fill(32)(0.toByte)),
           ChainAccountState(Coin(0), Coin(0))
         ),
-        Ptr(1, 0, 0)
+        Right(Ptr(1, 0, 0))
       )
       val program = Vector(BigInt(-1), BigInt(1)).traverse_(amount =>
         ShelleyDeleg

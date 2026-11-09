@@ -163,9 +163,11 @@ object MirrorStep:
     * `subSlots` is `assert (x >= n) $ SlotNo (x - n)` (`HardFork/History/Util.hs:25-26`); release
     * builds compile the assertion out, so when `2 * swindow` exceeds the next epoch's first slot
     * the `Word64` subtraction wraps, the deadline lies past every slot and the counter does not
-    * move. Native `succ` throws on Word32 overflow; this pure boundary reports a typed refusal
-    * instead of an uncaught exception. Across-Shelley translation preserves the counter
-    * (`Cardano/CanHardFork.hs:704`); Byron enters with zero (:360).
+    * move. That wrap is kept: a genesis the reference takes reaches it in its first epoch, and the
+    * exact deadline would move the counter (overflow-improvements.md#voting-deadline). Native
+    * `succ` throws on Word32 overflow; this pure boundary reports no verdict instead of an uncaught
+    * exception (overflow-improvements.md#transition-counter). Across-Shelley translation preserves
+    * the counter (`Cardano/CanHardFork.hs:704`); Byron enters with zero (:360).
     */
   private val Word64Modulus: BigInt = BigInt(2).pow(64)
 
@@ -183,7 +185,9 @@ object MirrorStep:
 
   /** The first slot of `epoch` whose blocks count in `shelleyAfterVoting`: `2 * swindow` before the
     * next epoch, both `Word64` and the subtraction modulo 2^64 (`Ledger.hs:740-741`,
-    * ouroboros-consensus 82ecba32).
+    * ouroboros-consensus 82ecba32). The doubling never wraps here, as the genesis that would make
+    * it is refused (overflow-improvements.md#epoch-geometry-windows); the subtraction is the
+    * reference's (overflow-improvements.md#voting-deadline).
     */
   def votingDeadline(geometry: EpochGeometry, epoch: BigInt): BigInt =
     val twice = (2 * geometry.stabilityWindow.toBigInt).mod(Word64Modulus)

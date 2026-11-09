@@ -40,10 +40,11 @@ object Mir:
       // The reference unions the Coin amounts before applying compactCoinOrError to each sum.
       val update = (toReserves.iterator ++ toTreasury.iterator).toVector
         .groupMapReduce(_._1)(_._2.value)(_ + _)
-      update.toList.traverse((c, n) => CompactCoin.fromCoin(Coin(n)).map(c -> _)).map { amounts =>
-        es.copy(
-          ls = EraLedger.credit(cleared.ls, amounts.toMap),
-          chainAccount = ChainAccountState(Coin(availableT - totalT), Coin(availableR - totalR))
-        )
-      }
+      for
+        amounts <- update.toList.traverse((c, n) => CompactCoin.fromCoin(Coin(n)).map(c -> _))
+        credited <- EraLedger.credit(cleared.ls, amounts.toMap)
+      yield es.copy(
+        ls = credited,
+        chainAccount = ChainAccountState(Coin(availableT - totalT), Coin(availableR - totalR))
+      )
     else Right(cleared)

@@ -132,10 +132,11 @@ object ShelleyPpup
 /** What the instant stake becomes as outputs are created and spent (`addShelleyInstantStake`,
   * `deleteShelleyInstantStake`, `applyUTxOShelleyInstantStake`, `Shelley/State/Stake.hs:108-145` at
   * f649f975): the lovelace of an output goes to the entry of the credential of a base address or of
-  * the pointer of a pointer address. The arithmetic is native Word64 (`CompactForm Coin`), so a
-  * deletion can wrap below zero and an addition past 2^64, and an entry that reaches zero is
-  * removed. An absent entry receives the output amount for either operation, as native `Map.alter`
-  * specifies. An enterprise address and a Byron address have none.
+  * the pointer of a pointer address. The reference's arithmetic is `Word64` (`CompactForm Coin`),
+  * so a deletion can wrap below zero and an addition past 2^64; here either is no verdict
+  * ([[InstantStakeError.Stake]], overflow-improvements.md#instant-stake). An entry that reaches
+  * zero is removed. An absent entry receives the output amount for either operation, as native
+  * `Map.alter` specifies. An enterprise address and a Byron address have none.
   */
 object ShelleyInstantStakeOps:
   private def adjust[K](
@@ -143,30 +144,28 @@ object ShelleyInstantStakeOps:
       key: K,
       amount: CompactCoin,
       sign: Int
-  ): SortedMap[K, CompactCoin] =
-    val next = m.get(key).fold(amount) { old =>
-      val word =
-        if sign > 0 then Word64.wrappingAdd(old.word, amount.word)
-        else Word64.wrappingSubtract(old.word, amount.word)
-      CompactCoin.fromUnsigned(word.bits)
-    }
-    if next.word.isZero then m.removed(key) else m.updated(key, next)
+  ): Either[InstantStakeError, SortedMap[K, CompactCoin]] =
+    m.get(key)
+      .fold(Right(amount))(InstantStakeError.adjusted(_, amount, sign))
+      .map(next => if next.word.isZero then m.removed(key) else m.updated(key, next))
 
   private def step(
       is: ShelleyInstantStake,
       out: TxOut,
       sign: Int
-  ): Either[VocabError, ShelleyInstantStake] =
+  ): Either[InstantStakeError, ShelleyInstantStake] =
     out.address.kind match
       case Address.Kind.Shelley(_, _, Some(credential), _) =>
         for
-          c <- Convert.credential[Staking](credential)
-          amount <- CompactCoin.fromBigInt(out.value.coin)
-        yield is.copy(credentialStake = adjust(is.credentialStake, c, amount, sign))
+          c <- Convert.credential[Staking](credential).leftMap(InstantStakeError.Output(_))
+          amount <- CompactCoin.fromBigInt(out.value.coin).leftMap(InstantStakeError.Output(_))
+          stake <- adjust(is.credentialStake, c, amount, sign)
+        yield is.copy(credentialStake = stake)
       case Address.Kind.Shelley(_, _, None, Some(ptr)) =>
-        CompactCoin
-          .fromBigInt(out.value.coin)
-          .map(amount => is.copy(ptrStake = adjust(is.ptrStake, ptr, amount, sign)))
+        for
+          amount <- CompactCoin.fromBigInt(out.value.coin).leftMap(InstantStakeError.Output(_))
+          stake <- adjust(is.ptrStake, ptr, amount, sign)
+        yield is.copy(ptrStake = stake)
       case _ => Right(is)
 
   /** The instant stake with the outputs `added` in it and the outputs `deleted` out of it. */
@@ -174,10 +173,11 @@ object ShelleyInstantStakeOps:
       is: ShelleyInstantStake,
       added: Iterable[TxOut],
       deleted: Iterable[TxOut]
-  ): Either[VocabError, ShelleyInstantStake] =
-    val withAdded = added.foldLeft[Either[VocabError, ShelleyInstantStake]](Right(is))((m, out) =>
-      m.flatMap(step(_, out, 1))
-    )
+  ): Either[InstantStakeError, ShelleyInstantStake] =
+    val withAdded =
+      added.foldLeft[Either[InstantStakeError, ShelleyInstantStake]](Right(is))((m, out) =>
+        m.flatMap(step(_, out, 1))
+      )
     deleted.foldLeft(withAdded)((m, out) => m.flatMap(step(_, out, -1)))
 
 /** The deposits a transaction pays and the refunds it collects, from the certificate state before
@@ -310,8 +310,9 @@ object ShelleyUtxo:
               )
             else ppup[F, E](env, ann) *> Sts.runTest[F, PredicateFailure](checks.afterPpup)
           s <- st.get
-          next <- Refuse.vocab[F, UTxOState[E]](
+          next <- Sts.lift[F, LedgerFailure, UTxOState[E]](
             update[E](s.state, ann, collateral, deposits, refunds)
+              .leftMap(InstantStakeError.failure(ann.id))
           )
           _ <- st.set(s.copy(state = next))
         yield ()
@@ -337,7 +338,7 @@ object ShelleyUtxo:
       collateral: TxChecks.Collateral,
       deposits: BigInt,
       refunds: BigInt
-  )(using pre: PreConway[E]): Either[VocabError, UTxOState[E]] =
+  )(using pre: PreConway[E]): Either[InstantStakeError, UTxOState[E]] =
     val tx = ann.tx
     val body = tx.body
     val id = ann.id

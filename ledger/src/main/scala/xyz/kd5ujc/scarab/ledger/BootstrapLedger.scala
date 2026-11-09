@@ -601,6 +601,8 @@ object LiteLedger:
     case Effect.PoolRetiring(pool, epoch) =>
       Right(l.copy(pools = l.pools.updatedWith(pool)(_.map(_.copy(retireEpoch = Some(epoch))))))
     case Effect.GenesisDelegation(gk, pair) =>
+      // `slot +* Duration sp` wraps in `Word64`; the due slot here is exact
+      // (overflow-improvements.md#slot-arithmetic)
       Right(
         l.copy(futureGenDelegs =
           l.futureGenDelegs :+ FutureGenDeleg(slot + geometry.stabilityWindow.toBigInt, gk, pair)

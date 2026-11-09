@@ -6,7 +6,7 @@ import cats.syntax.all.*
 import io.circe.{ACursor, Decoder}
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.ledger.ConfigError
-import xyz.kd5ujc.scarab.ledger.state.CompactCoin
+import xyz.kd5ujc.scarab.ledger.state.{CompactCoin, VocabError}
 
 /** `[url, data_hash]` attached to certificates, proposals and the constitution. */
 final case class Anchor(url: String, hash: Bytes)
@@ -195,13 +195,20 @@ final case class Proposals(actions: Vector[GovActionState], roots: PrevIds):
 
   def totalDeposits: BigInt = actions.foldLeft(BigInt(0))(_ + _.proposal.deposit)
 
-  /** `proposalsDeposits` (`Conway/Governance/Proposals.hs:566–580`): non-compactible deposits
-    * become zero before grouping; compact sums wrap modulo 2^64.
+  /** `proposalsDeposits` (`Conway/Governance/Proposals.hs:566–580`): the deposits of each return
+    * account added up. The reference makes a deposit that does not compact zero and adds in
+    * `Word64`, which wraps; here either is a [[VocabError]], which the epoch rule reports as no
+    * verdict (overflow-improvements.md#compact-coin-arithmetic). A deposit equals the
+    * `govActionDeposit` of the parameters, a compact coin, so neither is reached.
     */
-  def depositsByCredential: Map[Credential, CompactCoin] =
-    actions.groupMapReduce(_.proposal.returnAccount.credential)(g =>
-      CompactCoin.fromBigInt(g.proposal.deposit).getOrElse(CompactCoin.zero)
-    )((a, b) => a.add(b))
+  def depositsByCredential: Either[VocabError, Map[Credential, CompactCoin]] =
+    actions
+      .traverse(g =>
+        CompactCoin
+          .fromBigInt(g.proposal.deposit)
+          .map(g.proposal.returnAccount.credential -> _)
+      )
+      .flatMap(CompactCoin.sumByKey)
 
 object Proposals:
   val empty: Proposals = Proposals(Vector.empty, PrevIds())

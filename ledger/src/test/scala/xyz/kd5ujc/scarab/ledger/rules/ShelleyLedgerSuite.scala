@@ -781,6 +781,45 @@ class ShelleyLedgerSuite extends FunSuite:
     )
   }
 
+  test(
+    "a genesis delegation due past slot 2^64 - 1 is no verdict, where the reference wraps the slot"
+  ) {
+    // `slot +* Duration sp` (`Deleg.hs:305-307`) wraps in `Word64`
+    // (overflow-improvements.md#slot-arithmetic)
+    val last = (BigInt(1) << 64) - 1
+    forEras(
+      [E <: EraTag] =>
+        (c: Case[E]) =>
+          val s = withGenesis(c)
+          val delegation =
+            pay(
+              "gen-late",
+              alice,
+              certificates = Vector(
+                Certificate
+                  .GenesisDelegate(genesisKeys(0).hash, key().hash, Bytes(Vector.fill(32)(0x56)))
+              ),
+              signers = Vector(genesisKeys(0)),
+              ttl = Some(last)
+            )
+          def at(slot: BigInt) =
+            run(c, s, delegation, TestLedger.env.copy(slot = slot, firstSlotNextEpoch = last))
+          assertEquals(
+            at(last - 99),
+            Left(
+              LedgerFailure.StateOutOfRange(
+                delegation.body.id,
+                VocabError.OutOfRange(VocabError.Kind.SlotNo, last + 1)
+              )
+            ),
+            c.name
+          )
+          val scheduled =
+            c.pre.dState.get(acceptedOf(c, at(last - 100)).state.es.ls).futureGenDelegs
+          assertEquals(scheduled.keysIterator.map(_.slot.toBigInt).toVector, Vector(last), c.name)
+    )
+  }
+
   // ---- PPUP
 
   private val newDeposit =

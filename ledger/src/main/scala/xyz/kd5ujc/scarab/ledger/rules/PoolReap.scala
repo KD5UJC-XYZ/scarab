@@ -76,17 +76,10 @@ object PoolReap:
                 .poolState(params, current.deposit, current.delegators)
                 .map(pools.updated(id, _))
         }
-    activated.map { pools =>
+    activated.flatMap { pools =>
       val retired: Set[KeyHash[StakePool]] =
         ps0.retiring.iterator.collect { case (id, e) if e == epoch => id }.toSet
       val retiring = pools.filter((id, _) => retired(id))
-      val refundsByAccount: Map[Credential[Staking], CompactCoin] =
-        retiring.valuesIterator.toVector
-          .groupMapReduce(_.accountId)(_.deposit)((a, b) => a.add(b))
-      val (refunds, unclaimedDeposits) =
-        refundsByAccount.partition((c, _) => EraLedger.isRegistered(ls0, c))
-      val refunded = CompactCoin.sum(refunds.values)
-      val unclaimed = CompactCoin.sum(unclaimedDeposits.values)
       val clear = retiring.valuesIterator.flatMap(_.delegators).toVector
       val vrfs: SortedMap[VRFVerKeyHash, NonZero[Word64]] =
         retiring.valuesIterator
@@ -100,13 +93,25 @@ object PoolReap:
         future = Sorted.empty,
         retiring = ps0.retiring.filter((id, _) => !retired(id))
       )
-      val credited = EraLedger.credit(ls0, refunds)
-      val cleared = EraLedger.clearPoolDelegations(credited, clear)
-      val deposited = Coin(st.utxo.deposited.value - unclaimed.add(refunded).toBigInt)
-      val treasury = Coin(st.chainAccount.treasury.value + unclaimed.toBigInt)
-      PoolreapState[E](
-        st.utxo.copy(deposited = deposited),
-        st.chainAccount.copy(treasury = treasury),
-        EraLedger.withPState(cleared, ps).cert
-      )
+      // the reference's compact sums wrap; here they are checked
+      // (overflow-improvements.md#compact-coin-arithmetic)
+      for
+        refundsByAccount <- CompactCoin.sumByKey(
+          retiring.valuesIterator.map(pool => pool.accountId -> pool.deposit)
+        )
+        (refunds, unclaimedDeposits) =
+          refundsByAccount.partition((c, _) => EraLedger.isRegistered(ls0, c))
+        refunded <- CompactCoin.sum(refunds.values)
+        unclaimed <- CompactCoin.sum(unclaimedDeposits.values)
+        released <- unclaimed.add(refunded)
+        credited <- EraLedger.credit(ls0, refunds)
+      yield
+        val cleared = EraLedger.clearPoolDelegations(credited, clear)
+        val deposited = Coin(st.utxo.deposited.value - released.toBigInt)
+        val treasury = Coin(st.chainAccount.treasury.value + unclaimed.toBigInt)
+        PoolreapState[E](
+          st.utxo.copy(deposited = deposited),
+          st.chainAccount.copy(treasury = treasury),
+          EraLedger.withPState(cleared, ps).cert
+        )
     }

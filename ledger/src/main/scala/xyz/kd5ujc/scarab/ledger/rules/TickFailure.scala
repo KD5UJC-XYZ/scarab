@@ -13,8 +13,9 @@ import xyz.kd5ujc.scarab.ledger.state.VocabError
   * the state leaving the range of a vocabulary type and a number taken from the block that is
   * outside its type. Where the reference converts with `compactCoinOrError` it aborts (an `error`);
   * where its type is wider than the node's (`Coin` is an `Integer`) or wraps (a `Word64`), it
-  * carries on and the node stops instead (#474). A state of a real chain reaches neither: the whole
-  * supply (4.5e16 lovelace) is far below 2^63.
+  * carries on and the node has no verdict instead (#474, #573,
+  * overflow-improvements.md#compact-coin-arithmetic). A state of a real chain reaches neither: the
+  * whole supply (4.5e16 lovelace) is far below 2^63.
   */
 enum TickFailure derives Eq, Show:
   /** A quantity of the state left the range of its vocabulary type (a balance below zero, a word

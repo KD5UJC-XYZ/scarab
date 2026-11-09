@@ -193,7 +193,10 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       utxo(nes).valuesIterator.toVector,
       Nil
     )
-    assertEquals(PreConway[E].instantStake.get(ls.utxo), ok(stake))
+    assertEquals(
+      PreConway[E].instantStake.get(ls.utxo),
+      stake.fold(e => fail(e.toString), identity)
+    )
     nes
 
   private def run[E <: EraTag](nes: NewEpochState[E], t: Tx, ctx: TxEnv = env)(using
@@ -351,7 +354,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     )
     assertEquals(rule(run(s1, tx(dereg, Vector(alice)))), "MissingVKeyWitnessesUTXOW")
     // five lovelace of rewards in the account, paid from the reserves
-    val credited = EraLedger.credit(s1.es.ls, Map(staking(stake.credential) -> compact(5)))
+    val credited = ok(EraLedger.credit(s1.es.ls, Map(staking(stake.credential) -> compact(5))))
     val funded1 = paid(s1.copy(es = s1.es.copy(ls = credited)), 0, 5)
     assertEquals(
       rule(run(funded1, tx(dereg, Vector(alice, stake)))),
@@ -860,9 +863,10 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
         0,
         Some(poolId(b))
       )
-      val snap = StakeDistribution.snapshot(
-        EraLedger.activeStake(base.es.ls),
-        base.es.ls.cert.pState.stakePools
+      val snap = ok(
+        EraLedger
+          .activeStake(base.es.ls)
+          .flatMap(StakeDistribution.snapshot(_, base.es.ls.cert.pState.stakePools))
       )
       // a pool that made no block is not in the blocks made, as in the reference
       val blocks = BlocksMade(

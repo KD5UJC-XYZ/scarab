@@ -29,14 +29,22 @@ object Word64:
   /** The word whose bits are `bits` (so `-1` is 2^64 - 1). Total. */
   def fromUnsigned(bits: Long): Word64 = bits
 
-  /** Native Word64 arithmetic modulo 2^64, for rules that explicitly use it. Checked constructors
-    * and [[Word64.successor]] retain their separate refusal contracts.
+  /** `left + right` as a `kind`, or `OutOfRange` from 2^64 up, where the reference's `Word64`
+    * addition would wrap (overflow-improvements.md#compact-coin-arithmetic).
     */
-  private[ledger] def wrappingAdd(left: Word64, right: Word64): Word64 = left + right
+  def add(kind: VocabError.Kind, left: Word64, right: Word64): Either[VocabError, Word64] =
+    val sum = left + right
+    if java.lang.Long.compareUnsigned(sum, left) < 0 then
+      Left(VocabError.OutOfRange(kind, toBigInt(left) + toBigInt(right)))
+    else Right(sum)
 
-  private[ledger] def wrappingSubtract(left: Word64, right: Word64): Word64 = left - right
-
-  private[ledger] def wrappingMultiply(left: Word64, right: Word64): Word64 = left * right
+  /** `left - right` as a `kind`, or `Negative` below 0, where the reference's `Word64` subtraction
+    * would wrap (overflow-improvements.md#compact-coin-arithmetic).
+    */
+  def subtract(kind: VocabError.Kind, left: Word64, right: Word64): Either[VocabError, Word64] =
+    if java.lang.Long.compareUnsigned(left, right) < 0 then
+      Left(VocabError.Negative(kind, toBigInt(left) - toBigInt(right)))
+    else Right(left - right)
 
   extension (w: Word64)
     /** The two's-complement bits, for a codec that writes the word as 8 bytes. */

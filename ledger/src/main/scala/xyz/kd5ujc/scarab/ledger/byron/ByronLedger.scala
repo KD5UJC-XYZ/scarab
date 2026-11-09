@@ -31,6 +31,12 @@ enum ByronError:
   case UnknownAttributes(what: ByronError.AttributeOwner)
   case MissingDelegatedSignature
 
+  /** A quantity the rules compute does not fit the type the reference computes it in, where the
+    * reference would take it modulo 2^64: no verdict on the block, never a refusal
+    * (overflow-improvements.md#byron-linear-fee).
+    */
+  case StateOutOfRange(cause: xyz.kd5ujc.scarab.ledger.state.VocabError)
+
   def message: String = this match
     case ProtocolMagicMismatch(b, g) => s"block protocol magic $b differs from the genesis $g"
     case HeaderTooLarge(m, a)        => s"header of $a bytes exceeds $m"
@@ -51,6 +57,7 @@ enum ByronError:
     case NetworkMagicMismatch(e, a) => s"output network magic $a, expected $e"
     case UnknownAttributes(w)       => s"too many unknown attribute bytes in ${w.label}"
     case MissingDelegatedSignature  => "main header without a delegated signature"
+    case StateOutOfRange(e)         => s"out of range: $e"
 
 object ByronError:
   /** `ProofValidationError` distinguishes these payloads (`cardano-ledger` f649f975,
@@ -427,7 +434,15 @@ object ByronLedger:
       allRedeem = spent.forall(o => ByronAddress.decode(o.address).exists(_.isRedeem))
       minFee <-
         if allRedeem then Right(BigInt(0))
-        else params.txFeePolicy.minimumFee(aux.raw.size).leftMap(ByronError.FeeCalculation(_))
+        else
+          params.txFeePolicy.minimumFee(aux.raw.size).leftMap {
+            case TxFeePolicy.Error.ScaledOutOfRange(scaled) =>
+              ByronError.StateOutOfRange(
+                xyz.kd5ujc.scarab.ledger.state.VocabError
+                  .OutOfRange(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.Coin, scaled)
+              )
+            case refused => ByronError.FeeCalculation(refused)
+          }
       _ <- Either.cond(
         balanceIn - balanceOut >= minFee,
         (),

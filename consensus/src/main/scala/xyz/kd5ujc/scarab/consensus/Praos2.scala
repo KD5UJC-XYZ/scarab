@@ -119,7 +119,9 @@ object Praos2:
 
   /** `tickChainDepStatePolyPraos`, PolyPraos.hs:551-587. The new-epoch test uses the old epoch's
     * first slot and size; it does not ask a limited forecast for the epoch of the new slot
-    * (`Protocol/Ledger/Util.hs:isNewEpoch`). Slot subtraction and epoch addition are Word64.
+    * (`Protocol/Ledger/Util.hs:isNewEpoch`). The reference's slot subtraction and epoch addition
+    * are Word64, which wraps; here a result outside it is no verdict ([[Defect.Vocabulary]],
+    * overflow-improvements.md#leios-praos2).
     */
   def tick(
       config: Config,
@@ -136,8 +138,12 @@ object Praos2:
       size <- info.epochSize(oldEpoch)
       _ <- Either.cond(!size.isZero, (), Defect.ZeroEpochSize(oldEpoch))
       first <- info.firstSlot(oldEpoch)
-      elapsed = Word64.fromUnsigned((slot.toBigInt - first.toBigInt).toLong).toBigInt
-      next = EpochNo.fromUnsigned((oldEpoch.toBigInt + elapsed / size.toBigInt).toLong)
+      elapsed <- Word64
+        .subtract(VocabError.Kind.SlotNo, slot.word, first.word)
+        .bimap(Defect.Vocabulary(_), _.toBigInt)
+      next <- EpochNo
+        .fromBigInt(oldEpoch.toBigInt + elapsed / size.toBigInt)
+        .leftMap(Defect.Vocabulary(_))
       protocol =
         if next.toBigInt > oldEpoch.toBigInt then
           State(
@@ -215,12 +221,14 @@ object Praos2:
       issuer <- Praos.issuerKey(header.issuerVkey).leftMap(Defect.Vocabulary(_))
       sequence <- Praos.counterOf(header.opCert.sequence).leftMap(Defect.Vocabulary(_))
       epoch <- config.epochInfo.epochOf(slot)
-      nextEpoch = EpochNo.fromUnsigned((epoch.toBigInt + 1).toLong)
+      // the reference's `succ` and `+*` wrap in Word64; a result past it is no verdict here
+      // (overflow-improvements.md#leios-praos2)
+      nextEpoch <- epoch.next.toRight(Defect.SuccessorOverflow(VocabError.Kind.EpochNo))
       firstNext <- config.epochInfo.firstSlot(nextEpoch)
       evolving = p.evolvingNonce.combine(Praos.nonceValue(header.vrf.output))
-      windowEnd = SlotNo.fromUnsigned(
-        (slot.toBigInt + config.praos.geometry.randomnessStabilisationWindow.toBigInt).toLong
-      )
+      windowEnd <- SlotNo
+        .fromBigInt(slot.toBigInt + config.praos.geometry.randomnessStabilisationWindow.toBigInt)
+        .leftMap(Defect.Vocabulary(_))
       next = p.copy(
         lastSlot = WithOrigin.At(slot),
         evolvingNonce = evolving,
@@ -295,7 +303,8 @@ object Praos2:
       val total = BigInt(3) * ledger.announcementPeriodMillis.toLong +
         ledger.votePeriodMillis.toLong + ledger.diffusionPeriodMillis.toLong
       val gap = (total + slotMillis - 1) / slotMillis
-      Right(SlotNo.fromUnsigned((announcingSlot.toBigInt + gap).toLong))
+      // the reference adds in Word64, which wraps (overflow-improvements.md#leios-praos2)
+      SlotNo.fromBigInt(announcingSlot.toBigInt + gap).leftMap(Defect.Vocabulary(_))
 
   private def leiosChecks(
       info: EpochInfo,
@@ -349,9 +358,12 @@ object Praos2:
       )
       current = header.slot / config.slotsPerKesPeriod
       _ <- Either.cond(start <= current, (), Error.KesBeforeStart(start, current))
-      end = Word64.fromUnsigned((start + config.maxKesEvolutions).toLong).toBigInt
+      // the reference adds in a machine word: a sum of 2^64 or more wraps below `start`, so it
+      // refuses every such header; so does the node, from the exact sum
+      // (overflow-improvements.md#kes-window)
+      end = start + config.maxKesEvolutions
       _ <- Either.cond(
-        current < end,
+        current < end && end.bitLength <= 64,
         (),
         Error.KesAfterEnd(current, start, config.maxKesEvolutions)
       )

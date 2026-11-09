@@ -78,21 +78,33 @@ object Ptr:
   private val indexMask: BigInt = BigInt(0xffffL)
 
   /** The pointer DELEGS gives the certificate at position `certIx` of the transaction at `txIx`
-    * (cardano-ledger f649f975 `Shelley/Rules/Delegs.hs:192-194`): the slot is cut to its low 32
-    * bits (`SlotNo32 (fromIntegral @Word64 @Word32 slot64)`, `Credential.hs:233`) and the
-    * certificate index to 16 (`fromIntegral @Int @Word16`). The transaction index is kept: it is
-    * the `TxIx` LEDGERS gave the transaction ([[xyz.kd5ujc.scarab.ledger.state.TxIx.enumerate]]),
-    * which is never past 65,535.
+    * (cardano-ledger f649f975 `Shelley/Rules/Delegs.hs:192-194`). The reference cuts the slot to
+    * its low 32 bits (`SlotNo32 (fromIntegral @Word64 @Word32 slot64)`, `Credential.hs:233`) and
+    * the certificate index to 16 (`fromIntegral @Int @Word16`); a slot or an index that does not
+    * fit is a [[xyz.kd5ujc.scarab.ledger.state.VocabError]] here, which the rules report as no
+    * verdict (overflow-improvements.md#delegs-pointer). The transaction index is kept: it is the
+    * `TxIx` LEDGERS gave the transaction ([[xyz.kd5ujc.scarab.ledger.state.TxIx.enumerate]]), which
+    * is never past 65,535.
     */
-  def ofCertificate(slot: BigInt, txIx: Int, certIx: Int): Ptr =
-    Ptr(slot & slotMask, txIx, BigInt(certIx) & indexMask)
+  def ofCertificate(
+      slot: BigInt,
+      txIx: Int,
+      certIx: Int
+  ): Either[xyz.kd5ujc.scarab.ledger.state.VocabError, Ptr] =
+    import xyz.kd5ujc.scarab.ledger.state.VocabError
+    if slot.signum < 0 || slot > slotMask then
+      Left(VocabError.OutOfRange(VocabError.Kind.Word32, slot))
+    else if certIx < 0 || BigInt(certIx) > indexMask then
+      Left(VocabError.OutOfRange(VocabError.Kind.Word16, BigInt(certIx)))
+    else Right(Ptr(slot, txIx, BigInt(certIx)))
 
   /** What a decoder does with a pointer whose natural does not fit its field. The decoder of a
-    * protocol version below 9 normalises it (`mkPtrNormalized`, `Credential.hs` 270-285, chosen by
-    * `decodePtrLenient`, `Address.hs` 780-788); from 9 (Conway) it refuses the address
-    * (`decodePtr`, `Address.hs` 769-777, whose naturals are read by `decodeVariableLengthWord32`
-    * and `decodeVariableLengthWord16`, 832-870: at most 5 and 3 groups of 7 bits, and no more bits
-    * than the field has).
+    * protocol version below 9 normalises it, which is no wrap: such a pointer is the zero pointer,
+    * and mainnet holds them (overflow-improvements.md#address-pointer-decode) (`mkPtrNormalized`,
+    * `Credential.hs` 270-285, chosen by `decodePtrLenient`, `Address.hs` 780-788); from 9 (Conway)
+    * it refuses the address (`decodePtr`, `Address.hs` 769-777, whose naturals are read by
+    * `decodeVariableLengthWord32` and `decodeVariableLengthWord16`, 832-870: at most 5 and 3 groups
+    * of 7 bits, and no more bits than the field has).
     */
   enum Policy:
     case Normalise, Refuse
@@ -104,7 +116,9 @@ object Ptr:
 
   /** A natural of a pointer, as the reference reads one it does not bound
     * (`decodeVariableLengthWord64`, `Address.hs` 872-882): the 7-bit groups shifted into a
-    * `Word64`, so the bits beyond the 64th are lost, and how many groups there were.
+    * `Word64`, so the bits beyond the 64th are lost, and how many groups there were. Unchanged: the
+    * reference keeps this decoder for the chain's history, whose addresses Scarab must read as it
+    * does (overflow-improvements.md#address-pointer-decode).
     */
   private final case class Natural(word: Word64, groups: Int)
 
@@ -705,8 +719,8 @@ object TxOut:
     /** A stored output is read in any form and with the map keys an earlier build accepted and
       * stored, so the stores keep reading what they wrote (ADR 0006): every form of the latest era,
       * a map with any width of length ([[wideMaps]], #701), the keys as their low 32 bits
-      * ([[FieldKeys.Stored]]), and its value as a definite or an indefinite list
-      * ([[ConwayParam.Records.Stored]]).
+      * ([[FieldKeys.Stored]], overflow-improvements.md#stored-data), and its value as a definite or
+      * an indefinite list ([[ConwayParam.Records.Stored]]).
       */
     case Stored extends Forms(Set(2, 3), true, true, FieldKeys.Stored, ConwayParam.Records.Stored)
 

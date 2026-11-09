@@ -71,9 +71,13 @@ object OCertRules:
   ): Either[OCertError | ProviderDefect, Unit] =
     val kesPeriod = header.slot / slotsPerKesPeriod
     val start = header.opCert.kesPeriod
+    // the reference adds `start + maxKESEvolutions` in a machine word: a sum of 2^64 or more wraps
+    // below `start`, so it refuses every such header (`KESAfterEndOCERT`); the node refuses it too,
+    // from the exact sum (overflow-improvements.md#kes-window)
+    val end = start + maxKesEvolutions
     for
       _ <- Either.cond(
-        start <= kesPeriod && kesPeriod < start + maxKesEvolutions,
+        start <= kesPeriod && kesPeriod < end && end.bitLength <= 64,
         (),
         OCertError.KesPeriodOutsideWindow(kesPeriod, start, maxKesEvolutions)
       )
@@ -94,7 +98,9 @@ object OCertRules:
       kes <- ProviderDefect.kes(
         kesVerifier(
           header.opCert.hotVkey,
-          (kesPeriod - start).toInt,
+          // a period past `Int` is past Sum6KES's 64 too, which the verifier refuses as the
+          // reference's does (overflow-improvements.md#kes-window)
+          (kesPeriod - start).min(BigInt(Int.MaxValue)).toInt,
           header.signable,
           header.kesSignature
         )

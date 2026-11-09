@@ -67,9 +67,10 @@ final case class DelegsEnv(
 )
 
 /** `DelegEnv` (`Deleg.hs`, `DelplEnv`): DELEGS' environment, with the pointer of the certificate
-  * that DELEGS builds (`Ptr slot txIx certIx`, `Delegs.hs:169`).
+  * that DELEGS builds (`Ptr slot txIx certIx`, `Delegs.hs:169`), or why it does not fit the
+  * pointer's fields, which only a registration reads (overflow-improvements.md#delegs-pointer).
   */
-final case class ShelleyDelegEnv(delegs: DelegsEnv, ptr: Ptr)
+final case class ShelleyDelegEnv(delegs: DelegsEnv, ptr: Either[VocabError, Ptr])
 
 /** The pure changes the certificates make to the Shelley certificate state, each the Haskell
   * function of the same name (cited).
@@ -169,7 +170,9 @@ object ShelleyDeleg
           )
           // `compactCoinOrError (pp ^. ppKeyDepositL)` (`Deleg.hs:268`)
           deposit <- Refuse.state[F, CompactCoin](id, CompactCoin.fromBigInt(pp.keyDeposit))
-          _ <- st.set(ShelleyCertOps.register(s, cred, env.ptr, deposit))
+          // the pointer the reference cuts to its fields' widths: no verdict here
+          ptr <- Refuse.state[F, Ptr](id, env.ptr)
+          _ <- st.set(ShelleyCertOps.register(s, cred, ptr, deposit))
         yield ()
       case Certificate.Unregister(c, _) =>
         for
@@ -217,7 +220,9 @@ object ShelleyDeleg
             DelegFailure.DuplicateGenesisDelegate(delegate)
           )
           _ <- ensure(!others.exists(_.vrf == vrf), DelegFailure.DuplicateGenesisVRF(vrf))
-          due <- Refuse.vocab[F, SlotNo](SlotNo.fromBigInt(ctx.slot + ctx.stabilityWindow))
+          // `slot +* Duration sp` (`Deleg.hs:305-307`) wraps in `Word64`; a slot that would is no
+          // verdict here, not a refusal (overflow-improvements.md#slot-arithmetic)
+          due <- Refuse.state[F, SlotNo](id, SlotNo.fromBigInt(ctx.slot + ctx.stabilityWindow))
           _ <- st.set(
             ShelleyCertLens.futureGenDelegs.modify(
               _.updated(FutureGenDeleg(due, genesis), GenDelegPair(delegate, vrf))

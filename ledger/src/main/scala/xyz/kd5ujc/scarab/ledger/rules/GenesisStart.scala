@@ -426,7 +426,12 @@ object GenesisStart:
           ev => ShelleyInstantStakeOps.update(ev(Empty.instantStake[E]), outputs, Nil).map(ev.flip),
           ev => InstantStakeOps.update(ev(Empty.instantStake[E]), outputs, Nil).map(ev.flip)
         )
-        .leftMap(GenesisStartError.Vocab(_))
+        // initial funds whose stake for one credential the reference would wrap are refused
+        // (overflow-improvements.md#instant-stake)
+        .leftMap {
+          case InstantStakeError.Output(e) => GenesisStartError.Vocab(e)
+          case InstantStakeError.Stake(e)  => GenesisStartError.Vocab(e)
+        }
     yield
       val utxoState = ls.utxo.copy[E](utxo = UtxoTables(next), instantStake = stake)
       val updated = withLedger(nes, ls.copy[E](utxo = utxoState))
@@ -563,13 +568,12 @@ object GenesisStart:
       ShelleyBasedEra[E]
   ): Either[VocabError, NewEpochState[E]] =
     val ls = nes.es.ls
-    val mark = StakeDistribution.snapshot(
-      EraLedger.activeStake(ls),
-      LedgerState.pState[E].get(ls).stakePools
-    )
-    Right(
-      nes.copy(
-        es = nes.es.copy(snapshots = nes.es.snapshots.copy(mark = mark)),
-        pd = PoolDistr.of(mark)
+    EraLedger
+      .activeStake(ls)
+      .flatMap(StakeDistribution.snapshot(_, LedgerState.pState[E].get(ls).stakePools))
+      .map(mark =>
+        nes.copy(
+          es = nes.es.copy(snapshots = nes.es.snapshots.copy(mark = mark)),
+          pd = PoolDistr.of(mark)
+        )
       )
-    )

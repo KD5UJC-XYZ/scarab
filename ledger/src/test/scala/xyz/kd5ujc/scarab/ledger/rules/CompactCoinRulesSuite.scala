@@ -5,7 +5,11 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.TestLedger
 import xyz.kd5ujc.scarab.ledger.state.*
 
-/** Native compact operations at cardano-ledger f649f975's Coin/account/rule boundaries. */
+/** Compact operations at cardano-ledger f649f975's Coin/account/rule boundaries. Where the
+  * reference's `Word64` wraps, the node's checked arithmetic is a [[VocabError]], which the rules
+  * report as no verdict (overflow-improvements.md#compact-coin-arithmetic); below the boundary the
+  * results are the reference's.
+  */
 class CompactCoinRulesSuite extends FunSuite:
   import NativeRewardFixture.{accounts, compact, cred, ok, pool, stakePool}
 
@@ -13,17 +17,32 @@ class CompactCoinRulesSuite extends FunSuite:
   private val maximum = modulus - 1
   private val epoch = EpochNo.fromUnsigned(5)
 
-  test("compact arithmetic wraps while Coin conversion remains checked") {
-    assertEquals(compact(maximum).add(compact(1)).toBigInt, BigInt(0))
-    assertEquals(CompactCoin.zero.subtract(compact(1)).toBigInt, maximum)
-    assertEquals(CompactCoin.sum(List(compact(maximum), compact(2))).toBigInt, BigInt(1))
+  test("compact arithmetic is checked where the reference's Word64 wraps") {
+    val outOfRange = (n: BigInt) => Left(VocabError.OutOfRange(VocabError.Kind.CompactCoin, n))
+    assertEquals(compact(maximum).add(compact(1)), outOfRange(modulus))
+    assertEquals(compact(maximum - 1).add(compact(1)), Right(compact(maximum)))
+    assertEquals(
+      CompactCoin.zero.subtract(compact(1)),
+      Left(VocabError.Negative(VocabError.Kind.CompactCoin, -1))
+    )
+    assertEquals(compact(1).subtract(compact(1)), Right(CompactCoin.zero))
+    assertEquals(CompactCoin.sum(List(compact(maximum), compact(2))), outOfRange(modulus + 1))
+    assertEquals(CompactCoin.sum(List(compact(maximum - 2), compact(2))), Right(compact(maximum)))
+    assertEquals(
+      CompactCoin.sumByKey(List(cred(1) -> compact(maximum), cred(1) -> compact(1))),
+      outOfRange(modulus)
+    )
+    assertEquals(
+      CompactCoin.sumByKey(List(cred(1) -> compact(maximum), cred(2) -> compact(1))),
+      Right(Map(cred(1) -> compact(maximum), cred(2) -> compact(1)))
+    )
     assertEquals(
       CompactCoin.fromCoin(Coin(modulus)),
       Left(VocabError.OutOfRange(VocabError.Kind.CompactCoin, modulus))
     )
   }
 
-  test("native account credit wraps on dense and sparse paths in both account families") {
+  test("account credit past 2^64 is no verdict on the dense and sparse paths of both families") {
     def check[E <: EraTag](major: Int)(using ShelleyBasedEra[E]): Unit =
       List(2, 40).foreach { count =>
         val original = accounts(
@@ -36,15 +55,25 @@ class CompactCoinRulesSuite extends FunSuite:
         val direct = EraLedger.credit(original, additions)
         val ordered = EraLedger.creditAscending(original, additions)
         assertEquals(ordered, direct)
-        val balances = EraLedger.accounts(ordered).map((c, a) => c -> a.balance.toBigInt).toMap
-        assertEquals(balances(cred(1)), BigInt(0))
-        assertEquals(balances(cred(2)), maximum)
+        assertEquals(ordered, Left(VocabError.OutOfRange(VocabError.Kind.CompactCoin, modulus)))
+        // a credit to one below the boundary is the reference's
+        val lower = accounts(
+          NewEpochState.empty[E](epoch, TestLedger.params(major)),
+          (1 to count).map(n =>
+            cred(n) -> EraLedger.AccountView(compact(maximum - 1), compact(0), None)
+          )
+        ).es.ls
+        val credited = ok(EraLedger.creditAscending(lower, additions))
+        assertEquals(EraLedger.credit(lower, additions), Right(credited))
+        val balances = EraLedger.accounts(credited).map((c, a) => c -> a.balance.toBigInt).toMap
+        assertEquals(balances(cred(1)), maximum)
+        assertEquals(balances(cred(2)), maximum - 1)
       }
     check[Shelley](2)
     check[Conway](9)
   }
 
-  test("MIR unions Coin amounts before checked compaction, then wraps account addition") {
+  test("MIR unions Coin amounts before checked compaction, then checks the account addition") {
     val initial = accounts(
       NewEpochState.empty[Shelley](epoch, TestLedger.params(5)),
       List(cred(1) -> EraLedger.AccountView(compact(maximum), compact(0), None))
@@ -59,8 +88,22 @@ class CompactCoinRulesSuite extends FunSuite:
       chainAccount = ChainAccountState(Coin(2), Coin(0)),
       ls = EraLedger.withIRewards(initial.ls, ir)
     )
-    val after = ok(Mir.step(before))
-    assertEquals(after.ls.cert.dState.accounts.states(cred(1)).balance.toBigInt, BigInt(0))
+    // the union, 1, compacts; the reference adds it to 2^64 - 1 and wraps to 0
+    assertEquals(
+      Mir.step(before),
+      Left(VocabError.OutOfRange(VocabError.Kind.CompactCoin, modulus))
+    )
+    val lower = before.copy(ls =
+      EraLedger.withIRewards(
+        accounts(
+          NewEpochState.empty[Shelley](epoch, TestLedger.params(5)),
+          List(cred(1) -> EraLedger.AccountView(compact(maximum - 1), compact(0), None))
+        ).es.ls,
+        ir
+      )
+    )
+    val after = ok(Mir.step(lower))
+    assertEquals(after.ls.cert.dState.accounts.states(cred(1)).balance.toBigInt, maximum)
     assertEquals(after.chainAccount, ChainAccountState(Coin(0), Coin(1)))
     val tooLarge = before.copy(
       chainAccount = ChainAccountState(Coin(1), Coin(maximum)),
@@ -78,7 +121,7 @@ class CompactCoinRulesSuite extends FunSuite:
     )
   }
 
-  test("POOLREAP folds compact refunds together before subtracting from deposited Coin") {
+  test("POOLREAP's compact refunds past 2^64 are no verdict; below, they are the reference's") {
     val initial = accounts(
       NewEpochState.empty[Shelley](epoch, TestLedger.params(2)),
       List(cred(1) -> EraLedger.AccountView(compact(0), compact(0), None))
@@ -93,24 +136,30 @@ class CompactCoinRulesSuite extends FunSuite:
       stakePools = pools,
       retiring = Sorted.map(List(pool(1) -> epoch, pool(2) -> epoch))
     )
-    val ls = EraLedger.withPState(initial.ls, pstate)
-    val after = ok(
+    def reaped(p: PState) =
+      val ls = EraLedger.withPState(initial.ls, p)
       PoolReap.step(
         epoch,
-        PoolreapState[Shelley](
-          ls.utxo.copy(deposited = Coin(7)),
-          initial.chainAccount,
-          ls.cert
+        PoolreapState[Shelley](ls.utxo.copy(deposited = Coin(7)), initial.chainAccount, ls.cert)
+      )
+    // the refund of 2^64 - 1 and the unclaimed 1 add up to 2^64, which the reference wraps to 0
+    assertEquals(reaped(pstate), Left(VocabError.OutOfRange(VocabError.Kind.CompactCoin, modulus)))
+    val lower = pstate.copy(stakePools =
+      Sorted.map(
+        List(
+          pool(1) -> stakePool(cred(1)).copy(deposit = compact(maximum - 1)),
+          pool(2) -> stakePool(cred(2)).copy(deposit = compact(1))
         )
       )
     )
-    assertEquals(after.utxo.deposited.value, BigInt(7))
+    val after = ok(reaped(lower))
+    assertEquals(after.utxo.deposited.value, BigInt(7) - maximum)
     assertEquals(after.chainAccount.treasury.value, BigInt(1))
-    assertEquals(after.cert.dState.accounts.states(cred(1)).balance.toBigInt, maximum)
+    assertEquals(after.cert.dState.accounts.states(cred(1)).balance.toBigInt, maximum - 1)
     assertEquals(after.cert.pState.stakePools.size, 0)
   }
 
-  test("compact reward aggregation checks each reward before its wrapped sum") {
+  test("compact reward aggregation checks each reward and their sum") {
     def rewards(first: BigInt, second: BigInt) = Sorted.map(
       List(
         cred(1) -> RewardSet(
@@ -122,7 +171,14 @@ class CompactCoinRulesSuite extends FunSuite:
       )
     )
     assertEquals(Rewards.aggregate(5, rewards(maximum, 1)).head._2.value, modulus)
-    assertEquals(ok(Rewards.aggregateCompact(5, rewards(maximum, 1)))(cred(1)).toBigInt, BigInt(0))
+    assertEquals(
+      Rewards.aggregateCompact(5, rewards(maximum, 1)),
+      Left(VocabError.OutOfRange(VocabError.Kind.CompactCoin, modulus))
+    )
+    assertEquals(
+      ok(Rewards.aggregateCompact(5, rewards(maximum - 1, 1)))(cred(1)).toBigInt,
+      maximum
+    )
     assertEquals(
       Rewards.aggregateCompact(5, rewards(-1, 2)),
       Left(VocabError.Negative(VocabError.Kind.CompactCoin, BigInt(-1)))

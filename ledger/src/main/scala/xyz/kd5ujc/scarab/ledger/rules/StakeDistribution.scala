@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.Ptr
@@ -13,48 +14,67 @@ object StakeDistribution:
 
   /** `resolveActiveInstantStakeCredentials` (`State/Stake.hs:220–245`) followed by
     * `resolveShelleyInstantStake` (`Shelley/State/Stake.hs:148–172`). An account-only zero is
-    * absent; an instant/pointer entry is retained even when native compact addition wraps to zero.
+    * absent. The reference adds the instant stake, the balance and the pointer stake in `Word64`,
+    * which wraps (even to zero, which `unsafeNonZero` keeps); here a sum that would leave it is a
+    * [[VocabError]], no verdict (overflow-improvements.md#compact-coin-arithmetic), so every entry
+    * is the true sum of amounts of which at least one is not zero.
     */
   def resolve(
       instant: SortedMap[Credential[Staking], CompactCoin],
       accounts: Iterator[(Credential[Staking], EraLedger.AccountView)],
       ptrs: SortedMap[Ptr, Credential[Staking]],
       ptrStake: SortedMap[Ptr, CompactCoin]
-  ): ActiveStake =
-    val byPointer = ptrStake.iterator
-      .flatMap((p, stake) => ptrs.get(p).map(_ -> stake))
-      .toVector
-      .groupMapReduce(_._1)(_._2)((a, b) => a.add(b))
+  ): Either[VocabError, ActiveStake] =
     val stakes = Sorted.Cursor(instant)
-    val entries = accounts.flatMap { (credential, account) =>
-      account.pool.flatMap { pool =>
-        val base = stakes.at(credential) match
-          case Some(stake) => Some(stake.add(account.balance))
-          case None        => Option.unless(account.balance.word.isZero)(account.balance)
-        val combined = byPointer.get(credential) match
-          case Some(pointer) => Some(base.fold(pointer)(_.add(pointer)))
-          case None          => base
-        combined.map(total => credential -> StakeWithDelegation(NonZero.unsafe(total), pool))
-      }
-    }
-    ActiveStake(Sorted.fromAscending(entries.toVector))
+    for
+      byPointer <- CompactCoin.sumByKey(
+        ptrStake.iterator.flatMap((p, stake) => ptrs.get(p).map(_ -> stake))
+      )
+      entries <- accounts
+        .foldLeft[Either[VocabError, Vector[(Credential[Staking], StakeWithDelegation)]]](
+          Right(Vector.empty)
+        ) { case (acc, (credential, account)) =>
+          acc.flatMap(out =>
+            account.pool.fold(Right(out)) { pool =>
+              val base: Either[VocabError, Option[CompactCoin]] = stakes.at(credential) match
+                case Some(stake) => stake.add(account.balance).map(Some(_))
+                case None => Right(Option.unless(account.balance.word.isZero)(account.balance))
+              base
+                .flatMap(b =>
+                  byPointer.get(credential) match
+                    case Some(pointer) => b.fold(Right(pointer))(_.add(pointer)).map(Some(_))
+                    case None          => Right(b)
+                )
+                .map(
+                  _.fold(out)(total =>
+                    out :+ (credential -> StakeWithDelegation(NonZero.unsafe(total), pool))
+                  )
+                )
+            }
+          )
+        }
+    yield ActiveStake(Sorted.fromAscending(entries))
 
   /** `mkStakePoolSnapShot` (`State/SnapShots.hs:187`): what the reward calculation needs of one
-    * pool, resolved when the snapshot is taken from the delegators the pool state holds.
+    * pool, resolved when the snapshot is taken from the delegators the pool state holds. The
+    * reference's sums of the pool's and its owners' stake wrap; here they are checked
+    * (overflow-improvements.md#compact-coin-arithmetic).
     */
   def poolSnapshot(
       active: ActiveStake,
       total: NonZero[Coin],
       pool: StakePoolState
-  ): StakePoolSnapShot =
+  ): Either[VocabError, StakePoolSnapShot] =
     def stakeOf(c: Credential[Staking]): CompactCoin =
       active.entries.get(c).fold(CompactCoin.zero)(_.stake.value)
     val owners =
       pool.owners.filter(o => pool.delegators.contains(Credential.KeyHashObj[Staking](o)))
-    val stake = CompactCoin.sum(pool.delegators.iterator.map(stakeOf))
-    val ownersStake =
-      CompactCoin.sum(owners.iterator.map(o => stakeOf(Credential.KeyHashObj[Staking](o))))
-    StakePoolSnapShot(
+    for
+      stake <- CompactCoin.sum(pool.delegators.iterator.map(stakeOf))
+      ownersStake <- CompactCoin.sum(
+        owners.iterator.map(o => stakeOf(Credential.KeyHashObj[Staking](o)))
+      )
+    yield StakePoolSnapShot(
       stake,
       Rational(stake.toBigInt, total.value.value),
       owners,
@@ -73,6 +93,8 @@ object StakeDistribution:
   def snapshot(
       active: ActiveStake,
       pools: SortedMap[KeyHash[StakePool], StakePoolState]
-  ): SnapShot =
+  ): Either[VocabError, SnapShot] =
     val total = active.total
-    SnapShot(active, pools.transform((_, pool) => poolSnapshot(active, total, pool)))
+    pools.toVector
+      .traverse((id, pool) => poolSnapshot(active, total, pool).map(id -> _))
+      .map(snapshots => SnapShot(active, Sorted.fromAscending(snapshots)))

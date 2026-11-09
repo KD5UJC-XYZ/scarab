@@ -61,24 +61,28 @@ final case class SoftforkRule(initThd: BigInt, minThd: BigInt, thdDecrement: Big
 /** Byron's linear fee, stored in Nano for compatibility with native snapshot fields. */
 final case class TxFeePolicy(summandNano: BigInt, multiplierNano: BigInt):
   /** Common/TxSizeLinear.hs:82–88 and Lovelace.hs:216–221,246–248: scale with signed ceiling,
-    * convert to Word64, then checked addition. The intermediate conversion deliberately wraps.
+    * convert to Word64, then checked addition. The reference's conversion (`fromInteger` into the
+    * `Word64` of a `Lovelace`) takes the scaled size modulo 2^64; a scaled size outside
+    * `0 .. 2^64 - 1` is no verdict here instead ([[TxFeePolicy.Error.ScaledOutOfRange]],
+    * overflow-improvements.md#byron-linear-fee). The addition is exact: a sum of two words above
+    * `maxLovelaceVal` is the reference's own refusal, whether its `Word64` sum wrapped or not.
     */
   def minimumFee(size: BigInt): Either[TxFeePolicy.Error, BigInt] =
     import TxFeePolicy.*
     val a = roundedSummand(summandNano)
     val scaled = multiplierNano * size
     val ceiling = scaled / Nano + (if scaled % Nano > 0 then 1 else 0)
-    val b = ceiling.mod(Word64Modulus)
-    val result = (a + b).mod(Word64Modulus)
+    val result = a + ceiling
     if size < 0 then Left(Error.SizeTooSmall(size))
     else if size > ByronLedger.MaxLovelace then Left(Error.SizeTooLarge(size))
     else if a > ByronLedger.MaxLovelace then Left(Error.SummandOutOfRange(a))
-    else if result < a || result < b || result > ByronLedger.MaxLovelace then
-      Left(Error.Overflow(result))
+    else if ceiling.signum < 0 || ceiling.bitLength > 64 then Left(Error.ScaledOutOfRange(ceiling))
+    else if result > ByronLedger.MaxLovelace then Left(Error.Overflow(result))
     else Right(result)
 
 object TxFeePolicy:
   private[ledger] val Nano: BigInt = BigInt(1000000000)
+  // the decoder's `Word64` (overflow-improvements.md#byron-fee-summand-decode)
   private val Word64Modulus = BigInt(1) << 64
 
   enum Error:
@@ -87,12 +91,21 @@ object TxFeePolicy:
     case SummandOutOfRange(value: BigInt)
     case Overflow(value: BigInt)
 
+    /** The size scaled by the multiplier, rounded up, outside `0 .. 2^64 - 1`: no verdict. */
+    case ScaledOutOfRange(value: BigInt)
+
     def message: String = this match
       case SizeTooSmall(n)      => s"negative transaction size $n"
       case SizeTooLarge(n)      => s"transaction size $n exceeds lovelace bounds"
       case SummandOutOfRange(n) => s"fee summand $n exceeds lovelace bounds"
       case Overflow(n)          => s"linear fee addition overflowed to $n"
+      case ScaledOutOfRange(n) =>
+        s"the size scaled by the fee multiplier, $n, is outside 0 to 2^64 - 1"
 
+  /** `round :: Nano -> Lovelace` of the decoder (`TxSizeLinear.hs:70-75`), into the `Word64` of a
+    * `Lovelace`, so modulo 2^64, before `mkLovelace` bounds it. Unchanged: it is a decode-time wrap
+    * with no no-verdict outcome (overflow-improvements.md#byron-fee-summand-decode).
+    */
   private[byron] def roundedSummand(value: BigInt): BigInt =
     val quotient = value / Nano
     val remainder = (value % Nano).abs * 2

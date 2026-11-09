@@ -169,6 +169,8 @@ object Praos:
       state.copy(
         lastSlot = lastSlot,
         evolvingNonce = evolving,
+        // `slot +* Duration window` (`Praos.hs:513`) wraps in `Word64`; the sum here is exact and
+        // only differs within the window of 2^64 (overflow-improvements.md#slot-arithmetic)
         candidateNonce =
           if header.slot + window < nextEpoch then evolving
           else state.candidateNonce,

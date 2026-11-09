@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import cats.syntax.all.*
 import monocle.Lens
 import munit.ScalaCheckSuite
 import org.scalacheck.{Arbitrary, Gen}
@@ -96,10 +97,12 @@ class EpochBoundarySuite extends ScalaCheckSuite:
       sorted(Gen.zip(credential, Arbitrary.arbitrary[CompactCoin]))
     ) { (states, amounts) =>
       val ascending = amounts.toVector
+      // both walk the credentials in order, so both fail at the same first balance that would
+      // leave `Word64` (overflow-improvements.md#compact-coin-arithmetic)
       val merged = EraLedger.mergeStates(states, balance, ascending)
       val oneByOne = EraLedger.creditStates(states, balance, ascending)
-      assertEquals(merged.toList, oneByOne.toList)
-      assert(merged.ordering eq states.ordering)
+      assertEquals(merged.map(_.toList), oneByOne.map(_.toList))
+      assert(merged.forall(_.ordering eq states.ordering))
       true
     }
   }
@@ -108,16 +111,16 @@ class EpochBoundarySuite extends ScalaCheckSuite:
   private def resolved(
       instant: SortedMap[Credential[Staking], CompactCoin],
       accounts: Vector[(Credential[Staking], EraLedger.AccountView)]
-  ): ActiveStake =
-    val entries = accounts.flatMap { (c, account) =>
-      account.pool.flatMap { p =>
+  ): Either[VocabError, ActiveStake] =
+    val entries = accounts.traverse { (c, account) =>
+      account.pool.flatTraverse { p =>
         val total = instant.get(c) match
-          case Some(stake) => Some(stake.add(account.balance))
-          case None        => Option.unless(account.balance.word.isZero)(account.balance)
-        total.map(stake => c -> StakeWithDelegation(NonZero.unsafe(stake), p))
+          case Some(stake) => stake.add(account.balance).map(Some(_))
+          case None        => Right(Option.unless(account.balance.word.isZero)(account.balance))
+        total.map(_.map(stake => c -> StakeWithDelegation(NonZero.unsafe(stake), p)))
       }
     }
-    ActiveStake(Sorted.map(entries))
+    entries.map(e => ActiveStake(Sorted.map(e.flatten)))
 
   property(
     "the active stake by a merge with the instant stake is the one by a lookup for each account"
@@ -138,7 +141,7 @@ class EpochBoundarySuite extends ScalaCheckSuite:
         Sorted.empty[Ptr, CompactCoin]
       )
       val want = resolved(instant, accounts.toVector)
-      assertEquals(got.entries.toList, want.entries.toList)
+      assertEquals(got.map(_.entries.toList), want.map(_.entries.toList))
       true
     }
   }

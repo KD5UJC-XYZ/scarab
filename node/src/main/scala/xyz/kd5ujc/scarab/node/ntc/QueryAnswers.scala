@@ -158,7 +158,9 @@ final class ConwayFacts(val l: EraRead[Conway]):
     for
       c <- cert
       instant <- instantStake
-      active = StakeDistribution
+      // a stake sum the reference would wrap is this read's failure
+      // (overflow-improvements.md#compact-coin-arithmetic)
+      active <- StakeDistribution
         .resolve(
           instant.credentialStake,
           EraViews
@@ -170,7 +172,10 @@ final class ConwayFacts(val l: EraRead[Conway]):
           SortedMap.empty[Ptr, mirror.Credential[mirror.Staking]],
           SortedMap.empty[Ptr, mirror.CompactCoin]
         )
-      snap = StakeDistribution.snapshot(active, c.pState.stakePools)
+        .leftMap(mirror.MirrorError.Vocab(_))
+      snap <- StakeDistribution
+        .snapshot(active, c.pState.stakePools)
+        .leftMap(mirror.MirrorError.Vocab(_))
     yield snap
 
 /** Pure answers to node-to-client queries. `answer` returns the result item of the `MsgResult`

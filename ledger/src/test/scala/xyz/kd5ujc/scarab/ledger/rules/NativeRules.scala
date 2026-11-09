@@ -190,7 +190,7 @@ object NativeRules:
     */
   def obligation[E <: EraTag](nes: NewEpochState[E])(using era: ShelleyBasedEra[E]): BigInt =
     val ls = nes.es.ls
-    val accounts = EraLedger.keyDeposits(ls)
+    val accounts = EraLedger.keyDeposits(ls).fold(e => broken(e.toString), identity)
     val pools = LedgerState.pState[E].get(ls).stakePools.valuesIterator.map(_.deposit.toBigInt).sum
     val governance = era match
       case ShelleyBasedEra.SConway =>

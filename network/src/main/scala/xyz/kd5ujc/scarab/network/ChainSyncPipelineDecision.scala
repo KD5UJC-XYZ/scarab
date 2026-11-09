@@ -25,7 +25,10 @@ object ChainSyncPipelineDecision:
       else Right(new Window(low, high))
 
   final case class Policy(window: Window = Window.Default, phase: Phase = Phase.Low):
-    /** None is native Origin; addition at Origin starts at one and all additions wrap Word64. */
+    /** None is native Origin; addition at Origin starts at one. The reference adds in `Word64`,
+      * which wraps; the sum here is exact, so a block number within `outstanding` of 2^64 is not
+      * taken to be below the server's (overflow-improvements.md#chain-sync-pipelining).
+      */
     def decide(
         outstanding: Int,
         client: Option[UInt64],
@@ -42,7 +45,7 @@ object ChainSyncPipelineDecision:
             if outstanding > window.low then Right(Action.Collect -> this)
             else Right(Action.CollectOrPipeline -> copy(phase = Phase.Low))
           case Phase.Low =>
-            val plus = (client.fold(BigInt(1))(_.value) + outstanding) & UInt64.Max
+            val plus = client.fold(BigInt(1))(_.value) + outstanding
             val reachesServer = server.forall(_.value <= plus)
             if reachesServer then Right(Action.Collect -> this)
             else if outstanding >= window.high then

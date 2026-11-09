@@ -121,7 +121,7 @@ class ConwayRulesSuite extends FunSuite:
       utxo(nes).valuesIterator.toVector,
       Nil
     )
-    assertEquals(ls.utxo.instantStake, ok(stake))
+    assertEquals(ls.utxo.instantStake, stake.fold(e => fail(e.toString), identity))
     nes
 
   private def run(s: Nes, t: Tx, ctx: TxEnv = env): Either[LedgerFailure, Counted[Nes]] =

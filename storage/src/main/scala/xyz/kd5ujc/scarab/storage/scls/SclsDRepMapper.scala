@@ -28,7 +28,9 @@ object SclsDRepMapper:
 
   /** cardano-ledger@f649f975, Conway/Rules/Certs.hs:308-328; canonical export invokes this at
     * CanonicalState/Conway/Export.hs:363-371. `binOpEpochNo (+)` wraps its Word64 result before
-    * comparing it with the current epoch. This interchange operation does not change ledger rules.
+    * comparing it with the current epoch. This interchange operation does not change ledger rules,
+    * and its bytes are the reference exporter's for every state, so the wrap is kept
+    * (overflow-improvements.md#scls-drep-expiry).
     */
   private[scls] def normalizeExpiry(epoch: EpochNo, dormant: EpochNo, expiry: EpochNo): EpochNo =
     if dormant.word.isZero then expiry

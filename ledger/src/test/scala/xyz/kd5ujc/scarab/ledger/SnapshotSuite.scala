@@ -36,7 +36,10 @@ class SnapshotSuite extends munit.FunSuite:
         pool(12) -> stakePool(cred(12))
       )
     )
-    val distribution = PoolDistr.of(StakeDistribution.snapshot(active, pools))
+    val distribution =
+      PoolDistr.of(
+        active.flatMap(StakeDistribution.snapshot(_, pools)).fold(e => fail(e.toString), identity)
+      )
     assertEquals(
       distribution.distribution.view.mapValues(_.totalPoolStake.toBigInt).toMap,
       Map(pool(10) -> BigInt(500), pool(11) -> BigInt(0))

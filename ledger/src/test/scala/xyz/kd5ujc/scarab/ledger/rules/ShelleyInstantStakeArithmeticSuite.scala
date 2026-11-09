@@ -8,7 +8,8 @@ import xyz.kd5ujc.scarab.ledger.{Address, Ptr, TestLedger, TxChecks, TxIn, TxOut
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.state.given
 
-/** The pre-Conway instant stake at its Word64 boundaries, for the credential map and the pointer
+/** The pre-Conway instant stake at its Word64 boundaries, where the node gives no verdict and the
+  * reference wraps (overflow-improvements.md#instant-stake), for the credential map and the pointer
   * map. At cardano-ledger f649f975, `Shelley/State/Stake.hs:108-145` adds and subtracts
   * `CompactForm Coin` as Word64, inserts the output amount when the entry is missing for either
   * operation, and removes an entry that is zero; `Shelley/Rules/Utxo.hs:613-624` adds the outputs
@@ -55,17 +56,21 @@ class ShelleyInstantStakeArithmeticSuite extends FunSuite:
     ShelleyInstantStakeOps.update(from, added, deleted)
 
   maps.foreach { (name, cache, address) =>
-    test(s"$name: deletion underflows modulo Word64") {
+    test(s"$name: a deletion below zero is no verdict, where the reference wraps it") {
       assertEquals(
         update(cache(Some(1)), Vector.empty, Vector(output(address, 3))),
-        Right(cache(Some(modulus - 2)))
+        Left(InstantStakeError.Stake(VocabError.Negative(VocabError.Kind.CompactCoin, -2)))
       )
     }
 
-    test(s"$name: addition overflow wraps to zero and removes the entry") {
+    test(s"$name: an addition reaching 2^64 is no verdict, where the reference wraps it to zero") {
       assertEquals(
         update(cache(Some(modulus - 1)), Vector(output(address, 1)), Vector.empty),
-        Right(cache(None))
+        Left(InstantStakeError.Stake(VocabError.OutOfRange(VocabError.Kind.CompactCoin, modulus)))
+      )
+      assertEquals(
+        update(cache(Some(modulus - 2)), Vector(output(address, 1)), Vector.empty),
+        Right(cache(Some(modulus - 1)))
       )
     }
 
@@ -123,7 +128,7 @@ class ShelleyInstantStakeArithmeticSuite extends FunSuite:
       )
       assertEquals(
         update(cache(None), Vector(output(address, 1)), Vector(output(address, 2))),
-        Right(cache(Some(modulus - 1)))
+        Left(InstantStakeError.Stake(VocabError.Negative(VocabError.Kind.CompactCoin, -1)))
       )
     }
 
@@ -134,11 +139,11 @@ class ShelleyInstantStakeArithmeticSuite extends FunSuite:
           else VocabError.OutOfRange(VocabError.Kind.CompactCoin, n)
         assertEquals(
           update(cache(None), Vector(output(address, n)), Vector.empty),
-          Left(expected)
+          Left(InstantStakeError.Output(expected))
         )
         assertEquals(
           update(cache(None), Vector.empty, Vector(output(address, n))),
-          Left(expected)
+          Left(InstantStakeError.Output(expected))
         )
       }
     }

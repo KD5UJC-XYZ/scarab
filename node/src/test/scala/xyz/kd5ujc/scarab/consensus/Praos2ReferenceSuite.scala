@@ -453,6 +453,26 @@ class Praos2ReferenceSuite extends munit.FunSuite:
     )
   }
 
+  test("a minimum certification slot past 2^64 - 1 is no verdict, where the reference wraps it") {
+    // overflow-improvements.md#leios-praos2
+    val last = (BigInt(1) << 64) - 1
+    val gap =
+      Praos2.minCertificationSlot(1000, view, slot(0)).fold(e => fail(e.toString), _.toBigInt)
+    assertEquals(
+      Praos2.minCertificationSlot(1000, view, slot(last - gap)).map(_.toBigInt),
+      Right(last)
+    )
+    assertEquals(
+      Praos2.minCertificationSlot(1000, view, slot(last - gap + 1)),
+      Left(
+        Praos2.Defect.Vocabulary(
+          xyz.kd5ujc.scarab.ledger.state.VocabError
+            .OutOfRange(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.SlotNo, last + 1)
+        )
+      )
+    )
+  }
+
   test("a zero slot length or KES period is a configuration defect") {
     assertEquals(
       Praos2.minCertificationSlot(0, view, slot(0)),

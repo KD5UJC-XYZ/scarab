@@ -143,14 +143,10 @@ class StakeSuite extends ScalaCheckSuite:
         Some(pool)
       )
     }
-    StakeDistribution
-      .resolve(credentials, accounts, ptrs, ptrStake)
-      .entries
-      .iterator
-      .map { (k, s) =>
+    ok(StakeDistribution.resolve(credentials, accounts, ptrs, ptrStake)).entries.iterator.map {
+      (k, s) =>
         k -> s.stake.value.toBigInt
-      }
-      .toMap
+    }.toMap
 
   property("the UTxO's stake by credential and by pointer equals that of the whole set") {
     forAll(genCase) { c =>

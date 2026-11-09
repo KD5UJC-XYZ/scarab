@@ -25,7 +25,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   ConwayNewEpochState,
   NewEpochState,
   ShelleyBasedEra,
-  UtxoTables
+  UtxoTables,
+  VocabError
 }
 import xyz.kd5ujc.scarab.models.runtime.DecodeError
 import xyz.kd5ujc.scarab.storage.{
@@ -65,6 +66,11 @@ object SclsImport:
     case UtxoSummaryMismatch
     case InstantStake(cause: LedgerSnapshotImport.Error)
     case Deposited(expected: BigInt, found: BigInt)
+
+    /** The deposits the imported state holds add up to 2^64 or more in one compact sum
+      * (overflow-improvements.md#compact-coin-arithmetic).
+      */
+    case Obligation(cause: VocabError)
     case Telescope(cause: TelescopeError)
     case State(cause: DecodeError)
     case NotWritable(cause: StateNotWritable)
@@ -222,7 +228,7 @@ object SclsImport:
                 .checkStake(ShelleyBasedEra.SConway, ls.utxo.instantStake, utxo)
                 .leftMap(Error.InstantStake(_))
             )
-            obligation = ConwayEpoch.totalObligation(ls)
+            obligation <- lift(ConwayEpoch.totalObligation(ls).leftMap(Error.Obligation(_)))
             _ <- lift(
               Either.cond(
                 Coin.value(ls.utxo.deposited) == obligation,

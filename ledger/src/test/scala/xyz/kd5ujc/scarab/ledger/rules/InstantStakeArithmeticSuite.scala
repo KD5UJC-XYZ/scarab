@@ -9,7 +9,8 @@ import xyz.kd5ujc.scarab.ledger.state.*
 
 /** Source-derived arithmetic controls, not new native captures. At cardano-ledger f649f975,
   * Conway/State/Stake.hs:87-120 uses Word64 arithmetic and Map.alter insertion on absence;
-  * Shelley/Rules/Utxo.hs:613-624 adds outputs before deleting the ordered input map.
+  * Shelley/Rules/Utxo.hs:613-624 adds outputs before deleting the ordered input map. Where the
+  * reference's Word64 wraps, the node gives no verdict (overflow-improvements.md#instant-stake).
   */
 class InstantStakeArithmeticSuite extends FunSuite:
   private val stakeBytes = Bytes(Vector.fill(28)(2.toByte))
@@ -31,17 +32,45 @@ class InstantStakeArithmeticSuite extends FunSuite:
   private def output(n: BigInt): TxOut = TestLedger.out(address, n)
   private val empty = cache(None)
 
-  test("deletion underflows modulo Word64 without widening CompactCoin") {
+  test("a deletion below zero is no verdict, where the reference wraps it modulo 2^64") {
     assertEquals(
       InstantStakeOps.update(cache(Some(1)), Vector.empty, Vector(output(3))),
-      Right(cache(Some(modulus - 2)))
+      Left(InstantStakeError.Stake(VocabError.Negative(VocabError.Kind.CompactCoin, -2)))
+    )
+    // at the boundary the entry reaches zero and is removed, as in the reference
+    assertEquals(
+      InstantStakeOps.update(cache(Some(3)), Vector.empty, Vector(output(3))),
+      Right(empty)
     )
   }
 
-  test("addition overflow wraps to zero and removes the entry") {
+  test("an addition reaching 2^64 is no verdict, where the reference wraps it to zero") {
     assertEquals(
       InstantStakeOps.update(cache(Some(modulus - 1)), Vector(output(1)), Vector.empty),
-      Right(empty)
+      Left(InstantStakeError.Stake(VocabError.OutOfRange(VocabError.Kind.CompactCoin, modulus)))
+    )
+    assertEquals(
+      InstantStakeOps.update(cache(Some(modulus - 2)), Vector(output(1)), Vector.empty),
+      Right(cache(Some(modulus - 1)))
+    )
+  }
+
+  test("the transaction's rules report a stake out of range as no verdict, not a refusal") {
+    val id = Bytes(Vector.fill(32)(7.toByte))
+    val error = VocabError.OutOfRange(VocabError.Kind.CompactCoin, modulus)
+    assertEquals(
+      InstantStakeError.failure(id)(InstantStakeError.Stake(error)),
+      xyz.kd5ujc.scarab.ledger.LedgerFailure.StateOutOfRange(id, error)
+    )
+    assertEquals(
+      xyz.kd5ujc.scarab.ledger.BlockFailure
+        .Tx(InstantStakeError.failure(id)(InstantStakeError.Stake(error)))
+        .stateOutOfRange,
+      Some(error)
+    )
+    assertEquals(
+      InstantStakeError.failure(id)(InstantStakeError.Output(error)),
+      xyz.kd5ujc.scarab.ledger.LedgerFailure.Vocab(error)
     )
   }
 
@@ -73,8 +102,14 @@ class InstantStakeArithmeticSuite extends FunSuite:
       val expected =
         if n < 0 then VocabError.Negative(VocabError.Kind.CompactCoin, n)
         else VocabError.OutOfRange(VocabError.Kind.CompactCoin, n)
-      assertEquals(InstantStakeOps.update(empty, Vector(output(n)), Vector.empty), Left(expected))
-      assertEquals(InstantStakeOps.update(empty, Vector.empty, Vector(output(n))), Left(expected))
+      assertEquals(
+        InstantStakeOps.update(empty, Vector(output(n)), Vector.empty),
+        Left(InstantStakeError.Output(expected))
+      )
+      assertEquals(
+        InstantStakeOps.update(empty, Vector.empty, Vector(output(n))),
+        Left(InstantStakeError.Output(expected))
+      )
     }
   }
 

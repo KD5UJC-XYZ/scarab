@@ -35,6 +35,14 @@ enum ByronChainError:
   case SignatureRejected
   case SignatureInput(cause: WitnessInputError)
 
+  /** A quantity the PBFT rules compute does not fit the type the reference computes it in, where
+    * the reference would take it modulo 2^64: no verdict on the block
+    * ([[BlockFailure.stateOutOfRange]]). The header-only check of chain sync has no outcome that is
+    * no verdict, so it refuses the header; the node's configuration refuses the threshold that
+    * would make one, so neither is met (overflow-improvements.md#byron-pbft-window-threshold).
+    */
+  case StateOutOfRange(cause: VocabError)
+
   def message: String = this match
     case ProtocolMagic(a, e)  => s"protocol magic $a differs from the genesis $e"
     case PreviousHash(a, e)   => s"previous hash ${a.fold("none")(_.hex)} is not the tip ${e.hex}"
@@ -54,3 +62,4 @@ enum ByronChainError:
     case FirstBlockNumber(n)   => s"the first block is numbered $n, not 0"
     case SignatureRejected     => "block signature rejected"
     case SignatureInput(e)     => s"signature input failed: $e"
+    case StateOutOfRange(e)    => s"out of range: $e"
