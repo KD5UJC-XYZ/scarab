@@ -1406,6 +1406,78 @@ object Targets:
       )
     )
 
+  /** The `state` file in the layout of the Leios build (#826): the whole file, and the two
+    * envelopes of the extended state that are the Leios layout's own (the Peras state, the bound).
+    * What decodes is written again and decodes to the same value; a whole file written by this
+    * decoder's writer is also its bytes when it read three parts and four-item bounds.
+    */
+  private val leiosState: Vector[Target] =
+    import xyz.kd5ujc.scarab.protocol.StateLayout
+    import xyz.kd5ujc.scarab.storage.haskell.state.{
+      Envelope,
+      HaskellLedgerFile,
+      HaskellState,
+      LeiosStateCodecs
+    }
+    def fixture(dir: String, name: String): Array[Byte] =
+      java.nio.file.Files.readAllBytes(java.nio.file.Path.of(dir, name, "state"))
+    def roundTrip[A](name: String, codec: xyz.kd5ujc.scarab.models.runtime.Codec[A])(
+        bytes: Bytes
+    ): Unit =
+      codec.decodeBytes(bytes, HaskellState.limits).foreach { a =>
+        hit(name)
+        val written = codec.write(a).fold(e => throw new Violation(s"$name: $e"), identity)
+        req(
+          codec.decodeBytes(written, HaskellState.limits) == Right(a),
+          s"$name: what decodes does not decode as itself after it is written"
+        )
+      }
+    val bound = Envelope.bound(StateLayout.Leios)
+    Vector(
+      Target(
+        "leios-state",
+        () =>
+          val seeds = Vector(fixture("fixtures/leios/state", "conway-195")) ++
+            Vector("shelley-1000", "conway-4593").map(fixture("fixtures/haskell-state", _))
+          req(
+            HaskellLedgerFile.decode(Bytes.fromArray(seeds.head), StateLayout.Leios).isRight,
+            "the Leios state seed does not decode"
+          )
+          seeds ++ Vector(fixture("fixtures/leios/state", "dijkstra-203")) ++ Corpus.tricky
+        ,
+        probe("leios-state") { bytes =>
+          HaskellLedgerFile.decode(bytes, StateLayout.Leios).foreach { file =>
+            hit("leios-state")
+            val written = HaskellLedgerFile
+              .encode(file, StateLayout.Leios)
+              .fold(e => throw new Violation(s"leios-state: ${e.violation.render}"), identity)
+            req(
+              HaskellLedgerFile.decode(written, StateLayout.Leios).map(_.layout) ==
+                Right(file.layout) &&
+                HaskellLedgerFile.encode(file, StateLayout.Node11_1).isLeft,
+              "leios-state: a decoded file does not decode as itself, or 11.1 writes it"
+            )
+          }
+        }
+      ),
+      Target(
+        "leios-peras-state",
+        () =>
+          Vector("828301808080", "8282004361626381" + "05", "828301808081" + "07")
+            .map(h => Bytes.fromHex(h).fold(e => throw new Violation(e.toString), _.toArray)) ++
+            Corpus.tricky,
+        probe("leios-peras-state")(roundTrip("leios-peras-state", LeiosStateCodecs.perasState))
+      ),
+      Target(
+        "leios-bound",
+        () =>
+          Vector("83030501", "8403050107", "84c2490100000000000000000501" + "00")
+            .map(h => Bytes.fromHex(h).fold(e => throw new Violation(e.toString), _.toArray)) ++
+            Corpus.tricky,
+        probe("leios-bound")(roundTrip("leios-bound", bound))
+      )
+    )
+
   private val sclsFraming: Vector[Target] =
     import xyz.kd5ujc.scarab.storage.scls.{SclsFraming, SclsKey, SclsRecord, SclsValidation}
     // Prepare immutable codec definitions with the targets; every input decode remains in Probe.
@@ -2199,7 +2271,8 @@ object Targets:
     )
 
   val all: Vector[Target] =
-    network ++ node ++ dijkstra ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++ sclsFraming ++
+    network ++ node ++ dijkstra ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++
+      leiosState ++ sclsFraming ++
       Vector(
         sclsValues,
         genesisInjections,
