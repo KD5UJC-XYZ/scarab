@@ -640,8 +640,8 @@ change applied to it (B). Every result below is B's unless it says A.
 
 1. The authenticated import loads 4,526,058 outputs, 30,022,461,204,412,072 lovelace, and verifies the
    ancillary manifest.
-2. The export of the import is byte-identical to the Mithril files: `state` `7ecbc476…`, `tables`
-   `62ee546d…`, `meta` `b27a7d1a…`.
+2. The export of the import is byte-identical to the snapshot it was imported from: `state`
+   `7ecbc476…`, `tables` `62ee546d…`, `meta` `b27a7d1a…`.
    - `cardano-node` 11.1.3 logs `ReplayFromSnapshot` at 136,511,997 and replays to each tip.
    - db-analyser reads only from chunk 6319 on. On R2 it never reads chunk 6318, which is present.
    - The truncated-`state` controls fall back in both tools.
