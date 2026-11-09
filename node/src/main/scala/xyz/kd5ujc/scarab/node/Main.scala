@@ -687,7 +687,7 @@ object Main extends IOApp:
 
   /** The reference build the node mirrors, logged with its pins, and a warning when an unstable
     * build runs without `ExperimentalHardForksEnabled`; then the codec of its layout, or the
-    * refusal of a build not implemented yet, before any store opens.
+    * refusal of a build whose rules are not implemented yet, before any store opens.
     */
   private def referenceLayout(build: ReferenceBuild, experimentalHardForksEnabled: Boolean)(using
       Handle[IO, NodeError],
@@ -698,7 +698,7 @@ object Main extends IOApp:
         .emit[NodeEvent](NodeEvent.UnstableReferenceBuild(build))
         .whenA(ReferenceBuildFlag.warns(build, experimentalHardForksEnabled)) *>
       ReferenceBuildFlag
-        .layout(build)
+        .follows(build)
         .fold(e => Handle[IO, NodeError].raise[NodeError, ReferenceLayout](e), IO.pure)
 
   /** The node from its completed options on: the database, the stores and the run. */

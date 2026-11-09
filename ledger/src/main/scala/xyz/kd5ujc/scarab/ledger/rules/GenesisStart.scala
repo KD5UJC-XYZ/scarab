@@ -570,6 +570,6 @@ object GenesisStart:
     Right(
       nes.copy(
         es = nes.es.copy(snapshots = nes.es.snapshots.copy(mark = mark)),
-        pd = PoolDistr.of(mark)
+        layout = NewEpochState.Layout.Node11_1(PoolDistr.of(mark))
       )
     )

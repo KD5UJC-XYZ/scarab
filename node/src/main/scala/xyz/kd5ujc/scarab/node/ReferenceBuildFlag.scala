@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
-import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, ReferenceBuildNotYet}
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 
 /** `--reference-build <build>` of `follow`, `import-ledger-snapshot` and `export-ledger-snapshot`
@@ -34,9 +34,18 @@ object ReferenceBuildFlag:
         )
     )
 
-  /** The codec of `build`'s layout, or the refusal of a build not implemented yet. */
-  def layout(build: ReferenceBuild): Either[ConfigError, ReferenceLayout] =
-    ReferenceLayout.of(build).leftMap(e => ConfigError(ConfigProblem.ReferenceBuildNotYet(e)))
+  /** The codec of `build` 's layout: what `import-ledger-snapshot` and `export-ledger-snapshot` add
+    * or strip Scarab's envelope with. Every build's layout has one.
+    */
+  def layout(build: ReferenceBuild): ReferenceLayout = ReferenceLayout.of(build)
+
+  /** The codec of `build` 's layout for `follow`, or the refusal of a build whose rules this build
+    * does not run yet ([[ReferenceBuildNotYet.Rules]], #826 step c).
+    */
+  def follows(build: ReferenceBuild): Either[ConfigError, ReferenceLayout] = build match
+    case ReferenceBuild.Release11_1 => Right(layout(build))
+    case ReferenceBuild.LeiosB004fe0c =>
+      Left(ConfigError(ConfigProblem.ReferenceBuildNotYet(ReferenceBuildNotYet.Rules(build))))
 
   /** The fields of the line that names the build a command runs with: its name, stability and pins,
     * the exact pinned release among them.

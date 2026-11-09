@@ -84,9 +84,11 @@ trait ForgeFixture:
   def ledgerWith(p: Pool, funds: Int): NewEpochState[Conway] =
     TxKit
       .native(funds)
-      .copy(pd =
-        PoolDistr.of(
-          ForgedChain.snapshotOf(Vector((p.stake.credential, p.creds, BigInt(1000000))))
+      .copy(layout =
+        NewEpochState.Layout.Node11_1(
+          PoolDistr.of(
+            ForgedChain.snapshotOf(Vector((p.stake.credential, p.creds, BigInt(1000000))))
+          )
         )
       )
 

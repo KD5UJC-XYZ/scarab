@@ -16,6 +16,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Word64,
   WithOrigin
 }
+import xyz.kd5ujc.scarab.protocol.{LayoutPart, StateLayout}
 
 /** `Word32` (the width of `shelleyAfterVoting`): the two's-complement bits of an `Int`, rendered
   * and ordered as unsigned. Every bit pattern is a word, so there is no failure to report.
@@ -63,32 +64,48 @@ object ShelleyTransition:
 
 /** `LedgerState (ShelleyBlock proto era)` (`Ledger.hs:280-286`), minus the `LedgerTables` (the UTxO
   * lives in `UtxoTables` inside the new-epoch state, as everywhere in the mirror): the tip, the
-  * ledger's own state, the transition information and the latest Peras certificate round (`None`
-  * until Peras is on).
+  * ledger's own state, the transition information and a fourth field by layout
+  * ([[ShelleyLedgerState.Layout]]).
   */
 final case class ShelleyLedgerState[E <: EraTag](
     tip: WithOrigin[ShelleyTip],
     nes: NewEpochState[E],
     transition: ShelleyTransition,
-    peras: Option[PerasRoundNo] = None
+    layout: ShelleyLedgerState.Layout
 )
 
 object ShelleyLedgerState:
+  /** The fourth field of the state, by layout. */
+  enum Layout extends LayoutPart derives Eq, Show, Diff:
+    /** `shelleyLedgerLatestPerasCertRound :: StrictMaybe PerasRoundNo` (ouroboros-consensus
+      * 82ecba32 `Shelley/Ledger/Ledger.hs:866-912`): none until Peras is on.
+      */
+    case Node11_1(latestPerasCertRound: Option[PerasRoundNo])
+
+    /** `shelleyCumulativeTxBytes :: Word64` (ouroboros-consensus 2416493b `Ledger.hs:308`, encoding
+      * `:885-922`): the bytes of every transaction applied since the chain entered Shelley.
+      */
+    case Leios(cumulativeTxBytes: Word64)
+
+    def stateLayout: StateLayout = this match
+      case Node11_1(_) => StateLayout.Node11_1
+      case Leios(_)    => StateLayout.Leios
+
   given [E <: EraTag](using ShelleyBasedEra[E]): Eq[ShelleyLedgerState[E]] = Eq.instance((a, b) =>
     StateEq.withOrigin(a.tip, b.tip) && a.nes === b.nes && a.transition === b.transition &&
-      a.peras === b.peras
+      a.layout === b.layout
   )
 
   given [E <: EraTag](using ShelleyBasedEra[E]): Diff[ShelleyLedgerState[E]] = Diff.record(
     Diff.at("tip")(_.tip),
     Diff.at("nes")(_.nes),
     Diff.at("transition")(_.transition),
-    Diff.at("peras")(_.peras)
+    Diff.at("layout")(_.layout)
   )
 
   given [E <: EraTag](using ShelleyBasedEra[E]): Show[ShelleyLedgerState[E]] = Show.show(s =>
     s"ShelleyLedgerState(tip = ${s.tip.show}, nes = ${s.nes.show}, " +
-      s"transition = ${s.transition.show}, peras = ${s.peras.show})"
+      s"transition = ${s.transition.show}, layout = ${s.layout.show})"
   )
 
   def tip[E <: EraTag]: Lens[ShelleyLedgerState[E], WithOrigin[ShelleyTip]] =
@@ -97,8 +114,8 @@ object ShelleyLedgerState:
     Focus[ShelleyLedgerState[E]](_.nes)
   def transition[E <: EraTag]: Lens[ShelleyLedgerState[E], ShelleyTransition] =
     Focus[ShelleyLedgerState[E]](_.transition)
-  def peras[E <: EraTag]: Lens[ShelleyLedgerState[E], Option[PerasRoundNo]] =
-    Focus[ShelleyLedgerState[E]](_.peras)
+  def layout[E <: EraTag]: Lens[ShelleyLedgerState[E], Layout] =
+    Focus[ShelleyLedgerState[E]](_.layout)
 
 /** `Eq` of `WithOrigin a` from `Eq a` alone: the instances of `WithOrigin` are from `Order`, which
   * a tip (Haskell: `Eq` only) does not have.

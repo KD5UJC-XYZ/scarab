@@ -38,7 +38,7 @@ class StateLawsSuite extends DisciplineSuite:
     "ShelleyLedgerState.transition[Conway]",
     LensTests(ShelleyLedgerState.transition[Conway])
   )
-  checkAll("ShelleyLedgerState.peras[Conway]", LensTests(ShelleyLedgerState.peras[Conway]))
+  checkAll("ShelleyLedgerState.layout[Conway]", LensTests(ShelleyLedgerState.layout[Conway]))
   checkAll("PraosState.lastSlot", LensTests(PraosState.lastSlot))
   checkAll("PraosState.labNonce", LensTests(PraosState.labNonce))
   checkAll("HeaderState.tip", LensTests(HeaderState.tip))
@@ -50,14 +50,16 @@ class StateLawsSuite extends DisciplineSuite:
       ShelleyLedgerState[Babbage](
         WithOrigin.Origin,
         NewEpochState.empty[Babbage](EpochNo.fromUnsigned(7), LedgerStateGen.params),
-        ShelleyTransition(Word32.fromUnsigned(0))
+        ShelleyTransition(Word32.fromUnsigned(0)),
+        ShelleyLedgerState.Layout.Node11_1(None)
       )
     )(using ShelleyBasedEra[Babbage])
     val allegra = EraLedgerState.inEra(
       ShelleyLedgerState[Allegra](
         WithOrigin.Origin,
         NewEpochState.empty[Allegra](EpochNo.fromUnsigned(7), LedgerStateGen.params),
-        ShelleyTransition(Word32.fromUnsigned(0))
+        ShelleyTransition(Word32.fromUnsigned(0)),
+        ShelleyLedgerState.Layout.Node11_1(None)
       )
     )(using ShelleyBasedEra[Allegra])
     assert(babbage =!= allegra)

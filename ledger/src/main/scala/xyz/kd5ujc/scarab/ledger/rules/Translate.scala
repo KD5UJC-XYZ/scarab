@@ -138,7 +138,7 @@ object Translate:
         nes.es.nonMyopic
       ),
       nes.ru,
-      nes.pd,
+      nes.layout,
       avvm
     )
 
@@ -307,7 +307,7 @@ object Translate:
           nes.es.nonMyopic
         ),
         nes.ru,
-        nes.pd,
+        nes.layout,
         ()
       )
     )
@@ -383,7 +383,7 @@ object Translate:
           nes.es.nonMyopic
         ),
         nes.ru,
-        nes.pd,
+        nes.layout,
         ()
       )
 

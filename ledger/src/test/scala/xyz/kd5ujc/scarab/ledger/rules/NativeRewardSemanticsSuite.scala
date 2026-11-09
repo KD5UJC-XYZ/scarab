@@ -111,7 +111,8 @@ class NativeRewardSemanticsSuite extends FunSuite:
     val withPools = initial.copy(
       bcur = BlocksMade(Sorted.map(Vector(p -> Word64.fromUnsigned(10L)))),
       es = initial.es.copy(
-        snapshots = SnapShots(SnapShot.empty, go, SnapShot.empty, coin(0)),
+        snapshots =
+          SnapShots(SnapShot.empty, go, SnapShot.empty, coin(0), SnapShots.Layout.Node11_1),
         ls = EraLedger.withPState(initial.es.ls, Empty.pState.copy(stakePools = pools))
       )
     )

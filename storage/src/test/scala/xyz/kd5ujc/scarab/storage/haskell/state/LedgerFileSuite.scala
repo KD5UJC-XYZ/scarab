@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.state.EpochStateGen.given
 import xyz.kd5ujc.scarab.ledger.state.VocabularyGen.given
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Writer}
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 import DecodeError.Kind
 import HaskellStateCodecs.{*, given}
@@ -31,6 +31,8 @@ class LedgerFileSuite extends ScalaCheckSuite:
   private def bytesOf(body: Writer => Unit): Bytes = StateGen.item(body)
 
   private def arb[A: Arbitrary]: Gen[A] = Arbitrary.arbitrary[A]
+
+  private val bound11 = Envelope.bound(StateLayout.Node11_1)
 
   private def read[A](codec: Codec[A], bytes: Bytes): Either[DecodeError, A] =
     codec.decodeBytes(bytes, HaskellState.limits)
@@ -102,7 +104,10 @@ class LedgerFileSuite extends ScalaCheckSuite:
         Gen.option(arb[PerasRoundNo])
       )
       .map((t, nes, tr, p) =>
-        LedgerFileEra.Mirrored(EraLedgerState.inEra(ShelleyLedgerState[E](t, nes, tr, p)))
+        LedgerFileEra.Mirrored(
+          EraLedgerState
+            .inEra(ShelleyLedgerState[E](t, nes, tr, ShelleyLedgerState.Layout.Node11_1(p)))
+        )
       )
 
   private def ledgerEra(era: Era): Gen[LedgerFileEra] = era match
@@ -130,7 +135,7 @@ class LedgerFileSuite extends ScalaCheckSuite:
       ledger <- ConsensusGen.telescope(era, ledgerEra)
       tip <- Gen.oneOf(Gen.const(WithOrigin.Origin), annTipGen.map(WithOrigin.At(_)))
       deps <- ConsensusGen.telescope(era, chainDep)
-    yield HaskellLedgerFile(ledger, HeaderState(tip, deps))
+    yield HaskellLedgerFile(ledger, HeaderState(tip, deps), ExtLedgerState.Layout.Node11_1)
 
   // ---- the laws
 
@@ -138,14 +143,14 @@ class LedgerFileSuite extends ScalaCheckSuite:
   laws("TPraosState", ConsensusGen.tpraosState, tpraosState)
   laws("PraosState", ConsensusGen.praosState, praosState)
   laws("AnnTip", annTipGen, annTip)
-  laws("Bound", arb[Bound], Envelope.bound)
+  laws("Bound", arb[Bound], bound11)
   laws(
     "Bound under PerasEnabled",
     for
       b <- arb[Bound]
       round <- Gen.choose(0L, Long.MaxValue)
-    yield b.copy(perasRound = Some(PerasRoundNo(Word64.fromUnsigned(round)))),
-    Envelope.bound
+    yield b.copy(layout = Bound.Layout.Node11_1(Some(PerasRoundNo(Word64.fromUnsigned(round))))),
+    bound11
   )
 
   property("HaskellLedgerFile: decode after encode is the identity, on bytes, in every era") {
@@ -216,22 +221,25 @@ class LedgerFileSuite extends ScalaCheckSuite:
     // three or four items and refuses any other length
     val three = hex("83030501")
     val four = hex("8403050107")
-    assertEquals(readOk(Envelope.bound, three), Bound(BigInt(3), BigInt(5), BigInt(1)))
-    val enabled = readOk(Envelope.bound, four)
-    assertEquals(enabled.perasRound, Some(PerasRoundNo(Word64.fromUnsigned(7L))))
-    assertEquals(Envelope.bound.encodeUnchecked(readOk(Envelope.bound, three)), three)
-    assertEquals(Envelope.bound.encodeUnchecked(enabled), four)
+    assertEquals(
+      readOk(bound11, three),
+      Bound(BigInt(3), BigInt(5), BigInt(1), Bound.Layout.Node11_1(None))
+    )
+    val enabled = readOk(bound11, four)
+    assertEquals(enabled.layout, Bound.Layout.Node11_1(Some(PerasRoundNo(Word64.fromUnsigned(7L)))))
+    assertEquals(bound11.encodeUnchecked(readOk(bound11, three)), three)
+    assertEquals(bound11.encodeUnchecked(enabled), four)
     Vector("820305", "850305010700").foreach { refused =>
-      assert(failure(Envelope.bound, hex(refused)).kind.isInstanceOf[Kind.BadArity], refused)
+      assert(failure(bound11, hex(refused)).kind.isInstanceOf[Kind.BadArity], refused)
     }
   }
 
   test("Bound: the time is an Integer, a bignum from 2^64 picoseconds (Summary.hs:526-550)") {
-    val big = Bound(BigInt(1) << 64, BigInt(5), BigInt(1))
-    assertEquals(Envelope.bound.encodeUnchecked(big).hex, "83c249010000000000000000" + "0501")
-    val small = Bound(BigInt(3), BigInt(5), BigInt(1))
-    assertEquals(Envelope.bound.encodeUnchecked(small).hex, "83030501")
-    assertEquals(readOk(Envelope.bound, Envelope.bound.encodeUnchecked(big)), big)
+    val big = Bound(BigInt(1) << 64, BigInt(5), BigInt(1), Bound.Layout.Node11_1(None))
+    assertEquals(bound11.encodeUnchecked(big).hex, "83c249010000000000000000" + "0501")
+    val small = Bound(BigInt(3), BigInt(5), BigInt(1), Bound.Layout.Node11_1(None))
+    assertEquals(bound11.encodeUnchecked(small).hex, "83030501")
+    assertEquals(readOk(bound11, bound11.encodeUnchecked(big)), big)
   }
 
   // ---- refusals
@@ -248,7 +256,7 @@ class LedgerFileSuite extends ScalaCheckSuite:
   private def past(from: Long, to: Long)(w: Writer): Unit =
     w.arrayHead(2); bound(from, from, from)(w); bound(to, to, to)(w)
 
-  private val chainDepTelescope = Envelope.telescope(chainDepStateOf)
+  private val chainDepTelescope = Envelope.telescope(StateLayout.Node11_1, chainDepStateOf)
 
   test("a telescope of no items or of more eras than the chain has is refused") {
     assert(failure(chainDepTelescope, bytesOf(_.arrayHead(0))).kind.isInstanceOf[Kind.BadArity])
@@ -290,7 +298,7 @@ class LedgerFileSuite extends ScalaCheckSuite:
     val five = bytesOf { w =>
       w.arrayHead(5); w.uint(0L); w.uint(0L); w.uint(0L); w.uint(0L); w.uint(0L)
     }
-    assert(failure(Envelope.bound, five).kind.isInstanceOf[Kind.BadArity])
+    assert(failure(bound11, five).kind.isInstanceOf[Kind.BadArity])
     val legacy = bytesOf { w =>
       w.arrayHead(3); w.nul(); w.nul(); w.nul()
     }

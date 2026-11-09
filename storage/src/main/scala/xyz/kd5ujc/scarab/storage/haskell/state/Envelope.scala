@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.models.runtime.{
   Writer,
   at
 }
-import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, StateLayout}
 
 import DecodeError.Kind
 import Wire.*
@@ -114,13 +114,15 @@ object Envelope:
   /** `PerasRoundNo` (`Block/SupportsPeras.hs:85`, a `Word64`). */
   private val boundPerasRound: Codec[PerasRoundNo] = word64.imap(PerasRoundNo(_))(_.word)
 
-  /** `Bound` (`HardFork/History/Summary.hs:526-549`, ouroboros-consensus 82ecba32):
-    * `[time in picoseconds, slot, epoch]` under `NoPerasEnabled`, and the Peras round fourth under
-    * `PerasEnabled`; the decoder takes three or four items and refuses any other length. The time
-    * is an `Integer` (a bignum from 2^64 picoseconds, a few months, on), the slot, the epoch and
-    * the round `Word64` s.
+  /** `Bound` in `layout`: `[time in picoseconds, slot, epoch]` and the Peras round. The time is an
+    * `Integer` (a bignum from 2^64 picoseconds, a few months, on), the slot, the epoch and the
+    * round `Word64` s. Both decoders take three or four items and refuse any other length:
+    *   - 11.1 (ouroboros-consensus 82ecba32 `HardFork/History/Summary.hs:526-549`): the round is
+    *     `NoPerasEnabled` with three items and `PerasEnabled` with four, and written so;
+    *   - Leios (2416493b `Summary.hs:573-601`): three items are round zero; four are always
+    *     written.
     */
-  given bound: Codec[Bound] = new Codec[Bound]:
+  def bound(layout: StateLayout): Codec[Bound] = new Codec[Bound]:
     def decode(n: Node): Decoded[Bound] =
       Arr.between(n, 3, 4).flatMap { xs =>
         for
@@ -128,35 +130,57 @@ object Envelope:
           slot <- bound64.decode(xs(1)).at("boundSlot")
           epoch <- bound64.decode(xs(2)).at("boundEpoch")
           round <- xs.lift(3).traverse(boundPerasRound.decode(_).at("boundPerasRound"))
-        yield Bound(time, slot, epoch, round)
+        yield Bound(
+          time,
+          slot,
+          epoch,
+          layout match
+            case StateLayout.Node11_1 => Bound.Layout.Node11_1(round)
+            case StateLayout.Leios =>
+              Bound.Layout.Leios(round.getOrElse(PerasRoundNo(Word64.zero)))
+        )
       }
     def encode(a: Bound, out: Writer): Unit =
-      out.arrayHead(if a.perasRound.isDefined then 4 else 3)
+      val round = a.layout match
+        case Bound.Layout.Node11_1(r) => r
+        case Bound.Layout.Leios(r)    => Some(r)
+      out.arrayHead(if round.isDefined then 4 else 3)
       integer.encode(a.timePs, out)
       bound64.encode(a.slot, out)
       bound64.encode(a.epoch, out)
-      a.perasRound.foreach(boundPerasRound.encode(_, out))
+      round.foreach(boundPerasRound.encode(_, out))
     override def check(a: Bound): Option[ConstraintViolation] =
-      integer.check(a.timePs).orElse(bound64.check(a.slot)).orElse(bound64.check(a.epoch))
+      Option
+        .when(a.layout.stateLayout != layout)(
+          ConstraintViolation(
+            "Bound",
+            s"a part of the $layout layout",
+            a.layout.stateLayout.toString
+          )
+        )
+        .orElse(integer.check(a.timePs))
+        .orElse(bound64.check(a.slot))
+        .orElse(bound64.check(a.epoch))
 
   /** `Past` (`State/Instances.hs:141-147`): `[start, end]`. */
-  given past: Codec[Past] = Record.of[Past]((bound, bound))
+  def past(layout: StateLayout): Codec[Past] = Record.of[Past]((bound(layout), bound(layout)))
 
   /** `Current` (`State/Instances.hs:126-132`): `[start, state]`. */
-  def current[A](state: Codec[A]): Codec[Current[A]] = new Codec[Current[A]]:
+  def current[A](layout: StateLayout, state: Codec[A]): Codec[Current[A]] = new Codec[Current[A]]:
+    private val start = bound(layout)
     def decode(n: Node): Decoded[Current[A]] =
       Arr.exact(n, 2).flatMap { xs =>
         for
-          start <- bound.decode(xs(0)).at("start")
+          s0 <- start.decode(xs(0)).at("start")
           s <- state.decode(xs(1)).at("state")
-        yield Current(start, s)
+        yield Current(s0, s)
       }
     def encode(a: Current[A], out: Writer): Unit =
       out.arrayHead(2)
-      bound.encode(a.start, out)
+      start.encode(a.start, out)
       state.encode(a.state, out)
     override def check(a: Current[A]): Option[ConstraintViolation] =
-      state.check(a.state).map(_.at("state"))
+      start.check(a.start).map(_.at("start")).orElse(state.check(a.state).map(_.at("state")))
 
   /** A telescope that [[Telescope.make]] refused, as the violation it is. */
   private def refused(n: Node, e: xyz.kd5ujc.scarab.consensus.state.TelescopeError): DecodeError =
@@ -170,8 +194,11 @@ object Envelope:
     * codec of its state, is the length. The telescope is built with [[Telescope.make]], so a
     * decoded one is consistent (the eras abut, the state is one of the era it is in).
     */
-  def telescope[A](stateOf: Era => Codec[A])(using EraIndexed[A]): Codec[Telescope[A]] =
+  def telescope[A](layout: StateLayout, stateOf: Era => Codec[A])(using
+      EraIndexed[A]
+  ): Codec[Telescope[A]] =
     new Codec[Telescope[A]]:
+      private val pastIn = past(layout)
       def decode(n: Node): Decoded[Telescope[A]] =
         Arr.nonEmpty(n, Era.values.length).flatMap { xs =>
           val era = Era.values(xs.length - 1)
@@ -182,17 +209,21 @@ object Envelope:
               (),
               DecodeError.at(n, Kind.Domain(DijkstraNotYet.LedgerState))
             )
-            pasts <- Elements.decodeAll(xs.init, past).at("past")
-            cur <- current(stateOf(era)).decode(xs.last).at("current")
+            pasts <- Elements.decodeAll(xs.init, pastIn).at("past")
+            cur <- current(layout, stateOf(era)).decode(xs.last).at("current")
             t <- Telescope.make(pasts, cur).left.map(refused(n, _))
           yield t
         }
       def encode(a: Telescope[A], out: Writer): Unit =
         out.arrayHead(1 + a.past.size)
-        a.past.foreach(past.encode(_, out))
-        current(stateOf(a.era)).encode(a.current, out)
+        a.past.foreach(pastIn.encode(_, out))
+        current(layout, stateOf(a.era)).encode(a.current, out)
       override def check(a: Telescope[A]): Option[ConstraintViolation] =
-        current(stateOf(a.era)).check(a.current)
+        a.past.iterator
+          .flatMap(pastIn.check)
+          .nextOption()
+          .map(_.at("past"))
+          .orElse(current(layout, stateOf(a.era)).check(a.current))
 
   /** The codec of the state of an era in a telescope: read by what the era says it is (`reader`
     * gets the era), written by what the value is.

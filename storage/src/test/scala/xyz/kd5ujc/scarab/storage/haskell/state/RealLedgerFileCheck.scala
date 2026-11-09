@@ -91,7 +91,7 @@ object RealLedgerFileCheck:
           ext.ledgerState.state match
             case EraLedgerState.InShelleyEra(_, s) =>
               println(
-                s"  tip ${s.tip.show}, transition ${s.transition.show}, peras ${s.peras.show}"
+                s"  tip ${s.tip.show}, transition ${s.transition.show}, layout ${s.layout.show}"
               )
             case _ => ()
           println(s"  header tip ${ext.headerState.tip.show}")

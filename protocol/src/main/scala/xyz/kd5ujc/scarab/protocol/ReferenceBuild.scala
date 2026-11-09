@@ -111,11 +111,11 @@ final case class UnknownReferenceBuild(text: String) extends DomainError:
   * #826 that implements it.
   */
 enum ReferenceBuildNotYet extends DomainError:
-  /** The layout of the `state` file that `build` writes, which this build neither reads nor writes:
-    * #826 step b.
+  /** The ledger and consensus rules of `build`, which `follow` would run: #826 step c. Its `state`
+    * layout is read and written (`import-ledger-snapshot`, `export-ledger-snapshot`).
     */
-  case StateLayout(build: ReferenceBuild)
+  case Rules(build: ReferenceBuild)
 
   def message: String = this match
-    case StateLayout(build) =>
-      s"the reference build ${build.describe} is not implemented yet: this build does not read or write its ledger state layout"
+    case Rules(build) =>
+      s"the reference build ${build.describe} is not implemented yet: this build reads and writes its ledger state layout, but does not follow its rules"

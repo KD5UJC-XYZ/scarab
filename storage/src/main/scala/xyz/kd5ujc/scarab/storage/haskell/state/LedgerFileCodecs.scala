@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.models.runtime.{
   Writer,
   at
 }
-import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, StateLayout}
 
 import DecodeError.Kind
 import EraLedgerState.toEra
@@ -89,7 +89,7 @@ trait LedgerFileCodecs extends ConsensusCodecs:
   /** `HeaderState` (`HeaderValidation.hs:715-727`): `[tip, chain-dependent state telescope]`. */
   given headerState: Codec[HeaderState] = new Codec[HeaderState]:
     private val tip = withOriginMaybe(annTip)
-    private val chainDep = telescope(chainDepStateOf)
+    private val chainDep = telescope(stateLayout, chainDepStateOf)
     def decode(n: Node): Decoded[HeaderState] =
       Arr.exact(n, 2).flatMap { xs =>
         for
@@ -104,25 +104,113 @@ trait LedgerFileCodecs extends ConsensusCodecs:
     override def check(a: HeaderState): Option[ConstraintViolation] =
       chainDep.check(a.chainDep).map(_.at("chainDep"))
 
-  /** `ExtLedgerState` in the snapshot (`Ledger/Extended.hs:233-248`, `LedgerDB/Snapshots.hs`):
-    * `[1, [ledger state telescope, header state]]`.
+  // ---- the Peras state of the Leios layout (ouroboros-consensus 2416493b)
+
+  /** A `PerasEnabled (BoundedPerasEpochContext blk)` of the resolver's window (`Peras/Params.hs:
+    * 247-250`, a `Maybe`, `[]` or `[x]`): only `NoPerasEnabled` is read. A bounded epoch context
+    * (`Peras/Context.hs:170-203`, `[start round, end round, [committee, parameters]]`) holds a
+    * voting committee indexed by era (`decodeNS`, `HardFork/Combinator/AcrossEras.hs`,
+    * `[era, committee]`): the eras before Dijkstra have none (`VoidPerasVotingCommitteeScheme`,
+    * whose decoder fails, `Peras/Void.hs:168-170`), so the reference refuses one of them as this
+    * does; Dijkstra's is the Dijkstra part of the state, not read by this build.
+    */
+  private val noEpochContext: Codec[Unit] = new Codec[Unit]:
+    def decode(n: Node): Decoded[Unit] =
+      Arr.between(n, 0, 1).flatMap { xs =>
+        xs.headOption.fold[Decoded[Unit]](Right(())) { context =>
+          (for
+            bounded <- Arr.exact(context, 3)
+            epochContext <- Arr.exact(bounded(2), 2).at("epochContext")
+            committee <- Arr.exact(epochContext(0), 2).at("epochContext").at("pecCommittee")
+            era <- Codec.uintInt(255).decode(committee(0)).at("pecCommittee")
+            refusal = Era.values.lift(era) match
+              case Some(Era.Dijkstra) => Kind.Domain(DijkstraNotYet.LedgerState)
+              case Some(e)            => Kind.Unsupported(s"a Peras voting committee of $e (Void)")
+              case None               => Kind.OutOfRange("an era index", BigInt(era))
+            r <- Left(DecodeError.at(committee(0), refusal)): Decoded[Unit]
+          yield r).at("PerasEnabled")
+        }
+      }
+    def encode(a: Unit, out: Writer): Unit = out.arrayHead(0)
+
+  /** `PerasEpochContextResolver` (`Peras/Context.hs:264-301`): `[0, reason]` or `[1, current,
+    * previous]`, any other length and tag refused.
+    */
+  given perasResolver: Codec[PerasResolver] = new Codec[PerasResolver]:
+    private val reason = Codec.bytesSized(0, Int.MaxValue)
+    def decode(n: Node): Decoded[PerasResolver] =
+      variant(n).flatMap {
+        case (t, Vector(r)) if t == 0 =>
+          (if r.isIndefinite then Left(Codec.mismatch("definite byte string", r))
+           else reason.decode(r)).map(PerasResolver.Failed(_)).at("reason")
+        case (t, Vector(current, previous)) if t == 1 =>
+          for
+            _ <- noEpochContext.decode(current).at("current")
+            _ <- noEpochContext.decode(previous).at("previous")
+          yield PerasResolver.Disabled
+        case (t, xs) => unknownVariant(n, "PerasEpochContextResolver", t, xs.size)
+      }
+    def encode(a: PerasResolver, out: Writer): Unit = a match
+      case PerasResolver.Failed(r) =>
+        out.arrayHead(2)
+        out.uint(0L)
+        reason.encode(r, out)
+      case PerasResolver.Disabled =>
+        out.arrayHead(3)
+        out.uint(1L)
+        noEpochContext.encode((), out)
+        noEpochContext.encode((), out)
+
+  /** `PerasState` (`Ledger/Peras.hs:76-101`): `[resolver, latest certificate round]`, the round a
+    * `StrictMaybe` (`encodeStrictMaybe`, `Util/CBOR.hs:358-362`).
+    */
+  given perasState: Codec[PerasState] =
+    Record.of[PerasState]((perasResolver, strictMaybe(perasRound)))
+
+  /** `ExtLedgerState` in the snapshot (`LedgerDB/Snapshots.hs`): `[1, ext]`. In the 11.1 layout
+    * `ext` is `[ledger state telescope, header state]` (ouroboros-consensus 82ecba32
+    * `Ledger/Extended.hs:233-248`, read by `decodeListLenOf 2`, `:268-280`). In the Leios layout it
+    * is `[ledger state telescope, header state, Peras state]`, always written so (2416493b
+    * `Extended.hs:420-442`); two parts are read with the default Peras state and three with theirs,
+    * any other length refused after the ledger and header states (`:464-505`).
     */
   given haskellLedgerFile: Codec[HaskellLedgerFile] =
-    val ledger = telescope(ledgerFileEra)
+    val ledger = telescope(stateLayout, ledgerFileEra)
+    def leiosPeras(a: HaskellLedgerFile): Option[PerasState] = a.layout match
+      case ExtLedgerState.Layout.Leios(peras) => Some(peras)
+      case ExtLedgerState.Layout.Node11_1     => None
     versioned(
       1,
       new Codec[HaskellLedgerFile]:
-        def decode(n: Node): Decoded[HaskellLedgerFile] =
-          Arr.exact(n, 2).flatMap { xs =>
-            for
-              l <- ledger.decode(xs(0)).at("ledgerState")
-              h <- headerState.decode(xs(1)).at("headerState")
-            yield HaskellLedgerFile(l, h)
-          }
+        def decode(n: Node): Decoded[HaskellLedgerFile] = stateLayout match
+          case StateLayout.Node11_1 =>
+            Arr.exact(n, 2).flatMap { xs =>
+              for
+                l <- ledger.decode(xs(0)).at("ledgerState")
+                h <- headerState.decode(xs(1)).at("headerState")
+              yield HaskellLedgerFile(l, h, ExtLedgerState.Layout.Node11_1)
+            }
+          case StateLayout.Leios =>
+            Arr.between(n, 2, 3).flatMap { xs =>
+              for
+                l <- ledger.decode(xs(0)).at("ledgerState")
+                h <- headerState.decode(xs(1)).at("headerState")
+                p <- xs
+                  .lift(2)
+                  .fold(Right(PerasState.default): Decoded[PerasState])(
+                    perasState.decode(_).at("perasState")
+                  )
+              yield HaskellLedgerFile(l, h, ExtLedgerState.Layout.Leios(p))
+            }
         def encode(a: HaskellLedgerFile, out: Writer): Unit =
-          out.arrayHead(2)
+          val peras = leiosPeras(a)
+          out.arrayHead(if peras.isDefined then 3 else 2)
           ledger.encode(a.ledger, out)
           headerState.encode(a.header, out)
+          peras.foreach(perasState.encode(_, out))
         override def check(a: HaskellLedgerFile): Option[ConstraintViolation] =
-          ledger.check(a.ledger).map(_.at("ledgerState")).orElse(headerState.check(a.header))
+          ofThisLayout("ExtLedgerState", a.layout)
+            .map(_.at("layout"))
+            .orElse(ledger.check(a.ledger).map(_.at("ledgerState")))
+            .orElse(headerState.check(a.header).map(_.at("headerState")))
     )
