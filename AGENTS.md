@@ -113,7 +113,12 @@ scala code … I love the use of type parameters when I can use them"*.
   requested with clearly defined trade-offs and reasoning. Only after that approval is it
   implemented, with a written reason that records the approval. Existing code, earlier PRs, review
   notes and design documents are not approval. If exact fidelity seems impossible, stop and ask the
-  owner.
+  owner. **Never copy a bug of the reference** ([standing approval](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849)): where
+  the reference wraps, overflows, crashes or hangs on an edge case, or produces a reply that cannot
+  be encoded, Scarab does the correct thing instead, provided interoperability holds: the same
+  chain-validity verdicts, the same wire bytes for every value the reference produces, and the same
+  meaning of configuration. List each such improvement in the PR's deviations table with that link.
+  Decisions recorded by the owner's `ottobot-ai` account are the owner's.
 - Pure rules; exact `Rational` arithmetic; anything hashed or signed is hashed over its original bytes,
   except where the reference itself signs a re-encoding: a header's KES signature covers its body
   encoded again (`Praos/BlockHeader.hs:113-117`, cardano-ledger f649f975), its hash the original

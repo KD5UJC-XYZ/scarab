@@ -42,3 +42,13 @@ seems impossible, stop and ask the owner.
 
 Networking is mirrored in structure and behaviour too
 ([0008](0008-networking-mirrors-ouroboros-network.md)).
+
+## Amendment (2026-11-09): a bug of the reference is not reproduced
+
+The owner's standing rule, restated on [#474](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849): Scarab never reproduces a bug of the
+reference. Where the reference wraps, overflows, crashes or hangs on an edge case, or produces a
+reply that cannot be encoded, Scarab does the correct thing instead, provided interoperability holds:
+the same chain-validity verdicts, the same wire bytes for every value the reference produces, and the
+same meaning of configuration. Such an improvement is approved by this rule and needs no further
+request. It is still listed in its PR's deviations table, with the rule as its approval. Every other
+deviation still needs the approval the 2026-10-25 amendment describes.
