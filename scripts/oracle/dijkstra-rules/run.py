@@ -166,27 +166,17 @@ def generate():
     case("bbody/major-13", "bbody", params={"major": 13}, block=first)
     case("bbody/no-ex-units", "bbody", params={"maxBlockExUnits": [0, 0]}, block=first)
     case("bbody/no-ref-scripts", "bbody", params={"maxRefScriptSizePerBlock": 0}, block=first)
-    # the header's body hash (field 7 of its body) replaced: the 32 bytes after its `58 20` head
     blob = bytes.fromhex(first)
-    marker = bytes.fromhex(declared_body_hash(blob))
-    assert blob.count(marker) == 1
-    case("bbody/other-body-hash", "bbody", block=blob.replace(marker, bytes([9]) * 32).hex())
+    case("bbody/other-body-hash", "bbody", block=with_body_hash(blob, bytes([9]) * 32).hex())
     case("bbody/other-body-size-and-hash", "bbody",
-         block=with_body_size(blob, 1).replace(marker, bytes([9]) * 32).hex())
+         block=with_body_hash(with_body_size(blob, 1), bytes([9]) * 32).hex())
 
     tx_block = bytes.fromhex(dict(chain)[DEVNET_TX_BLOCK])
     case(f"bbody/devnet-{DEVNET_TX_BLOCK}-genesis-utxo", "bbody", block=tx_block.hex(), utxo=genesis_utxo())
     body, wits, aux, flag = devnet_tx(tx_block)
-    # the block with its transaction flagged phase-2-invalid (`f4` for `f5`, the last item of the
-    # transaction), and the header's body hash the Blake2b-256 of the body so changed
-    old_body = block_body(tx_block)
-    assert old_body.count(arr(body, wits, aux, flag)) == 1 and flag == b"\xf5"
-    new_body = old_body.replace(arr(body, wits, aux, flag), arr(body, wits, aux, b"\xf4"))
-    old_hash = bytes.fromhex(declared_body_hash(tx_block))
-    assert old_hash == hashlib.blake2b(old_body, digest_size=32).digest()
-    flipped = tx_block.replace(old_body, new_body).replace(
-        old_hash, hashlib.blake2b(new_body, digest_size=32).digest())
-    case(f"bbody/devnet-{DEVNET_TX_BLOCK}-invalid-flag", "bbody", block=flipped.hex(), utxo=genesis_utxo())
+    assert bytes.fromhex(declared_body_hash(tx_block)) == hashlib.blake2b(block_body(tx_block), digest_size=32).digest()
+    case(f"bbody/devnet-{DEVNET_TX_BLOCK}-invalid-flag", "bbody", block=with_invalid_flag(tx_block).hex(),
+         utxo=genesis_utxo())
     tx = arr(body, wits, aux, flag)
     utxow = {
         "devnet": ({}, tx, genesis_utxo()),
@@ -365,6 +355,23 @@ def declared_body_hash(block):
     digest = cborspan.payload(block, span)
     assert len(digest) == 32
     return digest.hex()
+
+
+def with_body_hash(block, digest):
+    """The block with its header's `block_body_hash` (field 7 of the header body) replaced by the 32
+    bytes `digest`."""
+    ((start, end),) = cborspan.resolve(block, HEADER_BODY + [7])
+    assert len(cborspan.payload(block, (start, end))) == 32 and len(digest) == 32
+    return block[:start] + bstr(digest) + block[end:]
+
+
+def with_invalid_flag(block):
+    """The block with its one transaction flagged phase-2-invalid (`f4` for `f5`, the last item of the
+    transaction), and the header's body hash the Blake2b-256 of the body so changed."""
+    ((start, end),) = cborspan.resolve(block, TRANSACTIONS + ["*", 3])
+    assert block[start:end] == b"\xf5"
+    flipped = block[:start] + b"\xf4" + block[end:]
+    return with_body_hash(flipped, hashlib.blake2b(block_body(flipped), digest_size=32).digest())
 
 
 def run_image(cases):
