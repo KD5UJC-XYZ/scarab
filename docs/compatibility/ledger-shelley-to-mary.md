@@ -11,6 +11,8 @@ implemented: UTXOW/UTXO/DELEGS/PPUP, MIR, rewards, epoch boundary; pre-Allegra r
 
 unit/property (`RewardsSuite`, `PreConwayRulesSuite`); devnet e2e with three Shelley epochs and boundary load, per-era comparison (Shelley 12, Allegra 4, Mary 4, all matched), including pre-Allegra rewards (two accounts with several rewards, 910,408,206 lovelace ignored), MIR early/mid/late, refused outputs and MIR variants; era fixtures
 
+`ValueNotConservedUTxO` counts minted tokens as consumed and burned ones as produced, as the reference does (`getConsumedMaryValue` and `burnedMultiAssets`, cardano-ledger f649f975 `Mary/UTxO.hs:72-97`; #828, `ValueConservationSuite`). The verdict was already the reference's; the failure's payload now is too.
+
 ## Explicitly unchecked or unconfirmed
 
 devnet only: no Shelley to Mary mainnet blocks are replayed (Preview starts in Alonzo); the Allegra/Mary minimum-output test is lenient for values with assets exactly as the 11.1.3 reference is (it differs from the specification text); small comparison counts per era

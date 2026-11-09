@@ -680,7 +680,11 @@
       "evidence": {
         "suites": [
           "RewardsSuite",
-          "PreConwayRulesSuite"
+          "PreConwayRulesSuite",
+          "ValueConservationSuite"
+        ],
+        "issues": [
+          828
         ]
       },
       "page": "docs/compatibility/ledger-shelley-to-mary.md"
@@ -775,7 +779,8 @@
           "ShelleyInstantStakeReferenceSuite",
           "PreviewEmptyRedeemersSuite",
           "ScriptIntegritySuite",
-          "ShelleyBbodySuite"
+          "ShelleyBbodySuite",
+          "ValueConservationSuite"
         ],
         "paths": [
           "fixtures/reference/instant-stake/README.md",
@@ -785,7 +790,8 @@
           178,
           331,
           299,
-          344
+          344,
+          828
         ]
       },
       "page": "docs/compatibility/ledger-alonzo-babbage.md"
@@ -798,7 +804,11 @@
       "evidence": {
         "suites": [
           "DevnetRefusedTxSuite",
-          "BbodySuite"
+          "BbodySuite",
+          "ValueConservationSuite"
+        ],
+        "issues": [
+          828
         ]
       },
       "limitations": {
