@@ -108,7 +108,8 @@ rules refused, a storage failure and a bug in the node were all retried like a l
   failures as `Fatal.Storage`. An incoherent point/backing generation retains
   `NetworkError.StateAcquireFailure` through cleanup; the listener wraps it in
   `ChainError.StateAcquire` and reports `Fatal.Internal` (exit 6), without client blame or retry.
-  G7-F2 gives periodic/shutdown snapshots their own storage-error scopes, with caller-scoped
+  G7-F2 gives ~~periodic/shutdown snapshots~~ periodic snapshots
+  ([amendment](#amendment-2026-11-09-a-graceful-stop-writes-no-snapshot)) their own storage-error scopes, with caller-scoped
   capabilities along the snapshot call path and `SnapshotFailure` values at the event boundary.
   G7-F4 gives TCP/Unix handlers their own scopes and a required typed failure reporter; ~~unexpected
   handler defects reach `Fatal.Defect`~~ unexpected handler defects end their connection
@@ -580,3 +581,14 @@ What can reach that case at cardano-ledger `f649f975`
 
 Tests: `GenesisSchemaSuite` against the reference's verdicts in `fixtures/reference/genesis-fields` (the
 negative, `Word64` maximum and past-`Word64` values of each field), and `TickRulesSuite` (the upgrade into Conway).
+
+## Amendment (2026-11-09): a graceful stop writes no snapshot
+
+[#839](https://github.com/KD5UJC-XYZ/scarab/issues/839) removed the shutdown snapshot, whose scope G7-F2 had
+made its own. The reference writes no ledger snapshot when it closes: `ChainDB.closeDB` cancels the background
+snapshot runner, its only writer, and closes its databases (ouroboros-consensus `82ecba32`,
+`Storage/ChainDB/Impl.hs:408-436`; `killBgThreads`, lines 423-424; `ChainDB/Impl/Background.hs:127-142`). Only
+the periodic snapshots remain, each in a fresh `Handle[StorageError]` scope in its supervised fiber, ending with
+a `SnapshotFailure` value at the event boundary as before. A snapshot in flight when the storage is released is
+cancelled with the supervisor; cancellation stays cancellation, not a `SnapshotFailure`. The rule this ADR
+decides is unchanged.

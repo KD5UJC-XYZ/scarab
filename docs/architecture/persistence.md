@@ -165,10 +165,14 @@ blocks:
 `--seconds`, or a fatal error) writes no snapshot, as the reference's `closeDB` writes none
 (ouroboros-consensus 82ecba32, `Storage/ChainDB/Impl.hs:408-436`). A snapshot in flight is cancelled
 first, not awaited, as `closeDB` kills the reference's snapshot thread (`killBgThreads`, lines
-423-424; `ChainDB/Impl/Background.hs:127-142`); then the stores are released, and `closedDB` logs
-the immutable tip and the tip of the chain (the reference's `ClosedDB`, `Impl.hs:430-436`). A
-cancelled write leaves at most the temporary `<file>.tmp`, which the next open deletes and no restore
-reads, and a UTxO checkpoint that no snapshot names, which the next write's `retain` deletes. The
+423-424; `ChainDB/Impl/Background.hs:127-142`). Then the stores are released, the UTxO store last
+(`Main` acquires `ChainStorage.Closing` before it), and `closedDB` logs the immutable tip and the tip
+of the chain, as the reference traces `ClosedDB` once its LedgerDB has released its backend
+(`Impl.hs:426-436`, `Storage/LedgerDB/V2.hs:421-437`). A write cancelled before its rename leaves at
+most the temporary `<file>.tmp`, which the next open deletes and no restore reads, and a UTxO
+checkpoint that no snapshot names, which the next write's `retain` deletes. A write cancelled after
+its rename (before the directory fsync, the pruning of older files, `retain` or `snapshotWritten`)
+leaves a complete snapshot and its checkpoint, which the next start restores like any other. The
 reference writes a snapshot's files in place, `meta` last (`Storage/LedgerDB/V2/InMemory.hs:216-225`),
 and skips a snapshot without `meta` on the next start (`Storage/LedgerDB/API.hs:610-612`): in both,
 no partial snapshot is restored. Persisting one block (log, pending list, immutable append, backing
