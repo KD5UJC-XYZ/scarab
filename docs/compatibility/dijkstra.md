@@ -9,6 +9,7 @@ partial: the era is named and the node refuses to enter it. Its maximum major pr
 - the era, its place in the hard-fork sequence, and the typed `DijkstraNotYet` refusals (#801);
 - block, header and transaction decoding (#806);
 - the Dijkstra genesis and its protocol parameters (#807);
+- ledger rules BBODY, LEDGERS, LEDGER, UTXOW and UTXO (with Conway’s UTXOS), CERTS, CERT, POOL, GOVCERT and GOV, with failure types and reference tags, as entry points only tests reach (#54, T6);
 - the translation of a Conway ledger state into Dijkstra (#816);
 - the upgrade of stored outputs with native reference scripts after a validated crossing block, preserving outputs created in Dijkstra (#815);
 - the other parts of the crossing (#823): the mempool's transaction translation and rematch, the ledger-view forecast across the boundary, and the Praos to Praos2 chain-dependent state.
@@ -17,11 +18,12 @@ None of these is reachable from the node's own chain yet.
 
 ## Evidence
 
-- **Unit tests:** `DijkstraNotYetSuite`, `DijkstraCodecsSuite`, `DijkstraGenesisSuite`, `DijkstraTranslationSuite`, `DijkstraTxTranslationSuite`, `DijkstraCrossingSuite` and `DijkstraStoredOutputsSuite`.
+- **Unit tests:** `DijkstraNotYetSuite`, `DijkstraCodecsSuite`, `DijkstraGenesisSuite`, `DijkstraTranslationSuite`, `DijkstraTxTranslationSuite`, `DijkstraCrossingSuite` `DijkstraStoredOutputsSuite`, `DijkstraRulesSuite` and `DijkstraRulesOracleSuite`.
 - **Reference oracles** on the Leios build, each with its recorded cases:
   - `scripts/oracle/dijkstra-genesis` (`fixtures/reference/dijkstra-genesis`);
   - `scripts/oracle/dijkstra-translation` (`fixtures/reference/dijkstra-translation`);
-  - `scripts/oracle/dijkstra-crossing` (`fixtures/reference/dijkstra-crossing`).
+  - `scripts/oracle/dijkstra-crossing` (`fixtures/reference/dijkstra-crossing`);
+  - `scripts/oracle/dijkstra-rules` (`fixtures/reference/dijkstra-rules`): individual rules agree on the cases they complete; cases reaching ENTITIES are incomplete gates, not agreement.
 - **Stored-output translation:** `DijkstraStoredOutputsSuite` checks the reference translation cases against both memory and RocksDB stores, including bytes, hashes, sizes, totals and spent outputs. The node crossing suite checks entry from earlier eras and that an invalid block never triggers the store pass.
 - **The Leios devnet chain `fixtures/dijkstra-devnet`** (Conway to Dijkstra, from the reference-only cluster of #791):
   - its blocks and headers decode;
@@ -32,7 +34,10 @@ None of these is reachable from the node's own chain yet.
 
 - **Not implemented:**
   - a chain started in Dijkstra from its genesis: the Dijkstra genesis file is read and checked (#807), but the genesis start is refused with `DijkstraNotYet.Genesis`, because it would seat the Leios committee (`GenesisStart`);
-  - Dijkstra's ledger rules (they refuse with `DijkstraNotYet.Rules`);
+  - SUB rules and ENTITIES: LEDGER completes only for phase-2-invalid transactions without sub-transactions whose UTXOW checks are implemented (#54, T7);
+  - guards, direct deposits, balance intervals, Plutus scripts, redeemers, datums and forms the Conway decoder refuses: they halt with `DijkstraNotYet.Rules` (#54);
+  - pool registration and parameter-change proposals, whose state fields are not yet represented (#826);
+  - the rules in block application and at epoch boundaries, which still refuse with `DijkstraNotYet.Rules` (#54, T11);
   - the node-to-client queries and failure encoders;
   - a crossing made by the Scala node on a devnet.
 - **Persistence:**

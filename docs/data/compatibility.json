@@ -1786,7 +1786,7 @@
       "id": "dijkstra",
       "component": "Dijkstra (next era)",
       "status": "partial",
-      "summary": "Named and refused (OD-4); decoding, genesis, the Conway translation and the crossing pieces as the Leios testnet build, including stored-output upgrades",
+      "summary": "Named and refused (OD-4); decoding, genesis, the Conway translation and the crossing pieces as the Leios testnet build, including stored-output upgrades; ledger rules as test-only entry points",
       "evidence": {
         "suites": [
           "DijkstraNotYetSuite",
@@ -1795,13 +1795,17 @@
           "DijkstraTranslationSuite",
           "DijkstraTxTranslationSuite",
           "DijkstraCrossingSuite",
-          "DijkstraStoredOutputsSuite"
+          "DijkstraStoredOutputsSuite",
+          "DijkstraRulesSuite",
+          "DijkstraRulesOracleSuite"
         ],
         "paths": [
           "fixtures/reference/dijkstra-genesis",
           "fixtures/reference/dijkstra-translation",
           "fixtures/reference/dijkstra-crossing",
-          "fixtures/dijkstra-devnet"
+          "fixtures/dijkstra-devnet",
+          "fixtures/reference/dijkstra-rules",
+          "scripts/oracle/dijkstra-rules"
         ],
         "issues": [
           54,
