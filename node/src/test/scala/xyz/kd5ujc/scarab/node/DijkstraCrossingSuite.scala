@@ -32,7 +32,7 @@ import xyz.kd5ujc.scarab.storage.{MemoryUtxoStore, UtxoPinnedReadView, UtxoStore
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 
 /** When the block path upgrades the stored outputs on entering Dijkstra (#815): only for a block
-  * the rules accepted that took the chain from Conway into Dijkstra
+  * the rules accepted that took the chain into Dijkstra from any earlier era
   * ([[MirrorRules.DijkstraCrossing]]). The node refuses Dijkstra blocks for now (OD-4), so the
   * crossing is checked on the states, and the pass over the store is counted on the era-walking
   * capture (`fixtures/eras`, Byron to Conway) and on a block whose header fails its checks.
