@@ -19,4 +19,5 @@
 - `import-ledger-snapshot` refuses a `state` file that does not decode completely in the layout of
   the build that wrote it, and records that build with the unchanged bytes. `export-ledger-snapshot`
   writes the recorded bytes unchanged, reports their build, refuses a requested build of another
-  layout, and still exports a V9 snapshot of a database not yet opened by this build.
+  layout, and still exports a V9 snapshot of a database not yet opened by this build, as
+  `export-scls` and `import-scls` still read one.

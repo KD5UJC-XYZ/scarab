@@ -609,7 +609,9 @@ replays from genesis when none is left, and also deletes the snapshot if it is t
 (`deleteSnapshotIfTemporary`, `:628-631`), which a snapshot the node took periodically is
 (`Storage/LedgerDB/Snapshots.hs:290-297, 320-327`). Scarab does not delete it, so its handling does
 not mirror the reference's exactly; the difference is reported to the owner and not changed here. In
-step a the case is reachable only in tests.
+step a the case is reachable only in tests. An unknown recorded name (a newer build's) is skipped as
+a mismatch is; refusing it at open, as ADR 0006 refuses an unknown format version, would need the
+snapshot preflight to read the build, and is left to the owner.
 
 **Import and export.** Import decodes the `state` file with the codec of the build named by
 `--reference-build`, the build that wrote the input database; input that does not decode completely
@@ -617,9 +619,9 @@ is `LedgerSnapshotImport.Error.State(build, cause)`, and the bytes go into the s
 with the build recorded. Export writes the recorded bytes unchanged and reports their build
 (`referenceBuild` in its JSON); a requested build of another layout than the recorded one is refused
 with `ReferenceBuildMismatch`. Export also reads a V9 file of a database this build has not opened
-yet, as 11.1 bytes, so an existing database exports as before; `export-scls`/`import-scls` read and
-write V10 in the 11.1 layout and, as for every earlier version change, do not read a V9 file before
-the node has migrated it.
+yet, as 11.1 bytes, so an existing database exports as before; the SCLS base (`export-scls`,
+`import-scls`) reads such a V9 file as its V10 migration would write it, in memory, and writes V10 in
+the 11.1 layout.
 
 Not in step a: the Leios codec and the model fields behind it (step b), and rules selected by the
 build (step c).
