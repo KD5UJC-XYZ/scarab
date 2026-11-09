@@ -314,7 +314,9 @@ def pool(args):
                 path = root / "keys" / key
                 path.write_bytes(raw)
                 path.chmod(0o600 if key == "kes.skey" else 0o400)  # the node writes the evolved KES key back
-        start_nodes(args.name, tuple(others))
+        pools_after = getattr(args, "pools_after", 0)
+        if not pools_after:
+            start_nodes(args.name, tuple(others))
         classpath = freeze_classes(root)
         db = root / "scala-db"
         db.mkdir()
@@ -338,6 +340,9 @@ def pool(args):
                                           f"{sockets}:/ipc"], name=f"{args.name}-scala")
         log = root / "follower.jsonl"
         scala = subprocess.Popen(["docker", *command], stdout=log.open("a"), stderr=subprocess.STDOUT, text=True)
+        if pools_after:  # issue 609: the pools come up after the Scala node, whose first connections are refused
+            time.sleep(pools_after)
+            start_nodes(args.name, tuple(others))
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             tip = tip_at(args.name, f"{ENV}/socket/node{observer}/sock")

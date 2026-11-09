@@ -325,6 +325,9 @@ def main():
         pl.add_argument("--min-comparisons", type=int, default=5, help="matched ledger comparisons required")
         pl.add_argument("--scala-flags", default="", help="extra flags for the Scala node, e.g. '--inbound-sync off' (to compare builds or settings)")
         pl.add_argument("--keep", action="store_true", help="leave the cluster running")
+        pl.add_argument("--pools-after", type=int, default=0,
+                        help="start the Scala node first and the Haskell pools this many seconds later: its first connections are "
+                             "refused, and it may forge from genesis before it follows them (issue 609)")
 
     pl = sub.add_parser("pool", parents=[scala_options], help="the Scala node as a block-producing pool among two Haskell pools")
     pool_flags(pl)
