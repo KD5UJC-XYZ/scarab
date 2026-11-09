@@ -189,7 +189,7 @@ def without_resource_statistics(name, config):
 
     cardano-node starts a linked thread that reads `/proc/self/io` every `TraceOptionResourceFrequency`
     milliseconds (default 1000), and the thread's exception stops the node
-    (`Cardano/Node/Tracing/Tracers/Resources.hs:23-36`, cardano-node 938cba99). A kernel built without
+    (cardano-node 11.1.3, `Cardano/Node/Tracing/Tracers/Resources.hs:23-36`). A kernel built without
     `CONFIG_TASKSTATS` has no `/proc/<pid>/io`: the WSL 6.18.54.1 kernel of WSL 3.0.3, fixed in 6.18.58.1
     (WSL 3.0.5). There, and only there, the frequency is set to 0, which the node takes as "no resource
     statistics" and starts no thread; nothing else about the node changes. The check runs in the reference

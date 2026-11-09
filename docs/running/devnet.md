@@ -23,7 +23,14 @@ none is rolled back; `--blocks all` records up to 10 blocks behind the tip. The 
 reference image, and the Scala node running from a frozen copy of the compiled classes in
 `scarab-jdk:local`. The Scala node shares a reference container's network namespace because
 the reference nodes bind loopback. Requirements: both images, the classpath file from "Images", Docker,
-Python 3 (standard library only), roughly 10 minutes per scenario.
+Python 3.10 or later (standard library only), roughly 10 minutes per scenario.
+
+On a kernel without per-task I/O accounting (`CONFIG_TASKSTATS` unset, so no `/proc/<pid>/io`; the WSL kernel
+6.18.54.1 of WSL 3.0.3, fixed in 6.18.58.1), the reference node stops at start-up: its resource-statistics thread
+reads `/proc/self/io` (cardano-node 11.1.3, `Cardano/Node/Tracing/Tracers/Resources.hs:23-36`). Where the
+reference container has no `/proc/self/io`, and only there, the generated configuration sets
+`TraceOptionResourceFrequency` to 0, which starts no such thread, and the run prints
+`{"referenceResourceStatistics": "off", ...}`; nothing else about the reference nodes changes.
 
 Run data lives in `${SCARAB_DATA_DIR:-/tmp/scarab}/<name>` (never in the checkout or the home
 directory). `--name` selects the cluster name (default `scarab-devnet`, `scarab-eras` for `up-eras`), so a
