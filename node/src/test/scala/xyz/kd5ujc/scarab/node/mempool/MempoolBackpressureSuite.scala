@@ -94,7 +94,7 @@ class MempoolBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
         Right(base),
         1000,
         env,
-        Some(1),
+        Some(word32(1)),
         (e: MempoolEvent) => log.update(_ :+ e) *> events.offer(e)
       )
     yield Probe(mempool, base, log, events)

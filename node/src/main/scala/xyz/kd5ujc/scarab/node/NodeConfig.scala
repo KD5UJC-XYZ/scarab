@@ -83,7 +83,7 @@ final case class PeerTargetOverrides(
   * @param lastKnownBlockVersion
   *   `LastKnownBlockVersion-Major`, `-Minor`, `-Alt`: the Byron block version the node supports.
   * @param mempoolCapacityBytes
-  *   `MempoolCapacityBytesOverride` as a number of bytes (`NoOverride` is `None`).
+  *   `MempoolCapacityBytesOverride` as a number of bytes, a `Word32` (`NoOverride` is `None`).
   * @param hardForkVersions
   *   `Test<Era>HardForkAtVersion`: hard forks triggered by a protocol version.
   * @param peerTargets
@@ -112,7 +112,7 @@ final case class ConfigSettings(
     diffusionMode: Option[String] = None,
     socketPath: Option[String] = None,
     databasePath: Option[String] = None,
-    mempoolCapacityBytes: Option[Long] = None,
+    mempoolCapacityBytes: Option[Word32] = None,
     hardForkVersions: Map[Era, BigInt] = Map.empty,
     peerTargets: PeerTargetOverrides = PeerTargetOverrides(),
     syncPeerTargets: PeerTargetOverrides = PeerTargetOverrides(),
@@ -302,11 +302,16 @@ object NodeConfig:
       )
     }
 
-  private def capacity(k: Keys): Either[ConfigError, Option[Long]] =
+  /** `MempoolCapacityBytesOverride` as cardano-node 11.1.3 reads it
+    * (`cardano-node/src/Cardano/Node/Configuration/POM.hs:475-487`): a number is a `Word32`
+    * ([[word32Decoder]]), 0 included, the string `NoOverride` is no override, and a `null` or
+    * absent key is no override.
+    */
+  private def capacity(k: Keys): Either[ConfigError, Option[Word32]] =
     k.opt[Json]("MempoolCapacityBytesOverride").flatMap {
       case None => Right(None)
       case Some(j) =>
-        j.asNumber.flatMap(_.toLong).filter(_ > 0) match
+        word32Decoder.decodeJson(j).toOption match
           case Some(n)                                   => Right(Some(n))
           case None if j.asString.contains("NoOverride") => Right(None)
           case None =>

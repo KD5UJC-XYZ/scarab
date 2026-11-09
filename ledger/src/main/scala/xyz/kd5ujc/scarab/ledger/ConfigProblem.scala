@@ -73,6 +73,10 @@ enum ConfigProblem:
   case Selection(context: String, value: String, allowed: Set[String])
   case ConflictingFields(fields: Set[String])
   case RenamedField(previous: String, current: String)
+
+  /** `MempoolCapacityBytesOverride` is neither a `Word32` number of bytes nor `NoOverride`, as
+    * cardano-node 11.1.3 reads it (`cardano-node/src/Cardano/Node/Configuration/POM.hs:475-487`).
+    */
   case MempoolCapacity(actual: io.circe.Json)
   case PeerTargets[E <: DomainError](cause: E)
   case PeerAddress[E <: DomainError](cause: E)
@@ -157,8 +161,10 @@ enum ConfigProblem:
       s"byron genesis avvmDistr: $value is $n bytes, a redeem key is 32"
     case ReferenceBuildUnknown(cause) => s"--reference-build: ${cause.message}"
     case ReferenceBuildNotYet(cause)  => s"--reference-build: ${cause.message}"
-    case WithUsage(cause, usage)      => s"${cause.message}\n$usage"
-    case _                            => toString
+    case MempoolCapacity(actual) =>
+      s"configuration MempoolCapacityBytesOverride: ${actual.noSpaces} is neither a number of bytes from 0 to 4294967295 nor NoOverride"
+    case WithUsage(cause, usage) => s"${cause.message}\n$usage"
+    case _                       => toString
 
 /** Why `fromAvvmVK` refuses an AVVM key (`AvvmVKError`,
   * `Cardano/Crypto/Signing/Redeem/VerificationKey.hs:94-98`, cardano-crypto-wrapper 1.7.0.0).

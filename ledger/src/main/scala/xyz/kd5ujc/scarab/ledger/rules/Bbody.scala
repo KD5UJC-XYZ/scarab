@@ -7,6 +7,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
   BlockFailure,
+  Mismatch,
   RefScripts,
   LedgerFailure,
   ProtocolParams,
@@ -109,7 +110,9 @@ object Bbody extends Sts[BbodyEnv, BbodyState, BbodySignal, BlockFailure]:
       refBytes = refScriptsSize(pp, before.ledger.state.utxo.utxo.utxo, signal.txs)
       _ <- Sts.check[F, BlockFailure](
         pp.protocolMajor < 9 || refBytes <= RefScripts.MaxRefScriptSizePerBlock,
-        BlockFailure.RefScriptsTooLarge(RefScripts.MaxRefScriptSizePerBlock.toLong)
+        BlockFailure.RefScriptsTooLarge(
+          Mismatch(refBytes, RefScripts.MaxRefScriptSizePerBlock.toLong)
+        )
       )
       _ <- Sts.check[F, BlockFailure](signal.declared == signal.actual, BlockFailure.BodyCommitment)
       _ <- Sts

@@ -19,7 +19,7 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
       fail(error.message)
     )
   private def pool(capacityOverride: Option[Long] = None) =
-    MempoolState.empty(Right(ledger(4)), 1000, capacityOverride)
+    MempoolState.empty(Right(ledger(4)), 1000, capacityOverride.map(word32))
 
   private def held(raws: Bytes*): MempoolState =
     raws.foldLeft(pool())((s, raw) =>
@@ -78,12 +78,12 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
     val one = Capacity.blockUnit(params)
     assertEquals(one.refScriptsBytes, 1048576L)
     assertEquals(Capacity.of(params, None).bytes, 2 * unit)
-    assertEquals(Capacity.of(params, Some(2 * unit)).bytes, 2 * unit)
-    assertEquals(Capacity.of(params, Some(2 * unit - 1)).bytes, 2 * unit)
-    assertEquals(Capacity.of(params, Some(2 * unit + 1)).bytes, 3 * unit)
-    assertEquals(Capacity.of(params, Some(1)).bytes, unit)
-    assertEquals(Capacity.of(params, Some(0)).bytes, unit)
-    assertEquals(Capacity.of(params, Some(2 * unit)).refScriptsBytes, 2L * 1048576)
+    assertEquals(Capacity.of(params, Some(word32(2 * unit))).bytes, 2 * unit)
+    assertEquals(Capacity.of(params, Some(word32(2 * unit - 1))).bytes, 2 * unit)
+    assertEquals(Capacity.of(params, Some(word32(2 * unit + 1))).bytes, 3 * unit)
+    assertEquals(Capacity.of(params, Some(word32(1))).bytes, unit)
+    assertEquals(Capacity.of(params, Some(word32(0))).bytes, unit)
+    assertEquals(Capacity.of(params, Some(word32(2 * unit))).refScriptsBytes, 2L * 1048576)
     assertEquals(LocalMonitor.snapshot(pool()).sizes.capacityInBytes, 2 * unit)
     assertEquals(LocalMonitor.snapshot(pool(Some(1))).sizes.capacityInBytes, unit)
   }
@@ -92,8 +92,8 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
     forAll(Gen.choose(0L, 5000000L), Gen.choose(0L, 5000000L)) { (a, b) =>
       val params = ledger(1).params
       val (lo, hi) = (a.min(b), a.max(b))
-      val cl = Capacity.of(params, Some(lo))
-      val ch = Capacity.of(params, Some(hi))
+      val cl = Capacity.of(params, Some(word32(lo)))
+      val ch = Capacity.of(params, Some(word32(hi)))
       cl.bytes <= ch.bytes && cl.bytes >= Capacity.blockUnit(params).bytes &&
       ch.bytes >= hi
     }

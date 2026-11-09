@@ -9,7 +9,13 @@ import xyz.kd5ujc.scarab.ledger.{LedgerFailure, StorageError}
 import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.network.{NetworkError, Protocols, TxSubmissionClient, TxSubmissionServer}
+import xyz.kd5ujc.scarab.network.{
+  NetworkError,
+  Protocols,
+  TxSubmissionClient,
+  TxSubmissionServer,
+  Word32
+}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
@@ -173,7 +179,7 @@ object Mempool:
       ledger: Either[ConwayView.Unavailable, MempoolLedger],
       tipSlot: BigInt,
       env: MempoolEnv,
-      capacityOverride: Option[Long],
+      capacityOverride: Option[Word32],
       events: MempoolEvents[F],
       utxoStore: Option[UtxoStore[F]] = None,
       environment: Option[Ask[F, MempoolEnv]] = None,

@@ -18,7 +18,9 @@ import NetworkError.RuntimeViolation
   * client that wants the next one asks to `AwaitAcquire`, which waits until the pool differs.
   */
 object LocalTxMonitorServer:
-  /** What one transaction counts for, in each measure the reference reports. */
+  /** What one transaction counts for, in each measure the reference reports. The byte sizes do not
+    * wrap where the reference's `Word32` ones do ([[Snapshot.sizes]]).
+    */
   final case class TxMeasure(
       bytes: Long,
       exUnitsMemory: BigInt,
@@ -36,6 +38,9 @@ object LocalTxMonitorServer:
   object TxMeasure:
     val zero: TxMeasure = TxMeasure(0, 0, 0, 0)
 
+  /** `n`, or the largest `Word32` above it. */
+  private def saturated(n: Long): Long = n.min(0xffffffffL)
+
   /** A held transaction: the item `ReplyNextTx` carries (the era-wrapped transaction) and its
     * measure.
     */
@@ -52,9 +57,20 @@ object LocalTxMonitorServer:
       capacity: TxMeasure,
       identity: (BigInt, Vector[Bytes])
   ):
-    /** `GetSizes`: the whole snapshot, whatever `NextTx` has handed out. */
+    /** `GetSizes`: the whole snapshot, whatever `NextTx` has handed out. The capacity and the size
+      * are `Word32` s on the wire (`MempoolSizeAndCapacity`, ouroboros-network 2fb69829
+      * `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalTxMonitor/Codec.hs:95-101`),
+      * which the reference's values wrap within; Scarab's, which do not wrap ([[TxMeasure]]), are
+      * sent as 2^32 - 1 above it, so the reply always encodes (approved deviation:
+      * https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849). The count is an
+      * `Int`, within a `Word32`.
+      */
     def sizes: LocalTxMonitor.Sizes =
-      LocalTxMonitor.Sizes(capacity.bytes, txs.map(_.measure.bytes).sum, txs.size.toLong)
+      LocalTxMonitor.Sizes(
+        saturated(capacity.bytes),
+        saturated(txs.map(_.measure.bytes).sum),
+        txs.size.toLong
+      )
 
   trait Source[F[_]]:
     /** The mempool as it is now. */
@@ -68,6 +84,8 @@ object LocalTxMonitorServer:
     List("ex_units_memory", "ex_units_steps", "reference_scripts_bytes", "transaction_bytes")
 
   /** `GetMeasures` over the transactions `NextTx` has not handed out yet (as the reference does).
+    * The measures are CBOR integers of any size ([[LocalTxMonitor.Measure]]) and the count an
+    * `Int`, within its `Word32`, so the reply always encodes.
     */
   def measures(remaining: Vector[Held], capacity: TxMeasure): LocalTxMonitor.Measures =
     val total = remaining.foldLeft(TxMeasure.zero)(_ + _.measure)

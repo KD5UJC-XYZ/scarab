@@ -124,6 +124,22 @@ class LocalTxMonitorSuite extends ScalaCheckSuite:
     )
   }
 
+  test(
+    "a measure is a CBOR integer of any size, a bignum above 2^64 - 1, as encodeInteger writes it"
+  ) {
+    // `encodeSizeAndCapacity` (ouroboros-network 2fb69829 `LocalTxMonitor/Codec.hs:204-215`):
+    // 2^32 is a plain integer, 2^64 a tag 2 with its 9 big-endian bytes
+    val reply = Message.ReplyGetMeasures(
+      Measures(1, SortedMap("a" -> Measure(BigInt(1) << 32, BigInt(1) << 64)))
+    )
+    val wire = "830c01a16161821b0000000100000000" + "c249010000000000000000"
+    assertEquals(encode(State.Busy(Kind.GetMeasures), Role.Server, reply).map(_.hex), Right(wire))
+    assertEquals(
+      decodePrefix(State.Busy(Kind.GetMeasures), Role.Server, hex(wire)),
+      DecodeResult.Decoded(reply, wire.length / 2)
+    )
+  }
+
   private val genBytes: Gen[Bytes] =
     Gen.listOfN(32, Gen.choose(0, 255)).map(xs => Bytes(xs.map(_.toByte).toVector))
   private val genItem: Gen[Bytes] =

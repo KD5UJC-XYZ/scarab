@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.protocol
 import xyz.kd5ujc.scarab.codec.Bytes
 import scala.collection.immutable.SortedMap
 
-import ChainSync.{DecodeResult, Role}
+import ChainSync.{DecodeResult, Role, UInt64}
 import ProtocolWire.{attempt, bad, get}
 
 /** Node-to-client LocalTxMonitor (mini-protocol 9): the client acquires a snapshot of the mempool
@@ -46,7 +46,11 @@ object LocalTxMonitor:
   /** `MempoolSizeAndCapacity`: each a Word32. */
   final case class Sizes(capacityInBytes: Long, sizeInBytes: Long, numberOfTxs: Long)
 
-  /** One measure: the mempool's size and the capacity, in the measure's unit. */
+  /** One measure: the mempool's size and the capacity, in the measure's unit. Each is a CBOR
+    * integer of any size, as the reference's `encodeInteger` writes it (ouroboros-network 2fb69829
+    * `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalTxMonitor/Codec.hs:204-215`):
+    * a bignum (tag 2) above 2^64 - 1.
+    */
   final case class Measure(size: BigInt, capacity: BigInt)
 
   /** `MempoolMeasures`: the transaction count and the measures by name (in name order, as the
@@ -97,6 +101,11 @@ object LocalTxMonitor:
     def word32(name: ProtocolError.MonitorField, value: Long): Unit =
       if value < 0 || value > 0xffffffffL then bad(ProtocolError.Word32Range(name, BigInt(value)))
       w.head(0, value)
+    def integer(value: BigInt): Unit =
+      if value <= UInt64.Max then w.head(0, value)
+      else
+        val magnitude = value.toByteArray.dropWhile(_ == 0)
+        w.head(6, 2); w.head(2, magnitude.length); w.raw(Bytes.fromArray(magnitude))
     message match
       case Message.Done         => outer(1, 0)
       case Message.Acquire      => outer(1, 1)
@@ -124,7 +133,7 @@ object LocalTxMonitor:
         word32(ProtocolError.MonitorField.TxCount, measures.txCount)
         w.head(5, measures.byName.size)
         measures.byName.foreach { (name, m) =>
-          w.text(name); w.head(4, 2); w.head(0, m.size); w.head(0, m.capacity)
+          w.text(name); w.head(4, 2); integer(m.size); integer(m.capacity)
         }
     w.result
   }
@@ -137,6 +146,11 @@ object LocalTxMonitor:
       val r = new ProtocolWire.Reader(bytes, wire)
       val arity = r.arrayLength()
       val tag = r.uint().value
+      def integer(): BigInt =
+        if r.major == 6 then
+          if r.tag() != 2 then bad(ProtocolError.ExpectedUint64)
+          BigInt(1, r.bytes(MaxMessageBytes).toArray)
+        else r.uint().value
       def word32(name: ProtocolError.MonitorField): Long =
         val v = r.uint().value
         if v > MaxWord32 then bad(ProtocolError.Word32Range(name, v))
@@ -169,7 +183,7 @@ object LocalTxMonitor:
           val entries = (0 until n).toVector.map { _ =>
             val name = r.text(MaxMessageBytes)
             if r.arrayLength() != 2 then bad(ProtocolError.MeasureArity)
-            name -> Measure(r.uint().value, r.uint().value)
+            name -> Measure(integer(), integer())
           }
           if entries.map(_._1).distinct.size != entries.size then
             bad(ProtocolError.DuplicateMeasureName)

@@ -308,8 +308,8 @@ object Main extends IOApp:
     *   `--snapshot-check structure|full`: what a snapshot write proves before it is kept.
     * @param mempoolBytes
     *   `--mempool-bytes`, else the configuration's `MempoolCapacityBytesOverride`: the override in
-    *   bytes, rounded up to whole blocks. `None`: no override, two blocks of the protocol
-    *   parameters in force.
+    *   bytes, a `Word32` as the configuration's, rounded up to whole blocks. `None`: no override,
+    *   two blocks of the protocol parameters in force.
     * @param configFile
     *   `--config`: the Haskell node's configuration file.
     * @param topologyFile
@@ -373,7 +373,7 @@ object Main extends IOApp:
       keepSnapshots: Int = SnapshotPolicy.ReferenceKeep,
       snapshotCheck: SnapshotCheck = SnapshotCheck.Structure,
       listen: Option[SocketAddress[Host]] = None,
-      mempoolBytes: Option[Long] = None,
+      mempoolBytes: Option[Word32] = None,
       configFile: Option[Path] = None,
       topologyFile: Option[Path] = None,
       localSocket: Option[String] = None,
@@ -2127,7 +2127,7 @@ object Main extends IOApp:
           localSocket = flags.get("local-socket")
           mempool <- flags
             .get("mempool-bytes")
-            .traverse(_.toLongOption.filter(_ > 0).toRight(invalid("mempool-bytes")))
+            .traverse(_.toLongOption.flatMap(Word32.fromLong).toRight(invalid("mempool-bytes")))
           forge <-
             if !flags.contains("forge") then Right(None)
             else
