@@ -7,10 +7,13 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from .. import metrics as node_metrics
 from . import kes_rotate
 from ..cluster import database_mounts, freeze_classes, scala_container, start_nodes, start_reference
+from ..netfaults import PROXY_DIR
+from cleanup import container_labels
 from ..compare import Comparisons, compare_or_error, whole_failures, whole_state
 from ..scenarios.relay import SCALA_PORT, log_counts, tip_at
 from .. import util
@@ -271,6 +274,43 @@ def kes_rotate_scenario(args):
     pool(args)
 
 
+OUTBOUND_PROXY_BASE = 3460  # issue 609: the Scala node's outbound connections to pool n go through port 3460 + n
+
+
+def wait_for_blocks(name, socket, blocks, seconds=300):
+    """Issue 609: wait until the observer pool's chain has `blocks` blocks."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        tip = tip_at(name, socket)
+        if tip and tip["block"] >= blocks:
+            return tip
+        time.sleep(0.2)
+    raise SystemExit(f"the pools did not reach block {blocks} within {seconds} s")
+
+
+def open_outbound_after_forge(name, root, log, ports, delay, stop):
+    """Issue 609: start the proxies the Scala node dials `delay` seconds after its first forged block (or after
+    120 s without one), so that until then its outbound connections are refused while the pools' connections to
+    it are open."""
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline and not stop.is_set():
+        counts, _, _ = log_counts(log)
+        if counts.get("forged"):
+            break
+        time.sleep(0.05)
+    if stop.wait(delay):
+        return
+    (root / "proxy").mkdir(exist_ok=True)
+    command = ["run", "-d", "--rm", "--pull=never", "--name", f"{name}-proxy", *container_labels("devnet", name),
+               "--network", f"container:{ref(name)}", "--user", f"{os.getuid()}:{os.getgid()}",
+               "-v", f"{PROXY_DIR}:/proxy:ro", "-v", f"{root / 'proxy'}:/ctl",
+               "--entrypoint", "python3", util.jdk_image(), "/proxy/lagproxy.py", "--delay", "0", "--control", "/ctl/freeze"]
+    for n, port in ports.items():
+        command += ["--route", f"{OUTBOUND_PROXY_BASE + n}:{port}"]
+    docker(*command)
+    (root / "outbound-opened.txt").write_text(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "\n")
+
+
 def pool(args):
     """Fresh 3-pool cluster in which pool `--pool` is the Scala node. Its Haskell node is never started
     (so no two producers ever hold the keys), the other two pools get the Scala node in their topology, and
@@ -301,6 +341,7 @@ def pool(args):
                            whole_state(args.name, "conway", scala_socket=socket, anchor="reference", attempts=10))
 
     schedules = {}  # epoch -> the slots the oracle says the Scala pool leads
+    opener_stop = threading.Event()  # issue 609: ends the outbound proxy opener
     completed = False  # the run reached its verdict; an exception other than SystemExit leaves this False
     try:
         ports, shelley = pool_environment(args)
@@ -338,13 +379,21 @@ def pool(args):
             sockets.mkdir(mode=0o777)
             sockets.chmod(0o777)
         program += ["--local-socket", "/ipc/node.socket"]
+        outbound_after = getattr(args, "outbound_after_forge", None)
         for n in others:
-            program += ["--peer", f"127.0.0.1:{ports[n]}"]
+            port = OUTBOUND_PROXY_BASE + n if outbound_after is not None else ports[n]
+            program += ["--peer", f"127.0.0.1:{port}"]
         program += args.scala_flags.split()
         command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
                                   mounts=[f"{root / 'genesis'}:/genesis:ro", *database_mounts(db), f"{root / 'keys'}:/keys",
                                           f"{sockets}:/ipc"], name=f"{args.name}-scala")
         log = root / "follower.jsonl"
+        if getattr(args, "scala_after_blocks", 0):
+            wait_for_blocks(args.name, f"{ENV}/socket/node{observer}/sock", args.scala_after_blocks)
+        if outbound_after is not None:
+            opener = threading.Thread(target=open_outbound_after_forge, daemon=True,
+                                      args=(args.name, root, log, {n: ports[n] for n in others}, outbound_after, opener_stop))
+            opener.start()
         scala = subprocess.Popen(["docker", *command], stdout=log.open("a"), stderr=subprocess.STDOUT, text=True)
         if pools_after:  # issue 609: the pools come up after the Scala node, whose first connections are refused
             time.sleep(pools_after)
@@ -584,7 +633,9 @@ def pool(args):
             loader.terminate()
         if driver:
             driver.stop()
+        opener_stop.set()
         docker("rm", "-f", f"{args.name}-scala", check=False)
+        docker("rm", "-f", f"{args.name}-proxy", check=False)
         if scala is not None:
             scala.wait()
         summary["schedules"] = {str(e): v for e, v in schedules.items()}

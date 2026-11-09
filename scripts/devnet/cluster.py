@@ -609,7 +609,7 @@ def keep_native_evidence(name, root):
 
 
 def down(args, quiet=False):
-    for c in (f"{args.name}-scala", f"{args.name}-cli", ref(args.name)):
+    for c in (f"{args.name}-scala", f"{args.name}-cli", f"{args.name}-proxy", ref(args.name)):
         docker("rm", "-f", c, check=False)
     shutil.rmtree(data_root(args.name), ignore_errors=True)
     if not quiet:
