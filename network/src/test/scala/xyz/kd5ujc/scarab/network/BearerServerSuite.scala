@@ -52,13 +52,16 @@ class BearerServerSuite extends FailsOnUncaught:
       _ <- Listeners
         .loopback[NetworkError](maxConnections = Some(1))((_, error) => failures.offer(error)) {
           (bearer, _) =>
-            count.getAndUpdate(_ + 1).flatMap {
+            // The client has completed connect before sending this byte; linger 0 cannot race it.
+            bearer.reads.take(1).compile.drain *> count.getAndUpdate(_ + 1).flatMap {
               case 0 => refused.raise[IO, Unit]
               case 1 => IO.raiseError(bug)
               case _ => bearer.write(Chunk.singleton(42.toByte))
             }
         }
-        .use(bound => exercise(network.connect(bound), failures))
+        .use(bound =>
+          exercise(network.connect(bound).evalTap(_.write(Chunk.singleton(0.toByte))), failures)
+        )
     yield ()
   }
 
@@ -73,13 +76,13 @@ class BearerServerSuite extends FailsOnUncaught:
         case _ => held.complete(()) *> gate.get
       }
       _ <- Listeners
-        .loopback[NetworkError](maxConnections = None, Some(before))((_, _) => IO.unit)((_, _) =>
-          served.offer(())
+        .loopback[NetworkError](maxConnections = None, Some(before))((_, _) => IO.unit)(
+          (bearer, _) => bearer.reads.take(1).compile.drain *> served.offer(())
         )
         .use { bound =>
           for
             // the served connection is closed although the next accept is held back
-            _ <- network.connect(bound).use(reset)
+            _ <- network.connect(bound).evalTap(_.write(Chunk.singleton(0.toByte))).use(reset)
             _ <- served.take.timeout(3.seconds)
             // the second accept waits in `beforeAccept`: this connection is not served yet
             _ <- held.get.timeout(3.seconds)
@@ -100,7 +103,7 @@ class BearerServerSuite extends FailsOnUncaught:
           throw bug
         }
         .use { bound =>
-          network.connect(bound).use(_.read(1).attempt) *> failures.take.timeout(3.seconds).map {
+          network.connect(bound).use(_.read(1)).attempt *> failures.take.timeout(3.seconds).map {
             failure =>
               assertEquals(failure, HandlerFailure.Defect(bug))
           }
