@@ -28,6 +28,7 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraFixture
 import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, RewardPulserFixture, Translate}
 import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.{MemoryUtxoStore, UtxoPinnedReadView, UtxoStore}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 
@@ -41,7 +42,9 @@ class DijkstraCrossingSuite extends CatsEffectSuite:
   private val fixtures = Path.of("fixtures/eras")
 
   private lazy val setup: NodeSetup =
-    NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(fixtures.resolve("genesis"))
+      .fold(e => fail(e.message), identity)
 
   private lazy val raws: Vector[Bytes] =
     Files
