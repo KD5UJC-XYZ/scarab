@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
-import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, StateLayout, UnknownReferenceBuild}
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission.message
 import cats.Show
 import cats.data.NonEmptyChain
@@ -60,7 +60,12 @@ import xyz.kd5ujc.scarab.node.mempool.{
   Rejection,
   Source
 }
-import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
+import xyz.kd5ujc.scarab.storage.haskell.state.{
+  HaskellLedgerFile,
+  HaskellState,
+  LedgerFileCodecs,
+  UtxoCodecs
+}
 
 /** The reference-refusal corpus (#401, `fixtures/reference/refusals`): transactions the Haskell
   * node refused, each with the complete rejection it sent over LocalTxSubmission (every accumulated
@@ -75,6 +80,11 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
   * difference fails its case. A family the manifest requires for an era and no case covers fails
   * that era's coverage test (an incomplete gate is never a pass).
   *
+  * Each corpus is replayed under the rules of the reference build that recorded it
+  * ([[recordedBuild]]): `NodeSetup.fromFiles` with that build, as `--reference-build` sets up a
+  * node, and the state read in that build's layout. [[buildSensitive]] names cases whose refusal
+  * another build's rules would not send, so the replay is seen to follow the corpus's build.
+  *
   * The one recorded gap is [[knownGaps]]: the text of a `PlutusFailure` needs the script-context
   * printer of plutus-ledger-api and the error text of plutus-core, which Scarab does not have yet
   * (#491). A case with a gap is compared exactly in everything but that one text, is reported as
@@ -88,6 +98,20 @@ class ReferenceRefusalSuite extends FunSuite:
 
   private val loaded: Either[CorpusProblem, Loaded] = load(root)
 
+  test("a corpus that names no build is 11.1's, and its node must be of the 11.1 line") {
+    assertEquals(recordedBuild(None), Right(ReferenceBuild.Release11_1))
+    assertEquals(recordedBuild(Some("leios-b004fe0c")), Right(ReferenceBuild.LeiosB004fe0c))
+    assert(recordedBuild(Some("11.1.3")).isLeft, "a patch release is not a build name")
+    val leiosNode = "cardano-node 11.2.0.164 - linux-x86_64 - ghc-9.6"
+    val leiosRevision = ReferenceBuild.LeiosB004fe0c.pins.node
+    assert(
+      recordedBy(ReferenceBuild.Release11_1, "cardano-node 11.1.3 - linux-x86_64 - ghc-9.6", "")
+    )
+    assert(!recordedBy(ReferenceBuild.Release11_1, leiosNode, leiosRevision))
+    assert(recordedBy(ReferenceBuild.LeiosB004fe0c, leiosNode, leiosRevision))
+    assert(!recordedBy(ReferenceBuild.LeiosB004fe0c, leiosNode, leiosRevision.take(8)))
+  }
+
   loaded match
     case Left(problem) =>
       test("the refusal corpus reads")(fail(problem.show))
@@ -98,17 +122,29 @@ class ReferenceRefusalSuite extends FunSuite:
           val named = corpus.corpora.flatMap(_.cases).count(gap.covers)
           assertEquals(named, 1, s"the gap ${gap.era} ${gap.label} (#${gap.issue}) names one case")
         }
+        buildSensitive.foreach { b =>
+          val named =
+            corpus.corpora.filter(_.path == b.corpus).flatMap(_.cases).count(_.label == b.label)
+          assertEquals(named, 1, s"${b.corpus}/${b.label} names one case")
+        }
       }
       corpus.corpora.foreach { c =>
+        test(s"${c.path}: recorded by the node of its build, ${c.build.describe}") {
+          assert(
+            recordedBy(c.build, c.node, c.revision),
+            s"${c.node} at ${c.revision} is not ${c.build.describe}"
+          )
+        }
         c.states.foreach { (file, bytes) =>
           test(s"${c.path}: the reference's state $file reads and writes back byte for byte") {
+            val codecs = stateCodecs(c.build)
             c.era match
-              case RefusalEra.Shelley => roundTrip[Shelley](bytes)
-              case RefusalEra.Allegra => roundTrip[Allegra](bytes)
-              case RefusalEra.Mary    => roundTrip[Mary](bytes)
-              case RefusalEra.Alonzo  => roundTrip[Alonzo](bytes)
-              case RefusalEra.Babbage => roundTrip[Babbage](bytes)
-              case RefusalEra.Conway  => roundTrip[Conway](bytes)
+              case RefusalEra.Shelley => roundTrip[Shelley](codecs, bytes)
+              case RefusalEra.Allegra => roundTrip[Allegra](codecs, bytes)
+              case RefusalEra.Mary    => roundTrip[Mary](codecs, bytes)
+              case RefusalEra.Alonzo  => roundTrip[Alonzo](codecs, bytes)
+              case RefusalEra.Babbage => roundTrip[Babbage](codecs, bytes)
+              case RefusalEra.Conway  => roundTrip[Conway](codecs, bytes)
           }
         }
         c.utxos.foreach { (file, bytes) =>
@@ -119,7 +155,7 @@ class ReferenceRefusalSuite extends FunSuite:
         }
         c.cases.foreach { rc =>
           test(s"${c.path}/${rc.label} [${rc.families.mkString(" ")}]") {
-            replay(c, rc) match
+            replay(c, rc, c.build) match
               case Left(problem) => fail(problem.show)
               case Right(Judgement.Refused(reason)) =>
                 knownGaps.find(_.covers(rc)) match
@@ -129,10 +165,32 @@ class ReferenceRefusalSuite extends FunSuite:
           }
         }
       }
+      buildSensitive.foreach { b =>
+        test(s"${b.corpus}/${b.label} under the rules of ${b.other.describe} is not its refusal") {
+          val found = corpus.corpora
+            .find(_.path == b.corpus)
+            .flatMap(c => c.cases.find(_.label == b.label).map(c -> _))
+          found match
+            case None => fail(s"${b.corpus}/${b.label} is not in the corpus")
+            case Some((c, rc)) =>
+              assertNotEquals(b.other, c.build, "the other build is the corpus's own")
+              replay(c, rc, b.other) match
+                case Left(problem)                    => fail(problem.show)
+                case Right(Judgement.Refused(reason)) => assertNotEquals(reason.hex, rc.reason.hex)
+                case Right(other) => fail(s"Scarab ${other.show}; the reference refused it")
+        }
+      }
+      // The manifest's coverage is what the 11.1 corpus must hold: a case recorded from another build
+      // covers none of it.
       corpus.coverage.toVector.sortBy(_._1.ordinal).foreach { (era, required) =>
         test(s"coverage: every required $era family has a reference refusal") {
           val covered =
-            corpus.corpora.flatMap(_.cases).filter(_.era == era).flatMap(_.families).toSet
+            corpus.corpora
+              .filter(_.build == ReferenceBuild.Release11_1)
+              .flatMap(_.cases)
+              .filter(_.era == era)
+              .flatMap(_.families)
+              .toSet
           val missing = required.filterNot(covered)
           assert(
             missing.isEmpty,
@@ -141,30 +199,42 @@ class ReferenceRefusalSuite extends FunSuite:
         }
       }
 
-  private def roundTrip[E <: EraTag](bytes: Bytes)(using ShelleyBasedEra[E]): Unit =
-    val nes = HaskellState.decode[E](bytes).fold(e => fail(e.render), identity)
-    assertEquals(HaskellState.encode[E](nes).map(_.hex), Right(bytes.hex))
+  private def roundTrip[E <: EraTag](codecs: LedgerFileCodecs, bytes: Bytes)(using
+      ShelleyBasedEra[E]
+  ): Unit =
+    val codec = codecs.newEpochState[E]
+    val nes = codec.decodeBytes(bytes, HaskellState.limits).fold(e => fail(e.render), identity)
+    assertEquals(codec.write(nes).map(_.hex), Right(bytes.hex))
 
-  /** What Scarab answers for one case, from the recorded state. */
-  private def replay(c: Corpus, rc: RefusalCase): Either[ReplayProblem, Judgement] = rc.era match
-    case RefusalEra.Shelley => replayPreConway[Shelley](c, rc)
-    case RefusalEra.Allegra => replayPreConway[Allegra](c, rc)
-    case RefusalEra.Mary    => replayPreConway[Mary](c, rc)
-    case RefusalEra.Alonzo  => replayPreConway[Alonzo](c, rc)
-    case RefusalEra.Babbage => replayPreConway[Babbage](c, rc)
-    case RefusalEra.Conway  => replayConway(c, rc)
+  /** What Scarab answers for one case, from the recorded state, under the rules of `rules`. */
+  private def replay(
+      c: Corpus,
+      rc: RefusalCase,
+      rules: ReferenceBuild
+  ): Either[ReplayProblem, Judgement] = rc.era match
+    case RefusalEra.Shelley => replayPreConway[Shelley](c, rc, rules)
+    case RefusalEra.Allegra => replayPreConway[Allegra](c, rc, rules)
+    case RefusalEra.Mary    => replayPreConway[Mary](c, rc, rules)
+    case RefusalEra.Alonzo  => replayPreConway[Alonzo](c, rc, rules)
+    case RefusalEra.Babbage => replayPreConway[Babbage](c, rc, rules)
+    case RefusalEra.Conway  => replayConway(c, rc, rules)
 
-  /** The recorded state of a case of era `E`, with its UTxO, and the environment of its genesis. */
-  private def recorded[E <: EraTag](c: Corpus, rc: RefusalCase)(using
+  /** The recorded state of a case of era `E`, with its UTxO, read in the layout of the corpus's
+    * build, and the environment of its genesis with the ledger following `rules`.
+    */
+  private def recorded[E <: EraTag](c: Corpus, rc: RefusalCase, rules: ReferenceBuild)(using
       ShelleyBasedEra[E]
   ): Either[ReplayProblem, Recorded[E]] =
     for
       setup <- NodeSetup
-        .fromFiles(ReferenceBuild.Default)(name => c.genesis.get(name).map(_.toArray))
+        .fromFiles(rules)(name => c.genesis.get(name).map(_.toArray))
         .leftMap(ReplayProblem.Genesis(_))
       state <- c.states.get(rc.state).toRight(ReplayProblem.NoFile(rc.state))
       utxoBytes <- c.utxos.get(rc.utxo).toRight(ReplayProblem.NoFile(rc.utxo))
-      nes <- HaskellState.decode[E](state).leftMap(ReplayProblem.State(_))
+      nes <- stateCodecs(c.build)
+        .newEpochState[E]
+        .decodeBytes(state, HaskellState.limits)
+        .leftMap(ReplayProblem.State(_))
       utxo <- UtxoCodecs.utxo.decodeBytes(utxoBytes).leftMap(ReplayProblem.Utxo(_))
     yield Recorded(withUtxo(nes, utxo), MempoolEnv(setup.globals, setup.geometry))
 
@@ -173,12 +243,12 @@ class ReferenceRefusalSuite extends FunSuite:
     * node-to-client path. The state is ticked to the successor of the tip, as the reference's
     * mempool does, and the transaction judged as the first of a block in that slot.
     */
-  private def replayPreConway[E <: EraTag](c: Corpus, rc: RefusalCase)(using
+  private def replayPreConway[E <: EraTag](c: Corpus, rc: RefusalCase, rules: ReferenceBuild)(using
       pre: PreConway[E]
   ): Either[ReplayProblem, Judgement] =
     given ShelleyBasedEra[E] = pre.era
     for
-      at <- recorded[E](c, rc)
+      at <- recorded[E](c, rc, rules)
       env = at.env
       slot <- SlotNo
         .fromBigInt(rc.tipSlot + 1)
@@ -196,7 +266,8 @@ class ReferenceRefusalSuite extends FunSuite:
         updateQuorum = env.globals.updateQuorum,
         clock = Some(PosixClock.total(env.geometry)),
         evaluator = env.evaluator,
-        decoder = env.decoder
+        decoder = env.decoder,
+        referenceBuild = env.globals.referenceBuild
       )
       Judgment
         .run(ShelleyLedger.sts[E], Judgment.Policy.Accumulate)(
@@ -231,9 +302,13 @@ class ReferenceRefusalSuite extends FunSuite:
       .toRight(ReplayProblem.Item)
       .flatMap(Tx.fromEnvelope(_, expected).leftMap(ReplayProblem.Transaction(_)))
 
-  private def replayConway(c: Corpus, rc: RefusalCase): Either[ReplayProblem, Judgement] =
+  private def replayConway(
+      c: Corpus,
+      rc: RefusalCase,
+      rules: ReferenceBuild
+  ): Either[ReplayProblem, Judgement] =
     for
-      at <- recorded[Conway](c, rc)
+      at <- recorded[Conway](c, rc, rules)
       env = at.env
       ledger <- MempoolLedger.tick(at.nes, Some(rc.tipSlot), env).leftMap(ReplayProblem.Tick(_))
     yield
@@ -293,6 +368,46 @@ object ReferenceRefusalSuite:
     KnownGap(RefusalEra.Babbage, "utxos-script-fails-flag-true", 491),
     KnownGap(RefusalEra.Conway, "utxos-script-fails-flag-true", 491)
   )
+
+  /** A case whose refusal the rules of `other`, a build other than its corpus's, would not send:
+    * replayed under them, Scarab's refusal must differ from the recorded one. Each shows that the
+    * replay follows the corpus's build.
+    */
+  final case class BuildSensitive(corpus: String, label: String, other: ReferenceBuild)
+
+  /** The bootstrap-attribute case (#832), refused as `OutputBootAddrAttrsTooBig` by the Leios build
+    * and as `OutputTooBigUTxO` by 11.1 from Allegra on (`UtxoTests.injectedBootAddrAttrsTooBig`):
+    * each corpus that holds it, against the other build.
+    */
+  val buildSensitive: Vector[BuildSensitive] =
+    val label = "utxo-bootstrap-attributes-too-big"
+    BuildSensitive(
+      "conway-bootstrap-attributes-leios-b004fe0c",
+      label,
+      ReferenceBuild.Release11_1
+    ) +:
+      Vector("allegra", "mary", "alonzo", "babbage", "conway").map(era =>
+        BuildSensitive(s"$era-bootstrap-attributes", label, ReferenceBuild.LeiosB004fe0c)
+      )
+
+  /** The build a corpus was recorded from: the one its `corpus.json` names (`referenceBuild`), and
+    * 11.1 for a corpus that names none, as every corpus recorded before corpora named their build
+    * (#826) is. [[recordedBy]] checks either against the node that recorded the corpus.
+    */
+  def recordedBuild(named: Option[String]): Either[UnknownReferenceBuild, ReferenceBuild] =
+    named.fold(Right(ReferenceBuild.Release11_1))(ReferenceBuild.parse)
+
+  /** Whether the node that recorded a corpus, by its `cardano-node --version` line `node` and its
+    * revision, is `build`: a stable build by its release line, an unstable one by its commit.
+    */
+  def recordedBy(build: ReferenceBuild, node: String, revision: String): Boolean =
+    build.stability match
+      case ReferenceBuild.Stability.Stable   => node.startsWith(s"cardano-node ${build.name}.")
+      case ReferenceBuild.Stability.Unstable => revision == build.pins.node
+
+  /** The codecs of the reference's state in the layout `build` writes. */
+  def stateCodecs(build: ReferenceBuild): LedgerFileCodecs =
+    HaskellLedgerFile.codecs(StateLayout.of(build))
 
   /** The text item of the one `PlutusFailure` `[1, text, bytes]` of a rejection, and the rejection
     * without its bytes.
@@ -409,6 +524,7 @@ object ReferenceRefusalSuite:
     }
 
   enum CorpusProblem:
+    case UnknownBuild(file: Path, cause: UnknownReferenceBuild)
     case Unreadable(file: Path)
     case Json(file: Path, error: io.circe.Error)
     case HashMismatch(file: Path, recorded: String, actual: String)
@@ -418,6 +534,7 @@ object ReferenceRefusalSuite:
 
   object CorpusProblem:
     given Show[CorpusProblem] = Show.show {
+      case UnknownBuild(f, cause)  => s"$f: ${cause.message}"
       case Unreadable(f)           => s"$f cannot be read"
       case Json(f, e)              => s"$f: ${e.getMessage}"
       case HashMismatch(f, r, a)   => s"$f has sha256 $a, the corpus records $r"
@@ -433,9 +550,13 @@ object ReferenceRefusalSuite:
       corpora: Vector[ManifestEntry]
   ) derives Decoder
   private final case class CaseEntry(file: String, sha256: String) derives Decoder
+  private final case class ReferenceNode(node: String, revision: String) derives Decoder
+  private final case class Provenance(reference: ReferenceNode) derives Decoder
   private final case class CorpusFile(
       format: Int,
       era: RefusalEra,
+      referenceBuild: Option[String],
+      provenance: Provenance,
       genesis: Map[String, String],
       cases: Vector[CaseEntry]
   ) derives Decoder
@@ -463,10 +584,15 @@ object ReferenceRefusalSuite:
       reason: Bytes
   )
 
-  /** A corpus directory: its cases and the content-addressed states and UTxOs they name. */
+  /** A corpus directory: its cases and the content-addressed states and UTxOs they name, the build
+    * that recorded it and that node's version line and revision.
+    */
   final case class Corpus(
       path: String,
       era: RefusalEra,
+      build: ReferenceBuild,
+      node: String,
+      revision: String,
       cases: Vector[RefusalCase],
       states: Map[String, Bytes],
       utxos: Map[String, Bytes],
@@ -526,6 +652,7 @@ object ReferenceRefusalSuite:
         (),
         CorpusProblem.UnsupportedFormat(meta, file.format)
       )
+      build <- recordedBuild(file.referenceBuild).leftMap(CorpusProblem.UnknownBuild(meta, _))
       // Genesis files are shared between corpora, stored once under their pinned hash.
       genesis <- file.genesis.toVector
         .traverse((name, h) =>
@@ -569,7 +696,17 @@ object ReferenceRefusalSuite:
         .map(_.flatten)
       states <- addressed(base, "states")
       utxos <- addressed(base, "utxo")
-    yield Corpus(entry.path, file.era, cases, states, utxos, genesis)
+    yield Corpus(
+      entry.path,
+      file.era,
+      build,
+      file.provenance.reference.node,
+      file.provenance.reference.revision,
+      cases,
+      states,
+      utxos,
+      genesis
+    )
 
   /** The manifest and every corpus it lists, each file checked against its recorded hash. */
   def load(root: Path): Either[CorpusProblem, Loaded] =

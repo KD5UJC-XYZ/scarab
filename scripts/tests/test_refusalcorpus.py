@@ -70,12 +70,15 @@ class RecordedCorpus(unittest.TestCase):
 
     def test_each_corpus_was_recorded_by_the_node_of_its_build(self):
         """A corpus without `referenceBuild` (one recorded before corpora named their build, #826) is 11.1's, and
-        its provenance says so; `ReferenceRefusalSuite` reads it the same way."""
+        its provenance says so; `ReferenceRefusalSuite` reads it the same way. Every build has a corpus."""
+        builds = set()
         for directory, meta in self.corpora():
             build = meta.get("referenceBuild", refusalcorpus.DEFAULT_BUILD)
             self.assertIn(build, refusalcorpus.BUILDS, directory.name)
             node = meta["provenance"]["reference"]
             self.assertTrue(refusalcorpus.is_build(build, node["node"], node["revision"]), directory.name)
+            builds.add(build)
+        self.assertEqual(builds, set(refusalcorpus.BUILDS))
 
 
 class Builds(unittest.TestCase):

@@ -615,7 +615,7 @@
       "id": "reference-refusal-corpus",
       "classification": "native-parity",
       "status": "open",
-      "scope": "Transactions the released reference node refused over node-to-client LocalTxSubmission in all six Shelley-based eras, with the ledger state, UTxO and genesis each was judged against; the families each era must cover are declared in the manifest. Byron transaction-error coverage is not established.",
+      "scope": "Transactions a pinned reference node refused over node-to-client LocalTxSubmission in all six Shelley-based eras, with the ledger state, UTxO and genesis each was judged against; the families each era must cover are declared in the manifest for the 11.1 build. Each corpus names the reference build that recorded it (none: 11.1) and is replayed under that build's rules; one Conway corpus is from the Leios testnet build (#826). Byron transaction-error coverage is not established.",
       "assertion": "Replay every case through Scarab (Conway: LocalSubmission and MempoolState.add on the reference's ticked state; Shelley through Babbage: the era's LEDGER rule and PreConwayFailureCbor) and require the complete ApplyTxErr bytes, every accumulated failure in order; every required family per era must have a case.",
       "rationale": "First-failure comparisons cannot show check-order regressions or a missing accumulated failure, and replays of accepted chains never contain a refused transaction.",
       "owner": "Scarab maintainers",

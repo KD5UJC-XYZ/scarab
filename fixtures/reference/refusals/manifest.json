@@ -94,6 +94,10 @@
       "sha256": "8e9012e865a4aece89da87694a9ce1582b2acb9cf4059d423fcec656a2f73dc8"
     },
     {
+      "path": "conway-bootstrap-attributes-leios-b004fe0c",
+      "sha256": "c79dde9b4151e26688f65fd03879fcf06fa712854733d9fa6fd0bc774a455c86"
+    },
+    {
       "path": "conway-devnet",
       "sha256": "286a678fea0f7086d17a169d27d756077ddc2135d54ea02661e39c920f6a66d4"
     },
