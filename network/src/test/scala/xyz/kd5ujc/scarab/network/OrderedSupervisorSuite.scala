@@ -100,15 +100,23 @@ class OrderedSupervisorSuite extends FailsOnUncaught:
       OrderedSupervisor.observed[IO].use { (supervisor, size) =>
         for
           ready <- Deferred[IO, Unit]
+          releaseFailure <- Deferred[IO, Unit]
           done <- supervisor.supervise(IO.unit)
-          failed <- supervisor.supervise(IO.raiseError[Unit](new IllegalStateException("child")))
+          failed <- supervisor.supervise(
+            releaseFailure.get *> IO.raiseError[Unit](new IllegalStateException("child"))
+          )
           waiting <- supervisor.supervise(ready.complete(()) *> IO.never[Unit])
           _ <- ready.get
-          _ <- done.join *> failed.join
+          failure <- Resource.make(failed.join.start)(_.cancel).use { observer =>
+            settle *> releaseFailure.complete(()) *> observer.joinWithNever
+          }
+          _ <- done.join
           before <- settle *> size
           _ <- waiting.cancel
           after <- settle *> size
-        yield assertEquals((before, after), (1, 0))
+        yield
+          assert(failure.isError)
+          assertEquals((before, after), (1, 0))
       }
     }
   }
