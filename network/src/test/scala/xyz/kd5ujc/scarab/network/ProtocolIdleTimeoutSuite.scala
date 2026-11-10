@@ -565,6 +565,7 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
                 client <- keepAlive(seen.mux)
                 _ <- client.ping
                 _ <- settle
+                _ <- seen.manager.awaitRemoteStates(_.values.toList == List(RemoteSt.Warm))
                 busy <- state(seen.manager)
                 _ <- client.done
                 _ <- settle
