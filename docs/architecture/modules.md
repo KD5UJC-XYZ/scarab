@@ -23,6 +23,7 @@ a cycle does not load.
 | `node` | Peer, follower, header gate, block rules (`MirrorRules`, with what they share in `NodeRules`), mempool, forging, relay, node-to-client, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main` and the tools |
 | `models-gen`, `models` | CDDL parser and Scala generator; the generated models, their runtime and the equivalence tests. A spike: the node does not decode with the generated models, only `storage` uses the runtime (docs/models.md) | Build-time tool; pure |
 | `fuzz` | Structured fuzzing of every decoder entry point (test only) | |
+| `tools` | Benchmarks, probes and fixture writers run by hand (`tools/runMain <class>`); not published | `IO` at entry points; pure helpers |
 
 ```
 codec <- crypto <- protocol <- network ------------------------.
@@ -38,6 +39,9 @@ import the node. Note that `protocol/Mux.scala` (the pure framing) and `network/
 effectful multiplexer) are different files. The pure `NetworkError` vocabulary lives in `protocol`;
 `network.NetworkError` aliases it. This lets ledger and node adapters retain transport causes
 without making the ledger depend on the effectful network runtime.
+
+`tools` depends on the main and test code of the runtime modules and `models`, so programs can use
+their test kits. None of those modules depends on `tools`.
 
 Cycles that the old layout hid, and how they were cut (types moved down, nothing redesigned):
 the header error enums (`HeaderError`, `EnvelopeError`, `TPraosError`, `OCertError`) and `Nonce`,

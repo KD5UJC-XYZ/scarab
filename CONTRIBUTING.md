@@ -25,7 +25,7 @@ docker run --rm -v "$PWD":/work -v "$scarab_cache":/work/.cache \
 ```
 
 `check` (an alias in `build.sbt`, built from its `modules` list; CI runs the same alias) runs `scalafmtCheckAll`, compiles all test sources, runs the
-tests of all modules (`crypto`'s `BlstSuite` among them: the pinned jblst library, start-up checks, the export list of the JNI glue), the fuzz suite among them, and ends with `scalafixAll --check`; the compiler runs with `-Werror` and the unused-code warnings (imports, privates, locals, explicit parameters, pattern variables), and WartRemover refuses the disallowed patterns in the main sources of every module (`build.sbt`, issue 650); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture/modules.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are
+tests of all modules (`crypto`'s `BlstSuite` among them: the pinned jblst library, start-up checks, the export list of the JNI glue), the fuzz suite among them, and ends with `scalafixAll --check`; the compiler runs with `-Werror` and the unused-code warnings (imports, privates, locals, explicit parameters, pattern variables), and WartRemover refuses the disallowed patterns in the main sources of every module except `tools` (`build.sbt`, issue 650); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture/modules.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are
 cached under `.cache/` (gitignored). `bash scripts/sbtw node/runtimeClasspathFile` writes
 `node/target/runtime-classpath.txt`, which the scenarios use.
 
@@ -122,7 +122,8 @@ with a pattern that matches your own shell command line.
 - **Tagless final at effect boundaries.** Capabilities are algebras over `F[_]`; interpreters are
   chosen in `Main`. `IO` appears only in `Main` and tools. No hidden global state:
   the memoising caches are instances created in a `Resource` (`VerificationCache`) and handed to
-  the pure rules through a read interface (`Verdicts`); tools live under `xyz.kd5ujc.scarab.node.tools`.
+  the pure rules through a read interface (`Verdicts`); programs run by hand live in the `tools` module,
+  in the package of the code they exercise ([AGENTS.md](AGENTS.md#how-code-is-written-here)).
 - **Closed, domain/service-specific error ADTs.** Pure failures use `Either[DomainError, A]`;
   effect boundaries use cats-mtl `Raise[F, E]` and lexically scoped `Handle.allow` (`PeerError`,
   `ChainError`, `ValidationError`, `StorageError`, `ForgeError`, `ConfigError`). Preserve typed causes
