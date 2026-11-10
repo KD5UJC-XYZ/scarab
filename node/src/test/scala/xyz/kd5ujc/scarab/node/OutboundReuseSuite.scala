@@ -29,10 +29,18 @@ class OutboundReuseSuite extends FailsOnUncaught:
   private val limits = ConnectionManager.Limits(timeWait = Duration.Zero)
 
   /** What a side serves: an empty chain whose intersections are counted. */
-  private def handlers(intersections: Ref[IO, Int]): ServerHandlers[IO, NtNHeader] =
+  private def handlers(
+      intersections: Ref[IO, Int],
+      intersecting: Boolean = true
+  ): ServerHandlers[IO, NtNHeader] =
     val cursor = new ChainSyncServer.Source[IO, NtNHeader]:
       def intersect(points: Vector[ChainSync.Point]) =
-        intersections.update(_ + 1).as(Right((ChainSync.Point.Origin, ChainSync.Tip.Origin)))
+        intersections
+          .update(_ + 1)
+          .as(
+            if intersecting then Right((ChainSync.Point.Origin, ChainSync.Tip.Origin))
+            else Left(ChainSync.Tip.Origin)
+          )
       def poll = IO.pure(None)
       def await = IO.never[ChainSyncServer.Update[NtNHeader]]
     ServerHandlers(
@@ -64,11 +72,24 @@ class OutboundReuseSuite extends FailsOnUncaught:
       outbound: OutboundPeers[IO, PeerNetwork.Addr],
       dials: Ref[IO, Int],
       intersected: Deferred[IO, Unit],
-      changes: Ref[IO, Vector[(ConnectionState, ConnectionState)]]
+      changes: Ref[IO, Vector[(ConnectionState, ConnectionState)]],
+      reports: Ref[IO, Vector[Event[PeerNetwork.Addr]]]
   ):
     def state: IO[Option[ConnectionState]] = manager.lookup(remote).map(_.map(_.state))
 
-  private def world: Resource[IO, World] =
+  /** A mempool with nothing to offer: a blocking request for ids waits until it is asked to end. */
+  private val nothingToOffer: TxSubmissionClient.Source[IO] = new TxSubmissionClient.Source[IO]:
+    def reader = RelayedTransactions
+    def after(ticket: Long, max: Int) = IO.pure(Vector.empty)
+    def awaitAfter(ticket: Long) = IO.never
+    def body(id: Bytes) = IO.pure(None)
+
+  private def world: Resource[IO, World] = worldWith()
+
+  private def worldWith(
+      transactions: Option[TxSubmissionClient.Source[IO]] = None,
+      deactivateTimeout: FiniteDuration = 2.seconds
+  ): Resource[IO, World] =
     for
       node <- NodeScope.resource
       supervisor <- Supervisor[IO](await = false)
@@ -92,6 +113,7 @@ class OutboundReuseSuite extends FailsOnUncaught:
           )
           dials <- Ref.of[IO, Int](0)
           intersected <- Deferred[IO, Unit]
+          reports <- Ref.of[IO, Vector[Event[PeerNetwork.Addr]]](Vector.empty)
           metrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
           given Stateful[IO, PeerMetrics[PeerNetwork.Addr]] = RefStateful(metrics)
           hot = OutboundPeers.Hot[IO](
@@ -99,12 +121,15 @@ class OutboundReuseSuite extends FailsOnUncaught:
             NodeToNode.Settings(),
             Peer
               .Settings(SocketAddress(host"10.1.2.3", port"3001"), magic, byronEpochSlots = 21600),
+            // the follower's own rule: no intersection ends the session (`Follower.intersect`)
             (over, _) =>
-              over.intersect(Vector(ChainSync.Point.Origin)) *> intersected.complete(()) *>
-                IO.never[Unit],
+              over.intersect(Vector(ChainSync.Point.Origin)).flatMap {
+                case None => Raise[IO, NodeError].raise[NodeError, Unit](PeerError.NoIntersection)
+                case Some(_) => intersected.complete(()) *> IO.never[Unit]
+              },
             ChainSyncHeights.origin,
             None,
-            None,
+            transactions,
             None,
             pool,
             _ => IO.pure(Gsm.Candidate.DoesNotIntersect),
@@ -114,20 +139,20 @@ class OutboundReuseSuite extends FailsOnUncaught:
           outbound <- OutboundPeers.create(
             NoDial(dials),
             manager,
-            OutboundPeers.Config(closeTimeout = 2.seconds, deactivateTimeout = 2.seconds),
+            OutboundPeers.Config(closeTimeout = 2.seconds, deactivateTimeout = deactivateTimeout),
             hot,
             supervisor,
-            _ => IO.unit,
+            event => reports.update(_ :+ event),
             summon[Stateful[IO, PeerMetrics[PeerNetwork.Addr]]]
           )
-        yield World(manager, governor, outbound, dials, intersected, changes)
+        yield World(manager, governor, outbound, dials, intersected, changes, reports)
       }
     yield built
 
   /** The peer dials us offering duplex and stays connected until `during` is done (or it closes the
     * connection itself with `close`).
     */
-  private def peerConnects[A](w: World, served: Ref[IO, Int])(
+  private def peerConnects[A](w: World, served: Ref[IO, Int], intersecting: Boolean = true)(
       during: IO[Unit] => IO[A]
   ): IO[A] =
     Bearer.inMemory[IO](256).flatMap { (theirs, ours) =>
@@ -140,7 +165,7 @@ class OutboundReuseSuite extends FailsOnUncaught:
                 magic,
                 NtNHeader.codec,
                 NodeToNode.Settings(),
-                Some(handlers(served))
+                Some(handlers(served, intersecting))
               )
               .use(_ => during(theirs.close))
           }
@@ -279,5 +304,36 @@ class OutboundReuseSuite extends FailsOnUncaught:
             ()
           case other => fail(s"unexpected $other")
         assertEquals(dials, 0)
+    }
+  }
+
+  // a hot session over the peer's own connection that finds no intersection returns normally
+  // (`NoMoreIntersection`): its hot protocols end on the wire, TxSubmission2 with `MsgDone` at the
+  // peer's next blocking request, and the peer is warm again on the same connection
+  // (`PeerStateActions.hs` 990-1035), well within the deactivation timeout
+  test("a hot session that finds no intersection over the peer's own connection goes back to warm") {
+    worldWith(transactions = Some(nothingToOffer), deactivateTimeout = 60.seconds).use { w =>
+      Ref.of[IO, Int](0).flatMap { served =>
+        peerConnects(w, served, intersecting = false) { _ =>
+          for
+            _ <- eventually("the peer's connection is negotiated")(w.state)(accepted)
+            established <- w.outbound.establish(
+              peer,
+              DiffusionMode.InitiatorAndResponder,
+              Provenance.Outbound
+            )
+            handle <- IO.fromEither(established.leftMap(e => new AssertionError(e.toString)))
+            _ <- handle.activate(ChainSyncTimeouts.PeerTrust.Untrustable)
+            _ <- eventually("the hot session ended")(w.reports.get)(_.exists {
+              case Event.Observed(_, Observation.HotEnded(_, _), _, _) => true
+              case _                                                   => false
+            })
+            status <- handle.read
+            after <- w.state
+          yield
+            assertEquals(status.status, PeerStateActions.Status.Warm)
+            assert(after.exists(_.isLive), after.toString)
+        }
+      }
     }
   }

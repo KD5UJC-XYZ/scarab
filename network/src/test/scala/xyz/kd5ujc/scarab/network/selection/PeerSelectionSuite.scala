@@ -857,6 +857,46 @@ class PeerSelectionSuite extends FunSuite:
     assertEquals(statusOf(late.state, 7), Status.Cold(None))
   }
 
+  // a connection kept across a root reload still reports to the governor (`PeerStateActions.hs`
+  // 662-776): its hot protocol's end makes it warm, its loss makes it cold
+  test("what a connection kept across a root reload observes is still applied") {
+    val (st1, _, _) = settle(start(List(group(2, 2, 7, 8))), t0)
+    val st2 = List(7, 8).foldLeft(st1)((s, p) => complete(s, Outcome.Connected(p), t0))
+    val (st3, _, _) = settle(st2, t0)
+    val hot = List(7, 8).foldLeft(st3)((s, p) => complete(s, Outcome.Activated(p), t0))
+    val before = hot.rootsGeneration
+    val reloaded = PeerSelection
+      .apply(hot, Event.RootsConfigured(hot.configuredRoots, false, Set.empty), t0)
+      .state
+    assert(reloaded.rootsGeneration > before)
+    assertEquals(statusOf(reloaded, 7), Status.Hot)
+    val returned = PeerSelection
+      .apply(
+        reloaded,
+        Event.Observed(7, Observation.HotEnded(Some(30.seconds)), Some(before), Some(BigInt(1))),
+        1.minute
+      )
+      .state
+    statusOf(returned, 7) match
+      case Status.Warm(_) => ()
+      case other          => fail(s"not warm: $other")
+    val lost = PeerSelection
+      .apply(
+        returned,
+        Event.Observed(
+          8,
+          Observation.Lost(FailureClass.Transient, 5.seconds, true, "lost"),
+          Some(before),
+          Some(BigInt(2))
+        ),
+        2.minutes
+      )
+      .state
+    statusOf(lost, 8) match
+      case Status.Cold(_) => ()
+      case other          => fail(s"not cold: $other")
+  }
+
   test("a root request completing after reload cannot restore the previous roots") {
     val initial = start(Nil).copy(publicRootsInFlight = true, bigLedgerInFlight = true)
     val reloaded = PeerSelection
