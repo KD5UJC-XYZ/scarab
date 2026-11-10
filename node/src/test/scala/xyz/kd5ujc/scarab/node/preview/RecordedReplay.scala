@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.preview
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.IO
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -175,7 +176,7 @@ object RecordedReplay extends munit.Assertions:
   def replay(config: ReplayInputs.Config): IO[Json] =
     for
       setup <- IO
-        .blocking(NodeSetup.fromDirectory(config.genesis))
+        .blocking(NodeSetup.fromDirectory(ReferenceBuild.Default)(config.genesis))
         .map(_.fold(e => fail(e.message), identity))
       beganWindow <- IO.monotonic
       _ <- IO.blocking {

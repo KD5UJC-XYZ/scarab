@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -17,7 +18,9 @@ import munit.FunSuite
 class QueryGoldenSuite extends FunSuite:
   private val dir = Path.of("fixtures/devnet/lsq")
   private val setup =
-    NodeSetup.fromDirectory(dir.resolve("genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(dir.resolve("genesis"))
+      .fold(e => fail(e.message), identity)
   private val golden = parser
     .parse(Files.readString(dir.resolve("golden.json")))
     .fold(e => fail(e.message), identity)

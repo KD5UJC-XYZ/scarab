@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.tools
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import java.lang.management.ManagementFactory
@@ -59,7 +60,7 @@ object WarmBenchMain:
     val total = args(2).toInt
     val inFlight = args.lift(3).fold(1)(_.toInt)
     val setup = NodeSetup
-      .fromDirectory(Path.of("fixtures/eras/genesis"))
+      .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/eras/genesis"))
       .fold(e => sys.error(e.message), identity)
     val praos = setup.praos.copy(slotsPerKesPeriod = BigInt(129600), maxKesEvolutions = BigInt(62))
     val raws = Files

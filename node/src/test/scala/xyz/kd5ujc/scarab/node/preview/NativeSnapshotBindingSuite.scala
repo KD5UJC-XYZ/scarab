@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.preview
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.IO
 import java.nio.file.{Files, Path}
 import munit.CatsEffectSuite
@@ -11,7 +12,7 @@ import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, SnapshotReadError}
 class NativeSnapshotBindingSuite extends CatsEffectSuite:
   private val source = Path.of("fixtures/snapshot-v5/preview-4320.bin")
   private val env = NodeSetup
-    .fromDirectory(Path.of("fixtures/preview/genesis"))
+    .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/preview/genesis"))
     .fold(error => fail(error.message), _.mirrorEnv())
 
   test("the directly authenticated V5 bytes decode identically to the existing file helper") {

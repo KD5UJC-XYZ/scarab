@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState, ConsensusExtras, HeaderCheckpoints}
 import xyz.kd5ujc.scarab.consensus.state.{
   ByronMirror,
@@ -198,21 +199,21 @@ object NodeSetup:
 
   val ConfigNames: List[String] = List("configuration.yaml", "configuration.json", "config.json")
 
-  def fromDirectory(dir: Path): Either[ConfigError, NodeSetup] =
+  def fromDirectory(build: ReferenceBuild)(dir: Path): Either[ConfigError, NodeSetup] =
     def read(name: String): Option[Array[Byte]] =
       Option.when(Files.exists(dir.resolve(name)))(Files.readAllBytes(dir.resolve(name)))
-    fromFiles(read)
+    fromFiles(build)(read)
 
   /** The setup `cardano-node run --config` would have: the configuration is read as the reference
     * reads it (`strict`), the genesis files it names are looked up next to it (or in `genesisDir`,
     * when given) and every hash it lists is verified.
     */
-  def fromConfigFile(
+  def fromConfigFile(build: ReferenceBuild)(
       config: Path,
       genesisDir: Option[Path] = None
   ): Either[ConfigError, NodeSetup] =
     for
-      parsed <- readConfig(config)
+      parsed <- readConfig(build)(config)
       base = genesisDir.getOrElse(Option(config.toAbsolutePath.getParent).getOrElse(Path.of(".")))
       read = (name: String) =>
         Option.when(Files.exists(base.resolve(name)))(Files.readAllBytes(base.resolve(name)))
@@ -220,17 +221,19 @@ object NodeSetup:
     yield setup
 
   /** The configuration file alone, before any genesis file is read. */
-  def readConfig(config: Path): Either[ConfigError, NodeConfig] =
+  def readConfig(build: ReferenceBuild)(config: Path): Either[ConfigError, NodeConfig] =
     Either
       .catchNonFatal(Files.readAllBytes(config))
       .leftMap(e => ConfigError(ConfigProblem.FileRead(config.toString, e)))
-      .flatMap(bytes => NodeConfig.parse(new String(bytes, "UTF-8"), strict = true))
+      .flatMap(bytes => NodeConfig.parse(build)(new String(bytes, "UTF-8"), strict = true))
 
-  def fromFiles(read: String => Option[Array[Byte]]): Either[ConfigError, NodeSetup] =
+  def fromFiles(build: ReferenceBuild)(
+      read: String => Option[Array[Byte]]
+  ): Either[ConfigError, NodeSetup] =
     def text(bytes: Array[Byte]) = new String(bytes, "UTF-8")
     ConfigNames
       .collectFirst(Function.unlift(n => read(n)))
-      .fold(Right(NodeConfig.empty))(b => NodeConfig.parse(text(b)))
+      .fold(NodeConfig.parse(build)("{}"))(b => NodeConfig.parse(build)(text(b)))
       .flatMap(assemble(_, read))
 
   /** Check every hash the configuration lists against the genesis file it names: the Byron one is

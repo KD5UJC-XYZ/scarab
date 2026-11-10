@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.preview
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.{ExitCode, IO, IOApp, Ref}
 import cats.mtl.{Ask, Handle, Raise}
@@ -112,7 +113,7 @@ object K1OfflineMain extends IOApp:
           )
         )
       loaded <- IO
-        .delay(NodeSetup.fromDirectory(c.genesis))
+        .delay(NodeSetup.fromDirectory(ReferenceBuild.Default)(c.genesis))
         .flatMap(_.fold(_.raise[IO, NodeSetup], IO.pure))
       targets <- guard(c.index)(Files.readAllLines(c.index).asScala.toVector)
         .flatMap(lines =>

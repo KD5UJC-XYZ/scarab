@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage.haskell
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.IO
 import fs2.io.file.Path
 import java.nio.file.{Files as JFiles, Path as JPath, StandardCopyOption}
@@ -28,7 +29,7 @@ class HaskellImportSuite extends CatsEffectSuite:
   private val previewRoot = JPath.of("fixtures/haskell-immutable/preview")
   private val previewSetup =
     NodeSetup
-      .fromDirectory(JPath.of("fixtures/preview/genesis"))
+      .fromDirectory(ReferenceBuild.Default)(JPath.of("fixtures/preview/genesis"))
       .fold(e => fail(e.message), identity)
   private val previewChunk = ChunkSlots
     .fromSecurityParam(previewSetup.geometry.k.toLong)
@@ -272,7 +273,9 @@ class HaskellImportSuite extends CatsEffectSuite:
   // ---- Byron epoch-boundary blocks (built by the upstream encoding rules) ----
 
   private val erasSetup =
-    NodeSetup.fromDirectory(JPath.of("fixtures/eras/genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(JPath.of("fixtures/eras/genesis"))
+      .fold(e => fail(e.message), identity)
   private val erasChunk = ChunkSlots
     .fromSecurityParam(erasSetup.geometry.k.toLong)
     .getOrElse(fail("chunk size"))

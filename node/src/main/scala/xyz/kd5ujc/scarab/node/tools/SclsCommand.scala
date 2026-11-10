@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.tools
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.{ExitCode, IO}
 import cats.mtl.{Ask, Handle}
 import cats.syntax.all.*
@@ -292,11 +293,11 @@ object SclsCommand:
   )(run: (NodeSetup, SclsBase.Config) => IO[ExitCode]): IO[ExitCode] =
     IO.blocking {
       base.config match
-        case Some(config) => NodeSetup.fromConfigFile(config, base.genesis)
+        case Some(config) => NodeSetup.fromConfigFile(ReferenceBuild.Default)(config, base.genesis)
         case None =>
           base.genesis.fold[Either[ConfigError, NodeSetup]](
             Left(ConfigError(ConfigProblem.MissingGenesis))
-          )(NodeSetup.fromDirectory)
+          )(NodeSetup.fromDirectory(ReferenceBuild.Default))
     }.flatMap {
       case Left(error) => IO.println(error.message).as(ExitCode(2))
       case Right(setup) =>

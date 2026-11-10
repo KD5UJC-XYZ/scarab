@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.IO
 import cats.mtl.{Ask, Handle}
@@ -32,7 +33,7 @@ class PreprodSnapshotImportSuite extends CatsEffectSuite:
     fixture.traverse_ { name =>
       val source = Path(name)
       val setup = NodeSetup
-        .fromDirectory(JPath.of("fixtures/preprod/genesis"))
+        .fromDirectory(ReferenceBuild.Default)(JPath.of("fixtures/preprod/genesis"))
         .fold(e => fail(e.message), identity)
       given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
       val params = setup.handOver.fold(fail("preprod starts in Byron"))(_.protocolParams)

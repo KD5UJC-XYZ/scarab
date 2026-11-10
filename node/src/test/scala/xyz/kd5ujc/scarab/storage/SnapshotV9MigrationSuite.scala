@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.IO
 import cats.syntax.all.*
 import java.nio.file.{Files as JFiles, Path as JPath}
@@ -24,7 +25,7 @@ import StorageTestKit.*
   */
 class SnapshotV9MigrationSuite extends CatsEffectSuite:
   private val env: ConsensusMirrorEnv = NodeSetup
-    .fromDirectory(JPath.of("fixtures/eras/genesis"))
+    .fromDirectory(ReferenceBuild.Default)(JPath.of("fixtures/eras/genesis"))
     .fold(e => fail(e.message), _.mirrorEnv())
 
   private def content(dir: String, name: String): Array[Byte] =

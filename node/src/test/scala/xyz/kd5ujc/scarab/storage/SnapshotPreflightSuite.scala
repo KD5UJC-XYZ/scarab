@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.{IO, Ref}
 import cats.mtl.{Ask, Handle, Raise}
@@ -22,7 +23,7 @@ import StorageTestKit.*
   */
 class SnapshotPreflightSuite extends CatsEffectSuite:
   private val setup = NodeSetup
-    .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
+    .fromDirectory(ReferenceBuild.Default)(java.nio.file.Path.of("fixtures/eras/genesis"))
     .fold(e => fail(e.message), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
   private given SnapshotFormat[IO, MirrorState] =

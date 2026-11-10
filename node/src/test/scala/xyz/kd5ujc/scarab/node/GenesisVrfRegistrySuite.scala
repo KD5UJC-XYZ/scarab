@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import io.circe.{Json, parser}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
@@ -50,7 +51,7 @@ class GenesisVrfRegistrySuite extends FunSuite:
             .getBytes("UTF-8")
         else bytes
       }
-    NodeSetup.fromFiles(read).fold(e => fail(e.message), identity)
+    NodeSetup.fromFiles(ReferenceBuild.Default)(read).fold(e => fail(e.message), identity)
 
   test("native genesis retains injected pools without deriving VRF registrations") {
     List(9, 10, 11).foreach { major =>

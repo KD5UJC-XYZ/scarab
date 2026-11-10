@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.IO
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -31,11 +32,11 @@ import StorageTestKit.*
 class NetworkIdentityV9Suite extends CatsEffectSuite:
   private val devnet = java.nio.file.Path.of("fixtures/dijkstra-devnet/genesis")
   private val setup = NodeSetup
-    .fromConfigFile(devnet.resolve("config.json"))
+    .fromConfigFile(ReferenceBuild.Default)(devnet.resolve("config.json"))
     .fold(e => fail(e.message), identity)
   // a configuration with no Dijkstra genesis
   private val eras = NodeSetup
-    .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
+    .fromDirectory(ReferenceBuild.Default)(java.nio.file.Path.of("fixtures/eras/genesis"))
     .fold(e => fail(e.message), identity)
   private val v6 = JFiles.readString(
     java.nio.file.Path.of("fixtures/network-identity-v6/network-identity"),

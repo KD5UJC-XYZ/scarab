@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.log
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import io.circe.Json
@@ -96,7 +97,9 @@ object LogSamples:
   /** The eras capture: a real genesis and a real header. */
   private val fixtures = Path.of("fixtures/eras")
   val setup: NodeSetup =
-    NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => sys.error(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(fixtures.resolve("genesis"))
+      .fold(e => sys.error(e.message), identity)
   val header: Header =
     val raw = Files.readAllLines(fixtures.resolve("blocks.hex")).asScala.find(_.nonEmpty).get
     Block

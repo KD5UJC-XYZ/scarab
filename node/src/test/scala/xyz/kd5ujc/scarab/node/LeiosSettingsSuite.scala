@@ -1,12 +1,59 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.state.Word64
 
 class LeiosSettingsSuite extends FunSuite:
   private def read(text: String): ConfigSettings =
-    NodeConfig.parse(text).fold(e => fail(e.message), _.settings)
+    NodeConfig.parse(ReferenceBuild.Default)(text).fold(e => fail(e.message), _.settings)
+
+  private val snapshotBuilds = List(
+    ReferenceBuild.Release11_1 -> BigInt(600),
+    ReferenceBuild.LeiosB004fe0c -> BigInt(21600)
+  )
+
+  snapshotBuilds.foreach { (build, maximum) =>
+    test(
+      s"${build.name}: omitted, Mithril and incomplete delay settings use the binary's defaults"
+    ) {
+      val inputs = List(
+        "{}",
+        """{"LedgerDB":null}""",
+        """{"LedgerDB":{}}""",
+        """{"LedgerDB":{"Snapshots":{}}}""",
+        """{"LedgerDB":{"Snapshots":"Mithril"}}""",
+        """{"LedgerDB":{"MinDelay":90000}}""",
+        """{"LedgerDB":{"MaxDelay":-1}}""",
+        """{"LedgerDB":{"Snapshots":{"MinDelay":90000}}}""",
+        """{"LedgerDB":{"Snapshots":{"MaxDelay":-1}}}"""
+      )
+      inputs.foreach { input =>
+        val settings =
+          NodeConfig.parse(build)(input).fold(e => fail(e.message), _.settings.ledgerDb.snapshots)
+        assertEquals(settings.minimumDelaySeconds, BigInt(300), input)
+        assertEquals(settings.maximumDelaySeconds, maximum, input)
+      }
+    }
+
+    test(
+      s"${build.name}: a complete explicit delay pair wins, including the other build's default"
+    ) {
+      List(BigInt(-1), BigInt(600), BigInt(21600)).foreach { explicit =>
+        val fields = s"""{"MinDelay":-20,"MaxDelay":$explicit}"""
+        List(s"""{"LedgerDB":$fields}""", s"""{"LedgerDB":{"Snapshots":$fields}}""").foreach {
+          input =>
+            val settings = NodeConfig
+              .parse(build)(input)
+              .fold(e => fail(e.message), _.settings.ledgerDb.snapshots)
+            assertEquals(settings.minimumDelaySeconds, BigInt(-20), input)
+            assertEquals(settings.maximumDelaySeconds, explicit, input)
+        }
+      }
+      assert(NodeConfig.parse(build)("""{"LedgerDB":{"MinDelay":10,"MaxDelay":9}}""").isLeft)
+    }
+  }
 
   test("Double bit patterns agree with the executed aeson 2.3.1.0 and scientific 0.3.8.1 reader") {
     // ghc -package aeson -e: fmap GHC.Float.castDoubleToWord64 (eitherDecode input :: Either String Double)
@@ -48,12 +95,18 @@ class LeiosSettingsSuite extends FunSuite:
   test("Dijkstra fields are ignored unless experimental hard forks are enabled") {
     val invalid =
       """"DijkstraGenesisFile":5,"DijkstraGenesisHash":false,"TestDijkstraHardForkAtEpoch":-1,"TestDijkstraHardForkAtVersion":[]"""
-    val disabled = NodeConfig.parse("{" + invalid + "}").fold(e => fail(e.message), identity)
+    val disabled = NodeConfig
+      .parse(ReferenceBuild.Default)("{" + invalid + "}")
+      .fold(e => fail(e.message), identity)
     assertEquals(disabled.files.dijkstra, None)
     assertEquals(disabled.hashes.dijkstra, None)
     assertEquals(disabled.settings.dijkstraHardForkEpoch, None)
     assertEquals(disabled.settings.dijkstraHardForkVersion, None)
-    assert(NodeConfig.parse("{\"ExperimentalHardForksEnabled\":true," + invalid + "}").isLeft)
+    assert(
+      NodeConfig
+        .parse(ReferenceBuild.Default)("{\"ExperimentalHardForksEnabled\":true," + invalid + "}")
+        .isLeft
+    )
   }
 
   test("enabled Dijkstra triggers retain the full unsigned Word64 range") {
@@ -64,7 +117,13 @@ class LeiosSettingsSuite extends FunSuite:
     assertEquals(settings.dijkstraHardForkVersion, Some(BigInt(12)))
     for key <- List("TestDijkstraHardForkAtEpoch", "TestDijkstraHardForkAtVersion") do
       for value <- List("-1", "18446744073709551616", "1.1", "\"12\"") do
-        assert(NodeConfig.parse(s"""{"ExperimentalHardForksEnabled":true,"$key":$value}""").isLeft)
+        assert(
+          NodeConfig
+            .parse(ReferenceBuild.Default)(
+              s"""{"ExperimentalHardForksEnabled":true,"$key":$value}"""
+            )
+            .isLeft
+        )
   }
 
   test("Leios backend requires its selector, while lead accepts zero and maximum Word64") {
@@ -77,9 +136,9 @@ class LeiosSettingsSuite extends FunSuite:
       Some(Word64.max)
     )
     for value <- List("{}", "{\"Backend\":null}", "{\"Backend\":\"Other\"}", "\"SQLite\"") do
-      assert(NodeConfig.parse(s"""{"LeiosDbConfig":$value}""").isLeft)
+      assert(NodeConfig.parse(ReferenceBuild.Default)(s"""{"LeiosDbConfig":$value}""").isLeft)
     for value <- List("-1", "18446744073709551616", "0.5", "\"1\"") do
-      assert(NodeConfig.parse(s"""{"LeiosMinOfferLead":$value}""").isLeft)
+      assert(NodeConfig.parse(ReferenceBuild.Default)(s"""{"LeiosMinOfferLead":$value}""").isLeft)
   }
 
   test("Word64 and signed Int settings refuse normalization overflow as the reference does") {
@@ -95,7 +154,7 @@ class LeiosSettingsSuite extends FunSuite:
           s"""{"LedgerDB":{"QueryBatchSize":$value}}""",
           s"""{"LeiosAdaptiveEndorsements":{"AliveWindow":$value}}"""
         )
-      do assert(NodeConfig.parse(config).isLeft, config)
+      do assert(NodeConfig.parse(ReferenceBuild.Default)(config).isLeft, config)
   }
 
   test("adaptive presence enables defaults and disabled settings still parse every field") {
@@ -118,7 +177,9 @@ class LeiosSettingsSuite extends FunSuite:
     do
       assert(
         NodeConfig
-          .parse(s"""{"LeiosAdaptiveEndorsements":{"Enabled":false,"$key":$value}}""")
+          .parse(ReferenceBuild.Default)(
+            s"""{"LeiosAdaptiveEndorsements":{"Enabled":false,"$key":$value}}"""
+          )
           .isLeft
       )
     assertEquals(
@@ -144,7 +205,7 @@ class LeiosSettingsSuite extends FunSuite:
     )
     assertEquals(read("""{"EgressBudgetMbps":-2.5}""").leios.egressBudgetMbps, -2.5)
     for value <- List("\"250\"", "\"Infinity\"", "\"NaN\"", "true", "[]") do
-      assert(NodeConfig.parse(s"""{"EgressBudgetMbps":$value}""").isLeft)
+      assert(NodeConfig.parse(ReferenceBuild.Default)(s"""{"EgressBudgetMbps":$value}""").isLeft)
   }
 
   test("nested snapshots win over deprecated keys, but malformed top-level values still fail") {
@@ -157,12 +218,16 @@ class LeiosSettingsSuite extends FunSuite:
     assertEquals(settings.deprecated, List("SnapshotInterval", "NumOfDiskSnapshots"))
     assert(
       NodeConfig
-        .parse("""{"SnapshotInterval":0,"LedgerDB":{"Snapshots":{"SnapshotInterval":20}}}""")
+        .parse(ReferenceBuild.Default)(
+          """{"SnapshotInterval":0,"LedgerDB":{"Snapshots":{"SnapshotInterval":20}}}"""
+        )
         .isLeft
     )
     assert(
       NodeConfig
-        .parse("""{"SnapshotInterval":10,"LedgerDB":{"Snapshots":{"SnapshotInterval":0}}}""")
+        .parse(ReferenceBuild.Default)(
+          """{"SnapshotInterval":10,"LedgerDB":{"Snapshots":{"SnapshotInterval":0}}}"""
+        )
         .isLeft
     )
   }
@@ -175,7 +240,11 @@ class LeiosSettingsSuite extends FunSuite:
     ).ledgerDb
     assertEquals(settings.snapshots, LedgerSnapshotSettings())
     for value <- List("\"Mithril\"", "{}", "false") do
-      assert(NodeConfig.parse(s"""{"LedgerDB":{"SlotOffset":0,"Snapshots":$value}}""").isLeft)
+      assert(
+        NodeConfig
+          .parse(ReferenceBuild.Default)(s"""{"LedgerDB":{"SlotOffset":0,"Snapshots":$value}}""")
+          .isLeft
+      )
     assertEquals(
       read("""{"LedgerDB":{"SlotOffset":null,"Snapshots":"Mithril"}}""").ledgerDb.snapshots,
       LedgerSnapshotSettings()
@@ -197,9 +266,13 @@ class LeiosSettingsSuite extends FunSuite:
       read("""{"LedgerDB":{"MinDelay":90000}}""").ledgerDb.snapshots,
       LedgerSnapshotSettings()
     )
-    assert(NodeConfig.parse("""{"LedgerDB":{"MinDelay":"300"}}""").isLeft)
-    assert(NodeConfig.parse("""{"LedgerDB":{"MinDelay":10,"MaxDelay":9}}""").isLeft)
-    assert(NodeConfig.parse("""{"LedgerDB":{"RateLimit":1e1025}}""").isLeft)
+    assert(NodeConfig.parse(ReferenceBuild.Default)("""{"LedgerDB":{"MinDelay":"300"}}""").isLeft)
+    assert(
+      NodeConfig
+        .parse(ReferenceBuild.Default)("""{"LedgerDB":{"MinDelay":10,"MaxDelay":9}}""")
+        .isLeft
+    )
+    assert(NodeConfig.parse(ReferenceBuild.Default)("""{"LedgerDB":{"RateLimit":1e1025}}""").isLeft)
   }
 
   test("LSM paths are read only for the LSM backend") {
@@ -213,7 +286,13 @@ class LeiosSettingsSuite extends FunSuite:
       ).ledgerDb.backend,
       LedgerDbBackend.V2LSM(Some("data"), Some("export"))
     )
-    assert(NodeConfig.parse("""{"LedgerDB":{"Backend":"V2LSM","LSMDatabasePath":false}}""").isLeft)
+    assert(
+      NodeConfig
+        .parse(ReferenceBuild.Default)(
+          """{"LedgerDB":{"Backend":"V2LSM","LSMDatabasePath":false}}"""
+        )
+        .isLeft
+    )
   }
 
   test("explicit unused settings are reported, including disabled adaptive settings") {

@@ -56,7 +56,9 @@ class SnapshotGoldenSuite extends CatsEffectSuite:
     def environment: ConsensusMirrorEnv =
       val directory =
         if preview then JPath.of("fixtures/preview/genesis") else JPath.of("fixtures/eras/genesis")
-      NodeSetup.fromDirectory(directory).fold(e => fail(e.message), _.mirrorEnv())
+      NodeSetup
+        .fromDirectory(ReferenceBuild.Default)(directory)
+        .fold(e => fail(e.message), _.mirrorEnv())
 
   private val previewV5 = "02c716ef8de7d837c86c4b8da3588a583a1f17f5a93fdc0c152916e3d6534bcd"
   private val conwayV5 = "ce2dcdd6bcc747169817defc3158cb364c79d72cbbea41319b51360b5edeabf2"

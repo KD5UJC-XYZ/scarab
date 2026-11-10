@@ -18,6 +18,54 @@ import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
   * startup refusal of a build not implemented yet.
   */
 class ReferenceBuildSuite extends FunSuite:
+  test(
+    "configuration defaults follow the selected build through file, directory and absent config setup"
+  ) {
+    val dir = Path.of("fixtures", "preview", "genesis")
+    List(ReferenceBuild.Release11_1 -> BigInt(600), ReferenceBuild.LeiosB004fe0c -> BigInt(21600))
+      .foreach { (build, maximum) =>
+        val options = Main
+          .parse(
+            List(
+              "follow",
+              "--genesis-dir",
+              dir.toString,
+              "--peer",
+              "127.0.0.1:3001",
+              "--reference-build",
+              build.name
+            )
+          )
+          .fold(e => fail(e.message), identity)
+        val directory = Main.nodeSetup(options).fold(e => fail(e.message), identity)
+        val configured = Main
+          .nodeSetup(options.copy(configFile = Some(dir.resolve("config.json"))))
+          .fold(e => fail(e.message), identity)
+        val absent = NodeSetup
+          .fromFiles(build) { name =>
+            Option.when(!NodeSetup.ConfigNames.contains(name) && Files.exists(dir.resolve(name)))(
+              Files.readAllBytes(dir.resolve(name))
+            )
+          }
+          .fold(e => fail(e.message), identity)
+        List(directory, configured, absent).foreach { setup =>
+          assertEquals(
+            setup.config.settings.ledgerDb.snapshots.maximumDelaySeconds,
+            maximum,
+            build.name
+          )
+        }
+        val preliminary = NodeSetup
+          .readConfig(build)(dir.resolve("config.json"))
+          .fold(e => fail(e.message), identity)
+        assertEquals(
+          preliminary.settings.ledgerDb.snapshots.maximumDelaySeconds,
+          maximum,
+          build.name
+        )
+      }
+  }
+
   test("every build prints as its flag string and parses back; any other text is a typed error") {
     ReferenceBuild.values.foreach(b => assertEquals(ReferenceBuild.parse(b.name), Right(b)))
     assertEquals(ReferenceBuild.values.map(_.name).toVector, Vector("11.1", "leios-b004fe0c"))

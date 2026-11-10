@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import io.circe.{Json, parser}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
@@ -31,7 +32,7 @@ class GenesisSecurityParamSuite extends FunSuite:
             .getBytes("UTF-8")
         else bytes
       }
-    NodeSetup.fromFiles(read)
+    NodeSetup.fromFiles(ReferenceBuild.Default)(read)
 
   test("a security parameter beyond Int is refused at the node setup, not truncated") {
     val k = BigInt(Int.MaxValue) + 1

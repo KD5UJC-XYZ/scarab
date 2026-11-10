@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission.message
 import cats.Show
 import cats.data.NonEmptyChain
@@ -159,7 +160,7 @@ class ReferenceRefusalSuite extends FunSuite:
   ): Either[ReplayProblem, Recorded[E]] =
     for
       setup <- NodeSetup
-        .fromFiles(name => c.genesis.get(name).map(_.toArray))
+        .fromFiles(ReferenceBuild.Default)(name => c.genesis.get(name).map(_.toArray))
         .leftMap(ReplayProblem.Genesis(_))
       state <- c.states.get(rc.state).toRight(ReplayProblem.NoFile(rc.state))
       utxoBytes <- c.utxos.get(rc.utxo).toRight(ReplayProblem.NoFile(rc.utxo))

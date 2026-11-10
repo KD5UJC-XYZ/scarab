@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import java.lang.management.ManagementFactory
 import java.nio.file.{Files, Path}
@@ -49,7 +50,7 @@ object SnapshotCodecBench extends Assertions:
     val content = checked(
       FileLedgerSnapshots.verified(raw).flatMap(xyz.kd5ujc.scarab.node.NativeSnapshots.current)
     )
-    val env = checked(NodeSetup.fromDirectory(Path.of(args(2)))).mirrorEnv()
+    val env = checked(NodeSetup.fromDirectory(ReferenceBuild.Default)(Path.of(args(2)))).mirrorEnv()
     println(s"INPUT $label bytes=${raw.length} sha256=${sha(raw)}")
     val initial = checked(SnapshotV10.decode(env, ReferenceLayout.Release11_1, content))
     println(s"INPUT_STATE $label ${sha(initial.toString.getBytes("UTF-8"))}")

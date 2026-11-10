@@ -532,11 +532,11 @@ object Main extends IOApp:
   /** The node configuration and genesis the options point to. */
   private[node] def nodeSetup(options: Options): Either[ConfigError, NodeSetup] =
     options.configFile match
-      case Some(file) => NodeSetup.fromConfigFile(file, options.genesisDir)
+      case Some(file) => NodeSetup.fromConfigFile(options.referenceBuild)(file, options.genesisDir)
       case None =>
         options.genesisDir
           .toRight(ConfigError(ConfigProblem.RequiredOneOf(Set("--config", "--genesis-dir"))))
-          .flatMap(NodeSetup.fromDirectory)
+          .flatMap(NodeSetup.fromDirectory(options.referenceBuild))
 
   /** The node-to-client socket path: `--local-socket`, else, with `--config`, the file's
     * `SocketPath`, as it was written (the reference's `ncSocketPath`, not normalised).
@@ -660,7 +660,7 @@ object Main extends IOApp:
       // the configuration, then the VRF key's permissions, then the genesis and the credentials
       // (`Run.hs` 183-201)
       _ <- requested.configFile.traverse_(file =>
-        IO.blocking(NodeSetup.readConfig(file)).flatMap(admitted)
+        IO.blocking(NodeSetup.readConfig(requested.referenceBuild)(file)).flatMap(admitted)
       )
       _ <- requested.forge.traverse_(files =>
         KeyGuard.permissions[IO](files.vrfSkey, Log.sink[ForgeEvents, ForgeEvent, IO])

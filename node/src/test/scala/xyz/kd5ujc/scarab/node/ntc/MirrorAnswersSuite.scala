@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.{IO, Ref}
 import cats.effect.std.Mutex
 import cats.effect.unsafe.implicits.global
@@ -38,7 +39,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
 class MirrorAnswersSuite extends FunSuite:
   private val fixtures = Path.of("fixtures/eras")
   private val setup: NodeSetup =
-    NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(fixtures.resolve("genesis"))
+      .fold(e => fail(e.message), identity)
 
   private val queryEnv = QueryEnv(
     setup.byronParams

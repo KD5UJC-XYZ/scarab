@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.{IO, IOApp}
 import cats.mtl.{Ask, Handle}
@@ -74,7 +75,7 @@ object PreviewRuleBench extends IOApp.Simple with Assertions:
   val run: IO[Unit] = Handle
     .allow[StorageError] {
       RocksUtxoStore.resource[IO](Path("/scratch/rocks")).use { store =>
-        val setup = checked(NodeSetup.fromDirectory(JPath.of("/configs")))
+        val setup = checked(NodeSetup.fromDirectory(ReferenceBuild.Default)(JPath.of("/configs")))
         given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
         val globals = Globals(setup.globals, setup.geometry)
         // This pinned window is entirely Conway/protocol 11; no era transition is synthesized.

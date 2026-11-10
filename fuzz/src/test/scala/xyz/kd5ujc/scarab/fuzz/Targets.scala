@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.fuzz
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.syntax.all.*
 import fs2.Chunk
@@ -1637,7 +1638,7 @@ object Targets:
     }
     import scala.jdk.CollectionConverters.*
     lazy val env = NodeSetup
-      .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
+      .fromDirectory(ReferenceBuild.Default)(java.nio.file.Path.of("fixtures/eras/genesis"))
       .fold(e => throw new Violation(e.message), _.mirrorEnv())
     lazy val format =
       given Ask[SyncIO, ConsensusMirrorEnv] = Ask.const(env)
@@ -1937,21 +1938,23 @@ object Targets:
         () => configs ++ minimal ++ Corpus.tricky,
         probe("node-config-strict") { bytes =>
           val text = new String(bytes.toArray, UTF_8)
-          if strictRefused.exists(seed => java.util.Arrays.equals(bytes.toArray, seed)) then
-            req(
-              NodeConfig.parse(text, strict = true).isLeft,
-              "a configuration naming none of the required fields is accepted strictly, so the checks do not bite"
-            )
-            req(
-              NodeConfig.parse(text).isRight,
-              "a configuration refused only for a missing required field is refused without the checks too"
-            )
-          NodeConfig.parse(text, strict = true).foreach { config =>
-            req(
-              NodeConfig.parse(text) == Right(config),
-              "a configuration read strictly is not read with the same value without the checks"
-            )
-            hit("node-config-strict")
+          ReferenceBuild.values.foreach { build =>
+            if strictRefused.exists(seed => java.util.Arrays.equals(bytes.toArray, seed)) then
+              req(
+                NodeConfig.parse(build)(text, strict = true).isLeft,
+                "a configuration naming none of the required fields is accepted strictly, so the checks do not bite"
+              )
+              req(
+                NodeConfig.parse(build)(text).isRight,
+                "a configuration refused only for a missing required field is refused without the checks too"
+              )
+            NodeConfig.parse(build)(text, strict = true).foreach { config =>
+              req(
+                NodeConfig.parse(build)(text) == Right(config),
+                "a configuration read strictly is not read with the same value without the checks"
+              )
+              hit("node-config-strict")
+            }
           }
         }
       )
@@ -2200,14 +2203,16 @@ object Targets:
         ),
       probe("node-config") { bytes =>
         val text = new String(bytes.toArray, java.nio.charset.StandardCharsets.UTF_8)
-        NodeConfig.parse(text).foreach { config =>
-          hit("node-config")
-          if !config.settings.experimentalHardForksEnabled then
-            req(
-              config.files.dijkstra.isEmpty && config.hashes.dijkstra.isEmpty &&
-                config.settings.dijkstraHardForkEpoch.isEmpty && config.settings.dijkstraHardForkVersion.isEmpty,
-              "disabled Dijkstra fields were retained"
-            )
+        ReferenceBuild.values.foreach { build =>
+          NodeConfig.parse(build)(text).foreach { config =>
+            hit("node-config")
+            if !config.settings.experimentalHardForksEnabled then
+              req(
+                config.files.dijkstra.isEmpty && config.hashes.dijkstra.isEmpty &&
+                  config.settings.dijkstraHardForkEpoch.isEmpty && config.settings.dijkstraHardForkVersion.isEmpty,
+                "disabled Dijkstra fields were retained"
+              )
+          }
         }
       }
     )

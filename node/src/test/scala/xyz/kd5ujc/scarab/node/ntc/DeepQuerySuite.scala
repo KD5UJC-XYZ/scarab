@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.data.EitherT
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.kernel.MonadCancel
@@ -36,7 +37,7 @@ class DeepQuerySuite extends FunSuite:
   private type StorageF[A] = EitherT[IO, StorageError, A]
   private val depth = 20000
   private val setup = NodeSetup
-    .fromDirectory(Path.of("fixtures/devnet/lsq/genesis"))
+    .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/devnet/lsq/genesis"))
     .fold(e => fail(e.message), identity)
   private val env = QueryEnv(
     setup.geometry.systemStart,
@@ -170,7 +171,7 @@ class DeepQuerySuite extends FunSuite:
 
   test("pre-Conway era gate peels wrappers for both accepted and refused query kinds") {
     val beforeConway = NodeSetup
-      .fromDirectory(Path.of("fixtures/eras/genesis"))
+      .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/eras/genesis"))
       .fold(e => fail(e.message), identity)
     // The public era capture has 50 Byron blocks, followed by its first Shelley block.
     val state = Files

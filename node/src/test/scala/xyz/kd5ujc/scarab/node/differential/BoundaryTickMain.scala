@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.differential
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import java.nio.file.{Files, Path}
@@ -105,7 +106,9 @@ object BoundaryTickMain:
 
   def main(args: Array[String]): Unit =
     val db = Path.of(args(0))
-    val setup = NodeSetup.fromDirectory(Path.of(args(1))).fold(e => fail(e.message), identity)
+    val setup = NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(Path.of(args(1)))
+      .fold(e => fail(e.message), identity)
     val (first, last) = (args(2).toInt, args(3).toInt)
     val repeats = args.lift(4).fold(1)(_.toInt)
     val snapshots = snapshotFiles(db)
