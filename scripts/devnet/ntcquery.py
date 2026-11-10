@@ -181,13 +181,18 @@ class _HostSocket:
 
 
 # Byte relays between stdin/stdout and a unix socket inside a container, by name. The reference images
-# have `socat`; the Leios build's image has none, but has perl with IO::Socket::UNIX, so `perl` copies
-# both ways the same (the writer half-closes the socket when stdin ends, as socat does).
+# have `socat`; the Leios build's image has none, but has perl with IO::Socket::UNIX. `perl` is one
+# process that copies both ways as socat does: the end of stdin half-closes the socket, and the end of
+# the socket ends the relay, so the client reads the end of stdout when the node closes.
 PERL_RELAY = (
-    "use IO::Socket::UNIX; my $s = IO::Socket::UNIX->new(Type => SOCK_STREAM(), Peer => $ARGV[0]) or die $!;"
-    " sub copy { my ($from, $to) = @_; my $b; while ((my $n = sysread($from, $b, 65536)) > 0) {"
-    " my $o = 0; while ($o < $n) { my $w = syswrite($to, $b, $n - $o, $o); defined $w or return; $o += $w } } }"
-    " if (my $pid = fork) { copy(*STDIN, $s); shutdown($s, 1); waitpid($pid, 0) } else { copy($s, *STDOUT) }")
+    "use IO::Socket::UNIX; use IO::Select;"
+    " my $s = IO::Socket::UNIX->new(Type => SOCK_STREAM(), Peer => $ARGV[0]) or die $!;"
+    " my $in = \\*STDIN; my $select = IO::Select->new($in, $s);"
+    " sub put { my ($to, $b, $n) = @_; my $o = 0;"
+    " while ($o < $n) { my $w = syswrite($to, $b, $n - $o, $o); defined $w or exit 1; $o += $w } }"
+    " while (my @ready = $select->can_read) { for my $from (@ready) { my $n = sysread($from, my $b, 65536);"
+    " if ($from == $s) { $n or exit 0; put(\\*STDOUT, $b, $n) }"
+    " elsif ($n) { put($s, $b, $n) } else { $select->remove($in); shutdown($s, 1) } } }")
 RELAYS = {
     "socat": lambda socket: ["socat", "-", f"UNIX-CONNECT:{socket}"],
     "perl": lambda socket: ["perl", "-e", PERL_RELAY, socket],

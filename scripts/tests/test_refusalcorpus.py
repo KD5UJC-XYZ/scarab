@@ -127,6 +127,42 @@ class PerlRelay(unittest.TestCase):
             self.assertEqual(relay.returncode, 0, relay.stderr)
             self.assertEqual(relay.stdout, payload[::-1])
 
+    def test_the_node_closing_ends_the_relay_while_stdin_is_open(self):
+        """A session reads the end of stdout when the node closes, not only when it closes stdin itself."""
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "sock")
+            server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            server.bind(path)
+            server.listen(1)
+
+            def answer_and_close():
+                conn, _ = server.accept()
+                with conn:
+                    conn.recv(4)
+                    conn.sendall(b"bye")
+
+            worker = threading.Thread(target=answer_and_close)
+            worker.start()
+            relay = subprocess.Popen(ntcquery.RELAYS["perl"](path), stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            out = []
+            reader = threading.Thread(target=lambda: out.append(relay.stdout.read()))
+            try:
+                relay.stdin.write(b"ping")
+                relay.stdin.flush()
+                reader.start()
+                reader.join(timeout=30)
+                ended = not reader.is_alive()
+            finally:
+                relay.kill()
+                relay.wait()
+                reader.join(timeout=30)
+                relay.stdin.close()
+                relay.stdout.close()
+                worker.join(timeout=30)
+                server.close()
+            self.assertTrue(ended, "stdout stayed open after the node closed")
+            self.assertEqual(out, [b"bye"])
+
 
 if __name__ == "__main__":
     unittest.main()
