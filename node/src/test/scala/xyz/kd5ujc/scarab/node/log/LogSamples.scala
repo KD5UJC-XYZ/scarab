@@ -6,7 +6,7 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import io.circe.Json
 import io.circe.syntax.*
-import com.comcast.ip4s.{Host, Port, SocketAddress, host, port}
+import com.comcast.ip4s.{Host, Port, SocketAddress, host, ip, port}
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.crypto.bls.{BlstReport, CpuFeature, CpuSupport, LibraryBuild, Platform}
@@ -546,8 +546,8 @@ object LogSamples:
     FollowerEvent.Reconnecting(
       PeerError.Unavailable(
         PeerError.Unavailability.Network(
-          xyz.kd5ujc.scarab.protocol.NetworkError
-            .Connect("10.0.0.1:3001", new java.io.IOException("connection refused"))
+          xyz.kd5ujc.scarab.network.ConnectFailures
+            .connect(SocketAddress(ip"10.0.0.1", port"3001"))
         )
       ),
       3

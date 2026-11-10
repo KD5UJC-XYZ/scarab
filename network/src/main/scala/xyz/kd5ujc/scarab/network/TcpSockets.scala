@@ -5,14 +5,15 @@ import cats.data.EitherT
 import cats.effect.{Async, Resource}
 import cats.effect.std.Mutex
 import cats.effect.syntax.all.*
+import cats.mtl.Raise
+import cats.mtl.syntax.all.*
 import cats.syntax.all.*
-import com.comcast.ip4s.{IpAddress, SocketAddress}
+import com.comcast.ip4s.{Host, IpAddress, Ipv4Address, Ipv6Address, SocketAddress}
 import fs2.{Chunk, Stream}
 import java.io.IOException
 import java.net.{InetSocketAddress, StandardProtocolFamily, StandardSocketOptions}
 import java.nio.channels.{NetworkChannel, ServerSocketChannel, SocketChannel}
 import scala.concurrent.duration.FiniteDuration
-import xyz.kd5ujc.scarab.codec.DomainError
 import xyz.kd5ujc.scarab.network.selection.DiffusionMode
 import xyz.kd5ujc.scarab.protocol.ConnectionIdentityError
 
@@ -32,21 +33,21 @@ object SocketFamily:
   * `ouroboros-network/framework/lib/Ouroboros/Network/Socket.hs` 148-170), in the order it sets
   * them.
   */
-enum SocketSetting:
+enum SocketSetting(val option: String):
   /** `SO_REUSEADDR` 1. */
-  case ReuseAddress
+  case ReuseAddress extends SocketSetting("SO_REUSEADDR")
 
   /** `SO_REUSEPORT` 1 (the reference skips it on Windows only). */
-  case ReusePort
+  case ReusePort extends SocketSetting("SO_REUSEPORT")
 
   /** `TCP_NODELAY` 1. */
-  case NoDelay
+  case NoDelay extends SocketSetting("TCP_NODELAY")
 
   /** `SO_LINGER` on with 0 s: `close` resets the connection, and the closer keeps no TIME_WAIT. */
-  case LingerZero
+  case LingerZero extends SocketSetting("SO_LINGER")
 
   /** `IPV6_V6ONLY` 1, for a socket configured with an IPv6 address. */
-  case Ipv6Only
+  case Ipv6Only extends SocketSetting("IPV6_V6ONLY")
 
 object SocketSetting:
   /** What `configureSocket sock addr` sets: every setting, and [[Ipv6Only]] only when `addr` (the
@@ -64,6 +65,34 @@ object SocketSetting:
     case NoDelay | LingerZero => false
     case _                    => true
 
+/** The node's own listening addresses, one of each family: the connection manager's `ipv4Address`
+  * and `ipv6Address` (ouroboros-network 2fb69829, `Diffusion.hs` 427-445,
+  * `ConnectionManager/Core.hs` 1472-1491), the configured addresses as they are, port included.
+  */
+final case class NodeAddresses(
+    ipv4: Option[SocketAddress[Ipv4Address]],
+    ipv6: Option[SocketAddress[Ipv6Address]]
+):
+  /** The address of `family`, if the node has one. */
+  def of(family: SocketFamily): Option[SocketAddress[IpAddress]] = family match
+    case SocketFamily.Inet  => ipv4
+    case SocketFamily.Inet6 => ipv6
+
+object NodeAddresses:
+  /** A node that does not listen: its outbound sockets are bound to nothing. */
+  val none: NodeAddresses = NodeAddresses(None, None)
+
+  /** The node listening at `address`. An IPv6 address is refused with `Unsupported(Ipv6Only)`: the
+    * reference makes every IPv6 socket of the node IPv6-only, and the JDK cannot (`TcpSockets`).
+    * This is an approved deviation (issue 854, owner decision of 2026-11-09); setting the option
+    * through the foreign-function interface is issue 859.
+    */
+  def listening(address: SocketAddress[IpAddress]): Either[TcpSocketError, NodeAddresses] =
+    address.host.fold(
+      v4 => Right(NodeAddresses(Some(SocketAddress(v4, address.port)), None)),
+      _ => Left(TcpSocketError.Unsupported(SocketSetting.Ipv6Only))
+    )
+
 /** What the reference's connection manager does with a fresh outbound socket before `connect`
   * (ouroboros-network 2fb69829, `ConnectionManager/Core.hs` 1472-1491): it configures the socket
   * for the node's own address of the remote's family, and binds the socket to that address, port
@@ -77,32 +106,25 @@ final case class OutboundPlan(
 )
 
 object OutboundPlan:
-  /** @param ipv4
-    *   the node's configured IPv4 listening address, if any (`ipv4Address`)
-    * @param ipv6
-    *   the node's configured IPv6 listening address, if any (`ipv6Address`)
+  /** @param own
+    *   the node's own listening addresses
     * @param mode
     *   the diffusion mode of this connection
     */
-  def of(
-      remote: SocketAddress[IpAddress],
-      ipv4: Option[SocketAddress[IpAddress]],
-      ipv6: Option[SocketAddress[IpAddress]],
-      mode: DiffusionMode
-  ): OutboundPlan =
+  def of(remote: SocketAddress[IpAddress], own: NodeAddresses, mode: DiffusionMode): OutboundPlan =
     val family = SocketFamily.of(remote.host)
-    val own = family match
-      case SocketFamily.Inet  => ipv4
-      case SocketFamily.Inet6 => ipv6
+    val address = own.of(family)
     OutboundPlan(
       remote,
       family,
-      SocketSetting.configured(own.map(a => SocketFamily.of(a.host))),
-      own.filter(_ => mode == DiffusionMode.InitiatorAndResponder)
+      SocketSetting.configured(address.map(a => SocketFamily.of(a.host))),
+      address.filter(_ => mode == DiffusionMode.InitiatorAndResponder)
     )
 
 /** A call on a TCP socket. */
 enum SocketStep:
+  /** Resolving a host name before a tool's connection (the node resolves its peers itself). */
+  case Resolve(host: Host)
   case Open(family: SocketFamily)
   case Configure(setting: SocketSetting)
 
@@ -114,8 +136,21 @@ enum SocketStep:
   /** Reading the socket's addresses or options back. */
   case Inspect
 
+  /** The location the reference's `IOError` names for this call: network 3.2.8.0's, without the
+    * socket's descriptor that its `connect` adds (the JDK does not tell it; issue 854), and a
+    * description of the two calls that are not one of the reference's here.
+    */
+  def location: String = this match
+    case Resolve(host) => s"resolve $host"
+    case Open(_)       => SystemCall.Socket.location
+    case Configure(_)  => "Network.Socket.setSockOpt"
+    case Bind(_)       => SystemCall.Bind.location
+    case Connect(_)    => "Network.Socket.connect"
+    case Accept        => SystemCall.Accept.location
+    case Inspect       => "socket inspection"
+
 /** Why a TCP socket could not be opened, configured, bound, connected or accepted. */
-enum TcpSocketError extends DomainError:
+enum TcpSocketError extends NetworkError.SocketFailure:
   /** A call failed with an errno, read from the JDK's exception ([[Errno.of]]). */
   case Failed(step: SocketStep, cause: ErrnoCause)
 
@@ -126,6 +161,15 @@ enum TcpSocketError extends DomainError:
 
   /** An exception that is not one of the socket's own, from a library or a bug. */
   case Defect(cause: Throwable)
+
+  /** The text of the failure, as GHC shows the reference's `IOError` where there is one
+    * (`<location>: <kind> (<reason>)`).
+    */
+  def shown: String = this match
+    case Failed(step, cause)       => s"${step.location}: ${cause.shown}"
+    case Unsupported(setting)      => s"${setting.option} cannot be set on a JDK socket"
+    case ConnectTimeout(remote, d) => s"connect $remote: no connection within $d"
+    case Defect(cause)             => cause.toString
 
 /** The settings the kernel reports for a socket. */
 final case class ObservedSettings(
@@ -154,9 +198,10 @@ trait TcpListener[F[_]]:
   def accept: Resource[F, Either[TcpSocketError, TcpStream[F]]]
 
 /** Node-to-node TCP sockets configured as the reference configures them, on blocking JDK
-  * `SocketChannel` s (prototype for issue 854; not used by the node). Every call runs on the
-  * blocking pool and a blocked read, write, connect or accept is cancelled by closing its channel
-  * ([[LocalSockets.interruptible]]), as the local socket's are.
+  * `SocketChannel` s. Every call runs on the blocking pool and a blocked read, write, connect or
+  * accept is cancelled by closing its channel ([[LocalSockets.interruptible]]), as the local
+  * socket's are. A live connection holds one blocking-pool thread while its reader waits for bytes
+  * (docs/performance.md, issue 854).
   */
 object TcpSockets:
   /** The listen backlog of the reference's socket snocket (`Snocket.hs` 386). */
@@ -275,9 +320,22 @@ object TcpSockets:
         (EitherT(configure) *> EitherT(connecting) *> EitherT(connected(channel))).value
     })
 
+  /** [[connect]] for a caller in the network's error scope: a failure is raised as the connection's
+    * `NetworkError.Connect` with its typed cause, and an exception that is not the socket's own as
+    * a defect, never as an unavailable peer.
+    */
+  def dial[F[_]: Async](plan: OutboundPlan, timeout: FiniteDuration)(using
+      Raise[F, NetworkError]
+  ): Resource[F, TcpStream[F]] =
+    connect[F](plan, timeout).evalMap {
+      case Right(stream)                      => stream.pure[F]
+      case Left(TcpSocketError.Defect(cause)) => NetworkError.Defect(cause).raise[F, TcpStream[F]]
+      case Left(error) => NetworkError.Connect(plan.remote.toString, error).raise[F, TcpStream[F]]
+    }
+
   /** Open a socket of the address's family, apply `configureSocket sock (Just address)` as far as a
     * listening JDK channel takes it ([[SocketSetting.onListener]]), then bind and listen with the
-    * reference's backlog.
+    * reference's backlog (`Diffusion/Utils.hs` 61-71).
     */
   def listen[F[_]](address: SocketAddress[IpAddress])(using
       F: Async[F]

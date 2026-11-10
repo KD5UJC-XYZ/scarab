@@ -23,21 +23,26 @@ class TcpSocketsSuite extends FailsOnUncaught:
 
   private def listening: Resource[IO, TcpListener[IO]] = right(TcpSockets.listen[IO](loopback))
 
+  /** The node's own addresses when it listens at `address`. */
+  private def node(address: SocketAddress[IpAddress]): NodeAddresses =
+    NodeAddresses.listening(address).fold(e => fail(s"not a node address: $e"), identity)
+
   /** A connection from the node listening at `own` to `remote`, bound to `own`. */
   private def dial(
       own: SocketAddress[IpAddress],
       remote: SocketAddress[IpAddress]
   ): Resource[IO, Either[TcpSocketError, TcpStream[IO]]] =
     TcpSockets.connect[IO](
-      OutboundPlan.of(remote, Some(own), None, DiffusionMode.InitiatorAndResponder),
+      OutboundPlan.of(remote, node(own), DiffusionMode.InitiatorAndResponder),
       timeout
     )
 
   test("the outbound plan binds only in InitiatorAndResponder mode, to the address of its family") {
     val remote4 = SocketAddress[IpAddress](ip"192.0.2.1", port"3001")
     val remote6 = SocketAddress[IpAddress](ip"2001:db8::1", port"3001")
-    val own4 = SocketAddress[IpAddress](ip"198.51.100.7", port"3001")
-    val own6 = SocketAddress[IpAddress](ip"2001:db8::7", port"3001")
+    val own4 = SocketAddress(ipv4"198.51.100.7", port"3001")
+    val own6 = SocketAddress(ipv6"2001:db8::7", port"3001")
+    val both = NodeAddresses(Some(own4), Some(own6))
     val base = List(
       SocketSetting.ReuseAddress,
       SocketSetting.ReusePort,
@@ -46,21 +51,21 @@ class TcpSocketsSuite extends FailsOnUncaught:
     )
     val duplex = DiffusionMode.InitiatorAndResponder
     assertEquals(
-      OutboundPlan.of(remote4, Some(own4), Some(own6), duplex),
+      OutboundPlan.of(remote4, both, duplex),
       OutboundPlan(remote4, SocketFamily.Inet, base, Some(own4))
     )
     assertEquals(
-      OutboundPlan.of(remote4, Some(own4), Some(own6), DiffusionMode.InitiatorOnly),
+      OutboundPlan.of(remote4, both, DiffusionMode.InitiatorOnly),
       OutboundPlan(remote4, SocketFamily.Inet, base, None)
     )
     assertEquals(
-      OutboundPlan.of(remote6, Some(own4), Some(own6), duplex),
+      OutboundPlan.of(remote6, both, duplex),
       OutboundPlan(remote6, SocketFamily.Inet6, base :+ SocketSetting.Ipv6Only, Some(own6))
     )
     // `configureSocket socket addr` takes the family of the node's own address: with none of the
     // remote's family configured, an IPv6 socket is not made IPv6-only
     assertEquals(
-      OutboundPlan.of(remote6, Some(own4), None, duplex),
+      OutboundPlan.of(remote6, NodeAddresses(Some(own4), None), duplex),
       OutboundPlan(remote6, SocketFamily.Inet6, base, None)
     )
   }
@@ -83,8 +88,10 @@ class TcpSocketsSuite extends FailsOnUncaught:
   }
 
   test("the fs2 listener sets no SO_REUSEPORT, so a socket cannot bind to its port") {
-    BearerServer
-      .listen[IO, NetworkError](Some(ip"127.0.0.1"), None)((_, _) => IO.unit)((_, _) => IO.unit)
+    Network
+      .forAsync[IO]
+      .bind(loopback)
+      .map(_.address.asIpUnsafe)
       .use { bound =>
         (listening).use { peer =>
           dial(bound, peer.address).use(result =>
@@ -226,14 +233,21 @@ class TcpSocketsSuite extends FailsOnUncaught:
   }
 
   test("IPV6_V6ONLY cannot be set, so an IPv6 address is refused before any bind") {
-    val own6 = SocketAddress[IpAddress](ip"::1", Port.Wildcard)
+    val own6 = SocketAddress(ipv6"::1", Port.Wildcard)
     val remote6 = SocketAddress[IpAddress](ip"::1", port"3001")
     val unsupported = Left(TcpSocketError.Unsupported(SocketSetting.Ipv6Only))
+    // the node's own address: an IPv6 one is refused (an approved deviation, issue 854)
+    assertEquals(NodeAddresses.listening(own6), unsupported)
+    assertEquals(
+      NodeAddresses.listening(SocketAddress(ip"127.0.0.1", port"3001")),
+      Right(NodeAddresses(Some(SocketAddress(ipv4"127.0.0.1", port"3001")), None))
+    )
     for
       listened <- TcpSockets.listen[IO](own6).use(r => IO(r.void))
       dialled <- TcpSockets
         .connect[IO](
-          OutboundPlan.of(remote6, None, Some(own6), DiffusionMode.InitiatorAndResponder),
+          OutboundPlan
+            .of(remote6, NodeAddresses(None, Some(own6)), DiffusionMode.InitiatorAndResponder),
           timeout
         )
         .use(r => IO(r.void))
@@ -241,3 +255,56 @@ class TcpSocketsSuite extends FailsOnUncaught:
       assertEquals(listened, unsupported)
       assertEquals(dialled, unsupported)
   }
+
+  test("a refused connection is a typed connect error, raised as NetworkError.Connect") {
+    // a port nothing listens on: a listener's, closed
+    listening.use(l => IO.pure(l.address)).flatMap { closed =>
+      val plan = OutboundPlan.of(closed, NodeAddresses.none, DiffusionMode.InitiatorOnly)
+      Peers.typed(TcpSockets.dial[IO](plan, timeout).use(_ => IO.unit)).map { raised =>
+        assertEquals(
+          raised,
+          Left(
+            NetworkError.Connect(
+              closed.toString,
+              TcpSocketError
+                .Failed(SocketStep.Connect(closed), ErrnoCause.Known(Errno.ECONNREFUSED))
+            )
+          )
+        )
+      }
+    }
+  }
+
+  test("the listener's backlog is the reference's 8: a ninth connection waits beyond it") {
+    // Linux queues one connection more than the backlog (`sk_acceptq_is_full`), and drops a SYN
+    // that finds the queue full, so the tenth connect gets no answer while nothing accepts
+    val queued = Backlog + 1
+    listening.use { node =>
+      List
+        .fill(queued)(
+          TcpSockets.connect[IO](
+            OutboundPlan.of(node.address, NodeAddresses.none, DiffusionMode.InitiatorOnly),
+            timeout
+          )
+        )
+        .sequence
+        .use { connected =>
+          TcpSockets
+            .connect[IO](
+              OutboundPlan.of(node.address, NodeAddresses.none, DiffusionMode.InitiatorOnly),
+              500.millis
+            )
+            .use(beyond =>
+              IO {
+                assertEquals(connected.count(_.isRight), queued)
+                assertEquals(
+                  beyond.void,
+                  Left(TcpSocketError.ConnectTimeout(node.address, 500.millis))
+                )
+              }
+            )
+        }
+    }
+  }
+
+  private val Backlog = TcpSockets.Backlog

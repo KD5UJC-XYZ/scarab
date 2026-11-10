@@ -24,14 +24,14 @@ class ConnectionIdSuite extends FailsOnUncaught:
               accept = server.accept
                 .take(1)
                 .evalMap { socket =>
-                  present(Bearer.fromSocket(socket).connectionId)
+                  present(Fs2Bearer.fromSocket(socket).connectionId)
                     .flatMap(value => received.complete(value).void *> IO.never[Unit])
                 }
                 .compile
                 .drain
               _ <- accept.background.use { _ =>
                 Network[IO].connect(server.address).use { socket =>
-                  Mux.resource(Bearer.fromSocket(socket), Set.empty).use { mux =>
+                  Mux.resource(Fs2Bearer.fromSocket(socket), Set.empty).use { mux =>
                     received.get.map { peer =>
                       val ours = key(present(mux.connectionId))
                       val theirs = key(peer)

@@ -77,7 +77,7 @@ class NodeToNodeSuite extends FailsOnUncaught:
               (for
                 pings <- Resource.eval(Ref.of[IO, Int](0))
                 server <- Mux.resource(
-                  Bearer.fromSocket(socket),
+                  Fs2Bearer.fromSocket(socket),
                   Set(0, 2, 3, 8),
                   Mux.Config(role = Mux.Role.Responder)
                 )

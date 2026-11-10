@@ -22,8 +22,10 @@ trait Transport[F[_], A]:
   /** The address the connection manager knows the peer by. */
   def resolve(peer: A): F[Either[PeerError, SocketAddress[IpAddress]]]
 
-  /** Open the bearer to a resolved peer. */
-  def bearer(peer: A, remote: SocketAddress[IpAddress])(using
+  /** Open the bearer to a resolved peer, for a connection in diffusion `mode` (which decides
+    * whether the TCP socket is bound to the node's listening address).
+    */
+  def bearer(peer: A, remote: SocketAddress[IpAddress], mode: DiffusionMode)(using
       Raise[F, NetworkError]
   ): Resource[F, Bearer[F]]
 
@@ -172,7 +174,7 @@ final class OutboundPeers[F[_]: Async, A] private (
           case Acquired.Reserved(connection) =>
             // a defect of the transport's own release stops the node, as on any connection
             ConnectionResources
-              .retainReleaseDefects(transport.bearer(peer, remote))(hot.fatal)
+              .retainReleaseDefects(transport.bearer(peer, remote, mode))(hot.fatal)
               .use { bearer =>
                 bearer.connectionId
                   .fold(F.pure(Option.empty[ConnectionId.Endpoint]))(_.map(_.toOption.map(_.local)))

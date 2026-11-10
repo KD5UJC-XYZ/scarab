@@ -77,11 +77,16 @@ enum SocketConfigError extends DomainError:
     case LocalSocketError(path, cause) =>
       s"LocalSocketError ${HaskellShow.string(path)} ${cause.shown}"
 
-/** Why the node-to-client side of the network stopped: what the reference's `DiffusionErrored`
-  * names and `DiffusionError` carries (ouroboros-network 2fb69829,
+/** Why the node's servers stopped: what the reference's `DiffusionErrored` names and
+  * `DiffusionError` carries (ouroboros-network 2fb69829,
   * `ouroboros-network/lib/Ouroboros/Network/Diffusion.hs` 905-911). The node then exits.
   */
 enum DiffusionFailure extends DomainError:
+  /** The node-to-node listener: opening, configuring or binding its socket, or an accept that is
+    * not `ECONNABORTED` ([[BearerServer]]).
+    */
+  case NodeToNode(error: TcpSocketError)
+
   /** A call failed: creating, binding or listening on the socket, reading its mode or its
     * directory's, or an accept that is not `ECONNABORTED`.
     */
@@ -103,7 +108,8 @@ enum DiffusionFailure extends DomainError:
 
   /** The `show` of the exception, the `error` field of `DiffusionErrored`. */
   def shown: String = this match
-    case System(error) => error.shown
+    case System(error)     => error.shown
+    case NodeToNode(error) => error.shown
     case PathTooLong(path) =>
       val length = path.codePointCount(0, path.length)
       s"pokeSockAddr: path is too long in SockAddrUnix ${HaskellShow.string(path)}, length $length, " +
