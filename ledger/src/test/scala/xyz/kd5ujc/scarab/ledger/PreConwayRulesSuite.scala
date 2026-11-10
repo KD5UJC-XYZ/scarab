@@ -917,7 +917,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val checks = Vector(
       UtxoTests.outputTooSmall(pp, outs),
       if pv >= 3 then UtxoTests.outputTooBig(pp, outs) else Test.pass,
-      UtxoTests.bootAddrAttrsTooBig(outs),
+      UtxoTests.injectedBootAddrAttrsTooBig(pp, outs),
       if pv >= 5 then UtxoTests.wrongNetwork(env.network, outs) else Test.pass
     ).flatMap(Test.failures(_).toVector.flatMap(_.iterator))
     checks.headOption.fold("accepted")(_.ruleName)

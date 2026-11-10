@@ -125,11 +125,34 @@ object UtxoTests:
       UtxoFailure.OutputTooBig(_)
     )
 
-  /** `validateOutputBootAddrAttrsTooBig` (`Shelley/Rules/Utxo.hs:534-552`). */
-  def bootAddrAttrsTooBig(outs: Vector[TxOut]): Test[PredicateFailure] =
-    nonEmpty(TxChecks.bootstrapOutputs(outs).collect {
+  /** The outputs whose bootstrap address has more than 64 bytes of attributes. */
+  private def bootstrapAttrsOver64(outs: Vector[TxOut]): Vector[TxOut] =
+    TxChecks.bootstrapOutputs(outs).collect {
       case (out, address) if address.attributesSize > 64 => out
-    })(_.isEmpty)(UtxoFailure.OutputBootAddrAttrsTooBig(_))
+    }
+
+  /** `validateOutputBootAddrAttrsTooBig` (`Shelley/Rules/Utxo.hs:540-558`): Shelley's own failure,
+    * before an era's UTXO injects it ([[injectedBootAddrAttrsTooBig]]).
+    */
+  def bootAddrAttrsTooBig(outs: Vector[TxOut]): Test[PredicateFailure] =
+    nonEmpty(bootstrapAttrsOver64(outs))(_.isEmpty)(UtxoFailure.OutputBootAddrAttrsTooBig(_))
+
+  /** [[bootAddrAttrsTooBig]] as the UTXO of the era of `pp` reports it. Shelley's UTXO reports
+    * Shelley's failure itself. Every later era injects it through
+    * `shelleyToAllegraUtxoPredFailure`, which makes it Allegra's `OutputTooBigUTxO`
+    * (`Allegra/Rules/Utxo.hs:374-387`), and the injections of Alonzo, Babbage and Conway give each
+    * output the sizes 0 and 0 (`Alonzo/Rules/Utxo.hs:183-184,749`, `Babbage/Rules/Utxo.hs:110-114`,
+    * `Conway/Rules/Utxo.hs:158-161,426`). From Allegra the failure is therefore an
+    * [[UtxoFailure.OutputTooBig]] of its own, apart from [[outputTooBig]]'s, with the outputs in
+    * their order. The Leios build keeps `OutputBootAddrAttrsTooBig` (cardano-ledger 9df9f98c,
+    * `Allegra/Rules/Utxo.hs:394`), a rule of that build (#826).
+    */
+  def injectedBootAddrAttrsTooBig(pp: ProtocolParams, outs: Vector[TxOut]): Test[PredicateFailure] =
+    if pp.protocolMajor <= 2 then bootAddrAttrsTooBig(outs)
+    else
+      nonEmpty(bootstrapAttrsOver64(outs))(_.isEmpty)(big =>
+        UtxoFailure.OutputTooBig(big.map((0, 0, _)))
+      )
 
   /** `validateMaxTxSizeUTxO` (`Shelley/Rules/Utxo.hs:554-570`). */
   def maxTxSize(pp: ProtocolParams, tx: Tx): Test[PredicateFailure] =
@@ -277,7 +300,7 @@ object UtxoTests:
     Test.all(
       outputTooSmall(pp, outs),
       (if pp.protocolMajor >= 3 then outputTooBig(pp, outs) else Test.pass[PredicateFailure]),
-      bootAddrAttrsTooBig(outs),
+      injectedBootAddrAttrsTooBig(pp, outs),
       maxTxSize(pp, tx)
     )
 
@@ -304,7 +327,7 @@ object UtxoTests:
       valueNotConserved(consumed, produced),
       outputTooSmall(pp, outs),
       outputTooBig(pp, outs),
-      env.static(bootAddrAttrsTooBig(outs)),
+      env.static(injectedBootAddrAttrsTooBig(pp, outs)),
       env.static(wrongNetwork(network, outs)),
       env.static(wrongNetworkWithdrawal(network, body)),
       env.static(wrongNetworkInTxBody(network, body)),
@@ -339,7 +362,7 @@ object UtxoTests:
       valueNotConserved(consumed, produced),
       outputTooSmall(pp, outs),
       outputTooBig(pp, outs),
-      env.static(bootAddrAttrsTooBig(outs)),
+      env.static(injectedBootAddrAttrsTooBig(pp, outs)),
       env.static(wrongNetwork(network, outs)),
       env.static(wrongNetworkWithdrawal(network, body)),
       env.static(wrongNetworkInTxBody(network, body)),
