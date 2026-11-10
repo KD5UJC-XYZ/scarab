@@ -439,6 +439,48 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
       }
   }
 
+  // the reference writes the failed handshake's state and error in the transaction that removes the
+  // entry (`Core.hs` 1000-1075, 1741-1749): every waiter learns the error, however long the
+  // failure's own report takes
+  test("every waiter gets the handshake's error, while the failure's report is still held") {
+    TestControl.executeEmbed(
+      gated(
+        ConnectionManager.Limits(),
+        {
+          case ConnectionEvent.Changed(_, ConnectionState.Terminating, ConnectionState.Terminated) =>
+            true
+          case _ => false
+        }
+      ).flatMap { (cm, entered, release, _) =>
+        Handle
+          .allow[ConnectionError] {
+            for
+              (theirs, _) <- cm.include(peer(1), None).allocated
+              waiters <- List.fill(3)(attempt(acquired(cm, 1)).start).sequence
+              _ <- IO.sleep(1.second)
+              failing <- theirs.handshakeFailed(refusal).start
+              _ <- entered.get
+              // the failure's report is held: the waiters settle meanwhile
+              got <- waiters.traverse(_.join.timeout(10.seconds).flatMap(_.embedNever))
+              _ <- release.complete(())
+              _ <- failing.joinWithNever
+            yield got.map(_.map(_._1))
+          }
+          .rescue(e => IO(fail(e.message)))
+      }
+    ).map { got =>
+      got.foreach(one =>
+        assertEquals(
+          one.void,
+          Left(
+            ConnectionError
+              .Disconnected(peer(1).toString, ConnectionState.Terminating, Some(refusal))
+          )
+        )
+      )
+    }
+  }
+
   // `retry` on `TerminatingState` (`Core.hs` 1379-1388), the time-wait (666-702), and a new
   // accepted connection in place of a terminating one (859-860)
   test(

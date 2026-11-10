@@ -622,12 +622,17 @@ object ConnectionManager:
                   (t.put(key, kept), Effects.log[F](log), Right(()))
         }.flatMap(_.fold(refuse[Unit](_), F.pure))
 
+      // `computeConnStateOnError` for `HandshakeFailure` is `TerminatingState`, which keeps the
+      // error, written in the transaction that deletes the entry from the table (`Core.hs`
+      // 1080-1094, 1782-1838, 1000-1075): the generation's end is published before its removal
+      // can be seen, so a waiter that finds it gone learns the error
       def handshakeFailed(error: NetworkError) =
-        changing { (t, _) =>
+        table.get.flatMap(
+          _.locate(id).filter(_._2.state != ConnectionState.Terminated).traverse_ { (_, entry) =>
+            entry.ended.complete(Ended(ConnectionState.Terminating, Some(error))).void
+          }
+        ) *> changing { (t, _) =>
           t.locate(id) match
-            // `computeConnStateOnError` for `HandshakeFailure` is `TerminatingState`, which keeps
-            // the error, and the entry is deleted from the table at once (`Core.hs` 1080-1094,
-            // 1782-1838, 1000-1075)
             case Some((key, entry)) if entry.state != ConnectionState.Terminated =>
               val log = walk(key._1, entry, Event.HandshakeFailed).fold(_ => Vector.empty, _._2)
               (
@@ -635,7 +640,7 @@ object ConnectionManager:
                 Effects.log[F](
                   log :+ ConnectionEvent
                     .Changed(at.toString, ConnectionState.Terminating, ConnectionState.Terminated)
-                ) ++ Effects.ended(entry, ConnectionState.Terminating, Some(error)),
+                ),
                 ()
               )
             case _ => (t, Effects.none[F], ())
@@ -925,7 +930,8 @@ object ConnectionManager:
               t.entries.get(key) match
                 // `Accepted` (842-846)
                 case None => (t.put(key, created), Effects.log[F](Vector(opened)), Right(created))
-                // a new entry in place of one that is terminating (859-860)
+                // a new entry in place of one that is terminating (859-860); the replaced one has
+                // ended, whether or not its owner released it yet
                 case Some(old) if !old.state.isLive =>
                   (
                     t.put(key, created),
@@ -934,7 +940,7 @@ object ConnectionManager:
                         ConnectionEvent.Changed(remote.toString, old.state, created.state),
                         opened
                       )
-                    ),
+                    ) ++ Effects.ended(old, old.state, None),
                     Right(created)
                   )
                 // `Overwritten` and `SelfConn` keep the entry (847-852); any other is refused
@@ -1076,14 +1082,13 @@ object ConnectionManager:
         }.flatMap {
           case Left(version)         => poll(changedFrom(version)).as(Left(()))
           case Right(Some(decision)) => F.pure(Right(decision))
+          // every generation that leaves the table has its end published: wait for it
           case Right(None) =>
-            waited.ended.tryGet.map { end =>
-              val (state, cause) =
-                end.fold[(ConnectionState, Option[NetworkError])](
-                  (ConnectionState.Terminated, None)
-                )(e => (e.state, e.cause))
-              Right(Dispatch.Refuse[F](ConnectionError.Disconnected(remote.toString, state, cause)))
-            }
+            poll(waited.ended.get).map(end =>
+              Right(
+                Dispatch.Refuse[F](ConnectionError.Disconnected(remote.toString, end.state, end.cause))
+              )
+            )
         }
       }
 
