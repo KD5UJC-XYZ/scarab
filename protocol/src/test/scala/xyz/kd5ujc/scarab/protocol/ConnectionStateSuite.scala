@@ -65,8 +65,8 @@ class ConnectionStateSuite extends ScalaCheckSuite:
     case (OutboundDup(_) | OutboundIdle(_) | InboundIdle(_), Event.DemotedToColdRemote) => true
     case _                                                                              => false
 
-  /** The moves the reference's runtime makes that `verifyAbstractTransition` has no case for:
-    * the outbound side's negotiation over an accepted self-connection (`Core.hs:1600-1622`),
+  /** The moves the reference's runtime makes that `verifyAbstractTransition` has no case for: the
+    * outbound side's negotiation over an accepted self-connection (`Core.hs:1600-1622`),
     * `releaseInboundConnection` on a connection still in use (1203-1215) and [[Event.SelfConnIdle]]
     * (936-945).
     */
@@ -105,10 +105,12 @@ class ConnectionStateSuite extends ScalaCheckSuite:
           .isLeft
       )
     }
-    every.filterNot {
-      case Inbound(_) => true
-      case _          => false
-    }.foreach(s => assert(ConnectionState.transition(s, Event.CommitInUse).isLeft, s.abstractName))
+    every
+      .filterNot {
+        case Inbound(_) => true
+        case _          => false
+      }
+      .foreach(s => assert(ConnectionState.transition(s, Event.CommitInUse).isLeft, s.abstractName))
   }
 
   test("the identity moves are the reference's, and its oracle admits all but one") {

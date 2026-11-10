@@ -416,8 +416,9 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
     * responder while the expiry of the idle timer is held in the manager's log.
     */
   /** The changes after the expiry when the peer's conversation starts at the very instant the idle
-    * timer expires: the expiry is committed first and the responder waits for it (`InboundGovernor.hs`
-    * 253-261, 665-672), then the conversation promotes and demotes the connection.
+    * timer expires: the expiry is committed first and the responder waits for it
+    * (`InboundGovernor.hs` 253-261, 665-672), then the conversation promotes and demotes the
+    * connection.
     */
   private val expiredThenWoken = Vector(
     ConnectionState.OutboundDup(TimeoutExpired.Expired) -> ConnectionState.Duplex,
@@ -453,7 +454,9 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
       }
   }
 
-  test("on a connection we dialled, a responder that starts as the idle timer expires is not lost") {
+  test(
+    "on a connection we dialled, a responder that starts as the idle timer expires is not lost"
+  ) {
     TestControl.executeEmbed(dialledScenario(simultaneous = true)).map {
       case Right((now, changes)) =>
         allValid(changes)

@@ -182,8 +182,8 @@ object ConnectionState:
         Right(OutboundDup(Ticking))
       case (Unnegotiated(Provenance.Inbound), Event.Negotiated(flow, Provenance.Inbound)) =>
         Right(InboundIdle(flow))
-      case (InboundIdle(DuplexFlow), Event.AwakeLocal)                => Right(OutboundDup(Ticking))
-      case (Inbound(DuplexFlow), Event.PromotedToWarmLocal)           => Right(Duplex)
+      case (InboundIdle(DuplexFlow), Event.AwakeLocal)      => Right(OutboundDup(Ticking))
+      case (Inbound(DuplexFlow), Event.PromotedToWarmLocal) => Right(Duplex)
       case (OutboundUni, Event.DemotedToColdLocal)          => Right(OutboundIdle(Unidirectional))
       case (OutboundDup(Ticking), Event.DemotedToColdLocal) => Right(InboundIdle(DuplexFlow))
       case (OutboundDup(Expired), Event.DemotedToColdLocal) => Right(OutboundIdle(DuplexFlow))

@@ -656,7 +656,7 @@ final class OutboundPeers[F[_]: Async, A] private (
         m.updated(peer, m.getOrElse(peer, SessionReport()).observed(activation, observation))
       ) *> measured(observation)
 
-  /** The report of `peer`'s session in `activation` over `link`'s connection, for as long as the
+  /** The report of `peer` 's session in `activation` over `link` 's connection, for as long as the
     * session lasts.
     */
   private def reporting(peer: A, link: Link[F], activation: BigInt): Resource[F, Unit] =
@@ -1142,8 +1142,8 @@ object OutboundPeers:
     def ended(activation: BigInt): SessionReport =
       copy(active = active.filterNot(_.activation == activation))
 
-    /** What the session of `activation` observed: the running session's report takes it only if
-      * it is that session's; the totals take every header.
+    /** What the session of `activation` observed: the running session's report takes it only if it
+      * is that session's; the totals take every header.
       */
     def observed(activation: BigInt, observation: Peer.Observation): SessionReport =
       def mine(f: ActiveSession => ActiveSession) =

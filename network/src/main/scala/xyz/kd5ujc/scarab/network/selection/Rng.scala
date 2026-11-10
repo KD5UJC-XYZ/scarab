@@ -30,8 +30,8 @@ final case class Rng(state: Long):
   /** A uniform value in `[low, high]` (both ends included, in either order), drawn as the
     * reference's `uniformR` draws an `Int` (`random-1.3.1`, `System/Random/Internal.hs`,
     * `signedBitmaskWithRejectionRM` and `unsignedBitmaskWithRejectionM`): 64 bits masked to the
-    * width of the range, a value past its end rejected and drawn again, so no value is favoured.
-    * A range of one value takes no draw. [[between]]'s remainder favours the low values slightly
+    * width of the range, a value past its end rejected and drawn again, so no value is favoured. A
+    * range of one value takes no draw. [[between]]'s remainder favours the low values slightly
     * whenever the width does not divide 2^64^.
     */
   def uniformR(low: Long, high: Long): (Long, Rng) =

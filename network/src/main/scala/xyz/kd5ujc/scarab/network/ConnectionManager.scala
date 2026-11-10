@@ -1093,7 +1093,9 @@ object ConnectionManager:
           case Right(None) =>
             poll(waited.ended.get).map(end =>
               Right(
-                Dispatch.Refuse[F](ConnectionError.Disconnected(remote.toString, end.state, end.cause))
+                Dispatch.Refuse[F](
+                  ConnectionError.Disconnected(remote.toString, end.state, end.cause)
+                )
               )
             )
         }

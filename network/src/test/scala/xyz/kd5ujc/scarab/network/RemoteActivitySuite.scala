@@ -10,9 +10,9 @@ import xyz.kd5ujc.scarab.protocol.{ConnectionState, Handshake}
 import xyz.kd5ujc.scarab.protocol.ConnectionState.{Provenance, TimeoutExpired}
 import scala.concurrent.duration.*
 
-/** The tracker of the peer's activity ([[NodeToNodeServer.remoteActivity]]) at the instant its
-  * idle timer fires, with that instant under the test's control: the reference's inbound governor
-  * reads its channel and its timers in one STM transaction (ouroboros-network `2fb69829`,
+/** The tracker of the peer's activity ([[NodeToNodeServer.remoteActivity]]) at the instant its idle
+  * timer fires, with that instant under the test's control: the reference's inbound governor reads
+  * its channel and its timers in one STM transaction (ouroboros-network `2fb69829`,
   * `InboundGovernor.hs` 240-275), commits an expired timer before the waiting messages (253-261)
   * and holds a responder that starts on an expired timer until the commit is settled (665-672).
   */
@@ -55,9 +55,9 @@ class RemoteActivitySuite extends FailsOnUncaught:
       case (other, _) => IO.raiseError(new AssertionError(s"not a reservation: $other"))
     }
 
-  /** The tracker over the connection `open` makes, with a responder that starts as the timer
-    * fires, after it slept and before it returns: the changes from the expiry on, and the state
-    * at the end.
+  /** The tracker over the connection `open` makes, with a responder that starts as the timer fires,
+    * after it slept and before it returns: the changes from the expiry on, and the state at the
+    * end.
     */
   private def expiring(
       open: Handle[IO, ConnectionError] ?=> (ConnectionManager[IO], Mux[IO]) => IO[Connection[IO]]
@@ -81,7 +81,10 @@ class RemoteActivitySuite extends FailsOnUncaught:
         finish <- Deferred[IO, Unit]
         running <- Deferred[IO, FiberIO[Unit]]
         timer = (left: FiniteDuration) =>
-          IO.sleep(left) *> responders.running(finish.get).start.flatMap(running.complete) *> IO.cede
+          IO.sleep(left) *> responders
+            .running(finish.get)
+            .start
+            .flatMap(running.complete) *> IO.cede
         after <- NodeToNodeServer
           .remoteActivity(mux, responders, 5.seconds, owned, Some(timer))
           .use { _ =>
@@ -95,15 +98,24 @@ class RemoteActivitySuite extends FailsOnUncaught:
   private val expired = ConnectionState.OutboundDup(TimeoutExpired.Expired)
 
   /** The expiry is committed first, the start then wakes the connection, and its end demotes it. */
-  private def heldThenWoken(after: ConnectionState, changes: Vector[(ConnectionState, ConnectionState)]) =
+  private def heldThenWoken(
+      after: ConnectionState,
+      changes: Vector[(ConnectionState, ConnectionState)]
+  ) =
     assertEquals(
       changes.dropWhile(_ != (ticking -> expired)),
-      Vector(ticking -> expired, expired -> ConnectionState.Duplex, ConnectionState.Duplex -> ticking)
+      Vector(
+        ticking -> expired,
+        expired -> ConnectionState.Duplex,
+        ConnectionState.Duplex -> ticking
+      )
     )
     assertEquals(after, ticking)
 
   // the tracker's wait must neither lose that start nor take it before the commit
-  test("a responder that starts as the idle timer fires is held for the commit, then wakes the connection") {
+  test(
+    "a responder that starts as the idle timer fires is held for the commit, then wakes the connection"
+  ) {
     expiring(accepted).map(heldThenWoken)
   }
 

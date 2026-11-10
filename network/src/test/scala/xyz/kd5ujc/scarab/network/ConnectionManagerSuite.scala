@@ -453,42 +453,45 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
   // entry (`Core.hs` 1000-1075, 1741-1749): every waiter learns the error, however long the
   // failure's own report takes
   test("every waiter gets the handshake's error, while the failure's report is still held") {
-    TestControl.executeEmbed(
-      gated(
-        ConnectionManager.Limits(),
-        {
-          case ConnectionEvent.Changed(_, ConnectionState.Terminating, ConnectionState.Terminated) =>
-            true
-          case _ => false
-        }
-      ).flatMap { (cm, entered, release, _) =>
-        Handle
-          .allow[ConnectionError] {
-            for
-              (theirs, _) <- cm.include(peer(1), None).allocated
-              waiters <- List.fill(3)(attempt(acquired(cm, 1)).start).sequence
-              _ <- IO.sleep(1.second)
-              failing <- theirs.handshakeFailed(refusal).start
-              _ <- entered.get
-              // the failure's report is held: the waiters settle meanwhile
-              got <- waiters.traverse(_.join.timeout(10.seconds).flatMap(_.embedNever))
-              _ <- release.complete(())
-              _ <- failing.joinWithNever
-            yield got.map(_.map(_._1))
+    TestControl
+      .executeEmbed(
+        gated(
+          ConnectionManager.Limits(),
+          {
+            case ConnectionEvent
+                  .Changed(_, ConnectionState.Terminating, ConnectionState.Terminated) =>
+              true
+            case _ => false
           }
-          .rescue(e => IO(fail(e.message)))
-      }
-    ).map { got =>
-      got.foreach(one =>
-        assertEquals(
-          one.void,
-          Left(
-            ConnectionError
-              .Disconnected(peer(1).toString, ConnectionState.Terminating, Some(refusal))
+        ).flatMap { (cm, entered, release, _) =>
+          Handle
+            .allow[ConnectionError] {
+              for
+                (theirs, _) <- cm.include(peer(1), None).allocated
+                waiters <- List.fill(3)(attempt(acquired(cm, 1)).start).sequence
+                _ <- IO.sleep(1.second)
+                failing <- theirs.handshakeFailed(refusal).start
+                _ <- entered.get
+                // the failure's report is held: the waiters settle meanwhile
+                got <- waiters.traverse(_.join.timeout(10.seconds).flatMap(_.embedNever))
+                _ <- release.complete(())
+                _ <- failing.joinWithNever
+              yield got.map(_.map(_._1))
+            }
+            .rescue(e => IO(fail(e.message)))
+        }
+      )
+      .map { got =>
+        got.foreach(one =>
+          assertEquals(
+            one.void,
+            Left(
+              ConnectionError
+                .Disconnected(peer(1).toString, ConnectionState.Terminating, Some(refusal))
+            )
           )
         )
-      )
-    }
+      }
   }
 
   // `retry` on `TerminatingState` (`Core.hs` 1379-1388), the time-wait (666-702), and a new
@@ -907,6 +910,21 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
 
   // ------------------------------------------------------------------ model
 
+  /** Every move the reference's runtime makes that `verifyAbstractTransition` has no case for: the
+    * outbound negotiation over an accepted self-connection (`Core.hs` 1600-1622), `releaseInbound`
+    * on a connection the peer still uses (1203-1215) and `SelfConnIdle` (936-945).
+    */
+  private val runtimeMoves: Set[(ConnectionState, ConnectionState)] =
+    DataFlow.values.toSet.flatMap { flow =>
+      Set(
+        unnegotiatedIn -> (flow match
+          case DataFlow.Unidirectional => ConnectionState.OutboundUni
+          case DataFlow.Duplex         => dupTicking),
+        ConnectionState.Inbound(flow) -> ConnectionState.Terminating,
+        ConnectionState.OutboundIdle(flow) -> ConnectionState.InboundIdle(flow)
+      )
+    }
+
   private enum Op:
     case Accept(peer: Int, local: Int)
     case Acquire(peer: Int, inbound: Boolean)
@@ -935,7 +953,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
     )
 
   property(
-    "every change is one the reference accepts, the counters follow the table within the hard limit, and nothing leaks"
+    "every change is one the reference accepts or its runtime makes, the counters follow the table within the hard limit, and nothing leaks"
   ) {
     val limits = ConnectionManager.Limits(
       hard(3),
@@ -945,7 +963,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
     )
     forAll(ops) { script =>
       TestControl
-        .executeEmbed(managed(limits) { m =>
+        .executeEmbed(managed(limits, runtimeMoves) { m =>
           // the owners of transports (with their release), and the outbound uses
           (
             Ref.of[IO, Map[Int, Vector[(Connection[IO], IO[Unit])]]](Map.empty),
