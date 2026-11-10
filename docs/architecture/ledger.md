@@ -85,9 +85,9 @@ follower (no Docker); `EpochGeometrySuite` has the era-history properties.
 era is chosen by the era witness (`PreConway[E]`, `ShelleyBasedEra[E]`), and UTXO's and UTXOW's checks follow the era whatever the
 protocol version, as the reference's rule of each era does (#867, #880): a chain that starts an era by `Test<Era>HardForkAtEpoch`
 keeps the version of the era before it. UTXOS and BBODY follow the era too (#881, #882), and Conway's LEDGER tests the
-bootstrap phase as the reference does (#885). The script-context and parameter sites that still follow the protocol major
-version of the parameters in force are #883 and #884; the reference's own version tests (`hardfork*`) stay tests of the
-version.
+bootstrap phase as the reference does (#885), and the script contexts follow the era (#883). The parameter sites that still
+follow the protocol major version of the parameters in force are #884; the reference's own version tests (`hardfork*`) stay
+tests of the version.
 
 - **Decoding** (`ledger/Tx.scala`, `Scripts.scala`): transaction bodies of every era (keys 0-18),
   witness sets (vkey, bootstrap, native and Plutus scripts, datums, redeemers), outputs in legacy and
@@ -207,14 +207,19 @@ forger.
   rules; the default is at most four workers. Mempool single-transaction validation retains its
   serial interpreter. See [the design](../design/parallel-plutus.md) and ADR 0018.
 - **Script context** (`ledger/ScriptContexts.scala`, `ledger/Purpose.scala`): ours, written against
-  the ledger's `Plutus/TxInfo.hs` modules. V1 and V2 `TxInfo` (V1 rejects inline datums, reference
-  scripts and reference inputs; V2 adds reference inputs, redeemers and a datum map; withdrawals in
-  Plutus credential order; Byron outputs are dropped before Babbage and an error from it), V3 `TxInfo`
+  the ledger's `Plutus/TxInfo.hs` modules, selected by the ledger era carried through UTXOS and
+  `Phase2`, whatever the protocol version. V1 rejects inline datums; Babbage's V1 also rejects
+  reference scripts and reference inputs, which Conway's allows. V2 adds reference inputs,
+  redeemers and a datum map; V1/V2 withdrawals follow Plutus credential order. Alonzo drops Byron
+  outputs, while Babbage and later eras refuse them. V3 `TxInfo`
   and `ScriptContext` (plain transaction ids, ledger-order withdrawals, redeemer and `ScriptInfo`,
   votes, proposals, donation and treasury). Validity intervals are converted to POSIX milliseconds with
   the era history and the system start (`EpochGeometry.slotStart`); the upper bound of an interval
   without a lower bound is inclusive before Conway and exclusive from it. Purposes are spending,
-  minting, certifying, rewarding, voting and proposing, in the ledger's orders.
+  minting, certifying, rewarding, voting and proposing, in the ledger's orders. Alonzo and Babbage
+  reuse a duplicate certificate's first pointer; Conway and Dijkstra use its own position. The
+  bootstrap-phase and protocol-11 checks, and the version handed to the evaluator, remain version
+  tests (`ScriptContextEraSuite`, `ScriptContextUsualVersionSuite`; #883).
 - **Availability** (`plutus/PlutusAvailability.scala`): the builtins and UPLC program versions a script
   may use in each (language, protocol major), transcribed from plutus-ledger-api
   (`Common/Versions.hs`). `ScalusEvaluator` rejects a script that uses another builtin as a decode

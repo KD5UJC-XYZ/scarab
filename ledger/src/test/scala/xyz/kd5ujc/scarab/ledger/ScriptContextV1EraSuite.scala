@@ -90,6 +90,7 @@ class ScriptContextV1EraSuite extends FunSuite:
         ttl = range._2
       )
     val env = ScriptContexts.Environment(
+      TestLedger.usualEra(protocol),
       protocol,
       inputs.zip(spent).toMap,
       refs.zip(references).toMap,
@@ -238,7 +239,13 @@ class ScriptContextV1EraSuite extends FunSuite:
   test("Conway: a reference input that is not among the resolved outputs is refused") {
     val body =
       TestLedger.body("missing", Vector(in(0)), Vector(plain), 1, referenceInputs = Vector(in(9)))
-    val env = ScriptContexts.Environment(10, Map(in(0) -> plain), Map.empty, s => Right(s))
+    val env = ScriptContexts.Environment(
+      TestLedger.usualEra(10),
+      10,
+      Map(in(0) -> plain),
+      Map.empty,
+      s => Right(s)
+    )
     assertEquals(
       ScriptContexts.txInfo(PlutusLanguage.V1, Tx(body, Witnesses.empty, 0, true, None), env),
       Left(TranslationError.UnresolvedInput(in(9)))
@@ -273,6 +280,7 @@ class ScriptContextV1EraSuite extends FunSuite:
     val tx = Tx(body, Witnesses.empty, 0, true, None)
     for pv <- Vector(8, 10) do
       val env = ScriptContexts.Environment(
+        TestLedger.usualEra(pv),
         pv,
         Map(in(0) -> plain),
         Map(in(100) -> inline),
@@ -280,7 +288,13 @@ class ScriptContextV1EraSuite extends FunSuite:
       )
       assert(ScriptContexts.txInfo(PlutusLanguage.V2, tx, env).isRight, s"V2, pv $pv")
     val byronRef =
-      ScriptContexts.Environment(10, Map(in(0) -> plain), Map(in(100) -> byron), s => Right(s))
+      ScriptContexts.Environment(
+        TestLedger.usualEra(10),
+        10,
+        Map(in(0) -> plain),
+        Map(in(100) -> byron),
+        s => Right(s)
+      )
     assertEquals(
       ScriptContexts.txInfo(PlutusLanguage.V2, tx, byronRef),
       Left(TranslationError.ByronTxOutInContext(TxOutSource.TxOutFromInput(in(100))))

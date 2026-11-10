@@ -38,7 +38,7 @@ class Phase2UnavailableSuite extends FunSuite:
       tx.body.referenceInputs.flatMap(in => c.references.get(in).map(in -> _)).toMap,
       Set(0 -> BigInt(0)),
       evaluate = true
-    )
+    )(using TestLedger.usualEra((c.params).protocolMajor.toInt))
 
   test("implementation unavailability supplies no verdict for either transaction validity flag") {
     for valid <- Vector(true, false) do
@@ -51,7 +51,7 @@ class Phase2UnavailableSuite extends FunSuite:
         c.references,
         c.posix,
         unavailable
-      )
+      )(using TestLedger.usualEra((c.params).protocolMajor.toInt))
       outcome match
         case Right(Phase2.Outcome.Unavailable(report, _, `limit`)) =>
           assertEquals(report.scripts, 0)

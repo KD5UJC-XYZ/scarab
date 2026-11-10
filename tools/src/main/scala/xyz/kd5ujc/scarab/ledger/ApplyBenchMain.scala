@@ -90,7 +90,9 @@ object ApplyBenchMain:
         steps += result.spent.steps
         result
       val (_, ns) = time(cases.foreach { c =>
-        Phase2.evaluate(c.tx, c.params, scriptsOf(c), c.spent, c.references, c.posix, recording)
+        Phase2.evaluate(c.tx, c.params, scriptsOf(c), c.spent, c.references, c.posix, recording)(
+          using TestLedger.usualEra((c.params).protocolMajor.toInt)
+        )
       })
       println(
         f"pass $i: $scripts scripts, ${ns / 1e6}%.1f ms, ${ns / 1e3 / scripts}%.1f us/script, mem=$mem steps=$steps"

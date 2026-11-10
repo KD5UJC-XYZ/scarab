@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import xyz.kd5ujc.scarab.ledger.state.Coin
+import xyz.kd5ujc.scarab.ledger.state.{Coin, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** A place in a transaction a script can be asked to validate, with its position (the redeemer
@@ -89,20 +89,26 @@ object Purpose:
   def resolve(body: TxBody, spent: Map[TxIn, TxOut], tag: Int, index: BigInt): Option[Purpose] =
     all(body, spent).find(p => p.tag == tag && BigInt(p.index) == index)
 
-  /** `getAlonzoScriptsNeeded` / `getConwayScriptsNeeded`: spending, withdrawing, certifying,
-    * minting, voting, proposing. Before Conway a duplicate certificate reuses its first index while
-    * still occupying its place in the sequence (`Alonzo/UTxO.hs:313-365`).
+  /** The era's `getScriptsNeeded`, whatever the protocol version (cardano-ledger f649f975):
+    * spending, withdrawing, certifying, minting, voting, proposing. Alonzo's and Babbage's
+    * `getAlonzoScriptsNeeded` (`Alonzo/UTxO.hs:121,313-365`, `Babbage/UTxO.hs:52`) give a duplicate
+    * certificate the index of its first occurrence while it keeps its place in the sequence;
+    * Conway's `getConwayScriptsNeeded` (`Conway/UTxO.hs:62-80,128`), which Dijkstra's extends
+    * (cardano-ledger 9df9f98c `Dijkstra/UTxO.hs:190-192`), its own index. No era before Alonzo
+    * collects scripts (UTXOS runs from Alonzo, `ShelleyUtxo`); those eras take Alonzo's only to
+    * make the choice total.
     */
   private[ledger] def collection(
       body: TxBody,
       spent: Map[TxIn, TxOut],
-      conway: Boolean
+      era: ShelleyBasedEra[?]
   ): Vector[Purpose] =
     val purposes = all(body, spent)
     val certs = purposes.collect { case p: Certifying => p }
-    val indexed =
-      if conway then certs
-      else
+    val indexed = era match
+      case ShelleyBasedEra.SConway | ShelleyBasedEra.SDijkstra => certs
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
         certs
           .foldLeft((Map.empty[Certificate, Int], Vector.empty[Certifying])) {
             case ((seen, rest), p) =>

@@ -39,7 +39,7 @@ class ContextCollectionSuite extends FunSuite:
           recorded.spent,
           recorded.references,
           slot => Right(slot * 100)
-        )
+        )(using TestLedger.usualEra((recorded.params).protocolMajor.toInt))
       )
     }
   }
@@ -50,7 +50,13 @@ class ContextCollectionSuite extends FunSuite:
         .find(_.name == s"api-v${language.id + 1}-extra-redeemer-pointer")
         .getOrElse(fail("no pointer oracle case"))
       val env =
-        ScriptContexts.Environment(10, recorded.spent, recorded.references, slot => Right(slot))
+        ScriptContexts.Environment(
+          TestLedger.usualEra(10),
+          10,
+          recorded.spent,
+          recorded.references,
+          slot => Right(slot)
+        )
       assertEquals(
         ScriptContexts.txInfo(language, recorded.tx, env),
         Left(TranslationError.RedeemerPointerPointsToNothing(1, 99))
@@ -104,7 +110,7 @@ class ContextCollectionSuite extends FunSuite:
         inputs.map(_ -> output).toMap,
         Map.empty,
         slot => Right(slot)
-      )
+      )(using TestLedger.usualEra((recorded.params).protocolMajor.toInt))
       val errors = result.swap.fold(_ => fail("collector unexpectedly succeeded"), identity)
       assertEquals(errors.length, 20000)
       assertEquals(

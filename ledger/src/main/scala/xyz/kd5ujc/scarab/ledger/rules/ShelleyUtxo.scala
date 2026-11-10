@@ -243,8 +243,9 @@ object ShelleyUtxos:
           judge: Judge[F, PredicateFailure]
       ): F[Unit] =
         val scripts =
-          Utxos.scripts[F](env, ann)(using
+          Utxos.scripts[F, E](env, ann)(using
             summon[Monad[F]],
+            pre.era,
             st.focus(Counted.plutus[UTxOState[E]]),
             raise,
             judge

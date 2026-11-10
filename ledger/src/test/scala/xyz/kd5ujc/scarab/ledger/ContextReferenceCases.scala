@@ -7,6 +7,7 @@ import java.nio.file.{Files, Path}
 import munit.Assertions
 import xyz.kd5ujc.scarab.codec.{Bytes, Value as CborValue}
 import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.ledger.state.Conway
 
 /** Unchanged Haskell collection API results, separate from the complete-submission evidence. */
 object ContextReferenceCases extends Assertions:
@@ -50,7 +51,7 @@ object ContextReferenceCases extends Assertions:
     val oracle = field[Json](json, "oracle")
     val collected = field[Boolean](oracle, "collected")
     def collect: Phase2.Collected[Vector[(Redeemer, xyz.kd5ujc.scarab.plutus.EvalRequest)]] =
-      Phase2.collect(tx, params, scripts, spent, references, slot => Right(slot * 100))
+      Phase2.collect[Conway](tx, params, scripts, spent, references, slot => Right(slot * 100))
 
   val all: Vector[Recorded] =
     parse(Files.readString(Path.of("fixtures/reference/context-errors/collection.json")))

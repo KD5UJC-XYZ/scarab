@@ -75,7 +75,8 @@ object TestLedger:
 
   /** The era that runs at a protocol major version on the public networks, each era at its usual
     * version (Alonzo 5 and 6, Babbage 7 and 8, Conway 9 to 11, Dijkstra 12): the era of a case
-    * recorded on one of them, or of a test written against the version alone.
+    * recorded on one of them, or of a test written against the version alone. Tests of an era at
+    * another version pass their era independently.
     */
   def usualEra(protocolMajor: Int): ShelleyBasedEra[?] =
     if protocolMajor <= 2 then ShelleyBasedEra.SShelley

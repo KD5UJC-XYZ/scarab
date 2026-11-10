@@ -6,6 +6,7 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Value as CborValue}
+import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
 import xyz.kd5ujc.scarab.plutus.*
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -54,7 +55,9 @@ class PlutusBackendDifferentialSuite extends FunSuite:
 
   private def requestsOf(id: String, c: PlutusCase): Vector[Recorded] =
     Phase2
-      .collect(c.tx, c.params, scriptsOf(c), c.spent, c.references, c.posix)
+      .collect(c.tx, c.params, scriptsOf(c), c.spent, c.references, c.posix)(using
+        TestLedger.usualEra(c.params.protocolMajor.toInt)
+      )
       .fold(
         _ => Vector.empty,
         _.zipWithIndex.map { case ((redeemer, request), n) =>
@@ -160,8 +163,16 @@ class PlutusBackendDifferentialSuite extends FunSuite:
         val params = TestLedger.params(field[Int](row, "protocolMajor")).copy(costModels = models)
         val start = BigInt(field[Int](row, "systemStartSeconds")) * 1000
         val length = BigInt(field[Int](row, "slotLengthMilliseconds"))
+        // the era the row was recorded in, whatever its protocol version
+        val witness: ShelleyBasedEra[?] = era match
+          case Era.Alonzo  => ShelleyBasedEra.SAlonzo
+          case Era.Babbage => ShelleyBasedEra.SBabbage
+          case Era.Conway  => ShelleyBasedEra.SConway
+          case other       => fail(s"$name: unsupported era $other")
         Phase2
-          .collect(tx, params, scripts, spent, references, slot => Right(start + slot * length))
+          .collect(tx, params, scripts, spent, references, slot => Right(start + slot * length))(
+            using witness
+          )
           .fold(
             _ => Vector.empty,
             _.zipWithIndex.map { case ((r, request), n) =>
