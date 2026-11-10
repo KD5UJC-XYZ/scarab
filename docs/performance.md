@@ -84,4 +84,5 @@ One row per measurement section, in the order the sections were written; the sec
 | 53 | 2026-11-02 | Detached RecD records: what reading them costs an ordinary decode (#687) | #687 | [Peers, connections and the network path](performance/peers-and-network.md#53-detached-recd-records-what-reading-them-costs-an-ordinary-decode-687) |
 | 54 | 2026-11-08 | The log router's one sink lock (#233) | #233 | [Logging and the router](performance/logging-and-the-router.md#54-the-log-routers-one-sink-lock-233) |
 | 55 | 2026-11-10 | Reusing the derived pool distribution (#826) | #826 | [Memory, snapshots and bootstrap](performance/memory-and-snapshots.md#55-reusing-the-derived-pool-distribution-826) |
+| 56 | 2026-11-10 | Blocking node-to-node sockets: a thread per connection at the accept limit (#854) | #854 | [Peers, connections and the network path](performance/peers-and-network.md#56-blocking-node-to-node-sockets-a-thread-per-connection-at-the-accept-limit-854) |
 <!-- /register -->
