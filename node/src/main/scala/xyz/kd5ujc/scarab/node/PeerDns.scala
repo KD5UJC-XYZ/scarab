@@ -160,7 +160,9 @@ object PeerDns:
 
   /** The Haskell resolver's deliberately small SRV subset: discard target `.`, keep only the
     * numerically lowest priority group, then draw one target by its advertised weight. The
-    * inclusive draw and stable cumulative selection follow `DNSActions.hs` 's `randomR` /CDF rule.
+    * inclusive draw and stable cumulative selection follow `DNSActions.hs` 's `randomR` /CDF rule
+    * (`runWeightedLookup`, `DNSActions.hs` 463-477, ouroboros-network `2fb69829`): the weights are
+    * `Word16` s, so `randomR (0, upperBound)` is random's `Word16` draw ([[Rng.uniformWord32R]]).
     */
   def selectService(
       records: Vector[DnsServiceRecord],
@@ -174,7 +176,7 @@ object PeerDns:
         val firstPriority = first.priority
         val preferred = ordered.takeWhile(_.priority == firstPriority)
         val total = preferred.foldLeft(0L)((sum, service) => sum + service.weight.toLong)
-        val (draw, next) = rng.between(0L, total)
+        val (draw, next) = rng.uniformWord32R(0L, total)
         val selected = preferred
           .scanLeft(0L -> Option.empty[DnsServiceRecord]) { case ((before, _), service) =>
             (before + service.weight.toLong) -> Some(service)

@@ -224,8 +224,8 @@ enum LedgerAnswer[R]:
   * cache lifetimes, as `Ouroboros.Network.PeerSelection.LedgerPeers` and `.LedgerPeers.Utils` of
   * ouroboros-network 1.2.0.0 define them. Everything here is a pure function; the randomness is the
   * explicit [[Rng]] of the governor, so a draw is a function of the generator it is given. (The
-  * streams are not the reference's `StdGen`: the Word64 of a draw is the same kind of value, the
-  * relay index is drawn as `Rng.between` draws it, not as `randomR`.)
+  * streams are not the reference's `StdGen`, but each draw maps its words as the reference's does:
+  * a whole `Word64` for the stake, `randomR` on an `Int` for the relay index.)
   *
   * The input of every function is the list of pools with usable relays, in the order the ledger
   * gives them (largest stake first, `PeerSelection.hs:33-35` of ouroboros-consensus 4.2.1.0) with
@@ -341,9 +341,10 @@ object LedgerPeerStake:
 
   /** Pick `count` relays, with replacement, by the stake of their pools (`pickPeers`,
     * `LedgerPeers.hs:158-211`): each draw is a uniform 64-bit number scaled to `[0, scale]` of the
-    * accumulated stake, the pool at or above it, and a uniformly chosen relay of that pool. A
-    * number that finds no pool still counts as a draw. When the map of all ledger peers is empty
-    * nothing is drawn and the generator is returned as it came, whatever the kind
+    * accumulated stake, the pool at or above it, and a relay of that pool drawn by `randomR` on an
+    * `Int` (`LedgerPeers.hs` 188 and 207, [[Rng.uniformR]]), which takes no word for a pool of one
+    * relay. A number that finds no pool still counts as a draw. When the map of all ledger peers is
+    * empty nothing is drawn and the generator is returned as it came, whatever the kind
     * (`LedgerPeers.hs:169`).
     */
   def draw[K <: LedgerKind, R](maps: StakeMaps[R], count: Int, rng: Rng)(using
@@ -360,7 +361,7 @@ object LedgerPeerStake:
           case None => go(g1, n - 1, picked)
           case Some((_, pool)) =>
             val relays = pool.relays.toVector
-            val (ix, g2) = g1.between(0L, (relays.size - 1).toLong)
+            val (ix, g2) = g1.uniformR(0L, (relays.size - 1).toLong)
             go(g2, n - 1, picked :+ relays(ix.toInt))
     if maps.all.isEmpty then (rng, Vector.empty) else go(rng, count, Vector.empty)
 

@@ -178,9 +178,11 @@ object Gsm:
                     Nil
                   )
 
-  /** The random bonus of a stay in `CaughtUp`, drawn when it begins (`blockWhileCaughtUp`). */
+  /** The random bonus of a stay in `CaughtUp`, drawn when it begins: whole seconds by `uniformR` on
+    * an `Int` (`blockWhileCaughtUp`, `GSM.hs` 327-332, ouroboros-consensus `82ecba32`).
+    */
   private def drawBonus(rng: Rng, config: Config): (FiniteDuration, Rng) =
-    val (seconds, next) = rng.between(0, config.maxBonus.toSeconds)
+    val (seconds, next) = rng.uniformR(0L, config.maxBonus.toSeconds)
     (seconds.seconds, next)
 
   private def leave(st: State, why: DurationFromNow): Result =
