@@ -97,8 +97,10 @@ object HeaderGate:
     case Restart(point: ChainSync.Point)
     case End(point: ChainSync.Point)
 
-  /** `validated` headers passed every header rule; `unchecked` were left to their block's own
-    * validation (Byron headers, the first Shelley header after a Byron prefix).
+  /** `validated` headers passed every header rule, `waited` of them after waiting for our chain to
+    * advance past the forecast horizon. Every header is validated header-first, as in the
+    * reference, so `unchecked` stays 0; it is kept because the `headersChecked` log event and the
+    * unchecked-headers metric report it.
     */
   final case class Counts(validated: Long, unchecked: Long, waited: Long)
 
@@ -172,7 +174,6 @@ object HeaderCheck:
       rules: HeaderRules[S, NodeHeaderState] & HeaderRules.Timing[S, NodeHeaderState],
       compute: Compute[F],
       retained: Int,
-      stall: FiniteDuration = 120.seconds,
       poll: FiniteDuration = 20.millis,
       warm: Option[(Vector[Header], NodeHeaderState) => F[Unit]] = None,
       observe: Option[HeaderGate.Counts => F[Unit]] = None,
@@ -188,7 +189,6 @@ object HeaderCheck:
         rules,
         compute,
         warm,
-        stall,
         poll,
         retained,
         observe,
@@ -212,7 +212,6 @@ object HeaderCheck:
       rules: HeaderRules[S, NodeHeaderState] & HeaderRules.Timing[S, NodeHeaderState],
       compute: Compute[F],
       retained: Int,
-      stall: FiniteDuration = 120.seconds,
       poll: FiniteDuration = 20.millis,
       warm: Option[(Vector[Header], NodeHeaderState) => F[Unit]] = None,
       observe: Option[HeaderGate.Counts => F[Unit]] = None,
@@ -223,7 +222,7 @@ object HeaderCheck:
       Ask[F, ChainSelection.Local],
       Tell[F, GenesisInternalProblem]
   ): Grafting[F] =
-    forNodeChain(rules, compute, retained, stall, poll, warm, observe, added, changes)
+    forNodeChain(rules, compute, retained, poll, warm, observe, added, changes)
 
   /** Header-first validation against the node's own chain.
     *
@@ -236,14 +235,11 @@ object HeaderCheck:
     *   called after every batch with what that batch added to the counts: the sessions of several
     *   peers (and a reconnection) each count from zero, so a total over the node is the sum of
     *   these
-    * @param stall
-    *   how long the node's chain may stand still while a header waits for a ledger view
     */
   def forChain[F[_]: Async, S, H](
       rules: HeaderRules[S, H],
       compute: Compute[F],
       warm: Option[(Vector[Header], H) => F[Unit]] = None,
-      stall: FiniteDuration = 120.seconds,
       poll: FiniteDuration = 20.millis,
       retained: Int = 4096,
       observe: Option[HeaderGate.Counts => F[Unit]] = None,
@@ -259,7 +255,6 @@ object HeaderCheck:
       rules,
       compute,
       warm,
-      stall,
       poll,
       retained,
       observe,
@@ -344,7 +339,6 @@ object HeaderCheck:
       rules: HeaderRules[S, H],
       compute: Compute[F],
       warm: Option[(Vector[Header], H) => F[Unit]],
-      stall: FiniteDuration,
       poll: FiniteDuration,
       retained: Int,
       observe: Option[HeaderGate.Counts => F[Unit]],
@@ -394,7 +388,6 @@ object HeaderCheck:
         rules,
         compute,
         warm,
-        stall,
         poll,
         retained,
         observe,
@@ -410,7 +403,6 @@ object HeaderCheck:
         rules,
         compute,
         warm,
-        stall,
         poll,
         retained,
         observe,
@@ -426,7 +418,6 @@ object HeaderCheck:
         rules,
         compute,
         warm,
-        stall,
         poll,
         retained,
         observe,
@@ -509,10 +500,9 @@ object HeaderCheck:
         }
         state <- Ref.of[F, HeaderChain[H]](initial)
         tally <- Ref.of[F, HeaderGate.Counts](HeaderGate.Counts(0, 0, 0))
-        released <- Ref.of[F, Int](0)
         prepared <- Ref.of[F, Option[(Header, ChainSync.Point, () => Outcome[H])]](None)
         knownSelection <- Ref.of[F, Option[ChainSelection.Local]](selected)
-      yield gate(state, tally, released, prepared, knownSelection)
+      yield gate(state, tally, prepared, knownSelection)
 
     private def invalid[A](header: Header, error: xyz.kd5ujc.scarab.ledger.HeaderError)(using
         Raise[F, PeerError]
@@ -522,15 +512,9 @@ object HeaderCheck:
     private def protocol[A](reason: PeerError.ProtocolFailure)(using Raise[F, PeerError]): F[A] =
       PeerError.Protocol(reason).raise[F, A]
 
-    /** `released` counts the entries of the candidate chain that belong to earlier batches: their
-      * blocks are being fetched and applied, so waiting for them is possible. A header whose parent
-      * is in the batch being validated cannot wait for it: the batch is not released until all its
-      * headers have passed, so it is left to the block's own validation.
-      */
     private def gate(
         state: Ref[F, HeaderChain[H]],
         tally: Ref[F, HeaderGate.Counts],
-        released: Ref[F, Int],
         prepared: Ref[F, Option[(Header, ChainSync.Point, () => Outcome[H])]],
         knownSelection: Ref[F, Option[ChainSelection.Local]]
     ): ChainGate[F, H] =
@@ -706,9 +690,7 @@ object HeaderCheck:
             case Some(prefix) =>
               val restored = prefix.map(equality.flip)
               F.uncancelable(_ =>
-                state.set(restored) *> knownSelection.set(Some(selection)) *> prepared.set(
-                  None
-                ) *> released.set(restored.entries.size)
+                state.set(restored) *> knownSelection.set(Some(selection)) *> prepared.set(None)
               ).as(Right(()))
 
         def accept(batch: Vector[SyncEvent])(using Raise[F, PeerError]): F[Unit] =
@@ -747,10 +729,9 @@ object HeaderCheck:
             .collect { case SyncEvent.RollForward(h, _) => h }
           tally.get.flatMap(before =>
             compute.within(
-              state.get.flatMap(hc => released.set(hc.entries.size)) *>
-                state.get
-                  .flatMap(hc => hc.tipState.traverse_(h => warm.traverse_(_(leading, h))))
-                  .whenA(leading.size > 1) *>
+              state.get
+                .flatMap(hc => hc.tipState.traverse_(h => warm.traverse_(_(leading, h))))
+                .whenA(leading.size > 1) *>
                 batch.traverse_ {
                   case SyncEvent.RollBackward(point, _) =>
                     rollback(point) *> publication.traverse_(_(Event.RolledBack(point)))
@@ -777,7 +758,7 @@ object HeaderCheck:
           state.get.flatMap { hc =>
             hc.rollback(point) match
               case Some(back) =>
-                state.set(back) *> released.update(math.min(_, back.entries.size))
+                state.set(back)
               case None if canonical.nonEmpty =>
                 // The reference ends this session after draining; a new local fork must not
                 // synthesize header states for a rollback outside the captured candidate.
@@ -787,10 +768,10 @@ object HeaderCheck:
                 chain.get.flatMap { current =>
                   current.rollback(point) match
                     case Right(c) =>
-                      state.set(HeaderChain.at(point, Some(rules.at(c.state)))) *> released.set(0)
+                      state.set(HeaderChain.at(point, Some(rules.at(c.state))))
                     case Left(_) =>
                       // Follower.session reports a rollback outside our chain
-                      state.set(HeaderChain.at[H](point, None)) *> released.set(0)
+                      state.set(HeaderChain.at[H](point, None))
                 }
           }
 
@@ -799,7 +780,7 @@ object HeaderCheck:
         )(using Raise[F, PeerError], Raise[F, Reintersection]): F[Unit] =
           prepareHeader(header)
             .flatMap {
-              case HeaderGate.Acceptance.Accepted => resolve(header, waited = false, since = None)
+              case HeaderGate.Acceptance.Accepted => resolve(header, waited = false)
               case HeaderGate.Acceptance.Restart(point) =>
                 Raise[F, Reintersection].raise(Reintersection.Lost(point))
               case HeaderGate.Acceptance.End(point) =>
@@ -815,8 +796,6 @@ object HeaderCheck:
                     )
                   ) *> patience.traverse_(_.validated(header.blockNo)) *>
                     publication.traverse_(_(Event.Validated(header)))
-                case Outcome.Unchecked(_, next) =>
-                  record(header, next) *> tally.update(c => c.copy(unchecked = c.unchecked + 1))
                 case Outcome.Invalid(error) => invalid(header, error)
                 // no verdict on the header: this peer's session ends, through this fiber's own `Raise`
                 case Outcome.Unverifiable(defect) =>
@@ -837,33 +816,28 @@ object HeaderCheck:
                   protocol[Unit](
                     PeerError.ProtocolProblem.HeaderDoesNotExtend(header.point, hc.tipPoint)
                   ),
-                g =>
-                  val kept = g.pruned(retained)
-                  val dropped = g.entries.size - kept.entries.size
-                  state.set(kept) *> released.update(r => (r - dropped).max(0))
+                g => state.set(g.pruned(retained))
               )
           )
 
         /** Check `header`; when the ledger view cannot be forecast yet, wait for the node's chain
-          * to advance (at most `stall` without progress).
+          * to advance ([[wait]]). `waited`: this check follows a wait.
           */
         private def resolve(
             header: Header,
-            waited: Boolean,
-            since: Option[(Option[BlockRef], FiniteDuration)]
+            waited: Boolean
         )(using Raise[F, PeerError], Raise[F, Reintersection]): F[(Outcome[H], Boolean)] =
           (state.get, prepared.getAndSet(None)).tupled.flatMap {
             case (hc, Some((h, parent, run))) if h == header && parent == hc.tipPoint =>
               if hc.canExtend(header) then F.delay(run()).map(_ -> waited)
               else
                 protocol(PeerError.ProtocolProblem.HeaderDoesNotExtend(header.point, hc.tipPoint))
-            case _ => resolveFresh(header, waited, since)
+            case _ => resolveFresh(header, waited)
           }
 
         private def resolveFresh(
             header: Header,
-            waited: Boolean,
-            since: Option[(Option[BlockRef], FiniteDuration)]
+            waited: Boolean
         )(using Raise[F, PeerError], Raise[F, Reintersection]): F[(Outcome[H], Boolean)] =
           for
             version <- revision
@@ -881,42 +855,13 @@ object HeaderCheck:
                 (tipState, anchor) match
                   case (Some(prev), Some((anchorState, tip))) =>
                     F.delay(rules.validate(anchorState, tip, prev, header)).flatMap {
-                      case Outcome.Later(reason) =>
-                        wait(header, reason, since, current, hc, selected, version)
-                      case other => F.pure(other -> waited)
+                      case Outcome.Later(_) => wait(header, waited, hc, selected, version)
+                      case other            => F.pure(other -> waited)
                     }
-                  case (None, Some(_)) =>
-                    released.get.flatMap { earlier =>
-                      if hc.entries.size > earlier && patience.isEmpty && canonical.isEmpty then
-                        F.pure(
-                          (
-                            Outcome.Unchecked(
-                              HeaderRules.UncheckedReason.ParentInBatch,
-                              None
-                            ): Outcome[H]
-                          ) -> waited
-                        )
-                      else
-                        wait(
-                          header,
-                          HeaderRules.ForecastReason.ParentStateUnknown,
-                          since,
-                          current,
-                          hc,
-                          selected,
-                          version
-                        )
-                    }
-                  case (_, None) if patience.nonEmpty || canonical.nonEmpty =>
-                    Raise[F, Reintersection].raise(Reintersection.Lost(hc.tipPoint))
+                  // the parent's header state is not known until our chain applies it
+                  case (None, Some(_)) => wait(header, waited, hc, selected, version)
                   case (_, None) =>
-                    // no ledger state of ours lies on the peer's chain: the follower deals with it
-                    F.pure(
-                      (
-                        Outcome
-                          .Unchecked(HeaderRules.UncheckedReason.NoCommonLedger, None): Outcome[H]
-                      ) -> waited
-                    )
+                    Raise[F, Reintersection].raise(Reintersection.Lost(hc.tipPoint))
           yield result
 
         /** The header state at the parent when the node has applied the parent. */
@@ -939,52 +884,29 @@ object HeaderCheck:
             )(current.anchor.state -> current.anchor.block)
           }
 
+        /** Wait for our chain to change, then check `header` again, as the reference's ChainSync
+          * client waits when the header is beyond the forecast range of the ledger at the
+          * intersection: until our chain and the intersection have advanced far enough
+          * (ouroboros-consensus 82ecba329, `MiniProtocol/ChainSync/Client.hs` 1861-1878). The
+          * patience bucket is paused for the whole wait, from the first time the header waits until
+          * it is checked (`checkTime` and `pauseBucket`, 1719-1733 and 1880-1889). `waited`: this
+          * header has waited before, inside the pause already taken.
+          */
         private def wait(
             header: Header,
-            reason: HeaderRules.ForecastReason,
-            since: Option[(Option[BlockRef], FiniteDuration)],
-            current: VolatileChain[S],
+            waited: Boolean,
             hc: HeaderChain[H],
             selected: Option[ChainSelection.Local],
             version: Option[Long]
         )(using Raise[F, PeerError], Raise[F, Reintersection]): F[(Outcome[H], Boolean)] =
-          for
-            refusal <- sparse(hc, selected)
-            _ <- refusal.traverse_(p => PeerError.Genesis(p).raise[F, Unit])
-            now <- F.monotonic
-            earlier <- released.get
-            progress = current.tipRef
-            moved = since match
-              case Some((seen, at)) if seen == progress => (seen, at)
-              case _                                    => (progress, now)
-            // our tip's place among the entries of earlier batches: everything of theirs is applied
-            applied =
-              if current.tip == hc.base then Some(0)
-              else
-                Some(hc.entries.indexWhere(e => progress.exists(_.hash == e.header.hash)) + 1)
-                  .filter(_ > 0)
-            nothingInFlight = applied.exists(_ >= earlier)
-            result <-
-              if patience.isEmpty && canonical.isEmpty && (nothingInFlight || now - moved._2 > stall)
-              then
-                // Nothing is left to wait for (every block of the earlier batches is applied, or the
-                // chain stood still): the block validates the header, rather than dropping a peer
-                // whose chain the forecast cannot reach (an honest gap, a limit of the forecast).
-                F.pure(
-                  (
-                    Outcome.Unchecked(
-                      HeaderRules.UncheckedReason.ForecastFallback(reason),
-                      None
-                    ): Outcome[H]
-                  ) -> true
+          sparse(hc, selected).flatMap {
+            case Some(problem) => PeerError.Genesis(problem).raise[F, (Outcome[H], Boolean)]
+            case None =>
+              val waiting = waitForChange(version) *> resolve(header, waited = true)
+              patience
+                .filter(_ => !waited)
+                .fold(waiting)(p =>
+                  (p.setPaused(LimitOnPatience.PauseReason.Forecast, true) *> waiting)
+                    .guarantee(p.setPaused(LimitOnPatience.PauseReason.Forecast, false))
                 )
-              else
-                val waiting =
-                  waitForChange(version) *> resolve(header, waited = true, since = Some(moved))
-                patience
-                  .filter(_ => since.isEmpty)
-                  .fold(waiting)(p =>
-                    (p.setPaused(LimitOnPatience.PauseReason.Forecast, true) *> waiting)
-                      .guarantee(p.setPaused(LimitOnPatience.PauseReason.Forecast, false))
-                  )
-          yield result
+          }
