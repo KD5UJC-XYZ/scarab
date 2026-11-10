@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.testkit.TestControl
 import cats.effect.{Deferred, FiberIO, IO, Ref, Resource}
 import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
@@ -65,7 +64,7 @@ class RemoteActivitySuite extends FailsOnUncaught:
           Mux[IO]
       ) => Resource[IO, Connection[IO]]
   ) =
-    TestControl.executeEmbed(
+    Settled.timed { settle =>
       for
         log <- Ref.of[IO, Vector[(ConnectionState, ConnectionState)]](Vector.empty)
         cm <- ConnectionManager.create[IO](
@@ -84,7 +83,7 @@ class RemoteActivitySuite extends FailsOnUncaught:
           IO.sleep(left) *> responders
             .running(finish.get)
             .start
-            .flatMap(running.complete) *> IO.cede
+            .flatMap(running.complete) *> settle
         // the responder is let go and cancelled, and the connection's resources released, whatever
         // the test meets
         responder = Resource.onFinalize(
@@ -98,7 +97,7 @@ class RemoteActivitySuite extends FailsOnUncaught:
                   NodeToNodeServer.remoteActivity(mux, responders, 5.seconds, owned, Some(timer))
                 )
                 .use { _ =>
-                  IO.sleep(6.seconds) *> finish.complete(()) *> IO.sleep(1.second) *> owned.state
+                  running.get *> settle *> finish.complete(()) *> settle *> owned.state
                 }
                 .flatMap(after => log.get.map(after -> _))
             }
@@ -109,7 +108,7 @@ class RemoteActivitySuite extends FailsOnUncaught:
             )
           )
       yield result
-    )
+    }
 
   private val ticking = ConnectionState.OutboundDup(TimeoutExpired.Ticking)
   private val expired = ConnectionState.OutboundDup(TimeoutExpired.Expired)
