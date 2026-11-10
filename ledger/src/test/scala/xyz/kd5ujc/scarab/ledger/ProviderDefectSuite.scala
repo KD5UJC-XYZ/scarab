@@ -247,6 +247,23 @@ class ProviderDefectSuite extends FunSuite:
     )
   }
 
+  test("a KES window reaching 2^64 is refused as the reference's wrapped window is") {
+    val start = BigInt(1)
+    val windowHeader = header.copy(
+      slot = SlotsPerKesPeriod,
+      opCert = header.opCert.copy(kesPeriod = start)
+    )
+    val fits = (BigInt(1) << 64) - 1 - start
+    assertEquals(
+      OCertRules.verifySignaturesWith(windowHeader, SlotsPerKesPeriod, fits, okKes, okCert),
+      Right(())
+    )
+    assertEquals(
+      OCertRules.verifySignaturesWith(windowHeader, SlotsPerKesPeriod, fits + 1, okKes, okCert),
+      Left(OCertError.KesPeriodOutsideWindow(start, start, fits + 1))
+    )
+  }
+
   test("the real verifiers accept the real header and reject a tampered KES signature") {
     assertEquals(
       OCertRules.verifySignatures(header, SlotsPerKesPeriod, MaxKesEvolutions),

@@ -71,9 +71,16 @@ object OCertRules:
   ): Either[OCertError | ProviderDefect, Unit] =
     val kesPeriod = header.slot / slotsPerKesPeriod
     val start = header.opCert.kesPeriod
+    // f649f975 TPraos/Rules/OCert.hs:84-90 refuses a Word64 end that wraps below start.
+    val end = start + maxKesEvolutions
     for
       _ <- Either.cond(
-        start <= kesPeriod && kesPeriod < start + maxKesEvolutions,
+        start <= kesPeriod,
+        (),
+        OCertError.KesPeriodOutsideWindow(kesPeriod, start, maxKesEvolutions)
+      )
+      _ <- Either.cond(
+        end.bitLength <= 64 && kesPeriod < end,
         (),
         OCertError.KesPeriodOutsideWindow(kesPeriod, start, maxKesEvolutions)
       )
