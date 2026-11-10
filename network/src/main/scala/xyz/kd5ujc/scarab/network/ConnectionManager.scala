@@ -312,23 +312,29 @@ object ConnectionManager:
   /** What a change of the table asks to be done after it: the log, and the connections to end with
     * the reason kept for the log and the cause their mux is stopped with.
     */
+  /** What a change asks for: the log, the connections to stop, the generations whose end is
+    * published, and the released generations whose owners are told to let go of their transports.
+    * Everything but the log is guaranteed: the reference writes a connection's terminal state in
+    * the transaction that changes it, whatever its trace then does (`Core.hs` 605-641).
+    */
   private final case class Effects[F[_]](
       events: Vector[ConnectionEvent],
       stops: Vector[(Entry[F], ConnectionEnd, NetworkError)],
-      ends: Vector[(Entry[F], Ended)]
+      ends: Vector[(Entry[F], Ended)],
+      released: Vector[Entry[F]]
   ):
     def ++(o: Effects[F]): Effects[F] =
-      new Effects(events ++ o.events, stops ++ o.stops, ends ++ o.ends)
+      new Effects(events ++ o.events, stops ++ o.stops, ends ++ o.ends, released ++ o.released)
 
   private object Effects:
     def apply[F[_]](
         events: Vector[ConnectionEvent],
         stops: Vector[(Entry[F], ConnectionEnd, NetworkError)]
-    ): Effects[F] = new Effects[F](events, stops, Vector.empty)
+    ): Effects[F] = new Effects[F](events, stops, Vector.empty, Vector.empty)
     def none[F[_]]: Effects[F] = Effects[F](Vector.empty, Vector.empty)
     def log[F[_]](events: Vector[ConnectionEvent]): Effects[F] = Effects[F](events, Vector.empty)
     def ended[F[_]](entry: Entry[F], state: ConnectionState, cause: Option[NetworkError]) =
-      new Effects[F](Vector.empty, Vector.empty, Vector((entry, Ended(state, cause))))
+      new Effects[F](Vector.empty, Vector.empty, Vector((entry, Ended(state, cause))), Vector.empty)
 
   /** How an acquisition goes on after one look at the table. */
   private enum Dispatch[F[_]]:
@@ -401,6 +407,7 @@ object ConnectionManager:
       */
     private def run(effects: Effects[F]): F[Unit] =
       val ends = effects.ends.traverse_((entry, end) => entry.ended.complete(end).void) *>
+        effects.released.traverse_(_.stop.complete(ConnectionEnd.Released).void) *>
         effects.stops.traverse_ { (entry, end, cause) =>
           entry.ended.complete(Ended(ConnectionState.Terminated, None)).void *>
             entry.stop.complete(end).void *> entry.handle.traverse_(_.mux.abort(cause))
@@ -873,22 +880,31 @@ object ConnectionManager:
     ): F[Unit] =
       changing { (t, now) =>
         t.locate(id) match
-          case None => (t, Effects.none[F], None)
+          case None => (t, Effects.none[F], ())
           case Some((key, entry)) =>
             val closing = ConnectionEvent.Closed(
               at.toString,
               entry.origin,
               entry.reason.getOrElse(ConnectionEnd.Released)
             )
+            // the generation's end, published and its owner let go whether or not its log is
+            // written (`Core.hs` 605-641)
+            val failure = entry.reason.collect { case ConnectionEnd.Failed(error) => error }
+            val ending = new Effects[F](
+              Vector.empty,
+              Vector.empty,
+              Vector((entry, Ended(ConnectionState.Terminated, failure))),
+              Vector(entry)
+            )
             entry.state match
               case ConnectionState.Terminating if limits.timeWait > Duration.Zero =>
                 (
                   t.put(key, entry.copy(releasedAt = Some(now))),
-                  Effects.log[F](Vector(closing)),
-                  Some(entry)
+                  Effects.log[F](Vector(closing)) ++ ending,
+                  ()
                 )
               case ConnectionState.Terminated =>
-                (t.copy(entries = t.entries - key), Effects.log[F](Vector(closing)), Some(entry))
+                (t.copy(entries = t.entries - key), Effects.log[F](Vector(closing)) ++ ending, ())
               case other =>
                 (
                   t.copy(entries = t.entries - key),
@@ -897,14 +913,10 @@ object ConnectionManager:
                       ConnectionEvent.Changed(at.toString, other, ConnectionState.Terminated),
                       closing
                     )
-                  ),
-                  Some(entry)
+                  ) ++ ending,
+                  ()
                 )
-      }.flatMap(_.traverse_ { entry =>
-        val failure = entry.reason.collect { case ConnectionEnd.Failed(error) => error }
-        entry.ended.complete(Ended(ConnectionState.Terminated, failure)).void *>
-          entry.stop.complete(ConnectionEnd.Released).void
-      }) *> closed.complete(()).void
+      }.guarantee(closed.complete(()).void)
 
     private def fresh(origin: Provenance): F[Entry[F]] =
       (ids.updateAndGet(_ + 1), Deferred[F, ConnectionEnd], Deferred[F, Unit], Deferred[F, Ended])

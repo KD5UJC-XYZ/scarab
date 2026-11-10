@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.effect.testkit.TestControl
-import cats.effect.{Deferred, IO, Ref}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -466,17 +466,22 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
         ).flatMap { (cm, entered, release, _) =>
           Handle
             .allow[ConnectionError] {
-              for
-                (theirs, _) <- cm.include(peer(1), None).allocated
-                waiters <- List.fill(3)(attempt(acquired(cm, 1)).start).sequence
-                _ <- IO.sleep(1.second)
-                failing <- theirs.handshakeFailed(refusal).start
-                _ <- entered.get
+              // the waiters are cancelled last; the held report is let go before then, and the
+              // failure joined, whatever the test meets
+              val running = for
+                theirs <- cm.include(peer(1), None)
+                waiters <- List.fill(3)(attempt(acquired(cm, 1)).background).sequence
+                _ <- Resource.eval(IO.sleep(1.second))
+                _ <- Resource.make(theirs.handshakeFailed(refusal).start)(failing =>
+                  release.complete(()) *> failing.join.void
+                )
+              yield waiters
+              running.use { waiters =>
                 // the failure's report is held: the waiters settle meanwhile
-                got <- waiters.traverse(_.join.timeout(10.seconds).flatMap(_.embedNever))
-                _ <- release.complete(())
-                _ <- failing.joinWithNever
-              yield got.map(_.map(_._1))
+                entered.get *> waiters.traverse(
+                  _.timeout(10.seconds).flatMap(_.embedNever).map(_.map(_._1))
+                )
+              }
             }
             .rescue(e => IO(fail(e.message)))
         }
@@ -489,6 +494,48 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
               ConnectionError
                 .Disconnected(peer(1).toString, ConnectionState.Terminating, Some(refusal))
             )
+          )
+        )
+      }
+  }
+
+  // the reference writes a connection's terminal state in the transaction that removes it,
+  // whatever its trace then does (`Core.hs` 605-641): a waiter for the connection's handshake
+  // learns its end even when the release's log fails
+  test("a waiter learns the end of a released connection even when the release's log fails") {
+    val broken = new RuntimeException("the log failed")
+    TestControl
+      .executeEmbed(
+        ConnectionManager
+          .create[IO](
+            ConnectionManager.Limits(),
+            Some {
+              case ConnectionEvent.Closed(_, _, _) => IO.raiseError(broken)
+              case _                               => IO.unit
+            }
+          )
+          .flatMap { cm =>
+            Handle
+              .allow[ConnectionError] {
+                cm.include(peer(1), None).allocated.flatMap { (_, release) =>
+                  attempt(acquired(cm, 1)).background.use { waiting =>
+                    for
+                      _ <- IO.sleep(1.second)
+                      released <- release.attempt
+                      got <- waiting.timeout(10.seconds).flatMap(_.embedNever)
+                    yield (released, got.map(_._1).void)
+                  }
+                }
+              }
+              .rescue(e => IO(fail(e.message)))
+          }
+      )
+      .map { (released, got) =>
+        assertEquals(released, Left(broken))
+        assertEquals(
+          got,
+          Left(
+            ConnectionError.Disconnected(peer(1).toString, ConnectionState.Terminated, None)
           )
         )
       }
