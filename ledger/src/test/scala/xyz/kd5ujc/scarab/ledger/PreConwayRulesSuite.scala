@@ -800,6 +800,85 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       case other => fail(s"expected PPUpdateWrongEpoch, got $other")
   }
 
+  /** The state after two genesis delegates of a quorum of two propose `update` for this epoch in
+    * the era `E`, from parameters `pp`: PPUP predicts the parameters of the next epoch
+    * (`votedFuturePParams`, `Rules/Ppup.hs:205-225`).
+    */
+  private def proposedIn[E <: EraTag](pp: ProtocolParams, update: ParamUpdate)(using
+      ShelleyBasedEra[E],
+      PreConway[E]
+  ): NewEpochState[E] =
+    val genesis = Vector(key(), key())
+    val delegates = Vector(key(), key())
+    val (funded, in) = fundedIn[E](pp.protocolMajor.toInt)
+    val ls = funded.es.ls
+    val s0 = funded.copy(es =
+      funded.es.copy(ls =
+        ls.copy[E](utxo = ls.utxo.copy[E](gov = EraLedger.mapParams(ls.utxo.gov)(_ => pp)))
+      )
+    )
+    val s = withGenesis(s0, genesis.zip(delegates))
+    val u = Update(genesis.map(_.hash -> update).toMap, 5)
+    val b =
+      body("up", Vector(in), Vector(out(alice.address(), 100 * ada - 200)), 200, update = Some(u))
+    run(s, tx(b, Vector(alice) ++ delegates)).fold(f => fail(f.message), _.state)
+
+  private def predicted[E <: EraTag](nes: NewEpochState[E])(using
+      ShelleyBasedEra[E]
+  ): ProtocolParams =
+    EraLedger.futurePParams(nes.es.ls.utxo.gov) match
+      case FuturePParams.PotentialPParamsUpdate(Some(p)) => p
+      case other                                         => fail(s"no voted parameters: $other")
+
+  private def cbor(bytes: Int*): Bytes = Bytes(bytes.toVector.map(_.toByte))
+
+  // Babbage's parameters at version 6, as the Babbage translation leaves them (no cost per word,
+  // `Babbage/PParams.hs:316-345`)
+  private val babbageAt6 =
+    params(6).copy(coinsPerUTxOByte = 4310, coinsPerUTxOWord = 0, minUTxOValue = 0)
+
+  test(
+    "Babbage at version 6 reads update key 17 as coinsPerUTxOByte (Babbage/PParams.hs:405-412)"
+  ) {
+    val after = proposedIn[Babbage](babbageAt6, ParamUpdate(Map(17 -> cbor(0x19, 0x03, 0xe8))))
+    assertEquals(
+      (predicted(after).coinsPerUTxOByte, predicted(after).coinsPerUTxOWord),
+      (BigInt(1000), BigInt(0))
+    )
+    val adopted = as[Babbage](afterLastBlock(after, boundaryGlobals))
+    assertEquals(paramsOf(adopted).coinsPerUTxOByte, BigInt(1000))
+  }
+
+  test("Babbage at version 6 keeps coinsPerUTxOByte when an update moves it to version 7") {
+    // Babbage's update has no conversion of its own: only the translation converts
+    // (`Babbage/Translation.hs:84-91`)
+    val after = proposedIn[Babbage](babbageAt6, ParamUpdate(Map(14 -> cbor(0x82, 0x07, 0x00))))
+    assertEquals(predicted(after).coinsPerUTxOByte, BigInt(4310))
+    val adopted = paramsOf(as[Babbage](afterLastBlock(after, boundaryGlobals)))
+    assertEquals((adopted.protocolMajor, adopted.coinsPerUTxOByte), (BigInt(7), BigInt(4310)))
+  }
+
+  test("Alonzo at version 7 reads update key 17 as coinsPerUTxOWord (Alonzo/PParams.hs:658-664)") {
+    val pp = params(7)
+    val after = proposedIn[Alonzo](pp, ParamUpdate(Map(17 -> cbor(0x19, 0x9c, 0x40))))
+    assertEquals(
+      (predicted(after).coinsPerUTxOWord, predicted(after).coinsPerUTxOByte),
+      (BigInt(40000), pp.coinsPerUTxOByte)
+    )
+  }
+
+  test("the Babbage translation converts the cost per word an Alonzo update set, rounded down") {
+    // `upgradeBabbagePParams True` on the future parameters (`Babbage/Translation.hs:84-91`,
+    // `Babbage/PParams.hs:316-345, 390-391`)
+    val update = ParamUpdate(Map(14 -> cbor(0x82, 0x07, 0x00), 17 -> cbor(0x19, 0x9c, 0x43)))
+    val after = proposedIn[Alonzo](params(6), update)
+    val entered = paramsOf(as[Babbage](afterLastBlock(after, boundaryGlobals)))
+    assertEquals(
+      (entered.protocolMajor, entered.coinsPerUTxOByte, entered.coinsPerUTxOWord),
+      (BigInt(7), BigInt(5000), BigInt(0))
+    )
+  }
+
   test(
     "the boundary that adopts protocol version 9 is a Conway transition and counts a dormant epoch"
   ) {
@@ -809,7 +888,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val ls = s0.es.ls
     // the two proposals and the parameters they vote for, as PPUP leaves them (`Rules/Ppup.hs`)
     val gov = ls.utxo.gov
-    val voted = UpdateChecks.voted(gov.curPParams, g.map(_.hash -> pv9).toMap, 2)
+    val voted = UpdateChecks.voted[Babbage](gov.curPParams, g.map(_.hash -> pv9).toMap, 2)
     val proposed = gov.copy(
       curProposals = Sorted.map(g.map(k => genesisId(k) -> pv9)),
       futurePParams = FuturePParams.PotentialPParamsUpdate(voted)

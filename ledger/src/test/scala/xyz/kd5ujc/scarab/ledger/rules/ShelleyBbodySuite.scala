@@ -106,6 +106,22 @@ class ShelleyBbodySuite extends FunSuite:
     assertEquals(made(after), Some(1L))
   }
 
+  test("Alonzo at version 7 keeps its overlay: d is the parameter up to Alonzo") {
+    // `ppDG` is `hkdDL` up to Alonzo whatever the version (`Core/PParams.hs:463-465`,
+    // `Alonzo/PParams.hs:338`), read by `incrBlocks` (`Alonzo/Rules/Bbody.hs:214`)
+    val pp = params(7).copy(d = half)
+    val after = run[Alonzo](pp, Vector.empty, state[Alonzo](pp), at = 2)
+      .fold(f => fail(f.reason), identity)
+    assertEquals(made(after), None)
+  }
+
+  test("Babbage at version 6 has no overlay: its ppDG is 0 (Babbage/PParams.hs:198)") {
+    val pp = params(6).copy(d = half)
+    val after = run[Babbage](pp, Vector.empty, state[Babbage](pp), at = 2)
+      .fold(f => fail(f.reason), identity)
+    assertEquals(made(after), Some(1L))
+  }
+
   test("isOverlaySlot is the reference's: the slots of the schedule spread over the epoch") {
     // d = 1/5: one slot in five, the first of each five
     val overlay = (0 until 20).filter(i => ShelleyBbody.isOverlaySlot(0, Rational(1, 5), i))

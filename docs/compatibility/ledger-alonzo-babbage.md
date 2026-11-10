@@ -27,6 +27,18 @@ interval are selected by era (`Alonzo/Plutus/TxInfo.hs:130-149,252-263`, `Babbag
 cardano-ledger f649f975). `ScriptContextEraSuite` exercises UTXOS at mismatched versions;
 `ScriptContextUsualVersionSuite` preserves complete CBOR bytes at each usual version.
 
+Protocol-parameter updates and the decentralisation view follow the era, whatever its protocol
+version (cardano-ledger f649f975; #884). PPUP and UPEC apply key 17 as Alonzo's
+`coinsPerUTxOWord` (`Alonzo/PParams.hs:658-664`) or Babbage's `coinsPerUTxOByte`
+(`Babbage/PParams.hs:405-412`); the conversion is only the Babbage translation, including the
+future parameters (`Babbage/Translation.hs:84-91`, `Babbage/PParams.hs:316-345,389-391`).
+`PreConwayRulesSuite` exercises a Babbage update at version 6, its adoption without a second
+conversion, an Alonzo update at version 7, and the subsequent conversion at the era boundary.
+The era's `ppDG` is `d` through Alonzo (`Alonzo/PParams.hs:338`) and zero from Babbage
+(`Babbage/PParams.hs:198`): `ShelleyBbodySuite` checks the blocks counted in Alonzo at version 7
+and Babbage at version 6, and `EraTransitionSuite` checks both production TPraos header paths at
+Alonzo version 7. The parameter record, snapshot schema and original update bytes are unchanged.
+
 ## Explicitly unchecked or unconfirmed
 
 block execution-unit limits are validated (protocol >= 5) but only by unit tests (`ShelleyBbodySuite`, `BbodySuite`) and the sync; no Alonzo-era transaction with datums and no redeemers exists on Preview, so that case of the integrity hash (`0x80` redeemers) has no chain evidence of its own (the Babbage case is the same code)

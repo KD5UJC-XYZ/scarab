@@ -43,7 +43,7 @@ class RationalFieldsSuite extends FunSuite:
     ParamUpdate(fields.map((k, v) => k -> hex(v)).toMap)
 
   private def applied(fields: (Int, String)*): Either[LedgerDecodeError, ProtocolParams] =
-    ProtocolParams.update(conway, update(fields*))
+    ProtocolParams.update[xyz.kd5ujc.scarab.ledger.state.Conway](conway, update(fields*))
 
   private def array(items: String*): String =
     "8" + items.length.toHexString + items.mkString

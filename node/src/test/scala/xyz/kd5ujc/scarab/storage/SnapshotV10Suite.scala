@@ -195,7 +195,8 @@ class SnapshotV10Suite extends CatsEffectSuite:
             v10.encode(back).map { again =>
               assert(java.util.Arrays.equals(bytes, again.fold(r => fail(r.toString), identity)))
               val adopted =
-                xyz.kd5ujc.scarab.ledger.UpdateChecks.voted(params(back.state), pending, 1)
+                xyz.kd5ujc.scarab.ledger.UpdateChecks
+                  .voted[xyz.kd5ujc.scarab.ledger.state.Shelley](params(back.state), pending, 1)
               if u == outside then assertEquals(adopted, None)
               else assertEquals(adopted.map(_.d), Some(xyz.kd5ujc.scarab.codec.Rational(1, 2)))
             }

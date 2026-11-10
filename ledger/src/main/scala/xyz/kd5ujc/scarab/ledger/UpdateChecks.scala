@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
 
 /** Pre-Conway protocol-parameter update proposals: what PPUP refuses and how many genesis delegates
   * must agree (the era-indexed rules, `ShelleyUtxo` and `Upec`, call these).
@@ -44,11 +45,11 @@ object UpdateChecks:
     * genesis delegates proposed with equal values ([[ParamUpdate.winners]]), applied to `params`
     * (`votedFuturePParams`, `Rules/Ppup.hs:205-225`).
     */
-  def voted(
+  def voted[E <: EraTag](
       params: ProtocolParams,
       current: Map[Bytes, ParamUpdate],
       quorum: Int
-  ): Option[ProtocolParams] =
+  )(using ShelleyBasedEra[E]): Option[ProtocolParams] =
     ParamUpdate.winners(current.values.toVector, quorum) match
       case Vector(u) =>
         ProtocolParams
