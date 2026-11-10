@@ -1,0 +1,288 @@
+{
+ "_comment": "sleeps, timers and yields per Scala source outside src/main; written by scripts/check_test_sleeps.py --write-baseline, which refuses an increase. It only shrinks (issue 870).",
+ "files": {
+  "codec/src/test/scala/xyz/kd5ujc/scarab/codec/InternsSuite.scala": {
+   "sleep": 1
+  },
+  "consensus/src/test/scala/xyz/kd5ujc/scarab/consensus/SchedulingSuite.scala": {
+   "sleep": 2
+  },
+  "fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Harness.scala": {
+   "sleep": 1
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/AcceptedConnectionsLimitSuite.scala": {
+   "sleep": 1
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/BackgroundFibersSuite.scala": {
+   "Wait.until": 1,
+   "sleep": 1
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/BearerServerSuite.scala": {
+   "sleep": 1
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/BlockFetchPeerTimeSuite.scala": {
+   "sleep": 7
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/BlockFetchPipelineSuite.scala": {
+   "sleep": 1
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/BulkControlCharacterizationSuite.scala": {
+   "sleep": 2
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/ChainSyncPipelineSuite.scala": {
+   "sleep": 2
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/ChainSyncTimeoutsSuite.scala": {
+   "sleep": 4
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/ClientSuite.scala": {
+   "sleep": 2
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/ConnectionManagerSuite.scala": {
+   "sleep": 13
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/IncrementalReceiveSuite.scala": {
+   "sleep": 1
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/LeiosProbe.scala": {
+   "sleep": 2
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/LocalServerSuite.scala": {
+   "cede": 1,
+   "sleep": 2
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/LocalStateQueryServerSuite.scala": {
+   "Wait.until": 1
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/LocalTxMonitorServerSuite.scala": {
+   "sleep": 2
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/MuxDeadlinesSuite.scala": {
+   "sleep": 3
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/MuxSuite.scala": {
+   "cede": 1,
+   "sleep": 6
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/NegotiatedDispatchSuite.scala": {
+   "sleep": 4
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/OrderedSupervisorSuite.scala": {
+   "cede": 2
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/PeerSharingSuite.scala": {
+   "sleep": 2
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/PeerTimeSuite.scala": {
+   "sleep": 6
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/ProtocolDeadlineSuite.scala": {
+   "sleep": 1
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/ProtocolIdleTimeoutSuite.scala": {
+   "sleep": 33
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/RemoteActivitySuite.scala": {
+   "cede": 1,
+   "sleep": 3
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/ResponderActivationSuite.scala": {
+   "sleep": 6
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/ServerSuite.scala": {
+   "sleep": 7
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/TxSubmissionLimitsSuite.scala": {
+   "sleep": 1
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/UpstreamMuxLifecycleSuite.scala": {
+   "sleep": 2
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/Wait.scala": {
+   "sleep": 1
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/WarmHotSuite.scala": {
+   "sleep": 2
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/genesis/LimitOnPatienceSuite.scala": {
+   "cede": 1,
+   "sleep": 16
+  },
+  "network/src/test/scala/xyz/kd5ujc/scarab/network/selection/ChainSyncJumpingRuntimeSuite.scala": {
+   "cede": 3,
+   "sleep": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/AdversarialScheduleSuite.scala": {
+   "sleep": 4
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/BlockAdmissionsSuite.scala": {
+   "sleep": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/BlockPoolSuite.scala": {
+   "sleep": 8
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/BlockSelectionWorkerSuite.scala": {
+   "sleep": 15
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/CachedBlockAttributionSuite.scala": {
+   "cede": 2,
+   "sleep": 3
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/CachedBlockSourceSuite.scala": {
+   "deliveredBody": 1,
+   "sleep": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/FetchCoordinationBenchSuite.scala": {
+   "sleep": 4
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/FetchCoordinationLawsSuite.scala": {
+   "sleep": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/FetchCoordinatorSuite.scala": {
+   "sleep": 10
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/FetchPerformanceRefreshSuite.scala": {
+   "sleep": 4
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/FollowerStallSuite.scala": {
+   "sleep": 3
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/FollowerSuite.scala": {
+   "sleep": 5
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/GenesisFetchCoordinatorSuite.scala": {
+   "cede": 1,
+   "sleep": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/GenesisGovernorSuite.scala": {
+   "sleep": 15
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/GenesisHeaderClockSuite.scala": {
+   "sleep": 3
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/GenesisHeaderGateSuite.scala": {
+   "sleep": 4
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/GenesisRuntimeSuite.scala": {
+   "sleep": 8
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/HeaderClockCanonicalSuite.scala": {
+   "sleep": 2
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/HeaderClockSuite.scala": {
+   "sleep": 11
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/HeaderGateSuite.scala": {
+   "sleep": 2
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/ImmutablePeerSnapshotVerifierSuite.scala": {
+   "sleep": 2
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/InboundGovernorSuite.scala": {
+   "sleep": 2
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/LedgerPeersWiringSuite.scala": {
+   "sleep": 4
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/Memory94Main.scala": {
+   "sleep": 2
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/OutboundLinkIdentitySuite.scala": {
+   "cede": 2
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/OutboundReuseSuite.scala": {
+   "sleep": 2
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/PeerFetchRollbackSuite.scala": {
+   "sleep": 4
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/PeerForkPrefixSuite.scala": {
+   "sleep": 2
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/PeerHeaderMetricsSuite.scala": {
+   "sleep": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/PeerStartupSuite.scala": {
+   "sleep": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/PipelineBackpressureSuite.scala": {
+   "sleep": 3
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/SelectionWorkSuite.scala": {
+   "sleep": 3
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/SessionDriver.scala": {
+   "sleep": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/StallDiagnosticsSuite.scala": {
+   "sleep": 15
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/StallWatchdogSuite.scala": {
+   "sleep": 15
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/WorkerTesting.scala": {
+   "deliveredBody": 2,
+   "sleep": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/forge/ForgeSuite.scala": {
+   "sleep": 8
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/forge/ForgerFailureSuite.scala": {
+   "cede": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/forge/KesRotationSuite.scala": {
+   "sleep": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/genesis/UpstreamGenesisReplay.scala": {
+   "sleep": 4
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/genesis/UpstreamGenesisServerSuite.scala": {
+   "sleep": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/governor/ChurnLoopSuite.scala": {
+   "sleep": 5
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/governor/FortyBearersSuite.scala": {
+   "sleep": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/governor/MockEnvironment.scala": {
+   "sleep": 7
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/governor/PeerSharingLoopSuite.scala": {
+   "sleep": 5
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/LocalMonitorSuite.scala": {
+   "sleep": 2
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/MempoolBackpressureSuite.scala": {
+   "cede": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/MempoolSuite.scala": {
+   "sleep": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/RelayedTransactionsSuite.scala": {
+   "sleep": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/DeepQuerySuite.scala": {
+   "sleep": 2
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/node/relay/ChainServerSuite.scala": {
+   "sleep": 2
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/storage/ChainStorageSuite.scala": {
+   "sleep": 2
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/storage/InternDecodeBench.scala": {
+   "sleep": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshotExportSuite.scala": {
+   "awakeEvery": 1
+  },
+  "node/src/test/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshotImportSuite.scala": {
+   "sleep": 1
+  },
+  "storage/src/test/scala/xyz/kd5ujc/scarab/storage/scls/SclsEntrySorterSuite.scala": {
+   "sleep": 1
+  }
+ }
+}
