@@ -179,7 +179,8 @@ object ApplyBenchMain:
         val spent = body.inputs.flatMap(utxo.get)
         val refOuts = body.referenceInputs.flatMap(utxo.get)
         ns("outputChecks") += time(
-          xyz.kd5ujc.scarab.ledger.rules.UtxoTests.outputTooSmall(pp, body.outputs)
+          xyz.kd5ujc.scarab.ledger.rules.UtxoTests
+            .outputTooSmall[xyz.kd5ujc.scarab.ledger.state.Alonzo](pp, body.outputs)
         )._2
         ns("collateralChecks") += time(TxChecks.collateral(ledgerUtxo, pp, tx))._2
         val (scripts, tProvided) =

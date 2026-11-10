@@ -210,7 +210,7 @@ object Utxo
       Value.coin(withdrawn + refunds) + Value.minted(body.mint)
     val produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
       Value.coin(body.fee + deposits + body.donation) + Value.burned(body.mint)
-    UtxoTests.babbage(pp, env.ctx, ann, minFee, consumed, produced)
+    UtxoTests.babbage[Conway](pp, env.ctx, ann, minFee, consumed, produced)
 
   /** `updateUTxOState` and `updateTreasuryDonation` (`Babbage/Rules/Utxo.hs:449`,
     * `Conway/Rules/Utxo.hs:201`).

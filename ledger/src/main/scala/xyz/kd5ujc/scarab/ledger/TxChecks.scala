@@ -7,13 +7,15 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.GenDelegPair
 import xyz.kd5ujc.scarab.ledger.rules.Test
+import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
 
 /** The checks of the transaction rules before Conway and the checks Conway shares with them (UTXO,
   * UTXOW, UTXOS): the pure predicates over a transaction and what it reads of the state, which the
-  * era-indexed rules ([[xyz.kd5ujc.scarab.ledger.rules.Utxo]], `ShelleyUtxo`) call. Era behaviour
-  * is selected by the protocol major version of the parameters in force: Allegra 3, Mary 4, Alonzo
-  * 5, Babbage 7. (The flat state's rules that used to apply a transaction beside these were removed
-  * at J2.9.)
+  * era-indexed rules ([[xyz.kd5ujc.scarab.ledger.rules.Utxo]], `ShelleyUtxo`) call. The UTXO checks
+  * take the era ([[minUTxO]], [[maxOutputValueSize]]), as the reference's rule of each era does
+  * whatever the protocol version; the UTXOW and UTXOS checks still choose by the protocol major
+  * version (issues 880 and 881). (The flat state's rules that used to apply a transaction beside
+  * these were removed at J2.9.)
   */
 object TxChecks:
   import TxEnv.Result
@@ -144,22 +146,29 @@ object TxChecks:
   // ---------------------------------------------------------------------------------------------
   // UTXO
 
-  /** The minimum ada of an output. Shelley and Allegra: the flat `minUTxOValue`
-    * (`getMinCoinTxOut`); Mary: `scaledMinDeposit`, which is `minUTxOValue` for an ada-only value
-    * and otherwise `max(minUTxOValue, (minUTxOValue / 27) * (27 + size v))` (`coinSize` is 0 there,
-    * unlike Alonzo where the ada-only entry counts 2 words); Alonzo:
-    * `coinsPerUTxOWord * (27 + size v + datum hash)`; Babbage onward: `coinsPerUTxOByte` times the
-    * serialised size plus 160.
+  /** The minimum ada of an output of the era `E`, its `TxOut` 's `getMinCoinTxOut` whatever the
+    * protocol version (cardano-ledger f649f975). Shelley and Allegra: the flat `minUTxOValue`
+    * (`Shelley/TxOut.hs:94`, `Allegra/TxOut.hs:31`); Mary: `scaledMinDeposit` (`Mary/TxOut.hs:33`),
+    * which is `minUTxOValue` for an ada-only value and otherwise
+    * `max(minUTxOValue, (minUTxOValue / 27) * (27 + size v))` (`coinSize` is 0 there, unlike Alonzo
+    * where the ada-only entry counts 2 words); Alonzo: `coinsPerUTxOWord * (27 + size v + datum
+    * hash)` (`Alonzo/TxOut.hs:370-372`); Babbage onward: `coinsPerUTxOByte` times the serialised
+    * size plus 160 (`babbageMinUTxOValue`, `Babbage/TxOut.hs:230`, `Conway/TxOut.hs:49`,
+    * `Dijkstra/TxOut.hs:41`).
     */
-  private[ledger] def minUTxO(pp: ProtocolParams, out: TxOut): BigInt =
-    if pp.protocolMajor >= 7 then (160 + out.ledgerSize) * pp.coinsPerUTxOByte
-    else if pp.protocolMajor >= 5 then pp.coinsPerUTxOWord * entrySize(out)
-    else if pp.protocolMajor >= 4 then
-      if out.value.assets.isEmpty then pp.minUTxOValue
-      else
-        val perWord = pp.minUTxOValue / UtxoEntrySizeWithoutVal
-        pp.minUTxOValue.max(perWord * (UtxoEntrySizeWithoutVal + valueWords(out.value)))
-    else pp.minUTxOValue
+  private[ledger] def minUTxO[E <: EraTag](pp: ProtocolParams, out: TxOut)(using
+      era: ShelleyBasedEra[E]
+  ): BigInt =
+    era match
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra => pp.minUTxOValue
+      case ShelleyBasedEra.SMary =>
+        if out.value.assets.isEmpty then pp.minUTxOValue
+        else
+          val perWord = pp.minUTxOValue / UtxoEntrySizeWithoutVal
+          pp.minUTxOValue.max(perWord * (UtxoEntrySizeWithoutVal + valueWords(out.value)))
+      case ShelleyBasedEra.SAlonzo => pp.coinsPerUTxOWord * entrySize(out)
+      case ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway | ShelleyBasedEra.SDijkstra =>
+        (160 + out.ledgerSize) * pp.coinsPerUTxOByte
 
   /** `utxoEntrySizeWithoutVal`: 6 + 14 (output) + 7 (input) words. */
   private val UtxoEntrySizeWithoutVal = BigInt(27)
@@ -184,13 +193,19 @@ object TxChecks:
       case _             => 0
     UtxoEntrySizeWithoutVal + valueWords(out.value) + datum
 
-  /** The largest serialised value an output may carry: 4000 bytes in Allegra and Mary (hard-coded
-    * in `validateOutputTooBigUTxO`), `maxValueSize` from Alonzo, no limit in Shelley.
+  /** The largest serialised value an output of the era `E` may carry, whatever the protocol
+    * version: none in Shelley, whose UTXO has no such check; 4000 bytes in Allegra and Mary
+    * (hard-coded in `validateOutputTooBigUTxO`, `Allegra/Rules/Utxo.hs:211,237-254`); `maxValSize`
+    * from Alonzo (`Alonzo/Rules/Utxo.hs:400-424`).
     */
-  private[ledger] def maxOutputValueSize(pp: ProtocolParams): Option[BigInt] =
-    if pp.protocolMajor >= 5 then Some(pp.maxValueSize)
-    else if pp.protocolMajor >= 3 then Some(BigInt(4000))
-    else None
+  private[ledger] def maxOutputValueSize[E <: EraTag](pp: ProtocolParams)(using
+      era: ShelleyBasedEra[E]
+  ): Option[BigInt] =
+    era match
+      case ShelleyBasedEra.SShelley                            => None
+      case ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary    => Some(BigInt(4000))
+      case ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage  => Some(pp.maxValueSize)
+      case ShelleyBasedEra.SConway | ShelleyBasedEra.SDijkstra => Some(pp.maxValueSize)
 
   /** The outputs of `outs` that hold a bootstrap (Byron) address, with the address. A Byron-kind
     * address has been decoded in full when its output was ([[Address.decode]]), so the decode below

@@ -19,7 +19,7 @@ import xyz.kd5ujc.scarab.ledger.{
   UtxoFailure,
   Value
 }
-import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.{Alonzo, EraTag, ShelleyBasedEra}
 
 /** The predicates of UTXO as the reference writes them, each a pure [[Test]] that reports every
   * offending item (cardano-ledger `f649f975`: `Shelley/Rules/Utxo.hs:412-560`,
@@ -96,34 +96,40 @@ object UtxoTests:
   def valueNotConserved(consumed: Value, produced: Value): Test[PredicateFailure] =
     unless(consumed == produced, UtxoFailure.ValueNotConserved(Mismatch(consumed, produced)))
 
-  /** The outputs below their minimum ada: by coin in Shelley (`Shelley/Rules/Utxo.hs:517-532`),
-    * pointwise below in Allegra and Mary, so an output that carries assets never is
-    * (`Allegra/Rules/Utxo.hs:256-270`), pointwise not at least from Alonzo
+  /** The outputs below the minimum ada of the era `E` ([[TxChecks.minUTxO]]), each era's
+    * `validateOutputTooSmallUTxO` whatever the protocol version: by coin in Shelley
+    * (`Shelley/Rules/Utxo.hs:517-532`), pointwise below in Allegra and Mary, so an output that
+    * carries assets never is (`Allegra/Rules/Utxo.hs:256-270`), pointwise not at least from Alonzo
     * (`Alonzo/Rules/Utxo.hs:382-398`), with the minimum from Babbage
     * (`Babbage/Rules/Utxo.hs:302-321`).
     */
-  def outputTooSmall(pp: ProtocolParams, outs: Vector[TxOut]): Test[PredicateFailure] =
-    val pv = pp.protocolMajor
-    def applies(out: TxOut) = pv <= 2 || pv >= 5 || out.value.assets.isEmpty
-    val small = outs.filter(o => applies(o) && o.value.coin < TxChecks.minUTxO(pp, o))
+  def outputTooSmall[E <: EraTag](pp: ProtocolParams, outs: Vector[TxOut])(using
+      era: ShelleyBasedEra[E]
+  ): Test[PredicateFailure] =
+    def applies(out: TxOut) = era != ShelleyBasedEra.SMary || out.value.assets.isEmpty
+    val small = outs.filter(o => applies(o) && o.value.coin < TxChecks.minUTxO[E](pp, o))
     nonEmpty(small)(_.isEmpty)(s =>
-      if pv >= 7 then UtxoFailure.BabbageOutputTooSmall(s.map(o => o -> TxChecks.minUTxO(pp, o)))
+      if era.atLeast(ShelleyBasedEra.SBabbage) then
+        UtxoFailure.BabbageOutputTooSmall(s.map(o => o -> TxChecks.minUTxO[E](pp, o)))
       else UtxoFailure.OutputTooSmall(s)
     )
 
-  /** The outputs whose serialised value is over the limit: 4000 bytes in Allegra and Mary, in the
-    * order of the outputs (`Allegra/Rules/Utxo.hs:237-254`); `maxValSize` from Alonzo, collected by
-    * a left fold that puts each one in front, so the last output first
+  /** The outputs whose serialised value is over the limit of the era `E`
+    * ([[TxChecks.maxOutputValueSize]]), whatever the protocol version: 4000 bytes in Allegra and
+    * Mary, in the order of the outputs (`Allegra/Rules/Utxo.hs:237-254`); `maxValSize` from Alonzo,
+    * collected by a left fold that puts each one in front, so the last output first
     * (`Alonzo/Rules/Utxo.hs:400-424`).
     */
-  def outputTooBig(pp: ProtocolParams, outs: Vector[TxOut]): Test[PredicateFailure] =
+  def outputTooBig[E <: EraTag](pp: ProtocolParams, outs: Vector[TxOut])(using
+      era: ShelleyBasedEra[E]
+  ): Test[PredicateFailure] =
     val big = outs.flatMap { o =>
       TxChecks
-        .maxOutputValueSize(pp)
+        .maxOutputValueSize[E](pp)
         .filter(max => BigInt(o.value.serializedSize) > max)
         .map(max => (o.value.serializedSize, max.toInt, o))
     }
-    nonEmpty(if pp.protocolMajor >= 5 then big.reverse else big)(_.isEmpty)(
+    nonEmpty(if era.atLeast(ShelleyBasedEra.SAlonzo) then big.reverse else big)(_.isEmpty)(
       UtxoFailure.OutputTooBig(_)
     )
 
@@ -269,33 +275,38 @@ object UtxoTests:
       noCollateralInputs(collateral)
     )
 
-  /** `feesOK` (`Alonzo/Rules/Utxo.hs:278-302`, `Babbage/Rules/Utxo.hs:170-192`): the fee, and the
-    * collateral of a transaction with redeemers.
+  /** `feesOK` of the era `E` (Alonzo's, `Alonzo/Rules/Utxo.hs:278-302`; Babbage's from Babbage,
+    * `Babbage/Rules/Utxo.hs:170-192`), whatever the protocol version: the fee, and the collateral
+    * of a transaction with redeemers.
     */
-  def feesOK(pp: ProtocolParams, utxo: Utxo, tx: Tx, minFee: BigInt): Test[PredicateFailure] =
+  def feesOK[E <: EraTag](pp: ProtocolParams, utxo: Utxo, tx: Tx, minFee: BigInt)(using
+      era: ShelleyBasedEra[E]
+  ): Test[PredicateFailure] =
     val body = tx.body
     Test.all(
       feeTooSmall(body, minFee),
       (if tx.witnesses.redeemers.isEmpty then Test.pass[PredicateFailure]
-       else if pp.protocolMajor >= 7 then babbageCollateral(pp, utxo, body)
+       else if era.atLeast(ShelleyBasedEra.SBabbage) then babbageCollateral(pp, utxo, body)
        else alonzoCollateral(pp, utxo, body))
     )
 
   /** What UTXO checks of a transaction of Shelley, Allegra or Mary before PPUP
-    * (`Shelley/Rules/Utxo.hs:366-388`, `Allegra/Rules/Utxo.hs:176-197`).
+    * (`Shelley/Rules/Utxo.hs:366-388`, `Allegra/Rules/Utxo.hs:176-197`): the time to live in
+    * Shelley, the validity interval from Allegra, by the era of `pre` whatever the protocol
+    * version.
     */
-  def shelleyBeforePpup(
-      pp: ProtocolParams,
+  def shelleyBeforePpup[E <: EraTag](
       network: Int,
       slot: BigInt,
       ann: StAnnTx,
       minFee: BigInt,
       consumed: Value,
       produced: Value
-  ): Test[PredicateFailure] =
+  )(using pre: PreConway[E]): Test[PredicateFailure] =
     val body = ann.tx.body
     Test.all(
-      (if pp.protocolMajor <= 2 then timeToLive(body, slot) else validityInterval(body, slot)),
+      (if pre.atLeast(ShelleyBasedEra.SAllegra) then validityInterval(body, slot)
+       else timeToLive(body, slot)),
       inputSetEmpty(body),
       feeTooSmall(body, minFee),
       badInputs(ann.utxo, body.inputs),
@@ -305,16 +316,20 @@ object UtxoTests:
     )
 
   /** What UTXO checks of a transaction of Shelley, Allegra or Mary after PPUP
-    * (`Shelley/Rules/Utxo.hs:393-403`, `Allegra/Rules/Utxo.hs:202-216`). The bootstrap attributes
-    * failure is Shelley's own in Shelley and injected from Allegra, by the era of `pre`.
+    * (`Shelley/Rules/Utxo.hs:393-403`, `Allegra/Rules/Utxo.hs:202-216`), by the era of `pre`
+    * whatever the protocol version: the size of the values from Allegra
+    * (`Allegra/Rules/Utxo.hs:211`), and the bootstrap attributes failure Shelley's own in Shelley
+    * and injected from Allegra.
     */
   def shelleyAfterPpup[E <: EraTag](build: ReferenceBuild, pp: ProtocolParams, tx: Tx)(using
       pre: PreConway[E]
   ): Test[PredicateFailure] =
+    given ShelleyBasedEra[E] = pre.era
     val outs = tx.body.outputs
     Test.all(
-      outputTooSmall(pp, outs),
-      (if pp.protocolMajor >= 3 then outputTooBig(pp, outs) else Test.pass[PredicateFailure]),
+      outputTooSmall[E](pp, outs),
+      (if pre.atLeast(ShelleyBasedEra.SAllegra) then outputTooBig[E](pp, outs)
+       else Test.pass[PredicateFailure]),
       (if pre.atLeast(ShelleyBasedEra.SAllegra) then injectedBootAddrAttrsTooBig(build, outs)
        else bootAddrAttrsTooBig(outs)),
       maxTxSize(pp, tx)
@@ -338,11 +353,11 @@ object UtxoTests:
     Test.all(
       validityInterval(body, env.slot),
       env.static(inputSetEmpty(body)),
-      feesOK(pp, ann.utxo, tx, minFee),
+      feesOK[Alonzo](pp, ann.utxo, tx, minFee),
       badInputs(ann.utxo, body.inputs ++ body.collateral),
       valueNotConserved(consumed, produced),
-      outputTooSmall(pp, outs),
-      outputTooBig(pp, outs),
+      outputTooSmall[Alonzo](pp, outs),
+      outputTooBig[Alonzo](pp, outs),
       env.static(injectedBootAddrAttrsTooBig(env.referenceBuild, outs)),
       env.static(wrongNetwork(network, outs)),
       env.static(wrongNetworkWithdrawal(network, body)),
@@ -357,14 +372,14 @@ object UtxoTests:
     * and reference inputs (`allInputsTxBodyF`). The checks under `runTestOnSignal` (lines 368-406)
     * run only when `env` runs the static ones ([[TxEnv.static]]).
     */
-  def babbage(
+  def babbage[E <: EraTag](
       pp: ProtocolParams,
       env: TxEnv,
       ann: StAnnTx,
       minFee: BigInt,
       consumed: Value,
       produced: Value
-  ): Test[PredicateFailure] =
+  )(using ShelleyBasedEra[E]): Test[PredicateFailure] =
     val tx = ann.tx
     val body = tx.body
     val outs = body.outputs ++ body.collateralReturn.toVector
@@ -373,11 +388,11 @@ object UtxoTests:
       disjointRefInputs(pp, body),
       validityInterval(body, env.slot),
       env.static(inputSetEmpty(body)),
-      feesOK(pp, ann.utxo, tx, minFee),
+      feesOK[E](pp, ann.utxo, tx, minFee),
       badInputs(ann.utxo, body.inputs ++ body.collateral ++ body.referenceInputs),
       valueNotConserved(consumed, produced),
-      outputTooSmall(pp, outs),
-      outputTooBig(pp, outs),
+      outputTooSmall[E](pp, outs),
+      outputTooBig[E](pp, outs),
       env.static(injectedBootAddrAttrsTooBig(env.referenceBuild, outs)),
       env.static(wrongNetwork(network, outs)),
       env.static(wrongNetworkWithdrawal(network, body)),

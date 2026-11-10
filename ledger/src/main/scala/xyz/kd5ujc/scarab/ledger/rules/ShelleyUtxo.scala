@@ -41,9 +41,10 @@ import xyz.kd5ujc.scarab.ledger.state.*
 // the pointer addresses.
 //
 // The shared pure predicates live in `TxChecks`; these rules sequence them in the reference's
-// order and maintain the UTxO state. The era of the rule is the evidence `PreConway[E]`:
-// where the checks branch on the protocol version of the parameters in force, that is the
-// reference's own (`hardfork*`).
+// order and maintain the UTxO state. The era of the rule is the evidence `PreConway[E]`, and the
+// checks each era's rule runs are chosen by it, whatever the protocol version; where the checks
+// branch on the protocol version of the parameters in force, that is the reference's own
+// (`hardfork*`).
 
 /** `PpupEnv` (`Ppup.hs`): the block-level context of the transaction (the slot and epoch, the
   * update quorum), the parameters in force, and the genesis delegations the proposals are checked
@@ -417,7 +418,7 @@ object UtxoChecks:
     if pre.atLeast(ShelleyBasedEra.SBabbage) then
       UtxoChecks(
         defect,
-        UtxoTests.babbage(pp, ctx, ann, minFee, consumed, produced),
+        UtxoTests.babbage[E](pp, ctx, ann, minFee, consumed, produced)(using pre.era),
         Test.pass
       )
     else if alonzo then
@@ -429,7 +430,7 @@ object UtxoChecks:
     else
       UtxoChecks(
         defect,
-        UtxoTests.shelleyBeforePpup(pp, ctx.network, ctx.slot, ann, minFee, consumed, produced),
+        UtxoTests.shelleyBeforePpup[E](ctx.network, ctx.slot, ann, minFee, consumed, produced),
         UtxoTests.shelleyAfterPpup[E](ctx.referenceBuild, pp, tx)
       )
 

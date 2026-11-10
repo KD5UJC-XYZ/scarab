@@ -32,7 +32,7 @@ sealed trait PreConway[E <: EraTag]:
   /** The era is `other` or a later one (`AtLeastEra`/`AtMostEra` in the reference's constraints):
     * the order of the eras is that of the witness's cases.
     */
-  def atLeast[F <: EraTag](other: ShelleyBasedEra[F]): Boolean = era.ordinal >= other.ordinal
+  def atLeast[F <: EraTag](other: ShelleyBasedEra[F]): Boolean = era.atLeast(other)
 
   /** The certificate state of the ledger state. */
   def cert: Lens[LedgerState[E], ShelleyCertState] =
