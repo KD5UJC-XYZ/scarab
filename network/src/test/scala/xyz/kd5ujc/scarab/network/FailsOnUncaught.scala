@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import cats.effect.IO
 import cats.effect.unsafe.{IORuntime, IORuntimeConfig}
-import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.{ConcurrentLinkedQueue, Semaphore, TimeUnit}
 import munit.CatsEffectSuite
 import scala.annotation.tailrec
 
@@ -14,6 +15,8 @@ import scala.annotation.tailrec
   */
 trait FailsOnUncaught extends CatsEffectSuite:
   private val reported = new ConcurrentLinkedQueue[Throwable]
+  // one permit per report, so that a test can wait for one
+  private val arrived = new Semaphore(0)
 
   // The runtime is not shut down at the end of the suite: its pools are daemon threads, and
   // shutting a work-stealing pool down from one of its own threads (munit's afterAll runs there)
@@ -28,16 +31,29 @@ trait FailsOnUncaught extends CatsEffectSuite:
     IORuntime
       .builder()
       .setConfig(runtimeConfig)
-      .setFailureReporter(t => { reported.add(t); () })
+      .setFailureReporter(t => { reported.add(t); arrived.release() })
       .build()
 
   override def beforeEach(context: BeforeEach): Unit =
     reported.clear()
+    arrived.drainPermits()
     super.beforeEach(context)
 
   /** The failures reported since the last call (or the start of the test); empties the record. */
   protected def takeUncaught(): List[Throwable] =
+    arrived.drainPermits()
     FailsOnUncaught.drain(reported)
+
+  /** As [[takeUncaught]], once the runtime has reported a failure: it fails when none is reported
+    * within `within`.
+    */
+  protected def awaitUncaught(
+      within: scala.concurrent.duration.FiniteDuration
+  ): IO[List[Throwable]] =
+    IO.interruptible(arrived.tryAcquire(within.toNanos, TimeUnit.NANOSECONDS)).flatMap {
+      case true  => IO(takeUncaught())
+      case false => IO.raiseError(new AssertionError(s"no failure was reported within $within"))
+    }
 
   // The check runs as part of the test's body: munit 1.0.2 discards what `afterEach` throws
   // (`MUnitRunner.runTestBody` keeps the body's result), so a check there never failed a test.

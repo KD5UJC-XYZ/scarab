@@ -108,15 +108,16 @@ scala code … I love the use of type parameters when I can use them"*.
   `tools` may use every module's test kits and follows the rules of test code; data the suites read
   stays in the test tree, and `tools` holds only its entry point.
 - Tests do not sleep: no sleep, delay, timer or yield orders fibers, waits for a state or paces a poll
-  loop. Wait on a `Deferred`, a latch, a change signal or a report of the code under test, and drive
-  time with `TestControl` (`tick`, `advanceAndTick`). `scripts/check_test_sleeps.py` refuses a new
-  `sleep`, `delayBy`, `andWait`, fs2 timer, `parkNanos`, `onSpinWait`, `cede`, `Thread.yield` or
-  sleep-poll helper in a source outside `src/main` (#870), against a baseline that only shrinks: the
-  change that removes a site commits the smaller `docs/data/test-sleep-baseline.json`. It cannot tell
-  `TestControl`'s clock from the wall clock, so it refuses a new virtual-time sleep too, and it does
-  not see a poll without those calls (`ref.get.iterateUntil(p)`), which this rule forbids all the
-  same. Bounded negative observations without a product-side hook remain tracked in #251; a new
-  sleep for one is still refused.
+  loop. Wait on a `Deferred`, a latch, a change signal or a report of the code under test, or run the
+  test in `Settled` (network test tree), whose `settle` returns once every fiber of the test is
+  blocked; drive time with `TestControl` (`tick`, `advanceAndTick`) or `Settled.timed`.
+  `scripts/check_test_sleeps.py` refuses a new `sleep`, `delayBy`, `andWait`, fs2 timer, `parkNanos`,
+  `onSpinWait`, `cede`, `Thread.yield` or sleep-poll helper in a source outside `src/main` (#870),
+  against a baseline that only shrinks: the change that removes a site commits the smaller
+  `docs/data/test-sleep-baseline.json`. It cannot tell `TestControl`'s clock from the wall clock, so
+  it refuses a new virtual-time sleep too, and it does not see a poll without those calls
+  (`ref.get.iterateUntil(p)`), which this rule forbids all the same. Bounded negative observations
+  without a product-side hook remain tracked in #251; a new sleep for one is still refused.
 - Opaque types, type classes with extension syntax, instances in companions, `derives` where it
   works, Monocle optics for nested state. Type parameters for roles and eras (`KeyHash[StakePool]`,
   `LedgerState[Conway]`).

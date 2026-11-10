@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.effect.{Deferred, IO, Ref}
-import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import fs2.Chunk
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -194,61 +193,64 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
 
   test("a slow consumer slows a producer that keeps to the protocol's window"):
     // The protocol, not the queue, holds a peer back: it may have 5 messages (50 bytes, half the
-    // limit) unread at a time, a credit the consumer returns as it reads. The consumer takes 2 ms
-    // per message, so the whole flow takes what the consumer takes, and the queue never overruns.
+    // limit) unread at a time, a credit the consumer returns as it reads. Each time the consumer
+    // has read a message, and before it returns the credit, every fiber runs until it blocks: the
+    // producer is then exactly the window ahead (until it has sent all), and the queue never
+    // overruns.
     val messages = 200
-    val perMessage = 2.millis
-    typed {
-      linked(
-        client = Mux.Config(sduSize = 10),
-        server = Mux.Config(
-          role = Mux.Role.Responder,
-          sduSize = 10,
-          ingressLimit = _ => 100L
-        )
-      ).use { (client, server) =>
-        for
-          c <- client.channel(2)
-          s <- server.channel(2)
-          credit <- cats.effect.std.Semaphore[IO](5)
-          began <- IO.monotonic
-          producer <- typed(
-            (1 to messages).toList.traverse_(_ => credit.acquire *> c.send(payload(10)))
-          ).start
-          got <- (1 to messages).toList.traverse { _ =>
-            s.recv(100)(exactly(10)) <* IO.sleep(perMessage) <* credit.release
-          }
-          _ <- producer.joinWithNever.flatMap(Fibers.land(_))
-          took <- IO.monotonic.map(_ - began)
-        yield (got.size, took)
+    Settled { settle =>
+      typed {
+        linked(
+          client = Mux.Config(sduSize = 10),
+          server = Mux.Config(
+            role = Mux.Role.Responder,
+            sduSize = 10,
+            ingressLimit = _ => 100L
+          )
+        ).use { (client, server) =>
+          for
+            c <- client.channel(2)
+            s <- server.channel(2)
+            credit <- cats.effect.std.Semaphore[IO](5)
+            sent <- Ref.of[IO, Int](0)
+            producer <- typed(
+              (1 to messages).toList
+                .traverse_(_ => credit.acquire *> c.send(payload(10)) *> sent.update(_ + 1))
+            ).start
+            ahead <- (1 to messages).toList.traverse { read =>
+              s.recv(100)(exactly(10)) *> settle *> sent.get.map(_ - read) <* credit.release
+            }
+            _ <- producer.joinWithNever.flatMap(Fibers.land(_))
+          yield ahead
+        }
       }
     }.map {
-      case Right((n, took)) =>
-        assertEquals(n, messages)
-        assert(
-          took >= perMessage * (messages - 5).toLong,
-          s"$messages messages passed in $took, faster than the consumer reads"
-        )
+      case Right(ahead) =>
+        // the producer holds the credits of the 4 messages after the one just read
+        assertEquals(ahead, (1 to messages).toList.map(read => (read + 4).min(messages) - read))
       case Left(e) => fail(e.message)
     }
 
   test("a sender waits for room in the lane budget while the bearer is not read"):
-    typed {
-      Bearer.inMemory[IO](1).flatMap { (ours, _) =>
-        Mux
-          .resource(ours, Set(2), Mux.Config(sduSize = 10, egressBufferBytes = 20))
-          .use { mux =>
-            for
-              c <- mux.channel(2)
-              written <- cats.effect.Ref.of[IO, Int](0)
-              sender <- typed(
-                (1 to 200).toList.traverse_(_ => c.send(payload(10)) *> written.update(_ + 1))
-              ).start
-              _ <- IO.sleep(300.millis)
-              sent <- written.get
-              _ <- sender.cancel
-            yield sent
-          }
+    Settled { settle =>
+      typed {
+        Bearer.inMemory[IO](1).flatMap { (ours, _) =>
+          Mux
+            .resource(ours, Set(2), Mux.Config(sduSize = 10, egressBufferBytes = 20))
+            .use { mux =>
+              for
+                c <- mux.channel(2)
+                written <- cats.effect.Ref.of[IO, Int](0)
+                sender <- typed(
+                  (1 to 200).toList.traverse_(_ => c.send(payload(10)) *> written.update(_ + 1))
+                ).start
+                // the sender has done all it can with nobody reading
+                _ <- settle
+                sent <- written.get
+                _ <- sender.cancel
+              yield sent
+            }
+        }
       }
     }.map {
       case Right(sent) => assert(sent < 200, s"all $sent sends completed with nobody reading")
@@ -256,16 +258,19 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
     }
 
   test("messages already delivered are read before a closed bearer is reported"):
-    typed {
-      linked().use { (client, server) =>
-        for
-          c <- client.channel(2)
-          s <- server.channel(2)
-          _ <- c.send(payload(5))
-          _ <- IO.sleep(50.millis)
-          _ <- server.abort(NetworkError.BearerClosed(NetworkError.Closure.Aborted))
-          first <- s.recv(100)(exactly(5)).attempt
-        yield first.isRight
+    Settled { settle =>
+      typed {
+        linked().use { (client, server) =>
+          for
+            c <- client.channel(2)
+            s <- server.channel(2)
+            _ <- c.send(payload(5))
+            // the message is delivered to the server's queue
+            _ <- settle
+            _ <- server.abort(NetworkError.BearerClosed(NetworkError.Closure.Aborted))
+            first <- s.recv(100)(exactly(5)).attempt
+          yield first.isRight
+        }
       }
     }.map(r => assertEquals(r, Right(true)))
 
@@ -277,23 +282,25 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
       sduSize = 1000,
       receiveBufferLimit = 6500
     )
-    typed {
-      Bearer.inMemory[IO]().flatMap { (a, b) =>
-        (
-          Mux.resource(a, Set(2), config),
-          Mux.resource(b, Set(2), config.copy(role = Mux.Role.Responder))
-        ).tupled.use { (client, server) =>
-          for
-            c <- client.channel(2)
-            s <- server.channel(2)
-            // Both messages are queued before the receiver reads: it holds the first complete
-            // (5000 bytes) and the next SDU (1000 bytes) would still fit, the one after would not.
-            _ <- c.send(payload(5000, 1))
-            _ <- c.send(payload(3000, 2))
-            _ <- IO.sleep(300.millis)
-            first <- s.recv(10000)(exactly(5000))
-            second <- s.recv(10000)(exactly(3000))
-          yield (first, second)
+    Settled { settle =>
+      typed {
+        Bearer.inMemory[IO]().flatMap { (a, b) =>
+          (
+            Mux.resource(a, Set(2), config),
+            Mux.resource(b, Set(2), config.copy(role = Mux.Role.Responder))
+          ).tupled.use { (client, server) =>
+            for
+              c <- client.channel(2)
+              s <- server.channel(2)
+              // Both messages are queued before the receiver reads: it holds the first complete
+              // (5000 bytes) and the next SDU (1000 bytes) would still fit, the one after would not.
+              _ <- c.send(payload(5000, 1))
+              _ <- c.send(payload(3000, 2))
+              _ <- settle
+              first <- s.recv(10000)(exactly(5000))
+              second <- s.recv(10000)(exactly(3000))
+            yield (first, second)
+          }
         }
       }
     }.map {
@@ -304,23 +311,26 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
     }
 
   test("pending receives raise BearerClosed when the peer closes the bearer"):
-    typed {
-      Bearer.inMemory[IO]().flatMap { (ours, raw) =>
-        Mux.resource(ours, Set(2)).use { mux =>
-          for
-            c <- mux.channel(2)
-            // the receive runs in a fiber of its own scope, and its result is raised again here
-            // (ADR 0017). Raised through this test's `Handle` from the started fiber, it was a
-            // failure the runtime reported whenever the fiber ended before its join (#735). The
-            // join waits for the fiber's finalizer, which makes that order the usual one, though
-            // not a certain one: the fiber still ends after its finalizer has run.
-            ended <- cats.effect.Deferred[IO, Unit]
-            pending <- typed(c.recv(100)(exactly(1))).guarantee(ended.complete(()).void).start
-            _ <- IO.sleep(20.millis)
-            _ <- raw.close
-            _ <- ended.get *> IO.cede
-            _ <- pending.joinWithNever.flatMap(Fibers.land(_))
-          yield ()
+    Settled { settle =>
+      typed {
+        Bearer.inMemory[IO]().flatMap { (ours, raw) =>
+          Mux.resource(ours, Set(2)).use { mux =>
+            for
+              c <- mux.channel(2)
+              // the receive runs in a fiber of its own scope, and its result is raised again here
+              // (ADR 0017). Raised through this test's `Handle` from the started fiber, it was a
+              // failure the runtime reported whenever the fiber ended before its join (#735). The
+              // join follows the fiber's end: its finalizer has run, and every fiber has then run
+              // until it blocks.
+              ended <- cats.effect.Deferred[IO, Unit]
+              pending <- typed(c.recv(100)(exactly(1))).guarantee(ended.complete(()).void).start
+              // the receive waits on its empty queue
+              _ <- settle
+              _ <- raw.close
+              _ <- ended.get *> settle
+              _ <- pending.joinWithNever.flatMap(Fibers.land(_))
+            yield ()
+          }
         }
       }
     }.map {
@@ -528,29 +538,27 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
     val frame = WireMux
       .encode(WireMux.Sdu(0, 2, WireMux.Direction.Responder, last))
       .fold(error => fail(error.message), identity)
-    // Under TestControl the sleep ends only once every fiber is blocked, so the receive is waiting
-    // on its empty queue before the SDU arrives. The reader then queues the SDU and records the end
-    // of the bearer at once. Each seed orders the reader, the closure and the waiting receive
-    // differently, and replays that order on every run.
+    // The receive waits on its empty queue before the SDU arrives. The reader then queues the SDU
+    // and records the end of the bearer at once. Each seed orders the reader, the closure and the
+    // waiting receive differently, and replays that order on every run.
     (1 to 200).toList.traverse_ { n =>
       val seed = java.util.Base64.getEncoder.encodeToString(n.toString.getBytes)
-      TestControl
-        .executeEmbed(
+      Settled
+        .seeded(seed) { settle =>
           typed {
             Bearer.inMemory[IO]().flatMap { (ours, raw) =>
               Mux.resource(ours, Set(2)).use { mux =>
                 for
                   channel <- mux.channel(2)
                   waiting <- typed(channel.recv(10)(exactly(2))).start
-                  _ <- IO.sleep(1.second)
+                  _ <- settle
                   _ <- raw.write(Chunk.array(frame.toArray)) *> raw.close
                   received <- waiting.joinWithNever
                 yield received
               }
             }
-          },
-          seed = Some(seed)
-        )
+          }
+        }
         .map(result => assertEquals(result, Right(Right(last)), s"seed $n"))
     }
 
