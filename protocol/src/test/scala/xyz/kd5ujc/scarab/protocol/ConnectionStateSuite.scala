@@ -115,6 +115,20 @@ class ConnectionStateSuite extends ScalaCheckSuite:
     }
   }
 
+  // `Core.hs` 936-945 makes this move; `verifyAbstractTransition` has no case for it
+  test(
+    "SelfConnIdle: the reference's runtime move from OutboundIdle to InboundIdle, which its verifier lacks"
+  ) {
+    DataFlow.values.foreach { flow =>
+      assertEquals(
+        ConnectionState.transition(OutboundIdle(flow), Event.SelfConnIdle),
+        Right(InboundIdle(flow))
+      )
+      assert(!ConnectionState.valid(Some(OutboundIdle(flow)), Some(InboundIdle(flow))))
+    }
+    assert(ConnectionState.transition(InboundIdle(DataFlow.Duplex), Event.SelfConnIdle).isLeft)
+  }
+
   test("outbound: Reserve, Connected and Negotiated^{flow}_{Outbound}") {
     assertEquals(
       ConnectionState.through(

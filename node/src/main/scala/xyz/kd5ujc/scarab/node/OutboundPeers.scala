@@ -65,7 +65,8 @@ final class OutboundPeers[F[_]: Async, A] private (
     sourceLock: Mutex[F],
     handles: Ref[F, Map[A, PeerStateActions.Connection[F]]],
     connectionCounter: Ref[F, BigInt],
-    beforeObservation: Option[F[Unit]]
+    beforeObservation: Option[F[Unit]],
+    reports: Ref[F, Map[A, OutboundPeers.SessionReport]]
 ) extends PeerStateActions[F, A],
       PeerStateActions.Connections[F, A]:
   import OutboundPeers.*
@@ -128,7 +129,15 @@ final class OutboundPeers[F[_]: Async, A] private (
         supervisor
           .supervise(dial(peer, remote, mode, provenance, ready))
           // waiting for the dial, we own it: a cancelled establishment leaves no connection
-          .flatMap(thread => poll(ready.get).onCancel(thread.cancel))
+          .flatMap(thread =>
+            // a use handed over just before the cancellation is given back: the outbound side
+            // releases it, as its owner would (a dialled one ends with its thread)
+            poll(ready.get).onCancel(
+              thread.cancel *> ready.tryGet.flatMap(
+                _.traverse_(_.traverse_((connection, _) => connection.releaseOutbound.void))
+              )
+            )
+          )
           .flatMap(Fault.land(_))
       }
     } { (connection, handle) =>
@@ -641,7 +650,24 @@ final class OutboundPeers[F[_]: Async, A] private (
     */
   private def metered(peer: A): Peer.Observation => F[Unit] =
     given Stateful[F, PeerMetrics[A]] = metrics
-    PeerMetricsObserver(peer, hot.observe)
+    val measured = PeerMetricsObserver(peer, hot.observe)
+    observation => reported(peer, observation) *> measured(observation)
+
+  /** What the hot sessions of `peer` saw of it, for `GET /connections`. */
+  private def reported(peer: A, observation: Peer.Observation): F[Unit] =
+    def change(f: SessionReport => SessionReport): F[Unit] =
+      reports.update(m => m.updated(peer, f(m.getOrElse(peer, SessionReport()))))
+    observation match
+      case Peer.Observation.Intersected(point) => change(_.copy(intersection = Some(point)))
+      case Peer.Observation.HeadersArrived(slots, _) =>
+        change(r => r.copy(headers = r.headers + slots.size))
+      case Peer.Observation.Announced(tip) => change(_.copy(peerTip = Some(tip.blockNo.value)))
+      case _                               => F.unit
+
+  /** What the hot sessions saw of each peer: its last intersection, the headers received and the
+    * tip it announced last.
+    */
+  def sessionReports: F[Vector[(A, SessionReport)]] = reports.get.map(_.toVector)
 
   /** The hot protocols and the session over them, for as long as the session lasts. The session
     * runs in an error scope of its own and ends with a [[SessionEnd]], a value: what the peer does,
@@ -1082,6 +1108,31 @@ object OutboundPeers:
       closeTimeout: FiniteDuration = 120.seconds
   )
 
+  /** What the hot sessions of one peer saw of it: its last intersection, the headers received and
+    * the block number of the tip it announced last.
+    */
+  final case class SessionReport(
+      intersection: Option[xyz.kd5ujc.scarab.protocol.ChainSync.Point] = None,
+      headers: Long = 0,
+      peerTip: Option[BigInt] = None
+  )
+
+  /** The session reports as JSON, by peer (`GET /connections`). */
+  def json[A](reports: Vector[(A, SessionReport)]): io.circe.Json =
+    import io.circe.Json
+    import io.circe.syntax.*
+    reports
+      .sortBy(_._1.toString)
+      .map { (peer, r) =>
+        Json.obj(
+          "peer" -> peer.toString.asJson,
+          "intersection" -> r.intersection.map(xyz.kd5ujc.scarab.ledger.Points.show).asJson,
+          "headers" -> r.headers.asJson,
+          "peerTipBlock" -> r.peerTip.map(_.toString).asJson
+        )
+      }
+      .asJson
+
   /** Receives the candidate chain of a session once it exists. */
   type Tracker[F[_]] = Ref[F, ChainSelection.Candidate] => F[Unit]
 
@@ -1200,8 +1251,9 @@ object OutboundPeers:
       Ref.of[F, Map[BigInt, PeerError => F[Unit]]](Map.empty),
       Mutex[F],
       Ref.of[F, Map[A, PeerStateActions.Connection[F]]](Map.empty),
-      Ref.of[F, BigInt](0)
-    ).mapN { (table, counter, sources, lock, handles, connections) =>
+      Ref.of[F, BigInt](0),
+      Ref.of[F, Map[A, SessionReport]](Map.empty)
+    ).mapN { (table, counter, sources, lock, handles, connections, reports) =>
       new OutboundPeers[F, A](
         node,
         transport,
@@ -1218,6 +1270,7 @@ object OutboundPeers:
         lock,
         handles,
         connections,
-        beforeObservation
+        beforeObservation,
+        reports
       )
     }

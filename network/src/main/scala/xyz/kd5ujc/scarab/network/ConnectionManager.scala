@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.FlatMap
-import cats.effect.{Async, Deferred, Ref, Resource}
+import cats.effect.{Async, Deferred, Poll, Ref, Resource}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.effect.syntax.all.*
@@ -105,7 +105,7 @@ trait Connection[F[_]]:
   /** The handshake agreed no version: the connection is taken out of the table through
     * `Terminating` (`terminateInboundWithErrorOrQuery`, `terminateOutboundWithErrorOrQuery`).
     */
-  def handshakeFailed: F[Unit]
+  def handshakeFailed(error: NetworkError): F[Unit]
 
   /** `promotedToWarmRemote`: the peer started a responder (`Core.hs` 2048-2240). */
   def promotedToWarmRemote: F[OperationResult[ConnectionState]]
@@ -272,13 +272,18 @@ object ConnectionManager:
       def functor = outer.functor
       def raise[E <: NetworkError, A](e: E): F[A] = e match
         case refused: (NetworkError.HandshakeRefused | NetworkError.VersionMismatch) =>
-          connection.close(ConnectionEnd.Failed(refused)) *> connection.handshakeFailed *>
+          connection.close(ConnectionEnd.Failed(refused)) *> connection.handshakeFailed(refused) *>
             outer.raise[NetworkError, A](e)
         case _ => outer.raise[NetworkError, A](e)
 
   /** Which side's handler holds a connection handle. */
   private enum Side:
     case Inbound, Outbound
+
+  /** How a generation ended, kept apart from the table as the reference keeps a connection's state
+    * variable after it leaves the map: a waiter learns it even after the entry is gone.
+    */
+  private final case class Ended(state: ConnectionState, cause: Option[NetworkError])
 
   private final case class Entry[F[_]](
       id: Long,
@@ -287,6 +292,7 @@ object ConnectionManager:
       handle: Option[Negotiated[F]],
       stop: Deferred[F, ConnectionEnd],
       closed: Deferred[F, Unit],
+      ended: Deferred[F, Ended],
       reason: Option[ConnectionEnd],
       releasedAt: Option[FiniteDuration] = None
   ):
@@ -303,13 +309,21 @@ object ConnectionManager:
     */
   private final case class Effects[F[_]](
       events: Vector[ConnectionEvent],
-      stops: Vector[(Entry[F], ConnectionEnd, NetworkError)]
+      stops: Vector[(Entry[F], ConnectionEnd, NetworkError)],
+      ends: Vector[(Entry[F], Ended)]
   ):
-    def ++(o: Effects[F]): Effects[F] = Effects(events ++ o.events, stops ++ o.stops)
+    def ++(o: Effects[F]): Effects[F] =
+      new Effects(events ++ o.events, stops ++ o.stops, ends ++ o.ends)
 
   private object Effects:
+    def apply[F[_]](
+        events: Vector[ConnectionEvent],
+        stops: Vector[(Entry[F], ConnectionEnd, NetworkError)]
+    ): Effects[F] = new Effects[F](events, stops, Vector.empty)
     def none[F[_]]: Effects[F] = Effects[F](Vector.empty, Vector.empty)
     def log[F[_]](events: Vector[ConnectionEvent]): Effects[F] = Effects[F](events, Vector.empty)
+    def ended[F[_]](entry: Entry[F], state: ConnectionState, cause: Option[NetworkError]) =
+      new Effects[F](Vector.empty, Vector.empty, Vector((entry, Ended(state, cause))))
 
   /** How an acquisition goes on after one look at the table. */
   private enum Dispatch[F[_]]:
@@ -317,7 +331,7 @@ object ConnectionManager:
     case Refuse(error: ConnectionError)
 
     /** `There`: wait for this connection's handshake (`Core.hs` 1301-1307). */
-    case There(id: Long)
+    case There(entry: Entry[F])
 
     /** `retry`: wait for the table to change (`Core.hs` 1379-1388). */
     case Retry()
@@ -381,9 +395,12 @@ object ConnectionManager:
       * their transports, and a published mux is stopped so that whoever uses it sees the end.
       */
     private def run(effects: Effects[F]): F[Unit] =
-      effects.events.traverse_(emit) *> effects.stops.traverse_ { (entry, end, cause) =>
-        entry.stop.complete(end).void *> entry.handle.traverse_(_.mux.abort(cause))
-      }
+      val ends = effects.ends.traverse_((entry, end) => entry.ended.complete(end).void) *>
+        effects.stops.traverse_ { (entry, end, cause) =>
+          entry.ended.complete(Ended(ConnectionState.Terminated, None)).void *>
+            entry.stop.complete(end).void *> entry.handle.traverse_(_.mux.abort(cause))
+        }
+      effects.events.traverse_(emit).guarantee(ends)
 
     /** Remove the entries whose time-wait has ended (`TerminatingState → TerminatedState`, then out
       * of the table, `Core.hs` 666-702).
@@ -400,19 +417,23 @@ object ConnectionManager:
       )
 
     /** One atomic change of the table; its version moves only when an entry changed, so a waiter
-      * wakes for a real change.
+      * wakes for a real change. The change and what it asks for (the log, the connections it ends)
+      * are one step that cancellation cannot split, as the reference masks a transition with its
+      * trace and its prune action (`Core.hs` 2048-2066, 703-778).
       */
     private def changing[A](f: (Table[F], FiniteDuration) => (Table[F], Effects[F], A)): F[A] =
-      F.monotonic
-        .flatMap { now =>
-          table.modify { held =>
-            val (purged, gone) = purge(now)(held)
-            val (next, effects, result) = f(purged, now)
-            val version = if next.entries eq held.entries then held.version else held.version + 1
-            (next.copy(version = version), (Effects.log[F](gone) ++ effects, result))
+      F.uncancelable { _ =>
+        F.monotonic
+          .flatMap { now =>
+            table.modify { held =>
+              val (purged, gone) = purge(now)(held)
+              val (next, effects, result) = f(purged, now)
+              val version = if next.entries eq held.entries then held.version else held.version + 1
+              (next.copy(version = version), (Effects.log[F](gone) ++ effects, result))
+            }
           }
-        }
-        .flatMap((effects, result) => run(effects).as(result))
+          .flatMap((effects, result) => run(effects).as(result))
+      }
 
     /** Wait until the table changed from `version`, or a time-wait ended. */
     private def changedFrom(version: Long): F[Unit] =
@@ -552,43 +573,61 @@ object ConnectionManager:
               (
                 t,
                 Effects.none[F],
-                Left(ConnectionError.Disconnected(at.toString, ConnectionState.Terminated))
+                Left(ConnectionError.Disconnected(at.toString, ConnectionState.Terminated, None))
               )
             case Some((key, entry)) =>
               val flow = agreed.dataFlow
-              val events: Either[ConnectionError, Vector[Event]] = (side, entry.state) match
-                case (_, ConnectionState.Terminating | ConnectionState.Terminated) =>
-                  Left(ConnectionError.Disconnected(at.toString, entry.state))
-                // the common cases, `Core.hs` 873-883 and 1588-1622
-                case (Side.Inbound, ConnectionState.Unnegotiated(Provenance.Inbound)) =>
-                  Right(Vector(Event.Negotiated(flow)))
-                case (Side.Outbound, ConnectionState.Unnegotiated(Provenance.Outbound)) =>
-                  Right(Vector(Event.Negotiated(flow)))
-                // a connection to ourselves: `SelfConnNegotiated` (924-930); the outbound side
-                // that won the race keeps it (885-887); `SelfConn'⁻¹` (1624-1652)
-                case (Side.Inbound, ConnectionState.Unnegotiated(Provenance.Outbound)) =>
-                  Right(Vector(Event.SelfConnNegotiated(flow)))
-                case (Side.Inbound, ConnectionState.OutboundUni | ConnectionState.OutboundDup(_)) =>
-                  Right(Vector.empty)
-                case (Side.Outbound, ConnectionState.InboundIdle(_)) =>
-                  Right(Vector(Event.SelfConnReversed))
-                case (Side.Outbound, other) =>
-                  Left(ConnectionError.ForbiddenOperation(at.toString, other))
-                case (Side.Inbound, other) =>
-                  Left(ConnectionError.ImpossibleState(at.toString, other))
-              events.flatMap(
-                walk(key._1, entry, _*).leftMap(ConnectionError.IllegalTransition(at.toString, _))
+              // the events, and whether the state takes this handle: a state the other side of a
+              // self-connection reached keeps the handle it has (`Core.hs` 885-887, 1624-1652)
+              val events: Either[ConnectionError, (Vector[Event], Boolean)] =
+                (side, entry.state) match
+                  case (_, ConnectionState.Terminating | ConnectionState.Terminated) =>
+                    Left(ConnectionError.Disconnected(at.toString, entry.state, None))
+                  // the common cases, `Core.hs` 913-930 and 1588-1622
+                  case (Side.Inbound, ConnectionState.Unnegotiated(Provenance.Inbound)) =>
+                    Right((Vector(Event.Negotiated(flow)), true))
+                  case (Side.Outbound, ConnectionState.Unnegotiated(Provenance.Outbound)) =>
+                    Right((Vector(Event.Negotiated(flow)), true))
+                  // a connection to ourselves. The inbound side: `SelfConnNegotiated` (913-930);
+                  // the outbound side that won the race keeps it (932-934); an outbound idle one
+                  // becomes inbound idle with its flow (936-945)
+                  case (Side.Inbound, ConnectionState.Unnegotiated(Provenance.Outbound)) =>
+                    Right((Vector(Event.SelfConnNegotiated(flow)), true))
+                  case (
+                        Side.Inbound,
+                        ConnectionState.OutboundUni | ConnectionState.OutboundDup(_)
+                      ) =>
+                    Right((Vector.empty, false))
+                  case (Side.Inbound, ConnectionState.OutboundIdle(_)) =>
+                    Right((Vector(Event.SelfConnIdle), true))
+                  // the outbound side: negotiated whatever the provenance the accept left
+                  // (1588-1622), here `SelfConn⁻¹` and then `Negotiated`; `SelfConn'⁻¹` keeps
+                  // the inbound side's handle (1624-1652)
+                  case (Side.Outbound, ConnectionState.Unnegotiated(Provenance.Inbound)) =>
+                    Right((Vector(Event.SelfConnReversed, Event.Negotiated(flow)), true))
+                  case (Side.Outbound, ConnectionState.InboundIdle(_)) =>
+                    Right((Vector(Event.SelfConnReversed), false))
+                  case (Side.Outbound, other) =>
+                    Left(ConnectionError.ForbiddenOperation(at.toString, other))
+                  case (Side.Inbound, other) =>
+                    Left(ConnectionError.ImpossibleState(at.toString, other))
+              events.flatMap((moves, takes) =>
+                walk(key._1, entry, moves*)
+                  .leftMap(ConnectionError.IllegalTransition(at.toString, _))
+                  .map((next, log) => (next, log, takes))
               ) match
                 case Left(error) => (t, Effects.none[F], Left(error))
-                case Right((next, log)) =>
-                  (t.put(key, next.copy(handle = Some(agreed))), Effects.log[F](log), Right(()))
+                case Right((next, log, takes)) =>
+                  val kept = if takes then next.copy(handle = Some(agreed)) else next
+                  (t.put(key, kept), Effects.log[F](log), Right(()))
         }.flatMap(_.fold(refuse[Unit](_), F.pure))
 
-      def handshakeFailed =
+      def handshakeFailed(error: NetworkError) =
         changing { (t, _) =>
           t.locate(id) match
-            // `computeConnStateOnError` for `HandshakeFailure` is `TerminatingState`, and the
-            // entry is deleted from the table at once (`Core.hs` 1080-1094, 1782-1838)
+            // `computeConnStateOnError` for `HandshakeFailure` is `TerminatingState`, which keeps
+            // the error, and the entry is deleted from the table at once (`Core.hs` 1080-1094,
+            // 1782-1838, 1000-1075)
             case Some((key, entry)) if entry.state != ConnectionState.Terminated =>
               val log = walk(key._1, entry, Event.HandshakeFailed).fold(_ => Vector.empty, _._2)
               (
@@ -596,7 +635,7 @@ object ConnectionManager:
                 Effects.log[F](
                   log :+ ConnectionEvent
                     .Changed(at.toString, ConnectionState.Terminating, ConnectionState.Terminated)
-                ),
+                ) ++ Effects.ended(entry, ConnectionState.Terminating, Some(error)),
                 ()
               )
             case _ => (t, Effects.none[F], ())
@@ -849,14 +888,17 @@ object ConnectionManager:
                   ),
                   Some(entry)
                 )
-      }.flatMap(_.traverse_(_.stop.complete(ConnectionEnd.Released).void)) *>
-        closed.complete(()).void
+      }.flatMap(_.traverse_ { entry =>
+        val failure = entry.reason.collect { case ConnectionEnd.Failed(error) => error }
+        entry.ended.complete(Ended(ConnectionState.Terminated, failure)).void *>
+          entry.stop.complete(ConnectionEnd.Released).void
+      }) *> closed.complete(()).void
 
     private def fresh(origin: Provenance): F[Entry[F]] =
-      (ids.updateAndGet(_ + 1), Deferred[F, ConnectionEnd], Deferred[F, Unit]).mapN {
-        (id, stop, closed) =>
-          Entry(id, origin, ConnectionState.initial(origin), None, stop, closed, None)
-      }
+      (ids.updateAndGet(_ + 1), Deferred[F, ConnectionEnd], Deferred[F, Unit], Deferred[F, Ended])
+        .mapN { (id, stop, closed, ended) =>
+          Entry(id, origin, ConnectionState.initial(origin), None, stop, closed, ended, None)
+        }
 
     def include(remote: SocketAddress[IpAddress], local: Option[ConnectionId.Endpoint])(using
         Raise[F, ConnectionError]
@@ -953,7 +995,7 @@ object ConnectionManager:
         case ConnectionState.ReservedOutbound | ConnectionState.Unnegotiated(Provenance.Outbound) |
             ConnectionState.OutboundUni | ConnectionState.OutboundDup(_) | ConnectionState.Duplex =>
           refused(ConnectionError.AlreadyConnected(at, entry.state))
-        case ConnectionState.Unnegotiated(_) => (t, Effects.none[F], Dispatch.There(entry.id))
+        case ConnectionState.Unnegotiated(_) => (t, Effects.none[F], Dispatch.There(entry))
         case ConnectionState.OutboundIdle(_) =>
           refused(ConnectionError.ForbiddenOperation(at, entry.state))
         case ConnectionState.InboundIdle(DataFlow.Unidirectional) |
@@ -973,7 +1015,7 @@ object ConnectionManager:
               )
             case _ => refused(ConnectionError.ImpossibleState(at, entry.state))
         case ConnectionState.Terminating | ConnectionState.Terminated if waited =>
-          refused(ConnectionError.Disconnected(at, entry.state))
+          refused(ConnectionError.Disconnected(at, entry.state, None))
         case ConnectionState.Terminating | ConnectionState.Terminated =>
           (t, Effects.none[F], Dispatch.Retry[F]())
 
@@ -1011,32 +1053,37 @@ object ConnectionManager:
       (next, effects, (decision, t.version))
 
     /** `There`: the outbound side waits, without holding the table, for an accepted connection's
-      * handshake, then reuses it or settles as the reference does (1663-1755).
+      * handshake, then reuses it or settles as the reference does (1663-1755). A connection that
+      * ended is `Disconnected` with the state and error it ended with, which outlive its entry as
+      * the reference's connection state variable outlives the map (1741-1749). Only the wait is
+      * cancelable (`poll`).
       */
-    private def there(id: Long, remote: SocketAddress[IpAddress]): F[Dispatch[F]] =
+    private def there(
+        waited: Entry[F],
+        remote: SocketAddress[IpAddress],
+        poll: Poll[F]
+    ): F[Dispatch[F]] =
       F.tailRecM(()) { _ =>
         changing { (t, _) =>
-          t.locate(id) match
-            // its cleanup removed it after `TerminatedState`
-            case None =>
-              (
-                t,
-                Effects.none[F],
-                Right(
-                  Dispatch.Refuse[F](
-                    ConnectionError.Disconnected(remote.toString, ConnectionState.Terminated)
-                  )
-                )
-              )
+          t.locate(waited.id) match
+            case None => (t, Effects.none[F], Right(None))
             case Some((_, entry))
                 if entry.state == ConnectionState.Unnegotiated(Provenance.Inbound) =>
               (t, Effects.none[F], Left(t.version))
             case Some((key, entry)) =>
               val (next, effects, decision) = reuse(t, key, entry, remote, waited = true)
-              (next, effects, Right(decision))
+              (next, effects, Right(Some(decision)))
         }.flatMap {
-          case Left(version)   => changedFrom(version).as(Left(()))
-          case Right(decision) => F.pure(Right(decision))
+          case Left(version)         => poll(changedFrom(version)).as(Left(()))
+          case Right(Some(decision)) => F.pure(Right(decision))
+          case Right(None) =>
+            waited.ended.tryGet.map { end =>
+              val (state, cause) =
+                end.fold[(ConnectionState, Option[NetworkError])](
+                  (ConnectionState.Terminated, None)
+                )(e => (e.state, e.cause))
+              Right(Dispatch.Refuse[F](ConnectionError.Disconnected(remote.toString, state, cause)))
+            }
         }
       }
 
@@ -1044,26 +1091,30 @@ object ConnectionManager:
         Raise[F, ConnectionError]
     ) =
       Resource.eval(fresh(Provenance.Outbound)).flatMap { created =>
-        val settle: F[Dispatch[F]] = F.tailRecM(()) { _ =>
+        // the claims (a reservation, a reuse) and their handoff are not cancelable; only the waits
+        // are (`poll`), so a cancelled acquisition holds nothing it has not handed over
+        def settle(poll: Poll[F]): F[Dispatch[F]] = F.tailRecM(()) { _ =>
           changing(dispatch(remote, provenance, created)).flatMap {
-            case (Dispatch.There(id), _)     => there(id, remote).map(Right(_))
-            case (Dispatch.Retry(), version) => changedFrom(version).as(Left(()))
+            case (Dispatch.There(entry), _)  => there(entry, remote, poll).map(Right(_))
+            case (Dispatch.Retry(), version) => poll(changedFrom(version)).as(Left(()))
             case (decision, _)               => F.pure(Right(decision))
           }
         }
-        // a cancelled acquisition leaves no reservation behind
         val unreserve = release(created.id, remote, created.closed)
         Resource
-          .makeFull[F, Acquired[F]](poll =>
-            poll(settle).onCancel(unreserve).flatMap {
+          .makeCaseFull[F, Acquired[F]](poll =>
+            settle(poll).flatMap {
               case Dispatch.Done(acquired) => F.pure(acquired)
               case Dispatch.Refuse(error)  => refuse[Acquired[F]](error)
               case Dispatch.There(_) | Dispatch.Retry() =>
                 refuse[Acquired[F]](ConnectionError.ImpossibleState(remote.toString, created.state))
             }
           ) {
-            case Acquired.Reserved(_)  => unreserve
-            case Acquired.Reused(_, _) => F.unit
+            case (Acquired.Reserved(_), _) => unreserve
+            // a reuse the caller did not take over (it failed or was cancelled before its use
+            // ended) is released by the outbound side, as its owner would
+            case (Acquired.Reused(_, _), Resource.ExitCase.Succeeded) => F.unit
+            case (Acquired.Reused(connection, _), _) => connection.releaseOutbound.void
           }
       }
 

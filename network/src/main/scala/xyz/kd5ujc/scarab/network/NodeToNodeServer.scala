@@ -2,7 +2,8 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.data.NonEmptySet
-import cats.effect.{Async, Resource}
+import cats.effect.{Async, Ref, Resource}
+import cats.effect.std.{Mutex, Queue}
 import fs2.concurrent.SignallingRef
 import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise}
@@ -161,19 +162,68 @@ object NodeToNodeServer:
         }
     yield ()
 
-  /** The responders of one inbound connection that are running: each is started on demand by its
-    * mini-protocol's first byte and ends with that protocol, as the reference's inbound governor
-    * starts and restarts them (`InboundGovernor.hs`, ouroboros-network `2fb69829`).
+  /** What the responders of a connection did, in order: the first one started, or the last running
+    * one ended (the reference's mux tracer, `InboundGovernor.hs` 629-708, writes `AwakeRemote` and
+    * `WaitIdleRemote` to the inbound governor's channel on these).
     */
-  private[network] final class Responders[F[_]: Async] private (count: SignallingRef[F, Int]):
+  private[network] enum Activity:
+    case Started, Finished
+
+  /** The responders of one connection that are running: each is started on demand by its
+    * mini-protocol's first byte and ends with that protocol, as the reference's inbound governor
+    * starts and restarts them (`InboundGovernor.hs`, ouroboros-network `2fb69829`). Their first
+    * start and last end are queued for the tracker of the peer's activity, so none is lost between
+    * two of its looks. While the tracker handles an expired idle timer, a responder does not start:
+    * the reference's tracer retries on an expired `RemoteIdle` until `CommitRemote` is settled
+    * (`InboundGovernor.hs` 665-672).
+    */
+  private[network] final class Responders[F[_]: Async] private (
+      count: Ref[F, Int],
+      events: Queue[F, Activity],
+      lock: Mutex[F],
+      expired: SignallingRef[F, Boolean]
+  ):
+    private val F = Async[F]
+
+    private def counted(by: Int): F[Unit] =
+      count.modify(c => (c + by, (c, c + by))).flatMap {
+        case (0, 1) => events.offer(Activity.Started)
+        case (1, 0) => events.offer(Activity.Finished)
+        case _      => F.unit
+      }
+
+    /** Count a starting responder, once no expired timer holds it. */
+    private def enter: F[Unit] = F.tailRecM(()) { _ =>
+      lock.lock
+        .surround(expired.get.flatMap(held => counted(1).unlessA(held).as(held)))
+        .flatMap(held => if held then expired.waitUntil(!_).as(Left(())) else F.pure(Right(())))
+    }
+
     /** `run`, counted while it runs. */
     def running[A](run: F[A]): F[A] =
-      Async[F].bracket(count.update(_ + 1))(_ => run)(_ => count.update(_ - 1))
-    def awaitBusy: F[Unit] = count.waitUntil(_ > 0)
-    def awaitIdle: F[Unit] = count.waitUntil(_ == 0)
+      F.bracketFull(poll => poll(enter))(_ => run)((_, _) => lock.lock.surround(counted(-1)))
+
+    /** The next activity, in order. */
+    def next: F[Activity] = events.take
+
+    /** The idle timer expired: hold the responders that start from now, unless an activity is
+      * already queued, which comes first (`Some`).
+      */
+    def expire: F[Option[Activity]] =
+      lock.lock.surround(events.tryTake.flatTap(queued => expired.set(true).whenA(queued.isEmpty)))
+
+    /** The expiry is settled and the connection stays: the responders may start again. */
+    def settled: F[Unit] = expired.set(false)
 
   private[network] object Responders:
-    def create[F[_]: Async]: F[Responders[F]] = SignallingRef.of[F, Int](0).map(new Responders(_))
+    def create[F[_]: Async]: F[Responders[F]] =
+      (
+        Ref.of[F, Int](0),
+        Queue.unbounded[F, Activity],
+        Mutex[F],
+        SignallingRef.of[F, Boolean](false)
+      )
+        .mapN(new Responders(_, _, _, _))
 
   /** What the inbound governor knows of the peer's side of a connection (`RemoteState`,
     * `InboundGovernor/State.hs:218-256`): idle since `since` with its timer running, using the
@@ -190,7 +240,8 @@ object NodeToNodeServer:
     * `WaitIdleRemote` (`demotedToColdRemote`, which arms the idle timer again), and a timer that
     * expires is `CommitRemote` (`releaseInbound`): the manager closes the connection, or keeps it
     * because our outbound side uses it, and the peer's next responder wakes it up again. It runs on
-    * every connection whose responders the peer can start, the ones we dial included.
+    * every connection whose responders the peer can start, the ones we dial included. The
+    * activities are taken in the order they happened ([[Responders]]).
     */
   private[network] def remoteActivity[F[_]: Async](
       mux: Mux[F],
@@ -201,31 +252,46 @@ object NodeToNodeServer:
     val F = Async[F]
     def awake: F[Either[RemoteState, Unit]] =
       connection.promotedToWarmRemote.as(Left(RemoteState.Warm))
+    def after(activity: Activity, idle: RemoteState): F[Either[RemoteState, Unit]] =
+      activity match
+        case Activity.Started  => awake
+        case Activity.Finished => F.pure(Left(idle))
+    // `CommitRemote`, with the responders held until it is settled
+    def commit(since: FiniteDuration): F[Either[RemoteState, Unit]] =
+      connection.releaseInbound.flatMap {
+        case OperationResult.Success(RemoteRelease.Commit) => F.pure(Right(()))
+        case OperationResult.Success(RemoteRelease.Keep) =>
+          responders.settled.as(Left(RemoteState.Cold))
+        // the reference leaves the expired timer as it is, and commits again
+        case OperationResult.Unsupported(Some(state)) if state.isLive =>
+          F.pure(Left(RemoteState.Idle(since)))
+        case OperationResult.Unsupported(_) => F.pure(Right(()))
+      }
     val watch: F[Unit] = F.monotonic.flatMap { start =>
       F.tailRecM[RemoteState, Unit](RemoteState.Idle(start)) {
-        case RemoteState.Idle(since) =>
+        case idle @ RemoteState.Idle(since) =>
           F.monotonic.flatMap { now =>
             val left = (since + idleTimeout - now).max(Duration.Zero)
-            F.race(responders.awaitBusy, F.sleep(left)).flatMap {
-              case Left(_) => awake
+            F.race(responders.next, F.sleep(left)).flatMap {
+              case Left(activity) => after(activity, idle)
               case Right(_) =>
-                connection.releaseInbound.flatMap {
-                  case OperationResult.Success(RemoteRelease.Commit) => F.pure(Right(()))
-                  case OperationResult.Success(RemoteRelease.Keep) =>
-                    F.pure(Left(RemoteState.Cold))
-                  // the reference leaves the expired timer as it is, and commits again
-                  case OperationResult.Unsupported(Some(state)) if state.isLive =>
-                    F.pure(Left(RemoteState.Idle(since)))
-                  case OperationResult.Unsupported(_) => F.pure(Right(()))
+                responders.expire.flatMap {
+                  case Some(activity) => after(activity, idle)
+                  case None           => commit(since)
                 }
             }
           }
         case RemoteState.Warm =>
-          responders.awaitIdle *> connection.demotedToColdRemote.flatMap {
-            case OperationResult.Success(_) => F.monotonic.map(now => Left(RemoteState.Idle(now)))
-            case OperationResult.Unsupported(_) => F.pure(Right(()))
+          responders.next.flatMap {
+            case Activity.Finished =>
+              connection.demotedToColdRemote.flatMap {
+                case OperationResult.Success(_) =>
+                  F.monotonic.map(now => Left(RemoteState.Idle(now)))
+                case OperationResult.Unsupported(_) => F.pure(Right(()))
+              }
+            case Activity.Started => F.pure(Left(RemoteState.Warm))
           }
-        case RemoteState.Cold => responders.awaitBusy *> awake
+        case RemoteState.Cold => responders.next.flatMap(after(_, RemoteState.Cold))
       }
     }
     Fibers

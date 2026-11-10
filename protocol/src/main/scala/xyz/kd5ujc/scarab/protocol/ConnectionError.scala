@@ -48,9 +48,12 @@ enum ConnectionError extends DomainError:
   case ImpossibleState(remote: String, state: ConnectionState)
 
   /** `Disconnected`: the connection the outbound side waited for ended before it could be used
-    * (`Core.hs` 1741-1749), in `state` (`Terminating` or `Terminated`).
+    * (`Core.hs` 1741-1749), in `state` (`Terminating` or `Terminated`), with the error its handler
+    * ended with if it failed: the reference keeps it in the connection's state
+    * (`mkDisconnectionException`, `Core.hs` 1080-1094), and the outbound governor tells a handshake
+    * failure from another one by it (`PeerStateActions.hs` 852-880).
     */
-  case Disconnected(remote: String, state: ConnectionState)
+  case Disconnected(remote: String, state: ConnectionState, cause: Option[NetworkError])
 
   /** The manager pruned the connection to keep the accepted connections within the hard limit
     * (`mkPruneAction`, `Core.hs` 703-778): the mux is stopped with this cause.
@@ -72,6 +75,6 @@ enum ConnectionError extends DomainError:
     case InboundConnectionNotFound(r) =>
       s"$r: the peer is known from its own connection, which no longer exists"
     case ImpossibleState(r, s) => s"$r: impossible connection state ${s.abstractName}"
-    case Disconnected(r, s) =>
-      s"$r: the connection ended (${s.abstractName}) before the outbound side could use it"
+    case Disconnected(r, s, c) =>
+      s"$r: the connection ended (${s.abstractName}${c.fold("")(e => s": ${e.message}")}) before the outbound side could use it"
     case Pruned(r) => s"$r: pruned to keep the accepted connections within the hard limit"

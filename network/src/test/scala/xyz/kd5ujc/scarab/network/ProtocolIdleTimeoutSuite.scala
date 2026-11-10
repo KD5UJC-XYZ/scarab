@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.network
 
 import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures
-import cats.effect.{IO, Ref, Resource}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import cats.mtl.Handle
@@ -54,7 +54,8 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
     */
   private def scenario[A](
       body: Net ?=> Seen => IO[A],
-      duplex: Boolean = false
+      duplex: Boolean = false,
+      gate: Option[Gate] = None
   ): IO[Either[NetworkError, A]] =
     typed {
       Resource
@@ -70,8 +71,9 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
               ConnectionManager.create[IO](
                 ConnectionManager.Limits(timeWait = Duration.Zero),
                 Some {
-                  case ConnectionEvent.Changed(_, from, to) => log.update(_ :+ (from -> to))
-                  case _                                    => IO.unit
+                  case ConnectionEvent.Changed(_, from, to) =>
+                    log.update(_ :+ (from -> to)) *> gate.traverse_(_.pass(from -> to))
+                  case _ => IO.unit
                 }
               )
             )
@@ -114,6 +116,24 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
         }
         .use(seen => body(seen))
     }
+
+  /** A pause of the manager's event stream after the change `at`: it tells `entered` and waits for
+    * `release`.
+    */
+  private final case class Gate(
+      at: (ConnectionState, ConnectionState),
+      entered: Deferred[IO, Unit],
+      release: Deferred[IO, Unit]
+  ):
+    def pass(change: (ConnectionState, ConnectionState)): IO[Unit] =
+      (entered.complete(()) *> release.get).whenA(change == at)
+
+  private val expiring =
+    ConnectionState.OutboundDup(TimeoutExpired.Ticking) ->
+      ConnectionState.OutboundDup(TimeoutExpired.Expired)
+
+  private def gate(at: (ConnectionState, ConnectionState)): IO[Gate] =
+    (Deferred[IO, Unit], Deferred[IO, Unit]).mapN(Gate(at, _, _))
 
   /** The peer's KeepAlive client on its mux: a remote responder of ours starts on its first byte.
     */
@@ -328,6 +348,145 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
             )
           )
         case Left(error) => fail(error.message)
+      }
+
+  // the reference queues the first start and the last end of the responders, and holds a responder
+  // that starts on an expired timer until `CommitRemote` is settled (`InboundGovernor.hs` 640-703):
+  // a whole conversation while the expiry is being handled still promotes and demotes
+  test(
+    "a conversation while an expiry is being handled is not lost: promoted, demoted, timer armed"
+  ) {
+    TestControl
+      .executeEmbed(gate(expiring).flatMap { held =>
+        scenario(
+          seen =>
+            for
+              _ <- IO.sleep(1.second)
+              _ <- reuse(seen.manager)
+              // the timer expires at 5 s; its `TimeoutExpired` is held in the manager's log
+              _ <- held.entered.get
+              talk <- keepAlive(seen.mux).flatMap(client => client.ping *> client.done).start
+              _ <- IO.sleep(1.second)
+              _ <- held.release.complete(())
+              _ <- talk.joinWithNever
+              _ <- IO.sleep(100.millis)
+              now <- state(seen.manager)
+              changes <- seen.changes
+            yield (now, changes),
+          duplex = true,
+          gate = Some(held)
+        )
+      })
+      .map {
+        case Right((now, changes)) =>
+          allValid(changes)
+          val after = changes.dropWhile(_ != expiring).drop(1)
+          assertEquals(
+            after,
+            Vector(
+              ConnectionState.OutboundDup(TimeoutExpired.Expired) -> ConnectionState.Duplex,
+              ConnectionState.Duplex -> ConnectionState.OutboundDup(TimeoutExpired.Ticking)
+            )
+          )
+          assertEquals(now, Some(ConnectionState.OutboundDup(TimeoutExpired.Ticking)))
+        case Left(error) => fail(error.message)
+      }
+  }
+
+  // the same on a connection we dialled: its responders and the peer's activity are tracked as on
+  // an accepted one (`Core.hs` 1607-1617)
+  test("on a connection we dialled, a conversation while an expiry is being handled is not lost") {
+    TestControl.executeEmbed(dialledScenario).map {
+      case Right((now, changes)) =>
+        allValid(changes)
+        val after = changes.dropWhile(_ != expiring).drop(1)
+        assertEquals(
+          after,
+          Vector(
+            ConnectionState.OutboundDup(TimeoutExpired.Expired) -> ConnectionState.Duplex,
+            ConnectionState.Duplex -> ConnectionState.OutboundDup(TimeoutExpired.Ticking)
+          )
+        )
+        assertEquals(now, Some(ConnectionState.OutboundDup(TimeoutExpired.Ticking)))
+      case Left(error) => fail(error.message)
+    }
+  }
+
+  /** We dial the peer (duplex) through the manager; the peer's KeepAlive client talks to our
+    * responder while the expiry of the idle timer is held in the manager's log.
+    */
+  private def dialledScenario: IO[
+    Either[NetworkError, (Option[ConnectionState], Vector[(ConnectionState, ConnectionState)])]
+  ] =
+    (
+      gate(expiring),
+      Ref.of[IO, Vector[(ConnectionState, ConnectionState)]](Vector.empty),
+      IO.deferred[Unit],
+      IO.deferred[Unit]
+    ).tupled
+      .flatMap { (held, log, talk, talked) =>
+        typed {
+          for
+            manager <- ConnectionManager.create[IO](
+              ConnectionManager.Limits(timeWait = Duration.Zero),
+              Some {
+                case ConnectionEvent.Changed(_, from, to) =>
+                  log.update(_ :+ (from -> to)) *> held.pass(from -> to)
+                case _ => IO.unit
+              }
+            )
+            pair <- Bearer.inMemory[IO]()
+            (ours, theirs) = pair
+            // the peer accepts, and its KeepAlive client talks to our responder when asked
+            _ <- typed(
+              Served.accept[IO, Bytes](
+                theirs,
+                magic,
+                handlers,
+                negotiated = (_, mux) =>
+                  Resource.eval(
+                    (talk.get *> mux
+                      .channel(xyz.kd5ujc.scarab.protocol.Protocols.KeepAlive, Mux.Role.Initiator)
+                      .flatMap(KeepAliveClient[IO](_))
+                      .flatMap(c => c.ping *> c.done) *> talked.complete(()).void).start.void
+                  )
+              )
+            ).start
+            result <- Handle
+              .allow[ConnectionError](
+                manager.acquire(Served.remote, Provenance.Outbound).use {
+                  case Acquired.Reserved(connection) =>
+                    connection.connected(None) *>
+                      NodeToNode
+                        .negotiate[IO, Bytes](
+                          ours,
+                          magic,
+                          connection,
+                          NodeToNode.Settings(),
+                          serve = Some(handlers)
+                        )
+                        // our KeepAlive client keeps the peer's side of the connection busy
+                        .flatMap(handle =>
+                          NodeToNode.attach[IO, Bytes, Unit](handle, ChainSyncFixtures.rawItem, ())
+                        )
+                        .use { _ =>
+                          for
+                            _ <- held.entered.get
+                            _ <- talk.complete(())
+                            _ <- IO.sleep(1.second)
+                            _ <- held.release.complete(())
+                            _ <- talked.get
+                            _ <- IO.sleep(100.millis)
+                            now <- state(manager)
+                            changes <- log.get
+                          yield (now, changes)
+                        }
+                  case other => IO.raiseError(new AssertionError(s"not reserved: $other"))
+                }
+              )
+              .rescue(e => IO.raiseError(new AssertionError(e.message)))
+          yield result
+        }
       }
 
   // `PromotedToWarm^{Duplex}_{Remote}` after `RemoteCold`, `DemotedToCold^{Duplex}_{Remote}`, and

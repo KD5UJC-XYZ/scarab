@@ -132,6 +132,36 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
       case (other, _) => IO.raiseError(new AssertionError(s"not a reservation: $other"))
     }
 
+  private val refusal: NetworkError =
+    NetworkError.HandshakeRefused(NetworkError.HandshakeFailure.VersionMismatch)
+
+  /** A manager whose event stream holds at the first event `at` matches until `release` completes,
+    * telling `entered` when it does: a controlled pause after a committed change.
+    */
+  private def gated(
+      limits: ConnectionManager.Limits,
+      at: ConnectionEvent => Boolean
+  ): IO[
+    (
+        ConnectionManager[IO],
+        Deferred[IO, Unit],
+        Deferred[IO, Unit],
+        Ref[IO, Vector[ConnectionEvent]]
+    )
+  ] =
+    for
+      entered <- Deferred[IO, Unit]
+      release <- Deferred[IO, Unit]
+      seen <- Ref.of[IO, Vector[ConnectionEvent]](Vector.empty)
+      cm <- ConnectionManager.create[IO](
+        limits,
+        Some(event =>
+          seen.update(_ :+ event) *>
+            (entered.complete(()) *> release.get).whenA(at(event)).void
+        )
+      )
+    yield (cm, entered, release, seen)
+
   // ------------------------------------------------------------------ admission
 
   test("an inbound connection is admitted, negotiated and released; the table follows") {
@@ -386,7 +416,7 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
           (theirs, _) <- m.cm.include(peer(1), None).allocated
           waiting <- attempt(acquired(m.cm, 1)).start
           _ <- IO.sleep(1.second)
-          _ <- theirs.handshakeFailed
+          _ <- theirs.handshakeFailed(refusal)
           got <- waiting.joinWithNever
           // no time-wait in the table after a handshake failure (`Core.hs` 1782-1838)
           again <- attempt(acquired(m.cm, 1))
@@ -394,9 +424,14 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
       })
       .map { r =>
         val (got, again) = result(r)
+        // the state and error the handshake ended with, after the entry left the table
+        // (`computeConnStateOnError`, `Core.hs` 1080-1094; 1741-1749)
         assertEquals(
           got.void,
-          Left(ConnectionError.Disconnected(peer(1).toString, ConnectionState.Terminated))
+          Left(
+            ConnectionError
+              .Disconnected(peer(1).toString, ConnectionState.Terminating, Some(refusal))
+          )
         )
         again match
           case Right(Acquired.Reserved(_)) => ()
@@ -555,6 +590,211 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
         Vector((1, 1, 3))
       )
     }
+  }
+
+  // ------------------------------------------------------------------ cancellation
+
+  // the reuse and its handoff are one step (`Core.hs` 1333-1370): a cancelled acquisition that
+  // claimed the connection gives it back through the outbound release (1952-1985)
+  test("an acquisition cancelled after it claimed a reuse releases its outbound use") {
+    TestControl
+      .executeEmbed(
+        gated(
+          ConnectionManager.Limits(),
+          {
+            case ConnectionEvent.Changed(_, ConnectionState.InboundIdle(DataFlow.Duplex), _) => true
+            case _ => false
+          }
+        ).flatMap { (cm, entered, release, seen) =>
+          Handle
+            .allow[ConnectionError] {
+              for
+                _ <- accepted(cm, 1, DataFlow.Duplex)
+                using <- cm.acquire(peer(1), Provenance.Outbound).use(_ => IO.never[Unit]).start
+                _ <- entered.get
+                cancelling <- using.cancel.start
+                _ <- IO.sleep(1.second)
+                _ <- release.complete(())
+                _ <- cancelling.joinWithNever
+                after <- state(cm, 1)
+                again <- acquired(cm, 1)
+                events <- seen.get
+              yield (after, again._1, events)
+            }
+            .rescue(e => IO(fail(e.message)))
+        }
+      )
+      .map { (after, again, events) =>
+        allValid(events)
+        assertEquals(after, Some(ConnectionState.InboundIdle(DataFlow.Duplex)))
+        again match
+          case Acquired.Reused(_, _) => ()
+          case other                 => fail(s"not reused again: $other")
+      }
+  }
+
+  // the reference masks the remote promotion, its trace and its prune action together
+  // (`Core.hs` 2048-2066, 703-778): a cancelled promotion still stops what it pruned
+  test("a promotion cancelled after it pruned still stops the pruned connection") {
+    TestControl
+      .executeEmbed(
+        gated(
+          ConnectionManager.Limits(hard(2)),
+          {
+            case ConnectionEvent.Pruned(_, _, _) => true
+            case _                               => false
+          }
+        ).flatMap { (cm, entered, release, _) =>
+          Handle
+            .allow[ConnectionError] {
+              for
+                (a, ha, _) <- accepted(cm, 1, DataFlow.Duplex)
+                (b, hb, _) <- accepted(cm, 2, DataFlow.Duplex)
+                (ours, _, _) <- dialled(cm, 3, DataFlow.Duplex)
+                promoting <- ours.promotedToWarmRemote.start
+                _ <- entered.get
+                cancelling <- promoting.cancel.start
+                _ <- IO.sleep(1.second)
+                _ <- release.complete(())
+                _ <- cancelling.joinWithNever
+                states <- (a.state, b.state).tupled
+                stopped <- (ha.mux.failure, hb.mux.failure).tupled
+                ended <- (
+                  a.stopped.timeout(1.second).attempt,
+                  b.stopped.timeout(1.second).attempt
+                ).tupled
+              yield (states, stopped, ended)
+            }
+            .rescue(e => IO(fail(e.message)))
+        }
+      )
+      .map { case ((sa, sb), (fa, fb), (ea, eb)) =>
+        val pruned =
+          Vector(sa -> (fa, ea), sb -> (fb, eb)).filter(_._1 == ConnectionState.Terminated)
+        assertEquals(pruned.size, 1)
+        pruned.foreach { case (_, (failure, end)) =>
+          assert(failure.isDefined, "the pruned connection's mux is not stopped")
+          assert(end.isRight, "the pruned connection's owner is not told to let go")
+        }
+      }
+  }
+
+  // ------------------------------------------------------------------ self-connections
+
+  /** A self-connection: our reservation connected from `local(3001)`, then the accepted side with
+    * the same identity (`SelfConn`, `Core.hs` 845-855).
+    */
+  private def selfConnection(cm: ConnectionManager[IO])(using
+      Raise[IO, ConnectionError]
+  ): IO[(Connection[IO], Connection[IO])] =
+    acquired(cm, 1).flatMap {
+      case (Acquired.Reserved(ours), _) =>
+        ours.connected(Some(local(3001))) *>
+          cm.include(peer(1), Some(local(3001))).allocated.map(theirs => (ours, theirs._1))
+      case (other, _) => IO.raiseError(new AssertionError(s"not reserved: $other"))
+    }
+
+  /** The handle a reuse of `peer(1)` gets, after our side let go of the connection. */
+  private def handleAfterRelease(cm: ConnectionManager[IO], ours: Connection[IO])(using
+      Raise[IO, ConnectionError]
+  ): IO[Negotiated[IO]] =
+    ours.releaseOutbound *> acquired(cm, 1).flatMap {
+      case (Acquired.Reused(_, h), _) => IO.pure(h)
+      case (other, _)                 => IO.raiseError(new AssertionError(s"not reused: $other"))
+    }
+
+  // the outbound side negotiates whatever the provenance the accept left (`Core.hs` 1588-1622),
+  // and the inbound side then leaves the outbound state and its handle as they are (932-934)
+  test("a self-connection whose outbound handshake ends first keeps the outbound side's handle") {
+    managed() { m =>
+      for
+        (ours, theirs) <- selfConnection(m.cm)
+        hOut <- handle(DataFlow.Duplex)
+        hIn <- handle(DataFlow.Duplex)
+        _ <- ours.negotiated(hOut)
+        first <- ours.state
+        _ <- theirs.negotiated(hIn)
+        second <- ours.state
+        kept <- handleAfterRelease(m.cm, ours)
+      yield (first, second, kept eq hOut)
+    }.map { r =>
+      val (first, second, kept) = result(r)
+      assertEquals(first, ConnectionState.OutboundDup(TimeoutExpired.Ticking))
+      assertEquals(second, first)
+      assert(kept, "the outbound side's handle was overwritten")
+    }
+  }
+
+  // the inbound side first (`SelfConnNegotiated`, 913-930), then `SelfConn'⁻¹`, which keeps the
+  // inbound side's handle (1624-1652)
+  test("a self-connection whose inbound handshake ends first keeps the inbound side's handle") {
+    managed() { m =>
+      for
+        (ours, theirs) <- selfConnection(m.cm)
+        hOut <- handle(DataFlow.Duplex)
+        hIn <- handle(DataFlow.Duplex)
+        _ <- theirs.negotiated(hIn)
+        first <- ours.state
+        _ <- ours.negotiated(hOut)
+        second <- ours.state
+        kept <- handleAfterRelease(m.cm, ours)
+      yield (first, second, kept eq hIn)
+    }.map { r =>
+      val (first, second, kept) = result(r)
+      assertEquals(first, ConnectionState.InboundIdle(DataFlow.Duplex))
+      assertEquals(second, ConnectionState.OutboundDup(TimeoutExpired.Ticking))
+      assert(kept, "the inbound side's handle was overwritten")
+    }
+  }
+
+  // released by the outbound side before the inbound handshake ended: `OutboundIdle` becomes
+  // `InboundIdle` with its flow and the inbound side's handle (`Core.hs` 936-945), a move the
+  // reference's `verifyAbstractTransition` has no case for
+  test("a self-connection released by the outbound side before the inbound handshake ends") {
+    val runtimeOnly = ConnectionState.OutboundIdle(DataFlow.Unidirectional) ->
+      ConnectionState.InboundIdle(DataFlow.Unidirectional)
+    TestControl
+      .executeEmbed(
+        Ref.of[IO, Vector[ConnectionEvent]](Vector.empty).flatMap { seen =>
+          Handle
+            .allow[ConnectionError] {
+              for
+                cm <- ConnectionManager.create[IO](
+                  ConnectionManager.Limits(outboundIdle = 1.hour),
+                  Some(event => seen.update(_ :+ event))
+                )
+                (ours, theirs) <- selfConnection(cm)
+                hOut <- handle(DataFlow.Unidirectional)
+                hIn <- handle(DataFlow.Unidirectional)
+                _ <- ours.negotiated(hOut)
+                releasing <- ours.releaseOutbound.start
+                _ <- IO.sleep(1.second)
+                idle <- ours.state
+                _ <- theirs.negotiated(hIn)
+                released <- releasing.joinWithNever
+                after <- ours.state
+                events <- seen.get
+              yield (idle, released, after, events)
+            }
+            .rescue(e => IO(fail(e.message)))
+        }
+      )
+      .map { (idle, released, after, events) =>
+        allValid(events.filterNot {
+          case ConnectionEvent.Changed(_, from, to) => (from -> to) == runtimeOnly
+          case _                                    => false
+        })
+        assert(events.exists {
+          case ConnectionEvent.Changed(_, from, to) => (from -> to) == runtimeOnly
+          case _                                    => false
+        })
+        assertEquals(idle, ConnectionState.OutboundIdle(DataFlow.Unidirectional))
+        assertEquals(after, ConnectionState.InboundIdle(DataFlow.Unidirectional))
+        assertEquals(
+          released,
+          OperationResult.Unsupported(Some(ConnectionState.InboundIdle(DataFlow.Unidirectional)))
+        )
+      }
   }
 
   // ------------------------------------------------------------------ model

@@ -128,6 +128,13 @@ object ConnectionState:
       */
     case SelfConnNegotiated(flow: DataFlow)
 
+    /** The inbound side of a self-connection negotiated after the outbound side released it: its
+      * `OutboundIdle` connection becomes `InboundIdle` with the same flow (`Core.hs:938-945`).
+      * `verifyAbstractTransition` has no case for it (`Test/.../ConnectionManager/Utils.hs`), so
+      * [[valid]] refuses the move the reference's runtime makes.
+      */
+    case SelfConnIdle
+
     /** `Commit^{flow}`: an idle connection is closed; it enters time-wait. */
     case Commit
 
@@ -185,6 +192,7 @@ object ConnectionState:
         Right(Unnegotiated(Provenance.Outbound))
       case (InboundIdle(Unidirectional), Event.SelfConnReversed) => Right(OutboundUni)
       case (InboundIdle(DuplexFlow), Event.SelfConnReversed)     => Right(OutboundDup(Ticking))
+      case (OutboundIdle(flow), Event.SelfConnIdle)              => Right(InboundIdle(flow))
       case (Unnegotiated(Provenance.Outbound), Event.SelfConnNegotiated(flow)) =>
         Right(InboundIdle(flow))
       case (OutboundDup(Ticking), Event.TimeoutExpired) => Right(OutboundDup(Expired))

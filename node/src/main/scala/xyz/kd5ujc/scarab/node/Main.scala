@@ -1781,10 +1781,11 @@ object Main extends IOApp:
               Some(store),
               Some(scheduling.stats.total.map(Reports.schedulingTotal)),
               Some(
-                (manager.snapshot, net.state.get, IO.monotonic).mapN {
-                  (connections, selection, now) =>
+                (manager.snapshot, net.state.get, net.outbound.sessionReports, IO.monotonic).mapN {
+                  (connections, selection, sessions, now) =>
                     InboundGovernor
                       .json(connections)
+                      .deepMerge(io.circe.Json.obj("sessions" -> OutboundPeers.json(sessions)))
                       .deepMerge(
                         io.circe.Json.obj(
                           "peerSelection" -> PeerNetwork.json(selection, now)
