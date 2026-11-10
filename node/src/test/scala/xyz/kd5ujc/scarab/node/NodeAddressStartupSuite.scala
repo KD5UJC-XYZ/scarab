@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{ExitCode, IO}
+import cats.effect.{ExitCode, IO, Resource}
+import cats.syntax.all.*
+import java.net.{InetSocketAddress, StandardProtocolFamily}
+import java.nio.channels.ServerSocketChannel
 import java.nio.file.{Files, LinkOption, Path}
 import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
@@ -59,5 +62,52 @@ class NodeAddressStartupSuite extends CatsEffectSuite:
         )
         assert(stale, "the stale socket is not removed yet")
         assert(!database, "the database is not touched")
+    }
+  }
+
+  test("a node-to-node listener that cannot bind stops the node with diffusionErrored and exit 1") {
+    // a socket without SO_REUSEPORT holds the port, so the node's listener cannot bind to it
+    val held = Resource.make(IO.blocking {
+      val channel = ServerSocketChannel.open(StandardProtocolFamily.INET)
+      channel.bind(new InetSocketAddress("127.0.0.1", 0))
+    })(channel => IO.blocking(channel.close()))
+    (temporary, held).tupled.use { (root, channel) =>
+      val port = channel.getLocalAddress match
+        case a: InetSocketAddress => a.getPort
+        case other                => fail(s"not an IP address: $other")
+      val log = root.resolve("node.log")
+      for
+        code <- Main.run(
+          List(
+            "follow",
+            "--genesis-dir",
+            "fixtures/eras/genesis",
+            "--peer",
+            "127.0.0.1:1",
+            "--query-listen",
+            "off",
+            "--listen",
+            s"127.0.0.1:$port",
+            "--log-stdout",
+            "off",
+            "--log-file",
+            log.toString
+          )
+        )
+        lines <- IO.blocking(Files.readAllLines(log).asScala.toList)
+      yield
+        val parsed = lines.flatMap(io.circe.parser.parse(_).toOption)
+        val seen = parsed.flatMap(_.hcursor.get[String]("event").toOption)
+        assertEquals(code, ExitCode(1))
+        assertEquals(
+          seen.filter(Set("diffusionErrored", "error", "fatal")),
+          List("diffusionErrored")
+        )
+        assertEquals(
+          parsed
+            .find(_.hcursor.get[String]("event").toOption.contains("diffusionErrored"))
+            .flatMap(_.hcursor.get[String]("error").toOption),
+          Some("Network.Socket.bind: resource busy (Address in use)")
+        )
     }
   }

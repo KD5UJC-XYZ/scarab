@@ -849,6 +849,34 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
     unnegotiatedOut -> unnegotiatedIn
   )
 
+  // a self-connection, or a simultaneous open, whose accept came before its `connect` returned:
+  // the accept looks the identity up by its local address and finds nothing, since the reservation
+  // waits under an unknown one (`ConnMap.hs` 167-174), so it makes an entry of its own (`Core.hs`
+  // 837-842); the outbound side's `updateLocalAddr` then finds that identity taken and fails with
+  // `ConnectionExists` (`ConnMap.hs` 213-245, `Core.hs` 1510-1526), and the accepted one stays
+  test("a self-connection accepted before its connect returned leaves the outbound side refused") {
+    managed() { m =>
+      for
+        reserved <- acquired(m.cm, 1)
+        ours <- reserved match
+          case (Acquired.Reserved(c), _) => IO.pure(c)
+          case (other, _) => IO.raiseError(new AssertionError(s"not reserved: $other"))
+        (theirs, _) <- m.cm.include(peer(1), Some(local(3001))).allocated
+        refused <- attempt(ours.connected(Some(local(3001))))
+        inbound <- theirs.state
+        trace <- m.changes
+      yield (refused, inbound, trace)
+    }.map { r =>
+      val (refused, inbound, trace) = result(r)
+      assertEquals(
+        refused,
+        Left(ConnectionError.AlreadyConnected(peer(1).toString, unnegotiatedIn))
+      )
+      assertEquals(inbound, unnegotiatedIn)
+      assert(!trace.contains(ConnectionState.ReservedOutbound -> unnegotiatedIn), trace.toString)
+    }
+  }
+
   // the outbound side writes its negotiated state over the accept's `UnnegotiatedState Inbound`
   // in one move (`Core.hs` 1600-1622), which `verifyAbstractTransition` has no case for, and the
   // inbound side then leaves the outbound state and its handle as they are (932-934)
