@@ -81,9 +81,11 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   * that era's coverage test (an incomplete gate is never a pass).
   *
   * Each corpus is replayed under the rules of the reference build that recorded it
-  * ([[recordedBuild]]): `NodeSetup.fromFiles` with that build, as `--reference-build` sets up a
-  * node, and the state read in that build's layout. [[buildSensitive]] names cases whose refusal
-  * another build's rules would not send, so the replay is seen to follow the corpus's build.
+  * ([[recordedBuild]]): `NodeSetup.fromFiles` with that build, which sets the ledger's build
+  * through `NodeSetup.mirroring` as `follow --reference-build` does (`fromConfigFile`,
+  * `fromDirectory`), and the state read in that build's layout. [[buildSensitive]] names cases
+  * whose refusal another build's rules would not send, so the replay is seen to follow the corpus's
+  * build.
   *
   * The one recorded gap is [[knownGaps]]: the text of a `PlutusFailure` needs the script-context
   * printer of plutus-ledger-api and the error text of plutus-core, which Scarab does not have yet

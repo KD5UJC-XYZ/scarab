@@ -385,6 +385,8 @@ def capture_dijkstra(args):
     if not summary_path.exists():
         raise SystemExit(f"{summary_path} is missing; run `devnet.py --name {args.name} up-dijkstra` first")
     summary = json.loads(summary_path.read_text())
+    if summary.get("conwayOnly"):
+        raise SystemExit(f"`{args.name}` was started with --conway-only: it has no Dijkstra chain to capture")
     db = f"{ENV}/node-data/node1/db/immutable"
     chunks = in_ref(args.name, f"ls {db} | grep '\\.chunk$' | sort").stdout.split()
     blocks = []
