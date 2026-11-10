@@ -130,12 +130,12 @@ class ShelleyBbodySuite extends FunSuite:
       Witnesses.empty.copy(redeemers = Vector(Redeemer(0, 0, Bytes.empty, units)))
     )
 
-  test("from Alonzo the execution units of the block are limited; before, they are not") {
+  test("the execution units of the block are those of all its transactions") {
     val pp = params(5)
     val half = ExUnits(pp.maxBlockExUnits.mem / 2 + 1, 1)
     val txs = Vector(redeeming(half, "a"), redeeming(half, "b"), redeeming(half, "c"))
     assertEquals(Bbody.exUnitsExceeded(pp, txs), Some(half + half + half))
-    assertEquals(Bbody.exUnitsExceeded(params(4), txs), None)
+    assertEquals(Bbody.exUnitsExceeded(pp, txs.take(1)), None)
   }
 
   test("from Alonzo a block LEDGERS accepts is refused for the units of the whole block") {
@@ -153,6 +153,26 @@ class ShelleyBbodySuite extends FunSuite:
       run[Alonzo](pp.copy(maxBlockExUnits = limit), txs, state[Alonzo](pp, utxo)),
       Left(BlockFailure.BlockExUnitsTooBig(ExUnits.zero, limit))
     )
+  }
+
+  test("Alonzo at version 4 limits the execution units of the block; Mary at 5 does not") {
+    // `validateExUnits` is Alonzo's BBODY (`Alonzo/Rules/Bbody.hs:149-167,212`), which Babbage
+    // runs too, at any version; Shelley's BBODY (`Shelley/Rules/Bbody.hs:207`) has no such check.
+    // A chain that starts Alonzo by epoch keeps the version of Mary.
+    val alice = key()
+    val inputs = Vector(txIn(1), txIn(2))
+    val utxo = Utxo.empty ++ inputs.map(_ -> out(alice.address(), 10000000))
+    val txs = inputs.zipWithIndex.map { (in, i) =>
+      tx(body(s"u$i", Vector(in), Vector(out(alice.address(), 9999800)), 200), Vector(alice))
+    }
+    val limit = ExUnits(-1, 0)
+    val alonzo = params(4).copy(minUTxOValue = 0, maxBlockExUnits = limit)
+    assertEquals(
+      run[Alonzo](alonzo, txs, state[Alonzo](alonzo, utxo)),
+      Left(BlockFailure.BlockExUnitsTooBig(ExUnits.zero, limit))
+    )
+    val mary = params(5).copy(maxBlockExUnits = limit)
+    assert(run[Mary](mary, txs, state[Mary](mary, utxo)).isRight)
   }
 
   test("from Alonzo LEDGERS is judged before the execution units of the block") {

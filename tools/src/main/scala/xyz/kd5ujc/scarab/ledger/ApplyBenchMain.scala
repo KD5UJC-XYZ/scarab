@@ -182,7 +182,9 @@ object ApplyBenchMain:
           xyz.kd5ujc.scarab.ledger.rules.UtxoTests
             .outputTooSmall[xyz.kd5ujc.scarab.ledger.state.Alonzo](pp, body.outputs)
         )._2
-        ns("collateralChecks") += time(TxChecks.collateral(ledgerUtxo, pp, tx))._2
+        ns("collateralChecks") += time(
+          TxChecks.collateral[xyz.kd5ujc.scarab.ledger.state.Alonzo](ledgerUtxo, tx)
+        )._2
         val (scripts, tProvided) =
           time(TxChecks.providedScripts(tx.witnesses, spent ++ refOuts))
         ns("providedScripts") += tProvided

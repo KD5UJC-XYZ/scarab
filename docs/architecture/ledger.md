@@ -84,9 +84,10 @@ follower (no Docker); `EpochGeometrySuite` has the era-history properties.
 `MirrorRules` applies the full ledger to every Shelley-based block, on the Haskell-shaped, era-indexed state (`ledger/rules/`; the flat rules and state of the first versions were removed in J2.9). The rule of each
 era is chosen by the era witness (`PreConway[E]`, `ShelleyBasedEra[E]`), and UTXO's and UTXOW's checks follow the era whatever the
 protocol version, as the reference's rule of each era does (#867, #880): a chain that starts an era by `Test<Era>HardForkAtEpoch`
-keeps the version of the era before it. The UTXOS, BBODY, script-context and parameter sites that still follow the
-protocol major version of the parameters in force are #881 to #884; the reference's own version tests (`hardfork*`) stay
-tests of the version.
+keeps the version of the era before it. UTXOS and BBODY follow the era too (#881, #882), and Conway's LEDGER tests the
+bootstrap phase as the reference does (#885). The script-context and parameter sites that still follow the protocol major
+version of the parameters in force are #883 and #884; the reference's own version tests (`hardfork*`) stay tests of the
+version.
 
 - **Decoding** (`ledger/Tx.scala`, `Scripts.scala`): transaction bodies of every era (keys 0-18),
   witness sets (vkey, bootstrap, native and Plutus scripts, datums, redeemers), outputs in legacy and
@@ -120,10 +121,10 @@ tests of the version.
 
 ## Conway
 
-`ledger/rules/Ledger.scala` (with `Gov.scala`, `Certs.scala` and `ConwayTx.scala`) is the LEDGER rule for protocol versions 9 and later (Preview runs 11).
+`ledger/rules/Ledger.scala` (with `Gov.scala`, `Certs.scala` and `ConwayTx.scala`) is Conway's LEDGER rule, selected by the era.
 For a phase-2 valid transaction it follows the ledger's order: treasury value and reference-script
-size checks, the withdrawals (key accounts must be delegated to a DRep from version 10; a withdrawal
-takes the whole balance), the DRep expiry updates, CERTS, GOV; UTXOW (scripts provided, needed and not
+size checks, the withdrawals (key accounts must be delegated to a DRep except in the bootstrap
+phase at protocol version 9; a withdrawal takes the whole balance), the DRep expiry updates, CERTS, GOV; UTXOW (scripts provided, needed and not
 extraneous, datums, redeemers, vkey and bootstrap witnesses, the script data hash), UTXO (validity
 interval, fee, value conservation, collateral) and UTXOS (phase 2). A transaction flagged invalid
 consumes its collateral and nothing else.

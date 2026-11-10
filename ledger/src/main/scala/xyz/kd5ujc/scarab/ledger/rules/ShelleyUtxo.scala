@@ -296,7 +296,7 @@ object ShelleyUtxo:
           judge: Judge[F, PredicateFailure]
       ): F[Unit] =
         val (deposits, refunds) = ShelleyDeposits.of(env.pp, env.cert, ann.tx.body)
-        val collateral = TxChecks.collateral(ann.utxo, env.pp, ann.tx)
+        val collateral = TxChecks.collateral[E](ann.utxo, ann.tx)(using pre.era)
         val checks = UtxoChecks.of[E](env, ann, deposits, refunds)
         for
           _ <- Sts.require[F, LedgerFailure](checks.defect)

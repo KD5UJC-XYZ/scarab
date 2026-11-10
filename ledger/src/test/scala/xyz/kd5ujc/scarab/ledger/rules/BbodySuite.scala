@@ -145,6 +145,31 @@ class BbodySuite extends FunSuite:
     )
   }
 
+  test("Conway at versions 7 and 8 limits the reference scripts of the block too") {
+    // `conwayBbodyTransition` runs `validateBodyRefScriptsSizeTooBig` whatever the version
+    // (`Conway/Rules/Bbody.hs:314,330-355`); a chain that starts Conway by epoch keeps the
+    // version of Babbage
+    val alice = key()
+    val held = Vector.tabulate(18)(i => TxIn(Bytes.fromArray(Array.fill(32)(i.toByte)), 0))
+    val utxo = Utxo.empty ++ held.map(_ -> withScript(alice.address(), 60000))
+    val naming = tx(
+      body("naming", Vector(txIn(1)), Vector.empty, 0, referenceInputs = held),
+      Vector.empty
+    )
+    Vector(7, 8).foreach { pv =>
+      val p = params(pv)
+      assertEquals(
+        run(p, Vector(naming), state(p, utxo), BodyCommitment(101, commitment.hash)),
+        Left(
+          BlockFailure.RefScriptsTooLarge(
+            Mismatch(1080000L, RefScripts.MaxRefScriptSizePerBlock.toLong)
+          )
+        ),
+        s"version $pv"
+      )
+    }
+  }
+
   test("BBODY agrees with the reference stack on signed transactions and failures") {
     type R[A] = Either[BlockFailure, A]
     type S[A] = StateT[R, BbodyState, A]

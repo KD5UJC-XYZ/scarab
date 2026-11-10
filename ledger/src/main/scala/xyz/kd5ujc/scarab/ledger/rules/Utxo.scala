@@ -266,7 +266,7 @@ object Utxo
       judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     val (deposits, refunds) = Deposits.of(env.pp, env.cert, ann.tx.body)
-    val collateral = TxChecks.collateral(ann.utxo, env.pp, ann.tx)
+    val collateral = TxChecks.collateral[Conway](ann.utxo, ann.tx)
     for
       _ <- Sts.runTest[F, PredicateFailure](validate(env, ann, deposits, refunds))
       _ <- JudgedSts.trans[F, UtxoEnv[Any], PlutusStats, Counted[
