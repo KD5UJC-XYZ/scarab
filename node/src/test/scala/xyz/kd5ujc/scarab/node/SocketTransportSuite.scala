@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node
 import xyz.kd5ujc.scarab.node.mempool.RelayedTransactions
 import cats.effect.{IO, Ref, Resource}
 import cats.effect.std.Supervisor
+import fs2.concurrent.SignallingRef
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
 import com.comcast.ip4s.*
@@ -112,7 +113,7 @@ class SocketTransportSuite extends FailsOnUncaught:
       outbound: OutboundPeers[IO, PeerNetwork.Addr],
       dials: Ref[IO, Int],
       ids: Ref[IO, Vector[Identity]],
-      changes: Ref[IO, Vector[(ConnectionState, ConnectionState)]]
+      changes: SignallingRef[IO, Vector[(ConnectionState, ConnectionState)]]
   ):
     def state(remote: SocketAddress[IpAddress]): IO[Option[ConnectionState]] =
       manager.lookup(remote).map(_.map(_.state))
@@ -124,7 +125,9 @@ class SocketTransportSuite extends FailsOnUncaught:
     for
       scope <- NodeScope.resource
       supervisor <- Supervisor[IO](await = false)
-      changes <- Resource.eval(Ref.of[IO, Vector[(ConnectionState, ConnectionState)]](Vector.empty))
+      changes <- Resource.eval(
+        SignallingRef.of[IO, Vector[(ConnectionState, ConnectionState)]](Vector.empty)
+      )
       manager <- Resource.eval(
         ConnectionManager.create[IO](
           ConnectionManager.Limits(timeWait = Duration.Zero),
@@ -216,7 +219,12 @@ class SocketTransportSuite extends FailsOnUncaught:
             )
             .use { stream =>
               for
-                before <- Wait.until(us.state(peer.address))(inboundDuplex)
+                // the manager reports each change: wait for the peer's connection to be negotiated
+                _ <- us.changes.discrete
+                  .find(_.exists((_, to) => inboundDuplex(Some(to))))
+                  .compile
+                  .drain
+                before <- us.state(peer.address)
                 // our own dial to it would be the same four-tuple, which the kernel refuses
                 second <- Peers.typed(
                   PeerNetwork
