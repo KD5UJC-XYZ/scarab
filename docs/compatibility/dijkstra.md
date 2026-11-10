@@ -18,7 +18,7 @@ None of these is reachable from the node's own chain yet.
 
 ## Evidence
 
-- **Unit tests:** `DijkstraNotYetSuite`, `DijkstraCodecsSuite`, `DijkstraGenesisSuite`, `DijkstraTranslationSuite`, `DijkstraTxTranslationSuite`, `DijkstraCrossingSuite` `DijkstraStoredOutputsSuite`, `DijkstraRulesSuite` and `DijkstraRulesOracleSuite`.
+- **Unit tests:** `DijkstraNotYetSuite`, `DijkstraCodecsSuite`, `DijkstraGenesisSuite`, `DijkstraTranslationSuite`, `DijkstraTxTranslationSuite`, `DijkstraCrossingSuite`, `DijkstraStoredOutputsSuite`, `DijkstraRulesSuite` and `DijkstraRulesOracleSuite`.
 - **Reference oracles** on the Leios build, each with its recorded cases:
   - `scripts/oracle/dijkstra-genesis` (`fixtures/reference/dijkstra-genesis`);
   - `scripts/oracle/dijkstra-translation` (`fixtures/reference/dijkstra-translation`);
