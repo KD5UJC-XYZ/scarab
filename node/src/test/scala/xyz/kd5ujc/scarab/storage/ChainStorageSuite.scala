@@ -5,8 +5,9 @@ import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import xyz.kd5ujc.scarab.node.WorkerTesting
 import scala.annotation.unused
-import cats.effect.{Deferred, IO, Ref, Resource}
-import cats.effect.std.Queue
+import cats.effect.{Deferred, IO, Outcome, Ref, Resource}
+import cats.effect.std.{Queue, Semaphore}
+import cats.effect.testkit.TestControl
 import cats.mtl.{Ask, Handle, Raise, Stateful}
 import cats.syntax.all.*
 import fs2.io.file.{Files, Path}
@@ -25,7 +26,7 @@ import xyz.kd5ujc.scarab.ledger.{IdentityProvenance, StoredNetworkIdentity}
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.ledger.NetworkIdentity
 import xyz.kd5ujc.scarab.ledger.NodeError
-import xyz.kd5ujc.scarab.ledger.{PeerError, StorageError}
+import xyz.kd5ujc.scarab.ledger.{ChainError, PeerError, StorageError}
 import xyz.kd5ujc.scarab.node.{Fatal, Follower, Main}
 import xyz.kd5ujc.scarab.node.log.NodeEvent
 import xyz.kd5ujc.scarab.consensus.BlockRules
@@ -706,6 +707,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       every: Int = 120,
       identity: Option[NetworkIdentity] = Some(setup.identity),
       tap: Int => IO[Unit] = _ => IO.unit,
+      copies: Option[SnapshotCopies] = None,
       adoptLegacy: Boolean = false,
       selectionOnStartup: Boolean = false,
       wrapRules: BlockRules[IO, MirrorState] => BlockRules[IO, MirrorState] = identity
@@ -713,7 +715,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     Ref.of[IO, Vector[StorageEvent]](Vector.empty).flatMap { log =>
       Handle
         .allow[NodeError] {
-          val backing = StateBacking.none[IO, MirrorState]
+          val unbacked = StateBacking.none[IO, MirrorState]
+          val backing = copies.fold(unbacked)(_.backing(unbacked))
+          val events = copies.fold(storageEvents(log))(_.events(storageEvents(log)))
           val nodeRules = wrapRules(
             MirrorRules[IO](
               setup.praos,
@@ -729,7 +733,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               volatileConfig(every, identity).copy(adoptLegacyNetworkIdentity = adoptLegacy),
               nodeRules,
               setup.mirrorStart,
-              storageEvents(log),
+              events,
               backing,
               _ => IO.unit
             )
@@ -741,7 +745,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   setup.origin,
                   nodeRules,
                   geometry.byron.epochSlots,
-                  storageEvents(log),
+                  events,
                   _ => IO.unit
                 )
                 chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
@@ -781,7 +785,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   ),
                   noEvents,
                   geometry,
-                  persistence = Some(recovered.persistence),
+                  persistence =
+                    Some(copies.fold(recovered.persistence)(_.persistence(recovered.persistence))),
                   initialViews = resumed.map(r => r.ref.hash -> r.view).toMap
                 )
                 startupReplayed <-
@@ -842,6 +847,121 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       case Left(other)             => fail(s"expected a refusal, got $other")
       case Right(_)                => fail("expected a refusal, the database opened")
     }
+
+  /** A live copy waits for the previous snapshot and excludes persistence mutations. Checkpoint
+    * registration is synchronous, before the snapshot worker starts; its terminal event follows all
+    * snapshot writes and pruning. Shutdown starts only after the session's taps finish.
+    */
+  private final class SnapshotCopies(
+      lock: Semaphore[IO],
+      pending: Ref[IO, Option[Deferred[IO, Unit]]]
+  ):
+    private def awaitSnapshot: IO[Unit] = pending.get.flatMap(_.traverse_(_.get))
+
+    def started: IO[Unit] =
+      awaitSnapshot *> Deferred[IO, Unit].flatMap(done => pending.set(Some(done)))
+
+    def finished: IO[Unit] = pending.get.flatMap(_.traverse_(_.complete(()).void))
+
+    def quiet[A](body: IO[A]): IO[A] = lock.permit.use(_ => awaitSnapshot *> body)
+
+    def events(underlying: StorageEvents[IO]): StorageEvents[IO] = event =>
+      underlying.emit(event) *> (event match
+        case StorageEvent.SnapshotWritten(_, _, _, _) | StorageEvent.SnapshotRefused(_, _, _) |
+            StorageEvent.SnapshotFailed(_) =>
+          finished
+        case _ => IO.unit)
+
+    def backing(underlying: StateBacking[IO, MirrorState]): StateBacking[IO, MirrorState] =
+      new StateBacking[IO, MirrorState]:
+        def advance(state: MirrorState)(using Raise[IO, StorageError]) = underlying.advance(state)
+        def settled(state: MirrorState)(using Raise[IO, StorageError]) = underlying.settled(state)
+        def checkpoint(anchor: BlockRef)(using Raise[IO, StorageError]) =
+          started *> underlying.checkpoint(anchor)
+        def admit(anchor: Option[BlockRef], binding: CheckpointBinding)(using
+            Raise[IO, StorageError]
+        ) =
+          underlying.admit(anchor, binding)
+        def restore(anchor: Option[BlockRef])(using Raise[IO, StorageError]) =
+          underlying.restore(anchor)
+        def reset(using Raise[IO, StorageError]) = underlying.reset
+        def retain(stems: Set[String])(using Raise[IO, StorageError]) = underlying.retain(stems)
+        def trim(stems: Set[String])(using Raise[IO, StorageError]) = underlying.trim(stems)
+
+    def persistence(
+        underlying: ChainPersistence[IO, MirrorState]
+    ): ChainPersistence[IO, MirrorState] =
+      new ChainPersistence[IO, MirrorState]:
+        def extended(
+            ref: BlockRef,
+            raw: Bytes,
+            immutable: Vector[BlockRef],
+            anchor: Anchor[MirrorState]
+        )(using
+            Raise[IO, StorageError],
+            Raise[IO, ChainError]
+        ) = quiet(underlying.extended(ref, raw, immutable, anchor))
+        def rolledBack(to: ChainSync.Point)(using Raise[IO, StorageError], Raise[IO, ChainError]) =
+          quiet(underlying.rolledBack(to))
+
+  private object SnapshotCopies:
+    def create: IO[SnapshotCopies] =
+      (Semaphore[IO](1), Ref.of[IO, Option[Deferred[IO, Unit]]](None))
+        .mapN(new SnapshotCopies(_, _))
+
+  test("crash copies wait for snapshots and exclude persistence until the copy finishes") {
+    for
+      copies <- SnapshotCopies.create
+      copying <- Deferred[IO, Unit]
+      release <- Deferred[IO, Unit]
+      persisted <- Deferred[IO, Unit]
+      _ <- copies.started
+      control <- TestControl.execute(
+        copies.quiet(copying.complete(()).void *> release.get).background.use { _ =>
+          copying.get *> copies.quiet(persisted.complete(()).void)
+        }
+      )
+      _ <- Resource
+        .make(IO.pure(control))(_ =>
+          copies.finished *> release.complete(()).void *> control.tickAll
+        )
+        .use { clock =>
+          for
+            _ <- clock.tickAll
+            before <- copying.tryGet
+            waiting <- clock.results
+            _ <- IO {
+              assertEquals(before, None, "copy must wait for the in-flight snapshot")
+              assertEquals(
+                waiting,
+                None,
+                "the controlled program is blocked on snapshot completion"
+              )
+            }
+            _ <- copies.finished *> clock.tickAll
+            entered <- copying.tryGet
+            early <- persisted.tryGet
+            _ <- IO {
+              assertEquals(entered, Some(()), "snapshot completion permits copying")
+              assertEquals(early, None, "persistence must wait for the copy")
+            }
+            _ <- release.complete(()) *> clock.tickAll
+            after <- persisted.tryGet
+            result <- clock.results
+            _ <- IO {
+              assertEquals(after, Some(()), "persistence resumes after the copy")
+              assert(
+                result.exists {
+                  case Outcome.Succeeded(()) => true
+                  case _                     => false
+                },
+                result.toString
+              )
+            }
+          yield ()
+        }
+    yield ()
+  }
 
   private def copyTree(from: Path, to: Path): IO[Unit] = IO.blocking {
     val src = from.toNioPath
@@ -948,22 +1068,28 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("a crash at any point of a run recovers: copies of the database taken mid-run restart") {
+  test("crash recovery: database copies at quiescent storage boundaries restart") {
     tempDir.use { root =>
       val points = (1 to 700 by 61).toList
       val live = root / "live"
       for
         _ <- files.createDirectories(live)
         taken <- Ref.of[IO, Vector[Int]](Vector.empty)
-        // background snapshots land before the copy, which stands in for the files at the crash
+        copies <- SnapshotCopies.create
         tap = (n: Int) =>
           if points.contains(n) then
-            IO.sleep(60.millis) *> copyTree(live, root / s"crash-$n") *> taken.update(_ :+ n)
+            copies.quiet(copyTree(live, root / s"crash-$n")) *> taken.update(_ :+ n)
           else IO.unit
-        _ <- session(live, 731, tap = tap)
-        copies <- taken.get
-        _ <- IO(assert(copies.size >= 10, copies.toString))
-        results <- copies.traverse(n => session(root / s"crash-$n", 731).map(s => (n, s)))
+        liveSession <- session(live, 731, tap = tap, copies = Some(copies))
+        captured <- taken.get
+        _ <- IO {
+          assert(captured.size >= 10, captured.toString)
+          assertEquals(
+            liveSession.events.collect { case StorageEvent.SnapshotFailed(failure) => failure },
+            Vector.empty
+          )
+        }
+        results <- captured.traverse(n => session(root / s"crash-$n", 731).map(s => (n, s)))
         _ <- results.traverse_ { (n, s) =>
           IO {
             assertState(s.chain.state, states(731), s"restart from the copy at event $n")

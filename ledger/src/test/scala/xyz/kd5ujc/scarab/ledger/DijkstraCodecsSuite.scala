@@ -5,7 +5,7 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraLevel, DijkstraTx}
+import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraLevel, DijkstraTx, DijkstraVoting}
 import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
 
 /** The block, header and transaction readers of the node on the Conway to Dijkstra chain of the
@@ -335,4 +335,34 @@ class DijkstraCodecsSuite extends munit.FunSuite:
         assertEquals(b.block.transactions.size, 1)
         assertEquals(b.block.faults.contains(LeiosBlock.Fault.BodyHashDiffers), true)
       case other => fail(other.toString)
+  }
+
+  private def votingProcedure(vote: Int) =
+    val voter = item(
+      Value.Arr(
+        Vector(item(Value.UInt(2)), item(Value.ByteString(Bytes.wrap(Array.fill(28)(0.toByte)))))
+      )
+    )
+    val action = item(
+      Value.Arr(
+        Vector(item(Value.ByteString(Bytes.wrap(Array.fill(32)(0.toByte)))), item(Value.UInt(0)))
+      )
+    )
+    val procedure = item(Value.Arr(Vector(item(Value.UInt(vote)), item(Value.Null))))
+    DijkstraVoting.procedures(
+      node(encode(Value.Map(Vector(voter -> item(Value.Map(Vector(action -> procedure)))))))
+    )
+
+  test("Dijkstra vote tags decode to their closed domain cases") {
+    Vector(0 -> Vote.No, 1 -> Vote.Yes, 2 -> Vote.Abstain).foreach { (tag, expected) =>
+      val decoded = votingProcedure(tag).fold(e => fail(e.toString), identity)
+      assertEquals(decoded.flatMap(_._2.map(_._2.vote)), Vector(expected), s"vote tag $tag")
+    }
+  }
+
+  test("Dijkstra refuses vote tag 3 at the decoding boundary") {
+    assertEquals(
+      votingProcedure(3),
+      Left(LedgerDecodeError.NumberOutOfRange(DecodeField.Vote, 3, 0, 2))
+    )
   }

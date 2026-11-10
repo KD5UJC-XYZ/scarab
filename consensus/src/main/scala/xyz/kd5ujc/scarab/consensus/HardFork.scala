@@ -68,12 +68,12 @@ final case class HardForkConfig(triggers: Map[Era, ForkTrigger], maxMajorProtVer
   /** The trigger of `era` when this node may enter it. Dijkstra is entered only once the maximum
     * major protocol version reaches its first (12, [[HardForkConfig.eraProtVerLow]]): the reference
     * has 12 only with `ExperimentalHardForksEnabled` (cardano-node b004fe0c
-    * `Cardano/Node/Protocol/Cardano.hs:192-194`), and this build implements none of Dijkstra's
-    * rules yet. Below that its trigger is carried (`triggerHardForkDijkstra`, ouroboros-consensus
-    * 2416493b `Cardano/Node.hs:724-728`) but never fires, so the chain stays in Conway, where the
-    * reference with an epoch trigger would translate the state into Dijkstra. That refusal is the
-    * owner's decision of 2026-11-04 on #54 (Dijkstra lands in parts behind a refusal to enter it)
-    * and is removed when the node implements the era.
+    * `Cardano/Node/Protocol/Cardano.hs:192-194`), and this build does not apply Dijkstra's rules to
+    * the node's chain yet. Below that its trigger is carried (`triggerHardForkDijkstra`,
+    * ouroboros-consensus 2416493b `Cardano/Node.hs:724-728`) but never fires, so the chain stays in
+    * Conway, where the reference with an epoch trigger would translate the state into Dijkstra.
+    * That refusal is the owner's decision of 2026-11-04 on #54 (Dijkstra lands in parts behind a
+    * refusal to enter it) and is removed when the node implements the era.
     */
   def trigger(era: Era): Option[ForkTrigger] =
     triggers

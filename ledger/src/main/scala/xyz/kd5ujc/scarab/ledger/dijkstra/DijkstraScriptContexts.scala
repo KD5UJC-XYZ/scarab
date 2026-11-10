@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger.dijkstra
 import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
-import xyz.kd5ujc.scarab.ledger.{Address, Credential, DRep, RewardAccount}
+import xyz.kd5ujc.scarab.ledger.{Address, Credential, DRep, RewardAccount, Vote}
 import xyz.kd5ujc.scarab.plutus.PlutusData
 import xyz.kd5ujc.scarab.plutus.PlutusData.{B, I}
 
@@ -258,13 +258,18 @@ object DijkstraScriptContexts:
   private def votes(body: DijkstraTxBody): PlutusData =
     votesOf(body.votingProcedures.map((v, ps) => v -> ps.map((id, p) => id -> p.vote).toMap).toMap)
 
-  private def votesOf(procedures: Map[DijkstraVoter, Map[DijkstraGovActionId, Int]]): PlutusData =
+  private def votesOf(procedures: Map[DijkstraVoter, Map[DijkstraGovActionId, Vote]]): PlutusData =
     PlutusData.Map(
       procedures.toVector.sortBy(_._1)(using DijkstraPurposes.voterOrder).map { (v, ps) =>
         voter(v) -> PlutusData.Map(
           ps.toVector
             .sortBy(_._1)(using DijkstraPurposes.govActionOrder)
-            .map((id, vote) => govActionId(id) -> constr(vote))
+            .map((id, vote) =>
+              govActionId(id) -> (vote match
+                case Vote.No      => constr(0)
+                case Vote.Yes     => constr(1)
+                case Vote.Abstain => constr(2))
+            )
         )
       }
     )
@@ -473,7 +478,7 @@ object DijkstraScriptContexts:
         .map(tx =>
           tx.body.votingProcedures.map((v, ps) => v -> ps.map((id, p) => id -> p.vote).toMap).toMap
         )
-        .foldLeft(Map.empty[DijkstraVoter, Map[DijkstraGovActionId, Int]]) { (acc, next) =>
+        .foldLeft(Map.empty[DijkstraVoter, Map[DijkstraGovActionId, Vote]]) { (acc, next) =>
           next.foldLeft(acc) { case (m, (v, ps)) => m.updated(v, m.getOrElse(v, Map.empty) ++ ps) }
         }
       val requiredGuards = batch
