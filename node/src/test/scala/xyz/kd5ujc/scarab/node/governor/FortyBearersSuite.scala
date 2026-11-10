@@ -71,6 +71,10 @@ class FortyBearersSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   test("forty peers: the node converges to the targets, reaches the tip and repairs the hot set") {
     Settled.timed { _ =>
       for
+        now <- IO.realTimeInstant
+        clock = ForgedChain.geometry.copy(systemStart =
+          now.minusMillis(100000L * ForgedChain.geometry.slotLengthMillis)
+        )
         changed <- SignallingRef[IO, BigInt](BigInt(0))
         chainRef <- SignallingRef[IO, VolatileChain[MirrorState]](
           VolatileChain.genesis(ForgedChain.geometry.k.toInt, forged.genesis)
@@ -113,7 +117,7 @@ class FortyBearersSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         )
         view = new PeerNetwork.ChainView[IO]:
           def tip = chainRef.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
-          def geometry = IO.pure(ForgedChain.geometry)
+          def geometry = IO.pure(clock)
         roots = PeerNetwork.Roots(Nil, all.toSet, None, UseLedgerPeers.Disabled)
         modeRef <- SignallingRef[IO, FetchMode](FetchMode.BulkSync)
         network = PeerNetwork.resource[IO](
@@ -155,6 +159,8 @@ class FortyBearersSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   dead.forall(p => st.peers.get(p).forall(!_.status.established))
                 }
                 fatal <- net.fatal.tryGet
+                mode <- modeRef.get
+                _ <- IO(assertEquals(mode, FetchMode.BulkSync))
                 _ <- counters
               yield (converged, repaired._2, fatal)
             }

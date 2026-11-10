@@ -14,15 +14,7 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{ByronState, ConsensusExtras}
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorExtras, ProtocolExtras, StateMirror}
-import xyz.kd5ujc.scarab.ledger.{
-  CheckpointProblem,
-  FileKind,
-  FormatVersion,
-  Nonce,
-  StorageError,
-  TxIn,
-  Utxo
-}
+import xyz.kd5ujc.scarab.ledger.{CheckpointProblem, FileKind, FormatVersion, Nonce, StorageError}
 import xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack
 import xyz.kd5ujc.scarab.ledger.state.{Gap, NodeExtras, ShelleyBasedEra, SlotNo}
 import xyz.kd5ujc.scarab.node.NodeSetup
