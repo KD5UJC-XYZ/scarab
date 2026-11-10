@@ -138,10 +138,10 @@ class BearerServerSuite extends FailsOnUncaught:
             3.seconds
           )
           .use(dialled =>
-            accepted.take(1).compile.lastOrError.flatMap { inbound =>
-              IO(assertEquals(dialled.map(_.local), Right(node))) *>
+            IO(assertEquals(dialled.map(_.local), Right(node))) *>
+              accepted.take(1).compile.lastOrError.flatMap { inbound =>
                 IO(assertEquals(inbound.peerAddress.asIpUnsafe, node))
-            }
+              }
           )
       }
     }
