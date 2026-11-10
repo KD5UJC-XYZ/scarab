@@ -210,9 +210,11 @@ lazy val consensus = scarab("consensus")
 
 // Immutable and volatile stores, ledger snapshots, the UTxO store, the Haskell ImmutableDB reader.
 lazy val storage = scarab("storage")
+  // Storage concurrency tests use the shared simulated scheduler and failure-reporting runtime.
   .dependsOn(
     consensus % "compile->compile;test->test",
-    models
+    models,
+    network % "test->test"
   )
   .settings(
     scalacOptions += "-Xmax-inlines:512",

@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage.scls
 
-import cats.effect.{Deferred, Fiber, IO, Ref}
+import cats.effect.{Deferred, Fiber, IO, Ref, Resource}
 import cats.mtl.Handle
 import cats.syntax.all.*
-import munit.CatsEffectSuite
-import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.network.{FailsOnUncaught, Settled}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.TxIn
 import xyz.kd5ujc.scarab.storage.StorageTestKit
 import xyz.kd5ujc.scarab.storage.scls.SclsRecord.{Entry, Namespace}
 
-class SclsEntrySorterSuite extends CatsEffectSuite:
+class SclsEntrySorterSuite extends FailsOnUncaught:
   private def config(maxEntryBytes: Int = 4096): SclsEntrySorter.Config =
     SclsEntrySorter.Config.fromInt(maxEntryBytes).fold(error => fail(error.toString), identity)
 
@@ -266,55 +265,57 @@ class SclsEntrySorterSuite extends CatsEffectSuite:
 
   test("parent release waits for an active iterator and cannot resurrect its phase") {
     StorageTestKit.tempDir.use { root =>
-      val result = for
-        iteratorStarted <- Deferred[IO, Unit]
-        continueIterator <- Deferred[IO, Unit]
-        releaseRequested <- Deferred[IO, Unit]
-        sorterRef <- Ref.of[IO, Option[SclsEntrySorter[IO]]](None)
-        iteratorRef <- Ref.of[IO, Option[Fiber[IO, Throwable, Unit]]](None)
-        parent <- attempt {
-          SclsEntrySorter.resource[IO](root, config()).use { sorter =>
-            val entry = Entry(zeroUtxoKey, zeroValue)
-            for
-              _ <- sorterRef.set(Some(sorter))
-              _ <- sorter.add(Namespace.Utxo, entry)
-              iterator <- sorter.entries
-                .evalTap(_ => iteratorStarted.complete(()).void)
-                .evalMap(_ => continueIterator.get)
-                .compile
-                .drain
-                .start
-              _ <- iteratorRef.set(Some(iterator))
-              _ <- iteratorStarted.get
-              _ <- releaseRequested.complete(())
-            yield ()
-          }
-        }.start
-        _ <- releaseRequested.get
-        beforeIteratorEnds <- IO.race(parent.join, IO.sleep(100.millis))
-        _ <- continueIterator.complete(())
-        parentResult <- parent.join.flatMap {
-          case cats.effect.Outcome.Succeeded(value) => value
-          case cats.effect.Outcome.Errored(error)   => IO.raiseError(error)
-          case cats.effect.Outcome.Canceled() =>
-            IO.raiseError(new AssertionError("parent canceled"))
-        }
-        _ <- iteratorRef.get.flatMap {
-          case Some(iterator) => iterator.join.void
-          case None           => IO.raiseError(new AssertionError("iterator was not started"))
-        }
-        closed <- sorterRef.get.flatMap {
-          case Some(sorter) => attempt(sorter.add(Namespace.Utxo, Entry(zeroUtxoKey, zeroValue)))
-          case None         => IO.raiseError(new AssertionError("sorter was not opened"))
-        }
-      yield
-        assert(
-          beforeIteratorEnds.isRight,
-          s"parent released while iterator was active: $beforeIteratorEnds"
-        )
-        assertEquals(parentResult, Right(()))
-        assertEquals(closed, Left(SclsEntrySorter.Error.OperationAfterClose))
-      result
+      Settled { settle =>
+        for
+          iteratorStarted <- Deferred[IO, Unit]
+          continueIterator <- Deferred[IO, Unit]
+          releaseRequested <- Deferred[IO, Unit]
+          parentReleased <- Ref.of[IO, Boolean](false)
+          sorterRef <- Ref.of[IO, Option[SclsEntrySorter[IO]]](None)
+          iteratorRef <- Ref.of[IO, Option[Fiber[IO, Throwable, Unit]]](None)
+          parent = attempt {
+            SclsEntrySorter.resource[IO](root, config()).use { sorter =>
+              for
+                _ <- sorterRef.set(Some(sorter))
+                _ <- sorter.add(Namespace.Utxo, Entry(zeroUtxoKey, zeroValue))
+                iterator <- ok {
+                  sorter.entries
+                    .evalTap(_ => iteratorStarted.complete(()).void)
+                    .evalMap(_ => continueIterator.get)
+                    .compile
+                    .drain
+                }.start
+                _ <- iteratorRef.set(Some(iterator))
+                _ <- iteratorStarted.get
+                _ <- releaseRequested.complete(())
+              yield ()
+            }
+          }.guarantee(parentReleased.set(true))
+          _ <- Resource
+            .make(parent.start) { fiber =>
+              continueIterator.complete(()).void *>
+                iteratorRef.get.flatMap(_.traverse_(_.cancel)) *> fiber.cancel
+            }
+            .use { fiber =>
+              for
+                _ <- releaseRequested.get
+                _ <- settle
+                beforeIteratorEnds <- parentReleased.get
+                _ <- continueIterator.complete(())
+                parentResult <- fiber.joinWithNever
+                _ <- iteratorRef.get.flatMap(_.traverse_(_.joinWithNever))
+                closed <- sorterRef.get.flatMap {
+                  case Some(sorter) =>
+                    attempt(sorter.add(Namespace.Utxo, Entry(zeroUtxoKey, zeroValue)))
+                  case None => IO.raiseError(new AssertionError("sorter was not opened"))
+                }
+              yield
+                assert(!beforeIteratorEnds, "parent released while its iterator was active")
+                assertEquals(parentResult, Right(()))
+                assertEquals(closed, Left(SclsEntrySorter.Error.OperationAfterClose))
+            }
+        yield ()
+      }
     }
   }
 
