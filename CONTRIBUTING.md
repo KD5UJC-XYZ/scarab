@@ -122,7 +122,8 @@ with a pattern that matches your own shell command line.
 - **Tagless final at effect boundaries.** Capabilities are algebras over `F[_]`; interpreters are
   chosen in `Main`. `IO` appears only in `Main` and tools. No hidden global state:
   the memoising caches are instances created in a `Resource` (`VerificationCache`) and handed to
-  the pure rules through a read interface (`Verdicts`); tools live under `xyz.kd5ujc.scarab.node.tools`.
+  the pure rules through a read interface (`Verdicts`); programs run by hand live in the `tools` module,
+  in the package of the code they exercise ([AGENTS.md](AGENTS.md#how-code-is-written-here)).
 - **Closed, domain/service-specific error ADTs.** Pure failures use `Either[DomainError, A]`;
   effect boundaries use cats-mtl `Raise[F, E]` and lexically scoped `Handle.allow` (`PeerError`,
   `ChainError`, `ValidationError`, `StorageError`, `ForgeError`, `ConfigError`). Preserve typed causes
