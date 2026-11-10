@@ -253,8 +253,11 @@ The command checks metadata, era, exact immutable block and recomputed instant s
 RocksDB checkpoint and a V10 snapshot bound to it in staging, and publishes only after validation. It never changes
 existing immutable files or overwrites ledger artifacts. JSON `importLedgerSnapshot` events report
 `done` with slot/hash, era, output count, lovelace, trust and `referenceBuild`, or a typed `error`. A following `follow`
-restores that checkpoint and replays local blocks after the snapshot. Byron and non-Mem snapshots
-are refused. Import/export details and recovery of an interrupted staged import are in
+restores that checkpoint and replays local blocks after the snapshot. Use the same
+`--reference-build` for `follow` as for the import: starting with a different layout deletes the
+incompatible snapshot and its checkpoint, then tries an older snapshot or replays from genesis.
+The default is `11.1`; `follow --reference-build leios-b004fe0c` remains unavailable until the
+Leios rules are implemented. Byron and non-Mem snapshots are refused. Import/export details and recovery of an interrupted staged import are in
 [the accepted design](../design/haskell-snapshots.md#10-stage-3-as-built-offline-import); export and
 cross-node acceptance are recorded in Step D S4/S5 (#140).
 
