@@ -207,10 +207,12 @@
     {
       "module": "network",
       "path": "network",
-      "responsibility": "fs2 bearer, multiplexer, connection manager, client and server roles of each mini-protocol",
+      "responsibility": "bearer and the node-to-node TCP sockets, multiplexer, connection manager, client and server roles of each mini-protocol",
       "entryPoints": [
         "Mux",
         "Bearer",
+        "TcpSockets",
+        "BearerServer",
         "ConnectionManager",
         "NodeToNode",
         "HandshakeClient",
@@ -221,6 +223,7 @@
       ],
       "suites": [
         "MuxSuite",
+        "TcpSocketsSuite",
         "ConnectionManagerSuite",
         "NodeToNodeSuite",
         "HandshakeSuite",
