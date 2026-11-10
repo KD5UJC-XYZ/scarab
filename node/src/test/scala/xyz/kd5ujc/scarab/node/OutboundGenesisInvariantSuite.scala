@@ -259,40 +259,45 @@ class OutboundGenesisInvariantSuite extends FailsOnUncaught:
       )
       outcome <- genesisWorld(NoDial(remote), manager) { outbound =>
         Bearer.inMemory[IO](256).flatMap { (theirs, ours) =>
-          inbound.serve(identified(ours, remote), remote).start *>
-            Handle
-              .allow[NetworkError] {
-                // the peer dials us offering duplex, and serves the chain over its connection
-                NodeToNode
-                  .warmOver[IO, NtNHeader](
-                    theirs,
-                    magic,
-                    NtNHeader.codec,
-                    NodeToNode.Settings(),
-                    Some(handlers)
-                  )
-                  .use { _ =>
-                    for
-                      _ <- manager
-                        .lookup(remote)
-                        .map(_.exists(_.state.isLive))
-                        .iterateUntil(identity)
-                      established <- outbound.establish(
-                        at,
-                        DiffusionMode.InitiatorAndResponder,
-                        Provenance.Outbound
-                      )
-                      reused <- manager.lookup(remote).map(_.map(_.state))
-                      activated <- outbound.activate(at)
-                      ended <- manager
-                        .lookup(remote)
-                        .map(_.forall(!_.state.isLive))
-                        .iterateUntil(identity)
-                        .timeout(15.seconds)
-                    yield (established.isRight, reused, activated, ended)
-                  }
-              }
-              .rescue(e => IO(fail(e.message)))
+          // the accept loop's handler for the peer's connection, ended with the test
+          inbound
+            .serve(identified(ours, remote), remote)
+            .background
+            .surround(
+              Handle
+                .allow[NetworkError] {
+                  // the peer dials us offering duplex, and serves the chain over its connection
+                  NodeToNode
+                    .warmOver[IO, NtNHeader](
+                      theirs,
+                      magic,
+                      NtNHeader.codec,
+                      NodeToNode.Settings(),
+                      Some(handlers)
+                    )
+                    .use { _ =>
+                      for
+                        _ <- manager
+                          .lookup(remote)
+                          .map(_.exists(_.state.isLive))
+                          .iterateUntil(identity)
+                        established <- outbound.establish(
+                          at,
+                          DiffusionMode.InitiatorAndResponder,
+                          Provenance.Outbound
+                        )
+                        reused <- manager.lookup(remote).map(_.map(_.state))
+                        activated <- outbound.activate(at)
+                        ended <- manager
+                          .lookup(remote)
+                          .map(_.forall(!_.state.isLive))
+                          .iterateUntil(identity)
+                          .timeout(15.seconds)
+                      yield (established.isRight, reused, activated, ended)
+                    }
+                }
+                .rescue(e => IO(fail(e.message)))
+            )
         }
       }
       ((established, reused, activated, ended), seen) = outcome
