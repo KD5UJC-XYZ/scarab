@@ -6,8 +6,7 @@ import cats.data.EitherT
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.kernel.MonadCancel
 import cats.effect.std.Mutex
-import xyz.kd5ujc.scarab.network.Settled
-import cats.effect.unsafe.implicits.global
+import xyz.kd5ujc.scarab.network.{FailsOnUncaught, Settled}
 import cats.arrow.FunctionK
 import cats.mtl.Raise
 import cats.syntax.all.*
@@ -15,7 +14,6 @@ import java.nio.file.{Files, Path}
 import java.util.concurrent.atomic.AtomicInteger
 import scala.jdk.CollectionConverters.*
 import scala.concurrent.duration.*
-import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.consensus.{Anchor, VolatileChain}
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
@@ -33,7 +31,7 @@ import fs2.io.file.Path as Fs2Path
 /** GetCBOR is recursively valid in the reference (Shelley/Ledger/Query.hs:944,1017 at
   * ouroboros-consensus 82ecba3). Its interpretation must not depend on the JVM worker stack.
   */
-class DeepQuerySuite extends FunSuite:
+class DeepQuerySuite extends FailsOnUncaught:
   private type StorageF[A] = EitherT[IO, StorageError, A]
   private val depth = 20000
   private val setup = NodeSetup

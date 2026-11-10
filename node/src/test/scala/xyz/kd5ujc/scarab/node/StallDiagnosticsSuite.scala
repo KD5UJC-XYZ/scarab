@@ -10,9 +10,9 @@ import cats.effect.testkit.TestControl
 import com.comcast.ip4s.*
 import fs2.concurrent.SignallingRef
 import io.circe.Json
-import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.node.BlockAdmissions.{AdmissionStage, WorkKind}
 import xyz.kd5ujc.scarab.node.log.{NodeEvent, Traced}
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.protocol.ChainSync
   * coordinator, a session's pipeline probe and the admissions, and the `stallState` event carries
   * what they held.
   */
-class StallDiagnosticsSuite extends CatsEffectSuite:
+class StallDiagnosticsSuite extends FailsOnUncaught:
   private val stalledLine = NodeEvent.Stalled(10.minutes, BigInt(100), BigInt(5000))
 
   private def at(slot: Long, hash: Int): ChainSync.Point =
@@ -276,18 +276,20 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
                 case _ => IO.unit
               }
             )
-            _ <- dog.announced(BigInt(5000))
-            _ <- dog.check.timeout(10.seconds)
-            _ <- stateLogged.get.timeout(10.seconds)
-            // the fiber dump has begun, so the state file written before it is there; it hangs,
-            // and a later check still runs
-            _ <- dumping.get.timeout(10.seconds)
-            _ <- dog.check.timeout(10.seconds)
-            events <- logged.get
-            files <- IO.blocking(
-              Files.list(dir).iterator.asScala.toList.map(_.getFileName.toString)
-            )
-            _ <- IO(release.countDown())
+            result <- (for
+              _ <- dog.announced(BigInt(5000))
+              _ <- dog.check.timeout(10.seconds)
+              _ <- stateLogged.get.timeout(10.seconds)
+              // the fiber dump has begun, so the state file written before it is there; it hangs,
+              // and a later check still runs
+              _ <- dumping.get.timeout(10.seconds)
+              _ <- dog.check.timeout(10.seconds)
+              events <- logged.get
+              files <- IO.blocking(
+                Files.list(dir).iterator.asScala.toList.map(_.getFileName.toString)
+              )
+            yield (events, files)).guarantee(IO(release.countDown()))
+            (events, files) = result
             _ <- logged
               .waitUntil(_.exists(_.isInstanceOf[NodeEvent.StallDumped]))
               .timeout(10.seconds)

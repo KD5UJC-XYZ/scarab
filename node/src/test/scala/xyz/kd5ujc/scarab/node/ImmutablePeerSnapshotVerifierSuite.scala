@@ -4,17 +4,16 @@ package xyz.kd5ujc.scarab.node
 import cats.effect.{Deferred, IO, Ref}
 import cats.mtl.Raise
 import fs2.Stream
-import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.protocol.ChainSync
-import xyz.kd5ujc.scarab.network.Settled
+import xyz.kd5ujc.scarab.network.{FailsOnUncaught, Settled}
 import xyz.kd5ujc.scarab.storage.{ImmutableStore, StorageTestKit}
 
 import StorageTestKit.block
 
-class ImmutablePeerSnapshotVerifierSuite extends CatsEffectSuite:
+class ImmutablePeerSnapshotVerifierSuite extends FailsOnUncaught:
   private def checkedMatches(
       store: xyz.kd5ujc.scarab.storage.ImmutableStore[IO],
       slot: BigInt,
