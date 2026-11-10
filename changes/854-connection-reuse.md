@@ -16,7 +16,9 @@
     prunes inbound connections, upstream ones last (`connection` `pruned` log line, `Pruned` in
     `scarab_connection_events_total`).
   - **Handshake failure:** a connection whose handshake agreed no version leaves the table at once and holds no slot in
-    time-wait.
+    time-wait. An acquisition that waited for it fails with the handshake's own error.
+  - **`GET /connections`** reports `sessions`: for each peer, what our hot sessions saw (its last intersection, the
+    headers received and the tip it announced).
 
 ### Removed (connection reuse, #854)
 - **`--inbound-sync` is removed.** Our clients run only where the outbound governor promotes a peer. The inbound governor

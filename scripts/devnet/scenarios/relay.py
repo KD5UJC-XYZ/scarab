@@ -150,9 +150,47 @@ def reuse_events(path):
             and e.get("remote") == RELAY_REMOTE and (e.get("from"), e.get("to")) in REUSE]
 
 
+def relay_session(connections):
+    """What the Scala node's hot sessions saw of the relay (`GET /connections` `sessions`), if any."""
+    return next((r for r in (connections or {}).get("sessions") or [] if r.get("peer") == RELAY_REMOTE), None)
+
+
+def following(connections):
+    """Whether the relay's session found an intersection and received headers."""
+    session = relay_session(connections)
+    return bool(session and session.get("intersection") and session.get("headers", 0) > 0)
+
+
+def reuse_failures(first, last, pool_tip, reuses, dialled):
+    """Why the outbound governor's use of the relay's own connection does not hold: a reuse transition, never a
+    dial, one connection to the relay in duplex use, the relay hot, and its session intersected and still
+    receiving headers at the end, its peer's tip within 3 blocks of the pool's."""
+    failures = []
+    relay_states = [c["state"] for c in relay_connections(last)]
+    if not reuses:
+        failures.append("the Scala node did not reuse the relay's own connection (no reuse transition)")
+    if dialled:
+        failures.append(f"the Scala node dialled the relay, which is behind a firewall: {dialled[:2]}")
+    if len(relay_states) != 1:
+        failures.append(f"not exactly one connection to the relay at the end: {relay_states}")
+    elif relay_states[0] not in DUPLEX[2:]:
+        failures.append(f"the relay's connection is not in duplex use at the end: {relay_states}")
+    if relay_temperature(last) != "hot":
+        failures.append(f"the relay is not hot at the end: {relay_temperature(last)}")
+    before, after = relay_session(first), relay_session(last)
+    if not following(first):
+        failures.append(f"the Scala node did not follow the relay over its connection: {before}")
+    elif not after or after.get("headers", 0) <= before.get("headers", 0):
+        failures.append(f"the session on the relay's connection did not keep following: {before} -> {after}")
+    elif after.get("peerTipBlock") is None or pool_tip - int(after["peerTipBlock"]) > 3:
+        failures.append(f"the relay's tip seen over its connection ({after.get('peerTipBlock')}) is behind the "
+                        f"pool's ({pool_tip})")
+    return failures
+
+
 def wait_reuse(args, log):
     """Wait until the outbound governor promoted the relay over the relay's own connection: a reuse transition
-    logged and the relay hot, on one connection.
+    logged, the relay hot on one connection, and its session following it (an intersection and headers).
 
     A relay initially behind our immutable anchor can return NoMoreIntersection normally.
     The pinned consensus Node/ExitPolicy.hs29-30 waits 120 seconds before repromotion;
@@ -162,7 +200,8 @@ def wait_reuse(args, log):
     seen = None
     while time.monotonic() < deadline:
         seen = scala_connections(args)
-        if reuse_events(log) and relay_temperature(seen) == "hot" and len(relay_connections(seen)) == 1:
+        if (reuse_events(log) and relay_temperature(seen) == "hot" and len(relay_connections(seen)) == 1
+                and following(seen)):
             return seen
         time.sleep(1)
     return seen
@@ -386,6 +425,8 @@ def relay(args):
                 "connectionsAtSync": at_sync,
                 "connectionsAtEnd": final_connections,
                 "reused": [(e.get("from"), e.get("to")) for e in reuses],
+                "sessionAtSync": relay_session(at_sync),
+                "sessionAtEnd": relay_session(final_connections),
                 "relayTemperatureAtEnd": relay_temperature(final_connections),
                 "events": {k: sum(1 for e in events if e["event"] == "inbound" and e.get("state") == k)
                            for k in ("accepted", "duplex", "unidirectional", "refused", "closed")},
@@ -411,19 +452,9 @@ def relay(args):
         if local["exitCode"] != 0 or not local["addedToMempool"] or not local["adopted"]:
             failures.append(f"the transaction submitted over the node-to-client socket did not reach a block: {local}")
         if duplex:
-            # the outbound governor promoted the relay over the relay's own connection: a reuse transition,
-            # never a dial, one connection to it, and the relay hot (its chain followed) at the end
-            relay_states = [c["state"] for c in relay_connections(final_connections)]
-            if not reuses:
-                failures.append("the Scala node did not reuse the relay's own connection (no reuse transition)")
-            if dialled:
-                failures.append(f"the Scala node dialled the relay, which is behind a firewall: {dialled[:2]}")
-            if len(relay_states) != 1:
-                failures.append(f"not exactly one connection to the relay at the end: {relay_states}")
-            elif relay_states[0] not in DUPLEX[2:]:
-                failures.append(f"the relay's connection is not in duplex use at the end: {relay_states}")
-            if relay_temperature(final_connections) != "hot":
-                failures.append(f"the relay is not hot at the end: {relay_temperature(final_connections)}")
+            # the outbound governor promoted the relay over the relay's own connection, and follows it there
+            pool_tip = (final.get("pool1") or {}).get("block", 0)
+            failures += reuse_failures(at_sync, final_connections, pool_tip, reuses, dialled)
             if summary["inbound"]["events"]["duplex"] < 1:
                 failures.append(f"missing inbound events: {summary['inbound']['events']}")
         wanted = f"NodeToNodeV_{getattr(args, 'max_ntn_version', 15)}"
