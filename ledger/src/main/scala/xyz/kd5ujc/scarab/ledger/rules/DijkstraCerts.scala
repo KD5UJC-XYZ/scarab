@@ -19,7 +19,6 @@ import xyz.kd5ujc.scarab.ledger.{
   PredicateFailure,
   Proposal,
   Proposals,
-  Vote,
   Voter
 }
 import xyz.kd5ujc.scarab.ledger.dijkstra.*
@@ -165,12 +164,6 @@ object DijkstraConway:
     case DijkstraVoter.Committee(c) => Voter.CommitteeHot(c)
     case DijkstraVoter.DRep(c)      => Voter.DRepVoter(c)
     case DijkstraVoter.StakePool(p) => Voter.Pool(p)
-
-  /** `Vote` (`decodeEnumBounded`): `VoteNo`, `VoteYes`, `Abstain`, as the decoder admits them. */
-  def vote(v: Int): Vote = v match
-    case 0 => Vote.No
-    case 1 => Vote.Yes
-    case _ => Vote.Abstain
 
   private def delegatee(d: DijkstraDelegatee) = d match
     case DijkstraDelegatee.Stake(p)        => (Some(p), None)
@@ -409,7 +402,7 @@ object DijkstraGov
   ): F[Unit] =
     val votes = signal.votes.map { (voter, procedures) =>
       DijkstraConway.voter(voter) -> procedures.map((id, p) =>
-        DijkstraConway.actionId(id) -> DijkstraConway.vote(p.vote)
+        DijkstraConway.actionId(id) -> p.vote
       )
     }
     val unregistrations = signal.certificates.collect {

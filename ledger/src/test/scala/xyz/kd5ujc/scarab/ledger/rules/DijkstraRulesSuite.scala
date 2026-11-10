@@ -22,7 +22,8 @@ import xyz.kd5ujc.scarab.ledger.{
   ProtocolParams,
   RewardAccount,
   TestGeometry,
-  TestLedger
+  TestLedger,
+  Vote
 }
 import xyz.kd5ujc.scarab.ledger.dijkstra.*
 import xyz.kd5ujc.scarab.ledger.state.*
@@ -278,7 +279,9 @@ class DijkstraRulesSuite extends FunSuite:
   test("GOV records a voter that does not exist and not its votes, with Conway's transition") {
     val missing = DijkstraGovActionId(Bytes.fromArray(Array.fill(32)(7)), 0)
     val signal = DijkstraGovSignal(
-      Vector(DijkstraVoter.DRep(key(8)) -> Vector(missing -> DijkstraVotingProcedure(1, None))),
+      Vector(
+        DijkstraVoter.DRep(key(8)) -> Vector(missing -> DijkstraVotingProcedure(Vote.Yes, None))
+      ),
       Vector.empty,
       Vector.empty
     )
