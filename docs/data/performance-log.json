@@ -4350,6 +4350,79 @@
      "close": "```"
     }
    ]
+  },
+  {
+   "id": "perf-61",
+   "section": "55",
+   "heading": "55. Blocking node-to-node sockets: a thread per connection at the accept limit (#854)",
+   "subject": "Blocking node-to-node sockets: a thread per connection at the accept limit (#854)",
+   "date": "2026-11-10",
+   "dateSource": "text",
+   "issues": [
+    "#854"
+   ],
+   "commits": [
+    "0fc5f2e2a"
+   ],
+   "links": [],
+   "page": "peers-and-network",
+   "results": [
+    {
+     "id": "perf-61.t1",
+     "header": [
+      "Handlers (512 accepted connections)",
+      "Threads, run 1 / run 2",
+      "Resident memory, MB, run 1 / run 2",
+      "Committed thread stacks, MB, run 1 / run 2"
+     ],
+     "separator": "|---|---:|---:|---:|",
+     "rows": [
+      [
+       "`read`: the multiplexer reads each connection",
+       "+513 / +512",
+       "+101.2 / +102.8",
+       "+56.2 / +56.2"
+      ],
+      [
+       "`hold`: each connection held, nothing reads it (control)",
+       "+2 / +2",
+       "+20.6 / +16.3",
+       "+0.2 / +0.1"
+      ],
+      [
+       "What the readers cost (`read` less `hold`, means)",
+       "+511",
+       "+83.5 (167 KB a connection)",
+       "+56.1 (112 KB a connection)"
+      ]
+     ]
+    }
+   ],
+   "listings": [
+    {
+     "id": "perf-61.c1",
+     "fence": "```text",
+     "lines": [
+      "HOST processors=4 java=25.0.4.1+1-LTS connections=512 handlers=read",
+      "SAMPLE at=listening threads=11 rss_kb=626332 thread_stacks_committed_kb=1602",
+      "SAMPLE at=512-connections threads=524 rss_kb=730000 thread_stacks_committed_kb=59179",
+      "DELTA threads=513 rss_kb=103668 thread_stacks_committed_kb=57577 per_connection_rss_kb=202",
+      "HOST processors=4 java=25.0.4.1+1-LTS connections=512 handlers=hold",
+      "SAMPLE at=listening threads=11 rss_kb=626172 thread_stacks_committed_kb=1578",
+      "SAMPLE at=512-connections threads=13 rss_kb=647264 thread_stacks_committed_kb=1754",
+      "DELTA threads=2 rss_kb=21092 thread_stacks_committed_kb=176 per_connection_rss_kb=41",
+      "HOST processors=4 java=25.0.4.1+1-LTS connections=512 handlers=read",
+      "SAMPLE at=listening threads=11 rss_kb=625980 thread_stacks_committed_kb=1594",
+      "SAMPLE at=512-connections threads=523 rss_kb=731268 thread_stacks_committed_kb=59154",
+      "DELTA threads=512 rss_kb=105288 thread_stacks_committed_kb=57560 per_connection_rss_kb=205",
+      "HOST processors=4 java=25.0.4.1+1-LTS connections=512 handlers=hold",
+      "SAMPLE at=listening threads=11 rss_kb=626816 thread_stacks_committed_kb=1618",
+      "SAMPLE at=512-connections threads=13 rss_kb=643536 thread_stacks_committed_kb=1758",
+      "DELTA threads=2 rss_kb=16720 thread_stacks_committed_kb=140 per_connection_rss_kb=32"
+     ],
+     "close": "```"
+    }
+   ]
   }
  ]
 }

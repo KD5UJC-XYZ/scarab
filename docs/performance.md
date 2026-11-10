@@ -83,4 +83,5 @@ One row per measurement section, in the order the sections were written; the sec
 | 52 | 2026-10-31 | The verification cache's warming without try/finally (#650) | #650 | [The mainnet follower and signature checks](performance/mainnet-follower.md#52-the-verification-caches-warming-without-tryfinally-650) |
 | 53 | 2026-11-02 | Detached RecD records: what reading them costs an ordinary decode (#687) | #687 | [Peers, connections and the network path](performance/peers-and-network.md#53-detached-recd-records-what-reading-them-costs-an-ordinary-decode-687) |
 | 54 | 2026-11-08 | The log router's one sink lock (#233) | #233 | [Logging and the router](performance/logging-and-the-router.md#54-the-log-routers-one-sink-lock-233) |
+| 55 | 2026-11-10 | Blocking node-to-node sockets: a thread per connection at the accept limit (#854) | #854 | [Peers, connections and the network path](performance/peers-and-network.md#55-blocking-node-to-node-sockets-a-thread-per-connection-at-the-accept-limit-854) |
 <!-- /register -->
