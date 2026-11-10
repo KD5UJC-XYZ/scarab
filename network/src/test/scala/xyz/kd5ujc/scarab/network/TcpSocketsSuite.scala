@@ -307,4 +307,5 @@ class TcpSocketsSuite extends FailsOnUncaught:
     }
   }
 
-  private val Backlog = TcpSockets.Backlog
+  /** The reference's listen backlog (`Snocket.hs` 386). */
+  private val Backlog = 8
