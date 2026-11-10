@@ -61,8 +61,12 @@ waits until the commit is settled, as the reference's mux tracer holds it (629-7
 The manager's changes and what they ask for (the log, the connections they end) are one step that cancellation
 cannot split, and an acquisition hands over a reuse or a reservation without a cancelable gap; a reuse its caller
 did not take over is released by the outbound side. A waiter for a negotiating connection that ends learns the state
-and the error it ended with (`Disconnected`): every connection publishes its end before it leaves the table, as the
-reference writes a failed handshake's state in the transaction that removes it (`Core.hs` 1000-1075).
+and the error it ended with (`Disconnected`). A failed handshake publishes its end before its entry leaves the table,
+and every other removal or replacement publishes it as part of the same change, whether or not that change's log is
+written; the reference writes a connection's terminal state in the transaction that removes it (`Core.hs` 605-641,
+1000-1075). The manager's random choices (the pick among a remote's connections, the prune scores) each take one half
+of a split of its generator and keep the other, as the reference's `stateTVar stdGenVar splitGen` does; the draws
+are Scarab's own, not the reference's sequence.
 
 **`InboundGovernor`** (`node`). `serve(bearer, remote)` is the inbound handler of `--listen`: it admits the
 connection to the manager, runs `NodeToNodeServer.accept` (handshake, our servers, the peer's activity),

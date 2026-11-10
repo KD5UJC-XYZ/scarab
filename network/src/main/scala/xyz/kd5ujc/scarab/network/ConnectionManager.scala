@@ -478,8 +478,11 @@ object ConnectionManager:
       )
       val choices = (others ++ ConnectionType.of(next).map(self -> _).toVector)
         .sortBy((k, _) => (k._1.toString, k._2.toString))
-      val (scored, rng) =
-        choices.foldLeft((Vector.empty[(Key, ConnectionType, Long)], t.rng)) {
+      // `stateTVar stdGenVar splitGen` (`Core.hs` 756): the scores come from one half of a split,
+      // which is then dropped, and the other half is kept
+      val (fresh, rng) = t.rng.split
+      val (scored, _) =
+        choices.foldLeft((Vector.empty[(Key, ConnectionType, Long)], fresh)) {
           case ((acc, g), (k, kind)) =>
             val (score, after) = g.nextLong
             (acc :+ ((k, kind, score)), after)
@@ -985,21 +988,24 @@ object ConnectionManager:
         .map(entry => Handle(entry, remote, Side.Inbound))
 
     /** `lookupByRemoteAddr` (`ConnMap.hs:177-208`): the reservation if there is one, else one of
-      * the remote's connections at random, uniformly as its `uniformR` picks.
+      * the remote's connections at random, uniformly as its `uniformR` picks. The acquisition hands
+      * it one half of a split of the manager's generator and keeps the other, whether or not
+      * anything is drawn (`stateTVar stdGenVar splitGen`, `Core.hs` 1278); the drawn half is
+      * dropped (`ConnMap.hs` 207).
       */
     private def byRemote(
         t: Table[F],
         remote: SocketAddress[IpAddress]
     ): (Option[(Key, Entry[F])], Rng) =
+      val (fresh, kept) = t.rng.split
       val reserved: Key = (remote, LocalAddress.Unknown)
-      t.entries.get(reserved) match
-        case Some(entry) => (Some(reserved -> entry), t.rng)
+      val found = t.entries.get(reserved) match
+        case Some(entry) => Some(reserved -> entry)
         case None =>
           val all = t.entries.toVector.filter(_._1._1 == remote).sortBy(_._1._2.toString)
-          if all.isEmpty then (None, t.rng)
-          else
-            val (pick, next) = t.rng.uniformR(0L, all.size.toLong - 1L)
-            (all.lift(pick.toInt), next)
+          if all.isEmpty then None
+          else all.lift(fresh.uniformR(0L, all.size.toLong - 1L)._1.toInt)
+      (found, kept)
 
     /** The outbound side's look at a connection to its peer (`Core.hs` 1284-1388, and 1663-1755
       * once it `waited` for the handshake): reuse it (`Awake^{Duplex}_{Local}` or
@@ -1075,7 +1081,10 @@ object ConnectionManager:
               Effects.log[F](Vector(ConnectionEvent.Opened(remote.toString, Provenance.Outbound))),
               Dispatch.Done[F](Acquired.Reserved(Handle(created, remote, Side.Outbound)))
             )
-      (next, effects, (decision, t.version))
+      // `retry` rolls the reference's transaction back, the split of its generator with it
+      decision match
+        case Dispatch.Retry() => (t, effects, (decision, t.version))
+        case _                => (next, effects, (decision, t.version))
 
     /** `There`: the outbound side waits, without holding the table, for an accepted connection's
       * handshake, then reuses it or settles as the reference does (1663-1755). A connection that
