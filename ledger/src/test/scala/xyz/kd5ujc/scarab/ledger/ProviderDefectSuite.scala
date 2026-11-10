@@ -271,10 +271,10 @@ class ProviderDefectSuite extends FunSuite:
     assertEquals(kesPeriodCases.size, 9)
   }
 
-  kesPeriodCases.foreach { line =>
-    line.split("\t", -1).toVector match
-      case Vector(name, rootHex, periodText, messageHex, signatureHex, verdict) =>
-        test(s"the OCERT KES period matches the unchanged reference: $name") {
+  kesPeriodCases.zipWithIndex.foreach { (line, index) =>
+    test(s"the OCERT KES period matches the unchanged reference: row ${index + 1}") {
+      line.split("\t", -1).toVector match
+        case Vector(name, rootHex, periodText, messageHex, signatureHex, verdict) =>
           def bytes(hex: String): Bytes =
             Bytes.fromHex(hex).fold(e => fail(s"invalid reference fixture hex: $e"), identity)
           val period = BigInt(periodText)
@@ -290,10 +290,11 @@ class ProviderDefectSuite extends FunSuite:
             case other      => fail(s"unknown reference verdict: $other")
           assertEquals(
             OCertRules.verifySignaturesWith(supplied, 1, period + 1, Sum6Kes.verify, okCert),
-            expected
+            expected,
+            name
           )
-        }
-      case _ => fail("invalid KES period reference row")
+        case _ => fail("invalid KES period reference row")
+    }
   }
 
   test("the real verifiers accept the real header and reject a tampered KES signature") {
