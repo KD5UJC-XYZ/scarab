@@ -55,6 +55,11 @@ missing coverage is an incomplete gate, never a pass. Batches were recorded only
 mempool slot held still, with an empty mempool, so the validity-interval slot in a refusal is the one
 the replay judges at; the slot is compared unchanged.
 
+The `<era>-bootstrap-attributes` corpora (2026-11-09, #832) hold one transaction in each of the six eras,
+paying a Byron address whose attributes are 65 bytes, one over the limit. Shelley refuses it with its
+own `OutputBootAddrAttrsTooBig`. From Allegra the reference reports `OutputTooBigUTxO`, which it injects
+through `shelleyToAllegraUtxoPredFailure`, with sizes 0 and 0 from Alonzo.
+
 The certificate-order corpora add three failing certificates in both eras. The Babbage corpus also
 records MIR certificates with successive amounts `[-1, +1, -1]`, once against each pot. The native
 rule retains the signed intermediate update after reporting a negative reward: the complete refusal
