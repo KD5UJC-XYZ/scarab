@@ -311,7 +311,9 @@ class OutboundReuseSuite extends FailsOnUncaught:
   // (`NoMoreIntersection`): its hot protocols end on the wire, TxSubmission2 with `MsgDone` at the
   // peer's next blocking request, and the peer is warm again on the same connection
   // (`PeerStateActions.hs` 990-1035), well within the deactivation timeout
-  test("a hot session that finds no intersection over the peer's own connection goes back to warm") {
+  test(
+    "a hot session that finds no intersection over the peer's own connection goes back to warm"
+  ) {
     worldWith(transactions = Some(nothingToOffer), deactivateTimeout = 60.seconds).use { w =>
       Ref.of[IO, Int](0).flatMap { served =>
         peerConnects(w, served, intersecting = false) { _ =>
