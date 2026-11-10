@@ -513,12 +513,12 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
   private case object Boom extends RuntimeException("boom"), scala.util.control.NoStackTrace
 
   test("a cancelled or failed decision leaves no lock holder behind (#371)") {
-    // 0: selection answers, 1: it fails, 2: it never answers
-    Ref.of[IO, Int](0).flatMap { mode =>
+    // 0: selection answers, 1: it fails, 2: it never answers, once it was asked under the lock
+    (Ref.of[IO, Int](0), Deferred[IO, Unit]).flatMapN { (mode, asked) =>
       val selection = mode.get.flatMap {
         case 0 => IO.pure(origin)
         case 1 => IO.raiseError[ChainSelection.Local](Boom)
-        case _ => IO.never[ChainSelection.Local]
+        case _ => asked.complete(()) *> IO.never[ChainSelection.Local]
       }
       FetchCoordinator.create[IO](selection = Some(selection)).flatMap { coordinator =>
         coordinator.session(0).use { _ =>
@@ -528,9 +528,7 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
             afterFailure <- coordinator.lockHolder
             _ <- mode.set(2)
             stuck <- coordinator.step.start
-            holding <- (IO.sleep(10.millis) *> coordinator.lockHolder)
-              .iterateUntil(_.nonEmpty)
-              .timeout(10.seconds)
+            holding <- asked.get.timeout(10.seconds) *> coordinator.lockHolder
             _ <- stuck.cancel
             afterCancel <- coordinator.lockHolder
             _ <- mode.set(0)

@@ -85,14 +85,10 @@
   "node/src/test/scala/xyz/kd5ujc/scarab/node/BlockAdmissionsSuite.scala": {
    "sleep": 1
   },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/BlockPoolSuite.scala": {
-   "sleep": 8
-  },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/BlockSelectionWorkerSuite.scala": {
    "sleep": 15
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/CachedBlockAttributionSuite.scala": {
-   "cede": 2,
    "sleep": 3
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/CachedBlockSourceSuite.scala": {
@@ -106,7 +102,7 @@
    "sleep": 1
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/FetchCoordinatorSuite.scala": {
-   "sleep": 10
+   "sleep": 9
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/FetchPerformanceRefreshSuite.scala": {
    "sleep": 4
@@ -142,26 +138,11 @@
   "node/src/test/scala/xyz/kd5ujc/scarab/node/HeaderGateSuite.scala": {
    "sleep": 2
   },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/ImmutablePeerSnapshotVerifierSuite.scala": {
-   "sleep": 2
-  },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/InboundGovernorSuite.scala": {
-   "sleep": 2
-  },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/LedgerPeersWiringSuite.scala": {
    "sleep": 4
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/OutboundLinkIdentitySuite.scala": {
    "cede": 2
-  },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/OutboundReuseSuite.scala": {
-   "sleep": 2
-  },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/PeerFetchRollbackSuite.scala": {
-   "sleep": 4
-  },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/PeerForkPrefixSuite.scala": {
-   "sleep": 2
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/PeerHeaderMetricsSuite.scala": {
    "sleep": 1
@@ -179,7 +160,7 @@
    "sleep": 1
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/StallDiagnosticsSuite.scala": {
-   "sleep": 15
+   "sleep": 2
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/StallWatchdogSuite.scala": {
    "sleep": 15
@@ -190,9 +171,6 @@
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/forge/ForgeSuite.scala": {
    "sleep": 8
-  },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/forge/ForgerFailureSuite.scala": {
-   "cede": 1
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/forge/KesRotationSuite.scala": {
    "sleep": 1
@@ -214,24 +192,6 @@
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/governor/PeerSharingLoopSuite.scala": {
    "sleep": 5
-  },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/LocalMonitorSuite.scala": {
-   "sleep": 2
-  },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/MempoolBackpressureSuite.scala": {
-   "cede": 1
-  },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/MempoolSuite.scala": {
-   "sleep": 1
-  },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/RelayedTransactionsSuite.scala": {
-   "sleep": 1
-  },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/DeepQuerySuite.scala": {
-   "sleep": 2
-  },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/relay/ChainServerSuite.scala": {
-   "sleep": 2
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/storage/ChainStorageSuite.scala": {
    "sleep": 1

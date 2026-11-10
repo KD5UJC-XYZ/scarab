@@ -6,7 +6,7 @@ import cats.data.EitherT
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.kernel.MonadCancel
 import cats.effect.std.Mutex
-import cats.effect.testkit.TestControl
+import xyz.kd5ujc.scarab.network.Settled
 import cats.effect.unsafe.implicits.global
 import cats.arrow.FunctionK
 import cats.mtl.Raise
@@ -378,98 +378,108 @@ class DeepQuerySuite extends FunSuite:
       def raise[E <: StorageError, A](error: E): IO[A] =
         IO.raiseError(new RuntimeException(error.message))
     onSmallStack {
-      val program = for
-        chain <- Ref.of[IO, VolatileChain[MirrorState]](
-          VolatileChain(5, Anchor(None, setup.mirrorStart), Vector.empty)
-        )
-        store <- MemoryUtxoStore[IO]
-        gate <- cats.effect.std.Mutex[IO]
-        source = StateQuerySource(chain, IO.pure(env), store, gate)
-        advanced <- Deferred[IO, Unit]
-        publish <- Deferred[IO, Unit]
-        acquired <- Deferred[IO, Either[
-          LocalStateQueryServer.AcquireFailure[StorageError],
-          LocalStateQueryServer.Session[IO, StorageError]
-        ]]
-        began <- Deferred[IO, Unit]
-        ref = xyz.kd5ujc.scarab.consensus.BlockRef(1, Bytes(Vector.fill(32)(1.toByte)), 1)
-        after = VolatileChain(5, Anchor(None, setup.mirrorStart), Vector(ref -> setup.mirrorStart))
-        writer <- gate.lock
-          .surround(
-            store.write(Vector.empty, 1L) *> advanced.complete(()) *> publish.get *> chain.set(
-              after
-            )
+      val program = Settled { settle =>
+        for
+          chain <- Ref.of[IO, VolatileChain[MirrorState]](
+            VolatileChain(5, Anchor(None, setup.mirrorStart), Vector.empty)
           )
-          .start
-        _ <- advanced.get
-        reader <- (began.complete(()) *> source.acquire(LocalStateQuery.Target.VolatileTip).use {
-          result =>
-            acquired.complete(result)
-        }).start
-        _ <- began.get *> IO.sleep(20.millis)
-        beforePublish <- acquired.tryGet
-        _ <- publish.complete(())
-        _ <- writer.joinWithNever
-        result <- acquired.get
-        _ <- reader.joinWithNever
-      yield
-        assertEquals(beforePublish, None)
-        assert(result.isRight, result.toString)
+          store <- MemoryUtxoStore[IO]
+          gate <- cats.effect.std.Mutex[IO]
+          source = StateQuerySource(chain, IO.pure(env), store, gate)
+          advanced <- Deferred[IO, Unit]
+          publish <- Deferred[IO, Unit]
+          acquired <- Deferred[IO, Either[
+            LocalStateQueryServer.AcquireFailure[StorageError],
+            LocalStateQueryServer.Session[IO, StorageError]
+          ]]
+          began <- Deferred[IO, Unit]
+          ref = xyz.kd5ujc.scarab.consensus.BlockRef(1, Bytes(Vector.fill(32)(1.toByte)), 1)
+          after = VolatileChain(
+            5,
+            Anchor(None, setup.mirrorStart),
+            Vector(ref -> setup.mirrorStart)
+          )
+          writer <- gate.lock
+            .surround(
+              store.write(Vector.empty, 1L) *> advanced.complete(()) *> publish.get *> chain.set(
+                after
+              )
+            )
+            .start
+          _ <- advanced.get
+          reader <- (began.complete(()) *> source.acquire(LocalStateQuery.Target.VolatileTip).use {
+            result =>
+              acquired.complete(result)
+          }).start
+          // the reader waits for the gate the writer holds
+          _ <- began.get *> settle
+          beforePublish <- acquired.tryGet
+          _ <- publish.complete(())
+          _ <- writer.joinWithNever
+          result <- acquired.get
+          _ <- reader.joinWithNever
+        yield
+          assertEquals(beforePublish, None)
+          assert(result.isRight, result.toString)
+      }
       program.unsafeRunSync()
     }
   }
 
   test("canceling LSQ acquisition while waiting for the publication gate completes promptly") {
-    val program = for
-      chain <- Ref.of[IO, VolatileChain[MirrorState]](
-        VolatileChain(5, Anchor(None, setup.mirrorStart), Vector.empty)
-      )
-      store <- MemoryUtxoStore[IO]
-      backing <- Mutex[IO]
-      waiting <- Deferred[IO, Unit]
-      calls <- Ref.of[IO, Int](0)
-      gate = new Mutex[IO]:
-        def lock: Resource[IO, Unit] =
-          Resource.eval {
-            calls.update(_ + 1) *> calls.get.flatMap { count =>
-              if count == 2 then waiting.complete(()).void else IO.unit
-            }
-          } *> backing.lock
-        override def mapK[G[_]](f: FunctionK[IO, G])(using
-            G0: MonadCancel[G, ?]
-        ): Mutex[G] =
-          backing.mapK(f)(using G0)
-      source = StateQuerySource(chain, IO.pure(env), store, gate)
-      cancellation <- gate.lock.use { _ =>
-        source
-          .acquire(LocalStateQuery.Target.VolatileTip)
-          .use(_ => IO.unit)
-          .start
-          .flatMap { fiber =>
-            waiting.get
-              .as(true)
-              .timeoutTo(2.seconds, IO.pure(false))
-              .flatMap { observed =>
-                Deferred[IO, Unit].flatMap { cancelled =>
-                  (fiber.cancel *> cancelled.complete(())).start.flatMap { canceller =>
-                    (IO.sleep(250.millis) *> cancelled.tryGet).map { completedBeforeUnlock =>
-                      (observed, completedBeforeUnlock.nonEmpty, fiber, canceller)
+    val program = Settled { settle =>
+      for
+        chain <- Ref.of[IO, VolatileChain[MirrorState]](
+          VolatileChain(5, Anchor(None, setup.mirrorStart), Vector.empty)
+        )
+        store <- MemoryUtxoStore[IO]
+        backing <- Mutex[IO]
+        waiting <- Deferred[IO, Unit]
+        calls <- Ref.of[IO, Int](0)
+        gate = new Mutex[IO]:
+          def lock: Resource[IO, Unit] =
+            Resource.eval {
+              calls.update(_ + 1) *> calls.get.flatMap { count =>
+                if count == 2 then waiting.complete(()).void else IO.unit
+              }
+            } *> backing.lock
+          override def mapK[G[_]](f: FunctionK[IO, G])(using
+              G0: MonadCancel[G, ?]
+          ): Mutex[G] =
+            backing.mapK(f)(using G0)
+        source = StateQuerySource(chain, IO.pure(env), store, gate)
+        cancellation <- gate.lock.use { _ =>
+          source
+            .acquire(LocalStateQuery.Target.VolatileTip)
+            .use(_ => IO.unit)
+            .start
+            .flatMap { fiber =>
+              waiting.get
+                .as(true)
+                .timeoutTo(2.seconds, IO.pure(false))
+                .flatMap { observed =>
+                  Deferred[IO, Unit].flatMap { cancelled =>
+                    (fiber.cancel *> cancelled.complete(())).start.flatMap { canceller =>
+                      // every fiber has done all it can while the gate is still held
+                      (settle *> cancelled.tryGet).map { completedBeforeUnlock =>
+                        (observed, completedBeforeUnlock.nonEmpty, fiber, canceller)
+                      }
                     }
                   }
                 }
-              }
-          }
-      }
-      readerDone <- cancellation._3.join
-        .as(true)
-        .timeoutTo(2.seconds, IO.pure(false))
-      cancellerDone <- cancellation._4.join
-        .as(true)
-        .timeoutTo(2.seconds, IO.pure(false))
-    yield
-      assert(cancellation._1, "the reader must reach the contended gate")
-      assert(cancellation._2, "cancel should finish before the gate is released")
-      assert(readerDone, "the reader must terminate after gate cleanup")
-      assert(cancellerDone, "the cancellation fiber must terminate after gate cleanup")
-    TestControl.executeEmbed(program).unsafeRunSync()
+            }
+        }
+        readerDone <- cancellation._3.join
+          .as(true)
+          .timeoutTo(2.seconds, IO.pure(false))
+        cancellerDone <- cancellation._4.join
+          .as(true)
+          .timeoutTo(2.seconds, IO.pure(false))
+      yield
+        assert(cancellation._1, "the reader must reach the contended gate")
+        assert(cancellation._2, "cancel should finish before the gate is released")
+        assert(readerDone, "the reader must terminate after gate cleanup")
+        assert(cancellerDone, "the cancellation fiber must terminate after gate cleanup")
+    }
+    program.unsafeRunSync()
   }

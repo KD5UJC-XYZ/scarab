@@ -266,13 +266,18 @@ final class BlockPool[F[_]: Async] private (
   def take(hash: Bytes): F[Option[Bytes]] = takeFilled(hash).map(_.map(_.block))
 
   /** As [[take]], with the session that delivered the block. */
-  def takeFilled(hash: Bytes): F[Option[Filled]] =
+  def takeFilled(hash: Bytes): F[Option[Filled]] = takeFilled(hash, F.unit)
+
+  /** As [[takeFilled]]; `waiting` runs when the block is claimed and not yet delivered, so the
+    * caller waits for the session that claimed it. A test synchronizes on it.
+    */
+  private[node] def takeFilled(hash: Bytes, waiting: F[Unit]): F[Option[Filled]] =
     reap *> slots.modify { s =>
       s.entries.get(hash) match
         case Some(Slot.Done(block, _, origin)) =>
           (s, F.pure(Option(Filled(block, origin, s.headers.get(hash)))))
         case Some(Slot.Pending(done, _, _)) =>
-          (s, done.get)
+          (s, waiting *> done.get)
         case None =>
           (
             s,
@@ -480,6 +485,13 @@ final class BlockPool[F[_]: Async] private (
 
   /** Entries held (tests). */
   def size: F[Int] = slots.get.map(_.entries.size)
+
+  /** Whether a session holds a claim on `hash` that it has not filled: a taker of `hash` waits. */
+  private[node] def claimed(hash: Bytes): F[Boolean] =
+    slots.get.map(_.entries.get(hash).exists {
+      case _: Slot.Pending[F] => true
+      case _                  => false
+    })
 
   /** The bodies the pool holds in memory: those of the received cache and, without a received log,
     * those of the processed forest, each counted once.

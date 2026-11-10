@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.network.Settled
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission.message
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{IO, Ref}
@@ -594,40 +595,43 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       .map(r => ((e: MempoolEvent) => r.update(_ :+ e), r))
 
   test("Mempool[F]: add, offer to peers by ticket, collect from peers, sync") {
-    for
-      ev <- events
-      mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, None, ev._1)
-      (t1, id1) = pay(1)
-      (t2, id2) = pay(2)
-      first <- mempool.add(t1, Source.Local)
-      dup <- mempool.add(t1, Source.Local)
-      // as a TxSubmission2 server we collect from a peer; known ids are not fetched
-      knownBefore <- mempool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(id1)
-      knownOther <- mempool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(id2)
-      _ <- mempool
-        .sink(failure => IO(fail(s"unexpected fatal: $failure")))
-        .submit(Vector(t2, Bytes(Vector(1, 2))))
-      // as a client we offer what we hold, once per peer cursor
-      offered <- mempool.source.after(0L, 10)
-      later <- mempool.source.after(offered.head.ticket, 10)
-      body <- mempool.source.body(id2)
-      waiting <- mempool.source.awaitAfter(offered.last.ticket).start
-      (t3, id3) = pay(3)
-      _ <- IO.sleep(scala.concurrent.duration.DurationInt(20).millis)
-      _ <- mempool.add(t3, Source.Local)
-      _ <- waiting.joinWithNever
-      log <- ev._2.get
-    yield
-      assertEquals(first, Right(id1))
-      assertEquals(dup, Left(Rejection.AlreadyHeld(id1)))
-      assert(knownBefore && !knownOther)
-      assertEquals(offered.map(_.id), Vector(id1, id2))
-      assertEquals(later.map(_.id), Vector(id2))
-      assertEquals(body, Some(t2))
-      assert(log.exists { case MempoolEvent.Added(`id3`, _, 3, _) => true; case _ => false })
-      assert(log.exists {
-        case MempoolEvent.Rejected(_, _: Rejection.Malformed) => true; case _ => false
-      })
+    Settled { settle =>
+      for
+        ev <- events
+        mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, None, ev._1)
+        (t1, id1) = pay(1)
+        (t2, id2) = pay(2)
+        first <- mempool.add(t1, Source.Local)
+        dup <- mempool.add(t1, Source.Local)
+        // as a TxSubmission2 server we collect from a peer; known ids are not fetched
+        knownBefore <- mempool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(id1)
+        knownOther <- mempool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(id2)
+        _ <- mempool
+          .sink(failure => IO(fail(s"unexpected fatal: $failure")))
+          .submit(Vector(t2, Bytes(Vector(1, 2))))
+        // as a client we offer what we hold, once per peer cursor
+        offered <- mempool.source.after(0L, 10)
+        later <- mempool.source.after(offered.head.ticket, 10)
+        body <- mempool.source.body(id2)
+        waiting <- mempool.source.awaitAfter(offered.last.ticket).start
+        (t3, id3) = pay(3)
+        // the client waits for a transaction after the last it was offered
+        _ <- settle
+        _ <- mempool.add(t3, Source.Local)
+        _ <- waiting.joinWithNever
+        log <- ev._2.get
+      yield
+        assertEquals(first, Right(id1))
+        assertEquals(dup, Left(Rejection.AlreadyHeld(id1)))
+        assert(knownBefore && !knownOther)
+        assertEquals(offered.map(_.id), Vector(id1, id2))
+        assertEquals(later.map(_.id), Vector(id2))
+        assertEquals(body, Some(t2))
+        assert(log.exists { case MempoolEvent.Added(`id3`, _, 3, _) => true; case _ => false })
+        assert(log.exists {
+          case MempoolEvent.Rejected(_, _: Rejection.Malformed) => true; case _ => false
+        })
+    }
   }
 
   test(

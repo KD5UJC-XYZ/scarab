@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.protocol.ChainSync
+import xyz.kd5ujc.scarab.network.Settled
 import xyz.kd5ujc.scarab.storage.{ImmutableStore, StorageTestKit}
 
 import StorageTestKit.block
@@ -67,32 +68,37 @@ class ImmutablePeerSnapshotVerifierSuite extends CatsEffectSuite:
   }
 
   test("a point check waiting beyond the immutable tip is cancelable") {
-    pointStore.flatMap { (store, _) =>
-      for
-        waiting <- checkedMatches(store, BigInt(6), block(2)._1.hash).start
-        _ <- IO.sleep(scala.concurrent.duration.DurationInt(20).millis)
-        _ <- waiting.cancel
-        after <- waiting.join
-        _ <- IO(assert(after.isCanceled))
-      yield ()
+    Settled { settle =>
+      pointStore.flatMap { (store, _) =>
+        for
+          waiting <- checkedMatches(store, BigInt(6), block(2)._1.hash).start
+          // the check waits for the immutable tip to reach its slot
+          _ <- settle
+          _ <- waiting.cancel
+          after <- waiting.join
+          _ <- IO(assert(after.isCanceled))
+        yield ()
+      }
     }
   }
 
   test("a waiting exact-slot check completes when that block is published") {
-    pointStore.flatMap { (store, points) =>
-      for
-        _ <- points.set((0 until 3).map(n => block(n)._1).toVector)
-        result <- Deferred[IO, Boolean]
-        _ <- checkedMatches(store, BigInt(9), block(3)._1.hash)
-          .flatMap(result.complete)
-          .start
-        _ <- IO.sleep(scala.concurrent.duration.DurationInt(20).millis)
-        before <- result.tryGet
-        _ <- points.update(_ :+ block(3)._1)
-        matches <- result.get
-        _ <- IO(assertEquals(before, None))
-        _ <- IO(assert(matches))
-      yield ()
+    Settled.timed { settle =>
+      pointStore.flatMap { (store, points) =>
+        for
+          _ <- points.set((0 until 3).map(n => block(n)._1).toVector)
+          result <- Deferred[IO, Boolean]
+          _ <- checkedMatches(store, BigInt(9), block(3)._1.hash)
+            .flatMap(result.complete)
+            .start
+          _ <- settle
+          before <- result.tryGet
+          _ <- points.update(_ :+ block(3)._1)
+          matches <- result.get
+          _ <- IO(assertEquals(before, None))
+          _ <- IO(assert(matches))
+        yield ()
+      }
     }
   }
 

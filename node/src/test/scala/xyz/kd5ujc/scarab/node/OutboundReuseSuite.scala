@@ -173,12 +173,6 @@ class OutboundReuseSuite extends FailsOnUncaught:
       }
     }
 
-  private def eventually[A](what: String)(read: IO[A])(ok: A => Boolean): IO[A] =
-    read
-      .flatMap(a => if ok(a) then IO.pure(a) else IO.sleep(20.millis) *> eventually(what)(read)(ok))
-      .timeout(10.seconds)
-      .adaptError(_ => new AssertionError(s"timed out: $what"))
-
   private def allValid(changes: Vector[(ConnectionState, ConnectionState)]): Unit =
     changes.foreach((from, to) =>
       assert(ConnectionState.valid(Some(from), Some(to)), s"invalid $from -> $to")
@@ -191,99 +185,112 @@ class OutboundReuseSuite extends FailsOnUncaught:
   }
 
   test("a duplex peer that connected to us is followed once promoted, over its own connection") {
-    world.use { w =>
-      Ref.of[IO, Int](0).flatMap { served =>
-        peerConnects(w, served) { _ =>
-          for
-            // the inbound governor alone runs no client on it
-            before <- eventually("the peer's connection is negotiated")(w.state)(accepted)
-            _ <- IO.sleep(200.millis)
-            idle <- served.get
-            established <- w.outbound.establish(
-              peer,
-              DiffusionMode.InitiatorAndResponder,
-              Provenance.Outbound
-            )
-            used <- w.state
-            activated <- w.outbound.activate(peer)
-            _ <- w.intersected.get.timeout(5.seconds)
-            asked <- served.get
-            dials <- w.dials.get
-            snapshot <- w.manager.snapshot
-            changes <- w.changes.get
-            reports <- eventually("the session's intersection is reported")(
-              w.outbound.sessionReports
-            )(_.exists(_._2.active.exists(_.intersection.isDefined)))
-          yield
-            assert(accepted(before))
-            assertEquals(idle, 0)
-            assert(established.isRight, established.toString)
-            assert(
-              used.contains(ConnectionState.Duplex) ||
-                used.contains(ConnectionState.OutboundDup(ConnectionState.TimeoutExpired.Ticking)),
-              used.toString
-            )
-            assertEquals(activated, Right(()))
-            assertEquals(asked, 1)
-            // no dial: one connection, no second handshake
-            assertEquals(dials, 0)
-            assertEquals(snapshot.connections.size, 1)
-            allValid(changes)
-            // the session's report names the connection it runs over, the peer's own
-            assertEquals(
-              reports.flatMap(_._2.active.map(_.connection)),
-              snapshot.listed.map(_.id)
-            )
-            assertEquals(reports.map(_._2.lifetime.activations), Vector(1L))
+    Settled.timed { settle =>
+      world.use { w =>
+        Ref.of[IO, Int](0).flatMap { served =>
+          peerConnects(w, served) { _ =>
+            for
+              // the inbound governor alone runs no client on it: once every fiber has done all it can,
+              // the peer's chain was asked nothing
+              before <- Settled.observed(settle, "the peer's connection is negotiated")(w.state)(
+                accepted
+              )
+              idle <- served.get
+              established <- w.outbound.establish(
+                peer,
+                DiffusionMode.InitiatorAndResponder,
+                Provenance.Outbound
+              )
+              used <- w.state
+              activated <- w.outbound.activate(peer)
+              _ <- w.intersected.get.timeout(5.seconds)
+              asked <- served.get
+              dials <- w.dials.get
+              snapshot <- w.manager.snapshot
+              changes <- w.changes.get
+              reports <- Settled.observed(settle, "the session's intersection is reported")(
+                w.outbound.sessionReports
+              )(_.exists(_._2.active.exists(_.intersection.isDefined)))
+            yield
+              assert(accepted(before))
+              assertEquals(idle, 0)
+              assert(established.isRight, established.toString)
+              assert(
+                used.contains(ConnectionState.Duplex) ||
+                  used
+                    .contains(ConnectionState.OutboundDup(ConnectionState.TimeoutExpired.Ticking)),
+                used.toString
+              )
+              assertEquals(activated, Right(()))
+              assertEquals(asked, 1)
+              // no dial: one connection, no second handshake
+              assertEquals(dials, 0)
+              assertEquals(snapshot.connections.size, 1)
+              allValid(changes)
+              // the session's report names the connection it runs over, the peer's own
+              assertEquals(
+                reports.flatMap(_._2.active.map(_.connection)),
+                snapshot.listed.map(_.id)
+              )
+              assertEquals(reports.map(_._2.lifetime.activations), Vector(1L))
+          }
         }
       }
     }
   }
 
   test("closing the outbound use leaves the peer's connection serving it; the peer goes cold") {
-    world.use { w =>
-      Ref.of[IO, Int](0).flatMap { served =>
-        peerConnects(w, served) { _ =>
-          for
-            _ <- eventually("the peer's connection is negotiated")(w.state)(accepted)
-            established <- w.outbound.establish(
-              peer,
-              DiffusionMode.InitiatorAndResponder,
-              Provenance.Outbound
-            )
-            handle <- IO.fromEither(established.leftMap(e => new AssertionError(e.toString)))
-            closed <- handle.close
-            _ <- handle.awaitCold.timeout(10.seconds)
-            after <- w.state
-            changes <- w.changes.get
-          yield
-            assert(closed.isRight, closed.toString)
-            assert(accepted(after), after.toString)
-            allValid(changes)
+    Settled.timed { settle =>
+      world.use { w =>
+        Ref.of[IO, Int](0).flatMap { served =>
+          peerConnects(w, served) { _ =>
+            for
+              _ <- Settled.observed(settle, "the peer's connection is negotiated")(w.state)(
+                accepted
+              )
+              established <- w.outbound.establish(
+                peer,
+                DiffusionMode.InitiatorAndResponder,
+                Provenance.Outbound
+              )
+              handle <- IO.fromEither(established.leftMap(e => new AssertionError(e.toString)))
+              closed <- handle.close
+              _ <- handle.awaitCold.timeout(10.seconds)
+              after <- w.state
+              changes <- w.changes.get
+            yield
+              assert(closed.isRight, closed.toString)
+              assert(accepted(after), after.toString)
+              allValid(changes)
+          }
         }
       }
     }
   }
 
   test("the peer closing its connection ends our use of it: the peer goes cold") {
-    world.use { w =>
-      Ref.of[IO, Int](0).flatMap { served =>
-        peerConnects(w, served) { close =>
-          for
-            _ <- eventually("the peer's connection is negotiated")(w.state)(accepted)
-            established <- w.outbound.establish(
-              peer,
-              DiffusionMode.InitiatorAndResponder,
-              Provenance.Outbound
-            )
-            handle <- IO.fromEither(established.leftMap(e => new AssertionError(e.toString)))
-            _ <- close
-            _ <- handle.awaitCold.timeout(10.seconds)
-            gone <- eventually("the connection is gone")(w.state)(_.isEmpty)
-            dials <- w.dials.get
-          yield
-            assertEquals(gone, None)
-            assertEquals(dials, 0)
+    Settled.timed { settle =>
+      world.use { w =>
+        Ref.of[IO, Int](0).flatMap { served =>
+          peerConnects(w, served) { close =>
+            for
+              _ <- Settled.observed(settle, "the peer's connection is negotiated")(w.state)(
+                accepted
+              )
+              established <- w.outbound.establish(
+                peer,
+                DiffusionMode.InitiatorAndResponder,
+                Provenance.Outbound
+              )
+              handle <- IO.fromEither(established.leftMap(e => new AssertionError(e.toString)))
+              _ <- close
+              _ <- handle.awaitCold.timeout(10.seconds)
+              gone <- Settled.observed(settle, "the connection is gone")(w.state)(_.isEmpty)
+              dials <- w.dials.get
+            yield
+              assertEquals(gone, None)
+              assertEquals(dials, 0)
+          }
         }
       }
     }
@@ -323,31 +330,35 @@ class OutboundReuseSuite extends FailsOnUncaught:
   test(
     "a hot session that finds no intersection over the peer's own connection goes back to warm"
   ) {
-    worldWith(transactions = Some(nothingToOffer), deactivateTimeout = 60.seconds).use { w =>
-      Ref.of[IO, Int](0).flatMap { served =>
-        peerConnects(w, served, intersecting = false) { _ =>
-          for
-            _ <- eventually("the peer's connection is negotiated")(w.state)(accepted)
-            established <- w.outbound.establish(
-              peer,
-              DiffusionMode.InitiatorAndResponder,
-              Provenance.Outbound
-            )
-            handle <- IO.fromEither(established.leftMap(e => new AssertionError(e.toString)))
-            _ <- handle.activate(ChainSyncTimeouts.PeerTrust.Untrustable)
-            _ <- eventually("the hot session ended")(w.reports.get)(_.exists {
-              case Event.Observed(_, Observation.HotEnded(_, _), _, _) => true
-              case _                                                   => false
-            })
-            status <- handle.read
-            after <- w.state
-            reports <- w.outbound.sessionReports
-          yield
-            assertEquals(status.status, PeerStateActions.Status.Warm)
-            assert(after.exists(_.isLive), after.toString)
-            // the ended session is not reported as running
-            assertEquals(reports.map(_._2.active), Vector(None))
-            assertEquals(reports.map(_._2.lifetime.activations), Vector(1L))
+    Settled.timed { settle =>
+      worldWith(transactions = Some(nothingToOffer), deactivateTimeout = 60.seconds).use { w =>
+        Ref.of[IO, Int](0).flatMap { served =>
+          peerConnects(w, served, intersecting = false) { _ =>
+            for
+              _ <- Settled.observed(settle, "the peer's connection is negotiated")(w.state)(
+                accepted
+              )
+              established <- w.outbound.establish(
+                peer,
+                DiffusionMode.InitiatorAndResponder,
+                Provenance.Outbound
+              )
+              handle <- IO.fromEither(established.leftMap(e => new AssertionError(e.toString)))
+              _ <- handle.activate(ChainSyncTimeouts.PeerTrust.Untrustable)
+              _ <- Settled.observed(settle, "the hot session ended")(w.reports.get)(_.exists {
+                case Event.Observed(_, Observation.HotEnded(_, _), _, _) => true
+                case _                                                   => false
+              })
+              status <- handle.read
+              after <- w.state
+              reports <- w.outbound.sessionReports
+            yield
+              assertEquals(status.status, PeerStateActions.Status.Warm)
+              assert(after.exists(_.isLive), after.toString)
+              // the ended session is not reported as running
+              assertEquals(reports.map(_._2.active), Vector(None))
+              assertEquals(reports.map(_._2.lifetime.activations), Vector(1L))
+          }
         }
       }
     }

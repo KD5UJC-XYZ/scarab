@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.mempool
 
 import cats.effect.IO
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.network.LocalTxMonitorServer
+import xyz.kd5ujc.scarab.network.{LocalTxMonitorServer, Settled}
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
@@ -115,26 +115,29 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
 
   test("a client awaiting a new snapshot is woken by a transaction and by a new tip") {
     val (t1, id1) = pay(1)
-    for
-      mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, None, MempoolEvents.none[IO])
-      source = LocalMonitor.source(mempool)
-      first <- source.acquire
-      waiting <- source.awaitChange(first).start
-      _ <- IO.sleep(30.millis)
-      _ <- mempool.add(t1, Source.Local)
-      second <- waiting.joinWithNever
-      again <- source.awaitChange(second).start
-      _ <- IO.sleep(30.millis)
-      _ <- mempool.sync(Right(ledger(4)), 1001)
-      third <- again.joinWithNever
-    yield
-      assertEquals(first.txs.size, 0)
-      assertEquals(second.txs.size, 1)
-      assert(second.has(LocalMonitor.wrapId(id1)))
-      assertEquals(second.slot, BigInt(1001))
-      // the transaction still applies at the new tip, only the slot moved
-      assertEquals(third.slot, BigInt(1002))
-      assertEquals(third.txs.size, 1)
+    Settled { settle =>
+      for
+        mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, None, MempoolEvents.none[IO])
+        source = LocalMonitor.source(mempool)
+        first <- source.acquire
+        waiting <- source.awaitChange(first).start
+        // the client waits for the pool to change
+        _ <- settle
+        _ <- mempool.add(t1, Source.Local)
+        second <- waiting.joinWithNever
+        again <- source.awaitChange(second).start
+        _ <- settle
+        _ <- mempool.sync(Right(ledger(4)), 1001)
+        third <- again.joinWithNever
+      yield
+        assertEquals(first.txs.size, 0)
+        assertEquals(second.txs.size, 1)
+        assert(second.has(LocalMonitor.wrapId(id1)))
+        assertEquals(second.slot, BigInt(1001))
+        // the transaction still applies at the new tip, only the slot moved
+        assertEquals(third.slot, BigInt(1002))
+        assertEquals(third.txs.size, 1)
+    }
   }
 
   test("awaiting a snapshot the pool already differs from returns at once") {
