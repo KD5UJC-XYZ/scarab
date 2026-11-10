@@ -4350,6 +4350,49 @@
      "close": "```"
     }
    ]
+  },
+  {
+   "id": "perf-61",
+   "section": "55",
+   "heading": "55. Reusing the derived pool distribution (#826)",
+   "subject": "Reusing the derived pool distribution (#826)",
+   "date": "2026-11-10",
+   "dateSource": "text",
+   "issues": [
+    "#826"
+   ],
+   "commits": [
+    "7282ff7d7"
+   ],
+   "links": [],
+   "page": "memory-and-snapshots",
+   "results": [
+    {
+     "id": "perf-61.t1",
+     "header": [
+      "Workload",
+      "Median ms / 1,000 reads",
+      "Range ms",
+      "Checksum / sample"
+     ],
+     "separator": "|---|---:|---:|---:|",
+     "rows": [
+      [
+       "Recalculate each read",
+       "742.964",
+       "737.080–758.181",
+       "2,000,000"
+      ],
+      [
+       "Reuse immutable snapshot result",
+       "0.200",
+       "0.192–0.228",
+       "2,000,000"
+      ]
+     ]
+    }
+   ],
+   "listings": []
   }
  ]
 }
