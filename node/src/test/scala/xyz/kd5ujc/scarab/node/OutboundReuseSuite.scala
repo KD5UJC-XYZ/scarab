@@ -313,8 +313,8 @@ class OutboundReuseSuite extends FailsOnUncaught:
       done: Deferred[IO, Unit]
   ) extends Supervisor[IO]:
     def supervise[A](fa: IO[A]): IO[cats.effect.Fiber[IO, Throwable, A]] =
-      underlying.supervise(fa).flatTap { fiber =>
-        started.updateAndGet(_ + 1).flatMap { count =>
+      started.updateAndGet(_ + 1).flatMap { count =>
+        underlying.supervise(fa).flatTap { fiber =>
           (fiber.join *> done.complete(()) *> IO.canceled).whenA(count == n)
         }
       }
@@ -328,36 +328,45 @@ class OutboundReuseSuite extends FailsOnUncaught:
   test(
     "a reuse handed over to a waiter cancelled before taking it over is released; the peer stays"
   ) {
-    (Ref.of[IO, Int](0), Deferred[IO, Unit]).tupled.flatMap { (started, handedOver) =>
-      worldWith(supervising = s => IO.pure(CancelAfterNth(s, 2, started, handedOver))).use { w =>
-        Ref.of[IO, Int](0).flatMap { served =>
-          peerConnects(w, served) { _ =>
-            for
-              // the peer's KeepAlive runs on it: remote warm, `Inbound Duplex`
-              _ <- w.manager.awaitRemoteStates(_.values.toList == List(RemoteSt.Warm))
-              before <- w.state
-              establishing <- w.outbound
-                .establish(peer, DiffusionMode.InitiatorAndResponder, Provenance.Outbound)
-                .start
-              _ <- handedOver.get
-              // its cancellation returns once the connection's fiber, and its compensation, ended
-              _ <- establishing.cancel
-              after <- w.state
-              changes <- w.changes.get
-              dials <- w.dials.get
-            yield
-              // the outbound use came and went; the peer's connection is as it was
-              assertEquals(before, Some(ConnectionState.Inbound(DataFlow.Duplex)))
-              assertEquals(after, before)
-              assertEquals(
-                changes.takeRight(2),
-                Vector(
-                  ConnectionState.Inbound(DataFlow.Duplex) -> ConnectionState.Duplex,
-                  ConnectionState.Duplex -> ConnectionState.Inbound(DataFlow.Duplex)
+    Settled.timed { settle =>
+      (Ref.of[IO, Int](0), Deferred[IO, Unit]).tupled.flatMap { (started, handedOver) =>
+        worldWith(supervising = s => IO.pure(CancelAfterNth(s, 2, started, handedOver))).use { w =>
+          Ref.of[IO, Int](0).flatMap { served =>
+            peerConnects(w, served) { _ =>
+              for
+                // The first KeepAlive promotes the inbound side; settling holds its idle timer.
+                before <- Settled.observed(settle, "the peer's inbound side is warm")(w.state)(
+                  _.contains(ConnectionState.Inbound(DataFlow.Duplex))
                 )
-              )
-              allValid(changes)
-              assertEquals(dials, 0)
+                _ <- Resource
+                  .make(
+                    w.outbound
+                      .establish(peer, DiffusionMode.InitiatorAndResponder, Provenance.Outbound)
+                      .start
+                  )(_.cancel)
+                  .use { establishing =>
+                    for
+                      _ <- handedOver.get
+                      // Cancellation returns once the connection's compensation has finished.
+                      _ <- establishing.cancel
+                      after <- w.state
+                      changes <- w.changes.get
+                      dials <- w.dials.get
+                    yield
+                      assertEquals(before, Some(ConnectionState.Inbound(DataFlow.Duplex)))
+                      assertEquals(after, before)
+                      assertEquals(
+                        changes.takeRight(2),
+                        Vector(
+                          ConnectionState.Inbound(DataFlow.Duplex) -> ConnectionState.Duplex,
+                          ConnectionState.Duplex -> ConnectionState.Inbound(DataFlow.Duplex)
+                        )
+                      )
+                      allValid(changes)
+                      assertEquals(dials, 0)
+                  }
+              yield ()
+            }
           }
         }
       }
