@@ -66,9 +66,13 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
       events.map(_.collect { case ConnectionEvent.Changed(_, from, to) => from -> to })
 
   /** Run `program` with a manager; connection errors come back as values, and every change the
-    * manager reported must be one the reference accepts.
+    * manager reported must be one the reference accepts, or one of `runtimeOnly`: a move the
+    * reference's runtime makes that its `verifyAbstractTransition` has no case for.
     */
-  private def managed[A](limits: ConnectionManager.Limits = ConnectionManager.Limits())(
+  private def managed[A](
+      limits: ConnectionManager.Limits = ConnectionManager.Limits(),
+      runtimeOnly: Set[(ConnectionState, ConnectionState)] = Set.empty
+  )(
       program: Handle[IO, ConnectionError] ?=> Managed => IO[A]
   ): IO[Either[ConnectionError, A]] =
     Ref.of[IO, Vector[ConnectionEvent]](Vector.empty).flatMap { seen =>
@@ -80,13 +84,19 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
             .map(_.asRight[ConnectionError])
         }
         .rescue(e => IO.pure(e.asLeft[A]))
-        .flatTap(_ => seen.get.map(allValid))
+        .flatTap(_ => seen.get.map(allValid(_, runtimeOnly)))
     }
 
-  private def allValid(events: Vector[ConnectionEvent]): Unit =
+  private def allValid(
+      events: Vector[ConnectionEvent],
+      runtimeOnly: Set[(ConnectionState, ConnectionState)] = Set.empty
+  ): Unit =
     events.foreach {
       case ConnectionEvent.Changed(remote, from, to) =>
-        assert(ConnectionState.valid(Some(from), Some(to)), s"$remote: invalid $from -> $to")
+        assert(
+          ConnectionState.valid(Some(from), Some(to)) || runtimeOnly.contains(from -> to),
+          s"$remote: invalid $from -> $to"
+        )
       case _ => ()
     }
 
@@ -601,6 +611,40 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
       }
   }
 
+  // `releaseInboundConnection` on `InboundState`, which the inbound governor should have demoted
+  // first: the reference writes `TerminatingState` at once and reports the state as unsupported
+  // (`Core.hs` 1203-1215), a move `verifyAbstractTransition` has no case for
+  test("releaseInbound on a connection the peer still uses closes it in one move") {
+    val inbound = ConnectionState.Inbound(DataFlow.Duplex)
+    val idle = ConnectionState.InboundIdle(DataFlow.Duplex)
+    TestControl
+      .executeEmbed(managed(runtimeOnly = Set(inbound -> ConnectionState.Terminating)) { m =>
+        for
+          (c, h, release) <- accepted(m.cm, 1, DataFlow.Duplex)
+          _ <- c.promotedToWarmRemote
+          released <- c.releaseInbound
+          end <- c.stopped
+          cause <- h.mux.failure
+          trace <- m.changes
+          _ <- release
+        yield (released, end, cause, trace)
+      })
+      .map { r =>
+        val (released, end, cause, trace) = result(r)
+        assertEquals(released, OperationResult.Unsupported(Some(inbound)))
+        assertEquals(end, ConnectionEnd.Released)
+        assert(cause.isDefined)
+        assertEquals(
+          trace,
+          Vector(
+            unnegotiatedIn -> idle,
+            idle -> inbound,
+            inbound -> ConnectionState.Terminating
+          )
+        )
+      }
+  }
+
   // ------------------------------------------------------------------ pruning
 
   // `promotedToWarmRemote` of an outbound duplex connection past the hard limit (`Core.hs`
@@ -745,10 +789,21 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
       case (other, _)                 => IO.raiseError(new AssertionError(s"not reused: $other"))
     }
 
-  // the outbound side negotiates whatever the provenance the accept left (`Core.hs` 1588-1622),
-  // and the inbound side then leaves the outbound state and its handle as they are (932-934)
+  private val unnegotiatedIn = ConnectionState.Unnegotiated(Provenance.Inbound)
+  private val unnegotiatedOut = ConnectionState.Unnegotiated(Provenance.Outbound)
+  private val dupTicking = ConnectionState.OutboundDup(TimeoutExpired.Ticking)
+
+  /** `Connected` (`Core.hs` 1540-1549), then the accept of our own connection: `SelfConn`. */
+  private val selfConnected = Vector(
+    ConnectionState.ReservedOutbound -> unnegotiatedOut,
+    unnegotiatedOut -> unnegotiatedIn
+  )
+
+  // the outbound side writes its negotiated state over the accept's `UnnegotiatedState Inbound`
+  // in one move (`Core.hs` 1600-1622), which `verifyAbstractTransition` has no case for, and the
+  // inbound side then leaves the outbound state and its handle as they are (932-934)
   test("a self-connection whose outbound handshake ends first keeps the outbound side's handle") {
-    managed() { m =>
+    managed(runtimeOnly = Set(unnegotiatedIn -> dupTicking)) { m =>
       for
         (ours, theirs) <- selfConnection(m.cm)
         hOut <- handle(DataFlow.Duplex)
@@ -757,12 +812,14 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
         first <- ours.state
         _ <- theirs.negotiated(hIn)
         second <- ours.state
+        trace <- m.changes
         kept <- handleAfterRelease(m.cm, ours)
-      yield (first, second, kept eq hOut)
+      yield (first, second, trace, kept eq hOut)
     }.map { r =>
-      val (first, second, kept) = result(r)
-      assertEquals(first, ConnectionState.OutboundDup(TimeoutExpired.Ticking))
+      val (first, second, trace, kept) = result(r)
+      assertEquals(first, dupTicking)
       assertEquals(second, first)
+      assertEquals(trace, selfConnected :+ (unnegotiatedIn -> dupTicking))
       assert(kept, "the outbound side's handle was overwritten")
     }
   }
@@ -779,22 +836,30 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
         first <- ours.state
         _ <- ours.negotiated(hOut)
         second <- ours.state
+        trace <- m.changes
         kept <- handleAfterRelease(m.cm, ours)
-      yield (first, second, kept eq hIn)
+      yield (first, second, trace, kept eq hIn)
     }.map { r =>
-      val (first, second, kept) = result(r)
-      assertEquals(first, ConnectionState.InboundIdle(DataFlow.Duplex))
-      assertEquals(second, ConnectionState.OutboundDup(TimeoutExpired.Ticking))
+      val (first, second, trace, kept) = result(r)
+      val idle = ConnectionState.InboundIdle(DataFlow.Duplex)
+      assertEquals(first, idle)
+      assertEquals(second, dupTicking)
+      assertEquals(trace, selfConnected ++ Vector(unnegotiatedIn -> idle, idle -> dupTicking))
       assert(kept, "the inbound side's handle was overwritten")
     }
   }
 
   // released by the outbound side before the inbound handshake ended: `OutboundIdle` becomes
-  // `InboundIdle` with its flow and the inbound side's handle (`Core.hs` 936-945), a move the
-  // reference's `verifyAbstractTransition` has no case for
+  // `InboundIdle` with its flow and the inbound side's handle (`Core.hs` 936-945); that move and
+  // the outbound negotiation over the accept (1600-1622) are ones the reference's
+  // `verifyAbstractTransition` has no case for
   test("a self-connection released by the outbound side before the inbound handshake ends") {
-    val runtimeOnly = ConnectionState.OutboundIdle(DataFlow.Unidirectional) ->
-      ConnectionState.InboundIdle(DataFlow.Unidirectional)
+    val outboundIdle = ConnectionState.OutboundIdle(DataFlow.Unidirectional)
+    val inboundIdle = ConnectionState.InboundIdle(DataFlow.Unidirectional)
+    val runtimeOnly = Set(
+      unnegotiatedIn -> ConnectionState.OutboundUni,
+      outboundIdle -> inboundIdle
+    )
     TestControl
       .executeEmbed(
         Ref.of[IO, Vector[ConnectionEvent]](Vector.empty).flatMap { seen =>
@@ -822,14 +887,15 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
         }
       )
       .map { (idle, released, after, events) =>
-        allValid(events.filterNot {
-          case ConnectionEvent.Changed(_, from, to) => (from -> to) == runtimeOnly
-          case _                                    => false
-        })
-        assert(events.exists {
-          case ConnectionEvent.Changed(_, from, to) => (from -> to) == runtimeOnly
-          case _                                    => false
-        })
+        allValid(events, runtimeOnly)
+        assertEquals(
+          events.collect { case ConnectionEvent.Changed(_, from, to) => from -> to },
+          selfConnected ++ Vector(
+            unnegotiatedIn -> ConnectionState.OutboundUni,
+            ConnectionState.OutboundUni -> outboundIdle,
+            outboundIdle -> inboundIdle
+          )
+        )
         assertEquals(idle, ConnectionState.OutboundIdle(DataFlow.Unidirectional))
         assertEquals(after, ConnectionState.InboundIdle(DataFlow.Unidirectional))
         assertEquals(

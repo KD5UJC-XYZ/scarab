@@ -585,9 +585,9 @@ object ConnectionManager:
                     Left(ConnectionError.Disconnected(at.toString, entry.state, None))
                   // the common cases, `Core.hs` 913-930 and 1588-1622
                   case (Side.Inbound, ConnectionState.Unnegotiated(Provenance.Inbound)) =>
-                    Right((Vector(Event.Negotiated(flow)), true))
+                    Right((Vector(Event.Negotiated(flow, Provenance.Inbound)), true))
                   case (Side.Outbound, ConnectionState.Unnegotiated(Provenance.Outbound)) =>
-                    Right((Vector(Event.Negotiated(flow)), true))
+                    Right((Vector(Event.Negotiated(flow, Provenance.Outbound)), true))
                   // a connection to ourselves. The inbound side: `SelfConnNegotiated` (913-930);
                   // the outbound side that won the race keeps it (932-934); an outbound idle one
                   // becomes inbound idle with its flow (936-945)
@@ -600,11 +600,11 @@ object ConnectionManager:
                     Right((Vector.empty, false))
                   case (Side.Inbound, ConnectionState.OutboundIdle(_)) =>
                     Right((Vector(Event.SelfConnIdle), true))
-                  // the outbound side: negotiated whatever the provenance the accept left
-                  // (1588-1622), here `SelfConn⁻¹` and then `Negotiated`; `SelfConn'⁻¹` keeps
-                  // the inbound side's handle (1624-1652)
+                  // the outbound side writes its negotiated state whatever the provenance the
+                  // accept left, in one move (1600-1622); `SelfConn'⁻¹` keeps the inbound side's
+                  // handle (1624-1652)
                   case (Side.Outbound, ConnectionState.Unnegotiated(Provenance.Inbound)) =>
-                    Right((Vector(Event.SelfConnReversed, Event.Negotiated(flow)), true))
+                    Right((Vector(Event.Negotiated(flow, Provenance.Outbound)), true))
                   case (Side.Outbound, ConnectionState.InboundIdle(_)) =>
                     Right((Vector(Event.SelfConnReversed), false))
                   case (Side.Outbound, other) =>
@@ -730,9 +730,9 @@ object ConnectionManager:
                 // `Commit^{dataFlow}` (1188-1201)
                 case ConnectionState.InboundIdle(_) =>
                   ending(Event.Commit)(OperationResult.Success(RemoteRelease.Commit))
-                // the inbound governor should have demoted it first (1203-1215)
+                // the inbound governor should have demoted it first; closed at once (1203-1215)
                 case ConnectionState.Inbound(_) =>
-                  ending(Event.DemotedToColdRemote, Event.Commit)(unsupported(entry))
+                  ending(Event.CommitInUse)(unsupported(entry))
                 // likewise (1217-1229)
                 case ConnectionState.Duplex =>
                   moving(t, key, entry, Event.DemotedToColdRemote)(

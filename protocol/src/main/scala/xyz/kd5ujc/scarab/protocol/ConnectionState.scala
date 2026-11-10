@@ -80,10 +80,13 @@ object ConnectionState:
     /** `Connected`: the transport of a reserved outbound connection is up. */
     case Connected
 
-    /** `Negotiated^{flow}_{Outbound}` or `Negotiated^{flow}_{Inbound}`: the handshake agreed
-      * `flow`.
+    /** `Negotiated^{flow}_{Outbound}` or `Negotiated^{flow}_{Inbound}`: the handshake that `side`
+      * ran agreed `flow`. The outbound side writes its negotiated state over an unnegotiated
+      * connection of either provenance (`ConnectionManager/Core.hs:1600-1622`): over an inbound
+      * one, the accept of a connection to ourselves, which `verifyAbstractTransition` has no case
+      * for, so [[valid]] refuses the move the reference's runtime makes.
       */
-    case Negotiated(flow: DataFlow)
+    case Negotiated(flow: DataFlow, side: Provenance)
 
     /** `Overwritten`: an accepted connection takes the place of an outbound reservation for the
       * same address.
@@ -138,6 +141,13 @@ object ConnectionState:
     /** `Commit^{flow}`: an idle connection is closed; it enters time-wait. */
     case Commit
 
+    /** `releaseInboundConnection` on a connection the peer still uses, which the inbound governor
+      * should have demoted first: the reference closes it into time-wait at once and reports the
+      * state as unsupported (`Core.hs:1203-1215`). `verifyAbstractTransition` has no case for it,
+      * so [[valid]] refuses the move the reference's runtime makes.
+      */
+    case CommitInUse
+
     /** A handshake that agreed no version: the connection enters time-wait
       * (`computeConnStateOnError`, `HandshakeFailure` in `classifyHandlerError`).
       */
@@ -166,11 +176,12 @@ object ConnectionState:
     (state, event) match
       case (ReservedOutbound, Event.Connected)   => Right(Unnegotiated(Provenance.Outbound))
       case (ReservedOutbound, Event.Overwritten) => Right(Unnegotiated(Provenance.Inbound))
-      case (Unnegotiated(Provenance.Outbound), Event.Negotiated(Unidirectional)) =>
+      case (Unnegotiated(_), Event.Negotiated(Unidirectional, Provenance.Outbound)) =>
         Right(OutboundUni)
-      case (Unnegotiated(Provenance.Outbound), Event.Negotiated(DuplexFlow)) =>
+      case (Unnegotiated(_), Event.Negotiated(DuplexFlow, Provenance.Outbound)) =>
         Right(OutboundDup(Ticking))
-      case (Unnegotiated(Provenance.Inbound), Event.Negotiated(flow)) => Right(InboundIdle(flow))
+      case (Unnegotiated(Provenance.Inbound), Event.Negotiated(flow, Provenance.Inbound)) =>
+        Right(InboundIdle(flow))
       case (InboundIdle(DuplexFlow), Event.AwakeLocal)                => Right(OutboundDup(Ticking))
       case (Inbound(DuplexFlow), Event.PromotedToWarmLocal)           => Right(Duplex)
       case (OutboundUni, Event.DemotedToColdLocal)          => Right(OutboundIdle(Unidirectional))
@@ -197,6 +208,7 @@ object ConnectionState:
         Right(InboundIdle(flow))
       case (OutboundDup(Ticking), Event.TimeoutExpired) => Right(OutboundDup(Expired))
       case (InboundIdle(_), Event.Commit) | (OutboundIdle(_), Event.Commit) => Right(Terminating)
+      case (Inbound(_), Event.CommitInUse)                                  => Right(Terminating)
       case (Unnegotiated(_), Event.HandshakeFailed)                         => Right(Terminating)
       case (s, Event.Fail) if s.isLive                                      => Right(Terminated)
       case (Terminating, Event.Released)                                    => Right(Terminated)

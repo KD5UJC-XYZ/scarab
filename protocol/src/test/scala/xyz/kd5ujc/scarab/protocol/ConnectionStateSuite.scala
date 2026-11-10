@@ -30,9 +30,13 @@ class ConnectionStateSuite extends ScalaCheckSuite:
       Event.Fail,
       Event.Released,
       Event.SelfConn,
-      Event.SelfConnReversed
+      Event.SelfConnReversed,
+      Event.CommitInUse
     ),
-    flow.map(Event.Negotiated(_)),
+    for
+      f <- flow
+      side <- provenance
+    yield Event.Negotiated(f, side),
     flow.map(Event.SelfConnNegotiated(_))
   )
 
@@ -61,13 +65,50 @@ class ConnectionStateSuite extends ScalaCheckSuite:
     case (OutboundDup(_) | OutboundIdle(_) | InboundIdle(_), Event.DemotedToColdRemote) => true
     case _                                                                              => false
 
-  property("every move the model makes is one the reference accepts") {
+  /** The moves the reference's runtime makes that `verifyAbstractTransition` has no case for:
+    * the outbound side's negotiation over an accepted self-connection (`Core.hs:1600-1622`),
+    * `releaseInboundConnection` on a connection still in use (1203-1215) and [[Event.SelfConnIdle]]
+    * (936-945).
+    */
+  private def runtimeOnly(s: ConnectionState, e: Event): Boolean = (s, e) match
+    case (Unnegotiated(Provenance.Inbound), Event.Negotiated(_, Provenance.Outbound)) => true
+    case (Inbound(_), Event.CommitInUse)                                              => true
+    case (OutboundIdle(_), Event.SelfConnIdle)                                        => true
+    case _                                                                            => false
+
+  property("every move the model makes is one the reference accepts, or one its runtime makes") {
     forAll(reachable, event) { (s, e) =>
       ConnectionState.transition(s, e) match
         case Right(next) if next == s => leavesAsIs(s, e)
-        case Right(next)              => ConnectionState.valid(Some(s), Some(next))
-        case Left(_)                  => true
+        case Right(next) => ConnectionState.valid(Some(s), Some(next)) != runtimeOnly(s, e)
+        case Left(_)     => true
     }
+  }
+
+  test("the runtime's moves the verifier lacks are direct, and only from their own states") {
+    DataFlow.values.foreach { f =>
+      val outbound = f match
+        case DataFlow.Unidirectional => OutboundUni
+        case DataFlow.Duplex         => OutboundDup(TimeoutExpired.Ticking)
+      Vector(Provenance.Inbound, Provenance.Outbound).foreach { p =>
+        assertEquals(
+          ConnectionState.transition(Unnegotiated(p), Event.Negotiated(f, Provenance.Outbound)),
+          Right(outbound)
+        )
+      }
+      assert(!ConnectionState.valid(Some(Unnegotiated(Provenance.Inbound)), Some(outbound)))
+      assertEquals(ConnectionState.transition(Inbound(f), Event.CommitInUse), Right(Terminating))
+      assert(!ConnectionState.valid(Some(Inbound(f)), Some(Terminating)))
+      assert(
+        ConnectionState
+          .transition(Unnegotiated(Provenance.Outbound), Event.Negotiated(f, Provenance.Inbound))
+          .isLeft
+      )
+    }
+    every.filterNot {
+      case Inbound(_) => true
+      case _          => false
+    }.foreach(s => assert(ConnectionState.transition(s, Event.CommitInUse).isLeft, s.abstractName))
   }
 
   test("the identity moves are the reference's, and its oracle admits all but one") {
@@ -133,14 +174,14 @@ class ConnectionStateSuite extends ScalaCheckSuite:
     assertEquals(
       ConnectionState.through(
         ConnectionState.initial(Provenance.Outbound),
-        Vector(Event.Connected, Event.Negotiated(DataFlow.Duplex))
+        Vector(Event.Connected, Event.Negotiated(DataFlow.Duplex, Provenance.Outbound))
       ),
       Right(OutboundDup(TimeoutExpired.Ticking))
     )
     assertEquals(
       ConnectionState.through(
         ReservedOutbound,
-        Vector(Event.Connected, Event.Negotiated(DataFlow.Unidirectional))
+        Vector(Event.Connected, Event.Negotiated(DataFlow.Unidirectional, Provenance.Outbound))
       ),
       Right(OutboundUni)
     )
@@ -150,7 +191,7 @@ class ConnectionStateSuite extends ScalaCheckSuite:
     assertEquals(
       ConnectionState.transition(
         ConnectionState.initial(Provenance.Inbound),
-        Event.Negotiated(DataFlow.Duplex)
+        Event.Negotiated(DataFlow.Duplex, Provenance.Inbound)
       ),
       Right(InboundIdle(DataFlow.Duplex))
     )

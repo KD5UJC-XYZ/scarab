@@ -17,7 +17,10 @@ runtime fields (`ConnectionManager/State.hs:191-217`): `ReservedOutbound`, `Unne
 transitions and returns a typed `Illegal` for anything else; `valid(from, to)` is the reference's
 `verifyAbstractTransition` (`Test/Ouroboros/Network/ConnectionManager/Utils.hs`), `Counters` its
 `ConnectionManagerCounters` as `connectionStateToCounters` computes them, and `isInboundConn` and
-`ConnectionType` what pruning sees of a connection.
+`ConnectionType` what pruning sees of a connection. Three moves the reference's runtime makes in one
+step have no case in its verifier, and `valid` refuses them as the verifier does: the outbound
+negotiation over an accepted self-connection (`Core.hs` 1600-1622), `releaseInbound` on a connection
+the peer still uses (`CommitInUse`, 1203-1215) and `SelfConnIdle` (936-945).
 
 **`ConnectionManager`** (`network`). A table from the remote and the local address (`ConnMap.hs` 45-50) to one
 connection's state, its negotiated handle (the mux, the agreed version and peer sharing, the transport's
