@@ -270,7 +270,7 @@
    "sleep": 2
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/storage/ChainStorageSuite.scala": {
-   "sleep": 2
+   "sleep": 1
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/storage/InternDecodeBench.scala": {
    "sleep": 1
