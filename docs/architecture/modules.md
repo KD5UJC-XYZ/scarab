@@ -85,7 +85,7 @@ Capabilities are traits over `F[_]`; interpreters are chosen in `Main`:
 |---|---|---|
 | `Peer[F]` | intersect, next header, fetch blocks | node-to-node over TCP or over any negotiated connection (pipelined), scripted peers in tests |
 | `HeaderRules[S, H]`, `HeaderCheck[F]` | forecast the ledger view and validate a header against it; per session, validate each batch before it is fetched | `NodeHeaderRules` (pure), `HeaderCheck.forNodeChain` (the canonical gate over the node's chain), `HeaderCheck.none` |
-| `ConnectionManager[F]` | one connection per peer address and direction, admission policy, limits and accounting | `ConnectionManager.create` (a `Ref` table over the pure `ConnectionState`) |
+| `ConnectionManager[F]` | one connection per remote and local address (`ConnMap.hs` 45-50) that both sides use: admission policy, reuse, release, limits and accounting | `ConnectionManager.create` (a `Ref` table over the pure `ConnectionState`) |
 | `BlockRules[F, S]` | validate and apply one block to a state | `MirrorRules` (the era-indexed rules on the mirror state) |
 | `UtxoStore[F]` | read, write, checkpoint, restore the UTxO set | `MemoryUtxoStore`, `RocksUtxoStore` |
 | `ImmutableStore[F]` | append-only raw blocks older than k | `FileImmutableStore` |
@@ -126,7 +126,7 @@ replace their narrow API types or prove their semantics. See [the error design](
 | `PeerError` | the peer misbehaved or the connection failed (`Handshake`, `Protocol`, `Unavailable`, `InvalidHeader`: a header broke a header rule, G6); recoverable | the peer governor classifies it (`FailurePolicy.classify`: forget the peer or back off) and reconnects; on an inbound connection the inbound governor drops the peer for `Protocol` and `InvalidHeader` |
 | `ConnectionError` (`network`) | the connection manager refused: `InboundLimit`, `OutboundLimit`, `AlreadyConnected`, `IllegalTransition` (G2) | a refusal of an inbound connection closes it; an outbound one becomes `PeerError.Unavailable` and is retried |
 | `ChainError` | chain-level inconsistency (for example a candidate that no longer joins our chain) | per-session or fatal |
-| `ValidationError(point, failure: BlockFailure)` | a block broke a consensus or ledger rule | fatal for the sync (the chain stays at the last valid block) |
+| `ValidationError(point, failure: BlockFailure)` | a block broke a consensus or ledger rule | the block is not adopted and the chain stays at the last valid block; the session that brought it ends `Rejected` and the peer is forgotten (`FailurePolicy.disposition`). Only a block with no ledger verdict (`Unverifiable`) stops the node |
 | `StorageError` | typed `Corrupt` causes, `Io` with its exception, `VersionMismatch`, `Missing`, `OutOfOrder` | IO exceptions are mapped at the file boundary only |
 | `ForgeError` | key-file, KES, VRF, ledger-view and assembly failures | the forger logs and skips the slot |
 | `ConfigError(problem: ConfigProblem)` | configuration, CLI, topology and genesis failures retain fields, input values and typed JSON, codec or service causes | fatal at start |

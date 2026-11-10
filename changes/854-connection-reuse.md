@@ -11,14 +11,16 @@
   - **Release:** releasing our side of a connection the peer still uses leaves it open. An outbound connection nobody uses
     is closed after the outbound idle timeout (5 s). A peer is cold once our side holds its connection no more.
   - **The peer's activity:** it is tracked on every duplex connection, ours included. When the peer stays idle for the
-    protocol idle timeout (5 s), a connection we still use is kept and an unused one is closed.
+    protocol idle timeout (5 s), a connection we still use is kept and an unused one is closed. A responder that
+    starts as the timer expires is held until that is settled, and then wakes the connection.
   - **Pruning:** a remote promotion or an outbound release that would exceed the hard limit of accepted connections
     prunes inbound connections, upstream ones last (`connection` `pruned` log line, `Pruned` in
     `scarab_connection_events_total`).
   - **Handshake failure:** a connection whose handshake agreed no version leaves the table at once and holds no slot in
-    time-wait. An acquisition that waited for it fails with the handshake's own error.
-  - **`GET /connections`** reports `sessions`: for each peer, what our hot sessions saw (its last intersection, the
-    headers received and the tip it announced).
+    time-wait. Every acquisition that waited for it fails with the handshake's own error.
+  - **`GET /connections`** reports `sessions`: for each peer, its running hot session (`active`: the connection it runs
+    over, its activation, its intersection, the headers received and the tip it announced) and totals over all its
+    sessions (`lifetime`). Each entry of `connections` has its `connection` id.
 
 ### Removed (connection reuse, #854)
 - **`--inbound-sync` is removed.** Our clients run only where the outbound governor promotes a peer. The inbound governor

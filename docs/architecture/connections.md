@@ -53,14 +53,16 @@ peer can start, the accepted ones and the duplex ones we dial: the first respond
 `AwakeRemote`, the last that ends `WaitIdleRemote` (which arms the idle timer, 5 s), and an expired timer is
 `CommitRemote`: the manager closes an idle connection, or keeps one the outbound side uses
 (`OutboundDup Ticking` becomes `Expired`) until a later responder wakes it up (`InboundGovernor.hs` 329-335,
-463-481, 499-570). The first start and the last end of the responders are queued in order, and a responder that
-starts while an expired timer is being handled waits until it is settled, as the reference's mux tracer does
-(`InboundGovernor.hs` 629-708).
+463-481, 499-570). The responders' starts and ends and the idle timer are read in one step, as the reference
+reads its channel and its timers in one STM transaction (`InboundGovernor.hs` 240-275): an expired timer is
+committed first (253-261), no start is taken before that, and a responder that starts at or after the expiry
+waits until the commit is settled, as the reference's mux tracer holds it (629-708).
 
 The manager's changes and what they ask for (the log, the connections they end) are one step that cancellation
 cannot split, and an acquisition hands over a reuse or a reservation without a cancelable gap; a reuse its caller
 did not take over is released by the outbound side. A waiter for a negotiating connection that ends learns the state
-and the error it ended with (`Disconnected`).
+and the error it ended with (`Disconnected`): every connection publishes its end before it leaves the table, as the
+reference writes a failed handshake's state in the transaction that removes it (`Core.hs` 1000-1075).
 
 **`InboundGovernor`** (`node`). `serve(bearer, remote)` is the inbound handler of `--listen`: it admits the
 connection to the manager, runs `NodeToNodeServer.accept` (handshake, our servers, the peer's activity),
@@ -74,8 +76,10 @@ fiber of its own under the outer supervisor, which owns the transport as the ref
 does: `NodeToNode.negotiate` runs the handshake, publishes the handle and, on a duplex connection, our
 responders and the peer's activity. A clean close releases the outbound use only; a protocol failure or a
 close timeout stops the shared mux (`PeerStateActions.hs` 1079-1104). Outbound peers configured with
-`InitiatorAndResponder` offer duplex; `InitiatorOnly` peers do not. What the hot sessions saw of each peer (its last
-intersection, the headers received, the tip it announced) is `sessions` in `GET /connections`.
+`InitiatorAndResponder` offer duplex; `InitiatorOnly` peers do not. `sessions` in `GET /connections` is, for each
+peer, its running hot session (`active`: the connection it runs over, as `connections` lists it, its activation,
+its intersection, the headers it received and the tip it announced last) and the totals over all its sessions
+(`lifetime`: activations and headers). A session's observations are its own; an ended one is no longer `active`.
 
 Tests: `ConnectionStateSuite` (every move against `valid`, the counters); `ConnectionManagerSuite`
 (admission and its limits, inbound-first and outbound-first acquisition, a reservation racing an accept, a
@@ -83,8 +87,10 @@ self-connection, the wait for a handshake and its failure, the wait for a time-w
 during one, the releases of both sides, an inbound close ending the outbound use, pruning, and a property over
 random sequences of all of these that checks every reported change against `valid` and the counters against
 the table and the hard limit); `ProtocolIdleTimeoutSuite` (the peer's activity and the idle timer, expiry
-before and after an outbound release, remote reactivation); `InboundGovernorSuite`; `OutboundReuseSuite`
-(the outbound governor's use of a peer's own connection). The devnet `relay` scenario asserts reuse against
+before and after an outbound release, remote reactivation); `RemoteActivitySuite` (a responder that starts
+as the idle timer fires, on an accepted and a dialled connection); `InboundGovernorSuite`; `OutboundReuseSuite`
+(the outbound governor's use of a peer's own connection, and the session reports);
+`OutboundGenesisInvariantSuite` (an invariant on a hot session over a dialled and over a reused connection). The devnet `relay` scenario asserts reuse against
 the reference node (see [running.md](../running.md)).
 
 ## Peer selection: the outbound peers (G1.1)
