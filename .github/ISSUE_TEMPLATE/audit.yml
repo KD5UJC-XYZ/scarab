@@ -26,6 +26,7 @@ body:
         - area:models
         - area:node
         - area:fuzz
+        - area:tools
         - area:build
         - area:scripts
         - area:docs

@@ -72,7 +72,7 @@ object RealLedgerFileCheck:
                 )
       }
 
-  def main(args: Array[String]): Unit =
+  def write(args: Array[String]): Unit =
     val path = Path.of(args(0))
     args.lift(1).foreach { meta =>
       println(s"meta: ${SnapshotMeta.parse(Files.readString(Path.of(meta))).show}")

@@ -68,5 +68,5 @@ object RewardTimingCases extends Assertions:
       case PulsingRewUpdate.Complete(update) => update
       case _ => fail("native completeStep returned a pending reward update")
 
-  def main(args: Array[String]): Unit =
+  def write(args: Array[String]): Unit =
     Files.writeString(Path.of(args(0)), Json.arr(cases.map(_.json)*).spaces2)

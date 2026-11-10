@@ -36,7 +36,7 @@ script admission/evaluation evidence; they do not claim complete-node transactio
 Export in the Docker JDK container:
 
 ```sh
-bash scripts/sbtw 'plutus/Test/runMain xyz.kd5ujc.scarab.plutus.BoundaryTransactionScripts /oracle/scripts.jsonl /oracle/requests.jsonl'
+bash scripts/sbtw 'tools/runMain xyz.kd5ujc.scarab.plutus.BoundaryTransactionScriptsMain /oracle/scripts.jsonl /oracle/requests.jsonl'
 ```
 
 Run the existing pinned oracle image offline on `requests.jsonl`. For complete submissions, use an

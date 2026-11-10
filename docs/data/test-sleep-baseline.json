@@ -44,9 +44,6 @@
   "network/src/test/scala/xyz/kd5ujc/scarab/network/IncrementalReceiveSuite.scala": {
    "sleep": 1
   },
-  "network/src/test/scala/xyz/kd5ujc/scarab/network/LeiosProbe.scala": {
-   "sleep": 2
-  },
   "network/src/test/scala/xyz/kd5ujc/scarab/network/LocalServerSuite.scala": {
    "cede": 1,
    "sleep": 2
@@ -184,9 +181,6 @@
   "node/src/test/scala/xyz/kd5ujc/scarab/node/LedgerPeersWiringSuite.scala": {
    "sleep": 4
   },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/Memory94Main.scala": {
-   "sleep": 2
-  },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/OutboundLinkIdentitySuite.scala": {
    "cede": 2
   },
@@ -270,9 +264,6 @@
    "sleep": 2
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/storage/ChainStorageSuite.scala": {
-   "sleep": 2
-  },
-  "node/src/test/scala/xyz/kd5ujc/scarab/storage/InternDecodeBench.scala": {
    "sleep": 1
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshotExportSuite.scala": {

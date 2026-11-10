@@ -454,7 +454,7 @@ committee (`SignerWithoutKey`); committee seating equals a model sort.
 
 ### Benchmark: 900 seats
 
-`crypto/Test/runMain xyz.kd5ujc.scarab.crypto.bls.BlsBenchmark`, one thread, JDK in the build container, warm, host shared
+`tools/runMain xyz.kd5ujc.scarab.crypto.bls.BlsBenchmark`, one thread, JDK in the build container, warm, host shared
 with other jobs (indicative only):
 
 | Operation | Time |
@@ -477,7 +477,7 @@ Read-only connection to `leios-node.play.dev.cardano.org:3001`, magic 164, with 
 `LeiosNotify`/`LeiosFetch` (`network/`, Blueprint `messages.cddl`; round-trip, state-admission and
 malformed-input tests) with clients `LeiosNotifyClient`/`LeiosFetchClient` (`network/`).
 The probe is `LeiosProbe` in the test sources of `network`
-(`network/Test/runMain xyz.kd5ujc.scarab.network.LeiosProbe <host> <port> <magic> <seconds> <outfile>`).
+(`tools/runMain xyz.kd5ujc.scarab.network.LeiosProbe <host> <port> <magic> <seconds> <outfile>`).
 
 | Attempt | Result |
 |---|---|

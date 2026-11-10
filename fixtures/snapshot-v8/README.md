@@ -24,7 +24,7 @@ and `SHA256SUMS` binds the files.
 Recipe (in the JDK image, from the checkout, into a directory that does not exist yet):
 
 ```sh
-bash scripts/sbtw 'node/Test/runMain xyz.kd5ujc.scarab.storage.SnapshotV8FixtureMain /work/fixtures/snapshot-v7 /work/fixtures/snapshot-v8'
+bash scripts/sbtw 'tools/runMain xyz.kd5ujc.scarab.storage.SnapshotV8FixtureMain /work/fixtures/snapshot-v7 /work/fixtures/snapshot-v8'
 ```
 
 `SnapshotV8FixtureMain` runs the V7 → V8 `step` of the registered migration (before V9 it ran the

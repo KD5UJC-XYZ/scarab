@@ -29,7 +29,7 @@ hardening is tracked by [#294](https://github.com/KD5UJC-XYZ/scarab/issues/294);
 in the authoritative checkout or treat its output as an independent oracle:
 
 ```sh
-bash scripts/sbtw 'set node / Test / run / baseDirectory := file(".")' 'node/Test/runMain xyz.kd5ujc.scarab.node.ntc.NtcGolden'
+bash scripts/sbtw 'tools/runMain xyz.kd5ujc.scarab.node.ntc.NtcGoldenMain'
 ```
 
 Run that command inside `scarab-jdk:local`, as CONTRIBUTING requires.

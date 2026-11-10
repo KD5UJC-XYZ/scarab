@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node.read
 
 import io.circe.Json
-import cats.effect.{ExitCode, IO, IOApp}
+import cats.effect.{ExitCode, IO}
 import cats.effect.std.Console
 import cats.syntax.all.*
 import java.nio.file.{Files, Path, StandardOpenOption}
@@ -32,7 +32,7 @@ import xyz.kd5ujc.scarab.node.Projection
   * The Byron states are in the file for the record: the projection then was of a placeholder ledger
   * state, which a chain in Byron does not have, and is now the consensus part alone.
   */
-object ProjectionGolden extends IOApp:
+object ProjectionGolden:
   val file: Path = Path.of("fixtures/projection-golden/eras.tsv")
 
   def sha256(text: String): String =

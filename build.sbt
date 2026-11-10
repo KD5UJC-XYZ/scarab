@@ -359,7 +359,6 @@ lazy val node = scarab("node")
     Compile / run / fork := true,
     // From a classpath the JAR's Enable-Native-Access attribute does not apply, so the node run this way needs
     // the flags itself (docker/candidate.Dockerfile; issue 589)
-    Compile / run / javaOptions ++= jdk25Flags
   )
 
 // Schema-first models, step 1: CDDL parser and Scala generator (build-time tool; see docs/models.md).
@@ -432,6 +431,28 @@ lazy val fuzz = scarab("fuzz")
     )
   )
 
+// Benchmarks, probes and the programs that write fixtures: run by hand (`tools/runMain <class>`), never as
+// tests and never shipped. They use the modules' test kits, so they follow the rules of test code: no
+// `-Wsafe-init`, no WartRemover errors.
+lazy val tools = scarab("tools")
+  .dependsOn(
+    codec % "compile->compile;compile->test",
+    crypto % "compile->compile;compile->test",
+    protocol % "compile->compile;compile->test",
+    network % "compile->compile;compile->test",
+    plutus % "compile->compile;compile->test",
+    ledger % "compile->compile;compile->test",
+    consensus % "compile->compile;compile->test",
+    storage % "compile->compile;compile->test",
+    node % "compile->compile;compile->test",
+    models % "compile->compile;compile->test"
+  )
+  .settings(
+    Compile / scalacOptions -= "-Wsafe-init",
+    Compile / compile / wartremoverErrors := Nil,
+    publish / skip := true
+  )
+
 lazy val root = project
   .in(file("."))
   .disablePlugins(TpolecatPlugin)
@@ -447,7 +468,8 @@ lazy val root = project
     node,
     modelsGen,
     models,
-    fuzz
+    fuzz,
+    tools
   )
   .settings(
     reproducibleCheck := {
@@ -500,7 +522,8 @@ val modules = Seq(
   "node",
   "modelsGen",
   "models",
-  "fuzz"
+  "fuzz",
+  "tools"
 )
 
 addCommandAlias(

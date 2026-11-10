@@ -23,7 +23,7 @@ The old/new interpreter source SHA-256 values are respectively
 No codec, credential-order, Diff, rule, crypto or reward implementation changes between conditions.
 
 The maintained entry point is
-`node/src/test/scala/xyz/kd5ujc/scarab/node/PreviewRuleBench.scala`, added in `ea616449`.
+`tools/src/main/scala/xyz/kd5ujc/scarab/node/PreviewRuleBench.scala`, added in `ea616449`.
 The measured standalone source SHA-256 is
 `04ee354d1b73e93f6f4acdb024997ecabf21d62fb98b641faf0b14d1767f2000`;
 the committed, scalafmt-formatted source is
@@ -189,12 +189,12 @@ this prepares the dev target and does not claim completion after main landing.
 
 The batch's claim is that removing the erased value channels changed no verdict and no byte, and
 that the typed implementations stay inside the cost bar the tickets set (10% on a primary
-workload). One harness — `ledger/src/test/scala/xyz/kd5ujc/scarab/bench/CastErasureBench.scala`
-(`ledger/Test/runMain xyz.kd5ujc.scarab.bench.CastErasureBench <workload|all> [n]`) — runs each
+workload). One harness — `tools/src/main/scala/xyz/kd5ujc/scarab/bench/CastErasureBench.scala`
+(`tools/runMain xyz.kd5ujc.scarab.bench.CastErasureBench <workload|all> [n]`) — runs each
 ticket's workload against both builds. The same file is added by #248 for #202 and by this chapter;
 the two copies are identical, so the repository has one authoritative harness. The codec workload
-is `storage/src/test/scala/xyz/kd5ujc/scarab/storage/BenchCodecMain.scala`
-(`storage/Test/runMain xyz.kd5ujc.scarab.storage.BenchCodecMain [iterations]`).
+is `tools/src/main/scala/xyz/kd5ujc/scarab/storage/BenchCodecMain.scala`
+(`tools/runMain xyz.kd5ujc.scarab.storage.BenchCodecMain [iterations]`).
 
 **Inputs are deterministic and asserted so outside the timed region.** The credential workload
 builds 100,000 credentials whose 28 bytes carry the index in the last four bytes, asserts

@@ -14,7 +14,7 @@ In an isolated worktree, mount the checkout as `/work`, the shared dependency ca
 `/work/.cache`, use a private `SBT_GLOBAL_BASE=/tmp/sbt-global`, and export with Docker JDK:
 
 ```sh
-bash scripts/sbtw 'plutus/Test/runMain xyz.kd5ujc.scarab.plutus.BuiltinCostingCorpus fixtures/reference/plutus-costing'
+bash scripts/sbtw 'tools/runMain xyz.kd5ujc.scarab.plutus.BuiltinCostingCorpusMain fixtures/reference/plutus-costing'
 ```
 
 Build and execute the optional Haskell tool from the repository root:

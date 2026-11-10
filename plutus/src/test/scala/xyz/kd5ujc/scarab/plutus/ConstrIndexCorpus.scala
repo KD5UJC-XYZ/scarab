@@ -76,7 +76,7 @@ object ConstrIndexCorpus:
   val protocols: Vector[Int] = Vector(9, 10, 11)
 
   /** Writes the requests for the reference costing oracle (`scripts/oracle/plutus/costing`). */
-  def main(args: Array[String]): Unit =
+  def write(args: Array[String]): Unit =
     val out = Path.of(args.headOption.getOrElse("/oracle/constr-index-requests.jsonl"))
     val rows = for
       probe <- probes

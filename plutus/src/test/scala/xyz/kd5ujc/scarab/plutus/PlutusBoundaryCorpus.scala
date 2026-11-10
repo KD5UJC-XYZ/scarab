@@ -199,7 +199,7 @@ object PlutusBoundaryCorpus:
       }
       .toVector
 
-  def main(args: Array[String]): Unit =
+  def write(args: Array[String]): Unit =
     val out = Path.of(args.headOption.getOrElse("/oracle/requests.jsonl"))
     val evaluator = ScalusEvaluator.pure
     val decoder = ScalusEvaluator.pureDecoder

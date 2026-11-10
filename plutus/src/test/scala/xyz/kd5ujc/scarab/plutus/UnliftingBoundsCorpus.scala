@@ -135,7 +135,7 @@ object UnliftingBoundsCorpus:
   val budget: ExUnits = ExUnits(BigInt(1) << 40, BigInt(1) << 60)
 
   /** Writes the requests for the reference costing oracle (`scripts/oracle/plutus/costing`). */
-  def main(args: Array[String]): Unit =
+  def write(args: Array[String]): Unit =
     val out = Path.of(args.headOption.getOrElse("/oracle/unlifting-bounds-requests.jsonl"))
     val rows = for
       probe <- probes

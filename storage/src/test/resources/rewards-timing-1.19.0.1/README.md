@@ -58,7 +58,7 @@ Decompressed SHA-256 (gzip mtime is zero):
 - results.json: `899603a5a742144e5357e1edc7b59c8ce509b10d5d2e367c447733ef80741e65`
 
 Reproduce using the [reward wrapper](../../../../../scripts/oracle/rewards/README.md)
-and `storage/Test/runMain xyz.kd5ujc.scarab.storage.haskell.state.RewardTimingCases /evidence/inputs.json`.
+and `tools/runMain xyz.kd5ujc.scarab.storage.haskell.state.RewardTimingCasesMain /evidence/inputs.json`.
 Run the wrapper on those inputs, then compare the decoded JSON and the hashes above.
 The native observer image ID for this execution is
 `sha256:80a347549c20cec9203fc3144d93b329d70bc21b78ef4fbf9537acc479eb81b4`.

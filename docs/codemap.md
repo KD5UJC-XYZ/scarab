@@ -21,6 +21,7 @@ node       -> storage, network
 models-gen -> (none)
 models     -> codec, crypto; test only: models-gen, protocol, ledger
 fuzz       -> codec, protocol, node, models-gen
+tools      -> codec, crypto, protocol, network, plutus, ledger, consensus, storage, node, models
 ```
 
 ## codec
@@ -145,3 +146,32 @@ Generated CDDL models runtime and equivalence tests.
 Structured fuzzing of decoder entry points (test only).
 
 No main sources.
+
+## tools
+
+Programs run by hand, never as tests and never shipped: benchmarks, probes against a live peer, and the writers of committed fixtures and goldens; they use the modules' test kits.
+
+| Package | Responsibility | Entry points | Suites | Decisions |
+|---|---|---|---|---|
+| bench | Hand-run benchmarks for the `bench` package (its package, for its package-private access) | `CastErasureBench`, `FlatScanBench` |  |  |
+| codec | Hand-run benchmarks for the `codec` package (its package, for its package-private access) | `CborDecodeBench`, `TreeBench` |  |  |
+| consensus | Hand-run benchmarks for the `consensus` package (its package, for its package-private access) | `DecideBenchMain` |  |  |
+| crypto | Hand-run benchmarks for the `crypto` package (its package, for its package-private access) | `VerifyBench` |  |  |
+| crypto/bls | Hand-run benchmarks for the `crypto.bls` package (its package, for its package-private access) | `BlsBenchmark` |  |  |
+| ledger | Hand-run benchmarks for the `ledger` package (its package, for its package-private access) | `ApplyBenchMain`, `DetachedRecordsBench`, `UtxoChangesBench` |  |  |
+| ledger/state | Hand-run benchmarks for the `ledger.state` package (its package, for its package-private access) | `DiffBenchMain` |  |  |
+| models | Hand-run benchmarks, checks and comparisons for the `models` package (its package, for its package-private access) | `CuddleCrossCheck`, `DecodeBench` |  |  |
+| network | Hand-run benchmarks, probes for the `network` package (its package, for its package-private access) | `LeiosChainProbe`, `LeiosProbe`, `MuxThroughputBench`, `PeerSharingProbe` |  |  |
+| node | Hand-run benchmarks, checks and comparisons for the `node` package (its package, for its package-private access) | `FiberBoundaryBench`, `HaskellScalaCompareMain`, `Memory94Main`, `PeerMetricsBench`, `PreviewRuleBench`, `SelectionReviewBenchmark` |  |  |
+| node/differential | Hand-run checks and comparisons for the `node.differential` package (its package, for its package-private access) | `BoundaryTickMain` | `BoundaryDigestSuite` |  |
+| node/governor | Hand-run checks and comparisons for the `node.governor` package (its package, for its package-private access) | `DebugMain` |  |  |
+| node/log | Hand-run benchmarks for the `node.log` package (its package, for its package-private access) | `LogRouterBenchMain` |  |  |
+| node/metrics | Hand-run fixture and golden writers for the `node.metrics` package (its package, for its package-private access) | `CatalogueTable` |  |  |
+| node/ntc | Hand-run fixture and golden writers for the `node.ntc` package (its package, for its package-private access) | `NtcGoldenMain`, `WalletQueryCasesMain` |  |  |
+| node/preview | Hand-run checks and comparisons for the `node.preview` package (its package, for its package-private access) | `K1OfflineMain` | `K1OfflineMainSuite` |  |
+| node/read | Hand-run fixture and golden writers for the `node.read` package (its package, for its package-private access) | `ProjectionGoldenMain` |  |  |
+| node/tools | Hand-run benchmarks for the `node.tools` package (its package, for its package-private access) | `WarmBenchMain` |  |  |
+| plutus | Hand-run fixture and golden writers for the `plutus` package (its package, for its package-private access) | `BoundaryTransactionScriptsMain`, `BuiltinCostingCorpusMain`, `ConstrIndexCorpusMain`, `EqualsDataCorpusMain`, `FlatDecodeCorpusMain`, `PlutusBoundaryCorpusMain`, `SerialiseDataCorpusMain`, `SliceByteStringCorpusMain`, `UnliftingBoundsCorpusMain` |  |  |
+| protocol | Hand-run benchmarks for the `protocol` package (its package, for its package-private access) | `WireSkipBench` |  |  |
+| storage | Hand-run benchmarks, checks and comparisons, fixture and golden writers for the `storage` package (its package, for its package-private access) | `BenchCodecMain`, `InternDecodeBench`, `MemPackJoin`, `RewardSnapshotFixtureMain`, `SnapshotCodecBench`, `SnapshotV10FixtureMain`, `SnapshotV7FixtureMain`, `SnapshotV8FixtureMain`, `SnapshotV9FixtureMain`, `UtxoScanBench` | `MemPackComparisonSuite` |  |
+| storage/haskell/state | Hand-run benchmarks, checks and comparisons, fixture and golden writers for the `storage.haskell.state` package (its package, for its package-private access) | `HaskellStateDecodeBench`, `RealLedgerFileCheckMain`, `RewardLikelihoodCasesMain`, `RewardOracleCasesMain`, `RewardTimingCasesMain`, `SnapshotTablesBench` |  |  |

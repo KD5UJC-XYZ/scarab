@@ -117,9 +117,9 @@ of 100,000 failures, nests and certificates on a 256 KiB stack.
 ## Measurement
 
 Old (the cast-based machine) and new (this machine) are measured by one harness,
-`ledger/src/test/scala/xyz/kd5ujc/scarab/bench/CastErasureBench.scala` (the same file, byte for
+`tools/src/main/scala/xyz/kd5ujc/scarab/bench/CastErasureBench.scala` (the same file, byte for
 byte, as the one added by the performance chapter, `#250`):
-`ledger/Test/runMain xyz.kd5ujc.scarab.bench.CastErasureBench rules 10000`. It applies the same
+`tools/runMain xyz.kd5ujc.scarab.bench.CastErasureBench rules 10000`. It applies the same
 block of 10,000 transactions through `Sts(Bbody)` with one fixed Ed25519 signing key (so both builds
 receive identical inputs), three warm-up runs and five measured runs, pinned CPUs
 (`--cpuset-cpus`, no CFS quota), one JVM, allocation counted per thread with

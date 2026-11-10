@@ -132,7 +132,7 @@ object BuiltinCostingCorpus:
       .flatten
       .toVector
 
-  def main(args: Array[String]): Unit =
+  def write(args: Array[String]): Unit =
     val directory = Path.of(args.head)
     Files.createDirectories(directory)
     Files.writeString(
