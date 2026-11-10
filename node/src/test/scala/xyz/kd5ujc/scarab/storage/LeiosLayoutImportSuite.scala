@@ -29,7 +29,9 @@ class LeiosLayoutImportSuite extends CatsEffectSuite:
   import StorageTestKit.{ok, tempDir}
   private val fixture = JPath.of("fixtures/leios/state")
   private val setup =
-    NodeSetup.fromDirectory(fixture.resolve("genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.LeiosB004fe0c)(fixture.resolve("genesis"))
+      .fold(e => fail(e.message), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
   // the devnet starts in Conway: the parameters are its genesis state's, as the import command
   // takes them (`LedgerSnapshotImportCommand.inputs`)
