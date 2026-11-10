@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.Applicative
 import cats.effect.{Async, Concurrent, Resource}
 import cats.effect.std.Queue
-import cats.effect.syntax.all.*
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, IpAddress, SocketAddress}
+import xyz.kd5ujc.scarab.network.selection.DiffusionMode
 import xyz.kd5ujc.scarab.protocol.ConnectionIdentityError
 import fs2.{Chunk, Stream}
-import fs2.io.net.{Network, Socket}
 import scala.concurrent.duration.*
 
 /** An ordered, reliable byte pipe to one peer. Interpreters surface transport failures as
@@ -33,52 +31,32 @@ trait Bearer[F[_]]:
   def close: F[Unit]
 
 object Bearer:
-  private def numeric(host: Host): Either[ConnectionIdentityError, IpAddress] = host match
-    case ip: IpAddress => Right(ip)
-    case other         => Left(ConnectionIdentityError.UnresolvedAddress(other.toString))
-
-  def fromSocket[F[_]: Applicative](socket: Socket[F]): Bearer[F] = new Bearer[F]:
-    override def connectionId: Option[F[Either[ConnectionIdentityError, ConnectionId]]] =
-      (socket.address, socket.peerAddress) match
-        case (local: SocketAddress[?], remote: SocketAddress[?]) =>
-          Some(
-            Applicative[F].pure(
-              (numeric(local.host), numeric(remote.host)).tupled.flatMap { (a, b) =>
-                ConnectionId.fromSocketAddresses(
-                  SocketAddress(a, local.port),
-                  SocketAddress(b, remote.port)
-                )
-              }
-            )
-          )
-        case _ => None
-    def reads = socket.reads
-    def write(bytes: Chunk[Byte]) = socket.write(bytes)
-    def close = socket.endOfOutput
-
-  /** Open a TCP connection. Host names are resolved by the JVM, so DNS relays work. */
+  /** A tool's TCP connection to `address`: its host resolved by the JVM, so DNS relays work, then a
+    * socket opened as the node opens one with no listening address of its own ([[TcpSockets.dial]],
+    * no bind). The node's peers are dialled by its transport, which binds them.
+    */
   def tcp[F[_]: Async](address: SocketAddress[Host], connectTimeout: FiniteDuration)(using
       Raise[F, NetworkError]
   ): Resource[F, Bearer[F]] =
     Resource
-      .make(
-        Network
-          .forAsync[F]
-          .connect(address)
-          .allocated
-          .timeout(connectTimeout)
-          .attempt
-          .flatMap {
-            case Right(allocated) => allocated.pure[F]
-            case Left(e) =>
-              val error = e match
-                case _: java.io.IOException | _: java.util.concurrent.TimeoutException =>
-                  NetworkError.Connect(address.toString, e)
-                case other => NetworkError.Defect(other)
-              error.raise[F, (Socket[F], F[Unit])]
-          }
-      )(_._2)
-      .map(allocated => fromSocket(allocated._1))
+      .eval(ConnectionManager.resolve[F](address).attempt.flatMap {
+        case Right(remote) => remote.pure[F]
+        case Left(e: java.io.IOException) =>
+          NetworkError
+            .Connect(
+              address.toString,
+              TcpSocketError.Failed(SocketStep.Resolve(address.host), Errno.of(e))
+            )
+            .raise[F, SocketAddress[IpAddress]]
+        case Left(other) => NetworkError.Defect(other).raise[F, SocketAddress[IpAddress]]
+      })
+      .flatMap(remote =>
+        TcpSockets.dial[F](
+          OutboundPlan.of(remote, NodeAddresses.none, DiffusionMode.InitiatorOnly),
+          connectTimeout
+        )
+      )
+      .map(_.bearer)
 
   /** Two connected in-memory ends. Each direction holds at most `capacity` writes, so a slow reader
     * blocks the writer exactly like a full socket buffer.

@@ -58,11 +58,11 @@ class OutboundReuseSuite extends FailsOnUncaught:
   /** A transport that dials nothing: reuse must not need it. */
   private final class NoDial(dials: Ref[IO, Int]) extends Transport[IO, PeerNetwork.Addr]:
     def resolve(at: PeerNetwork.Addr) = IO.pure(Right(remote))
-    def bearer(at: PeerNetwork.Addr, to: SocketAddress[IpAddress])(using
+    def bearer(at: PeerNetwork.Addr, to: SocketAddress[IpAddress], mode: DiffusionMode)(using
         raise: Raise[IO, NetworkError]
     ) = Resource.eval(
       dials.update(_ + 1) *> raise.raise[NetworkError, Bearer[IO]](
-        NetworkError.Connect(at.toString, new java.io.IOException("refused"))
+        ConnectFailures.connect(to)
       )
     )
 

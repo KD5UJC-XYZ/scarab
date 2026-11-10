@@ -47,10 +47,10 @@ class OutboundLossReportSuite extends FailsOnUncaught:
   private final class Released(underlying: InMemoryPeers, released: Deferred[IO, Unit])
       extends Transport[IO, PeerNetwork.Addr]:
     def resolve(address: PeerNetwork.Addr) = underlying.resolve(address)
-    def bearer(address: PeerNetwork.Addr, remote: SocketAddress[IpAddress])(using
-        Raise[IO, NetworkError]
+    def bearer(address: PeerNetwork.Addr, remote: SocketAddress[IpAddress], mode: DiffusionMode)(
+        using Raise[IO, NetworkError]
     ): Resource[IO, Bearer[IO]] =
-      underlying.bearer(address, remote).onFinalize(released.complete(()).void)
+      underlying.bearer(address, remote, mode).onFinalize(released.complete(()).void)
 
   test("a hot session's loss report outlives the teardown of its connection (#448)") {
     for

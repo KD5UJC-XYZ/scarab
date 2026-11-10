@@ -48,7 +48,7 @@ import cats.mtl.{Ask, Handle, Raise, Stateful, Tell}
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState}
 import cats.syntax.all.*
 import java.nio.file.Path
-import com.comcast.ip4s.{Host, Port, SocketAddress}
+import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import xyz.kd5ujc.scarab.protocol.NtNHeader
@@ -63,10 +63,14 @@ import xyz.kd5ujc.scarab.network.{
   NodeToNodeServer,
   NetworkError,
   DiffusionFailure,
+  Errno,
   LocalAddress,
   LocalServer,
   LocalSockets,
+  NodeAddresses,
   ServerHandlers,
+  SocketStep,
+  TcpSocketError,
   SocketConfigError
 }
 import xyz.kd5ujc.scarab.node.forge.{
@@ -628,6 +632,33 @@ object Main extends IOApp:
     */
   private def failedStart(text: String): IO[Unit] = IO.consoleForIO.errorln(s"scarab: $text")
 
+  /** The node's own address from `--listen`, resolved once before any socket is opened: the
+    * listener binds to it, and outbound connections in `InitiatorAndResponder` mode are bound to it
+    * ([[NodeAddresses]]). An IPv6 address is refused here, before any bind (an approved deviation,
+    * issue 854; [[NodeAddresses.listening]]).
+    */
+  private def nodeAddress(
+      address: SocketAddress[Host]
+  ): IO[Either[ConfigError, Listening]] =
+    def refused(cause: TcpSocketError) =
+      ConfigError(ConfigProblem.ListenAddress(address.toString, cause))
+    ConnectionManager.resolve[IO](address).attempt.flatMap {
+      case Right(resolved) =>
+        IO.pure(
+          NodeAddresses
+            .listening(resolved)
+            .bimap(refused, Listening(resolved, _))
+        )
+      case Left(e: java.io.IOException) =>
+        IO.pure(Left(refused(TcpSocketError.Failed(SocketStep.Resolve(address.host), Errno.of(e)))))
+      case Left(other) => IO.raiseError(other)
+    }
+
+  /** Where the node listens for node-to-node connections, and its own addresses for the outbound
+    * ones.
+    */
+  private final case class Listening(address: SocketAddress[IpAddress], own: NodeAddresses)
+
   private def follow(requested: Options)(using
       Handle[IO, NodeError],
       Log[IO]
@@ -665,6 +696,7 @@ object Main extends IOApp:
         setup.config.settings.experimentalHardForksEnabled
       )
       pool <- requested.forge.traverse(credentials)
+      listening <- requested.listen.traverse(nodeAddress(_).flatMap(admitted))
       removal <- removedStale(setup)
       code <- removal.fold(
         error =>
@@ -674,7 +706,7 @@ object Main extends IOApp:
           IO.blocking(completed(requested, setup))
             .flatMap(admitted)
             .flatMap((options, setup, topology) =>
-              started(options, setup, topology, requested.peers, pool, layout)
+              started(options, setup, topology, requested.peers, pool, layout, listening)
             )
       )
     yield code
@@ -702,7 +734,8 @@ object Main extends IOApp:
       topology: Option[Topology],
       cliPeers: List[SocketAddress[Host]],
       credentials: Option[PoolCredentials],
-      layout: ReferenceLayout
+      layout: ReferenceLayout,
+      listening: Option[Listening]
   )(using Handle[IO, NodeError], Log[IO]): IO[ExitCode] =
     val ownership = options.db.fold(Resource.unit[IO])(db =>
       xyz.kd5ujc.scarab.storage.DatabaseOwnership.resource[IO](fs2.io.file.Path.fromNioPath(db))
@@ -744,7 +777,8 @@ object Main extends IOApp:
         scheduling,
         StallDiagnostics.abandoning(supervisor),
         credentials,
-        layout
+        layout,
+        listening
       )
     }
 
@@ -760,7 +794,8 @@ object Main extends IOApp:
       store: UtxoStore[IO],
       cache: VerificationCache,
       scheduling: Scheduling[IO],
-      credentials: Option[PoolCredentials]
+      credentials: Option[PoolCredentials],
+      listening: Option[Listening]
   ):
     def genesis: xyz.kd5ujc.scarab.ledger.ShelleyGenesis = setup.genesis
 
@@ -816,7 +851,7 @@ object Main extends IOApp:
       manager: ConnectionManager[IO],
       governor: InboundGovernor[IO],
       network: Resource[IO, PeerNetwork.Running[IO, PeerNetwork.Addr]],
-      relay: Resource[IO, Unit]
+      relay: Raise[IO, DiffusionFailure] => Resource[IO, IO[DiffusionFailure]]
   )
 
   /** The services beside the network: the node-to-client server, the forger and the watchers. */
@@ -839,14 +874,26 @@ object Main extends IOApp:
       scheduling: Scheduling[IO],
       background: IO[Unit] => IO[Unit],
       credentials: Option[PoolCredentials],
-      layout: ReferenceLayout
+      layout: ReferenceLayout,
+      listening: Option[Listening]
   )(using
       handle: Handle[IO, NodeError],
       log: Log[IO]
   ): IO[ExitCode] =
     val setup = loaded.copy(praos = loaded.praos.copy(verdicts = cache))
     val run =
-      Startup(options, cliPeers, loaded, setup, topology, store, cache, scheduling, credentials)
+      Startup(
+        options,
+        cliPeers,
+        loaded,
+        setup,
+        topology,
+        store,
+        cache,
+        scheduling,
+        credentials,
+        listening
+      )
     instrumented(run, background).flatMap { instruments =>
       given Metrics[IO] = instruments.metrics
       ruled(run).flatMap { rules =>
@@ -1532,7 +1579,7 @@ object Main extends IOApp:
           timeouts = options.churnInterval.fold(Churn.Timeouts())(Churn.Timeouts().within),
           seed = seed
         ),
-        PeerNetwork.tcp[IO](10.seconds),
+        PeerNetwork.tcp[IO](10.seconds, run.listening.fold(NodeAddresses.none)(_.own)),
         manager,
         OutboundPeers.Config(),
         hot,
@@ -1557,22 +1604,29 @@ object Main extends IOApp:
         genesisReadings = genesisRuntime.map(_.gsmReadings(follower.versusHeaders)),
         peerMetrics = Some(peerMetrics)
       )
-      val relay = options.listen.fold(Resource.unit[IO])(address =>
-        BearerServer
-          .listen[IO, NetworkError](
-            Some(address.host),
-            Some(address.port),
-            maxConnections = None,
-            beforeAccept = Some(
-              AcceptedConnectionsLimit.rateLimit(manager, accepted, connectionEvents)
-            )
-          )((remote, failure) =>
-            ListenerFailures.report(remote.toString, failure, logged, fatalSink)
-          ) { (bearer, remote) =>
-            governor.serve(bearer, remote).void
-          }
-          .evalMap(bound => logged(NodeEvent.Listening(bound.toString)))
-      )
+      // the node-to-node listener; a failure to set it up, or an accept loop that stops, stops the
+      // node as the reference's `DiffusionErrored` does
+      val relay = (raise: Raise[IO, DiffusionFailure]) =>
+        given Raise[IO, TcpSocketError] =
+          Peer.contramapped[IO, DiffusionFailure, TcpSocketError](raise)(
+            DiffusionFailure.NodeToNode(_)
+          )
+        run.listening.fold(Resource.pure[IO, IO[DiffusionFailure]](IO.never))(listening =>
+          BearerServer
+            .listen[IO, NetworkError](
+              listening.address,
+              maxConnections = None,
+              beforeAccept = Some(
+                AcceptedConnectionsLimit.rateLimit(manager, accepted, connectionEvents)
+              )
+            )((remote, failure) =>
+              ListenerFailures.report(remote.toString, failure, logged, fatalSink)
+            ) { (bearer, remote) =>
+              governor.serve(bearer, remote).void
+            }
+            .evalTap(bound => logged(NodeEvent.Listening(bound.address.toString)))
+            .map(_.stopped.map(DiffusionFailure.NodeToNode(_)))
+        )
       Connections(manager, governor, network, relay)
 
   /** The services beside the peer network: the node-to-client server, the forger with `--forge`,
@@ -1796,14 +1850,14 @@ object Main extends IOApp:
               forging.map(_.stats.byEpoch.map(Reports.forgeReport)),
               Some(collectors.scrape)
             )(fatalSink)
-            .flatMap(_ => relay)
-            .flatMap(_ => local(raise))
+            .flatMap(_ => relay(raise))
+            .flatMap(relayStopped => local(raise).map(IO.race(relayStopped, _).map(_.merge)))
             .flatTap(_ => signals)
             .flatTap(_ => production)
             .flatTap(_ => reporting)
             .flatTap(_ => watching)
-            .use(localStopped =>
-              IO.race(sync, localStopped.flatMap(raise.raise[DiffusionFailure, Unit])).void
+            .use(stopped =>
+              IO.race(sync, stopped.flatMap(raise.raise[DiffusionFailure, Unit])).void
             )
         })
     for
@@ -1873,8 +1927,9 @@ object Main extends IOApp:
     case Stalled
     case Faulted(fault: Fatal)
 
-    /** The node-to-client side of the network stopped (the reference's `DiffusionErrored`): the
-      * process exits with 1, as the reference's top-level handler does.
+    /** A server of the node stopped, the node-to-node listener or the node-to-client one (the
+      * reference's `DiffusionErrored`): the process exits with 1, as the reference's top-level
+      * handler does.
       */
     case Errored(failure: DiffusionFailure)
 

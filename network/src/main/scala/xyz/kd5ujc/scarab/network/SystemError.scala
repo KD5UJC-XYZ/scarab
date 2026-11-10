@@ -28,10 +28,11 @@ enum IoErrorType(val shown: String):
   case ProtocolError extends IoErrorType("protocol error")
   case UnsupportedOperation extends IoErrorType("unsupported operation")
 
-/** The Linux `errno` values a call of the local socket can fail with. Each carries its number, its
-  * text in the C library the JVM runs on (glibc, what the JDK puts in its exceptions), its text in
-  * musl (the C library of the reference's static release binary, so the text the reference shows),
-  * and the kind GHC gives it (`Foreign.C.Error.errnoToIOError`, base 4.18).
+/** The Linux `errno` values a call of the local socket or of a node-to-node TCP socket can fail
+  * with. Each carries its number, its text in the C library the JVM runs on (glibc, what the JDK
+  * puts in its exceptions), its text in musl (the C library of the reference's static release
+  * binary, so the text the reference shows), and the kind GHC gives it
+  * (`Foreign.C.Error.errnoToIOError`, base 4.18).
   */
 enum Errno(val number: Int, val glibc: String, val musl: String, val kind: IoErrorType):
   case EPERM
@@ -165,6 +166,13 @@ enum Errno(val number: Int, val glibc: String, val musl: String, val kind: IoErr
         "Address not available",
         IoErrorType.UnsupportedOperation
       )
+  case ENETUNREACH
+      extends Errno(
+        101,
+        "Network is unreachable",
+        "Network unreachable",
+        IoErrorType.NoSuchThing
+      )
   case ECONNABORTED
       extends Errno(
         103,
@@ -179,6 +187,10 @@ enum Errno(val number: Int, val glibc: String, val musl: String, val kind: IoErr
         "No buffer space available",
         IoErrorType.ResourceExhausted
       )
+  case ECONNREFUSED
+      extends Errno(111, "Connection refused", "Connection refused", IoErrorType.NoSuchThing)
+  case EHOSTUNREACH
+      extends Errno(113, "No route to host", "Host is unreachable", IoErrorType.NoSuchThing)
 
 object Errno:
   private val byGlibc: Map[String, Errno] = values.map(e => e.glibc -> e).toMap
