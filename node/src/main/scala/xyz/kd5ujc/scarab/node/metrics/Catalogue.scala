@@ -356,6 +356,25 @@ object Catalogue:
     "Connections on which both sides run the protocols."
   )
 
+  // the inbound governor's `Counters`, as `TrInboundGovernorCounters` writes them
+  // (`Ouroboros/Network/Tracing/InboundGovernor.hs` 36-49, ouroboros-network `2fb69829`)
+  val inboundGovernorIdle = GaugeDef(
+    MetricName("cardano_node_metrics_inboundGovernor_idle_int"),
+    "Connections on which the peer runs none of our responders, the idle timer armed."
+  )
+  val inboundGovernorCold = GaugeDef(
+    MetricName("cardano_node_metrics_inboundGovernor_cold_int"),
+    "Connections the peer left idle past the timeout, kept for our outbound use."
+  )
+  val inboundGovernorWarm = GaugeDef(
+    MetricName("cardano_node_metrics_inboundGovernor_warm_int"),
+    "Connections on which the peer runs our responders, none of them hot."
+  )
+  val inboundGovernorHot = GaugeDef(
+    MetricName("cardano_node_metrics_inboundGovernor_hot_int"),
+    "Connections on which the peer runs a hot responder of ours."
+  )
+
   // ---- scarab_*: the chain
 
   val buildInfo = GaugeDef(
@@ -1069,6 +1088,10 @@ object Catalogue:
     inboundConns,
     outboundConns,
     duplexConns,
+    inboundGovernorIdle,
+    inboundGovernorCold,
+    inboundGovernorWarm,
+    inboundGovernorHot,
     buildInfo,
     currentEra,
     blocksApplied,

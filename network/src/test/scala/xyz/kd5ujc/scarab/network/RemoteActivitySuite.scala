@@ -81,7 +81,7 @@ class RemoteActivitySuite extends FailsOnUncaught:
         running <- Deferred[IO, FiberIO[Unit]]
         timer = (left: FiniteDuration) =>
           IO.sleep(left) *> responders
-            .running(finish.get)
+            .running(ProtocolResults.Temperature.Established)(finish.get)
             .start
             .flatMap(running.complete) *> settle
         // the responder is let go and cancelled, and the connection's resources released, whatever

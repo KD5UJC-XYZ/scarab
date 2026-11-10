@@ -50,10 +50,14 @@ reported (`ConnectionEvent`, logged as `connection` lines).
 
 **The peer's activity** (`NodeToNodeServer.remoteActivity`). On every connection whose responders the
 peer can start, the accepted ones and the duplex ones we dial: the first responder that starts is
-`AwakeRemote`, the last that ends `WaitIdleRemote` (which arms the idle timer, 5 s), and an expired timer is
-`CommitRemote`: the manager closes an idle connection, or keeps one the outbound side uses
-(`OutboundDup Ticking` becomes `Expired`) until a later responder wakes it up (`InboundGovernor.hs` 329-335,
-463-481, 499-570). The responders' starts and ends and the idle timer are read in one step, as the reference
+`AwakeRemote`, the first hot one (ChainSync, BlockFetch, TxSubmission2) `RemotePromotedToHot`, the clean end of
+the last hot one `RemoteDemotedToWarm`, the clean end of the last one `WaitIdleRemote` (which arms the idle timer,
+5 s), and an expired timer is `CommitRemote`: the manager closes an idle connection, or keeps one the outbound side
+uses (`OutboundDup Ticking` becomes `Expired`) until a later responder wakes it up (`InboundGovernor.hs` 329-335,
+463-570). A responder that ends in an error or is cancelled stops the counting, as the reference's mux tracer
+does (680-708). The connection's remote state (`RemoteIdle`, `RemoteWarm`, `RemoteHot`, `RemoteCold`) is kept by
+the manager beside its table from the connection's start until a commit or its end (`remoteStates`); the
+`inboundGovernor_*` metrics count it (`Counters`, `InboundGovernor/State.hs` 113-145). The responders' starts and ends and the idle timer are read in one step, as the reference
 reads its channel and its timers in one STM transaction (`InboundGovernor.hs` 240-275): an expired timer is
 committed first (253-261), no start is taken before that, and a responder that starts at or after the expiry
 waits until the commit is settled, as the reference's mux tracer holds it (629-708).
@@ -92,7 +96,7 @@ during one, the releases of both sides, an inbound close ending the outbound use
 random sequences of all of these that checks every reported change against `valid` and the counters against
 the table and the hard limit); `ProtocolIdleTimeoutSuite` (the peer's activity and the idle timer, expiry
 before and after an outbound release, remote reactivation); `RemoteActivitySuite` (a responder that starts
-as the idle timer fires, on an accepted and a dialled connection); `InboundGovernorSuite`; `OutboundReuseSuite`
+as the idle timer fires, on an accepted and a dialled connection; the remote states, their transitions and counters); `InboundGovernorSuite`; `OutboundReuseSuite`
 (the outbound governor's use of a peer's own connection, and the session reports);
 `OutboundGenesisInvariantSuite` (an invariant on a hot session over a dialled and over a reused connection). The devnet `relay` scenario asserts reuse against
 the reference node (see [running.md](../running.md)).
