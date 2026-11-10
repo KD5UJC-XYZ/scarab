@@ -22,7 +22,7 @@ import xyz.kd5ujc.scarab.storage.haskell.state.HaskellState
   * flat snapshot files are archived evidence, not an input supported by this tool.
   *
   * {{{
-  * java -Xmx12g -cp <test classpath> xyz.kd5ujc.scarab.node.differential.BoundaryTickMain <db> <genesis-dir> <first> <last> [repeats]
+  * bash scripts/sbtw "tools/runMain xyz.kd5ujc.scarab.node.differential.BoundaryTickMain <db> <genesis-dir> <first> <last> [repeats]"
   * }}}
   *
   * `first` and `last` are indices into the sorted snapshot files (the snapshots of epochs 1401 to
