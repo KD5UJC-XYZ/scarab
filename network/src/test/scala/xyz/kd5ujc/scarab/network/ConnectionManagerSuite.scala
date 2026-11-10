@@ -234,9 +234,14 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
           .use(_ => IO.raiseError(new RuntimeException("boom")))
           .attempt
         failed <- state(m.cm, 1)
-        fiber <- m.cm.include(peer(2), None).use(_ => IO.never[Unit]).start
-        _ <- IO.sleep(10.millis)
-        _ <- fiber.cancel
+        entered <- Deferred[IO, Unit]
+        _ <- Resource
+          .make(
+            attempt(
+              m.cm.include(peer(2), None).use(_ => entered.complete(()) *> IO.never[Unit])
+            ).start
+          )(_.cancel)
+          .use(fiber => entered.get *> fiber.cancel)
         cancelled <- state(m.cm, 2)
         last <- m.cm.snapshot
       yield (failed, cancelled, last)
@@ -292,38 +297,45 @@ class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
   test(
     "refusals: a unidirectional inbound, an existing outbound, an outbound idle, an unknown inbound peer"
   ) {
-    managed(ConnectionManager.Limits(outboundIdle = 1.hour)) { m =>
-      for
-        _ <- accepted(m.cm, 1, DataFlow.Unidirectional)
-        uni <- attempt(acquired(m.cm, 1))
-        (c2, _, _) <- dialled(m.cm, 2, DataFlow.Unidirectional)
-        exists <- attempt(acquired(m.cm, 2))
-        _ <- c2.releaseOutbound.start
-        _ <- m.cm
-          .lookup(peer(2))
-          .iterateUntil(_.exists(_.state == ConnectionState.OutboundIdle(DataFlow.Unidirectional)))
-        idle <- attempt(acquired(m.cm, 2))
-        unknown <- attempt(acquired(m.cm, 3, Provenance.Inbound))
-        dialledUnknown <- m.cm.lookup(peer(3))
-      yield (uni.void, exists.void, idle.void, unknown.void, dialledUnknown)
-    }.map { r =>
-      val (uni, exists, idle, unknown, dialledUnknown) = result(r)
-      assertEquals(uni, Left(ConnectionError.ForbiddenConnection(peer(1).toString)))
-      assertEquals(
-        exists,
-        Left(ConnectionError.AlreadyConnected(peer(2).toString, ConnectionState.OutboundUni))
-      )
-      assertEquals(
-        idle,
-        Left(
-          ConnectionError.ForbiddenOperation(
-            peer(2).toString,
-            ConnectionState.OutboundIdle(DataFlow.Unidirectional)
+    Settled.timed { settle =>
+      managed(ConnectionManager.Limits(outboundIdle = 1.hour)) { m =>
+        for
+          _ <- accepted(m.cm, 1, DataFlow.Unidirectional)
+          uni <- attempt(acquired(m.cm, 1))
+          (c2, _, _) <- dialled(m.cm, 2, DataFlow.Unidirectional)
+          exists <- attempt(acquired(m.cm, 2))
+          idle <- Resource.make(c2.releaseOutbound.start)(_.cancel).use { _ =>
+            for
+              _ <- settle
+              idleState <- state(m.cm, 2)
+              _ <- IO(
+                assertEquals(idleState, Some(ConnectionState.OutboundIdle(DataFlow.Unidirectional)))
+              )
+              refusal <- attempt(acquired(m.cm, 2))
+            yield refusal
+          }
+          unknown <- attempt(acquired(m.cm, 3, Provenance.Inbound))
+          dialledUnknown <- m.cm.lookup(peer(3))
+        yield (uni.void, exists.void, idle.void, unknown.void, dialledUnknown)
+      }.map { r =>
+        val (uni, exists, idle, unknown, dialledUnknown) = result(r)
+        assertEquals(uni, Left(ConnectionError.ForbiddenConnection(peer(1).toString)))
+        assertEquals(
+          exists,
+          Left(ConnectionError.AlreadyConnected(peer(2).toString, ConnectionState.OutboundUni))
+        )
+        assertEquals(
+          idle,
+          Left(
+            ConnectionError.ForbiddenOperation(
+              peer(2).toString,
+              ConnectionState.OutboundIdle(DataFlow.Unidirectional)
+            )
           )
         )
-      )
-      assertEquals(unknown, Left(ConnectionError.InboundConnectionNotFound(peer(3).toString)))
-      assertEquals(dialledUnknown, None)
+        assertEquals(unknown, Left(ConnectionError.InboundConnectionNotFound(peer(3).toString)))
+        assertEquals(dialledUnknown, None)
+      }
     }
   }
 
