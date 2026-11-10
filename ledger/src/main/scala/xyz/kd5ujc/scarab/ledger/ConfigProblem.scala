@@ -84,7 +84,7 @@ enum ConfigProblem:
   /** `--listen` names an address the node cannot listen on: a name that does not resolve, or an
     * IPv6 address, which is refused until `IPV6_V6ONLY` can be set (issues 854 and 859).
     */
-  case ListenAddress(address: String, cause: xyz.kd5ujc.scarab.protocol.NetworkError.SocketFailure)
+  case ListenAddress(address: String, cause: xyz.kd5ujc.scarab.protocol.TcpSocketError[?, ?])
   case PeerSnapshot[E <: DomainError](cause: E)
   case StateMirror[E <: DomainError](cause: E)
   case GenesisStart(cause: rules.GenesisStartError)

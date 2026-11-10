@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.protocol.Mux as WireMux
   */
 enum NetworkError extends DomainError:
   /** A connection to `address` could not be opened, for its transport's own typed `cause`. */
-  case Connect(address: String, cause: NetworkError.SocketFailure)
+  case Connect(address: String, cause: TcpSocketError[?, ?])
   case Timeout(protocol: Int, state: String)
   case SduTimeout(operation: NetworkError.SduOperation)
   case TxSubmission(violation: TxSubmissionPolicy.Violation)
@@ -106,12 +106,6 @@ enum NetworkError extends DomainError:
     case MuxWrite(e)     => s"multiplexer write: ${e.message}"
 
 object NetworkError:
-  /** Why a transport could not open a connection or a listening socket: a closed type of the
-    * transport's (a node-to-node TCP socket's is `TcpSocketError`), with its text.
-    */
-  trait SocketFailure extends DomainError:
-    def shown: String
-
   /** Internal invariant failure crossing from the network's peer-error scope to the node owner. */
   final class InternalFailure(val error: NetworkError) extends RuntimeException(error.message)
 
