@@ -27,4 +27,4 @@ object Snap:
       ): F[Unit] =
         val mark =
           StakeDistribution.snapshot(EraLedger.activeStake(ls), EraLedger.pState(ls).stakePools)
-        snapshots.modify(s => SnapShots(mark, s.mark, s.set, ls.utxo.fees))
+        snapshots.modify(s => s.copy(mark = mark, set = s.mark, go = s.set, fee = ls.utxo.fees))

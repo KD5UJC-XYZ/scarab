@@ -6,8 +6,13 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
 import xyz.kd5ujc.scarab.node.tools.LedgerSnapshotImportCommand
-import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, ReferenceBuildNotYet, UnknownReferenceBuild}
-import xyz.kd5ujc.scarab.storage.haskell.state.{ReferenceLayout, StateLayout}
+import xyz.kd5ujc.scarab.protocol.{
+  ReferenceBuild,
+  ReferenceBuildNotYet,
+  StateLayout,
+  UnknownReferenceBuild
+}
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 
 /** `--reference-build` (#826): the closed list of builds, the flag strings, the pins and the
   * startup refusal of a build not implemented yet.
@@ -70,25 +75,30 @@ class ReferenceBuildSuite extends FunSuite:
     assert(ReferenceBuild.LeiosB004fe0c.name.endsWith(leios.node.take(8)))
   }
 
-  test("the 11.1 layout is implemented; the Leios build is refused at startup, not yet") {
+  test("both layouts are read and written; follow refuses the Leios build's rules, not yet") {
     assertEquals(StateLayout.of(ReferenceBuild.Release11_1), StateLayout.Node11_1)
     assertEquals(StateLayout.of(ReferenceBuild.LeiosB004fe0c), StateLayout.Leios)
     assertEquals(
-      ReferenceBuildFlag.layout(ReferenceBuild.Release11_1).map(_.build),
+      ReferenceBuildFlag.layout(ReferenceBuild.LeiosB004fe0c).layout,
+      StateLayout.Leios
+    )
+    assertEquals(
+      ReferenceBuildFlag.follows(ReferenceBuild.Release11_1).map(_.build),
       Right(ReferenceBuild.Release11_1)
     )
     assertEquals(
-      ReferenceBuildFlag.layout(ReferenceBuild.LeiosB004fe0c).map(_.build),
+      ReferenceBuildFlag.follows(ReferenceBuild.LeiosB004fe0c).map(_.build),
       Left(
         ConfigError(
           ConfigProblem.ReferenceBuildNotYet(
-            ReferenceBuildNotYet.StateLayout(ReferenceBuild.LeiosB004fe0c)
+            ReferenceBuildNotYet.Rules(ReferenceBuild.LeiosB004fe0c)
           )
         )
       )
     )
     assert(ReferenceLayout.Release11_1.reads(ReferenceBuild.Release11_1))
     assert(!ReferenceLayout.Release11_1.reads(ReferenceBuild.LeiosB004fe0c))
+    assert(ReferenceLayout.of(ReferenceBuild.LeiosB004fe0c).reads(ReferenceBuild.LeiosB004fe0c))
   }
 
   private val follow = List("follow", "--genesis-dir", "/g", "--peer", "127.0.0.1:3001")

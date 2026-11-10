@@ -60,7 +60,7 @@ object ByronMirror:
         WithOrigin.At(AnnTip(slot, blockNo, TipInfo.ByronTip(hash, ebb)))
       }
       MirrorState(
-        ExtLedgerState(ledger, HeaderState(tip, dep)),
+        ExtLedgerState(ledger, HeaderState(tip, dep), ExtLedgerState.Layout.Node11_1),
         MirrorExtras.InByron(pending, consensus.boot, consensus.protocol),
         provenance
       )

@@ -18,7 +18,7 @@ import xyz.kd5ujc.scarab.ledger.mempack.{MemPack, TxOutMemPack}
 import xyz.kd5ujc.scarab.ledger.rules.Hfc
 import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.models.runtime.DecodeError
-import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, HfcHeader, NtNHeader}
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, HfcHeader, NtNHeader, StateLayout}
 import xyz.kd5ujc.scarab.storage.haskell.state.{Envelope, HaskellStateCodecs, Params}
 
 /** The Dijkstra era is named (index 7, block tag 8) and its blocks, headers and transactions
@@ -113,7 +113,11 @@ class DijkstraNotYetSuite extends FunSuite:
     // a telescope of eight eras ends in Dijkstra
     val eight = cbor(Value.Arr(Vector.fill(8)(node(Value.Null))))
     assertEquals(
-      domain(Envelope.telescope(HaskellStateCodecs.ledgerFileEra).decodeBytes(eight)),
+      domain(
+        Envelope
+          .telescope(StateLayout.Node11_1, HaskellStateCodecs.ledgerFileEra)
+          .decodeBytes(eight)
+      ),
       refused
     )
     val tip = cbor(Value.Arr(Vector(node(Value.UInt(7)), node(Value.Arr(Vector.empty)))))

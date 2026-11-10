@@ -190,7 +190,7 @@ class DijkstraCrossingSuite extends CatsEffectSuite:
           case d: EraNes.InEra[x] if MirrorRules.DijkstraCrossing.crosses(Some(start), d) =>
             val state = EraLedgerState.InShelleyEra(
               d.era,
-              ShelleyLedgerState(i.state.tip, d.nes, i.state.transition, i.state.peras)
+              ShelleyLedgerState(i.state.tip, d.nes, i.state.transition, i.state.layout)
             )
             m.copy(ext = m.ext.copy(ledgerState = m.ext.ledgerState.withState(state)))
           case other => fail(s"no Dijkstra state: $other")

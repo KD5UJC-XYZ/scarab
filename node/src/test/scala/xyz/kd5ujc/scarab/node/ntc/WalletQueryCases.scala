@@ -55,6 +55,7 @@ private[ntc] object WalletQueryCases extends munit.Assertions:
     val pools = Sorted.map(ids.zipWithIndex.map { (id, i) =>
       id -> StakePoolState(
         vrf,
+        PoolBlsKey.Node11_1,
         coin(if i == 3 then amounts(i) + 2000 else 100000000),
         coin(if tied then 0 else 1000000),
         Rational.zero,

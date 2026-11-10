@@ -46,3 +46,10 @@ golden `LeiosVote` above.
 
 The test files are plain TSV so that a diff shows a changed byte. The headers and blocks are public
 chain data of a test network.
+
+## `state/` (#826: the Leios build's `state` layout)
+
+Two ledger snapshots a node of the Leios build wrote on a local devnet, the last Conway state and the
+first Dijkstra state, with their tables, metadata and genesis files: [their README](state/README.md).
+The `bls/` keys above are also the voting keys of the generated Leios-layout states
+(`LeiosGen`, storage tests).

@@ -232,8 +232,10 @@ java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main 
 [flags](flags.md) for the values). Its `state` file must decode completely in that build's layout,
 or the import is refused with a typed `error`; the bytes go into the snapshot unchanged, with the
 build recorded beside them. Nothing is converted between builds. The command first prints a
-`referenceBuild` line with the build and its pins. `leios-b004fe0c` is refused in this build: its
-layout is not implemented yet (#826).
+`referenceBuild` line with the build and its pins. Under `leios-b004fe0c` the state is read in the
+Leios build's layout (every Shelley-based era up to Conway; a Dijkstra state is refused, #54), and
+`11.1` refuses that layout's three-part extended state; a database imported so is not followed yet
+(#826).
 
 First import the immutable blocks with `import-haskell-db` (above). The destination must contain the
 configured network identity and the exact snapshot point in its current-format immutable chunks,
@@ -251,8 +253,11 @@ The command checks metadata, era, exact immutable block and recomputed instant s
 RocksDB checkpoint and a V10 snapshot bound to it in staging, and publishes only after validation. It never changes
 existing immutable files or overwrites ledger artifacts. JSON `importLedgerSnapshot` events report
 `done` with slot/hash, era, output count, lovelace, trust and `referenceBuild`, or a typed `error`. A following `follow`
-restores that checkpoint and replays local blocks after the snapshot. Byron and non-Mem snapshots
-are refused. Import/export details and recovery of an interrupted staged import are in
+restores that checkpoint and replays local blocks after the snapshot. Use the same
+`--reference-build` for `follow` as for the import: starting with a different layout deletes the
+incompatible snapshot and its checkpoint, then tries an older snapshot or replays from genesis.
+The default is `11.1`; `follow --reference-build leios-b004fe0c` remains unavailable until the
+Leios rules are implemented. Byron and non-Mem snapshots are refused. Import/export details and recovery of an interrupted staged import are in
 [the accepted design](../design/haskell-snapshots.md#10-stage-3-as-built-offline-import); export and
 cross-node acceptance are recorded in Step D S4/S5 (#140).
 
@@ -270,7 +275,8 @@ java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main 
 The default is the newest snapshot; `--slot` selects an exact stored snapshot slot, an unsigned
 64-bit number. `--reference-build` names the build the output is for (`11.1` without it): the
 snapshot's recorded build must be of that build's layout, or the export is refused with a typed
-`error`; nothing is converted. The command checks the existing V10 file's checksum and schema (a
+`error`; nothing is converted, so a snapshot imported under `leios-b004fe0c` is exported under it.
+The command checks the existing V10 file's checksum and schema (a
 V9 file of a database this build has not opened yet is read as `11.1` bytes), preserves its
 Haskell state bytes, admits its checkpoint against the snapshot's binding and reads it without
 recovery or migration. A state

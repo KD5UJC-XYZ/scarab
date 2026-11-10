@@ -73,12 +73,7 @@ object LedgerSnapshotExportCommand:
     case Left(error) => IO.println(error.message).as(ExitCode(2))
     case Right(options) =>
       log("referenceBuild", ReferenceBuildFlag.fields(options.build)*) *>
-        ReferenceBuildFlag
-          .layout(options.build)
-          .fold(
-            error => IO.println(error.message).as(ExitCode(2)),
-            layout => exported(options.config.copy(layout = layout))
-          )
+        exported(options.config.copy(layout = ReferenceBuildFlag.layout(options.build)))
 
   private def exported(config: LedgerSnapshotExport.Config): IO[ExitCode] =
     Handle

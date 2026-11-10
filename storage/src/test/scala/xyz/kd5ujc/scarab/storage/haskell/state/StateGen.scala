@@ -429,6 +429,7 @@ object StateGen:
         case ((vrf, pledge, cost, margin, account), owners, relays, meta, deposit, delegators) =>
           StakePoolState(
             vrf,
+            PoolBlsKey.Node11_1,
             pledge,
             cost,
             margin,
@@ -480,7 +481,9 @@ object StateGen:
         )
       )
     )
-    arb[SnapShots].map(x => SnapShots(cap(x.mark), cap(x.set), cap(x.go), x.fee))
+    arb[SnapShots].map(x =>
+      SnapShots(cap(x.mark), cap(x.set), cap(x.go), x.fee, SnapShots.Layout.Node11_1)
+    )
 
   def epochState[E <: EraTag](using era: ShelleyBasedEra[E]): Gen[EpochState[E]] =
     Gen
@@ -522,7 +525,9 @@ object StateGen:
         Gen.option(rewardUpdate),
         arb[PoolDistr]
       )
-      .map((e, bp, bc, es, ru, pd) => NewEpochState[E](e, bp, bc, es, ru, pd, Empty.stashedAvvm[E]))
+      .map((e, bp, bc, es, ru, pd) =>
+        NewEpochState[E](e, bp, bc, es, ru, NewEpochState.Layout.Node11_1(pd), Empty.stashedAvvm[E])
+      )
 
   /** Words as a set (for the sets of the tests). */
   def sets[A: Order](elem: Gen[A]): Gen[SortedSet[A]] = LedgerStateGen.sortedSet(elem)

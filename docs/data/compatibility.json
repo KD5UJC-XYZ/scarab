@@ -1541,7 +1541,7 @@
       "id": "persistence-snapshot-v10",
       "component": "Persistence: ledger snapshot format (V10) and the reference build",
       "status": "implemented",
-      "summary": "Native snapshot format V10 records the reference build (`--reference-build`) whose layout the Haskell state bytes are in; V9 files migrate as 11.1 with every other byte kept; import and export keep the reference's bytes and convert nothing; only the 11.1 layout is implemented, the Leios build is refused at start",
+      "summary": "Native snapshot format V10 records the reference build (`--reference-build`) whose layout the Haskell state bytes are in; V9 files migrate as 11.1 with every other byte kept; import and export keep the reference's bytes and convert nothing; both layouts are read and written, and `follow` refuses the Leios build until its rules exist",
       "evidence": {
         "suites": [
           "SnapshotV10MigrationSuite",
@@ -1563,6 +1563,32 @@
         ]
       },
       "page": "docs/compatibility/persistence-snapshot-v10.md"
+    },
+    {
+      "id": "persistence-leios-state-layout",
+      "component": "Persistence: the Leios build's `state` layout",
+      "status": "partial",
+      "summary": "The `state` file of the Leios build (`--reference-build leios-b004fe0c`: cardano-ledger 9df9f98c, ouroboros-consensus 2416493b) is read and written in every Shelley-based era up to Conway, byte for byte on a captured state, and imported and exported; each record it writes differently from 11.1 holds a part per layout that the other layout's codec does not write. The Dijkstra state, and the rules of the build, are not implemented",
+      "evidence": {
+        "suites": [
+          "LeiosLayoutSuite",
+          "LeiosLayoutImportSuite",
+          "ReferenceBuildSuite",
+          "ReferenceBuildStartSuite",
+          "LedgerFileSuite",
+          "HaskellStateCodecSuite"
+        ],
+        "issues": [
+          826
+        ]
+      },
+      "limitations": {
+        "issues": [
+          826,
+          54
+        ]
+      },
+      "page": "docs/compatibility/persistence-leios-state-layout.md"
     },
     {
       "id": "persistence-haskell-immutabledb",

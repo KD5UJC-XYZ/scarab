@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.storage.haskell.state
 
 import xyz.kd5ujc.scarab.ledger.{Anchor, Nonce, Ptr}
 import xyz.kd5ujc.scarab.ledger.state.*
+import xyz.kd5ujc.scarab.protocol.{LayoutPart, StateLayout}
 import xyz.kd5ujc.scarab.models.runtime.{
   Codec,
   ConstraintViolation,
@@ -20,6 +21,22 @@ import Wire.*
   * `cardano-ledger` rev f649f97, `libs/cardano-ledger-core/src/Cardano/Ledger`).
   */
 trait VocabularyCodecs:
+  /** The layout of the `state` file these codecs read and write ([[StateLayout]]): each record that
+    * differs between layouts is read in this one, and a value with a part of another layout
+    * ([[LayoutPart]]) is not written.
+    */
+  def stateLayout: StateLayout
+
+  /** The refusal to write `part`, of the record `what`, unless it is of this codec's layout. */
+  protected def ofThisLayout(what: String, part: LayoutPart): Option[ConstraintViolation] =
+    Option.when(part.stateLayout != stateLayout)(
+      ConstraintViolation(
+        what,
+        s"a part of the ${stateLayout.toString} layout",
+        part.stateLayout.toString
+      )
+    )
+
   // ---- hashes: byte strings of the size of the hash (`Hashes.hs:166-232`, newtypes over `Hash`)
 
   given keyHash[R <: KeyRole]: Codec[KeyHash[R]] =

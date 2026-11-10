@@ -42,6 +42,7 @@ object NativeRewardFixture extends Assertions:
   ): StakePoolState =
     StakePoolState(
       ok(VRFVerKeyHash.fromBytes(Bytes(Vector.fill(32)(2)))),
+      PoolBlsKey.Node11_1,
       coin(0),
       coin(cost),
       margin,
@@ -118,7 +119,8 @@ object NativeRewardFixture extends Assertions:
         ),
         es = base.es.copy(
           chainAccount = ChainAccountState(coin(0), coin(reserves)),
-          snapshots = SnapShots(SnapShot.empty, SnapShot.empty, go, coin(fee)),
+          snapshots =
+            SnapShots(SnapShot.empty, SnapShot.empty, go, coin(fee), SnapShots.Layout.Node11_1),
           ls = base.es.ls.copy[E](utxo = base.es.ls.utxo.copy(fees = coin(fee)))
         )
       ),

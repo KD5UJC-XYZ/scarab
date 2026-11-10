@@ -885,7 +885,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
               gov = ls.utxo.gov.copy(curPParams = pp, prevPParams = pp)
             )
           ),
-          snapshots = SnapShots(snap, snap, snap, coin(1000 * ada))
+          snapshots = SnapShots(snap, snap, snap, coin(1000 * ada), SnapShots.Layout.Node11_1)
         )
       )
       val globals = LedgerGlobals(Supply, 100, Rational(1, 2), 0)

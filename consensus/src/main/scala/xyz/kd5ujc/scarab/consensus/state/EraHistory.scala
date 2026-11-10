@@ -51,7 +51,7 @@ object EraHistory:
       else
         geometry.byron.slots * byron.slotLengthMillis +
           (slot - geometry.byron.slots) * BigInt(geometry.slotLengthMillis)
-    Bound(millis * PsPerMilli, slot, epoch)
+    Bound(millis * PsPerMilli, slot, epoch, Bound.Layout.Node11_1(None))
 
   def summary(
       geometry: EpochGeometry,

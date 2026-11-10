@@ -89,7 +89,7 @@ object Handover:
           NonMyopic.empty
         ),
         None,
-        PoolDistr.empty,
+        NewEpochState.Layout.Node11_1(PoolDistr.empty),
         UtxoTables(stash)
       )
     )

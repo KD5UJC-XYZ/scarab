@@ -104,6 +104,7 @@ class EpochStateSuite extends DisciplineSuite:
       Sorted.emptySet,
       Coin.zero,
       vrf,
+      PoolBlsKey.Node11_1,
       Coin.zero,
       Coin.zero,
       Rational.zero,
@@ -166,7 +167,16 @@ class EpochStateSuite extends DisciplineSuite:
       distr.distribution(kept),
       IndividualPoolStake(Rational(1, 2), compact(10), vrf)
     )
-    assertEquals(SnapShots(snap, SnapShot.empty, SnapShot.empty, Coin.zero).markPoolDistr, distr)
+    assertEquals(
+      SnapShots(
+        snap,
+        SnapShot.empty,
+        SnapShot.empty,
+        Coin.zero,
+        SnapShots.Layout.Node11_1
+      ).markPoolDistr,
+      distr
+    )
     assertEquals(SnapShots.empty.markPoolDistr, PoolDistr.empty)
   }
 
@@ -207,7 +217,7 @@ class EpochStateSuite extends DisciplineSuite:
       BlocksMade.empty,
       es,
       None,
-      PoolDistr.empty,
+      NewEpochState.Layout.Node11_1(PoolDistr.empty),
       UtxoTables(Utxo.empty)
     )
     assert(stashed === stashed)
@@ -217,7 +227,7 @@ class EpochStateSuite extends DisciplineSuite:
       BlocksMade.empty,
       EpochState[Allegra](es.chainAccount, allegraLedger, es.snapshots, es.nonMyopic),
       None,
-      PoolDistr.empty,
+      NewEpochState.Layout.Node11_1(PoolDistr.empty),
       ()
     )
     assert(after === after)
@@ -225,12 +235,12 @@ class EpochStateSuite extends DisciplineSuite:
     assertEquals(typeCheckErrors("summon[StashedAVVM[Allegra] =:= Unit]"), Nil)
     assert(
       typeCheckErrors(
-        "NewEpochState[Allegra](EpochNo.fromUnsigned(0L), BlocksMade.empty, BlocksMade.empty, EpochState[Allegra](es.chainAccount, allegraLedger, es.snapshots, es.nonMyopic), None, PoolDistr.empty, UtxoTables(Utxo.empty))"
+        "NewEpochState[Allegra](EpochNo.fromUnsigned(0L), BlocksMade.empty, BlocksMade.empty, EpochState[Allegra](es.chainAccount, allegraLedger, es.snapshots, es.nonMyopic), None, NewEpochState.Layout.Node11_1(PoolDistr.empty), UtxoTables(Utxo.empty))"
       ).nonEmpty
     )
     assert(
       typeCheckErrors(
-        "NewEpochState[Shelley](EpochNo.fromUnsigned(0L), BlocksMade.empty, BlocksMade.empty, es, None, PoolDistr.empty, ())"
+        "NewEpochState[Shelley](EpochNo.fromUnsigned(0L), BlocksMade.empty, BlocksMade.empty, es, None, NewEpochState.Layout.Node11_1(PoolDistr.empty), ())"
       ).nonEmpty
     )
   }

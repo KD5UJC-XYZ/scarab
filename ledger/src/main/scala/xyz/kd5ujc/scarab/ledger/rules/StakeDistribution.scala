@@ -60,6 +60,7 @@ object StakeDistribution:
       owners,
       ownersStake.toCoin,
       pool.vrf,
+      pool.blsKey,
       pool.pledge,
       pool.cost,
       pool.margin,
