@@ -1012,7 +1012,8 @@
         "LeiosChainProbe",
         "LeiosProbe",
         "MuxThroughputBench",
-        "PeerSharingProbe"
+        "PeerSharingProbe",
+        "TcpThreadCostMain"
       ],
       "suites": [],
       "docs": []

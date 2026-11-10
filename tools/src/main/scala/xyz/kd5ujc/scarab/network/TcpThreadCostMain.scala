@@ -24,8 +24,9 @@ import xyz.kd5ujc.scarab.network.Listeners.failing
   * control, each handler holds its connection without reading it, so the difference between the two
   * runs is what the readers cost.
   *
-  * Not part of `check`: run it with `java -XX:NativeMemoryTracking=summary -XX:+AlwaysPreTouch -cp
-  * <network test classpath> xyz.kd5ujc.scarab.network.TcpThreadCostMain [connections] [read|hold]`.
+  * Run by hand with `tools/runMain xyz.kd5ujc.scarab.network.TcpThreadCostMain [connections]
+  * [read|hold]` in a forked JVM with `-XX:NativeMemoryTracking=summary -XX:+AlwaysPreTouch` (the
+  * complete command is in docs/performance/peers-and-network.md). `check` compiles it, not runs it.
   * It prints a `HOST` line, a `SAMPLE` line before the connections and one with them, and a `DELTA`
   * line; the figures are recorded in `docs/performance/peers-and-network.md`.
   */

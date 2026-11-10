@@ -161,7 +161,7 @@ Programs run by hand, never as tests and never shipped: benchmarks, probes again
 | ledger | Hand-run benchmarks for the `ledger` package (its package, for its package-private access) | `ApplyBenchMain`, `DetachedRecordsBench`, `UtxoChangesBench` |  |  |
 | ledger/state | Hand-run benchmarks for the `ledger.state` package (its package, for its package-private access) | `DiffBenchMain` |  |  |
 | models | Hand-run benchmarks, checks and comparisons for the `models` package (its package, for its package-private access) | `CuddleCrossCheck`, `DecodeBench` |  |  |
-| network | Hand-run benchmarks, probes for the `network` package (its package, for its package-private access) | `LeiosChainProbe`, `LeiosProbe`, `MuxThroughputBench`, `PeerSharingProbe` |  |  |
+| network | Hand-run benchmarks, probes for the `network` package (its package, for its package-private access) | `LeiosChainProbe`, `LeiosProbe`, `MuxThroughputBench`, `PeerSharingProbe`, `TcpThreadCostMain` |  |  |
 | node | Hand-run benchmarks, checks and comparisons for the `node` package (its package, for its package-private access) | `FiberBoundaryBench`, `HaskellScalaCompareMain`, `Memory94Main`, `PeerMetricsBench`, `PreviewRuleBench`, `SelectionReviewBenchmark` |  |  |
 | node/differential | Hand-run checks and comparisons for the `node.differential` package (its package, for its package-private access) | `BoundaryTickMain` |  |  |
 | node/governor | Hand-run checks and comparisons for the `node.governor` package (its package, for its package-private access) | `DebugMain` |  |  |

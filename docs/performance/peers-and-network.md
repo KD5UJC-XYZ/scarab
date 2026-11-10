@@ -482,8 +482,9 @@ blocking-pool thread while its multiplexer waits for bytes. This section measure
 limit of accepted connections (512), the most a node holds inbound; outbound connections, as many as the governor's
 targets, cost the same each.
 
-**Harness and environment.** `network/src/test/scala/xyz/kd5ujc/scarab/network/TcpThreadCostMain.scala` at 400fe4094, a
-test-scope main outside `check`. It listens through `BearerServer` on loopback and opens 512 plain client sockets in the
+**Harness and environment.** `TcpThreadCostMain` at 400fe4094 was run from the network test classpath. The unchanged
+measurement code now lives at `tools/src/main/scala/xyz/kd5ujc/scarab/network/TcpThreadCostMain.scala`, compiled by
+`check` and run only by hand. It listens through `BearerServer` on loopback and opens 512 plain client sockets in the
 same JVM that never read (no thread of their own). With `read` each handler runs the node's multiplexer on its connection;
 with `hold`, the control, each handler holds its connection and nothing reads it. A sample is taken before the clients
 connect, and again once all 512 handlers hold their connections and, with readers, the JVM's thread dump shows every
@@ -495,8 +496,10 @@ one container on Euler (Docker image `scarab-jdk:local`
 the connections' memory. The host carried other load during the runs; only counts and sizes are recorded, no timings.
 
 ```sh
-java -XX:NativeMemoryTracking=summary -XX:+AlwaysPreTouch -Xms512m -Xmx512m \
-  -cp <network test classpath> xyz.kd5ujc.scarab.network.TcpThreadCostMain 512 read   # then: 512 hold
+bash scripts/sbtw \
+  'set tools / Compile / run / fork := true' \
+  'set tools / Compile / run / javaOptions ++= Seq("-XX:NativeMemoryTracking=summary", "-XX:+AlwaysPreTouch", "-Xms512m", "-Xmx512m")' \
+  'tools/runMain xyz.kd5ujc.scarab.network.TcpThreadCostMain 512 read' # then: 512 hold
 ```
 
 <!-- register:table perf-62.t1 -->
