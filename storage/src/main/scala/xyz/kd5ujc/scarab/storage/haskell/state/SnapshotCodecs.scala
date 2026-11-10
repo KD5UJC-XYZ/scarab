@@ -24,6 +24,12 @@ private[state] final case class StakePoolSnapShot11(
     accountId: Credential[Staking]
 )
 
+private[state] final case class IndividualPoolStake11(
+    stake: Rational,
+    totalPoolStake: CompactCoin,
+    vrf: VRFVerKeyHash
+)
+
 /** `SnapShots` without the Leios fields: the four of the 11.1 layout. */
 private[state] final case class SnapShots11(mark: SnapShot, set: SnapShot, go: SnapShot, fee: Coin)
 
@@ -224,7 +230,39 @@ trait SnapshotCodecs extends GovStateCodecs:
 
   /** `IndividualPoolStake` (`PoolDistr.hs:70-77`): `[ratio of the total, stake, VRF key hash]`. */
   given individualPoolStake(using ProtVer): Codec[IndividualPoolStake] =
-    Record.of[IndividualPoolStake]((ratio, compactCoin, vrfVerKeyHash))
+    val record = Record.of[IndividualPoolStake11]((ratio, compactCoin, vrfVerKeyHash))
+    new Codec[IndividualPoolStake]:
+      private val key = strictMaybe(blsKey)
+      def decode(n: Node): Decoded[IndividualPoolStake] = stateLayout match
+        case StateLayout.Node11_1 =>
+          record.decode(n).map(p => IndividualPoolStake(p.stake, p.totalPoolStake, p.vrf))
+        case StateLayout.Leios =>
+          Arr.between(n, 3, 4).flatMap { xs =>
+            for
+              stake <- ratio.decode(xs(0)).at("stake")
+              total <- compactCoin.decode(xs(1)).at("totalPoolStake")
+              vrf <- vrfVerKeyHash.decode(xs(2)).at("vrf")
+              bls <- xs.lift(3).fold[Decoded[Option[BlsKey]]](Right(None))(key.decode)
+            yield IndividualPoolStake(stake, total, vrf, bls)
+          }
+      def encode(a: IndividualPoolStake, out: Writer): Unit =
+        out.arrayHead(if stateLayout == StateLayout.Leios && a.blsKey.nonEmpty then 4 else 3)
+        ratio.encode(a.stake, out)
+        compactCoin.encode(a.totalPoolStake, out)
+        vrfVerKeyHash.encode(a.vrf, out)
+        if stateLayout == StateLayout.Leios && a.blsKey.nonEmpty then key.encode(a.blsKey, out)
+      override def check(a: IndividualPoolStake): Option[ConstraintViolation] =
+        val fields = record.check(IndividualPoolStake11(a.stake, a.totalPoolStake, a.vrf))
+        fields.orElse(stateLayout match
+          case StateLayout.Node11_1 =>
+            Option.when(a.blsKey.nonEmpty)(
+              ConstraintViolation(
+                "IndividualPoolStake",
+                "no voting key in the 11.1 layout",
+                "voting key present"
+              )
+            )
+          case StateLayout.Leios => key.check(a.blsKey).map(_.at("blsKey")))
 
   /** `PoolDistr` (`PoolDistr.hs:117-122`): `[distribution, total active stake]`. */
   given poolDistr(using ProtVer): Codec[PoolDistr] =

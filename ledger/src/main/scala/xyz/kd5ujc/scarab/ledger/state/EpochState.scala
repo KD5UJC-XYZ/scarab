@@ -107,8 +107,8 @@ final case class NewEpochState[E <: EraTag](
   /** The stake distribution of the pools that leader election uses: `nesPd` in the 11.1 layout; in
     * the Leios layout the one of the set snapshot (`nesStakePoolDistrG`, cardano-ledger 9df9f98c
     * `Shelley/LedgerState/Types.hs:643-644`), which the reference derives from it when it reads it
-    * (`calculatePoolDistr`, `State/SnapShots.hs:495-505`). The Leios `IndividualPoolStake` also
-    * holds the pool's voting key (`State/PoolDistr.hs:73`), which this distribution does not.
+    * (`calculatePoolDistr`, `State/SnapShots.hs:495-505`). The immutable snapshot retains the
+    * derived distribution, including each pool's voting key (`State/PoolDistr.hs:73`).
     */
   def pd: PoolDistr = layout match
     case NewEpochState.Layout.Node11_1(stored) => stored

@@ -19,6 +19,14 @@ stable reference uses `decodeListLenOf`/`decodeListLen`/`enforceSize` (ouroboros
 `decodeRecordNamedT` permits those (cardano-ledger `f649f975`, `Binary/Decoding/Decoder.hs:700-708`).
 The Peras framing mutations apply only to Leios, whose extended state includes that component.
 
+`PoolDistributionReferenceSuite` compares the native distributions and individual-pool encodings
+in [the two-build corpus](../../fixtures/reference/pool-distribution/README.md), including voting
+keys and the omission of a missing fourth field. Every accepted byte and every acceptance verdict
+is compared; native error wording is retained but not compared to Scala's typed errors. The suite
+also verifies reuse of the distribution for one immutable snapshot and fresh derivation after a
+copy changes its pools or active stake. The `leios-pool-distribution` fuzz target exercises the
+optional-field decoder. This does not establish agreement for lifecycle rules or committee selection.
+
 ## Explicitly unchecked or unconfirmed
 
-The Dijkstra state in this layout is not read (`DijkstraNotYet.LedgerState`, #54, #826 step d), and an epoch context of the Peras state with a Dijkstra voting committee with it. The rules of the build are not selected by it yet (step c): the rules this build runs produce values of the 11.1 layout, and a Leios state is not followed. The pool distribution of a Leios `NewEpochState` is derived from the set snapshot without the pools' voting keys, which the reference's `IndividualPoolStake` holds (`State/PoolDistr.hs:73`). The layout was diffed against the pinned sources era by era; only Conway is checked on reference bytes.
+The Dijkstra state in this layout is not read (`DijkstraNotYet.LedgerState`, #54, #826 step d), and an epoch context of the Peras state with a Dijkstra voting committee with it. The rules of the build are not selected by it yet (step c): the rules this build runs produce values of the 11.1 layout, and a Leios state is not followed. The layout was diffed against the pinned sources era by era; only Conway is checked on reference bytes.

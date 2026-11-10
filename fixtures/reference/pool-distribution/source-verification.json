@@ -1,0 +1,56 @@
+{
+  "stable": {
+    "packageUnits": [
+      {
+        "id": "cardano-ledger-core-1.21.0.0-a518dc82925c344bb5b353a39280ec624a60690ea811fb8e390724ba6f026669",
+        "version": "1.21.0.0",
+        "source": {
+          "type": "repo-tar",
+          "repo": {
+            "type": "secure-repo",
+            "uri": "https://chap.intersectmbo.org/"
+          }
+        }
+      }
+    ],
+    "sources": {
+      "SnapShots.hs": {
+        "sha256": "1e99f896676bfdf567409b2680927ddd377fc80a78e9b78470c152cae6aab9f7",
+        "matchesPin": true
+      },
+      "PoolDistr.hs": {
+        "sha256": "cee8dace9213af829c54f75e8c24b7e01e029a2e28252209d7842b4a11d702df",
+        "matchesPin": true
+      }
+    },
+    "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5"
+  },
+  "leios": {
+    "packageUnits": [
+      {
+        "id": "cardano-ledger-core-1.23.0.0-07f7b133fd62d032a13c41a3ca2ac9a638ff2581240b0209f14dd44fc3025eca",
+        "version": "1.23.0.0",
+        "source": {
+          "type": "source-repo",
+          "source-repo": {
+            "type": "git",
+            "location": "https://github.com/IntersectMBO/cardano-ledger",
+            "tag": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+            "subdir": "libs/cardano-ledger-core"
+          }
+        }
+      }
+    ],
+    "sources": {
+      "SnapShots.hs": {
+        "sha256": "ae7d5e0db3afe5f97183008047d2f7ecf2974c7d1249752284a600b55557d414",
+        "matchesPin": true
+      },
+      "PoolDistr.hs": {
+        "sha256": "12043f3fbe9f0d20917998a787814bc4f9b991109898b2686f3644ec254ba4ec",
+        "matchesPin": true
+      }
+    },
+    "ledgerSourceCommit": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-11-10",
+  "scope": "Native calculatePoolDistr and IndividualPoolStake decoding/encoding at protocol 12; exact accepted bytes and acceptance parity, not ledger transitions or committee selection.",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "cases": 24,
+  "builds": {
+    "11.1": {
+      "image": "scarab-plutus176-context-reference:local",
+      "ledger": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+      "imageId": "sha256:9052fa97d907cdd7ee1ad37f4afcf5a0d653f4eaac8bab3da7223652b4b5bce0"
+    },
+    "leios-b004fe0c": {
+      "image": "scarab-leios-testnet:local",
+      "ledger": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+      "imageId": "sha256:768c48540a3d818a3470a9510dd333b3051fc9e267c31a5aed5a30fe864229ab"
+    }
+  },
+  "harnessSha256": "575a1e6f67034c4e564a9d2d6f1d5f5a2dfc9a87fa8f0397cc045d5525c849f1",
+  "casesSha256": "74a540036e2f2384d25792ee12b484d221041cf1618541fe1e213b94fff1c6e1"
+}
