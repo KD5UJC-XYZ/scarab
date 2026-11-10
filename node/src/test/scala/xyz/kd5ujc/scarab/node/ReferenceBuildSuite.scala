@@ -168,7 +168,7 @@ class ReferenceBuildSuite extends FunSuite:
     )
   }
 
-  test("the node's ledger follows the rules of the build it is given (#832)") {
+  test("the ledger of every setup follows the rules of the build it is given (#832)") {
     val config = Path.of("fixtures", "preview", "genesis", "config.json").toString
     ReferenceBuild.values.foreach { build =>
       val options = Main
@@ -186,6 +186,11 @@ class ReferenceBuildSuite extends FunSuite:
         .fold(e => fail(e.message), identity)
       val setup = Main.nodeSetup(options).fold(e => fail(e.message), identity)
       assertEquals(setup.globals.referenceBuild, build)
+      // the tools that read a configuration themselves (`LeiosCheckMain`, the snapshot commands)
+      val directory = NodeSetup
+        .fromDirectory(build)(Path.of("fixtures", "preview", "genesis"))
+        .fold(e => fail(e.message), identity)
+      assertEquals(directory.globals.referenceBuild, build, build.name)
     }
   }
 

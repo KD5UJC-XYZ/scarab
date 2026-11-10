@@ -41,9 +41,10 @@ final case class ConwayParams(
   *   POM.hs:713-715`).
   * @param referenceBuild
   *   The build of `cardano-node` whose rules the ledger follows (`--reference-build`, #826): where
-  *   two builds' rules differ, a rule matches on it. The node sets it from its options
-  *   (`NodeSetup.mirroring`), as it sets [[dijkstra]] from its configuration; elsewhere it is
-  *   [[ReferenceBuild.Default]].
+  *   two builds' rules differ, a rule matches on it. `NodeSetup` sets it to the build its
+  *   constructors are given (`NodeSetup.mirroring`), as it sets [[dijkstra]] from the
+  *   configuration, so the node and every tool that reads a configuration follow the build they
+  *   name; elsewhere it is [[ReferenceBuild.Default]].
   */
 final case class LedgerGlobals(
     maxSupply: BigInt,
