@@ -196,38 +196,36 @@ class TcpSocketsSuite extends FailsOnUncaught:
           case _ => None
       })
 
-  private val TimeWait = 6
+  /** `TCP_FIN_WAIT1` and `TCP_FIN_WAIT2`: a socket closed with a FIN that waits for its peer. */
+  private val FinWait = Set(4, 5)
 
-  test("the end that closes with linger 0 keeps no TIME_WAIT, so its four-tuple is free at once") {
+  test(
+    "the end that closes with linger 0 keeps no socket behind, so its four-tuple is free at once"
+  ) {
     (listening, listening).tupled.use { (node, peer) =>
       for
-        // the outbound socket closes first, as the end that would otherwise enter TIME_WAIT
+        // the outbound socket closes first, as the end that would otherwise wait in FIN_WAIT and
+        // then TIME_WAIT; with linger 0 the kernel resets the connection and frees the socket in
+        // the close itself, so it is gone as soon as the close returns
         (_, release) <- right(dial(node.address, peer.address)).allocated
-        // the four-tuple's sockets go once both ends have closed; a TIME_WAIT would hold one for
-        // 60 s, and the wait would fail showing it
-        lingering <- right(peer.accept).use { inbound =>
-          release *> inbound.bearer.close.attempt *>
-            Wait.until(states(node.address.port, peer.address.port))(_.isEmpty)
-        }
+        lingering <- right(peer.accept).use(_ =>
+          release *> states(node.address.port, peer.address.port)
+        )
         _ <- IO(assertEquals(lingering, Nil))
         _ <- right(dial(node.address, peer.address)).use(again =>
           right(peer.accept).use(inbound => IO(assertEquals(inbound.remote, again.local)))
         )
-        // without linger, fs2's socket closes first with a FIN, and once the peer ends its side
-        // too it is left in TIME_WAIT
+        // without linger, fs2's socket closes with a FIN and stays in the kernel, waiting for its
+        // peer, for as long as the peer keeps its side open (and in TIME_WAIT after that)
         plain <- Network
           .forAsync[IO]
           .connect(peer.address)
           .allocated
           .flatMap((socket, close) =>
-            right(peer.accept).use { inbound =>
-              close *> inbound.bearer.close *>
-                Wait.until(states(socket.address.asIpUnsafe.port, peer.address.port))(
-                  _ == List(TimeWait)
-                )
-            }
+            right(peer.accept)
+              .use(_ => close *> states(socket.address.asIpUnsafe.port, peer.address.port))
           )
-        _ <- IO(assertEquals(plain, List(TimeWait)))
+        _ <- IO(assert(plain.nonEmpty && plain.forall(FinWait), plain.toString))
       yield ()
     }
   }

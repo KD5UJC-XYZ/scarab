@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.{IO, IOApp, Ref, Resource}
+import cats.effect.{Deferred, IO, IOApp, Ref, Resource}
 import cats.mtl.Handle
 import cats.syntax.all.*
 import java.lang.management.ManagementFactory
@@ -19,9 +19,10 @@ import xyz.kd5ujc.scarab.network.Listeners.failing
   * reader waits in a blocking read on the blocking pool, so each live connection holds one thread.
   *
   * The clients are plain sockets in the same JVM that never read, so they hold no thread; each
-  * sample is taken once the thread count has stopped changing for a second. With `hold` as its
-  * second argument, the control, each handler holds its connection without reading it, so the
-  * difference between the two runs is what the readers cost.
+  * sample is taken once every handler holds its connection and, with readers, once every reader is
+  * blocked in its read (from the JVM's thread dump). With `hold` as its second argument, the
+  * control, each handler holds its connection without reading it, so the difference between the two
+  * runs is what the readers cost.
   *
   * Not part of `check`: run it with `java -XX:NativeMemoryTracking=summary -XX:+AlwaysPreTouch -cp
   * <network test classpath> xyz.kd5ujc.scarab.network.TcpThreadCostMain [connections] [read|hold]`.
@@ -61,16 +62,20 @@ object TcpThreadCostMain extends IOApp:
 
   private def threads: IO[Int] = IO(ManagementFactory.getThreadMXBean.getThreadCount)
 
-  /** The thread count once it has not changed for a second (at most 30 s). */
-  private def settled: IO[Int] =
-    def loop(last: Int, stable: Int): IO[Int] =
-      if stable >= 10 then IO.pure(last)
-      else
-        IO.sleep(100.millis) *> threads.flatMap(n => loop(n, if n == last then stable + 1 else 0))
-    threads.flatMap(loop(_, 0)).timeout(30.seconds)
+  /** The threads blocked in a socket channel's read: the connections' readers. */
+  private def readers: IO[Int] =
+    IO(
+      ManagementFactory.getThreadMXBean
+        .dumpAllThreads(false, false)
+        .count(
+          _.getStackTrace.exists(f =>
+            f.getClassName == "sun.nio.ch.SocketChannelImpl" && f.getMethodName == "read"
+          )
+        )
+    )
 
   private def sample: IO[Sample] =
-    settled.flatMap(n => (rssKb, stacksKb).mapN(Sample(n, _, _)))
+    (threads, rssKb, stacksKb).mapN(Sample(_, _, _))
 
   private def clients(at: java.net.InetSocketAddress, n: Int): Resource[IO, List[SocketChannel]] =
     List
@@ -80,14 +85,16 @@ object TcpThreadCostMain extends IOApp:
   def run(args: List[String]): IO[cats.effect.ExitCode] =
     val connections = args.headOption.flatMap(_.toIntOption).getOrElse(512)
     val reading = !args.drop(1).headOption.contains("hold")
-    Ref.of[IO, Int](0).flatMap { serving =>
+    (Ref.of[IO, Int](0), Deferred[IO, Unit]).tupled.flatMap { (serving, all) =>
+      // each handler counts itself once its connection is held; the last one opens the latch
+      val counted =
+        serving.updateAndGet(_ + 1).flatMap(n => all.complete(()).whenA(n == connections))
       val served = BearerServer
         .listen[IO, NetworkError](Listeners.Loopback, maxConnections = None)((_, _) => IO.unit) {
           (bearer, _) =>
-            val held =
-              if reading then Mux.resource[IO](bearer, Set.empty).use(_.closed).void
-              else IO.never[Unit]
-            serving.update(_ + 1) *> held.guarantee(serving.update(_ - 1))
+            if reading then
+              Mux.resource[IO](bearer, Set.empty).use(mux => counted *> mux.closed).void
+            else counted *> IO.never[Unit]
         }
       for
         _ <- IO.println(
@@ -101,7 +108,10 @@ object TcpThreadCostMain extends IOApp:
               before <- sample
               _ <- IO.println(before.line("listening"))
               during <- clients(listening.address.toInetSocketAddress, connections).use { _ =>
-                Wait.until(serving.get, 30.seconds)(_ == connections) *> sample
+                // with readers, the sample waits until every one of them is blocked in its read
+                all.get.timeout(60.seconds) *>
+                  readers.iterateUntil(_ >= connections).whenA(reading).timeout(60.seconds) *>
+                  sample
               }
               _ <- IO.println(during.line(s"$connections-connections"))
               _ <- IO.println(
