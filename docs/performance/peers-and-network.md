@@ -527,9 +527,10 @@ DELTA threads=2 rss_kb=16720 thread_stacks_committed_kb=140 per_connection_rss_k
 ```
 <!-- /register -->
 
-**Result.** At the accept limit the readers hold 512 threads, about 84 MB of resident memory, 167 KB a connection, of
-which 56 MB, 112 KB a connection, is committed thread stack; the rest of the connections' memory (the sockets, the
-multiplexer's fibers and buffers) is the control's 16 to 21 MB. The thread stacks are reserved at the JDK's default 1 MB
+**Result.** At the accept limit the readers hold 512 threads, and the connections with their multiplexers take about 84
+MB of resident memory more than the control, 167 KB a connection. Of that, 56 MB (112 KB a connection) is committed
+thread stack; the rest is the multiplexers' fibers, queues and read buffers, which the control does not run. The
+control's own 16 to 21 MB are the accepted sockets and their handlers. The thread stacks are reserved at the JDK's default 1 MB
 each and committed only as deep as a blocked read goes. Next to the heap a syncing node runs with (gigabytes, section
 8), this is small, so the blocking design stays. A non-blocking design on the cats-effect selector would save the
 threads, at the cost of a readiness capability built in `Main` and a close that the JDK defers while a channel is
