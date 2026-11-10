@@ -31,6 +31,13 @@ class Case:
     expect: tuple
 
 
+def bootstrap_outputs(era, address, lovelace):
+    """The outputs of the bootstrap-attribute case (#832): 5 ada to a Byron address with 65 bytes of attributes,
+    one over the limit, and the rest of `lovelace` less the fee back to `address`."""
+    return [eratx.tx_out(era, eratx.bootstrap_address(bytes(64), 65, MAGIC), 5_000_000),
+            eratx.tx_out(era, address, lovelace - FEE - 5_000_000)]
+
+
 def seeded_key(name):
     """A throwaway key whose seed is derived from `name`, so that a refresh builds the same credentials."""
     seed = eratx.blake2b(f"scarab refusal corpus {name}".encode())
@@ -102,9 +109,7 @@ def corpus(name, socket):
                          eratx.tx_out("conway", eratx.enterprise_address(k1.hash, network=1), 5_000_000),
                          eratx.tx_out("conway", here, w["lovelace"] - FEE - 5_000_001)]))
     # ---- UTXO: bootstrap attributes over 64 bytes (#832), reported as `OutputTooBigUTxO` from Allegra
-    add(BOOTSTRAP_ATTRIBUTES, ["OutputTooBigUTxO"],
-        **spend(outputs=[eratx.tx_out("conway", eratx.bootstrap_address(bytes(64), 65, MAGIC), 5_000_000),
-                         eratx.tx_out("conway", here, w["lovelace"] - FEE - 5_000_000)]))
+    add(BOOTSTRAP_ATTRIBUTES, ["OutputTooBigUTxO"], **spend(outputs=bootstrap_outputs("conway", here, w["lovelace"])))
     # ---- UTXO and UTXOW: an input the UTxO does not hold and a key that did not sign
     add("utxo-bad-input-missing-witness", ["BadInputsUTxO", "MissingVKeyWitnessesUTXOW"],
         **spend(extra_inputs=[unknown_input], signers=[k2]))
@@ -471,8 +476,7 @@ def preconway_families(name, era):
     add("fee-too-small", ["FeeTooSmallUTxO"], **spend(fee=1))
     # bootstrap attributes over 64 bytes (#832): Shelley's own failure, `OutputTooBigUTxO` from Allegra
     add(BOOTSTRAP_ATTRIBUTES, ["OutputBootAddrAttrsTooBig" if era == "shelley" else "OutputTooBigUTxO"],
-        **spend(outputs=[eratx.tx_out(era, eratx.bootstrap_address(bytes(64), 65, MAGIC), 5_000_000),
-                         eratx.tx_out(era, wd["address"], wd["lovelace"] - FEE - 5_000_000)]))
+        **spend(outputs=bootstrap_outputs(era, wd["address"], wd["lovelace"])))
     add("missing-witness", ["MissingVKeyWitnessesUTXOW"], **spend(signers=[other["key"]]))
     add("withdrawal-unregistered-account", ["Withdrawals"],
         **spend(withdrawals={eratx.reward_address(fresh_stake.hash): 0}, signers=[key, fresh_stake]))
@@ -500,3 +504,16 @@ def bootstrap_attributes(name):
     era = json.loads(EraWallets(name).sh(f"cardano-cli query tip {SOCKET}"))["era"].lower()
     cases = (corpus(name, f"{ENV}/socket/node1/sock") if era == "conway" else preconway_families(name, era))
     return [case for case in cases if case.label == BOOTSTRAP_ATTRIBUTES]
+
+
+def leios_bootstrap_attributes(name):
+    """The bootstrap-attribute case on a Conway cluster of the Leios build (`up-dijkstra --conway-only`, #826), from
+    its one genesis UTxO key. That build's Conway UTXO passes Shelley's failure on as its own
+    `OutputBootAddrAttrsTooBig` (cardano-ledger 9df9f98c `Allegra/Rules/Utxo.hs:394`, `Conway/Rules/Utxo.hs:413,440`),
+    where 11.1 reports `OutputTooBigUTxO`."""
+    b = Builder(name, f"{ENV}/socket/node1/sock")
+    w = b.wallet(1)
+    key = read_key(b, w["skey"])
+    tx, _ = eratx.build_tx("conway", [txin(w)], bootstrap_outputs("conway", eratx.enterprise_address(key.hash),
+                                                                  w["lovelace"]), FEE, [key])
+    return [Case(BOOTSTRAP_ATTRIBUTES, tx, ("OutputBootAddrAttrsTooBig",))]

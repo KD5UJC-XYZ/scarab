@@ -40,6 +40,8 @@ BLOCK_TAG_ERA = {7: "conway", 8: "dijkstra"}
 TX_DIR = "/work/tx"
 BASE_PORT = 3001
 DEFAULT_FIXTURE = REPO / "fixtures/dijkstra-devnet"
+# the Conway blocks `up-dijkstra --conway-only` waits for: the pools forge and node 1 answers queries
+CONWAY_ONLY_BLOCKS = 3
 
 
 def dijkstra_plan(dijkstra_epoch, major):
@@ -200,7 +202,9 @@ def finished(transaction, tip_now, blocks_after, security_param):
 
 def up_dijkstra(args):
     """Start the cluster and wait until it is in Dijkstra, a Dijkstra transaction is in a block and the chain is
-    `--blocks-after` blocks past it plus the security parameter (so that block is in the ImmutableDB)."""
+    `--blocks-after` blocks past it plus the security parameter (so that block is in the ImmutableDB). With
+    `--conway-only` it returns once Conway has `CONWAY_ONLY_BLOCKS` blocks, and the cluster stays in Conway until
+    `--dijkstra-epoch`: a Leios-build Conway cluster for `refusal-corpus --reference-build leios-b004fe0c`."""
     root = data_root(args.name)
     if root.exists():
         raise SystemExit(f"{root} exists; run `devnet.py down` first")
@@ -255,6 +259,8 @@ def up_dijkstra(args):
         if t["epoch"] not in majors:
             majors[t["epoch"]] = protocol_major(args.name)
             print(json.dumps({"epoch": t["epoch"], "era": era, "protocolMajor": majors[t["epoch"]]}), flush=True)
+        if args.conway_only and era == "conway" and t["block"] >= CONWAY_ONLY_BLOCKS:
+            break
         if era == "dijkstra" and transaction is None:
             txid, txin, address = submit_transaction(args.name)
             transaction = {"id": txid, "input": txin, "address": address, "submittedAt": t}
@@ -268,10 +274,11 @@ def up_dijkstra(args):
             break
         last = t
         time.sleep(0.5)
-    reached = [e for e, *_ in plan]
+    reached = [e for e, *_ in plan][:1 if args.conway_only else None]
     if [x["era"] for x in timeline] != reached:
         raise SystemExit(f"eras {[x['era'] for x in timeline]} differ from the plan {reached}")
-    summary = {"up": True, "referenceOnly": True, "root": str(root), "ports": ports, "image": LEIOS_IMAGE,
+    summary = {"up": True, "referenceOnly": True, "conwayOnly": args.conway_only, "root": str(root), "ports": ports,
+               "image": LEIOS_IMAGE,
                "plan": [{"era": e, "epoch": s, "protocolMajor": m} for e, s, m in plan], "eras": timeline,
                "protocolMajorByEpoch": majors, "transaction": transaction,
                "cluster": {"pools": args.pools, "epochLength": args.epoch_length, "slotLength": args.slot_length,

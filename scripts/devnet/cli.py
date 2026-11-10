@@ -64,7 +64,7 @@ from .follower import follow
 from .load import govload, load
 from .oracle_cmd import oracle
 from .refused_fixture import DEFAULT_OUT, refused_fixture
-from .refusalcorpus import DEFAULT_OUT as REFUSALS_OUT, refusal_corpus
+from .refusalcorpus import BUILDS as REFUSAL_BUILDS, DEFAULT_BUILD as REFUSAL_DEFAULT_BUILD, DEFAULT_OUT as REFUSALS_OUT, refusal_corpus
 from .scenarios.faults import faults
 from .scenarios.e2e import CONWAY_EPOCHS, capture_eras, e2e
 from .scenarios.governor import governor
@@ -165,6 +165,9 @@ def main():
                     help="blocks past the Dijkstra transaction's that must be immutable before it returns")
     ud.add_argument("--stall-seconds", type=int, default=60, help="fail when the chain does not grow for this long")
     ud.add_argument("--timeout", type=int, default=900, help="overall time limit in seconds")
+    ud.add_argument("--conway-only", action="store_true",
+                    help="return once the cluster forges Conway blocks, before Dijkstra (with a late --dijkstra-epoch, "
+                         "a Leios-build Conway cluster for refusal-corpus --reference-build leios-b004fe0c)")
     ud.set_defaults(run=up_dijkstra)
     cd = sub.add_parser("capture-dijkstra", help="REFERENCE ONLY: capture the running up-dijkstra chain as fixtures")
     cd.add_argument("--out", default=str(DIJKSTRA_OUT), help="fixture directory")
@@ -365,6 +368,9 @@ def main():
     rc.add_argument("--corpus", help="the corpus directory to write under --out (default <era>-devnet)")
     rc.add_argument("--cases", help="another case builder, `module:function` in scripts/devnet, called with the "
                                     "devnet name and returning `refusalcases.Case`s")
+    rc.add_argument("--reference-build", choices=sorted(REFUSAL_BUILDS), default=REFUSAL_DEFAULT_BUILD,
+                    help="the build of the cluster's reference node, recorded in corpus.json and checked against the "
+                         "node: 11.1 (`up`, `up-eras`) or leios-b004fe0c (`up-dijkstra --conway-only`)")
     rc.add_argument("--out", default=str(REFUSALS_OUT), help="the refusal corpus root (its manifest.json is updated)")
     rc.set_defaults(run=refusal_corpus)
     rf = sub.add_parser("refused-fixture", help="write fixtures/devnet/refused-txs.jsonl from the run directory of a "
