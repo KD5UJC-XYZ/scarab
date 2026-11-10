@@ -24,7 +24,8 @@ object ErasStates:
 
   val env: ConsensusMirrorEnv = setup.mirrorEnv()
 
-  private val raws: Vector[Bytes] =
+  /** The original bytes of the capture's blocks, in order. */
+  val raws: Vector[Bytes] =
     Files
       .readAllLines(fixtures.resolve("blocks.hex"))
       .asScala

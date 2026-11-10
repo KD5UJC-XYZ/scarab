@@ -1,12 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.BlockRef
+import xyz.kd5ujc.scarab.consensus.{BlockRef, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf}
 import cats.effect.unsafe.implicits.global
+import cats.syntax.eq.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{HeaderError, PraosError, OCertError, PoolDistribution, StakeView}
-import xyz.kd5ujc.scarab.consensus.Praos
+import xyz.kd5ujc.scarab.ledger.{
+  BlockFailure,
+  ChainError,
+  HeaderError,
+  HeaderStructureProblem,
+  PraosError,
+  OCertError,
+  PoolDistribution,
+  StakeView
+}
+import xyz.kd5ujc.scarab.consensus.{HeaderCheckpoints, Praos, PraosConfig}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.crypto.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
 import xyz.kd5ujc.scarab.ledger.state.VocabError
@@ -16,6 +26,8 @@ import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.ledger.state.Word64
 import xyz.kd5ujc.scarab.consensus.HeaderRules.Outcome
 import xyz.kd5ujc.scarab.node.forge.{ForgedChain, ForgedChainSetup}
+import xyz.kd5ujc.scarab.node.read.ErasStates
+import xyz.kd5ujc.scarab.protocol.Era
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
@@ -116,6 +128,185 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     assert(invalid(10, tampered(h, 0, 3)).exists(_.isInstanceOf[HeaderError.Praos]))
     assert(invalid(10, tampered(h, 2, 3)).exists(_.isInstanceOf[HeaderError.Praos]))
     assert(invalid(10, tampered(h, 5, 3)).exists(_.isInstanceOf[HeaderError.Praos]))
+  }
+
+  /** The validation of block `i` (`MirrorRules.applyBlock`) under `config` from the state after its
+    * parent, with `header` announced for its body. A tampered copy keeps the original hash, so the
+    * block's decoded header still matches it and every rule reads the tampered fields, as
+    * header-first validation does.
+    */
+  private def applied(
+      i: Int,
+      header: Header.Shelley,
+      config: PraosConfig
+  ): Either[BlockFailure, MirrorState] =
+    MirrorRules.applyBlock(
+      if i == 0 then forged.genesis else forged.states(i - 1),
+      header,
+      forged.raws(i),
+      config,
+      forged.globals,
+      None,
+      None,
+      ForgedChain.mirrorEnv.byron
+    )
+
+  /** Header-first validation of block `i` 's `header` under `config`, from the state after its
+    * parent: the refusal, if it is one.
+    */
+  private def refused(i: Int, header: Header.Shelley, config: PraosConfig): Option[HeaderError] =
+    val (state, tip) = anchor(i, 0)
+    NodeHeaderRules[MirrorState](config, forged.globals)
+      .validate(state, tip, before(i), header) match
+      case Outcome.Invalid(e) => Some(e)
+      case _                  => None
+
+  /** The refusal block application gives for the same rule: the families both paths share. */
+  private def atBlock(error: HeaderError): Option[BlockFailure] = error match
+    case HeaderError.Envelope(e) => Some(BlockFailure.Envelope(e))
+    case HeaderError.Praos(e)    => Some(BlockFailure.Praos(e))
+    case HeaderError.TPraos(e)   => Some(BlockFailure.TPraos(e))
+    case _                       => None
+
+  // Issue 879: block application re-runs every header-first check, as the reference's
+  // `applyHelper` re-runs `validateHeader` (ouroboros-consensus 82ecba329, Ledger/Extended.hs
+  // 189-206), so a header refused header-first is refused by its block's own validation with the
+  // same cause. The rows cover the checks both paths run through `MirrorRules`: the checkpoints,
+  // the envelope and the Praos protocol (VRF, KES, operational certificate, keys, slot).
+  test("a header refused header-first is refused by its block's validation for the same cause") {
+    val i = 10
+    val h = forged.headers(i)
+    val config = forged.config
+    val checkpointed = config.copy(checkpoints =
+      HeaderCheckpoints(Map(h.blockNo -> Bytes(Vector.fill(32)(7.toByte))))
+    )
+    val rows: Vector[(String, Header.Shelley, PraosConfig)] = Vector(
+      ("checkpoint", h, checkpointed),
+      ("header size", h.copy(raw = Bytes(h.raw.value ++ Vector.fill(1 << 16)(0.toByte))), config),
+      ("VRF proof", tampered(h, 0, 3), config),
+      ("VRF output", tampered(h, 1, 3), config),
+      ("KES signature", tampered(h, 2, 3), config),
+      ("empty KES signature", h.copy(kesSignature = Bytes.empty), config),
+      ("operational certificate signature", tampered(h, 3, 3), config),
+      (
+        "empty operational certificate signature",
+        h.copy(opCert = h.opCert.copy(sigma = Bytes.empty)),
+        config
+      ),
+      ("operational certificate hot key", tampered(h, 4, 3), config),
+      ("issuer key", tampered(h, 5, 3), config),
+      ("VRF key", tampered(h, 6, 3), config),
+      ("slot", tampered(h, 7, 0), config)
+    )
+    assert(applied(i, h, config).exists(_ === forged.states(i)), "the untampered block applies")
+    rows.foreach { (name, header, rowConfig) =>
+      refused(i, header, rowConfig) match
+        case None => fail(s"$name: not refused header-first")
+        case Some(error) =>
+          atBlock(error) match
+            case None => fail(s"$name: $error has no block-application counterpart")
+            case Some(expected) =>
+              assertEquals(applied(i, header, rowConfig).left.toOption, Some(expected), name)
+    }
+  }
+
+  // The TPraos eras of the era-walking capture (fixtures/eras), original blocks of a reference
+  // cluster: Shelley and Allegra with the overlay schedule (d = 1), Mary and Alonzo without it.
+  test(
+    "a TPraos header refused header-first is refused by its block's validation for the same cause"
+  ) {
+    val setup = ErasStates.setup
+    given HeaderTimeRead[MirrorState] = HeaderTimeRead.mirror(setup.byronHistory)
+    val eras =
+      NodeHeaderRules[MirrorState](setup.praos, setup.globals, setup.byronRules, setup.handOver)
+    Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo).foreach { era =>
+      // a block well inside the era, past its first block's hand-over
+      val i = ErasStates.blocks.indexWhere(_.era == era) + 5
+      val before = ErasStates.samples(i - 1)
+      val h = ErasStates.blocks(i).header match
+        case s: Header.Shelley if s.era == era => s
+        case other                             => fail(s"$era: block $i is $other")
+      val (nonce, leader) = h.vrf match
+        case HeaderVrf.TPraos(n, l) => (n, l)
+        case other                  => fail(s"$era: $other")
+      def refusedFirst(header: Header.Shelley): Option[HeaderError] =
+        eras.validate(before.mirror, Some(before.anchor), eras.at(before.mirror), header) match
+          case Outcome.Invalid(e) => Some(e)
+          case _                  => None
+      def appliedAt(header: Header.Shelley): Either[BlockFailure, MirrorState] =
+        MirrorSteps.block(setup, before.mirror, header, ErasStates.raws(i))
+      val rows: Vector[(String, Header.Shelley)] = Vector(
+        "header size" -> h.copy(raw = Bytes(h.raw.value ++ Vector.fill(1 << 16)(0.toByte))),
+        "nonce VRF proof" -> h.copy(vrf =
+          HeaderVrf.TPraos(nonce.copy(proof = flip(nonce.proof, 3)), leader)
+        ),
+        "leader VRF proof" -> h.copy(vrf =
+          HeaderVrf.TPraos(nonce, leader.copy(proof = flip(leader.proof, 3)))
+        ),
+        "KES signature" -> tampered(h, 2, 3),
+        "operational certificate signature" -> tampered(h, 3, 3),
+        "operational certificate hot key" -> tampered(h, 4, 3),
+        "issuer key" -> tampered(h, 5, 3),
+        "VRF key" -> tampered(h, 6, 3),
+        "slot" -> tampered(h, 7, 0)
+      )
+      assert(appliedAt(h).exists(_ === ErasStates.samples(i).mirror), s"$era: the block applies")
+      rows.foreach { (name, header) =>
+        refusedFirst(header) match
+          case None => fail(s"$era $name: not refused header-first")
+          case Some(error) =>
+            atBlock(error) match
+              case None => fail(s"$era $name: $error has no block-application counterpart")
+              case Some(expected) =>
+                assertEquals(appliedAt(header).left.toOption, Some(expected), s"$era $name")
+      }
+    }
+  }
+
+  /** The node's chain after the forged blocks before `i`. */
+  private def chainBefore(i: Int): VolatileChain[MirrorState] =
+    forged.headers
+      .take(i)
+      .zip(forged.states)
+      .foldLeft(VolatileChain.genesis(ForgedChain.geometry.k.toInt, forged.genesis)) {
+        case (chain, (h, s)) => chain.extend(h, s).fold(e => fail(e.message), _._1)
+      }
+
+  // Block number, slot order and previous hash: header-first validation checks them in
+  // `NodeHeaderRules`, block application when the block extends the node's chain
+  // (`VolatileChain.extend`), which refuses it as not connected to the tip.
+  test("a header refused header-first for its place in the chain cannot extend the chain") {
+    val i = 10
+    val h = forged.headers(i)
+    val parent = forged.headers(i - 1)
+    val other = Bytes(Vector.fill(32)(7.toByte))
+    val rows: Vector[(String, Header.Shelley, HeaderStructureProblem)] = Vector(
+      (
+        "block number",
+        h.copy(blockNo = h.blockNo + 1),
+        HeaderStructureProblem.BlockNumber(h.blockNo + 1, h.blockNo)
+      ),
+      (
+        "slot not after the parent's",
+        h.copy(slot = parent.slot),
+        HeaderStructureProblem.SlotNumber(parent.slot, parent.slot + 1)
+      ),
+      (
+        "previous hash",
+        h.copy(prevHash = Some(other)),
+        HeaderStructureProblem.PreviousHash(Some(other), Some(parent.hash))
+      )
+    )
+    val chain = chainBefore(i)
+    assert(chain.extend(h, forged.states(i)).isRight, "the untampered block extends the chain")
+    rows.foreach { (name, header, problem) =>
+      assertEquals(invalid(i, header), Some(HeaderError.Structure(problem)), name)
+      assertEquals(
+        chain.extend(header, forged.states(i)).left.toOption,
+        Some(ChainError.NotConnected(header.point, chain.tip)),
+        name
+      )
+    }
   }
 
   test("a block body larger than the parameters allow is an envelope error") {
