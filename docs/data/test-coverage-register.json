@@ -12,8 +12,8 @@
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
       "resolution": "The pinned original preprod table and same-snapshot checkpoint passed complete nonempty key/semantic comparison and canonical packing for all 4,526,058 outputs; see exact-source external acceptance receipt.",
       "evidence": [
-        "tools/src/main/scala/xyz/kd5ujc/scarab/storage/MemPackJoinCheck.scala",
-        "tools/src/test/scala/xyz/kd5ujc/scarab/storage/MemPackComparisonSuite.scala",
+        "storage/src/test/scala/xyz/kd5ujc/scarab/storage/MemPackJoinCheck.scala",
+        "storage/src/test/scala/xyz/kd5ujc/scarab/storage/MemPackComparisonSuite.scala",
         "docs/data/external-acceptance-294.json"
       ],
       "candidateRequired": true

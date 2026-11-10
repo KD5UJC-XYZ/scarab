@@ -54,8 +54,8 @@ class BoundaryDigestSuite extends FunSuite with ExternalInputs:
       NodeSetup
         .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/preview/genesis"))
         .fold(e => fail(e.message), identity)
-    val snapshots = BoundaryTickMain.snapshotFiles(dir)
+    val snapshots = BoundaryTick.snapshotFiles(dir)
     golden.toList.sortBy(_._1).foreach { (index, digest) =>
-      val row = BoundaryTickMain.measure(dir, setup, snapshots, index, repeats = 1)
+      val row = BoundaryTick.measure(dir, setup, snapshots, index, repeats = 1)
       assertEquals(row.digest, digest, s"snapshot $index")
     }

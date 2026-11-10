@@ -1036,9 +1036,7 @@
       "entryPoints": [
         "BoundaryTickMain"
       ],
-      "suites": [
-        "BoundaryDigestSuite"
-      ],
+      "suites": [],
       "docs": []
     },
     {
@@ -1149,7 +1147,7 @@
       "entryPoints": [
         "BenchCodecMain",
         "InternDecodeBench",
-        "MemPackJoin",
+        "MemPackJoinMain",
         "RewardSnapshotFixtureMain",
         "SnapshotCodecBench",
         "SnapshotV10FixtureMain",
@@ -1158,9 +1156,7 @@
         "SnapshotV9FixtureMain",
         "UtxoScanBench"
       ],
-      "suites": [
-        "MemPackComparisonSuite"
-      ],
+      "suites": [],
       "docs": []
     },
     {
