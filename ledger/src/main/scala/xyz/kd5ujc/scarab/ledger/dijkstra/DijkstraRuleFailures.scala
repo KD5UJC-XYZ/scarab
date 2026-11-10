@@ -201,9 +201,8 @@ enum DijkstraPending:
     */
   case ConwayForm(cause: LedgerDecodeError)
 
-  /** A pool registration: the pool state of the node holds the original encodings of a
-    * registration's relays and metadata and no BLS key (`StakePoolParams`, `sppBlsKey`), which a
-    * Dijkstra registration does not keep.
+  /** A pool registration: its Dijkstra transition and VRF-key occurrence accounting remain
+    * unimplemented.
     */
   case PoolRegistration
 

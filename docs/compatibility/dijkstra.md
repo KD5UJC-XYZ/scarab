@@ -36,11 +36,12 @@ None of these is reachable from the node's own chain yet.
   - a chain started in Dijkstra from its genesis: the Dijkstra genesis file is read and checked (#807), but the genesis start is refused with `DijkstraNotYet.Genesis`, because it would seat the Leios committee (`GenesisStart`);
   - SUB rules and ENTITIES: LEDGER completes only for phase-2-invalid transactions without sub-transactions whose UTXOW checks are implemented (#54, T7);
   - guards, direct deposits, balance intervals, Plutus scripts, redeemers, datums and forms the Conway decoder refuses: they halt with `DijkstraNotYet.Rules` (#54);
-  - pool registration and parameter-change proposals, whose state fields are not yet represented (#826);
+  - the pool-registration transition and its VRF-key occurrence accounting (#826);
+  - parameter-change proposals, whose store still holds Conway updates (#826);
   - the rules in block application and at epoch boundaries, which still refuse with `DijkstraNotYet.Rules` (#54, T11);
   - the node-to-client queries and failure encoders;
   - a crossing made by the Scala node on a devnet.
 - **Persistence:**
   - the Dijkstra ledger state in the Haskell `state` layout (#826);
   - before the crossing block, the mempool, forger and node-to-client paths that tick into Dijkstra still need the stored-output upgrade wired into their reads (#54, T11).
-- **The eras before Dijkstra on a Leios network** still follow cardano-node 11.1.3 (ledger f649f975, consensus 82ecba32). The Leios build changes their state layout and some of their rules. A Leios node's database cannot be imported yet (#826, owner decision on #54). Its endorser-block store has no counterpart either (#830).
+- **The eras before Dijkstra on a Leios network:** state snapshots through Conway can be imported and exported under the selected Leios build ([layout support](persistence-leios-state-layout.md)). Following that build remains refused until its rules are implemented: the existing rules follow cardano-node 11.1.3 (ledger f649f975, consensus 82ecba32), and the Leios build changes some of them (#826). Importing Dijkstra state remains unimplemented (#826, owner decision on #54); the endorser-block store has no counterpart either (#830).

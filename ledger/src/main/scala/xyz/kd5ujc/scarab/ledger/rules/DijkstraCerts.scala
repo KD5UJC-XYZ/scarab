@@ -217,7 +217,7 @@ object DijkstraConway:
   * `Shelley/Rules/Pool.hs`), run by the Conway rule with its failures taken into
   * [[DijkstraPoolFailure]] (`Pool.hs:146-153`). A registration halts
   * ([[DijkstraPending.PoolRegistration]]): it counts VRF key hashes by occurrence and keeps the BLS
-  * key (`Pool.hs:239-300`), which the node's pool state does not hold.
+  * key (`Pool.hs:239-300`); that registration transition remains unimplemented.
   */
 object DijkstraPool
     extends JudgedSts[CertEnv, PState, Certificate, DijkstraPoolFailure, DijkstraHalt]:
