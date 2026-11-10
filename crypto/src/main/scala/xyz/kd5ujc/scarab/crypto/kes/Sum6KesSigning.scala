@@ -33,7 +33,7 @@ object Sum6KesSigning:
     case InvalidSeedLength(actual: Int)
     case MissingKey
     case InvalidKeyLength(actual: Int)
-    case PeriodOutOfRange(period: Int)
+    case PeriodOutOfRange(period: BigInt)
     case SeedStateMismatch(depth: Int, period: Int, actual: SeedState)
     case VerificationKeyMismatch(depth: Int)
     case RightSeedMismatch(depth: Int)
@@ -82,7 +82,7 @@ object Sum6KesSigning:
 
     /** Advance to `target` (not before the current period), erasing what cannot be used any more.
       */
-    def evolveTo(target: Int): Either[Failure, Unit] =
+    def evolveTo(target: BigInt): Either[Failure, Unit] =
       @scala.annotation.tailrec
       def step(): Unit =
         if current < target then

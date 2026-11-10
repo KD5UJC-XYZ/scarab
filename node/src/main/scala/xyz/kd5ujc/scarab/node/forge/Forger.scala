@@ -411,7 +411,7 @@ final class Forger[F[_]: Async, S](
             block.body.ids,
             block.body.size,
             period,
-            block.relativeKesPeriod.toInt,
+            block.relativeKesPeriod,
             stake,
             pools.total,
             block.counter
@@ -548,7 +548,7 @@ final class Forger[F[_]: Async, S](
     val kesPeriod = kesPeriodOf(slot)
     // the header, the key's evolution and the signature all use the credentials of one moment: a
     // reload (SIGHUP) waits until the block is signed
-    val assembled: F[Either[ForgeError, (Bytes, Bytes, BigInt, BigInt)]] = hot.locked { c =>
+    val assembled: F[Either[ForgeError, (Bytes, Bytes, Int, BigInt)]] = hot.locked { c =>
       val start = c.opCert.kesPeriod
       val header = for
         _ <- Either.cond(
@@ -583,9 +583,7 @@ final class Forger[F[_]: Async, S](
             case Left(e) => F.pure(Left(e))
             case Right(_) =>
               F.blocking(c.kes.sign(headerBody))
-                .map(signature =>
-                  Right((headerBody, signature, kesPeriod - start, c.opCert.sequence))
-                )
+                .map(signature => Right((headerBody, signature, c.kes.period, c.opCert.sequence)))
           }
     }
     assembled.flatMap(lift).flatMap { (headerBody, signature, relative, counter) =>
@@ -817,7 +815,7 @@ object Forger:
       header: Header,
       raw: Bytes,
       body: BlockBuilder.Body,
-      relativeKesPeriod: BigInt,
+      relativeKesPeriod: Int,
       counter: BigInt
   ):
     /** `estimateBlockSize` of the header (see [[ForgeTrace.AdoptedBlock]]). */

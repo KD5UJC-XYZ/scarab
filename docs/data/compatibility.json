@@ -1596,7 +1596,7 @@
       "id": "block-forging",
       "component": "Block forging",
       "status": "implemented",
-      "summary": "Praos (Conway) forging only, with typed terminal outcomes and no signing after a key-update failure",
+      "summary": "Praos (Conway) forging, exact KES evolution targets and typed terminal outcomes after key-update failure",
       "evidence": {
         "suites": [
           "Sum6KesSigningSuite",
@@ -1607,7 +1607,8 @@
           "SystemStartSuite"
         ],
         "issues": [
-          82
+          82,
+          474
         ]
       },
       "page": "docs/compatibility/block-forging.md"
