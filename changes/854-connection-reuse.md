@@ -26,3 +26,7 @@
   - `GET /connections` no longer reports `inboundSessions`.
   - The `inbound` log events `following`, `sessionEnded`, `sessionDropped`, `sessionReturned` and
     `cachedBlockRejected`, and their `scarab_inbound_events_total` labels, are gone.
+
+### Fixed (peer governor, #854)
+- **A topology reload no longer blinds the governor to the connections it kept.** It used to drop what their monitors
+  observed, so a hot peer whose session had ended stayed hot in its view and was never activated again.
