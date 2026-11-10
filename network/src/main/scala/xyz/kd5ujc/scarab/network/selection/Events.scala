@@ -80,7 +80,8 @@ private[selection] object Events:
 
   /** `realToFrac :: Double -> DiffTime` floors the exact binary value to picoseconds
     * (`Data.Fixed`'s `fromRational`); a `FiniteDuration` holds nanoseconds, so the floor is taken
-    * there, toward negative infinity for a negative fuzz.
+    * there, toward negative infinity for a negative fuzz. This sub-nanosecond difference is
+    * approved in the 2026-11-10 networking row of docs/decisions.md (issue 854).
     */
   private[selection] def fromSeconds(seconds: Double): FiniteDuration =
     new java.math.BigDecimal(seconds)
