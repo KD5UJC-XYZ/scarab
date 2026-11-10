@@ -100,7 +100,7 @@ tests of the version.
 - **Parameters** (`ProtocolParams`, `UpdateChecks`): PPUP and UPEC apply an update in the era
   that proposed it, so key 17 is the cost per UTxO word in Alonzo and per byte in Babbage, whatever
   the protocol version (#884). Only `Translate.alonzoToBabbage` divides words into bytes, including
-  the future parameters. BBODY reads the era's `ppDG`: `d` through Alonzo and zero from Babbage;
+  the future parameters and both stored proposal maps (`ParamUpdate.toBabbage`). BBODY reads the era's `ppDG`: `d` through Alonzo and zero from Babbage;
   the node's TPraos header views read `d` through Alonzo too.
 - **Epoch boundary** (`ledger/rules/Epoch.scala`, `Snap.scala`, `Rewards.scala`, `Rupd.scala`): reward application (pre-Babbage prefilter against the
   accounts registered when the calculation started, so unclaimed rewards return to the reserves),

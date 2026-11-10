@@ -27,7 +27,19 @@ conversion, an Alonzo update at version 7, and the subsequent conversion at the 
 The era's `ppDG` is `d` through Alonzo (`Alonzo/PParams.hs:338`) and zero from Babbage
 (`Babbage/PParams.hs:198`): `ShelleyBbodySuite` checks the blocks counted in Alonzo at version 7
 and Babbage at version 6, and `EraTransitionSuite` checks both production TPraos header paths at
-Alonzo version 7. The parameter record, snapshot schema and original update bytes are unchanged.
+Alonzo version 7. The parameter record and snapshot schema are unchanged.
+
+Dated evidence (2026-11-10, #884): the original Alonzo-to-Babbage translation kept both raw
+proposal maps unchanged, whereas the reference upgrades them (`Babbage/Translation.hs:155-168`).
+The owner approved including this resolved difference in #884 and explicitly recording it
+([approval record](https://github.com/KD5UJC-XYZ/scarab/issues/884#issuecomment-6774945758)).
+`ProtocolParamProposalTranslationGapSuite` reproduces it through signed early/late PPUP votes,
+the translation and `Hfc.tick`, both at an epoch-triggered Babbage version 6 and the ordinary
+version-6-to-7 transition. It converts the stored key-17 values 40003 and 48003 into 5000 and
+6000, removes the obsolete fields, preserves untouched fields' original bytes and leaves an
+unread legacy key 17 unadoptable. This establishes a valid ordinary-version scenario, not an
+observed occurrence on an actual public chain. No retained reference divergence is approved;
+the pending proposals' replacement values are the era translation itself, with no schema change.
 
 ## Explicitly unchecked or unconfirmed
 

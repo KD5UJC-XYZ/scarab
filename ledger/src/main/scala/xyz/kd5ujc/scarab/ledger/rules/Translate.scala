@@ -184,11 +184,23 @@ object Translate:
 
   /** `upgradePParams ()` (`Babbage/Translation.hs:84`, `Babbage/PParams.hs:321-345`): the cost per
     * UTxO byte is the per word cost over the eight bytes of a word, rounded down; the per word cost
-    * is gone.
+    * is gone. Both proposal maps are upgraded too (`Babbage/Translation.hs:155-168`), before UPEC
+    * rotates the late proposals and predicts the parameters of the next Babbage epoch.
     */
   def alonzoToBabbage(nes: NewEpochState[Alonzo]): NewEpochState[Babbage] =
-    reindex[Alonzo, Babbage](nes, ())(p =>
+    val translated = reindex[Alonzo, Babbage](nes, ())(p =>
       p.copy(coinsPerUTxOByte = p.coinsPerUTxOWord / 8, coinsPerUTxOWord = 0, minUTxOValue = 0)
+    )
+    val ls = translated.es.ls
+    val gov = ls.utxo.gov
+    val proposals = gov.copy(
+      curProposals =
+        gov.curProposals.map((k, u) => k -> xyz.kd5ujc.scarab.ledger.ParamUpdate.toBabbage(u)),
+      futureProposals =
+        gov.futureProposals.map((k, u) => k -> xyz.kd5ujc.scarab.ledger.ParamUpdate.toBabbage(u))
+    )
+    translated.copy(es =
+      translated.es.copy(ls = ls.copy[Babbage](utxo = ls.utxo.copy(gov = proposals)))
     )
 
   // ---- Babbage to Conway
