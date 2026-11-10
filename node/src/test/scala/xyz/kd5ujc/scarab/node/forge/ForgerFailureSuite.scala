@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.network.Settled
 import cats.effect.{Deferred, IO, Outcome, Ref}
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -472,52 +473,56 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
   }
 
   test("a signer queued behind a failed persistence sees the poisoned key before it can sign") {
-    val p = pool(kesStart = 50)
-    val cause = new IOException("disk full")
-    val error = ForgeError.KeyFile("kes", ForgeKeyProblem.Io(cause))
-    val expected = Fatal.Storage(StorageError.Io("kes", cause))
-    for
-      reporting <- Deferred[IO, Unit]
-      release <- Deferred[IO, Unit]
-      signed <- Ref.of[IO, Int](0)
-      events <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
-      source = new HotKeySource[IO]:
-        def read = IO.pure(Left(unreadable))
-        def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Failed(error))
-      keys <- HotKeys.create[IO](
-        p.creds,
-        Some(source),
-        config,
-        event =>
-          events.update(_ :+ event) *> (event match
-            case _: ForgeEvent.KesPersistFailed => reporting.complete(()) *> release.get
-            case _                              => IO.unit)
-      )
-      failing <- Forger.scoped(keys.update(51)).start
-      _ <- reporting.get.timeout(3.seconds)
-      signer <- Forger
-        .scoped(
-          keys.locked(c =>
-            signed.update(_ + 1) *> IO(c.kes.sign(xyz.kd5ujc.scarab.codec.Bytes.empty))
-          )
+    Settled { settle =>
+      // the keys evolve in place, so each run has its own
+      val p = pool(kesStart = 50)
+      val cause = new IOException("disk full")
+      val error = ForgeError.KeyFile("kes", ForgeKeyProblem.Io(cause))
+      val expected = Fatal.Storage(StorageError.Io("kes", cause))
+      for
+        reporting <- Deferred[IO, Unit]
+        release <- Deferred[IO, Unit]
+        signed <- Ref.of[IO, Int](0)
+        events <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
+        source = new HotKeySource[IO]:
+          def read = IO.pure(Left(unreadable))
+          def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Failed(error))
+        keys <- HotKeys.create[IO](
+          p.creds,
+          Some(source),
+          config,
+          event =>
+            events.update(_ :+ event) *> (event match
+              case _: ForgeEvent.KesPersistFailed => reporting.complete(()) *> release.get
+              case _                              => IO.unit)
         )
-        .start
-      _ <- IO.cede
-      _ <- release.complete(())
-      result <- failing.joinWithNever.timeout(3.seconds)
-      attempted <- signer.joinWithNever.timeout(3.seconds)
-      read <- Forger.scoped(keys.current)
-      count <- signed.get
-      emitted <- events.get
-    yield
-      assertEquals(result, Left(expected))
-      assertEquals(attempted, Left(expected))
-      assertEquals(read, Left(expected))
-      assertEquals(count, 0)
-      assertEquals(
-        emitted.collect { case ForgeEvent.KesPersistFailed(_, cause) => cause },
-        Vector(error)
-      )
+        failing <- Forger.scoped(keys.update(51)).start
+        _ <- reporting.get.timeout(3.seconds)
+        signer <- Forger
+          .scoped(
+            keys.locked(c =>
+              signed.update(_ + 1) *> IO(c.kes.sign(xyz.kd5ujc.scarab.codec.Bytes.empty))
+            )
+          )
+          .start
+        // the signer waits for the key the failed persistence holds
+        _ <- settle
+        _ <- release.complete(())
+        result <- failing.joinWithNever.timeout(3.seconds)
+        attempted <- signer.joinWithNever.timeout(3.seconds)
+        read <- Forger.scoped(keys.current)
+        count <- signed.get
+        emitted <- events.get
+      yield
+        assertEquals(result, Left(expected))
+        assertEquals(attempted, Left(expected))
+        assertEquals(read, Left(expected))
+        assertEquals(count, 0)
+        assertEquals(
+          emitted.collect { case ForgeEvent.KesPersistFailed(_, cause) => cause },
+          Vector(error)
+        )
+    }
   }
 
   test("FileNotFoundException for an existing directory is fatal storage, not file absence") {

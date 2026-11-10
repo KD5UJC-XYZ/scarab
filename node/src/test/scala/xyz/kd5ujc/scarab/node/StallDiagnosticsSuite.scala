@@ -8,10 +8,11 @@ import cats.syntax.all.*
 import scala.jdk.CollectionConverters.*
 import cats.effect.testkit.TestControl
 import com.comcast.ip4s.*
+import fs2.concurrent.SignallingRef
 import io.circe.Json
-import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.node.BlockAdmissions.{AdmissionStage, WorkKind}
 import xyz.kd5ujc.scarab.node.log.{NodeEvent, Traced}
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -20,7 +21,7 @@ import xyz.kd5ujc.scarab.protocol.ChainSync
   * coordinator, a session's pipeline probe and the admissions, and the `stallState` event carries
   * what they held.
   */
-class StallDiagnosticsSuite extends CatsEffectSuite:
+class StallDiagnosticsSuite extends FailsOnUncaught:
   private val stalledLine = NodeEvent.Stalled(10.minutes, BigInt(100), BigInt(5000))
 
   private def at(slot: Long, hash: Int): ChainSync.Point =
@@ -226,7 +227,7 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
     oneSession.flatMap { sources =>
       for
         gate <- Deferred[IO, Unit]
-        started <- Ref.of[IO, Int](0)
+        started <- SignallingRef[IO, Int](0)
         wedged = (_: NodeEvent) => started.update(_ + 1) *> gate.get
         reporter <- StallDiagnostics.Reporter.create[IO](None, wedged, _.start.void)
         _ <- reporter.install(sources)
@@ -235,7 +236,7 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
           reporter
             .onStall(stalledLine)
             .timeoutTo(2.seconds, IO.raiseError(new AssertionError("blocked"))) *>
-            (IO.sleep(10.millis) *> started.get).iterateUntil(_ >= 1).timeout(10.seconds)
+            started.waitUntil(_ >= 1).timeout(10.seconds) *> started.get
         ).guarantee(gate.complete(()).void)
       yield assertEquals(count, 1)
     }
@@ -249,21 +250,25 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
         .flatMap { sources =>
           for
             release <- IO(new java.util.concurrent.CountDownLatch(1))
-            logged <- Ref.of[IO, Vector[NodeEvent]](Vector.empty)
+            logged <- SignallingRef[IO, Vector[NodeEvent]](Vector.empty)
             stateLogged <- Deferred[IO, Unit]
+            dumping <- Deferred[IO, Unit]
             log = (e: NodeEvent) =>
               logged.update(_ :+ e) *> (e match
                 case _: NodeEvent.StallState => stateLogged.complete(()).void
                 case _                       => IO.unit)
             hung = () =>
+              dumping.complete(()).unsafeRunAndForget()(using munitIORuntime)
               release.await()
               None
             reporter <- StallDiagnostics.Reporter.create[IO](Some(dir), log, _.start.void, hung)
             _ <- reporter.install(sources)
+            // no time has to pass: the stall begins and its exit falls due in the one check, the
+            // exit reported after the beginning's report has started the dump that hangs
             dog <- StallWatchdog.create[IO](
               BigInt(100),
-              100.millis,
-              Some(200.millis),
+              Duration.Zero,
+              Some(Duration.Zero),
               {
                 case StallWatchdog.Change.Began(_, _, _) => reporter.onStall(stalledLine)
                 case StallWatchdog.Change.ExitDue(_, _, _) =>
@@ -271,18 +276,22 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
                 case _ => IO.unit
               }
             )
-            _ <- dog.announced(BigInt(5000))
-            _ <- IO.sleep(150.millis) *> dog.check
-            _ <- stateLogged.get.timeout(10.seconds)
-            // the dump is still hanging; a later check still reaches the exit
-            _ <- IO.sleep(150.millis) *> dog.check
-            events <- logged.get
-            files <- IO.blocking(
-              Files.list(dir).iterator.asScala.toList.map(_.getFileName.toString)
-            )
-            _ <- IO(release.countDown())
-            _ <- logged.get
-              .iterateUntil(_.exists(_.isInstanceOf[NodeEvent.StallDumped]))
+            result <- (for
+              _ <- dog.announced(BigInt(5000))
+              _ <- dog.check.timeout(10.seconds)
+              _ <- stateLogged.get.timeout(10.seconds)
+              // the fiber dump has begun, so the state file written before it is there; it hangs,
+              // and a later check still runs
+              _ <- dumping.get.timeout(10.seconds)
+              _ <- dog.check.timeout(10.seconds)
+              events <- logged.get
+              files <- IO.blocking(
+                Files.list(dir).iterator.asScala.toList.map(_.getFileName.toString)
+              )
+            yield (events, files)).guarantee(IO(release.countDown()))
+            (events, files) = result
+            _ <- logged
+              .waitUntil(_.exists(_.isInstanceOf[NodeEvent.StallDumped]))
               .timeout(10.seconds)
           yield
             assert(events.exists(_.isInstanceOf[NodeEvent.StallState]), events.toString)
@@ -301,22 +310,22 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
     oneSession.flatMap { sources =>
       for
         gate <- Deferred[IO, Unit]
-        started <- Ref.of[IO, Int](0)
+        started <- SignallingRef[IO, Int](0)
         wedged = (_: NodeEvent) => started.update(_ + 1) *> gate.get
         watch <- StallDiagnostics.Watch.create[IO](None, wedged, _.start.void)
         _ <- watch.reporter.install(sources)
         dog <- StallWatchdog.create[IO](
           BigInt(100),
-          50.millis,
-          Some(100.millis),
+          Duration.Zero,
+          Some(Duration.Zero),
           watch.react(_ => IO.unit)
         )
         _ <- dog.announced(BigInt(5000))
         _ <- (
           // Began and ExitDue fall in this one check; the log never returns
-          IO.sleep(200.millis) *> dog.check.timeout(5.seconds) *>
+          dog.check.timeout(5.seconds) *>
             watch.exit.get.timeout(5.seconds) *>
-            (IO.sleep(10.millis) *> started.get).iterateUntil(_ >= 2).timeout(10.seconds)
+            started.waitUntil(_ >= 2).timeout(10.seconds)
         ).guarantee(gate.complete(()).void)
       yield ()
     }
@@ -348,9 +357,9 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
               yield ()
             }
             outcome <- scope.start
-              .flatMap(fiber => IO.race(fiber.joinWithNever, IO.sleep(10.seconds)))
+              .flatMap(_.joinWithNever.timeout(10.seconds).attempt)
               .guarantee(IO(release.countDown()))
-          yield assert(outcome.isLeft, "the scope did not finalize while the dump hung")
+          yield assert(outcome.isRight, "the scope did not finalize while the dump hung")
         }
         .guarantee(IO.blocking {
           Files.list(dir).forEach(f => Files.deleteIfExists(f))
@@ -359,46 +368,44 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
     }
   }
 
+  /** The events of `logged` that `pick` selects, once `holds` is true of them: the log only grows,
+    * so what held when the change signal fired still holds when it is read.
+    */
+  private def collected[A](
+      logged: SignallingRef[IO, Vector[NodeEvent]],
+      pick: PartialFunction[NodeEvent, A]
+  )(holds: Vector[A] => Boolean): IO[Vector[A]] =
+    logged.waitUntil(events => holds(events.collect(pick))).timeout(10.seconds) *>
+      logged.get.map(_.collect(pick))
+
   test("a second stall while the first dump hangs skips its dump, and a later one dumps again") {
     inTempDir { dir =>
       oneSession
         .flatMap { sources =>
           for
             release <- IO(new java.util.concurrent.CountDownLatch(1))
-            logged <- Ref.of[IO, Vector[NodeEvent]](Vector.empty)
+            logged <- SignallingRef[IO, Vector[NodeEvent]](Vector.empty)
             hung = () =>
               release.await()
               None
             reporter <- StallDiagnostics.Reporter
               .create[IO](Some(dir), e => logged.update(_ :+ e), _.start.void, hung)
             _ <- reporter.install(sources)
-            dumps = logged.get.map(_.collect { case d: NodeEvent.StallDumped => d })
-            states = logged.get.map(_.collect { case s: NodeEvent.StallState => s.dump })
+            dumps = collected(logged, { case d: NodeEvent.StallDumped => d })
+            states = collected(logged, { case s: NodeEvent.StallState => s.dump })
             result <- (for
               _ <- reporter.onStall(stalledLine)
               _ <- reporter.onStall(stalledLine)
-              firstStates <- states
-                .flatMap(s => IO.sleep(10.millis).as(s))
-                .iterateUntil(_.size >= 2)
-                .timeout(10.seconds)
-              skipped <- dumps
-                .flatMap(d => IO.sleep(10.millis).as(d))
-                .iterateUntil(_.nonEmpty)
-                .timeout(10.seconds)
+              firstStates <- states(_.size >= 2)
+              skipped <- dumps(_.nonEmpty)
               files <- IO.blocking(
                 Files.list(dir).iterator.asScala.toList.map(_.getFileName.toString)
               )
               _ <- IO(release.countDown())
               // the first dump ends and frees the slot before its line is logged
-              _ <- dumps
-                .flatMap(d => IO.sleep(10.millis).as(d))
-                .iterateUntil(_.size >= 2)
-                .timeout(10.seconds)
+              _ <- dumps(_.size >= 2)
               _ <- reporter.onStall(stalledLine)
-              all <- dumps
-                .flatMap(d => IO.sleep(10.millis).as(d))
-                .iterateUntil(_.size >= 3)
-                .timeout(10.seconds)
+              all <- dumps(_.size >= 3)
             yield (firstStates, skipped, files, all)).guarantee(IO(release.countDown()))
           yield
             val (firstStates, skipped, files, all) = result
@@ -434,7 +441,7 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
     oneSession.flatMap { sources =>
       for
         gate <- Deferred[IO, Unit]
-        started <- Ref.of[IO, Int](0)
+        started <- SignallingRef[IO, Int](0)
         fibers <- Ref.of[IO, Int](0)
         stuck = (_: NodeEvent) => started.update(_ + 1) *> gate.get
         reporter <- StallDiagnostics.Reporter
@@ -442,7 +449,7 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
         _ <- reporter.install(sources)
         result <- (for
           _ <- (1 to 50).toList.traverse_(_ => reporter.onStall(stalledLine))
-          _ <- (IO.sleep(10.millis) *> started.get).iterateUntil(_ >= 1).timeout(10.seconds)
+          _ <- started.waitUntil(_ >= 1).timeout(10.seconds)
           fibersStarted <- fibers.get
           calls <- started.get
           dropped <- reporter.dropped
@@ -455,16 +462,17 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
     oneSession.flatMap { sources =>
       for
         gate <- Deferred[IO, Unit]
-        logged <- Ref.of[IO, Vector[NodeEvent]](Vector.empty)
+        logged <- SignallingRef[IO, Vector[NodeEvent]](Vector.empty)
         wedged = (e: NodeEvent) => gate.get *> logged.update(_ :+ e)
         reporter <- StallDiagnostics.Reporter.create[IO](None, wedged, _.start.void)
         _ <- reporter.install(sources)
         counts <- (
           (1 to 50).toList.traverse_(_ => reporter.onStall(stalledLine)) *>
             gate.complete(()) *>
-            (IO.sleep(10.millis) *> logged.get)
-              .iterateUntil(_.exists(_.isInstanceOf[NodeEvent.StallState]))
-              .timeout(10.seconds)
+            logged
+              .waitUntil(_.exists(_.isInstanceOf[NodeEvent.StallState]))
+              .timeout(10.seconds) *>
+            logged.get
               .map(_.collect { case s: NodeEvent.StallState => s.report.droppedReports })
         ).guarantee(gate.complete(()).void)
       yield assertEquals(counts.head, 48L)
@@ -478,10 +486,14 @@ class StallDiagnosticsSuite extends CatsEffectSuite:
   test("the worker's mark is cleared when its work is cancelled or fails") {
     BlockAdmissions.create[IO].flatMap { admissions =>
       for
-        fiber <- admissions.processing(WorkKind.Add, AdmissionStage.Applying)(IO.never[Unit]).start
-        during <- (IO.sleep(10.millis) *> admissions.occupancy)
-          .iterateUntil(_.worker.nonEmpty)
-          .timeout(10.seconds)
+        // the body runs once the mark is set, so the mark is read inside it
+        inside <- Deferred[IO, BlockAdmissions.Occupancy]
+        fiber <- admissions
+          .processing(WorkKind.Add, AdmissionStage.Applying)(
+            admissions.occupancy.flatMap(inside.complete) *> IO.never[Unit]
+          )
+          .start
+        during <- inside.get.timeout(10.seconds)
         _ <- fiber.cancel
         cancelled <- admissions.occupancy
         failed <- admissions

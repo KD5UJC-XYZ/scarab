@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.testkit.TestControl
+import xyz.kd5ujc.scarab.network.Settled
 import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -104,29 +105,32 @@ class CachedBlockAttributionSuite extends FailsOnUncaught:
   }
 
   test("cancelling the consumer during notification cannot lose the source's one refusal") {
-    for
-      pool <- BlockPool.create[IO]
-      started <- Deferred[IO, Unit]
-      continue <- Deferred[IO, Unit]
-      reports <- Ref.of[IO, Int](0)
-      _ <- pool
-        .session(Some(_ => started.complete(()) *> continue.get *> reports.update(_ + 1)))
-        .use(fill(_, 1))
-      _ <- pool.session.use { consumer =>
-        for
-          taken <- consumer.take(hash(1))
-          origin <- IO.fromOption(taken)(new AssertionError("missing block"))
-          notify <- consumer.distrust(origin.origin, refusal).start
-          _ <- started.get
-          cancel <- notify.cancel.start
-          _ <- IO.cede
-          _ <- continue.complete(())
-          _ <- cancel.joinWithNever
-          _ <- consumer.distrust(origin.origin, refusal)
-        yield ()
-      }
-      seen <- reports.get
-    yield assertEquals(seen, 1)
+    Settled { settle =>
+      for
+        pool <- BlockPool.create[IO]
+        started <- Deferred[IO, Unit]
+        continue <- Deferred[IO, Unit]
+        reports <- Ref.of[IO, Int](0)
+        _ <- pool
+          .session(Some(_ => started.complete(()) *> continue.get *> reports.update(_ + 1)))
+          .use(fill(_, 1))
+        _ <- pool.session.use { consumer =>
+          for
+            taken <- consumer.take(hash(1))
+            origin <- IO.fromOption(taken)(new AssertionError("missing block"))
+            notify <- consumer.distrust(origin.origin, refusal).start
+            _ <- started.get
+            cancel <- notify.cancel.start
+            // the cancellation waits for the notification it interrupts
+            _ <- settle
+            _ <- continue.complete(())
+            _ <- cancel.joinWithNever
+            _ <- consumer.distrust(origin.origin, refusal)
+          yield ()
+        }
+        seen <- reports.get
+      yield assertEquals(seen, 1)
+    }
   }
 
   test("released attribution is capped independently of already consumed blocks") {
@@ -243,8 +247,10 @@ class CachedBlockAttributionSuite extends FailsOnUncaught:
       (pool, close) = resource
       source <- pool.session.allocated
       _ <- source._1.claim(Vector(hash(1)))
-      waiting <- pool.take(hash(1)).start
-      _ <- IO.cede
+      // the taker waits for the claimed block
+      waits <- Deferred[IO, Unit]
+      waiting <- pool.takeFilled(hash(1), waits.complete(()).void).map(_.map(_.block)).start
+      _ <- waits.get.timeout(10.seconds)
       _ <- close
       result <- waiting.joinWithNever
       _ <- source._2

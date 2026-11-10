@@ -1,19 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.IO
+import cats.effect.{Deferred, FiberIO, IO, Resource}
 import cats.syntax.all.*
-import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.network.FailsOnUncaught
 import xyz.kd5ujc.scarab.network.selection.FetchMode
 import scala.concurrent.duration.*
 
 /** A block is claimed by one session, fetched by it, and taken by whichever session applies it. */
-class BlockPoolSuite extends CatsEffectSuite:
+class BlockPoolSuite extends FailsOnUncaught:
   override def munitIOTimeout: FiniteDuration = 30.seconds
 
   private def hash(n: Int): Bytes = Bytes.wrap(Array.fill(32)(n.toByte))
   private def block(n: Int): Bytes = Bytes.wrap(Array.fill(10)((n + 100).toByte))
+
+  /** A take of `hash` started in a fiber, returned once it waits for the session that claimed it.
+    */
+  private def waitingTake(pool: BlockPool[IO], hash: Bytes): Resource[IO, FiberIO[Option[Bytes]]] =
+    Resource.eval(Deferred[IO, Unit]).flatMap { waits =>
+      Resource
+        .make(pool.takeFilled(hash, waits.complete(()).void).map(_.map(_.block)).start)(_.cancel)
+        .evalTap(_ => waits.get.timeout(10.seconds))
+    }
 
   test("Genesis handover retries a stalled claim and retains the winning source") {
     for
@@ -67,10 +76,9 @@ class BlockPoolSuite extends CatsEffectSuite:
       pool <- BlockPool.create[IO]
       claims <- pool.session.allocated.map(_._1)
       _ <- claims.claim(Vector(hash(1)))
-      waiting <- pool.take(hash(1)).start
-      _ <- IO.sleep(50.millis)
-      _ <- claims.fill(Vector(hash(1) -> block(1)))
-      got <- waiting.joinWithNever
+      got <- waitingTake(pool, hash(1)).use { waiting =>
+        claims.fill(Vector(hash(1) -> block(1))) *> waiting.joinWithNever
+      }
     yield assertEquals(got, Some(block(1)))
   }
 
@@ -79,10 +87,9 @@ class BlockPoolSuite extends CatsEffectSuite:
       pool <- BlockPool.create[IO]
       claims <- pool.session.allocated.map(_._1)
       _ <- claims.claim(Vector(hash(1)))
-      waiting <- pool.take(hash(1)).start
-      _ <- IO.sleep(50.millis)
-      _ <- claims.release(Vector(hash(1)))
-      got <- waiting.joinWithNever
+      got <- waitingTake(pool, hash(1)).use { waiting =>
+        claims.release(Vector(hash(1))) *> waiting.joinWithNever
+      }
       again <- claims.claim(Vector(hash(1)))
     yield
       assertEquals(got, None)
@@ -126,11 +133,14 @@ class BlockPoolSuite extends CatsEffectSuite:
       (claims, end) = ended
       _ <- claims.claim(Vector(hash(1), hash(2)))
       _ <- claims.fill(Vector(hash(2) -> block(2)))
-      waiting <- pool.take(hash(1)).start
-      _ <- IO.sleep(50.millis)
-      _ <- end
-      cachedCount <- pool.size
-      got <- waiting.joinWithNever
+      result <- waitingTake(pool, hash(1)).use { waiting =>
+        for
+          _ <- end
+          cachedCount <- pool.size
+          got <- waiting.joinWithNever
+        yield (cachedCount, got)
+      }
+      (cachedCount, got) = result
       filled <- pool.take(hash(2))
       held <- pool.size
     yield
@@ -146,14 +156,17 @@ class BlockPoolSuite extends CatsEffectSuite:
     for
       pool <- BlockPool.create[IO]
       claimed <- cats.effect.Deferred[IO, Unit]
-      holder <- pool.session
-        .use(claims => claims.claim(Vector(hash(1))) *> claimed.complete(()) *> IO.never)
-        .start
-      _ <- claimed.get
-      waiting <- pool.take(hash(1)).start
-      _ <- IO.sleep(50.millis)
-      _ <- holder.cancel
-      got <- waiting.joinWithNever
+      got <- Resource
+        .make(
+          pool.session
+            .use(claims => claims.claim(Vector(hash(1))) *> claimed.complete(()) *> IO.never)
+            .start
+        )(_.cancel)
+        .use { holder =>
+          claimed.get *> waitingTake(pool, hash(1)).use { waiting =>
+            holder.cancel *> waiting.joinWithNever
+          }
+        }
     yield assertEquals(got, None)
   }
 
@@ -207,10 +220,9 @@ class BlockPoolSuite extends CatsEffectSuite:
       again <- first.claim(Vector(hash(1)), FetchMode.Deadline)
       b <- second.claim(Vector(hash(1)), FetchMode.Deadline)
       c <- third.claim(Vector(hash(1)), FetchMode.Deadline)
-      waiting <- pool.take(hash(1)).start
-      _ <- IO.sleep(20.millis)
-      _ <- second.fill(Vector(hash(1) -> block(2)))
-      got <- waiting.joinWithNever
+      got <- waitingTake(pool, hash(1)).use { waiting =>
+        second.fill(Vector(hash(1) -> block(2))) *> waiting.joinWithNever
+      }
       // the slower delivery cannot replace the retained original body
       _ <- first.fill(Vector(hash(1) -> block(1)))
       held <- pool.size
@@ -229,12 +241,16 @@ class BlockPoolSuite extends CatsEffectSuite:
       second <- pool.session.allocated.map(_._1)
       _ <- first.claim(Vector(hash(1)), FetchMode.Deadline)
       _ <- second.claim(Vector(hash(1)), FetchMode.Deadline)
-      waiting <- pool.take(hash(1)).start
-      _ <- IO.sleep(20.millis)
-      _ <- first.release(Vector(hash(1)))
-      stillWaiting <- IO.race(waiting.join, IO.sleep(50.millis)).map(_.isRight)
-      _ <- second.fill(Vector(hash(1) -> block(1)))
-      got <- waiting.joinWithNever
+      result <- waitingTake(pool, hash(1)).use { waiting =>
+        for
+          _ <- first.release(Vector(hash(1)))
+          // the waiter is completed only when the claim ends
+          stillWaiting <- pool.claimed(hash(1))
+          _ <- second.fill(Vector(hash(1) -> block(1)))
+          got <- waiting.joinWithNever
+        yield (stillWaiting, got)
+      }
+      (stillWaiting, got) = result
       _ <- first.claim(Vector(hash(2)), FetchMode.Deadline)
       _ <- first.release(Vector(hash(2)))
       freed <- second.claim(Vector(hash(2)), FetchMode.Deadline)
@@ -305,10 +321,10 @@ class BlockPoolSuite extends CatsEffectSuite:
           _ <- session.distrust(BlockPool.Source.Recovered, refusal)
           missing <- session.take(hash(1))
           other <- session.take(hash(2))
-          blame <- IO.race(session.blamed, IO.sleep(1.millis))
+          blame <- session.blamedYet
           _ <- IO(assertEquals(missing, None))
           _ <- IO(assertEquals(other.map(_.block), Some(block(2))))
-          _ <- IO(assertEquals(blame, Right(())))
+          _ <- IO(assertEquals(blame, None))
         yield ()
       }
     yield ()
