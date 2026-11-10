@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  scala:
-    name: scalafmt, compile and test
+  scala-tests:
+    name: Scala tests and native guards
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
@@ -53,13 +53,52 @@ jobs:
           mapfile -t jars < <(find .cache/scarab/coursier -name scalus-crypto-jni-0.1.0.jar)
           test "${#jars[@]}" -eq 1
           python3 scripts/check_native_isa.py "${jars[0]}" --member natives/linux_64/libscalus_crypto.so
+
+  build-identity:
+    name: frozen release identity controls
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Cache identity-control sbt dependencies
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .cache/scarab
+          key: build-identity-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'project/*.scala', 'scripts/sbtw', 'scripts/check_build_identity.py', 'docker/jdk.Dockerfile') }}
+          restore-keys: |
+            build-identity-${{ runner.os }}-
+            sbt-${{ runner.os }}-
       - name: Frozen release version controls in the JDK image
         run: |
           docker build -f docker/jdk.Dockerfile -t scarab-version-jdk:ci .
           docker run --rm --cpus=4 --user "$(id -u):$(id -g)" \
-            -v "$PWD":/work -w /work -e HOME=/work/.cache/home \
+            -v "$PWD":/work -w /work -e HOME=/work/.cache/scarab/home \
             -e SCARAB_CACHE_DIR=/work/.cache -e SBT_GLOBAL_BASE=/tmp/sbt-version-ci \
             scarab-version-jdk:ci python3 -O scripts/check_build_identity.py
+
+  scala:
+    name: scalafmt, compile and test
+    needs: [scala-tests, build-identity]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require Scala tests, native guards and identity controls
+        env:
+          SCALA_RESULT: ${{ needs.scala-tests.result }}
+          IDENTITY_RESULT: ${{ needs.build-identity.result }}
+        shell: bash
+        run: |
+          test "$SCALA_RESULT" = success
+          test "$IDENTITY_RESULT" = success
 
   scripts:
     name: scripts (compile, unit tests, help)
