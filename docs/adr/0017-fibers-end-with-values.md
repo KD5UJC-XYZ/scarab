@@ -310,8 +310,7 @@ the whole process by what it sends".
 - A connection that fails while it is established (`EstablishmentError.Defect`) ends that attempt, uncharged.
 - Peer sharing, and a connection's monitor, that fail abort their connection.
 - A hot session's own work (our ChainSync and BlockFetch clients, the header pipeline, a fiber the session lands):
-  an exception there ends the session as `PeerError.ConnectionDefect`, uncharged (`SessionEnd.scoped`,
-  `InboundGovernor.pipelineEnd`). A session of the node commits no block: the selection worker owns every commit, in
+  an exception there ends the session as `PeerError.ConnectionDefect`, uncharged (`SessionEnd.scoped`). A session of the node commits no block: the selection worker owns every commit, in
   a scope of its own that stops the node (`BlockSelection.run`). A commit, wherever it runs, also raises its own
   exceptions as `ChainError.CommitDefect`, which stops the node (`Follower.commit`). ~~So the boundary holds on the
   follower's direct adoption inside a session too, which only tests use; issue 578 tracks removing that path.~~
