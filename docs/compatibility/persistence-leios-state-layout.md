@@ -29,4 +29,8 @@ optional-field decoder. This does not establish agreement for lifecycle rules or
 
 ## Explicitly unchecked or unconfirmed
 
-The Dijkstra state in this layout is not read (`DijkstraNotYet.LedgerState`, #54, #826 step d), and an epoch context of the Peras state with a Dijkstra voting committee with it. The rules of the build are not selected by it yet (step c): the rules this build runs produce values of the 11.1 layout, and a Leios state is not followed. The layout was diffed against the pinned sources era by era; only Conway is checked on reference bytes.
+The Dijkstra state in this layout is not read (`DijkstraNotYet.LedgerState`, #54, #826 step d), and an epoch context of the Peras state with a Dijkstra voting committee with it. Build selection reaches the bootstrap-attribute failure rule through `LedgerGlobals.referenceBuild`, `TxEnv.referenceBuild` and `UtxoTests.injectedBootAddrAttrsTooBig`; it does not yet select the complete state lifecycle. `Snap`, `NewEpoch` and `MirrorStep` still need the Leios rotation and layout behavior, and `follow` retains `ReferenceBuildNotYet.Rules`. Derived pool distributions do not implement committee selection or epoch transitions. The layout was diffed against the pinned sources era by era; only Conway is checked on reference bytes.
+
+The remaining per-build behavior, state lifecycle and Dijkstra persistence acceptance criteria are
+tracked in [#826](https://github.com/KD5UJC-XYZ/scarab/issues/826). The broader Dijkstra integration
+and activation sequence belongs to [#54](https://github.com/KD5UJC-XYZ/scarab/issues/54).
