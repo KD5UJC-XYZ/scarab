@@ -360,6 +360,18 @@
     "docs/design/kes-agent.md",
     "docs/adr/0024-adopt-the-upstream-kes-agent.md"
    ]
+  },
+  {
+   "name": "cardano-base",
+   "repository": "IntersectMBO/cardano-base",
+   "revision": "060819b59c184b951a54e3c563304983c53a3eac",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-base/commit/{revision}",
+   "role": "Released 11.1.3 Sum6KES verification source, also retained by the original Sum6 fixture corpus.",
+   "dependents": [
+    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/OCertRules.scala",
+    "fixtures/sum6/README.md",
+    "docs/compatibility/consensus-praos-headers.md"
+   ]
   }
  ]
 }

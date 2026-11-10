@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "captured": "2026-11-09",
+  "scope": "Nine native Sum6KES accept/reject observations; no full-header, cold-certificate, genesis-startup or network verdict is claimed.",
+  "image": "sha256:768c48540a3d818a3470a9510dd333b3051fc9e267c31a5aed5a30fe864229ab",
+  "compiler": "GHC 9.10.3",
+  "package": "cardano-crypto-class-2.6.0.0",
+  "packageUnit": "cardano-crypto-class-2.6.0.0-ed46fe8793327d2274a83d0307fbe672d77f086b63237fa65675aaae75657740",
+  "sourceRevision": "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c",
+  "releaseSourceRevision": "060819b59c184b951a54e3c563304983c53a3eac",
+  "identicalGitBlobs": {
+    "Cardano/Crypto/KES/Sum.hs": "3a1ecd2c18bd6d2b9a02e4ec6705436fe2222fac",
+    "Cardano/Crypto/KES/Single.hs": "6c1f5a86ba5055c16326283a3b08a5403fb2a40f",
+    "Cardano/Crypto/KES/Class.hs": "73afc65ac9e13037537acabd233264577790db46"
+  },
+  "releaseBinary": {
+    "version": "11.1.3",
+    "sha256": "ee396604345cc07c7169391ef3f5364886d4b7fe0d539aff6919b470e7a336c3",
+    "singleKesInspection": "objdump -d --start-address=0x3001498 --stop-address=0x3001540 cardano-node",
+    "observation": "The deployed SingleKES verifyKES path jumps directly through the DSIGN dictionary to verifyDSIGN; it does not test the residual period. Static binary inspection, not a runtime header test."
+  },
+  "generator": "scripts/oracle/kes-periods/Main.hs",
+  "generatorSha256": "554a2726121dcda8347119434cfa0743bd7b1bfb8917cf4d5d6f047d14556c29",
+  "cases": 9,
+  "verified": 6,
+  "rejected": 3,
+  "vectorsSha256": "51220b29d12463f0d47608098912c37c430642d3ed7d50ffd02c62049be73423",
+  "comparison": "All nine original accept/reject observations are compared without changed expectations. Reference error text is outside this predicate projection.",
+  "keys": "Synthetic test-only seed used transiently by the generator; only public roots, messages and signatures are retained.",
+  "rawArtifacts": "Not published."
+}

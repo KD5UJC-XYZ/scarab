@@ -17,6 +17,8 @@ from .ntccases import CLI, FAILS, SUCCEEDS, Builder
 from .util import ENV, MAGIC
 
 FEE = 400_000
+# the case whose output has bootstrap attributes over 64 bytes (#832)
+BOOTSTRAP_ATTRIBUTES = "utxo-bootstrap-attributes-too-big"
 PLUTUS_FEE = 1_500_000
 UNITS = (1_000_000, 500_000_000)
 FUND = 10_000_000
@@ -99,6 +101,10 @@ def corpus(name, socket):
         **spend(outputs=[eratx.tx_out("conway", here, 1),
                          eratx.tx_out("conway", eratx.enterprise_address(k1.hash, network=1), 5_000_000),
                          eratx.tx_out("conway", here, w["lovelace"] - FEE - 5_000_001)]))
+    # ---- UTXO: bootstrap attributes over 64 bytes (#832), reported as `OutputTooBigUTxO` from Allegra
+    add(BOOTSTRAP_ATTRIBUTES, ["OutputTooBigUTxO"],
+        **spend(outputs=[eratx.tx_out("conway", eratx.bootstrap_address(bytes(64), 65, MAGIC), 5_000_000),
+                         eratx.tx_out("conway", here, w["lovelace"] - FEE - 5_000_000)]))
     # ---- UTXO and UTXOW: an input the UTxO does not hold and a key that did not sign
     add("utxo-bad-input-missing-witness", ["BadInputsUTxO", "MissingVKeyWitnessesUTXOW"],
         **spend(extra_inputs=[unknown_input], signers=[k2]))
@@ -453,15 +459,20 @@ def preconway_families(name, era):
     unknown_pool = eratx.blake2b(b"refusal corpus unknown pool", 28)
     cases = []
 
-    def spend(fee=FEE, delta=0, signers=None, **kw):
-        return dict(inputs=[txin(wd)], outputs=[eratx.tx_out(era, wd["address"], wd["lovelace"] - fee + delta)],
-                    fee=fee, signers=signers or [key], ttl=tip["slot"] + 1_000_000, **kw)
+    def spend(fee=FEE, delta=0, signers=None, outputs=None, **kw):
+        outs = outputs if outputs is not None else [eratx.tx_out(era, wd["address"], wd["lovelace"] - fee + delta)]
+        return dict(inputs=[txin(wd)], outputs=outs, fee=fee, signers=signers or [key], ttl=tip["slot"] + 1_000_000,
+                    **kw)
 
     def add(label, expect, **kw):
         tx, _ = eratx.build_tx(era, **kw)
         cases.append(Case(label, tx, tuple(expect)))
 
     add("fee-too-small", ["FeeTooSmallUTxO"], **spend(fee=1))
+    # bootstrap attributes over 64 bytes (#832): Shelley's own failure, `OutputTooBigUTxO` from Allegra
+    add(BOOTSTRAP_ATTRIBUTES, ["OutputBootAddrAttrsTooBig" if era == "shelley" else "OutputTooBigUTxO"],
+        **spend(outputs=[eratx.tx_out(era, eratx.bootstrap_address(bytes(64), 65, MAGIC), 5_000_000),
+                         eratx.tx_out(era, wd["address"], wd["lovelace"] - FEE - 5_000_000)]))
     add("missing-witness", ["MissingVKeyWitnessesUTXOW"], **spend(signers=[other["key"]]))
     add("withdrawal-unregistered-account", ["Withdrawals"],
         **spend(withdrawals={eratx.reward_address(fresh_stake.hash): 0}, signers=[key, fresh_stake]))
@@ -481,3 +492,11 @@ def preconway_families(name, era):
     if era in ("alonzo", "babbage"):
         add("utxos-empty-script-set-invalid", ["ValidationTagMismatch"], **spend(is_valid=False))
     return cases
+
+
+def bootstrap_attributes(name):
+    """The bootstrap-attribute case alone (#832), on the Conway cluster or on one stopped in an era before."""
+    from .util import SOCKET
+    era = json.loads(EraWallets(name).sh(f"cardano-cli query tip {SOCKET}"))["era"].lower()
+    cases = (corpus(name, f"{ENV}/socket/node1/sock") if era == "conway" else preconway_families(name, era))
+    return [case for case in cases if case.label == BOOTSTRAP_ATTRIBUTES]

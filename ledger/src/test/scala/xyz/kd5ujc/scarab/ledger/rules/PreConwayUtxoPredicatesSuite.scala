@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronCbor}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.rules.Utxo as ConwayUtxo
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 /** Alonzo/Rules/Utxo.hs:551-571 and Babbage/Rules/Utxo.hs:392-412 at f649f975: bootstrap
@@ -48,6 +48,15 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       ByronCbor.uint(ByronCbor.crc32(body))
     )
     Address.decode(raw).fold(e => fail(e.toString), identity)
+
+  /** What an era's UTXO reports under 11.1 for outputs whose bootstrap attributes are over 64
+    * bytes: Shelley its own `OutputBootAddrAttrsTooBig`, every later era (`injected`)
+    * `OutputTooBigUTxO` with sizes 0 and 0 (`Allegra/Rules/Utxo.hs:387`,
+    * `Alonzo/Rules/Utxo.hs:749`, `Conway/Rules/Utxo.hs:426`), by era and not by protocol version.
+    */
+  private def attrsTooBig(injected: Boolean, outs: Vector[TxOut]): UtxoFailure =
+    if injected then UtxoFailure.OutputTooBig(outs.map((0, 0, _)))
+    else UtxoFailure.OutputBootAddrAttrsTooBig(outs)
 
   private def transaction(
       outputs: Vector[TxOut],
@@ -152,7 +161,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
         assert(validate(allowed).isValid)
         val tx = paying(bootstrap(65, Some(42), derivation), valid)
         val original = tx.body.raw
-        rejected(tx, UtxoFailure.OutputBootAddrAttrsTooBig(tx.body.outputs))
+        rejected(tx, attrsTooBig(pre.atLeast(ShelleyBasedEra.SAllegra), tx.body.outputs))
         assertEquals(tx.body.raw, original)
     }
 
@@ -172,12 +181,36 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       val wrong = TestLedger.out(alice.address(1), funds / 2 - fee)
       rejected(
         transaction(Vector(big, wrong)),
-        UtxoFailure.OutputBootAddrAttrsTooBig(Vector(big)),
+        attrsTooBig(pre.atLeast(ShelleyBasedEra.SAllegra), Vector(big)),
         UtxoFailure.WrongNetwork(0, Set(big.address.raw, wrong.address.raw))
       )
       val byron = big.copy(address = bootstrap(64, None))
       val tx = transaction(Vector(byron, wrong))
       rejected(tx, UtxoFailure.WrongNetwork(0, Set(byron.address.raw, wrong.address.raw)))
+    }
+
+    // the value sizes and the bootstrap attributes are two tests (`Alonzo/Rules/Utxo.hs:548-551`,
+    // `Babbage/Rules/Utxo.hs:389-392`), so two `OutputTooBigUTxO` failures: the first with the sizes
+    // and the last output first, the second with sizes 0 and 0 and the outputs in their order
+    test(s"$name: bootstrap attributes are a second OutputTooBigUTxO after the value sizes") {
+      val tight = pp.copy(maxValueSize = 1)
+      val big = TestLedger.out(bootstrap(65, Some(42)), funds / 2)
+      val other = TestLedger.out(bootstrap(66, Some(42)), funds / 2 - fee)
+      val tx = transaction(Vector(big, other))
+      def size(o: TxOut) = o.value.serializedSize
+      assertEquals(
+        Test
+          .failures(
+            ShelleyUtxo.validate[E](UtxoEnv(TestLedger.env, tight, cert), StAnnTx(tx, utxo), 0, 0)
+          )
+          .map(_.iterator.toList),
+        Some(
+          List(
+            UtxoFailure.OutputTooBig(Vector((size(other), 1, other), (size(big), 1, big))),
+            UtxoFailure.OutputTooBig(Vector((0, 0, big), (0, 0, other)))
+          ).map(PredicateFailure.utxo)
+        )
+      )
     }
 
     if major >= 7 then
@@ -187,7 +220,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
           val big = TestLedger.out(bootstrap(65, Some(42)), funds)
           rejected(
             transaction(ordinary, returned = Some(big), isValid = valid),
-            UtxoFailure.OutputBootAddrAttrsTooBig(Vector(big))
+            attrsTooBig(pre.atLeast(ShelleyBasedEra.SAllegra), Vector(big))
           )
           val wrong = TestLedger.out(bootstrap(64, None), funds)
           rejected(
@@ -227,7 +260,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
         val tx =
           transaction(Vector(TestLedger.out(bootstrap(65, Some(42), derivation), funds - fee)))
         val original = tx.body.raw
-        rejected(tx, UtxoFailure.OutputBootAddrAttrsTooBig(tx.body.outputs))
+        rejected(tx, attrsTooBig(pre.atLeast(ShelleyBasedEra.SAllegra), tx.body.outputs))
         assertEquals(tx.body.raw, original)
         assertEquals(funded.utxo.utxo.utxo, utxo)
     }
@@ -243,7 +276,11 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
         1
       )
       val balanced = transaction(Vector(out.copy(value = Value.coin(funds - fee))))
-      rejected(balanced, UtxoFailure.OutputBootAddrAttrsTooBig(balanced.body.outputs), 1)
+      rejected(
+        balanced,
+        attrsTooBig(pre.atLeast(ShelleyBasedEra.SAllegra), balanced.body.outputs),
+        1
+      )
       val allowed = transaction(Vector(TestLedger.out(bootstrap(64, None), funds - fee)))
       assert(admit(allowed, 1).isRight)
     }
@@ -253,6 +290,49 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       val change = TestLedger.out(alice.address(), funds - fee - 1)
       rejected(transaction(Vector(big, change)), UtxoFailure.OutputTooSmall(Vector(big)))
     }
+
+  test("bootstrap attributes over 64 bytes: the failure of each era under each build (#832)") {
+    val tx = transaction(Vector(TestLedger.out(bootstrap(65, Some(42)), funds - fee)))
+    val big = tx.body.outputs
+    def env(build: ReferenceBuild) = TestLedger.env.copy(referenceBuild = build)
+    def preConway[E <: EraTag](major: Int, build: ReferenceBuild)(using
+        ShelleyBasedEra[E],
+        PreConway[E]
+    ) =
+      val pp = TestLedger.params(major)
+      val cert = summon[PreConway[E]].cert.get(Empty.ledgerState[E](pp))
+      Test.failures(ShelleyUtxo.validate[E](UtxoEnv(env(build), pp, cert), StAnnTx(tx, utxo), 0, 0))
+    def conway(build: ReferenceBuild) =
+      val pp = TestLedger.params(9)
+      val cert = Empty.ledgerState[Conway](pp).cert
+      Test.failures(ConwayUtxo.validate(UtxoEnv(env(build), pp, cert), StAnnTx(tx, utxo), 0, 0))
+    ReferenceBuild.values.foreach { build =>
+      // 11.1 injects Shelley's failure as `OutputTooBigUTxO` from Allegra; the Leios build keeps it
+      def expected(injected: Boolean) = build match
+        case ReferenceBuild.Release11_1   => attrsTooBig(injected, big)
+        case ReferenceBuild.LeiosB004fe0c => UtxoFailure.OutputBootAddrAttrsTooBig(big)
+      // the usual version of each era, then Shelley and Allegra each at the other's version: the
+      // injection follows the era (`Allegra/Rules/Utxo.hs:374-387`), and a chain whose eras are set
+      // by epoch keeps its genesis version across a hard fork
+      val judged = Vector(
+        ("Shelley 2", false, preConway[Shelley](2, build)),
+        ("Allegra 3", true, preConway[Allegra](3, build)),
+        ("Mary 4", true, preConway[Mary](4, build)),
+        ("Alonzo 5", true, preConway[Alonzo](5, build)),
+        ("Babbage 7", true, preConway[Babbage](7, build)),
+        ("Conway 9", true, conway(build)),
+        ("Shelley 3", false, preConway[Shelley](3, build)),
+        ("Allegra 2", true, preConway[Allegra](2, build))
+      )
+      judged.foreach { (name, injected, failures) =>
+        assertEquals(
+          failures.map(_.iterator.toList),
+          Some(List(PredicateFailure.utxo(expected(injected)))),
+          s"$build $name"
+        )
+      }
+    }
+  }
 
   earlyCases[Shelley]("Shelley", 2)
   earlyCases[Allegra]("Allegra", 3)
@@ -351,12 +431,16 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
         .toSet ++
         bootstrap.collect { case (out, address) if address.network != network => out.address.raw }
       // every failing predicate, in the order of the rule; Alonzo's UTXO does not count the
-      // collateral inputs (`Alonzo/Rules/Utxo.hs:570-572`), Babbage's does last
+      // collateral inputs (`Alonzo/Rules/Utxo.hs:570-572`), Babbage's does last; both eras inject
+      // the attributes failure
       val expected = Vector(
         Option.when(!passed("attributes"))(
-          UtxoFailure.OutputBootAddrAttrsTooBig(bootstrap.collect {
-            case (out, address) if address.attributesSize > 64 => out
-          })
+          attrsTooBig(
+            true,
+            bootstrap.collect {
+              case (out, address) if address.attributesSize > 64 => out
+            }
+          )
         ),
         Option.when(!passed("addresses"))(UtxoFailure.WrongNetwork(network, wrong)),
         Option.when(major >= 7 && !passed("collateral"))(

@@ -46,7 +46,9 @@ import PredicateFailureCbor.*
   * translation collect errors of [[ContextFailureCbor]], the integrity hash, the datum and redeemer
   * checks, a missing key witness, a small output) are byte-equal to the node's answers, Babbage's
   * at protocol version 7 (`PlutusFailureReferenceSuite`); Babbage's `ContextError` payloads are
-  * also byte-equal to the reference's matrix rows (`ContextMatrixSuite`).
+  * also byte-equal to the reference's matrix rows (`ContextMatrixSuite`). A bootstrap address with
+  * more than 64 bytes of attributes is refused byte for byte as the reference refuses it in every
+  * era from Shelley to Babbage (`ReferenceRefusalSuite`, the `<era>-bootstrap-attributes` corpora).
   */
 object PreConwayFailureCbor:
   import NodeOrders.given

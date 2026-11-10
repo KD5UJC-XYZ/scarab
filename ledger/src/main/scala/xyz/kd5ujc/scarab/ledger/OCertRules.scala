@@ -98,10 +98,13 @@ object OCertRules:
         (),
         OCertError.OpCertSignatureRejected
       )
+      // The deployed reference selects leaf 63 for every larger relative period: Sum.hs:190-197,
+      // Single.hs:104-106 at cardano-base 060819b5; its binary omits the leaf assertion.
+      // This preserves that branch selection without narrowing the original period modulo 2^32.
       kes <- ProviderDefect.kes(
         kesVerifier(
           header.opCert.hotVkey,
-          (kesPeriod - start).toInt,
+          (kesPeriod - start).min(BigInt(63)).toInt,
           header.signable,
           header.kesSignature
         )

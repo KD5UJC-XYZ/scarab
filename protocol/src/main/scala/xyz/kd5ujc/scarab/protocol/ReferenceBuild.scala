@@ -4,11 +4,12 @@ package xyz.kd5ujc.scarab.protocol
 import xyz.kd5ujc.scarab.codec.DomainError
 
 /** The build of `cardano-node` that Scarab mirrors (#826): the build the network runs. Its value
-  * selects the layout of the reference's database that Scarab reads and writes and, from #826 step
-  * c, the ledger and consensus rules it follows. That is the reference's own model: one binary is
-  * one layout and one rule set. A value other than the build the network runs is like running
-  * another binary: the node would follow other rules than its peers. Operators are trusted to name
-  * the right one; a warning is given where a mistake is visible, nothing more.
+  * selects the layout of the reference's database that Scarab reads and writes and the ledger and
+  * consensus rules it follows (one rule so far, `UtxoTests.injectedBootAddrAttrsTooBig`; the rest
+  * is #826 step c). That is the reference's own model: one binary is one layout and one rule set. A
+  * value other than the build the network runs is like running another binary: the node would
+  * follow other rules than its peers. Operators are trusted to name the right one; a warning is
+  * given where a mistake is visible, nothing more.
   *
   * The names are what `--reference-build` takes. A stable build is named by its release line,
   * `<major>.<minor>`: the reference upgrades a patch release of a line in place, without a replay,

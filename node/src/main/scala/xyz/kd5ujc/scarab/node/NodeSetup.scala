@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState, ConsensusExtras, HeaderCheckpoints}
 import xyz.kd5ujc.scarab.consensus.state.{
   ByronMirror,
@@ -14,7 +13,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
 }
 import xyz.kd5ujc.scarab.ledger.rules.{FromByron, GenesisInjections, GenesisStart, Globals}
 import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.ledger.{
   ByronGenesis,
   ByronGenesisFile,
@@ -82,6 +81,11 @@ final case class NodeSetup(
 ):
   def geometry: EpochGeometry = genesis.geometry
   def byronRules: Option[ByronRules.Config] = byronConfig
+
+  /** This setup with its ledger following the rules of `build` ([[LedgerGlobals.referenceBuild]]).
+    */
+  def mirroring(build: ReferenceBuild): NodeSetup =
+    copy(globals = globals.copy(referenceBuild = build))
 
   /** What the ledger-state mirror reads of this configuration (`StateMirror`); `observed` is the
     * epoch in which each era was seen to begin, where the configuration does not say.
@@ -218,7 +222,7 @@ object NodeSetup:
       read = (name: String) =>
         Option.when(Files.exists(base.resolve(name)))(Files.readAllBytes(base.resolve(name)))
       setup <- assemble(parsed, read)
-    yield setup
+    yield setup.mirroring(build)
 
   /** The configuration file alone, before any genesis file is read. */
   def readConfig(build: ReferenceBuild)(config: Path): Either[ConfigError, NodeConfig] =
@@ -235,6 +239,7 @@ object NodeSetup:
       .collectFirst(Function.unlift(n => read(n)))
       .fold(NodeConfig.parse(build)("{}"))(b => NodeConfig.parse(build)(text(b)))
       .flatMap(assemble(_, read))
+      .map(_.mirroring(build))
 
   /** Check every hash the configuration lists against the genesis file it names: the Byron one is
     * the hash of the canonical JSON, the Shelley, Alonzo, Conway, Dijkstra and checkpoints ones the

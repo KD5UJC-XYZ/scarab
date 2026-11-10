@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger.dijkstra
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Rational}
-import xyz.kd5ujc.scarab.ledger.{Credential, DecodeField, LedgerDecodeError, RewardAccount}
+import xyz.kd5ujc.scarab.ledger.{Credential, DecodeField, LedgerDecodeError, RewardAccount, Vote}
 
 import V12.{Result, given}
 
@@ -32,7 +32,7 @@ enum DijkstraVoter:
   case StakePool(pool: Bytes)
 
 /** A vote and its anchor. */
-final case class DijkstraVotingProcedure(vote: Int, anchor: Option[DijkstraAnchor])
+final case class DijkstraVotingProcedure(vote: Vote, anchor: Option[DijkstraAnchor])
 
 object DijkstraVoting:
   /** `Voter` (`Procedures.hs:384-392`): `decodeRecordSum` of a committee member's key or script
@@ -51,16 +51,15 @@ object DijkstraVoting:
     }
 
   /** `Vote` (`decodeEnumBounded`, `Procedures.hs:425-426`): `decodeInt` of 0, 1 or 2. */
-  private def vote(n: Node): Result[Int] =
+  private def vote(n: Node): Result[Vote] =
     V12
       .int64(n, DecodeField.Vote)
-      .flatMap(v =>
-        Either.cond(
-          v >= 0 && v <= 2,
-          v.toInt,
-          LedgerDecodeError.NumberOutOfRange(DecodeField.Vote, v, 0, 2)
-        )
-      )
+      .flatMap {
+        case 0 => Right(Vote.No)
+        case 1 => Right(Vote.Yes)
+        case 2 => Right(Vote.Abstain)
+        case v => Left(LedgerDecodeError.NumberOutOfRange(DecodeField.Vote, v, 0, 2))
+      }
 
   /** `VotingProcedure` from version 12 (`Procedures.hs:495-505`): `decodeRecordNamed` of the vote
     * and an anchor or null.

@@ -4,7 +4,8 @@
 **Status: Current.** The value of `--reference-build` names the build of `cardano-node` that the
 network runs and that Scarab mirrors ([#826](https://github.com/KD5UJC-XYZ/scarab/issues/826)): the
 layout of the reference's database that Scarab reads and writes, which snapshot V10 records with the
-state bytes, and, from #826 step c, the ledger and consensus rules. One binary of the reference is
+state bytes, and the ledger and consensus rules (one rule so far,
+`UtxoTests.injectedBootAddrAttrsTooBig`, #832; the rest from #826 step c). One binary of the reference is
 one layout and one rule set, and the value is the binary. A value other than the network's build is
 like running another binary: the node would follow other rules than its peers. Operators are trusted
 to name the right build; the node logs it at start and warns where a mistake is visible.
@@ -78,8 +79,11 @@ as 4.2.1.0 does (`ntc/GenesisConfig.scala`).
    - round trips on `state` files of that build, and the refusal of them by every other layout.
 
    The snapshot format does not change: V10 records the name as text.
-4. **The rules.** From #826 step c, the value also selects the ledger and consensus rules; map it
-   there as for the codecs. Until then `ReferenceBuildFlag.follows` refuses it at start with
+4. **The rules.** The value also selects the ledger and consensus rules. `NodeSetup` sets it on
+   `LedgerGlobals.referenceBuild`, the ledger hands it to each transaction's rules as
+   `TxEnv.referenceBuild`, and a rule that differs between builds matches on it exhaustively
+   (`UtxoTests.injectedBootAddrAttrsTooBig`, #832): give the new value its arm there. The rest of
+   the rules follow the build from #826 step c. Until then `ReferenceBuildFlag.follows` refuses it at start with
    `ReferenceBuildNotYet.Rules`, while `import-ledger-snapshot` and `export-ledger-snapshot` read
    and write its layout; the rules this build runs produce values of the 11.1 layout.
 5. **The help text.** `ReferenceBuildFlag.Help` lists the values from the enum; check the usage lines
