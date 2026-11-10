@@ -195,9 +195,9 @@ object Translate:
     val gov = ls.utxo.gov
     val proposals = gov.copy(
       curProposals =
-        gov.curProposals.map((k, u) => k -> xyz.kd5ujc.scarab.ledger.ParamUpdate.toBabbage(u)),
+        gov.curProposals.transform((_, u) => xyz.kd5ujc.scarab.ledger.ParamUpdate.toBabbage(u)),
       futureProposals =
-        gov.futureProposals.map((k, u) => k -> xyz.kd5ujc.scarab.ledger.ParamUpdate.toBabbage(u))
+        gov.futureProposals.transform((_, u) => xyz.kd5ujc.scarab.ledger.ParamUpdate.toBabbage(u))
     )
     translated.copy(es =
       translated.es.copy(ls = ls.copy[Babbage](utxo = ls.utxo.copy(gov = proposals)))
