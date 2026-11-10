@@ -179,7 +179,7 @@ class FortyBearersSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     * peers must have reported what they were first with.
     */
   private def reachesTip(deadline: Boolean, concurrency: Int): IO[FetchMode] =
-    Settled.timed { _ =>
+    Settled.timed { settle =>
       for
         now <- IO.realTimeInstant
         clock = ForgedChain.geometry.copy(systemStart =
@@ -261,6 +261,8 @@ class FortyBearersSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   .compile
                   .lastOrError
                   .timeout(60.seconds)
+                // Adoption can wake the test before the fetch client reports its completed range.
+                _ <- settle
                 boards <- net.metrics.get.map(_.sizes)
                 scores <- net.metrics.get.map(_.hotScores)
               yield (mode, boards, scores)
