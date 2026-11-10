@@ -232,7 +232,8 @@ object EraBlock:
       decoder = ctx.decoder,
       observer = ctx.observer,
       verdicts = ctx.verdicts,
-      preparation = ctx.preparation
+      preparation = ctx.preparation,
+      referenceBuild = globals.ledger.referenceBuild
     )
 
   /** The pool that made the block (the hash of the issuer's key). */

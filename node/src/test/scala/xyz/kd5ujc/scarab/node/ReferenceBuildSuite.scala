@@ -168,6 +168,27 @@ class ReferenceBuildSuite extends FunSuite:
     )
   }
 
+  test("the node's ledger follows the rules of the build it is given (#832)") {
+    val config = Path.of("fixtures", "preview", "genesis", "config.json").toString
+    ReferenceBuild.values.foreach { build =>
+      val options = Main
+        .parse(
+          List(
+            "follow",
+            "--config",
+            config,
+            "--peer",
+            "127.0.0.1:9",
+            "--reference-build",
+            build.name
+          )
+        )
+        .fold(e => fail(e.message), identity)
+      val setup = Main.nodeSetup(options).fold(e => fail(e.message), identity)
+      assertEquals(setup.globals.referenceBuild, build)
+    }
+  }
+
   test("the help says the value has to be the build the network runs, and lists every build") {
     assert(ReferenceBuildFlag.Help.contains("the cardano-node build the network runs"))
     assert(ReferenceBuildFlag.Help.contains("follow other rules than its peers"))

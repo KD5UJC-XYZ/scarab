@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.rules
 
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.ledger.{
   Address,
   Credential,
@@ -137,22 +138,31 @@ object UtxoTests:
   def bootAddrAttrsTooBig(outs: Vector[TxOut]): Test[PredicateFailure] =
     nonEmpty(bootstrapAttrsOver64(outs))(_.isEmpty)(UtxoFailure.OutputBootAddrAttrsTooBig(_))
 
-  /** [[bootAddrAttrsTooBig]] as the UTXO of the era of `pp` reports it. Shelley's UTXO reports
-    * Shelley's failure itself. Every later era injects it through
-    * `shelleyToAllegraUtxoPredFailure`, which makes it Allegra's `OutputTooBigUTxO`
-    * (`Allegra/Rules/Utxo.hs:374-387`), and the injections of Alonzo, Babbage and Conway give each
-    * output the sizes 0 and 0 (`Alonzo/Rules/Utxo.hs:183-184,749`, `Babbage/Rules/Utxo.hs:110-114`,
-    * `Conway/Rules/Utxo.hs:158-161,426`). From Allegra the failure is therefore an
-    * [[UtxoFailure.OutputTooBig]] of its own, apart from [[outputTooBig]]'s, with the outputs in
-    * their order. The Leios build keeps `OutputBootAddrAttrsTooBig` (cardano-ledger 9df9f98c,
-    * `Allegra/Rules/Utxo.hs:394`), a rule of that build (#826).
+  /** [[bootAddrAttrsTooBig]] as the UTXO of the era of `pp` reports it under `build` 's rules.
+    * Shelley's UTXO reports Shelley's failure itself. Every later era injects it through
+    * `shelleyToAllegraUtxoPredFailure`, and the builds differ there:
+    *
+    *   - 11.1 (cardano-ledger f649f975): it becomes Allegra's `OutputTooBigUTxO`
+    *     (`Allegra/Rules/Utxo.hs:374-387`), and the injections of Alonzo, Babbage and Conway give
+    *     each output the sizes 0 and 0 (`Alonzo/Rules/Utxo.hs:183-184,749`,
+    *     `Babbage/Rules/Utxo.hs:110-114`, `Conway/Rules/Utxo.hs:158-161,426`). From Allegra the
+    *     failure is therefore an [[UtxoFailure.OutputTooBig]] of its own, apart from
+    *     [[outputTooBig]]'s, with the outputs in their order.
+    *   - The Leios build (cardano-ledger 9df9f98c): it stays `OutputBootAddrAttrsTooBig`
+    *     (`Allegra/Rules/Utxo.hs:394`), which Alonzo, Babbage and Conway pass on as their own
+    *     (`Alonzo/Rules/Utxo.hs:759`, `Babbage/Rules/Utxo.hs:115-119`,
+    *     `Conway/Rules/Utxo.hs:413,440`).
     */
-  def injectedBootAddrAttrsTooBig(pp: ProtocolParams, outs: Vector[TxOut]): Test[PredicateFailure] =
-    if pp.protocolMajor <= 2 then bootAddrAttrsTooBig(outs)
-    else
+  def injectedBootAddrAttrsTooBig(
+      build: ReferenceBuild,
+      pp: ProtocolParams,
+      outs: Vector[TxOut]
+  ): Test[PredicateFailure] = build match
+    case ReferenceBuild.Release11_1 if pp.protocolMajor > 2 =>
       nonEmpty(bootstrapAttrsOver64(outs))(_.isEmpty)(big =>
         UtxoFailure.OutputTooBig(big.map((0, 0, _)))
       )
+    case ReferenceBuild.Release11_1 | ReferenceBuild.LeiosB004fe0c => bootAddrAttrsTooBig(outs)
 
   /** `validateMaxTxSizeUTxO` (`Shelley/Rules/Utxo.hs:554-570`). */
   def maxTxSize(pp: ProtocolParams, tx: Tx): Test[PredicateFailure] =
@@ -295,12 +305,12 @@ object UtxoTests:
   /** What UTXO checks of a transaction of Shelley, Allegra or Mary after PPUP
     * (`Shelley/Rules/Utxo.hs:393-403`, `Allegra/Rules/Utxo.hs:202-216`).
     */
-  def shelleyAfterPpup(pp: ProtocolParams, tx: Tx): Test[PredicateFailure] =
+  def shelleyAfterPpup(build: ReferenceBuild, pp: ProtocolParams, tx: Tx): Test[PredicateFailure] =
     val outs = tx.body.outputs
     Test.all(
       outputTooSmall(pp, outs),
       (if pp.protocolMajor >= 3 then outputTooBig(pp, outs) else Test.pass[PredicateFailure]),
-      injectedBootAddrAttrsTooBig(pp, outs),
+      injectedBootAddrAttrsTooBig(build, pp, outs),
       maxTxSize(pp, tx)
     )
 
@@ -327,7 +337,7 @@ object UtxoTests:
       valueNotConserved(consumed, produced),
       outputTooSmall(pp, outs),
       outputTooBig(pp, outs),
-      env.static(injectedBootAddrAttrsTooBig(pp, outs)),
+      env.static(injectedBootAddrAttrsTooBig(env.referenceBuild, pp, outs)),
       env.static(wrongNetwork(network, outs)),
       env.static(wrongNetworkWithdrawal(network, body)),
       env.static(wrongNetworkInTxBody(network, body)),
@@ -362,7 +372,7 @@ object UtxoTests:
       valueNotConserved(consumed, produced),
       outputTooSmall(pp, outs),
       outputTooBig(pp, outs),
-      env.static(injectedBootAddrAttrsTooBig(pp, outs)),
+      env.static(injectedBootAddrAttrsTooBig(env.referenceBuild, pp, outs)),
       env.static(wrongNetwork(network, outs)),
       env.static(wrongNetworkWithdrawal(network, body)),
       env.static(wrongNetworkInTxBody(network, body)),

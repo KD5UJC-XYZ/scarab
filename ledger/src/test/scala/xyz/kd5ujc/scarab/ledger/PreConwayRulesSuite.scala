@@ -7,6 +7,7 @@ import org.scalacheck.Prop.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.byron.ByronCbor
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.ledger.rules.{
   Convert,
   Counted,
@@ -917,7 +918,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val checks = Vector(
       UtxoTests.outputTooSmall(pp, outs),
       if pv >= 3 then UtxoTests.outputTooBig(pp, outs) else Test.pass,
-      UtxoTests.injectedBootAddrAttrsTooBig(pp, outs),
+      UtxoTests.injectedBootAddrAttrsTooBig(ReferenceBuild.Release11_1, pp, outs),
       if pv >= 5 then UtxoTests.wrongNetwork(env.network, outs) else Test.pass
     ).flatMap(Test.failures(_).toVector.flatMap(_.iterator))
     checks.headOption.fold("accepted")(_.ruleName)

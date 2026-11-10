@@ -202,7 +202,8 @@ object BlockBuilder:
           updateQuorum = globals.updateQuorum,
           clock = Some(clock.getOrElse(PosixClock.total(geometry))),
           decoder = decoder,
-          evaluator = evaluator
+          evaluator = evaluator,
+          referenceBuild = globals.referenceBuild
         )
         val applied = piece(entry).toOption match
           case None => Right(None)

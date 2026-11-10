@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Rational
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 /** Conway-only parameters taken from the Conway genesis when the chain crosses into Conway.
   *
@@ -38,6 +39,11 @@ final case class ConwayParams(
   *   takes `emptyDijkstraGenesis` (cardano-node b004fe0c `Protocol/Cardano.hs:137-144`), which
   *   nothing reads, as the Dijkstra trigger is read only with the same setting (`Configuration/
   *   POM.hs:713-715`).
+  * @param referenceBuild
+  *   The build of `cardano-node` whose rules the ledger follows (`--reference-build`, #826): where
+  *   two builds' rules differ, a rule matches on it. The node sets it from its options
+  *   (`NodeSetup.mirroring`), as it sets [[dijkstra]] from its configuration; elsewhere it is
+  *   [[ReferenceBuild.Default]].
   */
 final case class LedgerGlobals(
     maxSupply: BigInt,
@@ -50,5 +56,6 @@ final case class LedgerGlobals(
     firstEpoch: BigInt = 0,
     conway: Option[ConwayParams] = None,
     alonzoCoinsPerUTxOWord: BigInt = 0,
-    dijkstra: Option[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraGenesis] = None
+    dijkstra: Option[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraGenesis] = None,
+    referenceBuild: ReferenceBuild = ReferenceBuild.Default
 )

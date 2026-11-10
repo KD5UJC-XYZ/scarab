@@ -430,7 +430,7 @@ object UtxoChecks:
       UtxoChecks(
         defect,
         UtxoTests.shelleyBeforePpup(pp, ctx.network, ctx.slot, ann, minFee, consumed, produced),
-        UtxoTests.shelleyAfterPpup(pp, tx)
+        UtxoTests.shelleyAfterPpup(ctx.referenceBuild, pp, tx)
       )
 
 /** UTXOW (`Shelley/Rules/Utxow.hs:270`, `transitionRulesUTXOW`, with the Alonzo and Babbage rules

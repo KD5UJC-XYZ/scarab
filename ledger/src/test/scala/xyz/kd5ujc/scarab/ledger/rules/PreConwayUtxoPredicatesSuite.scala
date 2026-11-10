@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronCbor}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.rules.Utxo as ConwayUtxo
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 /** Alonzo/Rules/Utxo.hs:551-571 and Babbage/Rules/Utxo.hs:392-412 at f649f975: bootstrap
@@ -285,6 +285,44 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       val change = TestLedger.out(alice.address(), funds - fee - 1)
       rejected(transaction(Vector(big, change)), UtxoFailure.OutputTooSmall(Vector(big)))
     }
+
+  test("bootstrap attributes over 64 bytes: the failure of each era under each build (#832)") {
+    val tx = transaction(Vector(TestLedger.out(bootstrap(65, Some(42)), funds - fee)))
+    val big = tx.body.outputs
+    def env(build: ReferenceBuild) = TestLedger.env.copy(referenceBuild = build)
+    def preConway[E <: EraTag](major: Int, build: ReferenceBuild)(using
+        ShelleyBasedEra[E],
+        PreConway[E]
+    ) =
+      val pp = TestLedger.params(major)
+      val cert = summon[PreConway[E]].cert.get(Empty.ledgerState[E](pp))
+      Test.failures(ShelleyUtxo.validate[E](UtxoEnv(env(build), pp, cert), StAnnTx(tx, utxo), 0, 0))
+    def conway(build: ReferenceBuild) =
+      val pp = TestLedger.params(9)
+      val cert = Empty.ledgerState[Conway](pp).cert
+      Test.failures(ConwayUtxo.validate(UtxoEnv(env(build), pp, cert), StAnnTx(tx, utxo), 0, 0))
+    ReferenceBuild.values.foreach { build =>
+      // 11.1 injects Shelley's failure as `OutputTooBigUTxO` from Allegra; the Leios build keeps it
+      def expected(major: Int) = build match
+        case ReferenceBuild.Release11_1   => attrsTooBig(major, big)
+        case ReferenceBuild.LeiosB004fe0c => UtxoFailure.OutputBootAddrAttrsTooBig(big)
+      val judged = Vector(
+        2 -> preConway[Shelley](2, build),
+        3 -> preConway[Allegra](3, build),
+        4 -> preConway[Mary](4, build),
+        5 -> preConway[Alonzo](5, build),
+        7 -> preConway[Babbage](7, build),
+        9 -> conway(build)
+      )
+      judged.foreach { (major, failures) =>
+        assertEquals(
+          failures.map(_.iterator.toList),
+          Some(List(PredicateFailure.utxo(expected(major)))),
+          s"$build $major"
+        )
+      }
+    }
+  }
 
   earlyCases[Shelley]("Shelley", 2)
   earlyCases[Allegra]("Allegra", 3)
