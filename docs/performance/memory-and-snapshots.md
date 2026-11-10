@@ -489,7 +489,7 @@ form is kept. Each kept imperative form has a `@SuppressWarnings` that cites thi
 
 ## 55. Reusing the derived pool distribution (#826)
 
-Measured 2026-11-10 on the code in `7282ff7d7`, in `scarab-jdk:local` (Temurin 25.0.4.1+1), with four Docker CPUs
+Measured 2026-11-10 on the code in `dbaf2094d`, in `scarab-jdk:local` (Temurin 25.0.4.1+1), with four Docker CPUs
 and a 10 GiB container limit. `PoolDistributionBench` constructs one immutable snapshot of
 2,000 pools and 2,000 staking credentials, then compares `PoolDistr.calculate` with
 `PoolDistr.of` over 1,000 reads per sample. Each workload has two warm-up batches followed by
@@ -500,8 +500,8 @@ the sum of the returned map sizes. Run with Docker and
 <!-- register:table perf-61.t1 -->
 | Workload | Median ms / 1,000 reads | Range ms | Checksum / sample |
 |---|---:|---:|---:|
-| Recalculate each read | 742.964 | 737.080–758.181 | 2,000,000 |
-| Reuse immutable snapshot result | 0.200 | 0.192–0.228 | 2,000,000 |
+| Recalculate each read | 735.605 | 715.476–746.389 | 2,000,000 |
+| Reuse immutable snapshot result | 0.192 | 0.170–0.207 | 2,000,000 |
 <!-- /register -->
 
 The cache retains the immutable snapshot's derived distribution. A new snapshot, including a
