@@ -186,7 +186,7 @@ class InboundGovernorSuite extends FailsOnUncaught:
     val json = InboundGovernor.json(
       ConnectionManager.Snapshot(
         ConnectionState.Counters.zero.copy(duplex = 1, inbound = 1),
-        Vector(remote -> ConnectionState.InboundIdle(DataFlow.Duplex))
+        Vector(ConnectionManager.Listed(remote, ConnectionState.InboundIdle(DataFlow.Duplex), 7L))
       )
     )
     assertEquals(json.hcursor.downField("counters").get[Int]("inbound"), Right(1))
@@ -194,5 +194,6 @@ class InboundGovernorSuite extends FailsOnUncaught:
       json.hcursor.downField("connections").downArray.get[String]("state"),
       Right("InboundIdleSt Duplex")
     )
+    assertEquals(json.hcursor.downField("connections").downArray.get[Long]("connection"), Right(7L))
     assert(json.hcursor.downField("inboundSessions").failed)
   }

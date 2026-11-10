@@ -102,8 +102,12 @@ object InboundGovernor:
         "outbound" -> snapshot.counters.outbound.asJson,
         "terminating" -> snapshot.counters.terminating.asJson
       ),
-      "connections" -> snapshot.connections.map { (remote, state) =>
-        Json.obj("remote" -> remote.toString.asJson, "state" -> state.abstractName.asJson)
+      "connections" -> snapshot.listed.map { l =>
+        Json.obj(
+          "remote" -> l.remote.toString.asJson,
+          "state" -> l.state.abstractName.asJson,
+          "connection" -> l.id.asJson
+        )
       }.asJson
     )
 

@@ -87,6 +87,9 @@ enum RemoteRelease:
 trait Connection[F[_]]:
   def remote: SocketAddress[IpAddress]
 
+  /** This generation's identity, as [[ConnectionManager.Snapshot]] lists it. */
+  def id: Long
+
   /** The side whose handler owns the transport: `Inbound` for an accepted connection. */
   def provenance: Provenance
   def state: F[ConnectionState]
@@ -251,10 +254,12 @@ object ConnectionManager:
       closed: F[Unit]
   )
 
-  final case class Snapshot(
-      counters: Counters,
-      connections: Vector[(SocketAddress[IpAddress], ConnectionState)]
-  )
+  /** One entry of the table: its remote, its state and its generation ([[Connection.id]]). */
+  final case class Listed(remote: SocketAddress[IpAddress], state: ConnectionState, id: Long)
+
+  final case class Snapshot(counters: Counters, listed: Vector[Listed]):
+    def connections: Vector[(SocketAddress[IpAddress], ConnectionState)] =
+      listed.map(l => l.remote -> l.state)
 
   /** The IP address of `address` (the first one a name resolves to). */
   def resolve[F[_]: Async](address: SocketAddress[Host]): F[SocketAddress[IpAddress]] =
@@ -514,7 +519,7 @@ object ConnectionManager:
     /** One generation of an entry, as its owner and users hold it. */
     private final class Handle(entry: Entry[F], at: SocketAddress[IpAddress], side: Side)
         extends Connection[F]:
-      private val id = entry.id
+      val id = entry.id
       def remote = at
       def provenance = side match
         case Side.Inbound  => Provenance.Inbound
@@ -1145,7 +1150,9 @@ object ConnectionManager:
           Effects.none[F],
           Snapshot(
             counters(t),
-            t.entries.toVector.map((k, e) => k._1 -> e.state).sortBy(_._1.toString)
+            t.entries.toVector
+              .map((k, e) => Listed(k._1, e.state, e.id))
+              .sortBy(l => (l.remote.toString, l.id))
           )
         )
       }

@@ -644,29 +644,29 @@ final class OutboundPeers[F[_]: Async, A] private (
       }
     }
 
-  /** What the session of `peer` observes: the node's own observer, and the peer metrics (who is
-    * first with a header and a block), one update of the shared board per batch of headers and per
-    * range of blocks.
+  /** What the session of `peer` in `activation` observes: the node's own observer, and the peer
+    * metrics (who is first with a header and a block), one update of the shared board per batch of
+    * headers and per range of blocks.
     */
-  private def metered(peer: A): Peer.Observation => F[Unit] =
+  private def metered(peer: A, activation: BigInt): Peer.Observation => F[Unit] =
     given Stateful[F, PeerMetrics[A]] = metrics
     val measured = PeerMetricsObserver(peer, hot.observe)
-    observation => reported(peer, observation) *> measured(observation)
+    observation =>
+      reports.update(m =>
+        m.updated(peer, m.getOrElse(peer, SessionReport()).observed(activation, observation))
+      ) *> measured(observation)
 
-  /** What the hot sessions of `peer` saw of it, for `GET /connections`. */
-  private def reported(peer: A, observation: Peer.Observation): F[Unit] =
-    def change(f: SessionReport => SessionReport): F[Unit] =
-      reports.update(m => m.updated(peer, f(m.getOrElse(peer, SessionReport()))))
-    observation match
-      case Peer.Observation.Intersected(point) => change(_.copy(intersection = Some(point)))
-      case Peer.Observation.HeadersArrived(slots, _) =>
-        change(r => r.copy(headers = r.headers + slots.size))
-      case Peer.Observation.Announced(tip) => change(_.copy(peerTip = Some(tip.blockNo.value)))
-      case _                               => F.unit
-
-  /** What the hot sessions saw of each peer: its last intersection, the headers received and the
-    * tip it announced last.
+  /** The report of `peer`'s session in `activation` over `link`'s connection, for as long as the
+    * session lasts.
     */
+  private def reporting(peer: A, link: Link[F], activation: BigInt): Resource[F, Unit] =
+    Resource.make(
+      reports.update(m =>
+        m.updated(peer, m.getOrElse(peer, SessionReport()).began(link.connection.id, activation))
+      )
+    )(_ => reports.update(m => m.updatedWith(peer)(_.map(_.ended(activation)))))
+
+  /** What the hot sessions saw of each peer, for `GET /connections`. */
   def sessionReports: F[Vector[(A, SessionReport)]] = reports.get.map(_.toVector)
 
   /** The hot protocols and the session over them, for as long as the session lasts. The session
@@ -716,6 +716,7 @@ final class OutboundPeers[F[_]: Async, A] private (
             link.warm.mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
         ).evalTap(key => session.source.set(Some(key.activationGeneration)))
           .onFinalize(session.source.set(None))
+          .flatTap(key => reporting(peer, link, key.activationGeneration))
           .flatMap(key =>
             link.warm
               .startHotProtocols(
@@ -751,7 +752,7 @@ final class OutboundPeers[F[_]: Async, A] private (
                     genesis.fold(Peer.Chain.Praos(hot.headers.map(_.withInvariant(invariant))))(
                       _.chain
                     ),
-                    Some(metered(peer)),
+                    Some(metered(peer, sourceKey.activationGeneration)),
                     Some(hot.pool),
                     Some(rejectedCachedBlock(sourceKey, _)),
                     fetchIdentity = Some(peer.hashCode.toLong),
@@ -1108,14 +1109,52 @@ object OutboundPeers:
       closeTimeout: FiniteDuration = 120.seconds
   )
 
-  /** What the hot sessions of one peer saw of it: its last intersection, the headers received and
-    * the block number of the tip it announced last.
+  /** What the hot session of a peer that is running saw of it: the connection it runs over (the
+    * manager's [[xyz.kd5ujc.scarab.network.Connection.id]]), its activation (one per hot session),
+    * its intersection, the headers received and the block number of the tip it announced last.
     */
-  final case class SessionReport(
+  final case class ActiveSession(
+      connection: Long,
+      activation: BigInt,
       intersection: Option[xyz.kd5ujc.scarab.protocol.ChainSync.Point] = None,
       headers: Long = 0,
       peerTip: Option[BigInt] = None
   )
+
+  /** Over every hot session of a peer: how many there were and the headers they received. */
+  final case class SessionTotals(activations: Long = 0, headers: Long = 0)
+
+  /** What the hot sessions of one peer saw of it: the running one's observations, kept apart from
+    * the totals over all of them, so that what one session saw is never read as another's.
+    */
+  final case class SessionReport(
+      active: Option[ActiveSession] = None,
+      lifetime: SessionTotals = SessionTotals()
+  ):
+    /** A session began in `activation` over the connection `connection`. */
+    def began(connection: Long, activation: BigInt): SessionReport =
+      SessionReport(
+        Some(ActiveSession(connection, activation)),
+        lifetime.copy(activations = lifetime.activations + 1)
+      )
+
+    /** The session of `activation` ended; a later one's report is left as it is. */
+    def ended(activation: BigInt): SessionReport =
+      copy(active = active.filterNot(_.activation == activation))
+
+    /** What the session of `activation` observed: the running session's report takes it only if
+      * it is that session's; the totals take every header.
+      */
+    def observed(activation: BigInt, observation: Peer.Observation): SessionReport =
+      def mine(f: ActiveSession => ActiveSession) =
+        copy(active = active.map(a => if a.activation == activation then f(a) else a))
+      observation match
+        case Peer.Observation.Intersected(point) => mine(_.copy(intersection = Some(point)))
+        case Peer.Observation.HeadersArrived(slots, _) =>
+          mine(a => a.copy(headers = a.headers + slots.size))
+            .copy(lifetime = lifetime.copy(headers = lifetime.headers + slots.size))
+        case Peer.Observation.Announced(tip) => mine(_.copy(peerTip = Some(tip.blockNo.value)))
+        case _                               => this
 
   /** The session reports as JSON, by peer (`GET /connections`). */
   def json[A](reports: Vector[(A, SessionReport)]): io.circe.Json =
@@ -1126,9 +1165,19 @@ object OutboundPeers:
       .map { (peer, r) =>
         Json.obj(
           "peer" -> peer.toString.asJson,
-          "intersection" -> r.intersection.map(xyz.kd5ujc.scarab.ledger.Points.show).asJson,
-          "headers" -> r.headers.asJson,
-          "peerTipBlock" -> r.peerTip.map(_.toString).asJson
+          "active" -> r.active.map { a =>
+            Json.obj(
+              "connection" -> a.connection.asJson,
+              "activation" -> a.activation.asJson,
+              "intersection" -> a.intersection.map(xyz.kd5ujc.scarab.ledger.Points.show).asJson,
+              "headers" -> a.headers.asJson,
+              "peerTipBlock" -> a.peerTip.map(_.toString).asJson
+            )
+          }.asJson,
+          "lifetime" -> Json.obj(
+            "activations" -> r.lifetime.activations.asJson,
+            "headers" -> r.lifetime.headers.asJson
+          )
         )
       }
       .asJson

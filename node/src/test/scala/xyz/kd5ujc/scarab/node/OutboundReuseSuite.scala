@@ -211,6 +211,9 @@ class OutboundReuseSuite extends FailsOnUncaught:
             dials <- w.dials.get
             snapshot <- w.manager.snapshot
             changes <- w.changes.get
+            reports <- eventually("the session's intersection is reported")(
+              w.outbound.sessionReports
+            )(_.exists(_._2.active.exists(_.intersection.isDefined)))
           yield
             assert(accepted(before))
             assertEquals(idle, 0)
@@ -226,6 +229,12 @@ class OutboundReuseSuite extends FailsOnUncaught:
             assertEquals(dials, 0)
             assertEquals(snapshot.connections.size, 1)
             allValid(changes)
+            // the session's report names the connection it runs over, the peer's own
+            assertEquals(
+              reports.flatMap(_._2.active.map(_.connection)),
+              snapshot.listed.map(_.id)
+            )
+            assertEquals(reports.map(_._2.lifetime.activations), Vector(1L))
         }
       }
     }
@@ -332,10 +341,36 @@ class OutboundReuseSuite extends FailsOnUncaught:
             })
             status <- handle.read
             after <- w.state
+            reports <- w.outbound.sessionReports
           yield
             assertEquals(status.status, PeerStateActions.Status.Warm)
             assert(after.exists(_.isLive), after.toString)
+            // the ended session is not reported as running
+            assertEquals(reports.map(_._2.active), Vector(None))
+            assertEquals(reports.map(_._2.lifetime.activations), Vector(1L))
         }
       }
     }
+  }
+
+  // a replacement's report is its own: what an earlier session saw, or reports late, is never
+  // read as the running one's (`PeerStateActions.hs` 815-850: each activation has its own threads)
+  test("a session that replaced another reports only what it saw itself") {
+    val point = ChainSync.Point.Origin
+    val headers = Peer.Observation.HeadersArrived(Vector(1L, 2L), 2.seconds)
+    val first = OutboundPeers
+      .SessionReport()
+      .began(connection = 1L, activation = BigInt(1))
+      .observed(BigInt(1), Peer.Observation.Intersected(point))
+      .observed(BigInt(1), headers)
+      .ended(BigInt(1))
+    val replaced = first.began(connection = 2L, activation = BigInt(2))
+    // the first session's last batch, delivered after the replacement began
+    val late = replaced.observed(BigInt(1), headers).ended(BigInt(1))
+    assertEquals(late.active, Some(OutboundPeers.ActiveSession(2L, BigInt(2))))
+    assertEquals(late.lifetime, OutboundPeers.SessionTotals(activations = 2, headers = 4))
+    assertEquals(
+      late.observed(BigInt(2), headers).active.map(a => (a.connection, a.headers)),
+      Some((2L, 2L))
+    )
   }

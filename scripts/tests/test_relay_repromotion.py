@@ -19,12 +19,14 @@ class RelayRepromotionTests(unittest.TestCase):
                 intersection="100@abcd", headers=1):
         now = [0]
         reads = []
-        entry = {"remote": relay.RELAY_REMOTE, "state": "DuplexSt"}
+        entry = {"remote": relay.RELAY_REMOTE, "state": "DuplexSt", "connection": 1}
         pending = {"connections": [entry], "peerSelection": {"peers": [{"peer": relay.RELAY_REMOTE,
                                                                         "temperature": "warm"}]}}
         promoted = {"connections": [entry] * connections,
                     "peerSelection": {"peers": [{"peer": relay.RELAY_REMOTE, "temperature": temperature}]},
-                    "sessions": [{"peer": relay.RELAY_REMOTE, "intersection": intersection, "headers": headers}]}
+                    "sessions": [{"peer": relay.RELAY_REMOTE,
+                                  "active": {"connection": 1, "activation": 1, "intersection": intersection,
+                                             "headers": headers}}]}
 
         def ready():
             return ready_at is not None and now[0] >= ready_at
@@ -73,11 +75,17 @@ class ReuseVerdictTests(unittest.TestCase):
     """The end-of-run verdict on the outbound governor's use of the relay's connection."""
 
     @staticmethod
-    def table(headers, tip, intersection="100@abcd", temperature="hot"):
-        return {"connections": [{"remote": relay.RELAY_REMOTE, "state": "DuplexSt"}],
+    def table(headers, tip, intersection="100@abcd", temperature="hot", connection=1, session=(1, 1),
+              lifetime=None):
+        """One relay connection `connection` in duplex use, and the relay's running session over the connection
+        and in the activation `session` (none if `session` is None)."""
+        active = None if session is None else {
+            "connection": session[0], "activation": session[1], "intersection": intersection, "headers": headers,
+            "peerTipBlock": None if tip is None else str(tip)}
+        return {"connections": [{"remote": relay.RELAY_REMOTE, "state": "DuplexSt", "connection": connection}],
                 "peerSelection": {"peers": [{"peer": relay.RELAY_REMOTE, "temperature": temperature}]},
-                "sessions": [{"peer": relay.RELAY_REMOTE, "intersection": intersection, "headers": headers,
-                              "peerTipBlock": None if tip is None else str(tip)}]}
+                "sessions": [{"peer": relay.RELAY_REMOTE, "active": active,
+                              "lifetime": lifetime or {"activations": 1, "headers": headers}}]}
 
     def test_a_session_that_keeps_following_passes(self):
         self.assertEqual(relay.reuse_failures(self.table(10, 50), self.table(90, 200), 201, REUSED, []), [])
@@ -95,6 +103,30 @@ class ReuseVerdictTests(unittest.TestCase):
     def test_a_stale_peer_tip_fails(self):
         failures = relay.reuse_failures(self.table(10, 50), self.table(90, 150), 201, REUSED, [])
         self.assertTrue(any("is behind the pool" in f for f in failures), failures)
+
+    def test_a_new_activation_counts_from_its_own_start(self):
+        # the relay returned and was promoted again on the same connection: its own headers are progress
+        last = self.table(30, 200, session=(1, 2), lifetime={"activations": 2, "headers": 120})
+        self.assertEqual(relay.reuse_failures(self.table(90, 50), last, 201, REUSED, []), [])
+
+    def test_a_replacement_with_the_old_connections_report_fails(self):
+        # connection 1 followed and ended; connection 2 replaced it and is hot, but the report at the end is still
+        # connection 1's, with more headers and a fresh tip
+        last = self.table(90, 200, connection=2, session=(1, 1))
+        failures = relay.reuse_failures(self.table(10, 50), last, 201, REUSED, [])
+        self.assertTrue(any("no running session over the relay's connection" in f for f in failures), failures)
+
+    def test_a_replacement_that_never_intersects_fails_whatever_the_lifetime_totals(self):
+        # connection 2's own session found no intersection; the totals still hold connection 1's headers
+        last = self.table(0, None, intersection=None, connection=2, session=(2, 2),
+                          lifetime={"activations": 2, "headers": 90})
+        failures = relay.reuse_failures(self.table(10, 50), last, 201, REUSED, [])
+        self.assertTrue(any("did not keep following" in f for f in failures), failures)
+
+    def test_no_running_session_at_the_end_fails(self):
+        last = self.table(0, None, session=None, lifetime={"activations": 1, "headers": 90})
+        failures = relay.reuse_failures(self.table(10, 50), last, 201, REUSED, [])
+        self.assertTrue(any("no running session over the relay's connection" in f for f in failures), failures)
 
 
 if __name__ == "__main__":

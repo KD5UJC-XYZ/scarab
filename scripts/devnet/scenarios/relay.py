@@ -151,20 +151,31 @@ def reuse_events(path):
 
 
 def relay_session(connections):
-    """What the Scala node's hot sessions saw of the relay (`GET /connections` `sessions`), if any."""
-    return next((r for r in (connections or {}).get("sessions") or [] if r.get("peer") == RELAY_REMOTE), None)
+    """What the Scala node's running hot session of the relay saw of it (`GET /connections` `sessions`, its
+    `active` report: the connection it runs over, its activation, intersection, headers and peer tip), if any."""
+    report = next((r for r in (connections or {}).get("sessions") or [] if r.get("peer") == RELAY_REMOTE), None)
+    return (report or {}).get("active")
+
+
+def over_relay_connection(connections, session):
+    """Whether `session` runs over one of the relay's connections in the same table."""
+    return bool(session) and session.get("connection") in [c.get("connection") for c in relay_connections(connections)]
 
 
 def following(connections):
-    """Whether the relay's session found an intersection and received headers."""
+    """Whether the relay's running session, over the relay's connection, found an intersection and received
+    headers."""
     session = relay_session(connections)
-    return bool(session and session.get("intersection") and session.get("headers", 0) > 0)
+    return bool(over_relay_connection(connections, session) and session.get("intersection")
+                and session.get("headers", 0) > 0)
 
 
 def reuse_failures(first, last, pool_tip, reuses, dialled):
     """Why the outbound governor's use of the relay's own connection does not hold: a reuse transition, never a
     dial, one connection to the relay in duplex use, the relay hot, and its session intersected and still
-    receiving headers at the end, its peer's tip within 3 blocks of the pool's."""
+    receiving headers at the end, its peer's tip within 3 blocks of the pool's. The progress at the end is the
+    running session's own: over the relay's connection in the final table, and counted from the first sample
+    when that is the same session (connection and activation), else from its own start."""
     failures = []
     relay_states = [c["state"] for c in relay_connections(last)]
     if not reuses:
@@ -178,9 +189,13 @@ def reuse_failures(first, last, pool_tip, reuses, dialled):
     if relay_temperature(last) != "hot":
         failures.append(f"the relay is not hot at the end: {relay_temperature(last)}")
     before, after = relay_session(first), relay_session(last)
+    same = bool(before and after) and all(before.get(k) == after.get(k) for k in ("connection", "activation"))
     if not following(first):
         failures.append(f"the Scala node did not follow the relay over its connection: {before}")
-    elif not after or after.get("headers", 0) <= before.get("headers", 0):
+    elif not over_relay_connection(last, after):
+        failures.append(f"no running session over the relay's connection at the end: {after}, "
+                        f"connections {[c.get('connection') for c in relay_connections(last)]}")
+    elif not after.get("intersection") or after.get("headers", 0) <= (before.get("headers", 0) if same else 0):
         failures.append(f"the session on the relay's connection did not keep following: {before} -> {after}")
     elif after.get("peerTipBlock") is None or pool_tip - int(after["peerTipBlock"]) > 3:
         failures.append(f"the relay's tip seen over its connection ({after.get('peerTipBlock')}) is behind the "
