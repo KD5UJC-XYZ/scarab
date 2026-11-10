@@ -16,8 +16,8 @@ import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Role, UInt64}
 import xyz.kd5ujc.scarab.protocol.LocalTxMonitor.{Kind, Message, State}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.{Held, Snapshot, TxMeasure}
+import fs2.concurrent.SignallingRef
 import munit.CatsEffectSuite
-import scala.concurrent.duration.*
 
 /** The node-to-client LocalTxMonitor and local ChainSync servers against clients over an in-memory
   * bearer, with a toy mempool (a list of one-byte "transactions") and a toy chain.
@@ -39,17 +39,14 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
     )
 
   /** The toy mempool: its current snapshot, replaced by the test. */
-  private final class Toy(val current: Ref[IO, Snapshot]):
+  private final class Toy(val current: SignallingRef[IO, Snapshot]):
     val source: LocalTxMonitorServer.Source[IO] = new LocalTxMonitorServer.Source[IO]:
       def acquire = current.get
       def awaitChange(seen: Snapshot): IO[Snapshot] =
-        current.get.flatMap { now =>
-          if now.identity != seen.identity then IO.pure(now)
-          else IO.sleep(5.millis) *> awaitChange(seen)
-        }
+        current.discrete.find(_.identity != seen.identity).compile.lastOrError
 
   private def toy(slot: Int, txs: Int*): IO[Toy] =
-    Ref.of[IO, Snapshot](snapshot(slot, txs.toVector)).map(new Toy(_))
+    SignallingRef[IO, Snapshot](snapshot(slot, txs.toVector)).map(new Toy(_))
 
   /** A toy chain of blocks 1 to `n` whose bytes are `size` long. */
   private def chainSource(
@@ -236,48 +233,46 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
   test(
     "the acquired snapshot does not change while the pool does; AwaitAcquire waits for a change"
   ) {
-    toy(7, 1).flatMap { t =>
-      connected(Some(t.source), None) { (ch, _) =>
-        for
-          _ <- monitorSend(ch, State.Idle, Message.Acquire)
-          a1 <- monitorReceive(ch, State.Acquiring)
-          _ <- t.current.set(snapshot(8, Vector(1, 2)))
-          _ <- monitorSend(ch, State.Acquired, Message.NextTx)
-          held <- monitorReceive(ch, State.Busy(Kind.NextTx))
-          _ <- monitorSend(ch, State.Acquired, Message.NextTx)
-          none <- monitorReceive(ch, State.Busy(Kind.NextTx))
-          // the pool already differs: AwaitAcquire answers with the new snapshot
-          _ <- monitorSend(ch, State.Acquired, Message.AwaitAcquire)
-          a2 <- monitorReceive(ch, State.Acquiring)
-          // the pool equals the snapshot just acquired: AwaitAcquire waits
-          _ <- monitorSend(ch, State.Acquired, Message.AwaitAcquire)
-          waiting <- Peers.typed(monitorReceive(ch, State.Acquiring)).start
-          // the assertion is that the waiter is still blocked: there is no positive state to poll
-          // for, so this stays a bounded wait (residual of TEST-AUD-04 in issue #251)
-          _ <- IO.sleep(60.millis)
-          completedEarly <- waiting.join
-            .map(_.isInstanceOf[cats.effect.kernel.Outcome.Succeeded[?, ?, ?]])
-            .timeoutTo(10.millis, IO.pure(false))
-          _ <- t.current.set(snapshot(9, Vector(1, 2)))
-          a3 <- waiting.joinWithNever.flatMap(Fibers.land(_))
-          _ <- monitorSend(ch, State.Acquired, Message.GetSizes)
-          sizes <- monitorReceive(ch, State.Busy(Kind.GetSizes))
-          _ <- monitorSend(ch, State.Acquired, Message.Release)
-          // after Release the client acquires afresh
-          _ <- monitorSend(ch, State.Idle, Message.Acquire)
-          a4 <- monitorReceive(ch, State.Acquiring)
-          _ <- monitorSend(ch, State.Acquired, Message.Release)
-          _ <- monitorSend(ch, State.Idle, Message.Done)
-        yield (a1, held, none, a2, completedEarly, a3, sizes, a4)
-      }.map { case ((a1, held, none, a2, completedEarly, a3, sizes, a4), _) =>
-        assertEquals(a1, Message.Acquired(7))
-        assertEquals(held, Message.ReplyNextTx(Some(txItem(1))))
-        assertEquals(none, Message.ReplyNextTx(None))
-        assertEquals(a2, Message.Acquired(8))
-        assertEquals(completedEarly, false)
-        assertEquals(a3, Message.Acquired(9))
-        assertEquals(sizes, Message.ReplyGetSizes(LocalTxMonitor.Sizes(1000, 11 + 12, 2)))
-        assertEquals(a4, Message.Acquired(9))
+    Settled { settle =>
+      toy(7, 1).flatMap { t =>
+        connected(Some(t.source), None) { (ch, _) =>
+          for
+            _ <- monitorSend(ch, State.Idle, Message.Acquire)
+            a1 <- monitorReceive(ch, State.Acquiring)
+            _ <- t.current.set(snapshot(8, Vector(1, 2)))
+            _ <- monitorSend(ch, State.Acquired, Message.NextTx)
+            held <- monitorReceive(ch, State.Busy(Kind.NextTx))
+            _ <- monitorSend(ch, State.Acquired, Message.NextTx)
+            none <- monitorReceive(ch, State.Busy(Kind.NextTx))
+            // the pool already differs: AwaitAcquire answers with the new snapshot
+            _ <- monitorSend(ch, State.Acquired, Message.AwaitAcquire)
+            a2 <- monitorReceive(ch, State.Acquiring)
+            // the pool equals the snapshot just acquired: AwaitAcquire waits
+            _ <- monitorSend(ch, State.Acquired, Message.AwaitAcquire)
+            waiting <- Peers.typed(monitorReceive(ch, State.Acquiring)).start
+            // the waiter is still blocked once every fiber has done all it can
+            completedEarly <- IO.race(waiting.join, settle).map(_.isLeft)
+            _ <- t.current.set(snapshot(9, Vector(1, 2)))
+            a3 <- waiting.joinWithNever.flatMap(Fibers.land(_))
+            _ <- monitorSend(ch, State.Acquired, Message.GetSizes)
+            sizes <- monitorReceive(ch, State.Busy(Kind.GetSizes))
+            _ <- monitorSend(ch, State.Acquired, Message.Release)
+            // after Release the client acquires afresh
+            _ <- monitorSend(ch, State.Idle, Message.Acquire)
+            a4 <- monitorReceive(ch, State.Acquiring)
+            _ <- monitorSend(ch, State.Acquired, Message.Release)
+            _ <- monitorSend(ch, State.Idle, Message.Done)
+          yield (a1, held, none, a2, completedEarly, a3, sizes, a4)
+        }.map { case ((a1, held, none, a2, completedEarly, a3, sizes, a4), _) =>
+          assertEquals(a1, Message.Acquired(7))
+          assertEquals(held, Message.ReplyNextTx(Some(txItem(1))))
+          assertEquals(none, Message.ReplyNextTx(None))
+          assertEquals(a2, Message.Acquired(8))
+          assertEquals(completedEarly, false)
+          assertEquals(a3, Message.Acquired(9))
+          assertEquals(sizes, Message.ReplyGetSizes(LocalTxMonitor.Sizes(1000, 11 + 12, 2)))
+          assertEquals(a4, Message.Acquired(9))
+        }
       }
     }
   }

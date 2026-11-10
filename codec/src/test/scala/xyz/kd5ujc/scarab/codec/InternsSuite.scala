@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.codec
 
-import java.lang.ref.{Reference, WeakReference}
+import java.lang.ref.{Reference, ReferenceQueue, WeakReference}
 import java.util.concurrent.atomic.AtomicReference
 import scala.noinline
 
@@ -89,12 +89,13 @@ class InternsSuite extends munit.FunSuite:
   }
 
   @noinline private def expired(
-      kind: Interned[Bytes]
+      kind: Interned[Bytes],
+      cleared: ReferenceQueue[AnyRef]
   ): (WeakReference[Interns], WeakReference[Bytes]) =
     val scope = new Interns
     val first = bytes(2)
     assert(scope.share(kind)(first) eq first)
-    (new WeakReference(scope), new WeakReference(first))
+    (new WeakReference(scope, cleared), new WeakReference(first, cleared))
 
   test("a live document retains its table; a kind does not retain expired scopes or values") {
     val kind = new Interned[Bytes]
@@ -103,11 +104,15 @@ class InternsSuite extends munit.FunSuite:
     System.gc()
     assert(!kept.refersTo(null), "the document owns its first value strongly")
     assert(node.share(kind)(bytes(1)) eq kept.get())
-    val (scope, value) = expired(kind)
+    // the collector enqueues each reference it clears: wait for both, asking it to run again
+    // while one is still to come
+    val cleared = new ReferenceQueue[AnyRef]
+    val (scope, value) = expired(kind, cleared)
+    var enqueued = 0
     var attempts = 0
-    while (!scope.refersTo(null) || !value.refersTo(null)) && attempts < 20 do
+    while enqueued < 2 && attempts < 20 do
       System.gc()
-      Thread.sleep(10)
+      if cleared.remove(1000) != null then enqueued += 1
       attempts += 1
     assert(scope.refersTo(null), "a stable kind does not keep a completed decode alive")
     assert(value.refersTo(null), "a stable kind does not keep the decode's values alive")

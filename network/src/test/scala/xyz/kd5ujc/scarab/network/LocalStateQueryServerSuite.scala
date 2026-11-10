@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Handshake, LocalStateQuery, LocalTxSubmission, NtcVersion}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Role, UInt64}
 import xyz.kd5ujc.scarab.protocol.LocalStateQuery.{Failure, Message, State, Target}
+import fs2.concurrent.SignallingRef
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 
@@ -59,7 +60,7 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
       val acquired: Ref[IO, Vector[Target]],
       val tip: Ref[IO, Int],
       val versions: Ref[IO, Vector[NtcVersion]],
-      val released: Ref[IO, Int],
+      val released: SignallingRef[IO, Int],
       val cancelServer: Ref[IO, Option[IO[Unit]]]
   ):
     val source: LocalStateQueryServer.Source[IO, Nothing] =
@@ -114,7 +115,7 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
       Ref.of[IO, Vector[Target]](Vector.empty),
       Ref.of[IO, Int](3),
       Ref.of[IO, Vector[NtcVersion]](Vector.empty),
-      Ref.of[IO, Int](0),
+      SignallingRef[IO, Int](0),
       Ref.of[IO, Option[IO[Unit]]](None)
     ).mapN(new Toy(_, _, _, _, _))
 
@@ -336,8 +337,9 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
           _ <- receive(ch, State.Acquiring)
           cancel <- t.cancelServer.get.map(_.getOrElse(IO.unit))
           _ <- cancel
-          // the release is recorded by the cancelled fiber, so wait for the record, not for 20 ms
-          released <- Wait.until(t.released.get)(_ == 1)
+          // the release is recorded by the cancelled fiber: wait for the record
+          _ <- t.released.waitUntil(_ == 1).timeout(10.seconds)
+          released <- t.released.get
         yield assertEquals(released, 1)
       }.map { case (_, ended) => assertEquals(ended, ServerEnd.Canceled) }
     }

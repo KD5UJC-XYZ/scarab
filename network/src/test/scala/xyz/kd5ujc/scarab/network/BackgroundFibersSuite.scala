@@ -33,30 +33,29 @@ class BackgroundFibersSuite extends FailsOnUncaught:
           NetworkError.BearerClosed(NetworkError.Closure.Aborted)
         )
         .start
-      // Atomic queue polls remove only reports actually returned by this observation.
-      // A report racing an empty poll remains available to the next poll or afterEach.
-      seen <- Wait.until(IO(takeUncaught()))(_.nonEmpty)
+      // the runtime reports the failure when the fiber ends
+      seen <- awaitUncaught(10.seconds)
     yield
       assertEquals(seen.size, 1)
       assertEquals(seen.head.getClass.getName, "cats.mtl.Handle$Submarine")
   }
 
   test("a keep-alive ping that is waiting for its answer when the connection is lost") {
-    typed {
-      linked(protocols = Set(8)).use { (client, _) =>
-        for
-          k <- client.channel(8)
-          // The peer never answers; give the pinger an opportunity to reach `recv` before closure.
-          pinger <- KeepAliveClient
-            .pinger(k, client, KeepAliveClient.Settings(responseTimeout = 30.seconds))
-            .start
-          // There is no observable hook for "the pinger is inside recv": the peer never answers and
-          // the mux exposes no in-flight state, so this bounded wait is the only signal available.
-          // Residual of TEST-AUD-04 in issue #251.
-          _ <- IO.sleep(200.millis)
-          _ <- client.abort(NetworkError.BearerClosed(NetworkError.Closure.Aborted))
-          outcome <- pinger.join
-        yield outcome
+    Settled { settle =>
+      typed {
+        linked(protocols = Set(8)).use { (client, _) =>
+          for
+            k <- client.channel(8)
+            // The peer never answers: once every fiber has done all it can, the pinger has sent its
+            // ping and waits in `recv` for the answer.
+            pinger <- KeepAliveClient
+              .pinger(k, client, KeepAliveClient.Settings(responseTimeout = 30.seconds))
+              .start
+            _ <- settle
+            _ <- client.abort(NetworkError.BearerClosed(NetworkError.Closure.Aborted))
+            outcome <- pinger.join
+          yield outcome
+        }
       }
     }.map {
       case Right(outcome) => assert(outcome.isSuccess, s"the pinger ended with $outcome")

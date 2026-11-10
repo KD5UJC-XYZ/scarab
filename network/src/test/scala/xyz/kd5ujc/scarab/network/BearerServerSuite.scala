@@ -55,11 +55,12 @@ class BearerServerSuite extends FailsOnUncaught:
   test("beforeAccept runs before each accept, so a pause there holds the next accept back") {
     for
       gate <- Deferred[IO, Unit]
+      held <- Deferred[IO, Unit]
       calls <- Ref.of[IO, Int](0)
       served <- Queue.unbounded[IO, Unit]
       before = calls.getAndUpdate(_ + 1).flatMap {
         case 0 => IO.unit
-        case _ => gate.get
+        case _ => held.complete(()) *> gate.get
       }
       _ <- BearerServer
         .listen[IO, NetworkError](Some(ip"127.0.0.1"), None, maxConnections = None, Some(before))(
@@ -71,7 +72,8 @@ class BearerServerSuite extends FailsOnUncaught:
             _ <- network.connect(bound).use(_.read(1).timeout(3.seconds).map(assertEquals(_, None)))
             _ <- served.take.timeout(3.seconds)
             // the second accept waits in `beforeAccept`: this connection is not served yet
-            second <- network.connect(bound).use(_ => IO.sleep(300.millis) *> served.tryTake)
+            _ <- held.get.timeout(3.seconds)
+            second <- network.connect(bound).use(_ => served.tryTake)
             _ <- IO(assertEquals(second, None))
             _ <- gate.complete(())
             _ <- served.take.timeout(3.seconds)
