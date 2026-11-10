@@ -396,7 +396,7 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
   // the same on a connection we dialled: its responders and the peer's activity are tracked as on
   // an accepted one (`Core.hs` 1607-1617)
   test("on a connection we dialled, a conversation while an expiry is being handled is not lost") {
-    TestControl.executeEmbed(dialledScenario).map {
+    TestControl.executeEmbed(dialledScenario(simultaneous = false)).map {
       case Right((now, changes)) =>
         allValid(changes)
         val after = changes.dropWhile(_ != expiring).drop(1)
@@ -415,7 +415,58 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
   /** We dial the peer (duplex) through the manager; the peer's KeepAlive client talks to our
     * responder while the expiry of the idle timer is held in the manager's log.
     */
-  private def dialledScenario: IO[
+  /** The changes after the expiry when the peer's conversation starts at the very instant the idle
+    * timer expires: the expiry is committed first and the responder waits for it (`InboundGovernor.hs`
+    * 253-261, 665-672), then the conversation promotes and demotes the connection.
+    */
+  private val expiredThenWoken = Vector(
+    ConnectionState.OutboundDup(TimeoutExpired.Expired) -> ConnectionState.Duplex,
+    ConnectionState.Duplex -> ConnectionState.OutboundDup(TimeoutExpired.Ticking)
+  )
+
+  // the tracker waits for an activity without taking it, so a start that comes as the timer fires
+  // is neither lost nor taken before the commit (`InboundGovernor.hs` 240-275)
+  test("a responder that starts at the instant the idle timer expires is not lost") {
+    TestControl
+      .executeEmbed(
+        scenario(
+          seen =>
+            for
+              _ <- IO.sleep(1.second)
+              _ <- reuse(seen.manager)
+              now <- IO.monotonic
+              _ <- IO.sleep(seen.began + 5.seconds - now)
+              _ <- keepAlive(seen.mux).flatMap(client => client.ping *> client.done)
+              _ <- IO.sleep(100.millis)
+              after <- state(seen.manager)
+              changes <- seen.changes
+            yield (after, changes),
+          duplex = true
+        )
+      )
+      .map {
+        case Right((now, changes)) =>
+          allValid(changes)
+          assertEquals(changes.dropWhile(_ != expiring).drop(1), expiredThenWoken)
+          assertEquals(now, Some(ConnectionState.OutboundDup(TimeoutExpired.Ticking)))
+        case Left(error) => fail(error.message)
+      }
+  }
+
+  test("on a connection we dialled, a responder that starts as the idle timer expires is not lost") {
+    TestControl.executeEmbed(dialledScenario(simultaneous = true)).map {
+      case Right((now, changes)) =>
+        allValid(changes)
+        assertEquals(changes.dropWhile(_ != expiring).drop(1), expiredThenWoken)
+        assertEquals(now, Some(ConnectionState.OutboundDup(TimeoutExpired.Ticking)))
+      case Left(error) => fail(error.message)
+    }
+  }
+
+  /** We dial the peer (duplex); its conversation with our responder starts while the expiry is held
+    * in the manager's log, or (`simultaneous`) at the instant the idle timer expires.
+    */
+  private def dialledScenario(simultaneous: Boolean): IO[
     Either[NetworkError, (Option[ConnectionState], Vector[(ConnectionState, ConnectionState)])]
   ] =
     (
@@ -431,7 +482,7 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
               ConnectionManager.Limits(timeWait = Duration.Zero),
               Some {
                 case ConnectionEvent.Changed(_, from, to) =>
-                  log.update(_ :+ (from -> to)) *> held.pass(from -> to)
+                  log.update(_ :+ (from -> to)) *> held.pass(from -> to).unlessA(simultaneous)
                 case _ => IO.unit
               }
             )
@@ -470,11 +521,15 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
                           NodeToNode.attach[IO, Bytes, Unit](handle, ChainSyncFixtures.rawItem, ())
                         )
                         .use { _ =>
+                          val conversation =
+                            if simultaneous then
+                              // the tracker armed its timer as the connection was negotiated
+                              IO.sleep(5.seconds) *> talk.complete(()).void
+                            else
+                              held.entered.get *> talk.complete(()) *> IO.sleep(1.second) *>
+                                held.release.complete(()).void
                           for
-                            _ <- held.entered.get
-                            _ <- talk.complete(())
-                            _ <- IO.sleep(1.second)
-                            _ <- held.release.complete(())
+                            _ <- conversation
                             _ <- talked.get
                             _ <- IO.sleep(100.millis)
                             now <- state(manager)

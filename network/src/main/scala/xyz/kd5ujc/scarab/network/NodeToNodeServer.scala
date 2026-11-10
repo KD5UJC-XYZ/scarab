@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.network
 
 import cats.data.NonEmptySet
 import cats.effect.{Async, Ref, Resource}
-import cats.effect.std.{Mutex, Queue}
+import cats.effect.std.Mutex
 import fs2.concurrent.SignallingRef
 import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise}
@@ -172,56 +172,67 @@ object NodeToNodeServer:
   /** The responders of one connection that are running: each is started on demand by its
     * mini-protocol's first byte and ends with that protocol, as the reference's inbound governor
     * starts and restarts them (`InboundGovernor.hs`, ouroboros-network `2fb69829`). Their first
-    * start and last end are queued for the tracker of the peer's activity, so none is lost between
-    * two of its looks. While the tracker handles an expired idle timer, a responder does not start:
-    * the reference's tracer retries on an expired `RemoteIdle` until `CommitRemote` is settled
-    * (`InboundGovernor.hs` 665-672).
+    * start and last end are kept in order for the tracker of the peer's activity, which waits for
+    * them without taking them, so none is lost whatever wins its wait (the reference's inbound
+    * governor reads its channel and its timers in one STM transaction, `InboundGovernor.hs`
+    * 240-275). A responder that would start once the idle timer has expired waits until the expiry
+    * is settled: the reference's tracer retries on an expired `RemoteIdle` (`InboundGovernor.hs`
+    * 665-672).
     */
   private[network] final class Responders[F[_]: Async] private (
       count: Ref[F, Int],
-      events: Queue[F, Activity],
+      pending: SignallingRef[F, Vector[Activity]],
       lock: Mutex[F],
-      expired: SignallingRef[F, Boolean]
+      deadline: SignallingRef[F, Option[FiniteDuration]]
   ):
     private val F = Async[F]
 
     private def counted(by: Int): F[Unit] =
       count.modify(c => (c + by, (c, c + by))).flatMap {
-        case (0, 1) => events.offer(Activity.Started)
-        case (1, 0) => events.offer(Activity.Finished)
+        case (0, 1) => pending.update(_ :+ Activity.Started)
+        case (1, 0) => pending.update(_ :+ Activity.Finished)
         case _      => F.unit
       }
 
-    /** Count a starting responder, once no expired timer holds it. */
+    /** Count a starting responder, once no expired idle timer holds it. */
     private def enter: F[Unit] = F.tailRecM(()) { _ =>
       lock.lock
-        .surround(expired.get.flatMap(held => counted(1).unlessA(held).as(held)))
-        .flatMap(held => if held then expired.waitUntil(!_).as(Left(())) else F.pure(Right(())))
+        .surround((deadline.get, F.monotonic).tupled.flatMap { (until, now) =>
+          val held = until.exists(_ <= now)
+          counted(1).unlessA(held).as(Option.when(held)(until))
+        })
+        .flatMap {
+          case Some(seen) => deadline.waitUntil(_ != seen).as(Left(()))
+          case None       => F.pure(Right(()))
+        }
     }
 
     /** `run`, counted while it runs. */
     def running[A](run: F[A]): F[A] =
       F.bracketFull(poll => poll(enter))(_ => run)((_, _) => lock.lock.surround(counted(-1)))
 
-    /** The next activity, in order. */
-    def next: F[Activity] = events.take
+    /** Completes once an activity is waiting; it takes none. */
+    def awaitActivity: F[Unit] = pending.waitUntil(_.nonEmpty)
 
-    /** The idle timer expired: hold the responders that start from now, unless an activity is
-      * already queued, which comes first (`Some`).
-      */
-    def expire: F[Option[Activity]] =
-      lock.lock.surround(events.tryTake.flatTap(queued => expired.set(true).whenA(queued.isEmpty)))
+    /** The oldest waiting activity, once there is one. */
+    def next: F[Activity] = F.tailRecM(()) { _ =>
+      awaitActivity *> lock.lock.surround(pending.modify { waiting =>
+        waiting.headOption.fold((waiting, Left(()): Either[Unit, Activity]))(first =>
+          (waiting.drop(1), Right(first))
+        )
+      })
+    }
 
-    /** The expiry is settled and the connection stays: the responders may start again. */
-    def settled: F[Unit] = expired.set(false)
+    /** The instant the idle timer expires, while it runs; none otherwise. */
+    def arm(until: Option[FiniteDuration]): F[Unit] = deadline.set(until)
 
   private[network] object Responders:
     def create[F[_]: Async]: F[Responders[F]] =
       (
         Ref.of[F, Int](0),
-        Queue.unbounded[F, Activity],
+        SignallingRef.of[F, Vector[Activity]](Vector.empty),
         Mutex[F],
-        SignallingRef.of[F, Boolean](false)
+        SignallingRef.of[F, Option[FiniteDuration]](None)
       )
         .mapN(new Responders(_, _, _, _))
 
@@ -240,28 +251,34 @@ object NodeToNodeServer:
     * `WaitIdleRemote` (`demotedToColdRemote`, which arms the idle timer again), and a timer that
     * expires is `CommitRemote` (`releaseInbound`): the manager closes the connection, or keeps it
     * because our outbound side uses it, and the peer's next responder wakes it up again. It runs on
-    * every connection whose responders the peer can start, the ones we dial included. The
-    * activities are taken in the order they happened ([[Responders]]).
+    * every connection whose responders the peer can start, the ones we dial included. An expired
+    * timer is committed before the activities that are waiting, which are handled after, as the
+    * reference's step puts `CommitRemote` before the channel's messages (`InboundGovernor.hs`
+    * 253-261).
+    *
+    * @param timer
+    *   How the idle timer waits: `Async.sleep`; a test controls what happens as it fires.
     */
   private[network] def remoteActivity[F[_]: Async](
       mux: Mux[F],
       responders: Responders[F],
       idleTimeout: FiniteDuration,
-      connection: Connection[F]
+      connection: Connection[F],
+      timer: Option[FiniteDuration => F[Unit]] = None
   ): Resource[F, Unit] =
     val F = Async[F]
     def awake: F[Either[RemoteState, Unit]] =
-      connection.promotedToWarmRemote.as(Left(RemoteState.Warm))
+      responders.arm(None) *> connection.promotedToWarmRemote.as(Left(RemoteState.Warm))
     def after(activity: Activity, idle: RemoteState): F[Either[RemoteState, Unit]] =
       activity match
         case Activity.Started  => awake
         case Activity.Finished => F.pure(Left(idle))
-    // `CommitRemote`, with the responders held until it is settled
+    // `CommitRemote`; the responders that start meanwhile wait until it is settled
     def commit(since: FiniteDuration): F[Either[RemoteState, Unit]] =
       connection.releaseInbound.flatMap {
         case OperationResult.Success(RemoteRelease.Commit) => F.pure(Right(()))
         case OperationResult.Success(RemoteRelease.Keep) =>
-          responders.settled.as(Left(RemoteState.Cold))
+          responders.arm(None).as(Left(RemoteState.Cold))
         // the reference leaves the expired timer as it is, and commits again
         case OperationResult.Unsupported(Some(state)) if state.isLive =>
           F.pure(Left(RemoteState.Idle(since)))
@@ -270,16 +287,15 @@ object NodeToNodeServer:
     val watch: F[Unit] = F.monotonic.flatMap { start =>
       F.tailRecM[RemoteState, Unit](RemoteState.Idle(start)) {
         case idle @ RemoteState.Idle(since) =>
-          F.monotonic.flatMap { now =>
-            val left = (since + idleTimeout - now).max(Duration.Zero)
-            F.race(responders.next, F.sleep(left)).flatMap {
-              case Left(activity) => after(activity, idle)
-              case Right(_) =>
-                responders.expire.flatMap {
-                  case Some(activity) => after(activity, idle)
-                  case None           => commit(since)
-                }
-            }
+          val until = since + idleTimeout
+          responders.arm(Some(until)) *> F.monotonic.flatMap { now =>
+            // what wins the wait decides nothing: the clock is read again after it
+            val left = (until - now).max(Duration.Zero)
+            F.race(responders.awaitActivity, timer.fold(F.sleep(left))(_(left))) *>
+              F.monotonic.flatMap(later =>
+                if later >= until then commit(since)
+                else responders.next.flatMap(after(_, idle))
+              )
           }
         case RemoteState.Warm =>
           responders.next.flatMap {
