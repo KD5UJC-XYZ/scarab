@@ -1868,10 +1868,12 @@
       "summary": "Metadata hash length and early-era bootstrap output predicates in native order",
       "evidence": {
         "paths": [
-          "fixtures/reference/remaining-predicates/README.md"
+          "fixtures/reference/remaining-predicates/README.md",
+          "fixtures/reference/refusals/README.md"
         ],
         "issues": [
-          141
+          141,
+          832
         ]
       },
       "page": "docs/compatibility/pool-and-early-era-predicates.md"
