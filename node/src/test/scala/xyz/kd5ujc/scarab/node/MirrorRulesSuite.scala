@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
@@ -23,7 +24,9 @@ class MirrorRulesSuite extends FunSuite:
   private val fixtures = Path.of("fixtures/eras")
 
   private val setup: NodeSetup =
-    NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(fixtures.resolve("genesis"))
+      .fold(e => fail(e.message), identity)
 
   private val raws: Vector[Bytes] =
     Files

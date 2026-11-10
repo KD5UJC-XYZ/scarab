@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.syntax.all.*
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -40,7 +41,7 @@ import munit.FunSuite
   */
 class EraHistoryNetworksSuite extends FunSuite:
   private val setup = NodeSetup
-    .fromDirectory(Path.of("fixtures", "preprod", "genesis"))
+    .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures", "preprod", "genesis"))
     .fold(e => fail(e.message), identity)
 
   private val env = QueryEnv(

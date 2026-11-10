@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.data.NonEmptyVector
 import io.circe.Json
 import io.circe.parser.parse
@@ -80,7 +81,9 @@ class WalletPeerReferenceSuite extends FunSuite:
     val name = cursor.get[String]("name").fold(e => fail(e.message), identity)
     val dir = root.resolve(name)
     val setup =
-      NodeSetup.fromDirectory(dir.resolve("genesis")).fold(e => fail(e.message), identity)
+      NodeSetup
+        .fromDirectory(ReferenceBuild.Default)(dir.resolve("genesis"))
+        .fold(e => fail(e.message), identity)
     val nes = HaskellState
       .decode[Conway](Bytes.fromArray(Files.readAllBytes(dir.resolve("new-epoch-state.cbor"))))(
         using ShelleyBasedEra.SConway

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.differential
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.node.NodeSetup
@@ -51,7 +52,7 @@ class BoundaryDigestSuite extends FunSuite with ExternalInputs:
       assertEquals(directory, Path.of("/work"))
     val setup =
       NodeSetup
-        .fromDirectory(Path.of("fixtures/preview/genesis"))
+        .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/preview/genesis"))
         .fold(e => fail(e.message), identity)
     val snapshots = BoundaryTickMain.snapshotFiles(dir)
     golden.toList.sortBy(_._1).foreach { (index, digest) =>

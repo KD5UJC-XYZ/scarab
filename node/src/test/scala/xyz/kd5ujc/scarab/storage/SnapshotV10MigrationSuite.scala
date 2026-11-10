@@ -22,7 +22,7 @@ import StorageTestKit.*
   */
 class SnapshotV10MigrationSuite extends CatsEffectSuite:
   private val env: ConsensusMirrorEnv = NodeSetup
-    .fromDirectory(JPath.of("fixtures/eras/genesis"))
+    .fromDirectory(ReferenceBuild.Default)(JPath.of("fixtures/eras/genesis"))
     .fold(e => fail(e.message), _.mirrorEnv())
 
   private def content(dir: String, name: String): Array[Byte] =

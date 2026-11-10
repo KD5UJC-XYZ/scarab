@@ -160,7 +160,7 @@ class CodecSuite extends ScalaCheckSuite:
 
   private lazy val initial =
     NodeSetup
-      .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
+      .fromDirectory(ReferenceBuild.Default)(java.nio.file.Path.of("fixtures/eras/genesis"))
       .fold(e => fail(e.message), _.mirrorStart)
 
   test("golden: the schema fingerprint of the sidecar of the V5 body (V9 and V10)") {

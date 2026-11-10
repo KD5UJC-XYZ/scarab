@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.ledger.{Prepared, ProviderDefect, Verdicts}
 import xyz.kd5ujc.scarab.crypto.witness.VerificationError
 import cats.effect.IO
@@ -19,7 +20,9 @@ import scala.jdk.CollectionConverters.*
 class VerificationCacheSuite extends ScalaCheckSuite:
   private val fixtures = Path.of("fixtures/eras")
   private val setup =
-    NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(fixtures.resolve("genesis"))
+      .fold(e => fail(e.message), identity)
 
   private val raws: Vector[Bytes] =
     Files

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.IO
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -15,7 +16,7 @@ class RuleScopeSuite extends FailsOnUncaught:
     for
       setup <- IO.blocking {
         NodeSetup
-          .fromDirectory(Path.of("fixtures/eras/genesis"))
+          .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/eras/genesis"))
           .fold(error => fail(error.message), identity)
       }
       raw <- IO.blocking {

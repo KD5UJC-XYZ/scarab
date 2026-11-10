@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
@@ -29,7 +30,9 @@ object RewardSnapshotFixtureMain extends Assertions:
       case "create"  => Mode.Create
       case "rewrite" => Mode.Rewrite
       case _         => fail("expected create or rewrite")
-    val setup = NodeSetup.fromDirectory(Path.of(args(1))).fold(e => fail(e.toString), identity)
+    val setup = NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(Path.of(args(1)))
+      .fold(e => fail(e.toString), identity)
     given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
     val format = SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
     val snapshot = mode match

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.{IO, Ref}
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -22,7 +23,9 @@ class StateDumpBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private val fixtures = Path.of("fixtures/eras")
 
   private val setup: NodeSetup =
-    NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(fixtures.resolve("genesis"))
+      .fold(e => fail(e.message), identity)
 
   private val headers: Vector[(Header, Bytes)] =
     Files

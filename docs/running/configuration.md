@@ -41,6 +41,12 @@ Its other fields are still checked when `Enabled` is false. Optional `null` valu
 `LedgerDB.Snapshots` accepts an object or the named `Mithril` policy. It cannot coexist with non-null
 flat snapshot fields inside `LedgerDB`. A nested snapshot interval or count takes precedence over
 the deprecated top-level value; both values must parse. A named policy uses its complete defaults.
+The selected `--reference-build` supplies the default delay range: 300–600 seconds for `11.1`
+and 300–21600 seconds for `leios-b004fe0c`, following `mithrilSnapshotPolicyArgs` in
+[release consensus](https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LedgerDB/Snapshots.hs#L673)
+and [Leios consensus](https://github.com/IntersectMBO/ouroboros-consensus/blob/2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b/ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LedgerDB/Snapshots.hs#L681).
+Both `MinDelay` and `MaxDelay` must be present to override that range; an incomplete pair uses
+the whole default range. These retained reference settings do not configure Scarab's snapshot scheduler.
 These parsing checks do not establish Dijkstra ledger validation or public-testnet production support;
 see [the integration gaps](../leios.md#124-what-still-stops-this-node-following-the-testnet).
 

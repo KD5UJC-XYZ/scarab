@@ -35,7 +35,7 @@ import xyz.kd5ujc.scarab.storage.haskell.state.*
 class LedgerSnapshotExportSuite extends CatsEffectSuite:
   import StorageTestKit.{ok, tempDir}
   private val setup = NodeSetup
-    .fromDirectory(JPath.of("fixtures/eras/genesis"))
+    .fromDirectory(ReferenceBuild.Default)(JPath.of("fixtures/eras/genesis"))
     .fold(e => fail(e.message), identity)
   private val boot = setup.mirrorStart.extras match
     case MirrorExtras.InByron(_, b, _) => b

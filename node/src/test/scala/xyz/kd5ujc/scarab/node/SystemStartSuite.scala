@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.ledger.Genesis
 import java.nio.file.{Files, Path}
 import java.time.Instant
@@ -20,10 +21,11 @@ class SystemStartSuite extends FunSuite:
             .getBytes("UTF-8")
         else bytes
       }
-    NodeSetup.fromFiles(read).fold(e => fail(e.message), identity)
+    NodeSetup.fromFiles(ReferenceBuild.Default)(read).fold(e => fail(e.message), identity)
 
   private val byronStart: Instant =
-    val unchanged = NodeSetup.fromDirectory(dir).fold(e => fail(e.message), identity)
+    val unchanged =
+      NodeSetup.fromDirectory(ReferenceBuild.Default)(dir).fold(e => fail(e.message), identity)
     Instant.ofEpochSecond(
       unchanged.byronParams.map(_.startTime).getOrElse(fail("no startTime"))
     )

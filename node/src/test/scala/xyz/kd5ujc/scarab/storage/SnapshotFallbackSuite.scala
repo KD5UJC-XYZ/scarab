@@ -24,7 +24,7 @@ import StorageTestKit.*
   */
 class SnapshotFallbackSuite extends CatsEffectSuite:
   private val env: ConsensusMirrorEnv = NodeSetup
-    .fromDirectory(JPath.of("fixtures/eras/genesis"))
+    .fromDirectory(ReferenceBuild.Default)(JPath.of("fixtures/eras/genesis"))
     .fold(e => fail(e.message), _.mirrorEnv())
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(env)
   private given SnapshotFormat[IO, MirrorState] =

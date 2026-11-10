@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.{ByronFieldError, ByronGenesisField, ConfigError, ConfigProblem}
@@ -18,7 +19,7 @@ class ShelleyStartByronGenesisSuite extends FunSuite:
       byron: String => String,
       keepHash: Boolean = false
   ): Either[ConfigError, NodeSetup] =
-    NodeSetup.fromFiles { name =>
+    NodeSetup.fromFiles(ReferenceBuild.Default) { name =>
       Option.when(Files.exists(dir.resolve(name))) {
         val bytes = Files.readAllBytes(dir.resolve(name))
         name match

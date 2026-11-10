@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -18,7 +19,9 @@ class LeiosTestnetConfigSuite extends FunSuite:
   private val dir = Path.of("fixtures", "leios", "testnet", "config")
   private val configText = Files.readString(dir.resolve("config.json"))
   private val config =
-    NodeConfig.parse(configText, strict = true).fold(e => fail(e.message), identity)
+    NodeConfig
+      .parse(ReferenceBuild.LeiosB004fe0c)(configText, strict = true)
+      .fold(e => fail(e.message), identity)
   private def read(name: String): Option[Array[Byte]] =
     Option.when(Files.exists(dir.resolve(name)))(Files.readAllBytes(dir.resolve(name)))
 
@@ -79,7 +82,9 @@ class LeiosTestnetConfigSuite extends FunSuite:
 
   test("the node setup reads the genesis, funds and pool from `extraConfig` included") {
     val setup =
-      NodeSetup.fromConfigFile(dir.resolve("config.json")).fold(e => fail(e.message), identity)
+      NodeSetup
+        .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(dir.resolve("config.json"))
+        .fold(e => fail(e.message), identity)
     assertEquals(setup.identity.magic, 164L)
     assertEquals(setup.genesis.geometry.epochLength, 21600L)
     // `initialFunds` and `staking` are empty at the top level; the two funds and the one pool are
@@ -102,7 +107,9 @@ class LeiosTestnetConfigSuite extends FunSuite:
     "Dijkstra's epoch-0 trigger is carried, and the node starts in Conway: it does not enter it"
   ) {
     val setup =
-      NodeSetup.fromConfigFile(dir.resolve("config.json")).fold(e => fail(e.message), identity)
+      NodeSetup
+        .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(dir.resolve("config.json"))
+        .fold(e => fail(e.message), identity)
     val forks = setup.praos.forks
     assertEquals(
       forks.triggers.get(Era.Dijkstra),
@@ -114,7 +121,9 @@ class LeiosTestnetConfigSuite extends FunSuite:
   }
   test("the node setup reads the Dijkstra genesis the configuration names") {
     val setup =
-      NodeSetup.fromConfigFile(dir.resolve("config.json")).fold(e => fail(e.message), identity)
+      NodeSetup
+        .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(dir.resolve("config.json"))
+        .fold(e => fail(e.message), identity)
     val dijkstra = setup.globals.dijkstra.fold(fail("no Dijkstra genesis was read"))(identity)
     assertEquals(dijkstra.leiosCommitteeSize, BigInt(900))
     assertEquals(dijkstra.refScriptCostStride, BigInt(25600))

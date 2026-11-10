@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.data.EitherT
 import cats.effect.{IO, Outcome}
 import cats.mtl.{Ask, Handle, Raise}
@@ -26,7 +27,9 @@ import xyz.kd5ujc.scarab.storage.mithril.{MithrilBootstrap as Bootstrap, Mithril
   */
 class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private val setup =
-    NodeSetup.fromDirectory(JPath.of("fixtures/eras/genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(JPath.of("fixtures/eras/genesis"))
+      .fold(e => fail(e.message), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
   private val id = Client.Artifact.parse("a" * 64).fold(e => fail(e.message), identity)
   private val key = Client.VerificationKey

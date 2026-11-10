@@ -35,7 +35,9 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
   import LedgerSnapshotImport.{Error, Evidence, Trust}
   private val fixture = JPath.of("fixtures/eras")
   private val setup =
-    NodeSetup.fromDirectory(fixture.resolve("genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(fixture.resolve("genesis"))
+      .fold(e => fail(e.message), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
   private val raws = JFiles
     .readAllLines(fixture.resolve("blocks.hex"))

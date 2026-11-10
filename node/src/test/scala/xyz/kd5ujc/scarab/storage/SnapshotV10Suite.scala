@@ -28,7 +28,9 @@ class SnapshotV10Suite extends CatsEffectSuite:
   private val fixtures = java.nio.file.Path.of("fixtures/eras")
 
   private val setup: NodeSetup =
-    NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(fixtures.resolve("genesis"))
+      .fold(e => fail(e.message), identity)
   private val env = setup.mirrorEnv()
 
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(env)

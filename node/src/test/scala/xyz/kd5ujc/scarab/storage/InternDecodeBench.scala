@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import java.lang.management.ManagementFactory
 import java.nio.file.{Files, Path}
@@ -57,7 +58,7 @@ object InternDecodeBench extends Assertions:
     val content = checked(
       FileLedgerSnapshots.verified(raw).flatMap(xyz.kd5ujc.scarab.node.NativeSnapshots.current)
     )
-    val env = checked(NodeSetup.fromDirectory(Path.of(args(3)))).mirrorEnv()
+    val env = checked(NodeSetup.fromDirectory(ReferenceBuild.Default)(Path.of(args(3)))).mirrorEnv()
     println(s"INPUT ${args(1)} bytes=${raw.length} sha256=${sha(raw)}")
     if args(0) == "memory" then
       checkpoint("BASE")

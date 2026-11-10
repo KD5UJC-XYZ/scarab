@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
@@ -327,7 +328,9 @@ object Memory94Main:
           tape(content, haskellFrom)
         case "v5" =>
           val setup = NodeSetup
-            .fromDirectory(Path.of(args.lift(2).getOrElse("fixtures/preprod/genesis")))
+            .fromDirectory(ReferenceBuild.Default)(
+              Path.of(args.lift(2).getOrElse("fixtures/preprod/genesis"))
+            )
             .fold(e => sys.error(e.message), identity)
           given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
           SnapshotV10
@@ -338,7 +341,9 @@ object Memory94Main:
         case "written" =>
           // the node's write: encode a state, read the file back and compare (the issue's path)
           val setup = NodeSetup
-            .fromDirectory(Path.of(args.lift(2).getOrElse("fixtures/preprod/genesis")))
+            .fromDirectory(ReferenceBuild.Default)(
+              Path.of(args.lift(2).getOrElse("fixtures/preprod/genesis"))
+            )
             .fold(e => sys.error(e.message), identity)
           given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
           val format = SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)

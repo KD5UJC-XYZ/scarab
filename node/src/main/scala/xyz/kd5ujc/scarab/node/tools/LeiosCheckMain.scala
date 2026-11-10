@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.tools
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import scala.util.Using
 import cats.effect.{ExitCode, IO, IOApp}
 import java.io.{BufferedReader, InputStreamReader}
@@ -49,7 +50,7 @@ object LeiosCheckMain extends IOApp:
           .as(ExitCode(2))
 
   private def check(headers: Path, config: Path, stop: Option[Int]): String =
-    NodeSetup.fromConfigFile(config) match
+    NodeSetup.fromConfigFile(ReferenceBuild.LeiosB004fe0c)(config) match
       case Left(error) => s"cannot set up: ${error.message}"
       case Right(setup) =>
         val reader = new BufferedReader(

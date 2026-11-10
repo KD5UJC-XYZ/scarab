@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import io.circe.{ACursor, Decoder, HCursor, Json, parser}
 import java.nio.file.{Files, Path}
@@ -160,7 +161,9 @@ class ByronUpdateInterfaceSuite extends FunSuite:
   // ---- the query
 
   private val setup =
-    NodeSetup.fromDirectory(Path.of("fixtures/eras/genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/eras/genesis"))
+      .fold(e => fail(e.message), identity)
 
   private val env = QueryEnv(
     setup.byronParams

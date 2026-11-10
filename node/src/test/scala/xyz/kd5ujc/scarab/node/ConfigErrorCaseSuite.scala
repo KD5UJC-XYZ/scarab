@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
 
@@ -29,7 +30,7 @@ class ConfigErrorCaseSuite extends FunSuite:
 
   test("a configuration that is valid JSON but has the wrong shape is distinguished") {
     assertEquals(
-      NodeConfig.parse("[]").left.map(_.problem),
+      NodeConfig.parse(ReferenceBuild.Default)("[]").left.map(_.problem),
       Left(ConfigProblem.ExpectedObject("configuration", io.circe.Json.arr()))
     )
   }

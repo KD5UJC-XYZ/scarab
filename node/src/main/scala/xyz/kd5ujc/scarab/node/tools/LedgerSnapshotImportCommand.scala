@@ -114,8 +114,8 @@ object LedgerSnapshotImportCommand:
     options.config.fold(
       options.genesis
         .toRight(ConfigError(ConfigProblem.MissingGenesis))
-        .flatMap(NodeSetup.fromDirectory)
-    )(NodeSetup.fromConfigFile(_, options.genesis))
+        .flatMap(NodeSetup.fromDirectory(options.build))
+    )(NodeSetup.fromConfigFile(options.build)(_, options.genesis))
 
   /** The configuration and what the import needs from it (the Mithril bootstrap's import). */
   private[tools] def inputs(

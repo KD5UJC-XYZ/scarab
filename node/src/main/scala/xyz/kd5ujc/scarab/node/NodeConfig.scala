@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigNumberField, ConfigProblem}
 import xyz.kd5ujc.scarab.ledger.json.FromJson
 import cats.syntax.all.*
@@ -327,7 +328,9 @@ object NodeConfig:
     * protocol must be `Cardano`, `GenesisFile` must not be given next to the specific name, and a
     * listed hash must be 32 bytes of hexadecimal.
     */
-  def parse(text: String, strict: Boolean = false): Either[ConfigError, NodeConfig] =
+  def parse(
+      build: ReferenceBuild
+  )(text: String, strict: Boolean = false): Either[ConfigError, NodeConfig] =
     for
       json <- parser
         .parse(text)
@@ -341,7 +344,7 @@ object NodeConfig:
       hardForks <- renamed(k, "ExperimentalHardForksEnabled", "TestEnableDevelopmentHardForkEras")
       fields <- ConfigFields.read("configuration", json)
       leios <- LeiosSettings.parse(fields)
-      ledgerDb <- LedgerDbSettings.parse(fields)
+      ledgerDb <- LedgerDbSettings.parse(fields, build)
       dijkstraEpoch <-
         if hardForks.contains(true) then k.word64(ConfigNumberField.DijkstraHardForkAtEpoch)
         else Right(None)

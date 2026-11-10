@@ -49,7 +49,9 @@ import xyz.kd5ujc.scarab.storage.scls.{
 class SclsBaseSuite extends CatsEffectSuite:
   import StorageTestKit.{ok, tempDir}
   private val setup =
-    NodeSetup.fromDirectory(JPath.of("fixtures/eras/genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(JPath.of("fixtures/eras/genesis"))
+      .fold(e => fail(e.message), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
   private given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
   private val source = Path("fixtures/haskell-state/conway-4593")

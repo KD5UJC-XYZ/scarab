@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.IO
 import cats.mtl.Ask
 import java.nio.file.Path
@@ -23,7 +24,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
 
 class RewardSnapshotSuite extends CatsEffectSuite:
   private val setup =
-    NodeSetup.fromDirectory(Path.of("fixtures/eras/genesis")).fold(e => fail(e.toString), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/eras/genesis"))
+      .fold(e => fail(e.toString), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
   private val format = SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
   private given ProtVer = Versions.eraLow(ShelleyBasedEra.SConway)

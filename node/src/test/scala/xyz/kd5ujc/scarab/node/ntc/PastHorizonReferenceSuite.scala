@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.syntax.all.*
 import io.circe.parser.parse
 import java.nio.file.{Files, Path}
@@ -157,7 +158,9 @@ class PastHorizonReferenceSuite extends FunSuite:
     withUtxo(nes, utxo)
 
   private def setupOf(r: Recorded): NodeSetup =
-    NodeSetup.fromDirectory(r.dir.resolve("genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(r.dir.resolve("genesis"))
+      .fold(e => fail(e.message), identity)
 
   private def envelope(item: Bytes, era: Era): Tx =
     val payload = Cbor.decode(item).toOption.map(_.value).collect { case Value.Arr(Vector(_, p)) =>

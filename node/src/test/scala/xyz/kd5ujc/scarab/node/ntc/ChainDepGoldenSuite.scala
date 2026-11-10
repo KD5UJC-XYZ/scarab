@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import munit.FunSuite
@@ -25,7 +26,7 @@ class ChainDepGoldenSuite extends FunSuite:
 
   private val setup: NodeSetup =
     NodeSetup
-      .fromDirectory(fixtures.resolve("genesis"))
+      .fromDirectory(ReferenceBuild.Default)(fixtures.resolve("genesis"))
       .fold(e => fail(e.message), identity)
 
   private val queryEnv = QueryEnv(

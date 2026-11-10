@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -41,7 +42,7 @@ import xyz.kd5ujc.scarab.protocol.LeiosWord.{Word16, Word32}
 class DijkstraCrossingSuite extends munit.FunSuite:
   private val devnet = Path.of("fixtures", "dijkstra-devnet")
   private val setup = NodeSetup
-    .fromConfigFile(devnet.resolve("genesis/config.json"))
+    .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(devnet.resolve("genesis/config.json"))
     .fold(e => fail(e.message), identity)
   private val praos = setup.praos.copy(forks = setup.praos.forks.copy(maxMajorProtVer = 12))
   private val globals = Globals(setup.globals, praos.geometry)

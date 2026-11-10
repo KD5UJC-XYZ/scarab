@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.IO
 import cats.mtl.Ask
@@ -28,7 +29,7 @@ class MithrilBootstrapAcceptanceSuite extends CatsEffectSuite:
     directory.traverse_ { name =>
       val db = Path(name)
       val setup = NodeSetup
-        .fromDirectory(
+        .fromDirectory(ReferenceBuild.Default)(
           JPath.of(sys.env.getOrElse("SCARAB_MITHRIL_GENESIS", "fixtures/preview/genesis"))
         )
         .fold(e => fail(e.message), identity)

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.consensus
 import xyz.kd5ujc.scarab.ledger
 import xyz.kd5ujc.scarab.storage
@@ -53,7 +54,9 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private val fixtures = Path.of("fixtures/eras")
 
   private val setup: NodeSetup =
-    NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(fixtures.resolve("genesis"))
+      .fold(e => fail(e.message), identity)
   private val geometry = setup.geometry
 
   private val raws: Vector[Bytes] =
@@ -277,8 +280,10 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       ByronGenesisFile.parse(Bytes.fromArray(text.getBytes("UTF-8")), setup.origin).map(_.hash),
       Right(setup.origin.get)
     )
-    assert(NodeConfig.parse("{\"TestShelleyHardForkAtEpoch\": \"x\"}").isLeft)
-    assertEquals(NodeConfig.parse("{}"), Right(NodeConfig.empty))
+    assert(
+      NodeConfig.parse(ReferenceBuild.Default)("{\"TestShelleyHardForkAtEpoch\": \"x\"}").isLeft
+    )
+    assertEquals(NodeConfig.parse(ReferenceBuild.Default)("{}"), Right(NodeConfig.empty))
   }
 
   // ---------------------------------------------------------------- validation across the boundaries

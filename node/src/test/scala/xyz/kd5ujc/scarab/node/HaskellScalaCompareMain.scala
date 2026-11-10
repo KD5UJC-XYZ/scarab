@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import java.nio.file.{Files, Path}
@@ -53,7 +54,9 @@ object HaskellScalaCompareMain:
 
   def main(args: Array[String]): Unit =
     val setup = NodeSetup
-      .fromDirectory(Path.of(args.lift(2).getOrElse("fixtures/preview/genesis")))
+      .fromDirectory(ReferenceBuild.Default)(
+        Path.of(args.lift(2).getOrElse("fixtures/preview/genesis"))
+      )
       .fold(e => sys.error(e.message), identity)
     val hs = HaskellLedgerFile
       .decode(Bytes.fromArray(Files.readAllBytes(Path.of(args(0)))))
