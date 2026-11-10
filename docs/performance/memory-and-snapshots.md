@@ -485,3 +485,30 @@ keeps its loop and builder. The multi-asset writer took 1.17 times as long as a 
 `scanLeft` of an `Option` per account took 1.06 times as long; as a `@tailrec` loop appending to a vector, with the DRep
 sums folded into an immutable map, 1.03, within the 225 to 238 ms the old classes ranged over across the rounds; that
 form is kept. Each kept imperative form has a `@SuppressWarnings` that cites this section.
+
+
+## 55. Reusing the derived pool distribution (#826)
+
+Measured 2026-11-10 on the code in `dbaf2094d`, in `scarab-jdk:local` (Temurin 25.0.4.1+1), with four Docker CPUs
+and a 10 GiB container limit. `PoolDistributionBench` constructs one immutable snapshot of
+2,000 pools and 2,000 staking credentials, then compares `PoolDistr.calculate` with
+`PoolDistr.of` over 1,000 reads per sample. Each workload has two warm-up batches followed by
+five measured batches; cats-effect's `timed` measures each complete batch. Every checksum is
+the sum of the returned map sizes. Run with Docker and
+`scripts/sbtw "ledger/Test/runMain xyz.kd5ujc.scarab.ledger.state.PoolDistributionBench"`.
+
+<!-- register:table perf-61.t1 -->
+| Workload | Median ms / 1,000 reads | Range ms | Checksum / sample |
+|---|---:|---:|---:|
+| Recalculate each read | 735.605 | 715.476–746.389 | 2,000,000 |
+| Reuse immutable snapshot result | 0.192 | 0.170–0.207 | 2,000,000 |
+<!-- /register -->
+
+The cache retains the immutable snapshot's derived distribution. A new snapshot, including a
+case-class copy, computes its own value; the regression suite checks changed pools and changed
+active stake. The native reference retains corresponding derived distributions in its mark/set
+snapshots (ledger 9df9f98c `State/SnapShots.hs:444-459,495-505`).
+
+This measures warmed repeated reads, not first derivation, heap retention, or node throughput.
+No allocation or mainnet-sized claim is made; other builds were active on the host. Raw run
+logs are not published.

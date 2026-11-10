@@ -797,8 +797,13 @@ case per layout extending `LayoutPart`: `Bound.Layout`, `ShelleyLedgerState.Layo
 `SnapShots.Layout` (the mark's epoch, committee size and key age, and the set's committee) and
 `PoolBlsKey` (a pool's voting key, in its state and its stake snapshot). The 11.1 case of a part holds
 only what 11.1 writes, so no field is shared between the layouts' values. `NewEpochState.pd` is the
-stored distribution in 11.1 and the set snapshot's in Leios, without the voting keys the reference's
-`IndividualPoolStake` adds. A `PerasResolver` with an epoch context is not modelled: the eras before
+stored distribution in 11.1 and the set snapshot's in Leios. Each immutable `SnapShot` retains
+its derived `PoolDistr`; deriving it preserves the Leios voting key without its registration epoch
+(ledger 9df9f98c `State/SnapShots.hs:676-695`). A copied snapshot derives its own distribution.
+The Leios individual-pool codec accepts three fields or four with a `StrictMaybe BlsKey`, and
+writes the fourth only for a present key (`State/PoolDistr.hs:84-119`). The stable codec keeps
+three fields and refuses to write a value carrying a voting key. These derived values do not add
+fields to a persisted snapshot. A `PerasResolver` with an epoch context is not modelled: the eras before
 Dijkstra have a `Void` voting committee, refused as the reference refuses it, and Dijkstra's is
 `DijkstraNotYet.LedgerState`.
 

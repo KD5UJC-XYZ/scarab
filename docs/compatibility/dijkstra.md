@@ -16,6 +16,13 @@ partial: the era is named and the node refuses to enter it. Its maximum major pr
 
 None of these is reachable from the node's own chain yet.
 
+The continuation is tracked in [#826](https://github.com/KD5UJC-XYZ/scarab/issues/826) for the
+reference-build behavior, committee and state lifecycle, and Dijkstra persistence, and in
+[#54](https://github.com/KD5UJC-XYZ/scarab/issues/54) for the remaining rules and production
+integration. The experimental protocol-version work in
+[#788](https://github.com/KD5UJC-XYZ/scarab/pull/788) follows an end-to-end crossing by Scarab;
+the reference-only devnet evidence below does not satisfy that condition.
+
 ## Evidence
 
 - **Unit tests:** `DijkstraNotYetSuite`, `DijkstraCodecsSuite`, `DijkstraGenesisSuite`, `DijkstraTranslationSuite`, `DijkstraTxTranslationSuite`, `DijkstraCrossingSuite`, `DijkstraStoredOutputsSuite`, `DijkstraRulesSuite` and `DijkstraRulesOracleSuite`.
@@ -44,4 +51,4 @@ None of these is reachable from the node's own chain yet.
 - **Persistence:**
   - the Dijkstra ledger state in the Haskell `state` layout (#826);
   - before the crossing block, the mempool, forger and node-to-client paths that tick into Dijkstra still need the stored-output upgrade wired into their reads (#54, T11).
-- **The eras before Dijkstra on a Leios network:** state snapshots through Conway can be imported and exported under the selected Leios build ([layout support](persistence-leios-state-layout.md)). Following that build remains refused until its rules are implemented: the existing rules follow cardano-node 11.1.3 (ledger f649f975, consensus 82ecba32), and the Leios build changes some of them (#826). Importing Dijkstra state remains unimplemented (#826, owner decision on #54); the endorser-block store has no counterpart either (#830).
+- **The eras before Dijkstra on a Leios network:** state snapshots through Conway can be imported and exported under the selected Leios build ([layout support](persistence-leios-state-layout.md)). Following that build remains refused; the [selection scope](persistence-leios-state-layout.md#explicitly-unchecked-or-unconfirmed) distinguishes implemented rule selection from the remaining lifecycle work (#826). Importing Dijkstra state remains unimplemented (#826, owner decision on #54); the endorser-block store has no counterpart either (#830).

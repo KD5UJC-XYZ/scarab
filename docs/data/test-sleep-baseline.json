@@ -54,7 +54,7 @@
    "sleep": 1
   },
   "network/src/test/scala/xyz/kd5ujc/scarab/network/ProtocolIdleTimeoutSuite.scala": {
-   "sleep": 33
+   "sleep": 28
   },
   "network/src/test/scala/xyz/kd5ujc/scarab/network/RemoteActivitySuite.scala": {
    "cede": 1,

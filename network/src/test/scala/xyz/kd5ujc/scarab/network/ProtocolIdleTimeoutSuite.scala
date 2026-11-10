@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.network
 import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
+import cats.effect.std.Queue
 import cats.syntax.all.*
 import cats.mtl.Handle
 import scala.concurrent.duration.*
@@ -55,7 +56,8 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
   private def scenario[A](
       body: Net ?=> Seen => IO[A],
       duplex: Boolean = false,
-      gate: Option[Gate] = None
+      gate: Option[Gate] = None,
+      onChange: ((ConnectionState, ConnectionState)) => IO[Unit] = _ => IO.unit
   ): IO[Either[NetworkError, A]] =
     typed {
       Resource
@@ -72,7 +74,8 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
                 ConnectionManager.Limits(timeWait = Duration.Zero),
                 Some {
                   case ConnectionEvent.Changed(_, from, to) =>
-                    log.update(_ :+ (from -> to)) *> gate.traverse_(_.pass(from -> to))
+                    log.update(_ :+ (from -> to)) *> onChange(from -> to) *>
+                      gate.traverse_(_.pass(from -> to))
                   case _ => IO.unit
                 }
               )
@@ -550,37 +553,45 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
   // `PromotedToWarm^{Duplex}_{Remote}` after `RemoteCold`, `DemotedToCold^{Duplex}_{Remote}`, and
   // `Awake^{Duplex}_{Remote}` of an outbound idle connection (`Core.hs` 2085-2192, 2286-2320)
   test("remote activity restores duplex use, and wakes an outbound idle connection"):
-    TestControl
-      .executeEmbed(
-        scenario(
-          seen =>
-            for
-              _ <- IO.sleep(1.second)
-              connection <- reuse(seen.manager)
-              _ <- IO.sleep(10.seconds)
-              client <- keepAlive(seen.mux)
-              _ <- client.ping
-              busy <- state(seen.manager)
-              _ <- client.done
-              _ <- IO.sleep(100.millis)
-              quiet <- state(seen.manager)
-              _ <- IO.sleep(10.seconds)
-              // expired again; released: `OutboundIdle`, then the peer wakes it up
-              released <- connection.releaseOutbound.start
-              _ <- IO.sleep(1.second)
-              idle <- state(seen.manager)
-              again <- keepAlive(seen.mux)
-              _ <- again.ping
-              outcome <- released.joinWithNever
-              woken <- state(seen.manager)
-              open <- seen.ended
-              changes <- seen.changes
-            yield (busy, quiet, idle, outcome, woken, open, changes),
-          duplex = true
-        )
-      )
+    Settled
+      .timed { settle =>
+        Queue.unbounded[IO, (ConnectionState, ConnectionState)].flatMap { events =>
+          scenario(
+            seen =>
+              for
+                _ <- settle
+                connection <- reuse(seen.manager)
+                _ <- events.take.iterateUntil(_ == expiring)
+                client <- keepAlive(seen.mux)
+                _ <- client.ping
+                _ <- settle
+                busy <- state(seen.manager)
+                _ <- client.done
+                _ <- settle
+                quiet <- state(seen.manager)
+                _ <- events.take.iterateUntil(_ == expiring)
+                // expired again; released: `OutboundIdle`, then the peer wakes it up
+                result <- connection.releaseOutbound.background.use { joined =>
+                  for
+                    _ <- settle
+                    idle <- state(seen.manager)
+                    again <- keepAlive(seen.mux)
+                    _ <- again.ping
+                    outcome <- joined.flatMap(_.embedNever)
+                    _ <- settle
+                    woken <- state(seen.manager)
+                    open <- seen.ended
+                    changes <- seen.changes
+                  yield (idle, outcome, woken, open, changes)
+                }
+              yield (busy, quiet, result),
+            duplex = true,
+            onChange = events.offer
+          )
+        }
+      }
       .map {
-        case Right((busy, quiet, idle, outcome, woken, open, changes)) =>
+        case Right((busy, quiet, (idle, outcome, woken, open, changes))) =>
           assertEquals(busy, Some(ConnectionState.Duplex))
           assertEquals(quiet, Some(ConnectionState.OutboundDup(TimeoutExpired.Ticking)))
           assertEquals(idle, Some(ConnectionState.OutboundIdle(DataFlow.Duplex)))

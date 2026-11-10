@@ -1476,6 +1476,31 @@ object Targets:
         probe("leios-peras-state")(roundTrip("leios-peras-state", LeiosStateCodecs.perasState))
       ),
       Target(
+        "leios-pool-distribution",
+        () =>
+          val seeds = java.nio.file.Files
+            .readString(java.nio.file.Path.of("fixtures/reference/pool-distribution/cases.jsonl"))
+            .linesIterator
+            .filter(_.nonEmpty)
+            .map(line =>
+              io.circe.parser.parse(line).fold(e => throw new Violation(e.toString), _.hcursor)
+            )
+            .filter(_.get[String]("kind").contains("individual"))
+            .map(_.get[String]("cbor").fold(e => throw new Violation(e.toString), identity))
+            .map(h => Bytes.fromHex(h).fold(e => throw new Violation(e.toString), _.toArray))
+            .toVector
+          seeds ++ Corpus.tricky
+        ,
+        probe("leios-pool-distribution") { bytes =>
+          given xyz.kd5ujc.scarab.ledger.state.ProtVer =
+            xyz.kd5ujc.scarab.ledger.state.ProtVer(
+              xyz.kd5ujc.scarab.ledger.state.Word64.fromUnsigned(12),
+              xyz.kd5ujc.scarab.ledger.state.Word64.zero
+            )
+          roundTrip("leios-pool-distribution", LeiosStateCodecs.individualPoolStake)(bytes)
+        }
+      ),
+      Target(
         "leios-bound",
         () =>
           Vector("83030501", "8403050107", "84c2490100000000000000000501" + "00")
