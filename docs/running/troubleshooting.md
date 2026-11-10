@@ -7,8 +7,8 @@ Part of [Running the node and the devnet scenarios](../running.md).
 
 A node that is up but no longer extends its chain looks healthy from outside (the process is alive and
 idle, the metrics are served). The watchdog (`StallWatchdog`) compares three facts: when a block was
-last extended, our tip, and the highest tip any peer announced (every ChainSync batch of every outbound
-and inbound session reports its peer's tip). When no block has been extended for `--stall-minutes`
+last extended, our tip, and the highest tip any peer announced (every ChainSync batch of every hot
+session reports its peer's tip). When no block has been extended for `--stall-minutes`
 (default 10, `0` turns it off) while an announced tip is ahead of ours, it logs one `stalled` event
 (`idleSeconds`, `ourBlock`, `peerBlock`, Warning), adds one to `scarab_follower_stalls_total` and sets
 `scarab_follower_stalled` to 1 until the next block is extended. A node at the tip of every peer never
@@ -59,7 +59,10 @@ the database, where the storage layer recovers as the reference's does (`consens
 failure `ShutdownNode`). Exit code 4 stays the stall's, 1 an error, 2 a bad command line. Fatal outcomes release the link and do not
 produce peer-loss observations or reconnects. Exit 8 requires an implementation or configuration that can
 evaluate the script; a restart alone does not add that capability. Expected transport `IOException`s remain
-recoverable connection closures; unexpected network exceptions stop with exit 7.
+recoverable connection closures. An exception of a connection's own work (its clients, servers and fibers)
+ends that connection as `PeerError.ConnectionDefect`, uncharged, and the node goes on, as the reference's
+`ShutdownPeer` default does; exit 7 is for an exception of the node's own code outside a connection, such as
+a commit (`ChainError.CommitDefect`) or a failure to read the node's state.
 
 The multiplexer's ingress limits are the reference's and are not configurable
 (`IngressLimits`, ouroboros-network 1.2.0.0, network-mux 0.11.0.0): ChainSync 462,000 bytes, BlockFetch

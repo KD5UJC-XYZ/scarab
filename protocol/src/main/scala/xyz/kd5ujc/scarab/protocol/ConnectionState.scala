@@ -80,10 +80,13 @@ object ConnectionState:
     /** `Connected`: the transport of a reserved outbound connection is up. */
     case Connected
 
-    /** `Negotiated^{flow}_{Outbound}` or `Negotiated^{flow}_{Inbound}`: the handshake agreed
-      * `flow`.
+    /** `Negotiated^{flow}_{Outbound}` or `Negotiated^{flow}_{Inbound}`: the handshake that `side`
+      * ran agreed `flow`. The outbound side writes its negotiated state over an unnegotiated
+      * connection of either provenance (`ConnectionManager/Core.hs:1600-1622`): over an inbound
+      * one, the accept of a connection to ourselves, which `verifyAbstractTransition` has no case
+      * for, so [[valid]] refuses the move the reference's runtime makes.
       */
-    case Negotiated(flow: DataFlow)
+    case Negotiated(flow: DataFlow, side: Provenance)
 
     /** `Overwritten`: an accepted connection takes the place of an outbound reservation for the
       * same address.
@@ -128,8 +131,22 @@ object ConnectionState:
       */
     case SelfConnNegotiated(flow: DataFlow)
 
+    /** The inbound side of a self-connection negotiated after the outbound side released it: its
+      * `OutboundIdle` connection becomes `InboundIdle` with the same flow (`Core.hs:938-945`).
+      * `verifyAbstractTransition` has no case for it (`Test/.../ConnectionManager/Utils.hs`), so
+      * [[valid]] refuses the move the reference's runtime makes.
+      */
+    case SelfConnIdle
+
     /** `Commit^{flow}`: an idle connection is closed; it enters time-wait. */
     case Commit
+
+    /** `releaseInboundConnection` on a connection the peer still uses, which the inbound governor
+      * should have demoted first: the reference closes it into time-wait at once and reports the
+      * state as unsupported (`Core.hs:1203-1215`). `verifyAbstractTransition` has no case for it,
+      * so [[valid]] refuses the move the reference's runtime makes.
+      */
+    case CommitInUse
 
     /** A handshake that agreed no version: the connection enters time-wait
       * (`computeConnStateOnError`, `HandshakeFailure` in `classifyHandlerError`).
@@ -159,13 +176,14 @@ object ConnectionState:
     (state, event) match
       case (ReservedOutbound, Event.Connected)   => Right(Unnegotiated(Provenance.Outbound))
       case (ReservedOutbound, Event.Overwritten) => Right(Unnegotiated(Provenance.Inbound))
-      case (Unnegotiated(Provenance.Outbound), Event.Negotiated(Unidirectional)) =>
+      case (Unnegotiated(_), Event.Negotiated(Unidirectional, Provenance.Outbound)) =>
         Right(OutboundUni)
-      case (Unnegotiated(Provenance.Outbound), Event.Negotiated(DuplexFlow)) =>
+      case (Unnegotiated(_), Event.Negotiated(DuplexFlow, Provenance.Outbound)) =>
         Right(OutboundDup(Ticking))
-      case (Unnegotiated(Provenance.Inbound), Event.Negotiated(flow)) => Right(InboundIdle(flow))
-      case (InboundIdle(DuplexFlow), Event.AwakeLocal)                => Right(OutboundDup(Ticking))
-      case (Inbound(DuplexFlow), Event.PromotedToWarmLocal)           => Right(Duplex)
+      case (Unnegotiated(Provenance.Inbound), Event.Negotiated(flow, Provenance.Inbound)) =>
+        Right(InboundIdle(flow))
+      case (InboundIdle(DuplexFlow), Event.AwakeLocal)      => Right(OutboundDup(Ticking))
+      case (Inbound(DuplexFlow), Event.PromotedToWarmLocal) => Right(Duplex)
       case (OutboundUni, Event.DemotedToColdLocal)          => Right(OutboundIdle(Unidirectional))
       case (OutboundDup(Ticking), Event.DemotedToColdLocal) => Right(InboundIdle(DuplexFlow))
       case (OutboundDup(Expired), Event.DemotedToColdLocal) => Right(OutboundIdle(DuplexFlow))
@@ -185,33 +203,16 @@ object ConnectionState:
         Right(Unnegotiated(Provenance.Outbound))
       case (InboundIdle(Unidirectional), Event.SelfConnReversed) => Right(OutboundUni)
       case (InboundIdle(DuplexFlow), Event.SelfConnReversed)     => Right(OutboundDup(Ticking))
+      case (OutboundIdle(flow), Event.SelfConnIdle)              => Right(InboundIdle(flow))
       case (Unnegotiated(Provenance.Outbound), Event.SelfConnNegotiated(flow)) =>
         Right(InboundIdle(flow))
       case (OutboundDup(Ticking), Event.TimeoutExpired) => Right(OutboundDup(Expired))
       case (InboundIdle(_), Event.Commit) | (OutboundIdle(_), Event.Commit) => Right(Terminating)
+      case (Inbound(_), Event.CommitInUse)                                  => Right(Terminating)
       case (Unnegotiated(_), Event.HandshakeFailed)                         => Right(Terminating)
       case (s, Event.Fail) if s.isLive                                      => Right(Terminated)
       case (Terminating, Event.Released)                                    => Right(Terminated)
       case (s, e)                                                           => Left(Illegal(s, e))
-
-  /** The events that close a connection in `state`. With `timeWait` it is an orderly end (released
-    * by its owner, or a handshake that agreed no version): the reference's demotions to idle, then
-    * `Commit`, which enters `Terminating` (time-wait); a refused handshake enters it directly.
-    * Without, it is a failure, which goes to `Terminated` at once. A connection that is not live
-    * needs none.
-    */
-  def closing(state: ConnectionState, timeWait: Boolean): Vector[Event] =
-    import Event.*
-    state match
-      case Terminating | Terminated     => Vector.empty
-      case ReservedOutbound             => Vector(Fail)
-      case _ if !timeWait               => Vector(Fail)
-      case Unnegotiated(_)              => Vector(HandshakeFailed)
-      case OutboundUni | OutboundDup(_) => Vector(DemotedToColdLocal, Commit)
-      case OutboundIdle(_)              => Vector(Commit)
-      case InboundIdle(_)               => Vector(Commit)
-      case Inbound(_)                   => Vector(DemotedToColdRemote, Commit)
-      case Duplex                       => Vector(DemotedToColdLocal, DemotedToColdRemote, Commit)
 
   /** Apply `events` in order. */
   def through(state: ConnectionState, events: Vector[Event]): Either[Illegal, ConnectionState] =
@@ -265,6 +266,58 @@ object ConnectionState:
       case (_, None)                                                      => true
       case (Some(Terminating), Some(Unnegotiated(In)))                    => true
       case _                                                              => false
+
+  /** `isInboundConn` (`ConnectionManager/Core.hs:259-269`): the connections pruning chooses from,
+    * in agreement with the inbound counter of [[Counters.ofState]].
+    */
+  def isInboundConn(state: ConnectionState): Boolean = state match
+    case Unnegotiated(provenance)             => provenance == Provenance.Inbound
+    case InboundIdle(_) | Inbound(_) | Duplex => true
+    case ReservedOutbound | OutboundUni | OutboundDup(_) | OutboundIdle(_) | Terminating |
+        Terminated =>
+      false
+
+  /** The reference's `ConnectionType` (`ConnectionManager/Types.hs:239-261`), what a prune policy
+    * sees of a connection; its derived order is the constructor order, then the fields.
+    */
+  enum ConnectionType:
+    case UnnegotiatedConn(provenance: Provenance)
+    case InboundIdleConn(flow: DataFlow)
+    case OutboundIdleConn(flow: DataFlow)
+    case NegotiatedConn(provenance: Provenance, flow: DataFlow)
+    case DuplexConn
+
+    /** `isUpstream` of the reference's `prunePolicy` (`Diffusion/Policies.hs:296-305`): the
+      * connections the outbound side opened or uses, which are pruned last.
+      */
+    def upstream: Boolean = this match
+      case UnnegotiatedConn(p)  => p == Provenance.Outbound
+      case InboundIdleConn(_)   => false
+      case OutboundIdleConn(_)  => true
+      case NegotiatedConn(p, _) => p == Provenance.Outbound
+      case DuplexConn           => true
+
+  object ConnectionType:
+    /** The derived `Ord` of the reference's type. */
+    given Ordering[ConnectionType] = Ordering.by {
+      case UnnegotiatedConn(p)  => (0, p.ordinal, 0)
+      case InboundIdleConn(f)   => (1, f.ordinal, 0)
+      case OutboundIdleConn(f)  => (2, f.ordinal, 0)
+      case NegotiatedConn(p, f) => (3, p.ordinal, f.ordinal)
+      case DuplexConn           => (4, 0, 0)
+    }
+
+    /** `getConnType` (`ConnectionManager/Core.hs:242-253`). */
+    def of(state: ConnectionState): Option[ConnectionType] = state match
+      case ReservedOutbound   => None
+      case Unnegotiated(p)    => Some(UnnegotiatedConn(p))
+      case OutboundUni        => Some(NegotiatedConn(Provenance.Outbound, DataFlow.Unidirectional))
+      case OutboundDup(_)     => Some(NegotiatedConn(Provenance.Outbound, DataFlow.Duplex))
+      case OutboundIdle(flow) => Some(OutboundIdleConn(flow))
+      case InboundIdle(flow)  => Some(InboundIdleConn(flow))
+      case Inbound(flow)      => Some(NegotiatedConn(Provenance.Inbound, flow))
+      case Duplex             => Some(DuplexConn)
+      case Terminating | Terminated => None
 
   /** The reference's `ConnectionManagerCounters` (`ConnectionManager/Types.hs:694-703`), counted
     * per state as `connectionStateToCounters` does (`ConnectionManager/Core.hs:173-212`): a

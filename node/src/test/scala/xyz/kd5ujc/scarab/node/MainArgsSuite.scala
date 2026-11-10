@@ -91,13 +91,15 @@ class MainArgsSuite extends munit.FunSuite:
     assert(Main.parse(base ++ List("--key-lock", "maybe")).isLeft)
   }
 
-  test("--header-first, --max-inbound and --inbound-sync have defaults and refuse bad values") {
+  test(
+    "--header-first and --max-inbound have defaults and refuse bad values; --inbound-sync is gone"
+  ) {
     val defaults = Main.parse(base).toOption.get
-    assert(defaults.headerFirst && !defaults.inboundSync)
+    assert(defaults.headerFirst)
     assertEquals(defaults.maxInbound, None)
     assert(!Main.parse(base ++ List("--header-first", "off")).toOption.get.headerFirst)
-    assert(!Main.parse(base ++ List("--inbound-sync", "off")).toOption.get.inboundSync)
-    assert(Main.parse(base ++ List("--inbound-sync", "on")).toOption.get.inboundSync)
+    // our clients run only where the outbound governor promotes a peer (issue 854)
+    assert(Main.parse(base ++ List("--inbound-sync", "on")).isLeft)
     assertEquals(
       Main.parse(base ++ List("--max-inbound", "5")).toOption.get.maxInbound.map(_.toLong),
       Some(5L)

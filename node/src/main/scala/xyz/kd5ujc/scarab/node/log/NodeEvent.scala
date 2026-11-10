@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.crypto.bls.{BlstReport, CpuSupport, LibraryBuild}
 import xyz.kd5ujc.scarab.plutus.{CryptoLibrary, NativeCryptoReport}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.VolatileChain
-import xyz.kd5ujc.scarab.ledger.{NodeError, Points, ShelleyGenesis, StorageError}
+import xyz.kd5ujc.scarab.ledger.{NodeError, ShelleyGenesis, StorageError}
 import xyz.kd5ujc.scarab.node.{
   BuildInfo,
   Fatal,
@@ -524,25 +524,6 @@ object NodeEvent:
         case InboundEvent.Accepted       => inbound(remote, "accepted", None)
         case InboundEvent.Duplex         => inbound(remote, "duplex", None)
         case InboundEvent.Unidirectional => inbound(remote, "unidirectional", None)
-        case InboundEvent.Following(p)   => inbound(remote, "following", Some(Points.show(p)))
-        case InboundEvent.SessionEnded(reason, dropped) =>
-          inbound(
-            remote,
-            if dropped then "sessionDropped" else "sessionEnded",
-            Some(reason.message)
-          )
-        case InboundEvent.SessionReturned(reason, delay) =>
-          inbound(
-            remote,
-            "sessionReturned",
-            Some(s"${reason.message}; repromote after ${delay.toSeconds}s")
-          )
-        case InboundEvent.CachedBlockRejected(refusal, generation, sourceLive) =>
-          inbound(
-            remote,
-            "cachedBlockRejected",
-            Some(s"${refusal.message}; source generation $generation; live=$sourceLive")
-          ).at(Severity.Warning)
         case InboundEvent.Closed(reason) => inbound(remote, "closed", Some(reason.message))
         case InboundEvent.Refused(reason) =>
           inbound(remote, "refused", Some(reason.message)).at(Severity.Warning)

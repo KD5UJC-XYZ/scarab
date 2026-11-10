@@ -726,12 +726,12 @@ object PeerSelection:
           Nil
         )
       case Event.Wake(_) => Decision(st, Nil, Nil)
-      // Retained attribution is immutable evidence, not a command against the current peer. Keep
-      // it observable across root reloads while stale connection outcomes remain filtered below.
-      case Event.Observed(peer, evidence: Observation.CachedBlockRejected, _, _) =>
-        Events.observed(st, peer, evidence, now, policy)
-      case Event.Observed(peer, _, generation, _) if generation.exists(_ != st.rootsGeneration) =>
-        Decision(st, Nil, Nil)
+      // What the monitor of a connection observes is applied whatever the roots generation it was
+      // made under: a root reload keeps an established connection (it clears only `Connecting`,
+      // above), and the reference's peer monitoring reports to its governor unconditionally
+      // (`PeerStateActions.hs` 662-776). A report of a connection that a newer one replaced is
+      // refused by the effect interpreter, which checks the connection's identity (`PeerGovernor`);
+      // only a dial started under old roots is discarded here (`Events.completed`).
       case Event.Observed(peer, observation, _, _) =>
         Events.observed(st, peer, observation, now, policy)
       case Event.Completed(outcome) => Events.completed(st, outcome, now, policy)

@@ -181,6 +181,7 @@ final class EventMetrics[F[_]: Sync] private (
         case ConnectionEvent.Changed(_, _, _) => count(ConnectionEventLabel.Changed)
         case ConnectionEvent.Refused(_)       => count(ConnectionEventLabel.Refused)
         case ConnectionEvent.Closed(_, _, _)  => count(ConnectionEventLabel.Closed)
+        case ConnectionEvent.Pruned(_, _, _)  => count(ConnectionEventLabel.Pruned)
         case ConnectionEvent.AcceptRateLimited(_, _) | ConnectionEvent.AcceptHardLimit(_) |
             ConnectionEvent.AcceptResumed(_) =>
           Sync[F].unit
@@ -192,13 +193,8 @@ final class EventMetrics[F[_]: Sync] private (
         case InboundEvent.Accepted       => InboundEventLabel.Accepted
         case InboundEvent.Duplex         => InboundEventLabel.Duplex
         case InboundEvent.Unidirectional => InboundEventLabel.Unidirectional
-        case InboundEvent.Following(_)   => InboundEventLabel.Following
-        case InboundEvent.SessionEnded(_, dropped) =>
-          if dropped then InboundEventLabel.SessionDropped else InboundEventLabel.SessionEnded
-        case InboundEvent.SessionReturned(_, _)        => InboundEventLabel.SessionReturned
-        case InboundEvent.CachedBlockRejected(_, _, _) => InboundEventLabel.CachedBlockRejected
-        case InboundEvent.Closed(_)                    => InboundEventLabel.Closed
-        case InboundEvent.Refused(_)                   => InboundEventLabel.Refused
+        case InboundEvent.Closed(_)      => InboundEventLabel.Closed
+        case InboundEvent.Refused(_)     => InboundEventLabel.Refused
     )
 
   /** What the peer governor tells: its decisions as counts, its counters as the gauges of the

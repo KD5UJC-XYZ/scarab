@@ -277,6 +277,13 @@ object Traced:
         "provenance" -> provenance.toString.asJson,
         "reason" -> reason.message.asJson
       )
+    case ConnectionEvent.Pruned(pruned, number, candidates) =>
+      EventKind.Connection.line(
+        "what" -> "pruned".asJson,
+        "pruned" -> pruned.asJson,
+        "number" -> number.asJson,
+        "candidates" -> candidates.asJson
+      )
     case ConnectionEvent.AcceptRateLimited(delay, connections) =>
       EventKind.Connection.line(
         "what" -> "acceptRateLimited".asJson,

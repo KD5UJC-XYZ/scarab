@@ -36,8 +36,8 @@ multiplexer with the error as a value.
 reports the agreed data. `initiatorOnly` in the agreed data is false only if both sides allow a
 duplex connection. `NodeToNode.over(..., serve = Some(handlers))` offers InitiatorAndResponder and
 runs our servers next to our clients when the peer agrees; `NodeToNodeServer.accept` is the inbound
-side: the node's inbound connections are served, and on a duplex one the inbound governor also
-runs our clients (see "Connections" below).
+side: the node's inbound connections are served, and on a duplex one our clients run when the
+outbound governor promotes the peer and reuses the connection (see "Connections" below).
 
 **Servers.** `ChainSyncServer.run` answers FindIntersect and RequestNext in order (so pipelining
 clients work), sends AwaitReply at the tip and then waits for the chain to change. It reads through
@@ -107,8 +107,9 @@ slots apart. A candidate that is not strictly preferred changes nothing (so a pe
 equal fork leaves our chain alone). A switch rolls back at most `k` blocks (the volatile chain is
 the limit; a candidate that no longer joins it is dropped as a protocol error of that peer, not of
 the node). The blocks of a preferred candidate are fetched from that peer, validated on a copy of
-the chain and committed together, so a rule violation leaves the chain at the last valid block
-(still fatal, as before). The headers of a candidate have already passed the header gate (see
+the chain and committed together, so a rule violation leaves the chain at the last valid block; the
+session that fetched the block ends `Rejected` and its peer is forgotten, and the node goes on
+(`FailurePolicy.disposition`). The headers of a candidate have already passed the header gate (see
 "Header-first validation (G6)" below), so a bad header never reaches the fetch.
 Several sessions can run at once; adoption is serialised. The sessions of all peers share one `BlockPool`
 (`BlockPool.scala`): a session claims the blocks of a range when its connection is free to send the request, so a

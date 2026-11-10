@@ -105,9 +105,8 @@ Meanings and units worth knowing before building a dashboard:
 `Shelley`, `Allegra`, `Mary`, `Alonzo`, `Babbage` or `Conway`; `rule` is `byron`, `structure`, `decode`, `envelope`,
 `ledger`, `tpraos` or `praos`; `state` (of a connection) is one of the reference connection manager's states, `ReservedOutbound`,
 `Unnegotiated`, `OutboundUni`, `OutboundDup`, `OutboundIdle`, `InboundIdle`, `Inbound`, `Duplex`, `Terminating`
-or `Terminated` (`ConnectionManager/State.hs`, ouroboros-network `2fb69829`); `event` is, for `scarab_connection_events_total`, `Opened`, `Changed`, `Refused` or `Closed`, and for
-`scarab_inbound_events_total`, `Accepted`, `Duplex`, `Unidirectional`, `Following`, `SessionEnded`, `SessionReturned`,
-`SessionDropped`, `CachedBlockRejected`, `Closed` or `Refused`; `reason` is, for `scarab_mempool_rejected_total`, `Malformed`,
+or `Terminated` (`ConnectionManager/State.hs`, ouroboros-network `2fb69829`); `event` is, for `scarab_connection_events_total`, `Opened`, `Changed`, `Refused`, `Closed` or `Pruned`, and for
+`scarab_inbound_events_total`, `Accepted`, `Duplex`, `Unidirectional`, `Closed` or `Refused`; `reason` is, for `scarab_mempool_rejected_total`, `Malformed`,
 `AlreadyHeld`, `Ledger`, `Full`, `WrongEra`, `NoLedger`, `InputDefect` or `RulesDefect`, and for `scarab_forge_skipped_total`, `SlotIsImmutable`,
 `BlockFromFuture`, `NoLedgerView` or `Other`; `kind` (snapshots) is `Skipped`, `Failed` or `Refused`; `over_ms` is
 `50` or `100`; `area` is `heap` or `nonheap`; `gc` is the name the JVM gives the collector (`G1 Young
@@ -138,8 +137,8 @@ of an enum label that never happened are absent, except `scarab_era` (written fo
   every reload.
 
 **Not exported** (cardano-node 11.1.3 has them; tracked in roadmap J3e): `cardano_node_metrics_served_block_counter`,
-`served_header_counter` and `served_block_latest_counter` (what the node served to peers; only the inbound
-sessions of `GET /connections` count headers), `utxoSize_int` and `delegMapSize_int` (see
+`served_header_counter` and `served_block_latest_counter` (what the node served to peers; the `sessions` of
+`GET /connections` count the headers our hot sessions received, not those served), `utxoSize_int` and `delegMapSize_int` (see
 `scarab_ledger_utxo_entries` for the UTxO set, once per epoch), `blockReplayProgress_real`, `txsSyncDuration*`,
 `tipBlock` and `basicInfo`, `inboundGovernor_*`, the `blockfetchclient_*` series (see
 `scarab_blockfetch_seconds`), the GHC runtime's `RTS_*`, `rts_gc_*`, `Mem_*` and `Stat_*`, and
@@ -230,9 +229,9 @@ section and the catalogue differ.
 
 | Metric | Type | Labels | Meaning | cardano-node 11.1.3 |
 |---|---|---|---|---|
-| `cardano_node_metrics_connectionManager_inboundConns_int` | gauge |  | Connections the peer opened to us. | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_connectionManager_outboundConns_int` | gauge |  | Connections we opened to a peer. | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_connectionManager_duplexConns_int` | gauge |  | Connections on which both sides run the protocols. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_connectionManager_inboundConns_int` | gauge |  | Connections in inbound use, whoever opened them: an accepted one not yet negotiated, `InboundIdle`, `Inbound` and `Duplex` (`connectionStateToCounters`). | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_connectionManager_outboundConns_int` | gauge |  | Connections in outbound use, whoever opened them: a dialled one not yet negotiated, `OutboundUni`, `OutboundDup`, `OutboundIdle` and `Duplex`; a reservation counts in neither. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_connectionManager_duplexConns_int` | gauge |  | Connections that negotiated duplex, in use or idle (`OutboundDup`, `Duplex`, and a duplex `InboundIdle`, `Inbound` or `OutboundIdle`). | same name; scraped from 11.1.3 |
 | `scarab_connections` | gauge | `state` | Connections the connection manager knows, by state. | none |
 | `scarab_connection_events_total` | counter | `event` | What the connection manager did. | none |
 | `scarab_inbound_events_total` | counter | `event` | What the inbound governor did on accepted connections. | none |

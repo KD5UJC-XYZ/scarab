@@ -111,7 +111,15 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
           _ <- supervisor.supervise(pool.fetchCoordinator.run)
           transport <- InMemoryPeers.create(serverMagic)
           _ <- transport.serve(peer, handlers)
-          manager <- ConnectionManager.create[IO](ConnectionManager.Limits(maxOutbound = 4))
+          // a closed connection is cold at once here: the time-wait and the outbound idle timeout
+          // are ConnectionManagerSuite's subject
+          manager <- ConnectionManager.create[IO](
+            ConnectionManager.Limits(
+              maxOutbound = 4,
+              timeWait = Duration.Zero,
+              outboundIdle = Duration.Zero
+            )
+          )
           metrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
           given Stateful[IO, PeerMetrics[PeerNetwork.Addr]] = RefStateful(metrics)
           hot = OutboundPeers.Hot[IO](
@@ -154,8 +162,9 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
     yield fixture
 
   // `Connected` before the handshake (`ConnectionManager/Core.hs` 1540-1547): a handshake the peer
-  // refuses then leaves the connection `Terminating`, in time-wait (`computeConnStateOnError`)
-  test("a handshake the peer refuses holds the outbound slot in time-wait") {
+  // refuses then moves the connection to `Terminating` (`computeConnStateOnError`) and deletes it
+  // from the table at once (`terminateOutboundWithErrorOrQuery`, 1782-1838): it holds no slot
+  test("a handshake the peer refuses moves the connection through Terminating out of the table") {
     (Deferred[IO, Unit], Deferred[IO, Unit]).tupled.flatMap { (started, release) =>
       release.complete(()) *> fixture(
         started,
@@ -173,10 +182,7 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
           snapshot <- current.manager.snapshot
         yield
           assert(result.isLeft, result.toString)
-          assertEquals(
-            snapshot.connections.map(_._2),
-            Vector(xyz.kd5ujc.scarab.protocol.ConnectionState.Terminating)
-          )
+          assertEquals(snapshot.connections, Vector.empty)
       }
     }
   }

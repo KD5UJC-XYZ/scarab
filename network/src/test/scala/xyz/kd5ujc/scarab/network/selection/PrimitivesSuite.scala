@@ -31,6 +31,42 @@ class PrimitivesSuite extends ScalaCheckSuite:
     }
   }
 
+  property("a uniformR draw stays inside its bounds; a range of one value takes no draw") {
+    forAll(Gen.choose(-10000L, 10000L), Gen.choose(0L, 20000L), Arbitrary.arbitrary[Long]) {
+      (low, width, seed) =>
+        val (x, next) = Rng(seed).uniformR(low, low + width)
+        val (y, _) = Rng(seed).uniformR(low + width, low)
+        x >= low && x <= low + width && x == y &&
+        (if width == 0 then next == Rng(seed) else next != Rng(seed))
+    }
+  }
+
+  // `unsignedBitmaskWithRejectionM` (`random-1.3.1`): three values take a two-bit mask, and a
+  // draw of 3 is rejected and drawn again, where a remainder would have kept it as 0
+  test("uniformR rejects a draw past the range's end and draws again") {
+    val seed = Iterator.from(0).map(_.toLong).find(s => (Rng(s).nextLong._1 & 3L) == 3L)
+    assert(seed.isDefined)
+    seed.foreach { s =>
+      val (_, once) = Rng(s).nextLong
+      val (second, twice) = once.nextLong
+      val expected = Iterator
+        .iterate((second, twice))((_, g) => g.nextLong)
+        .find((bits, _) => (bits & 3L) != 3L)
+        .map((bits, g) => (bits & 3L, g))
+      assertEquals(Option(Rng(s).uniformR(0L, 2L)), expected)
+    }
+  }
+
+  test("uniformR is uniform enough: every bucket of ten is hit in 10000 draws") {
+    val (_, buckets) = (0 until 10000).foldLeft((Rng(42L), Map.empty[Long, Int])) {
+      case ((g, m), _) =>
+        val (x, next) = g.uniformR(0, 9)
+        (next, m.updated(x, m.getOrElse(x, 0) + 1))
+    }
+    assertEquals(buckets.keySet, (0L to 9L).toSet)
+    assert(buckets.values.forall(n => n > 800 && n < 1200), buckets.toString)
+  }
+
   property("a split yields two generators with different streams") {
     forAll { (seed: Long) =>
       val (a, b) = Rng(seed).split

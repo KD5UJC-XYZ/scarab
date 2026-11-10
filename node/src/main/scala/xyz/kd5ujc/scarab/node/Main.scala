@@ -111,10 +111,9 @@ import scala.concurrent.duration.*
   * [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full]
   * [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds
   * N] [--stall-minutes N] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N]
-  * [--header-first on|off] [--max-inbound N] [--inbound-sync on|off (default off)] [--cpu-threads
-  * N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at
-  * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket
-  * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
+  * [--header-first on|off] [--max-inbound N] [--cpu-threads N] [--plutus-workers N] [--dump-state
+  * <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]]
+  * [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
   * With `--config` the node reads the Haskell node's `config.json` as `cardano-node run` does (the
   * genesis files it names, relative to it, with every hash it lists verified, the hard-fork epochs,
@@ -347,10 +346,6 @@ object Main extends IOApp:
     *   `--max-inbound`: overrides the hard limit of accepted connections (G2), the `hardLimit` of
     *   the configuration's `AcceptedConnectionsLimit` (default 512, with soft 384 and delay 5 s:
     *   see [[AcceptedConnectionsLimit]] and [[ConfigSettings]]).
-    * @param inboundSync
-    *   Run our own clients on inbound duplex connections, so that the peer is a source of blocks as
-    *   well (G2). Off by default: the reference starts its clients only on connections its peer
-    *   governor chose, up to its targets (ADR 0008).
     * @param log
     *   `--log-*`: the log's sinks, thresholds and sampling ([[LogSettings]]).
     * @param roots
@@ -389,7 +384,6 @@ object Main extends IOApp:
       dumpStateFull: Boolean = false,
       headerFirst: Boolean = true,
       maxInbound: Option[Word32] = None,
-      inboundSync: Boolean = false,
       log: LogSettings = LogSettings.default,
       roots: Option[PeerNetwork.Roots] = None,
       churnInterval: Option[FiniteDuration] = None,
@@ -1435,7 +1429,7 @@ object Main extends IOApp:
         peerSharing = Some(sharing.source)
       )
       manager <- ConnectionManager.create[IO](
-        ConnectionManager.Limits(accepted = accepted),
+        ConnectionManager.Limits(accepted = accepted, seed = seed),
         Some(connectionEvents)
       )
       _ <- collectors.add(Collectors.connections(manager))
@@ -1454,7 +1448,8 @@ object Main extends IOApp:
         }
         def unavailable[A](cause: xyz.kd5ujc.scarab.ledger.ChainSyncInternalProblem): IO[A] =
           fatalSink(Fatal.Internal(cause)) *> IO.never[A]
-      // Inbound duplex sessions use the same follower and compute pool as outbound sessions.
+      // The inbound governor serves our chain on accepted connections and tracks the peer's
+      // activity; our clients run only where the outbound governor promotes a peer.
       governor <- InboundGovernor.create[IO](
         manager,
         InboundGovernor.Config(
@@ -1462,29 +1457,11 @@ object Main extends IOApp:
           NodeToNodeServer.Settings(
             offerPeerSharing = peerSharing,
             maxVersion = setup.config.settings.maxNtnVersion
-          ),
-          Peer.Settings(
-            SocketAddress.Wildcard,
-            genesis.networkMagic,
-            readAhead = options.readAhead,
-            network = NodeToNode.Settings().pipelining(options.chainSyncWindow.high),
-            byronEpochSlots = genesis.geometry.byron.epochSlots,
-            pipelineWindow = options.chainSyncWindow
-          ),
-          runClients = options.inboundSync
+          )
         ),
         handlers,
-        follow = peer => scheduling.compute.within(follower.session(peer)),
-        fatal = fatalSink,
-        heightSnapshot = chainSyncHeights,
-        headers = headers.check,
-        transactions = Some(mempool.source),
         events = Some(Log.inbound[IO].alongside(measured.inbound)),
-        observe = Some(headers.observePeer),
-        sharing = Some(sharing),
-        pool = blockPool,
-        genesis = genesisRuntime,
-        peerMetrics = Some(peerMetrics)
+        sharing = Some(sharing)
       )
       // The outbound peer network (G1): the governor chooses the peers, moves them between
       // temperatures and replaces the ones that fail; the Genesis State Machine tells it
@@ -1745,7 +1722,7 @@ object Main extends IOApp:
     import instruments.{collectors, fatalSink, metrics, stall}
     import chain.{follower, ref}
     import supply.{blockPool, genesisRuntime}
-    import connections.{governor, manager, network, relay}
+    import connections.{manager, network, relay}
     import services.{forging, local, production, reporting, watching}
     def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
     def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
@@ -1804,10 +1781,11 @@ object Main extends IOApp:
               Some(store),
               Some(scheduling.stats.total.map(Reports.schedulingTotal)),
               Some(
-                (manager.snapshot, governor.sessions, net.state.get, IO.monotonic).mapN {
-                  (connections, sessions, selection, now) =>
+                (manager.snapshot, net.state.get, net.outbound.sessionReports, IO.monotonic).mapN {
+                  (connections, selection, sessions, now) =>
                     InboundGovernor
-                      .json(connections, sessions)
+                      .json(connections)
+                      .deepMerge(io.circe.Json.obj("sessions" -> OutboundPeers.json(sessions)))
                       .deepMerge(
                         io.circe.Json.obj(
                           "peerSelection" -> PeerNetwork.json(selection, now)
@@ -1973,7 +1951,7 @@ object Main extends IOApp:
       values.find(r => argument == s"--${r.flag}")
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--key-lock on|off]] [--reference-build <build>] " + LogSettings.Usage +
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--key-lock on|off]] [--reference-build <build>] " + LogSettings.Usage +
       "\n" + ReferenceBuildFlag.Help
 
   /** Flags that take a value and may repeat. */
@@ -2007,7 +1985,6 @@ object Main extends IOApp:
     "chain-sync-high",
     "header-first",
     "max-inbound",
-    "inbound-sync",
     "cpu-threads",
     "plutus-workers",
     "dump-state",
@@ -2190,11 +2167,6 @@ object Main extends IOApp:
                 .filter(_.toLong > 0)
                 .toRight(invalid("max-inbound"))
             )
-          inboundSync <- flags
-            .get("inbound-sync")
-            .fold(Right(false))(v =>
-              Map("on" -> true, "off" -> false).get(v).toRight(invalid("inbound-sync"))
-            )
           cpuThreads <- flags
             .get("cpu-threads")
             .fold(Right(math.max(1, Runtime.getRuntime.availableProcessors())))(
@@ -2252,7 +2224,6 @@ object Main extends IOApp:
           flags.contains("dump-state-full"),
           headerFirst,
           maxInbound,
-          inboundSync,
           log
         ).copy(
           churnInterval = churnInterval,

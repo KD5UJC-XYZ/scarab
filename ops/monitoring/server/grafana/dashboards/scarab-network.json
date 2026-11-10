@@ -2571,8 +2571,8 @@
     },
     {
       "type": "timeseries",
-      "title": "Inbound session outcomes \u00b7 per minute",
-      "description": "Accepted, negotiated capability, following, ended/dropped, refused/closed inbound events. An outbound-only node can legitimately have no inbound event series.",
+      "title": "Inbound connection outcomes \u00b7 per minute",
+      "description": "Accepted, negotiated data flow, refused and closed inbound connections. An outbound-only node can legitimately have no inbound event series.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

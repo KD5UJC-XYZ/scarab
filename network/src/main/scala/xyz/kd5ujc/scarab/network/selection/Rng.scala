@@ -27,6 +27,25 @@ final case class Rng(state: Long):
     val (bits, next) = nextLong
     (low + java.lang.Long.remainderUnsigned(bits, width), next)
 
+  /** A uniform value in `[low, high]` (both ends included, in either order), drawn as the
+    * reference's `uniformR` draws an `Int` (`random-1.3.1`, `System/Random/Internal.hs`,
+    * `signedBitmaskWithRejectionRM` and `unsignedBitmaskWithRejectionM`): 64 bits masked to the
+    * width of the range, a value past its end rejected and drawn again, so no value is favoured. A
+    * range of one value takes no draw. [[between]]'s remainder favours the low values slightly
+    * whenever the width does not divide 2^64^.
+    */
+  def uniformR(low: Long, high: Long): (Long, Rng) =
+    if low == high then (high, this)
+    else
+      val (bottom, range) = if low > high then (high, low - high) else (low, high - low)
+      val mask = -1L >>> java.lang.Long.numberOfLeadingZeros(range | 1L)
+      @scala.annotation.tailrec
+      def draw(g: Rng): (Long, Rng) =
+        val (bits, next) = g.nextLong
+        val x = bits & mask
+        if java.lang.Long.compareUnsigned(x, range) > 0 then draw(next) else (bottom + x, next)
+      draw(this)
+
   /** Two generators with independent streams, the reference's `splitGen`. */
   def split: (Rng, Rng) =
     val (a, next) = nextLong

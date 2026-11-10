@@ -45,13 +45,6 @@
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"accepted","reason":null}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"duplex","reason":null}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"unidirectional","reason":null}
-{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"following","reason":"4200@abababababababab"}
-{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionEnded","reason":"the peer's chain shares no point with ours"}
-{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionDropped","reason":"the peer's chain shares no point with ours"}
-{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionReturned","reason":"no more intersection; repromote after 120s"}
-{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionReturned","reason":"rolled back past intersection: 4200@abababababababab; repromote after 180s"}
-{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"cachedBlockRejected","reason":"4200@abababababababab rejected by structure: block header differs from announced header; source generation 7; live=true"}
-{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"cachedBlockRejected","reason":"4200@abababababababab rejected by structure: block header differs from announced header; source generation 8; live=false"}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"closed","reason":"connection closed: closed by peer"}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"refused","reason":"refused inbound connection from 10.0.0.2:4000: 64 connections accepted already"}
 {"event":"peerSelectionPromote","at":"2026-10-16T12:00:00Z","action":"failed","peer":"10.0.0.1:3001","operation":"Establish","reason":"connection establishment defect: injected acquisition defect"}
@@ -112,6 +105,7 @@
 {"event":"fetchModeChanged","at":"2026-10-16T12:00:00Z","mode":"BulkSync"}
 {"event":"fetchModeChanged","at":"2026-10-16T12:00:00Z","mode":"Deadline"}
 {"event":"connection","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","what":"opened","provenance":"Outbound"}
+{"event":"connection","at":"2026-10-16T12:00:00Z","what":"pruned","pruned":["10.0.0.3:3001"],"number":1,"candidates":3}
 {"event":"connection","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","what":"changed","from":"ReservedOutboundSt","to":"UnnegotiatedSt Outbound"}
 {"event":"connection","at":"2026-10-16T12:00:00Z","what":"refused","reason":"refused inbound connection from 10.0.0.2:4000: 64 connections accepted already"}
 {"event":"connection","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","what":"closed","provenance":"Inbound","reason":"connection closed: closed by peer"}

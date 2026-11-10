@@ -50,7 +50,6 @@ import xyz.kd5ujc.scarab.network.{
 import xyz.kd5ujc.scarab.node.{
   InboundEnd,
   InboundEvent,
-  InboundGovernor,
   DnsName,
   LedgerPeersTrace,
   LocalRootsTrace,
@@ -357,32 +356,6 @@ object LogSamples:
     InboundEvent.Accepted,
     InboundEvent.Duplex,
     InboundEvent.Unidirectional,
-    InboundEvent.Following(point),
-    InboundEvent.SessionEnded(
-      InboundGovernor.SessionFailure
-        .Peer(PeerError.NoIntersection),
-      dropped = false
-    ),
-    InboundEvent.SessionEnded(
-      InboundGovernor.SessionFailure
-        .Peer(PeerError.NoIntersection),
-      dropped = true
-    ),
-    InboundEvent.SessionReturned(InboundGovernor.ReturnReason.NoMoreIntersection, 120.seconds),
-    InboundEvent.SessionReturned(
-      InboundGovernor.ReturnReason.RolledBackPastIntersection(point),
-      180.seconds
-    ),
-    InboundEvent.CachedBlockRejected(
-      ValidationError(point, BlockFailure.HeaderDiffers),
-      generation = BigInt(7),
-      sourceLive = true
-    ),
-    InboundEvent.CachedBlockRejected(
-      ValidationError(point, BlockFailure.HeaderDiffers),
-      generation = BigInt(8),
-      sourceLive = false
-    ),
     InboundEvent.Closed(
       InboundEnd.Connection(
         ConnectionEnd
@@ -394,6 +367,7 @@ object LogSamples:
 
   val connection: List[ConnectionEvent] = List(
     ConnectionEvent.Opened("10.0.0.1:3001", ConnectionState.Provenance.Outbound),
+    ConnectionEvent.Pruned(Vector("10.0.0.3:3001"), 1, 3),
     ConnectionEvent.Changed(
       "10.0.0.1:3001",
       ConnectionState.ReservedOutbound,
