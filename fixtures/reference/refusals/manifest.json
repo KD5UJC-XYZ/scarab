@@ -58,12 +58,24 @@
   },
   "corpora": [
     {
+      "path": "allegra-bootstrap-attributes",
+      "sha256": "58bdceb7cc9ece3d7d5d9f7690d31238bc8d7ca4d2e1bd523a2be854deb98a79"
+    },
+    {
       "path": "allegra-families",
       "sha256": "d174ec5a43b3bdbc30a77734675ed7817e71304a76ffc021e18b3839de146878"
     },
     {
+      "path": "alonzo-bootstrap-attributes",
+      "sha256": "1eeb33ba74d8888111ce57a1cd2072ed50312c987a84671e638adb11dc316ce3"
+    },
+    {
       "path": "alonzo-families",
       "sha256": "cf1ce928525d5064dc3dc9cf35c7297ad99267b2f5d4d79aa6b2c86c1ebed245"
+    },
+    {
+      "path": "babbage-bootstrap-attributes",
+      "sha256": "23d71a877c809495d28d8793acccd6985693f88adc6c4f2ecc2f19d78777940a"
     },
     {
       "path": "babbage-certificate-order",
@@ -78,6 +90,10 @@
       "sha256": "63d13ed2be16fdd8c60bf04b2ce1bc29279b90a6bdc70256de5e52732c5a6ef2"
     },
     {
+      "path": "conway-bootstrap-attributes",
+      "sha256": "8e9012e865a4aece89da87694a9ce1582b2acb9cf4059d423fcec656a2f73dc8"
+    },
+    {
       "path": "conway-devnet",
       "sha256": "286a678fea0f7086d17a169d27d756077ddc2135d54ea02661e39c920f6a66d4"
     },
@@ -86,8 +102,16 @@
       "sha256": "335673554ec6b794302fdbb70f0d941b0c143af6f0814c964a2de2c613088aa3"
     },
     {
+      "path": "mary-bootstrap-attributes",
+      "sha256": "a51b3ced17909c3c39ce77cb92c435e28496a59f4bf9805a21c96fd66fa35dcf"
+    },
+    {
       "path": "mary-families",
       "sha256": "68d547e20ab3da1300d0044d25b035aee69d01bced016a13876b44f22d0e02b1"
+    },
+    {
+      "path": "shelley-bootstrap-attributes",
+      "sha256": "bd58553ee4f0718c5d9140398a602d5bbc0753a229f67600869ec202a27f7b1c"
     },
     {
       "path": "shelley-families",

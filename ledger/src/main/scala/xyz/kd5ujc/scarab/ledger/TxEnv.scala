@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.ledger.rules.Test
 import xyz.kd5ujc.scarab.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 /** What a decoded transaction holds that its era cannot have. The reference ledger refuses all of
   * these in its transaction decoder (a `DecoderError`), before any rule runs, so none is a
@@ -150,6 +151,8 @@ object LedgerFailure:
   *   Signature verdicts (memoised ahead of time in the node, computed in place otherwise).
   * @param validation
   *   Whether the static checks run ([[TxEnv.Validation]]).
+  * @param referenceBuild
+  *   The build whose rules the transaction is judged by ([[LedgerGlobals.referenceBuild]]).
   */
 final case class TxEnv(
     slot: BigInt,
@@ -165,7 +168,8 @@ final case class TxEnv(
     observer: Option[Phase2.Observation => Unit] = None,
     verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
     private[ledger] val preparation: Option[Phase2.Preparation] = None,
-    validation: TxEnv.Validation = TxEnv.Validation.All
+    validation: TxEnv.Validation = TxEnv.Validation.All,
+    referenceBuild: ReferenceBuild = ReferenceBuild.Default
 ):
   /** `check` when the static checks run, and a pass otherwise: `runTestOnSignal`
     * (`Cardano/Ledger/Rules/ValidationMode.hs`), which skips a test labelled static unless the

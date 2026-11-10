@@ -1211,10 +1211,8 @@ class ConwayLedgerSuite extends FunSuite:
     // the ledger is on the test network (0): an address with a magic is of it, one without is not
     accepted(s, paying(byron(0, Some(42))))
     assertEquals(refusedWith(s, paying(byron(0, None))), "WrongNetwork")
-    // 64 bytes of attributes are allowed, 65 are not
+    // 64 bytes of attributes are allowed, 65 are not; Conway reports Shelley's failure as
+    // `OutputTooBigUTxO` (`Conway/Rules/Utxo.hs:158-161`, `Allegra/Rules/Utxo.hs:387`)
     accepted(s, paying(byron(64, Some(42))))
-    assertEquals(
-      refusedWith(s, paying(byron(65, Some(42)))),
-      "OutputBootAddrAttrsTooBig"
-    )
+    assertEquals(refusedWith(s, paying(byron(65, Some(42)))), "OutputTooBigUTxO")
   }

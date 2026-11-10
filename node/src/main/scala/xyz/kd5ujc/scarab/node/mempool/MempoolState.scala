@@ -170,7 +170,8 @@ final case class MempoolEnv(
       clock = Some(clock.getOrElse(PosixClock.total(geometry))),
       evaluator = evaluator,
       decoder = decoder,
-      verdicts = verdicts
+      verdicts = verdicts,
+      referenceBuild = globals.referenceBuild
     )
 
   /** The constants the rules of the era-indexed state read. */

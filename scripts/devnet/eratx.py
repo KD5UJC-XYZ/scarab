@@ -109,6 +109,18 @@ def enterprise_address(pay_hash, network=0, script=False):
     return bytes([(0x70 if script else 0x60) | network]) + pay_hash
 
 
+def bootstrap_address(xpub, attribute_bytes, magic):
+    """A Byron verification-key address carrying `magic` (attribute 2) and an unknown attribute 5 of
+    `attribute_bytes` zero bytes, which counts towards the 64-byte attribute limit of the outputs
+    (`bootstrapAddressAttrsSize`, cardano-ledger `Address.hs`). `[#6.24(bytes [root, attributes, 0]),
+    crc32]`, the root `blake2b-224(sha3-256([0, [0, xpub], attributes]))`."""
+    import zlib
+    attributes = {2: enc(magic), 5: bytes(attribute_bytes)}
+    root = blake2b(hashlib.sha3_256(enc([0, [0, xpub], attributes])).digest(), 28)
+    body = enc([root, attributes, 0])
+    return enc([Tag(24, body), zlib.crc32(body)])
+
+
 def reward_address(stake_hash, network=0, script=False):
     return bytes([(0xf0 if script else 0xe0) | network]) + stake_hash
 

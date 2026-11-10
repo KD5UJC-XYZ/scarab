@@ -1,0 +1,33 @@
+{
+  "format": 2,
+  "era": "allegra",
+  "protocolVersion": [
+    3,
+    0
+  ],
+  "provenance": {
+    "reference": {
+      "node": "cardano-node 11.1.3 - linux-x86_64 - ghc-9.6",
+      "revision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+      "image": "cardano-reference-11.1.3:local",
+      "imageId": "sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b"
+    },
+    "command": "python3 scripts/devnet.py --name <devnet> refusal-corpus --era allegra --corpus allegra-bootstrap-attributes --cases refusalcases:bootstrap_attributes",
+    "scarabCommit": "165c3a53d00622a65497a6d3eb7eb29a62dbece6",
+    "scarabDirty": true,
+    "recorded": "2026-11-10T01:24:59Z"
+  },
+  "genesis": {
+    "byron-genesis.json": "d22492de1d2f5bd9afb504a011c4618c8edc4eaa4e7a083514743b1d0747dbb2",
+    "shelley-genesis.json": "392c2f64b63556e63fd5faf1957fc914cf432975f4eb52f956728bd912e314b4",
+    "alonzo-genesis.json": "4291b3e5fbcdd1f1daed9ab8f78e4d0181eb7eac4506e34c8aa0fecab6051f3b",
+    "conway-genesis.json": "a37590379b00b302dd7b6d3ee08e5e866e4425d6fdffa3f8e6b7e162b6371429",
+    "configuration.yaml": "1602f558913abb547664cae61230e6cee9cf2fdfb25f87b538aff5bf50bc7d56"
+  },
+  "cases": [
+    {
+      "file": "cases/cases.jsonl",
+      "sha256": "3633712c9473960fb14b42c44ea70c723f2aba8ab504f4e5e77d6e0cc81168d6"
+    }
+  ]
+}
