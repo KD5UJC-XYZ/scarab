@@ -973,7 +973,7 @@ object ConnectionManager:
         .map(entry => Handle(entry, remote, Side.Inbound))
 
     /** `lookupByRemoteAddr` (`ConnMap.hs:177-208`): the reservation if there is one, else one of
-      * the remote's connections at random.
+      * the remote's connections at random, uniformly as its `uniformR` picks.
       */
     private def byRemote(
         t: Table[F],
@@ -986,7 +986,7 @@ object ConnectionManager:
           val all = t.entries.toVector.filter(_._1._1 == remote).sortBy(_._1._2.toString)
           if all.isEmpty then (None, t.rng)
           else
-            val (pick, next) = t.rng.between(0L, all.size.toLong - 1L)
+            val (pick, next) = t.rng.uniformR(0L, all.size.toLong - 1L)
             (all.lift(pick.toInt), next)
 
     /** The outbound side's look at a connection to its peer (`Core.hs` 1284-1388, and 1663-1755
