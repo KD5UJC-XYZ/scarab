@@ -17,29 +17,9 @@ Each era's UTXO runs its own checks whatever the protocol version, as the refere
 
 The slot of no return (`getTheSlotOfNoReturn`, cardano-ledger f649f975 `Slot.hs:106-114`), which TICK's solidifying of the future parameters and the PPUP too-late check use, is computed exactly (`EpochGeometrySuite`). The reference's `Word64` doubling of the stability window wraps for a window of 2^63 slots or more, which Scarab does not reproduce (#825): an approved deviation ([owner decision](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849)).
 
-Protocol-parameter updates and the decentralisation view follow the era, whatever its protocol
-version (cardano-ledger f649f975; #884). PPUP and UPEC apply key 17 as Alonzo's
-`coinsPerUTxOWord` (`Alonzo/PParams.hs:658-664`) or Babbage's `coinsPerUTxOByte`
-(`Babbage/PParams.hs:405-412`); the conversion is only the Babbage translation, including the
-future parameters (`Babbage/Translation.hs:84-91`, `Babbage/PParams.hs:316-345,389-391`).
-`PreConwayRulesSuite` exercises a Babbage update at version 6, its adoption without a second
-conversion, an Alonzo update at version 7, and the subsequent conversion at the era boundary.
-The era's `ppDG` is `d` through Alonzo (`Alonzo/PParams.hs:338`) and zero from Babbage
-(`Babbage/PParams.hs:198`): `ShelleyBbodySuite` checks the blocks counted in Alonzo at version 7
-and Babbage at version 6, and `EraTransitionSuite` checks both production TPraos header paths at
-Alonzo version 7. The parameter record and snapshot schema are unchanged.
-
-Dated evidence (2026-11-10, #884): the original Alonzo-to-Babbage translation kept both raw
-proposal maps unchanged, whereas the reference upgrades them (`Babbage/Translation.hs:155-168`).
-The owner approved including this resolved difference in #884 and explicitly recording it
-([approval record](https://github.com/KD5UJC-XYZ/scarab/issues/884#issuecomment-6774945758)).
-`ProtocolParamProposalTranslationGapSuite` reproduces it through signed early/late PPUP votes,
-the translation and `Hfc.tick`, both at an epoch-triggered Babbage version 6 and the ordinary
-version-6-to-7 transition. It converts the stored key-17 values 40003 and 48003 into 5000 and
-6000, removes the obsolete fields, preserves untouched fields' original bytes and leaves an
-unread legacy key 17 unadoptable. This establishes a valid ordinary-version scenario, not an
-observed occurrence on an actual public chain. No retained reference divergence is approved;
-the pending proposals' replacement values are the era translation itself, with no schema change.
+The era-specific parameter and overlay checks, including the resolved Alonzo-to-Babbage
+proposal-translation difference (#884), are recorded with their source citations and regression
+evidence in [Ledger: Alonzo and Babbage](ledger-alonzo-babbage.md#evidence).
 
 ## Explicitly unchecked or unconfirmed
 
