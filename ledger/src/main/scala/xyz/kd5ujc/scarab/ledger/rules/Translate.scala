@@ -431,19 +431,29 @@ object Translate:
     *
     * Only the outputs this value decides are upgraded (the changes since the backing store's
     * flushed point and the read set), recorded as changes so that the store's copies are replaced
-    * when they are flushed. An output with a native reference script that the backing store holds
-    * and that is not in the read set is not seen here: the node that enters Dijkstra must fetch
-    * those first (#54). The reference keeps each stored output with its era (`CardanoTxOut`,
-    * ouroboros-consensus 2416493b `Cardano/Ledger.hs:104-112`) and upgrades a Conway one whenever
-    * it is read in Dijkstra (`ejectHardForkTxOut`, 146-157), while an output written in Dijkstra
-    * keeps its bytes; the node's store keeps no era, so upgrading on read would also re-encode
-    * those.
+    * when they are flushed. The reference's default backend upgrades every stored output once, on
+    * the first block of the new era (`upgradeTables`, `HardFork/Combinator/Ledger.hs:1250-1287`,
+    * from `implDuplicateWithDiffs`, `Storage/LedgerDB/V2/InMemory.hs:131-152`), and any read in the
+    * new era before that upgrades the output it reads (`ejectHardForkTxOut`,
+    * `Cardano/Ledger.hs:137-162`). That is the backend the Leios testnet build configures
+    * (cardano-node b004fe0c `configuration/cardano/testnet-template-config.json:14-15`); its LSM
+    * backend upgrades no stored output once the tip is in the new era, and reads the stored bytes
+    * as they are (`implDuplicateWithDiffs` and `implRead`,
+    * `ouroboros-consensus/src/ouroboros-consensus-lsm/Ouroboros/Consensus/Storage/LedgerDB/V2/LSM.hs`
+    * 262-336). The node's store keeps no era and is the immutable tip, so it is not rewritten at
+    * the crossing: once the crossing block is validated, the node upgrades the stored outputs that
+    * this does not see (`xyz.kd5ujc.scarab.storage.UtxoStore.enteredDijkstra`). An output that
+    * [[reencodedInDijkstra]] does not select is its own upgrade.
     */
   def upgradeUtxo(utxo: xyz.kd5ujc.scarab.ledger.Utxo): xyz.kd5ujc.scarab.ledger.Utxo =
     utxo
-      .matching(_.scriptRef.exists(_.native.isDefined))
+      .matching(reencodedInDijkstra)
       .toVector
       .foldLeft(utxo) { case (u, (in, out)) => u.updated(in, upgradeTxOut(out)) }
+
+  /** Whether `upgradeTxOut` may change the output: it holds a native reference script. */
+  def reencodedInDijkstra(out: xyz.kd5ujc.scarab.ledger.TxOut): Boolean =
+    out.scriptRef.exists(_.native.isDefined)
 
   /** `upgradeTxOut` of one output (see [[upgradeUtxo]]); an output without a native reference
     * script is the same output.

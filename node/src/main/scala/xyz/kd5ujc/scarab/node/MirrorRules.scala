@@ -96,7 +96,11 @@ final class MirrorRules[F[_]: Monad](
       Raise[F, xyz.kd5ujc.scarab.ledger.StorageError],
       Raise[F, xyz.kd5ujc.scarab.ledger.ChainError]
   ): F[MirrorState] =
-    def run(s: MirrorState, prepared: Option[Prepared]): F[MirrorState] =
+    def run(
+        s: MirrorState,
+        prepared: Option[Prepared],
+        entered: MirrorRules.DijkstraCrossing => F[MirrorState] = c => c.after.pure[F]
+    ): F[MirrorState] =
       val applied = parallelPlutus match
         case None =>
           cpu.timed(MirrorRules.stepLabel(s))(
@@ -135,7 +139,11 @@ final class MirrorRules[F[_]: Monad](
               MirrorRules.stateOutOfRange(header, failure) match
                 case Some(fault) => fault.raise[F, MirrorState]
                 case None        => ValidationError(header.point, failure).raise[F, MirrorState],
-            next => afterBlock.fold(next.pure[F])(f => f(header, s, next).as(next))
+            accepted =>
+              MirrorRules.DijkstraCrossing
+                .of(s, accepted)
+                .fold(accepted.pure[F])(entered)
+                .flatTap(next => afterBlock.fold(().pure[F])(f => f(header, s, next)))
           )
         )
     (utxoStore, header) match
@@ -156,12 +164,79 @@ final class MirrorRules[F[_]: Monad](
             if wanted.isEmpty || inByron then
               Map.empty[xyz.kd5ujc.scarab.ledger.TxIn, xyz.kd5ujc.scarab.ledger.TxOut].pure[F]
             else store.read(wanted)
-          next <- run(MirrorStep.mapUtxo(state)(_.withResident(fetched)), prepared)
+          // A block that enters Dijkstra upgrades the stored outputs its tick did not see, once the
+          // rules have accepted it (`MirrorRules.DijkstraCrossing`), so a header or a body that
+          // fails them never starts the pass over the store. The mempool, the forger and the local
+          // state queries tick the state on their own: until the crossing block is applied, a
+          // state they tick into Dijkstra reads the stored outputs with their Conway bytes.
+          next <- run(
+            MirrorStep.mapUtxo(state)(_.withResident(fetched)),
+            prepared,
+            MirrorRules.entered(store, _)
+          )
           flushed <- store.flushed
         yield MirrorStep.mapUtxo(next)(_.settled(flushed))
       case _ => run(state, None)
 
 object MirrorRules:
+  /** A block that took the chain into Dijkstra from an earlier era and that the rules accepted: the
+    * tick, the header checks against the ticked state and the body all passed. Only
+    * [[DijkstraCrossing.of]] builds one, from the state before the block and the state the rules
+    * produced, so a block refused anywhere (a header that claims Dijkstra but fails its checks
+    * among them) has none.
+    *
+    * The state before may be of any earlier era: a tick can cross several boundaries at once
+    * (`extendToSlot`, ouroboros-consensus 2416493b `HardFork/Combinator/State.hs:195-218`), and the
+    * reference upgrades the whole table whenever the eras before and after a block differ
+    * (`upgradeTables`, `HardFork/Combinator/Ledger.hs:1254-1287`), each output by the translations
+    * of every boundary between its era and the new one, composed (`ejectHardForkTxOut`,
+    * `Cardano/Ledger.hs:150-162`, through `txOutTranslations`, `HardFork/Combinator/Ledger.hs:
+    * 1242-1248`, and `inPairsToTails` /`extendWithTails`, sop-extras 0.4.2.0
+    * `src/Data/SOP/Tails.hs:104-140`). Before Dijkstra those translations keep a native script's
+    * bytes (`translateTimelock`, cardano-ledger 9df9f98c `eras/allegra/impl/src/Cardano/Ledger/
+    * Allegra/Scripts.hs:214-230`, the `upgradeScript` of Babbage and Conway) and the node's output
+    * is unchanged by them, so the composition is Dijkstra's `upgradeTxOut` alone.
+    *
+    * @param after
+    *   the state after the block, in Dijkstra
+    * @param utxo
+    *   its UTxO set
+    */
+  final case class DijkstraCrossing private (
+      after: MirrorState,
+      utxo: xyz.kd5ujc.scarab.ledger.Utxo
+  )
+
+  /** The state after `crossing` with the stored outputs its tick did not see upgraded
+    * ([[UtxoStore.enteredDijkstra]]), as changes of the crossing block.
+    */
+  def entered[F[_]: cats.Functor](
+      store: xyz.kd5ujc.scarab.storage.UtxoReadView[F],
+      crossing: DijkstraCrossing
+  )(using Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]): F[MirrorState] =
+    UtxoStore
+      .enteredDijkstra(store, crossing.utxo)
+      .map(u => MirrorStep.mapUtxo(crossing.after)(_ => u))
+
+  object DijkstraCrossing:
+    /** The crossing from `before` to `after`, the state the rules made of a block on it; none when
+      * the block stays in an era or crosses only boundaries before Dijkstra.
+      */
+    private[node] def of(before: MirrorState, after: MirrorState): Option[DijkstraCrossing] =
+      for
+        a <- MirrorStep.nesOf(after)
+        utxo <- MirrorStep.utxoOf(after).filter(_ => crosses(MirrorStep.nesOf(before), a))
+      yield DijkstraCrossing(after, utxo)
+
+    /** Whether `after` is a Dijkstra state and `before` is not: a state of an earlier Shelley-based
+      * era, or none (Byron's).
+      */
+    def crosses(before: Option[EraNes], after: EraNes): Boolean =
+      inDijkstra(after) && !before.exists(inDijkstra)
+
+    private def inDijkstra(e: EraNes): Boolean = e match
+      case i: EraNes.InEra[x] => i.era == ShelleyBasedEra.SDijkstra
+
   /** A quantity of the ledger state outside its vocabulary type, met by the tick or by a rule of a
     * transaction ([[BlockFailure.stateOutOfRange]]), or the consensus state's per-epoch transition
     * counter past `Word32` ([[StateMirrorError.TransitionCounterOverflow]]): no verdict on the

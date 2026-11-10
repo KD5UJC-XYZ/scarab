@@ -5,8 +5,9 @@
   Dijkstra genesis values and its PlutusV4 cost model, the pools' VRF key hashes are counted afresh,
   and the native reference script of each output the state holds in memory is encoded anew, as
   Dijkstra's `upgradeTimelock` does, which changes the hash of a script that was written in another
-  form. Outputs still in the backing store are not upgraded yet: the node must fetch them before it
-  can enter Dijkstra. The node still does not enter Dijkstra; a Conway state crossing into it without
+  form. After a crossing block is validated, the same upgrade includes outputs in the backing
+  store, with their old bytes retained for rollback (#815). The node still does not enter Dijkstra;
+  a Conway state crossing into it without
   a Dijkstra genesis is refused.
 - The protocol parameters Dijkstra adds are the node's parameters' own fields; the Dijkstra genesis
   holds their initial values.

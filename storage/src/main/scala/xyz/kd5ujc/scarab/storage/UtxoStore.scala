@@ -126,6 +126,31 @@ object UtxoStore:
       if wanted.isEmpty then Sync[F].pure(utxo) else s.read(wanted).map(utxo.withResident)
     }
 
+  /** `utxo`, the set of a state that has just entered Dijkstra, with every stored output it does
+    * not decide and that the translation encodes anew (a native reference script,
+    * [[xyz.kd5ujc.scarab.ledger.rules.Translate.reencodedInDijkstra]]) upgraded
+    * ([[xyz.kd5ujc.scarab.ledger.rules.Translate.upgradeTxOut]]), found in one pass over the store.
+    * The tick's translation upgraded the outputs the state decided
+    * ([[xyz.kd5ujc.scarab.ledger.rules.Translate.upgradeUtxo]]), so together every output of the
+    * set is upgraded, as the reference's default backend does on the first block of the era
+    * (ouroboros-consensus 2416493b `upgradeTables`, `HardFork/Combinator/Ledger.hs:1250-1287`). The
+    * upgrades are changes at the state's stamp, the crossing block's, and replace the store's
+    * copies when that block becomes immutable. An output the state decides is not touched: one a
+    * Dijkstra transaction created keeps its bytes.
+    */
+  def enteredDijkstra[F[_]: cats.Functor](store: UtxoReadView[F], utxo: Utxo)(using
+      cats.mtl.Raise[F, StorageError]
+  ): F[Utxo] =
+    store
+      .select(xyz.kd5ujc.scarab.ledger.rules.Translate.reencodedInDijkstra)
+      .map { stored =>
+        // read first, so that each replacement debits the stored output it replaces
+        val fresh = stored -- utxo.diff.keys -- utxo.resident.keys
+        fresh.foldLeft(utxo.withResident(fresh)) { case (u, (in, out)) =>
+          u.updated(in, xyz.kd5ujc.scarab.ledger.rules.Translate.upgradeTxOut(out))
+        }
+      }
+
   /** The complete set as of `utxo`: the backing store with the state's changes on top. */
   def materialize[F[_]: Sync](store: UtxoReadView[F], utxo: Utxo)(using
       cats.mtl.Raise[F, StorageError]
