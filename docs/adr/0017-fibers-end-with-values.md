@@ -447,7 +447,8 @@ against the peer (`NotThePeers`), nothing reaches the node's fatal sink or its n
 waiting fiber is cancelled.
 - outbound: `OutboundGenesisInvariantSuite`, with the check held to the node's clock as in the node (`HeaderClock.grafting`);
   the hot session lives under the connection's own supervisor, which the connection's release ends;
-- inbound: `InboundGovernorSuite`, the session being a `background` resource of the connection.
+- ~~inbound: `InboundGovernorSuite`, the session being a `background` resource of the connection.~~
+  ([superseded](#amendment-2026-11-10-the-inbound-teardown-test-runs-over-a-reused-connection))
 
 The teardown needed no change.
 
@@ -579,3 +580,14 @@ What can reach that case at cardano-ledger `f649f975`
 
 Tests: `GenesisSchemaSuite` against the reference's verdicts in `fixtures/reference/genesis-fields` (the
 negative, `Word64` maximum and past-`Word64` values of each field), and `TickRulesSuite` (the upgrade into Conway).
+
+## Amendment (2026-11-10): the inbound teardown test runs over a reused connection
+
+Issue 854. The inbound governor runs no client sessions of its own: a hot session runs on a peer's own connection
+only when the outbound governor reuses that connection, under the same per-connection supervisor as on a connection
+it dialled. The inbound test of the [2026-10-29 amendment](#amendment-2026-10-29-the-teardown-after-a-genesis-invariant-is-tested)
+went with those sessions. `OutboundGenesisInvariantSuite` now meets the header gate's invariant on a hot session in
+both cases, and checks the same path in each:
+- over a connection we dialled;
+- over the peer's own accepted duplex connection, which the outbound governor reuses with no dial.
+
