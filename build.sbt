@@ -359,6 +359,7 @@ lazy val node = scarab("node")
     Compile / run / fork := true,
     // From a classpath the JAR's Enable-Native-Access attribute does not apply, so the node run this way needs
     // the flags itself (docker/candidate.Dockerfile; issue 589)
+    Compile / run / javaOptions ++= jdk25Flags
   )
 
 // Schema-first models, step 1: CDDL parser and Scala generator (build-time tool; see docs/models.md).
