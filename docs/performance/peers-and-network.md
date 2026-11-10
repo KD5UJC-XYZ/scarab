@@ -482,12 +482,13 @@ blocking-pool thread while its multiplexer waits for bytes. This section measure
 limit of accepted connections (512), the most a node holds inbound; outbound connections, as many as the governor's
 targets, cost the same each.
 
-**Harness and environment.** `network/src/test/scala/xyz/kd5ujc/scarab/network/TcpThreadCostMain.scala` at 0fc5f2e2a, a
+**Harness and environment.** `network/src/test/scala/xyz/kd5ujc/scarab/network/TcpThreadCostMain.scala` at 400fe4094, a
 test-scope main outside `check`. It listens through `BearerServer` on loopback and opens 512 plain client sockets in the
 same JVM that never read (no thread of their own). With `read` each handler runs the node's multiplexer on its connection;
-with `hold`, the control, each handler holds its connection and nothing reads it. A sample is taken once the thread
-count has not changed for a second, before the clients connect and once all 512 handlers run: the JVM's thread count, the
-process's `VmRSS`, and the committed size of native memory tracking's `Thread` category. Two runs of each, alternately, in
+with `hold`, the control, each handler holds its connection and nothing reads it. A sample is taken before the clients
+connect, and again once all 512 handlers hold their connections and, with readers, the JVM's thread dump shows every
+reader blocked in its read: the JVM's thread count, the process's `VmRSS`, and the committed size of native memory
+tracking's `Thread` category. Two runs of each, alternately, in
 one container on Euler (Docker image `scarab-jdk:local`
 `sha256:8f00ab6b6e1eed196c2b835bfd558507dfc29fac3153936fa38596248d7ebc76`, JVM 25.0.4.1+1-LTS, `--cpus 4 -m 4g`), with
 `-XX:NativeMemoryTracking=summary -XX:+AlwaysPreTouch -Xms512m -Xmx512m` so that heap pages touched later do not count as
@@ -501,37 +502,37 @@ java -XX:NativeMemoryTracking=summary -XX:+AlwaysPreTouch -Xms512m -Xmx512m \
 <!-- register:table perf-62.t1 -->
 | Handlers (512 accepted connections) | Threads, run 1 / run 2 | Resident memory, MB, run 1 / run 2 | Committed thread stacks, MB, run 1 / run 2 |
 |---|---:|---:|---:|
-| `read`: the multiplexer reads each connection | +513 / +512 | +101.2 / +102.8 | +56.2 / +56.2 |
-| `hold`: each connection held, nothing reads it (control) | +2 / +2 | +20.6 / +16.3 | +0.2 / +0.1 |
-| What the readers cost (`read` less `hold`, means) | +511 | +83.5 (167 KB a connection) | +56.1 (112 KB a connection) |
+| `read`: the multiplexer reads each connection | +513 / +511 | +127.4 / +108.7 | +56.3 / +56.2 |
+| `hold`: each connection held, nothing reads it (control) | +2 / +2 | +14.1 / +20.3 | +0.1 / +0.1 |
+| What the readers cost (`read` less `hold`, means) | +510 | +100.9 (202 KB a connection) | +56.1 (112 KB a connection) |
 <!-- /register -->
 
 <!-- register:listing perf-62.c1 -->
 ```text
 HOST processors=4 java=25.0.4.1+1-LTS connections=512 handlers=read
-SAMPLE at=listening threads=11 rss_kb=626332 thread_stacks_committed_kb=1602
-SAMPLE at=512-connections threads=524 rss_kb=730000 thread_stacks_committed_kb=59179
-DELTA threads=513 rss_kb=103668 thread_stacks_committed_kb=57577 per_connection_rss_kb=202
+SAMPLE at=listening threads=11 rss_kb=625708 thread_stacks_committed_kb=1641
+SAMPLE at=512-connections threads=524 rss_kb=756184 thread_stacks_committed_kb=59285
+DELTA threads=513 rss_kb=130476 thread_stacks_committed_kb=57644 per_connection_rss_kb=254
 HOST processors=4 java=25.0.4.1+1-LTS connections=512 handlers=hold
-SAMPLE at=listening threads=11 rss_kb=626172 thread_stacks_committed_kb=1578
-SAMPLE at=512-connections threads=13 rss_kb=647264 thread_stacks_committed_kb=1754
-DELTA threads=2 rss_kb=21092 thread_stacks_committed_kb=176 per_connection_rss_kb=41
+SAMPLE at=listening threads=11 rss_kb=627532 thread_stacks_committed_kb=1637
+SAMPLE at=512-connections threads=13 rss_kb=642000 thread_stacks_committed_kb=1758
+DELTA threads=2 rss_kb=14468 thread_stacks_committed_kb=121 per_connection_rss_kb=28
 HOST processors=4 java=25.0.4.1+1-LTS connections=512 handlers=read
-SAMPLE at=listening threads=11 rss_kb=625980 thread_stacks_committed_kb=1594
-SAMPLE at=512-connections threads=523 rss_kb=731268 thread_stacks_committed_kb=59154
-DELTA threads=512 rss_kb=105288 thread_stacks_committed_kb=57560 per_connection_rss_kb=205
+SAMPLE at=listening threads=12 rss_kb=630820 thread_stacks_committed_kb=1637
+SAMPLE at=512-connections threads=523 rss_kb=742164 thread_stacks_committed_kb=59169
+DELTA threads=511 rss_kb=111344 thread_stacks_committed_kb=57532 per_connection_rss_kb=217
 HOST processors=4 java=25.0.4.1+1-LTS connections=512 handlers=hold
-SAMPLE at=listening threads=11 rss_kb=626816 thread_stacks_committed_kb=1618
-SAMPLE at=512-connections threads=13 rss_kb=643536 thread_stacks_committed_kb=1758
-DELTA threads=2 rss_kb=16720 thread_stacks_committed_kb=140 per_connection_rss_kb=32
+SAMPLE at=listening threads=11 rss_kb=625844 thread_stacks_committed_kb=1645
+SAMPLE at=512-connections threads=13 rss_kb=646612 thread_stacks_committed_kb=1750
+DELTA threads=2 rss_kb=20768 thread_stacks_committed_kb=105 per_connection_rss_kb=40
 ```
 <!-- /register -->
 
-**Result.** At the accept limit the readers hold 512 threads, and the connections with their multiplexers take about 84
-MB of resident memory more than the control, 167 KB a connection. Of that, 56 MB (112 KB a connection) is committed
-thread stack; the rest is the multiplexers' fibers, queues and read buffers, which the control does not run. The
-control's own 16 to 21 MB are the accepted sockets and their handlers. The thread stacks are reserved at the JDK's default 1 MB
-each and committed only as deep as a blocked read goes. Next to the heap a syncing node runs with (gigabytes, section
-8), this is small, so the blocking design stays. A non-blocking design on the cats-effect selector would save the
-threads, at the cost of a readiness capability built in `Main` and a close that the JDK defers while a channel is
-still registered with a selector, so that a reset could lag the close.
+**Result.** At the accept limit the readers hold 512 threads, and the connections with their multiplexers take about
+101 MB of resident memory more than the control, 202 KB a connection (the two `read` runs differ by 19 MB). Of that,
+56 MB (112 KB a connection) is committed thread stack, reserved at the JDK's default 1 MB a thread and committed only as
+deep as a blocked read goes; the rest is the multiplexers' fibers, queues and read buffers, which the control does not
+run. The control's own 14 to 20 MB are the accepted sockets and their handlers. Next to the heap a syncing node runs
+with (gigabytes, section 8), this is small, so the blocking design stays. A non-blocking design on the cats-effect
+selector would save the threads, at the cost of a readiness capability built in `Main` and a close that the JDK defers
+while a channel is still registered with a selector, so that a reset could lag the close.
