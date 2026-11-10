@@ -9,7 +9,6 @@ import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
 /** Why an operational certificate (or its KES signature) is rejected. */
 enum OCertError:
   case KesPeriodOutsideWindow(period: BigInt, start: BigInt, evolutions: BigInt)
-  case KesWindowOverflow(start: BigInt, evolutions: BigInt)
   case KesFailure(cause: Sum6Kes.Failure)
   case KesSignatureRejected
   case OpCertFailure(cause: OperationalCertificate.Failure)
@@ -21,8 +20,6 @@ enum OCertError:
   def message: String = this match
     case KesPeriodOutsideWindow(p, s, e) =>
       s"KES period $p outside opcert window [$s, ${s + e})"
-    case KesWindowOverflow(s, e) =>
-      s"opcert window end ${s + e} exceeds Word64 (start $s, evolutions $e)"
     case KesFailure(e)           => e.toString
     case KesSignatureRejected    => "KES signature rejected"
     case OpCertFailure(e)        => e.message
@@ -83,12 +80,7 @@ object OCertRules:
         OCertError.KesPeriodOutsideWindow(kesPeriod, start, maxKesEvolutions)
       )
       _ <- Either.cond(
-        end.bitLength <= 64,
-        (),
-        OCertError.KesWindowOverflow(start, maxKesEvolutions)
-      )
-      _ <- Either.cond(
-        kesPeriod < end,
+        end.bitLength <= 64 && kesPeriod < end,
         (),
         OCertError.KesPeriodOutsideWindow(kesPeriod, start, maxKesEvolutions)
       )

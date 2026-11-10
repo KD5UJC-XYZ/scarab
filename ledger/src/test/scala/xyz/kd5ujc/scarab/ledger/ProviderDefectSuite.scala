@@ -260,7 +260,7 @@ class ProviderDefectSuite extends FunSuite:
     )
     assertEquals(
       OCertRules.verifySignaturesWith(windowHeader, SlotsPerKesPeriod, fits + 1, okKes, okCert),
-      Left(OCertError.KesWindowOverflow(start, fits + 1))
+      Left(OCertError.KesPeriodOutsideWindow(start, start, fits + 1))
     )
   }
 
