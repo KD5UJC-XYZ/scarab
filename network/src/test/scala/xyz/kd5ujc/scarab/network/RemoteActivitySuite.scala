@@ -32,9 +32,36 @@ class RemoteActivitySuite extends FailsOnUncaught:
     def failure = done.tryGet
     def abort(reason: NetworkError) = done.complete(reason).void
 
-  // a responder starts as the timer fires, after it slept and before it returns; the tracker's
-  // wait must neither lose that start nor take it before the commit
-  test("a responder that starts as the idle timer fires is held for the commit, then wakes the connection") {
+  private def agreed(mux: Mux[IO]): Negotiated[IO] =
+    Negotiated(mux, HandshakeClient.Agreed(14, Handshake.Data(42L, initiatorOnly = false)))
+
+  /** An accepted duplex connection our outbound side reuses, so the expiry keeps it. */
+  private def accepted(cm: ConnectionManager[IO], mux: Mux[IO])(using
+      Raise[IO, ConnectionError]
+  ): IO[Connection[IO]] =
+    for
+      (connection, _) <- cm.include(remote, None).allocated
+      _ <- connection.negotiated(agreed(mux))
+      _ <- cm.acquire(remote, Provenance.Outbound).allocated
+    yield connection
+
+  /** A duplex connection we dialled and still use. */
+  private def dialled(cm: ConnectionManager[IO], mux: Mux[IO])(using
+      Raise[IO, ConnectionError]
+  ): IO[Connection[IO]] =
+    cm.acquire(remote, Provenance.Outbound).allocated.flatMap {
+      case (Acquired.Reserved(connection), _) =>
+        connection.connected(None) *> connection.negotiated(agreed(mux)).as(connection)
+      case (other, _) => IO.raiseError(new AssertionError(s"not a reservation: $other"))
+    }
+
+  /** The tracker over the connection `open` makes, with a responder that starts as the timer
+    * fires, after it slept and before it returns: the changes from the expiry on, and the state
+    * at the end.
+    */
+  private def expiring(
+      open: Handle[IO, ConnectionError] ?=> (ConnectionManager[IO], Mux[IO]) => IO[Connection[IO]]
+  ) =
     TestControl.executeEmbed(
       for
         log <- Ref.of[IO, Vector[(ConnectionState, ConnectionState)]](Vector.empty)
@@ -48,16 +75,7 @@ class RemoteActivitySuite extends FailsOnUncaught:
         done <- Deferred[IO, NetworkError]
         mux = Stub(done)
         owned <- Handle
-          .allow[ConnectionError](
-            for
-              (connection, _) <- cm.include(remote, None).allocated
-              _ <- connection.negotiated(
-                Negotiated(mux, HandshakeClient.Agreed(14, Handshake.Data(42L, initiatorOnly = false)))
-              )
-              // our outbound side uses it, so the expiry keeps it
-              _ <- cm.acquire(remote, Provenance.Outbound).allocated
-            yield connection
-          )
+          .allow[ConnectionError](open(cm, mux))
           .rescue(e => IO.raiseError(new AssertionError(e.message)))
         responders <- NodeToNodeServer.Responders.create[IO]
         finish <- Deferred[IO, Unit]
@@ -71,18 +89,24 @@ class RemoteActivitySuite extends FailsOnUncaught:
           }
         changes <- log.get
       yield (after, changes)
-    ).map { (after, changes) =>
-      val expiring =
-        ConnectionState.OutboundDup(TimeoutExpired.Ticking) ->
-          ConnectionState.OutboundDup(TimeoutExpired.Expired)
-      assertEquals(
-        changes.dropWhile(_ != expiring),
-        Vector(
-          expiring,
-          ConnectionState.OutboundDup(TimeoutExpired.Expired) -> ConnectionState.Duplex,
-          ConnectionState.Duplex -> ConnectionState.OutboundDup(TimeoutExpired.Ticking)
-        )
-      )
-      assertEquals(after, ConnectionState.OutboundDup(TimeoutExpired.Ticking))
-    }
+    )
+
+  private val ticking = ConnectionState.OutboundDup(TimeoutExpired.Ticking)
+  private val expired = ConnectionState.OutboundDup(TimeoutExpired.Expired)
+
+  /** The expiry is committed first, the start then wakes the connection, and its end demotes it. */
+  private def heldThenWoken(after: ConnectionState, changes: Vector[(ConnectionState, ConnectionState)]) =
+    assertEquals(
+      changes.dropWhile(_ != (ticking -> expired)),
+      Vector(ticking -> expired, expired -> ConnectionState.Duplex, ConnectionState.Duplex -> ticking)
+    )
+    assertEquals(after, ticking)
+
+  // the tracker's wait must neither lose that start nor take it before the commit
+  test("a responder that starts as the idle timer fires is held for the commit, then wakes the connection") {
+    expiring(accepted).map(heldThenWoken)
+  }
+
+  test("on a connection we dialled, a responder that starts as the idle timer fires is not lost") {
+    expiring(dialled).map(heldThenWoken)
   }

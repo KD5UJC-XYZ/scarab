@@ -625,8 +625,9 @@ object ConnectionManager:
       // `computeConnStateOnError` for `HandshakeFailure` is `TerminatingState`, which keeps the
       // error, written in the transaction that deletes the entry from the table (`Core.hs`
       // 1080-1094, 1782-1838, 1000-1075): the generation's end is published before its removal
-      // can be seen, so a waiter that finds it gone learns the error
-      def handshakeFailed(error: NetworkError) =
+      // can be seen, so a waiter that finds it gone learns the error; the two are one step that
+      // cancellation cannot split
+      def handshakeFailed(error: NetworkError) = F.uncancelable { _ =>
         table.get.flatMap(
           _.locate(id).filter(_._2.state != ConnectionState.Terminated).traverse_ { (_, entry) =>
             entry.ended.complete(Ended(ConnectionState.Terminating, Some(error))).void
@@ -645,6 +646,7 @@ object ConnectionManager:
               )
             case _ => (t, Effects.none[F], ())
         }
+      }
 
       def promotedToWarmRemote =
         changing { (t, _) =>
