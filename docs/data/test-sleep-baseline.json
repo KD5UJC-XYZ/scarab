@@ -1,23 +1,10 @@
 {
  "_comment": "sleeps, timers and yields per Scala source outside src/main; written by scripts/check_test_sleeps.py --write-baseline, which refuses an increase. It only shrinks (issue 870).",
  "files": {
-  "codec/src/test/scala/xyz/kd5ujc/scarab/codec/InternsSuite.scala": {
-   "sleep": 1
-  },
   "consensus/src/test/scala/xyz/kd5ujc/scarab/consensus/SchedulingSuite.scala": {
    "sleep": 2
   },
-  "fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Harness.scala": {
-   "sleep": 1
-  },
   "network/src/test/scala/xyz/kd5ujc/scarab/network/AcceptedConnectionsLimitSuite.scala": {
-   "sleep": 1
-  },
-  "network/src/test/scala/xyz/kd5ujc/scarab/network/BackgroundFibersSuite.scala": {
-   "Wait.until": 1,
-   "sleep": 1
-  },
-  "network/src/test/scala/xyz/kd5ujc/scarab/network/BearerServerSuite.scala": {
    "sleep": 1
   },
   "network/src/test/scala/xyz/kd5ujc/scarab/network/BlockFetchPeerTimeSuite.scala": {
@@ -49,20 +36,10 @@
   },
   "network/src/test/scala/xyz/kd5ujc/scarab/network/LocalServerSuite.scala": {
    "cede": 1,
-   "sleep": 2
-  },
-  "network/src/test/scala/xyz/kd5ujc/scarab/network/LocalStateQueryServerSuite.scala": {
-   "Wait.until": 1
-  },
-  "network/src/test/scala/xyz/kd5ujc/scarab/network/LocalTxMonitorServerSuite.scala": {
-   "sleep": 2
+   "sleep": 1
   },
   "network/src/test/scala/xyz/kd5ujc/scarab/network/MuxDeadlinesSuite.scala": {
    "sleep": 3
-  },
-  "network/src/test/scala/xyz/kd5ujc/scarab/network/MuxSuite.scala": {
-   "cede": 1,
-   "sleep": 6
   },
   "network/src/test/scala/xyz/kd5ujc/scarab/network/NegotiatedDispatchSuite.scala": {
    "sleep": 4
@@ -89,27 +66,20 @@
   "network/src/test/scala/xyz/kd5ujc/scarab/network/ResponderActivationSuite.scala": {
    "sleep": 6
   },
-  "network/src/test/scala/xyz/kd5ujc/scarab/network/ServerSuite.scala": {
-   "sleep": 7
-  },
   "network/src/test/scala/xyz/kd5ujc/scarab/network/TxSubmissionLimitsSuite.scala": {
    "sleep": 1
   },
   "network/src/test/scala/xyz/kd5ujc/scarab/network/UpstreamMuxLifecycleSuite.scala": {
    "sleep": 2
   },
-  "network/src/test/scala/xyz/kd5ujc/scarab/network/Wait.scala": {
-   "sleep": 1
-  },
   "network/src/test/scala/xyz/kd5ujc/scarab/network/WarmHotSuite.scala": {
-   "sleep": 2
+   "sleep": 1
   },
   "network/src/test/scala/xyz/kd5ujc/scarab/network/genesis/LimitOnPatienceSuite.scala": {
    "cede": 1,
    "sleep": 16
   },
   "network/src/test/scala/xyz/kd5ujc/scarab/network/selection/ChainSyncJumpingRuntimeSuite.scala": {
-   "cede": 3,
    "sleep": 1
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/AdversarialScheduleSuite.scala": {

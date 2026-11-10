@@ -104,8 +104,9 @@ scala code … I love the use of type parameters when I can use them"*.
   guaranteed cleanup. Positive synchronization uses an observable condition or controlled schedule;
   bounded negative observations without a product-side hook remain explicitly tracked in #251.
 - Tests do not sleep: no sleep, delay, timer or yield orders fibers, waits for a state or paces a poll
-  loop. Wait on a `Deferred`, a latch, a change signal or a report of the code under test, and drive
-  time with `TestControl` (`tick`, `advanceAndTick`). `scripts/check_test_sleeps.py` refuses a new
+  loop. Wait on a `Deferred`, a latch, a change signal or a report of the code under test, or run the
+  test in `Settled` (network test tree), whose `settle` returns once every fiber of the test is
+  blocked; drive time with `TestControl` (`tick`, `advanceAndTick`) or `Settled.timed`. `scripts/check_test_sleeps.py` refuses a new
   `sleep`, `delayBy`, `andWait`, fs2 timer, `parkNanos`, `onSpinWait`, `cede`, `Thread.yield` or
   sleep-poll helper in a source outside `src/main` (#870); it cannot tell `TestControl`'s clock from
   the wall clock, so it refuses a new virtual-time sleep too. Negative observations remain tracked in

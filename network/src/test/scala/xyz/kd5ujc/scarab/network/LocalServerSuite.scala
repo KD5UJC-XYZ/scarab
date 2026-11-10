@@ -336,7 +336,8 @@ class LocalServerSuite extends FailsOnUncaught:
   )
 
   test("bind, check, listen, then accept, each step traced as the reference's withLocalSocket") {
-    serve(Nil)(_ => IO.sleep(50.millis)).map { (result, calls, traces) =>
+    // the server has bound, listened and waits in accept once every fiber has done all it can
+    Settled(settle => serve(Nil)(_ => settle)).map { (result, calls, traces) =>
       assertEquals(result, Right(()))
       assertEquals(
         calls,

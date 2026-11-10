@@ -43,18 +43,24 @@ object Probe:
   @volatile private var armedAt = 0L
   @volatile private var armedFor: Option[(String, Input)] = None
 
-  private val watchdog = new Thread("fuzz-watchdog"):
-    override def run(): Unit =
-      while true do
-        Thread.sleep(500)
-        armedFor.foreach { case (name, input) =>
-          val ms = (System.nanoTime() - armedAt) / 1000000
-          if ms > FuzzConfig.hangLimitMs then
-            System.err.println(s"HANG in $name after $ms ms\n$input")
-            Runtime.getRuntime.halt(3)
-        }
-  watchdog.setDaemon(true)
-  watchdog.start()
+  // a hang check every 500 ms on a daemon thread of its own
+  private val watchdog = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { task =>
+    val thread = new Thread(task, "fuzz-watchdog")
+    thread.setDaemon(true)
+    thread
+  }
+  watchdog.scheduleAtFixedRate(
+    () =>
+      armedFor.foreach { case (name, input) =>
+        val ms = (System.nanoTime() - armedAt) / 1000000
+        if ms > FuzzConfig.hangLimitMs then
+          System.err.println(s"HANG in $name after $ms ms\n$input")
+          Runtime.getRuntime.halt(3)
+      },
+    500,
+    500,
+    java.util.concurrent.TimeUnit.MILLISECONDS
+  )
 
   /** Allocation allowed for an input: a fixed share (class loading, caches, a block's worth of
     * nodes) plus a multiple of the input size, so that a declared length cannot buy memory. The
