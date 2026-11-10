@@ -7,7 +7,7 @@ read by `Sum6KesSuite`.
 |---|---|
 | `originals.tsv` | 4 rows `slot  KES root key  relative period  signed message  signature`: the header body and KES signature of four archived public preprod headers (slots 70070331, 70070379, 70070426, 70070464; relative KES periods 35, 29, 35, 28), with the hot key of the operational certificate in the header as the root key. |
 | `observations.tsv` | 17,336 rows `slot  case  verdict  ...`: for each original, the verdict (`VERIFIED` or `REJECTED`) the model of the reference algorithm gave for the original and for each mutation: every other relative period, the message emptied, extended or truncated, every byte of the message and of the signature xor-ed, and so on. Four rows verify (the originals), 17,332 reject; the last two columns count the verification steps and the Ed25519 leaf calls (3,752 in all). |
-| `sha256.json` | SHA-256 of the two tables and the evidence files; the suite checks the pins before reading them. |
+| `sha256.json` | SHA-256 of the tables and evidence files; the original suite pins the historical tables, and the fixture inventory also covers the native boundary capture. |
 | `evidence/` | The reference sources, unchanged: `KES-Class.hs`, `KES-Single.hs`, `KES-Sum.hs` (IntersectMBO cardano-base at `060819b59c184b951a54e3c563304983c53a3eac`), the Amaru parameter sources (`amaru-*.rs`) and the four header files `preprod_*.cbor` (pragma-org/amaru at `34a453005bcaaf837ee73bd996b99eab8ef92961`), `historical-oracle.json` (counts of the research run) and `sources.json` (URLs, SHA-256, relative period per slot). |
 
 ## How produced
@@ -50,3 +50,18 @@ pins, mutation recipes and recorded observations are preserved. A new capture sh
 Sum6 tree from the pinned Haskell files, identify its Ed25519 backend, replay every original recipe
 and archive complete outcomes before comparison. Preserve these historical goldens. A full native
 KES oracle would add independent evidence rather than silently replace the model's provenance.
+
+
+## Native relative-period boundary capture (2026-11-09)
+
+`period-boundaries.tsv` contains nine rows `name`, public root, relative period, supplied message,
+public signature and native accept/reject verdict. Unlike the historical source-model corpus above,
+these verdicts were obtained by calling the unchanged installed Haskell `verifyKES` implementation.
+The generator, image and source identities are in [period-boundaries-provenance.json](period-boundaries-provenance.json);
+[regeneration instructions](../../scripts/oracle/kes-periods/README.md) reproduce the capture.
+
+`ProviderDefectSuite` compares all nine verdicts through the OCERT KES path. The cold-certificate
+verifier is supplied as successful, and the configured nonwrapping window admits each tested period.
+The supplied message is not a complete encoded header: this checks KES predicate agreement, not
+full-header acceptance or reference error text. The older tables and their expectations are unchanged.
+See the [header verification contract](../../docs/compatibility/consensus-praos-headers.md#kes-relative-periods).

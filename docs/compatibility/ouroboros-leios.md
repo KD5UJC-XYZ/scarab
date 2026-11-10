@@ -25,3 +25,5 @@ the node itself cannot follow the chain: on the network before its restart of 20
 ## Open items
 
 X1 to X13 of leios.md 11.6, N4
+
+The [OCERT KES relative-period handling](consensus-praos-headers.md#kes-relative-periods) preserves the deployed reference verifier's path without Int narrowing.

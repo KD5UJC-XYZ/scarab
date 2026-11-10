@@ -16,3 +16,5 @@ unit/property; devnet e2e (`leaderUnchecked` 0 in every era); Preview Alonzo/Bab
 overlay-slot headers have no threshold check (by definition); TPraos forging not implemented (H3)
 
 The [shared KES arithmetic boundary checks](consensus-praos-headers.md#kes-arithmetic-boundaries) preserve the reference’s rejection of overflowing windows.
+
+The [OCERT KES relative-period handling](consensus-praos-headers.md#kes-relative-periods) preserves the deployed reference verifier's path without Int narrowing.
