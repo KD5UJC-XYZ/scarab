@@ -171,19 +171,27 @@ final class HotKeys[F[_]: Async] private (
       }
     }
 
-  /** Evolve the key to the period of `kesPeriod` and write it back (the lock is held). A key that
-    * cannot get there (it is already past it) is reported by the caller's signing, not here.
+  /** Evolve to the exact relative period and write it back (the lock is held). An exhausted signing
+    * lifetime is terminal, as `HotKey.hs:411-438` at consensus 82ecba32 fails when `updateKES`
+    * cannot reach an in-window target. A backward target retains its crypto cause.
     */
   private[forge] def evolved(c: PoolCredentials, kesPeriod: BigInt)(using
       Raise[F, Fatal]
   ): F[Either[ForgeError, Unit]] =
-    val relative = (kesPeriod - c.opCert.kesPeriod).toInt
+    val relative = kesPeriod - c.opCert.kesPeriod
     current *> F.delay(c.kes.period).flatMap { before =>
       F.blocking(c.kes.evolveTo(relative).leftMap(ForgeError.KesEvolution(_)))
-        .flatTap(_.traverse_ { _ =>
-          (write(c, kesPeriod) *> events.emit(ForgeEvent.KesEvolved(kesPeriod, relative)))
-            .whenA(before != relative)
-        })
+        .flatMap {
+          case Left(error) if relative >= Sum6KesSigning.Periods =>
+            Fatal.Internal(error).raise[F, Either[ForgeError, Unit]]
+          case result =>
+            result
+              .traverse_ { _ =>
+                (write(c, kesPeriod) *> events.emit(ForgeEvent.KesEvolved(kesPeriod, c.kes.period)))
+                  .whenA(before != relative)
+              }
+              .as(result)
+        }
     }
 
   /** `updateForgeState` of the reference at a slot whose KES period is `kesPeriod`: `HotKey.evolve`
@@ -193,8 +201,8 @@ final class HotKeys[F[_]: Async] private (
     * is later than its own, and is written back before anything signs with it; at or past the end
     * of the window it is poisoned and the update fails (`KESCouldNotEvolve`), as every later one
     * does (`KESKeyAlreadyPoisoned`) until a reload installs another key. The key's state after the
-    * update is the value, or a [[ForgeError]] the reference has no counterpart for (a key that
-    * cannot reach a period the certificate allows). A failed write stops this forging worker.
+    * update is the value. An exhausted signing lifetime inside the configured window stops this
+    * forging worker with its typed crypto cause; a failed write also stops the worker.
     */
   def update(kesPeriod: BigInt)(using
       Raise[F, Fatal]
@@ -260,7 +268,9 @@ final class HotKeys[F[_]: Async] private (
       // the key in use, further on than the file it was read again from, is written there too
       _ <- write(next, kesPeriod).whenA(sameKey)
       // a key installed at period 0 is brought to the present at once; its file is rewritten
-      _ <- evolved(next, kesPeriod).void.whenA(relative.toInt > kes.period)
+      _ <- evolved(next, kesPeriod)
+        .flatMap(_.fold(error => Fatal.Internal(error).raise[F, Unit], _ => F.unit))
+        .whenA(relative > kes.period)
       _ <- events.emit(
         ForgeEvent.KesReloaded(
           candidate.opCert.sequence,

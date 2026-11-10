@@ -637,7 +637,7 @@ enum ForgeError extends NodeError:
   /** A cancelled key operation may have mutated key material without completing durability. */
   case KesUpdateInterrupted
 
-  /** The KES key could not be evolved to the slot's period (it has already moved past it). */
+  /** The exact target is before the key's current period or beyond its signing lifetime. */
   case KesEvolution(cause: Sum6KesSigning.Failure)
 
   case VrfInput(cause: Vrf.Failure)

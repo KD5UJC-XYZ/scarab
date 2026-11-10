@@ -13,4 +13,13 @@ IETF draft-03 vectors 16 and 17 reproduced exactly; KES verification key reprodu
 
 ## Explicitly unchecked or unconfirmed
 
+Relative KES targets are checked before narrowing, with an exact typed cause and a terminal
+outcome when a configured window outlasts the signing key. The source correspondence and
+implementation are described in the [error design](../design/domain-errors.md); regression
+coverage includes period 64, signed-Int overflow and 32-bit wraparound, same-key and replacement
+reloads, configured-window expiry precedence, and period 63 as a usable control. These are
+executed Scarab tests, not a native-node comparison on a pathological genesis. The separate
+forging-window end-overflow discrepancy remains tracked in
+[#474](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6759847567).
+
 TPraos forging (H3); no Byron (PBFT) forging, a decision (H7); no KES agent (H2); the evolved KES key is written back to its file, which the Haskell node never does (H2a), and the KES key and certificate are reloaded on SIGHUP after a check the Haskell node does not make; opcert issuing is the driver `scripts/pool/rotate_kes.py` (`cardano-cli` does the signing), exercised by the devnet `kes-rotate` only; on a public network, run on preprod only: from epoch 321 (2026-10-23) the producer forged in each of its first seven leader slots and six of those blocks are on the canonical chain, the seventh lost in a same-height battle (H1/H1a, [#115](https://github.com/KD5UJC-XYZ/scarab/issues/115), [evidence log](evidence-log-1.md)); mainnet not run; a slot the loop overran is not forged late, as in the reference, so at 1 CPU on a loaded host about one leader slot in a hundred runs was lost that way (evidence log; since #543 such a slot is passed over without a count, as the reference's `knownSlotWatcher` does); side-channel properties of the secret-scalar arithmetic not reviewed

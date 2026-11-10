@@ -298,6 +298,19 @@ KES persistence emits its existing typed failure event and metric, then stops. A
 prevents another run/reload fiber from signing while shutdown is being reported; repair requires a
 restart. The pure on-disk KES replacement/recovery protocol is unchanged.
 
+KES evolution keeps the requested relative period as `BigInt` through the signing boundary.
+`Sum6KesSigning.SigningKey.evolveTo` checks its 64-period lifetime before changing key material;
+`PeriodOutOfRange` retains the exact target. Configured certificate expiry is checked first and
+keeps the recoverable `CouldNotEvolve`/`KeyAlreadyPoisoned` sequence. Exhaustion inside that
+window instead becomes `Fatal.Internal(ForgeError.KesEvolution(...))`, retained by `HotKeys` so
+later signing or reload cannot continue. Reload compares the full-width target and consumes an
+evolution failure; forging events use the bounded period of the successfully evolved key.
+This mirrors the terminal outcome of pinned consensus `82ecba329`'s
+[`HotKey.hs:407–438`](https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/Ledger/HotKey.hs#L407):
+configured expiry poisons the key, but an in-window `updateKES` failure terminates the worker.
+The comparison is source-derived; it does not claim identical intermediate key erasure or reload
+timing. Scarab retains its existing eager evolution on reload and file persistence protocol.
+
 The reference links forging workers to their owner and recovers its explicit `CannotForge`,
 `ForgeStateUpdateError` and `NotLeader` cases
 ([consensus `82ecba329`, NodeKernel.hs:549–568,660–669](https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/NodeKernel.hs#L549)).

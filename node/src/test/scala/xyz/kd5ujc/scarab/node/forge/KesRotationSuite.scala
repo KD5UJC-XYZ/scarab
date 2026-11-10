@@ -914,3 +914,112 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       assert(!current.kes.isForgotten)
       assert(candidate.kes.isForgotten)
   }
+
+  private val wideWindow = config.copy(maxKesEvolutions = (BigInt(1) << 64) - 1)
+  private val exhaustedTargets = Vector(
+    BigInt(64),
+    BigInt(Int.MaxValue) + 1,
+    BigInt(1) << 32,
+    (BigInt(1) << 32) + 63,
+    (BigInt(1) << 64) - 2
+  )
+
+  exhaustedTargets.foreach { target =>
+    test(s"an in-window KES target $target beyond the signing lifetime is terminal") {
+      val p = pool(kesStart = 0, seed = 3)
+      for
+        seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
+        keys <- HotKeys.create[IO](p.creds, None, wideWindow, e => seen.update(_ :+ e))
+        result <- Forger.scoped(keys.update(target))
+        later <- Forger.scoped(keys.locked(_ => IO.unit))
+        events <- seen.get
+      yield
+        assertEquals(
+          result,
+          Left(
+            xyz.kd5ujc.scarab.node.Fatal.Internal(
+              ForgeError.KesEvolution(Sum6KesSigning.Failure.PeriodOutOfRange(target))
+            )
+          )
+        )
+        assertEquals(later.left.toOption, result.left.toOption, "the failure remains terminal")
+        assertEquals(events, Vector.empty, "failed evolution emits no success event")
+    }
+
+    test(s"reload cannot wrap the KES target $target into a successful evolution") {
+      val p = pool(kesStart = 0, seed = 3)
+      val next = hotFor(p.cold, seed = 21, start = 0, sequence = 1)
+      val src = new HotKeySource[IO]:
+        def read = IO.pure(Right(HotKeySource.Candidate(next, IO.unit)))
+        def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Written)
+      for
+        seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
+        keys <- HotKeys.create[IO](p.creds, Some(src), wideWindow, e => seen.update(_ :+ e))
+        result <- Forger.scoped(keys.reload(target, Some(BigInt(0))))
+        later <- Forger.scoped(keys.locked(_ => IO.unit))
+        events <- seen.get
+      yield
+        assertEquals(
+          result,
+          Left(
+            xyz.kd5ujc.scarab.node.Fatal.Internal(
+              ForgeError.KesEvolution(Sum6KesSigning.Failure.PeriodOutOfRange(target))
+            )
+          )
+        )
+        assertEquals(later, result, "the failed reload cannot leave usable credentials")
+        assertEquals(events, Vector.empty, "failed evolution emits no reload success")
+    }
+  }
+
+  test("the last signing period remains usable with a larger configured window") {
+    val p = pool(kesStart = 0, seed = 3)
+    for
+      seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
+      keys <- HotKeys.create[IO](p.creds, None, wideWindow, e => seen.update(_ :+ e))
+      result <- Forger.scoped(keys.update(63))
+      events <- seen.get
+    yield
+      assertEquals(result, Right(Right(Right(KesInfo(0, wideWindow.maxKesEvolutions, 63)))))
+      assertEquals(p.creds.kes.period, 63)
+      assertEquals(events, Vector(ForgeEvent.KesEvolved(63, 63)))
+  }
+
+  test("configured window expiry precedes signing lifetime exhaustion") {
+    val p = pool(kesStart = 0, seed = 3)
+    val info = KesInfo(0, 64, 0)
+    for
+      keys <- HotKeys.create[IO](p.creds, None, config.copy(maxKesEvolutions = 64), _ => IO.unit)
+      first <- Forger.scoped(keys.update(64))
+      later <- Forger.scoped(keys.update(65))
+    yield
+      assertEquals(first, Right(Right(Left(KesEvolutionError.CouldNotEvolve(info, 64)))))
+      assertEquals(later, Right(Right(Left(KesEvolutionError.KeyAlreadyPoisoned(info, 65)))))
+      assert(p.creds.kes.isForgotten, "expiry erases the key")
+  }
+
+  test("reloading the same key cannot wrap an exhausted target into success") {
+    val p = pool(kesStart = 0, seed = 3)
+    val candidate = hotFor(p.cold, seed = 3, start = 0, sequence = 0)
+    val target = BigInt(1) << 32
+    val src = new HotKeySource[IO]:
+      def read = IO.pure(Right(HotKeySource.Candidate(candidate, IO.unit)))
+      def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Written)
+    for
+      seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
+      keys <- HotKeys.create[IO](p.creds, Some(src), wideWindow, e => seen.update(_ :+ e))
+      result <- Forger.scoped(keys.reload(target, Some(BigInt(0))))
+      later <- Forger.scoped(keys.locked(_ => IO.unit))
+      events <- seen.get
+    yield
+      assertEquals(
+        result,
+        Left(
+          xyz.kd5ujc.scarab.node.Fatal.Internal(
+            ForgeError.KesEvolution(Sum6KesSigning.Failure.PeriodOutOfRange(target))
+          )
+        )
+      )
+      assertEquals(later, result, "the reused key remains terminal after failed evolution")
+      assertEquals(events, Vector.empty, "failed evolution emits no reload success")
+  }
