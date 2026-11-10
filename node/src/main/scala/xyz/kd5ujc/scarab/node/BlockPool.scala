@@ -52,7 +52,7 @@ import scala.concurrent.duration.*
   * that a session waiting for such a claim waits for ever (issue 130).
   */
 final class BlockPool[F[_]: Async] private (
-    slots: Ref[F, BlockPool.Slots[F]],
+    slots: fs2.concurrent.SignallingRef[F, BlockPool.Slots[F]],
     policy: BlockPool.FetchPolicy,
     attribution: BlockPool.AttributionPolicy,
     private[node] val fetchCoordinator: FetchCoordinator[F],
@@ -264,6 +264,17 @@ final class BlockPool[F[_]: Async] private (
     * None means that no live claim or retained body exists and the caller must fetch it.
     */
   def take(hash: Bytes): F[Option[Bytes]] = takeFilled(hash).map(_.map(_.block))
+
+  /** A live fetched body once its delivery reaches the retained cache. Unlike [[take]], this waits
+    * even when no session has claimed the hash yet; tests use it before starting a client.
+    */
+  private[node] def awaitDelivered(hash: Bytes): F[Bytes] =
+    slots.discrete
+      .map(_.entries.get(hash))
+      .collect { case Some(Slot.Done(block, _, _)) => block }
+      .head
+      .compile
+      .lastOrError
 
   /** As [[take]], with the session that delivered the block. */
   def takeFilled(hash: Bytes): F[Option[Filled]] = takeFilled(hash, F.unit)
@@ -796,8 +807,8 @@ object BlockPool:
       selection: Option[F[ChainSelection.Local]] = None,
       recovered: Option[Recovered[F]] = None
   ): F[BlockPool[F]] =
-    Ref
-      .of[F, Slots[F]](Slots(Map.empty, 0L, 0L, Map.empty, 0, None))
+    fs2.concurrent
+      .SignallingRef[F, Slots[F]](Slots(Map.empty, 0L, 0L, Map.empty, 0, None))
       .flatMap(slots =>
         FetchCoordinator
           .create[F](

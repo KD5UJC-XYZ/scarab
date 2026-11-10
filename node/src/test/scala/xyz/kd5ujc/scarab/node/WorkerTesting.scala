@@ -86,14 +86,6 @@ private[scarab] object WorkerTesting extends munit.Assertions:
   trait Scripted[F[_]] extends Peer[F]:
     def fetch(header: Header)(using Raise[F, PeerError]): F[xyz.kd5ujc.scarab.codec.Bytes]
 
-  /** The body of `header` once some session has delivered it to `pool`: what a test session read
-    * through the session's own fetch before issue 599.
-    */
-  def deliveredBody(pool: BlockPool[IO], header: Header): IO[xyz.kd5ujc.scarab.codec.Bytes] =
-    pool
-      .take(header.hash)
-      .flatMap(_.fold(IO.sleep(1.milli) *> deliveredBody(pool, header))(IO.pure))
-
   def delivering(peer: Scripted[IO], claims: BlockPool.Claims[IO]): Resource[IO, Fed] =
     Resource.eval(Ref.of[IO, Vector[Header]](Vector.empty)).map { candidate =>
       def invalid(refusal: Option[ValidationError])(using Raise[IO, PeerError]): IO[Unit] =

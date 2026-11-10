@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node
 import cats.effect.{Deferred, FiberIO, IO, Resource}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.network.FailsOnUncaught
+import xyz.kd5ujc.scarab.network.{FailsOnUncaught, Settled}
 import xyz.kd5ujc.scarab.network.selection.FetchMode
 import scala.concurrent.duration.*
 
@@ -80,6 +80,32 @@ class BlockPoolSuite extends FailsOnUncaught:
         claims.fill(Vector(hash(1) -> block(1))) *> waiting.joinWithNever
       }
     yield assertEquals(got, Some(block(1)))
+  }
+
+  test("delivery observation waits before a claim and retains an already delivered original") {
+    Settled { settle =>
+      for
+        pool <- BlockPool.create[IO]
+        seen <- cats.effect.Ref.of[IO, Option[Bytes]](None)
+        _ <- pool.session.use { claims =>
+          Resource
+            .make(pool.awaitDelivered(hash(1)).flatTap(b => seen.set(Some(b))).start)(_.cancel)
+            .use { waiting =>
+              for
+                _ <- settle
+                before <- seen.get
+                _ <- IO(assertEquals(before, None))
+                _ <- claims.claim(Vector(hash(1)))
+                _ <- claims.fill(Vector(hash(1) -> block(1)))
+                delivered <- waiting.joinWithNever
+                cached <- pool.awaitDelivered(hash(1))
+              yield
+                assertEquals(delivered, block(1))
+                assertEquals(cached, delivered)
+            }
+        }
+      yield ()
+    }
   }
 
   test("a released claim sends the waiter to fetch the block itself, and it can be claimed again") {

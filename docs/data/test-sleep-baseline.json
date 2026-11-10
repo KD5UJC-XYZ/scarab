@@ -91,10 +91,6 @@
   "node/src/test/scala/xyz/kd5ujc/scarab/node/CachedBlockAttributionSuite.scala": {
    "sleep": 3
   },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/CachedBlockSourceSuite.scala": {
-   "deliveredBody": 1,
-   "sleep": 1
-  },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/FetchCoordinationBenchSuite.scala": {
    "sleep": 4
   },
@@ -114,7 +110,6 @@
    "sleep": 5
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/GenesisFetchCoordinatorSuite.scala": {
-   "cede": 1,
    "sleep": 1
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/GenesisGovernorSuite.scala": {
@@ -141,9 +136,6 @@
   "node/src/test/scala/xyz/kd5ujc/scarab/node/LedgerPeersWiringSuite.scala": {
    "sleep": 4
   },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/OutboundLinkIdentitySuite.scala": {
-   "cede": 2
-  },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/PeerHeaderMetricsSuite.scala": {
    "sleep": 1
   },
@@ -165,10 +157,6 @@
   "node/src/test/scala/xyz/kd5ujc/scarab/node/StallWatchdogSuite.scala": {
    "sleep": 15
   },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/WorkerTesting.scala": {
-   "deliveredBody": 2,
-   "sleep": 1
-  },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/forge/ForgeSuite.scala": {
    "sleep": 8
   },
@@ -183,9 +171,6 @@
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/governor/ChurnLoopSuite.scala": {
    "sleep": 5
-  },
-  "node/src/test/scala/xyz/kd5ujc/scarab/node/governor/FortyBearersSuite.scala": {
-   "sleep": 1
   },
   "node/src/test/scala/xyz/kd5ujc/scarab/node/governor/MockEnvironment.scala": {
    "sleep": 7
