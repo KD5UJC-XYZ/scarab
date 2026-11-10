@@ -72,6 +72,17 @@ class SocketTransportSuite extends FailsOnUncaught:
     }
   }
 
+  test("a node listening on the wildcard address dials from its port on the interface it uses") {
+    TcpSockets
+      .listen[IO](SocketAddress(ip"0.0.0.0", Port.Wildcard))
+      .evalMap(r => IO(r.fold(e => fail(s"listen failed: $e"), identity)))
+      .use { node =>
+        seenFrom(own(node.address), DiffusionMode.InitiatorAndResponder).map(seen =>
+          assertEquals(seen, SocketAddress[IpAddress](ip"127.0.0.1", node.address.port))
+        )
+      }
+  }
+
   /** What a side serves: an empty chain. */
   private def handlers: ServerHandlers[IO, NtNHeader] =
     val cursor = new ChainSyncServer.Source[IO, NtNHeader]:
