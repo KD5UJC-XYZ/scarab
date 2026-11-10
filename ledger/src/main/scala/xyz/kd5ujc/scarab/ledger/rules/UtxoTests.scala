@@ -19,6 +19,7 @@ import xyz.kd5ujc.scarab.ledger.{
   UtxoFailure,
   Value
 }
+import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
 
 /** The predicates of UTXO as the reference writes them, each a pure [[Test]] that reports every
   * offending item (cardano-ledger `f649f975`: `Shelley/Rules/Utxo.hs:412-560`,
@@ -138,9 +139,10 @@ object UtxoTests:
   def bootAddrAttrsTooBig(outs: Vector[TxOut]): Test[PredicateFailure] =
     nonEmpty(bootstrapAttrsOver64(outs))(_.isEmpty)(UtxoFailure.OutputBootAddrAttrsTooBig(_))
 
-  /** [[bootAddrAttrsTooBig]] as the UTXO of the era of `pp` reports it under `build` 's rules.
-    * Shelley's UTXO reports Shelley's failure itself. Every later era injects it through
-    * `shelleyToAllegraUtxoPredFailure`, and the builds differ there:
+  /** [[bootAddrAttrsTooBig]] as the UTXO of an era from Allegra on reports it under `build` 's
+    * rules. Shelley's UTXO reports Shelley's failure itself; every later era injects it through
+    * `shelleyToAllegraUtxoPredFailure`, by era and whatever the protocol version, and the builds
+    * differ there:
     *
     *   - 11.1 (cardano-ledger f649f975): it becomes Allegra's `OutputTooBigUTxO`
     *     (`Allegra/Rules/Utxo.hs:374-387`), and the injections of Alonzo, Babbage and Conway give
@@ -155,14 +157,14 @@ object UtxoTests:
     */
   def injectedBootAddrAttrsTooBig(
       build: ReferenceBuild,
-      pp: ProtocolParams,
       outs: Vector[TxOut]
-  ): Test[PredicateFailure] = build match
-    case ReferenceBuild.Release11_1 if pp.protocolMajor > 2 =>
-      nonEmpty(bootstrapAttrsOver64(outs))(_.isEmpty)(big =>
-        UtxoFailure.OutputTooBig(big.map((0, 0, _)))
-      )
-    case ReferenceBuild.Release11_1 | ReferenceBuild.LeiosB004fe0c => bootAddrAttrsTooBig(outs)
+  ): Test[PredicateFailure] =
+    build match
+      case ReferenceBuild.Release11_1 =>
+        nonEmpty(bootstrapAttrsOver64(outs))(_.isEmpty)(big =>
+          UtxoFailure.OutputTooBig(big.map((0, 0, _)))
+        )
+      case ReferenceBuild.LeiosB004fe0c => bootAddrAttrsTooBig(outs)
 
   /** `validateMaxTxSizeUTxO` (`Shelley/Rules/Utxo.hs:554-570`). */
   def maxTxSize(pp: ProtocolParams, tx: Tx): Test[PredicateFailure] =
@@ -303,14 +305,18 @@ object UtxoTests:
     )
 
   /** What UTXO checks of a transaction of Shelley, Allegra or Mary after PPUP
-    * (`Shelley/Rules/Utxo.hs:393-403`, `Allegra/Rules/Utxo.hs:202-216`).
+    * (`Shelley/Rules/Utxo.hs:393-403`, `Allegra/Rules/Utxo.hs:202-216`). The bootstrap attributes
+    * failure is Shelley's own in Shelley and injected from Allegra, by the era of `pre`.
     */
-  def shelleyAfterPpup(build: ReferenceBuild, pp: ProtocolParams, tx: Tx): Test[PredicateFailure] =
+  def shelleyAfterPpup[E <: EraTag](build: ReferenceBuild, pp: ProtocolParams, tx: Tx)(using
+      pre: PreConway[E]
+  ): Test[PredicateFailure] =
     val outs = tx.body.outputs
     Test.all(
       outputTooSmall(pp, outs),
       (if pp.protocolMajor >= 3 then outputTooBig(pp, outs) else Test.pass[PredicateFailure]),
-      injectedBootAddrAttrsTooBig(build, pp, outs),
+      (if pre.atLeast(ShelleyBasedEra.SAllegra) then injectedBootAddrAttrsTooBig(build, outs)
+       else bootAddrAttrsTooBig(outs)),
       maxTxSize(pp, tx)
     )
 
@@ -337,7 +343,7 @@ object UtxoTests:
       valueNotConserved(consumed, produced),
       outputTooSmall(pp, outs),
       outputTooBig(pp, outs),
-      env.static(injectedBootAddrAttrsTooBig(env.referenceBuild, pp, outs)),
+      env.static(injectedBootAddrAttrsTooBig(env.referenceBuild, outs)),
       env.static(wrongNetwork(network, outs)),
       env.static(wrongNetworkWithdrawal(network, body)),
       env.static(wrongNetworkInTxBody(network, body)),
@@ -372,7 +378,7 @@ object UtxoTests:
       valueNotConserved(consumed, produced),
       outputTooSmall(pp, outs),
       outputTooBig(pp, outs),
-      env.static(injectedBootAddrAttrsTooBig(env.referenceBuild, pp, outs)),
+      env.static(injectedBootAddrAttrsTooBig(env.referenceBuild, outs)),
       env.static(wrongNetwork(network, outs)),
       env.static(wrongNetworkWithdrawal(network, body)),
       env.static(wrongNetworkInTxBody(network, body)),

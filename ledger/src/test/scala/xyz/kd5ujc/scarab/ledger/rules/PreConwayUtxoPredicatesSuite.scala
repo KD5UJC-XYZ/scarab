@@ -49,13 +49,14 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
     )
     Address.decode(raw).fold(e => fail(e.toString), identity)
 
-  /** What an era's UTXO reports for outputs whose bootstrap attributes are over 64 bytes: Shelley
-    * its own `OutputBootAddrAttrsTooBig`, every later era `OutputTooBigUTxO` with sizes 0 and 0
-    * (`Allegra/Rules/Utxo.hs:387`, `Alonzo/Rules/Utxo.hs:749`, `Conway/Rules/Utxo.hs:426`).
+  /** What an era's UTXO reports under 11.1 for outputs whose bootstrap attributes are over 64
+    * bytes: Shelley its own `OutputBootAddrAttrsTooBig`, every later era (`injected`)
+    * `OutputTooBigUTxO` with sizes 0 and 0 (`Allegra/Rules/Utxo.hs:387`,
+    * `Alonzo/Rules/Utxo.hs:749`, `Conway/Rules/Utxo.hs:426`), by era and not by protocol version.
     */
-  private def attrsTooBig(major: Int, outs: Vector[TxOut]): UtxoFailure =
-    if major <= 2 then UtxoFailure.OutputBootAddrAttrsTooBig(outs)
-    else UtxoFailure.OutputTooBig(outs.map((0, 0, _)))
+  private def attrsTooBig(injected: Boolean, outs: Vector[TxOut]): UtxoFailure =
+    if injected then UtxoFailure.OutputTooBig(outs.map((0, 0, _)))
+    else UtxoFailure.OutputBootAddrAttrsTooBig(outs)
 
   private def transaction(
       outputs: Vector[TxOut],
@@ -160,7 +161,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
         assert(validate(allowed).isValid)
         val tx = paying(bootstrap(65, Some(42), derivation), valid)
         val original = tx.body.raw
-        rejected(tx, attrsTooBig(major, tx.body.outputs))
+        rejected(tx, attrsTooBig(pre.atLeast(ShelleyBasedEra.SAllegra), tx.body.outputs))
         assertEquals(tx.body.raw, original)
     }
 
@@ -180,7 +181,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       val wrong = TestLedger.out(alice.address(1), funds / 2 - fee)
       rejected(
         transaction(Vector(big, wrong)),
-        attrsTooBig(major, Vector(big)),
+        attrsTooBig(pre.atLeast(ShelleyBasedEra.SAllegra), Vector(big)),
         UtxoFailure.WrongNetwork(0, Set(big.address.raw, wrong.address.raw))
       )
       val byron = big.copy(address = bootstrap(64, None))
@@ -219,7 +220,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
           val big = TestLedger.out(bootstrap(65, Some(42)), funds)
           rejected(
             transaction(ordinary, returned = Some(big), isValid = valid),
-            attrsTooBig(major, Vector(big))
+            attrsTooBig(pre.atLeast(ShelleyBasedEra.SAllegra), Vector(big))
           )
           val wrong = TestLedger.out(bootstrap(64, None), funds)
           rejected(
@@ -259,7 +260,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
         val tx =
           transaction(Vector(TestLedger.out(bootstrap(65, Some(42), derivation), funds - fee)))
         val original = tx.body.raw
-        rejected(tx, attrsTooBig(major, tx.body.outputs))
+        rejected(tx, attrsTooBig(pre.atLeast(ShelleyBasedEra.SAllegra), tx.body.outputs))
         assertEquals(tx.body.raw, original)
         assertEquals(funded.utxo.utxo.utxo, utxo)
     }
@@ -275,7 +276,11 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
         1
       )
       val balanced = transaction(Vector(out.copy(value = Value.coin(funds - fee))))
-      rejected(balanced, attrsTooBig(major, balanced.body.outputs), 1)
+      rejected(
+        balanced,
+        attrsTooBig(pre.atLeast(ShelleyBasedEra.SAllegra), balanced.body.outputs),
+        1
+      )
       val allowed = transaction(Vector(TestLedger.out(bootstrap(64, None), funds - fee)))
       assert(admit(allowed, 1).isRight)
     }
@@ -303,22 +308,27 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       Test.failures(ConwayUtxo.validate(UtxoEnv(env(build), pp, cert), StAnnTx(tx, utxo), 0, 0))
     ReferenceBuild.values.foreach { build =>
       // 11.1 injects Shelley's failure as `OutputTooBigUTxO` from Allegra; the Leios build keeps it
-      def expected(major: Int) = build match
-        case ReferenceBuild.Release11_1   => attrsTooBig(major, big)
+      def expected(injected: Boolean) = build match
+        case ReferenceBuild.Release11_1   => attrsTooBig(injected, big)
         case ReferenceBuild.LeiosB004fe0c => UtxoFailure.OutputBootAddrAttrsTooBig(big)
+      // the usual version of each era, then Shelley and Allegra each at the other's version: the
+      // injection follows the era (`Allegra/Rules/Utxo.hs:374-387`), and a chain whose eras are set
+      // by epoch keeps its genesis version across a hard fork
       val judged = Vector(
-        2 -> preConway[Shelley](2, build),
-        3 -> preConway[Allegra](3, build),
-        4 -> preConway[Mary](4, build),
-        5 -> preConway[Alonzo](5, build),
-        7 -> preConway[Babbage](7, build),
-        9 -> conway(build)
+        ("Shelley 2", false, preConway[Shelley](2, build)),
+        ("Allegra 3", true, preConway[Allegra](3, build)),
+        ("Mary 4", true, preConway[Mary](4, build)),
+        ("Alonzo 5", true, preConway[Alonzo](5, build)),
+        ("Babbage 7", true, preConway[Babbage](7, build)),
+        ("Conway 9", true, conway(build)),
+        ("Shelley 3", false, preConway[Shelley](3, build)),
+        ("Allegra 2", true, preConway[Allegra](2, build))
       )
-      judged.foreach { (major, failures) =>
+      judged.foreach { (name, injected, failures) =>
         assertEquals(
           failures.map(_.iterator.toList),
-          Some(List(PredicateFailure.utxo(expected(major)))),
-          s"$build $major"
+          Some(List(PredicateFailure.utxo(expected(injected)))),
+          s"$build $name"
         )
       }
     }
@@ -421,11 +431,12 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
         .toSet ++
         bootstrap.collect { case (out, address) if address.network != network => out.address.raw }
       // every failing predicate, in the order of the rule; Alonzo's UTXO does not count the
-      // collateral inputs (`Alonzo/Rules/Utxo.hs:570-572`), Babbage's does last
+      // collateral inputs (`Alonzo/Rules/Utxo.hs:570-572`), Babbage's does last; both eras inject
+      // the attributes failure
       val expected = Vector(
         Option.when(!passed("attributes"))(
           attrsTooBig(
-            major,
+            true,
             bootstrap.collect {
               case (out, address) if address.attributesSize > 64 => out
             }

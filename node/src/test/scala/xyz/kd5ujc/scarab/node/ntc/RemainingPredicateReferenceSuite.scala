@@ -129,8 +129,8 @@ class RemainingPredicateReferenceSuite extends FunSuite:
     * cardano-ledger f649f975; #832). The reference-refusal corpus records that injected failure
     * from the node itself. `WrongNetwork` is the same constructor in both.
     */
-  private def injected(major: Int, native: Bytes): Bytes =
-    if major >= 3 && native.take(2) == Bytes(Vector(0x82, 0x0a).map(_.toByte)) then
+  private def injected(era: Era, native: Bytes): Bytes =
+    if era != Era.Shelley && native.take(2) == Bytes(Vector(0x82, 0x0a).map(_.toByte)) then
       Bytes(Vector(0x82, 0x0c).map(_.toByte)) ++ native.drop(2)
     else native
 
@@ -205,6 +205,6 @@ class RemainingPredicateReferenceSuite extends FunSuite:
             val ledger = array(list.original).headOption.getOrElse(fail("LEDGER error"))
             val utxow = array(ledger.original)(1)
             val utxo = array(utxow.original)(1)
-            assertEquals(utxo.original, injected(major, hex(native)), s"$major $name")
+            assertEquals(utxo.original, injected(era, hex(native)), s"$major $name")
     }
   }
