@@ -168,6 +168,11 @@ def wait_reuse(args, log):
     return seen
 
 
+# a negotiated duplex connection, in any use; the governor may already have reused it, the relay being
+# known from its own connection through peer sharing (`KnownPeers.hs` 96-237)
+DUPLEX = ("InboundIdleSt Duplex", "InboundSt Duplex", "DuplexSt", "OutboundDupSt Ticking", "OutboundDupSt Expired")
+
+
 def wait_relay_connected(args):
     """Wait for the relay's own duplex connection to the Scala node, negotiated."""
     deadline = time.monotonic() + args.sync_timeout
@@ -175,7 +180,7 @@ def wait_relay_connected(args):
     while time.monotonic() < deadline:
         seen = scala_connections(args)
         states = [c["state"] for c in relay_connections(seen)]
-        if any(state in ("InboundIdleSt Duplex", "InboundSt Duplex") for state in states):
+        if any(state in DUPLEX for state in states):
             return seen
         time.sleep(1)
     return seen
@@ -415,7 +420,7 @@ def relay(args):
                 failures.append(f"the Scala node dialled the relay, which is behind a firewall: {dialled[:2]}")
             if len(relay_states) != 1:
                 failures.append(f"not exactly one connection to the relay at the end: {relay_states}")
-            elif relay_states[0] not in ("DuplexSt", "OutboundDupSt Ticking", "OutboundDupSt Expired"):
+            elif relay_states[0] not in DUPLEX[2:]:
                 failures.append(f"the relay's connection is not in duplex use at the end: {relay_states}")
             if relay_temperature(final_connections) != "hot":
                 failures.append(f"the relay is not hot at the end: {relay_temperature(final_connections)}")
