@@ -222,7 +222,7 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
   }
 
   // Consensus uses decodeListLen/enforceSize; ledger decodeRecordNamedT permits indefinite arrays.
-  Vector(
+  private val consensusPaths = Vector(
     "version" -> List.empty[Int],
     "extended state" -> List(1),
     "ledger telescope" -> List(1, 0),
@@ -241,13 +241,16 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
     "current header" -> List(1, 1, 1, 6),
     "Praos version" -> List(1, 1, 1, 6, 1),
     "Praos state" -> List(1, 1, 1, 6, 1, 1),
-    "Praos last slot" -> List(1, 1, 1, 6, 1, 1, 0),
+    "Praos last slot" -> List(1, 1, 1, 6, 1, 1, 0)
+  )
+  private val perasPaths = Vector(
     "Peras state" -> List(1, 2),
     "Peras resolver" -> List(1, 2, 0),
     "current Peras context" -> List(1, 2, 0, 1),
     "previous Peras context" -> List(1, 2, 0, 2),
     "Peras round" -> List(1, 2, 1)
-  ).foreach { (label, path) =>
+  )
+  (consensusPaths ++ perasPaths).foreach { (label, path) =>
     test(s"Leios consensus $label requires a definite array") {
       val bytes = indefiniteAt(tree(conway), path)
       assert(
@@ -260,6 +263,46 @@ class LeiosLayoutSuite extends ScalaCheckSuite:
   test("Leios ledger records retain the reference's indefinite-array acceptance") {
     val bytes = indefiniteAt(tree(conway), List(1, 0, 6, 1, 1, 1))
     assert(read(LeiosStateCodecs.haskellLedgerFile, bytes).isRight, "NewEpochState")
+  }
+
+  private def stableFixture(name: String): Bytes =
+    Bytes.wrap(Files.readAllBytes(Path.of(s"fixtures/haskell-state/$name/state")))
+
+  private val stableConway = stableFixture("conway-4593")
+  private val stableShelley = stableFixture("shelley-1000")
+
+  consensusPaths.foreach { (label, path) =>
+    test(s"11.1 consensus $label requires a definite array") {
+      val bytes = indefiniteAt(tree(stableConway), path)
+      assert(
+        failure(HaskellStateCodecs.haskellLedgerFile, bytes).kind.isInstanceOf[Kind.TypeMismatch],
+        label
+      )
+    }
+  }
+
+  Vector(
+    "TPraos version" -> List(1, 1, 1, 1, 1),
+    "TPraos state" -> List(1, 1, 1, 1, 1, 1),
+    "TPraos last slot" -> List(1, 1, 1, 1, 1, 1, 0)
+  ).foreach { (label, path) =>
+    test(s"11.1 consensus $label requires a definite array") {
+      val bytes = indefiniteAt(tree(stableShelley), path)
+      assert(
+        failure(HaskellStateCodecs.haskellLedgerFile, bytes).kind.isInstanceOf[Kind.TypeMismatch],
+        label
+      )
+    }
+  }
+
+  Vector(
+    ("Conway", stableConway, List(1, 0, 6, 1, 1, 1)),
+    ("Shelley", stableShelley, List(1, 0, 1, 1, 1, 1))
+  ).foreach { (era, fixture, path) =>
+    test(s"11.1 $era ledger records retain the reference's indefinite-array acceptance") {
+      val bytes = indefiniteAt(tree(fixture), path)
+      assert(read(HaskellStateCodecs.haskellLedgerFile, bytes).isRight, "NewEpochState")
+    }
   }
 
   // ---- the captured state files

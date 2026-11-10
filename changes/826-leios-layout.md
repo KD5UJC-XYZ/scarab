@@ -5,3 +5,6 @@
   Shelley-based era up to Conway (its Dijkstra state is still refused), and an imported snapshot
   exports with the reference's bytes unchanged. `follow` still refuses the build at start, now
   because its rules are not implemented yet.
+
+- Consensus state envelopes require definite CBOR arrays under both reference builds, matching
+  their decoders. Ledger records retain the indefinite framing accepted by the reference.

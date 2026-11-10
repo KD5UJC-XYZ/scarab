@@ -29,8 +29,10 @@ import Wire.*
 object Envelope:
   /** Consensus array framing in the selected layout; ledger record framing is independent. */
   def arrayNode(layout: StateLayout, n: Node): Decoded[Node] =
-    if layout == StateLayout.Leios && n.isIndefinite then Left(Codec.mismatch("definite array", n))
-    else Right(n)
+    layout match
+      case StateLayout.Node11_1 | StateLayout.Leios =>
+        if n.isIndefinite then Left(Codec.mismatch("definite array", n))
+        else Right(n)
 
   def arrayIn[A](layout: StateLayout, inner: Codec[A]): Codec[A] = new Codec[A]:
     def decode(n: Node): Decoded[A] = arrayNode(layout, n).flatMap(inner.decode)
