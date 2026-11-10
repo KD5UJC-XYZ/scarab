@@ -420,11 +420,16 @@ final class OutboundPeers[F[_]: Async, A] private (
       yield next
     }
     // the monitor of one connection that fails ends that connection, not the node (issue 567); if
-    // ending it fails too, the node's own connection state is broken, and that stops the node
-    loop.handleErrorWith(cause =>
-      (link.warm.mux.abort(NetworkError.Defect(cause)) *> lost(PeerError.ConnectionDefect(cause)))
+    // ending it fails too, the node's own connection state is broken, and that stops the node.
+    // The defect is retained in the application results before the release, as every other abort
+    // here does: the connection's own race of the release against the mux's closure may see the
+    // release first, and an application asleep between messages never completes on its own
+    loop.handleErrorWith { cause =>
+      val defect = NetworkError.Defect(cause)
+      (link.warm.applications.abortRunning(defect) *> link.warm.mux.abort(defect) *>
+        lost(PeerError.ConnectionDefect(cause)))
         .handleErrorWith(again => fatal(Fatal.Defect(again)))
-    )
+    }
 
   /** Match the adding hot BlockFetch client, never a later activation on the same bearer. The
     * bounded pool reporter retains only immutable metadata; resource-owned callbacks disappear
