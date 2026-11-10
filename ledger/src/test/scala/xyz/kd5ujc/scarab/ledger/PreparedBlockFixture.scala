@@ -46,11 +46,13 @@ object PreparedBlockFixture:
       collateral = Vector(TestLedger.txIn(i * 2 + 1))
     )
     val unsigned = TestLedger.tx(b, Vector.empty, witnesses)
-    val integrity = ScriptIntegrity.hash(unsigned, params, Set(script.kind))
+    val integrity = ScriptIntegrity.hash[Conway](unsigned, params, Set(script.kind))
     TestLedger.tx(b.copy(scriptDataHash = integrity), Vector(owner), witnesses)
   }
-  private def resign(tx: Tx, pp: ProtocolParams = params): Tx =
-    val integrity = ScriptIntegrity.hash(tx, pp, Set(script.kind))
+  private def resign[E <: EraTag](tx: Tx, pp: ProtocolParams = params)(using
+      ShelleyBasedEra[E]
+  ): Tx =
+    val integrity = ScriptIntegrity.hash[E](tx, pp, Set(script.kind))
     TestLedger.tx(
       tx.body.copy(scriptDataHash = integrity),
       Vector(owner),
@@ -59,12 +61,12 @@ object PreparedBlockFixture:
     )
 
   val dependent: Vector[Tx] =
-    val first = resign(
+    val first = resign[Conway](
       txs(0).copy(body =
         txs(0).body.copy(outputs = Vector(scriptOutput.copy(value = Value.coin(9000000))))
       )
     )
-    val second = resign(
+    val second = resign[Conway](
       txs(1).copy(body =
         txs(1).body.copy(
           inputs = Vector(TxIn(first.body.id, 0)),
@@ -130,7 +132,7 @@ object PreparedBlockFixture:
 
   val collectionFailure: Vector[Tx] = txs.updated(
     1,
-    resign(
+    resign[Conway](
       txs(1).copy(witnesses =
         txs(1).witnesses
           .copy(redeemers = txs(1).witnesses.redeemers.map(_.copy(data = Bytes.empty)))
@@ -140,7 +142,7 @@ object PreparedBlockFixture:
 
   def babbage(evaluator: ScriptEvaluator[Id]): EraBlock.Body =
     val pp = params.copy(protocolMajor = 8)
-    val transactions = txs.map(resign(_, pp))
+    val transactions = txs.map(resign[Babbage](_, pp))
     val emptyState = NewEpochState.empty[Babbage](EpochNo.fromBigInt(5).toOption.get, pp)
     val from = emptyState.copy[Babbage](es =
       emptyState.es.copy[Babbage](ls =

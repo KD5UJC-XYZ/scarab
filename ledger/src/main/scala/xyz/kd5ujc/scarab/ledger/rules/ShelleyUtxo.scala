@@ -457,7 +457,12 @@ object ShelleyUtxow:
         val genDelegs = ShelleyCertLens.genDelegs.get(env.cert)
         for
           _ <- Utxow.record[F](
-            Utxow.checks(env, PreConway.genDelegs(genDelegs), ann, mirSigned(env, ann, genDelegs))
+            Utxow.checks[E](
+              env,
+              PreConway.genDelegs(genDelegs),
+              ann,
+              mirSigned(env, ann, genDelegs)
+            )(using pre.era)
           )
           _ <- JudgedSts.trans[F, UtxoEnv[ShelleyCertState], Counted[UTxOState[E]], Counted[
             UTxOState[E]

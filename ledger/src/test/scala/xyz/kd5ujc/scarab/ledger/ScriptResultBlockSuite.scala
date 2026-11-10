@@ -50,7 +50,9 @@ class ScriptResultBlockSuite extends FunSuite:
       val witnesses = recorded.tx.witnesses.copy(vkeys = Vector.empty, raw = None)
       val unsigned = TestLedger.tx(b, Vector.empty, witnesses, valid)
       val integrity =
-        ScriptIntegrity.hash(unsigned, pp, recorded.tx.witnesses.scripts.map(_.kind).toSet)
+        ScriptIntegrity.hash(unsigned, pp, recorded.tx.witnesses.scripts.map(_.kind).toSet)(using
+          TestLedger.usualEra((pp).protocolMajor.toInt)
+        )
       TestLedger.tx(b.copy(scriptDataHash = integrity), Vector(owner), witnesses, valid)
     }
     val utxo = Utxo.empty ++ transactions.flatMap(t =>

@@ -82,10 +82,10 @@ follower (no Docker); `EpochGeometrySuite` has the era-history properties.
 ## Ledger: Shelley to Babbage
 
 `MirrorRules` applies the full ledger to every Shelley-based block, on the Haskell-shaped, era-indexed state (`ledger/rules/`; the flat rules and state of the first versions were removed in J2.9). The rule of each
-era is chosen by the era witness (`PreConway[E]`, `ShelleyBasedEra[E]`), and UTXO's checks follow the era whatever the
-protocol version, as the reference's rule of each era does (#867): a chain that starts an era by `Test<Era>HardForkAtEpoch`
-keeps the version of the era before it. The UTXOW, UTXOS, BBODY, script-context and parameter sites that still follow the
-protocol major version of the parameters in force are #880 to #884; the reference's own version tests (`hardfork*`) stay
+era is chosen by the era witness (`PreConway[E]`, `ShelleyBasedEra[E]`), and UTXO's and UTXOW's checks follow the era whatever the
+protocol version, as the reference's rule of each era does (#867, #880): a chain that starts an era by `Test<Era>HardForkAtEpoch`
+keeps the version of the era before it. The UTXOS, BBODY, script-context and parameter sites that still follow the
+protocol major version of the parameters in force are #881 to #884; the reference's own version tests (`hardfork*`) stay
 tests of the version.
 
 - **Decoding** (`ledger/Tx.scala`, `Scripts.scala`): transaction bodies of every era (keys 0-18),

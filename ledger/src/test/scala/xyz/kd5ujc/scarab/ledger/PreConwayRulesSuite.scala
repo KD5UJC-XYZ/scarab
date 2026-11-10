@@ -553,7 +553,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       tx(bodyWith(None), Vector(alice), wits),
       pp,
       Set(ScriptKind.PlutusV1)
-    )
+    )(using TestLedger.usualEra((pp).protocolMajor.toInt))
     val b = bodyWith(hash)
     def attempt(succeeds: Boolean, isValid: Boolean, body: TxBody = b) =
       run(
@@ -606,7 +606,9 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val checked = tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts))
     rule(
       TxChecks
-        .scriptsWellFormed(TestLedger.params(protocol), checked, env)
+        .scriptsWellFormed(TestLedger.params(protocol), checked, env)(using
+          TestLedger.usualEra((TestLedger.params(protocol)).protocolMajor.toInt)
+        )
         .flatMap(TestLedger.verdict(checked.body.id, _))
     )
 

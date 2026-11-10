@@ -71,7 +71,9 @@ class HistoricalAuxiliarySuite extends FunSuite:
           )
           assertEquals(
             TxChecks
-              .auxiliaryChecks(TestLedger.params(major), tx, TestLedger.env)
+              .auxiliaryChecks(TestLedger.params(major), tx, TestLedger.env)(using
+                TestLedger.usualEra((TestLedger.params(major)).protocolMajor.toInt)
+              )
               .flatMap(TestLedger.verdict(tx.body.id, _)),
             Right(())
           )
@@ -81,7 +83,9 @@ class HistoricalAuxiliarySuite extends FunSuite:
         assertEquals(parsed.isRight, decoded)
         parsed.foreach { tx =>
           val checked = TxChecks
-            .auxiliaryChecks(TestLedger.params(major), tx, TestLedger.env)
+            .auxiliaryChecks(TestLedger.params(major), tx, TestLedger.env)(using
+              TestLedger.usualEra((TestLedger.params(major)).protocolMajor.toInt)
+            )
             .flatMap(TestLedger.verdict(tx.body.id, _))
           val wanted = failures(row)
           // The auxiliary bytes reach the predicate exactly as supplied.

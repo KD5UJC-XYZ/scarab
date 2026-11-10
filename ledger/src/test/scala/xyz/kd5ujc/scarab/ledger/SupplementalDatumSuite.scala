@@ -44,7 +44,12 @@ class SupplementalDatumSuite extends FunSuite:
     )
 
   private def check(pp: ProtocolParams, tx: Tx, referenced: Vector[TxOut] = Vector.empty) =
-    TestLedger.verdict(tx.body.id, TxChecks.datumChecks(pp, tx, spent, referenced, scripts))
+    TestLedger.verdict(
+      tx.body.id,
+      TxChecks.datumChecks(tx, spent, referenced, scripts)(using
+        TestLedger.usualEra((pp).protocolMajor.toInt)
+      )
+    )
 
   private def notAllowed(unallowed: Set[Bytes], acceptable: Set[Bytes]) =
     Left(
@@ -60,7 +65,9 @@ class SupplementalDatumSuite extends FunSuite:
       TestLedger.verdict(
         base.tx.body.id,
         rules.Test.all(
-          TxChecks.datumChecks(base.params, base.tx, spent, Vector.empty, scripts),
+          TxChecks.datumChecks(base.tx, spent, Vector.empty, scripts)(using
+            TestLedger.usualEra((base.params).protocolMajor.toInt)
+          ),
           TxChecks.redeemerChecks(base.tx, spent, scripts, needed)
         )
       ),
@@ -113,7 +120,9 @@ class SupplementalDatumSuite extends FunSuite:
     val body = base.tx.body.copy(collateralReturn = Some(ref))
     val outputsOnly = base.tx.body.copy(collateralReturn = None)
     def supplemental(pv: Int, b: TxBody, refs: Vector[TxOut]) =
-      TxChecks.supplementalDatumHashes(TestLedger.params(pv), b, refs)
+      TxChecks.supplementalDatumHashes(b, refs)(using
+        TestLedger.usualEra((TestLedger.params(pv)).protocolMajor.toInt)
+      )
     assertEquals(supplemental(5, outputsOnly, Vector(ref)), Set.empty[Bytes])
     assertEquals(supplemental(6, outputsOnly, Vector(ref)), Set.empty[Bytes])
     assertEquals(supplemental(7, outputsOnly, Vector(ref)), Set(h))
@@ -223,12 +232,11 @@ class SupplementalDatumSuite extends FunSuite:
         TestLedger.verdict(
           r.tx.body.id,
           TxChecks.datumChecks(
-            TestLedger.params(pv),
             r.tx,
             r.tx.body.inputs.zip(spent).toMap,
             Vector.empty,
             Map.empty
-          )
+          )(using TestLedger.usualEra((TestLedger.params(pv)).protocolMajor.toInt))
         ),
         Left(
           LedgerFailure.Rejected(
@@ -255,12 +263,11 @@ class SupplementalDatumSuite extends FunSuite:
       TestLedger.verdict(
         only.body.id,
         TxChecks.datumChecks(
-          base.params,
           only,
           Map(only.body.inputs.head -> keyOut),
           Vector.empty,
           Map.empty
-        )
+        )(using TestLedger.usualEra((base.params).protocolMajor.toInt))
       ),
       Left(
         LedgerFailure.Rejected(
