@@ -92,6 +92,14 @@ object LedgerSnapshotExport:
       case other                       => other.toString
 
   def run[F[_]: Async](config: Config)(using errors: Handle[F, Error]): F[Report] =
+    run(config, Async[F].unit)
+
+  /** As [[run]], notifying `written` after table bytes reach the staging stream, while its files
+    * and database ownership are still held. A test can hold the writer and cancel it there.
+    */
+  private[storage] def run[F[_]: Async](config: Config, written: F[Unit])(using
+      errors: Handle[F, Error]
+  ): F[Report] =
     val F = Async[F]
     val files = Files.forAsync[F]
     given Raise[F, StorageError] = new Raise[F, StorageError]:
@@ -155,7 +163,10 @@ object LedgerSnapshotExport:
         .use { (raw, out) =>
           SnapshotTableStream
             .writeOutputs[F, E](count, store.entries)(bytes =>
-              guard(target.toString)(out.write(bytes.unsafeArray, bytes.unsafeOffset, bytes.size))
+              guard(target.toString)(
+                out.write(bytes.unsafeArray, bytes.unsafeOffset, bytes.size)
+              ) *>
+                written
             )
             .flatTap(_ =>
               guard(target.toString) {

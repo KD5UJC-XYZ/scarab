@@ -193,12 +193,6 @@
   "node/src/test/scala/xyz/kd5ujc/scarab/node/governor/PeerSharingLoopSuite.scala": {
    "sleep": 5
   },
-  "node/src/test/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshotExportSuite.scala": {
-   "awakeEvery": 1
-  },
-  "node/src/test/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshotImportSuite.scala": {
-   "sleep": 1
-  },
   "storage/src/test/scala/xyz/kd5ujc/scarab/storage/scls/SclsEntrySorterSuite.scala": {
    "sleep": 1
   }
