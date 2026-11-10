@@ -22,10 +22,10 @@ Part of [Performance](../performance.md). The tables and listings are copied fro
 
 Each figure is a round's wall time divided by the lines it issued. With one fiber that is the cost of one `tell`. With several fibers it is a line's share of the aggregate, so the four- and sixteen-fiber rows give the router's throughput under contention, not the latency of one call.
 
-**Setup.** The harness is `node/src/test/scala/xyz/kd5ujc/scarab/node/log/LogRouterBenchMain.scala` at 122786612, a test-scope main outside `check`. Both runs used one container of `scarab-jdk:local` (the pinned JDK) with `--cpuset-cpus=0-7`, so the JVM saw eight processors (the `HOST` line), on an otherwise idle host, and the sink was emptied before every round, so each `DIGEST` is one round's bytes. Command, inside the container described in [CONTRIBUTING.md](../../CONTRIBUTING.md#build-docker-only):
+**Setup.** The harness is `tools/src/main/scala/xyz/kd5ujc/scarab/node/log/LogRouterBenchMain.scala` at 122786612, a test-scope main outside `check`. Both runs used one container of `scarab-jdk:local` (the pinned JDK) with `--cpuset-cpus=0-7`, so the JVM saw eight processors (the `HOST` line), on an otherwise idle host, and the sink was emptied before every round, so each `DIGEST` is one round's bytes. Command, inside the container described in [CONTRIBUTING.md](../../CONTRIBUTING.md#build-docker-only):
 
 ```sh
-bash scripts/sbtw "node/Test/runMain xyz.kd5ujc.scarab.node.log.LogRouterBenchMain"
+bash scripts/sbtw "tools/runMain xyz.kd5ujc.scarab.node.log.LogRouterBenchMain"
 ```
 
 <!-- register:listing perf-60.c1 -->

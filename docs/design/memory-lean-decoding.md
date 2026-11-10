@@ -28,7 +28,7 @@ Tracked in [#94](https://github.com/KD5UJC-XYZ/scarab/issues/94). The decision i
 ## 2. What was measured
 
 All runs in Docker (`scarab-jdk:local`, JDK 21, G1), `-Xmx` as stated, by the spike
-`node/src/test/scala/xyz/kd5ujc/scarab/node/Memory94Main.scala` (marked SPIKE; not part of the node).
+`tools/src/main/scala/xyz/kd5ujc/scarab/node/Memory94Main.scala` (marked SPIKE; not part of the node).
 "Retained" is the heap in use after two full collections while the result is still reachable, less
 what was in use before the stage began (the 222 MiB file content). "Min `-Xmx`" is a bisection to
 64 MiB; it includes the content array and the headroom G1 needs.

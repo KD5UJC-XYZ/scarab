@@ -33,7 +33,7 @@ without invoking their current projector and writes with `CREATE_NEW` so an exis
 be overwritten. In the Docker JDK:
 
 ```sh
-bash scripts/sbtw 'node/Test/runMain xyz.kd5ujc.scarab.node.read.ProjectionGolden /tmp/projection-candidate.tsv'
+bash scripts/sbtw 'tools/runMain xyz.kd5ujc.scarab.node.read.ProjectionGoldenMain /tmp/projection-candidate.tsv'
 ```
 
 This produces project regression data, not an independent oracle. Compare the candidate with the

@@ -70,7 +70,7 @@ Haskell projection directory at `/reference`, and a fresh writable `/scratch/out
 ```sh
 bash scripts/sbtw 'set node / Test / fork := true' \
   'set node / Test / javaOptions := Seq("-Xmx10g", "-XX:ActiveProcessorCount=4", "-Duser.dir=/work")' \
-  'node/Test/runMain xyz.kd5ujc.scarab.node.preview.K1OfflineMain /scratch/db /work/fixtures/preview/genesis /reference/index.jsonl /scratch/out 4758521 125366428 956541c0937e9cdc279514c10fec9706865bb6004ddcfb487bf53c7bbdc97ad1'
+  'tools/runMain xyz.kd5ujc.scarab.node.preview.K1OfflineMain /scratch/db /work/fixtures/preview/genesis /reference/index.jsonl /scratch/out 4758521 125366428 956541c0937e9cdc279514c10fec9706865bb6004ddcfb487bf53c7bbdc97ad1'
 ```
 
 The last three arguments are the independently staged block count, last slot and header hash.

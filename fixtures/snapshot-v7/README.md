@@ -22,7 +22,7 @@ re-derives every target from its source and compares the bytes, and `SHA256SUMS`
 Recipe (in the JDK image, from the checkout, into a directory that does not exist yet):
 
 ```sh
-bash scripts/sbtw 'node/Test/runMain xyz.kd5ujc.scarab.storage.SnapshotV7FixtureMain /work/fixtures/snapshot-v5 /work/fixtures/snapshot-v7'
+bash scripts/sbtw 'tools/runMain xyz.kd5ujc.scarab.storage.SnapshotV7FixtureMain /work/fixtures/snapshot-v5 /work/fixtures/snapshot-v7'
 ```
 
 The V5 and V7 files remain the previous-version inputs of the migration tests (ADR 0006); they are

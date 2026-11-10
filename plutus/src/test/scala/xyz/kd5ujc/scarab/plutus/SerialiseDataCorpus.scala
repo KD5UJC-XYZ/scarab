@@ -68,7 +68,7 @@ object SerialiseDataCorpus:
   val protocols: Vector[Int] = Vector(9, 10, 11)
 
   /** Writes the requests for the reference oracle (`scripts/oracle/plutus/README.md`). */
-  def main(args: Array[String]): Unit =
+  def write(args: Array[String]): Unit =
     val out = Path.of(args.headOption.getOrElse("/oracle/requests.jsonl"))
     val rows = for
       probe <- probes

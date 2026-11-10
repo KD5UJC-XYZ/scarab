@@ -25,7 +25,7 @@ docker build -f scripts/oracle/plutus/Dockerfile -t scarab-plutus-oracle:local .
 In the repository's own JDK container, export requests to a mounted directory:
 
 ```sh
-./scripts/sbtw 'plutus/Test/runMain xyz.kd5ujc.scarab.plutus.PlutusBoundaryCorpus /oracle/requests.jsonl'
+./scripts/sbtw 'tools/runMain xyz.kd5ujc.scarab.plutus.PlutusBoundaryCorpusMain /oracle/requests.jsonl'
 ```
 
 Then pipe the exported requests into the optional Haskell image:
@@ -70,25 +70,25 @@ docker run --rm --entrypoint sh -v "$PWD/scripts/oracle/plutus/serialise-data:/e
   cabal build serialise-data-oracle --offline --jobs=4 >&2 && "$(cabal list-bin serialise-data-oracle)"'
 ```
 
-The phase-2 scripts come from `SerialiseDataCorpus` (`plutus/Test/runMain xyz.kd5ujc.scarab.plutus.SerialiseDataCorpus
+The phase-2 scripts come from `SerialiseDataCorpus` (`tools/runMain xyz.kd5ujc.scarab.plutus.SerialiseDataCorpusMain
 /oracle/requests.jsonl`) and run through the oracle's ordinary JSON-lines mode; results are in
 `fixtures/reference/plutus-serialise-data`.
 
 `serialise-data --indices` prints the reference bytes of `Constr i []` and `Constr i [I 1]` for the indices -1, -2^64,
 -2^600, 2^64-1 and 2^64 (`fixtures/reference/plutus-serialise-data/indices.tsv`). The `constrData` probes of
-`ConstrIndexCorpus` (`plutus/Test/runMain xyz.kd5ujc.scarab.plutus.ConstrIndexCorpus <requests.jsonl>`) run through the
+`ConstrIndexCorpus` (`tools/runMain xyz.kd5ujc.scarab.plutus.ConstrIndexCorpusMain <requests.jsonl>`) run through the
 [costing oracle](costing/README.md), which also reports the budget spent:
 
 ```sh
 python3 -I scripts/oracle/plutus/serialise-data/constr_index.py --requests <requests.jsonl> --raw <raw.jsonl>
 ```
 
-The `equalsData` probes of `EqualsDataCorpus` (`plutus/Test/runMain xyz.kd5ujc.scarab.plutus.EqualsDataCorpus <requests.jsonl>`)
+The `equalsData` probes of `EqualsDataCorpus` (`tools/runMain xyz.kd5ujc.scarab.plutus.EqualsDataCorpusMain <requests.jsonl>`)
 run through the [costing oracle](costing/README.md) the same way, with
 `python3 -I scripts/oracle/plutus/equals-data/equals_data.py --requests <requests.jsonl> --raw <raw.jsonl>`; results are in
 `fixtures/reference/plutus-equals-data`.
 
-The `sliceByteString` probes of `SliceByteStringCorpus` (`plutus/Test/runMain xyz.kd5ujc.scarab.plutus.SliceByteStringCorpus
+The `sliceByteString` probes of `SliceByteStringCorpus` (`tools/runMain xyz.kd5ujc.scarab.plutus.SliceByteStringCorpusMain
 <requests.jsonl>`), with indices outside the 32-bit and Int64 ranges in every profile of the costing matrix, run through the
 same driver with `--out fixtures/reference/plutus-slice-bytestring/verdicts.jsonl`; results are in
 `fixtures/reference/plutus-slice-bytestring`.

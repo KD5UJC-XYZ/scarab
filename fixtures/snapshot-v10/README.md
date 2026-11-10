@@ -22,7 +22,7 @@ bytes and checks that the binding, the sidecar and the Haskell section are the s
 Recipe (in the JDK image, from the checkout, into a directory that does not exist yet):
 
 ```sh
-bash scripts/sbtw 'node/Test/runMain xyz.kd5ujc.scarab.storage.SnapshotV10FixtureMain /work/fixtures/snapshot-v9 /work/fixtures/snapshot-v10'
+bash scripts/sbtw 'tools/runMain xyz.kd5ujc.scarab.storage.SnapshotV10FixtureMain /work/fixtures/snapshot-v9 /work/fixtures/snapshot-v10'
 ```
 
 The V9, V8, V7 and V5 files remain the previous-version inputs of the migration tests (ADR 0006);

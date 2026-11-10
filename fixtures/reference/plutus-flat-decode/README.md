@@ -33,7 +33,7 @@ byte string, alone and with a byte after the filler.
 Reproduce from the repository root (Docker only):
 
 ```sh
-./scripts/sbtw 'plutus/Test/runMain xyz.kd5ujc.scarab.plutus.FlatDecodeCorpus /work/target/flat-decode-requests.jsonl'
+./scripts/sbtw 'tools/runMain xyz.kd5ujc.scarab.plutus.FlatDecodeCorpusMain /work/target/flat-decode-requests.jsonl'
 docker run --rm -i scarab-plutus-oracle:local < target/flat-decode-requests.jsonl > /tmp/scarab-plutus/flat-decode.jsonl
 ```
 

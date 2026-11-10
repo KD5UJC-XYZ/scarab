@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import cats.effect.{IO, IOApp, ExitCode, Ref}
+import cats.effect.{IO, ExitCode, Ref}
 import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -41,7 +41,7 @@ class MemPackJoinSuite extends CatsEffectSuite:
     }
   }
 
-object MemPackJoin extends IOApp:
+object MemPackJoin:
   enum Encoding:
     case Canonical, HistoricalConstructors
 

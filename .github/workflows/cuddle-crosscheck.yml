@@ -14,7 +14,7 @@ on:
     paths:
       - 'models/src/main/cddl/**'
       - 'models/src/main/scala/**'
-      - 'models/src/test/scala/**/CuddleCrossCheck.scala'
+      - 'tools/src/main/scala/**/CuddleCrossCheck.scala'
       - 'models/cuddle-allowlist.tsv'
       - 'models-gen/**'
       - 'codec/src/main/scala/**'
@@ -54,7 +54,7 @@ jobs:
           fi
           paths=(
             models/src/main/cddl models/src/main/scala
-            'models/src/test/scala/**/CuddleCrossCheck.scala' models/cuddle-allowlist.tsv
+            'tools/src/main/scala/**/CuddleCrossCheck.scala' models/cuddle-allowlist.tsv
             models-gen codec/src/main/scala scripts/cddl_crosscheck.py
             docker/cuddle.Dockerfile build.sbt project scripts/sbtw scripts/prepare_scalus.py patches/scalus
             .github/workflows/cuddle-crosscheck.yml

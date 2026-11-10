@@ -376,7 +376,7 @@ suite fails if a deliberate change is made to the functional form's filler failu
 variable ordinals (each tried once). The benchmark also compares every input it times before timing it.
 
 **Harness.** No JMH (the build has no plugin); a timed loop in the style of `CastErasureBench`,
-[FlatScanBench](../../ledger/src/test/scala/xyz/kd5ujc/scarab/bench/FlatScanBench.scala), with the current thread's
+[FlatScanBench](../../tools/src/main/scala/xyz/kd5ujc/scarab/bench/FlatScanBench.scala), with the current thread's
 allocated bytes (`ThreadMXBean.getCurrentThreadAllocatedBytes`). Per workload: eight warm-up passes of each
 variant of about 50 ms, then ten rounds of about 250 ms each in ABBA order, the same number of passes for both;
 the reported figure of a JVM is the median of its ten rounds. Workloads:
@@ -441,7 +441,7 @@ measured time. The imperative exception of AGENTS.md is not justified for
 this path. `FlatScan.decode` keeps its contract (`Decoded`, `FlatScan`, `ValueFault`, `Failure` unchanged); the
 equivalence suite keeps the old walker as its reference so a later change to either is caught.
 
-**To repeat.** In the JDK container: `bash scripts/sbtw "ledger/Test/runMain xyz.kd5ujc.scarab.bench.FlatScanBench
+**To repeat.** In the JDK container: `bash scripts/sbtw "tools/runMain xyz.kd5ujc.scarab.bench.FlatScanBench
 imperative 10"` (the first argument names the variant each workload starts with, the second the rounds). For the
 figures above, export `ledger/Test/fullClasspath`, copy the class directories it names, and run the main class with
 `java` in a fresh container with the flags above, once per order.

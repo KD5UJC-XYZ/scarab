@@ -185,7 +185,7 @@ object FlatDecodeCorpus:
     yield (language, protocol)
 
   /** Writes the oracle's requests (`scripts/oracle/plutus/Main.hs` reads them). */
-  def main(args: Array[String]): Unit =
+  def write(args: Array[String]): Unit =
     val out = Path.of(args.headOption.getOrElse("/oracle/flat-decode-requests.jsonl"))
     val rows = for
       probe <- probes

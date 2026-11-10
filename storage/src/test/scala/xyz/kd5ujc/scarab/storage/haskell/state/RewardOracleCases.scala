@@ -231,5 +231,5 @@ object RewardOracleCases extends Assertions:
       "operations" -> Json.arr(in.operations.map(op => Json.fromString(op.wire))*)
     )
 
-  def main(args: Array[String]): Unit =
+  def write(args: Array[String]): Unit =
     Files.writeString(Path.of(args(0)), Json.arr(inputs.map(json)*).spaces2)

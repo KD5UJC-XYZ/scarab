@@ -84,7 +84,7 @@ scala code … I love the use of type parameters when I can use them"*.
   or an effect interpreter. These exceptions change implementation style only: typed errors,
   capability scope and original-byte guarantees still apply. WartRemover refuses `var`, `while`,
   `throw`, `return`, `null`, casts, mutable collections and partial accessors in the main sources of
-  every module (`build.sbt`); a kept site carries
+  every module but `tools` (`build.sbt`); a kept site carries
   `@SuppressWarnings(Array("org.wartremover.warts.<Wart>"))` on its smallest definition, with a
   comment naming its measurement, the library contract, or why it is erased in place or timed.
   `scripts/check_imperative.py` refuses new `try`/`catch`/`finally` (#650).
@@ -103,6 +103,10 @@ scala code … I love the use of type parameters when I can use them"*.
   assertion can deadlock with a parent's asserted wait. Release latches and finish owned workers in
   guaranteed cleanup. Positive synchronization uses an observable condition or controlled schedule;
   bounded negative observations without a product-side hook remain explicitly tracked in #251.
+- A program run by hand (a benchmark, a probe, the writer of a fixture or golden) lives in the `tools`
+  module (`tools/runMain <class>`), in the package of the code it exercises, never in a test tree.
+  `tools` may use every module's test kits and follows the rules of test code; data the suites read
+  stays in the test tree, and `tools` holds only its entry point.
 - Tests do not sleep: no sleep, delay, timer or yield orders fibers, waits for a state or paces a poll
   loop. Wait on a `Deferred`, a latch, a change signal or a report of the code under test, or run the
   test in `Settled` (network test tree), whose `settle` returns once every fiber of the test is

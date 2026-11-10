@@ -25,7 +25,7 @@ Recipe (in the JDK image, from the checkout, into a directory that does not exis
 the V8 → V9 `step` of the registered migration, which before V10 was the whole migration):
 
 ```sh
-bash scripts/sbtw 'node/Test/runMain xyz.kd5ujc.scarab.storage.SnapshotV9FixtureMain /work/fixtures/snapshot-v8 /work/fixtures/snapshot-v9'
+bash scripts/sbtw 'tools/runMain xyz.kd5ujc.scarab.storage.SnapshotV9FixtureMain /work/fixtures/snapshot-v8 /work/fixtures/snapshot-v9'
 ```
 
 The V9, V8, V7 and V5 files remain the previous-version inputs of the migration tests (ADR 0006);

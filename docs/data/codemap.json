@@ -12,7 +12,8 @@
     "models-gen": "CDDL parser and Scala generator (build time)",
     "models": "Generated CDDL models runtime and equivalence tests",
     "node": "The node: wiring, mempool, forging, relay, node-to-client, tools",
-    "fuzz": "Structured fuzzing of decoder entry points (test only)"
+    "fuzz": "Structured fuzzing of decoder entry points (test only)",
+    "tools": "Programs run by hand, never as tests and never shipped: benchmarks, probes against a live peer, and the writers of committed fixtures and goldens; they use the modules' test kits"
   },
   "packages": [
     {
@@ -914,6 +915,264 @@
         "docs/design/scls-interchange.md",
         "docs/design/mithril-bootstrap.md"
       ]
+    },
+    {
+      "module": "tools",
+      "path": "bench",
+      "responsibility": "Hand-run benchmarks for the `bench` package (its package, for its package-private access)",
+      "entryPoints": [
+        "CastErasureBench",
+        "FlatScanBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "codec",
+      "responsibility": "Hand-run benchmarks for the `codec` package (its package, for its package-private access)",
+      "entryPoints": [
+        "CborDecodeBench",
+        "TreeBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "consensus",
+      "responsibility": "Hand-run benchmarks for the `consensus` package (its package, for its package-private access)",
+      "entryPoints": [
+        "DecideBenchMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "crypto",
+      "responsibility": "Hand-run benchmarks for the `crypto` package (its package, for its package-private access)",
+      "entryPoints": [
+        "VerifyBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "crypto/bls",
+      "responsibility": "Hand-run benchmarks for the `crypto.bls` package (its package, for its package-private access)",
+      "entryPoints": [
+        "BlsBenchmark"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "ledger",
+      "responsibility": "Hand-run benchmarks for the `ledger` package (its package, for its package-private access)",
+      "entryPoints": [
+        "ApplyBenchMain",
+        "DetachedRecordsBench",
+        "UtxoChangesBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "ledger/state",
+      "responsibility": "Hand-run benchmarks for the `ledger.state` package (its package, for its package-private access)",
+      "entryPoints": [
+        "DiffBenchMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "models",
+      "responsibility": "Hand-run benchmarks, checks and comparisons for the `models` package (its package, for its package-private access)",
+      "entryPoints": [
+        "CuddleCrossCheck",
+        "DecodeBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "network",
+      "responsibility": "Hand-run benchmarks, probes for the `network` package (its package, for its package-private access)",
+      "entryPoints": [
+        "LeiosChainProbe",
+        "LeiosProbe",
+        "MuxThroughputBench",
+        "PeerSharingProbe"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node",
+      "responsibility": "Hand-run benchmarks, checks and comparisons for the `node` package (its package, for its package-private access)",
+      "entryPoints": [
+        "FiberBoundaryBench",
+        "HaskellScalaCompareMain",
+        "Memory94Main",
+        "PeerMetricsBench",
+        "PreviewRuleBench",
+        "SelectionReviewBenchmark"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node/differential",
+      "responsibility": "Hand-run checks and comparisons for the `node.differential` package (its package, for its package-private access)",
+      "entryPoints": [
+        "BoundaryTickMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node/governor",
+      "responsibility": "Hand-run checks and comparisons for the `node.governor` package (its package, for its package-private access)",
+      "entryPoints": [
+        "DebugMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node/log",
+      "responsibility": "Hand-run benchmarks for the `node.log` package (its package, for its package-private access)",
+      "entryPoints": [
+        "LogRouterBenchMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node/metrics",
+      "responsibility": "Hand-run fixture and golden writers for the `node.metrics` package (its package, for its package-private access)",
+      "entryPoints": [
+        "CatalogueTable"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node/ntc",
+      "responsibility": "Hand-run fixture and golden writers for the `node.ntc` package (its package, for its package-private access)",
+      "entryPoints": [
+        "NtcGoldenMain",
+        "WalletQueryCasesMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node/preview",
+      "responsibility": "Hand-run checks and comparisons for the `node.preview` package (its package, for its package-private access)",
+      "entryPoints": [
+        "K1OfflineMain"
+      ],
+      "suites": [
+        "K1OfflineMainSuite"
+      ],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node/read",
+      "responsibility": "Hand-run fixture and golden writers for the `node.read` package (its package, for its package-private access)",
+      "entryPoints": [
+        "ProjectionGoldenMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node/tools",
+      "responsibility": "Hand-run benchmarks for the `node.tools` package (its package, for its package-private access)",
+      "entryPoints": [
+        "WarmBenchMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "plutus",
+      "responsibility": "Hand-run fixture and golden writers for the `plutus` package (its package, for its package-private access)",
+      "entryPoints": [
+        "BoundaryTransactionScriptsMain",
+        "BuiltinCostingCorpusMain",
+        "ConstrIndexCorpusMain",
+        "EqualsDataCorpusMain",
+        "FlatDecodeCorpusMain",
+        "PlutusBoundaryCorpusMain",
+        "SerialiseDataCorpusMain",
+        "SliceByteStringCorpusMain",
+        "UnliftingBoundsCorpusMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "protocol",
+      "responsibility": "Hand-run benchmarks for the `protocol` package (its package, for its package-private access)",
+      "entryPoints": [
+        "WireSkipBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "storage",
+      "responsibility": "Hand-run benchmarks, checks and comparisons, fixture and golden writers for the `storage` package (its package, for its package-private access)",
+      "entryPoints": [
+        "BenchCodecMain",
+        "InternDecodeBench",
+        "MemPackJoinMain",
+        "RewardSnapshotFixtureMain",
+        "SnapshotCodecBench",
+        "SnapshotV10FixtureMain",
+        "SnapshotV7FixtureMain",
+        "SnapshotV8FixtureMain",
+        "SnapshotV9FixtureMain",
+        "UtxoScanBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "storage/haskell/state",
+      "responsibility": "Hand-run benchmarks, checks and comparisons, fixture and golden writers for the `storage.haskell.state` package (its package, for its package-private access)",
+      "entryPoints": [
+        "HaskellStateDecodeBench",
+        "RealLedgerFileCheckMain",
+        "RewardLikelihoodCasesMain",
+        "RewardOracleCasesMain",
+        "RewardTimingCasesMain",
+        "SnapshotTablesBench"
+      ],
+      "suites": [],
+      "docs": []
     }
   ]
 }

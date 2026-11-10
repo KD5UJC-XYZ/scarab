@@ -504,7 +504,7 @@ object NtcGolden:
     }
 
   /** Writes the fixture from today's answers: run once, before the encoders change. */
-  def main(args: Array[String]): Unit =
+  def write(): Unit =
     Files.createDirectories(file.getParent)
     Files.write(file, (lines.mkString("\n") + "\n").getBytes("UTF-8"))
     println(s"wrote ${lines.size} answers to $file")

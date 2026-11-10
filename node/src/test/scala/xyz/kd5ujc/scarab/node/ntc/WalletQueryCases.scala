@@ -122,7 +122,7 @@ private[ntc] object WalletQueryCases extends munit.Assertions:
 
   def facts(n: NewEpochState[Conway]): ConwayFacts = new ConwayFacts(new MirrorEraRead(n))
 
-  def main(args: Array[String]): Unit =
+  def write(args: Array[String]): Unit =
     val path = Path.of(args.headOption.getOrElse("/tmp/wallet-query-inputs.json"))
     val inputs = cases.map { (name, nes) =>
       val bytes = HaskellState.encode(nes).fold(e => fail(e.toString), identity)
