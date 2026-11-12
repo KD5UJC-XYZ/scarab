@@ -42,7 +42,7 @@
   "40": ["closed", "completed", false],
   "41": ["closed", "completed", false],
   "42": ["closed", "completed", false],
-  "43": ["open", "", false],
+  "43": ["open", "", true],
   "44": ["closed", "completed", false],
   "45": ["closed", "completed", false],
   "46": ["closed", "not_planned", false],
