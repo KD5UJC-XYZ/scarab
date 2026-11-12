@@ -379,6 +379,29 @@
       ]
     },
     {
+      "module": "uplc",
+      "path": "uplc/builtin/core",
+      "responsibility": "The unlifting of every builtin under variants A to E with each variant's bounds, and the denotations of the core builtins (integers, byte strings, strings, Bool, unit, trace, pairs, lists, Data and its CBOR serialisation)",
+      "entryPoints": [
+        "CoreUnlifting",
+        "CoreDenotations",
+        "CoreVariant",
+        "UnsupportedVariant",
+        "DataSerialisation"
+      ],
+      "suites": [
+        "CoreUnliftingSuite",
+        "CoreDenotationsSuite",
+        "SerialiseDataSuite",
+        "UnliftingBoundsReferenceSuite",
+        "SliceByteStringReferenceSuite",
+        "DataReferenceSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
       "module": "plutus",
       "path": "plutus",
       "responsibility": "Script evaluator algebra, Scalus adapter, builtin availability; re-exports PlutusData, ExUnits, PlutusLanguage and ParamNames from uplc",
