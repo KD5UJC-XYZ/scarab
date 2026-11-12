@@ -7,9 +7,10 @@ import xyz.kd5ujc.scarab.uplc.*
 
 /** A Flat encoder for tests, written from the reference's encoders (`encodeTerm` and
   * `encodeProgram`, `UntypedPlutusCore/Core/Instance/Flat.hs:120-131`, 231; `encodeUni`,
-  * `PlutusCore/Default/Universe.hs:1068-1081`; the primitive encoders of `PlutusCore/Flat/Encoder`),
-  * and the bits of hand-made inputs the canonical encoder cannot produce. Bits are a string of `0`
-  * and `1`; a term is written from a work list, so a deep one does not recurse.
+  * `PlutusCore/Default/Universe.hs:1068-1081`; the primitive encoders of
+  * `PlutusCore/Flat/Encoder`), and the bits of hand-made inputs the canonical encoder cannot
+  * produce. Bits are a string of `0` and `1`; a term is written from a work list, so a deep one
+  * does not recurse.
   */
 object FlatWriter:
   def bits(value: BigInt, width: Int): String =
@@ -36,7 +37,8 @@ object FlatWriter:
 
   /** A byte string after `written` bits: a filler, then chunks of at most `chunk` bytes. */
   def byteString(written: Int, b: Array[Byte], chunk: Int = 255): String =
-    val chunks = b.grouped(chunk).map(c => bits(c.length, 8) + c.map(x => bits(x & 0xff, 8)).mkString)
+    val chunks =
+      b.grouped(chunk).map(c => bits(c.length, 8) + c.map(x => bits(x & 0xff, 8)).mkString)
     filler(written) + chunks.mkString + bits(0, 8)
 
   /** The tags of a type (`encodeUni`). */
@@ -65,7 +67,7 @@ object FlatWriter:
     case Constant.Unit          => ""
     case Constant.Bool(b)       => if b then "1" else "0"
     case Constant.Data(d)       => byteString(written, DataWriter.encode(d))
-    case Constant.Value(v) =>
+    case Constant.Value(v)      =>
       // each key is a byte string, whose filler depends on where it starts
       def key(out: StringBuilder, k: Bytes): StringBuilder =
         out.append("1")
@@ -105,20 +107,22 @@ object FlatWriter:
   /** The bits of a term written after `written` bits. */
   def term(written: Int, t: Term): String =
     @tailrec def go(todo: List[Item], out: StringBuilder): String = todo match
-      case Nil                     => out.toString
-      case Item.Emit(b) :: rest    => go(rest, out.append(b))
+      case Nil                  => out.toString
+      case Item.Emit(b) :: rest => go(rest, out.append(b))
       case Item.Encode(t) :: rest =>
         t.unfix match
-          case TermF.Var(i)     => go(rest, out.append(bits(0, 4)).append(natural(i.index.toBigInt)))
-          case TermF.Delay(x)   => go(Item.Encode(x) :: rest, out.append(bits(1, 4)))
-          case TermF.LamAbs(x)  => go(Item.Encode(x) :: rest, out.append(bits(2, 4)))
-          case TermF.Apply(f, a) => go(Item.Encode(f) :: Item.Encode(a) :: rest, out.append(bits(3, 4)))
+          case TermF.Var(i)    => go(rest, out.append(bits(0, 4)).append(natural(i.index.toBigInt)))
+          case TermF.Delay(x)  => go(Item.Encode(x) :: rest, out.append(bits(1, 4)))
+          case TermF.LamAbs(x) => go(Item.Encode(x) :: rest, out.append(bits(2, 4)))
+          case TermF.Apply(f, a) =>
+            go(Item.Encode(f) :: Item.Encode(a) :: rest, out.append(bits(3, 4)))
           case TermF.Constant(c) => go(rest, out.append(constant(written + out.length, c)))
-          case TermF.Force(x)   => go(Item.Encode(x) :: rest, out.append(bits(5, 4)))
-          case TermF.Error      => go(rest, out.append(bits(6, 4)))
-          case TermF.Builtin(f) => go(rest, out.append(bits(7, 4)).append(bits(f.flatTag, 7)))
+          case TermF.Force(x)    => go(Item.Encode(x) :: rest, out.append(bits(5, 4)))
+          case TermF.Error       => go(rest, out.append(bits(6, 4)))
+          case TermF.Builtin(f)  => go(rest, out.append(bits(7, 4)).append(bits(f.flatTag, 7)))
           case TermF.Constr(tag, fields) =>
-            val list = fields.toList.flatMap(f => List(Item.Emit("1"), Item.Encode(f))) :+ Item.Emit("0")
+            val list =
+              fields.toList.flatMap(f => List(Item.Emit("1"), Item.Encode(f))) :+ Item.Emit("0")
             go(list ::: rest, out.append(bits(8, 4)).append(natural(tag.toBigInt)))
           case TermF.Case(s, branches) =>
             val list =

@@ -35,7 +35,7 @@ object Checks:
   /** Those of the ledger's decoder for a script of `language` at `protocol` (`scriptCBORDecoder`,
     * `PlutusLedgerApi/Common/SerialisedScript.hs:195-234`): the builtins available to the language
     * it is evaluated as (`builtinsAvailableIn`) and the bounds of `maxBoundsByPV` on a constant's
-    * type and a `constr`'s fields, computed once for the whole program.
+    * type and a `constr` 's fields, computed once for the whole program.
     */
   def ledger(language: PlutusLanguage, protocol: ProtocolMajor): Checks =
     val available = Availability.builtins(language, protocol)
@@ -54,20 +54,20 @@ object Checks:
   * `UntypedPlutusCore/Core/Instance/Flat.hs:132-186`, 233-244, plutus 1.70.0.0 `507cab8c`), run as
   * `unflatWith` runs it (`PlutusCore/Flat/Run.hs:34-46`): the program, a filler, and nothing after.
   *
-  * A term is as deep as its script, so the decoder is a machine that keeps the terms still open on a
-  * list on the heap (ADR 0011) and reads the input in its order. It is not an unfold of [[Term]]'s
-  * functor: the fields of a `constr` and the branches of a `case` are a Flat list with a
-  * continuation bit before each element (`decodeListWith`, `PlutusCore/Flat/Decoder/Strict.hs:60-88`),
-  * so a layer's children are known only once the list is read, and a fold of the cells of such a
-  * list yields a list where a term is wanted. Each open term below waits for one thing, so the
-  * machine needs no case that cannot arise.
+  * A term is as deep as its script, so the decoder is a machine that keeps the terms still open on
+  * a list on the heap (ADR 0011) and reads the input in its order. It is not an unfold of
+  * [[Term]]'s functor: the fields of a `constr` and the branches of a `case` are a Flat list with a
+  * continuation bit before each element (`decodeListWith`,
+  * `PlutusCore/Flat/Decoder/Strict.hs:60-88`), so a layer's children are known only once the list
+  * is read, and a fold of the cells of such a list yields a list where a term is wanted. Each open
+  * term below waits for one thing, so the machine needs no case that cannot arise.
   */
 object FlatDecoder:
 
   /** The program the bytes encode (`unflatWith (decodeProgram ...)`): the version, three naturals
     * (`PlutusCore/FlatInstances.hs:177-179`), the term, then the filler that ends the input
-    * (`postAlignedDecoder`, `PlutusCore/Flat/Filler.hs:77-81`) on its last bit
-    * (`strictDecoder`, `PlutusCore/Flat/Decoder/Run.hs:19-24`).
+    * (`postAlignedDecoder`, `PlutusCore/Flat/Filler.hs:77-81`) on its last bit (`strictDecoder`,
+    * `PlutusCore/Flat/Decoder/Run.hs:19-24`).
     */
   def program(bytes: Bytes, checks: Checks): Either[FlatError, Program] =
     val input = Input(bytes)
@@ -99,7 +99,12 @@ object FlatDecoder:
     case Give(term: Term, at: Long)
 
   /** `decodeTerm` (`Flat.hs:141-186`): the term at `at` of a program of `version`. */
-  def term(input: Input, at: Long, version: ProgramVersion, checks: Checks): Either[FlatError, Got[Term]] =
+  def term(
+      input: Input,
+      at: Long,
+      version: ProgramVersion,
+      checks: Checks
+  ): Either[FlatError, Got[Term]] =
     def refused(check: Either[Availability.Refusal, Unit]): Either[FlatError, Unit] =
       check.left.map(FlatError.Refused(_))
 
@@ -107,7 +112,9 @@ object FlatDecoder:
     def leaf(tag: Int, from: Long): Either[FlatError, Got[Term]] = tag match
       case 0 => input.word64(from).map(g => Got(Term.variable(DeBruijn(g.value)), g.at))
       case 4 =>
-        ConstantDecoder.read(input, from, checks.constant).map(g => Got(Term.constant(g.value), g.at))
+        ConstantDecoder
+          .read(input, from, checks.constant)
+          .map(g => Got(Term.constant(g.value), g.at))
       case 6 => Right(Got(Term.error, from))
       case 7 =>
         input.bits(from, 7).flatMap { case Got(t, next) =>
@@ -142,7 +149,8 @@ object FlatDecoder:
                       case Right(Got(false, end)) =>
                         refused(checks.constrFields(0)) match
                           case Left(err) => Left(err)
-                          case Right(_)  => go(Step.Give(Term.constr(constrTag, Vector.empty), end), open)
+                          case Right(_) =>
+                            go(Step.Give(Term.constr(constrTag, Vector.empty), end), open)
               case 9 =>
                 refused(Availability.checkCase(version)) match
                   case Left(err) => Left(err)
@@ -171,9 +179,11 @@ object FlatDecoder:
                   case Right(_)  => go(Step.Give(Term.constr(constrTag, fields), end), below)
           case Open.Scrutinee :: below =>
             more(from) match
-              case Left(err)               => Left(err)
-              case Right(Got(true, next))  => go(Step.Read(next), Open.Branches(term, Vector.empty) :: below)
-              case Right(Got(false, end))  => go(Step.Give(Term.caseOf(term, Vector.empty), end), below)
+              case Left(err) => Left(err)
+              case Right(Got(true, next)) =>
+                go(Step.Read(next), Open.Branches(term, Vector.empty) :: below)
+              case Right(Got(false, end)) =>
+                go(Step.Give(Term.caseOf(term, Vector.empty), end), below)
           case Open.Branches(scrutinee, read) :: below =>
             more(from) match
               case Left(err) => Left(err)

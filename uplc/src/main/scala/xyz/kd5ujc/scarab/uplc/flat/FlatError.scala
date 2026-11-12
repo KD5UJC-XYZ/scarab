@@ -46,13 +46,13 @@ enum FlatError:
   case NonStarType(tags: Vector[Int])
 
   /** A constant of a type whose Flat decoder always fails: the BLS12-381 types
-    * (`Crypto/BLS12_381/G1.hs:86-90`, `G2.hs:72-76`, `Pairing.hs:56-58`). It is refused only when
-    * a value is read, so an empty list of them decodes.
+    * (`Crypto/BLS12_381/G1.hs:86-90`, `G2.hs:72-76`, `Pairing.hs:56-58`). It is refused only when a
+    * value is read, so an empty list of them decodes.
     */
   case NoFlatValue(uni: DefaultUni)
 
-  /** "Input contains invalid UTF-8 data" (`dUTF8`, `Decoder/Strict.hs:293-299`) for the string
-    * that starts at `at`.
+  /** "Input contains invalid UTF-8 data" (`dUTF8`, `Decoder/Strict.hs:293-299`) for the string that
+    * starts at `at`.
     */
   case InvalidUtf8(at: Long)
 
@@ -67,8 +67,8 @@ enum FlatError:
     */
   case InvalidValue(cause: Value.Invalid)
 
-  /** A refusal of the ledger's predicates or of the version gate of `constr` and `case`: the
-    * `fail` s of `decodeTerm` (`Flat.hs:154-156`, 164-166, 167-180, 181-184) with the checks of
+  /** A refusal of the ledger's predicates or of the version gate of `constr` and `case`: the `fail`
+    * s of `decodeTerm` (`Flat.hs:154-156`, 164-166, 167-180, 181-184) with the checks of
     * `scriptCBORDecoder` (`PlutusLedgerApi/Common/SerialisedScript.hs:207-234`).
     */
   case Refused(refusal: Availability.Refusal)

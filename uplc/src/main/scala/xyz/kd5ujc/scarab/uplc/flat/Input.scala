@@ -11,8 +11,8 @@ final case class Got[+A](value: A, at: Long)
 /** The bytes of a Flat encoding, read at bit positions: the primitive decoders of the reference
   * (`PlutusCore/Flat/Decoder/Prim.hs` and `Decoder/Strict.hs`, plutus 1.70.0.0 `507cab8c`) as pure
   * functions of a position. Bits are read most significant first. A read that needs more bits than
-  * remain fails with [[FlatError.NotEnoughSpace]] where the reference's `ensureBits` does, before it
-  * looks at any of them.
+  * remain fails with [[FlatError.NotEnoughSpace]] where the reference's `ensureBits` does, before
+  * it looks at any of them.
   */
 final class Input(val bytes: Bytes):
   /** The number of bits of the input. */
@@ -68,18 +68,22 @@ final class Input(val bytes: Bytes):
     def valueBit(j: Int): Int = (peek(at + 8L * (j / 7), 8) >>> (j % 7)) & 1
     val magnitude = Array.tabulate[Byte](length) { k =>
       val low = 8 * (length - 1 - k)
-      (0 until 8).foldLeft(0) { (b, i) =>
-        val j = low + i
-        if j < bitCount then b | (valueBit(j) << i) else b
-      }.toByte
+      (0 until 8)
+        .foldLeft(0) { (b, i) =>
+          val j = low + i
+          if j < bitCount then b | (valueBit(j) << i) else b
+        }
+        .toByte
     }
     BigInt(new java.math.BigInteger(1, magnitude))
 
-  /** `dInteger` (`Strict.hs:113-114`): a natural, zig-zag decoded (`zagZig`: an even `n` is `n / 2`,
-    * an odd one `-(n + 1) / 2`, `PlutusCore/Flat/Data/ZigZag.hs`).
+  /** `dInteger` (`Strict.hs:113-114`): a natural, zig-zag decoded (`zagZig`: an even `n` is
+    * `n / 2`, an odd one `-(n + 1) / 2`, `PlutusCore/Flat/Data/ZigZag.hs`).
     */
   def integer(at: Long): Either[FlatError, Got[BigInt]] =
-    natural(at).map(g => Got(if g.value.testBit(0) then -((g.value + 1) >> 1) else g.value >> 1, g.at))
+    natural(at).map(g =>
+      Got(if g.value.testBit(0) then -((g.value + 1) >> 1) else g.value >> 1, g.at)
+    )
 
   /** `dWord64` (`Strict.hs:165-184`): nine groups as for a natural (`wordStep`), then a tenth that
     * may hold bit 63 alone and may not continue (`lastStep`, `Strict.hs:228-239`). Groups of zeros
@@ -111,9 +115,9 @@ final class Input(val bytes: Bytes):
       else go(from + 1)
     go(at)
 
-  /** `dByteString` (`Strict.hs:317-318`): a filler, then (`getChunksInfo`, `Prim.hs:441-459`) a byte
-    * boundary or [[FlatError.Misaligned]], then chunks of a length byte and that many bytes up to
-    * one of length 0. Chunks of any length are accepted, the canonical 255 or not.
+  /** `dByteString` (`Strict.hs:317-318`): a filler, then (`getChunksInfo`, `Prim.hs:441-459`) a
+    * byte boundary or [[FlatError.Misaligned]], then chunks of a length byte and that many bytes up
+    * to one of length 0. Chunks of any length are accepted, the canonical 255 or not.
     */
   def byteString(at: Long): Either[FlatError, Got[Bytes]] =
     @tailrec def chunks(from: Int, read: List[Bytes]): Either[FlatError, Got[Bytes]] =
@@ -131,6 +135,6 @@ final class Input(val bytes: Bytes):
 
   // The chunks as one value that holds only its own bytes.
   private def joined(chunks: List[Bytes]): Bytes = chunks match
-    case Nil         => Bytes.empty
-    case one :: Nil  => one.compact
-    case several     => Bytes.wrap(Array.concat(several.map(_.toArray)*))
+    case Nil        => Bytes.empty
+    case one :: Nil => one.compact
+    case several    => Bytes.wrap(Array.concat(several.map(_.toArray)*))

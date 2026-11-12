@@ -66,7 +66,8 @@ object TypeHeader:
     case 13 => Some(Kinded.Star(DefaultUni.Value))
     case _  => None
 
-  /** `withApplicable` (`Universe/Core.hs:596-615`): every operator takes an argument of kind `*`. */
+  /** `withApplicable` (`Universe/Core.hs:596-615`): every operator takes an argument of kind `*`.
+    */
   private def applied(function: Kinded, argument: Kinded): Either[Failure, Kinded] =
     (function, argument) match
       case (Kinded.ListOperator, Kinded.Star(a))  => Right(Kinded.Star(DefaultUni.List(a)))
@@ -90,7 +91,7 @@ object TypeHeader:
     */
   def parse(tags: Vector[Int]): Either[Failure, Kinded] =
     @tailrec def go(step: Step, pending: List[Pending]): Either[Failure, Kinded] = step match
-      case Step.Parse(Nil) => Left(Failure.MissingTags)
+      case Step.Parse(Nil)           => Left(Failure.MissingTags)
       case Step.Parse(Apply :: rest) => go(Step.Parse(rest), Pending.Function :: pending)
       case Step.Parse(tag :: rest) =>
         leaf(tag) match
@@ -112,21 +113,20 @@ object TypeHeader:
   def tags(input: Input, at: Long): Either[FlatError, Got[Vector[Int]]] =
     @tailrec def go(from: Long, read: Vector[Int]): Either[FlatError, Got[Vector[Int]]] =
       input.bit(from) match
-        case Left(e)                     => Left(e)
-        case Right(Got(false, after))    => Right(Got(read, after))
+        case Left(e)                  => Left(e)
+        case Right(Got(false, after)) => Right(Got(read, after))
         case Right(Got(true, after)) =>
           input.bits(after, 4) match
             case Left(e)               => Left(e)
             case Right(Got(tag, next)) => go(next, read :+ tag)
     go(at, Vector.empty)
 
-  /** The type at `at` and the position after it: its tags, parsed, of kind `*`
-    * (`Flat.hs:148-153`).
+  /** The type at `at` and the position after it: its tags, parsed, of kind `*` (`Flat.hs:148-153`).
     */
   def read(input: Input, at: Long): Either[FlatError, Got[DefaultUni]] =
     tags(input, at).flatMap { case Got(tags, after) =>
       parse(tags) match
-        case Left(reason)              => Left(FlatError.UndecodableType(tags, reason))
-        case Right(Kinded.Star(uni))   => Right(Got(uni, after))
-        case Right(_)                  => Left(FlatError.NonStarType(tags))
+        case Left(reason)            => Left(FlatError.UndecodableType(tags, reason))
+        case Right(Kinded.Star(uni)) => Right(Got(uni, after))
+        case Right(_)                => Left(FlatError.NonStarType(tags))
     }

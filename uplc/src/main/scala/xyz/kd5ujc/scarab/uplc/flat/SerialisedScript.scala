@@ -5,8 +5,9 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.uplc.{Availability, PlutusLanguage, Program, ProtocolMajor}
 
 /** Why the ledger refuses to deserialise a script: the reference's `ScriptDecodeError`
-  * (`PlutusLedgerApi/Common/SerialisedScript.hs:55-79`, plutus 1.70.0.0 `507cab8c`) with the reasons
-  * of `CBORDeserialiseError` as cases of their own (`Codec/Extras/SerialiseViaFlat.hs:74-83`).
+  * (`PlutusLedgerApi/Common/SerialisedScript.hs:55-79`, plutus 1.70.0.0 `507cab8c`) with the
+  * reasons of `CBORDeserialiseError` as cases of their own
+  * (`Codec/Extras/SerialiseViaFlat.hs:74-83`).
   */
 enum ScriptDecodeError:
   /** `LedgerLanguageNotAvailableError`: the language arrives at a later protocol version. */
@@ -97,8 +98,9 @@ object SerialisedScript:
 
   /** The content of the definite-length CBOR byte string at the start of `script`, and the bytes
     * after it: what cborg's `decodeBytes` reads and what `deserialiseFromBytes` leaves
-    * (`SerialisedScript.hs:268-274`). The length may be written in any of the widths CBOR allows. An
-    * indefinite-length (chunked) byte string is refused as cborg refuses it, with `ExpectedBytes`.
+    * (`SerialisedScript.hs:268-274`). The length may be written in any of the widths CBOR allows.
+    * An indefinite-length (chunked) byte string is refused as cborg refuses it, with
+    * `ExpectedBytes`.
     */
   def byteString(script: Bytes): Either[ScriptDecodeError, (Bytes, Bytes)] =
     script.headOption match

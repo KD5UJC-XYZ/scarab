@@ -22,11 +22,14 @@ object DataWriter:
       else Cv.Tag(102, node(Cv.Arr(Vector(node(Cv.UInt(i)), fields))))
     case PlutusData.Map(kvs) => Cv.Map(kvs.map((k, v) => node(item(k)) -> node(item(v))))
     case PlutusData.List(xs) => Cv.Arr(xs.map(x => node(item(x))))
-    case PlutusData.I(n) if n >= 0 && n < Word => Cv.UInt(n)
+    case PlutusData.I(n) if n >= 0 && n < Word  => Cv.UInt(n)
     case PlutusData.I(n) if n < 0 && n >= -Word => Cv.NInt(n)
     case PlutusData.I(n) =>
       val magnitude = if n >= 0 then n else -1 - n
-      Cv.Tag(if n >= 0 then 2 else 3, node(Cv.ByteString(Bytes.wrap(magnitude.toByteArray.dropWhile(_ == 0)))))
+      Cv.Tag(
+        if n >= 0 then 2 else 3,
+        node(Cv.ByteString(Bytes.wrap(magnitude.toByteArray.dropWhile(_ == 0))))
+      )
     case PlutusData.B(b) => Cv.ByteString(b)
 
   def encode(d: PlutusData): Array[Byte] =
