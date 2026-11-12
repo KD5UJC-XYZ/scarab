@@ -3,8 +3,7 @@
 **Status**: Proposal (research). Nothing here is implemented or approved. The first stage (S0) mirrors the
 reference and follows the normal process; every later stage adds behaviour the Haskell node does not have
 and therefore needs the owner's explicit approval first ([ADR 0001](../adr/0001-haskell-node-as-reference.md)).
-Stage S5 would also amend [ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md), which decided against
-remote signing. Stage S0 is tracked in [#906](https://github.com/KD5UJC-XYZ/scarab/issues/906).
+Stage S0 is tracked in [#906](https://github.com/KD5UJC-XYZ/scarab/issues/906).
 
 ## The question
 
@@ -16,7 +15,7 @@ leave two producers forging at once, and copies of the hot keys on more machines
 This document answers four things: what operators have run into, what the protocol actually does when a
 pool signs twice, whether automatic failover can be made safe, and a staged design built from patterns
 with a long record elsewhere (Raft-replicated compare-and-set, fencing tokens, slashing-protection
-journals, doppelganger detection, threshold signing).
+journals, doppelganger detection). The goal is automatic failover kept as simple as safety allows.
 
 ## What operators run into today
 
@@ -89,7 +88,7 @@ reproducible rather than from racing.
 - **R4 No wire deviation.** Blocks, headers and signatures are byte-for-byte what a single reference node
   would produce; the network cannot tell a cluster from one node.
 - **R5 Forward security kept.** KES evolutions are erased on every member that holds them.
-- **R6 Fewest hot-key copies** needed for R2, and a path to zero full copies.
+- **R6 Fewest hot-key copies** needed for R2.
 - **R7 Observable.** Every member reports whether it could forge the next leader slot, before that slot.
 - **R8 Off by default.** A single node with no cluster configuration behaves exactly as today.
 
@@ -102,14 +101,13 @@ reproducible rather than from racing.
 | Slashing-protection journal | Ethereum EIP-3076, TMKMS state files, Horcrux high-watermark | the signer never signs for a slot it already claimed with other contents |
 | Doppelganger detection | Lighthouse, Nimbus, Teku | stop the cluster when the chain shows a block for our pool that the cluster did not claim |
 | Self-fencing watchdog | Patroni, Pacemaker | a member that cannot reach a quorum stops being eligible |
-| Threshold Schnorr signing | FROST, [RFC 9591][rfc9591]; Horcrux (Cosmos); Obol and SSV distributed validators (Ethereum) | optional stage: no member holds a full KES key |
 | Key distribution by agent | upstream `kes-agent` with bootstrap peers | how the standby "keeps its KES key up to date" |
 
 Two lessons from Ethereum carry over directly. Nimbus reports accidental duplicate validators as a primary
 cause of slashings, and Teku states its slashing protection does nothing when the same key runs on
-several nodes: a local journal is not enough, the journal must be shared. And Horcrux's own guide warns
-that teams have double-signed while *migrating* into a threshold setup: the migration path needs as much
-design as the steady state.
+several nodes: a local journal is not enough, the journal must be shared. And Horcrux's own guide (a
+Cosmos signer cluster) warns that teams have double-signed while *migrating* into a cluster: the migration
+path needs as much design as the steady state.
 
 ## The key observation: the schedule is known in advance
 
@@ -213,8 +211,7 @@ the leader VRF proof (ECVRF draft-03 derives its nonce from the key and input) a
 evolution, any member produces the identical header, and therefore the identical block. A primary that
 crashes between claiming and diffusing therefore costs a delay of `δ`, not a block, and never a duplicate.
 `Signed(s)` makes the same thing explicit, so the doppelganger guard (S4) compares an observed header with
-a recorded hash rather than with a reconstruction, and S5, whose signatures are not deterministic, has a
-record to resend.
+a recorded hash rather than with a reconstruction.
 
 **Claim retention.** Claims are never simply deleted. The replicated state keeps a monotone watermark:
 claims at or below it may be pruned, and a claim for any slot at or below it is refused, as EIP-3076 and
@@ -238,7 +235,7 @@ created and recorded in every member's durable state and in every record:
   - **State fence.** The command destroys the old members' durable state, so no old member can commit or
     act on a claim. The new generation's watermark starts at the slot of its creation plus the longest
     deadline, so it never claims a slot the old one could have claimed while it was alive. R1 holds.
-  - **Credential fence.** The hot credentials are superseded with a counter bump (S6) and the new
+  - **Credential fence.** The hot credentials are superseded with a counter bump (S5) and the new
     generation holds only the new ones. If old members are still alive with a majority, both generations
     can forge in the same slot until a block with the new certificate is on the chain. Same-slot ties prefer
     the new counter, and after that block the old certificate is invalid, so this fence **bounds** a breach
@@ -271,7 +268,7 @@ Recovery is therefore one of:
 1. **Fail closed and restore the majority.** Bring members back with their durable state, or as new
    members through the rules above, until the current generation has a quorum again.
 2. **Fence with credentials.** Issue a new certificate with counter `n + 1` and a fresh KES key with the
-   offline cold key (S6), and start a new generation that holds only the new credentials. Until a block
+   offline cold key (S5), and start a new generation that holds only the new credentials. Until a block
    with the new certificate is on the chain, the old signer stays valid; same-slot ties prefer the new
    counter. This bounds a breach of R1 to that window (see the recovery invariant).
 
@@ -283,9 +280,8 @@ and logged as **giving up R1**, never presented as a safe fence.
 - **Doppelganger guard.** Every member already sees every header through ChainSync. A header issued by the
   pool's cold key is checked against the records for its slot. Its hash must equal `Signed(s)`; with only
   `Claim(s)` recorded (the interval between signing and that commit), it must equal the header
-  reconstructed from the claim, which S3 can compute and S5 cannot. Anything else — no claim, a different
-  hash, or under S5 a claim with no `Signed(s)` — means some other process holds the keys: a forgotten old
-  producer, a fenced generation still running, or a compromise. The cluster disables forging everywhere
+  reconstructed from the claim. Anything else — no claim, or a different hash — means some other process
+  holds the keys: a forgotten old producer, a fenced generation still running, or a compromise. The cluster disables forging everywhere
   and alerts; it fails closed rather than trusting an absent record. This is the Ethereum doppelganger
   idea adapted to sparse slots: Cardano cannot wait two epochs for silence, because the twin only shows
   itself when it forges, so the check runs continuously.
@@ -297,45 +293,7 @@ and logged as **giving up R1**, never presented as a safe fence.
 - **Joining.** A new member joins with forging disabled and becomes eligible only after it has caught up
   with the committed claim log of the current generation (see the recovery invariant in S3).
 
-### S5 — Threshold KES (optional; needs an ADR amendment)
-
-S3 still puts a full KES key on each producer-capable member. Threshold signing removes it:
-
-- A Sum6 KES verification key is a hash tree over 64 Ed25519 leaf keys, and a Sum6 signature is one leaf
-  Ed25519 signature plus both child verification keys at each of the six levels (64 + 6 × 64 = 448 bytes). Generate each leaf key by a 2-of-3
-  distributed key generation, compute the public tree, and have the cold key sign the root in the opcert
-  as usual.
-- Sign each period's leaf with FROST(Ed25519, SHA-512), which RFC 9591 states verifies under RFC 8032.
-  The block is indistinguishable from one signed by a single key (R4); this must be confirmed by
-  verifying threshold signatures with the reference's `cardano-crypto-class` verifier in the conformance
-  suite, because libsodium's checks are stricter than RFC 8032's minimum.
-- Forward security holds as long as two of the three members erase each finished leaf's share.
-- Each signer refuses a second distinct message for a slot, so even a buggy coordinator cannot make the
-  cluster equivocate (the Horcrux design). The first FROST round (nonce commitments) is precomputed, so
-  signing costs one round trip.
-- FROST signatures are not deterministic. Two signing sessions over the same header body give two headers
-  with different hashes, which is equivocation, so each signer refuses a second signing *session* for a
-  slot, not only a second message, and the final signature is committed as `Signed(s)` before diffusion.
-  That alone leaves a gap: a coordinator that collects the shares and crashes before committing loses the
-  signature, and the signers, rightly, refuse to start again. **An uncoordinated second session is never
-  the fix.** What closes the gap has to be designed and analysed on its own: a coordinator that is itself
-  a replicated state machine with durable, uniquely identified sessions, and signers that durably keep
-  their share per session and answer a repeated request for the *same* session with the *same* share, so a
-  new coordinator can aggregate the identical signature from the same signer set. If a signer of that set
-  is lost meanwhile, the slot is lost. Nonce reuse leaks the key share, so used commitments are journaled.
-  Every boundary (share sent, share stored, aggregate formed, `Signed(s)` committed, block diffused) needs a
-  crash case in the model.
-- The VRF key stays whole on producer-capable members. A leaked VRF key reveals the pool's schedule (and so
-  when to attack it) but cannot forge without KES. A threshold VRF is possible but not needed first.
-
-This conflicts with [ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md) (no remote signing, upstream
-agent only): the upstream agent cannot hold key shares, so S5 needs its own key format and signer service
-and an independent cryptographic review. It is the largest stage and the one with the most to gain for
-security. Until a threshold protocol has both its anti-equivocation and its crash-recovery guarantees
-established, S3's deterministic local signing stays, and S5 should not start before S3 has run in
-production.
-
-### S6 — Break-glass fencing with the opcert counter (operator procedure)
+### S5 — Credential fence with the opcert counter (operator procedure)
 
 If a producer is lost rather than down — stolen, compromised, or unreachable but possibly running — the
 operator issues a certificate with counter `n + 1` for a fresh KES key and installs it on the cluster. The
@@ -363,7 +321,7 @@ cluster does not forge.
 | Backup is behind the tip | it is not ready and does not claim; if it is the only one, readiness alerts before the slot |
 | Clock skew on one member | it may claim late or not at all; cannot cause a duplicate |
 | Old producer left running with the keys | doppelganger guard stops the cluster at its first block and alerts |
-| Hot key stolen | S6; under S5 a single member compromise yields no usable key |
+| Hot key stolen | the credential fence (S5) |
 | Members on different forks | tip-agreement alert; claim still unique per slot |
 | Raft data lost on a majority | continuity cannot be shown, so the cluster fails closed; a new generation starts only after the old one is fenced (state fence: R1 kept; credential fence: a breach bounded to the window before the new certificate is on the chain) |
 
@@ -381,8 +339,9 @@ cluster does not forge.
    average; a weekend hardware swap (48 hours) about 0.4; with `b = 30`, three hours costs about 0.75. The
    value is in the rare long outage and in large pools — and for a small pool, one missed block can be an
    epoch with no rewards for its delegators, which is what they notice.
-4. **More copies of the key is a cost.** A three-member cluster triples where the hot key lives until S5.
-   The opcert counter (S6) is the recovery path, and it needs a procedure written before it is needed.
+4. **More copies of the key is a cost.** A three-member cluster triples where the hot key lives. A witness
+   that holds no key keeps it to two. The opcert counter (S5) is the recovery path, and it needs a procedure
+   written before it is needed.
 5. **Diversity cuts both ways.** Members on different node builds would have survived the 2025-11-21 split
    better, but would forge on different forks during one. Tip agreement (S4) is the guard. A Haskell node
    cannot take part in the claim protocol, so a mixed cluster could only use S0-style SIGHUP control,
@@ -393,8 +352,8 @@ cluster does not forge.
    `kill -9` at random points around leader slots and partitions them, asserting at most one block per
    pool per slot and counting filled leader slots, on the existing
    [deterministic adversarial schedules](adversarial-schedules.md).
-7. **Migration is where Horcrux users double-signed.** Moving a running pool into a cluster, and S3 into
-   S5, each need a written procedure that never has two signers enabled at once, checked on a devnet.
+7. **Migration is where Horcrux users double-signed.** Moving a running pool into a cluster needs a written
+   procedure that never has two signers enabled at once, checked on a devnet.
 
 ## Delivery
 
@@ -405,18 +364,27 @@ cluster does not forge.
 | S2 | `ForgeGate` capability, local claim journal | additive, approval needed | `check`; restart-inside-slot test |
 | S3 | Raft claim protocol with generations, two-phase records, deadline, takeover, reproduction | additive, approval needed | TLA+ model with the recovery cases; devnet failover scenario including member resurrection; high-percentile claim, sign and diffusion latency and the missed-slot rate in performance.md before `δ` and `D(s)` are chosen |
 | S4 | Doppelganger guard, readiness, tip agreement | additive, approval needed | devnet with a rogue producer |
-| S5 | Threshold KES | amends ADR 0024 | cryptographic review; reference-verifier conformance |
-| S6 | Break-glass counter procedure | operator documentation | devnet rehearsal |
+| S5 | Credential-fence procedure | operator documentation | devnet rehearsal |
 
 ## Decisions for the owner
 
-1. Is failover in scope for Scarab at all, given that it adds behaviour the reference lacks (S2 to S5)?
+1. Is failover in scope for Scarab at all, given that it adds behaviour the reference lacks (S2 to S4)?
 2. S0: treat the absent-file difference as a reference deviation to fix now (recommended).
 3. Raft: external etcd or an embedded library.
 4. Minimum topology to support: two producers and a witness, or three producers.
-5. Whether S5 (threshold KES, amending ADR 0024) is a goal, and when.
-6. Recovery after losing quorum: which fences to offer (restoring the majority, the credential fence), and
+5. Recovery after losing quorum: which fences to offer (restoring the majority, the credential fence), and
    whether a standalone mode that gives up R1 exists at all.
+
+## Out of scope: threshold KES
+
+Decided by the owner on 2026-11-12: threshold signing of the KES key (no member holding a full key, for
+example FROST, [RFC 9591][rfc9591]) is **not** part of this design. It is a possible follow-up once proven
+safe. Research for this document found that it is far harder than it looks: FROST signatures are not
+deterministic, so the takeover-by-reproduction of S3 no longer works, and a coordinator that crashes after
+assembling a signature but before recording it leaves a slot that cannot be recovered without risking a
+second, different block. It would also amend [ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md),
+which decided against remote signing. S3 keeps deterministic signing with a whole key on each
+producer-capable member.
 
 ## Sources
 
