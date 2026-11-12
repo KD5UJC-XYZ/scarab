@@ -1,7 +1,6 @@
 # Reference refusals
 
-Transactions the pinned reference node (`cardano-node` 11.1.3) refused, each with its **complete**
-refusal: the hard-fork-combinator `ApplyTxErr` it sent over node-to-client LocalTxSubmission, holding
+Transactions a pinned reference node refused, each with its **complete** refusal: the hard-fork-combinator `ApplyTxErr` it sent over node-to-client LocalTxSubmission, holding
 every predicate failure it accumulated, in its order (#401). `ReferenceRefusalSuite` (node module, part
 of `check`) replays every case through Scarab and compares the bytes. The inputs and expected refusals come from runs of `scripts/devnet.py refusal-corpus`;
 repacking the case records preserves every JSON field and all original CBOR bytes.
@@ -13,7 +12,7 @@ no signing key is kept, and it carries the repository's licence.
 | path | content |
 |---|---|
 | `manifest.json` | `coverage`: the predicate-failure families each era must have a case for; `corpora`: each corpus directory with the sha256 of its `corpus.json` |
-| `<corpus>/corpus.json` | era, protocol version, provenance (reference node version and revision, image id, the command, the Scarab commit of the tooling, the time), the sha256 of each genesis file and of each case file |
+| `<corpus>/corpus.json` | era, reference build, protocol version, provenance (reference node version and revision, image and image id, the command, the Scarab commit of the tooling, the time), the sha256 of each genesis file and of each case file |
 | `genesis/<sha256>-<name>` | the clusters' genesis files and node configurations, as `devnet.py` copied them; each file is stored once under the sha256 its corpus pins, so corpora recorded on identically configured clusters share it |
 | `<corpus>/states/<sha256>.cbor` | the reference's `GetCBOR DebugNewEpochState` answer at the tip a case was judged at |
 | `<corpus>/utxo/<sha256>.cbor` | the reference's `GetCBOR GetUTxOWhole` answer at that tip (UTxO-HD keeps the UTxO out of the state) |
@@ -30,6 +29,28 @@ of the same transaction; a diagnostic only, never compared).
 The families are UTXO, UTXOW, UTXOS, PPUP, LEDGER (the ledger rule's own failures), CERTS, DELEGS, DELEG, POOL,
 GOVCERT, GOV and MEMPOOL. `scripts/tests/test_refusalcorpus.py` checks that each recorded family is the
 one the reference's rendering names.
+
+## Reference builds
+
+A corpus is recorded from one reference build, the `--reference-build` value whose node answered
+(`ReferenceBuild`, #826), and `corpus.json` names it in `referenceBuild`. A corpus without the field
+is the 11.1 build's: every corpus recorded before corpora named their build was recorded from
+`cardano-node` 11.1.3. The tooling checks the node against the build when it records (the 11.1 line
+by its version, an unstable build by its commit), and the suite and `scripts/tests/test_refusalcorpus.py`
+check the recorded provenance against it again. Each corpus is replayed under its build's rules,
+through `NodeSetup.fromFiles` with that build, and its states are read in that build's layout.
+`manifest.json`'s coverage is what the 11.1 corpora must hold; a case of another build covers none of it.
+
+`conway-bootstrap-attributes-leios-b004fe0c` (2026-11-10, #826) was recorded from the Leios testnet
+build `leios-b004fe0c` (release rc-2026w44, cardano-node `b004fe0c`, the pinned image digest), on a
+cluster of that build held in Conway (`up-dijkstra --conway-only`, protocol version 12 as on its
+devnet). It holds the bootstrap-attribute transaction of the `<era>-bootstrap-attributes` corpora (below), which that build
+refuses with Conway's `OutputBootAddrAttrsTooBig` (UTXO tag 10), where 11.1 refuses it with
+`OutputTooBigUTxO` (tag 11). The suite also replays this case under the 11.1 rules, and each 11.1
+bootstrap-attribute case from Allegra on under the Leios build's, and requires a different refusal:
+the replay follows the corpus's build. The suite replays this corpus offline, not through a running
+node: `follow --reference-build leios-b004fe0c` still refuses to start (#826). No Dijkstra refusal is
+recorded: Scarab does not read a Dijkstra ledger state yet.
 
 ## What is compared
 
@@ -86,6 +107,10 @@ python3 scripts/devnet.py --name <yours> refusal-corpus                 # writes
 python3 scripts/devnet.py --name <yours> down
 python3 scripts/devnet.py --name <yours> up-eras --final-era babbage   # walks Byron..Babbage and stays there
 python3 scripts/devnet.py --name <yours> refusal-corpus --era babbage  # writes babbage-devnet/
+python3 scripts/devnet.py --name <yours> down
+python3 scripts/devnet.py --name <yours> up-dijkstra --conway-only --dijkstra-epoch 1000   # the Leios build, in Conway
+python3 scripts/devnet.py --name <yours> refusal-corpus --reference-build leios-b004fe0c \
+    --corpus conway-bootstrap-attributes-leios-b004fe0c --cases refusalcases:leios_bootstrap_attributes
 python3 scripts/devnet.py --name <yours> down
 python3 scripts/check_test_coverage.py --refresh-fixtures
 ```

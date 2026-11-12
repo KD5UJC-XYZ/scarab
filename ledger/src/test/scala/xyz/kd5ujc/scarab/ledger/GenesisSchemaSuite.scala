@@ -117,7 +117,7 @@ class GenesisSchemaSuite extends FunSuite:
   private def accepted(row: Json): Boolean = field[Boolean](reference(row), "accepted")
 
   test("the fixture holds every kind, whole files and changed ones") {
-    assertEquals(rows.size, 313)
+    assertEquals(rows.size, 316)
     assertEquals(rows.map(field[Kind](_, "kind")).toSet, Kind.values.toSet)
     assert(rows.exists(r => change(r) == Change.Whole && accepted(r)))
     assert(rows.exists(r => !accepted(r)))
