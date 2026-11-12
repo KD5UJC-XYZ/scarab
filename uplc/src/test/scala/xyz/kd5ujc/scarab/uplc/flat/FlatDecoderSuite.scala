@@ -409,6 +409,23 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
     assertEquals(constantOf(Seq(7, 5, 3), _ => "1" * 3), Left(FlatError.NotEnoughSpace(48, 1)))
   }
 
+  // `compile` (`Universe.hs:166-186`): the reference builds the value of a part of no bits once
+  test("a part of a type made of units is one value, shared by every value that holds it") {
+    // a script of about 16 KiB: a list of 40,000 pairs of a bool and a pair of units 2,500 deep
+    val depth = 2500
+    val count = 40000
+    val units = Vector.fill(depth)(Vector(7, 7, 6)).flatten ++ Vector.fill(depth + 1)(3)
+    val tags = Vector(7, 5, 7, 7, 6, 4) ++ units
+    assert(tags.size * 5 + count * 2 <= 16384 * 8)
+    val decoded = SmallStack.run(constantOf(tags, _ => "11" * count + "0"))
+    val elements = decoded match
+      case Right(l: Constant.List) => l.items
+      case other                   => fail(s"not a list: $other")
+    assertEquals(elements.size, count)
+    val shared = elements.collect { case Constant.Pair(_, second) => second }
+    assert(shared.forall(_ eq shared(0)), "the unit part is one value")
+  }
+
   // `maxBoundsByPV` (`Versions.hs:389-399`) through `scriptCBORDecoder` (`SerialisedScript.hs:207-234`)
   test("the ledger's bounds: 32 type tags and 1024 constr fields from protocol 11") {
     def fields(n: Int): String = bits(8, 4) + natural(0) + ("1" + error) * n + "0"
