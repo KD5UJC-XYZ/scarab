@@ -1,6 +1,6 @@
 {
   "plutusCommit": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-  "sourceCommit": "cbab973914ee4dfe8d36507d99dfe1e853c416c7",
+  "sourceCommit": "0d15ed653fc8e57bfd0009975d979ed67b54c41d",
   "oracleImage": "sha256:0ba57aed177d7a9370c31a858ab963581b9e8320b69e2d3cfb8925e88b951002",
   "oracleBaseImage": "sha256:b50784fa61a079153e78ad8b0216ea5d2c35d98f5255f6b920993011007123cb",
   "generator": {
@@ -50,5 +50,5 @@
     "scripts/oracle/plutus/generated/Dockerfile": "2ba7e280e8c886ac2cdfb1395ac2a13e952dff6393f386953f946f5dd233011e"
   },
   "rawSha256": "9f3caa1d7ec79d47d7e22f328cc5e0cba08f5dfff68b5d4832af82d093b45516",
-  "dateUtc": "2026-11-12T19:52:59.823501+00:00"
+  "dateUtc": "2026-11-12T20:07:09.115670+00:00"
 }
