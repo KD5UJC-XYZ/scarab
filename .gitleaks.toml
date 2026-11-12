@@ -59,6 +59,8 @@ paths = [
   '''^node/src/test/scala/lab/node/forge/KeyFilesSuite\.scala$''',
   # A mainnet transaction id (public chain data) held in a constant named Key.
   '''^node/src/test/scala/xyz/kd5ujc/scarab/storage/ByronHandoverUtxoSuite\.scala$''',
+  # RFC 8032 section 7.1 test 1: the published Ed25519 verification key of its first test vector.
+  '''^uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/builtin/extended/SignaturesSuite\.scala$''',
 ]
 commits = [
   # The two commits as they stand after the history rewrite of 2026-10-16 (text scrubbed, content otherwise
