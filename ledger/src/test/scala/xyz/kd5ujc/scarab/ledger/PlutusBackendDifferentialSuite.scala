@@ -5,17 +5,21 @@ import io.circe.parser.parse
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Value as CborValue}
 import xyz.kd5ujc.scarab.plutus.*
+import xyz.kd5ujc.scarab.protocol.Era
 
-/** Both Plutus backends (ADR 0027) on every recorded script context the repository has: the
-  * recorded Preview and preprod transactions (`fixtures/preview/plutus`, `fixtures/preprod/plutus`,
-  * which the rule suites of those networks replay), and the transactions of the reference corpora
-  * that the ledger suites judge (`v1-context`, `context-errors`, `script-results`,
-  * `spending-datum`, `plutus-boundaries` and `plutus-boundary-transactions`). Each script request
-  * the ledger collects for them is evaluated by the Scalus backend and by the own evaluator, which
-  * must give the same verdict, the same failure class, and on success the same execution units and
-  * logs.
+/** Both Plutus backends (ADR 0027) on the recorded script contexts of protocols 5 to 11 the
+  * repository has: the recorded Preview and preprod transactions (`fixtures/preview/plutus`,
+  * `fixtures/preprod/plutus`, which the rule suites of those networks replay), and the transactions
+  * of the reference corpora that the ledger and node suites judge (`v1-context`, `context-errors`,
+  * `script-results`, `context-matrix`, `spending-datum`, `plutus-boundaries` and
+  * `plutus-boundary-transactions`). Each script request the ledger collects for them is evaluated
+  * by the Scalus backend and by the own evaluator, which must give the same verdict, the same
+  * failure class, and on success the same execution units and logs. Not compared: the Leios
+  * testnet's contexts (`leios-testnet-contexts`, protocol 12, on which the own evaluator gives no
+  * verdict by design), and the recorded blocks without the outputs they spend (the block `.hex`
+  * files of Preview and preprod), which give no script context.
   *
   * The Scalus backend shows disagreement, not truth: a disagreement is diagnosed against the
   * reference, never resolved in favour of either side. No verdict from either backend is reported
@@ -99,7 +103,72 @@ class PlutusBackendDifferentialSuite extends FunSuite:
           )
         }
     }
-    plutusCases ++ collections
+    plutusCases ++ collections ++ matrix
+
+  /** The rows of the context matrix (`fixtures/reference/context-matrix`, `ContextMatrixSuite`):
+    * Alonzo, Babbage and Conway transactions with the outputs they read.
+    */
+  private def matrix: Vector[Recorded] =
+    import ContextReferenceCases.{field, hex}
+    val file = "fixtures/reference/context-matrix/matrix.json"
+    parse(Files.readString(Path.of(file)))
+      .fold(e => fail(e.message), identity)
+      .asArray
+      .getOrElse(fail(s"$file: not an array"))
+      .flatMap { row =>
+        val name = field[String](row, "name")
+        val era = field[String](row, "era") match
+          case "Alonzo"  => Era.Alonzo
+          case "Babbage" => Era.Babbage
+          case "Conway"  => Era.Conway
+          case other     => fail(s"$name: unsupported era $other")
+        val tx = CborRead
+          .decode(hex(field[String](row, "transaction")))
+          .fold(e => fail(e.toString), identity)
+          .value match
+          case CborValue.Arr(Vector(body, witnesses, flag, auxiliary)) =>
+            val valid = flag.value match
+              case CborValue.Bool(value) => value
+              case _                     => fail(s"$name: not a validity flag")
+            Tx.fromBlock(
+              Block.Transaction(
+                body.original,
+                witnesses.original,
+                Option.unless(auxiliary.value == CborValue.Null)(auxiliary.original),
+                valid
+              ),
+              era
+            ).fold(e => fail(e.toString), identity)
+          case _ => fail(s"$name: not a complete transaction")
+        val known = field[Vector[io.circe.Json]](row, "utxo").map { entry =>
+          CborRead
+            .decode(hex(field[String](entry, "input")))
+            .flatMap(TxIn.decode)
+            .fold(e => fail(e.toString), identity) ->
+            TxOut
+              .fromBytes(hex(field[String](entry, "output")))
+              .fold(e => fail(e.toString), identity)
+        }.toMap
+        val spent = known.filter((input, _) => tx.body.inputs.contains(input))
+        val references = known.filter((input, _) => tx.body.referenceInputs.contains(input))
+        val scripts = (spent.values ++ references.values)
+          .flatMap(_.referenceScript)
+          .map(script => script.hash -> script)
+          .toMap ++ tx.witnesses.scriptsByHash
+        val models = field[Map[String, Vector[String]]](row, "costModels")
+          .map((language, values) => language.toInt -> values.map(BigInt(_)))
+        val params = TestLedger.params(field[Int](row, "protocolMajor")).copy(costModels = models)
+        val start = BigInt(field[Int](row, "systemStartSeconds")) * 1000
+        val length = BigInt(field[Int](row, "slotLengthMilliseconds"))
+        Phase2
+          .collect(tx, params, scripts, spent, references, slot => Right(start + slot * length))
+          .fold(
+            _ => Vector.empty,
+            _.zipWithIndex.map { case ((r, request), n) =>
+              Recorded(s"$file $name redeemer ${r.tag}.${r.index} (#$n)", request)
+            }
+          )
+      }
 
   /** The class of a result: success, or the case of the shared algebra it failed with. */
   private def kind(result: EvalResult): String = result match

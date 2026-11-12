@@ -1022,7 +1022,8 @@
         "ForgeSuite",
         "KesRotationSuite",
         "KeyFilesSuite",
-        "ForgerFailureSuite"
+        "ForgerFailureSuite",
+        "PlutusBackendBlockProbeSuite"
       ],
       "docs": [
         "docs/adr/0015-kes-key-written-back-and-checked-reload.md"
