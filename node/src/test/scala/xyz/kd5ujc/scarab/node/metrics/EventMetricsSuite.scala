@@ -138,12 +138,16 @@ class EventMetricsSuite extends CatsEffectSuite:
         started <- metrics.snapshot
         _ <- em.forge.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging))
         disabled <- metrics.snapshot
+        _ <- em.forge.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.EnabledBlockForging))
+        _ <- em.forge.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.NotEffective))
+        notEffective <- metrics.snapshot
         _ <- em.forge.emit(ForgeEvent.StateInfo(KesInfo(10, 72, 5)))
         s <- metrics.snapshot
       yield
         assertEquals(gauge(started, Catalogue.forgingEnabled, ()), Some(1.0))
         // `forging_enabled` follows `BlockForgingUpdate` (cardano-node 11.1.3 Startup.hs 301-307)
         assertEquals(gauge(disabled, Catalogue.forgingEnabled, ()), Some(0.0))
+        assertEquals(gauge(notEffective, Catalogue.forgingEnabled, ()), Some(0.0))
         assertEquals(gauge(started, Catalogue.opCertCounter, ()), Some(2.0))
         // nothing of the key until the forge state is first updated in a slot
         assertEquals(gauge(started, Catalogue.currentKesPeriod, ()), None)

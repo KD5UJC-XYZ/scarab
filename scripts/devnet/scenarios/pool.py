@@ -351,6 +351,8 @@ def pool(args):
         if getattr(args, "dynamic", False):
             toggle = dynamic_forging.Toggle(args, root, log)
         scala = subprocess.Popen(["docker", *command], stdout=log.open("a"), stderr=subprocess.STDOUT, text=True)
+        if toggle:
+            toggle.during_startup(scala)
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             tip = tip_at(args.name, f"{ENV}/socket/node{observer}/sock")

@@ -13,6 +13,7 @@ import java.nio.file.attribute.PosixFilePermissions
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
+import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
 import xyz.kd5ujc.scarab.ledger.{
   ForgeError,
   KesFileFailureCause,
@@ -461,7 +462,7 @@ object KesFiles:
 
   /** What a reload found in the credential files. */
   enum Reread:
-    case Found(credentials: HotCredentials)
+    case Found(credentials: HotCredentials, vrf: Draft03Prover.SigningKey)
 
     /** The first file, in the reference's reading order, that does not exist. */
     case Absent(file: Path)
@@ -478,14 +479,14 @@ object KesFiles:
     * (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Protocol/Shelley.hs` 183-205 and 214-224,
     * `readLeaderCredentialsSingleton` and `opCertKesKeyCheck`): the VRF key, then the certificate,
     * then the KES key, each checked to exist just before it is read. The first that does not exist
-    * ends the read ([[Reread.Absent]]). The VRF key is read so that a damaged one fails the reload
-    * as it fails the reference's; the forger keeps the VRF key it started with (#919).
+    * ends the read ([[Reread.Absent]]). The VRF key read is the one forging takes, as the
+    * reference's new block forging does (#919).
     */
   def reread(vrfFile: Path, kesFile: Path, opCertFile: Path): Either[ForgeError, Reread] =
     def present(file: Path)(read: => Either[ForgeError, Reread]): Either[ForgeError, Reread] =
       if exists(file) then read else Right(Reread.Absent(file))
     present(vrfFile) {
-      KeyFiles.read(vrfFile).flatMap(KeyFiles.vrfSigningKey(vrfFile.toString, _)).flatMap { _ =>
+      KeyFiles.read(vrfFile).flatMap(KeyFiles.vrfSigningKey(vrfFile.toString, _)).flatMap { vrf =>
         present(opCertFile) {
           KeyFiles.read(opCertFile).flatMap(KeyFiles.opCert(opCertFile.toString, _)).flatMap {
             (opCert, cold) =>
@@ -493,7 +494,7 @@ object KesFiles:
                 for
                   real <- resolved(kesFile)
                   kes <- recover(real)
-                yield Reread.Found(HotCredentials(kes, opCert, cold))
+                yield Reread.Found(HotCredentials(kes, opCert, cold), vrf)
               }
           }
         }

@@ -514,6 +514,7 @@ object LogSamples:
     ForgeEvent.KesReloaded(BigInt(4), BigInt(30), BigInt(62), BigInt(33)),
     ForgeEvent.BlockForgingUpdate(BlockForgingState.EnabledBlockForging),
     ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging),
+    ForgeEvent.BlockForgingUpdate(BlockForgingState.NotEffective),
     ForgeEvent.KesReloadRefused(ReloadRefusal.Counter(OCertError.CounterTooSmall(5, 3))),
     ForgeEvent.KesPersistFailed(
       BigInt(33),

@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{Block, Header}
 import xyz.kd5ujc.scarab.ledger.ForgeError
 import xyz.kd5ujc.scarab.ledger.{ClockProblem, NodeError}
 import xyz.kd5ujc.scarab.ledger.VrfCert
+import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
 import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash}
 import xyz.kd5ujc.scarab.node.{Fatal, Follower, SessionEnd}
 import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig}
@@ -33,19 +34,23 @@ import xyz.kd5ujc.scarab.network.Fibers
 
 /** Whether the node forges, as the reference's `BlockForgingUpdate` trace says it: its type
   * `EnabledBlockForging` (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Startup.hs` 166-174),
-  * whose constructors' names its trace prints. Its third value, `NotEffective`, is traced for a
-  * SIGHUP that arrives before consensus has started (`Run.hs` 432), which Scarab does not handle
-  * yet (#919).
+  * whose constructors' names its trace prints.
   */
 enum BlockForgingState:
   case EnabledBlockForging
   case DisabledBlockForging
 
+  /** A SIGHUP arrived before consensus has started (the chain is still being opened and replayed):
+    * the credentials are not read again (`Run.hs` 412-435, traced at 432).
+    */
+  case NotEffective
+
 /** What the forger reports, for the JSON log and for tests. */
 enum ForgeEvent:
   /** Forging was switched on or off: at start-up, and at every reload that finds the credentials
     * (on) or finds a credential file absent (off), as the reference traces `BlockForgingUpdate`
-    * (cardano-node 11.1.3 `Run.hs` 248-252 and 633-647).
+    * (cardano-node 11.1.3 `Run.hs` 248-252 and 633-647); `NotEffective` for a SIGHUP during
+    * start-up (432).
     */
   case BlockForgingUpdate(state: BlockForgingState)
 
@@ -390,6 +395,8 @@ final class Forger[F[_]: Async, S](
             info => perform(events.emit(ForgeEvent.StateInfo(info))).as(info)
           )
         )
+      // the VRF key of the credentials in force: a reload replaces it with the key it read
+      vrf <- perform(hot.locked(c => F.pure(c.vrf))).flatMap(_.fold(disabled)(proceed))
       pools = crossed.pools
       stake = pools.stake.getOrElse(credentials.poolId, BigInt(0))
       cert <- perform(
@@ -397,7 +404,7 @@ final class Forger[F[_]: Async, S](
           Leadership.check(
             slot,
             crossed.protocol.epochNonce,
-            credentials.vrf,
+            vrf,
             stake,
             pools.total,
             config.activeSlotsCoeff
@@ -432,7 +439,7 @@ final class Forger[F[_]: Async, S](
       _ <- say(
         ForgeTrace.ForgingMempoolSnapshot(slot, context.prev, held.tipHash, held.tipSlot + 1)
       )
-      block <- perform(assemble(context, slot, ticked, cert, chosen.map(_._2)))
+      block <- perform(assemble(context, slot, ticked, cert, vrf, chosen.map(_._2)))
         .flatMap(_.fold(disabled)(proceed))
       _ <- say(
         ForgeTrace.ForgedBlock(
@@ -578,20 +585,23 @@ final class Forger[F[_]: Async, S](
 
   /** Build and sign the block (`forgeBlock`). The checks here are Scarab's own and never refuse a
     * block the steps before let through: the key's window, the body size and the decoding of the
-    * block just built. None: forging was disabled meanwhile, and nothing was signed.
+    * block just built. None: forging was disabled meanwhile, or a reload installed another VRF key
+    * than `vrf`, which proved `cert`; nothing was signed, as the reference's forging thread ends
+    * when its block forging is replaced.
     */
   private def assemble(
       context: Forger.Context[S],
       slot: BigInt,
       ticked: MempoolLedger,
       cert: VrfCert,
+      vrf: Draft03Prover.SigningKey,
       pieces: Vector[BlockBuilder.Piece]
   )(using Handle[F, NodeError], Raise[F, Fatal]): F[Option[Forger.Built]] =
     val body = BlockBuilder.body(pieces)
     val kesPeriod = kesPeriodOf(slot)
-    // the header, the key's evolution and the signature all use the credentials of one moment: a
-    // reload (SIGHUP) waits until the block is signed
-    val assembled: F[Option[Either[ForgeError, (Bytes, Bytes, Int, BigInt)]]] = hot.locked { c =>
+    def signedWith(c: PoolCredentials)(using
+        Raise[F, Fatal]
+    ): F[Option[Either[ForgeError, (Bytes, Bytes, Int, BigInt)]]] =
       val start = c.opCert.kesPeriod
       val header = for
         _ <- Either.cond(
@@ -618,7 +628,7 @@ final class Forger[F[_]: Async, S](
         c.opCert,
         ticked.params.version
       )
-      header match
+      (header match
         case Left(e)           => F.pure(Left(e))
         case Right(headerBody) =>
           // the key is at the slot's period, and written back there, before it signs in it
@@ -628,7 +638,14 @@ final class Forger[F[_]: Async, S](
               F.blocking(c.kes.sign(headerBody))
                 .map(signature => Right((headerBody, signature, c.kes.period, c.opCert.sequence)))
           }
-    }
+      ).map(Some(_))
+    // the header, the key's evolution and the signature all use the credentials of one moment: a
+    // reload (SIGHUP) waits until the block is signed
+    val assembled: F[Option[Either[ForgeError, (Bytes, Bytes, Int, BigInt)]]] = hot
+      .locked { c =>
+        if c.vrf.publicKey != vrf.publicKey then F.pure(None) else signedWith(c)
+      }
+      .map(_.flatten)
     assembled.flatMap(
       _.traverse(signed =>
         lift(signed).flatMap { (headerBody, signature, relative, counter) =>

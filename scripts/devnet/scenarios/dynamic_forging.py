@@ -8,6 +8,11 @@ sent SIGHUP. It must trace `blockForgingUpdate` with `DisabledBlockForging`, rep
 files are away, and must not write its KES key back to where it was (the window spans KES periods, so a forging
 node would have). The files are then put back and SIGHUP is sent again: the node traces `EnabledBlockForging`,
 reports 1 and forges again. The rest of the `pool` scenario's checks hold outside the disabled window.
+
+Before that, a SIGHUP is sent while the node is starting (once its chain database is open, #919): the node must not
+end, as the reference's initial handler keeps it running (`Run.hs` 412-435). It traces `blockForgingUpdate`
+`NotEffective` when the signal arrives before the forger runs; on a fresh database the start-up is short, so the signal
+may reach the full handler instead, which reads the credentials again; the summary says which.
 """
 import json
 import time
@@ -36,6 +41,20 @@ class Toggle:
         self.enabled = None  # the one that enabled it again
         self.observed = {}  # what the metrics, /forging and the key directory showed in each state
         self.failures = []
+        self.startup = None  # what the node said to the SIGHUP sent while it started
+
+    def during_startup(self, process, timeout=120):
+        """Send SIGHUP once, as soon as the node logs that its chain database is open (the start-up handler is in
+        place by then), polling the log closely: on a fresh database the start-up lasts about a second."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline and process.poll() is None:
+            events, _ = read_log(self.log)
+            if any(e["event"] == "immutableOpened" for e in events):
+                self.hup()
+                self.startup = {"sentAfterEvents": len(events)}
+                print(json.dumps({"startupHangup": "sent"}), flush=True)
+                return
+            time.sleep(0.05)
 
     def due(self, elapsed):
         """Act when the time has come; called from the scenario's sampling loop."""
@@ -109,7 +128,16 @@ class Toggle:
         """The failures and the summary of the disabled window."""
         failures = list(self.failures)
         window = self.excluded(slot_at)
-        summary = {"window": window, "observed": self.observed}
+        summary = {"window": window, "observed": self.observed, "startupHangup": self.startup}
+        if self.startup is None:
+            failures.append("no SIGHUP was sent during start-up (no immutableOpened line before forging began)")
+        else:
+            after = [e for e in events[self.startup["sentAfterEvents"]:]
+                     if e["event"] in ("blockForgingUpdate", "kesReloaded", "kesReloadRefused")]
+            self.startup["answer"] = after[0]["event"] + (f" {after[0]['enabled']}" if "enabled" in after[0] else "") \
+                if after else None
+            if not after:
+                failures.append("the SIGHUP sent during start-up got no answer")
         if self.state != "done" or window is None or window[1] is None:
             failures.append(f"forging was not switched off and on again (state {self.state}); "
                             f"lengthen --seconds past --disable-after + --disabled-seconds")

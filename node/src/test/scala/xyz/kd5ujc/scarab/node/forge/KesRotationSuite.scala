@@ -74,6 +74,11 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     def next: Path = dir.resolve("kes.skey.next")
 
     /** What an operator (or the rotation driver) leaves in the key directory. */
+    /** The pool's own credentials: its VRF key, KES key and certificate. */
+    def installPool(p: Pool): Unit =
+      Files.writeString(vrf, vrfText(p.creds.vrf))
+      install(p.creds.hot)
+
     def install(h: HotCredentials): Unit =
       Files.writeString(kes, KeyFiles.kesEnvelope(kes.toString, h.kes).toOption.get)
       Files.writeString(cert, opCertText(h))
@@ -82,7 +87,9 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     def onDisk: Sum6KesSigning.SigningKey =
       KeyFiles.kesSigningKey(kes.toString, Files.readString(kes)).toOption.get
 
-  /** A key directory with a VRF key in it: a reload reads it, and the forger keeps its own. */
+  /** A key directory with a VRF key in it, which a reload reads; a forging test puts the pool's own
+    * there ([[Files3.installPool]]).
+    */
   private def withDir[A](body: Files3 => IO[A]): IO[A] =
     IO.blocking {
       val files = Files3(Files.createTempDirectory("kes-rotation"))
@@ -528,7 +535,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
   test("restart across a KES boundary: the file holds the evolved key and forging goes on") {
     val p = pool(kesStart = 50, seed = 3)
     withDir { f =>
-      f.install(p.creds.hot)
+      f.installPool(p)
       val first = Files.readString(f.kes)
       withHandle {
         for
@@ -560,7 +567,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
   test("the key is evolved and written at the period boundary, whether or not the pool leads") {
     val p = pool(kesStart = 50, seed = 8)
     withDir { f =>
-      f.install(p.creds.hot)
+      f.installPool(p)
       withHandle {
         for
           src <- source(f)
@@ -585,7 +592,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     val p = pool(kesStart = 50, seed = 4)
     val cause = new java.io.IOException("disk full")
     withDir { f =>
-      f.install(p.creds.hot)
+      f.installPool(p)
       withHandle {
         for
           inner <- source(f)
@@ -632,7 +639,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     val p = pool(kesStart = 50, seed = 11)
     TestControl.executeEmbed(
       withDir { f =>
-        f.install(p.creds.hot)
+        f.installPool(p)
         val next = hotFor(p.cold, seed = 21, start = 50, sequence = 1)
         withHandle {
           for
@@ -669,7 +676,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     val p = pool(kesStart = 0, seed = 13) // the window is periods 0..61, slot 6200 is period 62
     TestControl.executeEmbed(
       withDir { f =>
-        f.install(p.creds.hot)
+        f.installPool(p)
         val next = hotFor(p.cold, seed = 23, start = 62, sequence = 0)
         withHandle {
           for
@@ -715,7 +722,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     val stranger = TestLedger.key()
     TestControl.executeEmbed(
       withDir { f =>
-        f.install(p.creds.hot)
+        f.installPool(p)
         val good = hotFor(p.cold, seed = 22, start = 50, sequence = 1)
         // the certificate is for another KES key than the one in the file
         def mismatch() =
@@ -771,7 +778,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     val p = pool(kesStart = 50, seed = 13)
     TestControl.executeEmbed(
       withDir { f =>
-        f.install(p.creds.hot)
+        f.installPool(p)
         withHandle {
           for
             src <- source(f)
@@ -813,6 +820,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
           Files.move(tmp, link, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
         def periodIn(gen: Path): Int =
           KeyFiles.kesSigningKey("k", Files.readString(gen.resolve("kes.skey"))).toOption.get.period
+        Files.writeString(f.vrf, vrfText(p.creds.vrf))
         install(gen0, p.creds.hot)
         point(gen0)
         withHandle {
@@ -874,7 +882,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     test(s"SIGHUP with the $name moved away disables forging: nothing leads, signs or is written") {
       val p = pool(kesStart = 50, seed = 60 + i)
       withDir { f =>
-        f.install(p.creds.hot)
+        f.installPool(p)
         val moved = f.dir.resolve("moved-away")
         withHandle {
           for
@@ -920,7 +928,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
   test("SIGHUP with the files back enables forging, after the checks of any reload") {
     val p = pool(kesStart = 50, seed = 70)
     withDir { f =>
-      f.install(p.creds.hot)
+      f.installPool(p)
       val next = hotFor(p.cold, seed = 71, start = 50, sequence = 1)
       withHandle {
         for
@@ -947,7 +955,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
             Vector(ForgeEvent.KesReloaded(1, 50, 62, 51))
           )
           assertEquals(current.opCert.sequence, BigInt(1))
-          assert(current.vrf eq p.creds.vrf, "the VRF key read at start-up stays")
+          assertEquals(current.vrf.publicKey, p.creds.vrf.publicKey)
           assert(blocks.nonEmpty)
           assertEquals(blocks.values.map(sequenceOf).toSet, Set(BigInt(1)))
           // the period-0 key put back in period 51 is brought to the present and written back
@@ -956,11 +964,45 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     }
   }
 
+  private def vrfKeyOf(raw: Bytes): Bytes =
+    Block.decode(raw, geometry.byron.epochSlots).toOption.get.header match
+      case s: Header.Shelley => s.vrfVkey
+      case other             => fail(s"not a Praos header: $other")
+
+  test("a reload forges with the VRF key it read, as the reference's new block forging does") {
+    val p = pool(kesStart = 50, seed = 80)
+    val other =
+      Draft03Prover.SigningKey.fromSeed(Bytes.fromArray(Array.fill(32)(81.toByte))).toOption.get
+    // the ledger knows the pool by the new VRF key
+    val registered = p.copy(creds = p.creds.copy(vrf = other))
+    withDir { f =>
+      f.installPool(p)
+      withHandle {
+        for
+          src <- source(f)
+          h <- harness(p, ledgerWith(registered, 1), source = Some(src), clock = atSlot5100)
+          _ <- (5100 until 5130).toList.traverse_(s => h.forger.step(s))
+          before <- h.raws.get
+          _ = Files.writeString(f.vrf, vrfText(other))
+          _ <- h.forger.reload
+          current <- currentHot(h.forger.hot)
+          _ <- (5130 until 5180).toList.traverse_(s => h.forger.step(s))
+          after <- h.raws.get
+        yield
+          val since = after.removedAll(before.keys)
+          assertEquals(current.vrf.publicKey, other.publicKey)
+          assert(before.values.forall(vrfKeyOf(_) == p.creds.vrf.publicKey), before.toString)
+          assert(since.nonEmpty, "the pool leads and forges with the new key")
+          assertEquals(since.values.map(vrfKeyOf).toSet, Set(other.publicKey))
+      }
+    }
+  }
+
   test("a reload refused while forging is disabled keeps it disabled and says why") {
     val p = pool(kesStart = 50, seed = 72)
     val foreign = hotFor(TestLedger.key(), seed = 73, start = 50, sequence = 0)
     withDir { f =>
-      f.install(p.creds.hot)
+      f.installPool(p)
       withHandle {
         for
           src <- source(f)
@@ -987,7 +1029,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
   test("a node started as non-producing forges nothing until a reload finds its files") {
     val p = pool(kesStart = 50, seed = 74)
     withDir { f =>
-      f.install(p.creds.hot)
+      f.installPool(p)
       withHandle {
         for
           src <- source(f)
@@ -1064,7 +1106,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
   test("the key lock stays held while forging is disabled, and nothing appears at the key's path") {
     val p = pool(kesStart = 50, seed = 78)
     withDir { f =>
-      f.install(p.creds.hot)
+      f.installPool(p)
       val locked = ForgeError.KeyFile(
         f.kes.toString,
         ForgeKeyProblem.InstanceLocked(KeyGuard.lockFile(f.kes).toString)
@@ -1107,7 +1149,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         f.install(hotFor(TestLedger.key(), 79, 0, 0))
         def reread = KesFiles.reread(f.vrf, f.kes, f.cert)
         reread match
-          case Right(KesFiles.Reread.Found(found)) => found.kes.forget()
+          case Right(KesFiles.Reread.Found(found, _)) => found.kes.forget()
           case other => fail(s"expected the credentials, found $other")
         // the first absent file in that order is the one named, whatever follows it
         Files.move(f.kes, f.dir.resolve("k"))
@@ -1201,7 +1243,11 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       src = new HotKeySource[IO]:
         def read =
           IO.pure(
-            Right(HotKeySource.Reading.Found(HotKeySource.Candidate(candidate, adopted.set(true))))
+            Right(
+              HotKeySource.Reading.Found(
+                HotKeySource.Candidate(candidate, p.creds.vrf, adopted.set(true))
+              )
+            )
           )
         def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Unchanged)
       keys <- HotKeys.create[IO](p.creds, Some(src), config, e => seen.update(_ :+ e))
@@ -1252,7 +1298,9 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       val p = pool(kesStart = 0, seed = 3)
       val next = hotFor(p.cold, seed = 21, start = 0, sequence = 1)
       val src = new HotKeySource[IO]:
-        def read = IO.pure(Right(HotKeySource.Reading.Found(HotKeySource.Candidate(next, IO.unit))))
+        def read = IO.pure(
+          Right(HotKeySource.Reading.Found(HotKeySource.Candidate(next, p.creds.vrf, IO.unit)))
+        )
         def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Written)
       for
         seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
@@ -1310,7 +1358,9 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     val target = BigInt(1) << 32
     val src = new HotKeySource[IO]:
       def read =
-        IO.pure(Right(HotKeySource.Reading.Found(HotKeySource.Candidate(candidate, IO.unit))))
+        IO.pure(
+          Right(HotKeySource.Reading.Found(HotKeySource.Candidate(candidate, p.creds.vrf, IO.unit)))
+        )
       def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Written)
     for
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)

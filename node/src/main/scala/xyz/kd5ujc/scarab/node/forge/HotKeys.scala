@@ -80,11 +80,16 @@ trait HotKeySource[F[_]]:
   def persist(key: Sum6KesSigning.SigningKey): F[Persisted]
 
 object HotKeySource:
-  /** What a read found: the credentials, and `adopt`, which the node runs once it has switched to
-    * them. Where the evolved key is written back changes only then: a reload that is refused leaves
-    * it where it was, so the pair that stays in force keeps being written to its own files.
+  /** What a read found: the credentials, the VRF key, and `adopt`, which the node runs once it has
+    * switched to them. Where the evolved key is written back changes only then: a reload that is
+    * refused leaves it where it was, so the pair that stays in force keeps being written to its own
+    * files.
     */
-  final case class Candidate[F[_]](credentials: HotCredentials, adopt: F[Unit])
+  final case class Candidate[F[_]](
+      credentials: HotCredentials,
+      vrf: Draft03Prover.SigningKey,
+      adopt: F[Unit]
+  )
 
   /** What a read found: credentials to check, or a credential file that does not exist, which
     * disables forging as the reference's `FileDoesNotExistError` does (see [[HotKeys.reload]]).
@@ -102,12 +107,12 @@ object HotKeySource:
       Ref.of[F, Path](first.getOrElse(kesFile)).map { target =>
         new HotKeySource[F]:
           def read = F.blocking(KesFiles.reread(vrfFile, kesFile, opCertFile)).flatMap {
-            case Left(error)                         => F.pure(Left(error))
-            case Right(KesFiles.Reread.Absent(file)) => F.pure(Right(Reading.Absent(file)))
-            case Right(KesFiles.Reread.Found(hot))   =>
+            case Left(error)                            => F.pure(Left(error))
+            case Right(KesFiles.Reread.Absent(file))    => F.pure(Right(Reading.Absent(file)))
+            case Right(KesFiles.Reread.Found(hot, vrf)) =>
               // the key is written back where it was read from, even if a link moves afterwards
               F.blocking(KesFiles.resolved(kesFile)).map { where =>
-                Right(Reading.Found(HotKeySource.Candidate(hot, where.traverse_(target.set))))
+                Right(Reading.Found(HotKeySource.Candidate(hot, vrf, where.traverse_(target.set))))
               }
           }
           def persist(key: Sum6KesSigning.SigningKey) =
@@ -135,8 +140,6 @@ object HotKeySource:
   *   (`HotKey.hs` 405-410): the key is erased from memory, every later [[update]] fails with
   *   `KESKeyAlreadyPoisoned`, and a [[reload]] that installs a new key ends it. Unlike the first
   *   failure of `state`, it is not fatal.
-  * @param vrf
-  *   The pool's VRF signing key, read at start-up; credentials installed by a reload take it.
   * @param poolId
   *   The pool this node forges for: the hash of the cold key of the credentials it started with.
   */
@@ -147,7 +150,6 @@ final class HotKeys[F[_]: Async] private (
     source: Option[HotKeySource[F]],
     config: PraosConfig,
     events: ForgeEvents[F],
-    vrf: Draft03Prover.SigningKey,
     poolId: Bytes
 ):
   private val F = Async[F]
@@ -319,11 +321,12 @@ final class HotKeys[F[_]: Async] private (
   )(using Raise[F, Fatal]): F[Unit] =
     // a certificate re-issued for the key already in use keeps that key, which is further on than
     // the file's copy; a new key replaces it and the old one is erased from memory. While forging
-    // is disabled no key is in use, and the file's key is taken
+    // is disabled no key is in use, and the file's key is taken. The VRF key is the one read,
+    // as the reference's new block forging takes it (`Run.hs` 640-648)
     val candidate = found.credentials
     val kept = inUse.filter(_.kes.verificationKey == candidate.kes.verificationKey)
     val kes = kept.fold(candidate.kes)(_.kes)
-    val next = PoolCredentials(vrf, kes, candidate.opCert, candidate.coldVkey)
+    val next = PoolCredentials(found.vrf, kes, candidate.opCert, candidate.coldVkey)
     val relative = kesPeriod - candidate.opCert.kesPeriod
     for
       _ <- F.delay(if kept.isDefined then candidate.kes.forget() else inUse.foreach(_.kes.forget()))
@@ -375,7 +378,6 @@ object HotKeys:
         source,
         config,
         events,
-        credentials.vrf,
         credentials.poolId
       )
     }

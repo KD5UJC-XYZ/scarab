@@ -213,7 +213,7 @@ section and the catalogue differ.
 | `cardano_node_metrics_nodeCannotForge_int` | gauge |  | Slots the pool led but could not forge in since the start (TraceNodeCannotForge), as of the start of the current slot (ForgingStats). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_slotsMissed_int` | gauge |  | Slots missed since the start, as the reference's ForgingStats counts them at each slot the pool does not lead. | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_forgedSlotLast_int` | gauge |  | Slot of the last block forged. | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_forging_enabled_int` | gauge |  | 1 while the node forges, 0 when it has no credentials, was started as non-producing or a reload found a credential file absent (the reference's BlockForgingUpdate). | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_forging_enabled_int` | gauge |  | 1 while the node forges, 0 when it has no credentials, was started as non-producing, a reload found a credential file absent, or a SIGHUP arrived during start-up (the reference's BlockForgingUpdate). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_currentKESPeriod_int` | gauge |  | The KES key's period after the last update of the forge state; 0 after a failed update. | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_remainingKESPeriods_int` | gauge |  | KES periods left before the operational certificate expires, after the last update of the forge state; 0 after a failed update. | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_operationalCertificateStartKESPeriod_int` | gauge |  | The first KES period of the operational certificate. | same name; scraped from 11.1.3 |

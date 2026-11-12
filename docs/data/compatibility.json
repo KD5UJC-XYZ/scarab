@@ -1638,13 +1638,13 @@
         "issues": [
           82,
           474,
-          906
+          906,
+          919
         ]
       },
       "limitations": {
         "issues": [
-          918,
-          919
+          918
         ]
       },
       "page": "docs/compatibility/block-forging.md"

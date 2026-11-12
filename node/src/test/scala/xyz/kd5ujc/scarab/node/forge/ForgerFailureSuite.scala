@@ -439,6 +439,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
               HotKeySource.Reading.Found(
                 HotKeySource.Candidate(
                   p.creds.hot.copy(kes = p.creds.kes.copy),
+                  p.creds.vrf,
                   IO.unit
                 )
               )

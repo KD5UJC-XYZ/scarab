@@ -582,6 +582,32 @@ object Main extends IOApp:
       topology
     )
 
+  /** The roots of the topology read again at a SIGHUP (`updateTopologyConfiguration`, cardano-node
+    * 11.1.3 `Run.hs` 670-705): none without `--topology`, or when the file is refused, which is
+    * logged and leaves the roots in force. `options.peers` includes the topology loaded at
+    * start-up, so the roots are read with the command line's own peers only (`cliPeers`): a peer
+    * removed from the topology does not become permanent.
+    */
+  private def rereadRoots(options: Options, cliPeers: List[SocketAddress[Host]], loaded: NodeSetup)(
+      using Log[IO]
+  ): IO[Option[PeerNetwork.Roots]] =
+    options.topologyFile.flatTraverse { _ =>
+      IO.blocking(topologyRoots(options.copy(peers = cliPeers), loaded)).flatMap {
+        case Left(error) =>
+          Log[IO]
+            .emit[NodeEvent](
+              NodeEvent.Library(
+                "scarab.topology",
+                Severity.Warning,
+                s"topology reload refused: ${error.message}",
+                None
+              )
+            )
+            .as(None)
+        case Right((_, roots)) => IO.pure(Some(roots))
+      }
+    }
+
   /** Read a complete topology and its optional snapshot before any running network state changes.
     */
   private[node] def topologyRoots(
@@ -742,12 +768,31 @@ object Main extends IOApp:
     )
     val keys =
       options.forge.fold(Resource.unit[IO])(f => KeyGuard.held[IO](f.kesSkey, options.keyLock))
-    (ownership *> keys *> compatible *> (
-      utxoBacking(options),
-      VerificationCache.resource[IO](),
-      Scheduling.resource[IO](options.cpuThreads),
-      Supervisor[IO](await = false)
-    ).tupled).use { case ((store, checkpoints), cache, scheduling, supervisor) =>
+    // from here a SIGHUP is the reference's initial one until the run installs the full handler
+    val hangup = Resource
+      .eval(
+        (
+          Ref.of[IO, Option[PeerNetwork.Roots]](None),
+          Ref.of[IO, ForgeEvents[IO]](Log.sink[ForgeEvents, ForgeEvent, IO])
+        ).mapN(StartupHangup.apply)
+      )
+      .flatTap(h =>
+        Signals.hangup[IO](
+          rereadRoots(options, cliPeers, setup).flatMap(_.traverse_(r => h.roots.set(Some(r)))) *>
+            h.events.get.flatMap(
+              _.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.NotEffective))
+            )
+        )
+      )
+    (
+      hangup,
+      ownership *> keys *> compatible *> (
+        utxoBacking(options),
+        VerificationCache.resource[IO](),
+        Scheduling.resource[IO](options.cpuThreads),
+        Supervisor[IO](await = false)
+      ).tupled
+    ).tupled.use { case (hup, ((store, checkpoints), cache, scheduling, supervisor)) =>
       followWith(
         options,
         cliPeers,
@@ -759,7 +804,8 @@ object Main extends IOApp:
         scheduling,
         StallDiagnostics.abandoning(supervisor),
         credentials,
-        layout
+        layout,
+        hup
       )
     }
 
@@ -775,9 +821,22 @@ object Main extends IOApp:
       store: UtxoStore[IO],
       cache: VerificationCache,
       scheduling: Scheduling[IO],
-      credentials: Option[PoolCredentials]
+      credentials: Option[PoolCredentials],
+      hangup: StartupHangup
   ):
     def genesis: xyz.kd5ujc.scarab.ledger.ShelleyGenesis = setup.genesis
+
+  /** What a SIGHUP does before the node runs its forger and its network: the reference's initial
+    * handler (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Run.hs` 412-435), installed
+    * before the chain database is opened and replayed. It reads the topology again, and the network
+    * starts from what it read (`roots`); it does not reload the forging credentials, which only the
+    * full handler does once consensus has started, and says so (`BlockForgingUpdate NotEffective`,
+    * to `events`: the log, and the metrics once they exist). Without it a SIGHUP would end the JVM.
+    */
+  private final case class StartupHangup(
+      roots: Ref[IO, Option[PeerNetwork.Roots]],
+      events: Ref[IO, ForgeEvents[IO]]
+  )
 
   /** What the run measures and reports with, made before any store is open. */
   private final case class Instruments(
@@ -854,34 +913,47 @@ object Main extends IOApp:
       scheduling: Scheduling[IO],
       background: IO[Unit] => IO[Unit],
       credentials: Option[PoolCredentials],
-      layout: ReferenceLayout
+      layout: ReferenceLayout,
+      hangup: StartupHangup
   )(using
       handle: Handle[IO, NodeError],
       log: Log[IO]
   ): IO[ExitCode] =
     val setup = loaded.copy(praos = loaded.praos.copy(verdicts = cache))
     val run =
-      Startup(options, cliPeers, loaded, setup, topology, store, cache, scheduling, credentials)
-    instrumented(run, background).flatMap { instruments =>
-      given Metrics[IO] = instruments.metrics
-      ruled(run).flatMap { rules =>
-        // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
-        // node has seen begin so far.
-        given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(instruments.eraStarts.get)
-        given SnapshotFormat[IO, MirrorState] =
-          SnapshotV10.format[IO](options.snapshotCheck, layout)
-        // What a scrape reads besides the counters the events keep: each source answers for itself
-        // and is added when it exists, so the endpoint can listen before the stores are opened (a
-        // collector that is not there yet leaves its gauges absent).
-        val exposed = options.metricsListen.fold(Resource.unit[IO])(address =>
-          MetricsServer.resource[IO](address, instruments.collectors.scrape).void
-        )
-        exposed
-          .surround(
-            storage(run, instruments, rules, backing).use(following(run, instruments, rules, _))
+      Startup(
+        options,
+        cliPeers,
+        loaded,
+        setup,
+        topology,
+        store,
+        cache,
+        scheduling,
+        credentials,
+        hangup
+      )
+    instrumented(run, background).flatTap(i => hangup.events.set(forgeEvents(i.measured))).flatMap {
+      instruments =>
+        given Metrics[IO] = instruments.metrics
+        ruled(run).flatMap { rules =>
+          // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
+          // node has seen begin so far.
+          given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(instruments.eraStarts.get)
+          given SnapshotFormat[IO, MirrorState] =
+            SnapshotV10.format[IO](options.snapshotCheck, layout)
+          // What a scrape reads besides the counters the events keep: each source answers for itself
+          // and is added when it exists, so the endpoint can listen before the stores are opened (a
+          // collector that is not there yet leaves its gauges absent).
+          val exposed = options.metricsListen.fold(Resource.unit[IO])(address =>
+            MetricsServer.resource[IO](address, instruments.collectors.scrape).void
           )
-          .map(exitCode)
-      }
+          exposed
+            .surround(
+              storage(run, instruments, rules, backing).use(following(run, instruments, rules, _))
+            )
+            .map(exitCode)
+        }
     }
 
   /** The run's instruments, in the order the run makes them. */
@@ -1533,45 +1605,54 @@ object Main extends IOApp:
           case Output.LocalRoots(trace)  => logged(NodeEvent.LocalRoots(trace))
           case Output.Counted(c)         => logged(NodeEvent.PeerCounters(c))
           case Output.Connections(c)     => logged(NodeEvent.OutboundConnections(c)))
-      val network = PeerNetwork.resource[IO](
-        PeerNetwork.Settings(
-          options.roots.getOrElse(
-            PeerNetwork.Roots(Nil, Set.empty, None, UseLedgerPeers.Disabled)
-          ),
-          targets,
-          consensusMode = setup.config.settings.consensusMode,
-          syncTargets = syncTargets,
-          minBigLedgerPeersForTrustedState = setup.config.settings.minBigLedgerPeersForTrustedState,
-          peerSharing = peerSharing,
-          intervals = options.churnInterval.fold(Churn.Intervals())(Churn.Intervals.every),
-          timeouts = options.churnInterval.fold(Churn.Timeouts())(Churn.Timeouts().within),
-          seed = seed
-        ),
-        PeerNetwork.tcp[IO](10.seconds),
-        manager,
-        OutboundPeers.Config(),
-        hot,
-        chainView,
-        fetchModeRef,
-        emitOutput,
-        (phase, event) =>
-          blockPool.fetchCoordinator.transitionGenesis(
-            genesisGovernor.traverse_(_.setPhase(phase))
-          ) *> measured.gsm(phase) *> logged(NodeEvent.GsmTransition(phase, event)),
-        phase =>
-          blockPool.fetchCoordinator.transitionGenesis(
-            genesisGovernor.traverse_(_.setPhase(phase))
-          ) *> measured.gsm(phase),
-        mode =>
-          blockPool.fetchCoordinator.setMode(mode) *>
-            measured.fetchMode(mode) *> logged(NodeEvent.FetchModeChanged(mode)),
-        marker,
-        LedgerPeersSource.fromChain[IO, MirrorState](ref.get),
-        sharing = Some(sharing),
-        immutable = immutable,
-        genesisReadings = genesisRuntime.map(_.gsmReadings(follower.versusHeaders)),
-        peerMetrics = Some(peerMetrics)
-      )
+      // the network starts from the topology a SIGHUP during start-up read, as the reference's
+      // diffusion reads the roots its initial handler wrote (`Run.hs` 412-435)
+      val network = Resource
+        .eval(run.hangup.roots.getAndSet(None))
+        .flatMap(reread =>
+          PeerNetwork.resource[IO](
+            PeerNetwork.Settings(
+              reread
+                .orElse(options.roots)
+                .getOrElse(
+                  PeerNetwork.Roots(Nil, Set.empty, None, UseLedgerPeers.Disabled)
+                ),
+              targets,
+              consensusMode = setup.config.settings.consensusMode,
+              syncTargets = syncTargets,
+              minBigLedgerPeersForTrustedState =
+                setup.config.settings.minBigLedgerPeersForTrustedState,
+              peerSharing = peerSharing,
+              intervals = options.churnInterval.fold(Churn.Intervals())(Churn.Intervals.every),
+              timeouts = options.churnInterval.fold(Churn.Timeouts())(Churn.Timeouts().within),
+              seed = seed
+            ),
+            PeerNetwork.tcp[IO](10.seconds),
+            manager,
+            OutboundPeers.Config(),
+            hot,
+            chainView,
+            fetchModeRef,
+            emitOutput,
+            (phase, event) =>
+              blockPool.fetchCoordinator.transitionGenesis(
+                genesisGovernor.traverse_(_.setPhase(phase))
+              ) *> measured.gsm(phase) *> logged(NodeEvent.GsmTransition(phase, event)),
+            phase =>
+              blockPool.fetchCoordinator.transitionGenesis(
+                genesisGovernor.traverse_(_.setPhase(phase))
+              ) *> measured.gsm(phase),
+            mode =>
+              blockPool.fetchCoordinator.setMode(mode) *>
+                measured.fetchMode(mode) *> logged(NodeEvent.FetchModeChanged(mode)),
+            marker,
+            LedgerPeersSource.fromChain[IO, MirrorState](ref.get),
+            sharing = Some(sharing),
+            immutable = immutable,
+            genesisReadings = genesisRuntime.map(_.gsmReadings(follower.versusHeaders)),
+            peerMetrics = Some(peerMetrics)
+          )
+        )
       val relay = options.listen.fold(Resource.unit[IO])(address =>
         BearerServer
           .listen[IO, NetworkError](
@@ -1768,22 +1849,8 @@ object Main extends IOApp:
           )
         )
         .surround(network.use { net =>
-          val reloadTopology: IO[Unit] = options.topologyFile.traverse_ { _ =>
-            // `options.peers` includes the topology loaded at startup. Keep reload roots tied
-            // to the original CLI peers so a removed topology peer cannot become permanent.
-            IO.blocking(topologyRoots(options.copy(peers = cliPeers), loaded)).flatMap {
-              case Left(error) =>
-                logged(
-                  NodeEvent.Library(
-                    "scarab.topology",
-                    Severity.Warning,
-                    s"topology reload refused: ${error.message}",
-                    None
-                  )
-                )
-              case Right((_, nextRoots)) => net.reloadRoots(nextRoots)
-            }
-          }
+          val reloadTopology: IO[Unit] =
+            rereadRoots(options, cliPeers, loaded).flatMap(_.traverse_(net.reloadRoots))
           // a node without credentials finds none again (`updateBlockForging` with no credential
           // files reads an empty list, `Run.hs` 641-648)
           val reload =
@@ -1792,9 +1859,12 @@ object Main extends IOApp:
                 .emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging))
             )(f => f.reload.flatMap(_.fold(fatalSink, _ => IO.unit))) *>
               reloadTopology
+          // the full handler (`installSigHUPHandler`, `Run.hs` 596), on every node as in the
+          // reference; roots a start-up SIGHUP read after the network took its own are applied
           val signals =
-            if options.topologyFile.isDefined || forging.isDefined then Signals.hangup[IO](reload)
-            else Resource.unit[IO]
+            Signals.hangup[IO](reload) *> Resource.eval(
+              run.hangup.roots.getAndSet(None).flatMap(_.traverse_(net.reloadRoots))
+            )
           // the governor ends the node only by a fault (an invariant, the bootstrap timeout)
           val sync: IO[Unit] =
             collectors.add(Collectors.peerMetrics(net.metrics)) *>
