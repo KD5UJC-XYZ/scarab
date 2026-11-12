@@ -457,3 +457,15 @@ its agreement with the reference corpora. None of them counts as passed for `sca
 `OwnFlatDecoderParitySuite`, which compares the two decoders). In `ledger`: `CostModelNameTablesSuite`,
 which evaluates a PlutusV4 script at protocol 12, where the own evaluator gives no verdict by design.
 `BlstCheckMain`, the start-up check of the Scalus native library, evaluates with Scalus by design.
+
+**Evidence (2026-11-12, the integration's draft branch on top of the WP8 oracles).** `check` passes on
+the default backend. With `scarab.plutus.vm=scarab` the suites of `ledger` (9,093), `consensus` (477),
+`storage` (709, 10 skipped for want of optional data) and `node` (3,656, 8 skipped: the recorded Preview
+and preprod replays, the Mithril and preprod snapshot acceptances and the boundary digest, which need
+external data, and two `ReferenceRefusalSuite` cases set aside on either backend for the text of a
+`PlutusFailure`, #491) pass. Two `ledger` assertions had named the Scalus backend's cause of a decoding
+failure; they now name each backend's exact typed cause. `PlutusBackendDifferentialSuite` compared 752
+requests (V1 224, V2 289, V3 239; on the own evaluator 607 successes, 123 script failures, 12 scope, 8
+decoding and 2 budget failures): no difference in verdict, class, units or logs, and every request has
+a verdict from both. A fatal-injection case of `FollowerStallSuite` fails intermittently on either
+backend (it involves no script); it passed in these runs.
