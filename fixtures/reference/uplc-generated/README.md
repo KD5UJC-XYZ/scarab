@@ -67,6 +67,15 @@ The suite checks those hashes, that the generator still writes every list, scrip
 budget from its seed, and, as a negative control, that with every cost parameter doubled no success
 spends the recorded budget.
 
+## Larger runs (not retained)
+
+On 2026-11-12 two corpora of 15,000 programs each (1,000 per profile) went through the same oracle
+and `GeneratedOracleReplayMain` with no disagreement in stage, error, budget (on success and on
+failure) or logs: seed 1001 under the default lists (generator at `1daf8453c`: 7,097 successes, 1,355
+out of budget), and seed 2002 under four lists per profile, the default and three drawn from it
+(generator at `cbab97391`: 6,206 successes, 2,671 out of budget). Their requests and verdicts are not
+published; the commands below write them again.
+
 ## Limits
 
 A finite sample: it does not show equality for every program, size or cost-model list. Diagnostic

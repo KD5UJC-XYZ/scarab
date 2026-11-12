@@ -50,6 +50,16 @@ run them:
 python3 -I scripts/oracle/plutus/generated/run.py --evidence <a directory outside the checkout>
 ```
 
+(`run.py --fixtures <directory>` runs a corpus written elsewhere.)
+
+The arguments of `GeneratedOracleCorpusMain` after the directory replace the corpus seed, the programs
+per profile and the cost-model lists per profile. A corpus other than the retained one is replayed by
+hand:
+
+```sh
+./scripts/sbtw 'tools/runMain xyz.kd5ujc.scarab.uplc.GeneratedOracleReplayMain <directory>'
+```
+
 The JDK container has no Docker, so the requests are written there and run on the host. `run.py`
 fails on any tool error or a missing or reordered answer, writes `verdicts.jsonl` and
 `manifest.json`, and keeps the raw answers outside the checkout. Ordinary `check` needs no
