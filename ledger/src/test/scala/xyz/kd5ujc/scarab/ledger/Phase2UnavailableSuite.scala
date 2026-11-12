@@ -106,7 +106,9 @@ class Phase2UnavailableSuite extends FunSuite:
         else
           val output = base.body.outputs.headOption.getOrElse(fail("fixture has no output"))
           base.copy(body = base.body.copy(outputs = Vector(output.copy(scriptRef = Some(script)))))
-      TxChecks.scriptsWellFormed(c.params, tx, TxEnv(c.slot, 189, 0, decoder = decoder)) match
+      TxChecks.scriptsWellFormed(c.params, tx, TxEnv(c.slot, 189, 0, decoder = decoder))(using
+        TestLedger.usualEra((c.params).protocolMajor.toInt)
+      ) match
         case Left(LedgerFailure.Unavailable(id, ScriptLocation.Phase1(hash), _)) =>
           assertEquals(id, tx.body.id)
           assertEquals(hash, script.hash)
@@ -126,7 +128,9 @@ class Phase2UnavailableSuite extends FunSuite:
       )
       assertEquals(
         TxChecks
-          .scriptsWellFormed(c.params, tx, TxEnv(c.slot, 189, 0, decoder = decoder))
+          .scriptsWellFormed(c.params, tx, TxEnv(c.slot, 189, 0, decoder = decoder))(using
+            TestLedger.usualEra((c.params).protocolMajor.toInt)
+          )
           .flatMap(TestLedger.verdict(tx.body.id, _)),
         Left(expected)
       )
@@ -156,7 +160,7 @@ class Phase2UnavailableSuite extends FunSuite:
           c.params,
           witnessed,
           TxEnv(c.slot, 189, 0, decoder = decoder)
-        ) match
+        )(using TestLedger.usualEra((c.params).protocolMajor.toInt)) match
           case Left(failure: LedgerFailure.Unavailable) =>
             assertEquals(failure.reason, EvalFailure.Unsupported(reason))
           case other => fail(s"unexpected phase-1 outcome: $other")

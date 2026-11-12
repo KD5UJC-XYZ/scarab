@@ -207,7 +207,11 @@ class PreviewConwayGovernanceSuite extends FunSuite:
       val epoch = (b.header.slot / 86400).toString
       val models = costModels.getOrElse(epoch, fail(s"no cost models for epoch $epoch"))
       val pp = TestLedger.params(11).copy(costModels = models)
-      val matching = subsets.filter(s => ScriptIntegrity.hash(t, pp, s) == t.body.scriptDataHash)
+      val matching = subsets.filter(s =>
+        ScriptIntegrity.hash(t, pp, s)(using
+          xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SConway
+        ) == t.body.scriptDataHash
+      )
       assert(matching.nonEmpty, s"script data hash of ${t.body.id.hex} in epoch $epoch")
       if t.witnesses.scripts.exists(_.kind == ScriptKind.PlutusV3) then
         assert(matching.forall(_.contains(ScriptKind.PlutusV3)), s"V3 in ${t.body.id.hex}")

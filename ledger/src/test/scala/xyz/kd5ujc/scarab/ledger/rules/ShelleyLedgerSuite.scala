@@ -954,7 +954,7 @@ class ShelleyLedgerSuite extends FunSuite:
         tx(bodyWith(None, None), Vector(alice), wits),
         params,
         Set(ScriptKind.PlutusV1)
-      )
+      )(using c.pre.era)
 
   test(
     "Plutus: the verdict of the scripts must be the block's flag; a failed transaction collects its collateral"

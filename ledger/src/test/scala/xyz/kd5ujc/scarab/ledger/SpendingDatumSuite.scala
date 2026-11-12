@@ -151,7 +151,9 @@ class SpendingDatumSuite extends FunSuite:
         TestLedger.verdict(
           c.tx.body.id,
           rules.Test.all(
-            TxChecks.datumChecks(c.params, c.tx, r.spent, c.references.values.toVector, r.scripts),
+            TxChecks.datumChecks(c.tx, r.spent, c.references.values.toVector, r.scripts)(using
+              TestLedger.usualEra((c.params).protocolMajor.toInt)
+            ),
             TxChecks.redeemerChecks(c.tx, r.spent, r.scripts, r.needed)
           )
         ),
@@ -173,11 +175,12 @@ class SpendingDatumSuite extends FunSuite:
               c.tx.body.id,
               rules.Test.all(
                 TxChecks.datumChecks(
-                  c.params.copy(protocolMajor = protocol),
                   c.tx,
                   r.spent,
                   c.references.values.toVector,
                   r.scripts
+                )(using
+                  TestLedger.usualEra((c.params.copy(protocolMajor = protocol)).protocolMajor.toInt)
                 ),
                 TxChecks.redeemerChecks(c.tx, r.spent, r.scripts, r.needed)
               )

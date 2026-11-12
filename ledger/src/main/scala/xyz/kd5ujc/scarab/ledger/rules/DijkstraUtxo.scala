@@ -396,7 +396,12 @@ object DijkstraUtxow
           for
             _ <- DijkstraSts.record[F, DijkstraUtxowFailure](
               Utxow
-                .checks(UtxoEnv(env.ctx, env.pp, env.original), Map.empty, ann.conway, Test.pass)
+                .checks[Dijkstra](
+                  UtxoEnv(env.ctx, env.pp, env.original),
+                  Map.empty,
+                  ann.conway,
+                  Test.pass
+                )
                 .map(
                   _.leftMap(d => DijkstraHalt.Conway(d: LedgerFailure))
                     .flatMap(DijkstraSts.taken(DijkstraFromConway.ofUtxow))

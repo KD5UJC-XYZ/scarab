@@ -5,6 +5,7 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
+import xyz.kd5ujc.scarab.ledger.state.Alonzo
 
 /** Development tool (issue 133): the time the transaction rules of a late-Alonzo block take, check
   * by check, on captured mainnet blocks (`CaptureMain`).
@@ -193,9 +194,13 @@ object ApplyBenchMain:
           .collect { case (h, ps) if scripts.get(h).exists(_.kind.isPlutus) => ps }
           .flatten
           .toSet
-        ns("datumChecks") += time(TxChecks.datumChecks(pp, tx, byInput, refOuts, scripts))._2
+        ns("datumChecks") += time(
+          TxChecks.datumChecks[Alonzo](tx, byInput, refOuts, scripts)
+        )._2
         ns("redeemerChecks") += time(TxChecks.redeemerChecks(tx, byInput, scripts, purposes))._2
-        ns("auxiliaryChecks") += time(TxChecks.auxiliaryChecks(pp, tx, e))._2
+        ns("auxiliaryChecks") += time(
+          TxChecks.auxiliaryChecks[Alonzo](pp, tx, e)
+        )._2
         ns("witnessChecks") += time(
           TxChecks.neededWitnesses(
             Map.empty,
@@ -205,7 +210,9 @@ object ApplyBenchMain:
             TxChecks.providedKeyHashes(tx, tx.witnesses.vkeys.map(w => e.verdicts.keyHash(w._1)))
           )
         )._2
-        ns("scriptsWellFormed") += time(TxChecks.scriptsWellFormed(pp, tx, e))._2
+        ns("scriptsWellFormed") += time(
+          TxChecks.scriptsWellFormed[Alonzo](pp, tx, e)
+        )._2
         ns("value sums") += time {
           spent.foldLeft(Value.zero)(_ + _.value) == body.outputs.foldLeft(Value.zero)(_ + _.value)
         }._2
@@ -219,7 +226,9 @@ object ApplyBenchMain:
         )._2
         ns("input sort (hex)") += time(body.inputs.sortBy(i => (i.id.hex, i.index)))._2
         ns("input sort") += time(body.inputs.sorted)._2
-        ns("script integrity") += time(ScriptIntegrity.hash(tx, pp, Set(ScriptKind.PlutusV1)))._2
+        ns("script integrity") += time(
+          ScriptIntegrity.hash[Alonzo](tx, pp, Set(ScriptKind.PlutusV1))
+        )._2
       }
       val n = txs.size.toDouble
       ns.foreach((k, v) =>

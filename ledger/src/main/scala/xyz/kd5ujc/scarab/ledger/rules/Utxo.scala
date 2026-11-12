@@ -294,8 +294,8 @@ object Utxow
     ], StAnnTx, PredicateFailure, LedgerFailure]:
   private def utxow(f: UtxowFailure): PredicateFailure = PredicateFailure.utxow(f)
 
-  /** The checks of UTXOW of the era of the parameters in force, in the reference's order, each a
-    * [[Test]] or the defect that leaves no verdict:
+  /** The checks of UTXOW of the era `E`, whatever the protocol version, in the reference's order,
+    * each a [[Test]] or the defect that leaves no verdict:
     *
     *   - Shelley to Mary (`transitionRulesUTXOW`, `Shelley/Rules/Utxow.hs:286-326`): the failing
     *     native scripts, the missing and the extraneous scripts, the signatures, the needed
@@ -316,15 +316,14 @@ object Utxow
     * @param mir
     *   the MIR quorum of an era before Conway (`validateMIRInsufficientGenesisSigs`)
     */
-  def checks(
+  def checks[E <: EraTag](
       env: UtxoEnv[Any],
       genDelegs: Map[Bytes, GenDelegPair],
       ann: StAnnTx,
       mir: Test[PredicateFailure]
-  ): Vector[Either[LedgerDefect, Test[PredicateFailure]]] =
+  )(using era: ShelleyBasedEra[E]): Vector[Either[LedgerDefect, Test[PredicateFailure]]] =
     val tx = ann.tx
     val pp = env.pp
-    val pv = pp.protocolMajor
     val scripts = ann.scripts
     val needed = ann.needed.keySet
     val received = tx.witnesses.scripts.map(_.hash).toSet
@@ -347,8 +346,8 @@ object Utxow
     val signatures = env.ctx.staticOrDefect(TxChecks.verifiedWits(tx, env.ctx.verdicts))
     val witnesses =
       test(TxChecks.neededWitnesses(genDelegs, tx, ann.spent, collateral, provided))
-    val metadata = env.ctx.staticOrDefect(TxChecks.auxiliaryChecks(pp, tx, env.ctx))
-    if pv < 7 then
+    val metadata = env.ctx.staticOrDefect(TxChecks.auxiliaryChecks[E](pp, tx, env.ctx))
+    if !era.atLeast(ShelleyBasedEra.SBabbage) then
       // `validateMissingScripts` (`Shelley/Rules/Utxow.hs:375-388`): the scripts provided are the
       // witnesses' before Babbage
       val missingScripts = test(
@@ -364,21 +363,22 @@ object Utxow
         )
       )
       val native = test(env.ctx.static(TxChecks.failedNativeScripts(tx, scripts, None, signers)))
-      TxChecks.plutusFieldsDefect(pp, tx).map(Left(_)).toVector ++ (
-        if pv < 5 then Vector(native, missingScripts, signatures, witnesses, metadata, test(mir))
+      TxChecks.plutusFieldsDefect[E](tx).map(Left(_)).toVector ++ (
+        if !era.atLeast(ShelleyBasedEra.SAlonzo) then
+          Vector(native, missingScripts, signatures, witnesses, metadata, test(mir))
         else
           Vector(
             native,
             missingScripts,
             test(
-              TxChecks.datumChecks(pp, tx, ann.spentByInput, ann.referenced, scripts)
+              TxChecks.datumChecks[E](tx, ann.spentByInput, ann.referenced, scripts)
             ),
             test(TxChecks.redeemerChecks(tx, ann.spentByInput, scripts, ann.plutusPurposes)),
             signatures,
             witnesses,
             test(mir),
             metadata,
-            test(TxChecks.integrityCheck(pp, tx, ann.spentByInput, scripts))
+            test(TxChecks.integrityCheck[E](pp, tx, ann.spentByInput, scripts))
           )
       )
     else
@@ -401,13 +401,13 @@ object Utxow
             )
           )
         ),
-        test(TxChecks.datumChecks(pp, tx, ann.spentByInput, ann.referenced, scripts)),
+        test(TxChecks.datumChecks[E](tx, ann.spentByInput, ann.referenced, scripts)),
         test(TxChecks.redeemerChecks(tx, ann.spentByInput, scripts, ann.plutusPurposes)),
         signatures,
         witnesses,
         metadata,
-        env.ctx.staticOrDefect(TxChecks.scriptsWellFormed(pp, tx, env.ctx)),
-        test(TxChecks.integrityCheck(pp, tx, ann.spentByInput, scripts))
+        env.ctx.staticOrDefect(TxChecks.scriptsWellFormed[E](pp, tx, env.ctx)),
+        test(TxChecks.integrityCheck[E](pp, tx, ann.spentByInput, scripts))
       )
 
   /** Records the checks in order: every failure of each, or the first defect raised. A check ends
@@ -430,7 +430,7 @@ object Utxow
       judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     for
-      _ <- record[F](checks(env, Map.empty, ann, Test.pass))
+      _ <- record[F](checks[Conway](env, Map.empty, ann, Test.pass))
       _ <- JudgedSts.trans[F, UtxoEnv[ConwayCertState], Counted[UTxOState[Conway]], Counted[
         UTxOState[Conway]
       ], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](Utxo, env, ann)

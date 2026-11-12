@@ -46,7 +46,12 @@ class PlutusCaseSuite extends FunSuite:
 
   cases.foreach { c =>
     test(s"${c.name} (${c.kind}): script data hash is the recomputed one") {
-      assertEquals(ScriptIntegrity.hash(c.tx, c.params, neededKinds(c)), c.tx.body.scriptDataHash)
+      assertEquals(
+        ScriptIntegrity.hash(c.tx, c.params, neededKinds(c))(using
+          TestLedger.usualEra((c.params).protocolMajor.toInt)
+        ),
+        c.tx.body.scriptDataHash
+      )
     }
 
     test(s"${c.name} (${c.kind}): phase 2 agrees with is_valid = ${c.tx.isValid}") {

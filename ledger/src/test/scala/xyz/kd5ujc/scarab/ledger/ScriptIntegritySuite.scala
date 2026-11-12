@@ -5,6 +5,7 @@ import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusLanguage}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import munit.FunSuite
+import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
 
 /** The language views and the hash layout of `script_data_hash`. */
 class ScriptIntegritySuite extends FunSuite:
@@ -119,7 +120,9 @@ class ScriptIntegritySuite extends FunSuite:
       Bytes(redeemers.value ++ datums.value ++ bytes("a1" + "01" + "84" + "04050607"))
     )
     assertEquals(
-      ScriptIntegrity.hash(tx(Some(redeemers), Some(datums)), pp, Set(ScriptKind.PlutusV2)),
+      ScriptIntegrity.hash(tx(Some(redeemers), Some(datums)), pp, Set(ScriptKind.PlutusV2))(using
+        TestLedger.usualEra((pp).protocolMajor.toInt)
+      ),
       Some(expected)
     )
   }
@@ -129,7 +132,9 @@ class ScriptIntegritySuite extends FunSuite:
       Bytes(redeemers.value ++ bytes("a1" + "4100" + "45" + "9f010203ff"))
     )
     assertEquals(
-      ScriptIntegrity.hash(tx(Some(redeemers), None), pp, Set(ScriptKind.PlutusV1)),
+      ScriptIntegrity.hash(tx(Some(redeemers), None), pp, Set(ScriptKind.PlutusV1))(using
+        TestLedger.usualEra((pp).protocolMajor.toInt)
+      ),
       Some(expected)
     )
   }
@@ -138,7 +143,9 @@ class ScriptIntegritySuite extends FunSuite:
     // blake2b-256 of the redeemers ‖ a1 4100 41f6, and of the redeemers ‖ a2 02f6 4100 45 9f010203ff,
     // computed outside Scarab from the bytes `getLanguageView` and `encodeLangViews` write.
     assertEquals(
-      ScriptIntegrity.hash(tx(Some(redeemers), None), noModels, Set(ScriptKind.PlutusV1)),
+      ScriptIntegrity.hash(tx(Some(redeemers), None), noModels, Set(ScriptKind.PlutusV1))(using
+        TestLedger.usualEra((noModels).protocolMajor.toInt)
+      ),
       Some(Bytes(bytes("2d3edd84d1932280ccbc5aeba56e65f145f49276a0b5e4c3be8a5e97e5065697")))
     )
     assertEquals(
@@ -146,19 +153,70 @@ class ScriptIntegritySuite extends FunSuite:
         tx(Some(redeemers), None),
         onlyV1,
         Set(ScriptKind.PlutusV1, ScriptKind.PlutusV3)
-      ),
+      )(using TestLedger.usualEra((onlyV1).protocolMajor.toInt)),
       Some(Bytes(bytes("c47c02a6428d13235bce8dc7b0a5c13b699ce2dd400b49ffed0303f10f3da79e")))
     )
   }
 
   test("nothing to hash: no redeemers, no datums, no Plutus language") {
-    assertEquals(ScriptIntegrity.hash(tx(None, None), pp, Set.empty), None)
+    assertEquals(
+      ScriptIntegrity.hash(tx(None, None), pp, Set.empty)(using
+        TestLedger.usualEra((pp).protocolMajor.toInt)
+      ),
+      None
+    )
   }
 
   test("a cost model change changes the hash") {
     val other = pp.copy(costModels = pp.costModels.updated(1, Vector(4, 5, 6, 8)))
     assertNotEquals(
-      ScriptIntegrity.hash(tx(Some(redeemers), None), pp, Set(ScriptKind.PlutusV2)),
-      ScriptIntegrity.hash(tx(Some(redeemers), None), other, Set(ScriptKind.PlutusV2))
+      ScriptIntegrity.hash(tx(Some(redeemers), None), pp, Set(ScriptKind.PlutusV2))(using
+        TestLedger.usualEra((pp).protocolMajor.toInt)
+      ),
+      ScriptIntegrity.hash(tx(Some(redeemers), None), other, Set(ScriptKind.PlutusV2))(using
+        TestLedger.usualEra((other).protocolMajor.toInt)
+      )
     )
+  }
+
+  // These are the pre-change preimages, including the exact raw redeemer and datum bytes, for
+  // every era at each of its usual protocol versions. The empty redeemer constructor is encoded
+  // at eraProtVerLow; present bytes remain untouched (Alonzo/TxWits.hs:157-175,203-211 at f649f975).
+  private val usualVersions: Vector[(ShelleyBasedEra[?], Vector[Int], Option[String])] = Vector(
+    (ShelleyBasedEra.SShelley, Vector(2), None),
+    (ShelleyBasedEra.SAllegra, Vector(3), None),
+    (ShelleyBasedEra.SMary, Vector(4), None),
+    (ShelleyBasedEra.SAlonzo, Vector(5, 6), Some("80")),
+    (ShelleyBasedEra.SBabbage, Vector(7, 8), Some("80")),
+    (ShelleyBasedEra.SConway, Vector(9, 10, 11), Some("a0")),
+    (ShelleyBasedEra.SDijkstra, Vector(12, 13), Some("a0"))
+  )
+
+  usualVersions.foreach { case (era, versions, head) =>
+    versions.foreach { major =>
+      test(s"$era at version $major: integrity preimages are unchanged byte for byte") {
+        val params = pp.copy(protocolMajor = major)
+        val empty = tx(None, None)
+        assertEquals(ScriptIntegrity.preimage(empty, params, Set.empty)(using era), None)
+        assertEquals(ScriptIntegrity.hash(empty, params, Set.empty)(using era), None)
+        head.foreach { emptyRedeemers =>
+          val absent = tx(None, Some(datums))
+          val preimage = Bytes(bytes(emptyRedeemers + datums.hex + "a0"))
+          assertEquals(
+            ScriptIntegrity.preimage(absent, params, Set.empty)(using era),
+            Some(preimage)
+          )
+          assertEquals(
+            ScriptIntegrity.hash(absent, params, Set.empty)(using era),
+            Some(Blake2b.hash256.hash(preimage))
+          )
+          val supplied = tx(Some(redeemers), Some(datums))
+          val original = redeemers ++ datums ++ Bytes(bytes("a1018404050607"))
+          assertEquals(
+            ScriptIntegrity.preimage(supplied, params, Set(ScriptKind.PlutusV2))(using era),
+            Some(original)
+          )
+        }
+      }
+    }
   }

@@ -45,7 +45,14 @@ class FlatEndingSuite extends FunSuite:
     * `MalformedReferenceScripts`) as the node reports it.
     */
   private def wellFormed(protocol: Int, tx: Tx): Either[LedgerFailure, Unit] =
-    TestLedger.verdict(tx.body.id, Vector(TxChecks.scriptsWellFormed(params(protocol), tx, env)))
+    TestLedger.verdict(
+      tx.body.id,
+      Vector(
+        TxChecks.scriptsWellFormed(params(protocol), tx, env)(using
+          TestLedger.usualEra((params(protocol)).protocolMajor.toInt)
+        )
+      )
+    )
 
   test("the fixture's own script ends exactly behind its filler") {
     assert(FlatScan.decode(flat).isRight)

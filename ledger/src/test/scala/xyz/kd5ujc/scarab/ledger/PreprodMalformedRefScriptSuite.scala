@@ -113,7 +113,7 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
       c.tx.body.copy(outputs = c.tx.body.outputs.updated(at, out.copy(raw = raw3)))
     )
     TxChecks
-      .scriptsWellFormed(params, bad, env)
+      .scriptsWellFormed(params, bad, env)(using TestLedger.usualEra((params).protocolMajor.toInt))
       .flatMap(TestLedger.verdict(bad.body.id, _)) match
       case Left(
             LedgerFailure.Rejected.Single(

@@ -347,7 +347,7 @@ class ConwayRulesSuite extends FunSuite:
       tx(bodyWith(None), Vector(alice), wits),
       pp,
       Set(ScriptKind.PlutusV3)
-    )
+    )(using xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SConway)
     val b = bodyWith(hash)
     def attempt(
         succeeds: Boolean,
@@ -391,12 +391,12 @@ class ConwayRulesSuite extends FunSuite:
       tx(bodyWith(None), Vector(alice), wits),
       pp11,
       Set(ScriptKind.PlutusV3)
-    )
+    )(using xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SConway)
     val expected = ScriptIntegrity.hash(
       tx(bodyWith(None), Vector(alice), wits),
       pp11,
       Set(ScriptKind.PlutusV3)
-    )
+    )(using xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SConway)
     assert(preimage.isDefined)
     assertEquals(
       attempt(succeeds = true, isValid = true, bodyWith(Some(wrong)), at11).left.map {
@@ -416,8 +416,12 @@ class ConwayRulesSuite extends FunSuite:
     val noV3 = pp.copy(costModels = pp.costModels - 2)
     val withoutModel = conway(funds, noV3)
     val unsigned = tx(bodyWith(None), Vector(alice), wits)
-    val languageOmitted = ScriptIntegrity.hash(unsigned, noV3, Set.empty)
-    val nullView = ScriptIntegrity.hash(unsigned, noV3, Set(ScriptKind.PlutusV3))
+    val languageOmitted = ScriptIntegrity.hash(unsigned, noV3, Set.empty)(using
+      xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SConway
+    )
+    val nullView = ScriptIntegrity.hash(unsigned, noV3, Set(ScriptKind.PlutusV3))(using
+      xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SConway
+    )
     assertNotEquals(languageOmitted, nullView)
     assertEquals(
       rule(attempt(succeeds = true, isValid = true, bodyWith(languageOmitted), withoutModel)),
@@ -488,7 +492,7 @@ class ConwayRulesSuite extends FunSuite:
       tx(bodyWith(None, Vector.empty), Vector(alice), wits),
       conwayParams,
       Set(ScriptKind.PlutusV3)
-    )
+    )(using xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SConway)
     def attempt(protocol: Int, refs: Vector[TxIn]) =
       // the placeholder script is not well-formed UPLC; this test is about reference inputs
       rule(
