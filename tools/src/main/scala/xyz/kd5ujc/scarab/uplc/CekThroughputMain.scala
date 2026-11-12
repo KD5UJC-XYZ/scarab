@@ -5,7 +5,15 @@ import scalus.cardano.ledger.{MajorProtocolVersion, Word64 as SWord64}
 import scalus.uplc.{Constant as SConstant, DefaultFun as SFun, NamedDeBruijn, Term as STerm}
 import scalus.uplc.eval.{CountingBudgetSpender, NoLogger, PlutusVM}
 import xyz.kd5ujc.scarab.uplc.builtin.{CostingFunction, Argument, MachineValue}
-import xyz.kd5ujc.scarab.uplc.cek.{BudgetMode, CekMachine, CekResult, StubBuiltins, Terms}
+import xyz.kd5ujc.scarab.uplc.cek.{
+  BudgetMode,
+  CaserBuiltin,
+  CekMachine,
+  CekResult,
+  MachineParameters,
+  StubBuiltins,
+  Terms
+}
 import xyz.kd5ujc.scarab.uplc.cost.{CostStream, ExBudget}
 
 /** Development tool: the throughput of the own CEK machine against Scalus's on synthetic loops, in
@@ -15,10 +23,11 @@ import xyz.kd5ujc.scarab.uplc.cost.{CostStream, ExBudget}
   *
   * The loops (`Terms.countdown`, a fixed-point countdown through `lessThanEqualsInteger`,
   * `ifThenElse` and `addInteger`; `Terms.constrSum`, a list of `constr` built and summed with
-  * `case`) run on both machines with counting budgets: ours with the chain's step costs and the
-  * stub builtins of its tests (`StubBuiltins`, whose costing is a constant, cheaper than a real
-  * costing function), Scalus's as `PlutusVM.makePlutusV3VM` at protocol 11 builds it. The step
-  * count is our machine's, with every step costing one CPU unit and the builtins nothing. Both
+  * `case`) run on both machines with counting budgets: ours with the chain's step costs, the core
+  * builtins of variant E (`builtin.core`) and the stub costing of its tests (`StubBuiltins`, a
+  * constant per builtin, cheaper than a real costing function), Scalus's as
+  * `PlutusVM.makePlutusV3VM` at protocol 11 builds it (not the repository's corrected machine). The
+  * step count is our machine's, with every step costing one CPU unit and the builtins nothing. Both
   * results are checked before timing; the rounds then alternate between the machines after a
   * warm-up, and the median round of each is reported.
   */
@@ -32,13 +41,16 @@ object CekThroughputMain:
       Workload("constr sum 50000", Terms.constrSum(50000), BigInt(50000) * 50001 / 2)
     )
     val vm = PlutusVM.makePlutusV3VM(MajorProtocolVersion(11))
-    val ours = StubBuiltins.parameters(StubBuiltins.chainCosts)
+    val core = StubBuiltins.core(SemanticsVariant.E).fold(e => sys.error(e.toString), identity)
+    val ours = MachineParameters(StubBuiltins.chainCosts, core, CaserBuiltin.WithoutData)
     val free = new CostingFunction:
       def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
         CostStream.single(ExBudget.zero)
-    val counter = StubBuiltins
-      .parameters(StubBuiltins.stepCounting)
-      .copy(builtins = StubBuiltins.builtins.copy(costing = _ => free))
+    val counter = MachineParameters(
+      StubBuiltins.stepCounting,
+      core.copy(costing = _ => free),
+      CaserBuiltin.WithoutData
+    )
 
     workloads.foreach { w =>
       val scalusTerm = toScalus(w.term)
