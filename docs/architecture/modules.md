@@ -26,12 +26,7 @@ a cycle does not load.
 | `fuzz` | Structured fuzzing of every decoder entry point (test only) | |
 | `tools` | Benchmarks, probes and fixture writers run by hand (`tools/runMain <class>`); not published | `IO` at entry points; pure helpers |
 
-```
-codec <- crypto <- protocol <- network ------------------------.
-  ^                  ^                                          \
-  |                  '--- ledger <- consensus <- storage <------ node
-  '------ plutus <------'
-```
+The dependency graph, generated from `build.sbt`, is the first section of the [code map](../codemap.md).
 
 `plutus` depends on `uplc`, which depends on `crypto` and `codec` and never on `plutus`, so Scalus stays out of it; `ledger` depends on `protocol` and `plutus`; `consensus` on `ledger`; `storage` on `consensus` and
 `models` (which stands on `codec` and `crypto`; the Haskell ledger-state codec reuses the models runtime; `models` itself sees `ledger` only in
