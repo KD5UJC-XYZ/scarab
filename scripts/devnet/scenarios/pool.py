@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 from .. import metrics as node_metrics
-from . import kes_rotate
+from . import dynamic_forging, kes_rotate
 from ..cluster import database_mounts, freeze_classes, scala_container, start_nodes, start_reference, wait_listening
 from ..compare import Comparisons, compare_or_error, whole_failures, whole_state
 from ..scenarios.relay import SCALA_PORT, log_counts, tip_at
@@ -212,14 +212,14 @@ def slot_clock(events, shelley):
                                  if e["event"] == "extended" and e["block"]["hash"] not in mine])}
 
 
-def missed_leader_slots(events, schedules, shelley):
+def missed_leader_slots(events, schedules, shelley, excluded=None):
     """Check the Scala pool's forging against the reference node's `leadership-schedule`.
 
     A scheduled slot is accounted for when the pool forged in it, or when another pool's block occupies the slot
     (a slot battle it could not win, or a block that arrived first). Only the window in which the forger ran counts:
-    from the slot after its first synced block to two slots before the last log line. Returns a dict with the
-    scheduled count in the window, the missed slots, the slots lost to another pool's block, and the epochs of the
-    window without a schedule."""
+    from the slot after its first synced block to two slots before the last log line, without the slots of
+    `excluded` (first, last; last None: to the end), when forging was disabled. Returns a dict with the scheduled count in the window, the
+    missed slots, the slots lost to another pool's block, and the epochs of the window without a schedule."""
     forged = {e["hash"]: e["slot"] for e in events if e["event"] == "forged"}
     others = {e["block"]["slot"] for e in events if e["event"] == "extended" and e["block"]["hash"] not in forged}
     first = next((slot_at(shelley, e["at"]) for e in events if e["event"] == "extended"), None)
@@ -232,7 +232,8 @@ def missed_leader_slots(events, schedules, shelley):
     # tail is left out of the window rather than failing the run; every earlier epoch of the window needs one.
     if window[1] // length not in schedules and window[1] // length > window[0] // length:
         window = (window[0], (window[1] // length) * length - 1)
-    scheduled = sorted(s for slots in schedules.values() for s in slots if window[0] <= s <= window[1])
+    scheduled = sorted(s for slots in schedules.values() for s in slots if window[0] <= s <= window[1]
+                       and not (excluded and excluded[0] <= s and (excluded[1] is None or s <= excluded[1])))
     mine = set(forged.values())
     started = {e["slot"] for e in events if e["event"] == "startLeadershipCheck"}
     # the trace that ended each slot the loop started without a block, by the reference's name
@@ -266,6 +267,12 @@ def kes_rotate_scenario(args):
     pool(args)
 
 
+def dynamic_forging_scenario(args):
+    """`pool` with forging switched off and on again by SIGHUP (see `scenarios/dynamic_forging.py`)."""
+    args.dynamic = True
+    pool(args)
+
+
 def pool(args):
     """Fresh 3-pool cluster in which pool `--pool` is the Scala node. Its Haskell node is never started
     (so no two producers ever hold the keys), the other two pools get the Scala node in their topology, and
@@ -284,6 +291,7 @@ def pool(args):
     rotate = getattr(args, "rotate", False)  # the kes-rotate scenario: this run with the rotation driver
     sockets_dir = "ipc" if rotate else "scala-sock"  # the Scala node's node-to-client socket, in the run dir
     driver = kes_rotate.Driver(args, root) if rotate else None
+    toggle = None  # the dynamic-forging scenario: the credential files moved away and back
     load_at_start = host_load()
     comparisons, samples = [], []
     whole = Comparisons(root)
@@ -340,6 +348,8 @@ def pool(args):
                                   mounts=[f"{root / 'genesis'}:/genesis:ro", *database_mounts(db), f"{root / 'keys'}:/keys",
                                           f"{sockets}:/ipc"], name=f"{args.name}-scala")
         log = root / "follower.jsonl"
+        if getattr(args, "dynamic", False):
+            toggle = dynamic_forging.Toggle(args, root, log)
         scala = subprocess.Popen(["docker", *command], stdout=log.open("a"), stderr=subprocess.STDOUT, text=True)
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
@@ -371,6 +381,8 @@ def pool(args):
             for n in others:
                 sample[f"pool{n}"] = tip_at(args.name, f"{ENV}/socket/node{n}/sock")
             samples.append(sample)
+            if toggle:
+                toggle.due(time.monotonic() - started)
             seen = sample[f"pool{observer}"]
             if seen and seen["epoch"] not in schedules:
                 got = leadership_schedule(args.name, f"{ENV}/socket/node{observer}/sock", ours)
@@ -463,7 +475,8 @@ def pool(args):
         load_lines = (root / "load.log").read_text().strip().splitlines()
         load_stats = next((json.loads(l) for l in reversed(load_lines) if l.startswith("{") and "submitted" in l), {})
         matched = [c for c in comparisons if c.get("matched")]
-        oracle = missed_leader_slots(events, schedules, shelley)
+        disabled = toggle.excluded(lambda at: slot_at(shelley, at)) if toggle else None
+        oracle = missed_leader_slots(events, schedules, shelley, excluded=disabled)
         summary = {
             "oracle": oracle,
             "pool": {"id": pool_id, "number": ours, "stakeFraction": round(sigma, 4)},
@@ -551,6 +564,10 @@ def pool(args):
             rotation_failures, summary["kesRotation"] = kes_rotate.check(args, root, events, forged, on_chain, counts,
                                                                        driver, observer)
             failures += [f"rotation: {f}" for f in rotation_failures]
+        if toggle:
+            toggle_failures, summary["dynamicForging"] = toggle.check(events, schedules,
+                                                                      lambda at: slot_at(shelley, at))
+            failures += [f"dynamic forging: {f}" for f in toggle_failures]
         if counts.get("error"):
             failures.append(f"{counts['error']} error events in the Scala log")
         for problem in FORGE_PROBLEMS:

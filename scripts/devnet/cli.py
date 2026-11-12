@@ -21,6 +21,10 @@
                                    pool, with the KES key and operational certificate rotated unattended by
                                    scripts/pool/rotate_kes.py (SIGHUP reload): no restart, forging continues, the
                                    certificate counter goes up, the Haskell pools adopt every block
+    devnet.py dynamic-forging [--seconds N]
+                                   pool, with the credential files moved away and SIGHUP sent (forging stops: no
+                                   block in a leader slot, no key written back), then put back and SIGHUP sent again
+                                   (forging starts), as cardano-node's dynamic block forging
     devnet.py ntc [--seconds N]    the Scala node's node-to-client interface against the reference node's:
                                    LocalStateQuery, local ChainSync and LocalTxMonitor byte for byte, `cardano-cli query`, refused transactions
     devnet.py up-eras              reference cluster that walks Byron, Shelley ... Conway
@@ -71,7 +75,7 @@ from .scenarios.governor import governor
 from .scenarios.ntc import ntc
 from .scenarios.peercut import peercut
 from .scenarios.inbound_flood import inbound_flood
-from .scenarios.pool import kes_rotate_scenario, pool
+from .scenarios.pool import dynamic_forging_scenario, kes_rotate_scenario, pool
 from .scenarios.relay import relay
 from .scenarios.peer_sharing import peer_sharing
 from .scenarios.restart import restart
@@ -81,7 +85,8 @@ from .util import GIB, REPO, data_root, free_space_shortfall, human_bytes, tree_
 
 # the subcommands that start containers and fill a run directory: the free-space check and the size report apply
 RUNS = frozenset({"up", "up-eras", "capture-eras", "up-dijkstra", "capture-dijkstra", "e2e", "follow", "soak", "relay", "peer-sharing", "peercut",
-                  "inbound-flood", "governor", "ntc", "pool", "kes-rotate", "faults", "restart", "v1-context"})
+                  "inbound-flood", "governor", "ntc", "pool", "kes-rotate", "dynamic-forging", "faults", "restart",
+                  "v1-context"})
 DEFAULT_MIN_FREE_GIB = 5.0
 RUN_MARKER = "SCARAB_DEVNET_RUN"
 
@@ -342,6 +347,15 @@ def main():
     kr.add_argument("--rotate-every", type=float, default=10, help="seconds between runs of the driver")
     kr.add_argument("--min-rotations", type=int, default=2, help="reloads the run must show")
     kr.set_defaults(run=kes_rotate_scenario, seconds=300)
+    df = sub.add_parser("dynamic-forging", parents=[scala_options],
+                        help="pool, with the credential files moved away and back and SIGHUP sent: forging stops and "
+                             "starts again, as cardano-node's dynamic block forging (#906)")
+    pool_flags(df)
+    df.add_argument("--disable-after", type=float, default=120,
+                    help="seconds into the load phase at which the credential files are moved away and SIGHUP sent")
+    df.add_argument("--disabled-seconds", type=float, default=90,
+                    help="seconds forging stays disabled before the files are put back (several KES periods)")
+    df.set_defaults(run=dynamic_forging_scenario, seconds=360)
     fl = sub.add_parser("faults", parents=[scala_options],
                         help="seeded network-fault run: tc netem latency and loss, partitions, crashes; checks convergence and growth (issue 224)")
     fl.add_argument("--seed", type=int, default=1, help="seed of the fault schedule; the same seed over the same genesis gives the same schedule")
@@ -408,5 +422,5 @@ def main():
         scenario.add_argument("--consensus-mode", choices=["PraosMode", "GenesisMode"],
                               help="Scala consensus mode; reference pools retain their original configuration")
     args = p.parse_args()
-    args.name = args.name or ("scarab-dijkstra" if args.command in ("up-dijkstra", "capture-dijkstra") else "scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e", "sample-chain-dep", "assemble-chain-dep") else "scarab-pool" if args.command == "pool" else "scarab-kes-rotate" if args.command == "kes-rotate" else "scarab-devnet")
+    args.name = args.name or ("scarab-dijkstra" if args.command in ("up-dijkstra", "capture-dijkstra") else "scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e", "sample-chain-dep", "assemble-chain-dep") else "scarab-pool" if args.command == "pool" else "scarab-kes-rotate" if args.command == "kes-rotate" else "scarab-dynamic-forging" if args.command == "dynamic-forging" else "scarab-devnet")
     run(args)
