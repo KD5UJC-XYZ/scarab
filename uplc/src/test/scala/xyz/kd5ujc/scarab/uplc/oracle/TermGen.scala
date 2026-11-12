@@ -69,8 +69,8 @@ object TermGen:
     case Goal(ty: Ty, env: Vector[Ty], fuel: Int, loops: Int, rng: SplitRng)
     case Layer(layer: TermF[Seed])
 
-  /** What every goal of one program shares: the profile, whether `constr` and `case` may be written,
-    * the builtins that may be named, and whether faults may be.
+  /** What every goal of one program shares: the profile, whether `constr` and `case` may be
+    * written, the builtins that may be named, and whether faults may be.
     */
   final case class Ctx(
       profile: Profile,
@@ -241,14 +241,26 @@ object TermGen:
       case _               => goal(t, env, fuel, loops)
     }
 
+  /** The arguments `from` onwards of `function`: three in five of those with a domain
+    * ([[GeneratedConstants.domain]]) are a constant from it, so that the builtin runs past its
+    * argument checks more often than random constants would let it.
+    */
   private def arguments(
+      function: DefaultFun,
+      from: Int,
       ts: Vector[Ty],
       env: Vector[Ty],
       fuel: Int,
       loops: Int
   ): Draw[Vector[Seed]] =
     shares(fuel, ts.size.max(1)).flatMap(fs =>
-      ts.zip(fs).traverse((t, f) => argument(t, env, f, loops))
+      ts.zip(fs).zipWithIndex.traverse { case ((t, f), i) =>
+        chance(60).flatMap { hinted =>
+          GeneratedConstants.domain(function, from + i).filter(_ => hinted) match
+            case Some(draw) => draw.map(con)
+            case None       => argument(t, env, f, loops)
+        }
+      }
     )
 
   /** `f` applied to arguments of its parameter types: fully, or in part with the partial
@@ -269,13 +281,15 @@ object TermGen:
         if style < 15 && ts.size >= 2 then
           for
             k <- between(1, ts.size - 1)
-            first <- arguments(ts.take(k), g.env, g.fuel / 2, g.loops)
-            rest <- arguments(ts.drop(k), inner, g.fuel / 2, g.loops)
+            first <- arguments(f, 0, ts.take(k), g.env, g.fuel / 2, g.loops)
+            rest <- arguments(f, k, ts.drop(k), inner, g.fuel / 2, g.loops)
           yield app(lam(apps(variable(1), rest)), apps(forced(builtin(f), s.forces), first))
         else if style < 25 && s.forces > 0 then
-          arguments(ts, inner, g.fuel, g.loops)
+          arguments(f, 0, ts, inner, g.fuel, g.loops)
             .map(as => app(lam(apps(forced(variable(1), s.forces), as)), builtin(f)))
-        else arguments(ts, g.env, g.fuel, g.loops).map(as => apps(forced(builtin(f), s.forces), as))
+        else
+          arguments(f, 0, ts, g.env, g.fuel, g.loops)
+            .map(as => apps(forced(builtin(f), s.forces), as))
     yield seed
 
   /** A term of type `t` with no goal of positive size below it. */
@@ -283,7 +297,7 @@ object TermGen:
     def bytes(encodings: Vector[xyz.kd5ujc.scarab.codec.Bytes]): Draw[Seed] =
       pick(
         Vector(
-          5 -> element(encodings).map(b => con(Constant.ByteString(b.getOrElse(encodings.head)))),
+          9 -> GeneratedConstants.encoding(encodings).map(b => con(Constant.ByteString(b))),
           1 -> GeneratedConstants.byteString.map(b => con(Constant.ByteString(b)))
         )
       )
@@ -505,7 +519,9 @@ object TermGen:
             ).mapN((c, t, e) => force(call(IfThenElse, c, delay(t), delay(e))))
           ),
           (if ctx.constrCase then 6 else 0) -> constrCase(ctx, g),
-          (if ctx.constrCase then 3 else 0) -> constantCase(ctx, g),
+          (if !ctx.constrCase then 0
+           else if ctx.profile.protocol.value < ProtocolMajor.VanRossem.value then 1
+           else 3) -> constantCase(ctx, g),
           (if g.fuel >= 8 && g.loops < 2 then 3 else 0) -> loop(g),
           (if ctx.faults then 3 else 0) -> illFormed(ctx, g),
           (if ctx.faults then 1 else 0) -> State.pure(error)

@@ -5,7 +5,7 @@ import cats.data.State
 import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.uplc.{Constant, DefaultUni, PlutusData, Text, Value}
+import xyz.kd5ujc.scarab.uplc.{Constant, DefaultFun, DefaultUni, PlutusData, Text, Value}
 import xyz.kd5ujc.scarab.uplc.oracle.SplitRng.*
 
 /** The constants of the term generator: values near the bounds the builtins and the costing care
@@ -42,6 +42,17 @@ object GeneratedConstants:
     "80bd6902a9d41c72c2d5e7a0b12e7a836551264e87aa0a4c21b8763461644f919345573e30401eee41364a29be7cb4b3" +
       "109b6590e9a1e0960cf64b7e8be8d71fbb7c27a45cc5b11c3435c6e6e30fc12ac4b4e644e668b6f90fb21c0a2d1842f2"
   ).map(hex)
+
+  /** An encoding of a point: the generator or the point at infinity three times in four, so that
+    * most points are valid, otherwise any of `encodings`.
+    */
+  def encoding(encodings: Vector[Bytes]): Draw[Bytes] =
+    pick(
+      Vector(
+        3 -> element(encodings.take(2)).map(_.getOrElse(Bytes.empty)),
+        1 -> element(encodings).map(_.getOrElse(Bytes.empty))
+      )
+    )
 
   val integer: Draw[BigInt] = pick(
     Vector(
@@ -160,6 +171,60 @@ object GeneratedConstants:
       .flatMap(listOf(_, (key(32), tokens).tupled))
       .map(entries => Value.pack(SortedMap.from(entries.map((c, ts) => c -> SortedMap.from(ts)))))
 
+  private def sized(n: Int): Draw[Constant] = bytesOf(n).map(Constant.ByteString(_))
+  private def int(low: Int, high: Int): Draw[Constant] =
+    between(low, high).map(i => Constant.Integer(BigInt(i)))
+
+  /** Constants an argument of a builtin should come from to pass the builtin's own checks often: a
+    * key, message or signature of the right length, a point's valid encoding, valid UTF-8, a `Data`
+    * of the constructor a destructor expects, an index or a width in range, a divisor that is not
+    * zero. None for the arguments any constant of the type suits as well.
+    */
+  def domain(function: DefaultFun, position: Int): Option[Draw[Constant]] =
+    import DefaultFun.*
+    val small = data(1, wide = false)
+    val fields = between(0, 3).flatMap(listOf(_, small))
+    def shaped(d: Draw[PlutusData]): Option[Draw[Constant]] = Some(d.map(Constant.Data(_)))
+    (function, position) match
+      case (DivideInteger | QuotientInteger | RemainderInteger | ModInteger, 1) =>
+        Some(pick(Vector(3 -> int(1, 20), 1 -> int(-20, -1))))
+      case (ConsByteString, 0)                                                => Some(int(0, 255))
+      case (IndexByteString, 1) | (IndexArray, 1)                             => Some(int(0, 3))
+      case (SliceByteString, 0 | 1)                                           => Some(int(0, 8))
+      case (VerifyEd25519Signature, 0) | (VerifySchnorrSecp256k1Signature, 0) => Some(sized(32))
+      case (VerifyEcdsaSecp256k1Signature, 0) =>
+        (oneOf(2, 3), bytesOf(32))
+          .mapN((p, b) => Constant.ByteString(Bytes.wrap(Array(p.toByte)) ++ b))
+          .some
+      case (VerifyEcdsaSecp256k1Signature, 1) => Some(sized(32))
+      case (
+            VerifyEd25519Signature | VerifyEcdsaSecp256k1Signature |
+            VerifySchnorrSecp256k1Signature,
+            2
+          ) =>
+        Some(sized(64))
+      case (DecodeUtf8, 0)              => Some(text.map(t => Constant.ByteString(t.utf8)))
+      case (Bls12_381_G1_uncompress, 0) => Some(encoding(g1Encodings).map(Constant.ByteString(_)))
+      case (Bls12_381_G2_uncompress, 0) => Some(encoding(g2Encodings).map(Constant.ByteString(_)))
+      case (Bls12_381_G1_hashToGroup | Bls12_381_G2_hashToGroup, 1) =>
+        Some(between(0, 40).flatMap(sized))
+      case (UnIData, 0)    => shaped(integer.map(PlutusData.I(_)))
+      case (UnBData, 0)    => shaped(byteString.map(PlutusData.B(_)))
+      case (UnListData, 0) => shaped(fields.map(PlutusData.List(_)))
+      case (UnMapData, 0) =>
+        shaped(between(0, 3).flatMap(listOf(_, (small, small).tupled)).map(PlutusData.Map(_)))
+      case (UnConstrData, 0) =>
+        shaped((between(0, 8).map(BigInt(_)), fields).mapN(PlutusData.Constr(_, _)))
+      case (IntegerToByteString, 1) => Some(int(0, 40))
+      case (IntegerToByteString, 2) =>
+        Some(pick(Vector(3 -> int(0, 100000), 1 -> long.map(l => Constant.Integer(BigInt(l).abs)))))
+      case (ReadBit, 1) | (ShiftByteString, 1) | (RotateByteString, 1) => Some(int(-20, 70))
+      case (ReplicateByte, 0)                                          => Some(int(0, 64))
+      case (ReplicateByte, 1)                                          => Some(int(0, 255))
+      case (ExpModInteger, 2)                                          => Some(int(1, 1000))
+      case (DropList, 0)                                               => Some(int(-2, 5))
+      case _                                                           => None
+
   /** A constant of `uni`, which holds no BLS12-381 value. */
   def of(uni: DefaultUni): Draw[Constant] = uni match
     case DefaultUni.Integer    => integer.map(Constant.Integer(_))
@@ -170,11 +235,11 @@ object GeneratedConstants:
     case DefaultUni.Data       => between(0, 3).flatMap(data(_)).map(Constant.Data(_))
     case DefaultUni.Value      => value.map(Constant.Value(_))
     case DefaultUni.List(e) =>
-      between(0, 4)
+      pick(Vector(1 -> between(0, 0), 4 -> between(1, 4)))
         .flatMap(listOf(_, of(e)))
         .map(xs => Constant.List.of(e, xs).getOrElse(Constant.List.empty(e)))
     case DefaultUni.Array(e) =>
-      between(0, 4)
+      pick(Vector(1 -> between(0, 0), 4 -> between(1, 4)))
         .flatMap(listOf(_, of(e)))
         .map(xs => Constant.Array.of(e, xs).getOrElse(Constant.List.empty(e).toArray))
     case DefaultUni.Pair(a, b) => (of(a), of(b)).mapN(Constant.Pair(_, _))
