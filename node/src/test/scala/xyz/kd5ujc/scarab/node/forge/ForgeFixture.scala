@@ -157,7 +157,8 @@ trait ForgeFixture:
         globals,
         None,
         None,
-        mirrorEnv.byron
+        mirrorEnv.byron,
+        xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
       )
       rules = new xyz.kd5ujc.scarab.consensus.BlockRules[IO, MirrorState]:
         def apply(state: MirrorState, header: Header, raw: Bytes)(using
@@ -177,14 +178,30 @@ trait ForgeFixture:
         .fromEither(
           xyz.kd5ujc.scarab.node.read
             .ConwayView(start, None)
-            .traverse(MempoolLedger.tick(_, Some(BigInt(4999)), MempoolEnv(globals, geometry)))
+            .traverse(
+              MempoolLedger.tick(
+                _,
+                Some(BigInt(4999)),
+                MempoolEnv(
+                  globals,
+                  geometry,
+                  xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+                  xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+                )
+              )
+            )
             .left
             .map(ChainError.MempoolTick(BigInt(4999) + 1, _))
         )
       mempool <- Mempool.create[IO](
         mempoolBase,
         4999,
-        MempoolEnv(globals, geometry),
+        MempoolEnv(
+          globals,
+          geometry,
+          xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+          xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+        ),
         None,
         MempoolEvents.none[IO]
       )
@@ -211,7 +228,16 @@ trait ForgeFixture:
               .Raise[IO, NodeError]
               .fromEither(
                 MempoolLedger
-                  .at(c.state, c.tipRef, MempoolEnv(globals, geometry))
+                  .at(
+                    c.state,
+                    c.tipRef,
+                    MempoolEnv(
+                      globals,
+                      geometry,
+                      xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+                      xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+                    )
+                  )
                   .left
                   .map(ChainError.MempoolTick(c.tipRef.fold(BigInt(0))(_.slot + 1), _))
               )
@@ -227,6 +253,7 @@ trait ForgeFixture:
       forger <- Forger.create[IO, MirrorState](
         config,
         globals,
+        xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
         p.creds,
         follower,
         mempool,

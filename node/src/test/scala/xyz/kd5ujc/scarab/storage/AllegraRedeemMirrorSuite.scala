@@ -87,6 +87,7 @@ class AllegraRedeemMirrorSuite extends CatsEffectSuite:
             setup.byronRules,
             setup.handOver,
             setup.byronHistory,
+            xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
             utxoStore = Some(store)
           )
           // each block's state becomes immutable at once: the store holds every entry and is at

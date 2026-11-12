@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.plutus.PlutusBackend
 import cats.Monad
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -62,6 +63,9 @@ import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
   *   starts in Shelley
   * @param byronParams
   *   the Byron parameters of the era history, where the telescopes are placed
+  * @param plutus
+  *   the Plutus backend of the blocks' scripts (`--plutus-vm`, ADR 0027): their evaluation and
+  *   their admission, with no default
   *
   * @param utxoStore
   *   The backing store of the UTxO set. Without one the state's set holds all of it.
@@ -78,6 +82,7 @@ final class MirrorRules[F[_]: Monad](
     byron: Option[ByronRules.Config],
     handOver: Option[FromByron],
     byronParams: EraHistory.ByronParams,
+    plutus: PlutusBackend,
     phase2Observer: Option[Phase2.Observation => Unit] = None,
     utxoStore: Option[UtxoStore[F]] = None,
     afterBlock: Option[
@@ -113,6 +118,7 @@ final class MirrorRules[F[_]: Monad](
               byron,
               handOver,
               byronParams,
+              plutus,
               phase2Observer,
               prepared
             )
@@ -128,6 +134,7 @@ final class MirrorRules[F[_]: Monad](
               byron,
               handOver,
               byronParams,
+              plutus,
               phase2Observer,
               prepared
             )(workers.apply)
@@ -331,6 +338,7 @@ object MirrorRules:
       byron: Option[ByronRules.Config],
       handOver: Option[FromByron],
       byronParams: EraHistory.ByronParams,
+      plutus: PlutusBackend,
       phase2Observer: Option[Phase2.Observation => Unit] = None,
       prepared: Option[Prepared] = None
   ): Either[BlockFailure, MirrorState] =
@@ -343,6 +351,7 @@ object MirrorRules:
       byron,
       handOver,
       byronParams,
+      plutus,
       phase2Observer,
       prepared
     )(_.serial)
@@ -356,6 +365,7 @@ object MirrorRules:
       byron: Option[ByronRules.Config],
       handOver: Option[FromByron],
       byronParams: EraHistory.ByronParams,
+      plutus: PlutusBackend,
       phase2Observer: Option[Phase2.Observation => Unit],
       prepared: Option[Prepared]
   )(validate: EraBlock.Body => F[EraBlock.Outcome]): F[Either[BlockFailure, MirrorState]] =
@@ -382,6 +392,7 @@ object MirrorRules:
                 entry.configuration,
                 entry.constants,
                 byronParams,
+                plutus,
                 phase2Observer,
                 prepared
               )
@@ -396,6 +407,7 @@ object MirrorRules:
       config: PraosConfig,
       globals: LedgerGlobals,
       byronParams: EraHistory.ByronParams,
+      backend: PlutusBackend,
       phase2Observer: Option[Phase2.Observation => Unit],
       prepared: Option[Prepared]
   ): Either[BlockFailure, (EraBlock.Body, EraBlock.Outcome => Either[BlockFailure, MirrorState])] =
@@ -406,7 +418,9 @@ object MirrorRules:
       config.forks.transition(geometry.k),
       MirrorStep.afterVotingOf(state),
       verdicts = config.verdicts,
+      evaluator = backend.evaluator,
       observer = phase2Observer,
+      decoder = backend.decoder,
       clock = Some(
         MirrorClock.of(
           state,

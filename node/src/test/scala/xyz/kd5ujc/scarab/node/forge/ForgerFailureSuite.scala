@@ -174,7 +174,10 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     val limit = BlockBuilder.Limits(65536, xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L))
     val registering = MempoolStateFixture.entry(raw)
     val paying = MempoolStateFixture.entry(TxKit.pay(2)._1)
-    BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(registering, paying), limit) match
+    BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(registering, paying), limit)(
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator
+    ) match
       case BlockBuilder.Selection(
             chosen,
             Vector((withheld, xyz.kd5ujc.scarab.ledger.LedgerFailure.StateOutOfRange(_, error)))
@@ -604,9 +607,9 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     List(stopped, xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted).foreach { reason =>
       assertEquals(
         BlockBuilder
-          .select(base, 1001, 1, geometry, globals, Vector(entry), limit)(using
+          .select(base, 1001, 1, geometry, globals, Vector(entry), limit)(
             failing(reason),
-            xyz.kd5ujc.scarab.plutus.ScalusEvaluator.default
+            xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator
           )
           .chosen
           .map(_._1.id),
@@ -615,9 +618,9 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     }
     val invalid = entry.copy(tx = tx.copy(body = tx.body.copy(fee = -1)))
     assertEquals(
-      BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(invalid), limit)(using
-        xyz.kd5ujc.scarab.plutus.ScalusEvaluator.defaultDecoder,
-        xyz.kd5ujc.scarab.plutus.ScalusEvaluator.default
+      BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(invalid), limit)(
+        xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
+        xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator
       ),
       BlockBuilder.Selection(Vector.empty, Vector.empty)
     )

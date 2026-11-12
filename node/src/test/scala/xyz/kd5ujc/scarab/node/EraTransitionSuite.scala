@@ -859,7 +859,8 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       setup.globals,
       setup.byronRules,
       setup.handOver,
-      setup.byronHistory
+      setup.byronHistory,
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
     )
 
   private def forward(i: Int): SyncEvent = SyncEvent.RollForward(headers(i), ChainSync.Tip.Origin)
@@ -918,7 +919,8 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           setup.globals,
           setup.byronRules,
           Some(broken),
-          setup.byronHistory
+          setup.byronHistory,
+          xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
         )
         rules(before, headers(b), raws(b)).as(Option.empty[NodeError])
       }
@@ -980,6 +982,7 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               setup.byronRules,
               setup.handOver,
               setup.byronHistory,
+              xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
               utxoStore = Some(store),
               afterBlock = Some((_, _, s) =>
                 IO.delay(cache.noteEpochNonce(s.ledgerEpoch, s.protocol.epochNonce))

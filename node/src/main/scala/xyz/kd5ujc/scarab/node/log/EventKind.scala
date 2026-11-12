@@ -75,6 +75,9 @@ enum EventKind(val area: Area, val severity: Severity):
     */
   case UnstableReferenceBuild extends EventKind(Area.Node, Severity.Warning)
   case PlutusCrypto extends EventKind(Area.Node, Severity.Info)
+
+  /** The Plutus evaluator the node runs (`--plutus-vm`, ADR 0027). */
+  case PlutusVm extends EventKind(Area.Node, Severity.Notice)
   case Listening extends EventKind(Area.Node, Severity.Notice)
   // the node-to-client socket as the network layer sets it up, the reference's
   // `Startup.DiffusionInit` traces of it (ouroboros-network 2fb69829,

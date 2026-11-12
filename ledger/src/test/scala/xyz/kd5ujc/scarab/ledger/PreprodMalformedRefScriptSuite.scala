@@ -20,7 +20,7 @@ import TestLedger.*
 class PreprodMalformedRefScriptSuite extends FunSuite:
   private val c = PlutusCase.load(Path.of("fixtures/preprod/plutus/tx-aee75c1c.json"))
   private val ada = BigInt(1000000)
-  private val decoder = ScalusEvaluator.pureDecoder
+  private val decoder = PlutusBackends.decoder
 
   private val script: Bytes =
     c.tx.body.outputs.flatMap(_.referenceScript).head.plutus.get
@@ -60,7 +60,8 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
     firstSlotNextEpoch = c.slot + 100,
     stabilityWindow = 129600,
     clock = None,
-    evaluator = ScalusEvaluator.default
+    evaluator = PlutusBackends.evaluator,
+    decoder = decoder
   )
 
   test("the script is 2156 bytes: one CBOR byte string of 1078 bytes, twice") {

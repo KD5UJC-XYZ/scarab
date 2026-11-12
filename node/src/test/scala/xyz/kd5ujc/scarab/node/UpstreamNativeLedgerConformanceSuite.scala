@@ -119,7 +119,9 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
         xyz.kd5ujc.scarab.ledger.PosixClock.Total(s =>
           BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s)
         )
-      )
+      ),
+      evaluator = xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+      decoder = xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
     )
 
   private def paymentContext: Vector[Node] = node("LEDGER-2", "context").value match
@@ -368,7 +370,16 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
       assert(before.epoch.next.contains(epoch))
       val lastSlot = geometry.firstSlot(epoch.toBigInt) - 1
       val actual = mempool.MempoolLedger
-        .tick(before, Some(lastSlot), mempool.MempoolEnv(globals.ledger, geometry))
+        .tick(
+          before,
+          Some(lastSlot),
+          mempool.MempoolEnv(
+            globals.ledger,
+            geometry,
+            xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+            xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+          )
+        )
         .fold(error => fail(s"native-accepted $id refused: $error"), identity)
       assertEquals(actual, mempool.MempoolLedger.of(expected))
     }
@@ -469,7 +480,9 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
           xyz.kd5ujc.scarab.ledger.PosixClock.Total(s =>
             BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s)
           )
-        )
+        ),
+        evaluator = xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+        decoder = xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
       )
       val actual = JudgedSts
         .apply(Ledger)(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(tx.body.id, _))(

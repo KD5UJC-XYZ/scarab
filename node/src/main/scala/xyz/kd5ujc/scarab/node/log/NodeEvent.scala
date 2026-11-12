@@ -6,7 +6,7 @@ import io.circe.syntax.*
 import scala.concurrent.duration.FiniteDuration
 import com.comcast.ip4s.{Host, SocketAddress}
 import xyz.kd5ujc.scarab.crypto.bls.{BlstReport, CpuSupport, LibraryBuild}
-import xyz.kd5ujc.scarab.plutus.{CryptoLibrary, NativeCryptoReport}
+import xyz.kd5ujc.scarab.plutus.{CryptoLibrary, NativeCryptoReport, PlutusVm}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{NodeError, ShelleyGenesis, StorageError}
@@ -70,6 +70,9 @@ enum NodeEvent:
 
   /** The start-up check of the native library of the Plutus builtins passed (ADR 0020). */
   case PlutusCrypto(report: NativeCryptoReport)
+
+  /** The Plutus evaluator of the rules, the mempool and the forger (`--plutus-vm`, ADR 0027). */
+  case PlutusVmChosen(vm: PlutusVm)
 
   /** A listener is open (`--listen`, `--local-socket`). */
   case Listening(address: String)
@@ -410,6 +413,7 @@ object NodeEvent:
               "sha256" -> sha256.asJson
             ))
       )
+    case PlutusVmChosen(vm) => EventKind.PlutusVm.line("vm" -> vm.name.asJson)
     case Listening(address) => EventKind.Listening.line("address" -> address.asJson)
     case Memory(sample)     => EventKind.Memory.line("sample" -> sample)
     case CpuStarvation(drift, threshold, interval) =>

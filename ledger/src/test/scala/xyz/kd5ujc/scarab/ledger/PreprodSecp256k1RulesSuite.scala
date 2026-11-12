@@ -58,7 +58,8 @@ class PreprodSecp256k1RulesSuite extends FunSuite:
     clock = Some(
       xyz.kd5ujc.scarab.ledger.PosixClock.Total(slot => (BigInt(1655769600) + slot - 86400) * 1000)
     ),
-    evaluator = evaluator
+    evaluator = evaluator,
+    decoder = PlutusBackends.decoder
   )
 
   test("the recorded transaction is a Conway spend, valid on chain") {
@@ -70,7 +71,7 @@ class PreprodSecp256k1RulesSuite extends FunSuite:
     "the Conway rules accept it: the script gets False, not an error, for the all-zero signature"
   ) {
     val after = NativeRules
-      .txIn[Conway](world, c.tx, env(ScalusEvaluator.default))
+      .txIn[Conway](world, c.tx, env(PlutusBackends.evaluator))
       .fold(f => fail(f.message), identity)
     assertEquals(after.plutus.succeeded, 1L)
     assertEquals(after.state.es.ls.utxo.fees.value, c.tx.body.fee)

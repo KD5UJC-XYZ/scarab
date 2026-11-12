@@ -30,7 +30,8 @@ class Phase2UnavailableSuite extends FunSuite:
         clock = Some(
           PosixClock.Total(slot => c.posix(slot).fold(error => fail(error.message), identity))
         ),
-        evaluator = evaluator
+        evaluator = evaluator,
+        decoder = PlutusBackends.decoder
       ),
       scripts,
       tx.body.inputs.flatMap(in => c.spent.get(in).map(in -> _)).toMap,
@@ -106,7 +107,11 @@ class Phase2UnavailableSuite extends FunSuite:
         else
           val output = base.body.outputs.headOption.getOrElse(fail("fixture has no output"))
           base.copy(body = base.body.copy(outputs = Vector(output.copy(scriptRef = Some(script)))))
-      TxChecks.scriptsWellFormed(c.params, tx, TxEnv(c.slot, 189, 0, decoder = decoder))(using
+      TxChecks.scriptsWellFormed(
+        c.params,
+        tx,
+        TxEnv(c.slot, 189, 0, evaluator = PlutusBackends.evaluator, decoder = decoder)
+      )(using
         TestLedger.usualEra((c.params).protocolMajor.toInt)
       ) match
         case Left(LedgerFailure.Unavailable(id, ScriptLocation.Phase1(hash), _)) =>
@@ -128,7 +133,11 @@ class Phase2UnavailableSuite extends FunSuite:
       )
       assertEquals(
         TxChecks
-          .scriptsWellFormed(c.params, tx, TxEnv(c.slot, 189, 0, decoder = decoder))(using
+          .scriptsWellFormed(
+            c.params,
+            tx,
+            TxEnv(c.slot, 189, 0, evaluator = PlutusBackends.evaluator, decoder = decoder)
+          )(using
             TestLedger.usualEra((c.params).protocolMajor.toInt)
           )
           .flatMap(TestLedger.verdict(tx.body.id, _)),
@@ -161,7 +170,7 @@ class Phase2UnavailableSuite extends FunSuite:
         TxChecks.scriptsWellFormed(
           c.params,
           witnessed,
-          TxEnv(c.slot, 189, 0, decoder = decoder)
+          TxEnv(c.slot, 189, 0, evaluator = PlutusBackends.evaluator, decoder = decoder)
         )(using TestLedger.usualEra((c.params).protocolMajor.toInt)) match
           case Left(failure: LedgerFailure.Unavailable) =>
             assertEquals(failure.reason, EvalFailure.Unsupported(reason))

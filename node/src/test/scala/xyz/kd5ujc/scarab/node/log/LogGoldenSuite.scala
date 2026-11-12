@@ -229,6 +229,8 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(
           NodeEvent.UnstableReferenceBuild(xyz.kd5ujc.scarab.protocol.ReferenceBuild.LeiosB004fe0c)
         )
+        _ <- xyz.kd5ujc.scarab.plutus.PlutusVm.values.toList
+          .traverse_(vm => node(NodeEvent.PlutusVmChosen(vm)))
         all <- lines.get
       yield all
     }

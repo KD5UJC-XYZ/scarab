@@ -82,7 +82,8 @@ class ScriptResultBlockSuite extends FunSuite:
         _ => None,
         0L,
         evaluator = evaluator,
-        observer = Some(seen)
+        observer = Some(seen),
+        decoder = PlutusBackends.decoder
       )
     )(state, header, block, transactions.map(Right(_)), PlutusStats.zero)
 
@@ -93,10 +94,10 @@ class ScriptResultBlockSuite extends FunSuite:
       ) {
         val serialSeen = Vector.newBuilder[Phase2.Observation]
         val preparedSeen = Vector.newBuilder[Phase2.Observation]
-        val requests = body(recorded, valid, ScalusEvaluator.default, _ => ()).prepare.jobs
+        val requests = body(recorded, valid, PlutusBackends.evaluator, _ => ()).prepare.jobs
           .flatMap(_.requests.fold(e => fail(e.toString), identity))
         val results = requests.map { case (_, request) =>
-          request -> ScalusEvaluator.default.evaluate(request)
+          request -> PlutusBackends.evaluator.evaluate(request)
         }.toMap
         val evaluator: ScriptEvaluator[Id] =
           request => results.getOrElse(request, fail("foreign request"))
@@ -136,7 +137,7 @@ class ScriptResultBlockSuite extends FunSuite:
 
   test("prepared and serial landing preserve a backend outage after an earlier script failure") {
     val evaluator: ScriptEvaluator[Id] = request =>
-      val result = ScalusEvaluator.default.evaluate(request)
+      val result = PlutusBackends.evaluator.evaluate(request)
       if result.isSuccess then EvalResult.Failure(limit, ExUnits.zero, Vector.empty) else result
     for valid <- Vector(true, false) do
       val program = body(mixed, valid, evaluator, _ => ())
@@ -151,7 +152,7 @@ class ScriptResultBlockSuite extends FunSuite:
   test("a defect after the first script failure is original in serial and prepared landing") {
     val defect = new IllegalStateException("mixed transaction backend defect")
     val evaluator: ScriptEvaluator[Id] = request =>
-      val result = ScalusEvaluator.default.evaluate(request)
+      val result = PlutusBackends.evaluator.evaluate(request)
       if result.isSuccess then throw defect else result
     val program = body(mixed, false, evaluator, _ => ())
     assert(intercept[IllegalStateException](program.serial) eq defect)

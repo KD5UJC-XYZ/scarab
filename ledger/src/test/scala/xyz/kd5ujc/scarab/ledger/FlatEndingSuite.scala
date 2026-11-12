@@ -39,7 +39,14 @@ class FlatEndingSuite extends FunSuite:
 
   private def params(protocol: Int) = c.params.copy(protocolMajor = BigInt(protocol))
 
-  private def env = TxEnv(c.slot, 189, 0)
+  private def env =
+    TxEnv(
+      c.slot,
+      189,
+      0,
+      evaluator = xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+      decoder = xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+    )
 
   /** The verdict of the phase-1 script checks (`MalformedScriptWitnesses`,
     * `MalformedReferenceScripts`) as the node reports it.
@@ -128,7 +135,7 @@ class FlatEndingSuite extends FunSuite:
             FlatDecodeCorpus.budget
           )
         ),
-        ScalusEvaluator.pure
+        PlutusBackends.evaluator
       )
     for protocol <- Vector(5, 6) do
       assert(run(wrapped(validator), protocol).passed, s"control at protocol $protocol")

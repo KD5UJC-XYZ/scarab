@@ -8,7 +8,7 @@ import cats.data.NonEmptyChain
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.ledger.rules.Test
-import xyz.kd5ujc.scarab.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
+import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 /** What a decoded transaction holds that its era cannot have. The reference ledger refuses all of
@@ -141,9 +141,10 @@ object LedgerFailure:
   *   The slot to POSIX time translation through the era history at the ledger tip, with its
   *   forecast horizon (needed for the script context).
   * @param evaluator
-  *   The Plutus evaluator; a pure function of the request (see `ScriptEvaluator`).
+  *   The Plutus evaluator; a pure function of the request (see `ScriptEvaluator`). No default: the
+  *   node passes the backend it was started with (`--plutus-vm`, ADR 0027) on every path.
   * @param decoder
-  *   Decides whether a Plutus script deserialises (phase 1 from Babbage on).
+  *   Decides whether a Plutus script deserialises (phase 1 from Babbage on); the same backend's.
   * @param observer
   *   Tooling hook receiving the transaction's collected phase-2 outcome. Its return value does not
   *   supply a verdict; callbacks must complete normally.
@@ -163,8 +164,8 @@ final case class TxEnv(
     txIndex: Int = 0,
     updateQuorum: Int = 5,
     clock: Option[PosixClock] = None,
-    evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default,
-    decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
+    evaluator: ScriptEvaluator[Id],
+    decoder: ScriptDecoder[Id],
     observer: Option[Phase2.Observation => Unit] = None,
     verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
     private[ledger] val preparation: Option[Phase2.Preparation] = None,
