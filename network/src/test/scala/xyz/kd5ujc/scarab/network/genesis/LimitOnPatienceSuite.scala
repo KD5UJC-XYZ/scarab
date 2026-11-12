@@ -5,7 +5,7 @@ import cats.effect.{Deferred, IO, Ref}
 import cats.effect.testkit.TestControl
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Rational
-import xyz.kd5ujc.scarab.network.{FailsOnUncaught, NetworkError}
+import xyz.kd5ujc.scarab.network.{FailsOnUncaught, NetworkError, Settled}
 import cats.mtl.Raise
 
 class LimitOnPatienceSuite extends FailsOnUncaught:
@@ -114,7 +114,7 @@ class LimitOnPatienceSuite extends FailsOnUncaught:
     }
 
   test("pauses retain the native timer and its positive sub-microsecond expiry"):
-    TestControl.executeEmbed {
+    Settled.timed { settle =>
       Ref.of[IO, Vector[FiniteDuration]](Vector.empty).flatMap { expired =>
         val tiny = LeakyBucket.Config(Rational(3, 2000000), Rational.one)
         val refill = LeakyBucket.Config(Rational(10), Rational(1000000))
@@ -126,7 +126,7 @@ class LimitOnPatienceSuite extends FailsOnUncaught:
           )
           .use { patience =>
             for
-              _ <- IO.cede
+              _ <- settle
               // Initial wake is 1us. Pausing at 0.5us leaves 1us of tokens, resuming at
               // 0.6us must retain that wake: its 0.6us remainder expires at 1us, not 1.6us.
               _ <- IO.sleep(500.nanos)

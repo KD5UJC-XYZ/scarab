@@ -77,14 +77,8 @@ class OrderedSupervisorSuite extends FailsOnUncaught:
     }
   }
 
-  /** The registry size once it has reached `expected`; a registry that never does is a test that
-    * does not terminate, which `TestControl` reports.
-    */
-  private def settled(size: IO[Int], expected: Int): IO[Int] =
-    (IO.cede *> size).iterateUntil(_ == expected)
-
   test("a child cancelled before its first step leaves the registry while the supervisor is open") {
-    TestControl.executeEmbed {
+    Settled { settle =>
       OrderedSupervisor.observed[IO].use { (supervisor, size) =>
         for
           ran <- Ref.of[IO, Boolean](false)
@@ -92,7 +86,7 @@ class OrderedSupervisorSuite extends FailsOnUncaught:
           // Nothing has been scheduled since `supervise` returned: the child has not taken a step.
           _ <- fiber.cancel
           outcome <- fiber.join
-          held <- settled(size, 0)
+          held <- settle *> size
           didRun <- ran.get
         yield
           assert(outcome.isCanceled)
@@ -102,19 +96,27 @@ class OrderedSupervisorSuite extends FailsOnUncaught:
   }
 
   test("a child that ends or is cancelled leaves the registry") {
-    TestControl.executeEmbed {
+    Settled { settle =>
       OrderedSupervisor.observed[IO].use { (supervisor, size) =>
         for
           ready <- Deferred[IO, Unit]
+          releaseFailure <- Deferred[IO, Unit]
           done <- supervisor.supervise(IO.unit)
-          failed <- supervisor.supervise(IO.raiseError[Unit](new IllegalStateException("child")))
+          failed <- supervisor.supervise(
+            releaseFailure.get *> IO.raiseError[Unit](new IllegalStateException("child"))
+          )
           waiting <- supervisor.supervise(ready.complete(()) *> IO.never[Unit])
           _ <- ready.get
-          _ <- done.join *> failed.join
-          before <- settled(size, 1)
+          failure <- Resource.make(failed.join.start)(_.cancel).use { observer =>
+            settle *> releaseFailure.complete(()) *> observer.joinWithNever
+          }
+          _ <- done.join
+          before <- settle *> size
           _ <- waiting.cancel
-          after <- settled(size, 0)
-        yield assertEquals((before, after), (1, 0))
+          after <- settle *> size
+        yield
+          assert(failure.isError)
+          assertEquals((before, after), (1, 0))
       }
     }
   }

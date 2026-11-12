@@ -105,6 +105,14 @@ object LedgerSnapshotImport:
   def run[F[_]: Async](config: Config)(using
       outer: Handle[F, Error],
       env: Ask[F, ConsensusMirrorEnv]
+  ): F[Report] = run(config, Async[F].unit)
+
+  /** As [[run]], notifying `copied` after source bytes reach a staging file. The callback runs
+    * before hashing and publication finish, so a test can hold a copy and cancel it there.
+    */
+  private[storage] def run[F[_]: Async](config: Config, copied: F[Unit])(using
+      outer: Handle[F, Error],
+      env: Ask[F, ConsensusMirrorEnv]
   ): F[Report] =
     val F = Async[F]
     val files = Files.forAsync[F]
@@ -138,6 +146,9 @@ object LedgerSnapshotImport:
         files
           .readAll(source)
           .observe(files.writeAll(target))
+          .chunks
+          .evalTap(_ => copied)
+          .unchunks
           .through(fs2.hashing.Hashing.forSync[F].hash(fs2.hashing.HashAlgorithm.SHA256))
           .compile
           .lastOrError

@@ -8,6 +8,7 @@ import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
+import fs2.concurrent.SignallingRef
 import fs2.io.file.Path
 import java.nio.file.Files
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -234,6 +235,8 @@ object ChainStorage:
     * @param adopt
     *   Make `blocks` (a prefix of the logged chain that was validated) the persistence's pending
     *   blocks, and cut the log back to them.
+    * @param snapshotsWritten
+    *   Completes once no snapshot is being written in the background.
     */
   final case class Recovered[F[_], S](
       anchor: Option[BlockRef],
@@ -242,7 +245,8 @@ object ChainStorage:
       store: ImmutableStore[F],
       volatile: Vector[(BlockRef, Bytes)],
       adopt: Vector[(BlockRef, Bytes)] => F[Unit],
-      received: ReceivedBlocks[F]
+      received: ReceivedBlocks[F],
+      snapshotsWritten: F[Unit]
   )
 
   /** A volatile block rebuilt by [[resume]]. */
@@ -438,7 +442,7 @@ object ChainStorage:
       lastSlot <- Resource.eval(Ref.of[F, BigInt](start._1.fold(BigInt(0))(_.slot)))
       previousSlot <- Resource.eval(Ref.of[F, BigInt](start._1.fold(BigInt(0))(_.slot)))
       lastTaken <- Resource.eval(Ref.of[F, Option[FiniteDuration]](None))
-      busy <- Resource.eval(Ref.of[F, Boolean](false))
+      busy <- Resource.eval(SignallingRef[F, Boolean](false))
       latest <- Resource.eval(Ref.of[F, Option[(BlockRef, S)]](None))
       written <- Resource.eval(Ref.of[F, Option[BlockRef]](start._1))
       sinceCollect <- Resource.eval(Ref.of[F, Int](0))
@@ -481,7 +485,8 @@ object ChainStorage:
       store,
       logged.chain,
       persistence.adopt,
-      received
+      received,
+      persistence.snapshotsWritten
     )
 
   /** Rebuild the volatile chain from the log: apply the logged blocks after the immutable tip, in
@@ -637,7 +642,7 @@ object ChainStorage:
       lastSlot: Ref[F, BigInt],
       previousSlot: Ref[F, BigInt],
       lastTaken: Ref[F, Option[FiniteDuration]],
-      busy: Ref[F, Boolean],
+      busy: SignallingRef[F, Boolean],
       latest: Ref[F, Option[(BlockRef, S)]],
       written: Ref[F, Option[BlockRef]],
       sinceCollect: Ref[F, Int],
@@ -790,6 +795,9 @@ object ChainStorage:
         )
       yield done
 
+    /** Completes once no snapshot is being written in the background. */
+    def snapshotsWritten: F[Unit] = busy.waitUntil(b => !b)
+
     private def reportSnapshot[A](result: Either[SnapshotFailure, A]): F[Unit] =
       result.fold(error => events.emit(StorageEvent.SnapshotFailed(error)), _ => F.unit)
 
@@ -800,7 +808,7 @@ object ChainStorage:
     def shutdownSnapshot: F[Unit] =
       SnapshotFailure
         .capture {
-          val idle = (F.sleep(20.millis) *> busy.get).iterateUntil(b => !b)
+          val idle = snapshotsWritten
           val body = snapshotLock.lock.surround {
             (latest.get, written.get).flatMapN {
               case (Some((ref, state)), done) if !done.contains(ref) =>
@@ -814,6 +822,6 @@ object ChainStorage:
               case (_, done) => events.emit(StorageEvent.ShutdownSnapshot(done, false))
             }
           }
-          idle.timeoutTo(2.minutes, F.pure(true)) *> body
+          idle.timeoutTo(2.minutes, F.unit) *> body
         }
         .flatMap(reportSnapshot)

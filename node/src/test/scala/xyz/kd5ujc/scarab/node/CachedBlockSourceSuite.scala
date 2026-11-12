@@ -192,7 +192,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
     import xyz.kd5ujc.scarab.node.forge.ForgedChain
     import xyz.kd5ujc.scarab.protocol.ChainSync.Point
     ForgedChain.forge(5000 until 5030).flatMap { chain =>
-      cats.effect.testkit.TestControl.executeEmbed {
+      Settled.timed { settle =>
         NodeScope.resource.use { node =>
           given Handle[IO, NodeError] = node
           Supervisor[IO](await = false).use { supervisor =>
@@ -297,7 +297,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
                               h <- next match
                                 case SyncEvent.RollForward(h, _) => IO.pure(h)
                                 case other => IO(fail(s"expected actual header, got $other"))
-                              raw <- WorkerTesting.deliveredBody(pool, h)
+                              raw <- pool.awaitDelivered(h.hash)
                               _ <- IO(assertEquals(raw, chain.raws.head))
                               _ <- delivered.complete(()) *> finishFirst.get
                               missing <- over.intersect(Vector(chain.headers.last.point))
@@ -359,8 +359,8 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
               _ <- awaiting.get
               _ <- offered.set(Vector(chain.headers.last.point))
               _ <- finishFirst.complete(())
-              // Virtual time advances after drain has stopped submissions and awaits the real reply.
-              _ <- IO.sleep(1.second)
+              // Drain has stopped submissions and awaits the real reply.
+              _ <- settle
               _ <- available.set(Peer.Depth + 2)
               _ <- firstEnded.get.timeout(5.seconds)
               warmSource <- outbound.cachedSource(peer)

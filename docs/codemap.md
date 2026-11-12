@@ -16,7 +16,7 @@ network    -> protocol
 plutus     -> codec
 ledger     -> protocol, plutus
 consensus  -> ledger
-storage    -> consensus, models
+storage    -> consensus, models; test only: network
 node       -> storage, network
 models-gen -> (none)
 models     -> codec, crypto; test only: models-gen, protocol, ledger
