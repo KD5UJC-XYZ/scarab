@@ -9,11 +9,11 @@ import xyz.kd5ujc.scarab.uplc.{Availability, Constant, DefaultUni, PlutusData, S
   * `507cab8c`).
   *
   * As the reference does, the type is first compiled into the reader of its values ([[Plan]]), and
-  * a part of the type made only of `unit` s has one value of no bits, built once and shared by
-  * every value that holds it. A value is as deep as its type, which the ledger does not bound
-  * before protocol 11, so the compilation is a fold on the heap ([[Schemes.hylo]]) and the value is
-  * read by a machine that keeps the lists and pairs still open on a list (ADR 0011). A list or an
-  * array is a continuation bit before each element (`decodeListWith`,
+  * a part of the type made only of units has one value of no bits, built once and shared by every
+  * value that holds it. A value is as deep as its type, which the ledger does not bound before
+  * protocol 11, so the compilation is a fold on the heap ([[Schemes.hylo]]) and the value is read
+  * by a machine that keeps the lists and pairs still open on a list (ADR 0011). A list or an array
+  * is a continuation bit before each element (`decodeListWith`,
   * `PlutusCore/Flat/Decoder/Strict.hs:60-88`); when its first element took no bits, the reference
   * repeats that element for each further bit (`goZero`), and so does this.
   */
@@ -33,13 +33,13 @@ object ConstantDecoder:
         case Right(_)      => value(input, after, uni)
     }
 
-  /** The reader of the values of a type: `decodeDefaultUniValue` 's `compile`
+  /** The reader of the values of a type: the `compile` of `decodeDefaultUniValue`
     * (`Universe.hs:166-186`). Each knows the type its values report ([[Plan.uni]]), built from the
     * shared values' own types, so that a list compares its elements' types with it in time that
     * does not grow with the shared parts.
     */
   enum Plan:
-    /** A type made of `unit` s (`Pure`): its one value, of no bits. */
+    /** A type made only of units (`Pure`): its one value, of no bits. */
     case Shared(value: Constant)
 
     /** A type with a Flat decoder of its own (`compile other`). */

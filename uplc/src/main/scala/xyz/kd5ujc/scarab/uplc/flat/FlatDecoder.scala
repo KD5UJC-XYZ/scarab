@@ -35,7 +35,7 @@ object Checks:
   /** Those of the ledger's decoder for a script of `language` at `protocol` (`scriptCBORDecoder`,
     * `PlutusLedgerApi/Common/SerialisedScript.hs:195-234`): the builtins available to the language
     * it is evaluated as (`builtinsAvailableIn`) and the bounds of `maxBoundsByPV` on a constant's
-    * type and a `constr` 's fields, computed once for the whole program.
+    * type and the fields of a `constr`, computed once for the whole program.
     */
   def ledger(language: PlutusLanguage, protocol: ProtocolMajor): Checks =
     val available = Availability.builtins(language, protocol)
