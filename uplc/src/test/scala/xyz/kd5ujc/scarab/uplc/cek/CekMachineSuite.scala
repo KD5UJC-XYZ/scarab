@@ -420,7 +420,7 @@ final class CekMachineSuite extends munit.FunSuite:
     // (`builtinErrorToEvaluationError`, `Cek/Internal.hs:519-523`).
     val outOfBounds = UnliftingFailure(
       ErrorClass.Operational,
-      UnliftingCause.OutOfBounds(0, xyz.kd5ujc.scarab.uplc.builtin.UnliftingBound.Int64)
+      UnliftingCause.OutOfBounds(0, xyz.kd5ujc.scarab.uplc.builtin.UnliftingBound.CInteger)
     )
     val refusing = new xyz.kd5ujc.scarab.uplc.builtin.Unlifting:
       def apply[V](function: DefaultFun, arguments: Vector[V])(using
@@ -434,6 +434,8 @@ final class CekMachineSuite extends munit.FunSuite:
     )
     assertEquals(errorOf(report).errorClass, ErrorClass.Operational)
     assertEquals(report.budget.spent, ExBudget.of(50, 50))
+    // Its message is the application's log line (`Builtin/Result.hs:198-220`).
+    assertEquals(report.logs, Vector("Integer out of bounds"))
   }
 
   test("an error's cause is the reference's term, discharged when read") {
