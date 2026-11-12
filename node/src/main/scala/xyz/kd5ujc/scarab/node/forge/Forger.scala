@@ -219,10 +219,9 @@ final class Forger[F[_]: Async, S](
   /** Switch to the KES key and operational certificate that are in the key files now, if they are
     * good for this pool at this time and on this chain; otherwise keep the old ones and report a
     * typed [[ForgeEvent.KesReloadRefused]]. A credential file that is absent disables forging
-    * ([[HotKeys.reload]]). The Haskell node does this on SIGHUP:
-    * `Cardano.Node.Run` `installSigHUPHandler` calls `updateBlockForging`, which reads the
-    * credentials again and hands them to `setBlockForging` (cardano-node 11.1.3, `Run.hs` lines 596
-    * and 626).
+    * ([[HotKeys.reload]]). The Haskell node does this on SIGHUP: `Cardano.Node.Run`
+    * `installSigHUPHandler` calls `updateBlockForging`, which reads the credentials again and hands
+    * them to `setBlockForging` (cardano-node 11.1.3, `Run.hs` lines 596 and 626).
     */
   def reload: F[Either[Fatal, Unit]] = Forger.scoped {
     for
@@ -383,12 +382,14 @@ final class Forger[F[_]: Async, S](
       _ <- say(ForgeTrace.LedgerView(slot))
       // `checkShouldForge` (`Block/Forging.hs` 192-226): the forge state, then the leader check,
       // then whether a leader can forge
-      key <- perform(hot.update(period)).flatMap(_.fold(disabled)(r => perform(lift(r)))).flatMap(
-        _.fold(
-          e => giveUp(ForgeTrace.ForgeStateUpdateError(slot, e)),
-          info => perform(events.emit(ForgeEvent.StateInfo(info))).as(info)
+      key <- perform(hot.update(period))
+        .flatMap(_.fold(disabled)(r => perform(lift(r))))
+        .flatMap(
+          _.fold(
+            e => giveUp(ForgeTrace.ForgeStateUpdateError(slot, e)),
+            info => perform(events.emit(ForgeEvent.StateInfo(info))).as(info)
+          )
         )
-      )
       pools = crossed.pools
       stake = pools.stake.getOrElse(credentials.poolId, BigInt(0))
       cert <- perform(
@@ -628,17 +629,20 @@ final class Forger[F[_]: Async, S](
                 .map(signature => Right((headerBody, signature, c.kes.period, c.opCert.sequence)))
           }
     }
-    assembled.flatMap(_.traverse(signed => lift(signed).flatMap {
-      (headerBody, signature, relative, counter) =>
-        val raw = BlockBuilder.block(headerBody, signature, body)
-        lift(
-          Block
-            .decode(raw, geometry.byron.epochSlots)
-            .left
-            .map(e => ForgeError.Assembly(ForgeAssemblyProblem.BlockDecode(e)))
-            .map(decoded => Forger.Built(decoded.header, raw, body, relative, counter))
-        )
-    }))
+    assembled.flatMap(
+      _.traverse(signed =>
+        lift(signed).flatMap { (headerBody, signature, relative, counter) =>
+          val raw = BlockBuilder.block(headerBody, signature, body)
+          lift(
+            Block
+              .decode(raw, geometry.byron.epochSlots)
+              .left
+              .map(e => ForgeError.Assembly(ForgeAssemblyProblem.BlockDecode(e)))
+              .map(decoded => Forger.Built(decoded.header, raw, body, relative, counter))
+          )
+        }
+      )
+    )
 
   /** The Conway ledger state at `slot` from the state at the tip: the combinator's tick
     * ([[Hfc.tick]]: the translation into the slot's era, then the slot's own work), as the block

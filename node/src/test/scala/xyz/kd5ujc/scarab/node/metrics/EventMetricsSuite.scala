@@ -13,7 +13,10 @@ import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.forge.{
   BlockForgingState,
   ForgeEvent,
-  ForgeTrace, KesEvolutionError, KesInfo}
+  ForgeTrace,
+  KesEvolutionError,
+  KesInfo
+}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents, Rejection}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, Era}
 import xyz.kd5ujc.scarab.storage.{ImmutableStore, StorageEvent}

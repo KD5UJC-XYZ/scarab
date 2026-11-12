@@ -169,9 +169,10 @@ Not covered yet: a node that is killed in the middle of a rotation, and a rotati
 in units only, not in a scenario ([#122](https://github.com/KD5UJC-XYZ/scarab/issues/122)); a KES agent that
 holds the key instead of a file is H2 ([#38](https://github.com/KD5UJC-XYZ/scarab/issues/38)).
 
-### Dynamic block forging ([#906](https://github.com/KD5UJC-XYZ/scarab/issues/906))
+### Dynamic block forging
 
-Forging can be switched off and on while the node runs, without a restart, as cardano-node 11.1.3 does it
+Forging can be switched off and on while the node runs, without a restart
+([#906](https://github.com/KD5UJC-XYZ/scarab/issues/906)), as cardano-node 11.1.3 does it
 (`updateBlockForging`, `cardano-node/src/Cardano/Node/Run.hs` lines 620 to 668). This is how a pool hands
 forging from one block producer to a standby: stop it on one, start it on the other.
 

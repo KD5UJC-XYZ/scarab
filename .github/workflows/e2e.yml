@@ -2,7 +2,7 @@
 name: E2E devnet
 
 # The Scala node against the official Haskell cardano-node 11.1.3 in Docker: the expensive devnet
-# scenarios (soak, era walk, relay, pool, KES rotation, node-to-client, restart), one job per scenario so
+# scenarios (soak, era walk, relay, pool, KES rotation, dynamic forging, node-to-client, restart), one job per scenario so
 # they run in parallel, each on its own standard 4 vCPU / 16 GB runner. A failing scenario does not stop
 # the others.
 on:
@@ -33,6 +33,7 @@ jobs:
           - {scenario: relay, args: 'relay --seconds 300'}
           - {scenario: pool, args: 'pool'}
           - {scenario: kes-rotate, args: 'kes-rotate'}
+          - {scenario: dynamic-forging, args: 'dynamic-forging'}
           - {scenario: ntc, args: 'ntc'}
           - {scenario: restart, args: 'restart'}
     defaults:

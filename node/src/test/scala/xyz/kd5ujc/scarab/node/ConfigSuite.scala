@@ -506,7 +506,9 @@ class ConfigSuite extends FunSuite:
     assertEquals(nonProducing(Json.Null), Right(None))
     assert(nonProducing(Json.fromString("true")).isLeft)
     assertEquals(
-      NodeConfig.parse(ReferenceBuild.Default)(base.noSpaces).map(_.settings.startAsNonProducingNode),
+      NodeConfig
+        .parse(ReferenceBuild.Default)(base.noSpaces)
+        .map(_.settings.startAsNonProducingNode),
       Right(None)
     )
     assert(NodeConfig.parse(ReferenceBuild.Default)("[]").isLeft)

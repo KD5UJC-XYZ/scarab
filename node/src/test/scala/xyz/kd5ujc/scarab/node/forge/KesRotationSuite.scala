@@ -1029,7 +1029,10 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
             assertEquals(ended, Right(()))
             if on then
               assertEquals(updates(events), Vector(BlockForgingState.EnabledBlockForging))
-              assertEquals(events.take(1), Vector(ForgeEvent.BlockForgingUpdate(BlockForgingState.EnabledBlockForging)))
+              assertEquals(
+                events.take(1),
+                Vector(ForgeEvent.BlockForgingUpdate(BlockForgingState.EnabledBlockForging))
+              )
               assert(events.lift(1).exists(_.isInstanceOf[ForgeEvent.Started]), events.toString)
             else
               assertEquals(
@@ -1041,7 +1044,9 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     }
   }
 
-  test("the write-back recreates a key file that was moved away, so a disabled forger must not write") {
+  test(
+    "the write-back recreates a key file that was moved away, so a disabled forger must not write"
+  ) {
     withDir { f =>
       IO {
         f.install(hotFor(TestLedger.key(), 77, 0, 0))
@@ -1066,7 +1071,9 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       )
       def second: IO[Option[ForgeError]] =
         Handle
-          .allow[ForgeError](KeyGuard.held[IO](f.kes, lock = true).use_.as(Option.empty[ForgeError]))
+          .allow[ForgeError](
+            KeyGuard.held[IO](f.kes, lock = true).use_.as(Option.empty[ForgeError])
+          )
           .rescue(e => IO.pure(Some(e)))
       withHandle {
         Handle
@@ -1101,7 +1108,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         def reread = KesFiles.reread(f.vrf, f.kes, f.cert)
         reread match
           case Right(KesFiles.Reread.Found(found)) => found.kes.forget()
-          case other                               => fail(s"expected the credentials, found $other")
+          case other => fail(s"expected the credentials, found $other")
         // the first absent file in that order is the one named, whatever follows it
         Files.move(f.kes, f.dir.resolve("k"))
         assertEquals(reread, Right(KesFiles.Reread.Absent(f.kes)))
@@ -1184,13 +1191,18 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       xyz.kd5ujc.scarab.crypto.witness.WitnessInputError.MalformedSignatureLength(0)
     )
     val expected = ReloadRefusal.CertificateFailure(cause)
-    assertEquals(HotKeys.validate(p.creds.poolId, Some(p.creds.kes), candidate, 50, Some(0), config), Left(expected))
+    assertEquals(
+      HotKeys.validate(p.creds.poolId, Some(p.creds.kes), candidate, 50, Some(0), config),
+      Left(expected)
+    )
     for
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
       adopted <- Ref.of[IO, Boolean](false)
       src = new HotKeySource[IO]:
         def read =
-          IO.pure(Right(HotKeySource.Reading.Found(HotKeySource.Candidate(candidate, adopted.set(true)))))
+          IO.pure(
+            Right(HotKeySource.Reading.Found(HotKeySource.Candidate(candidate, adopted.set(true))))
+          )
         def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Unchanged)
       keys <- HotKeys.create[IO](p.creds, Some(src), config, e => seen.update(_ :+ e))
       _ <- Forger.scoped(keys.reload(50, Some(0))).map(result => assertEquals(result, Right(())))
@@ -1297,7 +1309,8 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     val candidate = hotFor(p.cold, seed = 3, start = 0, sequence = 0)
     val target = BigInt(1) << 32
     val src = new HotKeySource[IO]:
-      def read = IO.pure(Right(HotKeySource.Reading.Found(HotKeySource.Candidate(candidate, IO.unit))))
+      def read =
+        IO.pure(Right(HotKeySource.Reading.Found(HotKeySource.Candidate(candidate, IO.unit))))
       def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Written)
     for
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)

@@ -102,9 +102,9 @@ object HotKeySource:
       Ref.of[F, Path](first.getOrElse(kesFile)).map { target =>
         new HotKeySource[F]:
           def read = F.blocking(KesFiles.reread(vrfFile, kesFile, opCertFile)).flatMap {
-            case Left(error) => F.pure(Left(error))
+            case Left(error)                         => F.pure(Left(error))
             case Right(KesFiles.Reread.Absent(file)) => F.pure(Right(Reading.Absent(file)))
-            case Right(KesFiles.Reread.Found(hot)) =>
+            case Right(KesFiles.Reread.Found(hot))   =>
               // the key is written back where it was read from, even if a link moves afterwards
               F.blocking(KesFiles.resolved(kesFile)).map { where =>
                 Right(Reading.Found(HotKeySource.Candidate(hot, where.traverse_(target.set))))
@@ -262,17 +262,17 @@ final class HotKeys[F[_]: Async] private (
       }
     }
 
-  /** `updateBlockForging` of the reference (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Run.hs`
-    * 620-668), run on SIGHUP: read the credentials again. A credential file that does not exist
-    * (`FileDoesNotExistError`) disables forging (`setBlockForging nodeKernel []`, lines 631-635),
-    * whether it was on or already off: the key in use is erased from memory and nothing signs or is
-    * written back until a later reload finds the files again. Credentials that are found are
-    * switched to if they are good (see [[HotKeys.validate]], the owner's checks of ADR 0015, which
-    * the reference does not make), and forging is enabled with them; otherwise the forger stays as
-    * it is, forging or disabled, and says why (the reference's `BlockForgingUpdateError`). `counter`
-    * is the pool's issue counter on the chain. The reference treats a failure to read its bulk
-    * credentials file as an absent file too (`CredentialsReadError`, lines 664-667); Scarab reads no
-    * bulk credentials file.
+  /** `updateBlockForging` of the reference (cardano-node 11.1.3,
+    * `cardano-node/src/Cardano/Node/Run.hs` 620-668), run on SIGHUP: read the credentials again. A
+    * credential file that does not exist (`FileDoesNotExistError`) disables forging
+    * (`setBlockForging nodeKernel []`, lines 631-635), whether it was on or already off: the key in
+    * use is erased from memory and nothing signs or is written back until a later reload finds the
+    * files again. Credentials that are found are switched to if they are good (see
+    * [[HotKeys.validate]], the owner's checks of ADR 0015, which the reference does not make), and
+    * forging is enabled with them; otherwise the forger stays as it is, forging or disabled, and
+    * says why (the reference's `BlockForgingUpdateError`). `counter` is the pool's issue counter on
+    * the chain. The reference treats a failure to read its bulk credentials file as an absent file
+    * too (`CredentialsReadError`, lines 664-667); Scarab reads no bulk credentials file.
     */
   def reload(kesPeriod: BigInt, counter: Option[BigInt])(using Raise[F, Fatal]): F[Unit] =
     guarded { inUse =>
@@ -384,9 +384,9 @@ object HotKeys:
   def info(c: PoolCredentials, config: PraosConfig): KesInfo =
     KesInfo(c.opCert.kesPeriod, c.opCert.kesPeriod + config.maxKesEvolutions, c.kes.period)
 
-  /** A file that disappears between the check that it exists and its read is an operator refusal
-    * on reload only, as the reference's `FileIOError` keeps the forging it has (a file absent when
-    * it is checked disables forging, [[reload]]). Other I/O is a storage failure; an unexpected
+  /** A file that disappears between the check that it exists and its read is an operator refusal on
+    * reload only, as the reference's `FileIOError` keeps the forging it has (a file absent when it
+    * is checked disables forging, [[reload]]). Other I/O is a storage failure; an unexpected
     * exception remains a defect, even if the file adapter wrapped it.
     */
   private[forge] def reloadFailure(error: ForgeError): Option[Fatal] = error match
