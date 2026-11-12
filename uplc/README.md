@@ -48,6 +48,26 @@ transcribes plutus 1.70.0.0 (`507cab8c`); the Scaladoc of each cites the upstrea
 - **Not here.** The universe's Flat tags and the kinded form of a type (the decoder), names and
   alpha-equality (the parser), the caser builtins (the machine), and unlifting bounds (the builtins).
 
+## The contract between the machine, the builtins and the costing
+
+Packages `cost` and `builtin` (the lead's, frozen with the model):
+
+- `cost.SatInt` and `cost.ExBudget` are `Data.SatInt` and `ExBudget`: saturating 64-bit arithmetic, a budget
+  combined component-wise, `times` as `stimes`. `CostStream` is `ExBudgetStream` (each element spent and
+  checked in order), `StepKind` and `MachineCosts` the machine's step and start-up costs.
+- `builtin.Builtins.prepare` is a saturated application in the reference's order (`toMonoF`,
+  `Builtin/Meaning.hs`; `evalBuiltinApp`, `Cek/Internal.hs`): `Unlifting` checks every argument, first
+  failure winning, and a failure costs nothing (`CostStream.free`); otherwise `Costing` computes the cost from
+  the unlifted arguments, and the `Denotation` runs only when the machine has spent it (`Prepared.result`).
+- Builtins are written once for any machine through `MachineValue[V]` (is this value a constant, make one).
+  `Argument.Opaque` passes a machine value through (`ifThenElse`, `trace`, `chooseList`).
+- Failures are typed: `UnliftingFailure` (structural or operational, with a cause) and `EvaluationFailure`,
+  whose cases render the reference's log message. Builtins and unlifting add cases to these enums; they do
+  not change existing ones.
+- Owners: the unlifting (all builtins, all variants' bounds) and the core denotations are WP5's, the
+  cryptographic, bitwise, `Value` and array denotations WP6's, `Costing` and `MachineCosts` from the cost
+  model WP7's, the machine WP4's.
+
 ## Facts the tests pin
 
 - The builtins with no evaluation case under `builtin/semantics` in the vendored corpus of either

@@ -337,6 +337,48 @@
       ]
     },
     {
+      "module": "uplc",
+      "path": "uplc/cost",
+      "responsibility": "The reference's saturating integer, budgets, cost streams and the machine's step costs",
+      "entryPoints": [
+        "SatInt",
+        "ExBudget",
+        "CostStream",
+        "StepKind",
+        "MachineCosts"
+      ],
+      "suites": [
+        "SatIntSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
+      "module": "uplc",
+      "path": "uplc/builtin",
+      "responsibility": "The contract between the machine, the builtins and the costing: unlifting, denotations, costing functions and a saturated application in the reference's order",
+      "entryPoints": [
+        "Builtins",
+        "Prepared",
+        "Unlifting",
+        "Denotation",
+        "Denotations",
+        "Costing",
+        "CostingFunction",
+        "MachineValue",
+        "Argument",
+        "Outcome",
+        "BuiltinFailure"
+      ],
+      "suites": [
+        "BuiltinsSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
       "module": "plutus",
       "path": "plutus",
       "responsibility": "Script evaluator algebra, Scalus adapter, builtin availability; re-exports PlutusData, ExUnits, PlutusLanguage and ParamNames from uplc",
