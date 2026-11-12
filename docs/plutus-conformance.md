@@ -448,13 +448,16 @@ its agreement with the reference corpora. None of them counts as passed for `sca
 `uplc` suites above are the own evaluator's counterparts. In `plutus`: `BackendFailureSuite`,
 `BoundaryTransactionScriptsSuite`, `BuiltinCostingOracleSuite`, `BuiltinCostingSuite`, `CaseOnDataSuite`,
 `ConstrIndexReferenceSuite`, `CostModelLengthSuite`, `DataEqualityReferenceSuite`, `DataSerialiserSuite`,
-`FlatDecodeOracleSuite`, `FlatDecodeParitySuite`, `FlatScanDepthSuite`, `NativeCryptoAbsentSuite`,
+`FlatDecodeOracleSuite`, `FlatDecodeParitySuite`, `FlatScanDepthSuite`, `FlatScanImperativeSuite`,
+`FlatScanWord64Suite`, `NativeCryptoAbsentSuite`, `NativeCryptoSuite`,
 `NativeTextReferenceSuite`, `PlutusAvailabilitySuite`, `PlutusBoundaryOracleSuite`,
 `PlutusConformance171Suite`, `PlutusConformanceSuite`, `PlutusDataChunkSuite`, `PlutusReachabilitySuite`,
 `ReferenceBudgetSuite`, `ScalusCekHooksSuite`, `ScalusConformanceReproducersSuite`, `ScalusEvaluatorSuite`,
 `ScalusReproducersSuite`, `Secp256k1Suite`, `SerialiseDataReferenceSuite`, `SliceByteStringReferenceSuite`,
 `UnliftingBoundsSuite`, `UpstreamPlutusBoundarySuite` and `WycheproofSecp256k1Suite` (and
-`OwnFlatDecoderParitySuite`, which compares the two decoders). In `ledger`: `CostModelNameTablesSuite`,
+`OwnFlatDecoderParitySuite`, which compares the two decoders). The other `plutus` suites test types
+both backends share (`PlutusDataSuite`, `ParamNamesSuite`, `PlutusScriptBytesSuite`, `PlutusReferenceSuite`,
+`RetryingMemoSuite`) or the choice itself (`PlutusBackendsSuite`, `ScarabEvaluatorSuite`). In `ledger`: `CostModelNameTablesSuite`,
 which evaluates a PlutusV4 script at protocol 12, where the own evaluator gives no verdict by design.
 `BlstCheckMain`, the start-up check of the Scalus native library, evaluates with Scalus by design.
 
