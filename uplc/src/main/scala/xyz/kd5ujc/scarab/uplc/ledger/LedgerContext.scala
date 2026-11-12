@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.uplc.builtin.core.{CoreDenotations, CoreUnlifting, Unsu
 import xyz.kd5ujc.scarab.uplc.builtin.extended.ExtendedDenotations
 import xyz.kd5ujc.scarab.uplc.cek.{CaserBuiltin, MachineParameters}
 import xyz.kd5ujc.scarab.uplc.cost.{
+  CostModelApplyError,
   CostModelApplyWarn,
   EvaluationContext,
   MachineCosts,
@@ -60,7 +61,15 @@ object LedgerContext:
       costModel: Vector[Long]
   ): (Vector[CostModelApplyWarn], Either[Unavailability, LedgerContext]) =
     val (warnings, costs) = EvaluationContext.build(language, costModel)
-    (warnings, costs.leftMap(Unavailability.CostModel(_)).flatMap(of))
+    (warnings, fromCosts(costs))
+
+  /** The machines of a costing context, or no verdict when the costing context was refused (every
+    * [[xyz.kd5ujc.scarab.uplc.cost.CostModelApplyError]] is a defect here).
+    */
+  def fromCosts(
+      costs: Either[CostModelApplyError, EvaluationContext]
+  ): Either[Unavailability, LedgerContext] =
+    costs.leftMap(Unavailability.CostModel(_)).flatMap(of)
 
   /** The machines of a costing context: the builtins of each of its variants. */
   def of(context: EvaluationContext): Either[Unavailability, LedgerContext] =

@@ -10,7 +10,6 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.uplc.{PlutusLanguage, ProtocolMajor, SemanticsVariant}
 import xyz.kd5ujc.scarab.uplc.cek.BudgetMode
 import xyz.kd5ujc.scarab.uplc.cost.{DefaultCostModels, ExBudget}
-import xyz.kd5ujc.scarab.uplc.flat.SerialisedScript
 
 /** The ledger's evaluation against the verdicts the pinned Haskell reference (plutus-ledger-api
   * 1.70.0.0, `scripts/oracle/plutus/Main.hs`) gave for the probes of `plutus-boundaries` (477 rows)
@@ -83,7 +82,7 @@ final class LedgerBoundaryOracleSuite extends munit.FunSuite:
         case Some(_) if modelSha != v.modelSha =>
           Vector(s"$where: the cost-model list's SHA-256 is $modelSha, the verdict's ${v.modelSha}")
         case Some(script) =>
-          val admitted = SerialisedScript.deserialiseScript(lang, protocol, script).isRight
+          val admitted = LedgerEval.deserialiseScript(lang, protocol, script).isRight
           val outcome = LedgerContext.make(lang, model)._2 match
             case Left(reason) => ScriptResult.Unavailable(reason)
             case Right(context) =>

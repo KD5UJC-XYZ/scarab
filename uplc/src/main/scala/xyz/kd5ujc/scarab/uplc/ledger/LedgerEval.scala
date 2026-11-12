@@ -19,7 +19,7 @@ import xyz.kd5ujc.scarab.uplc.cek.{
   CekResult
 }
 import xyz.kd5ujc.scarab.uplc.cost.{CostModelApplyWarn, ExBudget}
-import xyz.kd5ujc.scarab.uplc.flat.{ScriptDecodeError, SerialisedScript}
+import xyz.kd5ujc.scarab.uplc.flat.SerialisedScript
 
 /** The ledger's evaluation of a script, a transcription of `PlutusLedgerApi.Common.Eval`
   * (`plutus-ledger-api/src/PlutusLedgerApi/Common/Eval.hs`, plutus 1.70.0.0 `507cab8c`): the
@@ -37,6 +37,9 @@ import xyz.kd5ujc.scarab.uplc.flat.{ScriptDecodeError, SerialisedScript}
   * caught.
   */
 object LedgerEval:
+
+  /** Why a script is not admitted: the reference refuses it, or this evaluator gives no verdict. */
+  type NotAdmitted = LedgerOutcome.Refused | ScriptResult.Unavailable
 
   /** The first protocol this evaluator refuses: Dijkstra, which the plutus of the Leios testnet
     * evaluates (ADR 0027, amendment of 2026-11-12).
@@ -139,17 +142,35 @@ object LedgerEval:
       args: Vector[PlutusData]
   ): LedgerOutcome =
     guarded[LedgerOutcome](
-      supported(protocol).fold(
-        ScriptResult.Unavailable(_),
-        _ =>
-          SerialisedScript
-            .deserialiseScript(language, protocol, script)
-            .fold(
-              LedgerOutcome.Refused(_),
-              run(language, protocol, verbose, context, mode, _, args)
-            )
+      admitting(language, protocol, script).fold[LedgerOutcome](
+        identity,
+        run(language, protocol, verbose, context, mode, _, args)
       )
     )(ScriptResult.Unavailable(_))
+
+  /** The ledger's admission of a script, `deserialiseScript` (`Common/SerialisedScript.hs:244-278`,
+    * [[SerialisedScript.deserialiseScript]]), which the ledger runs in phase 1 for the scripts of a
+    * transaction: the program, or the reference's refusal, or no verdict (protocol 12 and later, or
+    * a defect).
+    */
+  def deserialiseScript(
+      language: PlutusLanguage,
+      protocol: ProtocolMajor,
+      script: Bytes
+  ): Either[NotAdmitted, Program] =
+    guarded(admitting(language, protocol, script))(reason => Left(ScriptResult.Unavailable(reason)))
+
+  private def admitting(
+      language: PlutusLanguage,
+      protocol: ProtocolMajor,
+      script: Bytes
+  ): Either[NotAdmitted, Program] =
+    for
+      _ <- supported(protocol).leftMap(ScriptResult.Unavailable(_))
+      program <- SerialisedScript
+        .deserialiseScript(language, protocol, script)
+        .leftMap(LedgerOutcome.Refused(_))
+    yield program
 
   /** The evaluation behind the public functions, which catch what it throws. The reference looks
     * the machine up only once the term is checked (`evaluateTerm` is forced after
@@ -234,8 +255,8 @@ object PlutusV1:
   def deserialiseScript(
       protocol: ProtocolMajor,
       script: Bytes
-  ): Either[ScriptDecodeError, Program] =
-    SerialisedScript.deserialiseScript(language, protocol, script)
+  ): Either[LedgerEval.NotAdmitted, Program] =
+    LedgerEval.deserialiseScript(language, protocol, script)
 
   def evaluateScriptCounting(
       protocol: ProtocolMajor,
@@ -270,8 +291,8 @@ object PlutusV2:
   def deserialiseScript(
       protocol: ProtocolMajor,
       script: Bytes
-  ): Either[ScriptDecodeError, Program] =
-    SerialisedScript.deserialiseScript(language, protocol, script)
+  ): Either[LedgerEval.NotAdmitted, Program] =
+    LedgerEval.deserialiseScript(language, protocol, script)
 
   def evaluateScriptCounting(
       protocol: ProtocolMajor,
@@ -307,8 +328,8 @@ object PlutusV3:
   def deserialiseScript(
       protocol: ProtocolMajor,
       script: Bytes
-  ): Either[ScriptDecodeError, Program] =
-    SerialisedScript.deserialiseScript(language, protocol, script)
+  ): Either[LedgerEval.NotAdmitted, Program] =
+    LedgerEval.deserialiseScript(language, protocol, script)
 
   def evaluateScriptCounting(
       protocol: ProtocolMajor,

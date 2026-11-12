@@ -31,7 +31,13 @@ import xyz.kd5ujc.scarab.uplc.builtin.{
 import xyz.kd5ujc.scarab.uplc.builtin.extended.LibraryDefect
 import xyz.kd5ujc.scarab.uplc.cek.{BudgetMode, CaseBuiltinError, CekError}
 import xyz.kd5ujc.scarab.uplc.cek.Terms.*
-import xyz.kd5ujc.scarab.uplc.cost.{DefaultCostModels, EvaluationContext, ExBudget, SatInt}
+import xyz.kd5ujc.scarab.uplc.cost.{
+  CostModelApplyError,
+  DefaultCostModels,
+  EvaluationContext,
+  ExBudget,
+  SatInt
+}
 import xyz.kd5ujc.scarab.uplc.flat.{FlatWriter, ScriptDecodeError}
 
 /** The rules of the ledger's evaluation of a script (`PlutusLedgerApi/Common/Eval.hs`, plutus
@@ -262,6 +268,34 @@ final class LedgerEvalSuite extends munit.FunSuite:
     assertEquals(LedgerEval.supported(pv11), Right(()))
   }
 
+  test("protocol 12 and later: no admission verdict, and evaluateTerm refuses it too") {
+    val good = FlatWriter.script(v100(lam(unit)))
+    val pv12 = ProtocolMajor.Dijkstra
+    val unsupported = ScriptResult.Unavailable(Unavailability.UnsupportedProtocol(pv12))
+    assertEquals(LedgerEval.deserialiseScript(V3, pv12, good), Left(unsupported))
+    assertEquals(PlutusV3.deserialiseScript(pv12, good), Left(unsupported))
+    assertEquals(
+      PlutusV1.deserialiseScript(pv12, Bytes.fromHex("ff").fold(e => fail(e.toString), identity)),
+      Left(ScriptResult.Unavailable(Unavailability.UnsupportedProtocol(pv12)))
+    )
+    assertEquals(
+      LedgerEval.evaluateTerm(BudgetMode.Counting, pv12, contexts(V3), unit).map(_.result),
+      Left(Unavailability.UnsupportedProtocol(pv12))
+    )
+    // at protocol 11 the reference's verdicts
+    assertEquals(PlutusV3.deserialiseScript(pv11, good), Right(v100(lam(unit))))
+    val trailing = Bytes.wrap(good.toArray ++ Array[Byte](0))
+    assertEquals(
+      PlutusV3.deserialiseScript(pv11, trailing),
+      Left(LedgerOutcome.Refused(ScriptDecodeError.Remainder(Bytes.wrap(Array[Byte](0)))))
+    )
+    assertEquals(
+      PlutusV2.deserialiseScript(pv11, trailing).map(_.version),
+      Right(ProgramVersion.V1_0_0)
+    )
+    assert(LedgerEval.evaluateTerm(BudgetMode.Counting, pv11, contexts(V3), unit).isRight)
+  }
+
   test("from bytes: deserialiseScript's refusals are the decode stage, then the evaluation") {
     def serialised(language: PlutusLanguage, protocol: ProtocolMajor, bytes: Bytes) =
       LedgerEval.evaluateSerialised(
@@ -466,6 +500,25 @@ final class LedgerEvalSuite extends munit.FunSuite:
       LedgerContext.of(EvaluationContext(V3, Vector.empty)).map(_.at(pv11)),
       Right(Left(Unavailability.NoMachine(V3, pv11)))
     )
+  }
+
+  test("a variant without builtins here, and a refused costing context, are no verdict") {
+    val variantCosts = DefaultCostModels.costs(SemanticsVariant.E)
+    assertEquals(
+      LedgerContext.machine(variantCosts.copy(variant = SemanticsVariant.F)).map(_.variant),
+      Left(Unavailability.Variant(SemanticsVariant.F))
+    )
+    assertEquals(LedgerContext.machine(variantCosts).map(_.variant), Right(SemanticsVariant.E))
+    Vector(
+      CostModelApplyError.UnsuppliedParameter("cekStartupCost-exBudgetCPU"),
+      CostModelApplyError.NoModel(SemanticsVariant.F),
+      CostModelApplyError.UnknownParameter("x")
+    ).foreach { error =>
+      assertEquals(
+        LedgerContext.fromCosts(Left(error)).map(_.language),
+        Left(Unavailability.CostModel(error))
+      )
+    }
   }
 
   test("every list of any length makes a context, with a machine and every builtin per variant") {

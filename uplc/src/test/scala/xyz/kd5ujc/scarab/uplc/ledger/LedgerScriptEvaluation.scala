@@ -5,7 +5,6 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.uplc.{PlutusLanguage, ProtocolMajor}
 import xyz.kd5ujc.scarab.uplc.cek.BudgetMode
 import xyz.kd5ujc.scarab.uplc.cost.{EvaluationContext, ExBudget, ScriptEvaluation}
-import xyz.kd5ujc.scarab.uplc.flat.SerialisedScript
 
 /** The ledger's evaluation in the profile of the Haskell oracles (`scripts/oracle/plutus/Main.hs`,
   * `scripts/oracle/plutus/costing/Main.hs`): `deserialiseScript`, then `evaluateScriptRestricting`
@@ -14,7 +13,7 @@ import xyz.kd5ujc.scarab.uplc.flat.SerialisedScript
   */
 object LedgerScriptEvaluation extends ScriptEvaluation:
   def admits(language: PlutusLanguage, protocol: ProtocolMajor, script: Bytes): Boolean =
-    SerialisedScript.deserialiseScript(language, protocol, script).isRight
+    LedgerEval.deserialiseScript(language, protocol, script).isRight
 
   def evaluate(
       language: PlutusLanguage,
