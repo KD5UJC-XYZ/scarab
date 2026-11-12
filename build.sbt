@@ -159,7 +159,9 @@ lazy val uplc = scarab("uplc")
   .settings(
     libraryDependencies ++= Seq(
       Libraries.cats,
-      Libraries.catsMtl
+      Libraries.catsMtl,
+      // The textual UPLC of the conformance corpus is parsed in the tests only.
+      Libraries.catsParse % Test
     ),
     // The vendored plutus reference corpus (`plutus-reference`) and the Wycheproof vectors, read as test
     // resources without a dependency on `plutus`, whose class path carries Scalus (`LocalProject`, as
