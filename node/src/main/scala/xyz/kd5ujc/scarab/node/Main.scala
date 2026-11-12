@@ -2220,11 +2220,9 @@ object Main extends IOApp:
                   ConfigError(ConfigProblem.WithUsage(ConfigProblem.PlutusVmUnknown(e), Usage))
                 )
             )
-          // the own evaluator does not forge until the evidence of its gates is in: a block forged
-          // with a wrong validity flag is refused by every other node (ADR 0027, its amendment of
-          // 2026-11-12)
+          // an evaluator that may not forge yet refuses `--forge` at start (`PlutusVm.forges`)
           _ <- Either.cond(
-            forge.isEmpty || plutusVm != PlutusVm.Scarab,
+            forge.isEmpty || plutusVm.forges,
             (),
             ConfigError(ConfigProblem.WithUsage(ConfigProblem.PlutusVmForging(plutusVm), Usage))
           )
