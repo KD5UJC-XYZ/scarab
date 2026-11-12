@@ -138,7 +138,9 @@ enum EvalResult:
 /** Phase-2 evaluation of one Plutus script. The algebra is effect-polymorphic: evaluation is
   * deterministic, so [[ScalusEvaluator.pure]] interprets it in `cats.Id` and the ledger rules
   * (which are pure functions) take that interpreter; a node that wants to move evaluation off the
-  * main thread or onto a pool uses [[ScalusEvaluator.suspended]] in its effect type instead.
+  * main thread or onto a pool uses [[ScalusEvaluator.suspended]] in its effect type instead. The
+  * own evaluator ([[ScarabEvaluator]]) has the same forms; the node chooses one by `--plutus-vm`
+  * ([[PlutusVm]], ADR 0027).
   */
 trait ScriptEvaluator[F[_]]:
   def evaluate(request: EvalRequest): F[EvalResult]
