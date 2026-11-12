@@ -132,6 +132,30 @@ enum EvaluationFailure:
   /** `decodeUtf8` of bytes that are not well-formed UTF-8 (`Default/Builtins.hs:1595,1606`). */
   case InvalidUtf8
 
+  /** A BLS12-381 builtin (`PlutusCore/Crypto/BLS12_381/G1.hs`, `G2.hs`). */
+  case Bls(failure: xyz.kd5ujc.scarab.uplc.bls.BlsFailure)
+
+  /** An argument of a signature builtin that does not deserialise (`PlutusCore/Crypto/Ed25519.hs`,
+    * `Secp256k1.hs`).
+    */
+  case SignatureInput(failure: extended.SignatureInputFailure)
+
+  /** The conversions and bitwise builtins (`PlutusCore/Bitwise.hs`). The reference emits several
+    * lines; [[message]] joins them with a newline, and the outcome carries them one by one.
+    */
+  case Bitwise(failure: extended.BitwiseFailure)
+
+  /** `expModInteger` (`PlutusCore/Crypto/ExpMod.hs`). */
+  case ExpMod(failure: extended.ExpModFailure)
+
+  /** The `Value` builtins (`PlutusCore/Value.hs`). */
+  case ValueOperation(failure: extended.ValueFailure)
+
+  /** A library the builtin calls failed where the reference's cannot: a defect of this
+    * implementation, not a verdict on the script. The reference has no message for it.
+    */
+  case Defect(function: DefaultFun, defect: extended.LibraryDefect)
+
   /** The text the reference emits as a log line for this failure (its argument to `fail`, which
     * `BuiltinResult` turns into a log, `Builtin/Result.hs:88-90`), or none where it emits none.
     */
@@ -142,7 +166,13 @@ enum EvaluationFailure:
     case EmptyList                        => Some("Expected a non-empty list but got an empty one")
     case UnexpectedData(shape) =>
       Some(s"Expected the ${shape.constructor} constructor but got a different one")
-    case InvalidUtf8 => Some("decodeUtf8: invalid input")
+    case InvalidUtf8             => Some("decodeUtf8: invalid input")
+    case Bls(failure)            => Some(failure.message)
+    case SignatureInput(failure) => Some(failure.lines.mkString("\n"))
+    case Bitwise(failure)        => Some(failure.lines.mkString("\n"))
+    case ExpMod(failure)         => Some(failure.lines.mkString("\n"))
+    case ValueOperation(failure) => Some(failure.lines.mkString("\n"))
+    case Defect(_, _)            => None
 
 /** The constructor of `Data` a deconstructing builtin expects. */
 enum DataShape:

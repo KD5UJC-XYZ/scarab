@@ -8,13 +8,17 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * `507cab8c`), held as its 48-byte compressed encoding. The compressed form of a point is unique,
   * so equality of the bytes is equality of the points (`Bls12_381_G1_equal`).
   *
-  * The builtins (work package 6 of issue 43) own the representation: they may refine its internals
-  * (a decoded point, validation on construction) as long as equality stays equality of points.
+  * Every value is a point of the subgroup: [[Bls12_381]] makes one only by uncompressing with the
+  * reference's checks, by hashing to the group, or by the group operations, and decompresses the
+  * bytes again for each operation.
   */
 opaque type G1Element = Bytes
 
 object G1Element:
-  /** The point whose compressed encoding is `compressed`; the caller has validated it. */
+  /** The point whose compressed encoding is `compressed`; the caller has validated it. A program's
+    * constant is validated by [[Bls12_381.G1.uncompress]] (the reference parses a textual constant
+    * through `uncompress`).
+    */
   def fromCompressed(compressed: Bytes): G1Element = compressed
 
   extension (e: G1Element) def compressed: Bytes = e
