@@ -17,7 +17,9 @@ final class BitwiseSuite extends ScalaCheckSuite:
   private def hex(s: String): Bytes = hexBytes(s)
   private def bitwise(f: BitwiseFailure) = EvaluationFailure.Bitwise(f)
 
-  test("integerToByteString: the fewest bytes for length 0, padded otherwise (Bitwise.hs:157-201)") {
+  test(
+    "integerToByteString: the fewest bytes for length 0, padded otherwise (Bitwise.hs:157-201)"
+  ) {
     assertEquals(bytesOf(e(IntegerToByteString, bool(true), int(0), int(0))), Bytes.empty)
     assertEquals(bytesOf(e(IntegerToByteString, bool(true), int(3), int(0))), hex("000000"))
     assertEquals(bytesOf(e(IntegerToByteString, bool(true), int(0), int(0x0102))), hex("0102"))
@@ -103,7 +105,10 @@ final class BitwiseSuite extends ScalaCheckSuite:
       bitwise(BitwiseFailure.ReadBitOutOfBounds(16)) ->
         Vector("readBit: index out of bounds", "Index: 16")
     )
-    assertEquals(failureOf(e(ReadBit, bytes("0100"), int(-1)))._1, bitwise(BitwiseFailure.ReadBitOutOfBounds(-1)))
+    assertEquals(
+      failureOf(e(ReadBit, bytes("0100"), int(-1)))._1,
+      bitwise(BitwiseFailure.ReadBitOutOfBounds(-1))
+    )
   }
 
   test("writeBits: every index, the first out of range failing (532-571)") {
@@ -116,7 +121,9 @@ final class BitwiseSuite extends ScalaCheckSuite:
     )
   }
 
-  test("writeBits: D and E refuse more than 4096 bytes, before the indices (Builtins.hs:2199-2229)") {
+  test(
+    "writeBits: D and E refuse more than 4096 bytes, before the indices (Builtins.hs:2199-2229)"
+  ) {
     val long = bytes(Bytes.wrap(Array.fill(4097)(0.toByte)))
     for v <- Vector(CoreVariant.D, CoreVariant.E) do
       assertEquals(
@@ -169,7 +176,10 @@ final class BitwiseSuite extends ScalaCheckSuite:
     assertEquals(rotate("8001", -1), hex("c000"))
     // A–C read the move as any integer (`IntegerCostedLiterally`)
     val huge = BigInt(1) << 70
-    assertEquals(bytesOf(ExtendedTesting(CoreVariant.C, ShiftByteString, bytes("ff"), int(huge))), hex("00"))
+    assertEquals(
+      bytesOf(ExtendedTesting(CoreVariant.C, ShiftByteString, bytes("ff"), int(huge))),
+      hex("00")
+    )
     assertEquals(
       bytesOf(ExtendedTesting(CoreVariant.C, RotateByteString, bytes("0f"), int(huge + 4))),
       hex("f0")

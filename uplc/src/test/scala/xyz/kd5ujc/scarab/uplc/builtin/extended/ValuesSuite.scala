@@ -25,7 +25,11 @@ final class ValuesSuite extends munit.FunSuite:
     Value.Key(hexBytes(hex)).getOrElse(sys.error(s"key $hex"))
   private def v(entries: (String, Seq[(String, BigInt)])*): Value =
     Value
-      .build(entries.map((c, ts) => key(c) -> ts.map((t, q) => key(t) -> Value.Quantity(q).getOrElse(sys.error(s"$q")))))
+      .build(
+        entries.map((c, ts) =>
+          key(c) -> ts.map((t, q) => key(t) -> Value.Quantity(q).getOrElse(sys.error(s"$q")))
+        )
+      )
       .fold(e => sys.error(e.toString), identity)
   private def value(x: Value): Probe = con(Constant.Value(x))
   private def valueOf(outcome: Outcome[Probe]): Value = ExtendedTesting.value(outcome) match
@@ -40,7 +44,10 @@ final class ValuesSuite extends munit.FunSuite:
     assertEquals(valueOf(e(InsertCoin, bytes(long), bytes(""), int(0), value(one))), one)
     assertEquals(valueOf(e(InsertCoin, bytes(""), bytes(""), int(0), value(one))), Value.empty)
     val two = v("aa" -> Seq("01" -> 1, "02" -> 2))
-    assertEquals(valueOf(e(InsertCoin, bytes("aa"), bytes("01"), int(0), value(two))), v("aa" -> Seq("02" -> 2)))
+    assertEquals(
+      valueOf(e(InsertCoin, bytes("aa"), bytes("01"), int(0), value(two))),
+      v("aa" -> Seq("02" -> 2))
+    )
   }
 
   test("insertCoin: the currency, the token, then the amount are checked (Value.hs:347-351)") {
@@ -60,7 +67,9 @@ final class ValuesSuite extends munit.FunSuite:
     )
     assertEquals(showWord8s(hexBytes("01ff")), "[1,255]")
     assertEquals(
-      valueOf(e(InsertCoin, bytes("aa"), bytes("bb"), int(-Max - 1), value(v("aa" -> Seq("bb" -> 1))))),
+      valueOf(
+        e(InsertCoin, bytes("aa"), bytes("bb"), int(-Max - 1), value(v("aa" -> Seq("bb" -> 1))))
+      ),
       v("aa" -> Seq("bb" -> (-Max - 1)))
     )
   }
@@ -111,7 +120,11 @@ final class ValuesSuite extends munit.FunSuite:
       ExtendedTesting.value(e(ValueData, value(x))),
       Constant.Data(
         PlutusData.Map(
-          Vector(PlutusData.B(hexBytes("aa")) -> PlutusData.Map(Vector(PlutusData.B(hexBytes("bb")) -> PlutusData.I(2))))
+          Vector(
+            PlutusData.B(hexBytes("aa")) -> PlutusData.Map(
+              Vector(PlutusData.B(hexBytes("bb")) -> PlutusData.I(2))
+            )
+          )
         )
       )
     )
@@ -126,7 +139,9 @@ final class ValuesSuite extends munit.FunSuite:
     assert(ExtendedTesting.result(e(ValueData, value(wide(40000)))).isRight)
     assertEquals(
       failureOf(e(ValueData, value(wide(40001)))),
-      failed(ValueFailure.ValueDataTooLarge) -> Vector("valueData: maximum input size (40000) exceeded")
+      failed(ValueFailure.ValueDataTooLarge) -> Vector(
+        "valueData: maximum input size (40000) exceeded"
+      )
     )
   }
 
@@ -142,7 +157,10 @@ final class ValuesSuite extends munit.FunSuite:
       s"unValueData: invalid key: [${Vector.fill(33)("170").mkString(",")}]"
     )
     assertEquals(cause(M(Vector(b -> I(1)))), "unValueData: non-Map constructor")
-    assertEquals(cause(M(Vector(b -> M(Vector(b -> B(Bytes.empty)))))), "unValueData: non-I constructor")
+    assertEquals(
+      cause(M(Vector(b -> M(Vector(b -> B(Bytes.empty)))))),
+      "unValueData: non-I constructor"
+    )
     assertEquals(cause(M(Vector(b -> M(Vector(b -> I(Max + 1)))))), "unValueData: invalid quantity")
     assertEquals(cause(M(Vector(b -> M(Vector(b -> I(0)))))), "unValueData: zero quantity")
     assertEquals(cause(M(Vector(b -> M(Vector.empty)))), "unValueData: empty inner map")
@@ -155,8 +173,14 @@ final class ValuesSuite extends munit.FunSuite:
       "unValueData: token names not strictly ascending"
     )
     // the current entry is converted before it is compared with the one before
-    assertEquals(cause(M(Vector(c -> M(Vector(b -> I(1))), b -> I(1)))), "unValueData: non-Map constructor")
-    assertEquals(valueOf(e(UnValueData, data(M(Vector(b -> M(Vector(c -> I(3)))))))), v("aa" -> Seq("cc" -> 3)))
+    assertEquals(
+      cause(M(Vector(c -> M(Vector(b -> I(1))), b -> I(1)))),
+      "unValueData: non-Map constructor"
+    )
+    assertEquals(
+      valueOf(e(UnValueData, data(M(Vector(b -> M(Vector(c -> I(3)))))))),
+      v("aa" -> Seq("cc" -> 3))
+    )
   }
 
   test("scaleValue: 0 gives the empty value; the first product out of bounds fails (604-628)") {
@@ -209,12 +233,17 @@ final class ValuesSuite extends munit.FunSuite:
       failureOf(e(IndexArray, con(a), int(2))),
       EvaluationFailure.ArrayIndexOutOfBounds(2, 2) -> Vector("Array index out of bounds")
     )
-    assertEquals(failureOf(e(IndexArray, con(a), int(-1)))._1, EvaluationFailure.ArrayIndexOutOfBounds(-1, 2))
+    assertEquals(
+      failureOf(e(IndexArray, con(a), int(-1)))._1,
+      EvaluationFailure.ArrayIndexOutOfBounds(-1, 2)
+    )
   }
 
   test("the arrays: a constant of another shape is a structural error without a log line") {
     def structural(d: Denotation, args: Constant*) =
-      d(args.toVector.map(xyz.kd5ujc.scarab.uplc.builtin.Argument.Con(_)))(using Probe.given_MachineValue_Probe)
+      d(args.toVector.map(xyz.kd5ujc.scarab.uplc.builtin.Argument.Con(_)))(using
+        Probe.given_MachineValue_Probe
+      )
     val denotations = ExtendedDenotations(CoreVariant.E)
     def get(f: xyz.kd5ujc.scarab.uplc.DefaultFun): Denotation =
       denotations.getOrElse(f, sys.error(s"$f"))

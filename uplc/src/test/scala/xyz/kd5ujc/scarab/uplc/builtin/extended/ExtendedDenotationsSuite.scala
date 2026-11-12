@@ -23,5 +23,8 @@ final class ExtendedDenotationsSuite extends munit.FunSuite:
       assertEquals(ExtendedDenotations(v).keySet, ExtendedDenotations.functions, s"$v")
     for v <- Vector(SemanticsVariant.F, SemanticsVariant.G) do
       assertEquals(ExtendedDenotations.of(v).map(_.keySet), Left(UnsupportedVariant(v)))
-    assertEquals(ExtendedDenotations.of(SemanticsVariant.C).map(_.keySet), Right(ExtendedDenotations.functions))
+    assertEquals(
+      ExtendedDenotations.of(SemanticsVariant.C).map(_.keySet),
+      Right(ExtendedDenotations.functions)
+    )
   }

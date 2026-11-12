@@ -6,8 +6,8 @@ import xyz.kd5ujc.scarab.uplc.{Constant, DefaultFun, DefaultUni}
 import xyz.kd5ujc.scarab.uplc.builtin.{BuiltinFailure, EvaluationFailure, Outcome}
 import xyz.kd5ujc.scarab.uplc.builtin.core.{CoreTesting, CoreUnlifting, CoreVariant, Probe}
 
-/** Applying the builtins of this package as the machine does, without the costing: the unlifting
-  * of [[CoreUnlifting]], then the denotation.
+/** Applying the builtins of this package as the machine does, without the costing: the unlifting of
+  * [[CoreUnlifting]], then the denotation.
   */
 object ExtendedTesting:
   export CoreTesting.{bool, bytes, con, data, hexBytes, int, lambda, list}
@@ -25,7 +25,8 @@ object ExtendedTesting:
   def e(function: DefaultFun, arguments: Probe*): Outcome[Probe] =
     apply(CoreVariant.E, function, arguments*)
 
-  def result(outcome: Outcome[Probe]): Either[BuiltinFailure, Constant] = CoreTesting.result(outcome)
+  def result(outcome: Outcome[Probe]): Either[BuiltinFailure, Constant] =
+    CoreTesting.result(outcome)
 
   def value(outcome: Outcome[Probe]): Constant =
     result(outcome).fold(f => sys.error(s"expected a value, got $f"), identity)

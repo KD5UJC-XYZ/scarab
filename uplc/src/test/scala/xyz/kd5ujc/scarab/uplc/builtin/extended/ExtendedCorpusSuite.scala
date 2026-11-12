@@ -24,7 +24,8 @@ final class ExtendedCorpusSuite extends munit.FunSuite:
   private val directories: Set[String] =
     ExtendedDenotations.functions.map(_.name) + "bls12_381-cardano-crypto-tests"
 
-  private def read(file: Path): String = new String(Files.readAllBytes(file), StandardCharsets.UTF_8)
+  private def read(file: Path): String =
+    new String(Files.readAllBytes(file), StandardCharsets.UTF_8)
 
   /** The `.uplc` files below `semantics`, by directory (the builtin's name). */
   private val cases: Map[String, Vector[(String, Path, Path)]] =
@@ -55,7 +56,8 @@ final class ExtendedCorpusSuite extends munit.FunSuite:
     * evaluation failure.
     */
   private def kind(stop: TreeFailure): String = stop match
-    case TreeFailure.Builtin(f, BuiltinFailure.Unlifting(u)) => s"unlifting ${u.errorClass} ${f.name}"
+    case TreeFailure.Builtin(f, BuiltinFailure.Unlifting(u)) =>
+      s"unlifting ${u.errorClass} ${f.name}"
     case TreeFailure.Builtin(_, BuiltinFailure.Evaluation(e)) =>
       e match
         case EvaluationFailure.Defect(f, d) => s"DEFECT $f $d"
@@ -101,7 +103,11 @@ final class ExtendedCorpusSuite extends munit.FunSuite:
       val disagreements = results.collect { case (n, Verdict.Disagree(d)) => s"$n: $d" }
       assert(disagreements.isEmpty, disagreements.mkString("\n"))
       val notRun = results.collect { case (n, Verdict.NotRun(r)) => n -> r }
-      assertEquals(notRun.map(_._1).toSet, needsMachine.filter(_.contains(s"/$dir/")), notRun.mkString("\n"))
+      assertEquals(
+        notRun.map(_._1).toSet,
+        needsMachine.filter(_.contains(s"/$dir/")),
+        notRun.mkString("\n")
+      )
     }
 
   test("the cases agree for the pinned reasons, and no failure is a defect") {

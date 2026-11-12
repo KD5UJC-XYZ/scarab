@@ -31,8 +31,8 @@ enum TreeFailure:
 /** Evaluates a tree of saturated builtin applications over constants as the CEK machine does,
   * function before argument and left to right, each builtin through the unlifting and then the
   * denotation ([[CoreUnlifting]], [[CoreDenotations]], [[ExtendedDenotations]]). No budget is
-  * spent. It stands in for the machine until there is one: the cases it runs are those whose
-  * result needs nothing else.
+  * spent. It stands in for the machine until there is one: the cases it runs are those whose result
+  * needs nothing else.
   */
 final class BuiltinTree(variant: CoreVariant):
   private val unlifting = CoreUnlifting(variant)
@@ -54,8 +54,8 @@ final class BuiltinTree(variant: CoreVariant):
       eval(t).flatMap(f => eval(a).flatMap(apply(f, _)))
 
   private def probe(v: TreeValue): Probe = v match
-    case TreeValue.Con(c)    => Probe.Con(c)
-    case TreeValue.Opaque(p) => p
+    case TreeValue.Con(c)           => Probe.Con(c)
+    case TreeValue.Opaque(p)        => p
     case TreeValue.Partial(f, _, _) => Probe.Lambda(f.name)
 
   private def apply(f: TreeValue, a: TreeValue): Either[TreeStop, TreeValue] = f match

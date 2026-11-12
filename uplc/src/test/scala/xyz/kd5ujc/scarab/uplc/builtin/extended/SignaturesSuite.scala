@@ -16,8 +16,8 @@ import xyz.kd5ujc.scarab.uplc.builtin.EvaluationFailure
 import ExtendedTesting.*
 
 /** The hashes (`PlutusCore/Crypto/Hash.hs`) and the signature builtins
-  * (`PlutusCore/Crypto/Ed25519.hs`, `Secp256k1.hs`) of plutus 1.70.0.0: known answers, the order
-  * of the argument checks, and which problems fail the builtin and which answer `False`.
+  * (`PlutusCore/Crypto/Ed25519.hs`, `Secp256k1.hs`) of plutus 1.70.0.0: known answers, the order of
+  * the argument checks, and which problems fail the builtin and which answer `False`.
   */
 final class SignaturesSuite extends ScalaCheckSuite:
   private def hex(s: String): Bytes = hexBytes(s)
@@ -25,14 +25,32 @@ final class SignaturesSuite extends ScalaCheckSuite:
 
   test("the hashes: known answers for \"abc\" and the empty string (Hash.hs:37-62)") {
     def h(f: DefaultFun, b: Bytes) = bytesOf(e(f, ExtendedTesting.bytes(b))).hex
-    assertEquals(h(Sha2_256, abc), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
-    assertEquals(h(Sha3_256, abc), "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532")
-    assertEquals(h(Blake2b_256, abc), "bddd813c634239723171ef3fee98579b94964e3bb1cb3e427262c8c068d52319")
+    assertEquals(
+      h(Sha2_256, abc),
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    )
+    assertEquals(
+      h(Sha3_256, abc),
+      "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532"
+    )
+    assertEquals(
+      h(Blake2b_256, abc),
+      "bddd813c634239723171ef3fee98579b94964e3bb1cb3e427262c8c068d52319"
+    )
     assertEquals(h(Blake2b_224, abc), "9bd237b02a29e43bdd6738afa5b53ff0eee178d6210b618e4511aec8")
-    assertEquals(h(Keccak_256, abc), "4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45")
-    assertEquals(h(Keccak_256, Bytes.empty), "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")
+    assertEquals(
+      h(Keccak_256, abc),
+      "4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45"
+    )
+    assertEquals(
+      h(Keccak_256, Bytes.empty),
+      "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+    )
     assertEquals(h(Ripemd_160, abc), "8eb208f7e05d987a9b044a8e98c6b087f15a0bfc")
-    assertEquals(h(Sha2_256, Bytes.empty), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+    assertEquals(
+      h(Sha2_256, Bytes.empty),
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    )
   }
 
   private def input(f: SignatureInputFailure) =
@@ -43,7 +61,9 @@ final class SignaturesSuite extends ScalaCheckSuite:
   private val edSig =
     "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"
 
-  test("Ed25519: a verdict for a 32-byte key and a 64-byte signature, else a failure (Ed25519.hs:32-44)") {
+  test(
+    "Ed25519: a verdict for a 32-byte key and a 64-byte signature, else a failure (Ed25519.hs:32-44)"
+  ) {
     assert(boolOf(e(VerifyEd25519Signature, bytes(edKey), bytes(""), bytes(edSig))))
     assert(!boolOf(e(VerifyEd25519Signature, bytes(edKey), bytes("00"), bytes(edSig))))
     assert(!boolOf(e(VerifyEd25519Signature, bytes(edKey), bytes(""), bytes("00" * 64))))
@@ -116,7 +136,8 @@ final class SignaturesSuite extends ScalaCheckSuite:
     assertEquals(failureOf(ecdsa("02" + "ff" * 32, msg, "00" * 64))._1, ecdsaFailure(badKey)._1)
     assertEquals(failureOf(ecdsa("02" + offCurve, msg, "00" * 64))._1, ecdsaFailure(badKey)._1)
     assertEquals(failureOf(ecdsa("03" + offCurve, msg, "00" * 64))._1, ecdsaFailure(badKey)._1)
-    val uncompressed = Bytes.wrap(curve.getG.multiply(sk.bigInteger).normalize().getEncoded(false)).hex
+    val uncompressed =
+      Bytes.wrap(curve.getG.multiply(sk.bigInteger).normalize().getEncoded(false)).hex
     assertEquals(failureOf(ecdsa(uncompressed, msg, "00" * 64))._1, ecdsaFailure(badKey)._1)
   }
 
@@ -142,7 +163,8 @@ final class SignaturesSuite extends ScalaCheckSuite:
 
   private def schnorr(key: String, message: String, signature: String) =
     e(VerifySchnorrSecp256k1Signature, bytes(key), bytes(message), bytes(signature))
-  private val schnorrKey = SignatureInputFailure.InvalidVerificationKey(SignatureScheme.SchnorrSecp256k1)
+  private val schnorrKey =
+    SignatureInputFailure.InvalidVerificationKey(SignatureScheme.SchnorrSecp256k1)
   private val schnorrSig = SignatureInputFailure.InvalidSignature(SignatureScheme.SchnorrSecp256k1)
 
   // BIP-340, test vector 0
@@ -164,9 +186,16 @@ final class SignaturesSuite extends ScalaCheckSuite:
 
   test("Schnorr: a key that does not lift, or a wrong length, fails; key before signature") {
     for key <- Vector("02" + spk, spk.drop(2), "ff" * 32, offCurve) do
-      assertEquals(failureOf(schnorr(key, smsg, ssig.drop(2)))._1, EvaluationFailure.SignatureInput(schnorrKey), key)
+      assertEquals(
+        failureOf(schnorr(key, smsg, ssig.drop(2)))._1,
+        EvaluationFailure.SignatureInput(schnorrKey),
+        key
+      )
     assertEquals(failureOf(schnorr(spk, smsg, ssig.drop(2))), input(schnorrSig))
-    assertEquals(failureOf(schnorr(spk, smsg, ssig + "00"))._1, EvaluationFailure.SignatureInput(schnorrSig))
+    assertEquals(
+      failureOf(schnorr(spk, smsg, ssig + "00"))._1,
+      EvaluationFailure.SignatureInput(schnorrSig)
+    )
   }
 
   property("Schnorr: Bouncy Castle's BIP-340 signatures verify, any message length") {
@@ -180,7 +209,8 @@ final class SignaturesSuite extends ScalaCheckSuite:
       signer.init(true, ECPrivateKeyParameters(key.bigInteger, BIP340Signer.getDomain))
       signer.update(message, 0, message.length)
       val signature = Bytes.wrap(signer.generateSignature())
-      val xOnly = Bytes.wrap(curve.getG.multiply(key.bigInteger).normalize().getAffineXCoord.getEncoded)
+      val xOnly =
+        Bytes.wrap(curve.getG.multiply(key.bigInteger).normalize().getAffineXCoord.getEncoded)
       assert(boolOf(schnorr(xOnly.hex, Bytes.wrap(message).hex, signature.hex)))
       assert(!boolOf(schnorr(xOnly.hex, Bytes.wrap(message :+ 1.toByte).hex, signature.hex)))
     }

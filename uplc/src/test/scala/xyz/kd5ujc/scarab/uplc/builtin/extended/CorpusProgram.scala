@@ -88,7 +88,9 @@ object CorpusProgram:
               case 'n'  => go(i + 2, acc.append('\n'))
               case 't'  => go(i + 2, acc.append('\t'))
               case d if d.isDigit =>
-                val end = (i + 1 until text.length).find(j => !text.charAt(j).isDigit).getOrElse(text.length)
+                val end = (i + 1 until text.length)
+                  .find(j => !text.charAt(j).isDigit)
+                  .getOrElse(text.length)
                 go(end, acc.appendAll(Character.toChars(text.substring(i + 1, end).toInt)))
               case other => Left(ParseFailure.BadString(s"\\$other"))
           case c => go(i + 1, acc.append(c))
@@ -99,7 +101,7 @@ object CorpusProgram:
     def next: Either[ParseFailure, (Token, Cursor)] =
       peek.toRight(ParseFailure.UnexpectedEnd).map(t => (t, copy(at = at + 1)))
     def expect(t: Token): Either[ParseFailure, Cursor] = next.flatMap {
-      case (`t`, c) => Right(c)
+      case (`t`, c)   => Right(c)
       case (other, _) => Left(ParseFailure.Unexpected(other.toString, t.toString))
     }
     def atom: Either[ParseFailure, (String, Cursor)] = next.flatMap {
@@ -111,11 +113,11 @@ object CorpusProgram:
     def skipGroup: Either[ParseFailure, Cursor] =
       @tailrec def go(i: Int, depth: Int): Either[ParseFailure, Cursor] =
         tokens.lift(i) match
-          case None                                    => Left(ParseFailure.UnexpectedEnd)
-          case Some(Token.Open | Token.LBracket)       => go(i + 1, depth + 1)
+          case None                                             => Left(ParseFailure.UnexpectedEnd)
+          case Some(Token.Open | Token.LBracket)                => go(i + 1, depth + 1)
           case Some(Token.Close | Token.RBracket) if depth == 1 => Right(copy(at = i + 1))
-          case Some(Token.Close | Token.RBracket)      => go(i + 1, depth - 1)
-          case Some(_)                                 => go(i + 1, depth)
+          case Some(Token.Close | Token.RBracket)               => go(i + 1, depth - 1)
+          case Some(_)                                          => go(i + 1, depth)
       go(at, 0)
 
   private type P[A] = Either[ParseFailure, (A, Cursor)]
@@ -133,9 +135,9 @@ object CorpusProgram:
               .flatMap(f => c3.expect(Token.Close).map(CorpusTerm.Builtin(f) -> _))
           )
         case ("con", c2) =>
-          tpe(c2).flatMap((u, c3) => constant(u, c3)).flatMap((k, c4) =>
-            c4.expect(Token.Close).map(CorpusTerm.Con(k) -> _)
-          )
+          tpe(c2)
+            .flatMap((u, c3) => constant(u, c3))
+            .flatMap((k, c4) => c4.expect(Token.Close).map(CorpusTerm.Con(k) -> _))
         case ("force", c2) =>
           term(c2).flatMap((t, c3) => c3.expect(Token.Close).map(CorpusTerm.Force(t) -> _))
         case ("error", c2) => c2.expect(Token.Close).map(CorpusTerm.Error -> _)
@@ -201,11 +203,13 @@ object CorpusProgram:
         case Left(e) => Left(e)
         case Right((a, c1)) =>
           c1.next match
-            case Right((Token.Comma, c2))            => go(c2, acc :+ a)
-            case Right((t, c2)) if t == close        => Right((acc :+ a) -> c2)
-            case Right((other, _))                   => Left(ParseFailure.Unexpected(other.toString, "',' or a close"))
-            case Left(e)                             => Left(e)
-    if c.peek.contains(close) then Right(Vector.empty -> c.copy(at = c.at + 1)) else go(c, Vector.empty)
+            case Right((Token.Comma, c2))     => go(c2, acc :+ a)
+            case Right((t, c2)) if t == close => Right((acc :+ a) -> c2)
+            case Right((other, _)) =>
+              Left(ParseFailure.Unexpected(other.toString, "',' or a close"))
+            case Left(e) => Left(e)
+    if c.peek.contains(close) then Right(Vector.empty -> c.copy(at = c.at + 1))
+    else go(c, Vector.empty)
 
   private def constant(u: DefaultUni, c: Cursor): P[Constant] = u match
     case DefaultUni.Integer =>
@@ -249,31 +253,33 @@ object CorpusProgram:
       )
     case DefaultUni.Bls12_381_MlResult => Left(ParseFailure.NoTextualForm(u))
     case DefaultUni.Value =>
-      c.expect(Token.LBracket).flatMap(c1 =>
-        items(c1, Token.RBracket) { c2 =>
-          for
-            c3 <- c2.expect(Token.Open)
-            (currency, c4) <- c3.atom
-            cs <- hex(currency, "#")
-            c5 <- c4.expect(Token.Comma)
-            c6 <- c5.expect(Token.LBracket)
-            (tokens, c7) <- items(c6, Token.RBracket) { d =>
-              for
-                d1 <- d.expect(Token.Open)
-                (token, d2) <- d1.atom
-                ts <- hex(token, "#")
-                d3 <- d2.expect(Token.Comma)
-                (amount, d4) <- d3.atom
-                q <- integer(amount)
-                d5 <- d4.expect(Token.Close)
-              yield (ts, q) -> d5
-            }
-            c8 <- c7.expect(Token.Close)
-          yield (cs, tokens) -> c8
-        }
-      ).flatMap((entries, c9) =>
-        Value.decoded(entries).left.map(ParseFailure.InvalidValue(_)).map(Constant.Value(_) -> c9)
-      )
+      c.expect(Token.LBracket)
+        .flatMap(c1 =>
+          items(c1, Token.RBracket) { c2 =>
+            for
+              c3 <- c2.expect(Token.Open)
+              (currency, c4) <- c3.atom
+              cs <- hex(currency, "#")
+              c5 <- c4.expect(Token.Comma)
+              c6 <- c5.expect(Token.LBracket)
+              (tokens, c7) <- items(c6, Token.RBracket) { d =>
+                for
+                  d1 <- d.expect(Token.Open)
+                  (token, d2) <- d1.atom
+                  ts <- hex(token, "#")
+                  d3 <- d2.expect(Token.Comma)
+                  (amount, d4) <- d3.atom
+                  q <- integer(amount)
+                  d5 <- d4.expect(Token.Close)
+                yield (ts, q) -> d5
+              }
+              c8 <- c7.expect(Token.Close)
+            yield (cs, tokens) -> c8
+          }
+        )
+        .flatMap((entries, c9) =>
+          Value.decoded(entries).left.map(ParseFailure.InvalidValue(_)).map(Constant.Value(_) -> c9)
+        )
     case DefaultUni.List(e) =>
       c.expect(Token.LBracket)
         .flatMap(items(_, Token.RBracket)(constant(e, _)))

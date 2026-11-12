@@ -28,11 +28,10 @@ import xyz.kd5ujc.scarab.uplc.builtin.core.{CoreVariant, Probe}
 
 import ExtendedTesting.*
 
-/** The BLS12-381 builtins (`PlutusCore/Crypto/BLS12_381/G1.hs`, `G2.hs`, `Pairing.hs`,
-  * `Bounds.hs` and `Default/Builtins.hs:1886-2058,2410-2425`, plutus 1.70.0.0): decompression and
-  * its refusals, the group laws, the scalar bounds of variants D and E, the multi-scalar sums,
-  * hashing to the groups against the points the reference's crypto module exported, and the
-  * pairing.
+/** The BLS12-381 builtins (`PlutusCore/Crypto/BLS12_381/G1.hs`, `G2.hs`, `Pairing.hs`, `Bounds.hs`
+  * and `Default/Builtins.hs:1886-2058,2410-2425`, plutus 1.70.0.0): decompression and its refusals,
+  * the group laws, the scalar bounds of variants D and E, the multi-scalar sums, hashing to the
+  * groups against the points the reference's crypto module exported, and the pairing.
   */
 final class Bls12_381Suite extends ScalaCheckSuite:
   override def scalaCheckTestParameters: Test.Parameters =
@@ -126,30 +125,54 @@ final class Bls12_381Suite extends ScalaCheckSuite:
     assertEquals(failureOf(uncompress2(be48(p + flag) + be48(0))), bad)
     assertEquals(failureOf(uncompress2(be48(flag) + be48(p))), bad)
     // x = 0: 4(1 + i) has norm 32, not a square as p = 3 (mod 8)
-    assertEquals(failureOf(uncompress2(be48(flag) + be48(0))), refusal(Group.G2, BlstError.PointNotOnCurve))
+    assertEquals(
+      failureOf(uncompress2(be48(flag) + be48(0))),
+      refusal(Group.G2, BlstError.PointNotOnCurve)
+    )
     assertEquals(bytesOf(e(Bls12_381_G2_compress, p2(G2))).hex, g2Hex)
   }
 
   test("the group laws through add, neg, scalarMul and equal (G1.hs:107-128, G2.hs)") {
     val twice = g1Of(e(Bls12_381_G1_add, p1(G1), p1(G1)))
     assertEquals(g1Of(e(Bls12_381_G1_scalarMul, int(2), p1(G1))), twice)
-    assertEquals(g1Of(e(Bls12_381_G1_add, p1(G1), p1(g1Of(e(Bls12_381_G1_neg, p1(G1)))))), Bls12_381.G1.Zero)
+    assertEquals(
+      g1Of(e(Bls12_381_G1_add, p1(G1), p1(g1Of(e(Bls12_381_G1_neg, p1(G1)))))),
+      Bls12_381.G1.Zero
+    )
     assertEquals(g1Of(e(Bls12_381_G1_scalarMul, int(r), p1(G1))), Bls12_381.G1.Zero)
-    assertEquals(g1Of(e(Bls12_381_G1_scalarMul, int(-1), p1(G1))), g1Of(e(Bls12_381_G1_neg, p1(G1))))
-    assertEquals(g1Of(e(Bls12_381_G1_scalarMul, int(r + 5), p1(G1))), g1Of(e(Bls12_381_G1_scalarMul, int(5), p1(G1))))
+    assertEquals(
+      g1Of(e(Bls12_381_G1_scalarMul, int(-1), p1(G1))),
+      g1Of(e(Bls12_381_G1_neg, p1(G1)))
+    )
+    assertEquals(
+      g1Of(e(Bls12_381_G1_scalarMul, int(r + 5), p1(G1))),
+      g1Of(e(Bls12_381_G1_scalarMul, int(5), p1(G1)))
+    )
     assertEquals(g1Of(e(Bls12_381_G1_scalarMul, int(0), p1(twice))), Bls12_381.G1.Zero)
     assert(boolOf(e(Bls12_381_G1_equal, p1(twice), p1(twice))))
     assert(!boolOf(e(Bls12_381_G1_equal, p1(twice), p1(G1))))
     val twice2 = g2Of(e(Bls12_381_G2_add, p2(G2), p2(G2)))
     assertEquals(g2Of(e(Bls12_381_G2_scalarMul, int(2), p2(G2))), twice2)
-    assertEquals(g2Of(e(Bls12_381_G2_add, p2(G2), p2(g2Of(e(Bls12_381_G2_neg, p2(G2)))))), Bls12_381.G2.Zero)
-    assertEquals(g2Of(e(Bls12_381_G2_scalarMul, int(-r - 3), p2(G2))), g2Of(e(Bls12_381_G2_scalarMul, int(-3), p2(G2))))
+    assertEquals(
+      g2Of(e(Bls12_381_G2_add, p2(G2), p2(g2Of(e(Bls12_381_G2_neg, p2(G2)))))),
+      Bls12_381.G2.Zero
+    )
+    assertEquals(
+      g2Of(e(Bls12_381_G2_scalarMul, int(-r - 3), p2(G2))),
+      g2Of(e(Bls12_381_G2_scalarMul, int(-3), p2(G2)))
+    )
     assert(boolOf(e(Bls12_381_G2_equal, p2(twice2), p2(twice2))))
   }
 
-  test("scalarMul: D and E bound the scalar to [-2^4095, 2^4095 - 1]; A to C do not (Builtins.hs:1901-1917)") {
+  test(
+    "scalarMul: D and E bound the scalar to [-2^4095, 2^4095 - 1]; A to C do not (Builtins.hs:1901-1917)"
+  ) {
     val top = BigInt(1) << 4095
-    for (f, probe, group) <- Vector((Bls12_381_G1_scalarMul, p1(G1), Group.G1), (Bls12_381_G2_scalarMul, p2(G2), Group.G2)) do
+    for (f, probe, group) <- Vector(
+        (Bls12_381_G1_scalarMul, p1(G1), Group.G1),
+        (Bls12_381_G2_scalarMul, p2(G2), Group.G2)
+      )
+    do
       for v <- Vector(CoreVariant.D, CoreVariant.E); k <- Vector(top, -top - 1) do
         assertEquals(
           failureOf(ExtendedTesting(v, f, int(k), probe)),
@@ -165,20 +188,36 @@ final class Bls12_381Suite extends ScalaCheckSuite:
   private def g1s(es: G1Element*): Probe =
     con(list(DefaultUni.Bls12_381_G1_Element, es.map(Constant.Bls12_381_G1_Element(_))*))
 
-  test("multiScalarMul: the sum over the pairs zip makes; every scalar is bounded (G1.hs:209-214)") {
+  test(
+    "multiScalarMul: the sum over the pairs zip makes; every scalar is bounded (G1.hs:209-214)"
+  ) {
     val two = g1Of(e(Bls12_381_G1_add, p1(G1), p1(G1)))
     assertEquals(g1Of(e(Bls12_381_G1_multiScalarMul, integers(), g1s())), Bls12_381.G1.Zero)
-    assertEquals(g1Of(e(Bls12_381_G1_multiScalarMul, integers(3, 5, 7), g1s(G1, two))), g1Of(e(Bls12_381_G1_scalarMul, int(13), p1(G1))))
-    assertEquals(g1Of(e(Bls12_381_G1_multiScalarMul, integers(3), g1s(G1, two))), g1Of(e(Bls12_381_G1_scalarMul, int(3), p1(G1))))
-    assertEquals(g1Of(e(Bls12_381_G1_multiScalarMul, integers(-1, r), g1s(G1, two))), g1Of(e(Bls12_381_G1_neg, p1(G1))))
+    assertEquals(
+      g1Of(e(Bls12_381_G1_multiScalarMul, integers(3, 5, 7), g1s(G1, two))),
+      g1Of(e(Bls12_381_G1_scalarMul, int(13), p1(G1)))
+    )
+    assertEquals(
+      g1Of(e(Bls12_381_G1_multiScalarMul, integers(3), g1s(G1, two))),
+      g1Of(e(Bls12_381_G1_scalarMul, int(3), p1(G1)))
+    )
+    assertEquals(
+      g1Of(e(Bls12_381_G1_multiScalarMul, integers(-1, r), g1s(G1, two))),
+      g1Of(e(Bls12_381_G1_neg, p1(G1)))
+    )
     // a scalar out of bounds fails even beyond the points
     assertEquals(
       failureOf(e(Bls12_381_G1_multiScalarMul, integers(1, BigInt(1) << 4095), g1s(G1))),
-      EvaluationFailure.Bls(BlsFailure.ScalarOutOfBounds(ScalarOperation.MultiScalarMul(Group.G1))) ->
+      EvaluationFailure.Bls(
+        BlsFailure.ScalarOutOfBounds(ScalarOperation.MultiScalarMul(Group.G1))
+      ) ->
         Vector("Scalar exceeds 512-byte bound for G1.multiScalarMul")
     )
     val g2s = con(list(DefaultUni.Bls12_381_G2_Element, Constant.Bls12_381_G2_Element(G2)))
-    assertEquals(g2Of(e(Bls12_381_G2_multiScalarMul, integers(4), g2s)), g2Of(e(Bls12_381_G2_scalarMul, int(4), p2(G2))))
+    assertEquals(
+      g2Of(e(Bls12_381_G2_multiScalarMul, integers(4), g2s)),
+      g2Of(e(Bls12_381_G2_scalarMul, int(4), p2(G2)))
+    )
   }
 
   /** The points the reference's crypto module computed for these messages and tags
@@ -187,7 +226,10 @@ final class Bls12_381Suite extends ScalaCheckSuite:
     */
   private val vectors: Vector[(Bytes, Bytes, String, String)] =
     Files
-      .readAllLines(Path.of("fixtures/reference/plutus-boundaries/hash-vectors.jsonl"), StandardCharsets.UTF_8)
+      .readAllLines(
+        Path.of("fixtures/reference/plutus-boundaries/hash-vectors.jsonl"),
+        StandardCharsets.UTF_8
+      )
       .asScala
       .toVector
       .filter(_.trim.nonEmpty)
@@ -200,12 +242,34 @@ final class Bls12_381Suite extends ScalaCheckSuite:
   test("hashToGroup: the reference's points for every tag shape (G1.hs:175-181, G2.hs:135-139)") {
     assertEquals(vectors.map(_._2.size), Vector(0, 1, 1, 2, 255))
     for (message, dst, h1, h2) <- vectors do
-      assertEquals(bytesOf(e(Bls12_381_G1_compress, p1(g1Of(e(Bls12_381_G1_hashToGroup, bytes(message), bytes(dst)))))).hex, h1, dst.hex)
-      assertEquals(bytesOf(e(Bls12_381_G2_compress, p2(g2Of(e(Bls12_381_G2_hashToGroup, bytes(message), bytes(dst)))))).hex, h2, dst.hex)
+      assertEquals(
+        bytesOf(
+          e(
+            Bls12_381_G1_compress,
+            p1(g1Of(e(Bls12_381_G1_hashToGroup, bytes(message), bytes(dst))))
+          )
+        ).hex,
+        h1,
+        dst.hex
+      )
+      assertEquals(
+        bytesOf(
+          e(
+            Bls12_381_G2_compress,
+            p2(g2Of(e(Bls12_381_G2_hashToGroup, bytes(message), bytes(dst))))
+          )
+        ).hex,
+        h2,
+        dst.hex
+      )
   }
 
   test("hashToGroup: a tag of more than 255 bytes fails (G1.hs:179-180)") {
-    for (f, group) <- Vector((Bls12_381_G1_hashToGroup, Group.G1), (Bls12_381_G2_hashToGroup, Group.G2)) do
+    for (f, group) <- Vector(
+        (Bls12_381_G1_hashToGroup, Group.G1),
+        (Bls12_381_G2_hashToGroup, Group.G2)
+      )
+    do
       assertEquals(
         failureOf(e(f, bytes(""), bytes("41" * 256))),
         EvaluationFailure.Bls(BlsFailure.DstTooBig(group, 256)) -> Vector("HashToCurveDstTooBig")
@@ -230,14 +294,28 @@ final class Bls12_381Suite extends ScalaCheckSuite:
     }
   }
 
-  test("the pairing: bilinearity through millerLoop, mulMlResult and finalVerify (Pairing.hs:66-75)") {
+  test(
+    "the pairing: bilinearity through millerLoop, mulMlResult and finalVerify (Pairing.hs:66-75)"
+  ) {
     def ml(a: G1Element, b: G2Element) = mlOf(e(Bls12_381_millerLoop, p1(a), p2(b)))
     def times1(k: BigInt) = g1Of(e(Bls12_381_G1_scalarMul, int(k), p1(G1)))
     def times2(k: BigInt) = g2Of(e(Bls12_381_G2_scalarMul, int(k), p2(G2)))
     def verify(a: MlResult, b: MlResult) =
-      boolOf(e(Bls12_381_finalVerify, con(Constant.Bls12_381_MlResult(a)), con(Constant.Bls12_381_MlResult(b))))
+      boolOf(
+        e(
+          Bls12_381_finalVerify,
+          con(Constant.Bls12_381_MlResult(a)),
+          con(Constant.Bls12_381_MlResult(b))
+        )
+      )
     def mul(a: MlResult, b: MlResult) =
-      mlOf(e(Bls12_381_mulMlResult, con(Constant.Bls12_381_MlResult(a)), con(Constant.Bls12_381_MlResult(b))))
+      mlOf(
+        e(
+          Bls12_381_mulMlResult,
+          con(Constant.Bls12_381_MlResult(a)),
+          con(Constant.Bls12_381_MlResult(b))
+        )
+      )
     assert(verify(ml(times1(2), G2), ml(G1, times2(2))))
     assert(!verify(ml(times1(2), G2), ml(G1, times2(3))))
     assert(verify(mul(ml(G1, G2), ml(G1, G2)), ml(times1(2), G2)))
@@ -250,7 +328,10 @@ final class Bls12_381Suite extends ScalaCheckSuite:
     val detached = con(Constant.Bls12_381_MlResult(MlResult.fromRaw(Bytes.empty)))
     assertEquals(
       failureOf(e(Bls12_381_finalVerify, detached, detached)),
-      EvaluationFailure.Defect(Bls12_381_finalVerify, LibraryDefect.DetachedMlResult) -> Vector.empty
+      EvaluationFailure.Defect(
+        Bls12_381_finalVerify,
+        LibraryDefect.DetachedMlResult
+      ) -> Vector.empty
     )
     assertEquals(
       failureOf(e(Bls12_381_mulMlResult, detached, detached))._1,
@@ -260,7 +341,9 @@ final class Bls12_381Suite extends ScalaCheckSuite:
 
   test("jblst is the pinned build of blst v0.3.17 (ADR 0025)") {
     val name = Blst.resourceName(k => Option(java.lang.System.getProperty(k)))
-    val sha = Using.resource(classOf[blstJNI].getResourceAsStream(name))(in => Blst.sha256Hex(in.readAllBytes()))
+    val sha = Using.resource(classOf[blstJNI].getResourceAsStream(name))(in =>
+      Blst.sha256Hex(in.readAllBytes())
+    )
     assertEquals(Blst.pinned.get(name), Some(sha))
   }
 
@@ -269,4 +352,6 @@ final class Bls12_381Suite extends ScalaCheckSuite:
   // groups or the pairing). The reference's `blsMSM` sums by blst's Pippenger code, which
   // `multiScalarMul` here does not call (it adds the products), so a defect of that code at 0.3.15
   // would not be reproduced. Neither blst release is vendored, so this stays unverified.
-  test("multiScalarMul against blst 0.3.15's Pippenger sum: unverified, blst is not vendored".ignore) {}
+  test(
+    "multiScalarMul against blst 0.3.15's Pippenger sum: unverified, blst is not vendored".ignore
+  ) {}
