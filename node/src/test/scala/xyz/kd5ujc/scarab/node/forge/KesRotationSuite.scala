@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import cats.effect.{IO, Ref}
+import cats.mtl.Handle
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import java.nio.file.{Files, Path}
@@ -9,13 +10,16 @@ import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.io.IOException
 import scala.collection.mutable.ArrayBuffer
+import scala.jdk.CollectionConverters.*
 import scala.concurrent.duration.*
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
+import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   ForgeError,
+  ForgeKeyProblem,
   Header,
   KesFileFailureCause,
   KesFileOperation,
@@ -58,7 +62,13 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       head(0, oc.kesPeriod.toInt) + bstr(oc.sigma) + bstr(h.coldVkey)
     s"""{"type": "${KeyFiles.OpCertType}", "description": "", "cborHex": "$cbor"}"""
 
+  private def vrfText(key: Draft03Prover.SigningKey): String =
+    s"""{"type": "${KeyFiles.VrfSigningKeyType}", "description": "", "cborHex": "${bstr(
+        key.toBytes
+      )}"}"""
+
   private final case class Files3(dir: Path):
+    val vrf: Path = dir.resolve("vrf.skey")
     val kes: Path = dir.resolve("kes.skey")
     val cert: Path = dir.resolve("node.cert")
     def next: Path = dir.resolve("kes.skey.next")
@@ -72,8 +82,14 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     def onDisk: Sum6KesSigning.SigningKey =
       KeyFiles.kesSigningKey(kes.toString, Files.readString(kes)).toOption.get
 
+  /** A key directory with a VRF key in it: a reload reads it, and the forger keeps its own. */
   private def withDir[A](body: Files3 => IO[A]): IO[A] =
-    IO.blocking(Files3(Files.createTempDirectory("kes-rotation"))).flatMap { files =>
+    IO.blocking {
+      val files = Files3(Files.createTempDirectory("kes-rotation"))
+      val vrf = Draft03Prover.SigningKey.fromSeed(Bytes.fromArray(Array.fill(32)(9.toByte)))
+      Files.writeString(files.vrf, vrfText(vrf.toOption.get))
+      files
+    }.flatMap { files =>
       body(files).guarantee(IO.blocking(removeTree(files.dir)))
     }
 
@@ -85,7 +101,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         .forEach(p => Files.deleteIfExists(p))
 
   private def source(files: Files3): IO[HotKeySource[IO]] =
-    HotKeySource.files[IO](files.kes, files.cert)
+    HotKeySource.files[IO](files.vrf, files.kes, files.cert)
 
   private def evolvedTo(h: HotCredentials, period: Int): Sum6KesSigning.SigningKey =
     h.kes.evolveTo(period).toOption.get
@@ -500,7 +516,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       result <- Forger.scoped(keys.locked(c => keys.evolved(c, 49)))
       _ = assertEquals(
         result,
-        Right(Left(ForgeError.KesEvolution(Sum6KesSigning.Failure.PeriodOutOfRange(-1))))
+        Right(Some(Left(ForgeError.KesEvolution(Sum6KesSigning.Failure.PeriodOutOfRange(-1)))))
       )
       _ = assertEquals(p.creds.kes.period, 0)
       _ = assertEquals(p.creds.kes.toBytes, before)
@@ -725,8 +741,6 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
             _ <- h.forger.reload
             _ = f.install(hotFor(p.cold, seed = 27, start = 60, sequence = 1))
             _ <- h.forger.reload
-            _ = Files.delete(f.cert)
-            _ <- h.forger.reload
             seen <- refusals(h)
             current <- currentHot(h.forger.hot)
             _ <- (5000 until 5040).toList.traverse_(s => h.forger.step(s))
@@ -739,8 +753,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
                 "BadCertificateSignature",
                 "WrongPool",
                 "Counter",
-                "NotYetValid",
-                "Unreadable"
+                "NotYetValid"
               )
             )
             assertEquals(seen(3), ReloadRefusal.Counter(OCertError.CounterOutOfRange(0, 5)))
@@ -804,7 +817,11 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         point(gen0)
         withHandle {
           for
-            src <- HotKeySource.files[IO](link.resolve("kes.skey"), link.resolve("node.cert"))
+            src <- HotKeySource.files[IO](
+              f.vrf,
+              link.resolve("kes.skey"),
+              link.resolve("node.cert")
+            )
             h <- harness(p, ledgerWith(p, 1), live = true, source = Some(src))
             // a rotation the node will refuse (counter 5), as the driver leaves it before the signal
             _ = install(gen1, hotFor(p.cold, seed = 41, start = 50, sequence = 5))
@@ -837,6 +854,279 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     )
   }
 
+  // ---- dynamic block forging (#906): an absent credential file disables forging on SIGHUP, the
+  // files found again enable it (cardano-node 11.1.3 `Run.hs` 620-668)
+
+  private def listing(dir: Path): Set[String] =
+    scala.util.Using.resource(Files.list(dir))(
+      _.iterator.asScala.map(_.getFileName.toString).toSet
+    )
+
+  private def updates(events: Vector[ForgeEvent]): Vector[BlockForgingState] =
+    events.collect { case ForgeEvent.BlockForgingUpdate(state) => state }
+
+  private val atSlot5100 = Some(IO.pure(java.time.Instant.EPOCH.plusSeconds(5100)))
+
+  private val credentialFiles: List[(String, Files3 => Path)] =
+    List("VRF key" -> (_.vrf), "certificate" -> (_.cert), "KES key" -> (_.kes))
+
+  credentialFiles.zipWithIndex.foreach { case ((name, file), i) =>
+    test(s"SIGHUP with the $name moved away disables forging: nothing leads, signs or is written") {
+      val p = pool(kesStart = 50, seed = 60 + i)
+      withDir { f =>
+        f.install(p.creds.hot)
+        val moved = f.dir.resolve("moved-away")
+        withHandle {
+          for
+            src <- source(f)
+            h <- harness(p, ledgerWith(p, 1), source = Some(src))
+            _ <- (5000 until 5060).toList.traverse_(s => h.forger.step(s))
+            before <- h.raws.get
+            _ <- IO.blocking(Files.move(file(f), moved))
+            reload <- h.forger.reload
+            reloaded <- h.seen
+            enabled <- h.forger.hot.enabled
+            inUse <- Forger.scoped(h.forger.hot.current)
+            // the slots of KES periods 51 and 52: a forging node would lead, evolve and write back
+            _ <- (5060 until 5260).toList.traverse_(s => h.forger.step(s))
+            events <- h.seen
+            after <- h.raws.get
+            left <- IO.blocking(listing(f.dir))
+          yield
+            val kesNow = if name == "KES key" then moved else f.kes
+            assertEquals(reload, Right(()))
+            assert(before.nonEmpty, "the pool forged before")
+            assertEquals(updates(reloaded), Vector(BlockForgingState.DisabledBlockForging))
+            assert(!reloaded.exists(_.isInstanceOf[ForgeEvent.KesReloadRefused]), reloaded.toString)
+            assert(!enabled)
+            assertEquals(inUse, Right(None))
+            assert(p.creds.kes.isForgotten, "the key in use is erased from memory")
+            assertEquals(events.drop(reloaded.size), Vector.empty, "no slot is attempted")
+            assertEquals(after, before, "no block is signed")
+            assertEquals(
+              left,
+              Set("vrf.skey", "kes.skey", "node.cert", "moved-away") - file(f).getFileName.toString
+            )
+            assertEquals(
+              KeyFiles.kesSigningKey("k", Files.readString(kesNow)).map(_.period),
+              Right(0),
+              "the key file is not written"
+            )
+        }
+      }
+    }
+  }
+
+  test("SIGHUP with the files back enables forging, after the checks of any reload") {
+    val p = pool(kesStart = 50, seed = 70)
+    withDir { f =>
+      f.install(p.creds.hot)
+      val next = hotFor(p.cold, seed = 71, start = 50, sequence = 1)
+      withHandle {
+        for
+          src <- source(f)
+          h <- harness(p, ledgerWith(p, 1), source = Some(src), clock = atSlot5100)
+          _ <- IO.blocking(Files.delete(f.kes))
+          _ <- h.forger.reload
+          _ <- (5100 until 5150).toList.traverse_(s => h.forger.step(s))
+          during <- h.raws.get
+          _ = f.install(next)
+          _ <- h.forger.reload
+          current <- currentHot(h.forger.hot)
+          _ <- (5150 until 5200).toList.traverse_(s => h.forger.step(s))
+          blocks <- h.raws.get
+          events <- h.seen
+        yield
+          assertEquals(during, Map.empty[Bytes, Bytes])
+          assertEquals(
+            updates(events),
+            Vector(BlockForgingState.DisabledBlockForging, BlockForgingState.EnabledBlockForging)
+          )
+          assertEquals(
+            events.collect { case e: ForgeEvent.KesReloaded => e },
+            Vector(ForgeEvent.KesReloaded(1, 50, 62, 51))
+          )
+          assertEquals(current.opCert.sequence, BigInt(1))
+          assert(current.vrf eq p.creds.vrf, "the VRF key read at start-up stays")
+          assert(blocks.nonEmpty)
+          assertEquals(blocks.values.map(sequenceOf).toSet, Set(BigInt(1)))
+          // the period-0 key put back in period 51 is brought to the present and written back
+          assertEquals(f.onDisk.period, 1)
+      }
+    }
+  }
+
+  test("a reload refused while forging is disabled keeps it disabled and says why") {
+    val p = pool(kesStart = 50, seed = 72)
+    val foreign = hotFor(TestLedger.key(), seed = 73, start = 50, sequence = 0)
+    withDir { f =>
+      f.install(p.creds.hot)
+      withHandle {
+        for
+          src <- source(f)
+          h <- harness(p, ledgerWith(p, 1), source = Some(src), clock = atSlot5100)
+          _ <- IO.blocking(Files.delete(f.cert))
+          _ <- h.forger.reload
+          _ = f.install(foreign)
+          _ <- h.forger.reload
+          enabled <- h.forger.hot.enabled
+          _ <- (5100 until 5150).toList.traverse_(s => h.forger.step(s))
+          blocks <- h.raws.get
+          seen <- refusals(h)
+          events <- h.seen
+        yield
+          assertEquals(seen.map(_.productPrefix), Vector("WrongPool"))
+          assert(!enabled)
+          assert(foreign.kes.isForgotten, "the refused key is erased from memory")
+          assertEquals(blocks, Map.empty[Bytes, Bytes])
+          assertEquals(updates(events), Vector(BlockForgingState.DisabledBlockForging))
+          assertEquals(f.onDisk.period, 0)
+      }
+    }
+  }
+
+  test("a node started as non-producing forges nothing until a reload finds its files") {
+    val p = pool(kesStart = 50, seed = 74)
+    withDir { f =>
+      f.install(p.creds.hot)
+      withHandle {
+        for
+          src <- source(f)
+          h <- harness(
+            p,
+            ledgerWith(p, 1),
+            source = Some(src),
+            clock = atSlot5100,
+            enabled = false
+          )
+          erased = p.creds.kes.isForgotten
+          _ <- (5100 until 5150).toList.traverse_(s => h.forger.step(s))
+          quiet <- h.seen
+          _ <- h.forger.reload
+          _ <- (5150 until 5200).toList.traverse_(s => h.forger.step(s))
+          blocks <- h.raws.get
+          events <- h.seen
+        yield
+          assert(erased, "the key read at start-up is erased at once")
+          assertEquals(quiet, Vector.empty)
+          assertEquals(updates(events), Vector(BlockForgingState.EnabledBlockForging))
+          assert(blocks.nonEmpty)
+          assertEquals(blocks.values.map(sequenceOf).toSet, Set(BigInt(0)))
+          assertEquals(f.onDisk.period, 1)
+      }
+    }
+  }
+
+  test("the forger traces at start whether it forges, as the reference's BlockForgingUpdate") {
+    List(true, false).traverse_ { on =>
+      val p = pool(kesStart = 50, seed = if on then 75 else 76)
+      TestControl.executeEmbed(
+        withHandle {
+          for
+            h <- harness(p, ledgerWith(p, 1), live = true, unbounded = true, enabled = on)
+            ended <- h.forger.run.timeoutTo(3.seconds, IO.pure(Right(())))
+            events <- h.seen
+          yield
+            assertEquals(ended, Right(()))
+            if on then
+              assertEquals(updates(events), Vector(BlockForgingState.EnabledBlockForging))
+              assertEquals(events.take(1), Vector(ForgeEvent.BlockForgingUpdate(BlockForgingState.EnabledBlockForging)))
+              assert(events.lift(1).exists(_.isInstanceOf[ForgeEvent.Started]), events.toString)
+            else
+              assertEquals(
+                events,
+                Vector(ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging))
+              )
+        }
+      )
+    }
+  }
+
+  test("the write-back recreates a key file that was moved away, so a disabled forger must not write") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 77, 0, 0))
+        val key = f.onDisk
+        Files.move(f.kes, f.dir.resolve("moved-away"))
+        key.evolveTo(3)
+        assertEquals(KesFiles.persist(f.kes, key), Persisted.Written)
+        assert(Files.exists(f.kes), "the key file is back at the configured path")
+        assertEquals(f.onDisk.period, 3)
+        key.forget()
+      }
+    }
+  }
+
+  test("the key lock stays held while forging is disabled, and nothing appears at the key's path") {
+    val p = pool(kesStart = 50, seed = 78)
+    withDir { f =>
+      f.install(p.creds.hot)
+      val locked = ForgeError.KeyFile(
+        f.kes.toString,
+        ForgeKeyProblem.InstanceLocked(KeyGuard.lockFile(f.kes).toString)
+      )
+      def second: IO[Option[ForgeError]] =
+        Handle
+          .allow[ForgeError](KeyGuard.held[IO](f.kes, lock = true).use_.as(Option.empty[ForgeError]))
+          .rescue(e => IO.pure(Some(e)))
+      withHandle {
+        Handle
+          .allow[ForgeError](
+            KeyGuard.held[IO](f.kes, lock = true).use { _ =>
+              for
+                src <- source(f)
+                h <- harness(p, ledgerWith(p, 1), source = Some(src), clock = atSlot5100)
+                _ <- IO.blocking(Files.move(f.kes, f.dir.resolve("moved-away")))
+                _ <- h.forger.reload
+                _ <- (5100 until 5300).toList.traverse_(s => h.forger.step(s))
+                other <- second
+                names <- IO.blocking(listing(f.dir))
+              yield (other, names)
+            }
+          )
+          .rescue(e => IO.raiseError(new AssertionError(e.message)))
+      }.map { (other, names) =>
+        assertEquals(other, Some(locked))
+        assertEquals(
+          names,
+          Set("vrf.skey", "node.cert", "moved-away", KeyGuard.lockFile(f.kes).getFileName.toString)
+        )
+      }
+    }
+  }
+
+  test("a reload reads the VRF key, the certificate and the KES key in the reference's order") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 79, 0, 0))
+        def reread = KesFiles.reread(f.vrf, f.kes, f.cert)
+        reread match
+          case Right(KesFiles.Reread.Found(found)) => found.kes.forget()
+          case other                               => fail(s"expected the credentials, found $other")
+        // the first absent file in that order is the one named, whatever follows it
+        Files.move(f.kes, f.dir.resolve("k"))
+        assertEquals(reread, Right(KesFiles.Reread.Absent(f.kes)))
+        Files.move(f.cert, f.dir.resolve("c"))
+        assertEquals(reread, Right(KesFiles.Reread.Absent(f.cert)))
+        Files.move(f.vrf, f.dir.resolve("v"))
+        assertEquals(reread, Right(KesFiles.Reread.Absent(f.vrf)))
+        // a damaged file read before an absent one fails the read, as the reference's does
+        Files.writeString(f.vrf, "not an envelope")
+        reread match
+          case Left(ForgeError.KeyFile(file, ForgeKeyProblem.Json(_))) =>
+            assertEquals(file, f.vrf.toString)
+          case other => fail(s"expected a damaged VRF key, found $other")
+        // a directory and a link that leads nowhere do not exist for `doesFileExist`
+        Files.delete(f.vrf)
+        Files.createDirectory(f.vrf)
+        assertEquals(reread, Right(KesFiles.Reread.Absent(f.vrf)))
+        Files.delete(f.vrf)
+        Files.createSymbolicLink(f.vrf, f.dir.resolve("nowhere"))
+        assertEquals(reread, Right(KesFiles.Reread.Absent(f.vrf)))
+      }
+    }
+  }
+
   // ---- the rules of a reload, on their own
 
   private val config0 = config
@@ -847,7 +1137,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       period: Int,
       counter: Option[BigInt]
   ): Either[ReloadRefusal, Unit] =
-    HotKeys.validate(p.creds, candidate, period, counter, config0)
+    HotKeys.validate(p.creds.poolId, Some(p.creds.kes), candidate, period, counter, config0)
 
   test("a certificate whose window has passed, or has not begun, is refused") {
     val p = pool(kesStart = 0, seed = 14)
@@ -895,12 +1185,13 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       xyz.kd5ujc.scarab.crypto.witness.WitnessInputError.MalformedSignatureLength(0)
     )
     val expected = ReloadRefusal.CertificateFailure(cause)
-    assertEquals(HotKeys.validate(p.creds, candidate, 50, Some(0), config), Left(expected))
+    assertEquals(HotKeys.validate(p.creds.poolId, Some(p.creds.kes), candidate, 50, Some(0), config), Left(expected))
     for
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
       adopted <- Ref.of[IO, Boolean](false)
       src = new HotKeySource[IO]:
-        def read = IO.pure(Right(HotKeySource.Candidate(candidate, adopted.set(true))))
+        def read =
+          IO.pure(Right(HotKeySource.Reading.Found(HotKeySource.Candidate(candidate, adopted.set(true)))))
         def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Unchanged)
       keys <- HotKeys.create[IO](p.creds, Some(src), config, e => seen.update(_ :+ e))
       _ <- Forger.scoped(keys.reload(50, Some(0))).map(result => assertEquals(result, Right(())))
@@ -950,7 +1241,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       val p = pool(kesStart = 0, seed = 3)
       val next = hotFor(p.cold, seed = 21, start = 0, sequence = 1)
       val src = new HotKeySource[IO]:
-        def read = IO.pure(Right(HotKeySource.Candidate(next, IO.unit)))
+        def read = IO.pure(Right(HotKeySource.Reading.Found(HotKeySource.Candidate(next, IO.unit))))
         def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Written)
       for
         seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
@@ -967,7 +1258,11 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
             )
           )
         )
-        assertEquals(later, result, "the failed reload cannot leave usable credentials")
+        assertEquals(
+          later.left.toOption,
+          result.left.toOption,
+          "the failed reload cannot leave usable credentials"
+        )
         assertEquals(events, Vector.empty, "failed evolution emits no reload success")
     }
   }
@@ -980,7 +1275,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       result <- Forger.scoped(keys.update(63))
       events <- seen.get
     yield
-      assertEquals(result, Right(Right(Right(KesInfo(0, wideWindow.maxKesEvolutions, 63)))))
+      assertEquals(result, Right(Some(Right(Right(KesInfo(0, wideWindow.maxKesEvolutions, 63))))))
       assertEquals(p.creds.kes.period, 63)
       assertEquals(events, Vector(ForgeEvent.KesEvolved(63, 63)))
   }
@@ -993,8 +1288,8 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       first <- Forger.scoped(keys.update(64))
       later <- Forger.scoped(keys.update(65))
     yield
-      assertEquals(first, Right(Right(Left(KesEvolutionError.CouldNotEvolve(info, 64)))))
-      assertEquals(later, Right(Right(Left(KesEvolutionError.KeyAlreadyPoisoned(info, 65)))))
+      assertEquals(first, Right(Some(Right(Left(KesEvolutionError.CouldNotEvolve(info, 64))))))
+      assertEquals(later, Right(Some(Right(Left(KesEvolutionError.KeyAlreadyPoisoned(info, 65))))))
       assert(p.creds.kes.isForgotten, "expiry erases the key")
   }
 
@@ -1003,7 +1298,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     val candidate = hotFor(p.cold, seed = 3, start = 0, sequence = 0)
     val target = BigInt(1) << 32
     val src = new HotKeySource[IO]:
-      def read = IO.pure(Right(HotKeySource.Candidate(candidate, IO.unit)))
+      def read = IO.pure(Right(HotKeySource.Reading.Found(HotKeySource.Candidate(candidate, IO.unit))))
       def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Written)
     for
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
@@ -1020,6 +1315,10 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
           )
         )
       )
-      assertEquals(later, result, "the reused key remains terminal after failed evolution")
+      assertEquals(
+        later.left.toOption,
+        result.left.toOption,
+        "the reused key remains terminal after failed evolution"
+      )
       assertEquals(events, Vector.empty, "failed evolution emits no reload success")
   }

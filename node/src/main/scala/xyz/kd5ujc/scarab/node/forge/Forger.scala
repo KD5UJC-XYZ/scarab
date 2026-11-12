@@ -31,8 +31,24 @@ import xyz.kd5ujc.scarab.storage.UtxoStore
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.Fibers
 
+/** Whether the node forges, as the reference's `BlockForgingUpdate` trace says it: its type
+  * `EnabledBlockForging` (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Startup.hs` 166-174),
+  * whose constructors' names its trace prints. Its third value, `NotEffective`, is traced for a
+  * SIGHUP that arrives before consensus has started (`Run.hs` 432), which Scarab does not handle
+  * yet (#919).
+  */
+enum BlockForgingState:
+  case EnabledBlockForging
+  case DisabledBlockForging
+
 /** What the forger reports, for the JSON log and for tests. */
 enum ForgeEvent:
+  /** Forging was switched on or off: at start-up, and at every reload that finds the credentials
+    * (on) or finds a credential file absent (off), as the reference traces `BlockForgingUpdate`
+    * (cardano-node 11.1.3 `Run.hs` 248-252 and 633-647).
+    */
+  case BlockForgingUpdate(state: BlockForgingState)
+
   /** Forging is on for this pool; `counter` is the operational certificate's issue counter and
     * `kesPeriod` the KES period now.
     */
@@ -167,19 +183,31 @@ final class Forger[F[_]: Async, S](
   private val F = Async[F]
   private val geometry = config.geometry
 
-  /** Run until cancelled. */
+  /** Run until cancelled. Whether forging is on is traced first, as the reference traces it at
+    * start-up (`BlockForgingUpdate`, cardano-node 11.1.3 `Run.hs` 248-252); a node started as
+    * non-producing runs the loop all the same and forges once a reload enables it.
+    */
   def run: F[Either[Fatal, Unit]] = Forger.scoped {
     for
       instant <- now
       current <- hot.current
       _ <- events.emit(
-        ForgeEvent.Started(
-          credentials.poolId,
-          credentials.vrfKeyHash,
-          current.opCert.kesPeriod,
-          config.maxKesEvolutions,
-          current.opCert.sequence,
-          kesPeriodOf(geometry.slotAt(instant))
+        ForgeEvent.BlockForgingUpdate(
+          current.fold(BlockForgingState.DisabledBlockForging)(_ =>
+            BlockForgingState.EnabledBlockForging
+          )
+        )
+      )
+      _ <- current.traverse_(c =>
+        events.emit(
+          ForgeEvent.Started(
+            credentials.poolId,
+            credentials.vrfKeyHash,
+            c.opCert.kesPeriod,
+            config.maxKesEvolutions,
+            c.opCert.sequence,
+            kesPeriodOf(geometry.slotAt(instant))
+          )
         )
       )
       _ <- loop(None)
@@ -190,7 +218,8 @@ final class Forger[F[_]: Async, S](
 
   /** Switch to the KES key and operational certificate that are in the key files now, if they are
     * good for this pool at this time and on this chain; otherwise keep the old ones and report a
-    * typed [[ForgeEvent.KesReloadRefused]]. The Haskell node does this on SIGHUP:
+    * typed [[ForgeEvent.KesReloadRefused]]. A credential file that is absent disables forging
+    * ([[HotKeys.reload]]). The Haskell node does this on SIGHUP:
     * `Cardano.Node.Run` `installSigHUPHandler` calls `updateBlockForging`, which reads the
     * credentials again and hands them to `setBlockForging` (cardano-node 11.1.3, `Run.hs` lines 596
     * and 626).
@@ -293,7 +322,9 @@ final class Forger[F[_]: Async, S](
     }
 
   /** One slot in its own scope: a forging refusal permits another slot; a service failure or defect
-    * is returned to the owner and never enters the recoverable forging channel.
+    * is returned to the owner and never enters the recoverable forging channel. While forging is
+    * disabled the slot is not attempted and nothing of it is traced, as the reference runs no
+    * forging thread then (`setBlockForging` with no credentials).
     */
   private[forge] def step(slot: BigInt): F[Either[Fatal, Unit]] =
     Forger.scoped(stepInScope(slot))
@@ -301,11 +332,16 @@ final class Forger[F[_]: Async, S](
   private def stepInScope(
       slot: BigInt
   )(using handle: Handle[F, NodeError], terminal: Raise[F, Fatal]): F[Unit] =
-    handle.attempt(F.defer(attempt(slot))).flatMap {
-      case Right(_) => F.unit
-      case Left(e: ForgeError) =>
-        HotKeys.infrastructureFailure(e).fold(failed(slot, e))(_.raise[F, Unit])
-      case Left(other) => other.raise[F, Unit]
+    hot.enabled.flatMap { on =>
+      handle
+        .attempt(F.defer(attempt(slot)))
+        .flatMap {
+          case Right(_) => F.unit
+          case Left(e: ForgeError) =>
+            HotKeys.infrastructureFailure(e).fold(failed(slot, e))(_.raise[F, Unit])
+          case Left(other) => other.raise[F, Unit]
+        }
+        .whenA(on)
     } *> watch
 
   private def failed(slot: BigInt, error: ForgeError): F[Unit] =
@@ -327,6 +363,11 @@ final class Forger[F[_]: Async, S](
 
   private def proceed[A](a: A): Step[A] = EitherT.rightT(a)
 
+  /** A reload disabled forging while the slot was attempted: the slot ends with nothing more, as
+    * the reference's forging thread ends when its block forging is removed.
+    */
+  private def disabled[A]: Step[A] = EitherT.leftT(())
+
   /** The slot, step by step as `forkBlockForging`'s `go` (`NodeKernel.hs` 573-796). */
   private def attempt(slot: BigInt)(using Handle[F, NodeError], Raise[F, Fatal]): F[Unit] =
     val epoch = geometry.epochOf(slot)
@@ -342,7 +383,7 @@ final class Forger[F[_]: Async, S](
       _ <- say(ForgeTrace.LedgerView(slot))
       // `checkShouldForge` (`Block/Forging.hs` 192-226): the forge state, then the leader check,
       // then whether a leader can forge
-      key <- perform(hot.update(period).flatMap(lift)).flatMap(
+      key <- perform(hot.update(period)).flatMap(_.fold(disabled)(r => perform(lift(r)))).flatMap(
         _.fold(
           e => giveUp(ForgeTrace.ForgeStateUpdateError(slot, e)),
           info => perform(events.emit(ForgeEvent.StateInfo(info))).as(info)
@@ -391,6 +432,7 @@ final class Forger[F[_]: Async, S](
         ForgeTrace.ForgingMempoolSnapshot(slot, context.prev, held.tipHash, held.tipSlot + 1)
       )
       block <- perform(assemble(context, slot, ticked, cert, chosen.map(_._2)))
+        .flatMap(_.fold(disabled)(proceed))
       _ <- say(
         ForgeTrace.ForgedBlock(
           slot,
@@ -535,7 +577,7 @@ final class Forger[F[_]: Async, S](
 
   /** Build and sign the block (`forgeBlock`). The checks here are Scarab's own and never refuse a
     * block the steps before let through: the key's window, the body size and the decoding of the
-    * block just built.
+    * block just built. None: forging was disabled meanwhile, and nothing was signed.
     */
   private def assemble(
       context: Forger.Context[S],
@@ -543,12 +585,12 @@ final class Forger[F[_]: Async, S](
       ticked: MempoolLedger,
       cert: VrfCert,
       pieces: Vector[BlockBuilder.Piece]
-  )(using Handle[F, NodeError], Raise[F, Fatal]): F[Forger.Built] =
+  )(using Handle[F, NodeError], Raise[F, Fatal]): F[Option[Forger.Built]] =
     val body = BlockBuilder.body(pieces)
     val kesPeriod = kesPeriodOf(slot)
     // the header, the key's evolution and the signature all use the credentials of one moment: a
     // reload (SIGHUP) waits until the block is signed
-    val assembled: F[Either[ForgeError, (Bytes, Bytes, Int, BigInt)]] = hot.locked { c =>
+    val assembled: F[Option[Either[ForgeError, (Bytes, Bytes, Int, BigInt)]]] = hot.locked { c =>
       val start = c.opCert.kesPeriod
       val header = for
         _ <- Either.cond(
@@ -586,16 +628,17 @@ final class Forger[F[_]: Async, S](
                 .map(signature => Right((headerBody, signature, c.kes.period, c.opCert.sequence)))
           }
     }
-    assembled.flatMap(lift).flatMap { (headerBody, signature, relative, counter) =>
-      val raw = BlockBuilder.block(headerBody, signature, body)
-      lift(
-        Block
-          .decode(raw, geometry.byron.epochSlots)
-          .left
-          .map(e => ForgeError.Assembly(ForgeAssemblyProblem.BlockDecode(e)))
-          .map(decoded => Forger.Built(decoded.header, raw, body, relative, counter))
-      )
-    }
+    assembled.flatMap(_.traverse(signed => lift(signed).flatMap {
+      (headerBody, signature, relative, counter) =>
+        val raw = BlockBuilder.block(headerBody, signature, body)
+        lift(
+          Block
+            .decode(raw, geometry.byron.epochSlots)
+            .left
+            .map(e => ForgeError.Assembly(ForgeAssemblyProblem.BlockDecode(e)))
+            .map(decoded => Forger.Built(decoded.header, raw, body, relative, counter))
+        )
+    }))
 
   /** The Conway ledger state at `slot` from the state at the tip: the combinator's tick
     * ([[Hfc.tick]]: the translation into the slot's era, then the slot's own work), as the block
@@ -824,6 +867,9 @@ object Forger:
   /** @param source
     *   Where the KES key is written back after evolving and read from again at a reload; none: the
     *   key is kept in memory only, as the Haskell node does.
+    * @param enabled
+    *   Forge from the start; false starts with forging disabled (`--start-as-non-producing-node`,
+    *   see [[HotKeys.create]]).
     */
   def create[F[_]: Async, S](
       config: PraosConfig,
@@ -838,7 +884,8 @@ object Forger:
       unknownSlotBackoff: FiniteDuration = Forger.UnknownSlotBackoff,
       horizon: Option[(VolatileChain[S], BigInt) => Boolean] = None,
       utxoStore: Option[UtxoStore[F]] = None,
-      source: Option[HotKeySource[F]] = None
+      source: Option[HotKeySource[F]] = None,
+      enabled: Boolean = true
   )(using
       Stateful[F, VolatileChain[S]],
       ChainRead[S],
@@ -848,7 +895,7 @@ object Forger:
       Ref.of[F, Option[Crossed]](None),
       Ref.of[F, Vector[Forged]](Vector.empty),
       ForgeStats.create[F],
-      HotKeys.create[F](credentials, source, config, events)
+      HotKeys.create[F](credentials, source, config, events, enabled)
     ).mapN { (cache, pending, stats, hot) =>
       new Forger[F, S](
         config,

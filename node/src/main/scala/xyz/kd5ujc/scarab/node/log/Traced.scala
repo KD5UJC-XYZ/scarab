@@ -456,6 +456,9 @@ object Traced:
       )
 
   given Traced[ForgeEvent] =
+    // the reference prints the constructor (`showT`) as a string
+    case ForgeEvent.BlockForgingUpdate(state) =>
+      EventKind.BlockForgingUpdate.line("enabled" -> state.toString.asJson)
     case ForgeEvent.Started(pool, vrfHash, start, evolutions, counter, period) =>
       EventKind.ForgeStarted.line(
         "pool" -> pool.hex.asJson,

@@ -16,7 +16,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
   private def unreadable =
     ForgeError.KeyFile("kes", ForgeKeyProblem.Io(new java.nio.file.NoSuchFileException("kes")))
 
-  private def source(readKeys: => IO[Either[ForgeError, HotKeySource.Candidate[IO]]]) =
+  private def source(readKeys: => IO[Either[ForgeError, HotKeySource.Reading[IO]]]) =
     new HotKeySource[IO]:
       def read = readKeys
       def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Unchanged)
@@ -436,9 +436,11 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         keys = new HotKeySource[IO]:
           def read = IO.pure(
             Right(
-              HotKeySource.Candidate(
-                p.creds.hot.copy(kes = p.creds.kes.copy),
-                IO.unit
+              HotKeySource.Reading.Found(
+                HotKeySource.Candidate(
+                  p.creds.hot.copy(kes = p.creds.kes.copy),
+                  IO.unit
+                )
               )
             )
           )

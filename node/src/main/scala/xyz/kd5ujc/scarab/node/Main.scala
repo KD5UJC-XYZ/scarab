@@ -70,6 +70,7 @@ import xyz.kd5ujc.scarab.network.{
   SocketConfigError
 }
 import xyz.kd5ujc.scarab.node.forge.{
+  BlockForgingState,
   ForgeEvent,
   ForgeEvents,
   Forger,
@@ -340,6 +341,10 @@ object Main extends IOApp:
     * @param keyLock
     *   `--key-lock on|off`: with `--forge`, hold an exclusive lock beside the KES key file (see
     *   [[forge.KeyGuard]]).
+    * @param startAsNonProducingNode
+    *   `--start-as-non-producing-node`, or its hidden, deprecated alias `--non-producing-node`
+    *   (cardano-node 11.1.3 `Parsers.hs` 414-436): start with forging disabled even though
+    *   credentials are given (see [[startsNonProducing]]).
     * @param headerFirst
     *   Validate the headers a peer announces before the blocks are fetched (G6).
     * @param maxInbound
@@ -393,8 +398,18 @@ object Main extends IOApp:
         xyz.kd5ujc.scarab.network.ChainSyncPipelineDecision.Window.Default,
       stallDump: Option[Path] = None,
       keyLock: Boolean = true,
-      referenceBuild: ReferenceBuild = ReferenceBuild.Default
+      referenceBuild: ReferenceBuild = ReferenceBuild.Default,
+      startAsNonProducingNode: Boolean = false
   ):
+    /** `ncStartAsNonProducingNode` of the reference: the flags give `Just True` or nothing
+      * (`Parsers.hs` 70-72), the configuration file's `StartAsNonProducingNode` a value or nothing
+      * (`Configuration/POM.hs` 325), and the last value given wins in
+      * `defaultPartialNodeConfiguration <> configYamlPc <> cmdPc` (`Run.hs` 217), whose default is
+      * false (`POM.hs` 738). So a flag starts the node non-producing whatever the file says.
+      */
+    def startsNonProducing(settings: ConfigSettings): Boolean =
+      startAsNonProducingNode || settings.startAsNonProducingNode.getOrElse(false)
+
     /** The configuration's limits, with the hard limit of `--max-inbound` where given. */
     def accepted(settings: ConfigSettings): AcceptedConnectionsLimit =
       maxInbound.fold(settings.acceptedConnectionsLimit)(hard =>
@@ -1575,6 +1590,10 @@ object Main extends IOApp:
       )
       Connections(manager, governor, network, relay)
 
+  /** What the forger reports: to the log and the metrics. */
+  private def forgeEvents(measured: EventMetrics[IO])(using Log[IO]): ForgeEvents[IO] =
+    Log.sink[ForgeEvents, ForgeEvent, IO].alongside(measured.forge)
+
   /** The services beside the peer network: the node-to-client server, the forger with `--forge`,
     * the stall watchdog and the memory report.
     */
@@ -1655,10 +1674,11 @@ object Main extends IOApp:
           .evalTap(_ => logged(NodeEvent.Listening(path)))
       )
     for
-      // the credentials were read at start-up, before the sockets ([[follow]])
+      // the credentials were read at start-up, before the sockets ([[follow]]), also for a node
+      // started as non-producing, as the reference reads them (`Run.hs` 195-201)
       forging <- (options.forge, credentials).tupled.traverse { (files, pool) =>
         for
-          source <- HotKeySource.files[IO](files.kesSkey, files.opCert)
+          source <- HotKeySource.files[IO](files.vrfSkey, files.kesSkey, files.opCert)
           forger <- {
             given TxClock[MirrorState] = chain.txClock
             Forger.create[IO, MirrorState](
@@ -1667,13 +1687,19 @@ object Main extends IOApp:
               pool,
               follower,
               mempool,
-              Log.sink[ForgeEvents, ForgeEvent, IO].alongside(measured.forge),
+              forgeEvents(measured),
               utxoStore = Some(store),
-              source = Some(source)
+              source = Some(source),
+              enabled = !options.startsNonProducing(setup.config.settings)
             )
           }
         yield forger
       }
+      // a node without credentials traces that it does not forge, as the reference does
+      // (`Run.hs` 248-252, with no block forging)
+      _ <- forgeEvents(measured)
+        .emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging))
+        .whenA(forging.isEmpty)
       _ <- forging.traverse_(f => collectors.add(Collectors.forging(f.stats)))
       // the chain we start from is progress made: the watchdog counts from here
       _ <- ref.get.flatMap(c => c.tipRef.traverse_(t => watchdog.extended(t.blockNo)))
@@ -1758,8 +1784,13 @@ object Main extends IOApp:
               case Right((_, nextRoots)) => net.reloadRoots(nextRoots)
             }
           }
+          // a node without credentials finds none again (`updateBlockForging` with no credential
+          // files reads an empty list, `Run.hs` 641-648)
           val reload =
-            forging.traverse_(f => f.reload.flatMap(_.fold(fatalSink, _ => IO.unit))) *>
+            forging.fold(
+              forgeEvents(instruments.measured)
+                .emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging))
+            )(f => f.reload.flatMap(_.fold(fatalSink, _ => IO.unit))) *>
               reloadTopology
           val signals =
             if options.topologyFile.isDefined || forging.isDefined then Signals.hangup[IO](reload)
@@ -1793,7 +1824,7 @@ object Main extends IOApp:
                       )
                 }
               ),
-              forging.map(_.stats.byEpoch.map(Reports.forgeReport)),
+              forging.map(f => (f.stats.byEpoch, f.hot.enabled).mapN(Reports.forgeReport)),
               Some(collectors.scrape)
             )(fatalSink)
             .flatMap(_ => relay)
@@ -1951,7 +1982,7 @@ object Main extends IOApp:
       values.find(r => argument == s"--${r.flag}")
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--key-lock on|off]] [--reference-build <build>] " + LogSettings.Usage +
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--key-lock on|off]] [--start-as-non-producing-node] [--reference-build <build>] " + LogSettings.Usage +
       "\n" + ReferenceBuildFlag.Help
 
   /** Flags that take a value and may repeat. */
@@ -2011,6 +2042,10 @@ object Main extends IOApp:
         case "--forge" :: tail =>
           if acc.contains("forge") then bad(ConfigProblem.DuplicateFlag("--forge"))
           else go(tail, acc.updated("forge", List("true")))
+        case (flag @ ("--start-as-non-producing-node" | "--non-producing-node")) :: tail =>
+          val name = flag.drop(2)
+          if acc.contains(name) then bad(ConfigProblem.DuplicateFlag(flag))
+          else go(tail, acc.updated(name, List("true")))
         case flag :: _ if RemovedFlag.named(flag).isDefined =>
           Left(RemovedFlag.named(flag).fold(usage)(_.refusal(Usage)))
         case "--dump-state-full" :: tail =>
@@ -2232,6 +2267,8 @@ object Main extends IOApp:
           chainSyncWindow = chainSyncWindow,
           adoptLegacyNetworkIdentity = flags.contains("adopt-legacy-network-identity"),
           keyLock = keyLock,
-          referenceBuild = referenceBuild
+          referenceBuild = referenceBuild,
+          startAsNonProducingNode =
+            flags.contains("start-as-non-producing-node") || flags.contains("non-producing-node")
         )
       case _ => Left(usage)

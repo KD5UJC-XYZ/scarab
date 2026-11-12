@@ -496,6 +496,19 @@ class ConfigSuite extends FunSuite:
         .toOption,
       Some(ConfigError(ConfigProblem.Negative("MaxConcurrencyBulkSync", BigDecimal(-1))))
     )
+    // `StartAsNonProducingNode` (POM.hs 325): a Boolean, absent or null is the default
+    def nonProducing(value: Json) =
+      NodeConfig
+        .parse(ReferenceBuild.Default)(with_("StartAsNonProducingNode", value))
+        .map(_.settings.startAsNonProducingNode)
+    assertEquals(nonProducing(Json.True), Right(Some(true)))
+    assertEquals(nonProducing(Json.False), Right(Some(false)))
+    assertEquals(nonProducing(Json.Null), Right(None))
+    assert(nonProducing(Json.fromString("true")).isLeft)
+    assertEquals(
+      NodeConfig.parse(ReferenceBuild.Default)(base.noSpaces).map(_.settings.startAsNonProducingNode),
+      Right(None)
+    )
     assert(NodeConfig.parse(ReferenceBuild.Default)("[]").isLeft)
     assert(NodeConfig.parse(ReferenceBuild.Default)("{").isLeft)
   }

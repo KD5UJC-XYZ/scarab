@@ -290,7 +290,7 @@ object Catalogue:
   )
   val forgingEnabled = GaugeDef(
     MetricName("cardano_node_metrics_forging_enabled_int"),
-    "1 when the node has forging credentials."
+    "1 while the node forges, 0 when it has no credentials, was started as non-producing or a reload found a credential file absent (the reference's BlockForgingUpdate)."
   )
   val currentKesPeriod = GaugeDef(
     MetricName("cardano_node_metrics_currentKESPeriod_int"),

@@ -60,6 +60,7 @@ import xyz.kd5ujc.scarab.node.{
 import xyz.kd5ujc.scarab.ledger.state.{Derived, MirrorError}
 import xyz.kd5ujc.scarab.ledger.PoolRelayError
 import xyz.kd5ujc.scarab.node.forge.{
+  BlockForgingState,
   CannotForge,
   ClockTrace,
   ForgeEpochStats,
@@ -511,6 +512,8 @@ object LogSamples:
     ForgeEvent.Lost(BigInt(4200), hash, "slot battle"),
     ForgeEvent.KesEvolved(BigInt(33), 2),
     ForgeEvent.KesReloaded(BigInt(4), BigInt(30), BigInt(62), BigInt(33)),
+    ForgeEvent.BlockForgingUpdate(BlockForgingState.EnabledBlockForging),
+    ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging),
     ForgeEvent.KesReloadRefused(ReloadRefusal.Counter(OCertError.CounterTooSmall(5, 3))),
     ForgeEvent.KesPersistFailed(
       BigInt(33),

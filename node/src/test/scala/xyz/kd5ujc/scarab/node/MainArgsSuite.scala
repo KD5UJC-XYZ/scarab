@@ -85,6 +85,32 @@ class MainArgsSuite extends munit.FunSuite:
     assert(Main.parse(base ++ List("--db", "/db", flag, flag)).isLeft)
   }
 
+  test("--start-as-non-producing-node and its deprecated alias start with forging disabled") {
+    def nonProducing(flags: String*) =
+      Main.parse(base ++ flags.toList).map(_.startAsNonProducingNode)
+    assertEquals(nonProducing(), Right(false))
+    assertEquals(nonProducing("--start-as-non-producing-node"), Right(true))
+    assertEquals(nonProducing("--non-producing-node"), Right(true))
+    assertEquals(nonProducing("--non-producing-node", "--start-as-non-producing-node"), Right(true))
+    assert(nonProducing("--start-as-non-producing-node", "--start-as-non-producing-node").isLeft)
+    assert(nonProducing("--non-producing-node", "--non-producing-node").isLeft)
+  }
+
+  test("the flag wins over StartAsNonProducingNode, which wins over the default") {
+    def starts(flag: Boolean, key: Option[Boolean]) =
+      Main
+        .parse(base)
+        .toOption
+        .get
+        .copy(startAsNonProducingNode = flag)
+        .startsNonProducing(ConfigSettings(startAsNonProducingNode = key))
+    assert(!starts(flag = false, None))
+    assert(starts(flag = false, Some(true)))
+    assert(!starts(flag = false, Some(false)))
+    assert(starts(flag = true, Some(false)))
+    assert(starts(flag = true, None))
+  }
+
   test("--key-lock defaults to on and refuses other values") {
     assert(Main.parse(base).toOption.get.keyLock)
     assert(!Main.parse(base ++ List("--key-lock", "off")).toOption.get.keyLock)

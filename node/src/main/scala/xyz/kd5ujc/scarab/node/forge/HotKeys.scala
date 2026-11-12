@@ -73,8 +73,8 @@ enum ReloadRefusal:
   * The node reads from it at a reload (SIGHUP, as the Haskell node does); a test supplies its own.
   */
 trait HotKeySource[F[_]]:
-  /** The key and certificate the operator installed now. */
-  def read: F[Either[ForgeError, HotKeySource.Candidate[F]]]
+  /** The key and certificate the operator installed now, or the credential file that is absent. */
+  def read: F[Either[ForgeError, HotKeySource.Reading[F]]]
 
   /** Write the key, evolved in memory, back to where it was read from (see [[KesFiles]]). */
   def persist(key: Sum6KesSigning.SigningKey): F[Persisted]
@@ -86,17 +86,29 @@ object HotKeySource:
     */
   final case class Candidate[F[_]](credentials: HotCredentials, adopt: F[Unit])
 
-  /** The key and certificate files given with `--kes-skey` and `--opcert`. */
-  def files[F[_]: Async](kesFile: Path, opCertFile: Path): F[HotKeySource[F]] =
+  /** What a read found: credentials to check, or a credential file that does not exist, which
+    * disables forging as the reference's `FileDoesNotExistError` does (see [[HotKeys.reload]]).
+    */
+  enum Reading[F[_]]:
+    case Found(candidate: Candidate[F])
+    case Absent(file: Path)
+
+  /** The files given with `--vrf-skey`, `--kes-skey` and `--opcert`, read again in the reference's
+    * order ([[KesFiles.reread]]).
+    */
+  def files[F[_]: Async](vrfFile: Path, kesFile: Path, opCertFile: Path): F[HotKeySource[F]] =
     val F = Async[F]
     F.blocking(KesFiles.resolved(kesFile)).flatMap { first =>
       Ref.of[F, Path](first.getOrElse(kesFile)).map { target =>
         new HotKeySource[F]:
-          def read = F.blocking(KesFiles.readHot(kesFile, opCertFile)).flatMap { r =>
-            // the key is written back where it was read from, even if a link moves afterwards
-            F.blocking(KesFiles.resolved(kesFile)).map { where =>
-              r.map(HotKeySource.Candidate(_, where.traverse_(target.set)))
-            }
+          def read = F.blocking(KesFiles.reread(vrfFile, kesFile, opCertFile)).flatMap {
+            case Left(error) => F.pure(Left(error))
+            case Right(KesFiles.Reread.Absent(file)) => F.pure(Right(Reading.Absent(file)))
+            case Right(KesFiles.Reread.Found(hot)) =>
+              // the key is written back where it was read from, even if a link moves afterwards
+              F.blocking(KesFiles.resolved(kesFile)).map { where =>
+                Right(Reading.Found(HotKeySource.Candidate(hot, where.traverse_(target.set))))
+              }
           }
           def persist(key: Sum6KesSigning.SigningKey) =
             target.get.flatMap(path => F.blocking(KesFiles.persist(path, key)))
@@ -112,24 +124,42 @@ object HotKeySource:
   * signature is deterministic in the key, which does not change within a period) and it is written
   * back, and its predecessor overwritten, before it signs in the new period.
   *
+  * Forging can be switched off and on again while the node runs, as the reference's dynamic block
+  * forging does it (`setBlockForging`, see [[reload]]): while it is off there is no key in memory,
+  * nothing signs, and nothing is written back.
+  *
+  * @param state
+  *   The credentials in use, none while forging is disabled; the first failure replaces them.
   * @param poisoned
   *   The key's state when it was poisoned, as the reference poisons a key whose window has passed
   *   (`HotKey.hs` 405-410): the key is erased from memory, every later [[update]] fails with
   *   `KESKeyAlreadyPoisoned`, and a [[reload]] that installs a new key ends it. Unlike the first
   *   failure of `state`, it is not fatal.
+  * @param vrf
+  *   The pool's VRF signing key, read at start-up; credentials installed by a reload take it.
+  * @param poolId
+  *   The pool this node forges for: the hash of the cold key of the credentials it started with.
   */
 final class HotKeys[F[_]: Async] private (
-    state: Ref[F, Either[Fatal, PoolCredentials]],
+    state: Ref[F, Either[Fatal, Option[PoolCredentials]]],
     poisoned: Ref[F, Option[KesInfo]],
     lock: Mutex[F],
     source: Option[HotKeySource[F]],
     config: PraosConfig,
-    events: ForgeEvents[F]
+    events: ForgeEvents[F],
+    vrf: Draft03Prover.SigningKey,
+    poolId: Bytes
 ):
   private val F = Async[F]
 
-  def current(using Raise[F, Fatal]): F[PoolCredentials] =
-    state.get.flatMap(_.fold(_.raise[F, PoolCredentials], F.pure))
+  /** The credentials in use; none while forging is disabled. */
+  def current(using Raise[F, Fatal]): F[Option[PoolCredentials]] =
+    state.get.flatMap(_.fold(_.raise[F, Option[PoolCredentials]], F.pure))
+
+  /** False while forging is disabled. A failed state reads true, so that its failure is raised
+    * where the key is used.
+    */
+  def enabled: F[Boolean] = state.get.map(_.forall(_.isDefined))
 
   /** The first failure poisons the mutable key while its lock is held. A queued signer or reload
     * observes the same failure even before Main has received and acted on the terminal result.
@@ -139,7 +169,7 @@ final class HotKeys[F[_]: Async] private (
     case Right(_)    => (Left(fatal), fatal)
   }
 
-  private def usingKey[A](use: PoolCredentials => Raise[F, Fatal] ?=> F[A])(using
+  private def guarded[A](use: Option[PoolCredentials] => Raise[F, Fatal] ?=> F[A])(using
       Raise[F, Fatal]
   ): F[A] = lock.lock.surround {
     current.flatMap { credentials =>
@@ -153,8 +183,16 @@ final class HotKeys[F[_]: Async] private (
     }
   }
 
-  /** Run `use` with healthy credentials, which cannot be replaced meanwhile. */
-  def locked[A](use: PoolCredentials => Raise[F, Fatal] ?=> F[A])(using Raise[F, Fatal]): F[A] =
+  private def usingKey[A](use: PoolCredentials => Raise[F, Fatal] ?=> F[A])(using
+      Raise[F, Fatal]
+  ): F[Option[A]] = guarded(_.traverse(c => use(c)))
+
+  /** Run `use` with healthy credentials, which cannot be replaced meanwhile; none while forging is
+    * disabled.
+    */
+  def locked[A](use: PoolCredentials => Raise[F, Fatal] ?=> F[A])(using
+      Raise[F, Fatal]
+  ): F[Option[A]] =
     usingKey(use)
 
   /** Persist the evolved key before signing. A durability failure is terminal: another slot cannot
@@ -201,12 +239,13 @@ final class HotKeys[F[_]: Async] private (
     * is later than its own, and is written back before anything signs with it; at or past the end
     * of the window it is poisoned and the update fails (`KESCouldNotEvolve`), as every later one
     * does (`KESKeyAlreadyPoisoned`) until a reload installs another key. The key's state after the
-    * update is the value. An exhausted signing lifetime inside the configured window stops this
-    * forging worker with its typed crypto cause; a failed write also stops the worker.
+    * update is the value, none while forging is disabled. An exhausted signing lifetime inside the
+    * configured window stops this forging worker with its typed crypto cause; a failed write also
+    * stops the worker.
     */
   def update(kesPeriod: BigInt)(using
       Raise[F, Fatal]
-  ): F[Either[ForgeError, Either[KesEvolutionError, KesInfo]]] =
+  ): F[Option[Either[ForgeError, Either[KesEvolutionError, KesInfo]]]] =
     usingKey { c =>
       val now = HotKeys.info(c, config)
       poisoned.get.flatMap {
@@ -223,23 +262,48 @@ final class HotKeys[F[_]: Async] private (
       }
     }
 
-  /** Re-read the key and certificate and switch to them if they are good (see
-    * [[HotKeys.validate]]); otherwise keep the old ones and say why. `counter` is the pool's issue
-    * counter on the chain.
+  /** `updateBlockForging` of the reference (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Run.hs`
+    * 620-668), run on SIGHUP: read the credentials again. A credential file that does not exist
+    * (`FileDoesNotExistError`) disables forging (`setBlockForging nodeKernel []`, lines 631-635),
+    * whether it was on or already off: the key in use is erased from memory and nothing signs or is
+    * written back until a later reload finds the files again. Credentials that are found are
+    * switched to if they are good (see [[HotKeys.validate]], the owner's checks of ADR 0015, which
+    * the reference does not make), and forging is enabled with them; otherwise the forger stays as
+    * it is, forging or disabled, and says why (the reference's `BlockForgingUpdateError`). `counter`
+    * is the pool's issue counter on the chain. The reference treats a failure to read its bulk
+    * credentials file as an absent file too (`CredentialsReadError`, lines 664-667); Scarab reads no
+    * bulk credentials file.
     */
   def reload(kesPeriod: BigInt, counter: Option[BigInt])(using Raise[F, Fatal]): F[Unit] =
-    usingKey { cur =>
+    guarded { inUse =>
       source.traverse_ { s =>
         s.read.flatMap {
           case Left(e) =>
             HotKeys.reloadFailure(e).fold(refuse(ReloadRefusal.Unreadable(e)))(_.raise[F, Unit])
-          case Right(candidate) =>
-            HotKeys.validate(cur, candidate.credentials, kesPeriod, counter, config) match
+          case Right(HotKeySource.Reading.Absent(_)) => disable(inUse)
+          case Right(HotKeySource.Reading.Found(candidate)) =>
+            HotKeys.validate(
+              poolId,
+              inUse.map(_.kes),
+              candidate.credentials,
+              kesPeriod,
+              counter,
+              config
+            ) match
               case Left(why) => F.delay(candidate.credentials.kes.forget()) *> refuse(why)
-              case Right(_)  => adopt(cur, candidate, kesPeriod)
+              case Right(_)  => adopt(inUse, candidate, kesPeriod)
         }
       }
     }
+
+  /** Forging off: the key is erased from memory and forgotten with its poisoning, as the reference
+    * drops its block forging. The trace follows the switch, so a reader of the log that sees it
+    * knows that nothing signs any more.
+    */
+  private def disable(inUse: Option[PoolCredentials]): F[Unit] =
+    inUse.traverse_(c => F.delay(c.kes.forget())) *> state.set(Right(None)) *>
+      poisoned.set(None) *>
+      events.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging))
 
   private def refuse(why: ReloadRefusal)(using Raise[F, Fatal]): F[Unit] =
     val fatal = why match
@@ -249,24 +313,25 @@ final class HotKeys[F[_]: Async] private (
     fatal.fold(events.emit(ForgeEvent.KesReloadRefused(why)))(_.raise[F, Unit])
 
   private def adopt(
-      cur: PoolCredentials,
+      inUse: Option[PoolCredentials],
       found: HotKeySource.Candidate[F],
       kesPeriod: BigInt
   )(using Raise[F, Fatal]): F[Unit] =
     // a certificate re-issued for the key already in use keeps that key, which is further on than
-    // the file's copy; a new key replaces it and the old one is erased from memory
+    // the file's copy; a new key replaces it and the old one is erased from memory. While forging
+    // is disabled no key is in use, and the file's key is taken
     val candidate = found.credentials
-    val sameKey = candidate.kes.verificationKey == cur.kes.verificationKey
-    val kes = if sameKey then cur.kes else candidate.kes
-    val next = cur.withHot(HotCredentials(kes, candidate.opCert, cur.coldVkey))
+    val kept = inUse.filter(_.kes.verificationKey == candidate.kes.verificationKey)
+    val kes = kept.fold(candidate.kes)(_.kes)
+    val next = PoolCredentials(vrf, kes, candidate.opCert, candidate.coldVkey)
     val relative = kesPeriod - candidate.opCert.kesPeriod
     for
-      _ <- F.delay(if sameKey then candidate.kes.forget() else cur.kes.forget())
-      _ <- state.set(Right(next))
+      _ <- F.delay(if kept.isDefined then candidate.kes.forget() else inUse.foreach(_.kes.forget()))
+      _ <- state.set(Right(Some(next)))
       _ <- poisoned.set(None)
       _ <- found.adopt
       // the key in use, further on than the file it was read again from, is written there too
-      _ <- write(next, kesPeriod).whenA(sameKey)
+      _ <- write(next, kesPeriod).whenA(kept.isDefined)
       // a key installed at period 0 is brought to the present at once; its file is rewritten
       _ <- evolved(next, kesPeriod)
         .flatMap(_.fold(error => Fatal.Internal(error).raise[F, Unit], _ => F.unit))
@@ -279,29 +344,50 @@ final class HotKeys[F[_]: Async] private (
           kesPeriod
         )
       )
+      _ <- events.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.EnabledBlockForging))
     yield ()
 
 object HotKeys:
+  /** @param enabled
+    *   Forge with `credentials` from the start; false for `--start-as-non-producing-node`, which
+    *   reads and checks the credentials at start-up but does not forge until a reload finds them
+    *   (cardano-node 11.1.3 `Run.hs` 395-398). The KES key read at start-up is then erased at once.
+    */
   def create[F[_]: Async](
       credentials: PoolCredentials,
       source: Option[HotKeySource[F]],
       config: PraosConfig,
-      events: ForgeEvents[F]
+      events: ForgeEvents[F],
+      enabled: Boolean = true
   ): F[HotKeys[F]] =
-    (
-      Ref.of[F, Either[Fatal, PoolCredentials]](Right(credentials)),
+    val F = Async[F]
+    F.delay(credentials.kes.forget()).unlessA(enabled) *> (
+      Ref.of[F, Either[Fatal, Option[PoolCredentials]]](
+        Right(Option.when(enabled)(credentials))
+      ),
       Ref.of[F, Option[KesInfo]](None),
       Mutex[F]
     ).mapN { (state, poisoned, lock) =>
-      new HotKeys[F](state, poisoned, lock, source, config, events)
+      new HotKeys[F](
+        state,
+        poisoned,
+        lock,
+        source,
+        config,
+        events,
+        credentials.vrf,
+        credentials.poolId
+      )
     }
 
   /** The `KESInfo` of the key in use: its certificate's window and its evolution. */
   def info(c: PoolCredentials, config: PraosConfig): KesInfo =
     KesInfo(c.opCert.kesPeriod, c.opCert.kesPeriod + config.maxKesEvolutions, c.kes.period)
 
-  /** An absent replacement file is an operator refusal on reload only. Other I/O is a storage
-    * failure; an unexpected exception remains a defect, even if the file adapter wrapped it.
+  /** A file that disappears between the check that it exists and its read is an operator refusal
+    * on reload only, as the reference's `FileIOError` keeps the forging it has (a file absent when
+    * it is checked disables forging, [[reload]]). Other I/O is a storage failure; an unexpected
+    * exception remains a defect, even if the file adapter wrapped it.
     */
   private[forge] def reloadFailure(error: ForgeError): Option[Fatal] = error match
     case ForgeError.KeyFile(
@@ -346,8 +432,9 @@ object HotKeys:
       fileFailure(file, cause)
     case other => infrastructureFailure(other).getOrElse(Fatal.Internal(other))
 
-  /** May a node forging for `current` 's pool switch to `candidate` at `kesPeriod`, when the pool's
-    * issue counter on the chain is `counter` (none: not seen yet)?
+  /** May a node forging for the pool `poolId` switch to `candidate` at `kesPeriod`, when the pool's
+    * issue counter on the chain is `counter` (none: not seen yet) and `inUse` is the KES key it
+    * signs with now (none while forging is disabled)?
     *
     * The same rules the chain applies to the headers it will carry (OCERT, `doValidateKESSignature`
     * of ouroboros-consensus-protocol `Protocol/Praos.hs`, tag release-ouroboros-consensus-4.2.1.0,
@@ -357,7 +444,8 @@ object HotKeys:
     * above ([[OCertRules.checkCounter]], the function the header rules use).
     */
   def validate(
-      current: PoolCredentials,
+      poolId: Bytes,
+      inUse: Option[Sum6KesSigning.SigningKey],
       candidate: HotCredentials,
       kesPeriod: BigInt,
       counter: Option[BigInt],
@@ -365,14 +453,14 @@ object HotKeys:
   ): Either[ReloadRefusal, Unit] =
     val start = candidate.opCert.kesPeriod
     val found = Blake2b.hash224.hash(candidate.coldVkey)
-    val keyPeriod =
-      if candidate.kes.verificationKey == current.kes.verificationKey then current.kes.period
-      else candidate.kes.period
+    val keyPeriod = inUse
+      .filter(_.verificationKey == candidate.kes.verificationKey)
+      .fold(candidate.kes.period)(_.period)
     for
       _ <- Either.cond(
-        found == current.poolId,
+        found == poolId,
         (),
-        ReloadRefusal.WrongPool(current.poolId, found)
+        ReloadRefusal.WrongPool(poolId, found)
       )
       _ <- Either.cond(
         candidate.kes.verificationKey == candidate.opCert.hotVkey,
@@ -407,7 +495,7 @@ object HotKeys:
       _ <- OCertRules
         .checkCounter(
           counter,
-          current.poolId,
+          poolId,
           candidate.opCert.sequence,
           known = true,
           bounded = true
