@@ -395,7 +395,8 @@
         "SerialiseDataSuite",
         "UnliftingBoundsReferenceSuite",
         "SliceByteStringReferenceSuite",
-        "DataReferenceSuite"
+        "DataReferenceSuite",
+        "CorpusCasesSuite"
       ],
       "docs": [
         "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
