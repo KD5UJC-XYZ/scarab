@@ -5,7 +5,6 @@ import io.circe.{Decoder, Json, parser}
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.uplc.{PlutusData, PlutusLanguage, ProtocolMajor}
 import xyz.kd5ujc.scarab.uplc.cost.ExBudget
 
 /** The generated programs of `fixtures/reference/uplc-generated`, judged by the pinned Haskell
@@ -41,9 +40,6 @@ final class GeneratedOracleSuite extends munit.FunSuite:
       .digest(Files.readAllBytes(path))
       .map(b => f"${b & 0xff}%02x")
       .mkString
-
-  private def languageOf(number: Int): PlutusLanguage =
-    PlutusLanguage.values.find(_.id + 1 == number).getOrElse(fail(s"language $number"))
 
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
 
@@ -82,71 +78,12 @@ final class GeneratedOracleSuite extends munit.FunSuite:
     assertEquals(differ.map(field[String](_, "id")).take(10), Vector.empty[String])
   }
 
-  /** The machine of each cost-model list, built once. */
-  private lazy val machines = models.map { model =>
-    LedgerEvaluation.machine(
-      languageOf(field[Int](model, "language")),
-      ProtocolMajor(field[Int](model, "protocol")),
-      field[Vector[Long]](model, "costModel")
-    )
-  }
-
-  private final case class Replayed(id: String, expected: Json, actual: Either[NoVerdict, Verdict])
-
-  private lazy val replayed: Vector[Replayed] = requests.zip(verdicts).map { (request, expected) =>
-    val machine = machines(field[Int](request, "model"))
-    val arguments = field[Vector[String]](request, "arguments")
-      .map(a => PlutusData.decode(hex(a)).fold(e => fail(s"argument: $e"), identity))
-    val budget = ExBudget.of(field[Long](request, "cpu"), field[Long](request, "memory"))
-    Replayed(
-      field[String](request, "id"),
-      expected,
-      machine.flatMap(
-        LedgerEvaluation.evaluate(_, hex(field[String](request, "script")), arguments, budget)
-      )
-    )
-  }
-
-  private def describe(verdict: Verdict): String = verdict match
-    case Verdict.Ran(outcome, spent, logs) =>
-      s"${verdict.stage} ${verdict.errorClass.getOrElse("-")} ${verdict.constructor.getOrElse("-")} " +
-        s"$outcome spent ${spent.cpu.toLong}/${spent.memory.toLong} logs ${logs.mkString("[", " | ", "]")}"
-    case other => s"${other.stage} ${other.constructor.getOrElse("-")} $other"
-
-  private def expectedText(row: Json): String =
-    row.hcursor
-      .downField("logs")
-      .delete
-      .focus
-      .fold("")(_.noSpaces) + row.hcursor
-      .downField("logs")
-      .focus
-      .fold("")(l => s" logs ${l.noSpaces}")
+  private lazy val replayed = GeneratedReplay.replay(models, requests, verdicts)
 
   test(
     "every generated script: the admission, stage, error and, on success, budget of the reference"
   ) {
-    val disagreements = replayed.flatMap { case Replayed(id, expected, actual) =>
-      actual match
-        case Left(noVerdict) =>
-          Some(s"$id: no verdict ($noVerdict); oracle ${expectedText(expected)}")
-        case Right(verdict) =>
-          val admitted = verdict match
-            case Verdict.Decode(_) => false
-            case _                 => true
-          val spent = verdict match
-            case Verdict.Ran(_, s, _) => Some((s.cpu.toLong, s.memory.toLong))
-            case _                    => None
-          val stage = field[String](expected, "stage")
-          val agrees = admitted == field[Boolean](expected, "admitted") &&
-            verdict.stage == stage &&
-            verdict.errorClass == field[Option[String]](expected, "class") &&
-            verdict.constructor == field[Option[String]](expected, "error") &&
-            (stage != "success" || spent == Some(
-              (field[Long](expected, "cpu"), field[Long](expected, "memory"))
-            ))
-          Option.when(!agrees)(s"$id: ${describe(verdict)}; oracle ${expectedText(expected)}")
-    }
+    val disagreements = GeneratedReplay.required(replayed)
     val stages = replayed.groupMapReduce(r => field[String](r.expected, "stage"))(_ => 1)(_ + _)
     println(
       s"generated-term oracle: ${replayed.size} scripts (${stages.toVector.sorted.mkString(", ")}), " +
@@ -157,48 +94,23 @@ final class GeneratedOracleSuite extends munit.FunSuite:
   }
 
   test("every generated script that ran: the budget spent when it failed, and the logs") {
-    val disagreements = replayed.flatMap { case Replayed(id, expected, actual) =>
-      actual match
-        case Right(verdict @ Verdict.Ran(_, spent, logs))
-            if verdict.stage == field[String](expected, "stage") =>
-          val budget =
-            field[Option[Long]](expected, "cpu").zip(field[Option[Long]](expected, "memory"))
-          val recordedLogs = field[Option[Vector[String]]](expected, "logs")
-          val agrees = budget.forall(_ == (spent.cpu.toLong, spent.memory.toLong)) &&
-            recordedLogs.forall(_ == logs)
-          Option.when(!agrees)(s"$id: ${describe(verdict)}; oracle ${expectedText(expected)}")
-        case _ => None
-    }
+    val disagreements = GeneratedReplay.spentAndLogs(replayed)
     println(s"generated-term oracle, spent budget and logs: ${disagreements.size} disagreements")
     disagreements.take(40).foreach(println)
     assertEquals(disagreements.take(40), Vector.empty[String])
   }
 
   test("negative control: with every cost parameter doubled, no successful run spends the same") {
-    val doubled = models.map { model =>
-      LedgerEvaluation.machine(
-        languageOf(field[Int](model, "language")),
-        ProtocolMajor(field[Int](model, "protocol")),
-        field[Vector[Long]](model, "costModel").map(_ * 2)
-      )
-    }
+    val doubled = GeneratedReplay.machines(models, scale = 2)
+    val unlimited = ExBudget.of(Long.MaxValue / 4, Long.MaxValue / 4)
     val successes = requests.zip(verdicts).filter((_, v) => field[String](v, "stage") == "success")
     val same = successes.filter { (request, expected) =>
-      val arguments = field[Vector[String]](request, "arguments").map(a =>
-        PlutusData.decode(hex(a)).fold(e => fail(s"argument: $e"), identity)
-      )
-      val budget = ExBudget.of(Long.MaxValue / 4, Long.MaxValue / 4)
-      doubled(field[Int](request, "model"))
-        .flatMap(
-          LedgerEvaluation.evaluate(_, hex(field[String](request, "script")), arguments, budget)
-        )
-        .toOption
-        .exists {
-          case Verdict.Ran(_, spent, _) =>
-            (spent.cpu.toLong, spent.memory.toLong) ==
-              (field[Long](expected, "cpu"), field[Long](expected, "memory"))
-          case _ => false
-        }
+      GeneratedReplay.evaluate(doubled, request, unlimited).toOption.exists {
+        case Verdict.Ran(_, spent, _) =>
+          (spent.cpu.toLong, spent.memory.toLong) ==
+            (field[Long](expected, "cpu"), field[Long](expected, "memory"))
+        case _ => false
+      }
     }
     assert(successes.size > requests.size / 4, s"only ${successes.size} successes")
     assertEquals(same.map((r, _) => field[String](r, "id")), Vector.empty[String])
