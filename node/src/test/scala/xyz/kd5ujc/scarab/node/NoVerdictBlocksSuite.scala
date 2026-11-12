@@ -15,6 +15,9 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.plutus.{BackendFailure, EvalFailure, ExUnits}
+import xyz.kd5ujc.scarab.uplc.ProtocolMajor
+import xyz.kd5ujc.scarab.uplc.builtin.extended.LibraryDefect
+import xyz.kd5ujc.scarab.uplc.ledger.Unavailability
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** The schedule of a block without a verdict, and which causes are judged again (issue 693). */
@@ -60,6 +63,26 @@ class NoVerdictBlocksSuite extends FunSuite:
       ) -> Deterministic,
       evaluation(
         BackendFailure.CostingUnmirrored(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+      ) -> Deterministic,
+      // the own evaluator (`--plutus-vm scarab`): an exception or a library that failed may pass,
+      // what this build lacks does not
+      evaluation(BackendFailure.Uplc(Unavailability.Thrown(new IllegalStateException("x")))) ->
+        Passing,
+      evaluation(
+        BackendFailure.Uplc(
+          Unavailability.BuiltinDefect(
+            xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup,
+            LibraryDefect.Thrown(new IllegalStateException("blst"))
+          )
+        )
+      ) -> Passing,
+      evaluation(
+        BackendFailure.Uplc(Unavailability.UnsupportedProtocol(ProtocolMajor.Dijkstra))
+      ) -> Deterministic,
+      evaluation(
+        BackendFailure.Uplc(
+          Unavailability.BuiltinArity(xyz.kd5ujc.scarab.uplc.DefaultFun.AddInteger, 2, 3)
+        )
       ) -> Deterministic,
       BlockNoVerdict.Verification(
         VerificationDefect(
