@@ -48,6 +48,14 @@ object SatInt:
       else if (a > 0) == (b > 0) then Long.MaxValue
       else Long.MinValue
 
+    /** `dividedBy` (`Data/SatInt.hs:101-110`): by a natural `divisor`; a zero divisor gives
+      * `maxBound`, a saturated value is left as it is, otherwise Haskell's flooring `div`.
+      */
+    def dividedBy(divisor: Long): SatInt =
+      if divisor == 0L then Long.MaxValue
+      else if a == Long.MaxValue || a == Long.MinValue then a
+      else Math.floorDiv(a, divisor)
+
     def unary_- : SatInt = if a == Long.MinValue then Long.MaxValue else -a
 
     def max(b: SatInt): SatInt = math.max(a, b)

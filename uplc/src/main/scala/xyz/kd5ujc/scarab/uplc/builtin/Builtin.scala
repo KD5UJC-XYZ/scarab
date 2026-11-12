@@ -55,21 +55,40 @@ final case class UnliftingFailure(errorClass: ErrorClass, cause: UnliftingCause)
   * each case renders the reference's message in [[EvaluationFailure.message]].
   */
 enum EvaluationFailure:
+  /** `nonZeroSecondArg` (`Default/Builtins.hs:262-265`). */
   case DivisionByZero
-  case IndexOutOfBounds(index: BigInt, size: BigInt)
+
+  /** `indexByteString` (`Default/Builtins.hs:1338,1346`). */
+  case ByteStringIndexOutOfBounds(index: BigInt, size: Int)
+
+  /** `indexArray` (`Default/Builtins.hs:2401`). */
+  case ArrayIndexOutOfBounds(index: BigInt, size: Int)
+
+  /** `headList`, `tailList` (`Default/Builtins.hs:1701,1714`). */
   case EmptyList
+
+  /** `unConstrData`, `unMapData`, `unListData`, `unIData`, `unBData`
+    * (`Default/Builtins.hs:1794,1805,1816,1827,1838`).
+    */
   case UnexpectedData(expected: DataShape)
 
-  /** The text the reference emits as a log line for this failure, where it emits one. */
+  /** The text the reference emits as a log line for this failure (its argument to `fail`, which
+    * `BuiltinResult` turns into a log, `Builtin/Result.hs:88-90`), or none where it emits none.
+    */
   def message: Option[String] = this match
-    case DivisionByZero         => Some("Cannot divide by zero")
-    case IndexOutOfBounds(_, _) => None
-    case EmptyList              => None
-    case UnexpectedData(_)      => None
+    case DivisionByZero                   => Some("Cannot divide by zero")
+    case ByteStringIndexOutOfBounds(_, _) => Some("Index out of bounds")
+    case ArrayIndexOutOfBounds(_, _)      => Some("Array index out of bounds")
+    case EmptyList                        => Some("Expected a non-empty list but got an empty one")
+    case UnexpectedData(shape) =>
+      Some(s"Expected the ${shape.constructor} constructor but got a different one")
 
 /** The constructor of `Data` a deconstructing builtin expects. */
 enum DataShape:
   case Constr, Map, List, I, B
+
+  /** The constructor's name in the reference's messages. */
+  def constructor: String = toString
 
 enum BuiltinFailure:
   case Unlifting(failure: UnliftingFailure)
@@ -81,6 +100,16 @@ enum BuiltinFailure:
 enum Outcome[+V]:
   case Success(value: V, logs: Vector[String])
   case Failure(failure: BuiltinFailure, logs: Vector[String])
+
+object Outcome:
+  def succeeded[V](value: V): Outcome[V] = Success(value, Vector.empty)
+
+  /** A denotation's failure with the reference's log line: every denotation fails through this, and
+    * the machine emits an outcome's logs exactly once, before it raises (`evalBuiltinApp`,
+    * `Cek/Internal.hs:1066-1073`).
+    */
+  def failed[V](failure: EvaluationFailure): Outcome[V] =
+    Failure(BuiltinFailure.Evaluation(failure), failure.message.toVector)
 
 /** The meaning of one builtin once its arguments are unlifted: pure, and the same for every
   * machine.
