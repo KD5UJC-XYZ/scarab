@@ -7,7 +7,7 @@ import xyz.kd5ujc.scarab.uplc.ReferenceCorpus
 import xyz.kd5ujc.scarab.uplc.builtin.{BuiltinFailure, EvaluationFailure}
 import xyz.kd5ujc.scarab.uplc.builtin.core.CoreVariant
 
-/** The conversion corpus cases (`plutus-reference/conformance/builtin/semantics`, plutus 1.70.0.0,
+/** The conformance corpus cases (`plutus-reference/conformance/builtin/semantics`, plutus 1.70.0.0,
   * results produced by the Haskell evaluator) of the builtins whose denotations are here, and the
   * BLS12-381 cases ported from cardano-crypto-class (`bls12_381-cardano-crypto-tests`). Each
   * program is a tree of builtin applications; [[BuiltinTree]] evaluates it under variant E, the

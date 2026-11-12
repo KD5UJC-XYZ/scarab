@@ -174,7 +174,7 @@ final class BitwiseSuite extends ScalaCheckSuite:
     assertEquals(rotate("000f", 16), hex("000f"))
     assertEquals(rotate("8001", 1), hex("0003"))
     assertEquals(rotate("8001", -1), hex("c000"))
-    // A–C read the move as any integer (`IntegerCostedLiterally`)
+    // A to C read the move as any integer (`IntegerCostedLiterally`)
     val huge = BigInt(1) << 70
     assertEquals(
       bytesOf(ExtendedTesting(CoreVariant.C, ShiftByteString, bytes("ff"), int(huge))),

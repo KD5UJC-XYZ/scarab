@@ -8,7 +8,8 @@ import munit.ScalaCheckSuite
 import org.scalacheck.{Gen, Prop, Test}
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
-import supranational.blst.{blstJNI, P1, P2}
+import cats.syntax.either.*
+import supranational.blst.{blstJNI, P1, P1_Affine, P2, P2_Affine}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.bls.Blst
 import xyz.kd5ujc.scarab.uplc.{Constant, DefaultUni}
@@ -283,6 +284,53 @@ final class Bls12_381Suite extends ScalaCheckSuite:
     Gen.choose(1, 255).flatMap(n => Gen.listOfN(n, Gen.choose(1, 127)).map(_.map(_.toByte).toArray))
   private val message: Gen[Array[Byte]] =
     Gen.choose(0, 200).flatMap(n => Gen.listOfN(n, Gen.choose(0, 255)).map(_.map(_.toByte).toArray))
+
+  /** A field element below p, uniformly enough for the tests. */
+  private val fieldElement: Gen[BigInt] =
+    Gen.listOfN(48, Gen.choose(0, 255)).map(b => BigInt(1, b.map(_.toByte).toArray).mod(p))
+
+  /** What blst decides for compressed bytes whose `x` is below p: whether its `uncompress` accepts
+    * them (not on the curve when it refuses), and whether the point is in the group.
+    */
+  private def blst1(bytes: Array[Byte]): Either[Throwable, Boolean] =
+    Either.catchNonFatal(new P1_Affine(bytes)).map(_.in_group())
+  private def blst2(bytes: Array[Byte]): Either[Throwable, Boolean] =
+    Either.catchNonFatal(new P2_Affine(bytes)).map(_.in_group())
+
+  property("G1 uncompress: on the curve and in the group exactly when blst says so") {
+    Prop.forAll(fieldElement.suchThat(_ != 0), Gen.oneOf(0x80, 0xa0)) { (x, flags) =>
+      val bytes = hexBytes(be48(x + (BigInt(flags) << 376)))
+      val ours = Bls12_381.G1.uncompress(bytes)
+      blst1(bytes.toArray) match
+        case Left(_) =>
+          assertEquals(ours, Left(BlsFailure.Uncompress(Group.G1, BlstError.PointNotOnCurve)))
+        case Right(false) =>
+          assertEquals(ours, Left(BlsFailure.Uncompress(Group.G1, BlstError.PointNotInGroup)))
+        case Right(true) => assertEquals(ours.map(_.compressed), Right(bytes))
+    }
+  }
+
+  property("G2 uncompress: on the curve and in the group exactly when blst says so") {
+    Prop.forAll(fieldElement, fieldElement, Gen.oneOf(0x80, 0xa0)) { (c1, c0, flags) =>
+      val bytes = hexBytes(be48(c1 + (BigInt(flags) << 376)) + be48(c0))
+      val ours = Bls12_381.G2.uncompress(bytes)
+      blst2(bytes.toArray) match
+        case Left(_) =>
+          assertEquals(ours, Left(BlsFailure.Uncompress(Group.G2, BlstError.PointNotOnCurve)))
+        case Right(false) =>
+          assertEquals(ours, Left(BlsFailure.Uncompress(Group.G2, BlstError.PointNotInGroup)))
+        case Right(true) => assertEquals(ours.map(_.compressed), Right(bytes))
+    }
+  }
+
+  property("uncompress accepts every compressed multiple of the generators") {
+    Prop.forAll(Gen.choose(BigInt(1), r - 1)) { k =>
+      val a = g1Of(e(Bls12_381_G1_scalarMul, int(k), p1(G1)))
+      assertEquals(g1Of(e(Bls12_381_G1_uncompress, bytes(a.compressed))), a)
+      val b = g2Of(e(Bls12_381_G2_scalarMul, int(k), p2(G2)))
+      assertEquals(g2Of(e(Bls12_381_G2_uncompress, bytes(b.compressed))), b)
+    }
+  }
 
   property("hashToGroup through Bouncy Castle is jblst's hash_to on the tags both take") {
     Prop.forAll(message, asciiTag) { (m, dst) =>

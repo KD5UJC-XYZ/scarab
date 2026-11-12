@@ -151,8 +151,8 @@ object Bls12_381:
     private def element(p: P1): G1Element = G1Element.fromCompressed(Bytes.wrap(p.compress()))
 
     /** `uncompress` (`G1.hs:140-150`): the length, the flags, `x < p` (bad encoding); `x^3 + 4` a
-      * square (not on the curve); `x = 0`, the points `(0, ±2)` of order 3, and the subgroup check
-      * (not in the group).
+      * square (not on the curve); `x = 0`, the points `(0, 2)` and `(0, -2)` of order 3, and the
+      * subgroup check (not in the group).
       */
     def uncompress(bytes: Bytes): Result[G1Element] =
       coordinates(bytes, Group.G1, CompressedSize).flatMap {
