@@ -18,7 +18,10 @@ import xyz.kd5ujc.scarab.uplc.builtin.{Argument, MachineValue}
   * given each argument its parameter's type, so that case does not arise.
   */
 trait Measure:
+  /** The reference's name of the measure: its Haskell type, or `universe` for a type's own. */
+  def name: String
   def apply[V](argument: Argument[V])(using MachineValue[V]): Costs
+  override def toString: String = name
 
 object Measure:
   private def single(cost: Long): Costs = Costs.Last(SatInt(cost))
@@ -30,6 +33,7 @@ object Measure:
     * `Cek/Internal.hs:751-759`).
     */
   val universe: Measure = new Measure:
+    val name = "universe"
     def apply[V](argument: Argument[V])(using value: MachineValue[V]): Costs = argument match
       case Argument.Con(c)    => constant(c)
       case Argument.Opaque(v) => value.constantOf(v).fold(single(1))(constant)
@@ -38,48 +42,59 @@ object Measure:
     * arguments taken as indices, widths, bytes and constructor tags in some variants.
     */
   val one: Measure = new Measure:
+    val name = "Int, Word8 or Word64"
     def apply[V](argument: Argument[V])(using MachineValue[V]): Costs = single(1)
 
   /** `TextCostedByByteLength` (lines 336-341): a quarter of the length of the text's UTF-8
     * encoding, rounded towards zero.
     */
-  val textBytes: Measure = refining { case Constant.String(t) => single(t.utf8Length / 4L) }
+  val textBytes: Measure = refining("TextCostedByByteLength") { case Constant.String(t) =>
+    single(t.utf8Length / 4L)
+  }
 
   /** `IntegerCostedLiterally` (lines 304-308): the absolute value of the integer, at most
     * `maxBound`.
     */
-  val literal: Measure = refining { case Constant.Integer(n) => Costs.Last(SatInt.clamp(n.abs)) }
+  val literal: Measure = refining("IntegerCostedLiterally") { case Constant.Integer(n) =>
+    Costs.Last(SatInt.clamp(n.abs))
+  }
 
   /** `NumBytesCostedAsNumWords` (lines 287-291): the number of 8-byte words that hold `|n|` bytes,
     * `((|n| - 1) div 8) + 1` with the division rounding down, so 0 for 0; at most `maxBound`.
     */
-  val words: Measure = refining { case Constant.Integer(n) =>
+  val words: Measure = refining("NumBytesCostedAsNumWords") { case Constant.Integer(n) =>
     val m = n.abs - 1
     Costs.Last(SatInt.clamp((m - m.mod(8)) / 8 + 1))
   }
 
   /** `ValueTotalSize` (lines 420-424), also `Value`'s own measure: the number of entries. */
-  val totalSize: Measure = universe
+  val totalSize: Measure = refining("ValueTotalSize") { case Constant.Value(v) =>
+    single(v.totalSize.toLong)
+  }
 
   /** `ValueOuterSize` (lines 427-431): the number of currencies. */
-  val outerSize: Measure = refining { case Constant.Value(v) => single(v.entries.size.toLong) }
+  val outerSize: Measure = refining("ValueOuterSize") { case Constant.Value(v) =>
+    single(v.entries.size.toLong)
+  }
 
   /** `ValueMaxDepth` (lines 452-462): the sum of `integerLog2 n + 1` (0 for 0) over the number of
     * currencies and the size of the largest inner map.
     */
-  val maxDepth: Measure = refining { case Constant.Value(v) =>
+  val maxDepth: Measure = refining("ValueMaxDepth") { case Constant.Value(v) =>
     single(depth(v.entries.size) + depth(v.maxInnerSize))
   }
 
   /** `DataNodeCount` (lines 399-412): 1 for every node of the `Data`, in pre-order. */
-  val nodeCount: Measure = refining { case Constant.Data(d) =>
+  val nodeCount: Measure = refining("DataNodeCount") { case Constant.Data(d) =>
     flatten(d)(_ => SatInt(1))
   }
 
-  private def refining(measure: PartialFunction[Constant, Costs]): Measure = new Measure:
-    def apply[V](argument: Argument[V])(using value: MachineValue[V]): Costs = argument match
-      case Argument.Con(c) => measure.applyOrElse(c, constant)
-      case other           => universe(other)
+  private def refining(label: String)(measure: PartialFunction[Constant, Costs]): Measure =
+    new Measure:
+      val name = label
+      def apply[V](argument: Argument[V])(using value: MachineValue[V]): Costs = argument match
+        case Argument.Con(c) => measure.applyOrElse(c, constant)
+        case other           => universe(other)
 
   private def depth(size: Int): Long = (32 - Integer.numberOfLeadingZeros(size)).toLong
 

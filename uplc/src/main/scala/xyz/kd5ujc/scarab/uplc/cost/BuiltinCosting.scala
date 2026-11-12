@@ -31,11 +31,16 @@ final class BuiltinCosting private (
 ) extends Costing:
   import BuiltinCosting.*
 
-  private val functions: Vector[CostingFunction] = DefaultFun.values.toVector.map(functionOf)
+  private val table: Vector[Costed] = DefaultFun.values.toVector.map(costedOf)
 
-  def apply(function: DefaultFun): CostingFunction = functions(function.ordinal)
+  def apply(function: DefaultFun): CostingFunction = table(function.ordinal).function
 
-  private def functionOf(function: DefaultFun): CostingFunction =
+  /** The measure of each argument of `function`, in order: the reference's Haskell type of the
+    * argument in this variant, as far as costing reads it.
+    */
+  def measures(function: DefaultFun): Vector[Measure] = table(function.ordinal).measures
+
+  private def costedOf(function: DefaultFun): Costed =
     val m = model
     import DefaultFun.*
     function match
@@ -81,7 +86,8 @@ final class BuiltinCosting private (
       case HeadList     => single(m.headList, universe)
       case TailList     => single(m.tailList, universe)
       case NullList     => single(m.nullList, universe)
-      case ChooseData   => six(m.chooseData)
+      case ChooseData =>
+        six(m.chooseData, universe, universe, universe, universe, universe, universe)
       // `Integer` in A to C, `Word64` in D and E (`Builtins.hs:1745-1758`).
       case ConstrData               => two(m.constrData, refined.constrDataTag, universe)
       case MapData                  => single(m.mapData, universe)
@@ -140,7 +146,7 @@ final class BuiltinCosting private (
       case IndexArray                  => two(m.indexArray, universe, one)
       case Bls12_381_G1_multiScalarMul => two(m.bls12_381_G1_multiScalarMul, universe, universe)
       case Bls12_381_G2_multiScalarMul => two(m.bls12_381_G2_multiScalarMul, universe, universe)
-      case InsertCoin                  => four(m.insertCoin, maxDepth)
+      case InsertCoin                  => four(m.insertCoin, universe, universe, universe, maxDepth)
       case LookupCoin                  => three(m.lookupCoin, universe, universe, maxDepth)
       case UnionValue                  => two(m.unionValue, totalSize, totalSize)
       case ValueContains               => two(m.valueContains, totalSize, totalSize)
@@ -151,13 +157,13 @@ final class BuiltinCosting private (
       case Policies                    => single(m.policies, outerSize)
       case AssetCount                  => single(m.assetCount, totalSize)
       // No cost-model entry: `unimplementedCostingFun` (`Builtins.hs:2513-2526`).
-      case KeepPolicies => unimplemented
-      case DropPolicies => unimplemented
+      case KeepPolicies => unimplemented(universe, universe)
+      case DropPolicies => unimplemented(universe, universe)
 
 object BuiltinCosting:
 
   /** The costing of `variant` from `model`, none for a variant 1.70.0.0 does not define (F, G). */
-  def of(variant: SemanticsVariant, model: BuiltinCostModel[SatInt]): Option[Costing] =
+  def of(variant: SemanticsVariant, model: BuiltinCostModel[SatInt]): Option[BuiltinCosting] =
     refinements(variant).map(new BuiltinCosting(model, _))
 
   /** The measures that differ between the variants of 1.70.0.0: the first argument of
@@ -187,54 +193,85 @@ object BuiltinCosting:
     */
   val Unimplemented: Long = 100000000000L
 
-  private val unimplemented: CostingFunction = new CostingFunction:
+  /** A builtin's argument measures and its costing function. */
+  private final case class Costed(measures: Vector[Measure], function: CostingFunction)
+
+  private val unimplementedFunction: CostingFunction = new CostingFunction:
     def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
       CostStream.single(ExBudget.of(Unimplemented, Unimplemented))
+
+  private def unimplemented(m1: Measure, m2: Measure): Costed =
+    Costed(Vector(m1, m2), unimplementedFunction)
 
   private def measured[V](measure: Measure, arguments: Vector[Argument[V]], position: Int)(using
       MachineValue[V]
   ): Costs =
     arguments.lift(position).fold(Costs.Last(SatInt(1)))(measure(_))
 
-  private def single(fun: CostingFun[OneArgument, SatInt], m1: Measure): CostingFunction =
-    new CostingFunction:
-      def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
-        lazy val x = measured(m1, arguments, 0)
-        Costs.zip(fun.cpu.run(x), fun.memory.run(x))
+  private def single(fun: CostingFun[OneArgument, SatInt], m1: Measure): Costed =
+    Costed(
+      Vector(m1),
+      new CostingFunction:
+        def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
+          lazy val x = measured(m1, arguments, 0)
+          Costs.zip(fun.cpu.run(x), fun.memory.run(x))
+    )
 
-  private def two(
-      fun: CostingFun[TwoArguments, SatInt],
-      m1: Measure,
-      m2: Measure
-  ): CostingFunction =
-    new CostingFunction:
-      def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
-        lazy val x = measured(m1, arguments, 0)
-        lazy val y = measured(m2, arguments, 1)
-        Costs.zip(fun.cpu.run(x, y), fun.memory.run(x, y))
+  private def two(fun: CostingFun[TwoArguments, SatInt], m1: Measure, m2: Measure): Costed =
+    Costed(
+      Vector(m1, m2),
+      new CostingFunction:
+        def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
+          lazy val x = measured(m1, arguments, 0)
+          lazy val y = measured(m2, arguments, 1)
+          Costs.zip(fun.cpu.run(x, y), fun.memory.run(x, y))
+    )
 
   private def three(
       fun: CostingFun[ThreeArguments, SatInt],
       m1: Measure,
       m2: Measure,
       m3: Measure
-  ): CostingFunction =
-    new CostingFunction:
-      def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
-        lazy val x = measured(m1, arguments, 0)
-        lazy val y = measured(m2, arguments, 1)
-        lazy val z = measured(m3, arguments, 2)
-        Costs.zip(fun.cpu.run(x, y, z), fun.memory.run(x, y, z))
+  ): Costed =
+    Costed(
+      Vector(m1, m2, m3),
+      new CostingFunction:
+        def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
+          lazy val x = measured(m1, arguments, 0)
+          lazy val y = measured(m2, arguments, 1)
+          lazy val z = measured(m3, arguments, 2)
+          Costs.zip(fun.cpu.run(x, y, z), fun.memory.run(x, y, z))
+    )
 
   /** Four arguments: only the fourth is read by any shape (`ModelFourArguments`). */
-  private def four(fun: CostingFun[FourArguments, SatInt], m4: Measure): CostingFunction =
-    new CostingFunction:
-      def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
-        lazy val u = measured(m4, arguments, 3)
-        Costs.zip(fun.cpu.run(u), fun.memory.run(u))
+  private def four(
+      fun: CostingFun[FourArguments, SatInt],
+      m1: Measure,
+      m2: Measure,
+      m3: Measure,
+      m4: Measure
+  ): Costed =
+    Costed(
+      Vector(m1, m2, m3, m4),
+      new CostingFunction:
+        def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
+          lazy val u = measured(m4, arguments, 3)
+          Costs.zip(fun.cpu.run(u), fun.memory.run(u))
+    )
 
-  /** Six arguments, and a constant cost (`ModelSixArguments`). */
-  private def six(fun: CostingFun[SixArguments, SatInt]): CostingFunction =
-    new CostingFunction:
-      def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
-        Costs.zip(fun.cpu.run, fun.memory.run)
+  /** Six arguments, and a constant cost (`ModelSixArguments`): no measure is read. */
+  private def six(
+      fun: CostingFun[SixArguments, SatInt],
+      m1: Measure,
+      m2: Measure,
+      m3: Measure,
+      m4: Measure,
+      m5: Measure,
+      m6: Measure
+  ): Costed =
+    Costed(
+      Vector(m1, m2, m3, m4, m5, m6),
+      new CostingFunction:
+        def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
+          Costs.zip(fun.cpu.run, fun.memory.run)
+    )
