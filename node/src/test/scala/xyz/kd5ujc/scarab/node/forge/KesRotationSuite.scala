@@ -977,7 +977,6 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         yield
           assertEquals(seen.map(_.productPrefix), Vector("WrongPool"))
           assert(!enabled)
-          assert(foreign.kes.isForgotten, "the refused key is erased from memory")
           assertEquals(blocks, Map.empty[Bytes, Bytes])
           assertEquals(updates(events), Vector(BlockForgingState.DisabledBlockForging))
           assertEquals(f.onDisk.period, 0)

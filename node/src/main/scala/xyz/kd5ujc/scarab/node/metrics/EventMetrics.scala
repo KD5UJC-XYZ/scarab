@@ -103,10 +103,8 @@ final class EventMetrics[F[_]: Sync] private (
       // `forging_enabled` of the reference's `BlockForgingUpdate` (cardano-node 11.1.3
       // `Tracers/Startup.hs` 301-307)
       case ForgeEvent.BlockForgingUpdate(state) =>
-        metrics.set(
-          forgingEnabled,
-          if state == BlockForgingState.EnabledBlockForging then 1.0 else 0.0
-        )
+        val enabled: Double = if state == BlockForgingState.EnabledBlockForging then 1.0 else 0.0
+        metrics.set(forgingEnabled, enabled)
       case ForgeEvent.Started(_, _, _, _, counter, _) =>
         metrics.set(opCertCounter, number(counter))
       case ForgeEvent.KesReloaded(counter, _, _, _) =>
