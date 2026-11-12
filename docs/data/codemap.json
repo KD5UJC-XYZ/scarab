@@ -367,7 +367,9 @@
         "CostingSuite",
         "EvaluationContextSuite",
         "CostingOracleSuite",
-        "CostingWithUnliftingSuite"
+        "CostingWithUnliftingSuite",
+        "ConformanceCostingSuite",
+        "CekConformanceSuite"
       ],
       "docs": [
         "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
