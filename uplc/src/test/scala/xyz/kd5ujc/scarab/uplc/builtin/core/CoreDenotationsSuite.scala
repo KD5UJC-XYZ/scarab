@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.uplc.builtin.core
 
+import io.circe.{HCursor, parser}
+import java.nio.file.{Files, Path}
 import org.scalacheck.{Gen, Prop}
+import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.uplc.{Constant, DefaultFun, DefaultUni, PlutusData, Text}
 import xyz.kd5ujc.scarab.uplc.builtin.{
@@ -540,4 +543,45 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
       call(AddInteger, Argument.Opaque(int(1)), Argument.Opaque(int(2))),
       Some(Outcome.Success(int(3), Vector.empty))
     )
+  }
+
+  // `fixtures/reference/plutus-text/observations.jsonl`: `Data.Text`'s `pack` and `encodeUtf8`,
+  // and `decodeUtf8'`, observed in the pinned native libraries.
+  test("encodeUtf8 and decodeUtf8 agree with the reference's text observations") {
+    val rows = Files
+      .readAllLines(Path.of("fixtures/reference/plutus-text/observations.jsonl"))
+      .asScala
+      .toVector
+      .map(line => parser.parse(line).fold(e => fail(s"$e"), _.hcursor))
+    def ints(c: HCursor, field: String) =
+      c.get[Option[Vector[Int]]](field).fold(e => fail(s"$e"), identity)
+    def utf8(c: HCursor) =
+      Bytes.wrap(ints(c, "utf8").getOrElse(fail("utf8")).map(_.toByte).toArray)
+    val packs = rows.filter(_.get[String]("kind").contains("pack"))
+    val decodes = rows.filter(_.get[String]("kind").contains("decode"))
+    assertEquals((packs.size, decodes.size), (12, 5), "rows")
+    for row <- packs do
+      val id = row.get[String]("id").getOrElse("?")
+      val text = Text
+        .fromCodePoints(ints(row, "inputCodePoints").getOrElse(fail(id)))
+        .fold(e => fail(s"$e"), identity)
+      assertEquals(
+        in(EncodeUtf8, con(Constant.String(text))),
+        Right(Constant.ByteString(utf8(row))),
+        id
+      )
+      val decoded = in(DecodeUtf8, bytes(utf8(row)))
+      val expected = Text
+        .fromCodePoints(ints(row, "codePoints").getOrElse(fail(id)))
+        .fold(e => fail(s"$e"), identity)
+      assertEquals(decoded, Right(Constant.String(expected)), s"$id decoded")
+    for row <- decodes do
+      val id = row.get[String]("id").getOrElse("?")
+      val decoded = in(DecodeUtf8, bytes(utf8(row)))
+      ints(row, "codePoints") match
+        case Some(points) =>
+          val expected = Text.fromCodePoints(points).fold(e => fail(s"$e"), identity)
+          assertEquals(decoded, Right(Constant.String(expected)), id)
+        case None =>
+          assertEquals(decoded, Left(BuiltinFailure.Evaluation(EvaluationFailure.InvalidUtf8)), id)
   }

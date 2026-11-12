@@ -239,7 +239,9 @@ object CoreUnlifting:
       case Check.Typed(expected, uni, bound) =>
         mv.constantOf(value) match
           case None => Left(structural(UnliftingCause.NotAConstant(position)))
-          case Some(c) if c.typeOf != uni =>
+          // the ground types of the scheme without arguments are the enum's singletons, so most
+          // checks end at the reference comparison
+          case Some(c) if (c.typeOf ne uni) && c.typeOf != uni =>
             Left(structural(UnliftingCause.WrongType(position, expected, c.typeOf)))
           case Some(c) =>
             bound.flatMap(outside(_, position, c)) match
