@@ -41,8 +41,9 @@ enum CostStream:
       if left <= 0 then acc
       else
         stream match
-          case Last(budget)       => acc :+ budget
-          case Cons(budget, rest) => go(rest.value, left - 1, acc :+ budget)
+          case Last(budget)                 => acc :+ budget
+          case Cons(budget, _) if left == 1 => acc :+ budget
+          case Cons(budget, rest)           => go(rest.value, left - 1, acc :+ budget)
     go(this, count, Vector.empty)
 
   /** `sumExBudgetStream`: forces the whole stream, so only for a stream known to be short. */

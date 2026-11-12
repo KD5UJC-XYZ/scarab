@@ -64,6 +64,10 @@ final class SatIntSuite extends munit.ScalaCheckSuite:
     assertEquals(endless(0).head, ExBudget.of(0, 1), "head")
     assertEquals(endless(0).prefix(3).map(_.cpu.toLong), Vector(0L, 1L, 2L), "prefix")
     assertEquals(endless(0).prefix(100000).size, 100000, "a long prefix in constant stack")
+    // forcing this tail would never return (the total of an endless stream)
+    val guarded =
+      CostStream.Cons(ExBudget.of(9, 9), Eval.later(CostStream.single(endless(0).total)))
+    assertEquals(guarded.prefix(1), Vector(ExBudget.of(9, 9)), "prefix(1) does not force the tail")
   }
 
   test("dividedBy is Data.SatInt's: zero divisor, saturated values, flooring division") {
@@ -72,4 +76,9 @@ final class SatIntSuite extends munit.ScalaCheckSuite:
     assertEquals(SatInt(Long.MinValue).dividedBy(2).toLong, Long.MinValue, "minBound unchanged")
     assertEquals(SatInt(7).dividedBy(2).toLong, 3L, "7 div 2")
     assertEquals(SatInt(-7).dividedBy(2).toLong, -4L, "-7 div 2 floors")
+    assertEquals(
+      SatInt(7).dividedBy(-2).toLong,
+      -4L,
+      "a wrapped natural divides as the reference's Int64"
+    )
   }

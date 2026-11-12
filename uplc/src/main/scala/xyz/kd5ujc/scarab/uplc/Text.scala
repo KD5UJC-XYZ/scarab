@@ -49,13 +49,13 @@ object Text:
     * `Data.Text.pack` does.
     */
   def fromCodePoints(codePoints: IterableOnce[Int]): Either[Invalid, Text] =
-    val all = codePoints.iterator.toVector
-    all.iterator.zipWithIndex
-      .collectFirst {
-        case (c, position) if c < 0 || c > Character.MAX_CODE_POINT =>
-          Invalid.CodePointOutOfRange(position, c)
-      }
-      .toLeft(fromScalars(all.map(scalar).toArray))
+    @tailrec def go(it: Iterator[Int], position: Int, acc: Vector[Int]): Either[Invalid, Text] =
+      if !it.hasNext then Right(fromScalars(acc.toArray))
+      else
+        val c = it.next()
+        if c < 0 || c > Character.MAX_CODE_POINT then Left(Invalid.CodePointOutOfRange(position, c))
+        else go(it, position + 1, acc :+ scalar(c))
+    go(codePoints.iterator, 0, Vector.empty)
 
   /** The text of a JVM string: a surrogate pair is the scalar value it encodes, and an unpaired
     * surrogate becomes U+FFFD.

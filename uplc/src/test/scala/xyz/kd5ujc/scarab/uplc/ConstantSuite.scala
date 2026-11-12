@@ -55,6 +55,17 @@ final class ConstantSuite extends munit.FunSuite:
     assertEquals(Text.fromUtf8(Bytes.empty), Right(Text.empty))
   }
 
+  test("text: the first code point out of range refuses at once, even before an endless rest") {
+    assertEquals(
+      Text.fromCodePoints(Iterator.single(-1) ++ Iterator.continually(0x61)),
+      Left(Text.Invalid.CodePointOutOfRange(0, -1))
+    )
+    assertEquals(
+      Text.fromCodePoints(Iterator(0x61, 0x62, 0x110000) ++ Iterator.continually(0x61)),
+      Left(Text.Invalid.CodePointOutOfRange(2, 0x110000))
+    )
+  }
+
   test("deep types and constants compare, hash and render on a small stack") {
     SmallStack.run {
       val depth = 200000

@@ -48,8 +48,13 @@ object SatInt:
       else if (a > 0) == (b > 0) then Long.MaxValue
       else Long.MinValue
 
-    /** `dividedBy` (`Data/SatInt.hs:101-110`): by a natural `divisor`; a zero divisor gives
-      * `maxBound`, a saturated value is left as it is, otherwise Haskell's flooring `div`.
+    /** `dividedBy` (`Data/SatInt.hs:101-110`): a zero divisor gives `maxBound`, a saturated value
+      * is left as it is, otherwise Haskell's flooring `div`. The reference's divisor is a `Natural`
+      * that it converts to `Int64` with `fromIntegral`, which wraps: here `divisor` is that
+      * `Int64`, so a negative one stands for a natural in `[2^63, 2^64)` exactly as the reference
+      * treats it. Not modelled: a non-zero natural that wraps to zero (a multiple of `2^64`), where
+      * the reference divides by zero. Its only use divides by the constant 2
+      * (`CostingFun/Core.hs:477`).
       */
     def dividedBy(divisor: Long): SatInt =
       if divisor == 0L then Long.MaxValue

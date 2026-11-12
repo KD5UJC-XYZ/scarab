@@ -45,8 +45,9 @@ transcribes plutus 1.70.0.0 (`507cab8c`); the Scaladoc of each cites the upstrea
   equal V3's from protocol 12. `languageIntroducedIn(V4)` is 12.
 - **Variants F and G** are modelled because they exist in 1.71.0.0, but plutus 1.71 and protocol 12
   and later are out of scope ([ADR 0027](../docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md)):
-  the backend refuses protocol 12 and later. `SemanticsVariant.of` and `Availability` are total
-  transcriptions of the reference's lookups (at 1.70.0.0, `of` returns D or E at protocol 12 and
+  the backend refuses protocol 12 and later. `SemanticsVariant.of` and `Availability` transcribe the
+  reference's lookups for every protocol version a `ProtocolMajor` holds (a JVM `Int`, narrower than
+  the reference's; `futurePV` is never reached) (at 1.70.0.0, `of` returns D or E at protocol 12 and
   later); admission is the backend's. `DefaultFun` and its tags are the same in both releases.
 - **Not here.** The universe's Flat tags and the kinded form of a type (the decoder), names and
   alpha-equality (the parser), the caser builtins (the machine), and unlifting bounds (the builtins).
