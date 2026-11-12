@@ -7,7 +7,7 @@ import cats.syntax.all.*
 /** The costing functions of the builtins, the reference's `BuiltinCostModelBase`
   * (`PlutusCore/Evaluation/Machine/BuiltinCostModel.hs:82-203`, plutus 1.70.0.0 `507cab8c`), one
   * field per builtin that has a cost-model entry, in the reference's order and under its JSON name
-  * (the field name less `param`, initial in lower case: `builtinCostModelOptions`, lines 221-226).
+  * (the field name less `param`, initial in lower case: `builtinCostModelOptions`, lines 211-215).
   * `keepPolicies` and `dropPolicies` have none: they are costed by `unimplementedCostingFun`
   * ([[BuiltinCosting]]).
   *

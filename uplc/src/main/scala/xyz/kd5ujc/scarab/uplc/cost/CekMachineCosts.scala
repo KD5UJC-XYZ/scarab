@@ -5,7 +5,8 @@ import cats.Applicative
 import cats.syntax.all.*
 
 /** The cost of one machine step or of the start-up, written in the cost model as `exBudgetCPU` and
-  * `exBudgetMemory` (`instance ToJSON ExBudget`, `PlutusCore/Evaluation/Machine/ExBudget.hs:189`).
+  * `exBudgetMemory` (`instance ToJSON ExBudget`,
+  * `PlutusCore/Evaluation/Machine/ExBudget.hs:180-186`).
   */
 final case class StepBudget[A](cpu: A, memory: A):
   def traverse[G[_]: Applicative, B](path: String)(f: (String, A) => G[B]): G[StepBudget[B]] =
@@ -62,7 +63,7 @@ object CekMachineCosts:
     CekMachineCosts(unit, unit, unit, unit, unit, unit, unit, unit, unit, unit)
 
   extension (costs: CekMachineCosts[SatInt])
-    /** The machine's costs as it charges them (`cekStepCost`, `Cek/Internal.hs:219-230`). */
+    /** The machine's costs as it charges them (`cekStepCost`, `Cek/Internal.hs:221-232`). */
     def machineCosts: MachineCosts =
       def budget(b: StepBudget[SatInt]): ExBudget = ExBudget(b.cpu, b.memory)
       val constant = budget(costs.cekConstCost)
