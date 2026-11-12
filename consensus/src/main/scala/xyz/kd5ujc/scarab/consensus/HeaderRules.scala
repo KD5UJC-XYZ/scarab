@@ -56,11 +56,10 @@ object HeaderRules:
       case Check(run) =>
         Check(() =>
           run() match
-            case Outcome.Valid(next)             => Outcome.Valid(f(next))
-            case Outcome.Invalid(error)          => Outcome.Invalid(error)
-            case Outcome.Unverifiable(defect)    => Outcome.Unverifiable(defect)
-            case Outcome.Later(reason)           => Outcome.Later(reason)
-            case Outcome.Unchecked(reason, next) => Outcome.Unchecked(reason, next.map(f))
+            case Outcome.Valid(next)          => Outcome.Valid(f(next))
+            case Outcome.Invalid(error)       => Outcome.Invalid(error)
+            case Outcome.Unverifiable(defect) => Outcome.Unverifiable(defect)
+            case Outcome.Later(reason)        => Outcome.Later(reason)
         )
       case Unknown(reason) => Unknown(reason)
       case Invalid(error)  => Invalid(error)
@@ -79,32 +78,14 @@ object HeaderRules:
   enum ForecastReason:
     case ShelleyLedgerNotReady
     case Horizon(slot: BigInt, tipSlot: BigInt)
-    case ParentStateUnknown
     def message: String = this match
       case ShelleyLedgerNotReady =>
         "the Shelley ledger exists once the first Shelley block is applied"
       case Horizon(slot, tip) =>
         s"slot $slot is beyond the forecast horizon of the ledger at slot $tip"
-      case ParentStateUnknown => "the parent's header state is not known yet"
-  enum UncheckedReason:
-    case Byron, FirstShelley, ParentInBatch, NoCommonLedger
-    case ForecastFallback(cause: ForecastReason)
-    def message: String = this match
-      case Byron          => "Byron header: validated with its block"
-      case FirstShelley   => "first Shelley block after the Byron era: validated with its block"
-      case ParentInBatch  => "the parent is in the same batch and was not validated header-first"
-      case NoCommonLedger => "no common ledger state"
-      case ForecastFallback(cause) =>
-        s"not validated header-first, nothing left to wait for: ${cause.message}"
   enum Outcome[+H]:
     /** Every header rule holds; the header state after the header. */
     case Valid(next: H)
-
-    /** The header is of a kind that is not checked header-first (a Byron header, the first Shelley
-      * header of a chain with a Byron prefix): its block's own validation is the only check. The
-      * header state after it, when it is still known.
-      */
-    case Unchecked(reason: UncheckedReason, next: Option[H])
 
     /** A rule is violated. */
     case Invalid(error: HeaderError)
@@ -120,8 +101,8 @@ object HeaderRules:
     case Later(reason: ForecastReason)
 
 /** The candidate chain of one peer as header validation sees it: the point where it joined ours,
-  * the header state there and every header announced since with the state after it (`None` where
-  * the header was not validated header-first and no state could be derived).
+  * the header state there and every header announced since with the state after it (`None` where no
+  * state could be derived: a base outside our retained chain).
   */
 final case class HeaderChain[H](
     base: ChainSync.Point,

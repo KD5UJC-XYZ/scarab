@@ -33,8 +33,12 @@ including TPraos decentralisation and entropy. Envelope checks use those forecas
 at epoch boundaries as well.
 
 Every production session with header-first validation enabled uses `HeaderCheck.forNodeChain`.
-A missing forecast waits for ledger progress; it never accepts an unchecked header because
-an earlier batch finished or a timer elapsed. A candidate that loses its ledger intersection
+A missing forecast waits for ledger progress, however long the chain stands still, with the
+Limit-on-Patience bucket paused for the whole wait, as the reference's ChainSync client waits
+until our chain and the intersection have advanced (ouroboros-consensus `82ecba329`,
+`MiniProtocol/ChainSync/Client.hs` 1861-1878, and `checkTime` 1719-1733). No header is accepted
+unchecked: every header is validated header-first, and block application validates it again, as
+the reference's `applyHelper` re-runs `validateHeader` (`Ledger/Extended.hs` 189-206). A candidate that loses its ledger intersection
 restarts, and one that is no longer preferred beyond the forecast horizon is refused as the
 native ChainSync client does. Streaming publication lets already accepted headers' bodies
 advance the ledger while a later header waits. The shared canonical path applies in Praos
@@ -51,9 +55,11 @@ signatures of a batch's headers are verified in parallel before the rules fold o
 Tests: `PraosHeaderValidationSuite` (original headers from all seven eras and signature/envelope
 refusals before any body request), `HeaderRulesSuite` (valid forged headers validate to the state the block gives, including across
 an epoch boundary; a property over eight kinds of tampered header; envelope, counter, horizon and
-structure cases), `HeaderGateSuite` (model rules: counting, an invalid header, a header that does
+structure cases; every header-first refusal, Praos and TPraos, refused again by the block's own
+validation for the same cause, and the structure refusals by `VolatileChain.extend`), `HeaderGateSuite` (model rules: counting, an invalid header, a header that does
 not extend the chain, rollbacks inside the candidate and below the join point, waiting for the chain
-and giving up when it stands still, `HeaderChain` as a model), and `InboundGovernorSuite` (a header with a
+however long it stands still with the patience bucket paused once, a header refused once it can be
+validated without its batch being released, `HeaderChain` as a model), and `InboundGovernorSuite` (a header with a
 broken signature drops the peer and the peer's block-fetch server is never asked for a block; when it
 is the last header, only the batches before it were fetched).
 
