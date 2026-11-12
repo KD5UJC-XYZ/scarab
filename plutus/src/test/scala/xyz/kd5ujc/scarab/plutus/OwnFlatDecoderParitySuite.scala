@@ -378,6 +378,11 @@ class OwnFlatDecoderParitySuite extends FunSuite:
       count("recorded chain") >= 25,
       s"${count("recorded chain")} scripts in the recorded chain"
     )
+    // every recorded Plutus case holds a script: in its witness set or behind a reference input
+    val cases =
+      Vector("fixtures/preview/plutus", "fixtures/preprod/plutus").flatMap(files(_, ".json"))
+    val withScripts = recordedCases.map(_.id.takeWhile(_ != '#')).toSet
+    assertEquals(cases.map(_.toString).filterNot(withScripts), Vector.empty)
     val languages = (recordedCases ++ recordedChain).flatMap(_.languages).toSet
     assertEquals(languages, Set(Language.V1, Language.V2, Language.V3))
   }
