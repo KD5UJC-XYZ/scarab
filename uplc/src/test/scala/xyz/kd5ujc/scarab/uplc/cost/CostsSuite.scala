@@ -107,6 +107,27 @@ final class CostsSuite extends munit.FunSuite:
     assertEquals(costs(Min, -1).sum, SatInt(Min))
   }
 
+  test(
+    "addition and take force no more than the reference (addCostStreamGo, CostStream.hs:94-96)"
+  ) {
+    // a tail that fails the test if it is ever forced
+    def poison: Eval[Costs] =
+      Eval.later(fail("a tail was forced that the reference does not force"))
+    assertEquals(Costs.Cons(SatInt(1), poison).take(1).map(_.toLong), Vector(1L), "take(1)")
+    // the left gives 1, then the right gives 9, and the left's tail is not needed for either
+    assertEquals(
+      Costs.add(Costs.Cons(SatInt(1), poison), Costs.single(9)).take(2).map(_.toLong),
+      Vector(1L, 9L),
+      "two elements of a sum"
+    )
+    // while the left stream goes on, the right one is not looked at
+    assertEquals(
+      Costs.add(Costs.Cons(SatInt(1), poison), poison.value).take(1).map(_.toLong),
+      Vector(1L),
+      "the first element of a sum"
+    )
+  }
+
   test("every operation is lazy: a prefix of an endless stream is computed") {
     assertEquals(Costs.add(endless(1), endless(2)).take(4).map(_.toLong), Vector(1L, 2, 1, 2))
     // 3 < 5: 3, right [2, 5, ...]; 3 > 2: 2, left [1, 3, ...]; 1 < 5: 1.

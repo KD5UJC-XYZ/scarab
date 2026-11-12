@@ -43,14 +43,16 @@ enum Costs:
     case Last(cost)       => Last(f(cost))
     case Cons(cost, rest) => Cons(f(cost), rest.map(_.map(f)))
 
-  /** The first `count` costs, or all of them if there are fewer. */
+  /** The first `count` costs, or all of them if there are fewer, forcing no more of the stream. */
   def take(count: Int): Vector[SatInt] =
     @tailrec def go(costs: Costs, out: Vector[SatInt]): Vector[SatInt] =
       if out.sizeIs >= count then out
       else
         costs match
-          case Last(cost)       => out :+ cost
-          case Cons(cost, rest) => go(rest.value, out :+ cost)
+          case Last(cost) => out :+ cost
+          case Cons(cost, rest) =>
+            val next = out :+ cost
+            if next.sizeIs >= count then next else go(rest.value, next)
     go(this, Vector.empty)
 
   /** Every cost, in order. It forces the whole stream. */
@@ -81,13 +83,21 @@ object Costs:
     * streams are interleaved, one element from each in turn starting with the left, and once the
     * side whose turn it is has given its last element the other follows whole (`addCostStreamGo`).
     */
-  def add(left: Costs, right: Costs): Costs = (left, right) match
-    case (Last(l), Last(r)) => Last(l + r)
-    case _                  => interleave(left, right)
+  def add(left: Costs, right: => Costs): Costs = left match
+    case Last(l) =>
+      right match
+        case Last(r) => Last(l + r)
+        case other   => interleave(left, Eval.now(other))
+    case _ => interleave(left, Eval.later(right))
 
-  private def interleave(turn: Costs, other: Costs): Costs = turn match
-    case Last(cost)       => Cons(cost, Eval.now(other))
-    case Cons(cost, rest) => Cons(cost, rest.map(interleave(other, _)))
+  /** `addCostStreamGo`: the element of the side whose turn it is, then the rest with the turns
+    * swapped. Like the reference, it forces the other side only when the rest is forced, and the
+    * side that just gave an element only when its turn comes again (the left stream is matched
+    * first in `addCostStream`, so the right one is not looked at while the left goes on).
+    */
+  private def interleave(turn: Costs, other: Eval[Costs]): Costs = turn match
+    case Last(cost)       => Cons(cost, other)
+    case Cons(cost, rest) => Cons(cost, other.map(interleave(_, rest)))
 
   /** `minCostStream` (`CostStream.hs:110-132`): two single costs give their minimum; otherwise the
     * first cost of each side is compared, the smaller emitted and the difference put back in front
