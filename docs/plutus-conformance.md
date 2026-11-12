@@ -73,7 +73,7 @@ checked by `PlutusAvailabilitySuite`):
 | 8 (Valentine) | | batch 3 (secp256k1) | |
 | 9 (Chang) | | | batches 1 to 4 (BLS12-381, Keccak, Blake2b-224, integer/bytestring conversion) |
 | 10 (Plomin) | | `integerToByteString`, `byteStringToInteger` | batch 5 (bitwise, Ripemd-160) |
-| 11 (van Rossem) | batches 2 to 6 | the rest of batch 4 (BLS12-381, Keccak, Blake2b-224), batches 5 and 6 | batch 6 (`dropList`, arrays, `value` builtins, `expModInteger`) |
+| 11 (van Rossem) | batches 2 to 6 | the rest of batch 4 (BLS12-381, Keccak, Blake2b-224), batches 5 and 6 | batch 6 (`dropList`, arrays, `value` builtins, `expModInteger`, the BLS12-381 `multiScalarMul` of G1 and G2) |
 
 `case` on a constant of a built-in type is refused before protocol 11, allowed from 11 except on
 `Data`, and allowed on `Data` from 12 (`Common/Eval.hs` `defaultCaserBuiltinFor`, 142-146).
