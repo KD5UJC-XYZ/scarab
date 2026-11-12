@@ -74,7 +74,7 @@ object LedgerEval:
 
   /** `evaluateTerm` (`Eval.hs:228-241`): the machine of the protocol (`toMachineParameters`) on a
     * term, with every log kept (`logEmitter`); [[VerboseMode.Quiet]] drops them afterwards, which
-    * changes nothing else.
+    * changes nothing else. Protocol 12 and later gives no verdict here too.
     */
   def evaluateTerm(
       mode: BudgetMode,
@@ -82,7 +82,9 @@ object LedgerEval:
       context: LedgerContext,
       term: Term
   ): Either[Unavailability, CekReport] =
-    guarded(context.at(protocol).map(CekMachine.run(_, mode, term)))(Left(_))
+    guarded(
+      supported(protocol).flatMap(_ => context.at(protocol)).map(CekMachine.run(_, mode, term))
+    )(Left(_))
 
   /** `evaluateScriptRestricting` (`Eval.hs:253-274`): the script applied to `args` and run within
     * `budget`; on success the budget spent, `budget` less what is left (`Eval.hs:274`).

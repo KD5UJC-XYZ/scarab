@@ -84,9 +84,12 @@ final class LedgerEvalSuite extends munit.FunSuite:
     case EvaluationError.Cek(f) => f.error
     case other                  => fail(s"expected a failure of the machine, got $other")
 
-  private def succeeded(result: ScriptResult): ExBudget = result match
+  private def succeeded(result: LedgerOutcome): ExBudget = result match
     case ScriptResult.Success(spent, _) => spent
     case other                          => fail(s"expected a success, got $other")
+
+  private def assertSucceeds(result: LedgerOutcome): Unit =
+    val _ = succeeded(result)
 
   private val one = PlutusData.I(1)
   private val two = PlutusData.I(2)
@@ -118,7 +121,7 @@ final class LedgerEvalSuite extends munit.FunSuite:
         )
       )
     )
-    assert(restricting(V2, script, Vector(one, two, two)).failedAt.isEmpty)
+    assertSucceeds(restricting(V2, script, Vector(one, two, two)))
     assertEquals(
       cekError(restricting(V2, script, Vector(two, one, one))),
       CekError.ErrorTerm
@@ -165,7 +168,7 @@ final class LedgerEvalSuite extends munit.FunSuite:
     assertEquals(Scope.check(lam(caseOf(v(2), v(0)))), Right(()))
     // the machine finds the free variable only if it is evaluated
     val unevaluated = v110(lam(caseOf(constr(0), unit, v(9))))
-    assert(restricting(V3, unevaluated, Vector(one)).failedAt.isEmpty)
+    assertSucceeds(restricting(V3, unevaluated, Vector(one)))
     val evaluated = v110(lam(app(lam(unit), constr(0, v(9)))))
     assertEquals(
       cekError(restricting(V3, evaluated, Vector(one))).errorClass,
@@ -181,7 +184,7 @@ final class LedgerEvalSuite extends munit.FunSuite:
     val unitResult = v100(lam(unit))
     val integer = v100(lam(int(1)))
     val function = v100(lam(lam(v(1))))
-    assert(restricting(V3, unitResult, Vector(one)).failedAt.isEmpty)
+    assertSucceeds(restricting(V3, unitResult, Vector(one)))
     assertEquals(failure(restricting(V3, integer, Vector(one))), EvaluationError.InvalidReturnValue)
     assertEquals(
       failure(restricting(V3, function, Vector(one))),
@@ -193,7 +196,7 @@ final class LedgerEvalSuite extends munit.FunSuite:
     val three = Vector(one, one, one)
     Vector(V1, V2).foreach { language =>
       Vector(lam(lam(unitResult.term)), lam(lam(integer.term)), lam(lam(function.term))).foreach {
-        term => assert(restricting(language, v100(term), three).failedAt.isEmpty, s"$language")
+        term => assertSucceeds(restricting(language, v100(term), three))
       }
     }
   }
@@ -271,7 +274,7 @@ final class LedgerEvalSuite extends munit.FunSuite:
         Vector(one)
       )
     val good = FlatWriter.script(v100(lam(unit)))
-    assert(serialised(V3, pv11, good).failedAt.isEmpty)
+    assertSucceeds(serialised(V3, pv11, good))
     val trailing = Bytes.wrap(good.toArray ++ Array[Byte](0))
     assertEquals(
       serialised(V3, pv11, trailing),
@@ -346,7 +349,7 @@ final class LedgerEvalSuite extends munit.FunSuite:
     cekError(restricting(V3, onInteger, Vector(one), protocol = pv10)) match
       case CekError.CaseBuiltin(CaseBuiltinError.Unavailable(p)) => assertEquals(p, pv10)
       case other => fail(s"expected the caser's refusal, got $other")
-    assert(restricting(V3, onInteger, Vector(one)).failedAt.isEmpty)
+    assertSucceeds(restricting(V3, onInteger, Vector(one)))
     val onData = v110(lam(caseOf(data(PlutusData.Constr(0, Vector.empty)), unit)))
     assertEquals(
       cekError(restricting(V3, onData, Vector(one))),
@@ -494,18 +497,18 @@ final class LedgerEvalSuite extends munit.FunSuite:
     val equal = v100(lam(lam(lam(app(builtin(DefaultFun.EqualsData), v(3), v(2))))))
     val serialise = v100(lam(lam(lam(app(builtin(DefaultFun.SerialiseData), v(3))))))
     SmallStack.run {
-      assert(restricting(V1, equal, Vector(deep, deep, deep), budget = large).failedAt.isEmpty)
-      assert(restricting(V1, equal, Vector(deep, other, deep), budget = large).failedAt.isEmpty)
-      assert(restricting(V1, serialise, Vector(deep, one, one), budget = large).failedAt.isEmpty)
+      assertSucceeds(restricting(V1, equal, Vector(deep, deep, deep), budget = large))
+      assertSucceeds(restricting(V1, equal, Vector(deep, other, deep), budget = large))
+      assertSucceeds(restricting(V1, serialise, Vector(deep, one, one), budget = large))
       // the context ignored, in V3
-      assert(restricting(V3, v100(lam(unit)), Vector(deep)).failedAt.isEmpty)
+      assertSucceeds(restricting(V3, v100(lam(unit)), Vector(deep)))
     }
     // a script as deep as its arguments: the scope check and the machine
     val nested = nest(depth, v(1))(t => app(lam(t), unit))
     SmallStack.run {
       assertEquals(Scope.check(lam(nested)), Right(()))
       val script = v100(lam(lam(lam(nested))))
-      assert(restricting(V1, script, Vector(one, one, one), budget = large).failedAt.isEmpty)
+      assertSucceeds(restricting(V1, script, Vector(one, one, one), budget = large))
       assertEquals(
         failure(restricting(V1, v100(nest(depth, v(depth.toLong + 1))(lam)), Vector(one))),
         EvaluationError.DeBruijn(FreeVariableError.FreeIndex(Word64.fromBits(depth.toLong + 1)))
