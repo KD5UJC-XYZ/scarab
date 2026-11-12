@@ -15,9 +15,9 @@ import xyz.kd5ujc.scarab.uplc.cost.{
 }
 
 /** The machine of one semantics variant, the reference's `DefaultMachineVariantParameters`
-  * (`PlutusCore/Evaluation/Machine/MachineParameters/Default.hs`, plutus 1.70.0.0 `507cab8c`): the
-  * step and start-up costs and the builtins (unlifting, denotations and costing) of the variant.
-  * The caser is chosen by protocol when the machine runs ([[LedgerContext.at]]).
+  * (`PlutusCore/Evaluation/Machine/MachineParameters/Default.hs:19-21`, plutus 1.70.0.0
+  * `507cab8c`): the step and start-up costs and the builtins (unlifting, denotations and costing)
+  * of the variant. The caser is chosen by protocol when the machine runs ([[LedgerContext.at]]).
   */
 final case class VariantMachine(variant: SemanticsVariant, costs: MachineCosts, builtins: Builtins)
 
@@ -26,7 +26,7 @@ final case class VariantMachine(variant: SemanticsVariant, costs: MachineCosts, 
   * and looked up by protocol at each evaluation.
   *
   * Every language's context takes `defaultCaserBuiltinFor` as its caser
-  * (`V1/EvaluationContext.hs:46`, V2 the same, `V3/EvaluationContext.hs:44`), which is
+  * (`V1/EvaluationContext.hs:50`, V2 the same, `V3/EvaluationContext.hs:47`), which is
   * [[CaserBuiltin.forProtocol]], and the variant of a protocol from [[SemanticsVariant.of]].
   *
   * @param language
