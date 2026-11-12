@@ -52,13 +52,38 @@ final class GeneratedOracleSuite extends munit.FunSuite:
       "507cab8cf6192e5143f12be5b2d3005a2928dc6d"
     )
     assertEquals(requests.size, field[Int](manifest, "requests"))
-    assertEquals(models.size, Profile.all.size)
+    val perProfile = field[Int](corpus, "modelsPerProfile")
+    assertEquals(models.size, Profile.all.size * perProfile)
+    requests.foreach { request =>
+      val model = models(field[Int](request, "model"))
+      assertEquals(
+        (field[Int](model, "language"), field[Int](model, "protocol")),
+        (field[Int](request, "language"), field[Int](request, "protocol")),
+        field[String](request, "id")
+      )
+    }
     assertEquals(requests.size, verdicts.size)
     requests
       .zip(verdicts)
       .foreach((request, verdict) =>
         assertEquals(field[String](verdict, "id"), field[String](request, "id"))
       )
+  }
+
+  private def profileOf(request: Json): Profile =
+    Profile.all
+      .find(p =>
+        p.language.id + 1 == field[Int](request, "language") &&
+          p.protocol.value == field[Int](request, "protocol")
+      )
+      .getOrElse(fail(s"no profile for ${field[String](request, "id")}"))
+
+  test("every cost-model list is its profile's default or the list drawn from it by the seed") {
+    val perProfile = field[Int](corpus, "modelsPerProfile")
+    val expected = Profile.all.zipWithIndex.flatMap((profile, p) =>
+      GeneratedCorpus.models(profile, p, field[Long](corpus, "seed"), perProfile)
+    )
+    assertEquals(models.map(field[Vector[Long]](_, "costModel")), expected)
   }
 
   test("the generator gives every recorded script, argument and budget from its seed") {
@@ -68,7 +93,7 @@ final class GeneratedOracleSuite extends munit.FunSuite:
       "the generator changed: write the fixture again (scripts/oracle/plutus/generated/README.md)"
     )
     val differ = requests.filterNot { request =>
-      val profile = Profile.all(field[Int](request, "model"))
+      val profile = profileOf(request)
       val generated = TermGen.generate(profile, field[Long](request, "seed"))
       val row = GeneratedCorpus.request(field[Int](request, "model"), 0, generated)
       Vector("script", "arguments", "cpu", "memory", "language", "protocol").forall(key =>
@@ -119,7 +144,7 @@ final class GeneratedOracleSuite extends munit.FunSuite:
   test("the admitted programs name every builtin of every profile") {
     val named = requests.zip(verdicts).collect {
       case (request, verdict) if field[Boolean](verdict, "admitted") =>
-        val profile = Profile.all(field[Int](request, "model"))
+        val profile = profileOf(request)
         val program = xyz.kd5ujc.scarab.uplc.flat.SerialisedScript
           .deserialiseScript(
             profile.language,
