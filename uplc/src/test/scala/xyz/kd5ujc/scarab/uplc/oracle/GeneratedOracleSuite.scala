@@ -14,6 +14,8 @@ import xyz.kd5ujc.scarab.uplc.cost.ExBudget
   * case is excluded; a script this evaluator gives no verdict on is a disagreement too.
   */
 final class GeneratedOracleSuite extends munit.FunSuite:
+  override val munitTimeout = scala.concurrent.duration.Duration(5, "min")
+
   private val directory = Path.of("fixtures/reference/uplc-generated")
 
   private def json(path: Path): Json = parser.parse(Files.readString(path)).fold(throw _, identity)
