@@ -15,13 +15,13 @@ final class ConformanceHarnessSuite extends munit.FunSuite:
     ReferenceCorpus.conformance(ReferenceCorpus.Pinned).fold(p => fail(p.toString), identity)
 
   /** What the reference recorded for each closed program of the corpus. */
-  private lazy val recorded: Map[Program, Outcome[Nothing]] =
+  private lazy val recorded: Map[Program, Evaluation[Nothing]] =
     val pairs = cases.flatMap { c =>
       UplcParser.program(c.program).toOption.flatMap { p =>
         c.expected match
           case Expected.Evaluates(text, budget) =>
-            UplcParser.program(text).toOption.map(r => p -> Outcome.Evaluated(r.term, budget))
-          case Expected.EvaluationFailure => Some(p -> Outcome.Failed)
+            UplcParser.program(text).toOption.map(r => p -> Evaluation.Evaluated(r.term, budget))
+          case Expected.EvaluationFailure => Some(p -> Evaluation.Failed)
           case Expected.ParseError        => None
       }
     }
@@ -30,7 +30,9 @@ final class ConformanceHarnessSuite extends munit.FunSuite:
     assert(conflicting.isEmpty, s"${conflicting.size} programs with two recorded outcomes")
     table.view.mapValues(_.head).toMap
 
-  private def replay(change: Outcome[Nothing] => Outcome[Nothing]): Conformance.Evaluator[Nothing] =
+  private def replay(
+      change: Evaluation[Nothing] => Evaluation[Nothing]
+  ): Conformance.Evaluator[Nothing] =
     p => change(recorded.getOrElse(p, fail(s"no recorded outcome for ${UplcPrinter.program(p)}")))
 
   private val evaluated = 723
@@ -48,8 +50,9 @@ final class ConformanceHarnessSuite extends munit.FunSuite:
       cases,
       replay {
         // one less, since five recorded budgets are saturated at maxBound (`dropList`)
-        case Outcome.Evaluated(t, b) => Outcome.Evaluated(t, ExBudget(b.cpu - SatInt(1), b.memory))
-        case other                   => other
+        case Evaluation.Evaluated(t, b) =>
+          Evaluation.Evaluated(t, ExBudget(b.cpu - SatInt(1), b.memory))
+        case other => other
       }
     )
     val budgets = report.mismatches.collect { case (name, _: Mismatch.Budget[?]) => name }
@@ -65,8 +68,8 @@ final class ConformanceHarnessSuite extends munit.FunSuite:
     val report = Conformance.run(
       cases,
       replay {
-        case Outcome.Evaluated(_, b) => Outcome.Evaluated(Term.error, b)
-        case Outcome.Failed          => Outcome.Evaluated(Term.error, ExBudget.zero)
+        case Evaluation.Evaluated(_, b) => Evaluation.Evaluated(Term.error, b)
+        case Evaluation.Failed          => Evaluation.Evaluated(Term.error, ExBudget.zero)
       }
     )
     val results = report.mismatches.count(_._2.isInstanceOf[Mismatch.Result[?]])
@@ -79,14 +82,14 @@ final class ConformanceHarnessSuite extends munit.FunSuite:
   }
 
   test("a failing evaluator mismatches each evaluated case and conforms on the others") {
-    val report = Conformance.run(cases, (_: Program) => Outcome.Failed)
+    val report = Conformance.run(cases, (_: Program) => Evaluation.Failed)
     assertEquals(report.mismatches.map(_._2).distinct, Vector(Mismatch.UnexpectedFailure))
     assertEquals(report.mismatches.size, evaluated)
     assertEquals(report.conforming, failing + refused)
   }
 
   test("an evaluator that cannot evaluate is incomplete on every program it would evaluate") {
-    val report = Conformance.run(cases, (_: Program) => Outcome.Unavailable("no machine"))
+    val report = Conformance.run(cases, (_: Program) => Evaluation.Unavailable("no machine"))
     assertEquals(report.mismatches.map(_._2).distinct, Vector(Mismatch.Unavailable("no machine")))
     assertEquals(report.mismatches.size, evaluated + failing)
     assert(report.render(identity).linesIterator.forall(_.endsWith("incomplete: no machine")))

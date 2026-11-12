@@ -115,6 +115,8 @@ final class UplcParserSuite extends ScalaCheckSuite:
   test("numeric escapes: decimal, octal and hexadecimal, at most U+10FFFF, digits taken greedily") {
     assertEquals(string(""""\65\o101\x41\X""""), None)
     assertEquals(string(""""\65\o101\x41""""), Some(Vector(65, 65, 65)))
+    // `lexBaseChar` takes either case of `o` and `x`
+    assertEquals(string(""""\O101\X41""""), Some(Vector(65, 65)))
     assertEquals(string(""""\1114111\x10ffff""""), Some(Vector(0x10ffff, 0x10ffff)))
     assertEquals(string(""""\1114112""""), None)
     assertEquals(string(""""\x""""), None)
@@ -122,8 +124,11 @@ final class UplcParserSuite extends ScalaCheckSuite:
     assertEquals(string(""""\1234\&5""""), Some(Vector(1234, '5'.toInt)))
   }
 
+  // Beyond the observations, these rest on the published sources (megaparsec 9.7.0's
+  // `charLiteral`, base 4.18.2.1's `lexChar`): they pin the transcription, not the reference's run.
   test("\\& is consumed only after a character; a character literal reads ten code points ahead") {
     assertEquals(string(""""A\&\&B""""), Some(Vector(65, 66)))
+    // `lexCharE` has no escape `\&`
     assertEquals(string(""""\&A""""), None)
     // the escape is longer than the window: its first nine digits are read, the rest are characters
     assertEquals(string(""""\00000000065""""), Some(Vector(0, '6'.toInt, '5'.toInt)))
@@ -238,6 +243,7 @@ final class UplcParserSuite extends ScalaCheckSuite:
     )
   }
 
+  // megaparsec 9.7.0's `decimal_` folds the digits into an `Int` with no range check, so it wraps.
   test("an explicit unique is read into a wrapping 64-bit Int (Lex.decimal)") {
     assertEquals(program("(lam x-18446744073709551616 y-0)").map(_.term), Right(lamIdentity))
   }

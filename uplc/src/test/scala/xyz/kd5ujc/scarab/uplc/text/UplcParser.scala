@@ -57,7 +57,9 @@ object UplcParser:
   private def isHexDigit(c: Char): Boolean =
     isDigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 
-  /** Haskell's `isSpace`: the Latin-1 spaces, and above U+0377 the space separators. */
+  /** Haskell's `isSpace` (`GHC.Unicode`, base 4.18.2.1): up to U+0377 the space, tab to carriage
+    * return and U+00A0, above it the space separators. The JDK's Unicode tables stand in for GHC's.
+    */
   private def isSpace(c: Char): Boolean =
     c == ' ' || (c >= 0x9 && c <= 0xd) || c == 0xa0 ||
       (c > 0x377 && Character.getType(c) == Character.SPACE_SEPARATOR)

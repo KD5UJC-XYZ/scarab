@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.uplc.cost.ExBudget
   * @tparam R
   *   why the evaluator cannot evaluate a program yet (a builtin not implemented, say), its own type
   */
-enum Outcome[+R]:
+enum Evaluation[+R]:
   /** The machine returns `result` having spent `budget` (counting, `CekEvaluator.hs:59-61`). */
   case Evaluated(result: Term, budget: ExBudget)
 
@@ -86,7 +86,10 @@ final case class Report[R](verdicts: Vector[(String, List[Mismatch[R]])]):
   */
 object Conformance:
   /** An evaluator: a closed program to its outcome. */
-  type Evaluator[R] = Program => Outcome[R]
+  type Evaluator[R] = Program => Evaluation[R]
+
+  /** An evaluator under test, with how to show why it cannot evaluate a program. */
+  final case class Backend[R](evaluate: Evaluator[R], show: R => String)
 
   /** The mismatches of case `c` under `evaluate`; none when it conforms. */
   def check[R](c: ConformanceCase, evaluate: Evaluator[R]): List[Mismatch[R]] =
@@ -96,17 +99,18 @@ object Conformance:
       case (_, Left(e))                    => List(Mismatch.Refused(e))
       case (Expected.EvaluationFailure, Right(p)) =>
         evaluate(p) match
-          case Outcome.Failed          => Nil
-          case Outcome.Evaluated(t, b) => List(Mismatch.UnexpectedSuccess(Program(p.version, t), b))
-          case Outcome.Unavailable(reason) => List(Mismatch.Unavailable(reason))
+          case Evaluation.Failed => Nil
+          case Evaluation.Evaluated(t, b) =>
+            List(Mismatch.UnexpectedSuccess(Program(p.version, t), b))
+          case Evaluation.Unavailable(reason) => List(Mismatch.Unavailable(reason))
       case (Expected.Evaluates(text, budget), Right(p)) =>
         UplcParser.program(text) match
           case Left(e) => List(Mismatch.UnreadableExpectation(e))
           case Right(expected) =>
             evaluate(p) match
-              case Outcome.Failed              => List(Mismatch.UnexpectedFailure)
-              case Outcome.Unavailable(reason) => List(Mismatch.Unavailable(reason))
-              case Outcome.Evaluated(t, b)     =>
+              case Evaluation.Failed              => List(Mismatch.UnexpectedFailure)
+              case Evaluation.Unavailable(reason) => List(Mismatch.Unavailable(reason))
+              case Evaluation.Evaluated(t, b)     =>
                 // the result keeps the version of the program (`CekEvaluator.hs:61`)
                 val actual = Program(p.version, t)
                 Option.when(actual != expected)(Mismatch.Result(expected, actual)).toList ++

@@ -12,8 +12,11 @@ import scala.annotation.tailrec
   * then skips as many characters as that consumed. [[readLitChar]] transcribes that function on
   * such a window: an escape longer than the window is read within it, and the `\&` that `lexChar`
   * consumes after a character is consumed only while it lies within the window. Neither megaparsec
-  * nor base is vendored; the transcription is checked against the reference's own parser on the
-  * observations of `fixtures/reference/plutus-text` and on the corpus.
+  * nor base is vendored, and the tree does not pin the versions the reference resolves: this
+  * transcribes `Text.Megaparsec.Char.Lexer.charLiteral` of megaparsec 9.7.0 and
+  * `Text.Read.Lex.lexChar` of base 4.18.2.1 as Hackage publishes them, and is checked against the
+  * reference's own parser on the observations of `fixtures/reference/plutus-text` and on the
+  * corpus.
   *
   * Writing: [[escaped]] is the body of a literal as `PrettyConst` writes it
   * (`PlutusCore/Pretty/PrettyConst.hs:112-121`): a quote and a backslash escaped, a printable
@@ -87,12 +90,12 @@ object HaskellChar:
       else base
     Option.when(value < base)(value)
 
-  // `lexNumeric`: `o` or `x` fixes the base (`lexBaseChar <++ return 10`), then the longest run of
+  // `lexNumeric`: `o`/`O` or `x`/`X` fixes the base (`lexBaseChar <++ return 10`), then the longest run of
   // its digits, at most `maxBound :: Char`.
   private def numeric(window: IndexedSeq[Int], at: Int): Option[(Int, Int)] =
     val (base, start) =
-      if window(at) == 'o' then (8, at + 1)
-      else if window(at) == 'x' then (16, at + 1)
+      if window(at) == 'o' || window(at) == 'O' then (8, at + 1)
+      else if window(at) == 'x' || window(at) == 'X' then (16, at + 1)
       else (10, at)
     val digits = window.drop(start).map(digitValue(base)).takeWhile(_.isDefined).flatten
     val value = digits.foldLeft(BigInt(0))(_ * base + _)
@@ -114,8 +117,10 @@ object HaskellChar:
         (code, at + name.length)
     }
 
-  /** Haskell's `isPrint`: any character but a control, format, surrogate, private-use or unassigned
-    * one, or a line or paragraph separator.
+  /** Haskell's `isPrint` (`GHC.Unicode`, base 4.18.2.1): any character but a control, format,
+    * surrogate, private-use or unassigned one, or a line or paragraph separator. The JDK's Unicode
+    * tables stand in for GHC's; where they differ, a character is escaped by one and not the other,
+    * and reads back the same either way.
     */
   def isPrint(c: Int): Boolean = Character.getType(c) match
     case Character.CONTROL | Character.FORMAT | Character.SURROGATE | Character.PRIVATE_USE |
