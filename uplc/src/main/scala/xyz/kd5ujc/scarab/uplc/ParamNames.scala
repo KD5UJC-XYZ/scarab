@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package xyz.kd5ujc.scarab.plutus
+package xyz.kd5ujc.scarab.uplc
 
 /** The names of the cost-model parameters of each Plutus language, in the order of the on-chain
   * list: the constructors of `data ParamName` in `PlutusLedgerApi/V1/ParamName.hs`,
