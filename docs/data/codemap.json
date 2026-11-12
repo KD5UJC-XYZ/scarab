@@ -5,6 +5,7 @@
     "crypto": "Hashes, signatures, VRF, KES, BLS (jblst, with its start-up check), operational certificates",
     "protocol": "Pure Ouroboros mini-protocol codecs and state machines",
     "network": "Effectful bearer, multiplexer, connections, peer selection",
+    "uplc": "Scarab's own UPLC evaluator, with no Scalus on its class path (ADR 0027)",
     "plutus": "Plutus evaluation through Scalus",
     "ledger": "Blocks, transactions, rules, native ledger state",
     "consensus": "Praos family, chain selection, hard fork, state mirror",
@@ -283,14 +284,30 @@
       ]
     },
     {
+      "module": "uplc",
+      "path": "uplc",
+      "responsibility": "Plutus data, execution units, language and cost-model parameter names; the term model, decoder, machine, builtins and costing of the own evaluator as they land",
+      "entryPoints": [
+        "PlutusData",
+        "ExUnits",
+        "PlutusLanguage",
+        "ParamNames"
+      ],
+      "suites": [
+        "NoScalusSuite",
+        "PlutusDataSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
       "module": "plutus",
       "path": "plutus",
-      "responsibility": "Script evaluator algebra, Scalus adapter, Plutus data, execution units, builtin availability",
+      "responsibility": "Script evaluator algebra, Scalus adapter, builtin availability; re-exports PlutusData, ExUnits, PlutusLanguage and ParamNames from uplc",
       "entryPoints": [
         "ScriptEvaluator",
         "ScalusEvaluator",
-        "PlutusData",
-        "ExUnits",
         "PlutusAvailability",
         "RetryingMemo"
       ],
