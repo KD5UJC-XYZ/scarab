@@ -230,6 +230,25 @@ final class CostingSuite extends munit.FunSuite:
     )
   }
 
+  test("consByteString's first argument: an Integer in A, B and D, a Word8 (1) in C and E") {
+    val bytes = hex("686543616B654973414C6965")
+    // A: linear_in_y 221973 + 511 * 2 (12 bytes); memory added_sizes 0 + (2 + 2) for 2^64's 2 words.
+    assertEquals(
+      cost(defaults(SemanticsVariant.A), ConsByteString, int(BigInt(1) << 64), bytes),
+      ExBudget.of(222995, 4)
+    )
+    // D the same measure: memory 0 + (2 + 2).
+    assertEquals(
+      cost(defaults(SemanticsVariant.D), ConsByteString, int(BigInt(1) << 64), bytes).memory,
+      SatInt(4)
+    )
+    // E measures a Word8 as 1 (the unlifting refuses 2^64 there before the costing sees it): 1 + 2.
+    assertEquals(
+      cost(defaults(SemanticsVariant.E), ConsByteString, int(BigInt(1) << 64), bytes).memory,
+      SatInt(3)
+    )
+  }
+
   test("variant B: equalsString by characters, on the diagonal") {
     // 2 = 2 characters: 1000 + 60594 * 2 = 122188 (in D and E, 2 quot 4 = 0 bytes: 1000)
     assertEquals(
