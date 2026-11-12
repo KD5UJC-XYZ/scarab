@@ -339,16 +339,34 @@
     {
       "module": "uplc",
       "path": "uplc/cost",
-      "responsibility": "The reference's saturating integer, budgets, cost streams and the machine's step costs",
+      "responsibility": "The reference's saturating integer, budgets, cost streams and the machine's step costs; the cost model: costing-function shapes of each semantics variant, argument measures, the costing of every builtin and the evaluation context from an on-chain cost-model list",
       "entryPoints": [
         "SatInt",
         "ExBudget",
         "CostStream",
         "StepKind",
-        "MachineCosts"
+        "MachineCosts",
+        "Costs",
+        "Model",
+        "CostingFun",
+        "BuiltinCostModel",
+        "BuiltinShapes",
+        "CekMachineCosts",
+        "Measure",
+        "BuiltinCosting",
+        "EvaluationContext",
+        "VariantCosts",
+        "CostModelApplyError",
+        "CostModelApplyWarn"
       ],
       "suites": [
-        "SatIntSuite"
+        "SatIntSuite",
+        "CostsSuite",
+        "MeasureSuite",
+        "CostModelSuite",
+        "CostingSuite",
+        "EvaluationContextSuite",
+        "CostingOracleSuite"
       ],
       "docs": [
         "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
