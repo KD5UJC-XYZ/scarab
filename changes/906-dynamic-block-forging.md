@@ -12,8 +12,8 @@
 - **`--start-as-non-producing-node`**, its hidden deprecated alias `--non-producing-node`, and the
   configuration key `StartAsNonProducingNode` (default false; the flag wins): the node reads and checks its
   credentials at start-up but forges only once a SIGHUP finds them.
-- **`blockForgingUpdate`** (`Forge.BlockForgingUpdate`, field `enabled`) at start-up and at each reload, as the
-  reference's trace; `cardano_node_metrics_forging_enabled_int` follows it (0 while disabled, and on a node
+- **`blockForgingUpdate`** (`Forge.BlockForgingUpdate`, field `enabled`) at start-up and at each reload that
+  finds the files or finds one absent, as the reference's trace; `cardano_node_metrics_forging_enabled_int` follows it (0 while disabled, and on a node
   without `--forge`), and `/forging` reports `enabled`.
 - The devnet scenario **`dynamic-forging`**: the credential files moved away and back with SIGHUP beside two
   Haskell pools; no block and no slot started in the leader slots scheduled while forging is off, and no key

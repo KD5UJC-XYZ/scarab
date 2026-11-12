@@ -188,14 +188,16 @@ forging from one block producer to a standby: stop it on one, start it on the ot
 - **On.** Put the files back and send SIGHUP. They are read and checked as at any reload (the cold key, the
   certificate's signature, its window and its counter, above). If they pass, the node logs `kesReloaded` and
   `blockForgingUpdate` `EnabledBlockForging`, sets the gauge to 1 and forges from the next slot with the key
-  as the file holds it, brought to the present period and written back. Files that are present but refused
-  are reported as any refused reload (`kesReloadRefused`), and forging stays as it was: disabled.
+  as the file holds it, brought to the present period (and written back if that moved it). Files that are
+  present but refused are reported as any refused reload (`kesReloadRefused`), and forging stays as it was:
+  disabled.
 - **Start disabled.** `--start-as-non-producing-node` (or `"StartAsNonProducingNode": true` in the
   configuration file; the flag wins, and `--non-producing-node` is its deprecated alias) starts the node with
   forging disabled although its files are given. As in the reference the files are read and checked at
   start-up all the same, so a standby with broken keys stops at start rather than at failover. The node logs
   `blockForgingUpdate` `DisabledBlockForging` and forges once a SIGHUP finds the files. A node without
-  `--forge` logs `DisabledBlockForging` at start and at each SIGHUP, and reports 0.
+  `--forge` logs `DisabledBlockForging` at start, and at each SIGHUP when it runs with `--topology` (see
+  below), and reports 0.
 
 Move all three files, as the reference's runbook does. Scarab writes the evolved KES key back
 ([ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md)), and a write-back of a period change that
@@ -210,8 +212,8 @@ same machine and the same key paths therefore needs its own copy of the files or
 
 Not covered: a reload reads the VRF key file to see that it exists and is well formed but keeps the VRF key the
 node started with, and a SIGHUP that arrives before the forger runs (during the start-up and replay), or at a
-node without `--forge` and `--topology`, ends the process, where the reference logs `NotEffective` or ignores
-it ([#919](https://github.com/KD5UJC-XYZ/scarab/issues/919)). The reference's bulk credentials file
+node without `--forge` and `--topology`, ends the process, where the reference logs `NotEffective` (before
+consensus has started, `Run.hs` 432) or `DisabledBlockForging` (no credentials, `Run.hs` 641-648) ([#919](https://github.com/KD5UJC-XYZ/scarab/issues/919)). The reference's bulk credentials file
 (`--bulk-credentials-file`), any failure to read which also disables forging (`CredentialsReadError`,
 `Run.hs` 664-667), does not exist in Scarab ([#222](https://github.com/KD5UJC-XYZ/scarab/issues/222)); with a
 KES agent ([#38](https://github.com/KD5UJC-XYZ/scarab/issues/38)) the reference reads only the VRF key and the

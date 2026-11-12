@@ -110,7 +110,7 @@ Scarab's own log events beside the reference's traces: `forgeStarted`, `forged` 
 transaction ids, KES periods, stake), `adopted`, `lost` (the block did not join our chain, or was replaced at
 its height later), `kesEvolved`, `kesReloaded`, `kesReloadRefused`, `kesPersistFailed` (see "Rotating the KES
 key" in [running.md](../running.md)), `forgeFailed`, `forgeEpoch`. Whether the node forges is the reference's
-`blockForgingUpdate`, at start-up and at each SIGHUP: a reload that finds a credential file absent disables
+`blockForgingUpdate`, at start-up and at each SIGHUP that finds the files or finds one absent: a reload that finds a credential file absent disables
 forging, and the loop then starts no slot until a reload finds the files again (see "Dynamic block forging" in
 [running/forging.md](../running/forging.md#dynamic-block-forging)).
 

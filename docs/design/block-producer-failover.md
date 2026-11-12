@@ -127,6 +127,11 @@ and a cluster can prepare for each one:
 
 ### S0 — Parity: dynamic block forging, exactly as the reference
 
+**Status (2026-11-12):** implemented by [#906](https://github.com/KD5UJC-XYZ/scarab/issues/906); the current
+behaviour is in [Dynamic block forging](../running/forging.md#dynamic-block-forging). The text below records the
+state that the research found. The remaining SIGHUP differences are
+[#918](https://github.com/KD5UJC-XYZ/scarab/issues/918) and [#919](https://github.com/KD5UJC-XYZ/scarab/issues/919).
+
 Scarab reloads its KES key and certificate on SIGHUP, but **an absent credential file is treated as a
 refused reload and the old credentials stay in force** (`node/.../forge/HotKeys.scala`,
 `HotKeys.reloadFailure`: `NoSuchFileException` is an operator refusal). The reference does the opposite:

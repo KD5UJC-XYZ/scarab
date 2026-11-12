@@ -133,9 +133,9 @@ of an enum label that never happened are absent, except `scarab_era` (written fo
   slots (at a slot the pool does not lead after a gap, the slot less the last slot led or not led, one more than
   the slots in the gap). The KES gauges are written after each update of the forge state (`Forge.StateInfo`,
   `Tracers/KESInfo.hs` 110-120), and a failed update writes the certificate's window and zero for the current
-  and remaining periods; `scarab_opcert_counter` is written at start and after every reload, and
-  `forging_enabled_int` with each `blockForgingUpdate` (at start, and at a reload that enables or disables
-  forging), as the reference writes it (`Tracers/Startup.hs` 301-307).
+  and remaining periods; `scarab_opcert_counter` is written when forging starts and after every reload that installs
+  credentials, and `forging_enabled_int` with each `blockForgingUpdate` (at start, and at a reload that enables
+  or disables forging), as the reference writes it (`Tracers/Startup.hs` 301-307).
 
 **Not exported** (cardano-node 11.1.3 has them; tracked in roadmap J3e): `cardano_node_metrics_served_block_counter`,
 `served_header_counter` and `served_block_latest_counter` (what the node served to peers; the `sessions` of
