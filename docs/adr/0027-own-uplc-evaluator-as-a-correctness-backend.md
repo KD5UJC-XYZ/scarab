@@ -10,7 +10,7 @@
 where it differs from the reference. The corrections are many and kept recurring (the budget arithmetic
 of issue 485, `serialiseData`, `equalsData`, `constrData`, the unlifting bounds, the ECDSA edge cases,
 three patches to the Scalus build). Every one was found by testing the whole stack against the reference,
-and a misreading that Scalus and our wrapper share would pass those tests.
+and a misreading that Scalus and our wrapper share would pass every case those tests do not cover.
 
 The owner decided on 2026-11-12 to build a second, independent evaluator as a proof of concept for
 correctness checking. Scalus stays the default and the fast path. Speed is not a goal of the new one.
@@ -26,18 +26,27 @@ correctness checking. Scalus stays the default and the fast path. Speed is not a
   test class path, and `NoScalusSuite` checks the class path of the test JVM itself. Cryptography comes from
   Bouncy Castle, the `crypto` module and jblst ([ADR 0025](0025-jblst.md)); hash-to-group takes Bouncy Castle's
   hash-to-curve, because jblst passes the domain separation tag as a `String` and cannot carry every byte.
-- **It shares no implementation with the Scalus backend.** `ReferenceCosting`, `ReferenceBudget`,
-  `FlatScan` and the other Scalus-typed code stay as they are and are not retyped to be shared. The two
-  evaluators are independent, so a disagreement between them points at a defect in one.
+- **The machine, builtins, costing and Flat decoder are implemented separately from the Scalus backend.**
+  `ReferenceCosting`, `ReferenceBudget`, `FlatScan` and the other Scalus-typed code stay as they are and are not
+  retyped to be shared, so a disagreement between the backends points at a defect in one of them. Both backends
+  still share the `PlutusData` type and its CBOR decoder (`FlatScan` reads `data` constants through it), and the
+  ledger code around evaluation: script-context construction, cost-model lists, redeemers and phase-1 rules. A
+  fault there is common to both and no comparison of the backends can show it.
 - **Selection by a flag**, `--plutus-vm scalus|scarab`, default `scalus`, chosen where the evaluator is
-  created. The flag arrives with the integration work, not with the module.
+  created; with `scarab`, both phase-2 evaluation and script admission use the own evaluator. The flag arrives
+  with the integration work, not with the module. With `scarab` the node refuses `--forge` at start-up until the
+  evidence of the gates is in (a disagreement while following stays on this node; a forged block with a wrong
+  validity flag is refused by every other node), and the backend refuses protocol 12 and later (the Leios
+  testnet's Dijkstra) with a typed `Unsupported` failure.
 - The machine is a functional, explicit-stack transcription of the reference's CEK
   ([ADR 0011](0011-stack-safety.md), [ADR 0002](0002-tagless-final-and-cats-mtl.md); no free monad). It is not
   a fold over the term, because programs loop and budgets depend on the reference's order of charges.
   Recursion schemes are used where the shape fits: Flat decoding, scope and size checks, printing,
   alpha-equality and term generation.
 - **Scope**: plutus 1.70.0.0 (`507cab8c`, the pin of node 11.1.3), protocols 5 to 11, V1 to V3. Plutus 1.71.0.0
-  (`261766ad`, the Leios testnet build) is a second phase; both corpora are vendored.
+  (`261766ad`, the Leios testnet build) is out of scope for now. The level of correctness aimed at, not a gate,
+  is a mainnet sync from genesis to tip with only the own evaluator; speed is secondary but must keep such a
+  sync practical (on the order of 60M evaluations from Alonzo to tip).
 - **Authority of the oracles, in order**: the upstream expected results and budgets of the conformance corpus
   (produced by the Haskell evaluator); the costing oracle (budgets from unchanged plutus 1.70.0.0); the
   boundary, Wycheproof and Flat decode corpora; for generated and fuzzed terms, the pinned Haskell evaluator
@@ -49,8 +58,9 @@ correctness checking. Scalus stays the default and the fast path. Speed is not a
 
 ## Consequences
 
-- With the flag on, the node's phase-2 verdicts come from an evaluator whose bugs are independent of
-  Scalus's. A replay that gives different verdicts or execution units under the two backends is a finding
+- With the flag on, the node's phase-2 verdicts come from an evaluator whose machine, builtins and costing
+  share no code with Scalus's, which lowers the risk of a fault common to both; the shared decoding and ledger
+  code above is not checked this way. A replay that gives different verdicts or execution units under the two backends is a finding
   to investigate against the reference, not to resolve in favour of either.
 - Suites that test Scalus itself (the CEK hooks, the Scalus patches, the Scalus native library) run with the
   Scalus backend only. Every report states which suites did not run with `scarab`; none of them counts as
