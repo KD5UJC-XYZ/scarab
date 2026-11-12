@@ -5,7 +5,23 @@ import io.circe.{Decoder, Json, parser}
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.uplc.{PlutusLanguage, ProtocolMajor, SemanticsVariant}
+import scala.annotation.tailrec
+import xyz.kd5ujc.scarab.uplc.{
+  Constant,
+  DefaultFun,
+  DefaultUni,
+  PlutusLanguage,
+  Program,
+  ProtocolMajor,
+  ReferenceCorpus,
+  Schemes,
+  SemanticsVariant,
+  Term,
+  TermF
+}
+import xyz.kd5ujc.scarab.uplc.builtin.{Argument, MachineValue}
+import xyz.kd5ujc.scarab.uplc.cek.{BudgetMode, CaserBuiltin, CekError, CekMachine, CekResult}
+import xyz.kd5ujc.scarab.uplc.text.UplcParser
 
 /** What the whole-script oracles need of an evaluator: whether the ledger admits a script
   * (`deserialiseScript`) and the stage, and on success the budget, of evaluating it within a limit
@@ -35,18 +51,24 @@ object ScriptEvaluation:
       case Budget     => "budget"
       case Evaluation => "evaluation"
 
-  /** The evaluator the replays run through: the machine (work package 4), the builtins (5 and 6)
-    * and the decoder (2) of issue 43 plug in here once they exist. Until then the replays are
-    * reported as skipped, not passed.
+  /** The evaluator the full replays run through, from the scripts' bytes: it needs the Flat decoder
+    * and the ledger's admission (work package 2 of issue 43) and the denotations of every builtin
+    * (work package 6 for the cryptographic, bitwise, `Value` and array ones). Until it is defined
+    * the full replays are reported as skipped, not passed; the upstream programs are replayed in
+    * part from their text meanwhile.
     */
   val instance: Option[ScriptEvaluation] = None
 
 /** The whole-script costing oracles of plutus 1.70.0.0 (`fixtures/reference/plutus-costing`: 55,740
   * observations of 1,858 scripts under 30 parameter lists, and 111,552 budget boundaries;
   * `fixtures/reference/genesis-cost-models/evaluation.jsonl`: 5,661 observations under lists of
-  * every length and of extreme values). The cost model is checked against them now (every list
-  * makes a context with the profile's variant); the replays need the machine and the builtins and
-  * stay an explicit incomplete gate until [[ScriptEvaluation.instance]] is defined.
+  * every length and of extreme values). Every list makes a context with its profile's variant. The
+  * scripts that are upstream conformance programs (797 of 1,858, each wrapped in the oracle's
+  * strict lambda returning unit, `[(lam x (con unit ())) P]`) are replayed from their text: the
+  * cost of every single application of a builtin to constants, and the machine with the core
+  * builtins on every program whose builtins have denotations, counting and at the budget
+  * boundaries. The full replay from the scripts' bytes stays an explicit incomplete gate until
+  * [[ScriptEvaluation.instance]] is defined.
   */
 final class CostingOracleSuite extends munit.FunSuite:
   private val costing = Path.of("fixtures/reference/plutus-costing")
@@ -120,13 +142,175 @@ final class CostingOracleSuite extends munit.FunSuite:
     }
   }
 
+  private given MachineValue[Constant] with
+    def constantOf(value: Constant): Option[Constant] = Some(value)
+    def ofConstant(constant: Constant): Constant = constant
+
+  /** The builtin, its forces and its constant arguments, if `term` is nothing else. */
+  private def application(term: Term): Option[(DefaultFun, Int, Vector[Constant])] =
+    @tailrec def go(
+        t: Term,
+        forces: Int,
+        arguments: List[Constant]
+    ): Option[(DefaultFun, Int, Vector[Constant])] =
+      t.unfix match
+        case TermF.Builtin(f)   => Some((f, forces, arguments.toVector))
+        case TermF.Force(inner) => go(inner, forces + 1, arguments)
+        case TermF.Apply(function, argument) =>
+          argument.unfix match
+            case TermF.Constant(c) => go(function, forces, c :: arguments)
+            case _                 => None
+        case _ => None
+    go(term, 0, Nil).filter((f, forces, arguments) =>
+      arguments.size == f.arity && forces == f.forces
+    )
+
+  /** Whether a type holds a BLS12-381 value: such constants have no Flat encoding, and the oracle's
+    * bytes apply `uncompress` instead (its README), so their steps differ from the text's.
+    */
+  private def bls(t: DefaultUni): Boolean = t match
+    case DefaultUni.Bls12_381_G1_Element | DefaultUni.Bls12_381_G2_Element |
+        DefaultUni.Bls12_381_MlResult =>
+      true
+    case DefaultUni.List(e)    => bls(e)
+    case DefaultUni.Array(e)   => bls(e)
+    case DefaultUni.Pair(a, b) => bls(a) || bls(b)
+    case _                     => false
+
+  private def constants(term: Term): Vector[Constant] =
+    Schemes.cata[TermF, Vector[Constant]](term) {
+      case TermF.Constant(c) => Vector(c)
+      case layer             => cats.Foldable[TermF].foldLeft(layer, Vector.empty[Constant])(_ ++ _)
+    }
+
+  /** The upstream programs of the oracle by script index, read from the 1.70.0.0 view's text. */
+  private lazy val upstream: Vector[(Int, Program)] =
+    val programs = ReferenceCorpus
+      .conformance(ReferenceCorpus.Pinned)
+      .fold(p => fail(p.toString), identity)
+      .map(c => c.name -> c.program)
+      .toMap
+    scripts.zipWithIndex.flatMap { (row, i) =>
+      val id = field[String](row, "id")
+      Option
+        .when(id.startsWith("upstream/"))(
+          "builtin/semantics/" + id.stripPrefix("upstream/").split('/').dropRight(1).mkString("/")
+        )
+        .map(name =>
+          programs
+            .get(name)
+            .fold(fail(s"no conformance case $name for $id"))(text =>
+              UplcParser.program(text).fold(e => fail(s"$name: $e"), p => i -> p)
+            )
+        )
+    }
+
+  private enum Check:
+    case Costed, Evaluated
+
+  private def outOfBudget(result: CekResult): Boolean = result match
+    case CekResult.Failure(failure) =>
+      failure.error match
+        case CekError.OutOfBudget(_) => true
+        case _                       => false
+    case _ => false
+
+  private def stageOf(result: CekResult): String = result match
+    case _: CekResult.Success => "success"
+    case r if outOfBudget(r)  => "budget"
+    case _                    => "evaluation"
+
   test(
-    "replay: the 55,740 observations and 111,552 budget boundaries (incomplete until the machine exists)"
+    "partial replay: the upstream programs of the costing oracle from their text, every profile"
+  ) {
+    assertEquals(upstream.size, 797)
+    val unit = Term.lam(Term.constant(Constant.Unit))
+    val limit = ExBudget.of(1L << 60, 1L << 60)
+    val checks = models.zipWithIndex.flatMap { (model, j) =>
+      val language = languageOf(field[Int](model, "language"))
+      val protocol = ProtocolMajor(field[Int](model, "protocol"))
+      val profile =
+        s"V${field[Int](model, "language")} protocol ${protocol.value} x${field[Int](model, "scale")}"
+      val costs = EvaluationContext
+        .build(language, field[Vector[Long]](model, "costModel"))
+        ._2
+        .toOption
+        .flatMap(_.at(protocol))
+        .getOrElse(fail(s"no costs for $profile"))
+      val meanings = CekConformance.denotations(costs.variant)
+      val caser =
+        if protocol.value < 11 then CaserBuiltin.Unavailable(protocol) else CaserBuiltin.WithoutData
+      val machine = CekConformance.machine(costs, caser)
+      val steps = costs.machineCosts
+      upstream.flatMap { (i, program) =>
+        val verdict = verdicts(i * models.size + j)
+        val stage = field[String](verdict, "stage")
+        val name = s"$profile ${field[String](scripts(i), "id")}"
+        val hasBls = constants(program.term).exists(c => bls(c.typeOf))
+        lazy val expected = ExBudget.of(field[Long](verdict, "cpu"), field[Long](verdict, "memory"))
+        // The cost alone: the start-up, the program's steps and the wrapper's (an apply, a lambda
+        // and a constant), and the builtin's cost, added with saturation.
+        val costed = Option
+          .when(stage == "success" && !hasBls)(application(program.term))
+          .flatten
+          .map { (function, forces, arguments) =>
+            val n = arguments.size.toLong
+            val total = steps.startup + steps.step(StepKind.Apply).times(n + 1) +
+              steps.step(StepKind.Force).times(forces.toLong) + steps.step(StepKind.Builtin) +
+              steps.step(StepKind.Constant).times(n + 1) + steps.step(StepKind.LamAbs) +
+              costs.costing(function)(arguments.map(Argument.Con[Constant](_))).total
+            Check.Costed -> Option.when(total != expected)(
+              s"$name: costed $total, oracle $expected"
+            )
+          }
+        // The machine with the core builtins where they suffice, as the oracle ran it: within
+        // 2^60, at the exact budget and one unit below in each dimension.
+        val available = !hasBls && stage != "decode" &&
+          CekConformance.builtins(program).forall(meanings.contains)
+        val wrapped = Term.app(unit, program.term)
+        def run(mode: BudgetMode) = CekMachine.run(machine, mode, wrapped)
+        val evaluated = Option.when(available) {
+          val disagreement =
+            if stage == "success" then
+              val counting = run(BudgetMode.Counting)
+              val exact = run(BudgetMode.Restricting(expected)).result
+              val lessCpu = expected.copy(cpu = SatInt(expected.cpu.toLong - 1))
+              val lessMemory = expected.copy(memory = SatInt(expected.memory.toLong - 1))
+              val cpuShort = run(BudgetMode.Restricting(lessCpu)).result
+              val memoryShort = run(BudgetMode.Restricting(lessMemory)).result
+              Option.when(
+                counting.budget.spent != expected || stageOf(counting.result) != "success" ||
+                  stageOf(exact) != "success" || !outOfBudget(cpuShort) || !outOfBudget(memoryShort)
+              )(
+                s"$name: spent ${counting.budget.spent} (${stageOf(counting.result)}), oracle " +
+                  s"$expected; exact ${stageOf(exact)}, CPU - 1 ${stageOf(cpuShort)}, " +
+                  s"memory - 1 ${stageOf(memoryShort)}"
+              )
+            else
+              val actual = stageOf(run(BudgetMode.Restricting(limit)).result)
+              Option.when(actual != stage)(s"$name: $actual, oracle $stage")
+          Check.Evaluated -> disagreement
+        }
+        costed.toVector ++ evaluated.toVector
+      }
+    }
+    val disagreements = checks.flatMap(_._2)
+    val costed = checks.count(_._1 == Check.Costed)
+    val evaluated = checks.count(_._1 == Check.Evaluated)
+    println(
+      s"costing oracle, upstream programs from their text over ${models.size} profiles: $costed " +
+        s"costs and $evaluated machine runs checked, ${disagreements.size} disagreements"
+    )
+    assertEquals(disagreements.take(40), Vector.empty[String])
+  }
+
+  test(
+    "replay: the 55,740 observations and 111,552 budget boundaries (incomplete until the decoder and every builtin exist)"
   ) {
     val evaluation = ScriptEvaluation.instance
     assume(
       evaluation.isDefined,
-      "incomplete: no machine, builtins or decoder in uplc yet (issue 43, WP2, WP4-WP6)"
+      "incomplete: no Flat decoder and admission (issue 43, WP2) and no denotations of WP6's builtins yet"
     )
     evaluation.foreach { evaluator =>
       val unlimited = ExBudget.of(1L << 60, 1L << 60)
@@ -176,14 +360,14 @@ final class CostingOracleSuite extends munit.FunSuite:
   }
 
   test(
-    "replay: the genesis cost-model observations, lists of every length (incomplete until the machine exists)"
+    "replay: the genesis cost-model observations, lists of every length (incomplete until the decoder and every builtin exist)"
   ) {
     val observations = rows(genesis.resolve("evaluation.jsonl"))
     assertEquals(observations.size, 5661)
     val evaluation = ScriptEvaluation.instance
     assume(
       evaluation.isDefined,
-      "incomplete: no machine, builtins or decoder in uplc yet (issue 43, WP2, WP4-WP6)"
+      "incomplete: no Flat decoder and admission (issue 43, WP2) and no denotations of WP6's builtins yet"
     )
     evaluation.foreach { evaluator =>
       val unlimited = ExBudget.of(1L << 60, 1L << 60)

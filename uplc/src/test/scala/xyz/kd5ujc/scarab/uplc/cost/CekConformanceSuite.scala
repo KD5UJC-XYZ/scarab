@@ -41,7 +41,10 @@ object CekConformance:
 
   private lazy val costs: VariantCosts = DefaultCostModels.costs(variant)
 
-  private lazy val meanings: Map[DefaultFun, Denotation] =
+  private lazy val meanings: Map[DefaultFun, Denotation] = denotations(variant)
+
+  /** The core denotations of `variant` (work package 5). */
+  def denotations(variant: SemanticsVariant): Map[DefaultFun, Denotation] =
     CoreDenotations.of(variant).fold(e => throw new IllegalStateException(e.toString), identity)
 
   // Every program is checked for builtins without a denotation before it runs, so this one is never
@@ -50,15 +53,19 @@ object CekConformance:
     def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): Outcome[V] =
       Outcome.Failure(BuiltinFailure.Evaluation(EvaluationFailure.EmptyList), Vector.empty)
 
-  private lazy val parameters: MachineParameters =
+  /** The machine of `costs` with the core builtins of its variant and `caser`. */
+  def machine(costs: VariantCosts, caser: CaserBuiltin): MachineParameters =
     val core =
-      CoreVariant.of(variant).fold(e => throw new IllegalStateException(e.toString), identity)
-    val denotations: Denotations = function => meanings.getOrElse(function, missing)
+      CoreVariant.of(costs.variant).fold(e => throw new IllegalStateException(e.toString), identity)
+    val meanings = denotations(costs.variant)
+    val total: Denotations = function => meanings.getOrElse(function, missing)
     MachineParameters(
       costs.machineCosts,
-      Builtins(variant, CoreUnlifting(core), denotations, costs.costing),
-      CaserBuiltin.WithData
+      Builtins(costs.variant, CoreUnlifting(core), total, costs.costing),
+      caser
     )
+
+  private lazy val parameters: MachineParameters = machine(costs, CaserBuiltin.WithData)
 
   /** The builtins a program names. */
   def builtins(program: Program): Set[DefaultFun] =
