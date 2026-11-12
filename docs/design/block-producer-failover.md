@@ -197,7 +197,7 @@ uniqueness of the signer:
    block from a committed claim, or refuses to forge.
 4. **No automatic fresh-cluster recovery.** Quorum is restored through Raft's membership protocol. A
    history that cannot be recovered is replaced only under the governed procedure in "Loss of quorum".
-5. **A linearizable doppelganger check** (S4).
+5. **A quorum-validated linearizable doppelganger check** with an activation boundary (S4).
 
 **The protocol.** For each leader slot `s`, with a forging deadline `D(s)` after which no member claims,
 signs or diffuses for `s`:
@@ -259,11 +259,14 @@ preference:
 1. **Restore the majority.** Bring members back with their durable state, or wiped and re-added through
    the membership protocol, until the one history has a quorum again. R1 is kept.
 2. **Replace the cluster, only after external fencing.** If the history cannot be recovered, a new
-   cluster may start only once every former producer is verified, outside the cluster, to be shut down
-   or unable to sign (machines powered off or deprovisioned, KES keys removed and the agent stopped). An
-   operator's belief that members are down is not that verification, and wiping a disk does not stop a
-   process still running from memory: a partitioned majority of the old cluster could go on committing
-   claims. With that verification, R1 is kept.
+   cluster may start only once there is **positive evidence**, from outside the cluster, that every former
+   signer has stopped: its process verified terminated, or its machine powered off or isolated from the
+   network (for example through the hosting provider's console or a switched power unit). Removing the KES
+   files or stopping the agent is not enough, because a running node holds the current key in memory. An
+   operator's belief that members are down is not evidence, and wiping a disk does not stop a process still
+   running from memory: a partitioned majority of the old cluster could go on committing claims. With that
+   evidence for every former signer, R1 is kept. The procedure lists the evidence it needs per member, and
+   the replacement cluster is not released until each item is recorded.
 3. **The credential fence (S5), explicitly weaker.** New credentials with counter `n + 1`, held only by
    the new cluster. Until a block with the new certificate is on the chain *and stable*, an old member
    that is still running can forge validly, including in the same slot; same-slot ties prefer the new
@@ -278,15 +281,23 @@ without the claim protocol; it is documented and logged as **giving up R1**, nev
   pool's cold key must equal the block reproduced from the committed claim for its slot. ChainSync and the
   claim log are read independently, so a member may see its own block before its local copy of the log
   has caught up; absence from a stale local view is not evidence of a twin. Before declaring a
-  doppelganger, the member does a **linearizable** read of the claim (a Raft read through the leader, as
-  etcd's default read is). If the claim state cannot be established, for example while the member is cut
-  off from the majority, it suspends its own forging and waits rather than concluding anything. Only a
-  header that contradicts a confirmed claim, or has no claim at all on a confirmed read, means some other
-  process holds the keys: a forgotten old producer, an unfenced old cluster, or a compromise. Then the
+  doppelganger, the member does a **quorum-validated linearizable read** of the claim: the leader confirms
+  with a majority that it is still leader before answering (Raft's read-index; etcd's linearizable read,
+  which is its default, never its serializable read). A leader's local view alone is not enough, because a
+  deposed leader can still answer from it. If that read cannot complete, for example while the member is
+  cut off from the majority, it suspends its own forging and waits rather than concluding anything.
+  Only a header that contradicts a confirmed claim, or has no claim at all on a confirmed read, for a slot
+  the guard judges (see the activation boundary below), means some other process holds the keys: a forgotten old producer, an unfenced old cluster, or a compromise. Then the
   cluster disables forging everywhere and alerts. This is the Ethereum doppelganger idea adapted to
   sparse slots: Cardano cannot wait two epochs for silence, because the twin only shows itself when it
   forges, so the check runs continuously. A witness holds no key and cannot reproduce a block, so the
   check runs on producer-capable members.
+- **Activation boundary.** When clustered forging is enabled, the cluster commits an activation slot `A`
+  to the replicated state, so it survives restarts and member replacement. The guard judges only headers
+  for slots at or after `A` and above the claim watermark. Blocks from before `A` (forged by the pool's
+  previous single producer, or replayed while a member resynchronises) and blocks below the watermark are
+  history, not new forging activity. A header for a slot it has already judged, delivered again after a
+  rollback, is judged again against the same claim, and an identical block passes.
 - **Readiness.** Each member publishes, ahead of each leader slot, whether it could forge it (tip lag,
   KES window, counter against the chain, clock offset, peers). The node reports it through the existing
   metrics and the `/forging` endpoint, and alerts when fewer than two members are ready.
@@ -321,7 +332,8 @@ the new certificate is stable, the old signer remains valid.
 | Paused or partitioned member resumes | it signs only a committed claim, which is the block any other member would reproduce; past `D(s)` it does not act |
 | Disk restored from backup, or replaced | the member rejoins as a new Raft member after a wipe, disabled until caught up |
 | Forger crashes between claiming and diffusing | a takeover reproduces the same block before `D(s)`; otherwise the slot is lost |
-| Member sees its own block before its log catches up | linearizable claim read before any doppelganger verdict; if the read is impossible it suspends its own forging |
+| Member sees its own block before its log catches up | quorum-validated linearizable claim read before any doppelganger verdict; if the read cannot complete it suspends its own forging |
+| Cluster enabled on a pool that already forged, or a member resynchronises old blocks | the guard judges only slots at or after the committed activation slot and above the watermark |
 | Backup is behind the tip | it is not ready and does not claim; if it is the only one, readiness alerts before the slot |
 | Clock skew on one member | it may claim late or not at all; cannot cause a duplicate |
 | Old producer left running with the keys | doppelganger guard stops the cluster at its first block and alerts |
