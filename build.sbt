@@ -161,6 +161,10 @@ lazy val uplc = scarab("uplc")
       Libraries.cats,
       Libraries.catsMtl
     ),
+    // The vendored plutus reference corpus (`plutus-reference`) and the Wycheproof vectors, read as test
+    // resources without a dependency on `plutus`, whose class path carries Scalus (`LocalProject`, as
+    // `plutus` itself depends on this project).
+    Test / unmanagedResourceDirectories += (LocalProject("plutus") / baseDirectory).value / "src/test/resources",
     checkUplcClasspath := {
       val reached = ((Compile / dependencyClasspath).value ++ (Test / dependencyClasspath).value)
         .flatMap { entry =>
