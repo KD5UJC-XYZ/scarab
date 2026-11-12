@@ -21,6 +21,7 @@ import xyz.kd5ujc.scarab.uplc.{
 }
 import xyz.kd5ujc.scarab.uplc.builtin.{Argument, MachineValue}
 import xyz.kd5ujc.scarab.uplc.cek.{BudgetMode, CaserBuiltin, CekError, CekMachine, CekResult}
+import xyz.kd5ujc.scarab.uplc.ledger.{LedgerScriptEvaluation, Unavailability}
 import xyz.kd5ujc.scarab.uplc.text.UplcParser
 
 /** What the whole-script oracles need of an evaluator: whether the ledger admits a script
@@ -43,21 +44,22 @@ object ScriptEvaluation:
     case Success(spent: ExBudget)
     case Decode, Setup, Scope, Budget, Evaluation
 
-    def name: String = this match
-      case Success(_) => "success"
-      case Decode     => "decode"
-      case Setup      => "setup"
-      case Scope      => "scope"
-      case Budget     => "budget"
-      case Evaluation => "evaluation"
+    /** The evaluator gives no verdict: a defect, never a recorded stage. */
+    case NoVerdict(reason: Unavailability)
 
-  /** The evaluator the full replays run through, from the scripts' bytes: it needs the Flat decoder
-    * and the ledger's admission (work package 2 of issue 43) and the denotations of every builtin
-    * (work package 6 for the cryptographic, bitwise, `Value` and array ones). Until it is defined
-    * the full replays are reported as skipped, not passed; the upstream programs are replayed in
-    * part from their text meanwhile.
+    def name: String = this match
+      case Success(_)   => "success"
+      case Decode       => "decode"
+      case Setup        => "setup"
+      case Scope        => "scope"
+      case Budget       => "budget"
+      case Evaluation   => "evaluation"
+      case NoVerdict(_) => "no verdict"
+
+  /** The evaluator the full replays run through, from the scripts' bytes: the ledger's
+    * `deserialiseScript` and `evaluateScriptRestricting` ([[LedgerScriptEvaluation]]).
     */
-  val instance: Option[ScriptEvaluation] = None
+  val instance: Option[ScriptEvaluation] = Some(LedgerScriptEvaluation)
 
 /** The whole-script costing oracles of plutus 1.70.0.0 (`fixtures/reference/plutus-costing`: 55,740
   * observations of 1,858 scripts under 30 parameter lists, and 111,552 budget boundaries;
@@ -67,10 +69,13 @@ object ScriptEvaluation:
   * strict lambda returning unit, `[(lam x (con unit ())) P]`) are replayed from their text: the
   * cost of every single application of a builtin to constants, and the machine with the core
   * builtins on every program whose builtins have denotations, counting and at the budget
-  * boundaries. The full replay from the scripts' bytes stays an explicit incomplete gate until
-  * [[ScriptEvaluation.instance]] is defined.
+  * boundaries. Every row of both oracles is also replayed from the scripts' bytes through the
+  * ledger's evaluation ([[ScriptEvaluation.instance]]): the admission, the stage and, on success,
+  * the exact budget, then each success within its own budget and one unit less of each component.
   */
 final class CostingOracleSuite extends munit.FunSuite:
+  override val munitTimeout = scala.concurrent.duration.Duration(5, "min")
+
   private val costing = Path.of("fixtures/reference/plutus-costing")
   private val genesis = Path.of("fixtures/reference/genesis-cost-models")
 
@@ -375,83 +380,141 @@ final class CostingOracleSuite extends munit.FunSuite:
     assertEquals(disagreements.take(40), Vector.empty[String])
   }
 
-  test(
-    "replay: the 55,740 observations and 111,552 budget boundaries (incomplete until the decoder and every builtin exist)"
-  ) {
-    val evaluation = ScriptEvaluation.instance
-    assume(
-      evaluation.isDefined,
-      "incomplete: no Flat decoder and admission (issue 43, WP2) and no denotations of WP6's builtins yet"
+  /** The full replays from the scripts' bytes, every row (about 40 seconds and 10 seconds). */
+  private def fullReplay: ScriptEvaluation =
+    ScriptEvaluation.instance.getOrElse(
+      fail("incomplete: no evaluator from the scripts' bytes (ScriptEvaluation.instance)")
     )
-    evaluation.foreach { evaluator =>
-      val unlimited = ExBudget.of(1L << 60, 1L << 60)
-      models.zipWithIndex.foreach { (model, j) =>
-        val language = languageOf(field[Int](model, "language"))
-        val protocol = ProtocolMajor(field[Int](model, "protocol"))
-        val context = EvaluationContext
-          .build(language, field[Vector[Long]](model, "costModel"))
-          ._2
-          .fold(e => fail(e.toString), identity)
-        scripts.zipWithIndex.foreach { (script, i) =>
-          val id = field[String](script, "id")
-          val expected = verdicts(i * models.size + j)
-          assertEquals(field[String](expected, "id"), s"$i:$j")
-          val code =
-            Bytes.fromHex(field[String](script, "script")).fold(e => fail(e.toString), identity)
-          assertEquals(
-            evaluator.admits(language, protocol, code),
-            field[Boolean](expected, "admitted"),
-            id
+
+  test("replay: the 55,740 observations and 111,552 budget boundaries, every row") {
+    val (observations, boundaries, disagreements) =
+      CostingOracleReplay.costing(fullReplay, _ => true)
+    println(
+      s"costing oracle, from the scripts' bytes: $observations observations and $boundaries " +
+        s"budget boundaries checked, ${disagreements.size} disagreements"
+    )
+    assertEquals(disagreements.take(40), Vector.empty[String])
+    assertEquals(observations, 55740)
+    assertEquals(boundaries, 111552)
+  }
+
+  test("replay: the 5,661 genesis cost-model observations, lists of every length, every row") {
+    val (observations, disagreements) = CostingOracleReplay.genesis(fullReplay, _ => true)
+    println(
+      s"genesis cost-model lists, from the scripts' bytes: $observations observations checked, " +
+        s"${disagreements.size} disagreements"
+    )
+    assertEquals(disagreements.take(40), Vector.empty[String])
+    assertEquals(observations, 5661)
+  }
+
+/** The whole-script replays of the costing oracle and the genesis cost-model observations through a
+  * [[ScriptEvaluation]], over the rows `select` keeps: the admission, the stage and, on success,
+  * the exact budget; then, for a success, the budget itself (success), less one CPU unit (budget)
+  * and less one memory unit (budget). Each returns the rows checked and every disagreement.
+  */
+object CostingOracleReplay:
+  private val costing = Path.of("fixtures/reference/plutus-costing")
+  private val genesisDir = Path.of("fixtures/reference/genesis-cost-models")
+  private val unlimited = ExBudget.of(1L << 60, 1L << 60)
+
+  private def rows(path: Path): Vector[Json] =
+    Files
+      .readString(path)
+      .linesIterator
+      .map(parser.parse(_).fold(e => throw new IllegalStateException(e.message), identity))
+      .toVector
+
+  private def field[A: Decoder](row: Json, key: String): A =
+    row.hcursor
+      .get[A](key)
+      .fold(e => throw new IllegalStateException(s"$key: ${e.message} in $row"), identity)
+
+  private def languageOf(number: Int): PlutusLanguage =
+    PlutusLanguage.values
+      .find(_.id + 1 == number)
+      .getOrElse(throw new IllegalStateException(s"language $number"))
+
+  private def bytes(hex: String): Bytes =
+    Bytes.fromHex(hex).fold(e => throw new IllegalStateException(e.toString), identity)
+
+  private def context(language: PlutusLanguage, values: Vector[Long]): EvaluationContext =
+    EvaluationContext
+      .build(language, values)
+      ._2
+      .fold(e => throw new IllegalStateException(e.toString), identity)
+
+  /** The costing oracle's rows `select` keeps (by their id, `script:model`): the number of
+    * observations and of budget boundaries checked, and the disagreements.
+    */
+  def costing(evaluator: ScriptEvaluation, select: String => Boolean): (Int, Int, Vector[String]) =
+    val scripts = rows(costing.resolve("scripts.jsonl"))
+    val models = rows(costing.resolve("models.jsonl"))
+    val verdicts = rows(costing.resolve("verdicts.jsonl"))
+    val results = models.zipWithIndex.flatMap { (model, j) =>
+      val language = languageOf(field[Int](model, "language"))
+      val protocol = ProtocolMajor(field[Int](model, "protocol"))
+      val profile =
+        s"V${field[Int](model, "language")}/${protocol.value} x${field[Int](model, "scale")}"
+      lazy val built = context(language, field[Vector[Long]](model, "costModel"))
+      scripts.zipWithIndex.flatMap { (script, i) =>
+        val expected = verdicts(i * models.size + j)
+        val rowId = field[String](expected, "id")
+        Option.when(select(rowId)) {
+          val id = s"${field[String](script, "id")} $profile"
+          val code = bytes(field[String](script, "script"))
+          val stage = field[String](expected, "stage")
+          val admitted = evaluator.admits(language, protocol, code)
+          val actual = evaluator.evaluate(language, protocol, code, built, unlimited)
+          val units = Option.when(stage == "success")(
+            ExBudget.of(field[Long](expected, "cpu"), field[Long](expected, "memory"))
           )
-          val actual = evaluator.evaluate(language, protocol, code, context, unlimited)
-          assertEquals(actual.name, field[String](expected, "stage"), id)
-          if field[String](expected, "stage") == "success" then
-            val units = ExBudget.of(field[Long](expected, "cpu"), field[Long](expected, "memory"))
-            assertEquals(actual, ScriptEvaluation.Stage.Success(units), id)
-            assertEquals(
-              evaluator.evaluate(language, protocol, code, context, units).name,
-              "success",
-              s"$id exact"
-            )
-            val lessCpu = units.copy(cpu = SatInt(units.cpu.toLong - 1))
-            assertEquals(
-              evaluator.evaluate(language, protocol, code, context, lessCpu).name,
-              "budget",
-              s"$id CPU - 1"
-            )
-            val lessMemory = units.copy(memory = SatInt(units.memory.toLong - 1))
-            assertEquals(
-              evaluator.evaluate(language, protocol, code, context, lessMemory).name,
-              "budget",
-              s"$id memory - 1"
-            )
+          val row = Vector(
+            Option.when(rowId != s"$i:$j")(s"$id: verdict ${rowId}, expected $i:$j"),
+            Option.when(admitted != field[Boolean](expected, "admitted"))(
+              s"$id: admitted $admitted, oracle ${field[Boolean](expected, "admitted")}"
+            ),
+            Option.when(
+              actual.name != stage || units.exists(u => actual != ScriptEvaluation.Stage.Success(u))
+            )(s"$id: $actual, oracle $stage ${units.fold("")(_.toString)}")
+          ).flatten
+          val boundaries = units.toVector.flatMap { u =>
+            val lessCpu = u.copy(cpu = SatInt(u.cpu.toLong - 1))
+            val lessMemory = u.copy(memory = SatInt(u.memory.toLong - 1))
+            Vector(u -> "success", lessCpu -> "budget", lessMemory -> "budget").map {
+              (limit, want) =>
+                val got = evaluator.evaluate(language, protocol, code, built, limit)
+                Option.when(got.name != want)(s"$id within $limit: $got, oracle $want")
+            }
+          }
+          (row, boundaries)
         }
       }
     }
-  }
-
-  test(
-    "replay: the genesis cost-model observations, lists of every length (incomplete until the decoder and every builtin exist)"
-  ) {
-    val observations = rows(genesis.resolve("evaluation.jsonl"))
-    assertEquals(observations.size, 5661)
-    val evaluation = ScriptEvaluation.instance
-    assume(
-      evaluation.isDefined,
-      "incomplete: no Flat decoder and admission (issue 43, WP2) and no denotations of WP6's builtins yet"
+    (
+      results.size,
+      results.map(_._2.size).sum,
+      results.flatMap((row, boundaries) => row ++ boundaries.flatten)
     )
-    evaluation.foreach { evaluator =>
-      val unlimited = ExBudget.of(1L << 60, 1L << 60)
-      val code = scripts.map(row => field[String](row, "id") -> field[String](row, "script")).toMap
-      val lists = rows(genesis.resolve("evaluation-models.jsonl"))
-        .map(model => field[String](model, "id") -> model)
-        .toMap
-      observations.foreach { row =>
-        val id = field[String](row, "id")
+
+  /** The genesis observations `select` keeps (by their id, `script|list`): the number checked and
+    * the disagreements.
+    */
+  def genesis(evaluator: ScriptEvaluation, select: String => Boolean): (Int, Vector[String]) =
+    val observations = rows(genesisDir.resolve("evaluation.jsonl"))
+    val code = rows(costing.resolve("scripts.jsonl"))
+      .map(row => field[String](row, "id") -> field[String](row, "script"))
+      .toMap
+    val lists = rows(genesisDir.resolve("evaluation-models.jsonl"))
+      .map(model => field[String](model, "id") -> model)
+      .toMap
+    val results = observations.flatMap { row =>
+      val id = field[String](row, "id")
+      Option.when(select(id)) {
         val (scriptId, modelId) = id.split('|') match
           case Array(s, m) => (s, m)
-          case _           => fail(s"id $id")
-        val model = lists.getOrElse(modelId, fail(s"no list $modelId"))
+          case _           => throw new IllegalStateException(s"id $id")
+        val model = lists.getOrElse(modelId, throw new IllegalStateException(s"no list $modelId"))
         val language = languageOf(field[Int](model, "language"))
         val protocol = ProtocolMajor(field[Int](model, "protocol"))
         // The list's values, one value repeated, or the profile's defaults cut or extended with
@@ -464,26 +527,23 @@ final class CostingOracleSuite extends munit.FunSuite:
               (DefaultCostModels.list(language, SemanticsVariant.of(language, protocol)) ++ Vector
                 .fill(60)(7L))
                 .take(field[Int](model, "length"))
-        val context =
-          EvaluationContext.build(language, values)._2.fold(e => fail(e.toString), identity)
-        val script = Bytes
-          .fromHex(code.getOrElse(scriptId, fail(s"no script $scriptId")))
-          .fold(e => fail(e.toString), identity)
-        assertEquals(
-          evaluator.admits(language, protocol, script),
-          field[Boolean](row, "admitted"),
-          id
+        val script =
+          bytes(code.getOrElse(scriptId, throw new IllegalStateException(s"no script $scriptId")))
+        val admitted = evaluator.admits(language, protocol, script)
+        val actual =
+          evaluator.evaluate(language, protocol, script, context(language, values), unlimited)
+        val stage = field[String](row, "stage")
+        val units = Option.when(stage == "success")(
+          ExBudget.of(field[Long](row, "cpu"), field[Long](row, "memory"))
         )
-        val actual = evaluator.evaluate(language, protocol, script, context, unlimited)
-        assertEquals(actual.name, field[String](row, "stage"), id)
-        if field[String](row, "stage") == "success" then
-          assertEquals(
-            actual,
-            ScriptEvaluation.Stage.Success(
-              ExBudget.of(field[Long](row, "cpu"), field[Long](row, "memory"))
-            ),
-            id
-          )
+        Vector(
+          Option.when(admitted != field[Boolean](row, "admitted"))(
+            s"$id: admitted $admitted, oracle ${field[Boolean](row, "admitted")}"
+          ),
+          Option.when(
+            actual.name != stage || units.exists(u => actual != ScriptEvaluation.Stage.Success(u))
+          )(s"$id: $actual, oracle $stage ${units.fold("")(_.toString)}")
+        ).flatten
       }
     }
-  }
+    (results.size, results.flatten)
