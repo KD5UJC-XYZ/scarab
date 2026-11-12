@@ -69,14 +69,8 @@ object Lifted:
     case Left(f @ BuiltinFailure.Evaluation(e)) => Outcome.Failure(f, logs(e))
     case Left(f)                                => Outcome.Failure(f, Vector.empty)
 
-  /** The lines the reference emits for `failure`, one per `emit` or `fail`. */
-  def logs(failure: EvaluationFailure): Vector[String] = failure match
-    case EvaluationFailure.SignatureInput(f) => f.lines
-    case EvaluationFailure.Bitwise(f)        => f.lines
-    case EvaluationFailure.ExpMod(f)         => f.lines
-    case EvaluationFailure.ValueOperation(f) => f.lines
-    case EvaluationFailure.ArrayIndices(f)   => f.lines
-    case other                               => other.message.toVector
+  /** The lines the reference emits for `failure` ([[EvaluationFailure.logs]]). */
+  def logs(failure: EvaluationFailure): Vector[String] = failure.logs
 
   def failed(failure: EvaluationFailure): BuiltinFailure = BuiltinFailure.Evaluation(failure)
 

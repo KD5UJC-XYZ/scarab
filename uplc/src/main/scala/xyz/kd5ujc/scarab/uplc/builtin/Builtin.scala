@@ -178,6 +178,17 @@ enum EvaluationFailure:
     case Defect(_, _)            => None
     case ArrayIndices(failure)   => Some(failure.lines.mkString("\n"))
 
+  /** The lines the reference emits for this failure, one per `emit` or `fail`, which is what the
+    * machine logs ([[Outcome.failed]]); [[message]] joins them for a single-line rendering.
+    */
+  def logs: Vector[String] = this match
+    case SignatureInput(failure) => failure.lines
+    case Bitwise(failure)        => failure.lines
+    case ExpMod(failure)         => failure.lines
+    case ValueOperation(failure) => failure.lines
+    case ArrayIndices(failure)   => failure.lines
+    case other                   => other.message.toVector
+
 /** The constructor of `Data` a deconstructing builtin expects. */
 enum DataShape:
   case Constr, Map, List, I, B
@@ -204,7 +215,7 @@ object Outcome:
     * `Cek/Internal.hs:1066-1073`).
     */
   def failed[V](failure: EvaluationFailure): Outcome[V] =
-    Failure(BuiltinFailure.Evaluation(failure), failure.message.toVector)
+    Failure(BuiltinFailure.Evaluation(failure), failure.logs)
 
 /** The meaning of one builtin once its arguments are unlifted: pure, and the same for every
   * machine.
