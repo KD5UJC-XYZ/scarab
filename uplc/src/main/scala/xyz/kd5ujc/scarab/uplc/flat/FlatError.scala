@@ -67,8 +67,8 @@ enum FlatError:
     */
   case InvalidValue(cause: Value.Invalid)
 
-  /** A refusal of the ledger's predicates or of the version gate of `constr` and `case`: the `fail`
-    * s of `decodeTerm` (`Flat.hs:154-156`, 164-166, 167-180, 181-184) with the checks of
+  /** A refusal of the ledger's predicates or of the version gate of `constr` and `case`: where
+    * `decodeTerm` fails (`Flat.hs:154-156`, 164-166, 167-180, 181-184) with the checks of
     * `scriptCBORDecoder` (`PlutusLedgerApi/Common/SerialisedScript.hs:207-234`).
     */
   case Refused(refusal: Availability.Refusal)
