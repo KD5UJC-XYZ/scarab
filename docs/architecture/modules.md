@@ -16,7 +16,8 @@ a cycle does not load.
 | `crypto` | Blake2b, Ed25519 (strict profile), VRF draft-03 verify and prove, Sum6 KES verify, sign and evolve, BLS12-381 (Leios, through jblst, ADR 0025) and `Blst`, the start-up check of its native library and the CPU, operational certificates | Pure; `Blst` in `F[_]` with `Sync`/`Raise` |
 | `protocol` | Ouroboros mini-protocol codecs and state machines: handshake, mux framing, ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, LocalStateQuery, LocalTxMonitor, Leios, era and header tags (`Era`, `NtNHeader`), pure network error vocabulary | Pure |
 | `network` | fs2 bearer, multiplexer (duplex), handshake, client and server roles of every mini-protocol over one connection | `F[_]` with `Async`/`Raise` |
-| `plutus` | `ScriptEvaluator[F]` algebra, the Scalus adapter, `NativeCrypto` (the start-up check of the Plutus native library), `PlutusData`, `ExUnits` | `F[_]` at the evaluator, pure otherwise |
+| `uplc` | Scarab's own UPLC evaluator with no Scalus on its class path ([ADR 0027](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md)): `PlutusData`, `ExUnits`, `PlutusLanguage`, `ParamNames`; the term model, Flat decoder, CEK machine, builtins, costing and budget as they land | Pure; `F[_]` with cats-mtl capabilities at the machine |
+| `plutus` | `ScriptEvaluator[F]` algebra, the Scalus adapter, `NativeCrypto` (the start-up check of the Plutus native library); re-exports the types of `uplc` it used to hold | `F[_]` at the evaluator, pure otherwise |
 | `ledger` | Blocks, headers, genesis files, transactions, scripts, the Shelley to Conway rules, the Byron ledger, `Verdicts`, `OCertRules`, the node error hierarchy, `Nonce`, `LedgerView` | Pure |
 | `consensus` | Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, `VolatileChain`, `MirrorState` and the mirror's types, `BlockRules`, `Scheduling` | Pure, `Compute[F]` in `Scheduling` |
 | `storage` | `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `ChainStorage`, `UtxoStore` (memory, RocksDB), derived `Codec`s, format migrations, the Haskell ImmutableDB reader and the Haskell ledger-state codec | Algebras over `F[_]` |
@@ -32,7 +33,7 @@ codec <- crypto <- protocol <- network ------------------------.
   '------ plutus <------'
 ```
 
-`ledger` depends on `protocol` and `plutus`; `consensus` on `ledger`; `storage` on `consensus` and
+`plutus` depends on `uplc`, which depends on `crypto` and `codec` and never on `plutus`, so Scalus stays out of it; `ledger` depends on `protocol` and `plutus`; `consensus` on `ledger`; `storage` on `consensus` and
 `models` (which stands on `codec` and `crypto`; the Haskell ledger-state codec reuses the models runtime; `models` itself sees `ledger` only in
 its tests); `node` on `storage` and `network`. The ledger cannot import the network runtime, and storage cannot
 import the node. Note that `protocol/Mux.scala` (the pure framing) and `network/Mux.scala` (the
@@ -46,7 +47,7 @@ their test kits. None of those modules depends on `tools`.
 Cycles that the old layout hid, and how they were cut (types moved down, nothing redesigned):
 the header error enums (`HeaderError`, `EnvelopeError`, `TPraosError`, `OCertError`) and `Nonce`,
 `PoolDistribution`, `LedgerView` live in `ledger` because `NodeError` (also in `ledger`) and the
-rules use them; `ExUnits` lives in `plutus`; `Rational` in `codec`; `Prepared` (a decoded block)
+rules use them; `ExUnits` lives in `uplc`, re-exported by `plutus`; `Rational` in `codec`; `Prepared` (a decoded block)
 in `ledger`; `MirrorState` and the `BlockRules` interface in `consensus`, while `MirrorRules`, which
 needs the `UtxoStore`, stays in `node`.
 

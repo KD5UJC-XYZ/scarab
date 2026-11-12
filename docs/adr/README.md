@@ -32,3 +32,4 @@ one says so. New records copy [the template](template.md) and take the next numb
 | [0024](0024-adopt-the-upstream-kes-agent.md) | H2 adopts the upstream KES agent as it is: the client only, and no remote signing | Accepted; amended 2026-11-07 | 2026-10-25 |
 | [0025](0025-jblst.md) | BLS12-381 through jblst, the maintained Java binding of blst | Accepted | 2026-10-30 |
 | [0026](0026-scala-3-9.md) | Scala 3.9 | Accepted | 2026-10-30 |
+| [0027](0027-own-uplc-evaluator-as-a-correctness-backend.md) | Scarab's own UPLC evaluator, an opt-in correctness backend with no Scalus in it | Accepted | 2026-11-12 |

@@ -13,7 +13,8 @@ codec      -> (none)
 crypto     -> codec
 protocol   -> crypto
 network    -> protocol
-plutus     -> codec
+uplc       -> crypto
+plutus     -> codec, uplc
 ledger     -> protocol, plutus
 consensus  -> ledger
 storage    -> consensus, models; test only: network
@@ -21,7 +22,7 @@ node       -> storage, network
 models-gen -> (none)
 models     -> codec, crypto; test only: models-gen, protocol, ledger
 fuzz       -> codec, protocol, node, models-gen
-tools      -> codec, crypto, protocol, network, plutus, ledger, consensus, storage, node, models
+tools      -> codec, crypto, protocol, network, uplc, plutus, ledger, consensus, storage, node, models
 ```
 
 ## codec
@@ -63,13 +64,21 @@ Effectful bearer, multiplexer, connections, peer selection.
 | network/genesis | Genesis rate limiting primitives: leaky bucket, limit on patience, picosecond clock | `LeakyBucket`, `LimitOnPatience`, `PicosClock` | `LeakyBucketSuite`, `LimitOnPatienceSuite` | [design genesis](design/genesis.md) |
 | network/selection | Pure peer selection: governor state, churn, ledger peers, local roots, GSM, CSJ, fetch policy | `PeerSelection`, `GovernorState`, `Churn`, `LedgerPool`, `LocalRoots`, `Gsm`, `ChainSyncJumping`, `BlockFetchPolicy` | `PeerSelectionSuite`, `ChurnSuite`, `LedgerPeersSuite`, `GsmSuite`, `BlockFetchPolicySuite`, `PeerShareSuite` | [ADR 0016](adr/0016-peer-states-and-the-governor.md), [design peer-selection](design/peer-selection.md), [design block-fetch-coordination](design/block-fetch-coordination.md) |
 
+## uplc
+
+Scarab's own UPLC evaluator, with no Scalus on its class path ([ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md)).
+
+| Package | Responsibility | Entry points | Suites | Decisions |
+|---|---|---|---|---|
+| uplc | Plutus data, execution units, language and cost-model parameter names; the term model, decoder, machine, builtins and costing as the work packages of #43 land | `PlutusData`, `ExUnits`, `PlutusLanguage`, `ParamNames` | `NoScalusSuite` | [ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) |
+
 ## plutus
 
 Plutus evaluation through Scalus.
 
 | Package | Responsibility | Entry points | Suites | Decisions |
 |---|---|---|---|---|
-| plutus | Script evaluator algebra, Scalus adapter, Plutus data, execution units, builtin availability | `ScriptEvaluator`, `ScalusEvaluator`, `PlutusData`, `ExUnits`, `PlutusAvailability`, `RetryingMemo` | `ScalusEvaluatorSuite`, `PlutusDataSuite`, `PlutusAvailabilitySuite`, `BuiltinCostingSuite`, `ScalusReproducersSuite`, `NativeTextReferenceSuite` | [ADR 0003](adr/0003-plutus-through-scalus.md), [ADR 0018](adr/0018-parallel-plutus-after-ordered-preparation.md), [design parallel-plutus](design/parallel-plutus.md), [design script-results](design/script-results.md) |
+| plutus | Script evaluator algebra, Scalus adapter, builtin availability; re-exports `PlutusData`, `ExUnits`, `PlutusLanguage` and `ParamNames` from `uplc` | `ScriptEvaluator`, `ScalusEvaluator`, `PlutusAvailability`, `RetryingMemo` | `ScalusEvaluatorSuite`, `PlutusDataSuite`, `PlutusAvailabilitySuite`, `BuiltinCostingSuite`, `ScalusReproducersSuite`, `NativeTextReferenceSuite` | [ADR 0003](adr/0003-plutus-through-scalus.md), [ADR 0018](adr/0018-parallel-plutus-after-ordered-preparation.md), [design parallel-plutus](design/parallel-plutus.md), [design script-results](design/script-results.md) |
 | scalus/uplc | Scarab view over Scalus programs, in Scalus' own package | `ScarabProgramView` | `ScalusEvaluatorSuite` | [ADR 0003](adr/0003-plutus-through-scalus.md) |
 
 ## ledger

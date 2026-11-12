@@ -21,7 +21,7 @@ and reported upstream with reproductions.
 
 - Plutus conformance is measured continuously ~~(987 of 1,009 cases at the time of writing)~~ ([amended 2026-10-25](#amendment-2026-10-25-where-the-current-state-is-recorded)).
 - Scalus versions move only with evidence (the conformance suite and the Preview and preprod replays).
-- Owning the evaluator remains an open spike (#43).
+- ~~Owning the evaluator remains an open spike (#43).~~ ([amended 2026-11-12](#amendment-2026-11-12-an-own-evaluator-as-an-opt-in-backend))
 
 ## Amendment (2026-10-23): the trusted base and the remaining corrections
 
@@ -52,3 +52,10 @@ The builtin corrections the wrapper applies, with their reproducer suites, are d
 `ScalusEvaluator.CorrectedVm` in
 [ScalusEvaluator.scala](../../plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ScalusEvaluator.scala);
 the list in the amendment above is not maintained as corrections change.
+
+## Amendment (2026-11-12): an own evaluator as an opt-in backend
+
+The spike of #43 is decided: Scarab builds its own evaluator in the module `uplc`, with no Scalus in it, as
+an opt-in correctness backend selected by `--plutus-vm scalus|scarab`. This decision stands: Scalus remains
+the default and the fast path, behind `ScriptEvaluator`. The reasons, scope and consequences are in
+[ADR 0027](0027-own-uplc-evaluator-as-a-correctness-backend.md).
