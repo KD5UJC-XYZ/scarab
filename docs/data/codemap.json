@@ -462,17 +462,19 @@
     {
       "module": "uplc",
       "path": "uplc/builtin/extended",
-      "responsibility": "The denotations of the hashes, the Ed25519, ECDSA and Schnorr verifications, the BLS12-381 builtins, the conversions and bitwise builtins, expModInteger, the Value builtins and the arrays, with their typed failures and the reference's log lines",
+      "responsibility": "The denotations of the hashes, the Ed25519, ECDSA and Schnorr verifications, the BLS12-381 builtins, the conversions and bitwise builtins, expModInteger, the Value builtins, the arrays and batch 7, with their typed failures and the reference's log lines",
       "entryPoints": [
         "ExtendedDenotations",
         "Bitwise",
         "Values",
         "Hashes",
         "Signatures",
-        "ExpMod"
+        "ExpMod",
+        "Arrays"
       ],
       "suites": [
         "ExtendedCorpusSuite",
+        "Batch7Suite",
         "ExtendedDenotationsSuite",
         "BitwiseSuite",
         "ValuesSuite",

@@ -75,6 +75,7 @@ object Lifted:
     case EvaluationFailure.Bitwise(f)        => f.lines
     case EvaluationFailure.ExpMod(f)         => f.lines
     case EvaluationFailure.ValueOperation(f) => f.lines
+    case EvaluationFailure.ArrayIndices(f)   => f.lines
     case other                               => other.message.toVector
 
   def failed(failure: EvaluationFailure): BuiltinFailure = BuiltinFailure.Evaluation(failure)

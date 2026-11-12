@@ -119,6 +119,19 @@ enum BitwiseFailure extends LogLines:
         s"Length requested: $n"
       )
 
+/** The failures of `multiIndexArray` (`PlutusCore/Arrays.hs:48-69`). */
+enum ArrayFailure extends LogLines:
+  /** More than 1024 indices (`Arrays.hs:56-61`, `maximumIndexCount` 34-35). */
+  case TooManyIndices
+
+  /** `Arrays.hs:65-68`. */
+  case IndexOutOfBounds(index: BigInt)
+
+  def lines: Vector[String] = this match
+    case TooManyIndices =>
+      Vector(s"multiIndexArray: too many indices (maximum is ${Arrays.MaximumIndexCount})")
+    case IndexOutOfBounds(i) => Vector("multiIndexArray: array index out of bounds", s"Index: $i")
+
 /** The failures of `expModInteger` (`Default/Builtins.hs:2314-2326` and
   * `PlutusCore/Crypto/ExpMod.hs:17-35`).
   */

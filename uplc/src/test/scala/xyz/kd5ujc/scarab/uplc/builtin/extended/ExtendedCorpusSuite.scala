@@ -82,11 +82,19 @@ final class ExtendedCorpusSuite extends munit.FunSuite:
                 Verdict.NotRun(s"result $v is not a constant")
               case (got, _) => Verdict.Disagree(s"got $got, expected $expected")
 
-  /** The builtins with no directory of their own, whose cases are those of `millerLoop` and the
-    * cardano-crypto-class pairing tests.
+  /** The builtins with no directory of their own: `mulMlResult` and `finalVerify`, whose cases are
+    * those of `millerLoop` and the cardano-crypto-class pairing tests, and batch 7, which the
+    * corpus of 1.70.0.0 has no case of.
     */
-  private def exercisedElsewhere(dir: String): Boolean =
-    dir == "bls12_381_mulMlResult" || dir == "bls12_381_finalVerify"
+  private def exercisedElsewhere(dir: String): Boolean = Set(
+    "bls12_381_mulMlResult",
+    "bls12_381_finalVerify",
+    "multiIndexArray",
+    "policies",
+    "assetCount",
+    "keepPolicies",
+    "dropPolicies"
+  ).contains(dir)
 
   /** The cases that need the machine, by name; nothing else may be left out. */
   private val needsMachine: Set[String] = Set(

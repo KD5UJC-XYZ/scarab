@@ -3,7 +3,14 @@ package xyz.kd5ujc.scarab.uplc.builtin.extended
 
 import cats.syntax.either.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.uplc.{Constant, DefaultFun, PlutusData, SemanticsVariant, Value}
+import xyz.kd5ujc.scarab.uplc.{
+  Constant,
+  DefaultFun,
+  DefaultUni,
+  PlutusData,
+  SemanticsVariant,
+  Value
+}
 import xyz.kd5ujc.scarab.uplc.bls.{Bls12_381, BlsDefect, BlsFailure, G1Element, G2Element, MlResult}
 import xyz.kd5ujc.scarab.uplc.builtin.{
   BuiltinFailure,
@@ -31,7 +38,8 @@ import Lifted.*
   * D and E (`Builtins.hs:2199-2229`).
   *
   * Batch 7 (`multiIndexArray`, `policies`, `assetCount`, `keepPolicies`, `dropPolicies`) is not
-  * available at protocols 5 to 11 and has no denotation here.
+  * available at protocols 5 to 11 ([[xyz.kd5ujc.scarab.uplc.Availability]]); its denotations are
+  * here all the same, as the reference has them in every variant.
   */
 object ExtendedDenotations:
 
@@ -84,6 +92,12 @@ object ExtendedDenotations:
   private def array(c: Constant, position: Int): Either[BuiltinFailure, Constant.Array] = c match
     case a: Constant.Array => Right(a)
     case other             => Left(structural(UnliftingCause.ExpectedArray(position, other.typeOf)))
+
+  /** The list of `items` of `elementType`, all of which are of it. */
+  private def listOf(elementType: DefaultUni, items: Vector[Constant]): Result =
+    Constant.List
+      .of(elementType, items)
+      .leftMap(m => structural(UnliftingCause.ElementMismatch(m.expected, m.found)))
 
   /** A `Word8` the unlifting has bounded already (`readKnownAsInteger`), checked again. */
   private def word8(n: BigInt, position: Int): Either[BuiltinFailure, Int] =
@@ -238,5 +252,24 @@ object ExtendedDenotations:
       ValueContains -> two[Value, Value]((a, b) => valueResult(Values.valueContains(a, b))(bool)),
       ValueData -> one[Value](v => valueResult(Values.valueData(v))(Constant.Data(_))),
       UnValueData -> one[PlutusData](d => valueResult(Values.unValueData(d))(value)),
-      ScaleValue -> two[BigInt, Value]((c, v) => valueResult(Values.scaleValue(c, v))(value))
+      ScaleValue -> two[BigInt, Value]((c, v) => valueResult(Values.scaleValue(c, v))(value)),
+      // Batch 7 (`Builtins.hs:2482-2527`).
+      MultiIndexArray -> denotation(cs =>
+        for
+          a <- someConstant(cs, 0).flatMap(array(_, 0))
+          is <- arg[Vector[BigInt]](cs, 1)
+          xs <- Arrays
+            .multiIndexArray(a.items, is)
+            .leftMap(f => failed(EvaluationFailure.ArrayIndices(f)))
+          l <- listOf(a.elementType, xs)
+        yield l
+      ),
+      Policies -> one[Value](v => listOf(DefaultUni.ByteString, Values.policies(v).map(bytes))),
+      AssetCount -> one[Value](v => pure(integer(v.totalSize))),
+      KeepPolicies -> two[Vector[Bytes], Value]((ids, v) =>
+        pure(value(Values.keepPolicies(ids, v)))
+      ),
+      DropPolicies -> two[Vector[Bytes], Value]((ids, v) =>
+        pure(value(Values.dropPolicies(ids, v)))
+      )
     )

@@ -18,8 +18,8 @@ object Values:
   private type Inner = SortedMap[Key, Quantity]
   private type Nested = SortedMap[Key, Inner]
 
-  /** `insertCoin` (`Value.hs:345-389`): the quantity of `(currency, token)` set to `amount`; an
-    * amount of 0 deletes the entry without checking the keys (`deleteCoin`, 392-411), otherwise the
+  /** `insertCoin` (`Value.hs:345-384`): the quantity of `(currency, token)` set to `amount`; an
+    * amount of 0 deletes the entry without checking the keys (`deleteCoin`, 387-411), otherwise the
     * keys and the amount are checked in that order.
     */
   def insertCoin(
@@ -38,7 +38,7 @@ object Values:
         val inner: Inner = value.entries.getOrElse(c, SortedMap.empty[Key, Quantity])
         Value.pack(value.entries.updated(c, inner.updated(t, q)))
 
-  /** `deleteCoin` (`Value.hs:392-411`): a key too long for a value is in none. */
+  /** `deleteCoin` (`Value.hs:387-411`): a key too long for a value is in none. */
   private def deleteCoin(currency: Bytes, token: Bytes, value: Value): Value =
     (Key(currency), Key(token)) match
       case (Some(c), Some(t)) if value.entries.get(c).exists(_.contains(t)) =>
@@ -54,7 +54,7 @@ object Values:
       q <- inner.get(t)
     yield q.amount).getOrElse(BigInt(0))
 
-  /** `valueContains` (`Value.hs:487-500`): neither value has a negative amount, and every entry of
+  /** `valueContains` (`Value.hs:487-498`): neither value has a negative amount, and every entry of
     * `b` is in `a` with at least its quantity (`isSubmapOfBy`).
     */
   def valueContains(a: Value, b: Value): Either[ValueFailure, Boolean] =
@@ -94,7 +94,7 @@ object Values:
       }
       summed.map(Value.pack)
 
-  /** `valueData` (`Value.hs:545-555`): `Map [(B currency, Map [(B token, I quantity)])]` in
+  /** `valueData` (`Value.hs:545-553`): `Map [(B currency, Map [(B token, I quantity)])]` in
     * ascending order, for a value of at most [[ValueDataMaxSize]] entries.
     */
   def valueData(value: Value): Either[ValueFailure, PlutusData] =
@@ -137,6 +137,21 @@ object Values:
         case Value.Invalid.QuantityOutOfBounds(_) => failed(UnValueDataCause.InvalidQuantity)
       }
     )
+
+  /** `policies` (`Value.hs:419-424`): the currency symbols in ascending order. */
+  def policies(value: Value): Vector[Bytes] = value.entries.keysIterator.map(_.bytes).toVector
+
+  /** The ids that can name a currency (`policySet`, `Value.hs:469-477`): longer ones match none. */
+  private def currencies(ids: Vector[Bytes]): Set[Key] = ids.flatMap(Key(_)).toSet
+
+  /** `keepPolicies` (`Value.hs:425-436`): the value restricted to the currencies `ids` name. */
+  def keepPolicies(ids: Vector[Bytes], value: Value): Value =
+    val kept = currencies(ids)
+    Value.pack(value.entries.filter((c, _) => kept.contains(c)))
+
+  /** `dropPolicies` (`Value.hs:437-467`): the value without the currencies `ids` name. */
+  def dropPolicies(ids: Vector[Bytes], value: Value): Value =
+    Value.pack(value.entries -- currencies(ids))
 
   /** `scaleValue` (`Value.hs:604-628`): every quantity times `factor`, the empty value for 0, the
     * first product out of bounds in key order failing.

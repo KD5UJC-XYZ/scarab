@@ -156,6 +156,9 @@ enum EvaluationFailure:
     */
   case Defect(function: DefaultFun, defect: extended.LibraryDefect)
 
+  /** `multiIndexArray` (`PlutusCore/Arrays.hs:48-69`). */
+  case ArrayIndices(failure: extended.ArrayFailure)
+
   /** The text the reference emits as a log line for this failure (its argument to `fail`, which
     * `BuiltinResult` turns into a log, `Builtin/Result.hs:88-90`), or none where it emits none.
     */
@@ -173,6 +176,7 @@ enum EvaluationFailure:
     case ExpMod(failure)         => Some(failure.lines.mkString("\n"))
     case ValueOperation(failure) => Some(failure.lines.mkString("\n"))
     case Defect(_, _)            => None
+    case ArrayIndices(failure)   => Some(failure.lines.mkString("\n"))
 
 /** The constructor of `Data` a deconstructing builtin expects. */
 enum DataShape:
