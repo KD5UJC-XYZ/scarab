@@ -304,6 +304,77 @@ final class CostingOracleSuite extends munit.FunSuite:
     assertEquals(disagreements.take(40), Vector.empty[String])
   }
 
+  test("partial replay: the genesis lists of every length and extreme values, upstream programs") {
+    val observations = rows(genesis.resolve("evaluation.jsonl"))
+    val lists =
+      rows(genesis.resolve("evaluation-models.jsonl")).map(m => field[String](m, "id") -> m).toMap
+    val programs = upstream.map((i, p) => field[String](scripts(i), "id") -> p).toMap
+    val unit = Term.lam(Term.constant(Constant.Unit))
+    val limit = ExBudget.of(1L << 60, 1L << 60)
+    val results = observations.flatMap { row =>
+      val id = field[String](row, "id")
+      val (scriptId, listId) = id.split('|') match
+        case Array(s, l) => (s, l)
+        case _           => fail(s"id $id")
+      val model = lists.getOrElse(listId, fail(s"no list $listId"))
+      val language = languageOf(field[Int](model, "language"))
+      val protocol = ProtocolMajor(field[Int](model, "protocol"))
+      val stage = field[String](row, "stage")
+      programs
+        .get(scriptId)
+        .filter(p => stage != "decode" && !constants(p.term).exists(c => bls(c.typeOf)))
+        .flatMap { program =>
+          // The list's values, one value repeated, or the profile's defaults cut or extended with
+          // sevens (the rule of CostModelLengthSuite).
+          val values =
+            (field[Option[Vector[Long]]](model, "values"), field[Option[Long]](model, "fill")) match
+              case (Some(values), _)  => values
+              case (None, Some(fill)) => Vector.fill(field[Int](model, "length"))(fill)
+              case (None, None) =>
+                (DefaultCostModels.list(language, SemanticsVariant.of(language, protocol)) ++
+                  Vector.fill(60)(7L)).take(field[Int](model, "length"))
+          val costs = EvaluationContext
+            .build(language, values)
+            ._2
+            .toOption
+            .flatMap(_.at(protocol))
+            .getOrElse(fail(s"no costs for $listId"))
+          Option.when(
+            CekConformance
+              .builtins(program)
+              .forall(CekConformance.denotations(costs.variant).contains)
+          ) {
+            val caser =
+              if protocol.value < 11 then CaserBuiltin.Unavailable(protocol)
+              else CaserBuiltin.WithoutData
+            val report = CekMachine.run(
+              CekConformance.machine(costs, caser),
+              BudgetMode.Restricting(limit),
+              Term.app(unit, program.term)
+            )
+            val actual = stageOf(report.result)
+            val spent = report.budget.spent
+            val expected = Option.when(stage == "success")(
+              ExBudget.of(field[Long](row, "cpu"), field[Long](row, "memory"))
+            )
+            Option.when(actual != stage || expected.exists(_ != spent))(
+              s"$id: $actual ${Option.when(actual == "success")(spent).fold("")(_.toString)}, " +
+                s"oracle $stage ${expected.fold("")(_.toString)}"
+            )
+          }
+        }
+    }
+    val disagreements = results.flatten
+    println(
+      s"genesis cost-model lists, upstream programs from their text: ${results.size} of " +
+        s"${observations.size} observations run through the machine " +
+        s"(${observations
+            .count(r => field[String](r, "stage") == "success" && field[Long](r, "cpu") < 0)} " +
+        s"successes with a negative CPU in the fixture), ${disagreements.size} disagreements"
+    )
+    assertEquals(disagreements.take(40), Vector.empty[String])
+  }
+
   test(
     "replay: the 55,740 observations and 111,552 budget boundaries (incomplete until the decoder and every builtin exist)"
   ) {
