@@ -375,16 +375,15 @@ cluster does not forge.
 5. Recovery after losing quorum: which fences to offer (restoring the majority, the credential fence), and
    whether a standalone mode that gives up R1 exists at all.
 
-## Out of scope: threshold KES
+## Optional extension: threshold KES
 
-Decided by the owner on 2026-11-12: threshold signing of the KES key (no member holding a full key, for
-example FROST, [RFC 9591][rfc9591]) is **not** part of this design. It is a possible follow-up once proven
-safe. Research for this document found that it is far harder than it looks: FROST signatures are not
-deterministic, so the takeover-by-reproduction of S3 no longer works, and a coordinator that crashes after
-assembling a signature but before recording it leaves a slot that cannot be recovered without risking a
-second, different block. It would also amend [ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md),
-which decided against remote signing. S3 keeps deterministic signing with a whole key on each
-producer-capable member.
+Threshold signing of the KES key (no member holds a full key; for example FROST, [RFC 9591][rfc9591]) is an
+optional extension, not part of this design (owner, 2026-11-12), to revisit only once it is proven safe. It
+would close one gap: the cluster replicates the whole KES key to each producer-capable member. It opens
+more: FROST signatures are not deterministic, so S3's takeover by reproduction no longer works; a
+coordinator that crashes after assembling a signature but before recording it leaves a slot that cannot be
+recovered without risking a second, different block; and it needs its own key format and signer service,
+amending [ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md), which decided against remote signing.
 
 ## Sources
 
