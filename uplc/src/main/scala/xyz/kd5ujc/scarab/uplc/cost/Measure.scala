@@ -156,12 +156,15 @@ object Measure:
       case Nil => None
       case Pending.Items(items, i) :: rest =>
         items.lift(i) match
-          case Some(d) => Some((d, Pending.Items(items, i + 1) :: rest))
-          case None    => nextNode(rest)
+          case Some(d) =>
+            Some((d, if i + 1 < items.size then Pending.Items(items, i + 1) :: rest else rest))
+          case None => nextNode(rest)
       case Pending.Entries(entries, i) :: rest =>
         entries.lift(i / 2) match
           case Some((k, v)) =>
-            Some((if i % 2 == 0 then k else v, Pending.Entries(entries, i + 1) :: rest))
+            val after =
+              if i + 1 < 2 * entries.size then Pending.Entries(entries, i + 1) :: rest else rest
+            Some((if i % 2 == 0 then k else v, after))
           case None => nextNode(rest)
 
   /** The pre-order walk of `flattenCostRose` (lines 132-159): a node's cost, then its children's
