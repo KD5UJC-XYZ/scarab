@@ -59,23 +59,17 @@ object UplcParser:
 
   /** Haskell's `isSpace`: the Latin-1 spaces, and above U+0377 the space separators. */
   private def isSpace(c: Char): Boolean =
-    c == ' ' || (c >= '\t' && c <= '\r') || c == ' ' ||
-      (c > 'ͷ' && Character.getType(c) == Character.SPACE_SEPARATOR)
+    c == ' ' || (c >= 0x9 && c <= 0xd) || c == 0xa0 ||
+      (c > 0x377 && Character.getType(c) == Character.SPACE_SEPARATOR)
 
   // `whitespace` (`ParserCommon.hs:89-90`): spaces, `--` line comments and nested `{- -}` block
   // comments. A block comment is read by a loop over its depth (`skipBlockCommentNested`: the end
   // first, then a nested comment, then any character).
   private val blockComment: P[Unit] =
+    val token: P[Int] =
+      P.oneOf(List(P.string("-}").as(-1), P.string("{-").as(1), P.anyChar.as(0)))
     P.string("{-") *> Monad[P0].tailRecM(1) { depth =>
-      if depth == 0 then P.pure(Right(()))
-      else
-        P.oneOf(
-          List(
-            P.string("-}").as(Left(depth - 1)),
-            P.string("{-").as(Left(depth + 1)),
-            P.anyChar.as(Left(depth))
-          )
-        )
+      if depth == 0 then P.pure(Right(())) else token.map(change => Left(depth + change))
     }
 
   private val ws: P0[Unit] =
@@ -90,6 +84,14 @@ object UplcParser:
 
   private def symbol(s: String): P[Unit] = P.string(s) <* ws
   private def symbolChar(c: Char): P[Unit] = P.char(c) <* ws
+
+  // The punctuation, each with the spaces after it, built once: a step builds no character set.
+  private val openParen: P[Unit] = symbolChar('(')
+  private val closeParen: P[Unit] = symbolChar(')')
+  private val openBracket: P[Unit] = symbolChar('[')
+  private val closeBracket: P[Unit] = symbolChar(']')
+  private val comma: P[Unit] = symbolChar(',')
+  private val builtinName: P0[String] = P.charsWhile0(isIdentifierChar) <* ws
 
   // `Lex.decimal` into an unbounded number.
   private val decimal: P[BigInt] = Numbers.digits.map(BigInt(_))
@@ -167,7 +169,7 @@ object UplcParser:
 
     // `program` (`UntypedPlutusCore/Parser.hs:133-141`): the version is known to every term in it.
     val program: P0[Outcome] =
-      (ws.with1 *> symbolChar('(') *> symbol("program") *> version).flatMap { v =>
+      (ws.with1 *> openParen *> symbol("program") *> version).flatMap { v =>
         val run = Monad[P0].tailRecM[State, Outcome](
           Expect(TermGoal(v), Top(v), Names(Map.empty, 0))
         ) {
@@ -185,8 +187,8 @@ object UplcParser:
       def start(k: K[NamedTerm], names: Names): P[Step] =
         P.oneOf(
           List(
-            symbolChar('[').as(expect(this, AppFunction(this, k), names)),
-            symbolChar('(') *> keyword(k, names),
+            openBracket.as(expect(this, AppFunction(this, k), names)),
+            openParen *> keyword(k, names),
             (name <* ws).map { (text, explicit) =>
               val (next, n) = names.resolve(text, explicit)
               back(NamedTerm.variable(n), k, next)
@@ -195,12 +197,12 @@ object UplcParser:
         )
 
       private def close(value: NamedTerm, k: K[NamedTerm], names: Names): P[Step] =
-        symbolChar(')').as(back(value, k, names))
+        closeParen.as(back(value, k, names))
 
       private def keyword(k: K[NamedTerm], names: Names): P[Step] =
         P.oneOf(
           List(
-            symbol("builtin") *> (P.charsWhile0(isIdentifierChar) <* ws).flatMap { text =>
+            symbol("builtin") *> builtinName.flatMap { text =>
               DefaultFun
                 .fromName(text)
                 .fold(P.pure(stop(TextError.UnknownBuiltin(text))))(f =>
@@ -236,7 +238,7 @@ object UplcParser:
       def fields(k: Fields, names: Names): P0[Step] =
         either(
           start(k, names),
-          symbolChar(')').as(back(NamedTerm.constr(k.tag, k.done), k.next, names))
+          closeParen.as(back(NamedTerm.constr(k.tag, k.done), k.next, names))
         )
 
       /** The branches of a `case`: the version is checked once they are read. */
@@ -244,7 +246,7 @@ object UplcParser:
         either(
           start(k, names),
           if !version.allowsConstrAndCase then P.pure(stop(TextError.CaseBeforeV110(version)))
-          else symbolChar(')').as(back(NamedTerm.caseOf(k.scrutinee, k.done), k.next, names))
+          else closeParen.as(back(NamedTerm.caseOf(k.scrutinee, k.done), k.next, names))
         )
 
     final case class Top(version: ProgramVersion) extends K[NamedTerm]:
@@ -262,16 +264,16 @@ object UplcParser:
         val applied = NamedTerm.app(function, argument)
         either(
           goal.start(AppArgument(goal, applied, next), names),
-          symbolChar(']').as(back(applied, next, names))
+          closeBracket.as(back(applied, next, names))
         )
 
     final case class Lam(binder: Name, next: K[NamedTerm]) extends K[NamedTerm]:
       def receive(body: NamedTerm, names: Names): P0[Step] =
-        symbolChar(')').as(back(NamedTerm.lam(binder, body), next, names))
+        closeParen.as(back(NamedTerm.lam(binder, body), next, names))
 
     final case class Wrap(layer: NamedTerm => NamedTerm, next: K[NamedTerm]) extends K[NamedTerm]:
       def receive(term: NamedTerm, names: Names): P0[Step] =
-        symbolChar(')').as(back(layer(term), next, names))
+        closeParen.as(back(layer(term), next, names))
 
     final case class Fields(
         goal: TermGoal,
@@ -303,7 +305,7 @@ object UplcParser:
 
     final case class ConBody(next: K[NamedTerm]) extends K[Con]:
       def receive(c: Con, names: Names): P0[Step] =
-        symbolChar(')').as(back(NamedTerm.constant(c), next, names))
+        closeParen.as(back(NamedTerm.constant(c), next, names))
 
     // ---- types (`PlutusCore/Parser/Type.hs:93-158`) ----
 
@@ -329,12 +331,12 @@ object UplcParser:
 
       def start(k: K[Kinded], ns: Names): P[Step] =
         P.oneOf(
-          List(symbolChar('(').as(expect(this, TypeHead(k), ns)), keyword.map(back(_, k, ns)))
+          List(openParen.as(expect(this, TypeHead(k), ns)), keyword.map(back(_, k, ns)))
         )
 
       /** `many defaultUni` and then `)`. */
       def arguments(applied: Kinded, k: K[Kinded], ns: Names): P0[Step] =
-        either(symbolChar(')').as(back(applied, k, ns)), start(TypeArgument(applied, k), ns))
+        either(closeParen.as(back(applied, k, ns)), start(TypeArgument(applied, k), ns))
 
     final case class TypeHead(next: K[Kinded]) extends K[Kinded]:
       def receive(head: Kinded, names: Names): P0[Step] = TypeGoal.arguments(head, next, names)
@@ -355,12 +357,12 @@ object UplcParser:
         case DefaultUni.ByteString => bytestring.map(b => back(Con.ByteString(b), k, names))
         case DefaultUni.String =>
           stringLiteral.map(_.fold(stop, s => back(Con.String(s), k, names)))
-        case DefaultUni.Unit => (symbolChar('(') *> symbolChar(')')).as(back(Con.Unit, k, names))
+        case DefaultUni.Unit => (openParen *> closeParen).as(back(Con.Unit, k, names))
         case DefaultUni.Bool =>
           P.oneOf(List(symbol("True").as(true), symbol("False").as(false)))
             .map(b => back(Con.Bool(b), k, names))
         case DefaultUni.Data =>
-          if parens then symbolChar('(').as(expect(DataGoal, AsConstant(parens, k), names))
+          if parens then openParen.as(expect(DataGoal, AsConstant(parens, k), names))
           else DataGoal.start(AsConstant(parens, k), names)
         case DefaultUni.Bls12_381_G1_Element =>
           bytes0x.map(b =>
@@ -386,13 +388,13 @@ object UplcParser:
         case DefaultUni.List(e)  => items(e, array = false, k, names)
         case DefaultUni.Array(e) => items(e, array = true, k, names)
         case DefaultUni.Pair(a, b) =>
-          symbolChar('(').as(expect(ConstantGoal(a, parens = false), PairFirst(b, k), names))
+          openParen.as(expect(ConstantGoal(a, parens = false), PairFirst(b, k), names))
 
     // `conList` and `conArray`: `[`, elements separated by `,` (`sepBy`), `]`. An element never
     // starts with `]`, so `]` first is `sepBy`'s empty list.
     private def items(e: DefaultUni, array: Boolean, k: K[Con], names: Names): P[Step] =
-      symbolChar('[') *> either(
-        symbolChar(']').as(collection(e, array, Vector.empty, k, names)),
+      openBracket *> either(
+        closeBracket.as(collection(e, array, Vector.empty, k, names)),
         P.pure(expect(ConstantGoal(e, parens = false), Items(e, array, Vector.empty, k), names))
       )
 
@@ -411,26 +413,26 @@ object UplcParser:
       def receive(item: Con, names: Names): P0[Step] =
         val all = done :+ item
         either(
-          symbolChar(',').as(
+          comma.as(
             expect(ConstantGoal(e, parens = false), Items(e, array, all, next), names)
           ),
-          symbolChar(']').as(collection(e, array, all, next, names))
+          closeBracket.as(collection(e, array, all, next, names))
         )
 
     // `conPair`: `(`, the first, `,`, the second, `)`.
     final case class PairFirst(second: DefaultUni, next: K[Con]) extends K[Con]:
       def receive(first: Con, names: Names): P0[Step] =
-        symbolChar(',').as(
+        comma.as(
           expect(ConstantGoal(second, parens = false), PairSecond(first, next), names)
         )
 
     final case class PairSecond(first: Con, next: K[Con]) extends K[Con]:
       def receive(second: Con, names: Names): P0[Step] =
-        symbolChar(')').as(back(Con.Pair(first, second), next, names))
+        closeParen.as(back(Con.Pair(first, second), next, names))
 
     final case class AsConstant(parens: Boolean, next: K[Con]) extends K[PlutusData]:
       def receive(d: PlutusData, names: Names): P0[Step] =
-        if parens then symbolChar(')').as(back(Con.Data(d), next, names))
+        if parens then closeParen.as(back(Con.Data(d), next, names))
         else P.pure(back(Con.Data(d), next, names))
 
     // ---- data (`conDataNoParens`, `Builtin.hs:119-131`) ----
@@ -442,9 +444,9 @@ object UplcParser:
             (symbol("Constr") *> integer).flatMap(i =>
               list(DataItems(PlutusData.Constr(i, _), Vector.empty, k), names)
             ),
-            symbol("Map") *> symbolChar('[') *>
+            symbol("Map") *> openBracket *>
               either(
-                symbolChar(']').as(back(PlutusData.Map(Vector.empty), k, names)),
+                closeBracket.as(back(PlutusData.Map(Vector.empty), k, names)),
                 entry(Vector.empty, k, names)
               ),
             symbol("List") *> list(DataItems(PlutusData.List(_), Vector.empty, k), names),
@@ -454,14 +456,14 @@ object UplcParser:
         )
 
       private def list(k: DataItems, names: Names): P[Step] =
-        symbolChar('[') *> either(
-          symbolChar(']').as(back(k.build(Vector.empty), k.next, names)),
+        openBracket *> either(
+          closeBracket.as(back(k.build(Vector.empty), k.next, names)),
           P.pure(expect(DataGoal, k, names))
         )
 
       /** A map entry: `(`, the key, `,`, the value, `)`. */
       def entry(done: Vector[(PlutusData, PlutusData)], k: K[PlutusData], names: Names): P[Step] =
-        symbolChar('(').as(expect(DataGoal, MapKey(done, k), names))
+        openParen.as(expect(DataGoal, MapKey(done, k), names))
 
     final case class DataItems(
         build: Vector[PlutusData] => PlutusData,
@@ -471,14 +473,14 @@ object UplcParser:
       def receive(item: PlutusData, names: Names): P0[Step] =
         val all = done :+ item
         either(
-          symbolChar(',').as(expect(DataGoal, DataItems(build, all, next), names)),
-          symbolChar(']').as(back(build(all), next, names))
+          comma.as(expect(DataGoal, DataItems(build, all, next), names)),
+          closeBracket.as(back(build(all), next, names))
         )
 
     final case class MapKey(done: Vector[(PlutusData, PlutusData)], next: K[PlutusData])
         extends K[PlutusData]:
       def receive(key: PlutusData, names: Names): P0[Step] =
-        symbolChar(',').as(expect(DataGoal, MapValue(done, key, next), names))
+        comma.as(expect(DataGoal, MapValue(done, key, next), names))
 
     final case class MapValue(
         done: Vector[(PlutusData, PlutusData)],
@@ -487,9 +489,9 @@ object UplcParser:
     ) extends K[PlutusData]:
       def receive(value: PlutusData, names: Names): P0[Step] =
         val all = done :+ (key -> value)
-        symbolChar(')') *> either(
-          symbolChar(',') *> DataGoal.entry(all, next, names),
-          symbolChar(']').as(back(PlutusData.Map(all), next, names))
+        closeParen *> either(
+          comma *> DataGoal.entry(all, next, names),
+          closeBracket.as(back(PlutusData.Map(all), next, names))
         )
 
     // ---- string literals (`conText`, `Builtin.hs:86-87`) ----
@@ -529,9 +531,9 @@ object UplcParser:
     // `buildValueWith`'s order checks, are made once all are read.
     private val valueLiteral: P[Either[TextError, Value]] =
       def listOf[A](entry: P[A]): P[List[A]] =
-        symbolChar('[') *> entry.repSep0(symbolChar(',')) <* symbolChar(']')
+        openBracket *> entry.repSep0(comma) <* closeBracket
       def pairOf[A](second: P[A]): P[(Bytes, A)] =
-        symbolChar('(') *> ((bytestring <* symbolChar(',')) ~ second) <* symbolChar(')')
+        openParen *> ((bytestring <* comma) ~ second) <* closeParen
       listOf(pairOf(listOf(pairOf(integer)))).map(checkValue)
 
     private def checkValue(outer: List[(Bytes, List[(Bytes, BigInt)])]): Either[TextError, Value] =
