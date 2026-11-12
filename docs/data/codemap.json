@@ -6,7 +6,7 @@
     "protocol": "Pure Ouroboros mini-protocol codecs and state machines",
     "network": "Effectful bearer, multiplexer, connections, peer selection",
     "uplc": "Scarab's own UPLC evaluator, with no Scalus on its class path (ADR 0027)",
-    "plutus": "Plutus evaluation through Scalus",
+    "plutus": "Plutus evaluation through Scalus, or through the own evaluator (--plutus-vm)",
     "ledger": "Blocks, transactions, rules, native ledger state",
     "consensus": "Praos family, chain selection, hard fork, state mirror",
     "storage": "Stores, snapshots, migrations, Haskell formats, SCLS, Mithril",
@@ -541,15 +541,19 @@
     {
       "module": "plutus",
       "path": "plutus",
-      "responsibility": "Script evaluator algebra, Scalus adapter, builtin availability; re-exports PlutusData, ExUnits, PlutusLanguage and ParamNames from uplc",
+      "responsibility": "Script evaluator algebra, the Scalus adapter and the adapter of the own evaluator (uplc), the backend choice of --plutus-vm, builtin availability; re-exports PlutusData, ExUnits, PlutusLanguage and ParamNames from uplc",
       "entryPoints": [
         "ScriptEvaluator",
         "ScalusEvaluator",
+        "ScarabEvaluator",
+        "PlutusVm",
         "PlutusAvailability",
         "RetryingMemo"
       ],
       "suites": [
         "ScalusEvaluatorSuite",
+        "ScarabEvaluatorSuite",
+        "PlutusBackendsSuite",
         "PlutusDataSuite",
         "PlutusAvailabilitySuite",
         "BuiltinCostingSuite",
@@ -558,6 +562,7 @@
       ],
       "docs": [
         "docs/adr/0003-plutus-through-scalus.md",
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md",
         "docs/adr/0018-parallel-plutus-after-ordered-preparation.md",
         "docs/design/parallel-plutus.md",
         "docs/design/script-results.md"
@@ -598,7 +603,8 @@
         "RatifySuite",
         "ScriptContextOracleSuite",
         "VotingProceduresSuite",
-        "WithdrawalContextsSuite"
+        "WithdrawalContextsSuite",
+        "PlutusBackendDifferentialSuite"
       ],
       "docs": [
         "docs/adr/0007-era-indexed-state.md",
@@ -1058,7 +1064,8 @@
         "MempoolSuite",
         "LocalSubmissionSuite",
         "LocalMonitorSuite",
-        "MempoolBackpressureSuite"
+        "MempoolBackpressureSuite",
+        "PlutusBackendProbeSuite"
       ],
       "docs": [
         "docs/architecture.md"
