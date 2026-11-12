@@ -258,11 +258,15 @@ preference:
 
 1. **Restore the majority.** Bring members back with their durable state, or wiped and re-added through
    the membership protocol, until the one history has a quorum again. R1 is kept.
-2. **Replace the cluster, only after external fencing.** If the history cannot be recovered, a new
-   cluster may start only once there is **positive evidence**, from outside the cluster, that every former
-   signer has stopped: its process verified terminated, or its machine powered off or isolated from the
-   network (for example through the hosting provider's console or a switched power unit). Removing the KES
-   files or stopping the agent is not enough, because a running node holds the current key in memory. An
+2. **Replace the cluster, only after durable external fencing.** If the history cannot be recovered, a
+   new cluster may start only once there is **positive evidence**, from outside the cluster, that every
+   former signer is stopped **for good**: its process verified terminated *and* prevented from restarting
+   (its service disabled, its key material and Raft state destroyed), or its machine powered off and
+   decommissioned under a controlled procedure (for example through the hosting provider's console or a
+   switched power unit). Network isolation alone does not qualify: an isolated producer keeps its key and
+   its Raft state, and once connectivity returns, an old majority can go on committing claims beside the
+   new cluster. Removing the KES files or stopping the agent is not enough either, because a running node
+   holds the current key in memory. An
    operator's belief that members are down is not evidence, and wiping a disk does not stop a process still
    running from memory: a partitioned majority of the old cluster could go on committing claims. With that
    evidence for every former signer, R1 is kept. The procedure lists the evidence it needs per member, and
@@ -297,7 +301,9 @@ without the claim protocol; it is documented and logged as **giving up R1**, nev
   for slots at or after `A` and above the claim watermark. Blocks from before `A` (forged by the pool's
   previous single producer, or replayed while a member resynchronises) and blocks below the watermark are
   history, not new forging activity. A header for a slot it has already judged, delivered again after a
-  rollback, is judged again against the same claim, and an identical block passes.
+  rollback, is judged again against the same claim, and an identical block passes. This is a **detection
+  limit**, not a safety gap: a rogue producer's block for a slot at or below the watermark, if it appears
+  only later, is not flagged. R1 rests on the unique claim (S3); the guard is a supplementary alarm.
 - **Readiness.** Each member publishes, ahead of each leader slot, whether it could forge it (tip lag,
   KES window, counter against the chain, clock offset, peers). The node reports it through the existing
   metrics and the `/forging` endpoint, and alerts when fewer than two members are ready.
@@ -345,15 +351,19 @@ invariants:
 Its actions are those of S3 and S4: build, claim, sign, diffuse, take over by reproduction, crash at any
 step, pause and resume, partition and heal, advance the watermark, wipe and re-add a member, a
 quorum-validated read, chain rollback, activation, and the three recovery paths after a loss of quorum.
-Raft is abstracted as a linearizable compare-and-set store; what the specification models is the events
-that break that abstraction (a restored disk, a rolled-back snapshot, a lost majority) and the rules S3
-applies to them. Deterministic signing is an axiom of the specification, backed by V3.
+Raft is abstracted as a linearizable compare-and-set store, so the specification establishes the claim
+protocol's safety *given* that abstraction. The events where the abstraction does not hold — a restored
+disk, a rolled-back snapshot, a lost majority — are modelled explicitly as the store forgetting or forking
+its history, together with the rules S3 applies to them: wiping and re-adding a member, durable external
+fencing, and the credential fence. Each recovery path then either keeps R1 or yields its expected
+counterexample. Deterministic signing is an axiom of the specification, backed by V3.
 
 **V2. The checker in CI.** TLC is one Java archive, pinned by version and checksum with the repository's
 other pins, and run by a guard script in the existing JDK image (no new image, and no `java` on the host,
 per AGENTS.md). The script fails on any invariant violation and prints the counterexample trace. It also
 checks the paths this document calls weaker — replacing a cluster without evidence that every former
-signer stopped, and the credential fence before its certificate is stable — and **requires** a
+signer is durably stopped (including with only network isolation, healed later), and the credential fence
+before its certificate is stable — and **requires** a
 counterexample for each, so that a later edit cannot relabel a weak path as safe without the checker
 objecting.
 
@@ -391,7 +401,7 @@ before the code exists. S0 and S1 mirror the reference and do not wait for them.
 | Old producer left running with the keys | doppelganger guard stops the cluster at its first block and alerts |
 | Hot key stolen | the credential fence (S5) |
 | Members on different forks | tip-agreement alert; claim still unique per slot |
-| Raft data lost on a majority | the cluster fails closed; a replacement cluster starts only after every former producer is externally verified shut down (R1 kept), or under the credential fence (a breach bounded to the window before the new certificate is stable) |
+| Raft data lost on a majority | the cluster fails closed; a replacement cluster starts only after every former producer is durably fenced, stopped for good rather than isolated (R1 kept), or under the credential fence (a breach bounded to the window before the new certificate is stable) |
 
 ## Things worth knowing that were not asked
 
