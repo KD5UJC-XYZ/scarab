@@ -1323,6 +1323,16 @@
       ],
       "suites": [],
       "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "uplc",
+      "responsibility": "Hand-run benchmarks for the `uplc` package: the own CEK machine's throughput against Scalus's",
+      "entryPoints": [
+        "CekThroughputMain"
+      ],
+      "suites": [],
+      "docs": []
     }
   ]
 }
