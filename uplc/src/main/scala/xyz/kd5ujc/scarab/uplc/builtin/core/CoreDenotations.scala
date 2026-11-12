@@ -270,7 +270,7 @@ object CoreDenotations:
         case _               => Left(failed(EvaluationFailure.UnexpectedData(DataShape.B)))
       },
       // Haskell's derived `Eq`: constructors, entries and items compared in order
-      // (`Builtins.hs:1843-1849`, `PlutusCore/Data.hs:41-48`); `PlutusData`'s equality is that
+      // (`Builtins.hs:1843-1849`, `PlutusCore/Data.hs:42-49`); `PlutusData`'s equality is that
       // structural comparison, walked on the heap.
       EqualsData -> constant2[PlutusData, PlutusData]((x, y) => bool(x == y)),
       SerialiseData -> constant1[PlutusData](d => bytes(DataSerialisation.serialise(d))),

@@ -472,7 +472,7 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
         case other => fail(s"$f: $other")
   }
 
-  // Derived `Eq` (`PlutusCore/Data.hs:41-48`): entries in order, repeats kept.
+  // Derived `Eq` (`PlutusCore/Data.hs:42-49`): entries in order, repeats kept.
   test("equalsData compares map entries in order") {
     val ab =
       PlutusData.Map(Vector(PlutusData.I(1) -> PlutusData.I(1), PlutusData.I(2) -> PlutusData.I(2)))

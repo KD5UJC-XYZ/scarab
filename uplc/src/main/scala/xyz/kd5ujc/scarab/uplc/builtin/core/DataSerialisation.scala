@@ -6,22 +6,22 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.uplc.PlutusData
 
 /** The CBOR encoding of `Data` that `serialiseData` returns (`BSL.toStrict . serialise`,
-  * `PlutusCore/Default/Builtins.hs:1850-1856`): `encodeData` of `PlutusCore/Data.hs:144-196`,
+  * `PlutusCore/Default/Builtins.hs:1850-1856`): `encodeData` of `PlutusCore/Data.hs:146-198`,
   * plutus 1.70.0.0 (`507cab8c`).
   *
   *   - A constructor of index 0 to 6 is tag 121 + i, of 7 to 127 tag 1280 + (i - 7), and any other
   *     tag 102 over a definite pair of the index and the fields. That index is written by
   *     `encodeWord64` when it fits a `Word64` and by cborg's `encodeInteger` otherwise: a negative
   *     integer down to -2^64, else a big number with its magnitude in one definite byte string,
-  *     however long (lines 152-163).
+  *     however long (lines 149-160).
   *   - The fields of a constructor and the items of a list are `encode` of a Haskell list: an empty
   *     array (`80`) when there are none, else an indefinite array (`9f` ... `ff`).
-  *   - A map is a definite map of its entries in order (lines 164-166).
+  *   - A map is a definite map of its entries in order (lines 161-163).
   *   - An integer that fits 64 bits is a plain integer; any other is tag 2 or 3 over its magnitude
   *     (`integerToBytesBE`, `PlutusCore/Bitwise.hs:304-306`) written as a byte string (lines
   *     170-182).
   *   - A byte string of at most 64 bytes is definite; a longer one is an indefinite byte string of
-  *     64-byte chunks, the last one shorter (lines 184-200).
+  *     64-byte chunks, the last one shorter (lines 185-198).
   *
   * The list encoding (`defaultEncodeList`, `serialise`) and the integer encoding (cborg) are not in
   * the vendored source; the reference bytes of `fixtures/reference/plutus-serialise-data` pin both.
@@ -106,7 +106,7 @@ object DataSerialisation:
     else if n.signum > 0 then PositiveBig :: byteString(Bytes.wrap(magnitude(n)))
     else NegativeBig :: byteString(Bytes.wrap(magnitude(-1 - n)))
 
-  /** `encodeBs` of `PlutusCore/Data.hs:184-200`. */
+  /** `encodeBs` and `to64ByteChunks` of `PlutusCore/Data.hs:185-198`. */
   private def byteString(b: Bytes): List[Array[Byte]] =
     if b.size <= 64 then List(head(2, b.size.toLong), b.toArray)
     else
