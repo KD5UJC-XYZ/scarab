@@ -52,8 +52,8 @@ enum ScriptProblem:
     case Flat(cause)            => cause.message
     case Availability(cause)    => cause.message
     case TrailingBytes(count)   => s"$count bytes remain after the script (RemainderError)"
-    case Uplc(cause)            => s"deserialiseScript refused it: $cause"
-    case UplcVersion(cause)     => s"the program's version is not available: $cause"
+    case Uplc(cause)            => s"deserialiseScript refused it: ${UplcText.decode(cause)}"
+    case UplcVersion(cause)     => s"the program's version is not available: ${cause.productPrefix}"
 
 /** Why this implementation supplies no verdict for a script: never the reference's verdict. The
   * builtins are named by the `uplc` module's [[DefaultFun]], whichever backend reports them (ADR
@@ -82,26 +82,32 @@ enum BackendFailure:
     case Defect(cause)               => Option(cause.getMessage).getOrElse(cause.getClass.getName)
     case BuiltinUnavailable(builtin) => s"builtin $builtin unavailable"
     case CostingUnmirrored(builtin)  => s"the costing function of $builtin is not mirrored"
-    case Uplc(reason)                => s"the own evaluator gives no verdict: $reason"
+    case Uplc(reason) => s"the own evaluator gives no verdict: ${UplcText.unavailable(reason)}"
 
 /** Why a script failed, as the backend that evaluated it reports it. */
-enum ScriptFailure:
-  /** The Scalus backend: the machine's typed exception and the `trace` output. */
-  case Thrown(cause: Throwable, logs: Vector[String])
-
-  /** Scarab's own evaluator ([[ScarabEvaluator]]): the reference's `EvaluationError` and the
-    * `trace` output.
-    */
-  case Uplc(error: EvaluationError, logs: Vector[String])
-
+sealed trait ScriptFailure:
   def logs: Vector[String]
+  def message: String
 
-  def message: String = this match
-    case Thrown(cause, logs) =>
+object ScriptFailure:
+  /** The Scalus backend: the machine's typed exception and the `trace` output. It reads as it read
+    * before the own evaluator, `ScriptFailure(cause,logs)`, where a refusal's detail prints it.
+    */
+  final case class Thrown(cause: Throwable, logs: Vector[String]) extends ScriptFailure:
+    override def productPrefix: String = "ScriptFailure"
+    def message: String =
       val detail = Option(cause.getMessage).getOrElse(cause.getClass.getName)
       if logs.isEmpty then detail else s"$detail; trace: ${logs.mkString(" | ")}"
-    case Uplc(error, logs) =>
-      if logs.isEmpty then error.toString else s"$error; trace: ${logs.mkString(" | ")}"
+
+  /** Scarab's own evaluator ([[ScarabEvaluator]]): the reference's `EvaluationError` and the
+    * `trace` output. Its text names the error's cases only ([[UplcText]]): never a constant or a
+    * term of the script, which can be as large as a transaction.
+    */
+  final case class Uplc(error: EvaluationError, logs: Vector[String]) extends ScriptFailure:
+    override def toString: String = s"ScriptFailure.Uplc(${UplcText.evaluation(error)},$logs)"
+    def message: String =
+      val detail = UplcText.evaluation(error)
+      if logs.isEmpty then detail else s"$detail; trace: ${logs.mkString(" | ")}"
 
 /** Why a script did not validate. */
 enum EvalFailure:

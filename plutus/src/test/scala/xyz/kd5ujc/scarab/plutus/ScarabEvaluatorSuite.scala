@@ -172,3 +172,51 @@ class ScarabEvaluatorSuite extends FunSuite:
         assert(cause eq thrown)
       case other => fail(other.toString)
   }
+
+  test("whatever reaches the adapter is no verdict: a stack overflow, an exception, a JVM error") {
+    def outcome(fault: Throwable): BackendFailure =
+      ScarabEvaluator
+        .guarded[Either[BackendFailure, Unit]](Left(_))(throw fault)
+        .fold(identity, _ => fail(s"$fault: no failure"))
+    assertEquals(outcome(new StackOverflowError("injected")), BackendFailure.StackExhausted)
+    val exception = new IllegalStateException("injected")
+    assertEquals(outcome(exception), BackendFailure.Uplc(Unavailability.Thrown(exception)))
+    for fault <- Vector(
+        new UnsatisfiedLinkError("injected"),
+        new ExceptionInInitializerError("injected"),
+        new OutOfMemoryError("injected")
+      )
+    do assertEquals(outcome(fault), BackendFailure.Defect(fault), fault.getClass.getName)
+  }
+
+  test("the text of a failure about a deep constant names its cases, on a small stack") {
+    val deep = nestedEmptyList(5000)
+    val scripts = Vector(
+      // casing a list with three branches: the caser refuses the constant (protocol 11)
+      request(Case(deep, Vector(unit, unit, unit)), protocol = 11),
+      // a list where addInteger takes an integer: the unlifting refuses its type
+      request(Ap(Ap(Builtin(0), deep), integer(1)))
+    )
+    for r <- scripts do
+      val result = scarab.evaluate(r)
+      val (text, rendered) = xyz.kd5ujc.scarab.uplc.SmallStack.run(
+        (
+          result match
+            case EvalResult.Failure(reason, _, _) => reason.message
+            case other                            => fail(s"not a failure: $other")
+          ,
+          result.toString
+        )
+      )
+      assert(Set("script", "decode")(kind(result)), rendered.take(300))
+      assert(text.length < 200, text.take(300))
+  }
+
+  test("the Scalus backend's script failure reads as it did before the own evaluator") {
+    val cause = new IllegalStateException("x")
+    assertEquals(
+      EvalFailure.Script(ScriptFailure.Thrown(cause, Vector("a", "b"))).toString,
+      s"Script(ScriptFailure($cause,Vector(a, b)))"
+    )
+    assertEquals(ScriptFailure.Thrown(cause, Vector("a")).message, "x; trace: a")
+  }

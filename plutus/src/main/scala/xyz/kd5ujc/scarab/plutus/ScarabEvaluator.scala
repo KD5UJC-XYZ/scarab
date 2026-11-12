@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.plutus
 import cats.Id
 import cats.effect.kernel.Sync
 import cats.syntax.all.*
+import scala.util.control.NonFatal
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.uplc.{Program, ProtocolMajor}
 import xyz.kd5ujc.scarab.uplc.cek.CekError
@@ -39,9 +40,9 @@ import xyz.kd5ujc.scarab.uplc.ledger.{
   *   - any other failure of the machine, or a V3 script that did not return `()`:
   *     [[EvalFailure.Script]] with [[ScriptFailure.Uplc]];
   *   - no verdict ([[ScriptResult.Unavailable]]: protocol 12 and later, a defect, a cost model the
-  *     evaluator could not take, an exception it threw), a stack overflow, and a budget beyond 64
-  *     bits: [[EvalFailure.Unsupported]], and [[ScriptDecodeFailure.Unavailable]] from the decoder,
-  *     never a failure of the script.
+  *     evaluator could not take, an exception it threw), any `Throwable` that reaches the adapter
+  *     ([[guarded]]), and a budget beyond 64 bits: [[EvalFailure.Unsupported]], and
+  *     [[ScriptDecodeFailure.Unavailable]] from the decoder, never a failure of the script.
   *
   * Evaluation is a deterministic function of the request, so [[pure]] is the interpreter the pure
   * ledger rules use. The two caches (the evaluation context of each language and cost-model list,
@@ -98,7 +99,7 @@ object ScarabEvaluator:
       bounded(request.budget).fold(
         failure(_),
         budget =>
-          stackSafe(reason => failure(EvalFailure.Unsupported(reason)))(
+          guarded(reason => failure(EvalFailure.Unsupported(reason)))(
             result(outcome(request, budget))
           )
       )
@@ -129,7 +130,7 @@ object ScarabEvaluator:
         protocolMajor: Int,
         script: Bytes
     ): Either[ScriptDecodeFailure, Unit] =
-      stackSafe[Either[ScriptDecodeFailure, Unit]](reason =>
+      guarded[Either[ScriptDecodeFailure, Unit]](reason =>
         Left(ScriptDecodeFailure.Unavailable(reason))
       )(
         admitted(language, protocolMajor, script).void.leftMap {
@@ -180,17 +181,23 @@ object ScarabEvaluator:
   private def failure(reason: EvalFailure): EvalResult =
     EvalResult.Failure(reason, ExUnits.zero, Vector.empty)
 
-  /** The machine and the decoder keep their stacks on the heap, so a stack overflow is a defect
-    * here: no verdict ([[BackendFailure.StackExhausted]]), as on the Scalus backend, never an error
-    * that ends the thread the ledger rules run on.
+  /** What the adapter's body throws, as no verdict: the own evaluator turns its non-fatal
+    * exceptions into [[Unavailability.Thrown]] itself, so what reaches here is a defect of this
+    * adapter or an error of the JVM. A stack overflow is [[BackendFailure.StackExhausted]] (the
+    * machine and the decoder keep their stacks on the heap, so it is a defect too); a non-fatal
+    * exception is [[Unavailability.Thrown]]; any other `Throwable` (a `LinkageError` of a native
+    * library, an `OutOfMemoryError`) is [[BackendFailure.Defect]], as on the Scalus backend, whose
+    * worker turns every `Throwable` into one. None is ever an error that ends the thread the ledger
+    * rules run on, nor a failure of the script.
     */
-  private def stackSafe[A](unavailable: BackendFailure => A)(body: => A): A =
-    Thrown
-      .orAlso[StackOverflowError, A](body)
+  private[plutus] def guarded[A](unavailable: BackendFailure => A)(body: => A): A =
+    Either
+      .catchOnly[Throwable](body)
       .fold(
         {
           case _: StackOverflowError => unavailable(BackendFailure.StackExhausted)
-          case error => unavailable(BackendFailure.Uplc(Unavailability.Thrown(error)))
+          case NonFatal(error) => unavailable(BackendFailure.Uplc(Unavailability.Thrown(error)))
+          case error           => unavailable(BackendFailure.Defect(error))
         },
         identity
       )
