@@ -61,7 +61,8 @@ From the reference sources Scarab mirrors:
   under Leios loses the certification of its endorser block. Equivocation rules for Peras votes are not
   settled in this research; any protocol that adds signed messages per pool adds ways to equivocate.
 - **The counter is a fencing token the network enforces.** A header with counter `n + 1` is accepted, wins
-  every same-slot tie against counter `n`, and once on the chain makes counter `n` invalid. This is how a
+  every same-slot tie against counter `n`, and once on the chain makes counter `n` invalid on that chain
+  (irreversibly only once that block is stable, `k` blocks deep). This is how a
   compromised hot key is revoked (ouroboros-consensus PR [#1610][pr1610], an explanation of issue numbers).
   It needs the cold key, which must stay offline, so it is a break-glass tool, not an automatic one. The
   same document warns that incrementing more than once inside a stability window can be undone by a short
@@ -76,9 +77,9 @@ reproducible rather than from racing.
 ## Requirements
 
 - **R1 Safety.** At most one distinct block per leader slot, whatever crashes, partitions or clock errors
-  occur, provided recovery follows the recovery invariant (S3) with its state fence. Re-sending the
-  identical block is allowed. The credential fence bounds a breach to a window, and a standalone mode, if
-  offered, gives R1 up.
+  occur, as long as the cluster keeps its one replicated history (S3). Re-sending the identical block is
+  allowed. Recovery that cannot keep that history is either externally fenced or explicitly weaker (S3,
+  loss of quorum).
 - **R2 Liveness, conditional.** The pool forges in a leader slot when a majority of the cluster and one
   ready producer are up, network and processing delays stay within their measured bounds, clock skew is
   within its limit, the forger is on a recent tip the majority shares, and the claim, signature and
@@ -184,127 +185,129 @@ producer-capable members. Consensus is Raft; Scarab should not implement Raft it
 are an external etcd cluster (three small processes; its transactions give compare-and-set directly) and
 an embedded JVM library such as Apache Ratis. This is an owner decision.
 
-**The claim protocol.** Every record carries the cluster's generation (below). For each leader slot `s`,
-with a forging deadline `D(s)` after which no member claims, signs or diffuses for `s`:
+**The invariants.** Safety follows from the uniqueness of the committed signing intent, not from the
+uniqueness of the signer:
+
+1. **One replicated history per pool.** Every signing decision is a record in one Raft log. A producer
+   never signs without a committed claim.
+2. **One immutable claim per slot.** `Claim(s)` holds the complete canonical intent: everything needed to
+   reproduce the exact block (the unsigned header body and the block body). Committing the same claim
+   again is idempotent; a different claim for a slot that has one is refused.
+3. **Deterministic signing and reproduction.** Every producer-capable member produces the same signed
+   block from a committed claim, or refuses to forge.
+4. **No automatic fresh-cluster recovery.** Quorum is restored through Raft's membership protocol. A
+   history that cannot be recovered is replaced only under the governed procedure in "Loss of quorum".
+5. **A linearizable doppelganger check** (S4).
+
+**The protocol.** For each leader slot `s`, with a forging deadline `D(s)` after which no member claims,
+signs or diffuses for `s`:
 
 1. Every producer-capable member evaluates leadership with its own VRF key, as today.
 2. The preferred forger for `s` is the Raft leader if it reported itself ready; otherwise the ready member
    with the best connectivity. This is only a preference.
-3. The preferred forger builds the block at the start of `s` and commits
-   `Claim(s) = ForgeIntent(s, header body, block body)` with a compare-and-set that succeeds only if no
-   claim for `s` exists and `s` is above the watermark. It signs **only after the commit succeeds**.
-4. It then commits `Signed(s) = (header hash, header bytes)` and **only after that commit** diffuses the
-   block. The two records are the two phases of one slot: what the cluster decided to sign, and exactly
-   what it signed.
-5. Any other ready member waits a takeover delay `δ` into the slot. If no claim for `s` exists, it tries
+3. The preferred forger builds the block at the start of `s` and commits `Claim(s)` with a compare-and-set
+   that succeeds only if no claim for `s` exists and `s` is above the watermark. It signs **only after the
+   commit succeeds**, then diffuses the block.
+4. Any other ready member waits a takeover delay `δ` into the slot. If no claim for `s` exists, it tries
    the same compare-and-set for its own intent. If a claim exists, it reads it.
-6. A member that finds a claim for `s` it did not make never builds its own block for `s`. If the chain
-   has not seen the block by `δ`, it diffuses the block of `Signed(s)` if that exists, and otherwise
-   **reproduces the claimed block**, commits `Signed(s)` and diffuses it.
-7. Past `D(s)` every member stops working on `s`: a slot that did not make its deadline is lost, as the
+5. A member that finds a claim for `s` it did not make never builds its own block for `s`. If the chain
+   has not seen the block by `δ`, it **reproduces the claimed block** and diffuses it.
+6. Past `D(s)` every member stops working on `s`: a slot that did not make its deadline is lost, as the
    reference passes over a slot its forging loop overran. The deadline also stops a member that was paused
    and resumes late from acting on `s`; it is a timing guard, and R1 does not rest on it.
 
-Step 6 works because, for a given key and message, every signature in a Praos header is deterministic:
+Step 5 works because, for a given key and message, every signature in a Praos header is deterministic:
 the leader VRF proof (ECVRF draft-03 derives its nonce from the key and input) and the KES signature
 (Sum6 over Ed25519, which is deterministic per RFC 8032). Given the claimed header body and the same KES
 evolution, any member produces the identical header, and therefore the identical block. A primary that
 crashes between claiming and diffusing therefore costs a delay of `δ`, not a block, and never a duplicate.
-`Signed(s)` makes the same thing explicit, so the doppelganger guard (S4) compares an observed header with
-a recorded hash rather than with a reconstruction.
+This property carries R1, so it is established by conformance tests rather than assumed: identical bytes
+from every member, across KES evolutions, key reloads and restarts, and from the agent path and the file
+path alike. A member that cannot reproduce a claim exactly refuses to forge it.
 
 **Claim retention.** Claims are never simply deleted. The replicated state keeps a monotone watermark:
 claims at or below it may be pruned, and a claim for any slot at or below it is refused, as EIP-3076 and
 Horcrux keep a low watermark. Otherwise a member paused after building its block could resume after the
 claim was pruned, find no claim, and sign a second block. The watermark only advances past slots whose
 deadline has passed by a margin, for example below the immutable tip. It lives **inside** the replicated
-state machine, so a Raft snapshot or log compaction carries it with the claims it summarises; it is never
-kept beside the log where a snapshot could lose it.
+state machine, so a Raft snapshot or log compaction carries it with the claims it summarises.
 
-**Recovery invariant.** No slot is claimed twice within a generation, and no slot is claimed in two
-generations. A *generation* is the identity of one continuous replicated history, fixed when the cluster is
-created and recorded in every member's durable state and in every record:
+**Rejoining.** A member whose durable history cannot be shown continuous (a disk restored from backup or
+replaced, a snapshot older than one it has acknowledged) never rejoins under its old identity: it is wiped
+and added back as a new member through Raft's membership change, with forging disabled until it has caught
+up with the committed log.
 
-- Within a generation, compare-and-set and the watermark give the first half. A member signs only claims of
-  its own generation.
-- A member whose durable history cannot be shown continuous — a disk restored from backup, a replaced
-  disk, a Raft snapshot older than one it has acknowledged — never rejoins under its old identity. It is
-  wiped and rejoins as a new Raft member through a membership change, with forging disabled, and becomes
-  eligible only after it has caught up with the committed log of the current generation.
-- A new generation is created only by an operator command, and only after the old one is **fenced**:
-  - **State fence.** The command destroys the old members' durable state, so no old member can commit or
-    act on a claim. The new generation's watermark starts at the slot of its creation plus the longest
-    deadline, so it never claims a slot the old one could have claimed while it was alive. R1 holds.
-  - **Credential fence.** The hot credentials are superseded with a counter bump (S5) and the new
-    generation holds only the new ones. If old members are still alive with a majority, both generations
-    can forge in the same slot until a block with the new certificate is on the chain. Same-slot ties prefer
-    the new counter, and after that block the old certificate is invalid, so this fence **bounds** a breach
-    of R1 to that window rather than preventing it, and the operator is told so.
-- When continuity cannot be shown and neither fence is available, the cluster fails closed: nobody forges.
+**Why this meets R1 without timing assumptions.** A member signs only an intent that is the committed claim
+for that slot, and compare-and-set on one Raft log, with the watermark, admits one claim per slot.
+Partitions, paused processes and wrong clocks can delay a claim or lose the slot; they cannot produce a
+second distinct block. A primary cut off from the majority cannot commit, so it does not sign
+(self-fencing falls out of the protocol rather than from a watchdog timer). Clocks matter only for liveness
+and for being on time, as they do for one node.
 
-**Why this meets R1 without timing assumptions.** A member signs only an intent that is the committed
-claim of its own generation for that slot, and compare-and-set on a Raft log, with the watermark and the
-generation rules above, admits one claim per slot. Partitions, paused processes and wrong clocks can delay
-a claim or lose the slot; they cannot produce a second distinct block. A primary cut off from the majority
-cannot commit, so it does not sign (self-fencing falls out of the protocol rather than from a watchdog
-timer). Clocks matter only for liveness and for being on time, as they do for one node. The one recovery
-path that weakens this is the credential fence, which bounds rather than prevents a breach.
-
-**Cost.** Two majority commits per leader slot: the claim between building and signing, and `Signed(s)`
-between signing and diffusion. Within one region this is a few milliseconds; across regions, tens of
-milliseconds. It must be measured against the forging budget and
+**Cost.** One majority commit per leader slot, between building and signing. Within one region this is a
+few milliseconds; across regions, tens of milliseconds. It must be measured against the forging budget and
 recorded in [performance.md](../performance.md) before the stage is accepted.
 
 **Takeover delay and deadline.** `δ` trades a late block, which is more likely to lose a height battle,
 against needless contention; `D(s)` bounds how late a block is still worth sending. Because the claim
 decides, any `δ` is safe. Both are chosen from measurements, not guessed: the high-percentile latency of
-the claim commit, signing, the `Signed(s)` commit and diffusion, and the missed-slot rate they produce on a
-devnet under load.
+the claim commit, signing and diffusion, and the missed-slot rate they produce on a devnet under load.
 
-**Loss of quorum.** With no majority, nobody forges. That is the price of R1. An operator's confirmation
-that the other members are down is not a fence: a partitioned or paused member can resume holding a claim.
-Recovery is therefore one of:
+**Loss of quorum.** With no majority, nobody forges. That is the price of R1. Recovery, in order of
+preference:
 
-1. **Fail closed and restore the majority.** Bring members back with their durable state, or as new
-   members through the rules above, until the current generation has a quorum again.
-2. **Fence with credentials.** Issue a new certificate with counter `n + 1` and a fresh KES key with the
-   offline cold key (S5), and start a new generation that holds only the new credentials. Until a block
-   with the new certificate is on the chain, the old signer stays valid; same-slot ties prefer the new
-   counter. This bounds a breach of R1 to that window (see the recovery invariant).
+1. **Restore the majority.** Bring members back with their durable state, or wiped and re-added through
+   the membership protocol, until the one history has a quorum again. R1 is kept.
+2. **Replace the cluster, only after external fencing.** If the history cannot be recovered, a new
+   cluster may start only once every former producer is verified, outside the cluster, to be shut down
+   or unable to sign (machines powered off or deprovisioned, KES keys removed and the agent stopped). An
+   operator's belief that members are down is not that verification, and wiping a disk does not stop a
+   process still running from memory: a partitioned majority of the old cluster could go on committing
+   claims. With that verification, R1 is kept.
+3. **The credential fence (S5), explicitly weaker.** New credentials with counter `n + 1`, held only by
+   the new cluster. Until a block with the new certificate is on the chain *and stable*, an old member
+   that is still running can forge validly, including in the same slot; same-slot ties prefer the new
+   counter. This bounds a breach of R1 rather than preventing it, and the operator is told so.
 
-A standalone mode, if one is offered at all, runs one member without the claim protocol. It is documented
-and logged as **giving up R1**, never presented as a safe fence.
+Otherwise the cluster stays failed closed. A standalone mode, if one is offered at all, runs one member
+without the claim protocol; it is documented and logged as **giving up R1**, never presented as a fence.
 
 ### S4 — Doppelganger guard and readiness
 
 - **Doppelganger guard.** Every member already sees every header through ChainSync. A header issued by the
-  pool's cold key is checked against the records for its slot. Its hash must equal `Signed(s)`; with only
-  `Claim(s)` recorded (the interval between signing and that commit), it must equal the header
-  reconstructed from the claim. Anything else — no claim, or a different hash — means some other process
-  holds the keys: a forgotten old producer, a fenced generation still running, or a compromise. The cluster disables forging everywhere
-  and alerts; it fails closed rather than trusting an absent record. This is the Ethereum doppelganger
-  idea adapted to sparse slots: Cardano cannot wait two epochs for silence, because the twin only shows
-  itself when it forges, so the check runs continuously.
+  pool's cold key must equal the block reproduced from the committed claim for its slot. ChainSync and the
+  claim log are read independently, so a member may see its own block before its local copy of the log
+  has caught up; absence from a stale local view is not evidence of a twin. Before declaring a
+  doppelganger, the member does a **linearizable** read of the claim (a Raft read through the leader, as
+  etcd's default read is). If the claim state cannot be established, for example while the member is cut
+  off from the majority, it suspends its own forging and waits rather than concluding anything. Only a
+  header that contradicts a confirmed claim, or has no claim at all on a confirmed read, means some other
+  process holds the keys: a forgotten old producer, an unfenced old cluster, or a compromise. Then the
+  cluster disables forging everywhere and alerts. This is the Ethereum doppelganger idea adapted to
+  sparse slots: Cardano cannot wait two epochs for silence, because the twin only shows itself when it
+  forges, so the check runs continuously. A witness holds no key and cannot reproduce a block, so the
+  check runs on producer-capable members.
 - **Readiness.** Each member publishes, ahead of each leader slot, whether it could forge it (tip lag,
   KES window, counter against the chain, clock offset, peers). The node reports it through the existing
   metrics and the `/forging` endpoint, and alerts when fewer than two members are ready.
 - **Tip agreement.** Members compare their selected tips. Members on different forks, as during the
   2025-11-21 split, are reported, because a takeover then forges on another fork.
 - **Joining.** A new member joins with forging disabled and becomes eligible only after it has caught up
-  with the committed claim log of the current generation (see the recovery invariant in S3).
+  with the committed claim log (see "Rejoining" in S3).
 
 ### S5 — Credential fence with the opcert counter (operator procedure)
 
 If a producer is lost rather than down — stolen, compromised, or unreachable but possibly running — the
 operator issues a certificate with counter `n + 1` for a fresh KES key and installs it on the cluster. The
-network then prefers the cluster's blocks in any same-slot tie and, once one is on the chain, rejects the
-lost machine's. Preparing such a certificate ahead of time is of limited use: it goes stale at every
+network then prefers the cluster's blocks in any same-slot tie and, once one is on the chain and stable,
+rejects the lost machine's. Before that block is stable a rollback can remove it, and with it the
+revocation, so the old certificate is treated as superseded only once the new one is in a block at least
+`k` deep (the immutable part of the chain). Preparing such a certificate ahead of time is of limited use: it goes stale at every
 routine rotation (which also moves the chain's counter), its KES window runs from the period it names, and
 its fresh KES secret is one more copy of a hot key to protect. A rehearsed procedure with the offline cold
 key is the better tool. It must follow the warning in [#1610][pr1610]: one increment per stability window.
-It is also the credential fence for a new generation (S3, loss of quorum), and the same caveat applies:
-until a block with the new certificate is on the chain, the old signer remains valid for slots the
-cluster does not forge.
+It is also the weaker recovery path after losing quorum (S3), with the same caveat: until a block with
+the new certificate is stable, the old signer remains valid.
 
 ## Failure cases
 
@@ -314,16 +317,17 @@ cluster does not forge.
 | Primary crashes after claiming, before diffusing | backup reproduces the identical block after `δ` |
 | Primary partitioned from the majority | its claim cannot commit, so it does not sign; backup forges |
 | Witness or one member down | majority remains; forging continues |
-| Two members down | no forging (R1 over R2); recovery by restoring the majority or by the credential fence, never by an unfenced standalone member |
-| Paused or partitioned member resumes after recovery | it holds only claims of its own generation; a new generation never claims those slots, and past `D(s)` it does not act |
+| Two members down | no forging (R1 over R2); recovery by restoring the majority, never by an unfenced standalone member |
+| Paused or partitioned member resumes | it signs only a committed claim, which is the block any other member would reproduce; past `D(s)` it does not act |
 | Disk restored from backup, or replaced | the member rejoins as a new Raft member after a wipe, disabled until caught up |
-| Coordinator or forger crashes between any two steps of the claim protocol | `Signed(s)` or the deterministic reconstruction lets a takeover resend the same block before `D(s)`; otherwise the slot is lost |
+| Forger crashes between claiming and diffusing | a takeover reproduces the same block before `D(s)`; otherwise the slot is lost |
+| Member sees its own block before its log catches up | linearizable claim read before any doppelganger verdict; if the read is impossible it suspends its own forging |
 | Backup is behind the tip | it is not ready and does not claim; if it is the only one, readiness alerts before the slot |
 | Clock skew on one member | it may claim late or not at all; cannot cause a duplicate |
 | Old producer left running with the keys | doppelganger guard stops the cluster at its first block and alerts |
 | Hot key stolen | the credential fence (S5) |
 | Members on different forks | tip-agreement alert; claim still unique per slot |
-| Raft data lost on a majority | continuity cannot be shown, so the cluster fails closed; a new generation starts only after the old one is fenced (state fence: R1 kept; credential fence: a breach bounded to the window before the new certificate is on the chain) |
+| Raft data lost on a majority | the cluster fails closed; a replacement cluster starts only after every former producer is externally verified shut down (R1 kept), or under the credential fence (a breach bounded to the window before the new certificate is stable) |
 
 ## Things worth knowing that were not asked
 
@@ -362,7 +366,7 @@ cluster does not forge.
 | S0 | `--start-as-non-producing-node`; absent credential file disables forging on SIGHUP ([#906](https://github.com/KD5UJC-XYZ/scarab/issues/906)) | mirrors cardano-node 11.1.3 | level by CONTRIBUTING; devnet `kes-rotate` plus a disable/enable scenario |
 | S1 | KES agent client | [kes-agent.md](kes-agent.md) | as designed there |
 | S2 | `ForgeGate` capability, local claim journal | additive, approval needed | `check`; restart-inside-slot test |
-| S3 | Raft claim protocol with generations, two-phase records, deadline, takeover, reproduction | additive, approval needed | TLA+ model with the recovery cases; devnet failover scenario including member resurrection; high-percentile claim, sign and diffusion latency and the missed-slot rate in performance.md before `δ` and `D(s)` are chosen |
+| S3 | Raft claim protocol, deadline, takeover by reproduction | additive, approval needed | TLA+ model with the recovery cases; conformance tests of deterministic reproduction; devnet failover scenario including member resurrection; high-percentile claim, sign and diffusion latency and the missed-slot rate in performance.md before `δ` and `D(s)` are chosen |
 | S4 | Doppelganger guard, readiness, tip agreement | additive, approval needed | devnet with a rogue producer |
 | S5 | Credential-fence procedure | operator documentation | devnet rehearsal |
 
@@ -372,8 +376,8 @@ cluster does not forge.
 2. S0: treat the absent-file difference as a reference deviation to fix now (recommended).
 3. Raft: external etcd or an embedded library.
 4. Minimum topology to support: two producers and a witness, or three producers.
-5. Recovery after losing quorum: which fences to offer (restoring the majority, the credential fence), and
-   whether a standalone mode that gives up R1 exists at all.
+5. Recovery after losing quorum: whether to offer replacement after external fencing and the weaker
+   credential fence, and whether a standalone mode that gives up R1 exists at all.
 
 ## Optional extension: threshold KES
 
