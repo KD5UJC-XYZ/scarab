@@ -49,25 +49,25 @@ object Text:
     * `Data.Text.pack` does.
     */
   def fromCodePoints(codePoints: IterableOnce[Int]): Either[Invalid, Text] =
-    val builder = new java.lang.StringBuilder
-    @tailrec def go(it: Iterator[Int], position: Int): Either[Invalid, Text] =
-      if !it.hasNext then Right(fromWellFormed(builder.toString))
-      else
-        val c = it.next()
-        if c < 0 || c > Character.MAX_CODE_POINT then Left(Invalid.CodePointOutOfRange(position, c))
-        else
-          builder.appendCodePoint(if c >= 0xd800 && c <= 0xdfff then Replacement else c)
-          go(it, position + 1)
-    go(codePoints.iterator, 0)
+    val all = codePoints.iterator.toVector
+    all.iterator.zipWithIndex
+      .collectFirst {
+        case (c, position) if c < 0 || c > Character.MAX_CODE_POINT =>
+          Invalid.CodePointOutOfRange(position, c)
+      }
+      .toLeft(fromScalars(all.map(scalar).toArray))
 
   /** The text of a JVM string: a surrogate pair is the scalar value it encodes, and an unpaired
     * surrogate becomes U+FFFD.
     */
-  def fromString(s: String): Text =
-    val builder = new java.lang.StringBuilder(s.length)
-    s.codePoints()
-      .forEach(c => builder.appendCodePoint(if c >= 0xd800 && c <= 0xdfff then Replacement else c))
-    fromWellFormed(builder.toString)
+  def fromString(s: String): Text = fromScalars(s.codePoints().toArray.map(scalar))
+
+  /** U+FFFD for a surrogate, as `Data.Text.pack` does; any other code point as it is. */
+  private def scalar(c: Int): Int = if c >= 0xd800 && c <= 0xdfff then Replacement else c
+
+  private def fromScalars(scalars: Array[Int]): Text = fromWellFormed(
+    new String(scalars, 0, scalars.length)
+  )
 
   /** The text that `bytes` encode as UTF-8, refused unless they are well-formed UTF-8 (the decoding
     * of `decodeUtf8'` in the reference). Not a replacement decoder: one bad sequence refuses all.

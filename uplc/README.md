@@ -43,8 +43,11 @@ transcribes plutus 1.70.0.0 (`507cab8c`); the Scaladoc of each cites the upstrea
   take the script's language and use `PlutusLanguage.evaluatedAs`, because the node of 1.70.0.0
   decodes and evaluates V4 through plutus's V3 functions. Plutus's own V4 rows are transcribed and
   equal V3's from protocol 12. `languageIntroducedIn(V4)` is 12.
-- **Variants F and G** exist for 1.71.0.0 (phase 2). At 1.70.0.0, `of` returns D or E at protocol 12
-  and later. `DefaultFun` and its tags are the same in both releases.
+- **Variants F and G** are modelled because they exist in 1.71.0.0, but plutus 1.71 and protocol 12
+  and later are out of scope ([ADR 0027](../docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md)):
+  the backend refuses protocol 12 and later. `SemanticsVariant.of` and `Availability` are total
+  transcriptions of the reference's lookups (at 1.70.0.0, `of` returns D or E at protocol 12 and
+  later); admission is the backend's. `DefaultFun` and its tags are the same in both releases.
 - **Not here.** The universe's Flat tags and the kinded form of a type (the decoder), names and
   alpha-equality (the parser), the caser builtins (the machine), and unlifting bounds (the builtins).
 
@@ -53,8 +56,10 @@ transcribes plutus 1.70.0.0 (`507cab8c`); the Scaladoc of each cites the upstrea
 Packages `cost` and `builtin` (the lead's, frozen with the model):
 
 - `cost.SatInt` and `cost.ExBudget` are `Data.SatInt` and `ExBudget`: saturating 64-bit arithmetic, a budget
-  combined component-wise, `times` as `stimes`. `CostStream` is `ExBudgetStream` (each element spent and
-  checked in order), `StepKind` and `MachineCosts` the machine's step and start-up costs.
+  combined component-wise, `times` as `stimes`, `dividedBy` as `Data.SatInt`'s. `CostStream` is `ExBudgetStream`: strict
+  elements and a lazy tail; the machine spends and checks each element before it forces the rest, so an
+  exhausted budget stops the costing, and the costing keeps its measures lazy for the same reason.
+  `StepKind` and `MachineCosts` are the machine's step and start-up costs.
 - `builtin.Builtins.prepare` is a saturated application in the reference's order (`toMonoF`,
   `Builtin/Meaning.hs`; `evalBuiltinApp`, `Cek/Internal.hs`): `Unlifting` checks every argument, first
   failure winning, and a failure costs nothing (`CostStream.free`); otherwise `Costing` computes the cost from
@@ -62,8 +67,9 @@ Packages `cost` and `builtin` (the lead's, frozen with the model):
 - Builtins are written once for any machine through `MachineValue[V]` (is this value a constant, make one).
   `Argument.Opaque` passes a machine value through (`ifThenElse`, `trace`, `chooseList`).
 - Failures are typed: `UnliftingFailure` (structural or operational, with a cause) and `EvaluationFailure`,
-  whose cases render the reference's log message. Builtins and unlifting add cases to these enums; they do
-  not change existing ones.
+  whose cases render the reference's log message. A denotation fails through `Outcome.failed`, which makes
+  that message its log line; the machine emits an outcome's logs exactly once, before it raises. Builtins
+  and unlifting add cases to these enums; they do not change existing ones.
 - Owners: the unlifting (all builtins, all variants' bounds) and the core denotations are WP5's, the
   cryptographic, bitwise, `Value` and array denotations WP6's, `Costing` and `MachineCosts` from the cost
   model WP7's, the machine WP4's.

@@ -158,8 +158,10 @@ object Availability:
         extends Batch(Vector(MultiIndexArray, Policies, AssetCount, KeepPolicies, DropPolicies))
 
   /** When a feature arrives: at a protocol version, or at `futurePV`
-    * (`ProtocolVersions.hs:124-125`, `MajorProtocolVersion maxBound`), which no protocol version
-    * reaches.
+    * (`ProtocolVersions.hs:124-125`, `MajorProtocolVersion maxBound`). The reference's
+    * `collectUpTo` includes a `futurePV` feature when asked at `maxBound` itself
+    * (`Common/Versions.hs:127-135`); this model's protocol versions stop well below that (see
+    * [[ProtocolMajor]]), so here no protocol version reaches it.
     */
   enum Arrival:
     case At(protocol: ProtocolMajor)
