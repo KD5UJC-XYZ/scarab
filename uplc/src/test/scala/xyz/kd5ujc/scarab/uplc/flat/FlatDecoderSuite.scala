@@ -507,6 +507,23 @@ final class FlatDecoderSuite extends ScalaCheckSuite:
         constantOf(pairs, _ => "1" * (levels + 1)).isRight,
         "pairs nested in the first component"
       )
+      // the element type of an empty list is all of a deep type, read from the top
+      def lists(depth: Int): DefaultUni =
+        (1 to depth).foldLeft[DefaultUni](DefaultUni.Integer)((t, _) => DefaultUni.List(t))
+      assertEquals(constantOf(deepType, _ => "0"), Right(Constant.List.empty(lists(levels - 1))))
+      assertEquals(
+        constantOf(Vector(7, 12) ++ deepType, _ => "0"),
+        Right(Constant.List.empty(lists(levels)).toArray)
+      )
+      val pairType = (1 to levels).foldLeft[DefaultUni](DefaultUni.Bool)((t, _) =>
+        DefaultUni.Pair(t, DefaultUni.Bool)
+      )
+      val listOfPairs = Vector(7, 5) ++ pairs
+      assertEquals(constantOf(listOfPairs, _ => "0"), Right(Constant.List.empty(pairType)))
+      assertEquals(
+        constantOf(listOfPairs, _ => "1" + "1" * (levels + 1) + "0").map(_.typeOf),
+        Right(DefaultUni.List(pairType))
+      )
       val long = constantOf(Seq(7, 5, 0), _ => ("1" + integer(5)) * n + "0")
       assertEquals(long.map { case l: Constant.List => l.items.size; case _ => -1 }, Right(n))
     }

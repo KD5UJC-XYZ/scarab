@@ -35,28 +35,21 @@ object ConstantDecoder:
 
   /** The reader of the values of a type: the `compile` of `decodeDefaultUniValue`
     * (`Universe.hs:166-186`). Each knows the type its values report ([[Plan.uni]]), built from the
-    * shared values' own types, so that a list compares its elements' types with it in time that
-    * does not grow with the shared parts.
+    * shared values' own types as the fold builds the plan from the leaves up, so that a list
+    * compares its elements' types with it in time that does not grow with the shared parts.
     */
-  enum Plan:
+  enum Plan(val uni: DefaultUni):
     /** A type made only of units (`Pure`): its one value, of no bits. */
-    case Shared(value: Constant)
+    case Shared(value: Constant) extends Plan(value.typeOf)
 
     /** A type with a Flat decoder of its own (`compile other`). */
-    case Leaf(leafType: DefaultUni)
+    case Leaf(leafType: DefaultUni) extends Plan(leafType)
 
     /** A list, or an array, of the plan's values. */
     case Items(element: Plan, array: Boolean)
+        extends Plan(if array then DefaultUni.Array(element.uni) else DefaultUni.List(element.uni))
 
-    case Pair(first: Plan, second: Plan)
-
-    /** The type of the values this plan reads. */
-    lazy val uni: DefaultUni = this match
-      case Shared(c) => c.typeOf
-      case Leaf(u)   => u
-      case Items(element, arr) =>
-        if arr then DefaultUni.Array(element.uni) else DefaultUni.List(element.uni)
-      case Pair(first, second) => DefaultUni.Pair(first.uni, second.uni)
+    case Pair(first: Plan, second: Plan) extends Plan(DefaultUni.Pair(first.uni, second.uni))
 
   // One layer of a type, for its fold.
   private enum Layer[+R]:
