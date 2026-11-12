@@ -17,6 +17,7 @@ import xyz.kd5ujc.scarab.uplc.builtin.{
   UnliftingCause,
   UnliftingFailure
 }
+
 import CoreTesting.*
 
 /** The unlifting of every builtin under variants A to E against plutus 1.70.0.0 (`507cab8c`):

@@ -18,6 +18,7 @@ import xyz.kd5ujc.scarab.uplc.builtin.{
   UnliftingCause,
   UnliftingFailure
 }
+
 import CoreTesting.*
 import DefaultFun.*
 
@@ -365,7 +366,7 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
     for f <- Vector(HeadList, TailList) do
       run(E, f, noInts) match
         case Outcome.Failure(
-              BuiltinFailure.Evaluation(EvaluationFailure.ExpectedNonEmptyList),
+              BuiltinFailure.Evaluation(EvaluationFailure.EmptyList),
               logs
             ) =>
           assertEquals(logs, Vector("Expected a non-empty list but got an empty one"), s"$f")
@@ -459,7 +460,7 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
       val other = if shape == DataShape.I then PlutusData.B(Bytes.empty) else PlutusData.I(0)
       run(E, f, data(other)) match
         case Outcome.Failure(
-              BuiltinFailure.Evaluation(EvaluationFailure.ExpectedConstructor(s)),
+              BuiltinFailure.Evaluation(EvaluationFailure.UnexpectedData(s)),
               logs
             ) =>
           assertEquals(s, shape, s"$f")

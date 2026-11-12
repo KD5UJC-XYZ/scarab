@@ -7,6 +7,7 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.uplc.{Constant, DefaultFun, PlutusData}
 import xyz.kd5ujc.scarab.uplc.builtin.{BuiltinFailure, Outcome}
+
 import CoreTesting.*
 import DefaultFun.*
 

@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.uplc.builtin.core
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.uplc.DefaultFun
 import xyz.kd5ujc.scarab.uplc.builtin.Outcome
+
 import CoreTesting.*
 
 /** The reference's verdicts on the unlifting bounds of the `ensurable` variants

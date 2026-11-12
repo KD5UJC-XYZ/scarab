@@ -124,17 +124,17 @@ private[core] object Reading:
 
   def failed(failure: EvaluationFailure): BuiltinFailure = BuiltinFailure.Evaluation(failure)
 
-  /** The log lines of a failure: the message of an evaluation failure (`fail` puts it in the logs,
-    * `PlutusCore/Builtin/Result.hs:88-90`) or of an operational unlifting error
-    * ([[CoreUnlifting.log]]).
+  /** The outcome of a denotation. An evaluation failure logs its message ([[Outcome.failed]]); an
+    * unlifting error found again here logs as the unlifting's would ([[CoreUnlifting.log]]): the
+    * message of an operational one, nothing for a structural one, which is what the shape checks of
+    * the polymorphic builtins raise (`throwError` in `BuiltinResult`,
+    * `PlutusCore/Builtin/Result.hs:198-220`).
     */
-  def logs(failure: BuiltinFailure): Vector[String] = failure match
-    case BuiltinFailure.Evaluation(f) => f.message.toVector
-    case BuiltinFailure.Unlifting(f)  => CoreUnlifting.log(f).toVector
-
   def outcome[V](result: Either[BuiltinFailure, Done[V]]): Outcome[V] = result match
-    case Right(Done(value, logs)) => Outcome.Success(value, logs)
-    case Left(failure)            => Outcome.Failure(failure, logs(failure))
+    case Right(Done(value, logs))           => Outcome.Success(value, logs)
+    case Left(BuiltinFailure.Evaluation(f)) => Outcome.failed(f)
+    case Left(failure @ BuiltinFailure.Unlifting(f)) =>
+      Outcome.Failure(failure, CoreUnlifting.log(f).toVector)
 
   /** The constant as a list, or the structural error of a list builtin given something else. */
   def list(c: Constant, position: Int): Either[BuiltinFailure, Constant.List] = c match

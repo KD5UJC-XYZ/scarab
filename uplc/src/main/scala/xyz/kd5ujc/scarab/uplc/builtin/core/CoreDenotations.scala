@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.uplc.builtin.{
   Outcome,
   UnliftingCause
 }
+
 import Reading.{failed, list, listOf, pair, structural}
 
 /** The denotations of the core builtins of plutus 1.70.0.0 (`507cab8c`), the meanings of
@@ -211,14 +212,14 @@ object CoreDenotations:
           for
             c <- r.someConstant(0)
             xs <- list(c, 0)
-            x <- xs.items.headOption.toRight(failed(EvaluationFailure.ExpectedNonEmptyList))
+            x <- xs.items.headOption.toRight(failed(EvaluationFailure.EmptyList))
           yield r.constant(x)),
       TailList -> ([V] =>
         (r: Reading[V]) =>
           for
             c <- r.someConstant(0)
             xs <- list(c, 0)
-            rest <- xs.tail.toRight(failed(EvaluationFailure.ExpectedNonEmptyList))
+            rest <- xs.tail.toRight(failed(EvaluationFailure.EmptyList))
           yield r.constant(rest)),
       NullList -> ([V] =>
         (r: Reading[V]) =>
@@ -249,24 +250,24 @@ object CoreDenotations:
       UnConstrData -> constant1[PlutusData] {
         case PlutusData.Constr(i, fields) =>
           dataList(fields).map(Constant.Pair(Constant.Integer(i), _))
-        case _ => Left(failed(EvaluationFailure.ExpectedConstructor(DataShape.Constr)))
+        case _ => Left(failed(EvaluationFailure.UnexpectedData(DataShape.Constr)))
       },
       UnMapData -> constant1[PlutusData] {
         case PlutusData.Map(entries) =>
           listOf(DataPair, entries.map((k, v) => Constant.Pair(Constant.Data(k), Constant.Data(v))))
-        case _ => Left(failed(EvaluationFailure.ExpectedConstructor(DataShape.Map)))
+        case _ => Left(failed(EvaluationFailure.UnexpectedData(DataShape.Map)))
       },
       UnListData -> constant1[PlutusData] {
         case PlutusData.List(items) => dataList(items)
-        case _ => Left(failed(EvaluationFailure.ExpectedConstructor(DataShape.List)))
+        case _ => Left(failed(EvaluationFailure.UnexpectedData(DataShape.List)))
       },
       UnIData -> constant1[PlutusData] {
         case PlutusData.I(n) => integer(n)
-        case _               => Left(failed(EvaluationFailure.ExpectedConstructor(DataShape.I)))
+        case _               => Left(failed(EvaluationFailure.UnexpectedData(DataShape.I)))
       },
       UnBData -> constant1[PlutusData] {
         case PlutusData.B(b) => bytes(b)
-        case _               => Left(failed(EvaluationFailure.ExpectedConstructor(DataShape.B)))
+        case _               => Left(failed(EvaluationFailure.UnexpectedData(DataShape.B)))
       },
       // Haskell's derived `Eq`: constructors, entries and items compared in order
       // (`Builtins.hs:1843-1849`, `PlutusCore/Data.hs:41-48`); `PlutusData`'s equality is that

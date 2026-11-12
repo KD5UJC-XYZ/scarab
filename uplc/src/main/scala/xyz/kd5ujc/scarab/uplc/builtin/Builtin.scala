@@ -105,7 +105,7 @@ enum EvaluationFailure:
     */
   case UnexpectedData(expected: DataShape)
 
-  /** `decodeUtf8` of bytes that are not well-formed UTF-8 (`Default/Builtins.hs:1597,1607`). */
+  /** `decodeUtf8` of bytes that are not well-formed UTF-8 (`Default/Builtins.hs:1595,1606`). */
   case InvalidUtf8
 
   /** The text the reference emits as a log line for this failure (its argument to `fail`, which

@@ -5,6 +5,7 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.uplc.{Constant, DefaultFun, PlutusData, SmallStack}
+
 import CoreTesting.hexBytes
 
 /** `serialiseData` (`encodeData`, `PlutusCore/Data.hs:144-200`, plutus 1.70.0.0 `507cab8c`) against

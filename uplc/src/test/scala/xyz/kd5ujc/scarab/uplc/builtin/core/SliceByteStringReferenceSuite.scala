@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.uplc.builtin.core
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.uplc.{Constant, DefaultFun}
 import xyz.kd5ujc.scarab.uplc.builtin.{BuiltinFailure, ErrorClass, UnliftingBound, UnliftingCause}
+
 import CoreTesting.*
 
 /** The reference's verdicts on `sliceByteString` with wide indices in every variant
