@@ -18,6 +18,7 @@ body:
         - area:crypto
         - area:protocol
         - area:network
+        - area:uplc
         - area:plutus
         - area:ledger
         - area:consensus
