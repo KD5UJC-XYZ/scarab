@@ -25,6 +25,8 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
       .Limits(timeWait = scala.concurrent.duration.Duration.Zero)
 
   private val magic = 42L
+  // the connections' supervisor and, released before it, their monitors' (`OutboundPeers.create`)
+  private val supervisors = (Supervisor[IO](await = false), Supervisor[IO](await = false)).tupled
   private val hash = Bytes.wrap(Array[Byte](1))
   private val block = Bytes.wrap(Array[Byte](2))
   private val refusal = ValidationError(ChainSync.Point.Origin, BlockFailure.HeaderDiffers)
@@ -50,7 +52,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
     ) {
       NodeScope.resource.use { node =>
         given Handle[IO, NodeError] = node
-        Supervisor[IO](await = false).use { supervisor =>
+        supervisors.use { (supervisor, monitors) =>
           for
             pool <- BlockPool.create[IO]
             _ <- supervisor.supervise(pool.fetchCoordinator.run)
@@ -91,6 +93,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
               OutboundPeers.Config(closeTimeout = 100.millis),
               hot,
               supervisor,
+              monitors,
               e => events.update(_ :+ e),
               summon[Stateful[IO, PeerMetrics[PeerNetwork.Addr]]]
             )
@@ -195,7 +198,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
       Settled.timed { settle =>
         NodeScope.resource.use { node =>
           given Handle[IO, NodeError] = node
-          Supervisor[IO](await = false).use { supervisor =>
+          supervisors.use { (supervisor, monitors) =>
             for
               available <- fs2.concurrent.SignallingRef[IO, Int](Peer.Depth + 1)
               offered <- Ref.of[IO, Vector[Point]](Vector(Point.Origin))
@@ -336,6 +339,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
                 OutboundPeers.Config(),
                 hot,
                 supervisor,
+                monitors,
                 e =>
                   events.update(_ :+ e) *> (e match
                     case Event.Observed(_, Observation.HotEnded(_, _), _, _) =>
