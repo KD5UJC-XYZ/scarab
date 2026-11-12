@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.uplc
 import cats.parse.{Numbers, Parser as P}
 import cats.syntax.all.*
 import io.circe.parser
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{FileSystems, Files, Path, Paths}
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import xyz.kd5ujc.scarab.uplc.cost.ExBudget
@@ -15,7 +15,16 @@ import xyz.kd5ujc.scarab.uplc.cost.ExBudget
   * the rule of `PlutusReference` in the `plutus` tests, whose class path carries Scalus.
   */
 object ReferenceCorpus:
-  lazy val root: Path = Paths.get(getClass.getResource("/plutus-reference").toURI)
+  /** The resource directory, also when the resources come in a jar (a `tools` program's class
+    * path).
+    */
+  lazy val root: Path =
+    val uri = getClass.getResource("/plutus-reference").toURI
+    if uri.getScheme == "jar" then
+      FileSystems
+        .newFileSystem(uri, java.util.Collections.emptyMap[String, Any]())
+        .getPath("/plutus-reference")
+    else Paths.get(uri)
 
   private def filesBelow(directory: Path): Map[String, Path] =
     if !Files.isDirectory(directory) then Map.empty

@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.uplc.cek.{
   StubBuiltins,
   Terms
 }
-import xyz.kd5ujc.scarab.uplc.cost.{CostStream, ExBudget}
+import xyz.kd5ujc.scarab.uplc.cost.{CekConformance, CostStream, DefaultCostModels, ExBudget}
 
 /** Development tool: the throughput of the own CEK machine against Scalus's on synthetic loops, in
   * machine steps per second.
@@ -23,13 +23,14 @@ import xyz.kd5ujc.scarab.uplc.cost.{CostStream, ExBudget}
   *
   * The loops (`Terms.countdown`, a fixed-point countdown through `lessThanEqualsInteger`,
   * `ifThenElse` and `addInteger`; `Terms.constrSum`, a list of `constr` built and summed with
-  * `case`) run on both machines with counting budgets: ours with the chain's step costs, the core
-  * builtins of variant E (`builtin.core`) and the stub costing of its tests (`StubBuiltins`, a
-  * constant per builtin, cheaper than a real costing function), Scalus's as
-  * `PlutusVM.makePlutusV3VM` at protocol 11 builds it (not the repository's corrected machine). The
-  * step count is our machine's, with every step costing one CPU unit and the builtins nothing. Both
-  * results are checked before timing; the rounds then alternate between the machines after a
-  * warm-up, and the median round of each is reported.
+  * `case`) run on both machines with counting budgets and real costing on both sides: ours with the
+  * core builtins of variant E (`builtin.core`) and the default variant-E cost model
+  * (`CekConformance.machine`, `DefaultCostModels`: the machine's step costs and every builtin's
+  * costing function), Scalus's as `PlutusVM.makePlutusV3VM` at protocol 11 builds it, with its own
+  * default V3 cost model (not the repository's corrected machine). The step count is our machine's,
+  * with every step costing one CPU unit and the builtins nothing. Both results are checked before
+  * timing; the rounds then alternate between the machines after a warm-up, and the median round of
+  * each is reported.
   */
 object CekThroughputMain:
   private final case class Workload(name: String, term: Term, expected: BigInt)
@@ -42,7 +43,8 @@ object CekThroughputMain:
     )
     val vm = PlutusVM.makePlutusV3VM(MajorProtocolVersion(11))
     val core = StubBuiltins.core(SemanticsVariant.E).fold(e => sys.error(e.toString), identity)
-    val ours = MachineParameters(StubBuiltins.chainCosts, core, CaserBuiltin.WithoutData)
+    val ours =
+      CekConformance.machine(DefaultCostModels.costs(SemanticsVariant.E), CaserBuiltin.WithoutData)
     val free = new CostingFunction:
       def apply[V](arguments: Vector[Argument[V]])(using MachineValue[V]): CostStream =
         CostStream.single(ExBudget.zero)
@@ -84,7 +86,7 @@ object CekThroughputMain:
       val scalusNs = median(samples.map(_._2))
       def rate(ns: Long): Double = steps / (ns / 1e9)
       println(
-        f"${w.name}%-18s steps $steps%,d  ours ${oursNs / 1e6}%.1f ms (${rate(oursNs) / 1e6}%.2f M steps/s)  " +
+        f"real costing both sides  ${w.name}%-18s steps $steps%,d  ours ${oursNs / 1e6}%.1f ms (${rate(oursNs) / 1e6}%.2f M steps/s)  " +
           f"Scalus ${scalusNs / 1e6}%.1f ms (${rate(scalusNs) / 1e6}%.2f M steps/s)  " +
           f"ours/Scalus time ${oursNs.toDouble / scalusNs}%.2f"
       )
