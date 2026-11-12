@@ -315,7 +315,7 @@ final class CoreUnliftingSuite extends munit.FunSuite:
   // only (`Builtin/Result.hs:198-220`).
   test("an operational unlifting failure logs the reference's message, a structural one nothing") {
     def logOf(v: CoreVariant, f: DefaultFun, args: Probe*) =
-      CoreUnlifting(v)(f, args.toVector).left.toOption.flatMap(CoreUnlifting.log)
+      CoreUnlifting(v)(f, args.toVector).left.toOption.flatMap(_.message)
     assertEquals(
       logOf(CoreVariant.A, DefaultFun.IndexByteString, bytes("00"), int(BigInt(2).pow(63))),
       Some("9223372036854775808 is not within the bounds of Int64")

@@ -62,7 +62,7 @@ object CoreTesting:
   def apply(variant: CoreVariant, function: DefaultFun, arguments: Probe*): Outcome[Probe] =
     CoreUnlifting(variant)(function, arguments.toVector) match
       case Left(failure) =>
-        Outcome.Failure(BuiltinFailure.Unlifting(failure), CoreUnlifting.log(failure).toVector)
+        Outcome.Failure(BuiltinFailure.Unlifting(failure), failure.message.toVector)
       case Right(unlifted) =>
         CoreDenotations(variant)
           .get(function)

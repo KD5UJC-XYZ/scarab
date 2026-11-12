@@ -51,6 +51,30 @@ final class BuiltinsSuite extends munit.FunSuite:
       case other => fail(s"expected an unlifting failure, got $other")
   }
 
+  test("an operational unlifting failure logs its message; a structural one logs nothing") {
+    def refusingWith(failure: UnliftingFailure): Unlifting = new Unlifting:
+      def apply[V](function: DefaultFun, arguments: Vector[V])(using
+          MachineValue[V]
+      ): Either[UnliftingFailure, Vector[Argument[V]]] = Left(failure)
+    def logs(failure: UnliftingFailure): Vector[String] =
+      Builtins(SemanticsVariant.E, refusingWith(failure), sum, perArgument)
+        .prepare(DefaultFun.ConsByteString, args)
+        .result() match
+        case Outcome.Failure(_, logs) => logs
+        case other                    => fail(s"expected a failure, got $other")
+    val bounds = UnliftingCause.OutOfBounds(0, UnliftingBound.CInteger)
+    val word8 = UnliftingCause.NotWithinBounds(0, UnliftingBound.Word8, BigInt(-88))
+    assertEquals(
+      logs(UnliftingFailure(ErrorClass.Operational, bounds)),
+      Vector("Integer out of bounds")
+    )
+    assertEquals(
+      logs(UnliftingFailure(ErrorClass.Operational, word8)),
+      Vector("-88 is not within the bounds of Word8")
+    )
+    assertEquals(logs(UnliftingFailure(ErrorClass.Structural, bounds)), Vector.empty)
+  }
+
   test("unlifted arguments are costed, and the denotation's result is the application's") {
     val prepared =
       Builtins(SemanticsVariant.E, accepting, sum, perArgument).prepare(DefaultFun.AddInteger, args)

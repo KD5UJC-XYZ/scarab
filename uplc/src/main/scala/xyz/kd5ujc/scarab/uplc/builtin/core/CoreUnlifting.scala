@@ -41,33 +41,6 @@ object CoreUnlifting:
 
   def apply(variant: CoreVariant): Unlifting = tables(variant.ordinal)
 
-  /** The log line the reference emits when unlifting fails this way: the message of an operational
-    * error (the `MonadError BuiltinResult` instance puts it in the logs,
-    * `Builtin/Result.hs:198-220`, which `builtinRuntimeFailure` raises,
-    * `Builtin/Runtime.hs:110-111`, and `evalBuiltinApp` emits, `Cek/Internal.hs:1071-1073`); none
-    * for a structural one.
-    */
-  def log(failure: UnliftingFailure): Option[String] = failure.errorClass match
-    case ErrorClass.Structural  => None
-    case ErrorClass.Operational => operationalMessage(failure.cause)
-
-  private def operationalMessage(cause: UnliftingCause): Option[String] = cause match
-    case UnliftingCause.OutOfBounds(_, UnliftingBound.CInteger)    => Some("Integer out of bounds")
-    case UnliftingCause.OutOfBounds(_, UnliftingBound.CByteString) => Some("ByteString overflow")
-    case UnliftingCause.NotWithinBounds(_, bound, value) =>
-      Some(s"$value is not within the bounds of ${typeName(bound)}")
-    case _ => None
-
-  /** The name `typeRep` shows for the type a bound reads through: `Int` reads as an `Int64`
-    * (`Universe.hs:615-617`).
-    */
-  private def typeName(bound: UnliftingBound): String = bound match
-    case UnliftingBound.Int | UnliftingBound.Int64 => "Int64"
-    case UnliftingBound.Word64                     => "Word64"
-    case UnliftingBound.Word8                      => "Word8"
-    case UnliftingBound.CInteger                   => "CInteger"
-    case UnliftingBound.CByteString                => "CByteString"
-
   /** The bounds on `function` 's arguments under `variant`, by position: where the Haskell type of
     * its denotation in `toBuiltinMeaning` (`PlutusCore/Default/Builtins.hs`, cited by line) refines
     * the argument's universe type. Every other argument is unbounded.

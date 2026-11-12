@@ -39,7 +39,7 @@ final class CoreDenotationsSuite extends munit.ScalaCheckSuite:
       case Outcome.Failure(BuiltinFailure.Evaluation(failure), logs) =>
         assertEquals(logs, failure.message.toVector, s"$f: the logs of $failure")
       case Outcome.Failure(BuiltinFailure.Unlifting(failure), logs) =>
-        assertEquals(logs, CoreUnlifting.log(failure).toVector, s"$f: the logs of $failure")
+        assertEquals(logs, failure.message.toVector, s"$f: the logs of $failure")
       case Outcome.Success(_, _) => ()
     outcome
 

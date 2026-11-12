@@ -80,7 +80,31 @@ enum UnliftingCause:
 enum UnliftingBound:
   case Int64, Word64, Int, Word8, CInteger, CByteString
 
-final case class UnliftingFailure(errorClass: ErrorClass, cause: UnliftingCause)
+  /** The name `typeRep` shows for the type the bound reads through: an `Int` reads as an `Int64`
+    * (`PlutusCore/Default/Universe.hs:615-617`).
+    */
+  def typeName: String = this match
+    case Int | Int64 => "Int64"
+    case Word64      => "Word64"
+    case Word8       => "Word8"
+    case CInteger    => "CInteger"
+    case CByteString => "CByteString"
+
+final case class UnliftingFailure(errorClass: ErrorClass, cause: UnliftingCause):
+  /** The log line of the failure: `throwError` puts the message of every operational unlifting
+    * error into the logs, a structural one gets none (`MonadError BuiltinError BuiltinResult`,
+    * `PlutusCore/Builtin/Result.hs:198-220`).
+    */
+  def message: Option[String] = errorClass match
+    case ErrorClass.Structural => None
+    case ErrorClass.Operational =>
+      cause match
+        case UnliftingCause.OutOfBounds(_, UnliftingBound.CInteger) => Some("Integer out of bounds")
+        case UnliftingCause.OutOfBounds(_, UnliftingBound.CByteString) =>
+          Some("ByteString overflow")
+        case UnliftingCause.NotWithinBounds(_, bound, value) =>
+          Some(s"$value is not within the bounds of ${bound.typeName}")
+        case _ => None
 
 /** Why a denotation fails once its arguments are unlifted and its cost is spent
   * (`BuiltinEvaluationFailure`, whose message the reference emits as a log line,
@@ -193,15 +217,17 @@ final case class Builtins(
 ):
   /** A saturated application, in the reference's order (`toMonoF`, `Meaning.hs:247-262,304-330`;
     * `evalBuiltinApp`, `Cek/Internal.hs:1052-1074`): unlift every argument; if one fails, the
-    * application costs nothing and fails ([[CostStream.free]]); otherwise its cost is computed from
-    * the unlifted arguments, and its denotation runs only when the machine has spent that cost.
+    * application costs nothing and fails ([[CostStream.free]]), logging the message of an
+    * operational unlifting error ([[UnliftingFailure.message]]); otherwise its cost is computed
+    * from the unlifted arguments, and its denotation runs only when the machine has spent that
+    * cost.
     */
   def prepare[V](function: DefaultFun, arguments: Vector[V])(using MachineValue[V]): Prepared[V] =
     unlifting(function, arguments) match
       case Left(failure) =>
         Prepared(
           CostStream.free,
-          () => Outcome.Failure(BuiltinFailure.Unlifting(failure), Vector.empty)
+          () => Outcome.Failure(BuiltinFailure.Unlifting(failure), failure.message.toVector)
         )
       case Right(unlifted) =>
         Prepared(costing(function)(unlifted), () => denotations(function)(unlifted))
