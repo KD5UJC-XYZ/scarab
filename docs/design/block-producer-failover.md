@@ -320,6 +320,58 @@ key is the better tool. It must follow the warning in [#1610][pr1610]: one incre
 It is also the weaker recovery path after losing quorum (S3), with the same caveat: until a block with
 the new certificate is stable, the old signer remains valid.
 
+## Verification
+
+The safety argument is short: at most one committed claim per slot, members sign only committed claims,
+and signing is deterministic, so there is at most one distinct block per slot. The risk is in the edge
+cases around it (crashes between steps, lagging views, recovery), which is where every review of this
+document found a gap. Verification therefore has four layers, chosen to be the most rigorous set that adds
+no toolchain beyond one pinned JAR.
+
+| Approach | What it establishes | Gap |
+|---|---|---|
+| Random property tests (ScalaCheck) | R1 on the interleavings it happens to sample | can miss the rare interleaving |
+| Exhaustive search over a model written in Scala | every interleaving up to the bounds | a checker of our own, whose bugs pass silently; a model written beside the code tends to share its assumptions |
+| **TLA+ checked by TLC** | every interleaving up to the bounds, by an independent and widely used checker, on a specification written apart from the code | bounded, not a proof for all sizes; small instances find most protocol bugs |
+| A machine-checked proof (TLAPS, Lean) | R1 for any number of members and slots | a heavy toolchain, and a failed proof gives no counterexample |
+
+**V1. The specification.** A TLA+ specification of the claim protocol and the doppelganger guard, with a
+TLC configuration that names its bounds (for example three members, three slots, two crashes) and its
+invariants:
+
+- **R1**: no two distinct signed blocks for one slot;
+- **no false alarm**: in a run where every member follows the protocol, the guard never fires.
+
+Its actions are those of S3 and S4: build, claim, sign, diffuse, take over by reproduction, crash at any
+step, pause and resume, partition and heal, advance the watermark, wipe and re-add a member, a
+quorum-validated read, chain rollback, activation, and the three recovery paths after a loss of quorum.
+Raft is abstracted as a linearizable compare-and-set store; what the specification models is the events
+that break that abstraction (a restored disk, a rolled-back snapshot, a lost majority) and the rules S3
+applies to them. Deterministic signing is an axiom of the specification, backed by V3.
+
+**V2. The checker in CI.** TLC is one Java archive, pinned by version and checksum with the repository's
+other pins, and run by a guard script in the existing JDK image (no new image, and no `java` on the host,
+per AGENTS.md). The script fails on any invariant violation and prints the counterexample trace. It also
+checks the paths this document calls weaker — replacing a cluster without evidence that every former
+signer stopped, and the credential fence before its certificate is stable — and **requires** a
+counterexample for each, so that a later edit cannot relabel a weak path as safe without the checker
+objecting.
+
+**V3. The link to the code**, in Scala:
+
+- **model-based tests**: ScalaCheck generates sequences of the specification's actions and runs them
+  against the real `ForgeGate` cluster interpreter, checking R1 on what it actually signs;
+- **conformance tests of deterministic reproduction**: identical header and block bytes from every member,
+  across KES evolutions, key reloads and restarts, on the file path and the agent path;
+- **trace validation** (stretch goal): the devnet failover scenario logs its claim, sign and diffuse
+  events, and a check confirms that each run is a behaviour the specification allows.
+
+**V4. Not planned: a proof for all sizes.** A TLAPS or Lean proof would live in a separate repository so
+that Scarab's build never depends on it, and is worth doing only if V1 to V3 leave a specific doubt.
+
+V1 and V2 come before any S2 or S3 code: a counterexample changes the design, and is cheapest found
+before the code exists. S0 and S1 mirror the reference and do not wait for them.
+
 ## Failure cases
 
 | Case | S3 outcome |
@@ -362,11 +414,10 @@ the new certificate is stable, the old signer remains valid.
    better, but would forge on different forks during one. Tip agreement (S4) is the guard. A Haskell node
    cannot take part in the claim protocol, so a mixed cluster could only use S0-style SIGHUP control,
    without R1's guarantee.
-6. **Test it the way consensus protocols are tested.** Write the claim protocol as a TLA+ model before
-   coding S3 and check R1 under crashes at every step boundary, partitions, a partitioned member that
-   resumes after recovery, a Raft snapshot rolled back, a disk replaced, and the loss of a majority's state. Then a devnet scenario that kills members with
-   `kill -9` at random points around leader slots and partitions them, asserting at most one block per
-   pool per slot and counting filled leader slots, on the existing
+6. **Test it the way consensus protocols are tested.** Check the specification before writing the code
+   ([Verification](#verification)). Then a devnet scenario that kills members with `kill -9` at random
+   points around leader slots and partitions them, asserting at most one block per pool per slot and
+   counting filled leader slots, on the existing
    [deterministic adversarial schedules](adversarial-schedules.md).
 7. **Migration is where Horcrux users double-signed.** Moving a running pool into a cluster needs a written
    procedure that never has two signers enabled at once, checked on a devnet.
@@ -377,8 +428,9 @@ the new certificate is stable, the old signer remains valid.
 |---|---|---|---|
 | S0 | `--start-as-non-producing-node`; absent credential file disables forging on SIGHUP ([#906](https://github.com/KD5UJC-XYZ/scarab/issues/906)) | mirrors cardano-node 11.1.3 | level by CONTRIBUTING; devnet `kes-rotate` plus a disable/enable scenario |
 | S1 | KES agent client | [kes-agent.md](kes-agent.md) | as designed there |
+| V | TLA+ specification of S3 and S4, TLC pinned and run in CI (V1, V2) | verification only | TLC finds no violation of R1 or of no-false-alarm within the bounds, and finds the expected counterexample on each weaker path |
 | S2 | `ForgeGate` capability, local claim journal | additive, approval needed | `check`; restart-inside-slot test |
-| S3 | Raft claim protocol, deadline, takeover by reproduction | additive, approval needed | TLA+ model with the recovery cases; conformance tests of deterministic reproduction; devnet failover scenario including member resurrection; high-percentile claim, sign and diffusion latency and the missed-slot rate in performance.md before `δ` and `D(s)` are chosen |
+| S3 | Raft claim protocol, deadline, takeover by reproduction | additive, approval needed | V passing; model-based tests and conformance tests of deterministic reproduction (V3); devnet failover scenario including member resurrection; high-percentile claim, sign and diffusion latency and the missed-slot rate in performance.md before `δ` and `D(s)` are chosen |
 | S4 | Doppelganger guard, readiness, tip agreement | additive, approval needed | devnet with a rogue producer |
 | S5 | Credential-fence procedure | operator documentation | devnet rehearsal |
 
@@ -390,6 +442,8 @@ the new certificate is stable, the old signer remains valid.
 4. Minimum topology to support: two producers and a witness, or three producers.
 5. Recovery after losing quorum: whether to offer replacement after external fencing and the weaker
    credential fence, and whether a standalone mode that gives up R1 exists at all.
+6. Verification: where the TLA+ specification lives in the repository, and whether CI checks it on every
+   change or only when the specification changes.
 
 ## Optional extension: threshold KES
 
