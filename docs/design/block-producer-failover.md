@@ -4,7 +4,7 @@
 reference and follows the normal process; every later stage adds behaviour the Haskell node does not have
 and therefore needs the owner's explicit approval first ([ADR 0001](../adr/0001-haskell-node-as-reference.md)).
 Stage S5 would also amend [ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md), which decided against
-remote signing. No issue is filed yet.
+remote signing. Stage S0 is tracked in [#906](https://github.com/KD5UJC-XYZ/scarab/issues/906).
 
 ## The question
 
@@ -32,7 +32,7 @@ the protocol (the protocol facts are in the next section, from source).
 | Duplicate blocks | Two live producers with the same keys both forge in the pool's slots. Each has its own mempool, so the two blocks differ; at most one survives, and the pool is publicly seen to have equivocated. Whether the protocol punishes this is a recurring, unresolved question on the forum (it does not today; see below). | [4], [5] |
 | Operational-certificate counter mistakes | Since Babbage a header's counter may be at most one above the chain's. Many pools issued certificates with the wrong counter around the Vasil hard fork and stopped forging until they noticed (`CounterOverIncrementedOCERT`, `kes-period-info`). | [6], [7] |
 | Expired KES keys | A KES key lasts 62 periods of 129,600 slots (about 93 days on mainnet). A missed rotation stops forging silently until someone looks. | [7], [8] |
-| Overrun slots | A loaded host that finishes a slot's work late does not forge that slot. Scarab measured about one leader slot in a hundred lost this way at 1 CPU on preprod ([block forging](../compatibility/block-forging.md)). | Scarab evidence |
+| Overrun slots | A loaded host that finishes a slot's work late does not forge that slot. On a loaded devnet host at 1 CPU (`devnet.py pool --scala-cpus 1`), Scarab lost 11 of 1,594 scheduled slots this way ([evidence log 3](../compatibility/evidence-log-3.md)). | Scarab evidence |
 | Correlated software failure | On 2025-11-21 a malformed delegation transaction split mainnet between node versions for most of a day; pools forged on both forks until operators upgraded. A cluster whose members all run one build fails together. | [Intersect incident report][nov25] |
 
 Two things stand out. First, most lost blocks are not caused by a dead machine; they come from
@@ -129,15 +129,20 @@ refused reload and the old credentials stay in force** (`node/.../forge/HotKeys.
 
 - `cardano-node` 11.1.3 `Cardano/Node/Run.hs` lines 626-635 (`updateBlockForging`): if re-reading the
   credentials fails with `FileDoesNotExistError`, it traces `DisabledBlockForging` and calls
-  `setBlockForging nodeKernel []`, so the node stops forging;
-- lines 248-252: `--start-as-non-producing-node` (`ncStartAsNonProducingNode`) starts a node with
-  credentials configured but forging disabled until a SIGHUP finds the files.
+  `setBlockForging nodeKernel []`, so the node stops forging. Lines 664-667 map a `CredentialsReadError`
+  (the bulk credentials file) to the same case;
+- lines 396-398: with `--start-as-non-producing-node` (`ncStartAsNonProducingNode`) the node does not call
+  `setBlockForging` at start-up, so it has credentials configured but forging disabled until a SIGHUP finds
+  the files (lines 248-252 trace that start-up state).
 
 Scarab has no `--start-as-non-producing-node`. So the community's existing runbook — move the files away,
 send SIGHUP — **does not stop a Scarab primary**, and a script that then promotes a spare produces exactly
-the duplicate it was written to avoid. This is a reference deviation in its own right and should be fixed
-first, independently of any cluster work: mirror the flag and the absent-file rule, keep Scarab's
-existing checks on a reload that does find files. It is the prerequisite for everything below, because it
+the duplicate it was written to avoid. Scarab's KES write-back ([ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md))
+appears to make it worse: with the main key file moved away, the next evolution goes through the
+write-back's recovery path and recreates the key file at the configured path. This is a reference deviation
+in its own right, with no approval on record, and should be fixed first, independently of any cluster
+work: mirror the flag and the absent-file rule, and keep the owner's approved checks on a reload that does
+find files ([decisions](../decisions.md), 2026-10-25, #474 row 12) and the write-back (row 11). It is the prerequisite for everything below, because it
 gives the cluster a reference-identical way to turn forging on and off.
 
 ### S1 — The KES agent client (already designed)
@@ -195,8 +200,14 @@ the leader VRF proof (ECVRF draft-03 derives its nonce from the key and input) a
 evolution, any member produces the identical header, and therefore the identical block. A primary that
 crashes between claiming and diffusing therefore costs a delay of `δ`, not a block, and never a duplicate.
 
+**Claim retention.** Claims are never simply deleted. The store keeps a monotone watermark: claims at or
+below it may be pruned, and a claim for any slot at or below it is refused, as EIP-3076 and Horcrux keep a
+low watermark. Otherwise a member paused after building its block could resume after the claim was pruned,
+find no claim, and sign a second block. The watermark only advances past slots that are older than the
+oldest slot any member could still be forging, for example below the immutable tip.
+
 **Why this meets R1 without timing assumptions.** A member signs only an intent that is the committed
-claim for that slot, and compare-and-set on a Raft log admits one claim per slot. Partitions, paused
+claim for that slot, and compare-and-set on a Raft log, with the watermark above, admits one claim per slot. Partitions, paused
 processes and wrong clocks can delay a claim or lose the slot; they cannot produce a second distinct
 block. A primary cut off from the majority cannot commit, so it does not sign (self-fencing falls out of
 the protocol rather than from a watchdog timer). Clocks matter only for liveness and for being
@@ -234,7 +245,7 @@ network-enforced fallback when a member is lost rather than down.
 S3 still puts a full KES key on each producer-capable member. Threshold signing removes it:
 
 - A Sum6 KES verification key is a hash tree over 64 Ed25519 leaf keys, and a Sum6 signature is one leaf
-  Ed25519 signature plus the verification keys along the path. Generate each leaf key by a 2-of-3
+  Ed25519 signature plus both child verification keys at each of the six levels (64 + 6 × 64 = 448 bytes). Generate each leaf key by a 2-of-3
   distributed key generation, compute the public tree, and have the cold key sign the root in the opcert
   as usual.
 - Sign each period's leaf with FROST(Ed25519, SHA-512), which RFC 9591 states verifies under RFC 8032.
@@ -245,8 +256,11 @@ S3 still puts a full KES key on each producer-capable member. Threshold signing 
 - Each signer refuses a second distinct message for a slot, so even a buggy coordinator cannot make the
   cluster equivocate (the Horcrux design). The first FROST round (nonce commitments) is precomputed, so
   signing costs one round trip.
-- FROST signatures are not deterministic, so S3's step 5 changes: the claim journal stores the final
-  signature and a takeover re-sends it. Nonce reuse leaks the key share, so used commitments are journaled.
+- FROST signatures are not deterministic, so S3's step 5 changes. Two signing sessions over the same header
+  body give two headers with different hashes, which is equivocation. So the final signature is committed to
+  the claim journal **before** the block is diffused, a takeover re-sends that committed signature, and each
+  signer refuses a second signing *session* for a slot, not only a second message. Nonce reuse leaks the key
+  share, so used commitments are journaled.
 - The VRF key stays whole on producer-capable members. A leaked VRF key reveals the pool's schedule (and so
   when to attack it) but cannot forge without KES. A threshold VRF is possible but not needed first.
 
@@ -260,9 +274,10 @@ security; it should not start before S3 has run in production.
 If a producer is lost rather than down — stolen, compromised, or unreachable but possibly running — the
 operator issues a certificate with counter `n + 1` for a fresh KES key and installs it on the cluster. The
 network then prefers the cluster's blocks in any same-slot tie and, once one is on the chain, rejects the
-lost machine's. A certificate for `n + 1` can be prepared with the cold key ahead of time and kept offline
-as an escrow. The procedure must follow the warning in [#1610][pr1610]: one increment per stability
-window.
+lost machine's. Preparing such a certificate ahead of time is of limited use: it goes stale at every
+routine rotation (which also moves the chain's counter), its KES window runs from the period it names, and
+its fresh KES secret is one more copy of a hot key to protect. A rehearsed procedure with the offline cold
+key is the better tool. It must follow the warning in [#1610][pr1610]: one increment per stability window.
 
 ## Failure cases
 
@@ -278,7 +293,7 @@ window.
 | Old producer left running with the keys | doppelganger guard stops the cluster at its first block and alerts |
 | Hot key stolen | S6; under S5 a single member compromise yields no usable key |
 | Members on different forks | tip-agreement alert; claim still unique per slot |
-| Raft data lost on a majority | treated as a new cluster: members stay disabled until the journal is rebuilt from the chain and the operator confirms |
+| Raft data lost on a majority | treated as a new cluster: members stay disabled until the operator confirms. Rebuilding from the chain recovers only claims that were diffused, so safety here rests on the operator's confirmation that no member is still forging, not on the protocol |
 
 ## Things worth knowing that were not asked
 
@@ -312,7 +327,7 @@ window.
 
 | Stage | What | Reference | Gate |
 |---|---|---|---|
-| S0 | `--start-as-non-producing-node`; absent credential file disables forging on SIGHUP | mirrors cardano-node 11.1.3 | level by CONTRIBUTING; devnet `kes-rotate` plus a disable/enable scenario |
+| S0 | `--start-as-non-producing-node`; absent credential file disables forging on SIGHUP ([#906](https://github.com/KD5UJC-XYZ/scarab/issues/906)) | mirrors cardano-node 11.1.3 | level by CONTRIBUTING; devnet `kes-rotate` plus a disable/enable scenario |
 | S1 | KES agent client | [kes-agent.md](kes-agent.md) | as designed there |
 | S2 | `ForgeGate` capability, local claim journal | additive, approval needed | `check`; restart-inside-slot test |
 | S3 | Raft claim protocol, takeover, reproduction | additive, approval needed | TLA+ model; devnet failover scenario; latency in performance.md |
