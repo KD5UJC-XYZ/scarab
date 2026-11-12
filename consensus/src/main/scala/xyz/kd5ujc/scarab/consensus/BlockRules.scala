@@ -86,10 +86,22 @@ enum BlockNoVerdict:
             Deterministic
           case BackendFailure.Uplc(reason) =>
             import xyz.kd5ujc.scarab.uplc.ledger.Unavailability
+            import xyz.kd5ujc.scarab.uplc.builtin.extended.LibraryDefect
             reason match
-              // an exception inside the own evaluator, or a builtin's library that failed: the
+              // an exception inside the own evaluator, or a builtin's library that threw: the
               // environment, as a Throwable on the Scalus backend's worker
-              case Unavailability.Thrown(_) | Unavailability.BuiltinDefect(_, _) => Passing
+              case Unavailability.Thrown(_) |
+                  Unavailability.BuiltinDefect(_, LibraryDefect.Thrown(_)) =>
+                Passing
+              // a library that answered what it cannot (an input it refuses, a hashed point
+              // outside the group, a Miller-loop result without the library's value): the same
+              // input and build answer the same
+              case Unavailability.BuiltinDefect(
+                    _,
+                    LibraryDefect.UnexpectedInput(_) | LibraryDefect.HashedOutsideGroup(_) |
+                    LibraryDefect.DetachedMlResult
+                  ) =>
+                Deterministic
               // protocol 12 and later, and a cost model, variant, machine, denotation or arity
               // this build lacks: the same until a restart
               case Unavailability.UnsupportedProtocol(_) | Unavailability.CostModel(_) |

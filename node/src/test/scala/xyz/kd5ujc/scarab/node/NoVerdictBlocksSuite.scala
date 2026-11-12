@@ -76,6 +76,23 @@ class NoVerdictBlocksSuite extends FunSuite:
           )
         )
       ) -> Passing,
+      // a library that answered what it cannot does so again for the same input and build
+      evaluation(
+        BackendFailure.Uplc(
+          Unavailability.BuiltinDefect(
+            xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup,
+            LibraryDefect.HashedOutsideGroup(xyz.kd5ujc.scarab.uplc.bls.Group.G1)
+          )
+        )
+      ) -> Deterministic,
+      evaluation(
+        BackendFailure.Uplc(
+          Unavailability.BuiltinDefect(
+            xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_millerLoop,
+            LibraryDefect.DetachedMlResult
+          )
+        )
+      ) -> Deterministic,
       evaluation(
         BackendFailure.Uplc(Unavailability.UnsupportedProtocol(ProtocolMajor.Dijkstra))
       ) -> Deterministic,
