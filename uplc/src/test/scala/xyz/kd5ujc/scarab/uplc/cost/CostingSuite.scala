@@ -148,6 +148,49 @@ final class CostingSuite extends munit.FunSuite:
           value(Vector("aa" -> Vector("aa" -> 10, "bb" -> 2800), "ffff" -> Vector("8888" -> 100))),
           value(Vector("aa" -> Vector("aa" -> 10), "ffff" -> Vector("8888" -> 20)))
         )
+      ),
+      // linear_on_diagonal, 1 word each: 28755 + 75 * 1 = 28830
+      (
+        "equalsByteString/equalsByteString",
+        two,
+        cost(e, EqualsByteString, hex("00ffaa"), hex("00ffaa"))
+      ),
+      // linear_in_z on 13 bytes (2 words): 20467 + 1 * 2; memory 4 + 0 * 2. The Ints are 1 each.
+      (
+        "sliceByteString/sliceByteString-01",
+        three,
+        cost(e, SliceByteString, int(3), int(5), hex("54686543616B654973414C6965"))
+      ),
+      // linear_in_y on a list of 1: 281145 + 18848 * 1; memory linear_in_x on #ff: 0 + 1 * 1
+      (
+        "writeBits/case-11",
+        three,
+        cost(e, WriteBits, hex("ff"), integers(0), Constant.Bool(false))
+      ),
+      // 5 nodes: quadratic_in_x 1000 + 95933 * 5 + 5^2 = 480690; memory 1 + 11 * 5 = 56
+      (
+        "unValueData/max-key-len",
+        Steps(1, 0, 1, 1),
+        cost(
+          e,
+          UnValueData,
+          data(
+            PlutusData.Map(
+              Vector(
+                PlutusData.B(Bytes.wrap(new Array[Byte](32))) ->
+                  PlutusData.Map(
+                    Vector(PlutusData.B(Bytes.wrap(new Array[Byte](32))) -> PlutusData.I(1))
+                  )
+              )
+            )
+          )
+        )
+      ),
+      // linear_in_u on ValueMaxDepth 1 + 1: 356924 + 18413 * 2 = 393750; memory 45 + 21 * 2 = 87
+      (
+        "insertCoin/long-key-zero-1",
+        Steps(4, 0, 1, 4),
+        cost(e, InsertCoin, hex("aa" * 33), hex(""), int(0), value(Vector("" -> Vector("" -> 1))))
       )
     )
     cases.foreach((test, steps, actual) => assertEquals(actual, conformance(test, steps), test))

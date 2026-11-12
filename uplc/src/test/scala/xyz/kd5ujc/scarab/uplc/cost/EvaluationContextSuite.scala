@@ -26,7 +26,8 @@ final class EvaluationContextSuite extends munit.FunSuite:
     (costs.model.machine.leaves ++ costs.model.builtins.leaves).map((n, v) => n -> v.toLong).toMap
 
   test("a list of every length is used: the missing names get maxBound, extra values are dropped") {
-    // The lengths of every list mainnet and the test networks have had and some beside them.
+    // Lengths below, at and above each language's 343 or 361 names, those of the genesis fixture
+    // (`evaluation-models.jsonl`) among them.
     val lengths = Vector(0, 1, 100, 166, 175, 185, 233, 251, 297, 300, 302, 342, 343, 344, 360, 361,
       362, 400, 411)
     languages.foreach { language =>
