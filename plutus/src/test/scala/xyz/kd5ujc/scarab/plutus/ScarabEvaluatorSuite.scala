@@ -191,25 +191,27 @@ class ScarabEvaluatorSuite extends FunSuite:
 
   test("the text of a failure about a deep constant names its cases, on a small stack") {
     val deep = nestedEmptyList(5000)
-    val scripts = Vector(
-      // casing a list with three branches: the caser refuses the constant (protocol 11)
-      request(Case(deep, Vector(unit, unit, unit)), protocol = 11),
-      // a list where addInteger takes an integer: the unlifting refuses its type
-      request(Ap(Ap(Builtin(0), deep), integer(1)))
-    )
-    for r <- scripts do
-      val result = scarab.evaluate(r)
-      val (text, rendered) = xyz.kd5ujc.scarab.uplc.SmallStack.run(
-        (
-          result match
-            case EvalResult.Failure(reason, _, _) => reason.message
-            case other                            => fail(s"not a failure: $other")
-          ,
-          result.toString
-        )
+    // a list of 5,000 nested list types where addInteger takes an integer: the unlifting refuses
+    // the constant's type, which the failure holds (protocol 10 bounds no type)
+    val result = scarab.evaluate(request(Ap(Ap(Builtin(0), deep), integer(1))))
+    val (text, _) = xyz.kd5ujc.scarab.uplc.SmallStack.run(
+      (
+        result match
+          case EvalResult.Failure(reason, _, _) => reason.message
+          case other                            => fail(s"not a failure: $other")
+        ,
+        result.toString
       )
-      assert(Set("script", "decode")(kind(result)), rendered.take(300))
-      assert(text.length < 200, text.take(300))
+    )
+    assertEquals(text, "CekError Builtin AddInteger Unlifting WrongType")
+    // from protocol 11 the decoder refuses a constant type of more than 32 tags first
+    val bounded = scarab.evaluate(request(Case(deep, Vector(unit, unit, unit)), protocol = 11))
+    assertEquals(
+      xyz.kd5ujc.scarab.uplc.SmallStack.run(bounded match
+        case EvalResult.Failure(reason, _, _) => reason.message
+        case other                            => fail(s"not a failure: $other")),
+      "script does not decode: deserialiseScript refused it: Flat Refused"
+    )
   }
 
   test("the Scalus backend's script failure reads as it did before the own evaluator") {
