@@ -39,8 +39,10 @@ abstract class ConformanceGate(backend: Option[Conformance.Backend[?]]) extends 
     )(conforms(_))
   }
 
-/** The conformance gate of the own evaluator, which does not exist yet (issue 43: the CEK machine,
-  * builtins and costing); the machine's package replaces `None` with its backend. The parse-level
-  * checks of the corpus run in [[CorpusTextSuite]].
+/** The conformance gate of the own evaluator: the CEK machine with every builtin's denotation and
+  * the cost model, in the reference runner's profile
+  * ([[xyz.kd5ujc.scarab.uplc.cost.CekConformance]]). The parse-level checks of the corpus run in
+  * [[CorpusTextSuite]].
   */
-final class ConformanceSuite extends ConformanceGate(None)
+final class ConformanceSuite
+    extends ConformanceGate(Some(xyz.kd5ujc.scarab.uplc.cost.CekConformance.backend))
