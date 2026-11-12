@@ -20,6 +20,8 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
   */
 class OutboundLinkIdentitySuite extends FailsOnUncaught:
   private val magic = 42L
+  // the connections' supervisor and, released before it, their monitors' (`OutboundPeers.create`)
+  private val supervisors = (Supervisor[IO](await = false), Supervisor[IO](await = false)).tupled
   private val peer = InMemoryPeers.address(7)
 
   private def handlers: ServerHandlers[IO, NtNHeader] =
@@ -104,7 +106,7 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
     for
       node <- NodeScope.resource
       _ <- Resource.eval(IO.unit)
-      fixture <- Supervisor[IO](await = false).evalMap { supervisor =>
+      fixture <- supervisors.evalMap { (supervisor, monitors) =>
         given Handle[IO, NodeError] = node
         for
           pool <- BlockPool.create[IO]
@@ -153,6 +155,7 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
             OutboundPeers.Config(),
             hot,
             supervisor,
+            monitors,
             report,
             summon[Stateful[IO, PeerMetrics[PeerNetwork.Addr]]],
             connected
