@@ -143,7 +143,7 @@ final class GeneratedOracleSuite extends munit.FunSuite:
     assertEquals(same.map((r, _) => field[String](r, "id")), Vector.empty[String])
   }
 
-  test("the admitted programs name every builtin of every profile") {
+  test("every builtin of every profile is named by an admitted program of some profile") {
     val named = requests.zip(verdicts).collect {
       case (request, verdict) if field[Boolean](verdict, "admitted") =>
         val profile = profileOf(request)

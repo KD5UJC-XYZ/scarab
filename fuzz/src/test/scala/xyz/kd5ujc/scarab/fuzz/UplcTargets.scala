@@ -26,23 +26,21 @@ object UplcTargets:
     PlutusLanguage.V3 -> ProtocolMajor(11)
   )
 
+  // A missing file fails the target rather than leaving it without the seeds it names.
   private def scripts(path: String, field: String, every: Int): Vector[Array[Byte]] =
-    val file = Path.of(path)
-    if !Files.exists(file) then Vector.empty
-    else
-      Files
-        .readAllLines(file)
-        .asScala
-        .toVector
-        .zipWithIndex
-        .collect { case (line, i) if i % every == 0 => line }
-        .map { line =>
-          val script = io.circe.parser
-            .parse(line)
-            .flatMap(_.hcursor.get[String](field))
-            .fold(throw _, identity)
-          Bytes.fromHex(script).fold(e => sys.error(e.message), _.toArray)
-        }
+    Files
+      .readAllLines(Path.of(path))
+      .asScala
+      .toVector
+      .zipWithIndex
+      .collect { case (line, i) if i % every == 0 => line }
+      .map { line =>
+        val script = io.circe.parser
+          .parse(line)
+          .flatMap(_.hcursor.get[String](field))
+          .fold(throw _, identity)
+        Bytes.fromHex(script).fold(e => sys.error(e.message), _.toArray)
+      }
 
   // The probes of `Data` 16,000 levels deep are left out: decoded under every profile and written
   // back, a level costs more than the 1,000 bytes per input byte `GuardSuite` allows a seed;

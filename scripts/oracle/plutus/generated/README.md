@@ -17,8 +17,9 @@ optional `cpu` and `memory`, `2^60` each when absent) with two more optional fie
 - `verbose`: whether the logs are kept (`Verbose`), `false` by default (`Quiet`).
 
 The answer keeps the costing oracle's `reference.admitted`, `reference.stage` (`decode`, `setup`,
-`scope`, `budget`, `evaluation`, `success`) and `reference.detail`, so the requests of the main and
-costing oracles are answered as before. It adds:
+`scope`, `budget`, `evaluation`, `success`) and `reference.detail`, so a request of the costing
+oracle is answered as that oracle answers it. A request of the main oracle is read too, but without a
+`cpu` and `memory` it runs within `2^60` units, not within that oracle's fixed budget. It adds:
 
 - `spent`: the budget the machine spent, whenever it ran (a success, `budget`, `evaluation`), also on
   failure. `evaluateScriptRestricting` returns no budget on failure, so the harness runs the same

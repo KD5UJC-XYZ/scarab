@@ -94,6 +94,24 @@ def main():
         "dateUtc": datetime.now(timezone.utc).isoformat(),
     }
     (args.fixtures / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    provenance = {
+        "schemaVersion": 1,
+        "scope": "Admission, stage, error class and constructor, budget spent (on success and on failure) and logs of "
+                 "generated UPLC scripts under deserialiseScript and evaluateScriptRestricting; synthetic scripts, "
+                 "not chain scripts",
+        "plutusSourceCommit": PIN,
+        "measuredAt": manifest["dateUtc"][:10],
+        "network": "none",
+        "requests": len(requests),
+        "generator": corpus,
+        "imageId": manifest["oracleImage"],
+        "baseImageId": manifest["oracleBaseImage"],
+        "harnessSha256": manifest["toolSha256"]["scripts/oracle/plutus/generated/Main.hs"],
+        "requestsSha256": manifest["sha256"]["requests.jsonl"],
+        "verdictsSha256": manifest["sha256"]["verdicts.jsonl"],
+        "modelsSha256": manifest["sha256"]["models.jsonl"],
+    }
+    (args.fixtures / "provenance.json").write_text(json.dumps(provenance, indent=1) + "\n")
     print(json.dumps({k: manifest[k] for k in ("requests", "stages", "errors", "withLogs", "withArguments")}, indent=2))
 
 

@@ -60,6 +60,8 @@ nine times in ten.
   `arguments` (CBOR hex), `cpu` and `memory` (the budget: 10^10 and 1.4 * 10^7 four times in five).
 - `verdicts.jsonl`: per script, `admitted`, `stage`, `class` and `error` where there is an error,
   `cpu` and `memory` spent whenever the machine ran, and `logs`.
+- `provenance.json`: the record of [schema 1](../../README.md#provenance-records): the plutus pin, the
+  date, the request count, the generator, the images and the digests of the harness and the files.
 - `manifest.json`: the plutus pin, the source commit of the generator, the oracle image and its base
   image, the stage and error counts, and the SHA-256 of every file and of the tool.
 
@@ -69,12 +71,12 @@ spends the recorded budget.
 
 ## Larger runs (not retained)
 
-On 2026-11-12 two corpora of 15,000 programs each (1,000 per profile) went through the same oracle
-and `GeneratedOracleReplayMain` with no disagreement in stage, error, budget (on success and on
-failure) or logs: seed 1001 under the default lists (generator at `1daf8453c`: 7,097 successes, 1,355
-out of budget), and seed 2002 under four lists per profile, the default and three drawn from it
-(generator at `cbab97391`: 6,206 successes, 2,671 out of budget). Their requests and verdicts are not
-published; the commands below write them again.
+On 2026-11-12 two corpora of 15,000 programs each (1,000 per profile, generator version 1) went
+through the same oracle and `GeneratedOracleReplayMain` with no disagreement in stage, error, budget
+(on success and on failure) or logs: corpus seed 3001 with the default list of each profile
+(arguments `3001 1000 1`: 6,958 successes, 1,358 out of budget), and corpus seed 2002 with four lists
+per profile, the default and three drawn from it (arguments `2002 1000 4`: 6,206 successes, 2,671 out
+of budget). Their requests and verdicts are not published; those arguments write them again.
 
 ## Limits
 
