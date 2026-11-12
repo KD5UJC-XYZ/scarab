@@ -92,8 +92,8 @@ has to change both before they run out. The node does four things for that; a dr
   policy for now. The separate upstream KES agent process is tracked in [H2 / #38](https://github.com/KD5UJC-XYZ/scarab/issues/38). The key signs only after the lock that also guards a
   reload is held, so a block is never signed with a key and certificate of two different reloads, and the key
   only moves forward, so it never signs one period with two states.
-- **Reload on SIGHUP.** `kill -HUP` (or `docker kill -s HUP`) makes the node read the KES key and the
-  certificate again, as the Haskell node does: `Cardano.Node.Run.installSigHUPHandler` (cardano-node 11.1.3,
+- **Reload on SIGHUP.** `kill -HUP` (or `docker kill -s HUP`) makes the node read the VRF key, the certificate
+  and the KES key again, as the Haskell node does: `Cardano.Node.Run.installSigHUPHandler` (cardano-node 11.1.3,
   `cardano-node/src/Cardano/Node/Run.hs` line 596) runs `updateBlockForging` (line 626), which reads the
   credentials with `mkConsensusProtocol` (line 627) and hands them to `setBlockForging` (line 648; the
   consensus side is `NodeKernel.setBlockForging` and `blockForgingController`, ouroboros-consensus-diffusion
@@ -114,8 +114,10 @@ has to change both before they run out. The node does four things for that; a dr
   take the blocks. A good reload logs `kesReloaded` (`opCertCounter`, `kesStart`, `remainingKesPeriods`),
   erases the old key from memory and brings a period-0 key to the present period at once. Putting the same key
   back (a spurious HUP, or someone restoring the period-0 file) keeps the key in memory, which is further on.
-  No reload can leave the node without credentials or with a mixture; a reload while a block is being signed
-  waits for it. A missing replacement file (`NoSuchFileException`) is also a reload refusal.
+  No reload that finds the files can leave the node with a mixture; a reload while a block is being signed
+  waits for it. A credential file that does not exist disables forging instead, as in the reference (see
+  "Dynamic block forging" below); a file that disappears between that check and its read is a refusal
+  (`Unreadable`), as the reference keeps its forging on such a read error.
   Other filesystem errors, verifier defects and failures to persist an evolved key are terminal,
   with their typed cause preserved. An interrupted key update prevents later signing until restart;
   cancellation itself remains cancellation.
@@ -166,6 +168,54 @@ as a new `gen-...` directory, switch `current`, and send SIGHUP; the node perfor
 Not covered yet: a node that is killed in the middle of a rotation, and a rotation the node refuses, are tested
 in units only, not in a scenario ([#122](https://github.com/KD5UJC-XYZ/scarab/issues/122)); a KES agent that
 holds the key instead of a file is H2 ([#38](https://github.com/KD5UJC-XYZ/scarab/issues/38)).
+
+### Dynamic block forging ([#906](https://github.com/KD5UJC-XYZ/scarab/issues/906))
+
+Forging can be switched off and on while the node runs, without a restart, as cardano-node 11.1.3 does it
+(`updateBlockForging`, `cardano-node/src/Cardano/Node/Run.hs` lines 620 to 668). This is how a pool hands
+forging from one block producer to a standby: stop it on one, start it on the other.
+
+- **Off.** Move away or delete the credential files (`--vrf-skey`, `--opcert`, `--kes-skey`) and send SIGHUP.
+  The node reads them in the reference's order (the VRF key, the certificate, the KES key) and when one does
+  not exist (the reference's `FileDoesNotExistError`: the path, followed through links, is missing or is a
+  directory) it stops forging. It logs `blockForgingUpdate` with `enabled` `DisabledBlockForging`, sets
+  `cardano_node_metrics_forging_enabled_int` to 0 and `/forging`'s `enabled` to false, and erases the KES key
+  from memory. From then on it starts no slot (no leader check, no trace of the slot, no block) and writes
+  nothing back, so a key file moved away does not reappear. The line is logged once the switch is made: a
+  script that waits for it knows that nothing signs any more. Every SIGHUP that finds a file absent logs it
+  again, as the reference does.
+- **On.** Put the files back and send SIGHUP. They are read and checked as at any reload (the cold key, the
+  certificate's signature, its window and its counter, above). If they pass, the node logs `kesReloaded` and
+  `blockForgingUpdate` `EnabledBlockForging`, sets the gauge to 1 and forges from the next slot with the key
+  as the file holds it, brought to the present period and written back. Files that are present but refused
+  are reported as any refused reload (`kesReloadRefused`), and forging stays as it was: disabled.
+- **Start disabled.** `--start-as-non-producing-node` (or `"StartAsNonProducingNode": true` in the
+  configuration file; the flag wins, and `--non-producing-node` is its deprecated alias) starts the node with
+  forging disabled although its files are given. As in the reference the files are read and checked at
+  start-up all the same, so a standby with broken keys stops at start rather than at failover. The node logs
+  `blockForgingUpdate` `DisabledBlockForging` and forges once a SIGHUP finds the files. A node without
+  `--forge` logs `DisabledBlockForging` at start and at each SIGHUP, and reports 0.
+
+Move all three files, as the reference's runbook does. Scarab writes the evolved KES key back
+([ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md)), and a write-back of a period change that
+runs at the moment the KES key file is moved puts the key back at its path; an absent VRF key or certificate
+disables forging all the same. How the write-back should treat that race is an owner decision
+([#918](https://github.com/KD5UJC-XYZ/scarab/issues/918)).
+
+The lock beside the KES key (`--key-lock`) stays held while forging is disabled: a SIGHUP can enable forging at
+any time, so the lock keeps stopping a second Scarab instance on the same key files. It is a hidden file of its
+own, made at start-up, and nothing else is written in the key directory while forging is off. A standby on the
+same machine and the same key paths therefore needs its own copy of the files or `--key-lock off`.
+
+Not covered: a reload reads the VRF key file to see that it exists and is well formed but keeps the VRF key the
+node started with, and a SIGHUP that arrives before the forger runs (during the start-up and replay), or at a
+node without `--forge` and `--topology`, ends the process, where the reference logs `NotEffective` or ignores
+it ([#919](https://github.com/KD5UJC-XYZ/scarab/issues/919)). The reference's bulk credentials file
+(`--bulk-credentials-file`), any failure to read which also disables forging (`CredentialsReadError`,
+`Run.hs` 664-667), does not exist in Scarab ([#222](https://github.com/KD5UJC-XYZ/scarab/issues/222)); with a
+KES agent ([#38](https://github.com/KD5UJC-XYZ/scarab/issues/38)) the reference reads only the VRF key and the
+certificate. The devnet scenario `dynamic-forging` runs the off-and-on cycle beside two Haskell pools
+([devnet](devnet.md)).
 
 The devnet scenario `kes-rotate` (below) runs all of this unattended: a short KES period, a small
 `maxKESEvolutions`, the driver on a loop, several rotations while the node forges beside two Haskell pools.

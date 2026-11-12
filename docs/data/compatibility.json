@@ -1625,7 +1625,7 @@
       "id": "block-forging",
       "component": "Block forging",
       "status": "implemented",
-      "summary": "Praos (Conway) forging, exact KES evolution targets and typed terminal outcomes after key-update failure",
+      "summary": "Praos (Conway) forging, exact KES evolution targets, typed terminal outcomes after key-update failure, and dynamic block forging (SIGHUP, --start-as-non-producing-node)",
       "evidence": {
         "suites": [
           "Sum6KesSigningSuite",
@@ -1637,7 +1637,14 @@
         ],
         "issues": [
           82,
-          474
+          474,
+          906
+        ]
+      },
+      "limitations": {
+        "issues": [
+          918,
+          919
         ]
       },
       "page": "docs/compatibility/block-forging.md"

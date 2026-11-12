@@ -109,7 +109,10 @@ refusals above (`LedgerViewUnavailable`, `UnsupportedProtocol`, `Assembly`).
 Scarab's own log events beside the reference's traces: `forgeStarted`, `forged` (slot, block number, hash,
 transaction ids, KES periods, stake), `adopted`, `lost` (the block did not join our chain, or was replaced at
 its height later), `kesEvolved`, `kesReloaded`, `kesReloadRefused`, `kesPersistFailed` (see "Rotating the KES
-key" in [running.md](../running.md)), `forgeFailed`, `forgeEpoch`.
+key" in [running.md](../running.md)), `forgeFailed`, `forgeEpoch`. Whether the node forges is the reference's
+`blockForgingUpdate`, at start-up and at each SIGHUP: a reload that finds a credential file absent disables
+forging, and the loop then starts no slot until a reload finds the files again (see "Dynamic block forging" in
+[running/forging.md](../running/forging.md#dynamic-block-forging)).
 
 The slot clock starts at the Byron genesis' `startTime` (whole seconds) when there is a Byron genesis
 file, as the reference's hard-fork combinator does, and at the Shelley `systemStart` otherwise

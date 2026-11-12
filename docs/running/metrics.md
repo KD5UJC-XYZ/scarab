@@ -133,8 +133,9 @@ of an enum label that never happened are absent, except `scarab_era` (written fo
   slots (at a slot the pool does not lead after a gap, the slot less the last slot led or not led, one more than
   the slots in the gap). The KES gauges are written after each update of the forge state (`Forge.StateInfo`,
   `Tracers/KESInfo.hs` 110-120), and a failed update writes the certificate's window and zero for the current
-  and remaining periods; `scarab_opcert_counter` and `forging_enabled_int` are written at start and after
-  every reload.
+  and remaining periods; `scarab_opcert_counter` is written at start and after every reload, and
+  `forging_enabled_int` with each `blockForgingUpdate` (at start, and at a reload that enables or disables
+  forging), as the reference writes it (`Tracers/Startup.hs` 301-307).
 
 **Not exported** (cardano-node 11.1.3 has them; tracked in roadmap J3e): `cardano_node_metrics_served_block_counter`,
 `served_header_counter` and `served_block_latest_counter` (what the node served to peers; the `sessions` of
@@ -212,7 +213,7 @@ section and the catalogue differ.
 | `cardano_node_metrics_nodeCannotForge_int` | gauge |  | Slots the pool led but could not forge in since the start (TraceNodeCannotForge), as of the start of the current slot (ForgingStats). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_slotsMissed_int` | gauge |  | Slots missed since the start, as the reference's ForgingStats counts them at each slot the pool does not lead. | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_forgedSlotLast_int` | gauge |  | Slot of the last block forged. | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_forging_enabled_int` | gauge |  | 1 when the node has forging credentials. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_forging_enabled_int` | gauge |  | 1 while the node forges, 0 when it has no credentials, was started as non-producing or a reload found a credential file absent (the reference's BlockForgingUpdate). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_currentKESPeriod_int` | gauge |  | The KES key's period after the last update of the forge state; 0 after a failed update. | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_remainingKESPeriods_int` | gauge |  | KES periods left before the operational certificate expires, after the last update of the forge state; 0 after a failed update. | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_operationalCertificateStartKESPeriod_int` | gauge |  | The first KES period of the operational certificate. | same name; scraped from 11.1.3 |
