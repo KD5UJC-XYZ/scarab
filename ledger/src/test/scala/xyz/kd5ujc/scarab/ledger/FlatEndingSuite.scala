@@ -5,6 +5,7 @@ import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.*
+import xyz.kd5ujc.scarab.uplc.flat.{FlatError, ScriptDecodeError}
 
 /** The end of a script's flat program as the ledger meets it, with the real decoder and evaluator:
   * bits or bytes after the program's filler are a malformed script (the reference's strict
@@ -143,11 +144,16 @@ class FlatEndingSuite extends FunSuite:
         run(Bytes.fromArray(wrapped(validator).toArray :+ 0x00.toByte), protocol).passed,
         s"remainder at protocol $protocol"
       )
+      // each backend's decoder names the reference's `tooMuchSpace` in its own terms: FlatScan by
+      // the bits after the filler, the own decoder by where the filler ends
+      val expected = PlutusBackends.vm match
+        case PlutusVm.Scalus => ScriptProblem.Flat(FlatScan.Failure.TooMuchSpace(8))
+        case PlutusVm.Scarab =>
+          ScriptProblem.Uplc(
+            ScriptDecodeError.Flat(FlatError.TooMuchSpace(validator.length.toLong * 8))
+          )
       run(wrapped(validator :+ 0x00.toByte), protocol) match
         case Phase2.Outcome.Failed(_, failures) =>
-          assertEquals(
-            failures.map(_.reason).toVector,
-            Vector(EvalFailure.Decode(ScriptProblem.Flat(FlatScan.Failure.TooMuchSpace(8))))
-          )
+          assertEquals(failures.map(_.reason).toVector, Vector(EvalFailure.Decode(expected)))
         case other => fail(s"protocol $protocol: unexpected $other")
   }

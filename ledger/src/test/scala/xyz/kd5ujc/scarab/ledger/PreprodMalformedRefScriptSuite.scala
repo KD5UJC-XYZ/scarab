@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.plutus.*
+import xyz.kd5ujc.scarab.uplc.flat.ScriptDecodeError
 import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.rules.NativeRules
 import xyz.kd5ujc.scarab.ledger.state.{Build, Coin, Conway, ConwayNewEpochState, NewEpochState}
@@ -75,8 +76,14 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
   }
 
   test("the same bytes are a RemainderError as Plutus V3") {
-    assert(
-      decoder.validate(PlutusLanguage.V3, 10, script).left.exists(_.message.contains("remain"))
+    // the second copy is the remainder: each backend names it in its own terms
+    val remainder = Bytes(script.value.drop(1078))
+    val expected = PlutusBackends.vm match
+      case PlutusVm.Scalus => ScriptProblem.TrailingBytes(remainder.size)
+      case PlutusVm.Scarab => ScriptProblem.Uplc(ScriptDecodeError.Remainder(remainder))
+    assertEquals(
+      decoder.validate(PlutusLanguage.V3, 10, script),
+      Left(ScriptDecodeFailure.Malformed(expected))
     )
   }
 
