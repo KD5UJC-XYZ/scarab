@@ -425,6 +425,7 @@
       ],
       "suites": [
         "CekMachineSuite",
+        "CekTermCorpusSuite",
         "CekDeepSuite",
         "CekEvaluateSuite",
         "EnvSuite"
