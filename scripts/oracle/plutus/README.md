@@ -92,3 +92,6 @@ The `sliceByteString` probes of `SliceByteStringCorpus` (`tools/runMain xyz.kd5u
 <requests.jsonl>`), with indices outside the 32-bit and Int64 ranges in every profile of the costing matrix, run through the
 same driver with `--out fixtures/reference/plutus-slice-bytestring/verdicts.jsonl`; results are in
 `fixtures/reference/plutus-slice-bytestring`.
+
+Generated programs of the own evaluator (`uplc`) run through a harness derived from the costing oracle's that also
+reports the budget spent on failure, the class and constructor of the error and the logs: [generated/](generated/README.md).
