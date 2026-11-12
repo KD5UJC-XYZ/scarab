@@ -170,3 +170,21 @@ class BackendFailureSuite extends FunSuite:
       )
     )
   }
+
+  test("every Scalus builtin has the uplc builtin of its name, so failures read as before") {
+    val unnamed = DefaultFun.values.toVector.filter(ScalusEvaluator.builtinOf(_).isEmpty)
+    assertEquals(unnamed, Vector.empty, "Scalus builtins with no uplc name")
+    DefaultFun.values.foreach { fun =>
+      val own = ScalusEvaluator.builtinOf(fun).getOrElse(fail(s"$fun"))
+      assertEquals(own.toString, fun.toString)
+      assertEquals(
+        BackendFailure.BuiltinUnavailable(own).message,
+        s"builtin $fun unavailable",
+        "the message of a Scalus builtin, as it was when the failure held Scalus's enum"
+      )
+      assertEquals(
+        BackendFailure.CostingUnmirrored(own).message,
+        s"the costing function of $fun is not mirrored"
+      )
+    }
+  }

@@ -548,7 +548,9 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   EvalFailure
                     .Unsupported(
                       xyz.kd5ujc.scarab.plutus.BackendFailure
-                        .BuiltinUnavailable(scalus.uplc.DefaultFun.VerifyEd25519Signature)
+                        .BuiltinUnavailable(
+                          xyz.kd5ujc.scarab.uplc.DefaultFun.VerifyEd25519Signature
+                        )
                     )
                 )
                 cats.mtl

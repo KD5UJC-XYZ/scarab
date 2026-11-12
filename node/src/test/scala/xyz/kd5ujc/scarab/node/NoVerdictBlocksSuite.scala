@@ -54,10 +54,12 @@ class NoVerdictBlocksSuite extends FunSuite:
       evaluation(BackendFailure.StackExhausted) -> Deterministic,
       evaluation(BackendFailure.BudgetOutOfRange(ExUnits(BigInt(2).pow(64), 0))) -> Deterministic,
       evaluation(
-        BackendFailure.BuiltinUnavailable(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+        BackendFailure.BuiltinUnavailable(
+          xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup
+        )
       ) -> Deterministic,
       evaluation(
-        BackendFailure.CostingUnmirrored(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+        BackendFailure.CostingUnmirrored(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
       ) -> Deterministic,
       BlockNoVerdict.Verification(
         VerificationDefect(
