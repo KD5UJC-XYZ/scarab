@@ -29,6 +29,11 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
   private val block = Bytes.wrap(Array[Byte](2))
   private val refusal = ValidationError(ChainSync.Point.Origin, BlockFailure.HeaderDiffers)
 
+  // the scope of the connections, and inside it the scope of their monitors, released first, as
+  // `PeerNetwork.resource` nests them ([[OutboundPeers]])
+  private val supervisors: Resource[IO, (Supervisor[IO], Supervisor[IO])] =
+    (Supervisor[IO](await = false), Supervisor[IO](await = false)).tupled
+
   private def handlers: ServerHandlers[IO, NtNHeader] =
     val cursor = new ChainSyncServer.Source[IO, NtNHeader]:
       def intersect(points: Vector[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
@@ -50,7 +55,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
     ) {
       NodeScope.resource.use { node =>
         given Handle[IO, NodeError] = node
-        Supervisor[IO](await = false).use { supervisor =>
+        supervisors.use { (supervisor, monitors) =>
           for
             pool <- BlockPool.create[IO]
             _ <- supervisor.supervise(pool.fetchCoordinator.run)
@@ -91,6 +96,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
               OutboundPeers.Config(closeTimeout = 100.millis),
               hot,
               supervisor,
+              monitors,
               e => events.update(_ :+ e),
               summon[Stateful[IO, PeerMetrics[PeerNetwork.Addr]]]
             )
@@ -195,7 +201,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
       Settled.timed { settle =>
         NodeScope.resource.use { node =>
           given Handle[IO, NodeError] = node
-          Supervisor[IO](await = false).use { supervisor =>
+          supervisors.use { (supervisor, monitors) =>
             for
               available <- fs2.concurrent.SignallingRef[IO, Int](Peer.Depth + 1)
               offered <- Ref.of[IO, Vector[Point]](Vector(Point.Origin))
@@ -336,6 +342,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
                 OutboundPeers.Config(),
                 hot,
                 supervisor,
+                monitors,
                 e =>
                   events.update(_ :+ e) *> (e match
                     case Event.Observed(_, Observation.HotEnded(_, _), _, _) =>

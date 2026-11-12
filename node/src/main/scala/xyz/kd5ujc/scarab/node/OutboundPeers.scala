@@ -46,8 +46,14 @@ trait Transport[F[_], A]:
   * false`) and once the manager has released it (`released = true`).
   *
   * Each connection is the resource of a fiber of its own and each hot session the resource of a
-  * second one. Its retained result/control handles and status are observed by a separate monitor
-  * under the outer `supervisor`, which survives both resources.
+  * second one. Its retained result/control handles and status are observed by a separate monitor,
+  * which survives both resources. The monitors run under `monitors`, a scope inside the one of the
+  * connections (`supervisor`): it is released first, so a connection that our own shutdown closes
+  * is never observed, and reported, as lost. The reference nests the same way: the monitoring loops
+  * are jobs of the job pool of `withPeerStateActions` (`PeerSelection/PeerStateActions.hs` 630,
+  * 836-851), opened inside the connection manager (`Diffusion.hs` 769-772, 801-805), whose exit
+  * cancels the connection threads only after that pool has ended (`ConnectionManager/Core.hs`
+  * 523-548; ouroboros-network 2fb69829).
   */
 final class OutboundPeers[F[_]: Async, A] private (
     node: Handle[F, NodeError],
@@ -56,6 +62,7 @@ final class OutboundPeers[F[_]: Async, A] private (
     config: OutboundPeers.Config,
     hot: OutboundPeers.Hot[F],
     supervisor: Supervisor[F],
+    monitors: Supervisor[F],
     report: Event[A] => F[Unit],
     metrics: Stateful[F, PeerMetrics[A]],
     table: Ref[F, Map[A, OutboundPeers.Link[F]]],
@@ -321,7 +328,7 @@ final class OutboundPeers[F[_]: Async, A] private (
                     report(
                       Event.SharingNegotiated(peer, warm.peerSharing.isDefined, Some(generation))
                     ) *>
-                    supervisor.supervise(peerMonitoringLoop(peer, link)).void *>
+                    monitors.supervise(peerMonitoringLoop(peer, link)).void *>
                     ready.complete(Right(handle)) *>
                     F.race(release.get, warm.mux.closed).flatMap {
                       case Left(_)      => F.unit
@@ -1284,6 +1291,12 @@ object OutboundPeers:
 
   /** The outbound connections of the node.
     *
+    * @param supervisor
+    *   The scope of the connections: the fiber of each connection and the one that dials it.
+    * @param monitors
+    *   The scope of the connections' monitors: released before `supervisor`, so that no monitor
+    *   observes the closing of its connection by the release of `supervisor` (see
+    *   [[OutboundPeers]]).
     * @param beforeObservation
     *   run by each connection's monitor before it observes the connection's applications: a test
     *   seam for a monitor that fails (issue 579); the node passes none
@@ -1294,6 +1307,7 @@ object OutboundPeers:
       config: Config,
       hot: Hot[F],
       supervisor: Supervisor[F],
+      monitors: Supervisor[F],
       report: Event[A] => F[Unit],
       metrics: Stateful[F, PeerMetrics[A]],
       connected: Option[(A, SocketAddress[IpAddress]) => F[Unit]] = None,
@@ -1315,6 +1329,7 @@ object OutboundPeers:
         config,
         hot,
         supervisor,
+        monitors,
         report,
         metrics,
         table,

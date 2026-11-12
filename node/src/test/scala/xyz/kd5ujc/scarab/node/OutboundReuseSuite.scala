@@ -93,6 +93,7 @@ class OutboundReuseSuite extends FailsOnUncaught:
     for
       node <- NodeScope.resource
       supervisor <- Supervisor[IO](await = false)
+      monitors <- Supervisor[IO](await = false)
       built <- Resource.eval {
         given Handle[IO, NodeError] = node
         for
@@ -142,6 +143,7 @@ class OutboundReuseSuite extends FailsOnUncaught:
             OutboundPeers.Config(closeTimeout = 2.seconds, deactivateTimeout = deactivateTimeout),
             hot,
             supervisor,
+            monitors,
             event => reports.update(_ :+ event),
             summon[Stateful[IO, PeerMetrics[PeerNetwork.Addr]]]
           )

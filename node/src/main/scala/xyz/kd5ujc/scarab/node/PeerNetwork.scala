@@ -465,6 +465,9 @@ object PeerNetwork:
           )
         )
       )
+      // acquired after `supervisor`, so released before it: the monitors end before the release of
+      // `supervisor` closes their connections ([[OutboundPeers]])
+      monitors <- Supervisor[F](await = false)
       outbound <- Resource.eval(
         OutboundPeers.create[F, Addr](
           transport,
@@ -472,6 +475,7 @@ object PeerNetwork:
           config,
           hot,
           supervisor,
+          monitors,
           events.offer,
           RefStateful(metrics),
           sharing.map(s =>

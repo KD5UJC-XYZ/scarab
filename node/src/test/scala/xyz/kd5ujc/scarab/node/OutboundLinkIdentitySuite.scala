@@ -22,6 +22,11 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
   private val magic = 42L
   private val peer = InMemoryPeers.address(7)
 
+  // the scope of the connections, and inside it the scope of their monitors, released first, as
+  // `PeerNetwork.resource` nests them ([[OutboundPeers]])
+  private val supervisors: Resource[IO, (Supervisor[IO], Supervisor[IO])] =
+    (Supervisor[IO](await = false), Supervisor[IO](await = false)).tupled
+
   private def handlers: ServerHandlers[IO, NtNHeader] =
     val cursor = new ChainSyncServer.Source[IO, NtNHeader]:
       def intersect(points: Vector[ChainSync.Point]) = IO.pure(Left(ChainSync.Tip.Origin))
@@ -104,7 +109,7 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
     for
       node <- NodeScope.resource
       _ <- Resource.eval(IO.unit)
-      fixture <- Supervisor[IO](await = false).evalMap { supervisor =>
+      fixture <- supervisors.evalMap { (supervisor, monitors) =>
         given Handle[IO, NodeError] = node
         for
           pool <- BlockPool.create[IO]
@@ -153,6 +158,7 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
             OutboundPeers.Config(),
             hot,
             supervisor,
+            monitors,
             report,
             summon[Stateful[IO, PeerMetrics[PeerNetwork.Addr]]],
             connected
