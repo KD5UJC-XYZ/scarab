@@ -21,12 +21,8 @@ final class TermGenSuite extends ScalaCheckSuite:
       seed <- Gen.long
     yield TermGen.generate(profile, seed)
 
-  private lazy val machines = Profile.all
-    .map(p =>
-      p -> LedgerEvaluation
-        .machine(p.language, p.protocol, GeneratedCorpus.model(p))
-        .fold(e => fail(e.toString), identity)
-    )
+  private lazy val contexts = Profile.all
+    .map(p => p -> Verdict.context(p.language, p.protocol, GeneratedCorpus.model(p)))
     .toMap
 
   property("a seed gives the same program, arguments and budget every time") {
@@ -46,8 +42,8 @@ final class TermGenSuite extends ScalaCheckSuite:
 
   property("the own evaluator gives every generated script a verdict") {
     Prop.forAll(generated) { g =>
-      val verdict = LedgerEvaluation.evaluate(
-        machines(g.profile),
+      val verdict = Verdict.evaluate(
+        contexts(g.profile),
         ScriptWriter.script(g.program),
         g.arguments,
         g.budget

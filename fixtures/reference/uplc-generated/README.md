@@ -10,8 +10,9 @@ of the 15 legal ledger profiles (V1 at protocols 5 to 11, V2 at 7 to 11, V3 at 9
 variants A to E), half with the profile's default cost-model list and half with a list drawn from it
 (each builtin parameter kept, scaled, shifted, zeroed, made large or negative, each machine parameter
 kept within a factor of two or so), so that parameters the defaults keep in proportion are told
-apart. `GeneratedOracleSuite` replays
-every one through the own evaluator and requires the same admission and stage, the same class and
+apart. `GeneratedOracleSuite` replays every one through the own evaluator's ledger entry point,
+the path the node runs (`ledger.LedgerEval.evaluateSerialised` with the `LedgerContext` of the
+request's cost-model list, the request's budget, verbose), and requires the same admission and stage, the same class and
 constructor of the error, the same budget on success **and on failure**, and the same log lines. No
 case is excluded; a script the own evaluator gives no verdict on fails the suite.
 
@@ -72,7 +73,7 @@ spends the recorded budget.
 ## Larger runs (not retained)
 
 On 2026-11-12 two corpora of 15,000 programs each (1,000 per profile, generator version 1) went
-through the same oracle and `GeneratedOracleReplayMain` with no disagreement in stage, error, budget
+through the same oracle and `GeneratedOracleReplayMain` (the same entry point) with no disagreement in stage, error, budget
 (on success and on failure) or logs: corpus seed 3001 with the default list of each profile
 (arguments `3001 1000 1`: 6,958 successes, 1,358 out of budget), and corpus seed 2002 with four lists
 per profile, the default and three drawn from it (arguments `2002 1000 4`: 6,206 successes, 2,671 out

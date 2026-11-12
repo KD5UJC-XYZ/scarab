@@ -9,9 +9,10 @@ import xyz.kd5ujc.scarab.uplc.cost.ExBudget
 
 /** The generated programs of `fixtures/reference/uplc-generated`, judged by the pinned Haskell
   * evaluator (plutus 1.70.0.0, `scripts/oracle/plutus/generated`), replayed through this evaluator
-  * as the ledger runs a script ([[LedgerEvaluation]]): the same admission and stage, the same class
-  * and constructor of the error, the same budget on success and on failure, and the same logs. No
-  * case is excluded; a script this evaluator gives no verdict on is a disagreement too.
+  * as the node runs a script (`ledger.LedgerEval`, [[Verdict.evaluate]]): the same admission and
+  * stage, the same class and constructor of the error, the same budget on success and on failure,
+  * and the same logs. No case is excluded; a script this evaluator gives no verdict on is a
+  * disagreement too.
   */
 final class GeneratedOracleSuite extends munit.FunSuite:
   override val munitTimeout = scala.concurrent.duration.Duration(5, "min")
@@ -128,7 +129,7 @@ final class GeneratedOracleSuite extends munit.FunSuite:
   }
 
   test("negative control: with every cost parameter doubled, no successful run spends the same") {
-    val doubled = GeneratedReplay.machines(models, scale = 2)
+    val doubled = GeneratedReplay.contexts(models, scale = 2)
     val unlimited = ExBudget.of(Long.MaxValue / 4, Long.MaxValue / 4)
     val successes = requests.zip(verdicts).filter((_, v) => field[String](v, "stage") == "success")
     val same = successes.filter { (request, expected) =>
@@ -154,7 +155,7 @@ final class GeneratedOracleSuite extends munit.FunSuite:
             hex(field[String](request, "script"))
           )
           .fold(e => fail(s"${field[String](request, "id")}: $e"), identity)
-        profile -> LedgerEvaluation.builtins(program.term)
+        profile -> Verdict.builtins(program.term)
     }
     val byProfile = named.groupMapReduce(_._1)(_._2)(_ ++ _)
     val missing =

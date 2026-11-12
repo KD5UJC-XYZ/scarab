@@ -6,11 +6,12 @@ import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.uplc.{PlutusData, PlutusLanguage, ProtocolMajor}
 import xyz.kd5ujc.scarab.uplc.cost.ExBudget
+import xyz.kd5ujc.scarab.uplc.ledger.Unavailability
 
 /** The replay of a directory of generated requests and the pinned evaluator's verdicts on them
   * (`models.jsonl`, `requests.jsonl`, `verdicts.jsonl`, as `scripts/oracle/plutus/generated/run.py`
-  * writes them) through [[LedgerEvaluation]]: the retained fixture's in [[GeneratedOracleSuite]], a
-  * larger campaign's by hand (`GeneratedOracleReplayMain`).
+  * writes them) through the production path ([[Verdict.evaluate]]): the retained fixture's in
+  * [[GeneratedOracleSuite]], a larger campaign's by hand (`GeneratedOracleReplayMain`).
   */
 object GeneratedReplay:
   /** A row of a file that is not what the writer wrote. */
@@ -31,13 +32,13 @@ object GeneratedReplay:
       id: String,
       request: Json,
       expected: Json,
-      actual: Either[NoVerdict, Verdict]
+      actual: Either[Unavailability, Verdict]
   )
 
-  /** The machine of each cost-model list, with every parameter multiplied by `scale`. */
-  def machines(models: Vector[Json], scale: Long = 1): Vector[Either[NoVerdict, LedgerMachine]] =
+  /** The context of each cost-model list, with every parameter multiplied by `scale`. */
+  def contexts(models: Vector[Json], scale: Long = 1): Vector[ProfileContext] =
     models.map(model =>
-      LedgerEvaluation.machine(
+      Verdict.context(
         languageOf(field[Int](model, "language")),
         ProtocolMajor(field[Int](model, "protocol")),
         field[Vector[Long]](model, "costModel").map(_ * scale)
@@ -45,14 +46,17 @@ object GeneratedReplay:
     )
 
   def evaluate(
-      machines: Vector[Either[NoVerdict, LedgerMachine]],
+      contexts: Vector[ProfileContext],
       request: Json,
       budget: ExBudget
-  ): Either[NoVerdict, Verdict] =
+  ): Either[Unavailability, Verdict] =
     val arguments = field[Vector[String]](request, "arguments")
       .map(a => PlutusData.decode(hex(a)).fold(e => throw Malformed(s"argument: $e"), identity))
-    machines(field[Int](request, "model")).flatMap(
-      LedgerEvaluation.evaluate(_, hex(field[String](request, "script")), arguments, budget)
+    Verdict.evaluate(
+      contexts(field[Int](request, "model")),
+      hex(field[String](request, "script")),
+      arguments,
+      budget
     )
 
   def replay(
@@ -60,7 +64,7 @@ object GeneratedReplay:
       requests: Vector[Json],
       verdicts: Vector[Json]
   ): Vector[Replayed] =
-    val built = machines(models)
+    val built = contexts(models)
     requests.zip(verdicts).map { (request, expected) =>
       val budget = ExBudget.of(field[Long](request, "cpu"), field[Long](request, "memory"))
       Replayed(field[String](request, "id"), request, expected, evaluate(built, request, budget))
