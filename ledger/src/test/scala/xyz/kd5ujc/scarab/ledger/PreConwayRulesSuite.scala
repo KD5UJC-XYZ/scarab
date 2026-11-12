@@ -22,6 +22,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   UtxoTests
 }
 import xyz.kd5ujc.scarab.ledger.state.{
+  Allegra,
   Alonzo,
   Babbage,
   BlocksMade,
@@ -36,6 +37,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   KeyHash,
   Mary,
   NewEpochState,
+  Shelley,
   ShelleyAccountState,
   ShelleyAccounts,
   ShelleyBasedEra,
@@ -286,11 +288,11 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val dh = Datum.Hash(Bytes(Vector.fill(32)(1)))
     val withDatum = out(bob.address(), 0).copy(datum = dh)
     val alonzo = TestLedger.params(5)
-    assertEquals(TxChecks.minUTxO(alonzo, out(bob.address(), 0)), BigInt(29 * 34482))
-    assertEquals(TxChecks.minUTxO(alonzo, withDatum), BigInt(39 * 34482))
+    assertEquals(TxChecks.minUTxO[Alonzo](alonzo, out(bob.address(), 0)), BigInt(29 * 34482))
+    assertEquals(TxChecks.minUTxO[Alonzo](alonzo, withDatum), BigInt(39 * 34482))
     val babbage = TestLedger.params(7)
     val sized = out(bob.address(), 0).copy(raw = Bytes(Vector.fill(65)(0)))
-    assertEquals(TxChecks.minUTxO(babbage, sized), BigInt(225 * 4310))
+    assertEquals(TxChecks.minUTxO[Babbage](babbage, sized), BigInt(225 * 4310))
   }
 
   property("stake key deposits and refunds keep the supply and the deposit pot exact") {
@@ -911,57 +913,62 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val v = Value(coin, assets)
     out(bob.address(), 0).copy(value = v)
 
-  /** The first failure of the output checks of UTXO, in the era's order. */
-  private def outputRule(pp: ProtocolParams, o: TxOut): String =
+  /** The first failure of the output checks of the UTXO of the era `E`, in the era's order. */
+  private def outputRule[E <: EraTag](pp: ProtocolParams, o: TxOut)(using
+      era: ShelleyBasedEra[E]
+  ): String =
     val outs = Vector(o)
-    val pv = pp.protocolMajor
+    val allegra = era.atLeast(ShelleyBasedEra.SAllegra)
     val checks = Vector(
-      UtxoTests.outputTooSmall(pp, outs),
-      if pv >= 3 then UtxoTests.outputTooBig(pp, outs) else Test.pass,
-      if pv >= 3 then UtxoTests.injectedBootAddrAttrsTooBig(ReferenceBuild.Release11_1, outs)
+      UtxoTests.outputTooSmall[E](pp, outs),
+      if allegra then UtxoTests.outputTooBig[E](pp, outs) else Test.pass,
+      if allegra then UtxoTests.injectedBootAddrAttrsTooBig(ReferenceBuild.Release11_1, outs)
       else UtxoTests.bootAddrAttrsTooBig(outs),
-      if pv >= 5 then UtxoTests.wrongNetwork(env.network, outs) else Test.pass
+      if era.atLeast(ShelleyBasedEra.SAlonzo) then UtxoTests.wrongNetwork(env.network, outs)
+      else Test.pass
     ).flatMap(Test.failures(_).toVector.flatMap(_.iterator))
     checks.headOption.fold("accepted")(_.ruleName)
 
   test("Shelley and Allegra require exactly minUTxOValue, Mary scales it for native assets") {
     // ada-only outputs: the flat parameter in every Shelley-based era up to Mary
-    List(2, 3, 4).foreach { pv =>
-      assertEquals(outputRule(params(pv), valued(ada, Map.empty)), "accepted", s"era $pv")
+    def flat[E <: EraTag](pv: Int)(using ShelleyBasedEra[E]) =
+      assertEquals(outputRule[E](params(pv), valued(ada, Map.empty)), "accepted", s"era $pv")
       assertEquals(
-        outputRule(params(pv), valued(ada - 1, Map.empty)),
+        outputRule[E](params(pv), valued(ada - 1, Map.empty)),
         "OutputTooSmallUTxO",
         s"era $pv"
       )
-    }
+    flat[Shelley](2)
+    flat[Allegra](3)
+    flat[Mary](4)
     // Mary scaledMinDeposit: max(mv, (mv / 27) * (27 + size v)); one 5-byte name: 6 + ceil(45 / 8) = 12 words
     val one = Map(policy -> Map(assetName("abcde") -> BigInt(1)))
     val mv = BigInt(1000000)
     val expected = (mv / 27) * (27 + 12)
     assertEquals(expected, BigInt(1444443))
-    assertEquals(TxChecks.minUTxO(params(4), valued(0, one)), expected)
-    assertEquals(outputRule(params(4), valued(expected, one)), "accepted")
+    assertEquals(TxChecks.minUTxO[Mary](params(4), valued(0, one)), expected)
+    assertEquals(outputRule[Mary](params(4), valued(expected, one)), "accepted")
     // ... but the Allegra/Mary rule tests `pointwise (<) v (inject min)`, which no value with assets
     // satisfies, so only ada-only outputs can be too small (observed on the 11.1.3 reference too)
-    assertEquals(outputRule(params(4), valued(expected - 1, one)), "accepted")
-    assertEquals(outputRule(params(4), valued(1, one)), "accepted")
-    assertEquals(outputRule(params(5), valued(1, one)), "OutputTooSmallUTxO")
+    assertEquals(outputRule[Mary](params(4), valued(expected - 1, one)), "accepted")
+    assertEquals(outputRule[Mary](params(4), valued(1, one)), "accepted")
+    assertEquals(outputRule[Alonzo](params(5), valued(1, one)), "OutputTooSmallUTxO")
     // a small value never goes below the parameter
     assertEquals(
-      TxChecks.minUTxO(params(4).copy(minUTxOValue = 40), valued(0, one)),
+      TxChecks.minUTxO[Mary](params(4).copy(minUTxOValue = 40), valued(0, one)),
       BigInt(40)
     )
     // Shelley and Allegra do not scale (they cannot hold assets, the rule is the flat parameter)
-    assertEquals(TxChecks.minUTxO(params(3), valued(0, one)), mv)
+    assertEquals(TxChecks.minUTxO[Allegra](params(3), valued(0, one)), mv)
     // the same asset name under two policies counts once: 2 triples, 2 policies, 5 name bytes
     val twice = one.updated(Bytes(Vector.fill(28)(0x22)), Map(assetName("abcde") -> BigInt(1)))
     assertEquals(
       TxChecks.valueWords(valued(0, twice).value),
       BigInt(6 + (24 + 5 + 56 + 7) / 8)
     )
-    assertEquals(TxChecks.minUTxO(params(4), valued(0, twice)), (mv / 27) * (27 + 17))
+    assertEquals(TxChecks.minUTxO[Mary](params(4), valued(0, twice)), (mv / 27) * (27 + 17))
     // Alonzo divides by the 29 words of an ada-only entry instead
-    assertEquals(TxChecks.minUTxO(params(5), valued(0, Map.empty)), BigInt(29 * 34482))
+    assertEquals(TxChecks.minUTxO[Alonzo](params(5), valued(0, Map.empty)), BigInt(29 * 34482))
   }
 
   /** The bytes of `serialize v` as cardano-ledger-binary writes them: minimal heads, and a map of
@@ -1046,9 +1053,9 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     assertEquals(big.value.serializedSize, 5000)
     assertEquals(cborValue(big.value), 5000)
     // Babbage on preprod, maxValueSize 5000: accepted; one byte less allowed and it would be refused
-    assertEquals(outputRule(params(8), big), "accepted")
+    assertEquals(outputRule[Babbage](params(8), big), "accepted")
     assertEquals(
-      outputRule(params(8).copy(maxValueSize = 4999), big),
+      outputRule[Babbage](params(8).copy(maxValueSize = 4999), big),
       "OutputTooBigUTxO"
     )
     body.outputs.foreach(o => assert(o.value.serializedSize <= 5000, o.toString))
@@ -1061,22 +1068,25 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     // one policy: 1 + 5 (coin) + 1 + 30 (policy) + 2 (inner map head, 113 entries) + n * (2 + 32 + 1)
     assertEquals(withNames(113).value.serializedSize, 3994)
     assertEquals(withNames(114).value.serializedSize, 4029)
-    List(3, 4).foreach { pv =>
-      assertEquals(TxChecks.maxOutputValueSize(params(pv)), Some(BigInt(4000)))
-    }
-    assertEquals(outputRule(params(4), withNames(113)), "accepted")
-    assertEquals(outputRule(params(4), withNames(114)), "OutputTooBigUTxO")
+    assertEquals(TxChecks.maxOutputValueSize[Allegra](params(3)), Some(BigInt(4000)))
+    assertEquals(TxChecks.maxOutputValueSize[Mary](params(4)), Some(BigInt(4000)))
+    assertEquals(outputRule[Mary](params(4), withNames(113)), "accepted")
+    assertEquals(outputRule[Mary](params(4), withNames(114)), "OutputTooBigUTxO")
     // Shelley has no value size rule; a pre-Mary chain cannot carry such a value anyway
-    assertEquals(TxChecks.maxOutputValueSize(params(2)), None)
+    assertEquals(TxChecks.maxOutputValueSize[Shelley](params(2)), None)
     // Alonzo and later use the maxValueSize parameter (5000 here)
-    List(5, 7).foreach { pv =>
-      assertEquals(outputRule(params(pv), withNames(114)), "accepted", s"era $pv")
-      assertEquals(outputRule(params(pv), withNames(141)), "accepted", s"era $pv")
-      assertEquals(outputRule(params(pv), withNames(142)), "OutputTooBigUTxO", s"era $pv")
-    }
+    def parameter[E <: EraTag](pv: Int)(using ShelleyBasedEra[E]) =
+      assertEquals(outputRule[E](params(pv), withNames(114)), "accepted", s"era $pv")
+      assertEquals(outputRule[E](params(pv), withNames(141)), "accepted", s"era $pv")
+      assertEquals(outputRule[E](params(pv), withNames(142)), "OutputTooBigUTxO", s"era $pv")
+    parameter[Alonzo](5)
+    parameter[Babbage](7)
     val tight = params(5).copy(maxValueSize = 3994)
-    assertEquals(outputRule(tight, withNames(113)), "accepted")
-    assertEquals(outputRule(tight.copy(maxValueSize = 3993), withNames(113)), "OutputTooBigUTxO")
+    assertEquals(outputRule[Alonzo](tight, withNames(113)), "accepted")
+    assertEquals(
+      outputRule[Alonzo](tight.copy(maxValueSize = 3993), withNames(113)),
+      "OutputTooBigUTxO"
+    )
   }
 
   /** A state of the era `E` at protocol version `pv` with two genesis keys and their delegates, and

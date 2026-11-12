@@ -34,6 +34,11 @@ enum ShelleyBasedEra[E <: EraTag]:
   case SConway extends ShelleyBasedEra[Conway]
   case SDijkstra extends ShelleyBasedEra[Dijkstra]
 
+  /** The era is `other` or a later one (`AtLeastEra` in the reference's constraints): the order of
+    * the eras is that of the cases.
+    */
+  def atLeast[F <: EraTag](other: ShelleyBasedEra[F]): Boolean = ordinal >= other.ordinal
+
   // Which shape each type family takes in this era, with the proof. Matching on one case refines `E`
   // to that era, so the families reduce there; this is the one place that lists the eras of each
   // shape, and era-generic code works on the proofs instead of matching on eras.
