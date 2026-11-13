@@ -101,6 +101,17 @@ before Conway, so `scripts/devnet/ntcquery.py` speaks LocalStateQuery to the ref
 node's `/state` shape. Byron is not compared directly (the CLI cannot query a Byron ledger); the Byron UTxO
 is compared through the first Shelley epoch, which starts from it.
 
+Same-point states (`whole_state` in [`scripts/devnet/compare.py`](../../scripts/devnet/compare.py)): the volatile tip
+of one node, the anchor, is sampled and the other node acquires exactly that point, so both answers are of one state.
+In `e2e` and `soak` the anchor is the follower; when the reference refuses its point because a fork has just taken it
+off the reference's chain (`PointNotOnChain`, #785), the follower's tip is sampled again a second later, at most
+twice. `pool` anchors on the reference and asks the Scala node for the point up to ten times, two seconds apart, then
+once at a new point. A refusal past these bounds, a reply that is neither an acquisition nor a refusal, a failed
+query, a closed connection or a deadline is a comparison error, and a byte difference after a new sample stays a
+difference. Every record keeps its acquisitions in order (stage, node, point, outcome, parsed refusal); an error keeps
+them also under `errorDetails` in the summary's `wholeState` rows, and `afterRefusal` there counts the answers taken
+after a refusal.
+
 `e2e` shares the `up-eras` options but changes four defaults so the pre-Allegra rules have something to
 decide: `--shelley-epochs 3` (the pools hold stake from epoch 2, produce blocks from epoch 3 and the
 update for those blocks is made and paid under protocol 2 in epochs 4 and 5), `--min-utxo-value 1000000`,
@@ -179,16 +190,25 @@ Each follower is held to everything the single one is: the era transitions, the 
 fatal error, the evaluator its start logs (`plutusVm`) being the one it was given, at least `--min-comparisons`
 matched projected and same-point whole-state comparisons per Shelley-based era, and no error event, unparsed output or
 exit while the run goes on. `--scala-cpus` is each follower's. The run waits until every follower has reached the
-target epoch. Each comparison reads the reference once and compares every follower with that block, so the followers
-are also compared with each other there: the digests of their projected states (the part of `/state` the reference
-view is compared with) must be equal, with at least one such block per Shelley-based era (`compare-followers.jsonl`).
-The whole-state comparison is taken per follower at its own tip. Once the followers have stopped, their final chains,
-rebuilt from their logs by the oracle's rules ([`finality`](../../scripts/oracle/finality.py)), must agree: one of the
-two has at most `k` blocks after their last common block, so a follower that stopped a little earlier, or that still
-held a rival block at its tip, agrees. `e2e-summary.json` keeps each follower's own results under `followers.<vm>` and
-the comparison of the followers under `crossCheck`; a follower's failures are named after it (`scarab follower: ...`).
-The load and its Plutus evidence (`legacyPlutus`, `auxiliaryPlutus`) are the reference's verdicts, so they are
-reported once for the run.
+target epoch. Each projected comparison reads the reference at one block and judges every follower that answered for
+that block there; a judgment stands, and only a follower that had not reached the block is asked again, at the next
+attempt's block. Where all followers were judged at one block they are also compared with each other: the digests of
+their projected states (the part of `/state` the reference view is compared with) must be equal, with at least one
+such block per Shelley-based era (`compare-followers.jsonl`; a point where they were judged at different blocks is
+`notCompared`). The whole-state comparison is taken per follower at its own tip.
+
+Once the wait is over the run stops the followers on purpose, as the oracle does: reference node 1, their only peer,
+is frozen, each follower's tip is final once two readings of its `/tip` agree and is recorded
+(`follower-tip-<vm>.json`), each is stopped with SIGTERM so that its node ends its log itself, and the node is
+continued. Each follower is then judged over its whole log, and a follower that had ended before the stop is a
+premature exit. Their final chains, rebuilt from their logs by the oracle's rules
+([`finality`](../../scripts/oracle/finality.py)), every line complete and each chain ending at its recorded tip, must
+agree: one of the two has at most `k` blocks after their last common block, so a follower that stopped a little
+earlier, or that still held a rival block at its tip, agrees; a cut log or a missing tip fails. `e2e-summary.json`
+keeps each follower's own results under `followers.<vm>` (with `followerStop`, the status and tip of its stop) and the
+comparison of the followers under `crossCheck`; a follower's failures are named after it (`scarab follower: ...`). The
+load and its Plutus evidence (`legacyPlutus`, `auxiliaryPlutus`) are the reference's verdicts, so they are reported
+once for the run.
 
 #### Protocol versions in the e2e
 
