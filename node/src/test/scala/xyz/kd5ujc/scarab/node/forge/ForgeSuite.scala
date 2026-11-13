@@ -292,6 +292,34 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     )
   }
 
+  // A wall clock 0.3 ms past the millisecond: a wait to the next slot floored to the millisecond
+  // ended 0.7 ms before it, read the same slot again and traced a clock moved back (#629)
+  test(
+    "the slot loop wakes at the next slot: each slot is read once and no clock moved back is traced"
+  ) {
+    val p = pool(kesStart = 50, seed = 9)
+    val clock = IO.realTimeInstant.map(_.plusSeconds(5000).plusNanos(300000))
+    for
+      control <- TestControl.execute(withHandle {
+        harness(p, ledgerWith(p, 1), live = true, unbounded = true, clock = Some(clock))
+          .flatTap(_.forger.run.start)
+      })
+      _ <- control.tickFor(5500.millis)
+      started <- control.results
+      events <- started match
+        case Some(cats.effect.kernel.Outcome.Succeeded(h)) => h.seen
+        case other => IO.raiseError(new AssertionError(s"the harness did not start: $other"))
+    yield
+      val attempted = events.collect { case ForgeEvent.Loop(ForgeTrace.StartLeadershipCheck(s)) =>
+        s
+      }
+      val movedBack = events.collect { case ForgeEvent.Clock(c: ClockTrace.SystemClockMovedBack) =>
+        c
+      }
+      assertEquals(attempted, (BigInt(5000) to BigInt(5005)).toVector)
+      assertEquals(movedBack, Vector.empty)
+  }
+
   test("ForgingStats counts as the reference does, the overcount of missed slots included") {
     import ForgeTrace.*
     val origin = xyz.kd5ujc.scarab.protocol.ChainSync.Point.Origin
