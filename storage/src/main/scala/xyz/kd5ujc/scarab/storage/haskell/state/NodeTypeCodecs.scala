@@ -347,14 +347,26 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     Record.of[PrevIds]((id, id, id, id))
 
   /** `Proposals` (`Proposals.hs:385-388`, `encCBOR (roots, props)`): the lineage roots and the
-    * proposals in order.
+    * proposals in order. A state is read as `decSharePlusCBOR` reads it (`Proposals.hs:401-406`):
+    * of the proposals with one id the first is kept (`OMap.|>`, `Data/OMap/Strict.hs:179-188`,
+    * under `decodeListLikeWithCountT`, cardano-ledger-binary 048b78d2,
+    * `Decoding/Decoder.hs:1013-1039`), and the store is rebuilt by `mkProposals`
+    * ([[Proposals.rebuild]]), which refuses a proposal that attaches to neither its lineage's root
+    * nor an earlier proposal of its lineage.
     */
-  given proposals(using ProtVer): Codec[Proposals] =
-    Record
-      .of[(PrevIds, Vector[GovActionState])]((prevIds, seqOf(govActionState)))
-      .imap { case (roots, actions) =>
-        Proposals(actions, roots)
-      }(p => (p.roots, p.actions))
+  given proposals(using ProtVer): Codec[Proposals] = new Codec[Proposals]:
+    private val stored =
+      Record.of[(PrevIds, Vector[GovActionState])]((prevIds, seqOf(govActionState)))
+    def decode(n: Node): Decoded[Proposals] =
+      stored.decode(n).flatMap { (roots, actions) =>
+        Proposals
+          .rebuild(roots, actions.distinctBy(_.id))
+          .left
+          .map(why => DecodeError.at(n, Kind.Domain(why)))
+      }
+    def encode(p: Proposals, out: Writer): Unit = stored.encode((p.roots, p.actions), out)
+    override def check(p: Proposals): Option[ConstraintViolation] =
+      stored.check((p.roots, p.actions))
 
   /** `EnactState` (`Internal.hs:229-239`), at the Conway parameters. */
   given enactState(using ProtVer): Codec[EnactState] =

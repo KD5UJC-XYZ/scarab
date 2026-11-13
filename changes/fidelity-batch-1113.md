@@ -10,3 +10,7 @@
   encoded again with minimal heads and lengths, as the reference's `checkAddrSpendingData` does,
   where the attributes were hashed as written. Shelley-era bootstrap witnesses still hash their
   own attribute bytes as written.
+- A Conway ledger state read from a state file or a snapshot, or imported from a canonical ledger
+  state (SCLS), has its proposals rebuilt as the reference's `mkProposals` rebuilds them: a
+  proposal whose previous action is neither its lineage's root nor an earlier proposal of its
+  lineage is refused, and of two proposals with one id in a state file the first is kept.

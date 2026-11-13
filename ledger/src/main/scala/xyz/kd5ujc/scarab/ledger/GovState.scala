@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger
 import xyz.kd5ujc.scarab.codec.Rational
 import cats.syntax.all.*
 import io.circe.{ACursor, Decoder}
-import xyz.kd5ujc.scarab.codec.{Bytes, Node}
+import xyz.kd5ujc.scarab.codec.{Bytes, DomainError, Node}
 import xyz.kd5ujc.scarab.ledger.ConfigError
 import xyz.kd5ujc.scarab.ledger.state.CompactCoin
 
@@ -106,14 +106,9 @@ final case class Proposals(actions: Vector[GovActionState], roots: PrevIds):
 
   /** Add a proposal; `None` if its previous action is neither the root nor a stored proposal. */
   def add(gas: GovActionState): Option[Proposals] =
-    val ok = GovActions.lineage(gas.action) match
-      case None => true
-      case Some((purpose, parent)) =>
-        parent == roots.get(purpose) ||
-        parent.exists(p =>
-          byId.get(p).exists(s => GovActions.lineage(s.action).exists(_._1 == purpose))
-        )
-    Option.when(ok)(copy(actions = actions :+ gas))
+    val lineageOf =
+      (id: GovActionId) => byId.get(id).flatMap(s => GovActions.lineage(s.action)).map(_._1)
+    Option.when(Proposals.attaches(roots, lineageOf, gas))(copy(actions = actions :+ gas))
 
   def vote(voter: Voter, vote: Vote, id: GovActionId): Proposals =
     withVotes(Vector((voter, vote, id)))
@@ -203,8 +198,49 @@ final case class Proposals(actions: Vector[GovActionState], roots: PrevIds):
       CompactCoin.fromBigInt(g.proposal.deposit).getOrElse(CompactCoin.zero)
     )((a, b) => a.add(b))
 
+/** Why a proposal store cannot be built from its proposals and the roots of its lineages. */
+enum ProposalsError extends DomainError:
+  /** `mkProposals: Could not add a proposal`: the action names as its previous action neither the
+    * root of its lineage nor an action of that lineage stored before it.
+    */
+  case Unattached(id: GovActionId)
+
 object Proposals:
   val empty: Proposals = Proposals(Vector.empty, PrevIds())
+
+  /** `runProposalsAddAction` (cardano-ledger f649f975,
+    * `eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs:305-334`): an action of no
+    * lineage is always added; one of a lineage when the previous action it names is the root of
+    * that lineage, or an action of the same lineage already stored (`lineageOf`).
+    */
+  private def attaches(
+      roots: PrevIds,
+      lineageOf: GovActionId => Option[Purposeful],
+      gas: GovActionState
+  ): Boolean =
+    GovActions.lineage(gas.action).forall { (purpose, parent) =>
+      parent == roots.get(purpose) || parent.exists(p => lineageOf(p).contains(purpose))
+    }
+
+  /** `mkProposals` (`Proposals.hs:338-354`): the store of `actions`, in their order, over `roots`,
+    * each action added as `proposalsAddAction` adds it, or the first that cannot be. The decoders
+    * of a store run it (`Proposals.hs:390-406`), as does the import of a canonical ledger state
+    * (`libs/cardano-ledger-canonical-state/conway/Cardano/Ledger/CanonicalState/Conway/Import.hs:396-401`).
+    * The ids of `actions` are distinct, as those of the reference's `OMap` are; its check that the
+    * map is rebuilt unchanged (`Proposals.hs:353`) then always holds.
+    */
+  def rebuild(roots: PrevIds, actions: Vector[GovActionState]): Either[ProposalsError, Proposals] =
+    actions
+      .foldLeftM(Map.empty[GovActionId, Purposeful]) { (lineages, gas) =>
+        Either.cond(
+          attaches(roots, lineages.get, gas),
+          GovActions
+            .lineage(gas.action)
+            .fold(lineages)((purpose, _) => lineages.updated(gas.id, purpose)),
+          ProposalsError.Unattached(gas.id)
+        )
+      }
+      .as(Proposals(actions, roots))
 
 /** What enacting the ratified actions changes (`EnactState`). */
 final case class EnactState(
