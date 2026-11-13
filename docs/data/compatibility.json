@@ -1382,6 +1382,35 @@
       "page": "docs/compatibility/plutus-phase-2.md"
     },
     {
+      "id": "plutus-own-evaluator",
+      "component": "Plutus: Scarab's own evaluator (--plutus-vm scarab, I2)",
+      "status": "partial",
+      "summary": "An opt-in, Scalus-free UPLC evaluator for phase 2 and script admission in the rules, the mempool and the forger; forging refused and protocol 12 unsupported by decision",
+      "evidence": {
+        "suites": [
+          "CekConformanceSuite",
+          "FlatConformanceSuite",
+          "CostingOracleSuite",
+          "GeneratedOracleSuite",
+          "LedgerBoundaryOracleSuite",
+          "FlatReferenceCorporaSuite",
+          "ScarabEvaluatorSuite",
+          "PlutusBackendDifferentialSuite",
+          "NoScalusSuite"
+        ],
+        "docs": [
+          "docs/plutus-conformance.md#scarabs-own-evaluator",
+          "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          43
+        ]
+      },
+      "page": "docs/compatibility/plutus-own-evaluator.md"
+    },
+    {
       "id": "auxiliary-plutus-admission",
       "component": "Auxiliary Plutus admission (#286)",
       "status": "implemented",
