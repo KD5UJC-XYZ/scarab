@@ -96,11 +96,9 @@ object TcpThreadCostMain extends IOApp:
           Listeners.Loopback,
           _ => IO.unit,
           maxConnections = None
-        )((_, _) => IO.unit) {
-          (bearer, _) =>
-            if reading then
-              Mux.resource[IO](bearer, Set.empty).use(mux => counted *> mux.closed).void
-            else counted *> IO.never[Unit]
+        )((_, _) => IO.unit) { (bearer, _) =>
+          if reading then Mux.resource[IO](bearer, Set.empty).use(mux => counted *> mux.closed).void
+          else counted *> IO.never[Unit]
         }
       for
         _ <- IO.println(

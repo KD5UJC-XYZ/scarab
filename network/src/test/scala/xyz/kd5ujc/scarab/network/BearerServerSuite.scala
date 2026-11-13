@@ -40,8 +40,7 @@ class BearerServerSuite extends FailsOnUncaught:
                 case next :: rest => (rest, Some(next))
                 case Nil          => (Nil, None)
               }
-              .flatMap(_.fold(IO.never)(IO.pure))
-        )
+              .flatMap(_.fold(IO.never)(IO.pure)))
       }
 
   /** A connection with nothing to read whose close completes `closed`. */

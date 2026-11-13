@@ -43,7 +43,9 @@ class SocketTransportSuite extends FailsOnUncaught:
       .evalMap(r => IO(r.fold(e => fail(s"listen failed: $e"), identity)))
 
   private def accepted(listener: TcpListener[IO]): Resource[IO, TcpStream[IO]] =
-    listener.accept.evalMap(r => IO(r.fold(e => fail(s"accept failed: $e"), identity)))
+    Resource.make(
+      listener.accept.flatMap(r => IO(r.fold(e => fail(s"accept failed: ${e.shown}"), identity)))
+    )(_.close)
 
   /** The address a peer listening at `peer` sees our dial come from, in diffusion `mode`. */
   private def seenFrom(ours: NodeAddresses, mode: DiffusionMode): IO[SocketAddress[IpAddress]] =
@@ -136,6 +138,8 @@ class SocketTransportSuite extends FailsOnUncaught:
     for
       scope <- NodeScope.resource
       supervisor <- Supervisor[IO](await = false)
+      // released before `supervisor`, as the node's are (#925)
+      monitors <- Supervisor[IO](await = false)
       changes <- Resource.eval(
         SignallingRef.of[IO, Vector[(ConnectionState, ConnectionState)]](Vector.empty)
       )
@@ -161,8 +165,8 @@ class SocketTransportSuite extends FailsOnUncaught:
           Listeners.Loopback,
           _ => IO.unit,
           maxConnections = None
-        )((_, _) => IO.unit) {
-          (bearer, remote) => governor.serve(bearer, remote).void
+        )((_, _) => IO.unit) { (bearer, remote) =>
+          governor.serve(bearer, remote).void
         }
         .map(_.address)
       dials <- Resource.eval(Ref.of[IO, Int](0))
@@ -195,6 +199,7 @@ class SocketTransportSuite extends FailsOnUncaught:
             OutboundPeers.Config(closeTimeout = 2.seconds),
             hot,
             supervisor,
+            monitors,
             _ => IO.unit,
             summon[Stateful[IO, PeerMetrics[PeerNetwork.Addr]]]
           )
