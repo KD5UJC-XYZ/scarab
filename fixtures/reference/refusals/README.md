@@ -96,6 +96,28 @@ the reference's check for each case. The two vote cases name actions that setup 
 proposed on the cluster. The first is a DRep's vote on an info action, cast in the one epoch in which the
 action is expired but not yet removed. The second is a stake pool's vote on a live treasury withdrawal,
 which no pool may vote on. Neither vote breaks the other's check.
+The `refusalcoverage` corpora (2026-11-13) hold predicate failures that no earlier corpus provoked, each
+case built to break exactly one check, and `scripts/tests/test_refusalcoverage.py` requires each
+recorded refusal to be that one failure, read from the reference's constructor tags. `scripts/devnet/refusalcoverage.py`
+cites the reference's check for each case at cardano-ledger f649f975.
+
+| corpus | protocol | cases |
+|---|---|---|
+| `conway-deleg-collateral` | 10.0 | DELEG `IncorrectDepositDELEG` (a registration's deposit, an unregistration's refund), `StakeKeyHasNonZeroAccountBalanceDELEG`, `DelegateeDRepNotRegisteredDELEG`; GOVCERT `ConwayDRepIncorrectRefund`; UTXO `ScriptsNotPaidUTxO`, `CollateralContainsNonADA` |
+| `conway-gov-proposals` | 10.0 | GOV `ConflictingCommitteeUpdate`, `ExpirationEpochTooSmall`, `TreasuryWithdrawalReturnAccountsDoNotExist`, `InvalidGuardrailsScriptHash` (a parameter change and a treasury withdrawal), and `MalformedProposal` for each parameter `ppuWellFormed` refuses at zero and for an empty update |
+| `conway-v11-coverage` | 11.0 | DELEG `DepositIncorrectDELEG`, `RefundIncorrectDELEG`; GOV `MalformedProposal` (`nOpt` 0), `UnelectedCommitteeVoters` |
+
+The three Conway corpora come from one cluster, so they share its genesis files. At protocol version 10
+a wrong deposit or refund is `IncorrectDepositDELEG`; version 11 reports `DepositIncorrectDELEG` and
+`RefundIncorrectDELEG` instead, refuses `nOpt` 0 and refuses a vote by a committee member no committee
+elected. The `conway-v11-coverage` builder takes the cluster to version 11 first: it elects a committee of
+one member, then proposes the hard fork, which that member, the three DReps and the three pools vote for.
+The unelected member is one that a pending UpdateCommittee proposal names, which is what allows its hot key
+to be authorised. Disabling Scarab's reward-balance, DRep-refund, script-locked-collateral and
+conflicting-committee checks fails exactly the four cases that break them. These corpora were recorded
+from a working tree on `f1f553c1d` with the `refusalcoverage` builder added but not yet committed, hence
+`scarabDirty: true`; the committed functions that build them differ from those that recorded them in
+comments only.
 
 These expectations come from the released node's submission path. Separately, the offline
 `UpstreamFreshLedgerConformanceSuite` and `UpstreamMultiLedgerConformanceSuite` use the same production
@@ -124,6 +146,12 @@ python3 scripts/devnet.py --name <yours> down
 python3 scripts/devnet.py --name <yours> up
 python3 scripts/devnet.py --name <yours> refusal-corpus --corpus conway-governance \
     --cases refusalcases:conway_governance   # waits about two epochs for its vote cases
+python3 scripts/devnet.py --name <yours> refusal-corpus --corpus conway-deleg-collateral \
+    --cases refusalcoverage:conway_deleg_collateral
+python3 scripts/devnet.py --name <yours> refusal-corpus --corpus conway-gov-proposals \
+    --cases refusalcoverage:conway_gov_proposals
+python3 scripts/devnet.py --name <yours> refusal-corpus --corpus conway-v11-coverage \
+    --cases refusalcoverage:conway_v11     # takes the cluster to protocol version 11, about five epochs
 python3 scripts/devnet.py --name <yours> down
 python3 scripts/check_test_coverage.py --refresh-fixtures
 ```

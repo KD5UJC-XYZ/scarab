@@ -98,8 +98,16 @@
       "sha256": "c79dde9b4151e26688f65fd03879fcf06fa712854733d9fa6fd0bc774a455c86"
     },
     {
+      "path": "conway-deleg-collateral",
+      "sha256": "5db95622f13aa76b4a610aa5fcdc9fd4dcf03b87903aef5768cb7080c7b00f1c"
+    },
+    {
       "path": "conway-devnet",
       "sha256": "286a678fea0f7086d17a169d27d756077ddc2135d54ea02661e39c920f6a66d4"
+    },
+    {
+      "path": "conway-gov-proposals",
+      "sha256": "addba1ce1db3893f458d48f2281ab3ef94ae7a8f65538b78e78ec307bf4e20d8"
     },
     {
       "path": "conway-governance",
@@ -108,6 +116,10 @@
     {
       "path": "conway-three-certificates",
       "sha256": "335673554ec6b794302fdbb70f0d941b0c143af6f0814c964a2de2c613088aa3"
+    },
+    {
+      "path": "conway-v11-coverage",
+      "sha256": "6f606d1307a46a36a0a5815d2f2e06cf3609468295be68eed35fb32043d9ae2d"
     },
     {
       "path": "mary-bootstrap-attributes",
