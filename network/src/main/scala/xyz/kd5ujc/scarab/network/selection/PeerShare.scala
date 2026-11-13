@@ -129,7 +129,7 @@ object PeerShare:
 
   /** Filter against the state at completion, limit the whole batch objective, and retain failures
     * as discovery results. Existing peer metadata must never be overwritten by a duplicate answer
-    * (`KnownPeers.hs:316-445`).
+    * (`KnownPeers.hs:316-445`, ouroboros-network 2fb69829).
     */
   private[selection] def completed[A: Ordering](
       st: GovernorState[A],

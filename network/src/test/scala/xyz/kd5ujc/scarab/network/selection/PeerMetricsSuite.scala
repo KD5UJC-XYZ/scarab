@@ -10,7 +10,7 @@ import scala.concurrent.duration.*
   * (`ouroboros-network/tests/lib/Test/Ouroboros/Network/PeerSelection/PeerMetric.hs`:
   * `prop_insert_peer` 238, `prop_metrics_are_bounded` 314, `prop_bounded_size` 388), the examples
   * of the rules in `PeerMetric.hs` itself, and the hot-demotion pick that reads the scores
-  * (`Policies.hs` 104-143).
+  * (`Policies.hs` 104-143, ouroboros-network 2fb69829).
   */
 class PeerMetricsSuite extends ScalaCheckSuite:
 

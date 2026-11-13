@@ -21,8 +21,8 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
   * connection's monitor, inside the scope of its connection manager: each monitor is cancelled, and
   * waited for, before that scope ends (ouroboros-network c45735a5 `Ouroboros/Network/Diffusion.hs`
   * 769-786, 801-826, `PeerSelection/PeerStateActions.hs` 630, 836-848, `network-mux`
-  * `Control/Concurrent/JobPool.hs` 54-55, 70-73). A monitor that outlived its connection would
-  * take the release for a loss and report the peer as reconnecting.
+  * `Control/Concurrent/JobPool.hs` 54-55, 70-73). A monitor that outlived its connection would take
+  * the release for a loss and report the peer as reconnecting.
   *
   * Each seed orders the fibers of the release differently. A monitor that ends together with its
   * connection, rather than before it, reports the loss under some orders only, so the release is

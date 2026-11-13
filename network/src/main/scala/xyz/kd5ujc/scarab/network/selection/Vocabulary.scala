@@ -190,8 +190,8 @@ enum Trace[A]:
   case PromoteAborted(from: Temperature, peer: A)
 
   /** A decision to move peers down a temperature. Ordinary hot demotion retains scores for all
-    * available peers (`TraceDemoteHotPeers`); absence of a metric differs from a measured zero.
-    * Local and warm demotions have no native score payload.
+    * available peers (`TraceDemoteHotPeers` of ouroboros-network 2fb69829); absence of a metric
+    * differs from a measured zero. Local and warm demotions have no native score payload.
     */
   case Demote(
       from: Temperature,

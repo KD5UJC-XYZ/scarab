@@ -21,8 +21,8 @@ import ProtocolWire.{attempt, bad, get}
   *   - `Busy(kind)` (server): the one reply of that kind.
   *
   * `AwaitAcquire` has the same wire form as `Acquire` (`[1]`): the codec tells them apart by the
-  * state, as the reference does. The reference codec answers `GetMeasures` on every version it
-  * offers (`LocalTxMonitor_V2`), so this one does too.
+  * state, as the reference does. The codec of ouroboros-network 2fb69829 answers `GetMeasures` on
+  * every version it offers (`LocalTxMonitor_V2`), so this one does too.
   */
 object LocalTxMonitor:
   val MiniProtocolId = 9
