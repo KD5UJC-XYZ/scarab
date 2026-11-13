@@ -70,6 +70,7 @@ for _era, _index in (("alonzo", ALONZO), ("babbage", BABBAGE)):
                           ("utxo-body-network-id-wrong", "WrongNetworkInTxBody"),
                           ("utxo-mint-units-too-big", "ExUnitsTooBigUTxO")):
         TAGS[f"{_era}/{_label}"] = (_name, _index, PRE_CONWAY_UTXO[_era] + (ALONZO_UTXO[_name],))
+del TAGS["babbage/utxo-mint-units-too-big"]
 
 COLLATERAL_FUND = 10_000_000
 TOKEN = b"coverage"
@@ -448,12 +449,19 @@ def preconway_collateral(name, era):
         **plutus_minting(era, spend, here, wd["lovelace"], language, models, [(setup, 1)], [k, k_other]))
     # WrongNetworkInTxBody: the body's network id (key 15) is mainnet (`Alonzo/Rules/Utxo.hs:436-446`)
     add("utxo-body-network-id-wrong", **spend(network_id=1))
-    # ExUnitsTooBigUTxO: the redeemer's units exceed maxTxExecutionUnits by one in each (`Alonzo/Rules/Utxo.hs:451-462`);
-    # the fee and collateral cover the script's price at those units
-    limit = params["maxTxExecutionUnits"]
-    add("utxo-mint-units-too-big",
-        **plutus_minting(era, spend, here, wd["lovelace"], language, models, [txin(other)], [k, k_other],
-                         fee=10_000_000, units=(limit["memory"] + 1, limit["steps"] + 1)))
+    # ExUnitsTooBigUTxO: the redeemer's units exceed maxTxExecutionUnits by one in each; the fee and collateral cover
+    # the script's price at those units. The node's mempool measures a transaction's units against the same limit
+    # and refuses it with its own `ExUnitsTooBigUTxO` without validating it (ouroboros-consensus 82ecba32,
+    # `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Mempool/Update.hs:207-224`;
+    # `ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Mempool.hs:601-612`), so the
+    # ledger's check (`Alonzo/Rules/Utxo.hs:451-462`) is never what a submitter sees. Alonzo's mempool nests the failure
+    # as the ledger does (617-627); Babbage's nests it under `AlonzoInBabbageUtxowPredFailure` (629-641), where the
+    # ledger reports it under UTXOW's `UtxoFailure`, so the rule-level comparison of a Babbage case cannot hold it.
+    if era == "alonzo":
+        limit = params["maxTxExecutionUnits"]
+        add("utxo-mint-units-too-big",
+            **plutus_minting(era, spend, here, wd["lovelace"], language, models, [txin(other)], [k, k_other],
+                             fee=10_000_000, units=(limit["memory"] + 1, limit["steps"] + 1)))
     return cases
 
 
