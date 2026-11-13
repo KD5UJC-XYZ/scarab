@@ -21,8 +21,11 @@ test-network pool (#116).
 1. When the KES key moves to a new period it is written back to the `--kes-skey` file before it signs in
    that period, and the key it replaces is overwritten: create the staged file beside it, write every byte,
    force the file, decode and validate its structure, verification key, period and serialized bytes, then
-   force the containing directory. Only then overwrite every predecessor byte with zeros and force that
-   file, atomically rename the staged file over it, and force the directory again. Directory-sync failures
+   force the containing directory. ~~Only then overwrite every predecessor byte with zeros and force that
+   file, atomically rename the staged file over it, and force the directory again.~~
+   ([Amended 2026-11-13](#amendment-2026-11-13-a-moved-key-file-is-not-made-again): on Linux the stage takes the file's place by an atomic exchange
+   and the predecessor is erased after it; the order here stays where there is no exchange, and a key
+   file that is not there is never made.) Directory-sync failures
    are typed persistence failures; the current terminal key-update policy prevents further signing
    and stops the node. Recovery is performed on a subsequent start, not by continuing to forge. The file stays a
    `cardano-cli` envelope;
@@ -88,3 +91,32 @@ failure and does not sign; a failure to write the evolved key back (`ForgeError.
 event `kesPersistFailed`) is one. An evolution that returns a `ForgeError` is a value, not such a
 failure. A defect that one transaction triggers in the evaluator does not stop the forger:
 `BlockBuilder.select` skips that transaction and selection continues.
+
+## Amendment (2026-11-13): a moved key file is not made again
+
+Owner decision on [#918](https://github.com/KD5UJC-XYZ/scarab/issues/918), taken while dynamic block forging was
+implemented ([#906](https://github.com/KD5UJC-XYZ/scarab/issues/906)). An operator stops a producer as the
+reference's runbook says: move the credential files away, then send SIGHUP. The write-back made a key file it
+did not find, so a period change between the move and the SIGHUP put the key back at its path; the SIGHUP then
+found every file and forging went on.
+
+- **The write-back never makes a key file that is not there.** When the `--kes-skey` file does not exist, nothing
+  is written (`Persisted.Absent`, the event `kesFileAbsent`) and the key in memory signs on, as the reference's
+  does until its SIGHUP. Signing in a period whose key was not written back is accepted in this case only: the
+  file the write-back protects is gone.
+- **On Linux the stage takes the file's place by an atomic exchange**, `renameat2(RENAME_EXCHANGE)` (Linux 3.15,
+  glibc 2.28) through the foreign-function interface, which fails with `ENOENT` and moves nothing when the file is
+  not there, so no window remains. The order is: the stage written, forced, read back and checked; the directory
+  forced; the exchange; the directory forced; then the predecessor, now at the stage's name, overwritten with
+  zeros, forced and removed. A crash after the exchange leaves the predecessor at the stage's name until the
+  next start, whose recovery destroys a stage older than the key file: the predecessor's bytes can outlive a
+  crash longer than with the rename, until that recovery.
+- **Where there is no atomic exchange** (another system, no `renameat2` in the C library, a kernel or file system
+  that refuses `RENAME_EXCHANGE`, or no native access) the order of decision 1 stays, with a check that the file
+  is there before the predecessor is erased. A move between that check and the rename can still put the key back:
+  a window of one erasure and one rename, once per KES period.
+- **Recovery at start-up is unchanged**: it finishes a valid stage with the rename.
+
+The cases are covered by `KesRotationSuite`: every boundary of the exchange, a key file moved before and during
+the write-back with either protocol, the real `renameat2` where the platform has it, and a period change between
+the move and the SIGHUP.

@@ -524,6 +524,7 @@ object LogSamples:
       )
     ),
     ForgeEvent.KeyFileGroupAccess("vrf.skey", 0x1a0),
+    ForgeEvent.KesFileAbsent(BigInt(34), "/keys/kes.skey"),
     ForgeEvent.Failed(BigInt(4202), ForgeError.KeyPeriodOutOfRange(33, 0, 32)),
     ForgeEvent.EpochSummary(BigInt(3), forgeStats),
     ForgeEvent.EpochSummary(BigInt(4), ForgeEpochStats())

@@ -5,12 +5,23 @@ import scala.util.Using.Releasable
 import scala.util.Using
 import xyz.kd5ujc.scarab.ledger.ForgeKeyProblem
 import cats.syntax.all.*
+import java.io.IOException
+import java.lang.foreign.{
+  Arena,
+  FunctionDescriptor,
+  Linker,
+  MemoryLayout,
+  MemorySegment,
+  ValueLayout
+}
+import java.lang.invoke.MethodHandle
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, StandardCopyOption, StandardOpenOption as Open}
 import java.nio.file.attribute.PosixFilePermissions
 import scala.annotation.tailrec
+import scala.jdk.OptionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
@@ -26,6 +37,11 @@ enum Persisted:
   case Written
   case Unchanged
   case Superseded
+
+  /** The key file is not there (an operator moved it away): nothing was written, and no file was
+    * made at `file` (#918).
+    */
+  case Absent(file: String)
   case Failed(error: ForgeError)
 
 private[forge] enum KesFileBoundary:
@@ -36,15 +52,20 @@ private[forge] enum KesFileBoundary:
   case PredecessorScrubCompleted
   case PredecessorFileForced
   case AtomicRenameCompleted
+  case AtomicExchangeCompleted
   case DirectoryForcedAfterRename
 
 /** The KES key file of a pool and how an evolved key replaces its predecessor on it (H2a, #116).
   * The cardano-cli envelope and serialized key bytes are unchanged.
   *
-  * A replacement is written, forced, decoded and checked, then its directory entry is forced before
-  * the predecessor is overwritten. The predecessor is fully overwritten and forced before the
-  * atomic rename. The directory is forced after the rename as well. Recovery applies the same
-  * pre-erasure ordering to an existing stage.
+  * A replacement is written, forced, decoded and checked, then its directory entry is forced. On
+  * Linux it then takes the key file's place in one atomic exchange (`renameat2` with
+  * `RENAME_EXCHANGE`), which fails when the key file is not there, so a key file an operator moved
+  * away is never made again (#918, ADR 0015 amendment of 2026-11-13); the directory is forced, and
+  * the predecessor, now at the stage's name, is fully overwritten, forced and removed. Where there
+  * is no such exchange, the predecessor is fully overwritten and forced before an atomic rename,
+  * after a check that the key file is still there, and the directory is forced after the rename.
+  * Recovery (a later start) keeps the rename and its pre-erasure ordering for an existing stage.
   */
 object KesFiles:
   private val ZeroChunkSize = 8192
@@ -61,9 +82,100 @@ object KesFiles:
     def readStage(file: Path): String = Files.readString(file)
     def rename(next: Path, file: Path): Unit =
       Files.move(next, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+    def exchange(next: Path, file: Path): Exchange = AtomicExchange(next, file)
     def checkpoint(boundary: KesFileBoundary): Unit = ()
 
   private object Nio extends FileOps
+
+  /** What an atomic exchange of the stage with the key file did. */
+  private[forge] enum Exchange:
+    case Swapped
+
+    /** The key file (or the stage) is not there (`ENOENT`): nothing moved. */
+    case Absent
+
+    /** No atomic exchange here: not Linux, no `renameat2` in the C library, or a kernel or file
+      * system that refuses `RENAME_EXCHANGE` (`ENOSYS`, `EINVAL`, `EOPNOTSUPP`), or no native
+      * access.
+      */
+    case Unsupported
+
+    /** Another errno. */
+    case Failed(errno: Int)
+
+  /** `renameat2(AT_FDCWD, next, AT_FDCWD, file, RENAME_EXCHANGE)` (Linux 3.15, glibc 2.28) through
+    * the foreign-function interface, as the local socket's `unlink` is made: the JDK has no call
+    * that replaces a file only if it exists. The release JAR's `Enable-Native-Access` manifest
+    * attribute allows the native access; started from a classpath, `--enable-native-access` does.
+    */
+  private[forge] object AtomicExchange:
+    private val AtFdCwd = -100
+    private val RenameExchange = 2
+    private val Enoent = 2
+    private val Refused = Set(22, 38, 95)
+    private val linker = Linker.nativeLinker()
+    private val state = Linker.Option.captureStateLayout()
+    private val errnoOffset = state.byteOffset(MemoryLayout.PathElement.groupElement("errno"))
+    private lazy val call: Option[MethodHandle] =
+      Option
+        .when(System.getProperty("os.name", "").startsWith("Linux"))(())
+        .flatMap(_ =>
+          Either
+            .catchNonFatal(
+              linker
+                .defaultLookup()
+                .find("renameat2")
+                .toScala
+                .map(
+                  linker.downcallHandle(
+                    _,
+                    FunctionDescriptor.of(
+                      ValueLayout.JAVA_INT,
+                      ValueLayout.JAVA_INT,
+                      ValueLayout.ADDRESS,
+                      ValueLayout.JAVA_INT,
+                      ValueLayout.ADDRESS,
+                      ValueLayout.JAVA_INT
+                    ),
+                    Linker.Option.captureCallState("errno")
+                  )
+                )
+            )
+            .toOption
+            .flatten
+        )
+
+    private def cString(arena: Arena, path: Path): MemorySegment =
+      val bytes = path.toAbsolutePath.toString.getBytes(StandardCharsets.UTF_8)
+      val name = arena.allocate(bytes.length + 1L)
+      MemorySegment.copy(bytes, 0, name, ValueLayout.JAVA_BYTE, 0L, bytes.length)
+      name.set(ValueLayout.JAVA_BYTE, bytes.length.toLong, 0.toByte)
+      name
+
+    def apply(next: Path, file: Path): Exchange =
+      call.fold(Exchange.Unsupported) { renameat2 =>
+        Either
+          .catchNonFatal(Using.resource(Arena.ofConfined()) { arena =>
+            val captured = arena.allocate(state)
+            // signature-polymorphic: the ascribed Int is the handle's
+            // `(MemorySegment, int, MemorySegment, int, MemorySegment, int)int`
+            val result: Int = renameat2.invokeExact(
+              captured,
+              AtFdCwd,
+              cString(arena, next),
+              AtFdCwd,
+              cString(arena, file),
+              RenameExchange
+            )
+            if result == 0 then Exchange.Swapped
+            else
+              captured.get(ValueLayout.JAVA_INT, errnoOffset) match
+                case Enoent                           => Exchange.Absent
+                case errno if Refused.contains(errno) => Exchange.Unsupported
+                case errno                            => Exchange.Failed(errno)
+          })
+          .getOrElse(Exchange.Unsupported)
+      }
 
   private def nextOf(file: Path): Path =
     file.resolveSibling(file.getFileName.toString + ".next")
@@ -330,7 +442,7 @@ object KesFiles:
       )
     )
 
-  private def finish(file: Path, ops: FileOps): Either[ForgeError, Unit] =
+  private def stageDurable(file: Path, ops: FileOps): Either[ForgeError, Unit] =
     forceStage(file, ops)
       .flatMap(_ =>
         syncDirectory(
@@ -341,8 +453,52 @@ object KesFiles:
           ops
         )
       )
+
+  /** Recovery's ending of a valid stage: the predecessor erased, then the rename. */
+  private def finish(file: Path, ops: FileOps): Either[ForgeError, Unit] =
+    stageDurable(file, ops)
       .flatMap(_ => scrub(file, ops))
       .flatMap(_ => commit(file, ops))
+
+  /** The write-back's ending of a stage it has just written: the exchange where there is one,
+    * otherwise the check that the key file is there, then the erasure and the rename. A key file
+    * that is not there is not made again: the stage, the new key, is destroyed.
+    */
+  private def install(file: Path, ops: FileOps): Either[ForgeError, Persisted] =
+    val next = nextOf(file)
+    def absent = destroy(next, ops).as(Persisted.Absent(file.toString))
+    stageDurable(file, ops).flatMap(_ =>
+      ops.exchange(next, file) match
+        case Exchange.Swapped =>
+          at(file, KesFileOperation.Rename)(ops.checkpoint(KesFileBoundary.AtomicExchangeCompleted))
+            .flatMap(_ =>
+              syncDirectory(
+                file,
+                KesFileOperation.DirectorySyncAfterRename,
+                KesFileBoundary.DirectoryForcedAfterRename,
+                ops.forceDirectoryAfterRename,
+                ops
+              )
+            )
+            // the predecessor is at the stage's name now
+            .flatMap(_ => overwrite(next, ops))
+            .flatMap(_ => at(file, KesFileOperation.Cleanup)(Files.deleteIfExists(next)).void)
+            .as(Persisted.Written)
+        case Exchange.Absent => absent
+        case Exchange.Unsupported =>
+          if !Files.exists(file) then absent
+          else scrub(file, ops).flatMap(_ => commit(file, ops)).as(Persisted.Written)
+        case Exchange.Failed(errno) =>
+          Left(
+            ForgeError.KesFileFailure(
+              file.toString,
+              KesFileOperation.Rename,
+              KesFileFailureCause.FileSystem(
+                new IOException(s"renameat2 RENAME_EXCHANGE failed with errno $errno")
+              )
+            )
+          )
+    )
 
   private def persistEither(
       file: Path,
@@ -351,54 +507,58 @@ object KesFiles:
   ): Either[ForgeError, Persisted] =
     @tailrec def loop(afterRecovery: Boolean): Either[ForgeError, Persisted] =
       val main = if Files.exists(file) then inspect(file).toOption else None
-      main match
-        case Some(d) if d.verificationKey != key.verificationKey => Right(Persisted.Superseded)
-        case Some(d) if d.period >= key.period                   =>
-          // A prior rename may have succeeded while its directory force failed. Retry that force.
-          syncDirectory(
-            file,
-            KesFileOperation.DirectorySyncAfterRename,
-            KesFileBoundary.DirectoryForcedAfterRename,
-            ops.forceDirectoryAfterRename,
-            ops
-          ).as(Persisted.Unchanged)
-        case _ =>
-          val next = nextOf(file)
-          val staged = if Files.exists(next) then inspect(next).toOption else None
-          staged match
-            case Some(s)
-                if main.isEmpty ||
-                  (s.verificationKey == key.verificationKey && main.exists(_.period <= s.period)) =>
-              if afterRecovery then
-                Left(
-                  ForgeError.KesFileFailure(
-                    file.toString,
-                    KesFileOperation.StageReadback,
-                    KesFileFailureCause.StageStillPresentAfterRecovery
+      // a key file moved away is not made again (#918)
+      if !Files.exists(file) then Right(Persisted.Absent(file.toString))
+      else
+        main match
+          case Some(d) if d.verificationKey != key.verificationKey => Right(Persisted.Superseded)
+          case Some(d) if d.period >= key.period                   =>
+            // A prior rename may have succeeded while its directory force failed. Retry that force.
+            syncDirectory(
+              file,
+              KesFileOperation.DirectorySyncAfterRename,
+              KesFileBoundary.DirectoryForcedAfterRename,
+              ops.forceDirectoryAfterRename,
+              ops
+            ).as(Persisted.Unchanged)
+          case _ =>
+            val next = nextOf(file)
+            val staged = if Files.exists(next) then inspect(next).toOption else None
+            staged match
+              case Some(s)
+                  if main.isEmpty ||
+                    (s.verificationKey == key.verificationKey && main.exists(
+                      _.period <= s.period
+                    )) =>
+                if afterRecovery then
+                  Left(
+                    ForgeError.KesFileFailure(
+                      file.toString,
+                      KesFileOperation.StageReadback,
+                      KesFileFailureCause.StageStillPresentAfterRecovery
+                    )
                   )
-                )
-              else
-                // A valid stage may be the only surviving key. Make it the main file first, then
-                // retry with the newer in-memory key; never destroy the only recoverable copy.
-                recoverWith(file, ops) match
-                  case Left(error) => Left(error)
-                  case Right(recovered) =>
-                    recovered.forget()
-                    loop(afterRecovery = true)
-            case Some(_) =>
-              destroy(next, ops)
-                .flatMap(_ => stage(file, key, ops))
-                .flatMap(_ => finish(file, ops))
-                .as(Persisted.Written)
-            case None =>
-              (if Files.exists(next) then destroy(next, ops) else Right(()))
-                .flatMap(_ => stage(file, key, ops))
-                .flatMap(_ => finish(file, ops))
-                .as(Persisted.Written)
+                else
+                  // A valid stage may be the only surviving key. Make it the main file first, then
+                  // retry with the newer in-memory key; never destroy the only recoverable copy.
+                  recoverWith(file, ops) match
+                    case Left(error) => Left(error)
+                    case Right(recovered) =>
+                      recovered.forget()
+                      loop(afterRecovery = true)
+              case Some(_) =>
+                destroy(next, ops)
+                  .flatMap(_ => stage(file, key, ops))
+                  .flatMap(_ => install(file, ops))
+              case None =>
+                (if Files.exists(next) then destroy(next, ops) else Right(()))
+                  .flatMap(_ => stage(file, key, ops))
+                  .flatMap(_ => install(file, ops))
     loop(afterRecovery = false)
 
   /** Write `key` as the content of `file`, replacing the key it holds when that is the same KES key
-    * at an earlier period (or is damaged or missing).
+    * at an earlier period (or is damaged). A file that is not there is not made
+    * ([[Persisted.Absent]], #918).
     */
   def persist(file: Path, key: Sum6KesSigning.SigningKey): Persisted =
     persistWith(file, key, Nio)

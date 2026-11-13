@@ -75,8 +75,11 @@ has to change both before they run out. The node does four things for that; a dr
   a later read of that path if earlier copies have not been retained; it does not establish complete
   past-key erasure. The replacement protocol writes every byte to `<file>.next`,
   forces the file, decodes it again to check the key structure, verification key, period and serialized bytes,
-  then forces its directory entry before it erases any predecessor byte. It overwrites the predecessor fully,
-  forces that file, renames `.next` over the file atomically and forces the directory again. Recovery applies
+  then forces its directory entry before it erases any predecessor byte. On Linux `.next` then takes the
+  file's place in one atomic exchange (`renameat2` with `RENAME_EXCHANGE`), the directory is forced, and the
+  predecessor, now at `.next`, is overwritten fully, forced and removed; elsewhere it overwrites the predecessor
+  fully, forces that file, renames `.next` over the file atomically and forces the directory again. Either way
+  a key file that is not there is never made again (see "Dynamic block forging"). Recovery applies
   the same readback and pre-erasure directory force; a valid `.next` is retained and retried if rename fails,
   and a retry after a post-rename sync failure forces the main directory entry again. Thus process-crash recovery
   has a complete replacement after predecessor erasure. Power-loss durability depends on the filesystem,
@@ -199,11 +202,15 @@ forging from one block producer to a standby: stop it on one, start it on the ot
   `blockForgingUpdate` `DisabledBlockForging` and forges once a SIGHUP finds the files. A node without
   `--forge` logs `DisabledBlockForging` at start and at each SIGHUP, and reports 0.
 
-Move all three files, as the reference's runbook does. Scarab writes the evolved KES key back
-([ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md)), and a write-back of a period change that
-runs at the moment the KES key file is moved puts the key back at its path; an absent VRF key or certificate
-disables forging all the same. How the write-back should treat that race is an owner decision
-([#918](https://github.com/KD5UJC-XYZ/scarab/issues/918)).
+**A key file moved away stays away.** Scarab writes the evolved KES key back
+([ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md)), but never to a key file that is not there:
+a period change between the move and the SIGHUP writes nothing, logs `kesFileAbsent` (`kesPeriod`, `file`), and
+the key in memory signs on until the SIGHUP, as the reference's does. On Linux the evolved key takes the file's
+place in one atomic exchange (`renameat2` with `RENAME_EXCHANGE`), which fails when the file is gone, so a move
+at any moment is safe. On another system, or a file system that refuses the exchange, the write-back checks
+that the file is there before it erases and renames, and a move in the instant between that check and the
+rename can still put the key back; move the VRF key or the certificate too there, since any absent credential
+file disables forging ([#918](https://github.com/KD5UJC-XYZ/scarab/issues/918)).
 
 The lock beside the KES key (`--key-lock`) stays held while forging is disabled: a SIGHUP can enable forging at
 any time, so the lock keeps stopping a second Scarab instance on the same key files. It is a hidden file of its

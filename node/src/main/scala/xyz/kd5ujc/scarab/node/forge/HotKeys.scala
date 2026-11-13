@@ -198,7 +198,9 @@ final class HotKeys[F[_]: Async] private (
     usingKey(use)
 
   /** Persist the evolved key before signing. A durability failure is terminal: another slot cannot
-    * repair the safety guarantee that the previous key has been erased from disk.
+    * repair the safety guarantee that the previous key has been erased from disk. A key file that
+    * is not there (moved away to stop forging, #918) is not made again; the key in memory signs on,
+    * as the reference's would until a SIGHUP, and the node says so.
     */
   private def write(c: PoolCredentials, kesPeriod: BigInt)(using Raise[F, Fatal]): F[Unit] =
     source.traverse_ { s =>
@@ -207,6 +209,7 @@ final class HotKeys[F[_]: Async] private (
           remember(HotKeys.persistenceFailure(e)).flatMap { fatal =>
             events.emit(ForgeEvent.KesPersistFailed(kesPeriod, e)) *> fatal.raise[F, Unit]
           }
+        case Persisted.Absent(file) => events.emit(ForgeEvent.KesFileAbsent(kesPeriod, file))
         case Persisted.Written | Persisted.Unchanged | Persisted.Superseded => F.unit
       }
     }

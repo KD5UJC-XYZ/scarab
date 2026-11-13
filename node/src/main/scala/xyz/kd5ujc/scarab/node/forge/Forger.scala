@@ -120,6 +120,11 @@ enum ForgeEvent:
     */
   case KesPersistFailed(kesPeriod: BigInt, error: ForgeError)
 
+  /** The evolved key was not written back because its file is not there (moved away, #918); no file
+    * is made at `file`, and the key in memory signs on.
+    */
+  case KesFileAbsent(kesPeriod: BigInt, file: String)
+
   /** The VRF key file gives its group some access (`mode`): allowed, as in the reference, which
     * warns (`GroupPermissionsExist`).
     */

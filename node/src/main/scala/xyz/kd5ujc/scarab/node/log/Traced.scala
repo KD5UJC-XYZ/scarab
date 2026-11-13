@@ -530,6 +530,8 @@ object Traced:
         "kind" -> reason.productPrefix.asJson,
         "message" -> reason.message.asJson
       )
+    case ForgeEvent.KesFileAbsent(period, file) =>
+      EventKind.KesFileAbsent.line("kesPeriod" -> period.asJson, "file" -> file.asJson)
     case ForgeEvent.KesPersistFailed(period, error) =>
       EventKind.KesPersistFailed.line(
         "kesPeriod" -> period.asJson,

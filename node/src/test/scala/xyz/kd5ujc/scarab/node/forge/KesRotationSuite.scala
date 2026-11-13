@@ -125,6 +125,25 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
   private def rightOrFail[A](value: Either[ForgeError, A]): A =
     value.fold(error => fail(error.message), identity)
 
+  /** The rename protocol: the write-back where there is no atomic exchange, and recovery. */
+  private trait Renaming extends KesFiles.FileOps:
+    override def exchange(next: Path, file: Path): KesFiles.Exchange =
+      KesFiles.Exchange.Unsupported
+
+  /** The exchange protocol, with the exchange done in three moves: the same outcomes as
+    * `renameat2(RENAME_EXCHANGE)` (nothing moves when either file is not there), on any file
+    * system, for the boundaries.
+    */
+  private trait Swapping extends KesFiles.FileOps:
+    override def exchange(next: Path, file: Path): KesFiles.Exchange =
+      if !Files.exists(file) || !Files.exists(next) then KesFiles.Exchange.Absent
+      else
+        val aside = file.resolveSibling(file.getFileName.toString + ".swap")
+        Files.move(file, aside)
+        Files.move(next, file)
+        Files.move(aside, next)
+        KesFiles.Exchange.Swapped
+
   // ---- the key file: replacement and recovery
 
   test("an evolved key replaces the key in the file, which no longer holds the earlier one") {
@@ -194,7 +213,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         val evolved = f.onDisk
         evolved.evolveTo(6)
         val writes = ArrayBuffer.empty[Int]
-        val short = new KesFiles.FileOps:
+        val short = new Renaming:
           override def write(channel: FileChannel, bytes: ByteBuffer, position: Long): Int =
             val originalLimit = bytes.limit()
             bytes.limit(math.min(originalLimit, bytes.position() + 7))
@@ -218,7 +237,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         val before = Files.readAllBytes(f.kes).toVector
         val evolved = f.onDisk
         evolved.evolveTo(4)
-        val stalled = new KesFiles.FileOps:
+        val stalled = new Renaming:
           override def write(channel: FileChannel, bytes: ByteBuffer, position: Long): Int = 0
         KesFiles.persistWith(f.kes, evolved, stalled) match
           case Persisted.Failed(
@@ -244,7 +263,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         val wrongPeriod = f.onDisk
         wrongPeriod.evolveTo(6)
         val wrongPeriodText = rightOrFail(KeyFiles.kesEnvelope("staged", wrongPeriod))
-        val wrongPeriodOps = new KesFiles.FileOps:
+        val wrongPeriodOps = new Renaming:
           override def readStage(file: Path): String = wrongPeriodText
         KesFiles.stageWith(f.kes, expected, wrongPeriodOps) match
           case Left(
@@ -271,7 +290,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         val foreign = hotFor(TestLedger.key(), 58, 0, 0).kes
         foreign.evolveTo(7)
         val foreignText = rightOrFail(KeyFiles.kesEnvelope("staged", foreign))
-        val foreignOps = new KesFiles.FileOps:
+        val foreignOps = new Renaming:
           override def readStage(file: Path): String = foreignText
         KesFiles.stageWith(f.kes, expected, foreignOps) match
           case Left(
@@ -297,7 +316,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         f.install(hotFor(TestLedger.key(), 59, 0, 0))
         val evolved = f.onDisk
         evolved.evolveTo(3)
-        val malformed = new KesFiles.FileOps:
+        val malformed = new Renaming:
           override def readStage(file: Path): String = "not a KES envelope"
         KesFiles.stageWith(f.kes, evolved, malformed) match
           case Left(
@@ -321,7 +340,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         val before = Files.readAllBytes(f.kes).toVector
         val evolved = f.onDisk
         evolved.evolveTo(5)
-        val refuse = new KesFiles.FileOps:
+        val refuse = new Renaming:
           override def forceDirectoryBeforeErase(channel: FileChannel): Unit =
             throw new IOException("injected directory sync refusal")
         KesFiles.persistWith(f.kes, evolved, refuse) match
@@ -332,7 +351,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
           case other => fail(s"expected typed pre-erase sync failure, found $other")
         assertEquals(Files.readAllBytes(f.kes).toVector, before)
         assert(Files.exists(f.next), "the validated replacement remains staged")
-        assertEquals(KesFiles.recoverWith(f.kes, new KesFiles.FileOps {}).map(_.period), Right(5))
+        assertEquals(KesFiles.recoverWith(f.kes, new Renaming {}).map(_.period), Right(5))
       }
     }
   }
@@ -344,7 +363,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         val evolved = f.onDisk
         evolved.evolveTo(8)
         var failed = false
-        val failFirstRename = new KesFiles.FileOps:
+        val failFirstRename = new Renaming:
           override def rename(next: Path, file: Path): Unit =
             if !failed then
               failed = true
@@ -370,7 +389,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         evolved.evolveTo(9)
         var failSync = true
         var syncAttempts = 0
-        val failOnce = new KesFiles.FileOps:
+        val failOnce = new Renaming:
           override def forceDirectoryAfterRename(channel: FileChannel): Unit =
             syncAttempts += 1
             if failSync then
@@ -406,7 +425,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
           f.install(hotFor(TestLedger.key(), 61, 0, 0))
           val evolved = f.onDisk
           evolved.evolveTo(8)
-          val crash = new KesFiles.FileOps:
+          val crash = new Renaming:
             override def checkpoint(at: KesFileBoundary): Unit =
               if at == boundary then throw new IOException(s"crash at $at")
           KesFiles.persistWith(f.kes, evolved, crash) match
@@ -422,6 +441,127 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
           recovered.forget()
           assert(!Files.exists(f.next))
         }
+      }
+    }
+  }
+
+  test("every boundary of the exchange leaves an intact or recoverable key") {
+    // after the exchange the key file holds the new key and the stage's name the predecessor, which
+    // recovery erases; before it, recovery finishes the stage as for the rename
+    val cases = Vector(
+      (KesFileBoundary.StagedWriteCompleted, 0),
+      (KesFileBoundary.StagedFileForced, 0),
+      (KesFileBoundary.StagedReadbackValidated, 0),
+      (KesFileBoundary.DirectoryForcedBeforeErase, 0),
+      (KesFileBoundary.AtomicExchangeCompleted, 8),
+      (KesFileBoundary.DirectoryForcedAfterRename, 8),
+      (KesFileBoundary.PredecessorScrubCompleted, 8),
+      (KesFileBoundary.PredecessorFileForced, 8)
+    )
+    cases.traverse_ { case (boundary, mainPeriod) =>
+      withDir { f =>
+        IO {
+          f.install(hotFor(TestLedger.key(), 64, 0, 0))
+          val evolved = f.onDisk
+          evolved.evolveTo(8)
+          val crash = new Swapping:
+            override def checkpoint(at: KesFileBoundary): Unit =
+              if at == boundary then throw new IOException(s"crash at $at")
+          KesFiles.persistWith(f.kes, evolved, crash) match
+            case Persisted.Failed(_) => ()
+            case other => fail(s"expected injected failure at $boundary, found $other")
+          assertEquals(f.onDisk.period, mainPeriod, s"the key file at $boundary")
+          assert(Files.exists(f.next), s"stage or predecessor present at $boundary")
+          val recovered = rightOrFail(KesFiles.recover(f.kes))
+          assertEquals(recovered.period, 8, s"recovery after $boundary")
+          recovered.forget()
+          assert(!Files.exists(f.next))
+          evolved.forget()
+        }
+      }
+    }
+  }
+
+  test("the exchange leaves the new key in the file and no copy of the predecessor") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 65, 0, 0))
+        val evolved = f.onDisk
+        evolved.evolveTo(6)
+        assertEquals(KesFiles.persistWith(f.kes, evolved, new Swapping {}), Persisted.Written)
+        assertEquals(f.onDisk.period, 6)
+        assertEquals(listing(f.dir), Set("vrf.skey", "kes.skey", "node.cert"))
+        evolved.forget()
+      }
+    }
+  }
+
+  // ---- #918: a key file moved away is never made again by the write-back
+
+  List[(String, () => KesFiles.FileOps)](
+    "exchange" -> (() => new Swapping {}),
+    "rename" -> (() => new Renaming {})
+  ).foreach { case (protocol, ops) =>
+    test(s"$protocol: a key file moved away is not made again, and nothing is left in its place") {
+      withDir { f =>
+        IO {
+          f.install(hotFor(TestLedger.key(), 66, 0, 0))
+          val key = f.onDisk
+          Files.move(f.kes, f.dir.resolve("moved-away"))
+          key.evolveTo(3)
+          assertEquals(KesFiles.persistWith(f.kes, key, ops()), Persisted.Absent(f.kes.toString))
+          assertEquals(listing(f.dir), Set("vrf.skey", "node.cert", "moved-away"))
+          key.forget()
+        }
+      }
+    }
+
+    test(s"$protocol: a key file moved away while the new key is being staged is not made again") {
+      withDir { f =>
+        IO {
+          f.install(hotFor(TestLedger.key(), 67, 0, 0))
+          val key = f.onDisk
+          key.evolveTo(4)
+          val base = ops()
+          // the operator's `mv` lands after the write-back looked at the key file
+          val moving = new KesFiles.FileOps:
+            override def forceDirectoryBeforeErase(channel: FileChannel): Unit =
+              Files.move(f.kes, f.dir.resolve("moved-away"))
+            override def exchange(next: Path, file: Path): KesFiles.Exchange =
+              base.exchange(next, file)
+          assertEquals(KesFiles.persistWith(f.kes, key, moving), Persisted.Absent(f.kes.toString))
+          assertEquals(listing(f.dir), Set("vrf.skey", "node.cert", "moved-away"))
+          assertEquals(
+            KeyFiles
+              .kesSigningKey("k", Files.readString(f.dir.resolve("moved-away")))
+              .map(_.period),
+            Right(0),
+            "the moved file is untouched"
+          )
+          key.forget()
+        }
+      }
+    }
+  }
+
+  test("renameat2 RENAME_EXCHANGE swaps two files, and refuses when the key file is not there") {
+    withDir { f =>
+      IO {
+        val a = f.dir.resolve("a")
+        val b = f.dir.resolve("b")
+        Files.writeString(a, "A")
+        Files.writeString(b, "B")
+        val swapped = KesFiles.AtomicExchange(a, b)
+        assume(
+          swapped != KesFiles.Exchange.Unsupported,
+          "no atomic exchange here (not Linux, no renameat2, or the file system refuses it)"
+        )
+        assertEquals(swapped, KesFiles.Exchange.Swapped)
+        assertEquals((Files.readString(a), Files.readString(b)), ("B", "A"))
+        Files.delete(b)
+        assertEquals(KesFiles.AtomicExchange(a, b), KesFiles.Exchange.Absent)
+        assert(!Files.exists(b), "nothing is made at the key file's path")
+        assertEquals(Files.readString(a), "B")
       }
     }
   }
@@ -443,7 +583,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
           val evolved = f.onDisk
           evolved.evolveTo(9)
           assertEquals(KesFiles.stage(f.kes, evolved), Right(()))
-          val crash = new KesFiles.FileOps:
+          val crash = new Renaming:
             override def checkpoint(at: KesFileBoundary): Unit =
               if at == boundary then throw new IOException(s"crash at $at")
           KesFiles.recoverWith(f.kes, crash) match
@@ -1086,19 +1226,32 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     }
   }
 
-  test(
-    "the write-back recreates a key file that was moved away, so a disabled forger must not write"
-  ) {
+  test("#918: a KES key file moved away before the SIGHUP is not made again by a period change") {
+    val p = pool(kesStart = 50, seed = 82)
     withDir { f =>
-      IO {
-        f.install(hotFor(TestLedger.key(), 77, 0, 0))
-        val key = f.onDisk
-        Files.move(f.kes, f.dir.resolve("moved-away"))
-        key.evolveTo(3)
-        assertEquals(KesFiles.persist(f.kes, key), Persisted.Written)
-        assert(Files.exists(f.kes), "the key file is back at the configured path")
-        assertEquals(f.onDisk.period, 3)
-        key.forget()
+      f.installPool(p)
+      withHandle {
+        for
+          real <- IO.blocking(f.kes.toRealPath())
+          src <- source(f)
+          h <- harness(p, ledgerWith(p, 1), source = Some(src), clock = atSlot5100)
+          _ <- (5050 until 5100).toList.traverse_(s => h.forger.step(s))
+          // only the KES key is moved, and a period boundary passes before the SIGHUP
+          _ <- IO.blocking(Files.move(f.kes, f.dir.resolve("moved-away")))
+          _ <- (5100 until 5110).toList.traverse_(s => h.forger.step(s))
+          during <- h.seen
+          names <- IO.blocking(listing(f.dir))
+          _ <- h.forger.reload
+          enabled <- h.forger.hot.enabled
+          events <- h.seen
+        yield
+          assertEquals(
+            during.collect { case ForgeEvent.KesFileAbsent(period, file) => (period, file) },
+            Vector((BigInt(51), real.toString))
+          )
+          assertEquals(names, Set("vrf.skey", "node.cert", "moved-away"))
+          assertEquals(updates(events), Vector(BlockForgingState.DisabledBlockForging))
+          assert(!enabled, "the SIGHUP finds the key file absent and forging stops")
       }
     }
   }

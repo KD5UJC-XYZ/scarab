@@ -185,6 +185,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `kesReloaded` | `Forge.KesReloaded` | Notice | `opCertCounter`, `kesStart`, `kesEvolutions`, `kesPeriod`, `remainingKesPeriods` |
 | `kesReloadRefused` | `Forge.KesReloadRefused` | Error | `kind`, `message` |
 | `kesPersistFailed` | `Forge.KesPersistFailed` | Error | `kesPeriod`, `kind`, `message` |
+| `kesFileAbsent` | `Forge.KesFileAbsent` | Warning | `kesPeriod`, `file` |
 | `keyFileGroupAccess` | `Forge.KeyFileGroupAccess` | Warning | `file`, `mode` |
 | `forgeFailed` | `Forge.ForgeFailed` | Error | `slot`, `kind`, `message`: a slot given up for a reason of Scarab's own, which the reference does not have |
 | `forgeEpoch` | `Forge.ForgeEpoch` | Notice | `epoch`, `slotsChecked`, `leaderSlots`, `notLeader`, `cannotForge`, `stateUpdateError`, `forged`, `adopted`, `lostSlotBattles`, `forgedInvalid`, `replaced`, `failed`, `skipped`, `skippedByReason`, `forgeLatencyMs` |
