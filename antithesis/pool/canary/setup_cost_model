@@ -55,10 +55,14 @@ cardano-cli conway transaction submit --tx-file "$work/proposal.signed" --testne
   --socket-path "$reference" || fail "proposal transaction submit failed"
 echo "canary setup: proposed the PlutusV3 cost model of $want parameters; waiting for it in h2 and s1"
 
+# Enactment takes two epoch boundaries (about 100 s here). A bound turns a pool that never enacts it into a setup
+# failure that says so, instead of a run that waits for the platform's setup timeout.
+deadline=$((SECONDS + 600))
 last=""
 while :; do
   state="h2=$(v3_length h2) s1=$(v3_length s1)"
   [ "$state" = "h2=$want s1=$want" ] && break
+  [ "$SECONDS" -lt "$deadline" ] || fail "the cost model is not in force in both pools after 600 s: $state"
   if [ "$state" != "$last" ]; then
     echo "canary setup: PlutusV3 cost model lengths $state, epoch $(cardano-cli conway query tip \
       --testnet-magic "$MAGIC" --socket-path "$reference" 2>/dev/null | jq .epoch)"
