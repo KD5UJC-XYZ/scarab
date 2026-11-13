@@ -176,7 +176,7 @@ object UtxoTests:
   def maxTxSize(pp: ProtocolParams, tx: Tx): Test[PredicateFailure] =
     unless(tx.size <= pp.maxTxSize, UtxoFailure.MaxTxSize(Mismatch(BigInt(tx.size), pp.maxTxSize)))
 
-  /** `validateWrongNetworkInTxBody` (`Alonzo/Rules/Utxo.hs:426-440`). */
+  /** `validateWrongNetworkInTxBody` (`Alonzo/Rules/Utxo.hs:436-446`). */
   def wrongNetworkInTxBody(network: Int, body: TxBody): Test[PredicateFailure] =
     body.networkId.fold(Test.pass[PredicateFailure])(id =>
       unless(id == network, UtxoFailure.WrongNetworkInTxBody(Mismatch(id.toInt, network)))
