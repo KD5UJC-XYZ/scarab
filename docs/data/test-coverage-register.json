@@ -855,6 +855,402 @@
         "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "conway-deleg-incorrect-deposit",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Conway DELEG predicate failure IncorrectDepositDELEG (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Deleg.hs:199-211 (run at 233-234) and 240-258 (reported at 265); at protocol version 10, eras/conway/impl/src/Cardano/Ledger/Conway/Era.hs:266-267). Cases conway-deleg-collateral/deleg-reg-deposit-wrong, conway-deleg-collateral/deleg-unreg-refund-wrong: a registration with a deposit of 1, and an unregistration of a credential without rewards claiming a refund of 1, at protocol version 10.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one DELEG failure, IncorrectDepositDELEG (tag 1), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of IncorrectDepositDELEG in Conway; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/conway-deleg-collateral/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "conway-deleg-nonzero-account-balance",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Conway DELEG predicate failure StakeKeyHasNonZeroAccountBalanceDELEG (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Deleg.hs:260-268). Case conway-deleg-collateral/deleg-unreg-reward-balance: an unregistration, with the right refund, of an account that holds rewards, at protocol version 10.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one DELEG failure, StakeKeyHasNonZeroAccountBalanceDELEG (tag 4), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of StakeKeyHasNonZeroAccountBalanceDELEG in Conway; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/conway-deleg-collateral/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "conway-deleg-drep-not-registered",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Conway DELEG predicate failure DelegateeDRepNotRegisteredDELEG (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Deleg.hs:219-226 (run at 279-280)). Case conway-deleg-collateral/deleg-vote-unregistered-drep: a registered credential delegating its vote to a DRep that is not registered, at protocol version 10.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one DELEG failure, DelegateeDRepNotRegisteredDELEG (tag 5), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of DelegateeDRepNotRegisteredDELEG in Conway; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/conway-deleg-collateral/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "conway-govcert-drep-incorrect-refund",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Conway GOVCERT predicate failure ConwayDRepIncorrectRefund (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/conway/impl/src/Cardano/Ledger/Conway/Rules/GovCert.hs:234-242). Case conway-deleg-collateral/govcert-drep-unreg-refund-wrong: a registered DRep unregistering with twice the deposit it holds as its refund, at protocol version 10.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one GOVCERT failure, ConwayDRepIncorrectRefund (tag 4), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of ConwayDRepIncorrectRefund in Conway; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/conway-deleg-collateral/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "conway-utxo-scripts-not-paid",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Conway UTXO predicate failure ScriptsNotPaidUTxO (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs:327-333, run from eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs:216-238 and eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxo.hs:238). Case conway-deleg-collateral/utxo-collateral-script-locked: a Plutus mint whose collateral input is locked by a native script, at protocol version 10.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one UTXO failure, ScriptsNotPaidUTxO (tag 13), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of ScriptsNotPaidUTxO in Conway; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/conway-deleg-collateral/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "conway-utxo-collateral-non-ada",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Conway UTXO predicate failure CollateralContainsNonADA (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs:253-280, run from eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxo.hs:238). Case conway-deleg-collateral/utxo-collateral-non-ada: a Plutus mint whose collateral input holds a token, with no collateral return, at protocol version 10.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one UTXO failure, CollateralContainsNonADA (tag 15), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of CollateralContainsNonADA in Conway; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/conway-deleg-collateral/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "conway-gov-conflicting-committee-update",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Conway GOV predicate failure ConflictingCommitteeUpdate (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs:550-553). Case conway-gov-proposals/gov-committee-update-conflicting: an UpdateCommittee that both removes and adds one member, at protocol version 10.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one GOV failure, ConflictingCommitteeUpdate (tag 6), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of ConflictingCommitteeUpdate in Conway; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/conway-gov-proposals/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "conway-gov-expiration-epoch-too-small",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Conway GOV predicate failure ExpirationEpochTooSmall (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs:555-556). Case conway-gov-proposals/gov-committee-update-expired-member: an UpdateCommittee adding a member whose term ends in the current epoch, at protocol version 10.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one GOV failure, ExpirationEpochTooSmall (tag 7), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of ExpirationEpochTooSmall in Conway; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/conway-gov-proposals/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "conway-gov-treasury-withdrawal-accounts-unregistered",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Conway GOV predicate failure TreasuryWithdrawalReturnAccountsDoNotExist (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs:508-520). Case conway-gov-proposals/gov-treasury-withdrawal-unregistered-account: a treasury withdrawal to an unregistered account of this network, at protocol version 10.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one GOV failure, TreasuryWithdrawalReturnAccountsDoNotExist (tag 17), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of TreasuryWithdrawalReturnAccountsDoNotExist in Conway; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/conway-gov-proposals/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "conway-gov-invalid-guardrails-script-hash",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Conway GOV predicate failure InvalidGuardrailsScriptHash (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs:420-426 (run at 547 and 557-558)). Cases conway-gov-proposals/gov-parameter-change-guardrails-unexpected, conway-gov-proposals/gov-treasury-withdrawal-guardrails-unexpected: a parameter change and a treasury withdrawal naming a guardrails script (witnessed) where the constitution has none, at protocol version 10.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one GOV failure, InvalidGuardrailsScriptHash (tag 11), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of InvalidGuardrailsScriptHash in Conway; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/conway-gov-proposals/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "conway-gov-malformed-proposal-zero-parameters",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Conway GOV predicate failure MalformedProposal (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs:393-399 (run at 502) and eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs:935-953). Cases conway-gov-proposals/gov-parameter-change-max-block-body-size-zero, conway-gov-proposals/gov-parameter-change-max-block-header-size-zero, conway-gov-proposals/gov-parameter-change-pool-deposit-zero, conway-gov-proposals/gov-parameter-change-coins-per-utxo-byte-zero, conway-gov-proposals/gov-parameter-change-max-value-size-zero, conway-gov-proposals/gov-parameter-change-collateral-percentage-zero, conway-gov-proposals/gov-parameter-change-committee-max-term-length-zero, conway-gov-proposals/gov-parameter-change-gov-action-lifetime-zero, conway-gov-proposals/gov-parameter-change-gov-action-deposit-zero, conway-gov-proposals/gov-parameter-change-drep-deposit-zero, conway-gov-proposals/gov-parameter-change-empty: a parameter change setting each of ten parameters to zero, one per case, and an empty parameter change, at protocol version 10.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one GOV failure, MalformedProposal (tag 1), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of MalformedProposal in Conway; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/conway-gov-proposals/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "conway-deleg-deposit-incorrect",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Conway DELEG predicate failure DepositIncorrectDELEG (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Deleg.hs:199-211 and eras/conway/impl/src/Cardano/Ledger/Conway/Era.hs:266-267). Case conway-v11-coverage/deleg-reg-deposit-wrong-v11: a registration with a deposit of 1, at protocol version 11.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one DELEG failure, DepositIncorrectDELEG (tag 7), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of DepositIncorrectDELEG in Conway; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/conway-v11-coverage/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "conway-deleg-refund-incorrect",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Conway DELEG predicate failure RefundIncorrectDELEG (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Deleg.hs:240-258 and eras/conway/impl/src/Cardano/Ledger/Conway/Era.hs:266-267). Case conway-v11-coverage/deleg-unreg-refund-wrong-v11: an unregistration of a credential without rewards claiming a refund of 1, at protocol version 11.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one DELEG failure, RefundIncorrectDELEG (tag 8), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of RefundIncorrectDELEG in Conway; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/conway-v11-coverage/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "conway-gov-malformed-proposal-n-opt",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Conway GOV predicate failure MalformedProposal (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs:952-953). Case conway-v11-coverage/gov-parameter-change-n-opt-zero-v11: a parameter change setting nOpt to zero, at protocol version 11.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one GOV failure, MalformedProposal (tag 1), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of MalformedProposal in Conway; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/conway-v11-coverage/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "conway-gov-unelected-committee-voters",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Conway GOV predicate failure UnelectedCommitteeVoters (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs:478-481 and 652-665; eras/conway/impl/src/Cardano/Ledger/Conway/Era.hs:262-263). Case conway-v11-coverage/gov-vote-unelected-committee-member-v11: a vote on an info action by the authorised hot key of a member that a pending UpdateCommittee names but no committee elected, at protocol version 11.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one GOV failure, UnelectedCommitteeVoters (tag 18), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of UnelectedCommitteeVoters in Conway; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/conway-v11-coverage/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "alonzo-utxo-scripts-not-paid",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Alonzo UTXO predicate failure ScriptsNotPaidUTxO (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs:327-333 (run at 299-301, 304-319)). Case alonzo-collateral/utxo-collateral-script-locked: a Plutus mint whose collateral input is locked by a native script, at protocol version 6.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one UTXO failure, ScriptsNotPaidUTxO (tag 14), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of ScriptsNotPaidUTxO in Alonzo; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/alonzo-collateral/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "alonzo-utxo-collateral-non-ada",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Alonzo UTXO predicate failure CollateralContainsNonADA (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs:353-360 (run at 299-301, 304-319)). Case alonzo-collateral/utxo-collateral-non-ada: a Plutus mint whose collateral input holds a token, with no collateral return, at protocol version 6.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one UTXO failure, CollateralContainsNonADA (tag 16), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of CollateralContainsNonADA in Alonzo; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/alonzo-collateral/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "alonzo-utxo-wrong-network-in-tx-body",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Alonzo UTXO predicate failure WrongNetworkInTxBody (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs:436-446). Case alonzo-collateral/utxo-body-network-id-wrong: a transaction whose body names the mainnet network id, at protocol version 6.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one UTXO failure, WrongNetworkInTxBody (tag 17), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of WrongNetworkInTxBody in Alonzo; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/alonzo-collateral/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "alonzo-utxo-ex-units-too-big",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Alonzo UTXO predicate failure ExUnitsTooBigUTxO (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs:451-462). Case alonzo-collateral/utxo-mint-units-too-big: a Plutus mint whose redeemer's units exceed maxTxExecutionUnits by one in each (the reference's refusal is its mempool's measure, which runs before the ledger and nests the failure as the Alonzo rule does: ouroboros-consensus 82ecba32 Mempool/Update.hs:207-224, Shelley/Ledger/Mempool.hs:601-627), at protocol version 6.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one UTXO failure, ExUnitsTooBigUTxO (tag 15), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of ExUnitsTooBigUTxO in Alonzo; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/alonzo-collateral/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "babbage-utxo-scripts-not-paid",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Babbage UTXO predicate failure ScriptsNotPaidUTxO (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs:327-333, run from eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs:216-238). Case babbage-collateral/utxo-collateral-script-locked: a Plutus mint whose collateral input is locked by a native script, at protocol version 8.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one UTXO failure, ScriptsNotPaidUTxO (tag 14), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of ScriptsNotPaidUTxO in Babbage; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/babbage-collateral/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "babbage-utxo-collateral-non-ada",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Babbage UTXO predicate failure CollateralContainsNonADA (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs:253-280). Case babbage-collateral/utxo-collateral-non-ada: a Plutus mint whose collateral input holds a token, with no collateral return, at protocol version 8.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one UTXO failure, CollateralContainsNonADA (tag 16), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of CollateralContainsNonADA in Babbage; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/babbage-collateral/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "babbage-utxo-wrong-network-in-tx-body",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "External obligation: the reference's Babbage UTXO predicate failure WrongNetworkInTxBody (cardano-ledger f649f9751074d2ab3de033fc3912f29c9862c1f5, eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs:436-446, run at eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs:403). Case babbage-collateral/utxo-body-network-id-wrong: a transaction whose body names the mainnet network id, at protocol version 8.0, refused by cardano-node 11.1.3 (revision 938cba99) over node-to-client LocalTxSubmission with this one failure.",
+      "assertion": "ReferenceRefusalSuite replays each case on the reference's ticked state and requires the complete ApplyTxErr bytes: one UTXO failure, WrongNetworkInTxBody (tag 17), with the reference's payload; test_refusalcoverage requires the recorded refusal to be that one failure.",
+      "rationale": "No fixture held a reference refusal of WrongNetworkInTxBody in Babbage; the case breaks only this check, so a change to its condition, payload or encoding fails the case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
+      "resolution": "Retain the original refusal bytes; refresh only by recording a new corpus with refusalcoverage.",
+      "evidence": [
+        "fixtures/reference/refusals/babbage-collateral/cases/cases.jsonl",
+        "scripts/devnet/refusalcoverage.py",
+        "scripts/tests/test_refusalcoverage.py",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
     }
   ]
 }
