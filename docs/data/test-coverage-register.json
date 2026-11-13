@@ -701,6 +701,25 @@
       "candidateRequired": true
     },
     {
+      "id": "bootstrap-chain-code-lengths",
+      "classification": "regression",
+      "status": "covered",
+      "scope": "147 cases: the witness set, whole transaction and block body of each era from Shelley to Conway with a bootstrap witness whose chain code is 0, 31, 32, 33 or 64 bytes, a Conway witness set with two witnesses differing only in their chain codes, and one bootstrap witness read alone at each decoder version from 2 to 12.",
+      "assertion": "Witnesses.decode, Tx.fromEnvelope, Block.decodeShelley with Tx.fromBlock, and at version 12 the Dijkstra witness reader give the recorded reference verdict on every line an era reads: an accepted line keeps each chain code as written and has the reference's bootstrapWitKeyHash as its address root; a refusal at version 12 is ByteLength of the chain code, 32 and its length. The mempool (MempoolState.parseParts and add, local and remote) reads each Conway transaction and reaches the ledger rules, and admits a payment with an extra bootstrap witness, signing the body, of each chain code length.",
+      "rationale": "The reference checks a chain code's length only from decoder version 12 (instance DecCBOR ChainCode, cardano-ledger f649f975 Bootstrap.hs:72-78), and Shelley to Conway are read at 2 to 9, so a transaction with a bootstrap witness whose chain code is not 32 bytes is read. The verdicts and address roots are receipts of the unchanged released decoders (cardano-ledger-core 1.21.0.0, cardano-ledger-binary 1.9.1.0), not Scarab's expectation; the reference's ledger rules are not run on these transactions, and versions 6, 8, 10 and 11 have no Scarab reader.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Retain the original encodings, the complete reference failures and the address roots; run a transaction with such a witness through the reference's ledger rules before claiming rule-level agreement.",
+      "evidence": [
+        "fixtures/reference/bootstrap-chain-codes/README.md",
+        "fixtures/reference/bootstrap-chain-codes/provenance.json",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/BootstrapChainCodesReferenceSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/BootstrapChainCodeSubmissionSuite.scala",
+        "scripts/oracle/conway-decoding/bootstrap_chain_code_cases.py"
+      ],
+      "candidateRequired": true
+    },
+    {
       "id": "alonzo-min-fee-4228",
       "classification": "regression",
       "status": "covered",

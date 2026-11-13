@@ -118,3 +118,12 @@ the November 2025 mainnet partition, runs on the same harness, its cases from
 long, each pool id also 56 bytes long, and each certificate with every hash of 28 bytes. Its recipe
 is the one above with `delegation_hash_cases.py`, `/tmp/delegation-hashes-inputs.json` and
 `fixtures/reference/delegation-hashes/cases.jsonl`.
+
+The [bootstrap chain codes corpus](../../../fixtures/reference/bootstrap-chain-codes/README.md) runs
+on the same harness, its cases from `bootstrap_chain_code_cases.py`: a witness set, a whole
+transaction and a block body of every era from Shelley to Conway holding a bootstrap witness whose
+chain code is 0, 31, 32, 33 or 64 bytes, and one bootstrap witness read alone at each decoder version
+from 2 to 12. A case of kind "bootstrap" is read alone with `DecCBOR BootstrapWitness` at its
+`decoderVersion`, and a case with `bootstraps` set also reports the `bootstrapWitKeyHash` of each
+bootstrap witness it holds. Its recipe is the one above with `bootstrap_chain_code_cases.py`,
+`/tmp/bootstrap-chain-codes-inputs.json` and `fixtures/reference/bootstrap-chain-codes/cases.jsonl`.

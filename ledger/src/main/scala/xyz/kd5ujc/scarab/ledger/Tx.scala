@@ -568,13 +568,34 @@ final case class BootstrapWitness(
     attributes: Bytes
 ):
   /** The address root this witness authorises: `blake2b-224(sha3-256([0, [0, vkey‖chaincode],
-    * attributes]))`, with the attributes spliced in as the original CBOR map.
+    * attributes]))`, with the attributes spliced in as the original CBOR map. As in
+    * `bootstrapWitKeyHash` (`Keys/Bootstrap.hs:112-146`, cardano-ledger f649f975), the prefix names
+    * a 64-byte key whatever the chain code's length, and the chain code is hashed as read.
     */
   lazy val addressRoot: Bytes =
     val prefix = Vector(0x83, 0x00, 0x82, 0x00, 0x58, 0x40).map(_.toByte)
     val data = prefix ++ vkey.value ++ chainCode.value ++ attributes.value
     val sha3 = java.security.MessageDigest.getInstance("SHA3-256").digest(data.toArray)
     Blake2b.hash224.hash(Bytes.fromArray(sha3))
+
+object BootstrapWitness:
+  /** `DecCBOR ChainCode` (`libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Bootstrap.hs:72-78`,
+    * cardano-ledger f649f975): a byte string of any length, which must be 32 bytes from decoder
+    * version 12 (`whenDecoderVersionAtLeast (natVersion @12)`). Shelley to Conway are read at 2 to
+    * 9, so their chain codes have any length.
+    */
+  def chainCode(n: Node, version: DecoderVersion)(using
+      ByteStrings
+  ): Either[LedgerDecodeError, Bytes] =
+    CborRead
+      .bytes(n, DecodeField.ChainCode)
+      .flatMap(code =>
+        Either.cond(
+          !version.atLeast(12) || code.size == 32,
+          code,
+          LedgerDecodeError.ByteLength(DecodeField.ChainCode, 32, code.size)
+        )
+      )
 
 /** A redeemer: purpose tag (0 spend, 1 mint, 2 cert, 3 reward, 4 vote, 5 propose), index, data and
   * the execution units budget.
@@ -664,7 +685,7 @@ object Witnesses:
               (
                 CborRead.bytesN(xs(0), 32, DecodeField.BootstrapVkey),
                 CborRead.bytesN(xs(1), 64, DecodeField.BootstrapSignature),
-                CborRead.bytesN(xs(2), 32, DecodeField.ChainCode),
+                BootstrapWitness.chainCode(xs(2), version),
                 CborRead.bytes(xs(3), DecodeField.Attributes)
               ).mapN(BootstrapWitness(_, _, _, _))
             }
