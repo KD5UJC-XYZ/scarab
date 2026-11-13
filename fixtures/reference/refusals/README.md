@@ -118,8 +118,9 @@ The unelected member is one that a pending UpdateCommittee proposal names, which
 to be authorised. Disabling Scarab's reward-balance, DRep-refund, script-locked-collateral and
 conflicting-committee checks fails exactly the four cases that break them. These corpora were recorded
 from a working tree on `f1f553c1d` with the `refusalcoverage` builder added but not yet committed, hence
-`scarabDirty: true`; the committed functions that build them differ from those that recorded them only in
-comments and in naming the setup's change address explicitly (the same address).
+`scarabDirty: true`. The committed functions that build them differ from those that recorded them in
+comments, in naming the setup's change address explicitly (the same address), and in waiting for delegator
+1's first rewards where the recording function refused to build without them.
 
 The Alonzo and Babbage corpora each come from an era-walking cluster stopped in that era. A transaction
 whose execution units exceed `maxTxExecutionUnits` is refused by the node's mempool before the ledger

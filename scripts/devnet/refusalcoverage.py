@@ -47,9 +47,10 @@ TAGS = {
     "gov-parameter-change-guardrails-unexpected": ("InvalidGuardrailsScriptHash", CONWAY, GOV + (11,)),
     "gov-treasury-withdrawal-guardrails-unexpected": ("InvalidGuardrailsScriptHash", CONWAY, GOV + (11,)),
 }
-# The parameters `ppuWellFormed` refuses at zero from protocol version 10 (`Conway/PParams.hs:935-953`), by their
-# key in `protocol_param_update` (the Conway CDDL). maxTxSize (3) is `conway-governance`'s case; nOpt (8) is refused
-# only from version 11 (952-953) and is well-formed here, so it is not a case.
+# The parameters `ppuWellFormed` refuses at zero at protocol version 10 (`Conway/PParams.hs:935-953`), by their key
+# in `protocol_param_update` (the Conway CDDL). maxTxSize (3) is the `gov-parameter-change-malformed` case of the
+# `conway-governance` corpus (#928); nOpt (8) is refused only from version 11 (952-953), so its case is in
+# `conway_v11`.
 ZERO_FIELDS = {"max-block-body-size": 2, "max-block-header-size": 4, "pool-deposit": 6,
                "coins-per-utxo-byte": 17, "max-value-size": 22, "collateral-percentage": 23,
                "committee-max-term-length": 28, "gov-action-lifetime": 29, "gov-action-deposit": 30,
@@ -147,9 +148,14 @@ def conway_deleg_collateral(name):
     key_deposit = params["stakeAddressDeposit"]
     if params["protocolVersion"]["major"] != 10:
         raise RuntimeError(f"the DELEG cases are built for protocol version 10: {params['protocolVersion']}")
-    d1 = json.loads(b.sh(f"{CLI} query stake-address-info --address "
-                         f"{bech32('stake_test', eratx.reward_address(kd1.hash))} --testnet-magic {MAGIC} "
-                         f"--socket-path {socket}"))[0]
+    # the reward-balance case needs delegator 1's first rewards, paid a few epochs after the cluster starts
+    for _ in range(10):
+        d1 = json.loads(b.sh(f"{CLI} query stake-address-info --address "
+                             f"{bech32('stake_test', eratx.reward_address(kd1.hash))} --testnet-magic {MAGIC} "
+                             f"--socket-path {socket}"))[0]
+        if d1["rewardAccountBalance"]:
+            break
+        await_epoch(b, tip(b)["epoch"] + 1)
     if d1["rewardAccountBalance"] == 0 or d1["stakeRegistrationDeposit"] != key_deposit:
         raise RuntimeError(f"delegator 1 needs rewards and the parameters' deposit: {d1}")
     drep = json.loads(b.sh(f"{CLI} query drep-state --drep-key-hash {kdrep.hash.hex()} --testnet-magic {MAGIC} "
