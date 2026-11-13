@@ -60,6 +60,7 @@ import xyz.kd5ujc.scarab.node.{
 import xyz.kd5ujc.scarab.ledger.state.{Derived, MirrorError}
 import xyz.kd5ujc.scarab.ledger.PoolRelayError
 import xyz.kd5ujc.scarab.node.forge.{
+  NoExchange,
   BlockForgingState,
   CannotForge,
   ClockTrace,
@@ -525,6 +526,8 @@ object LogSamples:
     ),
     ForgeEvent.KeyFileGroupAccess("vrf.skey", 0x1a0),
     ForgeEvent.KesFileAbsent(BigInt(34), "/keys/kes.skey"),
+    ForgeEvent.KesWrittenByRename(NoExchange.Refused(22)),
+    ForgeEvent.KesWrittenByRename(NoExchange.NotLinux),
     ForgeEvent.Failed(BigInt(4202), ForgeError.KeyPeriodOutOfRange(33, 0, 32)),
     ForgeEvent.EpochSummary(BigInt(3), forgeStats),
     ForgeEvent.EpochSummary(BigInt(4), ForgeEpochStats())

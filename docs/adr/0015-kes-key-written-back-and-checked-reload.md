@@ -18,14 +18,12 @@ test-network pool (#116).
 
 ## Decision
 
-1. When the KES key moves to a new period it is written back to the `--kes-skey` file before it signs in
-   that period, and the key it replaces is overwritten: create the staged file beside it, write every byte,
+1. When the KES key moves to a new period it is written back to the `--kes-skey` file ~~before it signs in
+   that period~~ ([Amended 2026-11-13](#amendment-2026-11-13-a-moved-key-file-is-not-made-again)), and the key it replaces is overwritten: create the staged file beside it, write every byte,
    force the file, decode and validate its structure, verification key, period and serialized bytes, then
    force the containing directory. ~~Only then overwrite every predecessor byte with zeros and force that
    file, atomically rename the staged file over it, and force the directory again.~~
-   ([Amended 2026-11-13](#amendment-2026-11-13-a-moved-key-file-is-not-made-again): on Linux the stage takes the file's place by an atomic exchange
-   and the predecessor is erased after it; the order here stays where there is no exchange, and a key
-   file that is not there is never made.) Directory-sync failures
+   ([Amended 2026-11-13](#amendment-2026-11-13-a-moved-key-file-is-not-made-again).) Directory-sync failures
    are typed persistence failures; the current terminal key-update policy prevents further signing
    and stops the node. Recovery is performed on a subsequent start, not by continuing to forge. The file stays a
    `cardano-cli` envelope;
@@ -102,21 +100,28 @@ found every file and forging went on.
 
 - **The write-back never makes a key file that is not there.** When the `--kes-skey` file does not exist, nothing
   is written (`Persisted.Absent`, the event `kesFileAbsent`) and the key in memory signs on, as the reference's
-  does until its SIGHUP. Signing in a period whose key was not written back is accepted in this case only: the
-  file the write-back protects is gone.
+  does until its SIGHUP: its key lives in memory only (ouroboros-consensus-protocol
+  `release-ouroboros-consensus-4.2.1.0`, `Ouroboros/Consensus/Protocol/Ledger/HotKey.hs` 385-436). So the key is
+  written back before it signs in a new period except in this case, where the file it would protect is gone.
 - **On Linux the stage takes the file's place by an atomic exchange**, `renameat2(RENAME_EXCHANGE)` (Linux 3.15,
   glibc 2.28) through the foreign-function interface, which fails with `ENOENT` and moves nothing when the file is
-  not there, so no window remains. The order is: the stage written, forced, read back and checked; the directory
-  forced; the exchange; the directory forced; then the predecessor, now at the stage's name, overwritten with
-  zeros, forced and removed. A crash after the exchange leaves the predecessor at the stage's name until the
-  next start, whose recovery destroys a stage older than the key file: the predecessor's bytes can outlive a
-  crash longer than with the rename, until that recovery.
-- **Where there is no atomic exchange** (another system, no `renameat2` in the C library, a kernel or file system
-  that refuses `RENAME_EXCHANGE`, or no native access) the order of decision 1 stays, with a check that the file
-  is there before the predecessor is erased. A move between that check and the rename can still put the key back:
-  a window of one erasure and one rename, once per KES period.
-- **Recovery at start-up is unchanged**: it finishes a valid stage with the rename.
+  not there. The order is: the stage written, forced, read back and checked; the directory forced; the exchange;
+  the directory forced; then the predecessor, now at the stage's name, overwritten with zeros, forced and removed.
+  A crash, or a failure, after the exchange leaves the predecessor at the stage's name until the next write-back
+  of the same key or the next start, either of which erases a stage older than the key file: the predecessor's
+  bytes can outlive a crash longer than with the rename. An `ENOENT` while the key file is there (the stage went
+  missing) is a typed failure; another errno is the typed failure `KesFileFailureCause.Exchange`; a binding the
+  JDK refuses is a defect, never a fall-back.
+- **Where there is no atomic exchange** (another system, no `renameat2` in the C library, or a kernel or file
+  system that refuses `RENAME_EXCHANGE` with `EINVAL`, `ENOSYS` or `EOPNOTSUPP`), the write-back checks that the
+  key file is there, then overwrites every predecessor byte with zeros and forces that file, atomically renames
+  the staged file over it, and forces the directory again. The node logs `kesWrittenByRename` (with the reason)
+  the first time. A move between that check and the rename can still put the key back: a window of one erasure
+  and one rename, once per KES period.
+- **Recovery uses the same replacement**, and never makes a key file that is not there from a stage: with the
+  key file missing, the start fails as the reference's does on a missing key file, and the stage is kept.
 
-The cases are covered by `KesRotationSuite`: every boundary of the exchange, a key file moved before and during
-the write-back with either protocol, the real `renameat2` where the platform has it, and a period change between
-the move and the SIGHUP.
+The cases are covered by `KesRotationSuite`: every boundary of the exchange; a key file moved before and during
+the write-back with either protocol; a retry after a failure that followed the exchange; a stage that went
+missing; an exchange errno and a binding defect; recovery with the key file missing; the rename said once; the
+real `renameat2` on Linux; and a period change between the move and the SIGHUP.

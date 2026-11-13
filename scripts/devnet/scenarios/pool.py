@@ -486,7 +486,8 @@ def pool(args):
             "forging": {"forged": len(forged), "adopted": len(adopted), "lost": len(lost),
                         "onFinalChain": len(on_chain), "kesEvolved": counts.get("kesEvolved", 0),
                         **{k_: counts.get(k_, 0) for k_ in ("startLeadershipCheck", "didntAdoptBlock",
-                                                           "noLedgerView", "slotIsImmutable", "blockFromFuture")
+                                                           "noLedgerView", "slotIsImmutable", "blockFromFuture",
+                                                           "kesFileAbsent", "kesWrittenByRename")
                            + FORGE_PROBLEMS}},
             "haskellBlocksMadeByPool": {"total": haskell_count, "perEpoch": per_epoch,
                                         "scalaBlocksOnChainUpToLastComparedTip": upto_compared},

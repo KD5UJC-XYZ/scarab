@@ -5,7 +5,6 @@ import scala.util.Using.Releasable
 import scala.util.Using
 import xyz.kd5ujc.scarab.ledger.ForgeKeyProblem
 import cats.syntax.all.*
-import java.io.IOException
 import java.lang.foreign.{
   Arena,
   FunctionDescriptor,
@@ -18,7 +17,13 @@ import java.lang.invoke.MethodHandle
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, Path, StandardCopyOption, StandardOpenOption as Open}
+import java.nio.file.{
+  Files,
+  NoSuchFileException,
+  Path,
+  StandardCopyOption,
+  StandardOpenOption as Open
+}
 import java.nio.file.attribute.PosixFilePermissions
 import scala.annotation.tailrec
 import scala.jdk.OptionConverters.*
@@ -32,9 +37,27 @@ import xyz.kd5ujc.scarab.ledger.{
   KesStageMismatch
 }
 
+/** Why a key file was replaced by the rename rather than the atomic exchange. */
+enum NoExchange:
+  /** Not Linux: there is no `renameat2`. */
+  case NotLinux
+
+  /** Linux, but the C library has no `renameat2` (glibc before 2.28). */
+  case NoRenameat2
+
+  /** The kernel or the file system refused `RENAME_EXCHANGE` with this errno (`EINVAL`, `ENOSYS`,
+    * `EOPNOTSUPP`).
+    */
+  case Refused(errno: Int)
+
+/** How an evolved key took the key file's place. */
+enum WriteProtocol:
+  case Exchanged
+  case Renamed(reason: NoExchange)
+
 /** What became of an evolved key handed to a [[HotKeySource]] to write back. */
 enum Persisted:
-  case Written
+  case Written(by: WriteProtocol)
   case Unchanged
   case Superseded
 
@@ -94,14 +117,16 @@ object KesFiles:
     /** The key file (or the stage) is not there (`ENOENT`): nothing moved. */
     case Absent
 
-    /** No atomic exchange here: not Linux, no `renameat2` in the C library, or a kernel or file
-      * system that refuses `RENAME_EXCHANGE` (`ENOSYS`, `EINVAL`, `EOPNOTSUPP`), or no native
-      * access.
-      */
-    case Unsupported
+    /** No atomic exchange here, and why. */
+    case Unsupported(reason: NoExchange)
 
     /** Another errno. */
     case Failed(errno: Int)
+
+    /** The native call could not be made (a binding or an access the JDK refused): a defect, never
+      * a reason to fall back to the rename quietly.
+      */
+    case Defect(cause: Throwable)
 
   /** `renameat2(AT_FDCWD, next, AT_FDCWD, file, RENAME_EXCHANGE)` (Linux 3.15, glibc 2.28) through
     * the foreign-function interface, as the local socket's `unlink` is made: the JDK has no call
@@ -116,34 +141,35 @@ object KesFiles:
     private val linker = Linker.nativeLinker()
     private val state = Linker.Option.captureStateLayout()
     private val errnoOffset = state.byteOffset(MemoryLayout.PathElement.groupElement("errno"))
-    private lazy val call: Option[MethodHandle] =
-      Option
-        .when(System.getProperty("os.name", "").startsWith("Linux"))(())
-        .flatMap(_ =>
-          Either
-            .catchNonFatal(
-              linker
-                .defaultLookup()
-                .find("renameat2")
-                .toScala
-                .map(
-                  linker.downcallHandle(
-                    _,
-                    FunctionDescriptor.of(
-                      ValueLayout.JAVA_INT,
-                      ValueLayout.JAVA_INT,
-                      ValueLayout.ADDRESS,
-                      ValueLayout.JAVA_INT,
-                      ValueLayout.ADDRESS,
-                      ValueLayout.JAVA_INT
-                    ),
-                    Linker.Option.captureCallState("errno")
-                  )
+
+    /** The handle, or why there is none: no exchange on this system, or a defect of the binding. */
+    private lazy val call: Either[Exchange, MethodHandle] =
+      if !System.getProperty("os.name", "").startsWith("Linux") then
+        Left(Exchange.Unsupported(NoExchange.NotLinux))
+      else
+        linker
+          .defaultLookup()
+          .find("renameat2")
+          .toScala
+          .toRight(Exchange.Unsupported(NoExchange.NoRenameat2))
+          .flatMap(symbol =>
+            Either
+              .catchNonFatal(
+                linker.downcallHandle(
+                  symbol,
+                  FunctionDescriptor.of(
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT
+                  ),
+                  Linker.Option.captureCallState("errno")
                 )
-            )
-            .toOption
-            .flatten
-        )
+              )
+              .leftMap(Exchange.Defect(_))
+          )
 
     private def cString(arena: Arena, path: Path): MemorySegment =
       val bytes = path.toAbsolutePath.toString.getBytes(StandardCharsets.UTF_8)
@@ -153,29 +179,33 @@ object KesFiles:
       name
 
     def apply(next: Path, file: Path): Exchange =
-      call.fold(Exchange.Unsupported) { renameat2 =>
-        Either
-          .catchNonFatal(Using.resource(Arena.ofConfined()) { arena =>
-            val captured = arena.allocate(state)
-            // signature-polymorphic: the ascribed Int is the handle's
-            // `(MemorySegment, int, MemorySegment, int, MemorySegment, int)int`
-            val result: Int = renameat2.invokeExact(
-              captured,
-              AtFdCwd,
-              cString(arena, next),
-              AtFdCwd,
-              cString(arena, file),
-              RenameExchange
-            )
-            if result == 0 then Exchange.Swapped
-            else
-              captured.get(ValueLayout.JAVA_INT, errnoOffset) match
-                case Enoent                           => Exchange.Absent
-                case errno if Refused.contains(errno) => Exchange.Unsupported
-                case errno                            => Exchange.Failed(errno)
-          })
-          .getOrElse(Exchange.Unsupported)
-      }
+      call.fold(
+        identity,
+        { renameat2 =>
+          Either
+            .catchNonFatal(Using.resource(Arena.ofConfined()) { arena =>
+              val captured = arena.allocate(state)
+              // signature-polymorphic: the ascribed Int is the handle's
+              // `(MemorySegment, int, MemorySegment, int, MemorySegment, int)int`
+              val result: Int = renameat2.invokeExact(
+                captured,
+                AtFdCwd,
+                cString(arena, next),
+                AtFdCwd,
+                cString(arena, file),
+                RenameExchange
+              )
+              if result == 0 then Exchange.Swapped
+              else
+                captured.get(ValueLayout.JAVA_INT, errnoOffset) match
+                  case Enoent => Exchange.Absent
+                  case errno if Refused.contains(errno) =>
+                    Exchange.Unsupported(NoExchange.Refused(errno))
+                  case errno => Exchange.Failed(errno)
+            })
+            .fold(Exchange.Defect(_), identity)
+        }
+      )
 
   private def nextOf(file: Path): Path =
     file.resolveSibling(file.getFileName.toString + ".next")
@@ -454,19 +484,15 @@ object KesFiles:
         )
       )
 
-  /** Recovery's ending of a valid stage: the predecessor erased, then the rename. */
-  private def finish(file: Path, ops: FileOps): Either[ForgeError, Unit] =
-    stageDurable(file, ops)
-      .flatMap(_ => scrub(file, ops))
-      .flatMap(_ => commit(file, ops))
-
-  /** The write-back's ending of a stage it has just written: the exchange where there is one,
-    * otherwise the check that the key file is there, then the erasure and the rename. A key file
-    * that is not there is not made again: the stage, the new key, is destroyed.
+  /** The stage put in the key file's place once it is durable: by the atomic exchange, after which
+    * the predecessor, now at the stage's name, is erased and removed; where there is no exchange,
+    * by erasing the predecessor and renaming the stage over it, after a check that the key file is
+    * there. None: the key file is not there (moved away), and nothing was moved.
     */
-  private def install(file: Path, ops: FileOps): Either[ForgeError, Persisted] =
+  private def replace(file: Path, ops: FileOps): Either[ForgeError, Option[WriteProtocol]] =
     val next = nextOf(file)
-    def absent = destroy(next, ops).as(Persisted.Absent(file.toString))
+    def failure(cause: KesFileFailureCause) =
+      Left(ForgeError.KesFileFailure(file.toString, KesFileOperation.Rename, cause))
     stageDurable(file, ops).flatMap(_ =>
       ops.exchange(next, file) match
         case Exchange.Swapped =>
@@ -483,21 +509,35 @@ object KesFiles:
             // the predecessor is at the stage's name now
             .flatMap(_ => overwrite(next, ops))
             .flatMap(_ => at(file, KesFileOperation.Cleanup)(Files.deleteIfExists(next)).void)
-            .as(Persisted.Written)
-        case Exchange.Absent => absent
-        case Exchange.Unsupported =>
-          if !Files.exists(file) then absent
-          else scrub(file, ops).flatMap(_ => commit(file, ops)).as(Persisted.Written)
-        case Exchange.Failed(errno) =>
-          Left(
-            ForgeError.KesFileFailure(
-              file.toString,
-              KesFileOperation.Rename,
-              KesFileFailureCause.FileSystem(
-                new IOException(s"renameat2 RENAME_EXCHANGE failed with errno $errno")
-              )
-            )
-          )
+            .as(Some(WriteProtocol.Exchanged))
+        // `ENOENT` names either path: the key file, or a stage that went missing meanwhile
+        case Exchange.Absent if Files.exists(file) =>
+          failure(KesFileFailureCause.FileSystem(new NoSuchFileException(next.toString)))
+        case Exchange.Absent => Right(None)
+        case Exchange.Unsupported(reason) =>
+          if !Files.exists(file) then Right(None)
+          else
+            scrub(file, ops)
+              .flatMap(_ => commit(file, ops))
+              .as(Some(WriteProtocol.Renamed(reason)))
+        case Exchange.Failed(errno) => failure(KesFileFailureCause.Exchange(errno))
+        case Exchange.Defect(cause) => failure(KesFileFailureCause.FileSystem(cause))
+    )
+
+  /** Recovery's ending of a valid stage. A key file that is not there is not made from the stage:
+    * the read fails, as the reference's does on a missing key file, and the stage is kept.
+    */
+  private def finish(file: Path, ops: FileOps): Either[ForgeError, Unit] =
+    replace(file, ops).flatMap(_.fold(parse(file).void)(_ => Right(())))
+
+  /** The write-back's ending of a stage it has just written. A key file that is not there is not
+    * made again: the stage, the new key, is destroyed.
+    */
+  private def install(file: Path, ops: FileOps): Either[ForgeError, Persisted] =
+    replace(file, ops).flatMap(
+      _.fold(destroy(nextOf(file), ops).as(Persisted.Absent(file.toString)))(by =>
+        Right(Persisted.Written(by))
+      )
     )
 
   private def persistEither(
@@ -513,14 +553,22 @@ object KesFiles:
         main match
           case Some(d) if d.verificationKey != key.verificationKey => Right(Persisted.Superseded)
           case Some(d) if d.period >= key.period                   =>
-            // A prior rename may have succeeded while its directory force failed. Retry that force.
+            // A prior rename or exchange may have succeeded while its directory force failed, or,
+            // after an exchange, before its predecessor at the stage's name was erased. Retry both.
+            val next = nextOf(file)
+            val older =
+              Option
+                .when(Files.exists(next))(inspect(next).toOption)
+                .flatten
+                .exists(s => s.verificationKey == d.verificationKey && s.period < d.period)
             syncDirectory(
               file,
               KesFileOperation.DirectorySyncAfterRename,
               KesFileBoundary.DirectoryForcedAfterRename,
               ops.forceDirectoryAfterRename,
               ops
-            ).as(Persisted.Unchanged)
+            ).flatMap(_ => if older then destroy(next, ops) else Right(()))
+              .as(Persisted.Unchanged)
           case _ =>
             val next = nextOf(file)
             val staged = if Files.exists(next) then inspect(next).toOption else None
@@ -579,7 +627,8 @@ object KesFiles:
   ): Either[ForgeError, Sum6KesSigning.SigningKey] =
     val next = nextOf(file)
     val main = parse(file)
-    if !Files.exists(next) then main
+    // a key file that is not there is not made from a stage (#918); the read fails as it is
+    if !Files.exists(next) || !Files.exists(file) then main
     else
       parse(next) match
         case Right(n) if main.fold(_ => true, m => same(m, n) && m.period <= n.period) =>

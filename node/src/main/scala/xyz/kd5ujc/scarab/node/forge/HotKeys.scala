@@ -142,6 +142,9 @@ object HotKeySource:
   *   failure of `state`, it is not fatal.
   * @param poolId
   *   The pool this node forges for: the hash of the cold key of the credentials it started with.
+  * @param renamed
+  *   Whether a write-back has already replaced the key file by the rename, without the atomic
+  *   exchange, which is said once.
   */
 final class HotKeys[F[_]: Async] private (
     state: Ref[F, Either[Fatal, Option[PoolCredentials]]],
@@ -150,7 +153,8 @@ final class HotKeys[F[_]: Async] private (
     source: Option[HotKeySource[F]],
     config: PraosConfig,
     events: ForgeEvents[F],
-    poolId: Bytes
+    poolId: Bytes,
+    renamed: Ref[F, Boolean]
 ):
   private val F = Async[F]
 
@@ -210,7 +214,14 @@ final class HotKeys[F[_]: Async] private (
             events.emit(ForgeEvent.KesPersistFailed(kesPeriod, e)) *> fatal.raise[F, Unit]
           }
         case Persisted.Absent(file) => events.emit(ForgeEvent.KesFileAbsent(kesPeriod, file))
-        case Persisted.Written | Persisted.Unchanged | Persisted.Superseded => F.unit
+        // the rename, where there is no atomic exchange, said once (#918)
+        case Persisted.Written(WriteProtocol.Renamed(reason)) =>
+          renamed
+            .getAndSet(true)
+            .flatMap(events.emit(ForgeEvent.KesWrittenByRename(reason)).unlessA(_))
+        case Persisted.Written(WriteProtocol.Exchanged) | Persisted.Unchanged |
+            Persisted.Superseded =>
+          F.unit
       }
     }
 
@@ -372,8 +383,9 @@ object HotKeys:
         Right(Option.when(enabled)(credentials))
       ),
       Ref.of[F, Option[KesInfo]](None),
-      Mutex[F]
-    ).mapN { (state, poisoned, lock) =>
+      Mutex[F],
+      Ref.of[F, Boolean](false)
+    ).mapN { (state, poisoned, lock, renamed) =>
       new HotKeys[F](
         state,
         poisoned,
@@ -381,7 +393,8 @@ object HotKeys:
         source,
         config,
         events,
-        credentials.poolId
+        credentials.poolId,
+        renamed
       )
     }
 

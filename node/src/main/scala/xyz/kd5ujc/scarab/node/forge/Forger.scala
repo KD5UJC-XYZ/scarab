@@ -125,6 +125,12 @@ enum ForgeEvent:
     */
   case KesFileAbsent(kesPeriod: BigInt, file: String)
 
+  /** A write-back replaced the key file by the rename, because there is no atomic exchange here
+    * (`reason`); said once. A key file moved away in the instant between the check that it is there
+    * and the rename can then be made again (#918).
+    */
+  case KesWrittenByRename(reason: NoExchange)
+
   /** The VRF key file gives its group some access (`mode`): allowed, as in the reference, which
     * warns (`GroupPermissionsExist`).
     */
