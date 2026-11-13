@@ -43,6 +43,7 @@
     "fixtures/reference/plutus-forecast-horizon/conway-past-horizon/genesis/conway-genesis.json": "2a8fa214685609244e006e03c938e7cef63a1edb03436e0547fc8bedac4316c3",
     "fixtures/reference/plutus-forecast-horizon/conway-past-horizon/genesis/shelley-genesis.json": "b183cd2b69ed0f29dd837b927f7e5e27fab942735b92e2d452e232d226510b88",
     "fixtures/reference/refusals/genesis/0852102f056aae15273dd402b5ca44f103b4eef03b19f8a5717ceff2df8c1667-shelley-genesis.json": "0852102f056aae15273dd402b5ca44f103b4eef03b19f8a5717ceff2df8c1667",
+    "fixtures/reference/refusals/genesis/1696250c9a45627a3399625b5ef8ffc195f688ece2258c5653ada16f76e62b69-shelley-genesis.json": "1696250c9a45627a3399625b5ef8ffc195f688ece2258c5653ada16f76e62b69",
     "fixtures/reference/refusals/genesis/1b5b4a4975ab9bbfd8d0b5cd60caeafefc4d1a372489cb166be17e7c27f4e926-conway-genesis.json": "1b5b4a4975ab9bbfd8d0b5cd60caeafefc4d1a372489cb166be17e7c27f4e926",
     "fixtures/reference/refusals/genesis/392c2f64b63556e63fd5faf1957fc914cf432975f4eb52f956728bd912e314b4-shelley-genesis.json": "392c2f64b63556e63fd5faf1957fc914cf432975f4eb52f956728bd912e314b4",
     "fixtures/reference/refusals/genesis/3ee6cf399e02f774276b66aabe74fc0b464a6f33338a2d3668343c67d6f4623a-conway-genesis.json": "3ee6cf399e02f774276b66aabe74fc0b464a6f33338a2d3668343c67d6f4623a",
@@ -56,6 +57,7 @@
     "fixtures/reference/refusals/genesis/6a83f6b7aa9514bcc5d69cfc5fb524bfb65d4bf0729cc2939707ffef20a2303e-conway-genesis.json": "6a83f6b7aa9514bcc5d69cfc5fb524bfb65d4bf0729cc2939707ffef20a2303e",
     "fixtures/reference/refusals/genesis/74c6364c5013661196f9b1e31cb9df467516f24c7dae6306e65ea9f331fca47f-alonzo-genesis.json": "74c6364c5013661196f9b1e31cb9df467516f24c7dae6306e65ea9f331fca47f",
     "fixtures/reference/refusals/genesis/8413c41ca4be22184d9ba47774b032b2e852969fc0d72c96f0e11cb236fc2feb-conway-genesis.json": "8413c41ca4be22184d9ba47774b032b2e852969fc0d72c96f0e11cb236fc2feb",
+    "fixtures/reference/refusals/genesis/90d3a7a89b560aec5d098a57f964a54a22d9abfba79f179cd0e53af67e14169b-conway-genesis.json": "90d3a7a89b560aec5d098a57f964a54a22d9abfba79f179cd0e53af67e14169b",
     "fixtures/reference/refusals/genesis/93bda3a9b90a29059898e0983e77d8d94cb72e512c75eb9a6243a791d46b2817-shelley-genesis.json": "93bda3a9b90a29059898e0983e77d8d94cb72e512c75eb9a6243a791d46b2817",
     "fixtures/reference/refusals/genesis/9935de8de4eec70bd6df7995f90bc77908d2317e43e9fa912c931eb9a402dca2-conway-genesis.json": "9935de8de4eec70bd6df7995f90bc77908d2317e43e9fa912c931eb9a402dca2",
     "fixtures/reference/refusals/genesis/a020ce4a7395fcdcc4b1031054e69f090375e5c6fe555d329836f1df358be4da-shelley-genesis.json": "a020ce4a7395fcdcc4b1031054e69f090375e5c6fe555d329836f1df358be4da",
@@ -77,9 +79,9 @@
     "fixtures/reference/refusals/genesis/e99e4cd9ee4018023eb83aad69566b39a30120ddf98decc16e7dc4cd6d96f423-shelley-genesis.json": "e99e4cd9ee4018023eb83aad69566b39a30120ddf98decc16e7dc4cd6d96f423",
     "fixtures/reference/refusals/genesis/fb3803d294bc6f5d0f07bbdee88db55fb85e4b0e861b1b9dbe5f244d2b2c2cc9-shelley-genesis.json": "fb3803d294bc6f5d0f07bbdee88db55fb85e4b0e861b1b9dbe5f244d2b2c2cc9"
   },
-  "cases": 316,
+  "cases": 318,
   "image": "scarab-genesis-fields497-oracle:local",
-  "imageId": "sha256:901c3a426eb87c360d5e359ad623303d9a92b5d0a45106fa24b6730af7495e7c",
+  "imageId": "sha256:c37e164a55082c36b321e9f483ab73d309f92c4719454afef903693dc3596f60",
   "ledger": {
     "packages": [
       "cardano-ledger-shelley",

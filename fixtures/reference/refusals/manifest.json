@@ -102,6 +102,10 @@
       "sha256": "286a678fea0f7086d17a169d27d756077ddc2135d54ea02661e39c920f6a66d4"
     },
     {
+      "path": "conway-governance",
+      "sha256": "422923f74f9f138f8293844aed93577f8b6b2b7e87d11eef6d63f6679c108d8a"
+    },
+    {
       "path": "conway-three-certificates",
       "sha256": "335673554ec6b794302fdbb70f0d941b0c143af6f0814c964a2de2c613088aa3"
     },
