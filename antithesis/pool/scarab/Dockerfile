@@ -2,8 +2,8 @@
 # Scarab v0.2.0-alpha.1 (commit 4636ab355, a development-mode build) for the trial: the published image's JAR on the
 # runtime of docker/candidate.Dockerfile. The published image runs it on a Java 21 JRE, but parts of the JAR are Java 25
 # class files (version 69), so forging stops at its first leadership check with UnsupportedClassVersionError.
-# It runs as root, as the Haskell pools do: Antithesis refuses `chmod` and `chown`, so the configurator cannot hand
-# pool 1's keys to another user.
+# It runs as root, as the Haskell pools do, so the configurator need not hand pool 1's keys to another user: on
+# Antithesis a `chmod` of copied files failed with "Operation not permitted".
 FROM ghcr.io/kd5ujc-xyz/scarab@sha256:1811062cbb86d33b38cdf5132b0a24c3de1624f42625980bc0fca785390461e5 AS release
 
 # Linux/amd64 Temurin 25.0.4.1+1 JRE on Ubuntu 26.04, the digest docker/candidate.Dockerfile pins.

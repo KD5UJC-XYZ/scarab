@@ -12,8 +12,17 @@ repo=${1:-ghcr.io/kd5ujc-xyz/scarab-antithesis}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
+# The digest reference of image $1 in $repo, compared as a literal prefix.
 digest_of() {
-  docker image inspect "$1" --format '{{range .RepoDigests}}{{println .}}{{end}}' | grep -m1 "^$repo@"
+  local ref
+  for ref in $(docker image inspect "$1" --format '{{range .RepoDigests}}{{.}} {{end}}'); do
+    if [[ $ref == "$repo@"* ]]; then
+      printf '%s\n' "$ref"
+      return 0
+    fi
+  done
+  echo "publish: $1 has no digest in $repo" >&2
+  return 1
 }
 
 cp "$here/config/docker-compose.yaml" "$work/docker-compose.yaml"

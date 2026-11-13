@@ -7,9 +7,10 @@ set -euo pipefail
 
 pool=/env/net/pools-keys/pool1
 keys=/data/keys
-# Antithesis refuses `chmod`, so the copies are created owner-only by the umask: the node refuses a VRF key that
-# "other" can read, as the reference does. The node evolves its KES key in place, so a restarted container keeps
-# the evolved key; the KES key is copied last and renamed into place, so a copy cut short by a kill is redone.
+# No `chmod` (one failed on Antithesis): the copies are created owner-only by the umask, since the node refuses a
+# VRF key that "other" can read, as the reference does. The node evolves its KES key in place, so a restarted
+# container keeps the evolved key; the KES key is copied last and renamed into place, so a copy cut short by a kill
+# is redone.
 umask 077
 if [ ! -e "$keys/kes.skey" ]; then
   mkdir -p "$keys"

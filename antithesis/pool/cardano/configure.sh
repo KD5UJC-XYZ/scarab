@@ -7,8 +7,9 @@
 # (`scripts/devnet/scenarios/pool.py`, `pool_environment`): every pool must be listening before the first slot, or an
 # early refused dial can leave a pool forging its own chain from genesis (issue 609), which at k = 5 never rejoins.
 #
-# Antithesis refuses `chmod` (and so `chown` and `cp -a`) even to root, so no file here changes its mode or owner
-# after it is created: files are written by redirection and renamed into place, and every node runs as root.
+# On Antithesis an earlier version's `chmod -R a+rX` of copied files failed with "Operation not permitted" (create-env's
+# own mode and owner changes did not), so no file here changes its mode or owner after it is created: files are
+# written by redirection and renamed into place, and every node runs as root.
 set -euo pipefail
 
 MAGIC=1082026
