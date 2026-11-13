@@ -153,7 +153,7 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
   }
 
   // issue 586: `jobVerifyPeerSnapshot` is `Job job (const (completion False))` (ouroboros-network
-  // c5117705 Governor/Monitor.hs 689-712): any failure of the verification is no match
+  // c5117705 Governor/Monitor.hs 689-708): any failure of the verification is no match
   test(
     "a snapshot verification that throws, or whose store fails, answers no match; never a stop"
   ) {

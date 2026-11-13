@@ -163,9 +163,15 @@ describe the reference: the corpora and fixtures exported from it, whose manifes
 and texts that are not rewritten (evidence logs, changelog fragments, the accepted ADRs 0017 and
 0022), whose cited files are the same at the revisions above. The sources those corpora compile are
 the same at the revisions above, or differ only in types or in refactoring that keeps their
-behaviour, except for two:
-`fixtures/peer-selection/policies` records `2fb69829`'s warm promotion and hot-demotion scores, and
-the property behind `fixtures/reference/network-mux-sdu` (`prop_sdu_codec`) was added after
-`c45735a5`; its encoder is the one of `c45735a5`, so the bytes are the same. Code that follows a change made after
-these revisions differs from the reference, as the first consequence above says. The approved
-deviations above are unchanged.
+behaviour, except for three:
+`fixtures/peer-selection/policies` records `2fb69829`'s warm promotion and hot-demotion scores; the
+property behind `fixtures/reference/network-mux-sdu` (`prop_sdu_codec`) was added after `c45735a5`,
+whose encoder it uses, so the bytes are the same; and the mux lifecycle corpus was exported by running
+`2fb69829`'s `network-mux`, whose `JobPool` deregisters a job only after registering it, where
+`c45735a5`'s lets a job remove its entry first (`Control/Concurrent/JobPool.hs` 85-95), and the job
+count decides between `Stopped` and `Failed` on a closed bearer (`Network/Mux.hs` 477-487). Whether
+that corpus's observations hold at `c45735a5` is not checked. Code that follows a change made after
+these revisions, or follows neither, differs from the reference, as the first consequence above says;
+the places found when the reference was re-pinned, and two races of the linked packages that Scarab
+does not reproduce, each wait on the owner's decision in
+[#956](https://github.com/KD5UJC-XYZ/scarab/issues/956). The approved deviations above are unchanged.

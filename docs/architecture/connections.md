@@ -55,11 +55,11 @@ the last hot one `RemoteDemotedToWarm`, the clean end of the last one `WaitIdleR
 5 s), and an expired timer is `CommitRemote`: the manager closes an idle connection, or keeps one the outbound side
 uses (`OutboundDup Ticking` becomes `Expired`) until a later responder wakes it up (`InboundGovernor.hs` 354-360,
 445-543). A responder that ends in an error or is cancelled stops the counting, as the reference's mux tracer
-does (653-682). The connection's remote state (`RemoteIdle`, `RemoteWarm`, `RemoteHot`, `RemoteCold`) is kept by
+does (688-696). The connection's remote state (`RemoteIdle`, `RemoteWarm`, `RemoteHot`, `RemoteCold`) is kept by
 the manager beside its table from the connection's start until a commit or its end (`remoteStates`); the
 `inboundGovernor_*` metrics count it (`Counters`, `InboundGovernor/State.hs` 115-147). The responders' starts and ends and the idle timer are read in one step, as the reference
 reads its channel and its timers in one STM transaction (`InboundGovernor.hs` 239-274): an expired timer is
-committed first (252-260), no start is taken before that, and a responder that starts at or after the expiry
+committed first (258-266), no start is taken before that, and a responder that starts at or after the expiry
 waits until the commit is settled, as the reference's mux tracer holds it (602-682).
 
 The manager's changes and what they ask for (the log, the connections they end) are one step that cancellation

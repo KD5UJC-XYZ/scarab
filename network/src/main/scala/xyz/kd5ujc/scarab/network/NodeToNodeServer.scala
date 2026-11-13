@@ -215,8 +215,8 @@ object NodeToNodeServer:
     * reference's inbound governor reads its channel and its timers in one STM transaction,
     * `InboundGovernor.hs` 239-274). A responder that would start once the idle timer has expired
     * waits until the expiry is settled: the reference's tracer retries on an expired `RemoteIdle`
-    * (`InboundGovernor.hs` 638-645). A responder that ends in an error or is cancelled stops the
-    * counting for good, as the tracer then empties its counters (`SNothing`, 653-682): the
+    * (`InboundGovernor.hs` 638-648). A responder that ends in an error or is cancelled stops the
+    * counting for good, as the tracer then empties its counters (`SNothing`, 688-696): the
     * connection's mux is ending.
     */
   private[network] final class Responders[F[_]: Async] private (
@@ -313,7 +313,7 @@ object NodeToNodeServer:
     * resource. It runs on every connection whose responders the peer can start, the ones we dial
     * included. An expired timer is committed before the activities that are waiting, which are
     * handled after, as the reference's step puts `CommitRemote` before the channel's messages
-    * (`InboundGovernor.hs` 252-260).
+    * (`InboundGovernor.hs` 258-266).
     *
     * @param timer
     *   How the idle timer waits: `Async.sleep`; a test controls what happens as it fires.

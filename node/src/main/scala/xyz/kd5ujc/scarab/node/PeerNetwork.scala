@@ -40,7 +40,7 @@ object PeerNetwork:
 
   /** The verification of the peer snapshot against the immutable chain, as the reference's
     * `jobVerifyPeerSnapshot` (ouroboros-network c5117705 `cardano-diffusion/lib/Cardano/Network/
-    * PeerSelection/Governor/Monitor.hs` 689-712): a job whose failure of any kind is `false` (`Job
+    * PeerSelection/Governor/Monitor.hs` 689-708): a job whose failure of any kind is `false` (`Job
     * job (const (completion False))`), never a stop of the node. A failed store is told to
     * `storageFailed` first, so the cause is not lost behind "no match" (an owner-approved
     * deviation, 2026-10-28, issue 586); the node's other storage paths still stop it on such a
