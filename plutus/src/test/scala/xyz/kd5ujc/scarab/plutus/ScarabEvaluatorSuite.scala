@@ -9,9 +9,10 @@ import xyz.kd5ujc.scarab.uplc.flat.ScriptDecodeError
 import xyz.kd5ujc.scarab.uplc.ledger.{EvaluationError, ScriptResult, Unavailability}
 
 /** How [[ScarabEvaluator]] reports each outcome of the own evaluator in the shared algebra, one row
-  * of its mapping at a time, and that each row is the class the Scalus backend gives the same
-  * request: a verdict means the same whichever backend gave it, and no verdict is never a failure
-  * of the script.
+  * of its mapping at a time. Where both backends give a verdict, the row is the class the Scalus
+  * backend gives the same request: a verdict means the same whichever backend gave it. The own
+  * evaluator's no-verdict cases (protocol 12, defects) are checked on their own: no verdict is
+  * never a failure of the script.
   */
 class ScarabEvaluatorSuite extends FunSuite:
   private val scarab = ScarabEvaluator.interpreter

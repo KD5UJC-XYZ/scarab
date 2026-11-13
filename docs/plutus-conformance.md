@@ -398,8 +398,9 @@ maps the own evaluator's results onto the algebra both backends share, so that a
 whichever gave it: a refusal of `deserialiseScript` and the program-version check of `mkTermToEvaluate`
 are decoding failures, the scope check `OpenTerm`, an overspent budget `OutOfBudget`, any other failure
 of the machine a script failure; protocol 12 and later, a defect of the implementation and any
-`Throwable` that reaches the adapter are no verdict, never a failure of the script. The text of its
-failures names their cases only, never a constant or a term of the script. The Scalus backend stays the
+`Throwable` that reaches the adapter are no verdict, never a failure of the script. The typed detail of
+its failures names their cases only, never a constant or a term of the script; a failure's text also
+carries the script's own `trace` output. The Scalus backend stays the
 default and is unchanged.
 
 The module's own evidence is against the reference, with no Scalus in the comparison: the 1,009 cases of
@@ -408,12 +409,15 @@ the conformance corpus with their results and budgets
 [`CekConformanceSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/cost/CekConformanceSuite.scala)),
 the costing oracle
 ([`CostingOracleSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/cost/CostingOracleSuite.scala)),
-and the Haskell verdicts of the boundary and Flat-decoding corpora through the ledger's evaluation
-([`LedgerBoundaryOracleSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/ledger/LedgerBoundaryOracleSuite.scala)).
+the Haskell verdicts of the boundary corpora through the ledger's evaluation
+([`LedgerBoundaryOracleSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/ledger/LedgerBoundaryOracleSuite.scala)),
+and the Flat-decoding corpus's deserialisation and program-version admission
+([`FlatReferenceCorporaSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/flat/FlatReferenceCorporaSuite.scala)).
 The integration adds:
 
 - [`ScarabEvaluatorSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ScarabEvaluatorSuite.scala):
-  each row of the mapping, and that it is the class the Scalus backend gives the same request;
+  each row of the mapping; where both backends give a verdict, that it is the class the Scalus backend
+  gives the same request; and, on its own, the own evaluator's protocol-12 and defect handling;
 - [`PlutusBackendDifferentialSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PlutusBackendDifferentialSuite.scala):
   both backends on every script request the ledger collects from the recorded Preview and preprod
   transactions and from the reference corpora the ledger and node suites judge (`v1-context`,
@@ -461,7 +465,9 @@ both backends share (`PlutusDataSuite`, `ParamNamesSuite`, `PlutusScriptBytesSui
 which evaluates a PlutusV4 script at protocol 12, where the own evaluator gives no verdict by design.
 `BlstCheckMain`, the start-up check of the Scalus native library, evaluates with Scalus by design.
 
-**Evidence (2026-11-12, the integration's draft branch on top of the WP8 oracles).** `check` passes on
+**Evidence (2026-11-12, at `860684ae2`, the integration's draft head on top of the WP8 oracles;
+`scripts/preflight --check` passed again at `b736b7fa7` and, after the rebase onto `f1f553c1d`, at
+`766324062`).** `check` passes on
 the default backend. With `scarab.plutus.vm=scarab` the suites of `ledger` (9,093), `consensus` (477),
 `storage` (709, 10 skipped for want of optional data) and `node` (3,656, 8 skipped: the recorded Preview
 and preprod replays, the Mithril and preprod snapshot acceptances and the boundary digest, which need
@@ -469,6 +475,7 @@ external data, and two `ReferenceRefusalSuite` cases set aside on either backend
 `PlutusFailure`, #491) pass. Two `ledger` assertions had named the Scalus backend's cause of a decoding
 failure; they now name each backend's exact typed cause. `PlutusBackendDifferentialSuite` compared 752
 requests (V1 224, V2 289, V3 239; on the own evaluator 607 successes, 123 script failures, 12 scope, 8
-decoding and 2 budget failures): no difference in verdict, class, units or logs, and every request has
-a verdict from both. A fatal-injection case of `FollowerStallSuite` fails intermittently on either
+decoding and 2 budget failures): no difference in verdict or failure class, the successes also agreed in
+execution units and logs (the suite compares units and logs on successes only), and every request has a
+verdict from both. A fatal-injection case of `FollowerStallSuite` fails intermittently on either
 backend (it involves no script); it passed in these runs.

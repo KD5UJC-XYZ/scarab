@@ -4,9 +4,10 @@ package xyz.kd5ujc.scarab.plutus
 import cats.Id
 
 /** The Plutus backend of the suites that need an evaluator and do not test one in particular,
-  * chosen by the JVM's system property `scarab.plutus.vm` (`scalus`, the default, or `scarab`), so
-  * that `check` runs them once per backend (ADR 0027). An unknown value fails every suite that asks
-  * for the backend: a run meant for one backend never runs on the other unnoticed.
+  * chosen by the JVM's system property `scarab.plutus.vm` (`scalus`, the default, or `scarab`):
+  * `check` runs them once, with the default, and a run with each value exercises both backends (ADR
+  * 0027). An unknown value fails every suite that asks for the backend: a run meant for one backend
+  * never runs on the other unnoticed.
   *
   * The suites that test the Scalus backend itself name [[ScalusEvaluator]] directly.
   */

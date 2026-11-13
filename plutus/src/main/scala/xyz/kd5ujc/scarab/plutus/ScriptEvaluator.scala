@@ -100,8 +100,9 @@ object ScriptFailure:
       if logs.isEmpty then detail else s"$detail; trace: ${logs.mkString(" | ")}"
 
   /** Scarab's own evaluator ([[ScarabEvaluator]]): the reference's `EvaluationError` and the
-    * `trace` output. Its text names the error's cases only ([[UplcText]]): never a constant or a
-    * term of the script, which can be as large as a transaction.
+    * `trace` output. The error's detail names its cases only ([[UplcText]]): never a constant or a
+    * term of the script, which can be as large as a transaction. `logs` is the script's own `trace`
+    * output, which the text includes.
     */
   final case class Uplc(error: EvaluationError, logs: Vector[String]) extends ScriptFailure:
     override def toString: String = s"ScriptFailure.Uplc(${UplcText.evaluation(error)},$logs)"
