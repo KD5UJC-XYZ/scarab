@@ -14,8 +14,9 @@ reporters instead of one `peerMonitoringLoop`). The alignment plan is #477.
 
 ## Decision
 
-The networking layer mirrors ouroboros-network `2fb69829` in both structure and behaviour, as
-[ADR 0001](0001-haskell-node-as-reference.md) requires everywhere else. Each component cites its
+The networking layer mirrors ~~ouroboros-network `2fb69829`~~
+([amended 2026-11-13](#amendment-2026-11-13-the-packages-cardano-node-1113-links)) in both structure
+and behaviour, as [ADR 0001](0001-haskell-node-as-reference.md) requires everywhere else. Each component cites its
 reference module at that pin:
 
 | Component | Reference module |
@@ -123,3 +124,43 @@ taken by the owner after 2026-10-25 and indexed in
   check the reference runs again before its next accept (`runConnectionRateLimits`, `Server.hs` 209-215
   and 226-228; in Scarab, `beforeAccept`). Calling `accept(2)` through the foreign-function
   interface would reproduce them; that is not taken for now.
+
+## Amendment (2026-11-13): the packages cardano-node 11.1.3 links
+
+The owner decided on 2026-11-13 that the network reference is what the reference build, cardano-node
+11.1.3, actually links, not ouroboros-network `2fb69829`: the release merge of 2026-10-01, which is
+in neither reference build
+([#836](https://github.com/KD5UJC-XYZ/scarab/issues/836)). This replaces the struck-through pin of the
+decision. Each package is mirrored at the revision of the version 11.1.3 links:
+
+| Package | Version | Revision |
+|---|---|---|
+| `network-mux` | 0.11.0.0 | `c45735a56c567fa977969173d18943bac6bb3821` |
+| `ouroboros-network`, with its `api`, `framework`, `protocols`, `tracing` and `orphan-instances` sublibraries | 1.2.0.0 | `c45735a56c567fa977969173d18943bac6bb3821` |
+| `monoidal-synchronisation` | 0.1.0.8 | `c45735a56c567fa977969173d18943bac6bb3821` |
+| `cardano-diffusion`, with its `api`, `protocols`, `tracing` and `orphan-instances` sublibraries | 1.1.1.0 | `c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167` |
+
+How each was established:
+
+- **The versions** are those of the units linked into the release binary: the static
+  `cardano-node` of the checksum-pinned 11.1.3 release archive (`scripts/prepare_reference_image.py`)
+  records GHC's link line, whose `-lHS` entries name `network-mux-0.11.0.0`,
+  `ouroboros-network-1.2.0.0`, `cardano-diffusion-1.1.1.0` and `monoidal-synchronisation-0.1.0.8`.
+  cardano-node 11.1.3's `cabal.project` fixes the CHaP index at 2026-09-23T18:57:23Z, before the
+  releases of 2026-10-01. `cardano-ping` (now `cardano-diffusion:ping`) and `ntp-client` are not
+  linked.
+- **The revisions** are those CHaP builds each version from (`_sources/<package>/<version>/meta.toml`,
+  no revisions of these versions), and the upstream release tags `network-mux-0.11.0.0`,
+  `ouroboros-network-1.2.0.0`, `monoidal-synchronisation-0.1.0.8` (all `c45735a5`) and
+  `cardano-diffusion-1.1.1.0` (`c5117705`) agree.
+
+`c5117705` is seven commits after `c45735a5`, and those commits also change `network-mux`
+(`Network/Mux/Codec.hs`); the node's `network-mux` is still 0.11.0.0 at `c45735a5`. A citation names
+the revision of the package whose file it cites.
+
+`2fb69829` stays registered (`docs/data/reference-pins.json`) for what was made from it, and does not
+describe the reference: the corpora and fixtures exported from it, whose manifests record that run,
+and texts that are not rewritten (evidence logs, changelog fragments, the accepted ADRs 0017 and
+0022), whose cited files are the same at the revisions above. Code that follows a change made after
+these revisions differs from the reference, as the first consequence above says. The approved
+deviations above are unchanged.
