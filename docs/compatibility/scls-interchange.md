@@ -11,6 +11,12 @@ implemented: pinned `ledger-f649-conway-v0`, all twelve namespaces, complete-bas
 
 [Reference fixtures](../../fixtures/scls/README.md), actual 6,060-byte Haskell artifact reproduced from native snapshot/checkpoint, typed mapper/dormancy/proposal vectors; 14 complete-base integration tests, native immutable-point import/re-export, native format goldens and scoped publication rollback controls; full check 4,932 passed/16 optional-data skips, explicit Scalafix, 76 extended fuzz targets and private restart passed
 
+Dated evidence (2026-11-13): the import rebuilds the governance proposals over the imported roots
+with `mkProposals`, as the reference's `recreateProposals` does
+(cardano-ledger f649f975, `CanonicalState/Conway/Import.hs:396-401`), and refuses a proposal that
+attaches to neither its lineage's root nor an earlier proposal of its lineage
+(`SclsStateMapperSuite`; the reading rule is in [the state-file entry](haskell-ledger-state-file.md#evidence)).
+
 ## Explicitly unchecked or unconfirmed
 
 Requires an explicit complete Conway base and matching target immutable point; SCLS alone omits restart/consensus state. Pinned profile differs from draft CIP namespace list; no future-profile or standalone-bootstrap claim. Haskell full-state equality retains the documented MemPack-constructor discrepancy; large acceptance datasets are not committed. [Design](../design/scls-interchange.md).
