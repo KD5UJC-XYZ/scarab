@@ -169,6 +169,12 @@ enum EventKind(val area: Area, val severity: Severity):
   // forging
   case ForgeStarted extends EventKind(Area.Forge, Severity.Notice)
 
+  /** cardano-node 11.1.3 `Startup.BlockForgingUpdate`, with its severity (the default, `Info`) and
+    * its field (`Tracers/Startup.hs` 201-204 and 391): whether the node forges, at start-up and at
+    * each reload.
+    */
+  case BlockForgingUpdate extends EventKind(Area.Forge, Severity.Info)
+
   /** The forging loop's traces, cardano-node 11.1.3 `Forge.Loop.*` one level shallower, with the
     * reference's names and severities (`Cardano/Node/Tracing/Tracers/Consensus.hs` 1541-1600).
     */
@@ -210,6 +216,8 @@ enum EventKind(val area: Area, val severity: Severity):
   case KesReloaded extends EventKind(Area.Forge, Severity.Notice)
   case KesReloadRefused extends EventKind(Area.Forge, Severity.Error)
   case KesPersistFailed extends EventKind(Area.Forge, Severity.Error)
+  case KesFileAbsent extends EventKind(Area.Forge, Severity.Warning)
+  case KesWrittenByRename extends EventKind(Area.Forge, Severity.Warning)
   case KeyFileGroupAccess extends EventKind(Area.Forge, Severity.Warning)
   case ForgeFailed extends EventKind(Area.Forge, Severity.Error)
   case ForgeEpoch extends EventKind(Area.Forge, Severity.Notice)

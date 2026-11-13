@@ -197,7 +197,9 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
             def persist(key: xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning.SigningKey) =
               writes
                 .getAndUpdate(_ + 1)
-                .flatMap(n => IO.sleep(3500.millis).whenA(n == 0).as(Persisted.Written))
+                .flatMap(n =>
+                  IO.sleep(3500.millis).whenA(n == 0).as(Persisted.Written(WriteProtocol.Exchanged))
+                )
           h <- harness(
             p,
             ledgerWith(p, 1),

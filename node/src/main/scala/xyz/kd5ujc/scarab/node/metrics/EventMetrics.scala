@@ -24,7 +24,13 @@ import xyz.kd5ujc.scarab.node.{
   PeerNetwork,
   StallWatchdog
 }
-import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents, ForgeTrace, KesInfo}
+import xyz.kd5ujc.scarab.node.forge.{
+  BlockForgingState,
+  ForgeEvent,
+  ForgeEvents,
+  ForgeTrace,
+  KesInfo
+}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
@@ -94,8 +100,13 @@ final class EventMetrics[F[_]: Sync] private (
         metrics.set(remainingKesPeriods, number(remaining))
 
     def emit(event: ForgeEvent): F[Unit] = event match
+      // `forging_enabled` of the reference's `BlockForgingUpdate` (cardano-node 11.1.3
+      // `Tracers/Startup.hs` 301-307)
+      case ForgeEvent.BlockForgingUpdate(state) =>
+        val enabled: Double = if state == BlockForgingState.EnabledBlockForging then 1.0 else 0.0
+        metrics.set(forgingEnabled, enabled)
       case ForgeEvent.Started(_, _, _, _, counter, _) =>
-        metrics.set(opCertCounter, number(counter)) *> metrics.set(forgingEnabled, 1.0)
+        metrics.set(opCertCounter, number(counter))
       case ForgeEvent.KesReloaded(counter, _, _, _) =>
         metrics.set(opCertCounter, number(counter)) *> metrics.inc(kesReloads, ReloadLabel.Reloaded)
       case ForgeEvent.KesReloadRefused(_)    => metrics.inc(kesReloads, ReloadLabel.Refused)
@@ -110,7 +121,8 @@ final class EventMetrics[F[_]: Sync] private (
       case ForgeEvent.Loop(_) | ForgeEvent.Clock(_) |
           ForgeEvent.Forged(_, _, _, _, _, _, _, _, _, _, _, _) | ForgeEvent.KesEvolved(_, _) |
           ForgeEvent.Lost(_, _, _) | ForgeEvent.Failed(_, _) | ForgeEvent.EpochSummary(_, _) |
-          ForgeEvent.KeyFileGroupAccess(_, _) =>
+          ForgeEvent.KeyFileGroupAccess(_, _) | ForgeEvent.KesFileAbsent(_, _) |
+          ForgeEvent.KesWrittenByRename(_) =>
         // counted from the forger's own statistics at every scrape ([[Collectors.forging]])
         Sync[F].unit
 

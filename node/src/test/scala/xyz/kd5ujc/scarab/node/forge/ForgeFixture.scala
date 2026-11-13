@@ -144,7 +144,8 @@ trait ForgeFixture:
       rulesThrow: Option[Throwable] = None,
       storageFailure: Option[StorageError] = None,
       clock: Option[IO[Instant]] = None,
-      unbounded: Boolean = false
+      unbounded: Boolean = false,
+      enabled: Boolean = true
   )(using Handle[IO, NodeError]): IO[Harness] =
     for
       start <- IO.pure(mirrorState(ledger))
@@ -269,20 +270,22 @@ trait ForgeFixture:
         // a live loop over a chain left at genesis while the clock is thousands of slots on: the
         // era history at that tip would not translate the slot, so such tests lift the horizon
         horizon = Option.when(unbounded)((_, _) => true),
-        source = source
+        source = source,
+        enabled = enabled
       )
     yield new Harness(follower, forger, ref, mempool, seen, raws)
 
   def withHandle[A](f: Handle[IO, NodeError] ?=> IO[A]): IO[A] =
     Handle.allow[NodeError](f).rescue(e => IO.raiseError(new RuntimeException(e.message)))
 
+  /** The credentials in use; fails while forging is disabled. */
   def currentHot(keys: HotKeys[IO]): IO[PoolCredentials] =
     Forger
       .scoped(keys.current)
       .flatMap(
         _.fold(
           fatal => IO.raiseError(new AssertionError(fatal.message)),
-          IO.pure
+          _.fold(IO.raiseError(new AssertionError("forging is disabled")))(IO.pure)
         )
       )
 
