@@ -23,7 +23,9 @@ import xyz.kd5ujc.scarab.codec.DomainError
   * ends the loop with its value, which stops the reference's node (its `DiffusionErrored`,
   * `Diffusion.hs` 905-911). The JDK's accept itself restarts on `ECONNABORTED` (OpenJDK jdk-25+36,
   * `src/java.base/unix/native/libnio/ch/Net.c` 417-427), so that case is not seen here, nor traced
-  * or paused for, as the reference's is.
+  * or paused for, as the reference's is: an approved deviation (#944, `docs/decisions.md`). The
+  * node-to-client socket's accept does not restart (`UnixDomainSockets.c` 162-169), so
+  * [[LocalServer]] sees it.
   */
 object BearerServer:
   /** What the reference's node-to-node server traces of its accept loop (`Server.Trace`,
