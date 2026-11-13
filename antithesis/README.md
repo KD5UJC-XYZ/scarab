@@ -13,8 +13,9 @@ one Scarab pool (`s1`, pool 1's keys), on the genesis `cardano-testnet create-en
 (k = 5, f = 0.05, 0.1 s slots, 500-slot epochs). A one-shot `configurator` writes the genesis, keys and
 topologies at setup and sets the start time a minute ahead.
 
-The `driver` waits until the three pools report the same tip at block 2 or later, reports setup complete, and
-then reads every pool's tip every 5 s over its local socket. Its properties, in the fallback SDK's format:
+The `driver` waits until the three pools report the same tip at block 2 or later and reports setup complete.
+Its test command `singleton_driver_watch_tips`, which Antithesis runs once per timeline under faults, then reads
+every pool's tip every 5 s over its local socket. Its properties, in the fallback SDK's format:
 
 - reachable: the workload starts;
 - sometimes: Scarab pool s1 extends its chain; a Haskell pool extends its chain; all three extend within one
