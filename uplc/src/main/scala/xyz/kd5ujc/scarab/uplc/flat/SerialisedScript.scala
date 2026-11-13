@@ -87,7 +87,7 @@ object SerialisedScript:
     * (`Eval.hs:124-127`): its version must be one the language has at `protocol`
     * (`plcVersionsAvailableIn`, [[Availability.programVersions]]); otherwise
     * `PlutusCoreLanguageNotAvailableError`, a failure of phase 2. The scope check that follows it
-    * (`Eval.hs:129-130`) is the machine's.
+    * (`Eval.hs:129-130`) is [[xyz.kd5ujc.scarab.uplc.ledger.Scope.check]].
     */
   def forEvaluation(
       language: PlutusLanguage,
