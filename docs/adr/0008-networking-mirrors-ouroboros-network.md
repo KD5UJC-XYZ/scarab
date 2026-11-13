@@ -113,7 +113,8 @@ taken by the owner after 2026-10-25 and indexed in
   [#944 comment](https://github.com/KD5UJC-XYZ/scarab/issues/944#issuecomment-6855601945) and
   [its scope correction](https://github.com/KD5UJC-XYZ/scarab/issues/944#issuecomment-6856168855)). The JDK's native
   accept restarts on `ECONNABORTED` (OpenJDK jdk-25+36, `src/java.base/unix/native/libnio/ch/Net.c`
-  417-427, which `UnixAsynchronousServerSocketChannelImpl` calls for TCP). So the node-to-node server neither
+  417-427, which `ServerSocketChannelImpl.implAccept` calls for the node-to-node listener's blocking TCP
+  channel, `TcpSockets`). So the node-to-node server neither
   traces it (`TrAcceptError`) nor waits `server_CONNABORTED_DELAY` (500 ms) before the next accept, as the
   reference's accept loop does (`ouroboros-network/framework/lib/Ouroboros/Network/Server.hs` 81-84 and
   218-231). Every other accept failure is traced and stops the node, as the reference's does. The
