@@ -92,12 +92,18 @@ The owner decided on 2026-11-13 that the node may forge with the own evaluator: 
 `--plutus-vm scarab` as it is with `scalus`, and the start-up refusal of the amendment above is removed.
 
 - **What was in at the decision:** the gates of the amendment above, recorded in
-  [plutus-conformance.md](../plutus-conformance.md#scarabs-own-evaluator) and the compatibility register's
-  `plutus-own-evaluator` entry, among them a devnet `e2e` run and a replay of Preview from genesis that matched
-  the reference's ledger state at every epoch boundary. The replay of preprod and a devnet `pool` run in which
-  the node forges Plutus transactions with the own evaluator are the evidence that follows the decision.
+  [plutus-conformance.md](../plutus-conformance.md#scarabs-own-evaluator) and on
+  [the compatibility page](../compatibility/plutus-own-evaluator.md), among them a devnet `e2e` run and a replay of
+  Preview from genesis that matched the reference's ledger state at every epoch boundary. The replay of preprod
+  and a devnet `pool` run in which the node forges Plutus transactions with the own evaluator are the evidence
+  that follows the decision; the compatibility page records them.
 - **The risk the refusal named stays.** The forger, the mempool and the rules run the one backend of the run, so
   a wrong verdict at admission puts a transaction with a wrong validity flag in a block this node forges, and
-  every other node refuses that block (`ValidationTagMismatch`, as above): the pool loses the slot.
-- **Unchanged:** Scalus stays the default, and changing it needs a further decision; the own evaluator still
-  gives no verdict at protocol 12 and later, so a node that runs it stalls there, whether it forges or not.
+  every node that follows the reference refuses that block (`ValidationTagMismatch`, as above): the pool loses
+  the slot. The node's own check of the block it forged runs the same evaluator, so it does not catch this.
+- **Unchanged:** Scalus stays the default, and changing it needs a further decision. The own evaluator still
+  gives no verdict at protocol 12 and later, and the node treats that as it treats any missing verdict
+  ([ADR 0017, amendment of 2026-10-28](0017-fibers-end-with-values.md#amendment-2026-10-28-no-verdict-on-a-block-a-held-transaction-or-our-own-block-does-not-stop-the-node)):
+  a block that needs one is not adopted, a transaction that needs one is not admitted, and a block of its own
+  whose check gets none is not published, its transactions leave the mempool and the forger goes on. The
+  forger forges on a Conway ledger only, so it forges no block of a later era with either evaluator.

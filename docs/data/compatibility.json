@@ -1385,7 +1385,7 @@
       "id": "plutus-own-evaluator",
       "component": "Plutus: Scarab's own evaluator (--plutus-vm scarab, I2)",
       "status": "partial",
-      "summary": "An opt-in, Scalus-free UPLC evaluator for phase 2 and script admission in the rules, the mempool and the forger; forging refused and protocol 12 unsupported by decision",
+      "summary": "An opt-in, Scalus-free UPLC evaluator for phase 2 and script admission in the rules, the mempool and the forger; protocol 12 unsupported by decision",
       "evidence": {
         "suites": [
           "CekConformanceSuite",
