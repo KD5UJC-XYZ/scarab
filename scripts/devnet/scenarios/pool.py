@@ -381,7 +381,7 @@ def pool(args):
     others = [n for n in (1, 2, 3) if n != ours]
     observer = others[0]
     util.SOCKET = f"--testnet-magic {MAGIC} --socket-path {ENV}/socket/node{observer}/sock"
-    failures, summary, scala, loader, plutus = [], {}, None, None, None
+    failures, summary, scala, loader, plutus, plutus_evidence = [], {}, None, None, None, None
     rotate = getattr(args, "rotate", False)  # the kes-rotate scenario: this run with the rotation driver
     sockets_dir = "ipc" if rotate else "scala-sock"  # the Scala node's node-to-client socket, in the run dir
     driver = kes_rotate.Driver(args, root) if rotate else None
@@ -470,8 +470,8 @@ def pool(args):
                                   stdout=(root / "load.log").open("w"), stderr=subprocess.STDOUT)
         if getattr(args, "plutus_load", False):
             # funded from the delegator of a Haskell pool: the Scala pool's stake is left as it is
-            plutus = pool_plutus.Runner(args.name, root, f"{ENV}/socket/node{observer}/sock",
-                                        str(sockets / "node.socket"), others[-1]).start()
+            plutus = pool_plutus.Runner.against(args.name, root, f"{ENV}/socket/node{observer}/sock",
+                                                str(sockets / "node.socket"), others[-1]).start()
         started = time.monotonic()
         stop = started + args.seconds
         next_compare = started + 20
@@ -506,7 +506,7 @@ def pool(args):
         loader.wait()
         loader = None
         if plutus:
-            plutus.finish()
+            plutus_evidence = plutus.finish()
         if driver:
             driver.stop()
         # let the chain settle; every node must agree on the tip
@@ -675,7 +675,7 @@ def pool(args):
             failures.append(f"a Haskell pool's log traces an invalid block or could not be read: "
                             f"{summary['referenceInvalidBlocks']}")
         if plutus and observed is not None:
-            plutus_failures, summary["plutus"] = pool_plutus.check(plutus, observed, forged, events, refused,
+            plutus_failures, summary["plutus"] = pool_plutus.check(plutus_evidence, observed, forged, events, refused,
                                                                    adopted_by_pools)
             failures += [f"plutus: {f}" for f in plutus_failures]
         if len(relative) < 2:

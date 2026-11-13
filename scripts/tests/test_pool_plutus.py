@@ -7,6 +7,7 @@ import io
 import json
 import pathlib
 import tempfile
+import threading
 import sys
 import types
 import unittest
@@ -129,9 +130,10 @@ class InclusionTest(unittest.TestCase):
 class CheckTest(unittest.TestCase):
     SHELLEY_AT = "2026-01-01T00:00:{:06.3f}Z"
 
-    def runner(self, refusals, rows=ROWS, errors=()):
-        load = types.SimpleNamespace(plutus_evidence=list(rows), scala_refusals=refusals)
-        return types.SimpleNamespace(load=load, passes=1, errors=list(errors), ended=None)
+    def runner(self, refusals, rows=ROWS, errors=(), **how):
+        """The evidence of a load that completed one round and ended in time (`how` changes the ending)."""
+        return pool_plutus.Evidence(rows=tuple(rows), refusals=tuple(refusals), passes=1, errors=tuple(errors),
+                                    ended=None, **{"finished": True, "stopped": True, **how})
 
     def refusal(self, **kw):
         return {"label": "legacy-plutus-conway-v1-reject-failure-valid", "tx": "b", "reference": [1, 0, 0, 0],
@@ -192,6 +194,72 @@ class CheckTest(unittest.TestCase):
 # 64-hex-character stand-ins for block hashes, one hex digit repeated per name
 H = {name: digit * 64 for name, digit in zip("abcdvwxyz", "abcd01234")}
 NAME = {h: name for name, h in H.items()}
+
+
+class RunnerTest(unittest.TestCase):
+    """`Runner.finish` takes the evidence once the thread has ended; a load that had to be stopped in the middle of a
+    round, or that never stopped, fails the run."""
+
+    @staticmethod
+    def load():
+        return types.SimpleNamespace(ready=threading.Event(), stop=threading.Event(), wallets=[types.SimpleNamespace(address=b"w")],
+                                     act=lambda *a, **k: "f0", delegator=lambda n: object(), log=lambda m: None,
+                                     out=io.StringIO(), plutus_evidence=[], scala_refusals=[])
+
+    def test_a_load_that_ends_after_its_round(self):
+        load, first = self.load(), threading.Event()
+
+        def round_(load_, era):
+            load_.plutus_evidence.append(row("success", "a"))
+            first.set()
+            load_.stop.wait(0.001)
+        runner = pool_plutus.Runner(load, 3, round_).start()
+        first.wait(5)
+        evidence = runner.finish(timeout=5)
+        self.assertEqual((evidence.finished, evidence.stopped, evidence.ended), (True, True, None))
+        self.assertGreaterEqual(evidence.passes, 1)
+        failures, _ = pool_plutus.check(evidence, [], [], [])
+        self.assertFalse([f for f in failures if "stop" in f], failures)
+
+    def test_a_round_cut_short_by_the_stop_fails_the_run(self):
+        load, rounds, second = self.load(), [], threading.Event()
+
+        def round_(load_, era):
+            rounds.append(era)
+            if len(rounds) == 1:
+                load_.plutus_evidence.append(row("success", "a"))
+                return
+            second.set()
+            load_.stop.wait(5)  # the round under way ends only when the load is told to stop
+            load_.plutus_evidence.append(row("collateral", "b", passed=False))
+        runner = pool_plutus.Runner(load, 3, round_).start()
+        second.wait(5)
+        evidence = runner.finish(timeout=0.05, stop_timeout=5)
+        self.assertEqual((evidence.finished, evidence.stopped), (False, True))
+        self.assertEqual([r["case"] for r in evidence.rows], ["success", "collateral"])
+        failures, _ = pool_plutus.check(evidence, [], [], [])
+        self.assertIn("the Plutus load did not end its round in time and was stopped in the middle of one", failures)
+        self.assertTrue(any(f.startswith("1 Plutus cases did not pass") for f in failures), failures)
+
+    def test_a_thread_that_does_not_stop_fails_the_run_and_later_records_do_not_reach_the_evidence(self):
+        load, release, inside = self.load(), threading.Event(), threading.Event()
+
+        def round_(load_, era):
+            load_.plutus_evidence.append(row("success", "a"))
+            inside.set()
+            release.wait(5)  # deaf to the stop
+            load_.plutus_evidence.append(row("collateral", "b"))
+        runner = pool_plutus.Runner(load, 3, round_).start()
+        inside.wait(5)
+        evidence = runner.finish(timeout=0.01, stop_timeout=0.01)
+        release.set()
+        runner.thread.join(5)
+        self.assertEqual((evidence.finished, evidence.stopped), (False, False))
+        self.assertEqual(len(evidence.rows), 1)
+        self.assertEqual(len(load.plutus_evidence), 2)
+        failures, _ = pool_plutus.check(evidence, [], [], [])
+        self.assertIn("the Plutus load's thread did not stop when asked to; its evidence is what it had recorded",
+                      failures)
 
 
 class LostBlocksTest(unittest.TestCase):

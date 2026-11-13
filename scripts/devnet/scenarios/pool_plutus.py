@@ -14,6 +14,7 @@ After the run the chain is read from the observer (local ChainSync from Origin) 
 from the blocks as the Haskell pool holds them. Both variants of a case have one body and so one transaction id: a
 transaction of a succeeding script must be in a block with the flag true, one of a failing script with the flag
 false, and neither ever with the other flag."""
+import dataclasses
 import json
 import threading
 import time
@@ -115,18 +116,41 @@ def timed(call):
     return result, round((time.perf_counter() - started) * 1000, 3)
 
 
+@dataclasses.dataclass(frozen=True)
+class Evidence:
+    """What the Plutus load recorded, taken by `Runner.finish` once its thread has ended: the `eraplutus` rows, the
+    Scala node's judgements (`Load.scala_judgement`), the rounds completed and failed, and how the thread ended
+    (`ended`: the error that ended it early). `finished`: it ended within the deadline after the round under way;
+    `stopped`: it ended at all. A load that had to be stopped mid-round, or that never stopped, is a failure of the
+    run, and its evidence is what it had recorded by then."""
+    rows: tuple
+    refusals: tuple
+    passes: int
+    errors: tuple
+    ended: object
+    finished: bool
+    stopped: bool
+
+
 class Runner:
     """The Plutus load's thread: it funds the load's wallet from stake delegator `funder`, then runs rounds of
-    `eraplutus.exercise` until `finish`. Each round's rows are `load.plutus_evidence`."""
+    `round_` (`eraplutus.exercise`) on `load` until `finish`."""
 
-    def __init__(self, name, root, socket, scala_socket, funder):
-        # the load's cardano-cli submissions and queries go to the observing pool (pool 1's node may not exist)
-        eraload.SOCKET = socket
-        self.load = Load(name, root, socket, scala_socket)
+    def __init__(self, load, funder, round_=None):
+        self.load = load
         self.funder = funder
+        self.round = round_ or eraplutus.exercise
         self.passes, self.errors, self.ended = 0, [], None
         self.finishing = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
+
+    @classmethod
+    def against(cls, name, root, socket, scala_socket, funder):
+        """A runner whose `Load` submits to the observing pool at `socket` and has the Scala node at `scala_socket`
+        judge what the reference refuses."""
+        # the load's cardano-cli submissions and queries go to the observing pool (pool 1's node may not exist)
+        eraload.SOCKET = socket
+        return cls(Load(name, root, socket, scala_socket), funder)
 
     def start(self):
         self.thread.start()
@@ -148,7 +172,7 @@ class Runner:
             raise RuntimeError("the Plutus load's wallet was not funded")
         while not self.finishing.is_set():
             try:
-                eraplutus.exercise(load, "conway")
+                self.round(load, "conway")
                 self.passes += 1
                 load.log({"plutusPass": self.passes})
             except (Exception, SystemExit) as e:  # recorded; the next round starts from fresh outputs
@@ -156,16 +180,23 @@ class Runner:
                 load.log({"plutusPassFailed": repr(e)[:400]})
                 time.sleep(2)
 
-    def finish(self, timeout=180):
-        """End the rounds after the one under way; past `timeout` the load is asked to stop where it is."""
+    def finish(self, timeout=180, stop_timeout=60):
+        """End the rounds after the one under way and take the `Evidence`. Past `timeout` the load is asked to stop
+        where it is (its `stop`), which cuts the round under way short; past `stop_timeout` more the thread is left
+        to itself, and the evidence is what it had recorded by then."""
         self.finishing.set()
         self.thread.join(timeout)
-        if self.thread.is_alive():
+        finished = not self.thread.is_alive()
+        if not finished:
             self.load.stop.set()
-            self.thread.join(60)
+            self.thread.join(stop_timeout)
+        stopped = not self.thread.is_alive()
         self.load.stop.set()
-        if not self.thread.is_alive():
+        if stopped:
             self.load.out.close()
+        return Evidence(rows=tuple(dict(r) for r in list(self.load.plutus_evidence)),
+                        refusals=tuple(dict(r) for r in list(self.load.scala_refusals)), passes=self.passes,
+                        errors=tuple(self.errors), ended=self.ended, finished=finished, stopped=stopped)
 
 
 def read_chain(name, socket):
@@ -269,18 +300,18 @@ def mempool_view(events, rows, refusals):
                                   for k in ("evaluatedSuccess", "evaluatedFailure", "scripts")}}
 
 
-def check(runner, chain, forged, events, refused=frozenset(), adopted=frozenset()):
-    """(failures, summary) of the Plutus load once the chain has settled. `chain`: `read_chain` of the observer;
-    `forged`: the Scala node's `forged` events; `refused` and `adopted`: the blocks the Haskell pools' logs named as
-    invalid and as their tip (`reference_tracing.log_view`)."""
-    load = runner.load
-    rows = load.plutus_evidence
+def check(evidence, chain, forged, events, refused=frozenset(), adopted=frozenset()):
+    """(failures, summary) of the Plutus load once the chain has settled. `evidence`: `Runner.finish`; `chain`:
+    `read_chain` of the observer; `forged`: the Scala node's `forged` events; `refused` and `adopted`: the blocks the
+    Haskell pools' logs named as invalid and as their tip (`reference_tracing.log_view`)."""
+    rows = evidence.rows
     placed = inclusion(rows, chain, {e["hash"] for e in forged})
     lost = lost_blocks(forged, chain, {r["txid"] for r in rows}, refused, adopted)
     by_class = {c: [b for b in lost if b["class"] == c] for c in (REFUSED, ADOPTED, UNCONFIRMED)}
-    refusals = load.scala_refusals
+    refusals = evidence.refusals
     no_verdict = [e for e in events if e["event"] == "blockNoVerdict"]
-    summary = {"passes": runner.passes, "passErrors": runner.errors[:5], "ended": runner.ended,
+    summary = {"passes": evidence.passes, "passErrors": list(evidence.errors[:5]), "ended": evidence.ended,
+               "finished": evidence.finished, "stopped": evidence.stopped,
                "protocolVersions": sorted({f"{r['referenceBefore']['protocolVersion']['major']}."
                                            f"{r['referenceBefore']['protocolVersion']['minor']}" for r in rows}),
                **placed,
@@ -296,11 +327,15 @@ def check(runner, chain, forged, events, refused=frozenset(), adopted=frozenset(
                "lostScalaBlocksByClass": {c: len(b) for c, b in by_class.items()},
                "unconfirmedWithPlutus": sum(1 for b in by_class[UNCONFIRMED] if b["plutusTxs"])}
     failures = []
-    if runner.ended:
-        failures.append(f"the Plutus load ended: {runner.ended}")
-    if runner.errors:
-        failures.append(f"{len(runner.errors)} Plutus rounds failed: {runner.errors[0]}")
-    if not runner.passes:
+    if not evidence.stopped:
+        failures.append("the Plutus load's thread did not stop when asked to; its evidence is what it had recorded")
+    elif not evidence.finished:
+        failures.append("the Plutus load did not end its round in time and was stopped in the middle of one")
+    if evidence.ended:
+        failures.append(f"the Plutus load ended: {evidence.ended}")
+    if evidence.errors:
+        failures.append(f"{len(evidence.errors)} Plutus rounds failed: {evidence.errors[0]}")
+    if not evidence.passes:
         failures.append("no round of the Plutus load completed")
     failed_rows = [r for r in rows if not r["passed"]]
     if failed_rows:
