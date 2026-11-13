@@ -216,14 +216,15 @@ def slot_clock(events, shelley):
 FORGE_PHASES = ("toForged", "checkToForgedBlock", "leaderToForgedBlock", "forgedToAdopted", "adoptedLatency")
 
 
-def forge_timing(events, shelley, plutus=None):
+def forge_timing(events, shelley, kinds=None):
     """What the forger took in the slots it forged in, in milliseconds, per block: from the slot's start by the
     genesis to `forged` (`toForged`); from `startLeadershipCheck` to `forgedBlock` of the same slot, which does not
     depend on the slot clock (`checkToForgedBlock`); from `nodeIsLeader` to `forgedBlock`: the tick, the mempool's
     revalidation and selection, the body and the signature (`leaderToForgedBlock`); from `forged` to
     `adoptedBlock`: the node's own rules on the block and its commit (`forgedToAdopted`); and `adopted`'s own
     `latencyMs`, slot start to adoption (`adoptedLatency`). Each as `spread`, over every forged block and, given
-    the hashes of those that hold a Plutus transaction (`plutus`), over those and over the others."""
+    `kinds` ({hash: kind}, `pool_plutus.block_kinds`), over the blocks of each kind (`withPlutus`, `withoutPlutus`,
+    `unknown`; a block `kinds` does not name is unknown)."""
     system_start = calendar.timegm(time.strptime(shelley["systemStart"], "%Y-%m-%dT%H:%M:%SZ"))
     first = {}
     for e in events:
@@ -248,9 +249,9 @@ def forge_timing(events, shelley, plutus=None):
     def phases(subset):
         return {k: spread([b[k] for _, b in subset if b[k] is not None]) for k in FORGE_PHASES}
     timing = {"all": phases(blocks)}
-    if plutus is not None:
-        timing["withPlutus"] = phases([b for b in blocks if b[0] in plutus])
-        timing["withoutPlutus"] = phases([b for b in blocks if b[0] not in plutus])
+    if kinds is not None:
+        for kind in (pool_plutus.WITH_PLUTUS, pool_plutus.WITHOUT_PLUTUS, pool_plutus.UNKNOWN):
+            timing[kind] = phases([b for b in blocks if kinds.get(b[0], pool_plutus.UNKNOWN) == kind])
     return timing
 
 
@@ -594,8 +595,8 @@ def pool(args):
         # the Scala-forged blocks a Haskell pool named as invalid, and those one took as its tip
         refused = set().union(*(v.get("refused", set()) for v in logs.values()))
         adopted_by_pools = set().union(*(v.get("tips", set()) for v in logs.values()))
-        plutus_blocks = None if observed is None else {b for b, _, _, txs in observed if b in forged_hashes
-                                                       and any(plutus_ for _, _, plutus_ in txs)}
+        # each forged block by its own contents, a lost one too
+        kinds = None if plutus_evidence is None else pool_plutus.block_kinds(forged, observed, plutus_evidence)
         summary = {
             "oracle": oracle,
             "pool": {"id": pool_id, "number": ours, "stakeFraction": round(sigma, 4)},
@@ -629,7 +630,7 @@ def pool(args):
             "slotClock": slot_clock(events, shelley),
             "forgerStats": forging_stats,
             "plutusVm": vm,
-            "forgeTiming": {**forge_timing(events, shelley, plutus_blocks), "rules": rules_timing(args.name)},
+            "forgeTiming": {**forge_timing(events, shelley, kinds), "rules": rules_timing(args.name)},
             "referenceInvalidBlocks": reference_invalid_blocks(logs),
             "referenceLogCounts": {pool: v.get("counts") for pool, v in logs.items()},
         }

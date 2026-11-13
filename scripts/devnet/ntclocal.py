@@ -88,6 +88,13 @@ def raw_tx_id(tx):
     return blake(tx[1:end])
 
 
+def has_redeemers(tx):
+    """Whether a transaction `[body, witnesses, is_valid, aux]` (its bytes) runs scripts: its witness set holds
+    redeemers (key 5)."""
+    witnesses = cborspan.children(tx, 0)[1]
+    return any(decode(tx, key[0])[0] == 5 for key in cborspan.children(tx, witnesses[0])[0::2])
+
+
 def tx_id(item):
     """The transaction id of a `[6, #6.24(tx)]` item."""
     value, _ = decode(item, 0)

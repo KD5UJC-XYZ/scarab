@@ -72,10 +72,16 @@ class Load(eraload.EraLoad):
                          log=self.write)
         self.scala_socket = scala_socket
         self.scala_refusals = []
+        self.plutus_txids = set()  # every transaction with redeemers the load submitted, recorded before it went out
 
     def write(self, message):
         self.out.write(json.dumps(message) + "\n")
         self.out.flush()
+
+    def submit(self, era, tx, label, expect=None):
+        if ntclocal.has_redeemers(tx):
+            self.plutus_txids.add(ntclocal.raw_tx_id(tx).hex())
+        return super().submit(era, tx, label, expect)
 
     def expect_rejected(self, era, tx, label, expected, record=None, attempts=eraload.NO_VERDICT_ATTEMPTS):
         refused = super().expect_rejected(era, tx, label, expected, record, attempts)
@@ -119,12 +125,13 @@ def timed(call):
 @dataclasses.dataclass(frozen=True)
 class Evidence:
     """What the Plutus load recorded, taken by `Runner.finish` once its thread has ended: the `eraplutus` rows, the
-    Scala node's judgements (`Load.scala_judgement`), the rounds completed and failed, and how the thread ended
-    (`ended`: the error that ended it early). `finished`: it ended within the deadline after the round under way;
+    Scala node's judgements (`Load.scala_judgement`), the ids of the Plutus transactions it submitted, the rounds
+    completed and failed, and how the thread ended (`ended`: the error that ended it early). `finished`: it ended within the deadline after the round under way;
     `stopped`: it ended at all. A load that had to be stopped mid-round, or that never stopped, is a failure of the
     run, and its evidence is what it had recorded by then."""
     rows: tuple
     refusals: tuple
+    plutus_txids: frozenset
     passes: int
     errors: tuple
     ended: object
@@ -195,7 +202,8 @@ class Runner:
         if stopped:
             self.load.out.close()
         return Evidence(rows=tuple(dict(r) for r in list(self.load.plutus_evidence)),
-                        refusals=tuple(dict(r) for r in list(self.load.scala_refusals)), passes=self.passes,
+                        refusals=tuple(dict(r) for r in list(self.load.scala_refusals)),
+                        plutus_txids=frozenset(self.load.plutus_txids), passes=self.passes,
                         errors=tuple(self.errors), ended=self.ended, finished=finished, stopped=stopped)
 
 
@@ -262,6 +270,28 @@ def lost_blocks(forged, chain, txids, refused, adopted):
                      "afterChainRead": tip is not None and e["slot"] > tip,
                      "plutusTxs": sum(1 for t in e.get("txs", ()) if t in txids)})
     return lost
+
+
+WITH_PLUTUS, WITHOUT_PLUTUS, UNKNOWN = "withPlutus", "withoutPlutus", "unknown"
+
+
+def block_kinds(forged, chain, evidence):
+    """{hash: `WITH_PLUTUS`, `WITHOUT_PLUTUS` or `UNKNOWN`} of every Scala-forged block, from its own contents: a block
+    on the observer's `chain` (or None) by its bytes, a transaction with redeemers; any other by its `forged` event's
+    transaction ids against those of the Plutus transactions the load submitted (`evidence.plutus_txids`), unknown when
+    the event lists none or the load's thread did not stop, so that its record may lack a submission."""
+    on = {} if chain is None else {block: any(plutus for _, _, plutus in txs) for block, _, _, txs in chain}
+    kinds = {}
+    for e in forged:
+        if e["hash"] in on:
+            kinds[e["hash"]] = WITH_PLUTUS if on[e["hash"]] else WITHOUT_PLUTUS
+        elif not isinstance(e.get("txs"), list):
+            kinds[e["hash"]] = UNKNOWN
+        elif set(e["txs"]) & evidence.plutus_txids:
+            kinds[e["hash"]] = WITH_PLUTUS
+        else:
+            kinds[e["hash"]] = WITHOUT_PLUTUS if evidence.stopped else UNKNOWN
+    return kinds
 
 
 def reason_kind(reason):

@@ -2,6 +2,7 @@
 """The pure parts of `pool --plutus-load` and of the pool's forge timing: blocks read for their transactions'
 validity flags, where the load's transactions are on the chain, the refusal rule, and the timing summaries."""
 import contextlib
+import dataclasses
 import hashlib
 import io
 import json
@@ -132,7 +133,8 @@ class CheckTest(unittest.TestCase):
 
     def runner(self, refusals, rows=ROWS, errors=(), **how):
         """The evidence of a load that completed one round and ended in time (`how` changes the ending)."""
-        return pool_plutus.Evidence(rows=tuple(rows), refusals=tuple(refusals), passes=1, errors=tuple(errors),
+        return pool_plutus.Evidence(rows=tuple(rows), refusals=tuple(refusals), plutus_txids=frozenset(), passes=1,
+                                    errors=tuple(errors),
                                     ended=None, **{"finished": True, "stopped": True, **how})
 
     def refusal(self, **kw):
@@ -204,7 +206,7 @@ class RunnerTest(unittest.TestCase):
     def load():
         return types.SimpleNamespace(ready=threading.Event(), stop=threading.Event(), wallets=[types.SimpleNamespace(address=b"w")],
                                      act=lambda *a, **k: "f0", delegator=lambda n: object(), log=lambda m: None,
-                                     out=io.StringIO(), plutus_evidence=[], scala_refusals=[])
+                                     out=io.StringIO(), plutus_evidence=[], scala_refusals=[], plutus_txids=set())
 
     def test_a_load_that_ends_after_its_round(self):
         load, first = self.load(), threading.Event()
@@ -305,6 +307,43 @@ class LostBlocksTest(unittest.TestCase):
         self.assertEqual(summary["unconfirmedWithPlutus"], 1)
 
 
+class BlockKindsTest(unittest.TestCase):
+    """Each Scala-forged block's timing class comes from its own contents, a lost one's too."""
+    CHAIN = [(H["a"], 5, 1, [("pay", True, False)]), (H["b"], 12, 2, [("t", True, True)])]
+
+    @staticmethod
+    def evidence(stopped=True):
+        return dataclasses.replace(CheckTest().runner([], stopped=stopped), plutus_txids=frozenset({"t", "u"}))
+
+    def forged(self, name, txs):
+        event = {"event": "forged", "hash": H[name], "slot": 1, "blockNo": 1, "prev": None}
+        return event if txs is None else {**event, "txs": txs}
+
+    def test_on_the_chain_by_the_bytes_and_lost_by_the_transactions_the_load_submitted(self):
+        forged = [self.forged("a", ["pay"]), self.forged("b", ["t"]), self.forged("x", ["u", "pay"]),
+                  self.forged("y", ["pay"]), self.forged("z", None)]
+        self.assertEqual(pool_plutus.block_kinds(forged, self.CHAIN, self.evidence()),
+                         {H["a"]: "withoutPlutus", H["b"]: "withPlutus", H["x"]: "withPlutus", H["y"]: "withoutPlutus",
+                          H["z"]: "unknown"})
+
+    def test_a_lost_block_is_unknown_when_the_load_may_not_have_recorded_every_submission(self):
+        forged = [self.forged("x", ["u"]), self.forged("y", ["pay"])]
+        self.assertEqual(pool_plutus.block_kinds(forged, None, self.evidence(stopped=False)),
+                         {H["x"]: "withPlutus", H["y"]: "unknown"})
+
+    def test_the_load_records_every_plutus_transaction_before_it_goes_out(self):
+        plain = enc([{0: [], 1: [], 2: 1}, {0: []}, True, None])
+        plutus = enc([{0: [], 1: [], 2: 1}, {0: [], 5: {(0, 0): [0, [1, 2]]}}, False, None])
+        self.assertEqual((ntclocal.has_redeemers(plain), ntclocal.has_redeemers(plutus)), (False, True))
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(pool_plutus.eraload.EraLoad, "submit", return_value=False):
+            load = pool_plutus.Load("n", pathlib.Path(d), "/sock", "/scala.sock")
+            load.submit("conway", plain, "transfer")
+            load.submit("conway", plutus, "legacy-plutus-conway-v1-collateral")
+            load.out.close()
+        self.assertEqual(load.plutus_txids, {ntclocal.raw_tx_id(plutus).hex()})
+
+
 class ForgeTimingTest(unittest.TestCase):
     SHELLEY = {"systemStart": "2026-01-01T00:00:00Z", "slotLength": 0.1}
 
@@ -323,7 +362,7 @@ class ForgeTimingTest(unittest.TestCase):
     def test_each_phase_of_a_forged_slot_and_the_split_by_plutus_blocks(self):
         events = self.slot(10, (2, 4, 20, 21, 50), "p", 50) + self.slot(30, (1, 2, 6, 7, 12), "q", 12)
         events.append({"event": "startLeadershipCheck", "at": self.at(3.1), "slot": 31})
-        timing = pool.forge_timing(events, self.SHELLEY, {"p"})
+        timing = pool.forge_timing(events, self.SHELLEY, {"p": pool_plutus.WITH_PLUTUS, "q": pool_plutus.WITHOUT_PLUTUS})
         self.assertEqual({k: v["max"] for k, v in timing["withPlutus"].items()},
                          {"toForged": 21, "checkToForgedBlock": 18, "leaderToForgedBlock": 16, "forgedToAdopted": 29,
                           "adoptedLatency": 50})
@@ -331,6 +370,7 @@ class ForgeTimingTest(unittest.TestCase):
                          {"toForged": 7, "checkToForgedBlock": 5, "leaderToForgedBlock": 4, "forgedToAdopted": 5,
                           "adoptedLatency": 12})
         self.assertEqual(timing["all"]["toForged"]["n"], 2)
+        self.assertIsNone(timing["unknown"]["toForged"])
 
     def test_without_plutus_hashes_only_the_whole_and_missing_traces_are_left_out(self):
         events = [e for e in self.slot(10, (2, 4, 20, 21, 50), "p", 50) if e["event"] != "nodeIsLeader"]
