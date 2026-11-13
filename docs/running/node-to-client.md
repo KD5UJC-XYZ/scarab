@@ -89,21 +89,31 @@ so it has the one the process umask gives it; who can connect is decided by that
 directory that holds the socket. The check after the bind only warns, when others may read or write the
 socket or when the group or others may write its directory (`checkLocalSocket`): the
 `insecureLocalSocketPermissions` and `insecureLocalSocketDirectory` lines. A bind that fails (a
-directory that is not there or that the node may not write, a path of more than 108 characters), or a
+directory that is not there or that the node may not write, a path of 108 characters or more), or a
 status of the socket or its directory that cannot be read, stops the node with one `diffusionErrored`
 line carrying the reference's text (`Network.Socket.bind: does not exist (No such file or directory)`)
-and exit code 1. A start that fails, here or in the removal above, also says why on standard error,
+and exit code 1. A path that the JDK refuses and the reference binds (see the deviations below) stops it
+the same way, but the line carries the JDK's reason in that form (`Network.Socket.bind: failed (Unix
+domain path too long)`). A start that fails, here or in the removal above, also says why on standard error,
 as the reference's top-level handler does. SIGINT while the node runs is a `diffusionErrored` line with
 `user interrupt` and exit code 130, as the reference's `UserInterrupt`; SIGTERM ends the run without
 it, as the reference's `ExitSuccess` does.
 
-One approved deviation (owner decision recorded on [#474](https://github.com/KD5UJC-XYZ/scarab/issues/474)):
-the JDK binds and listens in one call, so the socket listens before the check after the bind rather than
-after it, and a client that connects in between waits in the backlog instead of being refused; the lines
-and the failures keep the reference's order. Also approved (same record): the path is passed to the
-kernel as UTF-8 and the JDK refuses one of 108 bytes or more, where the reference truncates each
-character to a byte (`castCharToCChar`) and allows 108 characters. systemd socket activation (a socket passed in `LISTEN_FDS`)
-is not supported yet: [#542](https://github.com/KD5UJC-XYZ/scarab/issues/542).
+Two approved deviations, as the [decisions register](../decisions.md#networking-and-local-clients) states
+them (restated in [#949](https://github.com/KD5UJC-XYZ/scarab/issues/949)):
+
+- **Bind and listen.** The JDK binds and listens in one call. So the socket listens before the check after
+  the bind rather than after it, and a client that connects in between waits in the backlog instead of being
+  refused. A listen that fails is reported as the bind's failure, before that check. Whenever the listen
+  succeeds, the lines and the failures keep the reference's order.
+- **Path.** The JDK binds at most 106 bytes of path, after collapsing repeated `/` and encoding it in the
+  locale's encoding (UTF-8 under a UTF-8 locale, as in the Docker images). The reference truncates each
+  character to a byte (`castCharToCChar`) and binds up to 107 characters. So the reference binds some paths
+  that are refused here: one of 107 ASCII characters with no repeated `/`, one that the locale cannot
+  encode, and one that holds NUL. From 108 characters on, both refuse the path with `pokeSockAddr`'s error.
+
+systemd socket activation (a socket passed in `LISTEN_FDS`) is not supported yet:
+[#542](https://github.com/KD5UJC-XYZ/scarab/issues/542).
 
 Clients are accepted without a limit on their number (the reference's local
 `AcceptedConnectionsLimit maxBound maxBound 0`), each named `<path>@<n>` as the reference names them
