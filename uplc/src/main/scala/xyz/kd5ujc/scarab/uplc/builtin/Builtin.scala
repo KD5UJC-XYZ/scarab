@@ -43,11 +43,68 @@ enum UnliftingCause:
     */
   case OutOfBounds(position: Int, bound: UnliftingBound)
 
+  /** An integer outside the range of a fixed-width Haskell type (`Int`, `Word8`, `Word64`), whose
+    * message names the integer: `readKnownAsInteger` (`PlutusCore/Default/Universe.hs:585-607`).
+    * The bounds of `CInteger` and `CByteString`, whose messages name no value, are [[OutOfBounds]].
+    */
+  case NotWithinBounds(position: Int, bound: UnliftingBound, value: BigInt)
+
+  /** A `SomeConstant` argument that should be a list and is not: the structural error the
+    * denotations of the list builtins raise after their cost is spent ("Expected a list but got
+    * something else", `PlutusCore/Default/Builtins.hs:1663-1730,2328-2393`).
+    */
+  case ExpectedList(position: Int, actual: DefaultUni)
+
+  /** A `SomeConstant` argument that should be a pair and is not (`fstPair`, `sndPair`,
+    * `Builtins.hs:1638-1661`).
+    */
+  case ExpectedPair(position: Int, actual: DefaultUni)
+
+  /** A `SomeConstant` argument that should be an array and is not ("Expected an array but got
+    * something else", `Builtins.hs:2378-2408,2482-2497`).
+    */
+  case ExpectedArray(position: Int, actual: DefaultUni)
+
+  /** `mkCons` of a value whose type is not the list's element type ("The type of the value does not
+    * match the type of elements in the list", `Builtins.hs:1677-1694`).
+    */
+  case ElementMismatch(element: DefaultUni, value: DefaultUni)
+
+  /** A call with the wrong number of arguments. The reference cannot make one (a runtime is applied
+    * only when saturated, `PlutusCore/Builtin/Meaning.hs:234-330`), so this is a defect of the
+    * caller, not a case of the reference.
+    */
+  case Arity(expected: Int, actual: Int)
+
 /** A range an argument unlifts into in some variants; the unlifting owns the cases. */
 enum UnliftingBound:
   case Int64, Word64, Int, Word8, CInteger, CByteString
 
-final case class UnliftingFailure(errorClass: ErrorClass, cause: UnliftingCause)
+  /** The name `typeRep` shows for the type the bound reads through: an `Int` reads as an `Int64`
+    * (`PlutusCore/Default/Universe.hs:615-617`).
+    */
+  def typeName: String = this match
+    case Int | Int64 => "Int64"
+    case Word64      => "Word64"
+    case Word8       => "Word8"
+    case CInteger    => "CInteger"
+    case CByteString => "CByteString"
+
+final case class UnliftingFailure(errorClass: ErrorClass, cause: UnliftingCause):
+  /** The log line of the failure: `throwError` puts the message of every operational unlifting
+    * error into the logs, a structural one gets none (`MonadError BuiltinError BuiltinResult`,
+    * `PlutusCore/Builtin/Result.hs:198-220`).
+    */
+  def message: Option[String] = errorClass match
+    case ErrorClass.Structural => None
+    case ErrorClass.Operational =>
+      cause match
+        case UnliftingCause.OutOfBounds(_, UnliftingBound.CInteger) => Some("Integer out of bounds")
+        case UnliftingCause.OutOfBounds(_, UnliftingBound.CByteString) =>
+          Some("ByteString overflow")
+        case UnliftingCause.NotWithinBounds(_, bound, value) =>
+          Some(s"$value is not within the bounds of ${bound.typeName}")
+        case _ => None
 
 /** Why a denotation fails once its arguments are unlifted and its cost is spent
   * (`BuiltinEvaluationFailure`, whose message the reference emits as a log line,
@@ -72,6 +129,9 @@ enum EvaluationFailure:
     */
   case UnexpectedData(expected: DataShape)
 
+  /** `decodeUtf8` of bytes that are not well-formed UTF-8 (`Default/Builtins.hs:1595,1606`). */
+  case InvalidUtf8
+
   /** The text the reference emits as a log line for this failure (its argument to `fail`, which
     * `BuiltinResult` turns into a log, `Builtin/Result.hs:88-90`), or none where it emits none.
     */
@@ -82,6 +142,7 @@ enum EvaluationFailure:
     case EmptyList                        => Some("Expected a non-empty list but got an empty one")
     case UnexpectedData(shape) =>
       Some(s"Expected the ${shape.constructor} constructor but got a different one")
+    case InvalidUtf8 => Some("decodeUtf8: invalid input")
 
 /** The constructor of `Data` a deconstructing builtin expects. */
 enum DataShape:
@@ -156,15 +217,17 @@ final case class Builtins(
 ):
   /** A saturated application, in the reference's order (`toMonoF`, `Meaning.hs:247-262,304-330`;
     * `evalBuiltinApp`, `Cek/Internal.hs:1052-1074`): unlift every argument; if one fails, the
-    * application costs nothing and fails ([[CostStream.free]]); otherwise its cost is computed from
-    * the unlifted arguments, and its denotation runs only when the machine has spent that cost.
+    * application costs nothing and fails ([[CostStream.free]]), logging the message of an
+    * operational unlifting error ([[UnliftingFailure.message]]); otherwise its cost is computed
+    * from the unlifted arguments, and its denotation runs only when the machine has spent that
+    * cost.
     */
   def prepare[V](function: DefaultFun, arguments: Vector[V])(using MachineValue[V]): Prepared[V] =
     unlifting(function, arguments) match
       case Left(failure) =>
         Prepared(
           CostStream.free,
-          () => Outcome.Failure(BuiltinFailure.Unlifting(failure), Vector.empty)
+          () => Outcome.Failure(BuiltinFailure.Unlifting(failure), failure.message.toVector)
         )
       case Right(unlifted) =>
         Prepared(costing(function)(unlifted), () => denotations(function)(unlifted))
