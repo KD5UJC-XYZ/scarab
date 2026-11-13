@@ -71,7 +71,6 @@ object ApplyBenchMain:
     * must not change with the evaluator's speed).
     */
   private def plutus(passes: Int): Unit =
-    import xyz.kd5ujc.scarab.plutus.ScalusEvaluator
     val cases = PlutusCase.all
     def scriptsOf(c: PlutusCase): Map[Bytes, Script] =
       (c.spent.values ++ c.references.values)
@@ -85,7 +84,7 @@ object ApplyBenchMain:
       var mem = BigInt(0)
       var steps = BigInt(0)
       val recording: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[cats.Id] = r =>
-        val result = ScalusEvaluator.default.evaluate(r)
+        val result = xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator.evaluate(r)
         scripts += 1
         mem += result.spent.mem
         steps += result.spent.steps

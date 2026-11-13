@@ -155,6 +155,7 @@ object RecordedReplay extends munit.Assertions:
         setup.byronRules,
         setup.handOver,
         setup.byronHistory,
+        xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
         phase2Observer = if observe then Some(observations.observe) else None,
         utxoStore = Some(store),
         parallelPlutus = parallel

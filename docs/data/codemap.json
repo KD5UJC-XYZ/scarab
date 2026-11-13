@@ -6,7 +6,7 @@
     "protocol": "Pure Ouroboros mini-protocol codecs and state machines",
     "network": "Effectful bearer, multiplexer, connections, peer selection",
     "uplc": "Scarab's own UPLC evaluator, with no Scalus on its class path (ADR 0027)",
-    "plutus": "Plutus evaluation through Scalus",
+    "plutus": "Plutus evaluation through Scalus, or through the own evaluator (--plutus-vm)",
     "ledger": "Blocks, transactions, rules, native ledger state",
     "consensus": "Praos family, chain selection, hard fork, state mirror",
     "storage": "Stores, snapshots, migrations, Haskell formats, SCLS, Mithril",
@@ -323,14 +323,17 @@
     {
       "module": "uplc",
       "path": "uplc/bls",
-      "responsibility": "BLS12-381 constants of the own evaluator (G1 and G2 points, Miller-loop results), opaque over their bytes",
+      "responsibility": "BLS12-381 constants of the own evaluator (G1 and G2 points as their compressed bytes, Miller-loop results with jblst's value) and the pure facade over jblst and Bouncy Castle that the builtins compute with",
       "entryPoints": [
         "G1Element",
         "G2Element",
-        "MlResult"
+        "MlResult",
+        "Bls12_381",
+        "BlsFailure"
       ],
       "suites": [
-        "ConstantSuite"
+        "ConstantSuite",
+        "Bls12_381Suite"
       ],
       "docs": [
         "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
@@ -339,16 +342,37 @@
     {
       "module": "uplc",
       "path": "uplc/cost",
-      "responsibility": "The reference's saturating integer, budgets, cost streams and the machine's step costs",
+      "responsibility": "The reference's saturating integer, budgets, cost streams and the machine's step costs; the cost model: costing-function shapes of each semantics variant, argument measures, the costing of every builtin and the evaluation context from an on-chain cost-model list",
       "entryPoints": [
         "SatInt",
         "ExBudget",
         "CostStream",
         "StepKind",
-        "MachineCosts"
+        "MachineCosts",
+        "Costs",
+        "Model",
+        "CostingFun",
+        "BuiltinCostModel",
+        "BuiltinShapes",
+        "CekMachineCosts",
+        "Measure",
+        "BuiltinCosting",
+        "EvaluationContext",
+        "VariantCosts",
+        "CostModelApplyError",
+        "CostModelApplyWarn"
       ],
       "suites": [
-        "SatIntSuite"
+        "SatIntSuite",
+        "CostsSuite",
+        "MeasureSuite",
+        "CostModelSuite",
+        "CostingSuite",
+        "EvaluationContextSuite",
+        "CostingOracleSuite",
+        "CostingWithUnliftingSuite",
+        "ConformanceCostingSuite",
+        "CekConformanceSuite"
       ],
       "docs": [
         "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
@@ -436,17 +460,101 @@
       ]
     },
     {
+      "module": "uplc",
+      "path": "uplc/builtin/extended",
+      "responsibility": "The denotations of the hashes, the Ed25519, ECDSA and Schnorr verifications, the BLS12-381 builtins, the conversions and bitwise builtins, expModInteger, the Value builtins, the arrays and batch 7, with their typed failures and the reference's log lines",
+      "entryPoints": [
+        "ExtendedDenotations",
+        "Bitwise",
+        "Values",
+        "Hashes",
+        "Signatures",
+        "ExpMod",
+        "Arrays"
+      ],
+      "suites": [
+        "ExtendedCorpusSuite",
+        "Batch7Suite",
+        "ExtendedDenotationsSuite",
+        "BitwiseSuite",
+        "ValuesSuite",
+        "SignaturesSuite",
+        "WycheproofEcdsaSuite",
+        "Bls12_381Suite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
+      "module": "uplc",
+      "path": "uplc/flat",
+      "responsibility": "Script bytes to a program: the Flat decoder of programs, terms and constants with every refusal of the reference, and the ledger's deserialiseScript with its predicates, the remainder rule and the version check for evaluation",
+      "entryPoints": [
+        "SerialisedScript",
+        "ScriptDecodeError",
+        "FlatDecoder",
+        "Checks",
+        "FlatError",
+        "ConstantDecoder",
+        "TypeHeader",
+        "Input"
+      ],
+      "suites": [
+        "FlatDecoderSuite",
+        "SerialisedScriptSuite",
+        "FlatReferenceCorporaSuite",
+        "FlatConformanceSuite",
+        "OwnFlatDecoderParitySuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
+      "module": "uplc",
+      "path": "uplc/ledger",
+      "responsibility": "The ledger's evaluation of a script: mkTermToEvaluate (the arguments, the program's version, the scope check), the evaluation context of machines per variant, evaluateScriptRestricting and evaluateScriptCounting with the V3 unit rule, the per-language entry points, and no verdict for protocol 12 and later or for a defect of this evaluator",
+      "entryPoints": [
+        "LedgerEval",
+        "PlutusV1",
+        "PlutusV2",
+        "PlutusV3",
+        "LedgerContext",
+        "VariantMachine",
+        "Scope",
+        "FreeVariableError",
+        "EvaluationError",
+        "Stage",
+        "VerboseMode",
+        "Unavailability",
+        "LedgerOutcome",
+        "ScriptResult"
+      ],
+      "suites": [
+        "LedgerEvalSuite",
+        "LedgerBoundaryOracleSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
       "module": "plutus",
       "path": "plutus",
-      "responsibility": "Script evaluator algebra, Scalus adapter, builtin availability; re-exports PlutusData, ExUnits, PlutusLanguage and ParamNames from uplc",
+      "responsibility": "Script evaluator algebra, the Scalus adapter and the adapter of the own evaluator (uplc), the backend choice of --plutus-vm, builtin availability; re-exports PlutusData, ExUnits, PlutusLanguage and ParamNames from uplc",
       "entryPoints": [
         "ScriptEvaluator",
         "ScalusEvaluator",
+        "ScarabEvaluator",
+        "PlutusVm",
         "PlutusAvailability",
         "RetryingMemo"
       ],
       "suites": [
         "ScalusEvaluatorSuite",
+        "ScarabEvaluatorSuite",
+        "PlutusBackendsSuite",
         "PlutusDataSuite",
         "PlutusAvailabilitySuite",
         "BuiltinCostingSuite",
@@ -455,6 +563,7 @@
       ],
       "docs": [
         "docs/adr/0003-plutus-through-scalus.md",
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md",
         "docs/adr/0018-parallel-plutus-after-ordered-preparation.md",
         "docs/design/parallel-plutus.md",
         "docs/design/script-results.md"
@@ -495,7 +604,8 @@
         "RatifySuite",
         "ScriptContextOracleSuite",
         "VotingProceduresSuite",
-        "WithdrawalContextsSuite"
+        "WithdrawalContextsSuite",
+        "PlutusBackendDifferentialSuite"
       ],
       "docs": [
         "docs/adr/0007-era-indexed-state.md",
@@ -913,7 +1023,8 @@
         "ForgeSuite",
         "KesRotationSuite",
         "KeyFilesSuite",
-        "ForgerFailureSuite"
+        "ForgerFailureSuite",
+        "PlutusBackendBlockProbeSuite"
       ],
       "docs": [
         "docs/adr/0015-kes-key-written-back-and-checked-reload.md"
@@ -955,7 +1066,8 @@
         "MempoolSuite",
         "LocalSubmissionSuite",
         "LocalMonitorSuite",
-        "MempoolBackpressureSuite"
+        "MempoolBackpressureSuite",
+        "PlutusBackendProbeSuite"
       ],
       "docs": [
         "docs/architecture.md"

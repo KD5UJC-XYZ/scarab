@@ -44,7 +44,9 @@ OLD = {
     "a/a.uplc": "(program 1.0.0 (con integer 1))",
     "a/a.uplc.expected": "(program 1.0.0 (con integer 1))",
     "a/a.budget.expected": "({cpu: 1 | mem: 1})",
-    "a/a.flat": "ignored",
+    "a/a.flat": "flat",
+    "a/a.flat.expected": "flat result",
+    "a/a.sh": "ignored",
     "v/v.uplc": "(program 1.0.0 (con value []))",
     "gone/gone.uplc": "(program 1.0.0 (con unit ()))",
     "README.md": "ignored",
@@ -83,8 +85,9 @@ class ReleasesTest(unittest.TestCase):
 
     def test_the_upstream_view_keeps_only_cases_cost_models_and_parameter_names(self):
         self.assertEqual(sorted(p for p in self.old if p.startswith("conformance/")),
-                         ["conformance/a/a.budget.expected", "conformance/a/a.uplc", "conformance/a/a.uplc.expected",
-                          "conformance/gone/gone.uplc", "conformance/v/v.uplc"])
+                         ["conformance/a/a.budget.expected", "conformance/a/a.flat", "conformance/a/a.flat.expected",
+                          "conformance/a/a.uplc", "conformance/a/a.uplc.expected", "conformance/gone/gone.uplc",
+                          "conformance/v/v.uplc"])
         self.assertIn("ledger-api/V3-param-names.txt", self.old)
         self.assertNotIn("cost-model/models.R", self.old)
 
@@ -125,6 +128,30 @@ class ReleasesTest(unittest.TestCase):
         changed = {**NEW, "v/v.uplc": "(program 1.0.0 (con value [(#00, [(#, 1)])]))"}
         with self.assertRaises(reference.ReferenceError):
             reference.add_release(self.root, "2", "new", archive("new", changed))
+        self.assertEqual(reference.check(self.root), [])
+
+    def test_refresh_lays_every_release_out_again_from_its_archive(self):
+        cache = Path(self.directory.name) / "cache"
+        cache.mkdir()
+        (cache / "old.tar.gz").write_bytes(archive("old", OLD))
+        (cache / "new.tar.gz").write_bytes(archive("new", {**NEW, "a/a.flat": "newer flat"}))
+        reference.add_release(self.root, "2", "new", (cache / "new.tar.gz").read_bytes())
+        laid_out = reference.files_under(self.root)
+        self.assertIn("overlays/1/conformance/a/a.flat", laid_out)
+        # a tree from before its view kept the flat files
+        for path in ("conformance/a/a.flat", "overlays/1/conformance/a/a.flat"):
+            (self.root / path).unlink()
+        self.assertNotEqual(reference.check(self.root), [])
+        reference.refresh(self.root, cache)
+        self.assertEqual(reference.check(self.root), [])
+        self.assertEqual(reference.files_under(self.root), laid_out)
+
+    def test_refresh_refuses_an_archive_that_is_not_the_pinned_one(self):
+        cache = Path(self.directory.name) / "cache"
+        cache.mkdir()
+        (cache / "old.tar.gz").write_bytes(archive("old", {**OLD, "a/a.flat": "tampered"}))
+        with self.assertRaises(reference.ReferenceError):
+            reference.refresh(self.root, cache)
         self.assertEqual(reference.check(self.root), [])
 
     def test_a_tampered_archive_is_refused(self):

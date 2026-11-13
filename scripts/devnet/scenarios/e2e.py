@@ -216,7 +216,8 @@ def e2e(args):
         def nodes_up(_root):
             nonlocal follower
             follower = start_follower(args.name, root, oracle=args.oracle, scala_cpus=args.scala_cpus,
-                                      consensus_mode=getattr(args, "consensus_mode", None), local_socket=True)
+                                      consensus_mode=getattr(args, "consensus_mode", None), local_socket=True,
+                                      plutus_vm=getattr(args, "plutus_vm", None))
 
         def pools_ready(driver):
             nonlocal loader, worker

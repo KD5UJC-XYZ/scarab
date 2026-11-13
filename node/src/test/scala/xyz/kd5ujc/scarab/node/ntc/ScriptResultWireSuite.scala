@@ -7,7 +7,7 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Cbor, Value}
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.plutus.ScalusEvaluator
+import xyz.kd5ujc.scarab.plutus.PlutusBackends
 
 class ScriptResultWireSuite extends FunSuite:
   import ContextReferenceCases.{field, hex, Recorded}
@@ -30,7 +30,7 @@ class ScriptResultWireSuite extends FunSuite:
           hex(field[String](reference, "contextCbor"))
         )
       }
-      val outcome = Phase2.run(requests, ScalusEvaluator.default)
+      val outcome = Phase2.run(requests, PlutusBackends.evaluator)
       val valid = !outcome.passed
       val failure = outcome match
         case Phase2.Outcome.Passed(_) => UtxosFailure.ValidationTagMismatch(false, None)

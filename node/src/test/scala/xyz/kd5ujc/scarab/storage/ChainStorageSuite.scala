@@ -112,7 +112,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       setup.globals,
       setup.byronRules,
       setup.handOver,
-      setup.byronHistory
+      setup.byronHistory,
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
     )
 
   /** Open the storage, follow blocks `[from, until)` with the real follower, wait for snapshots. */
@@ -176,6 +177,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 setup.byronRules,
                 setup.handOver,
                 setup.byronHistory,
+                xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
                 utxoStore = utxoStore
               )
             ChainStorage
@@ -555,6 +557,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   setup.byronRules,
                   setup.handOver,
                   setup.byronHistory,
+                  xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
                   utxoStore = Some(store)
                 ),
                 setup.mirrorStart,
@@ -724,7 +727,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               setup.globals,
               setup.byronRules,
               setup.handOver,
-              setup.byronHistory
+              setup.byronHistory,
+              xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
             )
           )
           ChainStorage

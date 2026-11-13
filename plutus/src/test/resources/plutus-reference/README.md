@@ -10,8 +10,10 @@ the base files it lacks as `absent`. Tests read a view through `PlutusReference`
 What a view holds, unmodified unless noted:
 
 - `conformance/`: `plutus-conformance/test-cases/uplc/evaluation`, the `.uplc` programs,
-  `.uplc.expected` results and `.budget.expected` budgets. The `.flat` encodings, their
-  `.flat.expected` results, and the READMEs and helper scripts of that tree are left out.
+  `.uplc.expected` results and `.budget.expected` budgets, and the `.flat` encodings of the programs
+  with their `.flat.expected` results (the Flat-encoded result program, or the same failure text as
+  `.uplc.expected`). Upstream has no `.flat` for the text parser's cases under `builtin/parser` and
+  `term/parser`. The READMEs and helper scripts of that tree are left out.
 - `cost-model/`: `plutus-core/cost-model/data/builtinCostModel{A..E}.json` and
   `cekMachineCosts{A..E}.json`, the default builtin costing functions and machine step costs of each
   builtin semantics variant.
@@ -30,3 +32,5 @@ malformed maps before the Flat decoder sees them.
 `python3 scripts/plutus_reference.py check` (offline, in CI) confirms each view against its recorded
 digest. `verify` downloads each pinned archive and compares the views with it file by file, and
 `add-release <tag> <commit>` makes a newer release the base and moves the older ones to overlays.
+`refresh` lays the tree out again from each recorded release's pinned archive, for a change of the
+files a view keeps.

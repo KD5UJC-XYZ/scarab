@@ -194,6 +194,9 @@ def main():
     ac.set_defaults(run=assemble)
     e2 = sub.add_parser("e2e", parents=[eras_options(), scala_options],
                         help="up-eras, follow from Origin, assert every era and transition")
+    plutus_vm_help = ("the Scala node's Plutus evaluator (default: the node's, scalus); the forging scenarios do "
+                      "not take it, as the node refuses --forge with scarab")
+    e2.add_argument("--plutus-vm", choices=("scalus", "scarab"), default=None, help=plutus_vm_help)
     e2.add_argument("--timeout", type=int, default=1500, help="overall time limit in seconds")
     e2.add_argument("--until-epoch", type=int,
                     help=f"Conway epoch to reach (default: first Conway epoch + {CONWAY_EPOCHS})")
@@ -210,6 +213,7 @@ def main():
     t.add_argument("--node", type=int, default=1, help="reference node 1..3")
     t.set_defaults(run=tip)
     f = sub.add_parser("follow", parents=[scala_options], help="run the Scala follower against a reference node (logs to the run dir)")
+    f.add_argument("--plutus-vm", choices=("scalus", "scarab"), default=None, help=plutus_vm_help)
     f.add_argument("--seconds", type=int, help="stop after this long (default: until killed)")
     f.add_argument("--node", type=int, default=1, help="reference node the follower connects to")
     f.add_argument("--dump-state", action="store_true",

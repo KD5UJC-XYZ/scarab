@@ -132,6 +132,33 @@ enum EvaluationFailure:
   /** `decodeUtf8` of bytes that are not well-formed UTF-8 (`Default/Builtins.hs:1595,1606`). */
   case InvalidUtf8
 
+  /** A BLS12-381 builtin (`PlutusCore/Crypto/BLS12_381/G1.hs`, `G2.hs`). */
+  case Bls(failure: xyz.kd5ujc.scarab.uplc.bls.BlsFailure)
+
+  /** An argument of a signature builtin that does not deserialise (`PlutusCore/Crypto/Ed25519.hs`,
+    * `Secp256k1.hs`).
+    */
+  case SignatureInput(failure: extended.SignatureInputFailure)
+
+  /** The conversions and bitwise builtins (`PlutusCore/Bitwise.hs`). The reference emits several
+    * lines; [[message]] joins them with a newline, and the outcome carries them one by one.
+    */
+  case Bitwise(failure: extended.BitwiseFailure)
+
+  /** `expModInteger` (`PlutusCore/Crypto/ExpMod.hs`). */
+  case ExpMod(failure: extended.ExpModFailure)
+
+  /** The `Value` builtins (`PlutusCore/Value.hs`). */
+  case ValueOperation(failure: extended.ValueFailure)
+
+  /** A library the builtin calls failed where the reference's cannot: a defect of this
+    * implementation, not a verdict on the script. The reference has no message for it.
+    */
+  case Defect(function: DefaultFun, defect: extended.LibraryDefect)
+
+  /** `multiIndexArray` (`PlutusCore/Arrays.hs:48-69`). */
+  case ArrayIndices(failure: extended.ArrayFailure)
+
   /** The text the reference emits as a log line for this failure (its argument to `fail`, which
     * `BuiltinResult` turns into a log, `Builtin/Result.hs:88-90`), or none where it emits none.
     */
@@ -142,7 +169,25 @@ enum EvaluationFailure:
     case EmptyList                        => Some("Expected a non-empty list but got an empty one")
     case UnexpectedData(shape) =>
       Some(s"Expected the ${shape.constructor} constructor but got a different one")
-    case InvalidUtf8 => Some("decodeUtf8: invalid input")
+    case InvalidUtf8             => Some("decodeUtf8: invalid input")
+    case Bls(failure)            => Some(failure.message)
+    case SignatureInput(failure) => Some(failure.lines.mkString("\n"))
+    case Bitwise(failure)        => Some(failure.lines.mkString("\n"))
+    case ExpMod(failure)         => Some(failure.lines.mkString("\n"))
+    case ValueOperation(failure) => Some(failure.lines.mkString("\n"))
+    case Defect(_, _)            => None
+    case ArrayIndices(failure)   => Some(failure.lines.mkString("\n"))
+
+  /** The lines the reference emits for this failure, one per `emit` or `fail`, which is what the
+    * machine logs ([[Outcome.failed]]); [[message]] joins them for a single-line rendering.
+    */
+  def logs: Vector[String] = this match
+    case SignatureInput(failure) => failure.lines
+    case Bitwise(failure)        => failure.lines
+    case ExpMod(failure)         => failure.lines
+    case ValueOperation(failure) => failure.lines
+    case ArrayIndices(failure)   => failure.lines
+    case other                   => other.message.toVector
 
 /** The constructor of `Data` a deconstructing builtin expects. */
 enum DataShape:
@@ -170,7 +215,7 @@ object Outcome:
     * `Cek/Internal.hs:1066-1073`).
     */
   def failed[V](failure: EvaluationFailure): Outcome[V] =
-    Failure(BuiltinFailure.Evaluation(failure), failure.message.toVector)
+    Failure(BuiltinFailure.Evaluation(failure), failure.logs)
 
 /** The meaning of one builtin once its arguments are unlifted: pure, and the same for every
   * machine.

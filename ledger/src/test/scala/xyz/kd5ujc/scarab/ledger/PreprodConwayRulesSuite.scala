@@ -55,7 +55,8 @@ class PreprodConwayRulesSuite extends FunSuite:
     clock = Some(
       xyz.kd5ujc.scarab.ledger.PosixClock.Total(slot => (BigInt(1655769600) + slot - 86400) * 1000)
     ),
-    evaluator = evaluator
+    evaluator = evaluator,
+    decoder = PlutusBackends.decoder
   )
 
   test("the recorded transaction is a Conway Hydra fanout and a mint, both Plutus V2") {
@@ -68,7 +69,7 @@ class PreprodConwayRulesSuite extends FunSuite:
     "the Conway rules accept it: the fanout script hashes outputs whose datums carry a constructor index of 2^64 - 1"
   ) {
     val after = NativeRules
-      .txIn[Conway](world, c.tx, env(ScalusEvaluator.default))
+      .txIn[Conway](world, c.tx, env(PlutusBackends.evaluator))
       .fold(f => fail(f.message), identity)
     assertEquals(after.plutus.succeeded, 1L)
     assertEquals(after.plutus.scripts, 2L)
@@ -79,7 +80,7 @@ class PreprodConwayRulesSuite extends FunSuite:
     val seen = scala.collection.mutable.ListBuffer.empty[(ExUnits, EvalResult)]
     val recording = new ScriptEvaluator[Id]:
       def evaluate(r: EvalRequest): EvalResult =
-        val res = ScalusEvaluator.default.evaluate(r)
+        val res = PlutusBackends.evaluator.evaluate(r)
         seen += r.budget -> res
         res
     NativeRules.txIn[Conway](world, c.tx, env(recording)).fold(f => fail(f.message), identity)
@@ -92,7 +93,7 @@ class PreprodConwayRulesSuite extends FunSuite:
 
   test("the same transaction marked invalid is refused: its scripts succeed") {
     val invalid = c.tx.copy(isValid = false)
-    NativeRules.txIn[Conway](world, invalid, env(ScalusEvaluator.default)) match
+    NativeRules.txIn[Conway](world, invalid, env(PlutusBackends.evaluator)) match
       case Left(
             LedgerFailure.Rejected.Single(
               _,

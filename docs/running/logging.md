@@ -89,6 +89,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `referenceBuild` | `Node.ReferenceBuild` | Notice | `build` (the `--reference-build` value), `stability` (`stable` or `unstable`), `node` (the pinned release tag, or the node commit of an unstable build), `ledger`, `ledgerBinary`, `consensus` (pinned commits); logged at start, before any store opens; see [flags](flags.md) |
 | `unstableReferenceBuild` | `Node.UnstableReferenceBuild` | Warning | `build`, `experimentalHardForksEnabled` (`false`): an unstable build runs without `ExperimentalHardForksEnabled`, which it is meant for |
 | `plutusCrypto` | `Node.PlutusCrypto` | Info | `platform`, `library` (`source`, `path`, `sha256`) |
+| `plutusVm` | `Node.PlutusVm` | Notice | `vm` (the `--plutus-vm` value, `scalus` or `scarab`): the Plutus evaluator of the block rules, the mempool and the forger; logged at start, after the native library checks and before any store opens; see [flags](flags.md) |
 | `listening` | `Node.Listening` | Notice | `address` |
 | `createSystemdSocketForSnocketPath` | `Node.CreateSystemdSocketForSnocketPath` | Info | `path`; the node-to-client socket is about to be created. Like the rest of these lines, the reference's `Startup.DiffusionInit` trace of that name: `path` is the reference's `show` of the address, `LocalAddress "<path>"`, the path as configured; see [node-to-client](node-to-client.md#the-socket-path) |
 | `createdLocalSocket` | `Node.CreatedLocalSocket` | Info | `path` |

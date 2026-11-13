@@ -148,7 +148,8 @@ class HeaderRulesSuite extends ScalaCheckSuite:
       forged.globals,
       None,
       None,
-      ForgedChain.mirrorEnv.byron
+      ForgedChain.mirrorEnv.byron,
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
     )
 
   /** Header-first validation of block `i` 's `header` under `config`, from the state after its

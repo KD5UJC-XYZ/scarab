@@ -830,6 +830,11 @@ class ConfigSuite extends FunSuite:
     val flagged = bare.copy(db = Some(Path.of("/mine")), mempoolBytes = five)
     val (overridden, _, _) = Main.configured(flagged).fold(e => fail(e.message), identity)
     assertEquals((overridden.db, overridden.mempoolBytes), (Some(Path.of("/mine")), five))
+    // the evaluator the flag chose is the one the completed options give the run
+    val own = xyz.kd5ujc.scarab.plutus.PlutusVm.Scarab
+    val (chosen, _, _) =
+      Main.configured(bare.copy(plutusVm = own)).fold(e => fail(e.message), identity)
+    assertEquals(chosen.plutusVm, own)
     // a topology that names no peer, and no --peer: nothing to follow
     val empty = Files.createTempFile("topology", ".json")
     Files.writeString(
