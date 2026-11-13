@@ -33,6 +33,14 @@ class LocalServerSuite extends FailsOnUncaught:
 
   private val temporary = fs2.io.file.Files.forAsync[IO].tempDirectory.map(_.toNioPath)
 
+  /** A temporary directory with a short ASCII path, whatever the default one is, so that a path in
+    * it can be made of a given length in bytes and characters alike.
+    */
+  private val shortTemporary = fs2.io.file.Files
+    .forAsync[IO]
+    .tempDirectory(Some(fs2.io.file.Path("/tmp")), "s", None)
+    .map(_.toNioPath)
+
   /** Bind and close a Unix socket at `path`, as a run that died leaves it: never unlinked. */
   private def staleSocket(path: Path): IO[Unit] = IO.blocking {
     val channel = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
@@ -477,14 +485,39 @@ class LocalServerSuite extends FailsOnUncaught:
   )(handle: cats.mtl.Handle[IO, NetworkError] ?=> (Bearer[IO], LocalConnectionId) => IO[Unit])(
       body: IO[DiffusionFailure] => IO[A]
   ): IO[(Either[DiffusionFailure, A], Vector[Trace])] =
+    onJdkAt(path.toString, failures)(handle)(body)
+
+  /** [[onJdk]] at a path given as text, which a `Path` cannot hold when the JDK refuses it. */
+  private def onJdkAt[A](
+      path: String,
+      failures: (LocalConnectionId, HandlerFailure[NetworkError]) => IO[Unit]
+  )(handle: cats.mtl.Handle[IO, NetworkError] ?=> (Bearer[IO], LocalConnectionId) => IO[Unit])(
+      body: IO[DiffusionFailure] => IO[A]
+  ): IO[(Either[DiffusionFailure, A], Vector[Trace])] =
     Ref.of[IO, Vector[Trace]](Vector.empty).flatMap { traces =>
       attempt[DiffusionFailure, A](
         LocalServer
-          .resource[IO, NetworkError](jdk, LocalAddress(path.toString), t => traces.update(_ :+ t))(
+          .resource[IO, NetworkError](jdk, LocalAddress(path), t => traces.update(_ :+ t))(
             failures
           )(handle)
           .use(body)
       ).product(traces.get)
+    }
+
+  /** A path in `root` (from [[shortTemporary]]) of `length` ASCII characters, so of `length` bytes,
+    * with no repeated `/` for the JDK to collapse.
+    */
+  private def sized(root: Path, length: Int): String =
+    val path = s"$root/" + "m" * (length - root.toString.length - 1)
+    assertEquals(path.getBytes(java.nio.charset.StandardCharsets.UTF_8).length, length)
+    assertEquals(path.length, length)
+    path
+
+  /** The traces end where the bind's failure stops the set-up, as the reference's do. */
+  private def endsAtBind(traces: Vector[Trace]): Boolean =
+    traces.lastOption.exists {
+      case _: Trace.ConfiguringLocalSocket => true
+      case _                               => false
     }
 
   /** Connect to `path`, write `out`, close the output and read until the server closes. */
@@ -688,6 +721,69 @@ class LocalServerSuite extends FailsOnUncaught:
       onJdk(path)((_, _) => IO.unit)(_ => IO.unit).map { (result, _) =>
         assertEquals(result, Left(DiffusionFailure.PathTooLong(path.toString)))
       }
+    }
+  }
+
+  // network 3.2.8.0 refuses `len >= unixPathMax` (`Network/Socket/Types.hsc` 1162)
+  test("on the JDK: a path of exactly 108 characters is refused as pokeSockAddr refuses it") {
+    shortTemporary.use { root =>
+      val path = sized(root, 108)
+      onJdkAt(path, (_, _) => IO.unit)((_, _) => IO.unit)(_ => IO.unit).map { (result, traces) =>
+        assertEquals(result, Left(DiffusionFailure.PathTooLong(path)))
+        assert(endsAtBind(traces), traces)
+      }
+    }
+  }
+
+  // the JDK takes `sizeof sun_path - 2` bytes (OpenJDK jdk-25+36 `nio_util.h` 45-49)
+  test("on the JDK: a path of 106 bytes, the JDK's longest, is bound") {
+    shortTemporary.use { root =>
+      val path = sized(root, 106)
+      onJdkAt(path, (_, _) => IO.unit)((_, _) => IO.unit)(_ => IO.unit).map { (result, _) =>
+        assertEquals(result, Right(()))
+      }
+    }
+  }
+
+  test("on the JDK: a path of 107 bytes, which the reference binds, is refused (#949)") {
+    shortTemporary.use { root =>
+      val path = sized(root, 107)
+      onJdkAt(path, (_, _) => IO.unit)((_, _) => IO.unit)(_ => IO.unit).map { (result, traces) =>
+        assertEquals(
+          result,
+          Left(
+            DiffusionFailure.System(
+              SystemCallError(
+                SystemCall.Bind,
+                ErrnoCause.Unrecognised("Unix domain path too long"),
+                None
+              )
+            )
+          )
+        )
+        assert(endsAtBind(traces), traces)
+      }
+    }
+  }
+
+  test("on the JDK: a path the JDK cannot encode is a failed bind, not an exception (#949)") {
+    shortTemporary.use { root =>
+      onJdkAt(s"$root/node\u0000.socket", (_, _) => IO.unit)((_, _) => IO.unit)(_ => IO.unit)
+        .map { (result, traces) =>
+          assertEquals(
+            result,
+            Left(
+              DiffusionFailure.System(
+                SystemCallError(
+                  SystemCall.Bind,
+                  ErrnoCause.Unrecognised("Nul character not allowed"),
+                  None
+                )
+              )
+            )
+          )
+          assert(endsAtBind(traces), traces)
+        }
     }
   }
 

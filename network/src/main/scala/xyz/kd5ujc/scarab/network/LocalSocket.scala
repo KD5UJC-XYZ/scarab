@@ -19,7 +19,7 @@ import java.lang.foreign.{
   ValueLayout
 }
 import java.lang.invoke.MethodHandle
-import java.nio.file.{Files, Path}
+import java.nio.file.{Files, InvalidPathException, Path}
 import scala.jdk.OptionConverters.*
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
@@ -87,8 +87,8 @@ enum DiffusionFailure extends DomainError:
     */
   case System(error: SystemCallError)
 
-  /** The path does not fit a `sockaddr_un`: network 3.2.8.0's `pokeSockAddr` refuses a path of more
-    * than 108 characters with `error`.
+  /** The path does not fit a `sockaddr_un`: network 3.2.8.0's `pokeSockAddr` refuses a path of 108
+    * characters or more with `error` (`len >= unixPathMax`, `Network/Socket/Types.hsc` 1162).
     */
   case PathTooLong(path: String)
 
@@ -237,7 +237,7 @@ object LocalSockets:
         opened: Option[Int]
     ): LocalListener[F] = new LocalListener[F]:
       def bind: F[Either[DiffusionFailure, Unit]] =
-        if address.path.codePointCount(0, address.path.length) > UnixPathMax then
+        if address.path.codePointCount(0, address.path.length) >= UnixPathMax then
           F.pure(Left(DiffusionFailure.PathTooLong(address.path)))
         // a socket cannot be made at a path that ends in `/` (the kernel's `ENOENT`); the JDK
         // would drop the slash and bind the path without it
@@ -249,14 +249,23 @@ object LocalSockets:
               )
             )
           )
+        // the JDK encodes the path in the locale's encoding (`sun.jnu.encoding`) and refuses one
+        // it cannot encode, or that holds NUL, with `InvalidPathException`: a refusal of the bind,
+        // as one longer than its 106 bytes is (an approved deviation, #949)
         else
           F.blocking(
             Either
-              .catchOnly[IOException](
-                channel.bind(UnixDomainSocketAddress.of(address.path), Backlog)
+              .catchOnly[InvalidPathException](UnixDomainSocketAddress.of(address.path))
+              .leftMap(e =>
+                SystemCallError(SystemCall.Bind, ErrnoCause.Unrecognised(e.getReason), None)
               )
-              .void
-              .leftMap(e => DiffusionFailure.System(SystemCallError.of(SystemCall.Bind, None)(e)))
+              .flatMap(socket =>
+                Either
+                  .catchOnly[IOException](channel.bind(socket, Backlog))
+                  .void
+                  .leftMap(SystemCallError.of(SystemCall.Bind, None))
+              )
+              .leftMap(DiffusionFailure.System(_))
           )
 
       // bound, the socket is the listening one at its path in `/proc/net/unix`; unbound, the one
