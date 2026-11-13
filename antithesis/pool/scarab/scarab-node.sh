@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Runs the Scarab pool s1 on pool 1's keys, with the flags of the devnet's `pool` scenario
 # (`scripts/devnet/scenarios/pool.py`) and the JVM settings of `scala_container` in `scripts/devnet/cluster.py`.
-# The image's own `java -jar` launch is kept; the classpath launch that coverage instrumentation needs comes later.
+# It starts from the classpath, as Antithesis's coverage instrumentation needs: the manifest's Enable-Native-Access
+# does not apply there, so the flag says it (as `scala_container` does).
 set -euo pipefail
 
 pool=/env/net/pools-keys/pool1
@@ -23,7 +24,7 @@ mkdir -p /data/db
 # A killed node leaves its socket file behind.
 rm -f /ipc/node.socket
 exec java -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=20 --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
-  -jar /opt/scarab/scarab.jar \
+  -cp '/opt/scarab/*' xyz.kd5ujc.scarab.node.Main \
   follow \
   --genesis-dir /env/net/genesis \
   --listen 0.0.0.0:3001 \

@@ -1,14 +1,16 @@
 #!/bin/bash
 # SPDX-License-Identifier: Apache-2.0
 # The test template's one driver command; Antithesis runs it once per timeline, under faults. It reads every pool's
-# tip at a fixed interval and records whether each extends its chain and whether all three agree.
+# tip CHECKS times at a fixed interval, records whether each extends its chain and whether all three agree, and
+# exits 0, so that the command runs to completion.
 set -uo pipefail
 source /opt/at/lib.sh
 
 assertion true true reachability Reachable "$STARTS" true
 
+CHECKS=60
 prev=$(tips)
-while :; do
+for _ in $(seq "$CHECKS"); do
   sleep "$INTERVAL_SECONDS"
   now=$(tips)
   echo "watch: tips $now"
