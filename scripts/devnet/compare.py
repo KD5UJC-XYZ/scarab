@@ -468,9 +468,10 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
 
     The acquisitions are bounded. The other node is asked for a point at most `attempts` times, `SAME_POINT_PAUSE`
     s apart, while it refuses it (`PointNotOnChain`, `PointTooOld`): a point it has not reached yet. A point refused
-    every time is given up for a new sample of the anchor, `RESELECTION_PAUSE` s later, at most `reselections`
-    times: one when `attempts` > 1 and none otherwise unless the caller asks (`WHOLE_STATE_RESELECTIONS` for a
-    follower's tip, #785). Every acquisition is kept in order in `acquisitions` (stage `anchor` or `other`, node,
+    every time as not on the other node's chain (`PointNotOnChain`: not reached, or taken off it by a fork) is given
+    up for a new sample of the anchor, `RESELECTION_PAUSE` s later, at most `reselections` times: one when
+    `attempts` > 1 and none otherwise unless the caller asks (`WHOLE_STATE_RESELECTIONS` for a follower's tip, #785);
+    a point refused as too old is never sampled again. Every acquisition is kept in order in `acquisitions` (stage `anchor` or `other`, node,
     point, outcome, parsed refusal). A refusal past the bounds, a reply that is neither an acquisition nor a
     refusal, a failed query, a closed connection or a deadline is an error that keeps the point, the stage, the
     refusal, the bounds and the history; none is retried into a success. Returns {"slot", "point", "anchor",
@@ -542,7 +543,11 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
                             "point": point_json(point), "outcome": "acquired"})
             break
         else:
-            continue  # every acquisition of this point was refused: a new sample, while the bound allows
+            # every acquisition of this point was refused. Only a point the other node's chain does not hold is given
+            # up for a new sample, while the bound allows: one too old for its volatile window stays too old
+            if acquire_refusal(refused)["failure"] != "PointNotOnChain":
+                return failed(refused, "other", point)
+            continue
         break
     else:
         return failed(refused, "other", point, exhausted=True)

@@ -422,6 +422,15 @@ class WholeStateForkTest(unittest.TestCase):
         self.assertIn("'failure': 'PointNotOnChain'", failures[0])
         self.assertEqual(tallies.whole["GetUTxOWhole"]["conway"]["errorDetails"][0]["point"]["slot"], 7)
 
+    def test_a_point_too_old_for_the_reference_is_not_sampled_again(self):
+        # a follower more than k blocks behind the reference stays behind: an error, as before the reselection
+        result = self.run_whole([RuntimeError("acquire failed: [2, 0]"), None], reselections=2)
+        self.assertEqual([side for side, _ in self.calls].count("reference"), 1)
+        self.assertEqual(result["refusal"], {"reply": "[2, 0]", "failure": "PointTooOld"})
+        self.assertEqual((result["stage"], result["point"]["slot"]), ("other", 7))
+        self.assertNotIn("exhausted", result)
+        self.assertEqual(self.pauses, [])
+
     def test_a_reply_that_is_neither_an_acquisition_nor_a_refusal_is_not_retried(self):
         result = self.run_whole([RuntimeError("acquire failed: [9]"), None], reselections=2)
         self.assertEqual([side for side, _ in self.calls].count("reference"), 1)
