@@ -28,31 +28,31 @@
     "extraConfig": {
         "delegs": {
             "data": {
-                "keyHash-247a7f26c0c94622b20480edd4e49cafdf545f1e265f95eda43753f9": {
-                    "dRep": "drep-keyHash-03f564f9cfb4f5d320329e19b4fabf6bf146d1a4d27c068c25b89ec0",
+                "keyHash-3587c2c48db4a636277b932d889e9cf04c689fc767e793548af3ebad": {
+                    "dRep": "drep-keyHash-38c5aab5f9bae6266b7f8ca45e3daa133db781d70765713e9edac627",
                     "kind": "DelegVote"
                 },
-                "keyHash-a629af5d732ec59cc92fa0b817e1eb495397fe82637e796b97832b57": {
-                    "dRep": "drep-keyHash-b791625e4ec66b88bf9734f8f9270953504b04c674ad3a3276375af3",
+                "keyHash-5f927b2b1780faa425f4db4a286d7024165e323b85a2e2ea46367451": {
+                    "dRep": "drep-keyHash-77ebd787b349ad2ce3c391b2bd9362c91c14a30f13865c3d23798401",
                     "kind": "DelegVote"
                 },
-                "keyHash-dc010bfc8f542d014083f1fb043c2ff2dfcb7f38f13291a521608762": {
-                    "dRep": "drep-keyHash-f7c953cfcac7ffd179fc71f5e3636ea5ee37727992cfd38e923c8a27",
+                "keyHash-6d893d904bbd6abb0de9e603956c92457c061c8f6afa2b70a6763c21": {
+                    "dRep": "drep-keyHash-9c36dc3e92faf3bdd9dd4790d7d2197c65b0aebb04443afa647596e6",
                     "kind": "DelegVote"
                 }
             }
         },
         "initialDReps": {
             "data": {
-                "keyHash-03f564f9cfb4f5d320329e19b4fabf6bf146d1a4d27c068c25b89ec0": {
+                "keyHash-38c5aab5f9bae6266b7f8ca45e3daa133db781d70765713e9edac627": {
                     "deposit": 1000000,
                     "expiry": 1000
                 },
-                "keyHash-b791625e4ec66b88bf9734f8f9270953504b04c674ad3a3276375af3": {
+                "keyHash-77ebd787b349ad2ce3c391b2bd9362c91c14a30f13865c3d23798401": {
                     "deposit": 1000000,
                     "expiry": 1000
                 },
-                "keyHash-f7c953cfcac7ffd179fc71f5e3636ea5ee37727992cfd38e923c8a27": {
+                "keyHash-9c36dc3e92faf3bdd9dd4790d7d2197c65b0aebb04443afa647596e6": {
                     "deposit": 1000000,
                     "expiry": 1000
                 }

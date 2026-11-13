@@ -116,11 +116,8 @@ elected. The `conway-v11-coverage` builder takes the cluster to version 11 first
 one member, then proposes the hard fork, which that member, the three DReps and the three pools vote for.
 The unelected member is one that a pending UpdateCommittee proposal names, which is what allows its hot key
 to be authorised. Disabling Scarab's reward-balance, DRep-refund, script-locked-collateral and
-conflicting-committee checks fails exactly the four cases that break them. These corpora were recorded
-from a working tree on `f1f553c1d` with the `refusalcoverage` builder added but not yet committed, hence
-`scarabDirty: true`. The committed functions that build them differ from those that recorded them in
-comments, in naming the setup's change address explicitly (the same address), and in waiting for delegator
-1's first rewards where the recording function refused to build without them.
+conflicting-committee checks fails exactly the cases that break them, the Alonzo and Babbage
+script-locked cases among them, since those eras run the same check.
 
 The Alonzo and Babbage corpora each come from an era-walking cluster stopped in that era. A transaction
 whose execution units exceed `maxTxExecutionUnits` is refused by the node's mempool before the ledger
@@ -134,9 +131,9 @@ translates the validity interval's end (`Alonzo/Rules/Utxo.hs:377-382`; cardano-
 `plutus-forecast-horizon` corpora record what the reference does with such a bound instead. Disabling
 Scarab's Alonzo non-ada-collateral and body-network checks, its Babbage non-ada-collateral check (which
 Conway also runs), and its two protocol-11 switches (the deposit and refund failures, the unelected voters)
-fails exactly the cases that break them. Both corpora were recorded from a clean tree. The Alonzo corpus's
-setup sent its change to the funder key's enterprise address, the committed builder to the funder's base
-address.
+fails exactly the cases that break them. All five corpora were recorded from a clean tree, each at the
+commit its `corpus.json` names. The Alonzo corpus's setup sent its change to the funder key's enterprise
+address, the committed builder to the funder's base address.
 
 These expectations come from the released node's submission path. Separately, the offline
 `UpstreamFreshLedgerConformanceSuite` and `UpstreamMultiLedgerConformanceSuite` use the same production
