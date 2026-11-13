@@ -139,6 +139,11 @@ enum EventKind(val area: Area, val severity: Severity):
   case AcceptError extends EventKind(Area.Net, Severity.Error)
   case ServerStopped extends EventKind(Area.Net, Severity.Notice)
   case ServerError extends EventKind(Area.Net, Severity.Critical)
+  // the node-to-node server's accept loop, the reference's `Net.Server.Remote` traces of the same
+  // kinds and severities
+  case RemoteAcceptError extends EventKind(Area.Net, Severity.Error)
+  case RemoteServerStopped extends EventKind(Area.Net, Severity.Notice)
+  case RemoteServerError extends EventKind(Area.Net, Severity.Critical)
 
   // the peer governor (G1): the targets, the roots, the moves between temperatures, the sensitive
   // state, the counters, the Genesis State Machine

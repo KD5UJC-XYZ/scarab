@@ -479,14 +479,17 @@ class ServerSuite extends FailsOnUncaught:
     val chain = Chain(Vector(1, 2, 3))
     typed {
       BearerServer
-        .listen[IO, NetworkError](Some(ip"127.0.0.1"), None)((_, error) =>
-          IO(fail(error.toString))
-        ) { (bearer, _) =>
+        .listen[IO, NetworkError](
+          TcpListeners.jdk[IO],
+          Some(ip"127.0.0.1"),
+          None,
+          _ => IO.unit
+        )((_, error) => IO(fail(error.toString))) { (bearer, _) =>
           typed(Served.accept(bearer, magic, handlers(chain))).void
         }
-        .flatMap(bound =>
+        .flatMap(listening =>
           NodeToNode.connect[IO, Bytes](
-            SocketAddress(bound.host, bound.port),
+            SocketAddress(listening.address.host, listening.address.port),
             magic,
             ChainSyncFixtures.rawItem
           )
@@ -516,14 +519,17 @@ class ServerSuite extends FailsOnUncaught:
     val chain = Chain(Vector(1))
     typed {
       BearerServer
-        .listen[IO, NetworkError](Some(ip"127.0.0.1"), None)((_, error) =>
-          IO(fail(error.toString))
-        ) { (bearer, _) =>
+        .listen[IO, NetworkError](
+          TcpListeners.jdk[IO],
+          Some(ip"127.0.0.1"),
+          None,
+          _ => IO.unit
+        )((_, error) => IO(fail(error.toString))) { (bearer, _) =>
           typed(Served.accept(bearer, magic, handlers(chain))).void
         }
-        .flatMap(bound =>
+        .flatMap(listening =>
           NodeToNode.connect[IO, Bytes](
-            SocketAddress(bound.host, bound.port),
+            SocketAddress(listening.address.host, listening.address.port),
             magic + 1,
             ChainSyncFixtures.rawItem
           )

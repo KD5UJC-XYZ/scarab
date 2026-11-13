@@ -30,6 +30,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ValidationError
 }
 import xyz.kd5ujc.scarab.network.{
+  BearerServer,
   ConnectionEnd,
   ConnectionError,
   ConnectionEvent,
@@ -342,6 +343,15 @@ object LogSamples:
     LocalServer.Trace.AcceptError(exhausted),
     LocalServer.Trace.ServerStopped,
     LocalServer.Trace.ServerError(DiffusionFailure.System(exhausted))
+  )
+
+  /** The node-to-node server's accept loop: an accept that failed, the server stopped and ended by
+    * that error.
+    */
+  val remoteServer: List[BearerServer.Trace] = List(
+    BearerServer.Trace.AcceptError(exhausted),
+    BearerServer.Trace.ServerStopped,
+    BearerServer.Trace.ServerError(DiffusionFailure.System(exhausted))
   )
 
   /** A directory where the socket should be, as the reference names it. */

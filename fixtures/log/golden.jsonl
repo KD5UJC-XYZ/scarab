@@ -27,6 +27,9 @@
 {"event":"acceptError","at":"2026-10-16T12:00:00Z","reason":"Network.Socket.accept: resource exhausted (No file descriptors available)"}
 {"event":"serverStopped","at":"2026-10-16T12:00:00Z"}
 {"event":"serverError","at":"2026-10-16T12:00:00Z","reason":"Network.Socket.accept: resource exhausted (No file descriptors available)"}
+{"event":"remoteAcceptError","at":"2026-10-16T12:00:00Z","reason":"Network.Socket.accept: resource exhausted (No file descriptors available)"}
+{"event":"remoteServerStopped","at":"2026-10-16T12:00:00Z"}
+{"event":"remoteServerError","at":"2026-10-16T12:00:00Z","reason":"Network.Socket.accept: resource exhausted (No file descriptors available)"}
 {"event":"socketConfigError","at":"2026-10-16T12:00:00Z","error":"LocalSocketError \"/ipc/node.socket\" /ipc/node.socket: removeLink: inappropriate type (Is a directory)"}
 {"event":"diffusionErrored","at":"2026-10-16T12:00:00Z","error":"Network.Socket.bind: does not exist (No such file or directory)"}
 {"event":"listening","at":"2026-10-16T12:00:00Z","address":"0.0.0.0:3001"}
