@@ -141,7 +141,7 @@ of an enum label that never happened are absent, except `scarab_era` (written fo
 `served_header_counter` and `served_block_latest_counter` (what the node served to peers; the `sessions` of
 `GET /connections` count the headers our hot sessions received, not those served), `utxoSize_int` and `delegMapSize_int` (see
 `scarab_ledger_utxo_entries` for the UTxO set, once per epoch), `blockReplayProgress_real`, `txsSyncDuration*`,
-`tipBlock` and `basicInfo`, `inboundGovernor_*`, the `blockfetchclient_*` series (see
+`tipBlock` and `basicInfo`, the `blockfetchclient_*` series (see
 `scarab_blockfetch_seconds`), the GHC runtime's `RTS_*`, `rts_gc_*`, `Mem_*` and `Stat_*`, and
 `Forge_adoption_thread_died_counter`, whose trace cannot happen here (the forged block is adopted in the
 forging fiber itself).
@@ -233,6 +233,10 @@ section and the catalogue differ.
 | `cardano_node_metrics_connectionManager_inboundConns_int` | gauge |  | Connections in inbound use, whoever opened them: an accepted one not yet negotiated, `InboundIdle`, `Inbound` and `Duplex` (`connectionStateToCounters`). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_connectionManager_outboundConns_int` | gauge |  | Connections in outbound use, whoever opened them: a dialled one not yet negotiated, `OutboundUni`, `OutboundDup`, `OutboundIdle` and `Duplex`; a reservation counts in neither. | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_connectionManager_duplexConns_int` | gauge |  | Connections that negotiated duplex, in use or idle (`OutboundDup`, `Duplex`, and a duplex `InboundIdle`, `Inbound` or `OutboundIdle`). | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_inboundGovernor_idle_int` | gauge |  | Connections the inbound governor tracks on which the peer runs none of our responders, with the protocol idle timer armed (`RemoteIdle`): accepted ones and duplex ones we dialled. | same name; `inboundGovernor_*` scraped from 11.1.3, the name from `asMetrics` (`Ouroboros/Network/Tracing/InboundGovernor.hs` 36-49, ouroboros-network `2fb69829`) |
+| `cardano_node_metrics_inboundGovernor_cold_int` | gauge |  | Tracked connections the peer left idle past the timeout, kept because our outbound side uses them (`RemoteCold`). | same name; as `inboundGovernor_idle_int` |
+| `cardano_node_metrics_inboundGovernor_warm_int` | gauge |  | Tracked connections on which the peer runs our responders, none of them hot (`RemoteWarm`: KeepAlive, PeerSharing). | same name; as `inboundGovernor_idle_int` |
+| `cardano_node_metrics_inboundGovernor_hot_int` | gauge |  | Tracked connections on which the peer runs a hot responder of ours (`RemoteHot`: ChainSync, BlockFetch, TxSubmission2). | same name; as `inboundGovernor_idle_int` |
 | `scarab_connections` | gauge | `state` | Connections the connection manager knows, by state. | none |
 | `scarab_connection_events_total` | counter | `event` | What the connection manager did. | none |
 | `scarab_inbound_events_total` | counter | `event` | What the inbound governor did on accepted connections. | none |

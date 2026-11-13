@@ -199,6 +199,33 @@ class LedgerPeersSuite extends ScalaCheckSuite:
     assertEquals(first ++ second, maps.draw[Big](20, seed)._2)
   }
 
+  // `randomR (0, NonEmpty.length relays - 1)` on an `Int` (`LedgerPeers.hs` 188 and 207,
+  // ouroboros-network `2fb69829`) is `uniformR`: no word for one relay, a masked word otherwise
+  test("a pool of one relay takes no word for its relay; each draw takes only its stake word") {
+    val maps = LedgerPeerStake.fromLedger(Vector(pool(r(1), "only")))
+    val (after, picked) = maps.draw[All](3, seed)
+    assertEquals(picked, Vector("only", "only", "only"))
+    assertEquals(after, seed.nextLong._2.nextLong._2.nextLong._2)
+  }
+
+  test("the relay index of three relays is the word's low two bits, a 3 drawn again") {
+    val maps = LedgerPeerStake.fromLedger(Vector(pool(r(1), "r0", "r1", "r2")))
+    def words(g: Rng) = Iterator.iterate(g.nextLong)((_, n) => n.nextLong)
+    // a generator whose word after the stake word has both low bits set
+    val rejecting = Iterator
+      .from(0)
+      .map(i => Rng(i.toLong))
+      .find(g => (words(g).drop(1).next()._1 & 3L) == 3L)
+    assert(rejecting.isDefined)
+    rejecting.foreach { g =>
+      val taken = words(g).drop(1).map((w, n) => (w & 3L, n)).find(_._1 != 3L)
+      assertEquals(
+        taken.map((index, rest) => (rest, Vector(s"r$index"))),
+        Some(maps.draw[All](1, g))
+      )
+    }
+  }
+
   test("prop_pick100: a pool with all the stake is always picked") {
     val withZero =
       Vector.tabulate(5)(i => pool(Rational.zero, s"zero$i")) :+ pool(Rational.one, "all")

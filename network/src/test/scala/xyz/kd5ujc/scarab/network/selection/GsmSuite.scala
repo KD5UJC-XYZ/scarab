@@ -77,6 +77,19 @@ class GsmSuite extends FunSuite:
     assertEquals((left.state.phase, left.mark), (Phase.PreSyncing, Some(false)))
   }
 
+  // `uniformR (0, 300 :: Int)` (`GSM.hs` 327-332, ouroboros-consensus `82ecba32`): the word masked
+  // to nine bits, a value past 300 drawn again, where a remainder would have kept it
+  test("the bonus is uniformR's: nine bits of the word, a value past 300 drawn again") {
+    def words(seed: Long) = Iterator.iterate(Rng(seed).nextLong)((_, g) => g.nextLong)
+    val rejecting = Iterator.from(0).map(_.toLong).find(s => (words(s).next()._1 & 511L) > 300L)
+    assert(rejecting.isDefined)
+    rejecting.foreach { s =>
+      val taken = words(s).map((w, g) => (w & 511L, g)).find(_._1 <= 300L)
+      val st = Gsm.initial(false, None, Duration.Zero, seed = s)
+      assertEquals(Some((st.bonus, st.rng)), taken.map((b, g) => (b.seconds, g)))
+    }
+  }
+
   test("caught up leaves when the tip is older than the limit plus the bonus, once per selection") {
     val up = Gsm.step(syncing, reading(), Duration.Zero, config).state
     val at = 21.minutes
