@@ -62,6 +62,9 @@ object TxKit:
     * @param bootstraps
     *   bootstrap witnesses `[vkey, signature, chain code, attributes]`: each key signs the body,
     *   with the chain code and attributes given.
+    * @param invalidBootstraps
+    *   the indexes of `bootstraps` whose key signs other bytes than the body's hash, so that the
+    *   signature does not verify.
     */
   def tx(
       inputs: Vector[TxIn],
@@ -75,7 +78,8 @@ object TxKit:
       exUnits: Option[(BigInt, BigInt)] = None,
       certificates: Vector[Byte] = Vector.empty,
       referenceInputs: Vector[TxIn] = Vector.empty,
-      bootstraps: Vector[(Key, Bytes, Bytes)] = Vector.empty
+      bootstraps: Vector[(Key, Bytes, Bytes)] = Vector.empty,
+      invalidBootstraps: Set[Int] = Set.empty
   ): (Bytes, Bytes) =
     def inputList(of: Vector[TxIn]): Vector[Byte] =
       head(4, of.size) ++ of.flatMap(i => head(4, 2) ++ bstr(i.id) ++ head(0, i.index))
@@ -117,8 +121,10 @@ object TxKit:
     val bootstrapWitnesses =
       if bootstraps.isEmpty then Vector.empty[Byte]
       else
-        Vector(0x02.toByte) ++ head(4, bootstraps.size) ++ bootstraps.flatMap { (k, code, attrs) =>
-          head(4, 4) ++ bstr(k.vkey) ++ bstr(k.sign(id)) ++ bstr(code) ++ bstr(attrs)
+        Vector(0x02.toByte) ++ head(4, bootstraps.size) ++ bootstraps.zipWithIndex.flatMap {
+          case ((k, code, attrs), i) =>
+            val signed = if invalidBootstraps(i) then Blake2b.hash256.hash(id) else id
+            head(4, 4) ++ bstr(k.vkey) ++ bstr(k.sign(signed)) ++ bstr(code) ++ bstr(attrs)
         }
     val witnesses =
       head(5, 1 + (if bootstraps.isEmpty then 0 else 1) + exUnits.size) ++ Vector(0x00.toByte) ++

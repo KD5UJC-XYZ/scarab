@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-13",
+  "scope": "Unchanged released decoders: decodeFullAnnotator of the Tx of each era from Shelley to Conway at its eraProtVerLow (2, 3, 4, 5, 7, 9), and of its TxWits at each decoder version from the era's to 12, holding bootstrap witnesses of one address root with real Ed25519 signatures, valid and invalid, and the controls; for an accepted case, the bootstrapWitKeyHash and encCBOR of each bootstrap witness and the encCBOR of each vkey witness the sets kept, and for a transaction the result of the released validateVerifiedWits; no ledger state, other rule or script is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+  "packages": {
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-ledger-shelley": "1.19.0.1",
+    "cardano-ledger-alonzo": "1.16.0.0",
+    "cardano-ledger-babbage": "1.14.0.0",
+    "cardano-ledger-conway": "1.23.0.0",
+    "cardano-crypto-class": "2.5.1.0",
+    "cborg": "0.2.10.0",
+    "containers": "0.7"
+  },
+  "sourceFiles": {
+    "bootstrap": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Bootstrap.hs",
+      "sourceSha256": "4d6554e046237e4f0dcbbf5d99ba3485a399b77ccbeb2ebc043a1dc80e71d94e",
+      "matchesPin": true,
+      "note": "Ord BootstrapWitness compares bootstrapWitKeyHash alone (108-109); bootstrapWitKeyHash (112-146); verifyBootstrapWit (161-169); the same file at 048b78d2807ce9644dbe483c605625824f6be88f and in the released cardano-ledger-core 1.21.0.0 the harness runs"
+    },
+    "witVKey": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/WitVKey.hs",
+      "sourceSha256": "dfa5643aa3f042e2b743e52a009fa62dcdba0a572c0858abba479907e60afcd5",
+      "matchesPin": true,
+      "note": "Ord (WitVKey kr) compares the key hash, then the signature's hash (58-68); the same file at 048b78d2807ce9644dbe483c605625824f6be88f and in the released cardano-ledger-core 1.21.0.0 the harness runs"
+    },
+    "shelleyTxWits": {
+      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxWits.hs",
+      "sourceSha256": "b7ec7a46db38693dfaaa191d48bc79ad59231159376a31146b1d85f79d1b287b",
+      "matchesPin": true,
+      "note": "keys 0 and 2 read with Set.fromList <$> decodeList decCBOR at every version (234-249); the same file at 048b78d2807ce9644dbe483c605625824f6be88f and in the released cardano-ledger-shelley 1.19.0.1 the harness runs"
+    },
+    "alonzoTxWits": {
+      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+      "sourceSha256": "d905a1b5f7fbc11686b1efab5dbb76f9dc8462567959340a21d2611ad72ea2dc",
+      "matchesPin": true,
+      "note": "addrWitsSetDecoder: Set.fromList . NE.toList <$> decodeNonEmptyList from version 9, decodeNonEmptySetLikeEnforceNoDuplicates from 12; Set.fromList <$> decodeList below 9 (613-668); the same file at 048b78d2807ce9644dbe483c605625824f6be88f and in the released cardano-ledger-alonzo 1.16.0.0 the harness runs"
+    },
+    "decoder": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+      "sourceSha256": "3ff3541b2900ceaab9bda26f633d7ea5118a49f5faab3936d036cfe9b49f94cc",
+      "matchesPin": true,
+      "note": "decodeList, decodeNonEmptyList (547-561); decodeListLikeEnforceNoDuplicates to decodeNonEmptySetLikeEnforceNoDuplicates (1043-1107); this file differs from 048b78d2 (the released cardano-ledger-binary 1.9.1.0) only in decodeIPv4"
+    },
+    "shelleyUtxow": {
+      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxow.hs",
+      "sourceSha256": "3f0f21023373beb1f07bed83cd21ad172902237ba0808d357147568636760a90",
+      "matchesPin": true,
+      "note": "validateVerifiedWits (391-407), run on the signal (309); validateNeededWitnesses, a subset test (409-423); the same file at 048b78d2807ce9644dbe483c605625824f6be88f and in the released cardano-ledger-shelley 1.19.0.1 the harness runs"
+    },
+    "babbageUtxow": {
+      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxow.hs",
+      "sourceSha256": "fed6595957ba9e00a61f11e3a998c98eef0d1ba0d37112a0bff1f074c21d369f",
+      "matchesPin": true,
+      "note": "babbageUtxowTransition runs validateVerifiedWits (366) and validateNeededWitnesses (369); Conway's UTXOW runs it (Conway/Rules/Utxow.hs:198); the same file at 048b78d2807ce9644dbe483c605625824f6be88f and in the released cardano-ledger-babbage 1.14.0.0 the harness runs"
+    }
+  },
+  "harness": {
+    "file": "scripts/oracle/conway-decoding/Main.hs",
+    "sha256": "bb71bcbaaf6855489e4702951de2ce35c18dd0495df8a45b65979b1d28dd62ac",
+    "image": "scarab-conway-decoding:local built from scripts/oracle/conway-decoding/Dockerfile on scarab-plutus176-context-reference:local (run under another local tag, image sha256:27ffa052da888f1ba593af6b9b203fbe34134bc83281a1367617d365a6694228)",
+    "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-conway-decoding:local /fixtures/bootstrap-duplicates-inputs.json",
+    "unchanged": false,
+    "change": "The flag 'kept' (an accepted witness set or transaction reports the encCBOR of each vkey and bootstrap witness its sets hold), the flag 'verify' (an accepted transaction reports the result of the released validateVerifiedWits and the keys it found invalid), and a case's decoderVersion replacing the era's for a witness set or transaction are added; the decoders and the rule function are the released ones, and the bootstrap-chain-codes, tx-envelope and delegation-hashes inputs replayed through this harness give those corpora's committed cases.jsonl byte for byte"
+  },
+  "devnet": {
+    "node": "cardano-node 11.1.3, git rev 938cba990357ae7c4b7f95c8f75dd9d31174bbeb (scripts/devnet.py up, Conway, protocol version 10)",
+    "result": "a payment with an invalid then a valid bootstrap witness of one root (no input needing it) was admitted and reached a block; the same with the witnesses the other way round, and with the invalid one alone, was refused with InvalidWitnessesUTXOW naming the bootstrap key",
+    "artifactsPublished": false
+  },
+  "generatorSha256": "c5e4f9b48068f2ab995c2217282310d52ffe61572a2ab5a9c05027eb38a1c322",
+  "harnessInputSha256": "2acc1098465b5a11ba954c705f8af5ad5acc1f0d15200520b96ed78db6d78db7",
+  "harnessOutputSha256": "bad6e3ae738cde28d9d1ceab7d97cdf64a12f6902427845aa8270c1c441a3a6b",
+  "casesSha256": "8b799122914237db8803629b4f58231a0cb4a99ea0704b027efee0dcab3177bd",
+  "cases": 312,
+  "accepted": 306,
+  "refused": 6,
+  "transactions": 168,
+  "verified": 90,
+  "notVerified": 78,
+  "originalBytesRetained": true,
+  "network": "none",
+  "keysRetained": false
+}

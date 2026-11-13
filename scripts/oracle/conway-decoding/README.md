@@ -127,3 +127,14 @@ from 2 to 12. A case of kind "bootstrap" is read alone with `DecCBOR BootstrapWi
 `decoderVersion`, and a case with `bootstraps` set also reports the `bootstrapWitKeyHash` of each
 bootstrap witness it holds. Its recipe is the one above with `bootstrap_chain_code_cases.py`,
 `/tmp/bootstrap-chain-codes-inputs.json` and `fixtures/reference/bootstrap-chain-codes/cases.jsonl`.
+
+The [bootstrap duplicates corpus](../../../fixtures/reference/bootstrap-duplicates/README.md) runs on
+the same harness, its cases from `bootstrap_duplicate_cases.py`: whole transactions of every era from
+Shelley to Conway whose bootstrap witnesses share an address root and differ in their signatures,
+valid and invalid, in each order, and the witness set alone at each decoder version from the era's to
+12. A case with `kept` set also reports the `encCBOR` of each vkey and bootstrap witness the sets of
+an accepted witness set or transaction hold, in the order of each set; a transaction with `verify`
+set also reports the result of the released `validateVerifiedWits` on it and the keys it found
+invalid; and a `decoderVersion` given to a case read with `ids` replaces the era's version. Its
+recipe is the one above with `bootstrap_duplicate_cases.py`, `/tmp/bootstrap-duplicates-inputs.json`
+and `fixtures/reference/bootstrap-duplicates/cases.jsonl`.

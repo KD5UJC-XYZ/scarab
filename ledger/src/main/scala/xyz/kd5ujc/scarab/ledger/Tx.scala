@@ -579,6 +579,21 @@ final case class BootstrapWitness(
     Blake2b.hash224.hash(Bytes.fromArray(sha3))
 
 object BootstrapWitness:
+  /** The witnesses a set of bootstrap witnesses holds: `Set.fromList` of every witness read, in the
+    * order written (from Shelley's `Set.fromList <$> decodeList decCBOR` to Conway's
+    * `decodeNonEmptyList`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxWits.hs:246-249` and
+    * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs:613-668`, cardano-ledger f649f975) under
+    * `Ord BootstrapWitness`, which compares the address roots alone
+    * (`libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Bootstrap.hs:108-109`). Of the witnesses
+    * with one root, which differ in their signatures or in how their chain code and attributes
+    * split the hashed bytes, the set keeps the last one read (`Data.Set.insert` replaces an equal
+    * element), even when a copy of another of them came before it, and it holds them in the order
+    * of their roots. Only the kept witnesses' signatures are checked (`validateVerifiedWits`,
+    * `Shelley/Rules/Utxow.hs:391-407`).
+    */
+  def set(read: Vector[BootstrapWitness]): Vector[BootstrapWitness] =
+    read.reverse.distinctBy(_.addressRoot).sortBy(_.addressRoot)
+
   /** `DecCBOR ChainCode` (`libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Bootstrap.hs:72-78`,
     * cardano-ledger f649f975): a byte string of any length, which must be 32 bytes from decoder
     * version 12 (`whenDecoderVersionAtLeast (natVersion @12)`). Shelley to Conway are read at 2 to
@@ -631,6 +646,8 @@ object Witnesses:
     * twice fails; duplicate vkeys, native scripts, datums and redeemer keys are tolerated
     * (cardano-ledger `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs` at f649f975,
     * `addrWitsSetDecoder`, `nativeScriptsDecoder`, `scriptDecoderV9`, `TxDatsRaw`, `RedeemersRaw`).
+    * In every era the bootstrap witnesses of one address root are one, the last read
+    * ([[BootstrapWitness.set]]).
     */
   def decode(raw: Bytes, era: Era): Either[LedgerDecodeError, Witnesses] =
     LedgerDecodeError.implemented(era) *>
@@ -680,16 +697,22 @@ object Witnesses:
       bootstrap <- f
         .get(2)
         .traverse(
-          CborRead.tolerantSet(_, DecodeField.BootstrapWitnesses, version) { w =>
-            CborRead.arrayN(w, 4, DecodeField.BootstrapWitness).flatMap { xs =>
-              (
-                CborRead.bytesN(xs(0), 32, DecodeField.BootstrapVkey),
-                CborRead.bytesN(xs(1), 64, DecodeField.BootstrapSignature),
-                BootstrapWitness.chainCode(xs(2), version),
-                CborRead.bytes(xs(3), DecodeField.Attributes)
-              ).mapN(BootstrapWitness(_, _, _, _))
-            }
-          }
+          // the list as `tolerantSet` reads it but with every witness kept for `BootstrapWitness.set`:
+          // dropping a repeated copy first would change which witness of a root is the last
+          CborRead
+            .list(_, DecodeField.BootstrapWitnesses, version)
+            .flatMap(CborRead.nonEmpty(_, DecodeField.BootstrapWitnesses, strict))
+            .flatMap(_.traverse { w =>
+              CborRead.arrayN(w, 4, DecodeField.BootstrapWitness).flatMap { xs =>
+                (
+                  CborRead.bytesN(xs(0), 32, DecodeField.BootstrapVkey),
+                  CborRead.bytesN(xs(1), 64, DecodeField.BootstrapSignature),
+                  BootstrapWitness.chainCode(xs(2), version),
+                  CborRead.bytes(xs(3), DecodeField.Attributes)
+                ).mapN(BootstrapWitness(_, _, _, _))
+              }
+            })
+            .map(BootstrapWitness.set)
         )
       plutus = (tag: Int, kind: ScriptKind) =>
         f.get(tag)

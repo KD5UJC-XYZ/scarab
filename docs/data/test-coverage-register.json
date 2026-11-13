@@ -701,6 +701,25 @@
       "candidateRequired": true
     },
     {
+      "id": "bootstrap-witness-duplicate-roots",
+      "classification": "regression",
+      "status": "covered",
+      "scope": "312 cases: 28 whole transactions of each era from Shelley to Conway whose bootstrap witnesses share an address root and differ in their signatures (valid and invalid, in each order, among witnesses of lower and higher roots, with a witness repeated byte for byte around another of its root, and with the chain code and attributes splitting the same bytes differently), with the controls of two roots, one witness twice and two vkey witnesses of one key; and the witness set alone at each decoder version from the era's to 12.",
+      "assertion": "Witnesses.decode and Tx.fromEnvelope keep, on every line read at its era's version, the bootstrap witnesses the reference's set kept (the last of each root, in the order of the roots) with its address roots, and the vkey witnesses it kept; TxChecks.verifiedWits gives the verdict and the invalid keys of the reference's validateVerifiedWits. The mempool (local and remote) admits a payment with an invalid then a valid bootstrap witness of one root and refuses the other order with InvalidWitnesses.",
+      "rationale": "The reference reads bootstrap witnesses into a Set whose Ord compares bootstrapWitKeyHash alone (cardano-ledger f649f975 Keys/Bootstrap.hs:108-109; Shelley/TxWits.hs:246-249, Alonzo/TxWits.hs:613-668), and checks the signature of the witness it kept (Shelley/Rules/Utxow.hs:391-407). The kept witnesses and verdicts are receipts of the unchanged released decoders and rule function (cardano-ledger-core 1.21.0.0, cardano-ledger-shelley 1.19.0.1, cardano-ledger-alonzo 1.16.0.0, cardano-ledger-binary 1.9.1.0); versions with no Scarab reader are the reference's alone.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Retain the original encodings, the complete reference failures, the kept witnesses and the signature verdicts.",
+      "evidence": [
+        "fixtures/reference/bootstrap-duplicates/README.md",
+        "fixtures/reference/bootstrap-duplicates/provenance.json",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/BootstrapDuplicatesReferenceSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/BootstrapDuplicateSubmissionSuite.scala",
+        "scripts/oracle/conway-decoding/bootstrap_duplicate_cases.py"
+      ],
+      "candidateRequired": true
+    },
+    {
       "id": "bootstrap-chain-code-lengths",
       "classification": "regression",
       "status": "covered",
