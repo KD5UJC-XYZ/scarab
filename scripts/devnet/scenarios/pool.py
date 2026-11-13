@@ -343,6 +343,8 @@ def pool(args):
         program += ["--local-socket", "/ipc/node.socket"]
         for n in others:
             program += ["--peer", f"127.0.0.1:{ports[n]}"]
+        if getattr(args, "plutus_vm", None):
+            program += ["--plutus-vm", args.plutus_vm]
         program += args.scala_flags.split()
         command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
                                   mounts=[f"{root / 'genesis'}:/genesis:ro", *database_mounts(db), f"{root / 'keys'}:/keys",
@@ -479,6 +481,7 @@ def pool(args):
         matched = [c for c in comparisons if c.get("matched")]
         disabled = toggle.excluded(lambda at: slot_at(shelley, at)) if toggle else None
         oracle = missed_leader_slots(events, schedules, shelley, excluded=disabled)
+        vm = next((e.get("vm") for e in events if e["event"] == "plutusVm"), None)
         summary = {
             "oracle": oracle,
             "pool": {"id": pool_id, "number": ours, "stakeFraction": round(sigma, 4)},
@@ -511,6 +514,7 @@ def pool(args):
             "scheduling": scheduling_summary(events, log, args),
             "slotClock": slot_clock(events, shelley),
             "forgerStats": forging_stats,
+            "plutusVm": vm,
         }
         if forging_stats:
             total = forging_stats["total"]
@@ -548,6 +552,8 @@ def pool(args):
                             f"the Haskell ledger counts {haskell_count}")
         if not txs:
             failures.append("no transaction was included in a Scala-forged block")
+        if getattr(args, "plutus_vm", None) and vm != args.plutus_vm:
+            failures.append(f"the Scala node logged the Plutus evaluator {vm!r}, the run asked for {args.plutus_vm!r}")
         if len(relative) < 2:
             failures.append("the KES key stayed in one period")
         if not (all(final.values()) and len({t["hash"] for t in final.values()}) == 1):

@@ -196,8 +196,8 @@ def main():
     ac.set_defaults(run=assemble)
     e2 = sub.add_parser("e2e", parents=[eras_options(), scala_options],
                         help="up-eras, follow from Origin, assert every era and transition")
-    plutus_vm_help = ("the Scala node's Plutus evaluator (default: the node's, scalus); the forging scenarios do "
-                      "not take it, as the node refuses --forge with scarab")
+    plutus_vm_help = ("the Scala node's Plutus evaluator, for its block rules, its mempool and, in the forging "
+                      "scenarios, its forger (default: the node's, scalus)")
     e2.add_argument("--plutus-vm", choices=PLUTUS_VMS, action="append", default=None,
                     help=plutus_vm_help + ". Given more than once (`--plutus-vm scalus --plutus-vm scarab`), the run "
                          "has one follower per evaluator, each with a container, log, sockets and ports of its own "
@@ -349,6 +349,7 @@ def main():
         pl.add_argument("--interval", type=float, default=0.5, help="load generator pause between transactions")
         pl.add_argument("--min-comparisons", type=int, default=5, help="matched ledger comparisons required")
         pl.add_argument("--scala-flags", default="", help="extra flags for the Scala node, e.g. '--header-first off' (to compare builds or settings)")
+        pl.add_argument("--plutus-vm", choices=("scalus", "scarab"), default=None, help=plutus_vm_help)
         pl.add_argument("--keep", action="store_true", help="leave the cluster running")
 
     pl = sub.add_parser("pool", parents=[scala_options], help="the Scala node as a block-producing pool among two Haskell pools")
