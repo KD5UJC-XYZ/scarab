@@ -229,6 +229,41 @@ class ByronLedgerSuite extends ScalaCheckSuite:
     assert(apply(forged).left.exists(_.isInstanceOf[ByronError.WrongKey]))
   }
 
+  test("the address root covers the attributes encoded again, not as written") {
+    // `checkAddrSpendingData` hashes `Address' (addrType, spendingData, addrAttributes addr)`
+    // (cardano-ledger f649f975, `Cardano/Chain/Common/Address.hs:306-313`, `AddressHash.hs:16-25`):
+    // the decoded attributes encoded again by `encCBORAttributes` (`Attributes.hs:192-196`,
+    // `AddrAttributes.hs:96-119`) at `byronProtVer`, a map with a minimal head
+    // (`exactMapLenEncoding`, cardano-ledger-binary 048b78d2, `Encoding/Encoder.hs:397-430`) and
+    // minimal keys and lengths. The written maps are those of two addresses the reference decodes
+    // in `fixtures/reference/conway-decoding` ("attribute map with a wide key and length",
+    // "unknown attribute kept with a wide length").
+    val carol = key(4)
+    val maps = Vector(
+      ByronCbor.of(0xb8, 0x01, 0x18, 0x01, 0x42, 0x41, 0x01) -> ByronCbor.of(0xa1, 0x01, 0x42, 0x41,
+        0x01),
+      ByronCbor.of(0xa1, 0x05, 0x58, 0x02, 0x01, 0x02) -> ByronCbor.of(0xa1, 0x05, 0x42, 0x01, 0x02)
+    )
+    def rootOver(attributes: Bytes) =
+      ByronCbor.addressHash(
+        Cb.arr(Cb.uint(0), Cb.arr(Cb.uint(0), Cb.bytes(carol.extended)), attributes)
+      )
+    def address(root: Bytes, attributes: Bytes) =
+      val body = Cb.arr(Cb.bytes(root), attributes, Cb.uint(0))
+      Cb.arr(Cb.tag24(body), Cb.uint(ByronCbor.crc32(body)))
+    def spend(addr: Bytes) =
+      val in = addrIn(addr)
+      val a = aux(config, Seq((in, carol, false)), Seq(bobAddr -> 1000000))
+      (in, apply(a, utxo0.updated(in, ByronOut(addr, 10000000))).map(_ => ()))
+    maps.foreach { (written, canonical) =>
+      val canonicalRoot = address(rootOver(canonical), written)
+      assertEquals(ByronAddress.decode(canonicalRoot).map(_.attributes), Right(written))
+      assertEquals(spend(canonicalRoot)._2, Right(()), written.hex)
+      val (in, verdict) = spend(address(rootOver(written), written))
+      assertEquals(verdict, Left(ByronError.WrongKey(in)), written.hex)
+    }
+  }
+
   test("a signature over other content is refused") {
     val good = spendAlice(Seq(bobAddr -> 1000000, aliceAddr -> 50000000))
     val witness = good.witnesses.head match

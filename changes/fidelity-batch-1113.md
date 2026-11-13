@@ -6,3 +6,7 @@
 - A Byron transaction's outputs past the first 65,536 enter neither the UTxO nor its output
   balance, as the reference's `txOutputUTxO` indexes them with a `Word16`; every output's network
   magic and attributes are still checked.
+- A Byron input's witness key is checked against the address root over the address's attributes
+  encoded again with minimal heads and lengths, as the reference's `checkAddrSpendingData` does,
+  where the attributes were hashed as written. Shelley-era bootstrap witnesses still hash their
+  own attribute bytes as written.

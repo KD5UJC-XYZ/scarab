@@ -66,12 +66,14 @@ object ByronCbor:
 
 /** A decoded Byron address. `raw` is its CBOR encoding (the byte string a genesis balance, a
   * transaction output or a Shelley output carries), `attributes` the original encoding of its
-  * attribute map, which the address root covers.
+  * attribute map, and `canonicalAttributes` that map encoded again as the reference encodes it,
+  * which the address root covers.
   */
 final case class ByronAddress(
     raw: Bytes,
     root: Bytes,
     attributes: Bytes,
+    canonicalAttributes: Bytes,
     addrType: Int,
     networkMagic: Option[Long],
     unknownAttributesLength: Int,
@@ -90,9 +92,12 @@ final case class ByronAddress(
   def network: Int = if networkMagic.isEmpty then 1 else 0
 
   /** The root `blake2b-224(sha3-256([type, [type, key], attributes]))` of an address that is spent
-    * by `key` (64 bytes for a verification key, 32 for a redeem key).
+    * by `key` (64 bytes for a verification key, 32 for a redeem key), over the attributes encoded
+    * again: `checkAddrSpendingData` hashes `Address' (addrType addr, asd, addrAttributes addr)`,
+    * the decoded attributes, whatever widths they were written in (cardano-ledger f649f975,
+    * `Cardano/Chain/Common/Address.hs:306-313`, `AddressHash.hs:16-25`).
     */
-  def rootFor(key: Bytes): Bytes = ByronAddress.rootOf(addrType, key, attributes)
+  def rootFor(key: Bytes): Bytes = ByronAddress.rootOf(addrType, key, canonicalAttributes)
 
   /** `checkVerKeyAddress` / `checkRedeemAddress`: the key (of the right kind) hashes to the root.
     */
@@ -119,6 +124,21 @@ object ByronAddress:
     ByronTransport
       .attributes(n, what)
       .flatMap(_.traverse((k, v) => CborRead.bytes(v, what).map(k -> _)))
+
+  /** An address's attribute map as the reference encodes `Attributes AddrAttributes`
+    * (`encCBORAttributes`, cardano-ledger f649f975, `Cardano/Chain/Common/Attributes.hs:192-196`,
+    * and `AddrAttributes.hs:96-119`, at `byronProtVer`): a definite map with a minimal head
+    * (`encodeMap`'s `exactMapLenEncoding` below version 2, cardano-ledger-binary 048b78d2,
+    * `Encoding/Encoder.hs:397-430`), the keys in ascending order and minimal, each value a byte
+    * string with a minimal length. The values are those read: the derivation path and the network
+    * magic are read only in their canonical encodings, which `serialize` writes again, and the
+    * other attributes are kept as bytes.
+    */
+  private def canonicalAttributes(fields: Vector[(BigInt, Bytes)]): Bytes =
+    ByronCbor.concat(
+      ByronCbor.mapHead(fields.size) +:
+        fields.flatMap((k, v) => Vector(ByronCbor.uint(k), ByronCbor.bytes(v)))*
+    )
 
   /** The total length of the values of attributes the ledger does not interpret. */
   private def unknownLength(fields: Vector[(BigInt, Bytes)], known: Set[Int]): Int =
@@ -188,6 +208,7 @@ object ByronAddress:
       raw,
       addrRoot,
       parts(1).original,
+      canonicalAttributes(fields),
       ty,
       magic,
       unknownLength(fields, Set(1, 2)),
@@ -205,20 +226,11 @@ object ByronAddress:
   def reencoded(raw: Bytes): Either[LedgerDecodeError, Bytes] =
     val size = raw.size.max(1)
     val limits = Cbor.Limits(size, Int.MaxValue, size, size)
-    for
-      address <- decode(raw, limits)
-      fields <- CborRead
-        .decode(address.attributes, limits)
-        .flatMap(attributeFields(_, DecodeField.ByronAddressAttributes))
-    yield
-      val attributes = ByronCbor.concat(
-        ByronCbor.mapHead(fields.size) +:
-          fields.flatMap((k, v) => Vector(ByronCbor.uint(k), ByronCbor.bytes(v)))*
-      )
+    decode(raw, limits).map { address =>
       val body = ByronCbor.concat(
         ByronCbor.of(0x83),
         ByronCbor.bytes(address.root),
-        attributes,
+        address.canonicalAttributes,
         ByronCbor.uint(address.addrType)
       )
       ByronCbor.concat(
@@ -226,6 +238,7 @@ object ByronAddress:
         ByronCbor.bytes(body),
         ByronCbor.uint(ByronCbor.crc32(body))
       )
+    }
 
   /** The address that `key` spends (a 64-byte extended key for `VerKey`, 32 bytes for `Redeem`) on
     * a network: `networkMagic` is carried as attribute 2 on networks that require one. This is the
