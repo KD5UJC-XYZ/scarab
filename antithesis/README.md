@@ -30,7 +30,8 @@ Each reads on from where the last pass in the timeline stopped. The properties, 
 - unreachable: a Haskell pool never refuses a block as invalid (its `ChainSync.Client.Exception` trace
   `InvalidBlock (Point ...`). Before blaming s1, check which pool forged the block;
 - unreachable: Scarab never refuses a block as invalid (`scarab_validation_errors_total` on s1's metrics);
-- unreachable: Scarab never logs a `fatal` event.
+- unreachable: Scarab never logs a `fatal` event, other than the stop for a clock moved back more than
+  `Forger.MaxClockRewind`, which cardano-node makes too and Antithesis's clock skips can cause.
 
 There is no `always` on the tips: at k = 5 a partition can split the chain for good, which is the protocol working.
 
@@ -52,7 +53,8 @@ protocol 11 by a governance parameter change, as mainnet did; a genesis overlay 
 threshold to 0. The first command `first_submit_writebits` then submits to s1 a transaction minting with the policy
 that `canary/writebits_script.py` writes from the reference fixture.
 
-- A fixed Scarab refuses the transaction at its mempool, and no detector fires.
+- A fixed Scarab refuses the transaction at its mempool, and no detector fires. The canary's sometimes property
+  records s1's verdict (accepted, refused or no answer), and holds only where s1 answered.
 - Against Scarab before the fix (v0.2.0-alpha.1, locally), s1 accepts it, and the Haskell pools take it as phase-2
   invalid. Each side then refuses the other's block, and the first two detectors fail.
 

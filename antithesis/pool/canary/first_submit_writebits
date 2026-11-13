@@ -47,10 +47,26 @@ cardano-cli conway transaction sign --tx-body-file "$work/tx.raw" --signing-key-
   --out-file "$work/tx.signed" || fail "sign failed"
 txid=$(cardano-cli conway transaction txid --tx-file "$work/tx.signed")
 
+# No fault runs alongside a first command, but s1 may still be catching up after setup: wait until it answers.
+for _ in $(seq 60); do
+  timeout 10 cardano-cli conway query tip --testnet-magic "$MAGIC" --socket-path /ipc/s1/node.socket \
+    > /dev/null 2>&1 && break
+  sleep 2
+done
 answer=$(cardano-cli conway transaction submit --tx-file "$work/tx.signed" --testnet-magic "$MAGIC" \
   --socket-path /ipc/s1/node.socket 2>&1)
 code=$?
-echo "canary: s1 answered $code for $txid: $answer"
+# cardano-cli 11.2.3's two answers from a node; anything else (a refused connection, a timeout) is no answer, and
+# then the canary has not exercised s1's validation.
+if [ "$code" -eq 0 ] && [[ $answer == *"Transaction successfully submitted"* ]]; then
+  verdict=accepted
+elif [ "$code" -ne 0 ] && [[ $answer == *"Error while submitting tx"* ]]; then
+  verdict=refused
+else
+  verdict="no answer"
+fi
+echo "canary: s1 $verdict ($code) $txid: $answer"
 details=$(jq -cn --arg txid "$txid" --argjson code "$code" --arg answer "$answer" --argjson bytes "$bytes" \
-  '{txid: $txid, bytes: $bytes, exitCode: $code, answer: $answer}')
-assertion true true sometimes Sometimes "$CANARY_SUBMITTED" true "$details"
+  --arg verdict "$verdict" '{txid: $txid, bytes: $bytes, verdict: $verdict, exitCode: $code, answer: $answer}')
+if [ "$verdict" = "no answer" ]; then answered=false; else answered=true; fi
+assertion true true sometimes Sometimes "$CANARY_SUBMITTED" "$answered" "$details"
