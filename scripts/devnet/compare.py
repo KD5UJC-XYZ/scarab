@@ -292,21 +292,27 @@ def compare_once_detailed(name, attempts=10, scala_wait=30):
     """One comparison at one reference block. Returns (result dict, None), or (None, failures) with one record
     per attempt that could not read the reference at that block (a failed query with its stderr)."""
     samples, failures = compare_followers_detailed(name, (SINGLE_FOLLOWER,), attempts, scala_wait)
-    return (samples[0].result if samples else None), failures
+    return (samples[0].result, None) if samples else (None, failures)
 
 
 def compare_followers_detailed(name, sites, attempts=10, scala_wait=30):
-    """`compare_once_detailed` for several followers: the reference is read once, at one block, and the follower
-    of each of `sites` is compared with that block. While one of them has not reached it, the attempt is taken
-    again at a new block; at the last attempt each follower that never reached it has an error of its own.
-    Returns ([Sample per site], None), or (None, failures)."""
-    failures = []
+    """`compare_once_detailed` for several followers. Each attempt reads the reference at one block and asks every
+    follower not judged yet for that block. A follower that answers is judged there and then, and its judgment
+    stands: a later attempt never replaces it, so a difference is never retried away. Only the followers that did
+    not answer are asked again, at the next attempt's block; after the last one each still without a judgment has
+    an error of its own. Followers judged at different blocks are not compared with each other
+    (`FollowerAgreement`). Returns ([Sample per site], failures), or (None, failures) when no attempt read the
+    reference."""
+    failures, judged, asked = [], {}, None
     for attempt in range(attempts):
+        pending = [site for site in sites if site not in judged]
+        if not pending:
+            break
         bundle, why = query_bundle(name)
         if bundle is None:
             failures.append(why)
             if "foreignAcquires" in why:
-                return None, failures  # the harness asked the node for another state: not a retryable failure
+                break  # the harness asked the node for another state: not a retryable failure
             continue
         after = bundle["tip"]
         try:
@@ -317,23 +323,30 @@ def compare_followers_detailed(name, sites, attempts=10, scala_wait=30):
             failures.append({"query": "GetUTxOWhole/GetGovState", "slot": after["slot"], "error": repr(e)[:300]})
             continue
         if not utxo_sources_agree(bundle["utxo"], full_utxo):
-            return [Sample({"tip": after, "error": "the CLI and LocalStateQuery UTxO of one block differ"})
-                    for _ in sites], None
+            for site in pending:
+                judged[site] = Sample({"tip": after, "error": "the CLI and LocalStateQuery UTxO of one block differ"})
+            break
+        asked = after
         ls, utxo, protocol = bundle["ls"], bundle["utxo"], bundle["protocol"]
         gov = (bundle["gov"], bundle["committee"], bundle["drep"])
-        states = [awaited_state(name, after, site, scala_wait, 1) for site in sites]
-        if any(scala is None for scala in states) and attempt + 1 < attempts:
-            continue  # the node may have moved past the retained window while the queries ran
+        # a follower that has not reached the block yet, or has moved past its retained window, is asked again at the
+        # next attempt's block; the others are judged at this one
+        states = {site: awaited_state(name, after, site, scala_wait, 1) for site in pending}
+        if all(scala is None for scala in states.values()):
+            continue
         reference = reference_view(ls, utxo)
         reference["utxo"] = full_utxo
         reference["gov"] = govview.reference_gov(*gov)
         reference["gov"]["prevGovActionIds"] = roots
         reference["protocolState"] = {k: protocol[k] for k in (
             "epochNonce", "evolvingNonce", "candidateNonce", "labNonce", "lastEpochBlockNonce", "oCertCounters")}
-        return [conway_sample(after, utxo, full_utxo, reference, scala) if scala is not None
-                else Sample({"tip": after, "error": "scala node never reached the reference tip"})
-                for scala in states], None
-    return None, failures
+        for site, scala in states.items():
+            if scala is not None:
+                judged[site] = conway_sample(after, utxo, full_utxo, reference, scala)
+    if not judged and asked is None:
+        return None, failures
+    return [judged.get(site) or Sample({"tip": asked, "error": "scala node never reached the reference tip"})
+            for site in sites], failures
 
 
 def conway_sample(after, utxo, full_utxo, reference, scala):
@@ -509,9 +522,14 @@ def compare_pre_conway(name, era, attempts=10):
 
 
 def compare_pre_conway_followers(name, era, sites, attempts=10):
-    """`compare_pre_conway` for several followers: the reference is read once, at one block, and the follower of
-    each of `sites` is compared with that block (as `compare_followers_detailed`). Returns [Sample per site]."""
+    """`compare_pre_conway` for several followers, as `compare_followers_detailed`: each attempt reads the reference
+    at one block, every follower not judged yet is asked for it, a judgment stands once made, and only the
+    followers that did not answer are asked again. Returns [Sample per site]."""
+    judged = {}
     for attempt in range(attempts):
+        pending = [site for site in sites if site not in judged]
+        if not pending:
+            break
         try:
             before = protocol_parameters(name)
             with lsq(name) as session:
@@ -520,19 +538,24 @@ def compare_pre_conway_followers(name, era, sites, attempts=10):
             after = protocol_parameters(name)
         except (RuntimeError, EOFError, json.JSONDecodeError, subprocess.TimeoutExpired) as e:
             if "mismatch" in str(e):
-                return [Sample({"skipped": f"the chain left {era} while querying"}) for _ in sites]
+                for site in pending:
+                    judged[site] = Sample({"skipped": f"the chain left {era} while querying"})
+                break
             time.sleep(0.5)
             continue
         if before != after:
             continue  # an epoch boundary passed between the parameter reads and the state read
-        states = [awaited_state(name, tip, site, 8, 0.4) for site in sites]
-        if any(scala is None for scala in states) and attempt + 1 < attempts:
-            continue  # the node moved past the retained window (k blocks) while the queries ran
+        # a follower that moved past the retained window (k blocks) while the queries ran is asked again at the next
+        # attempt's block; the others are judged at this one
+        states = {site: awaited_state(name, tip, site, 8, 0.4) for site in pending}
+        if all(scala is None for scala in states.values()):
+            continue
         evidence = reference.pop("_evidence", None)  # what the comparison exercised, not compared
         reference["ppup"], reference_encodings = eraview.proposal_values(reference["ppup"])
-        return [pre_conway_sample(tip, reference, reference_encodings, evidence, scala) if scala is not None
-                else Sample({"error": "no stable comparison within the attempts"}) for scala in states]
-    return [Sample({"error": "no stable comparison within the attempts"}) for _ in sites]
+        for site, scala in states.items():
+            if scala is not None:
+                judged[site] = pre_conway_sample(tip, reference, reference_encodings, evidence, scala)
+    return [judged.get(site) or Sample({"error": "no stable comparison within the attempts"}) for site in sites]
 
 
 def pre_conway_sample(tip, reference, reference_encodings, evidence, scala):
@@ -630,13 +653,17 @@ class FollowerAgreement:
         self.differences = []
 
     def record(self, era, label, samples):
-        """Tally one point: `samples`, one Sample per follower in the order of the sites."""
+        """Tally one point: `samples`, one Sample per follower in the order of the sites. Only a point where every
+        follower was judged, all at one block, compares them; any other is `notCompared`, with each one's block."""
         digests = {key: sample.projection for key, sample in zip(self.keys, samples)}
-        tip = next((s.result.get("tip") for s in samples if s.result.get("tip")), None) or {}
-        outcome = ("notCompared" if any(d is None for d in digests.values())
+        blocks = {key: ((s.result.get("tip") or {}).get("slot"), (s.result.get("tip") or {}).get("hash"))
+                  for key, s in zip(self.keys, samples)}
+        one_block = len(set(blocks.values())) == 1
+        outcome = ("notCompared" if any(d is None for d in digests.values()) or not one_block
                    else "agreed" if len(set(digests.values())) == 1 else "differed")
-        row = {"era": era, "label": label, "slot": tip.get("slot"), "hash": tip.get("hash"), "outcome": outcome,
-               "projections": digests}
+        slot, block_hash = next(iter(blocks.values())) if one_block else (None, None)
+        row = {"era": era, "label": label, "slot": slot, "hash": block_hash, "outcome": outcome,
+               "projections": digests, **({} if one_block else {"blocks": blocks})}
         with self.lock:
             self.per_era[era][outcome] += 1
             if outcome == "differed" and len(self.differences) < 10:

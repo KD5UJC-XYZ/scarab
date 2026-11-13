@@ -180,46 +180,123 @@ class ProjectionDigestTest(unittest.TestCase):
 
 
 class SameBlockComparisonTest(unittest.TestCase):
-    """Every follower is compared with the one reference block a comparison reads."""
-    TIP = {"slot": 123, "hash": "block"}
+    """Pre-Conway: every follower is compared with the one reference block an attempt reads, a judgment stands once
+    made, and only a follower that did not answer is asked again (at the next attempt's block)."""
     STATE = {"epoch": 7, "utxo": {}, "rewardUpdate": None, "params": {}, "ppup": {},
              "mir": {"reserves": {}, "treasury": {}, "deltaReserves": 0, "deltaTreasury": 0}}
 
     def compare(self, states, attempts=1):
-        """(samples, the follower reads (key, slot), reference) of one pre-Conway comparison of both followers."""
-        reads = []
-        reference = self.STATE
+        """(samples, the follower reads (key, slot)) of one pre-Conway comparison of both followers: attempt `n` reads
+        the reference at slot 123 + n, and `states` maps (key, slot) to what the follower answers there (None for
+        no answer)."""
+        reads, slots = [], iter(range(123, 123 + attempts))
         session = Mock()
         context = Mock(__enter__=Mock(return_value=session), __exit__=Mock(return_value=False))
 
+        def reference(*args):
+            slot = next(slots)
+            return {"slot": slot, "hash": f"block-{slot}"}, json.loads(json.dumps(self.STATE))
+
         def state(name, tip, site=SINGLE_FOLLOWER):
             reads.append((site.key, tip["slot"]))
-            return states[site.key]
+            answer = states.get((site.key, tip["slot"]))
+            return None if answer is None else json.loads(json.dumps(answer))
         with patch.object(compare, "protocol_parameters", return_value={}), \
                 patch.object(compare, "lsq", return_value=context), \
-                patch.object(eraview, "reference_pre_conway", side_effect=lambda *a: (self.TIP, json.loads(json.dumps(reference)))), \
+                patch.object(eraview, "reference_pre_conway", side_effect=reference), \
                 patch.object(compare, "scala_state", side_effect=state), \
                 patch.object(compare.time, "sleep"):
             samples = compare.compare_pre_conway_followers("n", "alonzo", (SCALUS, SCARAB), attempts=attempts)
-        return samples, reads, reference
+        return samples, reads
 
     def test_both_followers_are_asked_at_the_block_the_reference_was_read_at(self):
-        samples, reads, _ = self.compare({k: dict(self.STATE) for k in ("scalus", "scarab")})
+        samples, reads = self.compare({(k, 123): self.STATE for k in ("scalus", "scarab")})
         self.assertEqual(reads, [("scalus", 123), ("scarab", 123)])
         self.assertTrue(all(s.result["matched"] for s in samples), [s.result for s in samples])
         self.assertEqual(samples[0].projection, samples[1].projection)
 
     def test_followers_that_differ_have_different_projections(self):
-        samples, _, _ = self.compare({"scalus": dict(self.STATE), "scarab": dict(self.STATE, epoch=8)})
+        samples, _ = self.compare({("scalus", 123): self.STATE, ("scarab", 123): dict(self.STATE, epoch=8)})
         self.assertTrue(samples[0].result["matched"])
         self.assertFalse(samples[1].result["matched"])
         self.assertNotEqual(samples[0].projection, samples[1].projection)
 
     def test_a_follower_that_never_reaches_the_block_has_its_own_error_and_the_other_its_result(self):
-        samples, reads, _ = self.compare({"scalus": dict(self.STATE), "scarab": None}, attempts=2)
-        self.assertEqual(reads.count(("scalus", 123)), 2, "the first attempt is taken again at a new block")
+        samples, reads = self.compare({("scalus", 123): self.STATE}, attempts=2)
+        self.assertEqual(reads.count(("scalus", 123)), 1, "a judged follower is not asked again")
+        self.assertNotIn(("scalus", 124), reads)
         self.assertTrue(samples[0].result["matched"])
         self.assertEqual(samples[1], compare.Sample({"error": "no stable comparison within the attempts"}))
+
+    def test_a_retry_for_one_follower_never_erases_the_difference_of_the_other(self):
+        # the scalus follower answers wrongly at the first block while the scarab one has not reached it; at the
+        # next both would answer rightly: the difference stands, and the scarab follower is judged at its block
+        samples, reads = self.compare({("scalus", 123): dict(self.STATE, epoch=8), ("scalus", 124): self.STATE,
+                                       ("scarab", 124): self.STATE}, attempts=2)
+        self.assertFalse(samples[0].result["matched"], samples[0].result)
+        self.assertEqual(samples[0].result["tip"]["slot"], 123)
+        self.assertTrue(samples[1].result["matched"])
+        self.assertEqual(samples[1].result["tip"]["slot"], 124)
+        self.assertNotIn(("scalus", 124), reads)
+
+
+class ConwayComparisonTest(unittest.TestCase):
+    """Conway (`compare_followers_detailed`): the reference read through its query bundle and whole UTxO, each
+    follower judged against that block as in the earlier eras."""
+    NONCES = {k: "00" for k in ("epochNonce", "evolvingNonce", "candidateNonce", "labNonce", "lastEpochBlockNonce",
+                                "oCertCounters")}
+    VIEW = {"epoch": 9, "dreps": {}, "blocksCurrent": {}, "blocksBefore": {}, "stakeDistrib": {"total": 1, "pools": {}}}
+    STATE = {**VIEW, "utxo": {}, "gov": {}, "protocolState": NONCES, "accounts": {}}
+
+    def compare(self, states, attempts=1):
+        """(samples, follower reads (key, slot)) of one Conway comparison of both followers: attempt `n` reads the
+        reference at slot 400 + n, and `states` maps (key, slot) to the follower's answer there."""
+        reads, slots = [], iter(range(400, 400 + attempts))
+
+        def bundle(name):
+            slot = next(slots)
+            tip = {"slot": slot, "block": slot // 2, "epoch": 9, "hash": f"block-{slot}"}
+            return {"tip": tip, "ls": {}, "utxo": {}, "protocol": self.NONCES, "gov": {}, "committee": {},
+                    "drep": {}}, None
+
+        def state(name, tip, site=SINGLE_FOLLOWER):
+            reads.append((site.key, tip["slot"]))
+            answer = states.get((site.key, tip["slot"]))
+            return None if answer is None else json.loads(json.dumps(answer))
+        with patch.object(compare, "query_bundle", side_effect=bundle), \
+                patch.object(compare, "reference_utxo", return_value=({}, [])), \
+                patch.object(compare, "utxo_sources_agree", return_value=True), \
+                patch.object(compare, "reference_view", side_effect=lambda ls, utxo: json.loads(json.dumps(self.VIEW))), \
+                patch.object(compare.govview, "reference_gov", return_value={}), \
+                patch.object(compare.govview, "scala_gov", return_value={"prevGovActionIds": []}), \
+                patch.object(compare, "scala_state", side_effect=state), \
+                patch.object(compare.time, "sleep"):
+            return compare.compare_followers_detailed("n", (SCALUS, SCARAB), attempts=attempts, scala_wait=1), reads
+
+    def test_both_followers_are_judged_against_the_block_the_bundle_was_read_at(self):
+        (samples, failures), reads = self.compare({(k, 400): self.STATE for k in ("scalus", "scarab")})
+        self.assertEqual(failures, [])
+        self.assertEqual(reads, [("scalus", 400), ("scarab", 400)])
+        self.assertEqual([s.result["matched"] for s in samples], [True, True], [s.result for s in samples])
+        self.assertEqual([s.result["tip"]["slot"] for s in samples], [400, 400])
+        self.assertEqual(samples[0].projection, samples[1].projection)
+        self.assertEqual(sorted(samples[0].result["scalaOnlyKeys"]), ["accounts"])
+
+    def test_a_retry_for_one_follower_never_erases_the_difference_of_the_other(self):
+        (samples, _), reads = self.compare({("scalus", 400): dict(self.STATE, epoch=8), ("scalus", 401): self.STATE,
+                                            ("scarab", 401): self.STATE}, attempts=2)
+        self.assertFalse(samples[0].result["matched"], samples[0].result)
+        self.assertEqual(samples[0].result["differences"][0]["path"], "/epoch")
+        self.assertEqual(samples[0].result["tip"]["slot"], 400)
+        self.assertTrue(samples[1].result["matched"])
+        self.assertEqual(samples[1].result["tip"]["slot"], 401)
+        self.assertNotIn(("scalus", 401), reads)
+
+    def test_a_follower_that_never_reaches_a_block_has_its_own_error(self):
+        (samples, _), _ = self.compare({("scalus", 400): self.STATE}, attempts=2)
+        self.assertTrue(samples[0].result["matched"])
+        self.assertEqual(samples[1].result["error"], "scala node never reached the reference tip")
+        self.assertEqual(samples[1].result["tip"]["slot"], 401)
 
 
 class FollowerAgreementTest(unittest.TestCase):
@@ -235,6 +312,16 @@ class FollowerAgreementTest(unittest.TestCase):
         self.assertEqual([r["outcome"] for r in rows], ["agreed", "differed", "notCompared"])
         self.assertEqual(rows[1]["projections"], {"scalus": "x", "scarab": "y"})
         self.assertEqual(agreement.differences, [rows[1]])
+
+    def test_followers_judged_at_different_blocks_are_not_compared_with_each_other(self):
+        with tempfile.TemporaryDirectory() as d:
+            agreement = compare.FollowerAgreement(pathlib.Path(d), (SCALUS, SCARAB))
+            agreement.record("conway", "mid", [compare.Sample({"tip": {"slot": 5, "hash": "a"}}, "x"),
+                                               compare.Sample({"tip": {"slot": 6, "hash": "b"}}, "y")])
+            row = json.loads((pathlib.Path(d) / "compare-followers.jsonl").read_text())
+        self.assertEqual(agreement.per_era["conway"], {"agreed": 0, "differed": 0, "notCompared": 1})
+        self.assertEqual(row["blocks"], {"scalus": [5, "a"], "scarab": [6, "b"]})
+        self.assertEqual(agreement.differences, [])
 
     def test_a_difference_and_an_era_without_an_agreed_point_fail(self):
         per_era = {e: {"agreed": 2, "differed": 0, "notCompared": 0} for e in util.ERAS}
