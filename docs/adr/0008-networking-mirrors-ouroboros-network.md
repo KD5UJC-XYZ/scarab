@@ -161,6 +161,11 @@ the revision of the package whose file it cites.
 `2fb69829` stays registered (`docs/data/reference-pins.json`) for what was made from it, and does not
 describe the reference: the corpora and fixtures exported from it, whose manifests record that run,
 and texts that are not rewritten (evidence logs, changelog fragments, the accepted ADRs 0017 and
-0022), whose cited files are the same at the revisions above. Code that follows a change made after
+0022), whose cited files are the same at the revisions above. The sources those corpora compile are
+the same at the revisions above, or differ only in types or in refactoring that keeps their
+behaviour, except for two:
+`fixtures/peer-selection/policies` records `2fb69829`'s warm promotion and hot-demotion scores, and
+the property behind `fixtures/reference/network-mux-sdu` (`prop_sdu_codec`) was added after
+`c45735a5`; its encoder is the one of `c45735a5`, so the bytes are the same. Code that follows a change made after
 these revisions differs from the reference, as the first consequence above says. The approved
 deviations above are unchanged.

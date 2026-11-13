@@ -133,7 +133,7 @@
    "repository": "IntersectMBO/ouroboros-network",
    "revision": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
    "urlPattern": "https://github.com/IntersectMBO/ouroboros-network/commit/{revision}",
-   "role": "Release merge of 2026-10-01 (network-mux 0.12.0.0, ouroboros-network and cardano-diffusion 1.3.0.0), in neither reference build and not the network reference since the owner's decision of 2026-11-13 (ADR 0008 amendment): the commit the protocol codec and behaviour test corpora and fixtures were exported from, as their manifests record; their inputs are the same at the reference revisions except where the amendment's audit says otherwise.",
+   "role": "Release merge of 2026-10-01 (network-mux 0.12.0.0, ouroboros-network and cardano-diffusion 1.3.0.0), in neither reference build and not the network reference since the owner's decision of 2026-11-13 (ADR 0008 amendment): the commit the protocol codec and behaviour test corpora and fixtures were exported from, as their manifests record; the amendment names the two whose sources differ from the reference revisions.",
    "dependents": [
     "fixtures/reference/ouroboros-network-protocol-codecs/keepalive.tsv.manifest.json",
     "docs/adr/0008-networking-mirrors-ouroboros-network.md"
