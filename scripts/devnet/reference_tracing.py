@@ -68,6 +68,10 @@ SEVERITIES = ("Debug", "Info", "Notice", "Warning", "Error", "Critical", "Alert"
 # (`InvalidBlock` of the ChainSync client, `PeerSentAnInvalidBlockException` of the punishment).
 INVALID_MARK = "InvalidBlock"
 
+# The trace dispatcher's own traces, which echo the configuration (`Reflection.TracerInfoConfig` prints the trace
+# options, `InvalidBlock`'s entry among them) and never report a block.
+OWN_TRACES = "Reflection."
+
 HASH = re.compile(r"(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f])")
 
 
@@ -97,9 +101,10 @@ def pool_configuration(config):
 
 
 def log_view(lines):
-    """What the harness reads from a pool's log (its lines): the lines that name an invalid block (first five), the
-    hashes of the blocks they name, the hashes its chain changes named as its new tip, and how many lines each read
-    namespace logged."""
+    """What the harness reads from a pool's log (its lines): the traces that name an invalid block (first five), the
+    hashes of the blocks they name, the hashes its chain changes named as its new tip, and how many of these lines
+    each read namespace logged. Only traces count (a JSON line with a namespace), not the node's start-up text, and not
+    the trace dispatcher's own traces (`OWN_TRACES`)."""
     invalid, refused, tips, counts = [], set(), set(), {}
     for line in lines:
         named = INVALID_MARK in line
@@ -108,9 +113,11 @@ def log_view(lines):
         try:
             entry = json.loads(line)
         except ValueError:
-            entry = {}
+            continue
         ns = entry.get("ns") if isinstance(entry, dict) else None
-        data = entry.get("data", {}) if isinstance(entry, dict) else {}
+        if not isinstance(ns, str) or ns.startswith(OWN_TRACES):
+            continue
+        data = entry.get("data", {})
         if ns in READ:
             counts[ns] = counts.get(ns, 0) + 1
         if named:

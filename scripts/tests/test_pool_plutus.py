@@ -534,13 +534,16 @@ class LogViewTest(unittest.TestCase):
                             "data": {"kind": "Exception", "exception": f"InvalidBlock (At (Block 43 {H['z']}))"}})
 
     def test_refused_blocks_tips_and_counts(self):
-        view = reference_tracing.log_view(["Node configuration: NodeConfiguration {InvalidBlock-free text}",
+        # the node's start-up text and the dispatcher's echo of its trace options name `InvalidBlock` too, as text
+        echo = json.dumps({"ns": "Reflection.TracerInfoConfig",
+                           "data": {"conf": {"Options": {reference_tracing.INVALID_BLOCK: {"severity": "Info"}}}}})
+        view = reference_tracing.log_view(["Node configuration: NodeConfiguration {InvalidBlock in its text}", echo,
                                            self.INVALID + "\n", self.TIP, self.FORK, self.EXCEPTION,
                                            json.dumps({"ns": "Forge.Loop.ForgedBlock", "data": {"block": H["v"]}})])
         # the invalid block's own field names it; its error text's other hash is not a refusal of that block
         self.assertEqual(view["refused"], {H["w"], H["z"]})
         self.assertEqual(view["tips"], {H["x"], H["y"]})
-        self.assertEqual(len(view["invalid"]), 3)
+        self.assertEqual(len(view["invalid"]), 2)
         self.assertEqual(view["counts"], {reference_tracing.INVALID_BLOCK: 1, "ChainDB.AddBlockEvent.AddedToCurrentChain": 1,
                                           "ChainDB.AddBlockEvent.SwitchedToAFork": 1, "ChainSync.Client.Exception": 1})
 
