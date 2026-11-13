@@ -1,0 +1,4 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Antithesis runs this once at the start of every timeline, after setup complete and the root snapshot.
+touch /workload-active
