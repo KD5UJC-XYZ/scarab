@@ -5,13 +5,18 @@
 # The image's own `java -jar` launch is kept; the classpath launch that coverage instrumentation needs comes later.
 set -euo pipefail
 
+pool=/env/net/pools-keys/pool1
 keys=/data/keys
-# The node evolves its KES key in place, so a restarted container keeps the evolved key rather than the original.
+# Antithesis refuses `chmod`, so the copies are created owner-only by the umask: the node refuses a VRF key that
+# "other" can read, as the reference does. The node evolves its KES key in place, so a restarted container keeps
+# the evolved key; the KES key is copied last and renamed into place, so a copy cut short by a kill is redone.
+umask 077
 if [ ! -e "$keys/kes.skey" ]; then
   mkdir -p "$keys"
-  cp /env/s1-keys/vrf.skey /env/s1-keys/kes.skey /env/s1-keys/opcert.cert "$keys/"
-  chmod 0600 "$keys/kes.skey"
-  chmod 0400 "$keys/vrf.skey" "$keys/opcert.cert"
+  cat "$pool/vrf.skey" > "$keys/vrf.skey"
+  cat "$pool/opcert.cert" > "$keys/opcert.cert"
+  cat "$pool/kes.skey" > "$keys/kes.skey.copy"
+  mv "$keys/kes.skey.copy" "$keys/kes.skey"
 fi
 mkdir -p /data/db
 # A killed node leaves its socket file behind.
@@ -19,7 +24,7 @@ rm -f /ipc/node.socket
 exec java -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=20 --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
   -jar /opt/scarab/scarab.jar \
   follow \
-  --genesis-dir /env/genesis \
+  --genesis-dir /env/net/genesis \
   --listen 0.0.0.0:3001 \
   --peer h2:3001 \
   --peer h3:3001 \

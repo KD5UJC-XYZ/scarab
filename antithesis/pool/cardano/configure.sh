@@ -1,27 +1,28 @@
 #!/bin/bash
 # SPDX-License-Identifier: Apache-2.0
-# Writes the cluster's genesis, keys and topologies to /env once, then exits 0.
+# Writes the cluster's genesis, keys and topologies to /env/net once, then exits 0.
 #
 # The genesis and keys come from `cardano-testnet create-env` with its defaults, as `scripts/devnet.py up` makes them.
 # The start time is set here, at setup, a fixed lead ahead, in the Byron and the Shelley genesis together
 # (`scripts/devnet/scenarios/pool.py`, `pool_environment`): every pool must be listening before the first slot, or an
 # early refused dial can leave a pool forging its own chain from genesis (issue 609), which at k = 5 never rejoins.
+#
+# Antithesis refuses `chmod` (and so `chown` and `cp -a`) even to root, so no file here changes its mode or owner
+# after it is created: files are written by redirection and renamed into place, and every node runs as root.
 set -euo pipefail
 
 MAGIC=1082026
 LEAD_SECONDS=60
-ENV_DIR=/env
+NET=/env/net
 
-if [ -e "$ENV_DIR/ready" ]; then
-  echo "configurator: $ENV_DIR is already configured"
+if [ -e /env/ready ]; then
+  echo "configurator: /env is already configured"
   exit 0
 fi
 
-work=/tmp/configure
-rm -rf "$work"
-mkdir -p "$work"
-cardano-testnet create-env --num-pool-nodes 3 --testnet-magic "$MAGIC" --output "$work/env"
-cd "$work/env"
+rm -rf "$NET"
+cardano-testnet create-env --num-pool-nodes 3 --testnet-magic "$MAGIC" --output "$NET"
+cd "$NET"
 
 start=$(( $(date +%s) + LEAD_SECONDS ))
 jq --arg s "$(date -u -d "@$start" +%Y-%m-%dT%H:%M:%SZ)" '.systemStart = $s' shelley-genesis.json > shelley.tmp
@@ -51,18 +52,9 @@ topology h2 s1 > topology-h3.json
 
 # Scarab reads the genesis directory the devnet gives it: these five files, byte for byte.
 mkdir genesis
-cp shelley-genesis.json byron-genesis.json alonzo-genesis.json conway-genesis.json configuration.yaml genesis/
-chmod -R a+rX genesis
+for f in shelley-genesis.json byron-genesis.json alonzo-genesis.json conway-genesis.json configuration.yaml; do
+  cat "$f" > "genesis/$f"
+done
 
-# Pool 1's keys for the Scarab pool, owned by its user (10001). It copies them to a writable directory at start,
-# because it writes the evolved KES key back.
-mkdir s1-keys
-cp pools-keys/pool1/vrf.skey pools-keys/pool1/kes.skey pools-keys/pool1/opcert.cert s1-keys/
-chown -R 10001:10001 s1-keys
-chmod 0700 s1-keys
-chmod 0600 s1-keys/kes.skey
-chmod 0400 s1-keys/vrf.skey s1-keys/opcert.cert
-
-cp -a . "$ENV_DIR/"
-touch "$ENV_DIR/ready"
+touch /env/ready
 echo "configurator: systemStart $(jq -r .systemStart shelley-genesis.json), magic $MAGIC"
