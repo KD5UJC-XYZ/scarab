@@ -40,8 +40,11 @@ object TxChecks:
     *   (`whenFailureFree`, `Alonzo/Rules/Utxos.hs:180-182`) nor when the transaction is applied
     *   again (`when2Phase`, [[TxEnv.Validation]]), and then only their contexts are collected
     *   (`CollectErrors`)
+    * @tparam E
+    *   the era of the rule, whose scripts needed and script contexts are collected
+    *   ([[Phase2.collect]])
     */
-  private[ledger] def phase2(
+  private[ledger] def phase2[E <: EraTag](
       pp: ProtocolParams,
       plutus: PlutusStats,
       tx: Tx,
@@ -51,7 +54,7 @@ object TxChecks:
       references: Map[TxIn, TxOut],
       plutusPurposes: Set[Pointer],
       evaluate: Boolean
-  ): Result[PlutusStats] =
+  )(using ShelleyBasedEra[E]): Result[PlutusStats] =
     val body = tx.body
     val stats =
       if plutusPurposes.isEmpty && body.scriptDataHash.isEmpty then plutus
@@ -65,17 +68,17 @@ object TxChecks:
       env.preparation match
         case Some(recording) if env.validation == TxEnv.Validation.All =>
           val requests =
-            Phase2.collect(tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
+            Phase2.collect[E](tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
           recording.append(
             Phase2.job(env.txIndex, tx, pp, env.slot, spent, references, env.clock, requests)
           )
           requests.fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
         case _ if !evaluate =>
           Phase2
-            .collect(tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
+            .collect[E](tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
             .fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
         case _ =>
-          val outcome = Phase2.evaluate(
+          val outcome = Phase2.evaluate[E](
             tx,
             pp,
             scripts,

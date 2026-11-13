@@ -42,7 +42,9 @@ class PlutusCaseSuite extends FunSuite:
       .toSet
 
   private def evaluate(c: PlutusCase, evaluator: ScriptEvaluator[Id]) =
-    Phase2.evaluate(c.tx, c.params, scriptsOf(c), c.spent, c.references, c.posix, evaluator)
+    Phase2.evaluate(c.tx, c.params, scriptsOf(c), c.spent, c.references, c.posix, evaluator)(using
+      TestLedger.usualEra((c.params).protocolMajor.toInt)
+    )
 
   cases.foreach { c =>
     test(s"${c.name} (${c.kind}): script data hash is the recomputed one") {

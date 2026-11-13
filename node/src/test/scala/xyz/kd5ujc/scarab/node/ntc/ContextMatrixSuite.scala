@@ -9,6 +9,7 @@ import munit.FunSuite
 import scala.util.chaining.*
 import xyz.kd5ujc.scarab.codec.{Cbor, Value}
 import xyz.kd5ujc.scarab.ledger.*
+import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
 import xyz.kd5ujc.scarab.plutus.PlutusBackends
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -67,8 +68,20 @@ class ContextMatrixSuite extends FunSuite:
       val params = TestLedger.params(major).copy(costModels = models)
       val start = BigInt(field[Int](row, "systemStartSeconds")) * 1000
       val length = BigInt(field[Int](row, "slotLengthMilliseconds"))
+      val witness: ShelleyBasedEra[?] = era match
+        case Era.Alonzo  => ShelleyBasedEra.SAlonzo
+        case Era.Babbage => ShelleyBasedEra.SBabbage
+        case Era.Conway  => ShelleyBasedEra.SConway
+        case other       => fail(s"no script context era for $other")
       val actual =
-        Phase2.collect(tx, params, scripts, spent, references, slot => Right(start + slot * length))
+        Phase2.collect(
+          tx,
+          params,
+          scripts,
+          spent,
+          references,
+          slot => Right(start + slot * length)
+        )(using witness)
       val expected = field[Json](row, "oracle")
       assertEquals(actual.isRight, field[Boolean](expected, "collected"))
       actual match

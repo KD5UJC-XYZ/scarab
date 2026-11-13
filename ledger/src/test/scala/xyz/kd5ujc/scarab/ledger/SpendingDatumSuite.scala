@@ -113,7 +113,8 @@ class SpendingDatumSuite extends FunSuite:
         c.tx.witnesses.scripts.flatMap(_.plutus).map(_.hex),
         Vector(field[String](r.datum, "script"))
       )
-      val env = ScriptContexts.Environment(10, c.spent, c.references, c.posix)
+      val env =
+        ScriptContexts.Environment(TestLedger.usualEra(10), 10, c.spent, c.references, c.posix)
       val info = ScriptContexts.txInfo(r.language, c.tx, env).fold(e => fail(e.message), identity)
       val args = ScriptContexts
         .arguments(r.language, info, c.tx, r.redeemer, r.purpose, 10)
@@ -132,7 +133,7 @@ class SpendingDatumSuite extends FunSuite:
         datum.foreach(d => assertEquals(args.headOption, Some(d)))
       assertEquals(
         Phase2
-          .evaluate(
+          .evaluate[xyz.kd5ujc.scarab.ledger.state.Conway](
             c.tx,
             c.params,
             r.scripts,

@@ -159,7 +159,7 @@ class BoundaryTransactionsSuite extends FunSuite:
             c.references,
             c.posix,
             PlutusBackends.evaluator
-          )
+          )(using TestLedger.usualEra((c.params).protocolMajor.toInt))
           (stage, outcome) match
             case (Stage.Success, Right(Phase2.Outcome.Passed(_))) => ()
             case (Stage.Scope, Right(Phase2.Outcome.Failed(_, failures))) =>

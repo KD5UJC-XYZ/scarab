@@ -354,7 +354,7 @@ object DijkstraUtxo
       _ <- DijkstraSts.conway[F, UtxoEnv[Any], PlutusStats, Counted[
         UTxOState[Dijkstra]
       ], StAnnTx, DijkstraUtxoFailure](
-        Utxos,
+        Utxos.sts[Dijkstra],
         UtxoEnv(env.ctx, env.pp, env.original),
         ann.conway,
         Counted.plutus[UTxOState[Dijkstra]],

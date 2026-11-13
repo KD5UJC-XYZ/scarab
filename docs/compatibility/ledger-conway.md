@@ -19,6 +19,14 @@ Conway's BBODY limits the reference scripts of the block whatever the protocol v
 
 The slot of no return (`getTheSlotOfNoReturn`, cardano-ledger f649f975 `Slot.hs:106-114`), which TICK's solidifying of the future parameters uses, is computed exactly (`EpochGeometrySuite`). The reference's `Word64` doubling of the stability window wraps for a window of 2^63 slots or more, which Scarab does not reproduce (#825): an approved deviation ([owner decision](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849)).
 
+Script-context translation follows the ledger era carried through UTXOS (#883), including Conway's
+V1 reference inputs and reference-script outputs, its exclusive upper bound without a lower bound,
+and each certificate's own purpose pointer (`Conway/TxInfo.hs:315-320,399-411,790-803`,
+`Conway/UTxO.hs:62-80`, cardano-ledger f649f975). `ScriptContextEraSuite` covers Conway at version 8
+and Babbage at version 9; `ScriptContextUsualVersionSuite` checks complete unchanged TxInfo CBOR at
+usual versions 5 to 12 for every supported V1/V2/V3 translation. Before Alonzo no Plutus context is
+built, and Dijkstra's V4 translator is separate.
+
 ## Explicitly unchecked or unconfirmed
 
 native pool rules maintain the reference-counted VRF registry, and the protocol-11 transition populates it. Fresh native genesis retains injected pools with an empty registry, as the reference does; previously written or imported state still needs its own provenance checks ([#129](https://github.com/KD5UJC-XYZ/scarab/issues/129)); Plutus V3 reference-input refusal only replayed in a unit test, not from the refused bytes; see governance row

@@ -126,7 +126,7 @@ class V1ContextSuite extends FunSuite:
           c.references,
           c.posix,
           PlutusBackends.evaluator
-        )
+        )(using TestLedger.usualEra((c.params).protocolMajor.toInt))
       r.verdict.translation(c) match
         case Some(error) =>
           assertEquals(

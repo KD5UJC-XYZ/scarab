@@ -130,19 +130,27 @@ object Deposits:
   * transaction flagged invalid must have a script that fails, one flagged valid none). The state is
   * the node's counters of what was evaluated.
   */
-object Utxos extends JudgedSts[UtxoEnv[Any], PlutusStats, StAnnTx, PredicateFailure, LedgerFailure]:
-  def transition[F[_]: Monad](env: UtxoEnv[Any], ann: StAnnTx)(using
-      ask: Ask[F, Globals],
-      st: Stateful[F, PlutusStats],
-      raise: Raise[F, LedgerFailure],
-      judge: Judge[F, PredicateFailure]
-  ): F[Unit] = scripts[F](env, ann)
+object Utxos:
+  /** UTXOS of the era `E`, Conway's or Dijkstra's, which collects the era's scripts and contexts.
+    */
+  def sts[E <: EraTag](using
+      ShelleyBasedEra[E]
+  ): JudgedSts[UtxoEnv[Any], PlutusStats, StAnnTx, PredicateFailure, LedgerFailure] =
+    new JudgedSts[UtxoEnv[Any], PlutusStats, StAnnTx, PredicateFailure, LedgerFailure]:
+      def transition[F[_]: Monad](env: UtxoEnv[Any], ann: StAnnTx)(using
+          ask: Ask[F, Globals],
+          st: Stateful[F, PlutusStats],
+          raise: Raise[F, LedgerFailure],
+          judge: Judge[F, PredicateFailure]
+      ): F[Unit] = scripts[F, E](env, ann)
 
   /** `expectScriptsToPass` (`Babbage/Rules/Utxos.hs:132-155`) and `babbageEvalScriptsTxInvalid`
     * (`Babbage/Rules/Utxos.hs:194-220`): the contexts of the scripts are collected, and the scripts
-    * are evaluated only if nothing failed so far in the judgment (`whenFailureFree`).
+    * are evaluated only if nothing failed so far in the judgment (`whenFailureFree`). The scripts
+    * needed and their contexts are the era `E` 's ([[TxChecks.phase2]]).
     */
-  def scripts[F[_]: Monad](env: UtxoEnv[Any], ann: StAnnTx)(using
+  def scripts[F[_]: Monad, E <: EraTag](env: UtxoEnv[Any], ann: StAnnTx)(using
+      era: ShelleyBasedEra[E],
       st: Stateful[F, PlutusStats],
       raise: Raise[F, LedgerFailure],
       judge: Judge[F, PredicateFailure]
@@ -152,7 +160,7 @@ object Utxos extends JudgedSts[UtxoEnv[Any], PlutusStats, StAnnTx, PredicateFail
       failing <- judge.failing
       counters <- st.get
       next <- Refuse.recorded[F, PlutusStats](
-        TxChecks.phase2(
+        TxChecks.phase2[E](
           env.pp,
           counters,
           tx,
@@ -271,7 +279,7 @@ object Utxo
       _ <- Sts.runTest[F, PredicateFailure](validate(env, ann, deposits, refunds))
       _ <- JudgedSts.trans[F, UtxoEnv[Any], PlutusStats, Counted[
         UTxOState[Conway]
-      ], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](Utxos, env, ann)
+      ], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](Utxos.sts[Conway], env, ann)
       s <- st.get
       next <- Refuse.vocab[F, UTxOState[Conway]](
         update(s.state, ann, collateral, deposits, refunds)
