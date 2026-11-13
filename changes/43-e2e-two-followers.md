@@ -6,13 +6,14 @@
   end their final chains, each rebuilt from the follower's whole log and ending at the tip it was stopped on, must
   agree, and so must their projected states wherever all were judged at one block (`crossCheck` in
   `e2e-summary.json`, each follower under `followers`). With one `--plutus-vm`, or none, the run keeps its single
-  follower, its summary and its verdicts; `--oracle` takes one follower.
+  follower, and the flag adds no check and no summary field; `--oracle` takes one follower.
 
 ### Fixed (devnet, #785)
 - **A same-point whole-state comparison no longer fails on a follower tip that a fork has just taken off the
-  reference's chain.** `e2e` and `soak` sample the follower's tip again, a second later, at most twice; both answers
-  are still taken at exactly one point, and a refusal past that bound, a malformed reply or a byte difference still
-  fails. Every comparison keeps its acquisitions (stage, node, point, outcome, parsed refusal) in its record.
+  reference's chain.** When the reference refuses the point as not on its chain (`PointNotOnChain`), `e2e` and `soak`
+  sample the follower's tip again, a second later, at most twice; both answers are still taken at exactly one point,
+  and a refusal past that bound, a point too old, a malformed reply or a byte difference still fails. Every
+  comparison keeps its acquisitions (stage, node, point, outcome, parsed refusal) in its record.
 
 ### Fixed (devnet)
 - **`e2e` judges each follower's whole log.** It stops its followers on purpose before it judges them (their peer

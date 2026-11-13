@@ -103,14 +103,15 @@ is compared through the first Shelley epoch, which starts from it.
 
 Same-point states (`whole_state` in [`scripts/devnet/compare.py`](../../scripts/devnet/compare.py)): the volatile tip
 of one node, the anchor, is sampled and the other node acquires exactly that point, so both answers are of one state.
-In `e2e` and `soak` the anchor is the follower; when the reference refuses its point because a fork has just taken it
-off the reference's chain (`PointNotOnChain`, #785), the follower's tip is sampled again a second later, at most
-twice. `pool` anchors on the reference and asks the Scala node for the point up to ten times, two seconds apart, then
-once at a new point. A refusal past these bounds, a reply that is neither an acquisition nor a refusal, a failed
-query, a closed connection or a deadline is a comparison error, and a byte difference after a new sample stays a
-difference. Every record keeps its acquisitions in order (stage, node, point, outcome, parsed refusal); an error keeps
-them also under `errorDetails` in the summary's `wholeState` rows, and `afterRefusal` there counts the answers taken
-after a refusal.
+In `e2e` and `soak` the anchor is the follower; when the reference refuses its point as not on its chain because a
+fork has just taken it off (`PointNotOnChain`, #785), the follower's tip is sampled again a second later, at most
+twice, and a point refused as too old (`PointTooOld`) is not sampled again. `pool` anchors on the reference and asks
+the Scala node for the point up to ten times, two seconds apart, and after a `PointNotOnChain` on the last of them
+samples one new point, with up to ten attempts again. A refusal past these bounds, a reply that is neither an
+acquisition nor a refusal, a failed query, a closed connection or a deadline is a comparison error, and a byte
+difference after a new sample stays a difference. Every record keeps its acquisitions in order (stage, node, point,
+outcome, parsed refusal); an error keeps them also under `errorDetails` in the summary's `wholeState` rows, and
+`afterRefusal` there counts the answers taken after a refusal.
 
 `e2e` shares the `up-eras` options but changes four defaults so the pre-Allegra rules have something to
 decide: `--shelley-epochs 3` (the pools hold stake from epoch 2, produce blocks from epoch 3 and the
@@ -175,14 +176,22 @@ version the chain never reached is reported under `extended.notApplicable` of `e
 rule applies from version 11: `hardforkConwayDisallowDuplicatedVRFKeys`, `Shelley/Rules/Pool.hs:265`); a stage whose version was
 reached gets up to ten minutes past the target epoch (`EXTENDED_WAIT`) and fails the run if it is still not done.
 
+Once the wait for the target epoch is over, `e2e` stops its follower itself before it judges it, as the oracle does
+(`stop_followers` in [`scripts/devnet/follower.py`](../../scripts/devnet/follower.py)): reference node 1, the
+follower's only peer, is frozen, the follower's tip is final once two readings of its `/tip` agree and is recorded
+(`follower-tip.json`), the follower is stopped with SIGTERM so that its node ends its log itself, and the node is
+continued. The follower is then judged over its whole log, so an error or an exit after the wait fails the run, and a
+follower that had ended before the stop is a premature exit. With `--oracle` the oracle's own stop of the follower
+does this.
+
 #### Several followers in one e2e
 
 `e2e --plutus-vm scalus --plutus-vm scarab` (the nightly run's arguments) starts one Scala follower per evaluator,
 both from Origin and following reference node 1, so both judge the same chain and its Plutus transactions. With one
-`--plutus-vm`, or none, the run has its single follower and is unchanged. Each follower has its own container
-`<name>-scala-<vm>`, log `follower-<vm>.jsonl`, comparison log `compare-<vm>.jsonl`, socket, stall and class
-directories (`scala-sock-<vm>`, `stall-<vm>`, `classes-<vm>`), and a query and a metrics port of its own, since all
-run in the reference container's network namespace (`FollowerSite` in
+`--plutus-vm`, or none, the run has its single follower, and the flag adds no check and no summary field. Each
+follower has its own container `<name>-scala-<vm>`, log `follower-<vm>.jsonl`, comparison log `compare-<vm>.jsonl`,
+socket, stall and class directories (`scala-sock-<vm>`, `stall-<vm>`, `classes-<vm>`), and a query and a metrics port
+of its own, since all run in the reference container's network namespace (`FollowerSite` in
 [`scripts/devnet/util.py`](../../scripts/devnet/util.py)); the run refuses to start them on a port already in use
 there. `--oracle` takes one follower and is refused with several.
 
@@ -197,11 +206,8 @@ their projected states (the part of `/state` the reference view is compared with
 such block per Shelley-based era (`compare-followers.jsonl`; a point where they were judged at different blocks is
 `notCompared`). The whole-state comparison is taken per follower at its own tip.
 
-Once the wait is over the run stops the followers on purpose, as the oracle does: reference node 1, their only peer,
-is frozen, each follower's tip is final once two readings of its `/tip` agree and is recorded
-(`follower-tip-<vm>.json`), each is stopped with SIGTERM so that its node ends its log itself, and the node is
-continued. Each follower is then judged over its whole log, and a follower that had ended before the stop is a
-premature exit. Their final chains, rebuilt from their logs by the oracle's rules
+The run stops every follower as it stops a single one, each final tip recorded in `follower-tip-<vm>.json`, and judges
+each over its whole log. Their final chains, rebuilt from their logs by the oracle's rules
 ([`finality`](../../scripts/oracle/finality.py)), every line complete and each chain ending at its recorded tip, must
 agree: one of the two has at most `k` blocks after their last common block, so a follower that stopped a little
 earlier, or that still held a rival block at its tip, agrees; a cut log or a missing tip fails. `e2e-summary.json`
