@@ -200,7 +200,11 @@ object ShelleyBbody:
             (if pre.atLeast(ShelleyBasedEra.SAlonzo) then Bbody.exUnitsExceeded(pp, signal.txs)
              else None).map(BlockFailure.BlockExUnitsTooBig(_, pp.maxBlockExUnits))
           )
-          counted = !isOverlaySlot(globals.firstSlot(env.ctx.epoch), pp.effectiveD, env.ctx.slot)
+          counted = !isOverlaySlot(
+            globals.firstSlot(env.ctx.epoch),
+            pp.effectiveD[E](using PreConway[E].era),
+            env.ctx.slot
+          )
           _ <- st.modify(s =>
             if !counted then s
             else

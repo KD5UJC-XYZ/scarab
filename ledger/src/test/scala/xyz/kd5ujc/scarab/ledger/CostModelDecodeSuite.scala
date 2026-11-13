@@ -214,8 +214,11 @@ class CostModelDecodeSuite extends FunSuite:
       .flatMap(CostModelDecode.decode(_, CostModelDecode.Format.Legacy))
       .fold(e => fail(s"${row.name}: ${e.message}"), identity)
     val major = if row.era == Era.Alonzo then 5 else 7
+    val era: xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra[?] =
+      if row.era == Era.Alonzo then xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SAlonzo
+      else xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SBabbage
     val applied = ProtocolParams
-      .update(TestLedger.params(major), ParamUpdate(Map(18 -> bytes)))
+      .update(TestLedger.params(major), ParamUpdate(Map(18 -> bytes)))(using era)
       .fold(e => fail(s"${row.name}: ${e.message}"), identity)
     val languages = referenceModels(row).keySet
     val inState = applied.costModels.view.filterKeys(languages).toMap

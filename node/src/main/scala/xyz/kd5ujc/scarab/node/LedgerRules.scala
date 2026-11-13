@@ -266,11 +266,13 @@ object NodeRules:
         .leftMap(BlockFailure.Envelope(_))
       validated <-
         if header.era.usesTPraos then
+          // TPraos runs through Alonzo, whose `ppDG` is the parameter at every version
+          // (`Alonzo/PParams.hs:338`, cardano-ledger f649f975); Babbage runs Praos.
           TPraos
             .update(
               Praos.tick(protocol, header.era, epoch, params.extraEntropy),
               header,
-              LedgerView(params.effectiveD, params.extraEntropy, genDelegs, StakeView.Known(pools)),
+              LedgerView(params.d, params.extraEntropy, genDelegs, StakeView.Known(pools)),
               config
             )
             .map(v => v.state -> v.leader)

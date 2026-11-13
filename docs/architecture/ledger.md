@@ -84,9 +84,9 @@ follower (no Docker); `EpochGeometrySuite` has the era-history properties.
 `MirrorRules` applies the full ledger to every Shelley-based block, on the Haskell-shaped, era-indexed state (`ledger/rules/`; the flat rules and state of the first versions were removed in J2.9). The rule of each
 era is chosen by the era witness (`PreConway[E]`, `ShelleyBasedEra[E]`), and UTXO's and UTXOW's checks follow the era whatever the
 protocol version, as the reference's rule of each era does (#867, #880): a chain that starts an era by `Test<Era>HardForkAtEpoch`
-keeps the version of the era before it. UTXOS and BBODY follow the era too (#881, #882), and Conway's LEDGER tests the
-bootstrap phase as the reference does (#885), and the script contexts follow the era (#883). The parameter sites that still
-follow the protocol major version of the parameters in force are #884; the reference's own version tests (`hardfork*`) stay
+keeps the version of the era before it. UTXOS and BBODY follow the era too (#881, #882), Conway's LEDGER tests the
+bootstrap phase as the reference does (#885), and the script contexts and the protocol-parameter updates follow the era
+(#883, #884). The reference's own version tests (`hardfork*`) stay
 tests of the version.
 
 - **Decoding** (`ledger/Tx.scala`, `Scripts.scala`): transaction bodies of every era (keys 0-18),
@@ -97,6 +97,11 @@ tests of the version.
   bootstrap witnesses, native scripts, required signers, redeemers and datums, auxiliary data hash),
   DELEGS (registration, delegation, pools, genesis delegation, MIR), PPUP (`ledger/UpdateChecks.scala`). The fee size
   counts the array header, body, witnesses and auxiliary data, not the `is_valid` byte.
+- **Parameters** (`ProtocolParams`, `UpdateChecks`): PPUP and UPEC apply an update in the era
+  that proposed it, so key 17 is the cost per UTxO word in Alonzo and per byte in Babbage, whatever
+  the protocol version (#884). Only `Translate.alonzoToBabbage` divides words into bytes, including
+  the future parameters and both stored proposal maps (`ParamUpdate.toBabbage`). BBODY reads the era's `ppDG`: `d` through Alonzo and zero from Babbage;
+  the node's TPraos header views read `d` through Alonzo too.
 - **Epoch boundary** (`ledger/rules/Epoch.scala`, `Snap.scala`, `Rewards.scala`, `Rupd.scala`): reward application (pre-Babbage prefilter against the
   accounts registered when the calculation started, so unclaimed rewards return to the reserves),
   MIR, SNAP with pointer-address stake, pool re-registration and retirement, parameter update
