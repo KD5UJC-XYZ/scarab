@@ -11,6 +11,13 @@ x-after-configurator: &after-configurator
   configurator:
     condition: service_completed_successfully
 
+# s1 dials both Haskell pools at once, so it starts only when they listen (cardano/listening.sh, issue 609).
+x-listening: &listening
+  test: ["CMD", "/opt/at/listening.sh", "3001"]
+  interval: 1s
+  timeout: 5s
+  retries: 600
+
 services:
   configurator:
     container_name: configurator
@@ -29,6 +36,7 @@ services:
     platform: linux/amd64
     init: true
     command: ["/opt/at/haskell-node.sh", "2"]
+    healthcheck: *listening
     labels: *labels
     depends_on: *after-configurator
     volumes:
@@ -42,6 +50,7 @@ services:
     platform: linux/amd64
     init: true
     command: ["/opt/at/haskell-node.sh", "3"]
+    healthcheck: *listening
     labels: *labels
     depends_on: *after-configurator
     volumes:
@@ -55,7 +64,13 @@ services:
     platform: linux/amd64
     init: true
     labels: *labels
-    depends_on: *after-configurator
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      h2:
+        condition: service_healthy
+      h3:
+        condition: service_healthy
     volumes:
       - env:/env:ro
       - ipc-s1:/ipc
