@@ -19,6 +19,19 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from oracle import analyse, compare, digest, ledger, mempack, reference  # noqa: E402
 
 
+class EpochStartTest(unittest.TestCase):
+    def test_uniform_epochs_without_byron(self):
+        # Preview: no Byron epoch, 86,400 slots each
+        self.assertEqual([reference.epoch_start(e, 86400) for e in (0, 1, 1451)], [0, 86400, 125366400])
+
+    def test_epochs_after_a_byron_prefix(self):
+        # preprod: four Byron epochs of 21,600 slots, Shelley from slot 86,400
+        starts = [reference.epoch_start(e, 432000, 4, 21600) for e in (0, 3, 4, 5)]
+        self.assertEqual(starts, [0, 64800, 86400, 518400])
+        # mainnet: Shelley from epoch 208, slot 4,492,800
+        self.assertEqual(reference.epoch_start(208, 432000, 208, 21600), 4492800)
+        self.assertEqual(reference.epoch_start(209, 432000, 208, 21600), 4924800)
+
 class DigestTest(unittest.TestCase):
     ENTRIES = [("keyHash-aa", {"b": 1, "a": [1, "z", None, True], "c": {"y": "é\"q", "x": 0}}),
                ("txid#0", "abc"), ("zz", 12345678901234567890)]
