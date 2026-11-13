@@ -20,6 +20,12 @@ fail() {
   exit 1
 }
 
+# on_chain TX_IN: h2's chain has the output TX_IN
+on_chain() {
+  cardano-cli conway query utxo --tx-in "$1" --testnet-magic "$MAGIC" --socket-path "$reference" --output-json \
+    2>/dev/null | jq -e 'length > 0' > /dev/null
+}
+
 v3_length() {
   cardano-cli conway query protocol-parameters --testnet-magic "$MAGIC" --socket-path "/ipc/$1/node.socket" \
     2>/dev/null | jq '.costModels.PlutusV3 | length' 2>/dev/null
@@ -53,16 +59,31 @@ cardano-cli conway transaction sign --tx-body-file "$work/proposal.raw" --signin
   --out-file "$work/proposal.signed" || fail "proposal transaction sign failed"
 cardano-cli conway transaction submit --tx-file "$work/proposal.signed" --testnet-magic "$MAGIC" \
   --socket-path "$reference" || fail "proposal transaction submit failed"
-echo "canary setup: proposed the PlutusV3 cost model of $want parameters; waiting for it in h2 and s1"
+# cardano-cli 11.2.3 prints {"txhash": ...}; older ones print the hash alone
+raw=$(cardano-cli conway transaction txid --tx-file "$work/proposal.signed")
+txid=$(jq -r '.txhash' <<< "$raw" 2> /dev/null || printf '%s' "$raw")
+echo "canary setup: proposed the PlutusV3 cost model of $want parameters in $txid; waiting for it in h2 and s1"
 
 # Enactment takes two epoch boundaries (about 100 s here). A bound turns a pool that never enacts it into a setup
 # failure that says so, instead of a run that waits for the platform's setup timeout.
+# A block that carried the proposal can be rolled back in a fork, and no mempool takes a rolled-back block's
+# transactions back (the reference's neither), so a client submits again: while the proposal's output is not on
+# h2's chain and its input is still unspent, the same signed transaction is submitted every 30 s.
 deadline=$((SECONDS + 600))
+resubmit=$((SECONDS + 30))
 last=""
 while :; do
   state="h2=$(v3_length h2) s1=$(v3_length s1)"
   [ "$state" = "h2=$want s1=$want" ] && break
   [ "$SECONDS" -lt "$deadline" ] || fail "the cost model is not in force in both pools after 600 s: $state"
+  if [ "$SECONDS" -ge "$resubmit" ]; then
+    resubmit=$((SECONDS + 30))
+    if ! on_chain "$txid#0" && on_chain "$txin"; then
+      echo "canary setup: $txid is not on h2's chain and its input is unspent: submitting it again"
+      cardano-cli conway transaction submit --tx-file "$work/proposal.signed" --testnet-magic "$MAGIC" \
+        --socket-path "$reference" || true
+    fi
+  fi
   if [ "$state" != "$last" ]; then
     echo "canary setup: PlutusV3 cost model lengths $state, epoch $(cardano-cli conway query tip \
       --testnet-magic "$MAGIC" --socket-path "$reference" 2>/dev/null | jq .epoch)"
