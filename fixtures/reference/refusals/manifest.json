@@ -70,6 +70,10 @@
       "sha256": "1eeb33ba74d8888111ce57a1cd2072ed50312c987a84671e638adb11dc316ce3"
     },
     {
+      "path": "alonzo-collateral",
+      "sha256": "72946d1ab4188e58d7afdfd7342e1bbeeaa2bcfe5e0cb9facf54a62c9ef43f89"
+    },
+    {
       "path": "alonzo-families",
       "sha256": "cf1ce928525d5064dc3dc9cf35c7297ad99267b2f5d4d79aa6b2c86c1ebed245"
     },
@@ -80,6 +84,10 @@
     {
       "path": "babbage-certificate-order",
       "sha256": "b47b2fc4485a21428f814b3f486e7d80c9b43a229c6c626299ca36b911a24448"
+    },
+    {
+      "path": "babbage-collateral",
+      "sha256": "e125f88521027481a9f6769e68802dfbdda418b14cb469a5194b5d0f40e99948"
     },
     {
       "path": "babbage-devnet",

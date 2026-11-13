@@ -24,9 +24,11 @@ PRE_CONWAY = ["utxo-collateral-script-locked", "utxo-collateral-non-ada", "utxo-
 V11 = ["deleg-reg-deposit-wrong-v11", "deleg-unreg-refund-wrong-v11", "gov-parameter-change-n-opt-zero-v11",
        "gov-vote-unelected-committee-member-v11"]
 CORPORA = {"conway-deleg-collateral": ("conway", DELEG_COLLATERAL), "conway-gov-proposals": ("conway", GOV_PROPOSALS),
-           "conway-v11-coverage": ("conway", V11)}
+           "conway-v11-coverage": ("conway", V11), "alonzo-collateral": ("alonzo", PRE_CONWAY),
+           "babbage-collateral": ("babbage", PRE_CONWAY[:3])}
 # the protocol version each corpus was recorded at
-VERSIONS = {"conway-deleg-collateral": [10, 0], "conway-gov-proposals": [10, 0], "conway-v11-coverage": [11, 0]}
+VERSIONS = {"conway-deleg-collateral": [10, 0], "conway-gov-proposals": [10, 0], "conway-v11-coverage": [11, 0],
+            "alonzo-collateral": [6, 0], "babbage-collateral": [8, 0]}
 
 
 def records(corpus):

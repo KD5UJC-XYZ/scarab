@@ -106,6 +106,8 @@ cites the reference's check for each case at cardano-ledger f649f975.
 | `conway-deleg-collateral` | 10.0 | DELEG `IncorrectDepositDELEG` (a registration's deposit, an unregistration's refund), `StakeKeyHasNonZeroAccountBalanceDELEG`, `DelegateeDRepNotRegisteredDELEG`; GOVCERT `ConwayDRepIncorrectRefund`; UTXO `ScriptsNotPaidUTxO`, `CollateralContainsNonADA` |
 | `conway-gov-proposals` | 10.0 | GOV `ConflictingCommitteeUpdate`, `ExpirationEpochTooSmall`, `TreasuryWithdrawalReturnAccountsDoNotExist`, `InvalidGuardrailsScriptHash` (a parameter change and a treasury withdrawal), and `MalformedProposal` for each parameter `ppuWellFormed` refuses at zero and for an empty update |
 | `conway-v11-coverage` | 11.0 | DELEG `DepositIncorrectDELEG`, `RefundIncorrectDELEG`; GOV `MalformedProposal` (`nOpt` 0), `UnelectedCommitteeVoters` |
+| `alonzo-collateral` | 6.0 | UTXO `ScriptsNotPaidUTxO`, `CollateralContainsNonADA`, `WrongNetworkInTxBody`, `ExUnitsTooBigUTxO` |
+| `babbage-collateral` | 8.0 | UTXO `ScriptsNotPaidUTxO`, `CollateralContainsNonADA`, `WrongNetworkInTxBody` |
 
 The three Conway corpora come from one cluster, so they share its genesis files. At protocol version 10
 a wrong deposit or refund is `IncorrectDepositDELEG`; version 11 reports `DepositIncorrectDELEG` and
@@ -118,6 +120,22 @@ conflicting-committee checks fails exactly the four cases that break them. These
 from a working tree on `f1f553c1d` with the `refusalcoverage` builder added but not yet committed, hence
 `scarabDirty: true`; the committed functions that build them differ from those that recorded them only in
 comments and in naming the setup's change address explicitly (the same address).
+
+The Alonzo and Babbage corpora each come from an era-walking cluster stopped in that era. A transaction
+whose execution units exceed `maxTxExecutionUnits` is refused by the node's mempool before the ledger
+judges it (ouroboros-consensus 82ecba32, `Mempool/Update.hs:207-224`, `Shelley/Ledger/Mempool.hs:601-641`).
+The Alonzo case's refusal is that check's, which nests the failure as the Alonzo rule does. Babbage has no
+such case: its mempool nests the failure under `AlonzoInBabbageUtxowPredFailure`, where the Babbage rule,
+which this suite compares for a pre-Conway era, reports it under UTXOW's `UtxoFailure`. No era has an
+`OutsideForecast` case. The rule extends the epoch information linearly from the current slot before it
+translates the validity interval's end (`Alonzo/Rules/Utxo.hs:377-382`; cardano-base 060819b5,
+`cardano-slotting/src/Cardano/Slotting/EpochInfo/Extend.hs:54-66`), so that translation cannot fail; the
+`plutus-forecast-horizon` corpora record what the reference does with such a bound instead. Disabling
+Scarab's Alonzo non-ada-collateral and body-network checks, its Babbage non-ada-collateral check (which
+Conway also runs), and its two protocol-11 switches (the deposit and refund failures, the unelected voters)
+fails exactly the cases that break them. Both corpora were recorded from a clean tree. The Alonzo corpus's
+setup sent its change to the funder key's enterprise address, the committed builder to the funder's base
+address.
 
 These expectations come from the released node's submission path. Separately, the offline
 `UpstreamFreshLedgerConformanceSuite` and `UpstreamMultiLedgerConformanceSuite` use the same production
@@ -152,6 +170,14 @@ python3 scripts/devnet.py --name <yours> refusal-corpus --corpus conway-gov-prop
     --cases refusalcoverage:conway_gov_proposals
 python3 scripts/devnet.py --name <yours> refusal-corpus --corpus conway-v11-coverage \
     --cases refusalcoverage:conway_v11     # takes the cluster to protocol version 11, about five epochs
+python3 scripts/devnet.py --name <yours> down
+python3 scripts/devnet.py --name <yours> up-eras --final-era alonzo
+python3 scripts/devnet.py --name <yours> refusal-corpus --era alonzo --corpus alonzo-collateral \
+    --cases refusalcoverage:alonzo_collateral
+python3 scripts/devnet.py --name <yours> down
+python3 scripts/devnet.py --name <yours> up-eras --final-era babbage
+python3 scripts/devnet.py --name <yours> refusal-corpus --era babbage --corpus babbage-collateral \
+    --cases refusalcoverage:babbage_collateral
 python3 scripts/devnet.py --name <yours> down
 python3 scripts/check_test_coverage.py --refresh-fixtures
 ```
