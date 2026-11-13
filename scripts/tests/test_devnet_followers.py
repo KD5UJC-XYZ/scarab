@@ -352,6 +352,95 @@ class SummaryEvaluatorTest(unittest.TestCase):
         self.assertEqual(failures, [])
 
 
+class E2EFlowTest(unittest.TestCase):
+    """`e2e()` from the start of its followers to its summary, with the cluster, the containers and the load replaced:
+    a run's only follower keeps the summary's layout, and with two each has its own entry and the cross-check runs."""
+
+    @staticmethod
+    def follower_log(vm, last):
+        """A follower log that walks Byron block 0 and Conway blocks 1..`last` (epochs 1 and 2)."""
+        events = [{"event": "started"}, {"event": "connected", "intersection": {"origin": True}}]
+        events += [{"event": "plutusVm", "vm": vm}] if vm else []
+        events.append({"event": "eraTransition", "from": None, "to": "Byron", "epoch": 0, "slot": 0,
+                       "block": {"slot": 0, "blockNo": 0, "hash": h(0)}})
+        for n in range(last + 1):
+            era, epoch = ("Byron", 0) if n == 0 else ("Conway", 1 if n < 3 else 2)
+            if n == 1:
+                events.append({"event": "eraTransition", "from": "Byron", "to": "Conway", "epoch": 1, "slot": 10,
+                               "block": {"slot": 10, "blockNo": 1, "hash": h(1)}})
+            events.append({"event": "extended", "era": era, "epoch": epoch,
+                           "block": {"slot": 10 * n, "blockNo": n, "hash": h(n)}})
+        return "".join(json.dumps(e) + "\n" for e in events)
+
+    def run_e2e(self, plutus_vm):
+        """(summary, the sites started with their evaluators, the containers removed) of one mocked run."""
+        started, removed = [], []
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d) / "run"
+
+            def start(name, root_, site=SINGLE_FOLLOWER, plutus_vm=None, **kwargs):
+                started.append((site.key, plutus_vm))
+                site.log(root).write_text(self.follower_log(plutus_vm, 5 if site.key != "scarab" else 4))
+                return Mock(poll=Mock(return_value=None))
+
+            def up_eras(args, on_nodes_up, on_pools_ready, on_tick):
+                (root / "genesis").mkdir(parents=True)
+                (root / "eras.json").write_text(json.dumps({"eras": [{"era": "byron", "epoch": 0},
+                                                                     {"era": "conway", "epoch": 1}]}))
+                (root / "genesis" / "configuration.yaml").write_text(json.dumps({"TestConwayHardForkAtEpoch": 1}))
+                (root / "genesis" / "shelley-genesis.json").write_text(json.dumps({"securityParam": 3}))
+                on_nodes_up(root)
+                on_tick({})
+
+            def docker(*command, **kwargs):
+                if command[:2] == ("rm", "-f"):
+                    removed.append(command[2])
+            args = types.SimpleNamespace(name="n", plutus_vm=plutus_vm, oracle=False, scala_cpus=2, no_load=True,
+                                         no_compare=True, keep=False, timeout=60, until_epoch=2, min_comparisons=3)
+            with patch.object(e2e_scenario, "data_root", return_value=root), \
+                    patch.object(e2e_scenario, "up_eras", side_effect=up_eras), \
+                    patch.object(e2e_scenario, "start_follower", side_effect=start), \
+                    patch.object(e2e_scenario, "in_ref", return_value=types.SimpleNamespace(stdout="")), \
+                    patch.object(e2e_scenario, "keep_native_evidence", return_value={"kept": [], "notKept": {}}), \
+                    patch.object(e2e_scenario, "docker", side_effect=docker), \
+                    patch.object(e2e_scenario.time, "sleep"), \
+                    contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+                e2e_scenario.e2e(args)
+            summary = json.loads((root / "e2e-summary.json").read_text())
+        return summary, started, removed
+
+    def test_the_only_follower_keeps_the_summary_layout(self):
+        summary, started, removed = self.run_e2e(None)
+        self.assertEqual(started, [(None, None)])
+        self.assertEqual(summary["stoppedBecause"], "reached")
+        for key in ("transitions", "blocksPerEra", "cpuStarvationWarnings", "ledgerComparison", "followerExit"):
+            self.assertIn(key, summary)
+        self.assertNotIn("followers", summary)
+        self.assertNotIn("crossCheck", summary)
+        self.assertNotIn("plutusVm", summary)
+        self.assertFalse(any(f.startswith(("scalus", "scarab")) for f in summary["failures"]), summary["failures"])
+        self.assertEqual(removed[-2:], ["n-scala", "n-ref"])
+
+    def test_two_followers_are_judged_each_and_against_each_other(self):
+        summary, started, removed = self.run_e2e(["scalus", "scarab"])
+        self.assertEqual(started, [("scalus", "scalus"), ("scarab", "scarab")])
+        self.assertEqual(summary["stoppedBecause"], "reached")
+        self.assertEqual(sorted(summary["followers"]), ["scalus", "scarab"])
+        for key, own in summary["followers"].items():
+            self.assertEqual(own["plutusVm"], [key])
+            self.assertTrue(own["reachedTarget"], key)
+            for field in ("transitions", "cpuStarvationWarnings", "ledgerComparison"):
+                self.assertIn(field, own, f"{key} lacks {field}")
+        self.assertNotIn("transitions", summary)
+        cross = summary["crossCheck"]
+        self.assertEqual(cross["failures"], [])
+        self.assertEqual(cross["finalChain"]["pairs"][0]["beyondCommon"], {"scalus": 1, "scarab": 0})
+        own_failures = [f for f in summary["failures"] if "no shelley block was applied" in f]
+        self.assertEqual(sorted(own_failures), ["scalus follower: no shelley block was applied",
+                                                "scarab follower: no shelley block was applied"])
+        self.assertEqual(removed[-3:], ["n-scala-scalus", "n-scala-scarab", "n-ref"])
+
+
 class E2EArgumentsTest(unittest.TestCase):
     def test_the_oracle_is_refused_with_several_followers_before_anything_starts(self):
         args = types.SimpleNamespace(name="n", plutus_vm=["scalus", "scarab"], oracle=True)
