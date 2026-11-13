@@ -5,8 +5,8 @@
 # CONFIG names the config directory (default config); the canary's run is named scarab-canary.
 # Without CONFIG_IMAGE, snouty pushes the three images and the config to the tenant registry. With the reference that
 # publish.sh prints, the run pulls everything from that public registry instead.
-# The tenant predates --max-compute-hours (release 66), so the duration bounds the run: 15m on the standard tier
-# (48 cores) is 12 compute hours, plus setup.
+# The tenant predates --max-compute-hours (release 66), so the duration bounds the run. A 15m resilient run cost 18 to
+# 20 compute hours, about 7 of them setup.
 set -euo pipefail
 
 faults=$1

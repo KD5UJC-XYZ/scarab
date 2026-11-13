@@ -54,8 +54,8 @@ CONFIG=config-canary antithesis/pool/scripts/launch.sh none 15m   # the canary
 python3 -I antithesis/pool/canary/writebits_script.py # regenerate the canary's policies and cost model
 ```
 
-`launch.sh` takes the fault level and a duration: the tenant predates `--max-compute-hours`, and 15 minutes on
-the standard tier (48 cores) is 12 compute hours, plus setup. Snouty pushes the images and the config image to the
+`launch.sh` takes the fault level and a duration: the tenant predates `--max-compute-hours`. A 15-minute
+`resilient` run cost 18 to 20 compute hours, about 7 of them setup, so a longer run pays for setup once. Snouty pushes the images and the config image to the
 tenant registry. Instead, `publish.sh` pushes them to a public registry (by default
 `ghcr.io/kd5ujc-xyz/scarab-antithesis`, which must be public for Antithesis to pull), with the compose file naming
 each image by digest, and prints the config image's reference for `launch.sh resilient 15m <reference>`.
