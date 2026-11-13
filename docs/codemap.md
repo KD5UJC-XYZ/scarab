@@ -70,7 +70,10 @@ Scarab's own UPLC evaluator, with no Scalus on its class path (ADR 0027).
 
 | Package | Responsibility | Entry points | Suites | Decisions |
 |---|---|---|---|---|
-| uplc | Plutus data, execution units, language and cost-model parameter names; the term model, decoder, machine, builtins and costing of the own evaluator as they land | `PlutusData`, `ExUnits`, `PlutusLanguage`, `ParamNames` | `NoScalusSuite`, `PlutusDataSuite` | [ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) |
+| uplc | Plutus data, execution units, language and cost-model parameter names; the term model (builtins with tags and type schemes, constants, terms with Traverse, stack-safe recursion schemes), semantics variants and availability of the own evaluator, with its decoder, machine, builtins and costing as they land | `PlutusData`, `ExUnits`, `PlutusLanguage`, `ParamNames`, `DefaultFun`, `Signature`, `DefaultUni`, `Constant`, `Value`, `Text`, `TermF`, `Term`, `Program`, `Fix`, `Schemes`, `SemanticsVariant`, `Availability` | `NoScalusSuite`, `PlutusDataSuite`, `DefaultFunSuite`, `TermFLawsSuite`, `SchemesSuite`, `AvailabilitySuite`, `ValueSuite`, `ConstantSuite` | [ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) |
+| uplc/bls | BLS12-381 constants of the own evaluator (G1 and G2 points, Miller-loop results), opaque over their bytes | `G1Element`, `G2Element`, `MlResult` | `ConstantSuite` | [ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) |
+| uplc/cost | The reference's saturating integer, budgets, cost streams and the machine's step costs | `SatInt`, `ExBudget`, `CostStream`, `StepKind`, `MachineCosts` | `SatIntSuite` | [ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) |
+| uplc/builtin | The contract between the machine, the builtins and the costing: unlifting, denotations, costing functions and a saturated application in the reference's order | `Builtins`, `Prepared`, `Unlifting`, `Denotation`, `Denotations`, `Costing`, `CostingFunction`, `MachineValue`, `Argument`, `Outcome`, `BuiltinFailure` | `BuiltinsSuite` | [ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) |
 
 ## plutus
 

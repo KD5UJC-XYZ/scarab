@@ -286,16 +286,93 @@
     {
       "module": "uplc",
       "path": "uplc",
-      "responsibility": "Plutus data, execution units, language and cost-model parameter names; the term model, decoder, machine, builtins and costing of the own evaluator as they land",
+      "responsibility": "Plutus data, execution units, language and cost-model parameter names; the term model (builtins with tags and type schemes, constants, terms with Traverse, stack-safe recursion schemes), semantics variants and availability of the own evaluator, with its decoder, machine, builtins and costing as they land",
       "entryPoints": [
         "PlutusData",
         "ExUnits",
         "PlutusLanguage",
-        "ParamNames"
+        "ParamNames",
+        "DefaultFun",
+        "Signature",
+        "DefaultUni",
+        "Constant",
+        "Value",
+        "Text",
+        "TermF",
+        "Term",
+        "Program",
+        "Fix",
+        "Schemes",
+        "SemanticsVariant",
+        "Availability"
       ],
       "suites": [
         "NoScalusSuite",
-        "PlutusDataSuite"
+        "PlutusDataSuite",
+        "DefaultFunSuite",
+        "TermFLawsSuite",
+        "SchemesSuite",
+        "AvailabilitySuite",
+        "ValueSuite",
+        "ConstantSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
+      "module": "uplc",
+      "path": "uplc/bls",
+      "responsibility": "BLS12-381 constants of the own evaluator (G1 and G2 points, Miller-loop results), opaque over their bytes",
+      "entryPoints": [
+        "G1Element",
+        "G2Element",
+        "MlResult"
+      ],
+      "suites": [
+        "ConstantSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
+      "module": "uplc",
+      "path": "uplc/cost",
+      "responsibility": "The reference's saturating integer, budgets, cost streams and the machine's step costs",
+      "entryPoints": [
+        "SatInt",
+        "ExBudget",
+        "CostStream",
+        "StepKind",
+        "MachineCosts"
+      ],
+      "suites": [
+        "SatIntSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
+      "module": "uplc",
+      "path": "uplc/builtin",
+      "responsibility": "The contract between the machine, the builtins and the costing: unlifting, denotations, costing functions and a saturated application in the reference's order",
+      "entryPoints": [
+        "Builtins",
+        "Prepared",
+        "Unlifting",
+        "Denotation",
+        "Denotations",
+        "Costing",
+        "CostingFunction",
+        "MachineValue",
+        "Argument",
+        "Outcome",
+        "BuiltinFailure"
+      ],
+      "suites": [
+        "BuiltinsSuite"
       ],
       "docs": [
         "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
