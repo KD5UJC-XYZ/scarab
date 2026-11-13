@@ -199,8 +199,14 @@ object LocalSockets:
     def close: F[Unit] = F.blocking(client.shutdownOutput()).void
 
   def jdk[F[_]](using F: Async[F]): LocalSockets[F] = new LocalSockets[F]:
+    // unix 2.8.6.0's `removeLink` refuses a path that holds NUL before it calls `unlink`, which would
+    // stop at the NUL and remove another file (`useAsCStringSafe`,
+    // `System/Posix/PosixPath/FilePath.hsc` 154-171)
     def removeFile(path: String): F[Either[SystemCallError, Unit]] =
-      F.blocking(Unlink(path)).map(_.leftMap(SystemCallError(SystemCall.RemoveLink, _, Some(path))))
+      if path.contains('\u0000') then F.pure(Left(interiorNul(path)))
+      else
+        F.blocking(Unlink(path))
+          .map(_.leftMap(SystemCallError(SystemCall.RemoveLink, _, Some(path))))
 
     def fileMode(path: String): F[Either[SystemCallError, Int]] =
       F.blocking(Either.catchOnly[IOException](Files.getAttribute(Path.of(path), "unix:mode")))
@@ -249,9 +255,26 @@ object LocalSockets:
               )
             )
           )
-        // the JDK encodes the path in the locale's encoding (`sun.jnu.encoding`) and refuses one
-        // it cannot encode, or that holds NUL, with `InvalidPathException`: a refusal of the bind,
-        // as one longer than its 106 bytes is (an approved deviation, #949)
+        // a path beyond ASCII, after the length and trailing-`/` refusals that come before the
+        // reference's bind too: Scarab refuses every one, the owner's decision (#949). Run with
+        // `café` paths, cardano-node 11.1.3 binds the path under its characters truncated to a byte
+        // each (`castCharToCChar`, `Network/Socket/Types.hsc` 1160), then its check of the socket
+        // finds nothing at the path's own name and stops the set-up with this error. Scarab binds
+        // nothing, so it leaves no socket file under the truncated name
+        else if address.path.exists(_ > '\u007f') then
+          F.pure(
+            Left(
+              DiffusionFailure.System(
+                SystemCallError(
+                  SystemCall.GetFileStatus,
+                  ErrnoCause.Known(Errno.ENOENT),
+                  Some(address.path)
+                )
+              )
+            )
+          )
+        // an ASCII path: the JDK refuses one that holds NUL with `InvalidPathException`, a refusal
+        // of the bind, as one longer than its 106 bytes is (an approved deviation, #949)
         else
           F.blocking(
             Either
@@ -289,6 +312,19 @@ object LocalSockets:
               Mutex[F].map(lock => LocalStream(stream(client, lock), F.blocking(client.close())))
             )
           )
+
+  /** The `IOError` of unix 2.8.6.0's `useAsCStringSafe` for a path that holds NUL
+    * (`System/Posix/PosixPath/FilePath.hsc` 154-171): it names the path as decoded, NUL included.
+    */
+  private[network] def interiorNul(path: String): SystemCallError =
+    SystemCallError(
+      SystemCall.CheckForInteriorNuls,
+      ErrnoCause.Described(
+        IoErrorType.InvalidArgument,
+        "POSIX filepaths must not contain internal NUL octets."
+      ),
+      Some(path)
+    )
 
   /** `unlink(2)` of the path as written, one call, as the reference's `removeFile`: it needs write
     * and search permission on the directory only, refuses a directory (`EISDIR`), and takes a path

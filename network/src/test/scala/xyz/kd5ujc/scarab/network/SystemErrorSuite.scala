@@ -67,6 +67,48 @@ class SystemErrorSuite extends FunSuite:
     )
   }
 
+  // captured 2026-11-13 with `--socket-path /w/café-C.socket` and no `LANG` (the C locale): the
+  // `DiffusionErrored` trace's `error` after `CreatedLocalSocket` and `ConfiguringLocalSocket`; with
+  // `LANG=C.UTF-8` and `/w/café-U.socket` it is the same line for that path
+  test("a socket path beyond ASCII, as the reference's DiffusionErrored names it (#949)") {
+    val path = "/w/café-C.socket"
+    assertEquals(
+      DiffusionFailure
+        .System(
+          SystemCallError(SystemCall.GetFileStatus, ErrnoCause.Known(Errno.ENOENT), Some(path))
+        )
+        .shown,
+      "/w/café-C.socket: getFileStatus: does not exist (No such file or directory)"
+    )
+  }
+
+  // captured 2026-11-13 with `LANG=C.UTF-8` and a 108-character `--socket-path` beyond ASCII: the
+  // length is refused first, its character shown as Haskell shows it
+  test("a path beyond ASCII of 108 characters, as pokeSockAddr refuses it (#949)") {
+    val path = "/w/é" + "n" * 104
+    assertEquals(
+      DiffusionFailure.PathTooLong(path).shown,
+      "pokeSockAddr: path is too long in SockAddrUnix \"/w/\\233" + "n" * 104 +
+        "\", length 108, unixPathMax 108\n" +
+        "CallStack (from HasCallStack):\n" +
+        "  error, called at Network/Socket/Types.hsc:1162:33 in " +
+        "network-3.2.8.0-DfzdidsgO8q74pRUILGgOE:Network.Socket.Types"
+    )
+  }
+
+  // unix 2.8.6.0 `useAsCStringSafe` (`System/Posix/PosixPath/FilePath.hsc` 154-171), shown by GHC
+  // 9.6.7's `instance Show IOException` (`GHC/IO/Exception.hs` 417-430); not reachable in the
+  // reference, whose socket path comes from its command line only
+  test("a path that holds NUL, as unix's check refuses it") {
+    val path = "/w/a\u0000b"
+    assertEquals(
+      LocalSockets.interiorNul(path).shown,
+      s"$path: checkForInteriorNuls: invalid argument " +
+        "(POSIX filepaths must not contain internal NUL octets.)"
+    )
+    assert(!LocalSockets.interiorNul(path).doesNotExist)
+  }
+
   test("a bind that fails, as the reference's DiffusionErrored names it") {
     def bind(errno: Errno) =
       DiffusionFailure.System(SystemCallError(SystemCall.Bind, ErrnoCause.Known(errno), None)).shown

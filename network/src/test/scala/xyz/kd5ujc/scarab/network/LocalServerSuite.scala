@@ -208,6 +208,29 @@ class LocalServerSuite extends FailsOnUncaught:
     }
   }
 
+  // unix 2.8.6.0's `removeLink` refuses the path before it calls `unlink`, which would stop at the
+  // NUL and remove the file the bytes before it name
+  test("a path that holds NUL refuses with removeLink's check, and removes nothing") {
+    temporary.use { root =>
+      val kept = root.resolve("kept")
+      val path = s"$kept\u0000.socket"
+      for
+        _ <- IO.blocking(Files.writeString(kept, "kept"))
+        removed <- attempt[SocketConfigError, Unit](LocalServer.removeStale(jdk, path))
+        left <- IO.blocking(Files.readString(kept))
+      yield
+        assertEquals(
+          removed.left.map(_.message),
+          Left(
+            s"Failure while attempting to remove the stale local socket: $path : " +
+              s"$path: checkForInteriorNuls: invalid argument " +
+              "(POSIX filepaths must not contain internal NUL octets.)"
+          )
+        )
+        assertEquals(left, "kept", "the file the bytes before the NUL name is left")
+    }
+  }
+
   test("a blocking call cancelled by closing its channel leaves no uncaught failure (#644)") {
     // On one FIFO worker thread the order is fixed: the cancel drops the join of `cancelable` and
     // runs `closing`, which wakes the call and then yields, as the blocking close of a real channel
@@ -766,7 +789,7 @@ class LocalServerSuite extends FailsOnUncaught:
     }
   }
 
-  test("on the JDK: a path the JDK cannot encode is a failed bind, not an exception (#949)") {
+  test("on the JDK: a path that holds NUL is a failed bind, not an exception (#949)") {
     shortTemporary.use { root =>
       onJdkAt(s"$root/node\u0000.socket", (_, _) => IO.unit)((_, _) => IO.unit)(_ => IO.unit)
         .map { (result, traces) =>
@@ -784,6 +807,47 @@ class LocalServerSuite extends FailsOnUncaught:
           )
           assert(endsAtBind(traces), traces)
         }
+    }
+  }
+
+  // run with `café` paths, cardano-node 11.1.3 binds the path truncated to a byte per character and
+  // then finds no socket at the path's own name; Scarab refuses every path beyond ASCII at that
+  // step with that error and binds nothing, the owner's decision (#949)
+  test(
+    "on the JDK: a path beyond ASCII stops the set-up as the reference's does, binding nothing"
+  ) {
+    shortTemporary.use { root =>
+      val path = s"$root/café.socket"
+      onJdkAt(path, (_, _) => IO.unit)((_, _) => IO.unit)(_ => IO.unit).flatMap {
+        (result, traces) =>
+          IO.blocking(root.toFile.list.length).map { left =>
+            assertEquals(
+              result.left.map(_.shown),
+              Left(s"$path: getFileStatus: does not exist (No such file or directory)")
+            )
+            assert(endsAtBind(traces), traces)
+            assertEquals(left, 0, "no socket file is made, under any name")
+          }
+      }
+    }
+  }
+
+  // the reference's length and trailing-`/` refusals come before its bind, so before what a path
+  // beyond ASCII meets there (runs of cardano-node 11.1.3, #949)
+  test("on the JDK: a path beyond ASCII is refused for its length or its trailing slash first") {
+    shortTemporary.use { root =>
+      val long = s"$root/é" + "n" * (108 - root.toString.length - 2)
+      val slashed = s"$root/café/"
+      for
+        tooLong <- onJdkAt(long, (_, _) => IO.unit)((_, _) => IO.unit)(_ => IO.unit)
+        ending <- onJdkAt(slashed, (_, _) => IO.unit)((_, _) => IO.unit)(_ => IO.unit)
+      yield
+        assertEquals(long.codePointCount(0, long.length), 108)
+        assertEquals(tooLong._1, Left(DiffusionFailure.PathTooLong(long)))
+        assertEquals(
+          ending._1.left.map(_.shown),
+          Left("Network.Socket.bind: does not exist (No such file or directory)")
+        )
     }
   }
 

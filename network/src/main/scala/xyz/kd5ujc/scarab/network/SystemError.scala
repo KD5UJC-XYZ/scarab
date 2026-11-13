@@ -208,17 +208,25 @@ object Errno:
       byGlibc.get(m.stripSuffix(LoopSuffix)).fold(ErrnoCause.Unrecognised(m))(ErrnoCause.Known(_))
     }
 
-/** Why a call failed: its errno, or the JDK's text when that names none. */
+/** Why a call failed: its errno, the JDK's text when that names none, or the kind and description
+  * of an `IOError` that a Haskell library raises itself, before any call, with no errno.
+  */
 enum ErrnoCause:
   case Known(errno: Errno)
   case Unrecognised(text: String)
+  case Described(kind: IoErrorType, description: String)
 
-  /** The kind and the reason of the `IOError`, as GHC shows them (an unknown errno is
-    * `OtherError`).
-    */
+  /** The kind of the `IOError` (an unknown errno is `OtherError`). */
+  def errorType: IoErrorType = this match
+    case Known(e)           => e.kind
+    case Unrecognised(_)    => IoErrorType.OtherError
+    case Described(kind, _) => kind
+
+  /** The kind and the reason of the `IOError`, as GHC shows them. */
   def shown: String = this match
-    case Known(e)        => s"${e.kind.shown} (${e.musl})"
-    case Unrecognised(t) => s"${IoErrorType.OtherError.shown} ($t)"
+    case Known(e)                  => s"${errorType.shown} (${e.musl})"
+    case Unrecognised(t)           => s"${errorType.shown} ($t)"
+    case Described(_, description) => s"${errorType.shown} ($description)"
 
 /** The calls of the local socket, with the location their `IOError` names: `removeLink` (the
   * `unlink` of `removeFile`, as the reference's binary names it), `getFileStatus` (unix) and the
@@ -226,6 +234,11 @@ enum ErrnoCause:
   */
 enum SystemCall(val location: String):
   case RemoveLink extends SystemCall("removeLink")
+
+  /** Not a call: unix 2.8.6.0's check, before `removeLink` calls `unlink`, that the path holds no
+    * NUL (`useAsCStringSafe`, `System/Posix/PosixPath/FilePath.hsc` 154-171).
+    */
+  case CheckForInteriorNuls extends SystemCall("checkForInteriorNuls")
   case GetFileStatus extends SystemCall("getFileStatus")
   case Socket extends SystemCall("Network.Socket.socket")
   case Bind extends SystemCall("Network.Socket.bind")
@@ -244,11 +257,11 @@ final case class SystemCallError(call: SystemCall, cause: ErrnoCause, file: Opti
 
   /** The errno, when it is known. */
   def errno: Option[Errno] = cause match
-    case ErrnoCause.Known(e)        => Some(e)
-    case ErrnoCause.Unrecognised(_) => None
+    case ErrnoCause.Known(e) => Some(e)
+    case _                   => None
 
   /** `isDoesNotExistError`: the kind is `NoSuchThing`. */
-  def doesNotExist: Boolean = errno.exists(_.kind == IoErrorType.NoSuchThing)
+  def doesNotExist: Boolean = cause.errorType == IoErrorType.NoSuchThing
 
 object SystemCallError:
   /** The failure of `call` on `file` that the JDK reported as `e`. */
