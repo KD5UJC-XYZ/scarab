@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-# The writeBits canary (GHSA-vfw2-hhrc-87v5): the cluster of ../config at protocol 11, with the Haskell pools' logs
-# shared with the driver, whose first command submits the canary transaction to s1 and whose watcher reports a
-# block a Haskell pool refused. Against Scarab before the fix, "a Haskell pool never refuses a block as invalid" fails.
+# The writeBits canary (GHSA-vfw2-hhrc-87v5): the cluster of ../config at protocol 11, whose driver's first command
+# submits the canary transaction to s1. Against Scarab before the fix, the detectors "a Haskell pool never refuses a
+# block as invalid" and "Scarab never refuses a block as invalid" fail.
 # No restart policies: Antithesis restarts what it kills.
 
 x-labels: &labels
@@ -80,6 +80,7 @@ services:
     volumes:
       - env:/env:ro
       - ipc-s1:/ipc
+      - logs:/logs
 
   driver:
     container_name: driver

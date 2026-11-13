@@ -21,6 +21,11 @@ if [ ! -e "$keys/kes.skey" ]; then
   mv "$keys/kes.skey.copy" "$keys/kes.skey"
 fi
 mkdir -p /data/db
+# Where the compose file mounts /logs, the node's log also goes to a file there, for the driver's detectors; stdout
+# still carries it.
+if [ -d /logs ]; then
+  exec > >(tee -a /logs/s1.log) 2>&1
+fi
 # A killed node leaves its socket file behind.
 rm -f /ipc/node.socket
 exec java -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=20 --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \

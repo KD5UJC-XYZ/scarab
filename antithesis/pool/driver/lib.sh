@@ -1,10 +1,10 @@
 #!/bin/bash
 # SPDX-License-Identifier: Apache-2.0
-# Shared by the driver's main process and its test command: the assertion catalogue in the fallback SDK's format
-# (JSON lines appended to $ANTITHESIS_OUTPUT_DIR/sdk.jsonl) and the pools' tips.
+# Shared by the driver's main process and its test commands: the assertion catalogue in the fallback SDK's format
+# (JSON lines appended to $ANTITHESIS_OUTPUT_DIR/sdk.jsonl), the pools' tips and the divergence detectors.
 #
-# There are only sometimes and reachable assertions: at k = 5 a partition can split the chain for good, which is the
-# protocol working, so no convergence `always` is asserted yet.
+# The tips get sometimes and reachable assertions only: at k = 5 a partition can split the chain for good, which is
+# the protocol working, so no convergence `always` is asserted yet.
 
 MAGIC=1082026
 NODES=(h2 h3 s1)
@@ -12,7 +12,13 @@ INTERVAL_SECONDS=5
 # The text of the Haskell pools' `ChainSync.Client.Exception` trace when they refuse a block, from a local run of the
 # canary against cardano-node 11.1.3: `InvalidBlock (Point (At (Block {blockPointSlot = ...`.
 REFUSAL_PATTERN='InvalidBlock (Point'
+# Scarab's `Node.Fatal` event (`EventKind.Fatal`) as its JSON log line writes it.
+FATAL_PATTERN='"event":"fatal"'
 SDK="${ANTITHESIS_OUTPUT_DIR:-/tmp}/sdk.jsonl"
+# What the test commands remember within a timeline (markers and log offsets): each runs as a process of its own,
+# many times per timeline, and a timeline that branches takes this directory with it.
+STATE_DIR=/tmp/at-state
+mkdir -p "$STATE_DIR"
 
 STARTS="the workload starts"
 SCARAB_EXTENDS="Scarab pool s1 extends its chain within one interval"
@@ -22,6 +28,7 @@ ALL_AGREE="all three pools report the same tip"
 CANARY_SUBMITTED="the writeBits transaction was submitted to s1 and answered"
 HASKELL_REFUSED="a Haskell pool never refuses a block as invalid"
 SCARAB_REFUSED="Scarab never refuses a block as invalid"
+SCARAB_FATAL="Scarab never logs a fatal event"
 
 # assertion HIT MUST_HIT TYPE DISPLAY MESSAGE CONDITION [DETAILS]
 assertion() {
@@ -34,13 +41,26 @@ assertion() {
                          + (if $details == null then {} else {details: $details} end))}' >> "$SDK"
 }
 
+# once KEY: succeeds the first time KEY is given in this timeline, in any process (mkdir is atomic).
+once() {
+  mkdir "$STATE_DIR/once-$(printf '%s' "$1" | md5sum | cut -c1-32)" 2> /dev/null
+}
+
 # The fallback SDK asks for the first true and the first false evaluation of an assertion only.
-declare -A recorded
 sometimes() {
-  local key="$1/$2"
-  [ -n "${recorded[$key]:-}" ] && return 0
-  recorded[$key]=1
+  once "sometimes/$1/$2" || return 0
   assertion true true sometimes Sometimes "$1" "$2" "$3"
+}
+
+reached() {
+  once "reachable/$1" || return 0
+  assertion true true reachability Reachable "$1" true
+}
+
+# unreachable_hit MESSAGE DETAILS: the unreachable MESSAGE was reached; recorded once per timeline.
+unreachable_hit() {
+  once "unreachable/$1" || return 0
+  assertion true false reachability Unreachable "$1" false "$2"
 }
 
 declare_catalog() {
@@ -49,47 +69,80 @@ declare_catalog() {
   for m in "$SCARAB_EXTENDS" "$HASKELL_EXTENDS" "$ALL_EXTEND" "$ALL_AGREE"; do
     assertion false true sometimes Sometimes "$m" false
   done
-  # The divergence detectors run where the compose file mounts the Haskell pools' logs at /logs.
+  # The divergence detectors run where the compose file mounts the pools' logs at /logs.
   if [ -d /logs ]; then
-    assertion false false reachability Unreachable "$HASKELL_REFUSED" false
-    assertion false false reachability Unreachable "$SCARAB_REFUSED" false
+    for m in "$HASKELL_REFUSED" "$SCARAB_REFUSED" "$SCARAB_FATAL"; do
+      assertion false false reachability Unreachable "$m" false
+    done
   fi
   if [ -d /opt/at/canary ]; then
     assertion false true sometimes Sometimes "$CANARY_SUBMITTED" false
   fi
 }
 
-# Where the divergence detectors run: s1's count of blocks its rules refused (`scarab_validation_errors_total`, by
-# rule family), when s1 answers and the count is above 0.
+# log_match NAME LOG PATTERN: the first line of LOG past NAME's offset that holds the fixed string PATTERN. The
+# offset then moves to 4 KiB before the end read, so that a line cut by the end is read whole next time; a log that
+# is shorter than the offset was started again, and is read from its start.
+log_match() {
+  local offset_file="$STATE_DIR/offset-$1" log=$2 size from lines status
+  [ -f "$log" ] || return 1
+  size=$(stat -c %s "$log")
+  from=$(cat "$offset_file" 2> /dev/null || echo 0)
+  [ "$from" -le "$size" ] || from=0
+  # Every command reads to the end: an early exit would break the pipe, and pipefail would hide the match.
+  lines=$(tail -c +"$((from + 1))" "$log" | grep -F -- "$3")
+  status=$?
+  # The offset moves only once the scan is done, so that a scan cut short is made again.
+  echo $(( size > 4096 ? size - 4096 : 0 )) > "$offset_file"
+  [ "$status" -eq 0 ] || return 1
+  printf '%s\n' "${lines%%$'\n'*}"
+}
+
+# A Haskell pool refused a block as invalid: the pool and the start of its trace, which names the block and the rule
+# (the trace carries the whole script and its context). Before blaming s1, check which pool forged that block.
+haskell_refusal() {
+  local n line
+  for n in h2 h3; do
+    line=$(log_match "refusal-$n" "/logs/$n.log" "$REFUSAL_PATTERN") || continue
+    jq -cn --arg pool "$n" --arg line "$line" '{pool: $pool, trace: $line[0:2000]}'
+    return 0
+  done
+  return 1
+}
+
+# s1 refused a block: its count of blocks its rules refused (`scarab_validation_errors_total`, by rule family), when
+# s1 answers and the count is above 0. The count starts again at 0 when s1 restarts.
 scarab_refusal() {
   local metrics
-  [ -d /logs ] || return 1
   metrics=$(curl -s --max-time 5 http://s1:12798/metrics) || return 1
   jq -Rn --arg text "$metrics" '[$text | split("\n")[] | select(startswith("scarab_validation_errors_total{"))]
     | if length == 0 then empty else . end
     | {count: (map(split(" ")[-1] | tonumber) | add), series: .} | select(.count > 0)' | grep . || return 1
 }
 
-# Where the compose file mounts the Haskell pools' logs at /logs: the first line of either log, past its byte offset
-# in REFUSAL_OFFSETS, in which the pool refused a block as invalid. In an honest cluster only s1 can have forged it.
-declare -A REFUSAL_OFFSETS
-refusal() {
-  local n log size from lines
-  [ -d /logs ] || return 1
-  for n in h2 h3; do
-    log=/logs/$n.log
-    [ -f "$log" ] || continue
-    size=$(stat -c %s "$log")
-    from=${REFUSAL_OFFSETS[$n]:-0}
-    # The next scan starts 4 KiB before this one's end, so that a line cut by the end is read whole next time.
-    REFUSAL_OFFSETS[$n]=$(( size > 4096 ? size - 4096 : 0 ))
-    # Every command reads to the end: an early exit would break the pipe, and pipefail would hide the match.
-    lines=$(tail -c +"$((from + 1))" "$log" | grep -F "$REFUSAL_PATTERN") || continue
-    # the trace carries the whole script and its context: its first 2,000 characters name the block and the rule
-    jq -cn --arg pool "$n" --arg line "${lines%%$'\n'*}" '{pool: $pool, trace: $line[0:2000]}'
-    return 0
-  done
-  return 1
+scarab_fatal() {
+  local line
+  line=$(log_match fatal-s1 /logs/s1.log "$FATAL_PATTERN") || return 1
+  jq -cn --arg line "$line" '{line: $line[0:2000]}'
+}
+
+# One pass of the divergence detectors, where /logs is mounted.
+check_divergence() {
+  local found
+  [ -d /logs ] || return 0
+  if found=$(haskell_refusal); then
+    echo "detectors: a Haskell pool refused a block: $found"
+    unreachable_hit "$HASKELL_REFUSED" "$found"
+  fi
+  if found=$(scarab_refusal); then
+    echo "detectors: s1 refused a block: $found"
+    unreachable_hit "$SCARAB_REFUSED" "$found"
+  fi
+  if found=$(scarab_fatal); then
+    echo "detectors: s1 logged a fatal event: $found"
+    unreachable_hit "$SCARAB_FATAL" "$found"
+  fi
+  return 0
 }
 
 # Every node's tip as one JSON object, {"h2": {"block": .., "hash": .., "slot": ..} or null, ...}.
