@@ -81,7 +81,7 @@ from .scenarios.peer_sharing import peer_sharing
 from .scenarios.restart import restart
 from .scenarios.v1context import v1_context
 from .scenarios.soak import soak
-from .util import GIB, REPO, data_root, free_space_shortfall, human_bytes, tree_size
+from .util import GIB, PLUTUS_VMS, REPO, data_root, free_space_shortfall, human_bytes, tree_size
 
 # the subcommands that start containers and fill a run directory: the free-space check and the size report apply
 RUNS = frozenset({"up", "up-eras", "capture-eras", "up-dijkstra", "capture-dijkstra", "e2e", "follow", "soak", "relay", "peer-sharing", "peercut",
@@ -213,7 +213,12 @@ def main():
     t.add_argument("--node", type=int, default=1, help="reference node 1..3")
     t.set_defaults(run=tip)
     f = sub.add_parser("follow", parents=[scala_options], help="run the Scala follower against a reference node (logs to the run dir)")
-    f.add_argument("--plutus-vm", choices=("scalus", "scarab"), default=None, help=plutus_vm_help)
+    f.add_argument("--plutus-vm", choices=PLUTUS_VMS, default=None, help=plutus_vm_help)
+    f.add_argument("--instance", choices=PLUTUS_VMS, default=None,
+                   help="one of several followers of the run, named by an evaluator (as `e2e` starts them with "
+                        "more than one --plutus-vm): its container, log, local socket, stall, dump, database and "
+                        "class directories carry the suffix -<instance>, and it takes a query and a metrics port of "
+                        "its own (`util.FollowerSite`); it does not choose the evaluator, --plutus-vm does")
     f.add_argument("--seconds", type=int, help="stop after this long (default: until killed)")
     f.add_argument("--node", type=int, default=1, help="reference node the follower connects to")
     f.add_argument("--dump-state", action="store_true",
