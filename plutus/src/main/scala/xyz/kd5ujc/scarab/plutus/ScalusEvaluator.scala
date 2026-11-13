@@ -398,6 +398,12 @@ object ScalusEvaluator:
       case _                  => ()
     throw new BuiltinException("builtin evaluation unavailable")
 
+  /** `maximumInputLength` (`PlutusCore/Bitwise.hs` lines 81-82 at plutus 1.70.0.0, `507cab8c`, and
+    * 1.71.0.0, `261766ad`): the longest byte string `writeBits` takes in the variants that bound
+    * byte strings.
+    */
+  private val BitwiseMaximumInputLength = 4096
+
   /** A [[PlutusVM]] with builtins whose meaning Scalus gets wrong replaced, and the reference's
     * budget arithmetic in place of Scalus's. This is `PlutusVM.evaluateDeBruijnedTerm` with those
     * meanings swapped in; the typing schemes of Scalus's builtins are kept.
@@ -412,6 +418,10 @@ object ScalusEvaluator:
     *     variants D and E, where the reference takes an unsigned 64-bit integer only.
     *   - `equalsData` is [[DataEquality]]: Scalus 1.4.0, like 1.3.0, compares a `Data.Map` as a set
     *     of its entries, where the reference compares the ordered list of entries.
+    *   - `writeBits` refuses an input longer than [[BitwiseMaximumInputLength]] bytes in variants D
+    *     to G, as the reference does (`Builtins.hs` lines 2199-2214 under `ensurable` at 1.70.0.0,
+    *     lines 2217-2232 under `ensurableByteString` at 1.71.0.0): it logs the reference's two
+    *     lines and fails the script after its cost is charged. Scalus 1.4.0 has no such limit.
     *   - In variants D and E the 35 builtins that take `CInteger` or `CByteString` refuse an
     *     argument outside its unlifting bounds ([[UnliftingBounds]]), at no cost, and in variants F
     *     and G those that take `CByteString`; Scalus 1.4.0 has no such bound (issue 498).
@@ -428,8 +438,9 @@ object ScalusEvaluator:
     * when every cost parameter is `Int64` 's minimum (issue 485).
     *
     * Reproducers: `DataSerialiserSuite`, `ConstrIndexReferenceSuite`, `DataEqualityReferenceSuite`,
-    * `ReferenceBudgetSuite`, `UnliftingBoundsSuite`; regressions: `PreprodConwayRulesSuite`,
-    * `PreprodSecp256k1RulesSuite`, `CostModelLengthSuite`, `BuiltinCostingOracleSuite`.
+    * `ReferenceBudgetSuite`, `UnliftingBoundsSuite`, `WriteBitsLimitReferenceSuite`; regressions:
+    * `PreprodConwayRulesSuite`, `PreprodSecp256k1RulesSuite`, `CostModelLengthSuite`,
+    * `BuiltinCostingOracleSuite`.
     */
   private[plutus] final class CorrectedVm(
       language: Language,
@@ -486,6 +497,19 @@ object ScalusEvaluator:
             case _                => throw new DeserializationError(DefaultFun.ConstrData, args(1))
           }
           CekValue.VCon(Constant.Data(ConstrIndex.constr(index, PList.from(fields)))))
+
+    // a builtin's `f` fails the script only by throwing (see `EvaluationLog`)
+    @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+    private val writeBits: BuiltinRuntime =
+      cardano.WriteBits.copy(f = (logger, args) =>
+        val length = args(0).asByteString.size
+        // Variants D to G refuse a longer input in the denotation, after the machine has charged
+        // the builtin's cost, and emit these two lines first (`Builtins.hs` WriteBits)
+        if ensurable && length > BitwiseMaximumInputLength then
+          logger.log(s"writeBits: input too long (maximum is $BitwiseMaximumInputLength bytes)")
+          logger.log(s"Length: $length")
+          throw new BuiltinException("writeBits input longer than the maximum input length")
+        else cardano.WriteBits.f(logger, args))
     private val caseOnBuiltins = protocol >= MajorProtocolVersion.vanRossemPV
 
     private def meaning(fun: DefaultFun): BuiltinRuntime =
@@ -493,6 +517,7 @@ object ScalusEvaluator:
         case DefaultFun.SerialiseData => serialiseData
         case DefaultFun.ConstrData    => constrData
         case DefaultFun.EqualsData    => equalsData
+        case DefaultFun.WriteBits     => writeBits
         case _                        => native.getOrElse(fun, cardano.getBuiltinRuntime(fun))
 
     /** `runtime` with the variant's unlifting bounds ([[UnliftingBounds]]): an argument outside
