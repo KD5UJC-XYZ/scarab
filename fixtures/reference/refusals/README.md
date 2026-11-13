@@ -116,8 +116,8 @@ The unelected member is one that a pending UpdateCommittee proposal names, which
 to be authorised. Disabling Scarab's reward-balance, DRep-refund, script-locked-collateral and
 conflicting-committee checks fails exactly the four cases that break them. These corpora were recorded
 from a working tree on `f1f553c1d` with the `refusalcoverage` builder added but not yet committed, hence
-`scarabDirty: true`; the committed functions that build them differ from those that recorded them in
-comments only.
+`scarabDirty: true`; the committed functions that build them differ from those that recorded them only in
+comments and in naming the setup's change address explicitly (the same address).
 
 These expectations come from the released node's submission path. Separately, the offline
 `UpstreamFreshLedgerConformanceSuite` and `UpstreamMultiLedgerConformanceSuite` use the same production

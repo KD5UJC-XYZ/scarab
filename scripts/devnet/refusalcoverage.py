@@ -93,19 +93,19 @@ def submit_and_await(b, era, tx, body_hash, submit):
     raise RuntimeError("the setup transaction of the coverage cases did not reach a block")
 
 
-def collateral_setup(b, era, funder_in, funder_lovelace, funder_key, token_address, submit, certs=(), signers=(),
-                     deposit=0):
+def collateral_setup(b, era, funder_in, funder_lovelace, funder_key, change_address, token_address, submit, certs=(),
+                     signers=(), deposit=0):
     """One setup transaction for the collateral cases: output 0 holds ada only at the address of a native script
     (a collateral input locked by a script), output 1 holds ada and a token at `token_address` (a key address),
-    output 2 the funder's change. `certs` ride along (the DELEG cases' registration). Its id."""
+    output 2 the funder's change at `change_address`, where the funder's wallet finds it again. `certs` ride along
+    (the DELEG cases' registration). Its id."""
     lock = eratx.sig_script(funder_key.hash)
     policy = eratx.all_script(eratx.sig_script(funder_key.hash))
     policy_id = eratx.script_hash(policy)
     token = {policy_id: {TOKEN: 1}}
     outs = [eratx.tx_out(era, eratx.enterprise_address(eratx.script_hash(lock), script=True), COLLATERAL_FUND),
             eratx.tx_out(era, token_address, COLLATERAL_FUND, token),
-            eratx.tx_out(era, eratx.enterprise_address(funder_key.hash),
-                         funder_lovelace - 2 * COLLATERAL_FUND - FEE - deposit)]
+            eratx.tx_out(era, change_address, funder_lovelace - 2 * COLLATERAL_FUND - FEE - deposit)]
     tx, body_hash = eratx.build_tx(era, [funder_in], outs, FEE, [funder_key, *signers], mint=token,
                                    native_scripts=[policy], certs=list(certs) or None)
     return submit_and_await(b, era, tx, body_hash, submit)
@@ -159,7 +159,8 @@ def conway_deleg_collateral(name):
     # The setup registers `held_stake` (no rewards, deposit held: the wrong refund's account) and creates the
     # collateral inputs: ada at a native script's address, and ada with a token at wallet 2's address.
     funder = b.wallet(3)
-    setup = collateral_setup(b, "conway", txin(funder), funder["lovelace"], k3, eratx.enterprise_address(k2.hash),
+    setup = collateral_setup(b, "conway", txin(funder), funder["lovelace"], k3, eratx.enterprise_address(k3.hash),
+                             eratx.enterprise_address(k2.hash),
                              f"{CLI} transaction submit --testnet-magic {MAGIC} --socket-path {socket}",
                              certs=[eratx.reg_cert(held_stake.hash, key_deposit)], signers=[held_stake],
                              deposit=key_deposit)
@@ -427,7 +428,8 @@ def preconway_collateral(name, era):
     params = json.loads(b.sh(f"cardano-cli query protocol-parameters {SOCKET}"))
     language = 1 if era == "alonzo" else 2
     models = params["costModels"][f"PlutusV{language}"]
-    setup = collateral_setup(b, era, txin(funder), funder["lovelace"], funder["key"], other["address"],
+    setup = collateral_setup(b, era, txin(funder), funder["lovelace"], funder["key"], funder["address"],
+                             other["address"],
                              f"cardano-cli conway transaction submit {SOCKET}")
     here = wd["address"]
     cases = []
