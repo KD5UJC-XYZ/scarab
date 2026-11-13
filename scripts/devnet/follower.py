@@ -4,9 +4,12 @@ import json
 import os
 import subprocess
 import sys
+import time
 from .cluster import database_mounts, freeze_classes, scala_container
 from .consensus import configuration
-from .util import ENTRY, SINGLE_FOLLOWER, FollowerSite, data_root, read_log, stall_dump_arguments
+from .util import ENTRY, SINGLE_FOLLOWER, FollowerSite, data_root, docker, read_log, stall_dump_arguments
+
+STOP_SECONDS = 30  # `docker stop -t`: SIGTERM, a kill after this long; the node ends far sooner (issue 89)
 
 
 def own_build(args):
@@ -97,3 +100,65 @@ def follower_problem(root, follower, site=SINGLE_FOLLOWER):
     if follower.poll() is not None:
         return f"{site.role} exited with {follower.returncode}"
     return None
+
+
+def stop_followers(name, root, followers, settle_seconds=2, attempts=15, node=1):
+    """Stop a run's followers (site -> `follow` process) on purpose, so that each one's log is whole and its final tip
+    recorded before it is judged (`site.final_tip`, as `oracle.devnet.stop_follower` records the oracle's).
+
+    A follower whose process has already ended exited before the run stopped it: that is a premature exit, kept
+    with its status. For the others, their only peer, reference node `node`, is frozen (SIGSTOP by PID), so no
+    block or rollback reaches them, and a follower's tip is final once two readings of its `/tip`, `settle_seconds`
+    apart, agree (at most `attempts` readings after the first). Each is then stopped with SIGTERM (`docker stop`), so
+    its node ends its log itself and its `follow` process writes every line, and the node is continued in every
+    case. A tip is recorded only for a follower that ended. Returns ({site: {"premature": status or None,
+    "finalTip": tip or None, "exit": status after the stop or None}}, problems): what went wrong with the stop
+    itself (a follower that did not end, a node that could not be continued)."""
+    from oracle import devnet as oracle_devnet
+    report = {site: {"premature": process.poll(), "finalTip": None, "exit": None}
+              for site, process in followers.items()}
+    running = [site for site in followers if report[site]["premature"] is None]
+    for site in followers:
+        site.final_tip(root).unlink(missing_ok=True)
+    problems, pid, resumed = [], None, True
+    try:
+        try:
+            pid = oracle_devnet.node_pid(name, node)
+        except (subprocess.TimeoutExpired, SystemExit):
+            pid = None
+        if pid is not None:
+            resumed = False  # from here a SIGSTOP may have been delivered, whatever docker reports
+            if oracle_devnet.signal_node(name, pid, "STOP"):
+                last, settled = {site: oracle_devnet.follower_tip(name, site) for site in running}, {}
+                for _ in range(attempts):
+                    if len(settled) == len(running):
+                        break
+                    time.sleep(settle_seconds)
+                    for site in running:
+                        if site not in settled:
+                            now = oracle_devnet.follower_tip(name, site)
+                            if now is not None and now == last[site]:
+                                settled[site] = now
+                            last[site] = now
+                for site, tip in settled.items():
+                    report[site]["finalTip"] = tip
+        if running:
+            try:
+                docker("stop", "-t", str(STOP_SECONDS), *(site.container(name) for site in running), check=False,
+                       timeout=STOP_SECONDS + 60)
+            except subprocess.TimeoutExpired:
+                problems.append(f"docker stop of the followers did not return within {STOP_SECONDS + 60} s")
+        for site in running:
+            try:
+                report[site]["exit"] = followers[site].wait(timeout=60)
+            except subprocess.TimeoutExpired:
+                problems.append(f"the {site.role} did not end within {STOP_SECONDS + 60} s of its stop")
+    finally:
+        if pid is not None and not resumed:
+            resumed = any(oracle_devnet.signal_node(name, pid, "CONT") for _ in range(3))
+    if not resumed:
+        problems.append(f"reference node {node} (pid {pid}) could not be confirmed continued after SIGSTOP")
+    for site in running:
+        if report[site]["finalTip"] is not None and report[site]["exit"] is not None:
+            site.final_tip(root).write_text(json.dumps(report[site]["finalTip"]))
+    return report, problems

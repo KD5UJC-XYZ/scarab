@@ -52,6 +52,11 @@ class FollowerSite:
     def log(self, root):
         return root / f"{self.named('follower')}.jsonl"
 
+    def final_tip(self, root):
+        """The file that records the tip the follower ended on when the run stopped it (`follower.stop_followers`,
+        `oracle.devnet.stop_follower`): `follower-tip.json`, or `follower-tip-<key>.json`."""
+        return root / f"{self.named('follower-tip')}.json"
+
     def directory(self, root, base):
         """The follower's own directory `base` of the run directory (`scala-sock`, `stall`, `db`, `dump`, ...)."""
         return root / self.named(base)

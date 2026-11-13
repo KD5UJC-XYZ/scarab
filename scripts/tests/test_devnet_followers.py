@@ -8,6 +8,7 @@ import contextlib
 import io
 import json
 import pathlib
+import shutil
 import sys
 import tempfile
 import types
@@ -44,7 +45,14 @@ def log_text(chain, partial=None):
 
 
 def chain(blocks_):
-    return e2e_scenario.logged_chain(log_text(blocks_), None)
+    """The chain the log of `blocks_` describes, rebuilt by the oracle's rules."""
+    from oracle import devnet as oracle_devnet
+    from oracle import finality
+    return finality.FollowerChain.from_events(finality.parse_log(log_text(blocks_), oracle_devnet.benign))
+
+
+def tip_of(blocks_):
+    return {"slot": blocks_[-1].slot, "hash": blocks_[-1].hash}
 
 
 class FollowerSiteTest(unittest.TestCase):
@@ -269,12 +277,6 @@ class FollowerAgreementTest(unittest.TestCase):
                                  {"skipped": "the Scala node has no node-to-client socket"})
 
 
-class LoggedChainTest(unittest.TestCase):
-    def test_a_line_still_being_written_and_lines_that_are_not_json_are_left_out(self):
-        rebuilt = e2e_scenario.logged_chain(log_text(blocks(range(4)), partial='{"event": "exten'), None)
-        self.assertEqual([b.block_no for b in rebuilt.blocks], [0, 1, 2, 3])
-
-
 class ChainAgreementTest(unittest.TestCase):
     K = 3
 
@@ -307,30 +309,68 @@ class ChainAgreementTest(unittest.TestCase):
 
 
 class CrossCheckTest(unittest.TestCase):
-    def run_check(self, scalus_log, scarab_log):
+    K = 3
+    COMMON = blocks(range(6))
+    # two chains that part after block 5 and each hold four blocks of their own: more than k = 3, so they diverge
+    SCALUS_CHAIN = COMMON + blocks(range(6, 10))
+    SCARAB_CHAIN = COMMON + blocks(range(6, 10), fork=1)
+
+    def run_check(self, scalus_log, scarab_log, tips=None):
+        """The cross-check of two logs, with the final tips the stop recorded (`tips`: key -> tip, None for none)."""
         with tempfile.TemporaryDirectory() as d:
             root = pathlib.Path(d)
             (root / "genesis").mkdir()
-            (root / "genesis" / "shelley-genesis.json").write_text(json.dumps({"securityParam": 3}))
+            (root / "genesis" / "shelley-genesis.json").write_text(json.dumps({"securityParam": self.K}))
             SCALUS.log(root).write_text(scalus_log)
             SCARAB.log(root).write_text(scarab_log)
+            for key, tip in (tips or {}).items():
+                (root / f"follower-tip-{key}.json").write_text(json.dumps(tip))  # as the run's stop records them
             entries = {"scalus": {"reachedTarget": True, "validationErrors": [], "fatalErrors": []},
                        "scarab": {"reachedTarget": False, "validationErrors": [{}], "fatalErrors": []}}
             return e2e_scenario.followers_cross_check(root, [SCALUS, SCARAB], entries, None)
 
     def test_the_report_holds_each_follower_and_the_chains_judged_from_their_logs(self):
-        report, failures = self.run_check(log_text(blocks(range(9))), log_text(blocks(range(8))))
+        report, failures = self.run_check(log_text(blocks(range(9))), log_text(blocks(range(8))),
+                                          {"scalus": tip_of(blocks(range(9))), "scarab": tip_of(blocks(range(8)))})
         self.assertEqual(failures, [])
         self.assertEqual(report["reachedTarget"], {"scalus": True, "scarab": False})
         self.assertEqual(report["validationErrors"], {"scalus": 0, "scarab": 1})
         self.assertTrue(report["finalChain"]["pairs"][0]["agreed"])
 
     def test_a_log_that_is_not_one_chain_fails_the_check_without_raising(self):
-        broken = log_text(blocks([0, 1, 3]))  # block 2 is missing
-        report, failures = self.run_check(log_text(blocks(range(4))), broken)
+        broken = blocks([0, 1, 3])  # block 2 is missing
+        report, failures = self.run_check(log_text(blocks(range(4))), log_text(broken),
+                                          {"scalus": tip_of(blocks(range(4))), "scarab": tip_of(broken)})
         self.assertEqual(len(failures), 1)
         self.assertIn("the scarab follower's final chain cannot be rebuilt from its log", failures[0])
         self.assertEqual(report["finalChain"], {"error": "not every follower's chain could be rebuilt"})
+
+    def test_chains_that_diverge_deeper_than_k_fail(self):
+        _, failures = self.run_check(log_text(self.SCALUS_CHAIN), log_text(self.SCARAB_CHAIN),
+                                     {"scalus": tip_of(self.SCALUS_CHAIN), "scarab": tip_of(self.SCARAB_CHAIN)})
+        self.assertEqual(len(failures), 1)
+        self.assertIn("4 and 4 blocks after their last common block", failures[0])
+
+    def test_a_cut_last_line_cannot_turn_a_divergence_into_agreement(self):
+        # the last extension of the scarab log cut short: left out, the tails would be 4 and 3 and agree
+        lines = log_text(self.SCARAB_CHAIN).split("\n")
+        cut = "\n".join(lines[:-2]) + "\n" + lines[-2][:25]
+        _, failures = self.run_check(log_text(self.SCALUS_CHAIN), cut,
+                                     {"scalus": tip_of(self.SCALUS_CHAIN), "scarab": tip_of(self.SCARAB_CHAIN)})
+        self.assertEqual(len(failures), 1, failures)
+        self.assertIn("the scarab follower's final chain cannot be rebuilt from its log: partialLine", failures[0])
+
+    def test_a_log_that_ends_before_its_final_tip_fails(self):
+        # every line whole, but the last extension missing: the chain does not end where the follower did
+        _, failures = self.run_check(log_text(self.SCALUS_CHAIN), log_text(self.SCARAB_CHAIN[:-1]),
+                                     {"scalus": tip_of(self.SCALUS_CHAIN), "scarab": tip_of(self.SCARAB_CHAIN)})
+        self.assertEqual(len(failures), 1, failures)
+        self.assertIn("the scarab follower's final chain cannot be rebuilt from its log: finalTip", failures[0])
+
+    def test_a_follower_without_a_recorded_final_tip_fails(self):
+        _, failures = self.run_check(log_text(self.COMMON), log_text(self.COMMON), {"scalus": tip_of(self.COMMON)})
+        self.assertEqual(len(failures), 1, failures)
+        self.assertIn("the scarab follower's final chain cannot be rebuilt from its log: noFinalTip", failures[0])
 
 
 class SummaryEvaluatorTest(unittest.TestCase):
@@ -352,93 +392,68 @@ class SummaryEvaluatorTest(unittest.TestCase):
         self.assertEqual(failures, [])
 
 
-class E2EFlowTest(unittest.TestCase):
-    """`e2e()` from the start of its followers to its summary, with the cluster, the containers and the load replaced:
-    a run's only follower keeps the summary's layout, and with two each has its own entry and the cross-check runs."""
+class StopFollowersTest(unittest.TestCase):
+    """`follower.stop_followers`: the run's own stop, after which every follower's log is whole and its tip known."""
+    A, B = {"slot": 5, "hash": "a"}, {"slot": 6, "hash": "b"}
 
-    @staticmethod
-    def follower_log(vm, last):
-        """A follower log that walks Byron block 0 and Conway blocks 1..`last` (epochs 1 and 2)."""
-        events = [{"event": "started"}, {"event": "connected", "intersection": {"origin": True}}]
-        events += [{"event": "plutusVm", "vm": vm}] if vm else []
-        events.append({"event": "eraTransition", "from": None, "to": "Byron", "epoch": 0, "slot": 0,
-                       "block": {"slot": 0, "blockNo": 0, "hash": h(0)}})
-        for n in range(last + 1):
-            era, epoch = ("Byron", 0) if n == 0 else ("Conway", 1 if n < 3 else 2)
-            if n == 1:
-                events.append({"event": "eraTransition", "from": "Byron", "to": "Conway", "epoch": 1, "slot": 10,
-                               "block": {"slot": 10, "blockNo": 1, "hash": h(1)}})
-            events.append({"event": "extended", "era": era, "epoch": epoch,
-                           "block": {"slot": 10 * n, "blockNo": n, "hash": h(n)}})
-        return "".join(json.dumps(e) + "\n" for e in events)
+    def stop(self, tips, processes, pid=42, resumes=True):
+        """(report, problems, signals, docker calls, root) of a stop whose followers' `/tip` readings are `tips`
+        (site -> readings in order)."""
+        from oracle import devnet as oracle_devnet
+        signals, calls, readings = [], [], {site: iter(r) for site, r in tips.items()}
 
-    def run_e2e(self, plutus_vm):
-        """(summary, the sites started with their evaluators, the containers removed) of one mocked run."""
-        started, removed = [], []
-        with tempfile.TemporaryDirectory() as d:
-            root = pathlib.Path(d) / "run"
+        def signal(name, pid_, sig):
+            signals.append(sig)
+            return sig == "STOP" or resumes
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        root = pathlib.Path(d)
+        with patch.object(oracle_devnet, "node_pid", return_value=pid), \
+                patch.object(oracle_devnet, "signal_node", side_effect=signal), \
+                patch.object(oracle_devnet, "follower_tip", side_effect=lambda name, site: next(readings[site], None)), \
+                patch.object(follower, "docker", side_effect=lambda *a, **k: calls.append(a)), \
+                patch.object(follower.time, "sleep"):
+            report, problems = follower.stop_followers("n", root, processes)
+        return report, problems, signals, calls, root
 
-            def start(name, root_, site=SINGLE_FOLLOWER, plutus_vm=None, **kwargs):
-                started.append((site.key, plutus_vm))
-                site.log(root).write_text(self.follower_log(plutus_vm, 5 if site.key != "scarab" else 4))
-                return Mock(poll=Mock(return_value=None))
+    def test_each_tip_is_final_once_two_readings_agree_and_is_recorded_once_its_follower_ended(self):
+        processes = {SCALUS: FakeFollower(), SCARAB: FakeFollower()}
+        report, problems, signals, calls, root = self.stop(
+            {SCALUS: [self.A, self.A], SCARAB: [self.A, self.B, self.B]}, processes)
+        self.assertEqual(problems, [])
+        self.assertEqual(signals, ["STOP", "CONT"])
+        self.assertEqual(calls, [("stop", "-t", "30", "n-scala-scalus", "n-scala-scarab")])
+        self.assertEqual({s.key: r for s, r in report.items()},
+                         {"scalus": {"premature": None, "finalTip": self.A, "exit": 143},
+                          "scarab": {"premature": None, "finalTip": self.B, "exit": 143}})
+        self.assertEqual(json.loads(SCARAB.final_tip(root).read_text()), self.B)
 
-            def up_eras(args, on_nodes_up, on_pools_ready, on_tick):
-                (root / "genesis").mkdir(parents=True)
-                (root / "eras.json").write_text(json.dumps({"eras": [{"era": "byron", "epoch": 0},
-                                                                     {"era": "conway", "epoch": 1}]}))
-                (root / "genesis" / "configuration.yaml").write_text(json.dumps({"TestConwayHardForkAtEpoch": 1}))
-                (root / "genesis" / "shelley-genesis.json").write_text(json.dumps({"securityParam": 3}))
-                on_nodes_up(root)
-                on_tick({})
+    def test_a_follower_that_had_ended_is_reported_and_not_stopped(self):
+        ended = FakeFollower()
+        ended.code = 1
+        report, _, _, calls, root = self.stop({SCALUS: [self.A, self.A]}, {SCALUS: FakeFollower(), SCARAB: ended})
+        self.assertEqual(report[SCARAB], {"premature": 1, "finalTip": None, "exit": None})
+        self.assertEqual(calls, [("stop", "-t", "30", "n-scala-scalus")])
+        self.assertFalse(SCARAB.final_tip(root).exists())
 
-            def docker(*command, **kwargs):
-                if command[:2] == ("rm", "-f"):
-                    removed.append(command[2])
-            args = types.SimpleNamespace(name="n", plutus_vm=plutus_vm, oracle=False, scala_cpus=2, no_load=True,
-                                         no_compare=True, keep=False, timeout=60, until_epoch=2, min_comparisons=3)
-            with patch.object(e2e_scenario, "data_root", return_value=root), \
-                    patch.object(e2e_scenario, "up_eras", side_effect=up_eras), \
-                    patch.object(e2e_scenario, "start_follower", side_effect=start), \
-                    patch.object(e2e_scenario, "in_ref", return_value=types.SimpleNamespace(stdout="")), \
-                    patch.object(e2e_scenario, "keep_native_evidence", return_value={"kept": [], "notKept": {}}), \
-                    patch.object(e2e_scenario, "docker", side_effect=docker), \
-                    patch.object(e2e_scenario.time, "sleep"), \
-                    contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
-                e2e_scenario.e2e(args)
-            summary = json.loads((root / "e2e-summary.json").read_text())
-        return summary, started, removed
+    def test_a_tip_that_never_settles_is_not_recorded(self):
+        moving = [{"slot": n, "hash": str(n)} for n in range(20)]
+        report, problems, _, _, root = self.stop({SCALUS: moving}, {SCALUS: FakeFollower()})
+        self.assertIsNone(report[SCALUS]["finalTip"])
+        self.assertFalse(SCALUS.final_tip(root).exists())
+        self.assertEqual(problems, [])  # the missing tip fails where it is needed, the cross-check
 
-    def test_the_only_follower_keeps_the_summary_layout(self):
-        summary, started, removed = self.run_e2e(None)
-        self.assertEqual(started, [(None, None)])
-        self.assertEqual(summary["stoppedBecause"], "reached")
-        for key in ("transitions", "blocksPerEra", "cpuStarvationWarnings", "ledgerComparison", "followerExit"):
-            self.assertIn(key, summary)
-        self.assertNotIn("followers", summary)
-        self.assertNotIn("crossCheck", summary)
-        self.assertNotIn("plutusVm", summary)
-        self.assertFalse(any(f.startswith(("scalus", "scarab")) for f in summary["failures"]), summary["failures"])
-        self.assertEqual(removed[-2:], ["n-scala", "n-ref"])
+    def test_without_the_node_to_freeze_the_followers_are_still_stopped_but_no_tip_is_recorded(self):
+        report, problems, signals, calls, _ = self.stop({SCALUS: [self.A, self.A]}, {SCALUS: FakeFollower()},
+                                                        pid=None)
+        self.assertEqual((signals, problems), ([], []))
+        self.assertEqual(calls, [("stop", "-t", "30", "n-scala-scalus")])
+        self.assertIsNone(report[SCALUS]["finalTip"])
 
-    def test_two_followers_are_judged_each_and_against_each_other(self):
-        summary, started, removed = self.run_e2e(["scalus", "scarab"])
-        self.assertEqual(started, [("scalus", "scalus"), ("scarab", "scarab")])
-        self.assertEqual(summary["stoppedBecause"], "reached")
-        self.assertEqual(sorted(summary["followers"]), ["scalus", "scarab"])
-        for key, own in summary["followers"].items():
-            self.assertEqual(own["plutusVm"], [key])
-            self.assertTrue(own["reachedTarget"], key)
-            for field in ("transitions", "cpuStarvationWarnings", "ledgerComparison"):
-                self.assertIn(field, own, f"{key} lacks {field}")
-        self.assertNotIn("transitions", summary)
-        cross = summary["crossCheck"]
-        self.assertEqual(cross["failures"], [])
-        self.assertEqual(cross["finalChain"]["pairs"][0]["beyondCommon"], {"scalus": 1, "scarab": 0})
-        own_failures = [f for f in summary["failures"] if "no shelley block was applied" in f]
-        self.assertEqual(sorted(own_failures), ["scalus follower: no shelley block was applied",
-                                                "scarab follower: no shelley block was applied"])
-        self.assertEqual(removed[-3:], ["n-scala-scalus", "n-scala-scarab", "n-ref"])
+    def test_a_node_that_cannot_be_continued_is_a_problem(self):
+        _, problems, signals, _, _ = self.stop({SCALUS: [self.A, self.A]}, {SCALUS: FakeFollower()}, resumes=False)
+        self.assertEqual(signals, ["STOP", "CONT", "CONT", "CONT"])
+        self.assertEqual(problems, ["reference node 1 (pid 42) could not be confirmed continued after SIGSTOP"])
 
 
 ERA_EPOCHS = [("Byron", 0), ("Shelley", 1), ("Allegra", 2), ("Mary", 3), ("Alonzo", 4), ("Babbage", 5), ("Conway", 6)]
@@ -500,17 +515,21 @@ class GreenRunTest(unittest.TestCase):
     """`e2e()` driven through a mocked run that is green unless a test makes it otherwise: the cluster, the
     containers and the reference node's freeze are replaced, the followers' logs are written by the test."""
 
-    def run_e2e(self, plutus_vm, logs=None, on_stop=None):
-        """(summary, exit status) of one mocked run. `logs` maps a follower key (None for a run's only follower) to
-        its log text, `on_stop` to what it logs while it is stopped."""
-        logs, on_stop = logs or {}, on_stop or {}
+    def run_e2e(self, plutus_vm, logs=None, on_stop=None, exited=None, after_walk=None):
+        """(summary, exit status) of one mocked run. Each argument maps a follower key (None for a run's only
+        follower) to: `logs` its log text, `after_walk` the events it logs once the era walk is over (while the run
+        waits for its target), `exited` the status it ends with then, before the run stops it, and `on_stop` what it
+        logs while it is stopped."""
+        logs, on_stop, exited, after_walk = logs or {}, on_stop or {}, exited or {}, after_walk or {}
+        processes = {}
         with tempfile.TemporaryDirectory() as d:
             root = pathlib.Path(d) / "run"
 
             def start(name, root_, site=SINGLE_FOLLOWER, plutus_vm=None, **kwargs):
                 site.log(root).write_text(logs.get(site.key, green_log(plutus_vm)))
                 extra = on_stop.get(site.key)
-                return FakeFollower(None if extra is None else lambda: self.append(site.log(root), extra))
+                processes[site] = FakeFollower(None if extra is None else lambda: self.append(site.log(root), extra))
+                return processes[site]
 
             def up_eras(args, on_nodes_up, on_pools_ready, on_tick):
                 (root / "genesis").mkdir(parents=True)
@@ -521,6 +540,9 @@ class GreenRunTest(unittest.TestCase):
                 (root / "genesis" / "shelley-genesis.json").write_text(json.dumps({"securityParam": 3}))
                 on_nodes_up(root)
                 on_tick({})
+                for site, process in processes.items():
+                    self.append(site.log(root), after_walk.get(site.key, []))
+                    process.code = exited.get(site.key)
 
             def tip(name, site=SINGLE_FOLLOWER):
                 extended = [json.loads(l) for l in site.log(root).read_text().splitlines()
@@ -530,13 +552,14 @@ class GreenRunTest(unittest.TestCase):
                                          no_compare=True, keep=False, timeout=60, until_epoch=GREEN_TARGET,
                                          min_comparisons=3)
             from oracle import devnet as oracle_devnet
+            self.docker = []
             with patch.object(e2e_scenario, "data_root", return_value=root), \
                     patch.object(e2e_scenario, "up_eras", side_effect=up_eras), \
                     patch.object(e2e_scenario, "start_follower", side_effect=start), \
                     patch.object(e2e_scenario, "in_ref", return_value=types.SimpleNamespace(stdout="")), \
                     patch.object(e2e_scenario, "keep_native_evidence", return_value={"kept": [], "notKept": {}}), \
-                    patch.object(e2e_scenario, "docker"), \
-                    patch.object(follower, "docker", create=True), \
+                    patch.object(e2e_scenario, "docker", side_effect=lambda *a, **k: self.docker.append(a)), \
+                    patch.object(follower, "docker", create=True, side_effect=lambda *a, **k: self.docker.append(a)), \
                     patch.object(oracle_devnet, "node_pid", return_value=42), \
                     patch.object(oracle_devnet, "signal_node", return_value=True), \
                     patch.object(oracle_devnet, "follower_tip", side_effect=tip), \
@@ -556,6 +579,66 @@ class GreenRunTest(unittest.TestCase):
             with self.subTest(plutus_vm=plutus_vm):
                 summary, code = self.run_e2e(plutus_vm)
                 self.assertEqual((summary["failures"], summary["passed"], code), ([], True, 0))
+
+    def test_the_only_follower_keeps_the_summary_layout(self):
+        summary, _ = self.run_e2e(None)
+        for key in ("transitions", "blocksPerEra", "cpuStarvationWarnings", "ledgerComparison", "followerExit"):
+            self.assertIn(key, summary)
+        for key in ("followers", "crossCheck", "plutusVm", "reachedTarget"):
+            self.assertNotIn(key, summary)
+        self.assertEqual(summary["followerExit"], None, "the stop the run asked for is no exit of the follower's")
+        self.assertIn(("stop", "-t", "30", "n-scala"), self.docker)
+        self.assertEqual(self.docker[-1], ("rm", "-f", "n-ref"))
+
+    def test_two_followers_are_judged_each_and_against_each_other(self):
+        summary, _ = self.run_e2e(["scalus", "scarab"])
+        self.assertEqual(sorted(summary["followers"]), ["scalus", "scarab"])
+        for key, own in summary["followers"].items():
+            self.assertEqual(own["plutusVm"], [key])
+            self.assertTrue(own["reachedTarget"], key)
+            self.assertEqual(own["followerStop"]["exit"], 143)
+            for field in ("transitions", "cpuStarvationWarnings", "ledgerComparison"):
+                self.assertIn(field, own, f"{key} lacks {field}")
+        self.assertNotIn("transitions", summary)
+        cross = summary["crossCheck"]
+        self.assertEqual(cross["failures"], [])
+        self.assertEqual(cross["finalChain"]["pairs"][0]["beyondCommon"], {"scalus": 0, "scarab": 0})
+        self.assertIn(("stop", "-t", "30", "n-scala-scalus", "n-scala-scarab"), self.docker)
+        self.assertEqual(self.docker[-3:], [("rm", "-f", "n-scala-scalus"), ("rm", "-f", "n-scala-scarab"),
+                                            ("rm", "-f", "n-ref")])
+
+    def test_either_follower_failing_alone_fails_the_run(self):
+        error = {"event": "error", "kind": "ValidationError", "message": "bad block"}
+        for key in ("scalus", "scarab"):
+            with self.subTest(failing=key, when="during the era walk"):
+                summary, code = self.run_e2e(["scalus", "scarab"], logs={key: green_log(key, extra=[error])})
+                self.assertEqual(code, 1)
+                self.assertEqual(summary["failures"], [f"{key} follower error: bad block"])
+            with self.subTest(failing=key, when="while the run waits for its target"):
+                summary, code = self.run_e2e(["scalus", "scarab"], after_walk={key: [error]})
+                self.assertEqual(code, 1)
+                self.assertEqual(summary["failures"], [f"{key} follower: 1 validation errors: bad block",
+                                                       f"stopped without reaching Conway epoch 7: error: {key}"])
+
+    def test_an_error_logged_after_the_wait_fails_the_run(self):
+        # what a follower logs once the wait for the target is over, up to its stop, is judged with the rest
+        late = [{"event": "error", "kind": "LedgerFailure", "message": "late"}]
+        for plutus_vm, key, prefix in ((None, None, ""), (["scalus", "scarab"], "scarab", "scarab follower: ")):
+            with self.subTest(plutus_vm=plutus_vm):
+                summary, code = self.run_e2e(plutus_vm, on_stop={key: late})
+                self.assertEqual(code, 1)
+                self.assertEqual(summary["failures"], [f"{prefix}1 fatal errors: late"])
+
+    def test_a_follower_that_ended_before_the_stop_is_a_premature_exit(self):
+        summary, code = self.run_e2e(["scalus", "scarab"], exited={"scalus": 1})
+        self.assertEqual(code, 1)
+        # an ended follower has no tip to record: its chain cannot be checked to its end, which fails explicitly
+        self.assertEqual(summary["failures"], [
+            "scalus follower: the follower exited with 1",
+            "stopped without reaching Conway epoch 7: follower exited: scalus",
+            "the scalus follower's final chain cannot be rebuilt from its log: noFinalTip at line 0: no final tip of "
+            "the follower was recorded"])
+        self.assertEqual(summary["followers"]["scalus"]["followerExit"], 1)
 
     def test_one_explicit_evaluator_keeps_the_summary_and_verdicts_of_none(self):
         # with one `--plutus-vm` the run's only follower is not asked which evaluator its start logged: a log that
