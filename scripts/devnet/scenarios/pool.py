@@ -9,12 +9,12 @@ import subprocess
 import sys
 import time
 from .. import metrics as node_metrics
-from . import dynamic_forging, kes_rotate
+from . import dynamic_forging, kes_rotate, pool_plutus
 from ..cluster import database_mounts, freeze_classes, scala_container, start_nodes, start_reference, wait_listening
 from ..compare import Comparisons, compare_or_error, whole_failures, whole_state
 from ..scenarios.relay import SCALA_PORT, log_counts, tip_at
 from .. import util
-from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, adapt_reference_config, data_root, docker, in_ref, put_file, read_json, read_log, ref, scheduling_summary
+from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, adapt_reference_config, data_root, docker, event_time, in_ref, put_file, read_json, read_log, ref, scheduling_summary, spread
 
 
 # ---------------------------------------------------------------- the Scala node as a block producer
@@ -212,6 +212,86 @@ def slot_clock(events, shelley):
                                  if e["event"] == "extended" and e["block"]["hash"] not in mine])}
 
 
+FORGE_PHASES = ("toForged", "checkToForgedBlock", "leaderToForgedBlock", "forgedToAdopted", "adoptedLatency")
+
+
+def forge_timing(events, shelley, plutus=None):
+    """What the forger took in the slots it forged in, in milliseconds, per block: from the slot's start by the
+    genesis to `forged` (`toForged`); from `startLeadershipCheck` to `forgedBlock` of the same slot, which does not
+    depend on the slot clock (`checkToForgedBlock`); from `nodeIsLeader` to `forgedBlock`: the tick, the mempool's
+    revalidation and selection, the body and the signature (`leaderToForgedBlock`); from `forged` to
+    `adoptedBlock`: the node's own rules on the block and its commit (`forgedToAdopted`); and `adopted`'s own
+    `latencyMs`, slot start to adoption (`adoptedLatency`). Each as `spread`, over every forged block and, given
+    the hashes of those that hold a Plutus transaction (`plutus`), over those and over the others."""
+    system_start = calendar.timegm(time.strptime(shelley["systemStart"], "%Y-%m-%dT%H:%M:%SZ"))
+    first = {}
+    for e in events:
+        if e["event"] in ("startLeadershipCheck", "nodeIsLeader", "forgedBlock", "adoptedBlock"):
+            first.setdefault((e["event"], e["slot"]), event_time(e))
+    latency = {e["block"]["hash"]: e["latencyMs"] for e in events if e["event"] == "adopted"}
+
+    def gap(start, end):
+        return None if start is None or end is None else (end - start) * 1000
+    blocks = []
+    for e in events:
+        if e["event"] != "forged":
+            continue
+        slot, at = e["slot"], event_time(e)
+        blocks.append((e["hash"], {
+            "toForged": (at - system_start - slot * shelley["slotLength"]) * 1000,
+            "checkToForgedBlock": gap(first.get(("startLeadershipCheck", slot)), first.get(("forgedBlock", slot))),
+            "leaderToForgedBlock": gap(first.get(("nodeIsLeader", slot)), first.get(("forgedBlock", slot))),
+            "forgedToAdopted": gap(at, first.get(("adoptedBlock", slot))),
+            "adoptedLatency": latency.get(e["hash"])}))
+
+    def phases(subset):
+        return {k: spread([b[k] for _, b in subset if b[k] is not None]) for k in FORGE_PHASES}
+    timing = {"all": phases(blocks)}
+    if plutus is not None:
+        timing["withPlutus"] = phases([b for b in blocks if b[0] in plutus])
+        timing["withoutPlutus"] = phases([b for b in blocks if b[0] not in plutus])
+    return timing
+
+
+def rules_timing(name):
+    """From one scrape of the Scala node's `/metrics`, the mean time of its own block rules over every block it
+    applied, received or forged (`scarab_block_apply_seconds`), and of slot start to adoption of the blocks it
+    forged (`scarab_forge_adoption_seconds`), in ms with their counts; None when the scrape fails."""
+    got = node_metrics.scrape(name, QUERY_PORT)
+    if got is None:
+        return None
+    try:
+        samples = node_metrics.parse(got[1])
+    except ValueError:
+        return None
+
+    def mean(metric):
+        total, count = node_metrics.value(samples, f"{metric}_sum"), node_metrics.value(samples, f"{metric}_count")
+        return {"count": int(count), "meanMs": round(total / count * 1000, 1)} if count and total is not None else None
+    return {"blockApply": mean("scarab_block_apply_seconds"), "forgeAdoption": mean("scarab_forge_adoption_seconds")}
+
+
+# A Haskell node's trace of a block its chain database refused (`AddBlockValidation.InvalidBlock`, by either
+# tracing system's name) or forged and refused (`ForgedInvalidBlock`).
+REFERENCE_INVALID_BLOCK = "InvalidBlock"
+
+
+def reference_invalid_blocks(name, nodes):
+    """{node: the first lines of its log that trace an invalid block, or why the log could not be read} of the Haskell
+    pools with either: a block of the Scala pool they refused would otherwise show only as a block lost or replaced
+    on its chain. The reference image has no grep; the log is read through `cat`."""
+    found = {}
+    for n in nodes:
+        with subprocess.Popen(["docker", "exec", ref(name), "cat", f"/work/node{n}.log"], stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, text=True, errors="replace") as read:
+            lines = [line.strip()[:600] for line in read.stdout if REFERENCE_INVALID_BLOCK in line]
+        if read.returncode != 0:
+            found[f"pool{n}"] = [f"the log could not be read (exit status {read.returncode})"]
+        elif lines:
+            found[f"pool{n}"] = lines[:5]
+    return found
+
+
 def missed_leader_slots(events, schedules, shelley, excluded=None):
     """Check the Scala pool's forging against the reference node's `leadership-schedule`.
 
@@ -287,7 +367,7 @@ def pool(args):
     others = [n for n in (1, 2, 3) if n != ours]
     observer = others[0]
     util.SOCKET = f"--testnet-magic {MAGIC} --socket-path {ENV}/socket/node{observer}/sock"
-    failures, summary, scala, loader = [], {}, None, None
+    failures, summary, scala, loader, plutus = [], {}, None, None, None
     rotate = getattr(args, "rotate", False)  # the kes-rotate scenario: this run with the rotation driver
     sockets_dir = "ipc" if rotate else "scala-sock"  # the Scala node's node-to-client socket, in the run dir
     driver = kes_rotate.Driver(args, root) if rotate else None
@@ -373,6 +453,10 @@ def pool(args):
                                    "--socket", f"{ENV}/socket/node{observer}/sock", "--interval", str(args.interval),
                                    "--stats-every", "5"],
                                   stdout=(root / "load.log").open("w"), stderr=subprocess.STDOUT)
+        if getattr(args, "plutus_load", False):
+            # funded from the delegator of a Haskell pool: the Scala pool's stake is left as it is
+            plutus = pool_plutus.Runner(args.name, root, f"{ENV}/socket/node{observer}/sock",
+                                        str(sockets / "node.socket"), others[-1]).start()
         started = time.monotonic()
         stop = started + args.seconds
         next_compare = started + 20
@@ -406,6 +490,8 @@ def pool(args):
         loader.terminate()
         loader.wait()
         loader = None
+        if plutus:
+            plutus.finish()
         if driver:
             driver.stop()
         # let the chain settle; every node must agree on the tip
@@ -426,6 +512,13 @@ def pool(args):
         compare_whole("final")
         final = settled_tips()
         time.sleep(3)
+        # the blocks as the observing Haskell pool holds them, for the validity flags of the Plutus load
+        observed = None
+        if plutus:
+            try:
+                observed = pool_plutus.read_chain(args.name, f"{ENV}/socket/node{observer}/sock")
+            except (RuntimeError, EOFError, OSError) as e:
+                failures.append(f"the observer's chain could not be read: {e!r}")
         # the forger's own per-epoch counters (H5), from the query server (the Scala container's loopback)
         fetch = (f"import urllib.request,sys;sys.stdout.write(urllib.request.urlopen("
                  f"'http://127.0.0.1:{QUERY_PORT}/forging',timeout=10).read().decode())")
@@ -482,6 +575,8 @@ def pool(args):
         disabled = toggle.excluded(lambda at: slot_at(shelley, at)) if toggle else None
         oracle = missed_leader_slots(events, schedules, shelley, excluded=disabled)
         vm = next((e.get("vm") for e in events if e["event"] == "plutusVm"), None)
+        plutus_blocks = None if observed is None else {b for b, txs in observed if b in forged_hashes
+                                                       and any(plutus_ for _, _, plutus_ in txs)}
         summary = {
             "oracle": oracle,
             "pool": {"id": pool_id, "number": ours, "stakeFraction": round(sigma, 4)},
@@ -515,6 +610,8 @@ def pool(args):
             "slotClock": slot_clock(events, shelley),
             "forgerStats": forging_stats,
             "plutusVm": vm,
+            "forgeTiming": {**forge_timing(events, shelley, plutus_blocks), "rules": rules_timing(args.name)},
+            "referenceInvalidBlocks": reference_invalid_blocks(args.name, others),
         }
         if forging_stats:
             total = forging_stats["total"]
@@ -554,6 +651,12 @@ def pool(args):
             failures.append("no transaction was included in a Scala-forged block")
         if getattr(args, "plutus_vm", None) and vm != args.plutus_vm:
             failures.append(f"the Scala node logged the Plutus evaluator {vm!r}, the run asked for {args.plutus_vm!r}")
+        if summary["referenceInvalidBlocks"]:
+            failures.append(f"a Haskell pool's log traces an invalid block or could not be read: "
+                            f"{summary['referenceInvalidBlocks']}")
+        if plutus and observed is not None:
+            plutus_failures, summary["plutus"] = pool_plutus.check(plutus, observed, forged_hashes, events)
+            failures += [f"plutus: {f}" for f in plutus_failures]
         if len(relative) < 2:
             failures.append("the KES key stayed in one period")
         if not (all(final.values()) and len({t["hash"] for t in final.values()}) == 1):
@@ -600,6 +703,8 @@ def pool(args):
     finally:
         if loader is not None:
             loader.terminate()
+        if plutus is not None:
+            plutus.load.stop.set()
         if driver:
             driver.stop()
         docker("rm", "-f", f"{args.name}-scala", check=False)

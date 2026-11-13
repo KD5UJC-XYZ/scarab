@@ -16,7 +16,9 @@
                                    Haskell relay) + load through that relay; tips and propagation
     devnet.py pool [--seconds N]   the Scala node as one of the three block-producing pools: it takes
                                    pool 1's keys (pool 1's Haskell node is never started), forges in
-                                   its leader slots, and the Haskell pools adopt its blocks
+                                   its leader slots, and the Haskell pools adopt its blocks; with
+                                   --plutus-load also Plutus transactions, each script's verdict
+                                   carried into the blocks it forges as their validity flag
     devnet.py kes-rotate [--seconds N]
                                    pool, with the KES key and operational certificate rotated unattended by
                                    scripts/pool/rotate_kes.py (SIGHUP reload): no restart, forging continues, the
@@ -350,6 +352,11 @@ def main():
         pl.add_argument("--min-comparisons", type=int, default=5, help="matched ledger comparisons required")
         pl.add_argument("--scala-flags", default="", help="extra flags for the Scala node, e.g. '--header-first off' (to compare builds or settings)")
         pl.add_argument("--plutus-vm", choices=("scalus", "scarab"), default=None, help=plutus_vm_help)
+        pl.add_argument("--plutus-load", action="store_true",
+                        help="beside the payment load, rounds of Plutus V1 and V2 transactions (scripts/devnet/eraplutus.py): "
+                             "scripts that succeed, scripts that fail submitted with the validity flag false, and both "
+                             "with the opposite flag, which the reference and the Scala node must refuse; the run then "
+                             "requires a Scala-forged block with each of the first two and every flag on the chain right")
         pl.add_argument("--keep", action="store_true", help="leave the cluster running")
 
     pl = sub.add_parser("pool", parents=[scala_options], help="the Scala node as a block-producing pool among two Haskell pools")
