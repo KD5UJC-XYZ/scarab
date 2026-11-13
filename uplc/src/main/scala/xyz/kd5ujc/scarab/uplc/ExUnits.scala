@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package xyz.kd5ujc.scarab.plutus
+package xyz.kd5ujc.scarab.uplc
 
 /** Execution units (Alonzo): memory and CPU steps. */
 final case class ExUnits(mem: BigInt, steps: BigInt):

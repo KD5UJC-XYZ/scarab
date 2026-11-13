@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package xyz.kd5ujc.scarab.plutus
+package xyz.kd5ujc.scarab.uplc
 
 import xyz.kd5ujc.scarab.codec.{ByteStringChunks, Bytes, Cbor, Node, Tree, TreeFold, Value}
 import xyz.kd5ujc.scarab.codec.Tree.{treeEquals, treeHash, treeString}
