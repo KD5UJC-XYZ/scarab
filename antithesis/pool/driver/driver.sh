@@ -1,8 +1,8 @@
 #!/bin/bash
 # SPDX-License-Identifier: Apache-2.0
 # The driver container's main process. It declares the assertion catalogue, waits until the three pools report one
-# tip, reports setup complete and then stays up, so that Antithesis can run the test command
-# `singleton_driver_watch_tips` in this container.
+# tip, reports setup complete and then stays up, so that Antithesis can run the test commands of
+# /opt/antithesis/test/v1/main in this container.
 set -uo pipefail
 source /opt/at/lib.sh
 
