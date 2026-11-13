@@ -37,6 +37,12 @@ SCALA_ATTEMPTS = 5
 # they validated it, or a block they never fetched): its verdict is not known.
 REFUSED, ADOPTED, UNCONFIRMED = "refusedByHaskellPools", "adoptedByHaskellPools", "unconfirmed"
 
+# The first predicate failure of a refusal for the validity flag, as constructor tags from the LEDGER rule down:
+# ConwayUtxowFailure (UtxoFailure (UtxosFailure (ValidationTagMismatch ..))). Both refused cases must be refused for
+# it, by the reference and by the Scala node.
+VALIDATION_TAG_MISMATCH = [1, 0, 0, 0]
+REFUSED_CASES = ("reject-success-invalid", "reject-failure-valid")
+
 # Whether a case's script succeeds: its transaction belongs in a block with this flag.
 SUCCEEDS = {"success": True, "reject-success-invalid": True, "collateral": False, "reject-failure-valid": False}
 ACCEPTED = ("success", "collateral")
@@ -104,7 +110,8 @@ class Load(eraload.EraLoad):
                     scala, row["scalaMs"] = timed(lambda: session.submit(tx))
                 row.update(attempts=attempt, accepted=scala is None, scala=failure_path(scala),
                            sameBytes=scala == reference)
-                if scala is None or row["scala"] == row["reference"]:
+                # asked again only while the Scala node names another rule than the reference's ValidationTagMismatch
+                if scala is None or row["scala"] == row["reference"] or row["reference"] != VALIDATION_TAG_MISMATCH:
                     break
                 time.sleep(1)
             self.keep_tx("plutus-scala-refusals.jsonl", {**row, "tx": tx.hex(), "referenceReason": reference.hex()
@@ -294,6 +301,40 @@ def block_kinds(forged, chain, evidence):
     return kinds
 
 
+def judgement_problem(judgement):
+    """Why a Scala judgement (`Load.scala_judgement`) does not show the Scala node refusing the transaction for the
+    reference's rule, or None when it does."""
+    if "error" in judgement:
+        return f"no answer: {judgement['error']}"
+    if judgement.get("accepted"):
+        return "the Scala node accepted it"
+    if judgement.get("reference") != VALIDATION_TAG_MISMATCH:
+        return f"the reference's refusal is not ValidationTagMismatch: {judgement.get('reference')}"
+    if judgement.get("scala") is None:
+        return "the Scala node's refusal could not be read"
+    if judgement["scala"] != judgement["reference"]:
+        return f"the Scala node refused it for another rule: {judgement['scala']}"
+    return None
+
+
+def judgements(rows, refusals):
+    """The Scala node's judgement of every refused case of `rows`: matched by transaction id, language and case
+    (`Load.scala_judgement`'s label), those refused for the reference's rule, the cases without a judgement, the
+    judgements with a problem (`judgement_problem`), and those that match no case."""
+    cases = [r for r in rows if r["case"] in REFUSED_CASES]
+
+    def of(r):
+        return [j for j in refusals if j.get("tx") == r["txid"] and j.get("label", "").endswith(f"-v{r['language']}-{r['case']}")]
+    matched = {id(j) for r in cases for j in of(r)}
+    problems = [{"case": r["case"], "language": r["language"], "tx": r["txid"], "problem": judgement_problem(j)}
+                for r in cases for j in of(r) if judgement_problem(j)]
+    return {"expected": len(cases),
+            "refusedForTheSameRule": sum(1 for r in cases if of(r) and all(judgement_problem(j) is None for j in of(r))),
+            "sameBytes": sum(1 for j in refusals if j.get("sameBytes")),
+            "missing": [{"case": r["case"], "language": r["language"], "tx": r["txid"]} for r in cases if not of(r)],
+            "problems": problems, "unmatched": sum(1 for j in refusals if id(j) not in matched)}
+
+
 def reason_kind(reason):
     """A mempool refusal's text without the transaction id it starts with, cut before the details of a script failure:
     `violates ValidationTagMismatch: Utxow(Utxo(Utxos(ValidationTagMismatch(true` for every failing script."""
@@ -345,13 +386,7 @@ def check(evidence, chain, forged, events, refused=frozenset(), adopted=frozense
                "protocolVersions": sorted({f"{r['referenceBefore']['protocolVersion']['major']}."
                                            f"{r['referenceBefore']['protocolVersion']['minor']}" for r in rows}),
                **placed,
-               "scalaLocalSubmission": {"judged": len(refusals),
-                                        "refusedForTheSameRule": sum(1 for r in refusals if not r.get("accepted")
-                                                                     and "error" not in r and r["scala"] == r["reference"]),
-                                        "sameBytes": sum(1 for r in refusals if r.get("sameBytes")),
-                                        "accepted": [r for r in refusals if r.get("accepted")],
-                                        "otherRuleOrError": [r for r in refusals if not r.get("accepted")
-                                                             and ("error" in r or r["scala"] != r["reference"])][:5]},
+               "scalaLocalSubmission": {"judged": len(refusals), **judgements(rows, refusals)},
                "mempool": mempool_view(events, rows, refusals), "admissionMs": admission(refusals),
                "blockNoVerdict": len(no_verdict), "lostScalaBlocks": lost,
                "lostScalaBlocksByClass": {c: len(b) for c, b in by_class.items()},
@@ -380,12 +415,15 @@ def check(evidence, chain, forged, events, refused=frozenset(), adopted=frozense
     if not placed["inScalaForgedBlocks"]["flagFalse"]:
         failures.append("no Scala-forged block holds a transaction with the validity flag false")
     judged = summary["scalaLocalSubmission"]
-    if judged["accepted"]:
-        failures.append(f"the Scala node accepted {len(judged['accepted'])} transactions the reference refused: "
-                        f"{judged['accepted'][:2]}")
-    if judged["otherRuleOrError"]:
-        failures.append(f"the Scala node did not refuse a transaction for the reference's rule: "
-                        f"{judged['otherRuleOrError'][:2]}")
+    accepted = [p for p in judged["problems"] if p["problem"] == "the Scala node accepted it"]
+    if accepted:
+        failures.append(f"the Scala node accepted {len(accepted)} transactions the reference refused: {accepted[:2]}")
+    if len(judged["problems"]) > len(accepted):
+        failures.append(f"the Scala node's judgement does not show a refusal for the reference's ValidationTagMismatch: "
+                        f"{[p for p in judged['problems'] if p not in accepted][:2]}")
+    if judged["missing"]:
+        failures.append(f"{len(judged['missing'])} refused cases have no judgement by the Scala node: "
+                        f"{judged['missing'][:2]}")
     if not refusals:
         failures.append("no refused Plutus transaction was submitted to the Scala node")
     if by_class[REFUSED]:

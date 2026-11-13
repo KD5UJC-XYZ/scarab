@@ -142,6 +142,13 @@ class CheckTest(unittest.TestCase):
                 "scala": [1, 0, 0, 0], "accepted": False, "attempts": 1, "sameBytes": False, "referenceMs": 2.5,
                 "scalaMs": 4.25, **kw}
 
+    def judgements(self):
+        """One judgement per refused case of `ROWS`: each language, the succeeding script with the flag false and the
+        failing one with the flag true."""
+        return [self.refusal(label=f"legacy-plutus-conway-v{r['language']}-{r['case']}", tx=r["txid"],
+                             sameBytes=r["case"] == "reject-success-invalid", scalaMs=4.25 + i)
+                for i, r in enumerate(r for r in ROWS if r["case"].startswith("reject-"))]
+
     @staticmethod
     def forged(hashes=("s1", "s2")):
         slots = {"s1": (10, 1, None), "s2": (30, 3, "h1")}
@@ -159,38 +166,71 @@ class CheckTest(unittest.TestCase):
                  "at": self.SHELLEY_AT.format(3)}]
 
     def test_a_healthy_load_passes_and_reports_the_scala_mempool(self):
-        failures, summary = pool_plutus.check(self.runner([self.refusal()]), InclusionTest.CHAIN, self.forged(),
+        failures, summary = pool_plutus.check(self.runner(self.judgements()), InclusionTest.CHAIN, self.forged(),
                                               self.events())
         self.assertEqual(failures, [])
         self.assertEqual(summary["protocolVersions"], ["10.0"])
-        self.assertEqual(summary["scalaLocalSubmission"]["refusedForTheSameRule"], 1)
+        judged = summary["scalaLocalSubmission"]
+        self.assertEqual((judged["expected"], judged["refusedForTheSameRule"], judged["sameBytes"], judged["missing"],
+                          judged["problems"], judged["unmatched"]), (4, 4, 2, [], [], 0))
         mempool = summary["mempool"]
-        self.assertEqual((mempool["accepted"], mempool["seenInScalaMempool"], mempool["localSubmissions"]), (4, 2, 1))
+        self.assertEqual((mempool["accepted"], mempool["seenInScalaMempool"], mempool["localSubmissions"]), (4, 2, 4))
         self.assertEqual(mempool["rejectedByReason"],
                          {"violates ValidationTagMismatch: Utxow(Utxo(Utxos(ValidationTagMismatch(true": 1,
                           "is already in the mempool": 1})
         self.assertEqual(mempool["scalaLedgerPhase2"], {"evaluatedSuccess": 4, "evaluatedFailure": 2, "scripts": 6})
-        self.assertEqual(summary["admissionMs"]["scala"]["failingScriptFlagTrue"]["median"], 4.25)
+        self.assertEqual(summary["admissionMs"]["scala"]["succeedingScriptFlagFalse"],
+                         {"n": 2, "median": 6.25, "p95": 6.25, "max": 6.25, "mean": 5.25})
+        self.assertEqual(summary["admissionMs"]["scala"]["failingScriptFlagTrue"]["max"], 7.25)
         self.assertEqual(summary["admissionMs"]["reference"]["failingScriptFlagTrue"]["max"], 2.5)
-        self.assertIsNone(summary["admissionMs"]["scala"]["succeedingScriptFlagFalse"])
 
     def test_what_fails_the_run(self):
         # the Scala block s1 is not on the chain, and a Haskell pool's log named it as invalid
         chain = [("h1", 30, 1, [("a", True, True), ("b", False, True), ("c", True, True), ("d", False, True)])]
-        failures, _ = pool_plutus.check(self.runner([self.refusal(accepted=True, scala=None),
-                                                     self.refusal(scala=[1, 0, 1], attempts=5)], errors=["boom"]),
+        judged = self.judgements()
+        judged[1] = {**judged[1], "accepted": True, "scala": None}
+        judged[2] = {**judged[2], "scala": [1, 0, 1], "attempts": 5}
+        failures, _ = pool_plutus.check(self.runner(judged, errors=["boom"]),
                                         chain, self.forged(["s1"]), self.events() + [{"event": "blockNoVerdict"}], {"s1"})
         joined = "\n".join(failures)
         for expected in ("1 Plutus rounds failed: boom", "the Haskell pools refused 1 Scala-forged blocks",
                          "no Scala-forged block holds a transaction whose scripts succeed",
                          "no Scala-forged block holds a transaction with the validity flag false",
                          "the Scala node accepted 1 transactions the reference refused",
-                         "did not refuse a transaction for the reference's rule", "1 blockNoVerdict events"):
+                         "does not show a refusal for the reference's ValidationTagMismatch", "1 blockNoVerdict events"):
             self.assertIn(expected, joined)
+
+    def test_an_unread_refusal_on_both_nodes_is_not_a_refusal_for_the_same_rule(self):
+        # the reference's refusal unread (None) and the Scala node's unread too, not accepted
+        judged = self.judgements()
+        judged[0] = {**judged[0], "reference": None, "scala": None, "accepted": False}
+        failures, summary = pool_plutus.check(self.runner(judged), InclusionTest.CHAIN, self.forged(), self.events())
+        self.assertEqual(summary["scalaLocalSubmission"]["refusedForTheSameRule"], 3)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("the reference's refusal is not ValidationTagMismatch: None", failures[0])
+
+    def test_both_nodes_refusing_for_another_rule_and_an_unread_scala_refusal_fail_the_run(self):
+        judged = self.judgements()
+        judged[0] = {**judged[0], "reference": [1, 0, 1], "scala": [1, 0, 1]}
+        judged[3] = {**judged[3], "scala": None}
+        failures, _ = pool_plutus.check(self.runner(judged), InclusionTest.CHAIN, self.forged(), self.events())
+        self.assertEqual(len(failures), 1)
+        self.assertIn("the reference's refusal is not ValidationTagMismatch: [1, 0, 1]", failures[0])
+        self.assertIn("the Scala node's refusal could not be read", failures[0])
+
+    def test_a_refused_case_without_its_own_judgement_fails_the_run(self):
+        # three judgements and one more for the first case: the V2 failing script with the flag true has none
+        judged = self.judgements()[:3] + [self.judgements()[0]]
+        failures, summary = pool_plutus.check(self.runner(judged), InclusionTest.CHAIN, self.forged(), self.events())
+        self.assertEqual(summary["scalaLocalSubmission"]["missing"],
+                         [{"case": "reject-failure-valid", "language": 2, "tx": "d"}])
+        self.assertEqual(failures, ["1 refused cases have no judgement by the Scala node: "
+                                    "[{'case': 'reject-failure-valid', 'language': 2, 'tx': 'd'}]"])
 
     def test_no_judgement_by_the_scala_node_fails_the_run(self):
         failures, _ = pool_plutus.check(self.runner([]), InclusionTest.CHAIN, self.forged(), self.events())
-        self.assertEqual(failures, ["no refused Plutus transaction was submitted to the Scala node"])
+        self.assertIn("4 refused cases have no judgement by the Scala node", failures[0])
+        self.assertEqual(failures[1], "no refused Plutus transaction was submitted to the Scala node")
 
 
 # 64-hex-character stand-ins for block hashes, one hex digit repeated per name
