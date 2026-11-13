@@ -10,7 +10,10 @@ FROM ghcr.io/kd5ujc-xyz/scarab@sha256:1811062cbb86d33b38cdf5132b0a24c3de1624f426
 FROM eclipse-temurin@sha256:acd83cdf6c9b5bfcd7c4e9d3e1969bacaacdcfa034c074500ab28610fb840f81
 ENV MALLOC_ARENA_MAX=2
 COPY --from=release /opt/scarab/ /opt/scarab/
-RUN mkdir -p /data /ipc /opt/at
+# Antithesis instruments the JARs it finds under /opt/antithesis/catalog/ (following one symlink) and adds its own
+# JARs beside the application's, so the node starts from the classpath /opt/scarab/*, not with `java -jar`.
+RUN mkdir -p /data /ipc /opt/at /opt/antithesis/catalog \
+ && ln -s /opt/scarab/scarab.jar /opt/antithesis/catalog/scarab.jar
 COPY --chmod=0755 scarab-node.sh /opt/at/scarab-node.sh
 WORKDIR /opt/scarab
 ENTRYPOINT ["/opt/at/scarab-node.sh"]
