@@ -45,7 +45,9 @@ cardano-cli conway transaction build-raw \
   --fee "$fee" --protocol-params-file "$work/pp.json" --out-file "$work/tx.raw" || fail "build-raw failed"
 cardano-cli conway transaction sign --tx-body-file "$work/tx.raw" --signing-key-file "$keys/utxo.skey" \
   --out-file "$work/tx.signed" || fail "sign failed"
-txid=$(cardano-cli conway transaction txid --tx-file "$work/tx.signed")
+# cardano-cli 11.2.3 prints {"txhash": ...}; older ones print the hash alone
+raw=$(cardano-cli conway transaction txid --tx-file "$work/tx.signed")
+txid=$(jq -r '.txhash' <<< "$raw" 2> /dev/null || printf '%s' "$raw")
 
 # No fault runs alongside a first command, but s1 may still be catching up after setup: wait until it answers.
 for _ in $(seq 60); do
