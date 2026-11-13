@@ -20,9 +20,12 @@ import java.nio.channels.{
   AsynchronousSocketChannel,
   CompletionHandler
 }
+import scala.util.control.NonFatal
 import xyz.kd5ujc.scarab.protocol.ConnectionIdentityError
 
-/** An accepted TCP connection: its bearer, the peer's address, and the close of its channel. */
+/** An accepted TCP connection: its bearer, the peer's address, and the close of its channel (which
+  * may be run more than once).
+  */
 final case class TcpStream[F[_]](
     bearer: Bearer[F],
     remote: SocketAddress[IpAddress],
@@ -34,7 +37,23 @@ trait TcpListener[F[_]]:
   def address: SocketAddress[IpAddress]
 
   /** The next connection, or why `accept` failed. */
-  def accept: F[Either[SystemCallError, TcpStream[F]]]
+  def accept: F[Either[AcceptFailure, TcpStream[F]]]
+
+/** Why an accept failed. The reference's `AcceptFailure` carries any exception of the call that is
+  * not asynchronous (ouroboros-network 2fb69829,
+  * `ouroboros-network/framework/lib/Ouroboros/Network/Snocket.hs` 170-214): here a failed system
+  * call, or an exception that is not one, a defect.
+  */
+enum AcceptFailure:
+  case System(error: SystemCallError)
+  case Defect(cause: Throwable)
+
+  /** The failure that ends the server's accept loop with it. */
+  def diffusion: DiffusionFailure = this match
+    case System(error) => DiffusionFailure.System(error)
+    case Defect(cause) => DiffusionFailure.Defect(cause)
+
+  def shown: String = diffusion.shown
 
 /** Where the node-to-node server's listening sockets come from: the JDK's in the node, scripted
   * ones in tests.
@@ -86,16 +105,25 @@ object TcpListeners:
   ): TcpListener[F] = new TcpListener[F]:
     val address: SocketAddress[IpAddress] = local
 
-    // fs2's `acceptChannel`: the accept is cancelled by closing the listening channel
-    def accept: F[Either[SystemCallError, TcpStream[F]]] =
-      F.async[AsynchronousSocketChannel] { cb =>
-        F.delay(channel.accept(channel, Accepted(cb))).as(Some(F.delay(channel.close())))
-      }.attempt
-        .flatMap {
-          case Right(accepted)      => stream(accepted).map(Right(_))
-          case Left(e: IOException) => F.pure(Left(SystemCallError.of(SystemCall.Accept, None)(e)))
-          case Left(other)          => F.raiseError(other)
-        }
+    // fs2's `acceptChannel`: the accept is cancelled by closing the listening channel. Once a
+    // channel is accepted nothing cancels until its stream owns it, and it is closed if that fails,
+    // as fs2's `Resource.makeFull` around it does
+    def accept: F[Either[AcceptFailure, TcpStream[F]]] =
+      F.uncancelable { poll =>
+        poll(F.async[AsynchronousSocketChannel] { cb =>
+          F.delay(channel.accept(channel, Accepted(cb))).as(Some(F.delay(channel.close())))
+        }).attempt
+          .flatMap {
+            case Right(accepted) =>
+              stream(accepted)
+                .onError { case _ => F.delay(if accepted.isOpen then accepted.close()) }
+                .map(Right(_))
+            case Left(e: IOException) =>
+              F.pure(Left(AcceptFailure.System(SystemCallError.of(SystemCall.Accept, None)(e))))
+            case Left(NonFatal(cause)) => F.pure(Left(AcceptFailure.Defect(cause)))
+            case Left(fatal)           => F.raiseError(fatal)
+          }
+      }
 
   /** fs2's `AsyncSocket` as a bearer. The buffer of a read is allocated for it, where fs2 keeps one
     * per socket and copies each read out of it.

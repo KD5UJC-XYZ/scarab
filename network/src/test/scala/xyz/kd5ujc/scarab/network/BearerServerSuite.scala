@@ -22,14 +22,14 @@ class BearerServerSuite extends FailsOnUncaught:
 
   /** A listener whose accepts return `results` in turn, then wait for ever; `calls` counts them. */
   private def scripted(
-      results: List[Either[SystemCallError, TcpStream[IO]]],
+      results: List[Either[AcceptFailure, TcpStream[IO]]],
       calls: Ref[IO, Int]
   ): TcpListeners[IO] = new TcpListeners[IO]:
     def bind(requested: SocketAddress[IpAddress]): Resource[IO, TcpListener[IO]] =
-      Resource.eval(Ref.of[IO, List[Either[SystemCallError, TcpStream[IO]]]](results)).map { left =>
+      Resource.eval(Ref.of[IO, List[Either[AcceptFailure, TcpStream[IO]]]](results)).map { left =>
         new TcpListener[IO]:
           val address: SocketAddress[IpAddress] = SocketAddress(ip"127.0.0.1", port"3001")
-          def accept: IO[Either[SystemCallError, TcpStream[IO]]] =
+          def accept: IO[Either[AcceptFailure, TcpStream[IO]]] =
             calls.update(_ + 1) *> left
               .modify {
                 case next :: rest => (rest, Some(next))
@@ -165,7 +165,7 @@ class BearerServerSuite extends FailsOnUncaught:
           calls <- Ref.of[IO, Int](0)
           stopped <- BearerServer
             .listen[IO, NetworkError](
-              scripted(List(Left(exhausted)), calls),
+              scripted(List(Left(AcceptFailure.System(exhausted))), calls),
               None,
               None,
               trace => traces.update(_ :+ trace)
@@ -180,7 +180,7 @@ class BearerServerSuite extends FailsOnUncaught:
         assertEquals(
           seen,
           Vector(
-            BearerServer.Trace.AcceptError(exhausted),
+            BearerServer.Trace.AcceptError(AcceptFailure.System(exhausted)),
             BearerServer.Trace.ServerStopped,
             BearerServer.Trace.ServerError(DiffusionFailure.System(exhausted))
           )
@@ -202,7 +202,7 @@ class BearerServerSuite extends FailsOnUncaught:
           start <- IO.monotonic
           result <- BearerServer
             .listen[IO, NetworkError](
-              scripted(List(Left(aborted), Right(idle(closed))), calls),
+              scripted(List(Left(AcceptFailure.System(aborted)), Right(idle(closed))), calls),
               None,
               None,
               trace => traces.update(_ :+ trace)
@@ -218,6 +218,83 @@ class BearerServerSuite extends FailsOnUncaught:
       )
       .map { (elapsed, seen) =>
         assertEquals(elapsed, 500.millis, "the second accept waits for the reference's delay")
-        assertEquals(seen, Vector(BearerServer.Trace.AcceptError(aborted)))
+        assertEquals(seen, Vector(BearerServer.Trace.AcceptError(AcceptFailure.System(aborted))))
       }
+  }
+
+  test("the owner learns that the accept loop stopped even if tracing it fails") {
+    val unwritable = new java.io.IOException("No space left on device")
+    TestControl
+      .executeEmbed(
+        Ref
+          .of[IO, Int](0)
+          .flatMap(calls =>
+            BearerServer
+              .listen[IO, NetworkError](
+                scripted(List(Left(AcceptFailure.System(exhausted))), calls),
+                None,
+                None,
+                {
+                  case BearerServer.Trace.ServerStopped => IO.raiseError(unwritable)
+                  case _                                => IO.unit
+                }
+              )((_, _) => IO.unit)((_, _) => IO.unit)
+              .use(_.stopped)
+          )
+      )
+      .map(stopped => assertEquals(stopped, DiffusionFailure.System(exhausted)))
+  }
+
+  test("an accept that fails with a defect is traced and stops the server with it") {
+    val broken = new IllegalStateException("accept pending")
+    TestControl
+      .executeEmbed(
+        for
+          traces <- Ref.of[IO, Vector[BearerServer.Trace]](Vector.empty)
+          calls <- Ref.of[IO, Int](0)
+          stopped <- BearerServer
+            .listen[IO, NetworkError](
+              scripted(List(Left(AcceptFailure.Defect(broken))), calls),
+              None,
+              None,
+              trace => traces.update(_ :+ trace)
+            )((_, _) => IO.unit)((_, _) => IO.unit)
+            .use(_.stopped)
+          seen <- traces.get
+        yield (stopped, seen)
+      )
+      .map { (stopped, seen) =>
+        assertEquals(stopped, DiffusionFailure.Defect(broken))
+        assertEquals(
+          seen.headOption,
+          Some(BearerServer.Trace.AcceptError(AcceptFailure.Defect(broken)))
+        )
+      }
+  }
+
+  test("a connection whose close fails still frees its slot") {
+    TestControl
+      .executeEmbed(
+        for
+          calls <- Ref.of[IO, Int](0)
+          first <- Deferred[IO, Unit]
+          second <- Deferred[IO, Unit]
+          served <- Queue.unbounded[IO, Unit]
+          failing = idle(first).copy(close =
+            first.complete(()) *> IO.raiseError(new java.io.IOException("close failed"))
+          )
+          _ <- BearerServer
+            .listen[IO, NetworkError](
+              scripted(List(Right(failing), Right(idle(second))), calls),
+              None,
+              None,
+              quiet,
+              maxConnections = Some(1)
+            )((_, _) => IO.unit)((_, _) => served.offer(()))
+            .use(_ => served.take *> served.take *> second.get)
+          tried <- calls.get
+        yield tried
+      )
+      // with one slot, the second client is served only once the first one's slot is free
+      .map(tried => assert(tried >= 2, s"accepts: $tried"))
   }

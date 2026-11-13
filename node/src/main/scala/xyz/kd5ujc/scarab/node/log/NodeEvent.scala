@@ -539,8 +539,8 @@ object NodeEvent:
     case LocalServer(trace) => LocalServerLines.line(trace)
     case RemoteServer(trace) =>
       trace match
-        case BearerServer.Trace.AcceptError(error) =>
-          EventKind.RemoteAcceptError.line("reason" -> error.shown.asJson)
+        case BearerServer.Trace.AcceptError(failure) =>
+          EventKind.RemoteAcceptError.line("reason" -> failure.shown.asJson)
         case BearerServer.Trace.ServerStopped => EventKind.RemoteServerStopped.line()
         case BearerServer.Trace.ServerError(failure) =>
           EventKind.RemoteServerError.line("reason" -> failure.shown.asJson)

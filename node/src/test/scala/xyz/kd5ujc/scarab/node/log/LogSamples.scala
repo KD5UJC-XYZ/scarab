@@ -30,6 +30,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ValidationError
 }
 import xyz.kd5ujc.scarab.network.{
+  AcceptFailure,
   BearerServer,
   ConnectionEnd,
   ConnectionError,
@@ -349,7 +350,7 @@ object LogSamples:
     * that error.
     */
   val remoteServer: List[BearerServer.Trace] = List(
-    BearerServer.Trace.AcceptError(exhausted),
+    BearerServer.Trace.AcceptError(AcceptFailure.System(exhausted)),
     BearerServer.Trace.ServerStopped,
     BearerServer.Trace.ServerError(DiffusionFailure.System(exhausted))
   )
