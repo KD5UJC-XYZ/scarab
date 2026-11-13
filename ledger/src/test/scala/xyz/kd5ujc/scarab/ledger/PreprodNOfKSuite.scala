@@ -121,7 +121,7 @@ class PreprodNOfKSuite extends ScalaCheckSuite:
     Bytes(head(4, 2) ++ head(0, tag) ++ int(slot))
 
   private def decode(b: Bytes): Either[NativeScript.DecodeError, NativeScript] =
-    NativeScript.decode(Cbor.decode(b).toOption.get)
+    NativeScript.decode(Cbor.decode(b).toOption.get, NativeScript.Form.Timelock)
 
   // --- the reference's decode: `decodeInt` / `Word64` ----------------------------------------
 

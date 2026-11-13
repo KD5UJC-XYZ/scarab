@@ -94,11 +94,12 @@ class DeepNestingSuite extends FunSuite:
     val n = 30000 // 3 bytes a level
     onSmallStack {
       val root = Cbor.decode(nested(n)).fold(e => fail(e.toString), identity)
-      val script = NativeScript.decode(root).fold(e => fail(e.message), identity)
+      val script =
+        NativeScript.decode(root, NativeScript.Form.Timelock).fold(e => fail(e.message), identity)
       assertEquals(nativeDepth(script), n)
       assert(script.eval(Set(repeat(raw(0xab), 28)), None, None))
       assert(!script.eval(Set.empty, None, None))
-      assertEquals(Script.native(root).map(_.hash.size), Right(28))
+      assertEquals(Script.native(root, NativeScript.Form.Timelock).map(_.hash.size), Right(28))
       // compared through their encodings: `==` on the case classes recurses
       val out = Codec.encode(script)
       val back = Codec.decode[NativeScript](out).fold(e => fail(e.toString), identity)
@@ -116,12 +117,13 @@ class DeepNestingSuite extends FunSuite:
     onSmallStack {
       val n = 10000
       val ok = Cbor.decode(repeat(unit, n) ++ leaf).fold(e => fail(e.toString), identity)
-      val script = NativeScript.decode(ok).fold(e => fail(e.message), identity)
+      val script =
+        NativeScript.decode(ok, NativeScript.Form.Timelock).fold(e => fail(e.message), identity)
       assert(script.eval(Set.empty, Some(BigInt(5)), None))
       assert(!script.eval(Set.empty, Some(BigInt(4)), None))
       val bad =
         Cbor.decode(repeat(unit, n) ++ raw(0x82, 0x09, 0x00)).fold(e => fail(e.toString), identity)
-      assert(NativeScript.decode(bad).isLeft)
+      assert(NativeScript.decode(bad, NativeScript.Form.Timelock).isLeft)
     }
   }
 
@@ -229,7 +231,7 @@ class DeepNestingSuite extends FunSuite:
   test("== hashCode and toString of a value nested 10,000 levels are stack-safe: native scripts") {
     val script = (b: Bytes) =>
       NativeScript
-        .decode(Cbor.decode(b).fold(e => fail(e.toString), identity))
+        .decode(Cbor.decode(b).fold(e => fail(e.toString), identity), NativeScript.Form.Timelock)
         .fold(e => fail(e.message), identity)
     structural(script, nested(10000), repeat(raw(0x82, 0x01, 0x81), 10000) ++ raw(0x82, 0x04, 0x05))
     assertNotEquals(script(nested(2)), script(nested(3)))

@@ -82,6 +82,22 @@ enum LedgerDecodeError extends DomainError:
   case ByronBlockUnexpected
   case BodyWitnessCount(bodies: Int, witnesses: Int)
   case TransactionIndex(actual: Value, bound: Int)
+
+  /** An index of a block body's invalid transactions that is not greater than the one before it.
+    * The reference has no decoder failure for this list: `alignedValidFlags`
+    * (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/BlockBody/Internal.hs:278-286`, cardano-ledger
+    * f649f975) calls `Seq.replicate` with the count `index - previous - 1`, and `Data.Sequence`
+    * (containers 0.7) calls `error` for a negative count, so an `ErrorCall` is thrown while the
+    * block body is decoded. Scarab refuses the block body here, as a decoder failure.
+    */
+  case InvalidTransactionOrder(previous: Int, index: Int)
+
+  /** A certificate tag Conway's decoder reads only to fail it: genesis delegation (5) and moving
+    * instantaneous rewards (6) "are no longer supported" (`decCBOR` of `ConwayTxCert`,
+    * `eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:674-681`, cardano-ledger f649f975).
+    */
+  case RetiredCertificate(certificate: LedgerDecodeError.Retired)
+
   case LeiosCertificate(cause: xyz.kd5ujc.scarab.crypto.bls.BlsError)
 
   /** A part of the Dijkstra era this build does not decode yet. */
@@ -149,3 +165,10 @@ object LedgerDecodeError:
 
   enum Shape:
     case Unsigned, Integer, Bytes, Text, Boolean, Null, Array, Map, ArrayOrMap, Metadatum
+
+  /** The certificates of Shelley to Babbage that Conway's decoder refuses ([[RetiredCertificate]]),
+    * by tag.
+    */
+  enum Retired(val tag: Int):
+    case GenesisDelegation extends Retired(5)
+    case MoveInstantaneousRewards extends Retired(6)

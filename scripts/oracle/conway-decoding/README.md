@@ -102,3 +102,11 @@ account, read alone in each era with the kinds "address" and "account" (`DecCBOR
 `DecCBOR AccountAddress` of the CBOR byte string), and bodies that hold one of network 1 and 2 in
 each place a body reads one. Its recipe is the one above with `address_cases.py`,
 `/tmp/address-inputs.json` and `fixtures/reference/address-headers/cases.jsonl`.
+
+The [era decoders corpus](../../../fixtures/reference/era-decoders/README.md) runs on the same
+harness, its cases from `era_decoder_cases.py`: certificate tags in the bodies of Shelley to Conway,
+time-lock native scripts in Shelley and Allegra witness sets, a repeated auxiliary data index in the
+block bodies of Mary to Conway, and invalid-transaction lists in the block bodies of Alonzo to
+Conway. An invalid list that repeats an index or decreases makes the harness throw instead of
+returning a verdict, so each of those cases is an input file of its own; its recipe is in the
+corpus README.

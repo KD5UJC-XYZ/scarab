@@ -1177,7 +1177,8 @@ object Targets:
           xyz.kd5ujc.scarab.codec.Cbor.decode(b).foreach { n =>
             seen("script", Script.decode(n, ScriptKind.newestKnown).isRight)
             Script.decodeWrapped(n, ScriptKind.newestKnown)
-            NativeScript.decode(n)
+            NativeScript.decode(n, NativeScript.Form.MultiSig)
+            NativeScript.decode(n, NativeScript.Form.Timelock)
           }
         }
       )

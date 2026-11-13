@@ -130,7 +130,7 @@ object Block:
     for
       parts <- array(n, if era.hasInvalidTransactions then 5 else 4)
       header <- Header.fromRaw(era, parts(0).original)
-      body <- segregated(parts, era.hasInvalidTransactions)
+      body <- segregated(parts, era)
     yield Shelley(era, header, body.transactions, body.size, body.hash)
 
   /** The transactions of a block body in the segregated layout of Shelley to Conway (`[header,
@@ -145,7 +145,7 @@ object Block:
 
   private[ledger] def segregated(
       parts: Vector[Node],
-      hasInvalid: Boolean
+      era: Era
   ): Either[ChainError, SegregatedBody] =
     for
       bodies <- list(parts(1))
@@ -157,9 +157,10 @@ object Block:
       )
       aux <- parts(3).value match
         case Value.Map(entries) =>
-          entries
-            .traverse { case (k, v) => index(k, bodies.size).map(_ -> v.original) }
-            .map(_.toMap)
+          for
+            _ <- auxiliaryKeys(entries.map(_._1), DecoderVersion.of(era))
+            kvs <- entries.traverse { case (k, v) => index(k, bodies.size).map(_ -> v.original) }
+          yield kvs.toMap
         case _ =>
           Left(
             fail(
@@ -171,7 +172,8 @@ object Block:
             )
           )
       invalid <-
-        if hasInvalid then list(parts(4)).flatMap(_.traverse(index(_, bodies.size))).map(_.toSet)
+        if era.hasInvalidTransactions then
+          list(parts(4)).flatMap(_.traverse(index(_, bodies.size))).flatMap(increasing)
         else Right(Set.empty[Int])
       components = parts.drop(1).map(_.original)
     yield SegregatedBody(
@@ -181,6 +183,37 @@ object Block:
       components.map(_.size.toLong).sum,
       Blake2b.hash256.hash(Bytes(components.flatMap(c => Blake2b.hash256.hash(c).value)))
     )
+
+  /** The keys of a block body's auxiliary data map, its transactions' indices, read by
+    * `decodeIntMap` (`libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs:
+    * 858-878`, cardano-ledger f649f975; `Shelley/BlockBody/Internal.hs:262-264`,
+    * `Alonzo/BlockBody/Internal.hs:227-229`). From decoder version 9 it is
+    * `decodeMapLikeEnforceNoDuplicatesInternal`, which refuses a map that names an index twice once
+    * every entry is read, before the indices are checked against the bodies (`auxDataSeqDecoder`);
+    * below 9 `IntMap.fromList` keeps the last entry of an index, as `toMap` does.
+    */
+  private def auxiliaryKeys(keys: Vector[Node], version: DecoderVersion): Either[ChainError, Unit] =
+    Either.cond(
+      !version.atLeast(9) || keys.map(_.value).distinct.size == keys.size,
+      (),
+      fail(LedgerDecodeError.DuplicateKey(DecodeField.AuxiliaryData))
+    )
+
+  /** The invalid transactions of a block body, Alonzo to Conway: indices in range
+    * ([[LedgerDecodeError.TransactionIndex]], the reference's `fail` at
+    * `Alonzo/BlockBody/Internal.hs:240-245`, cardano-ledger f649f975), each greater than the one
+    * before it. `alignedValidFlags` (`:278-286`) takes `Seq.replicate (index - previous - 1)` for
+    * each, which throws for a repeated or a decreasing index
+    * ([[LedgerDecodeError.InvalidTransactionOrder]]).
+    */
+  private def increasing(indices: Vector[Int]): Either[ChainError, Set[Int]] =
+    indices
+      .zip(indices.drop(1))
+      .collectFirst {
+        case (previous, index) if index <= previous =>
+          fail(LedgerDecodeError.InvalidTransactionOrder(previous, index))
+      }
+      .toLeft(indices.toSet)
 
   private def fail(reason: LedgerDecodeError): ChainError =
     ChainError.Decode(DecodeField.Block, reason)

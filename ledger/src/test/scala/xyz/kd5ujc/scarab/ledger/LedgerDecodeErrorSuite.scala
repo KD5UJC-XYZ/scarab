@@ -56,7 +56,7 @@ class LedgerDecodeErrorSuite extends FunSuite:
 
   test("unknown certificate and script tags preserve the numeric tag") {
     assertEquals(
-      Certificate.decode(node("811863"), DecoderVersion.of(Era.Conway)),
+      Certificate.decode(node("811863"), Era.Conway),
       Left(LedgerDecodeError.TaggedArity(DecodeField.Certificate, 99, 1))
     )
     assertEquals(
@@ -67,7 +67,7 @@ class LedgerDecodeErrorSuite extends FunSuite:
 
   test("native script shape failures retain their structured ledger cause") {
     assertEquals(
-      NativeScript.decode(node("8100")),
+      NativeScript.decode(node("8100"), NativeScript.Form.Timelock),
       Left(
         NativeScript.DecodeError.Malformed(
           LedgerDecodeError.TaggedArity(DecodeField.NativeScript, 0, 1)
@@ -95,7 +95,8 @@ class LedgerDecodeErrorSuite extends FunSuite:
       )
     do
       assertEquals(
-        NativeScript.decode(node("82" + encodedTag + "581c" + "00" * 28)),
+        NativeScript
+          .decode(node("82" + encodedTag + "581c" + "00" * 28), NativeScript.Form.Timelock),
         Left(
           NativeScript.DecodeError.Malformed(
             LedgerDecodeError.TaggedArity(DecodeField.NativeScript, tag, 2)

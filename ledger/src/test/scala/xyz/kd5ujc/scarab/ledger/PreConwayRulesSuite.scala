@@ -471,7 +471,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val encoded = encode(s)
     xyz.kd5ujc.scarab.codec.Cbor
       .decode(encoded)
-      .flatMap(Script.native)
+      .flatMap(Script.native(_, NativeScript.Form.Timelock))
       .fold(e => fail(e.toString), identity)
 
   private def encode(s: NativeScript): Bytes =

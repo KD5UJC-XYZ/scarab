@@ -64,10 +64,11 @@ private[ledger] object AuxiliaryScripts:
         )
     }
 
+  /** The native scripts of auxiliary data, which holds scripts from Allegra on: time locks. */
   private def native(node: Node)(using ByteStrings): Either[LedgerDecodeError, Vector[Plutus]] =
     CborRead
       .array(node, DecodeField.AuxiliaryNativeScripts)
-      .flatMap(_.traverse_(Script.native))
+      .flatMap(_.traverse_(Script.native(_, NativeScript.Form.Timelock)))
       .as(Vector.empty)
 
   /** Plutus scripts of `language`, whose scripts are of `kind`, allowed from protocol `minimum`

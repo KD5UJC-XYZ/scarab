@@ -857,7 +857,7 @@ class ShelleyLedgerSuite extends FunSuite:
       case other                  => fail(s"not encoded in this suite: $other")
     xyz.kd5ujc.scarab.codec.Cbor
       .decode(Bytes(go(s)))
-      .flatMap(Script.native)
+      .flatMap(Script.native(_, NativeScript.Form.Timelock))
       .fold(e => fail(e.toString), identity)
 
   test("from Mary a native script mints: it must be provided, hold and be needed") {
