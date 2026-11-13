@@ -504,6 +504,7 @@
         "FlatDecoderSuite",
         "SerialisedScriptSuite",
         "FlatReferenceCorporaSuite",
+        "FlatConformanceSuite",
         "OwnFlatDecoderParitySuite"
       ],
       "docs": [

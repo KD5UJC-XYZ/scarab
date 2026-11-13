@@ -49,7 +49,10 @@ the result with the decoded `.flat.expected` program and the budget with the sha
 `PlutusConformance171Suite` run the 906 that way through the Scalus backend's Flat walker
 (`FlatScan`) and machine. All 906 pass at each release, with no exclusion. The own evaluator runs
 the 1.70.0.0 cases, text and Flat, the release it implements ([below](#scarabs-own-evaluator),
-ADR 0027); the 1.71.0.0 cases run on the Scalus backend alone.
+ADR 0027); the 1.71.0.0 cases run on the Scalus backend alone. Upstream's `conformance-consistency`
+check, that each Flat program and result decodes to what its text form parses to, is mirrored with
+the own parser and decoder only; the Scalus suites decode the program and its expected result with
+the same walker, as upstream's runner does.
 
 ## 1. The reference evaluator
 
