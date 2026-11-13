@@ -17,19 +17,19 @@
       "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
       "sourceSha256": "fc3976b22364883b70f785be75c63dd586e3b3c68ee67178fc3b5be128f19e6d",
       "matchesPin": true,
-      "note": "DecCBOR (Hash h a) over DecCBOR (PackedBytes n), packByteString (492-498)"
+      "note": "DecCBOR (Hash h a) over DecCBOR (PackedBytes n), packByteString (492-498); the same file at 048b78d2807ce9644dbe483c605625824f6be88f, the released cardano-ledger-binary 1.9.1.0"
     },
     "conwayTxCert": {
       "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs",
       "sourceSha256": "6f032ae2538c3f6ca7b9370defcfd42763c097da6698663c2d4a86544ec9bdf0",
       "matchesPin": true,
-      "note": "DecCBOR (ConwayTxCert era) (672-681) and conwayTxCertDelegDecoder, tags 9 to 13 (683-731)"
+      "note": "DecCBOR (ConwayTxCert era) (672-681) and conwayTxCertDelegDecoder, tags 9 to 13 (683-731); the same file at 048b78d2807ce9644dbe483c605625824f6be88f"
     },
     "shelleyTxCert": {
       "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
       "sourceSha256": "a6415c9aa5026776dd243a80ec083009cde45206e038982041231e4945a73915",
       "matchesPin": true,
-      "note": "shelleyTxCertDelegDecoder, tag 2 (490-506)"
+      "note": "shelleyTxCertDelegDecoder, tag 2 (490-506); the same file at 048b78d2807ce9644dbe483c605625824f6be88f"
     },
     "packedBytes": {
       "repository": "IntersectMBO/cardano-base",

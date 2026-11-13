@@ -5,28 +5,31 @@ Status: Current. Regression for the November 2025 mainnet partition.
 ## The incident
 
 At about 08:00 UTC on 21 November 2025 Cardano mainnet partitioned over "a malformed delegation
-transaction" in which "an oversized hash" passed the checks of newer nodes; older nodes refused the
-transaction, newer ones accepted it, and node 10.5.2 (11:00 UTC) and 10.5.3 (15:30 UTC) fixed it
-(Intersect, [Incident report: network partition analysis and resolution strategy](https://intersectmbo.org/news/incident-report-network-partition-analysis-and-resolution-strategy),
-21 November 2025). Pi Lanningham's after-action report names the field and the length: "a
-delegation certificate to a pool identifier that was twice as big as it should be", which nodes
-with the bug truncated to the expected length ("Instead of delegating to pool EASY1, it delegated
-to EASY1EASY1"; [Poison Piggy - After Action Report](https://www.314pool.com/post/cardano-post-mortem-2),
+transaction": "The bug allowed an oversized hash in a malformed delegation transaction to pass
+initial validation checks". Older nodes rejected the transaction and newer ones accepted it; node
+10.5.2 was released at about 11:00 UTC and 10.5.3 at about 15:30 UTC (Intersect,
+[Incident report: network partition analysis and resolution strategy](https://intersectmbo.org/news/incident-report-network-partition-analysis-and-resolution-strategy)).
+Pi Lanningham's after-action report names the field and the length, "a delegation certificate to a
+pool identifier that was twice as big as it should be" ("Instead of delegating to pool EASY1, it
+delegated to EASY1EASY1"), and the fault: a code path "that would accept hashes that were too long,
+and just truncate to the correct length" ([Poison Piggy - After Action Report](https://www.314pool.com/post/cardano-post-mortem-2),
 22 November 2025). The Cardano Foundation's post-mortem ([November 2025 Incident: Cardano Shows Its
 Resilience](https://cardanofoundation.org/blog/november-2025-cardano-shows-resilience), 4 December
-2025) describes "a buggy transaction ... handled differently in different versions of a library"
-and names no field or length. None of the three publishes the transaction's bytes, so this corpus
-builds its own.
+2025; read from the Internet Archive's snapshot 20260514132525, the live page refusing with HTTP 429)
+says "A buggy transaction was handled differently in different versions of a library" and names no
+field or length. None of the three publishes the transaction's bytes, so this corpus builds its own.
 
 ## The cases
 
 The reference reads a stake credential's key or script hash, a pool id and a DRep's key or script
 hash as a `Hash Blake2b_224`: `DecCBOR (Hash h a)` over `DecCBOR (PackedBytes n)`
 (`libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs:492-498`, cardano-ledger
-`f649f9751074d2ab3de033fc3912f29c9862c1f5`), whose `packByteString` fails unless the string is
-exactly the size ("Number of bytes mismatch", `cardano-crypto-class/src/Cardano/Crypto/PackedBytes/Internal.hs:379-406`,
-cardano-base `060819b59c184b951a54e3c563304983c53a3eac`, released as cardano-crypto-class 2.5.1.0).
-The Conway certificates that delegate are tag 2 (`shelleyTxCertDelegDecoder`,
+`f649f9751074d2ab3de033fc3912f29c9862c1f5`; the file is the same at
+`048b78d2807ce9644dbe483c605625824f6be88f`, the released cardano-ledger-binary 1.9.1.0 the harness
+runs), whose `packByteString` fails unless the string is exactly the size ("Number of bytes
+mismatch", `cardano-crypto-class/src/Cardano/Crypto/PackedBytes/Internal.hs:379-406`, cardano-base
+`060819b59c184b951a54e3c563304983c53a3eac`, released as cardano-crypto-class 2.5.1.0). The Conway
+certificates that delegate are tag 2 (`shelleyTxCertDelegDecoder`,
 `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs:490-506`) and tags 9 to 13
 (`conwayTxCertDelegDecoder`, `eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:683-731`), read
 by `DecCBOR (ConwayTxCert era)` (`:672-681`).

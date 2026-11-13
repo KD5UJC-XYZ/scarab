@@ -9,9 +9,8 @@ import xyz.kd5ujc.scarab.ledger.DelegationHashesReferenceSuite as Corpus
   * class of the November 2025 mainnet partition, is refused by the mempool before the ledger rules
   * run, as the reference's transaction decoder refuses it: the lines of
   * `fixtures/reference/delegation-hashes/cases.jsonl` with their verdicts ([[Corpus]] says what
-  * they hold). An accepted line is read with the certificate it holds, and whatever the mempool
-  * answers it then is the ledger's verdict, not the decoder's: its inputs are not in the synthetic
-  * ledger.
+  * they hold). An accepted line is read with the certificate it holds and reaches the ledger rules,
+  * which refuse it: its inputs are not in the synthetic ledger.
   */
 class DelegationHashesSubmissionSuite extends FunSuite:
   private val rows = Corpus.load.fold(e => fail(e.toString), identity)
@@ -34,12 +33,12 @@ class DelegationHashesSubmissionSuite extends FunSuite:
         case None =>
           val tx = parsed.fold(r => fail(s"the reference accepts it: ${r.message}"), _.tx)
           assertEquals(tx.body.certificates, Vector(Corpus.expected(row)))
+          // past the decoder the ledger rules judge it, and refuse it: its inputs are not unspent
           for (source, answer) <- admitted do
-            answer.left.foreach {
-              case r @ (Rejection.Malformed(_) | Rejection.InputDefect(_)) =>
-                fail(s"$source: the reference's decoder accepts it, the mempool gave ${r.message}")
-              case _ => ()
-            }
+            answer match
+              case Left(Rejection.Ledger(_)) => ()
+              case other =>
+                fail(s"$source: the ledger rules must answer it, the mempool gave $other")
         case Some(place) =>
           val refused = Rejection.Malformed(
             TransactionDecodeProblem.Ledger(

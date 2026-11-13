@@ -551,7 +551,7 @@
     "fixtures/reference/definite-text/cases.jsonl": "93ac2d95549a8b83b24af1f58d11782fe5fbe8e74cc80525b7cabc23ea519090",
     "fixtures/reference/definite-text/provenance.json": "31aa7ce0853857b58feaffa67ece65ec6199b6d764c974fe68b89fb56beeea43",
     "fixtures/reference/delegation-hashes/cases.jsonl": "b3969adf2971e927aa5e583d5593bd3bf0f61f34e643e6d02f590c200b16b546",
-    "fixtures/reference/delegation-hashes/provenance.json": "c140cc7f12057907dae0c35a68a7681f13456c3d40f73c24f15bfc01114de7cb",
+    "fixtures/reference/delegation-hashes/provenance.json": "a15315fad278d30e3b8e6e5ee98984c7abe06d464fdad75aa1e11a21b7c9a69e",
     "fixtures/reference/dijkstra-crossing/cases.jsonl": "c5adefc0022c8b4e3dce43423fc87296fb3591e5e16811e6e86231e3c9459e20",
     "fixtures/reference/dijkstra-crossing/provenance.json": "e32f05f4e48bb30a38f1a0a27ad67794621e6f9fc68bbb80184a8271ca875f32",
     "fixtures/reference/dijkstra-genesis/cases.jsonl": "90a8e6107bd13b29bd82aa5b3cc436cbd06c2641c6fafc454cbc78fe43198569",
