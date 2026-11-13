@@ -47,7 +47,7 @@ object LocalTxMonitor:
   final case class Sizes(capacityInBytes: Long, sizeInBytes: Long, numberOfTxs: Long)
 
   /** One measure: the mempool's size and the capacity, in the measure's unit. Each is a CBOR
-    * integer of any size, as the reference's `encodeInteger` writes it (ouroboros-network 2fb69829
+    * integer of any size, as the reference's `encodeInteger` writes it (ouroboros-network c45735a5
     * `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalTxMonitor/Codec.hs:204-215`):
     * a bignum (tag 2) above 2^64 - 1.
     */

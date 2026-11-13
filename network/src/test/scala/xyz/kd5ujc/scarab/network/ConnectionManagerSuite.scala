@@ -14,7 +14,7 @@ import org.scalacheck.Gen
 import org.scalacheck.Prop.*
 import scala.concurrent.duration.*
 
-/** The connection manager against the reference's (ouroboros-network `2fb69829`,
+/** The connection manager against the reference's (ouroboros-network `c45735a5`,
   * `ConnectionManager/Core.hs`): admission, outbound acquisition and reuse, the releases of either
   * side, the waits, time-wait and pruning. Schedules are controlled: the virtual clock of
   * `TestControl`, and the order of the calls; every change the manager reports is checked against

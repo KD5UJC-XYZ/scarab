@@ -127,7 +127,7 @@ class LocalTxMonitorSuite extends ScalaCheckSuite:
   test(
     "a measure is a CBOR integer of any size, a bignum above 2^64 - 1, as encodeInteger writes it"
   ) {
-    // `encodeSizeAndCapacity` (ouroboros-network 2fb69829 `LocalTxMonitor/Codec.hs:204-215`):
+    // `encodeSizeAndCapacity` (ouroboros-network c45735a5 `LocalTxMonitor/Codec.hs:204-215`):
     // 2^32 is a plain integer, 2^64 a tag 2 with its 9 big-endian bytes
     val reply = Message.ReplyGetMeasures(
       Measures(1, SortedMap("a" -> Measure(BigInt(1) << 32, BigInt(1) << 64)))

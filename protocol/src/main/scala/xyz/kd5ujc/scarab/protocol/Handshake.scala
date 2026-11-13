@@ -392,7 +392,7 @@ object Handshake:
       case SelectionError.Refused(v, cause) => WireReason.Refused(v, codec.refusalText(cause))
 
   /** Highest-common-version selection, shared by the Cardano facade and mock-domain adapters.
-    * Mirrors Handshake/Client.hs:acceptOrRefuse at upstream 2fb69829. A failed highest candidate
+    * Mirrors Handshake/Client.hs:acceptOrRefuse at upstream c45735a5. A failed highest candidate
     * never falls back to a lower version.
     */
   def acceptOrRefuse[V: Ordering, A, E](

@@ -5,8 +5,7 @@ import scala.collection.immutable.SortedSet
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
 /** The decisions about big ledger peers: the six families the reference lists first in each of its
-  * groups (`Governor.hs` 695-727, ouroboros-network `main` 1.3.0.0, whose files agree with the pin
-  * at the cited lines):
+  * groups (`Governor.hs` 694-726, ouroboros-network `c45735a5`):
   *
   *   - `BigLedgerPeers.belowTarget` and `aboveTarget` (`Governor/BigLedgerPeers.hs`): ask for more
   *     big ledger peers below the known target, forget cold ones above it;

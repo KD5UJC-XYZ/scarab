@@ -10,9 +10,9 @@ import ChainSync.DecodeResult
   * agency and the limits. [[PeerSharingEngine]] owns the generic framing; this facade supplies the
   * Cardano address domain. No transport and no timer is implemented here.
   *
-  * Reference (ouroboros-network, `2fb69829`, the commit of the vendored CDDL, models/.../SOURCES;
-  * the tag `ouroboros-network-1.2.0.0` of docs/design/peer-selection/reference-model.md section 1.1
-  * has the same files):
+  * Reference (ouroboros-network `c45735a5`, the tag `ouroboros-network-1.2.0.0` of
+  * docs/design/peer-selection/reference-model.md section 1.1; the vendored CDDL is
+  * cardano-diffusion's at `c5117705`, models/.../SOURCES):
   *   - states and messages:
   *     `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Type.hs` lines 29
   *     (amount, a Word8), 38-40 (result), 45-58 (`StIdle` client agency, `StBusy` server agency,

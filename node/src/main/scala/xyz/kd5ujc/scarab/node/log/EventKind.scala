@@ -80,7 +80,7 @@ enum EventKind(val area: Area, val severity: Severity):
   case PlutusVm extends EventKind(Area.Node, Severity.Notice)
   case Listening extends EventKind(Area.Node, Severity.Notice)
   // the node-to-client socket as the network layer sets it up, the reference's
-  // `Startup.DiffusionInit` traces of it (ouroboros-network 2fb69829,
+  // `Startup.DiffusionInit` traces of it (ouroboros-network c45735a5,
   // `ouroboros-network/tracing/Ouroboros/Network/Tracing/PeerSelection.hs` 155-174)
   case CreateSystemdSocketForSnocketPath extends EventKind(Area.Node, Severity.Info)
   case CreatedLocalSocket extends EventKind(Area.Node, Severity.Info)
@@ -133,7 +133,7 @@ enum EventKind(val area: Area, val severity: Severity):
   case Connection extends EventKind(Area.Net, Severity.Info)
   case Inbound extends EventKind(Area.Net, Severity.Info)
   // the node-to-client server, the reference's `Net.Server.Local` traces (ouroboros-network
-  // 2fb69829, `ouroboros-network/tracing/Ouroboros/Network/Tracing/Server.hs` 99-113)
+  // c45735a5, `ouroboros-network/tracing/Ouroboros/Network/Tracing/Server.hs` 99-113)
   case ServerStarted extends EventKind(Area.Net, Severity.Notice)
   case AcceptConnection extends EventKind(Area.Net, Severity.Debug)
   case AcceptError extends EventKind(Area.Net, Severity.Error)

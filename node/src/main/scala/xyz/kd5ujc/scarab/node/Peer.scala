@@ -423,7 +423,7 @@ object Peer:
   /** A pure decoder over the peer's input, run where its result is used. One that throws instead of
     * answering is [[PeerError.InputDefect]] with the original cause: the connection's failure, not
     * the node's (the reference decodes in the mini-protocol's thread, where an exception is
-    * `ShutdownPeer`, network 2fb69829 RethrowPolicy.hs:99-103).
+    * `ShutdownPeer`, network c45735a5 RethrowPolicy.hs:99-103).
     */
   private[node] def decodingInput[F[_], A](site: PeerError.InputSite)(decode: => A)(using
       F: cats.Applicative[F],
@@ -439,7 +439,7 @@ object Peer:
       Fault.Failed(error)
     // An exception of the connection's own work (its fibers, servers and clients): the
     // reference's default for an exception no rethrow policy names, `ShutdownPeer`, ends that peer
-    // and not the node (network 2fb69829 RethrowPolicy.hs 61-70, 99-103; consensus 82ecba329
+    // and not the node (network c45735a5 RethrowPolicy.hs 61-70, 99-103; consensus 82ecba329
     // Node/RethrowPolicy.hs, `ourBug`). The peer is not charged (owner decision, issue 567).
     case NetworkError.Defect(cause) => Fault.Failed(PeerError.ConnectionDefect(cause))
     case NetworkError.DecoderDefect(protocol, cause) =>
@@ -736,7 +736,7 @@ object Peer:
             case ChainSyncClient.Update.RollBackward(point, tip) =>
               F.pure(SyncEvent.RollBackward(point, tip))
 
-          /** The session's BlockFetch client (network 2fb69829 BlockFetch/Client.hs:81–190): it
+          /** The session's BlockFetch client (network c45735a5 BlockFetch/Client.hs:81–190): it
             * takes each request the decisions added for this session (`acknowledgeFetchRequest`),
             * sends its ranges and collects their blocks, until the session is brought to rest. What
             * is requested is the decisions' alone; publishing headers never waits for it. Byte
@@ -819,7 +819,7 @@ object Peer:
                               PeerError.InputSite.FetchedBlock(header.point)
                             )(BlockPool.Delivered.checked(header, raw))
                               .flatMap(_.fold(protocol[BlockPool.Delivered], F.pure))
-                            // CompletedBlockFetch (Client.hs:290, ClientState.hs:579–615): the
+                            // CompletedBlockFetch (Client.hs:286, ClientState.hs:579–615): the
                             // block's download is complete, so long after its range was sent.
                             _ <- (sentAt.get, F.monotonic).tupled.flatMap { (from, now) =>
                               from.traverse_(at =>

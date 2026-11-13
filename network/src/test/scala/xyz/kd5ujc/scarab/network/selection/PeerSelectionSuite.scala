@@ -193,7 +193,7 @@ class PeerSelectionSuite extends FunSuite:
   }
 
   // `randomR (-2, 2 :: Double)` and `realToFrac` (`ActivePeers.hs` 498-499, ouroboros-network
-  // `2fb69829`): one word scaled into the range, floored, where a millisecond draw would round
+  // `c45735a5`): one word scaled into the range, floored, where a millisecond draw would round
   test("the fuzz of a failed activation is the reference's Double draw from one word") {
     val (st1, _, _) = settle(start(List(group(1, 1, 7))), t0)
     val st2 = complete(st1, Outcome.Connected(7), t0)
@@ -237,7 +237,7 @@ class PeerSelectionSuite extends FunSuite:
     val ended = returned.state
     val Status.Warm(readyAt) = statusOf(ended, 7): @unchecked
     assert(readyAt >= 90.seconds && readyAt <= 101.seconds, readyAt.toString)
-    // the traced delay is the fuzzed wait the peer is warm for (`Governor/Monitor.hs` 150-161)
+    // the traced delay is the fuzzed wait the peer is warm for (`Governor/Monitor.hs` 149-160)
     assertEquals(delays(returned), List(Some(readyAt - 1.minute)))
     val lingering = PeerSelection
       .apply(

@@ -251,7 +251,7 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
         assert(expected.forall(h => observed.contains(h.hash)))
         // The candidate never held a.last: it was rolled back within the batch that announced it,
         // which ChainSync folds into the candidate as one change. BlockFetch decides from
-        // candidates alone (ouroboros-network 2fb69829 BlockFetch/State.hs:274–281, Decision.hs:
+        // candidates alone (ouroboros-network c45735a5 BlockFetch/State.hs:274–281, Decision.hs:
         // 251–310), so the reference never requests it; ChainDB adopts the longer fork from the
         // fetched blocks.
         if !streaming then

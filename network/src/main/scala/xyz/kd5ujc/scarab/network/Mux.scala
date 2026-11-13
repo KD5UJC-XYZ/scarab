@@ -103,8 +103,8 @@ trait Mux[F[_]]:
   def closed: F[NetworkError]
 
   /** The reason the connection ended, once it has, without waiting for it: the reference's mux
-    * status (`Failed e` after a failure; ouroboros-network 2fb69829
-    * network-mux/src/Network/Mux.hs:459–464).
+    * status (`Failed e` after a failure; ouroboros-network c45735a5
+    * network-mux/src/Network/Mux.hs:458–463).
     */
   def failure: F[Option[NetworkError]]
 
@@ -127,10 +127,10 @@ object Mux:
     *   limits of the reference by default, [[IngressLimits]]).
     * @param egressBufferBytes
     *   The soft per-channel limit of bytes awaiting write: the reference's `egressSoftBufferLimit`
-    *   (network-mux `Network/Mux.hs`, `muxChannel`, ouroboros-network 2fb69829).
+    *   (network-mux `Network/Mux.hs`, `muxChannel`, ouroboros-network c45735a5).
     * @param maxSduPayload
     *   The largest SDU payload accepted on read: the uint16 length field of the header
-    *   (`Network/Mux/Codec.hs:57-72` at ouroboros-network 2fb69829 bounds nothing else, and rejects
+    *   (`Network/Mux/Codec.hs:54-82` at ouroboros-network c45735a5 bounds nothing else, and rejects
     *   a zero length). It is not the size of the SDUs sent, see `sduSize`.
     * @param sduSize
     *   The size of the SDUs sent: a message is cut into SDUs of at most this many bytes, one per

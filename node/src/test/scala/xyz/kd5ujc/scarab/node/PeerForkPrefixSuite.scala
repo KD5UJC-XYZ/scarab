@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, NtNHeader}
 /** #430 through a real session: after a partition our chain is two blocks past the common prefix,
   * and the peer's fork arrives one header per ChainSync batch. Its first two headers make no chain
   * longer than ours, so the decisions decline them; the third makes the fork preferred, and the
-  * whole missing fork suffix is then requested (ouroboros-network 2fb69829
+  * whole missing fork suffix is then requested (ouroboros-network c45735a5
   * BlockFetch/Decision.hs:251–310, selectForkSuffixes 547–558).
   */
 class PeerForkPrefixSuite extends FailsOnUncaught:

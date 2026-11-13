@@ -389,7 +389,7 @@ class ConfigSuite extends FunSuite:
         .isLeft
     )
     // AcceptedConnectionsLimit (POM.hs 373-375): three required keys, the limits Word32 and the
-    // delay a DiffTime of seconds (OrphanInstances.hs:303-308, aeson's FromJSON Word32/DiffTime)
+    // delay a DiffTime of seconds (OrphanInstances.hs:302-307, aeson's FromJSON Word32/DiffTime)
     def accepted(hard: Long, soft: Long, picos: BigInt) =
       for h <- Word32.fromLong(hard); s <- Word32.fromLong(soft)
       yield AcceptedConnectionsLimit(h, s, DiffTime.picoseconds(picos))

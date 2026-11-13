@@ -74,7 +74,7 @@ object TxSubmissionPolicy:
     else if ids.distinct.size != ids.size then Left(Violation.DuplicateOffer)
     else Right(())
 
-  /** The reference's state deadlines, `timeLimitsTxSubmission2` (ouroboros-network 2fb69829,
+  /** The reference's state deadlines, `timeLimitsTxSubmission2` (ouroboros-network c45735a5,
     * `Ouroboros/Network/Protocol/TxSubmission2/Codec.hs:78-88`): `StInit`, `StIdle` and blocking
     * `StTxIds` wait for ever, non-blocking `StTxIds` and `StTxs` have `shortWait`. Our server emits
     * only blocking ID requests, so its ID wait is indefinite.

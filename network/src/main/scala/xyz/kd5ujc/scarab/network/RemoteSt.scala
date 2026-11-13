@@ -5,7 +5,7 @@ import cats.Monoid
 import cats.syntax.all.*
 
 /** What the inbound governor knows of the peer's side of a connection, as it traces and counts it
-  * (`RemoteSt`, `InboundGovernor/State.hs` 218-256 and 299-312, ouroboros-network `2fb69829`).
+  * (`RemoteSt`, `InboundGovernor/State.hs` 250-288 and 331-344, ouroboros-network `c45735a5`).
   */
 enum RemoteSt:
   /** `RemoteWarm`: the peer runs responders of ours, none of them hot. */
@@ -23,7 +23,7 @@ enum RemoteSt:
   case Cold
 
 /** The inbound governor's connections by remote state (`Counters`, `InboundGovernor/State.hs`
-  * 113-145, ouroboros-network `2fb69829`).
+  * 115-147, ouroboros-network `c45735a5`).
   */
 final case class InboundGovernorCounters(cold: Int, idle: Int, warm: Int, hot: Int)
 
@@ -37,7 +37,7 @@ object InboundGovernorCounters:
         InboundGovernorCounters(a.cold + b.cold, a.idle + b.idle, a.warm + b.warm, a.hot + b.hot)
     )
 
-  /** `counters` (`InboundGovernor/State.hs` 136-145): one for each tracked connection, in the count
+  /** `counters` (`InboundGovernor/State.hs` 138-147): one for each tracked connection, in the count
     * of its remote state.
     */
   def of(states: Iterable[RemoteSt]): InboundGovernorCounters =

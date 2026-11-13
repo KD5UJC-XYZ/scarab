@@ -16,10 +16,10 @@ import NodeToNodeServer.{Activity, Responders}
 import ProtocolResults.Temperature
 
 /** The inbound governor's remote state of a connection and its counters (ouroboros-network
-  * `2fb69829`): what the mux tracer writes on a responder's start and clean end, by the protocol's
-  * temperature (`inboundGovernorMuxTracer`, `InboundGovernor.hs` 629-708), the states the
+  * `c45735a5`): what the mux tracer writes on a responder's start and clean end, by the protocol's
+  * temperature (`inboundGovernorMuxTracer`, `InboundGovernor.hs` 602-682), the states the
   * governor's step moves the connection through (`RemoteIdle`, `RemoteWarm`, `RemoteHot`,
-  * `RemoteCold`, 463-570) and their `Counters` (`InboundGovernor/State.hs` 113-145). Every test
+  * `RemoteCold`, 445-543) and their `Counters` (`InboundGovernor/State.hs` 115-147). Every test
   * runs under `TestControl`: the clock moves only once every fiber waits, so a wait that times out
   * shows that nothing more was going to happen.
   */

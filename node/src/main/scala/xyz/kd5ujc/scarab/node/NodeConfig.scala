@@ -222,8 +222,8 @@ object NodeConfig:
       }
   )
 
-  /** The reference's `FromJSON AcceptedConnectionsLimit` (ouroboros-network 2fb69829,
-    * `ouroboros-network/orphan-instances/Ouroboros/Network/OrphanInstances.hs:303-308`): the three
+  /** The reference's `FromJSON AcceptedConnectionsLimit` (ouroboros-network c45735a5,
+    * `ouroboros-network/orphan-instances/Ouroboros/Network/OrphanInstances.hs:302-307`): the three
     * keys are required, the limits `Word32` and the delay a `DiffTime`
     * (`Server/RateLimiting.hs:26-42`).
     */

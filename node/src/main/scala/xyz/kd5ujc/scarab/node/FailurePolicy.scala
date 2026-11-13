@@ -21,7 +21,7 @@ object FailurePolicy:
       FailureClass.Misbehaved
     // A decoder that threw on the peer's input: the connection closes and the peer is charged a
     // failure with the error delay, as the reference does for an exception that no rethrow policy
-    // names (network 2fb69829 RethrowPolicy.hs:61-70 and 99-103, the unit `ShutdownPeer`;
+    // names (network c45735a5 RethrowPolicy.hs:61-70 and 99-103, the unit `ShutdownPeer`;
     // consensus 82ecba329 Node/RethrowPolicy.hs:131-139, `theyBuggyOrEvil` and `ourBug` are both
     // `ShutdownPeer`). It is not `Misbehaved`: a decoder that throws instead of refusing may be
     // our bug on valid data, and forgetting would then drop every honest peer that sends it.
@@ -35,7 +35,7 @@ object FailurePolicy:
     // The node's own code threw while it answered the peer (the ledger rules on a transaction the
     // peer submitted): the connection closes, as the exception ends that mini-protocol in the
     // reference (consensus 82ecba329 Mempool/Update.hs `doAddTx`, in the TxSubmission2 thread;
-    // network 2fb69829 RethrowPolicy.hs: `ShutdownPeer`). The reference also charges the error
+    // network c45735a5 RethrowPolicy.hs: `ShutdownPeer`). The reference also charges the error
     // delay; here nothing is counted against the peer, since nothing it did is shown wrong
     // (owner decision 2026-10-28, ADR 0017 amendment, issue 564).
     case _: PeerError.ServingDefect => FailureClass.NotThePeers
@@ -47,7 +47,7 @@ object FailurePolicy:
     case _: PeerError.GenesisInvariant => FailureClass.NotThePeers
     // Consensus 82ecba329 Node/RethrowPolicy.hs maps every ChainSyncClientException,
     // including EmptyBucket, DensityTooLow and HistoricityError, to ShutdownPeer.
-    // Network 2fb69829 PeerStateActions.hs uses epErrorDelay (10s default), preserving
+    // Network c45735a5 PeerStateActions.hs uses epErrorDelay (10s default), preserving
     // eligibility for re-promotion; Genesis refusals therefore back off rather than forget.
     // the network failed, the peer is on another network or version, behind us, or has parted
     // from our chain through nobody's fault

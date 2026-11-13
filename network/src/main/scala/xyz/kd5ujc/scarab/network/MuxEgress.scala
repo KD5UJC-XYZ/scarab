@@ -9,7 +9,7 @@ import cats.syntax.all.*
 import scala.collection.immutable.Queue as Fifo
 import xyz.kd5ujc.scarab.codec.Bytes
 
-/** Egress.hs:149–213 at ouroboros-network 2fb69829: one SDU turn per active channel. Each lane
+/** Egress.hs:149–213 at ouroboros-network c45735a5: one SDU turn per active channel. Each lane
   * (mini-protocol and direction) has a soft byte budget like the reference's
   * `egressSoftBufferLimit` (network-mux `Network/Mux.hs`, `muxChannel`): `send` appends while fewer
   * than `limit` bytes are buffered on the lane, so one message may overshoot, and later senders

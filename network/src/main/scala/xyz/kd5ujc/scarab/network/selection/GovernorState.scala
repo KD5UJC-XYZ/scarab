@@ -87,10 +87,10 @@ object GovernorState:
     *
     * The ordinary sets (`known`, `established`, `active`, ...) leave the big ledger peers out, as
     * the reference's do (`viewKnownPeers` is "the known peers excluding big ledger peers",
-    * `Types.hs` 1314-1316): a big ledger peer is a population of its own, with its own targets,
+    * `Types.hs` 1296-1298): a big ledger peer is a population of its own, with its own targets,
     * counters and decisions, which are the sets of [[big]]. The roots are the exception: every
     * public root, the big ledger peers among them, counts towards the root target (`rootPeersSet`,
-    * 1310).
+    * 1292).
     */
   final class View[A] private[selection] (val state: GovernorState[A], val now: Time):
     given Ordering[A] = state.peers.ordering
@@ -135,7 +135,7 @@ object GovernorState:
       case _                    => false
 
   /** The sets of the big ledger peers (`viewKnownBigLedgerPeers` and the others of `Types.hs`
-    * 900-920): the peers whose origin is [[Origin.BigLedger]].
+    * 882-902): the peers whose origin is [[Origin.BigLedger]].
     */
   final class Big[A] private[selection] (view: View[A]):
     given Ordering[A] = view.state.peers.ordering

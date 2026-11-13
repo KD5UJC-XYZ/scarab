@@ -82,7 +82,7 @@ object BlockFetchEngine:
       ProtocolWire.Limits(size, strings, math.min(maxHashBytes, strings), maxDepth, maxItems)
 
   /** The runtime client's per-state deadlines, the upstream ones: Idle waits forever, Busy and
-    * Streaming wait `longWait`, 60 s (network 2fb69829 Protocol/BlockFetch/Codec.hs:59–68,
+    * Streaming wait `longWait`, 60 s (network c45735a5 Protocol/BlockFetch/Codec.hs:59–68,
     * Protocol/Limits.hs:114–115). A range has no deadline as a whole.
     */
   final case class TimeLimits(

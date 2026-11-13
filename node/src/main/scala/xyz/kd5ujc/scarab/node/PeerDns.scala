@@ -161,7 +161,7 @@ object PeerDns:
   /** The Haskell resolver's deliberately small SRV subset: discard target `.`, keep only the
     * numerically lowest priority group, then draw one target by its advertised weight. The
     * inclusive draw and stable cumulative selection follow `DNSActions.hs` 's `randomR` /CDF rule
-    * (`runWeightedLookup`, `DNSActions.hs` 463-477, ouroboros-network `2fb69829`): the weights are
+    * (`runWeightedLookup`, `DNSActions.hs` 463-477, ouroboros-network `c45735a5`): the weights are
     * `Word16` s, so `randomR (0, upperBound)` is random's `Word16` draw ([[Rng.uniformWord32R]]).
     */
   def selectService(

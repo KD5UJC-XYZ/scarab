@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.protocol.PeerSharing
 /** The server side of peer sharing as a pure function: which known peers may be told to others and
   * which of them one answer names. The reference keeps the same split: the governor publishes the
   * set of peers available to share (`getPeerSharingResponsePeers`,
-  * `PS/State/KnownPeers.hs:580-592`, `toPublicState`, `Governor/Types.hs:854-862`) and the server
+  * `PS/State/KnownPeers.hs:580-592`, `toPublicState`, `Governor/Types.hs:836-844`) and the server
   * draws from it (`computePeerSharingPeers`, `ON/PeerSharing.hs:203-237`).
   *
   * The server needs only the state of the known peers, never a connection, so the answer is a pure

@@ -6,9 +6,9 @@ import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.protocol.ChainSync.State
 
-/** Network pin 2fb69829: Cardano/Network/Protocol/ChainSync/Codec/TimeLimits.hs:41–89 and
-  * Ouroboros/Network/Protocol/ChainSync/Codec.hs:53–63. Draw once per MustReply entry, after its
-  * AwaitReply receiver hook; partial message reads share that state's deadline.
+/** Network pins c5117705: Cardano/Network/Protocol/ChainSync/Codec/TimeLimits.hs:41–89, and
+  * c45735a5: Ouroboros/Network/Protocol/ChainSync/Codec.hs:53–63. Draw once per MustReply entry,
+  * after its AwaitReply receiver hook; partial message reads share that state's deadline.
   */
 object ChainSyncTimeouts:
   enum PeerTrust:

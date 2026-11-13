@@ -5,7 +5,7 @@ import cats.effect.{Async, Deferred, Ref}
 import cats.data.NonEmptyVector
 import cats.syntax.all.*
 
-/** The application result handles read by PeerStateActions (ouroboros-network 2fb69829,
+/** The application result handles read by PeerStateActions (ouroboros-network c45735a5,
   * PeerSelection/PeerStateActions.hs:254–420). Each activation replaces its hot handles; retiring
   * them preserves their previous result for the exit policy. A completed old run cannot overwrite a
   * later activation.

@@ -64,7 +64,7 @@ class ChurnSuite extends ScalaCheckSuite:
     assertEquals(Churn.round.map(_.number), (1 to 12).toList)
   }
 
-  test("the timeouts of the steps (Churn.hs 568-650, Policies.hs 31-50)") {
+  test("the timeouts of the steps (Churn.hs 568-650, Policies.hs 30-49)") {
     val t = Churn.Timeouts()
     // Each half-round uses: deactivate, short, 1s + close, short, 2 * peerRequest + short, establish.
     assertEquals(

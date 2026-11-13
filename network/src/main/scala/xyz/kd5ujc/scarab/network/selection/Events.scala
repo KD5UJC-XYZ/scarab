@@ -61,7 +61,7 @@ private[selection] object Events:
           Reported(st.copy(peers = st.peers.updated(peer, moved)), Some(delay), false)
 
   /** The uniform fuzz of a delay, drawn from the state's generator as the reference draws it: a
-    * `Double` number of seconds by `randomR` (`Monitor.hs` 147-148, `EstablishedPeers.hs` 521,
+    * `Double` number of seconds by `randomR` (`Monitor.hs` 146-147, `EstablishedPeers.hs` 521,
     * `ActivePeers.hs` 498), whose bounds are the reference's literals, made a delay by
     * `realToFrac`.
     */
@@ -122,7 +122,7 @@ private[selection] object Events:
           // a hot protocol ended and the connection is up: warm again
           case Observation.HotEnded(delay, reason) if record.status == Status.Hot =>
             val (extra, st) = fuzz(st0, policy.warmReconnectFuzz._1, policy.warmReconnectFuzz._2)
-            // the trace carries the fuzzed delay, as `demotions'` does (`Governor/Monitor.hs` 150-161)
+            // the trace carries the fuzzed delay, as `demotions'` does (`Governor/Monitor.hs` 149-160)
             val wait = delay.map(d => (d + extra).max(Duration.Zero))
             Decision(
               st.updated(peer)(_.copy(status = Status.Warm(wait.fold(now)(now + _)))),

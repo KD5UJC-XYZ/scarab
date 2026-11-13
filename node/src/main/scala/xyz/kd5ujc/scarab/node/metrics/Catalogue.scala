@@ -357,7 +357,7 @@ object Catalogue:
   )
 
   // the inbound governor's `Counters`, as `TrInboundGovernorCounters` writes them
-  // (`Ouroboros/Network/Tracing/InboundGovernor.hs` 36-49, ouroboros-network `2fb69829`)
+  // (`Ouroboros/Network/Tracing/InboundGovernor.hs` 36-49, ouroboros-network `c45735a5`)
   val inboundGovernorIdle = GaugeDef(
     MetricName("cardano_node_metrics_inboundGovernor_idle_int"),
     "Connections on which the peer runs none of our responders, the idle timer armed."

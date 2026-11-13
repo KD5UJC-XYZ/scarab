@@ -9,8 +9,8 @@ import cats.syntax.all.*
 
 /** Resource-owned mux jobs and their completion queue. Cancellation deregisters a job without
   * calling its error handler or publishing a result. Mirrors Control/Concurrent/JobPool.hs:65–173,
-  * 192–222 (ouroboros-network 2fb69829); the mini-protocol and transport groups are Mux.hs:185–187.
-  * This primitive does not own connection status or interpret a job's result.
+  * 192–222 (ouroboros-network 2fb69829); the mini-protocol and transport groups are Mux.hs:184–186
+  * at c45735a5. This primitive does not own connection status or interpret a job's result.
   */
 private[network] final class MuxJobPool[F[_], A] private (
     state: Ref[F, MuxJobPool.State[F]],

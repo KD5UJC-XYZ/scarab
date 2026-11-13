@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.network
 
 /** Mux-owned states, distinct from the connection manager's states and application temperatures.
-  * Mirrors network-mux Network/Mux/Types.hs:169–201,226–229 at ouroboros-network 2fb69829.
+  * Mirrors network-mux Network/Mux/Types.hs:169–201,226–229 at ouroboros-network c45735a5.
   */
 private[network] object MuxLifecycle:
   enum Status:
@@ -22,7 +22,7 @@ private[network] object MuxLifecycle:
       case OnDemandAny => ProtocolStatus.StartOnDemandAny
 
   /** The completion action gives an already published result precedence over mux shutdown
-    * (Network/Mux.hs:798–812). The original failure is retained at both boundaries.
+    * (Network/Mux.hs:822–836). The original failure is retained at both boundaries.
     */
   enum CompletionError:
     case Application(cause: NetworkError)
