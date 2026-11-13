@@ -487,6 +487,30 @@
       ]
     },
     {
+      "module": "uplc",
+      "path": "uplc/flat",
+      "responsibility": "Script bytes to a program: the Flat decoder of programs, terms and constants with every refusal of the reference, and the ledger's deserialiseScript with its predicates, the remainder rule and the version check for evaluation",
+      "entryPoints": [
+        "SerialisedScript",
+        "ScriptDecodeError",
+        "FlatDecoder",
+        "Checks",
+        "FlatError",
+        "ConstantDecoder",
+        "TypeHeader",
+        "Input"
+      ],
+      "suites": [
+        "FlatDecoderSuite",
+        "SerialisedScriptSuite",
+        "FlatReferenceCorporaSuite",
+        "OwnFlatDecoderParitySuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
       "module": "plutus",
       "path": "plutus",
       "responsibility": "Script evaluator algebra, Scalus adapter, builtin availability; re-exports PlutusData, ExUnits, PlutusLanguage and ParamNames from uplc",
