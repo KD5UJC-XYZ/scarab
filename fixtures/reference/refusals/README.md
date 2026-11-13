@@ -88,6 +88,15 @@ therefore contains two `MIRProducesNegativeUpdate` failures. Other failures in t
 retained and compared too. Reinstating the old implementation that discarded the negative update
 makes both native MIR cases fail; the corrected rule matches their complete original refusals.
 
+The `conway-governance` corpus (2026-11-13) holds seven Conway transactions, each built to break one
+check: `MalformedProposal`, `ProposalCantFollow`, `InvalidPrevGovActionId`, `DisallowedVoters`,
+`VotingOnExpiredGovAction` and `TreasuryWithdrawalsNetworkIdMismatch` (GOV), and `WrongNetworkInTxBody`
+(UTXO). The reference refused each with exactly that one failure. `refusalcases.conway_governance` cites
+the reference's check for each case. The two vote cases name actions that setup transactions had already
+proposed on the cluster. The first is a DRep's vote on an info action, cast in the one epoch in which the
+action is expired but not yet removed. The second is a stake pool's vote on a live treasury withdrawal,
+which no pool may vote on. Neither vote breaks the other's check.
+
 These expectations come from the released node's submission path. Separately, the offline
 `UpstreamFreshLedgerConformanceSuite` and `UpstreamMultiLedgerConformanceSuite` use the same production
 transaction rules under accumulation, with a native-shaped LEDGERS adapter, and compare all original
@@ -111,6 +120,10 @@ python3 scripts/devnet.py --name <yours> down
 python3 scripts/devnet.py --name <yours> up-dijkstra --conway-only --dijkstra-epoch 1000   # the Leios build, in Conway
 python3 scripts/devnet.py --name <yours> refusal-corpus --reference-build leios-b004fe0c \
     --corpus conway-bootstrap-attributes-leios-b004fe0c --cases refusalcases:leios_bootstrap_attributes
+python3 scripts/devnet.py --name <yours> down
+python3 scripts/devnet.py --name <yours> up
+python3 scripts/devnet.py --name <yours> refusal-corpus --corpus conway-governance \
+    --cases refusalcases:conway_governance   # waits about two epochs for its vote cases
 python3 scripts/devnet.py --name <yours> down
 python3 scripts/check_test_coverage.py --refresh-fixtures
 ```

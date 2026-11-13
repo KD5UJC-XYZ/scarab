@@ -47,6 +47,7 @@ paths = [
   '''^fixtures/reference/plutus-forecast-horizon/conway-past-horizon/genesis/shelley-genesis\.json$''',
   '''^fixtures/reference/refusals/conway-devnet/genesis/shelley-genesis\.json$''',
   '''^fixtures/reference/refusals/genesis/0852102f056aae15273dd402b5ca44f103b4eef03b19f8a5717ceff2df8c1667-shelley-genesis\.json$''',
+  '''^fixtures/reference/refusals/genesis/1696250c9a45627a3399625b5ef8ffc195f688ece2258c5653ada16f76e62b69-shelley-genesis\.json$''',
   '''^fixtures/reference/refusals/genesis/437ce0c3ccf98e298dd8fb8aa5bfc7d57204aa6956eb7b73297249fffe4c9b3f-shelley-genesis\.json$''',
   '''^fixtures/reference/refusals/genesis/fb3803d294bc6f5d0f07bbdee88db55fb85e4b0e861b1b9dbe5f244d2b2c2cc9-shelley-genesis\.json$''',
   '''^fixtures/reference/wallet-queries/manifest\.json$''',
