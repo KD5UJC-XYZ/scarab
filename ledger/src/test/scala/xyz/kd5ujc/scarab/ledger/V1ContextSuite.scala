@@ -8,7 +8,7 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.rules.*
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.plutus.ScalusEvaluator
+import xyz.kd5ujc.scarab.plutus.PlutusBackends
 
 /** The Plutus V1 script context against the reference node, case by case.
   *
@@ -125,7 +125,7 @@ class V1ContextSuite extends FunSuite:
           c.spent,
           c.references,
           c.posix,
-          ScalusEvaluator.default
+          PlutusBackends.evaluator
         )
       r.verdict.translation(c) match
         case Some(error) =>

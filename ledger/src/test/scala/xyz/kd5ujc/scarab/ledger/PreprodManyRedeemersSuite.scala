@@ -49,7 +49,7 @@ class PreprodManyRedeemersSuite extends FunSuite:
   }
 
   test("phase 2 passes all 158 scripts of the recorded transaction on a 256 KiB stack") {
-    val outcome = PreprodDeepTx.onSmallStack(evaluate(c.tx, ScalusEvaluator.default))
+    val outcome = PreprodDeepTx.onSmallStack(evaluate(c.tx, PlutusBackends.evaluator))
     assertEquals(
       outcome.map {
         case Phase2.Outcome.Passed(report) => report.scripts;

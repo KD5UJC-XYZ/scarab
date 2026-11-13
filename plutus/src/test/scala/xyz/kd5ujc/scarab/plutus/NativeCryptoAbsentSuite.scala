@@ -42,7 +42,11 @@ class NativeCryptoAbsentSuite extends CatsEffectSuite:
     )
 
   private def unavailable(fun: DefaultFun): EvalFailure =
-    EvalFailure.Unsupported(BackendFailure.BuiltinUnavailable(fun))
+    EvalFailure.Unsupported(
+      BackendFailure.BuiltinUnavailable(
+        ScalusEvaluator.builtinOf(fun).getOrElse(fail(s"$fun has no uplc name"))
+      )
+    )
 
   private def bytes(n: Int) = s"(con bytestring #${"00" * n})"
 

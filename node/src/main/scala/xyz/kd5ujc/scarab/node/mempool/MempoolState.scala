@@ -7,7 +7,7 @@ import cats.syntax.all.*
 import cats.Id
 import xyz.kd5ujc.scarab.network.Word32
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
-import xyz.kd5ujc.scarab.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
+import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
 import xyz.kd5ujc.scarab.consensus.BlockRef
@@ -144,13 +144,14 @@ final case class Entry(id: Bytes, raw: Bytes, tx: Tx, ticket: Long, refScriptByt
 /** What the transaction rules need besides the ledger state. `clock` is the slot to time
   * translation of the era history at the chain tip the pool is judged against, with its forecast
   * horizon; none is the geometry alone, without a horizon, for pools of tests that have no chain.
-  * `verdicts` are the signature verifiers of the witness checks.
+  * `verdicts` are the signature verifiers of the witness checks. `evaluator` and `decoder` are the
+  * node's Plutus backend (`--plutus-vm`, ADR 0027), with no default.
   */
 final case class MempoolEnv(
     globals: LedgerGlobals,
     geometry: EpochGeometry,
-    evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default,
-    decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
+    evaluator: ScriptEvaluator[Id],
+    decoder: ScriptDecoder[Id],
     clock: Option[PosixClock] = None,
     verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct
 ):

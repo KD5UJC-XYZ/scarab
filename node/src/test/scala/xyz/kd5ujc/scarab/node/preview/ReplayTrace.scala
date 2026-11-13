@@ -19,7 +19,7 @@ object ReplayTrace:
 
   object Failure:
     def from(reason: EvalFailure): Failure = reason match
-      case EvalFailure.Script(ScriptFailure(cause, traces)) =>
+      case EvalFailure.Script(ScriptFailure.Thrown(cause, traces)) =>
         Script(ScriptCause(cause.getClass, Option(cause.getMessage)), traces)
       case other => Evaluator(other)
 

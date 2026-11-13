@@ -91,7 +91,7 @@ class ReplayContractSuite extends FunSuite:
 
   test("same-backend native failure diagnostics compare as evidence without exception identity") {
     def failure(error: Throwable) =
-      Failure.from(EvalFailure.Script(ScriptFailure(error, Vector("trace"))))
+      Failure.from(EvalFailure.Script(ScriptFailure.Thrown(error, Vector("trace"))))
     assertEquals(
       failure(new IllegalArgumentException("first")),
       failure(new IllegalArgumentException("first"))

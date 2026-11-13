@@ -101,7 +101,8 @@ class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncau
       ForgedChain.globals,
       None,
       None,
-      ForgedChain.mirrorEnv.byron
+      ForgedChain.mirrorEnv.byron,
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
     )
 
   /** Each primitive of a Praos header, with an injected failing provider. */

@@ -8,7 +8,7 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.rules.*
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.plutus.{PlutusData, PlutusLanguage, ScalusEvaluator}
+import xyz.kd5ujc.scarab.plutus.{PlutusBackends, PlutusData, PlutusLanguage}
 
 /** Actual reference submissions bind phase-1 datum admission to the independently usable context
   * translation: getSpendingDatum returns Maybe (Alonzo/UTxO.hs:229-240), and Nothing selects two
@@ -139,7 +139,7 @@ class SpendingDatumSuite extends FunSuite:
             c.spent,
             c.references,
             c.posix,
-            ScalusEvaluator.default
+            PlutusBackends.evaluator
           )
           .map {
             case Phase2.Outcome.Passed(report) => report.scripts;

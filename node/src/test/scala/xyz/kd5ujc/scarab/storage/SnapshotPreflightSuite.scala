@@ -109,7 +109,8 @@ class SnapshotPreflightSuite extends CatsEffectSuite:
               setup.globals,
               setup.byronRules,
               setup.handOver,
-              setup.byronHistory
+              setup.byronHistory,
+              xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
             ),
             setup.mirrorStart,
             _ => IO.unit,

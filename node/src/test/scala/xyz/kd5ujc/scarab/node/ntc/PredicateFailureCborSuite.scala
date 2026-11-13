@@ -22,7 +22,7 @@ class PredicateFailureCborSuite extends FunSuite:
 
   test("typed script failures render only at the wire boundary without changing rejection bytes") {
     val cause = new IllegalArgumentException("failure")
-    val evaluation = EvalFailure.Script(ScriptFailure(cause, Vector("trace")))
+    val evaluation = EvalFailure.Script(ScriptFailure.Thrown(cause, Vector("trace")))
     val failure = PredicateFailure.utxo(
       UtxoFailure.Utxos(
         UtxosFailure.ValidationTagMismatch(
@@ -41,7 +41,7 @@ class PredicateFailureCborSuite extends FunSuite:
         .getOrElse(fail(s"missing $era validity-tag encoding"))
       assert(encoded.hex.endsWith(utxos), s"$era: ${encoded.hex}")
     evaluation match
-      case EvalFailure.Script(ScriptFailure(original: Throwable, logs)) =>
+      case EvalFailure.Script(ScriptFailure.Thrown(original, logs)) =>
         assert(original eq cause)
         assertEquals(logs, Vector("trace"))
       case other => fail(s"changed evaluator cause: $other")

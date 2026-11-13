@@ -30,7 +30,8 @@ class Phase2UnavailableSuite extends FunSuite:
         clock = Some(
           PosixClock.Total(slot => c.posix(slot).fold(error => fail(error.message), identity))
         ),
-        evaluator = evaluator
+        evaluator = evaluator,
+        decoder = PlutusBackends.decoder
       ),
       scripts,
       tx.body.inputs.flatMap(in => c.spent.get(in).map(in -> _)).toMap,
@@ -71,7 +72,7 @@ class Phase2UnavailableSuite extends FunSuite:
 
   test("a validity-tag mismatch retains the evaluator cause and its original exception") {
     val defect = new IllegalArgumentException("script machine refused")
-    val reason = EvalFailure.Script(ScriptFailure(defect, Vector("before refusal")))
+    val reason = EvalFailure.Script(ScriptFailure.Thrown(defect, Vector("before refusal")))
     val evaluator: ScriptEvaluator[Id] = _ => EvalResult.Failure(reason, ExUnits.zero, Vector.empty)
     checked(c.tx.copy(isValid = true), evaluator) match
       case Left(
@@ -87,7 +88,7 @@ class Phase2UnavailableSuite extends FunSuite:
         assert(failures.forall(_.cause == reason))
         assert(failures.forall(_.request.isDefined))
         failures.headOption.map(_.cause) match
-          case Some(EvalFailure.Script(ScriptFailure(cause: Throwable, logs))) =>
+          case Some(EvalFailure.Script(ScriptFailure.Thrown(cause, logs))) =>
             assert(cause eq defect)
             assertEquals(logs, Vector("before refusal"))
           case other => fail(s"lost evaluator cause: $other")
@@ -106,7 +107,11 @@ class Phase2UnavailableSuite extends FunSuite:
         else
           val output = base.body.outputs.headOption.getOrElse(fail("fixture has no output"))
           base.copy(body = base.body.copy(outputs = Vector(output.copy(scriptRef = Some(script)))))
-      TxChecks.scriptsWellFormed(c.params, tx, TxEnv(c.slot, 189, 0, decoder = decoder))(using
+      TxChecks.scriptsWellFormed(
+        c.params,
+        tx,
+        TxEnv(c.slot, 189, 0, evaluator = PlutusBackends.evaluator, decoder = decoder)
+      )(using
         TestLedger.usualEra((c.params).protocolMajor.toInt)
       ) match
         case Left(LedgerFailure.Unavailable(id, ScriptLocation.Phase1(hash), _)) =>
@@ -128,7 +133,11 @@ class Phase2UnavailableSuite extends FunSuite:
       )
       assertEquals(
         TxChecks
-          .scriptsWellFormed(c.params, tx, TxEnv(c.slot, 189, 0, decoder = decoder))(using
+          .scriptsWellFormed(
+            c.params,
+            tx,
+            TxEnv(c.slot, 189, 0, evaluator = PlutusBackends.evaluator, decoder = decoder)
+          )(using
             TestLedger.usualEra((c.params).protocolMajor.toInt)
           )
           .flatMap(TestLedger.verdict(tx.body.id, _)),
@@ -152,14 +161,16 @@ class Phase2UnavailableSuite extends FunSuite:
       val witnessed = tx.copy(witnesses = tx.witnesses.copy(scripts = Vector(script)))
       for reason <- Vector(
           BackendFailure.StackExhausted,
-          BackendFailure.BuiltinUnavailable(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+          BackendFailure.BuiltinUnavailable(
+            xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup
+          )
         )
       do
         val decoder: ScriptDecoder[Id] = (_, _, _) => Left(ScriptDecodeFailure.Unavailable(reason))
         TxChecks.scriptsWellFormed(
           c.params,
           witnessed,
-          TxEnv(c.slot, 189, 0, decoder = decoder)
+          TxEnv(c.slot, 189, 0, evaluator = PlutusBackends.evaluator, decoder = decoder)
         )(using TestLedger.usualEra((c.params).protocolMajor.toInt)) match
           case Left(failure: LedgerFailure.Unavailable) =>
             assertEquals(failure.reason, EvalFailure.Unsupported(reason))

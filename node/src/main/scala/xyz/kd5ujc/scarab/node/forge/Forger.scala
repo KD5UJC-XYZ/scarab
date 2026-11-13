@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.plutus.PlutusBackend
 import xyz.kd5ujc.scarab.ledger.{ForgeAssemblyProblem, ForgeLedgerProblem, ForgeProtocolProblem}
 import cats.data.EitherT
 import cats.effect.{Async, Clock, Ref}
@@ -141,10 +142,14 @@ trait ForgeEvents[F[_]]:
   *   The backing store of the UTxO set: the read set of the candidates is fetched from it.
   * @param stats
   *   Per-epoch counters (H5) and the reference's `ForgingStats`, folded over the traces.
+  * @param plutus
+  *   The node's Plutus backend (`--plutus-vm`, ADR 0027), with which the block's transactions are
+  *   applied again.
   */
 final class Forger[F[_]: Async, S](
     config: PraosConfig,
     globals: LedgerGlobals,
+    plutus: PlutusBackend,
     credentials: PoolCredentials,
     val hot: HotKeys[F],
     follower: Follower[F, S],
@@ -519,7 +524,7 @@ final class Forger[F[_]: Async, S](
           held.entries,
           BlockBuilder.Limits.of(ticked.params),
           Some(clock.at(base.state, Era.Conway, slot))
-        )
+        )(plutus.decoder, plutus.evaluator)
       )
       // the held transactions we have no verdict on leave the pool with their reason, and the
       // block is built from the rest: the owner's decision of 2026-10-28 (issue 584), where the
@@ -828,6 +833,7 @@ object Forger:
   def create[F[_]: Async, S](
       config: PraosConfig,
       globals: LedgerGlobals,
+      plutus: PlutusBackend,
       credentials: PoolCredentials,
       follower: Follower[F, S],
       mempool: Mempool[F],
@@ -853,6 +859,7 @@ object Forger:
       new Forger[F, S](
         config,
         globals,
+        plutus,
         credentials,
         hot,
         follower,

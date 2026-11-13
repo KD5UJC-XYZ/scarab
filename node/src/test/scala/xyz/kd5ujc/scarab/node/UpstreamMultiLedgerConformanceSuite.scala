@@ -131,7 +131,9 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
               xyz.kd5ujc.scarab.ledger.PosixClock.Total(s =>
                 BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s)
               )
-            )
+            ),
+            evaluator = xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+            decoder = xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
           ),
           account.treasury
         ),

@@ -185,7 +185,7 @@ class AuxiliaryScriptsSuite extends FunSuite:
       val initial = PreparedBlockFixture.state
       val transactions = PreparedBlockFixture.txs.map(_.copy(isValid = valid))
       val bad = transactions.updated(1, withAuxiliary(transactions(1), auxiliary("v1-malformed")))
-      val program = body(bad, valid, ScalusEvaluator.defaultDecoder)
+      val program = body(bad, valid, PlutusBackends.decoder)
       val serial = program.serial
       val plan = program.prepare
       assertEquals(plan.jobs.size, 1)
@@ -200,7 +200,7 @@ class AuxiliaryScriptsSuite extends FunSuite:
           ()
         case other => fail(s"late auxiliary failure did not refuse BBODY: $other")
       assertEquals(PreparedBlockFixture.state, initial)
-      body(transactions, valid, ScalusEvaluator.defaultDecoder).serial match
+      body(transactions, valid, PlutusBackends.decoder).serial match
         case EraBlock.Outcome.Applied(_: EraNes, _) => ()
         case other => fail(s"refused block contaminated the reusable state: $other")
   }
@@ -219,7 +219,7 @@ class AuxiliaryScriptsSuite extends FunSuite:
         .code
       val decoder: ScriptDecoder[Id] = (language, major, script) =>
         if script == code then unavailable.validate(language, major, script)
-        else ScalusEvaluator.defaultDecoder.validate(language, major, script)
+        else PlutusBackends.decoder.validate(language, major, script)
       val program =
         body(transactions.updated(1, withAuxiliary(transactions(1), supplied)), valid, decoder)
       val serial = program.serial
@@ -240,7 +240,7 @@ class AuxiliaryScriptsSuite extends FunSuite:
     val shortBytes = f"${0x40 + good.size}%02x" + good.hex
     val decoder: ScriptDecoder[Id] = (language, major, script) =>
       if script == good then unavailable.validate(language, major, script)
-      else ScalusEvaluator.defaultDecoder.validate(language, major, script)
+      else PlutusBackends.decoder.validate(language, major, script)
     for scripts <- Vector("41ff" + shortBytes, shortBytes + "41ff"); valid <- Vector(true, false) do
       val supplied = hex("d90103a10282" + scripts)
       TxChecks.auxiliaryChecks(

@@ -218,3 +218,5 @@
 {"event":"referenceBuild","at":"2026-10-16T12:00:00Z","build":"11.1","stability":"stable","node":"11.1.3","ledger":"f649f9751074d2ab3de033fc3912f29c9862c1f5","ledgerBinary":"048b78d2807ce9644dbe483c605625824f6be88f","consensus":"82ecba329d7d054340bf707d44fe6e9ac27cec40"}
 {"event":"referenceBuild","at":"2026-10-16T12:00:00Z","build":"leios-b004fe0c","stability":"unstable","node":"b004fe0c50913dcdaa827a98e68a43d0ccce152a","ledger":"9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c","ledgerBinary":"9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c","consensus":"2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b"}
 {"event":"unstableReferenceBuild","at":"2026-10-16T12:00:00Z","build":"leios-b004fe0c","experimentalHardForksEnabled":false}
+{"event":"plutusVm","at":"2026-10-16T12:00:00Z","vm":"scalus"}
+{"event":"plutusVm","at":"2026-10-16T12:00:00Z","vm":"scarab"}

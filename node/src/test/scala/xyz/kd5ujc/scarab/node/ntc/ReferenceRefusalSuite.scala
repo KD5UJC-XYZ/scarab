@@ -238,7 +238,15 @@ class ReferenceRefusalSuite extends FunSuite:
         .decodeBytes(state, HaskellState.limits)
         .leftMap(ReplayProblem.State(_))
       utxo <- UtxoCodecs.utxo.decodeBytes(utxoBytes).leftMap(ReplayProblem.Utxo(_))
-    yield Recorded(withUtxo(nes, utxo), MempoolEnv(setup.globals, setup.geometry))
+    yield Recorded(
+      withUtxo(nes, utxo),
+      MempoolEnv(
+        setup.globals,
+        setup.geometry,
+        xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+        xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+      )
+    )
 
   /** A pre-Conway case through the era's LEDGER rule and its predicate-failure encoding: Scarab's
     * mempool and LocalTxSubmission serve Conway only, so this is the rule and the encoder, not the

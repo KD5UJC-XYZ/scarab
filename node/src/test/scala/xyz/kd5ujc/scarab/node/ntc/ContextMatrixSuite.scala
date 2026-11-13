@@ -9,7 +9,7 @@ import munit.FunSuite
 import scala.util.chaining.*
 import xyz.kd5ujc.scarab.codec.{Cbor, Value}
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.plutus.ScalusEvaluator
+import xyz.kd5ujc.scarab.plutus.PlutusBackends
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** Independent Haskell era-specific API evidence. API derivations are not signed admissions. */
@@ -98,7 +98,7 @@ class ContextMatrixSuite extends FunSuite:
               PlutusFailureCbor.context(request),
               hex(field[String](reference, "contextCbor"))
             )
-            val result = ScalusEvaluator.default.evaluate(request)
+            val result = PlutusBackends.evaluator.evaluate(request)
             assertEquals(result.isSuccess, field[Boolean](reference, "success"))
             if result.isSuccess then
               val used = field[Json](reference, "used")

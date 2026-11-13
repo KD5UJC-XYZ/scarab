@@ -387,3 +387,95 @@ e2e reaches Conway epoch 17 with 1,678 applied blocks and 65 equal ledger compar
 comparison has no stable sampling bracket; none differs. The run records 43 rollbacks and seven
 reconnects, with no validation, fatal or CPU-starvation errors. These operational observations
 are separate from the twelve exact parser/hash cases above.
+
+## Scarab's own evaluator
+
+`--plutus-vm scarab` ([flags](running/flags.md),
+[ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md)) evaluates and admits the node's
+scripts with the `uplc` module, which has no Scalus on its class path, through
+[`ScarabEvaluator`](../plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ScarabEvaluator.scala). It
+maps the own evaluator's results onto the algebra both backends share, so that a verdict means the same
+whichever gave it: a refusal of `deserialiseScript` and the program-version check of `mkTermToEvaluate`
+are decoding failures, the scope check `OpenTerm`, an overspent budget `OutOfBudget`, any other failure
+of the machine a script failure; protocol 12 and later, a defect of the implementation and any
+`Throwable` that reaches the adapter are no verdict, never a failure of the script. The typed detail of
+its failures names their cases only, never a constant or a term of the script; a failure's text also
+carries the script's own `trace` output. The Scalus backend stays the
+default and is unchanged.
+
+The module's own evidence is against the reference, with no Scalus in the comparison: the 1,009 cases of
+the conformance corpus with their results and budgets
+([`ConformanceSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/text/ConformanceSuite.scala),
+[`CekConformanceSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/cost/CekConformanceSuite.scala)),
+the costing oracle
+([`CostingOracleSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/cost/CostingOracleSuite.scala)),
+the Haskell verdicts of the boundary corpora through the ledger's evaluation
+([`LedgerBoundaryOracleSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/ledger/LedgerBoundaryOracleSuite.scala)),
+and the Flat-decoding corpus's deserialisation and program-version admission
+([`FlatReferenceCorporaSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/flat/FlatReferenceCorporaSuite.scala)).
+The integration adds:
+
+- [`ScarabEvaluatorSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ScarabEvaluatorSuite.scala):
+  each row of the mapping; where both backends give a verdict, that it is the class the Scalus backend
+  gives the same request; and, on its own, the own evaluator's protocol-12 and defect handling;
+- [`PlutusBackendDifferentialSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PlutusBackendDifferentialSuite.scala):
+  both backends on every script request the ledger collects from the recorded Preview and preprod
+  transactions and from the reference corpora the ledger and node suites judge (`v1-context`,
+  `context-errors`, `script-results`, `context-matrix`, `spending-datum`, `plutus-boundaries`,
+  `plutus-boundary-transactions`), with the same verdict, failure class, and on success the same
+  execution units and logs. The Leios testnet's contexts (protocol 12, no verdict by design) and the
+  recorded blocks without the outputs they spend are not compared. The two backends share the request
+  (ADR 0027's amendment), so it cannot show a fault in the script context; the suites that compare with
+  the Haskell results do;
+- [`PlutusBackendProbeSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/PlutusBackendProbeSuite.scala)
+  and [`PlutusBackendBlockProbeSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/node/forge/PlutusBackendBlockProbeSuite.scala):
+  a backend with no verdict on anything, put where the node puts its backend (the mempool's admission, a
+  block's rules serial and prepared, and `MirrorRules` on a forged block with a Plutus reference script),
+  must be asked and must leave the transaction or the block without a verdict. `Main` gives the
+  mempool, the rules and the forger the one backend of the run; that wiring has no default to fall back
+  on, but no runtime probe;
+- [`MainArgsSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/node/MainArgsSuite.scala): the flag, and
+  `--forge` refused with `scarab`.
+
+**Running the suites on either backend.** The suites of `ledger`, `consensus`, `storage` and `node` that
+need an evaluator and test none in particular take it from
+[`PlutusBackends`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusBackends.scala), chosen by the
+JVM's system property `scarab.plutus.vm` (`scalus` by default, or `scarab`; another value fails them).
+The default test groups run in the build's JVM, so the property is given to it, for example with
+`docker exec -e JAVA_TOOL_OPTIONS=-Dscarab.plutus.vm=scarab <container> bash scripts/sbtw check`;
+[`PlutusBackendsSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusBackendsSuite.scala)
+names the backend in the test output. The tools take the same property.
+
+**Suites that run on the Scalus backend only.** They test the Scalus backend itself: its machine and
+hooks, the corrections of its builtins and budget arithmetic, its Flat walker, its native library, and
+its agreement with the reference corpora. None of them counts as passed for `scarab` (ADR 0027); the
+`uplc` suites above are the own evaluator's counterparts. In `plutus`: `BackendFailureSuite`,
+`BoundaryTransactionScriptsSuite`, `BuiltinCostingOracleSuite`, `BuiltinCostingSuite`, `CaseOnDataSuite`,
+`ConstrIndexReferenceSuite`, `CostModelLengthSuite`, `DataEqualityReferenceSuite`, `DataSerialiserSuite`,
+`FlatDecodeOracleSuite`, `FlatDecodeParitySuite`, `FlatScanDepthSuite`, `FlatScanImperativeSuite`,
+`FlatScanWord64Suite`, `NativeCryptoAbsentSuite`, `NativeCryptoSuite`,
+`NativeTextReferenceSuite`, `PlutusAvailabilitySuite`, `PlutusBoundaryOracleSuite`,
+`PlutusConformance171Suite`, `PlutusConformanceSuite`, `PlutusDataChunkSuite`, `PlutusReachabilitySuite`,
+`ReferenceBudgetSuite`, `ScalusCekHooksSuite`, `ScalusConformanceReproducersSuite`, `ScalusEvaluatorSuite`,
+`ScalusReproducersSuite`, `Secp256k1Suite`, `SerialiseDataReferenceSuite`, `SliceByteStringReferenceSuite`,
+`UnliftingBoundsSuite`, `UpstreamPlutusBoundarySuite` and `WycheproofSecp256k1Suite` (and
+`OwnFlatDecoderParitySuite`, which compares the two decoders). The other `plutus` suites test types
+both backends share (`PlutusDataSuite`, `ParamNamesSuite`, `PlutusScriptBytesSuite`, `PlutusReferenceSuite`,
+`RetryingMemoSuite`) or the choice itself (`PlutusBackendsSuite`, `ScarabEvaluatorSuite`). In `ledger`: `CostModelNameTablesSuite`,
+which evaluates a PlutusV4 script at protocol 12, where the own evaluator gives no verdict by design.
+`BlstCheckMain`, the start-up check of the Scalus native library, evaluates with Scalus by design.
+
+**Evidence (2026-11-12, at `860684ae2`, the integration's draft head on top of the WP8 oracles;
+`scripts/preflight --check` passed again at `b736b7fa7` and, after the rebase onto `f1f553c1d`, at
+`766324062`).** `check` passes on
+the default backend. With `scarab.plutus.vm=scarab` the suites of `ledger` (9,093), `consensus` (477),
+`storage` (709, 10 skipped for want of optional data) and `node` (3,656, 8 skipped: the recorded Preview
+and preprod replays, the Mithril and preprod snapshot acceptances and the boundary digest, which need
+external data, and two `ReferenceRefusalSuite` cases set aside on either backend for the text of a
+`PlutusFailure`, #491) pass. Two `ledger` assertions had named the Scalus backend's cause of a decoding
+failure; they now name each backend's exact typed cause. `PlutusBackendDifferentialSuite` compared 752
+requests (V1 224, V2 289, V3 239; on the own evaluator 607 successes, 123 script failures, 12 scope, 8
+decoding and 2 budget failures): no difference in verdict or failure class, the successes also agreed in
+execution units and logs (the suite compares units and logs on successes only), and every request has a
+verdict from both. A fatal-injection case of `FollowerStallSuite` fails intermittently on either
+backend (it involves no script); it passed in these runs.

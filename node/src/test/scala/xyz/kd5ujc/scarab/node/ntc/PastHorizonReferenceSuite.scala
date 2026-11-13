@@ -181,7 +181,12 @@ class PastHorizonReferenceSuite extends FunSuite:
       xyz.kd5ujc.scarab.ledger.rules.PreConway[E]
   ): Option[Bytes] =
     val setup = setupOf(r)
-    val env = MempoolEnv(setup.globals, setup.geometry)
+    val env = MempoolEnv(
+      setup.globals,
+      setup.geometry,
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+    )
     val nes = stateOf[E](r)
     val slot = SlotNo.fromBigInt(r.tip + 1).fold(e => fail(e.toString), identity)
     val ticked = Sts(Tick.sts[E])(env.rules, (), nes, slot).fold(e => fail(e.show), identity)
@@ -218,6 +223,8 @@ class PastHorizonReferenceSuite extends FunSuite:
     val env = MempoolEnv(
       setup.globals,
       setup.geometry,
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
       clock = Some(clockAt(setup, Era.Conway, nes.epoch.toBigInt, r.tip))
     )
     val ledger =
@@ -254,7 +261,13 @@ class PastHorizonReferenceSuite extends FunSuite:
       val setup = setupOf(r)
       val nes = stateOf[Conway](r)(using ShelleyBasedEra.SConway)
       val bounded = clockAt(setup, Era.Conway, nes.epoch.toBigInt, r.tip)
-      val env = MempoolEnv(setup.globals, setup.geometry, clock = Some(bounded))
+      val env = MempoolEnv(
+        setup.globals,
+        setup.geometry,
+        xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+        xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
+        clock = Some(bounded)
+      )
       val ledger = MempoolLedger.tick(nes, Some(r.tip), env).fold(e => fail(e.show), identity)
       val raw = LocalSubmission.unwrap(r.item).fold(e => fail(s"$e"), identity)
       val tx = Tx.fromEnvelope(raw, Era.Conway).fold(e => fail(e.message), identity)
@@ -272,6 +285,9 @@ class PastHorizonReferenceSuite extends FunSuite:
             Vector(entry),
             limits,
             Some(clock)
+          )(
+            xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
+            xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator
           )
           .match
             case BlockBuilder.Selection(chosen, Vector()) => chosen.size

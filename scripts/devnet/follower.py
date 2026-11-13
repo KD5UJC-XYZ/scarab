@@ -33,6 +33,8 @@ def follow(args):
         # a stall leaves its pipeline state and a fiber dump in the run directory (issue 371)
         stall_flags, stall_mount = stall_dump_arguments(root)
         program += stall_flags
+    if getattr(args, "plutus_vm", None):
+        program += ["--plutus-vm", args.plutus_vm]
     if args.seconds:
         program += ["--seconds", str(args.seconds)]
     mounts = [f"{root / 'genesis'}:/genesis:ro"]
@@ -66,12 +68,13 @@ def follow(args):
         sys.exit(proc.wait())
 
 
-def start_follower(name, root, oracle=False, scala_cpus=None, consensus_mode=None, local_socket=False):
+def start_follower(name, root, oracle=False, scala_cpus=None, consensus_mode=None, local_socket=False, plutus_vm=None):
     return subprocess.Popen([sys.executable, str(ENTRY), "--name", name, "follow",
                              *(["--consensus-mode", consensus_mode] if consensus_mode is not None else []),
                              *(["--dump-state"] if oracle else []),
                              *(["--local-socket"] if local_socket else []),
-                             *(["--scala-cpus", str(scala_cpus)] if scala_cpus is not None else [])],
+                             *(["--scala-cpus", str(scala_cpus)] if scala_cpus is not None else []),
+                             *(["--plutus-vm", plutus_vm] if plutus_vm is not None else [])],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 

@@ -135,6 +135,7 @@ class DijkstraCrossingSuite extends CatsEffectSuite:
         setup.byronRules,
         setup.handOver,
         setup.byronHistory,
+        xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
         utxoStore = Some(Counting(memory, passes))
       )
       states <- Handle

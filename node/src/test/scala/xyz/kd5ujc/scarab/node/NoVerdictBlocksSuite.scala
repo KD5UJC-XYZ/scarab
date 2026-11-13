@@ -15,6 +15,9 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.plutus.{BackendFailure, EvalFailure, ExUnits}
+import xyz.kd5ujc.scarab.uplc.ProtocolMajor
+import xyz.kd5ujc.scarab.uplc.builtin.extended.LibraryDefect
+import xyz.kd5ujc.scarab.uplc.ledger.Unavailability
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** The schedule of a block without a verdict, and which causes are judged again (issue 693). */
@@ -54,10 +57,49 @@ class NoVerdictBlocksSuite extends FunSuite:
       evaluation(BackendFailure.StackExhausted) -> Deterministic,
       evaluation(BackendFailure.BudgetOutOfRange(ExUnits(BigInt(2).pow(64), 0))) -> Deterministic,
       evaluation(
-        BackendFailure.BuiltinUnavailable(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+        BackendFailure.BuiltinUnavailable(
+          xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup
+        )
       ) -> Deterministic,
       evaluation(
-        BackendFailure.CostingUnmirrored(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+        BackendFailure.CostingUnmirrored(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+      ) -> Deterministic,
+      // the own evaluator (`--plutus-vm scarab`): an exception or a library that failed may pass,
+      // what this build lacks does not
+      evaluation(BackendFailure.Uplc(Unavailability.Thrown(new IllegalStateException("x")))) ->
+        Passing,
+      evaluation(
+        BackendFailure.Uplc(
+          Unavailability.BuiltinDefect(
+            xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup,
+            LibraryDefect.Thrown(new IllegalStateException("blst"))
+          )
+        )
+      ) -> Passing,
+      // a library that answered what it cannot does so again for the same input and build
+      evaluation(
+        BackendFailure.Uplc(
+          Unavailability.BuiltinDefect(
+            xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup,
+            LibraryDefect.HashedOutsideGroup(xyz.kd5ujc.scarab.uplc.bls.Group.G1)
+          )
+        )
+      ) -> Deterministic,
+      evaluation(
+        BackendFailure.Uplc(
+          Unavailability.BuiltinDefect(
+            xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_millerLoop,
+            LibraryDefect.DetachedMlResult
+          )
+        )
+      ) -> Deterministic,
+      evaluation(
+        BackendFailure.Uplc(Unavailability.UnsupportedProtocol(ProtocolMajor.Dijkstra))
+      ) -> Deterministic,
+      evaluation(
+        BackendFailure.Uplc(
+          Unavailability.BuiltinArity(xyz.kd5ujc.scarab.uplc.DefaultFun.AddInteger, 2, 3)
+        )
       ) -> Deterministic,
       BlockNoVerdict.Verification(
         VerificationDefect(

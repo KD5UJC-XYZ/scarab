@@ -64,7 +64,9 @@ container, and `--max-starvation-warnings N` makes a scenario fail when the node
 CPU-starvation warnings than that (otherwise they are only reported: `cpuStarvationWarnings` in
 `e2e-summary.json`, and the `scheduling` block of `pool-summary.json` with the worst timer lateness and
 the longest CPU-bound step the node measured). `pool --scala-cpus 1` is the check that the forger's slot
-clock holds with one CPU (roadmap D8).
+clock holds with one CPU (roadmap D8). `--plutus-vm scalus|scarab` (`follow`, `e2e`) gives the Scala node that
+Plutus evaluator ([flags](flags.md)); without it the node runs its default. The forging scenarios do not take
+it: the node refuses `--forge` with `scarab`.
 
 `--consensus-mode GenesisMode` on `follow`, `restart`, `relay`, `e2e` or `soak` selects Genesis
 for Scarab using a separate run-local configuration and a topology naming only that

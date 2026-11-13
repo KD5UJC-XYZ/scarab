@@ -202,6 +202,7 @@ object K1OfflineMain extends IOApp:
                     setup.byronRules,
                     setup.handOver,
                     setup.byronHistory,
+                    xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
                     phase2Observer = Some(observations.observe),
                     utxoStore = Some(store),
                     afterBlock = Some(after),

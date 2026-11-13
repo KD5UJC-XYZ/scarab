@@ -1023,7 +1023,10 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     def bytes(e: xyz.kd5ujc.scarab.node.mempool.Entry) = Capacity.measure(e).bytes
     def pick(entries: Vector[xyz.kd5ujc.scarab.node.mempool.Entry], room: Long) =
       BlockBuilder
-        .select(base, 1001, 1, geometry, globals, entries, BlockBuilder.Limits(room + 1024, units))
+        .select(base, 1001, 1, geometry, globals, entries, BlockBuilder.Limits(room + 1024, units))(
+          xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
+          xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator
+        )
         .chosen
         .map(_._1.id)
     assert(bytes(large) > bytes(small3))
