@@ -403,6 +403,39 @@
       ]
     },
     {
+      "module": "uplc",
+      "path": "uplc/cek",
+      "responsibility": "The CEK machine of the own evaluator: a pure tail-recursive loop over the reference's transitions, values and their discharge, the skew-binary environment, counting and restricting budgets with the slippage, the caser of built-in constants, typed machine errors and the cats-mtl boundary",
+      "entryPoints": [
+        "CekMachine",
+        "MachineParameters",
+        "BudgetMode",
+        "BudgetState",
+        "CekResult",
+        "CekReport",
+        "CekEvaluated",
+        "CekFailed",
+        "CekValue",
+        "Env",
+        "CekError",
+        "CaseBuiltinError",
+        "CekFailure",
+        "Cause",
+        "CaserBuiltin"
+      ],
+      "suites": [
+        "CekMachineSuite",
+        "CekTermCorpusSuite",
+        "CekCoreBuiltinsSuite",
+        "CekDeepSuite",
+        "CekEvaluateSuite",
+        "EnvSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
       "module": "plutus",
       "path": "plutus",
       "responsibility": "Script evaluator algebra, Scalus adapter, builtin availability; re-exports PlutusData, ExUnits, PlutusLanguage and ParamNames from uplc",
@@ -1288,6 +1321,16 @@
         "RewardOracleCasesMain",
         "RewardTimingCasesMain",
         "SnapshotTablesBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "uplc",
+      "responsibility": "Hand-run benchmarks for the `uplc` package: the own CEK machine's throughput against Scalus's",
+      "entryPoints": [
+        "CekThroughputMain"
       ],
       "suites": [],
       "docs": []
