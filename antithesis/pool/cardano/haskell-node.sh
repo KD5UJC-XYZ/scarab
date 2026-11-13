@@ -7,6 +7,11 @@ set -euo pipefail
 n=$1
 pool=/env/net/pools-keys/pool$n
 mkdir -p /data
+# Where the compose file mounts /logs, the node's trace also goes to a file there, for the driver to read; stdout
+# still carries it.
+if [ -d /logs ]; then
+  exec > >(tee -a "/logs/h$n.log")
+fi
 # A killed node leaves its socket file behind.
 rm -f /ipc/node.socket
 exec cardano-node run \

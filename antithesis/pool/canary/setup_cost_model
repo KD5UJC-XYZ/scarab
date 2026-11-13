@@ -1,0 +1,69 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# Run by the canary's driver before setup complete: it proposes, as mainnet changed it, a parameter change to the
+# protocol-11 PlutusV3 cost model that prices writeBits (plutus-v3-cost-model.json, from the reference fixture), and
+# waits until a Haskell pool and s1 both have it in force. The canary's genesis overlay sets the technical group's
+# DRep threshold to 0 (the committee is create-env's empty one, threshold 0), so the change is ratified without votes
+# at an epoch boundary and enacted at the next.
+set -uo pipefail
+source /opt/at/lib.sh
+
+model=/opt/at/canary/plutus-v3-cost-model.json
+want=$(jq '.PlutusV3 | length' "$model")
+keys=/env/net/utxo-keys/utxo1
+reference=/ipc/h2/node.socket
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+fail() {
+  echo "canary setup: $1" >&2
+  exit 1
+}
+
+v3_length() {
+  cardano-cli conway query protocol-parameters --testnet-magic "$MAGIC" --socket-path "/ipc/$1/node.socket" \
+    2>/dev/null | jq '.costModels.PlutusV3 | length' 2>/dev/null
+}
+
+deposit=$(cardano-cli conway query protocol-parameters --testnet-magic "$MAGIC" --socket-path "$reference" \
+  | jq '.govActionDeposit') || fail "protocol parameters query failed"
+cardano-cli conway governance action create-protocol-parameters-update --testnet \
+  --governance-action-deposit "$deposit" \
+  --deposit-return-stake-verification-key-file /env/net/stake-delegators/delegator1/staking.vkey \
+  --anchor-url "https://example.invalid/scarab-antithesis-canary" \
+  --anchor-data-hash 0000000000000000000000000000000000000000000000000000000000000000 \
+  --cost-model-file "$model" --out-file "$work/update.action" || fail "proposal failed"
+
+# build-raw, balanced by hand: `transaction build` downloads a proposal's anchor to check it, and a run has no network.
+addr=$(cardano-cli conway address build --payment-verification-key-file "$keys/utxo.vkey" --testnet-magic "$MAGIC")
+utxo=$(cardano-cli conway query utxo --address "$addr" --testnet-magic "$MAGIC" --socket-path "$reference" \
+  --output-json) || fail "UTxO query failed"
+# the largest output that holds only ada: collateral may hold nothing else
+txin=$(jq -r 'to_entries | map(select(.value.value | keys == ["lovelace"])) | max_by(.value.value.lovelace) | .key' \
+  <<< "$utxo")
+amount=$(jq -r --arg k "$txin" '.[$k].value.lovelace' <<< "$utxo")
+fee=2000000
+cardano-cli conway query protocol-parameters --testnet-magic "$MAGIC" --socket-path "$reference" \
+  --out-file "$work/pp.json" || fail "protocol parameters query failed"
+cardano-cli conway transaction build-raw \
+  --tx-in "$txin" --tx-out "$addr+$((amount - fee - deposit))" --proposal-file "$work/update.action" \
+  --fee "$fee" --protocol-params-file "$work/pp.json" --out-file "$work/proposal.raw" \
+  || fail "proposal transaction build failed"
+cardano-cli conway transaction sign --tx-body-file "$work/proposal.raw" --signing-key-file "$keys/utxo.skey" \
+  --out-file "$work/proposal.signed" || fail "proposal transaction sign failed"
+cardano-cli conway transaction submit --tx-file "$work/proposal.signed" --testnet-magic "$MAGIC" \
+  --socket-path "$reference" || fail "proposal transaction submit failed"
+echo "canary setup: proposed the PlutusV3 cost model of $want parameters; waiting for it in h2 and s1"
+
+last=""
+while :; do
+  state="h2=$(v3_length h2) s1=$(v3_length s1)"
+  [ "$state" = "h2=$want s1=$want" ] && break
+  if [ "$state" != "$last" ]; then
+    echo "canary setup: PlutusV3 cost model lengths $state, epoch $(cardano-cli conway query tip \
+      --testnet-magic "$MAGIC" --socket-path "$reference" 2>/dev/null | jq .epoch)"
+    last=$state
+  fi
+  sleep 2
+done
+echo "canary setup: the cost model of $want parameters is in force in h2 and s1"

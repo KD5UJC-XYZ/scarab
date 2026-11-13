@@ -1,0 +1,56 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# The canary's first command; Antithesis runs it once per timeline, after setup complete and before any fault. It
+# submits to s1 a transaction that mints with the writeBits policy of GHSA-vfw2-hhrc-87v5 (writebits_script.py) and
+# records s1's answer. At protocol 11 the reference fails the policy; Scarab before the fix accepts the transaction
+# and forges it into a block, which the Haskell pools refuse, and a fixed Scarab refuses it at its mempool.
+# `build-raw` does not evaluate the script, so the transaction reaches s1 whatever the reference makes of it.
+set -uo pipefail
+source /opt/at/lib.sh
+
+bytes=${WRITEBITS_BYTES:-4097}
+script=/opt/at/canary/writebits-$bytes.plutus
+# utxo2's funds: the canary's setup spends utxo1's
+keys=/env/net/utxo-keys/utxo2
+reference=/ipc/h2/node.socket
+fee=2000000
+token=63616e617279
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+fail() {
+  echo "canary: $1" >&2
+  exit 1
+}
+
+addr=$(cardano-cli conway address build --payment-verification-key-file "$keys/utxo.vkey" --testnet-magic "$MAGIC") \
+  || fail "address build failed"
+cardano-cli conway query protocol-parameters --testnet-magic "$MAGIC" --socket-path "$reference" \
+  --out-file "$work/pp.json" || fail "protocol parameters query failed"
+utxo=$(cardano-cli conway query utxo --address "$addr" --testnet-magic "$MAGIC" --socket-path "$reference" \
+  --output-json) || fail "UTxO query failed"
+# the largest output that holds only ada: collateral may hold nothing else
+txin=$(jq -r 'to_entries | map(select(.value.value | keys == ["lovelace"])) | max_by(.value.value.lovelace) | .key' \
+  <<< "$utxo")
+[ "$txin" != null ] || fail "no output of $addr holds only ada"
+amount=$(jq -r --arg k "$txin" '.[$k].value.lovelace' <<< "$utxo")
+policy=$(cardano-cli conway transaction policyid --script-file "$script") || fail "policy id failed"
+echo "canary: protocol $(jq -c .protocolVersion "$work/pp.json"), input $txin, policy $policy, $bytes bytes"
+
+cardano-cli conway transaction build-raw \
+  --tx-in "$txin" --tx-in-collateral "$txin" \
+  --tx-out "$addr+$((amount - fee))+1 $policy.$token" \
+  --mint "1 $policy.$token" --mint-script-file "$script" --mint-redeemer-value 0 \
+  --mint-execution-units "(10000000, 100000)" \
+  --fee "$fee" --protocol-params-file "$work/pp.json" --out-file "$work/tx.raw" || fail "build-raw failed"
+cardano-cli conway transaction sign --tx-body-file "$work/tx.raw" --signing-key-file "$keys/utxo.skey" \
+  --out-file "$work/tx.signed" || fail "sign failed"
+txid=$(cardano-cli conway transaction txid --tx-file "$work/tx.signed")
+
+answer=$(cardano-cli conway transaction submit --tx-file "$work/tx.signed" --testnet-magic "$MAGIC" \
+  --socket-path /ipc/s1/node.socket 2>&1)
+code=$?
+echo "canary: s1 answered $code for $txid: $answer"
+details=$(jq -cn --arg txid "$txid" --argjson code "$code" --arg answer "$answer" --argjson bytes "$bytes" \
+  '{txid: $txid, bytes: $bytes, exitCode: $code, answer: $answer}')
+assertion true true sometimes Sometimes "$CANARY_SUBMITTED" true "$details"

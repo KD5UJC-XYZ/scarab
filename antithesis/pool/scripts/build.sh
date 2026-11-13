@@ -17,3 +17,4 @@ build() { docker build --pull=false --network="$3" --platform linux/amd64 -t "$1
 build scarab-at-cardano:trial cardano none
 build scarab-at-scarab:trial scarab none
 build scarab-at-driver:trial driver default
+build scarab-at-canary:trial canary none
