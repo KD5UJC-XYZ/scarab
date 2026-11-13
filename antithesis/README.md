@@ -34,4 +34,7 @@ antithesis/pool/scripts/launch.sh resilient 15m       # validate, then a basic_t
 ```
 
 `launch.sh` takes the fault level and a duration: the tenant predates `--max-compute-hours`, and 15 minutes on
-the standard tier (48 cores) is 12 compute hours, plus setup.
+the standard tier (48 cores) is 12 compute hours, plus setup. Snouty pushes the images and the config image to the
+tenant registry. Instead, `publish.sh` pushes them to a public registry (by default
+`ghcr.io/kd5ujc-xyz/scarab-antithesis`, which must be public for Antithesis to pull), with the compose file naming
+each image by digest, and prints the config image's reference for `launch.sh resilient 15m <reference>`.

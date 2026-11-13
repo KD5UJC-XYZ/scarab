@@ -5,13 +5,13 @@
 set -euo pipefail
 
 n=$1
-pool=/env/pools-keys/pool$n
+pool=/env/net/pools-keys/pool$n
 mkdir -p /data
 # A killed node leaves its socket file behind.
 rm -f /ipc/node.socket
 exec cardano-node run \
-  --config /env/configuration.yaml \
-  --topology "/env/topology-h$n.json" \
+  --config /env/net/configuration.yaml \
+  --topology "/env/net/topology-h$n.json" \
   --database-path /data/db \
   --shelley-kes-key "$pool/kes.skey" \
   --shelley-vrf-key "$pool/vrf.skey" \
