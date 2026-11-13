@@ -145,8 +145,8 @@ reward calculation starts at `4k/f`. A submission that must be refused counts as
 the run) if the reference accepts it or names another reason; the replies are in `loadEvidence` of
 `e2e-summary.json`. The reference reward update is projected with the pre-Allegra choice (one reward
 per account) when the previous epoch's parameters are protocol 2.
-Plutus V1 and V2 scripts are not driven by the devnet load (`eraload.py` TODO, roadmap I3); they are verified by
-the Preview sync and the unit and oracle tests only.
+Plutus V1 and V2 scripts are driven by the legacy cases of [`eraplutus.py`](../../scripts/devnet/eraplutus.py)
+(roadmap I3): once in each of the Alonzo, Babbage and Conway eras of `e2e`, and in rounds by `pool --plutus-load`.
 
 `govload` (run by `soak` next to `load`, and in the Conway epochs of `e2e`) drives, one pass per
 epoch: wallets; stake registration with pool and DRep delegation and two DReps; a Plutus V3 script
