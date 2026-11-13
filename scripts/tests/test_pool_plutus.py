@@ -1,8 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """The pure parts of `pool --plutus-load` and of the pool's forge timing: blocks read for their transactions'
 validity flags, where the load's transactions are on the chain, the refusal rule, and the timing summaries."""
+import contextlib
 import hashlib
+import io
+import json
 import pathlib
+import tempfile
 import sys
 import types
 import unittest
@@ -10,7 +14,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from devnet import ntclocal, ntcquery, util  # noqa: E402
+from devnet import ntclocal, ntcquery, reference_tracing, util  # noqa: E402
 from devnet.cbor import Raw, Tag, enc  # noqa: E402
 from devnet.scenarios import pool, pool_plutus  # noqa: E402
 
@@ -167,13 +171,14 @@ class CheckTest(unittest.TestCase):
         self.assertIsNone(summary["admissionMs"]["scala"]["succeedingScriptFlagFalse"])
 
     def test_what_fails_the_run(self):
-        # the pools filled the height of the Scala block s1 (slot 10) in slot 30, on the same parent
+        # the Scala block s1 is not on the chain, and a Haskell pool's log named it as invalid
         chain = [("h1", 30, 1, [("a", True, True), ("b", False, True), ("c", True, True), ("d", False, True)])]
         failures, _ = pool_plutus.check(self.runner([self.refusal(accepted=True, scala=None),
                                                      self.refusal(scala=[1, 0, 1], attempts=5)], errors=["boom"]),
-                                        chain, self.forged(["s1"]), self.events() + [{"event": "blockNoVerdict"}])
+                                        chain, self.forged(["s1"]), self.events() + [{"event": "blockNoVerdict"}], {"s1"})
         joined = "\n".join(failures)
-        for expected in ("1 Plutus rounds failed: boom", "1 Scala-forged blocks were not taken by the Haskell pools", "no Scala-forged block holds a transaction whose scripts succeed",
+        for expected in ("1 Plutus rounds failed: boom", "the Haskell pools refused 1 Scala-forged blocks",
+                         "no Scala-forged block holds a transaction whose scripts succeed",
                          "no Scala-forged block holds a transaction with the validity flag false",
                          "the Scala node accepted 1 transactions the reference refused",
                          "did not refuse a transaction for the reference's rule", "1 blockNoVerdict events"):
@@ -184,27 +189,52 @@ class CheckTest(unittest.TestCase):
         self.assertEqual(failures, ["no refused Plutus transaction was submitted to the Scala node"])
 
 
+# 64-hex-character stand-ins for block hashes, one hex digit repeated per name
+H = {name: digit * 64 for name, digit in zip("abcdvwxyz", "abcd01234")}
+NAME = {h: name for name, h in H.items()}
+
+
 class LostBlocksTest(unittest.TestCase):
-    CHAIN = [("a", 5, 1, []), ("b", 12, 2, []), ("c", 40, 3, []), ("d", 44, 4, [])]
+    """Every Scala-forged block that is not on the observer's chain is classified by the Haskell pools' own traces;
+    the three cases a timing rule cannot tell from a lost slot battle are refusals when a pool named the block."""
+    CHAIN = [(H["a"], 5, 1, []), (H["b"], 12, 2, []), (H["c"], 40, 3, []), (H["d"], 44, 4, [])]
 
     @staticmethod
-    def forged(hash_, slot, number, prev, txs=()):
-        return {"event": "forged", "hash": hash_, "slot": slot, "blockNo": number, "prev": prev, "txs": list(txs)}
+    def forged(name, slot, number, prev, txs=()):
+        return {"event": "forged", "hash": H[name], "slot": slot, "blockNo": number, "prev": prev and H[prev],
+                "txs": list(txs)}
 
-    def test_slot_battles_stale_tips_and_dead_branches_are_lost_blocks_the_pools_did_take_into_account(self):
-        forged = [self.forged("a", 5, 1, None), self.forged("x", 12, 2, "a", ["t", "pay"]),  # lost the slot battle at 12
-                  self.forged("y", 41, 3, "b"),  # forged on a stale tip: the chain's block 3 is in slot 40
-                  self.forged("z", 43, 4, "y"),  # on top of a lost block
-                  self.forged("w", 30, 3, "b")]  # the chain filled height 3 ten slots later: within the bound
-        lost, not_taken = pool_plutus.lost_blocks(forged, self.CHAIN, {"t"})
-        self.assertEqual([(b["hash"], b["chainSlotAtHeight"], b["parentOnChain"], b["plutusTxs"]) for b in lost],
-                         [("x", 12, True, 1), ("y", 40, True, 0), ("z", 44, False, 0), ("w", 40, True, 0)])
-        self.assertEqual(not_taken, [])
+    # a replacement within ten slots on the same parent, a block on a parent that left the chain too, and a block at a
+    # height the observer had not reached when its chain was read
+    BLIND_SPOTS = (("w", 35, 3, "b"), ("z", 43, 4, "y"), ("v", 50, 5, "d"))
 
-    def test_a_block_whose_height_the_pools_filled_later_on_its_parent_was_not_taken(self):
-        lost, not_taken = pool_plutus.lost_blocks([self.forged("v", 29, 3, "b", ["t"])], self.CHAIN, {"t"})
-        self.assertEqual(not_taken, lost)
-        self.assertEqual((not_taken[0]["chainSlotAtHeight"], not_taken[0]["plutusTxs"]), (40, 1))
+    def test_a_block_a_haskell_pool_named_as_invalid_is_refused_wherever_the_chain_put_its_height(self):
+        for spot in self.BLIND_SPOTS:
+            with self.subTest(block=spot[0]):
+                (lost,) = pool_plutus.lost_blocks([self.forged(*spot, ["t"])], self.CHAIN, {"t"}, {H[spot[0]]}, set())
+                self.assertEqual((lost["class"], lost["plutusTxs"]), (pool_plutus.REFUSED, 1))
+
+    def test_without_a_trace_a_lost_block_is_unconfirmed_and_with_a_tip_change_it_was_adopted(self):
+        forged = [self.forged("a", 5, 1, None), self.forged("x", 12, 2, "a", ["t", "pay"])] + \
+            [self.forged(*spot) for spot in self.BLIND_SPOTS]
+        lost = pool_plutus.lost_blocks(forged, self.CHAIN, {"t"}, set(), {H["w"]})
+        self.assertEqual([(NAME[b["hash"]], b["class"]) for b in lost],
+                         [("x", pool_plutus.UNCONFIRMED), ("w", pool_plutus.ADOPTED), ("z", pool_plutus.UNCONFIRMED),
+                          ("v", pool_plutus.UNCONFIRMED)])
+        self.assertEqual([(NAME[b["hash"]], b["chainSlotAtHeight"], b["slotsLater"], b["parentOnChain"], b["afterChainRead"])
+                          for b in lost],
+                         [("x", 12, 0, True, False), ("w", 40, 5, True, False), ("z", 44, 1, False, False),
+                          ("v", None, None, True, True)])
+
+    def test_a_refused_block_fails_the_run_and_an_unconfirmed_one_is_reported(self):
+        # the load's transactions "a" and "d" (ROWS)
+        forged = [self.forged("a", 5, 1, None), self.forged("w", 35, 3, "b", ["a"]), self.forged("z", 43, 4, "y", ["d"])]
+        runner = CheckTest().runner([])
+        failures, summary = pool_plutus.check(runner, self.CHAIN, forged, [], {H["w"]}, set())
+        self.assertTrue(any(f.startswith("the Haskell pools refused 1 Scala-forged blocks") for f in failures), failures)
+        self.assertEqual(summary["lostScalaBlocksByClass"],
+                         {pool_plutus.REFUSED: 1, pool_plutus.ADOPTED: 0, pool_plutus.UNCONFIRMED: 1})
+        self.assertEqual(summary["unconfirmedWithPlutus"], 1)
 
 
 class ForgeTimingTest(unittest.TestCase):
@@ -257,12 +287,101 @@ class ReasonKindTest(unittest.TestCase):
         self.assertEqual(pool_plutus.reason_kind("the mempool is full"), "the mempool is full")
 
 
-class ReferenceInvalidBlocksTest(unittest.TestCase):
-    INVALID = '{"ns":"ChainDB.AddBlockEvent.AddBlockValidation.InvalidBlock","data":{"kind":"InvalidBlock"}}'
-    LOGS = {"/work/node2.log": ['{"ns":"Forge.Loop.ForgedBlock"}\n'], "/work/node3.log": ["x\n", INVALID + "\n"]}
+class TraceOptionsTest(unittest.TestCase):
+    """The Haskell pools' trace options: the defaults of cardano-node 11.1.3 and `InvalidBlock`."""
 
-    def test_pools_whose_log_traces_an_invalid_block_or_cannot_be_read(self):
-        logs = self.LOGS
+    def test_the_pool_options_are_the_defaults_and_one_entry(self):
+        options = reference_tracing.POOL_TRACE_OPTIONS
+        self.assertEqual({k: v for k, v in options.items() if k != reference_tracing.INVALID_BLOCK},
+                         reference_tracing.DEFAULT_TRACE_OPTIONS)
+        self.assertEqual(options[reference_tracing.INVALID_BLOCK], {"severity": "Info"})
+
+    def test_every_trace_the_harness_reads_is_emitted_and_invalid_block_was_not_before(self):
+        for namespace, severity in reference_tracing.READ.items():
+            with self.subTest(namespace=namespace):
+                self.assertTrue(reference_tracing.emitted(reference_tracing.POOL_TRACE_OPTIONS, namespace, severity))
+        self.assertFalse(reference_tracing.emitted(reference_tracing.DEFAULT_TRACE_OPTIONS,
+                                                   reference_tracing.INVALID_BLOCK, "Notice"))
+
+    def test_every_other_namespace_keeps_its_default_options(self):
+        # namespaces of the 11.1.3 documentation under each default entry, the root and the entry's own siblings
+        namespaces = ["Forge.Loop.StartLeadershipCheck", "Forge.Loop.NodeNotLeader", "Mempool.AddedTx",
+                      "Mempool.RejectedTx", "ChainDB.AddBlockEvent.AddedToCurrentChain",
+                      "ChainDB.AddBlockEvent.AddedBlockToQueue", "ChainDB.AddBlockEvent.AddBlockValidation.ValidCandidate",
+                      "ChainDB.AddBlockEvent.AddBlockValidation.CandidateContainsFutureBlocks",
+                      "ChainDB.AddBlockEvent.AddBlockValidation.UpdateLedgerDb", "BlockFetch.Decision.Decline",
+                      "Net.PeerSelection.Selection", "Net.Mux.Local.CleanExit", "Startup.Info", "Resources"]
+        for namespace in namespaces:
+            for kind in ("severity", "detail", "backends", "maxFrequency"):
+                with self.subTest(namespace=namespace, kind=kind):
+                    self.assertEqual(reference_tracing.effective(reference_tracing.POOL_TRACE_OPTIONS, namespace, kind),
+                                     reference_tracing.effective(reference_tracing.DEFAULT_TRACE_OPTIONS, namespace, kind))
+        self.assertEqual(reference_tracing.effective(reference_tracing.POOL_TRACE_OPTIONS,
+                                                     "ChainDB.AddBlockEvent.AddBlockValidation.ValidCandidate", "severity"),
+                         "Silence")
+        self.assertEqual(reference_tracing.effective(reference_tracing.POOL_TRACE_OPTIONS,
+                                                     reference_tracing.INVALID_BLOCK, "backends"),
+                         ["Stdout MachineFormat", "EKGBackend"])
+
+    def test_a_configuration_that_sets_trace_options_is_refused(self):
+        self.assertEqual(reference_tracing.pool_configuration({"Protocol": "Cardano", "TraceOptions": {}})["TraceOptions"],
+                         reference_tracing.POOL_TRACE_OPTIONS)
+        with self.assertRaises(ValueError):
+            reference_tracing.pool_configuration({"TraceOptions": {"Mempool": {"severity": "Debug"}}})
+
+    def test_the_pools_get_the_options_before_they_start_from_a_reference_of_the_pinned_version(self):
+        written = {}
+        version = types.SimpleNamespace(stdout="cardano-node 11.1.3 - linux-x86_64 - ghc-9.6\ngit rev 938cba99\n")
+        with patch.object(pool, "in_ref", return_value=version), \
+                patch.object(pool, "read_json", return_value={"Protocol": "Cardano", "TraceOptions": {}}), \
+                patch.object(pool, "put_file", side_effect=lambda name, path, text: written.update({path: text})):
+            pool.pool_trace_options("n")
+        self.assertEqual(json.loads(written[f"{pool.ENV}/configuration.yaml"])["TraceOptions"],
+                         reference_tracing.POOL_TRACE_OPTIONS)
+        with patch.object(pool, "in_ref", return_value=types.SimpleNamespace(stdout="cardano-node 11.2.0 - linux\n")), \
+                self.assertRaises(SystemExit):
+            pool.pool_trace_options("n")
+
+    def test_the_pool_scenario_sets_the_options_right_after_the_environment(self):
+        calls = []
+        args = types.SimpleNamespace(name="n", pool=1, keep=False)
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(pool, "data_root", return_value=pathlib.Path(d) / "run"), \
+                patch.object(pool, "start_reference"), patch.object(pool, "host_load", return_value={}), \
+                patch.object(pool, "pool_environment", side_effect=lambda a: calls.append("environment") or ({}, {})), \
+                patch.object(pool, "pool_trace_options",
+                             side_effect=lambda name: calls.append("traceOptions") or (_ for _ in ()).throw(SystemExit("stop"))), \
+                patch.object(pool, "docker", return_value=types.SimpleNamespace(returncode=0, stdout="", stderr="")), \
+                patch.object(pool, "keep_reference_logs"), patch.object(util, "SOCKET", util.SOCKET), \
+                contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+            pool.pool(args)
+        self.assertEqual(calls, ["environment", "traceOptions"])
+
+
+class LogViewTest(unittest.TestCase):
+    INVALID = json.dumps({"at": "2026-11-13T22:00:00Z", "ns": reference_tracing.INVALID_BLOCK,
+                          "data": {"kind": "InvalidBlock", "block": {"hash": H["w"], "slot": 35},
+                                   "error": f"ValidationTagMismatch in a block whose parent is {H['b']}"}})
+    TIP = json.dumps({"ns": "ChainDB.AddBlockEvent.AddedToCurrentChain",
+                      "data": {"kind": "AddedToCurrentChain", "newtip": f"{H['x']}@12", "headers": []}})
+    FORK = json.dumps({"ns": "ChainDB.AddBlockEvent.SwitchedToAFork",
+                       "data": {"kind": "TraceAddBlockEvent.SwitchedToAFork", "newtip": f"{H['y']}@41"}})
+    EXCEPTION = json.dumps({"ns": "ChainSync.Client.Exception",
+                            "data": {"kind": "Exception", "exception": f"InvalidBlock (At (Block 43 {H['z']}))"}})
+
+    def test_refused_blocks_tips_and_counts(self):
+        view = reference_tracing.log_view(["Node configuration: NodeConfiguration {InvalidBlock-free text}",
+                                           self.INVALID + "\n", self.TIP, self.FORK, self.EXCEPTION,
+                                           json.dumps({"ns": "Forge.Loop.ForgedBlock", "data": {"block": H["v"]}})])
+        # the invalid block's own field names it; its error text's other hash is not a refusal of that block
+        self.assertEqual(view["refused"], {H["w"], H["z"]})
+        self.assertEqual(view["tips"], {H["x"], H["y"]})
+        self.assertEqual(len(view["invalid"]), 3)
+        self.assertEqual(view["counts"], {reference_tracing.INVALID_BLOCK: 1, "ChainDB.AddBlockEvent.AddedToCurrentChain": 1,
+                                          "ChainDB.AddBlockEvent.SwitchedToAFork": 1, "ChainSync.Client.Exception": 1})
+
+    def test_the_logs_of_each_pool_and_one_that_cannot_be_read(self):
+        logs = {"/work/node2.log": [self.TIP + "\n"], "/work/node3.log": ["x\n", self.INVALID + "\n"]}
 
         class Read:
             def __init__(self, command, **kwargs):
@@ -275,9 +394,11 @@ class ReferenceInvalidBlocksTest(unittest.TestCase):
             def __exit__(self, *exc):
                 return False
         with patch.object(pool.subprocess, "Popen", Read):
-            self.assertEqual(pool.reference_invalid_blocks("n", [2, 3]), {"pool3": [self.INVALID]})
-            self.assertEqual(pool.reference_invalid_blocks("n", [1]),
-                             {"pool1": ["the log could not be read (exit status 1)"]})
+            views = pool.reference_logs("n", [1, 2, 3])
+        self.assertEqual(views["pool1"], {"unreadable": 1})
+        self.assertEqual(views["pool2"]["tips"], {H["x"]})
+        self.assertEqual(pool.reference_invalid_blocks(views),
+                         {"pool1": ["the log could not be read (exit status 1)"], "pool3": [self.INVALID]})
 
 
 if __name__ == "__main__":

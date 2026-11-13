@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from .. import metrics as node_metrics
+from .. import reference_tracing
 from . import dynamic_forging, kes_rotate, pool_plutus
 from ..cluster import database_mounts, freeze_classes, scala_container, start_nodes, start_reference, wait_listening
 from ..compare import Comparisons, compare_or_error, whole_failures, whole_state
@@ -271,29 +272,38 @@ def rules_timing(name):
     return {"blockApply": mean("scarab_block_apply_seconds"), "forgeAdoption": mean("scarab_forge_adoption_seconds")}
 
 
-# What a Haskell node's log names an invalid block with. Of its traces that the default trace options of cardano-node
-# 11.1.3 (create-env writes none of its own) leave visible: the ChainSync client's `InvalidBlock` exception
-# (`ChainSync.Client.Exception`) when a peer's chain still holds a block known to be invalid below its tip
-# (ouroboros-consensus 82ecba32 `MiniProtocol/ChainSync/Client.hs`, `invalidBlockRejector`), the BlockFetch punishment
-# `PeerSentAnInvalidBlockException` in the connection's exit, `ChainDB.AddBlockEvent.IgnoreInvalidBlock` and
-# `Forge.Loop.ForgedInvalidBlock`. `ChainDB.AddBlockEvent.AddBlockValidation.InvalidBlock` itself is silenced.
-REFERENCE_INVALID_BLOCK = "InvalidBlock"
+def pool_trace_options(name):
+    """Give the Haskell pools, before they start, the trace options of `reference_tracing.POOL_TRACE_OPTIONS`: the
+    defaults of cardano-node 11.1.3 and `InvalidBlock`. A reference of another version is refused, as its defaults
+    may differ, and so is a configuration that already sets trace options."""
+    version = in_ref(name, "cardano-node --version").stdout
+    if not version.startswith(f"cardano-node {reference_tracing.REFERENCE_VERSION} "):
+        raise SystemExit(f"the pool scenarios' trace options are the defaults of cardano-node "
+                         f"{reference_tracing.REFERENCE_VERSION}; the reference is {version.strip()[:80]!r}")
+    path = f"{ENV}/configuration.yaml"
+    try:
+        config = reference_tracing.pool_configuration(read_json(name, path))
+    except ValueError as e:
+        raise SystemExit(str(e)) from e
+    put_file(name, path, json.dumps(config, indent=2))
 
 
-def reference_invalid_blocks(name, nodes):
-    """{node: the first lines of its log that trace an invalid block, or why the log could not be read} of the Haskell
-    pools with either: a block of the Scala pool they refused would otherwise show only as a block lost or replaced
-    on its chain. The reference image has no grep; the log is read through `cat`."""
-    found = {}
+def reference_logs(name, nodes):
+    """{pool: `reference_tracing.log_view` of the Haskell pool's log, or {"unreadable": exit status}}. The reference
+    image has no grep; the log is read through `cat`."""
+    views = {}
     for n in nodes:
         with subprocess.Popen(["docker", "exec", ref(name), "cat", f"/work/node{n}.log"], stdout=subprocess.PIPE,
                               stderr=subprocess.DEVNULL, text=True, errors="replace") as read:
-            lines = [line.strip()[:600] for line in read.stdout if REFERENCE_INVALID_BLOCK in line]
-        if read.returncode != 0:
-            found[f"pool{n}"] = [f"the log could not be read (exit status {read.returncode})"]
-        elif lines:
-            found[f"pool{n}"] = lines[:5]
-    return found
+            view = reference_tracing.log_view(read.stdout)
+        views[f"pool{n}"] = view if read.returncode == 0 else {"unreadable": read.returncode}
+    return views
+
+
+def reference_invalid_blocks(views):
+    """{pool: the lines of its log that name an invalid block, or why it could not be read} of the pools with either."""
+    return {pool: [f"the log could not be read (exit status {v['unreadable']})"] if "unreadable" in v else v["invalid"]
+            for pool, v in views.items() if "unreadable" in v or v["invalid"]}
 
 
 def missed_leader_slots(events, schedules, shelley, excluded=None):
@@ -391,6 +401,7 @@ def pool(args):
     completed = False  # the run reached its verdict; an exception other than SystemExit leaves this False
     try:
         ports, shelley = pool_environment(args)
+        pool_trace_options(args.name)
         (root / "ports.json").write_text(json.dumps(ports))
         pool_topology(args.name, others, {n: ports[n] for n in others})
         for f in ["shelley-genesis.json", "byron-genesis.json", "alonzo-genesis.json",
@@ -579,6 +590,10 @@ def pool(args):
         disabled = toggle.excluded(lambda at: slot_at(shelley, at)) if toggle else None
         oracle = missed_leader_slots(events, schedules, shelley, excluded=disabled)
         vm = next((e.get("vm") for e in events if e["event"] == "plutusVm"), None)
+        logs = reference_logs(args.name, others)
+        # the Scala-forged blocks a Haskell pool named as invalid, and those one took as its tip
+        refused = set().union(*(v.get("refused", set()) for v in logs.values()))
+        adopted_by_pools = set().union(*(v.get("tips", set()) for v in logs.values()))
         plutus_blocks = None if observed is None else {b for b, _, _, txs in observed if b in forged_hashes
                                                        and any(plutus_ for _, _, plutus_ in txs)}
         summary = {
@@ -615,7 +630,8 @@ def pool(args):
             "forgerStats": forging_stats,
             "plutusVm": vm,
             "forgeTiming": {**forge_timing(events, shelley, plutus_blocks), "rules": rules_timing(args.name)},
-            "referenceInvalidBlocks": reference_invalid_blocks(args.name, others),
+            "referenceInvalidBlocks": reference_invalid_blocks(logs),
+            "referenceLogCounts": {pool: v.get("counts") for pool, v in logs.items()},
         }
         if forging_stats:
             total = forging_stats["total"]
@@ -659,7 +675,8 @@ def pool(args):
             failures.append(f"a Haskell pool's log traces an invalid block or could not be read: "
                             f"{summary['referenceInvalidBlocks']}")
         if plutus and observed is not None:
-            plutus_failures, summary["plutus"] = pool_plutus.check(plutus, observed, forged, events)
+            plutus_failures, summary["plutus"] = pool_plutus.check(plutus, observed, forged, events, refused,
+                                                                   adopted_by_pools)
             failures += [f"plutus: {f}" for f in plutus_failures]
         if len(relative) < 2:
             failures.append("the KES key stayed in one period")
