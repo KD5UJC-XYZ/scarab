@@ -17,7 +17,7 @@ edit additive: `NetworkError.scala` (`Protocols.PeerSharing = 10`), `NodeToNode.
 when the connection agreed), `HandshakeServer.offers`, `Main.scala` (two settings), `NodeConfig.scala` (the text of the
 `unsupported` entry), `models.conf` (module and root), the fuzz `Targets` and `Corpus`, the devnet `relay` scenario.
 
-**Citations** (ouroboros-network at `2fb69829`, the commit of the vendored CDDL; the files are those of the 1.2.0.0 tag of section 1.1):
+**Citations** (ouroboros-network at `c45735a5`, the 1.2.0.0 tag of section 1.1; the vendored CDDL is that of cardano-diffusion at `c5117705`):
 `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Type.hs:29,45-58,74-95`; `.../PeerSharing/Codec.hs:42-93`
 (messages), `127-128` (5760 bytes), `133-140` (size limits), `153-162` (time limits), `Protocol/Limits.hs:114-115`
 (`longWait` 60 s); `ouroboros-network/api/lib/Ouroboros/Network/PeerSelection/PeerSharing/Codec.hs:29-65` (addresses);
@@ -65,7 +65,7 @@ the hand-written and the generated codec) and the root in `SampledSuite` and the
   address is four words in order. The codec keeps the words as they are on the wire; G1.4b must swap the octets of an IPv4 word
   (and only IPv4) when it converts to and from a socket address.
 - *The Haskell node asks Scarab.* With the relay's `Net.PeerSelection` traces at Debug, 300 s after it connected (the activation
-  delay, `Policies.hs:169`) the relay logged `PeerShareRequests` (149 requested, target known 150, the Scala node selected) and
+  delay, `Policies.hs:121`) the relay logged `PeerShareRequests` (149 requested, target known 150, the Scala node selected) and
   `PeerShareResults` with `{"Right": []}`: our server decoded the request and its answer, an empty list, decoded in the relay. No decoder failure
   in the relay's log. The answer is empty because nothing supplies the peers yet (G1.4b); the relay's `known` did not grow, as expected.
 - The gate itself passed with peer sharing on: 58 of 58 samples within one block, 239 transactions submitted through the relay, 240 in
@@ -94,7 +94,7 @@ the hand-written and the generated codec) and the root in `SampledSuite` and the
 
 Issue [#138](https://github.com/KD5UJC-XYZ/scarab/issues/138); protocol G1.4a remains unchanged on the wire.
 This stage completes the missing wiring listed in G1.4a. Reference: ouroboros-network
-`2fb69829a19b5c04e4fb212bdd78fb63f9d2d776` (the existing pin),
+`2fb69829a19b5c04e4fb212bdd78fb63f9d2d776` (not the reference since the [ADR 0008 amendment of 2026-11-13](../../adr/0008-networking-mirrors-ouroboros-network.md#amendment-2026-11-13-the-packages-cardano-node-1113-links)),
 `Governor/KnownPeers.hs:96–237,268–445`, `Governor/EstablishedPeers.hs:576–614`,
 `State/KnownPeers.hs:178–200,580–592`, `Diffusion/Policies.hs:69–76,164–169`, and
 `Cardano/Network/PeerSelection/Governor/Types.hs:170–171` (sharing disabled throughout the sensitive state).

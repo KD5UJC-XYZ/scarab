@@ -2,8 +2,9 @@
 
 - **Status**: As built; final gates recorded in [compatibility](../compatibility.md).
 - **Issue**: [#35](https://github.com/KD5UJC-XYZ/scarab/issues/35).
-- **Reference**: ouroboros-network `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`, the existing
-  protocol source pin; actual interoperability uses reference node 11.1.3.
+- **Reference**: the network packages reference node 11.1.3 links, ouroboros-network
+  `c45735a56c567fa977969173d18943bac6bb3821` and, for `cardano-diffusion`,
+  `c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167` ([ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md#amendment-2026-11-13-the-packages-cardano-node-1113-links)).
 
 Networking mirrors ouroboros-network in structure and behaviour ([ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md)).
 Every mini-protocol state's time limit is the pinned reference's (`timeLimits*`, cited per row), except
@@ -43,15 +44,17 @@ Source locations at the pin:
 
 - `ouroboros-network/framework/lib/Ouroboros/Network/ConnectionHandler.hs:78-102` and
   `network-mux/src/Network/Mux/Bearer/Socket.hs:72-102,182-230` (SDUs), and
-  `network-mux/src/Network/Mux/Codec.hs:57-72` (including rejection of zero-length SDUs).
+  `network-mux/src/Network/Mux/Codec.hs:54-82` (including rejection of zero-length SDUs).
 - `cardano-diffusion/protocols/lib/Cardano/Network/Protocol/Handshake/Codec.hs` and
   `ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs` (handshake).
 - `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Codec.hs:56-63` and
   `cardano-diffusion/protocols/lib/Cardano/Network/Protocol/ChainSync/Codec/TimeLimits.hs:43-87`.
 - `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/BlockFetch/Codec.hs:33-70`,
   `KeepAlive/Codec.hs:83-116`, `PeerSharing/Codec.hs:127-162`, `TxSubmission2/Codec.hs:50-93`.
-- `ouroboros-network/lib/Ouroboros/Network/TxSubmission/Outbound.hs:107-173,185-208` and
-  `TxSubmission/Inbound/V2/Policy.hs:94` (ten outstanding IDs).
+- `ouroboros-network/lib/Ouroboros/Network/TxSubmission/Outbound.hs:99-165,171-193` and
+  `TxSubmission/Inbound/V2/Policy.hs:94` (ten outstanding IDs). The refusal of a request that names
+  a transaction twice follows `2fb69829` (`Outbound.hs:185-208` there); the reference looks each
+  name up and sends a duplicate twice.
 - `cardano-diffusion/lib/Cardano/Network/NodeToNode.hs`, `chainSyncProtocolLimits` and its
   neighbours; `network-mux/src/Network/Mux/Ingress.hs` (queue budgets and overrun).
 
