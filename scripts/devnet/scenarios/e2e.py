@@ -435,8 +435,8 @@ def e2e(args):
             # verdicts it always had, with one `--plutus-vm` or none)
             own, own_failures = summarize_e2e(events, other, expected, stops[site]["premature"],
                                               plutus_vm=vm if keyed else None)
-            own["followerStop"] = {"exit": stops[site]["exit"], "finalTip": stops[site]["finalTip"]}
             if keyed:
+                own["followerStop"] = {"exit": stops[site]["exit"], "finalTip": stops[site]["finalTip"]}
                 own["reachedTarget"] = reached(events, target)
             judged[site] = (own, own_failures)
         if keyed:

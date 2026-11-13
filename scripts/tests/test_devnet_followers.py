@@ -605,11 +605,12 @@ class GreenRunTest(unittest.TestCase):
     """`e2e()` driven through a mocked run that is green unless a test makes it otherwise: the cluster, the
     containers and the reference node's freeze are replaced, the followers' logs are written by the test."""
 
-    def run_e2e(self, plutus_vm, logs=None, on_stop=None, exited=None, after_walk=None):
+    def run_e2e(self, plutus_vm, logs=None, on_stop=None, exited=None, after_walk=None, oracle=None):
         """(summary, exit status) of one mocked run. Each argument maps a follower key (None for a run's only
         follower) to: `logs` its log text, `after_walk` the events it logs once the era walk is over (while the run
         waits for its target), `exited` the status it ends with then, before the run stops it, and `on_stop` what it
-        logs while it is stopped."""
+        logs while it is stopped. `oracle`, when given, is the (summary, failures) of the db-analyser comparison of an
+        `--oracle` run, whose own stop of the follower is replaced too (`self.order` records the oracle's steps)."""
         logs, on_stop, exited, after_walk = logs or {}, on_stop or {}, exited or {}, after_walk or {}
         processes = {}
         with tempfile.TemporaryDirectory() as d:
@@ -638,11 +639,19 @@ class GreenRunTest(unittest.TestCase):
                 extended = [json.loads(l) for l in site.log(root).read_text().splitlines()
                             if l.startswith('{"event": "extended"')]
                 return {k: extended[-1]["block"][k] for k in ("slot", "hash")} if extended else None
-            args = types.SimpleNamespace(name="n", plutus_vm=plutus_vm, oracle=False, scala_cpus=2, no_load=True,
+            args = types.SimpleNamespace(name="n", plutus_vm=plutus_vm, oracle=oracle is not None, scala_cpus=2,
+                                         no_load=True,
                                          no_compare=True, keep=False, timeout=60, until_epoch=GREEN_TARGET,
                                          min_comparisons=3)
             from oracle import devnet as oracle_devnet
-            self.docker = []
+            self.docker, self.order = [], []
+
+            def oracle_stop(name, root_):
+                self.order.append("stop")
+
+            def oracle_run(name, root_, log):
+                self.order.append(("run", SINGLE_FOLLOWER.log(root).read_text().count('"event": "error"')))
+                return json.loads(json.dumps(oracle[0])), list(oracle[1])
             with patch.object(e2e_scenario, "data_root", return_value=root), \
                     patch.object(e2e_scenario, "up_eras", side_effect=up_eras), \
                     patch.object(e2e_scenario, "start_follower", side_effect=start), \
@@ -653,6 +662,8 @@ class GreenRunTest(unittest.TestCase):
                     patch.object(oracle_devnet, "node_pid", return_value=42), \
                     patch.object(oracle_devnet, "signal_node", return_value=True), \
                     patch.object(oracle_devnet, "follower_tip", side_effect=tip), \
+                    patch.object(oracle_devnet, "stop_follower", side_effect=oracle_stop), \
+                    patch.object(oracle_devnet, "run", side_effect=oracle_run), \
                     patch.object(e2e_scenario.time, "sleep"), \
                     contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as ended:
                 e2e_scenario.e2e(args)
@@ -674,7 +685,7 @@ class GreenRunTest(unittest.TestCase):
         summary, _ = self.run_e2e(None)
         for key in ("transitions", "blocksPerEra", "cpuStarvationWarnings", "ledgerComparison", "followerExit"):
             self.assertIn(key, summary)
-        for key in ("followers", "crossCheck", "plutusVm", "reachedTarget"):
+        for key in ("followers", "crossCheck", "plutusVm", "reachedTarget", "followerStop"):
             self.assertNotIn(key, summary)
         self.assertEqual(summary["followerExit"], None, "the stop the run asked for is no exit of the follower's")
         self.assertIn(("stop", "-t", "30", "n-scala"), self.docker)
@@ -719,6 +730,18 @@ class GreenRunTest(unittest.TestCase):
                 self.assertEqual(code, 1)
                 self.assertEqual(summary["failures"], [f"{prefix}1 fatal errors: late"])
 
+    def test_an_oracle_run_stops_its_follower_with_the_oracle_and_judges_its_whole_log_first(self):
+        oracle = ({"digests": 3, "compared": 3, "results": [{"slot": 1}]}, [])
+        summary, code = self.run_e2e(None, oracle=oracle)
+        self.assertEqual((summary["failures"], code), ([], 0))
+        self.assertEqual(self.order, ["stop", ("run", 0)])
+        self.assertEqual(summary["oracle"], {"digests": 3, "compared": 3})  # the rows stay in oracle-summary.json
+        self.assertFalse(any(c[0] == "stop" for c in self.docker), "the oracle's own stop, not the run's")
+        late = [{"event": "error", "kind": "LedgerFailure", "message": "late"}]
+        summary, code = self.run_e2e(None, oracle=({"digests": 3}, ["oracle: 1 digest differs"]), on_stop={None: late})
+        self.assertEqual(code, 1)
+        self.assertEqual(summary["failures"], ["1 fatal errors: late", "oracle: 1 digest differs"])
+
     def test_a_follower_that_ended_before_the_stop_is_a_premature_exit(self):
         summary, code = self.run_e2e(["scalus", "scarab"], exited={"scalus": 1})
         self.assertEqual(code, 1)
@@ -730,16 +753,23 @@ class GreenRunTest(unittest.TestCase):
             "the follower was recorded"])
         self.assertEqual(summary["followers"]["scalus"]["followerExit"], 1)
 
+    # the keys of a single-follower run's summary before several followers existed (this run's: no load, no
+    # comparisons), pinned so that no change for several followers adds one
+    SINGLE_SUMMARY = {"transitions", "expectedTransitions", "blocksPerEra", "blocksApplied", "lastEpoch",
+                      "validationErrors", "fatalErrors", "unparsedOutput", "rollbacks", "reconnects", "followerExit",
+                      "ledgerComparison", "blockedThreads", "endedThreads", "stoppedBecause", "cpuStarvationWarnings",
+                      "targetConwayEpoch", "failures", "passed"}
+
     def test_one_explicit_evaluator_keeps_the_summary_and_verdicts_of_none(self):
         # with one `--plutus-vm` the run's only follower is not asked which evaluator its start logged: a log that
         # names another, or none, changes neither the verdict nor the summary's layout
         plain, _ = self.run_e2e(None)
+        self.assertEqual(set(plain), self.SINGLE_SUMMARY)
         for vm, logged in (("scalus", None), ("scarab", "scalus"), ("scarab", "scarab")):
             with self.subTest(vm=vm, logged=logged):
                 summary, code = self.run_e2e([vm], logs={None: green_log(logged)})
                 self.assertEqual((summary["failures"], code), ([], 0))
-                self.assertNotIn("plutusVm", summary)
-                self.assertEqual(sorted(summary), sorted(plain))
+                self.assertEqual(set(summary), self.SINGLE_SUMMARY)
 
     def test_with_two_followers_each_must_have_run_the_evaluator_it_was_given(self):
         summary, code = self.run_e2e(["scalus", "scarab"], logs={"scarab": green_log("scalus")})
