@@ -1,14 +1,15 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Genesis fields
 
-322 cases measured against the unchanged released Haskell ledger libraries used by node 11.1.3
+324 cases measured against the unchanged released Haskell ledger libraries used by node 11.1.3
 (cardano-ledger `f649f975`): 279 on 2026-10-28 for [#497](https://github.com/KD5UJC-XYZ/scarab/issues/497), 22 on
 2026-11-07 for [#573](https://github.com/KD5UJC-XYZ/scarab/issues/573), 12 on 2026-11-09 for the genesis files of the
 refusal corpora of [#832](https://github.com/KD5UJC-XYZ/scarab/issues/832), 3 on 2026-11-10 for those of the
-Leios-build refusal corpus of [#826](https://github.com/KD5UJC-XYZ/scarab/issues/826), and 6 on 2026-11-13 for the
-Shelley and Conway genesis files of the three clusters of the `refusalcoverage` corpora. That recording ran every
-case again, on an image rebuilt from the same recipe (a new image id), and the 316 earlier verdicts came out
-unchanged. The oracle source and [recipe](../../../scripts/oracle/genesis-fields/README.md) are committed;
+Leios-build refusal corpus of [#826](https://github.com/KD5UJC-XYZ/scarab/issues/826), and 8 on 2026-11-13: 2 for those of
+the `conway-governance` refusal corpus and 6 for the Shelley and Conway genesis files of the three clusters of the
+`refusalcoverage` corpora. That recording ran every case again, on an image rebuilt from the same recipe (a new image
+id), and the 316 earlier verdicts came out unchanged; the last recording, which joined the two sets, changed none of
+the 322 verdicts it found and added the 2 it lacked. The oracle source and [recipe](../../../scripts/oracle/genesis-fields/README.md) are committed;
 `provenance.json` records the image identity, the program's hash and the hash of every base file.
 
 `cases.jsonl` holds one case per line:
