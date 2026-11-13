@@ -5,4 +5,4 @@ FROM cardano-reference-11.1.3:local
 ENV CARDANO_CLI=/opt/reference/bin/cardano-cli \
     CARDANO_NODE=/opt/reference/bin/cardano-node
 RUN mkdir -p /opt/at
-COPY --chmod=0755 configure.sh haskell-node.sh /opt/at/
+COPY --chmod=0755 configure.sh haskell-node.sh listening.sh /opt/at/
