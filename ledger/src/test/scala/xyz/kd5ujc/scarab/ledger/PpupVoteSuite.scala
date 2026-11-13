@@ -116,7 +116,11 @@ class PpupVoteSuite extends FunSuite:
 
   test("the era rules: three encodings of one Alonzo update reach a quorum of 3 together") {
     assertEquals(Vector(canonical, rewritten, wide).distinct.size, 3)
-    val voted = UpdateChecks.voted(alonzo, votes(Vector(canonical, rewritten, wide)), 3)
+    val voted = UpdateChecks.voted[xyz.kd5ujc.scarab.ledger.state.Alonzo](
+      alonzo,
+      votes(Vector(canonical, rewritten, wide)),
+      3
+    )
     assertEquals(voted.map(_.minFeeA), Some(BigInt(1000)))
     assertEquals(voted.map(_.costModels.get(0)), Some(Some(Vector.fill(166)(BigInt(100)))))
     assertEquals(voted.map(p => (p.priceMem, p.priceSteps)), Some((Rational(1, 5), Rational(10))))
@@ -124,15 +128,30 @@ class PpupVoteSuite extends FunSuite:
   }
 
   test("the era rules: a different fee is a different update, and two byte groups are one") {
-    assertEquals(UpdateChecks.voted(alonzo, votes(Vector(canonical, rewritten, otherFee)), 3), None)
+    assertEquals(
+      UpdateChecks.voted[xyz.kd5ujc.scarab.ledger.state.Alonzo](
+        alonzo,
+        votes(Vector(canonical, rewritten, otherFee)),
+        3
+      ),
+      None
+    )
     assertEquals(
       UpdateChecks
-        .voted(alonzo, votes(Vector(canonical, canonical, rewritten, rewritten)), 2)
+        .voted[xyz.kd5ujc.scarab.ledger.state.Alonzo](
+          alonzo,
+          votes(Vector(canonical, canonical, rewritten, rewritten)),
+          2
+        )
         .map(_.minFeeA),
       Some(BigInt(1000))
     )
     assertEquals(
-      UpdateChecks.voted(alonzo, votes(Vector(canonical, rewritten, otherFee, otherFee)), 2),
+      UpdateChecks.voted[xyz.kd5ujc.scarab.ledger.state.Alonzo](
+        alonzo,
+        votes(Vector(canonical, rewritten, otherFee, otherFee)),
+        2
+      ),
       None
     )
   }
@@ -143,7 +162,13 @@ class PpupVoteSuite extends FunSuite:
     assertEquals(ParamUpdate.typed(unread), Map(2 -> ParamUpdate.Typed.Unread(hex("6161"))))
     assertEquals(ParamUpdate.winners(Vector(unread, other, unread), 2), Vector(unread))
     assertEquals(
-      UpdateChecks.voted(alonzo, votes(Vector(canonical, unread, rewritten)), 2).map(_.minFeeA),
+      UpdateChecks
+        .voted[xyz.kd5ujc.scarab.ledger.state.Alonzo](
+          alonzo,
+          votes(Vector(canonical, unread, rewritten)),
+          2
+        )
+        .map(_.minFeeA),
       Some(BigInt(1000))
     )
   }

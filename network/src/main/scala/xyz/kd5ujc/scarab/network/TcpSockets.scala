@@ -101,23 +101,16 @@ final case class ObservedSettings(
     linger: Int
 )
 
-/** A connected TCP socket: its bearer, its two addresses, and a way to read its settings back. */
+/** A connected TCP socket: its bearer, its two addresses, a way to read its settings back, and the
+  * close of its channel (which may be run more than once).
+  */
 final case class TcpStream[F[_]](
     bearer: Bearer[F],
     local: SocketAddress[IpAddress],
     remote: SocketAddress[IpAddress],
-    observed: F[Either[TcpSocketError, ObservedSettings]]
+    observed: F[Either[TcpSocketError, ObservedSettings]],
+    close: F[Unit]
 )
-
-/** A listening TCP socket. */
-trait TcpListener[F[_]]:
-  /** The address it is bound to (the port the kernel chose, for port 0). */
-  def address: SocketAddress[IpAddress]
-
-  /** The next connection; the resource closes it. A cancelled accept closes the listener, as the
-    * JDK can interrupt a blocking accept no other way.
-    */
-  def accept: Resource[F, Either[TcpSocketError, TcpStream[F]]]
 
 /** Node-to-node TCP sockets configured as the reference configures them, on blocking JDK
   * `SocketChannel` s. Every call runs on the blocking pool and a blocked read, write, connect or
@@ -199,7 +192,8 @@ object TcpSockets:
           bearer(channel, writes, local, remote),
           local,
           remote,
-          F.blocking(observe(channel))
+          F.blocking(observe(channel)),
+          F.blocking(channel.close())
         )
       )
     })
@@ -280,17 +274,34 @@ object TcpSockets:
   )(using F: Async[F]): TcpListener[F] = new TcpListener[F]:
     def address: SocketAddress[IpAddress] = bound
 
-    def accept: Resource[F, Either[TcpSocketError, TcpStream[F]]] =
-      Resource
-        .makeFull[F, Either[TcpSocketError, SocketChannel]](poll =>
-          poll(
-            LocalSockets.interruptible(
-              F.blocking(call(SocketStep.Accept)(server.accept())),
-              F.blocking(server.close())
-            )
+    // between the accept and the stream that owns its channel nothing may cancel, and the channel
+    // is closed if the stream is not made
+    def accept: F[Either[AcceptFailure, TcpStream[F]]] =
+      F.uncancelable { poll =>
+        poll(
+          LocalSockets.interruptible(
+            F.blocking(Either.catchNonFatal(server.accept())),
+            F.blocking(server.close())
           )
-        )(_.traverse_(channel => F.blocking(channel.close())))
-        .evalMap(_.flatTraverse { channel =>
-          F.blocking(onAccepted.traverse_(set(channel, _)))
-            .flatMap(_.flatTraverse(_ => connected(channel)))
-        })
+        ).flatMap {
+          case Right(channel) =>
+            F.blocking(onAccepted.traverse_(set(channel, _)))
+              .flatMap(_.flatTraverse(_ => connected(channel)))
+              .onError { case _ => F.blocking(channel.close()) }
+              .flatMap {
+                case Right(stream) => F.pure(stream.asRight[AcceptFailure])
+                case Left(error) =>
+                  val failure = error match
+                    case TcpSocketError.Defect(cause) => AcceptFailure.Defect(cause)
+                    case other                        => AcceptFailure.Configure(other)
+                  F.blocking(channel.close()).as(failure.asLeft[TcpStream[F]])
+              }
+          case Left(e: IOException) =>
+            F.pure(
+              AcceptFailure
+                .System(SystemCallError.of(SystemCall.Accept, None)(e))
+                .asLeft[TcpStream[F]]
+            )
+          case Left(cause) => F.pure(AcceptFailure.Defect(cause).asLeft[TcpStream[F]])
+        }
+      }

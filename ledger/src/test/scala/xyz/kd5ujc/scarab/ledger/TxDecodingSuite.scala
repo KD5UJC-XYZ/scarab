@@ -62,10 +62,7 @@ class TxDecodingSuite extends FunSuite:
 
   test("genesis delegation and instantaneous reward certificates decode") {
     def cert(hex: String) =
-      Certificate.decode(
-        CborRead.decode(Bytes.fromHex(hex).toOption.get).toOption.get,
-        DecoderVersion.of(Era.Shelley)
-      )
+      Certificate.decode(CborRead.decode(Bytes.fromHex(hex).toOption.get).toOption.get, Era.Shelley)
     val g = "a" * 56
     val d = "b" * 56
     val v = "c" * 64
@@ -93,13 +90,83 @@ class TxDecodingSuite extends FunSuite:
     assertEquals(cert("820682011864"), Right(Certificate.MoveRewards(Pot.Treasury, Left(100))))
   }
 
+  test("Conway's decoder refuses genesis delegation and instantaneous reward certificates") {
+    def cert(hex: String, era: Era) =
+      Certificate.decode(CborRead.decode(Bytes.fromHex(hex).toOption.get).toOption.get, era)
+    val delegation = s"8405581c${"a" * 56}581c${"b" * 56}5820${"c" * 64}"
+    val rewards = "820682011864"
+    for era <- Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage) do
+      assert(cert(delegation, era).isRight, s"$era reads a genesis delegation")
+      assert(cert(rewards, era).isRight, s"$era reads a MIR certificate")
+    assertEquals(
+      cert(delegation, Era.Conway),
+      Left(LedgerDecodeError.RetiredCertificate(LedgerDecodeError.Retired.GenesisDelegation))
+    )
+    assertEquals(
+      cert(rewards, Era.Conway),
+      Left(LedgerDecodeError.RetiredCertificate(LedgerDecodeError.Retired.MoveInstantaneousRewards))
+    )
+  }
+
+  test("Shelley to Babbage read certificate tags 0 to 6, Conway 7 to 18") {
+    val cred = s"8200581c${"e" * 56}"
+    val registration = s"8307${cred}1a001e8480"
+    val delegation = s"840a${cred}581c${"f" * 56}8102"
+    def cert(hex: String, era: Era) =
+      Certificate.decode(CborRead.decode(Bytes.fromHex(hex).toOption.get).toOption.get, era)
+    for era <- Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage) do
+      assertEquals(cert(s"8200$cred", era).map(_ => ()), Right(()), s"$era: tag 0")
+      assertEquals(
+        cert(registration, era),
+        Left(LedgerDecodeError.TaggedArity(DecodeField.Certificate, 7, 3)),
+        s"$era: tag 7"
+      )
+      assertEquals(
+        cert(delegation, era),
+        Left(LedgerDecodeError.TaggedArity(DecodeField.Certificate, 10, 4)),
+        s"$era: tag 10"
+      )
+    assert(cert(registration, Era.Conway).isRight, "Conway: tag 7")
+    assert(cert(delegation, Era.Conway).isRight, "Conway: tag 10")
+  }
+
+  test("Shelley's native scripts have no time locks; Allegra's do") {
+    def script(hex: String, form: NativeScript.Form) =
+      NativeScript.decode(CborRead.decode(Bytes.fromHex(hex).toOption.get).toOption.get, form)
+    def refused(tag: Int) =
+      Left(
+        NativeScript.DecodeError.Malformed(
+          LedgerDecodeError.TaggedArity(DecodeField.NativeScript, tag, 2)
+        )
+      )
+    assertEquals(NativeScript.Form.of(Era.Shelley), NativeScript.Form.MultiSig)
+    for era <- Era.values.toVector.filter(_.ordinal > Era.Shelley.ordinal) do
+      assertEquals(NativeScript.Form.of(era), NativeScript.Form.Timelock, era.toString)
+    // [4, 100], [5, 100] and [1, [[5, 100]]]
+    assertEquals(script("82041864", NativeScript.Form.MultiSig), refused(4))
+    assertEquals(script("82051864", NativeScript.Form.MultiSig), refused(5))
+    assertEquals(script("82018182051864", NativeScript.Form.MultiSig), refused(5))
+    assertEquals(
+      script("82041864", NativeScript.Form.Timelock),
+      Right(NativeScript.InvalidBefore(100))
+    )
+    assertEquals(
+      script("82018182051864", NativeScript.Form.Timelock),
+      Right(NativeScript.AllOf(Vector(NativeScript.InvalidHereafter(100))))
+    )
+    assertEquals(
+      script(s"8200581c${"e" * 56}", NativeScript.Form.MultiSig).map(_ => ()),
+      Right(())
+    )
+  }
+
   test("script hashes: native scripts hash their encoding, Plutus scripts their bytes") {
     val key = "e" * 56
     val node = CborRead
       .decode(Bytes.fromHex(s"8200581c$key").toOption.get)
       .toOption
       .get
-    val native = Script.native(node).toOption.get
+    val native = Script.native(node, NativeScript.Form.Timelock).toOption.get
     assertEquals(
       native.hash,
       Blake2b.hash224.hash(Bytes(0.toByte +: Bytes.fromHex(s"8200581c$key").toOption.get.value))

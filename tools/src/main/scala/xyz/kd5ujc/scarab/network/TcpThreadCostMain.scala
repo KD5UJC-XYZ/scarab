@@ -91,7 +91,12 @@ object TcpThreadCostMain extends IOApp:
       val counted =
         serving.updateAndGet(_ + 1).flatMap(n => all.complete(()).whenA(n == connections))
       val served = BearerServer
-        .listen[IO, NetworkError](Listeners.Loopback, maxConnections = None)((_, _) => IO.unit) {
+        .listen[IO, NetworkError](
+          TcpListeners.configured[IO],
+          Listeners.Loopback,
+          _ => IO.unit,
+          maxConnections = None
+        )((_, _) => IO.unit) {
           (bearer, _) =>
             if reading then
               Mux.resource[IO](bearer, Set.empty).use(mux => counted *> mux.closed).void

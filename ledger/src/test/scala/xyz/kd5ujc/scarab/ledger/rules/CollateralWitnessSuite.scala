@@ -42,7 +42,9 @@ class CollateralWitnessSuite extends FunSuite:
     val pp = TestLedger.params(major)
     TestLedger.verdict(
       tx.body.id,
-      Utxow.checks(UtxoEnv(TestLedger.env, pp, ()), Map.empty, StAnnTx(tx, utxo), Test.pass)
+      Utxow.checks(UtxoEnv(TestLedger.env, pp, ()), Map.empty, StAnnTx(tx, utxo), Test.pass)(using
+        TestLedger.usualEra(major)
+      )
     )
 
   for major <- Vector(5, 6, 7, 8, 9, 10, 11) do

@@ -79,7 +79,13 @@ object PreviewRuleBench extends IOApp.Simple with Assertions:
         given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
         val globals = Globals(setup.globals, setup.geometry)
         // This pinned window is entirely Conway/protocol 11; no era transition is synthesized.
-        val context = EraBlock.Context(globals, _ => None, 0L)
+        val context = EraBlock.Context(
+          globals,
+          _ => None,
+          0L,
+          evaluator = xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+          decoder = xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+        )
         val name = "snapshot-00000000000125231955-4753556"
         for
           raw <- IO.blocking(Files.readAllBytes(JPath.of(s"/native/$name.bin")))

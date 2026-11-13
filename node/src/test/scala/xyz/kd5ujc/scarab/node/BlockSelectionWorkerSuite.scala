@@ -147,7 +147,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
 
   List(
     "a missing implementation" -> xyz.kd5ujc.scarab.plutus.BackendFailure
-      .BuiltinUnavailable(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup),
+      .BuiltinUnavailable(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup),
     "an evaluator defect a block triggers" -> xyz.kd5ujc.scarab.plutus.BackendFailure
       .Defect(new NullPointerException("Scalus"))
   ).foreach { (name, missing) =>
@@ -191,7 +191,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
         beforeRule = h => judged.update(m => m.updated(h.hash, m.getOrElse(h.hash, 0) + 1)),
         unavailable = Map(
           bodies(1).header.hash -> xyz.kd5ujc.scarab.plutus.BackendFailure
-            .BuiltinUnavailable(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+            .BuiltinUnavailable(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
         )
       ) { n =>
         n.pool.session(Some(e => n.reports.update(_ :+ e))).use { sender =>
@@ -710,9 +710,9 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
 
   List(
     xyz.kd5ujc.scarab.plutus.BackendFailure
-      .BuiltinUnavailable(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup),
+      .BuiltinUnavailable(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup),
     xyz.kd5ujc.scarab.plutus.BackendFailure
-      .CostingUnmirrored(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup),
+      .CostingUnmirrored(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup),
     xyz.kd5ujc.scarab.plutus.BackendFailure
       .BudgetOutOfRange(xyz.kd5ujc.scarab.plutus.ExUnits(BigInt(2).pow(64), BigInt(0))),
     xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted

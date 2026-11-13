@@ -1,0 +1,35 @@
+{
+  "format": 2,
+  "era": "conway",
+  "referenceBuild": "leios-b004fe0c",
+  "protocolVersion": [
+    12,
+    0
+  ],
+  "provenance": {
+    "reference": {
+      "node": "cardano-node 11.2.0.164 - linux-x86_64 - ghc-9.6",
+      "revision": "b004fe0c50913dcdaa827a98e68a43d0ccce152a",
+      "image": "ghcr.io/input-output-hk/ouroboros-leios/cardano-node-testnet@sha256:70439665b4b93c58ecaa8f73c8919ac7b358f938dd262b6644cd515270773fca",
+      "imageId": "sha256:70439665b4b93c58ecaa8f73c8919ac7b358f938dd262b6644cd515270773fca"
+    },
+    "command": "python3 scripts/devnet.py --name <devnet> refusal-corpus --era conway --corpus conway-bootstrap-attributes-leios-b004fe0c --reference-build leios-b004fe0c --cases refusalcases:leios_bootstrap_attributes",
+    "scarabCommit": "b5bd406f7c0dff8314e667d14823b13bb2284e51",
+    "scarabDirty": false,
+    "recorded": "2026-11-10T16:07:26Z"
+  },
+  "genesis": {
+    "byron-genesis.json": "b7df01a5db94b6de08f5b2e1da578aca31cf88fde8932da75f92041da6aaa7bc",
+    "shelley-genesis.json": "437ce0c3ccf98e298dd8fb8aa5bfc7d57204aa6956eb7b73297249fffe4c9b3f",
+    "alonzo-genesis.json": "74c6364c5013661196f9b1e31cb9df467516f24c7dae6306e65ea9f331fca47f",
+    "conway-genesis.json": "a61e28c53a64d52464464dd9446387d3bd18b0cf9d0fa4b822a50fe01931eb39",
+    "dijkstra-genesis.json": "9417f82cc2405de8e834222818f45c23759d6ac6c6c6f515f68c689eaa597fc0",
+    "config.json": "f8737a3cc4bd9bf1878080fb7fd3207a91d7930240866a5136e70f26e4881a5e"
+  },
+  "cases": [
+    {
+      "file": "cases/cases.jsonl",
+      "sha256": "c1b4277c4c9693ac0e71fa346fb2e884815fa3cfda9b684de9c4b1d4257c862e"
+    }
+  ]
+}

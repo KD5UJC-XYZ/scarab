@@ -157,7 +157,13 @@ object Certificate:
     case RegisterPool(params) => Left(PoolParams.identity(params))
     case other                => Right(other)
 
-  def decode(n: Node, version: DecoderVersion): Either[LedgerDecodeError, Certificate] =
+  /** A certificate of a body of `era`, read by the era's `decodeRecordSum`: `ShelleyTxCert` from
+    * Shelley to Babbage, `ConwayTxCert` in Conway, which fails the certificates it retired
+    * ([[retired]]). A tag the era's decoder does not read is no certificate of its arity
+    * ([[arities]]).
+    */
+  def decode(n: Node, era: Era): Either[LedgerDecodeError, Certificate] =
+    val version = DecoderVersion.of(era)
     given ByteStrings = ByteStrings.of(version)
     def cred(i: Int, xs: Vector[Node]) = Credential.decode(xs(i), DecodeField.CertificateCredential)
     def pool(i: Int, xs: Vector[Node]) = CborRead.bytesN(xs(i), 28, DecodeField.PoolId)
@@ -168,29 +174,10 @@ object Certificate:
         tag <- xs.headOption
           .toRight(LedgerDecodeError.Empty(DecodeField.Certificate))
           .flatMap(CborRead.uint(_, DecodeField.CertificateTag))
-        arity = Map(
-          0 -> 2,
-          1 -> 2,
-          2 -> 3,
-          3 -> 10,
-          4 -> 3,
-          5 -> 4,
-          6 -> 2,
-          7 -> 3,
-          8 -> 3,
-          9 -> 3,
-          10 -> 4,
-          11 -> 4,
-          12 -> 4,
-          13 -> 5,
-          14 -> 3,
-          15 -> 3,
-          16 -> 4,
-          17 -> 3,
-          18 -> 3
-        )
-        // `decodeRecordSum` (`Shelley/TxCert.hs:475-487`, `Conway/TxCert.hs`): the tag is a
-        // full-width `Word`, and a tag beyond `Int` names no certificate
+        _ <- CborRead.small(tag).flatMap(retired(era)).toLeft(())
+        arity = arities(era)
+        // `decodeRecordSum` (`Shelley/TxCert.hs:475-487`, `Conway/TxCert.hs:674-681`): the tag is
+        // a full-width `Word`, and a tag beyond `Int` names no certificate
         small <- CborRead
           .small(tag)
           .filter(t => arity.get(t).contains(xs.size))
@@ -233,6 +220,46 @@ object Certificate:
           case t  => Left(LedgerDecodeError.UnknownTag(DecodeField.Certificate, t))
       yield cert
     }
+
+  /** The number of items of each certificate the decoder of `era` reads, by tag, as
+    * `decodeRecordSum` matches it. `ShelleyTxCert`, the certificate of Shelley to Babbage, reads
+    * tags 0 to 6 and calls `invalidKey` for any other (`decCBOR`,
+    * `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs:475-487`, cardano-ledger f649f975);
+    * Conway's `ConwayTxCert` reads 0 to 4 and 7 to 18 (`conwayTxCertDelegDecoder`,
+    * `eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:674-719`).
+    */
+  private def arities(era: Era): Map[Int, Int] =
+    if era.ordinal >= Era.Conway.ordinal then conwayArities else shelleyArities
+
+  private val shelleyArities: Map[Int, Int] =
+    Map(0 -> 2, 1 -> 2, 2 -> 3, 3 -> 10, 4 -> 3, 5 -> 4, 6 -> 2)
+
+  private val conwayArities: Map[Int, Int] =
+    shelleyArities -- LedgerDecodeError.Retired.values.map(_.tag) ++ Map(
+      7 -> 3,
+      8 -> 3,
+      9 -> 3,
+      10 -> 4,
+      11 -> 4,
+      12 -> 4,
+      13 -> 5,
+      14 -> 3,
+      15 -> 3,
+      16 -> 4,
+      17 -> 3,
+      18 -> 3
+    )
+
+  /** Conway's `decCBOR` fails tags 5 (genesis delegation) and 6 (moving instantaneous rewards)
+    * before it reads their fields: they "are no longer supported"
+    * (`eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:674-681`, cardano-ledger f649f975).
+    * Shelley to Babbage read both (`Shelley/TxCert.hs:475-487`).
+    */
+  private def retired(era: Era)(tag: Int): Option[LedgerDecodeError] =
+    LedgerDecodeError.Retired.values
+      .find(_.tag == tag)
+      .filter(_ => era.ordinal >= Era.Conway.ordinal)
+      .map(LedgerDecodeError.RetiredCertificate(_))
 
   /** `[pot, target]`: the target is a map from credential to `DeltaCoin` for `TypeMapLen`,
     * `TypeMapLen64` and `TypeMapLenIndef`, and a `Coin` otherwise (`DecCBOR MIRTarget`,
@@ -429,7 +456,7 @@ object TxBody:
       certs <- present(DecodeField.Certificates)(
         f.get(4)
           .traverse(
-            CborRead.oset(_, DecodeField.Certificates, version)(Certificate.decode(_, version))(
+            CborRead.oset(_, DecodeField.Certificates, version)(Certificate.decode(_, era))(
               Certificate.identity
             )
           )
@@ -541,13 +568,49 @@ final case class BootstrapWitness(
     attributes: Bytes
 ):
   /** The address root this witness authorises: `blake2b-224(sha3-256([0, [0, vkey‖chaincode],
-    * attributes]))`, with the attributes spliced in as the original CBOR map.
+    * attributes]))`, with the attributes spliced in as the original CBOR map. As in
+    * `bootstrapWitKeyHash` (`Keys/Bootstrap.hs:112-146`, cardano-ledger f649f975), the prefix names
+    * a 64-byte key whatever the chain code's length, and the chain code is hashed as read.
     */
   lazy val addressRoot: Bytes =
     val prefix = Vector(0x83, 0x00, 0x82, 0x00, 0x58, 0x40).map(_.toByte)
     val data = prefix ++ vkey.value ++ chainCode.value ++ attributes.value
     val sha3 = java.security.MessageDigest.getInstance("SHA3-256").digest(data.toArray)
     Blake2b.hash224.hash(Bytes.fromArray(sha3))
+
+object BootstrapWitness:
+  /** The witnesses a set of bootstrap witnesses holds: `Set.fromList` of every witness read, in the
+    * order written (from Shelley's `Set.fromList <$> decodeList decCBOR` to Conway's
+    * `decodeNonEmptyList`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxWits.hs:246-249` and
+    * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs:613-668`, cardano-ledger f649f975) under
+    * `Ord BootstrapWitness`, which compares the address roots alone
+    * (`libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Bootstrap.hs:108-109`). Of the witnesses
+    * with one root, which differ in their signatures or in how their chain code and attributes
+    * split the hashed bytes, the set keeps the last one read (`Data.Set.insert` replaces an equal
+    * element), even when a copy of another of them came before it, and it holds them in the order
+    * of their roots. Only the kept witnesses' signatures are checked (`validateVerifiedWits`,
+    * `Shelley/Rules/Utxow.hs:391-407`).
+    */
+  def set(read: Vector[BootstrapWitness]): Vector[BootstrapWitness] =
+    read.reverse.distinctBy(_.addressRoot).sortBy(_.addressRoot)
+
+  /** `DecCBOR ChainCode` (`libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Bootstrap.hs:72-78`,
+    * cardano-ledger f649f975): a byte string of any length, which must be 32 bytes from decoder
+    * version 12 (`whenDecoderVersionAtLeast (natVersion @12)`). Shelley to Conway are read at 2 to
+    * 9, so their chain codes have any length.
+    */
+  def chainCode(n: Node, version: DecoderVersion)(using
+      ByteStrings
+  ): Either[LedgerDecodeError, Bytes] =
+    CborRead
+      .bytes(n, DecodeField.ChainCode)
+      .flatMap(code =>
+        Either.cond(
+          !version.atLeast(12) || code.size == 32,
+          code,
+          LedgerDecodeError.ByteLength(DecodeField.ChainCode, 32, code.size)
+        )
+      )
 
 /** A redeemer: purpose tag (0 spend, 1 mint, 2 cert, 3 reward, 4 vote, 5 propose), index, data and
   * the execution units budget.
@@ -583,6 +646,8 @@ object Witnesses:
     * twice fails; duplicate vkeys, native scripts, datums and redeemer keys are tolerated
     * (cardano-ledger `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs` at f649f975,
     * `addrWitsSetDecoder`, `nativeScriptsDecoder`, `scriptDecoderV9`, `TxDatsRaw`, `RedeemersRaw`).
+    * In every era the bootstrap witnesses of one address root are one, the last read
+    * ([[BootstrapWitness.set]]).
     */
   def decode(raw: Bytes, era: Era): Either[LedgerDecodeError, Witnesses] =
     LedgerDecodeError.implemented(era) *>
@@ -624,22 +689,30 @@ object Witnesses:
         .get(1)
         .traverse(
           CborRead
-            .tolerantSet(_, DecodeField.NativeScripts, version)(Script.native)
+            .tolerantSet(_, DecodeField.NativeScripts, version)(
+              Script.native(_, NativeScript.Form.of(era))
+            )
             .map(_.distinctBy(_.hash))
         )
       bootstrap <- f
         .get(2)
         .traverse(
-          CborRead.tolerantSet(_, DecodeField.BootstrapWitnesses, version) { w =>
-            CborRead.arrayN(w, 4, DecodeField.BootstrapWitness).flatMap { xs =>
-              (
-                CborRead.bytesN(xs(0), 32, DecodeField.BootstrapVkey),
-                CborRead.bytesN(xs(1), 64, DecodeField.BootstrapSignature),
-                CborRead.bytesN(xs(2), 32, DecodeField.ChainCode),
-                CborRead.bytes(xs(3), DecodeField.Attributes)
-              ).mapN(BootstrapWitness(_, _, _, _))
-            }
-          }
+          // the list as `tolerantSet` reads it but with every witness kept for `BootstrapWitness.set`:
+          // dropping a repeated copy first would change which witness of a root is the last
+          CborRead
+            .list(_, DecodeField.BootstrapWitnesses, version)
+            .flatMap(CborRead.nonEmpty(_, DecodeField.BootstrapWitnesses, strict))
+            .flatMap(_.traverse { w =>
+              CborRead.arrayN(w, 4, DecodeField.BootstrapWitness).flatMap { xs =>
+                (
+                  CborRead.bytesN(xs(0), 32, DecodeField.BootstrapVkey),
+                  CborRead.bytesN(xs(1), 64, DecodeField.BootstrapSignature),
+                  BootstrapWitness.chainCode(xs(2), version),
+                  CborRead.bytes(xs(3), DecodeField.Attributes)
+                ).mapN(BootstrapWitness(_, _, _, _))
+              }
+            })
+            .map(BootstrapWitness.set)
         )
       plutus = (tag: Int, kind: ScriptKind) =>
         f.get(tag)

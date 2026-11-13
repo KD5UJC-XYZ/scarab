@@ -41,7 +41,15 @@ class ShelleyMirAccumulationSuite extends FunSuite:
     test(s"protocol $protocol $pot: a later MIR offsets the negative intermediate entry") {
       val env = ShelleyDelegEnv(
         DelegsEnv(
-          TxEnv(1, 0, 0, firstSlotNextEpoch = 100, stabilityWindow = 10),
+          TxEnv(
+            1,
+            0,
+            0,
+            firstSlotNextEpoch = 100,
+            stabilityWindow = 10,
+            evaluator = xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+            decoder = xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+          ),
           TestLedger.params(protocol),
           Bytes(Vector.fill(32)(0.toByte)),
           ChainAccountState(Coin(0), Coin(0))

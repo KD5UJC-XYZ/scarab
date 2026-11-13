@@ -180,9 +180,30 @@ class _HostSocket:
         pass
 
 
+# Byte relays between stdin/stdout and a unix socket inside a container, by name. The reference images
+# have `socat`; the Leios build's image has none, but has perl with IO::Socket::UNIX. `perl` is one
+# process that copies both ways as socat does: the end of stdin half-closes the socket, and the end of
+# the socket ends the relay, so the client reads the end of stdout when the node closes; a read or write
+# error ends it with status 1.
+PERL_RELAY = (
+    "use IO::Socket::UNIX; use IO::Select;"
+    " my $s = IO::Socket::UNIX->new(Type => SOCK_STREAM(), Peer => $ARGV[0]) or die $!;"
+    " my $in = \\*STDIN; my $select = IO::Select->new($in, $s);"
+    " sub put { my ($to, $b, $n) = @_; my $o = 0;"
+    " while ($o < $n) { my $w = syswrite($to, $b, $n - $o, $o); defined $w or exit 1; $o += $w } }"
+    " while (my @ready = $select->can_read) { for my $from (@ready) { my $n = sysread($from, my $b, 65536);"
+    " defined $n or exit 1; if ($from == $s) { $n or exit 0; put(\\*STDOUT, $b, $n) }"
+    " elsif ($n) { put($s, $b, $n) } else { $select->remove($in); shutdown($s, 1) } } }")
+RELAYS = {
+    "socat": lambda socket: ["socat", "-", f"UNIX-CONNECT:{socket}"],
+    "perl": lambda socket: ["perl", "-e", PERL_RELAY, socket],
+}
+
+
 class LocalStateQuery:
-    """Context manager: one NtC connection to a node socket, inside a container (through `socat`)
-    or, with `host=True`, a socket path on the host (the Scala node's socket directory).
+    """Context manager: one NtC connection to a node socket, inside a container (through `socat`, or
+    another of `RELAYS`) or, with `host=True`, a socket path on the host (the Scala node's socket
+    directory).
 
     `deadline` (seconds, None for none) bounds the whole session from its start: every read of the
     handshake, an acquire or a query waits at most until then and otherwise raises `Deadline`, and the
@@ -191,9 +212,9 @@ class LocalStateQuery:
 
     VERSIONS = [32784 + i for i in range(0, 10)]
 
-    def __init__(self, container, socket, magic, host=False, version=None, deadline=None):
+    def __init__(self, container, socket, magic, host=False, version=None, deadline=None, relay="socat"):
         self.container, self.socket, self.magic, self.host = container, socket, magic, host
-        self.version = version
+        self.version, self.relay = version, relay
         self.deadline = deadline
 
     def __enter__(self):
@@ -202,7 +223,7 @@ class LocalStateQuery:
             self.proc = _HostSocket(self.socket)
         else:
             self.proc = subprocess.Popen(
-                ["docker", "exec", "-i", self.container, "socat", "-", f"UNIX-CONNECT:{self.socket}"],
+                ["docker", "exec", "-i", self.container, *RELAYS[self.relay](self.socket)],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
         try:
             self.buffers = {}

@@ -1002,7 +1002,7 @@ class ConwayLedgerSuite extends FunSuite:
       tx(bodyWith(None), Vector(alice), wits),
       pp,
       Set(ScriptKind.PlutusV3)
-    )
+    )(using xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SConway)
 
     def ctx(succeeds: Boolean) =
       TestLedger.env.copy(

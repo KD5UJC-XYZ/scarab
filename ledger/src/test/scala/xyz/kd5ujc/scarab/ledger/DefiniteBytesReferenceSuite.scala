@@ -169,7 +169,9 @@ class DefiniteBytesReferenceSuite extends FunSuite:
       Bytes.fromHex("8201" + "5f5820" + "5b" * 32 + "ff").fold(e => fail(e.toString), identity)
     val stored = ParamUpdate(Map(13 -> chunked))
     assertEquals(
-      ProtocolParams.update(TestLedger.params(2), stored).map(_.extraEntropy),
+      ProtocolParams
+        .update[xyz.kd5ujc.scarab.ledger.state.Shelley](TestLedger.params(2), stored)
+        .map(_.extraEntropy),
       Right(Nonce.Hash(hash))
     )
     val lite = LiteParams((2, 0), Rational.one, Nonce.Neutral, 65536, 16384, 1100)
@@ -217,7 +219,9 @@ class DefiniteBytesReferenceSuite extends FunSuite:
     val stored =
       ParamUpdate(Map(13 -> Bytes.fromHex("820000").fold(e => fail(e.toString), identity)))
     assertEquals(
-      ProtocolParams.update(TestLedger.params(2), stored).map(_.extraEntropy),
+      ProtocolParams
+        .update[xyz.kd5ujc.scarab.ledger.state.Shelley](TestLedger.params(2), stored)
+        .map(_.extraEntropy),
       Right(Nonce.Neutral)
     )
     val lite = LiteParams(

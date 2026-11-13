@@ -192,6 +192,28 @@ class PeerSelectionSuite extends FunSuite:
     assertEquals(st4.peers(7).failCount, 1)
   }
 
+  // `randomR (-2, 2 :: Double)` and `realToFrac` (`ActivePeers.hs` 498-499, ouroboros-network
+  // `2fb69829`): one word scaled into the range, floored, where a millisecond draw would round
+  test("the fuzz of a failed activation is the reference's Double draw from one word") {
+    val (st1, _, _) = settle(start(List(group(1, 1, 7))), t0)
+    val st2 = complete(st1, Outcome.Connected(7), t0)
+    val (st3, _, _) = settle(st2, t0)
+    val (word, advanced) = st3.rng.nextLong
+    val st4 = complete(st3, Outcome.ActivateFailed(7, FailureClass.Transient), 5.seconds)
+    val Status.Cold(Some(at)) = statusOf(st4, 7): @unchecked
+    assertEquals(at, 15.seconds + Events.fromSeconds(Rng.scaleFloating(-2.0, 2.0, word)))
+    assertEquals(st4.rng, advanced)
+  }
+
+  test("a fuzz of seconds is floored to the nanosecond, toward minus infinity") {
+    // 0.1 is 0.1000000000000000055511151231257827... as a Double
+    assertEquals(Events.asSeconds(100.millis), 0.1)
+    assertEquals(Events.fromSeconds(0.1), 100.millis)
+    assertEquals(Events.fromSeconds(-0.1), -(100.millis + 1.nano))
+    assertEquals(Events.fromSeconds(-2.0), (-2).seconds)
+    assertEquals(Events.fromSeconds(1.9999999999999998), 1999999999.nanos)
+  }
+
   test("a peer that stayed hot loses its fail count after the clearing delay") {
     val (st1, _, _) = settle(start(List(group(1, 1, 7))), t0)
     val st2 = complete(st1, Outcome.Connected(7), t0)

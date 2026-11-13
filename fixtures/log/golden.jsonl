@@ -27,6 +27,9 @@
 {"event":"acceptError","at":"2026-10-16T12:00:00Z","reason":"Network.Socket.accept: resource exhausted (No file descriptors available)"}
 {"event":"serverStopped","at":"2026-10-16T12:00:00Z"}
 {"event":"serverError","at":"2026-10-16T12:00:00Z","reason":"Network.Socket.accept: resource exhausted (No file descriptors available)"}
+{"event":"remoteAcceptError","at":"2026-10-16T12:00:00Z","reason":"Network.Socket.accept: resource exhausted (No file descriptors available)"}
+{"event":"remoteServerStopped","at":"2026-10-16T12:00:00Z"}
+{"event":"remoteServerError","at":"2026-10-16T12:00:00Z","reason":"Network.Socket.accept: resource exhausted (No file descriptors available)"}
 {"event":"socketConfigError","at":"2026-10-16T12:00:00Z","error":"LocalSocketError \"/ipc/node.socket\" /ipc/node.socket: removeLink: inappropriate type (Is a directory)"}
 {"event":"diffusionErrored","at":"2026-10-16T12:00:00Z","error":"Network.Socket.bind: does not exist (No such file or directory)"}
 {"event":"listening","at":"2026-10-16T12:00:00Z","address":"0.0.0.0:3001"}
@@ -155,9 +158,15 @@
 {"event":"lost","at":"2026-10-16T12:00:00Z","slot":4200,"hash":"abababababababababababababababababababababababababababababababab","reason":"slot battle"}
 {"event":"kesEvolved","at":"2026-10-16T12:00:00Z","kesPeriod":33,"relativeKesPeriod":2}
 {"event":"kesReloaded","at":"2026-10-16T12:00:00Z","opCertCounter":4,"kesStart":30,"kesEvolutions":62,"kesPeriod":33,"remainingKesPeriods":59}
+{"event":"blockForgingUpdate","at":"2026-10-16T12:00:00Z","enabled":"EnabledBlockForging"}
+{"event":"blockForgingUpdate","at":"2026-10-16T12:00:00Z","enabled":"DisabledBlockForging"}
+{"event":"blockForgingUpdate","at":"2026-10-16T12:00:00Z","enabled":"NotEffective"}
 {"event":"kesReloadRefused","at":"2026-10-16T12:00:00Z","kind":"Counter","message":"opcert counter 3 below current 5"}
 {"event":"kesPersistFailed","at":"2026-10-16T12:00:00Z","kesPeriod":33,"kind":"KeyFile","message":"key file kes.skey: Io(java.io.IOException: disk full)"}
 {"event":"keyFileGroupAccess","at":"2026-10-16T12:00:00Z","file":"vrf.skey","mode":"640"}
+{"event":"kesFileAbsent","at":"2026-10-16T12:00:00Z","kesPeriod":34,"file":"/keys/kes.skey"}
+{"event":"kesWrittenByRename","at":"2026-10-16T12:00:00Z","reason":"Refused","errno":22}
+{"event":"kesWrittenByRename","at":"2026-10-16T12:00:00Z","reason":"NotLinux","errno":null}
 {"event":"forgeFailed","at":"2026-10-16T12:00:00Z","slot":4202,"kind":"KeyPeriodOutOfRange","message":"KES period 33 outside the operational certificate window [0, 32)"}
 {"event":"forgeEpoch","at":"2026-10-16T12:00:00Z","epoch":3,"slotsChecked":100,"leaderSlots":5,"notLeader":92,"cannotForge":0,"stateUpdateError":0,"forged":5,"adopted":4,"lostSlotBattles":1,"forgedInvalid":0,"replaced":1,"failed":0,"skipped":3,"skippedByReason":{"blockFromFuture":2,"noLedgerView":1},"forgeLatencyMs":{"count":4,"mean":12.5,"max":20}}
 {"event":"forgeEpoch","at":"2026-10-16T12:00:00Z","epoch":4,"slotsChecked":0,"leaderSlots":0,"notLeader":0,"cannotForge":0,"stateUpdateError":0,"forged":0,"adopted":0,"lostSlotBattles":0,"forgedInvalid":0,"replaced":0,"failed":0,"skipped":0,"skippedByReason":{},"forgeLatencyMs":{"count":0,"mean":null,"max":null}}
@@ -218,3 +227,5 @@
 {"event":"referenceBuild","at":"2026-10-16T12:00:00Z","build":"11.1","stability":"stable","node":"11.1.3","ledger":"f649f9751074d2ab3de033fc3912f29c9862c1f5","ledgerBinary":"048b78d2807ce9644dbe483c605625824f6be88f","consensus":"82ecba329d7d054340bf707d44fe6e9ac27cec40"}
 {"event":"referenceBuild","at":"2026-10-16T12:00:00Z","build":"leios-b004fe0c","stability":"unstable","node":"b004fe0c50913dcdaa827a98e68a43d0ccce152a","ledger":"9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c","ledgerBinary":"9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c","consensus":"2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b"}
 {"event":"unstableReferenceBuild","at":"2026-10-16T12:00:00Z","build":"leios-b004fe0c","experimentalHardForksEnabled":false}
+{"event":"plutusVm","at":"2026-10-16T12:00:00Z","vm":"scalus"}
+{"event":"plutusVm","at":"2026-10-16T12:00:00Z","vm":"scarab"}

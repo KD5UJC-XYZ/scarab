@@ -135,7 +135,7 @@ class UpstreamCertsCoverageSuite extends FunSuite:
     val signalNode = node(dir.resolve("signal.cbor"))
     val signal = signalNode.value match
       case Value.Arr(xs) =>
-        xs.traverse(Certificate.decode(_, DecoderVersion.of(Era.Conway)))
+        xs.traverse(Certificate.decode(_, Era.Conway))
           .fold(e => fail(s"full CERTS signal: $e"), identity)
       case other => fail(s"expected CERTS certificate sequence, got $other")
     assertEquals(signal, Vector.empty)

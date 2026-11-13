@@ -64,7 +64,10 @@ class NativeScriptSignersSuite extends FunSuite:
     val utxo = Utxo.fromMap(Map(locked -> TestLedger.out(scriptAddress, funds)))
     Vector(5, 9).map { major =>
       val env = UtxoEnv(TestLedger.env, TestLedger.params(major), ())
-      TestLedger.verdict(tx.body.id, Utxow.checks(env, Map.empty, StAnnTx(tx, utxo), Test.pass))
+      TestLedger.verdict(
+        tx.body.id,
+        Utxow.checks(env, Map.empty, StAnnTx(tx, utxo), Test.pass)(using TestLedger.usualEra(major))
+      )
     }
 
   private val root: Bytes = bootstrap(Bytes.empty).addressRoot

@@ -138,7 +138,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       val witnesses =
         Witnesses.empty.copy(redeemers = Vector(Redeemer(0, 0, Bytes.empty, ExUnits.zero)))
       val tx = Tx(body, witnesses, 100, isValid = false, auxiliary = None)
-      val checked = TxChecks.collateral(inputs, pp, tx)
+      val checked = TxChecks.collateral[E](inputs, tx)
       assertEquals(checked.outputs, Vector(out))
       assertEquals(checked.fee, read[BigInt]("collateralCoin"))
       val empty = Empty.ledgerState[E](pp).utxo
@@ -375,7 +375,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
         ),
         None
       )
-      val checked = TxChecks.collateral(inputs, pp, tx)
+      val checked = TxChecks.collateral[Conway](inputs, tx)
       assertEquals(checked.fee, if redeemers then read[BigInt]("collateralCoin") else BigInt(0))
       if !valid && redeemers then
         val stake = InstantStakeOps

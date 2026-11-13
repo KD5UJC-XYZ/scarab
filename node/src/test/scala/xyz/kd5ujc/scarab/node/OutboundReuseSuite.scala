@@ -86,13 +86,18 @@ class OutboundReuseSuite extends FailsOnUncaught:
 
   private def world: Resource[IO, World] = worldWith()
 
+  /** @param supervising
+    *   What the outer supervisor becomes: the test can see and steer the fibers it starts.
+    */
   private def worldWith(
       transactions: Option[TxSubmissionClient.Source[IO]] = None,
-      deactivateTimeout: FiniteDuration = 2.seconds
+      deactivateTimeout: FiniteDuration = 2.seconds,
+      supervising: Supervisor[IO] => IO[Supervisor[IO]] = IO.pure
   ): Resource[IO, World] =
     for
       node <- NodeScope.resource
-      supervisor <- Supervisor[IO](await = false)
+      supervisor <- Supervisor[IO](await = false).evalMap(supervising)
+      monitors <- Supervisor[IO](await = false)
       built <- Resource.eval {
         given Handle[IO, NodeError] = node
         for
@@ -142,6 +147,7 @@ class OutboundReuseSuite extends FailsOnUncaught:
             OutboundPeers.Config(closeTimeout = 2.seconds, deactivateTimeout = deactivateTimeout),
             hot,
             supervisor,
+            monitors,
             event => reports.update(_ :+ event),
             summon[Stateful[IO, PeerMetrics[PeerNetwork.Addr]]]
           )
@@ -290,6 +296,77 @@ class OutboundReuseSuite extends FailsOnUncaught:
             yield
               assertEquals(gone, None)
               assertEquals(dials, 0)
+          }
+        }
+      }
+    }
+  }
+
+  /** A supervisor whose `n` th fiber, once started, is joined, and whose starter then cancels
+    * itself: the cancellation takes effect at the starter's next cancelable point. `done` completes
+    * then.
+    */
+  private final class CancelAfterNth(
+      underlying: Supervisor[IO],
+      n: Int,
+      started: Ref[IO, Int],
+      done: Deferred[IO, Unit]
+  ) extends Supervisor[IO]:
+    def supervise[A](fa: IO[A]): IO[cats.effect.Fiber[IO, Throwable, A]] =
+      started.updateAndGet(_ + 1).flatMap { count =>
+        underlying.supervise(fa).flatTap { fiber =>
+          (fiber.join *> done.complete(()) *> IO.canceled).whenA(count == n)
+        }
+      }
+
+  // The waiter's compensation in `OutboundPeers.outboundUse`: a reused connection handed over to a
+  // waiter that is cancelled before it takes it over is given back through the reference's
+  // release (`Duplex` to `Inbound Duplex`, `Core.hs` 1889-2033), and the peer's connection stays.
+  // The schedule: the dial (the outer supervisor's second fiber, after the establishment's own)
+  // hands the reused connection over and ends; the waiter, still in the uncancelable start of its
+  // acquisition, cancels itself, which takes effect as it begins to wait for the handover.
+  test(
+    "a reuse handed over to a waiter cancelled before taking it over is released; the peer stays"
+  ) {
+    Settled.timed { settle =>
+      (Ref.of[IO, Int](0), Deferred[IO, Unit]).tupled.flatMap { (started, handedOver) =>
+        worldWith(supervising = s => IO.pure(CancelAfterNth(s, 2, started, handedOver))).use { w =>
+          Ref.of[IO, Int](0).flatMap { served =>
+            peerConnects(w, served) { _ =>
+              for
+                // The first KeepAlive promotes the inbound side; settling holds its idle timer.
+                before <- Settled.observed(settle, "the peer's inbound side is warm")(w.state)(
+                  _.contains(ConnectionState.Inbound(DataFlow.Duplex))
+                )
+                _ <- Resource
+                  .make(
+                    w.outbound
+                      .establish(peer, DiffusionMode.InitiatorAndResponder, Provenance.Outbound)
+                      .start
+                  )(_.cancel)
+                  .use { establishing =>
+                    for
+                      _ <- handedOver.get
+                      // Cancellation returns once the connection's compensation has finished.
+                      _ <- establishing.cancel
+                      after <- w.state
+                      changes <- w.changes.get
+                      dials <- w.dials.get
+                    yield
+                      assertEquals(before, Some(ConnectionState.Inbound(DataFlow.Duplex)))
+                      assertEquals(after, before)
+                      assertEquals(
+                        changes.takeRight(2),
+                        Vector(
+                          ConnectionState.Inbound(DataFlow.Duplex) -> ConnectionState.Duplex,
+                          ConnectionState.Duplex -> ConnectionState.Inbound(DataFlow.Duplex)
+                        )
+                      )
+                      allValid(changes)
+                      assertEquals(dials, 0)
+                  }
+              yield ()
+            }
           }
         }
       }

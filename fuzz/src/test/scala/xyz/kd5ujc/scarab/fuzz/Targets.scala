@@ -1128,10 +1128,16 @@ object Targets:
                       .toInt -> v.original
                 }.toMap
                 val update = ParamUpdate(fields)
-                Vector(6, 8, 10).foreach { major =>
+                val eras: Vector[(Int, xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra[?])] =
+                  Vector(
+                    6 -> xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SAlonzo,
+                    8 -> xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SBabbage,
+                    10 -> xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SConway
+                  )
+                eras.foreach { (major, era) =>
                   seen(
                     "param-update",
-                    ProtocolParams.update(TestLedger.params(major), update).isRight
+                    ProtocolParams.update(TestLedger.params(major), update)(using era).isRight
                   )
                 }
               case _ => ()
@@ -1177,7 +1183,8 @@ object Targets:
           xyz.kd5ujc.scarab.codec.Cbor.decode(b).foreach { n =>
             seen("script", Script.decode(n, ScriptKind.newestKnown).isRight)
             Script.decodeWrapped(n, ScriptKind.newestKnown)
-            NativeScript.decode(n)
+            NativeScript.decode(n, NativeScript.Form.MultiSig)
+            NativeScript.decode(n, NativeScript.Form.Timelock)
           }
         }
       )
@@ -2317,4 +2324,4 @@ object Targets:
         injectionJson,
         genesisPoolFields
       ) ++ nativeSnapshots ++ ancillary ++ mithril ++ networkIdentity ++ volatileLog ++
-      nodeConfiguration ++ nodeTopologyFile
+      nodeConfiguration ++ nodeTopologyFile ++ UplcTargets.all

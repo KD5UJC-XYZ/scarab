@@ -6,14 +6,16 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.GenDelegPair
-import xyz.kd5ujc.scarab.ledger.rules.Test
+import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Test}
+import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
 
 /** The checks of the transaction rules before Conway and the checks Conway shares with them (UTXO,
   * UTXOW, UTXOS): the pure predicates over a transaction and what it reads of the state, which the
-  * era-indexed rules ([[xyz.kd5ujc.scarab.ledger.rules.Utxo]], `ShelleyUtxo`) call. Era behaviour
-  * is selected by the protocol major version of the parameters in force: Allegra 3, Mary 4, Alonzo
-  * 5, Babbage 7. (The flat state's rules that used to apply a transaction beside these were removed
-  * at J2.9.)
+  * era-indexed rules ([[xyz.kd5ujc.scarab.ledger.rules.Utxo]], `ShelleyUtxo`) call. The UTXO checks
+  * take the era ([[minUTxO]], [[maxOutputValueSize]]), as do the UTXOW checks, and the UTXOS checks
+  * run in the rules of the eras from Alonzo ([[phase2]], [[collateral]]), following the reference's
+  * rule of each era whatever the protocol version. (The flat state's rules that used to apply a
+  * transaction beside these were removed at J2.9.)
   */
 object TxChecks:
   import TxEnv.Result
@@ -26,7 +28,8 @@ object TxChecks:
     * (`expectScriptsToPass`, `babbageEvalScriptsTxInvalid`, `Babbage/Rules/Utxos.hs:132-220`): the
     * contexts are collected (`CollectErrors`), then the scripts evaluated; a transaction flagged
     * invalid with no script to fail passes unexpectedly. Reads of the state: the parameters and the
-    * counters it adds to.
+    * counters it adds to. UTXOS is a rule of the eras from Alonzo, and its callers are those eras'
+    * rules: it runs whatever the protocol version (`Alonzo/Rules/Utxos.hs:159-216`).
     *
     * @param spent
     *   the outputs of the inputs the UTxO set holds, by input
@@ -37,8 +40,11 @@ object TxChecks:
     *   (`whenFailureFree`, `Alonzo/Rules/Utxos.hs:180-182`) nor when the transaction is applied
     *   again (`when2Phase`, [[TxEnv.Validation]]), and then only their contexts are collected
     *   (`CollectErrors`)
+    * @tparam E
+    *   the era of the rule, whose scripts needed and script contexts are collected
+    *   ([[Phase2.collect]])
     */
-  private[ledger] def phase2(
+  private[ledger] def phase2[E <: EraTag](
       pp: ProtocolParams,
       plutus: PlutusStats,
       tx: Tx,
@@ -48,45 +54,43 @@ object TxChecks:
       references: Map[TxIn, TxOut],
       plutusPurposes: Set[Pointer],
       evaluate: Boolean
-  ): Result[PlutusStats] =
+  )(using ShelleyBasedEra[E]): Result[PlutusStats] =
     val body = tx.body
-    if pp.protocolMajor < 5 then Right(plutus)
+    val stats =
+      if plutusPurposes.isEmpty && body.scriptDataHash.isEmpty then plutus
+      else plutus.copy(integrityChecked = plutus.integrityChecked + 1)
+    if plutusPurposes.isEmpty then
+      // no script: the evaluation of none passes (`Passes []`)
+      if tx.isValid || !evaluate then Right(stats)
+      else checkedPhase2(stats, tx, Right(Phase2.Outcome.Passed(Phase2.Report(Vector.empty))))
     else
-      val stats =
-        if plutusPurposes.isEmpty && body.scriptDataHash.isEmpty then plutus
-        else plutus.copy(integrityChecked = plutus.integrityChecked + 1)
-      if plutusPurposes.isEmpty then
-        // no script: the evaluation of none passes (`Passes []`)
-        if tx.isValid || !evaluate then Right(stats)
-        else checkedPhase2(stats, tx, Right(Phase2.Outcome.Passed(Phase2.Report(Vector.empty))))
-      else
-        val posix = env.clock.toRight(TranslationError.NoEraHistory).map(c => c.posix)
-        env.preparation match
-          case Some(recording) if env.validation == TxEnv.Validation.All =>
-            val requests =
-              Phase2.collect(tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
-            recording.append(
-              Phase2.job(env.txIndex, tx, pp, env.slot, spent, references, env.clock, requests)
-            )
-            requests.fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
-          case _ if !evaluate =>
-            Phase2
-              .collect(tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
-              .fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
-          case _ =>
-            val outcome = Phase2.evaluate(
-              tx,
-              pp,
-              scripts,
-              spent,
-              references,
-              slot => posix.flatMap(_(slot)),
-              env.evaluator
-            )
-            env.observer.foreach(
-              _(Phase2.Observation(tx, pp, env.slot, spent, references, env.clock, outcome))
-            )
-            checkedPhase2(stats, tx, outcome)
+      val posix = env.clock.toRight(TranslationError.NoEraHistory).map(c => c.posix)
+      env.preparation match
+        case Some(recording) if env.validation == TxEnv.Validation.All =>
+          val requests =
+            Phase2.collect[E](tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
+          recording.append(
+            Phase2.job(env.txIndex, tx, pp, env.slot, spent, references, env.clock, requests)
+          )
+          requests.fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
+        case _ if !evaluate =>
+          Phase2
+            .collect[E](tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
+            .fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
+        case _ =>
+          val outcome = Phase2.evaluate[E](
+            tx,
+            pp,
+            scripts,
+            spent,
+            references,
+            slot => posix.flatMap(_(slot)),
+            env.evaluator
+          )
+          env.observer.foreach(
+            _(Phase2.Observation(tx, pp, env.slot, spent, references, env.clock, outcome))
+          )
+          checkedPhase2(stats, tx, outcome)
 
   /** The ordered phase-2 verdict check, also used when a prepared block lands its worker values. */
   private[ledger] def checkedPhase2(
@@ -144,22 +148,29 @@ object TxChecks:
   // ---------------------------------------------------------------------------------------------
   // UTXO
 
-  /** The minimum ada of an output. Shelley and Allegra: the flat `minUTxOValue`
-    * (`getMinCoinTxOut`); Mary: `scaledMinDeposit`, which is `minUTxOValue` for an ada-only value
-    * and otherwise `max(minUTxOValue, (minUTxOValue / 27) * (27 + size v))` (`coinSize` is 0 there,
-    * unlike Alonzo where the ada-only entry counts 2 words); Alonzo:
-    * `coinsPerUTxOWord * (27 + size v + datum hash)`; Babbage onward: `coinsPerUTxOByte` times the
-    * serialised size plus 160.
+  /** The minimum ada of an output of the era `E`, its `TxOut` 's `getMinCoinTxOut` whatever the
+    * protocol version (cardano-ledger f649f975). Shelley and Allegra: the flat `minUTxOValue`
+    * (`Shelley/TxOut.hs:94`, `Allegra/TxOut.hs:31`); Mary: `scaledMinDeposit` (`Mary/TxOut.hs:33`),
+    * which is `minUTxOValue` for an ada-only value and otherwise
+    * `max(minUTxOValue, (minUTxOValue / 27) * (27 + size v))` (`coinSize` is 0 there, unlike Alonzo
+    * where the ada-only entry counts 2 words); Alonzo: `coinsPerUTxOWord * (27 + size v + datum
+    * hash)` (`Alonzo/TxOut.hs:370-372`); Babbage onward: `coinsPerUTxOByte` times the serialised
+    * size plus 160 (`babbageMinUTxOValue`, `Babbage/TxOut.hs:230`, `Conway/TxOut.hs:49`,
+    * `Dijkstra/TxOut.hs:41`).
     */
-  private[ledger] def minUTxO(pp: ProtocolParams, out: TxOut): BigInt =
-    if pp.protocolMajor >= 7 then (160 + out.ledgerSize) * pp.coinsPerUTxOByte
-    else if pp.protocolMajor >= 5 then pp.coinsPerUTxOWord * entrySize(out)
-    else if pp.protocolMajor >= 4 then
-      if out.value.assets.isEmpty then pp.minUTxOValue
-      else
-        val perWord = pp.minUTxOValue / UtxoEntrySizeWithoutVal
-        pp.minUTxOValue.max(perWord * (UtxoEntrySizeWithoutVal + valueWords(out.value)))
-    else pp.minUTxOValue
+  private[ledger] def minUTxO[E <: EraTag](pp: ProtocolParams, out: TxOut)(using
+      era: ShelleyBasedEra[E]
+  ): BigInt =
+    era match
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra => pp.minUTxOValue
+      case ShelleyBasedEra.SMary =>
+        if out.value.assets.isEmpty then pp.minUTxOValue
+        else
+          val perWord = pp.minUTxOValue / UtxoEntrySizeWithoutVal
+          pp.minUTxOValue.max(perWord * (UtxoEntrySizeWithoutVal + valueWords(out.value)))
+      case ShelleyBasedEra.SAlonzo => pp.coinsPerUTxOWord * entrySize(out)
+      case ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway | ShelleyBasedEra.SDijkstra =>
+        (160 + out.ledgerSize) * pp.coinsPerUTxOByte
 
   /** `utxoEntrySizeWithoutVal`: 6 + 14 (output) + 7 (input) words. */
   private val UtxoEntrySizeWithoutVal = BigInt(27)
@@ -184,13 +195,19 @@ object TxChecks:
       case _             => 0
     UtxoEntrySizeWithoutVal + valueWords(out.value) + datum
 
-  /** The largest serialised value an output may carry: 4000 bytes in Allegra and Mary (hard-coded
-    * in `validateOutputTooBigUTxO`), `maxValueSize` from Alonzo, no limit in Shelley.
+  /** The largest serialised value an output of the era `E` may carry, whatever the protocol
+    * version: none in Shelley, whose UTXO has no such check; 4000 bytes in Allegra and Mary
+    * (hard-coded in `validateOutputTooBigUTxO`, `Allegra/Rules/Utxo.hs:211,237-254`); `maxValSize`
+    * from Alonzo (`Alonzo/Rules/Utxo.hs:400-424`).
     */
-  private[ledger] def maxOutputValueSize(pp: ProtocolParams): Option[BigInt] =
-    if pp.protocolMajor >= 5 then Some(pp.maxValueSize)
-    else if pp.protocolMajor >= 3 then Some(BigInt(4000))
-    else None
+  private[ledger] def maxOutputValueSize[E <: EraTag](pp: ProtocolParams)(using
+      era: ShelleyBasedEra[E]
+  ): Option[BigInt] =
+    era match
+      case ShelleyBasedEra.SShelley                            => None
+      case ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary    => Some(BigInt(4000))
+      case ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage  => Some(pp.maxValueSize)
+      case ShelleyBasedEra.SConway | ShelleyBasedEra.SDijkstra => Some(pp.maxValueSize)
 
   /** The outputs of `outs` that hold a bootstrap (Byron) address, with the address. A Byron-kind
     * address has been decoded in full when its output was ([[Address.decode]]), so the decode below
@@ -210,12 +227,16 @@ object TxChecks:
   private[ledger] def collateralInputs(body: TxBody): Vector[TxIn] =
     body.collateral.toSet.toVector.sorted
 
-  /** The collateral a transaction with redeemers (Alonzo on) pays if it fails phase 2: the outputs
-    * of its collateral inputs the UTxO set holds, and their ada less the collateral return
-    * (`collAdaBalance`, `Babbage/Collateral.hs:30-41`). None for a transaction without redeemers.
+  /** The collateral a transaction with redeemers of the era `E` pays if it fails phase 2, from
+    * Alonzo whatever the protocol version (`Phase2Invalid`, `Alonzo/Rules/Utxo.hs:775-784`): the
+    * outputs of its collateral inputs the UTxO set holds, and their ada less the collateral return
+    * (`collAdaBalance`, `Babbage/Collateral.hs:30-41`). None before Alonzo, whose UTXO has no
+    * collateral, and for a transaction without redeemers.
     */
-  private[ledger] def collateral(utxo: Utxo, pp: ProtocolParams, tx: Tx): Collateral =
-    if pp.protocolMajor < 5 || tx.witnesses.redeemers.isEmpty then Collateral.none
+  private[ledger] def collateral[E <: EraTag](utxo: Utxo, tx: Tx)(using
+      era: ShelleyBasedEra[E]
+  ): Collateral =
+    if !era.atLeast(ShelleyBasedEra.SAlonzo) || tx.witnesses.redeemers.isEmpty then Collateral.none
     else
       val outs = collateralInputs(tx.body).flatMap(utxo.get)
       val total = outs.foldLeft(Value.zero)(_ + _.value)
@@ -262,13 +283,12 @@ object TxChecks:
     * (`eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs`, `getSupplementalDataHashes`). An inline
     * datum has no hash (`dataHashTxOutL`).
     */
-  private[ledger] def supplementalDatumHashes(
-      pp: ProtocolParams,
+  private[ledger] def supplementalDatumHashes[E <: EraTag](
       body: TxBody,
       referenced: Vector[TxOut]
-  ): Set[Bytes] =
+  )(using era: ShelleyBasedEra[E]): Set[Bytes] =
     val outs =
-      if pp.protocolMajor < 7 then body.outputs
+      if !era.atLeast(ShelleyBasedEra.SBabbage) then body.outputs
       else body.outputs ++ body.collateralReturn ++ referenced
     outs.map(_.datum).collect { case Datum.Hash(h) => h }.toSet
 
@@ -283,14 +303,12 @@ object TxChecks:
     * @param spent
     *   the outputs of the inputs the UTxO set holds, by input
     */
-  private[ledger] def datumChecks(
-      pp: ProtocolParams,
+  private[ledger] def datumChecks[E <: EraTag](
       tx: Tx,
       spent: Map[TxIn, TxOut],
       referenced: Vector[TxOut],
       scripts: Map[Bytes, Script]
-  ): Test[PredicateFailure] =
-    val pv = pp.protocolMajor
+  )(using era: ShelleyBasedEra[E]): Test[PredicateFailure] =
     val body = tx.body
     val wits = tx.witnesses
     // Spent outputs locked with a Plutus script
@@ -306,14 +324,14 @@ object TxChecks:
     val unspendable = plutusLocked.flatMap { case (in, datum, kind) =>
       datum match
         case Datum.Hash(_)   => None
-        case Datum.Inline(_) => Option.when(pv < 7)(in)
+        case Datum.Inline(_) => Option.when(!era.atLeast(ShelleyBasedEra.SBabbage))(in)
         // Plutus V3 scripts need no datum (CIP-69)
         case Datum.NoDatum => Option.when(kind != ScriptKind.PlutusV3)(in)
     }
     // Datum hashes the spent outputs ask for
     val requiredHashes = plutusLocked.collect { case (_, Datum.Hash(h), _) => h }.toSet
     val supplemental = wits.datumHashes -- requiredHashes
-    val allowed = supplementalDatumHashes(pp, body, referenced)
+    val allowed = supplementalDatumHashes[E](body, referenced)
     Test.all(
       Test.failureUnless(
         unspendable.isEmpty,
@@ -339,10 +357,12 @@ object TxChecks:
   /** A transaction of an era before Alonzo holds no Plutus fields: what its decoder would not have
     * admitted is a defect.
     */
-  private[ledger] def plutusFieldsDefect(pp: ProtocolParams, tx: Tx): Option[LedgerDefect] =
+  private[ledger] def plutusFieldsDefect[E <: EraTag](tx: Tx)(using
+      era: ShelleyBasedEra[E]
+  ): Option[LedgerDefect] =
     val wits = tx.witnesses
     Option.when(
-      pp.protocolMajor < 5 &&
+      !era.atLeast(ShelleyBasedEra.SAlonzo) &&
         (wits.redeemers.nonEmpty || wits.datums.nonEmpty || tx.body.scriptDataHash.nonEmpty)
     )(LedgerFailure.Undecodable(tx.body.id, TxDefect.PlutusFieldsBeforeAlonzo))
 
@@ -384,16 +404,16 @@ object TxChecks:
     * @param spent
     *   the outputs of the inputs the UTxO set holds, by input
     */
-  private[ledger] def integrityCheck(
+  private[ledger] def integrityCheck[E <: EraTag](
       pp: ProtocolParams,
       tx: Tx,
       spent: Map[TxIn, TxOut],
       scripts: Map[Bytes, Script]
-  ): Test[PredicateFailure] =
+  )(using ShelleyBasedEra[E]): Test[PredicateFailure] =
     val languages = scriptsNeeded(tx.body, spent).keys.flatMap(scripts.get).map(_.kind).toSet
     Test.failureUnless(
-      ScriptIntegrity.hash(tx, pp, languages) == tx.body.scriptDataHash,
-      utxow(ScriptIntegrity.mismatch(tx, pp, languages))
+      ScriptIntegrity.hash[E](tx, pp, languages) == tx.body.scriptDataHash,
+      utxow(ScriptIntegrity.mismatch[E](tx, pp, languages))
     )
 
   /** `validateScriptsWellFormed` (`Babbage/Rules/Utxow.hs:254-276`), from Babbage: every Plutus
@@ -403,11 +423,11 @@ object TxChecks:
     * Alonzo has no such check; there an undecodable script that a transaction needs fails phase 2.
     * A decoder that cannot decide is a defect.
     */
-  private[ledger] def scriptsWellFormed(
+  private[ledger] def scriptsWellFormed[E <: EraTag](
       pp: ProtocolParams,
       tx: Tx,
       env: Env
-  ): Either[LedgerDefect, Test[PredicateFailure]] =
+  )(using era: ShelleyBasedEra[E]): Either[LedgerDefect, Test[PredicateFailure]] =
     val pv = pp.protocolMajor.toInt
     def malformed(
         failure: Set[Bytes] => UtxowFailure,
@@ -436,7 +456,7 @@ object TxChecks:
           val bad = hashes.flatten.toSet
           Test.failureUnless(bad.isEmpty, utxow(failure(bad)))
         }
-    if pv < 7 then Right(Test.pass)
+    if !era.atLeast(ShelleyBasedEra.SBabbage) then Right(Test.pass)
     else
       for
         witnesses <- malformed(UtxowFailure.MalformedScriptWitnesses(_), tx.witnesses.scripts)
@@ -452,11 +472,11 @@ object TxChecks:
     * (`InvalidMetadata`), both reported. Auxiliary data that does not decode is a defect, and so is
     * a decoder that cannot decide.
     */
-  private[ledger] def auxiliaryChecks(
+  private[ledger] def auxiliaryChecks[E <: EraTag](
       pp: ProtocolParams,
       tx: Tx,
       env: Env
-  ): Either[LedgerDefect, Test[PredicateFailure]] =
+  )(using era: ShelleyBasedEra[E]): Either[LedgerDefect, Test[PredicateFailure]] =
     val id = tx.body.id
     for
       decoded <- tx.auxiliary
@@ -464,7 +484,7 @@ object TxChecks:
           // The bytes were read at the era's decoder version when the transaction was decoded
           // (`Tx.fromBlock`): the rule reads them again for their scripts, not their form.
           AuxiliaryScripts
-            .read(bytes, pp.protocolMajor)(using ByteStrings.Chunked)
+            .read(bytes, DecoderVersion.of(EraNes.eraOf(era)).value)(using ByteStrings.Chunked)
             .leftMap(error => LedgerFailure.Undecodable(id, TxDefect.AuxiliaryData(error)))
         )
       valid <- decoded.fold(Right(true): Either[LedgerDefect, Boolean]) { scripts =>

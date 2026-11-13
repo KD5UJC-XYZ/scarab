@@ -1,0 +1,20 @@
+{
+ "schemaVersion": 1,
+ "scope": "Admission, stage, error class and constructor, budget spent (on success and on failure) and logs of generated UPLC scripts under deserialiseScript and evaluateScriptRestricting; synthetic scripts, not chain scripts",
+ "plutusSourceCommit": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+ "measuredAt": "2026-11-12",
+ "network": "none",
+ "requests": 3000,
+ "generator": {
+  "seed": 43080001,
+  "perProfile": 200,
+  "modelsPerProfile": 2,
+  "generatorVersion": 1
+ },
+ "imageId": "sha256:0ba57aed177d7a9370c31a858ab963581b9e8320b69e2d3cfb8925e88b951002",
+ "baseImageId": "sha256:b50784fa61a079153e78ad8b0216ea5d2c35d98f5255f6b920993011007123cb",
+ "harnessSha256": "8c03e0538ff60a331a2172dcbc9a35329f71551aea22bca8fdce925011a69d77",
+ "requestsSha256": "f88d84ee5c79a0fe71486893d980fca02beb4111cf5b392c73add006f48d7771",
+ "verdictsSha256": "99d923abb2e9238764cc2b6d4d9c55ebd2ca37d2db38d6b730bcfae49659ea1c",
+ "modelsSha256": "13ae19284f264951e43ecf8177638bf950a23e59fc8e4bd629844a030702516d"
+}

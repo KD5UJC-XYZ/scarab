@@ -23,14 +23,6 @@ class PrimitivesSuite extends ScalaCheckSuite:
     }
   }
 
-  property("a draw between two bounds stays inside them and the generator advances") {
-    forAll(Gen.choose(-10000L, 10000L), Gen.choose(0L, 20000L), Arbitrary.arbitrary[Long]) {
-      (low, width, seed) =>
-        val (x, next) = Rng(seed).between(low, low + width)
-        x >= low && x <= low + width && next != Rng(seed)
-    }
-  }
-
   property("a uniformR draw stays inside its bounds; a range of one value takes no draw") {
     forAll(Gen.choose(-10000L, 10000L), Gen.choose(0L, 20000L), Arbitrary.arbitrary[Long]) {
       (low, width, seed) =>
@@ -74,14 +66,80 @@ class PrimitivesSuite extends ScalaCheckSuite:
     }
   }
 
-  test("the generator is uniform enough: every bucket of ten is hit in 10000 draws") {
-    val (_, buckets) = (0 until 10000).foldLeft((Rng(42L), Map.empty[Long, Int])) {
-      case ((g, m), _) =>
-        val (x, next) = g.between(0, 9)
-        (next, m.updated(x, m.getOrElse(x, 0) + 1))
+  property("a Word32 draw stays inside its bounds, in either order") {
+    forAll(Gen.choose(0L, 10000L), Gen.choose(0L, 20000L), Arbitrary.arbitrary[Long]) {
+      (low, width, seed) =>
+        val (x, _) = Rng(seed).uniformWord32R(low, low + width)
+        val (y, _) = Rng(seed).uniformWord32R(low + width, low)
+        x >= low && x <= low + width && x == y
     }
-    assertEquals(buckets.keySet, (0L to 9L).toSet)
-    assert(buckets.values.forall(n => n > 800 && n < 1200), buckets.toString)
+  }
+
+  // `unbiasedWordMult32Exclusive` (`random-1.3.1`): with a width of 2^31 + 1, a word whose product
+  // with the width leaves a low half under 2^32 mod width = 2^31 - 1 is rejected; about half are
+  private val wide = (1L << 31) + 1L
+
+  /** The draw of `[0, wide - 1]` from these words, as the reference's Lemire step makes it. */
+  private def lemire(words: Iterator[Long]): Option[Long] =
+    val threshold = BigInt(2).pow(32) % BigInt(wide)
+    words
+      .map(w => BigInt(w & 0xffffffffL) * BigInt(wide))
+      .find(m => (m % BigInt(2).pow(32)) >= threshold)
+      .map(m => (m >> 32).toLong)
+
+  test("a Word32 draw rejects a word whose low product falls short, and multiplies the next") {
+    def words(s: Long) = Iterator.iterate(Rng(s).nextLong)((_, g) => g.nextLong).map(_._1)
+    val threshold = BigInt(2).pow(32) % BigInt(wide)
+    val rejectedFirst = Iterator
+      .from(0)
+      .map(_.toLong)
+      .find(s =>
+        (BigInt(words(s).next() & 0xffffffffL) * BigInt(wide)) % BigInt(2).pow(32) < threshold
+      )
+    assert(rejectedFirst.isDefined)
+    rejectedFirst.foreach { s =>
+      val (x, next) = Rng(s).uniformWord32R(0L, wide - 1L)
+      assertEquals(Some(x), lemire(words(s)))
+      // the rejected word and the one taken: two words
+      assertEquals(next, Rng(s).nextLong._2.nextLong._2)
+    }
+  }
+
+  test("a Word32 draw takes the low half of the word; a range of one value still takes a word") {
+    val (bits, next) = Rng(9L).nextLong
+    assertEquals(Rng(9L).uniformWord32R(0L, 0xffffffffL), (bits & 0xffffffffL, next))
+    // a width of one rejects nothing: 2^32 mod 1 is 0
+    assertEquals(Rng(9L).uniformWord32R(5L, 5L), (5L, next))
+  }
+
+  test("a Double draw is scaleFloating of one word; equal bounds take none") {
+    val (bits, next) = Rng(11L).nextLong
+    assertEquals(Rng(11L).uniformDouble(-2.0, 2.0), (Rng.scaleFloating(-2.0, 2.0, bits), next))
+    assertEquals(Rng(11L).uniformDouble(0.5, 0.5), (0.5, Rng(11L)))
+    assertEquals(Rng(11L).uniformDouble(Double.NegativeInfinity, 1.0)._2, Rng(11L))
+  }
+
+  // `scaleFloating` (`random-1.3.1`, `System/Random/Internal.hs` 1426-1449): the top bit picks the
+  // end the low 63 bits measure from, as a fraction of 2^64
+  test("scaleFloating measures from the low end when the top bit is set, else from the high end") {
+    assertEquals(Rng.scaleFloating(0.1, 10.0, Long.MinValue), 0.1)
+    assertEquals(Rng.scaleFloating(0.1, 10.0, 0L), 10.0)
+    // the low 63 bits all set round to 2^63, half of 2^64
+    assertEquals(Rng.scaleFloating(-2.0, 2.0, -1L), 0.0)
+    assertEquals(Rng.scaleFloating(-2.0, 2.0, Long.MaxValue), 0.0)
+    assertEquals(Rng.scaleFloating(-2.0, 2.0, Long.MinValue | (1L << 62)), -1.0)
+    assertEquals(Rng.scaleFloating(-2.0, 2.0, 1L << 62), 1.0)
+    // a width beyond the largest Double mixes the bounds, the word read whole
+    assertEquals(Rng.scaleFloating(-Double.MaxValue, Double.MaxValue, 0L), Double.MaxValue)
+    assertEquals(Rng.scaleFloating(-Double.MaxValue, Double.MaxValue, -1L), -Double.MaxValue)
+  }
+
+  property("a Double draw stays inside its bounds") {
+    forAll(Arbitrary.arbitrary[Long]) { seed =>
+      val (x, _) = Rng(seed).uniformDouble(0.1, 4.0)
+      val (y, _) = Rng(seed).uniformDouble(-2.0, 2.0)
+      x >= 0.1 && x <= 4.0 && y >= -2.0 && y <= 2.0
+    }
   }
 
   // ------------------------------------------------------------------ Targets

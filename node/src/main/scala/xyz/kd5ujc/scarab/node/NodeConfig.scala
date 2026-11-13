@@ -101,6 +101,10 @@ final case class PeerTargetOverrides(
   *   `hardLimit`, `softLimit` and `delay` (seconds), all three required when present
   *   (`Ouroboros/Network/OrphanInstances.hs` `FromJSON AcceptedConnectionsLimit`); absent is the
   *   reference's default, hard 512, soft 384, delay 5 s.
+  * @param startAsNonProducingNode
+  *   `StartAsNonProducingNode` (`POM.hs` 325, cardano-node 11.1.3): start with forging disabled;
+  *   absent is the reference's default, false (`POM.hs` 738), and the command line's flag wins
+  *   (`Main.Options.startsNonProducing`).
   */
 final case class ConfigSettings(
     protocol: String = "Cardano",
@@ -125,7 +129,8 @@ final case class ConfigSettings(
     dijkstraHardForkEpoch: Option[BigInt] = None,
     dijkstraHardForkVersion: Option[BigInt] = None,
     leios: LeiosSettings = LeiosSettings(),
-    ledgerDb: LedgerDbSettings = LedgerDbSettings()
+    ledgerDb: LedgerDbSettings = LedgerDbSettings(),
+    startAsNonProducingNode: Option[Boolean] = None
 ):
   /** The highest node-to-node version the node offers and accepts: 15 unless
     * `ExperimentalProtocolsEnabled` is set, as the reference's `limitToLatestReleasedVersion`.
@@ -408,6 +413,7 @@ object NodeConfig:
             )
           )
       sharing <- k.opt[Boolean]("PeerSharing")
+      nonProducing <- k.opt[Boolean]("StartAsNonProducingNode")
       diffusion <- k
         .opt[String]("DiffusionMode")
         .flatMap(oneOf("DiffusionMode", _, Set("InitiatorOnly", "InitiatorAndResponder")))
@@ -526,6 +532,7 @@ object NodeConfig:
           dijkstraEpoch,
           dijkstraVersion,
           leios,
-          ledgerDb
+          ledgerDb,
+          nonProducing
         )
       )

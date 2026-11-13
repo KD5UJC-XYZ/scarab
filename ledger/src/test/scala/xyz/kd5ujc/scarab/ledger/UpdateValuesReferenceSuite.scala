@@ -83,7 +83,7 @@ class UpdateValuesReferenceSuite extends FunSuite:
     // (the major is over 9, the size over `Word16`), and a state stored before #470 may hold them.
     val stored = ParamUpdate(Map(14 -> hex("820a00"), 4 -> hex("1a00011170")))
     val applied = ProtocolParams
-      .update(TestLedger.params(8), stored)
+      .update[xyz.kd5ujc.scarab.ledger.state.Babbage](TestLedger.params(8), stored)
       .fold(e => fail(e.toString), identity)
     assertEquals(applied.protocolMajor, BigInt(10))
     assertEquals(applied.maxBlockHeaderSize, BigInt(70000))

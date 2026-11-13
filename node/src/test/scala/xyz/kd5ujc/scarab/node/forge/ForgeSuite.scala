@@ -197,7 +197,9 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
             def persist(key: xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning.SigningKey) =
               writes
                 .getAndUpdate(_ + 1)
-                .flatMap(n => IO.sleep(3500.millis).whenA(n == 0).as(Persisted.Written))
+                .flatMap(n =>
+                  IO.sleep(3500.millis).whenA(n == 0).as(Persisted.Written(WriteProtocol.Exchanged))
+                )
           h <- harness(
             p,
             ledgerWith(p, 1),
@@ -1023,7 +1025,10 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     def bytes(e: xyz.kd5ujc.scarab.node.mempool.Entry) = Capacity.measure(e).bytes
     def pick(entries: Vector[xyz.kd5ujc.scarab.node.mempool.Entry], room: Long) =
       BlockBuilder
-        .select(base, 1001, 1, geometry, globals, entries, BlockBuilder.Limits(room + 1024, units))
+        .select(base, 1001, 1, geometry, globals, entries, BlockBuilder.Limits(room + 1024, units))(
+          xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
+          xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator
+        )
         .chosen
         .map(_._1.id)
     assert(bytes(large) > bytes(small3))

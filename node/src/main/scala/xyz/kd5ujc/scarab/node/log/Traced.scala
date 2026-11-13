@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.ledger.ForgeKeyProblem
 import xyz.kd5ujc.scarab.node.Reports
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.node.forge.{
+  NoExchange,
   CannotForge,
   ForgeEvent,
   ClockTrace,
@@ -456,6 +457,9 @@ object Traced:
       )
 
   given Traced[ForgeEvent] =
+    // the reference prints the constructor (`showT`) as a string
+    case ForgeEvent.BlockForgingUpdate(state) =>
+      EventKind.BlockForgingUpdate.line("enabled" -> state.toString.asJson)
     case ForgeEvent.Started(pool, vrfHash, start, evolutions, counter, period) =>
       EventKind.ForgeStarted.line(
         "pool" -> pool.hex.asJson,
@@ -526,6 +530,16 @@ object Traced:
       EventKind.KesReloadRefused.line(
         "kind" -> reason.productPrefix.asJson,
         "message" -> reason.message.asJson
+      )
+    case ForgeEvent.KesFileAbsent(period, file) =>
+      EventKind.KesFileAbsent.line("kesPeriod" -> period.asJson, "file" -> file.asJson)
+    case ForgeEvent.KesWrittenByRename(reason) =>
+      val errno = reason match
+        case NoExchange.Refused(n)                        => Some(n)
+        case NoExchange.NotLinux | NoExchange.NoRenameat2 => None
+      EventKind.KesWrittenByRename.line(
+        "reason" -> reason.productPrefix.asJson,
+        "errno" -> errno.asJson
       )
     case ForgeEvent.KesPersistFailed(period, error) =>
       EventKind.KesPersistFailed.line(

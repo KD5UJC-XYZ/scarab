@@ -8,7 +8,7 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.rules.*
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.plutus.{PlutusData, PlutusLanguage, ScalusEvaluator}
+import xyz.kd5ujc.scarab.plutus.{PlutusBackends, PlutusData, PlutusLanguage}
 
 /** Actual reference submissions bind phase-1 datum admission to the independently usable context
   * translation: getSpendingDatum returns Maybe (Alonzo/UTxO.hs:229-240), and Nothing selects two
@@ -113,7 +113,8 @@ class SpendingDatumSuite extends FunSuite:
         c.tx.witnesses.scripts.flatMap(_.plutus).map(_.hex),
         Vector(field[String](r.datum, "script"))
       )
-      val env = ScriptContexts.Environment(10, c.spent, c.references, c.posix)
+      val env =
+        ScriptContexts.Environment(TestLedger.usualEra(10), 10, c.spent, c.references, c.posix)
       val info = ScriptContexts.txInfo(r.language, c.tx, env).fold(e => fail(e.message), identity)
       val args = ScriptContexts
         .arguments(r.language, info, c.tx, r.redeemer, r.purpose, 10)
@@ -132,14 +133,14 @@ class SpendingDatumSuite extends FunSuite:
         datum.foreach(d => assertEquals(args.headOption, Some(d)))
       assertEquals(
         Phase2
-          .evaluate(
+          .evaluate[xyz.kd5ujc.scarab.ledger.state.Conway](
             c.tx,
             c.params,
             r.scripts,
             c.spent,
             c.references,
             c.posix,
-            ScalusEvaluator.default
+            PlutusBackends.evaluator
           )
           .map {
             case Phase2.Outcome.Passed(report) => report.scripts;
@@ -151,7 +152,9 @@ class SpendingDatumSuite extends FunSuite:
         TestLedger.verdict(
           c.tx.body.id,
           rules.Test.all(
-            TxChecks.datumChecks(c.params, c.tx, r.spent, c.references.values.toVector, r.scripts),
+            TxChecks.datumChecks(c.tx, r.spent, c.references.values.toVector, r.scripts)(using
+              TestLedger.usualEra((c.params).protocolMajor.toInt)
+            ),
             TxChecks.redeemerChecks(c.tx, r.spent, r.scripts, r.needed)
           )
         ),
@@ -173,11 +176,12 @@ class SpendingDatumSuite extends FunSuite:
               c.tx.body.id,
               rules.Test.all(
                 TxChecks.datumChecks(
-                  c.params.copy(protocolMajor = protocol),
                   c.tx,
                   r.spent,
                   c.references.values.toVector,
                   r.scripts
+                )(using
+                  TestLedger.usualEra((c.params.copy(protocolMajor = protocol)).protocolMajor.toInt)
                 ),
                 TxChecks.redeemerChecks(c.tx, r.spent, r.scripts, r.needed)
               )

@@ -21,6 +21,12 @@ class TcpSocketsSuite extends FailsOnUncaught:
   private def right[A](resource: Resource[IO, Either[TcpSocketError, A]]): Resource[IO, A] =
     resource.evalMap(r => IO(r.fold(e => fail(s"socket call failed: $e"), identity)))
 
+  /** The next connection `listener` accepts, closed when the resource is released. */
+  private def accepted(listener: TcpListener[IO]): Resource[IO, TcpStream[IO]] =
+    Resource.make(
+      listener.accept.flatMap(r => IO(r.fold(e => fail(s"accept failed: ${e.shown}"), identity)))
+    )(_.close)
+
   private def listening: Resource[IO, TcpListener[IO]] = right(TcpSockets.listen[IO](loopback))
 
   /** The node's own addresses when it listens at `address`. */
@@ -75,12 +81,12 @@ class TcpSocketsSuite extends FailsOnUncaught:
       right(dial(node.address, peer.address)).use { outbound =>
         for
           _ <- IO(assertEquals(outbound.local, node.address))
-          _ <- right(peer.accept).use(inbound => IO(assertEquals(inbound.remote, node.address)))
+          _ <- accepted(peer).use(inbound => IO(assertEquals(inbound.remote, node.address)))
           // the node still accepts on the port its outbound socket is bound to
           _ <- Network
             .forAsync[IO]
             .connect(node.address)
-            .use(_ => right(node.accept).use(_ => IO.unit))
+            .use(_ => accepted(node).use(_ => IO.unit))
             .timeout(timeout)
         yield ()
       }
@@ -113,7 +119,7 @@ class TcpSocketsSuite extends FailsOnUncaught:
     (listening, listening).tupled.use { (node, peer) =>
       for
         (outbound, release) <- right(dial(node.address, peer.address)).allocated
-        reset <- right(peer.accept).use { inbound =>
+        reset <- accepted(peer).use { inbound =>
           for
             // both ends read while the closer closes, as a live connection's do; whether the
             // closer's read has blocked yet or not, linger 0 sends a reset, so nothing here waits
@@ -134,7 +140,7 @@ class TcpSocketsSuite extends FailsOnUncaught:
           .connect(peer.address)
           .allocated
           .flatMap((_, close) =>
-            right(peer.accept)
+            accepted(peer)
               .use(inbound => close *> inbound.bearer.reads.compile.drain.attempt.timeout(timeout))
           )
         _ <- IO(assertEquals(eof, Right(())))
@@ -147,7 +153,7 @@ class TcpSocketsSuite extends FailsOnUncaught:
       right(dial(node.address, peer.address)).use { outbound =>
         for
           own <- outbound.observed
-          accepted <- right(peer.accept).use(_.observed)
+          accepted <- accepted(peer).use(_.observed)
         yield
           assertEquals(own, Right(configured))
           assertEquals(accepted, Right(configured))
@@ -208,12 +214,12 @@ class TcpSocketsSuite extends FailsOnUncaught:
         // then TIME_WAIT; with linger 0 the kernel resets the connection and frees the socket in
         // the close itself, so it is gone as soon as the close returns
         (_, release) <- right(dial(node.address, peer.address)).allocated
-        lingering <- right(peer.accept).use(_ =>
+        lingering <- accepted(peer).use(_ =>
           release *> states(node.address.port, peer.address.port)
         )
         _ <- IO(assertEquals(lingering, Nil))
         _ <- right(dial(node.address, peer.address)).use(again =>
-          right(peer.accept).use(inbound => IO(assertEquals(inbound.remote, again.local)))
+          accepted(peer).use(inbound => IO(assertEquals(inbound.remote, again.local)))
         )
         // without linger, fs2's socket closes with a FIN and stays in the kernel, waiting for its
         // peer, for as long as the peer keeps its side open (and in TIME_WAIT after that)
@@ -222,7 +228,7 @@ class TcpSocketsSuite extends FailsOnUncaught:
           .connect(peer.address)
           .allocated
           .flatMap((socket, close) =>
-            right(peer.accept)
+            accepted(peer)
               .use(_ => close *> states(socket.address.asIpUnsafe.port, peer.address.port))
           )
         _ <- IO(assert(plain.nonEmpty && plain.forall(FinWait), plain.toString))

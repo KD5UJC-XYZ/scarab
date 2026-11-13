@@ -22,6 +22,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   UtxoTests
 }
 import xyz.kd5ujc.scarab.ledger.state.{
+  Allegra,
   Alonzo,
   Babbage,
   BlocksMade,
@@ -36,6 +37,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   KeyHash,
   Mary,
   NewEpochState,
+  Shelley,
   ShelleyAccountState,
   ShelleyAccounts,
   ShelleyBasedEra,
@@ -286,11 +288,11 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val dh = Datum.Hash(Bytes(Vector.fill(32)(1)))
     val withDatum = out(bob.address(), 0).copy(datum = dh)
     val alonzo = TestLedger.params(5)
-    assertEquals(TxChecks.minUTxO(alonzo, out(bob.address(), 0)), BigInt(29 * 34482))
-    assertEquals(TxChecks.minUTxO(alonzo, withDatum), BigInt(39 * 34482))
+    assertEquals(TxChecks.minUTxO[Alonzo](alonzo, out(bob.address(), 0)), BigInt(29 * 34482))
+    assertEquals(TxChecks.minUTxO[Alonzo](alonzo, withDatum), BigInt(39 * 34482))
     val babbage = TestLedger.params(7)
     val sized = out(bob.address(), 0).copy(raw = Bytes(Vector.fill(65)(0)))
-    assertEquals(TxChecks.minUTxO(babbage, sized), BigInt(225 * 4310))
+    assertEquals(TxChecks.minUTxO[Babbage](babbage, sized), BigInt(225 * 4310))
   }
 
   property("stake key deposits and refunds keep the supply and the deposit pot exact") {
@@ -469,7 +471,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val encoded = encode(s)
     xyz.kd5ujc.scarab.codec.Cbor
       .decode(encoded)
-      .flatMap(Script.native)
+      .flatMap(Script.native(_, NativeScript.Form.Timelock))
       .fold(e => fail(e.toString), identity)
 
   private def encode(s: NativeScript): Bytes =
@@ -551,7 +553,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       tx(bodyWith(None), Vector(alice), wits),
       pp,
       Set(ScriptKind.PlutusV1)
-    )
+    )(using TestLedger.usualEra((pp).protocolMajor.toInt))
     val b = bodyWith(hash)
     def attempt(succeeds: Boolean, isValid: Boolean, body: TxBody = b) =
       run(
@@ -604,7 +606,9 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val checked = tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts))
     rule(
       TxChecks
-        .scriptsWellFormed(TestLedger.params(protocol), checked, env)
+        .scriptsWellFormed(TestLedger.params(protocol), checked, env)(using
+          TestLedger.usualEra((TestLedger.params(protocol)).protocolMajor.toInt)
+        )
         .flatMap(TestLedger.verdict(checked.body.id, _))
     )
 
@@ -796,6 +800,85 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       case other => fail(s"expected PPUpdateWrongEpoch, got $other")
   }
 
+  /** The state after two genesis delegates of a quorum of two propose `update` for this epoch in
+    * the era `E`, from parameters `pp`: PPUP predicts the parameters of the next epoch
+    * (`votedFuturePParams`, `Rules/Ppup.hs:205-225`).
+    */
+  private def proposedIn[E <: EraTag](pp: ProtocolParams, update: ParamUpdate)(using
+      ShelleyBasedEra[E],
+      PreConway[E]
+  ): NewEpochState[E] =
+    val genesis = Vector(key(), key())
+    val delegates = Vector(key(), key())
+    val (funded, in) = fundedIn[E](pp.protocolMajor.toInt)
+    val ls = funded.es.ls
+    val s0 = funded.copy(es =
+      funded.es.copy(ls =
+        ls.copy[E](utxo = ls.utxo.copy[E](gov = EraLedger.mapParams(ls.utxo.gov)(_ => pp)))
+      )
+    )
+    val s = withGenesis(s0, genesis.zip(delegates))
+    val u = Update(genesis.map(_.hash -> update).toMap, 5)
+    val b =
+      body("up", Vector(in), Vector(out(alice.address(), 100 * ada - 200)), 200, update = Some(u))
+    run(s, tx(b, Vector(alice) ++ delegates)).fold(f => fail(f.message), _.state)
+
+  private def predicted[E <: EraTag](nes: NewEpochState[E])(using
+      ShelleyBasedEra[E]
+  ): ProtocolParams =
+    EraLedger.futurePParams(nes.es.ls.utxo.gov) match
+      case FuturePParams.PotentialPParamsUpdate(Some(p)) => p
+      case other                                         => fail(s"no voted parameters: $other")
+
+  private def cbor(bytes: Int*): Bytes = Bytes(bytes.toVector.map(_.toByte))
+
+  // Babbage's parameters at version 6, as the Babbage translation leaves them (no cost per word,
+  // `Babbage/PParams.hs:316-345`)
+  private val babbageAt6 =
+    params(6).copy(coinsPerUTxOByte = 4310, coinsPerUTxOWord = 0, minUTxOValue = 0)
+
+  test(
+    "Babbage at version 6 reads update key 17 as coinsPerUTxOByte (Babbage/PParams.hs:405-412)"
+  ) {
+    val after = proposedIn[Babbage](babbageAt6, ParamUpdate(Map(17 -> cbor(0x19, 0x03, 0xe8))))
+    assertEquals(
+      (predicted(after).coinsPerUTxOByte, predicted(after).coinsPerUTxOWord),
+      (BigInt(1000), BigInt(0))
+    )
+    val adopted = as[Babbage](afterLastBlock(after, boundaryGlobals))
+    assertEquals(paramsOf(adopted).coinsPerUTxOByte, BigInt(1000))
+  }
+
+  test("Babbage at version 6 keeps coinsPerUTxOByte when an update moves it to version 7") {
+    // Babbage's update has no conversion of its own: only the translation converts
+    // (`Babbage/Translation.hs:84-91`)
+    val after = proposedIn[Babbage](babbageAt6, ParamUpdate(Map(14 -> cbor(0x82, 0x07, 0x00))))
+    assertEquals(predicted(after).coinsPerUTxOByte, BigInt(4310))
+    val adopted = paramsOf(as[Babbage](afterLastBlock(after, boundaryGlobals)))
+    assertEquals((adopted.protocolMajor, adopted.coinsPerUTxOByte), (BigInt(7), BigInt(4310)))
+  }
+
+  test("Alonzo at version 7 reads update key 17 as coinsPerUTxOWord (Alonzo/PParams.hs:658-664)") {
+    val pp = params(7)
+    val after = proposedIn[Alonzo](pp, ParamUpdate(Map(17 -> cbor(0x19, 0x9c, 0x40))))
+    assertEquals(
+      (predicted(after).coinsPerUTxOWord, predicted(after).coinsPerUTxOByte),
+      (BigInt(40000), pp.coinsPerUTxOByte)
+    )
+  }
+
+  test("the Babbage translation converts the cost per word an Alonzo update set, rounded down") {
+    // `upgradeBabbagePParams True` on the future parameters (`Babbage/Translation.hs:84-91`,
+    // `Babbage/PParams.hs:316-345, 390-391`)
+    val update = ParamUpdate(Map(14 -> cbor(0x82, 0x07, 0x00), 17 -> cbor(0x19, 0x9c, 0x43)))
+    val after = proposedIn[Alonzo](params(6), update)
+    val entered = paramsOf(as[Babbage](afterLastBlock(after, boundaryGlobals)))
+    assertEquals(
+      (entered.protocolMajor, entered.coinsPerUTxOByte, entered.coinsPerUTxOWord),
+      (BigInt(7), BigInt(5000), BigInt(0))
+    )
+  }
+
   test(
     "the boundary that adopts protocol version 9 is a Conway transition and counts a dormant epoch"
   ) {
@@ -805,7 +888,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val ls = s0.es.ls
     // the two proposals and the parameters they vote for, as PPUP leaves them (`Rules/Ppup.hs`)
     val gov = ls.utxo.gov
-    val voted = UpdateChecks.voted(gov.curPParams, g.map(_.hash -> pv9).toMap, 2)
+    val voted = UpdateChecks.voted[Babbage](gov.curPParams, g.map(_.hash -> pv9).toMap, 2)
     val proposed = gov.copy(
       curProposals = Sorted.map(g.map(k => genesisId(k) -> pv9)),
       futurePParams = FuturePParams.PotentialPParamsUpdate(voted)
@@ -911,57 +994,62 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val v = Value(coin, assets)
     out(bob.address(), 0).copy(value = v)
 
-  /** The first failure of the output checks of UTXO, in the era's order. */
-  private def outputRule(pp: ProtocolParams, o: TxOut): String =
+  /** The first failure of the output checks of the UTXO of the era `E`, in the era's order. */
+  private def outputRule[E <: EraTag](pp: ProtocolParams, o: TxOut)(using
+      era: ShelleyBasedEra[E]
+  ): String =
     val outs = Vector(o)
-    val pv = pp.protocolMajor
+    val allegra = era.atLeast(ShelleyBasedEra.SAllegra)
     val checks = Vector(
-      UtxoTests.outputTooSmall(pp, outs),
-      if pv >= 3 then UtxoTests.outputTooBig(pp, outs) else Test.pass,
-      if pv >= 3 then UtxoTests.injectedBootAddrAttrsTooBig(ReferenceBuild.Release11_1, outs)
+      UtxoTests.outputTooSmall[E](pp, outs),
+      if allegra then UtxoTests.outputTooBig[E](pp, outs) else Test.pass,
+      if allegra then UtxoTests.injectedBootAddrAttrsTooBig(ReferenceBuild.Release11_1, outs)
       else UtxoTests.bootAddrAttrsTooBig(outs),
-      if pv >= 5 then UtxoTests.wrongNetwork(env.network, outs) else Test.pass
+      if era.atLeast(ShelleyBasedEra.SAlonzo) then UtxoTests.wrongNetwork(env.network, outs)
+      else Test.pass
     ).flatMap(Test.failures(_).toVector.flatMap(_.iterator))
     checks.headOption.fold("accepted")(_.ruleName)
 
   test("Shelley and Allegra require exactly minUTxOValue, Mary scales it for native assets") {
     // ada-only outputs: the flat parameter in every Shelley-based era up to Mary
-    List(2, 3, 4).foreach { pv =>
-      assertEquals(outputRule(params(pv), valued(ada, Map.empty)), "accepted", s"era $pv")
+    def flat[E <: EraTag](pv: Int)(using ShelleyBasedEra[E]) =
+      assertEquals(outputRule[E](params(pv), valued(ada, Map.empty)), "accepted", s"era $pv")
       assertEquals(
-        outputRule(params(pv), valued(ada - 1, Map.empty)),
+        outputRule[E](params(pv), valued(ada - 1, Map.empty)),
         "OutputTooSmallUTxO",
         s"era $pv"
       )
-    }
+    flat[Shelley](2)
+    flat[Allegra](3)
+    flat[Mary](4)
     // Mary scaledMinDeposit: max(mv, (mv / 27) * (27 + size v)); one 5-byte name: 6 + ceil(45 / 8) = 12 words
     val one = Map(policy -> Map(assetName("abcde") -> BigInt(1)))
     val mv = BigInt(1000000)
     val expected = (mv / 27) * (27 + 12)
     assertEquals(expected, BigInt(1444443))
-    assertEquals(TxChecks.minUTxO(params(4), valued(0, one)), expected)
-    assertEquals(outputRule(params(4), valued(expected, one)), "accepted")
+    assertEquals(TxChecks.minUTxO[Mary](params(4), valued(0, one)), expected)
+    assertEquals(outputRule[Mary](params(4), valued(expected, one)), "accepted")
     // ... but the Allegra/Mary rule tests `pointwise (<) v (inject min)`, which no value with assets
     // satisfies, so only ada-only outputs can be too small (observed on the 11.1.3 reference too)
-    assertEquals(outputRule(params(4), valued(expected - 1, one)), "accepted")
-    assertEquals(outputRule(params(4), valued(1, one)), "accepted")
-    assertEquals(outputRule(params(5), valued(1, one)), "OutputTooSmallUTxO")
+    assertEquals(outputRule[Mary](params(4), valued(expected - 1, one)), "accepted")
+    assertEquals(outputRule[Mary](params(4), valued(1, one)), "accepted")
+    assertEquals(outputRule[Alonzo](params(5), valued(1, one)), "OutputTooSmallUTxO")
     // a small value never goes below the parameter
     assertEquals(
-      TxChecks.minUTxO(params(4).copy(minUTxOValue = 40), valued(0, one)),
+      TxChecks.minUTxO[Mary](params(4).copy(minUTxOValue = 40), valued(0, one)),
       BigInt(40)
     )
     // Shelley and Allegra do not scale (they cannot hold assets, the rule is the flat parameter)
-    assertEquals(TxChecks.minUTxO(params(3), valued(0, one)), mv)
+    assertEquals(TxChecks.minUTxO[Allegra](params(3), valued(0, one)), mv)
     // the same asset name under two policies counts once: 2 triples, 2 policies, 5 name bytes
     val twice = one.updated(Bytes(Vector.fill(28)(0x22)), Map(assetName("abcde") -> BigInt(1)))
     assertEquals(
       TxChecks.valueWords(valued(0, twice).value),
       BigInt(6 + (24 + 5 + 56 + 7) / 8)
     )
-    assertEquals(TxChecks.minUTxO(params(4), valued(0, twice)), (mv / 27) * (27 + 17))
+    assertEquals(TxChecks.minUTxO[Mary](params(4), valued(0, twice)), (mv / 27) * (27 + 17))
     // Alonzo divides by the 29 words of an ada-only entry instead
-    assertEquals(TxChecks.minUTxO(params(5), valued(0, Map.empty)), BigInt(29 * 34482))
+    assertEquals(TxChecks.minUTxO[Alonzo](params(5), valued(0, Map.empty)), BigInt(29 * 34482))
   }
 
   /** The bytes of `serialize v` as cardano-ledger-binary writes them: minimal heads, and a map of
@@ -1046,9 +1134,9 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     assertEquals(big.value.serializedSize, 5000)
     assertEquals(cborValue(big.value), 5000)
     // Babbage on preprod, maxValueSize 5000: accepted; one byte less allowed and it would be refused
-    assertEquals(outputRule(params(8), big), "accepted")
+    assertEquals(outputRule[Babbage](params(8), big), "accepted")
     assertEquals(
-      outputRule(params(8).copy(maxValueSize = 4999), big),
+      outputRule[Babbage](params(8).copy(maxValueSize = 4999), big),
       "OutputTooBigUTxO"
     )
     body.outputs.foreach(o => assert(o.value.serializedSize <= 5000, o.toString))
@@ -1061,22 +1149,25 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     // one policy: 1 + 5 (coin) + 1 + 30 (policy) + 2 (inner map head, 113 entries) + n * (2 + 32 + 1)
     assertEquals(withNames(113).value.serializedSize, 3994)
     assertEquals(withNames(114).value.serializedSize, 4029)
-    List(3, 4).foreach { pv =>
-      assertEquals(TxChecks.maxOutputValueSize(params(pv)), Some(BigInt(4000)))
-    }
-    assertEquals(outputRule(params(4), withNames(113)), "accepted")
-    assertEquals(outputRule(params(4), withNames(114)), "OutputTooBigUTxO")
+    assertEquals(TxChecks.maxOutputValueSize[Allegra](params(3)), Some(BigInt(4000)))
+    assertEquals(TxChecks.maxOutputValueSize[Mary](params(4)), Some(BigInt(4000)))
+    assertEquals(outputRule[Mary](params(4), withNames(113)), "accepted")
+    assertEquals(outputRule[Mary](params(4), withNames(114)), "OutputTooBigUTxO")
     // Shelley has no value size rule; a pre-Mary chain cannot carry such a value anyway
-    assertEquals(TxChecks.maxOutputValueSize(params(2)), None)
+    assertEquals(TxChecks.maxOutputValueSize[Shelley](params(2)), None)
     // Alonzo and later use the maxValueSize parameter (5000 here)
-    List(5, 7).foreach { pv =>
-      assertEquals(outputRule(params(pv), withNames(114)), "accepted", s"era $pv")
-      assertEquals(outputRule(params(pv), withNames(141)), "accepted", s"era $pv")
-      assertEquals(outputRule(params(pv), withNames(142)), "OutputTooBigUTxO", s"era $pv")
-    }
+    def parameter[E <: EraTag](pv: Int)(using ShelleyBasedEra[E]) =
+      assertEquals(outputRule[E](params(pv), withNames(114)), "accepted", s"era $pv")
+      assertEquals(outputRule[E](params(pv), withNames(141)), "accepted", s"era $pv")
+      assertEquals(outputRule[E](params(pv), withNames(142)), "OutputTooBigUTxO", s"era $pv")
+    parameter[Alonzo](5)
+    parameter[Babbage](7)
     val tight = params(5).copy(maxValueSize = 3994)
-    assertEquals(outputRule(tight, withNames(113)), "accepted")
-    assertEquals(outputRule(tight.copy(maxValueSize = 3993), withNames(113)), "OutputTooBigUTxO")
+    assertEquals(outputRule[Alonzo](tight, withNames(113)), "accepted")
+    assertEquals(
+      outputRule[Alonzo](tight.copy(maxValueSize = 3993), withNames(113)),
+      "OutputTooBigUTxO"
+    )
   }
 
   /** A state of the era `E` at protocol version `pv` with two genesis keys and their delegates, and

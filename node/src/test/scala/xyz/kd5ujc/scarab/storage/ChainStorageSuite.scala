@@ -112,7 +112,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       setup.globals,
       setup.byronRules,
       setup.handOver,
-      setup.byronHistory
+      setup.byronHistory,
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
     )
 
   /** Open the storage, follow blocks `[from, until)` with the real follower, wait for snapshots. */
@@ -176,6 +177,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 setup.byronRules,
                 setup.handOver,
                 setup.byronHistory,
+                xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
                 utxoStore = utxoStore
               )
             ChainStorage
@@ -238,8 +240,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                     .pool(follower)
                     .flatMap(blocks => WorkerTesting.follow(follower, blocks, peer, done.get))
                     .timeout(60.seconds)
-                  // Snapshots are written in the background; let them land.
-                  _ <- IO.sleep(500.millis)
+                  // snapshots are written in the background: they land before the state is read
+                  _ <- recovered.snapshotsWritten.timeout(60.seconds)
                   chain <- chainRef.get
                   all <- utxoStore.fold(IO.pure(chain.state.utxo.toMap))(s =>
                     UtxoStore.materialize(s, chain.state.utxo)
@@ -555,6 +557,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   setup.byronRules,
                   setup.handOver,
                   setup.byronHistory,
+                  xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
                   utxoStore = Some(store)
                 ),
                 setup.mirrorStart,
@@ -724,7 +727,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               setup.globals,
               setup.byronRules,
               setup.handOver,
-              setup.byronHistory
+              setup.byronHistory,
+              xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
             )
           )
           ChainStorage
@@ -772,10 +776,11 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
                     offered.update(_ :+ candidates).as(candidates.headOption)
                   def next(using Raise[IO, PeerError]) =
-                    count.getAndUpdate(_ + 1).flatMap(tap) *> queue.tryTake.flatMap {
-                      case Some(event) => IO.pure(event)
-                      case None        => done.complete(()) *> IO.never[SyncEvent]
-                    }
+                    count.getAndUpdate(_ + 1).flatMap(tap) *>
+                      queue.tryTake.flatMap {
+                        case Some(event) => IO.pure(event)
+                        case None        => done.complete(()) *> IO.never[SyncEvent]
+                      }
                   def fetch(header: Header)(using Raise[IO, PeerError]) =
                     IO.pure(bodies(header.hash))
                 startupApplications <- Ref.of[IO, Int](0)

@@ -85,6 +85,32 @@ class MainArgsSuite extends munit.FunSuite:
     assert(Main.parse(base ++ List("--db", "/db", flag, flag)).isLeft)
   }
 
+  test("--start-as-non-producing-node and its deprecated alias start with forging disabled") {
+    def nonProducing(flags: String*) =
+      Main.parse(base ++ flags.toList).map(_.startAsNonProducingNode)
+    assertEquals(nonProducing(), Right(false))
+    assertEquals(nonProducing("--start-as-non-producing-node"), Right(true))
+    assertEquals(nonProducing("--non-producing-node"), Right(true))
+    assertEquals(nonProducing("--non-producing-node", "--start-as-non-producing-node"), Right(true))
+    assert(nonProducing("--start-as-non-producing-node", "--start-as-non-producing-node").isLeft)
+    assert(nonProducing("--non-producing-node", "--non-producing-node").isLeft)
+  }
+
+  test("the flag wins over StartAsNonProducingNode, which wins over the default") {
+    def starts(flag: Boolean, key: Option[Boolean]) =
+      Main
+        .parse(base)
+        .toOption
+        .get
+        .copy(startAsNonProducingNode = flag)
+        .startsNonProducing(ConfigSettings(startAsNonProducingNode = key))
+    assert(!starts(flag = false, None))
+    assert(starts(flag = false, Some(true)))
+    assert(!starts(flag = false, Some(false)))
+    assert(starts(flag = true, Some(false)))
+    assert(starts(flag = true, None))
+  }
+
   test("--key-lock defaults to on and refuses other values") {
     assert(Main.parse(base).toOption.get.keyLock)
     assert(!Main.parse(base ++ List("--key-lock", "off")).toOption.get.keyLock)
@@ -243,4 +269,50 @@ class MainArgsSuite extends munit.FunSuite:
     )
     for value <- List("0", "-1", "many", "2147483648") do
       assert(Main.parse(base ++ List("--plutus-workers", value)).isLeft)
+  }
+
+  test("--plutus-vm chooses the evaluator, scalus by default, and refuses an unknown one") {
+    import xyz.kd5ujc.scarab.plutus.{PlutusVm, UnknownPlutusVm}
+    import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
+    assertEquals(Main.parse(base).map(_.plutusVm), Right(PlutusVm.Scalus))
+    assertEquals(
+      Main.parse(base ++ List("--plutus-vm", "scalus")).map(_.plutusVm),
+      Right(PlutusVm.Scalus)
+    )
+    assertEquals(
+      Main.parse(base ++ List("--plutus-vm", "scarab")).map(_.plutusVm),
+      Right(PlutusVm.Scarab)
+    )
+    Main.parse(base ++ List("--plutus-vm", "Scarab")) match
+      case Left(
+            ConfigError(
+              ConfigProblem.WithUsage(ConfigProblem.PlutusVmUnknown(UnknownPlutusVm("Scarab")), _)
+            )
+          ) =>
+        ()
+      case other => fail(s"$other")
+    assert(Main.parse(base ++ List("--plutus-vm", "scalus", "--plutus-vm", "scarab")).isLeft)
+    assert(Main.parse(base ++ List("--plutus-vm")).isLeft)
+  }
+
+  test("--forge is refused with --plutus-vm scarab, and taken with scalus (ADR 0027)") {
+    import xyz.kd5ujc.scarab.plutus.PlutusVm
+    import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
+    val keys = List("--forge", "--vrf-skey", "v", "--kes-skey", "k", "--opcert", "o")
+    for order <- List(keys ++ List("--plutus-vm", "scarab"), List("--plutus-vm", "scarab") ++ keys)
+    do
+      Main.parse(base ++ order) match
+        case Left(
+              ConfigError(
+                ConfigProblem.WithUsage(ConfigProblem.PlutusVmForging(PlutusVm.Scarab), _)
+              )
+            ) =>
+          ()
+        case other => fail(s"$other")
+    assert(Main.parse(base ++ keys ++ List("--plutus-vm", "scalus")).exists(_.forge.isDefined))
+    assert(Main.parse(base ++ keys).exists(_.forge.isDefined))
+    assert(
+      ConfigProblem.PlutusVmForging(PlutusVm.Scarab).message.contains("--forge is refused"),
+      "the refusal says what is refused"
+    )
   }

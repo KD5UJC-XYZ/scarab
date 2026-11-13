@@ -18,8 +18,9 @@ import Cardano.Ledger.Conway.Governance (GovActionId (..), GovActionIx (..))
 import Cardano.Ledger.Core
   ( BlockBody
   , EraBlockBody (hashBlockBody, txSeqBlockBodyL)
-  , EraTx (bodyTxL)
+  , EraTx (bodyTxL, witsTxL)
   , EraTxBody
+  , EraTxWits (addrTxWitsL, bootAddrTxWitsL)
   , Tx
   , TopTx
   , TxAuxData
@@ -29,7 +30,9 @@ import Cardano.Ledger.Core
   , withdrawalsTxBodyL
   )
 import qualified Cardano.Crypto.Hash as Hash
-import Cardano.Ledger.Hashes (extractHash)
+import Cardano.Ledger.Hashes (KeyHash (..), extractHash)
+import Cardano.Ledger.Keys (BootstrapWitness, VKey (..), bootstrapWitKeyHash)
+import Cardano.Ledger.Shelley.Rules (ShelleyUtxowPredFailure (InvalidWitnessesUTXOW), validateVerifiedWits)
 import Cardano.Ledger.TxIn (TxId (..))
 import Data.Foldable (toList)
 import Cardano.Ledger.Mary (MaryEra)
@@ -46,6 +49,7 @@ import GHC.Generics (Generic)
 import Lens.Micro ((^.))
 import System.Environment (getArgs)
 import System.Exit (die)
+import Validation (Validation (..))
 
 -- | One original encoding: `kind` is "body", "witnesses" or "transaction" (Allegra to Conway);
 -- `era` is an era name, decoded at its `eraProtVerLow` (Shelley 2, Allegra 3, Mary 4, Alonzo 5,
@@ -61,6 +65,16 @@ import System.Exit (die)
 -- era's version, the readers of an output's address and of a reward account (#723).
 -- Kind "govactionids" is the set of governance action ids that the node-to-client
 -- query `GetProposals` reads (#700).
+-- Kind "bootstrap" is one bootstrap witness read alone with its `DecCBOR` at `decoderVersion`, and an
+-- accepted one reports its `bootstrapWitKeyHash`; with `bootstraps` set, an accepted witness set or
+-- whole transaction read by `identified` reports the `bootstrapWitKeyHash` of each bootstrap witness
+-- it holds, in the order of its set.
+-- With `kept` set, an accepted witness set or whole transaction read by `identified` also reports the
+-- `encCBOR` of each vkey and bootstrap witness its sets hold, in the order of each set; with `verify`
+-- set, an accepted whole transaction also reports the verdict of `validateVerifiedWits`
+-- (`Shelley/Rules/Utxow.hs:391-407`), the signature check UTXOW runs in every era from Shelley to
+-- Conway, and the key of each witness it found invalid. A `decoderVersion` given to a case read by
+-- `identified` replaces the era's version.
 data Case = Case
   { name :: String
   , era :: String
@@ -69,6 +83,10 @@ data Case = Case
   , withdrawals :: Maybe Bool
   , ids :: Maybe Bool
   , wire :: Maybe Bool
+  , decoderVersion :: Maybe Integer
+  , bootstraps :: Maybe Bool
+  , kept :: Maybe Bool
+  , verify :: Maybe Bool
   }
   deriving (Generic)
 
@@ -97,6 +115,17 @@ bodyWithdrawals version label raw =
 hex :: Hash.Hash h a -> Text.Text
 hex = Hash.hashToTextAsHex
 
+-- | The address root a bootstrap witness provides (`bootstrapWitKeyHash`), as hex.
+keyHashOf :: BootstrapWitness -> Text.Text
+keyHashOf w = case bootstrapWitKeyHash w of KeyHash h -> hex h
+
+-- | The verdict on one bootstrap witness read alone at `version` and, when accepted, its address root.
+bootstrapAlone :: Binary.Version -> LBS.ByteString -> Value
+bootstrapAlone version raw =
+  case Binary.decodeFull version raw :: Either Binary.DecoderError BootstrapWitness of
+    Left failure -> verdict (Left failure :: Either Binary.DecoderError ())
+    Right w -> object ["accepted" .= True, "keyHash" .= keyHashOf w]
+
 txIdHex :: TxId -> Text.Text
 txIdHex (TxId h) = hex (extractHash h)
 
@@ -111,16 +140,24 @@ idsOf ::
   , Binary.DecCBOR (Binary.Annotator (TxWits era))
   , Binary.DecCBOR (Binary.Annotator (TxAuxData era))
   ) =>
-  Binary.Version -> Bool -> String -> String -> LBS.ByteString -> Value
-idsOf version relayed label k raw = case k of
+  Binary.Version -> Bool -> Bool -> Bool -> Bool -> String -> String -> LBS.ByteString -> Value
+idsOf version relayed boot keep check label k raw = case k of
   "body" -> withIds (\b -> ["id" .= txIdHex (txIdTxBody (b :: TxBody TopTx era))])
   "transaction" ->
     withIds
       ( \t ->
           ("id" .= txIdHex (txIdTxBody ((t :: Tx TopTx era) ^. bodyTxL)))
             : ["wire" .= Text.decodeUtf8 (Hex.encode (LBS.toStrict (Binary.serialize version t))) | relayed]
+            ++ ["bootstrap" .= map keyHashOf (Set.toList (t ^. witsTxL . bootAddrTxWitsL)) | boot]
+            ++ (if keep then keptOf (t ^. witsTxL) else [])
+            ++ (if check then verifiedOf t else [])
       )
-  "witnesses" -> withIds (\(_ :: TxWits era) -> [])
+  "witnesses" ->
+    withIds
+      ( \(w :: TxWits era) ->
+          ["bootstrap" .= map keyHashOf (Set.toList (w ^. bootAddrTxWitsL)) | boot]
+            ++ (if keep then keptOf w else [])
+      )
   "auxiliary" -> withIds (\(_ :: TxAuxData era) -> [])
   "blockbody" ->
     withIds
@@ -131,6 +168,21 @@ idsOf version relayed label k raw = case k of
       )
   _ -> object ["unsupported" .= k]
   where
+    encoded :: forall a. Binary.EncCBOR a => a -> Text.Text
+    encoded = Text.decodeUtf8 . Hex.encode . LBS.toStrict . Binary.serialize version
+    keptOf :: TxWits era -> [Pair]
+    keptOf w =
+      [ "keptVkeys" .= map encoded (Set.toList (w ^. addrTxWitsL))
+      , "keptBootstraps" .= map encoded (Set.toList (w ^. bootAddrTxWitsL))
+      ]
+    verifiedOf :: Tx TopTx era -> [Pair]
+    verifiedOf t = case validateVerifiedWits t of
+      Success () -> ["verified" .= True]
+      Failure failures -> ["verified" .= False, "invalidKeys" .= concatMap invalidKeys (toList failures)]
+    invalidKeys :: ShelleyUtxowPredFailure era -> [Text.Text]
+    invalidKeys failure = case failure of
+      InvalidWitnessesUTXOW keys -> [Text.decodeUtf8 (Hex.encode (Binary.rawEncodeFixedSized vk)) | VKey vk <- toList keys]
+      _ -> ["unexpected failure"]
     withIds :: forall a. Binary.DecCBOR (Binary.Annotator a) => (a -> [Pair]) -> Value
     withIds report =
       case Binary.decodeFullAnnotator version (Text.pack label) Binary.decCBOR raw :: Either Binary.DecoderError a of
@@ -171,15 +223,19 @@ govActionIds raw =
 
 identified :: Case -> LBS.ByteString -> Maybe Value
 identified c raw = case era c of
-  "shelley" -> Just (idsOf @ShelleyEra (Binary.natVersion @2) relayed "Shelley" (kind c) raw)
-  "allegra" -> Just (idsOf @AllegraEra (Binary.natVersion @3) relayed "Allegra" (kind c) raw)
-  "mary" -> Just (idsOf @MaryEra (Binary.natVersion @4) relayed "Mary" (kind c) raw)
-  "alonzo" -> Just (idsOf @AlonzoEra (Binary.natVersion @5) relayed "Alonzo" (kind c) raw)
-  "babbage" -> Just (idsOf @BabbageEra (Binary.natVersion @7) relayed "Babbage" (kind c) raw)
-  "conway" -> Just (idsOf @ConwayEra (Binary.natVersion @9) relayed "Conway" (kind c) raw)
+  "shelley" -> Just (idsOf @ShelleyEra (at (Binary.natVersion @2)) relayed boot keep check "Shelley" (kind c) raw)
+  "allegra" -> Just (idsOf @AllegraEra (at (Binary.natVersion @3)) relayed boot keep check "Allegra" (kind c) raw)
+  "mary" -> Just (idsOf @MaryEra (at (Binary.natVersion @4)) relayed boot keep check "Mary" (kind c) raw)
+  "alonzo" -> Just (idsOf @AlonzoEra (at (Binary.natVersion @5)) relayed boot keep check "Alonzo" (kind c) raw)
+  "babbage" -> Just (idsOf @BabbageEra (at (Binary.natVersion @7)) relayed boot keep check "Babbage" (kind c) raw)
+  "conway" -> Just (idsOf @ConwayEra (at (Binary.natVersion @9)) relayed boot keep check "Conway" (kind c) raw)
   _ -> Nothing
   where
     relayed = wire c == Just True
+    boot = bootstraps c == Just True
+    keep = kept c == Just True
+    check = verify c == Just True
+    at v = maybe v id (decoderVersion c >>= Binary.mkVersion)
 
 runCase :: Case -> IO Value
 runCase c = do
@@ -189,6 +245,9 @@ runCase c = do
       wdrl = body_ && withdrawals c == Just True
   result <- case (ids c, identified c raw, versionOf (era c) >>= \v -> addressed (kind c) v raw) of
    _ | kind c == "govactionids" -> pure (govActionIds raw)
+   _ | kind c == "bootstrap" ->
+         maybe (die "a bootstrap case needs its decoderVersion") (pure . (`bootstrapAlone` raw))
+           (decoderVersion c >>= Binary.mkVersion)
    (Just True, Just v, _) -> pure v
    (_, _, Just v) -> pure v
    _ -> case (era c, kind c) of

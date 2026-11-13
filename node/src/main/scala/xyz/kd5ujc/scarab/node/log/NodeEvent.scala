@@ -6,7 +6,7 @@ import io.circe.syntax.*
 import scala.concurrent.duration.FiniteDuration
 import com.comcast.ip4s.{Host, SocketAddress}
 import xyz.kd5ujc.scarab.crypto.bls.{BlstReport, CpuSupport, LibraryBuild}
-import xyz.kd5ujc.scarab.plutus.{CryptoLibrary, NativeCryptoReport}
+import xyz.kd5ujc.scarab.plutus.{CryptoLibrary, NativeCryptoReport, PlutusVm}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{NodeError, ShelleyGenesis, StorageError}
@@ -22,7 +22,7 @@ import xyz.kd5ujc.scarab.node.{
   SyncAdvisory,
   Topology
 }
-import xyz.kd5ujc.scarab.network.{DiffusionFailure, LocalServer as LocalServerTraces}
+import xyz.kd5ujc.scarab.network.{BearerServer, DiffusionFailure, LocalServer as LocalServerTraces}
 import xyz.kd5ujc.scarab.network.SocketConfigError as SocketConfig
 import xyz.kd5ujc.scarab.network.selection.{
   AfterSlot,
@@ -70,6 +70,9 @@ enum NodeEvent:
 
   /** The start-up check of the native library of the Plutus builtins passed (ADR 0020). */
   case PlutusCrypto(report: NativeCryptoReport)
+
+  /** The Plutus evaluator of the rules, the mempool and the forger (`--plutus-vm`, ADR 0027). */
+  case PlutusVmChosen(vm: PlutusVm)
 
   /** A listener is open (`--listen`, `--local-socket`). */
   case Listening(address: String)
@@ -152,6 +155,11 @@ enum NodeEvent:
     * ([[xyz.kd5ujc.scarab.network.LocalServer.Trace]]).
     */
   case LocalServer(trace: LocalServerTraces.Trace)
+
+  /** The accept loop of the node-to-node server, as the reference traces it under
+    * `Net.Server.Remote` ([[xyz.kd5ujc.scarab.network.BearerServer.Trace]]).
+    */
+  case RemoteServer(trace: BearerServer.Trace)
 
   /** The configured node-to-client socket cannot be used and the node does not start (the
     * reference's `StartupSocketConfigError`).
@@ -410,6 +418,7 @@ object NodeEvent:
               "sha256" -> sha256.asJson
             ))
       )
+    case PlutusVmChosen(vm) => EventKind.PlutusVm.line("vm" -> vm.name.asJson)
     case Listening(address) => EventKind.Listening.line("address" -> address.asJson)
     case Memory(sample)     => EventKind.Memory.line("sample" -> sample)
     case CpuStarvation(drift, threshold, interval) =>
@@ -527,7 +536,14 @@ object NodeEvent:
         case InboundEvent.Closed(reason) => inbound(remote, "closed", Some(reason.message))
         case InboundEvent.Refused(reason) =>
           inbound(remote, "refused", Some(reason.message)).at(Severity.Warning)
-    case LocalServer(trace)       => LocalServerLines.line(trace)
+    case LocalServer(trace) => LocalServerLines.line(trace)
+    case RemoteServer(trace) =>
+      trace match
+        case BearerServer.Trace.AcceptError(failure) =>
+          EventKind.RemoteAcceptError.line("reason" -> failure.shown.asJson)
+        case BearerServer.Trace.ServerStopped => EventKind.RemoteServerStopped.line()
+        case BearerServer.Trace.ServerError(failure) =>
+          EventKind.RemoteServerError.line("reason" -> failure.shown.asJson)
     case SocketConfigError(error) => EventKind.SocketConfigError.line("error" -> error.shown.asJson)
     case DiffusionErrored(failure) =>
       EventKind.DiffusionErrored.line("error" -> failure.shown.asJson)

@@ -34,9 +34,11 @@ object Upec:
           gov: Stateful[F, ShelleyGovState],
           failures: Raise[F, TickFailure]
       ): F[Unit] =
-        Sts.globals[F].flatMap(g => gov.modify(step(g.quorum, _)))
+        Sts.globals[F].flatMap(g => gov.modify(step[E](g.quorum, _)))
 
-  def step(quorum: Int, g: ShelleyGovState): ShelleyGovState =
+  def step[E <: EraTag](quorum: Int, g: ShelleyGovState)(using
+      ShelleyBasedEra[E]
+  ): ShelleyGovState =
     val adopted = g.futurePParams.definite.getOrElse(g.curPParams)
     val proposals =
       if g.futureProposals.valuesIterator.forall(UpdateChecks.canFollow(adopted, _).isRight) then

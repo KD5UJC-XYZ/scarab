@@ -1,0 +1,5 @@
+{
+ "control babbage body update without its epoch": false,
+ "control conway blockbody plain": true,
+ "control conway blockbody detached records": true
+}

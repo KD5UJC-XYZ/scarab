@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.ledger.{
   CborRead,
   Credential,
   Datum,
+  NativeScript,
   Script,
   ScriptKind,
   TxOut,
@@ -164,7 +165,10 @@ object TxOutMemPack:
       CborRead
         .decode(s.bytes)
         .leftMap(Failure.ScriptRefused(_))
-        .flatMap(n => Script.native(n).leftMap(Failure.ScriptRefused(_)))
+        // a reference script, Babbage's: a time lock
+        .flatMap(n =>
+          Script.native(n, NativeScript.Form.Timelock).leftMap(Failure.ScriptRefused(_))
+        )
     case plutus => Right(Script.plutus(plutus, s.bytes).copy(plutus = None))
 
   // ---- the constructors

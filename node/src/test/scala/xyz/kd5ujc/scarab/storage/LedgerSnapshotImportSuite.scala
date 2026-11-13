@@ -8,7 +8,6 @@ import cats.syntax.all.*
 import fs2.io.file.Path
 import java.nio.file.{Files as JFiles, Path as JPath}
 import java.security.{KeyPairGenerator, MessageDigest, Signature}
-import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -30,7 +29,7 @@ import xyz.kd5ujc.scarab.storage.scls.{
   SclsStreaming
 }
 
-class LedgerSnapshotImportSuite extends CatsEffectSuite:
+class LedgerSnapshotImportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   import StorageTestKit.{ok, tempDir}
   import LedgerSnapshotImport.{Error, Evidence, Trust}
   private val fixture = JPath.of("fixtures/eras")
@@ -384,34 +383,14 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
       for
         input <- source(root, Era.Conway)
         (ledger, db, _, _) = input
-        _ <- IO.blocking {
-          val file = java.nio.channels.FileChannel
-            .open((ledger / "tables").toNioPath, java.nio.file.StandardOpenOption.WRITE)
-          try file.write(java.nio.ByteBuffer.wrap(Array(0.toByte)), 512L * 1024 * 1024 - 1)
-          finally file.close()
-        }
         before <- IO(fingerprint(db))
-        fiber <- attempt(LedgerSnapshotImport.run[IO](config(ledger, db))).start
-        _ <- cats.Monad[IO].tailRecM(0) { attempt =>
-          IO.blocking {
-            val dirs = JFiles.list(root.toNioPath)
-            try
-              dirs
-                .iterator()
-                .asScala
-                .exists(p =>
-                  p.getFileName.toString.startsWith(".db.import-") &&
-                    JFiles.exists(p.resolve("source/tables"))
-                )
-            finally dirs.close()
-          }.flatMap {
-            case true                     => IO.pure(Right(()))
-            case false if attempt < 10000 => IO.sleep(1.millis).as(Left(attempt + 1))
-            case _ => IO.raiseError(new AssertionError("source copy did not start"))
+        copied <- cats.effect.Deferred[IO, Unit]
+        copying = copied.complete(()).void *> IO.never[Unit]
+        outcome <- cats.effect.Resource
+          .make(attempt(LedgerSnapshotImport.run[IO](config(ledger, db), copying)).start)(_.cancel)
+          .use { fiber =>
+            copied.get.timeout(10.seconds) *> fiber.cancel *> fiber.join
           }
-        }
-        _ <- fiber.cancel
-        outcome <- fiber.join
         _ <- IO {
           outcome match
             case Outcome.Canceled() => ()

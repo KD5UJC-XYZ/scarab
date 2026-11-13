@@ -48,8 +48,9 @@ trait Transport[F[_], A]:
   * false`) and once the manager has released it (`released = true`).
   *
   * Each connection is the resource of a fiber of its own and each hot session the resource of a
-  * second one. Its retained result/control handles and status are observed by a separate monitor
-  * under the outer `supervisor`, which survives both resources.
+  * second one, both under the outer `supervisor`. Its retained result/control handles and status
+  * are observed by a separate monitor under `monitors`, which survives both resources and ends
+  * before `supervisor` ends the connections ([[OutboundPeers.create]]).
   */
 final class OutboundPeers[F[_]: Async, A] private (
     node: Handle[F, NodeError],
@@ -58,6 +59,7 @@ final class OutboundPeers[F[_]: Async, A] private (
     config: OutboundPeers.Config,
     hot: OutboundPeers.Hot[F],
     supervisor: Supervisor[F],
+    monitors: Supervisor[F],
     report: Event[A] => F[Unit],
     metrics: Stateful[F, PeerMetrics[A]],
     table: Ref[F, Map[A, OutboundPeers.Link[F]]],
@@ -323,7 +325,7 @@ final class OutboundPeers[F[_]: Async, A] private (
                     report(
                       Event.SharingNegotiated(peer, warm.peerSharing.isDefined, Some(generation))
                     ) *>
-                    supervisor.supervise(peerMonitoringLoop(peer, link)).void *>
+                    monitors.supervise(peerMonitoringLoop(peer, link)).void *>
                     ready.complete(Right(handle)) *>
                     F.race(release.get, warm.mux.closed).flatMap {
                       case Left(_)      => F.unit
@@ -1286,6 +1288,15 @@ object OutboundPeers:
 
   /** The outbound connections of the node.
     *
+    * @param supervisor
+    *   Holds each connection, its dialling and its hot session.
+    * @param monitors
+    *   Holds each connection's monitor. Released before `supervisor`, so that every monitor has
+    *   ended before a connection is torn down: a monitor that outlived its connection would report
+    *   the release as a loss. The reference closes the job pool of its peer state actions, which
+    *   holds the monitors, inside the scope of its connection manager (ouroboros-network 2fb69829
+    *   `Ouroboros/Network/Diffusion.hs` 769-786, 801-826, `PeerSelection/PeerStateActions.hs` 630,
+    *   836-848, `network-mux` `Control/Concurrent/JobPool.hs` 91-92, 106-110).
     * @param beforeObservation
     *   run by each connection's monitor before it observes the connection's applications: a test
     *   seam for a monitor that fails (issue 579); the node passes none
@@ -1296,6 +1307,7 @@ object OutboundPeers:
       config: Config,
       hot: Hot[F],
       supervisor: Supervisor[F],
+      monitors: Supervisor[F],
       report: Event[A] => F[Unit],
       metrics: Stateful[F, PeerMetrics[A]],
       connected: Option[(A, SocketAddress[IpAddress]) => F[Unit]] = None,
@@ -1317,6 +1329,7 @@ object OutboundPeers:
         config,
         hot,
         supervisor,
+        monitors,
         report,
         metrics,
         table,

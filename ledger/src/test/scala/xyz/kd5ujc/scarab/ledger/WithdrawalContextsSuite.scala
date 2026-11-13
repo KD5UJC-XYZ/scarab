@@ -47,7 +47,13 @@ class WithdrawalContextsSuite extends FunSuite:
       val body =
         TestLedger.body("withdrawal context", Vector.empty, Vector.empty, 0, withdrawals = accounts)
       val tx = Tx(body, Witnesses.empty, 0, true, None)
-      val env = ScriptContexts.Environment(protocol, Map.empty, Map.empty, n => Right(n))
+      val env = ScriptContexts.Environment(
+        TestLedger.usualEra(protocol),
+        protocol,
+        Map.empty,
+        Map.empty,
+        n => Right(n)
+      )
       val info = ScriptContexts.txInfo(language, tx, env).fold(e => fail(e.toString), identity)
       val at = if language == PlutusLanguage.V1 then 5 else 6
       val obtained = info match
@@ -114,7 +120,8 @@ class WithdrawalContextsSuite extends FunSuite:
         RewardAccount(0, lowKey) -> BigInt(5)
       )
       val body = TestLedger.body("mixed kinds", Vector.empty, Vector.empty, 0, withdrawals = mixed)
-      val env = ScriptContexts.Environment(10, Map.empty, Map.empty, n => Right(n))
+      val env =
+        ScriptContexts.Environment(TestLedger.usualEra(10), 10, Map.empty, Map.empty, n => Right(n))
       val info = ScriptContexts
         .txInfo(language, Tx(body, Witnesses.empty, 0, true, None), env)
         .fold(e => fail(e.toString), identity)
@@ -146,7 +153,8 @@ class WithdrawalContextsSuite extends FunSuite:
     )
     val body =
       TestLedger.body("treasury", Vector.empty, Vector.empty, 0, proposals = Vector(proposal))
-    val env = ScriptContexts.Environment(10, Map.empty, Map.empty, n => Right(n))
+    val env =
+      ScriptContexts.Environment(TestLedger.usualEra(10), 10, Map.empty, Map.empty, n => Right(n))
     val info = ScriptContexts
       .txInfo(PlutusLanguage.V3, Tx(body, Witnesses.empty, 0, true, None), env)
       .fold(e => fail(e.toString), identity)

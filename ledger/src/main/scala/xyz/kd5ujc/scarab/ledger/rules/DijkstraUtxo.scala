@@ -285,8 +285,8 @@ object DijkstraUtxo
       conway(UtxoTests.badInputs(current, body.inputs.distinct)),
       conway(UtxoTests.feeTooSmall(body, minFee(pp, ann, original))),
       conway(if tx.isValid then UtxoTests.valueNotConserved(consumed, produced) else Test.pass),
-      conway(UtxoTests.outputTooSmall(pp, outs)),
-      conway(UtxoTests.outputTooBig(pp, outs)),
+      conway(UtxoTests.outputTooSmall[Dijkstra](pp, outs)),
+      conway(UtxoTests.outputTooBig[Dijkstra](pp, outs)),
       conway(ctx.static(UtxoTests.bootAddrAttrsTooBig(outs))),
       conway(ctx.static(UtxoTests.wrongNetwork(ctx.network, outs))),
       conway(ctx.static(UtxoTests.wrongNetworkInTxBody(ctx.network, body))),
@@ -345,7 +345,7 @@ object DijkstraUtxo
     val tx = ann.conway.tx
     val (deposits, _) = Deposits.of(env.pp, env.original, tx.body)
     val refunds = declaredRefunds(tx.body)
-    val collateral = TxChecks.collateral(env.originalUtxo, env.pp, tx)
+    val collateral = TxChecks.collateral[Dijkstra](env.originalUtxo, tx)
     for
       before <- st.get
       _ <- DijkstraSts.record[F, DijkstraUtxoFailure](
@@ -354,7 +354,7 @@ object DijkstraUtxo
       _ <- DijkstraSts.conway[F, UtxoEnv[Any], PlutusStats, Counted[
         UTxOState[Dijkstra]
       ], StAnnTx, DijkstraUtxoFailure](
-        Utxos,
+        Utxos.sts[Dijkstra],
         UtxoEnv(env.ctx, env.pp, env.original),
         ann.conway,
         Counted.plutus[UTxOState[Dijkstra]],
@@ -396,7 +396,12 @@ object DijkstraUtxow
           for
             _ <- DijkstraSts.record[F, DijkstraUtxowFailure](
               Utxow
-                .checks(UtxoEnv(env.ctx, env.pp, env.original), Map.empty, ann.conway, Test.pass)
+                .checks[Dijkstra](
+                  UtxoEnv(env.ctx, env.pp, env.original),
+                  Map.empty,
+                  ann.conway,
+                  Test.pass
+                )
                 .map(
                   _.leftMap(d => DijkstraHalt.Conway(d: LedgerFailure))
                     .flatMap(DijkstraSts.taken(DijkstraFromConway.ofUtxow))

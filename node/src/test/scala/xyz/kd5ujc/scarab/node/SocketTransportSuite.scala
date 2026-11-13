@@ -156,7 +156,12 @@ class SocketTransportSuite extends FailsOnUncaught:
         )
       )
       address <- BearerServer
-        .listen[IO, NetworkError](Listeners.Loopback, maxConnections = None)((_, _) => IO.unit) {
+        .listen[IO, NetworkError](
+          TcpListeners.configured[IO],
+          Listeners.Loopback,
+          _ => IO.unit,
+          maxConnections = None
+        )((_, _) => IO.unit) {
           (bearer, remote) => governor.serve(bearer, remote).void
         }
         .map(_.address)

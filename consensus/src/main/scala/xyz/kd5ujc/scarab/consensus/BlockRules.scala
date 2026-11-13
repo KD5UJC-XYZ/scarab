@@ -84,6 +84,30 @@ enum BlockNoVerdict:
           case BackendFailure.StackExhausted | BackendFailure.BudgetOutOfRange(_) |
               BackendFailure.BuiltinUnavailable(_) | BackendFailure.CostingUnmirrored(_) =>
             Deterministic
+          case BackendFailure.Uplc(reason) =>
+            import xyz.kd5ujc.scarab.uplc.ledger.Unavailability
+            import xyz.kd5ujc.scarab.uplc.builtin.extended.LibraryDefect
+            reason match
+              // an exception inside the own evaluator, or a builtin's library that threw: the
+              // environment, as a Throwable on the Scalus backend's worker
+              case Unavailability.Thrown(_) |
+                  Unavailability.BuiltinDefect(_, LibraryDefect.Thrown(_)) =>
+                Passing
+              // a library that answered what it cannot (an input it refuses, a hashed point
+              // outside the group, a Miller-loop result without the library's value): the same
+              // input and build answer the same
+              case Unavailability.BuiltinDefect(
+                    _,
+                    LibraryDefect.UnexpectedInput(_) | LibraryDefect.HashedOutsideGroup(_) |
+                    LibraryDefect.DetachedMlResult
+                  ) =>
+                Deterministic
+              // protocol 12 and later, and a cost model, variant, machine, denotation or arity
+              // this build lacks: the same until a restart
+              case Unavailability.UnsupportedProtocol(_) | Unavailability.CostModel(_) |
+                  Unavailability.Variant(_) | Unavailability.NoMachine(_, _) |
+                  Unavailability.NoDenotation(_, _) | Unavailability.BuiltinArity(_, _, _) =>
+                Deterministic
       case Verification(_) => Passing
       // a quantity of the state stays out of range for the same state
       case StateOutOfRange(_) => Deterministic

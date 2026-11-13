@@ -66,6 +66,8 @@ licenses/** -text -whitespace
 
 # Unified patch context uses a space for empty lines; retain every pinned patch byte.
 patches/scalus/*.patch -text -whitespace
+# The upstream golden block of cardano-node issue 4228 is kept byte for byte (provenance.json records its SHA-256).
+fixtures/reference/alonzo-min-fee/** -text
 # Native text observations and the original upstream notice are hash-pinned inputs.
 fixtures/reference/plutus-text/** -text
 fixtures/reference/plutus-text/NOTICE -whitespace

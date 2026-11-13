@@ -91,7 +91,7 @@ class RetryingMemoSuite extends FunSuite:
 
   test("the bounded decoder cache skips unavailable results and retains known malformed input") {
     type Result = Either[ScriptDecodeFailure, Int]
-    val cache = ScalusEvaluator.BoundedCache[String, Result](1)
+    val cache = BoundedCache[String, Result](1)
     val calls = AtomicInteger(0)
     def lookup(key: String)(value: Result): Result =
       cache.getOrElseUpdate(key, { calls.incrementAndGet(); value })(ScriptDecodeFailure.cacheable)

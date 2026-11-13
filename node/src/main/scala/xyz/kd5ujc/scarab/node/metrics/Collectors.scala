@@ -10,7 +10,7 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Try
 import xyz.kd5ujc.scarab.consensus.{SchedulingStats, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
-import xyz.kd5ujc.scarab.network.ConnectionManager
+import xyz.kd5ujc.scarab.network.{ConnectionManager, InboundGovernorCounters}
 import xyz.kd5ujc.scarab.network.selection.PeerMetrics
 import xyz.kd5ujc.scarab.node.BlockPool
 import xyz.kd5ujc.scarab.node.forge.ForgeStats
@@ -106,8 +106,8 @@ object Collectors:
         metrics.set(peerMetricsBoard, MetricsBoardLabel.Blocks, blocks.toDouble)
     }
 
-  /** The connection table: the three counts the Haskell node's connection manager reports, and the
-    * connections by state.
+  /** The connection table: the three counts the Haskell node's connection manager reports, the
+    * connections by state, and the inbound governor's counts of the peers' remote states.
     */
   def connections[F[_]: Monad](manager: ConnectionManager[F])(using metrics: Metrics[F]): F[Unit] =
     import Catalogue.*
@@ -120,6 +120,12 @@ object Collectors:
         ConnectionStateLabel.values.toList.traverse_(label =>
           metrics.set(connectionsByState, label, byState.getOrElse(label, 0).toDouble)
         )
+    } *> manager.remoteStates.flatMap { states =>
+      val remote = InboundGovernorCounters.of(states.values)
+      metrics.set(inboundGovernorIdle, remote.idle.toDouble) *>
+        metrics.set(inboundGovernorCold, remote.cold.toDouble) *>
+        metrics.set(inboundGovernorWarm, remote.warm.toDouble) *>
+        metrics.set(inboundGovernorHot, remote.hot.toDouble)
     }
 
   /** The whole-run scheduling measurements (D8), as `/scheduling` serves them. */

@@ -163,7 +163,7 @@ object ShelleyBbody:
     (Rational(s) * d).ceil < (Rational(s + 1) * d).ceil
 
   def sts[E <: EraTag](using
-      PreConway[E]
+      pre: PreConway[E]
   ): Sts[ShelleyBbodyEnv, ShelleyBbodyState[E], BbodySignal, BlockFailure] =
     new Sts[ShelleyBbodyEnv, ShelleyBbodyState[E], BbodySignal, BlockFailure]:
       private given Embed[Counted[LedgerState[E]], ShelleyBbodyState[
@@ -195,12 +195,16 @@ object ShelleyBbody:
             ShelleyLedgerEnv(env.ctx, env.account),
             signal.txs
           )
+          // Alonzo's BBODY, which Babbage's is, at any version; Shelley's has no such check
           _ <- Sts.require[F, BlockFailure](
-            Bbody
-              .exUnitsExceeded(pp, signal.txs)
-              .map(BlockFailure.BlockExUnitsTooBig(_, pp.maxBlockExUnits))
+            (if pre.atLeast(ShelleyBasedEra.SAlonzo) then Bbody.exUnitsExceeded(pp, signal.txs)
+             else None).map(BlockFailure.BlockExUnitsTooBig(_, pp.maxBlockExUnits))
           )
-          counted = !isOverlaySlot(globals.firstSlot(env.ctx.epoch), pp.effectiveD, env.ctx.slot)
+          counted = !isOverlaySlot(
+            globals.firstSlot(env.ctx.epoch),
+            pp.effectiveD[E](using PreConway[E].era),
+            env.ctx.slot
+          )
           _ <- st.modify(s =>
             if !counted then s
             else

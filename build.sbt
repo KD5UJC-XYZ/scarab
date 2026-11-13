@@ -63,7 +63,7 @@ val testDependencies = Seq(
 // below. Artifact names start with `scarab-`; sbt enforces an acyclic dependency graph:
 //
 //   codec <- crypto <- protocol <- network
-//   codec <- plutus
+//   crypto <- uplc <- plutus
 //   protocol, plutus <- ledger <- consensus <- storage
 //   models <- storage (the Haskell ledger-state codec reuses the models runtime)
 //   storage, network <- node
@@ -147,9 +147,45 @@ lazy val network = scarab("network")
 
 val scalusPrepared = ScalusPatch.requirePrepared(Dependencies.V.scalus)
 
+// Scarab's own UPLC evaluator (ADR 0027): the term model, Flat decoder, CEK machine, builtins, costing
+// and budget, with no Scalus on its class path. `checkUplcClasspath` (part of `check`) fails the build
+// when a Scalus artifact reaches it, and `NoScalusSuite` checks the test JVM's own class path.
+lazy val checkUplcClasspath = taskKey[Unit]("Fail if a Scalus artifact is on the uplc class path")
+lazy val uplc = scarab("uplc")
+  .dependsOn(
+    codec % "compile->compile;test->test",
+    crypto % "compile->compile;test->test"
+  )
+  .settings(
+    libraryDependencies ++= Seq(
+      Libraries.cats,
+      Libraries.catsMtl,
+      // The textual UPLC of the conformance corpus is parsed in the tests only.
+      Libraries.catsParse % Test
+    ),
+    // The vendored plutus reference corpus (`plutus-reference`) and the Wycheproof vectors, read as test
+    // resources without a dependency on `plutus`, whose class path carries Scalus (`LocalProject`, as
+    // `plutus` itself depends on this project).
+    Test / unmanagedResourceDirectories += (LocalProject("plutus") / baseDirectory).value / "src/test/resources",
+    checkUplcClasspath := {
+      val reached = ((Compile / dependencyClasspath).value ++ (Test / dependencyClasspath).value)
+        .flatMap { entry =>
+          val byModule = entry.get(moduleID.key).filter(_.organization.toLowerCase.contains("scalus"))
+          val byFile = Option(entry.data.getName).filter(_.toLowerCase.contains("scalus"))
+          byModule.map(m => s"${m.organization}:${m.name}") ++ byFile
+        }
+        .distinct
+      if (reached.nonEmpty)
+        sys.error(s"uplc must not depend on Scalus (ADR 0027), but its class path has: ${reached.mkString(", ")}")
+    }
+  )
+
 // The Plutus (UPLC) machine and builtins through Scalus; the script context and the rules are ours.
 lazy val plutus = scarab("plutus")
-  .dependsOn(codec % "compile->compile;test->test")
+  .dependsOn(
+    codec % "compile->compile;test->test",
+    uplc % "compile->compile;test->test"
+  )
   .settings(
     libraryDependencies ++= Seq(
       Libraries.cats,
@@ -210,9 +246,11 @@ lazy val consensus = scarab("consensus")
 
 // Immutable and volatile stores, ledger snapshots, the UTxO store, the Haskell ImmutableDB reader.
 lazy val storage = scarab("storage")
+  // Storage concurrency tests use the shared simulated scheduler and failure-reporting runtime.
   .dependsOn(
     consensus % "compile->compile;test->test",
-    models
+    models,
+    network % "test->test"
   )
   .settings(
     scalacOptions += "-Xmax-inlines:512",
@@ -441,6 +479,7 @@ lazy val tools = scarab("tools")
     crypto % "compile->compile;compile->test",
     protocol % "compile->compile;compile->test",
     network % "compile->compile;compile->test",
+    uplc % "compile->compile;compile->test",
     plutus % "compile->compile;compile->test",
     ledger % "compile->compile;compile->test",
     consensus % "compile->compile;compile->test",
@@ -462,6 +501,7 @@ lazy val root = project
     crypto,
     protocol,
     network,
+    uplc,
     plutus,
     ledger,
     consensus,
@@ -516,6 +556,7 @@ val modules = Seq(
   "crypto",
   "protocol",
   "network",
+  "uplc",
   "plutus",
   "ledger",
   "consensus",
@@ -529,7 +570,7 @@ val modules = Seq(
 
 addCommandAlias(
   "check",
-  (";scalafmtCheckAll" +: (modules.map(m => s"$m/Test/compile") ++ modules
+  (";scalafmtCheckAll;checkUplcClasspath" +: (modules.map(m => s"$m/Test/compile") ++ modules
     .map(m => s"$m/Test/test")) :+ "scalafixAll --check")
     .mkString(";")
 )

@@ -145,6 +145,17 @@ trait Connection[F[_]]:
   /** Completes once the owner of the transport released the connection. */
   def closed: F[Unit]
 
+  /** `updateRemoteState`: the inbound governor's remote state of this connection is now `state`
+    * (`InboundGovernor/State.hs` 269-281); the first call registers it, as `NewConnection` does
+    * with `RemoteIdle` (`InboundGovernor.hs` 330-335).
+    */
+  def updateRemoteState(state: RemoteSt): F[Unit]
+
+  /** `unregisterConnection`: the inbound governor tracks this connection no more, after a commit or
+    * once its mux finished (`InboundGovernor/State.hs` 193-209).
+    */
+  def unregisterRemote: F[Unit]
+
 /** What an outbound acquisition got (`Connected` with `Here`, or `Nowhere`, in
   * `acquireOutboundConnectionImpl`).
   */
@@ -190,6 +201,16 @@ trait ConnectionManager[F[_]]:
   def lookup(remote: SocketAddress[IpAddress]): F[Option[ConnectionManager.Live[F]]]
 
   def snapshot: F[ConnectionManager.Snapshot]
+
+  /** The inbound governor's remote state of each connection it tracks, by [[Connection.id]]: the
+    * reference's `remoteStateMap` (`mkPublicState`, `InboundGovernor/State.hs` 66-81), whose
+    * [[InboundGovernorCounters]] the node exports. The inbound governor keeps it beside the table,
+    * whose changes it neither makes nor waits for.
+    */
+  def remoteStates: F[Map[Long, RemoteSt]]
+
+  /** Completes once the remote states satisfy `p`. */
+  def awaitRemoteStates(p: Map[Long, RemoteSt] => Boolean): F[Unit]
 
   /** The number of inbound connections, as the accept loop's rate limit reads it (the reference's
     * `numberOfConnections`, `icmNumberOfConnections`).
@@ -379,12 +400,16 @@ object ConnectionManager:
       limits: Limits = Limits(),
       events: Option[ConnectionEvents[F]] = None
   ): F[ConnectionManager[F]] =
-    (SignallingRef.of[F, Table[F]](Table(Map.empty, 0L, Rng(limits.seed))), Ref.of[F, Long](0L))
-      .mapN((table, ids) => new Impl(table, ids, limits, events))
+    (
+      SignallingRef.of[F, Table[F]](Table(Map.empty, 0L, Rng(limits.seed))),
+      Ref.of[F, Long](0L),
+      SignallingRef.of[F, Map[Long, RemoteSt]](Map.empty)
+    ).mapN((table, ids, remotes) => new Impl(table, ids, remotes, limits, events))
 
   private final class Impl[F[_]](
       table: SignallingRef[F, Table[F]],
       ids: Ref[F, Long],
+      remotes: SignallingRef[F, Map[Long, RemoteSt]],
       limits: Limits,
       events: Option[ConnectionEvents[F]]
   )(using F: Async[F])
@@ -873,6 +898,10 @@ object ConnectionManager:
 
       def closed = entry.closed.get
 
+      def updateRemoteState(state: RemoteSt) = remotes.update(_.updated(id, state))
+
+      def unregisterRemote = remotes.update(_ - id)
+
     /** The connection thread's cleanup (`Core.hs` 590-702): a connection left in `Terminating` is
       * held for the time-wait; any other is `Terminated` and removed at once.
       */
@@ -1161,6 +1190,10 @@ object ConnectionManager:
           .headOption
           .map((_, e) => Live[F](remote, e.state, e.closed.get))
       )
+
+    def remoteStates = remotes.get
+
+    def awaitRemoteStates(p: Map[Long, RemoteSt] => Boolean) = remotes.waitUntil(p)
 
     def inboundCount = table.get.map(counters(_).inbound)
 

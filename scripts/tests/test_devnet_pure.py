@@ -49,6 +49,12 @@ class FollowerCommandTest(unittest.TestCase):
             sys.executable, str(follower.ENTRY), "--name", "audit", "follow",
             "--dump-state", "--scala-cpus", "4"])
 
+    def test_plutus_vm_reaches_child_cli_only_when_given(self):
+        with patch.object(follower.subprocess, "Popen") as launch:
+            follower.start_follower("audit", pathlib.Path("/tmp/audit"), plutus_vm="scarab")
+        self.assertEqual(launch.call_args.args[0], [
+            sys.executable, str(follower.ENTRY), "--name", "audit", "follow", "--plutus-vm", "scarab"])
+
     def test_omitted_cpu_limit_preserves_child_cli_default(self):
         with patch.object(follower.subprocess, "Popen") as launch:
             follower.start_follower("audit", pathlib.Path("/tmp/audit"))

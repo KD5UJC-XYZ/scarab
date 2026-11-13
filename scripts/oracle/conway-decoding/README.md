@@ -102,3 +102,39 @@ account, read alone in each era with the kinds "address" and "account" (`DecCBOR
 `DecCBOR AccountAddress` of the CBOR byte string), and bodies that hold one of network 1 and 2 in
 each place a body reads one. Its recipe is the one above with `address_cases.py`,
 `/tmp/address-inputs.json` and `fixtures/reference/address-headers/cases.jsonl`.
+
+The [era decoders corpus](../../../fixtures/reference/era-decoders/README.md) runs on the same
+harness, its cases from `era_decoder_cases.py`: certificate tags in the bodies of Shelley to Conway,
+time-lock native scripts in Shelley and Allegra witness sets, a repeated auxiliary data index in the
+block bodies of Mary to Conway, and invalid-transaction lists in the block bodies of Alonzo to
+Conway. An invalid list that repeats an index or decreases makes the harness throw instead of
+returning a verdict, so each of those cases is an input file of its own; its recipe is in the
+corpus README.
+
+The [delegation hashes corpus](../../../fixtures/reference/delegation-hashes/README.md), the class of
+the November 2025 mainnet partition, runs on the same harness, its cases from
+`delegation_hash_cases.py`: a whole Conway transaction holding each certificate that delegates
+(tags 2 and 9 to 13) with one hash of the stake credential, the pool id or the DRep 27 or 29 bytes
+long, each pool id also 56 bytes long, and each certificate with every hash of 28 bytes. Its recipe
+is the one above with `delegation_hash_cases.py`, `/tmp/delegation-hashes-inputs.json` and
+`fixtures/reference/delegation-hashes/cases.jsonl`.
+
+The [bootstrap chain codes corpus](../../../fixtures/reference/bootstrap-chain-codes/README.md) runs
+on the same harness, its cases from `bootstrap_chain_code_cases.py`: a witness set, a whole
+transaction and a block body of every era from Shelley to Conway holding a bootstrap witness whose
+chain code is 0, 31, 32, 33 or 64 bytes, and one bootstrap witness read alone at each decoder version
+from 2 to 12. A case of kind "bootstrap" is read alone with `DecCBOR BootstrapWitness` at its
+`decoderVersion`, and a case with `bootstraps` set also reports the `bootstrapWitKeyHash` of each
+bootstrap witness it holds. Its recipe is the one above with `bootstrap_chain_code_cases.py`,
+`/tmp/bootstrap-chain-codes-inputs.json` and `fixtures/reference/bootstrap-chain-codes/cases.jsonl`.
+
+The [bootstrap duplicates corpus](../../../fixtures/reference/bootstrap-duplicates/README.md) runs on
+the same harness, its cases from `bootstrap_duplicate_cases.py`: whole transactions of every era from
+Shelley to Conway whose bootstrap witnesses share an address root and differ in their signatures,
+valid and invalid, in each order, and the witness set alone at each decoder version from the era's to
+12. A case with `kept` set also reports the `encCBOR` of each vkey and bootstrap witness the sets of
+an accepted witness set or transaction hold, in the order of each set; a transaction with `verify`
+set also reports the result of the released `validateVerifiedWits` on it and the keys it found
+invalid; and a `decoderVersion` given to a case read with `ids` replaces the era's version. Its
+recipe is the one above with `bootstrap_duplicate_cases.py`, `/tmp/bootstrap-duplicates-inputs.json`
+and `fixtures/reference/bootstrap-duplicates/cases.jsonl`.

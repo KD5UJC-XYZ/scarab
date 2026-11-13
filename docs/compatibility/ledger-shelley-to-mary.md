@@ -13,7 +13,13 @@ unit/property (`RewardsSuite`, `PreConwayRulesSuite`); devnet e2e with three She
 
 `ValueNotConservedUTxO` counts minted tokens as consumed and burned ones as produced, as the reference does (`getConsumedMaryValue` and `burnedMultiAssets`, cardano-ledger f649f975 `Mary/UTxO.hs:72-97`; #828, `ValueConservationSuite`). The verdict was already the reference's; the failure's payload now is too.
 
+Each era's UTXO runs its own checks whatever the protocol version, as the reference's rule of each era does (cardano-ledger f649f975; #867, `EraNotVersionUtxoSuite`, through `ShelleyUtxo.validate`): Shelley's inclusive time to live at version 3, Allegra's validity interval with its exclusive upper bound at version 2 (`Shelley/Rules/Utxo.hs:414-423`, `Allegra/Rules/Utxo.hs:176,225-235`), Mary's 4000-byte value limit at version 2 and its order of the outputs at version 5 (`Allegra/Rules/Utxo.hs:211,237-254`), and Mary's minimum, which never finds an output with assets too small, at version 2 (`Mary/TxOut.hs:33`). A chain that starts an era by `Test<Era>HardForkAtEpoch` keeps the version of the era before it; the UTXOW, UTXOS, BBODY, script-context and parameter sites of the same kind follow the era too (#880 to #884).
+
 The slot of no return (`getTheSlotOfNoReturn`, cardano-ledger f649f975 `Slot.hs:106-114`), which TICK's solidifying of the future parameters and the PPUP too-late check use, is computed exactly (`EpochGeometrySuite`). The reference's `Word64` doubling of the stability window wraps for a window of 2^63 slots or more, which Scarab does not reproduce (#825): an approved deviation ([owner decision](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849)).
+
+The era-specific parameter and overlay checks, including the resolved Alonzo-to-Babbage
+proposal-translation difference (#884), are recorded with their source citations and regression
+evidence in [Ledger: Alonzo and Babbage](ledger-alonzo-babbage.md#evidence).
 
 ## Explicitly unchecked or unconfirmed
 

@@ -5,6 +5,8 @@ import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.Block
 import munit.FunSuite
+import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
+import xyz.kd5ujc.scarab.protocol.Era
 import scala.jdk.CollectionConverters.*
 
 /** The script data hash of a transaction without redeemers, on the real Preview chain.
@@ -38,6 +40,11 @@ class PreviewEmptyRedeemersSuite extends FunSuite:
     val v = b.header.protocolVersion._1.toInt
     if b.era.toString == "Babbage" then math.min(v, 8) else v
 
+  private def eraOf(block: Block.Shelley): ShelleyBasedEra[?] = block.era match
+    case Era.Babbage => ShelleyBasedEra.SBabbage
+    case Era.Conway  => ShelleyBasedEra.SConway
+    case other       => fail(s"unexpected fixture era $other")
+
   private val cases: Vector[(Block.Shelley, Tx)] =
     for
       b <- blocks
@@ -61,7 +68,7 @@ class PreviewEmptyRedeemersSuite extends FunSuite:
     cases.foreach { case (b, tx) =>
       val major = ledgerMajor(b)
       assertEquals(
-        ScriptIntegrity.hash(tx, TestLedger.params(major), Set.empty),
+        ScriptIntegrity.hash(tx, TestLedger.params(major), Set.empty)(using eraOf(b)),
         tx.body.scriptDataHash,
         s"slot ${b.header.slot} protocol $major tx ${tx.body.id.hex}"
       )
@@ -71,9 +78,9 @@ class PreviewEmptyRedeemersSuite extends FunSuite:
   test("for an absent redeemers field the other encoding does not match the chain") {
     cases.filter(_._2.witnesses.redeemersRaw.isEmpty).foreach { case (b, tx) =>
       val major = ledgerMajor(b)
-      val other = if major >= 9 then 8 else 9
+      val other = if b.era == Era.Conway then ShelleyBasedEra.SBabbage else ShelleyBasedEra.SConway
       assertNotEquals(
-        ScriptIntegrity.hash(tx, TestLedger.params(other), Set.empty),
+        ScriptIntegrity.hash(tx, TestLedger.params(major), Set.empty)(using other),
         tx.body.scriptDataHash,
         s"slot ${b.header.slot}"
       )
@@ -88,7 +95,7 @@ class PreviewEmptyRedeemersSuite extends FunSuite:
     explicit.foreach { case (b, tx) =>
       assertEquals(b.era.toString, "Babbage")
       assertEquals(
-        ScriptIntegrity.hash(tx, TestLedger.params(ledgerMajor(b)), Set.empty),
+        ScriptIntegrity.hash(tx, TestLedger.params(ledgerMajor(b)), Set.empty)(using eraOf(b)),
         tx.body.scriptDataHash
       )
     }
@@ -99,4 +106,15 @@ class PreviewEmptyRedeemersSuite extends FunSuite:
       blocks.map(b => b.era.toString -> b.header.protocolVersion._1.toInt).toSet,
       Set("Babbage" -> 7, "Conway" -> 9, "Conway" -> 10, "Conway" -> 11, "Conway" -> 12)
     )
+  }
+
+  test("changing only the protocol version leaves each era's absent-redeemer hash unchanged") {
+    cases.filter(_._2.witnesses.redeemersRaw.isEmpty).foreach { case (b, tx) =>
+      for major <- Vector(4, 6, 8, 9, 12) do
+        assertEquals(
+          ScriptIntegrity.hash(tx, TestLedger.params(major), Set.empty)(using eraOf(b)),
+          tx.body.scriptDataHash,
+          s"${b.era} at protocol $major, slot ${b.header.slot}"
+        )
+    }
   }

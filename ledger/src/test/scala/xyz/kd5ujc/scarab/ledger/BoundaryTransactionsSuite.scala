@@ -9,7 +9,7 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.rules.*
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.plutus.{EvalFailure, ScalusEvaluator}
+import xyz.kd5ujc.scarab.plutus.{EvalFailure, PlutusBackends}
 
 /** Complete reference submissions, including phase-1 refusals that never enter evaluation. Unlike
   * the context-only harness, decode refusals cannot supply an invalid-tag collateral verdict.
@@ -143,7 +143,9 @@ class BoundaryTransactionsSuite extends FunSuite:
         Vector(bytes(field[String](r.boundary, "script")))
       )
       val phase1 = TxChecks
-        .scriptsWellFormed(c.params, c.tx, TestLedger.env)
+        .scriptsWellFormed(c.params, c.tx, TestLedger.env)(using
+          TestLedger.usualEra((c.params).protocolMajor.toInt)
+        )
         .flatMap(TestLedger.verdict(c.tx.body.id, _))
       r.stage match
         case Stage.Decode => assertEquals(phase1, Left(malformed(c)))
@@ -156,8 +158,8 @@ class BoundaryTransactionsSuite extends FunSuite:
             c.spent,
             c.references,
             c.posix,
-            ScalusEvaluator.default
-          )
+            PlutusBackends.evaluator
+          )(using TestLedger.usualEra((c.params).protocolMajor.toInt))
           (stage, outcome) match
             case (Stage.Success, Right(Phase2.Outcome.Passed(_))) => ()
             case (Stage.Scope, Right(Phase2.Outcome.Failed(_, failures))) =>

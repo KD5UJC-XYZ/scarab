@@ -691,12 +691,16 @@ enum KesFileFailureCause:
   case StagedKeyMismatch(mismatch: KesStageMismatch)
   case StageStillPresentAfterRecovery
 
+  /** `renameat2` with `RENAME_EXCHANGE` failed with this errno (#918). */
+  case Exchange(errno: Int)
+
   def message: String = this match
     case FileSystem(cause)              => Option(cause.getMessage).getOrElse(cause.toString)
     case NoWriteProgress                => "file channel made no write progress"
     case StageReadback(cause)           => cause.message
     case StagedKeyMismatch(value)       => value.message
     case StageStillPresentAfterRecovery => "staged key remains after successful recovery"
+    case Exchange(errno)                => s"renameat2 RENAME_EXCHANGE failed with errno $errno"
 
 enum KesStageMismatch:
   case Period(expected: Int, actual: Int)

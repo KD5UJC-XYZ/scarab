@@ -42,7 +42,9 @@ object TxKit:
         epochLength = 1000,
         securityParam = TestGeometry.k(5),
         activeSlotsCoeff = TestGeometry.f("0.5")
-      )
+      ),
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
     )
 
   def head(major: Int, n: BigInt): Vector[Byte] =
@@ -55,7 +57,15 @@ object TxKit:
       ((major << 5) | 27).toByte +: Vector(56, 48, 40, 32, 24, 16, 8, 0).map(s => (n >> s).toByte)
   def bstr(b: Bytes): Vector[Byte] = head(2, b.size) ++ b.value
 
-  /** A signed Conway transaction `[body, witnesses, true, null]` and its id. */
+  /** A signed Conway transaction `[body, witnesses, true, null]` and its id.
+    *
+    * @param bootstraps
+    *   bootstrap witnesses `[vkey, signature, chain code, attributes]`: each key signs the body,
+    *   with the chain code and attributes given.
+    * @param invalidBootstraps
+    *   the indexes of `bootstraps` whose key signs other bytes than the body's hash, so that the
+    *   signature does not verify.
+    */
   def tx(
       inputs: Vector[TxIn],
       outputs: Vector[(Address, BigInt)],
@@ -67,7 +77,9 @@ object TxKit:
       expires: Option[BigInt] = None,
       exUnits: Option[(BigInt, BigInt)] = None,
       certificates: Vector[Byte] = Vector.empty,
-      referenceInputs: Vector[TxIn] = Vector.empty
+      referenceInputs: Vector[TxIn] = Vector.empty,
+      bootstraps: Vector[(Key, Bytes, Bytes)] = Vector.empty,
+      invalidBootstraps: Set[Int] = Set.empty
   ): (Bytes, Bytes) =
     def inputList(of: Vector[TxIn]): Vector[Byte] =
       head(4, of.size) ++ of.flatMap(i => head(4, 2) ++ bstr(i.id) ++ head(0, i.index))
@@ -106,8 +118,17 @@ object TxKit:
       Vector(0x05.toByte) ++ head(4, 1) ++ head(4, 4) ++ head(0, 0) ++ head(0, 0) ++ head(0, 0) ++
         head(4, 2) ++ head(0, mem) ++ head(0, steps)
     }
+    val bootstrapWitnesses =
+      if bootstraps.isEmpty then Vector.empty[Byte]
+      else
+        Vector(0x02.toByte) ++ head(4, bootstraps.size) ++ bootstraps.zipWithIndex.flatMap {
+          case ((k, code, attrs), i) =>
+            val signed = if invalidBootstraps(i) then Blake2b.hash256.hash(id) else id
+            head(4, 4) ++ bstr(k.vkey) ++ bstr(k.sign(signed)) ++ bstr(code) ++ bstr(attrs)
+        }
     val witnesses =
-      head(5, 1 + exUnits.size) ++ Vector(0x00.toByte) ++ vkeys ++ redeemers
+      head(5, 1 + (if bootstraps.isEmpty then 0 else 1) + exUnits.size) ++ Vector(0x00.toByte) ++
+        vkeys ++ bootstrapWitnesses ++ redeemers
     (
       Bytes(
         head(4, 4) ++ body.value ++ witnesses ++ Vector(

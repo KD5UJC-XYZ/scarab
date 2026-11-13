@@ -263,6 +263,29 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
     yield ()
   }
 
+  // `randomR (0, upperBound)` on a `Word16` (`DNSActions.hs` 470, ouroboros-network `2fb69829`) is
+  // random-1.3.1's `unbiasedWordMult32RM`: weights 1 and 2 draw from [0, 3], the top two bits of
+  // the word's low half (2^32 mod 4 is 0, so none is rejected); a draw of 0 or 1 is the first
+  test("SRV selection draws the weight as random draws a Word16: the word's low half, multiplied") {
+    for
+      first <- name("first.example")
+      second <- name("second.example")
+      records = Vector(
+        DnsServiceRecord(1, 1, 3001, first, 60.seconds),
+        DnsServiceRecord(1, 2, 3002, second, 60.seconds)
+      )
+      _ <- IO((0L until 64L).foreach { seed =>
+        val (word, next) = Rng(seed).nextLong
+        val draw = ((word & 0xffffffffL) * 4L) >>> 32
+        assertEquals(
+          PeerDns.selectService(records, Rng(seed)).map((s, g) => (s.target, g)),
+          Right((if draw <= 1L then first else second, next)),
+          s"seed $seed"
+        )
+      })
+    yield ()
+  }
+
   test("SRV lookup with only root targets has no usable service") {
     name(".").flatMap { dot =>
       IO(

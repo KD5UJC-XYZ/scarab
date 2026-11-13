@@ -496,6 +496,21 @@ class ConfigSuite extends FunSuite:
         .toOption,
       Some(ConfigError(ConfigProblem.Negative("MaxConcurrencyBulkSync", BigDecimal(-1))))
     )
+    // `StartAsNonProducingNode` (POM.hs 325): a Boolean, absent or null is the default
+    def nonProducing(value: Json) =
+      NodeConfig
+        .parse(ReferenceBuild.Default)(with_("StartAsNonProducingNode", value))
+        .map(_.settings.startAsNonProducingNode)
+    assertEquals(nonProducing(Json.True), Right(Some(true)))
+    assertEquals(nonProducing(Json.False), Right(Some(false)))
+    assertEquals(nonProducing(Json.Null), Right(None))
+    assert(nonProducing(Json.fromString("true")).isLeft)
+    assertEquals(
+      NodeConfig
+        .parse(ReferenceBuild.Default)(base.noSpaces)
+        .map(_.settings.startAsNonProducingNode),
+      Right(None)
+    )
     assert(NodeConfig.parse(ReferenceBuild.Default)("[]").isLeft)
     assert(NodeConfig.parse(ReferenceBuild.Default)("{").isLeft)
   }
@@ -812,9 +827,23 @@ class ConfigSuite extends FunSuite:
     assertEquals(fromFile.db, Some(Path.of("/d")))
     assertEquals(fromFile.mempoolBytes, Word32.fromLong(3000000))
     val five = Word32.fromLong(5)
-    val flagged = bare.copy(db = Some(Path.of("/mine")), mempoolBytes = five)
+    // a flag wins over the file; `SocketPath` is taken at all only by Scarab, an approved
+    // deviation (#949: the reference's command line always replaces it)
+    val flagged = bare.copy(
+      localSocket = Some("/mine.socket"),
+      db = Some(Path.of("/mine")),
+      mempoolBytes = five
+    )
     val (overridden, _, _) = Main.configured(flagged).fold(e => fail(e.message), identity)
-    assertEquals((overridden.db, overridden.mempoolBytes), (Some(Path.of("/mine")), five))
+    assertEquals(
+      (overridden.localSocket, overridden.db, overridden.mempoolBytes),
+      (Some("/mine.socket"), Some(Path.of("/mine")), five)
+    )
+    // the evaluator the flag chose is the one the completed options give the run
+    val own = xyz.kd5ujc.scarab.plutus.PlutusVm.Scarab
+    val (chosen, _, _) =
+      Main.configured(bare.copy(plutusVm = own)).fold(e => fail(e.message), identity)
+    assertEquals(chosen.plutusVm, own)
     // a topology that names no peer, and no --peer: nothing to follow
     val empty = Files.createTempFile("topology", ".json")
     Files.writeString(

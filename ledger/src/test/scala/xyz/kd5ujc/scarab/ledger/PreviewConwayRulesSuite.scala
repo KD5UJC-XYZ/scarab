@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
-import xyz.kd5ujc.scarab.plutus.ScalusEvaluator
+import xyz.kd5ujc.scarab.plutus.PlutusBackends
 import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, Counted, EraLedger, NativeRules}
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -156,7 +156,8 @@ class PreviewConwayRulesSuite extends FunSuite:
       firstSlotNextEpoch = (c.slot / 86400 + 1) * 86400,
       stabilityWindow = 129600,
       clock = Some(xyz.kd5ujc.scarab.ledger.PosixClock.Total(slot => slot * 1000 + 1666656000000L)),
-      evaluator = ScalusEvaluator.default
+      evaluator = PlutusBackends.evaluator,
+      decoder = PlutusBackends.decoder
     )
 
   private def accepted(s: NewEpochState[Conway], c: PlutusCase): Counted[NewEpochState[Conway]] =

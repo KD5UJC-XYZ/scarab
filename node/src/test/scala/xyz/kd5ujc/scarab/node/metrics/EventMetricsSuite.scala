@@ -10,7 +10,13 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.{Churn, FetchMode}
 import xyz.kd5ujc.scarab.node.{HeaderGate, InboundEvent, Output, Peer}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
-import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeTrace, KesEvolutionError, KesInfo}
+import xyz.kd5ujc.scarab.node.forge.{
+  BlockForgingState,
+  ForgeEvent,
+  ForgeTrace,
+  KesEvolutionError,
+  KesInfo
+}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents, Rejection}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, Era}
 import xyz.kd5ujc.scarab.storage.{ImmutableStore, StorageEvent}
@@ -127,12 +133,21 @@ class EventMetricsSuite extends CatsEffectSuite:
   test("the forge state gives the KES gauges as the reference's StateInfo does") {
     fixture.flatMap { (metrics, em) =>
       for
+        _ <- em.forge.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.EnabledBlockForging))
         _ <- em.forge.emit(ForgeEvent.Started(hash, hash, 10, 62, 2, 12))
         started <- metrics.snapshot
+        _ <- em.forge.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging))
+        disabled <- metrics.snapshot
+        _ <- em.forge.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.EnabledBlockForging))
+        _ <- em.forge.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.NotEffective))
+        notEffective <- metrics.snapshot
         _ <- em.forge.emit(ForgeEvent.StateInfo(KesInfo(10, 72, 5)))
         s <- metrics.snapshot
       yield
         assertEquals(gauge(started, Catalogue.forgingEnabled, ()), Some(1.0))
+        // `forging_enabled` follows `BlockForgingUpdate` (cardano-node 11.1.3 Startup.hs 301-307)
+        assertEquals(gauge(disabled, Catalogue.forgingEnabled, ()), Some(0.0))
+        assertEquals(gauge(notEffective, Catalogue.forgingEnabled, ()), Some(0.0))
         assertEquals(gauge(started, Catalogue.opCertCounter, ()), Some(2.0))
         // nothing of the key until the forge state is first updated in a slot
         assertEquals(gauge(started, Catalogue.currentKesPeriod, ()), None)

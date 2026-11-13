@@ -104,8 +104,11 @@ groups:
         for: 5m
         labels: {severity: critical}
         annotations:
-          summary: "{{ $labels.container }}: the node has no forging credentials"
-          description: The node runs without forging credentials (or they were not loaded).
+          summary: "{{ $labels.container }}: forging is disabled"
+          description: >-
+            The node does not forge: it runs without forging credentials, was started with
+            --start-as-non-producing-node, or a SIGHUP found a credential file absent (blockForgingUpdate
+            DisabledBlockForging in the node log). A standby kept disabled on purpose belongs in another role.
       - alert: PoolNotCheckingSlots
         expr: >-
           increase(cardano_node_metrics_Forge_about_to_lead_counter{role="pool"}[15m]) < 1

@@ -103,11 +103,25 @@ object NativeScript:
       case InvalidBefore(a)    => s"InvalidBefore($a)"
       case InvalidHereafter(a) => s"InvalidHereafter($a)"
 
-  /** Decode with the nesting on the heap, so a script as deep as a block can hold decodes (see
-    * [[NativeScript.eval]]); the reference has no limit on the depth of a native script.
+  /** The native script language an era reads. Shelley reads `MultiSig`, tags 0 to 3, and calls
+    * `invalidKey` for any other (`eras/shelley/impl/src/Cardano/Ledger/Shelley/Scripts.hs:264-278`,
+    * cardano-ledger f649f975); from Allegra the language is `Timelock`, which adds the time locks 4
+    * and 5 (`eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:235-245`).
     */
-  def decode(n: Node)(using ByteStrings): Either[DecodeError, NativeScript] =
-    TreeFold.foldE[Node, NativeScript, DecodeError](n)(open)
+  enum Form:
+    case MultiSig
+    case Timelock
+
+  object Form:
+    /** The language of the native scripts of a witness set of `era`. */
+    def of(era: Era): Form = if era.ordinal <= Era.Shelley.ordinal then MultiSig else Timelock
+
+  /** Decode a script of `form` with the nesting on the heap, so a script as deep as a block can
+    * hold decodes (see [[NativeScript.eval]]); the reference has no limit on the depth of a native
+    * script. A tag `form` does not read is no script of its arity.
+    */
+  def decode(n: Node, form: Form)(using ByteStrings): Either[DecodeError, NativeScript] =
+    TreeFold.foldE[Node, NativeScript, DecodeError](n)(open(form))
 
   /** Why bytes are not a native script. */
   enum DecodeError:
@@ -142,7 +156,7 @@ object NativeScript:
       Either.cond(v >= MinInt64 && v <= MaxInt64, v, DecodeError.RequiredOutOfRange(v))
     )
 
-  private def open(n: Node)(using
+  private def open(form: Form)(n: Node)(using
       ByteStrings
   ): Either[DecodeError, TreeFold.Step[Node, NativeScript, DecodeError]] =
     import TreeFold.Step
@@ -170,9 +184,9 @@ object NativeScript:
           case (2, 2) => list(1).map(Step.Branch(_, ss => Right(AnyOf(ss))))
           case (3, 3) =>
             required(xs(1)).flatMap(k => list(2).map(Step.Branch(_, ss => Right(NOfK(k, ss)))))
-          case (4, 2) =>
+          case (4, 2) if form == Form.Timelock =>
             slot(xs(1), DecodeField.InvalidBefore).map(s => Step.Leaf(InvalidBefore(s)))
-          case (5, 2) =>
+          case (5, 2) if form == Form.Timelock =>
             slot(xs(1), DecodeField.InvalidHereafter).map(s => Step.Leaf(InvalidHereafter(s)))
           case (_, k) =>
             Left(
@@ -221,9 +235,12 @@ object Script:
   private def hashOf(kind: ScriptKind, payload: Bytes): Bytes =
     Blake2b.hash224.hash(Bytes(kind.tag.toByte +: payload.value))
 
-  def native(n: Node)(using ByteStrings): Either[LedgerDecodeError, Script] =
+  /** A native script of `form` ([[NativeScript.Form]]) with its hash. */
+  def native(n: Node, form: NativeScript.Form)(using
+      ByteStrings
+  ): Either[LedgerDecodeError, Script] =
     NativeScript
-      .decode(n)
+      .decode(n, form)
       .left
       .map(LedgerDecodeError.NativeScript(_))
       .map(s => Script(ScriptKind.Native, hashOf(ScriptKind.Native, n.original), Some(s)))
@@ -246,7 +263,8 @@ object Script:
         .map(plutus(kind, _))
     CborRead.arrayN(n, 2, DecodeField.Script).flatMap { xs =>
       CborRead.uint(xs(0), DecodeField.ScriptType).flatMap {
-        case t if t == 0 => native(xs(1))
+        // `[0, native_script]` is Alonzo's form, whose native scripts are time locks
+        case t if t == 0 => native(xs(1), NativeScript.Form.Timelock)
         case t if t == 1 => plutusOf(ScriptKind.PlutusV1, DecodeField.PlutusV1, xs(1))
         case t if t == 2 => plutusOf(ScriptKind.PlutusV2, DecodeField.PlutusV2, xs(1))
         case t if t == 3 => plutusOf(ScriptKind.PlutusV3, DecodeField.PlutusV3, xs(1))

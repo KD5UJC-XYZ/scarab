@@ -8,7 +8,8 @@ import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
+import xyz.kd5ujc.scarab.network.genesis.{LeakyBucket, LimitOnPatience}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.{HeaderChain, HeaderRules}
 import xyz.kd5ujc.scarab.ledger.HeaderError
@@ -30,13 +31,13 @@ class HeaderGateSuite extends CatsEffectSuite with ScalaCheckSuite:
     xyz.kd5ujc.scarab.crypto.kes.Sum6Kes.Failure.Defect(new IllegalStateException("provider broke"))
   )
 
-  /** A header further than `horizon` blocks above the anchor must wait; `bad` ones are invalid,
-    * `defective` ones meet a provider defect.
+  /** A header further than `horizon` blocks above the anchor must wait: as in the reference, the
+    * rules run only on a forecast ledger view. Within it `bad` ones are invalid and `defective`
+    * ones meet a provider defect.
     */
   private final class Model(
       bad: Set[Bytes],
       horizon: Int,
-      unchecked: Set[Bytes] = Set.empty,
       defective: Set[Bytes] = Set.empty
   ) extends HeaderRules[BigInt, Int]:
     def at(state: BigInt): Int = state.toInt + 1
@@ -46,21 +47,32 @@ class HeaderGateSuite extends CatsEffectSuite with ScalaCheckSuite:
         prev: Int,
         header: Header
     ): Outcome[Int] =
-      if defective(header.hash) then Outcome.Unverifiable(providerDefect)
-      else if bad(header.hash) then
-        Outcome.Invalid(
-          HeaderError.Structure(xyz.kd5ujc.scarab.ledger.HeaderStructureProblem.EpochPrecedes(0, 1))
-        )
-      else if unchecked(header.hash) then
-        Outcome.Unchecked(
-          xyz.kd5ujc.scarab.consensus.HeaderRules.UncheckedReason.ParentInBatch,
-          None
-        )
-      else if header.blockNo > anchor + horizon then
+      if header.blockNo > anchor + horizon then
         Outcome.Later(
           xyz.kd5ujc.scarab.consensus.HeaderRules.ForecastReason.Horizon(header.slot, anchor)
         )
+      else if defective(header.hash) then Outcome.Unverifiable(providerDefect)
+      else if bad(header.hash) then Outcome.Invalid(badError)
       else Outcome.Valid(prev + 1)
+
+  private val badError =
+    HeaderError.Structure(xyz.kd5ujc.scarab.ledger.HeaderStructureProblem.EpochPrecedes(0, 1))
+
+  /** What a gate did to the patience bucket, in order. */
+  private enum Bucket:
+    case Paused(reason: LimitOnPatience.PauseReason, paused: Boolean)
+    case Validated(blockNo: BigInt)
+
+  /** A patience bucket that only records what it is told. */
+  private def recording(trace: Ref[IO, Vector[Bucket]]): LimitOnPatience[IO] =
+    new LimitOnPatience[IO]:
+      def setPaused(reason: LimitOnPatience.PauseReason, paused: Boolean): IO[Unit] =
+        trace.update(_ :+ Bucket.Paused(reason, paused))
+      def validated(blockNo: BigInt): IO[Unit] = trace.update(_ :+ Bucket.Validated(blockNo))
+      def jumpedTo(blockNo: BigInt): IO[Unit] = IO.unit
+      def configure(config: LeakyBucket.Config): IO[Unit] = IO.unit
+      def snapshot: IO[LeakyBucket.State] =
+        IO.pure(LeakyBucket.State(Rational.zero, 0, false, 0, LeakyBucket.Config.disabled))
 
   @unused private def ref(h: Header) = BlockRef(h.slot, h.hash, h.blockNo)
 
@@ -74,22 +86,34 @@ class HeaderGateSuite extends CatsEffectSuite with ScalaCheckSuite:
 
   private def rig(
       bad: Set[Bytes] = Set.empty,
-      unchecked: Set[Bytes] = Set.empty,
       horizon: Int = 1000,
       applied: Vector[Header] = Vector.empty,
-      stall: FiniteDuration = 5.seconds,
       defective: Set[Bytes] = Set.empty
   )(using Handle[IO, PeerError]): IO[Rig] =
+    Ref
+      .of[IO, VolatileChain[BigInt]](VolatileChain.genesis(50, BigInt(-1)))
+      .flatMap(chain => rigOn(chain, horizon, bad, applied, defective))
+
+  /** [[rig]] over the node's chain `chain`, which a test can advance from outside a `TestControl`
+    * run; with `patience`, the gate's bucket.
+    */
+  private def rigOn(
+      chain: Ref[IO, VolatileChain[BigInt]],
+      horizon: Int,
+      bad: Set[Bytes] = Set.empty,
+      applied: Vector[Header] = Vector.empty,
+      defective: Set[Bytes] = Set.empty,
+      patience: Option[LimitOnPatience[IO]] = None
+  )(using Handle[IO, PeerError]): IO[Rig] =
+    given Stateful[IO, VolatileChain[BigInt]] = RefStateful(chain)
     for
-      chain <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(50, BigInt(-1)))
-      given Stateful[IO, VolatileChain[BigInt]] = RefStateful(chain)
       seen <- Ref.of[IO, Vector[HeaderGate.Counts]](Vector.empty)
       check = HeaderCheck.forChain[IO, BigInt, Int](
-        new Model(bad, horizon, unchecked, defective),
+        new Model(bad, horizon, defective),
         Compute.inline[IO],
-        stall = stall,
         poll = 10.millis,
-        observe = Some(c => seen.update(_ :+ c))
+        observe = Some(c => seen.update(_ :+ c)),
+        patience = patience
       )
       _ <- applied.traverse_(h => chain.update(c => c.extend(h, h.blockNo).toOption.get._1))
       start <- chain.get.map(_.tip)
@@ -256,76 +280,123 @@ class HeaderGateSuite extends CatsEffectSuite with ScalaCheckSuite:
     )
   }
 
+  private def emptyChain: IO[Ref[IO, VolatileChain[BigInt]]] =
+    Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(50, BigInt(-1)))
+
+  /** The node's chain with the blocks of `headers` applied. */
+  private def applying(headers: Vector[Header])(
+      chain: VolatileChain[BigInt]
+  ): VolatileChain[BigInt] =
+    headers.foldLeft(chain)((c, h) => c.extend(h, h.blockNo).toOption.get._1)
+
+  /** What a `TestControl` run has returned so far: `None` while it still runs. */
+  private def finished[A](control: TestControl[A]): IO[Option[A]] =
+    control.results.flatMap {
+      case None                                          => IO.pure(None)
+      case Some(cats.effect.kernel.Outcome.Succeeded(a)) => IO.pure(Some(a))
+      case Some(other) => IO.raiseError(new AssertionError(other.toString))
+    }
+
+  // Issue 879. Past the forecast horizon the reference's ChainSync client waits until our chain and
+  // the intersection have advanced (ouroboros-consensus 82ecba329, ChainSync/Client.hs 1861-1878);
+  // it never takes the header unchecked, however long the chain stands still and whether or not
+  // anything is left in flight. Virtual time runs for minutes between the test's own changes of
+  // the node's chain.
   test(
-    "with nothing of earlier batches left to apply, a header beyond the horizon is left to its block"
+    "a header beyond the horizon is not taken while our chain stands still; it is validated once the chain advances"
   ) {
     val main = Fixtures.chain(20)
-    typed {
-      for
-        r <- rig(horizon = 5)
-        _ <- r.gate.accept(main.map(forward))
-        counts <- r.gate.counts
-      yield counts
-    }.map {
-      // 0 to 4 are within the horizon of the empty chain; the rest could only wait for their own batch
-      case Right(c) => assertEquals((c.validated, c.unchecked), (5L, 15L))
-      case other    => fail(other.toString)
-    }
-  }
-
-  test("a header left to its block does not make the rest of its batch wait for it") {
-    val main = Fixtures.chain(10)
-    // like the first Shelley header after a Byron prefix: no header state follows it
-    typed {
-      for
-        r <- rig(unchecked = Set(main(3).hash))
-        _ <- r.gate.accept(main.map(forward))
-        counts <- r.gate.counts
-      yield counts
-    }.map {
-      case Right(c) => assertEquals((c.validated, c.unchecked, c.waited), (3L, 7L, 0L))
-      case other    => fail(other.toString)
-    }
-  }
-
-  test("after the batch with a header left to its block is applied, the next batch is validated") {
-    val main = Fixtures.chain(12)
-    TestControl.executeEmbed(
-      typed {
+    for
+      chain <- emptyChain
+      control <- TestControl.execute(typed {
         for
-          r <- rig(unchecked = Set(main(3).hash))
-          _ <- r.gate.accept(main.take(6).map(forward))
-          next <- r.gate.accept(main.drop(6).map(forward)).start
-          // the first batch's blocks are applied; the gate then takes the header state from the chain
-          _ <- IO.sleep(300.millis) *> r(main.take(6))
-          _ <- next.joinWithNever
-          counts <- r.gate.counts
-        yield counts
-      }.map {
-        case Right(c) =>
-          assertEquals((c.validated, c.unchecked), (9L, 3L))
-          assert(c.waited >= 1, c.toString)
-        case other => fail(other.toString)
-      }
-    )
-  }
-
-  test("a chain that stands still while a header waits is not a reason to drop the peer") {
-    val main = Fixtures.chain(20)
-    TestControl.executeEmbed(
-      typed {
-        for
-          r <- rig(horizon = 5, stall = 3.seconds)
-          // 5 are released; the node never applies them, so the next header can only wait
+          r <- rigOn(chain, horizon = 5)
+          // within the horizon of the empty chain: released for their blocks
           _ <- r.gate.accept(main.take(5).map(forward))
           _ <- r.gate.accept(main.drop(5).map(forward))
           counts <- r.gate.counts
         yield counts
-      }.map {
-        case Right(c) => assertEquals((c.validated, c.unchecked), (5L, 15L))
-        case other    => fail(other.toString)
-      }
-    )
+      })
+      // the released blocks are not applied: the chain stands still
+      _ <- control.tickFor(10.minutes)
+      standing <- finished(control)
+      // they are applied: nothing of the earlier batch is left in flight, and 10 is still beyond
+      _ <- chain.update(applying(main.take(5)))
+      _ <- control.tickFor(10.minutes)
+      drained <- finished(control)
+      _ <- chain.update(applying(main.slice(5, 15)))
+      _ <- control.tickFor(1.second)
+      done <- finished(control)
+    yield
+      assertEquals(standing, None)
+      assertEquals(drained, None)
+      done match
+        case Some(Right(c)) =>
+          assertEquals((c.validated, c.unchecked), (20L, 0L))
+          assert(c.waited >= 2, c.toString)
+        case other => fail(other.toString)
+  }
+
+  // A batch's blocks are requested only once `accept` returns for it (`Peer.acceptUpdates`): a
+  // header refused while it waits is refused as a header, and no block of its batch is fetched.
+  test(
+    "an invalid header beyond the horizon is refused as a header once validated; its batch is never released"
+  ) {
+    val main = Fixtures.chain(12)
+    for
+      chain <- emptyChain
+      released <- Ref.of[IO, Int](0)
+      control <- TestControl.execute(typed {
+        for
+          r <- rigOn(chain, bad = Set(main(8).hash), horizon = 5)
+          _ <- r.gate.accept(main.take(5).map(forward)) *> released.update(_ + 1)
+          _ <- r.gate.accept(main.drop(5).map(forward)) *> released.update(_ + 1)
+        yield ()
+      })
+      _ <- control.tickFor(10.minutes)
+      waiting <- finished(control)
+      before <- released.get
+      _ <- chain.update(applying(main.take(5)))
+      _ <- control.tickFor(1.second)
+      done <- finished(control)
+      after <- released.get
+    yield
+      assertEquals((waiting, before), (None, 1))
+      assertEquals(done, Some(Left(PeerError.InvalidHeader(main(8).point, badError))))
+      assertEquals(after, 1)
+  }
+
+  // `checkTime` pauses the Limit-on-Patience bucket for the whole wait (Client.hs 1719-1733,
+  // `pauseBucket` 1880-1889): once, however often the gate looks again, and resumed before the
+  // header's token is granted.
+  test("the patience bucket is paused once for the whole wait beyond the horizon") {
+    val main = Fixtures.chain(8)
+    val forecast = LimitOnPatience.PauseReason.Forecast
+    for
+      chain <- emptyChain
+      trace <- Ref.of[IO, Vector[Bucket]](Vector.empty)
+      control <- TestControl.execute(typed {
+        for
+          r <- rigOn(chain, horizon = 5, patience = Some(recording(trace)))
+          _ <- r.gate.accept(main.take(5).map(forward))
+          _ <- r.gate.accept(main.drop(5).map(forward))
+        yield ()
+      })
+      _ <- control.tickFor(10.minutes)
+      during <- trace.get
+      _ <- chain.update(applying(main.take(5)))
+      _ <- control.tickFor(1.second)
+      done <- finished(control)
+      after <- trace.get
+    yield
+      val first = main.take(5).map(h => Bucket.Validated(h.blockNo))
+      assertEquals(during, first :+ Bucket.Paused(forecast, true))
+      assertEquals(done, Some(Right(())))
+      assertEquals(
+        after,
+        first ++ Vector(Bucket.Paused(forecast, true), Bucket.Paused(forecast, false)) ++
+          main.drop(5).map(h => Bucket.Validated(h.blockNo))
+      )
   }
 
   @unused private final case class Op(forward: Int, back: Int)

@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-13",
+  "scope": "Unchanged released decoders (decodeFullAnnotator at the era's decoder version) of a transaction body with a certificate of each tag 0 and 7 to 18 from Shelley to Babbage and of tags 5, 6 and 7 in Conway; a Shelley and an Allegra witness set with native scripts of tags 0, 4 and 5; a Mary to Conway block body (the parts after the header) whose auxiliary data map names an index once, twice or out of order; an Alonzo to Conway block body whose invalid-transaction list is increasing, repeats an index or decreases, for which the harness throws instead of returning a verdict; and three replayed lines of the detached records corpus as controls. No ledger rule, signature or script is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+  "packages": {
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-ledger-shelley": "1.19.0.1",
+    "cardano-ledger-allegra": "1.10.1.0",
+    "cardano-ledger-mary": "1.11.0.0",
+    "cardano-ledger-alonzo": "1.16.0.0",
+    "cardano-ledger-babbage": "1.14.0.0",
+    "cardano-ledger-conway": "1.23.0.0",
+    "cborg": "0.2.10.0",
+    "containers": "0.7"
+  },
+  "sourceFiles": {
+    "shelleyTxCert": {
+      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+      "sourceSha256": "a6415c9aa5026776dd243a80ec083009cde45206e038982041231e4945a73915",
+      "matchesPin": true,
+      "note": "ShelleyTxCert's decCBOR takes tags 0 to 6 and calls invalidKey for any other (475-487)"
+    },
+    "conwayTxCert": {
+      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs",
+      "sourceSha256": "6f032ae2538c3f6ca7b9370defcfd42763c097da6698663c2d4a86544ec9bdf0",
+      "matchesPin": true,
+      "note": "ConwayTxCert's decCBOR fails tags 5 and 6 and reads 7 to 18 with conwayTxCertDelegDecoder (674-719)"
+    },
+    "shelleyScripts": {
+      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Scripts.hs",
+      "sourceSha256": "804463b200f49faf7c40e0d384793300f4b2adcd2de745b13951719e6cacdd45",
+      "matchesPin": true,
+      "note": "MultiSig reads tags 0 to 3 and calls invalidKey for any other (264-278)"
+    },
+    "allegraScripts": {
+      "file": "eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs",
+      "sourceSha256": "77b49ac8d82a0c844ef6c44c70427bffd0afdcc24bc15d1a0e6a98768fd08bdd",
+      "matchesPin": true,
+      "note": "Timelock reads tags 0 to 5 (235-245)"
+    },
+    "decoder": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+      "sourceSha256": "3ff3541b2900ceaab9bda26f633d7ea5118a49f5faab3936d036cfe9b49f94cc",
+      "matchesPin": true,
+      "note": "decodeIntMap refuses a repeated key from decoder version 9 and keeps the last entry below it (858-878)"
+    },
+    "alonzoBlockBody": {
+      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/BlockBody/Internal.hs",
+      "sourceSha256": "20768455801aeeabda3fb80642ef0a4815a563625b0041a62ac8f88497e6a8df",
+      "matchesPin": true,
+      "note": "the auxiliary data map (227-229), the invalid list's range check (240-245) and alignedValidFlags (278-286)"
+    },
+    "shelleyBlockBody": {
+      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/BlockBody/Internal.hs",
+      "sourceSha256": "961b322e61dda6b15530b516c2d4accca0179a3a04f6f44c65825b0ba2672d40",
+      "matchesPin": true,
+      "note": "the auxiliary data map of Shelley to Mary (262-264) and its index range check (231-237)"
+    }
+  },
+  "sourceArchive": {
+    "url": "https://codeload.github.com/IntersectMBO/cardano-ledger/tar.gz/f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "sha256": "b545b1eda2067c756add6d98701aacc217a380fe177f984daa1da655607a0b68",
+    "kind": "repository tarball at the pinned commit"
+  },
+  "harness": {
+    "file": "scripts/oracle/conway-decoding/Main.hs",
+    "sha256": "b86a9d8a3ad9f03264d8735ad729bbab9ba80bb181792f0db1fcc84f5c82099c",
+    "image": "scarab-conway-decoding:local, image ID sha256:3ecb0be74930140cd001a929612a0b348f2ffab96dc8c29b571ca8d36a34dc44, built 2026-10-28 from scripts/oracle/conway-decoding/Dockerfile; the harness was compiled inside a container of it with the Dockerfile's ghc command and packages without -Werror, its own binary predating the block-body kind",
+    "invocation": "the compiled harness on each input file in a docker run --rm --network none container of the image",
+    "unchanged": true
+  },
+  "generatorSha256": "39e7725168afff9376365ad8f206ef5f4e0f7a4d7b5ecf8c314510906de7de9b",
+  "inputsSha256": {
+    "batch.json": "8b0de87ab501ef2bb0f97fe70339a5cd28c02ba345dd1c2b7bca8876a5078f01",
+    "controls-expected.json": "4208ad0c4694abdfdb3c24e0a076df63f7c6d68f2125140223dd38b78d428574",
+    "single-00.json": "e52ba1c68483870753c0a788fd1a89918bf8367284f811c200891ca560b47f75",
+    "single-01.json": "5952ac8fee08a6a79a269e16834d36bc3d293f2b07dcdb88acaac5fa97919c6d",
+    "single-02.json": "a66c6a7ee2fded0af86c0dc8fd591f161577a0281e9b986fabae6abc27a36222",
+    "single-03.json": "4fa2786bd81b932194d62c424fd256b870e593b58b94905804227ef6936b25df",
+    "single-04.json": "1de9f1e33399be53731f5096da240bf25769788c5c52720f09c05c5bf3a78233",
+    "single-05.json": "bd376ff76125b459280aea03f9f13ecff37c58bc9289c314cb74c7e4a2e4a905",
+    "single-06.json": "4deae93d11f838f7a44588e0bdc63bd5f6efc0499b826294aa4d4714c57ac122",
+    "single-07.json": "f6661a88d5c505e4063cc83e16e5120fde673d78ec39f0d25a3ad9fc818c61f2",
+    "single-08.json": "b7fc5c34005e869993a62acf0ab1259a55268c8078c290b0e9905813de1c4c70"
+  },
+  "harnessOutputSha256": {
+    "batch.json": "580b04b9b366a712ab2fa5635ca1b66d0645d50407b36bcbdf53311a62a4e29e",
+    "single-NN.stderr (each of the nine, identical)": "ed52f734844acc31a001a55b71a796afb2259aa330d6880c6ff51094cca4b1c5"
+  },
+  "casesSha256": "dbd4d45813ec2adb7cacef7a8796bfdad26bb3fb00857d231efec8f9e9883845",
+  "cases": 106,
+  "accepted": 30,
+  "refused": 76,
+  "originalBytesRetained": true
+}

@@ -364,6 +364,9 @@ object PeerNetwork:
         )
     for
       supervisor <- Supervisor[F](await = false)
+      // the monitors of the outbound connections, released before `supervisor` ends the
+      // connections ([[OutboundPeers.create]])
+      monitors <- Supervisor[F](await = false)
       dns <- dnsResource
       dnsRng <- Resource.eval(Ref.of[F, Rng](Rng(settings.seed).split._2))
       // Static roots are usable before the owned refresh worker obtains DNS answers.
@@ -472,6 +475,7 @@ object PeerNetwork:
           config,
           hot,
           supervisor,
+          monitors,
           events.offer,
           RefStateful(metrics),
           sharing.map(s =>

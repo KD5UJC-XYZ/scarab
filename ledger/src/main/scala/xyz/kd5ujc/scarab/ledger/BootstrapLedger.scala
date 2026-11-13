@@ -229,6 +229,20 @@ object ParamUpdate:
       key -> value.getOrElse(Typed.Unread(raw))
     }
 
+  /** `upgradePParamsUpdate ()` at the Alonzo-to-Babbage boundary (`Babbage/Translation.hs:155-168`,
+    * `Babbage/PParams.hs:180,316-345,389-391`, cardano-ledger f649f975): drop the removed fields
+    * and divide the cost per UTxO word by eight, rounded down. Other fields keep their original
+    * bytes. A legacy stored key-17 value that [[typed]] cannot read stays unread and cannot be
+    * adopted, as before (ADR 0006); a reference-decoded proposal always has a `Count` at key 17 if
+    * it has that key.
+    */
+  def toBabbage(u: ParamUpdate): ParamUpdate =
+    val kept = u.fields -- Set(12, 13, 15)
+    typed(u).get(17) match
+      case Some(Typed.Count(words)) =>
+        ParamUpdate(kept.updated(17, byron.ByronCbor.uint(words / 8)))
+      case _ => ParamUpdate(kept)
+
   /** The updates that at least `quorum` of `proposals` vote for: `votedFuturePParams`
     * (`Rules/Ppup.hs:214-220`, f649f975) counts the proposals in a
     * `Map (PParamsUpdate era) Word64`, so proposals whose fields have equal values ([[typed]]) are

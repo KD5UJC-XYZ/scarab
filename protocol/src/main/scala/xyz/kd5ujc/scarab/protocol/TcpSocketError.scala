@@ -52,7 +52,6 @@ enum SocketStep[+Host, +Address]:
   /** `bind`; for a listener also `listen`, which the JDK makes in the same call. */
   case Bind(address: Address)
   case Connect(remote: Address)
-  case Accept
 
   /** Reading the socket's addresses or options back. */
   case Inspect
@@ -67,10 +66,11 @@ enum SocketStep[+Host, +Address]:
     case Configure(_)  => "Network.Socket.setSockOpt"
     case Bind(_)       => SystemCall.Bind.location
     case Connect(_)    => "Network.Socket.connect"
-    case Accept        => SystemCall.Accept.location
     case Inspect       => "socket inspection"
 
-/** Why a TCP socket could not be opened, configured, bound, connected or accepted. */
+/** Why a TCP socket could not be opened, configured, bound or connected (a failed accept is an
+  * `AcceptFailure` of the network module's listener).
+  */
 enum TcpSocketError[+Host, +Address] extends DomainError:
   /** A call failed with an errno, read from the JDK's exception ([[Errno.of]]). */
   case Failed(step: SocketStep[Host, Address], cause: ErrnoCause)

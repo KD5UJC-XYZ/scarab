@@ -46,7 +46,8 @@ java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.nod
 
 # 3. The Haskell side: db-analyser over the node's ChainDB, one projection per epoch (Docker, parallel
 #    segments; 86400 slots per epoch on Preview). It works on hard-linked copies; --live first copies the
-#    finished chunks of a node that is still running.
+#    finished chunks of a node that is still running. A chain that begins with Byron epochs names them:
+#    preprod --epoch-slots 432000 --byron-epochs 4 --byron-epoch-slots 21600 (mainnet: --byron-epochs 208).
 python3 scripts/oracle_compare.py reference --config "$D/haskell-preview-config" --db "$D/haskell-preview-db" --live \
   --work "$D/preview-ref-work" --out "$D/preview-ref" --epoch-slots 86400 --jobs 5 --seed-every 60
 

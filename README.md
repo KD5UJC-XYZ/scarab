@@ -56,7 +56,7 @@ the linked source comparisons, fixtures and recorded runs.
 | **Haskell ledger-state file** | The 40.6 MB Preview `state` file written by `cardano-node`, and a devnet `state` file of each era from Byron to Conway, decoded and **re-encoded byte for byte** |
 | **Devnet scenarios** | Against Haskell nodes on a local cluster: Byron→Conway follow with per-era ledger comparisons (`e2e`), governance and Plutus load (`soak`), a Haskell relay fed only by Scarab (`relay`), Scarab forging as a stake pool (`pool`), node-to-client answers byte-compared (`ntc`) |
 | **Preprod block production (H1a)** | The Scarab block producer forged a block in each of its first 7 leader slots of preprod epoch 321; 6 are on the canonical chain, checked against Koios ([#115](https://github.com/KD5UJC-XYZ/scarab/issues/115)) |
-| **Plutus conformance** | The pinned `plutus-conformance` suite (plutus 1.70.0.0): 1,009 of 1,009 cases pass, with zero exclusions ([scope and corrections](docs/plutus-conformance.md)) |
+| **Plutus conformance** | The pinned `plutus-conformance` suite (plutus 1.70.0.0): 1,009 of 1,009 cases pass from their text programs and 906 of 906 from their Flat programs, with zero exclusions ([scope and corrections](docs/plutus-conformance.md)) |
 | **Fuzzing** | Every decoder entry point under structured fuzzing, nightly |
 
 Real-data bugs found along the way are pinned by tests and listed in [docs/findings.md](docs/findings.md).

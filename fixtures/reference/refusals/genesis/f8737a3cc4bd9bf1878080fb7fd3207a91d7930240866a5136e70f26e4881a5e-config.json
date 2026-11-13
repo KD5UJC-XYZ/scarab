@@ -1,0 +1,156 @@
+{
+  "AlonzoGenesisFile": "alonzo-genesis.json",
+  "AlonzoGenesisHash": "331b45fdf8a36e6cf4d62fd473c3299b65603019472dcaff6e5ae92bc929ea76",
+  "ByronGenesisFile": "byron-genesis.json",
+  "ByronGenesisHash": "b5e3d7db655332616eeb36d38ee7e2f577f257a21d74db72109eebf2c2e21848",
+  "ConsensusMode": "PraosMode",
+  "ConwayGenesisFile": "conway-genesis.json",
+  "ConwayGenesisHash": "a75e92a67a1d9f5ab1caa98608deaff90947c7317c7c3d4c0eccceff6f51f0ae",
+  "DijkstraGenesisFile": "dijkstra-genesis.json",
+  "DijkstraGenesisHash": "ccd5fd423c503aea92fbff1332ca70df57df20fe7813d2e917fd6e60cf8ba2d5",
+  "EgressBudgetMbps": 250,
+  "ExperimentalHardForksEnabled": true,
+  "ExperimentalProtocolsEnabled": true,
+  "LastKnownBlockVersion-Alt": 0,
+  "LastKnownBlockVersion-Major": 3,
+  "LastKnownBlockVersion-Minor": 1,
+  "LedgerDB": {
+    "Backend": "V2InMemory",
+    "QueryBatchSize": 100000,
+    "Snapshots": {
+      "MaxDelay": 1080,
+      "MinDelay": 300,
+      "NumOfDiskSnapshots": 2,
+      "SlotOffset": 0,
+      "SnapshotInterval": 4320
+    }
+  },
+  "LeiosAdaptiveEndorsements": {
+    "Enabled": true
+  },
+  "LeiosDbConfig": {
+    "Backend": "SQLite"
+  },
+  "LeiosMinOfferLead": 1200,
+  "Protocol": "Cardano",
+  "RequiresNetworkMagic": "RequiresMagic",
+  "ShelleyGenesisFile": "shelley-genesis.json",
+  "ShelleyGenesisHash": "d7352816306e9fc908471f69f334d39e5808103cc8f38f00ec035f915af010b0",
+  "TestAllegraHardForkAtEpoch": 0,
+  "TestAlonzoHardForkAtEpoch": 0,
+  "TestBabbageHardForkAtEpoch": 0,
+  "TestConwayHardForkAtEpoch": 0,
+  "TestDijkstraHardForkAtEpoch": 1000,
+  "TestMaryHardForkAtEpoch": 0,
+  "TestShelleyHardForkAtEpoch": 0,
+  "TraceOptionForwarder": {
+    "maxReconnectDelay": 30,
+    "queueSize": 128
+  },
+  "TraceOptionMetricsPrefix": "cardano.node.metrics.",
+  "TraceOptionResourceFrequency": 1000,
+  "TraceOptions": {
+    "": {
+      "backends": [
+        "Stdout MachineFormat"
+      ],
+      "detail": "DNormal",
+      "severity": "Notice"
+    },
+    "BlockFetch.Client.CompletedBlockFetch": {
+      "maxFrequency": 2.0
+    },
+    "BlockFetch.Decision": {
+      "severity": "Info"
+    },
+    "ChainDB": {
+      "severity": "Info"
+    },
+    "ChainDB.AddBlockEvent.AddBlockValidation": {
+      "severity": "Silence"
+    },
+    "ChainDB.AddBlockEvent.AddBlockValidation.ValidCandidate": {
+      "maxFrequency": 2.0
+    },
+    "ChainDB.AddBlockEvent.AddedBlockToQueue": {
+      "maxFrequency": 2.0
+    },
+    "ChainDB.AddBlockEvent.AddedBlockToVolatileDB": {
+      "maxFrequency": 2.0
+    },
+    "ChainDB.CopyToImmutableDBEvent.CopiedBlockToImmutableDB": {
+      "maxFrequency": 2.0
+    },
+    "ChainDB.LedgerEvent.Forker": {
+      "severity": "Silence"
+    },
+    "ChainSync.Client": {
+      "severity": "Warning"
+    },
+    "Consensus.LeiosKernel": {
+      "maxFrequency": 0,
+      "severity": "Debug"
+    },
+    "Consensus.LeiosPeer": {
+      "maxFrequency": 0,
+      "severity": "Debug"
+    },
+    "Forge.Loop": {
+      "severity": "Info"
+    },
+    "Forge.StateInfo": {
+      "severity": "Info"
+    },
+    "LeiosFetch.Remote": {
+      "maxFrequency": 0,
+      "severity": "Debug"
+    },
+    "LeiosNotify.Remote": {
+      "maxFrequency": 0,
+      "severity": "Debug"
+    },
+    "LeiosNotify.Remote.Receive.RequestNext": {
+      "severity": "Silence"
+    },
+    "LeiosNotify.Remote.Receive.Votes": {
+      "severity": "Silence"
+    },
+    "LeiosNotify.Remote.Send.RequestNext": {
+      "severity": "Silence"
+    },
+    "LeiosNotify.Remote.Send.Votes": {
+      "severity": "Silence"
+    },
+    "Mempool": {
+      "severity": "Info"
+    },
+    "Mempool.AttemptAdd": {
+      "severity": "Silence"
+    },
+    "Mempool.SyncNotNeeded": {
+      "severity": "Silence"
+    },
+    "Net.ConnectionManager.Remote": {
+      "severity": "Info"
+    },
+    "Net.InboundGovernor": {
+      "severity": "Warning"
+    },
+    "Net.InboundGovernor.Remote": {
+      "severity": "Info"
+    },
+    "Net.Mux.Remote": {
+      "severity": "Info"
+    },
+    "Net.PeerSelection": {
+      "severity": "Info"
+    },
+    "Resources": {
+      "severity": "Silence"
+    },
+    "Startup.DiffusionInit": {
+      "severity": "Info"
+    }
+  },
+  "TxSubmissionLogicVersion": "TxSubmissionLogicV2"
+}

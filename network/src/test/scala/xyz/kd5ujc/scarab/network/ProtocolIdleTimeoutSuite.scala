@@ -565,6 +565,7 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
                 client <- keepAlive(seen.mux)
                 _ <- client.ping
                 _ <- settle
+                _ <- seen.manager.awaitRemoteStates(_.values.toList == List(RemoteSt.Warm))
                 busy <- state(seen.manager)
                 _ <- client.done
                 _ <- settle
@@ -604,3 +605,31 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
           allValid(changes)
         case Left(error) => fail(error.message)
       }
+
+  // the remote states by the temperatures of the peer's protocols: KeepAlive is established,
+  // ChainSync hot (cardano-diffusion `NodeToNode.hs` 252-325), so `AwakeRemote`, then
+  // `RemotePromotedToHot`, `RemoteDemotedToWarm` and `WaitIdleRemote` (`InboundGovernor.hs` 463-528)
+  test(
+    "the peer's KeepAlive makes the connection remote warm, its ChainSync hot; their ends undo it"
+  ):
+    TestControl
+      .executeEmbed(scenario { seen =>
+        def reaches(state: RemoteSt) =
+          seen.manager.awaitRemoteStates(_.values.toList == List(state))
+        for
+          _ <- reaches(RemoteSt.Idle)
+          client <- keepAlive(seen.mux)
+          _ <- client.ping
+          _ <- reaches(RemoteSt.Warm)
+          chainSync <- seen.mux
+            .channel(xyz.kd5ujc.scarab.protocol.Protocols.ChainSync)
+            .flatMap(ChainSyncClient[IO, Bytes](_, ChainSyncFixtures.rawItem))
+          _ <- chainSync.findIntersect(Vector.empty)
+          _ <- reaches(RemoteSt.Hot)
+          _ <- chainSync.done
+          _ <- reaches(RemoteSt.Warm)
+          _ <- client.done
+          _ <- reaches(RemoteSt.Idle)
+        yield ()
+      })
+      .map(result => assertEquals(result, Right(())))

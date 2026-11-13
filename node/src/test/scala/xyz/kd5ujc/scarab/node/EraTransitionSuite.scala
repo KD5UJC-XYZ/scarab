@@ -616,6 +616,43 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  test("Alonzo at version 7 keeps d in the block and forecast header views") {
+    // A slot outside `classifyOverlaySlot`'s active positions, with d = 1: no overlay block
+    // is permitted (`Alonzo/PParams.hs:338`, `Shelley/Rules/Overlay.hs`, f649f975).
+    val index = blocks.indices
+      .find { i =>
+        i > 0 && blocks(i).era == Era.Alonzo && blocks(i - 1).era == Era.Alonzo &&
+        (headers(i).slot - geometry.firstSlot(geometry.epochOf(headers(i).slot))) %
+          (geometry.activeSlotsCoeff.denominator / geometry.activeSlotsCoeff.numerator) != 0
+      }
+      .getOrElse(fail("capture has no inactive Alonzo overlay slot"))
+    val header = headers(index) match
+      case h: Header.Shelley => h.copy(protocolVersion = (BigInt(7), BigInt(0)))
+      case _                 => fail("not a Shelley-based header")
+    val pp = params(states(index)).copy(protocolMajor = 7, d = xyz.kd5ujc.scarab.codec.Rational.one)
+    val before = MirrorStep.withParams(states(index), pp, None)
+    val refusal = ledger.TPraosError.NotActiveOverlaySlot(header.slot)
+    assertEquals(
+      NodeRules.headerChecks(
+        before.protocol,
+        header,
+        Era.Alonzo,
+        header.bodySize.toLong,
+        setup.praos,
+        setup.globals,
+        pp,
+        genDelegs(before),
+        ledger.PoolDistribution(Map.empty, Map.empty)
+      ),
+      Left(BlockFailure.TPraos(refusal))
+    )
+    val check = NodeHeaderRules[MirrorState](setup.praos, setup.globals)
+    assertEquals(
+      check.validate(before, Some(ref(index - 1)), check.at(before), header),
+      consensus.HeaderRules.Outcome.Invalid(ledger.HeaderError.TPraos(refusal))
+    )
+  }
+
   test("every era transition is observed in order, at the configured epoch") {
     val seen = blocks.indices.flatMap { i =>
       NodeRules.observe(geometry)(states(i), states(i + 1), ref(i)).collect {
@@ -859,7 +896,8 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       setup.globals,
       setup.byronRules,
       setup.handOver,
-      setup.byronHistory
+      setup.byronHistory,
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
     )
 
   private def forward(i: Int): SyncEvent = SyncEvent.RollForward(headers(i), ChainSync.Tip.Origin)
@@ -918,7 +956,8 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           setup.globals,
           setup.byronRules,
           Some(broken),
-          setup.byronHistory
+          setup.byronHistory,
+          xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
         )
         rules(before, headers(b), raws(b)).as(Option.empty[NodeError])
       }
@@ -980,6 +1019,7 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               setup.byronRules,
               setup.handOver,
               setup.byronHistory,
+              xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
               utxoStore = Some(store),
               afterBlock = Some((_, _, s) =>
                 IO.delay(cache.noteEpochNonce(s.ledgerEpoch, s.protocol.epochNonce))

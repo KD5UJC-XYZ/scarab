@@ -89,6 +89,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `referenceBuild` | `Node.ReferenceBuild` | Notice | `build` (the `--reference-build` value), `stability` (`stable` or `unstable`), `node` (the pinned release tag, or the node commit of an unstable build), `ledger`, `ledgerBinary`, `consensus` (pinned commits); logged at start, before any store opens; see [flags](flags.md) |
 | `unstableReferenceBuild` | `Node.UnstableReferenceBuild` | Warning | `build`, `experimentalHardForksEnabled` (`false`): an unstable build runs without `ExperimentalHardForksEnabled`, which it is meant for |
 | `plutusCrypto` | `Node.PlutusCrypto` | Info | `platform`, `library` (`source`, `path`, `sha256`) |
+| `plutusVm` | `Node.PlutusVm` | Notice | `vm` (the `--plutus-vm` value, `scalus` or `scarab`): the Plutus evaluator of the block rules, the mempool and the forger; logged at start, after the native library checks and before any store opens; see [flags](flags.md) |
 | `listening` | `Node.Listening` | Notice | `address` |
 | `createSystemdSocketForSnocketPath` | `Node.CreateSystemdSocketForSnocketPath` | Info | `path`; the node-to-client socket is about to be created. Like the rest of these lines, the reference's `Startup.DiffusionInit` trace of that name: `path` is the reference's `show` of the address, `LocalAddress "<path>"`, the path as configured; see [node-to-client](node-to-client.md#the-socket-path) |
 | `createdLocalSocket` | `Node.CreatedLocalSocket` | Info | `path` |
@@ -133,6 +134,9 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `acceptError` | `Net.AcceptError` | Error | `reason`; an accept failed: after `ECONNABORTED` the server accepts again half a second later, any other failure stops it |
 | `serverStopped` | `Net.ServerStopped` | Notice | none |
 | `serverError` | `Net.ServerError` | Critical | `reason`; the accept loop stopped on a failure (a `diffusionErrored` line follows) |
+| `remoteAcceptError` | `Net.RemoteAcceptError` | Error | `reason`; an accept of the node-to-node server failed. Like the next two, the reference's `Net.Server.Remote` trace (`AcceptError`, `Stopped`, `Error`): after `ECONNABORTED` the server accepts again half a second later (the JDK retries that one itself, so it is not seen: an approved deviation, #944), any other failure stops the node |
+| `remoteServerStopped` | `Net.RemoteServerStopped` | Notice | none; the node-to-node server stopped accepting |
+| `remoteServerError` | `Net.RemoteServerError` | Critical | `reason`; its accept loop stopped on a failure (a `diffusionErrored` line follows) |
 | `peerSelectionTargets` | `Net.PeerSelectionTargets` | Notice | `root`, `known`, `established`, `active`, `knownBigLedger`, `establishedBigLedger`, `activeBigLedger` |
 | `peerSelectionRoots` | `Net.PeerSelectionRoots` | Info (Warning when `action` is `failure`) | `action`, `bigLedger`, `before`, `after`, `target`, `current`, `found`, `backoffs`, `retryInSeconds`; sharing actions `pickInbound`, `peerShareRequests`, `peerShareResults` add `peers`, `amount`, `results`, `added` |
 | `peerSelectionPromote` | `Net.PeerSelectionPromote` | Info (Warning when `action` is `failed`) | `action`, `bigLedger`, `from`, `to`, `peers`, `peer`, `local`, `target`, `current`, `failure`, `retryInSeconds`, `forgotten`, `reason`, `operation` |
@@ -155,6 +159,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `mempoolRemoved` | `Mempool.MempoolRemoved` | Info | `tx` |
 | `mempoolSynced` | `Mempool.MempoolSynced` | Info | `count`, `bytes`, `dropped` |
 | `forgeStarted` | `Forge.ForgeStarted` | Notice | `pool`, `vrfKeyHash`, `kesStart`, `kesEvolutions`, `opCertCounter`, `kesPeriod`, `remainingKesPeriods` |
+| `blockForgingUpdate` | `Forge.BlockForgingUpdate` | Info | `enabled` |
 | `startLeadershipCheck` | `Forge.StartLeadershipCheck` | Info | `slot`; the first trace of every slot the forging loop runs. This and the rows down to `adoptedBlock` are cardano-node 11.1.3 `Forge.Loop.*` (one level shallower) with its severities and machine fields (`kind` is the event name), in the order `forkBlockForging` traces them; see [block production](../architecture/block-production.md#the-forging-loop) |
 | `slotIsImmutable` | `Forge.SlotIsImmutable` | Error | `slot`, `tip` (`<hash>@<slot>`), `tipBlockNo`: no volatile block, and the immutable tip is in the slot or a later one |
 | `blockFromFuture` | `Forge.BlockFromFuture` | Error | `current slot` (the key has a space, as in the reference; quoted in the human format), `tip` (the tip's slot): the chain's tip is in a later slot |
@@ -183,6 +188,8 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `kesReloaded` | `Forge.KesReloaded` | Notice | `opCertCounter`, `kesStart`, `kesEvolutions`, `kesPeriod`, `remainingKesPeriods` |
 | `kesReloadRefused` | `Forge.KesReloadRefused` | Error | `kind`, `message` |
 | `kesPersistFailed` | `Forge.KesPersistFailed` | Error | `kesPeriod`, `kind`, `message` |
+| `kesFileAbsent` | `Forge.KesFileAbsent` | Warning | `kesPeriod`, `file` |
+| `kesWrittenByRename` | `Forge.KesWrittenByRename` | Warning | `reason`, `errno` |
 | `keyFileGroupAccess` | `Forge.KeyFileGroupAccess` | Warning | `file`, `mode` |
 | `forgeFailed` | `Forge.ForgeFailed` | Error | `slot`, `kind`, `message`: a slot given up for a reason of Scarab's own, which the reference does not have |
 | `forgeEpoch` | `Forge.ForgeEpoch` | Notice | `epoch`, `slotsChecked`, `leaderSlots`, `notLeader`, `cannotForge`, `stateUpdateError`, `forged`, `adopted`, `lostSlotBattles`, `forgedInvalid`, `replaced`, `failed`, `skipped`, `skippedByReason`, `forgeLatencyMs` |

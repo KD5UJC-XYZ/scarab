@@ -586,12 +586,13 @@
     {
       "id": "D6",
       "section": "D",
-      "title": "Mainnet sync",
+      "title": "Measured mainnet sync",
+      "detail": "; mainnet itself is synced from genesis to the tip",
       "priority": null,
       "issues": [
         25
       ],
-      "notes": "Mainnet sync. About 12M blocks: measure throughput and memory, then optimise."
+      "notes": "Measured mainnet sync. Mainnet is synced from genesis to the tip: the live follower reached the tip across several builds, each stop fixed and the run resumed on a newer build (the stops are in [evidence log 3](compatibility/evidence-log-3.md); [status of 2026-11-10](https://github.com/KD5UJC-XYZ/scarab/issues/25#issuecomment-6771192496)). What remains is one uninterrupted genesis-to-tip sync on a single build, its tip equal to a reference source, with throughput, RSS and disk recorded in [performance.md](performance.md); then optimise."
     },
     {
       "id": "D7",
@@ -618,11 +619,12 @@
       "id": "D9",
       "section": "D",
       "title": "Mainnet",
+      "detail": "; the tip is already followed after the genesis sync (D6)",
       "priority": "P1",
       "issues": [
         69
       ],
-      "notes": "Mainnet: start from a Mithril snapshot (E1), follow to the tip and stay there for a week, comparing the ledger at every epoch boundary (K7)."
+      "notes": "Mainnet: the live follower already follows the tip after syncing from genesis (D6). Remaining: start from a Mithril snapshot (E1), follow to the tip and stay there for a week, comparing the ledger at every epoch boundary (K7)."
     },
     {
       "id": "D10",
@@ -1149,7 +1151,7 @@
       "issues": [
         43
       ],
-      "notes": "Own evaluator. Decide on our own CEK machine versus staying on Scalus, then differential-test it against Scalus and the conformance suite."
+      "notes": "Own evaluator. Decided on 2026-11-12: build Scarab's own UPLC evaluator, with no Scalus in it, as an opt-in correctness backend (`--plutus-vm scalus|scarab`, Scalus the default); the decision, scope and work packages are on [#43](https://github.com/KD5UJC-XYZ/scarab/issues/43) and in ADR 0027 ([#901](https://github.com/KD5UJC-XYZ/scarab/pull/901)), the work in the pull requests stacked on it."
     },
     {
       "id": "I3",

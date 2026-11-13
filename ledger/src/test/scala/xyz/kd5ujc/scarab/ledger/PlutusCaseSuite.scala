@@ -42,15 +42,22 @@ class PlutusCaseSuite extends FunSuite:
       .toSet
 
   private def evaluate(c: PlutusCase, evaluator: ScriptEvaluator[Id]) =
-    Phase2.evaluate(c.tx, c.params, scriptsOf(c), c.spent, c.references, c.posix, evaluator)
+    Phase2.evaluate(c.tx, c.params, scriptsOf(c), c.spent, c.references, c.posix, evaluator)(using
+      TestLedger.usualEra((c.params).protocolMajor.toInt)
+    )
 
   cases.foreach { c =>
     test(s"${c.name} (${c.kind}): script data hash is the recomputed one") {
-      assertEquals(ScriptIntegrity.hash(c.tx, c.params, neededKinds(c)), c.tx.body.scriptDataHash)
+      assertEquals(
+        ScriptIntegrity.hash(c.tx, c.params, neededKinds(c))(using
+          TestLedger.usualEra((c.params).protocolMajor.toInt)
+        ),
+        c.tx.body.scriptDataHash
+      )
     }
 
     test(s"${c.name} (${c.kind}): phase 2 agrees with is_valid = ${c.tx.isValid}") {
-      evaluate(c, ScalusEvaluator.default) match
+      evaluate(c, PlutusBackends.evaluator) match
         case Right(Phase2.Outcome.Passed(report)) =>
           assert(
             c.tx.isValid,
@@ -65,7 +72,7 @@ class PlutusCaseSuite extends FunSuite:
 
   test("with no budget every valid transaction fails phase 2 with OutOfBudget") {
     val starved: ScriptEvaluator[Id] =
-      r => ScalusEvaluator.default.evaluate(r.copy(budget = ExUnits(0, 0)))
+      r => PlutusBackends.evaluator.evaluate(r.copy(budget = ExUnits(0, 0)))
     cases.filter(_.tx.isValid).foreach { c =>
       evaluate(c, starved) match
         case Right(Phase2.Outcome.Failed(_, failures)) =>
@@ -78,7 +85,7 @@ class PlutusCaseSuite extends FunSuite:
     cases.filter(_.tx.isValid).foreach { c =>
       val spent = collection.mutable.Buffer.empty[(ExUnits, ExUnits)]
       val recording: ScriptEvaluator[Id] = r =>
-        val result = ScalusEvaluator.default.evaluate(r)
+        val result = PlutusBackends.evaluator.evaluate(r)
         spent += (result.spent -> r.budget)
         result
       evaluate(c, recording)

@@ -13,7 +13,19 @@ unit/property; devnet soak (24/24, 41/41 and, with the extended governance load,
 
 `ValueNotConservedUTxO` counts minted tokens as consumed and burned ones as produced, as the reference does (`getConsumedMaryValue` and `burnedMultiAssets`, cardano-ledger f649f975 `Mary/UTxO.hs:72-97`; #828, `ValueConservationSuite`). The verdict was already the reference's; the failure's payload now is too.
 
+The script integrity hash uses Conway's empty redeemers map even at protocol version 8 (#880, `EraNotVersionUtxowSuite`, through Conway LEDGER): absent redeemers are memoized at the era's `eraProtVerLow` (`Alonzo/TxWits.hs:157-162,203-211,227-230`, `MemoBytes/Internal.hs:294-295`, cardano-ledger f649f975). `ScriptIntegritySuite` checks unchanged preimage bytes at Conway's usual versions; `PreviewEmptyRedeemersSuite` checks real Preview transaction hashes by their block era, independently of the protocol version supplied to the rule. The version-11 mismatch failure remains a version test (`Alonzo/Rules/Utxow.hs:282-286`).
+
+Conway's BBODY limits the reference scripts of the block whatever the protocol version (`validateBodyRefScriptsSizeTooBig`, `Conway/Rules/Bbody.hs:314,330-355`; #882, `BbodySuite` at versions 7 and 8), and Conway's LEDGER skips `validateWithdrawalsDelegated` only in the bootstrap phase, protocol version 9 (`hardforkConwayBootstrapPhase`, `Conway/Era.hs:257-258`, `Conway/Rules/Ledger.hs:379-380`; #885, `ConwayRulesSuite` at version 8). A chain that starts Conway by `TestConwayHardForkAtEpoch` keeps the version of Babbage.
+
 The slot of no return (`getTheSlotOfNoReturn`, cardano-ledger f649f975 `Slot.hs:106-114`), which TICK's solidifying of the future parameters uses, is computed exactly (`EpochGeometrySuite`). The reference's `Word64` doubling of the stability window wraps for a window of 2^63 slots or more, which Scarab does not reproduce (#825): an approved deviation ([owner decision](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849)).
+
+Script-context translation follows the ledger era carried through UTXOS (#883), including Conway's
+V1 reference inputs and reference-script outputs, its exclusive upper bound without a lower bound,
+and each certificate's own purpose pointer (`Conway/TxInfo.hs:315-320,399-411,790-803`,
+`Conway/UTxO.hs:62-80`, cardano-ledger f649f975). `ScriptContextEraSuite` covers Conway at version 8
+and Babbage at version 9; `ScriptContextUsualVersionSuite` checks complete unchanged TxInfo CBOR at
+usual versions 5 to 12 for every supported V1/V2/V3 translation. Before Alonzo no Plutus context is
+built, and Dijkstra's V4 translator is separate.
 
 ## Explicitly unchecked or unconfirmed
 

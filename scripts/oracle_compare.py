@@ -43,7 +43,8 @@ def reference_cmd(args):
     rows = reference.run(args.config, args.db, args.work, args.out, args.epoch_slots, args.first_epoch,
                          args.last_epoch, jobs=args.jobs, seed_every=args.seed_every, cpus=args.cpus,
                          memory=args.memory, live=args.live, log=lambda m: print(json.dumps(m), flush=True),
-                         network_none=args.network_none, full_ledger_validation=args.full_ledger_validation)
+                         network_none=args.network_none, full_ledger_validation=args.full_ledger_validation,
+                         byron_epochs=args.byron_epochs, byron_epoch_slots=args.byron_epoch_slots)
     print(json.dumps({"epochsProjected": len(rows)}))
 
 
@@ -88,7 +89,12 @@ def main():
     rf.add_argument("--db", required=True, help="ChainDB directory holding immutable/ (a node's, or an export)")
     rf.add_argument("--work", required=True, help="working directory (hard-linked ChainDB copies, snapshots)")
     rf.add_argument("--out", required=True, help="output directory of the projections and index.jsonl")
-    rf.add_argument("--epoch-slots", type=int, required=True, help="slots per epoch (Preview 86400)")
+    rf.add_argument("--epoch-slots", type=int, required=True,
+                    help="slots per epoch after the Byron epochs (Preview 86400, preprod and mainnet 432000)")
+    rf.add_argument("--byron-epochs", type=int, default=0,
+                    help="Byron epochs at the start of the chain (Preview 0, preprod 4, mainnet 208)")
+    rf.add_argument("--byron-epoch-slots", type=int, default=0,
+                    help="slots per Byron epoch: ten times the Byron genesis's k (preprod and mainnet 21600)")
     rf.add_argument("--first-epoch", type=int, default=1)
     rf.add_argument("--last-epoch", type=int, default=100000, help="stop here (default: the end of the chain)")
     rf.add_argument("--jobs", type=int, default=4, help="parallel segments")

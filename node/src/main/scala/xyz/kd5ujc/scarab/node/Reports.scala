@@ -39,10 +39,13 @@ object Reports:
       )
     )
 
-  /** The forger's counters per epoch and for the run, served at `/forging`. */
-  def forgeReport(byEpoch: SortedMap[BigInt, ForgeEpochStats]): Json =
+  /** The forger's counters per epoch and for the run, served at `/forging`, and whether it forges
+    * now (`enabled`, false while forging is disabled: see [[forge.HotKeys.reload]]).
+    */
+  def forgeReport(byEpoch: SortedMap[BigInt, ForgeEpochStats], enabled: Boolean): Json =
     val total = byEpoch.values.foldLeft(ForgeEpochStats())(_.merge(_))
     Json.obj(
+      "enabled" -> enabled.asJson,
       "total" -> Json.obj(forgeStats(total)*),
       "epochs" -> Json.obj(byEpoch.toList.map((e, s) => e.toString -> Json.obj(forgeStats(s)*))*)
     )

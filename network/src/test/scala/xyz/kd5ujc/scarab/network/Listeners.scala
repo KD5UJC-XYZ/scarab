@@ -26,7 +26,13 @@ object Listeners:
       handle: Handle[IO, E] ?=> (Bearer[IO], SocketAddress[IpAddress]) => IO[Unit]
   ): Resource[IO, SocketAddress[IpAddress]] =
     BearerServer
-      .listen[IO, E](Loopback, maxConnections, beforeAccept)(onFailure)(handle)
+      .listen[IO, E](
+        TcpListeners.configured[IO],
+        Loopback,
+        _ => IO.unit,
+        maxConnections,
+        beforeAccept
+      )(onFailure)(handle)
       .map(_.address)
 
 /** Connection failures as the node's TCP transport raises them, for tests whose transport is not a

@@ -16,7 +16,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
   private def unreadable =
     ForgeError.KeyFile("kes", ForgeKeyProblem.Io(new java.nio.file.NoSuchFileException("kes")))
 
-  private def source(readKeys: => IO[Either[ForgeError, HotKeySource.Candidate[IO]]]) =
+  private def source(readKeys: => IO[Either[ForgeError, HotKeySource.Reading[IO]]]) =
     new HotKeySource[IO]:
       def read = readKeys
       def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Unchanged)
@@ -65,7 +65,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
       xyz.kd5ujc.scarab.plutus.EvalFailure
         .Unsupported(
           xyz.kd5ujc.scarab.plutus.BackendFailure
-            .BuiltinUnavailable(scalus.uplc.DefaultFun.VerifyEd25519Signature)
+            .BuiltinUnavailable(xyz.kd5ujc.scarab.uplc.DefaultFun.VerifyEd25519Signature)
         )
     )
     withHandle {
@@ -174,7 +174,10 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     val limit = BlockBuilder.Limits(65536, xyz.kd5ujc.scarab.plutus.ExUnits(14000000, 10000000000L))
     val registering = MempoolStateFixture.entry(raw)
     val paying = MempoolStateFixture.entry(TxKit.pay(2)._1)
-    BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(registering, paying), limit) match
+    BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(registering, paying), limit)(
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator
+    ) match
       case BlockBuilder.Selection(
             chosen,
             Vector((withheld, xyz.kd5ujc.scarab.ledger.LedgerFailure.StateOutOfRange(_, error)))
@@ -436,9 +439,12 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         keys = new HotKeySource[IO]:
           def read = IO.pure(
             Right(
-              HotKeySource.Candidate(
-                p.creds.hot.copy(kes = p.creds.kes.copy),
-                IO.unit
+              HotKeySource.Reading.Found(
+                HotKeySource.Candidate(
+                  p.creds.hot.copy(kes = p.creds.kes.copy),
+                  p.creds.vrf,
+                  IO.unit
+                )
               )
             )
           )
@@ -591,7 +597,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     val tx = xyz.kd5ujc.scarab.node.mempool.MempoolState.parse(raw).fold(e => fail(e.message), _._2)
     val entry = xyz.kd5ujc.scarab.node.mempool.Entry(id, raw, tx, 0)
     val stopped = xyz.kd5ujc.scarab.plutus.BackendFailure
-      .BuiltinUnavailable(scalus.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
+      .BuiltinUnavailable(xyz.kd5ujc.scarab.uplc.DefaultFun.Bls12_381_G1_hashToGroup)
     def failing(
         reason: xyz.kd5ujc.scarab.plutus.BackendFailure
     ): xyz.kd5ujc.scarab.plutus.ScriptDecoder[cats.Id] =
@@ -604,9 +610,9 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     List(stopped, xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted).foreach { reason =>
       assertEquals(
         BlockBuilder
-          .select(base, 1001, 1, geometry, globals, Vector(entry), limit)(using
+          .select(base, 1001, 1, geometry, globals, Vector(entry), limit)(
             failing(reason),
-            xyz.kd5ujc.scarab.plutus.ScalusEvaluator.default
+            xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator
           )
           .chosen
           .map(_._1.id),
@@ -615,9 +621,9 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     }
     val invalid = entry.copy(tx = tx.copy(body = tx.body.copy(fee = -1)))
     assertEquals(
-      BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(invalid), limit)(using
-        xyz.kd5ujc.scarab.plutus.ScalusEvaluator.defaultDecoder,
-        xyz.kd5ujc.scarab.plutus.ScalusEvaluator.default
+      BlockBuilder.select(base, 1001, 1, geometry, globals, Vector(invalid), limit)(
+        xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
+        xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator
       ),
       BlockBuilder.Selection(Vector.empty, Vector.empty)
     )

@@ -40,6 +40,10 @@ object Settled:
     */
   def timed[A](body: IO[Unit] => IO[A]): IO[A] = run(None, timed = true)(body)
 
+  /** As [[timed]], with the scheduling `seed` of [[seeded]]. */
+  def seededTimed[A](seed: String)(body: IO[Unit] => IO[A]): IO[A] =
+    run(Some(seed), timed = true)(body)
+
   /** `read` once `settle` has returned, when every fiber has done all it can: it must then satisfy
     * `ok`, or the test fails with what it read.
     */

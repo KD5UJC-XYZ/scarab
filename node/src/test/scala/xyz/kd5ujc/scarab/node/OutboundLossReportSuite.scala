@@ -78,6 +78,7 @@ class OutboundLossReportSuite extends FailsOnUncaught:
       outcome <- (for
         node <- NodeScope.resource
         supervisor <- Supervisor[IO](await = false)
+        monitors <- Supervisor[IO](await = false)
         outbound <- Resource.eval {
           given Handle[IO, NodeError] = node
           for
@@ -111,6 +112,7 @@ class OutboundLossReportSuite extends FailsOnUncaught:
               OutboundPeers.Config(),
               hot,
               supervisor,
+              monitors,
               report,
               RefStateful(metrics): Stateful[IO, PeerMetrics[PeerNetwork.Addr]]
             )

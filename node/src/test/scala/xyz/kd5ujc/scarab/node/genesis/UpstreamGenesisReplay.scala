@@ -387,7 +387,6 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                 headerRules,
                                 Compute.inline[IO],
                                 GenesisRuntime.retainedHeaders(geometry),
-                                stall = 120000000000000L.nanos,
                                 poll = 20000000000L.nanos
                               ),
                               Some(clock)
