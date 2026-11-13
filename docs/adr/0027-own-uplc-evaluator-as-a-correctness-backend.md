@@ -74,14 +74,30 @@ the owner decided the scope of the flag the same day ([#43 scope comment](https:
   comparison of them can show it; a misreading shared by Scalus and our wrapper passes every case the tests
   against the reference do not cover. The own evaluator lowers the risk of a fault common to both; it does not
   make the backends' faults independent.
-- **With `--plutus-vm scarab`**, both phase-2 evaluation and script admission use the own evaluator. The node
-  refuses `--forge` at start-up until the evidence of the gates is in: a disagreement with the reference while
+- **With `--plutus-vm scarab`**, both phase-2 evaluation and script admission use the own evaluator. ~~The node
+  refuses `--forge` at start-up until the evidence of the gates is in~~ ([amended 2026-11-13](#amendment-2026-11-13-the-own-evaluator-forges)): a disagreement with the reference while
   following stays on this node, which stalls on the block, but a forged block whose transaction carries a wrong
   validity flag is refused by every other node (`ValidationTagMismatch`, cardano-ledger `f649f975`,
-  `eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs`). The owner may lift the refusal then.
+  `eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs`). ~~The owner may lift the refusal then.~~ ([amended 2026-11-13](#amendment-2026-11-13-the-own-evaluator-forges))
 - **No protocol 12.** The backend refuses protocol 12 and later, the Leios testnet's Dijkstra, with a typed
   `Unsupported` failure; plutus 1.71.0.0 is out of scope for now.
 - **The aim, not a gate:** a mainnet sync from genesis to tip with only the own evaluator. Speed stays secondary
   but must keep such a sync practical. A rough extrapolation from late-Alonzo samples of 6 to 11 redeemers per
   block (table perf-20.t1 of [the mainnet follower measurements](../performance/mainnet-follower.md)) puts
   mainnet from Alonzo to tip in the tens of millions of evaluations; the total has not been counted.
+
+## Amendment (2026-11-13): the own evaluator forges
+
+The owner decided on 2026-11-13 that the node may forge with the own evaluator: `--forge` is taken with
+`--plutus-vm scarab` as it is with `scalus`, and the start-up refusal of the amendment above is removed.
+
+- **What was in at the decision:** the gates of the amendment above, recorded in
+  [plutus-conformance.md](../plutus-conformance.md#scarabs-own-evaluator) and the compatibility register's
+  `plutus-own-evaluator` entry, among them a devnet `e2e` run and a replay of Preview from genesis that matched
+  the reference's ledger state at every epoch boundary. The replay of preprod and a devnet `pool` run in which
+  the node forges Plutus transactions with the own evaluator are the evidence that follows the decision.
+- **The risk the refusal named stays.** The forger, the mempool and the rules run the one backend of the run, so
+  a wrong verdict at admission puts a transaction with a wrong validity flag in a block this node forges, and
+  every other node refuses that block (`ValidationTagMismatch`, as above): the pool loses the slot.
+- **Unchanged:** Scalus stays the default, and changing it needs a further decision; the own evaluator still
+  gives no verdict at protocol 12 and later, so a node that runs it stalls there, whether it forges or not.

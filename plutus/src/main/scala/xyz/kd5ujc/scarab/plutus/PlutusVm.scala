@@ -11,15 +11,6 @@ enum PlutusVm(val name: String):
   case Scalus extends PlutusVm("scalus")
   case Scarab extends PlutusVm("scarab")
 
-  /** Whether the node may forge with this evaluator. The own evaluator may not until the evidence
-    * of its gates is in: a disagreement with the reference while following stays on this node, but
-    * a forged block with a wrong validity flag is refused by every other node (ADR 0027, its
-    * amendment of 2026-11-12). The owner may lift the refusal then.
-    */
-  def forges: Boolean = this match
-    case Scalus => true
-    case Scarab => false
-
 object PlutusVm:
   val Default: PlutusVm = Scalus
 
