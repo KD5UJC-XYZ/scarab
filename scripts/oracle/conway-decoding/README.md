@@ -110,3 +110,11 @@ block bodies of Mary to Conway, and invalid-transaction lists in the block bodie
 Conway. An invalid list that repeats an index or decreases makes the harness throw instead of
 returning a verdict, so each of those cases is an input file of its own; its recipe is in the
 corpus README.
+
+The [delegation hashes corpus](../../../fixtures/reference/delegation-hashes/README.md), the class of
+the November 2025 mainnet partition, runs on the same harness, its cases from
+`delegation_hash_cases.py`: a whole Conway transaction holding each certificate that delegates
+(tags 2 and 9 to 13) with one hash of the stake credential, the pool id or the DRep 27 or 29 bytes
+long, each pool id also 56 bytes long, and each certificate with every hash of 28 bytes. Its recipe
+is the one above with `delegation_hash_cases.py`, `/tmp/delegation-hashes-inputs.json` and
+`fixtures/reference/delegation-hashes/cases.jsonl`.

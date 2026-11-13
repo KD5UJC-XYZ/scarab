@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-13",
+  "scope": "Unchanged released decoder (decodeFullAnnotator) of a whole Conway transaction at decoder version 9, holding one delegating certificate (tags 2, 9, 10, 11, 12, 13) with one hash of 27, 29 or (a pool id) 56 bytes, or with every hash of 28 bytes; no ledger rule, signature or script is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+  "packages": {
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-ledger-conway": "1.23.0.0",
+    "cardano-crypto-class": "2.5.1.0",
+    "cborg": "0.2.10.0"
+  },
+  "sourceFiles": {
+    "decCBOR": {
+      "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+      "sourceSha256": "fc3976b22364883b70f785be75c63dd586e3b3c68ee67178fc3b5be128f19e6d",
+      "matchesPin": true,
+      "note": "DecCBOR (Hash h a) over DecCBOR (PackedBytes n), packByteString (492-498)"
+    },
+    "conwayTxCert": {
+      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs",
+      "sourceSha256": "6f032ae2538c3f6ca7b9370defcfd42763c097da6698663c2d4a86544ec9bdf0",
+      "matchesPin": true,
+      "note": "DecCBOR (ConwayTxCert era) (672-681) and conwayTxCertDelegDecoder, tags 9 to 13 (683-731)"
+    },
+    "shelleyTxCert": {
+      "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+      "sourceSha256": "a6415c9aa5026776dd243a80ec083009cde45206e038982041231e4945a73915",
+      "matchesPin": true,
+      "note": "shelleyTxCertDelegDecoder, tag 2 (490-506)"
+    },
+    "packedBytes": {
+      "repository": "IntersectMBO/cardano-base",
+      "revision": "060819b59c184b951a54e3c563304983c53a3eac",
+      "file": "cardano-crypto-class/src/Cardano/Crypto/PackedBytes/Internal.hs",
+      "sourceSha256": "e20ded2e737b6cddbc13a5a4843ba72274f9afcd1e5d5e7e05da383d4439f2e9",
+      "note": "packByteString and packedBytesSizeGuard: 'Number of bytes mismatch' unless the length is the size (379-406)"
+    }
+  },
+  "harness": {
+    "file": "scripts/oracle/conway-decoding/Main.hs",
+    "sha256": "b86a9d8a3ad9f03264d8735ad729bbab9ba80bb181792f0db1fcc84f5c82099c",
+    "image": "scarab-conway-decoding:local built from scripts/oracle/conway-decoding/Dockerfile on scarab-plutus176-context-reference:local (run as scarab-claude-pi-conway-decoding:local, image sha256:dd73bb7e644319ff2d56c0e5e8eef6f6e97139a31e9a133046fba7b4d165584b)",
+    "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-conway-decoding:local /fixtures/delegation-hashes-inputs.json",
+    "unchanged": true
+  },
+  "generatorSha256": "4dacdd118676977ef8bd10ff39136b5b3ad0ab40c106d4bc438825a85332c6d8",
+  "harnessInputSha256": "358b106804bc0cbb80f83cb1dcac818fcbecc90e79c8af7f0de7be908241aefd",
+  "harnessOutputSha256": "a627aa09a98a19036d0cfb88c4d3672a73543fabdbf877dccdcc3810ffd0ddc9",
+  "casesSha256": "b3969adf2971e927aa5e583d5593bd3bf0f61f34e643e6d02f590c200b16b546",
+  "cases": 64,
+  "accepted": 12,
+  "refused": 52,
+  "originalBytesRetained": true,
+  "network": "none",
+  "keysRetained": false
+}
