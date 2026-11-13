@@ -680,6 +680,43 @@
         "node/src/test/scala/xyz/kd5ujc/scarab/consensus/Praos2ReferenceSuite.scala"
       ],
       "candidateRequired": false
+    },
+    {
+      "id": "delegation-hash-lengths",
+      "classification": "regression",
+      "status": "covered",
+      "scope": "64 whole Conway transactions at decoder version 9: each delegating certificate (tags 2, 9, 10, 11, 12, 13) with one stake credential, pool id or DRep hash of 27 or 29 bytes (a pool id also 56), and each with every hash of 28 bytes, key and script.",
+      "assertion": "Tx.fromEnvelope and the mempool (MempoolState.parseParts and add, local and remote) give the recorded reference verdict on every line: an accepted control decodes to its exact certificate; every refusal is ByteLength of the place's field, 28 and the length, and the mempool's Malformed before the ledger rules.",
+      "rationale": "The class of the November 2025 mainnet partition, in which nodes that kept the first 28 bytes of a longer pool hash took a delegation the others refused. The verdicts are receipts of the unchanged released decoder (cardano-ledger-binary 1.9.1.0, cardano-crypto-class 2.5.1.0), not Scarab's expectation; hashes in other places and decoder versions 10 and 11 are outside this scope.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Retain the original encodings, the complete reference failures and the typed cause; cover hashes in other places of a transaction or block as their own corpora before claiming the hash-length family.",
+      "evidence": [
+        "fixtures/reference/delegation-hashes/README.md",
+        "fixtures/reference/delegation-hashes/provenance.json",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/DelegationHashesReferenceSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/mempool/DelegationHashesSubmissionSuite.scala",
+        "scripts/oracle/conway-decoding/delegation_hash_cases.py"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "alonzo-min-fee-4228",
+      "classification": "regression",
+      "status": "covered",
+      "scope": "The first transaction of the cardano-node issue 4228 Alonzo block, the upstream golden of cardano-ledger f649f975, under the golden's fee per byte, fixed fee and execution prices.",
+      "assertion": "Scarab's block decoder reads the golden block byte for byte and the transaction's id, fee 1,001,829, size 5,238 and execution units; UtxoChecks.of for Alonzo refuses it with exactly FeeTooSmall(Mismatch(1001829, 1006053)).",
+      "rationale": "The upstream golden (Golden.hs:230-268) requires alonzoMinFeeTx to be 1,006,053, and the released ledger of the 11.1.3 build computes 1,006,053 (scripts/oracle/alonzo-min-fee/run.py --check). Only the fee failure is compared: the other checks run against an empty UTxO and are not the golden's.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Retain the byte-identical golden, its released-ledger receipt and the exact failure; any change to the size or script-fee terms of the Alonzo minimum fee must keep 1,006,053.",
+      "evidence": [
+        "fixtures/reference/alonzo-min-fee/README.md",
+        "fixtures/reference/alonzo-min-fee/provenance.json",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/AlonzoMinFeeGoldenSuite.scala",
+        "scripts/oracle/alonzo-min-fee/run.py"
+      ],
+      "candidateRequired": true
     }
   ]
 }
