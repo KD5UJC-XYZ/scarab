@@ -12,10 +12,10 @@ import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
 /** The checks of the transaction rules before Conway and the checks Conway shares with them (UTXO,
   * UTXOW, UTXOS): the pure predicates over a transaction and what it reads of the state, which the
   * era-indexed rules ([[xyz.kd5ujc.scarab.ledger.rules.Utxo]], `ShelleyUtxo`) call. The UTXO checks
-  * take the era ([[minUTxO]], [[maxOutputValueSize]]), as do the UTXOW checks, following the
-  * reference's rule of each era whatever the protocol version. The UTXOS checks still choose by the
-  * protocol major version (issue 881). (The flat state's rules that used to apply a transaction
-  * beside these were removed at J2.9.)
+  * take the era ([[minUTxO]], [[maxOutputValueSize]]), as do the UTXOW checks, and the UTXOS checks
+  * run in the rules of the eras from Alonzo ([[phase2]], [[collateral]]), following the reference's
+  * rule of each era whatever the protocol version. (The flat state's rules that used to apply a
+  * transaction beside these were removed at J2.9.)
   */
 object TxChecks:
   import TxEnv.Result
@@ -28,7 +28,8 @@ object TxChecks:
     * (`expectScriptsToPass`, `babbageEvalScriptsTxInvalid`, `Babbage/Rules/Utxos.hs:132-220`): the
     * contexts are collected (`CollectErrors`), then the scripts evaluated; a transaction flagged
     * invalid with no script to fail passes unexpectedly. Reads of the state: the parameters and the
-    * counters it adds to.
+    * counters it adds to. UTXOS is a rule of the eras from Alonzo, and its callers are those eras'
+    * rules: it runs whatever the protocol version (`Alonzo/Rules/Utxos.hs:159-216`).
     *
     * @param spent
     *   the outputs of the inputs the UTxO set holds, by input
@@ -52,43 +53,41 @@ object TxChecks:
       evaluate: Boolean
   ): Result[PlutusStats] =
     val body = tx.body
-    if pp.protocolMajor < 5 then Right(plutus)
+    val stats =
+      if plutusPurposes.isEmpty && body.scriptDataHash.isEmpty then plutus
+      else plutus.copy(integrityChecked = plutus.integrityChecked + 1)
+    if plutusPurposes.isEmpty then
+      // no script: the evaluation of none passes (`Passes []`)
+      if tx.isValid || !evaluate then Right(stats)
+      else checkedPhase2(stats, tx, Right(Phase2.Outcome.Passed(Phase2.Report(Vector.empty))))
     else
-      val stats =
-        if plutusPurposes.isEmpty && body.scriptDataHash.isEmpty then plutus
-        else plutus.copy(integrityChecked = plutus.integrityChecked + 1)
-      if plutusPurposes.isEmpty then
-        // no script: the evaluation of none passes (`Passes []`)
-        if tx.isValid || !evaluate then Right(stats)
-        else checkedPhase2(stats, tx, Right(Phase2.Outcome.Passed(Phase2.Report(Vector.empty))))
-      else
-        val posix = env.clock.toRight(TranslationError.NoEraHistory).map(c => c.posix)
-        env.preparation match
-          case Some(recording) if env.validation == TxEnv.Validation.All =>
-            val requests =
-              Phase2.collect(tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
-            recording.append(
-              Phase2.job(env.txIndex, tx, pp, env.slot, spent, references, env.clock, requests)
-            )
-            requests.fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
-          case _ if !evaluate =>
-            Phase2
-              .collect(tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
-              .fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
-          case _ =>
-            val outcome = Phase2.evaluate(
-              tx,
-              pp,
-              scripts,
-              spent,
-              references,
-              slot => posix.flatMap(_(slot)),
-              env.evaluator
-            )
-            env.observer.foreach(
-              _(Phase2.Observation(tx, pp, env.slot, spent, references, env.clock, outcome))
-            )
-            checkedPhase2(stats, tx, outcome)
+      val posix = env.clock.toRight(TranslationError.NoEraHistory).map(c => c.posix)
+      env.preparation match
+        case Some(recording) if env.validation == TxEnv.Validation.All =>
+          val requests =
+            Phase2.collect(tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
+          recording.append(
+            Phase2.job(env.txIndex, tx, pp, env.slot, spent, references, env.clock, requests)
+          )
+          requests.fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
+        case _ if !evaluate =>
+          Phase2
+            .collect(tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
+            .fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
+        case _ =>
+          val outcome = Phase2.evaluate(
+            tx,
+            pp,
+            scripts,
+            spent,
+            references,
+            slot => posix.flatMap(_(slot)),
+            env.evaluator
+          )
+          env.observer.foreach(
+            _(Phase2.Observation(tx, pp, env.slot, spent, references, env.clock, outcome))
+          )
+          checkedPhase2(stats, tx, outcome)
 
   /** The ordered phase-2 verdict check, also used when a prepared block lands its worker values. */
   private[ledger] def checkedPhase2(
@@ -225,12 +224,16 @@ object TxChecks:
   private[ledger] def collateralInputs(body: TxBody): Vector[TxIn] =
     body.collateral.toSet.toVector.sorted
 
-  /** The collateral a transaction with redeemers (Alonzo on) pays if it fails phase 2: the outputs
-    * of its collateral inputs the UTxO set holds, and their ada less the collateral return
-    * (`collAdaBalance`, `Babbage/Collateral.hs:30-41`). None for a transaction without redeemers.
+  /** The collateral a transaction with redeemers of the era `E` pays if it fails phase 2, from
+    * Alonzo whatever the protocol version (`Phase2Invalid`, `Alonzo/Rules/Utxo.hs:775-784`): the
+    * outputs of its collateral inputs the UTxO set holds, and their ada less the collateral return
+    * (`collAdaBalance`, `Babbage/Collateral.hs:30-41`). None before Alonzo, whose UTXO has no
+    * collateral, and for a transaction without redeemers.
     */
-  private[ledger] def collateral(utxo: Utxo, pp: ProtocolParams, tx: Tx): Collateral =
-    if pp.protocolMajor < 5 || tx.witnesses.redeemers.isEmpty then Collateral.none
+  private[ledger] def collateral[E <: EraTag](utxo: Utxo, tx: Tx)(using
+      era: ShelleyBasedEra[E]
+  ): Collateral =
+    if !era.atLeast(ShelleyBasedEra.SAlonzo) || tx.witnesses.redeemers.isEmpty then Collateral.none
     else
       val outs = collateralInputs(tx.body).flatMap(utxo.get)
       val total = outs.foldLeft(Value.zero)(_ + _.value)

@@ -51,9 +51,10 @@ final case class BbodySignal(
   * check of `conwayBbodyTransition`) is checked with the header (`consensus.HardFork`).
   *
   *   - The reference scripts the transactions of a block use sum to at most one megabyte
-  *     (`validateBodyRefScriptsSizeTooBig`, `Bbody.hs:314`). Up to protocol version 10 each
-  *     transaction is measured against the UTxO set as the block meets it; from 11 against that set
-  *     with the outputs of the transactions before it (`totalRefScriptSizeInBlock`).
+  *     (`validateBodyRefScriptsSizeTooBig`, `Bbody.hs:314,330-355`), whatever the protocol version,
+  *     as Conway's BBODY runs it. Up to protocol version 10 each transaction is measured against
+  *     the UTxO set as the block meets it; from 11 against that set with the outputs of the
+  *     transactions before it (`totalRefScriptSizeInBlock`).
   *   - The redeemers of all the transactions of a block (valid or not) use at most
   *     `maxBlockExUnits` of the parameters in force when the block starts (`validateExUnits`,
   *     `Alonzo/Rules/Bbody.hs:149-167`, after LEDGERS at line 212); the failure names the units of
@@ -90,14 +91,14 @@ object Bbody extends Sts[BbodyEnv, BbodyState, BbodySignal, BlockFailure]:
     }
     total
 
-  /** The execution units of all the transactions of the block when they exceed the limit, from
-    * Alonzo (`validateExUnits`: `foldMap totExUnits txs`, compared point-wise).
+  /** The execution units of all the transactions of the block when they exceed the limit
+    * (`validateExUnits`, `Alonzo/Rules/Bbody.hs:149-167`: `foldMap totExUnits txs`, compared
+    * point-wise). The BBODY of every era from Alonzo runs it whatever the protocol version; the
+    * caller's era decides ([[ShelleyBbody]]).
     */
   def exUnitsExceeded(pp: ProtocolParams, txs: Vector[Tx]): Option[ExUnits] =
-    if pp.protocolMajor < 5 then None
-    else
-      Some(txs.foldLeft(ExUnits.zero)(_ + _.witnesses.totalExUnits))
-        .filterNot(_.fits(pp.maxBlockExUnits))
+    Some(txs.foldLeft(ExUnits.zero)(_ + _.witnesses.totalExUnits))
+      .filterNot(_.fits(pp.maxBlockExUnits))
 
   def transition[F[_]: Monad](env: BbodyEnv, signal: BbodySignal)(using
       ask: Ask[F, Globals],
@@ -109,7 +110,7 @@ object Bbody extends Sts[BbodyEnv, BbodyState, BbodySignal, BlockFailure]:
       before <- st.get
       refBytes = refScriptsSize(pp, before.ledger.state.utxo.utxo.utxo, signal.txs)
       _ <- Sts.check[F, BlockFailure](
-        pp.protocolMajor < 9 || refBytes <= RefScripts.MaxRefScriptSizePerBlock,
+        refBytes <= RefScripts.MaxRefScriptSizePerBlock,
         BlockFailure.RefScriptsTooLarge(
           Mismatch(refBytes, RefScripts.MaxRefScriptSizePerBlock.toLong)
         )

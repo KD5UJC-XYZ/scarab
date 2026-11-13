@@ -145,9 +145,10 @@ object Ledger extends JudgedSts[LedgerEnv, ConwayLedger, Tx, PredicateFailure, L
       network = globals.networkId
       _ <- Sts.runTest[F, PredicateFailure](treasuryValue(tx, env.treasury.value))
       _ <- Sts.runTest[F, PredicateFailure](refScriptSize(RefScripts.refScriptsSize(utxo, body)))
-      // `hardforkConwayBootstrapPhase` (`Conway/Era.hs:257`) is protocol version 9
+      // `unless (hardforkConwayBootstrapPhase pv)` (`Conway/Rules/Ledger.hs:379-380`): only
+      // protocol version 9 skips the check (`pvMajor pv == 9`, `Conway/Era.hs:257-258`)
       _ <-
-        if pp.protocolMajor < 10 then Monad[F].unit
+        if pp.protocolMajor == 9 then Monad[F].unit
         else Sts.runTest[F, PredicateFailure](withdrawalsDelegated(accounts, tx))
       // `hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule` (`Conway/Era.hs:283`): from
       // protocol version 11 the withdrawals are checked and drained here, and the DReps' expiries

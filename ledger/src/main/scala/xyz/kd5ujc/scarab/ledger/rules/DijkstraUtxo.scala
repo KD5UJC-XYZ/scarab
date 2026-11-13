@@ -345,7 +345,7 @@ object DijkstraUtxo
     val tx = ann.conway.tx
     val (deposits, _) = Deposits.of(env.pp, env.original, tx.body)
     val refunds = declaredRefunds(tx.body)
-    val collateral = TxChecks.collateral(env.originalUtxo, env.pp, tx)
+    val collateral = TxChecks.collateral[Dijkstra](env.originalUtxo, tx)
     for
       before <- st.get
       _ <- DijkstraSts.record[F, DijkstraUtxoFailure](

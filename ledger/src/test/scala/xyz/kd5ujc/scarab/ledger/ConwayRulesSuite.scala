@@ -545,7 +545,7 @@ class ConwayRulesSuite extends FunSuite:
     assertEquals(attempt(4 * ada, Vector(script), v11), "ConwayIncompleteWithdrawals")
   }
 
-  test("withdrawals from key accounts need a DRep delegation from protocol version 10") {
+  test("withdrawals from key accounts need a DRep delegation except at protocol version 9") {
     val staker = key()
     val in = txIn(1)
     val funds = Vector(in -> out(alice.address(), 100 * ada))
@@ -565,6 +565,11 @@ class ConwayRulesSuite extends FunSuite:
       withdrawals = Map(RewardAccount(0, staker.credential) -> (3 * ada))
     )
     def attempt(s: Nes) = rule(run(s, tx(b, Vector(alice, staker))))
+    // only the bootstrap phase skips the check (`hardforkConwayBootstrapPhase`, `pvMajor pv == 9`,
+    // `Conway/Era.hs:257-258`; `Conway/Rules/Ledger.hs:379-380`): Conway at version 8, as a chain
+    // that starts Conway by epoch has it, runs the check
+    assertEquals(attempt(world(None, 8)), "ConwayWdrlNotDelegatedToDRep")
+    assertEquals(attempt(world(Some(DRep.AlwaysAbstain), 8)), "accepted")
     assertEquals(attempt(world(None, 9)), "accepted")
     assertEquals(attempt(world(None, 10)), "ConwayWdrlNotDelegatedToDRep")
     assertEquals(attempt(world(Some(DRep.AlwaysAbstain), 10)), "accepted")
