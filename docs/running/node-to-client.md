@@ -67,7 +67,8 @@ longer than that is told there is no intersection.
 ### The socket path
 
 As in the reference node, whatever is at the socket path (`--local-socket`, or the configuration's
-`SocketPath`) is removed at start-up, once the configuration, the genesis and, with `--forge`, the VRF
+`SocketPath`, which the reference does not use; see the deviations below) is removed at start-up, once the
+configuration, the genesis and, with `--forge`, the VRF
 key's permissions and the credentials are read, and before the topology and the database are
 (`removeStaleLocalSocket` in `gatherConfiguredSockets`, cardano-node 11.1.3). It is one `unlink(2)` of
 the path, made through Java's foreign-function interface (the release JAR's `Enable-Native-Access` manifest
@@ -78,7 +79,10 @@ takes it: something other than a directory there refuses the start (`ENOTDIR`), 
 the bind fails later. Any other failure refuses the start: a directory at the path, empty or not, is
 left, and the start ends with one `socketConfigError` line whose `error` is the reference's
 (`LocalSocketError "<path>" <path>: removeLink: inappropriate type (Is a directory)`) and exit code 1.
-The path is used as written, not normalised.
+A path that holds NUL refuses the start in the same way before anything is removed, with the check of
+the reference's `removeLink` (`<path>: checkForInteriorNuls: invalid argument (POSIX filepaths must not
+contain internal NUL octets.)`). Otherwise `unlink` would stop at the NUL and remove another file. The
+path is used as written, not normalised.
 
 The socket itself is set up once the node runs, as the reference's network layer sets it up
 (`withLocalSocket`, ouroboros-network): created, bound, checked, then listened on with a backlog of 8,
@@ -89,21 +93,41 @@ so it has the one the process umask gives it; who can connect is decided by that
 directory that holds the socket. The check after the bind only warns, when others may read or write the
 socket or when the group or others may write its directory (`checkLocalSocket`): the
 `insecureLocalSocketPermissions` and `insecureLocalSocketDirectory` lines. A bind that fails (a
-directory that is not there or that the node may not write, a path of more than 108 characters), or a
+directory that is not there or that the node may not write, a path of 108 characters or more), or a
 status of the socket or its directory that cannot be read, stops the node with one `diffusionErrored`
 line carrying the reference's text (`Network.Socket.bind: does not exist (No such file or directory)`)
-and exit code 1. A start that fails, here or in the removal above, also says why on standard error,
+and exit code 1. A path that the JDK refuses and the reference binds (see the deviations below) stops it
+the same way, but the line carries the JDK's reason in that form (`Network.Socket.bind: failed (Unix
+domain path too long)`). A path beyond ASCII that is not refused for its length or a trailing `/` stops it
+after `configuringLocalSocket` with the line the reference gives on a first start
+(`<path>: getFileStatus: does not exist (No such file or directory)`), and no socket is made. A start
+that fails, here or in the removal above, also says why on standard error,
 as the reference's top-level handler does. SIGINT while the node runs is a `diffusionErrored` line with
 `user interrupt` and exit code 130, as the reference's `UserInterrupt`; SIGTERM ends the run without
 it, as the reference's `ExitSuccess` does.
 
-One approved deviation (owner decision recorded on [#474](https://github.com/KD5UJC-XYZ/scarab/issues/474)):
-the JDK binds and listens in one call, so the socket listens before the check after the bind rather than
-after it, and a client that connects in between waits in the backlog instead of being refused; the lines
-and the failures keep the reference's order. Also approved (same record): the path is passed to the
-kernel as UTF-8 and the JDK refuses one of 108 bytes or more, where the reference truncates each
-character to a byte (`castCharToCChar`) and allows 108 characters. systemd socket activation (a socket passed in `LISTEN_FDS`)
-is not supported yet: [#542](https://github.com/KD5UJC-XYZ/scarab/issues/542).
+Four approved deviations, as the [decisions register](../decisions.md#networking-and-local-clients) states
+them ([#949](https://github.com/KD5UJC-XYZ/scarab/issues/949)):
+
+- **Bind and listen.** The JDK binds and listens in one call. So the socket listens before the check after
+  the bind rather than after it, and a client that connects in between waits in the backlog instead of being
+  refused. A listen that fails is reported as the bind's failure, before that check. Whenever the listen
+  succeeds, the lines and the failures keep the reference's order.
+- **Path length.** The JDK binds at most 106 bytes of path, after collapsing repeated `/`, and the reference
+  binds up to 107 characters. So a path of 107 ASCII characters with no repeated `/` is refused here and
+  bound by the reference. From 108 characters on, both refuse the path with `pokeSockAddr`'s error.
+- **A path beyond ASCII**: Scarab refuses every one. Runs of the reference with `café` paths:
+  - It binds the socket under the path's characters truncated to a byte each.
+  - It then finds nothing at the path's own name and stops, leaving the mis-named file.
+
+  Scarab stops with the same line and makes no file. So where the reference's second start fails at its
+  bind on the file its first start left (`Network.Socket.bind: resource busy (Address in use)`), or a
+  directory that does not exist fails its bind, Scarab gives the first line again.
+- **`SocketPath` in the configuration file** is the default of `--local-socket`, and the flag overrides it.
+  The reference parses it and never uses it: its socket path comes from `--socket-path` only.
+
+systemd socket activation (a socket passed in `LISTEN_FDS`) is not supported yet:
+[#542](https://github.com/KD5UJC-XYZ/scarab/issues/542).
 
 Clients are accepted without a limit on their number (the reference's local
 `AcceptedConnectionsLimit maxBound maxBound 0`), each named `<path>@<n>` as the reference names them

@@ -22,7 +22,7 @@ import xyz.kd5ujc.scarab.node.{
   SyncAdvisory,
   Topology
 }
-import xyz.kd5ujc.scarab.network.{DiffusionFailure, LocalServer as LocalServerTraces}
+import xyz.kd5ujc.scarab.network.{BearerServer, DiffusionFailure, LocalServer as LocalServerTraces}
 import xyz.kd5ujc.scarab.network.SocketConfigError as SocketConfig
 import xyz.kd5ujc.scarab.network.selection.{
   AfterSlot,
@@ -155,6 +155,11 @@ enum NodeEvent:
     * ([[xyz.kd5ujc.scarab.network.LocalServer.Trace]]).
     */
   case LocalServer(trace: LocalServerTraces.Trace)
+
+  /** The accept loop of the node-to-node server, as the reference traces it under
+    * `Net.Server.Remote` ([[xyz.kd5ujc.scarab.network.BearerServer.Trace]]).
+    */
+  case RemoteServer(trace: BearerServer.Trace)
 
   /** The configured node-to-client socket cannot be used and the node does not start (the
     * reference's `StartupSocketConfigError`).
@@ -531,7 +536,14 @@ object NodeEvent:
         case InboundEvent.Closed(reason) => inbound(remote, "closed", Some(reason.message))
         case InboundEvent.Refused(reason) =>
           inbound(remote, "refused", Some(reason.message)).at(Severity.Warning)
-    case LocalServer(trace)       => LocalServerLines.line(trace)
+    case LocalServer(trace) => LocalServerLines.line(trace)
+    case RemoteServer(trace) =>
+      trace match
+        case BearerServer.Trace.AcceptError(failure) =>
+          EventKind.RemoteAcceptError.line("reason" -> failure.shown.asJson)
+        case BearerServer.Trace.ServerStopped => EventKind.RemoteServerStopped.line()
+        case BearerServer.Trace.ServerError(failure) =>
+          EventKind.RemoteServerError.line("reason" -> failure.shown.asJson)
     case SocketConfigError(error) => EventKind.SocketConfigError.line("error" -> error.shown.asJson)
     case DiffusionErrored(failure) =>
       EventKind.DiffusionErrored.line("error" -> failure.shown.asJson)

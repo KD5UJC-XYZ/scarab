@@ -134,6 +134,9 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `acceptError` | `Net.AcceptError` | Error | `reason`; an accept failed: after `ECONNABORTED` the server accepts again half a second later, any other failure stops it |
 | `serverStopped` | `Net.ServerStopped` | Notice | none |
 | `serverError` | `Net.ServerError` | Critical | `reason`; the accept loop stopped on a failure (a `diffusionErrored` line follows) |
+| `remoteAcceptError` | `Net.RemoteAcceptError` | Error | `reason`; an accept of the node-to-node server failed. Like the next two, the reference's `Net.Server.Remote` trace (`AcceptError`, `Stopped`, `Error`): after `ECONNABORTED` the server accepts again half a second later (the JDK retries that one itself, so it is not seen: an approved deviation, #944), any other failure stops the node |
+| `remoteServerStopped` | `Net.RemoteServerStopped` | Notice | none; the node-to-node server stopped accepting |
+| `remoteServerError` | `Net.RemoteServerError` | Critical | `reason`; its accept loop stopped on a failure (a `diffusionErrored` line follows) |
 | `peerSelectionTargets` | `Net.PeerSelectionTargets` | Notice | `root`, `known`, `established`, `active`, `knownBigLedger`, `establishedBigLedger`, `activeBigLedger` |
 | `peerSelectionRoots` | `Net.PeerSelectionRoots` | Info (Warning when `action` is `failure`) | `action`, `bigLedger`, `before`, `after`, `target`, `current`, `found`, `backoffs`, `retryInSeconds`; sharing actions `pickInbound`, `peerShareRequests`, `peerShareResults` add `peers`, `amount`, `results`, `added` |
 | `peerSelectionPromote` | `Net.PeerSelectionPromote` | Info (Warning when `action` is `failed`) | `action`, `bigLedger`, `from`, `to`, `peers`, `peer`, `local`, `target`, `current`, `failure`, `retryInSeconds`, `forgotten`, `reason`, `operation` |

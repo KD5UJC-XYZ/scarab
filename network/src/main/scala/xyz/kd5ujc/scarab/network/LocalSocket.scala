@@ -19,7 +19,7 @@ import java.lang.foreign.{
   ValueLayout
 }
 import java.lang.invoke.MethodHandle
-import java.nio.file.{Files, Path}
+import java.nio.file.{Files, InvalidPathException, Path}
 import scala.jdk.OptionConverters.*
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
@@ -87,8 +87,8 @@ enum DiffusionFailure extends DomainError:
     */
   case System(error: SystemCallError)
 
-  /** The path does not fit a `sockaddr_un`: network 3.2.8.0's `pokeSockAddr` refuses a path of more
-    * than 108 characters with `error`.
+  /** The path does not fit a `sockaddr_un`: network 3.2.8.0's `pokeSockAddr` refuses a path of 108
+    * characters or more with `error` (`len >= unixPathMax`, `Network/Socket/Types.hsc` 1162).
     */
   case PathTooLong(path: String)
 
@@ -199,8 +199,14 @@ object LocalSockets:
     def close: F[Unit] = F.blocking(client.shutdownOutput()).void
 
   def jdk[F[_]](using F: Async[F]): LocalSockets[F] = new LocalSockets[F]:
+    // unix 2.8.6.0's `removeLink` refuses a path that holds NUL before it calls `unlink`, which would
+    // stop at the NUL and remove another file (`useAsCStringSafe`,
+    // `System/Posix/PosixPath/FilePath.hsc` 154-171)
     def removeFile(path: String): F[Either[SystemCallError, Unit]] =
-      F.blocking(Unlink(path)).map(_.leftMap(SystemCallError(SystemCall.RemoveLink, _, Some(path))))
+      if path.contains('\u0000') then F.pure(Left(interiorNul(path)))
+      else
+        F.blocking(Unlink(path))
+          .map(_.leftMap(SystemCallError(SystemCall.RemoveLink, _, Some(path))))
 
     def fileMode(path: String): F[Either[SystemCallError, Int]] =
       F.blocking(Either.catchOnly[IOException](Files.getAttribute(Path.of(path), "unix:mode")))
@@ -237,7 +243,7 @@ object LocalSockets:
         opened: Option[Int]
     ): LocalListener[F] = new LocalListener[F]:
       def bind: F[Either[DiffusionFailure, Unit]] =
-        if address.path.codePointCount(0, address.path.length) > UnixPathMax then
+        if address.path.codePointCount(0, address.path.length) >= UnixPathMax then
           F.pure(Left(DiffusionFailure.PathTooLong(address.path)))
         // a socket cannot be made at a path that ends in `/` (the kernel's `ENOENT`); the JDK
         // would drop the slash and bind the path without it
@@ -249,14 +255,40 @@ object LocalSockets:
               )
             )
           )
+        // a path beyond ASCII, after the length and trailing-`/` refusals that come before the
+        // reference's bind too: Scarab refuses every one, the owner's decision (#949). Run with
+        // `café` paths, cardano-node 11.1.3 binds the path under its characters truncated to a byte
+        // each (`castCharToCChar`, `Network/Socket/Types.hsc` 1160), then its check of the socket
+        // finds nothing at the path's own name and stops the set-up with this error. Scarab binds
+        // nothing, so it leaves no socket file under the truncated name
+        else if address.path.exists(_ > '\u007f') then
+          F.pure(
+            Left(
+              DiffusionFailure.System(
+                SystemCallError(
+                  SystemCall.GetFileStatus,
+                  ErrnoCause.Known(Errno.ENOENT),
+                  Some(address.path)
+                )
+              )
+            )
+          )
+        // an ASCII path: the JDK refuses one that holds NUL with `InvalidPathException`, a refusal
+        // of the bind, as one longer than its 106 bytes is (an approved deviation, #949)
         else
           F.blocking(
             Either
-              .catchOnly[IOException](
-                channel.bind(UnixDomainSocketAddress.of(address.path), Backlog)
+              .catchOnly[InvalidPathException](UnixDomainSocketAddress.of(address.path))
+              .leftMap(e =>
+                SystemCallError(SystemCall.Bind, ErrnoCause.Unrecognised(e.getReason), None)
               )
-              .void
-              .leftMap(e => DiffusionFailure.System(SystemCallError.of(SystemCall.Bind, None)(e)))
+              .flatMap(socket =>
+                Either
+                  .catchOnly[IOException](channel.bind(socket, Backlog))
+                  .void
+                  .leftMap(SystemCallError.of(SystemCall.Bind, None))
+              )
+              .leftMap(DiffusionFailure.System(_))
           )
 
       // bound, the socket is the listening one at its path in `/proc/net/unix`; unbound, the one
@@ -280,6 +312,19 @@ object LocalSockets:
               Mutex[F].map(lock => LocalStream(stream(client, lock), F.blocking(client.close())))
             )
           )
+
+  /** The `IOError` of unix 2.8.6.0's `useAsCStringSafe` for a path that holds NUL
+    * (`System/Posix/PosixPath/FilePath.hsc` 154-171): it names the path as decoded, NUL included.
+    */
+  private[network] def interiorNul(path: String): SystemCallError =
+    SystemCallError(
+      SystemCall.CheckForInteriorNuls,
+      ErrnoCause.Described(
+        IoErrorType.InvalidArgument,
+        "POSIX filepaths must not contain internal NUL octets."
+      ),
+      Some(path)
+    )
 
   /** `unlink(2)` of the path as written, one call, as the reference's `removeFile`: it needs write
     * and search permission on the directory only, refuses a directory (`EISDIR`), and takes a path

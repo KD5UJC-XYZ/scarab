@@ -73,7 +73,8 @@ import xyz.kd5ujc.scarab.network.{
   LocalServer,
   LocalSockets,
   ServerHandlers,
-  SocketConfigError
+  SocketConfigError,
+  TcpListeners
 }
 import xyz.kd5ujc.scarab.node.forge.{
   BlockForgingState,
@@ -908,7 +909,7 @@ object Main extends IOApp:
       manager: ConnectionManager[IO],
       governor: InboundGovernor[IO],
       network: Resource[IO, PeerNetwork.Running[IO, PeerNetwork.Addr]],
-      relay: Resource[IO, Unit]
+      relay: Resource[IO, IO[DiffusionFailure]]
   )
 
   /** The services beside the network: the node-to-client server, the forger and the watchers. */
@@ -1683,11 +1684,15 @@ object Main extends IOApp:
             peerMetrics = Some(peerMetrics)
           )
         )
-      val relay = options.listen.fold(Resource.unit[IO])(address =>
+      // the node-to-node server; its accept loop that stops stops the node, as the reference's
+      // `Server.with` that throws ends its diffusion (`Diffusion.hs` 738-760 and 905-911)
+      val relay = options.listen.fold(Resource.pure[IO, IO[DiffusionFailure]](IO.never))(address =>
         BearerServer
           .listen[IO, NetworkError](
+            TcpListeners.jdk[IO],
             Some(address.host),
             Some(address.port),
+            trace => logged(NodeEvent.RemoteServer(trace)),
             maxConnections = None,
             beforeAccept = Some(
               AcceptedConnectionsLimit.rateLimit(manager, accepted, connectionEvents)
@@ -1697,7 +1702,9 @@ object Main extends IOApp:
           ) { (bearer, remote) =>
             governor.serve(bearer, remote).void
           }
-          .evalMap(bound => logged(NodeEvent.Listening(bound.toString)))
+          .evalMap(listening =>
+            logged(NodeEvent.Listening(listening.address.toString)).as(listening.stopped)
+          )
       )
       Connections(manager, governor, network, relay)
 
@@ -1929,13 +1936,15 @@ object Main extends IOApp:
               Some(collectors.scrape)
             )(fatalSink)
             .flatMap(_ => relay)
-            .flatMap(_ => local(raise))
+            .flatMap(relayStopped =>
+              local(raise).map(localStopped => IO.race(relayStopped, localStopped).map(_.merge))
+            )
             .flatTap(_ => signals)
             .flatTap(_ => production)
             .flatTap(_ => reporting)
             .flatTap(_ => watching)
-            .use(localStopped =>
-              IO.race(sync, localStopped.flatMap(raise.raise[DiffusionFailure, Unit])).void
+            .use(serverStopped =>
+              IO.race(sync, serverStopped.flatMap(raise.raise[DiffusionFailure, Unit])).void
             )
         })
     for
