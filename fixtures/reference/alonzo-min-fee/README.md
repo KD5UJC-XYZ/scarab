@@ -37,8 +37,11 @@ the era tag 5 it adds), reads the first transaction with `Tx.fromBlock`, require
 and execution units, and requires the UTXO checks of Alonzo (`UtxoChecks.of`), which compute the
 minimum fee, to refuse it with exactly `FeeTooSmall(Mismatch(1001829, 1006053))`.
 
-Scope: the parameters are the three the golden sets on `emptyPParams`; the suite sets every other
-field to zero as `emptyPParams` does, and the minimum fee reads none of them. Only the fee failure is
+Scope: the parameters are the three the golden sets on `emptyPParams`; the suite gives the other
+fields the values of `emptyAlonzoPParams` where Scarab has the field
+(`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs:481-509`: a maximum transaction size of 2048,
+`nOpt` 100, a collateral percentage of 150, at most 5 collateral inputs, protocol version 5.0, every
+other field zero), and the minimum fee reads none of them. Only the fee failure is
 compared: the transaction's inputs are not in the empty UTxO the suite gives, so the other checks of
 the rule are not the golden's and are not asserted. The block's header is decoded but not
 validated, and its other 17 transactions are only counted.
