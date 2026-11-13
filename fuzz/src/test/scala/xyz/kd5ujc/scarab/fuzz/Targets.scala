@@ -2318,4 +2318,4 @@ object Targets:
         injectionJson,
         genesisPoolFields
       ) ++ nativeSnapshots ++ ancillary ++ mithril ++ networkIdentity ++ volatileLog ++
-      nodeConfiguration ++ nodeTopologyFile
+      nodeConfiguration ++ nodeTopologyFile ++ UplcTargets.all
