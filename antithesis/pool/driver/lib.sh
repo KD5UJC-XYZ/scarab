@@ -12,8 +12,12 @@ INTERVAL_SECONDS=5
 # The text of the Haskell pools' `ChainSync.Client.Exception` trace when they refuse a block, from a local run of the
 # canary against cardano-node 11.1.3: `InvalidBlock (Point (At (Block {blockPointSlot = ...`.
 REFUSAL_PATTERN='InvalidBlock (Point'
-# Scarab's `Node.Fatal` event (`EventKind.Fatal`) as its JSON log line writes it.
+# Scarab's `Node.Fatal` event (`EventKind.Fatal`) as its JSON log line writes it, and the text of the one fatal
+# cause the reference has too: a clock moved back further than `Forger.MaxClockRewind` stops the node, as
+# `checkValidClockChange` stops cardano-node (`Fatal.Internal(ClockProblem.SystemClockMovedBack)`). Antithesis's clock
+# skips can cause it, so it is not a detector hit.
 FATAL_PATTERN='"event":"fatal"'
+CLOCK_STOP_PATTERN='the system clock moved back'
 SDK="${ANTITHESIS_OUTPUT_DIR:-/tmp}/sdk.jsonl"
 # What the test commands remember within a timeline (markers and log offsets): each runs as a process of its own,
 # many times per timeline, and a timeline that branches takes this directory with it.
@@ -80,7 +84,8 @@ declare_catalog() {
   fi
 }
 
-# log_match NAME LOG PATTERN: the first line of LOG past NAME's offset that holds the fixed string PATTERN. The
+# log_match NAME LOG PATTERN [EXCEPT]: the first line of LOG past NAME's offset that holds the fixed string PATTERN
+# (and not the fixed string EXCEPT). The
 # offset then moves to 4 KiB before the end read, so that a line cut by the end is read whole next time; a log that
 # is shorter than the offset was started again, and is read from its start.
 log_match() {
@@ -90,7 +95,11 @@ log_match() {
   from=$(cat "$offset_file" 2> /dev/null || echo 0)
   [ "$from" -le "$size" ] || from=0
   # Every command reads to the end: an early exit would break the pipe, and pipefail would hide the match.
-  lines=$(tail -c +"$((from + 1))" "$log" | grep -F -- "$3")
+  if [ -n "${4:-}" ]; then
+    lines=$(tail -c +"$((from + 1))" "$log" | grep -F -- "$3" | grep -v -F -- "$4")
+  else
+    lines=$(tail -c +"$((from + 1))" "$log" | grep -F -- "$3")
+  fi
   status=$?
   # The offset moves only once the scan is done, so that a scan cut short is made again.
   echo $(( size > 4096 ? size - 4096 : 0 )) > "$offset_file"
@@ -122,7 +131,7 @@ scarab_refusal() {
 
 scarab_fatal() {
   local line
-  line=$(log_match fatal-s1 /logs/s1.log "$FATAL_PATTERN") || return 1
+  line=$(log_match fatal-s1 /logs/s1.log "$FATAL_PATTERN" "$CLOCK_STOP_PATTERN") || return 1
   jq -cn --arg line "$line" '{line: $line[0:2000]}'
 }
 
