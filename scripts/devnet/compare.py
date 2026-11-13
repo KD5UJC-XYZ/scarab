@@ -7,11 +7,13 @@ what they leave out, and every result names the Scala fields the reference side 
 state (`whole_state`): `DebugNewEpochState`, whose UTxO is an empty map on both nodes, and `GetUTxOWhole`, every
 byte of each, and the complete comparison is what covers the fields the projection leaves out (#433).
 """
+import hashlib
 import json
 import pathlib
 import subprocess
 import threading
 import time
+from typing import NamedTuple
 from . import cborspan
 from . import eraview
 from . import ledgercompare
@@ -20,7 +22,7 @@ from . import govview
 from . import pinnedquery
 from .encoding import address_hex
 from . import util
-from .util import CLI, ENV, ERAS, MAGIC, QUERY_PORT, docker, in_ref, ref
+from .util import CLI, ENV, ERAS, MAGIC, SINGLE_FOLLOWER, docker, in_ref, ref
 
 
 PROJECTION_SCOPE = {
@@ -144,11 +146,42 @@ def diff(ref_view, scala, path=""):
     return out
 
 
-def scala_state(name, tip):
-    url = f"http://127.0.0.1:{QUERY_PORT}/state?slot={tip['slot']}&hash={tip['hash']}&utxo=full"
+def scala_state(name, tip, site=SINGLE_FOLLOWER):
+    """The `/state` of the follower of `site` at the block `tip`, or None when it does not answer for that block."""
+    url = f"http://127.0.0.1:{site.query_port}/state?slot={tip['slot']}&hash={tip['hash']}&utxo=full"
     script = f"import urllib.request,sys;sys.stdout.write(urllib.request.urlopen('{url}',timeout=20).read().decode())"
-    r = docker("exec", f"{name}-scala", "python3", "-c", script, check=False, timeout=60)
+    r = docker("exec", site.container(name), "python3", "-c", script, check=False, timeout=60)
     return json.loads(r.stdout) if r.returncode == 0 and r.stdout else None
+
+
+def awaited_state(name, tip, site, tries, pause):
+    """`scala_state`, asked up to `tries` times `pause` seconds apart while the follower has not reached `tip`."""
+    for _ in range(tries):
+        scala = scala_state(name, tip, site)
+        if scala is not None:
+            return scala
+        time.sleep(pause)
+    return None
+
+
+class Sample(NamedTuple):
+    """One follower's comparison at a reference block: the result as recorded, and the digest of the follower's
+    projected state (the part of its `/state` the reference view was compared with), None when none was taken."""
+    result: dict
+    projection: str | None = None
+
+
+def projection_digest(view):
+    """SHA-256 of a projected state in a canonical JSON form (keys sorted, each tagged with its type), so two
+    followers' projections at one block can be judged equal without keeping either."""
+    def canonical(v):
+        if isinstance(v, dict):
+            return {f"{type(k).__name__}:{k}": canonical(x) for k, x in v.items()}
+        if isinstance(v, (list, tuple)):
+            return [canonical(x) for x in v]
+        return v
+    text = json.dumps(canonical(view), sort_keys=True, separators=(",", ":"), default=repr)
+    return hashlib.sha256(text.encode()).hexdigest()
 
 
 BUNDLE = [("ls", "query ledger-state"), ("utxo", "query utxo --whole-utxo"), ("protocol", "query protocol-state"),
@@ -258,6 +291,15 @@ def utxo_sources_agree(cli_utxo, lsq_utxo):
 def compare_once_detailed(name, attempts=10, scala_wait=30):
     """One comparison at one reference block. Returns (result dict, None), or (None, failures) with one record
     per attempt that could not read the reference at that block (a failed query with its stderr)."""
+    samples, failures = compare_followers_detailed(name, (SINGLE_FOLLOWER,), attempts, scala_wait)
+    return (samples[0].result if samples else None), failures
+
+
+def compare_followers_detailed(name, sites, attempts=10, scala_wait=30):
+    """`compare_once_detailed` for several followers: the reference is read once, at one block, and the follower
+    of each of `sites` is compared with that block. While one of them has not reached it, the attempt is taken
+    again at a new block; at the last attempt each follower that never reached it has an error of its own.
+    Returns ([Sample per site], None), or (None, failures)."""
     failures = []
     for attempt in range(attempts):
         bundle, why = query_bundle(name)
@@ -275,40 +317,41 @@ def compare_once_detailed(name, attempts=10, scala_wait=30):
             failures.append({"query": "GetUTxOWhole/GetGovState", "slot": after["slot"], "error": repr(e)[:300]})
             continue
         if not utxo_sources_agree(bundle["utxo"], full_utxo):
-            return {"tip": after, "error": "the CLI and LocalStateQuery UTxO of one block differ"}, None
+            return [Sample({"tip": after, "error": "the CLI and LocalStateQuery UTxO of one block differ"})
+                    for _ in sites], None
         ls, utxo, protocol = bundle["ls"], bundle["utxo"], bundle["protocol"]
         gov = (bundle["gov"], bundle["committee"], bundle["drep"])
-        scala = None
-        for _ in range(scala_wait):
-            scala = scala_state(name, after)
-            if scala is not None:
-                break
-            time.sleep(1)
-        if scala is None:
-            if attempt + 1 < attempts:
-                continue  # the node may have moved past the retained window while the queries ran
-            return {"tip": after, "error": "scala node never reached the reference tip"}, None
+        states = [awaited_state(name, after, site, scala_wait, 1) for site in sites]
+        if any(scala is None for scala in states) and attempt + 1 < attempts:
+            continue  # the node may have moved past the retained window while the queries ran
         reference = reference_view(ls, utxo)
         reference["utxo"] = full_utxo
         reference["gov"] = govview.reference_gov(*gov)
         reference["gov"]["prevGovActionIds"] = roots
         reference["protocolState"] = {k: protocol[k] for k in (
             "epochNonce", "evolvingNonce", "candidateNonce", "labNonce", "lastEpochBlockNonce", "oCertCounters")}
-        scala_view = {k: v for k, v in scala.items() if k in reference}
-        scala_view["gov"] = govview.scala_gov(scala["gov"])
-        scala_view["dreps"] = {c: {"deposit": d["deposit"], "expiry": d["expiry"]}
-                               for c, d in scala_view["dreps"].items()}
-        differences = diff(reference, scala_view)
-        return {"tip": {k: after[k] for k in ("slot", "block", "epoch", "hash")}, "utxoSize": len(utxo),
-                "utxoWithDatumOrScript": sum(1 for v in full_utxo.values()
-                                             if {"datumHash", "inlineDatum", "scriptRef"} & set(v)),
-                "scalaOnlyKeys": scala_only(scala, reference),
-                "blocksCurrent": reference["blocksCurrent"], "blocksBefore": reference["blocksBefore"],
-                "poolStake": reference["stakeDistrib"],
-                "matched": not differences, "differences": [
-                    {"path": p, "reference": str(a)[:200], "scala": str(b)[:200]} for p, a, b in differences[:25]],
-                "differenceCount": len(differences)}, None
+        return [conway_sample(after, utxo, full_utxo, reference, scala) if scala is not None
+                else Sample({"tip": after, "error": "scala node never reached the reference tip"})
+                for scala in states], None
     return None, failures
+
+
+def conway_sample(after, utxo, full_utxo, reference, scala):
+    """The Sample of one follower's `/state` (`scala`) against the reference view of the Conway block `after`."""
+    scala_view = {k: v for k, v in scala.items() if k in reference}
+    scala_view["gov"] = govview.scala_gov(scala["gov"])
+    scala_view["dreps"] = {c: {"deposit": d["deposit"], "expiry": d["expiry"]}
+                           for c, d in scala_view["dreps"].items()}
+    differences = diff(reference, scala_view)
+    return Sample({"tip": {k: after[k] for k in ("slot", "block", "epoch", "hash")}, "utxoSize": len(utxo),
+                   "utxoWithDatumOrScript": sum(1 for v in full_utxo.values()
+                                                if {"datumHash", "inlineDatum", "scriptRef"} & set(v)),
+                   "scalaOnlyKeys": scala_only(scala, reference),
+                   "blocksCurrent": reference["blocksCurrent"], "blocksBefore": reference["blocksBefore"],
+                   "poolStake": reference["stakeDistrib"],
+                   "matched": not differences, "differences": [
+                       {"path": p, "reference": str(a)[:200], "scala": str(b)[:200]} for p, a, b in differences[:25]],
+                   "differenceCount": len(differences)}, projection_digest(scala_view))
 
 
 def compare_once(name, attempts=10, scala_wait=30):
@@ -372,18 +415,19 @@ def ask_raw(session, query):
     return session.last_raw
 
 
-def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1):
+def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=SINGLE_FOLLOWER):
     """The complete same-point ledger state of both nodes: each of `WHOLE_QUERIES`, asked over node-to-client on
     one session per node acquired at one point, and judged on every byte (`ledgercompare`). The point is the volatile
     tip of `anchor`: the Scala node's when it follows, as every block it holds is the reference's; the reference's
     when the Scala node forges too, as a block it has just forged may not have reached the reference yet. The other
     node is asked at that point; while it has not reached it, the comparison is taken again after a pause, up to
     `attempts` times. `scala_socket` is the Scala node's node-to-client socket (`scala-sock/node.socket` of the run
-    dir by default). With more than one attempt, a point the other node never reaches is given up once for a new
-    one. Returns {"slot", "answers": {label: result}}, or {"skipped"} or {"error"} for all of them. A difference
-    keeps both answers in the run dir. Never raises."""
+    dir by default, the socket directory of the follower `site`). With more than one attempt, a point the other
+    node never reaches is given up once for a new one. Returns {"slot", "answers": {label: result}}, or {"skipped"}
+    or {"error"} for all of them. A difference keeps both answers in the run dir (`whole-state`, the follower's
+    own). Never raises."""
     root = util.data_root(name)
-    scala_socket = pathlib.Path(scala_socket) if scala_socket else root / "scala-sock" / "node.socket"
+    scala_socket = pathlib.Path(scala_socket) if scala_socket else site.directory(root, "scala-sock") / "node.socket"
     if not scala_socket.exists():
         return {"skipped": "the Scala node has no node-to-client socket"}
     queries = {label: [0, [0, [ERA_INDEX[era], [q]]]] for label, (q, _) in WHOLE_QUERIES.items()}
@@ -439,7 +483,7 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1):
                   "referenceBytes": len(expected[label]), "scalaBytes": len(got[label])}
         if not verdict.equal:
             result["firstDifference"] = first_difference(expected[label], got[label])
-            dump = root / "whole-state"
+            dump = site.directory(root, "whole-state")
             dump.mkdir(exist_ok=True)
             stem = dump / f"{era}-{slot}-{label}"
             stem.with_suffix(".reference").write_bytes(expected[label])
@@ -461,6 +505,12 @@ def compare_pre_conway(name, era, attempts=10):
     """One comparison in a Shelley..Babbage era: the reference ledger from LocalStateQuery (atomic at
     the acquired tip) against the Scala node's `/state` at the same block. Returns a result dict, or
     {"skipped": reason} when the chain left the era while querying."""
+    return compare_pre_conway_followers(name, era, (SINGLE_FOLLOWER,), attempts)[0].result
+
+
+def compare_pre_conway_followers(name, era, sites, attempts=10):
+    """`compare_pre_conway` for several followers: the reference is read once, at one block, and the follower of
+    each of `sites` is compared with that block (as `compare_followers_detailed`). Returns [Sample per site]."""
     for attempt in range(attempts):
         try:
             before = protocol_parameters(name)
@@ -470,48 +520,54 @@ def compare_pre_conway(name, era, attempts=10):
             after = protocol_parameters(name)
         except (RuntimeError, EOFError, json.JSONDecodeError, subprocess.TimeoutExpired) as e:
             if "mismatch" in str(e):
-                return {"skipped": f"the chain left {era} while querying"}
+                return [Sample({"skipped": f"the chain left {era} while querying"}) for _ in sites]
             time.sleep(0.5)
             continue
         if before != after:
             continue  # an epoch boundary passed between the parameter reads and the state read
-        scala = None
-        for _ in range(8):
-            scala = scala_state(name, tip)
-            if scala is not None:
-                break
-            time.sleep(0.4)
-        if scala is None:
+        states = [awaited_state(name, tip, site, 8, 0.4) for site in sites]
+        if any(scala is None for scala in states) and attempt + 1 < attempts:
             continue  # the node moved past the retained window (k blocks) while the queries ran
         evidence = reference.pop("_evidence", None)  # what the comparison exercised, not compared
-        scala_view = {k: v for k, v in scala.items() if k in reference}
-        scala_view["params"] = {k: v for k, v in scala_view["params"].items()
-                                if k in reference["params"]}
         reference["ppup"], reference_encodings = eraview.proposal_values(reference["ppup"])
-        scala_view["ppup"], scala_encodings = eraview.proposal_values(scala_view["ppup"])
-        differences = diff(reference, scala_view)
-        return {"tip": tip, "epoch": reference["epoch"], "utxoSize": len(reference["utxo"]),
-                "scalaOnlyKeys": scala_only(scala, reference),
-                "scalaOnlyParams": scala_only(scala.get("params", {}), reference["params"]),
-                "evidence": {**(evidence or {}),
-                    "ppupCostModelEncodings": {"reference": reference_encodings, "scala": scala_encodings},
-                    "mirPending": {
-                    "reserves": len(reference["mir"]["reserves"]), "treasury": len(reference["mir"]["treasury"]),
-                    "deltaReserves": reference["mir"]["deltaReserves"], "deltaTreasury": reference["mir"]["deltaTreasury"]},
-                    "rewardUpdate": {**(evidence or {}).get("rewardUpdate", {}),
-                                     "rewards": len((reference["rewardUpdate"] or {}).get("rs", {}))}},
-                "matched": not differences, "differenceCount": len(differences),
-                "differences": [{"path": p, "reference": str(a)[:300], "scala": str(b)[:300]}
-                                for p, a, b in differences[:25]]}
-    return {"error": "no stable comparison within the attempts"}
+        return [pre_conway_sample(tip, reference, reference_encodings, evidence, scala) if scala is not None
+                else Sample({"error": "no stable comparison within the attempts"}) for scala in states]
+    return [Sample({"error": "no stable comparison within the attempts"}) for _ in sites]
+
+
+def pre_conway_sample(tip, reference, reference_encodings, evidence, scala):
+    """The Sample of one follower's `/state` (`scala`) against the reference view of a pre-Conway block `tip`
+    (its proposals already in `eraview.proposal_values` form, their original encodings `reference_encodings`)."""
+    scala_view = {k: v for k, v in scala.items() if k in reference}
+    scala_view["params"] = {k: v for k, v in scala_view["params"].items()
+                            if k in reference["params"]}
+    scala_view["ppup"], scala_encodings = eraview.proposal_values(scala_view["ppup"])
+    differences = diff(reference, scala_view)
+    return Sample({"tip": tip, "epoch": reference["epoch"], "utxoSize": len(reference["utxo"]),
+                   "scalaOnlyKeys": scala_only(scala, reference),
+                   "scalaOnlyParams": scala_only(scala.get("params", {}), reference["params"]),
+                   "evidence": {**(evidence or {}),
+                       "ppupCostModelEncodings": {"reference": reference_encodings, "scala": scala_encodings},
+                       "mirPending": {
+                       "reserves": len(reference["mir"]["reserves"]), "treasury": len(reference["mir"]["treasury"]),
+                       "deltaReserves": reference["mir"]["deltaReserves"], "deltaTreasury": reference["mir"]["deltaTreasury"]},
+                       "rewardUpdate": {**(evidence or {}).get("rewardUpdate", {}),
+                                        "rewards": len((reference["rewardUpdate"] or {}).get("rs", {}))}},
+                   "matched": not differences, "differenceCount": len(differences),
+                   "differences": [{"path": p, "reference": str(a)[:300], "scala": str(b)[:300]}
+                                   for p, a, b in differences[:25]]}, projection_digest(scala_view))
 
 
 class Comparisons:
-    """Thread-safe tally of ledger comparisons per era; every result is appended to compare.jsonl."""
+    """Thread-safe tally of one follower's ledger comparisons per era; every result is appended to compare.jsonl
+    (`compare-<key>.jsonl` for a keyed follower, `site`)."""
 
-    def __init__(self, root):
+    def __init__(self, root, site=SINGLE_FOLLOWER):
         self.lock = threading.Lock()
-        self.file = root / "compare.jsonl"
+        self.site = site
+        self.file = root / f"{site.named('compare')}.jsonl"
+        # what the printed progress lines say of the follower: nothing for a run's only one
+        self.tag = {} if site.key is None else {"follower": site.key}
         self.per_era = {e: {"matched": 0, "mismatched": 0, "errors": 0, "skipped": 0} for e in ERAS}
         self.per_era["byron"]["note"] = ("not compared: cardano-cli 11.2.3 cannot query a Byron ledger; the "
                                          "Byron UTxO is compared through the first Shelley epoch")
@@ -534,7 +590,7 @@ class Comparisons:
                         k: answer.get(k) for k in ("firstDifference", "referenceBytes", "scalaBytes", "kept")}})
             with self.file.open("a") as f:
                 f.write(json.dumps({"era": era, "label": label, "wholeState": result}) + "\n")
-        print(json.dumps({"wholeState": era, "label": label,
+        print(json.dumps({"wholeState": era, "label": label, **self.tag,
                           "matched": {q: a.get("matched") for q, a in answers.items()},
                           "note": result.get("skipped") or result.get("error")}), flush=True)
 
@@ -553,33 +609,89 @@ class Comparisons:
                     self.mismatches.append({"era": era, "label": label, **result})
             with self.file.open("a") as f:
                 f.write(json.dumps({"era": era, "label": label, **result}) + "\n")
-        print(json.dumps({"compare": era, "label": label, "matched": result.get("matched"),
+        print(json.dumps({"compare": era, "label": label, **self.tag, "matched": result.get("matched"),
                           "slot": (result.get("tip") or {}).get("slot"),
                           "differences": result.get("differenceCount"),
                           "note": result.get("skipped") or result.get("error"),
                           "queryFailures": result.get("queryFailures")}), flush=True)
 
 
-def compare_era(name, era, label, comparisons):
-    """Compare the Scala ledger with the reference in `era`; never raises."""
+class FollowerAgreement:
+    """Thread-safe tally of the followers' projected states against each other, per era: at each reference block
+    where `compare_era` compared every follower with the reference, whether all their projections (the part of
+    `/state` the reference view is compared with) are equal, by `projection_digest`. Fields the reference has no
+    counterpart for are not compared here either. Every point is appended to `compare-followers.jsonl`."""
+
+    def __init__(self, root, sites):
+        self.lock = threading.Lock()
+        self.file = root / "compare-followers.jsonl"
+        self.keys = [site.key for site in sites]
+        self.per_era = {e: {"agreed": 0, "differed": 0, "notCompared": 0} for e in ERAS}
+        self.differences = []
+
+    def record(self, era, label, samples):
+        """Tally one point: `samples`, one Sample per follower in the order of the sites."""
+        digests = {key: sample.projection for key, sample in zip(self.keys, samples)}
+        tip = next((s.result.get("tip") for s in samples if s.result.get("tip")), None) or {}
+        outcome = ("notCompared" if any(d is None for d in digests.values())
+                   else "agreed" if len(set(digests.values())) == 1 else "differed")
+        row = {"era": era, "label": label, "slot": tip.get("slot"), "hash": tip.get("hash"), "outcome": outcome,
+               "projections": digests}
+        with self.lock:
+            self.per_era[era][outcome] += 1
+            if outcome == "differed" and len(self.differences) < 10:
+                self.differences.append(row)
+            with self.file.open("a") as f:
+                f.write(json.dumps(row) + "\n")
+
+    def report(self):
+        return {"perEra": self.per_era, "differences": self.differences}
+
+
+def agreement_failures(per_era, minimum=1):
+    """Failures from a `FollowerAgreement` tally: any point where the followers' projections differ, or a
+    Shelley-based era with fewer than `minimum` points where every follower was compared and all agreed."""
+    failures = []
+    for era in ERAS[1:]:
+        row = per_era[era]
+        if row["differed"]:
+            failures.append(f"{era}: the followers' projected states differ at {row['differed']} of "
+                            f"{row['agreed'] + row['differed']} reference blocks where every follower was compared")
+        if row["agreed"] < minimum:
+            failures.append(f"{era}: only {row['agreed']} reference blocks where every follower was compared and all "
+                            f"projected states agreed (need {minimum})")
+    return failures
+
+
+def compare_era(name, era, label, comparisons, agreement=None):
+    """Compare the Scala ledger of each follower with the reference in `era`, all with one reference block:
+    `comparisons` holds one `Comparisons` per follower (its `site`), and `agreement` (a `FollowerAgreement`, with
+    several followers) tallies their projections against each other. Then each follower's complete same-point
+    state (`whole_state`, at its own tip). Never raises."""
+    sites = [tally.site for tally in comparisons]
     try:
         if era == "conway":
-            result, failures = compare_once_detailed(name, attempts=12, scala_wait=3)
-            result = result or {"error": "reference queries failed at the chosen block", "queryFailures": failures[-3:],
-                                "queryFailureCount": len(failures)}
+            samples, failures = compare_followers_detailed(name, sites, attempts=12, scala_wait=3)
+            samples = samples or [Sample({"error": "reference queries failed at the chosen block",
+                                          "queryFailures": failures[-3:], "queryFailureCount": len(failures)})
+                                  for _ in sites]
         else:
-            result = compare_pre_conway(name, era)
+            samples = compare_pre_conway_followers(name, era, sites)
     except (Exception, SystemExit) as e:  # a comparison problem must not stop the cluster walk
         # SystemExit too: the devnet helpers raise it for a failed command, and in a load thread it would end the
         # thread without a trace (threading ignores SystemExit), so the walk would stop comparing unseen (#591)
         import traceback
-        result = {"error": repr(e), "traceback": traceback.format_exc()[-1500:]}
-    comparisons.record(era, label, result)
-    try:
-        whole = whole_state(name, era)
-    except (Exception, SystemExit) as e:  # nor may the whole-state comparison stop it
-        whole = {"error": repr(e)[:300]}
-    comparisons.record_whole(era, label, whole)
+        samples = [Sample({"error": repr(e), "traceback": traceback.format_exc()[-1500:]}) for _ in sites]
+    for tally, sample in zip(comparisons, samples):
+        tally.record(era, label, sample.result)
+    if agreement is not None:
+        agreement.record(era, label, samples)
+    for tally in comparisons:
+        try:
+            whole = whole_state(name, era, site=tally.site)
+        except (Exception, SystemExit) as e:  # nor may the whole-state comparison stop it
+            whole = {"error": repr(e)[:300]}
+        tally.record_whole(era, label, whole)
 
 
 def judge_comparisons(comparisons, minimum, loaded):

@@ -35,7 +35,9 @@
                                    Conway, forks into Dijkstra and includes one Dijkstra transaction; no Scala node
     devnet.py capture-dijkstra     REFERENCE ONLY: capture the up-dijkstra chain as fixtures (fixtures/dijkstra-devnet)
     devnet.py e2e [--keep]         up-eras + Scala follower from Origin; assert every era and
-                                   era transition was followed with no validation error
+                                   era transition was followed with no validation error;
+                                   `--plutus-vm scalus --plutus-vm scarab` runs one follower per
+                                   evaluator in the cluster and also checks them against each other
     devnet.py refusal-corpus       the reference-refusal corpus (#401): each transaction of `refusalcases` submitted to the
                                    reference over LocalTxSubmission; its complete rejection, the ledger state and UTxO
                                    it was judged against and the genesis go to fixtures/reference/refusals
@@ -196,7 +198,13 @@ def main():
                         help="up-eras, follow from Origin, assert every era and transition")
     plutus_vm_help = ("the Scala node's Plutus evaluator (default: the node's, scalus); the forging scenarios do "
                       "not take it, as the node refuses --forge with scarab")
-    e2.add_argument("--plutus-vm", choices=("scalus", "scarab"), default=None, help=plutus_vm_help)
+    e2.add_argument("--plutus-vm", choices=PLUTUS_VMS, action="append", default=None,
+                    help=plutus_vm_help + ". Given more than once (`--plutus-vm scalus --plutus-vm scarab`), the run "
+                         "has one follower per evaluator, each with a container, log, sockets and ports of its own "
+                         "(<name>-scala-<vm>, follower-<vm>.jsonl, compare-<vm>.jsonl), each judged as the only one is "
+                         "and all compared with the same reference blocks; then their final chains must agree and so "
+                         "must their projected states at those blocks (`crossCheck` in e2e-summary.json, the followers "
+                         "under `followers`). Not with --oracle")
     e2.add_argument("--timeout", type=int, default=1500, help="overall time limit in seconds")
     e2.add_argument("--until-epoch", type=int,
                     help=f"Conway epoch to reach (default: first Conway epoch + {CONWAY_EPOCHS})")
