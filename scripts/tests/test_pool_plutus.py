@@ -41,6 +41,9 @@ class BlockTransactionsTest(unittest.TestCase):
     def test_a_block_without_transactions(self):
         self.assertEqual(ntclocal.block_transactions(block_item(7, [], [], [])), [])
 
+    def test_the_block_number_of_the_header(self):
+        self.assertEqual(ntclocal.block_number(block_item(7, [], [], [])), 1)
+
 
 class ChainFromOriginTest(unittest.TestCase):
     def test_the_chain_up_to_the_reported_tip_with_rollbacks_applied(self):
@@ -87,8 +90,8 @@ ROWS = [row("reject-success-invalid", "a"), row("success", "a"), row("reject-fai
 
 
 class InclusionTest(unittest.TestCase):
-    CHAIN = [("s1", [("a", True, True), ("pay", True, False)]), ("h1", [("b", False, True)]),
-             ("s2", [("d", False, True)]), ("h2", [("c", True, True)])]
+    CHAIN = [("s1", 10, 1, [("a", True, True), ("pay", True, False)]), ("h1", 20, 2, [("b", False, True)]),
+             ("s2", 30, 3, [("d", False, True)]), ("h2", 40, 4, [("c", True, True)])]
 
     def test_counts_by_kind_and_language_in_scala_forged_and_other_blocks(self):
         placed = pool_plutus.inclusion(ROWS, self.CHAIN, {"s1", "s2"})
@@ -103,8 +106,8 @@ class InclusionTest(unittest.TestCase):
         self.assertEqual(placed["otherPlutusInScalaForgedBlocks"], 0)
 
     def test_a_failing_script_with_the_flag_true_is_a_wrong_flag_wherever_it_is(self):
-        chain = [("s1", [("a", True, True)]), ("h1", [("b", True, True)]), ("s2", [("c", False, True)]),
-                 ("h2", [("d", False, True)])]
+        chain = [("s1", 10, 1, [("a", True, True)]), ("h1", 20, 2, [("b", True, True)]),
+                 ("s2", 30, 3, [("c", False, True)]), ("h2", 40, 4, [("d", False, True)])]
         placed = pool_plutus.inclusion(ROWS, chain, {"s1", "s2"})
         self.assertEqual(placed["wrongFlag"], [{"tx": "b", "block": "h1", "valid": True, "scalaForged": False},
                                                {"tx": "c", "block": "s2", "valid": False, "scalaForged": True}])
@@ -113,7 +116,7 @@ class InclusionTest(unittest.TestCase):
         self.assertEqual((placed["inOtherBlocks"]["succeeding"], placed["inOtherBlocks"]["flagFalse"]), (0, 1))
 
     def test_accepted_transactions_missing_from_the_chain_and_unknown_plutus_ones(self):
-        chain = [("s1", [("a", True, True), ("x", True, True)])]
+        chain = [("s1", 10, 1, [("a", True, True), ("x", True, True)])]
         placed = pool_plutus.inclusion(ROWS + [row("success", "e", passed=False)], chain, {"s1"})
         self.assertEqual(placed["acceptedNotOnChain"], ["b", "c", "d"])
         self.assertEqual(placed["otherPlutusInScalaForgedBlocks"], 1)
@@ -131,6 +134,12 @@ class CheckTest(unittest.TestCase):
                 "scala": [1, 0, 0, 0], "accepted": False, "attempts": 1, "sameBytes": False, "referenceMs": 2.5,
                 "scalaMs": 4.25, **kw}
 
+    @staticmethod
+    def forged(hashes=("s1", "s2")):
+        slots = {"s1": (10, 1, None), "s2": (30, 3, "h1")}
+        return [{"event": "forged", "hash": h, "slot": slots[h][0], "blockNo": slots[h][1], "prev": slots[h][2],
+                 "txs": []} for h in hashes]
+
     def events(self):
         return [{"event": "mempoolAdded", "tx": "a", "at": self.SHELLEY_AT.format(0.25)},
                 {"event": "mempoolAdded", "tx": "d", "at": self.SHELLEY_AT.format(1.5)},
@@ -142,7 +151,7 @@ class CheckTest(unittest.TestCase):
                  "at": self.SHELLEY_AT.format(3)}]
 
     def test_a_healthy_load_passes_and_reports_the_scala_mempool(self):
-        failures, summary = pool_plutus.check(self.runner([self.refusal()]), InclusionTest.CHAIN, {"s1", "s2"},
+        failures, summary = pool_plutus.check(self.runner([self.refusal()]), InclusionTest.CHAIN, self.forged(),
                                               self.events())
         self.assertEqual(failures, [])
         self.assertEqual(summary["protocolVersions"], ["10.0"])
@@ -158,20 +167,44 @@ class CheckTest(unittest.TestCase):
         self.assertIsNone(summary["admissionMs"]["scala"]["succeedingScriptFlagFalse"])
 
     def test_what_fails_the_run(self):
-        chain = [("h1", [("a", True, True), ("b", False, True), ("c", True, True), ("d", False, True)])]
+        # the pools filled the height of the Scala block s1 (slot 10) in slot 30, on the same parent
+        chain = [("h1", 30, 1, [("a", True, True), ("b", False, True), ("c", True, True), ("d", False, True)])]
         failures, _ = pool_plutus.check(self.runner([self.refusal(accepted=True, scala=None),
                                                      self.refusal(scala=[1, 0, 1], attempts=5)], errors=["boom"]),
-                                        chain, {"s1"}, self.events() + [{"event": "blockNoVerdict"}])
+                                        chain, self.forged(["s1"]), self.events() + [{"event": "blockNoVerdict"}])
         joined = "\n".join(failures)
-        for expected in ("1 Plutus rounds failed: boom", "no Scala-forged block holds a transaction whose scripts succeed",
+        for expected in ("1 Plutus rounds failed: boom", "1 Scala-forged blocks were not taken by the Haskell pools", "no Scala-forged block holds a transaction whose scripts succeed",
                          "no Scala-forged block holds a transaction with the validity flag false",
                          "the Scala node accepted 1 transactions the reference refused",
                          "did not refuse a transaction for the reference's rule", "1 blockNoVerdict events"):
             self.assertIn(expected, joined)
 
     def test_no_judgement_by_the_scala_node_fails_the_run(self):
-        failures, _ = pool_plutus.check(self.runner([]), InclusionTest.CHAIN, {"s1", "s2"}, self.events())
+        failures, _ = pool_plutus.check(self.runner([]), InclusionTest.CHAIN, self.forged(), self.events())
         self.assertEqual(failures, ["no refused Plutus transaction was submitted to the Scala node"])
+
+
+class LostBlocksTest(unittest.TestCase):
+    CHAIN = [("a", 5, 1, []), ("b", 12, 2, []), ("c", 40, 3, []), ("d", 44, 4, [])]
+
+    @staticmethod
+    def forged(hash_, slot, number, prev, txs=()):
+        return {"event": "forged", "hash": hash_, "slot": slot, "blockNo": number, "prev": prev, "txs": list(txs)}
+
+    def test_slot_battles_stale_tips_and_dead_branches_are_lost_blocks_the_pools_did_take_into_account(self):
+        forged = [self.forged("a", 5, 1, None), self.forged("x", 12, 2, "a", ["t", "pay"]),  # lost the slot battle at 12
+                  self.forged("y", 41, 3, "b"),  # forged on a stale tip: the chain's block 3 is in slot 40
+                  self.forged("z", 43, 4, "y"),  # on top of a lost block
+                  self.forged("w", 30, 3, "b")]  # the chain filled height 3 ten slots later: within the bound
+        lost, not_taken = pool_plutus.lost_blocks(forged, self.CHAIN, {"t"})
+        self.assertEqual([(b["hash"], b["chainSlotAtHeight"], b["parentOnChain"], b["plutusTxs"]) for b in lost],
+                         [("x", 12, True, 1), ("y", 40, True, 0), ("z", 44, False, 0), ("w", 40, True, 0)])
+        self.assertEqual(not_taken, [])
+
+    def test_a_block_whose_height_the_pools_filled_later_on_its_parent_was_not_taken(self):
+        lost, not_taken = pool_plutus.lost_blocks([self.forged("v", 29, 3, "b", ["t"])], self.CHAIN, {"t"})
+        self.assertEqual(not_taken, lost)
+        self.assertEqual((not_taken[0]["chainSlotAtHeight"], not_taken[0]["plutusTxs"]), (40, 1))
 
 
 class ForgeTimingTest(unittest.TestCase):

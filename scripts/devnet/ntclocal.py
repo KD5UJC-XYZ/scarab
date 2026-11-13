@@ -108,6 +108,13 @@ def block_item(raw):
     return raw[2:end]
 
 
+def block_number(item):
+    """The block number of a block item `#6.24(bytes)` of `[era, [header, ...]]` (the header body's first field)."""
+    value, _ = decode(item, 0)
+    header, _ = decode(value.value, 3)
+    return header[0][0]
+
+
 def block_transactions(item):
     """The transactions of a Shelley-based block item `#6.24(bytes)` of `[era, [header, bodies, witness sets,
     auxiliary data, invalid indices]]`, in order, as (id hex, valid, plutus): the id is the hash of the body's

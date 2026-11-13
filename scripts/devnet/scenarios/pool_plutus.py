@@ -30,6 +30,14 @@ FUNDING = 4_000_000_000
 # did: it may not have adopted the block of the setup transaction yet.
 SCALA_ATTEMPTS = 5
 
+# A Scala-forged block that is not on the observer's chain, whose parent is, may have lost a slot battle (the chain's
+# block at its height is in the same slot) or been forged on a stale tip (an earlier slot); one whose height the chain
+# filled more than this many slots after its own slot was not taken by the Haskell pools although they held its
+# parent. Ten slots is the scenario's own bound on adoption, far beyond the tens of milliseconds a block takes to
+# arrive. The reference's default trace options silence `AddBlockValidation.InvalidBlock`, so this is how a refusal
+# of a block the Scala node then left shows.
+LOST_SLACK_SLOTS = 10
+
 # Whether a case's script succeeds: its transaction belongs in a block with this flag.
 SUCCEEDS = {"success": True, "reject-success-invalid": True, "collateral": False, "reject-failure-valid": False}
 ACCEPTED = ("success", "collateral")
@@ -163,10 +171,11 @@ class Runner:
 
 
 def read_chain(name, socket):
-    """[(header hash hex, [(transaction id hex, valid, plutus)])] of the chain of the node at `socket` (inside the
-    reference container), from Origin to its tip."""
+    """[(header hash hex, slot, block number, [(transaction id hex, valid, plutus)])] of the chain of the node at
+    `socket` (inside the reference container), from Origin to its tip."""
     with ntclocal.Session(ref(name), socket, MAGIC, deadline=180) as session:
-        return [(ident.hex(), ntclocal.block_transactions(item)) for _, ident, item in ntclocal.chain_from_origin(session)]
+        return [(ident.hex(), slot, ntclocal.block_number(item), ntclocal.block_transactions(item))
+                for slot, ident, item in ntclocal.chain_from_origin(session)]
 
 
 def inclusion(rows, chain, scala_hashes):
@@ -178,7 +187,7 @@ def inclusion(rows, chain, scala_hashes):
     language = {r["txid"]: r["language"] for r in rows}
     places = {}
     other = 0
-    for block, txs in chain:
+    for block, _, _, txs in chain:
         for txid, valid, plutus in txs:
             if txid in flag:
                 places.setdefault(txid, []).append((block, valid, block in scala_hashes))
@@ -201,6 +210,21 @@ def inclusion(rows, chain, scala_hashes):
             "acceptedNotOnChain": [t for t in accepted if t not in places],
             "wrongFlag": [{"tx": t, "block": b, "valid": v, "scalaForged": s}
                           for t, where in places.items() for b, v, s in where if v != flag[t]]}
+
+
+def lost_blocks(forged, chain, txids, slack=LOST_SLACK_SLOTS):
+    """(every Scala-forged block not on the observer's `chain`, those of them the Haskell pools did not take). Each
+    with its slot, block number, the slot of the chain's block at that height, whether the chain holds its parent and
+    how many of the load's transactions (`txids`) it carried. Not taken: its parent is on the chain and the chain's
+    block at its height is more than `slack` slots later (`LOST_SLACK_SLOTS`)."""
+    on = {block for block, _, _, _ in chain}
+    at_height = {number: slot for _, slot, number, _ in chain}
+    lost = [{"hash": e["hash"], "slot": e["slot"], "blockNo": e["blockNo"],
+             "chainSlotAtHeight": at_height.get(e["blockNo"]), "parentOnChain": e.get("prev") is None or e["prev"] in on,
+             "plutusTxs": sum(1 for t in e["txs"] if t in txids)}
+            for e in forged if e["hash"] not in on]
+    return lost, [b for b in lost if b["parentOnChain"] and b["chainSlotAtHeight"] is not None
+                  and b["chainSlotAtHeight"] > b["slot"] + slack]
 
 
 def reason_kind(reason):
@@ -239,11 +263,13 @@ def mempool_view(events, rows, refusals):
                                   for k in ("evaluatedSuccess", "evaluatedFailure", "scripts")}}
 
 
-def check(runner, chain, scala_hashes, events):
-    """(failures, summary) of the Plutus load once the chain has settled."""
+def check(runner, chain, forged, events):
+    """(failures, summary) of the Plutus load once the chain has settled. `chain`: `read_chain` of the observer;
+    `forged`: the Scala node's `forged` events."""
     load = runner.load
     rows = load.plutus_evidence
-    placed = inclusion(rows, chain, scala_hashes)
+    placed = inclusion(rows, chain, {e["hash"] for e in forged})
+    lost, not_taken = lost_blocks(forged, chain, {r["txid"] for r in rows})
     refusals = load.scala_refusals
     no_verdict = [e for e in events if e["event"] == "blockNoVerdict"]
     summary = {"passes": runner.passes, "passErrors": runner.errors[:5], "ended": runner.ended,
@@ -258,7 +284,7 @@ def check(runner, chain, scala_hashes, events):
                                         "otherRuleOrError": [r for r in refusals if not r.get("accepted")
                                                              and ("error" in r or r["scala"] != r["reference"])][:5]},
                "mempool": mempool_view(events, rows, refusals), "admissionMs": admission(refusals),
-               "blockNoVerdict": len(no_verdict)}
+               "blockNoVerdict": len(no_verdict), "lostScalaBlocks": lost, "notTakenByHaskellPools": not_taken}
     failures = []
     if runner.ended:
         failures.append(f"the Plutus load ended: {runner.ended}")
@@ -287,6 +313,9 @@ def check(runner, chain, scala_hashes, events):
                         f"{judged['otherRuleOrError'][:2]}")
     if not refusals:
         failures.append("no refused Plutus transaction was submitted to the Scala node")
+    if not_taken:
+        failures.append(f"{len(not_taken)} Scala-forged blocks were not taken by the Haskell pools, which hold their "
+                        f"parent and filled their height later: {not_taken[:3]}")
     if no_verdict:
         failures.append(f"{len(no_verdict)} blockNoVerdict events: {no_verdict[:2]}")
     return failures, summary

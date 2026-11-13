@@ -271,8 +271,12 @@ def rules_timing(name):
     return {"blockApply": mean("scarab_block_apply_seconds"), "forgeAdoption": mean("scarab_forge_adoption_seconds")}
 
 
-# A Haskell node's trace of a block its chain database refused (`AddBlockValidation.InvalidBlock`, by either
-# tracing system's name) or forged and refused (`ForgedInvalidBlock`).
+# What a Haskell node's log names an invalid block with. Of its traces that the default trace options of cardano-node
+# 11.1.3 (create-env writes none of its own) leave visible: the ChainSync client's `InvalidBlock` exception
+# (`ChainSync.Client.Exception`) when a peer's chain still holds a block known to be invalid below its tip
+# (ouroboros-consensus 82ecba32 `MiniProtocol/ChainSync/Client.hs`, `invalidBlockRejector`), the BlockFetch punishment
+# `PeerSentAnInvalidBlockException` in the connection's exit, `ChainDB.AddBlockEvent.IgnoreInvalidBlock` and
+# `Forge.Loop.ForgedInvalidBlock`. `ChainDB.AddBlockEvent.AddBlockValidation.InvalidBlock` itself is silenced.
 REFERENCE_INVALID_BLOCK = "InvalidBlock"
 
 
@@ -575,7 +579,7 @@ def pool(args):
         disabled = toggle.excluded(lambda at: slot_at(shelley, at)) if toggle else None
         oracle = missed_leader_slots(events, schedules, shelley, excluded=disabled)
         vm = next((e.get("vm") for e in events if e["event"] == "plutusVm"), None)
-        plutus_blocks = None if observed is None else {b for b, txs in observed if b in forged_hashes
+        plutus_blocks = None if observed is None else {b for b, _, _, txs in observed if b in forged_hashes
                                                        and any(plutus_ for _, _, plutus_ in txs)}
         summary = {
             "oracle": oracle,
@@ -655,7 +659,7 @@ def pool(args):
             failures.append(f"a Haskell pool's log traces an invalid block or could not be read: "
                             f"{summary['referenceInvalidBlocks']}")
         if plutus and observed is not None:
-            plutus_failures, summary["plutus"] = pool_plutus.check(plutus, observed, forged_hashes, events)
+            plutus_failures, summary["plutus"] = pool_plutus.check(plutus, observed, forged, events)
             failures += [f"plutus: {f}" for f in plutus_failures]
         if len(relative) < 2:
             failures.append("the KES key stayed in one period")
