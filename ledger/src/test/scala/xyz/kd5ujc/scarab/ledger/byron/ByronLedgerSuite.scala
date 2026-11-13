@@ -148,6 +148,31 @@ class ByronLedgerSuite extends ScalaCheckSuite:
     )
   }
 
+  test("only the first 65,536 outputs enter the UTxO and the output balance") {
+    // `txOutputUTxO` zips the outputs with `[0 ..] :: [Word16]` (cardano-ledger f649f975,
+    // `Cardano/Chain/UTxO/UTxO.hs:176-185`) and `validateTxAux` takes the output balance of that
+    // UTxO (`Cardano/Chain/UTxO/Validation.hs:202-204`); `validateTx` checks the network magic of
+    // every output (`Validation.hs:255`). The outputs replace those of a signed transaction, as the
+    // balance test above does: the signature covers the id, which is kept.
+    val signed = spendAlice(Seq(bobAddr -> 1000000, aliceAddr -> 50000000))
+    def withOutputs(outs: Vector[ByronOut]) = signed.copy(tx = signed.tx.copy(outputs = outs))
+    val indexed = Vector.fill(65536)(ByronOut(bobAddr, 1))
+    def created(u: Map[TxIn, ByronOut]) = u.keySet.filter(_.id == signed.tx.id)
+    // an output past the first 65,536 that alone exceeds the input is neither spent nor kept
+    val beyond = apply(withOutputs(indexed :+ ByronOut(bobAddr, 100000000)))
+      .fold(e => fail(e.toString), identity)
+    assertEquals(created(beyond).size, 65536)
+    assertEquals(created(beyond).map(_.index).max, BigInt(65535))
+    assertEquals(beyond.size, utxo0.size - 1 + 65536)
+    val exact = apply(withOutputs(indexed)).fold(e => fail(e.toString), identity)
+    assertEquals(created(exact), created(beyond))
+    val foreign = address(bob, Some(Magic + 1))
+    assertEquals(
+      apply(withOutputs(indexed :+ ByronOut(foreign, 1))).map(_ => ()),
+      Left(ByronError.NetworkMagicMismatch(Some(Magic), Some(Magic + 1)))
+    )
+  }
+
   test("unknown attribute refusals distinguish transaction and address payloads") {
     val good = spendAlice(Seq(bobAddr -> 1000000, aliceAddr -> 50000000))
     assertEquals(

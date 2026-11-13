@@ -373,6 +373,14 @@ object ByronLedger:
         }
     }
 
+  /** The outputs of a transaction that `txOutputUTxO` indexes: it zips them with
+    * `[0 ..] :: [Word16]` (cardano-ledger f649f975, `Cardano/Chain/UTxO/UTxO.hs:176-185`), so the
+    * outputs past the first 65,536 enter neither the UTxO nor the output balance
+    * (`Cardano/Chain/UTxO/Validation.hs:202-204`). `validateTx` still checks every output's
+    * attributes and network magic (`Validation.hs:255`).
+    */
+  val IndexedOutputs: Int = 65536
+
   /** `updateUTxOTxWitness`: the witnesses and the fee, then the UTxO update. */
   def applyTx(
       config: Config,
@@ -407,8 +415,9 @@ object ByronLedger:
       )
       _ <- outputs(config, tx)
       spent = inputSet.toVector.map(utxo)
+      indexed = tx.outputs.take(IndexedOutputs)
       balanceIn = spent.map(_.value).sum
-      balanceOut = tx.outputs.map(_.value).sum
+      balanceOut = indexed.map(_.value).sum
       _ <- Either.cond(
         balanceIn <= MaxLovelace,
         (),
@@ -433,7 +442,7 @@ object ByronLedger:
         (),
         ByronError.FeeTooSmall(minFee, balanceIn - balanceOut)
       )
-      created = tx.outputs.zipWithIndex.map((o, ix) => TxIn(tx.id, ix) -> o)
+      created = indexed.zipWithIndex.map((o, ix) => TxIn(tx.id, ix) -> o)
       remaining = utxo -- inputSet
       _ <- Either.cond(
         created.forall((i, _) => !remaining.contains(i)),
