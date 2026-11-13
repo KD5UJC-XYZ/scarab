@@ -31,7 +31,9 @@ Each reads on from where the last pass in the timeline stopped. The properties, 
   `InvalidBlock (Point ...`). Before blaming s1, check which pool forged the block;
 - unreachable: Scarab never refuses a block as invalid (`scarab_validation_errors_total` on s1's metrics);
 - unreachable: Scarab never logs a `fatal` event, other than the stop for a clock moved back more than
-  `Forger.MaxClockRewind`, which cardano-node makes too and Antithesis's clock skips can cause.
+  `Forger.MaxClockRewind`, which cardano-node makes too and Antithesis's clock skips can cause;
+- unreachable: Scarab never reports the clock moved back while its readings move forward (a
+  `systemClockMovedBack` whose `newTime` is later than its `prevTime`, #629).
 
 There is no `always` on the tips: at k = 5 a partition can split the chain for good, which is the protocol working.
 
