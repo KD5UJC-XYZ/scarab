@@ -178,6 +178,12 @@ f649f9751074d2ab3de033fc3912f29c9862c1f5, under Apache-2.0. Original notices and
 licence are retained as fixtures/licenses/cardano-ledger-NOTICE and cardano-ledger-LICENSE.
 These excerpts are an optional reference oracle, not production code.
 
+fixtures/reference/alonzo-min-fee/hex-block-node-issue-4228.cbor is the unchanged golden file
+eras/alonzo/test-suite/golden/hex-block-node-issue-4228.cbor of cardano-ledger (Intersect), revision
+f649f9751074d2ab3de033fc3912f29c9862c1f5, under Apache-2.0: the hex of a public Alonzo block posted
+on cardano-node issue 4228. Original notices and licence are retained as
+fixtures/licenses/cardano-ledger-NOTICE and cardano-ledger-LICENSE.
+
 fixtures/reference/context-errors contains generated throwaway private-network signed transactions
 and outputs of unchanged released Cardano Ledger context-collection/encoding APIs. Derived API inputs
 are explicitly distinguished from ledger admission. Public keys/signatures only; no signing keys.

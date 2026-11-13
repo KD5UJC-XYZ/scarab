@@ -699,6 +699,24 @@
         "scripts/oracle/conway-decoding/delegation_hash_cases.py"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "alonzo-min-fee-4228",
+      "classification": "regression",
+      "status": "covered",
+      "scope": "The first transaction of the cardano-node issue 4228 Alonzo block, the upstream golden of cardano-ledger f649f975, under the golden's fee per byte, fixed fee and execution prices.",
+      "assertion": "Scarab's block decoder reads the golden block byte for byte and the transaction's id, fee 1,001,829, size 5,238 and execution units; UtxoChecks.of for Alonzo refuses it with exactly FeeTooSmall(Mismatch(1001829, 1006053)).",
+      "rationale": "The upstream golden (Golden.hs:230-268) requires alonzoMinFeeTx to be 1,006,053, and the released ledger of the 11.1.3 build computes 1,006,053 (scripts/oracle/alonzo-min-fee/run.py --check). Only the fee failure is compared: the other checks run against an empty UTxO and are not the golden's.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/294",
+      "resolution": "Retain the byte-identical golden, its released-ledger receipt and the exact failure; any change to the size or script-fee terms of the Alonzo minimum fee must keep 1,006,053.",
+      "evidence": [
+        "fixtures/reference/alonzo-min-fee/README.md",
+        "fixtures/reference/alonzo-min-fee/provenance.json",
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/rules/AlonzoMinFeeGoldenSuite.scala",
+        "scripts/oracle/alonzo-min-fee/run.py"
+      ],
+      "candidateRequired": true
     }
   ]
 }

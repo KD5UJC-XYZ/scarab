@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-13",
+  "scope": "The minimum fee of the first transaction of the cardano-node issue 4228 Alonzo block under the upstream golden's parameters (emptyPParams with txFeePerByte 44, txFeeFixed 155381, prices 0.0577 and 0.0000721): alonzoMinFeeTx of the released ledger, the block body decoded with decodeFullAnnotator at eraProtVerHigh @AlonzoEra (6)",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "upstream": {
+    "repository": "IntersectMBO/cardano-ledger",
+    "file": "eras/alonzo/test-suite/golden/hex-block-node-issue-4228.cbor",
+    "fileSha256": "cb0ca686531b9cc4d1cd815d7295fed5a993313b5ab03cb5df3331440a575a37",
+    "test": "eras/alonzo/test-suite/test/Test/Cardano/Ledger/Alonzo/Golden.hs:230-268 (goldenMinFee, it \"Alonzo Block\")",
+    "testSha256": "82002c5d7712324fe2f4c905fc88109973146928599f57c63d73e099f3e14fcb",
+    "licence": "Apache-2.0"
+  },
+  "sourceFiles": {
+    "alonzoTx": {
+      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+      "sourceSha256": "d4ebeaa8cb9269a4a3b88420b8f66474c0370b6a440a4b44e9ddff884fed0ed7",
+      "matchesPin": true,
+      "note": "sizeAlonzoTxF (324-332), toCBORForSizeComputation (432-443), alonzoMinFeeTx and totExUnits (445-464)"
+    },
+    "exUnits": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs",
+      "sourceSha256": "618964660c3e7445367563440c4c1994b8c50f6e129d7185cd05fb87a2a9be4c",
+      "matchesPin": true,
+      "note": "txscriptfee: the ceiling of memory times its price plus steps times theirs (185-190)"
+    }
+  },
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+  "packages": {
+    "cardano-ledger-alonzo": "1.16.0.0",
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-ledger-binary": "1.9.1.0"
+  },
+  "harness": {
+    "file": "scripts/oracle/alonzo-min-fee/Main.hs",
+    "sha256": "5661d26921101ca51e18fb8218e61945e771aa512e74f16999b5ea09ef1ff4af",
+    "runner": "scripts/oracle/alonzo-min-fee/run.py",
+    "runnerSha256": "c4c653e9cce67f5d55567ae6c61f57ef1d38e4a9ee90aa1c634109df782fefa3",
+    "image": "scarab-plutus176-context-reference:local",
+    "invocation": "python3 scripts/oracle/alonzo-min-fee/run.py --check",
+    "unchanged": true
+  },
+  "reference": {
+    "exUnits": [
+      7000000,
+      3000000000
+    ],
+    "fee": 1001829,
+    "id": "5fde6536f622b0be2f911250d313d6b03d76c204c7ca7372a30f30b7b0795c97",
+    "minFee": 1006053,
+    "size": 5238,
+    "transactions": 18
+  },
+  "cases": 1,
+  "network": "none",
+  "keysRetained": false
+}
