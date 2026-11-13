@@ -31,6 +31,18 @@ mv shelley.tmp shelley-genesis.json
 jq --argjson t "$start" '.startTime = $t' byron-genesis.json > byron.tmp
 mv byron.tmp byron-genesis.json
 
+# PROTOCOL_MAJOR, when the compose file sets it, is the genesis protocol version's major, as
+# `scripts/devnet/dijkstra.py` sets it; without it the chain starts at create-env's.
+if [ -n "${PROTOCOL_MAJOR:-}" ]; then
+  jq --argjson m "$PROTOCOL_MAJOR" '.protocolParams.protocolVersion.major = $m' shelley-genesis.json > shelley.tmp
+  mv shelley.tmp shelley-genesis.json
+fi
+# Settings that the compose file mounts as a Conway genesis overlay are merged into create-env's.
+if [ -f /config/conway-genesis-overlay.json ]; then
+  jq --slurpfile o /config/conway-genesis-overlay.json '. * $o[0]' conway-genesis.json > conway.tmp
+  mv conway.tmp conway-genesis.json
+fi
+
 # cardano-node stops when its resource-statistics thread cannot read /proc/self/io (`without_resource_statistics`
 # in `scripts/devnet/util.py`); frequency 0 starts no such thread.
 if [ ! -e /proc/self/io ]; then
@@ -58,4 +70,6 @@ for f in shelley-genesis.json byron-genesis.json alonzo-genesis.json conway-gene
 done
 
 touch /env/ready
-echo "configurator: systemStart $(jq -r .systemStart shelley-genesis.json), magic $MAGIC"
+echo "configurator: systemStart $(jq -r .systemStart shelley-genesis.json), magic $MAGIC," \
+  "protocol $(jq -c .protocolParams.protocolVersion shelley-genesis.json)," \
+  "PlutusV3 cost model of $(jq '.plutusV3CostModel | length' conway-genesis.json)"

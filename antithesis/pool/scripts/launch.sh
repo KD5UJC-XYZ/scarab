@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 # Validates, then launches one basic_test run of the pool workload.
-#   launch.sh FAULT_TOLERANCE DURATION [CONFIG_IMAGE]   for example: launch.sh resilient 15m
+#   [CONFIG=config-canary] launch.sh FAULT_TOLERANCE DURATION [CONFIG_IMAGE]   for example: launch.sh resilient 15m
+# CONFIG names the config directory (default config); the canary's run is named scarab-canary.
 # Without CONFIG_IMAGE, snouty pushes the three images and the config to the tenant registry. With the reference that
 # publish.sh prints, the run pulls everything from that public registry instead.
 # The tenant predates --max-compute-hours (release 66), so the duration bounds the run: 15m on the standard tier
@@ -14,15 +15,21 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 if [ -n "${3:-}" ]; then
   config=(--config-image "$3")
 else
-  config=(--config "$here/config")
+  config=(--config "$here/${CONFIG:-config}")
 fi
+case ${CONFIG:-config} in
+  config-canary) name=scarab-canary
+    description="writeBits canary (GHSA-vfw2-hhrc-87v5) on Scarab v0.2.0-alpha.1 with two cardano-node 11.1.3 pools" ;;
+  *) name=scarab-pool
+    description="Scarab v0.2.0-alpha.1 pool with two cardano-node 11.1.3 pools, create-env defaults" ;;
+esac
 
 "$here/scripts/validate.sh"
 SNOUTY_CONTAINER_ENGINE=docker exec snouty launch \
   --launcher basic_test \
   "${config[@]}" \
-  --test-name scarab-pool \
-  --description "Scarab v0.2.0-alpha.1 pool with two cardano-node 11.1.3 pools, create-env defaults" \
+  --test-name "$name" \
+  --description "$description" \
   --duration "$duration" \
   --fault-tolerance "$faults" \
   --fault-exclusions '^driver$' \

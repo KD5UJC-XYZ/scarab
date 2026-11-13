@@ -22,5 +22,15 @@ for _ in $(seq "$CHECKS"); do
   sometimes "$ALL_EXTEND" "$(jq -r '[.[]] | all' <<< "$extended")" "$details"
   if agree "$now" 0; then together=true; else together=false; fi
   sometimes "$ALL_AGREE" "$together" "$details"
+  if refused=$(refusal); then
+    echo "watch: a Haskell pool refused a block: $refused"
+    [ -n "${recorded[refused]:-}" ] || assertion true false reachability Unreachable "$HASKELL_REFUSED" false "$refused"
+    recorded[refused]=1
+  fi
+  if refused=$(scarab_refusal); then
+    echo "watch: s1 refused a block: $refused"
+    [ -n "${recorded[scarab_refused]:-}" ] || assertion true false reachability Unreachable "$SCARAB_REFUSED" false "$refused"
+    recorded[scarab_refused]=1
+  fi
   prev=$now
 done
