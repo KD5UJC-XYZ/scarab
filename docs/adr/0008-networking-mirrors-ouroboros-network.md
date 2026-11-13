@@ -65,27 +65,50 @@ taken by the owner after 2026-10-25 and indexed in
 - **The local socket's bind and path edges** (#541, 2026-10-27, recorded in #474 comments of 2026-10-28:
   [bind and listen](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6458538736),
   [path edges](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6459436297)). They were
-  restated on 2026-11-13 in #949 ([its record](https://github.com/KD5UJC-XYZ/scarab/issues/949#issuecomment-6864911271)),
-  after a check against the sources found their first wording wrong at these edges. They are two deviations
-  of the node-to-client socket:
+  restated on 2026-11-13 in #949 ([its record](https://github.com/KD5UJC-XYZ/scarab/issues/949#issuecomment-6864911271)
+  and [its correction](https://github.com/KD5UJC-XYZ/scarab/issues/949#issuecomment-6866875724)), after the
+  sources and runs of cardano-node 11.1.3 found their first wording wrong at these edges. They are two
+  deviations of the node-to-client socket:
   - **Bind and listen.** The JDK binds and listens in one call (OpenJDK jdk-25+36,
     `src/java.base/share/classes/sun/nio/ch/ServerSocketChannelImpl.java` 319-323). The reference binds,
     checks the socket file, and only then listens (`ouroboros-network/lib/Ouroboros/Network/Diffusion/Utils.hs`
     121-129). So a client may queue in the backlog during that check. A listen that fails is reported as the
     bind's failure, straight after `ConfiguringLocalSocket`. Whenever the listen succeeds, the traces and
     the failure handling are the reference's.
-  - **Path edges.** network 3.2.8.0 truncates each character to a byte (`castCharToCChar`) and binds up to
-    107 characters (`Network/Socket/Types.hsc` 1159-1164). The JDK binds at most 106 bytes of path
-    (`src/java.base/unix/native/libnio/ch/nio_util.h` 45-49, `UnixDomainSockets.c` 85-86). It counts
-    them after collapsing repeated `/` and encoding the path in the locale's encoding, `sun.jnu.encoding`
-    (`src/java.base/unix/classes/sun/nio/fs/UnixPath.java` 75-133), which is UTF-8 under a UTF-8 locale.
-    So the reference binds some paths that Scarab refuses: one of fewer than 108 characters whose
-    encoding is longer than 106 bytes (for an ASCII path with no repeated `/`, one of 107), one that the
-    locale's encoding cannot represent, and one that holds NUL. From 108 characters on, both refuse the
-    path with `pokeSockAddr`'s error.
+  - **Path length.** network 3.2.8.0 binds up to 107 characters (`Network/Socket/Types.hsc` 1159-1164).
+    The JDK binds at most 106 bytes of path (`src/java.base/unix/native/libnio/ch/nio_util.h` 45-49,
+    `UnixDomainSockets.c` 85-86), counted after it collapses repeated `/`
+    (`src/java.base/unix/classes/sun/nio/fs/UnixPath.java` 75-123). So an ASCII path of 107 characters
+    with no repeated `/` is refused where the reference binds it, as a run of cardano-node 11.1.3 shows.
+    From 108 characters on, both refuse the path with `pokeSockAddr`'s error.
 
   Not taken for now: calling `socket`, `bind`, `listen` and `accept` through the foreign-function
   interface, which would remove both deviations.
+- **A local socket path beyond ASCII** (#949, 2026-11-13, [recorded](https://github.com/KD5UJC-XYZ/scarab/issues/949#issuecomment-6866875724)):
+  - **What the reference does.** Runs of cardano-node 11.1.3 with `café` paths show it.
+    - Its bind makes the socket under the path's characters truncated to a byte each (`castCharToCChar`,
+      `Types.hsc` 1160).
+    - Its check of the socket at the path's own name then finds nothing.
+    - It stops after `ConfiguringLocalSocket` with `<path>: getFileStatus: does not exist (No such file or
+      directory)` and leaves the mis-named file.
+    - Its length and trailing-`/` refusals come before all this. Runs show a 108-character path beyond
+      ASCII stopping with `pokeSockAddr`'s error, and one ending in `/` failing at the bind.
+  - **What Scarab does.** The owner decided that Scarab refuses every path beyond ASCII, an improvement on
+    the reference. After the same length and trailing-`/` checks, it stops at that step with that error
+    and binds nothing.
+  - **Trade-off.** Scarab never makes the mis-named file, so on a second start, and in a directory that does
+    not exist, it gives that first error. The reference gives its bind's: `Address in use` from the file its
+    first start left, and `does not exist`.
+- **`SocketPath` in the configuration file** (#949, 2026-11-13, same record):
+  - **What the reference does.** It parses `SocketPath` (`cardano-node/src/Cardano/Node/Configuration/POM.hs`
+    328, cardano-node 11.1.3) and never uses it: its command line's `SocketConfig`
+    (`Cardano/Node/Parsers.hs` 90-95) replaces the file's in the merge (`Cardano/Node/Run.hs` 217). So its
+    socket path comes from `--socket-path` only.
+  - **What Scarab does.** `SocketPath` is the default of `--local-socket`, and the flag overrides it.
+  - **A path that holds NUL.** It can reach Scarab only this way. The stale-socket removal refuses it before
+    calling `unlink`, which would stop at the NUL and remove another file, with the `IOError` of unix
+    2.8.6.0's `removeLink` (`useAsCStringSafe`, `System/Posix/PosixPath/FilePath.hsc` 154-171). So nothing
+    is removed and the start is refused.
 - **`ECONNABORTED` on accept** (#944, 2026-11-13, recorded in a
   [#944 comment](https://github.com/KD5UJC-XYZ/scarab/issues/944#issuecomment-6855601945) and
   [its scope correction](https://github.com/KD5UJC-XYZ/scarab/issues/944#issuecomment-6856168855)). The JDK's native
