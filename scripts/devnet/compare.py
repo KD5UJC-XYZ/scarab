@@ -428,22 +428,63 @@ def ask_raw(session, query):
     return session.last_raw
 
 
-def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=SINGLE_FOLLOWER):
+# A comparison anchored on a follower samples its volatile tip, which the reference may have left for a rival block
+# by the time it is asked (a fork switch: #785); after a pause the follower has rolled back too, and a new sample
+# finds a point both hold. Two such reselections cover a second switch in the same second; a third refusal is
+# persistent and an error. A point the other node only has not reached yet is asked again (`attempts`).
+WHOLE_STATE_RESELECTIONS = 2
+SAME_POINT_PAUSE = 2  # seconds between two acquisitions of one point by the other node
+RESELECTION_PAUSE = 1  # seconds between a refused point and the next sample of the anchor
+
+
+def point_json(point):
+    """{slot, hash} of a LocalStateQuery point (`[slot, hash bytes]`), or None."""
+    if isinstance(point, list) and len(point) == 2 and isinstance(point[1], (bytes, bytearray)):
+        return {"slot": point[0], "hash": bytes(point[1]).hex()}
+    return None if point is None else {"unparsed": repr(point)[:200]}
+
+
+def acquire_refusal(error):
+    """The parsed refusal of an acquisition ({"reply", "failure"}), or None when `error` is not one: an
+    `ntcquery.AcquireRefused` (`acquire failed: [2, code]`), or a `RuntimeError` of that text."""
+    if isinstance(error, ntcquery.AcquireRefused):
+        return {"reply": repr(error.reply)[:100], "failure": error.failure}
+    text = str(error) if isinstance(error, RuntimeError) else ""
+    if not text.startswith("acquire failed: "):
+        return None
+    reply = text[len("acquire failed: "):]
+    code = {"[2, 0]": 0, "[2, 1]": 1}.get(reply)
+    return {"reply": reply[:100], "failure": ntcquery.AcquireRefused.NAMES.get(code)}
+
+
+def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=SINGLE_FOLLOWER, reselections=None):
     """The complete same-point ledger state of both nodes: each of `WHOLE_QUERIES`, asked over node-to-client on
     one session per node acquired at one point, and judged on every byte (`ledgercompare`). The point is the volatile
     tip of `anchor`: the Scala node's when it follows, as every block it holds is the reference's; the reference's
     when the Scala node forges too, as a block it has just forged may not have reached the reference yet. The other
-    node is asked at that point; while it has not reached it, the comparison is taken again after a pause, up to
-    `attempts` times. `scala_socket` is the Scala node's node-to-client socket (`scala-sock/node.socket` of the run
-    dir by default, the socket directory of the follower `site`). With more than one attempt, a point the other
-    node never reaches is given up once for a new one. Returns {"slot", "answers": {label: result}}, or {"skipped"}
-    or {"error"} for all of them. A difference keeps both answers in the run dir (`whole-state`, the follower's
-    own). Never raises."""
+    node acquires exactly that point, so both answers are of one state. `scala_socket` is the Scala node's
+    node-to-client socket (`scala-sock/node.socket` of the run dir by default, the socket directory of the follower
+    `site`).
+
+    The acquisitions are bounded. The other node is asked for a point at most `attempts` times, `SAME_POINT_PAUSE`
+    s apart, while it refuses it (`PointNotOnChain`, `PointTooOld`): a point it has not reached yet. A point refused
+    every time is given up for a new sample of the anchor, `RESELECTION_PAUSE` s later, at most `reselections`
+    times: one when `attempts` > 1 and none otherwise unless the caller asks (`WHOLE_STATE_RESELECTIONS` for a
+    follower's tip, #785). Every acquisition is kept in order in `acquisitions` (stage `anchor` or `other`, node,
+    point, outcome, parsed refusal). A refusal past the bounds, a reply that is neither an acquisition nor a
+    refusal, a failed query, a closed connection or a deadline is an error that keeps the point, the stage, the
+    refusal, the bounds and the history; none is retried into a success. Returns {"slot", "point", "anchor",
+    "other", "answers": {label: result}, "acquisitions"}, {"error", ...} or {"skipped"}. A difference keeps both
+    answers in the run dir (`whole-state`, the follower's own). Never raises."""
     root = util.data_root(name)
     scala_socket = pathlib.Path(scala_socket) if scala_socket else site.directory(root, "scala-sock") / "node.socket"
     if not scala_socket.exists():
         return {"skipped": "the Scala node has no node-to-client socket"}
     queries = {label: [0, [0, [ERA_INDEX[era], [q]]]] for label, (q, _) in WHOLE_QUERIES.items()}
+    reselections = (1 if attempts > 1 else 0) if reselections is None else reselections
+    other_node = "reference" if anchor == "scala" else "scala"
+    identity = {"anchor": anchor, "other": other_node, **({} if site.key is None else {"follower": site.key})}
+    history = []
 
     def scala():
         return ntcquery.LocalStateQuery(None, str(scala_socket), MAGIC, host=True, deadline=60)
@@ -464,29 +505,47 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
             session.acquire(point)
             return {label: ask_raw(session, q) for label, q in queries.items()}
 
-    def not_reached(error):
-        return isinstance(error, RuntimeError) and str(error).startswith("acquire failed")
+    def failed(error, stage, point, **more):
+        return {"error": repr(error)[:300], **identity, "stage": stage, "point": point_json(point),
+                "refusal": acquire_refusal(error), "bounds": {"attempts": attempts, "reselections": reselections},
+                **more, "acquisitions": history}
 
-    # the other node is asked again at the same point while it has not reached it; a point it never reaches
-    # (a block of the anchor's that lost a slot battle) is given up once for a new one
-    picks = 2 if attempts > 1 else 1
-    try:
-        for pick in range(picks):
+    transient = (RuntimeError, EOFError, OSError, ntcquery.Deadline, ntcquery.Incomplete)
+    point, refused = None, None
+    for pick in range(1 + reselections):
+        if pick:
+            time.sleep(RESELECTION_PAUSE)
+        try:
             point, anchored = at_anchor()
-            for attempt in range(attempts):
-                try:
-                    other = at(point)
-                    break
-                except RuntimeError as e:
-                    if not not_reached(e) or (pick + 1 == picks and attempt + 1 == attempts):
-                        raise
-                    if attempt + 1 < attempts:
-                        time.sleep(2)
-            else:
-                continue  # every attempt at this point was refused: a new point
+        except transient as e:
+            history.append({"pick": pick, "stage": "anchor", "node": anchor, "outcome": "failed",
+                            "refusal": acquire_refusal(e), "error": repr(e)[:200]})
+            return failed(e, "anchor", None)
+        history.append({"pick": pick, "stage": "anchor", "node": anchor, "point": point_json(point),
+                        "outcome": "acquired"})
+        for attempt in range(attempts):
+            if attempt:
+                time.sleep(SAME_POINT_PAUSE)
+            try:
+                other = at(point)
+            except transient as e:
+                refusal = acquire_refusal(e)
+                known = refusal is not None and refusal["failure"] is not None
+                history.append({"pick": pick, "attempt": attempt, "stage": "other", "node": other_node,
+                                "point": point_json(point), "outcome": "refused" if known else "failed",
+                                "refusal": refusal, **({} if known else {"error": repr(e)[:200]})})
+                if not known:
+                    return failed(e, "other", point)
+                refused = e
+                continue
+            history.append({"pick": pick, "attempt": attempt, "stage": "other", "node": other_node,
+                            "point": point_json(point), "outcome": "acquired"})
             break
-    except (RuntimeError, EOFError, OSError, ntcquery.Deadline, ntcquery.Incomplete) as e:
-        return {"error": repr(e)[:300]}
+        else:
+            continue  # every acquisition of this point was refused: a new sample, while the bound allows
+        break
+    else:
+        return failed(refused, "other", point, exhausted=True)
     got, expected = (anchored, other) if anchor == "scala" else (other, anchored)
     slot = point[0] if isinstance(point, list) and point else None
     answers = {}
@@ -503,7 +562,7 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
             stem.with_suffix(".scala").write_bytes(got[label])
             result["kept"] = str(stem)
         answers[label] = result
-    return {"slot": slot, "answers": answers}
+    return {"slot": slot, "point": point_json(point), **identity, "answers": answers, "acquisitions": history}
 
 
 def lsq(name):
@@ -595,19 +654,28 @@ class Comparisons:
         self.per_era["byron"]["note"] = ("not compared: cardano-cli 11.2.3 cannot query a Byron ledger; the "
                                          "Byron UTxO is compared through the first Shelley epoch")
         self.mismatches = []
-        # same-point complete answers (`whole_state`) per query and era, judged with the projection
-        self.whole = {q: {e: {"matched": 0, "mismatched": 0, "errors": 0, "skipped": 0} for e in ERAS if e != "byron"}
-                      for q in WHOLE_QUERIES}
+        # same-point complete answers (`whole_state`) per query and era, judged with the projection; `afterRefusal`
+        # counts the answers taken at a point after the other node had refused one (#785)
+        self.whole = {q: {e: {"matched": 0, "mismatched": 0, "errors": 0, "skipped": 0, "afterRefusal": 0}
+                          for e in ERAS if e != "byron"} for q in WHOLE_QUERIES}
 
     def record_whole(self, era, label, result):
-        """Tally one `whole_state` result: each query's answer, or its skip or error for every query."""
+        """Tally one `whole_state` result: each query's answer, or its skip or error for every query. An error keeps
+        where it happened (stage, point, refusal, the acquisitions) in `errorDetails`."""
         answers = result.get("answers") or {q: result for q in WHOLE_QUERIES}
+        refused = any(a.get("outcome") == "refused" for a in result.get("acquisitions", []))
         with self.lock:
             for query, answer in answers.items():
                 row = self.whole[query][era]
                 outcome = ("skipped" if answer.get("skipped") else "errors" if "matched" not in answer
                            else "matched" if answer["matched"] else "mismatched")
                 row[outcome] += 1
+                if refused and outcome in ("matched", "mismatched"):
+                    row["afterRefusal"] += 1
+                if outcome == "errors" and len(row.setdefault("errorDetails", [])) < 5:
+                    row["errorDetails"].append({"label": label, **{
+                        k: result.get(k) for k in ("error", "stage", "point", "refusal", "exhausted", "acquisitions")
+                        if k in result}})
                 if outcome == "mismatched" and len(row.setdefault("differences", [])) < 5:
                     row["differences"].append({"label": label, "slot": result.get("slot"), **{
                         k: answer.get(k) for k in ("firstDifference", "referenceBytes", "scalaBytes", "kept")}})
@@ -715,7 +783,7 @@ def compare_era(name, era, label, comparisons, agreement=None):
         agreement.record(era, label, samples)
     for tally in comparisons:
         try:
-            whole = whole_state(name, era, site=tally.site)
+            whole = whole_state(name, era, site=tally.site, reselections=WHOLE_STATE_RESELECTIONS)
         except (Exception, SystemExit) as e:  # nor may the whole-state comparison stop it
             whole = {"error": repr(e)[:300]}
         tally.record_whole(era, label, whole)
@@ -748,7 +816,10 @@ def whole_failures(comparisons, era, minimum):
             failures.append(f"{era}: {whole['mismatched']} same-point {query} answers differ: "
                             f"{whole.get('differences', [])[:2]}")
         if whole["errors"]:
-            failures.append(f"{era}: {whole['errors']} same-point {query} comparison errors")
+            first = (whole.get("errorDetails") or [{}])[0]
+            where = {k: first[k] for k in ("stage", "point", "refusal", "exhausted") if first.get(k) is not None}
+            failures.append(f"{era}: {whole['errors']} same-point {query} comparison errors"
+                            + (f": {first.get('error')} {where}" if first else ""))
         if whole["skipped"]:
             failures.append(f"{era}: {whole['skipped']} same-point {query} comparisons skipped")
         if whole["matched"] < minimum:

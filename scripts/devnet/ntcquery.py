@@ -19,6 +19,24 @@ class Incomplete(Exception):
     pass
 
 
+class AcquireRefused(RuntimeError):
+    """The node answered an acquire with `MsgFailure` (`[2, failure]`): `failure` 0 is `AcquireFailurePointTooOld`,
+    1 `AcquireFailurePointNotOnChain` (the codes of Scarab's `LocalStateQueryEngine` codec, which mirrors the
+    reference's)."""
+
+    NAMES = {0: "PointTooOld", 1: "PointNotOnChain"}
+
+    def __init__(self, reply):
+        super().__init__(f"acquire failed: {reply}")
+        self.reply = reply
+
+    @property
+    def failure(self):
+        """The refusal's name, or None when the reply is not a `MsgFailure` with a known code."""
+        ok = isinstance(self.reply, list) and len(self.reply) == 2 and self.reply[0] == 2
+        return self.NAMES.get(self.reply[1]) if ok else None
+
+
 class Deadline(TimeoutError):
     """A session's overall deadline passed while it waited for the node (handshake, acquire or query)."""
 
@@ -292,7 +310,7 @@ class LocalStateQuery:
         self._send(7, enc([8] if point is None else [0, point]))
         reply = self._recv(7)
         if reply[0] != 1:
-            raise RuntimeError(f"acquire failed: {reply}")
+            raise AcquireRefused(reply)
 
     def release(self):
         self._send(7, enc([5]))

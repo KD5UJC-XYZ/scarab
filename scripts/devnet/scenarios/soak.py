@@ -8,7 +8,7 @@ import sys
 import time
 from .. import metrics as node_metrics
 from ..cluster import up
-from ..compare import Comparisons, compare_or_error, whole_failures, whole_state
+from ..compare import WHOLE_STATE_RESELECTIONS, Comparisons, compare_or_error, whole_failures, whole_state
 from ..consensus import arguments
 from ..follower import own_build
 from ..util import ENTRY, QUERY_PORT, data_root, docker, read_log
@@ -86,8 +86,10 @@ def soak(args):
             print(json.dumps({k: r.get(k) for k in ("tip", "matched", "differenceCount", "error")}), flush=True)
             with (root / "compare.jsonl").open("a") as f:
                 f.write(json.dumps(r) + "\n")
-            # the follower holds only blocks the reference has, so its tip is the point
-            whole.record_whole("conway", f"sample {len(results)}", whole_state(args.name, "conway"))
+            # the follower holds only blocks the reference has, so its tip is the point; a tip that a fork has just
+            # taken off the reference's chain is sampled again, within the bound (#785)
+            same_point = whole_state(args.name, "conway", reselections=WHOLE_STATE_RESELECTIONS)
+            whole.record_whole("conway", f"sample {len(results)}", same_point)
     finally:
         loader.terminate()
         loader.wait()

@@ -341,13 +341,16 @@ class FollowerAgreementTest(unittest.TestCase):
         samples = [compare.Sample({"matched": True}, "x"), compare.Sample({"matched": True}, "x")]
         whole = []
         with patch.object(compare, "compare_followers_detailed", return_value=(samples, None)) as reading, \
-                patch.object(compare, "whole_state", side_effect=lambda name, era, site: whole.append(site.key) or {}):
+                patch.object(compare, "whole_state",
+                             side_effect=lambda name, era, site, reselections: whole.append((site.key, reselections))
+                             or {}):
             compare.compare_era("n", "conway", "mid", tallies, agreement)
         self.assertEqual(reading.call_count, 1)
         self.assertEqual(reading.call_args.args[1], [SCALUS, SCARAB])
         self.assertEqual(recorded, [("scalus", {"matched": True}), ("scarab", {"matched": True})])
         agreement.record.assert_called_once_with("conway", "mid", samples)
-        self.assertEqual(whole, ["scalus", "scarab"])
+        # each follower's same-point state at its own tip, a tip a fork invalidated sampled again within the bound
+        self.assertEqual(whole, [("scalus", compare.WHOLE_STATE_RESELECTIONS), ("scarab", compare.WHOLE_STATE_RESELECTIONS)])
 
     def test_a_keyed_tally_writes_its_own_file(self):
         with tempfile.TemporaryDirectory() as d:
