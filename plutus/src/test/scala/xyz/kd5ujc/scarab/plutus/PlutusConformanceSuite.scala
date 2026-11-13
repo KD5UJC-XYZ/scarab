@@ -2,10 +2,12 @@
 package xyz.kd5ujc.scarab.plutus
 
 import io.circe.{Json, parser}
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import munit.FunSuite
-import scalus.uplc.{Constant, DeBruijnedProgram, Program, Term}
+import scalus.uplc.{Constant, DeBruijnedProgram, Program, ScarabProgramView, Term}
 import scalus.uplc.eval.{CountingBudgetSpender, Log, RestrictingBudgetSpender}
 import scalus.uplc.DeBruijn
 
@@ -218,20 +220,115 @@ abstract class PlutusConformanceCorpus(release: PlutusConformanceSuite.Release) 
       case scala.util.Failure(error) => Outcome.Unavailable(error.toString)
       case scala.util.Success(term) if !closed(List(term -> 0)) =>
         Outcome.Undecodable("free variable in upstream term")
-      case scala.util.Success(term) =>
-        val spender = CountingBudgetSpender()
-        val log = Log()
-        def spent = ExUnits(spender.getSpentBudget.memory, spender.getSpentBudget.steps)
-        val cek = machine.cek(spender, log, debug = false, release.caseOnData(p.version))
-        scala.util
-          .Try(DeBruijn.fromDeBruijnTerm(cek.evaluateTerm(term)))
-          .fold(
-            error =>
-              if ScalusEvaluator.referenceFailure(error) then
-                Outcome.Failed(spent, error.getMessage)
-              else Outcome.Unavailable(error.toString),
-            result => Outcome.Succeeded(spent, result)
+      case scala.util.Success(term) => evaluate(p.version, term)
+
+  /** The closed de Bruijn `term` of a program of `version` on the machine, as [[run]] runs it. */
+  private def evaluate(version: (Int, Int, Int), term: Term): Outcome =
+    val spender = CountingBudgetSpender()
+    val log = Log()
+    def spent = ExUnits(spender.getSpentBudget.memory, spender.getSpentBudget.steps)
+    val cek = machine.cek(spender, log, debug = false, release.caseOnData(version))
+    scala.util
+      .Try(DeBruijn.fromDeBruijnTerm(cek.evaluateTerm(term)))
+      .fold(
+        error =>
+          if ScalusEvaluator.referenceFailure(error) then Outcome.Failed(spent, error.getMessage)
+          else Outcome.Unavailable(error.toString),
+        result => Outcome.Succeeded(spent, result)
+      )
+
+  /** Every case with a `.flat` file, and the ids of the cases without one. */
+  protected def flatCases: (Vector[FlatCase], Vector[String]) =
+    def bytes(name: String) =
+      Bytes.fromArray(Files.readAllBytes(reference.path(s"$Conformance/$name")))
+    val (flat, textOnly) = reference
+      .under(Conformance)
+      .collect {
+        case (name, _) if name.endsWith(".uplc") || name.endsWith(".flat") =>
+          name.stripSuffix(".uplc").stripSuffix(".flat")
+      }
+      .distinct
+      .sorted
+      .partitionMap { stem =>
+        val id = stem.split('/').dropRight(1).mkString("/")
+        if reference.contains(s"$Conformance/$stem.flat") then
+          Left(
+            FlatCase(
+              id,
+              bytes(s"$stem.flat"),
+              bytes(s"$stem.flat.expected"),
+              reference.read(s"$Conformance/$stem.budget.expected").trim
+            )
           )
+        else Right(id)
+      }
+    (flat, textOnly)
+
+  /** The program the upstream runner reads from Flat bytes (`getInputProg Flat` and
+    * `decodeFlatProg`, `PlutusConformance/Common.hs:383-398,562-575`, plutus 1.70.0.0 `507cab8c`,
+    * the same at 1.71.0.0): `unflat` as an `UnrestrictedProgram`, whose only check is that `constr`
+    * and `case` need version 1.1.0 (`UntypedPlutusCore/Core/Instance/Flat.hs:167-185,288-305`),
+    * then `unDeBruijnProgram` over the whole term (`Common.hs:550-554`). The Scalus backend's
+    * decoder is [[FlatScan.decode]]; it builds a malformed `value` constant normalised and records
+    * it, where the reference's decoder refuses it (`PlutusCore/Value.hs` 637-694), so a recorded
+    * one is a refusal here. [[closed]] is the closedness `unDeBruijnProgram` checks, `constr`
+    * fields and `case` included, and an index too wide for Scalus is open (`FlatScan`).
+    */
+  protected def decodeFlat(bytes: Bytes): Either[FlatRefusal, DeBruijnedProgram] =
+    if bytes.isEmpty then Left(FlatRefusal.Empty)
+    else
+      FlatScan
+        .decode(bytes.toArray)
+        .left
+        .map(FlatRefusal.Undecodable(_))
+        .flatMap(d => d.scan.malformedValue.map(FlatRefusal.MalformedValue(_)).toLeft(d.program))
+        .filterOrElse(p => closed(List(p.term -> 0)), FlatRefusal.FreeVariable)
+
+  /** A `.flat.expected` file as `decodeFlatExpected` reads it (`Common.hs:347-354`): a failure's
+    * text, compared byte for byte first, or the Flat-encoded result program.
+    */
+  private def flatGolden(bytes: Bytes): Either[FlatGolden, DeBruijnedProgram] =
+    Vector(ParseError, EvaluationFailure)
+      .find(text => bytes == Bytes.fromArray(text.getBytes(StandardCharsets.UTF_8)))
+      .map(FlatGolden.Failure(_))
+      .toLeft(())
+      .flatMap(_ => decodeFlat(bytes).left.map(FlatGolden.Unreadable(_)))
+
+  /** Runs a case from its `.flat` file as the upstream runner does with `--format flat`: a refused
+    * program is `parse/decode error`, a failed evaluation `evaluation failure` (`getTestedValue`,
+    * `Common.hs:403-417`); the result must equal the decoded `.flat.expected` program, version and
+    * de Bruijn term (`compareAlphaEq`, `Common.hs:423-473`), and the budget `.budget.expected`
+    * (`testForBudget`, `Common.hs:257-267`). The mismatches, none when it passes.
+    */
+  protected def checkFlat(c: FlatCase): List[String] =
+    val tested: Either[(String, String), (DeBruijnedProgram, ExUnits, Term)] =
+      decodeFlat(c.program) match
+        case Left(refusal) => Left(ParseError -> refusal.toString)
+        case Right(p) =>
+          evaluate(p.version, p.term) match
+            case Outcome.Unavailable(reason)    => Left("implementation unavailable" -> reason)
+            case Outcome.Undecodable(reason)    => Left(ParseError -> reason)
+            case Outcome.Failed(_, reason)      => Left(EvaluationFailure -> reason)
+            case Outcome.Succeeded(spent, term) => Right((p, spent, term))
+    val result = (flatGolden(c.expected), tested) match
+      case (Left(FlatGolden.Failure(text)), Left((got, why))) =>
+        Option.when(got != text)(s"expected $text, got $got: $why")
+      case (Left(FlatGolden.Failure(text)), Right((_, spent, term))) =>
+        Some(s"expected $text, evaluated to ${term.show} (${spent.show})")
+      case (Left(FlatGolden.Unreadable(refusal)), _) =>
+        Some(s"the expected result does not decode: $refusal")
+      case (Right(_), Left((got, why))) => Some(s"expected a result, got $got: $why")
+      case (Right(expected), Right((p, _, term))) =>
+        Option.when(expected.version != p.version || !sameTerm(expected.term, term))(
+          s"result: expected ${expected.version} ${expected.term.show}, got ${p.version} ${term.show}"
+        )
+    val budget = tested match
+      case Left((got, _)) => Option.when(c.budget != got)(s"budget: expected ${c.budget}, got $got")
+      case Right((_, spent, _)) =>
+        budgetOf(c.budget) match
+          case Some(b) => Option.when(spent != b)(s"budget: expected ${b.show}, got ${spent.show}")
+          case None    => Some(s"budget: expected ${c.budget}, evaluated (${spent.show})")
+    result.toList ++ budget.toList
 
   test("upstream Plutus conformance, evaluation cases") {
     val started = System.nanoTime
@@ -256,6 +353,47 @@ abstract class PlutusConformanceCorpus(release: PlutusConformanceSuite.Release) 
         failures.map((id, why) => s"$id: $why").mkString("\n")
     )
     assertEquals(all.size, 1009, "the complete original evaluation corpus must execute")
+  }
+
+  test("upstream Plutus conformance, Flat cases as the runner reads them with --format flat") {
+    val started = System.nanoTime
+    val (flat, textOnly) = flatCases
+    val results = flat.map(c => c -> checkFlat(c))
+    val seconds = (System.nanoTime - started) / 1e9
+    val failures = results.collect { case (c, why) if why.nonEmpty => c.id -> why.mkString("; ") }
+    println(
+      s"plutus conformance ${release.tag} on the .flat files, ${flat.size} cases in " +
+        s"${"%.1f".format(seconds)} s: ${flat.size - failures.size} passed, ${failures.size} " +
+        s"failed; ${textOnly.size} cases have no Flat form"
+    )
+    assert(
+      failures.isEmpty,
+      s"${failures.size} failures:\n" + failures.map((id, why) => s"$id: $why").mkString("\n")
+    )
+    assertEquals(
+      textOnly.filterNot(id => NoFlatFiles.exists(d => id == d || id.startsWith(s"$d/"))),
+      Vector.empty,
+      "a case outside the text parser's directories has no Flat form"
+    )
+    assertEquals(flat.size, 906, "every original case with a Flat form must execute")
+    assertEquals(textOnly.size, 103)
+  }
+
+  test("a variable no lam binds anywhere in a Flat program is a refusal, as upstream decodes it") {
+    def v(index: Int) = Term.Var(scalus.uplc.NamedDeBruijn(s"i$index", index))
+    def lam(body: Term) = Term.LamAbs("x", body)
+    def constr(fields: Term*) = Term.Constr(scalus.cardano.ledger.Word64(0L), fields.toList)
+    def decoded(term: Term) =
+      decodeFlat(Bytes.fromArray(ScarabProgramView.program((1, 1, 0), term).flatEncoded))
+    // the ledger's scope check, `FlatScan.openVariable`, skips `constr` and `case`
+    assertEquals(decoded(lam(constr(v(1), v(2)))).left.toOption, Some(FlatRefusal.FreeVariable))
+    assertEquals(
+      decoded(lam(Term.Case(constr(), List(lam(v(3)))))).left.toOption,
+      Some(FlatRefusal.FreeVariable)
+    )
+    assertEquals(decoded(lam(v(0))).left.toOption, Some(FlatRefusal.FreeVariable))
+    assert(decoded(lam(lam(constr(v(1), v(2))))).isRight)
+    assertEquals(decodeFlat(Bytes.empty).left.toOption, Some(FlatRefusal.Empty))
   }
 
   test("upstream scope checking includes delayed and unselected subterms") {
@@ -407,6 +545,35 @@ object PlutusConformanceSuite:
       .takeWhile(_.isDefined)
       .map(_.get)
       .toVector
+
+  /** The directories whose cases have no Flat form (`dirsWithNoFlatFiles`,
+    * `PlutusConformance/Common.hs:149-153`, `507cab8c`, the same at 1.71.0.0): the text parser's
+    * cases. Run on the `.flat` files, the runner skips a case below them that has none, and fails
+    * on one anywhere else (`Common.hs:212-219`).
+    */
+  val NoFlatFiles: Vector[String] = Vector("builtin/parser", "term/parser")
+
+  private[plutus] val ParseError = "parse/decode error"
+  private[plutus] val EvaluationFailure = "evaluation failure"
+
+  /** A case in its Flat form: the bytes of its `.flat` and `.flat.expected` files and the text of
+    * its `.budget.expected` file, which the two forms share.
+    */
+  final case class FlatCase(id: String, program: Bytes, expected: Bytes, budget: String)
+
+  /** Why the upstream runner reads no program from Flat bytes; it shows each as
+    * `parse/decode error`.
+    */
+  enum FlatRefusal:
+    case Empty
+    case Undecodable(failure: FlatScan.Failure)
+    case MalformedValue(fault: FlatScan.ValueFault)
+    case FreeVariable
+
+  /** What a `.flat.expected` file holds when it holds no result program. */
+  enum FlatGolden:
+    case Failure(text: String)
+    case Unreadable(refusal: FlatRefusal)
 
   final case class Case(
       id: String,

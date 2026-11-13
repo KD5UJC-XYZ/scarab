@@ -1,7 +1,8 @@
 # Plutus conformance: executed reference boundaries
 
 **Status: Current.** All 1,009 pinned upstream evaluation cases pass with exact recorded results
-and budgets, without exclusions. Ledger admission remains a separate tested boundary; recorded
+and budgets, without exclusions, and so do the 906 of them that upstream also gives in Flat form,
+run from their `.flat` files. Ledger admission remains a separate tested boundary; recorded
 experiments remain tied to their source revisions.
 
 The original [#155](https://github.com/KD5UJC-XYZ/scarab/issues/155) (AUD-03) triage established
@@ -35,6 +36,23 @@ those same thirteen cases through the previous ledger/Flat harness, reproduces i
 and requires the exact original term result and budget from the corrected profile. Separate
 `PlutusReachabilitySuite` tests retain the ledger's Flat admission, protocol gates and restricting
 budgets. A counting-profile success is not a claim that a transaction with that term is admissible.
+
+**The Flat form.** Upstream gives 906 of the 1,009 cases a `.flat` program and a `.flat.expected`
+result as well. The other 103 are the text parser's cases under `builtin/parser` and `term/parser`,
+which have no Flat form (`dirsWithNoFlatFiles`, `PlutusConformance/Common.hs:149-153`). With
+`--format flat` the upstream runner decodes the program as an `UnrestrictedProgram`: no bound on
+builtins, constant types or `constr` fields, though `constr` and `case` still need version 1.1.0. It
+refuses a variable that no `lam` binds anywhere in the term (`unDeBruijnProgram`, which, unlike the
+ledger's scope check, looks inside `constr` and `case`), evaluates with the same profile, and compares
+the result with the decoded `.flat.expected` program and the budget with the shared
+`.budget.expected` (`Common.hs:347-417,550-575`, unchanged at 1.71.0.0). `PlutusConformanceSuite` and
+`PlutusConformance171Suite` run the 906 that way through the Scalus backend's Flat walker
+(`FlatScan`) and machine. All 906 pass at each release, with no exclusion. The own evaluator runs
+the 1.70.0.0 cases, text and Flat, the release it implements ([below](#scarabs-own-evaluator),
+ADR 0027); the 1.71.0.0 cases run on the Scalus backend alone. Upstream's `conformance-consistency`
+check, that each Flat program and result decodes to what its text form parses to, is mirrored with
+the own parser and decoder only; the Scalus suites decode the program and its expected result with
+the same walker, as upstream's runner does.
 
 ## 1. The reference evaluator
 
@@ -300,8 +318,8 @@ The conformance suite's counting spender is charged through the same machine, an
 original upstream conformance assertions plus the independently exported G1/G2 point vectors pass
 through the production evaluator. The start-up check of the library computes the `hashToGroup` known answers for a non-ASCII tag. A builtin the
 library backs is a typed `BuiltinUnavailable` when it did not load. The complete upstream suite
-passes 1,009/1,009 cases with zero exceptions under its own term/counting profile; the obsolete
-known-failure resource is removed.
+passes 1,009/1,009 cases from their text programs and 906/906 from their Flat programs, with zero
+exceptions, under its own term/counting profile; the obsolete known-failure resource is removed.
 
 An implementation limit is `Phase2.Outcome.Unavailable` and `LedgerFailure.Unavailable`, regardless
 of the transaction validity flag. It supplies no script verdict and no consensus predicate failure.
@@ -407,6 +425,11 @@ The module's own evidence is against the reference, with no Scalus in the compar
 the conformance corpus with their results and budgets
 ([`ConformanceSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/text/ConformanceSuite.scala),
 [`CekConformanceSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/cost/CekConformanceSuite.scala)),
+the 906 of them in Flat form through its own Flat decoder, run as the upstream runner runs them with
+`--format flat`
+([`FlatConformanceSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/flat/FlatConformanceSuite.scala),
+which also mirrors upstream's `conformance-consistency` check: each Flat program and result decodes to
+what the own text parser reads from the `.uplc` and `.uplc.expected` files),
 the costing oracle
 ([`CostingOracleSuite`](../uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/cost/CostingOracleSuite.scala)),
 the Haskell verdicts of the boundary corpora through the ledger's evaluation

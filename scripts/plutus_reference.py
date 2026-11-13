@@ -12,6 +12,8 @@ sha256 is not the recorded one; `add-release` records it.
   check        offline: every view matches the digest and file count recorded in releases.json
   verify       download each release and compare its view with upstream, file by file
   add-release  download a newer release, make it the base and move the older releases to overlays
+  refresh      read every recorded release again from its pinned archive, after the files a view
+               keeps change
 """
 
 import argparse
@@ -33,7 +35,7 @@ MANIFEST = "releases.json"
 OVERLAYS = "overlays"
 ARCHIVE = "https://codeload.github.com/IntersectMBO/plutus/tar.gz/{commit}"
 CONFORMANCE = ("conformance", "plutus-conformance/test-cases/uplc/evaluation/")
-CONFORMANCE_SUFFIXES = (".uplc", ".uplc.expected", ".budget.expected")
+CONFORMANCE_SUFFIXES = (".uplc", ".uplc.expected", ".budget.expected", ".flat", ".flat.expected")
 COST_MODEL = ("cost-model", "plutus-core/cost-model/data/")
 COST_MODEL_FILES = tuple(f"{kind}{variant}.json" for kind in ("builtinCostModel", "cekMachineCosts")
                          for variant in "ABCDE")
@@ -232,18 +234,15 @@ def write_files(directory: Path, files: dict[str, bytes]) -> None:
         target.write_bytes(data)
 
 
-def add_release(reference: Path, tag: str, commit: str, archive: bytes) -> None:
-    """Make the release the base; every older release keeps only what differs from it."""
-    manifest = read_manifest(reference)
-    if any(release["tag"] == tag for release in manifest["releases"]):
-        raise ReferenceError(f"release {tag} is already recorded")
+def write_tree(reference: Path, manifest: dict, base: str, upstream: dict[str, dict[str, bytes]]) -> None:
+    """Replace the tree with the views of `upstream`, by tag, for the releases the manifest lists: the
+    base whole, every other release as the files that differ from it and the base files it lacks."""
     generated = {entry["path"]: entry["sha256"] for entry in manifest["generated"]}
-    old = views(reference, manifest)
-    new = upstream_view(archive)
+    new = upstream[base]
     for path in generated:
         source = re.sub(r"\.flat\.cbor\.hex$", ".uplc", path)
-        if any(view.get(source) != new.get(source) for view in old.values()):
-            raise ReferenceError(f"{source} changed in {tag}: regenerate {path} before adding the release")
+        if any(view.get(source) != new.get(source) for view in upstream.values()):
+            raise ReferenceError(f"{source} differs between releases: regenerate {path} first")
     sidecars = {path: (reference / path).read_bytes() for path in generated}
     keep = {path: (reference / path).read_bytes() for path in files_under(reference) if OWN.fullmatch(path)}
     staging = Path(tempfile.mkdtemp(prefix="plutus-reference-", dir=reference.parent))
@@ -251,19 +250,39 @@ def add_release(reference: Path, tag: str, commit: str, archive: bytes) -> None:
         write_files(staging, {**new, **sidecars, **keep})
         releases = []
         for release in manifest["releases"]:
-            view = upstream_part(old[release["tag"]], generated)
-            overlay = {path: data for path, data in view.items() if new.get(path) != data}
-            write_files(staging / OVERLAYS / release["tag"], overlay)
-            releases.append(dict(release, absent=sorted(set(new) - set(view))))
-        releases.append({"tag": tag, "commit": commit, "archiveSha256": sha256(archive),
-                         "files": len(new), "digest": digest(new), "absent": []})
-        manifest = dict(manifest, base=tag, releases=releases)
+            view = upstream[release["tag"]]
+            if release["tag"] != base:
+                write_files(staging / OVERLAYS / release["tag"],
+                            {path: data for path, data in view.items() if new.get(path) != data})
+            releases.append(dict(release, files=len(view), digest=digest(view), absent=sorted(set(new) - set(view))))
+        manifest = dict(manifest, base=base, releases=releases)
         (staging / MANIFEST).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         shutil.rmtree(reference)
         os.replace(staging, reference)
     finally:
         if staging.exists():
             shutil.rmtree(staging)
+
+
+def add_release(reference: Path, tag: str, commit: str, archive: bytes) -> None:
+    """Make the release the base; every older release keeps only what differs from it."""
+    manifest = read_manifest(reference)
+    if any(release["tag"] == tag for release in manifest["releases"]):
+        raise ReferenceError(f"release {tag} is already recorded")
+    generated = {entry["path"]: entry["sha256"] for entry in manifest["generated"]}
+    upstream = {release: upstream_part(view, generated) for release, view in views(reference, manifest).items()}
+    upstream[tag] = upstream_view(archive)
+    entry = {"tag": tag, "commit": commit, "archiveSha256": sha256(archive), "files": 0, "digest": "", "absent": []}
+    write_tree(reference, dict(manifest, releases=manifest["releases"] + [entry]), tag, upstream)
+
+
+def refresh(reference: Path, cache: Path) -> None:
+    """Lay the tree out again from the pinned archive of every recorded release, keeping the base: for
+    a change of the files `upstream_view` keeps, not of the releases."""
+    manifest = read_manifest(reference)
+    upstream = {release["tag"]: upstream_view(fetch(release["commit"], release["archiveSha256"], cache))
+                for release in manifest["releases"]}
+    write_tree(reference, manifest, manifest["base"], upstream)
 
 
 def main() -> int:
@@ -274,6 +293,7 @@ def main() -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("check")
     commands.add_parser("verify")
+    commands.add_parser("refresh")
     adding = commands.add_parser("add-release")
     adding.add_argument("tag")
     adding.add_argument("commit")
@@ -284,6 +304,9 @@ def main() -> int:
         if args.command == "add-release":
             archive = args.archive.read_bytes() if args.archive else fetch(args.commit, None, args.cache)
             add_release(reference, args.tag, args.commit, archive)
+            problems = check(reference)
+        elif args.command == "refresh":
+            refresh(reference, args.cache)
             problems = check(reference)
         elif args.command == "verify":
             problems = check(reference) + verify(reference, args.cache)
