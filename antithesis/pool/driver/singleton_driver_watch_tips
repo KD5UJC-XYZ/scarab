@@ -1,0 +1,24 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# The test template's one driver command; Antithesis runs it once per timeline, under faults. It reads every pool's
+# tip at a fixed interval and records whether each extends its chain and whether all three agree.
+set -uo pipefail
+source /opt/at/lib.sh
+
+assertion true true reachability Reachable "$STARTS" true
+
+prev=$(tips)
+while :; do
+  sleep "$INTERVAL_SECONDS"
+  now=$(tips)
+  echo "watch: tips $now"
+  extended=$(jq -cn --argjson p "$prev" --argjson c "$now" \
+    '$c | with_entries(.value = ($p[.key] != null and .value != null and .value.block > $p[.key].block))')
+  details=$(jq -cn --argjson p "$prev" --argjson c "$now" '{previous: $p, current: $c}')
+  sometimes "$SCARAB_EXTENDS" "$(jq -r '.s1' <<< "$extended")" "$details"
+  sometimes "$HASKELL_EXTENDS" "$(jq -r '.h2 or .h3' <<< "$extended")" "$details"
+  sometimes "$ALL_EXTEND" "$(jq -r '[.[]] | all' <<< "$extended")" "$details"
+  if agree "$now" 0; then together=true; else together=false; fi
+  sometimes "$ALL_AGREE" "$together" "$details"
+  prev=$now
+done

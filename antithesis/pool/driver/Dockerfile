@@ -14,6 +14,7 @@ COPY --from=cardano /opt/reference/bin/cardano-cli /usr/local/bin/cardano-cli
 # The test template's directories are made here, 0755: `COPY --chmod` would give them the file's mode, and snouty's
 # `docker cp` of a read-only tree fails, so it finds no test commands.
 RUN mkdir -p /ipc/h2 /ipc/h3 /ipc/s1 /opt/at /opt/antithesis/test/v1/main && chown 10001:10001 /ipc/s1
+COPY --chmod=0644 lib.sh /opt/at/lib.sh
 COPY --chmod=0755 driver.sh /opt/at/driver.sh
-COPY --chmod=0755 first_start_workload /opt/antithesis/test/v1/main/first_start_workload
+COPY --chmod=0755 singleton_driver_watch_tips /opt/antithesis/test/v1/main/singleton_driver_watch_tips
 CMD ["/opt/at/driver.sh"]
