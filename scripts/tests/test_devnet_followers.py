@@ -441,6 +441,141 @@ class E2EFlowTest(unittest.TestCase):
         self.assertEqual(removed[-3:], ["n-scala-scalus", "n-scala-scarab", "n-ref"])
 
 
+ERA_EPOCHS = [("Byron", 0), ("Shelley", 1), ("Allegra", 2), ("Mary", 3), ("Alonzo", 4), ("Babbage", 5), ("Conway", 6)]
+GREEN_TARGET = 7  # the Conway epoch a green mocked run reaches
+
+
+def green_blocks(fork=0, rival_from=None):
+    """(era, epoch, Block) of a chain through every era to Conway epoch `GREEN_TARGET`: two Byron blocks, one in
+    each later era's first epoch, three in Conway. From block number `rival_from` on, the hashes are those of the
+    rival chain `fork`."""
+    plan = [("Byron", 0), ("Byron", 0)] + [(era, epoch) for era, epoch in ERA_EPOCHS[1:]] + \
+        [("Conway", 6), ("Conway", GREEN_TARGET), ("Conway", GREEN_TARGET)]
+    return [(era, epoch, Block(10 * n, h(n + (1000 * fork if rival_from is not None and n >= rival_from else 0)), n))
+            for n, (era, epoch) in enumerate(plan)]
+
+
+def green_log(vm=None, chain=None, extra=()):
+    """A follower log that is green on its own: every era entered at its epoch, Byron epoch 0 validated, `chain`
+    (`green_blocks()` by default) extended, then the events of `extra`, each line complete."""
+    events = [{"event": "started"}, {"event": "connected", "intersection": {"origin": True}}]
+    events += [{"event": "plutusVm", "vm": vm}] if vm else []
+    previous = None
+    for era, epoch, b in chain or green_blocks():
+        block = {"slot": b.slot, "blockNo": b.block_no, "hash": b.hash}
+        if era != previous:
+            events.append({"event": "eraTransition", "from": previous, "to": era, "epoch": epoch, "slot": b.slot,
+                           "block": block})
+            previous = era
+        events.append({"event": "extended", "era": era, "epoch": epoch, "block": block})
+        if (era, b.block_no) == ("Byron", 1):
+            events.append({"event": "epochValidated", "era": "Byron", "epoch": 0, "headers": 2, "boundary": 1,
+                           "signatureVerified": 1, "offSchedule": 0, "transactions": 0})
+    return "".join(json.dumps(e) + "\n" for e in [*events, *extra])
+
+
+class FakeFollower:
+    """A follower's `follow` process: running until it is waited for after its stop, then ended with 143 (SIGTERM).
+    `on_stop` runs when it ends, as the log lines a node writes while it shuts down."""
+
+    def __init__(self, on_stop=None):
+        self.code, self.on_stop = None, on_stop
+
+    def poll(self):
+        return self.code
+
+    @property
+    def returncode(self):
+        return self.code
+
+    def wait(self, timeout=None):
+        if self.code is None:
+            if self.on_stop is not None:
+                self.on_stop()
+            self.code = 143
+        return self.code
+
+
+class GreenRunTest(unittest.TestCase):
+    """`e2e()` driven through a mocked run that is green unless a test makes it otherwise: the cluster, the
+    containers and the reference node's freeze are replaced, the followers' logs are written by the test."""
+
+    def run_e2e(self, plutus_vm, logs=None, on_stop=None):
+        """(summary, exit status) of one mocked run. `logs` maps a follower key (None for a run's only follower) to
+        its log text, `on_stop` to what it logs while it is stopped."""
+        logs, on_stop = logs or {}, on_stop or {}
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d) / "run"
+
+            def start(name, root_, site=SINGLE_FOLLOWER, plutus_vm=None, **kwargs):
+                site.log(root).write_text(logs.get(site.key, green_log(plutus_vm)))
+                extra = on_stop.get(site.key)
+                return FakeFollower(None if extra is None else lambda: self.append(site.log(root), extra))
+
+            def up_eras(args, on_nodes_up, on_pools_ready, on_tick):
+                (root / "genesis").mkdir(parents=True)
+                (root / "eras.json").write_text(json.dumps({"eras": [{"era": e.lower(), "epoch": n}
+                                                                     for e, n in ERA_EPOCHS]}))
+                (root / "genesis" / "configuration.yaml").write_text(json.dumps(
+                    {f"Test{e}HardForkAtEpoch": n for e, n in ERA_EPOCHS[1:]}))
+                (root / "genesis" / "shelley-genesis.json").write_text(json.dumps({"securityParam": 3}))
+                on_nodes_up(root)
+                on_tick({})
+
+            def tip(name, site=SINGLE_FOLLOWER):
+                extended = [json.loads(l) for l in site.log(root).read_text().splitlines()
+                            if l.startswith('{"event": "extended"')]
+                return {k: extended[-1]["block"][k] for k in ("slot", "hash")} if extended else None
+            args = types.SimpleNamespace(name="n", plutus_vm=plutus_vm, oracle=False, scala_cpus=2, no_load=True,
+                                         no_compare=True, keep=False, timeout=60, until_epoch=GREEN_TARGET,
+                                         min_comparisons=3)
+            from oracle import devnet as oracle_devnet
+            with patch.object(e2e_scenario, "data_root", return_value=root), \
+                    patch.object(e2e_scenario, "up_eras", side_effect=up_eras), \
+                    patch.object(e2e_scenario, "start_follower", side_effect=start), \
+                    patch.object(e2e_scenario, "in_ref", return_value=types.SimpleNamespace(stdout="")), \
+                    patch.object(e2e_scenario, "keep_native_evidence", return_value={"kept": [], "notKept": {}}), \
+                    patch.object(e2e_scenario, "docker"), \
+                    patch.object(follower, "docker", create=True), \
+                    patch.object(oracle_devnet, "node_pid", return_value=42), \
+                    patch.object(oracle_devnet, "signal_node", return_value=True), \
+                    patch.object(oracle_devnet, "follower_tip", side_effect=tip), \
+                    patch.object(e2e_scenario.time, "sleep"), \
+                    contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as ended:
+                e2e_scenario.e2e(args)
+            summary = json.loads((root / "e2e-summary.json").read_text())
+        return summary, ended.exception.code
+
+    @staticmethod
+    def append(path, events):
+        with path.open("a") as out:
+            out.write("".join(json.dumps(e) + "\n" for e in events))
+
+    def test_the_mocked_run_is_green_with_one_follower_and_with_two(self):
+        for plutus_vm in (None, ["scalus", "scarab"]):
+            with self.subTest(plutus_vm=plutus_vm):
+                summary, code = self.run_e2e(plutus_vm)
+                self.assertEqual((summary["failures"], summary["passed"], code), ([], True, 0))
+
+    def test_one_explicit_evaluator_keeps_the_summary_and_verdicts_of_none(self):
+        # with one `--plutus-vm` the run's only follower is not asked which evaluator its start logged: a log that
+        # names another, or none, changes neither the verdict nor the summary's layout
+        plain, _ = self.run_e2e(None)
+        for vm, logged in (("scalus", None), ("scarab", "scalus"), ("scarab", "scarab")):
+            with self.subTest(vm=vm, logged=logged):
+                summary, code = self.run_e2e([vm], logs={None: green_log(logged)})
+                self.assertEqual((summary["failures"], code), ([], 0))
+                self.assertNotIn("plutusVm", summary)
+                self.assertEqual(sorted(summary), sorted(plain))
+
+    def test_with_two_followers_each_must_have_run_the_evaluator_it_was_given(self):
+        summary, code = self.run_e2e(["scalus", "scarab"], logs={"scarab": green_log("scalus")})
+        self.assertEqual(code, 1)
+        self.assertEqual(summary["failures"],
+                         ["scarab follower: the follower logged the Plutus evaluators ['scalus'] at its start, "
+                          "not ['scarab']"])
+
+
 class E2EArgumentsTest(unittest.TestCase):
     def test_the_oracle_is_refused_with_several_followers_before_anything_starts(self):
         args = types.SimpleNamespace(name="n", plutus_vm=["scalus", "scarab"], oracle=True)

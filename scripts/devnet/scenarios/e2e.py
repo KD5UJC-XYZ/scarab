@@ -435,7 +435,9 @@ def e2e(args):
         for site, vm in plan:
             exit_code = followers[site].poll()
             events, other = read_log(site.log(root))
-            own, own_failures = summarize_e2e(events, other, expected, exit_code, plutus_vm=vm)
+            # the evaluator each follower logged is judged when the run has several: a run's only follower keeps
+            # the verdicts and summary it always had, with one `--plutus-vm` or none
+            own, own_failures = summarize_e2e(events, other, expected, exit_code, plutus_vm=vm if keyed else None)
             if keyed:
                 own["reachedTarget"] = reached(events, target)
             judged[site] = (own, own_failures)
