@@ -70,6 +70,10 @@
       "sha256": "1eeb33ba74d8888111ce57a1cd2072ed50312c987a84671e638adb11dc316ce3"
     },
     {
+      "path": "alonzo-collateral",
+      "sha256": "72946d1ab4188e58d7afdfd7342e1bbeeaa2bcfe5e0cb9facf54a62c9ef43f89"
+    },
+    {
       "path": "alonzo-families",
       "sha256": "cf1ce928525d5064dc3dc9cf35c7297ad99267b2f5d4d79aa6b2c86c1ebed245"
     },
@@ -80,6 +84,10 @@
     {
       "path": "babbage-certificate-order",
       "sha256": "b47b2fc4485a21428f814b3f486e7d80c9b43a229c6c626299ca36b911a24448"
+    },
+    {
+      "path": "babbage-collateral",
+      "sha256": "e125f88521027481a9f6769e68802dfbdda418b14cb469a5194b5d0f40e99948"
     },
     {
       "path": "babbage-devnet",
@@ -98,8 +106,16 @@
       "sha256": "c79dde9b4151e26688f65fd03879fcf06fa712854733d9fa6fd0bc774a455c86"
     },
     {
+      "path": "conway-deleg-collateral",
+      "sha256": "5917fba5f6fa1ecb2d83f073ede39f6e549327809d0447192a4867191a6946d5"
+    },
+    {
       "path": "conway-devnet",
       "sha256": "286a678fea0f7086d17a169d27d756077ddc2135d54ea02661e39c920f6a66d4"
+    },
+    {
+      "path": "conway-gov-proposals",
+      "sha256": "300d99e9e051df979093bde537c8ec39c7fc1a69a822f978d2b7c052d462128e"
     },
     {
       "path": "conway-governance",
@@ -108,6 +124,10 @@
     {
       "path": "conway-three-certificates",
       "sha256": "335673554ec6b794302fdbb70f0d941b0c143af6f0814c964a2de2c613088aa3"
+    },
+    {
+      "path": "conway-v11-coverage",
+      "sha256": "104d23c04d274cc33d3a5e16026d6e18f94ce329145e601cdef62bcf5431c55e"
     },
     {
       "path": "mary-bootstrap-attributes",
