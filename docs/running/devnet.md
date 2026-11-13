@@ -65,10 +65,11 @@ container, and `--max-starvation-warnings N` makes a scenario fail when the node
 CPU-starvation warnings than that (otherwise they are only reported: `cpuStarvationWarnings` in
 `e2e-summary.json`, and the `scheduling` block of `pool-summary.json` with the worst timer lateness and
 the longest CPU-bound step the node measured). `pool --scala-cpus 1` is the check that the forger's slot
-clock holds with one CPU (roadmap D8). `--plutus-vm scalus|scarab` (`follow`, `e2e`, `pool`, `kes-rotate`) gives the Scala node that
-Plutus evaluator ([flags](flags.md)); without it the node runs its default. In `pool` and `kes-rotate` the node
-forges with it, and `pool --plutus-vm scarab --plutus-load` is the run that has the own evaluator decide the validity
-flags of the blocks it forges. Given to `e2e` more than once, it starts one follower per evaluator
+clock holds with one CPU (roadmap D8). `--plutus-vm scalus|scarab` (`follow`, `e2e`, `pool`, `kes-rotate`,
+`dynamic-forging`) gives the Scala node that Plutus evaluator ([flags](flags.md)); without it the node runs its default.
+In `pool`, `kes-rotate` and `dynamic-forging` the node forges with it, and those three also take `--plutus-load` (they
+share `pool`'s options); `pool --plutus-vm scarab --plutus-load` is the run that has the own evaluator decide the
+validity flags of the blocks it forges. Given to `e2e` more than once, it starts one follower per evaluator
 ("Several followers in one e2e", below).
 
 `--consensus-mode GenesisMode` on `follow`, `restart`, `relay`, `e2e` or `soak` selects Genesis

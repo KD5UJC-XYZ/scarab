@@ -73,6 +73,22 @@ class ChainFromOriginTest(unittest.TestCase):
         self.assertEqual(replies, [])
 
 
+    def test_a_rollback_to_a_point_that_was_not_received_is_refused(self):
+        b1 = block_item(1, [], [], [])
+        tip = [[9, b"\x09" * 32], 5]
+        replies = [enc([3, [], tip]), enc([2, Raw(b1), tip]), enc([3, [7, b"\x07" * 32], tip])]
+
+        class Session:
+            def find_intersect(self, points):
+                return [5, [], tip]
+
+            def request_next(self):
+                raw = replies.pop(0)
+                return ntcquery.decode(raw, 0)[0], raw
+        with self.assertRaises(RuntimeError):
+            ntclocal.chain_from_origin(Session())
+
+
 class FailurePathTest(unittest.TestCase):
     def test_the_constructors_down_to_validation_tag_mismatch(self):
         mismatch = enc([[6, [[1, [0, [0, [0, True, [1, ["the script failed"]]]]]]]]])

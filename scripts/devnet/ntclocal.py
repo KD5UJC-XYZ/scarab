@@ -140,7 +140,8 @@ def block_transactions(item):
 
 def chain_from_origin(session):
     """Every block of the chain of an open `Session`, from Origin to the tip the node reports when it sends
-    the last one, as (slot, header hash, block item), rollbacks applied."""
+    the last one, as (slot, header hash, block item), rollbacks applied. A rollback to a point that was not
+    received is refused (RuntimeError): what came before it is not known."""
     if session.find_intersect([None])[0] != 5:
         raise RuntimeError("no intersection at Origin")
     blocks = []
@@ -148,7 +149,10 @@ def chain_from_origin(session):
         reply, raw = session.request_next()
         if reply[0] == 3:
             to = reply[1]
-            blocks = [] if not to else blocks[:next((i + 1 for i, b in enumerate(blocks) if b[1] == to[1]), 0)]
+            kept = 0 if not to else next((i + 1 for i, b in enumerate(blocks) if b[1] == to[1]), None)
+            if kept is None:
+                raise RuntimeError(f"rollback to a point that was not received: {to}")
+            blocks = blocks[:kept]
             continue
         item = block_item(raw)
         slot, ident = block_point(item)
