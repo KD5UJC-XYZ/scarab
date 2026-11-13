@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.uplc.cost
 
+import xyz.kd5ujc.scarab.uplc.builtin.extended.ExtendedDenotations
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.uplc.{
   DefaultFun,
@@ -43,9 +44,16 @@ object CekConformance:
 
   private lazy val meanings: Map[DefaultFun, Denotation] = denotations(variant)
 
-  /** The core denotations of `variant` (work package 5). */
+  /** The denotations of `variant`: the core ones (work package 5) and the others (work package 6).
+    */
   def denotations(variant: SemanticsVariant): Map[DefaultFun, Denotation] =
-    CoreDenotations.of(variant).fold(e => throw new IllegalStateException(e.toString), identity)
+    val core =
+      CoreDenotations.of(variant).fold(e => throw new IllegalStateException(e.toString), identity)
+    val extended =
+      ExtendedDenotations
+        .of(variant)
+        .fold(e => throw new IllegalStateException(e.toString), identity)
+    core ++ extended
 
   // Every program is checked for builtins without a denotation before it runs, so this one is never
   // applied; it fails as a builtin of the program would.
@@ -115,20 +123,20 @@ final class CekConformanceSuite extends munit.FunSuite:
       .map(_.name)
       .sorted
     println(
-      s"plutus 1.70.0.0 conformance, machine + core builtins + cost model: ${report.conforming} conform, " +
+      s"plutus 1.70.0.0 conformance, machine + builtins + cost model: ${report.conforming} conform, " +
         s"${wrong.size} disagree, $incomplete incomplete (no denotation yet: ${absent.mkString(", ")})"
     )
     assert(wrong.isEmpty, Report(wrong).render(CekConformance.backend.show))
     assert(report.conforming + incomplete == cases.size)
   }
 
-  test("all 1,009 cases (incomplete until every builtin has a denotation)") {
+  test("all 1,009 cases have every builtin they name") {
     val incomplete = report.verdicts.filter(_._2.exists(unavailable))
     val absent =
       incomplete.flatMap(_._2.collect { case Mismatch.Unavailable(fs) => fs }).flatten.distinct
-    assume(
+    assert(
       incomplete.isEmpty,
-      s"incomplete: ${incomplete.size} cases name builtins with no denotation yet: " +
+      s"${incomplete.size} cases name builtins with no denotation: " +
         absent.map(_.name).sorted.mkString(", ")
     )
   }

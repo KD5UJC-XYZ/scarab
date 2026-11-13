@@ -323,14 +323,17 @@
     {
       "module": "uplc",
       "path": "uplc/bls",
-      "responsibility": "BLS12-381 constants of the own evaluator (G1 and G2 points, Miller-loop results), opaque over their bytes",
+      "responsibility": "BLS12-381 constants of the own evaluator (G1 and G2 points as their compressed bytes, Miller-loop results with jblst's value) and the pure facade over jblst and Bouncy Castle that the builtins compute with",
       "entryPoints": [
         "G1Element",
         "G2Element",
-        "MlResult"
+        "MlResult",
+        "Bls12_381",
+        "BlsFailure"
       ],
       "suites": [
-        "ConstantSuite"
+        "ConstantSuite",
+        "Bls12_381Suite"
       ],
       "docs": [
         "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
@@ -451,6 +454,33 @@
         "CekDeepSuite",
         "CekEvaluateSuite",
         "EnvSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
+      "module": "uplc",
+      "path": "uplc/builtin/extended",
+      "responsibility": "The denotations of the hashes, the Ed25519, ECDSA and Schnorr verifications, the BLS12-381 builtins, the conversions and bitwise builtins, expModInteger, the Value builtins, the arrays and batch 7, with their typed failures and the reference's log lines",
+      "entryPoints": [
+        "ExtendedDenotations",
+        "Bitwise",
+        "Values",
+        "Hashes",
+        "Signatures",
+        "ExpMod",
+        "Arrays"
+      ],
+      "suites": [
+        "ExtendedCorpusSuite",
+        "Batch7Suite",
+        "ExtendedDenotationsSuite",
+        "BitwiseSuite",
+        "ValuesSuite",
+        "SignaturesSuite",
+        "WycheproofEcdsaSuite",
+        "Bls12_381Suite"
       ],
       "docs": [
         "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
