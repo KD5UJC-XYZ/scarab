@@ -6,6 +6,7 @@
 // MIT notice: licenses/fs2-3.14.0/LICENSE.
 package xyz.kd5ujc.scarab.network
 
+import cats.Show
 import cats.effect.Async
 import cats.effect.Resource
 import cats.effect.std.Mutex
@@ -53,7 +54,8 @@ enum AcceptFailure:
     case System(error) => DiffusionFailure.System(error)
     case Defect(cause) => DiffusionFailure.Defect(cause)
 
-  def shown: String = diffusion.shown
+object AcceptFailure:
+  given [A <: AcceptFailure]: Show[A] = Show.show(_.diffusion.show)
 
 /** Where the node-to-node server's listening sockets come from: the JDK's in the node, scripted
   * ones in tests.

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import cats.Show
 import cats.effect.{Async, Resource}
 import cats.effect.std.Mutex
 import cats.effect.syntax.all.*
@@ -29,9 +30,12 @@ import xyz.kd5ujc.scarab.codec.DomainError
   * reference's `LocalAddress`, ouroboros-network c45735a5,
   * `ouroboros-network/framework/lib/Ouroboros/Network/Snocket.hs` 219-221).
   */
-final case class LocalAddress(path: String):
+final case class LocalAddress(path: String)
+
+object LocalAddress:
   /** `show`: `LocalAddress "<path>"` (`deriving Show via Quiet LocalAddress`). */
-  def shown: String = s"LocalAddress ${HaskellShow.string(path)}"
+  given Show[LocalAddress] =
+    Show.show(address => s"LocalAddress ${HaskellShow.string(address.path)}")
 
 /** A connection to the local socket: the socket's address and the client's. A Unix socket client
   * has no address of its own, so the reference names the `n` th accepted client `<path>@<n>`
@@ -52,8 +56,8 @@ object FileDescriptor:
     /** The descriptor's number. */
     def number: Int = fd
 
-    /** `show`: `FileDescriptor <n>` (`deriving Show via Quiet FileDescriptor`). */
-    def shown: String = s"FileDescriptor ${HaskellShow.intArgument(fd)}"
+  /** `show`: `FileDescriptor <n>` (`deriving Show via Quiet FileDescriptor`). */
+  given Show[FileDescriptor] = Show.show(fd => s"FileDescriptor ${HaskellShow.intArgument(fd)}")
 
 /** Why the sockets the node was configured with cannot be used; the node does not start. The local
   * case of the reference's `SocketConfigError` (cardano-node 11.1.3,
@@ -68,14 +72,17 @@ enum SocketConfigError extends DomainError:
     */
   def message: String = this match
     case LocalSocketError(path, cause) =>
-      s"Failure while attempting to remove the stale local socket: $path : ${cause.shown}"
+      s"Failure while attempting to remove the stale local socket: $path : ${cause.show}"
 
+object SocketConfigError:
   /** The derived `show` (`Socket.hs` 73), the `error` field of the reference's start-up trace: the
     * path is a `File`, whose `Show` is its string's.
     */
-  def shown: String = this match
-    case LocalSocketError(path, cause) =>
-      s"LocalSocketError ${HaskellShow.string(path)} ${cause.shown}"
+  given [A <: SocketConfigError]: Show[A] = Show.show(error =>
+    (error: SocketConfigError) match
+      case LocalSocketError(path, cause) =>
+        s"LocalSocketError ${HaskellShow.string(path)} ${cause.show}"
+  )
 
 /** Why the node-to-client side of the network stopped: what the reference's `DiffusionErrored`
   * names and `DiffusionError` carries (ouroboros-network c45735a5,
@@ -101,15 +108,18 @@ enum DiffusionFailure extends DomainError:
     */
   case UserInterrupt
 
+object DiffusionFailure:
   /** The `show` of the exception, the `error` field of `DiffusionErrored`. */
-  def shown: String = this match
-    case System(error) => error.shown
-    case PathTooLong(path) =>
-      val length = path.codePointCount(0, path.length)
-      s"pokeSockAddr: path is too long in SockAddrUnix ${HaskellShow.string(path)}, length $length, " +
-        s"unixPathMax ${LocalSockets.UnixPathMax}\n" + LocalSockets.PokeSockAddrCallStack
-    case Defect(cause) => cause.toString
-    case UserInterrupt => "user interrupt"
+  given [A <: DiffusionFailure]: Show[A] = Show.show(failure =>
+    (failure: DiffusionFailure) match
+      case System(error) => error.show
+      case PathTooLong(path) =>
+        val length = path.codePointCount(0, path.length)
+        s"pokeSockAddr: path is too long in SockAddrUnix ${HaskellShow.string(path)}, length $length, " +
+          s"unixPathMax ${LocalSockets.UnixPathMax}\n" + LocalSockets.PokeSockAddrCallStack
+      case Defect(cause) => cause.toString
+      case UserInterrupt => "user interrupt"
+  )
 
 /** The calls the local socket makes, one for each of the reference's (`removeFile`,
   * `getFileStatus`, the `Snocket` of a Unix socket), each failure a typed value.
