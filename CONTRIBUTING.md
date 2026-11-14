@@ -5,8 +5,9 @@ is that they are checked against the reference node or real chain data wherever 
 consensus-relevant. By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 Work items are tracked in [docs/roadmap.md](docs/roadmap.md) by stable ID (A1, B3, ...); reference
 the ID in issues and pull requests. How an item moves from idea to done, and the definition of done, are
-in [docs/process.md](docs/process.md); design decisions are recorded as [ADRs](docs/adr/README.md).
-Automated agent sessions also follow [AGENTS.md](AGENTS.md).
+in [docs/process.md](docs/process.md); design decisions are recorded as [ADRs](docs/adr/README.md). The
+rules the code follows are in [docs/design-rules.md](docs/design-rules.md). Automated agent sessions also
+follow [AGENTS.md](AGENTS.md).
 
 ## Build: Docker only
 
@@ -25,7 +26,7 @@ docker run --rm -v "$PWD":/work -v "$scarab_cache":/work/.cache \
 ```
 
 `check` (an alias in `build.sbt`, built from its `modules` list; CI runs the same alias) runs `scalafmtCheckAll`, compiles all test sources, runs the
-tests of all modules (`crypto`'s `BlstSuite` among them: the pinned jblst library, start-up checks, the export list of the JNI glue), the fuzz suite among them, and ends with `scalafixAll --check`; the compiler runs with `-Werror` and the unused-code warnings (imports, privates, locals, explicit parameters, pattern variables), and WartRemover refuses the disallowed patterns in the main sources of every module except `tools` (`build.sbt`, issue 650); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture/modules.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are
+tests of all modules (`crypto`'s `BlstSuite` among them: the pinned jblst library, start-up checks, the export list of the JNI glue), the fuzz suite among them, and ends with `scalafixAll --check`; the compiler runs with `-Werror` and the unused-code warnings (imports, privates, locals, explicit parameters, pattern variables), and WartRemover refuses the disallowed patterns in the main sources of every module except `tools` (`build.sbt`, issue 650; [FUN-1](docs/design-rules.md#fun-1)); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture/modules.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are
 cached under `.cache/` (gitignored). `bash scripts/sbtw node/runtimeClasspathFile` writes
 `node/target/runtime-classpath.txt`, which the scenarios use.
 
@@ -117,62 +118,11 @@ with a pattern that matches your own shell command line.
   [docs/playbooks/](docs/playbooks/README.md) point to where things are and how recurring tasks
   run; they set no rules of their own.
 
-## Style rules
+## Design rules
 
-- **Tagless final at effect boundaries.** Capabilities are algebras over `F[_]`; interpreters are
-  chosen in `Main`. `IO` appears only in `Main` and tools. No hidden global state:
-  the memoising caches are instances created in a `Resource` (`VerificationCache`) and handed to
-  the pure rules through a read interface (`Verdicts`); programs run by hand live in the `tools` module,
-  in the package of the code they exercise ([AGENTS.md](AGENTS.md#how-code-is-written-here)).
-- **Closed, domain/service-specific error ADTs.** Pure failures use `Either[DomainError, A]`;
-  effect boundaries use cats-mtl `Raise[F, E]` and lexically scoped `Handle.allow` (`PeerError`,
-  `ChainError`, `ValidationError`, `StorageError`, `ForgeError`, `ConfigError`). Preserve typed causes
-  across layers and render them only for logs, CLI output or wire presentation. This applies to test
-  helpers too: no `Either[String, …]`, string-based control flow or generic `Failure(message: String)`
-  wrapper standing in for domain cases. Never use `raiseError`/`throw` for a domain error; IO
-  exceptions are mapped to `StorageError`/`PeerError` at the boundary only. No `.get`/`.toOption.get`
-  on values that are not provably present. `scripts/check_error_channels.py` refuses a declared `Either[String, …]`; the free-form strings
-  left in error ADTs are tracked in [#386](https://github.com/KD5UJC-XYZ/scarab/issues/386).
-- **Functional code by default.** Imperative, side-effecting implementations are kept only for the
-  exceptions that [AGENTS.md](AGENTS.md#how-code-is-written-here) lists (a measured
-  performance-critical path, recorded in [performance.md](docs/performance.md), and a few narrow
-  others), each with its written reason; that list is the one authoritative statement of them.
-- **Pure rules.** Ledger, consensus, mempool and chain-selection rules are pure functions over
-  values. Effects wrap them, not the other way around.
-- **Laws and properties.** New algebras and stateful structures get cats-laws or ScalaCheck
-  properties (round trips, model equivalence, rollback), not only examples.
-- **Original-bytes rule.** Hash and sign exactly the bytes the reference hashes and signs: by
-  default the bytes as received. [Hashed and signed bytes](docs/design/hashed-bytes.md) lists the
-  places where the reference hashes or signs a re-encoding.
-- Exact arithmetic (`Rational`) in ledger calculations; no floating point.
-- Format with scalafmt (`scalafmtAll`); SPDX header (`// SPDX-License-Identifier: Apache-2.0`) on new source files.
-- Keep comments outside parameter and argument lists. Document parameter contracts in the
-  declaration's Scaladoc, and explain a call before the expression. Comments in a definition's
-  body are useful when they explain an invariant, intent, reference behaviour or a tradeoff.
-  Evaluate that purpose before rewriting or removing a comment; prefer maintained symbols,
-  ADRs and pinned upstream references to private notes or implementation-stage labels.
-- No secrets in the repository: never commit `.skey`, `.key`, KES/VRF/cold keys or node sockets.
-  Fixtures must be public chain data or throwaway keys, with provenance and licence recorded in
-  the fixture directory's README and `NOTICE`.
-
-Maintained native snapshot payload fixtures and ordinary test builders use the current native
-format (`FileKind.SnapshotFile.current`, V10; `fixtures/snapshot-v10`). Assert typed native state directly; a flat-state
-completion adapter is not the fixture's expected state. Pin conversion provenance and preserve
-original private captures outside the checkout. A deliberate future format bump still requires
-its migration and a previous-version read test under [ADR 0006](docs/adr/0006-versioned-formats-migrate-on-open.md).
-Generic toy-format migration framework tests keep testing version transitions independently of
-the maintained native fixture corpus. Fixture conversion alone does not retire production readers
-or authorise an operational writer upgrade.
-
-## Conformance comparisons
-
-Original upstream cases must execute without Scarab-specific expected failures, masked fields or
-rounding tolerances. Historical non-conformance and ledger reachability are reasons to fix the
-implementation or match the upstream harness profile, not to omit a case. A specific JVM limitation
-requires a minimal reproducer, platform evidence, exact affected cases and a tracked removal
-condition. Missing implementations and missing fixtures make the relevant gate incomplete; they
-must not contribute a pass. Report environmental skips and projection coverage separately from
-conformance results.
+The rules the code follows are in [docs/design-rules.md](docs/design-rules.md), each with its scope,
+exceptions, enforcement and reason; that document is their one home. A new rule, or a change to one, goes
+there ([owner review feedback](#owner-review-feedback)).
 
 ## Gates and ceremony by level of change
 
@@ -281,7 +231,7 @@ the comment or issue with the commit that fixes it (or the answer):
 | The feedback is | What to do |
 |---|---|
 | A specific defect or preference in one place | Fix it in that area, in a small commit that names the comment. |
-| A general rule ("never X", "always Y") | Write the rule into [AGENTS.md](AGENTS.md) (and here if humans need it), then sweep the tree for other occurrences and fix them in separate commits per area. A rule with no sweep is only half applied. |
+| A general rule ("never X", "always Y") | Write the rule into [docs/design-rules.md](docs/design-rules.md) with its ID, scope, exceptions, enforcement and reason, then sweep the tree for other occurrences and fix them in separate commits per area. A rule with no sweep is only half applied. |
 | A change of design | Open an issue (and an ADR or a design-document stage if it reverses a decision); do not fold it into a fix. |
 | A question | Answer it in the thread. If the answer shows a document is wrong or missing, fix the document too. |
 
@@ -318,7 +268,8 @@ A claim of compatibility needs evidence a reader can check:
   is outside the checkout on purpose; set `SCARAB_DATA_DIR` to move it; the old name `CSL_DATA_DIR` still works, and an existing `/tmp/cardano-scala-lab` is used while `/tmp/scarab` is absent).
 - Fill in the pull request template; it asks for the level of the change and the gates you ran. At level 1 and
   above, the body also has a "Deviations from the reference" section (`None`, or a table of the behaviour, the
-  reference file and line at its pin, what Scarab does and the link to the owner's approval) and a "Gaps" section
+  reference file and line at its pin, what Scarab does, and the difference's class with the link to its approval,
+  as [REF-7](docs/design-rules.md#ref-7) says) and a "Gaps" section
   (`None`, or bullets that each start with the issue tracking the gap); a section that opens with `None` may go on
   in prose. Scarab references the Haskell cardano-node in every respect for production behaviour, so a deviation
   is the owner's decision, never a silent choice. `scripts/pr_policy.py` checks the level, its floor from the
