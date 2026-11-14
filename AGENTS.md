@@ -60,11 +60,12 @@ Then:
 
 ## How code is written here
 
-The owner's requirements, in their words: *"functional type safe code that leans on the compiler to
-enforce correctness as much as possible"*; *"retain the use of Ask/Stateful/Reader and so on from
-MTL. Lean on the compiler with syntax classes, implicit derivation, givens, using, etc. … elegant
-scala code … I love the use of type parameters when I can use them"*; *"correct by construction, not
-correct by sequence of operations"*.
+Three requirements of the owner underlie the rules ([decisions register](docs/decisions.md#code)):
+- write functional, type-safe code that leans on the compiler to enforce correctness as far as it can;
+- keep using the cats-mtl capabilities (`Ask`, `Local`, `Stateful` and the others), and lean on the compiler with
+  syntax classes, implicit derivation, givens and `using` clauses: elegant Scala, with type parameters wherever
+  they fit;
+- make code correct by construction, not correct by the order of its operations.
 
 The rules are in [docs/design-rules.md](docs/design-rules.md), one home each: its ID, scope (main, tools,
 tests), exceptions and how a kept site is marked, enforcement and reason. Read the groups your change touches.
@@ -128,7 +129,8 @@ tests), exceptions and how a kept site is marked, enforcement and reason. Read t
   header; [CMT-5](docs/design-rules.md#cmt-5) scalafmt and scalafix.
 - [Documents](docs/design-rules.md#doc): [DOC-1](docs/design-rules.md#doc-1) an accepted ADR is amended, not
   rewritten; [DOC-2](docs/design-rules.md#doc-2) one home per policy or fact;
-  [DOC-3](docs/design-rules.md#doc-3) no volatile facts in static documents.
+  [DOC-3](docs/design-rules.md#doc-3) no volatile facts in static documents; [DOC-4](docs/design-rules.md#doc-4)
+  instructions, not quotations of the owner.
 
 ## Before you hand back
 

@@ -3,14 +3,17 @@
 
 **Status: Current.** The rules Scarab's code follows: the single home of each rule, which
 [AGENTS.md](../AGENTS.md) and [CONTRIBUTING.md](../CONTRIBUTING.md) link and the guards cite. Why a
-rule exists is in its ADR or in the owner's words. How work is tracked is in [process.md](process.md),
+rule exists is in its ADR or in the owner's decision, which links its row in the
+[decisions register](decisions.md). How work is tracked is in [process.md](process.md),
 and the gates of a change in [CONTRIBUTING.md](../CONTRIBUTING.md#gates-and-ceremony-by-level-of-change).
 
-The owner's requirements, in their words: *"functional type safe code that leans on the compiler to
-enforce correctness as much as possible"*; *"retain the use of Ask/Stateful/Reader and so on from
-MTL. Lean on the compiler with syntax classes, implicit derivation, givens, using, etc. … elegant
-scala code … I love the use of type parameters when I can use them"*; and *"correct by construction,
-not correct by sequence of operations"*.
+Three requirements of the owner underlie the rules (owner's decisions, 2026-10-15 and 2026-11-14,
+[decisions register](decisions.md#code)):
+- write functional, type-safe code that leans on the compiler to enforce correctness as far as it can;
+- keep using the cats-mtl capabilities (`Ask`, `Local`, `Stateful` and the others), and lean on the compiler with
+  syntax classes, implicit derivation, givens and `using` clauses: elegant Scala, with type parameters wherever
+  they fit;
+- make code correct by construction, not correct by the order of its operations.
 
 ## How to read a rule
 
@@ -29,7 +32,8 @@ heading, its text struck through (`~~…~~`), with a link to what replaced it. A
   definition, with a comment giving the reason, and other kept sites carry the comment alone;
 - **enforcement**: the compiler option, the wart, the guard script, or *review only*. *Review only; a
   guard is planned* means no tool checks the rule yet: a reviewer does;
-- **why**: the ADR, the owner's decision or the owner's words.
+- **why**: the ADR, or the owner's decision with its date and a link to its row in the
+  [decisions register](decisions.md); never a quotation ([DOC-4](#doc-4)).
 
 A new general rule, and a change to one, comes here, with a sweep of the tree for other occurrences
 ([owner review feedback](../CONTRIBUTING.md#owner-review-feedback)).
@@ -84,7 +88,8 @@ typed errors and accumulation as cats-mtl capabilities (`Ask`/`Local`, `Stateful
 - **Scope:** main.
 - **Exceptions:** none.
 - **Enforcement:** review only.
-- **Why:** [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md); the owner's words above.
+- **Why:** [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md); owner's decision, 2026-10-15
+  ([decisions register](decisions.md#code)).
 
 <a id="eff-2"></a>
 ### EFF-2. `IO` only at the edge
@@ -291,7 +296,8 @@ too, and fall under the same rule.
   `Wart.GlobalExecutionContext` (`disallowedWarts` in `build.sbt`). `scripts/check_imperative.py` refuses a
   new `try`, `catch` or `finally` in the same sources, against `docs/data/imperative-baseline.json`, which
   only shrinks. Java's mutable types, `synchronized` and `@volatile` are review only.
-- **Why:** the owner's words above; [#650](https://github.com/KD5UJC-XYZ/scarab/issues/650).
+- **Why:** owner's decision, 2026-10-15 ([decisions register](decisions.md#code));
+  [#650](https://github.com/KD5UJC-XYZ/scarab/issues/650).
 
 <a id="fun-2"></a>
 ### FUN-2. The narrow imperative exceptions
@@ -310,7 +316,8 @@ Imperative, side-effecting code is kept only for:
 - **Scope:** main.
 - **Exceptions:** this list is the whole of them.
 - **Enforcement:** review only: a reviewer checks that a kept site names one of (a) to (e).
-- **Why:** the owner's words above; [performance.md](performance.md) holds the measurements.
+- **Why:** owner's decision, 2026-10-15 ([decisions register](decisions.md#code)); [performance.md](performance.md)
+  holds the measurements.
 
 <a id="fun-3"></a>
 ### FUN-3. A kept site is marked and contained
@@ -528,8 +535,8 @@ may read the system clock and mutate.
 <a id="typ"></a>
 ## Types: correct by construction
 
-The owner's creed: *"correct by construction, not correct by sequence of operations"*. Types carry as much
-of the correctness as the compiler can check.
+Make code correct by construction, not correct by the order of its operations (owner's decision, 2026-11-14,
+[decisions register](decisions.md#code)). Types carry as much of the correctness as the compiler can check.
 
 <a id="typ-1"></a>
 ### TYP-1. Illegal states are unrepresentable
@@ -540,7 +547,7 @@ type parameter), not by the order in which code calls its checks.
 - **Scope:** main.
 - **Exceptions:** none.
 - **Enforcement:** review only.
-- **Why:** the owner's creed; [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md).
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)); [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md).
 
 <a id="typ-2"></a>
 ### TYP-2. Parse, don't validate
@@ -551,7 +558,7 @@ unchanged.
 - **Scope:** main.
 - **Exceptions:** none.
 - **Enforcement:** review only.
-- **Why:** the owner's creed.
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)).
 
 <a id="typ-3"></a>
 ### TYP-3. Opaque types with smart constructors
@@ -562,7 +569,7 @@ primitive. A constructor that can fail returns a typed error.
 - **Scope:** main.
 - **Exceptions:** none.
 - **Enforcement:** review only.
-- **Why:** the owner's creed; [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md).
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)); [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md).
 
 <a id="typ-4"></a>
 ### TYP-4. ADTs, not Boolean or String flags
@@ -572,7 +579,7 @@ A choice between modes or outcomes is an enum or a sealed ADT, not a `Boolean` o
 - **Scope:** main.
 - **Exceptions:** none.
 - **Enforcement:** review only.
-- **Why:** the owner's creed; [STR-3](#str-3).
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)); [STR-3](#str-3).
 
 <a id="typ-5"></a>
 ### TYP-5. Non-empty collections where emptiness is invalid
@@ -583,7 +590,7 @@ and the like).
 - **Scope:** main.
 - **Exceptions:** none.
 - **Enforcement:** review only.
-- **Why:** the owner's creed.
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)).
 
 <a id="typ-6"></a>
 ### TYP-6. Exhaustive matches
@@ -595,7 +602,7 @@ fails to compile until each match handles it.
 - **Exceptions:** none.
 - **Enforcement:** the compiler's exhaustivity warning, an error under `-Werror`, refuses a missing case.
   The wildcard is review only; a guard is planned.
-- **Why:** the owner's creed.
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)).
 
 <a id="typ-7"></a>
 ### TYP-7. Type-level sizes where lengths are fixed
@@ -606,7 +613,7 @@ A byte string or vector of fixed length carries its length in its type (Scala 3 
 - **Scope:** main.
 - **Exceptions:** none.
 - **Enforcement:** review only.
-- **Why:** the owner's creed.
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)).
 
 <a id="typ-8"></a>
 ### TYP-8. Lean on the compiler
@@ -618,7 +625,8 @@ givens and `using` clauses, and Monocle optics for nested state. Use type parame
 - **Scope:** main.
 - **Exceptions:** none.
 - **Enforcement:** review only.
-- **Why:** the owner's words above; [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md),
+- **Why:** owner's decision, 2026-10-15 ([decisions register](decisions.md#code));
+  [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md),
   [ADR 0007](adr/0007-era-indexed-state.md).
 
 <a id="typ-9"></a>
@@ -727,8 +735,8 @@ exception to the default is established only by reading the reference at its pin
 ## The reference
 
 The Haskell node is the reference ([ADR 0001](adr/0001-haskell-node-as-reference.md)). REF-1 to REF-4 are
-the owner's approved wording, verbatim
-([#474, 2026-11-14](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6880015076)). It restates
+the owner's decision of 2026-11-14
+([#474](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6880015076)), which restates
 the standing rule on reference bugs
 ([#474](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849)) with exact boundaries.
 ADR 0001 is not amended by it.
@@ -1056,3 +1064,19 @@ document's text.
   snapshot magic called current that is not the current one (`STALE_CURRENT`). The rest is review only; a
   guard is planned.
 - **Why:** a static document cannot stay current.
+
+<a id="doc-4"></a>
+### DOC-4. Instructions, not quotations
+
+An agent-facing document states each rule as an instruction to follow. It never quotes the owner and never
+excerpts a conversation. Where a rule needs a reason, it names the owner's decision with its date and links its row
+in the [decisions register](decisions.md), as "owner's decision, 2026-11-14" does.
+
+- **Scope:** [AGENTS.md](../AGENTS.md), [CONTRIBUTING.md](../CONTRIBUTING.md), this document, the
+  [playbooks](playbooks/README.md), the pull request template and the issue templates.
+- **Exceptions:** the historical records (rows of the decisions register as they were merged, the evidence logs,
+  the findings), and the decision text of an accepted ADR, which is amended, not rewritten ([DOC-1](#doc-1)). The
+  record of an approval in a pull request and in the storage format manifest ([FMT-1](#fmt-1)) holds the question
+  and the answer verbatim: it is evidence, not an instruction.
+- **Enforcement:** review only.
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#process)).
