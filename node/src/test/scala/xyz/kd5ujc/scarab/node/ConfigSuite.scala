@@ -578,6 +578,7 @@ class ConfigSuite extends FunSuite:
       Some("0.3") -> Some(0.3),
       Some("\"+inf\"") -> Some(Double.PositiveInfinity),
       Some("\"-inf\"") -> Some(Double.NegativeInfinity),
+      Some("\"\\u002binf\"") -> Some(Double.PositiveInfinity),
       Some("-0.5") -> Some(-0.5),
       Some("1e400") -> Some(Double.PositiveInfinity),
       Some("1e-400") -> Some(0.0),
@@ -596,6 +597,7 @@ class ConfigSuite extends FunSuite:
     val wrapped = List(
       Some("1e18446744073709551617") -> Some(10.0),
       Some("1e-18446744073709551615") -> Some(10.0),
+      Some("1.5e18446744073709551617") -> Some(15.0),
       Some("1e9223372036854775807") -> Some(Double.PositiveInfinity),
       Some("1e9223372036854775808") -> Some(0.0),
       Some("-1e9223372036854775808") -> Some(-0.0)
@@ -608,12 +610,15 @@ class ConfigSuite extends FunSuite:
       )
     )
     assertEquals(NodeConfig.DefaultPBftSignatureThreshold, 0.22)
-    // A numeric string, any other string and a Boolean are refused: "parsing Double failed".
+    // A numeric string, any other string, a Boolean, an array and an object are refused:
+    // "parsing Double failed".
     List(
       "\"0.3\"" -> JsonKind.String,
       "\"NaN\"" -> JsonKind.String,
       "\"Infinity\"" -> JsonKind.String,
-      "true" -> JsonKind.Boolean
+      "true" -> JsonKind.Boolean,
+      "[]" -> JsonKind.Array,
+      "{}" -> JsonKind.Object
     ).foreach((raw, found) =>
       assertEquals(
         read(Some(raw)),
