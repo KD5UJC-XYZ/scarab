@@ -4,8 +4,9 @@ name: Conformance reports
 # Scarab's reports for pragma-org's node-diversity-conformance site, on demand only
 # (docs/running/conformance.md): scripts/conformance/run.py builds the tools in the JDK image, runs each
 # chosen scenario on its pinned inputs and checks the report; the files are kept as a workflow artifact.
-# With `publish`, from main only, scripts/conformance/publish.py uploads them to the conformance-reports
-# pre-release. uplc-turbo is a timing benchmark and is not offered: it runs ad hoc on a quiet machine.
+# With `publish`, from main only, scripts/conformance/publish.py commits them to the public reports repository
+# KD5UJC-XYZ/scarab-conformance, pushing with the deploy key in the CONFORMANCE_REPO_DEPLOY_KEY secret.
+# uplc-turbo is a timing benchmark and is not offered: it runs ad hoc on a quiet machine.
 on:
   workflow_dispatch:
     inputs:
@@ -22,7 +23,7 @@ on:
         type: boolean
         default: true
       publish:
-        description: 'Publish the reports to the conformance-reports pre-release (main only)'
+        description: 'Publish the reports to KD5UJC-XYZ/scarab-conformance (main only)'
         type: boolean
         default: false
 
@@ -95,23 +96,30 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: publish to the conformance-reports pre-release
+    name: publish to the reports repository
     needs: reports
     if: ${{ inputs.publish }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # The push goes through the reports repository's deploy key, not this repository's token, which stays read-only.
     permissions:
-      contents: write
+      contents: read
     defaults:
       run:
         shell: bash
     env:
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
-      - name: Publish from main only
+      - name: Publish from main only, with the deploy key
+        env:
+          HAS_DEPLOY_KEY: ${{ secrets.CONFORMANCE_REPO_DEPLOY_KEY != '' }}
         run: |
           if [ "$GITHUB_REF" != refs/heads/main ]; then
-            echo "reports are published from main only, not $GITHUB_REF"
+            echo "::error::reports are published from main only, not $GITHUB_REF"
+            exit 1
+          fi
+          if [ "$HAS_DEPLOY_KEY" != true ]; then
+            echo "::error::the secret CONFORMANCE_REPO_DEPLOY_KEY is not set: add the private half of a deploy key with write access to KD5UJC-XYZ/scarab-conformance (docs/running/conformance.md)"
             exit 1
           fi
 
@@ -119,6 +127,16 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Check out the reports repository with its deploy key
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: KD5UJC-XYZ/scarab-conformance
+          ref: main
+          path: scarab-conformance
+          fetch-depth: 1
+          ssh-key: ${{ secrets.CONFORMANCE_REPO_DEPLOY_KEY }}
+          persist-credentials: true
 
       - name: Fetch the checked reports
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -129,4 +147,7 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -I scripts/conformance/publish.py --apply --repo "$GITHUB_REPOSITORY" "$RUNNER_TEMP/conformance"
+        run: |
+          python3 -I scripts/conformance/publish.py --apply --checkout scarab-conformance \
+            --identity 'github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>' \
+            "$RUNNER_TEMP/conformance"
