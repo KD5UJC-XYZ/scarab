@@ -147,6 +147,20 @@ class LedgerRulesSuite extends FunSuite:
     )
   }
 
+  test("a vote the mempool alone refuses is judged by LEDGER, which runs the scripts") {
+    val (state, tx) = UnelectedVote
+    val admitted = judge(fixture(state, tx))
+    admitted match
+      case LedgerRulesVerdict.Refused(Vector(), Vector(dropped), _) =>
+        assert(LedgerRulesNames.mempoolOnly(dropped), s"dropped: $dropped")
+      case other => fail(s"not judged by LEDGER: $other")
+    assertEquals(result(admitted), Some("pass"))
+    // the same transaction claiming that its scripts fail: it has none, so they pass, and the
+    // claim is refused (`ValidationTagMismatch`), which only the evaluation of phase two finds
+    val claimedInvalid = judge(fixture(state, tx.stripSuffix("f5f6") + "f4f6"))
+    assertEquals(result(claimedInvalid), Some("ValidationTagMismatch"))
+  }
+
   test("the harness's renamings: inputs, collect errors, refunds and unelected voters") {
     val spent = PredicateFailure.Mempool(MempoolProblem.AllInputsSpent)
     assertEquals(
@@ -268,8 +282,11 @@ object LedgerRulesSuite:
   private val Hash28 = Bytes(Vector.fill(28)(7.toByte))
   private val NoContext = FailureContext(hasInputs = true, unregistered = Map.empty)
 
-  /** The key hash of Amaru's public test key `dev-42`, kept apart from the field that names it. */
+  /** The key hash of Amaru's public test key `dev-42`, and of the cold credential of the committee
+    * member of fixture `00154`, kept apart from the field that names them.
+    */
   private val Dev42 = "93c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd8"
+  private val ColdMember = "ecc3093b061a9ed426cd9956161fc48d4ed1ac58dc4aaed7e1ce1830"
 
   /** The simple transfer with another initial state and transaction. */
   private def fixture(state: String, tx: String): Json =
@@ -358,6 +375,24 @@ object LedgerRulesSuite:
     )
   )
 
+  /** Fixture `00154` of the corpus (same provenance): a vote by the hot key of a committee member
+    * that holds no term, below protocol version 11, so that only the mempool refuses it.
+    */
+  private val UnelectedVote: (String, String) = (
+    oneInput(
+      "825820e4ab7bd9de7060f2f81fc907132ce2942081ac10b2b9454d53642eb304a64a3800",
+      s""", "committee": [{"cold_credential": "8200581c$ColdMember",""" +
+        s""" "status": "8200581c$Dev42"}],""" +
+        """ "proposals": [[{"transaction_id": "7e2b9d5f1a3c7e5b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b",""" +
+        """ "proposal_index": 0}, "Orphan", 6]]"""
+    ),
+    "84a500d9010281825820e4ab7bd9de7060f2f81fc907132ce2942081ac10b2b9454d53642eb304a64a38000181a2" +
+      "00581d6093c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd8011a00493e00021a00030d400f00" +
+      "13a18200581c93c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd8a18258207e2b9d5f1a3c7e5b" +
+      "9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b008201f6a100d90102818258202152f8d19b791d2445" +
+      "3242e15f2eab6cb7cffa7b6a5ed30097960e069881db125840f46d6100d906cb1424b6f9234fd187090bddf85d04" +
+      "53f8f09700cbcdf7491556c325dac760dc35efd1dc234e532e357d413aa35a99c1ba2310ed73caa9306008f5f6"
+  )
   private val Commit = "40ba995081b2b066cab497eade9abfbc0e350970"
   private val ParamsRef = "common/protocol-parameters/preprod-conway-v10.json"
   private val EraRef = "common/era-history/preprod-conway.json"

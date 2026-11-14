@@ -5,7 +5,15 @@ import cats.syntax.all.*
 import io.circe.Json
 import io.circe.syntax.*
 import xyz.kd5ujc.scarab.codec.DomainError
-import xyz.kd5ujc.scarab.ledger.rules.{CertEnv, Certs, CertsEnv, Judgment}
+import xyz.kd5ujc.scarab.ledger.rules.{
+  CertEnv,
+  Certs,
+  CertsEnv,
+  Counted,
+  Judgment,
+  Ledger,
+  LedgerEnv
+}
 import xyz.kd5ujc.scarab.ledger.state.ConwayLedgerState
 import xyz.kd5ujc.scarab.node.mempool.{MempoolState, Rejection}
 import xyz.kd5ujc.scarab.plutus.PlutusBackend
@@ -44,8 +52,9 @@ enum LedgerRulesVerdict:
   case Inadmissible(defect: TxDefect)
 
   /** The rules refused the transaction: its failures in the reference's order, with what their
-    * names depend on, and those dropped because only the mempool refuses them
-    * ([[LedgerRulesNames.mempoolOnly]]).
+    * names depend on. When the MEMPOOL rule refused it for what only the mempool refuses
+    * (`dropped`, [[LedgerRulesNames.mempoolOnly]]), the failures are those of LEDGER alone, as a
+    * block judges the transaction, and none means LEDGER accepted it.
     */
   case Refused(
       failures: Vector[PredicateFailure],
@@ -111,6 +120,7 @@ object LedgerRulesCase:
         (
           "refused",
           Vector(
+            "judged_by" -> (if dropped.isEmpty then "MEMPOOL" else "LEDGER").asJson,
             "failures" -> fs.map(failure(_, context)).asJson,
             "dropped" -> dropped.map(failure(_, context)).asJson
           )
@@ -131,6 +141,13 @@ object LedgerRulesCase:
   * a submitted one ([[MempoolState.parse]]), then applied by the MEMPOOL rule with every failure
   * recorded ([[xyz.kd5ujc.scarab.node.mempool.MempoolLedger.submit]], the reference's `applyTx`
   * that the corpus's reference harness calls), the scripts evaluated by `backend`.
+  *
+  * Below protocol version 11 the MEMPOOL rule refuses a vote of an unelected committee member,
+  * which a block admits, before it runs LEDGER, so LEDGER then runs with a failure recorded and
+  * skips what runs only when nothing has failed (the scripts, `whenFailureFree`,
+  * `Conway/Rules/Mempool.hs` and `Alonzo/Rules/Utxos.hs`, cardano-ledger f649f975). Such a
+  * transaction is judged again by the production LEDGER rule alone ([[Ledger]]), with every failure
+  * recorded, as LEDGERS judges it in a block.
   */
 object LedgerRulesRun:
   def judge(
@@ -164,8 +181,25 @@ object LedgerRulesRun:
       case Right(_) => LedgerRulesVerdict.Accepted
       case Left(LedgerFailure.Rejected(_, failures)) =>
         val (dropped, kept) = failures.toChain.toVector.partition(LedgerRulesNames.mempoolOnly)
-        refused(tx, context, kept, dropped)
+        if dropped.isEmpty then refused(tx, context, kept, dropped)
+        else asBlock(tx, context, dropped)
       case Left(defect: LedgerDefect) => undecided(defect)
+
+  /** LEDGER alone on the state MEMPOOL judged the transaction on. */
+  private def asBlock(
+      tx: Tx,
+      context: LedgerRulesContext,
+      dropped: Vector[PredicateFailure]
+  ): LedgerRulesVerdict =
+    Judgment.run(Ledger, Judgment.Policy.Accumulate)(
+      context.globals,
+      LedgerEnv(context.env, context.ledger.treasury),
+      Counted(context.ledger.ls, PlutusStats.zero),
+      tx
+    ) match
+      case Right(Right(_))       => refused(tx, context, Vector.empty, dropped)
+      case Right(Left(failures)) => refused(tx, context, failures.toChain.toVector, dropped)
+      case Left(defect)          => undecided(defect)
 
   private def undecided(defect: LedgerDefect): LedgerRulesVerdict = defect match
     case LedgerFailure.Undecodable(_, d) => LedgerRulesVerdict.Inadmissible(d)
