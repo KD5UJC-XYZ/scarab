@@ -78,4 +78,4 @@ echo "canary: s1 $verdict ($code) $txid: $answer"
 details=$(jq -cn --arg txid "$txid" --argjson code "$code" --arg answer "$answer" --argjson bytes "$bytes" \
   --arg verdict "$verdict" '{txid: $txid, bytes: $bytes, verdict: $verdict, exitCode: $code, answer: $answer}')
 if [ "$verdict" = "no answer" ]; then answered=false; else answered=true; fi
-assertion true true sometimes Sometimes "$CANARY_SUBMITTED" "$answered" "$details"
+must_record true true sometimes Sometimes "$CANARY_SUBMITTED" "$answered" "$details"

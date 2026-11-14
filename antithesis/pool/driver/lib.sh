@@ -49,9 +49,9 @@ LOGS_PRESENT="every pool's log is present and not empty"
 # assertion HIT MUST_HIT TYPE DISPLAY MESSAGE CONDITION [DETAILS]
 # Copies of the test commands run at once, so each line is appended under a lock, whole (after
 # cardano-foundation/cardano-node-antithesis `components/composer-sdk/helper_sdk_common.sh`). The lock is waited on:
-# a holder keeps it for one append, and the driver is left out of every fault. A line is never appended without it;
-# if `flock` itself fails, the line is dropped with a note on stderr, and the sometimes properties that then go
-# unrecorded show it.
+# a holder keeps it for one append, and the driver is left out of every fault, so a minute is never needed. A line is
+# never appended without it. A line that cannot be encoded or locked returns 1 with a note on stderr; the callers then
+# fail their command (`record_once`, `must_record`), so that "Commands finish with zero exit code" shows it.
 assertion() {
   local line
   line=$(jq -cn --argjson hit "$1" --argjson must "$2" --arg type "$3" --arg display "$4" --arg msg "$5" \
@@ -60,11 +60,17 @@ assertion() {
                           message: $msg, id: $msg, condition: $cond,
                           location: {class: "", function: "main", file: "antithesis/pool/driver/lib.sh",
                                      begin_line: 0, begin_column: 0}}
-                         + (if $details == null then {} else {details: $details} end))}') || return 0
+                         + (if $details == null then {} else {details: $details} end))}') ||
+    { echo "assertion: not encoded, not recorded: $5" >&2; return 1; }
   {
-    flock 9 || { echo "assertion: no lock on $STATE_DIR/sdk.lock, not recorded: $5" >&2; return 0; }
+    flock -w 60 9 || { echo "assertion: no lock on $STATE_DIR/sdk.lock in 60 s, not recorded: $5" >&2; return 1; }
     printf '%s\n' "$line" >> "$SDK"
   } 9>> "$STATE_DIR/sdk.lock"
+}
+
+# must_record ARGS...: an assertion that the command fails without (the catalogue, the canary's answer).
+must_record() {
+  assertion "$@" || exit 1
 }
 
 # A test command ends with exit code 0 when a signal stops it (the platform's per-command bound, or a closed pipe):
@@ -78,55 +84,64 @@ exit_zero_on_signal() {
 
 # once KEY: succeeds the first time KEY is given in this timeline, in any process (mkdir is atomic).
 once() {
-  mkdir "$STATE_DIR/once-$(printf '%s' "$1" | md5sum | cut -c1-32)" 2> /dev/null
+  mkdir "$(marker "$1")" 2> /dev/null
+}
+
+marker() {
+  printf '%s/once-%s' "$STATE_DIR" "$(printf '%s' "$1" | md5sum | cut -c1-32)"
+}
+
+# record_once KEY ARGS...: the assertion ARGS, the first time KEY is given in this timeline. A line not recorded gives
+# the marker back, so that a later pass records it, and fails the command.
+record_once() {
+  local key=$1
+  shift
+  once "$key" || return 0
+  assertion "$@" || { rmdir "$(marker "$key")" 2> /dev/null; exit 1; }
 }
 
 # The fallback SDK asks for the first true and the first false evaluation of an assertion only.
 sometimes() {
-  once "sometimes/$1/$2" || return 0
-  assertion true true sometimes Sometimes "$1" "$2" "$3"
+  record_once "sometimes/$1/$2" true true sometimes Sometimes "$1" "$2" "$3"
 }
 
 reached() {
-  once "reachable/$1" || return 0
-  assertion true true reachability Reachable "$1" true
+  record_once "reachable/$1" true true reachability Reachable "$1" true
 }
 
 # always MESSAGE CONDITION DETAILS: an evaluation of the always-or-unreachable MESSAGE, its first true and first false.
 always() {
-  once "always/$1/$2" || return 0
-  assertion true false always AlwaysOrUnreachable "$1" "$2" "$3"
+  record_once "always/$1/$2" true false always AlwaysOrUnreachable "$1" "$2" "$3"
 }
 
 # unreachable_hit MESSAGE DETAILS: the unreachable MESSAGE was reached; recorded once per timeline.
 unreachable_hit() {
-  once "unreachable/$1" || return 0
-  assertion true false reachability Unreachable "$1" false "$2"
+  record_once "unreachable/$1" true false reachability Unreachable "$1" false "$2"
 }
 
 declare_catalog() {
-  assertion false true reachability Reachable "$STARTS" false
+  must_record false true reachability Reachable "$STARTS" false
   local m
   for m in "$SCARAB_EXTENDS" "$HASKELL_EXTENDS" "$ALL_EXTEND" "$ALL_AGREE" "$PAYMENT_S1" "$PAYMENT_HASKELL"; do
-    assertion false true sometimes Sometimes "$m" false
+    must_record false true sometimes Sometimes "$m" false
   done
   # Scarab's `forged` event names a block's transactions; cardano-node's forge traces do not, so the reference
   # controls (S1_IMPLEMENTATION=cardano-node) leave this one out.
   if [ "${S1_IMPLEMENTATION:-scarab}" = scarab ]; then
-    assertion false true sometimes Sometimes "$S1_FORGES_TXS" false
+    must_record false true sometimes Sometimes "$S1_FORGES_TXS" false
   fi
   # The divergence detectors run where the compose file mounts the pools' logs at /logs.
   if [ -d /logs ]; then
     for m in "$HASKELL_REFUSED" "$SCARAB_REFUSED" "$SCARAB_FATAL" "$SCARAB_FALSE_CLOCK"; do
-      assertion false false reachability Unreachable "$m" false
+      must_record false false reachability Unreachable "$m" false
     done
-    assertion false false always AlwaysOrUnreachable "$FORK_BELOW_K" true
-    assertion false true sometimes Sometimes "$FORK_SEEN" false
+    must_record false false always AlwaysOrUnreachable "$FORK_BELOW_K" true
+    must_record false true sometimes Sometimes "$FORK_SEEN" false
   fi
   # Every config mounts /logs; without it this fails rather than the detectors passing unseen.
-  assertion false true sometimes Sometimes "$LOGS_PRESENT" false
+  must_record false true sometimes Sometimes "$LOGS_PRESENT" false
   if [ -d /opt/at/canary ]; then
-    assertion false true sometimes Sometimes "$CANARY_SUBMITTED" false
+    must_record false true sometimes Sometimes "$CANARY_SUBMITTED" false
   fi
 }
 
@@ -273,7 +288,8 @@ check_forks() {
   # At most once along each history: the marker branches with the timeline, so a branch taken after the line inherits
   # it and logs none of its own, and one taken before logs its own. A run's search then counts distinct crossings in
   # the run's tree of histories, to set against the distinct forge events in that tree, its exposure: runs explore
-  # different lengths of chain in the same time. A signal between the marker and the line loses that line.
+  # different lengths of chain in the same time. A signal between the marker and the line loses that line, so the
+  # count is a best effort that can fall short, never over.
   if [ "$below" = false ] && once "forks/past-k"; then
     echo "forks: first past k in this timeline, depth $depth, k $k: $result"
   fi

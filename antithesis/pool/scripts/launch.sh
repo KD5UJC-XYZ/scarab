@@ -25,6 +25,9 @@ esac
 # snouty's form, checked before the local validation: whole numbers with h, m or s, in that order, such as 1h30m.
 [[ $duration =~ ^([0-9]+h)?([0-9]+m)?([0-9]+s)?$ && -n $duration ]] ||
   { echo "launch: DURATION is like 15m, 1h or 1h30m, not $duration" >&2; usage; }
+h=${BASH_REMATCH[1]%h} m=${BASH_REMATCH[2]%m} s=${BASH_REMATCH[3]%s}
+[ $((10#${h:-0} * 3600 + 10#${m:-0} * 60 + 10#${s:-0})) -ge 60 ] ||
+  { echo "launch: DURATION is at least a minute, not $duration" >&2; usage; }
 launcher=${LAUNCHER:-amaru-cardano}
 case $launcher in
   amaru-cardano | basic_test) ;;

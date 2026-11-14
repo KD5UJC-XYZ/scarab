@@ -63,7 +63,8 @@ Each reads on from where the last pass in the timeline stopped. The properties, 
 - sometimes: a fork is observed (depth 1 or more), so that the fork-depth property cannot pass vacuously.
   Each pass also prints the fork tree's result (`forktree: ...`), and the first pass past k prints
   `forks: first past k ...` at most once along each history: a branch taken after it inherits it, one taken before
-  prints its own. A run's search then counts the distinct crossings in the run's tree of histories against the
+  prints its own; a signal between its marker and its line loses that line, so the count can fall short, never
+  over. A run's search then counts the distinct crossings in the run's tree of histories against the
   distinct forge events in it (runs explore different lengths of chain in the same time), and samples each pool's
   share of the longest chain from the `forktree:` lines; those samples are cumulative, so they are averaged, never
   summed.
@@ -71,7 +72,9 @@ Each reads on from where the last pass in the timeline stopped. The properties, 
   a broken path. It is declared in every config, and fails where `/logs` is not mounted; it says the logs were
   there, not that each detector read them through.
 
-The test commands append each assertion line under a lock, waited on and never bypassed, bound every call to a node
+The test commands append each assertion line under a lock, waited on for up to a minute and never bypassed (a line
+that cannot be locked or encoded fails its command, and a once-per-timeline line is then tried again), bound every
+call to a node
 with `timeout`, and exit 0 when a signal stops them, so that the platform's "Commands finish with zero exit code" is
 about the workload's own failures (after cardano-foundation/cardano-node-antithesis, whose commands meet killed
 nodes). A command stopped by a signal therefore also exits 0: that code alone does not say it finished.
