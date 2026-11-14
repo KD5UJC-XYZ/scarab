@@ -50,6 +50,12 @@ trait EraTx[E <: EraTag]:
   * top-level transaction only.
   */
 trait AlonzoEraTx[E <: EraTag] extends EraTx[E]:
+  // the superclasses `AlonzoEraTxBody era`, `AlonzoEraTxWits era` (with `AlonzoEraScript era`) and
+  // `AlonzoEraTxAuxData era` (`Alonzo/Tx.hs:266-275`, cardano-ledger f649f975)
+  override val bodyOf: AlonzoEraTxBody[E]
+  override def witsOf: AlonzoEraTxWits[E]
+  override def auxDataOf: AlonzoEraTxAuxData[E]
+
   /** `isValidTxL`. */
   def isValid(tx: Tx[TxLevel.Top, E]): IsPhase2Valid
 

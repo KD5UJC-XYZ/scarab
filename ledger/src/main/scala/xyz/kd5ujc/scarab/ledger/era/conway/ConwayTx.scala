@@ -5,6 +5,8 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraTx,
+  AlonzoEraTxAuxData,
+  AlonzoEraTxWits,
   EraTxAuxData,
   EraTxBody,
   EraTxError,
@@ -42,8 +44,8 @@ object ConwayTx:
 
   val instance: AlonzoEraTx[Conway] = new AlonzoEraTx[Conway]:
     override val bodyOf: EraTxBody.conway.type = EraTxBody.conway
-    override def witsOf: EraTxWits[Conway] = EraTxWits.conway
-    override def auxDataOf: EraTxAuxData[Conway] = EraTxAuxData.conway
+    override def witsOf: AlonzoEraTxWits[Conway] = EraTxWits.conway
+    override def auxDataOf: AlonzoEraTxAuxData[Conway] = EraTxAuxData.conway
     override def body[L <: TxLevel](tx: xyz.kd5ujc.scarab.ledger.era.Tx[L, Conway])(using
         l: TopOnly[L]
     ): xyz.kd5ujc.scarab.ledger.era.TxBody[L, Conway] =

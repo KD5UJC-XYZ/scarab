@@ -14,6 +14,7 @@ import xyz.kd5ujc.scarab.ledger.{
   PreprodDeepTx,
   Purpose,
   Script as FlatScript,
+  ScriptKind,
   Unsigned,
   TxBody as FlatTxBody,
   Witnesses
@@ -396,5 +397,12 @@ class EraConwaySuite extends munit.FunSuite:
       assertEquals(tx.isValid(c), IsPhase2Valid.of(flat.isValid))
       assertEquals(tx.bodyOf.id[TxLevel.Top](tx.body[TxLevel.Top](c)), flat.body.id)
       assertEquals(tx.auxData[TxLevel.Top](c).map(_.raw), flat.auxiliary)
+      // the Alonzo classes through the transaction's: collateral, redeemers, Plutus scripts
+      assertEquals(
+        tx.bodyOf.collateralInputs(tx.body[TxLevel.Top](c)).toVector,
+        flat.body.collateral.sorted
+      )
+      assertEquals(tx.witsOf.rdmrsTxWits(tx.wits[TxLevel.Top](c)).raw, flat.witnesses.redeemersRaw)
+      assertEquals(tx.witsOf.scriptsOf.eraMaxLanguage, ScriptKind.PlutusV3)
     }
   }
