@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{
   Anchor,
+  GovAction,
   Block,
   ByteStrings,
   CborRead,
@@ -16,7 +17,8 @@ import xyz.kd5ujc.scarab.ledger.{
   Header,
   LedgerDecodeError,
   RewardAccount,
-  TxIn
+  TxIn,
+  Value
 }
 import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraAnchor,
@@ -153,6 +155,29 @@ object DijkstraRules:
         .leftMap(Refusal.Chain(_))
     )(h => Step.at(h.signable, Index(field) :: path))
 
+  /** A top-level Dijkstra body of no inputs, no outputs and no fee, with `key` holding the sample.
+    */
+  private def body(key: String)(sample: Bytes) =
+    read(DijkstraTx.body(_, DijkstraLevel.Top))(hex("a4008001800200" + key) ++ sample)
+
+  private def relay(prefix: String, suffix: String = "")(sample: Bytes) =
+    read(DijkstraRelay.decode)(hex(prefix) ++ sample ++ hex(suffix))
+
+  /** A proposal procedure of a zero deposit, a testnet key reward account and an empty anchor. */
+  private def proposal(prefix: String, suffix: String = "")(sample: Bytes) =
+    read(DijkstraProposal.decode)(
+      hex("8400581de0" + zeros(28) + prefix) ++ sample ++ hex(suffix + "8260" + "5820" + zeros(32))
+    )
+
+  private def output(prefix: String, suffix: String)(sample: Bytes) =
+    read(DijkstraTxOut.decode)(hex(prefix) ++ sample ++ hex(suffix))
+
+  private val govActionCodec = Writing.Encoder("HaskellStateCodecs.govAction")
+  private val valueCodec = Writing.Encoder("UtxoCodecs.value")
+
+  private def mintMap(assets: Map[Bytes, Map[Bytes, BigInt]]) =
+    written(UtxoCodecs.value)(Value(0, assets)).flatMap(Step.at(_, List(Index(1))))
+
   private def notEmbedded(parent: String) = DatasetRule.Unmapped(Unmapped.NotEmbedded(parent))
 
   /** The rules, by the name of their directory in the corpus. */
@@ -259,7 +284,10 @@ object DijkstraRules:
     "big_int" -> dataRule(Some(Shape.Integer)),
     "bounded_bytes" -> dataRule(Some(Shape.ByteString)),
     "datum_option" -> unwritten("DijkstraDatum.decode")(DijkstraDatum.decode),
-    "data" -> notEmbedded("an output's inline datum"),
+    "data" -> DatasetRule
+      .unwritten("DijkstraTxOut.decode", Reach.Embedded("an output's inline datum"))(
+        output("a300581d61" + zeros(28) + "0100028201", "")
+      ),
     "transaction_input" -> DatasetRule(
       "DijkstraTxIn.decode",
       Reach.Direct,
@@ -283,22 +311,74 @@ object DijkstraRules:
       "DijkstraValue.decode",
       Reach.Embedded("[0, multiasset]")
     )(b => read(DijkstraValue.decode)(hex("8200") ++ b)),
-    "mint" -> notEmbedded("a Dijkstra transaction body's key 9"),
-    "nonzero_int64" -> notEmbedded("a Dijkstra mint"),
-    "asset_name" -> notEmbedded("a Dijkstra multi-asset value"),
-    "withdrawals" -> notEmbedded("a Dijkstra transaction body's key 5"),
-    "network_id" -> notEmbedded("a Dijkstra transaction body's key 15"),
-    "positive_coin" -> notEmbedded("a Dijkstra transaction body's donation"),
-    "account_balance_interval" -> notEmbedded(
-      "a Dijkstra transaction body's account balance intervals"
+    "mint" -> DatasetRule("DijkstraTx.body (Top)", Reach.Embedded("a body's key 9"), valueCodec)(
+      body("09")
+    )(t => mintMap(t.mint)),
+    "nonzero_int64" -> DatasetRule(
+      "DijkstraTx.body (Top)",
+      Reach.Embedded("a mint quantity of a body"),
+      valueCodec
+    )(b => body("09")(hex("a1581c" + zeros(28) + "a140") ++ b))(t =>
+      mintMap(t.mint).flatMap(Step.at(_, List(FirstValue, FirstValue)))
     ),
-    "account_balance_intervals" -> notEmbedded("a Dijkstra transaction body"),
+    "asset_name" -> DatasetRule(
+      "DijkstraTx.body (Top)",
+      Reach.Embedded("an asset name of a body's mint"),
+      valueCodec
+    )(b => body("09")(hex("a1581c" + zeros(28) + "a1") ++ b ++ hex("01")))(t =>
+      mintMap(t.mint).flatMap(Step.at(_, List(FirstValue, FirstKey)))
+    ),
+    "withdrawals" -> DatasetRule(
+      "DijkstraTx.body (Top)",
+      Reach.Embedded("a body's key 5"),
+      govActionCodec
+    )(
+      body("05")
+    )(t =>
+      written(HaskellStateCodecs.govAction)(GovAction.TreasuryWithdrawals(t.withdrawals, None))
+        .flatMap(Step.at(_, List(Index(1))))
+    ),
+    "network_id" -> DatasetRule(
+      "DijkstraTx.body (Top)",
+      Reach.Embedded("a body's key 15"),
+      Writing.Leaf("Codec.uintBig")
+    )(b => body("0f")(b).flatMap(t => t.networkId.toRight(Refusal.Form(Shape.Present))))(n =>
+      written(unsigned)(BigInt(n))
+    ),
+    "positive_coin" -> DatasetRule(
+      "DijkstraTx.body (Top)",
+      Reach.Embedded("a body's donation"),
+      Writing.Leaf("Codec.uintBig")
+    )(
+      body("16")
+    )(t => written(unsigned)(t.donation)),
+    "account_balance_intervals" -> DatasetRule
+      .unwritten("DijkstraTx.body (Top)", Reach.Embedded("a body's key 26"))(
+        body("181a")
+      ),
+    "account_balance_interval" -> DatasetRule.unwritten(
+      "DijkstraTx.body (Top)",
+      Reach.Embedded("an interval of a body's key 26")
+    )(b => body("181a")(hex("a1581de0" + zeros(28)) ++ b)),
     "certificate" -> unwritten("DijkstraCert.decode")(DijkstraCert.decode),
     "certificates" -> unwritten("DijkstraCert.set")(DijkstraCert.set),
     "relay" -> unwritten("DijkstraRelay.decode")(DijkstraRelay.decode),
-    "dns_name" -> notEmbedded("a Dijkstra pool relay"),
-    "ipv4" -> notEmbedded("a Dijkstra pool relay"),
-    "ipv6" -> notEmbedded("a Dijkstra pool relay"),
+    "dns_name" -> DatasetRule
+      .unwritten("DijkstraRelay.decode", Reach.Embedded("a multi-host relay"))(relay("8202")),
+    "ipv4" -> DatasetRule
+      .unwritten("DijkstraRelay.decode", Reach.Embedded("a single-host address relay"))(b =>
+        relay("8400f6", "f6")(b).flatMap {
+          case r @ DijkstraRelay.SingleHostAddr(_, Some(_), _) => Right(r)
+          case _                                               => Left(Refusal.Form(Shape.Present))
+        }
+      ),
+    "ipv6" -> DatasetRule
+      .unwritten("DijkstraRelay.decode", Reach.Embedded("a single-host address relay"))(b =>
+        relay("8400f6f6")(b).flatMap {
+          case r @ DijkstraRelay.SingleHostAddr(_, _, Some(_)) => Right(r)
+          case _                                               => Left(Refusal.Form(Shape.Present))
+        }
+      ),
     "pool_metadata" -> notEmbedded("a Dijkstra pool registration"),
     "credential" -> credential(DecodeField.CertificateCredential),
     "stake_credential" -> credential(DecodeField.CertificateCredential),
@@ -313,7 +393,13 @@ object DijkstraRules:
     )(read(n => V12.bytes(n, DecodeField.RewardAccount).flatMap(RewardAccount.decode)))(
       written(HaskellStateCodecs.rewardAccount)
     ),
-    "address" -> notEmbedded("a Dijkstra output"),
+    "address" -> DatasetRule(
+      "DijkstraTxOut.decode",
+      Reach.Embedded("[address, 0]"),
+      Writing.Kept("Address.raw")
+    )(
+      output("82", "00")
+    )(o => written(Codec.bytes)(o.address.raw)),
     "voter" -> unwritten("DijkstraVoting.voter")(DijkstraVoting.voter),
     "voting_procedures" -> unwritten("DijkstraVoting.procedures")(DijkstraVoting.procedures),
     "voting_procedure" -> DatasetRule.unwritten(
@@ -365,8 +451,14 @@ object DijkstraRules:
           hex("8400581de0" + zeros(28) + "8305f6") ++ b ++ hex("8260" + "5820" + zeros(32))
         )
       ),
-    "protocol_version" -> notEmbedded("a Dijkstra HardFork action"),
-    "major_protocol_version" -> notEmbedded("a Dijkstra HardFork action"),
+    "protocol_version" -> DatasetRule
+      .unwritten("DijkstraProposal.decode", Reach.Embedded("a HardFork action"))(
+        proposal("8301f6")
+      ),
+    "major_protocol_version" -> DatasetRule.unwritten(
+      "DijkstraProposal.decode",
+      Reach.Embedded("a HardFork action's major version")
+    )(proposal("8301f682", "00")),
     "epoch" -> word64(DecodeField.RetirementEpoch),
     "coin" -> word64(DecodeField.ProposalDeposit),
     "protocol_param_update" -> unwritten("DijkstraParamUpdate.decode")(DijkstraParamUpdate.decode),
