@@ -135,7 +135,8 @@ LIST_ITEM = re.compile(r"^ {0,3}(?:[-*+]|\d+[.)])\s")
 def rendered_lines(body):
     """The lines of `body` that GitHub renders as text: without HTML comments, fenced code blocks (a fence closes
     only on a line of the same character, at least as long, and nothing else) and indented code blocks (lines
-    indented four spaces or more after an empty line). A Setext underline is kept: `rendered_section` ends there."""
+    indented four spaces or more after an empty line or a heading). A Setext underline is kept: `rendered_section`
+    ends there."""
     lines, fence, code, previous = [], None, False, ""
     for line in COMMENT.sub("", body or "").splitlines():
         opened = FENCE.match(line)
@@ -146,7 +147,8 @@ def rendered_lines(body):
                 fence = None
         elif opened and not (opened.group(1)[0] == "`" and "`" in opened.group(2)):
             fence = opened.group(1)
-        elif indented and not blank and (code or not previous.strip()):
+        elif indented and not blank and (code or not previous.strip() or ANY_HEADING.match(previous)
+                                         or SETEXT.match(previous)):
             code = True
         elif not blank:
             code = False

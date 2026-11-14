@@ -261,7 +261,8 @@ class StorageFormatTests(unittest.TestCase):
         record = RECORD.split("\n\n", 1)[1]
         for hidden in ["```text\n```still-code\n" + RECORD + "```\n",
                        "## Storage format change\n\nOther\n=====\n\n" + record,
-                       "## Storage format change\n\n" + "".join("    " + line + "\n" for line in record.splitlines())]:
+                       "## Storage format change\n\n" + "".join("    " + line + "\n" for line in record.splitlines()),
+                       "## Storage format change\n" + "".join("    " + line + "\n" for line in record.splitlines())]:
             with self.subTest(hidden=hidden[:30]), self.assertRaisesRegex(policy.PolicyError, "section|is missing"):
                 self.check(self.pr(body=base + hidden))
         self.assertTrue(self.check(self.pr(body=base + RECORD + "---\n\nmore prose\n")))
