@@ -26,15 +26,19 @@ concrete case class, composed with `andThen`; one match-type case per era.
 ## Amendment (2026-11-14): era-specific types, no inter-era generics
 
 Decided by the owner on 2026-11-14 for the era-typing work ([#85](https://github.com/KD5UJC-XYZ/scarab/issues/85))
-and forging in every Shelley-based era ([#544](https://github.com/KD5UJC-XYZ/scarab/issues/544)).
+and forging in every Shelley-based era ([#544](https://github.com/KD5UJC-XYZ/scarab/issues/544)). This is the
+adopted design. The code reaches it in stages, and until a stage lands the constructs it removes stay in use.
 
-1. **What stays.** A type or container that keeps an operation inside one era is the encoding this ADR
-   chose: phantom eras, match types with one case per era, and `EraNes.InEra[E]`, which holds the state of
-   the era the chain is in with that era's witness.
-2. **No inter-era generics.** A type whose meaning changes with the era is not used. That rules out:
-   - evidence that lets one implementation stand for several eras (`PreConway[E]`);
-   - grouped shape witnesses (`ShelleyShapes`, `ConwayShapes`, `EraShape`);
-   - behaviour chosen by comparing eras (`ShelleyBasedEra.atLeast`);
+1. **What stays.** Everything that keeps an operation inside one era, as this ADR chose:
+   - phantom eras;
+   - match types with one case per era (`CertState[E]` selects the certificate state of era `E`);
+   - type classes with instances per era;
+   - `EraNes.InEra[E]`, which holds the state of the era the chain is in together with that era's witness.
+2. **No inter-era generics.** These are not used:
+   - evidence that groups eras so that one implementation serves the group (`PreConway[E]`);
+   - grouped shape witnesses (`ShelleyShapes`, `ConwayShapes`, `EraShape`), which supersede part of
+     [ADR 0026](0026-scala-3-9.md#amendment-2026-11-14-the-shape-proofs-are-superseded);
+   - behaviour chosen by comparing eras at run time (`ShelleyBasedEra.atLeast`);
    - one record for every era's transaction, whose fields are optional by era (`TxBody`, `Witnesses`, `Tx`,
      `TxOut`).
 3. **Behaviour from the reference's classes.** Era-dependent behaviour comes from type classes named after
@@ -51,13 +55,21 @@ and forging in every Shelley-based era ([#544](https://github.com/KD5UJC-XYZ/sca
    exhaustive match on it routes to that era's own code. It is never used to compare eras.
 6. **Consensus parameters per era.** Consensus parameters are given per era, as the reference gives a
    `PartialConsensusConfig` per era. One example is the window after which the candidate nonce is frozen:
-   the stability window (3k/f) up to Babbage, and the randomness stabilisation window (4k/f) in Conway
-   (ouroboros-consensus 82ecba329 `ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Node.hs:787-799`).
-   The two windows are distinct types, so an era's header cannot be checked with another era's window.
-7. **What a type cannot carry stays a runtime check:**
+   the stability window (⌈3k/f⌉) up to Babbage, and the randomness stabilisation window (⌈4k/f⌉) in Conway
+   (ouroboros-consensus 82ecba329 `ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Node.hs:787-799`
+   for Babbage, `:816-818` for Conway). The intended constraint has two parts:
+   - a header and the consensus configuration that checks it share one era parameter, and the
+     configuration's window is built only from the reference's choice for that era;
+   - the two windows are distinct types. This prevents mixing the two kinds of window, but on its own it
+     does not prove the era is right.
+7. **What era typing does not establish stays a runtime check:**
+   - predicates over transaction contents, ledger state, time and the parameters in force (validity
+     intervals, inputs present, fees, value conservation, size and unit limits);
    - a protocol-version gate inside an era (the reference's `hardfork*` predicates);
-   - a check that depends on the network;
+   - a check that depends on the network or on the configured reference build;
    - matching an era tag read from bytes against the era the chain is in.
+
+   Some of these could be carried by other refined types; an era index alone does not carry them.
 8. **Open, for a later amendment:**
    - how a type the reference shares across eras with the era as a parameter is mirrored (`ShelleyTxOut era`
      for Shelley, Allegra and Mary);
