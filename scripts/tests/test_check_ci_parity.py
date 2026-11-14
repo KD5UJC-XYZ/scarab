@@ -162,21 +162,26 @@ class ExpressionTests(unittest.TestCase):
         self.assertIs(self.value("!github.event_name == false"), True, "! binds tighter than ==")
         self.assertEqual(self.value("github.event.pull_request.number || 'x'"), "x")
         self.assertEqual(self.value("'a' && 'b'"), "b")
-        self.assertIs(self.value("1 == '1'"), True, "mixed types compare as numbers")
-        self.assertIs(self.value("null == 0"), True)
+        self.assertIs(self.value("null == null"), True)
+        self.assertIs(self.value("1 == 1.0"), True)
         self.assertIs(self.value("inputs.write"), None, "push and pull request events have no inputs")
         self.assertEqual(self.value("format('{0}-{{x}}-{1}', 'a', 2)"), "a-{x}-2")
         self.assertIs(self.value("contains('Hello', 'ELL')"), True)
         self.assertIs(self.value("startsWith(github.ref, 'refs/heads/')"), True)
 
-    def test_equality_converts_and_ignores_case_as_the_runner_does(self):
-        self.assertIs(self.value("'true' == 1"), False, "a string that is not a number is NaN")
-        self.assertIs(self.value("' 1 ' == 1"), True)
-        self.assertIs(self.value("'0x10' == 16"), True)
-        self.assertIs(self.value("'' == 0"), True)
-        self.assertIs(self.value("'\u00df' == 'ss'"), False, "case is ignored one character at a time")
-        self.assertIs(self.value("'stra\u00dfe' == 'STRA\u00dfE'"), True)
+    def test_only_comparisons_the_runner_decides_alike_are_evaluated(self):
+        self.assertIs(self.value("'Pull_Request' == 'pull_request'"), True, "ASCII case is ignored")
         self.assertIs(self.value("always()"), True)
+        # The runner converts across types (a string to a number, hex and octal in 32 bits) and folds non-ASCII
+        # case by .NET rules; the guard models neither and refuses them.
+        for source in ("'true' == 1", "'0xffffffff' == 4294967295", "'' == 0", "null == 0",
+                       "'\u00df' == 'ss'", "'\u0131' == 'I'", "contains('\u0131', 'I')"):
+            with self.subTest(source):
+                with self.assertRaises(parity.ReadError):
+                    self.value(source)
+        run = self.value("github.run_id > 0")
+        self.assertIsInstance(run, parity.Unknown, "the run id is not a value the guard knows")
+        self.assertTrue(run.event)
 
     def test_unknowns_are_kept_with_what_they_depend_on(self):
         shared = self.value("needs.a.outputs.run == 'true'")
@@ -234,8 +239,28 @@ class RuleTests(unittest.TestCase):
         steps = ("- if: github.event_name == 'pull_request'\n  id: s\n  run: echo SKIP=1 >> \"$GITHUB_ENV\"\n"
                  "- if: env.SKIP != '1'\n  run: make\n- if: steps.s.outcome != 'success'\n  run: make\n")
         self.assertEqual(problems(workflow(job(steps=steps))), [
-            f"{WORKFLOW}: job check, step {n} (run): its `if` may hold on a push to main where it does not on a pull "
-            "request" for n in (2, 3)])
+            f"{WORKFLOW}: job check, step 1 (s): runs differently on the two events and writes $GITHUB_ENV or "
+            "$GITHUB_PATH for the steps after it",
+            f"{WORKFLOW}: job check, step 3 (run): its `if` may hold on a push to main where it does not on a pull "
+            "request"])
+
+    def test_what_ran_differently_is_not_read_anywhere_else(self):
+        copied = ("- id: a\n  if: github.event_name == 'pull_request'\n  run: echo skip=true >> \"$GITHUB_OUTPUT\"\n"
+                  "- id: b\n  run: echo 'skip=${{ steps.a.outputs.skip }}' >> \"$GITHUB_OUTPUT\"\n"
+                  "- if: steps.b.outputs.skip != 'true'\n  run: make check\n")
+        self.assertEqual(problems(workflow(job(steps=copied))), [
+            f"{WORKFLOW}: job check, step 2 (b): `run` reads the event, or what ran differently on the two events",
+            f"{WORKFLOW}: job check, step 3 (run): its `if` may hold on a push to main where it does not on a pull "
+            "request"])
+        select = job("select", "if: github.event_name == 'pull_request'\n")
+        for lines in ("needs: select\nif: always() && !contains(toJSON(needs), 'true')\n",
+                      "needs: select\nif: always() && needs[vars.PRODUCER].outputs.skip != 'true'\n"):
+            with self.subTest(lines):
+                self.assertEqual(problems(workflow(select + job("check", lines))), [
+                    f"{WORKFLOW}: job check: its `if` may hold on a push to main where it does not on a pull request"])
+        env = job("check", "needs: select\nif: always()\nenv:\n  SKIP: ${{ needs.select.outputs.skip }}\n")
+        self.assertEqual(problems(workflow(select + env)), [
+            f"{WORKFLOW}: job check: `env` reads the event, or what ran differently on the two events"])
 
     def test_failure_handlers_can_run_whatever_their_needs(self):
         jobs = (job("a", steps="- run: exit 1\n") + job("b", "needs: a\nif: false\n")
@@ -243,11 +268,12 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(problems(workflow(jobs)), [
             f"{WORKFLOW}: job check: runs on a push to main but cannot run on a pull request to main"])
 
-    def test_conditions_the_runner_decides_differently_from_python_are_refused(self):
-        for condition in ("github.event_name == 'push' || 'true' == 1", "github.event_name == 'push' || '\u00df' == 'ss'"):
+    def test_conditions_the_runner_may_decide_otherwise_are_refused(self):
+        for condition in ("github.event_name == 'push' || 'true' == 1", "github.event_name == 'push' || '\u0131' == 'I'"):
             with self.subTest(condition):
-                self.assertEqual(problems(workflow(job("check", f"if: {condition}\n"))), [
-                    f"{WORKFLOW}: job check: runs on a push to main but cannot run on a pull request to main"])
+                found = problems(workflow(job("check", f"if: {condition}\n")))
+                self.assertEqual(len(found), 1, found)
+                self.assertTrue(found[0].startswith(f"{WORKFLOW}: cannot be read by this guard"), found)
         self.assertEqual(problems(workflow(job("check", "if: github.event_name == 'push' || always()\n"))), [])
 
     def test_a_condition_on_the_run_alone_passes(self):
@@ -282,20 +308,20 @@ class RuleTests(unittest.TestCase):
 
     def test_reading_the_event_in_a_script_or_a_value_is_refused(self):
         cases = {
-            "script": ('- run: test "$GITHUB_EVENT_NAME" = push\n', "step 1 (run): `run` reads the event"),
-            "env": ("- run: make\n  env:\n    BASE: ${{ github.event.before }}\n", "step 1 (run): `env` reads the event"),
-            "ref": ("- run: echo ${{ github.ref_name }}\n", "step 1 (run): `run` reads the event"),
+            "script": ('- run: test "$GITHUB_EVENT_NAME" = push\n', "step 1 (run): `run` reads the event, or what ran differently on the two events"),
+            "env": ("- run: make\n  env:\n    BASE: ${{ github.event.before }}\n", "step 1 (run): `env` reads the event, or what ran differently on the two events"),
+            "ref": ("- run: echo ${{ github.ref_name }}\n", "step 1 (run): `run` reads the event, or what ran differently on the two events"),
         }
         for name, (steps, message) in cases.items():
             with self.subTest(name):
                 self.assertEqual(problems(workflow(job(steps=steps))), [f"{WORKFLOW}: job check, {message}"])
         found = problems(workflow(job(lines="continue-on-error: ${{ github.event_name == 'push' }}\n")))
-        self.assertEqual(found, [f"{WORKFLOW}: job check: `continue-on-error` reads the event"])
+        self.assertEqual(found, [f"{WORKFLOW}: job check: `continue-on-error` reads the event, or what ran differently on the two events"])
         for script in ("echo ${{ github[format('event{0}', '_name')] }}", "echo '${{ toJSON(github) }}'",
                        'test "$GITHUB_ACTOR" = bot', "echo ${{ github.triggering_actor }}"):
             with self.subTest(script):
                 self.assertEqual(problems(workflow(job(steps=f"- run: {script}\n"))),
-                                 [f"{WORKFLOW}: job check, step 1 (run): `run` reads the event"])
+                                 [f"{WORKFLOW}: job check, step 1 (run): `run` reads the event, or what ran differently on the two events"])
         self.assertEqual(problems(workflow(job(steps="- run: echo ${{ github.sha }} ${{ github.repository }}\n"))), [])
 
     def test_reusable_workflows_and_local_actions_are_refused(self):
@@ -384,6 +410,19 @@ class ConcurrencyTests(unittest.TestCase):
         self.assertEqual(problems(workflow(job(), concurrency=titled)), [
             f"{WORKFLOW}: a pull_request run's group ({WORKFLOW}) may equal its group on a push to main; give them "
             "different fixed text"])
+        cased = job("a", "concurrency: TASK-${{ github.run_id }}\n") + job("b", "concurrency: task-${{ github.run_id }}\n")
+        self.assertEqual(problems(workflow(cased)), [
+            f"{WORKFLOW}: job b: shares its concurrency group with {WORKFLOW}: job a in the same run"],
+            "group names compare ignoring case")
+        decided = ("name: O\non:\n  pull_request:\nconcurrency:\n  group: ${{ github.run_id > 0 && format('w-{0}', "
+                   "github.event.pull_request.title) || format('pr-{0}', github.run_id) }}\n  cancel-in-progress: true\n"
+                   "jobs:\n" + textwrap.indent(job(), "  "))
+        self.assertEqual(parity.findings([(WORKFLOW, workflow(job())), (".github/workflows/o.yml", decided)], {}), [
+            f"{WORKFLOW}: a pull_request run's group (.github/workflows/o.yml) may equal its group on a push to main; "
+            "give them different fixed text"], "a decision on the run id is not taken")
+        unreachable = ("name: O\non:\n  pull_request:\njobs:\n" + textwrap.indent(
+            job("never", "if: false\nconcurrency: w-${{ github.event.pull_request.title }}\n"), "  "))
+        self.assertEqual(parity.findings([(WORKFLOW, workflow(job())), (".github/workflows/o.yml", unreachable)], {}), [])
         other = ("name: O\non:\n  pull_request_target:\nconcurrency:\n  group: w-run-${{ github.event.pull_request.number }}\n"
                  "  cancel-in-progress: true\njobs:\n" + textwrap.indent(job(), "  "))
         self.assertEqual(parity.findings([(WORKFLOW, workflow(job())), (".github/workflows/o.yml", other)], {}), [
