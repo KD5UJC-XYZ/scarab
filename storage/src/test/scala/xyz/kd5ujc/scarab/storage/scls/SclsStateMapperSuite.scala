@@ -354,10 +354,12 @@ class SclsStateMapperSuite extends FunSuite:
       rebuilt
     )
 
+    // an order value that does not start at zero is only a sort key, as in the reference's import
+    assertNotEquals(proposalValue.order, Word64.zero)
     val outOfOrder = key -> SclsValue.Entry.Proposal(orderedValue.copy(order = proposalValue.order))
     assertEquals(
       SclsStateMapper.overlay(base, (rootedEntries :+ outOfOrder).iterator),
-      Left(SclsStateMapper.Error.ProposalOrder(0, 7))
+      Right(rebuilt)
     )
     val changedProcedure = orderedValue.copy(
       proposal = orderedValue.proposal.copy(deposit = orderedValue.proposal.deposit + 1)
@@ -369,11 +371,68 @@ class SclsStateMapperSuite extends FunSuite:
       ),
       Left(SclsStateMapper.Error.ProposalProcedureMismatch(id))
     )
-    val secondId = id.copy(txId = Bytes.wrap(Array.fill[Byte](32)(1)))
-    val duplicateOrder = SclsKey.Key.Proposals(secondId) -> SclsValue.Entry.Proposal(orderedValue)
+  }
+
+  // `importNamespaceEntries` for "gov/proposals/v0" converts every entry, sorts them by order value
+  // with `sortOn` (stable) and collects them with `OMap.fromFoldable`, which keeps the first of a
+  // repeated id (cardano-ledger f649f975, `CanonicalState/Conway/Import.hs:219-227`;
+  // `Data/OMap/Strict.hs:178-184,227-231`)
+  private def orderedProposalId(fill: Int) =
+    xyz.kd5ujc.scarab.ledger.GovActionId(Bytes.wrap(Array.fill[Byte](32)(fill.toByte)), 0)
+
+  /** A proposal row of the id made from `fill`, with an order value and an expiry. */
+  private def orderedRow(fill: Int, order: Long, expiresAfter: Long = 9) =
+    SclsKey.Key.Proposals(orderedProposalId(fill)) -> SclsValue.Entry.Proposal(
+      proposalValue.copy(
+        order = Word64.fromUnsigned(order),
+        expiresAfter = EpochNo.fromUnsigned(expiresAfter)
+      )
+    )
+
+  /** The ids and expiries of the proposals the overlay of `rows` stores, in their order. */
+  private def importedProposals(rows: (SclsKey.Key, SclsValue.Entry)*) =
+    SclsStateMapper
+      .overlay(base, (rootedFor(fixtureEntries, proposalValue.proposal) ++ rows).iterator)
+      .map(ConwayNewEpochState.gov.get(_).proposals.actions.map(a => a.id -> a.expiresAfter))
+
+  test("proposals are sorted by their order value, which need not run from 0 to n-1") {
     assertEquals(
-      SclsStateMapper.overlay(base, (rootedEntries ++ Vector(row, duplicateOrder)).iterator),
-      Left(SclsStateMapper.Error.ProposalOrder(1, 0))
+      importedProposals(orderedRow(1, 5), orderedRow(2, 2), orderedRow(3, 9)),
+      Right(
+        Vector(
+          orderedProposalId(2) -> BigInt(9),
+          orderedProposalId(1) -> BigInt(9),
+          orderedProposalId(3) -> BigInt(9)
+        )
+      )
+    )
+  }
+
+  test("proposals of equal order value keep their arrival order") {
+    assertEquals(
+      importedProposals(orderedRow(1, 0), orderedRow(2, 0)),
+      Right(Vector(orderedProposalId(1) -> BigInt(9), orderedProposalId(2) -> BigInt(9)))
+    )
+    assertEquals(
+      importedProposals(orderedRow(2, 0), orderedRow(1, 0)),
+      Right(Vector(orderedProposalId(2) -> BigInt(9), orderedProposalId(1) -> BigInt(9)))
+    )
+  }
+
+  test("of a repeated proposal id the entry first after the sort by order value is kept") {
+    assertEquals(
+      importedProposals(
+        orderedRow(1, 5, expiresAfter = 10),
+        orderedRow(2, 3),
+        orderedRow(1, 2, expiresAfter = 11)
+      ),
+      Right(Vector(orderedProposalId(1) -> BigInt(11), orderedProposalId(2) -> BigInt(9))),
+      "the later arrival with the lower order value"
+    )
+    assertEquals(
+      importedProposals(orderedRow(1, 4, expiresAfter = 10), orderedRow(1, 4, expiresAfter = 11)),
+      Right(Vector(orderedProposalId(1) -> BigInt(10))),
+      "an equal order value: the first arrival"
     )
   }
 

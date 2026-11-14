@@ -73,7 +73,6 @@ object SclsStateMapper:
     case ProposalEncoding(cause: ConstraintViolation)
     case ProposalProcedureDecode(cause: DecodeError)
     case ProposalProcedureMismatch(id: GovActionId)
-    case ProposalOrder(expected: BigInt, found: BigInt)
 
     /** The proposals do not form the store `mkProposals` rebuilds from them and their roots
       * (cardano-ledger@f649f975, CanonicalState/Conway/Import.hs:396-401, [[Proposals.rebuild]]).
@@ -93,7 +92,7 @@ object SclsStateMapper:
       parameters: Map[SclsKey.Parameters, Params.ConwayPParams],
       proposalRoots: Map[SclsKey.Purpose, GovActionId],
       dreps: SortedMap[Credential[DRepRole], DRepState],
-      proposals: Map[GovActionId, SclsValue.ProposalValue]
+      proposals: Vector[(GovActionId, SclsValue.ProposalValue)]
   )
 
   /** Incremental immutable overlay state for streaming import. A failed push leaves this builder
@@ -248,22 +247,19 @@ object SclsStateMapper:
     case S.Credential.KeyHashObj(hash)    => LedgerCredential.Key(hash.bytes)
     case S.Credential.ScriptHashObj(hash) => LedgerCredential.Script(hash.bytes)
 
+  /** The proposals of the namespace, in the order the reference's import gives them (cardano-ledger
+    * f649f975,
+    * `libs/cardano-ledger-canonical-state/conway/Cardano/Ledger/CanonicalState/Conway/Import.hs:219-227`):
+    * every entry converted as it arrives, then sorted by its order value with `sortOn`, which keeps
+    * the arrival order of equal values, and collected with `OMap.fromFoldable`, which keeps the
+    * first of a repeated id (`libs/cardano-data/src/Data/OMap/Strict.hs:178-184,227-231`). The
+    * order values need not be contiguous.
+    */
   private def rebuildProposals(
-      proposals: Map[GovActionId, SclsValue.ProposalValue]
+      proposals: Vector[(GovActionId, SclsValue.ProposalValue)]
   ): Either[Error, Vector[GovActionState]] =
-    val ordered = proposals.toVector.sortBy { case (_, value) => value.order.toBigInt }
-    val contiguous = ordered.zipWithIndex.foldLeft[Either[Error, Unit]](Right(())) {
-      case (result, ((_, value), expected)) =>
-        result.flatMap(_ =>
-          Either.cond(
-            value.order.toBigInt == BigInt(expected),
-            (),
-            Error.ProposalOrder(BigInt(expected), value.order.toBigInt)
-          )
-        )
-    }
-    contiguous.flatMap { _ =>
-      ordered.traverse { case (id, value) =>
+    proposals
+      .traverse { case (id, value) =>
         for
           decodedProcedure <- HaskellStateCodecs
             .proposal(using conwayProtVer)
@@ -283,7 +279,7 @@ object SclsStateMapper:
           poolVotes = value.stakePoolVotes.iterator.map { case (hash, vote) =>
             hash.bytes -> vote
           }.toMap
-        yield GovActionState(
+        yield value.order.toBigInt -> GovActionState(
           id,
           committeeVotes,
           drepVotes,
@@ -293,7 +289,7 @@ object SclsStateMapper:
           value.expiresAfter.toBigInt
         )
       }
-    }
+      .map(_.sortBy(_._1).map(_._2).distinctBy(_.id))
 
   /** Overlay a complete stream for the implemented namespaces onto its explicit complete base.
     * Unrepresented fields and the UTxO handle remain those of `base`.
@@ -324,7 +320,7 @@ object SclsStateMapper:
         Map.empty,
         Map.empty,
         Sorted.empty[Credential[DRepRole], DRepState],
-        Map.empty
+        Vector.empty
       )
     )
 
@@ -401,11 +397,7 @@ object SclsStateMapper:
                 Error.DuplicateKey(key)
               )
             case (SclsKey.Key.Proposals(id), SclsValue.Entry.Proposal(proposal)) =>
-              Either.cond(
-                !acc.proposals.contains(id),
-                acc.copy(proposals = acc.proposals.updated(id, proposal)),
-                Error.DuplicateKey(key)
-              )
+              Right(acc.copy(proposals = acc.proposals :+ (id -> proposal)))
             case (SclsKey.Key.CommitteeEntities, SclsValue.Entry.CommitteeEntity(state)) =>
               if acc.committeeEntities.nonEmpty then Left(Error.DuplicateSingleton(key.namespace))
               else Right(acc.copy(committeeEntities = Some(state)))
