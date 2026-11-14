@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from .. import metrics as node_metrics
 from .. import eratx, ntcquery, reference_tracing
@@ -391,14 +392,43 @@ def reference_invalid_blocks(views):
     return {pool: v["invalid"] for pool, v in views.items() if v["invalid"]}
 
 
-def settled_tips(name, nodes, on_tips=lambda tips: None, timeout=90, pause=1.0):
-    """{pool: tip} of the Haskell pools once they agree on the tip, or the last reading after `timeout` s; each reading
-    is also given to `on_tips`, which takes the leadership schedule of an epoch the wait spans."""
+class ScheduleCollector:
+    """Takes the leadership schedule of every epoch from the cluster's start to the forging cutoff, in a thread of its
+    own: every `every` seconds it gives the observer's tip (`read_tip`) to `take`, which asks for the schedule of an
+    epoch it has none of. The reference answers `--current` only, and the scenario's own flow blocks for minutes at a
+    time (the start, the join gate, the Plutus load's last round, the settling, the comparisons) while the Scala node
+    forges. A reading that fails is the next one's to make; an epoch it never reaches is reported as absent."""
+
+    def __init__(self, read_tip, take, every=2.0):
+        self.read_tip, self.take, self.every = read_tip, take, every
+        self.errors = []
+        self.stopping = threading.Event()
+        self.thread = threading.Thread(target=self.run, daemon=True)
+
+    def start(self):
+        self.thread.start()
+        return self
+
+    def run(self):
+        while not self.stopping.is_set():
+            try:
+                self.take(self.read_tip())
+            except (Exception, SystemExit) as e:  # the collector's boundary: recorded, and the next reading goes on
+                self.errors.append(repr(e)[:200])
+            self.stopping.wait(self.every)
+
+    def stop(self, timeout=90):
+        """Stop after the reading under way; past `timeout` the thread is left to end on its own."""
+        self.stopping.set()
+        self.thread.join(timeout)
+
+
+def settled_tips(name, nodes, timeout=90, pause=1.0):
+    """{pool: tip} of the Haskell pools once they agree on the tip, or the last reading after `timeout` s."""
     deadline = time.monotonic() + timeout
     tips = {}
     while time.monotonic() < deadline:
         tips = {f"pool{n}": tip_at(name, f"{ENV}/socket/node{n}/sock") for n in nodes}
-        on_tips(tips)
         if all(tips.values()) and len({t["hash"] for t in tips.values()}) == 1:
             break
         time.sleep(pause)
@@ -415,14 +445,12 @@ def forging_counters(name, fetch):
         return None, f"{got.stdout[:100]!r} {got.stderr[:200]!r}"
 
 
-def wait_joined(name, log, socket, on_tip=lambda tip: None, timeout=pool_plutus.JOIN_TIMEOUT):
+def wait_joined(name, log, socket, timeout=pool_plutus.JOIN_TIMEOUT):
     """Seconds until blocks and transactions crossed between the Haskell pools and the Scala node both ways
-    (`pool_plutus.joined`), the observer's tip read at `socket` and the Scala node's events from `log`. Each tip read is
-    also given to `on_tip`, which takes the leadership schedule of an epoch the wait spans."""
+    (`pool_plutus.joined`), the observer's tip read at `socket` and the Scala node's events from `log`."""
     began, tips = time.monotonic(), set()
     while time.monotonic() - began < timeout:
         tip = tip_at(name, socket)
-        on_tip(tip)
         if tip:
             tips.add(tip["hash"])
         if pool_plutus.joined(log_counts(log)[1], tips):
@@ -528,13 +556,14 @@ def pool(args):
     schedules = {}  # epoch -> the slots the oracle says the Scala pool leads
 
     def take_schedule(seen):
-        # the reference answers `--current` only: every loop that reads the observer's tip asks for its epoch's
+        # the reference answers `--current` only: the collector asks for the epoch of each tip it reads
         if seen and seen["epoch"] not in schedules:
             got = leadership_schedule(args.name, f"{ENV}/socket/node{observer}/sock", ours)
             if got is not None:
                 schedules[seen["epoch"]] = got
                 print(json.dumps({"schedule": {"epoch": seen["epoch"], "slots": len(got)}}), flush=True)
     completed = False  # the run reached its verdict; an exception other than SystemExit leaves this False
+    collector = None
     try:
         ports, shelley = pool_environment(args)
         pool_trace_options(args.name)
@@ -555,6 +584,9 @@ def pool(args):
                 path.write_bytes(raw)
                 path.chmod(0o600 if key == "kes.skey" else 0o400)  # the node writes the evolved KES key back
         start_nodes(args.name, tuple(others))
+        # every epoch's schedule, from now to the forging cutoff
+        collector = ScheduleCollector(lambda: tip_at(args.name, f"{ENV}/socket/node{observer}/sock"),
+                                      take_schedule).start()
         # the Scala node dials the pools at once: it starts only once they listen (issue 609)
         wait_listening(args.name, [ports[n] for n in others])
         classpath = freeze_classes(root)
@@ -589,7 +621,6 @@ def pool(args):
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             tip = tip_at(args.name, f"{ENV}/socket/node{observer}/sock")
-            take_schedule(tip)
             counts, _, _ = log_counts(log)
             if tip and tip["block"] > 0 and counts.get("forgeStarted") and counts.get("extended"):
                 break
@@ -606,7 +637,7 @@ def pool(args):
                                    "--stats-every", "5"],
                                   stdout=(root / "load.log").open("w"), stderr=subprocess.STDOUT)
         if getattr(args, "plutus_load", False):
-            joined_after = wait_joined(args.name, log, f"{ENV}/socket/node{observer}/sock", take_schedule)
+            joined_after = wait_joined(args.name, log, f"{ENV}/socket/node{observer}/sock")
             print(json.dumps({"plutusLoadStarts": {"joinedAfterSeconds": joined_after}}), flush=True)
             # funded from the delegator of a Haskell pool: the Scala pool's stake is left as it is
             plutus = pool_plutus.Runner.against(args.name, root, f"{ENV}/socket/node{observer}/sock",
@@ -625,7 +656,6 @@ def pool(args):
             samples.append(sample)
             if toggle:
                 toggle.due(time.monotonic() - started)
-            take_schedule(sample[f"pool{observer}"])
             counts, _, _ = log_counts(log)
             print(json.dumps({"t": sample["t"], **{k: v and (v["epoch"], v["block"], v["hash"][:10])
                                                   for k, v in sample.items() if k != "t"},
@@ -639,23 +669,18 @@ def pool(args):
         loader.terminate()
         loader.wait()
         loader = None
-        # the Scala node forges until the cutoff: every step of the end phase that reads the observer's tip, or waits
-        # for one that may span an epoch boundary, asks for its epoch's schedule
-        observe = lambda: take_schedule(tip_at(args.name, f"{ENV}/socket/node{observer}/sock"))
         if plutus:
             plutus_evidence = plutus.finish()
-            observe()
         if driver:
             driver.stop()
         # let the chain settle; every node must agree on the tip
         def settled():
-            return settled_tips(args.name, others, lambda tips: take_schedule(tips.get(f"pool{observer}")))
+            return settled_tips(args.name, others)
 
         final = settled()
         for r in final_comparisons(lambda: compare_or_error(args.name)):
             comparisons.append(r)
             print(json.dumps({k: r.get(k) for k in ("tip", "matched", "differenceCount", "error")}), flush=True)
-        observe()
         compare_whole("final")
         final = settled()
         time.sleep(3)
@@ -668,7 +693,9 @@ def pool(args):
         # what only the running Scala node answers, before the forging cutoff
         metric_failures = pool_metrics_failures(args.name, forging_stats["total"], fetch) if forging_stats else []
         rules = rules_timing(args.name)
-        observe()
+        # the collector's last reading, then one more, so that the epoch of the cutoff has its schedule
+        collector.stop()
+        take_schedule(tip_at(args.name, f"{ENV}/socket/node{observer}/sock"))
         # the counters the log is held against, read again right before the cutoff (the scrapes took a while)
         at_cutoff = forging_counters(args.name, fetch)[0] or forging_stats
         # the forging cutoff: the Scala node stops (SIGTERM, as an operator stops it), so its log holds every block it
@@ -747,7 +774,7 @@ def pool(args):
         # each forged block by its own contents, a lost one too
         kinds = None if plutus_evidence is None else pool_plutus.block_kinds(forged, observed, plutus_evidence)
         summary = {
-            "oracle": oracle,
+            "oracle": {**oracle, "scheduleCollectorErrors": collector.errors[:5]},
             "pool": {"id": pool_id, "number": ours, "stakeFraction": round(sigma, 4)},
             "slotsPerKesPeriod": POOL_KES_SLOTS,
             "forging": {"forged": len(forged), "adopted": len(adopted), "lost": len(lost),
@@ -877,6 +904,8 @@ def pool(args):
     except SystemExit as e:
         failures.append(str(e))
     finally:
+        if collector is not None:
+            collector.stop(timeout=5)
         if loader is not None:
             loader.terminate()
         if plutus is not None:

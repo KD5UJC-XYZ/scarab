@@ -790,14 +790,12 @@ class OracleWindowTest(unittest.TestCase):
 
 
 class EndPhaseTest(unittest.TestCase):
-    def test_every_reading_of_the_settling_is_offered_for_its_epochs_schedule(self):
+    def test_the_settling_ends_when_the_pools_agree(self):
         readings = iter([{"hash": H["a"], "epoch": 4}, {"hash": H["b"], "epoch": 5},
                          {"hash": H["c"], "epoch": 5}, {"hash": H["c"], "epoch": 5}])
-        offered = []
         with patch.object(pool, "tip_at", side_effect=lambda name, socket: next(readings)), \
                 patch.object(pool.time, "sleep"):
-            tips = pool.settled_tips("n", [2, 3], offered.append)
-        self.assertEqual([t["pool2"]["epoch"] for t in offered], [4, 5])
+            tips = pool.settled_tips("n", [2, 3])
         self.assertEqual(tips["pool2"]["hash"], tips["pool3"]["hash"])
 
     def test_the_forgers_counters_or_what_came_instead(self):
@@ -808,15 +806,31 @@ class EndPhaseTest(unittest.TestCase):
             self.assertEqual(pool.forging_counters("n", "fetch"), (None, "'' 'no such container'"))
 
 
-class ScheduleDuringJoinTest(unittest.TestCase):
-    def test_every_tip_the_join_wait_reads_is_offered_for_its_epochs_schedule(self):
-        tips = [{"hash": H["a"], "epoch": 0}, {"hash": H["b"], "epoch": 1}, {"hash": H["c"], "epoch": 1}]
-        events = [{"event": "forged", "hash": H["c"]}, {"event": "mempoolAdded", "tx": "t"}]
-        offered = []
-        with patch.object(pool, "tip_at", side_effect=tips), patch.object(pool, "log_counts", return_value=({}, events, [])), \
-                patch.object(pool.time, "sleep"):
-            pool.wait_joined("n", None, "/sock", offered.append)
-        self.assertEqual([t["epoch"] for t in offered], [0, 1, 1])
+class ScheduleCollectorTest(unittest.TestCase):
+    """The schedules are taken in a thread of their own while the scenario's flow blocks."""
+
+    def test_epochs_crossed_while_the_flow_blocks_get_their_schedule(self):
+        tips = iter([None, {"epoch": 0}, {"epoch": 0}, {"epoch": 1}, {"epoch": 2}])
+        taken, third = [], threading.Event()
+
+        def read_tip():
+            tip = next(tips, {"epoch": 2})
+            if tip is None:
+                raise RuntimeError("the observer did not answer")
+            return tip
+
+        def take(tip):
+            if tip["epoch"] not in taken:
+                taken.append(tip["epoch"])
+            if tip["epoch"] == 2:
+                third.set()
+        collector = pool.ScheduleCollector(read_tip, take, every=0).start()
+        # the scenario's flow, blocked meanwhile (a Plutus round, a settling): the collector goes on
+        self.assertTrue(third.wait(5))
+        collector.stop(timeout=5)
+        self.assertEqual(taken, [0, 1, 2])
+        self.assertEqual(collector.errors, ["RuntimeError('the observer did not answer')"])
+        self.assertFalse(collector.thread.is_alive())
 
 
 if __name__ == "__main__":
