@@ -64,7 +64,10 @@ decoder. The reader fails closed instead, and the guard refuses these lines as u
 - a clause line with a `;`, or a `package` with a body;
 - a definition written after a `{` or `;` on a line of a class, object, trait, enum or extension body
   (`object A { def f = 1 }`);
-- a second definition after a `;` on a definition's header line.
+- a definition after a `;` that is back at the level of a member's header: on the header line
+  (`val a = 1; def f = 2`), after a body in braces (`}; def g = 2`) or after a multi-line literal.
+
+Braces and semicolons inside a method's body are its own code and are read with it.
 
 So a definition is written on a line of its own, where the reader keys it.
 
@@ -76,9 +79,10 @@ start of a statement found nothing the reader had missed.
 The map works at the member level, so a decision function, a data type and a state machine are each one entry.
 
 Measured over the 20 most recent first-parent commits of `main` at bc0e4995a that change a Scala file under the
-roots. For each commit, the keys of its changed files are compared between the commit and its first parent:
-- at the member level, 240 keys were new, 50 removed and 136 changed;
-- at the level of whole top-level definitions, 185 changed;
+roots. For each commit, the keys of its changed files (both paths of a rename, so a file moved out of the roots
+counts) are compared between the commit and its first parent:
+- at the member level, 240 keys were new, 54 removed and 136 changed;
+- at the level of whole top-level definitions, 186 were new, removed or changed;
 - the four commits whose changes under the roots were comments only changed no digest at either level.
 
 The coarser level would mean fewer entries to update, but one entry for a whole object can name no counterpart
@@ -135,6 +139,7 @@ So:
 
 It is not insensitive to everything that leaves the meaning alone:
 - a line break that scalafmt moves changes the digest;
+- so does a comment between two tokens written with no space around it (`1/* c */+2` against `1+2`);
 - so does a comment inside a string interpolation's `${...}`;
 - so does a blank line between an annotation and its definition, which moves the annotation to the owner;
 - an anonymous given's name is made from its first line only.
