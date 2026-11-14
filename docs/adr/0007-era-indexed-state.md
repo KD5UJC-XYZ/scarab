@@ -36,11 +36,11 @@ adopted design. The code reaches it in stages, and until a stage lands the const
    - `EraNes.InEra[E]`, which holds the state of the era the chain is in together with that era's witness.
 2. **No inter-era generics.** These are not used:
    - evidence that groups eras so that one implementation serves the group (`PreConway[E]`);
-   - grouped shape witnesses (`ShelleyShapes`, `ConwayShapes`, `EraShape`), which supersede part of
+   - grouped shape witnesses (`ShelleyShapes`, `ConwayShapes`, `EraShape`), whose removal supersedes part of
      [ADR 0026](0026-scala-3-9.md#amendment-2026-11-14-the-shape-proofs-are-superseded);
    - behaviour chosen by comparing eras at run time (`ShelleyBasedEra.atLeast`);
    - one record for every era's transaction, whose fields are optional by era (`TxBody`, `Witnesses`, `Tx`,
-     `TxOut`).
+     and `TxOut` outside its role as the storage form, item 4).
 3. **Behaviour from the reference's classes.** Era-dependent behaviour comes from type classes named after
    the reference's (cardano-ledger f649f975: `ShelleyEraTxBody`, `AllegraEraTxBody`, `AlonzoEraTxBody`,
    `AlonzoEraTxWits`, `BabbageEraTxBody`, `BabbageEraTxOut`, `ConwayEraTxBody` and the rest). Each has an
@@ -49,15 +49,16 @@ adopted design. The code reaches it in stages, and until a stage lands the const
 4. **Transactions per era.** Transaction bodies, witness sets, auxiliary data, outputs and whole
    transactions are types of their era, as the reference's are, so a transaction of one era cannot be given
    where another era's is expected. Outputs are included. The persisted format does not change: stored
-   outputs keep today's storage form and fingerprints. Any change to it is put to the owner first.
+   outputs keep today's storage form, the flat `TxOut`, and its fingerprints. Any change to it is put to the
+   owner first, and then follows [ADR 0006](0006-versioned-formats-migrate-on-open.md).
 5. **The witness is for unpacking and routing.** `ShelleyBasedEra[E]` stays as the runtime proof of an era.
    It unpacks an era known only at run time (an era tag read from bytes, a snapshot, a hard fork), and an
    exhaustive match on it routes to that era's own code. It is never used to compare eras.
 6. **Consensus parameters per era.** Consensus parameters are given per era, as the reference gives a
    `PartialConsensusConfig` per era. One example is the window after which the candidate nonce is frozen:
    the stability window (⌈3k/f⌉) up to Babbage, and the randomness stabilisation window (⌈4k/f⌉) in Conway
-   (ouroboros-consensus 82ecba329 `ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Node.hs:787-799`
-   for Babbage, `:816-818` for Conway). The intended constraint has two parts:
+   and Dijkstra (ouroboros-consensus 82ecba329 `ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Node.hs:787-799`
+   for Babbage, `:816-818` for Conway, `:835-837` for Dijkstra). The intended constraint has two parts:
    - a header and the consensus configuration that checks it share one era parameter, and the
      configuration's window is built only from the reference's choice for that era;
    - the two windows are distinct types. This prevents mixing the two kinds of window, but on its own it
@@ -76,15 +77,19 @@ adopted design. The code reaches it in stages, and until a stage lands the const
    `AllegraTxOut`, `MaryTxOut`). The shared representation is parameterised by what differs between the eras, not by the era.
    For example, `ShelleyTxOutRep[AdaValue]` sits behind the Shelley and Allegra outputs and
    `ShelleyTxOutRep[MultiAssetValue]` behind Mary's, as the reference's `Value era` is `Coin` or `MaryValue`.
-   Fields therefore have concrete types, and a value moves between eras only through an explicit translation,
-   as the reference's `TranslateEra` does. The bytes are the reference's.
+   Fields therefore have concrete types. A value moves between eras only through an explicit translation, as
+   the reference's `TranslateEra` does, or when a stored output is read into the era that reads it, as the
+   reference's table decoding does (`indexedUnpackM`, ouroboros-consensus 82ecba329
+   `ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Ledger.hs:170-187`).
+   The bytes are the reference's.
 9. **Each era names its complete rule set.** A rule the reference shares across eras (Mary's UTXO is
    Allegra's) is written once and asks for the reference's capability class. Each era names every one of its
    rules in a rule set of its own (`EraRules[E]`), and the compiler checks the set is complete, so no era
    falls through to a shared default. Predicate failure types get per-era names in the same way.
 10. **Certificates are per era**, as the reference's `TxCert era` is (`ShelleyTxCert` up to Babbage,
-    `ConwayTxCert` in Conway). Each era's transaction body carries its own certificate type.
+    `ConwayTxCert` in Conway, `DijkstraTxCert` in Dijkstra at cardano-ledger 9df9f98c). Each era's
+    transaction body carries its own certificate type.
 
 The work lands on one feature branch and reaches `main` stage by stage. The accumulation of predicate
-failures in the reference's order ([#412](https://github.com/KD5UJC-XYZ/scarab/issues/412)) is done with the
-rule rewrite.
+failures in the reference's order ([#412](https://github.com/KD5UJC-XYZ/scarab/issues/412)) is done after
+the rule rewrite, in a change of its own.
