@@ -1278,6 +1278,21 @@
     },
     {
       "module": "tools",
+      "path": "ledger/conformance",
+      "responsibility": "Hand-run conformance checks of the ledger's decoders: the cardano-cbor-dataset of node-diversity-conformance's `cbor-decoding` scenario, each rule mapped to a production decoder and encoder, with the dataset's normal form and its version 2 report",
+      "entryPoints": [
+        "CborDatasetMain",
+        "ConwayRules",
+        "DijkstraRules",
+        "CborNormalForm"
+      ],
+      "suites": [
+        "CborDatasetSuite"
+      ],
+      "docs": []
+    },
+    {
+      "module": "tools",
       "path": "ledger/state",
       "responsibility": "Hand-run benchmarks for the `ledger.state` package (its package, for its package-private access)",
       "entryPoints": [
