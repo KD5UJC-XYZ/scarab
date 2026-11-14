@@ -59,7 +59,7 @@ def pool_id(first, fill=1):
 
 
 def pool(stake, *, bls=None, registered=0, delegators=1, weight=(1, 3)):
-    """A Leios-layout StakePoolSnapShot, array(11) (ledger 9df9f98c State/SnapShots.hs:276-292)."""
+    """A Leios-layout StakePoolSnapShot, array(11) (ledger 9df9f98c State/SnapShots.hs:280-292)."""
     return array(
         head(0, stake), ratio(*weight), b"\xd9\x01\x02\x80", b"\x00", bstr(bytes([3]) * 32),
         array(array(bls, head(0, registered))) if bls is not None else array(),
@@ -99,6 +99,9 @@ def cases():
     add("equal-stake-by-pool-id",
         snapshots([(pool_id(0x80), pool(5, bls=key(0))), (pool_id(0x7F), pool(5, bls=key(1))),
                    (pool_id(0x01), pool(5, bls=key(2)))]))
+    add("equal-stake-cut-by-size",
+        snapshots([(pool_id(0x80), pool(5, bls=key(0))), (pool_id(0x7F), pool(5, bls=key(1))),
+                   (pool_id(0x01), pool(5, bls=key(2)))], size=2))
     add("stake-unsigned-order",
         snapshots([(a, pool((1 << 63) - 1, bls=key(0))), (b, pool(1 << 63, bls=key(1))), (c, pool(WORD64, bls=key(2)))]))
     add("zero-stake-and-no-delegators",
@@ -120,25 +123,33 @@ def cases():
     return rows
 
 
-# The pinned sources the native result depends on, hashed inside the image at record time; each hash
-# was compared with the file at its pinned upstream revision (ledger LEDGER, cardano-base BASE).
+# The pinned sources the native result depends on, with the SHA-256 of each file at its pinned upstream
+# revision (ledger LEDGER, cardano-base BASE). Both modes refuse an image whose copies differ.
 SOURCES = {
-    "LeiosCommittee.hs": "*/libs/cardano-ledger-core/src/Cardano/Ledger/State/LeiosCommittee.hs",
-    "SnapShots.hs": "*/libs/cardano-ledger-core/src/Cardano/Ledger/State/SnapShots.hs",
-    "Leios.hs": "*/cardano-crypto-leios/src/Cardano/Crypto/Leios.hs",
-    "BLS12381/Internal.hs": "*/cardano-crypto-class/src/Cardano/Crypto/DSIGN/BLS12381/Internal.hs",
+    "LeiosCommittee.hs": ("*/libs/cardano-ledger-core/src/Cardano/Ledger/State/LeiosCommittee.hs",
+                          "2bbdb60617b43aa92a9b7bfaaf2a951767690d581f38f2f8cd9b018e653e11bb"),
+    "SnapShots.hs": ("*/libs/cardano-ledger-core/src/Cardano/Ledger/State/SnapShots.hs",
+                     "ae7d5e0db3afe5f97183008047d2f7ecf2974c7d1249752284a600b55557d414"),
+    "Leios.hs": ("*/cardano-crypto-leios/src/Cardano/Crypto/Leios.hs",
+                 "9297f0a31091614d4e667a7d7a4e00413bc1b3133e84aa01e4da9e1438be7e84"),
+    "BLS12381/Internal.hs": ("*/cardano-crypto-class/src/Cardano/Crypto/DSIGN/BLS12381/Internal.hs",
+                             "9ac5419c5febe57d72c5673cb1b12802ce3787058dbfebcd83103e5105986025"),
 }
 
 
 def source_hashes(name):
     script = "; ".join(f"sha256sum $(find /oracle/leios-testnet/dist-newstyle/src -path '{pattern}')"
-                       for pattern in SOURCES.values())
+                       for pattern, _ in SOURCES.values())
     output = subprocess.check_output(
         ["docker", "run", "--rm", "--name", name, *container_labels("oracle", name), "--network", "none",
          "--entrypoint", "sh", IMAGE, "-c", script], text=True).splitlines()
     if len(output) != len(SOURCES):
         raise SystemExit(f"expected one copy of each pinned source in the image, found {output}")
-    return {label: line.split()[0] for label, line in zip(SOURCES, output, strict=True)}
+    found = {label: line.split()[0] for label, line in zip(SOURCES, output, strict=True)}
+    differing = sorted(label for label, (_, pinned) in SOURCES.items() if found[label] != pinned)
+    if differing:
+        raise SystemExit(f"{IMAGE} does not hold the pinned sources: {differing}")
+    return found
 
 
 def native(rows, name):
@@ -167,6 +178,7 @@ def main():
     parser.add_argument("--record", action="store_true")
     parser.add_argument("--name", default="leios-committee-reference")
     args = parser.parse_args()
+    hashes = source_hashes(args.name)
     rows = native(cases(), args.name)
     path = FIXTURE / "cases.jsonl"
     if args.record:
@@ -183,7 +195,7 @@ def main():
             "imageId": subprocess.check_output(["docker", "image", "inspect", IMAGE, "--format", "{{.Id}}"],
                                                text=True).strip(),
             "cases": len(rows),
-            "sourceSha256": source_hashes(args.name),
+            "sourceSha256": hashes,
             "harnessSha256": hashlib.sha256((HERE / "Main.hs").read_bytes()).hexdigest(),
             "casesSha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         }

@@ -806,7 +806,10 @@ its derived `PoolDistr`; deriving it preserves the Leios voting key without its 
 The Leios individual-pool codec accepts three fields or four with a `StrictMaybe BlsKey`, and
 writes the fourth only for a present key (`State/PoolDistr.hs:84-119`). The stable codec keeps
 three fields and refuses to write a value carrying a voting key. These derived values do not add
-fields to a persisted snapshot. A `PerasResolver` with an epoch context is not modelled: the eras before
+fields to a persisted snapshot. The mark snapshot's committee is not stored, as in the reference:
+`LeiosCommitteeSelection.ofMark` derives it from the mark's pools, committee size and key age for
+the following epoch when the mark rotates into the set position (`State/SnapShots.hs:453-467,
+544-550`, `State/LeiosCommittee.hs:65-93`); `Snap` does not perform that rotation yet (#826). A `PerasResolver` with an epoch context is not modelled: the eras before
 Dijkstra have a `Void` voting committee, refused as the reference refuses it, and Dijkstra's is
 `DijkstraNotYet.LedgerState`.
 

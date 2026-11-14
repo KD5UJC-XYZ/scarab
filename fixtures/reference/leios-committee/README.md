@@ -3,8 +3,8 @@
 
 Captured on 2026-11-14 from the pinned Leios ledger image by [the harness](../../../scripts/oracle/leios-committee/Main.hs).
 The image ID, the ledger and cardano-base revisions, and the digests of the harness, the cases and
-the four source files the result depends on are in [provenance.json](provenance.json). Each source
-digest was compared byte for byte with the file at its pinned upstream revision.
+the four source files the result depends on are in [provenance.json](provenance.json). The runner
+refuses an image whose copies of those files differ from the pinned upstream files.
 
 Each case is a Leios-layout `SnapShots` (cardano-ledger 9df9f98c `State/SnapShots.hs`). The unchanged
 decoder rebuilds the mark snapshot with `mkMarkSnapShot`, which memoizes its committee
@@ -17,7 +17,7 @@ The cases cover:
 - committee sizes of zero, below, above and at the `Word16` limit, and above it (refused);
 - a key age at the `Word32` limit and above it (refused);
 - seats ordered by unsigned stake (2^63 - 1, 2^63, 2^64 - 1), and ties broken by pool id across the
-  `7f`/`80` byte boundary;
+  `7f`/`80` byte boundary, including a tie group that the committee size cuts;
 - pools with zero stake or no delegators, which are still seated;
 - absent keys, a proof belonging to another key, and an undecodable key (refused by the decoder);
 - the last honoured and first aged-out epoch, an age of zero, and a registration after the epoch;

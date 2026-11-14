@@ -132,3 +132,38 @@ class LeiosCommitteeReferenceSuite extends FunSuite:
       Left(LeiosCommitteeError.OutOfRange(LeiosCommitteeError.Parameter.MaxKeyAge, BigInt(-1)))
     )
   }
+
+  test("a full-width selection over many pools runs on a small stack (ADR 0011)") {
+    val (s, layout) = decoded("absent-key")
+    val template = s.mark.pools.values.head
+    val pools = Sorted.map((0 until 70000).iterator.map { i =>
+      val id = KeyHash
+        .fromBytes[StakePool](Bytes.fromArray(java.nio.ByteBuffer.allocate(28).putInt(i).array()))
+        .fold(e => fail(e.toString), identity)
+      id -> template.copy(stake = CompactCoin.fromUnsigned(i % 97), blsKey = PoolBlsKey.Leios(None))
+    })
+    val committee = onSmallStack(
+      LeiosCommitteeSelection.ofMark(
+        s.mark.copy(pools = pools),
+        layout.copy(markCommitteeSize = 0xffff)
+      )
+    ).fold(e => fail(s"no committee: $e"), identity)
+    assertEquals(committee.seats.size, 0xffff)
+    assert(committee.seats.forall(_.verificationKey.isEmpty))
+  }
+
+  private def onSmallStack[A](body: => A): A =
+    var result: Option[Either[Throwable, A]] = None
+    val thread = new Thread(
+      null,
+      () =>
+        result = Some(
+          try Right(body)
+          catch case t: Throwable => Left(t)
+        ),
+      "small",
+      256 * 1024
+    )
+    thread.start()
+    thread.join()
+    result.getOrElse(fail("the thread did not finish")).fold(throw _, identity)
