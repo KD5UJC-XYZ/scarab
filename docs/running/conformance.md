@@ -34,7 +34,8 @@ python3 -I scripts/conformance/run.py ledger-rules uplc-conformance cbor-decodin
    image, checks, timings; no host name or path) and `summary.json`.
 
 A report names its commit, so the checkout must have no uncommitted or untracked changes (`--allow-dirty` runs
-anyway, and `publish.py` then refuses the report). The exit status is 1 if a scenario failed. `--dry-run` prints
+anyway, and `publish.py` then refuses the report). Each run takes a fresh `--out`: the runner refuses one that
+already holds reports, so that `publish.py` takes only that run's. The exit status is 1 if a scenario failed. `--dry-run` prints
 the plan without building, fetching or running anything.
 
 `uplc-turbo` measures time, so it runs ad hoc on a quiet local machine with a fast core, one run at a time, and

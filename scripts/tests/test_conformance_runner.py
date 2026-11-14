@@ -383,6 +383,14 @@ class RunTest(unittest.TestCase):
                 mock.patch("sys.stderr", new=io.StringIO()):
             self.assertEqual(run.main(["uplc-turbo", "--out", "/nonexistent"]), 2)
 
+    def test_an_out_directory_with_reports_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(run, "checkout_facts", return_value=checkout(tmp)), \
+                mock.patch.object(run, "run_scenarios", side_effect=AssertionError("ran")), \
+                mock.patch("sys.stderr", new=io.StringIO()):
+            Path(tmp, "scarab-20261114-ledger-rules.json.gz").write_bytes(b"")
+            self.assertEqual(run.main(["ledger-rules", "--out", tmp]), 2)
+
     def test_owner_label_is_checked(self):
         with mock.patch("sys.stderr", new=io.StringIO()), self.assertRaises(SystemExit):
             run.arguments(["ledger-rules", "--out", "/x", "--owner", "a b"])

@@ -250,6 +250,8 @@ def run_one(args: argparse.Namespace, checkout: Checkout, scenario: Scenario, pi
     for era in scenario.eras:
         work = args.out / "work" / label(scenario.id, era)
         work.mkdir(parents=True, exist_ok=True)
+        raw = work / (f"report-{era}.json" if era else "report.json")
+        raw.unlink(missing_ok=True)
         command = tool_command(scenario, era, checkout, context, ":".join(classpath), args.inputs, work,
                                args.image, args.owner, args.cpus, args.memory)
         print(f"running {label(scenario.id, era)}", file=sys.stderr)
@@ -257,7 +259,6 @@ def run_one(args: argparse.Namespace, checkout: Checkout, scenario: Scenario, pi
         tool = subprocess.run(command, text=True, capture_output=True)
         run_seconds = time.monotonic() - clock
         (work / "tool.log").write_text(tool.stdout + tool.stderr, encoding="utf-8")
-        raw = work / (f"report-{era}.json" if era else "report.json")
         if tool.returncode != 0 or not raw.is_file():
             outcomes.append(Outcome(scenario.id, era, "failed",
                                     f"the tool exited {tool.returncode}; see work/{label(scenario.id, era)}/tool.log"))
@@ -364,6 +365,11 @@ def main(argv: list[str] | None = None) -> int:
     if checkout.dirty and not args.allow_dirty:
         print("the checkout has uncommitted changes: a report names its commit, so commit first "
               "(or --allow-dirty for a report that is not published)", file=sys.stderr)
+        return 2
+    earlier = sorted(path.name for path in args.out.glob("scarab-*")) if args.out.is_dir() else []
+    if earlier:
+        print(f"{args.out} already holds reports ({', '.join(earlier[:4])}): give each run a fresh --out, so that "
+              "publish.py takes only this run's reports", file=sys.stderr)
         return 2
     args.out.mkdir(parents=True, exist_ok=True)
     args.inputs.mkdir(parents=True, exist_ok=True)
