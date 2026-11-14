@@ -351,24 +351,25 @@ object Peer:
       pipelineWindow: ChainSyncPipelineDecision.Window = ChainSyncPipelineDecision.Window.Default
   )
 
-  /** The most intersection candidates one FindIntersect carries. */
-  private val MaxCandidates = 64
-
-  /** At most [[MaxCandidates]] of `candidates` (newest first): the newest 16, then every second,
-    * fourth, eighth... one, and always the last (the oldest, which the anchor is).
+  /** The points one FindIntersect offers from `candidates`, our chain's retained blocks newest
+    * first and then its anchor, picked as the reference's ChainSync client picks them from its
+    * current chain: `AF.selectPoints (mkOffsets k (AF.length ourFrag))` (ouroboros-consensus
+    * 82ecba32 `MiniProtocol/ChainSync/Client.hs:1056-1061, 2039-2043`). The offsets are 0, each
+    * `fib n` from `n = 2` that is below the length, and the length, whose point is the anchor. An
+    * empty chain offers its anchor twice, since `selectOffsets` returns a point for each offset
+    * (ouroboros-network c45735a5 `api/lib/Ouroboros/Network/AnchoredSeq.hs:670-688`). The
+    * reference's length is `min k` of its fragment's, which is ours: the node's sessions pass a
+    * [[xyz.kd5ujc.scarab.consensus.VolatileChain]]'s candidates, at most `k` blocks. (A tool that
+    * names a single starting point, as `CaptureMain` does, has it offered twice.) `fib` rounds
+    * `phi ** n / sqrt 5` in Double (`Util.hs:444-449`); with the 11.1.3 release binary's own `pow`
+    * it is the exact Fibonacci number for every `n` up to 70, past any length a `Vector` can have,
+    * so the exact numbers are used.
     */
-  private[node] def thin[A](candidates: Vector[A]): Vector[A] =
-    if candidates.size <= MaxCandidates then candidates
-    else
-      val picked = Iterator
-        .unfold((0, 1)) { case (i, step) =>
-          Option.when(i < candidates.size)(
-            i -> ((i + step, if i >= 15 then step * 2 else step))
-          )
-        }
-        .take(MaxCandidates - 1)
-        .toVector
-      (picked.map(candidates(_)) ++ candidates.lastOption).distinct
+  private[node] def intersectionPoints[A](candidates: Vector[A]): Vector[A] =
+    val length = candidates.size - 1
+    val fibonacci = Iterator.iterate((1L, 2L))((a, b) => (b, a + b)).map(_._1)
+    val offsets = 0L +: fibonacci.takeWhile(_ < length).toVector :+ length.toLong
+    offsets.flatMap(offset => candidates.lift(offset.toInt))
 
   /** The maximal runs of consecutive headers the caller owns (the others were claimed by another
     * session, which fetches them).
@@ -1457,7 +1458,7 @@ object Peer:
                     )(c => F.pure(c._1))
                     offeredHeights = captured.fold(metadata.heights)(_._2)
                     _ <- heights.set(offeredHeights.updated(ChainSync.Point.Origin, None))
-                    found <- connection.chainSync.findIntersect(thin(points))
+                    found <- connection.chainSync.findIntersect(intersectionPoints(points))
                     _ <- found match
                       case None =>
                         finishChainSync *> PeerError.NoIntersection.raise[F, Unit]
@@ -1764,7 +1765,7 @@ object Peer:
                 )(_._1)
                 _ <- heights.set(offeredHeights.updated(ChainSync.Point.Origin, None))
                 found <- connection.chainSync.findIntersect(
-                  thin(offeredPoints)
+                  intersectionPoints(offeredPoints)
                 )
                 _ <- finishChainSync.whenA(found.isEmpty)
                 _ <- found.traverse_ { (point, tip) =>

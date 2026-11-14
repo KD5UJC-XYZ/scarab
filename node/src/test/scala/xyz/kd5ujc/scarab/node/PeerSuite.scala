@@ -12,18 +12,28 @@ import org.scalacheck.Gen
 import org.scalacheck.Prop.*
 
 class PeerSuite extends ScalaCheckSuite:
-  property("thinned intersection candidates fit one FindIntersect and keep both ends") {
-    forAll(Gen.choose(0, 5000)) { n =>
-      val all = Vector.range(0, n)
-      val thin = Peer.thin(all)
-      assert(thin.size <= 64)
-      if n > 0 then
-        assertEquals(thin.head, 0)
-        assertEquals(thin.last, n - 1)
-      assertEquals(thin, thin.sorted)
-      assertEquals(thin, thin.distinct)
-      // The newest candidates are all there: a short rollback finds its intersection at once.
-      assertEquals(thin.take(math.min(n, 16)), all.take(16))
+  test("intersection points are the reference's offsets from the tip, the anchor last") {
+    // The offsets `mkOffsets` documents for k = 2160 and k = 5 (consensus 82ecba32
+    // `MiniProtocol/ChainSync/Client.hs:2028-2034`), on a chain of exactly k blocks and its anchor
+    val k2160 = Vector(0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2160)
+    assertEquals(Peer.intersectionPoints(Vector.range(0, 2161)), k2160)
+    assertEquals(Peer.intersectionPoints(Vector.range(0, 6)), Vector(0, 1, 2, 3, 5))
+    // An empty chain offers its anchor twice; up to four blocks, every point is offered.
+    assertEquals(Peer.intersectionPoints(Vector("anchor")), Vector("anchor", "anchor"))
+    (2 to 5).foreach(n =>
+      assertEquals(Peer.intersectionPoints(Vector.range(0, n)), Vector.range(0, n))
+    )
+    assertEquals(Peer.intersectionPoints(Vector.empty[Int]), Vector.empty[Int])
+  }
+
+  property("intersection points fit one FindIntersect, from the tip to the anchor") {
+    forAll(Gen.choose(1, 100000)) { n =>
+      val points = Peer.intersectionPoints(Vector.range(0, n))
+      val fibonacci = Iterator.iterate((1, 2))((a, b) => (b, a + b)).map(_._1)
+      assert(points.size <= 64, s"${points.size} points")
+      assertEquals(points.head, 0)
+      assertEquals(points.last, n - 1)
+      assertEquals(points.init.tail, fibonacci.takeWhile(_ < n - 1).toVector)
     }
   }
 
