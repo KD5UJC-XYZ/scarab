@@ -1180,12 +1180,18 @@ object Targets:
       )
     ) ++ shelleyEras.flatMap { era =>
       val tag = era.toString.toLowerCase
-      // the era's other decoder versions give what its own gives, the same verdict and value, as
-      // no decoder branches inside an era's range; a refusal may name the version it was read at
-      // (`AuxiliaryScriptProtocol`), so only its presence is compared. Each other version is read
+      // the era's other decoder versions give what its own gives, the same verdict, value and
+      // refusal, as no decoder branches inside an era's range. A refusal of an auxiliary Plutus
+      // script before its language's version names the version it was read at
+      // (`AuxiliaryScriptProtocol`), so that number is left out of the comparison; a refusal is
+      // compared by its rendering, which a NaN does not make unequal. Each other version is read
       // in a probe of its own, under the bounds of the era's own reading.
       val others = DecoderVersion.range(era).versions.filterNot(_ == DecoderVersion.of(era))
-      def alike[A](name: String, in: Input)(read: Option[DecoderVersion] => Option[A]): Unit =
+      def refusal(e: Any): String = e match
+        case LedgerDecodeError.NumberOutOfRange(DecodeField.AuxiliaryScriptProtocol, _, min, max) =>
+          s"an auxiliary script before protocol $min (of $max)"
+        case other => other.toString
+      def alike[A](name: String, in: Input)(read: Option[DecoderVersion] => A): Unit =
         if others.nonEmpty then
           val own = read(None)
           others.foreach(v =>
@@ -1196,8 +1202,8 @@ object Targets:
               )
             )
           )
-      def checked(name: String)(body: Bytes => Unit)(
-          read: (Bytes, Option[DecoderVersion]) => Option[?]
+      def checked[A](name: String)(body: Bytes => Unit)(
+          read: (Bytes, Option[DecoderVersion]) => A
       ): Input => Unit = in =>
         probe(name)(body)(in)
         alike(name, in)(read(raw(in), _))
@@ -1206,7 +1212,7 @@ object Targets:
           s"tx-body-$tag",
           eraSeeds(Corpus.txBodies, "transaction_body")(era),
           checked(s"tx-body-$tag")(b => seen(s"tx-body-$tag", TxBody.decode(b, era).isRight))(
-            (b, at) => at.fold(TxBody.decode(b, era))(TxBody.decode(b, era, _)).toOption
+            (b, at) => at.fold(TxBody.decode(b, era))(TxBody.decode(b, era, _)).leftMap(refusal)
           )
         ),
         Target(
@@ -1214,7 +1220,9 @@ object Targets:
           eraSeeds(Corpus.txWitnesses, "transaction_witness_set")(era),
           checked(s"tx-witnesses-$tag")(b =>
             seen(s"tx-witnesses-$tag", Witnesses.decode(b, era).isRight)
-          )((b, at) => at.fold(Witnesses.decode(b, era))(Witnesses.decode(b, era, _)).toOption)
+          )((b, at) =>
+            at.fold(Witnesses.decode(b, era))(Witnesses.decode(b, era, _)).leftMap(refusal)
+          )
         ),
         Target(
           s"tx-whole-$tag",
@@ -1226,7 +1234,7 @@ object Targets:
           }((b, at) =>
             Corpus
               .asTransaction(b, era)
-              .flatMap(t => at.fold(Tx.fromBlock(t, era))(Tx.fromBlock(t, era, _)).toOption)
+              .map(t => at.fold(Tx.fromBlock(t, era))(Tx.fromBlock(t, era, _)).leftMap(refusal))
           )
         ),
         Target(
@@ -1234,7 +1242,7 @@ object Targets:
           () => Corpus.rawHeaders(era) ++ Corpus.sampled(s"$tag:header", 40) ++ Corpus.tricky,
           checked(s"block-header-$tag")(b =>
             seen(s"block-header-$tag", Header.fromRaw(era, b).isRight)
-          )((b, at) => at.fold(Header.fromRaw(era, b))(Header.fromRaw(era, b, _)).toOption)
+          )((b, at) => at.fold(Header.fromRaw(era, b))(Header.fromRaw(era, b, _)).leftMap(refusal))
         )
       )
     }
