@@ -8,8 +8,8 @@ name: Security
 #   that declare that package (public inputs only). This is a containment rule, not a data-flow
 #   proof: that secret scalars never reach the classes also rests on the #219 review and the
 #   timing probe.
-# CVE coverage of the dependency graph comes from Dependabot alerts via the
-# dependency-graph job in ci.yml.
+# CVE coverage of the sbt dependency graph comes from Dependabot alerts, which read the graph
+# that dependency-graph.yml submits daily.
 
 on:
   pull_request:

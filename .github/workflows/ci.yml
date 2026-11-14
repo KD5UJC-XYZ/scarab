@@ -199,45 +199,10 @@ jobs:
         with:
           persist-credentials: false
       # Compares the dependency graph of the base and the head commit. sbt is not part of GitHub's own
-      # dependency detection: the graph comes from the dependency-graph job below, submitted on every
-      # push to main, so a pull request is compared against the last submitted snapshot of main.
+      # dependency detection, and a pull request's head has no submitted snapshot, so the review covers the
+      # dependencies GitHub detects itself; the sbt graph of main is submitted by dependency-graph.yml.
       - name: Review dependency changes
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
           comment-summary-in-pr: never
-
-  dependency-graph:
-    name: submit sbt dependency graph
-    if: github.event_name == 'push'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    # Needs the repository's dependency graph (enabled with Dependabot alerts).
-    permissions:
-      contents: write
-    steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Cache sbt launcher, boot, ivy and coursier
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: .cache/scarab
-          key: sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'project/*.scala', 'scripts/sbtw', 'scripts/prepare_scalus.py', 'patches/scalus/**') }}
-          restore-keys: |
-            sbt-${{ runner.os }}-
-      - name: Build the tested JDK image
-        run: docker build -f docker/jdk.Dockerfile -t scarab-dependency-jdk:ci .
-      - name: Use the prepared project launcher
-        run: |
-          mkdir -p "$RUNNER_TEMP/scarab-dependency-bin"
-          install -m 755 scripts/dependency_sbt "$RUNNER_TEMP/scarab-dependency-bin/sbt"
-          echo "$RUNNER_TEMP/scarab-dependency-bin" >> "$GITHUB_PATH"
-      - name: Submit the dependency graph to GitHub
-        uses: scalacenter/sbt-dependency-submission@d84eef4c09e633bcf5f113bcad7fd5e9af1baee9 # v3.2.3
-        with:
-          # Submit what we build and ship (compile, runtime) and what tests use. The Scala compiler's
-          # own classpath (scala-tool: scala3-compiler, jline) and the scaladoc classpath
-          # (scala-doc-tool: jackson, jsoup) are build tools, not on the node's runtime classpath.
-          configs-ignore: scala-tool scala-doc-tool
