@@ -42,29 +42,37 @@ class EraConwaySuite extends munit.FunSuite:
       val flat = FlatTxBody.decode(raw, Era.Conway).toOption.get
       val c = ConwayTxBody.decode(raw).toOption.get
       assertEquals(body.id[TxLevel.Top](c), flat.id)
-      assertEquals(body.inputs[TxLevel.Top](c), flat.inputs)
+      assertEquals(body.inputs[TxLevel.Top](c).toVector, flat.inputs.sorted)
       assertEquals(body.outputs[TxLevel.Top](c).map(body.outputsOf.raw), flat.outputs.map(_.raw))
-      assertEquals(body.fee(c), flat.fee)
+      assertEquals(body.fee(c).value, flat.fee)
       assertEquals(body.withdrawals[TxLevel.Top](c), flat.withdrawals)
       assertEquals(body.auxDataHash[TxLevel.Top](c), flat.auxDataHash)
       assertEquals(body.vldt[TxLevel.Top](c), ValidityInterval(flat.validityStart, flat.ttl))
       assertEquals(body.mint[TxLevel.Top](c), flat.mint)
-      assertEquals(body.collateralInputs(c), flat.collateral)
-      assertEquals(body.reqSignerHashes[TxLevel.Top](c), flat.requiredSigners)
+      assertEquals(body.collateralInputs(c).toVector, flat.collateral.sorted)
+      assertEquals(body.reqSignerHashes[TxLevel.Top](c).toVector, flat.requiredSigners.sorted)
       assertEquals(body.scriptIntegrityHash[TxLevel.Top](c), flat.scriptDataHash)
-      assertEquals(body.networkId[TxLevel.Top](c), flat.networkId)
-      assertEquals(body.referenceInputs[TxLevel.Top](c), flat.referenceInputs)
-      assertEquals(body.totalCollateral(c), flat.totalCollateral)
+      assertEquals(body.networkId[TxLevel.Top](c).map(n => BigInt(n.ordinal)), flat.networkId)
+      assertEquals(body.referenceInputs[TxLevel.Top](c).toVector, flat.referenceInputs.sorted)
+      assertEquals(body.totalCollateral(c).map(_.value), flat.totalCollateral)
       assertEquals(
         body.collateralReturn(c).map(body.outputsOf.raw),
         flat.collateralReturn.map(_.raw)
       )
-      assertEquals(body.currentTreasuryValue[TxLevel.Top](c), flat.currentTreasury)
-      assertEquals(body.votingProcedures[TxLevel.Top](c), flat.votes)
-      assertEquals(body.proposalProcedures[TxLevel.Top](c), flat.proposals)
-      assertEquals(body.treasuryDonation[TxLevel.Top](c), flat.donation)
+      // each output with the size of its encoding, the collateral return last
+      assertEquals(
+        body.allSizedOutputs(c).map(o => (body.outputsOf.raw(o.value), o.size)),
+        (flat.outputs ++ flat.collateralReturn).map(o => (o.raw, o.ledgerSize.toLong))
+      )
+      assertEquals(body.currentTreasuryValue[TxLevel.Top](c).map(_.value), flat.currentTreasury)
+      assertEquals(
+        body.votingProcedures[TxLevel.Top](c).toVector.map((v, m) => v -> m.toVector),
+        flat.votes.map((v, m) => v -> m.sortBy(_._1)).sortBy(_._1)
+      )
+      assertEquals(body.proposalProcedures[TxLevel.Top](c).toVector, flat.proposals)
+      assertEquals(body.treasuryDonation[TxLevel.Top](c).value, flat.donation)
       // a certificate's script witness is the one the flat rules ask for
-      val typed = body.certs[TxLevel.Top](c)
+      val typed = body.certs[TxLevel.Top](c).toVector
       assertEquals(typed.size, flat.certificates.size)
       assertEquals(
         typed.map(body.certsOf.getScriptWitnessTxCert),
@@ -103,4 +111,121 @@ class EraConwaySuite extends munit.FunSuite:
       ConwayTxBody.decode(withUpdate).left.toOption,
       flat.left.toOption.map(EraTxError.Decode(_))
     )
+  }
+
+  // a script credential, a key credential, a pool and the DRep `AlwaysAbstain`
+  private val s = "51" * 28
+  private val k = "4b" * 28
+  private val p = "50" * 28
+  private val script = s"8201581c$s"
+  private val key = s"8200581c$k"
+  private val pool = s"581c$p"
+  private val abstain = "8102"
+
+  test("each Conway certificate reads into its constructor with the reference's witnesses") {
+    val sh = Bytes.fromHex(s).toOption.get
+    val kh = Bytes.fromHex(k).toOption.get
+    val ph = Bytes.fromHex(p).toOption.get
+    val cred = xyz.kd5ujc.scarab.ledger.Credential.Script(sh)
+    val drep = xyz.kd5ujc.scarab.ledger.DRep.AlwaysAbstain
+    import ConwayTxCert.*
+    import ConwayDelegCert.*
+    import ConwayGovCert.*
+    // (bytes, the certificate, its script witness, its key witness), from
+    // `getScriptWitnessConwayTxCert` and `getVKeyWitnessConwayTxCert` (`Conway/TxCert.hs:763-804`,
+    // cardano-ledger f649f975); the pool registration (tag 3) is checked below
+    val cases = Vector(
+      (s"8200$script", ConwayTxCertDeleg(ConwayRegCert(cred, None)), None, None),
+      (s"8307${script}00", ConwayTxCertDeleg(ConwayRegCert(cred, Some(0))), Some(sh), None),
+      (s"8201$script", ConwayTxCertDeleg(ConwayUnRegCert(cred, None)), Some(sh), None),
+      (s"8308${script}00", ConwayTxCertDeleg(ConwayUnRegCert(cred, Some(0))), Some(sh), None),
+      (
+        s"8302$script$pool",
+        ConwayTxCertDeleg(ConwayDelegCert(cred, Delegatee.DelegStake(ph))),
+        Some(sh),
+        None
+      ),
+      (
+        s"8309$script$abstain",
+        ConwayTxCertDeleg(ConwayDelegCert(cred, Delegatee.DelegVote(drep))),
+        Some(sh),
+        None
+      ),
+      (
+        s"840a$script$pool$abstain",
+        ConwayTxCertDeleg(ConwayDelegCert(cred, Delegatee.DelegStakeVote(ph, drep))),
+        Some(sh),
+        None
+      ),
+      (
+        s"840b$script${pool}00",
+        ConwayTxCertDeleg(ConwayRegDelegCert(cred, Delegatee.DelegStake(ph), 0)),
+        Some(sh),
+        None
+      ),
+      (
+        s"840c$script${abstain}00",
+        ConwayTxCertDeleg(ConwayRegDelegCert(cred, Delegatee.DelegVote(drep), 0)),
+        Some(sh),
+        None
+      ),
+      (
+        s"850d$script$pool${abstain}00",
+        ConwayTxCertDeleg(ConwayRegDelegCert(cred, Delegatee.DelegStakeVote(ph, drep), 0)),
+        Some(sh),
+        None
+      ),
+      (s"8304${pool}0a", ConwayTxCertPool(PoolCert.RetirePool(ph, 10)), None, Some(ph)),
+      (
+        s"830e$script$key",
+        ConwayTxCertGov(
+          ConwayAuthCommitteeHotKey(cred, xyz.kd5ujc.scarab.ledger.Credential.Key(kh))
+        ),
+        Some(sh),
+        None
+      ),
+      (
+        s"830e$key$script",
+        ConwayTxCertGov(
+          ConwayAuthCommitteeHotKey(xyz.kd5ujc.scarab.ledger.Credential.Key(kh), cred)
+        ),
+        None,
+        Some(kh)
+      ),
+      (
+        s"830f${script}f6",
+        ConwayTxCertGov(ConwayResignCommitteeColdKey(cred, None)),
+        Some(sh),
+        None
+      ),
+      (s"8410${script}00f6", ConwayTxCertGov(ConwayRegDRep(cred, 0, None)), Some(sh), None),
+      (s"8311${script}00", ConwayTxCertGov(ConwayUnRegDRep(cred, 0)), Some(sh), None),
+      (s"8312${script}f6", ConwayTxCertGov(ConwayUpdateDRep(cred, None)), Some(sh), None)
+    )
+    val c = EraTxCert.conway
+    // `[3, operator, vrf, pledge, cost, margin, reward account, owners, relays, metadata]`
+    val regPool = node(
+      s"8a03$pool${"5820" + "76" * 32}0000d81e820001581de0${"72" * 28}8080f6"
+    )
+    ConwayTxCert.decode(regPool) match
+      case Right(cert @ ConwayTxCertPool(PoolCert.RegPool(params))) =>
+        assertEquals(params.operator, ph)
+        assertEquals(c.getVKeyWitnessTxCert(cert), Some(ph))
+        assertEquals(c.getScriptWitnessTxCert(cert), None)
+        assertEquals(c.getRegPoolTxCert(cert), Some(params))
+      case other => fail(s"not a pool registration: $other")
+    assertEquals(cases.map(_._1.take(4)).distinct.size + 1, 17, "every Conway form but tag 3")
+    cases.foreach { (hex, expected, scriptWitness, keyWitness) =>
+      val n = node(hex)
+      val cert = ConwayTxCert.decode(n)
+      assertEquals(cert, Right(expected), hex)
+      assertEquals(c.getScriptWitnessTxCert(expected), scriptWitness, hex)
+      assertEquals(c.getVKeyWitnessTxCert(expected), keyWitness, hex)
+      // and the script witness is the one the flat rules ask for
+      assertEquals(
+        Certificate.decode(n, Era.Conway).map(Purpose.certificateScript),
+        Right(scriptWitness),
+        hex
+      )
+    }
   }

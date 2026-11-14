@@ -161,7 +161,7 @@ class EraCoreSuite extends munit.FunSuite:
       hashes.count(_.isDefined)
     }.sum + conway.map { raw =>
       val flat = FlatTxBody.decode(raw, Era.Conway).toOption.get.outputs
-      val typed = ConwayTxBody.decode(raw).toOption.get.outputs
+      val typed = ConwayTxBody.decode(raw).toOption.get.outputs.map(_.value)
       assertEquals(typed.map(EraTxOut.conway.raw), flat.map(_.raw))
       val hashes = typed.map(EraTxOut.conway.referenceScript(_).map(EraScript.conway.hashScript))
       assertEquals(hashes, flat.map(_.scriptRef.map(_.hash)))

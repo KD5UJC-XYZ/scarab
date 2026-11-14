@@ -27,9 +27,11 @@ trait EraTxCert[E <: EraTag]:
   def lookupUnRegStakeTxCert(cert: TxCert[E]): Option[Credential]
 
 /** The staking certificates of Shelley's form, up to Conway (`ShelleyEraTxCert`, `AtMostEra
-  * "Conway"`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs:154-169`). The reference's
-  * genesis-delegation and instantaneous-reward readers are of the eras up to Babbage only
-  * (`AtMostEra "Babbage"` on the method); they come with those eras, in a class of their own.
+  * "Conway"`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs:154-169`, cardano-ledger
+  * f649f975). The reference's genesis-delegation and instantaneous-reward readers are of the eras
+  * up to Babbage only (`AtMostEra "Babbage"` on the method). Evidence of a range of eras is ruled
+  * out (ADR 0007, amendment of 2026-11-14), so they come with those eras in a class of their own,
+  * whose instances are exactly those eras'.
   */
 trait ShelleyEraTxCert[E <: EraTag] extends EraTxCert[E]:
   /** A registration without a deposit (tag 0). */
@@ -42,7 +44,7 @@ trait ShelleyEraTxCert[E <: EraTag] extends EraTxCert[E]:
   def getDelegStakeTxCert(cert: TxCert[E]): Option[(Credential, Bytes)]
 
 /** The staking and governance certificates from Conway (`ConwayEraTxCert`,
-  * `eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:171-214`).
+  * `eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:171-214`, cardano-ledger f649f975).
   */
 trait ConwayEraTxCert[E <: EraTag] extends EraTxCert[E]:
   def getRegDepositTxCert(cert: TxCert[E]): Option[(Credential, BigInt)]

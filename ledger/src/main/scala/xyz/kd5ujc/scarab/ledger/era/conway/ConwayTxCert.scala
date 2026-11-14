@@ -72,7 +72,8 @@ object ConwayTxCert:
     case Certificate.MoveRewards(_, _) => Left(EraTxError.NotInEra(EraField.InstantaneousRewards))
 
   // The credential a staking certificate is witnessed by: none for a registration without a
-  // deposit, kept from Shelley through Conway (`Conway/TxCert.hs:756-761`).
+  // deposit, kept from Shelley through Conway (`Conway/TxCert.hs:756-761`, cardano-ledger
+  // f649f975).
   private def delegWitness(c: ConwayDelegCert): Option[Credential] = c match
     case ConwayDelegCert.ConwayRegCert(_, None)         => None
     case ConwayDelegCert.ConwayRegCert(cred, Some(_))   => Some(cred)

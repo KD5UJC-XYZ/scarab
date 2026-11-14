@@ -47,9 +47,11 @@ class EraTxSpikeSuite extends munit.FunSuite:
       val flat = FlatTxBody.decode(raw, Era.Conway).toOption.get
       val c = ConwayTxBody.decode(raw).toOption.get
       assertEquals(c.id, flat.id)
-      assertEquals(c.outputs.map(EraTxOut.conway.raw), flat.outputs.map(_.raw))
+      assertEquals(c.outputs.map(o => EraTxOut.conway.raw(o.value)), flat.outputs.map(_.raw))
       assertEquals(
-        EraTxBody.conway.currentTreasuryValue[TxLevel.Top](c)(using EraTxBody.conway.top),
+        EraTxBody.conway
+          .currentTreasuryValue[TxLevel.Top](c)(using EraTxBody.conway.top)
+          .map(_.value),
         flat.currentTreasury
       )
     }

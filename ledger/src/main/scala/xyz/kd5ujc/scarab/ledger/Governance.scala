@@ -10,6 +10,13 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
 final case class GovActionId(txId: Bytes, index: BigInt)
 
 object GovActionId:
+  /** The derived `Ord GovActionId` (`Conway/Governance/Procedures.hs:175-179`, cardano-ledger
+    * f649f975): the transaction id, then the index.
+    */
+  given ordering: Ordering[GovActionId] = (a, b) =>
+    val ids = a.txId.compareTo(b.txId)
+    if ids != 0 then ids else a.index.compare(b.index)
+
   /** `GovActionId` (`Conway/Governance/Procedures.hs:182-190`, cardano-ledger f649f975): `RecD`
     * before 12 and `decodeRecordNamed` from 12, of a transaction id and a `GovActionIx`, a `Word16`
     * (`Procedures.hs:162`).

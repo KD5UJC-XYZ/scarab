@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.conway
 
+import scala.collection.immutable.{SortedMap, SortedSet}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.ledger.{
   Address,
   ByteStrings,
   Datum,
+  DecodeField,
   GovActionId,
   LedgerDecodeError,
   Proposal,
@@ -28,7 +30,10 @@ import xyz.kd5ujc.scarab.ledger.era.{
   Language,
   MultiAssetValue,
   NativeScriptRep,
+  Network,
+  OSet,
   Plutus,
+  Sized,
   Timelock,
   TimelockScripts,
   TopOnly,
@@ -210,31 +215,33 @@ object ConwayTxOut:
   * level only. Made only by [[ConwayTxBody.decode]].
   *
   * @param spendInputs
-  *   the inputs, as the flat decoder keeps them
+  *   the inputs (`ctbrSpendInputs`), in the ledger's `TxIn` order
+  * @param outputs
+  *   the outputs, each with the size of the encoding it was read from (`Sized`)
   * @param validity
   *   the slots the transaction is valid in (`ctbrVldt`)
   */
 final case class ConwayTxBody private (
     raw: Bytes,
-    spendInputs: Vector[TxIn],
-    collateralInputs: Vector[TxIn],
-    referenceInputs: Vector[TxIn],
-    outputs: Vector[ConwayTxOut],
-    collateralReturn: Option[ConwayTxOut],
-    totalCollateral: Option[BigInt],
-    certs: Vector[ConwayTxCert],
+    spendInputs: SortedSet[TxIn],
+    collateralInputs: SortedSet[TxIn],
+    referenceInputs: SortedSet[TxIn],
+    outputs: Vector[Sized[ConwayTxOut]],
+    collateralReturn: Option[Sized[ConwayTxOut]],
+    totalCollateral: Option[Coin],
+    certs: OSet[ConwayTxCert],
     withdrawals: Map[RewardAccount, Coin],
-    fee: BigInt,
+    fee: Coin,
     validity: ValidityInterval,
-    reqSignerHashes: Vector[Bytes],
+    reqSignerHashes: SortedSet[Bytes],
     mint: Map[Bytes, Map[Bytes, BigInt]],
     scriptIntegrityHash: Option[Bytes],
     auxDataHash: Option[Bytes],
-    networkId: Option[BigInt],
-    votingProcedures: Vector[(Voter, Vector[(GovActionId, VotingProcedure)])],
-    proposalProcedures: Vector[Proposal],
-    currentTreasuryValue: Option[BigInt],
-    treasuryDonation: BigInt
+    networkId: Option[Network],
+    votingProcedures: SortedMap[Voter, SortedMap[GovActionId, VotingProcedure]],
+    proposalProcedures: OSet[Proposal],
+    currentTreasuryValue: Option[Coin],
+    treasuryDonation: Coin
 ):
   lazy val id: Bytes = xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(raw)
 
@@ -252,32 +259,47 @@ object ConwayTxBody:
       .flatMap(fromFlat)
 
   private def fromFlat(b: xyz.kd5ujc.scarab.ledger.TxBody): Either[EraTxError, ConwayTxBody] =
+    // an output's size is the length of the encoding it was read from (`Sized`, as the flat
+    // output's `ledgerSize`)
+    def sized(out: xyz.kd5ujc.scarab.ledger.TxOut) =
+      ConwayTxOut.fromStored(out).map(Sized(_, out.ledgerSize.toLong))
     for
       _ <- Either.cond(b.update.isEmpty, (), EraTxError.NotInEra(EraField.Update))
-      outputs <- b.outputs.traverse(ConwayTxOut.fromStored)
-      collateralReturn <- b.collateralReturn.traverse(ConwayTxOut.fromStored)
+      outputs <- b.outputs.traverse(sized)
+      collateralReturn <- b.collateralReturn.traverse(sized)
       certs <- b.certificates.traverse(ConwayTxCert.fromFlat)
+      network <- b.networkId.traverse(v =>
+        Network
+          .of(v)
+          .toRight(
+            EraTxError.Decode(
+              LedgerDecodeError.NumberOutOfRange(DecodeField.NetworkId, v, 0, 1)
+            )
+          )
+      )
     yield ConwayTxBody(
       b.raw,
-      b.inputs,
-      b.collateral,
-      b.referenceInputs,
+      SortedSet.from(b.inputs),
+      SortedSet.from(b.collateral),
+      SortedSet.from(b.referenceInputs),
       outputs,
       collateralReturn,
-      b.totalCollateral,
-      certs,
+      b.totalCollateral.map(Coin(_)),
+      // the decoder refused a repeated certificate or proposal (`decodeOSet`)
+      OSet.decoded(certs),
       b.withdrawals,
-      b.fee,
+      Coin(b.fee),
       ValidityInterval(b.validityStart, b.ttl),
-      b.requiredSigners,
+      SortedSet.from(b.requiredSigners),
       b.mint,
       b.scriptDataHash,
       b.auxDataHash,
-      b.networkId,
-      b.votes,
-      b.proposals,
-      b.currentTreasury,
-      b.donation
+      network,
+      // the decoder refused a repeated voter or action (`decodeMapByKey`)
+      SortedMap.from(b.votes.map((voter, votes) => voter -> SortedMap.from(votes))),
+      OSet.decoded(b.proposals),
+      b.currentTreasury.map(Coin(_)),
+      Coin(b.donation)
     )
 
   val instance: ConwayEraTxBody[Conway] = new ConwayEraTxBody[Conway]:
@@ -288,15 +310,22 @@ object ConwayTxBody:
     override def id[L <: TxLevel](body: TxBody[L, Conway])(using l: TopOnly[L]): Bytes =
       l match
         case TopOnly.Top => body.id
-    override def inputs[L <: TxLevel](body: TxBody[L, Conway])(using l: TopOnly[L]): Vector[TxIn] =
+    override def inputs[L <: TxLevel](body: TxBody[L, Conway])(using
+        l: TopOnly[L]
+    ): SortedSet[TxIn] =
       l match
         case TopOnly.Top => body.spendInputs
     override def outputs[L <: TxLevel](body: TxBody[L, Conway])(using
         l: TopOnly[L]
     ): Vector[ConwayTxOut] =
       l match
+        case TopOnly.Top => body.outputs.map(_.value)
+    override def sizedOutputs[L <: TxLevel](body: TxBody[L, Conway])(using
+        l: TopOnly[L]
+    ): Vector[Sized[ConwayTxOut]] =
+      l match
         case TopOnly.Top => body.outputs
-    override def fee(body: ConwayTxBody): BigInt = body.fee
+    override def fee(body: ConwayTxBody): Coin = body.fee
     override def withdrawals[L <: TxLevel](body: TxBody[L, Conway])(using
         l: TopOnly[L]
     ): Map[RewardAccount, Coin] =
@@ -309,7 +338,7 @@ object ConwayTxBody:
         case TopOnly.Top => body.auxDataHash
     override def certs[L <: TxLevel](body: TxBody[L, Conway])(using
         l: TopOnly[L]
-    ): Vector[ConwayTxCert] =
+    ): OSet[ConwayTxCert] =
       l match
         case TopOnly.Top => body.certs
     override def vldt[L <: TxLevel](body: TxBody[L, Conway])(using
@@ -322,10 +351,10 @@ object ConwayTxBody:
     ): Map[Bytes, Map[Bytes, BigInt]] =
       l match
         case TopOnly.Top => body.mint
-    override def collateralInputs(body: ConwayTxBody): Vector[TxIn] = body.collateralInputs
+    override def collateralInputs(body: ConwayTxBody): SortedSet[TxIn] = body.collateralInputs
     override def reqSignerHashes[L <: TxLevel](body: TxBody[L, Conway])(using
         l: TopOnly[L]
-    ): Vector[Bytes] =
+    ): SortedSet[Bytes] =
       l match
         case TopOnly.Top => body.reqSignerHashes
     override def scriptIntegrityHash[L <: TxLevel](body: TxBody[L, Conway])(using
@@ -335,33 +364,34 @@ object ConwayTxBody:
         case TopOnly.Top => body.scriptIntegrityHash
     override def networkId[L <: TxLevel](body: TxBody[L, Conway])(using
         l: TopOnly[L]
-    ): Option[BigInt] =
+    ): Option[Network] =
       l match
         case TopOnly.Top => body.networkId
     override def referenceInputs[L <: TxLevel](body: TxBody[L, Conway])(using
         l: TopOnly[L]
-    ): Vector[TxIn] =
+    ): SortedSet[TxIn] =
       l match
         case TopOnly.Top => body.referenceInputs
-    override def totalCollateral(body: ConwayTxBody): Option[BigInt] = body.totalCollateral
-    override def collateralReturn(body: ConwayTxBody): Option[ConwayTxOut] = body.collateralReturn
+    override def totalCollateral(body: ConwayTxBody): Option[Coin] = body.totalCollateral
+    override def sizedCollateralReturn(body: ConwayTxBody): Option[Sized[ConwayTxOut]] =
+      body.collateralReturn
     override def currentTreasuryValue[L <: TxLevel](body: TxBody[L, Conway])(using
         l: TopOnly[L]
-    ): Option[BigInt] =
+    ): Option[Coin] =
       l match
         case TopOnly.Top => body.currentTreasuryValue
     override def votingProcedures[L <: TxLevel](body: TxBody[L, Conway])(using
         l: TopOnly[L]
-    ): Vector[(Voter, Vector[(GovActionId, VotingProcedure)])] =
+    ): SortedMap[Voter, SortedMap[GovActionId, VotingProcedure]] =
       l match
         case TopOnly.Top => body.votingProcedures
     override def proposalProcedures[L <: TxLevel](body: TxBody[L, Conway])(using
         l: TopOnly[L]
-    ): Vector[Proposal] =
+    ): OSet[Proposal] =
       l match
         case TopOnly.Top => body.proposalProcedures
     override def treasuryDonation[L <: TxLevel](body: TxBody[L, Conway])(using
         l: TopOnly[L]
-    ): BigInt =
+    ): Coin =
       l match
         case TopOnly.Top => body.treasuryDonation

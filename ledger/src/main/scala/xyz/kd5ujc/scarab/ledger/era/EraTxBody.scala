@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
+import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
   GovActionId,
@@ -36,12 +37,12 @@ trait EraTxBody[E <: EraTag]:
   def certsOf: EraTxCert[E]
 
   def id[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Bytes
-  def inputs[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Vector[TxIn]
+  def inputs[L <: TxLevel](body: TxBody[L, E])(using Level[L]): SortedSet[TxIn]
   def outputs[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Vector[TxOut[E]]
-  def fee(body: TxBody[TxLevel.Top, E]): BigInt
+  def fee(body: TxBody[TxLevel.Top, E]): Coin
   def withdrawals[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Map[RewardAccount, Coin]
   def auxDataHash[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Option[Bytes]
-  def certs[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Vector[TxCert[E]]
+  def certs[L <: TxLevel](body: TxBody[L, E])(using Level[L]): OSet[TxCert[E]]
 
 /** The protocol-parameter update of a body, up to Babbage (`ShelleyEraTxBody`, whose instances end
   * at Babbage: `AtMostEra "Babbage"`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxBody.hs:97`,
@@ -81,12 +82,12 @@ trait AlonzoEraTxBody[E <: EraTag] extends MaryEraTxBody[E]:
   override def outputsOf: AlonzoEraTxOut[E]
 
   /** `collateralInputsTxBodyL`, of a top-level body only. */
-  def collateralInputs(body: TxBody[TxLevel.Top, E]): Vector[TxIn]
+  def collateralInputs(body: TxBody[TxLevel.Top, E]): SortedSet[TxIn]
 
   /** `reqSignerHashesTxBodyL` (`AtMostEra "Conway"`). */
-  def reqSignerHashes[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Vector[Bytes]
+  def reqSignerHashes[L <: TxLevel](body: TxBody[L, E])(using Level[L]): SortedSet[Bytes]
   def scriptIntegrityHash[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Option[Bytes]
-  def networkId[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Option[BigInt]
+  def networkId[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Option[Network]
 
 /** The reference inputs and the collateral return, from Babbage (`BabbageEraTxBody`,
   * `eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs:110-121`, cardano-ledger f649f975).
@@ -94,13 +95,27 @@ trait AlonzoEraTxBody[E <: EraTag] extends MaryEraTxBody[E]:
 trait BabbageEraTxBody[E <: EraTag] extends AlonzoEraTxBody[E]:
   override def outputsOf: BabbageEraTxOut[E]
 
-  def referenceInputs[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Vector[TxIn]
+  def referenceInputs[L <: TxLevel](body: TxBody[L, E])(using Level[L]): SortedSet[TxIn]
 
   /** `totalCollateralTxBodyL`, of a top-level body only. */
-  def totalCollateral(body: TxBody[TxLevel.Top, E]): Option[BigInt]
+  def totalCollateral(body: TxBody[TxLevel.Top, E]): Option[Coin]
+
+  /** `sizedOutputsTxBodyL`: the outputs, each with the size of the encoding it was read from. */
+  def sizedOutputs[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Vector[Sized[TxOut[E]]]
+
+  /** `sizedCollateralReturnTxBodyL`, of a top-level body only. */
+  def sizedCollateralReturn(body: TxBody[TxLevel.Top, E]): Option[Sized[TxOut[E]]]
 
   /** `collateralReturnTxBodyL`, of a top-level body only. */
-  def collateralReturn(body: TxBody[TxLevel.Top, E]): Option[TxOut[E]]
+  final def collateralReturn(body: TxBody[TxLevel.Top, E]): Option[TxOut[E]] =
+    sizedCollateralReturn(body).map(_.value)
+
+  /** `allSizedOutputsTxBodyF` (`allSizedOutputsBabbageTxBodyF`,
+    * `eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs:241-249`, cardano-ledger f649f975):
+    * the outputs and then the collateral return, of a top-level body.
+    */
+  final def allSizedOutputs(body: TxBody[TxLevel.Top, E]): Vector[Sized[TxOut[E]]] =
+    sizedOutputs(body)(using top) ++ sizedCollateralReturn(body)
 
 /** The governance fields of a body, from Conway (`ConwayEraTxBody`,
   * `eras/conway/impl/src/Cardano/Ledger/Conway/TxBody.hs:626-641`, cardano-ledger f649f975), whose
@@ -109,12 +124,12 @@ trait BabbageEraTxBody[E <: EraTag] extends AlonzoEraTxBody[E]:
 trait ConwayEraTxBody[E <: EraTag] extends BabbageEraTxBody[E]:
   override def certsOf: ConwayEraTxCert[E]
 
-  def currentTreasuryValue[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Option[BigInt]
+  def currentTreasuryValue[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Option[Coin]
   def votingProcedures[L <: TxLevel](body: TxBody[L, E])(using
       Level[L]
-  ): Vector[(Voter, Vector[(GovActionId, VotingProcedure)])]
-  def proposalProcedures[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Vector[Proposal]
-  def treasuryDonation[L <: TxLevel](body: TxBody[L, E])(using Level[L]): BigInt
+  ): SortedMap[Voter, SortedMap[GovActionId, VotingProcedure]]
+  def proposalProcedures[L <: TxLevel](body: TxBody[L, E])(using Level[L]): OSet[Proposal]
+  def treasuryDonation[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Coin
 
 /** Why bytes or a stored value are not a value of an era. */
 enum EraTxError:

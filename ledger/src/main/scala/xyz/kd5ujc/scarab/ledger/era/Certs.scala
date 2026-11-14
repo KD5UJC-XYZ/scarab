@@ -18,15 +18,17 @@ enum PoolCert:
     case RetirePool(pool, _) => pool
 
 /** What a Conway delegation delegates to (`data Delegatee`,
-  * `eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:379-383`): a pool, a DRep, or both. A
-  * delegation to neither has no value.
+  * `eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:379-383`, cardano-ledger f649f975): a
+  * pool, a DRep, or both. A delegation to neither has no value.
   */
 enum Delegatee:
   case DelegStake(pool: Bytes)
   case DelegVote(drep: DRep)
   case DelegStakeVote(pool: Bytes, drep: DRep)
 
-/** The staking certificates from Conway (`data ConwayDelegCert`, `Conway/TxCert.hs:473-486`). */
+/** The staking certificates from Conway (`data ConwayDelegCert`, `Conway/TxCert.hs:473-486`,
+  * cardano-ledger f649f975).
+  */
 enum ConwayDelegCert:
   /** Tag 0 without a deposit, tag 7 with one. */
   case ConwayRegCert(credential: Credential, deposit: Option[BigInt])
@@ -38,7 +40,9 @@ enum ConwayDelegCert:
 
   def credential: Credential
 
-/** The governance certificates from Conway (`data ConwayGovCert`, `Conway/TxCert.hs:568-574`). */
+/** The governance certificates from Conway (`data ConwayGovCert`, `Conway/TxCert.hs:568-574`,
+  * cardano-ledger f649f975).
+  */
 enum ConwayGovCert:
   case ConwayRegDRep(credential: Credential, deposit: BigInt, anchor: Option[Anchor])
   case ConwayUnRegDRep(credential: Credential, refund: BigInt)
@@ -47,7 +51,8 @@ enum ConwayGovCert:
   case ConwayResignCommitteeColdKey(cold: Credential, anchor: Option[Anchor])
 
   /** The credential that signs or witnesses the certificate (`conwayGovCertVKeyWitness`,
-    * `Conway/TxCert.hs:798-804`): the cold credential of a committee certificate.
+    * `Conway/TxCert.hs:798-804`, cardano-ledger f649f975): the cold credential of a committee
+    * certificate.
     */
   def witness: Credential = this match
     case ConwayRegDRep(c, _, _)                => c
