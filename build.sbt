@@ -47,6 +47,10 @@ ThisBuild / scalacOptions ++= Seq(
   "-Wunused:locals",
   "-Wunused:explicits",
   "-Wunused:patvars",
+  "-Wunused:nowarn",
+  "-Wimplausible-patterns",
+  "-Wrecurse-with-default",
+  "-Wwrong-arrow",
   "-Wconf:src=.*/src_managed/.*:silent"
 )
 // scalafix needs the semantic database of the compiler.
