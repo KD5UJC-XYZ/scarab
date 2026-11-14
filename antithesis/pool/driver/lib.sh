@@ -164,7 +164,7 @@ scarab_fatal() {
 # start: a wake that early is #629's millisecond floor. The reference floors its wait to the microsecond
 # (`threadDelay`), so it too can wake a fraction of a microsecond early and trace `SystemClockMovedBack`. A
 # cardano-node 11.1.3 pool did, 144 ns before its slot, in a platform run of 2026-11-14. Scarab, floored as the
-# reference since #955, does that on the platform's exact sleeps far more often; that is not what this detects.
+# reference since #955, does that far more often on the platform (why is not checked); that is not what this detects.
 # Slots are counted from the genesis's `systemStart` by its `slotLength`, as `EpochGeometry` counts them; whole
 # seconds are subtracted before the fraction is added, so the arithmetic stays exact enough.
 scarab_false_clock() {
