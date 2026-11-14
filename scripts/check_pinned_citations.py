@@ -8,22 +8,29 @@ without the revision it was read at, and a reader cannot tell which revision an 
 meant once the file cites more than one upstream repository. This guard reads the comments of every tracked
 `.scala` and `.sbt` file (`scala_comments.scala_sources`: the archived programs under `fixtures/` are
 recorded provenance and are left as they are) and counts the comment blocks that cite a Haskell file and line
-(`Foo.hs:123`, `Foo/Bar.hs:12-34`) and carry no pin in the same block. A block is a `/* ... */` or
-`/** ... */` comment, or a run of `//` comments on consecutive lines (`scala_comments.blocks`). A pin is one
-of the forms the tree already writes:
+(`Foo.hs:123`, `Foo/Bar.hs:12-34`, `Foo.hs: 12`, `Foo.hs#L12`, ``Foo.hs` lines 12-34``, `Foo.hs line 12`) and
+carry no pin in the same block. A block is a `/* ... */` or `/** ... */` comment, or a run of `//` comments on
+consecutive lines (`scala_comments.blocks`). Its text is read for a pin without the comment's decoration (the
+`/**`, `*` and `//` that begin its lines, and its `*/`), its line breaks and its backquotes, so a pin may be
+wrapped over two lines or quoted (`` `cardano-ledger-binary` 1.9.1.0 ``). A pin is one of the forms the tree
+already writes:
 
   * a revision of 7 to 40 hexadecimal digits, at least one of them a decimal digit and one a letter, as
     `check_docs.py` reads a commit id (`cardano-ledger f649f975`, `c45735a5:`, `@f649f975`, `@ 8e2bba94...`);
+    a binary literal (`0b10001110`) is not one;
   * a released package, its name joined to its version by a hyphen (`plutus-1.70.0.0`, `ghc-9.6`), or by a
-    space when the version has three parts or more (`cardano-node 11.1.3`, `GHC 9.6.7`, `aeson 2.2.5.0`);
+    space when the version has three parts or more (`cardano-node 11.1.3`, `GHC 9.6.7`, `aeson 2.2.5.0`), a
+    sentence's full stop after it allowed (`cardano-node 11.1.3.`); after `version` or `than` it is the
+    version of a program or a language (`a program older than 1.1.0`), not a release, and does not count;
   * `@` and a version of three parts or more (`@ 11.1.3`).
 
 The SPDX header's `Apache-2.0` is not a pin. Strings and string interpolations are not comments, so a test name
 that cites a file is not read. The check is lexical, so it can misfire:
 
   * Any hexadecimal word of 7 to 40 digits counts as a pin, including a shortened transaction id or block hash
-    (`transaction 49be5965c31a60c3`), and so does any word followed by a three-part version, including prose
-    (`version 1.1.0`, `than 1.1.0`), a section number or an address. These under-report; they never flag.
+    (`transaction 49be5965c31a60c3`), and so does any other word followed by a three-part version, including
+    prose that refers to a release named earlier in the block (`at 1.70.0.0`), and an address
+    (`a relay of 3.101.47.133`). These under-report; they never flag.
   * One pin covers every citation in its block, even when the block cites files of two repositories.
   * A pin elsewhere in the file, such as a file-level comment that names the revision once for all its
     citations, does not count: the rule is the block (`unpinned`).
@@ -61,17 +68,24 @@ BASELINE = shrinking_baseline.Baseline(
     comment='comment blocks per Scala or sbt source that cite a Haskell file and line with no pin in the same '
             'block; written by scripts/check_pinned_citations.py --write-baseline, which refuses an increase. '
             'It only shrinks.')
-CITATION = re.compile(r"(?<![\w/.'-])[\w/.'-]*\w\.hs:\d+")
+CITATION = re.compile(r"(?<![\w/.'-])[\w/.'-]*\w\.hs(?::\s?L?\d|#L\d|`?,?\s+lines?\s+\d)")
 SPDX = re.compile(r'SPDX-License-Identifier:[^\n]*')
-PIN = re.compile(
-    r"(?<![\w-])(?=[a-f]*[0-9])(?=[0-9]*[a-f])[0-9a-f]{7,40}(?![\w-])"
-    r"|(?<![\w.-])[A-Za-z][\w-]*-\d+(?:\.\d+)+(?![\w.])"
-    r"|(?<![\w.-])[A-Za-z][\w-]* v?\d+\.\d+\.\d+(?:\.\d+)*(?![\w.])"
-    r"|@\s*v?\d+\.\d+\.\d+(?:\.\d+)*(?![\w.])")
+# what begins a comment's line (`/**`, `/*`, `//`, `*`) and what ends it (`*/`)
+DECORATION = re.compile(r'^[ \t]*(?:/\*+|//+|\*(?!/))?|\*/[ \t]*$', re.MULTILINE)
+# a version's end: no word follows, nor a full stop that goes on (`4.2.0.x`)
+END = r'(?!\.?\w)'
+REVISION = re.compile(r'(?<![\w-])(?!0b[01]+(?![\w-]))(?=[a-f]*[0-9])(?=[0-9]*[a-f])[0-9a-f]{7,40}(?![\w-])')
+RELEASE = re.compile(r'(?<![\w.-])[A-Za-z][\w-]*-\d+(?:\.\d+)+' + END + r'|@ ?v?\d+\.\d+\.\d+(?:\.\d+)*' + END)
+NAMED_RELEASE = re.compile(r'(?<![\w.-])([A-Za-z][\w-]*) v?\d+\.\d+\.\d+(?:\.\d+)*' + END)
+# the words after which a version is a program's or a language's, not a release
+NOT_A_PACKAGE = frozenset(('version', 'versions', 'than'))
 
 
 def pinned(text: str) -> bool:
-    return PIN.search(SPDX.sub('', text)) is not None
+    """Whether a comment block's text carries a pin, read without its decoration, line breaks and backquotes."""
+    plain = ' '.join(DECORATION.sub(' ', SPDX.sub('', text)).replace('`', '').split())
+    return (REVISION.search(plain) is not None or RELEASE.search(plain) is not None
+            or any(m.group(1).lower() not in NOT_A_PACKAGE for m in NAMED_RELEASE.finditer(plain)))
 
 
 def unpinned(source: str) -> list[int]:

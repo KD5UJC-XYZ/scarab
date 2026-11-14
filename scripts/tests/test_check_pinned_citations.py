@@ -28,11 +28,32 @@ class UnpinnedTest(unittest.TestCase):
             with self.subTest(pin=pin):
                 self.assertEqual(citations.unpinned(f'// `Foo.hs:12` ({pin})\n'), [])
 
+    def test_pins_as_the_tree_writes_them_in_prose(self):
+        # CheckpointsFile, Vocabulary, Interns and FlatReferenceCorporaSuite: a full stop, backquotes, a line break
+        for text in ('/** Cardano/Node/Protocol/Checkpoints.hs:56–114 at the pinned cardano-node 11.1.3. */\n',
+                     '/** `WithOrigin a` (cardano-slotting `Slot.hs:71-82`).\n  * Source version: cardano-slotting\n'
+                     '  * 0.2.2.0.\n  */\n',
+                     '/** (`Sharing.hs:53-66,\n  * 111-135` of `cardano-ledger-binary` 1.9.1.0).\n  */\n',
+                     '/** the pinned Haskell reference (plutus-ledger-api\n  * 1.70.0.0, `Codec.hs:1`), row by row\n  */\n',
+                     '// `Foo.hs:12` (ouroboros-network\n// 2fb69829)\n'):
+            with self.subTest(text=text):
+                self.assertEqual(citations.unpinned(text), [])
+
     def test_what_is_not_a_pin(self):
         for word in ('4294967295', 'defaced', 'version 1.1', 'the pinned revision', 'section 3.1',
-                     '0123456789abcdef0123456789abcdef0123456789abcdef'):
+                     '0123456789abcdef0123456789abcdef0123456789abcdef', '0b10001110',
+                     'ouroboros-consensus-cardano 4.2.0.x'):
             with self.subTest(word=word):
                 self.assertEqual(citations.unpinned(f'// `Foo.hs:12`, {word}\n'), [1])
+        # Availability and TextError: the version of a UPLC program, not a release
+        self.assertEqual(citations.unpinned('/** `constr` in a program older than 1.1.0 (`Flat.hs:167-171`). */\n'), [1])
+        self.assertEqual(citations.unpinned('// a program of version 1.2.0 or later (`Parser.hs:40`)\n'), [1])
+
+    def test_every_citation_spelling_of_the_tree(self):
+        for citation in ('`Foo.hs:12`', '`Foo.hs: 12`', 'Foo.hs:L12', 'Foo.hs#L12', '`Foo.hs` lines 12-34',
+                         'ExBudgetMode.hs lines 126-172', '`Conway/PParams.hs` line 1095', 'Foo.hs, lines 3-4'):
+            with self.subTest(citation=citation):
+                self.assertEqual(citations.unpinned(f'// {citation}\n'), [1])
 
     def test_a_run_of_line_comments_is_one_block(self):
         self.assertEqual(citations.unpinned('// `Foo.hs:12` and `Bar.hs:3`\n// (cardano-ledger f649f975)\n'), [])
