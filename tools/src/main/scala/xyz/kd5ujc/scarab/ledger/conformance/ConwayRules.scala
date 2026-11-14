@@ -286,11 +286,11 @@ object ConwayRules:
   private def opCertLeaf(slot: Int) =
     headerLeaf(8, List(Index(slot)), sample => opCert(slot, sample))
 
-  /** The rules, by the name of their directory in the corpus. */
-  val rules: Map[String, DatasetRule] = Map(
-    // as `BlockTransport.check` reads a fetched block: each transaction's body, witness set and
-    // auxiliary data are decoded too (`Tx.fromBlock`)
-    "block" -> DatasetRule.unwritten(
+  /** `block`, read as `BlockTransport.check` reads a fetched block: each transaction's body,
+    * witness set and auxiliary data are decoded too (`Tx.fromBlock`).
+    */
+  private def blockRule: DatasetRule =
+    DatasetRule.unwritten(
       "Block.decodeShelley, then Tx.fromBlock",
       Reach.Embedded("[7, block]")
     )(b =>
@@ -299,7 +299,30 @@ object ConwayRules:
           block.transactions.traverse_(t => ledger(Tx.fromBlock(t, era, version))).as(block)
         case other => Right(other)
       }
-    ),
+    )
+
+  /** `datum_option`, in an output with a reference script, so that the output is written as a map
+    * whatever its datum.
+    */
+  private def datumOption: DatasetRule =
+    DatasetRule("TxOut.decode", Reach.Embedded("an output's key 2"), txOutCodec)(b =>
+      output("02", "a4")(b ++ hex("03d818458200820180"))
+    )(o => written(UtxoCodecs.txOut)(o).flatMap(Step.at(_, List(Key(2)))))
+
+  /** `protocol_version` and `major_protocol_version` are `ProtVer` and `Version` themselves, the
+    * dataset's types (`app/Generation/EraSpec.hs:131, 169`, cardano-cbor-dataset ed6c49a4): they
+    * are read by the header's reader of them (a major up to `MaxVersion`, 13), not by a hard fork
+    * action's, which bounds the major by the era's `ProtVerHigh` + 1.
+    */
+  private def protocolVersion: DatasetRule = headerLeaf(9, Nil)
+
+  /** [[protocolVersion]]'s major alone, in a version of minor 0. */
+  private def majorProtocolVersion: DatasetRule =
+    headerLeaf(9, List(Index(0)), b => hex("82") ++ b ++ hex("00"))
+
+  /** The rules, by the name of their directory in the corpus. */
+  val rules: Map[String, DatasetRule] = Map(
+    "block" -> blockRule,
     "header" -> DatasetRule("Header.fromRaw", Reach.Direct, Writing.Kept("Header.Shelley.raw"))(b =>
       Header.fromRaw(era, b, version).leftMap(Refusal.Chain(_))
     )(h => Right(h.raw)),
@@ -404,10 +427,7 @@ object ConwayRules:
     "plutus_v1_script" -> plutusScript(DecodeField.PlutusV1),
     "plutus_v2_script" -> plutusScript(DecodeField.PlutusV2),
     "plutus_v3_script" -> plutusScript(DecodeField.PlutusV3),
-    // with a reference script, so that the output is written as a map whatever its datum
-    "datum_option" -> DatasetRule("TxOut.decode", Reach.Embedded("an output's key 2"), txOutCodec)(
-      b => output("02", "a4")(b ++ hex("03d818458200820180"))
-    )(o => written(UtxoCodecs.txOut)(o).flatMap(Step.at(_, List(Key(2))))),
+    "datum_option" -> datumOption,
     "data" -> DatasetRule("TxOut.decode", Reach.Embedded("an output's inline datum"), txOutCodec)(
       output("028201")
     )(o => written(UtxoCodecs.txOut)(o).flatMap(Step.at(_, List(Key(2), Index(1))))),
@@ -553,11 +573,8 @@ object ConwayRules:
         written(HaskellStateCodecs.constitution)(Constitution(anchor, script))
       case _ => Left(Unwritten.NotKept)
     },
-    // `ProtVer` and `Version` themselves, the dataset's types (`EraSpec.hs:131, 169`): the header's
-    // reader of them (a major up to `MaxVersion`, 13), not a hard fork action's, which bounds the
-    // major by the era's `ProtVerHigh` + 1
-    "protocol_version" -> headerLeaf(9, Nil),
-    "major_protocol_version" -> headerLeaf(9, List(Index(0)), b => hex("82") ++ b ++ hex("00")),
+    "protocol_version" -> protocolVersion,
+    "major_protocol_version" -> majorProtocolVersion,
     "epoch" -> DatasetRule(
       "Proposal.decode",
       Reach.Embedded("an UpdateCommittee action's member term"),

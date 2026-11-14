@@ -193,6 +193,26 @@ object DijkstraRules:
   private def notEmbedded(parent: String) = DatasetRule.Unmapped(Unmapped.NotEmbedded(parent))
 
   /** The rules, by the name of their directory in the corpus. */
+  /** `certificates`, the set at a body's key 4, which refuses it empty (`DijkstraTx.body`), as the
+    * reference's body does where the set's own decoder takes an empty one.
+    */
+  private def certificates: DatasetRule = DatasetRule
+    .unwritten("DijkstraTx.body (Top)", Reach.Embedded("a body's key 4"))(body("04"))
+
+  /** `voting_procedures`, non-empty, as the body that holds them requires (`DijkstraTx.body`'s key
+    * 19).
+    */
+  private def votingProcedures: DatasetRule =
+    unwritten("DijkstraVoting.procedures, non-empty")(n =>
+      DijkstraVoting.procedures(n).flatMap(V12.nonEmpty(_, DecodeField.VotingProcedures))
+    )
+
+  /** `proposal_procedures`, the set at a body's key 20, which refuses it empty, as for the
+    * certificates.
+    */
+  private def proposalProcedures: DatasetRule = DatasetRule
+    .unwritten("DijkstraTx.body (Top)", Reach.Embedded("a body's key 20"))(body("14"))
+
   val rules: Map[String, DatasetRule] = Map(
     "block" -> DatasetRule.unwritten(
       "Block.decodeShelley (LeiosBlock)",
@@ -375,10 +395,7 @@ object DijkstraRules:
       Reach.Embedded("an interval of a body's key 26")
     )(b => body("181a")(hex("a1581de0" + zeros(28)) ++ b)),
     "certificate" -> unwritten("DijkstraCert.decode")(DijkstraCert.decode),
-    // the set at the body's key 4, which refuses it empty (`DijkstraTx.body`), as the reference's
-    // body does where the set's own decoder takes an empty one
-    "certificates" -> DatasetRule
-      .unwritten("DijkstraTx.body (Top)", Reach.Embedded("a body's key 4"))(body("04")),
+    "certificates" -> certificates,
     "relay" -> unwritten("DijkstraRelay.decode")(DijkstraRelay.decode),
     "dns_name" -> DatasetRule
       .unwritten("DijkstraRelay.decode", Reach.Embedded("a multi-host relay"))(relay("8202")),
@@ -418,10 +435,7 @@ object DijkstraRules:
       output("82", "00")
     )(o => written(Codec.bytes)(o.address.raw)),
     "voter" -> unwritten("DijkstraVoting.voter")(DijkstraVoting.voter),
-    // non-empty, as the body that holds them requires (`DijkstraTx.body`'s key 19)
-    "voting_procedures" -> unwritten("DijkstraVoting.procedures, non-empty")(n =>
-      DijkstraVoting.procedures(n).flatMap(V12.nonEmpty(_, DecodeField.VotingProcedures))
-    ),
+    "voting_procedures" -> votingProcedures,
     "voting_procedure" -> DatasetRule.unwritten(
       "DijkstraVoting.procedures",
       Reach.Embedded("{voter: {id: procedure}}")
@@ -458,9 +472,7 @@ object DijkstraRules:
       written(HaskellStateCodecs.anchor)(Anchor(a.url, a.hash)).flatMap(Step.at(_, List(Index(0))))
     ),
     "proposal_procedure" -> unwritten("DijkstraProposal.decode")(DijkstraProposal.decode),
-    // the set at the body's key 20, which refuses it empty, as for the certificates
-    "proposal_procedures" -> DatasetRule
-      .unwritten("DijkstraTx.body (Top)", Reach.Embedded("a body's key 20"))(body("14")),
+    "proposal_procedures" -> proposalProcedures,
     "gov_action" -> DatasetRule
       .unwritten("DijkstraProposal.decode", Reach.Embedded("a proposal procedure"))(b =>
         read(DijkstraProposal.decode)(
