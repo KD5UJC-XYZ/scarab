@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.codec.DomainError
 import cats.{Eq, Show}
 import cats.derived.*
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.consensus.{BlockRef, BootstrapState, ConsensusExtras, HardForkConfig}
+import xyz.kd5ujc.scarab.consensus.{BlockRef, ConsensusExtras, FollowState, HardForkConfig}
 import xyz.kd5ujc.scarab.ledger.state.{Diff, Gap, MirrorEnv, MirrorError, NodeExtras, WithOrigin}
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -86,7 +86,7 @@ object StateMirrorError:
 enum MirrorExtras:
   case InByron(
       pending: ChainDepState,
-      boot: BootstrapState,
+      follow: FollowState,
       protocol: ProtocolExtras
   )
   case InShelley(ledger: NodeExtras, consensus: ConsensusExtras)

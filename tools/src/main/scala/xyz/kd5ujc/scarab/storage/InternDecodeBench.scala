@@ -43,7 +43,7 @@ object InternDecodeBench extends Assertions:
     )
     sampler.start()
     val state =
-      try checked(SnapshotV10.decode(env, ReferenceLayout.Release11_1, content))
+      try checked(SnapshotV11.decode(env, ReferenceLayout.Release11_1, content))
       finally
         running.set(false)
         sampler.join()
@@ -65,17 +65,17 @@ object InternDecodeBench extends Assertions:
       retained(env, content)
       checkpoint("RELEASED")
     else
-      val initial = checked(SnapshotV10.decode(env, ReferenceLayout.Release11_1, content))
+      val initial = checked(SnapshotV11.decode(env, ReferenceLayout.Release11_1, content))
       (0 until 10).foreach(_ =>
         assertEquals(
-          checked(SnapshotV10.decode(env, ReferenceLayout.Release11_1, content)),
+          checked(SnapshotV11.decode(env, ReferenceLayout.Release11_1, content)),
           initial
         )
       )
       val rows = (0 until 9).map { sample =>
         val before = allocation.getCurrentThreadAllocatedBytes
         val start = System.nanoTime()
-        val result = SnapshotV10.decode(env, ReferenceLayout.Release11_1, content)
+        val result = SnapshotV11.decode(env, ReferenceLayout.Release11_1, content)
         val elapsed = System.nanoTime() - start
         val allocated = allocation.getCurrentThreadAllocatedBytes - before
         assertEquals(checked(result), initial)
@@ -86,7 +86,7 @@ object InternDecodeBench extends Assertions:
         s"METRIC median_ns=${rows.map(_._1).sorted.apply(4)} min_ns=${rows.map(_._1).min} max_ns=${rows.map(_._1).max} allocated=${rows.map(_._2).sorted.apply(4)}"
       )
       println(s"DIGEST state ${sha(initial.toString.getBytes("UTF-8"))}")
-      val refusal = SnapshotV10.decode(env, ReferenceLayout.Release11_1, content.dropRight(1))
+      val refusal = SnapshotV11.decode(env, ReferenceLayout.Release11_1, content.dropRight(1))
       assert(refusal.isLeft)
       println(s"DIGEST refusal ${sha(refusal.toString.getBytes("UTF-8"))}")
     java.lang.ref.Reference.reachabilityFence(raw)

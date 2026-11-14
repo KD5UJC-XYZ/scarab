@@ -10,7 +10,7 @@ import java.nio.ByteBuffer
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
-import xyz.kd5ujc.scarab.storage.{SnapshotCheck, SnapshotV10}
+import xyz.kd5ujc.scarab.storage.{SnapshotCheck, SnapshotV11}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
 
 /** SPIKE for issue #94 (docs/design/memory-lean-decoding.md): what the snapshot read-back costs in
@@ -333,7 +333,7 @@ object Memory94Main:
             )
             .fold(e => sys.error(e.message), identity)
           given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-          SnapshotV10
+          SnapshotV11
             .format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
             .decode(NativeSnapshots.current(content).fold(e => sys.error(e.toString), identity))
             .unsafeRunSync()
@@ -346,7 +346,7 @@ object Memory94Main:
             )
             .fold(e => sys.error(e.message), identity)
           given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-          val format = SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+          val format = SnapshotV11.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
           val snapshot =
             format
               .decode(NativeSnapshots.current(content).fold(e => sys.error(e.toString), identity))

@@ -10,9 +10,8 @@ import xyz.kd5ujc.scarab.protocol.Era
 /** The PPUP quorum counts proposals by their values: `votedFuturePParams` keys its count by
   * `PParamsUpdate era` (`Rules/Ppup.hs:214-220`, cardano-ledger f649f975), whose derived `Ord`
   * compares each field by its decoded value, so equal values written differently are one update.
-  * Both voting paths are covered: the bootstrap ledger's (`LiteLedger.voted`) and the era rules'
-  * (`UpdateChecks.voted`). Each update is read from a body, so every encoding here is one the body
-  * decoder accepts.
+  * The era rules' vote is `UpdateChecks.voted`. Each update is read from a body
+  * ([[TxBody.decode]]), so every encoding here is one the body decoder accepts.
   */
 class PpupVoteSuite extends FunSuite:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
@@ -20,15 +19,27 @@ class PpupVoteSuite extends FunSuite:
   private val genesis = Genesis
     .shelley(Files.readString(Path.of("fixtures/preview/genesis/shelley-genesis.json")))
     .fold(e => fail(e.message), identity)
-  private val lite = LiteLedger.fromGenesis(genesis.raw).fold(e => fail(e.message), identity)
-  private val geometry = genesis.geometry
-  private val delegates = lite.genDelegs.keys.toVector.sortBy(_.hex)
+  private val delegates = GenesisState
+    .genDelegs(genesis.raw)
+    .fold(e => fail(e.message), identity)
+    .keys
+    .toVector
+    .sortBy(_.hex)
+  private val quorum = GenesisSchema.updateQuorum(genesis.raw).fold(e => fail(e.message), identity)
 
-  /** The update of one delegate in the body `{6: [{delegate: fields}, 0]}` of `era`. */
+  /** The body `{0: [], 1: [], 2: 0, 3: 0, 6: [{delegate: fields}, 0]}` of `era`, read. */
+  private def body(era: Era, fields: String): Either[LedgerDecodeError, TxBody] =
+    TxBody.decode(
+      hex(
+        "a5" + "0080" + "0180" + "0200" + "0300" + "0682a1581c" + delegates(0).hex + fields + "00"
+      ),
+      era
+    )
+
+  /** The update of one delegate in a body of `era`. */
   private def proposed(era: Era, fields: String): ParamUpdate =
-    val body = hex("a10682a1581c" + delegates(0).hex + fields + "00")
-    LiteLedger.effects(body, era) match
-      case Right(Vector(LiteLedger.Effect.Proposal(updates, _))) =>
+    body(era, fields).map(_.update) match
+      case Right(Some(Update(updates, _))) =>
         updates.values.toVector match
           case Vector(u) => u
           case other     => fail(s"expected one update, got $other")
@@ -48,37 +59,40 @@ class PpupVoteSuite extends FunSuite:
     "d81e821a000000011b0000000000000002"
   ).map(d => proposed(Era.Shelley, "a10c" + d))
 
+  private val shelley = TestLedger.params(2)
+
+  private def shelleyVote(updates: Map[Bytes, ParamUpdate], q: Int) =
+    UpdateChecks.voted[xyz.kd5ujc.scarab.ledger.state.Shelley](shelley, updates, q).map(_.d)
+
   test("five proposals of d = 1/2 in five encodings reach the quorum of 5 together") {
     assertEquals(halves.distinct.size, 5)
-    assertEquals(lite.quorum, 5)
-    val ticked = LiteLedger.tick(
-      lite.copy(curProposals = votes(halves)),
-      geometry.firstSlot(1) + 5,
-      geometry
-    )
-    assertEquals(ticked.map(_.params.d), Right(Rational(1, 2)))
+    assertEquals(quorum, 5)
+    assertEquals(shelleyVote(votes(halves), quorum), Some(Rational(1, 2)))
   }
 
   test("four proposals of d = 1/2 and one of d = 1/3 do not reach the quorum") {
     val third = proposed(Era.Shelley, "a10cd81e820103")
-    val ticked = LiteLedger.tick(
-      lite.copy(curProposals = votes(halves.take(4) :+ third)),
-      geometry.firstSlot(1) + 5,
-      geometry
-    )
-    assertEquals(ticked.map(_.params.d), Right(lite.params.d))
+    assertEquals(shelleyVote(votes(halves.take(4) :+ third), quorum), None)
   }
 
-  test("the bootstrap ledger: two byte groups of one value are one winner, two values are none") {
-    assertEquals(
-      LiteLedger.voted(votes(halves.take(4)), lite.params, 2).map(_.map(_.d)),
-      Right(Some(Rational(1, 2)))
-    )
+  test("two byte groups of one value are one winner, two values are none") {
+    assertEquals(shelleyVote(votes(halves.take(4)), 2), Some(Rational(1, 2)))
     val third = proposed(Era.Shelley, "a10cd81e820103")
     val thirdWide = proposed(Era.Shelley, "a10cd81e8218011803")
+    assertEquals(shelleyVote(votes(Vector(halves(0), halves(1), third, thirdWide)), 2), None)
+  }
+
+  test("an update is read at its era's key set, and a repeated key is refused") {
+    // Babbage has no `d` (key 12, `Babbage/PParams.hs:203-226`); Alonzo has
+    // (`Alonzo/PParams.hs:344-369`, cardano-ledger f649f975)
     assertEquals(
-      LiteLedger.voted(votes(Vector(halves(0), halves(1), third, thirdWide)), lite.params, 2),
-      Right(None)
+      body(Era.Babbage, "a10cd81e820001").map(_.update),
+      Left(LedgerDecodeError.UnknownKey(DecodeField.ParameterUpdate, 12))
+    )
+    assert(body(Era.Alonzo, "a10cd81e820001").isRight)
+    assertEquals(
+      body(Era.Alonzo, "a2" + "0cd81e820001" + "0cd81e820001").map(_.update),
+      Left(LedgerDecodeError.DuplicateKey(DecodeField.ParameterUpdate))
     )
   }
 

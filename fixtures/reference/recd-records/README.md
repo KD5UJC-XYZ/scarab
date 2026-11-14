@@ -36,9 +36,8 @@ The verdict (`accepted` and the complete `failure`) is what the unchanged releas
 each: `decodeFullAnnotator` at the era's decoder version. In all, 46 accepted and 72 refused. Every
 refusal names `rule`, a fragment of the reference failure, and `expect`, the Scarab error case.
 `RecdRecordsReferenceSuite` requires the same verdict from `TxBody.decode`, `Witnesses.decode` or
-`Tx.fromEnvelope`, and from the bootstrap ledger's `LiteLedger.effects` for a body of an era with
-PPUP that holds an update, and for an acceptance that the retained bytes (and so the transaction
-id) are the original ones. It also reads each output whose value a body refuses with the stored
+`Tx.fromEnvelope`, and for an acceptance that the retained bytes (and so the transaction id) are the
+original ones. It also reads each output whose value a body refuses with the stored
 rule (`TxOut.fromBytes`, ADR 0006), which keeps its bytes and gives the value of the definite list.
 `provenance.json` records the package versions and the hashes of the harness, the generator, its
 input and output, and the corpus.

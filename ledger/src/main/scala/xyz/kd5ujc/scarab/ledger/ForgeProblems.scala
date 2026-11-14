@@ -58,7 +58,6 @@ enum ForgeLedgerProblem:
 enum ForgeProtocolProblem:
   case Version(actual: BigInt)
   case LeftConway
-  case Bootstrap
   case InByron
   case Earlier(era: Era)
   case Mirror(cause: MirrorError)

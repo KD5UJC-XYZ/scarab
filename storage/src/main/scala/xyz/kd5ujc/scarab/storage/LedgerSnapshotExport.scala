@@ -177,23 +177,14 @@ object LedgerSnapshotExport:
             )
         }
 
-    /** The recorded build and the sections of a V10 file, or of a V9 file (which holds 11.1 bytes
-      * only) of a database this build has not opened yet; refused unless the requested layout reads
-      * the recorded build's.
+    /** The recorded build and the sections of a V11 file, or of a V9 or V10 file of a database this
+      * build has not opened yet, read as its migration would write it, in memory (a V9 file holds
+      * 11.1 bytes only); refused unless the requested layout reads the recorded build's.
       */
     def recorded(
         content: Array[Byte]
     ): Either[StorageError, (ReferenceBuild, CheckpointBinding, SnapshotSidecar, Bytes)] =
-      if content.startsWith(SnapshotV9.Magic) then
-        SnapshotV9.sections(content).flatMap { (binding, sidecar, haskell) =>
-          val build = ReferenceBuild.Release11_1
-          Either.cond(
-            config.layout.reads(build),
-            (build, binding, sidecar, haskell),
-            StorageError.ReferenceBuildMismatch("snapshot", build, config.layout.build)
-          )
-        }
-      else SnapshotV10.sections(content, config.layout)
+      SnapshotMigration.unopened(content).flatMap(SnapshotV11.sections(_, config.layout))
 
     def writeSnapshot(snapshot: Path, stage: Path): F[Report] =
       for

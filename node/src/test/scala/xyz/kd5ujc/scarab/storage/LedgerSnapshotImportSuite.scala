@@ -63,9 +63,6 @@ class LedgerSnapshotImportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
       .toMap
       .map { (era, i) => (era, (states(i), raws(i))) }
   private val genesis = setup.handOver.fold(fail("expected Byron genesis"))(_.protocolParams)
-  private val boot = setup.mirrorStart.extras match
-    case MirrorExtras.InByron(_, b, _) => b
-    case MirrorExtras.InShelley(_, c)  => c.boot
 
   private def attempt[A](body: Handle[IO, Error] ?=> IO[A]): IO[Either[Error, A]] =
     Handle.allow[Error](body.map(_.asRight[Error])).rescue(e => IO.pure(Left(e)))
@@ -76,7 +73,6 @@ class LedgerSnapshotImportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
       setup.identity,
       setup.geometry.byron.epochSlots,
       genesis,
-      boot,
       trust
     )
   private def anchor(state: MirrorState): BlockRef =
@@ -148,7 +144,7 @@ class LedgerSnapshotImportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
     yield (ledger, db, state, raw)
 
   private def restored(db: Path, state: MirrorState): IO[StateSnapshot[MirrorState]] = ok {
-    val format = SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+    val format = SnapshotV11.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
     val path = db / "snapshots" / FileLedgerSnapshots.nameOf(anchor(state))
     for
       bytes <- IO.blocking(JFiles.readAllBytes(path.toNioPath))
@@ -180,8 +176,8 @@ class LedgerSnapshotImportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
               .dropRight(32)
             assert(content.takeRight(original.size).sameElements(original.toArray))
             // the build that wrote the input is recorded with its bytes
-            assertEquals(SnapshotV10.recordedOf(content), Right("11.1"))
-            val sidecar = SnapshotV10.sidecarOf(content).fold(e => fail(e.message), identity)
+            assertEquals(SnapshotV11.recordedOf(content), Right("11.1"))
+            val sidecar = SnapshotV11.sidecarOf(content).fold(e => fail(e.message), identity)
             assertEquals(sidecar.gaps, Set.empty)
             assertEquals(read.state.provenance.gaps, Set.empty)
             assertEquals(read.state.provenance.observed, sidecar.observed)

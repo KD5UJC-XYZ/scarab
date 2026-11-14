@@ -3,7 +3,7 @@
 
 **Status: Current.** The value of `--reference-build` names the build of `cardano-node` that the
 network runs and that Scarab mirrors ([#826](https://github.com/KD5UJC-XYZ/scarab/issues/826)): the
-layout of the reference's database that Scarab reads and writes, which snapshot V10 records with the
+layout of the reference's database that Scarab reads and writes, which snapshots record (from V10) with the
 state bytes, and the ledger and consensus rules (one rule so far,
 `UtxoTests.injectedBootAddrAttrsTooBig`, #832; the rest from #826 step c). One binary of the reference is
 one layout and one rule set, and the value is the binary. A value other than the network's build is
@@ -31,7 +31,7 @@ and, later, rules.
 - **Several values may share one layout.** A value is what the operator runs; a layout
   (`StateLayout`) is what the bytes are. A snapshot is read when its recorded build's layout is the
   configured build's; there is no conversion between layouts.
-- **A value is never renamed or removed without the owner's decision.** The name is what V10
+- **A value is never renamed or removed without the owner's decision.** The name is what V10 and V11
   snapshots record: a renamed or removed name makes those files unknown, and they are skipped.
 
 ### Known differences inside 11.1
@@ -78,7 +78,7 @@ as 4.2.1.0 does (`ntc/GenesisConfig.scala`).
      `LeiosStateCodecs` in `HaskellStateCodecs.scala`) and its case in `HaskellLedgerFile.codecs`;
    - round trips on `state` files of that build, and the refusal of them by every other layout.
 
-   The snapshot format does not change: V10 records the name as text.
+   The snapshot format does not change: the snapshot records the name as text.
 4. **The rules.** The value also selects the ledger and consensus rules. `NodeSetup` sets it on
    `LedgerGlobals.referenceBuild`, the ledger hands it to each transaction's rules as
    `TxEnv.referenceBuild`, and a rule that differs between builds matches on it exhaustively

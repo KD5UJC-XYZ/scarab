@@ -34,7 +34,7 @@ object RewardSnapshotFixtureMain extends Assertions:
       .fromDirectory(ReferenceBuild.Default)(Path.of(args(1)))
       .fold(e => fail(e.toString), identity)
     given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-    val format = SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+    val format = SnapshotV11.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
     val snapshot = mode match
       case Mode.Rewrite =>
         format

@@ -150,13 +150,4 @@ class RecdRecordsReferenceSuite extends FunSuite:
         case (Some(_), Right(_)) => fail(s"the reference refuses this encoding: ${row.failure}")
         case (Some(refusal), Left(e)) =>
           assertEquals(ReferenceCorpus.Refusal.of(e), Some(refusal), s"Scarab gave $e")
-      // The bootstrap ledger reads the update proposal of an era with PPUP, and no output.
-      if row.kind == Kind.Body && ParamUpdate.Rules.of(row.era).isDefined && fields(row.raw)
-          .contains(6)
-      then
-        assertEquals(
-          LiteLedger.effects(row.raw, row.era).isRight,
-          row.accepted,
-          "the bootstrap ledger's reading"
-        )
     }

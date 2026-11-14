@@ -42,7 +42,7 @@ object MirrorSteps:
   /** The ledger state of the Shelley-based era a mirror is in, read as a test reads it. */
   def ledger(s: MirrorState): Option[InEra] = s.ledger(None).toOption.flatten
 
-  /** The mirror with its consensus bookkeeping (the bootstrap state, the Byron state, the protocol
+  /** The mirror with its consensus bookkeeping (the follow state, the Byron state, the protocol
     * extras) changed by `f`: a state of a chain at another point of its history, for the tests of
     * what is read from it.
     */
@@ -50,13 +50,13 @@ object MirrorSteps:
     (m.extras, m.ext.ledgerState.state) match
       case (MirrorExtras.InShelley(ledger, consensus), _) =>
         m.copy(extras = MirrorExtras.InShelley(ledger, f(consensus)))
-      case (MirrorExtras.InByron(pending, boot, protocol), EraLedgerState.ByronCurrent(b)) =>
-        val next = f(ConsensusExtras(boot, b, protocol))
+      case (MirrorExtras.InByron(pending, follow, protocol), EraLedgerState.ByronCurrent(b)) =>
+        val next = f(ConsensusExtras(follow, b, protocol))
         m.copy(
           ext = m.ext.copy(ledgerState =
             m.ext.ledgerState.withState(EraLedgerState.ByronCurrent(next.byron))
           ),
-          extras = MirrorExtras.InByron(pending, next.boot, next.protocol)
+          extras = MirrorExtras.InByron(pending, next.follow, next.protocol)
         )
       case _ => m
 

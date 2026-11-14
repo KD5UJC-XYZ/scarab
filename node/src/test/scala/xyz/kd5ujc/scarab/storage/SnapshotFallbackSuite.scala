@@ -47,15 +47,15 @@ class SnapshotFallbackSuite extends CatsEffectSuite:
     .fold(e => fail(e.message), _.mirrorEnv())
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(env)
   private given SnapshotFormat[IO, MirrorState] =
-    SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+    SnapshotV11.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
 
   private def content(file: String): Array[Byte] =
     FileLedgerSnapshots
-      .verified(JFiles.readAllBytes(JPath.of("fixtures/snapshot-v10").resolve(file)))
+      .verified(JFiles.readAllBytes(JPath.of("fixtures/snapshot-v11").resolve(file)))
       .fold(e => fail(e.message), identity)
 
   private def nameOf(content: Array[Byte]): String =
-    SnapshotV10
+    SnapshotV11
       .sidecarOf(content)
       .toOption
       .flatMap(_.anchor)
@@ -68,18 +68,18 @@ class SnapshotFallbackSuite extends CatsEffectSuite:
   private val newer = nameOf(newerContent)
 
   private def sections =
-    SnapshotV10
+    SnapshotV11
       .sections(newerContent, ReferenceLayout.Release11_1)
       .fold(e => fail(e.message), identity)
 
   /** The newer snapshot recorded under `build`, or with Haskell bytes that are not a state. */
   private def framed(build: ReferenceBuild, haskell: Option[Bytes] = None): Array[Byte] =
     val (_, binding, sidecar, state) = sections
-    SnapshotV10.framed(build, binding, sidecar, haskell.getOrElse(state))
+    SnapshotV11.framed(build, binding, sidecar, haskell.getOrElse(state))
 
   private def unknownBuild: Array[Byte] =
-    SnapshotV10.Magic ++ Array(4.toByte) ++ "11.9".getBytes("US-ASCII") ++
-      newerContent.drop(SnapshotV10.Magic.length + 5)
+    SnapshotV11.Magic ++ Array(4.toByte) ++ "11.9".getBytes("US-ASCII") ++
+      newerContent.drop(SnapshotV11.Magic.length + 5)
 
   /** The newer snapshot with one byte of its sidecar's fingerprint changed. */
   private def otherSidecarSchema: Array[Byte] =
@@ -212,7 +212,7 @@ class SnapshotFallbackSuite extends CatsEffectSuite:
           dir,
           newer,
           FileLedgerSnapshots.closed(
-            SnapshotV10.framed(ReferenceBuild.Release11_1, binding, sidecar, haskell)
+            SnapshotV11.framed(ReferenceBuild.Release11_1, binding, sidecar, haskell)
           )
         )
         restored <- restore(dir).map(_.fold(e => fail(e.message), identity))
@@ -369,7 +369,7 @@ class SnapshotFallbackSuite extends CatsEffectSuite:
 
   test("an unknown format version is raised (ADR 0006): nothing restored, nothing deleted") {
     tempDir.use { dir =>
-      val future = "SCRBSNPB".getBytes("US-ASCII") ++ newerContent.drop(8)
+      val future = "SCRBSNPC".getBytes("US-ASCII") ++ newerContent.drop(8)
       for
         _ <- write(dir, older, FileLedgerSnapshots.closed(olderContent))
         _ <- write(dir, newer, FileLedgerSnapshots.closed(future))
@@ -461,7 +461,7 @@ class SnapshotFallbackSuite extends CatsEffectSuite:
             Migrated(
               xyz.kd5ujc.scarab.ledger.FileKind.SnapshotFile,
               xyz.kd5ujc.scarab.ledger.FormatVersion.V9,
-              xyz.kd5ujc.scarab.ledger.FormatVersion.V10,
+              xyz.kd5ujc.scarab.ledger.FormatVersion.V11,
               1
             )
           )
@@ -508,7 +508,7 @@ class SnapshotFallbackSuite extends CatsEffectSuite:
     val converted = SnapshotV10.fromV9(stretched).fold(e => fail(e.message), identity)
     assertEquals(
       converted.toVector,
-      (SnapshotV10.Magic ++ SnapshotV10.buildBytes(ReferenceBuild.Release11_1) ++
+      (SnapshotV10.Magic ++ SnapshotV11.buildBytes(ReferenceBuild.Release11_1) ++
         stretched.drop(SnapshotV9.Magic.length)).toVector
     )
     assertEquals(SnapshotV10.bindingOf(converted), Right(CheckpointBinding.Legacy))

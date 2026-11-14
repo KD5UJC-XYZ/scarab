@@ -42,11 +42,11 @@ object SnapshotV7:
     }
 
   /** A V7 file's content, in one array of its exact size (the previous-version tests write it; the
-    * node writes [[SnapshotV10]]).
+    * node writes [[SnapshotV11]]).
     */
   private[storage] def framed(
       binding: CheckpointBinding,
-      sidecar: SnapshotSidecar,
+      sidecar: FrozenSidecar.SnapshotSidecar,
       haskell: Bytes
   ): Array[Byte] =
     val bound = SnapshotV9.bindingBytes(binding)
@@ -66,16 +66,16 @@ object SnapshotV7:
     * update state lost its installer metadata is refused, [[SnapshotSidecarV7]]).
     */
   def sidecarOf(content: Array[Byte]): Either[StorageError, SnapshotSidecar] =
-    sections(content).map(_._2)
+    sections(content).map(s => FrozenSidecar.live(s._2))
 
   /** The binding, the sidecar and the Haskell bytes of a V7 file, after the magic, the lengths and
     * the fingerprints have been checked.
     */
   private[storage] def sections(
       content: Array[Byte]
-  ): Either[StorageError, (CheckpointBinding, SnapshotSidecar, Bytes)] =
+  ): Either[StorageError, (CheckpointBinding, FrozenSidecar.SnapshotSidecar, Bytes)] =
     SnapshotV9.boundHeader(Magic, content).flatMap { (binding, at) =>
       SnapshotV5
-        .body(content, at, SnapshotV5.Schema.Previous(FormatVersion.V7))
+        .previousBody(content, at, SnapshotV5.Schema.V7(FormatVersion.V7))
         .map((sidecar, haskell) => (binding, sidecar, haskell))
     }

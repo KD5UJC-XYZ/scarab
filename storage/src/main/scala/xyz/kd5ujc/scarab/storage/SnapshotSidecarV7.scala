@@ -4,8 +4,7 @@ package xyz.kd5ujc.scarab.storage
 import cats.syntax.all.*
 import java.nio.charset.StandardCharsets
 import xyz.kd5ujc.scarab.codec.{BinaryError, Bytes}
-import xyz.kd5ujc.scarab.consensus.state.MirrorExtras
-import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState, ConsensusExtras}
+import xyz.kd5ujc.scarab.consensus.ByronState
 import xyz.kd5ujc.scarab.ledger.ProtocolParams
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{FileKind, FormatLoss, FormatVersion, StorageError}
@@ -21,13 +20,15 @@ import xyz.kd5ujc.scarab.ledger.byron.{
   * installer metadata of the Byron update state's software proposals and application versions,
   * which those versions discarded (issue #726).
   *
-  * It reads into the current types. A Byron update state that holds no software proposal and no
-  * application version lost nothing and is read as it is; one that holds any is refused with
-  * [[StorageError.ResyncRequired]], because its metadata cannot be recovered and the node does not
-  * invent it (ADR 0006). The schema fingerprint golden of `CodecSuite` keeps it the one those files
-  * were written with: the frozen types below carry the names of the V7 types, the eras are those of
-  * the files before V9 ([[FrozenEra]]), so are the protocol parameters ([[FrozenProtocolParams]]),
-  * and the other types are shared with the current schema, unchanged at V8 and V9.
+  * It reads into the frozen types of [[FrozenSidecar]]. A Byron update state that holds no software
+  * proposal and no application version lost nothing and is read as it is; one that holds any is
+  * refused with [[StorageError.ResyncRequired]], because its metadata cannot be recovered and the
+  * node does not invent it (ADR 0006). The schema fingerprint golden of `CodecSuite` keeps it the
+  * one those files were written with: the frozen types below carry the names of the V7 types, the
+  * eras are those of the files before V9 ([[FrozenEra]]), so are the protocol parameters
+  * ([[FrozenProtocolParams]]), the bootstrap state is that of the files before V11
+  * ([[FrozenSidecar]]), and the other types are shared with the current schema, unchanged at V8, V9
+  * and V11.
   */
 private[storage] object SnapshotSidecarV7:
 
@@ -101,12 +102,13 @@ private[storage] object SnapshotSidecarV7:
 
   given era: Codec[Era] = FrozenEra.codec
   given protocolParams: Codec[ProtocolParams] = FrozenProtocolParams.codec
-  given bootstrap: Codec[BootstrapState] = Codec.auto
+  given liteLedger: Codec[FrozenSidecar.LiteLedger] = Codec.auto
+  given bootstrap: Codec[FrozenSidecar.BootstrapState] = Codec.auto
   given byron: Codec[ByronState] = Codec.auto
-  given consensusExtras: Codec[ConsensusExtras] = Codec.auto
-  given mirrorInShelley: Codec[MirrorExtras.InShelley] = Codec.auto
+  given consensusExtras: Codec[FrozenSidecar.ConsensusExtras] = Codec.auto
+  given mirrorInShelley: Codec[FrozenSidecar.MirrorExtras.InShelley] = Codec.auto
 
-  val codec: Codec[SnapshotSidecar] = Codec.auto
+  val codec: Codec[FrozenSidecar.SnapshotSidecar] = Codec.auto
 
   /** The schema fingerprint stored in front of a V5 or V7 sidecar. */
   def fingerprint: Array[Byte] =
@@ -118,8 +120,11 @@ private[storage] object SnapshotSidecarV7:
   /** A V5 or V7 sidecar (after its fingerprint), the refusal of a lost Byron metadata as
     * [[StorageError.ResyncRequired]] of a file of version `found`.
     */
-  def decode(bytes: Array[Byte], found: FormatVersion): Either[StorageError, SnapshotSidecar] =
-    Codec.decode[SnapshotSidecar](bytes)(using codec).leftMap {
+  def decode(
+      bytes: Array[Byte],
+      found: FormatVersion
+  ): Either[StorageError, FrozenSidecar.SnapshotSidecar] =
+    Codec.decode[FrozenSidecar.SnapshotSidecar](bytes)(using codec).leftMap {
       case BinaryError.Reconstruction(loss: FormatLoss) =>
         StorageError.ResyncRequired("snapshot", FileKind.SnapshotFile, found, loss)
       case other => DecodeFailure.binary("snapshot sidecar", other)

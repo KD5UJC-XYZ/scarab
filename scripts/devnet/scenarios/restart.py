@@ -30,8 +30,8 @@ def restore_problem(events):
     return None
 
 
-# the magic of the snapshot files this build writes (FileKind.SnapshotFile current, SnapshotV10)
-SNAPSHOT_MAGIC = b"SCRBSNPA"
+# the magic of the snapshot files this build writes (FileKind.SnapshotFile current, SnapshotV11)
+SNAPSHOT_MAGIC = b"SCRBSNPB"
 
 
 def format_problem(magics):

@@ -11,7 +11,7 @@ import java.nio.file.{Files as JFiles, Path as JPath, StandardCopyOption}
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorExtras}
+import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.AncillaryManifest
@@ -37,9 +37,6 @@ class PreprodSnapshotImportSuite extends CatsEffectSuite:
         .fold(e => fail(e.message), identity)
       given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
       val params = setup.handOver.fold(fail("preprod starts in Byron"))(_.protocolParams)
-      val boot = setup.mirrorStart.extras match
-        case MirrorExtras.InByron(_, b, _) => b
-        case MirrorExtras.InShelley(_, c)  => c.boot
       val key = AncillaryManifest
         .verificationKey(JFiles.readString(JPath.of("fixtures/mempack/ancillary/preprod.vkey")))
         .fold(e => fail(e.toString), identity)
@@ -68,7 +65,6 @@ class PreprodSnapshotImportSuite extends CatsEffectSuite:
                   setup.identity,
                   setup.geometry.byron.epochSlots,
                   params,
-                  boot,
                   LedgerSnapshotImport.Trust.Verify(source / "ancillary_manifest.json", key)
                 )
               )
@@ -83,7 +79,7 @@ class PreprodSnapshotImportSuite extends CatsEffectSuite:
           original <- IO.blocking(
             JFiles.readAllBytes((source / "ledger" / "136511997" / "state").toNioPath)
           )
-          back <- SnapshotV10
+          back <- SnapshotV11
             .format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
             .decode(content.dropRight(32))
           _ <- StorageTestKit.ok {
@@ -108,7 +104,7 @@ class PreprodSnapshotImportSuite extends CatsEffectSuite:
           assert(content.dropRight(32).takeRight(original.length).sameElements(original))
           assert(back.isRight, back.left.map(_.message).toString)
           val sidecar =
-            SnapshotV10.sidecarOf(content.dropRight(32)).fold(e => fail(e.message), identity)
+            SnapshotV11.sidecarOf(content.dropRight(32)).fold(e => fail(e.message), identity)
           assertEquals(sidecar.gaps, Set.empty)
           println(
             s"PREPROD_IMPORT slot=${report.anchor.slot} outputs=${report.count} coin=${report.coin} authenticated=true originalState=true elapsed=$elapsed"

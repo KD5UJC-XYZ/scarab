@@ -830,3 +830,17 @@ refused by the 11.1 layout; the first Dijkstra state is refused at its telescope
 state and past bounds read (`LeiosLayoutSuite`, `LeiosLayoutImportSuite`, the `leios-*` fuzz
 targets). Only Conway is checked on reference bytes; the other eras on the diff of the sources and
 on property laws.
+
+## 15. Snapshot V11 as built (#988)
+
+`SnapshotV11` (`SCRBSNPB`) is `SnapshotV10`'s layout whose sidecar holds the follow state
+(`FollowState`: the era of the last block applied and the epoch verdicts of the headers) where V10's
+held the bootstrap (ledger-lite) state, removed with its mode (owner's decision of 2026-11-14 on
+#988). The recorded build, the binding and the Haskell state bytes are not touched: the step from V10
+(`SnapshotV11.fromV10`) copies them as they are, whatever the build, and writes the sidecar again
+in the current schema. The previous sidecars read into frozen types (`FrozenSidecar`), so a step
+between previous versions keeps the bootstrap state it read. Export and the SCLS base read a V9 or
+V10 file of a database this build has not opened yet as its migration would write it, in memory
+(`SnapshotMigration.unopened`), and the SCLS base writes V11. The procedure and evidence are in
+[storage-migrations.md](../storage-migrations.md) and the
+[V11 compatibility page](../compatibility/persistence-snapshot-v11.md).

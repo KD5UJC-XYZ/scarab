@@ -29,9 +29,8 @@ an indefinite record; the extra entropy gets each arity. Conway bodies whose par
 The verdict (`accepted` and the complete `failure`) is what the unchanged released decoders did with
 each: `decodeFullAnnotator` at the era's decoder version. In all, 161 accepted and 289 refused. Every
 refusal names `rule`, a fragment of the reference failure, and `expect`, the Scarab error case.
-`UpdateValuesReferenceSuite` requires the same verdict from `TxBody.decode` and, for an era with
-PPUP, from the bootstrap ledger's `LiteLedger.effects`, and for an acceptance that the retained
-bytes (and so the transaction id) are the original ones. `provenance.json` records the package
+`UpdateValuesReferenceSuite` requires the same verdict from `TxBody.decode`, and for an acceptance
+that the retained bytes (and so the transaction id) are the original ones. `provenance.json` records the package
 versions and the hashes of the harness, the generator, its input and output, and the corpus.
 
 ## Regenerating

@@ -11,7 +11,7 @@ import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorState}
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
-import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, SnapshotV10}
+import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, SnapshotV11}
 import xyz.kd5ujc.scarab.ledger.byron.{
   AppVersion,
   ByronParams,
@@ -193,9 +193,9 @@ class ByronUpdateInterfaceSuite extends FunSuite:
   /** The state of a V9 fixture of the eras chain. */
   private def fixture(name: String): MirrorState =
     val content = FileLedgerSnapshots
-      .verified(Files.readAllBytes(Path.of("fixtures/snapshot-v10/eras").resolve(name)))
+      .verified(Files.readAllBytes(Path.of("fixtures/snapshot-v11/eras").resolve(name)))
       .fold(e => fail(e.message), identity)
-    SnapshotV10
+    SnapshotV11
       .decode(setup.mirrorEnv(), ReferenceLayout.Release11_1, content)
       .fold(e => fail(e.message), _.state)
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState, ConsensusExtras, HeaderCheckpoints}
+import xyz.kd5ujc.scarab.consensus.{ByronState, ConsensusExtras, FollowState, HeaderCheckpoints}
 import xyz.kd5ujc.scarab.consensus.state.{
   ByronMirror,
   ConsensusMirrorEnv,
@@ -39,7 +39,6 @@ import xyz.kd5ujc.scarab.ledger.{
   GenesisState,
   LedgerDecodeError,
   LedgerGlobals,
-  LiteLedger,
   ProviderDefect
 }
 import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
@@ -154,7 +153,6 @@ object NodeSetup:
   private def byronStart(
       env: ConsensusMirrorEnv,
       shelleyHash: Bytes,
-      lite: LiteLedger,
       byron: ByronState
   ): Either[ConfigError, MirrorState] =
     val protocol = ProtocolState.initial(Era.Byron, shelleyHash)
@@ -163,7 +161,7 @@ object NodeSetup:
         env,
         None,
         protocol.dep,
-        ConsensusExtras(BootstrapState.initial(lite), byron, protocol.extras),
+        ConsensusExtras(FollowState.initial, byron, protocol.extras),
         MirrorProvenance.complete
       )
       .leftMap(e => ConfigError(ConfigProblem.StateMirror(e)))
@@ -179,8 +177,7 @@ object NodeSetup:
       injections: GenesisInjections,
       fromByron: FromByron,
       era: Era,
-      shelleyHash: Bytes,
-      lite: LiteLedger
+      shelleyHash: Bytes
   ): Either[ConfigError, MirrorState] =
     val protocol = ProtocolState.initial(era, shelleyHash)
     for
@@ -196,7 +193,7 @@ object NodeSetup:
           env,
           ledger,
           protocol.dep,
-          ConsensusExtras(BootstrapState.initial(lite), ByronState.initial, protocol.extras)
+          ConsensusExtras(FollowState.initial, ByronState.initial, protocol.extras)
         )
         .leftMap(e => ConfigError(ConfigProblem.StateMirror(e)))
     yield mirror
@@ -394,7 +391,6 @@ object NodeSetup:
         forks,
         checkpoints = checkpoints
       )
-      lite <- LiteLedger.fromGenesis(files.shelley, firstShelley.getOrElse(BigInt(0)))
       byronRules <- byron.traverse { b =>
         val ledgerConfig = ByronLedger.Config(b, requiresMagic)
         ByronLedger
@@ -411,12 +407,12 @@ object NodeSetup:
             )
           }
       }
-      genDelegs <- LiteLedger.fromGenesis(files.shelley).map(_.genDelegs)
+      genDelegs <- GenesisState.genDelegs(files.shelley)
       fromByron = FromByron(genDelegs, params, globals.maxSupply)
       env = mirrorEnvOf(genesis, globals, praos, Some(byronGenesis))
       shelleyHash = Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes))
       start <- byronRules match
-        case Some((ledger, _)) => byronStart(env, shelleyHash, lite, ByronState.starting(ledger))
+        case Some((ledger, _)) => byronStart(env, shelleyHash, ByronState.starting(ledger))
         case None =>
           shelleyStart(
             env,
@@ -425,8 +421,7 @@ object NodeSetup:
             injections,
             fromByron,
             startEra,
-            shelleyHash,
-            lite
+            shelleyHash
           )
     yield NodeSetup(
       genesis,

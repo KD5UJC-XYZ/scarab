@@ -56,7 +56,7 @@ class MithrilBootstrapAcceptanceSuite extends CatsEffectSuite:
         finally candidates.close()
       val bytes = Files.readAllBytes(selected)
       for
-        decoded <- SnapshotV10
+        decoded <- SnapshotV11
           .format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
           .decode(bytes.dropRight(32))
         restored = decoded.fold(e => fail(e.message), identity)

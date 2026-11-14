@@ -1597,6 +1597,30 @@
       "page": "docs/compatibility/persistence-snapshot-v10.md"
     },
     {
+      "id": "persistence-snapshot-v11",
+      "component": "Persistence: ledger snapshot format (V11) without the bootstrap mode",
+      "status": "implemented",
+      "summary": "Native snapshot format V11 holds the follow state (the era of the last block applied and the epoch verdicts) where V10 held the dead bootstrap (ledger-lite) state; V10 files migrate with their build, binding and Haskell bytes kept and their sidecar converted, the flag and the lite ledger dropped",
+      "evidence": {
+        "suites": [
+          "SnapshotV11MigrationSuite",
+          "SnapshotGoldenSuite",
+          "CodecSuite",
+          "SnapshotV11Suite"
+        ],
+        "issues": [
+          988
+        ]
+      },
+      "limitations": {
+        "issues": [
+          129,
+          37
+        ]
+      },
+      "page": "docs/compatibility/persistence-snapshot-v11.md"
+    },
+    {
       "id": "persistence-leios-state-layout",
       "component": "Persistence: the Leios build's `state` layout",
       "status": "partial",

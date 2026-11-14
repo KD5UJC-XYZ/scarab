@@ -3,9 +3,9 @@ package xyz.kd5ujc.scarab.consensus.state
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.{
-  BootstrapState,
   ByronState,
   ConsensusExtras,
+  FollowState,
   ForkTrigger,
   HardForkConfig
 }
@@ -283,14 +283,14 @@ object MirrorStep:
     )
 
   /** The mirror after a Byron block: the chain-follow state with the block applied (the PBFT window
-    * is in it and in the chain-dependent state of the telescope), the bootstrap state, and the tip,
+    * is in it and in the chain-dependent state of the telescope), the follow state, and the tip,
     * annotated with whether the block is a boundary block.
     */
   def byronBlock(
       m: MirrorState,
       header: Header.Byron,
       byron: ByronState,
-      boot: BootstrapState
+      follow: FollowState
   ): Either[StateMirrorError, MirrorState] =
     m.extras match
       case _: MirrorExtras.InShelley => Left(StateMirrorError.ExtrasMismatch(m.ext.ledgerState.era))
@@ -310,7 +310,7 @@ object MirrorStep:
               ),
               m.ext.layout
             ),
-            MirrorExtras.InByron(pending, boot, protocol),
+            MirrorExtras.InByron(pending, follow, protocol),
             m.provenance
           )
         }

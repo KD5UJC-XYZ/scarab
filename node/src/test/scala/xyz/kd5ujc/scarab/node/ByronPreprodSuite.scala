@@ -236,7 +236,7 @@ class ByronPreprodSuite extends CatsEffectSuite:
   ) {
     given cats.mtl.Ask[IO, xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv] =
       setup.mirrorAsk(IO.pure(Map.empty))
-    val format = xyz.kd5ujc.scarab.storage.SnapshotV10.format[IO](
+    val format = xyz.kd5ujc.scarab.storage.SnapshotV11.format[IO](
       xyz.kd5ujc.scarab.storage.SnapshotCheck.Full,
       xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout.Release11_1
     )

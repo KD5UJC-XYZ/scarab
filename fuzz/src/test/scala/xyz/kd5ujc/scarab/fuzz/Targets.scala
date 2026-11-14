@@ -1145,16 +1145,6 @@ object Targets:
         }
       ),
       Target(
-        "lite-ledger-effects",
-        () =>
-          Corpus.txBodies(Era.Alonzo) ++ Corpus.txBodies(Era.Shelley) ++ Corpus
-            .sampled("shelley:transaction_body", 60) ++ Corpus.tricky,
-        probe("lite-ledger-effects") { b =>
-          seen("lite-ledger-effects", LiteLedger.effects(b, Era.Shelley).isRight)
-          LiteLedger.effects(b, Era.Babbage)
-        }
-      ),
-      Target(
         "voting-procedures",
         () => Corpus.sampled("conway:voting_procedures", 40) ++ Corpus.tricky,
         probe("voting-procedures") { b =>
@@ -1666,7 +1656,8 @@ object Targets:
       SnapshotV7,
       SnapshotV8,
       SnapshotV9,
-      SnapshotV10
+      SnapshotV10,
+      SnapshotV11
     }
     import scala.jdk.CollectionConverters.*
     lazy val env = NodeSetup
@@ -1674,10 +1665,10 @@ object Targets:
       .fold(e => throw new Violation(e.message), _.mirrorEnv())
     lazy val format =
       given Ask[SyncIO, ConsensusMirrorEnv] = Ask.const(env)
-      SnapshotV10.format[SyncIO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+      SnapshotV11.format[SyncIO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
     Vector(
       Target(
-        "native-snapshot-v10",
+        "native-snapshot-v11",
         () =>
           // Keep decoder allocations visible to Probe's caller-thread counter.
           val caller = Thread.currentThread()
@@ -1686,7 +1677,7 @@ object Targets:
             "snapshot fuzz interpreter moved off the allocation-guard thread"
           )
           val listing =
-            java.nio.file.Files.list(java.nio.file.Path.of("fixtures/snapshot-v10/eras"))
+            java.nio.file.Files.list(java.nio.file.Path.of("fixtures/snapshot-v11/eras"))
           val eraSeeds =
             try
               listing.iterator.asScala.toVector.sorted.map { file =>
@@ -1704,6 +1695,7 @@ object Targets:
             .flatMap(SnapshotV8.fromV7)
             .flatMap(SnapshotV9.fromV8)
             .flatMap(SnapshotV10.fromV9)
+            .flatMap(SnapshotV11.fromV10)
             .fold(e => throw new Violation(e.message), identity)
           req(
             seeds.forall(b => format.decode(b).unsafeRunSync().isRight),
@@ -1711,10 +1703,10 @@ object Targets:
           )
           seeds
         ,
-        probe("native-snapshot-v10") { bytes =>
+        probe("native-snapshot-v11") { bytes =>
           format.decode(bytes.toArray).unsafeRunSync().foreach { snapshot =>
-            hit("native-snapshot-v10")
-            val sidecar = SnapshotV10
+            hit("native-snapshot-v11")
+            val sidecar = SnapshotV11
               .sidecarOf(bytes.toArray)
               .fold(e => throw new Violation(e.message), identity)
             req(

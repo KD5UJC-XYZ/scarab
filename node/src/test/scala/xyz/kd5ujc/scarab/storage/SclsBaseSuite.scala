@@ -14,7 +14,7 @@ import java.security.MessageDigest
 import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{ByronState, ConsensusExtras}
+import xyz.kd5ujc.scarab.consensus.{ByronState, ConsensusExtras, FollowState}
 import xyz.kd5ujc.scarab.consensus.state.{
   ConsensusMirrorEnv,
   EraLedgerState,
@@ -22,7 +22,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
   ProtocolExtras,
   StateMirror
 }
-import xyz.kd5ujc.scarab.ledger.{GenesisFileHash, Nonce, StorageError}
+import xyz.kd5ujc.scarab.ledger.{FormatVersion, GenesisFileHash, Nonce, StorageError}
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   ConwayNewEpochState,
@@ -62,12 +62,9 @@ class SclsBaseSuite extends CatsEffectSuite:
     case EraLedgerState.InShelleyEra(ShelleyBasedEra.SConway, state) => state.nes
     case _ => fail("Conway reference state")
   private val gov = ConwayNewEpochState.gov.get(nes)
-  private val boot = setup.mirrorStart.extras match
-    case MirrorExtras.InByron(_, value, _) => value
-    case MirrorExtras.InShelley(_, value)  => value.boot
   private val extras: MirrorExtras.InShelley = MirrorExtras.InShelley(
     NodeExtras.empty,
-    ConsensusExtras(boot, ByronState.initial, ProtocolExtras(0, Nonce.Neutral))
+    ConsensusExtras(FollowState.initial, ByronState.initial, ProtocolExtras(0, Nonce.Neutral))
   )
 
   private def attempt[A](
@@ -81,7 +78,7 @@ class SclsBaseSuite extends CatsEffectSuite:
       checkpointStamp: Long = anchor.blockNo.toLong,
       wrongPoint: Boolean = false,
       countOffset: Long = 0,
-      v9: Boolean = false
+      previous: Option[FormatVersion] = None
   ): IO[SclsBase.Config] =
     val db = root / "db"
     ok {
@@ -124,8 +121,18 @@ class SclsBaseSuite extends CatsEffectSuite:
                     Files.write(
                       (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath,
                       FileLedgerSnapshots.closed(
-                        if v9 then SnapshotV9.framed(binding, sidecar, raw)
-                        else SnapshotV10.framed(ReferenceBuild.Release11_1, binding, sidecar, raw)
+                        previous match
+                          case Some(FormatVersion.V9) =>
+                            SnapshotV9.framed(binding, PreviousSidecars.of(sidecar), raw)
+                          case Some(_) =>
+                            SnapshotV10.framed(
+                              ReferenceBuild.Release11_1,
+                              binding,
+                              PreviousSidecars.of(sidecar),
+                              raw
+                            )
+                          case None =>
+                            SnapshotV11.framed(ReferenceBuild.Release11_1, binding, sidecar, raw)
                       )
                     )
                   }
@@ -230,14 +237,15 @@ class SclsBaseSuite extends CatsEffectSuite:
     }
   }
 
-  Vector(false, true).foreach { v9 =>
-    val base = if v9 then "a V9 base not yet migrated, read in memory," else "offline native base"
+  Vector(None, Some(FormatVersion.V9), Some(FormatVersion.V10)).foreach { previous =>
+    val base =
+      previous.fold("offline native base")(v => s"a $v base not yet migrated, read in memory,")
     test(s"$base exports the exact independently produced Haskell SCLS artifact") {
-      exportsReference(v9)
+      exportsReference(previous)
     }
   }
 
-  private def exportsReference(v9: Boolean) = {
+  private def exportsReference(previous: Option[FormatVersion]) = {
     val original =
       Bytes.wrap(Files.readAllBytes(JPath.of("fixtures/scls/conway-4593/reference.scls")))
     val limit = SclsFraming.Limit.fromInt(1024 * 1024).fold(e => fail(e.toString), identity)
@@ -249,7 +257,7 @@ class SclsBaseSuite extends CatsEffectSuite:
     val sorter = SclsEntrySorter.Config.fromInt(1024 * 1024).fold(e => fail(e.toString), identity)
     tempDir.use { root =>
       for
-        config <- fixture(root, v9 = v9)
+        config <- fixture(root, previous = previous)
         before <- IO(fingerprint(config.db))
         written <- Ref.of[IO, Vector[Bytes]](Vector.empty)
         result <- attempt(SclsBase.resource[IO](config).use { base =>
@@ -386,7 +394,7 @@ class SclsBaseSuite extends CatsEffectSuite:
                       .leftMap(e => new AssertionError(e.toString))
                   )
                   native <- ok(
-                    SnapshotV10
+                    SnapshotV11
                       .format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
                       .decode(content)
                   ).flatMap(result =>
@@ -397,7 +405,7 @@ class SclsBaseSuite extends CatsEffectSuite:
                   assertEquals(prepared.snapshot.anchor, Some(anchor))
                   assertEquals(native.anchor, Some(anchor))
                   assertEquals(prepared.utxo.count, 3L)
-                  assertEquals(SnapshotV10.sidecarOf(content).map(_.gaps), Right(Set.empty[Gap]))
+                  assertEquals(SnapshotV11.sidecarOf(content).map(_.gaps), Right(Set.empty[Gap]))
                   prepared.directory
               }
           )

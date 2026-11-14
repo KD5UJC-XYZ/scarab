@@ -61,26 +61,33 @@ object SnapshotMigration:
       content: Array[Byte]
   ): Either[StorageError, Array[Byte]] = version match
     case FormatVersion.V5 =>
-      SnapshotV7
-        .fromV5(content)
-        .flatMap(SnapshotV8.fromV7)
-        .flatMap(SnapshotV9.fromV8)
-        .flatMap(SnapshotV10.fromV9)
-    case FormatVersion.V7 =>
-      SnapshotV8.fromV7(content).flatMap(SnapshotV9.fromV8).flatMap(SnapshotV10.fromV9)
-    case FormatVersion.V8 => SnapshotV9.fromV8(content).flatMap(SnapshotV10.fromV9)
-    case FormatVersion.V9 => SnapshotV10.fromV9(content)
-    case _                => Right(content)
+      SnapshotV7.fromV5(content).flatMap(converted(FormatVersion.V7, _))
+    case FormatVersion.V7  => SnapshotV8.fromV7(content).flatMap(converted(FormatVersion.V8, _))
+    case FormatVersion.V8  => SnapshotV9.fromV8(content).flatMap(converted(FormatVersion.V9, _))
+    case FormatVersion.V9  => SnapshotV10.fromV9(content).flatMap(converted(FormatVersion.V10, _))
+    case FormatVersion.V10 => SnapshotV11.fromV10(content)
+    case _                 => Right(content)
+
+  /** The current content of the verified `content` of a V9 or V10 file of a database this build has
+    * not opened yet, converted in memory as the migration would write it; any other content as it
+    * is (a file of an older version is then refused as of another version by the current reader).
+    */
+  private[storage] def unopened(content: Array[Byte]): Either[StorageError, Array[Byte]] =
+    if content.startsWith(SnapshotV9.Magic) then converted(FormatVersion.V9, content)
+    else if content.startsWith(SnapshotV10.Magic) then converted(FormatVersion.V10, content)
+    else Right(content)
 
   /** The native snapshot migration registration: V5 files are brought to V7 ([[SnapshotV7.fromV5]]:
     * the V5 body unchanged behind a [[CheckpointBinding.Legacy]] binding), V7 files to V8
     * ([[SnapshotV8.fromV7]]: the sidecar read in the frozen V7 schema and written in the frozen V8
     * one), V8 files to V9 ([[SnapshotV9.fromV8]]: the sidecar read in the frozen V8 schema and
-    * written in the current one), and V9 files to V10 ([[SnapshotV10.fromV9]]: the 11.1 reference
-    * build recorded, everything else kept byte for byte), each step atomically. A future format
-    * adds its frozen previous reader and atomic conversion here; retired V1–V4 identifiers remain
-    * recognized and refuse admission before any mutable store opens, and so does a V5 or V7 file
-    * that no migration can convert without inventing state ([[StorageError.ResyncRequired]]).
+    * written in the frozen V9 one), V9 files to V10 ([[SnapshotV10.fromV9]]: the 11.1 reference
+    * build recorded, everything else kept byte for byte), and V10 files to V11
+    * ([[SnapshotV11.fromV10]]: the sidecar read in the frozen V10 schema and written in the current
+    * one, without the bootstrap state's flag and lite ledger), each step atomically. A future
+    * format adds its frozen previous reader and atomic conversion here; retired V1–V4 identifiers
+    * remain recognized and refuse admission before any mutable store opens, and so does a V5 or V7
+    * file that no migration can convert without inventing state ([[StorageError.ResyncRequired]]).
     */
   def toCurrent[F[_]: Sync]: NodeSnapshotMigration[F] =
     new NodeSnapshotMigration[F]
@@ -236,6 +243,20 @@ object SnapshotMigration:
               FileLedgerSnapshots
                 .verified(raw)
                 .flatMap(SnapshotV10.fromV9)
+                .fold(
+                  e => named(file, e).raise[F, Unit],
+                  content =>
+                    AtomicFile
+                      .replaceAll[F](file, Seq(content, FileLedgerSnapshots.digest(content)))
+                )
+            )
+        case (FormatVersion.V10, FormatVersion.V11) =>
+          AtomicFile
+            .guard[F, Array[Byte]](file.toString)(JFiles.readAllBytes(file.toNioPath))
+            .flatMap(raw =>
+              FileLedgerSnapshots
+                .verified(raw)
+                .flatMap(SnapshotV11.fromV10)
                 .fold(
                   e => named(file, e).raise[F, Unit],
                   content =>

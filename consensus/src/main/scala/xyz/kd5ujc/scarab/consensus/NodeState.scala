@@ -5,10 +5,9 @@ import cats.{Eq, Show}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.consensus.state.{PBftState, ProtocolExtras}
 import xyz.kd5ujc.scarab.ledger.LeaderCheck
-import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.byron.ByronLedgerState
 
-/** Verdicts of one epoch's headers in bootstrap mode. */
+/** The leader-check verdicts of one epoch's Shelley-based headers. */
 final case class EpochStats(
     epoch: BigInt,
     era: Era,
@@ -22,20 +21,20 @@ final case class EpochStats(
     case LeaderCheck.Overlay(_)   => copy(overlay = overlay + 1)
     case LeaderCheck.Unchecked(_) => copy(unchecked = unchecked + 1)
 
-/** Pre-Conway (bootstrap) follow mode: the ledger-lite state, the current era and per-epoch verdict
-  * counters. `active` turns on with the first Alonzo-or-earlier block; from then on every block,
-  * Conway included, is followed in bootstrap mode until a full ledger can take over.
+/** What the node reports of the chain it follows beside the ledger: the era of the last block
+  * applied, whose change is [[FollowerEvent.EraEntered]], and the leader-check verdicts of the
+  * current epoch's headers and of the last epoch completed, which is
+  * [[FollowerEvent.EpochValidated]] when it changes.
   */
-final case class BootstrapState(
-    active: Boolean,
+final case class FollowState(
     era: Option[Era],
-    lite: LiteLedger,
     stats: Option[EpochStats],
     completed: Option[EpochStats]
 )
 
-object BootstrapState:
-  def initial(lite: LiteLedger): BootstrapState = BootstrapState(false, None, lite, None, None)
+object FollowState:
+  /** Before the first block. */
+  val initial: FollowState = FollowState(None, None, None)
 
 /** Verdicts of one Byron epoch's blocks. */
 final case class ByronEpochStats(
@@ -79,12 +78,12 @@ object ByronState:
   /** The state of a chain that starts in Byron, with the ledger of the genesis. */
   def starting(ledger: ByronLedgerState): ByronState = initial.copy(ledger = Some(ledger))
 
-/** What the node keeps of the consensus side beside the Haskell header state: the bootstrap
-  * (ledger-lite) state, the Byron chain-follow state and what the chain-dependent state of the
-  * protocol leaves out ([[ProtocolExtras]]).
+/** What the node keeps of the consensus side beside the Haskell header state: the follow state, the
+  * Byron chain-follow state and what the chain-dependent state of the protocol leaves out
+  * ([[ProtocolExtras]]).
   */
 final case class ConsensusExtras(
-    boot: BootstrapState,
+    follow: FollowState,
     byron: ByronState,
     protocol: ProtocolExtras
 )

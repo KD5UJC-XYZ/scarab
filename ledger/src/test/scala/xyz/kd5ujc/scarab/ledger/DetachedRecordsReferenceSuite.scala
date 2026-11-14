@@ -107,9 +107,6 @@ class DetachedRecordsReferenceSuite extends FunSuite:
           )
           row.txids.foreach(ids => assertEquals(verdict.ids.map(_.hex), ids, "the transaction ids"))
         case Left(e) => assert(!row.accepted, s"the reference accepts this encoding: $e")
-      // The bootstrap ledger reads the update proposals and certificates of an era with PPUP.
-      if row.kind == Kind.Body && row.accepted && ParamUpdate.Rules.of(row.era).isDefined then
-        assert(LiteLedger.effects(row.raw, row.era).isRight, "the bootstrap ledger's reading")
     }
 
 object DetachedRecordsReferenceSuite:

@@ -15,10 +15,11 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, ReferenceLayo
 
 import StorageTestKit.*
 
-/** V10 records the reference build whose layout a snapshot's Haskell state bytes are in (#826); V9
-  * and the versions before it recorded none, and held the 11.1 layout only. A V9 file migrates as
-  * 11.1 with its binding, sidecar and Haskell bytes unchanged (ADR 0006), and a V10 file recorded
-  * under a build of another layout is not read: there is no conversion between builds.
+/** V10 records the reference build whose layout a snapshot's Haskell state bytes are in (#826), and
+  * V11 after it; V9 and the versions before it recorded none, and held the 11.1 layout only. A V9
+  * file migrates as 11.1 with its binding, sidecar and Haskell bytes unchanged (ADR 0006), and a
+  * current file recorded under a build of another layout is not read: there is no conversion
+  * between builds.
   */
 class SnapshotV10MigrationSuite extends CatsEffectSuite:
   private val env: ConsensusMirrorEnv = NodeSetup
@@ -38,13 +39,24 @@ class SnapshotV10MigrationSuite extends CatsEffectSuite:
     "conway-native-730.bin"
   )
 
-  /** A V10 content of the same sections as `v10`, recorded under `build`. */
-  private def recordedUnder(build: ReferenceBuild, v10: Array[Byte]): Array[Byte] =
+  /** A V11 content of the same sections as `v11`, recorded under `build`. */
+  private def recordedUnder(build: ReferenceBuild, v11: Array[Byte]): Array[Byte] =
     val (_, binding, sidecar, haskell) =
-      SnapshotV10.sections(v10, ReferenceLayout.Release11_1).fold(e => fail(e.message), identity)
-    SnapshotV10.framed(build, binding, sidecar, haskell)
+      SnapshotV11.sections(v11, ReferenceLayout.Release11_1).fold(e => fail(e.message), identity)
+    SnapshotV11.framed(build, binding, sidecar, haskell)
 
-  test("a committed V9 file migrates once to V10, recorded as 11.1, its sections byte for byte") {
+  test("a committed V9 file converts to V10 recorded as 11.1, its sections byte for byte") {
+    names.foreach { name =>
+      val v9 = content("fixtures/snapshot-v9", name)
+      val v10 = SnapshotV10.fromV9(v9).fold(e => fail(e.message), identity)
+      assertEquals(v10.toVector, content("fixtures/snapshot-v10", name).toVector, name)
+      val (binding, sidecar, haskell) =
+        SnapshotV9.sections(v9).fold(e => fail(e.message), identity)
+      assertEquals(SnapshotV10.sections(v10), Right(("11.1", binding, sidecar, haskell)), name)
+    }
+  }
+
+  test("a committed V9 file migrates once to the current version and reads as maintained") {
     names.traverse_ { name =>
       tempDir.use { dir =>
         val file = dir / "snapshot-00000000000000000025-25.bin"
@@ -57,12 +69,12 @@ class SnapshotV10MigrationSuite extends CatsEffectSuite:
           after <- IO.blocking(JFiles.readAllBytes(file.toNioPath))
           migrated <- NativeSnapshots.decode[IO](after, env)
           maintained <- NativeSnapshots
-            .read[IO](JPath.of("fixtures/snapshot-v10").resolve(name), env)
+            .read[IO](JPath.of("fixtures/snapshot-v11").resolve(name), env)
         yield
           assertEquals(
             first,
             SnapshotMigration.Report(
-              List(Migrated(FileKind.SnapshotFile, FormatVersion.V9, FormatVersion.V10, 1)),
+              List(Migrated(FileKind.SnapshotFile, FormatVersion.V9, FormatVersion.V11, 1)),
               Nil
             ),
             name
@@ -70,16 +82,7 @@ class SnapshotV10MigrationSuite extends CatsEffectSuite:
           assertEquals(second, SnapshotMigration.Report.empty, name)
           assertEquals(
             after.toVector,
-            JFiles.readAllBytes(JPath.of("fixtures/snapshot-v10").resolve(name)).toVector,
-            name
-          )
-          val v9 = content("fixtures/snapshot-v9", name)
-          val v10 = FileLedgerSnapshots.verified(after).fold(e => fail(e.message), identity)
-          val (binding, sidecar, haskell) =
-            SnapshotV9.sections(v9).fold(e => fail(e.message), identity)
-          assertEquals(
-            SnapshotV10.sections(v10, ReferenceLayout.Release11_1),
-            Right((ReferenceBuild.Release11_1, binding, sidecar, haskell)),
+            JFiles.readAllBytes(JPath.of("fixtures/snapshot-v11").resolve(name)).toVector,
             name
           )
           assert(migrated.isRight, s"$name: the migrated file does not read")
@@ -107,21 +110,21 @@ class SnapshotV10MigrationSuite extends CatsEffectSuite:
     }
   }
 
-  test("a V10 file recorded under another build is refused before its state bytes are read") {
-    val v10 = content("fixtures/snapshot-v10", "eras/conway-730.bin")
+  test("a V11 file recorded under another build is refused before its state bytes are read") {
+    val v11 = content("fixtures/snapshot-v11", "eras/conway-730.bin")
     val (_, binding, sidecar, _) =
-      SnapshotV10.sections(v10, ReferenceLayout.Release11_1).fold(e => fail(e.message), identity)
+      SnapshotV11.sections(v11, ReferenceLayout.Release11_1).fold(e => fail(e.message), identity)
     // the Haskell section is not a CBOR item: only a decoder that reads it would notice
     val leios =
-      SnapshotV10.framed(
+      SnapshotV11.framed(
         ReferenceBuild.LeiosB004fe0c,
         binding,
         sidecar,
         Bytes.wrap(Array(0xff.toByte))
       )
-    assertEquals(SnapshotV10.recordedOf(leios), Right("leios-b004fe0c"))
+    assertEquals(SnapshotV11.recordedOf(leios), Right("leios-b004fe0c"))
     assertEquals(
-      SnapshotV10.decode(env, ReferenceLayout.Release11_1, leios).map(_.anchor),
+      SnapshotV11.decode(env, ReferenceLayout.Release11_1, leios).map(_.anchor),
       Left(
         StorageError.ReferenceBuildMismatch(
           "snapshot",
@@ -130,15 +133,15 @@ class SnapshotV10MigrationSuite extends CatsEffectSuite:
         )
       )
     )
-    val unknown = SnapshotV10.Magic ++ Array(4.toByte) ++ "11.9".getBytes("US-ASCII") ++
-      v10.drop(SnapshotV10.Magic.length + 5)
+    val unknown = SnapshotV11.Magic ++ Array(4.toByte) ++ "11.9".getBytes("US-ASCII") ++
+      v11.drop(SnapshotV11.Magic.length + 5)
     assertEquals(
-      SnapshotV10.decode(env, ReferenceLayout.Release11_1, unknown).map(_.anchor),
+      SnapshotV11.decode(env, ReferenceLayout.Release11_1, unknown).map(_.anchor),
       Left(StorageError.UnknownReferenceBuild("snapshot", "11.9", ReferenceBuild.Release11_1))
     )
     // the sidecar and the binding are Scarab's, whatever the build: they still read
-    assertEquals(SnapshotV10.sidecarOf(leios), Right(sidecar))
-    assertEquals(SnapshotV10.bindingOf(unknown), Right(binding))
+    assertEquals(SnapshotV11.sidecarOf(leios), Right(sidecar))
+    assertEquals(SnapshotV11.bindingOf(unknown), Right(binding))
   }
 
   test(
@@ -146,10 +149,10 @@ class SnapshotV10MigrationSuite extends CatsEffectSuite:
   ) {
     given Ask[IO, ConsensusMirrorEnv] = Ask.const(env)
     given SnapshotFormat[IO, MirrorState] =
-      SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+      SnapshotV11.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
     def named(file: String): (String, Array[Byte]) =
-      val raw = content("fixtures/snapshot-v10", file)
-      val anchor = SnapshotV10
+      val raw = content("fixtures/snapshot-v11", file)
+      val anchor = SnapshotV11
         .sidecarOf(raw)
         .toOption
         .flatMap(_.anchor)
