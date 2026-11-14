@@ -78,8 +78,8 @@ imported pending work. Both RUPD and NEWEPOCH now resume that work from its froz
 [#83](https://github.com/KD5UJC-XYZ/scarab/issues/83) owns versioned snapshot evolution. The implemented codec audit checks both
 the Haskell reward encoding and Scarab's snapshot fingerprint. A typed
 decoder for an existing wire layout need not change those bytes; any actual persisted-format
-change requires a version bump, migration and a previous-version read test under
-[ADR 0006](../adr/0006-versioned-formats-migrate-on-open.md). Run the restart scenario when storage
+change needs the owner's approval first ([FMT-1](../design-rules.md#fmt-1)), and then a version bump, migration
+and a previous-version read test under [ADR 0006](../adr/0006-versioned-formats-migrate-on-open.md). Run the restart scenario when storage
 code changes. Prove that restart and rollback resume the same prefix with the same frozen inputs.
 
 J3.6 / [#268](https://github.com/KD5UJC-XYZ/scarab/issues/268) now generates the non-myopic

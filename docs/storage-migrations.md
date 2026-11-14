@@ -6,6 +6,21 @@ operator procedure for preserving a usable database through that change. The dec
 [architecture.md](architecture.md). Commands for following a chain belong in
 [running.md](running.md).
 
+## Ask the owner first
+
+Persisted formats are frozen until Scarab leaves pre-release ([FMT-1](design-rules.md#fmt-1)). The first step of
+every change on this page, a new version, an in-place edit of an existing one (V9 and V10 included), a new
+migration step or a regenerated fixture, is to ask the owner as FMT-1 says: explicitly, in the chat session doing
+the work, before the change is written, saying plainly that it is a storage format change, what changes, which
+deployed stores it affects (V8 today), the migration, and the alternatives that avoid a format change. A subagent
+stops and reports to its lead, which asks. Without the owner's approval given there, stop: write nothing of the
+change.
+
+With it, the change is a pull request of its own. Record the question and the answer verbatim with their UTC times
+in its "Storage format change" section and in the `approval` entry of `docs/data/storage-format.json` (with the
+surface digest that `python3 scripts/check_storage_format.py --print-surface` prints), as FMT-1 says. The rest of
+this page is the procedure for an approved change.
+
 ## Register the change before changing the writer
 
 [PersistedFormat.scala](../ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala) owns `FormatVersion` and `FileKind`. Append a version, never renumber
@@ -115,8 +130,8 @@ the frozen V9 schema and writes it in the current one, the bootstrap state's fla
 dropped and its era and epoch verdicts kept as the follow state (`FrozenSidecar.live`). A store
 written by an earlier build in V10's former shape is not supported; none is deployed. `Migrate`
 then has no work for V10. Unchanged kinds retain their own current versions.
-A future snapshot change appends global `V11`, the magic `SCRBSNPB` (the last character of a
-snapshot magic is its format number as one base-36 digit). Retire the V5
+A new snapshot version, if the owner approves one ([FMT-1](design-rules.md#fmt-1)), appends global `V11`, the
+magic `SCRBSNPB` (the last character of a snapshot magic is its format number as one base-36 digit). Retire the V5
 reader only after the inventory and conversion conditions below hold, then advance the snapshot
 kind's `readableFrom` to V7 (and retire the V7 and V8 readers the same way). Use caller-scoped `Raise[F, StorageError]` for every migration operation;
 do not capture an earlier caller's error interpreter in a long-lived migration object.
@@ -276,8 +291,8 @@ The preprod and mainnet writer upgrades remain separate operational work under
    including the diff overlay, fixed-range continuation and a second restart. Preserve source
    gaps and era observations through rewriting; require unchanged V5 framing/fingerprint for
    V5 input. Retired input needs its established pinned-source conversion first.
-4. Present the per-network manifests, results and rollback plan for owner approval before stopping
-   or switching its writer. Upgrade one network at a time. Do not infer downgrade safety from
+4. Present the per-network manifests, results and rollback plan for the owner's approval
+   ([what approval is](design-rules.md#approval)) before stopping or switching its writer. Upgrade one network at a time. Do not infer downgrade safety from
    unchanged framing: an older writer can read V5 yet drop provenance when it rewrites the state.
 
 Source validation and private devnet restarts do not establish that either operational network has

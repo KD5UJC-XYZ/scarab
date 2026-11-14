@@ -140,8 +140,10 @@ everything else is caught within a day by CI. Land in minutes, not hours.
 | **3. Consensus-critical or cross-cutting** | ledger rules, chain selection, a persisted format, the rules switch, anything forging | `check` plus the area scenarios, run in parallel | as level 2, plus the compatibility matrix row and the design document "as built" |
 | **4. Stage boundary** | the jump gates of a design (all Preview epochs, preprod from genesis), a release | the long runs the design names, once per stage, not per commit | an evidence-log entry under `docs/compatibility/` with commit, date and command |
 
-A persisted format change is level 3 and also needs a version bump, a migration and a test that
-reads the previous version ([ADR 0006](docs/adr/0006-versioned-formats-migrate-on-open.md)).
+Persisted formats are frozen until Scarab leaves pre-release ([FMT-1](docs/design-rules.md#fmt-1)): a storage
+format change needs the owner's explicit approval first, asked for and given in the chat session doing the work,
+and is a pull request of its own. An approved change is level 3; a new version also needs its migration and a test
+that reads the previous version ([ADR 0006](docs/adr/0006-versioned-formats-migrate-on-open.md)).
 
 A design document or ADR is level 0 by its files, but it decides what later code will do. Before it is
 approved, every claim it makes about the reference (what the pinned source defines, sends, checks or
@@ -244,6 +246,10 @@ the comment or issue with the commit that fixes it (or the answer):
 
 Close the `owner-review` issue only when every point in it has a reply with its commit or answer.
 
+Feedback is work to triage, not approval: a storage format change or a Deviation that a comment or an issue asks
+for still needs the owner's answer in the chat session doing the work
+([what approval is](docs/design-rules.md#approval)).
+
 ## How evidence is recorded
 
 A claim of compatibility needs evidence a reader can check:
@@ -280,11 +286,14 @@ A claim of compatibility needs evidence a reader can check:
   (`None`, or bullets that each start with the issue tracking the gap); a section that opens with `None` may go on
   in prose. Scarab references the Haskell cardano-node in every respect for production behaviour, so a deviation
   is the owner's decision, never a silent choice. `scripts/pr_policy.py` checks the level, its floor from the
-  changed files (a file other than documentation makes it at least 1, the persisted-format register at least 3),
-  and both sections on every pull request event, except for a bot's pull request and a promotion of `dev`
+  changed files (a file other than documentation makes it at least 1, the persisted-format register or the storage
+  format manifest at least 3), the title, paths and "Storage format change" section of a storage format change
+  ([FMT-1](docs/design-rules.md#fmt-1)), and both sections on every pull request event, except for a bot's pull request and a promotion of `dev`
   (decided 2026-10-29, [#400](https://github.com/KD5UJC-XYZ/scarab/issues/400#issuecomment-6506671003); both
   sections required from level 1, owner decision 2026-11-04 — [decisions register](docs/decisions.md#process),
   [#778](https://github.com/KD5UJC-XYZ/scarab/pull/778)).
 
-For a persisted-format change, follow the [storage migration procedure](docs/storage-migrations.md)
-alongside the applicable gates above.
+A persisted-format change starts by asking the owner ([FMT-1](docs/design-rules.md#fmt-1)); only with the owner's
+approval, given in the chat session doing the work, does it follow the
+[storage migration procedure](docs/storage-migrations.md), in a pull request of its own, alongside the applicable
+gates above.

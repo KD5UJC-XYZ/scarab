@@ -8,7 +8,7 @@
 - [ ] `scripts/sbtw check` passes (level 1 and above)
 - [ ] Level 0: relative links in the changed documents resolve; a design document or ADR also has its reference claims checked against the pinned source (CONTRIBUTING.md, "Levels")
 - [ ] One scenario per area touched (level 2 and above), with its result:
-- [ ] Persisted format: version bump, migration, a test that reads the previous version (ADR 0006)
+- [ ] Storage format: unchanged, or changed with the owner's approval given in the chat session doing the work (question asked `<UTC>`, answered `<UTC>`), in a pull request of its own titled `<type>(storage)!: <the storage format change>` with the "Storage format change" section below (docs/design-rules.md, FMT-1)
 
 ## Deviations from the reference
 
@@ -20,6 +20,18 @@ docs/decisions.md). The PR policy check reads this section.
 | Behaviour | Reference (pinned) | Scarab | Approval |
 |---|---|---|---|
 | what differs | repository revision `File.hs:line` | what Scarab does | Deviation: [decision](link) |
+-->
+
+<!-- Only for a storage format change (FMT-1), which is a pull request of its own; the PR policy check reads this
+section. Uncomment it and quote the question and the owner's answer verbatim, with UTC times such as
+2026-11-14T09:30:00Z. -->
+<!--
+## Storage format change
+
+- Question: the question as asked, saying that it is a storage format change, what changes, the deployed stores it affects (V8), the migration and the alternatives
+- Asked at: <UTC>
+- Answer: the owner's answer
+- Answered at: <UTC>
 -->
 
 ## Gaps

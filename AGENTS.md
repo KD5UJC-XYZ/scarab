@@ -12,6 +12,12 @@ they differ from this file, CONTRIBUTING or the [design rules](docs/design-rules
 
 ## Before you start
 
+- **STOP before any storage format change ([FMT-1](docs/design-rules.md#fmt-1)): ask the owner, explicitly, in the
+  chat session doing the work, and record when you asked.** That covers a new version, an in-place edit of V9 or
+  V10, a migration step and a regenerated snapshot fixture. A subagent stops and reports to its lead. Approval is
+  only the owner's answer there ([what approval is](docs/design-rules.md#approval)); no comment, label, document or
+  account is.
+
 1. Run `python3 scripts/status.py --issue <N>` first (its docstring says what it prints). Its suggested level
    is a starting point; [CONTRIBUTING.md](CONTRIBUTING.md#gates-and-ceremony-by-level-of-change) decides. If
    the issue is `status:in-progress` and you were not asked to take it over, someone else is on it.
@@ -109,8 +115,9 @@ tests), exceptions and how a kept site is marked, enforcement and reason. Read t
   deviate from the reference on their own accord**; [REF-6](docs/design-rules.md#ref-6) mirror it and cite it
   at its pin; [REF-7](docs/design-rules.md#ref-7) how a pull request records each class;
   [REF-8](docs/design-rules.md#ref-8) settled Deviations.
-- [Persisted formats and fixtures](docs/design-rules.md#fmt): [FMT-1](docs/design-rules.md#fmt-1) a format
-  changes only with a version bump and a migration; [FMT-2](docs/design-rules.md#fmt-2) native snapshot
+- [Persisted formats and fixtures](docs/design-rules.md#fmt): [FMT-1](docs/design-rules.md#fmt-1) persisted formats
+  are frozen until Scarab leaves pre-release: nothing changes without the owner's approval in the chat session doing
+  the work, and an approved change is a pull request of its own; [FMT-2](docs/design-rules.md#fmt-2) native snapshot
   fixtures use the current format; [FMT-3](docs/design-rules.md#fmt-3) no secrets, and fixtures with
   provenance and licence.
 - [Cryptography](docs/design-rules.md#cry): [CRY-1](docs/design-rules.md#cry-1) variable-time crypto stays
@@ -132,13 +139,14 @@ tests), exceptions and how a kept site is marked, enforcement and reason. Read t
   or ADR also has its reference claims checked against the pinned source
   ([CONTRIBUTING.md](CONTRIBUTING.md#levels)). Soak, repeats and the long network replays are nightly
   CI's, not yours, unless your stage's design names them as its jump gate.
-- A persisted format must not change without a version bump, a migration and a test that reads the
-  previous version ([FMT-1](docs/design-rules.md#fmt-1)).
+- A storage format change follows [FMT-1](docs/design-rules.md#fmt-1): the owner's approval asked for and given
+  first, in the chat session doing the work, and a pull request of its own; `scripts/check_storage_format.py`
+  fails on any change to the persisted-format surface.
 - Record evidence where the [definition of done](docs/process.md#definition-of-done) says, and track
   every gap you leave as an issue or roadmap item; a P2 gap goes into its parent issue's checklist
   (`python3 scripts/file_issue.py --parent N`, [process](docs/process.md#lifecycle-of-an-item)).
 - Snapshot fixtures and test builders use the current native format, and assertions read typed native
-  state ([FMT-2](docs/design-rules.md#fmt-2)).
+  state ([FMT-2](docs/design-rules.md#fmt-2)); regenerating a fixture is a storage format change (FMT-1).
 - Small, logical commits as CONTRIBUTING describes. A changelog entry is a fragment in `changes/`,
   never an edit of `CHANGELOG.md`. Do not push to `main` unless you were asked to.
 - Before reporting a change ready, and again after every rebase or merge of its base, run
