@@ -44,6 +44,9 @@ private[scarab] object TxSubmission2Engine:
     def maxMessageBytes(state: State): Int
     def advertisedSize(originalBytes: Int): Either[ProtocolError, Long]
     def bodyId(original: B): Either[ProtocolError, I]
+
+    /** The bytes of `body`'s encoding as an item of `MsgReplyTxs`. */
+    def bodySize(body: B): Either[ProtocolError, Long]
     def encode(state: State, sender: Role, message: Message[I, B]): Either[ProtocolError, Bytes]
     def decodePrefix(
         state: State,
@@ -62,6 +65,19 @@ private[scarab] object TxSubmission2Engine:
     def maxMessageBytes(state: State): Int = profile.maxMessageBytes(state)
     def advertisedSize(originalBytes: Int): Either[ProtocolError, Long] = size(originalBytes)
     def bodyId(original: B): Either[ProtocolError, I] = identity(original)
+    def bodySize(body: B): Either[ProtocolError, Long] = attempt {
+      val w = new ProtocolWire.Writer(
+        ProtocolWire.Limits(
+          profile.maxMessageBytes(State.Txs),
+          profile.maxOriginalBytes,
+          32,
+          ProtocolWire.MaxItems,
+          ProtocolWire.MaxItems
+        )
+      )
+      profile.writeBody(body, State.Txs, w)
+      w.result.size.toLong
+    }
     def encode(state: State, sender: Role, message: Message[I, B]) =
       TxSubmission2Engine.encode(state, sender, message, profile)
     def decodePrefix(state: State, sender: Role, bytes: Bytes) =

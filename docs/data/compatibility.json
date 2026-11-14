@@ -911,7 +911,8 @@
       "summary": "Conway transaction body and witness set decoded at decoder version 9, era-indexed",
       "evidence": {
         "suites": [
-          "ConwayDecodingReferenceSuite"
+          "ConwayDecodingReferenceSuite",
+          "TxDecodingSuite"
         ],
         "paths": [
           "fixtures/reference/conway-decoding",

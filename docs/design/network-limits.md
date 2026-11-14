@@ -90,9 +90,13 @@ writer bounds the actual bearer write, including a stalled handshake flush. A ti
 `Mux.closed` with `NetworkError.SduTimeout(Read|Write)`; it does not throw a domain exception.
 
 `TxSubmissionPolicy` is pure and immutable. Its closed `Violation` distinguishes bad counts,
-acknowledgement/credit, invalid blocking style, duplicate/unadvertised body IDs and excess/duplicate
-offers. The runtime raises `NetworkError.TxSubmission(violation)` in the calling fiber. Requesting
-the same body in later messages before acknowledgement remains allowed, as upstream does.
+acknowledgement/credit, invalid blocking style, duplicate/unadvertised body IDs, a body already asked
+for (`AlreadyRequested`) and excess/duplicate offers. The runtime raises
+`NetworkError.TxSubmission(violation)` in the calling fiber. An ID is outstanding once per advertisement
+in the unacknowledged window, and a request takes its oldest advertisement not yet asked for; asking for
+an ID none of whose advertisements is left is refused, a rule stricter than upstream's serving side
+([ADR 0008 amendment](../adr/0008-networking-mirrors-ouroboros-network.md#amendment-2026-11-14-requests-for-transaction-bodies)).
+A reply carries its bodies only while it stays within `largeByteLimit` (`TxSubmissionPolicy.replyWithin`).
 
 SDU timeout is a transient transport failure. A resource/agency violation is peer misbehaviour.
 Within these mux/transaction scopes, unexpected library failures retain the original

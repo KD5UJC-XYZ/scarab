@@ -617,6 +617,30 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     assertEquals(codec.encodeUnchecked(action), stored)
   }
 
+  test("a stored Conway hard fork names a major of at most 12, read after the whole version") {
+    // `decodeProtVer @ConwayEra` (`Procedures.hs:876-889`, `BaseTypes.hs:243-263`)
+    for v <- Vector(9L, 10L, 11L) do
+      val codec = govAction(using version(v))
+      val twelve = hex("8301 f6 820c00")
+      assertEquals(
+        read(codec, twelve),
+        Right(xyz.kd5ujc.scarab.ledger.GovAction.HardFork(None, 12, 0)),
+        s"version $v"
+      )
+      assertEquals(codec.encodeUnchecked(readOk(codec, twelve)), twelve)
+      assertEquals(
+        failure(codec, hex("8301 f6 820d00")).kind,
+        Kind.OutOfRange("0..12", 13),
+        s"version $v"
+      )
+      // the minor is read before the era's bound applies
+      assertEquals(
+        failure(codec, hex("8301 f6 820d 1b0000000100000000")).kind,
+        Kind.OutOfRange("0..4294967295", BigInt(1) << 32),
+        s"version $v"
+      )
+  }
+
   test("a stored Conway parameter change with a key that is not a Conway field is refused") {
     // A state written before the update was typed could hold key 12 (d); the reference cannot
     // represent it, so reading such a state fails with the ledger's typed error.

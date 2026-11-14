@@ -222,3 +222,128 @@ class TxDecodingSuite extends FunSuite:
       (Rational(577, 10000) * Rational(2301) + Rational(721, 10000000) * Rational(428149)).ceil
     assert(duplicated.head.body.fee >= minFee, s"${duplicated.head.body.fee} < $minFee")
   }
+
+  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
+
+  private val word32Max = (BigInt(1) << 32) - 1
+
+  /** A witness set holding one redeemer `[tag, index, 0, [0, 0]]` in the list form. */
+  private def listed(tag: String, index: String, era: Era) =
+    Witnesses.decode(hex(s"a1058184${tag}${index}00820000"), era).map(_.redeemers)
+
+  /** A witness set holding one redeemer `{[tag, index] => [0, [0, 0]]}` in the map form. */
+  private def mapped(tag: String, index: String) =
+    Witnesses.decode(hex(s"a105a182${tag}${index}8200820000"), Era.Conway).map(_.redeemers)
+
+  test(
+    "a redeemer's tag is a Word8 naming one of its era's purposes: 0 to 3 before Conway, 0 to 5 in it"
+  ) {
+    def tags(rs: Either[LedgerDecodeError, Vector[Redeemer]]) = rs.map(_.map(_.tag))
+    assertEquals(tags(listed("05", "00", Era.Conway)), Right(Vector(5)))
+    assertEquals(tags(mapped("05", "00")), Right(Vector(5)))
+    for tag <- Vector("06", "10", "18ff") do
+      val value = BigInt(tag.takeRight(2), 16)
+      val unknown = Left(LedgerDecodeError.UnknownTag(DecodeField.RedeemerTag, value))
+      assertEquals(listed(tag, "00", Era.Conway), unknown, s"listed tag $value")
+      assertEquals(mapped(tag, "00"), unknown, s"mapped tag $value")
+    // a tag beyond a Word8 is refused, not read as its low bits (2^32 as spend, 2^32 + 1 as mint)
+    for (tag, value) <- Vector(
+        "190100" -> BigInt(256),
+        "1b0000000100000000" -> (BigInt(1) << 32),
+        "1b0000000100000001" -> ((BigInt(1) << 32) + 1)
+      )
+    do
+      val wide = Left(LedgerDecodeError.NumberOutOfRange(DecodeField.RedeemerTag, value, 0, 255))
+      assertEquals(listed(tag, "00", Era.Conway), wide, s"listed tag $value")
+      assertEquals(mapped(tag, "00"), wide, s"mapped tag $value")
+    for era <- Vector(Era.Alonzo, Era.Babbage) do
+      assertEquals(tags(listed("03", "00", era)), Right(Vector(3)), s"$era: tag 3")
+      for tag <- Vector("04", "05") do
+        assertEquals(
+          listed(tag, "00", era),
+          Left(LedgerDecodeError.UnknownTag(DecodeField.RedeemerTag, BigInt(tag, 16))),
+          s"$era: tag $tag"
+        )
+  }
+
+  test("a redeemer's index is a Word32") {
+    def indices(rs: Either[LedgerDecodeError, Vector[Redeemer]]) = rs.map(_.map(_.index))
+    val tooWide = Left(
+      LedgerDecodeError.NumberOutOfRange(DecodeField.RedeemerIndex, word32Max + 1, 0, word32Max)
+    )
+    for era <- Vector(Era.Alonzo, Era.Babbage, Era.Conway) do
+      assertEquals(indices(listed("00", "1affffffff", era)), Right(Vector(word32Max)), s"$era")
+      assertEquals(listed("00", "1b0000000100000000", era), tooWide, s"$era")
+    assertEquals(indices(mapped("01", "1affffffff")), Right(Vector(word32Max)))
+    assertEquals(mapped("01", "1b0000000100000000"), tooWide)
+  }
+
+  test(
+    "a redeemer map's value is a definite list of two; its key and a listed redeemer need not be"
+  ) {
+    def read(witnesses: String) =
+      Witnesses.decode(hex(witnesses), Era.Conway).map(_.redeemers.map(r => (r.tag, r.index)))
+    val one = Right(Vector((0, BigInt(0))))
+    assertEquals(read("a105a182000082" + "00820000"), one)
+    assertEquals(
+      read("a105a18200009f" + "00820000ff"),
+      Left(LedgerDecodeError.IndefiniteLength(DecodeField.RedeemerValue))
+    )
+    // the key is a `CBORGroup` and a listed redeemer a `decodeRecordNamed` record: either length form
+    assertEquals(read("a105a19f0000ff82" + "00820000"), one)
+    assertEquals(read("a105819f000000820000ff"), one)
+  }
+
+  test("a body's network id is a Word8 of 0 or 1, from Alonzo") {
+    def network(id: String, era: Era) =
+      TxBody
+        .decode(hex(s"a40081825820${"00" * 32}00018002000f$id"), era)
+        .map(_.networkId)
+    for era <- Vector(Era.Alonzo, Era.Babbage, Era.Conway) do
+      assertEquals(network("00", era), Right(Some(BigInt(0))), s"$era: 0")
+      assertEquals(network("01", era), Right(Some(BigInt(1))), s"$era: 1")
+      assertEquals(
+        network("02", era),
+        Left(LedgerDecodeError.NumberOutOfRange(DecodeField.NetworkId, 2, 0, 1)),
+        s"$era: 2"
+      )
+      assertEquals(
+        network("190100", era),
+        Left(LedgerDecodeError.NumberOutOfRange(DecodeField.NetworkId, 256, 0, 255)),
+        s"$era: 256"
+      )
+  }
+
+  test("a hard fork proposal's version is read whole, then its major bounded to 12 in Conway") {
+    def action(version: String) =
+      val raw = hex(
+        "8400581de0" + "22" * 28 + "8301f6" + version + "826161" + "5820" + "33" * 32
+      )
+      CborRead.decode(raw).flatMap(Proposal.decode(_, DecoderVersion.of(Era.Conway))).map(_.action)
+    assertEquals(action("820c00"), Right(GovAction.HardFork(None, 12, 0)))
+    assertEquals(action("9f0c1affffffffff"), Right(GovAction.HardFork(None, 12, word32Max)))
+    // 13 is a `Version` (`MaxVersion`) above Conway's bound; 16 and 28 are not versions at all
+    assertEquals(
+      action("820d00"),
+      Left(LedgerDecodeError.NumberOutOfRange(DecodeField.Major, 13, 0, 12))
+    )
+    for (head, major) <- Vector("10" -> 16, "181c" -> 28) do
+      assertEquals(
+        action(s"82${head}00"),
+        Left(LedgerDecodeError.NumberOutOfRange(DecodeField.Major, major, 0, 13)),
+        s"major $major"
+      )
+    assertEquals(
+      action("821b000000010000000000"),
+      Left(LedgerDecodeError.NumberOutOfRange(DecodeField.Major, word32Max + 1, 0, word32Max))
+    )
+    val bigMinor =
+      Left(LedgerDecodeError.NumberOutOfRange(DecodeField.Minor, word32Max + 1, 0, word32Max))
+    assertEquals(action("820a1b0000000100000000"), bigMinor)
+    // the whole version is read before the era's bound: the minor fails first
+    assertEquals(action("820d1b0000000100000000"), bigMinor)
+    assertEquals(
+      action("82101b0000000100000000"),
+      Left(LedgerDecodeError.NumberOutOfRange(DecodeField.Major, 16, 0, 13))
+    )
+  }

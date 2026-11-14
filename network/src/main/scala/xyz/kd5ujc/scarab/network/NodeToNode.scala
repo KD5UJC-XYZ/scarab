@@ -116,13 +116,17 @@ final class WarmConnection[F[_], P, A] private[network] (
       .eval(applications.activateHot *> applications.startHot(transactions.nonEmpty))
       .flatMap(startHotProtocols(_, transactions, blockFetchEnded, peerTrust, chainSyncResult))
 
-  /** Start an activation whose control and result handles were installed by its status owner. */
+  /** Start an activation whose control and result handles were installed by its status owner.
+    * @param served
+    *   Told the bytes of the transactions of each TxSubmission2 reply this side sends.
+    */
   def startHotProtocols(
       results: ProtocolResults.Hot[F, A],
       transactions: Option[TxSubmissionClient.Source[F]],
       blockFetchEnded: Option[F[Unit]],
       peerTrust: ChainSyncTimeouts.PeerTrust,
-      chainSyncResult: Option[ProtocolResults.Run[F, A] => F[Unit]]
+      chainSyncResult: Option[ProtocolResults.Run[F, A] => F[Unit]],
+      served: Option[Long => F[Unit]] = None
   )(using Async[F], Raise[F, NetworkError]): Resource[F, NodeToNodeConnection[F, P]] =
     for
       _ <- Resource.eval(chainSyncResult.traverse_(_(results.chainSync)))
@@ -132,7 +136,8 @@ final class WarmConnection[F[_], P, A] private[network] (
           source,
           role = Some(role),
           completed = Some(outcome => result.complete(outcome.as(noInitiatorResult))),
-          termination = Some(applications.awaitTermination(ProtocolResults.Temperature.Hot))
+          termination = Some(applications.awaitTermination(ProtocolResults.Temperature.Hot)),
+          served = served
         )
       }
       chainSyncChannel <- Resource.eval(mux.channel(Protocols.ChainSync, role))

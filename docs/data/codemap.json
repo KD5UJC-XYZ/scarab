@@ -489,7 +489,7 @@
     {
       "module": "uplc",
       "path": "uplc/flat",
-      "responsibility": "Script bytes to a program: the Flat decoder of programs, terms and constants with every refusal of the reference, and the ledger's deserialiseScript with its predicates, the remainder rule and the version check for evaluation",
+      "responsibility": "Script bytes to a program: the Flat decoder of programs, terms and constants with every refusal of the reference, and the ledger's deserialiseScript with its predicates, the remainder rule and the version check for evaluation; and the Flat encoder of programs, the inverse of the decoder",
       "entryPoints": [
         "SerialisedScript",
         "ScriptDecodeError",
@@ -498,14 +498,36 @@
         "FlatError",
         "ConstantDecoder",
         "TypeHeader",
-        "Input"
+        "Input",
+        "FlatEncoder"
       ],
       "suites": [
         "FlatDecoderSuite",
         "SerialisedScriptSuite",
         "FlatReferenceCorporaSuite",
         "FlatConformanceSuite",
-        "OwnFlatDecoderParitySuite"
+        "OwnFlatDecoderParitySuite",
+        "FlatEncoderSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
+      "module": "uplc",
+      "path": "uplc/text",
+      "responsibility": "The textual syntax of UPLC as plutus 1.70.0.0's parser reads it: programs, terms, types, constants and data with names resolved to de Bruijn indices, Haskell's character escapes and the BLS12-381 point literals; the node itself never reads text",
+      "entryPoints": [
+        "UplcParser",
+        "NamedProgram",
+        "TextError",
+        "ProgramError",
+        "HaskellChar",
+        "BlsLiteral"
+      ],
+      "suites": [
+        "UplcParserSuite",
+        "CorpusTextSuite"
       ],
       "docs": [
         "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
@@ -1395,6 +1417,23 @@
       ],
       "suites": [],
       "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "plutus/ndc",
+      "responsibility": "Hand-run writers of Scarab's reports for the uplc-conformance and uplc-turbo scenarios of pragma-org's node-diversity-conformance site, on either Plutus evaluator (in the `plutus` package for the Scalus backend's package-private machine)",
+      "entryPoints": [
+        "UplcConformanceMain",
+        "UplcTurboMain",
+        "UplcBackend"
+      ],
+      "suites": [
+        "UplcConformanceMainSuite",
+        "UplcTurboMainSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
     },
     {
       "module": "tools",

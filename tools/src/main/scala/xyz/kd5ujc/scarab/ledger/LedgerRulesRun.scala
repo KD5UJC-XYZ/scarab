@@ -64,26 +64,70 @@ enum LedgerRulesVerdict:
 
   case Unjudged(cause: NoVerdict)
 
-/** The outcome of one fixture: its id (the first five digits of its file name), its file and
-  * Scarab's verdict.
+/** How a refusal's reported name is chosen among the names of the failures Scarab raised. The
+  * report gives one name for a transaction that may fail several predicates at once.
   */
-final case class LedgerRulesCase(id: String, file: String, verdict: LedgerRulesVerdict):
+enum Selection(val flag: String) derives CanEqual:
+  /** The first failure, in the reference's order, that the schema has a name for. */
+  case First extends Selection("first")
+
+  /** The fixture's expected name when Scarab raised it among its failures, and the first otherwise:
+    * the criterion of the corpus's reference harness, which passes a refusal when the expected
+    * predicate is among the reference's failures (Amaru
+    * `crates/amaru/tests/conformance/validation-rules/src/Command/ValidatePhaseOne/Run.hs`,
+    * `validateDecodedTransaction`, at 40ba9950), and so of cardano-node's report. A name Scarab did
+    * not raise is never reported, and an accepted transaction is a pass whatever the fixture
+    * expects.
+    */
+  case ExpectedInFailures extends Selection("expected-in-failures")
+
+object Selection:
+  val Default: Selection = ExpectedInFailures
+
+  def parse(text: String): Option[Selection] = values.find(_.flag == text)
+
+/** The outcome of one fixture: its id (the first five digits of its file name), its file, Scarab's
+  * verdict, and what the name of a refusal is chosen by.
+  *
+  * @param expected
+  *   the name of the predicate the fixture expects a refusal for, read only by `selection`
+  */
+final case class LedgerRulesCase(
+    id: String,
+    file: String,
+    verdict: LedgerRulesVerdict,
+    expected: Option[ReportName] = None,
+    selection: Selection = Selection.First
+):
   import LedgerRulesVerdict.*
 
-  /** The report's result: `pass`, or the name of the first failure, in the reference's order, that
-    * the schema has a name for, its first name; none (the fixture left out of the report, so
-    * counted as failed) when Scarab has no verdict or the schema no name for any of its failures.
-    * The fixture's expectation is never read.
+  /** The name a refusal is reported by and the rule that chose it: [[Selection.First]] when it is
+    * the first name raised, [[Selection.ExpectedInFailures]] when that rule chose another.
+    */
+  def chosen: Option[(ReportName, Selection)] = verdict match
+    case Refused(_, _, _) =>
+      val first = names.headOption.map(_ -> Selection.First)
+      val wanted = expected.filter(e =>
+        selection == Selection.ExpectedInFailures && names.contains(e) && !names.headOption
+          .contains(e)
+      )
+      wanted.map(_ -> Selection.ExpectedInFailures).orElse(first)
+    case _ => None
+
+  /** The report's result: `pass`, `DecodingFailure`, or the name of a refusal ([[chosen]]); none
+    * (the fixture left out of the report, so counted as failed) when Scarab has no verdict or the
+    * schema no name for any of its failures.
     */
   def result: Option[String] = verdict match
     case Accepted                        => Some(LedgerRulesCase.Pass)
     case Malformed(_) | Inadmissible(_)  => Some(ReportName.DecodingFailure.toString)
     case Refused(fs, _, _) if fs.isEmpty => Some(LedgerRulesCase.Pass)
-    case Refused(fs, _, context) =>
-      fs.iterator.map(LedgerRulesNames.of(_, context)).collectFirst { case n +: _ => n.toString }
-    case Unjudged(_) => None
+    case Refused(_, _, _)                => chosen.map(_._1.toString)
+    case Unjudged(_)                     => None
 
-  /** Every name of every failure, in order: what the sidecar keeps for the reader of the report. */
+  /** Every name of every failure, in the reference's order: what the sidecar keeps for the reader
+    * of the report.
+    */
   def names: Vector[ReportName] = verdict match
     case Refused(fs, _, context)        => fs.flatMap(LedgerRulesNames.of(_, context)).distinct
     case Malformed(_) | Inadmissible(_) => Vector(ReportName.DecodingFailure)
@@ -133,6 +177,7 @@ object LedgerRulesCase:
         "file" -> c.file.asJson,
         "verdict" -> kind.asJson,
         "result" -> c.result.asJson,
+        "selected" -> c.chosen.map(_._2.flag).asJson,
         "names" -> c.names.map(_.toString).asJson
       ) ++ extra
     )

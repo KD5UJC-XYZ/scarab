@@ -29,14 +29,21 @@ private[network] object TxSubmission2Runtime:
     def known(id: I): F[Boolean]
     def submit(originals: Vector[B])(using Raise[F, NetworkError]): F[Unit]
 
+  type Advertised[I] = TxSubmissionPolicy.Advertised[I]
+
   trait Rules[I]:
-    def acknowledge(
-        unacked: Vector[I],
+    def acknowledge[A](
+        unacked: Vector[A],
         blocking: Boolean,
         ack: Int,
         request: Int
-    ): Either[RuleError, Vector[I]]
-    def bodies(unacked: Vector[I], ids: Vector[I]): Either[RuleError, Unit]
+    ): Either[RuleError, Vector[A]]
+
+    /** The window after `ids` are asked for, with those advertisements marked. */
+    def bodies(
+        unacked: Vector[Advertised[I]],
+        ids: Vector[I]
+    ): Either[RuleError, Vector[Advertised[I]]]
     def offers(ids: Vector[I], requested: Int): Either[RuleError, Unit]
 
   final case class ServerSettings(
@@ -55,15 +62,20 @@ private[network] object TxSubmission2Runtime:
     then Left(ProtocolError.InvalidTxSubmission2Limits)
     else Right(())
 
-  private final case class Window[I](unacked: Vector[I], cursor: Long)
+  private final case class Window[I](unacked: Vector[Advertised[I]], cursor: Long)
 
+  /** The side that offers transactions and serves their bodies.
+    * @param served
+    *   Told the bodies of each `MsgReplyTxs` once it is sent.
+    */
   def client[F[_]: Temporal, I, B](
       channel: MuxChannel[F],
       source: Source[F, I, B],
       codec: Codec[I, B],
       rules: Rules[I],
       finish: Option[F[Unit]],
-      unexpected: Message[I, B] => NetworkError.Violation
+      unexpected: Message[I, B] => NetworkError.Violation,
+      served: Option[Vector[B] => F[Unit]] = None
   )(using Raise[F, NetworkError]): F[Unit] =
     val F = Temporal[F]
     val protocol = Protocols.TxSubmission2
@@ -133,7 +145,7 @@ private[network] object TxSubmission2Runtime:
                 send(State.Ids(blocking), TxSubmission2Engine.Message.ReplyIds(encoded)).as(
                   Some(
                     Window(
-                      retained ++ held.map(_.id),
+                      retained ++ held.map(h => TxSubmissionPolicy.Advertised(h.id)),
                       held.lastOption.fold(window.cursor)(_.ticket)
                     )
                   )
@@ -141,16 +153,24 @@ private[network] object TxSubmission2Runtime:
               }
           }
         }
-    def answerTxs(window: Window[I], ids: Vector[I]): F[Unit] =
-      rules.bodies(window.unacked, ids).fold(illegal, F.pure) *>
+    def answerTxs(window: Window[I], ids: Vector[I]): F[Window[I]] =
+      rules.bodies(window.unacked, ids).fold(illegal, F.pure).flatMap { marked =>
         ids
           .flatTraverse(id => source.body(id).map(_.toVector))
-          .flatMap(bodies => send(State.Txs, TxSubmission2Engine.Message.ReplyTxs(bodies)))
+          .flatMap(found =>
+            found.traverse(body => codec.bodySize(body).fold(illegal, F.pure)).flatMap { sizes =>
+              val bodies = found.take(TxSubmissionPolicy.replyWithin(sizes))
+              send(State.Txs, TxSubmission2Engine.Message.ReplyTxs(bodies)) *>
+                served.traverse_(_(bodies))
+            }
+          )
+          .as(window.copy(unacked = marked))
+      }
     def loop(window: Window[I]): F[Unit] =
       receive(State.Idle).flatMap {
         case TxSubmission2Engine.Message.RequestIds(blocking, ack, request) =>
           answerIds(window, blocking, ack, request).flatMap(_.fold(F.unit)(loop))
-        case TxSubmission2Engine.Message.RequestTxs(ids) => answerTxs(window, ids) *> loop(window)
+        case TxSubmission2Engine.Message.RequestTxs(ids) => answerTxs(window, ids).flatMap(loop)
         case other                                       => illegal(unexpected(other))
       }
     send(State.Init, TxSubmission2Engine.Message.Init) *> loop(Window(Vector.empty, 0L))

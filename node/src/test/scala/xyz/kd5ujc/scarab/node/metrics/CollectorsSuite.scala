@@ -16,7 +16,7 @@ import xyz.kd5ujc.scarab.ledger.{
   NodeError,
   ValidationError
 }
-import xyz.kd5ujc.scarab.node.RefStateful
+import xyz.kd5ujc.scarab.node.{OutboundPeers, RefStateful}
 import xyz.kd5ujc.scarab.node.forge.ForgeStats
 
 /** The collectors read the sources that already hold the state, and the wrapped rules count what
@@ -81,6 +81,26 @@ class CollectorsSuite extends CatsEffectSuite:
     yield
       assertEquals(gauge(s, Catalogue.blockNum, ()), Some(0.0))
       assertEquals(gauge(s, Catalogue.density, ()), Some(0.0))
+  }
+
+  test("the served-bytes collector sums the peers' totals and never moves down") {
+    def totals(bytes: Long*) =
+      IO.pure(bytes.toVector.map(b => OutboundPeers.SessionTotals(txBytesServed = b)))
+    for
+      metrics <- registry
+      before <- metrics.snapshot
+      s <- {
+        given Metrics[IO] = metrics
+        Collectors.txSubmissionServed(totals(100L, 23L)) *> metrics.snapshot
+      }
+      again <- {
+        given Metrics[IO] = metrics
+        Collectors.txSubmissionServed(totals(100L)) *> metrics.snapshot
+      }
+    yield
+      assertEquals(counter(before, Catalogue.txSubmissionServedBytes, ()), Some(0.0))
+      assertEquals(counter(s, Catalogue.txSubmissionServedBytes, ()), Some(123.0))
+      assertEquals(counter(again, Catalogue.txSubmissionServedBytes, ()), Some(123.0))
   }
 
   test("the scheduling collector reports the totals of the run, and again changes nothing") {

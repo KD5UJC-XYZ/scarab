@@ -110,9 +110,24 @@ final case class FixtureState(
     guardrail: Option[Bytes]
 )
 
-/** A fixture with its shared documents resolved: everything the state is built from. `expected` is
-  * not read: the verdict is Scarab's, and the site compares it with the fixture.
+/** A fixture with its shared documents resolved: everything the state is built from. Its `expected`
+  * is not part of it: the verdict is Scarab's, and the expectation is read apart
+  * ([[LedgerRulesFixture.expectation]]), only to choose the name a refusal is reported by among the
+  * failures Scarab raised ([[Selection]]).
   */
+/** A fixture's `expected` (the fixture schema's `Expected`): a pass, a transaction that must not
+  * decode, or the predicate it must fail.
+  */
+enum FixtureExpectation derives CanEqual:
+  case Pass
+  case DecodingFailure
+  case Failure(predicate: String)
+
+  /** The report name of the predicate a refusal is expected for, if the report schema has it. */
+  def refusal: Option[ReportName] = this match
+    case Failure(predicate) => ReportName.parse(predicate)
+    case _                  => None
+
 final case class LedgerRulesFixture(
     network: Int,
     eraHistory: FixtureEraHistory,
@@ -155,6 +170,21 @@ object LedgerRulesFixture:
       txHex <- field[String](file, c, "transaction")
       tx <- hex("transaction", txHex)
     yield LedgerRulesFixture(network, eras, pp, st, slot, ix, tx)
+
+  /** The `expected` of the fixture in `text`: `"Pass"`, `{ "decoding_failure": true }` or
+    * `{ "predicate": <name>, ... }` (`Expected.hs` of the reference harness).
+    */
+  def expectation(file: String, text: String): Either[FixtureError, FixtureExpectation] =
+    for
+      json <- io.circe.parser.parse(text).leftMap(FixtureError.Syntax(file, _))
+      c = json.hcursor.downField("expected")
+      expected <-
+        c.as[String].toOption match
+          case Some("Pass") => Right(FixtureExpectation.Pass)
+          case _ if c.downField("decoding_failure").succeeded =>
+            Right(FixtureExpectation.DecodingFailure)
+          case _ => field[String](file, c, "predicate").map(FixtureExpectation.Failure(_))
+    yield expected
 
   /** A shared document (`SharedDocument.hs`): inline, or `$ref` to a document with an optional
     * `$override` whose top-level keys replace the referenced ones.
