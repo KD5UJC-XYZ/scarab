@@ -19,12 +19,14 @@ change.
 With it, the change is a pull request of its own. Record the question and the answer verbatim with their UTC times
 in its "Storage format change" section and in the `approval` entry of `docs/data/storage-format.json` (with the
 surface digest that `python3 scripts/check_storage_format.py --print-surface` prints), as FMT-1 says. The rest of
-this page is the procedure for an approved change.
+this page is the procedure for an approved new version. An approved in-place edit of a version that no deployed
+store uses (V9 or V10) changes that version's schema, goldens and fixtures in place, exactly as the approval names,
+with no new version and no migration step; the previous-version tests stay as they are.
 
 ## Register the change before changing the writer
 
-[PersistedFormat.scala](../ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala) owns `FormatVersion` and `FileKind`. Append a version, never renumber
-one. Add a file kind when its identity and migration are independent; otherwise append the changed
+[PersistedFormat.scala](../ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala) owns `FormatVersion` and `FileKind`. A new version is appended, never
+renumbered. Add a file kind when its identity and migration are independent; otherwise append the changed
 kind's `(version, identifier)` entry to `history`. An unchanged kind keeps its last layout and is not
 rewritten merely because another kind changed. `identifier`, `current` and `versionOf` are the
 registry, rather than independent magic strings scattered through callers.
@@ -36,8 +38,8 @@ reproduction proves that writer's format; it does not establish an unknown captu
 Keep small public fixtures in Git. Large captures, checkpoint directories and logs stay outside the
 checkout with a hashed manifest and reproducible provenance.
 
-The snapshot goldens in `CodecSuite` move only together with the version, migration and
-previous-version regression: the schema fingerprints of the sidecar and the checkpoint binding guard
+The snapshot goldens in `CodecSuite` move only with an approved change ([FMT-1](design-rules.md#fmt-1)): a new
+version with its migration and previous-version regression, or the in-place edit the approval names: the schema fingerprints of the sidecar and the checkpoint binding guard
 the typed sections, and the header golden the V10 header's recorded reference build, which sits
 outside both schemas. Regenerating a golden to make a test pass is not a migration.
 Native snapshots are V10: the V5 body (Haskell ledger CBOR plus a typed binary sidecar) behind a

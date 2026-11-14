@@ -894,10 +894,11 @@ it while the freeze holds. An approved change is level 3, and a new version foll
   with a message that starts `STORAGE FORMAT CHANGE`. The surface is the format registry, the magics, the
   registered migration, the sources that are only format code (the snapshot readers and writers, the sidecar and
   frozen schemas, the checkpoint binding, the codec and its instances, the network identity), the format
-  definitions of the UTxO store and the snapshot files, the golden and previous-version suites, and the fixtures.
-  The guard refuses a surface without the V8 reader or a migration path from V8, and checks the form of the
-  approval entry only. It does not see a persisted byte that none of these pins, such as a record of the volatile,
-  immutable or RocksDB store outside what `FormatGoldenSuite` pins: there a change is review only. `scripts/pr_policy.py`
+  definitions in the store files (the UTxO, RocksDB, immutable and volatile stores' constants and codecs, the
+  snapshot files' checksum and names), the golden and previous-version suites, and the fixtures. The guard refuses
+  a surface without the V8 reader or a migration path from V8, and checks the form of the approval entry only. It
+  does not see a persisted byte that none of these pins, such as a file name written inline in a store's opening
+  code: there a change is review only. `scripts/pr_policy.py`
   refuses a pull request that changes the manifest, the guard or its tests unless its title, its paths, its level
   and its "Storage format change" section are as above. That the owner gave the answer in the chat session doing
   the work is review only: no tool can see it.
