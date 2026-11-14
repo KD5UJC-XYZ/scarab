@@ -78,7 +78,7 @@ class MuslMathSuite extends ScalaCheckSuite:
     assertEquals(wrong.take(10), Vector.empty, s"${wrong.size} of ${cases.size} cases differ")
   }
 
-  // ---- the corpus reaches every table interval and every branch of musl's code
+  // ---- the corpus reaches every table interval and each special path of musl's code, as classified here
 
   private val logOff = 0x3fe6000000000000L
   private val logLo = 0x3fee000000000000L

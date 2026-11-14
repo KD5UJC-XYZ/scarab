@@ -10,7 +10,7 @@ implemented: the pool-ranking likelihoods (`Rewards.likelihood`) and the perform
 ## Evidence
 
 - `MuslMathSuite` against [the release binary's own functions](../../fixtures/reference/release-libm/README.md), measured by calling its machine code:
-  - every one of 4,543 committed cases gives the binary's bits, and the cases reach every table interval and every branch;
+  - every one of 4,543 committed cases gives the binary's bits; the cases reach every table interval, each special path of the three functions and every return of `pow`'s `checkint`;
   - the tables equal the binary's word for word;
   - all 63 likelihood records give the binary's `Float` samples. Among them are the 11 stake shares of Preview's circulation where JVM `Math` changed 4 to 50 of the 100 samples, which now all match.
 - A bulk comparison gave identical bytes on 26,000,000 arguments (`run.py --bulk`, `MuslMathMain raw`); JVM `Math` differed on 3,198 `log`, 9,019 `exp` and 1,855 `pow` results.

@@ -199,6 +199,9 @@ in the JAR, the texts its licence asks a binary to carry, and where each text co
 - or a text kept elsewhere in this repository with its own provenance (`plutus/licenses/`, `crypto/licenses/`),
   packaged under the module's name.
 
+One text is not a dependency's: `ledger/licenses/LICENSE-musl`, the notice of the musl code that `MuslMath` and
+`MuslData` adapt, is packaged the same way as `META-INF/scarab/licenses/ledger/LICENSE-musl`.
+
 The upstream legal files that jars carry at their root or in `META-INF/` are kept as well: the merge
 strategy renames them per artifact (for example `META-INF/LICENSE_dnsjava-3.6.5`), and
 `scripts/assembly_inventory.py` fails a build that loses or changes one.

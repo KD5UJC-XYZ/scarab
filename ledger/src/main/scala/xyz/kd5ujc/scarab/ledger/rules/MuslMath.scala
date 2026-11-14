@@ -28,12 +28,15 @@ import java.lang.Long.compareUnsigned as compareUnsigned64
   * `& (N - 1)`. Floating-point exceptions, which musl raises through `fp_barrier` and
   * `fp_force_eval`, are not modelled: they never change a result.
   *
-  * The results equal the release binary's own functions bit for bit on every finite and infinite
-  * input (`MuslMathSuite`, `fixtures/reference/release-libm`). A NaN result is a NaN, but its
-  * payload is not guaranteed: musl's `(x - x) / (x - x)` yields the processor's default NaN and the
-  * JVM does not promise one NaN encoding. No caller sees a NaN: the likelihoods take `log` of `x`
-  * and `1 - t * x` with `x` in (0, 1) and `t` in [0, 1], and `pow` of `1 - f` in [0, 1) by a stake
-  * share in [0, 1].
+  * The results equal the release binary's own functions bit for bit on every input measured: the
+  * 4,543 cases of `fixtures/reference/release-libm` (`MuslMathSuite`), which reach every table
+  * interval and the special paths the suite classifies, and 26,000,000 more arguments of every
+  * class in a bulk comparison (`scripts/oracle/release-libm/run.py --bulk`). A NaN result is a NaN,
+  * but its payload is not guaranteed: musl's `(x - x) / (x - x)` yields the processor's default NaN
+  * and the JVM does not promise one NaN encoding. No caller asks for a NaN: the likelihoods take
+  * `log` of `x` and of `1 - t * x` with `x` in (0, 1) and `t` in [0, 1], and `pow` of `1 - f` in
+  * [0, 1) by a stake share in [0, 1]; the performance estimates take `exp` of finite `Float`
+  * weights and `log` of their area, which is at least 0.01.
   */
 object MuslMath:
 
