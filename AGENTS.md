@@ -90,12 +90,13 @@ scala code … I love the use of type parameters when I can use them"*.
   `start`) runs its body in a scope of its own and returns `Either` at its boundary (`Fibers.scoped`,
   `Fault.fiber`), its owner raises the value again in its own fiber (`Fibers.land`, `Fault.land`), and a
   channel or client takes the caller's `Raise` as a `using` clause instead of holding one
-  ([example](CONTRIBUTING.md#style-rules)). A fiber that its owner joins at once (`race`,
+  ([ADR 0017](docs/adr/0017-fibers-end-with-values.md)). A fiber that its owner joins at once (`race`,
   `parSequence`, `Compute.within`) may use the owner's capabilities. An exception that is not ours is
   wrapped at the boundary into a typed case that says it is a defect; it is never "the peer is
   unavailable". Suites that start fibers extend `FailsOnUncaught`.
 - In concurrency tests, evaluate blocking latch waits and joins before passing their results to
-  MUnit assertions ([CONTRIBUTING.md](CONTRIBUTING.md#style-rules) says why). Release latches and
+  MUnit assertions: clue capture holds the suite monitor while evaluating an assertion, so a worker
+  assertion can deadlock with a parent's asserted wait. Release latches and
   finish owned workers in guaranteed cleanup. Positive synchronization uses an observable condition or
   controlled schedule; bounded negative observations without a product-side hook remain explicitly
   tracked in #251.
@@ -135,7 +136,7 @@ scala code … I love the use of type parameters when I can use them"*.
 - Hash and sign exactly the bytes the reference hashes and signs: by default the bytes as received,
   kept beside the decoded value; where the reference hashes or signs a re-encoding, re-encode as it
   does and cite the pinned upstream line at that site. An exception is established only by reading
-  the reference at its pinned version ([original-bytes rule](CONTRIBUTING.md#style-rules)).
+  the reference at its pinned version ([the known re-encodings](docs/design/hashed-bytes.md)).
 - Stack safety ([ADR 0011](docs/adr/0011-stack-safety.md)): recursion whose depth or width comes from outside
   data (blocks, peers, files, queries) is a library fold/traversal, `@tailrec`, `tailRecM` over a typed
   state, or an explicit stack machine; never recursion inside an `Either`/`Option` for-comprehension.

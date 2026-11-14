@@ -142,23 +142,9 @@ with a pattern that matches your own shell command line.
   values. Effects wrap them, not the other way around.
 - **Laws and properties.** New algebras and stateful structures get cats-laws or ScalaCheck
   properties (round trips, model equivalence, rollback), not only examples.
-- **Fibers and concurrency tests.** The rules are in [AGENTS.md](AGENTS.md#how-code-is-written-here)
-  and [ADR 0017](docs/adr/0017-fibers-end-with-values.md). An example of a fiber's boundary:
-  `Fibers.scoped[F, NetworkError, Unit](defect)(client.ping).flatMap(_.fold(mux.abort, _ => F.unit))`.
-  A concurrency test evaluates its blocking latch waits and joins before passing their results to
-  MUnit assertions because clue capture holds the suite monitor while evaluating an assertion, so a
-  worker assertion can deadlock with a parent's asserted wait.
-- **Original-bytes rule.** Hash and sign exactly the bytes the reference hashes and signs. By
-  default, anything that is hashed or signed (block bodies, transaction bodies, witness sets,
-  scripts, datums, auxiliary data) is hashed over the bytes as received, never over a re-encoding.
-  Keep the original bytes next to the decoded value. Where the reference itself hashes or signs a
-  re-encoding, re-encode as it does and cite the pinned upstream line at that site; such an
-  exception is established only by reading the reference at its pinned version. For example, a
-  block header's KES signature is checked over the header body encoded again
-  (`getSignableRepresentation`, cardano-ledger f649f975
-  `libs/cardano-protocol/src/Cardano/Protocol/Praos/BlockHeader.hs:113-117`,
-  `TPraos/BlockHeader.hs:170-171`; `HeaderBodyEncoding`), while the header hash is over the bytes as
-  received.
+- **Original-bytes rule.** Hash and sign exactly the bytes the reference hashes and signs: by
+  default the bytes as received. [Hashed and signed bytes](docs/design/hashed-bytes.md) lists the
+  places where the reference hashes or signs a re-encoding.
 - Exact arithmetic (`Rational`) in ledger calculations; no floating point.
 - Format with scalafmt (`scalafmtAll`); SPDX header (`// SPDX-License-Identifier: Apache-2.0`) on new source files.
 - Keep comments outside parameter and argument lists. Document parameter contracts in the
