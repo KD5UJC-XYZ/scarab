@@ -41,26 +41,23 @@ enum ReportName derives CanEqual:
   * harness's, with two differences: no name is chosen by the fixture's expectation, and a failure
   * that the harness names only by matching the expectation against its text is named by its case.
   *
-  * A failure has no name, several names, or one. None: the schema lists no name for it (a failure
-  * of a protocol version the corpus does not reach, or one the corpus does not exercise). Several:
-  * the reference's one failure is several of Amaru's, which tell apart what the reference does not;
-  * the first is the closest to the reference's own name.
+  * A failure has no name or one: none where the schema lists no name for it (a failure of a
+  * protocol version the corpus does not reach, or one the corpus does not exercise), or where the
+  * name depends on a context the judgment could not give ([[FailureContext]]).
   */
 object LedgerRulesNames:
   import ReportName.*
 
-  /** The names of `failure`; `hasInputs` is whether the transaction spends any input, which tells
-    * the two meanings of the mempool's "all inputs are spent" apart, as the harness tells them.
-    */
-  def of(failure: PredicateFailure, hasInputs: Boolean): Vector[ReportName] = failure match
+  /** The names of `failure` in the transaction whose `context` the judgment gave. */
+  def of(failure: PredicateFailure, context: FailureContext): Vector[ReportName] = failure match
     case PredicateFailure.Utxow(u)                  => utxow(u)
-    case PredicateFailure.Certs(c)                  => certs(c)
+    case PredicateFailure.Certs(c)                  => certs(c, context)
     case PredicateFailure.Gov(g)                    => gov(g)
     case PredicateFailure.WdrlNotDelegatedToDRep(_) => Vector(ConwayWdrlNotDelegatedToDRep)
     case PredicateFailure.TreasuryValueMismatch(_)  => Vector(ConwayTreasuryValueMismatch)
     case PredicateFailure.TxRefScriptsSizeTooBig(_) => Vector(ConwayTxRefScriptsSizeTooBig)
     case PredicateFailure.Mempool(MempoolProblem.AllInputsSpent) =>
-      Vector(if hasInputs then BadInputsUTxO else InputSetEmptyUTxO)
+      Vector(if context.hasInputs then BadInputsUTxO else InputSetEmptyUTxO)
     case PredicateFailure.Mempool(_)                    => Vector.empty
     case PredicateFailure.WithdrawalsMissingAccounts(_) => Vector.empty
     case PredicateFailure.IncompleteWithdrawals(_)      => Vector.empty
@@ -163,26 +160,22 @@ object LedgerRulesNames:
     case TranslationError.CostModelParameterTooLarge              => Vector.empty
     case TranslationError.NoEraHistory                            => Vector.empty
 
-  private def certs(c: CertsFailure): Vector[ReportName] = c match
+  private def certs(c: CertsFailure, context: FailureContext): Vector[ReportName] = c match
     case CertsFailure.WithdrawalsNotInRewards(_)   => Vector(WithdrawalsNotInRewardsCERTS)
-    case CertsFailure.Cert(CertFailure.Deleg(d))   => deleg(d)
+    case CertsFailure.Cert(CertFailure.Deleg(d))   => deleg(d, context)
     case CertsFailure.Cert(CertFailure.Pool(p))    => pool(p)
     case CertsFailure.Cert(CertFailure.GovCert(g)) => govCert(g)
 
   /** Conway DELEG. The reference refuses the deregistration and every delegation of an unregistered
-    * credential with one failure (`StakeKeyNotRegisteredDELEG`, `Conway/Rules/Deleg.hs`); Amaru
-    * names it by the certificate (an unregistration, a delegation to a pool, of a vote), which the
-    * failure does not carry.
+    * credential with one failure (`StakeKeyNotRegisteredDELEG`, `Conway/Rules/Deleg.hs`), which
+    * carries the credential and not the certificate; Amaru names it by the certificate, which the
+    * judgment attributes ([[FailureContext.unregistered]]).
     */
-  private def deleg(d: DelegFailure): Vector[ReportName] = d match
+  private def deleg(d: DelegFailure, context: FailureContext): Vector[ReportName] = d match
     case DelegFailure.IncorrectDeposit(_)   => Vector(IncorrectDepositDELEG)
     case DelegFailure.StakeKeyRegistered(_) => Vector(StakeKeyRegistered)
-    case DelegFailure.StakeKeyNotRegistered(_) =>
-      Vector(
-        StakeKeyNotRegistered,
-        StakeCredentialInvalidPoolDelegation,
-        StakeCredentialInvalidVoteDelegation
-      )
+    case DelegFailure.StakeKeyNotRegistered(credential) =>
+      context.unregistered.get(credential).toVector.map(_.name)
     case DelegFailure.StakeKeyHasNonZeroAccountBalance(_) =>
       Vector(StakeKeyHasNonZeroAccountBalance)
     case DelegFailure.DelegateeDRepNotRegistered(_)      => Vector(DelegateeDRepNotRegistered)
@@ -248,3 +241,41 @@ object LedgerRulesNames:
     case GovFailure.TreasuryWithdrawalReturnAccountsDoNotExist(_) =>
       Vector(TreasuryWithdrawalReturnAccountsDoNotExist)
     case GovFailure.UnelectedCommitteeVoters(_) => Vector(VotersDoNotExist)
+
+/** The certificate a refusal of an unregistered credential is about, as Amaru names the refusal
+  * (Amaru `crates/amaru-ledger/src/rules/transaction/fixture.rs:509-518, 535-537` at 40ba9950): an
+  * unregistration, a delegation to a pool, of the vote, or of both. A delegation of both is a
+  * delegation of the vote first and then to a pool (`phase_one/certificates.rs:418-422`), so its
+  * refusal is the vote's.
+  */
+enum CertificateKind derives CanEqual:
+  case Unregistration, PoolDelegation, VoteDelegation, PoolAndVoteDelegation
+
+  def name: ReportName = this match
+    case Unregistration        => ReportName.StakeKeyNotRegistered
+    case PoolDelegation        => ReportName.StakeCredentialInvalidPoolDelegation
+    case VoteDelegation        => ReportName.StakeCredentialInvalidVoteDelegation
+    case PoolAndVoteDelegation => ReportName.StakeCredentialInvalidVoteDelegation
+
+object CertificateKind:
+  /** The kind of a certificate that can refuse an unregistered credential: an unregistration
+    * (Shelley's or Conway's), or a delegation (Conway's `ConwayDelegCert`, whose registering forms
+    * refuse a registered credential instead).
+    */
+  def of(certificate: Certificate): Option[CertificateKind] = certificate match
+    case Certificate.Unregister(_, _)                    => Some(Unregistration)
+    case Certificate.Delegate(_, Some(_), None, None)    => Some(PoolDelegation)
+    case Certificate.Delegate(_, None, Some(_), None)    => Some(VoteDelegation)
+    case Certificate.Delegate(_, Some(_), Some(_), None) => Some(PoolAndVoteDelegation)
+    case _                                               => None
+
+/** What a failure's name depends on beyond the failure: whether the transaction spends any input,
+  * which tells the two meanings of the mempool's "all inputs are spent" apart as the harness tells
+  * them, and, for each credential refused as unregistered, the kind of the one certificate that
+  * refused it. A credential that several certificates of different kinds refused has none: the
+  * failures do not say which is which.
+  */
+final case class FailureContext(
+    hasInputs: Boolean,
+    unregistered: Map[Credential, CertificateKind]
+)

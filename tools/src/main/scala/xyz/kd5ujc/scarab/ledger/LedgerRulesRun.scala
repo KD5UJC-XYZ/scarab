@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import cats.data.NonEmptyChain
 import cats.syntax.all.*
 import io.circe.Json
 import io.circe.syntax.*
 import xyz.kd5ujc.scarab.codec.DomainError
+import xyz.kd5ujc.scarab.ledger.rules.{CertEnv, Certs, CertsEnv, Judgment}
+import xyz.kd5ujc.scarab.ledger.state.ConwayLedgerState
 import xyz.kd5ujc.scarab.node.mempool.{MempoolState, Rejection}
 import xyz.kd5ujc.scarab.plutus.PlutusBackend
 
@@ -42,13 +43,14 @@ enum LedgerRulesVerdict:
     */
   case Inadmissible(defect: TxDefect)
 
-  /** The rules refused the transaction: its failures in the reference's order, and those dropped
-    * because only the mempool refuses them ([[LedgerRulesNames.mempoolOnly]]).
+  /** The rules refused the transaction: its failures in the reference's order, with what their
+    * names depend on, and those dropped because only the mempool refuses them
+    * ([[LedgerRulesNames.mempoolOnly]]).
     */
   case Refused(
       failures: Vector[PredicateFailure],
       dropped: Vector[PredicateFailure],
-      hasInputs: Boolean
+      context: FailureContext
   )
 
   case Unjudged(cause: NoVerdict)
@@ -68,13 +70,13 @@ final case class LedgerRulesCase(id: String, file: String, verdict: LedgerRulesV
     case Accepted                        => Some(LedgerRulesCase.Pass)
     case Malformed(_) | Inadmissible(_)  => Some(ReportName.DecodingFailure.toString)
     case Refused(fs, _, _) if fs.isEmpty => Some(LedgerRulesCase.Pass)
-    case Refused(fs, _, inputs) =>
-      fs.iterator.map(LedgerRulesNames.of(_, inputs)).collectFirst { case n +: _ => n.toString }
+    case Refused(fs, _, context) =>
+      fs.iterator.map(LedgerRulesNames.of(_, context)).collectFirst { case n +: _ => n.toString }
     case Unjudged(_) => None
 
   /** Every name of every failure, in order: what the sidecar keeps for the reader of the report. */
   def names: Vector[ReportName] = verdict match
-    case Refused(fs, _, inputs)         => fs.flatMap(LedgerRulesNames.of(_, inputs)).distinct
+    case Refused(fs, _, context)        => fs.flatMap(LedgerRulesNames.of(_, context)).distinct
     case Malformed(_) | Inadmissible(_) => Vector(ReportName.DecodingFailure)
     case _                              => Vector.empty
 
@@ -95,9 +97,9 @@ object LedgerRulesCase:
   /** What the sidecar records of a case: the verdict, the result and each failure with its names.
     */
   def detail(c: LedgerRulesCase): Json =
-    def failure(f: PredicateFailure, inputs: Boolean) = Json.obj(
+    def failure(f: PredicateFailure, context: FailureContext) = Json.obj(
       "rule" -> f.ruleName.asJson,
-      "names" -> LedgerRulesNames.of(f, inputs).map(_.toString).asJson,
+      "names" -> LedgerRulesNames.of(f, context).map(_.toString).asJson,
       "detail" -> f.detail.asJson
     )
     val (kind, extra) = c.verdict match
@@ -105,12 +107,12 @@ object LedgerRulesCase:
       case LedgerRulesVerdict.Malformed(d) => ("undecodable", Vector("cause" -> d.message.asJson))
       case LedgerRulesVerdict.Inadmissible(d) =>
         ("undecodable", Vector("cause" -> d.message.asJson))
-      case LedgerRulesVerdict.Refused(fs, dropped, inputs) =>
+      case LedgerRulesVerdict.Refused(fs, dropped, context) =>
         (
           "refused",
           Vector(
-            "failures" -> fs.map(failure(_, inputs)).asJson,
-            "dropped" -> dropped.map(failure(_, inputs)).asJson
+            "failures" -> fs.map(failure(_, context)).asJson,
+            "dropped" -> dropped.map(failure(_, context)).asJson
           )
         )
       case LedgerRulesVerdict.Unjudged(cause) =>
@@ -161,14 +163,76 @@ object LedgerRulesRun:
     context.ledger.submit(tx, context.env, context.globals) match
       case Right(_) => LedgerRulesVerdict.Accepted
       case Left(LedgerFailure.Rejected(_, failures)) =>
-        refused(failures, tx.body.inputs.nonEmpty)
-      case Left(LedgerFailure.Undecodable(_, defect)) =>
-        LedgerRulesVerdict.Inadmissible(defect)
-      case Left(defect: LedgerDefect) => LedgerRulesVerdict.Unjudged(NoVerdict.Defect(defect))
+        val (dropped, kept) = failures.toChain.toVector.partition(LedgerRulesNames.mempoolOnly)
+        refused(tx, context, kept, dropped)
+      case Left(defect: LedgerDefect) => undecided(defect)
+
+  private def undecided(defect: LedgerDefect): LedgerRulesVerdict = defect match
+    case LedgerFailure.Undecodable(_, d) => LedgerRulesVerdict.Inadmissible(d)
+    case other                           => LedgerRulesVerdict.Unjudged(NoVerdict.Defect(other))
 
   private def refused(
-      failures: NonEmptyChain[PredicateFailure],
-      inputs: Boolean
+      tx: Tx,
+      context: LedgerRulesContext,
+      kept: Vector[PredicateFailure],
+      dropped: Vector[PredicateFailure]
   ): LedgerRulesVerdict =
-    val (dropped, kept) = failures.toChain.toVector.partition(LedgerRulesNames.mempoolOnly)
-    LedgerRulesVerdict.Refused(kept, dropped, inputs)
+    val needed = kept.exists(unregisteredCredential(_).isDefined)
+    val attributed = if needed then unregistered(tx, context) else Map.empty
+    LedgerRulesVerdict.Refused(
+      kept,
+      dropped,
+      FailureContext(tx.body.inputs.nonEmpty, attributed)
+    )
+
+  private def unregisteredCredential(f: PredicateFailure): Option[Credential] = f match
+    case PredicateFailure.Certs(
+          CertsFailure.Cert(CertFailure.Deleg(DelegFailure.StakeKeyNotRegistered(c)))
+        ) =>
+      Some(c)
+    case _ => None
+
+  /** The certificate that refused each credential as unregistered. CERTS recurses on the prefix of
+    * the certificates (`Conway/Rules/Certs.hs:242-246`, `gamma :|> c`), so the production rule
+    * ([[Certs]]) is judged on each prefix, from the certificate state and in the environment LEDGER
+    * gives it (`Conway/Rules/Ledger.hs:394-398`), and the certificate after which a credential's
+    * refusals grow is the one that refused it. From protocol version 11 LEDGER drains the
+    * withdrawals before CERTS, which changes no registration. A credential refused by certificates
+    * of more than one kind is left out: its failures do not say which is which.
+    */
+  private def unregistered(tx: Tx, context: LedgerRulesContext): Map[Credential, CertificateKind] =
+    val ls = context.ledger.ls
+    val gov = ConwayLedgerState.gov.get(ls)
+    val env = CertsEnv(
+      tx,
+      CertEnv(
+        tx.body.id,
+        gov.curPParams,
+        context.env.epoch,
+        gov.committee,
+        gov.proposals.actions.map(g => g.id -> g).toMap
+      )
+    )
+    val certificates = tx.body.certificates
+    def refusals(prefix: Int): Map[Credential, Int] =
+      Judgment.run(Certs, Judgment.Policy.Accumulate)(
+        context.globals,
+        env,
+        ConwayLedgerState.cert.get(ls),
+        certificates.take(prefix)
+      ) match
+        case Right(Left(failures)) =>
+          failures.toChain.toVector
+            .flatMap(unregisteredCredential)
+            .groupMapReduce(identity)(_ => 1)(_ + _)
+        case _ => Map.empty
+    val counts = (0 to certificates.size).map(refusals)
+    certificates.indices
+      .flatMap { i =>
+        val grown = counts(i + 1).collect { case (c, n) if n > counts(i).getOrElse(c, 0) => c }
+        grown.flatMap(c => CertificateKind.of(certificates(i)).map(c -> _))
+      }
+      .groupMap(_._1)(_._2)
+      .collect { case (c, kinds) if kinds.distinct.size == 1 => kinds.headOption.map(c -> _) }
+      .flatten
+      .toMap

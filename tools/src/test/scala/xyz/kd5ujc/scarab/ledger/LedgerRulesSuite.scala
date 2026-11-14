@@ -39,8 +39,8 @@ class LedgerRulesSuite extends FunSuite:
   test("a transaction none of whose inputs is unspent is BadInputsUTxO, as the harness names it") {
     val verdict = judge(withState(Json.obj("utxo" -> Json.arr())))
     val failures = verdict match
-      case LedgerRulesVerdict.Refused(fs, _, true) => fs
-      case other                                   => fail(s"not refused: $other")
+      case LedgerRulesVerdict.Refused(fs, _, FailureContext(true, _)) => fs
+      case other => fail(s"not refused: $other")
     assertEquals(failures, Vector(PredicateFailure.Mempool(MempoolProblem.AllInputsSpent)))
     assertEquals(result(verdict), Some("BadInputsUTxO"))
   }
@@ -78,24 +78,79 @@ class LedgerRulesSuite extends FunSuite:
     assert(clock.posix(432000).isLeft, "slot 432000 is past the horizon")
   }
 
-  test(
-    "the reference's one unregistered-credential failure is first named as the reference names it"
-  ) {
-    val failure = PredicateFailure.deleg(DelegFailure.StakeKeyNotRegistered(Credential.Key(Hash28)))
+  private def refusalNames(id: String): Vector[ReportName] =
+    val (state, tx) = Unregistered(id)
+    LedgerRulesCase(id, "fixture.json", judge(fixture(state, tx))).names
+
+  private val unregisteredNames = Set(
+    ReportName.StakeKeyNotRegistered,
+    ReportName.StakeCredentialInvalidPoolDelegation,
+    ReportName.StakeCredentialInvalidVoteDelegation
+  )
+
+  test("an unregistered credential's refusal is named by the certificate that refused it") {
+    val expected = Vector(
+      "00290" -> ReportName.StakeKeyNotRegistered,
+      "00291" -> ReportName.StakeKeyNotRegistered,
+      "00286" -> ReportName.StakeCredentialInvalidPoolDelegation,
+      "00287" -> ReportName.StakeCredentialInvalidVoteDelegation,
+      "00288" -> ReportName.StakeCredentialInvalidVoteDelegation,
+      "00100" -> ReportName.StakeCredentialInvalidPoolDelegation
+    )
+    expected.foreach { (id, name) =>
+      val names = refusalNames(id)
+      assertEquals(names.filter(unregisteredNames), Vector(name), s"$id: $names")
+    }
+  }
+
+  test("a certificate's kind: unregistrations and delegations, not their registering forms") {
+    val c = Credential.Key(Hash28)
+    val pool = Some(Hash28)
+    val drep = Some(DRep.AlwaysAbstain)
     assertEquals(
-      LedgerRulesNames.of(failure, hasInputs = true),
-      Vector(
-        ReportName.StakeKeyNotRegistered,
-        ReportName.StakeCredentialInvalidPoolDelegation,
-        ReportName.StakeCredentialInvalidVoteDelegation
-      )
+      CertificateKind.of(Certificate.Unregister(c, None)),
+      Some(CertificateKind.Unregistration)
+    )
+    assertEquals(
+      CertificateKind.of(Certificate.Unregister(c, Some(BigInt(2)))),
+      Some(CertificateKind.Unregistration)
+    )
+    assertEquals(
+      CertificateKind.of(Certificate.Delegate(c, pool, None, None)),
+      Some(CertificateKind.PoolDelegation)
+    )
+    assertEquals(
+      CertificateKind.of(Certificate.Delegate(c, None, drep, None)),
+      Some(CertificateKind.VoteDelegation)
+    )
+    assertEquals(
+      CertificateKind.of(Certificate.Delegate(c, pool, drep, None)),
+      Some(CertificateKind.PoolAndVoteDelegation)
+    )
+    assertEquals(CertificateKind.of(Certificate.Delegate(c, pool, drep, Some(BigInt(2)))), None)
+    assertEquals(CertificateKind.of(Certificate.Register(c, None)), None)
+    assertEquals(
+      CertificateKind.PoolAndVoteDelegation.name,
+      ReportName.StakeCredentialInvalidVoteDelegation
+    )
+  }
+
+  test("an unregistered credential's refusal with no attributed certificate has no name") {
+    val failure = PredicateFailure.deleg(DelegFailure.StakeKeyNotRegistered(Credential.Key(Hash28)))
+    assertEquals(LedgerRulesNames.of(failure, NoContext), Vector.empty)
+    assertEquals(
+      LedgerRulesNames.of(
+        failure,
+        FailureContext(true, Map(Credential.Key(Hash28) -> CertificateKind.VoteDelegation))
+      ),
+      Vector(ReportName.StakeCredentialInvalidVoteDelegation)
     )
   }
 
   test("the harness's renamings: inputs, collect errors, refunds and unelected voters") {
     val spent = PredicateFailure.Mempool(MempoolProblem.AllInputsSpent)
     assertEquals(
-      LedgerRulesNames.of(spent, hasInputs = false),
+      LedgerRulesNames.of(spent, NoContext.copy(hasInputs = false)),
       Vector(ReportName.InputSetEmptyUTxO)
     )
     val noModel = PredicateFailure.utxo(
@@ -104,41 +159,41 @@ class LedgerRulesSuite extends FunSuite:
       )
     )
     assertEquals(
-      LedgerRulesNames.of(noModel, hasInputs = true),
+      LedgerRulesNames.of(noModel, NoContext),
       Vector(ReportName.MissingCostModel)
     )
     val refund =
       PredicateFailure.govCert(GovCertFailure.DRepIncorrectRefund(Mismatch(BigInt(1), BigInt(2))))
     assertEquals(
-      LedgerRulesNames.of(refund, hasInputs = true),
+      LedgerRulesNames.of(refund, NoContext),
       Vector(ReportName.IncorrectDepositDRep)
     )
     val unelected = PredicateFailure.gov(GovFailure.UnelectedCommitteeVoters(Vector.empty))
     assertEquals(
-      LedgerRulesNames.of(unelected, hasInputs = true),
+      LedgerRulesNames.of(unelected, NoContext),
       Vector(ReportName.VotersDoNotExist)
     )
     val witnesses = PredicateFailure.utxow(UtxowFailure.MissingVKeyWitnesses(Set(Hash28)))
     assertEquals(
-      LedgerRulesNames.of(witnesses, hasInputs = true),
+      LedgerRulesNames.of(witnesses, NoContext),
       Vector(ReportName.MissingVerificationKeyWitnessesUTXOW)
     )
   }
 
   test(
-    "the result is the first failure the schema names, and a mempool-only refusal alone passes"
+    "the result is the first failure the schema names, and LEDGER's acceptance after a refusal only the mempool makes is a pass"
   ) {
     val unnamed = PredicateFailure.utxow(UtxowFailure.InvalidMetadata)
     val fee = PredicateFailure.utxo(UtxoFailure.FeeTooSmall(Mismatch(BigInt(1), BigInt(2))))
     val value = PredicateFailure.utxo(UtxoFailure.InputSetEmpty)
     def refused(fs: PredicateFailure*) =
-      result(LedgerRulesVerdict.Refused(fs.toVector, Vector.empty, true))
+      result(LedgerRulesVerdict.Refused(fs.toVector, Vector.empty, NoContext))
     assertEquals(refused(unnamed, fee, value), Some("FeeTooSmallUTxO"))
     assertEquals(refused(unnamed), None)
     val unelected = PredicateFailure.Mempool(MempoolProblem.UnelectedCommittee(Vector.empty))
     assert(LedgerRulesNames.mempoolOnly(unelected))
     assertEquals(
-      result(LedgerRulesVerdict.Refused(Vector.empty, Vector(unelected), true)),
+      result(LedgerRulesVerdict.Refused(Vector.empty, Vector(unelected), NoContext)),
       Some("pass")
     )
   }
@@ -211,6 +266,98 @@ class LedgerRulesSuite extends FunSuite:
 
 object LedgerRulesSuite:
   private val Hash28 = Bytes(Vector.fill(28)(7.toByte))
+  private val NoContext = FailureContext(hasInputs = true, unregistered = Map.empty)
+
+  /** The key hash of Amaru's public test key `dev-42`, kept apart from the field that names it. */
+  private val Dev42 = "93c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd8"
+
+  /** The simple transfer with another initial state and transaction. */
+  private def fixture(state: String, tx: String): Json =
+    SimpleTransfer.mapObject(o =>
+      o.add("initial_state", io.circe.parser.parse(state).getOrElse(Json.Null))
+        .add("transaction", tx.asJson)
+    )
+
+  private val Dev42Output =
+    "a200581d6093c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd8011a004c4b40"
+
+  private def oneInput(input: String, more: String = ""): String =
+    s"""{"utxo": [{"input": "$input", "output": "$Dev42Output"}]$more}"""
+
+  /** Fixtures of the corpus (same provenance as [[SimpleTransfer]]) whose transactions refuse an
+    * unregistered credential: `00290` and `00291` deregister it (Shelley's and Conway's
+    * certificate), `00286` delegates it to a pool, `00287` its vote, `00288` both, and `00100`
+    * deregisters a registered one and then delegates it to a pool. Their initial state and
+    * transaction, by id.
+    */
+  private val Unregistered: Map[String, (String, String)] = Map(
+    "00290" -> (
+      oneInput("825820bbc20ff08205e269352834e5412708a2a452b287bd00f084aef8421760bc8d5200"),
+      "84a400d9010281825820bbc20ff08205e269352834e5412708a2a452b287bd00f084aef8421760bc8d52000181a2" +
+        "00581d6093c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd8011a00493e00021a00030d4004d9" +
+        "01028182018200581c93c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd8a100d9010281825820" +
+        "2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db125840c2d76bb6c87295ba5be83e41" +
+        "2d5a0216684b3d51c1c5f53d20e0cffd11304248a00a772edae9ad6200a6cef8c1278ca23a50ff204d983ff85b7e" +
+        "bfbfe44b3008f5f6"
+    ),
+    "00291" -> (
+      oneInput("8258208b68089fd4e5136a3a73b7983089899e55d855660f48710c035e7a569071f6aa00"),
+      "84a400d90102818258208b68089fd4e5136a3a73b7983089899e55d855660f48710c035e7a569071f6aa000181a2" +
+        "00581d6093c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd8011a00493e00021a00030d4004d9" +
+        "01028183088200581c93c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd81a001e8480a100d901" +
+        "02818258202152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db125840780f42851f2efc" +
+        "7e74f5e41f9f363d134c193cf2d3c630189f631901cfa3068471db5cc692e47d72c9bbd24d0928c064a4bb378f5d" +
+        "af6e552212d21fd095ff00f5f6"
+    ),
+    "00286" -> (
+      oneInput(
+        "825820d578dd54ab2d4821f55d789d2026cae282eeed91abe253e7444c46e6f567abd100",
+        """, "pools": ["4bbe2e054fb148c33693a11ea5e21568a46c74a27d3d2ab92024ccd3"]"""
+      ),
+      "84a400d9010281825820d578dd54ab2d4821f55d789d2026cae282eeed91abe253e7444c46e6f567abd1000181a2" +
+        "00581d6093c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd8011a00493e00021a00030d4004d9" +
+        "01028183028200581c93c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd8581c4bbe2e054fb148" +
+        "c33693a11ea5e21568a46c74a27d3d2ab92024ccd3a100d90102818258202152f8d19b791d24453242e15f2eab6c" +
+        "b7cffa7b6a5ed30097960e069881db125840f98e4dcc995c3d2eac40c80a97df323d1586bacb8a48e249469a0049" +
+        "4a2980c6fb77af8c9c732d559968f18b532b2eda9b026dffc6b33c733670176ecb709709f5f6"
+    ),
+    "00287" -> (
+      oneInput("825820efb5b716fc3e32e5b59cd2e5c23f9575195eb171da2348d86ebef6ec9c2a73dc00"),
+      "84a400d9010281825820efb5b716fc3e32e5b59cd2e5c23f9575195eb171da2348d86ebef6ec9c2a73dc000181a2" +
+        "00581d6093c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd8011a00493e00021a00030d4004d9" +
+        "01028183098200581c93c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd88102a100d901028182" +
+        "58202152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12584025fee24bb67b7078f2f7" +
+        "64e4d76f9cc79a63eeeb6009bfcf76316ea26b6b3a5794dbe23f6371969d348841d95e1f38f8d9d6a23794b3aef9" +
+        "3164c09813f18808f5f6"
+    ),
+    "00288" -> (
+      oneInput(
+        "82582092e106900d624b3f86b904a0731738b46ac696ccda4970f4fb7728b9cfe7d0f700",
+        """, "pools": ["4bbe2e054fb148c33693a11ea5e21568a46c74a27d3d2ab92024ccd3"]"""
+      ),
+      "84a400d901028182582092e106900d624b3f86b904a0731738b46ac696ccda4970f4fb7728b9cfe7d0f7000181a2" +
+        "00581d6093c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd8011a00493e00021a00030d4004d9" +
+        "010281840a8200581c93c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd8581c4bbe2e054fb148" +
+        "c33693a11ea5e21568a46c74a27d3d2ab92024ccd38102a100d90102818258202152f8d19b791d24453242e15f2e" +
+        "ab6cb7cffa7b6a5ed30097960e069881db1258409eeddfec522f5cce390302c732306d194cc3e0f2baae0e4b32da" +
+        "d5146d63b02b895982885ba01ccfeb99dc79aa60b3763683f705cc768ac0d26605a1dd85180df5f6"
+    ),
+    "00100" -> (
+      """{"utxo": [{"input": "825820827273a8722791f640b59ba20ba9340cb0398535b36e1957ed8e8dde693976d500",""" +
+        """ "output": "bf00581d6093c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd8011a004c4b40ff"}],""" +
+        """ "pools": ["deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"],""" +
+        s""" "accounts": [{"credential": "8200581c$Dev42",""" +
+        """ "deposit": 2000000, "rewards": 0}]}""",
+      "84a500d9010281825820827273a8722791f640b59ba20ba9340cb0398535b36e1957ed8e8dde693976d5000181bf" +
+        "00581d60a1c146c212acfe02048afbf8d2e5e9c806165934d9935c696f85c3dc011a0067c280ff021a00030d4004" +
+        "d901028282018200581c93c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd883028200581c93c1" +
+        "91b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd8581cdeadbeefdeadbeefdeadbeefdeadbeefdead" +
+        "beefdeadbeefdeadbeef0f00a100d90102818258202152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097" +
+        "960e069881db125840e823f7e5d3af0e0e44b512f197c36a65f4b1e84dd0614eb7fc3baf07aa82b58358ef5549df" +
+        "6e1597a55a0a04208b1cf66636ad12daf6c81d6f8ee40ed5bbbf0df5f6"
+    )
+  )
+
   private val Commit = "40ba995081b2b066cab497eade9abfbc0e350970"
   private val ParamsRef = "common/protocol-parameters/preprod-conway-v10.json"
   private val EraRef = "common/era-history/preprod-conway.json"
