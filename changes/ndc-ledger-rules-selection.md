@@ -1,3 +1,8 @@
 ### Changed (conformance)
 
-- The ledger-rules sidecar (`LedgerRulesMain --sidecar <path>`) is now an object: `selection` names the run's `--select` (`first` or `expected-in-failures`), and `cases` holds what the sidecar held before, one entry per fixture with its `selected` rule. The report keeps the site's schema, which has no field for the selection, so a saved report is identified by the sidecar written beside it. A reader of the earlier sidecar, a bare array, reads `cases`.
+- The ledger-rules report of `LedgerRulesMain` names the run's `--select` (`first` or `expected-in-failures`) in a top-level `selection` key. The scenario's schema does not declare the key, but it admits keys that it does not name, and the site keeps them when it reads and publishes a report.
+- The sidecar (`--sidecar <path>`) is now an object:
+  - `selection` names the same mode;
+  - `cases` holds what the sidecar held before, one entry per fixture, each with its `selected` rule.
+
+  A reader of the earlier sidecar, which was a bare array, reads `cases` instead.
