@@ -5,7 +5,7 @@ Part of [Architecture](../architecture.md).
 
 ## Connections: the manager and the inbound governor (G2)
 
-One connection serves both sides of a peer, as in the reference (ouroboros-network `2fb69829`,
+One connection serves both sides of a peer, as in the reference (ouroboros-network `c45735a5`,
 `ConnectionManager/Core.hs`): the outbound side reuses a duplex connection the peer opened, and the
 peer's protocols run on a duplex connection we opened. Our clients run only where the outbound governor
 promotes a peer.
@@ -53,14 +53,14 @@ peer can start, the accepted ones and the duplex ones we dial: the first respond
 `AwakeRemote`, the first hot one (ChainSync, BlockFetch, TxSubmission2) `RemotePromotedToHot`, the clean end of
 the last hot one `RemoteDemotedToWarm`, the clean end of the last one `WaitIdleRemote` (which arms the idle timer,
 5 s), and an expired timer is `CommitRemote`: the manager closes an idle connection, or keeps one the outbound side
-uses (`OutboundDup Ticking` becomes `Expired`) until a later responder wakes it up (`InboundGovernor.hs` 329-335,
-463-570). A responder that ends in an error or is cancelled stops the counting, as the reference's mux tracer
-does (680-708). The connection's remote state (`RemoteIdle`, `RemoteWarm`, `RemoteHot`, `RemoteCold`) is kept by
+uses (`OutboundDup Ticking` becomes `Expired`) until a later responder wakes it up (`InboundGovernor.hs` 354-360,
+445-543). A responder that ends in an error or is cancelled stops the counting, as the reference's mux tracer
+does (688-696). The connection's remote state (`RemoteIdle`, `RemoteWarm`, `RemoteHot`, `RemoteCold`) is kept by
 the manager beside its table from the connection's start until a commit or its end (`remoteStates`); the
-`inboundGovernor_*` metrics count it (`Counters`, `InboundGovernor/State.hs` 113-145). The responders' starts and ends and the idle timer are read in one step, as the reference
-reads its channel and its timers in one STM transaction (`InboundGovernor.hs` 240-275): an expired timer is
-committed first (253-261), no start is taken before that, and a responder that starts at or after the expiry
-waits until the commit is settled, as the reference's mux tracer holds it (629-708).
+`inboundGovernor_*` metrics count it (`Counters`, `InboundGovernor/State.hs` 115-147). The responders' starts and ends and the idle timer are read in one step, as the reference
+reads its channel and its timers in one STM transaction (`InboundGovernor.hs` 239-274): an expired timer is
+committed first (258-266), no start is taken before that, and a responder that starts at or after the expiry
+waits until the commit is settled, as the reference's mux tracer holds it (602-682).
 
 The manager's changes and what they ask for (the log, the connections they end) are one step that cancellation
 cannot split, and an acquisition hands over a reuse or a reservation without a cancelable gap; a reuse its caller

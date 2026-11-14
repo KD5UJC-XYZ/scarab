@@ -371,7 +371,7 @@ final class OutboundPeers[F[_]: Async, A] private (
     link.terminal.complete(end).void *> link.warm.applications.notifyChange
 
   /** One job outside both the bearer and the hot session: PeerStateActions.hs:662–776,838–848 at
-    * ouroboros-network 2fb69829. The loop observes retained application results, handles a clean
+    * ouroboros-network c45735a5. The loop observes retained application results, handles a clean
     * hot return by deactivation, and waits for manager release before Cooling becomes Cold.
     */
   private def peerMonitoringLoop(peer: A, link: Link[F]): F[Unit] =
@@ -1106,7 +1106,7 @@ final class OutboundPeers[F[_]: Async, A] private (
 
 object OutboundPeers:
   /** @param deactivateTimeout
-    *   How long the hot protocols get to end on the wire (`deactivateTimeout`, `Policies.hs` 31).
+    *   How long the hot protocols get to end on the wire (`deactivateTimeout`, `Policies.hs` 30).
     * @param repromoteDelay
     *   The exit policy's wait before a peer whose connection failed is tried again.
     */
@@ -1292,9 +1292,9 @@ object OutboundPeers:
     *   Holds each connection's monitor. Released before `supervisor`, so that every monitor has
     *   ended before a connection is torn down: a monitor that outlived its connection would report
     *   the release as a loss. The reference closes the job pool of its peer state actions, which
-    *   holds the monitors, inside the scope of its connection manager (ouroboros-network 2fb69829
+    *   holds the monitors, inside the scope of its connection manager (ouroboros-network c45735a5
     *   `Ouroboros/Network/Diffusion.hs` 769-786, 801-826, `PeerSelection/PeerStateActions.hs` 630,
-    *   836-848, `network-mux` `Control/Concurrent/JobPool.hs` 91-92, 106-110).
+    *   836-848, `network-mux` `Control/Concurrent/JobPool.hs` 54-55, 70-73).
     * @param beforeObservation
     *   run by each connection's monitor before it observes the connection's applications: a test
     *   seam for a monitor that fails (issue 579); the node passes none

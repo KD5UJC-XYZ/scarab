@@ -32,7 +32,7 @@ object ListenerFailures:
 
   /** A node-to-client connection that failed closes alone, whatever the failure: the reference's
     * policy for local connections is the diffusion's `rethrowPolicy <> mempty` (ouroboros-network
-    * 2fb69829, `ouroboros-network/lib/Ouroboros/Network/Diffusion.hs` 286-322 and 355;
+    * c45735a5, `ouroboros-network/lib/Ouroboros/Network/Diffusion.hs` 286-322 and 355;
     * ouroboros-consensus 82ecba32, `Ouroboros/Consensus/Node.hs` 812-813), whose only
     * `ShutdownNode` is an `IOManagerError`, which only Windows raises.
     */

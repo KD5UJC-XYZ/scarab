@@ -5,7 +5,7 @@ Status: implemented; combined local gates passed, PR #289 awaits review and merg
 ## Reference and boundary
 
 The target is the Praos bulk/deadline policy in ouroboros-network
-`2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`, `BlockFetch/Decision.hs`,
+`c45735a56c567fa977969173d18943bac6bb3821`, `BlockFetch/Decision.hs`,
 `BlockFetch/DeltaQ.hs` and `Network/DeltaQ.hs`, with the consensus candidate
 boundary in ouroboros-consensus `82ecba329`. Full Genesis selection remains #33.
 This change compares decision values and observable protocol/resource behavior,
@@ -90,9 +90,9 @@ form a finite uncancelable operation.
 Production connections allocate `BlockFetchClient.resource`. Concurrent submissions
 are bounded (100 by default, matching `Cardano/Network/NodeToNode.hs:212` at the pin), go onto the wire in FIFO order and collect responses
 in that order. A checked original enters the shared fetched state before its estimated byte
-credit is returned (`Client.hs:274–295`). NoBlocks retires the rejected fragment and request
+credit is returned (`Client.hs:270–291`). NoBlocks retires the rejected fragment and request
 in one transaction. BatchDone validates the expected count before successful completion;
-too few blocks remain a typed protocol failure (`Client.hs:236–240,300–304`).
+too few blocks remain a typed protocol failure (`Client.hs:234–236,291–292`).
 The compatibility `apply` constructor remains serial for callers requiring it.
 
 Each collector owns its typed error scope and ends with a value (ADR 0017). A

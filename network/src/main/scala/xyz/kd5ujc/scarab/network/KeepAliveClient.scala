@@ -83,7 +83,7 @@ object KeepAliveClient:
 
   /** The established application accepts Terminate, sends MsgDone after its current ping, and
     * publishes its result before mux failure can cancel its resource. PeerStateActions owns the
-    * result handle (2fb69829 PeerSelection/PeerStateActions.hs:1055–1077).
+    * result handle (c45735a5 PeerSelection/PeerStateActions.hs:1055–1077).
     */
   def controlled[F[_]: Temporal: Defer](
       channel: MuxChannel[F],

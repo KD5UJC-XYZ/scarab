@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.protocol
 
 /** The state of one node-to-node connection as the reference's connection manager keeps it: the
-  * constructors of `ConnectionState` (ouroboros-network `2fb69829`,
+  * constructors of `ConnectionState` (ouroboros-network `c45735a5`,
   * `ConnectionManager/State.hs:191-217`) without their runtime fields (connection id, thread,
   * handle, error), which the manager holds beside the state. No transport, no time.
   *
@@ -221,7 +221,7 @@ object ConnectionState:
     )
 
   /** Whether the reference accepts the move from `from` to `to`: `verifyAbstractTransition`
-    * (`Test/Ouroboros/Network/ConnectionManager/Utils.hs`, ouroboros-network `2fb69829`), with
+    * (`Test/Ouroboros/Network/ConnectionManager/Utils.hs`, ouroboros-network `c45735a5`), with
     * `None` for a connection not in the table (`UnknownConnectionSt`). Its self-connection cases
     * (`SelfConn`, `SelfConn⁻¹`, `SelfConnNegotiated`) are included.
     */
@@ -287,7 +287,7 @@ object ConnectionState:
     case NegotiatedConn(provenance: Provenance, flow: DataFlow)
     case DuplexConn
 
-    /** `isUpstream` of the reference's `prunePolicy` (`Diffusion/Policies.hs:296-305`): the
+    /** `isUpstream` of the reference's `prunePolicy` (`Diffusion/Policies.hs:246-254`): the
       * connections the outbound side opened or uses, which are pruned last.
       */
     def upstream: Boolean = this match

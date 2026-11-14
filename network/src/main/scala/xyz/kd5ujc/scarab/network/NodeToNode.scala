@@ -172,8 +172,8 @@ object NodeToNode:
   /** What a hot protocol that ended with `error` reports. Its own failure is itself. A protocol
     * that was only cancelled (its end is the plain `Aborted` of a cancellation) reports the
     * connection's failure if it has failed, as a mini-protocol still running when the mux fails
-    * completes with `Shutdown (Just e)` (ouroboros-network 2fb69829
-    * network-mux/src/Network/Mux.hs:459–464, 800–812, `completionAction`), and the cancellation
+    * completes with `Shutdown (Just e)` (ouroboros-network c45735a5
+    * network-mux/src/Network/Mux.hs:458–463, 824–836, `completionAction`), and the cancellation
     * otherwise. Without it the connection's monitor, which takes the lowest-numbered finished
     * protocol, would take a cancelled ChainSync's `Aborted` for the fault that ended the connection
     * (issue 597).

@@ -40,7 +40,7 @@ trait TcpListener[F[_]]:
   def accept: F[Either[AcceptFailure, TcpStream[F]]]
 
 /** Why an accept failed. The reference's `AcceptFailure` carries any exception of the call that is
-  * not asynchronous (ouroboros-network 2fb69829,
+  * not asynchronous (ouroboros-network c45735a5,
   * `ouroboros-network/framework/lib/Ouroboros/Network/Snocket.hs` 170-214): here a failed system
   * call, or an exception that is not one, a defect.
   */

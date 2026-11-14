@@ -12,7 +12,7 @@ implemented G1.1–G1.5 and #142 network follow-ups; original parent acceptance 
 reference governor properties on TestControl, 40 in-memory peers, 100,000-pool small-stack tests; relay/governor scenarios; Preview official configuration with no --peer for 1,860 seconds: tip reached, big-ledger known/established/active15/10/5, ledger map preferred over older snapshot, one twelve-step churn round; real mainnet/Preview registrations pin IPv6 as four little-endian words; extended decoder fuzz and full check pass (evidence below)
 
 The retained PeerStateActions monitor and result/control handles follow ouroboros-network
-`2fb69829` and the node exit policy at ouroboros-consensus `82ecba329`; the source correspondence
+`c45735a5` and the node exit policy at ouroboros-consensus `82ecba329`; the source correspondence
 and API boundaries are in [the peer-selection design](../design/peer-selection/peer-state-actions.md).
 `ProtocolResultsSuite` covers reference first/all-result selection, complete typed error aggregates,
 and activation handle replacement. `OutboundLossReportSuite` checks one loss report at each release

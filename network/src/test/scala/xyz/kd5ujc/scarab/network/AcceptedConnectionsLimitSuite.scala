@@ -10,7 +10,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.AcceptedConnectionsLimit.RateLimitDelay.*
 
 /** The accepted-connection limits against the reference's `Server/RateLimiting.hs`
-  * (`getRateLimitDecision`, `runConnectionRateLimits`; ouroboros-network 2fb69829).
+  * (`getRateLimitDecision`, `runConnectionRateLimits`; ouroboros-network c45735a5).
   */
 class AcceptedConnectionsLimitSuite extends FailsOnUncaught:
   private val reference = AcceptedConnectionsLimit.default

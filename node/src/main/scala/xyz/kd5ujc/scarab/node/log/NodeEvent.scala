@@ -575,7 +575,7 @@ object NodeEvent:
         .at(severity)
 
 /** The lines of the node-to-client socket and server: the reference's names, severities and machine
-  * fields (ouroboros-network 2fb69829,
+  * fields (ouroboros-network c45735a5,
   * `ouroboros-network/tracing/Ouroboros/Network/Tracing/PeerSelection.hs` 29-113 and
   * `ouroboros-network/tracing/Ouroboros/Network/Tracing/Server.hs` 72-97), the event standing for
   * the reference's `kind`. A path is `show` of its `LocalAddress` where the reference shows one

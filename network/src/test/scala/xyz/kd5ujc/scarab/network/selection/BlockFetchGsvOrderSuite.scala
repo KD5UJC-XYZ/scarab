@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, HaskellSort}
 import BlockFetchPolicy.*
 import FetchGsv.*
 
-/** GSV ordering of `prioritisePeerChains` and preferred-peer admission (ouroboros-network 2fb69829,
+/** GSV ordering of `prioritisePeerChains` and preferred-peer admission (ouroboros-network c45735a5,
   * BlockFetch/Decision.hs:783–784, 821–822 and 1028–1035) with `comparePeerGSV`, whose 5% band is
   * not transitive. Expected orders below were traced by hand through GHC 9.10.3 `Data.List.sortBy`.
   */

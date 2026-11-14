@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.codec.DomainError
 
 /** Why the connection manager refuses or cannot do something. Closed; raised through `Raise`. The
   * cases after `IllegalTransition` are the reference's `ConnectionManagerError` constructors
-  * (ouroboros-network `2fb69829`, `ConnectionManager/Types.hs`), raised where `Core.hs` raises
+  * (ouroboros-network `c45735a5`, `ConnectionManager/Types.hs`), raised where `Core.hs` raises
   * them.
   */
 enum ConnectionError extends DomainError:

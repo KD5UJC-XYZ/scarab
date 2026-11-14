@@ -5,7 +5,7 @@ import cats.effect.IO
 
 import ProtocolResults.{Control, Entry, Result, Snapshot, Temperature}
 
-/** The first/all completion reads and retained results of PeerStateActions at 2fb69829. */
+/** The first/all completion reads and retained results of PeerStateActions at c45735a5. */
 class ProtocolResultsSuite extends FailsOnUncaught:
   private val error = NetworkError.Timeout(Protocols.BlockFetch, "streaming")
 

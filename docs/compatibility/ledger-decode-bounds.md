@@ -9,7 +9,7 @@ implemented: the reference's decoders (cborg and `cardano-ledger-binary`) count 
 
 | Input | Reference bound | Where |
 |---|---|---|
-| A header (ChainSync) | 65535 bytes a message (`smallByteLimit`); `maxBHSize` (a `Word16`) after decoding | `Ouroboros/Network/Protocol/ChainSync/Codec.hs:47-51`, `Protocol/Limits.hs:105-109` (ouroboros-network 2fb69829); `Shelley/Protocol/EnvelopeChecks.hs:86-88` (ouroboros-consensus 82ecba32) |
+| A header (ChainSync) | 65535 bytes a message (`smallByteLimit`); `maxBHSize` (a `Word16`) after decoding | `Ouroboros/Network/Protocol/ChainSync/Codec.hs:47-51`, `Protocol/Limits.hs:105-109` (ouroboros-network c45735a5); `Shelley/Protocol/EnvelopeChecks.hs:86-88` (ouroboros-consensus 82ecba32) |
 | A block (BlockFetch) | 2500000 bytes a message (`largeByteLimit`); `maxBBSize` after decoding | `Protocol/BlockFetch/Codec.hs:42-45`; `EnvelopeChecks.hs:89-91` |
 | A transaction (LocalTxSubmission) | none but the mux ingress queue; `maxTxSize` after decoding | `runPeer` over `codecLocalTxSubmission`, `Ouroboros/Consensus/Network/NodeToClient.hs:455-465` |
 | A query (LocalStateQuery) | none but the mux ingress queue; Scarab retains the approved depth deviation below | `Stateful.runPeer`, `NodeToClient.hs:466-478` |

@@ -67,7 +67,7 @@ object TxSubmission2:
     /** [[body]], once the era's decoders have read the whole transaction `original`: a refusal
       * where they refuse it. The reference's codec reads every transaction of a reply so, and a
       * transaction they refuse fails the codec (`DecoderFailure`, network
-      * `Ouroboros/Network/Driver/Simple.hs:171`, 2fb69829), which ends the connection
+      * `Ouroboros/Network/Driver/Simple.hs:171`, c45735a5), which ends the connection
       * (`ShutdownPeer`, the unit of `RethrowPolicy`, `Ouroboros/Network/RethrowPolicy.hs:99-103`).
       * A transaction this side sends is written by the reference's encoder, not read; so only a
       * reply this side takes is read whole here (#708).

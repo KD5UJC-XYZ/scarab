@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, NtNHeader}
 import xyz.kd5ujc.scarab.protocol.ConnectionState.{DataFlow, Provenance}
 
-/** The outbound side over a duplex connection the peer opened (ouroboros-network `2fb69829`,
+/** The outbound side over a duplex connection the peer opened (ouroboros-network `c45735a5`,
   * `ConnectionManager/Core.hs` 1335-1370, `PeerStateActions.hs` 777-905, 1094-1105): our clients
   * run only where the outbound governor promotes the peer, and then over the peer's own connection,
   * with no dial and no second handshake. The inbound governor runs none of its own (issue 854).

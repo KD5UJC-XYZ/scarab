@@ -30,7 +30,7 @@ enum NetworkError extends DomainError:
   case BearerClosed(reason: NetworkError.Closure)
 
   /** An accepted connection stayed silent after its handshake for the protocol idle timeout: no
-    * remote-initiated mini-protocol sent a byte (ouroboros-network 2fb69829,
+    * remote-initiated mini-protocol sent a byte (ouroboros-network c45735a5,
     * `defaultProtocolIdleTimeout`).
     */
   case ProtocolIdleTimeout(after: scala.concurrent.duration.FiniteDuration)

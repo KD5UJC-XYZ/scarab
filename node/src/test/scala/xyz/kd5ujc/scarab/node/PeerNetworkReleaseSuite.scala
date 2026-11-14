@@ -19,10 +19,10 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 /** The node's own release of its peer network ends the connections without reporting any of them
   * lost (issue 916). The reference closes the job pool of its peer state actions, which holds every
   * connection's monitor, inside the scope of its connection manager: each monitor is cancelled, and
-  * waited for, before that scope ends (ouroboros-network 2fb69829 `Ouroboros/Network/Diffusion.hs`
+  * waited for, before that scope ends (ouroboros-network c45735a5 `Ouroboros/Network/Diffusion.hs`
   * 769-786, 801-826, `PeerSelection/PeerStateActions.hs` 630, 836-848, `network-mux`
-  * `Control/Concurrent/JobPool.hs` 91-92, 106-110). A monitor that outlived its connection would
-  * take the release for a loss and report the peer as reconnecting.
+  * `Control/Concurrent/JobPool.hs` 54-55, 70-73). A monitor that outlived its connection would take
+  * the release for a loss and report the peer as reconnecting.
   *
   * Each seed orders the fibers of the release differently. A monitor that ends together with its
   * connection, rather than before it, reports the loss under some orders only, so the release is

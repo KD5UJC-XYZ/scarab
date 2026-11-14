@@ -40,7 +40,7 @@ object NodeToNodeServer:
     * @param protocolIdleTimeout
     *   How long an accepted connection may stay without a byte on any remote-initiated
     *   mini-protocol after the handshake: `defaultProtocolIdleTimeout = 5` in ouroboros-network
-    *   2fb69829 `Ouroboros/Network/ConnectionManager/Core.hs`, armed as `registerDelay idleTimeout`
+    *   c45735a5 `Ouroboros/Network/ConnectionManager/Core.hs`, armed as `registerDelay idleTimeout`
     *   by the inbound governor when it starts an accepted connection (`InboundGovernor.hs`).
     * @param maxVersion
     *   The highest node-to-node version accepted: the latest release unless the configuration
@@ -84,7 +84,7 @@ object NodeToNodeServer:
     application(peerSharing).toSortedSet
 
   /** The temperature of a responder's mini-protocol in the reference's bundle (`TemperatureBundle`,
-    * cardano-diffusion `NodeToNode.hs` 252-325, ouroboros-network `2fb69829`): ChainSync,
+    * cardano-diffusion `NodeToNode.hs` 252-325, ouroboros-network `c5117705`): ChainSync,
     * BlockFetch and TxSubmission2 are hot; KeepAlive and PeerSharing established; none is warm.
     */
   private type Temperature = ProtocolResults.Temperature
@@ -172,7 +172,7 @@ object NodeToNodeServer:
     yield ()
 
   /** What the responders of a connection did, in order, as the reference's mux tracer writes it to
-    * the inbound governor's channel (`inboundGovernorMuxTracer`, `InboundGovernor.hs` 629-708).
+    * the inbound governor's channel (`inboundGovernorMuxTracer`, `InboundGovernor.hs` 602-682).
     */
   private[network] enum Activity:
     /** `AwakeRemote`: a responder started while none ran. */
@@ -188,7 +188,7 @@ object NodeToNodeServer:
     case WaitIdle
 
   /** The running responders of a connection by temperature (`ResponderCounters`,
-    * `InboundGovernor/State.hs` 183-190).
+    * `InboundGovernor/State.hs` 190-197).
     */
   private final case class Running(hot: Int, other: Int):
     /** A responder of `temperature` starts: what it signals, and the counts after it. */
@@ -209,14 +209,14 @@ object NodeToNodeServer:
 
   /** The responders of one connection that are running: each is started on demand by its
     * mini-protocol's first byte and ends with that protocol, as the reference's inbound governor
-    * starts and restarts them (`InboundGovernor.hs`, ouroboros-network `2fb69829`). What their
+    * starts and restarts them (`InboundGovernor.hs`, ouroboros-network `c45735a5`). What their
     * starts and clean ends signal ([[Activity]]) is kept in order for the tracker of the peer's
     * activity, which waits for it without taking it, so none is lost whatever wins its wait (the
     * reference's inbound governor reads its channel and its timers in one STM transaction,
-    * `InboundGovernor.hs` 240-275). A responder that would start once the idle timer has expired
+    * `InboundGovernor.hs` 239-274). A responder that would start once the idle timer has expired
     * waits until the expiry is settled: the reference's tracer retries on an expired `RemoteIdle`
-    * (`InboundGovernor.hs` 665-672). A responder that ends in an error or is cancelled stops the
-    * counting for good, as the tracer then empties its counters (`SNothing`, 680-708): the
+    * (`InboundGovernor.hs` 638-648). A responder that ends in an error or is cancelled stops the
+    * counting for good, as the tracer then empties its counters (`SNothing`, 688-696): the
     * connection's mux is ending.
     */
   private[network] final class Responders[F[_]: Async] private (
@@ -283,7 +283,7 @@ object NodeToNodeServer:
         .mapN(new Responders(_, _, _, _))
 
   /** What the inbound governor knows of the peer's side of a connection (`RemoteState`,
-    * `InboundGovernor/State.hs:218-256`): idle since `since` with its timer running, using the
+    * `InboundGovernor/State.hs:250-288`): idle since `since` with its timer running, using the
     * connection with or without a hot responder, or idle and kept because our outbound side uses
     * it.
     */
@@ -293,7 +293,7 @@ object NodeToNodeServer:
     case Hot
     case Cold
 
-    /** `mkRemoteSt` (`InboundGovernor/State.hs` 308-312). */
+    /** `mkRemoteSt` (`InboundGovernor/State.hs` 344-348). */
     def st: RemoteSt = this match
       case Idle(_) => RemoteSt.Idle
       case Warm    => RemoteSt.Warm
@@ -301,7 +301,7 @@ object NodeToNodeServer:
       case Cold    => RemoteSt.Cold
 
   /** The inbound governor's handling of one duplex or accepted connection (`InboundGovernor.hs`
-    * 329-335, 463-570, and its mux tracer 629-708, ouroboros-network `2fb69829`): the first
+    * 354-360, 445-543, and its mux tracer 602-682, ouroboros-network `c45735a5`): the first
     * responder that starts is `AwakeRemote` (`promotedToWarmRemote`, `RemoteWarm`), the first hot
     * one `RemotePromotedToHot` (`RemoteHot`), the end of the last hot one `RemoteDemotedToWarm`
     * (`RemoteWarm`), the end of the last one `WaitIdleRemote` (`demotedToColdRemote`, which arms
@@ -313,7 +313,7 @@ object NodeToNodeServer:
     * resource. It runs on every connection whose responders the peer can start, the ones we dial
     * included. An expired timer is committed before the activities that are waiting, which are
     * handled after, as the reference's step puts `CommitRemote` before the channel's messages
-    * (`InboundGovernor.hs` 253-261).
+    * (`InboundGovernor.hs` 258-266).
     *
     * @param timer
     *   How the idle timer waits: `Async.sleep`; a test controls what happens as it fires.
@@ -328,7 +328,7 @@ object NodeToNodeServer:
     val F = Async[F]
     def recorded(state: RemoteState): F[Either[RemoteState, Unit]] =
       connection.updateRemoteState(state.st).as(Left(state))
-    // the inbound governor's step for one message of the channel (`InboundGovernor.hs` 463-528)
+    // the inbound governor's step for one message of the channel (`InboundGovernor.hs` 445-505)
     def after(activity: Activity): F[Either[RemoteState, Unit]] =
       activity match
         // the manager's answer does not change the remote state

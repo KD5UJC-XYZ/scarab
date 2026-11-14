@@ -58,7 +58,7 @@ object LocalTxMonitorServer:
       identity: (BigInt, Vector[Bytes])
   ):
     /** `GetSizes`: the whole snapshot, whatever `NextTx` has handed out. The capacity and the size
-      * are `Word32` s on the wire (`MempoolSizeAndCapacity`, ouroboros-network 2fb69829
+      * are `Word32` s on the wire (`MempoolSizeAndCapacity`, ouroboros-network c45735a5
       * `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalTxMonitor/Codec.hs:95-101`),
       * which the reference's values wrap within; Scarab's, which do not wrap ([[TxMeasure]]), are
       * sent as 2^32 - 1 above it, so the reply always encodes (approved deviation:

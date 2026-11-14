@@ -45,7 +45,7 @@ object HandshakeServer:
   /** @param timeout
     *   The time the client has to propose: `shortWait`, 10 s, in node-to-node
     *   (`timeLimitsHandshake`, `Ouroboros/Network/Protocol/Handshake/Codec.hs:80-88`,
-    *   ouroboros-network 2fb69829); none in node-to-client (`noTimeLimitsHandshake`,
+    *   ouroboros-network c45735a5); none in node-to-client (`noTimeLimitsHandshake`,
     *   `Codec.hs:91-99`, used by `Cardano/Network/NodeToClient.hs` for its
     *   `ctaHandshakeTimeLimits`).
     */

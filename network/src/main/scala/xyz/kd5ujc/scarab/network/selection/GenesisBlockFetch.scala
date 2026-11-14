@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.network.selection
 
 import xyz.kd5ujc.scarab.codec.Bytes
 
-/** Devoted BlockFetch, ouroboros-network 2fb69829 Decision/Genesis.hs. The caller supplies
+/** Devoted BlockFetch, ouroboros-network c45735a5 Decision/Genesis.hs. The caller supplies
   * plausible, intersecting candidate suffixes before removing fetched blocks. Flight accounting
   * always includes retired peers: rotation changes preference, never erases outstanding work.
   */

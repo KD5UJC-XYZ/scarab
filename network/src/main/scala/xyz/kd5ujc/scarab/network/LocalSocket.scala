@@ -26,7 +26,7 @@ import scala.util.Using
 import xyz.kd5ujc.scarab.codec.DomainError
 
 /** The address of the node-to-client socket: the path as it was configured, not normalised (the
-  * reference's `LocalAddress`, ouroboros-network 2fb69829,
+  * reference's `LocalAddress`, ouroboros-network c45735a5,
   * `ouroboros-network/framework/lib/Ouroboros/Network/Snocket.hs` 219-221).
   */
 final case class LocalAddress(path: String):
@@ -78,7 +78,7 @@ enum SocketConfigError extends DomainError:
       s"LocalSocketError ${HaskellShow.string(path)} ${cause.shown}"
 
 /** Why the node-to-client side of the network stopped: what the reference's `DiffusionErrored`
-  * names and `DiffusionError` carries (ouroboros-network 2fb69829,
+  * names and `DiffusionError` carries (ouroboros-network c45735a5,
   * `ouroboros-network/lib/Ouroboros/Network/Diffusion.hs` 905-911). The node then exits.
   */
 enum DiffusionFailure extends DomainError:

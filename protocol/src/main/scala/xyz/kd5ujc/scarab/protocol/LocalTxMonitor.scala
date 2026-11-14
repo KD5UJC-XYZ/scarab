@@ -21,8 +21,8 @@ import ProtocolWire.{attempt, bad, get}
   *   - `Busy(kind)` (server): the one reply of that kind.
   *
   * `AwaitAcquire` has the same wire form as `Acquire` (`[1]`): the codec tells them apart by the
-  * state, as the reference does. The reference codec answers `GetMeasures` on every version it
-  * offers (`LocalTxMonitor_V2`), so this one does too.
+  * state, as the reference does. The codec of ouroboros-network 2fb69829 answers `GetMeasures` on
+  * every version it offers (`LocalTxMonitor_V2`), so this one does too.
   */
 object LocalTxMonitor:
   val MiniProtocolId = 9
@@ -47,7 +47,7 @@ object LocalTxMonitor:
   final case class Sizes(capacityInBytes: Long, sizeInBytes: Long, numberOfTxs: Long)
 
   /** One measure: the mempool's size and the capacity, in the measure's unit. Each is a CBOR
-    * integer of any size, as the reference's `encodeInteger` writes it (ouroboros-network 2fb69829
+    * integer of any size, as the reference's `encodeInteger` writes it (ouroboros-network c45735a5
     * `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalTxMonitor/Codec.hs:204-215`):
     * a bignum (tag 2) above 2^64 - 1.
     */

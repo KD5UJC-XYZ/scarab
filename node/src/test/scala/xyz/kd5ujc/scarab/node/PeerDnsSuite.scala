@@ -100,7 +100,7 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
   }
 
   // issue 567: the reference traces a domain monitor that throws (`TraceLocalRootError`) and
-  // starts its monitors again (LocalRootPeers.hs 146-168 of ouroboros-network 2fb69829)
+  // starts its monitors again (LocalRootPeers.hs 146-168 of ouroboros-network c45735a5)
   test("a DNS lookup that throws is traced with its domain, not a stop") {
     for
       dnsCause <- IO.delay(new IllegalStateException("injected DNS defect"))
@@ -153,7 +153,7 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
   }
 
   // issue 586: `jobVerifyPeerSnapshot` is `Job job (const (completion False))` (ouroboros-network
-  // 2fb69829 Governor/Monitor.hs 689-712): any failure of the verification is no match
+  // c5117705 Governor/Monitor.hs 689-708): any failure of the verification is no match
   test(
     "a snapshot verification that throws, or whose store fails, answers no match; never a stop"
   ) {
@@ -263,7 +263,7 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
     yield ()
   }
 
-  // `randomR (0, upperBound)` on a `Word16` (`DNSActions.hs` 470, ouroboros-network `2fb69829`) is
+  // `randomR (0, upperBound)` on a `Word16` (`DNSActions.hs` 470, ouroboros-network `c45735a5`) is
   // random-1.3.1's `unbiasedWordMult32RM`: weights 1 and 2 draw from [0, 3], the top two bits of
   // the word's low half (2^32 mod 4 is 0, so none is rejected); a draw of 0 or 1 is the first
   test("SRV selection draws the weight as random draws a Word16: the word's low half, multiplied") {

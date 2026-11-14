@@ -8,7 +8,7 @@ import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop.*
 
 /** The connection states against the reference's own oracle: every move the pure model makes is one
-  * `verifyAbstractTransition` accepts (ouroboros-network `2fb69829`,
+  * `verifyAbstractTransition` accepts (ouroboros-network `c45735a5`,
   * `Test/Ouroboros/Network/ConnectionManager/Utils.hs`), and the counters are
   * `connectionStateToCounters` (`ConnectionManager/Core.hs:173-212`).
   */

@@ -612,7 +612,7 @@ final class BlockPool[F[_]: Async] private (
 object BlockPool:
   /** Global fetching-peer targets and per-peer request credit, shared by both connection
     * directions. Preferred-peer handover follows the pinned policy's target exception. Production
-    * defaults are from `Cardano/Network/Diffusion/Configuration.hs:89-100` and
+    * defaults are from `Cardano/Network/Diffusion/Configuration.hs:85-96` and
     * `Cardano/Network/NodeToNode.hs:209-212` at the pinned ouroboros-network revision.
     */
   final case class FetchPolicy(

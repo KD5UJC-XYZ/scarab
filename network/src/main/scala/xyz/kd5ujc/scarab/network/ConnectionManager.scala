@@ -146,13 +146,13 @@ trait Connection[F[_]]:
   def closed: F[Unit]
 
   /** `updateRemoteState`: the inbound governor's remote state of this connection is now `state`
-    * (`InboundGovernor/State.hs` 269-281); the first call registers it, as `NewConnection` does
-    * with `RemoteIdle` (`InboundGovernor.hs` 330-335).
+    * (`InboundGovernor/State.hs` 301-313); the first call registers it, as `NewConnection` does
+    * with `RemoteIdle` (`InboundGovernor.hs` 355-360).
     */
   def updateRemoteState(state: RemoteSt): F[Unit]
 
   /** `unregisterConnection`: the inbound governor tracks this connection no more, after a commit or
-    * once its mux finished (`InboundGovernor/State.hs` 193-209).
+    * once its mux finished (`InboundGovernor/State.hs` 200-216).
     */
   def unregisterRemote: F[Unit]
 
@@ -167,7 +167,7 @@ enum Acquired[F[_]]:
   case Reserved(connection: Connection[F])
 
 /** The node's table of node-to-node connections, the reference's connection manager
-  * (ouroboros-network `2fb69829`, `ConnectionManager/Core.hs`). One connection serves both sides of
+  * (ouroboros-network `c45735a5`, `ConnectionManager/Core.hs`). One connection serves both sides of
   * a peer: the outbound side reuses a duplex connection the peer opened, and the peer's protocols
   * run on a duplex connection we opened. Entries are keyed by the remote and the local address
   * (`ConnMap.hs` 45-50): a peer that dials from its listening port is the address we would dial,
@@ -203,7 +203,7 @@ trait ConnectionManager[F[_]]:
   def snapshot: F[ConnectionManager.Snapshot]
 
   /** The inbound governor's remote state of each connection it tracks, by [[Connection.id]]: the
-    * reference's `remoteStateMap` (`mkPublicState`, `InboundGovernor/State.hs` 66-81), whose
+    * reference's `remoteStateMap` (`mkPublicState`, `InboundGovernor/State.hs` 68-83), whose
     * [[InboundGovernorCounters]] the node exports. The inbound governor keeps it beside the table,
     * whose changes it neither makes nor waits for.
     */
@@ -485,7 +485,7 @@ object ConnectionManager:
       }
 
     /** `mkPruneAction` (`Core.hs` 703-778) with the reference's `prunePolicy`
-      * (`Diffusion/Policies.hs:284-305`): of the inbound connections and `self` in its next state,
+      * (`Diffusion/Policies.hs:234-254`): of the inbound connections and `self` in its next state,
       * end the `number` with the lowest (upstream, random score, connection type), upstream last.
       * Returns the table with the pruned ones `Terminated`, whether `self` is among them, and the
       * effects; the caller writes `self` 's next state when it is spared.

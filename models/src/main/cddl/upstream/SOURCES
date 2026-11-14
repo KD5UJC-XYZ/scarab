@@ -2,8 +2,12 @@ Verbatim copies of upstream CDDL files (read by the models generator, never edit
 All four repositories are Apache-2.0 (fixtures/licenses/ holds their LICENSE and NOTICE files).
 Local refinements live next to these files in ../overrides/, never inside them.
 
-ouroboros-network   https://github.com/IntersectMBO/ouroboros-network   branch main    commit 2fb69829a19b5c04e4fb212bdd78fb63f9d2d776
+ouroboros-network   https://github.com/IntersectMBO/ouroboros-network   tag cardano-diffusion-1.1.1.0 commit c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167
   cardano-diffusion/protocols/cddl/specs/*.cddl       (obsolete/ not copied)
+    (cardano-diffusion 1.1.1.0, the release cardano-node 11.1.3 links; ADR 0008, amendment of 2026-11-13. The files
+    were first copied from main 2fb69829a19b5c04e4fb212bdd78fb63f9d2d776; on 2026-11-13 handshake-node-to-client.cddl
+    was copied again from c5117705, which lists node-to-client versions 16 to 23; the other 13 files are the same
+    at both commits)
 ouroboros-consensus https://github.com/IntersectMBO/ouroboros-consensus branch main    commit 8f56bc899b48423316155aef64096cd56e32bfd7
   ouroboros-consensus-cardano/cddl/base.cddl
   ouroboros-consensus-cardano/cddl/node-to-node/chainsync/header.cddl

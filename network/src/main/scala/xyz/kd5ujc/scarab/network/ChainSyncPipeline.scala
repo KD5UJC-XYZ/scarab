@@ -153,8 +153,8 @@ private[network] object ChainSyncPipeline:
             new ChainSyncRuntime.Pipeline[F, Q, T, P]:
               /** `operation`, whose end is published as the protocol's: a cancellation as the
                 * cancellation marker, and an operation's own failure as itself (issue 600), as a
-                * mini-protocol's own exception is its result (ouroboros-network 2fb69829
-                * network-mux/src/Network/Mux.hs 356-366). A typed failure raised through the
+                * mini-protocol's own exception is its result (ouroboros-network c45735a5
+                * network-mux/src/Network/Mux.hs 355-365). A typed failure raised through the
                 * caller's capability is published before it reaches the caller, and a callback the
                 * collector runs (`onAwait`) raises through the capability it is given, so its typed
                 * failure is too; an exception is published as a defect and propagates unchanged.

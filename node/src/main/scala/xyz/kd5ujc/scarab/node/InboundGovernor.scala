@@ -29,7 +29,7 @@ trait InboundEvents[F[_]]:
 
 /** The inbound governor (G2): for every accepted connection it runs the handshake and serves our
   * chain, and tracks the peer's activity on it for the connection manager (`InboundGovernor.hs`,
-  * ouroboros-network `2fb69829`; [[NodeToNodeServer.accept]]). It runs none of our clients: those
+  * ouroboros-network `c45735a5`; [[NodeToNodeServer.accept]]). It runs none of our clients: those
   * run only where the outbound governor promotes the peer, and on a duplex connection the peer
   * opened the outbound side reuses this one ([[ConnectionManager.acquire]]).
   */
@@ -68,7 +68,7 @@ final class InboundGovernor[F[_]: Async] private (
                 }
                 // an exception of the connection's own work ends that connection, reported as a
                 // defect with its cause, and the node goes on: the reference's default
-                // `ShutdownPeer` (network 2fb69829 RethrowPolicy.hs 61-70, 99-103; issue 567)
+                // `ShutdownPeer` (network c45735a5 RethrowPolicy.hs 61-70, 99-103; issue 567)
                 .rescue(error => Async[F].pure(ConnectionEnd.fromNetwork(error)))
                 .flatTap(reason => connection.close(reason))
           }
