@@ -18,6 +18,8 @@ validate_timeout=10m
 case ${CONFIG:-config} in
   config-canary) name=scarab-canary validate_timeout=35m
     description="writeBits canary (GHSA-vfw2-hhrc-87v5) on Scarab $commit with two cardano-node 11.1.3 pools" ;;
+  config-canary-k5) name=scarab-canary-k5
+    description="writeBits canary (GHSA-vfw2-hhrc-87v5), k = 5, on Scarab $commit with two cardano-node pools" ;;
   config-reference) name=scarab-pool-reference
     description="control: cardano-node 11.1.3 in s1's seat with two cardano-node 11.1.3 pools, create-env defaults" ;;
   config-reference-start-together) name=scarab-pool-reference-start-together
