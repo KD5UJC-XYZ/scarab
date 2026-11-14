@@ -89,6 +89,9 @@ k = 5. Setup takes about 15 minutes, for the two epoch boundaries the governance
 `pool/config-canary-k5` is a stated experiment: the same canary at k = 5 with 500-slot epochs, s1 started with the
 pools. Every k = 20 canary run on the platform ended "incomplete" at about 1 h 15 min with no property report, with or
 without setup complete. The k = 5 runs completed in about 31 minutes. It asks whether the long setup is why.
+`pool/config-canary-k5-scarab-vm` runs that canary with s1 on Scarab's own Plutus evaluator (`PLUTUS_VM: scarab`,
+passed as `--plutus-vm scarab`). The advisory's fix was made in the Scalus path, and the own evaluator has a limit of
+its own; this checks it end to end.
 
 The genesis starts at protocol 11. cardano-node reads a Conway genesis only with create-env's 251 PlutusV3
 parameters, which do not price `writeBits`. So the driver's setup enacts the reference's 361-parameter model at
@@ -115,6 +118,7 @@ antithesis/pool/scripts/validate.sh                   # snouty validate: setup c
 antithesis/pool/scripts/launch.sh resilient 15m       # validate, then a basic_test run
 CONFIG=config-canary antithesis/pool/scripts/launch.sh none 15m   # the canary
 CONFIG=config-canary-k5 antithesis/pool/scripts/launch.sh none 15m   # experiment: the canary at k = 5, short setup
+CONFIG=config-canary-k5-scarab-vm antithesis/pool/scripts/launch.sh none 15m   # the same, own evaluator
 CONFIG=config-k200 antithesis/pool/scripts/launch.sh resilient 15m  # k = 200
 python3 -I antithesis/pool/canary/writebits_script.py # regenerate the canary's policies and cost model
 ```

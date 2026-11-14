@@ -36,6 +36,12 @@ if [ -d /logs ]; then
 fi
 # A killed node leaves its socket file behind.
 rm -f /ipc/node.socket
+# PLUTUS_VM, when the compose file sets it, names s1's Plutus evaluator (`--plutus-vm`, ADR 0027); without it the node
+# takes its default.
+vm=()
+if [ -n "${PLUTUS_VM:-}" ]; then
+  vm=(--plutus-vm "$PLUTUS_VM")
+fi
 exec java -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=20 --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
   -cp '/opt/scarab/*' xyz.kd5ujc.scarab.node.Main \
   follow \
@@ -49,4 +55,5 @@ exec java -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=20 --sun-misc-unsafe-memory
   --forge \
   --vrf-skey "$keys/vrf.skey" \
   --kes-skey "$keys/kes.skey" \
-  --opcert "$keys/opcert.cert"
+  --opcert "$keys/opcert.cert" \
+  "${vm[@]}"

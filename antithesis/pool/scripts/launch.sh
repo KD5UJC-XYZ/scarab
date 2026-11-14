@@ -20,6 +20,8 @@ case ${CONFIG:-config} in
     description="writeBits canary (GHSA-vfw2-hhrc-87v5) on Scarab $commit with two cardano-node 11.1.3 pools" ;;
   config-canary-k5) name=scarab-canary-k5
     description="writeBits canary (GHSA-vfw2-hhrc-87v5), k = 5, on Scarab $commit with two cardano-node pools" ;;
+  config-canary-k5-scarab-vm) name=scarab-canary-k5-scarab-vm
+    description="writeBits canary (GHSA-vfw2-hhrc-87v5), k = 5, Scarab $commit on its own Plutus evaluator" ;;
   config-reference) name=scarab-pool-reference
     description="control: cardano-node 11.1.3 in s1's seat with two cardano-node 11.1.3 pools, create-env defaults" ;;
   config-reference-start-together) name=scarab-pool-reference-start-together
