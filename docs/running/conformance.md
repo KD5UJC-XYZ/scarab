@@ -15,7 +15,7 @@ report Scarab's own evaluator (`--plutus-vm scarab`).
 `scripts/conformance/run.py` does the whole run for the scenarios it is given:
 
 ```sh
-python3 -I scripts/conformance/run.py ledger-rules uplc-conformance cbor-decoding --out <dir> [--owner <label>]
+python3 -I -B scripts/conformance/run.py ledger-rules uplc-conformance cbor-decoding --out <dir> [--owner <label>]
 ```
 
 1. It builds `tools` in the JDK image (`scarab-jdk:local`, built from `docker/jdk.Dockerfile` when absent or with
@@ -47,7 +47,7 @@ the plan without building, fetching or running anything.
 never on CI (the runner refuses it there):
 
 ```sh
-python3 -I scripts/conformance/run.py uplc-turbo --out <dir> [--cpus 3] [--memory 8g]
+python3 -I -B scripts/conformance/run.py uplc-turbo --out <dir> [--cpus 3] [--memory 8g]
 ```
 
 A busy or shared machine moves its `cpu_us` measurements and the score the site gives them.
@@ -63,10 +63,13 @@ Reports are published to the public repository `KD5UJC-XYZ/scarab-conformance`, 
 - `latest/<scenario>[-<era>].json.gz`: the newest report of each scenario and era, with its provenance;
 - `README.md`, which `publish.py` writes from `latest/`.
 
-The site reads a node's reports from the URLs of its entry, one per scenario and one per era for `cbor-decoding`,
-and decompresses a `.gz` it downloads. Scarab's entry names the fixed files of `latest/`, for example
+The site reads a node's reports from the URLs of the node's entry in the site's own repository (`nodes/<id>/`),
+one per scenario and one per era for `cbor-decoding`, and decompresses a `.gz` it downloads. The URLs to give it
+are those of the fixed files of `latest/`, for example
 `https://raw.githubusercontent.com/KD5UJC-XYZ/scarab-conformance/main/latest/ledger-rules.json.gz` and
-`.../latest/cbor-decoding-conway.json.gz`.
+`.../latest/cbor-decoding-conway.json.gz`. Publishing here does not list Scarab on the site: that takes a
+`nodes/scarab/` entry with these URLs in the site's repository, added as its README's "Adding a node
+implementation" describes, which is a separate step for the owner.
 
 ## Publishing on demand
 
@@ -75,8 +78,8 @@ Unless `--apply` is given it is a dry run (`--dry-run`, the default) that prints
 `gh` or `git` command, and no file written:
 
 ```sh
-python3 -I scripts/conformance/publish.py <dir> --dry-run  # the default
-python3 -I scripts/conformance/publish.py <dir> --apply    # clones the reports repository, commits and pushes
+python3 -I -B scripts/conformance/publish.py <dir> --dry-run  # the default
+python3 -I -B scripts/conformance/publish.py <dir> --apply    # clones the reports repository, commits and pushes
 ```
 
 With `--apply` it checks that each report's Scarab commit is on GitHub (with `gh`), clones the reports repository
@@ -106,7 +109,8 @@ Done once, by a maintainer of both repositories:
    `gh secret set CONFORMANCE_REPO_DEPLOY_KEY --repo KD5UJC-XYZ/scarab < <key-file>`, then delete `<key-file>`.
 
 The key can push to the reports repository only. To revoke it, delete the deploy key; to rotate it, repeat
-steps 2 to 4.
+steps 2 to 4. A failed publication, locally or in the workflow, puts its clone back at the remote's `main` and
+says so; run it again once the cause is fixed. A clone with other changes or commits is refused.
 
 ## Moving to a newer corpus
 
