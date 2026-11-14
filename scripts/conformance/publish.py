@@ -25,9 +25,10 @@ The repository holds
      `--replace` is given; points `latest/` at a report unless a newer one is there; writes `README.md`;
   4. stages exactly those files, commits, with a message that names the Scarab commits, and pushes to `main`.
 
-The clone is the script's own and is deleted when it ends, whatever happens: a failure before the push publishes
-nothing and leaves nothing behind, and running it again starts from the remote's `main`. When the files are already
-those of the remote's `main`, nothing is committed and it says so.
+The clone is the script's own and is removed on normal exit and on exceptions. A failure before the push publishes
+nothing; after a push failure, the remote's `main` is checked to determine whether it accepted the commit. If that
+cannot be determined, the outcome is reported as unknown. Running it again starts from the remote's `main` and
+refuses already-published reports unless `--replace` is given; identical files are never committed again.
 
 Every file is checked first: its name is `scarab-YYYYMMDD-<scenario>[-<era>].json.gz`, its provenance beside it
 names it with the same sha256, and records a passed validation of a checkout with no uncommitted changes.
@@ -64,7 +65,7 @@ LABELS = {label(scenario.id, era): scenario.id for scenario in SCENARIOS.values(
 
 
 class PublishError(ValueError):
-    """A file, the reports repository or a command is not fit to publish with; nothing is pushed."""
+    """A file, the reports repository or a command prevents confirmed publication."""
 
 
 @dataclass(frozen=True)
@@ -270,10 +271,11 @@ def dry_run(reports: list[Report], url: str, replace: bool, identity: str | None
     print("# then delete the temporary clone, also when a step fails")
 
 
-def git(run: Run, command: list[str], step: str) -> None:
+def git(run: Run, command: list[str], step: str) -> str:
     done = run(command)
     if done.returncode != 0:
         raise PublishError(f"git {step} failed: {done.stderr.strip()}")
+    return done.stdout.strip()
 
 
 def apply(reports: list[Report], url: str, replace: bool, identity: str | None, run: Run) -> None:
@@ -285,6 +287,8 @@ def apply(reports: list[Report], url: str, replace: bool, identity: str | None, 
         clone = Path(scratch) / "clone"
         git(run, clone_command(url, clone), "clone")
         try:
+            head = ["git", "-C", str(clone), "rev-parse", "HEAD"]
+            starting = git(run, head, "rev-parse")
             placements = place(reports, clone, replace)
             commands = git_commands(clone, reports, identity, lay_out(placements, clone))
             git(run, commands["add"], "add")
@@ -292,9 +296,23 @@ def apply(reports: list[Report], url: str, replace: bool, identity: str | None, 
                 print("already published: the remote's main holds these files; nothing committed")
                 return
             git(run, commands["commit"], "commit")
-            git(run, commands["push"], "push")
+            committed = git(run, head, "rev-parse")
         except (PublishError, OSError, ValueError) as error:
             raise PublishError(f"{error}; nothing was published, and the temporary clone is deleted") from error
+        try:
+            git(run, commands["push"], "push")
+        except (PublishError, OSError, ValueError) as error:
+            recovery = (f"{error}; outcome unknown: check {url} refs/heads/{BRANCH}, then re-run; "
+                        "the already-published check prevents publishing a report twice")
+            try:
+                remote = git(run, ["git", "-C", str(clone), "ls-remote", url, f"refs/heads/{BRANCH}"],
+                             "ls-remote")
+            except (PublishError, OSError, ValueError) as check_error:
+                raise PublishError(f"{recovery}; {check_error}") from check_error
+            if remote.split() == [starting, f"refs/heads/{BRANCH}"]:
+                raise PublishError(f"{error}; nothing was published, and the temporary clone is deleted") from error
+            if remote.split() != [committed, f"refs/heads/{BRANCH}"]:
+                raise PublishError(recovery) from error
     for placement in placements:
         print(f"published {placement.report.dated}"
               + (f" and {placement.report.latest}" if placement.latest else ""))

@@ -161,7 +161,7 @@ class DryRunTest(unittest.TestCase):
         self.assertEqual(refused.exception.code, 2)
 
 
-PUBLISH = ["api", "clone", "add", "diff", "commit", "push"]
+PUBLISH = ["api", "clone", "rev-parse", "add", "diff", "commit", "rev-parse", "push"]
 UPLC = "scarab-20261114-uplc-conformance.json.gz"
 
 
@@ -185,9 +185,20 @@ class ApplyTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def publish(self, remote, runner, *args, reports=None):
-        with mock.patch("sys.stdout", new=io.StringIO()) as out, mock.patch("sys.stderr", new=io.StringIO()) as err:
+        temporary_directory = tempfile.TemporaryDirectory
+        self.scratch = []
+
+        def recording(**kwargs):
+            directory = temporary_directory(dir=self.root, **kwargs)
+            self.scratch.append(Path(directory.name))
+            return directory
+
+        with mock.patch("sys.stdout", new=io.StringIO()) as out, mock.patch("sys.stderr", new=io.StringIO()) as err, \
+                mock.patch.object(publish.tempfile, "TemporaryDirectory", side_effect=recording):
             code = publish.main([str(reports or self.out), "--apply", "--repo-url", remote.url,
                                  "--identity", "Bot <bot@example.org>", *args], run=runner)
+        for directory in self.scratch:
+            self.assertFalse(directory.exists(), f"publisher's temporary directory remains: {directory}")
         return code, out.getvalue() + err.getvalue()
 
     def test_apply_clones_lays_out_commits_and_pushes(self):
@@ -195,6 +206,7 @@ class ApplyTest(unittest.TestCase):
         body = write_report(self.out).read_bytes()
         code, said = self.publish(remote, runner)
         self.assertEqual(code, 0, said)
+        self.assertEqual(len(self.scratch), 1)
         self.assertEqual(runner.verbs(), PUBLISH)
         self.assertIn("--depth", runner.calls[1])
         files = remote.files()
@@ -246,6 +258,85 @@ class ApplyTest(unittest.TestCase):
         self.assertNotIn("already published", said)
         self.assertLessEqual(ledger_files(), set(remote.files()), "the retry pushed")
 
+    def test_a_remote_hook_rejects_a_real_push_and_nothing_is_published(self):
+        remote, runner = Remote(self.root), Runner()
+        before = git("--git-dir", str(remote.bare), "rev-parse", "main")
+        files = remote.files()
+        hook = remote.bare / "hooks" / "pre-receive"
+        hook.write_text("#!/bin/sh\nexit 1\n")
+        hook.chmod(0o755)
+        write_report(self.out)
+        code, said = self.publish(remote, runner)
+        self.assertEqual(code, 1, said)
+        self.assertIn("pre-receive hook declined", said)
+        self.assertIn("nothing was published", said)
+        self.assertNotIn("outcome unknown", said)
+        self.assertEqual(git("--git-dir", str(remote.bare), "rev-parse", "main"), before)
+        self.assertEqual(remote.files(), files)
+        self.assertEqual(len(self.scratch), 1)
+        self.assertEqual(runner.calls[-1], ["git", "-C", str(self.scratch[0] / "clone"),
+                                          "ls-remote", remote.url, "refs/heads/main"])
+
+    def test_a_successful_push_that_looks_failed_is_reported_as_published(self):
+        remote, runner = Remote(self.root), Runner()
+        write_report(self.out)
+
+        def disconnected(argv):
+            done = runner(argv)
+            if "push" in argv:
+                self.assertEqual(done.returncode, 0, done.stderr)
+                raise OSError("connection dropped after push")
+            return done
+
+        code, said = self.publish(remote, disconnected)
+        self.assertEqual(code, 0, said)
+        self.assertIn(f"published reports/ledger-rules/{LEDGER}", said)
+        self.assertNotIn("nothing was published", said)
+        self.assertEqual(remote.commits(), 2)
+        self.assertLessEqual(ledger_files(), set(remote.files()))
+        self.assertEqual(len(self.scratch), 1)
+        code, said = self.publish(remote, Runner())
+        self.assertEqual(code, 1, said)
+        self.assertIn("already published", said)
+        self.assertEqual(remote.commits(), 2, "a retry must not publish twice")
+
+    def test_a_failed_remote_check_leaves_the_outcome_unknown(self):
+        remote, runner = Remote(self.root), Runner(push_failures=1)
+        write_report(self.out)
+
+        def unavailable(argv):
+            if "ls-remote" in argv:
+                remote.bare.rename(self.root / "unavailable.git")
+            return runner(argv)
+
+        code, said = self.publish(remote, unavailable)
+        self.assertEqual(code, 1, said)
+        self.assertIn("outcome unknown", said)
+        self.assertIn("git ls-remote failed", said)
+        self.assertIn(f"check {remote.url} refs/heads/main, then re-run", said)
+        self.assertIn("already-published check prevents publishing a report twice", said)
+        self.assertNotIn("nothing was published", said)
+        self.assertEqual(len(self.scratch), 1)
+
+    def test_a_concurrent_remote_commit_leaves_the_outcome_unknown(self):
+        remote, runner = Remote(self.root), Runner()
+        write_report(self.out)
+
+        def concurrent(argv):
+            if "push" in argv:
+                seed = str(self.root / "seed")
+                git("-C", seed, "-c", "user.name=Seed", "-c", "user.email=seed@example.org",
+                    "commit", "-q", "--allow-empty", "-m", "concurrent publication")
+                git("-C", seed, "push", "-q", remote.url, "main")
+            return runner(argv)
+
+        code, said = self.publish(remote, concurrent)
+        self.assertEqual(code, 1, said)
+        self.assertIn("outcome unknown", said)
+        self.assertIn(f"check {remote.url} refs/heads/main, then re-run", said)
+        self.assertNotIn("nothing was published", said)
+        self.assertEqual(remote.files(), {"README.md": b"# first commit\n"})
+
     def test_a_malformed_provenance_in_the_repository_publishes_nothing(self):
         remote = Remote(self.root, {"latest/uplc-conformance.provenance.json": b"{not json"})
         write_report(self.out)
@@ -292,7 +383,7 @@ class ApplyTest(unittest.TestCase):
         code, said = self.publish(remote, runner, "--replace")
         self.assertEqual(code, 0)
         self.assertIn("already published", said)
-        self.assertEqual(runner.verbs(), ["api", "clone", "add", "diff"])
+        self.assertEqual(runner.verbs(), ["api", "clone", "rev-parse", "add", "diff"])
         self.assertEqual(remote.commits(), 2)
 
     def test_a_bad_identity_is_refused(self):

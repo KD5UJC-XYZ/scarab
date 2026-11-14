@@ -86,7 +86,7 @@ With `--apply` it checks that each report's Scarab commit is on GitHub (with `gh
 shallowly into a temporary directory of its own with your Git credentials (`--repo-url` names another), copies
 each report under `reports/`, points `latest/` at it unless a newer report is there, writes `README.md`, stages
 exactly those files, commits with a message that names the Scarab commits, and pushes to `main`. The clone is
-deleted when it ends: a failure before the push publishes nothing and leaves nothing behind, so run it again once
+removed on normal exit and on exceptions: a failure before the push publishes nothing, so run it again once
 the cause is fixed. It refuses a file whose provenance does
 not match it or records a failed check or uncommitted changes, a report whose commit is not on GitHub, and a dated
 report that is already published, unless `--replace` (a second run on the same day replaces the first).
