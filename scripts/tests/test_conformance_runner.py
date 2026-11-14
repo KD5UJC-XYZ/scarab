@@ -1,0 +1,381 @@
+# SPDX-License-Identifier: Apache-2.0
+"""The node-diversity-conformance runner (`scripts/conformance`): the schema checker, the pins and fetching, the
+report names against the site's own selection rule, the scenario checks and the finishing of a report. Offline:
+no network, no Docker."""
+import fnmatch
+import gzip
+import io
+import json
+import os
+import re
+import sys
+import tarfile
+import tempfile
+import unittest
+import zipfile
+from datetime import datetime, timezone
+from pathlib import Path
+from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from conformance import inputs, run, scenarios  # noqa: E402
+from conformance.schema import UnsupportedSchema, validate  # noqa: E402
+
+COMMIT = "a" * 40
+FALLBACK = datetime(2001, 2, 3, tzinfo=timezone.utc)
+
+
+def site_pick(names, pattern):
+    """The site's rule (`latest_release_asset` in its scripts/build_common.py): a file matches the glob as named or
+    without its compression suffix, and needs a date, the only eight-digit run in its name; the newest wins."""
+    dated = []
+    for name in names:
+        date = re.search(r"(?<!\d)\d{8}(?!\d)", name)
+        bare = next((name[: -len(s)] for s in (".zst", ".gzip", ".gz") if name.lower().endswith(s)), name)
+        if (fnmatch.fnmatchcase(name, pattern) or fnmatch.fnmatchcase(bare, pattern)) and date:
+            dated.append((date.group(), name))
+    return [name for _, name in sorted(dated)]
+
+
+class SchemaTest(unittest.TestCase):
+    def test_boolean_subschema_under_properties(self):
+        # ledger-rules puts `"additionalProperties": false` among its properties: a property of that name
+        schema = {"type": "object", "properties": {"additionalProperties": False, "id": {"type": "string"}}}
+        self.assertEqual(validate({"id": "1"}, schema), [])
+        self.assertTrue(validate({"additionalProperties": 1}, schema))
+
+    def test_const_and_type_are_strict_about_booleans(self):
+        self.assertTrue(validate(1, {"const": True}), "1 is not the constant true")
+        self.assertEqual(validate(True, {"const": True}), [])
+        self.assertTrue(validate(True, {"type": "integer"}), "a boolean is not an integer")
+        self.assertEqual(validate(3, {"type": ["integer", "null"], "minimum": 0}), [])
+        self.assertTrue(validate(-1, {"type": "integer", "minimum": 0}))
+
+    def test_objects_references_and_alternatives(self):
+        schema = {
+            "type": "object", "required": ["a"], "additionalProperties": False,
+            "properties": {"a": {"$ref": "#/$defs/x"}},
+            "propertyNames": {"pattern": "^[a-z]$"},
+            "$defs": {"x": {"oneOf": [{"const": "pass"}, {"type": "string", "enum": ["fail"]}]}},
+        }
+        self.assertEqual(validate({"a": "pass"}, schema), [])
+        self.assertTrue(validate({"a": "other"}, schema))
+        self.assertTrue(validate({"a": "pass", "b": 1}, schema), "no additional property")
+        self.assertTrue(validate({}, schema), "a is required")
+
+    def test_date_time_is_asserted(self):
+        schema = {"type": "string", "format": "date-time"}
+        self.assertEqual(validate("2026-11-14T15:04:05.123456789Z", schema), [])
+        self.assertTrue(validate("2026-11-14 15:04", schema))
+
+    def test_unknown_keyword_is_refused(self):
+        with self.assertRaises(UnsupportedSchema):
+            validate({}, {"type": "object", "if": {"type": "object"}})
+        with self.assertRaises(UnsupportedSchema):
+            validate({}, {"$ref": "https://example.org/schema.json"})
+
+
+class NamingTest(unittest.TestCase):
+    def emitted(self, date):
+        names = []
+        for scenario in scenarios.SCENARIOS.values():
+            for era in scenario.eras:
+                name = scenarios.report_name(date, scenario.id, era)
+                names += [name, scenarios.provenance_name(name)]
+        return names
+
+    def test_each_glob_picks_exactly_its_report(self):
+        names = self.emitted("20261114") + self.emitted("20261201")
+        for scenario in scenarios.SCENARIOS.values():
+            for era in scenario.eras:
+                picked = site_pick(names, scenarios.site_glob(scenario.id, era))
+                self.assertEqual(len(picked), 2, f"{scenario.id} {era}: one file per date, got {picked}")
+                self.assertEqual(picked[-1], scenarios.report_name("20261201", scenario.id, era),
+                                 "the newest report wins, never its provenance")
+
+    def test_the_date_is_the_only_eight_digit_run(self):
+        for name in self.emitted("20261114"):
+            self.assertEqual(re.findall(r"(?<!\d)\d{8}(?!\d)", name), ["20261114"], name)
+            self.assertNotRegex(name, r"\d{9}")
+
+    def test_names_are_strict(self):
+        self.assertEqual(scenarios.report_name("20261114", "cbor-decoding", "conway"),
+                         "scarab-20261114-cbor-decoding-conway.json.gz")
+        with self.assertRaises(ValueError):
+            scenarios.report_name("2026111", "ledger-rules", None)
+        self.assertIsNone(scenarios.NAME.match("scarab-20261114-ledger-rules.json"))
+        self.assertIsNone(scenarios.NAME.match("scarab-20261114-uplc-turbo-conway.json.gz"))
+
+    def test_report_date(self):
+        self.assertEqual(scenarios.report_date("2026-11-14T23:59:59.123456789Z", FALLBACK), "20261114")
+        self.assertEqual(scenarios.report_date("2026-11-14T20:00:00-05:00", FALLBACK), "20261115", "UTC date")
+        self.assertEqual(scenarios.report_date(1763164800000, FALLBACK), "20251115", "milliseconds since the epoch")
+        self.assertEqual(scenarios.report_date("yesterday", FALLBACK), "20010203")
+        self.assertEqual(scenarios.report_date(True, FALLBACK), "20010203")
+
+    def test_compression_is_reproducible(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = Path(tmp, "a.gz"), Path(tmp, "b.gz")
+            scenarios.compress(b'{"x": 1}\n', a)
+            scenarios.compress(b'{"x": 1}\n', b)
+            self.assertEqual(a.read_bytes(), b.read_bytes())
+            self.assertEqual(gzip.decompress(a.read_bytes()), b'{"x": 1}\n')
+
+
+class PinsTest(unittest.TestCase):
+    def test_tracked_pins_load(self):
+        pins = inputs.load_pins()
+        needed = {name for scenario in scenarios.SCENARIOS.values() for name in scenario.inputs}
+        self.assertLessEqual(needed, set(pins), "every scenario input is pinned")
+        self.assertEqual(pins["site"].directory, "site-9dc68a750478")
+
+    def test_malformed_pins_are_refused(self):
+        bad = [
+            {"kind": "git", "repository": "a/b", "commit": "abc", "paths": ["x"]},
+            {"kind": "git", "repository": "a/b", "commit": COMMIT, "paths": ["../x"]},
+            {"kind": "files", "repository": "a/b", "commit": COMMIT, "root": "r", "files": {"/etc/x": "0" * 64}},
+            {"kind": "tarball", "url": "http://example.org/x.tar.zst", "sha256": "0" * 64},
+            {"kind": "other"},
+        ]
+        for spec in bad:
+            with self.assertRaises(inputs.InputError, msg=str(spec)):
+                inputs.check_pin("x", spec)
+
+    def test_git_commands_are_shallow_sparse_and_inert(self):
+        pin = inputs.check_pin("site", {"kind": "git", "repository": "o/r", "commit": COMMIT, "paths": ["a/b"]})
+        commands = inputs.git_commands(pin, Path("/t"))
+        flat = [" ".join(command) for command in commands]
+        self.assertTrue(all("core.symlinks=false" in line and "core.hooksPath=/dev/null" in line
+                            for line in flat[1:]), "no symbolic links, no hooks")
+        self.assertIn("sparse-checkout set --no-cone /a/b/", flat[2])
+        self.assertIn(f"--depth 1 --filter=blob:none --no-tags https://github.com/o/r {COMMIT}", flat[3])
+        self.assertEqual(commands[-1][-2:], ["rev-parse", "HEAD"])
+
+    def test_fetch_git_refuses_another_commit(self):
+        pin = inputs.check_pin("site", {"kind": "git", "repository": "o/r", "commit": COMMIT, "paths": ["a"]})
+        with tempfile.TemporaryDirectory() as tmp, self.assertRaises(inputs.InputError):
+            inputs.fetch_git(pin, Path(tmp), run=lambda argv: "b" * 40 + "\n")
+
+
+class FetchTest(unittest.TestCase):
+    def files_pin(self, digest):
+        return inputs.check_pin("docs", {"kind": "files", "repository": "o/r", "commit": COMMIT, "root": "t",
+                                         "files": {"common/x.json": digest}})
+
+    def test_files_are_kept_only_with_their_sha256(self):
+        body = b'{"a": 1}'
+        digest = __import__("hashlib").sha256(body).hexdigest()
+        seen = []
+
+        def get(url, target):
+            seen.append(url)
+            target.write_bytes(body)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            directory = inputs.fetch(self.files_pin(digest), root, get=get)
+            self.assertEqual((directory / "common" / "x.json").read_bytes(), body)
+            self.assertEqual(seen, [f"https://raw.githubusercontent.com/o/r/{COMMIT}/t/common/x.json"])
+            inputs.fetch(self.files_pin(digest), root, get=get)
+            self.assertEqual(len(seen), 1, "a verified directory is reused")
+            with self.assertRaises(inputs.InputError):
+                inputs.fetch(self.files_pin("0" * 64), root, get=get)
+            self.assertFalse(list(root.rglob("*.part")), "a mismatched file is not kept")
+
+    def tar(self, path, members):
+        with tarfile.open(path, "w") as tar:
+            for name, body in members:
+                info = tarfile.TarInfo(name)
+                info.size = len(body)
+                tar.addfile(info, io.BytesIO(body))
+
+    def test_tar_extraction_refuses_escaping_members(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp, "x.tar")
+            self.tar(archive, [("../evil", b"x")])
+            with self.assertRaises(tarfile.TarError):
+                inputs.extract_tar(archive, Path(tmp, "out"))
+            self.assertFalse(Path(tmp, "evil").exists())
+            self.tar(archive, [("/abs/evil", b"x")])
+            inputs.extract_tar(archive, Path(tmp, "out"))
+            self.assertTrue(Path(tmp, "out", "abs", "evil").is_file(), "an absolute member lands inside")
+            archive = Path(tmp, "ok.tar")
+            self.tar(archive, [("cost-models/v1.json", b"{}"), ("290/a-v1.flat", b"\x01")])
+            self.assertEqual(inputs.extract_tar(archive, Path(tmp, "ok")), 2)
+            self.assertTrue(Path(tmp, "ok", "290", "a-v1.flat").is_file())
+
+    def test_tarball_is_checked_before_it_is_opened(self):
+        pin = inputs.check_pin("corpus", {"kind": "tarball", "url": "https://example.org/c.tar.zst",
+                                          "sha256": "0" * 64})
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(inputs, "decompress_zstd", side_effect=AssertionError("opened")):
+            with self.assertRaises(inputs.InputError):
+                inputs.fetch(pin, Path(tmp), get=lambda url, target: target.write_bytes(b"not it"))
+
+
+class Site:
+    """A scratch site checkout with the parts the checks read."""
+
+    def __init__(self, root):
+        self.root = Path(root)
+        fixtures = self.root / "scenarios" / "ledger-rules" / "fixtures" / "scenarios"
+        fixtures.mkdir(parents=True)
+        for name in ("00001-a.json", "00002-b.json"):
+            (fixtures / name).write_text("{}")
+        uplc = self.root / "scenarios" / "uplc-conformance"
+        uplc.mkdir(parents=True)
+        (uplc / "expectations.json").write_text(json.dumps({"scenarios": [{"id": "v1"}, {"id": "v2"}]}))
+        (self.root / "scenarios" / "ledger-rules" / "schema.json").write_text(json.dumps({
+            "type": "object", "required": ["version", "scenario", "generated_at", "scenarios"],
+            "properties": {"version": {"const": "1"}, "scenario": {"const": "ledger-rules"},
+                           "generated_at": {"type": "string", "format": "date-time"},
+                           "scenarios": {"type": "array", "items": {"type": "object", "required": ["id", "result"]}}}}))
+        cbor = self.root / "scenarios" / "cbor-decoding"
+        cbor.mkdir(parents=True)
+        (cbor / "schema.json").write_text(json.dumps({
+            "type": "object", "properties": {"implementation_commit": {"type": "string"}}}))
+
+
+def context(site):
+    pins = inputs.load_pins()
+    return scenarios.Context(COMMIT, pins, {"site": site}, {})
+
+
+def ledger_report(ids, dataset=None):
+    return {"version": "1", "scenario": "ledger-rules", "generated_at": "2026-11-14T10:00:00.5Z",
+            "dataset_commit": dataset or inputs.load_pins()["ledger-rules-documents"].spec["commit"],
+            "implementation": {"name": "scarab"}, "scenarios": [{"id": i, "result": "pass"} for i in ids]}
+
+
+class ChecksTest(unittest.TestCase):
+    def test_ledger_rules_needs_every_fixture_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = context(Site(tmp).root)
+            check = scenarios.SCENARIOS["ledger-rules"].checks
+            self.assertEqual(check(ledger_report(["00001", "00002"]), ctx, None), [])
+            self.assertTrue(any("have no result" in p for p in check(ledger_report(["00001"]), ctx, None)))
+            self.assertTrue(any("more than once" in p
+                                for p in check(ledger_report(["00001", "00002", "00002"]), ctx, None)))
+            self.assertTrue(any("dataset_commit" in p
+                                for p in check(ledger_report(["00001", "00002"], "b" * 40), ctx, None)))
+
+    def test_uplc_conformance_refuses_no_verdict(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = context(Site(tmp).root)
+            check = scenarios.SCENARIOS["uplc-conformance"].checks
+            full = {"scenarios": [{"id": "v1", "evaluation": "(program 1.1.0 (con integer 1))"},
+                                  {"id": "v2", "evaluation": "evaluation failure"}]}
+            self.assertEqual(check(full, ctx, None), [])
+            full["scenarios"][1]["evaluation"] = "no verdict"
+            self.assertEqual(check(full, ctx, None), ["1 vectors have no verdict from the evaluator"])
+
+    def test_cbor_report_must_be_of_its_era(self):
+        ctx = context(Path("/nonexistent"))
+        check = scenarios.SCENARIOS["cbor-decoding"].checks
+        dataset = inputs.load_pins()["cbor-dataset"].spec["commit"]
+        report = {"protocol_version": "11.0", "dataset_commit": dataset, "results": {"a/valid/x.input.cbor": True}}
+        self.assertEqual(check(report, ctx, "conway"), [])
+        self.assertTrue(check(report, ctx, "dijkstra"))
+        self.assertEqual(scenarios.era_of_protocol("12.0"), "dijkstra")
+        self.assertIsNone(scenarios.era_of_protocol("9.0"))
+
+    def test_the_plutus_scenarios_use_the_own_evaluator(self):
+        mounted = {name: f"/inputs/{name}" for name in inputs.load_pins()}
+        ctx = scenarios.Context(COMMIT, inputs.load_pins(), {}, mounted)
+        for name in ("ledger-rules", "uplc-conformance", "uplc-turbo"):
+            scenario = scenarios.SCENARIOS[name]
+            self.assertIn("scarab", scenario.arguments(ctx, None, "/out"), name)
+            self.assertNotIn("--memory-limit", scenario.arguments(ctx, None, "/out"))
+        self.assertIn(COMMIT, scenarios.SCENARIOS["cbor-decoding"].arguments(ctx, "conway", "/out"))
+        self.assertFalse(scenarios.SCENARIOS["uplc-turbo"].in_ci)
+
+
+def checkout(root):
+    return run.Checkout(Path(root), COMMIT, False, Path(root) / ".git", Path(root) / ".cache")
+
+
+class RunTest(unittest.TestCase):
+    def test_classpath_is_the_last_work_path_line(self):
+        output = "[info] welcome\n/work/old:/work/x\n[success] done\n/work/a/classes:/work/.cache/b.jar\n"
+        self.assertEqual(run.parse_classpath(output), ["/work/a/classes", "/work/.cache/b.jar"])
+        with self.assertRaises(run.RunError):
+            run.parse_classpath("[error] failed\n")
+
+    def test_main_class_found_in_a_directory_or_a_jar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            facts = checkout(tmp)
+            classes = Path(tmp, "tools", "classes", "x", "y")
+            classes.mkdir(parents=True)
+            (classes / "Main.class").write_bytes(b"")
+            Path(tmp, ".cache").mkdir()
+            with zipfile.ZipFile(Path(tmp, ".cache", "lib.jar"), "w") as jar:
+                jar.writestr("p/Q.class", b"")
+            classpath = ["/work/tools/classes", "/work/.cache/lib.jar"]
+            self.assertTrue(run.has_class(classpath, "x.y.Main", facts))
+            self.assertTrue(run.has_class(classpath, "p.Q", facts))
+            self.assertFalse(run.has_class(classpath, "x.y.Absent", facts))
+
+    def test_tool_runs_without_network_on_read_only_inputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            facts = checkout(tmp)
+            mounted = {name: f"/inputs/{name}" for name in inputs.load_pins()}
+            ctx = scenarios.Context(COMMIT, inputs.load_pins(), {}, mounted)
+            command = run.tool_command(scenarios.SCENARIOS["uplc-turbo"], None, facts, ctx, "/work/cp", Path("/i"),
+                                       Path("/w"), "img", "owner-1", "3", "8g")
+            text = " ".join(command)
+            self.assertIn("--network none", text)
+            self.assertIn(f"{tmp}:/work:ro", text)
+            self.assertIn("/i:/inputs:ro", text)
+            self.assertIn("xyz.kd5ujc.scarab.owner=owner-1", text)
+            self.assertIn("-Xms4g -Xmx4g", text)
+
+    def test_finish_names_a_valid_report_and_nothing_else(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            site = Site(Path(tmp, "site")).root
+            out = Path(tmp, "out")
+            out.mkdir()
+            ctx = context(site)
+            raw = Path(tmp, "report.json")
+            raw.write_text(json.dumps(ledger_report(["00001", "00002"])))
+            outcome = run.finish(scenarios.SCENARIOS["ledger-rules"], None, raw, ctx, out, {"scenario": "x"})
+            self.assertEqual(outcome.status, "report", outcome.checks)
+            self.assertEqual(outcome.report, "scarab-20261114-ledger-rules.json.gz")
+            record = json.loads((out / "scarab-20261114-ledger-rules.provenance.json").read_text())
+            self.assertTrue(record["validation"]["valid"])
+            self.assertEqual(record["sha256"], __import__("hashlib").sha256(
+                (out / outcome.report).read_bytes()).hexdigest())
+            self.assertEqual(json.loads(gzip.decompress((out / outcome.report).read_bytes())),
+                             json.loads(raw.read_text()))
+
+            failed_out = Path(tmp, "failed")
+            failed_out.mkdir()
+            raw.write_text(json.dumps(ledger_report(["00001"])))
+            outcome = run.finish(scenarios.SCENARIOS["ledger-rules"], None, raw, ctx, failed_out, {})
+            self.assertEqual(outcome.status, "failed")
+            self.assertEqual(list(failed_out.iterdir()), [], "a failed report is not named")
+
+    def test_implementation_commit_must_be_this_checkout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            site = Site(Path(tmp, "site")).root
+            ctx = context(site)
+            dataset = inputs.load_pins()["cbor-dataset"].spec["commit"]
+            raw = Path(tmp, "report.json")
+            raw.write_text(json.dumps({"protocol_version": "11.0", "dataset_commit": dataset, "generated_at": 0,
+                                       "implementation_commit": "b" * 40, "results": {"r/valid/x.input.cbor": True}}))
+            outcome = run.finish(scenarios.SCENARIOS["cbor-decoding"], "conway", raw, ctx, Path(tmp), {})
+            self.assertEqual(outcome.status, "failed")
+            self.assertTrue(any("implementation_commit" in check for check in outcome.checks))
+
+    def test_turbo_is_refused_on_ci(self):
+        with mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}), \
+                mock.patch.object(run, "checkout_facts", side_effect=AssertionError("ran")), \
+                mock.patch("sys.stderr", new=io.StringIO()):
+            self.assertEqual(run.main(["uplc-turbo", "--out", "/nonexistent"]), 2)
+
+    def test_owner_label_is_checked(self):
+        with mock.patch("sys.stderr", new=io.StringIO()), self.assertRaises(SystemExit):
+            run.arguments(["ledger-rules", "--out", "/x", "--owner", "a b"])
+
+
+if __name__ == "__main__":
+    unittest.main()

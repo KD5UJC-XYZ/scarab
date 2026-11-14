@@ -1,0 +1,224 @@
+# SPDX-License-Identifier: Apache-2.0
+"""The scenarios of node-diversity-conformance that Scarab reports: the tool that writes each report, its inputs
+and arguments, and the checks a report must pass beyond the scenario's schema before it is named for publication.
+
+The tools are the `tools` module's entry points; their Scaladoc documents the arguments used here. The Plutus
+scenarios report Scarab's own evaluator (`scarab`, the tools' `--plutus-vm` value).
+"""
+from __future__ import annotations
+
+import gzip
+import json
+import re
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable
+
+PLUTUS_VM = "scarab"
+JDK_FLAGS = ("--enable-native-access=ALL-UNNAMED", "--sun-misc-unsafe-memory-access=allow")
+# The thread stack sbt's own JVM has (`scripts/sbtw`), where `tools/runMain` runs these tools.
+TOOL_JVM = ("-Xss8m", "-Xmx4g", *JDK_FLAGS)
+# The JVM the turbo measurements were taken in: a fixed heap, so that its sizing does not move between runs.
+TURBO_JVM = ("-Xms4g", "-Xmx4g", *JDK_FLAGS)
+# The first major protocol version of each era, as the site reads a CBOR report's era from it.
+PROTOCOL_ERAS = ((10, "conway"), (12, "dijkstra"))
+FIXTURE_ID = re.compile(r"^(\d{5})-")
+
+
+@dataclass(frozen=True)
+class Context:
+    """What a scenario's arguments and checks read: the Scarab commit, and each input's directory on the host
+    (`host`) and in the tool's container (`mounted`)."""
+    commit: str
+    pins: dict
+    host: dict[str, Path]
+    mounted: dict[str, str]
+
+
+@dataclass(frozen=True)
+class Scenario:
+    id: str
+    main: str
+    source: str
+    inputs: tuple[str, ...]
+    eras: tuple[str | None, ...]
+    jvm: tuple[str, ...]
+    arguments: Callable[[Context, str | None, str], list[str]]
+    entries: Callable[[dict], int]
+    checks: Callable[[dict, Context, str | None], list[str]]
+    plutus_vm: str | None = PLUTUS_VM
+    in_ci: bool = True
+
+    @property
+    def schema(self) -> str:
+        """The scenario's schema, relative to the site checkout."""
+        return f"scenarios/{self.id}/schema.json"
+
+
+def _ids(items: list, key: str) -> tuple[set[str], list[str]]:
+    seen: set[str] = set()
+    duplicates = []
+    for item in items:
+        value = str(item.get(key, "")) if isinstance(item, dict) else ""
+        if value in seen:
+            duplicates.append(value)
+        seen.add(value)
+    return seen, duplicates
+
+
+def _coverage(reported: set[str], duplicates: list[str], expected: set[str], what: str) -> list[str]:
+    problems = []
+    if duplicates:
+        problems.append(f"{len(duplicates)} {what} reported more than once: {', '.join(sorted(duplicates)[:10])}")
+    missing = sorted(expected - reported)
+    if missing:
+        problems.append(f"{len(missing)} of {len(expected)} {what} have no result: {', '.join(missing[:10])}")
+    return problems
+
+
+def ledger_fixture_ids(site: Path) -> set[str]:
+    """The fixture ids of the site's ledger-rules corpus, as its build reads them: the first five digits of each
+    file name."""
+    root = site / "scenarios" / "ledger-rules" / "fixtures" / "scenarios"
+    return {match.group(1) for path in root.glob("*.json") if (match := FIXTURE_ID.match(path.name))}
+
+
+def _ledger_arguments(context: Context, era: str | None, out: str) -> list[str]:
+    site, documents = context.mounted["site"], context.mounted["ledger-rules-documents"]
+    return [f"{site}/scenarios/ledger-rules/fixtures/scenarios", documents, f"{out}/report.json",
+            "--sidecar", f"{out}/sidecar.json",
+            "--dataset-commit", context.pins["ledger-rules-documents"].spec["commit"],
+            "--plutus-vm", PLUTUS_VM]
+
+
+def _ledger_checks(report: dict, context: Context, era: str | None) -> list[str]:
+    reported, duplicates = _ids(report.get("scenarios", []), "id")
+    problems = _coverage(reported, duplicates, ledger_fixture_ids(context.host["site"]), "fixtures")
+    pinned = context.pins["ledger-rules-documents"].spec["commit"]
+    if report.get("dataset_commit") != pinned:
+        problems.append(f"dataset_commit is {report.get('dataset_commit')!r}, not the pinned {pinned}")
+    return problems
+
+
+def uplc_expected_ids(site: Path) -> set[str]:
+    expectations = json.loads((site / "scenarios" / "uplc-conformance" / "expectations.json").read_text())
+    return {str(item["id"]) for item in expectations["scenarios"]}
+
+
+def _uplc_arguments(context: Context, era: str | None, out: str) -> list[str]:
+    return [PLUTUS_VM, context.mounted["uplc-conformance-corpus"],
+            f"{context.mounted['site']}/scenarios/uplc-conformance/expectations.json", f"{out}/report.json"]
+
+
+def _uplc_checks(report: dict, context: Context, era: str | None) -> list[str]:
+    items = report.get("scenarios", [])
+    reported, duplicates = _ids(items, "id")
+    problems = _coverage(reported, duplicates, uplc_expected_ids(context.host["site"]), "vectors")
+    no_verdict = sum(1 for item in items if isinstance(item, dict) and item.get("evaluation") == "no verdict")
+    if no_verdict:
+        problems.append(f"{no_verdict} vectors have no verdict from the evaluator")
+    return problems
+
+
+def _turbo_arguments(context: Context, era: str | None, out: str) -> list[str]:
+    return [PLUTUS_VM, context.mounted["uplc-turbo-corpus"], f"{out}/report.json"]
+
+
+def era_of_protocol(protocol_version: object) -> str | None:
+    """The era the site reads from a CBOR report's protocol version, `<major>.<minor>`; None for an unknown one."""
+    major = str(protocol_version).split(".")[0]
+    if not major.isdigit():
+        return None
+    eras = [era for first, era in PROTOCOL_ERAS if int(major) >= first]
+    return eras[-1] if eras else None
+
+
+def _cbor_arguments(context: Context, era: str | None, out: str) -> list[str]:
+    return [f"{context.mounted['cbor-dataset']}/dataset/{era}", str(era),
+            context.pins["cbor-dataset"].spec["commit"], context.commit, f"{out}/report-{era}.json"]
+
+
+def _cbor_checks(report: dict, context: Context, era: str | None) -> list[str]:
+    problems = []
+    read = era_of_protocol(report.get("protocol_version"))
+    if read != era:
+        problems.append(f"protocol_version {report.get('protocol_version')!r} gives the era {read}, not {era}")
+    pinned = context.pins["cbor-dataset"].spec["commit"]
+    if report.get("dataset_commit") != pinned:
+        problems.append(f"dataset_commit is {report.get('dataset_commit')!r}, not the pinned {pinned}")
+    if not report.get("results"):
+        problems.append("the report has no sample results")
+    return problems
+
+
+SCENARIOS: dict[str, Scenario] = {scenario.id: scenario for scenario in (
+    Scenario("ledger-rules", "xyz.kd5ujc.scarab.ledger.LedgerRulesMain",
+             "tools/src/main/scala/xyz/kd5ujc/scarab/ledger/LedgerRulesMain.scala",
+             ("site", "ledger-rules-documents"), (None,), TOOL_JVM,
+             _ledger_arguments, lambda report: len(report.get("scenarios", [])), _ledger_checks),
+    Scenario("uplc-conformance", "xyz.kd5ujc.scarab.plutus.ndc.UplcConformanceMain",
+             "tools/src/main/scala/xyz/kd5ujc/scarab/plutus/ndc/UplcConformanceMain.scala",
+             ("site", "uplc-conformance-corpus"), (None,), TOOL_JVM,
+             _uplc_arguments, lambda report: len(report.get("scenarios", [])), _uplc_checks),
+    Scenario("uplc-turbo", "xyz.kd5ujc.scarab.plutus.ndc.UplcTurboMain",
+             "tools/src/main/scala/xyz/kd5ujc/scarab/plutus/ndc/UplcTurboMain.scala",
+             ("site", "uplc-turbo-corpus"), (None,), TURBO_JVM,
+             _turbo_arguments, lambda report: len(report.get("benchmarks", [])), lambda report, context, era: [],
+             in_ci=False),
+    Scenario("cbor-decoding", "xyz.kd5ujc.scarab.ledger.conformance.CborDatasetMain",
+             "tools/src/main/scala/xyz/kd5ujc/scarab/ledger/conformance/CborDatasetMain.scala",
+             ("site", "cbor-dataset"), ("conway", "dijkstra"), TOOL_JVM,
+             _cbor_arguments, lambda report: len(report.get("results", {})), _cbor_checks, plutus_vm=None),
+)}
+
+def label(scenario: str, era: str | None) -> str:
+    """`<scenario>[-<era>]`: what a report name says after its date, and the name of the tool's work directory."""
+    return scenario + (f"-{era}" if era else "")
+
+
+# The report names: one per scenario and era. The date is the only run of eight digits in a name, which is how the
+# site dates a release file.
+NAME = re.compile(r"^scarab-(?P<date>\d{8})-(?P<label>"
+                  + "|".join(re.escape(label(s.id, era)) for s in SCENARIOS.values() for era in s.eras)
+                  + r")\.json\.gz$")
+
+
+def report_name(date: str, scenario: str, era: str | None) -> str:
+    if not re.fullmatch(r"\d{8}", date):
+        raise ValueError(f"not a YYYYMMDD date: {date!r}")
+    name = f"scarab-{date}-{label(scenario, era)}.json.gz"
+    if NAME.match(name) is None:
+        raise ValueError(f"{name} is not a report name")
+    return name
+
+
+def provenance_name(report: str) -> str:
+    """The provenance file beside a report, which no site glob of a report matches."""
+    return report.removesuffix(".json.gz") + ".provenance.json"
+
+
+def site_glob(scenario: str, era: str | None) -> str:
+    """The asset glob of the site's node metadata that picks this report from a GitHub release."""
+    return f"scarab-*-{label(scenario, era)}.json"
+
+
+def report_date(generated_at: Any, fallback: datetime) -> str:
+    """The UTC date of a report, YYYYMMDD: from its `generated_at` (an RFC 3339 time, or milliseconds since the
+    epoch), else from `fallback`."""
+    moment = fallback
+    if isinstance(generated_at, int) and not isinstance(generated_at, bool) and generated_at >= 0:
+        moment = datetime.fromtimestamp(generated_at / 1000, tz=timezone.utc)
+    elif isinstance(generated_at, str):
+        match = re.match(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:\d\d)$", generated_at, re.I)
+        if match:
+            offset = "+00:00" if match.group(2).upper() == "Z" else match.group(2)
+            moment = datetime.fromisoformat(match.group(1) + offset)
+    return moment.astimezone(timezone.utc).strftime("%Y%m%d")
+
+
+def compress(data: bytes, target: Path) -> None:
+    """Gzip `data` into `target` without a file name or time in the header, so the same report gives the same
+    bytes."""
+    with target.open("wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0, compresslevel=9) as out:
+        out.write(data)
