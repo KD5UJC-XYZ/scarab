@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.codec.DomainError
   * owner as a typed value. Each handler owns its error scope; cancellation releases its socket
   * without reporting a failure (ADR0017).
   *
-  * The accept loop is the reference's (`Server.hs` 188-254, ouroboros-network 2fb69829), as
+  * The accept loop is the reference's (`Server.hs` 188-254, ouroboros-network c45735a5), as
   * [[LocalServer]] runs it for the node-to-client socket: an accept that failed is traced, then,
   * for `ECONNABORTED`, tried again after [[LocalServer.ConnAbortedDelay]], and any other failure
   * ends the loop with its value, which stops the reference's node (its `DiffusionErrored`,

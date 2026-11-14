@@ -753,8 +753,11 @@ reachable only in tests. `SnapshotFallbackSuite` and `ChainStorageSuite` have a 
 
 **Import and export.** Import decodes the `state` file with the codec of the build named by
 `--reference-build`, the build that wrote the input database; input that does not decode completely
-is `LedgerSnapshotImport.Error.State(build, cause)`, and the bytes go into the snapshot unchanged
-with the build recorded. Export writes the recorded bytes unchanged and reports their build
+is `LedgerSnapshotImport.Error.State(build, cause)`, and the state it decodes to goes into the
+snapshot, written again in that layout, with the build recorded. For the reference files the suites
+hold that is the file's own bytes, but not by promise: the encoding keeps only the first of two
+governance proposals with one id, as the reference reads them, and writes a value the layout allows
+in more than one form in the codec's form (`LedgerSnapshotImport`). Export writes the recorded bytes unchanged and reports their build
 (`referenceBuild` in its JSON); a requested build of another layout than the recorded one is refused
 with `ReferenceBuildMismatch`. Export also reads a V9 file of a database this build has not opened
 yet, as 11.1 bytes, so an existing database exports as before; the SCLS base (`export-scls`,

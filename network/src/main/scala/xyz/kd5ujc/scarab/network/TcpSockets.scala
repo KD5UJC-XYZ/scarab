@@ -38,7 +38,7 @@ type TcpSocketError = xyz.kd5ujc.scarab.protocol.TcpSocketError[Host, SocketAddr
 val TcpSocketError = xyz.kd5ujc.scarab.protocol.TcpSocketError
 
 /** The node's own listening addresses, one of each family: the connection manager's `ipv4Address`
-  * and `ipv6Address` (ouroboros-network 2fb69829, `Diffusion.hs` 427-445,
+  * and `ipv6Address` (ouroboros-network c45735a5, `Diffusion.hs` 427-445,
   * `ConnectionManager/Core.hs` 1472-1491), the configured addresses as they are, port included.
   */
 final case class NodeAddresses(
@@ -66,7 +66,7 @@ object NodeAddresses:
     )
 
 /** What the reference's connection manager does with a fresh outbound socket before `connect`
-  * (ouroboros-network 2fb69829, `ConnectionManager/Core.hs` 1472-1491): it configures the socket
+  * (ouroboros-network c45735a5, `ConnectionManager/Core.hs` 1472-1491): it configures the socket
   * for the node's own address of the remote's family, and binds the socket to that address, port
   * included, only in `InitiatorAndResponder` mode.
   */

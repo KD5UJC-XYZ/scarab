@@ -19,6 +19,102 @@ class Incomplete(Exception):
     pass
 
 
+class AcquireRefused(RuntimeError):
+    """The node answered an acquire with `MsgFailure` (`[2, failure]`): `failure` 0 is `AcquireFailurePointTooOld`,
+    1 `AcquireFailurePointNotOnChain` (the codes of Scarab's `LocalStateQueryEngine` codec, which mirrors the
+    reference's). Only a reply of exactly that shape is one; any other is a `MalformedReply`."""
+
+    NAMES = {0: "PointTooOld", 1: "PointNotOnChain"}
+
+    def __init__(self, code):
+        super().__init__(f"acquire failed: [2, {code}]")
+        self.reply = [2, code]
+        self.failure = self.NAMES[code]
+
+
+class MalformedReply(RuntimeError):
+    """A LocalStateQuery reply that is not one the protocol allows at that step (by message shape and CBOR types)."""
+
+
+# The replies are checked on their own bytes: `decode` reads a simple value as a number, drops a bignum's tag and
+# set tag 258, and reads an indefinite array as a list, so the decoded value cannot say what the node sent. The
+# reference's codec reads a definite array (`decodeListLen`), an unsigned key (`decodeWord`) and the failure code as
+# `decodeWord8` (ouroboros-network c45735a5,
+# `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalStateQuery/Codec.hs` 63-73 and 148-167).
+
+def _head(raw, pos):
+    """(major type, argument or None for an indefinite length, next position) of the CBOR item head at `pos`."""
+    if pos >= len(raw):
+        raise MalformedReply(f"reply cut at byte {pos}: {bytes(raw).hex()[:200]}")
+    first = raw[pos]
+    major, info, pos = first >> 5, first & 31, pos + 1
+    if info < 24:
+        return major, info, pos
+    if info in (24, 25, 26, 27):
+        size = 1 << (info - 24)
+        if pos + size > len(raw):
+            raise MalformedReply(f"reply cut at byte {pos}: {bytes(raw).hex()[:200]}")
+        return major, int.from_bytes(raw[pos:pos + size], "big"), pos + size
+    if info == 31 and major in (2, 3, 4, 5, 7):
+        return major, None, pos
+    raise MalformedReply(f"reserved CBOR head {first:#04x} at byte {pos - 1}: {bytes(raw).hex()[:200]}")
+
+
+def _array(raw, pos):
+    """(length, next position) of a definite array at `pos`, as `decodeListLen` reads one."""
+    major, size, after = _head(raw, pos)
+    if major != 4 or size is None:
+        raise MalformedReply(f"not a definite array at byte {pos}: {bytes(raw).hex()[:200]}")
+    return size, after
+
+
+def _uint(raw, pos):
+    """(value, next position) of an unsigned integer at `pos` (major type 0): no tag, bignum or simple value."""
+    major, value, after = _head(raw, pos)
+    if major != 0 or value is None:
+        raise MalformedReply(f"not an unsigned integer at byte {pos}: {bytes(raw).hex()[:200]}")
+    return value, after
+
+
+def acquire_reply(raw):
+    """Nothing for `MsgAcquired` (`[1]`); raises `AcquireRefused` for a `MsgFailure` with a known code
+    (`[2, 0 | 1]`) and `MalformedReply` for any other reply, judged on its bytes `raw`."""
+    size, pos = _array(raw, 0)
+    key, pos = _uint(raw, pos)
+    if (size, key) == (1, 1) and pos == len(raw):
+        return
+    if (size, key) == (2, 2):
+        code, pos = _uint(raw, pos)
+        if pos == len(raw) and code in AcquireRefused.NAMES:
+            raise AcquireRefused(code)
+    raise MalformedReply(f"acquire failed: unexpected reply {bytes(raw).hex()[:200]}")
+
+
+def result_offset(raw):
+    """Where the result starts in the bytes `raw` of a `MsgResult` (`[4, result]`); `MalformedReply` for any other
+    reply."""
+    size, pos = _array(raw, 0)
+    key, pos = _uint(raw, pos)
+    if (size, key) != (2, 4):
+        raise MalformedReply(f"query failed: unexpected reply {bytes(raw).hex()[:200]}")
+    return pos
+
+
+def chain_point(raw):
+    """The point of a `GetChainPoint` answer, judged on its bytes `raw` (a `MsgResult`): None for Origin (`[]`), or
+    `[slot, hash]` for a block point, an unsigned slot and a definite 32-byte hash, as the reference encodes a
+    point. `MalformedReply` for anything else."""
+    size, pos = _array(raw, result_offset(raw))
+    if size == 0 and pos == len(raw):
+        return None
+    if size == 2:
+        slot, pos = _uint(raw, pos)
+        major, length, pos = _head(raw, pos)
+        if major == 2 and length == 32 and pos + 32 == len(raw):
+            return [slot, bytes(raw[pos:pos + 32])]
+    raise MalformedReply(f"not a chain point: {bytes(raw).hex()[:200]}")
+
+
 class Deadline(TimeoutError):
     """A session's overall deadline passed while it waited for the node (handshake, acquire or query)."""
 
@@ -290,9 +386,8 @@ class LocalStateQuery:
     def acquire(self, point=None):
         """Acquire the volatile tip, or the state at `point` (None for the origin is not supported)."""
         self._send(7, enc([8] if point is None else [0, point]))
-        reply = self._recv(7)
-        if reply[0] != 1:
-            raise RuntimeError(f"acquire failed: {reply}")
+        self._recv(7)
+        acquire_reply(self.last_raw)
 
     def release(self):
         self._send(7, enc([5]))
@@ -300,8 +395,7 @@ class LocalStateQuery:
     def query_raw(self, query):
         self._send(7, enc([3, query]))
         reply = self._recv(7)
-        if reply[0] != 4:
-            raise RuntimeError(f"query failed: {reply}")
+        result_offset(self.last_raw)
         return reply[1]
 
     def ledger_query(self, era_index, shelley_query):

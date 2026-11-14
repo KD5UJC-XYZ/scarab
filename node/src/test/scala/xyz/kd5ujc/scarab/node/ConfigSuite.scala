@@ -389,7 +389,7 @@ class ConfigSuite extends FunSuite:
         .isLeft
     )
     // AcceptedConnectionsLimit (POM.hs 373-375): three required keys, the limits Word32 and the
-    // delay a DiffTime of seconds (OrphanInstances.hs:303-308, aeson's FromJSON Word32/DiffTime)
+    // delay a DiffTime of seconds (OrphanInstances.hs:302-307, aeson's FromJSON Word32/DiffTime)
     def accepted(hard: Long, soft: Long, picos: BigInt) =
       for h <- Word32.fromLong(hard); s <- Word32.fromLong(soft)
       yield AcceptedConnectionsLimit(h, s, DiffTime.picoseconds(picos))
@@ -788,6 +788,20 @@ class ConfigSuite extends FunSuite:
     assertEquals(
       rootsB.local.flatMap(_.members.map(_._1.toString)),
       List("127.0.0.1:9")
+    )
+    // a snapshot name the JDK cannot make a path of is a typed refusal, which a SIGHUP reload
+    // logs and survives, not an exception that escapes the reload (#953)
+    val topologyNul = Files.createTempFile("topology-nul", ".json")
+    Files.writeString(
+      topologyNul,
+      "{\"localRoots\": [], \"publicRoots\": [], \"peerSnapshotFile\": \"snap\\u0000.json\"}"
+    )
+    assertEquals(
+      Main
+        .topologyRoots(requestedA.copy(topologyFile = Some(topologyNul)), reloadSetup)
+        .left
+        .map(_.message),
+      Left("config: cannot name the file snap\u0000.json: Nul character not allowed")
     )
     // the file's defaults for the flags (here none are set), and a flag wins over the file
     val withSettings = Files.createTempDirectory("config-suite-settings")

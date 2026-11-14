@@ -21,7 +21,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
   /** The socket paths of these tests are fresh: a local socket error fails the test. */
   private given Raise[IO, DiffusionFailure] with
     def functor: Functor[IO] = Functor[IO]
-    def raise[E <: DiffusionFailure, A](e: E): IO[A] = IO(fail(e.shown))
+    def raise[E <: DiffusionFailure, A](e: E): IO[A] = IO(fail(e.show))
 
   /** The node-to-client server at `path`, as the node runs it. */
   private def serving(path: java.nio.file.Path)(

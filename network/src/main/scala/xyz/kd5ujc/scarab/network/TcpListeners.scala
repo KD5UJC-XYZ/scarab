@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import cats.Show
 import cats.effect.{Async, Resource}
+import cats.syntax.all.*
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 
 /** A bound, listening TCP socket. */
@@ -15,7 +17,7 @@ trait TcpListener[F[_]]:
   def accept: F[Either[AcceptFailure, TcpStream[F]]]
 
 /** Why an accept failed. The reference's `AcceptFailure` carries any exception of the call that is
-  * not asynchronous (ouroboros-network 2fb69829,
+  * not asynchronous (ouroboros-network c45735a5,
   * `ouroboros-network/framework/lib/Ouroboros/Network/Snocket.hs` 170-214): here a failed system
   * call, the configuration of the accepted socket ([[TcpSockets.listen]]), or an exception that is
   * not one, a defect.
@@ -36,7 +38,8 @@ enum AcceptFailure:
     case Configure(error) => DiffusionFailure.NodeToNode(error)
     case Defect(cause)    => DiffusionFailure.Defect(cause)
 
-  def shown: String = diffusion.shown
+object AcceptFailure:
+  given [A <: AcceptFailure]: Show[A] = Show.show(_.diffusion.show)
 
 /** Where the node-to-node server's listening sockets come from: the configured sockets of
   * [[TcpSockets]] in the node, scripted ones in tests. A socket that cannot be opened, configured

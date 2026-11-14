@@ -95,7 +95,7 @@ object Churn:
   def round: List[Step] =
     Step.values.toList
 
-  /** The timeouts of a step (`Policies.hs` 31, 41, 49 and `Churn.hs` 688-689, 599): the reference's
+  /** The timeouts of a step (`Policies.hs` 30, 40, 48 and `Churn.hs` 688-689, 599): the reference's
     * `deactivateTimeout`, `closeConnectionTimeout`, `churnEstablishConnectionTimeout`,
     * `shortTimeout` and `pcaPeerRequestTimeout` (`policyPeerShareOverallTimeout`, `Diffusion.hs`
     * 708).

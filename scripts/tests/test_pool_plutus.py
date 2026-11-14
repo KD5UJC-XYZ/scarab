@@ -1,0 +1,837 @@
+# SPDX-License-Identifier: Apache-2.0
+"""The pure parts of `pool --plutus-load` and of the pool's forge timing: blocks read for their transactions'
+validity flags, where the load's transactions are on the chain, the refusal rule, and the timing summaries."""
+import contextlib
+import dataclasses
+import hashlib
+import io
+import json
+import pathlib
+import subprocess
+import tempfile
+import threading
+import sys
+import types
+import unittest
+from unittest.mock import patch
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
+from devnet import ntclocal, ntcquery, reference_tracing, util  # noqa: E402
+from devnet.cbor import Raw, Tag, enc  # noqa: E402
+from devnet.scenarios import pool, pool_plutus  # noqa: E402
+
+
+def blake(data):
+    return hashlib.blake2b(data, digest_size=32).digest()
+
+
+def block_item(slot, bodies, witnesses, invalid):
+    """A Conway block item `#6.24([7, [header, bodies, witnesses, auxiliary data, invalid]])`."""
+    header = [[1, slot, None, b"\x01" * 32], b"\x02" * 64]
+    return enc(Tag(24, enc([7, [header, bodies, witnesses, {}, invalid]])))
+
+
+def header_hash(item):
+    return ntclocal.block_point(item)[1]
+
+
+class BlockTransactionsTest(unittest.TestCase):
+    def test_ids_are_hashes_of_the_original_body_bytes_and_flags_come_from_the_invalid_indices(self):
+        payment = {0: [[b"\x00" * 32, 0]], 1: [], 2: 170_000}
+        # an indefinite-length map: the id must be the hash of these bytes, not of a canonical re-encoding
+        script = Raw(b"\xbf" + enc(0) + enc([[b"\x01" * 32, 1]]) + enc(1) + enc([]) + enc(2) + enc(1_500_000) + b"\xff")
+        item = block_item(42, [payment, script], [{0: []}, {0: [], 5: {(0, 0): [0, [1, 2]]}}], [1])
+        self.assertEqual(ntclocal.block_transactions(item),
+                         [(blake(enc(payment)).hex(), True, False), (blake(script.data).hex(), False, True)])
+
+    def test_a_block_without_transactions(self):
+        self.assertEqual(ntclocal.block_transactions(block_item(7, [], [], [])), [])
+
+    def test_the_block_number_of_the_header(self):
+        self.assertEqual(ntclocal.block_number(block_item(7, [], [], [])), 1)
+
+
+class ChainFromOriginTest(unittest.TestCase):
+    def test_the_chain_up_to_the_reported_tip_with_rollbacks_applied(self):
+        b1, b2, b3 = (block_item(s, [], [], []) for s in (1, 2, 3))
+        h1, h3 = header_hash(b1), header_hash(b3)
+        tip = [[3, h3], 2]
+        replies = [enc([3, [], tip]), enc([2, Raw(b1), tip]), enc([2, Raw(b2), tip]), enc([3, [1, h1], tip]),
+                   enc([2, Raw(b3), tip])]
+
+        class Session:
+            def find_intersect(self, points):
+                assert points == [None]
+                return [5, [], tip]
+
+            def request_next(self):
+                raw = replies.pop(0)
+                return ntcquery.decode(raw, 0)[0], raw
+        blocks = ntclocal.chain_from_origin(Session())
+        self.assertEqual([(slot, ident) for slot, ident, _ in blocks], [(1, h1), (3, h3)])
+        self.assertEqual(blocks[1][2], b3)
+        self.assertEqual(replies, [])
+
+
+    def test_a_rollback_to_a_point_that_was_not_received_is_refused(self):
+        b1 = block_item(1, [], [], [])
+        tip = [[9, b"\x09" * 32], 5]
+        replies = [enc([3, [], tip]), enc([2, Raw(b1), tip]), enc([3, [7, b"\x07" * 32], tip])]
+
+        class Session:
+            def find_intersect(self, points):
+                return [5, [], tip]
+
+            def request_next(self):
+                raw = replies.pop(0)
+                return ntcquery.decode(raw, 0)[0], raw
+        with self.assertRaises(RuntimeError):
+            ntclocal.chain_from_origin(Session())
+
+
+class FailurePathTest(unittest.TestCase):
+    def test_the_constructors_down_to_validation_tag_mismatch(self):
+        mismatch = enc([[6, [[1, [0, [0, [0, True, [1, ["the script failed"]]]]]]]]])
+        self.assertEqual(pool_plutus.failure_path(mismatch), [1, 0, 0, 0])
+
+    def test_another_rule_and_what_is_no_refusal(self):
+        bad_inputs = enc([[6, [[1, [0, [1, Tag(258, [[b"\x00" * 32, 0]])]]]]]])
+        self.assertEqual(pool_plutus.failure_path(bad_inputs), [1, 0, 1])
+        self.assertIsNone(pool_plutus.failure_path(None))
+        self.assertIsNone(pool_plutus.failure_path(b"\x80"))
+
+
+def row(case, txid, language=1, passed=True):
+    return {"case": case, "txid": txid, "language": language, "passed": passed, "errors": [],
+            "referenceBefore": {"protocolVersion": {"major": 10, "minor": 0}}}
+
+
+ROWS = [row("reject-success-invalid", "a"), row("success", "a"), row("reject-failure-valid", "b"), row("collateral", "b"),
+        row("reject-success-invalid", "c", 2), row("success", "c", 2), row("reject-failure-valid", "d", 2),
+        row("collateral", "d", 2)]
+
+
+def linked(rows, count):
+    """`rows` with each of the first `count` refused cases linked, in order, to the judgement of the same index."""
+    out, k = [], 0
+    for r in rows:
+        if r["case"] in pool_plutus.REFUSED_CASES:
+            r = {**r, "judgement": k if k < count else None}
+            k += 1
+        out.append(r)
+    return out
+
+
+class InclusionTest(unittest.TestCase):
+    CHAIN = [("s1", 10, 1, [("a", True, True), ("pay", True, False)]), ("h1", 20, 2, [("b", False, True)]),
+             ("s2", 30, 3, [("d", False, True)]), ("h2", 40, 4, [("c", True, True)])]
+
+    def test_counts_by_kind_and_language_in_scala_forged_and_other_blocks(self):
+        placed = pool_plutus.inclusion(ROWS, self.CHAIN, {"s1", "s2"})
+        self.assertEqual(placed["submitted"], {"success": 2, "reject-success-invalid": 2, "collateral": 2,
+                                               "reject-failure-valid": 2})
+        self.assertEqual(placed["inScalaForgedBlocks"],
+                         {"succeeding": 1, "flagFalse": 1, "byLanguage": {"V1": {"succeeding": 1, "flagFalse": 0},
+                                                                          "V2": {"succeeding": 0, "flagFalse": 1}}})
+        self.assertEqual((placed["inOtherBlocks"]["succeeding"], placed["inOtherBlocks"]["flagFalse"]), (1, 1))
+        self.assertEqual(placed["wrongFlag"], [])
+        self.assertEqual(placed["acceptedNotOnChain"], [])
+        self.assertEqual(placed["otherPlutusInScalaForgedBlocks"], 0)
+
+    def test_a_failing_script_with_the_flag_true_is_a_wrong_flag_wherever_it_is(self):
+        chain = [("s1", 10, 1, [("a", True, True)]), ("h1", 20, 2, [("b", True, True)]),
+                 ("s2", 30, 3, [("c", False, True)]), ("h2", 40, 4, [("d", False, True)])]
+        placed = pool_plutus.inclusion(ROWS, chain, {"s1", "s2"})
+        self.assertEqual(placed["wrongFlag"], [{"tx": "b", "block": "h1", "valid": True, "scalaForged": False},
+                                               {"tx": "c", "block": "s2", "valid": False, "scalaForged": True}])
+        # neither counts as evidence of a flag carried right
+        self.assertEqual((placed["inScalaForgedBlocks"]["succeeding"], placed["inScalaForgedBlocks"]["flagFalse"]), (1, 0))
+        self.assertEqual((placed["inOtherBlocks"]["succeeding"], placed["inOtherBlocks"]["flagFalse"]), (0, 1))
+
+    def test_accepted_transactions_missing_from_the_chain_and_unknown_plutus_ones(self):
+        chain = [("s1", 10, 1, [("a", True, True), ("x", True, True)])]
+        placed = pool_plutus.inclusion(ROWS + [row("success", "e", passed=False)], chain, {"s1"})
+        self.assertEqual(placed["acceptedNotOnChain"], ["b", "c", "d"])
+        self.assertEqual(placed["otherPlutusInScalaForgedBlocks"], 1)
+
+
+class CheckTest(unittest.TestCase):
+    SHELLEY_AT = "2026-01-01T00:00:{:06.3f}Z"
+
+    def runner(self, refusals, rows=None, errors=(), **how):
+        """The evidence of a load that completed one round and ended in time (`how` changes the ending); the refused
+        cases of `rows` (`ROWS`) linked in order to `refusals`."""
+        rows = linked(ROWS, len(refusals)) if rows is None else rows
+        return pool_plutus.Evidence(rows=tuple(rows), refusals=tuple(refusals), plutus_txids=frozenset(), passes=1,
+                                    errors=tuple(errors),
+                                    ended=None, **{"finished": True, "stopped": True, **how})
+
+    def refusal(self, **kw):
+        return {"label": "legacy-plutus-conway-v1-reject-failure-valid", "tx": "b", "reference": [1, 0, 0, 0],
+                "scala": [1, 0, 0, 0], "accepted": False, "attempts": 1, "sameBytes": False, "referenceMs": 2.5,
+                "scalaMs": 4.25, **kw}
+
+    def judgements(self):
+        """One judgement per refused case of `ROWS`: each language, the succeeding script with the flag false and the
+        failing one with the flag true."""
+        return [self.refusal(label=f"legacy-plutus-conway-v{r['language']}-{r['case']}", tx=r["txid"],
+                             sameBytes=r["case"] == "reject-success-invalid", scalaMs=4.25 + i)
+                for i, r in enumerate(r for r in ROWS if r["case"].startswith("reject-"))]
+
+    @staticmethod
+    def forged(hashes=("s1", "s2")):
+        slots = {"s1": (10, 1, None), "s2": (30, 3, "h1")}
+        return [{"event": "forged", "hash": h, "slot": slots[h][0], "blockNo": slots[h][1], "prev": slots[h][2],
+                 "txs": []} for h in hashes]
+
+    def events(self):
+        return [{"event": "mempoolAdded", "tx": "a", "at": self.SHELLEY_AT.format(0.25)},
+                {"event": "mempoolAdded", "tx": "d", "at": self.SHELLEY_AT.format(1.5)},
+                {"event": "mempoolRejected", "tx": "b", "at": self.SHELLEY_AT.format(2),
+                 "reason": "tx b violates ValidationTagMismatch: Utxow(Utxo(Utxos(ValidationTagMismatch(true,Some(x)))))"},
+                {"event": "mempoolRejected", "tx": "c", "reason": "tx c is already in the mempool",
+                 "at": self.SHELLEY_AT.format(2)},
+                {"event": "ledgerEpoch", "phase2": {"evaluatedSuccess": 4, "evaluatedFailure": 2, "scripts": 6},
+                 "at": self.SHELLEY_AT.format(3)}]
+
+    def test_a_healthy_load_passes_and_reports_the_scala_mempool(self):
+        failures, summary = pool_plutus.check(self.runner(self.judgements()), InclusionTest.CHAIN, self.forged(),
+                                              self.events())
+        self.assertEqual(failures, [])
+        self.assertEqual(summary["protocolVersions"], ["10.0"])
+        judged = summary["scalaLocalSubmission"]
+        self.assertEqual((judged["expected"], judged["refusedForTheSameRule"], judged["sameBytes"], judged["missing"],
+                          judged["problems"], judged["unmatched"]), (4, 4, 2, [], [], 0))
+        mempool = summary["mempool"]
+        self.assertEqual((mempool["accepted"], mempool["seenInScalaMempool"], mempool["localSubmissions"]), (4, 2, 4))
+        self.assertEqual(mempool["rejectedByReason"],
+                         {"violates ValidationTagMismatch: Utxow(Utxo(Utxos(ValidationTagMismatch(true": 1,
+                          "is already in the mempool": 1})
+        self.assertEqual(mempool["scalaLedgerPhase2"], {"evaluatedSuccess": 4, "evaluatedFailure": 2, "scripts": 6})
+        self.assertEqual(summary["admissionMs"]["scala"]["succeedingScriptFlagFalse"],
+                         {"n": 2, "median": 6.25, "p95": 6.25, "max": 6.25, "mean": 5.25})
+        self.assertEqual(summary["admissionMs"]["scala"]["failingScriptFlagTrue"]["max"], 7.25)
+        self.assertEqual(summary["admissionMs"]["reference"]["failingScriptFlagTrue"]["max"], 2.5)
+
+    def test_what_fails_the_run(self):
+        # the Scala block s1 is not on the chain, and a Haskell pool's log named it as invalid
+        chain = [("h1", 30, 1, [("a", True, True), ("b", False, True), ("c", True, True), ("d", False, True)])]
+        judged = self.judgements()
+        judged[1] = {**judged[1], "accepted": True, "scala": None}
+        judged[2] = {**judged[2], "scala": [1, 0, 1], "attempts": 5}
+        failures, _ = pool_plutus.check(self.runner(judged, errors=["boom"]),
+                                        chain, self.forged(["s1"]), self.events() + [{"event": "blockNoVerdict"}], {"s1"})
+        joined = "\n".join(failures)
+        for expected in ("1 Plutus rounds failed: boom", "the Haskell pools refused 1 Scala-forged blocks",
+                         "no Scala-forged block holds a transaction whose scripts succeed",
+                         "no Scala-forged block holds a transaction with the validity flag false",
+                         "the Scala node accepted 1 transactions the reference refused",
+                         "does not show a refusal for the reference's ValidationTagMismatch", "1 blockNoVerdict events"):
+            self.assertIn(expected, joined)
+
+    def test_an_unread_refusal_on_both_nodes_is_not_a_refusal_for_the_same_rule(self):
+        # the reference's refusal unread (None) and the Scala node's unread too, not accepted
+        judged = self.judgements()
+        judged[0] = {**judged[0], "reference": None, "scala": None, "accepted": False}
+        failures, summary = pool_plutus.check(self.runner(judged), InclusionTest.CHAIN, self.forged(), self.events())
+        self.assertEqual(summary["scalaLocalSubmission"]["refusedForTheSameRule"], 3)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("the reference's refusal is not ValidationTagMismatch: None", failures[0])
+
+    def test_both_nodes_refusing_for_another_rule_and_an_unread_scala_refusal_fail_the_run(self):
+        judged = self.judgements()
+        judged[0] = {**judged[0], "reference": [1, 0, 1], "scala": [1, 0, 1]}
+        judged[3] = {**judged[3], "scala": None}
+        failures, _ = pool_plutus.check(self.runner(judged), InclusionTest.CHAIN, self.forged(), self.events())
+        self.assertEqual(len(failures), 1)
+        self.assertIn("the reference's refusal is not ValidationTagMismatch: [1, 0, 1]", failures[0])
+        self.assertIn("the Scala node's refusal could not be read", failures[0])
+
+    def test_a_refused_case_without_its_own_judgement_fails_the_run(self):
+        # three judgements: the V2 failing script with the flag true has none
+        failures, summary = pool_plutus.check(self.runner(self.judgements()[:3]), InclusionTest.CHAIN, self.forged(),
+                                              self.events())
+        self.assertEqual(summary["scalaLocalSubmission"]["missing"],
+                         [{"case": "reject-failure-valid", "language": 2, "tx": "d"}])
+        self.assertEqual(failures, ["1 refused cases have no judgement by the Scala node: "
+                                    "[{'case': 'reject-failure-valid', 'language': 2, 'tx': 'd'}]"])
+
+    def test_a_round_rebuilt_from_the_same_outputs_is_judged_by_its_own_judgement(self):
+        # the first round's setup left the chain; the second built the same transactions again: the first round's
+        # judgement (all inputs spent) is that round's alone, and a judgement of another case is not taken for a row's
+        judged = self.judgements()
+        stale = {**judged[0], "scala": [7]}
+        rows = linked(ROWS, 4)
+        again = {**rows[0], "judgement": 4, "passed": False}
+        failures, summary = pool_plutus.check(self.runner(judged + [stale], rows=[again] + rows), InclusionTest.CHAIN,
+                                              self.forged(), self.events())
+        judged_ = summary["scalaLocalSubmission"]
+        self.assertEqual((judged_["expected"], judged_["refusedForTheSameRule"], judged_["unmatched"]), (5, 4, 0))
+        self.assertEqual([p["problem"] for p in judged_["problems"]], ["the Scala node refused it for another rule: [7]"])
+        crossed = {**rows[0], "judgement": 1}
+        _, summary = pool_plutus.check(self.runner(judged, rows=[crossed] + rows[1:]), InclusionTest.CHAIN,
+                                       self.forged(), self.events())
+        self.assertTrue(summary["scalaLocalSubmission"]["problems"][0]["problem"].startswith(
+            "the judgement linked to it is of another case"))
+        self.assertEqual(summary["scalaLocalSubmission"]["unmatched"], 1)
+
+    def test_the_load_links_each_refused_case_to_the_judgement_made_of_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            load = pool_plutus.Load("n", pathlib.Path(d), "/sock", "/scala.sock")
+            load.record_judgement({"label": "legacy-plutus-conway-v1-reject-success-invalid", "tx": "a"})
+            load.plutus_evidence.append(row("reject-success-invalid", "a"))
+            load.plutus_evidence.append(row("success", "a"))
+            load.plutus_evidence.append(row("reject-failure-valid", "b"))
+            load.out.close()
+        self.assertEqual([r.get("judgement", "-") for r in load.plutus_evidence], [0, "-", None])
+
+    def test_no_judgement_by_the_scala_node_fails_the_run(self):
+        failures, _ = pool_plutus.check(self.runner([]), InclusionTest.CHAIN, self.forged(), self.events())
+        self.assertIn("4 refused cases have no judgement by the Scala node", failures[0])
+        self.assertEqual(failures[1], "no refused Plutus transaction was submitted to the Scala node")
+
+
+# 64-hex-character stand-ins for block hashes, one hex digit repeated per name
+H = {name: digit * 64 for name, digit in zip("abcdvwxyz", "abcd01234")}
+NAME = {h: name for name, h in H.items()}
+
+
+class JoinedTest(unittest.TestCase):
+    def test_the_load_waits_for_a_scala_block_on_the_observer_and_a_transaction_in_the_scala_mempool(self):
+        forged = {"event": "forged", "hash": H["a"]}
+        added = {"event": "mempoolAdded", "tx": "t"}
+        self.assertTrue(pool_plutus.joined([forged, added], {H["b"], H["a"]}))
+        self.assertFalse(pool_plutus.joined([forged], {H["a"]}))
+        self.assertFalse(pool_plutus.joined([forged, added], {H["b"]}))
+
+
+class RunnerTest(unittest.TestCase):
+    """`Runner.finish` takes the evidence once the thread has ended; a load that had to be stopped in the middle of a
+    round, or that never stopped, fails the run."""
+
+    @staticmethod
+    def load():
+        return types.SimpleNamespace(ready=threading.Event(), stop=threading.Event(), wallets=[types.SimpleNamespace(address=b"w")],
+                                     act=lambda *a, **k: "f0", delegator=lambda n: object(), log=lambda m: None,
+                                     out=io.StringIO(), plutus_evidence=[], scala_refusals=[], plutus_txids=set())
+
+    def test_a_load_that_ends_after_its_round(self):
+        load, first = self.load(), threading.Event()
+
+        def round_(load_, era):
+            load_.plutus_evidence.append(row("success", "a"))
+            first.set()
+            load_.stop.wait(0.001)
+        runner = pool_plutus.Runner(load, 3, round_).start()
+        first.wait(5)
+        evidence = runner.finish(timeout=5)
+        self.assertEqual((evidence.finished, evidence.stopped, evidence.ended), (True, True, None))
+        self.assertGreaterEqual(evidence.passes, 1)
+        failures, _ = pool_plutus.check(evidence, [], [], [])
+        self.assertFalse([f for f in failures if "stop" in f], failures)
+
+    def test_a_round_cut_short_by_the_stop_fails_the_run(self):
+        load, rounds, second = self.load(), [], threading.Event()
+
+        def round_(load_, era):
+            rounds.append(era)
+            if len(rounds) == 1:
+                load_.plutus_evidence.append(row("success", "a"))
+                return
+            second.set()
+            load_.stop.wait(5)  # the round under way ends only when the load is told to stop
+            load_.plutus_evidence.append(row("collateral", "b", passed=False))
+        runner = pool_plutus.Runner(load, 3, round_).start()
+        second.wait(5)
+        evidence = runner.finish(timeout=0.05, stop_timeout=5)
+        self.assertEqual((evidence.finished, evidence.stopped), (False, True))
+        self.assertEqual([r["case"] for r in evidence.rows], ["success", "collateral"])
+        failures, _ = pool_plutus.check(evidence, [], [], [])
+        self.assertIn("the Plutus load did not end its round in time and was stopped in the middle of one", failures)
+        self.assertTrue(any(f.startswith("1 Plutus cases did not pass") for f in failures), failures)
+
+    def test_a_thread_that_does_not_stop_fails_the_run_and_later_records_do_not_reach_the_evidence(self):
+        load, release, inside = self.load(), threading.Event(), threading.Event()
+
+        def round_(load_, era):
+            load_.plutus_evidence.append(row("success", "a"))
+            inside.set()
+            release.wait(5)  # deaf to the stop
+            load_.plutus_evidence.append(row("collateral", "b"))
+        runner = pool_plutus.Runner(load, 3, round_).start()
+        inside.wait(5)
+        evidence = runner.finish(timeout=0.01, stop_timeout=0.01)
+        release.set()
+        runner.thread.join(5)
+        self.assertEqual((evidence.finished, evidence.stopped), (False, False))
+        self.assertEqual(len(evidence.rows), 1)
+        self.assertEqual(len(load.plutus_evidence), 2)
+        failures, _ = pool_plutus.check(evidence, [], [], [])
+        self.assertIn("the Plutus load's thread did not stop when asked to; its evidence is what it had recorded",
+                      failures)
+
+
+class LostBlocksTest(unittest.TestCase):
+    """Every Scala-forged block that is not on the observer's chain is classified by the Haskell pools' own traces;
+    the three cases a timing rule cannot tell from a lost slot battle are refusals when a pool named the block."""
+    CHAIN = [(H["a"], 5, 1, []), (H["b"], 12, 2, []), (H["c"], 40, 3, []), (H["d"], 44, 4, [])]
+
+    @staticmethod
+    def forged(name, slot, number, prev, txs=()):
+        return {"event": "forged", "hash": H[name], "slot": slot, "blockNo": number, "prev": prev and H[prev],
+                "txs": list(txs)}
+
+    # a replacement within ten slots on the same parent, a block on a parent that left the chain too, and a block at a
+    # height the observer had not reached when its chain was read
+    BLIND_SPOTS = (("w", 35, 3, "b"), ("z", 43, 4, "y"), ("v", 50, 5, "d"))
+
+    def test_a_block_a_haskell_pool_named_as_invalid_is_refused_wherever_the_chain_put_its_height(self):
+        for spot in self.BLIND_SPOTS:
+            with self.subTest(block=spot[0]):
+                (lost,) = pool_plutus.lost_blocks([self.forged(*spot, ["t"])], self.CHAIN, {"t"}, {H[spot[0]]}, set())
+                self.assertEqual((lost["class"], lost["plutusTxs"]), (pool_plutus.REFUSED, 1))
+
+    def test_without_a_trace_a_lost_block_is_unconfirmed_and_with_a_tip_change_it_was_adopted(self):
+        forged = [self.forged("a", 5, 1, None), self.forged("x", 12, 2, "a", ["t", "pay"])] + \
+            [self.forged(*spot) for spot in self.BLIND_SPOTS]
+        lost = pool_plutus.lost_blocks(forged, self.CHAIN, {"t"}, set(), {H["w"]})
+        self.assertEqual([(NAME[b["hash"]], b["class"]) for b in lost],
+                         [("x", pool_plutus.UNCONFIRMED), ("w", pool_plutus.ADOPTED), ("z", pool_plutus.UNCONFIRMED),
+                          ("v", pool_plutus.UNCONFIRMED)])
+        self.assertEqual([(NAME[b["hash"]], b["chainSlotAtHeight"], b["slotsLater"], b["parentOnChain"], b["afterChainRead"])
+                          for b in lost],
+                         [("x", 12, 0, True, False), ("w", 40, 5, True, False), ("z", 44, 1, False, False),
+                          ("v", None, None, True, True)])
+
+    def test_a_refused_block_fails_the_run_and_an_unconfirmed_one_is_reported(self):
+        # the load's transactions "a" and "d" (ROWS)
+        forged = [self.forged("a", 5, 1, None), self.forged("w", 35, 3, "b", ["a"]), self.forged("z", 43, 4, "y", ["d"])]
+        runner = CheckTest().runner([])
+        failures, summary = pool_plutus.check(runner, self.CHAIN, forged, [], {H["w"]}, set())
+        self.assertTrue(any(f.startswith("the Haskell pools refused 1 Scala-forged blocks") for f in failures), failures)
+        self.assertEqual(summary["lostScalaBlocksByClass"],
+                         {pool_plutus.REFUSED: 1, pool_plutus.ADOPTED: 0, pool_plutus.UNCONFIRMED: 1})
+        self.assertEqual(summary["unconfirmedWithPlutus"], 1)
+
+
+class BlockKindsTest(unittest.TestCase):
+    """Each Scala-forged block's timing class comes from its own contents, a lost one's too."""
+    CHAIN = [(H["a"], 5, 1, [("pay", True, False)]), (H["b"], 12, 2, [("t", True, True)])]
+
+    @staticmethod
+    def evidence(stopped=True):
+        return dataclasses.replace(CheckTest().runner([], stopped=stopped), plutus_txids=frozenset({"t", "u"}))
+
+    def forged(self, name, txs):
+        event = {"event": "forged", "hash": H[name], "slot": 1, "blockNo": 1, "prev": None}
+        return event if txs is None else {**event, "txs": txs}
+
+    def test_on_the_chain_by_the_bytes_and_lost_by_the_transactions_the_load_submitted(self):
+        forged = [self.forged("a", ["pay"]), self.forged("b", ["t"]), self.forged("x", ["u", "pay"]),
+                  self.forged("y", ["pay"]), self.forged("z", None)]
+        self.assertEqual(pool_plutus.block_kinds(forged, self.CHAIN, self.evidence()),
+                         {H["a"]: "withoutPlutus", H["b"]: "withPlutus", H["x"]: "withPlutus", H["y"]: "withoutPlutus",
+                          H["z"]: "unknown"})
+
+    def test_a_lost_block_is_unknown_when_the_load_may_not_have_recorded_every_submission(self):
+        forged = [self.forged("x", ["u"]), self.forged("y", ["pay"])]
+        self.assertEqual(pool_plutus.block_kinds(forged, None, self.evidence(stopped=False)),
+                         {H["x"]: "withPlutus", H["y"]: "unknown"})
+
+    def test_the_load_records_every_plutus_transaction_before_it_goes_out(self):
+        plain = enc([{0: [], 1: [], 2: 1}, {0: []}, True, None])
+        plutus = enc([{0: [], 1: [], 2: 1}, {0: [], 5: {(0, 0): [0, [1, 2]]}}, False, None])
+        self.assertEqual((ntclocal.has_redeemers(plain), ntclocal.has_redeemers(plutus)), (False, True))
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(pool_plutus.eraload.EraLoad, "submit", return_value=False):
+            load = pool_plutus.Load("n", pathlib.Path(d), "/sock", "/scala.sock")
+            load.submit("conway", plain, "transfer")
+            load.submit("conway", plutus, "legacy-plutus-conway-v1-collateral")
+            load.out.close()
+        self.assertEqual(load.plutus_txids, {ntclocal.raw_tx_id(plutus).hex()})
+
+
+class ForgeTimingTest(unittest.TestCase):
+    SHELLEY = {"systemStart": "2026-01-01T00:00:00Z", "slotLength": 0.1}
+
+    @staticmethod
+    def at(seconds):
+        return f"2026-01-01T00:00:{seconds:09.6f}Z"
+
+    def slot(self, slot, offsets, hash_, latency):
+        start = slot * 0.1
+        names = ("startLeadershipCheck", "nodeIsLeader", "forgedBlock", "forged", "adoptedBlock")
+        events = [{"event": n, "at": self.at(start + o / 1000), "slot": slot, **({"hash": hash_} if n == "forged" else {})}
+                  for n, o in zip(names, offsets)]
+        return events + [{"event": "adopted", "at": self.at(start + offsets[-1] / 1000), "block": {"hash": hash_},
+                          "latencyMs": latency}]
+
+    def test_each_phase_of_a_forged_slot_and_the_split_by_plutus_blocks(self):
+        events = self.slot(10, (2, 4, 20, 21, 50), "p", 50) + self.slot(30, (1, 2, 6, 7, 12), "q", 12)
+        events.append({"event": "startLeadershipCheck", "at": self.at(3.1), "slot": 31})
+        timing = pool.forge_timing(events, self.SHELLEY, {"p": pool_plutus.WITH_PLUTUS, "q": pool_plutus.WITHOUT_PLUTUS})
+        self.assertEqual({k: v["max"] for k, v in timing["withPlutus"].items()},
+                         {"toForged": 21, "checkToForgedBlock": 18, "leaderToForgedBlock": 16, "forgedToAdopted": 29,
+                          "adoptedLatency": 50})
+        self.assertEqual({k: v["max"] for k, v in timing["withoutPlutus"].items()},
+                         {"toForged": 7, "checkToForgedBlock": 5, "leaderToForgedBlock": 4, "forgedToAdopted": 5,
+                          "adoptedLatency": 12})
+        self.assertEqual(timing["all"]["toForged"]["n"], 2)
+        self.assertIsNone(timing["unknown"]["toForged"])
+
+    def test_without_plutus_hashes_only_the_whole_and_missing_traces_are_left_out(self):
+        events = [e for e in self.slot(10, (2, 4, 20, 21, 50), "p", 50) if e["event"] != "nodeIsLeader"]
+        timing = pool.forge_timing(events, self.SHELLEY)
+        self.assertEqual(set(timing), {"all"})
+        self.assertIsNone(timing["all"]["leaderToForgedBlock"])
+        self.assertEqual(timing["all"]["checkToForgedBlock"]["n"], 1)
+
+
+class SpreadTest(unittest.TestCase):
+    def test_order_statistics(self):
+        self.assertEqual(util.spread(range(20, 0, -1)), {"n": 20, "median": 11, "p95": 20, "max": 20, "mean": 10})
+        self.assertEqual(util.spread([0.1234, 2.5], 2), {"n": 2, "median": 2.5, "p95": 2.5, "max": 2.5, "mean": 1.31})
+        self.assertIsNone(util.spread([]))
+
+
+class ReasonKindTest(unittest.TestCase):
+    def test_the_rule_without_the_transaction_or_the_script_details(self):
+        self.assertEqual(pool_plutus.reason_kind("tx 0123abcd violates ValidationTagMismatch: Utxow(Utxo(Utxos("
+                                                 "ValidationTagMismatch(false,None))))"),
+                         "violates ValidationTagMismatch: Utxow(Utxo(Utxos(ValidationTagMismatch(false")
+        self.assertEqual(pool_plutus.reason_kind("the mempool is full"), "the mempool is full")
+
+
+class TraceOptionsTest(unittest.TestCase):
+    """The Haskell pools' trace options: the defaults of cardano-node 11.1.3 and `InvalidBlock`."""
+
+    def test_the_pool_options_are_the_defaults_and_one_entry(self):
+        options = reference_tracing.POOL_TRACE_OPTIONS
+        self.assertEqual({k: v for k, v in options.items() if k != reference_tracing.INVALID_BLOCK},
+                         reference_tracing.DEFAULT_TRACE_OPTIONS)
+        self.assertEqual(options[reference_tracing.INVALID_BLOCK], {"severity": "Info"})
+
+    def test_every_trace_the_harness_reads_is_emitted_and_invalid_block_was_not_before(self):
+        for namespace, severity in reference_tracing.READ.items():
+            with self.subTest(namespace=namespace):
+                self.assertTrue(reference_tracing.emitted(reference_tracing.POOL_TRACE_OPTIONS, namespace, severity))
+        self.assertFalse(reference_tracing.emitted(reference_tracing.DEFAULT_TRACE_OPTIONS,
+                                                   reference_tracing.INVALID_BLOCK, "Notice"))
+
+    def test_every_other_namespace_keeps_its_default_options(self):
+        # namespaces of the 11.1.3 documentation under each default entry, the root and the entry's own siblings
+        namespaces = ["Forge.Loop.StartLeadershipCheck", "Forge.Loop.NodeNotLeader", "Mempool.AddedTx",
+                      "Mempool.RejectedTx", "ChainDB.AddBlockEvent.AddedToCurrentChain",
+                      "ChainDB.AddBlockEvent.AddedBlockToQueue", "ChainDB.AddBlockEvent.AddBlockValidation.ValidCandidate",
+                      "ChainDB.AddBlockEvent.AddBlockValidation.CandidateContainsFutureBlocks",
+                      "ChainDB.AddBlockEvent.AddBlockValidation.UpdateLedgerDb", "BlockFetch.Decision.Decline",
+                      "Net.PeerSelection.Selection", "Net.Mux.Local.CleanExit", "Startup.Info", "Resources"]
+        for namespace in namespaces:
+            for kind in ("severity", "detail", "backends", "maxFrequency"):
+                with self.subTest(namespace=namespace, kind=kind):
+                    self.assertEqual(reference_tracing.effective(reference_tracing.POOL_TRACE_OPTIONS, namespace, kind),
+                                     reference_tracing.effective(reference_tracing.DEFAULT_TRACE_OPTIONS, namespace, kind))
+        self.assertEqual(reference_tracing.effective(reference_tracing.POOL_TRACE_OPTIONS,
+                                                     "ChainDB.AddBlockEvent.AddBlockValidation.ValidCandidate", "severity"),
+                         "Silence")
+        self.assertEqual(reference_tracing.effective(reference_tracing.POOL_TRACE_OPTIONS,
+                                                     reference_tracing.INVALID_BLOCK, "backends"),
+                         ["Stdout MachineFormat", "EKGBackend"])
+
+    def test_a_configuration_that_sets_trace_options_is_refused(self):
+        self.assertEqual(reference_tracing.pool_configuration({"Protocol": "Cardano", "TraceOptions": {}})["TraceOptions"],
+                         reference_tracing.POOL_TRACE_OPTIONS)
+        with self.assertRaises(ValueError):
+            reference_tracing.pool_configuration({"TraceOptions": {"Mempool": {"severity": "Debug"}}})
+
+    def test_the_pools_get_the_options_before_they_start_from_a_reference_of_the_pinned_version(self):
+        written = {}
+        version = types.SimpleNamespace(stdout="cardano-node 11.1.3 - linux-x86_64 - ghc-9.6\ngit rev 938cba99\n")
+        with patch.object(pool, "in_ref", return_value=version), \
+                patch.object(pool, "read_json", return_value={"Protocol": "Cardano", "TraceOptions": {}}), \
+                patch.object(pool, "put_file", side_effect=lambda name, path, text: written.update({path: text})):
+            pool.pool_trace_options("n")
+        self.assertEqual(json.loads(written[f"{pool.ENV}/configuration.yaml"])["TraceOptions"],
+                         reference_tracing.POOL_TRACE_OPTIONS)
+        with patch.object(pool, "in_ref", return_value=types.SimpleNamespace(stdout="cardano-node 11.2.0 - linux\n")), \
+                self.assertRaises(SystemExit):
+            pool.pool_trace_options("n")
+
+    def test_the_pool_scenario_sets_the_options_right_after_the_environment(self):
+        calls = []
+        args = types.SimpleNamespace(name="n", pool=1, keep=False)
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(pool, "data_root", return_value=pathlib.Path(d) / "run"), \
+                patch.object(pool, "start_reference"), patch.object(pool, "host_load", return_value={}), \
+                patch.object(pool, "pool_environment", side_effect=lambda a: calls.append("environment") or ({}, {})), \
+                patch.object(pool, "pool_trace_options",
+                             side_effect=lambda name: calls.append("traceOptions") or (_ for _ in ()).throw(SystemExit("stop"))), \
+                patch.object(pool, "docker", return_value=types.SimpleNamespace(returncode=0, stdout="", stderr="")), \
+                patch.object(pool, "keep_reference_logs"), patch.object(util, "SOCKET", util.SOCKET), \
+                contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+            pool.pool(args)
+        self.assertEqual(calls, ["environment", "traceOptions"])
+
+
+def point_show(slot, h):
+    """A `Point` as `show` gives it (ouroboros-network-api), with a header hash shown as bare hex (`OneEraHash`)."""
+    return f"Point (At (Block {{blockPointSlot = SlotNo {slot}, blockPointHash = {h}}}))"
+
+
+def tip_show(slot, h, number):
+    return f"Tip (SlotNo {slot}) {h} (BlockNo {number})"
+
+
+def client_exception(text):
+    return json.dumps({"at": "2026-11-13T22:00:01Z", "ns": reference_tracing.CLIENT_EXCEPTION,
+                       "data": {"kind": "Exception", "exception": text}, "sev": "Warning"})
+
+
+class LogViewTest(unittest.TestCase):
+    INVALID = json.dumps({"at": "2026-11-13T22:00:00Z", "ns": reference_tracing.INVALID_BLOCK,
+                          "data": {"kind": "InvalidBlock", "block": {"kind": "Point", "slot": 35, "hash": H["w"]},
+                                   "error": f"ValidationTagMismatch in a block whose parent is {H['b']}"}})
+    TIP = json.dumps({"ns": "ChainDB.AddBlockEvent.AddedToCurrentChain",
+                      "data": {"kind": "AddedToCurrentChain", "newtip": f"{H['x']}@12", "headers": []}})
+    FORK = json.dumps({"ns": "ChainDB.AddBlockEvent.SwitchedToAFork",
+                       "data": {"kind": "TraceAddBlockEvent.SwitchedToAFork", "newtip": f"{H['y']}@41"}})
+    # a header refused at validation, before its body was fetched: no `InvalidBlock` anywhere on the line
+    HEADER_ERROR = client_exception(
+        f"HeaderError ({point_show(43, H['z'])}) (HeaderProtocolError (HardForkValidationErrFromEra (S (S (S (S (S (S "
+        f"(Z (WrapValidationErr {{unwrapValidationErr = VRFKeyBadProof (SlotNo 43)}}))))))))) "
+        f"(Our ({tip_show(41, H['y'], 4)})) (Their ({tip_show(43, H['z'], 5)}))")
+    # the invalid block is the second argument; the first is the point that triggered the check
+    INVALID_EXCEPTION = client_exception(
+        f"InvalidBlock ({point_show(44, H['d'])}) {H['v']} (ExtValidationErrorLedger (HardForkLedgerErrorFromEra "
+        f"(BadInputsUTxO (fromList [TxIn (TxId {{unTxId = SafeHash \"{H['c']}\"}}) (TxIx 0)]))))")
+    CLOCK_SKEW = client_exception(
+        f"InFutureHeaderExceedsClockSkew (FarFutureHeaderException {{ageUponArrival = -0.6s, arrivedPoint = RealPoint "
+        f"(SlotNo 52) {H['a']}, arrivalTime = RelativeTime 4.6s, tolerableClockSkew = 0.25s}})")
+    INTERSECTION = client_exception(
+        f"InvalidIntersection ({point_show(40, H['b'])}) (Our ({tip_show(41, H['y'], 4)})) (Their ({tip_show(40, H['b'], 3)}))")
+    PUNISHMENT = json.dumps({"ns": "Net.ConnectionManager.Remote.ConnectionHandler.Error",
+                             "data": {"kind": "Error", "error": "PeerSentAnInvalidBlockException"}})
+
+    def test_each_refusal_blames_the_block_its_known_field_names(self):
+        # the node's start-up text and the dispatcher's echo of its trace options name `InvalidBlock` too, as text
+        echo = json.dumps({"ns": "Reflection.TracerInfoConfig",
+                           "data": {"conf": {"Options": {reference_tracing.INVALID_BLOCK: {"severity": "Info"}}}}})
+        view = reference_tracing.log_view(["Node configuration: NodeConfiguration {InvalidBlock in its text}", echo,
+                                           self.INVALID + "\n", self.TIP, self.FORK, self.HEADER_ERROR,
+                                           self.INVALID_EXCEPTION, self.CLOCK_SKEW, self.INTERSECTION, self.PUNISHMENT,
+                                           json.dumps({"ns": "Forge.Loop.ForgedBlock", "data": {"block": H["v"]}})])
+        # not the parent in an error text, not either tip of a header error, not the point that triggered a check
+        self.assertEqual(view["refused"], {H["w"], H["z"], H["v"], H["a"]})
+        self.assertEqual(view["unattributed"], 2)
+        self.assertEqual(view["tips"], {H["x"], H["y"]})
+        self.assertEqual(len(view["invalid"]), 5)
+        self.assertEqual(view["counts"], {reference_tracing.INVALID_BLOCK: 1, "ChainDB.AddBlockEvent.AddedToCurrentChain": 1,
+                                          "ChainDB.AddBlockEvent.SwitchedToAFork": 1, reference_tracing.CLIENT_EXCEPTION: 4})
+
+    def test_a_run_healthy_but_for_one_refused_header_fails(self):
+        view = reference_tracing.log_view([self.TIP, self.HEADER_ERROR])
+        self.assertEqual((view["refused"], view["unattributed"]), ({H["z"]}, 0))
+        self.assertEqual(pool.reference_invalid_blocks({"pool2": view}), {"pool2": [self.HEADER_ERROR[:600]]})
+        # the refused block is the Scala node's block at slot 43, which is not on the observer's chain
+        forged = [LostBlocksTest.forged("a", 5, 1, None), LostBlocksTest.forged("z", 43, 4, "y")]
+        failures, summary = pool_plutus.check(CheckTest().runner(CheckTest().judgements()), LostBlocksTest.CHAIN, forged,
+                                              [], view["refused"], view["tips"])
+        self.assertEqual([b["class"] for b in summary["lostScalaBlocks"]], [pool_plutus.REFUSED])
+        self.assertTrue(any(f.startswith("the Haskell pools refused 1 Scala-forged blocks") for f in failures), failures)
+
+    def test_an_exception_whose_argument_cannot_be_read_is_an_unattributed_refusal(self):
+        view = reference_tracing.log_view([client_exception("HeaderError (garbled"),
+                                           client_exception(f"InvalidBlock ({point_show(44, H['d'])})")])
+        self.assertEqual((view["refused"], view["unattributed"], len(view["invalid"])), (set(), 2, 2))
+
+    def test_a_log_that_cannot_be_read(self):
+        logs = {"/work/node2.log": [self.TIP + "\n"]}
+
+        class Read:
+            def __init__(self, command, **kwargs):
+                self.stdout = iter(logs.get(command[-1], []))
+                self.returncode = 0 if command[-1] in logs else 1
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+        with patch.object(pool.subprocess, "Popen", Read):
+            self.assertEqual(pool.read_reference_log("n", 2), [self.TIP + "\n"])
+            self.assertIsNone(pool.read_reference_log("n", 1))
+
+
+CUTOFF = "2026-11-13T22:10:00Z"
+POOL_PORTS = {34327, 40957}
+
+
+def session(ns, local, remote, at="2026-11-13T22:10:01Z", **data):
+    ports = {"localAddress": {"address": "127.0.0.1", "port": str(local)},
+             "remoteAddress": {"address": "127.0.0.1", "port": str(remote)}}
+    return json.dumps({"at": at, "ns": ns, "data": {"connectionId": ports, **data}})
+
+
+# pool 2's connections: to pool 3, its own to the Scala node's listener, the Scala node's to it
+HANDSHAKES = [session(reference_tracing.HANDSHAKE, 34327, port, at="2026-11-13T22:00:00Z") for port in (40957, 3350, 41018)]
+ENDED = [session(reference_tracing.HANDLER_ERROR, 34327, port, connectionHandler={"command": "ShutdownPeer"})
+         for port in (3350, 41018)]
+
+
+class ScalaSessionsTest(unittest.TestCase):
+    def test_the_connections_with_the_scala_node_end_with_the_handlers_error(self):
+        self.assertEqual(reference_tracing.scala_sessions(HANDSHAKES, POOL_PORTS, CUTOFF),
+                         (["127.0.0.1:34327 127.0.0.1:3350", "127.0.0.1:34327 127.0.0.1:41018"], 2))
+        # the mux's Dead after the cutoff comes before its threads are cancelled: not an end
+        dead = json.dumps({"at": "2026-11-13T22:10:01Z", "ns": reference_tracing.MUX_STATE,
+                           "data": {"bearer": {"connectionId": "127.0.0.1:34327 127.0.0.1:3350"},
+                                    "event": {"kind": "Mux.TraceState", "state": "Dead"}}})
+        self.assertEqual(reference_tracing.scala_sessions(HANDSHAKES + [dead, ENDED[1]], POOL_PORTS, CUTOFF)[0],
+                         ["127.0.0.1:34327 127.0.0.1:3350"])
+        self.assertEqual(reference_tracing.scala_sessions(HANDSHAKES + ENDED, POOL_PORTS, CUTOFF), ([], 2))
+        # one that ended before the cutoff, by its mux alone, is ended
+        earlier = dead.replace("22:10:01", "22:05:00")
+        self.assertEqual(reference_tracing.scala_sessions(HANDSHAKES + [earlier, ENDED[1]], POOL_PORTS, CUTOFF), ([], 2))
+
+
+class DrainTest(unittest.TestCase):
+    """The pools' logs are read behind a barrier once the Scala node has stopped."""
+
+    @staticmethod
+    def rejected(marker):
+        return json.dumps({"at": "2026-11-13T22:10:00Z", "ns": "Mempool.RejectedTx",
+                           "data": {"kind": "TraceMempoolRejectedTx", "mempoolSize": {"bytes": 0, "numTxs": 0},
+                                    "tx": {"txid": marker}}, "sev": "Info"})
+
+    def test_a_refusal_traced_after_the_first_read_is_read(self):
+        # pool 2 had not written its refusal of the Scala node's last header when it was first read
+        reads = {2: [[LogViewTest.TIP], [LogViewTest.TIP], [LogViewTest.TIP, LogViewTest.HEADER_ERROR, self.rejected("m2")]],
+                 3: [[LogViewTest.TIP], [LogViewTest.TIP, self.rejected("m3")]]}
+        tips = {2: [{"block": 5}, {"block": 7}], 3: [{"block": 6}]}
+        calls = []
+
+        def read(n):
+            calls.append(n)
+            return reads[n].pop(0)
+        views, why = pool.drain_reference_logs([2, 3], 5, lambda n: tips[n].pop(0) if len(tips[n]) > 1 else tips[n][0],
+                                               lambda n: f"m{n}", read, POOL_PORTS, CUTOFF, timeout=5, pause=0)
+        self.assertIsNone(why)
+        self.assertEqual(views["pool2"]["refused"], {H["z"]})
+        self.assertEqual(calls, [2, 3, 2, 2, 3])
+
+    def test_without_a_pool_past_the_last_block_or_its_marker_the_read_is_inconclusive(self):
+        views, why = pool.drain_reference_logs([2], 5, lambda n: {"block": 5}, lambda n: "m", lambda n: [],
+                                               POOL_PORTS, CUTOFF, timeout=0.05, pause=0.01)
+        self.assertEqual((views, why), (None, "pool2 did not pass block 5, the Scala node's last, within 0.05 s"))
+        views, why = pool.drain_reference_logs([2], 5, lambda n: {"block": 6}, lambda n: "m", lambda n: [self.rejected("x")],
+                                               POOL_PORTS, CUTOFF, timeout=0.05, pause=0.01)
+        self.assertEqual(why, "the log of pool2 did not show the refusal of the marker m within 0.05 s")
+        views, why = pool.drain_reference_logs([2], 5, lambda n: {"block": 6}, lambda n: "m", lambda n: None, POOL_PORTS,
+                                               CUTOFF, timeout=1)
+        self.assertEqual(why, "the log of pool2 could not be read")
+
+    def test_a_header_refused_after_the_tip_passed_and_before_the_sessions_ended_is_read(self):
+        # the pool's tip is past the Scala node's last block from the start, but its ChainSync client for the Scala
+        # node is still validating a header: the refusal comes two reads later, before the connections' end
+        log = list(HANDSHAKES)
+        script = [[], [LogViewTest.HEADER_ERROR], ENDED]
+
+        def read(n):
+            if script:
+                log.extend(script.pop(0))
+            return list(log)
+
+        def submit(n):
+            log.append(self.rejected("m2"))
+            return "m2"
+        views, why = pool.drain_reference_logs([2], 5, lambda n: {"block": 9}, submit, read, POOL_PORTS, CUTOFF,
+                                               timeout=5, pause=0)
+        self.assertIsNone(why)
+        self.assertEqual((views["pool2"]["refused"], views["pool2"]["scalaConnectionsEnded"]), ({H["z"]}, 2))
+        self.assertLess(log.index(LogViewTest.HEADER_ERROR), log.index(self.rejected("m2")))
+
+    def test_connections_with_the_scala_node_still_open_make_the_read_inconclusive(self):
+        views, why = pool.drain_reference_logs([2], 5, lambda n: {"block": 6}, lambda n: "m", lambda n: list(HANDSHAKES),
+                                               POOL_PORTS, CUTOFF, timeout=0.05, pause=0.01)
+        self.assertIsNone(views)
+        self.assertTrue(why.startswith("pool2 still shows connections with the Scala node open after 0.05 s"), why)
+
+    def test_the_marker_is_the_refusal_of_a_transaction_of_its_own(self):
+        tx, marker = pool.marker_transaction()
+        self.assertEqual(marker, ntclocal.raw_tx_id(tx).hex()[:8])
+        self.assertNotEqual(marker, pool.marker_transaction()[1])
+        self.assertTrue(pool.marker_seen(["x", self.rejected(marker)], marker))
+        self.assertFalse(pool.marker_seen([self.rejected("0" * 8)], marker))
+        self.assertFalse(pool.marker_seen([json.dumps({"ns": "Mempool.AddedTx", "data": {"tx": {"txid": marker}}})], marker))
+
+
+class OracleWindowTest(unittest.TestCase):
+    """The oracle's window ends at the forging cutoff, not at the last event of the node's shutdown."""
+    SHELLEY = {"systemStart": "2026-01-01T00:00:00Z", "slotLength": 0.1, "epochLength": 500}
+
+    @staticmethod
+    def at(slot):
+        return f"2026-01-01T00:00:{slot / 10:09.6f}Z"
+
+    def events(self):
+        events = [{"event": "extended", "at": self.at(10), "block": {"slot": 10, "hash": "x"}},
+                  {"event": "forged", "at": self.at(50), "slot": 50, "hash": "f"}]
+        events += [{"event": "startLeadershipCheck", "at": self.at(s), "slot": s} for s in range(11, 101)]
+        # the cutoff at slot 100; the shutdown snapshot two seconds later
+        return events + [{"event": "shutdownSnapshot", "at": self.at(120), "written": True}]
+
+    def test_the_shutdown_after_the_cutoff_is_not_time_the_node_should_have_forged(self):
+        r = pool.missed_leader_slots(self.events(), {0: [50, 110]}, self.SHELLEY, until=self.at(100))
+        self.assertEqual((r["window"], r["scheduled"], r["missed"]), ([11, 98], 1, []))
+        # without the cutoff the window would run to the shutdown's last event and miss slot 110
+        r = pool.missed_leader_slots(self.events(), {0: [50, 110]}, self.SHELLEY)
+        self.assertEqual((r["window"], r["missed"]), ([11, 118], [110]))
+
+
+class EndPhaseTest(unittest.TestCase):
+    def test_the_settling_ends_when_the_pools_agree(self):
+        readings = iter([{"hash": H["a"], "epoch": 4}, {"hash": H["b"], "epoch": 5},
+                         {"hash": H["c"], "epoch": 5}, {"hash": H["c"], "epoch": 5}])
+        with patch.object(pool, "tip_at", side_effect=lambda name, socket: next(readings)), \
+                patch.object(pool.time, "sleep"):
+            tips = pool.settled_tips("n", [2, 3])
+        self.assertEqual(tips["pool2"]["hash"], tips["pool3"]["hash"])
+
+    def test_the_forgers_counters_or_what_came_instead(self):
+        answers = iter([subprocess.CompletedProcess([], 0, '{"total": {"forged": 3}}', ""),
+                        subprocess.CompletedProcess([], 1, "", "no such container")])
+        with patch.object(pool, "docker", side_effect=lambda *a, **k: next(answers)):
+            self.assertEqual(pool.forging_counters("n", "fetch"), ({"total": {"forged": 3}}, None))
+            self.assertEqual(pool.forging_counters("n", "fetch"), (None, "'' 'no such container'"))
+
+
+class ScheduleCollectorTest(unittest.TestCase):
+    """The schedules are taken in a thread of their own while the scenario's flow blocks."""
+
+    def test_epochs_crossed_while_the_flow_blocks_get_their_schedule(self):
+        tips = iter([None, {"epoch": 0}, {"epoch": 0}, {"epoch": 1}, {"epoch": 2}])
+        taken, third = [], threading.Event()
+
+        def read_tip():
+            tip = next(tips, {"epoch": 2})
+            if tip is None:
+                raise RuntimeError("the observer did not answer")
+            return tip
+
+        def take(tip):
+            if tip["epoch"] not in taken:
+                taken.append(tip["epoch"])
+            if tip["epoch"] == 2:
+                third.set()
+        collector = pool.ScheduleCollector(read_tip, take, every=0).start()
+        # the scenario's flow, blocked meanwhile (a Plutus round, a settling): the collector goes on
+        self.assertTrue(third.wait(5))
+        collector.stop(timeout=5)
+        self.assertEqual(taken, [0, 1, 2])
+        self.assertEqual(collector.errors, ["RuntimeError('the observer did not answer')"])
+        self.assertFalse(collector.thread.is_alive())
+
+
+if __name__ == "__main__":
+    unittest.main()

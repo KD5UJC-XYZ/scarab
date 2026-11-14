@@ -23,7 +23,7 @@ class NodeToClientAcceptDefectSuite extends FailsOnUncaught:
   /** A socket this test cannot set up fails the test, as the node refuses its start. */
   private given Raise[IO, DiffusionFailure] with
     def functor: Functor[IO] = Functor[IO]
-    def raise[E <: DiffusionFailure, A](e: E): IO[A] = IO(fail(e.shown))
+    def raise[E <: DiffusionFailure, A](e: E): IO[A] = IO(fail(e.show))
 
   private val magic = 42L
   private val cause = new IllegalStateException("injected decoder defect")

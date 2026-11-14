@@ -707,6 +707,54 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
   laws("BlocksMade", arb[BlocksMade], blocksMade)
   laws("ConwayGovState", StateGen.conwayGov, conwayGovState)
   laws("Proposals", StateGen.proposals, proposals)
+
+  test("a state's proposals are rebuilt as mkProposals rebuilds them") {
+    // `decSharePlusCBOR` of `Proposals` (cardano-ledger f649f975,
+    // `eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs:401-406`) keeps the first
+    // of two actions with one id (`OMap.|>`, `libs/cardano-data/src/Data/OMap/Strict.hs:179-188`)
+    // and runs `mkProposals` (`:338-354`), which fails on an action that `runProposalsAddAction`
+    // (`:305-334`) cannot add: one of a lineage whose previous action is neither the lineage's
+    // root nor an action of the lineage before it.
+    given ProtVer = version(9)
+    def id(n: Int) = xyz.kd5ujc.scarab.ledger.GovActionId(Bytes.wrap(Array.fill(32)(n.toByte)), 0)
+    def gas(n: Int, action: xyz.kd5ujc.scarab.ledger.GovAction, proposedIn: Int = 1) =
+      xyz.kd5ujc.scarab.ledger.GovActionState(
+        id(n),
+        Map.empty,
+        Map.empty,
+        Map.empty,
+        xyz.kd5ujc.scarab.ledger.Proposal(
+          0,
+          xyz.kd5ujc.scarab.ledger.RewardAccount(
+            0,
+            xyz.kd5ujc.scarab.ledger.Credential.Key(Bytes.wrap(Array.fill(28)(9.toByte)))
+          ),
+          action
+        ),
+        proposedIn,
+        proposedIn + 6
+      )
+    def hardFork(previous: Option[Int]) =
+      xyz.kd5ujc.scarab.ledger.GovAction.HardFork(previous.map(id), 10, 0)
+    val roots = xyz.kd5ujc.scarab.ledger.PrevIds(hardFork = Some(id(1)))
+    def encoded(actions: xyz.kd5ujc.scarab.ledger.GovActionState*) =
+      proposals.encodeUnchecked(xyz.kd5ujc.scarab.ledger.Proposals(actions.toVector, roots))
+    def unattached(n: Int) =
+      Kind.Domain(xyz.kd5ujc.scarab.ledger.ProposalsError.Unattached(id(n)))
+    val info = gas(2, xyz.kd5ujc.scarab.ledger.GovAction.Info)
+    val first = gas(3, hardFork(Some(1)))
+    val second = gas(4, hardFork(Some(3)))
+    val chain = Vector(info, first, second)
+    assertEquals(readOk(proposals, encoded(chain*)).actions, chain)
+    // a child before its parent, a parent of another lineage, a root that is not the lineage's
+    assertEquals(failure(proposals, encoded(info, second, first)).kind, unattached(4))
+    val crossed = gas(5, xyz.kd5ujc.scarab.ledger.GovAction.NoConfidence(Some(id(3))))
+    assertEquals(failure(proposals, encoded(first, crossed)).kind, unattached(5))
+    assertEquals(failure(proposals, encoded(gas(6, hardFork(None)))).kind, unattached(6))
+    // the first of two actions with one id is the one kept
+    val repeated = encoded(first, gas(3, hardFork(Some(1)), proposedIn = 2), second)
+    assertEquals(readOk(proposals, repeated).actions, Vector(first, second))
+  }
   laws("PulsingSnapshot", StateGen.pulsingSnapshot, pulsingSnapshot)
   laws("RatifyState", StateGen.ratifyState, ratifyState)
   laws("PoolParams", StateGen.poolParams, poolParams)

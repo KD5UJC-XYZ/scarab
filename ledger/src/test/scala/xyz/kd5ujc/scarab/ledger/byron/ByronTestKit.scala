@@ -27,14 +27,16 @@ object ByronTestKit:
           (n >> 8).toInt & 0xff,
           n.toInt & 0xff
         )
+    // linear copying: `ByronCbor.concat` copies what it has joined at each item, which a
+    // transaction of tens of thousands of outputs makes quadratic
+    private def join(items: Seq[Bytes]): Bytes = Bytes.wrap(Array.concat(items.map(_.toArray)*))
     def uint(n: Long): Bytes = head(0, n)
     def bytes(b: Bytes): Bytes = head(2, b.size) ++ b
     def text(s: String): Bytes = head(3, s.length) ++ Bytes.fromArray(s.getBytes("UTF-8"))
-    def arr(items: Bytes*): Bytes = head(4, items.size) ++ ByronCbor.concat(items*)
-    def indef(items: Bytes*): Bytes =
-      ByronCbor.of(0x9f) ++ ByronCbor.concat(items*) ++ ByronCbor.of(0xff)
+    def arr(items: Bytes*): Bytes = join(head(4, items.size) +: items)
+    def indef(items: Bytes*): Bytes = join((ByronCbor.of(0x9f) +: items) :+ ByronCbor.of(0xff))
     def map(entries: (Bytes, Bytes)*): Bytes =
-      head(5, entries.size) ++ ByronCbor.concat(entries.flatMap((k, v) => Seq(k, v))*)
+      join(head(5, entries.size) +: entries.flatMap((k, v) => Seq(k, v)))
     def tag24(b: Bytes): Bytes = ByronCbor.of(0xd8, 0x18) ++ bytes(b)
     val `true`: Bytes = ByronCbor.of(0xf5)
     val `false`: Bytes = ByronCbor.of(0xf4)

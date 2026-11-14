@@ -352,28 +352,55 @@ object ByronLedger:
 
   // ---------------------------------------------------------------- transactions
 
-  private[scarab] def outputs(config: Config, tx: ByronTx): Either[ByronError, Unit] =
-    tx.outputs.traverse_ { out =>
-      ByronAddress
-        .decode(out.address)
-        .leftMap(ByronError.Decode(_))
-        .flatMap { a =>
-          for
-            _ <- Either.cond(
-              a.unknownAttributesLength < 128,
-              (),
-              ByronError.UnknownAttributes(ByronError.AttributeOwner.Address)
-            )
-            _ <- Either.cond(
-              a.networkMagic == config.addressMagic,
-              (),
-              ByronError.NetworkMagicMismatch(config.addressMagic, a.networkMagic)
-            )
-          yield ()
-        }
+  /** Every output's address, decoded as the reference decodes it with the transaction, before any
+    * rule is checked (`TxOut`'s `decCBOR`, cardano-ledger f649f975,
+    * `Cardano/Chain/UTxO/Tx.hs:216-219`; `Cardano/Chain/Common/Address.hs:172-176`).
+    */
+  private def outputAddresses(tx: ByronTx): Either[ByronError, Vector[ByronAddress]] =
+    tx.outputs.traverse(out => ByronAddress.decode(out.address).leftMap(ByronError.Decode(_)))
+
+  /** `validateTxOutNM` of every output in turn: its unknown attributes, then its network magic
+    * (`Cardano/Chain/UTxO/Validation.hs:253-255,280-295`).
+    */
+  private def outputRules(
+      config: Config,
+      addresses: Vector[ByronAddress]
+  ): Either[ByronError, Unit] =
+    addresses.traverse_ { a =>
+      for
+        _ <- Either.cond(
+          a.unknownAttributesLength < 128,
+          (),
+          ByronError.UnknownAttributes(ByronError.AttributeOwner.Address)
+        )
+        _ <- Either.cond(
+          a.networkMagic == config.addressMagic,
+          (),
+          ByronError.NetworkMagicMismatch(config.addressMagic, a.networkMagic)
+        )
+      yield ()
     }
 
-  /** `updateUTxOTxWitness`: the witnesses and the fee, then the UTxO update. */
+  private[scarab] def outputs(config: Config, tx: ByronTx): Either[ByronError, Unit] =
+    outputAddresses(tx).flatMap(outputRules(config, _))
+
+  /** The outputs of a transaction that `txOutputUTxO` indexes: it zips them with
+    * `[0 ..] :: [Word16]` (cardano-ledger f649f975, `Cardano/Chain/UTxO/UTxO.hs:176-185`), so the
+    * outputs past the first 65,536 enter neither the UTxO nor the output balance
+    * (`Cardano/Chain/UTxO/Validation.hs:202-204`). `validateTx` still checks every output's
+    * attributes and network magic (`Validation.hs:255`).
+    */
+  val IndexedOutputs: Int = 65536
+
+  /** `updateUTxOTxWitness` (cardano-ledger f649f975, `Cardano/Chain/UTxO/Validation.hs:373-397`),
+    * in its order: the address of every input (`UTxO.lookupAddress`, which refuses a missing input)
+    * and the witnesses zipped with them; `validateTxAux` (`Validation.hs:189-217`): the size, the
+    * minimum fee, the output balance, the input balance, the fee and the minimum it must reach;
+    * then `updateUTxOTx` (`Validation.hs:365-370`): the checks of `validateTx`
+    * (`Validation.hs:247-258`), the unknown transaction attributes and each output's attributes and
+    * network magic, and the union of the remaining UTxO with the outputs. The output addresses are
+    * decoded first, as the reference decodes them with the transaction ([[outputAddresses]]).
+    */
   def applyTx(
       config: Config,
       params: ByronParams,
@@ -383,6 +410,7 @@ object ByronLedger:
     val tx = aux.tx
     val inputSet = tx.inputs.toSet
     for
+      destinations <- outputAddresses(tx)
       resolved <- tx.inputs.traverse(i =>
         utxo.get(i).toRight(ByronError.MissingInput(i)).map(i -> _)
       )
@@ -400,40 +428,41 @@ object ByronLedger:
         (),
         ByronError.TxTooLarge(params.maxTxSize, aux.raw.size)
       )
-      _ <- Either.cond(
-        tx.attributesLength < 128,
-        (),
-        ByronError.UnknownAttributes(ByronError.AttributeOwner.Transaction)
-      )
-      _ <- outputs(config, tx)
       spent = inputSet.toVector.map(utxo)
+      indexed = tx.outputs.take(IndexedOutputs)
+      allRedeem = spent.forall(o => ByronAddress.decode(o.address).exists(_.isRedeem))
+      minFee <-
+        if allRedeem then Right(BigInt(0))
+        else params.txFeePolicy.minimumFee(aux.raw.size).leftMap(ByronError.FeeCalculation(_))
+      balanceOut = indexed.map(_.value).sum
+      _ <- Either.cond(
+        balanceOut <= MaxLovelace,
+        (),
+        ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.OutputBalance)
+      )
       balanceIn = spent.map(_.value).sum
-      balanceOut = tx.outputs.map(_.value).sum
       _ <- Either.cond(
         balanceIn <= MaxLovelace,
         (),
         ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.InputBalance)
       )
       _ <- Either.cond(
-        balanceOut <= MaxLovelace,
-        (),
-        ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.OutputBalance)
-      )
-      _ <- Either.cond(
         balanceIn >= balanceOut,
         (),
         ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.Fee)
       )
-      allRedeem = spent.forall(o => ByronAddress.decode(o.address).exists(_.isRedeem))
-      minFee <-
-        if allRedeem then Right(BigInt(0))
-        else params.txFeePolicy.minimumFee(aux.raw.size).leftMap(ByronError.FeeCalculation(_))
       _ <- Either.cond(
         balanceIn - balanceOut >= minFee,
         (),
         ByronError.FeeTooSmall(minFee, balanceIn - balanceOut)
       )
-      created = tx.outputs.zipWithIndex.map((o, ix) => TxIn(tx.id, ix) -> o)
+      _ <- Either.cond(
+        tx.attributesLength < 128,
+        (),
+        ByronError.UnknownAttributes(ByronError.AttributeOwner.Transaction)
+      )
+      _ <- outputRules(config, destinations)
+      created = indexed.zipWithIndex.map((o, ix) => TxIn(tx.id, ix) -> o)
       remaining = utxo -- inputSet
       _ <- Either.cond(
         created.forall((i, _) => !remaining.contains(i)),

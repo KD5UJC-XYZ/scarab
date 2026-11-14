@@ -295,24 +295,21 @@ class MainArgsSuite extends munit.FunSuite:
     assert(Main.parse(base ++ List("--plutus-vm")).isLeft)
   }
 
-  test("--forge is refused with --plutus-vm scarab, and taken with scalus (ADR 0027)") {
+  test(
+    "--forge is taken with either evaluator, in either order (ADR 0027, amendment of 2026-11-13)"
+  ) {
     import xyz.kd5ujc.scarab.plutus.PlutusVm
-    import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
     val keys = List("--forge", "--vrf-skey", "v", "--kes-skey", "k", "--opcert", "o")
-    for order <- List(keys ++ List("--plutus-vm", "scarab"), List("--plutus-vm", "scarab") ++ keys)
+    for
+      vm <- PlutusVm.values.toList
+      order <- List(keys ++ List("--plutus-vm", vm.name), List("--plutus-vm", vm.name) ++ keys)
     do
       Main.parse(base ++ order) match
-        case Left(
-              ConfigError(
-                ConfigProblem.WithUsage(ConfigProblem.PlutusVmForging(PlutusVm.Scarab), _)
-              )
-            ) =>
-          ()
-        case other => fail(s"$other")
-    assert(Main.parse(base ++ keys ++ List("--plutus-vm", "scalus")).exists(_.forge.isDefined))
-    assert(Main.parse(base ++ keys).exists(_.forge.isDefined))
+        case Right(options) =>
+          assert(options.forge.isDefined, s"$order: no forging options")
+          assertEquals(options.plutusVm, vm, s"$order")
+        case other => fail(s"$order: $other")
     assert(
-      ConfigProblem.PlutusVmForging(PlutusVm.Scarab).message.contains("--forge is refused"),
-      "the refusal says what is refused"
+      Main.parse(base ++ keys).exists(o => o.forge.isDefined && o.plutusVm == PlutusVm.Default)
     )
   }

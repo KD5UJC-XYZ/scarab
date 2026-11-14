@@ -21,6 +21,14 @@ The era-specific parameter and overlay checks, including the resolved Alonzo-to-
 proposal-translation difference (#884), are recorded with their source citations and regression
 evidence in [Ledger: Alonzo and Babbage](ledger-alonzo-babbage.md#evidence).
 
+Dated evidence (2026-11-13): the genesis quorum of a MIR certificate counts what the reference's
+`keyHashWitnessesTxWits` holds, the hashes of the vkey witnesses and the address roots of the
+bootstrap witnesses (cardano-ledger f649f975, `Shelley/Rules/Utxow.hs:295,449-471`, which Alonzo and
+Babbage call at `Alonzo/Rules/Utxow.hs:321,359` and `Babbage/Rules/Utxow.hs:302-305`;
+`Core.hs:538-544`); the vkey witnesses alone counted before. `ShelleyLedgerSuite` checks Shelley to
+Babbage with a case built from that definition: a quorum reached through a bootstrap witness whose
+root is a genesis delegate, and a short quorum that names that root.
+
 ## Explicitly unchecked or unconfirmed
 
 devnet only: no Shelley to Mary mainnet blocks are replayed (Preview starts in Alonzo); the Allegra/Mary minimum-output test is lenient for values with assets exactly as the 11.1.3 reference is (it differs from the specification text); small comparison counts per era

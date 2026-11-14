@@ -4,7 +4,8 @@ name: E2E devnet
 # The Scala node against the official Haskell cardano-node 11.1.3 in Docker: the expensive devnet
 # scenarios (soak, era walk, relay, pool, KES rotation, dynamic forging, node-to-client, restart), one job per scenario so
 # they run in parallel, each on its own standard 4 vCPU / 16 GB runner. A failing scenario does not stop
-# the others.
+# the others. The era walk runs two Scala followers in its cluster, one per Plutus evaluator (Scalus and
+# Scarab's own, `--plutus-vm`), on the same chain.
 on:
   schedule:
     - cron: '17 3 * * *'
@@ -29,9 +30,10 @@ jobs:
       matrix:
         include:
           - {scenario: soak, args: 'soak --seconds 480'}
-          - {scenario: e2e, args: 'e2e'}
+          - {scenario: e2e, args: 'e2e --plutus-vm scalus --plutus-vm scarab'}
           - {scenario: relay, args: 'relay --seconds 300'}
           - {scenario: pool, args: 'pool'}
+          - {scenario: pool-plutus-scarab, args: 'pool --plutus-vm scarab --plutus-load'}
           - {scenario: kes-rotate, args: 'kes-rotate'}
           - {scenario: dynamic-forging, args: 'dynamic-forging'}
           - {scenario: ntc, args: 'ntc'}
@@ -92,12 +94,15 @@ jobs:
             mkdir -p "$RUNNER_TEMP/artifact/$name"
             # run summaries, comparisons, node logs and the follower's stall fiber dumps; never the frozen classes or generated keys
             find "$dir" -maxdepth 2 -type f \( -name '*.json' -o -name '*.jsonl' -o -name '*.log' -o -name 'fiber-dump-*.txt' \) \
-              -not -path '*/classes/*' -not -path '*/genesis/*' -not -path '*/keys/*' \
+              -not -path '*/classes/*' -not -path '*/classes-*/*' -not -path '*/genesis/*' -not -path '*/keys/*' \
               -exec cp --parents {} "$RUNNER_TEMP/artifact/$name" \; 2>/dev/null || true
           done
           for name in scarab-ci-${{ matrix.scenario }}; do
             docker logs "$name-ref" > "$RUNNER_TEMP/artifact/$name-ref.docker.log" 2>&1 || true
-            docker logs "$name-scala" > "$RUNNER_TEMP/artifact/$name-scala.docker.log" 2>&1 || true
+            # the Scala node's container, or one per evaluator in a run with several followers (`<name>-scala-<vm>`)
+            for scala in "$name-scala" "$name-scala-scalus" "$name-scala-scarab"; do
+              docker logs "$scala" > "$RUNNER_TEMP/artifact/$scala.docker.log" 2>&1 || true
+            done
           done
           du -sh "$RUNNER_TEMP/artifact"
 

@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures, ConnectionState, Handshake}
 import xyz.kd5ujc.scarab.protocol.ConnectionState.{DataFlow, Provenance, TimeoutExpired}
 
-/** ouroboros-network 2fb69829 `Ouroboros/Network/InboundGovernor.hs` (329-335, 463-481, 499-570)
+/** ouroboros-network c45735a5 `Ouroboros/Network/InboundGovernor.hs` (354-360, 445-462, 479-543)
   * and `ConnectionManager/Core.hs` (1110-1248, 1889-2048, 2048-2320), with
   * `defaultProtocolIdleTimeout = 5`: the peer's side of a connection is tracked; an accepted
   * connection that the peer leaves idle for the idle timeout is released, unless our outbound side
@@ -255,7 +255,7 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
       }
 
   // `TimeoutExpired` (`Core.hs` 1148-1157), `KeepTr` and `RemoteCold` (`InboundGovernor.hs`
-  // 547-563)
+  // 522-538)
   test("expiry while the outbound side uses the connection keeps it: Ticking becomes Expired"):
     TestControl
       .executeEmbed(
@@ -354,7 +354,7 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
       }
 
   // the reference queues the first start and the last end of the responders, and holds a responder
-  // that starts on an expired timer until `CommitRemote` is settled (`InboundGovernor.hs` 640-703):
+  // that starts on an expired timer until `CommitRemote` is settled (`InboundGovernor.hs` 613-677):
   // a whole conversation while the expiry is being handled still promotes and demotes
   test(
     "a conversation while an expiry is being handled is not lost: promoted, demoted, timer armed"
@@ -420,7 +420,7 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
     */
   /** The changes after the expiry when the peer's conversation starts at the very instant the idle
     * timer expires: the expiry is committed first and the responder waits for it
-    * (`InboundGovernor.hs` 253-261, 665-672), then the conversation promotes and demotes the
+    * (`InboundGovernor.hs` 252-260, 638-645), then the conversation promotes and demotes the
     * connection.
     */
   private val expiredThenWoken = Vector(
@@ -608,7 +608,7 @@ class ProtocolIdleTimeoutSuite extends FailsOnUncaught:
 
   // the remote states by the temperatures of the peer's protocols: KeepAlive is established,
   // ChainSync hot (cardano-diffusion `NodeToNode.hs` 252-325), so `AwakeRemote`, then
-  // `RemotePromotedToHot`, `RemoteDemotedToWarm` and `WaitIdleRemote` (`InboundGovernor.hs` 463-528)
+  // `RemotePromotedToHot`, `RemoteDemotedToWarm` and `WaitIdleRemote` (`InboundGovernor.hs` 445-505)
   test(
     "the peer's KeepAlive makes the connection remote warm, its ChainSync hot; their ends undo it"
   ):

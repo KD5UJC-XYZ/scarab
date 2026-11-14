@@ -51,13 +51,14 @@ the mode-specific head start, and the sleep (3300 s plus up to 600 s in Genesis 
    compete across both directions, and equal timestamps retain the existing winner.
    Pinned consensus `82ecba329`,
    `ouroboros-consensus-diffusion/.../Consensus/Network/NodeToNode.hs:795–921`,
-   installs metric tracers for every client connection. Pinned network `2fb69829`,
+   installs metric tracers for every client connection. Pinned network `c45735a5`,
    `ouroboros-network/.../PeerSelection/PeerMetric.hs:242–254`, projects its remote address.
    `MiniProtocol/ChainSync/Client.hs:1487–1520` retains receipt time through successful
-   candidate admission before reporting usefulness; `BlockFetch/Client.hs:249–281` reports
+   candidate admission before reporting usefulness; `BlockFetch/Client.hs:249–277` reports
    after requested-point, block-integrity and fetched-block admission checks.
 
-6. **Resolved by #149.** The current network pin `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`
+6. **Resolved by #149.** ouroboros-network `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`, not the reference since the
+   [ADR 0008 amendment of 2026-11-13](../../adr/0008-networking-mirrors-ouroboros-network.md#amendment-2026-11-13-the-packages-cardano-node-1113-links),
    weights warm promotion with `promoteWeight` (`Diffusion/Policies.hs:201–250`): non-tepid
    peers receive one quarter of their unsigned Word32 draw. Ordinary, local-root and big-ledger
    warm activation now use this policy. Ordinary and big-ledger hot-demotion traces retain the

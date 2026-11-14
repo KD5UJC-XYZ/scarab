@@ -242,7 +242,7 @@ class CollectorsSuite extends CatsEffectSuite:
   }
 
   // `TrInboundGovernorCounters`'s metrics (`Ouroboros/Network/Tracing/InboundGovernor.hs` 36-49,
-  // ouroboros-network `2fb69829`): the tracked connections by remote state
+  // ouroboros-network `c45735a5`): the tracked connections by remote state
   test("the connections collector exports the inbound governor's counts of the remote states") {
     import com.comcast.ip4s.{IpAddress, Ipv4Address, SocketAddress, port}
     import xyz.kd5ujc.scarab.network.{ConnectionError, ConnectionManager, RemoteSt}

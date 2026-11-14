@@ -24,7 +24,7 @@ object BlockFetchServer:
 
   /** @param idle
     *   The wait for the client's next request: BFIdle is waitForever in timeLimitsBlockFetch
-    *   (BlockFetch/Codec.hs:65, ouroboros-network 2fb69829).
+    *   (BlockFetch/Codec.hs:65, ouroboros-network c45735a5).
     */
   final case class Settings(
       limits: BlockFetch.Limits = BlockFetch.Limits(),

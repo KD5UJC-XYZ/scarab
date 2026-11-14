@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.codec.DomainError
   * while the configured sockets are gathered (cardano-node 11.1.3,
   * `cardano-node/src/Cardano/Node/Configuration/Socket.hs` 200-224), then, in the network layer,
   * the socket opened, bound, checked and listened on (`withLocalSocket`, ouroboros-network
-  * 2fb69829, `ouroboros-network/lib/Ouroboros/Network/Diffusion/Utils.hs` 76-136, with
+  * c45735a5, `ouroboros-network/lib/Ouroboros/Network/Diffusion/Utils.hs` 76-136, with
   * `checkLocalSocket` of `Diffusion.hs` 966-990), and its accept loop (`Server.with`,
   * `ouroboros-network/framework/lib/Ouroboros/Network/Server.hs` 101-254) with no limit on the
   * number of clients (`AcceptedConnectionsLimit maxBound maxBound 0`, `Diffusion.hs` 336).

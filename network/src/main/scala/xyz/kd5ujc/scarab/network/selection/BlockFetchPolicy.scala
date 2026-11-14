@@ -6,7 +6,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, HaskellSort}
 
 import FetchGsv.PeerGsv
 
-/** Praos fetch decisions from ouroboros-network 2fb69829, BlockFetch/Decision.hs
+/** Praos fetch decisions from ouroboros-network c45735a5, BlockFetch/Decision.hs
   * (prioritisePeerChains, fetchRequestDecisions and selectBlocksUpToLimits). The owner supplies
   * validated candidate fragments and the consensus chain preorder. Reservations are committed
   * atomically by the owner; this object performs no effects and knows no error capabilities.
@@ -57,7 +57,7 @@ object BlockFetchPolicy:
     else if probability > 0.75 then ProbabilityBand.Moderate
     else ProbabilityBand.Low
 
-  /** `comparePeerGSV` (ouroboros-network 2fb69829, BlockFetch/DeltaQ.hs:38–67; `comparePeerGSV'` at
+  /** `comparePeerGSV` (ouroboros-network c45735a5, BlockFetch/DeltaQ.hs:38–67; `comparePeerGSV'` at
     * 71–79 is the case without active peers). The 20% incumbent advantage applies only to
     * preferred-peer admission. Both factors are `DiffTime` products, which floor to picoseconds
     * (`Data.Fixed`), so the advantage is ⌊4g/5⌋ and the strict 5% band is ⌊max/20⌋. Within the band

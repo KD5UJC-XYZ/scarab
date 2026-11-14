@@ -28,6 +28,16 @@ import scala.concurrent.duration.*
   * @param demotionTimeout
   *   The wait for a connection to be released after a demotion (`c_PEER_DEMOTION_TIMEOUT`,
   *   `Types.hs` 268-274), which the effect loop enforces.
+  * @param peerShareRetryTime
+  *   When a peer asked for peers is due again, counted from the request's start
+  *   (`policyPeerShareRetryTime`).
+  * @param peerShareFailureRetryTime
+  *   When a peer whose peer-share request failed or timed out is due again, counted from the
+  *   completion ([[PeerShare.completed]]): `policyPeerShareFailureRetryTime` of ouroboros-network
+  *   `e0c05c8be` (PR #5439, in 2fb69829). ouroboros-network c45735a5, which cardano-node 11.1.3
+  *   links, has no such delay: the next request is due `peerShareRetryTime` after the request
+  *   starts, whatever its result (`Governor/KnownPeers.hs` 193-195, `Diffusion/Policies.hs` 118 at
+  *   c45735a5). An approved deviation (`docs/decisions.md`, #956, 2026-11-14).
   */
 final case class Policy(
     maxConnectionRetries: Int = 5,
@@ -130,7 +140,10 @@ object Picks:
   /** Warm to hot: favour peers which have not just been demoted. The native `warmPromotionPolicy` /
     * `promoteWeight` at ouroboros-network `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`,
     * `Diffusion/Policies.hs`, quarters non-tepid Word32 draws; tepid peers keep their original
-    * draw.
+    * draw. It came with upstream `1125e5273` (PR #5437). ouroboros-network c45735a5, which
+    * cardano-node 11.1.3 links, promotes uniformly (`policyPickWarmPeersToPromote =
+    * simplePromotionPolicy`, `Diffusion/Policies.hs` 109 and 174-182 at c45735a5), as [[promotion]]
+    * does. An approved deviation (`docs/decisions.md`, #956, 2026-11-14).
     */
   def warmPromotion[A: Ordering](
       candidates: SortedSet[A],

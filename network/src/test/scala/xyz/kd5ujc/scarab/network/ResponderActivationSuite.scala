@@ -9,7 +9,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures}
 
-/** Native cardano-diffusion NodeToNode.hs:310 and network-mux Mux.hs:424–449: KeepAlive's
+/** Native cardano-diffusion NodeToNode.hs:310 and network-mux Mux.hs:423–448: KeepAlive's
   * StartOnDemandAny is activated by remote initiator bytes, independently of our own clients.
   */
 class ResponderActivationSuite extends FailsOnUncaught:

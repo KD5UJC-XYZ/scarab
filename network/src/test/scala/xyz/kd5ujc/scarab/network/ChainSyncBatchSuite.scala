@@ -11,7 +11,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Message, Role, State}
 
-/** Wire transitions from ouroboros-network 2fb69829a19b5c04e4fb212bdd78fb63f9d2d776,
+/** Wire transitions from ouroboros-network c45735a56c567fa977969173d18943bac6bb3821,
   * ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Type.hs:109–136. AwaitReply
   * acknowledges a request; its eventual roll instruction completes that same request.
   */

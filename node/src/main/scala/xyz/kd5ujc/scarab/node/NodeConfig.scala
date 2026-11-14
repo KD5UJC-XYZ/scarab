@@ -23,7 +23,9 @@ final case class GenesisFiles(
     conway: String,
     dijkstra: Option[String] = None,
     checkpoints: Option[String] = None
-)
+):
+  /** Every name, as written. */
+  def all: List[String] = List(byron, shelley, alonzo, conway) ++ dijkstra ++ checkpoints
 
 object GenesisFiles:
   /** The names a genesis directory (`--genesis-dir`) uses. */
@@ -174,6 +176,11 @@ final case class NodeConfig(
   /** The configured first Shelley epoch, if the configuration fixes it. */
   def firstShelleyEpoch: Option[BigInt] = hardForkEpochs.get(Era.Shelley)
 
+  /** Every file name the configuration gives, as written: the genesis files, `SocketPath` and
+    * `DatabasePath`.
+    */
+  def fileNames: List[String] = files.all ++ settings.socketPath ++ settings.databasePath
+
 object NodeConfig:
   val empty: NodeConfig = NodeConfig(None, Map.empty)
 
@@ -222,8 +229,8 @@ object NodeConfig:
       }
   )
 
-  /** The reference's `FromJSON AcceptedConnectionsLimit` (ouroboros-network 2fb69829,
-    * `ouroboros-network/orphan-instances/Ouroboros/Network/OrphanInstances.hs:303-308`): the three
+  /** The reference's `FromJSON AcceptedConnectionsLimit` (ouroboros-network c45735a5,
+    * `ouroboros-network/orphan-instances/Ouroboros/Network/OrphanInstances.hs:302-307`): the three
     * keys are required, the limits `Word32` and the delay a `DiffTime`
     * (`Server/RateLimiting.hs:26-42`).
     */

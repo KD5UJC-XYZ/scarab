@@ -8,7 +8,7 @@ Part of the [compatibility matrix](../compatibility.md); the register entry is `
 partial (I2, [#43](https://github.com/KD5UJC-XYZ/scarab/issues/43), [ADR 0027](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md)):
 the `uplc` module, with no Scalus on its class path, evaluates phase 2 and admits scripts in the block
 rules, the mempool and the forger under `--plutus-vm scarab` ([flags](../running/flags.md)). Scalus stays
-the default. `--forge` with `scarab` is refused at start, and protocol 12 and later get no verdict, both
+the default. The node forges with `scarab` too ([ADR 0027, amendment of 2026-11-13](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-13-the-own-evaluator-forges)), and protocol 12 and later get no verdict, both
 by decision. What each suite shows is in [the conformance profile](../plutus-conformance.md#scarabs-own-evaluator).
 
 ## Evidence
@@ -37,12 +37,25 @@ by decision. What each suite shows is in [the conformance profile](../plutus-con
   matched, 0 mismatched, none excluded. The node logged the own evaluator as its backend, and thread
   samples in the first epochs showed the own machine evaluating and no Scalus frame. Raw run data is
   not published.
+- **Preprod from genesis**, at `2cf627c2` on 2026-11-14, with `--plutus-vm scarab`, beside the same build with
+  `--plutus-vm scalus` as the control: all 5,406,450 blocks of a verified Mithril preprod snapshot, to block
+  5,406,449 at slot 138,866,397, replayed through the full block rules each way (`import-haskell-db`, then
+  `follow --dump-state --dump-state-at epoch-boundaries` with its peer unreachable). The ledger state at every
+  epoch boundary from 5 to 325 was compared with the `db-analyser` projection of cardano-node 11.1.3 for the
+  same block (`oracle_compare.py reference --byron-epochs 4 --byron-epoch-slots 21600 --epoch-slots 432000`,
+  then `diff --require-complete --expected-epochs 321`): 321 of 321 matched with each evaluator, 0
+  mismatched. Epoch 4, the first Shelley epoch, has no digest because the replay starts in Byron
+  ([the oracle](../running/oracle.md)). Each run logged the evaluator it was given. Raw run data is not
+  published.
 
 ## Explicitly unchecked or unconfirmed
 
-- **Forging** with the own evaluator is refused until its evidence is reviewed (I2-WP11, owner decision).
+- **Forging on a public network:** no pool has forged on preprod or mainnet with the own evaluator. The devnet
+  `pool` run's scripts are trivial (one that always succeeds and one that fails with `error`, in V1 and V2, at
+  protocol 10): it shows the path of a validity flag from admission to a forged block that the Haskell pools
+  adopt, not the evaluator's agreement on real scripts. Plutus V3 is not in its load.
 - **Protocol 12 and later** (Leios, PlutusV4) get no verdict, by decision.
-- **Preprod and mainnet:** no replay with the own evaluator is recorded.
+- **Mainnet:** no replay with the own evaluator is recorded.
 - **Projection scope:** the Preview comparison covers the fields of the oracle's projection
   ([the oracle](../running/oracle.md)), not every byte of the state, and only the state at epoch
   boundaries. It compares no single script's verdict or budget with the Scalus backend's; a different

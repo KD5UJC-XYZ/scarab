@@ -12,7 +12,7 @@ implemented G1.1–G1.5 and #142 network follow-ups; original parent acceptance 
 reference governor properties on TestControl, 40 in-memory peers, 100,000-pool small-stack tests; relay/governor scenarios; Preview official configuration with no --peer for 1,860 seconds: tip reached, big-ledger known/established/active15/10/5, ledger map preferred over older snapshot, one twelve-step churn round; real mainnet/Preview registrations pin IPv6 as four little-endian words; extended decoder fuzz and full check pass (evidence below)
 
 The retained PeerStateActions monitor and result/control handles follow ouroboros-network
-`2fb69829` and the node exit policy at ouroboros-consensus `82ecba329`; the source correspondence
+`c45735a5` and the node exit policy at ouroboros-consensus `82ecba329`; the source correspondence
 and API boundaries are in [the peer-selection design](../design/peer-selection/peer-state-actions.md).
 `ProtocolResultsSuite` covers reference first/all-result selection, complete typed error aggregates,
 and activation handle replacement. `OutboundLossReportSuite` checks one loss report at each release
@@ -38,3 +38,10 @@ These regressions do not establish the cause of #371. The full native governor m
 Mux and ConnectionManager alignment, and missing ChainSync producer result constructors/tip
 context remain tracked in #477. The result handles preserve all values the current producer emits;
 this is not a whole-ChainSync conformance claim.
+
+## Differences decided on 2026-11-14 (#956)
+
+- Warm-to-hot promotion quarters the random draw of each peer that is not tepid (`Picks.warmPromotion`). ouroboros-network `c45735a5`, which cardano-node 11.1.3 links, promotes uniformly. An approved deviation that follows ouroboros-network pull request [#5437](https://github.com/IntersectMBO/ouroboros-network/pull/5437) ([decisions](../decisions.md#networking-and-local-clients), [ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md#amendment-2026-11-14-the-re-pins-deviations-decided)).
+- The hot-demotion log lines carry each candidate's score (`scores`); in `c45735a5` the hot-demotion traces carry none, and the ranking is the same. An approved deviation that follows pull request [#5437](https://github.com/IntersectMBO/ouroboros-network/pull/5437) ([decisions](../decisions.md#networking-and-local-clients), [ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md#amendment-2026-11-14-the-re-pins-deviations-decided)).
+- A topology reconfiguration keeps the last local-root DNS answer of each name the new topology still has (`LocalRootDnsCache.reconfigure`). `c45735a5` starts every domain with no addresses. An approved deviation that follows pull request [#5455](https://github.com/IntersectMBO/ouroboros-network/pull/5455), in neither `c45735a5` nor `2fb69829` ([decisions](../decisions.md#networking-and-local-clients), [ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md#amendment-2026-11-14-the-re-pins-deviations-decided)).
+- A reload publishes the topology's IP roots and the kept DNS answers at once (`PeerNetwork`); in `c45735a5` a reconfiguration publishes nothing until a domain's lookup answers, so a topology with no DNS names is not applied. A bug of the linked packages, not reproduced: fixed upstream by pull request [#5455](https://github.com/IntersectMBO/ouroboros-network/pull/5455) ([decisions](../decisions.md#networking-and-local-clients), [ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md#amendment-2026-11-14-the-re-pins-deviations-decided)).

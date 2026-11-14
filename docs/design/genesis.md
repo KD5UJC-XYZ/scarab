@@ -12,7 +12,7 @@ The Genesis scenario acceptance here does not establish those separate scheduler
 ## Reference and scope
 
 The behavioral reference is consensus `82ecba329d7d054340bf707d44fe6e9ac27cec40`
-and network `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`, as pinned for
+and network `c45735a56c567fa977969173d18943bac6bb3821`, as pinned for
 cardano-node 11.1.3. The implementation follows the production Genesis design,
 including its resource policies. The original paper's deep-fork comparator is
 not substituted for the implemented GDD/LoE architecture. Paper statements and

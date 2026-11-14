@@ -12,6 +12,12 @@ import xyz.kd5ujc.scarab.node.{LedgerPeersTrace, LocalRootsTrace}
 /** The lines of the peer governor: what it decided and what became of it, in the words of the
   * reference's `TracePeerSelection` (`Governor/Types.hs` 1646-1840), the counters it publishes, the
   * outbound connections state, the Genesis State Machine and the fetch mode.
+  *
+  * A hot demotion's line also has the `scores` its trace carries ([[Trace.Demote]],
+  * [[Trace.DemoteBigLedger]]), as `TraceDemoteHotPeers` and `TraceDemoteHotBigLedgerPeers` of
+  * ouroboros-network 2fb69829 do (upstream `307f92b98`, PR #5437). In c45735a5, which cardano-node
+  * 11.1.3 links, they carry none (`PeerSelection/Governor/Types.hs:1771,1781`). An approved
+  * deviation (`docs/decisions.md`, #956, 2026-11-14).
   */
 private[log] object PeerSelectionLines:
   type Addr = SocketAddress[Host]

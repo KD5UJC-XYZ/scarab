@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node
 import xyz.kd5ujc.scarab.codec.DomainError
 import xyz.kd5ujc.scarab.ledger.PeerError
 
-/** Original acquisition failures at the PeerStateActions boundary (2fb69829,
+/** Original acquisition failures at the PeerStateActions boundary (c45735a5,
   * PeerSelection/PeerStateActions.hs:780–866), before the governor applies its retry policy.
   */
 enum EstablishmentError extends DomainError:

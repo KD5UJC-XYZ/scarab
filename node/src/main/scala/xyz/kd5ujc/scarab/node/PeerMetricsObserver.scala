@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.network.selection.PeerMetrics
 
 /** Attribute every client connection's arrivals to the shared peer-selection metrics board.
   * Connection direction does not change the reference's ChainSync/BlockFetch metric tracers:
-  * consensus 82ecba329, Network/NodeToNode.hs:795–921; network 2fb69829,
+  * consensus 82ecba329, Network/NodeToNode.hs:795–921; network c45735a5,
   * PeerSelection/PeerMetric.hs:242–254 projects the connection's remote address for both boards.
   */
 private[node] object PeerMetricsObserver:

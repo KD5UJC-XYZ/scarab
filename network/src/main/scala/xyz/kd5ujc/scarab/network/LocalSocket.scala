@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import cats.Show
 import cats.effect.{Async, Resource}
 import cats.effect.std.Mutex
 import cats.effect.syntax.all.*
@@ -26,12 +27,15 @@ import scala.util.Using
 import xyz.kd5ujc.scarab.codec.DomainError
 
 /** The address of the node-to-client socket: the path as it was configured, not normalised (the
-  * reference's `LocalAddress`, ouroboros-network 2fb69829,
+  * reference's `LocalAddress`, ouroboros-network c45735a5,
   * `ouroboros-network/framework/lib/Ouroboros/Network/Snocket.hs` 219-221).
   */
-final case class LocalAddress(path: String):
+final case class LocalAddress(path: String)
+
+object LocalAddress:
   /** `show`: `LocalAddress "<path>"` (`deriving Show via Quiet LocalAddress`). */
-  def shown: String = s"LocalAddress ${HaskellShow.string(path)}"
+  given Show[LocalAddress] =
+    Show.show(address => s"LocalAddress ${HaskellShow.string(address.path)}")
 
 /** A connection to the local socket: the socket's address and the client's. A Unix socket client
   * has no address of its own, so the reference names the `n` th accepted client `<path>@<n>`
@@ -52,8 +56,8 @@ object FileDescriptor:
     /** The descriptor's number. */
     def number: Int = fd
 
-    /** `show`: `FileDescriptor <n>` (`deriving Show via Quiet FileDescriptor`). */
-    def shown: String = s"FileDescriptor ${HaskellShow.intArgument(fd)}"
+  /** `show`: `FileDescriptor <n>` (`deriving Show via Quiet FileDescriptor`). */
+  given Show[FileDescriptor] = Show.show(fd => s"FileDescriptor ${HaskellShow.intArgument(fd)}")
 
 /** Why the sockets the node was configured with cannot be used; the node does not start. The local
   * case of the reference's `SocketConfigError` (cardano-node 11.1.3,
@@ -68,17 +72,20 @@ enum SocketConfigError extends DomainError:
     */
   def message: String = this match
     case LocalSocketError(path, cause) =>
-      s"Failure while attempting to remove the stale local socket: $path : ${cause.shown}"
+      s"Failure while attempting to remove the stale local socket: $path : ${cause.show}"
 
+object SocketConfigError:
   /** The derived `show` (`Socket.hs` 73), the `error` field of the reference's start-up trace: the
     * path is a `File`, whose `Show` is its string's.
     */
-  def shown: String = this match
-    case LocalSocketError(path, cause) =>
-      s"LocalSocketError ${HaskellShow.string(path)} ${cause.shown}"
+  given [A <: SocketConfigError]: Show[A] = Show.show(error =>
+    (error: SocketConfigError) match
+      case LocalSocketError(path, cause) =>
+        s"LocalSocketError ${HaskellShow.string(path)} ${cause.show}"
+  )
 
 /** Why the node's servers stopped: what the reference's `DiffusionErrored` names and
-  * `DiffusionError` carries (ouroboros-network 2fb69829,
+  * `DiffusionError` carries (ouroboros-network c45735a5,
   * `ouroboros-network/lib/Ouroboros/Network/Diffusion.hs` 905-911). The node then exits.
   */
 enum DiffusionFailure extends DomainError:
@@ -106,16 +113,19 @@ enum DiffusionFailure extends DomainError:
     */
   case UserInterrupt
 
+object DiffusionFailure:
   /** The `show` of the exception, the `error` field of `DiffusionErrored`. */
-  def shown: String = this match
-    case System(error)     => error.shown
-    case NodeToNode(error) => error.shown
-    case PathTooLong(path) =>
-      val length = path.codePointCount(0, path.length)
-      s"pokeSockAddr: path is too long in SockAddrUnix ${HaskellShow.string(path)}, length $length, " +
-        s"unixPathMax ${LocalSockets.UnixPathMax}\n" + LocalSockets.PokeSockAddrCallStack
-    case Defect(cause) => cause.toString
-    case UserInterrupt => "user interrupt"
+  given [A <: DiffusionFailure]: Show[A] = Show.show(failure =>
+    (failure: DiffusionFailure) match
+      case System(error)     => error.show
+      case NodeToNode(error) => error.show
+      case PathTooLong(path) =>
+        val length = path.codePointCount(0, path.length)
+        s"pokeSockAddr: path is too long in SockAddrUnix ${HaskellShow.string(path)}, length $length, " +
+          s"unixPathMax ${LocalSockets.UnixPathMax}\n" + LocalSockets.PokeSockAddrCallStack
+      case Defect(cause) => cause.toString
+      case UserInterrupt => "user interrupt"
+  )
 
 /** The calls the local socket makes, one for each of the reference's (`removeFile`,
   * `getFileStatus`, the `Snocket` of a Unix socket), each failure a typed value.
@@ -261,12 +271,16 @@ object LocalSockets:
               )
             )
           )
-        // a path beyond ASCII, after the length and trailing-`/` refusals that come before the
-        // reference's bind too: Scarab refuses every one, the owner's decision (#949). Run with
-        // `café` paths, cardano-node 11.1.3 binds the path under its characters truncated to a byte
-        // each (`castCharToCChar`, `Network/Socket/Types.hsc` 1160), then its check of the socket
-        // finds nothing at the path's own name and stops the set-up with this error. Scarab binds
-        // nothing, so it leaves no socket file under the truncated name
+        // a path beyond ASCII, after the length and trailing-`/` refusals, which come before the
+        // reference's check of the socket file too: Scarab refuses every one, the owner's decision
+        // (#949, confirmed 2026-11-14), because no bytes bound for such a path reach the
+        // reference's clients in every locale. network 3.2.8.0 truncates each character to a byte
+        // on connect as on bind (`castCharToCChar`, `Network/Socket/Types.hsc` 1160): with the
+        // socket bound at the UTF-8 bytes of `/w/café.socket`, cardano-cli 11.1.3 reached it under
+        // `LANG=C` and not under `LANG=C.UTF-8` or with no `LANG`. The reference node itself, run
+        // with that path under `LANG=C.UTF-8` or no `LANG`, bound the truncated name, found nothing
+        // at the path's own name and stopped with this error, leaving the mis-named file; Scarab
+        // binds nothing. Under `LANG=C` it served the path
         else if address.path.exists(_ > '\u007f') then
           F.pure(
             Left(

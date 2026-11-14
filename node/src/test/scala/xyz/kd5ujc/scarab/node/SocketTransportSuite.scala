@@ -18,7 +18,7 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionIdentityError, Connectio
 import xyz.kd5ujc.scarab.protocol.ConnectionState.{DataFlow, Provenance, TimeoutExpired}
 
 /** The node's TCP transport on loopback (issue 854): an outbound socket is bound to the node's
-  * listening address in `InitiatorAndResponder` mode (ouroboros-network `2fb69829`,
+  * listening address in `InitiatorAndResponder` mode (ouroboros-network `c45735a5`,
   * `ConnectionManager/Core.hs` 1472-1491), so a peer that dialled us from its listening address and
   * our dial to it are one TCP connection, which the connection manager reuses (1335-1370); and a
   * node that dials its own address is connected to itself.
@@ -44,7 +44,7 @@ class SocketTransportSuite extends FailsOnUncaught:
 
   private def accepted(listener: TcpListener[IO]): Resource[IO, TcpStream[IO]] =
     Resource.make(
-      listener.accept.flatMap(r => IO(r.fold(e => fail(s"accept failed: ${e.shown}"), identity)))
+      listener.accept.flatMap(r => IO(r.fold(e => fail(s"accept failed: ${e.show}"), identity)))
     )(_.close)
 
   /** The address a peer listening at `peer` sees our dial come from, in diffusion `mode`. */
@@ -286,7 +286,7 @@ class SocketTransportSuite extends FailsOnUncaught:
     }
   }
 
-  // ouroboros-network `2fb69829`, `ConnectionManager/Core.hs` 1510-1521: bound to the address it
+  // ouroboros-network `c45735a5`, `ConnectionManager/Core.hs` 1510-1521: bound to the address it
   // dials, the socket is connected to itself on Linux, and the listener accepts nothing
   test("a socket bound to the listening address and dialling it is connected to itself") {
     listening.use { node =>

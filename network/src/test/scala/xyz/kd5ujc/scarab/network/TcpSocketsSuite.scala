@@ -24,7 +24,7 @@ class TcpSocketsSuite extends FailsOnUncaught:
   /** The next connection `listener` accepts, closed when the resource is released. */
   private def accepted(listener: TcpListener[IO]): Resource[IO, TcpStream[IO]] =
     Resource.make(
-      listener.accept.flatMap(r => IO(r.fold(e => fail(s"accept failed: ${e.shown}"), identity)))
+      listener.accept.flatMap(r => IO(r.fold(e => fail(s"accept failed: ${e.show}"), identity)))
     )(_.close)
 
   private def listening: Resource[IO, TcpListener[IO]] = right(TcpSockets.listen[IO](loopback))

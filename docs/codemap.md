@@ -175,7 +175,7 @@ Programs run by hand, never as tests and never shipped: benchmarks, probes again
 | consensus | Hand-run benchmarks for the `consensus` package (its package, for its package-private access) | `DecideBenchMain` |  |  |
 | crypto | Hand-run benchmarks for the `crypto` package (its package, for its package-private access) | `VerifyBench` |  |  |
 | crypto/bls | Hand-run benchmarks for the `crypto.bls` package (its package, for its package-private access) | `BlsBenchmark` |  |  |
-| ledger | Hand-run benchmarks for the `ledger` package (its package, for its package-private access) | `ApplyBenchMain`, `DetachedRecordsBench`, `UtxoChangesBench` |  |  |
+| ledger | Hand-run benchmarks for the `ledger` package, and the ledger-rules report of node-diversity-conformance: the corpus's transaction fixtures judged by the mempool's decoder and rules (its package, for its package-private access) | `ApplyBenchMain`, `DetachedRecordsBench`, `LedgerRulesMain`, `UtxoChangesBench` | `LedgerRulesSuite` |  |
 | ledger/state | Hand-run benchmarks for the `ledger.state` package (its package, for its package-private access) | `DiffBenchMain` |  |  |
 | models | Hand-run benchmarks, checks and comparisons for the `models` package (its package, for its package-private access) | `CuddleCrossCheck`, `DecodeBench` |  |  |
 | network | Hand-run benchmarks, probes for the `network` package (its package, for its package-private access) | `LeiosChainProbe`, `LeiosProbe`, `MuxThroughputBench`, `PeerSharingProbe`, `TcpThreadCostMain` |  |  |

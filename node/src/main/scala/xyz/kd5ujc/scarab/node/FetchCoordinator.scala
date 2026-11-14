@@ -20,7 +20,7 @@ import xyz.kd5ujc.scarab.network.selection.{
 }
 
 /** The BlockFetch decision logic of every inbound and outbound fetching session: ouroboros-network
-  * 2fb69829 BlockFetch/State.hs `fetchLogicIterations`. One loop ([[watchDecisions]]) decides for
+  * c45735a5 BlockFetch/State.hs `fetchLogicIterations`. One loop ([[watchDecisions]]) decides for
   * every peer from its whole current candidate and adds each decided request to that peer's request
   * slot, the reference's `fetchClientRequestVar`; the session's fetch client takes it from there
   * ([[Session.acquire]]). Sessions only report what changed: their candidate, the blocks that
@@ -288,7 +288,7 @@ final class FetchCoordinator[F[_]: Async] private (
       )
     )
 
-  /** NoBlocks removes the rejected fragment and its request in one transaction: network 2fb69829
+  /** NoBlocks removes the rejected fragment and its request in one transaction: network c45735a5
     * ClientState.hs:665–685.
     */
   private def rejected(id: Long, allocation: Allocation, headers: Vector[Header]): F[Unit] =
@@ -579,7 +579,7 @@ final class FetchCoordinator[F[_]: Async] private (
     s.copy(next = next, peers = s.peers.updated(id, updated))
 
 object FetchCoordinator:
-  /** Pinned diffusion Configuration.hs:95–96; native simulator policies can explicitly use zero. */
+  /** Pinned diffusion Configuration.hs:91–92; native simulator policies can explicitly use zero. */
   final case class DecisionIntervals(genesisPicos: BigInt, praosPicos: BigInt)
   object DecisionIntervals:
     val default: DecisionIntervals = DecisionIntervals(40000000000L, 10000000000L)

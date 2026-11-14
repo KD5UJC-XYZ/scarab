@@ -458,7 +458,14 @@ The integration adds:
   mempool, the rules and the forger the one backend of the run; that wiring has no default to fall back
   on, but no runtime probe;
 - [`MainArgsSuite`](../node/src/test/scala/xyz/kd5ujc/scarab/node/MainArgsSuite.scala): the flag, and
-  `--forge` refused with `scarab`.
+  `--forge` taken with either evaluator;
+- the nightly devnet era walk, `devnet.py e2e --plutus-vm scalus --plutus-vm scarab`
+  ([runbook](running/devnet.md#several-followers-in-one-e2e)): a follower with each backend in one cluster, both from
+  Origin on the same chain, so both judge the Plutus transactions of the e2e load. Each is held to the single
+  follower's gates against the reference (no validation error, every ledger comparison and same-point whole state
+  matched), and the two must agree on their final chain and on their projected states at every block where both were
+  compared. The load's Plutus cases are few, so this shows the backend wired into a following node, not coverage of
+  the evaluator.
 
 **Running the suites on either backend.** The suites of `ledger`, `consensus`, `storage` and `node` that
 need an evaluator and test none in particular take it from

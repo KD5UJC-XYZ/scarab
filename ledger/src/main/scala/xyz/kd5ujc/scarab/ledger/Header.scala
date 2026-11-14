@@ -176,7 +176,7 @@ object Header:
   /** A header is read as the reference reads it, with no budget of items, string bytes or nesting
     * (`decodeFullAnnotator`): what bounds it is the ChainSync codec's 65535 bytes a message
     * (`smallByteLimit`, `Ouroboros/Network/Protocol/ChainSync/Codec.hs:47-51`, ouroboros-network
-    * 2fb69829), which the codec here enforces, and after decoding `maxBHSize`
+    * c45735a5), which the codec here enforces, and after decoding `maxBHSize`
     * (`Shelley/Protocol/EnvelopeChecks.hs:86-88`, ouroboros-consensus 82ecba32). From decoder
     * version 12 a byte string may be chunked and every chunk is an item, so a header within
     * `maxBHSize` can hold any number of items (#749).

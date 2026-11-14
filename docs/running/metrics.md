@@ -105,7 +105,7 @@ Meanings and units worth knowing before building a dashboard:
 `Shelley`, `Allegra`, `Mary`, `Alonzo`, `Babbage` or `Conway`; `rule` is `byron`, `structure`, `decode`, `envelope`,
 `ledger`, `tpraos` or `praos`; `state` (of a connection) is one of the reference connection manager's states, `ReservedOutbound`,
 `Unnegotiated`, `OutboundUni`, `OutboundDup`, `OutboundIdle`, `InboundIdle`, `Inbound`, `Duplex`, `Terminating`
-or `Terminated` (`ConnectionManager/State.hs`, ouroboros-network `2fb69829`); `event` is, for `scarab_connection_events_total`, `Opened`, `Changed`, `Refused`, `Closed` or `Pruned`, and for
+or `Terminated` (`ConnectionManager/State.hs`, ouroboros-network `c45735a5`); `event` is, for `scarab_connection_events_total`, `Opened`, `Changed`, `Refused`, `Closed` or `Pruned`, and for
 `scarab_inbound_events_total`, `Accepted`, `Duplex`, `Unidirectional`, `Closed` or `Refused`; `reason` is, for `scarab_mempool_rejected_total`, `Malformed`,
 `AlreadyHeld`, `Ledger`, `Full`, `WrongEra`, `NoLedger`, `InputDefect` or `RulesDefect`, and for `scarab_forge_skipped_total`, `SlotIsImmutable`,
 `BlockFromFuture`, `NoLedgerView` or `Other`; `kind` (snapshots) is `Skipped`, `Failed` or `Refused`; `over_ms` is
@@ -124,7 +124,7 @@ of an enum label that never happened are absent, except `scarab_era` (written fo
   line in this work, and the two agree in magnitude on the devnet).
 - `cardano_node_metrics_connectionManager_{inbound,outbound,duplex}Conns_int` count the connections of our
   connection manager as the reference's `connectionStateToCounters` does (`ConnectionManager/Core.hs:173-212`,
-  ouroboros-network `2fb69829`): by what each connection is used for now, so one both sides use counts as inbound
+  ouroboros-network `c45735a5`): by what each connection is used for now, so one both sides use counts as inbound
   and as outbound, a reservation counts in neither, and one in time-wait counts only as terminating.
 - The forger's series mean what the reference's do: the `Forge_*_counter` counters count the forging loop's
   traces of the same name (cardano-node 11.1.3 `Tracers/Consensus.hs` 1507-1538), and `blocksForged_int`,
@@ -233,7 +233,7 @@ section and the catalogue differ.
 | `cardano_node_metrics_connectionManager_inboundConns_int` | gauge |  | Connections in inbound use, whoever opened them: an accepted one not yet negotiated, `InboundIdle`, `Inbound` and `Duplex` (`connectionStateToCounters`). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_connectionManager_outboundConns_int` | gauge |  | Connections in outbound use, whoever opened them: a dialled one not yet negotiated, `OutboundUni`, `OutboundDup`, `OutboundIdle` and `Duplex`; a reservation counts in neither. | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_connectionManager_duplexConns_int` | gauge |  | Connections that negotiated duplex, in use or idle (`OutboundDup`, `Duplex`, and a duplex `InboundIdle`, `Inbound` or `OutboundIdle`). | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_inboundGovernor_idle_int` | gauge |  | Connections the inbound governor tracks on which the peer runs none of our responders, with the protocol idle timer armed (`RemoteIdle`): accepted ones and duplex ones we dialled. | same name; `inboundGovernor_*` scraped from 11.1.3, the name from `asMetrics` (`Ouroboros/Network/Tracing/InboundGovernor.hs` 36-49, ouroboros-network `2fb69829`) |
+| `cardano_node_metrics_inboundGovernor_idle_int` | gauge |  | Connections the inbound governor tracks on which the peer runs none of our responders, with the protocol idle timer armed (`RemoteIdle`): accepted ones and duplex ones we dialled. | same name; `inboundGovernor_*` scraped from 11.1.3, the name from `asMetrics` (`Ouroboros/Network/Tracing/InboundGovernor.hs` 36-49, ouroboros-network `c45735a5`) |
 | `cardano_node_metrics_inboundGovernor_cold_int` | gauge |  | Tracked connections the peer left idle past the timeout, kept because our outbound side uses them (`RemoteCold`). | same name; as `inboundGovernor_idle_int` |
 | `cardano_node_metrics_inboundGovernor_warm_int` | gauge |  | Tracked connections on which the peer runs our responders, none of them hot (`RemoteWarm`: KeepAlive, PeerSharing). | same name; as `inboundGovernor_idle_int` |
 | `cardano_node_metrics_inboundGovernor_hot_int` | gauge |  | Tracked connections on which the peer runs a hot responder of ours (`RemoteHot`: ChainSync, BlockFetch, TxSubmission2). | same name; as `inboundGovernor_idle_int` |

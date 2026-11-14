@@ -7,7 +7,7 @@ import xyz.kd5ujc.scarab.protocol.ConnectionIdentityError
 /** The order in which the reference's maps keyed by peer hold a node-to-node connection's sessions:
   * its `ConnectionId`, ordered by the remote address and then the local one (`instance Ord
   * (ConnectionId addr)`, `framework/lib/Ouroboros/Network/ConnectionId.hs:41-44`, ouroboros-network
-  * 2fb69829). The block fetch registry (`getFetchClientRegistry`,
+  * c45735a5). The block fetch registry (`getFetchClientRegistry`,
   * `Ouroboros/Consensus/NodeKernel.hs:178`, ouroboros-consensus 82ecba32) and the ChainSync handles
   * are such maps, so the order of their peers does not depend on when each session registered. A
   * session without a TCP socket (an in-memory bearer of a test or a model) has no `ConnectionId`

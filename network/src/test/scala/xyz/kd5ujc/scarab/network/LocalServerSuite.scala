@@ -394,7 +394,7 @@ class LocalServerSuite extends FailsOnUncaught:
       assertEquals(calls, Vector(Call.Open, Call.Bind))
       assertEquals(traces, setUp.take(3))
       assertEquals(
-        result.left.map(_.shown),
+        result.left.map(_.show),
         Left("Network.Socket.bind: does not exist (No such file or directory)")
       )
     }
@@ -411,7 +411,7 @@ class LocalServerSuite extends FailsOnUncaught:
     ).map { (result, calls, traces) =>
       assertEquals(result, Left(DiffusionFailure.System(unreadable)))
       assertEquals(
-        result.left.map(_.shown),
+        result.left.map(_.show),
         Left("/run/cardano: getFileStatus: permission denied (Permission denied)")
       )
       assert(!calls.contains(Call.Listen), calls)
@@ -493,7 +493,7 @@ class LocalServerSuite extends FailsOnUncaught:
         )
       )
       assertEquals(
-        DiffusionFailure.System(exhausted).shown,
+        DiffusionFailure.System(exhausted).show,
         "Network.Socket.accept: resource exhausted (No file descriptors available)"
       )
   }
@@ -584,7 +584,7 @@ class LocalServerSuite extends FailsOnUncaught:
         left <- IO.blocking(Files.getAttribute(path, "unix:mode").asInstanceOf[Integer].toInt)
       yield
         val (result, traces) = outcome
-        val (domain, defect, echoed) = result.fold(e => fail(e.shown), identity)
+        val (domain, defect, echoed) = result.fold(e => fail(e.show), identity)
         assertEquals(
           domain,
           LocalConnectionId(LocalAddress(path.toString), LocalAddress(s"$path@0")) -> HandlerFailure
@@ -631,7 +631,7 @@ class LocalServerSuite extends FailsOnUncaught:
     temporary.use { root =>
       val path = root.resolve("node.socket")
       jdk.open(LocalAddress(path.toString)).use { opened =>
-        val listener = opened.fold(e => fail(e.shown), identity)
+        val listener = opened.fold(e => fail(e.show), identity)
         for
           bound <- listener.bind
           // nobody accepts: Linux queues backlog + 1 connections, the next one would block
@@ -724,7 +724,7 @@ class LocalServerSuite extends FailsOnUncaught:
       val path = root.resolve("absent/node.socket")
       onJdk(path)((_, _) => IO.unit)(_ => IO.unit).map { (result, traces) =>
         assertEquals(
-          result.left.map(_.shown),
+          result.left.map(_.show),
           Left("Network.Socket.bind: does not exist (No such file or directory)")
         )
         assert(
@@ -810,9 +810,9 @@ class LocalServerSuite extends FailsOnUncaught:
     }
   }
 
-  // run with `café` paths, cardano-node 11.1.3 binds the path truncated to a byte per character and
-  // then finds no socket at the path's own name; Scarab refuses every path beyond ASCII at that
-  // step with that error and binds nothing, the owner's decision (#949)
+  // run with `café` paths under a UTF-8 locale, cardano-node 11.1.3 binds the path truncated to a
+  // byte per character and then finds no socket at the path's own name; Scarab refuses every path
+  // beyond ASCII at that step with that error and binds nothing, the owner's decision (#949)
   test(
     "on the JDK: a path beyond ASCII stops the set-up as the reference's does, binding nothing"
   ) {
@@ -822,7 +822,7 @@ class LocalServerSuite extends FailsOnUncaught:
         (result, traces) =>
           IO.blocking(root.toFile.list.length).map { left =>
             assertEquals(
-              result.left.map(_.shown),
+              result.left.map(_.show),
               Left(s"$path: getFileStatus: does not exist (No such file or directory)")
             )
             assert(endsAtBind(traces), traces)
@@ -832,8 +832,8 @@ class LocalServerSuite extends FailsOnUncaught:
     }
   }
 
-  // the reference's length and trailing-`/` refusals come before its bind, so before what a path
-  // beyond ASCII meets there (runs of cardano-node 11.1.3, #949)
+  // the reference's length and trailing-`/` refusals come before its check of the socket file,
+  // where a path beyond ASCII stops it (runs of cardano-node 11.1.3, #949)
   test("on the JDK: a path beyond ASCII is refused for its length or its trailing slash first") {
     shortTemporary.use { root =>
       val long = s"$root/é" + "n" * (108 - root.toString.length - 2)
@@ -845,7 +845,7 @@ class LocalServerSuite extends FailsOnUncaught:
         assertEquals(long.codePointCount(0, long.length), 108)
         assertEquals(tooLong._1, Left(DiffusionFailure.PathTooLong(long)))
         assertEquals(
-          ending._1.left.map(_.shown),
+          ending._1.left.map(_.show),
           Left("Network.Socket.bind: does not exist (No such file or directory)")
         )
     }

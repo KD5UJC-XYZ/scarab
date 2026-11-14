@@ -20,7 +20,7 @@ RELAY_DIR = "/work/relay"
 RELAY_SOCKET = f"{RELAY_DIR}/sock"
 RELAY_REMOTE = f"127.0.0.1:{RELAY_PORT}"   # the relay dials from its listening address (bound, duplex)
 TOPOLOGY = "scala-relay-topology.json"
-# the outbound side's use of the peer's own connection (ouroboros-network 2fb69829,
+# the outbound side's use of the peer's own connection (ouroboros-network c45735a5,
 # ConnectionManager/Core.hs 1335-1370): `Awake^{Duplex}_{Local}` or `PromotedToWarm^{Duplex}_{Local}`
 REUSE = {("InboundIdleSt Duplex", "OutboundDupSt Ticking"), ("InboundSt Duplex", "DuplexSt")}
 

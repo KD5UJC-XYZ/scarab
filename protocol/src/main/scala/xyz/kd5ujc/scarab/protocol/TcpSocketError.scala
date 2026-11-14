@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
+import cats.Show
+import cats.syntax.all.*
 import java.net.StandardProtocolFamily
 import scala.concurrent.duration.FiniteDuration
 import xyz.kd5ujc.scarab.codec.DomainError
 
-/** The family of a node-to-node socket address (`socketAddressType`, ouroboros-network 2fb69829,
+/** The family of a node-to-node socket address (`socketAddressType`, ouroboros-network c45735a5,
   * `ouroboros-network/lib/Ouroboros/Network/Diffusion.hs` 95-98). A socket is opened in the family
   * of its address (`openToConnect = openSocket . socketAddrFamily`, `Snocket.hs` 378), never as the
   * JDK's default dual-stack `AF_INET6` socket.
@@ -14,7 +16,7 @@ enum SocketFamily(val protocol: StandardProtocolFamily):
   case Inet extends SocketFamily(StandardProtocolFamily.INET)
   case Inet6 extends SocketFamily(StandardProtocolFamily.INET6)
 
-/** A setting of the reference's `configureSocket` (ouroboros-network 2fb69829,
+/** A setting of the reference's `configureSocket` (ouroboros-network c45735a5,
   * `ouroboros-network/framework/lib/Ouroboros/Network/Socket.hs` 148-170), in the order it sets
   * them.
   */
@@ -83,11 +85,14 @@ enum TcpSocketError[+Host, +Address] extends DomainError:
   /** An exception that is not one of the socket's own, from a library or a bug. */
   case Defect(cause: Throwable)
 
+object TcpSocketError:
   /** The text of the failure, as GHC shows the reference's `IOError` where there is one
     * (`<location>: <kind> (<reason>)`).
     */
-  def shown: String = this match
-    case Failed(step, cause)       => s"${step.location}: ${cause.shown}"
-    case Unsupported(setting)      => s"${setting.option} cannot be set on a JDK socket"
-    case ConnectTimeout(remote, d) => s"connect $remote: no connection within $d"
-    case Defect(cause)             => cause.toString
+  given [E <: TcpSocketError[Any, Any]]: Show[E] = Show.show(error =>
+    (error: TcpSocketError[Any, Any]) match
+      case Failed(step, cause)       => s"${step.location}: ${cause.show}"
+      case Unsupported(setting)      => s"${setting.option} cannot be set on a JDK socket"
+      case ConnectTimeout(remote, d) => s"connect $remote: no connection within $d"
+      case Defect(cause)             => cause.toString
+  )

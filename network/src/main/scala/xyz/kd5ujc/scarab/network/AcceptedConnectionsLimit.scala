@@ -6,7 +6,7 @@ import cats.syntax.all.*
 import scala.concurrent.duration.*
 
 /** The policy that governs how many connections are accepted, mirroring the reference's
-  * `AcceptedConnectionsLimit` (ouroboros-network 2fb69829, `Server/RateLimiting.hs:26-42`): two
+  * `AcceptedConnectionsLimit` (ouroboros-network c45735a5, `Server/RateLimiting.hs:26-42`): two
   * `Word32` limits and a `DiffTime` delay.
   *
   * @param acceptedConnectionsHardLimit

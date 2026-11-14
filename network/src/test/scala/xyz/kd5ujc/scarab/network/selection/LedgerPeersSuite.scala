@@ -200,7 +200,7 @@ class LedgerPeersSuite extends ScalaCheckSuite:
   }
 
   // `randomR (0, NonEmpty.length relays - 1)` on an `Int` (`LedgerPeers.hs` 188 and 207,
-  // ouroboros-network `2fb69829`) is `uniformR`: no word for one relay, a masked word otherwise
+  // ouroboros-network `c45735a5`) is `uniformR`: no word for one relay, a masked word otherwise
   test("a pool of one relay takes no word for its relay; each draw takes only its stake word") {
     val maps = LedgerPeerStake.fromLedger(Vector(pool(r(1), "only")))
     val (after, picked) = maps.draw[All](3, seed)

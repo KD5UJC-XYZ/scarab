@@ -14,3 +14,7 @@ unit/property (held transactions always apply in order, byte accounting, tickets
 ## Explicitly unchecked or unconfirmed
 
 full successor-slot ticking includes epoch transitions, pending rewards, treasury and adopted parameters (H4/#40); ordered rollback revalidation matches the native current-entry policy, with no automatic block-transaction resurrection and no persistent seen-ID suppression of later re-offers; admission waits for room as the reference does (two FIFO lines, local clients ahead of peers, cancelable; tests `MempoolBackpressureSuite`, [IN-82](../implementer-notes.md)), per-client mempool admission fairness beyond that remains roadmap G5-F1; network resource bounds are recorded in [G5](../design/network-limits.md)
+
+## Differences decided on 2026-11-14 (#956)
+
+- A transaction id named twice in one `MsgRequestTxs` ends the connection (`TxSubmissionPolicy.bodies`). The TxSubmission2 outbound side of ouroboros-network `c45735a5`, which cardano-node 11.1.3 links, sends the transaction, while it is still in the mempool, once for each time the request names it. An approved deviation that follows ouroboros-network pull request [#5435](https://github.com/IntersectMBO/ouroboros-network/pull/5435) ([decisions](../decisions.md#networking-and-local-clients), [ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md#amendment-2026-11-14-the-re-pins-deviations-decided)).

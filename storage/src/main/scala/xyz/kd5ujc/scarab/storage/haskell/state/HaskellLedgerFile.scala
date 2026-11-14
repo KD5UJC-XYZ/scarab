@@ -91,10 +91,16 @@ object HaskellLedgerFile:
         s"layout = ${f.layout.show})"
     )
 
-  /** The codecs of `layout`. */
-  def codecs(layout: StateLayout): LedgerFileCodecs = layout match
-    case StateLayout.Node11_1 => HaskellStateCodecs
-    case StateLayout.Leios    => LeiosStateCodecs
+  /** The codecs of `layout`, as the reference reads its `state` file. */
+  def codecs(layout: StateLayout): LedgerFileCodecs = codecs(layout, ProposalsReading.Reference)
+
+  /** The codecs of `layout` that read the governance proposals as `reading` says. */
+  def codecs(layout: StateLayout, reading: ProposalsReading): LedgerFileCodecs =
+    (layout, reading) match
+      case (StateLayout.Node11_1, ProposalsReading.Reference) => HaskellStateCodecs
+      case (StateLayout.Leios, ProposalsReading.Reference)    => LeiosStateCodecs
+      case (StateLayout.Node11_1, ProposalsReading.AsWritten) => NativeStateCodecs
+      case (StateLayout.Leios, ProposalsReading.AsWritten)    => NativeLeiosStateCodecs
 
   /** The file in the 11.1 layout, or the first thing wrong with the bytes and where it is. */
   def decode(bytes: Bytes): Decoded[HaskellLedgerFile] = decode(bytes, StateLayout.Node11_1)
@@ -105,7 +111,15 @@ object HaskellLedgerFile:
 
   /** The file in `layout`, or the first thing wrong with the bytes and where it is. */
   def decode(bytes: Bytes, layout: StateLayout): Decoded[HaskellLedgerFile] =
-    codecs(layout).haskellLedgerFile.decodeBytes(bytes, HaskellState.limits)
+    decode(bytes, layout, ProposalsReading.Reference)
+
+  /** The file in `layout`, its governance proposals read as `reading` says. */
+  def decode(
+      bytes: Bytes,
+      layout: StateLayout,
+      reading: ProposalsReading
+  ): Decoded[HaskellLedgerFile] =
+    codecs(layout, reading).haskellLedgerFile.decodeBytes(bytes, HaskellState.limits)
 
   /** The bytes of the file in `layout`, or why it cannot be written: a value with a part of another
     * layout is not.

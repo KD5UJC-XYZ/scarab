@@ -241,7 +241,7 @@ object BlockFetchRuntime:
     }
 
   /** A bounded FIFO client. Requests are submitted independently of reply collection, as in the
-    * reference BlockFetch client pipeline (ouroboros-network 2fb69829,
+    * reference BlockFetch client pipeline (ouroboros-network c45735a5,
     * ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/BlockFetch/Client.hs:111-132). The
     * collector has its own error scope (ADR 0017). Cancelling a submitted request aborts the
     * bearer: its replies cannot be silently reassigned to a later request. Releasing an idle,

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.DomainError
 import xyz.kd5ujc.scarab.protocol.Mux as WireMux
 
@@ -31,7 +32,7 @@ enum NetworkError extends DomainError:
   case BearerClosed(reason: NetworkError.Closure)
 
   /** An accepted connection stayed silent after its handshake for the protocol idle timeout: no
-    * remote-initiated mini-protocol sent a byte (ouroboros-network 2fb69829,
+    * remote-initiated mini-protocol sent a byte (ouroboros-network c45735a5,
     * `defaultProtocolIdleTimeout`).
     */
   case ProtocolIdleTimeout(after: scala.concurrent.duration.FiniteDuration)
@@ -77,7 +78,7 @@ enum NetworkError extends DomainError:
   case MuxWrite(cause: WireMux.Error)
 
   def message: String = this match
-    case Connect(a, r)       => s"connect $a: ${r.shown}"
+    case Connect(a, r)       => s"connect $a: ${r.show}"
     case Timeout(p, s)       => s"${Protocols.name(p)} timed out in $s"
     case SduTimeout(op)      => s"multiplexer SDU ${op.toString.toLowerCase} timed out"
     case TxSubmission(v)     => s"tx-submission-2 protocol violation: ${v.message}"

@@ -11,9 +11,9 @@ import scala.concurrent.duration.*
 
 /** The tracker of the peer's activity ([[NodeToNodeServer.remoteActivity]]) at the instant its idle
   * timer fires, with that instant under the test's control: the reference's inbound governor reads
-  * its channel and its timers in one STM transaction (ouroboros-network `2fb69829`,
-  * `InboundGovernor.hs` 240-275), commits an expired timer before the waiting messages (253-261)
-  * and holds a responder that starts on an expired timer until the commit is settled (665-672).
+  * its channel and its timers in one STM transaction (ouroboros-network `c45735a5`,
+  * `InboundGovernor.hs` 239-274), commits an expired timer before the waiting messages (252-260)
+  * and holds a responder that starts on an expired timer until the commit is settled (638-645).
   */
 class RemoteActivitySuite extends FailsOnUncaught:
   private val remote: SocketAddress[IpAddress] = SocketAddress(ip"10.0.0.1", port"3001")

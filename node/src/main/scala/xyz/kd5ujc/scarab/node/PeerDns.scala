@@ -6,7 +6,13 @@ import cats.effect.implicits.*
 import cats.effect.syntax.all.*
 import cats.syntax.all.*
 import com.comcast.ip4s.IpAddress
-import java.util.concurrent.{CompletionStage, CompletionException, Executors, TimeoutException}
+import java.util.concurrent.{
+  CompletionStage,
+  CompletionException,
+  Executor,
+  Executors,
+  TimeoutException
+}
 import java.util.function.BiConsumer
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
@@ -90,10 +96,27 @@ object PeerDns:
       .make(Async[F].delay(Executors.newFixedThreadPool(4)))(executor =>
         Async[F].delay(executor.shutdownNow()).void
       )
-      .evalMap(executor =>
-        Async[F].delay(LookupSession.defaultBuilder().executor(executor).build())
-      )
-      .map(new DnsJava[F](_))
+      .evalMap(executor => Async[F].delay(uncached(LookupSession.defaultBuilder(), executor)))
+      .map(fromSession[F])
+
+  /** The session from `builder` without a record cache, its lookups on `executor`. The reference
+    * keeps no DNS cache of its own: ouroboros-network `c45735a5` resolves local and public roots
+    * with `DNS.defaultResolvConf` (`PeerSelection/PeerSelectionActions.hs:93-98`, `180`), whose
+    * `resolvCache` is `Nothing` in the `dns-4.2.0` that cardano-node 11.1.3 links
+    * (`Network/DNS/Types/Resolver.hs:104-112`). Every lookup asks the resolver, and the clipped TTL
+    * only schedules the next one. dnsjava's default session caches answers for their whole TTL,
+    * which would hold an address past the reference's 900 s once a record's TTL is longer. A name
+    * in the hosts file is still answered from it by `defaultBuilder()` 's hosts parser, without
+    * asking the resolver: another difference from the reference, which issue 956 tracks.
+    */
+  private[node] def uncached(
+      builder: LookupSession.LookupSessionBuilder,
+      executor: Executor
+  ): LookupSession =
+    builder.clearCaches().executor(executor).build()
+
+  private[node] def fromSession[F[_]: Async](session: LookupSession): PeerDns[F] =
+    new DnsJava[F](session)
 
   /** Clip every positive DNS RR TTL as in `RootPeersDNS/DNSActions.hs` (60 through 900 seconds). */
   def clippedTtl(seconds: Long): FiniteDuration =
@@ -161,7 +184,7 @@ object PeerDns:
   /** The Haskell resolver's deliberately small SRV subset: discard target `.`, keep only the
     * numerically lowest priority group, then draw one target by its advertised weight. The
     * inclusive draw and stable cumulative selection follow `DNSActions.hs` 's `randomR` /CDF rule
-    * (`runWeightedLookup`, `DNSActions.hs` 463-477, ouroboros-network `2fb69829`): the weights are
+    * (`runWeightedLookup`, `DNSActions.hs` 463-477, ouroboros-network `c45735a5`): the weights are
     * `Word16` s, so `randomR (0, upperBound)` is random's `Word16` draw ([[Rng.uniformWord32R]]).
     */
   def selectService(

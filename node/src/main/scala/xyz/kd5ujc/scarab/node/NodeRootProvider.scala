@@ -11,7 +11,7 @@ import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.network.selection.Rng
 
 /** What the local roots' DNS tells besides its answers (`TraceLocalRootPeers`,
-  * `RootPeersDNS/LocalRootPeers.hs` of ouroboros-network 2fb69829).
+  * `RootPeersDNS/LocalRootPeers.hs` of ouroboros-network c45735a5).
   */
 enum LocalRootsTrace:
   /** The lookup of `domain` threw (`TraceLocalRootError`); the lookups start again at once. */

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.state
 
+import cats.syntax.show.*
 import io.circe.{Json, parser}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Rational
@@ -178,5 +179,5 @@ class PositiveUnitIntervalSuite extends FunSuite:
       Scientific(-1, -25) -> "-1.0e-25",
       Scientific(15, -1) -> "1.5"
     )
-    cases.foreach((s, shown) => assertEquals(s.shown, shown, s.toString))
+    cases.foreach((s, shown) => assertEquals(s.show, shown, s.toString))
   }

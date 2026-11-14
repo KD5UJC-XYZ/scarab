@@ -54,7 +54,7 @@ object Block:
     lazy val id: Bytes = Blake2b.hash256.hash(body)
 
   /** The most bytes a block takes: BlockFetch's 2500000 bytes a message (`largeByteLimit`,
-    * `Ouroboros/Network/Protocol/BlockFetch/Codec.hs:42-45`, ouroboros-network 2fb69829).
+    * `Ouroboros/Network/Protocol/BlockFetch/Codec.hs:42-45`, ouroboros-network c45735a5).
     */
   val MaxInputBytes: Int = 2500000
 

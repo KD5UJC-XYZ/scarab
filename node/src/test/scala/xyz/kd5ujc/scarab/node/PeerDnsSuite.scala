@@ -1,12 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{Clock, Deferred, IO, Ref}
+import cats.effect.{Clock, Deferred, IO, Ref, Resource}
 import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, SocketAddress, host, ipv4, port}
-import java.util.concurrent.CompletableFuture
+import java.net.InetAddress
+import java.util.concurrent.{CompletableFuture, CompletionStage, Executor, Executors}
+import java.util.concurrent.atomic.AtomicInteger
+import org.xbill.DNS.{
+  ARecord,
+  Cache,
+  DClass,
+  EDNSOption,
+  Flags,
+  Message,
+  Resolver,
+  Section,
+  TSIG,
+  Type
+}
+import org.xbill.DNS.lookup.LookupSession
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.ledger.{GovernorFault, StorageError}
 import xyz.kd5ujc.scarab.network.selection.*
@@ -100,7 +115,7 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
   }
 
   // issue 567: the reference traces a domain monitor that throws (`TraceLocalRootError`) and
-  // starts its monitors again (LocalRootPeers.hs 146-168 of ouroboros-network 2fb69829)
+  // starts its monitors again (LocalRootPeers.hs 146-168 of ouroboros-network c45735a5)
   test("a DNS lookup that throws is traced with its domain, not a stop") {
     for
       dnsCause <- IO.delay(new IllegalStateException("injected DNS defect"))
@@ -153,7 +168,7 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
   }
 
   // issue 586: `jobVerifyPeerSnapshot` is `Job job (const (completion False))` (ouroboros-network
-  // 2fb69829 Governor/Monitor.hs 689-712): any failure of the verification is no match
+  // c5117705 Governor/Monitor.hs 689-708): any failure of the verification is no match
   test(
     "a snapshot verification that throws, or whose store fails, answers no match; never a stop"
   ) {
@@ -263,7 +278,7 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
     yield ()
   }
 
-  // `randomR (0, upperBound)` on a `Word16` (`DNSActions.hs` 470, ouroboros-network `2fb69829`) is
+  // `randomR (0, upperBound)` on a `Word16` (`DNSActions.hs` 470, ouroboros-network `c45735a5`) is
   // random-1.3.1's `unbiasedWordMult32RM`: weights 1 and 2 draw from [0, 3], the top two bits of
   // the word's low half (2^32 mod 4 is 0, so none is rejected); a draw of 0 or 1 is the first
   test("SRV selection draws the weight as random draws a Word16: the word's low half, multiplied") {
@@ -752,3 +767,69 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
       _ <- IO(assertEquals(actual.localDnsCache, refreshed))
     yield ()
   }
+
+  // D8 of issue 956: the reference keeps no DNS cache of its own (`resolvCache = Nothing` in the
+  // dns-4.2.0 `defaultResolvConf` that ouroboros-network c45735a5 resolves roots with), so a lookup
+  // within a record's TTL asks the resolver again, where dnsjava's default session would answer it
+  // from its cache until the TTL ran out. The builder carries a cache, as `defaultBuilder()` does,
+  // but not its hosts-file parser, so an entry for the name in this machine's hosts file cannot
+  // answer in place of the resolver.
+  test("a lookup within a record's TTL asks the resolver again: the session keeps no DNS cache") {
+    val executor =
+      Resource.make(IO(Executors.newSingleThreadExecutor()))(e => IO(e.shutdownNow()).void)
+    executor.use { lookups =>
+      for
+        domain <- name("cached.example")
+        resolver = PeerDnsSuite.Answering(
+          InetAddress.getByAddress(Array[Byte](-64, 0, 2, 10)),
+          3600L
+        )
+        session <- IO(
+          PeerDns.uncached(
+            LookupSession.builder().resolver(resolver).cache(new Cache(DClass.IN)),
+            lookups
+          )
+        )
+        dns = PeerDns.fromSession[IO](session)
+        first <- dns.addresses(domain)
+        second <- dns.addresses(domain)
+        asked <- IO(resolver.asked.get)
+        expected = Vector(DnsAddressRecord(ipv4"192.0.2.10", 900.seconds))
+        _ <- IO(assertEquals(first.records, expected, "the first answer, its TTL clipped"))
+        _ <- IO(assertEquals(second.records, expected, "the second answer"))
+        _ <- IO(assertEquals(asked, 2, "A queries that reached the resolver"))
+      yield ()
+    }
+  }
+
+object PeerDnsSuite:
+  /** A resolver that answers an A query for any name with `address` at `ttl` seconds, and any other
+    * query with no records, and counts the A queries it is asked. dnsjava's `Resolver` is a
+    * callback interface that reports by a returned stage, so the count is an atomic held by the
+    * resolver.
+    */
+  final class Answering(address: InetAddress, ttl: Long) extends Resolver:
+    val asked: AtomicInteger = new AtomicInteger(0)
+    def setPort(port: Int): Unit = ()
+    def setTCP(flag: Boolean): Unit = ()
+    def setIgnoreTruncation(flag: Boolean): Unit = ()
+    def setEDNS(
+        version: Int,
+        payloadSize: Int,
+        flags: Int,
+        options: java.util.List[EDNSOption]
+    ): Unit =
+      ()
+    def setTSIGKey(key: TSIG): Unit = ()
+    def setTimeout(timeout: java.time.Duration): Unit = ()
+    override def sendAsync(query: Message): CompletionStage[Message] =
+      sendAsync(query, (task: Runnable) => task.run())
+    override def sendAsync(query: Message, executor: Executor): CompletionStage[Message] =
+      val question = query.getQuestion
+      val reply = new Message(query.getHeader.getID)
+      reply.getHeader.setFlag(Flags.QR)
+      reply.addRecord(question, Section.QUESTION)
+      if question.getType == Type.A then
+        asked.incrementAndGet()
+        reply.addRecord(new ARecord(question.getName, DClass.IN, ttl, address), Section.ANSWER)
+      CompletableFuture.completedFuture(reply)

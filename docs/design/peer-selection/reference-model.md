@@ -15,7 +15,10 @@ version 1.2.0.0; the repository also holds `cardano-diffusion` 1.1.0.0, `cardano
 `11.1.3` tag of IntersectMBO/cardano-node. Caveat: the cabal bounds allow a later patch release than these tags
 (`cardano-diffusion ^>= 1.1.1` is above the 1.1.0.0 in the tag's tree), and the CHaP tarballs were not fetched;
 G1.1 starts by diffing the files cited here against the CHaP releases the reference image was built from
-([reference-image.md](../../reference-image.md)) and correcting any citation that moved.
+([reference-image.md](../../reference-image.md)) and correcting any citation that moved. The caveat is
+resolved by the [ADR 0008 amendment of 2026-11-13](../../adr/0008-networking-mirrors-ouroboros-network.md#amendment-2026-11-13-the-packages-cardano-node-1113-links):
+the release binary links ouroboros-network 1.2.0.0 and cardano-diffusion 1.1.1.0 (`c5117705`), whose only
+code change from 1.1.0.0 is `cardano-diffusion:ping`, which the node does not link.
 
 The code is split in two layers, and so are the citations. The generic governor lives in
 `ouroboros-network` (`Ouroboros.Network.PeerSelection.*`). Everything Cardano-specific (bootstrap peers, the

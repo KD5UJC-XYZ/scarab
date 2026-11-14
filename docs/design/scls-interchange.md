@@ -67,7 +67,11 @@ is unchanged. Missing future-PParams rows cannot distinguish `NoPParamsUpdate` f
 `PotentialPParamsUpdate(None)`, so reconstruction must retain the admitted base's exact variant.
 Represented future selectors must agree with that variant.
 
-Proposal reconstruction must preserve order and IDs and validate a contiguous order sequence.
+Proposal reconstruction preserves IDs and orders the proposals as the reference's import does: sorted
+by their order value with `sortOn`, which keeps the arrival order of equal values, and collected with
+`OMap.fromFoldable`, which keeps the first of a repeated id (`CanonicalState/Conway/Import.hs:219-227`).
+The mapper does not require the order values to run from 0 to n-1; complete-base admission still
+requires the proposal rows to be those of the base's own projection, which numbers them from 0.
 The decoded SCLS `OnChain` wrapper retains its original embedded procedure bytes, but the actual
 Haskell `toGovActionState` conversion discards that wrapper and `fromGovActionState` serializes the
 typed procedure again (`CanonicalState/Conway.hs:270-292`, `BasicTypes.hs:93-94`). A nonminimal

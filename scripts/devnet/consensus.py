@@ -1,6 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 """Select the Scala node's consensus mode without changing the reference pools."""
 import json
+import os
+
+
+def write_whole(path, text):
+    """Write `path` so that a reader sees the old file or the new one, never a part: the followers of a run with
+    one per evaluator each write the same files while the other's node may be reading them."""
+    part = path.with_name(f".{path.name}.{os.getpid()}")
+    part.write_text(text)
+    part.replace(path)
 
 
 def configuration(root, mode, ports=()):
@@ -14,7 +23,7 @@ def configuration(root, mode, ports=()):
     for key in ("SocketPath", "DatabasePath"):
         config.pop(key, None)
     path = root / "genesis" / "scala-consensus-configuration.json"
-    path.write_text(json.dumps(config, indent=2))
+    write_whole(path, json.dumps(config, indent=2))
     flags = ["--config", f"/genesis/{path.name}"]
     if mode == "GenesisMode":
         flags += trusted_pools(root, ports)
@@ -36,7 +45,7 @@ def trusted_pools(root, ports):
                                 "diffusionMode": "InitiatorAndResponder",
                                 "hotValency": len(ports), "warmValency": len(ports)}]}
     path = root / "genesis" / "scala-consensus-topology.json"
-    path.write_text(json.dumps(topology, indent=2))
+    write_whole(path, json.dumps(topology, indent=2))
     return ["--topology", f"/genesis/{path.name}"]
 
 

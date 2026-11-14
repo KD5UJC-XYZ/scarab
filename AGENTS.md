@@ -132,6 +132,10 @@ scala code … I love the use of type parameters when I can use them"*.
   [ADR 0001's arithmetic procedure](docs/adr/0001-haskell-node-as-reference.md#amendment-2026-11-09-checked-arithmetic-and-compatibility)
   before choosing the boundary behavior; a reference bug is not blanket permission to change it.
   Decisions recorded by the owner's `ottobot-ai` account are the owner's.
+- Path names and their encoding are settled by the owner's rule in the
+  [decisions register](docs/decisions.md#networking-and-local-clients) (#953): do not chase the reference's
+  behaviour at other bytes or locales; only the owner reopens the rule. It is not a precedent: any other
+  deviation still needs the owner's approval first.
 - Pure rules; exact `Rational` arithmetic; anything hashed or signed is hashed over its original bytes,
   except where the reference itself signs a re-encoding: a header's KES signature covers its body
   encoded again (`Praos/BlockHeader.hs:113-117`, cardano-ledger f649f975), its hash the original

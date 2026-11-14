@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.log
 
+import cats.syntax.show.*
 import io.circe.{Encoder, Json}
 import io.circe.syntax.*
 import scala.concurrent.duration.FiniteDuration
@@ -540,13 +541,13 @@ object NodeEvent:
     case RemoteServer(trace) =>
       trace match
         case BearerServer.Trace.AcceptError(failure) =>
-          EventKind.RemoteAcceptError.line("reason" -> failure.shown.asJson)
+          EventKind.RemoteAcceptError.line("reason" -> failure.show.asJson)
         case BearerServer.Trace.ServerStopped => EventKind.RemoteServerStopped.line()
         case BearerServer.Trace.ServerError(failure) =>
-          EventKind.RemoteServerError.line("reason" -> failure.shown.asJson)
-    case SocketConfigError(error) => EventKind.SocketConfigError.line("error" -> error.shown.asJson)
+          EventKind.RemoteServerError.line("reason" -> failure.show.asJson)
+    case SocketConfigError(error) => EventKind.SocketConfigError.line("error" -> error.show.asJson)
     case DiffusionErrored(failure) =>
-      EventKind.DiffusionErrored.line("error" -> failure.shown.asJson)
+      EventKind.DiffusionErrored.line("error" -> failure.show.asJson)
     case PeerEstablishmentFailed(peer, error) =>
       EventKind.PeerSelectionPromote
         .line(
@@ -575,7 +576,7 @@ object NodeEvent:
         .at(severity)
 
 /** The lines of the node-to-client socket and server: the reference's names, severities and machine
-  * fields (ouroboros-network 2fb69829,
+  * fields (ouroboros-network c45735a5,
   * `ouroboros-network/tracing/Ouroboros/Network/Tracing/PeerSelection.hs` 29-113 and
   * `ouroboros-network/tracing/Ouroboros/Network/Tracing/Server.hs` 72-97), the event standing for
   * the reference's `kind`. A path is `show` of its `LocalAddress` where the reference shows one
@@ -588,21 +589,21 @@ private object LocalServerLines:
 
   def line(trace: Trace): Line = trace match
     case Trace.CreateSystemdSocketForSnocketPath(a) =>
-      EventKind.CreateSystemdSocketForSnocketPath.line("path" -> a.shown.asJson)
-    case Trace.CreatedLocalSocket(a) => EventKind.CreatedLocalSocket.line("path" -> a.shown.asJson)
+      EventKind.CreateSystemdSocketForSnocketPath.line("path" -> a.show.asJson)
+    case Trace.CreatedLocalSocket(a) => EventKind.CreatedLocalSocket.line("path" -> a.show.asJson)
     case Trace.ConfiguringLocalSocket(a, fd) =>
-      EventKind.ConfiguringLocalSocket.line("path" -> a.shown.asJson, "socket" -> fd.shown.asJson)
+      EventKind.ConfiguringLocalSocket.line("path" -> a.show.asJson, "socket" -> fd.show.asJson)
     case Trace.ConfiguredLocalSocket(a, fd) =>
-      EventKind.ConfiguredLocalSocket.line("path" -> a.shown.asJson, "socket" -> fd.shown.asJson)
+      EventKind.ConfiguredLocalSocket.line("path" -> a.show.asJson, "socket" -> fd.show.asJson)
     case Trace.ListeningLocalSocket(a, fd) =>
-      EventKind.ListeningLocalSocket.line("path" -> a.shown.asJson, "socket" -> fd.shown.asJson)
+      EventKind.ListeningLocalSocket.line("path" -> a.show.asJson, "socket" -> fd.show.asJson)
     case Trace.LocalSocketUp(a, fd) =>
-      EventKind.LocalSocketUp.line("path" -> a.shown.asJson, "socket" -> fd.shown.asJson)
+      EventKind.LocalSocketUp.line("path" -> a.show.asJson, "socket" -> fd.show.asJson)
     case Trace.InsecureLocalSocketPermissions(a, m) =>
-      EventKind.InsecureLocalSocketPermissions.line("path" -> a.shown.asJson, "mode" -> mode(m))
+      EventKind.InsecureLocalSocketPermissions.line("path" -> a.show.asJson, "mode" -> mode(m))
     case Trace.InsecureLocalSocketDirectory(a, m) =>
-      EventKind.InsecureLocalSocketDirectory.line("path" -> a.shown.asJson, "mode" -> mode(m))
-    case Trace.RunLocalServer(a) => EventKind.RunLocalServer.line("localAddress" -> a.shown.asJson)
+      EventKind.InsecureLocalSocketDirectory.line("path" -> a.show.asJson, "mode" -> mode(m))
+    case Trace.RunLocalServer(a) => EventKind.RunLocalServer.line("localAddress" -> a.show.asJson)
     case Trace.ServerStarted(addresses) =>
       EventKind.ServerStarted.line(
         "addresses" -> addresses.map(a => Json.obj("path" -> a.path.asJson)).asJson
@@ -614,6 +615,6 @@ private object LocalServerLines:
           "remoteAddress" -> id.remote.path.asJson
         )
       )
-    case Trace.AcceptError(error)   => EventKind.AcceptError.line("reason" -> error.shown.asJson)
+    case Trace.AcceptError(error)   => EventKind.AcceptError.line("reason" -> error.show.asJson)
     case Trace.ServerStopped        => EventKind.ServerStopped.line()
-    case Trace.ServerError(failure) => EventKind.ServerError.line("reason" -> failure.shown.asJson)
+    case Trace.ServerError(failure) => EventKind.ServerError.line("reason" -> failure.show.asJson)

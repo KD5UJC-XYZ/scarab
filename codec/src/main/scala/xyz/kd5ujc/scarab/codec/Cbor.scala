@@ -41,7 +41,7 @@ object Cbor:
       * `cardano-ledger-binary` count no items, no string bytes and no nesting, and join the chunks
       * of a chunked string without counting them. What bounds the input is the channel that
       * delivered it, a mini-protocol codec's byte limit (`ProtocolSizeLimits`,
-      * `Ouroboros/Network/Protocol/Limits.hs:105-109`, ouroboros-network 2fb69829) or the
+      * `Ouroboros/Network/Protocol/Limits.hs:105-109`, ouroboros-network c45735a5) or the
       * multiplexer's ingress queue, and after decoding the rules (`maxBHSize`, `maxBBSize`,
       * `maxTxSize`). An item, and a chunk of a chunked string, takes at least a byte, so the size
       * of the input bounds the items, the string bytes and the nesting; the nesting is kept on the

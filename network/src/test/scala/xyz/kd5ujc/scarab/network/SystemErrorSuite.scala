@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import cats.syntax.show.*
 import java.io.IOException
 import java.nio.file.{AccessDeniedException, FileSystemException, NoSuchFileException}
 import munit.FunSuite
@@ -46,30 +47,31 @@ class SystemErrorSuite extends FunSuite:
     )
     captured.foreach { (path, errno, ioError) =>
       val error = unlinkFailure(path, errno)
-      assertEquals(error.cause.shown, ioError)
+      assertEquals(error.cause.show, ioError)
       assertEquals(
         error.message,
         s"Failure while attempting to remove the stale local socket: $path : $ioError"
       )
     }
     assertEquals(
-      unlinkFailure("/w/isdir", Errno.EISDIR).shown,
+      unlinkFailure("/w/isdir", Errno.EISDIR).show,
       "LocalSocketError \"/w/isdir\" /w/isdir: removeLink: inappropriate type (Is a directory)"
     )
     assertEquals(
-      unlinkFailure("/w/dir é", Errno.EISDIR).shown,
+      unlinkFailure("/w/dir é", Errno.EISDIR).show,
       "LocalSocketError \"/w/dir \\233\" /w/dir é: removeLink: inappropriate type (Is a directory)"
     )
     val long = "/w/" + "n" * 300
     assertEquals(
-      unlinkFailure(long, Errno.ENAMETOOLONG).cause.shown,
+      unlinkFailure(long, Errno.ENAMETOOLONG).cause.show,
       s"$long: removeLink: invalid argument (Filename too long)"
     )
   }
 
-  // captured 2026-11-13 with `--socket-path /w/café-C.socket` and no `LANG` (the C locale): the
-  // `DiffusionErrored` trace's `error` after `CreatedLocalSocket` and `ConfiguringLocalSocket`; with
-  // `LANG=C.UTF-8` and `/w/café-U.socket` it is the same line for that path
+  // captured 2026-11-13 with `--socket-path /w/café-C.socket` and no `LANG`, under which the
+  // reference decoded the argument as UTF-8: the `DiffusionErrored` trace's `error` after
+  // `CreatedLocalSocket` and `ConfiguringLocalSocket`; with `LANG=C.UTF-8` and `/w/café-U.socket`
+  // it is the same line for that path (under `LANG=C` the reference serves such a path, #949)
   test("a socket path beyond ASCII, as the reference's DiffusionErrored names it (#949)") {
     val path = "/w/café-C.socket"
     assertEquals(
@@ -77,7 +79,7 @@ class SystemErrorSuite extends FunSuite:
         .System(
           SystemCallError(SystemCall.GetFileStatus, ErrnoCause.Known(Errno.ENOENT), Some(path))
         )
-        .shown,
+        .show,
       "/w/café-C.socket: getFileStatus: does not exist (No such file or directory)"
     )
   }
@@ -87,7 +89,7 @@ class SystemErrorSuite extends FunSuite:
   test("a path beyond ASCII of 108 characters, as pokeSockAddr refuses it (#949)") {
     val path = "/w/é" + "n" * 104
     assertEquals(
-      DiffusionFailure.PathTooLong(path).shown,
+      DiffusionFailure.PathTooLong(path).show,
       "pokeSockAddr: path is too long in SockAddrUnix \"/w/\\233" + "n" * 104 +
         "\", length 108, unixPathMax 108\n" +
         "CallStack (from HasCallStack):\n" +
@@ -102,7 +104,7 @@ class SystemErrorSuite extends FunSuite:
   test("a path that holds NUL, as unix's check refuses it") {
     val path = "/w/a\u0000b"
     assertEquals(
-      LocalSockets.interiorNul(path).shown,
+      LocalSockets.interiorNul(path).show,
       s"$path: checkForInteriorNuls: invalid argument " +
         "(POSIX filepaths must not contain internal NUL octets.)"
     )
@@ -111,7 +113,7 @@ class SystemErrorSuite extends FunSuite:
 
   test("a bind that fails, as the reference's DiffusionErrored names it") {
     def bind(errno: Errno) =
-      DiffusionFailure.System(SystemCallError(SystemCall.Bind, ErrnoCause.Known(errno), None)).shown
+      DiffusionFailure.System(SystemCallError(SystemCall.Bind, ErrnoCause.Known(errno), None)).show
     assertEquals(
       bind(Errno.ENOENT),
       "Network.Socket.bind: does not exist (No such file or directory)"
@@ -119,7 +121,7 @@ class SystemErrorSuite extends FunSuite:
     assertEquals(bind(Errno.EACCES), "Network.Socket.bind: permission denied (Permission denied)")
     val long = "/w/" + "m" * 110
     assertEquals(
-      DiffusionFailure.PathTooLong(long).shown,
+      DiffusionFailure.PathTooLong(long).show,
       s"pokeSockAddr: path is too long in SockAddrUnix \"$long\", length 113, unixPathMax 108\n" +
         "CallStack (from HasCallStack):\n" +
         "  error, called at Network/Socket/Types.hsc:1162:33 in " +
@@ -129,7 +131,7 @@ class SystemErrorSuite extends FunSuite:
 
   test("the other calls: their locations, and the musl text where glibc's differs") {
     def shown(call: SystemCall, errno: Errno, file: Option[String] = None) =
-      SystemCallError(call, ErrnoCause.Known(errno), file).shown
+      SystemCallError(call, ErrnoCause.Known(errno), file).show
     assertEquals(
       shown(SystemCall.Accept, Errno.EMFILE),
       "Network.Socket.accept: resource exhausted (No file descriptors available)"
@@ -185,7 +187,7 @@ class SystemErrorSuite extends FunSuite:
     val cause = Errno.of(new java.net.SocketException("Unix domain path too long"))
     assertEquals(cause, ErrnoCause.Unrecognised("Unix domain path too long"))
     assertEquals(
-      SystemCallError(SystemCall.Bind, cause, None).shown,
+      SystemCallError(SystemCall.Bind, cause, None).show,
       "Network.Socket.bind: failed (Unix domain path too long)"
     )
   }
@@ -209,9 +211,9 @@ class SystemErrorSuite extends FunSuite:
   }
 
   test("an address and a descriptor are shown as the reference shows them") {
-    assertEquals(LocalAddress("/w/s/node.socket").shown, "LocalAddress \"/w/s/node.socket\"")
-    assertEquals(FileDescriptor(20).shown, "FileDescriptor 20")
-    assertEquals(FileDescriptor.Invalid.shown, "FileDescriptor (-1)")
+    assertEquals(LocalAddress("/w/s/node.socket").show, "LocalAddress \"/w/s/node.socket\"")
+    assertEquals(FileDescriptor(20).show, "FileDescriptor 20")
+    assertEquals(FileDescriptor.Invalid.show, "FileDescriptor (-1)")
   }
 
   test("a native call's errno number names its errno") {

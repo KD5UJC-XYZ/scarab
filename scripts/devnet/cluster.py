@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timezone
 from . import util
 from cleanup import container_labels
-from .util import ENV, cache_dir, jdk_image, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, adapt_reference_config, data_root, docker, in_ref, put_file, query, read_json, ref, without_resource_statistics
+from .util import ALL_FOLLOWERS, ENV, cache_dir, jdk_image, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, adapt_reference_config, data_root, docker, in_ref, put_file, query, read_json, ref, without_resource_statistics
 
 
 def start_reference(name):
@@ -403,13 +403,15 @@ def tip(args):
     print(json.dumps(query(args.name, "tip", args.node)))
 
 
-def freeze_classes(root, previous=None):
+def freeze_classes(root, previous=None, frozen=None):
     """Copy the compiled classes so later builds cannot change code under a running node.
 
     Returns the container classpath (the copy is mounted at /run/classes). With `previous`, the
     directory of a copy made earlier (`<run dir>/classes` of a run of another build) is used instead of the
     checkout's classes, for explicit comparisons of pinned builds. This does not imply that the
     current node supports an earlier build's persisted formats; snapshot retirement is independent.
+    The copy goes to `frozen`, `<run dir>/classes` by default; it is replaced, so two nodes that run at once
+    each need a directory of their own (`scala_container`'s `classes`).
     """
     classpath = (REPO / "node/target/runtime-classpath.txt").read_text().strip().split(":")
     sources = []
@@ -428,7 +430,7 @@ def freeze_classes(root, previous=None):
             sources.append((module, source))
     if not sources:
         raise SystemExit("runtime classpath contains no compiled classes; run node/runtimeClasspathFile")
-    frozen = root / "classes"
+    frozen = frozen if frozen is not None else root / "classes"
     shutil.rmtree(frozen, ignore_errors=True)
     for module, source in sources:
         shutil.copytree(source, frozen / module)
@@ -455,17 +457,18 @@ def database_mounts(db):
     return [f"{db}:/db", f"{lock}:/.db.scarab-lock"]
 
 
-def scala_container(args, root, classpath, main_class, program_args, mounts=(), name=None, cpus=None):
+def scala_container(args, root, classpath, main_class, program_args, mounts=(), name=None, cpus=None, classes=None):
     """`docker run` arguments for a JVM of the frozen classes in the reference network namespace.
 
-    The container gets `cpus` CPUs, else `--scala-cpus` of the scenario, else 2.
+    The container gets `cpus` CPUs, else `--scala-cpus` of the scenario, else 2. The frozen classes are those of
+    `classes`, `<run dir>/classes` by default (`freeze_classes`).
     """
     cpus = cpus if cpus is not None else getattr(args, "scala_cpus", 2)
     # MALLOC_ARENA_MAX=2: glibc's per-thread arenas fragment (roadmap K6); also set in the image
     command = ["run", "--rm", "--pull=never", "--network", f"container:{ref(args.name)}",
                f"--cpus={cpus}", "--memory=2g", "--user", USER, "-e", "MALLOC_ARENA_MAX=2",
                "-v", f"{REPO}:/work:ro", "-v", f"{cache_dir()}:/work/.cache:ro",
-               "-v", f"{root / 'classes'}:/run/classes:ro"]
+               "-v", f"{classes if classes is not None else root / 'classes'}:/run/classes:ro"]
     if name:
         command += ["--name", name]
     for mount in mounts:
@@ -637,7 +640,8 @@ def keep_native_evidence(name, root):
 
 
 def down(args, quiet=False):
-    for c in (f"{args.name}-scala", f"{args.name}-cli", ref(args.name)):
+    # every Scala node a run may have started: its only follower, or one per evaluator (`util.FollowerSite`)
+    for c in (*(site.container(args.name) for site in ALL_FOLLOWERS), f"{args.name}-cli", ref(args.name)):
         docker("rm", "-f", c, check=False)
     shutil.rmtree(data_root(args.name), ignore_errors=True)
     if not quiet:

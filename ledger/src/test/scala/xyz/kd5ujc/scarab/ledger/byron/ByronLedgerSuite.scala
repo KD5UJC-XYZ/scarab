@@ -148,6 +148,54 @@ class ByronLedgerSuite extends ScalaCheckSuite:
     )
   }
 
+  test("a signed transaction of 65,537 outputs pays for its full size and indexes 65,536") {
+    // `txOutputUTxO` zips the outputs with `[0 ..] :: [Word16]` (cardano-ledger f649f975,
+    // `Cardano/Chain/UTxO/UTxO.hs:176-185`) and `validateTxAux` takes the output balance of that
+    // UTxO (`Cardano/Chain/UTxO/Validation.hs:202-204`); its size and its fee are those of the
+    // whole `TxAux` as encoded (`Validation.hs:191-199,212-217,224-225`), and `validateTx` checks
+    // the network magic of every output (`Validation.hs:255`). The transactions are encoded,
+    // signed and decoded whole, every value below 2^32 (the widest head `Cb.uint` writes).
+    val funds = BigInt(1000000000)
+    val spent = addrIn(aliceAddr)
+    val utxo = utxo0.updated(spent, ByronOut(aliceAddr, funds))
+    val indexed = Seq.fill(65536)(bobAddr -> 1L)
+    def spend(outs: Seq[(Bytes, Long)]) = aux(config, Seq((spent, alice, false)), outs)
+    def fitting(a: ByronTxAux) = params.copy(maxTxSize = a.raw.size)
+    def applied(p: ByronParams, u: Map[TxIn, ByronOut], a: ByronTxAux) =
+      ByronLedger.applyTx(config, p, u, a)
+    def created(u: Map[TxIn, ByronOut], a: ByronTxAux) = u.keySet.filter(_.id == a.tx.id)
+    // an output past the first 65,536 that alone exceeds the input is neither spent nor kept
+    val beyond = spend(indexed :+ (bobAddr -> 2000000000L))
+    assertEquals(beyond.tx.outputs.size, 65537)
+    val size = beyond.raw.size
+    assert(size > 65537 * (bobAddr.size + 2), s"$size bytes")
+    val minFee = params.txFeePolicy.minimumFee(size).fold(e => fail(e.toString), identity)
+    val next = applied(fitting(beyond), utxo, beyond).fold(e => fail(e.toString), identity)
+    assertEquals(created(next, beyond).size, 65536)
+    assertEquals(created(next, beyond).map(_.index).max, BigInt(65535))
+    assertEquals(next.size, utxo.size - 1 + 65536)
+    // the size is the whole encoding's, and so is the fee: one byte or one lovelace short refuses it
+    assertEquals(
+      applied(params.copy(maxTxSize = size - 1), utxo, beyond).map(_ => ()),
+      Left(ByronError.TxTooLarge(size - 1, size))
+    )
+    val short = utxo.updated(spent, ByronOut(aliceAddr, 65536 + minFee - 1))
+    assertEquals(
+      applied(fitting(beyond), short, beyond).map(_ => ()),
+      Left(ByronError.FeeTooSmall(minFee, minFee - 1))
+    )
+    // exactly 65,536 outputs: all kept
+    val exact = spend(indexed)
+    val all = applied(fitting(exact), utxo, exact).fold(e => fail(e.toString), identity)
+    assertEquals(created(all, exact).size, 65536)
+    // the network of the 65,537th output is still checked
+    val foreign = spend(indexed :+ (address(bob, Some(Magic + 1)) -> 1L))
+    assertEquals(
+      applied(fitting(foreign), utxo, foreign).map(_ => ()),
+      Left(ByronError.NetworkMagicMismatch(Some(Magic), Some(Magic + 1)))
+    )
+  }
+
   test("unknown attribute refusals distinguish transaction and address payloads") {
     val good = spendAlice(Seq(bobAddr -> 1000000, aliceAddr -> 50000000))
     assertEquals(
@@ -202,6 +250,41 @@ class ByronLedgerSuite extends ScalaCheckSuite:
   test("the wrong key signing is refused: a valid signature that does not hash to the address") {
     val forged = aux(config, Seq((addrIn(aliceAddr), bob, false)), Seq(bobAddr -> 99000000))
     assert(apply(forged).left.exists(_.isInstanceOf[ByronError.WrongKey]))
+  }
+
+  test("the address root covers the attributes encoded again, not as written") {
+    // `checkAddrSpendingData` hashes `Address' (addrType, spendingData, addrAttributes addr)`
+    // (cardano-ledger f649f975, `Cardano/Chain/Common/Address.hs:306-313`, `AddressHash.hs:16-25`):
+    // the decoded attributes encoded again by `encCBORAttributes` (`Attributes.hs:192-196`,
+    // `AddrAttributes.hs:96-119`) at `byronProtVer`, a map with a minimal head
+    // (`exactMapLenEncoding`, cardano-ledger-binary 048b78d2, `Encoding/Encoder.hs:397-430`) and
+    // minimal keys and lengths. The written maps are those of two addresses the reference decodes
+    // in `fixtures/reference/conway-decoding` ("attribute map with a wide key and length",
+    // "unknown attribute kept with a wide length").
+    val carol = key(4)
+    val maps = Vector(
+      ByronCbor.of(0xb8, 0x01, 0x18, 0x01, 0x42, 0x41, 0x01) -> ByronCbor.of(0xa1, 0x01, 0x42, 0x41,
+        0x01),
+      ByronCbor.of(0xa1, 0x05, 0x58, 0x02, 0x01, 0x02) -> ByronCbor.of(0xa1, 0x05, 0x42, 0x01, 0x02)
+    )
+    def rootOver(attributes: Bytes) =
+      ByronCbor.addressHash(
+        Cb.arr(Cb.uint(0), Cb.arr(Cb.uint(0), Cb.bytes(carol.extended)), attributes)
+      )
+    def address(root: Bytes, attributes: Bytes) =
+      val body = Cb.arr(Cb.bytes(root), attributes, Cb.uint(0))
+      Cb.arr(Cb.tag24(body), Cb.uint(ByronCbor.crc32(body)))
+    def spend(addr: Bytes) =
+      val in = addrIn(addr)
+      val a = aux(config, Seq((in, carol, false)), Seq(bobAddr -> 1000000))
+      (in, apply(a, utxo0.updated(in, ByronOut(addr, 10000000))).map(_ => ()))
+    maps.foreach { (written, canonical) =>
+      val canonicalRoot = address(rootOver(canonical), written)
+      assertEquals(ByronAddress.decode(canonicalRoot).map(_.attributes), Right(written))
+      assertEquals(spend(canonicalRoot)._2, Right(()), written.hex)
+      val (in, verdict) = spend(address(rootOver(written), written))
+      assertEquals(verdict, Left(ByronError.WrongKey(in)), written.hex)
+    }
   }
 
   test("a signature over other content is refused") {
@@ -372,4 +455,176 @@ class ByronLedgerSuite extends ScalaCheckSuite:
       ByronTx.merkleRoot(Vector.empty),
       xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(Bytes.empty)
     )
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // The order of the checks (#969). A transaction with two faults is refused with the one that
+  // `updateUTxOTxWitness` meets first (cardano-ledger f649f975, `Cardano/Chain/UTxO/Validation.hs`):
+  // the input addresses and witnesses (373-390), `validateTxAux` (189-217: size, minimum fee, output
+  // balance, input balance, fee, minimum fee reached), then `validateTx` through `updateUTxOTx`
+  // (247-258, 365-370: transaction attributes, then each output's attributes and network magic). An
+  // output address that does not decode fails before all of them, with the transaction's decoding
+  // (`TxOut`'s `decCBOR`, `Cardano/Chain/UTxO/Tx.hs:216-219`). The order is read from that source;
+  // these cases are not replayed through the reference.
+
+  /** A transaction, the UTxO it spends from and the parameters it is checked under. */
+  private final case class Checked(aux: ByronTxAux, utxo: Map[TxIn, ByronOut], params: ByronParams):
+    def tx(f: ByronTx => ByronTx): Checked = copy(aux = aux.copy(tx = f(aux.tx)))
+    def address(index: Int, to: Bytes): Checked =
+      tx(t => t.copy(outputs = t.outputs.updated(index, t.outputs(index).copy(address = to))))
+    def values(paid: BigInt*): Checked =
+      tx(t => t.copy(outputs = t.outputs.zip(paid).map((o, v) => o.copy(value = v))))
+    def verdict: Either[ByronError | ProviderDefect, Unit] =
+      ByronLedger.applyTx(config, params, utxo, aux).map(_ => ())
+
+  /** A fault and the error it alone is refused with. */
+  private final case class Fault(name: String, inject: Checked => Checked, error: ByronError)
+
+  private val spentIn = addrIn(aliceAddr)
+  private val clean =
+    Checked(spendAlice(Seq(bobAddr -> 1000000, aliceAddr -> 50000000)), utxo0, params)
+  private val cleanSize = clean.aux.raw.size
+
+  private val excessiveAttributes =
+    val attrs = Cb.map(Cb.uint(3) -> Cb.bytes(Bytes.fromArray(Array.fill(128)(0.toByte))))
+    val payload = Cb.arr(
+      Cb.bytes(ByronAddress.rootOf(ByronAddress.VerKey, bob.extended, attrs)),
+      attrs,
+      Cb.uint(0)
+    )
+    Cb.arr(Cb.tag24(payload), ByronCbor.uint(ByronCbor.crc32(payload)))
+  private val undecodable = Cb.arr()
+  private val undecodableCause =
+    ByronAddress.decode(undecodable).fold(identity, a => fail(s"an address: $a"))
+
+  private val missingInput =
+    Fault("a missing input", c => c.copy(utxo = c.utxo - spentIn), ByronError.MissingInput(spentIn))
+  private val wrongSignature = Fault(
+    "a wrong signature",
+    c =>
+      c.copy(aux = c.aux.copy(witnesses = c.aux.witnesses.map {
+        case ByronWitness.VerKey(k, s) =>
+          ByronWitness.VerKey(k, Bytes(s.value.updated(5, (s.value(5) ^ 1).toByte)))
+        case other => other
+      })),
+    ByronError.WrongSignature(spentIn)
+  )
+
+  /** The transaction witnessed by `signer` alone, with a valid signature. */
+  private def witnessedBy(signer: Key)(c: Checked): Checked =
+    val signed =
+      ByronSig.tag(ByronSig.SignTx, config.magic) ++ ByronCbor.of(0x58, 0x20) ++ c.aux.tx.id
+    c.copy(aux =
+      c.aux.copy(witnesses = Vector(ByronWitness.VerKey(signer.extended, signer.sign(signed))))
+    )
+  private val wrongKey =
+    Fault("a witness of another key", witnessedBy(bob), ByronError.WrongKey(spentIn))
+  private val tooLarge = Fault(
+    "a transaction too large",
+    c => c.copy(params = c.params.copy(maxTxSize = cleanSize - 1)),
+    ByronError.TxTooLarge(cleanSize - 1, cleanSize)
+  )
+  private val feeCalculation = Fault(
+    "a minimum fee out of range",
+    c =>
+      c.copy(params =
+        c.params.copy(txFeePolicy = TxFeePolicy(ByronLedger.MaxLovelace * 1000000000, 1000000000))
+      ),
+    ByronError.FeeCalculation(TxFeePolicy.Error.Overflow(ByronLedger.MaxLovelace + cleanSize))
+  )
+  private val outputBalance = Fault(
+    "an output balance out of range",
+    _.values(ByronLedger.MaxLovelace, 1),
+    ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.OutputBalance)
+  )
+  private val inputBalance = Fault(
+    "an input balance out of range",
+    c => c.copy(utxo = c.utxo.updated(spentIn, ByronOut(aliceAddr, ByronLedger.MaxLovelace + 1))),
+    ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.InputBalance)
+  )
+  private val feeUnderflow = Fault(
+    "outputs above the inputs",
+    _.values(99999999, 2),
+    ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.Fee)
+  )
+  private val feeTooSmall = Fault(
+    "a fee below the minimum",
+    _.values(1000000, 98999999),
+    ByronError.FeeTooSmall(minFee(clean.aux), 1)
+  )
+  private val txAttributes = Fault(
+    "unknown transaction attributes",
+    _.tx(_.copy(attributesLength = 128)),
+    ByronError.UnknownAttributes(ByronError.AttributeOwner.Transaction)
+  )
+  private val addressAttributes = Fault(
+    "unknown address attributes in the first output",
+    _.address(0, excessiveAttributes),
+    ByronError.UnknownAttributes(ByronError.AttributeOwner.Address)
+  )
+  private val networkMagic = Fault(
+    "another network in the first output",
+    _.address(0, address(bob, Some(Magic + 1))),
+    ByronError.NetworkMagicMismatch(Some(Magic), Some(Magic + 1))
+  )
+  private val undecodableOutput = Fault(
+    "an undecodable address in the last output",
+    _.address(1, undecodable),
+    ByronError.Decode(undecodableCause)
+  )
+
+  private val faults = Vector(
+    missingInput,
+    wrongSignature,
+    wrongKey,
+    tooLarge,
+    feeCalculation,
+    outputBalance,
+    inputBalance,
+    feeUnderflow,
+    feeTooSmall,
+    txAttributes,
+    addressAttributes,
+    networkMagic,
+    undecodableOutput
+  )
+
+  test("each fault of the check-order cases alone is refused with its own error") {
+    assertEquals(clean.verdict, Right(()))
+    faults.foreach(f => assertEquals(f.inject(clean).verdict, Left(f.error), f.name))
+  }
+
+  /** The pairs whose first error the order decides: the fault the reference meets first, then the
+    * other.
+    */
+  private val firstOfPairs: Vector[(Fault, Fault)] =
+    val feeSide = Vector(feeCalculation, outputBalance, inputBalance, feeUnderflow, feeTooSmall)
+    val validateTx = Vector(txAttributes, addressAttributes, networkMagic)
+    val decodedFirst = Vector(
+      missingInput,
+      wrongSignature,
+      wrongKey,
+      tooLarge,
+      txAttributes,
+      addressAttributes,
+      networkMagic
+    )
+    feeSide.flatMap(fee => validateTx.map(fee -> _)) ++
+      Vector(
+        outputBalance -> inputBalance,
+        feeCalculation -> outputBalance,
+        feeCalculation -> inputBalance,
+        feeCalculation -> feeUnderflow
+      ) ++ decodedFirst.map(undecodableOutput -> _)
+
+  firstOfPairs.foreach { (first, second) =>
+    test(s"first error: ${first.name} before ${second.name}") {
+      val both = second.inject(first.inject(clean))
+      assertEquals(both.verdict, Left(first.error))
+      assertEquals(
+        first.inject(second.inject(clean)).verdict,
+        Left(first.error),
+        "injected reversed"
+      )
+    }
   }

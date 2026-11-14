@@ -77,6 +77,24 @@ class SclsStateMapperSuite extends FunSuite:
   private val proposalValue = proposalFixtureValue("original")
   private val normalizedProposalValue = proposalFixtureValue("via-ledger-state")
 
+  /** `entries` with the root of `proposal` 's lineage replaced by the action it names, so that the
+    * import's `mkProposals` adds it (`Conway/Governance/Proposals.hs:305-334`, f649f975).
+    */
+  private def rootedFor(
+      entries: Vector[(SclsKey.Key, SclsValue.Entry)],
+      proposal: xyz.kd5ujc.scarab.ledger.Proposal
+  ): Vector[(SclsKey.Key, SclsValue.Entry)] =
+    xyz.kd5ujc.scarab.ledger.GovActions.lineage(proposal.action).fold(entries) {
+      (lineage, previous) =>
+        val purpose = lineage match
+          case xyz.kd5ujc.scarab.ledger.Purposeful.ParamUpdate  => SclsKey.Purpose.Parameters
+          case xyz.kd5ujc.scarab.ledger.Purposeful.HardFork     => SclsKey.Purpose.HardFork
+          case xyz.kd5ujc.scarab.ledger.Purposeful.Committee    => SclsKey.Purpose.Committee
+          case xyz.kd5ujc.scarab.ledger.Purposeful.Constitution => SclsKey.Purpose.Constitution
+        entries.filterNot(_._1 == SclsKey.Key.ProposalRoots(purpose)) ++
+          previous.map(p => SclsKey.Key.ProposalRoots(purpose) -> SclsValue.Entry.ProposalRoot(p))
+    }
+
   test("projects and overlays the implemented families from the real complete Conway base") {
     val projected = right(SclsStateMapper.project(base)).toVector
     val fixtureEncoded = fixtureEntries
@@ -297,6 +315,7 @@ class SclsStateMapperSuite extends FunSuite:
   }
 
   test("ordered proposals normalize retained procedure bytes and enforce source consistency") {
+    val rootedEntries = rootedFor(fixtureEntries, proposalValue.proposal)
     val id = xyz.kd5ujc.scarab.ledger.GovActionId(
       Bytes.wrap(Array.fill[Byte](32)(0)),
       7
@@ -311,7 +330,7 @@ class SclsStateMapperSuite extends FunSuite:
     assertEquals(canonicalProcedure, normalizedProposalValue.proposalProcedureRaw)
     val orderedValue = proposalValue.copy(order = Word64.zero)
     val row = key -> SclsValue.Entry.Proposal(orderedValue)
-    val rebuilt = right(SclsStateMapper.overlay(base, (fixtureEntries :+ row).iterator))
+    val rebuilt = right(SclsStateMapper.overlay(base, (rootedEntries :+ row).iterator))
     val projected = right(SclsStateMapper.project(rebuilt)).collect {
       case pair @ (_: SclsKey.Key.Proposals, _) => pair
     }.toVector
@@ -331,14 +350,16 @@ class SclsStateMapperSuite extends FunSuite:
       retainedSourceRow._2
     )
     assertEquals(
-      right(SclsStateMapper.overlay(base, (fixtureEntries :+ retainedSourceRow).iterator)),
+      right(SclsStateMapper.overlay(base, (rootedEntries :+ retainedSourceRow).iterator)),
       rebuilt
     )
 
+    // an order value that does not start at zero is only a sort key, as in the reference's import
+    assertNotEquals(proposalValue.order, Word64.zero)
     val outOfOrder = key -> SclsValue.Entry.Proposal(orderedValue.copy(order = proposalValue.order))
     assertEquals(
-      SclsStateMapper.overlay(base, (fixtureEntries :+ outOfOrder).iterator),
-      Left(SclsStateMapper.Error.ProposalOrder(0, 7))
+      SclsStateMapper.overlay(base, (rootedEntries :+ outOfOrder).iterator),
+      Right(rebuilt)
     )
     val changedProcedure = orderedValue.copy(
       proposal = orderedValue.proposal.copy(deposit = orderedValue.proposal.deposit + 1)
@@ -346,15 +367,102 @@ class SclsStateMapperSuite extends FunSuite:
     assertEquals(
       SclsStateMapper.overlay(
         base,
-        (fixtureEntries :+ (key -> SclsValue.Entry.Proposal(changedProcedure))).iterator
+        (rootedEntries :+ (key -> SclsValue.Entry.Proposal(changedProcedure))).iterator
       ),
       Left(SclsStateMapper.Error.ProposalProcedureMismatch(id))
     )
-    val secondId = id.copy(txId = Bytes.wrap(Array.fill[Byte](32)(1)))
-    val duplicateOrder = SclsKey.Key.Proposals(secondId) -> SclsValue.Entry.Proposal(orderedValue)
+  }
+
+  // `importNamespaceEntries` for "gov/proposals/v0" converts every entry, sorts them by order value
+  // with `sortOn` (stable) and collects them with `OMap.fromFoldable`, which keeps the first of a
+  // repeated id (cardano-ledger f649f975, `CanonicalState/Conway/Import.hs:219-227`;
+  // `Data/OMap/Strict.hs:178-184,227-231`)
+  private def orderedProposalId(fill: Int) =
+    xyz.kd5ujc.scarab.ledger.GovActionId(Bytes.wrap(Array.fill[Byte](32)(fill.toByte)), 0)
+
+  /** A proposal row of the id made from `fill`, with an order value and an expiry. */
+  private def orderedRow(fill: Int, order: Long, expiresAfter: Long = 9) =
+    SclsKey.Key.Proposals(orderedProposalId(fill)) -> SclsValue.Entry.Proposal(
+      proposalValue.copy(
+        order = Word64.fromUnsigned(order),
+        expiresAfter = EpochNo.fromUnsigned(expiresAfter)
+      )
+    )
+
+  /** The ids and expiries of the proposals the overlay of `rows` stores, in their order. */
+  private def importedProposals(rows: (SclsKey.Key, SclsValue.Entry)*) =
+    SclsStateMapper
+      .overlay(base, (rootedFor(fixtureEntries, proposalValue.proposal) ++ rows).iterator)
+      .map(ConwayNewEpochState.gov.get(_).proposals.actions.map(a => a.id -> a.expiresAfter))
+
+  test("proposals are sorted by their order value, which need not run from 0 to n-1") {
     assertEquals(
-      SclsStateMapper.overlay(base, (fixtureEntries ++ Vector(row, duplicateOrder)).iterator),
-      Left(SclsStateMapper.Error.ProposalOrder(1, 0))
+      importedProposals(orderedRow(1, 5), orderedRow(2, 2), orderedRow(3, 9)),
+      Right(
+        Vector(
+          orderedProposalId(2) -> BigInt(9),
+          orderedProposalId(1) -> BigInt(9),
+          orderedProposalId(3) -> BigInt(9)
+        )
+      )
+    )
+  }
+
+  test("proposals of equal order value keep their arrival order") {
+    assertEquals(
+      importedProposals(orderedRow(1, 0), orderedRow(2, 0)),
+      Right(Vector(orderedProposalId(1) -> BigInt(9), orderedProposalId(2) -> BigInt(9)))
+    )
+    assertEquals(
+      importedProposals(orderedRow(2, 0), orderedRow(1, 0)),
+      Right(Vector(orderedProposalId(2) -> BigInt(9), orderedProposalId(1) -> BigInt(9)))
+    )
+  }
+
+  test("of a repeated proposal id the entry first after the sort by order value is kept") {
+    assertEquals(
+      importedProposals(
+        orderedRow(1, 5, expiresAfter = 10),
+        orderedRow(2, 3),
+        orderedRow(1, 2, expiresAfter = 11)
+      ),
+      Right(Vector(orderedProposalId(1) -> BigInt(11), orderedProposalId(2) -> BigInt(9))),
+      "the later arrival with the lower order value"
+    )
+    assertEquals(
+      importedProposals(orderedRow(1, 4, expiresAfter = 10), orderedRow(1, 4, expiresAfter = 11)),
+      Right(Vector(orderedProposalId(1) -> BigInt(10))),
+      "an equal order value: the first arrival"
+    )
+  }
+
+  test("imported proposals are rebuilt as mkProposals rebuilds them over the imported roots") {
+    // the import ends in `recreateProposals`, which runs `mkProposals` over the imported proposals
+    // and roots (cardano-ledger@f649f975, CanonicalState/Conway/Import.hs:396-401;
+    // Conway/Governance/Proposals.hs:305-354)
+    val protVer = ProtVer(Word64.fromUnsigned(9L), Word64.zero)
+    val committeeRoot = ConwayNewEpochState.gov.get(base).proposals.roots.committee
+    val id = xyz.kd5ujc.scarab.ledger.GovActionId(Bytes.wrap(Array.fill[Byte](32)(3)), 0)
+    def naming(previous: Option[xyz.kd5ujc.scarab.ledger.GovActionId]) =
+      val proposal = proposalValue.proposal.copy(action =
+        xyz.kd5ujc.scarab.ledger.GovAction.NoConfidence(previous)
+      )
+      val raw = right(HaskellStateCodecs.proposal(using protVer).write(proposal))
+      SclsKey.Key.Proposals(id) -> SclsValue.Entry.Proposal(
+        proposalValue.copy(order = Word64.zero, proposal = proposal, proposalProcedureRaw = raw)
+      )
+    val attached =
+      right(SclsStateMapper.overlay(base, (fixtureEntries :+ naming(committeeRoot)).iterator))
+    assertEquals(ConwayNewEpochState.gov.get(attached).proposals.actions.map(_.id), Vector(id))
+    val elsewhere = id.copy(index = 1)
+    assertNotEquals(committeeRoot, Some(elsewhere))
+    assertEquals(
+      SclsStateMapper.overlay(base, (fixtureEntries :+ naming(Some(elsewhere))).iterator),
+      Left(
+        SclsStateMapper.Error.ProposalForest(
+          xyz.kd5ujc.scarab.ledger.ProposalsError.Unattached(id)
+        )
+      )
     )
   }
 

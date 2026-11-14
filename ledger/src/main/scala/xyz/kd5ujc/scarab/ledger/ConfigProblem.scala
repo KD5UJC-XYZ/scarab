@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.DomainError
 import io.circe.{DecodingFailure, ParsingFailure}
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -126,11 +127,6 @@ enum ConfigProblem:
   /** A `--plutus-vm` value that names no evaluator. */
   case PlutusVmUnknown(cause: xyz.kd5ujc.scarab.plutus.UnknownPlutusVm)
 
-  /** `--forge` with an evaluator that may not forge yet: the own evaluator, until the evidence of
-    * its gates is in (ADR 0027, its amendment of 2026-11-12).
-    */
-  case PlutusVmForging(vm: xyz.kd5ujc.scarab.plutus.PlutusVm)
-
   def message: String = this match
     case ActiveSlotsCoefficient(e)   => e.message
     case GenesisNumber(field, cause) => s"genesis ${field.key}: ${cause.message}"
@@ -146,13 +142,16 @@ enum ConfigProblem:
     case MissingField(context, field)     => s"$context: missing required field $field"
     case FileMissing(role, file)          => s"missing $role file $file"
     case FileRead(file, cause)            => s"cannot read $file: ${cause.getMessage}"
-    case UnknownFlag(flag)                => s"unknown flag $flag"
-    case DuplicateFlag(flag)              => s"duplicate flag $flag"
-    case MissingFlagValue(flag)           => s"flag $flag needs a value"
-    case UnexpectedArgument(value)        => s"unexpected argument $value"
-    case MissingFlag(flag)                => s"$flag is required"
-    case RemovedFlag(flag)                => s"--$flag was removed"
-    case FlagValue(flag, value)           => s"--${flag.stripPrefix("--")}: cannot use $value"
+    case InvalidPath(value, cause: java.nio.file.InvalidPathException) =>
+      s"cannot name the file $value: ${cause.getReason}"
+    case InvalidPath(value, cause) => s"cannot name the file $value: ${cause.getMessage}"
+    case UnknownFlag(flag)         => s"unknown flag $flag"
+    case DuplicateFlag(flag)       => s"duplicate flag $flag"
+    case MissingFlagValue(flag)    => s"flag $flag needs a value"
+    case UnexpectedArgument(value) => s"unexpected argument $value"
+    case MissingFlag(flag)         => s"$flag is required"
+    case RemovedFlag(flag)         => s"--$flag was removed"
+    case FlagValue(flag, value)    => s"--${flag.stripPrefix("--")}: cannot use $value"
     case FlagDependency(flags, required) =>
       s"${flags.toVector.sorted.mkString(", ")} need --$required"
     case LogSink(value)      => s"no sink $value (stdout, stderr, file)"
@@ -175,11 +174,9 @@ enum ConfigProblem:
     case ReferenceBuildUnknown(cause) => s"--reference-build: ${cause.message}"
     case ReferenceBuildNotYet(cause)  => s"--reference-build: ${cause.message}"
     case PlutusVmUnknown(cause)       => s"--plutus-vm: ${cause.message}"
-    case PlutusVmForging(vm) =>
-      s"--forge is refused with --plutus-vm ${vm.name} until the evidence of its gates is in (ADR 0027)"
     case MempoolCapacity(actual) =>
       s"configuration MempoolCapacityBytesOverride: ${actual.noSpaces} is neither a number of bytes from 0 to 4294967295 nor NoOverride"
-    case ListenAddress(address, cause) => s"--listen $address: ${cause.shown}"
+    case ListenAddress(address, cause) => s"--listen $address: ${cause.show}"
     case WithUsage(cause, usage)       => s"${cause.message}\n$usage"
     case _                             => toString
 

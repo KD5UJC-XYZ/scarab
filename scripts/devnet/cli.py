@@ -16,7 +16,9 @@
                                    Haskell relay) + load through that relay; tips and propagation
     devnet.py pool [--seconds N]   the Scala node as one of the three block-producing pools: it takes
                                    pool 1's keys (pool 1's Haskell node is never started), forges in
-                                   its leader slots, and the Haskell pools adopt its blocks
+                                   its leader slots, and the Haskell pools adopt its blocks; with
+                                   --plutus-load also Plutus transactions, each script's verdict
+                                   carried into the blocks it forges as their validity flag
     devnet.py kes-rotate [--seconds N]
                                    pool, with the KES key and operational certificate rotated unattended by
                                    scripts/pool/rotate_kes.py (SIGHUP reload): no restart, forging continues, the
@@ -35,7 +37,9 @@
                                    Conway, forks into Dijkstra and includes one Dijkstra transaction; no Scala node
     devnet.py capture-dijkstra     REFERENCE ONLY: capture the up-dijkstra chain as fixtures (fixtures/dijkstra-devnet)
     devnet.py e2e [--keep]         up-eras + Scala follower from Origin; assert every era and
-                                   era transition was followed with no validation error
+                                   era transition was followed with no validation error;
+                                   `--plutus-vm scalus --plutus-vm scarab` runs one follower per
+                                   evaluator in the cluster and also checks them against each other
     devnet.py refusal-corpus       the reference-refusal corpus (#401): each transaction of `refusalcases` submitted to the
                                    reference over LocalTxSubmission; its complete rejection, the ledger state and UTxO
                                    it was judged against and the genesis go to fixtures/reference/refusals
@@ -81,7 +85,7 @@ from .scenarios.peer_sharing import peer_sharing
 from .scenarios.restart import restart
 from .scenarios.v1context import v1_context
 from .scenarios.soak import soak
-from .util import GIB, REPO, data_root, free_space_shortfall, human_bytes, tree_size
+from .util import GIB, PLUTUS_VMS, REPO, data_root, free_space_shortfall, human_bytes, tree_size
 
 # the subcommands that start containers and fill a run directory: the free-space check and the size report apply
 RUNS = frozenset({"up", "up-eras", "capture-eras", "up-dijkstra", "capture-dijkstra", "e2e", "follow", "soak", "relay", "peer-sharing", "peercut",
@@ -194,9 +198,15 @@ def main():
     ac.set_defaults(run=assemble)
     e2 = sub.add_parser("e2e", parents=[eras_options(), scala_options],
                         help="up-eras, follow from Origin, assert every era and transition")
-    plutus_vm_help = ("the Scala node's Plutus evaluator (default: the node's, scalus); the forging scenarios do "
-                      "not take it, as the node refuses --forge with scarab")
-    e2.add_argument("--plutus-vm", choices=("scalus", "scarab"), default=None, help=plutus_vm_help)
+    plutus_vm_help = ("the Scala node's Plutus evaluator, for its block rules, its mempool and, in the forging "
+                      "scenarios, its forger (default: the node's, scalus)")
+    e2.add_argument("--plutus-vm", choices=PLUTUS_VMS, action="append", default=None,
+                    help=plutus_vm_help + ". Given more than once (`--plutus-vm scalus --plutus-vm scarab`), the run "
+                         "has one follower per evaluator, each with a container, log, sockets and ports of its own "
+                         "(<name>-scala-<vm>, follower-<vm>.jsonl, compare-<vm>.jsonl), each judged as the only one is "
+                         "and all compared with the same reference blocks; then their final chains must agree and so "
+                         "must their projected states at those blocks (`crossCheck` in e2e-summary.json, the followers "
+                         "under `followers`). Not with --oracle")
     e2.add_argument("--timeout", type=int, default=1500, help="overall time limit in seconds")
     e2.add_argument("--until-epoch", type=int,
                     help=f"Conway epoch to reach (default: first Conway epoch + {CONWAY_EPOCHS})")
@@ -213,7 +223,12 @@ def main():
     t.add_argument("--node", type=int, default=1, help="reference node 1..3")
     t.set_defaults(run=tip)
     f = sub.add_parser("follow", parents=[scala_options], help="run the Scala follower against a reference node (logs to the run dir)")
-    f.add_argument("--plutus-vm", choices=("scalus", "scarab"), default=None, help=plutus_vm_help)
+    f.add_argument("--plutus-vm", choices=PLUTUS_VMS, default=None, help=plutus_vm_help)
+    f.add_argument("--instance", choices=PLUTUS_VMS, default=None,
+                   help="one of several followers of the run, named by an evaluator (as `e2e` starts them with "
+                        "more than one --plutus-vm): its container, log, local socket, stall, dump, database and "
+                        "class directories carry the suffix -<instance>, and it takes a query and a metrics port of "
+                        "its own (`util.FollowerSite`); it does not choose the evaluator, --plutus-vm does")
     f.add_argument("--seconds", type=int, help="stop after this long (default: until killed)")
     f.add_argument("--node", type=int, default=1, help="reference node the follower connects to")
     f.add_argument("--dump-state", action="store_true",
@@ -336,6 +351,12 @@ def main():
         pl.add_argument("--interval", type=float, default=0.5, help="load generator pause between transactions")
         pl.add_argument("--min-comparisons", type=int, default=5, help="matched ledger comparisons required")
         pl.add_argument("--scala-flags", default="", help="extra flags for the Scala node, e.g. '--header-first off' (to compare builds or settings)")
+        pl.add_argument("--plutus-vm", choices=("scalus", "scarab"), default=None, help=plutus_vm_help)
+        pl.add_argument("--plutus-load", action="store_true",
+                        help="beside the payment load, rounds of Plutus V1 and V2 transactions (scripts/devnet/eraplutus.py): "
+                             "scripts that succeed, scripts that fail submitted with the validity flag false, and both "
+                             "with the opposite flag, which the reference and the Scala node must refuse; the run then "
+                             "requires a Scala-forged block with each of the first two and every flag on the chain right")
         pl.add_argument("--keep", action="store_true", help="leave the cluster running")
 
     pl = sub.add_parser("pool", parents=[scala_options], help="the Scala node as a block-producing pool among two Haskell pools")
