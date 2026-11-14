@@ -39,7 +39,7 @@ behaviour, so a deviation is the owner's decision, never a silent choice. The PR
 ## Hygiene
 
 - [ ] No keys, secrets or run data committed; fixtures have provenance and licence recorded (NOTICE/README)
-- [ ] Domain errors are closed ADTs through `Raise`; hashed bytes are the original bytes
+- [ ] Domain errors are closed ADTs through `Raise`; hashed and signed bytes are the bytes the reference hashes and signs (`docs/design/hashed-bytes.md`)
 
 <!-- End with `Closes #N`, or `Related to #N; this PR leaves the issue open: <reason>`.
 GitHub treats a closing keyword followed by an issue reference as a closing link even when the sentence negates it. -->

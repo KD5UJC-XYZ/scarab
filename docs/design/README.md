@@ -22,6 +22,7 @@ decisions they rest on are [ADRs](../adr/README.md).
 | [Memory-lean decoding](memory-lean-decoding.md) | Stages 0 to 3 implemented and measured, stage 4 a proposal | [#94](https://github.com/KD5UJC-XYZ/scarab/issues/94) |
 | [Typed rule interpreter](rule-interpreter-as-built.md) | Current; typed continuations and measured interpreter | [#202](https://github.com/KD5UJC-XYZ/scarab/issues/202) |
 | [Typed snapshot codec derivation](codec-derivation-as-built.md) | Current; typed field access and constructor recovery | [#205](https://github.com/KD5UJC-XYZ/scarab/issues/205) |
+| [Hashed and signed bytes](hashed-bytes.md) | Current; the default and the reference's re-encodings | [#971](https://github.com/KD5UJC-XYZ/scarab/issues/971) |
 | [Schema-first models](../models.md) | Spike (generator done; node adoption not started) | [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82) |
 | [Peer selection: the P2P governor](peer-selection.md) | As built; G1.1–G1.4 and original parent acceptance evidenced | [#31](https://github.com/KD5UJC-XYZ/scarab/issues/31) |
 | [Network resource limits](network-limits.md) | As built; reference state/queue/SDU matrix and explicit local profiles | [#35](https://github.com/KD5UJC-XYZ/scarab/issues/35) |
