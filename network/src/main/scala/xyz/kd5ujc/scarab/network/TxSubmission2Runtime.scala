@@ -57,13 +57,18 @@ private[network] object TxSubmission2Runtime:
 
   private final case class Window[I](unacked: Vector[I], cursor: Long)
 
+  /** The side that offers transactions and serves their bodies.
+    * @param served
+    *   Told the bodies of each `MsgReplyTxs` once it is sent.
+    */
   def client[F[_]: Temporal, I, B](
       channel: MuxChannel[F],
       source: Source[F, I, B],
       codec: Codec[I, B],
       rules: Rules[I],
       finish: Option[F[Unit]],
-      unexpected: Message[I, B] => NetworkError.Violation
+      unexpected: Message[I, B] => NetworkError.Violation,
+      served: Option[Vector[B] => F[Unit]] = None
   )(using Raise[F, NetworkError]): F[Unit] =
     val F = Temporal[F]
     val protocol = Protocols.TxSubmission2
@@ -145,7 +150,10 @@ private[network] object TxSubmission2Runtime:
       rules.bodies(window.unacked, ids).fold(illegal, F.pure) *>
         ids
           .flatTraverse(id => source.body(id).map(_.toVector))
-          .flatMap(bodies => send(State.Txs, TxSubmission2Engine.Message.ReplyTxs(bodies)))
+          .flatMap(bodies =>
+            send(State.Txs, TxSubmission2Engine.Message.ReplyTxs(bodies)) *>
+              served.traverse_(_(bodies))
+          )
     def loop(window: Window[I]): F[Unit] =
       receive(State.Idle).flatMap {
         case TxSubmission2Engine.Message.RequestIds(blocking, ack, request) =>

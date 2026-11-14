@@ -36,11 +36,14 @@ object TxSubmissionClient:
   /** `run` ends when the peer closes the protocol or, with `finish`, once that completes and the
     * peer next asks for transactions and waits: a blocking request is the only moment this side may
     * end the protocol, with `MsgDone`. A new conversation may then start with a fresh `MsgInit`.
+    * @param served
+    *   Told the bytes of the transactions of each `MsgReplyTxs` once it is sent.
     */
   def run[F[_]: Temporal](
       channel: MuxChannel[F],
       source: Source[F],
-      finish: Option[F[Unit]] = None
+      finish: Option[F[Unit]] = None,
+      served: Option[Long => F[Unit]] = None
   )(using Raise[F, NetworkError]): F[Unit] =
     val typedSource = new TxSubmission2Runtime.Source[F, Bytes, Bytes]:
       def after(ticket: Long, max: Int) =
@@ -61,7 +64,8 @@ object TxSubmissionClient:
       TxSubmission2.codec(source.reader),
       rules,
       finish,
-      message => RuntimeViolation.TxSubmissionUnexpected(TxSubmission2.fromEngine(message))
+      message => RuntimeViolation.TxSubmissionUnexpected(TxSubmission2.fromEngine(message)),
+      served.map(told => (bodies: Vector[Bytes]) => told(bodies.foldLeft(0L)(_ + _.size)))
     )
 
   /** A TxSubmission2 client running in the background that can be asked to end. */
@@ -89,13 +93,17 @@ object TxSubmissionClient:
   ): cats.effect.Resource[F, Unit] =
     backgroundFinishing(mux, source, role).void
 
-  /** As [[background]], and the client can be asked to end ([[Running.finish]]). */
+  /** As [[background]], and the client can be asked to end ([[Running.finish]]).
+    * @param served
+    *   Told the bytes of the transactions of each reply once it is sent ([[run]]).
+    */
   def backgroundFinishing[F[_]: cats.effect.Async](
       mux: Mux[F],
       source: Source[F],
       role: Option[Mux.Role] = None,
       completed: Option[Either[NetworkError, Unit] => F[Unit]] = None,
-      termination: Option[F[Unit]] = None
+      termination: Option[F[Unit]] = None,
+      served: Option[Long => F[Unit]] = None
   ): cats.effect.Resource[F, Running[F]] =
     import cats.effect.syntax.all.*
     val F = cats.effect.Async[F]
@@ -112,7 +120,8 @@ object TxSubmissionClient:
                 run(
                   _,
                   source,
-                  Some(termination.fold(asked.get)(external => F.race(asked.get, external).void))
+                  Some(termination.fold(asked.get)(external => F.race(asked.get, external).void)),
+                  served
                 )
               )
           )

@@ -25,6 +25,14 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
     def awaitAfter(ticket: Long) = IO.unit
     def body(txId: Bytes) = IO.pure(None)
 
+  /** A transaction the structural reader frames: `[{}, {}, true, null]`. */
+  private val transaction = Bytes(Vector(0x84, 0xa0, 0xa0, 0xf5, 0xf6).map(_.toByte))
+  private val holding: TxSubmissionClient.Source[IO] = new TxSubmissionClient.Source[IO]:
+    def reader = TxSubmission2Fixtures.structural
+    def after(ticket: Long, max: Int) = IO.pure(all.filter(_.ticket > ticket).take(max))
+    def awaitAfter(ticket: Long) = IO.unit
+    def body(txId: Bytes) = IO.pure(Some(transaction))
+
   private def send(channel: MuxChannel[IO], state: State, role: Role, message: Message)(using
       Net
   ): IO[Unit] =
@@ -121,6 +129,45 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
           }
         })
         .map(result => assertEquals(result, Right(Left(NetworkError.TxSubmission(expected)))))
+
+  test("the bytes of each reply's transactions are reported once it is sent"):
+    TestControl
+      .executeEmbed(for
+        told <- Ref.of[IO, Vector[Long]](Vector.empty)
+        result <- typed {
+          linked(protocols = Set(4)).use { (client, server) =>
+            for
+              c <- client.channel(4)
+              s <- server.channel(4)
+              running <- typed(
+                TxSubmissionClient.run(c, holding, served = Some(n => told.update(_ :+ n)))
+              ).start
+              _ <- receive(s, State.Init, Role.Client)
+              _ <- send(s, State.Idle, Role.Server, Message.RequestIds(true, 0, 3))
+              _ <- receive(s, State.Ids(true), Role.Client)
+              _ <- send(s, State.Idle, Role.Server, Message.RequestTxs(Vector(id(0), id(2))))
+              reply <- receive(s, State.Txs, Role.Client)
+              _ <- send(s, State.Idle, Role.Server, Message.RequestTxs(Vector(id(1))))
+              _ <- receive(s, State.Txs, Role.Client)
+              _ <- send(s, State.Idle, Role.Server, Message.RequestIds(false, 0, 0))
+              ended <- running.joinWithNever
+            yield (reply, ended)
+          }
+        }
+        reported <- told.get
+      yield (result, reported))
+      .map { (result, reported) =>
+        assertEquals(
+          result,
+          Right(
+            (
+              Message.ReplyTxs(Vector(transaction, transaction)),
+              Left(NetworkError.TxSubmission(TxSubmissionPolicy.Violation.EmptyRequest))
+            )
+          )
+        )
+        assertEquals(reported, Vector(2L * transaction.size, transaction.size.toLong))
+      }
 
   test("credit is checked before the reply batch cap; invalid numeric callers stay typed"):
     assertEquals(

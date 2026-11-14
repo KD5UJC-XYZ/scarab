@@ -419,6 +419,10 @@ object Catalogue:
     MetricName("scarab_peer_reconnects_total"),
     "Times the connection to the peer was lost and opened again."
   )
+  val txSubmissionServedBytes = CounterDef(
+    MetricName("scarab_txsubmission_served_bytes_total"),
+    "Bytes of the transactions this node sent to peers in TxSubmission2 replies."
+  )
   val blockNoVerdict = CounterDef(
     MetricName("scarab_block_no_verdict_total"),
     "Blocks the node has no verdict on: its own implementation could not judge them (issue 567)."
@@ -1100,6 +1104,7 @@ object Catalogue:
     peerTipSlot,
     peerTipBlock,
     peerReconnects,
+    txSubmissionServedBytes,
     blockNoVerdict,
     blockNoVerdictRetries,
     followerStalls,
