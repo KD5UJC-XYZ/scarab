@@ -1,26 +1,23 @@
 # SPDX-License-Identifier: Apache-2.0
-# A stated experiment on ../config-canary: the same canary at create-env's k = 5 and 500-slot epochs, s1's container
-# started with the pools. Every config-canary run at k = 20 (4,000-slot epochs) ended "incomplete" on the platform at
-# about 1 h 15 min with no property report, with or without setup complete. Its setup takes about 875 s of virtual
-# time, for the two epoch boundaries its governance change needs. The runs at k = 5 completed in about 31 minutes.
-# This asks whether a short setup lets the run complete with its report. The k = 20 canary was chosen against a
-# start split that came from s1 starting late (Docker's DNS has no name for s1 yet, and the pools wait 900 s after
-# that NXDOMAIN); here s1 starts with the pools.
-#
-# The writeBits canary (GHSA-vfw2-hhrc-87v5): the cluster of ../config at protocol 11, whose driver's first command
-# submits the canary transaction to s1. Against Scarab before the fix, the detectors "a Haskell pool never refuses a
-# block as invalid" and "Scarab never refuses a block as invalid" fail.
+# The cluster of ../config in its earlier start order, an experiment beside it: s1's container starts once both Haskell
+# pools listen. Docker's DNS knows a container's name only while it runs, so the pools' first lookup of s1 fails with
+# NXDOMAIN, and the reference waits 900 s before the next one (`ttlForDnsError _ NameError = maxTTL`, ouroboros-network
+# LocalRootPeers.hs:307; Scarab the same). For those 15 minutes the pools take none of s1's blocks. Its question: how
+# the cluster fares when a pool's name does not resolve at first, as for a relay whose record is not yet published.
+# ../config-reference-late-start is its control.
+# The pools' logs go to a shared volume as well, for the driver's divergence detectors.
 # No restart policies: Antithesis restarts what it kills.
 
 x-labels: &labels
-  xyz.kd5ujc.scarab.kind: antithesis-canary
+  xyz.kd5ujc.scarab.kind: antithesis-pool-late-start
   xyz.kd5ujc.scarab.owner: antithesis
 
 x-after-configurator: &after-configurator
   configurator:
     condition: service_completed_successfully
 
-# s1 dials both Haskell pools at once, so it starts only when they listen (cardano/listening.sh, issue 609).
+# s1 dials both Haskell pools at once, so its container starts only when they listen (cardano/listening.sh, issue
+# 609).
 x-listening: &listening
   test: ["CMD", "/opt/at/listening.sh", "3001"]
   interval: 1s
@@ -34,12 +31,9 @@ services:
     image: scarab-at-cardano:trial
     platform: linux/amd64
     command: ["/opt/at/configure.sh"]
-    environment:
-      PROTOCOL_MAJOR: "11"
     labels: *labels
     volumes:
       - env:/env
-      - ./conway-genesis-overlay.json:/config/conway-genesis-overlay.json:ro
 
   h2:
     container_name: h2
@@ -77,12 +71,14 @@ services:
     image: scarab-at-scarab:trial
     platform: linux/amd64
     init: true
-    # s1's container starts with the pools, so that its name resolves from their first lookup, and the node waits
-    # inside it until both listen (see ../config-start-together): the canary needs a cluster that is together.
-    environment:
-      WAIT_FOR: "h2:3001 h3:3001"
     labels: *labels
-    depends_on: *after-configurator
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      h2:
+        condition: service_healthy
+      h3:
+        condition: service_healthy
     volumes:
       - env:/env:ro
       - ipc-s1:/ipc
@@ -91,15 +87,15 @@ services:
   driver:
     container_name: driver
     hostname: driver
-    image: scarab-at-canary:trial
+    image: scarab-at-driver:trial
     platform: linux/amd64
     init: true
     labels: *labels
     depends_on: *after-configurator
     volumes:
-      - env:/env:ro
       - ipc-h2:/ipc/h2
       - ipc-h3:/ipc/h3
+      - env:/env:ro
       - ipc-s1:/ipc/s1
       - logs:/logs:ro
 

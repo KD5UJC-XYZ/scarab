@@ -13,7 +13,8 @@ x-after-configurator: &after-configurator
   configurator:
     condition: service_completed_successfully
 
-# s1 dials both Haskell pools at once, so it starts only when they listen (cardano/listening.sh, issue 609).
+# Whether a Haskell pool listens (cardano/listening.sh). s1 dials both at once, so it starts only when they listen
+# (issue 609): here its node waits for that itself (WAIT_FOR), and ../config-late-start starts its container on it.
 x-listening: &listening
   test: ["CMD", "/opt/at/listening.sh", "3001"]
   interval: 1s
@@ -70,14 +71,12 @@ services:
     image: scarab-at-scarab:trial
     platform: linux/amd64
     init: true
+    # s1's container starts with the pools, so that its name resolves from their first lookup, and the node waits
+    # inside it until both listen.
+    environment:
+      WAIT_FOR: "h2:3001 h3:3001"
     labels: *labels
-    depends_on:
-      configurator:
-        condition: service_completed_successfully
-      h2:
-        condition: service_healthy
-      h3:
-        condition: service_healthy
+    depends_on: *after-configurator
     volumes:
       - env:/env:ro
       - ipc-s1:/ipc

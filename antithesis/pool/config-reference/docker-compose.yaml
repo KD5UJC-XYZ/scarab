@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
-# The control of ../config: the same cluster, faults, properties and workload, with pool 1 run by cardano-node 11.1.3 in
-# s1's seat instead of Scarab. Its question: how often does the reference fork, refuse or lag under the same faults?
-# Scarab's own detectors (its metrics, its fatal and clock events) have nothing to read here and stay quiet.
-# No restart policies: Antithesis restarts what it kills.
+# The control of ../config: the same cluster, start order, faults, properties and workload, with pool 1 run by
+# cardano-node 11.1.3 in s1's seat instead of Scarab. Its question: how often does the reference fork, refuse or lag
+# under the same faults? Scarab's own detectors (its metrics, its fatal and clock events) have nothing to read here and
+# stay quiet.
 
 x-labels: &labels
   xyz.kd5ujc.scarab.kind: antithesis-pool-reference
@@ -67,14 +67,10 @@ services:
     platform: linux/amd64
     init: true
     command: ["/opt/at/haskell-node.sh", "1", "s1"]
+    environment:
+      WAIT_FOR: "h2:3001 h3:3001"
     labels: *labels
-    depends_on:
-      configurator:
-        condition: service_completed_successfully
-      h2:
-        condition: service_healthy
-      h3:
-        condition: service_healthy
+    depends_on: *after-configurator
     volumes:
       - env:/env:ro
       - ipc-s1:/ipc

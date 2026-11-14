@@ -2,6 +2,10 @@
 # The writeBits canary (GHSA-vfw2-hhrc-87v5): the cluster of ../config at protocol 11, whose driver's first command
 # submits the canary transaction to s1. Against Scarab before the fix, the detectors "a Haskell pool never refuses a
 # block as invalid" and "Scarab never refuses a block as invalid" fail.
+# It runs at create-env's k = 5 and 500-slot epochs, the owner's choice of 2026-11-14. The canary at k = 20, with
+# 4,000-slot epochs and about 875 s of setup in virtual time, never ended with a property report on the platform; at
+# k = 5 the runs complete in about 30 minutes. At k = 5 this topology forks past k under the platform's network faults,
+# a cardano-node in s1's seat as well, so the canary's verdict is s1's answer and the two refusal detectors.
 # No restart policies: Antithesis restarts what it kills.
 
 x-labels: &labels
@@ -28,12 +32,6 @@ services:
     command: ["/opt/at/configure.sh"]
     environment:
       PROTOCOL_MAJOR: "11"
-      # k = 20, with epochs of 10k/f = 4,000 slots: the canary asks whether the detectors fire when s1 forges an
-      # invalid block, which a cluster split at the start cannot answer. At k = 5 this topology's start race splits
-      # it for good in many setups, a cardano-node in s1's seat as well (#854), and three positive controls in a
-      # row failed on it. At k = 20 that fork heals. The pool config keeps k = 5.
-      SECURITY_PARAM: "20"
-      EPOCH_LENGTH: "4000"
     labels: *labels
     volumes:
       - env:/env
@@ -76,7 +74,7 @@ services:
     platform: linux/amd64
     init: true
     # s1's container starts with the pools, so that its name resolves from their first lookup, and the node waits
-    # inside it until both listen (see ../config-start-together): the canary needs a cluster that is together.
+    # inside it until both listen (as in ../config): the canary needs a cluster that is together.
     environment:
       WAIT_FOR: "h2:3001 h3:3001"
     labels: *labels
