@@ -117,6 +117,12 @@ object ConwayPlutusScript:
 opaque type ConwayScript = AlonzoScriptRep[ConwayTimelock, ConwayPlutusScript]
 
 object ConwayScript:
+  /** A native script as a Conway script (`fromNativeScript`). */
+  private[conway] def native(t: ConwayTimelock): ConwayScript = AlonzoScriptRep.NativeScript(t)
+
+  /** A Plutus script as a Conway script (`fromPlutusScript`). */
+  private[conway] def plutus(p: ConwayPlutusScript): ConwayScript = AlonzoScriptRep.PlutusScript(p)
+
   /** Conway's script decoder (`decodeAlonzoScript` at `eraMaxLanguage = PlutusV3`,
     * `Conway/Scripts.hs:98`, cardano-ledger f649f975).
     */

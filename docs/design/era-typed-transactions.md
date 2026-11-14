@@ -395,6 +395,13 @@ passes `check`.
   A Scala method could take the same bound as evidence, but that evidence would name a range of eras, which
   the ADR 0007 amendment rules out. So, by design, they come with those eras in a class of their own, whose
   instances are exactly Shelley's to Babbage's.
+- Conway's witness set has the reference's `AlonzoTxWitsRaw` fields: key witnesses as a set under the
+  reference's `Ord WitVKey`, bootstrap witnesses, Conway scripts and datums by hash, and redeemers keyed by
+  Conway's own purpose (`ConwayPlutusPurpose`, in the forms `AsIx`, `AsItem` and `AsIxItem`). The witness
+  classes are `EraTxWits` and `AlonzoEraTxWits`. The flat decoder reads the set and refuses what Conway
+  refuses. Its scripts are then read again from the same bytes into Conway's types, each native script with
+  its own bytes, and they must be the flat decoder's by hash. Every recorded Conway witness set reads with
+  the flat decoder's witnesses, and the deep preprod witness set reads on a small stack.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
   delegation, instantaneous rewards) the flat Conway decoder refuses first, with the same error, as tests on
   crafted bytes show.

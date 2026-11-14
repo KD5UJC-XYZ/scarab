@@ -8,10 +8,12 @@ import xyz.kd5ujc.scarab.ledger.{
   CborRead,
   Certificate,
   LedgerDecodeError,
+  PreprodDeepTx,
   Purpose,
-  TxBody as FlatTxBody
+  TxBody as FlatTxBody,
+  Witnesses
 }
-import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayTxBody, ConwayTxCert}
+import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayTxBody, ConwayTxCert, ConwayTxWits}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** Conway's types (stage 2 of `docs/design/era-typed-transactions.md`): every recorded Conway body
@@ -19,6 +21,59 @@ import xyz.kd5ujc.scarab.protocol.Era
   * what only the projection from the flat body refuses, the flat Conway decoder never produces.
   */
 class EraConwaySuite extends munit.FunSuite:
+  private lazy val transactions: Vector[Block.Transaction] =
+    Vector(
+      "fixtures/eras/blocks.hex",
+      "fixtures/preview/conway.hex",
+      "fixtures/preview/conway-governance.hex"
+    )
+      .flatMap(f => Files.readString(Path.of(f)).linesIterator)
+      .map(_.trim.split("\\s+").last)
+      .filter(_.nonEmpty)
+      .flatMap(h => Bytes.fromHex(h).toOption)
+      .flatMap(raw => Block.decodeShelley(raw).toOption)
+      .collect { case b: Block.Shelley if b.era == Era.Conway => b }
+      .flatMap(_.transactions)
+
+  test(
+    "every recorded Conway witness set reads with the flat decoder's witnesses, its scripts typed"
+  ) {
+    val w = EraTxWits.conway
+    assert(transactions.nonEmpty)
+    val counts = transactions.map { t =>
+      val flat = Witnesses.decode(t.witnesses, Era.Conway).toOption.get
+      val c = ConwayTxWits.decode(t.witnesses).toOption.get
+      assertEquals(
+        w.addrTxWits(c).toVector.map(k => (k.vkey, k.signature)),
+        flat.vkeys.distinct.sortBy((vk, sig) => WitVKey(vk, sig))
+      )
+      assertEquals(w.bootAddrTxWits(c), flat.bootstrap)
+      val scripts = w.scriptTxWits(c)
+      assertEquals(scripts.keySet, flat.scriptsByHash.keySet)
+      scripts.foreach((hash, s) => assertEquals(w.scriptsOf.hashScript(s), hash))
+      assertEquals(w.datsTxWits(c).values.toSet, flat.datums.toSet)
+      assertEquals(
+        w.rdmrsTxWits(c).toVector.map((p, v) => (p.tag, BigInt(p.ix.value.toString), v)),
+        flat.redeemers.map(r => (r.tag, r.index, (r.data, r.exUnits))).sortBy(r => (r._1, r._2))
+      )
+      (scripts.size, w.rdmrsTxWits(c).size)
+    }
+    assert(counts.map(_._1).sum > 0, "no recorded Conway witness set has a script")
+    assert(counts.map(_._2).sum > 0, "no recorded Conway witness set has a redeemer")
+  }
+
+  test("the deep preprod witness set reads on a small stack, its native script typed") {
+    val witnesses = CborRead.decode(PreprodDeepTx.bytes).toOption.get.value match
+      case xyz.kd5ujc.scarab.codec.Value.Arr(xs) => xs(1).original
+      case other => fail(s"not a transaction: ${other.toString.take(80)}")
+    val c = PreprodDeepTx.onSmallStack(ConwayTxWits.decode(witnesses))
+    val flat = Witnesses.decode(witnesses, Era.Conway).toOption.get
+    assertEquals(
+      c.map(EraTxWits.conway.scriptTxWits(_).keySet.toSet),
+      Right(flat.scriptsByHash.keySet)
+    )
+  }
+
   private lazy val bodies: Vector[Bytes] =
     Vector(
       "fixtures/eras/blocks.hex",

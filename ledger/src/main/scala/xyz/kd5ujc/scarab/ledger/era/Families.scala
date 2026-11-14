@@ -68,3 +68,15 @@ type Script[E <: EraTag] = E match
 type PlutusScript[E <: EraTag] = E match
   case Babbage => babbage.BabbagePlutusScript
   case Conway  => conway.ConwayPlutusScript
+
+/** The witness set of era `E` (`type TxWits era`,
+  * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:516`, cardano-ledger f649f975).
+  */
+type TxWits[E <: EraTag] = E match
+  case Conway => conway.ConwayTxWits
+
+/** The Plutus purpose of era `E` in the form `F` (`type PlutusPurpose f era`,
+  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:172`, cardano-ledger f649f975).
+  */
+type PlutusPurpose[F[_, _], E <: EraTag] = E match
+  case Conway => conway.ConwayPlutusPurpose[F]

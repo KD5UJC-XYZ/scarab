@@ -141,6 +141,9 @@ enum EraTxError:
   /** A delegation to neither a pool nor a DRep, which no decoder reads. */
   case NoDelegatee
 
+  /** The scripts of a witness set read again from its bytes are not the ones its decoder read. */
+  case ScriptsReadAgain
+
 enum EraField:
   case Update, CurrentTreasury, MultiAsset, Datum, ReferenceScript, NegativeValue,
     GenesisDelegation, InstantaneousRewards
