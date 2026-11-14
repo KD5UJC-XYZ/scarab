@@ -316,6 +316,11 @@ object NodeSetup:
         .map(_.getOrElse(HeaderCheckpoints.empty))
       shelleyBytes <- required("Shelley", names.shelley)
       shelleyBase <- Genesis.shelley(text(shelleyBytes))
+      // Scarab takes k from Shelley and does not reject unequal Byron and Shelley values. The
+      // reference takes Byron's k with `assert (kByron == kShelley)` (ouroboros-consensus 82ecba32
+      // `Cardano/Node.hs:669-670, 718-719, 847-848`). This is a debug assertion, compiled out in
+      // optimized builds unless enabled (`ouroboros-consensus.cabal:34-37, 65-67`); cardano-node
+      // 11.1.3 provides a separate asserted variant (`nix/haskell.nix:415-424`).
       // The chain store and the volatile chain count blocks in an `Int`: a larger security parameter
       // is refused, which the reference's `NonZero Word64` would accept. An approved deviation,
       // recorded in #474.

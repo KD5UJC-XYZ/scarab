@@ -2,6 +2,27 @@
  "schemaVersion": 1,
  "pins": [
   {
+   "name": "aeson",
+   "repository": "haskell/aeson",
+   "version": "2.2.5.0",
+   "urlPattern": "https://hackage.haskell.org/package/aeson-{version}",
+   "role": "JSON primitive instances of cardano-node 11.1.3, checked in the versioned source archive for the configuration reader's citations.",
+   "dependents": [
+    "node/src/main/scala/xyz/kd5ujc/scarab/node/ConfigFields.scala"
+   ]
+  },
+  {
+   "name": "aeson",
+   "repository": "haskell/aeson",
+   "version": "2.3.1.0",
+   "urlPattern": "https://hackage.haskell.org/package/aeson-{version}",
+   "role": "Historical oracle version cited by the dated 2026-11-04 bounded-integer experiment; not the aeson dependency of either reference node build.",
+   "dependents": [
+    "docs/compatibility/ledger-genesis-fields.md",
+    "docs/findings.md"
+   ]
+  },
+  {
    "name": "cardano-node",
    "repository": "IntersectMBO/cardano-node",
    "version": "11.1.3",
