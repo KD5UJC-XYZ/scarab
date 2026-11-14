@@ -203,10 +203,9 @@ def inline_definition(code: str) -> bool:
     return False
 
 
-def member_after_semicolon(code: str, depth: int, level: int) -> bool:
-    """Whether a line of code, starting at bracket depth `depth`, holds a definition keyword after a `;`, both at
-    depth `level` or less: back at the level of a member's header."""
-    armed = False
+def definition_after_semicolon(code: str) -> bool:
+    """Whether a line of code holds a definition keyword after a `;`, both outside the brackets the line opens."""
+    depth, armed = 0, False
     for match in re.finditer(r'[(\[{]|[)\]}]|;|\b(?:' + '|'.join(KEYWORDS) + r')\b', code):
         token = match.group()
         if token in '([{':
@@ -214,8 +213,8 @@ def member_after_semicolon(code: str, depth: int, level: int) -> bool:
         elif token in ')]}':
             depth -= 1
         elif token == ';':
-            armed = armed or depth <= level
-        elif armed and depth <= level:
+            armed = armed or depth <= 0
+        elif armed and depth <= 0:
             return True
     return False
 
@@ -353,20 +352,17 @@ def read(source: str) -> Read:
         if node.transparent and id(node) not in with_methods:
             node.private = True
 
-    def hidden_definition(scope: Node, i: int) -> bool:
-        """Whether line `i`, inside `scope`, defines something where a member would go that has no header line of
-        its own: after a `{` or `;` on a line of a class, object, trait, enum or extension body whose members are
-        read (`object A { def f = 1 }`), or after a `;` that is back at the level of a member's header
-        (`val a = 1; def f = 2`, or `}; def g = 2` after a body in braces, or `\"\"\"; def g` after a literal)."""
-        if scope.kind in TEMPLATES or scope.transparent:
-            members_read = scope.keyed or (scope.transparent and member_of(scope))
-            return members_read and not blank[i] and inline_definition(code_lines[i])
-        if not member_of(scope):
-            return False
-        level = depths[scope.header]
-        if i not in in_literal and i != scope.header and indent[i] > scope.indent:
-            return False
-        return member_after_semicolon(code_lines[i], depths[i], level)
+    def hidden_definition(scope: Node | None, i: int) -> bool:
+        """Whether line `i` defines something on a line it does not start: after a `{` or `;` on a line of a class,
+        object, trait, enum or extension body whose members are read (`object A { def f = 1 }`), or, in any scope,
+        after a `;` outside the brackets the line opens (`val a = 1; def f = 2`, `}; def g = 2`). The second is
+        refused inside a method's body too: deciding there whether the definition is a member would need the
+        scope of every brace, and writing it on a line of its own costs nothing."""
+        if (scope is not None and (scope.kind in TEMPLATES or scope.transparent) and not blank[i]
+                and (scope.keyed or (scope.transparent and member_of(scope)))):
+            if inline_definition(code_lines[i]):
+                return True
+        return definition_after_semicolon(code_lines[i])
 
     def path(node: Node) -> str:
         chain = []
@@ -400,11 +396,10 @@ def read(source: str) -> Read:
         if blank[i] and i not in in_literal:
             continue
         scope = scope_of[i]
-        if scope is not None:
-            if hidden_definition(scope, i):
-                unread.append(i + 1)
+        if hidden_definition(scope, i):
+            unread.append(i + 1)
             continue
-        if blank[i]:
+        if scope is not None or blank[i]:
             continue
         if i < clause_end:
             if ';' in code_lines[i]:

@@ -62,12 +62,11 @@ decoder. The reader fails closed instead, and the guard refuses these lines as u
 - a line under a root that no definition holds and that is not a `package a.b`, `import`, `export` or `end`
   line;
 - a clause line with a `;`, or a `package` with a body;
-- a definition written after a `{` or `;` on a line of a class, object, trait, enum or extension body
+- a definition written after a `{` on a line of a class, object, trait, enum or extension body
   (`object A { def f = 1 }`);
-- a definition after a `;` that is back at the level of a member's header: on the header line
-  (`val a = 1; def f = 2`), after a body in braces (`}; def g = 2`) or after a multi-line literal.
-
-Braces and semicolons inside a method's body are its own code and are read with it.
+- anywhere, a definition after a `;` that is outside the brackets its line opens (`val a = 1; def f = 2`,
+  `}; def g = 2`), a method's body included: telling there whether it is a member would need the scope of every
+  brace. Inside brackets the line opens, as in `def f = { val a = 1; a }`, it is the method's own code.
 
 So a definition is written on a line of its own, where the reader keys it.
 

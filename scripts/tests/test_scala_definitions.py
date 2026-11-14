@@ -153,7 +153,18 @@ class DefinitionsTest(unittest.TestCase):
         self.assertEqual(defs.read('object A:\n  private def f = { val a = 1; a }\n').unread, ())
         self.assertEqual(defs.read('object A:\n  private given Ordering[Int] with { def compare(x: Int, y: Int) = 0 }'
                                    '\n').unread, ())
-        self.assertEqual(defs.read('object A:\n  def f =\n    val a = 1; def g = a\n    g\n').unread, ())
+        # a `;` that leaves the brackets of its line is refused in any scope, a method's body included
+        cases = {
+            'object A {\n  private class B {\n    val x = 1\n  }; def g = 2\n}\n': (4,),
+            'object A {\n  def f = {\n    1\n    }; def g = 2\n}\n': (4,),
+            'object A:\n  given Ordering[Int] with\n    def compare(a: Int, b: Int) = {\n      0\n    }}; def g = 2\n': (5,),
+            'object A:\n  def f =\n    val a = 1; def g = a\n    g\n': (3,),
+            'object A:\n  def f =\n    println("""a\n    b"""); val y = 2\n    y\n': (4,),
+        }
+        for source, unread in cases.items():
+            with self.subTest(source=source):
+                self.assertEqual(defs.read(source).unread, unread)
+        self.assertEqual(defs.read('object A:\n  def f = (a; b)\n  val s = ";"; // ; def\n').unread, ())
         # a class header's parameters are not a body
         self.assertEqual(defs.read('final class A(val x: Int, var y: Int):\n  def f = x\n').unread, ())
 
