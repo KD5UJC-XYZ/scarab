@@ -1,17 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
-# A stated experiment on ../config-canary-k5: the same canary with s1 on Scarab's own Plutus evaluator
-# (`--plutus-vm scarab`, ADR 0027), which forges since the owner's decision of 2026-11-13. The GHSA-vfw2-hhrc-87v5
-# fix was made in the Scalus path; the own evaluator has a limit of its own (`uplc` `Bitwise.writeBits`, applied in the
-# semantics variants that bound it). This asks whether s1 on the own evaluator refuses the 4,097-byte `writeBits` mint
-# at its mempool too, end to end, and holds with the pools under the detectors.
-#
-# The writeBits canary (GHSA-vfw2-hhrc-87v5): the cluster of ../config at protocol 11, whose driver's first command
-# submits the canary transaction to s1. Against Scarab before the fix, the detectors "a Haskell pool never refuses a
-# block as invalid" and "Scarab never refuses a block as invalid" fail.
+# The control of ../config-late-start: the same cluster, start order, faults, properties and workload, with pool 1 run
+# by cardano-node 11.1.3 in s1's seat instead of Scarab (as ../config-reference is to ../config). Its question: how
+# often does the reference fork, refuse or lag when s1's name does not resolve at the pools' first lookup?
+# Scarab's own detectors (its metrics, its fatal and clock events) have nothing to read here and stay quiet.
 # No restart policies: Antithesis restarts what it kills.
 
 x-labels: &labels
-  xyz.kd5ujc.scarab.kind: antithesis-canary
+  xyz.kd5ujc.scarab.kind: antithesis-pool-reference-late-start
   xyz.kd5ujc.scarab.owner: antithesis
 
 x-after-configurator: &after-configurator
@@ -32,12 +27,9 @@ services:
     image: scarab-at-cardano:trial
     platform: linux/amd64
     command: ["/opt/at/configure.sh"]
-    environment:
-      PROTOCOL_MAJOR: "11"
     labels: *labels
     volumes:
       - env:/env
-      - ./conway-genesis-overlay.json:/config/conway-genesis-overlay.json:ro
 
   h2:
     container_name: h2
@@ -72,16 +64,18 @@ services:
   s1:
     container_name: s1
     hostname: s1
-    image: scarab-at-scarab:trial
+    image: scarab-at-cardano:trial
     platform: linux/amd64
     init: true
-    # s1's container starts with the pools, so that its name resolves from their first lookup, and the node waits
-    # inside it until both listen (see ../config-start-together): the canary needs a cluster that is together.
-    environment:
-      WAIT_FOR: "h2:3001 h3:3001"
-      PLUTUS_VM: scarab
+    command: ["/opt/at/haskell-node.sh", "1", "s1"]
     labels: *labels
-    depends_on: *after-configurator
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      h2:
+        condition: service_healthy
+      h3:
+        condition: service_healthy
     volumes:
       - env:/env:ro
       - ipc-s1:/ipc
@@ -90,15 +84,17 @@ services:
   driver:
     container_name: driver
     hostname: driver
-    image: scarab-at-canary:trial
+    image: scarab-at-driver:trial
     platform: linux/amd64
     init: true
+    environment:
+      S1_IMPLEMENTATION: cardano-node
     labels: *labels
     depends_on: *after-configurator
     volumes:
-      - env:/env:ro
       - ipc-h2:/ipc/h2
       - ipc-h3:/ipc/h3
+      - env:/env:ro
       - ipc-s1:/ipc/s1
       - logs:/logs:ro
 

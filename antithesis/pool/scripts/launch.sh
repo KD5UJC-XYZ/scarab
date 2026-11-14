@@ -19,18 +19,16 @@ commit=$(docker image inspect scarab-at-scarab:trial --format '{{index .Config.L
 # and the canary's cost-model enactment before that gate.
 validate_timeout=35m
 case ${CONFIG:-config} in
-  config-canary) name=scarab-canary validate_timeout=50m
-    description="writeBits canary (GHSA-vfw2-hhrc-87v5) on Scarab $commit with two cardano-node 11.1.3 pools" ;;
-  config-canary-k5) name=scarab-canary-k5
+  config-canary) name=scarab-canary
     description="writeBits canary (GHSA-vfw2-hhrc-87v5), k = 5, on Scarab $commit with two cardano-node pools" ;;
-  config-canary-k5-scarab-vm) name=scarab-canary-k5-scarab-vm
+  config-canary-scarab-vm) name=scarab-canary-scarab-vm
     description="writeBits canary (GHSA-vfw2-hhrc-87v5), k = 5, Scarab $commit on its own Plutus evaluator" ;;
   config-reference) name=scarab-pool-reference
     description="control: cardano-node 11.1.3 in s1's seat with two cardano-node 11.1.3 pools, create-env defaults" ;;
-  config-reference-start-together) name=scarab-pool-reference-start-together
-    description="control: cardano-node 11.1.3 in s1's seat, its container started with the two cardano-node pools" ;;
-  config-start-together) name=scarab-pool-start-together
-    description="Scarab $commit pool with two cardano-node 11.1.3 pools, s1's container started with them" ;;
+  config-reference-late-start) name=scarab-pool-reference-late-start
+    description="control: cardano-node 11.1.3 in s1's seat, its container started once the two pools listen" ;;
+  config-late-start) name=scarab-pool-late-start
+    description="Scarab $commit pool with two cardano-node 11.1.3 pools, s1's container started once they listen" ;;
   config-k200) name=scarab-pool-k200
     description="Scarab $commit pool with two cardano-node 11.1.3 pools, k = 200, 40000-slot epochs" ;;
   *) name=scarab-pool

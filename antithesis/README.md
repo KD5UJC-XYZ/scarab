@@ -11,8 +11,9 @@ divergence is reproduced locally before it is reported.
 Two Haskell cardano-node 11.1.3 pools (`h2`, `h3`, from the [reference image](../docs/reference-image.md)) and
 one Scarab pool (`s1`, pool 1's keys), on the genesis `cardano-testnet create-env` writes with its defaults
 (k = 5, f = 0.05, 0.1 s slots, 500-slot epochs). A one-shot `configurator` writes the genesis, keys and
-topologies at setup and sets the start time a minute ahead. `s1` starts once both Haskell pools listen, as the
-devnet starts it (issue 609).
+topologies at setup and sets the start time a minute ahead. `s1`'s container starts with the pools, so that its name
+resolves from their first DNS lookup, and Scarab waits inside it until both Haskell pools listen, as the devnet starts
+it (issue 609). `config-late-start` keeps the earlier order as an experiment (below).
 
 The `driver` reports setup complete once the cluster is healthy. All three pools must first report one tip at
 block 2 or later. Then all three must answer and be on the longest chain, at fork depth 0. Since the gate began,
@@ -20,8 +21,8 @@ each Haskell pool's own chain must have taken a new block of s1, and s1's a new 
 side is taking the other's blocks now, not only at some earlier time. At k = 5 this topology's start race can keep the
 Haskell pools from taking s1's blocks until s1 has forked past k; a cardano-node in s1's seat does the same (#854).
 Every timeline would inherit that split, so such a setup fails after 1200 s and says so. The gate waits that long
-because, in the configs that start s1's container after the pools, the pools' first DNS lookup of `s1` fails, and the
-reference then waits 900 s before it looks again: until then the pools take none of s1's blocks.
+because, in `config-late-start` and its control, the pools' first DNS lookup of `s1` fails, and the reference then
+waits 900 s before it looks again: until then the pools take none of s1's blocks.
 Antithesis then runs its test commands under faults, many times per timeline:
 
 - `parallel_driver_watch_tips` reads every pool's tip over its local socket every 5 s for a minute;
@@ -75,6 +76,18 @@ divergence at 0.5 blocks per second. So `pool` cannot ask whether the forks that
 can. `pool` stays in every round, because it shows a fork at the start as a permanent split. The configurator takes
 k and the epoch length from `SECURITY_PARAM` and `EPOCH_LENGTH`.
 
+## `pool/config-late-start`: the earlier start order
+
+An experiment beside `pool`: s1's container starts only once both Haskell pools listen, as `pool` started it until
+2026-11-14. Docker's DNS knows a container's name only while it runs, so the pools' first local-root lookup of `s1`
+fails with NXDOMAIN, and the reference waits the longest interval, 900 s, before it looks again (`ttlForDnsError`,
+ouroboros-network `RootPeersDNS/LocalRootPeers.hs`; Scarab's `LocalRootDnsCache` does the same). Until then the pools
+take none of s1's blocks, and at k = 5 s1's fork often passes k first. It asks how the cluster fares when a pool's name
+does not resolve at first, as for a relay whose record is not yet published. On the platform, at k = 5 and under the
+same faults, the share of timelines forking past k was 83% with this order and 40% with `pool`'s, and 76% and 34%
+with cardano-node in s1's seat (`config-reference-late-start` and `config-reference`). `pool` moved to the new order
+on that result, the owner's decision.
+
 ## `pool/config-canary`: the writeBits canary
 
 A regression check, and on a build with the fix reverted a positive control for the detectors: the `pool` cluster set
@@ -82,16 +95,14 @@ up so that a known, published divergence
 ([GHSA-vfw2-hhrc-87v5](https://github.com/KD5UJC-XYZ/scarab/security/advisories/GHSA-vfw2-hhrc-87v5), `writeBits`
 on more than 4,096 bytes at protocol 11) would happen.
 
-The canary starts s1's container together with the pools, as `config-start-together` does, and runs at k = 20 with
-epochs of 4,000 slots. It asks whether the detectors fire when s1 forges an invalid
-block, and a cluster split at the start cannot answer that. At k = 5, this topology's start race split it for good
-in three positive controls in a row; a cardano-node in s1's seat loses the same race (#854). The pool config keeps
-k = 5. Setup takes about 15 minutes, for the two epoch boundaries the governance change needs.
-
-`pool/config-canary-k5` is a stated experiment: the same canary at k = 5 with 500-slot epochs, s1 started with the
-pools. Every k = 20 canary run on the platform ended "incomplete" at about 1 h 15 min with no property report, with or
-without setup complete. The k = 5 runs completed in about 31 minutes. It asks whether the long setup is why.
-`pool/config-canary-k5-scarab-vm` runs that canary with s1 on Scarab's own Plutus evaluator (`PLUTUS_VM: scarab`,
+The canary starts s1's container with the pools, as `pool` does, and runs at create-env's k = 5 with 500-slot
+epochs: its setup needs two epoch boundaries for the governance change. Until 2026-11-14 it ran at k = 20 with
+4,000-slot epochs, against a start split that came from the late start. That setup took about 875 s of virtual time,
+and none of those runs on the platform ended with a property report; the k = 5 runs complete in about 30 minutes, with
+the report. The owner made k = 5 the canary then. At k = 5 this topology forks past k under the platform's network
+faults, a cardano-node in s1's seat as well, so the canary's verdict is s1's answer and the two refusal detectors,
+not the fork depth.
+`pool/config-canary-scarab-vm` runs the canary with s1 on Scarab's own Plutus evaluator (`PLUTUS_VM: scarab`,
 passed as `--plutus-vm scarab`). The advisory's fix was made in the Scalus path, and the own evaluator has a limit of
 its own; this checks it end to end.
 
@@ -119,9 +130,9 @@ SCARAB_JAR=node/target/scala-3.9.0/scarab-node-<version>-assembly.jar \
 antithesis/pool/scripts/validate.sh                   # snouty validate: setup complete locally, then cleaned up
 antithesis/pool/scripts/launch.sh resilient 15m       # validate, then a basic_test run
 CONFIG=config-canary antithesis/pool/scripts/launch.sh none 15m   # the canary
-CONFIG=config-canary-k5 antithesis/pool/scripts/launch.sh none 15m   # experiment: the canary at k = 5, short setup
-CONFIG=config-canary-k5-scarab-vm antithesis/pool/scripts/launch.sh none 15m   # the same, own evaluator
+CONFIG=config-canary-scarab-vm antithesis/pool/scripts/launch.sh none 15m   # the canary, own evaluator
 CONFIG=config-k200 antithesis/pool/scripts/launch.sh resilient 15m  # k = 200
+CONFIG=config-late-start antithesis/pool/scripts/launch.sh resilient 15m  # experiment: the earlier start order
 python3 -I antithesis/pool/canary/writebits_script.py # regenerate the canary's policies and cost model
 ```
 

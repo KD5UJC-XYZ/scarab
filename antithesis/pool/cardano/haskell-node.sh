@@ -10,7 +10,7 @@ seat=${2:-h$n}
 pool=/env/net/pools-keys/pool$n
 mkdir -p /data
 # WAIT_FOR, as scarab-node.sh has it: host:port pairs that must accept a TCP connection before the node starts
-# (config-reference-start-together, where pool 1 runs in s1's seat with its container started with the pools).
+# (config-reference, where pool 1 runs in s1's seat with its container started with the pools).
 for target in ${WAIT_FOR:-}; do
   until (exec 3<> "/dev/tcp/${target%:*}/${target#*:}") 2> /dev/null; do
     sleep 1
