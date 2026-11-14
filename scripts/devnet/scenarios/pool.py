@@ -307,12 +307,14 @@ def reference_invalid_blocks(views):
             for pool, v in views.items() if "unreadable" in v or v["invalid"]}
 
 
-def wait_joined(name, log, socket, timeout=pool_plutus.JOIN_TIMEOUT):
+def wait_joined(name, log, socket, on_tip=lambda tip: None, timeout=pool_plutus.JOIN_TIMEOUT):
     """Seconds until blocks and transactions crossed between the Haskell pools and the Scala node both ways
-    (`pool_plutus.joined`), the observer's tip read at `socket` and the Scala node's events from `log`."""
+    (`pool_plutus.joined`), the observer's tip read at `socket` and the Scala node's events from `log`. Each tip read is
+    also given to `on_tip`, which takes the leadership schedule of an epoch the wait spans."""
     began, tips = time.monotonic(), set()
     while time.monotonic() - began < timeout:
         tip = tip_at(name, socket)
+        on_tip(tip)
         if tip:
             tips.add(tip["hash"])
         if pool_plutus.joined(log_counts(log)[1], tips):
@@ -414,6 +416,14 @@ def pool(args):
                            whole_state(args.name, "conway", scala_socket=socket, anchor="reference", attempts=10))
 
     schedules = {}  # epoch -> the slots the oracle says the Scala pool leads
+
+    def take_schedule(seen):
+        # the reference answers `--current` only: every loop that reads the observer's tip asks for its epoch's
+        if seen and seen["epoch"] not in schedules:
+            got = leadership_schedule(args.name, f"{ENV}/socket/node{observer}/sock", ours)
+            if got is not None:
+                schedules[seen["epoch"]] = got
+                print(json.dumps({"schedule": {"epoch": seen["epoch"], "slots": len(got)}}), flush=True)
     completed = False  # the run reached its verdict; an exception other than SystemExit leaves this False
     try:
         ports, shelley = pool_environment(args)
@@ -469,6 +479,7 @@ def pool(args):
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             tip = tip_at(args.name, f"{ENV}/socket/node{observer}/sock")
+            take_schedule(tip)
             counts, _, _ = log_counts(log)
             if tip and tip["block"] > 0 and counts.get("forgeStarted") and counts.get("extended"):
                 break
@@ -485,7 +496,7 @@ def pool(args):
                                    "--stats-every", "5"],
                                   stdout=(root / "load.log").open("w"), stderr=subprocess.STDOUT)
         if getattr(args, "plutus_load", False):
-            joined_after = wait_joined(args.name, log, f"{ENV}/socket/node{observer}/sock")
+            joined_after = wait_joined(args.name, log, f"{ENV}/socket/node{observer}/sock", take_schedule)
             print(json.dumps({"plutusLoadStarts": {"joinedAfterSeconds": joined_after}}), flush=True)
             # funded from the delegator of a Haskell pool: the Scala pool's stake is left as it is
             plutus = pool_plutus.Runner.against(args.name, root, f"{ENV}/socket/node{observer}/sock",
@@ -504,12 +515,7 @@ def pool(args):
             samples.append(sample)
             if toggle:
                 toggle.due(time.monotonic() - started)
-            seen = sample[f"pool{observer}"]
-            if seen and seen["epoch"] not in schedules:
-                got = leadership_schedule(args.name, f"{ENV}/socket/node{observer}/sock", ours)
-                if got is not None:
-                    schedules[seen["epoch"]] = got
-                    print(json.dumps({"schedule": {"epoch": seen["epoch"], "slots": len(got)}}), flush=True)
+            take_schedule(sample[f"pool{observer}"])
             counts, _, _ = log_counts(log)
             print(json.dumps({"t": sample["t"], **{k: v and (v["epoch"], v["block"], v["hash"][:10])
                                                   for k, v in sample.items() if k != "t"},

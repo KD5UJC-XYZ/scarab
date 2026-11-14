@@ -665,5 +665,16 @@ class LogViewTest(unittest.TestCase):
                          {"pool1": ["the log could not be read (exit status 1)"], "pool3": [self.INVALID]})
 
 
+class ScheduleDuringJoinTest(unittest.TestCase):
+    def test_every_tip_the_join_wait_reads_is_offered_for_its_epochs_schedule(self):
+        tips = [{"hash": H["a"], "epoch": 0}, {"hash": H["b"], "epoch": 1}, {"hash": H["c"], "epoch": 1}]
+        events = [{"event": "forged", "hash": H["c"]}, {"event": "mempoolAdded", "tx": "t"}]
+        offered = []
+        with patch.object(pool, "tip_at", side_effect=tips), patch.object(pool, "log_counts", return_value=({}, events, [])), \
+                patch.object(pool.time, "sleep"):
+            pool.wait_joined("n", None, "/sock", offered.append)
+        self.assertEqual([t["epoch"] for t in offered], [0, 1, 1])
+
+
 if __name__ == "__main__":
     unittest.main()
