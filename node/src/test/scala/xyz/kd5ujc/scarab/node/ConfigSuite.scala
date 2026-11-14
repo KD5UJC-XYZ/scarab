@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import scala.annotation.unused
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigNumberField, ConfigProblem}
+import xyz.kd5ujc.scarab.ledger.json.JsonKind
 import io.circe.Json
 import io.circe.parser
 import java.nio.file.{Files, Path}
@@ -553,6 +554,88 @@ class ConfigSuite extends FunSuite:
     assertEquals(flag("4294967295"), Right(Some(4294967295L)))
     assert(flag("4294967296").isLeft)
     assert(flag("-1").isLeft)
+  }
+
+  test("PBftSignatureThreshold is a Maybe Double, as cardano-node 11.1.3 reads it") {
+    // `.:? "PBftSignatureThreshold"` (`POM.hs:600`) through yaml and aeson's `parseRealFloat`. Each
+    // verdict and value below is the 11.1.3 release binary's own: the `npcByronPbftSignatureThresh`
+    // of its startup `Node configuration` line, or its refusal, on this Preview configuration with
+    // the value inserted (run 2026-11-14).
+    val base = text("preview", "config.json")
+    def read(raw: Option[String]) =
+      val at = base.indexOf('{') + 1
+      val inserted =
+        raw.fold(base)(r => base.take(at) + s""""PBftSignatureThreshold": $r,""" + base.drop(at))
+      NodeConfig
+        .parse(ReferenceBuild.Default)(inserted, strict = true)
+        .map(_.pbftSignatureThreshold)
+    def bits(raw: Option[String]) = read(raw).map(_.map(java.lang.Double.doubleToRawLongBits))
+    // Exactly half the smallest subnormal, 5^1075 * 10^-1075 = 2^-1075, ties to even: zero.
+    val tie = s"${BigInt(5).pow(1075)}e-1075"
+    val accepted = List(
+      None -> None,
+      Some("null") -> None,
+      Some("0.3") -> Some(0.3),
+      Some("\"+inf\"") -> Some(Double.PositiveInfinity),
+      Some("\"-inf\"") -> Some(Double.NegativeInfinity),
+      Some("\"\\u002binf\"") -> Some(Double.PositiveInfinity),
+      Some("-0.5") -> Some(-0.5),
+      Some("1e400") -> Some(Double.PositiveInfinity),
+      Some("1e-400") -> Some(0.0),
+      Some("-1e-400") -> Some(-0.0),
+      Some("-0") -> Some(0.0),
+      Some("1.7976931348623158e308") -> Some(Double.MaxValue),
+      Some("1.7976931348623159e308") -> Some(Double.PositiveInfinity),
+      Some("2.4703282292062328e-324") -> Some(Double.MinPositiveValue),
+      Some("2.4703282292062327e-324") -> Some(0.0),
+      Some("9007199254740993") -> Some(9.007199254740992e15),
+      Some("123456789012345678901234567890e-10") -> Some(1.2345678901234567e19),
+      Some("2.5E-1") -> Some(0.25),
+      Some(tie) -> Some(0.0)
+    )
+    // The exponent wraps in a 64-bit Int, as attoparsec's `scientific` reads it.
+    val wrapped = List(
+      Some("1e18446744073709551617") -> Some(10.0),
+      Some("1e-18446744073709551615") -> Some(10.0),
+      Some("1.5e18446744073709551617") -> Some(15.0),
+      Some("1e9223372036854775807") -> Some(Double.PositiveInfinity),
+      Some("1e9223372036854775808") -> Some(0.0),
+      Some("-1e9223372036854775808") -> Some(-0.0)
+    )
+    (accepted ++ wrapped).foreach((raw, expected) =>
+      assertEquals(
+        bits(raw),
+        Right(expected.map(java.lang.Double.doubleToRawLongBits)),
+        raw.getOrElse("absent")
+      )
+    )
+    assertEquals(NodeConfig.DefaultPBftSignatureThreshold, 0.22)
+    // A numeric string, any other string, a Boolean, an array and an object are refused:
+    // "parsing Double failed".
+    List(
+      "\"0.3\"" -> JsonKind.String,
+      "\"NaN\"" -> JsonKind.String,
+      "\"Infinity\"" -> JsonKind.String,
+      "true" -> JsonKind.Boolean,
+      "[]" -> JsonKind.Array,
+      "{}" -> JsonKind.Object
+    ).foreach((raw, found) =>
+      assertEquals(
+        read(Some(raw)),
+        Left(
+          ConfigError(
+            ConfigProblem.Ancillary(
+              ConfigFieldError.NotDouble("configuration", "PBftSignatureThreshold", found)
+            )
+          )
+        ),
+        raw
+      )
+    )
+    // No JSON value is NaN: a bare NaN, a YAML string to the reference, is not JSON here.
+    read(Some("NaN")) match
+      case Left(ConfigError(ConfigProblem.JsonSyntax("configuration", _))) => ()
+      case other => fail(s"a bare NaN is refused, not $other")
   }
 
   test("Genesis sync targets and trusted-state threshold are typed settings") {

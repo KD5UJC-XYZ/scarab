@@ -77,10 +77,13 @@ object ByronRules:
 
   /** The most blocks a genesis key may sign in the window: `pbftWindowParams` 's
     * `floor (pbftSignatureThreshold * fromIntegral winSize) :: Word64` (ouroboros-consensus
-    * 82ecba32 `Ouroboros/Consensus/Protocol/PBFT.hs:403-412`). GHC 9.10.3 floors through `Integer`
-    * and takes the result modulo 2^64, so a window of 2^64 - 1 (a `k` of -1 in the genesis, #734)
-    * at a threshold of 1 is 0; a product that is not finite decodes to a multiple of 2^64 and is 0
-    * too.
+    * 82ecba32 `Ouroboros/Consensus/Protocol/PBFT.hs:403-412`). The Linux release binaries are built
+    * with GHC 9.6.7 (cardano-node `nix/haskell.nix:26` at 11.1.3 and 11.2.1; Windows uses
+    * `windowsCompilerNixName`, GHC 9.12.2, `flake.nix:97`). Its base 4.18.3.0 has no rewrite rule
+    * for a `Word64` `floor`, so `floorDouble` floors through `Integer` and takes the result modulo
+    * 2^64 (`GHC/Float.hs:651-654, 679-688`): a window of 2^64 - 1 (a `k` of -1 in the genesis,
+    * #734) at a threshold of 1 is 0, and a product that is not finite decodes to a multiple of 2^64
+    * and is 0 too. These results were run on GHC 9.10.3, not on 9.6.7.
     */
   def windowThreshold(threshold: Double, window: BigInt): BigInt =
     val product = threshold * window.toDouble

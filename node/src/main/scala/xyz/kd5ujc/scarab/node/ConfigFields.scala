@@ -45,7 +45,17 @@ private[node] final class ConfigFields private (val name: String, val fields: Js
       )
     )
 
-  /** Optional null is absent before parseRealFloat sees it; numeric strings are not numbers. */
+  /** `.:?` of a `Double`: null is absent before `parseRealFloat` sees it (aeson 2.2.5.0
+    * `Data/Aeson/Types/FromJSON.hs:858-859, 922-925, 1616-1618`), so its `Null` clause (`:189`) is
+    * never reached; a number is `toRealFloat`, the strings `"+inf"` and `"-inf"` are infinities,
+    * and anything else, numeric strings included, is refused (`:187-192`). cardano-node 11.1.3
+    * reads the file with yaml 0.11.11.2 (`decodeFileThrow`, `POM.hs:1017`), which keeps a quoted
+    * scalar a string and reads a plain one with attoparsec 0.14.4's `scientific`
+    * (`Data/Yaml/Internal.hs:235-259`), wrapping the exponent in a machine Int as [[FromJson]]
+    * does. `toRealFloat` (scientific 0.3.8.1 `Data/Scientific.hs:720-762`, through `fromRational`,
+    * base 4.18.3.0 `GHC/Float.hs:577-591, 1218-1281`) and `toDouble` both round to nearest, ties to
+    * even, overflowing to an infinity and underflowing to a signed zero.
+    */
   def realFloat(key: String): Either[ConfigError, Option[Double]] =
     value(key).traverse {
       case j if j.asString.contains("+inf") => Right(Double.PositiveInfinity)
