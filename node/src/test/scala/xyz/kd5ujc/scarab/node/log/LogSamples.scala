@@ -341,7 +341,7 @@ object LogSamples:
     LocalServer.Trace.AcceptConnection(
       LocalConnectionId(socket, LocalAddress("/ipc/node.socket@0"))
     ),
-    LocalServer.Trace.AcceptError(exhausted),
+    LocalServer.Trace.AcceptError(AcceptFailure.System(exhausted)),
     LocalServer.Trace.ServerStopped,
     LocalServer.Trace.ServerError(DiffusionFailure.System(exhausted))
   )

@@ -73,14 +73,21 @@ object BearerServer:
       clients <- Supervisor[F](await = false)
       slots <- Resource.eval(maxConnections.traverse(n => Semaphore[F](n.toLong)))
       stopped <- Resource.eval(Deferred[F, DiffusionFailure])
-      // `TrServerStopped` then `TrServerError`, as the reference's `finally` within its `catch`
-      // (`Server.hs` 168-175); the owner learns that the loop stopped even if a trace fails
+      // the owner learns that the loop stopped, and why, even if a trace fails
+      // ([[LocalServer.ending]])
       _ <- acceptLoop(listener, trace, clients, open, slots, beforeAccept)(onFailure)(handle)
-        .onCancel(trace(Trace.ServerStopped))
-        .flatMap(failure =>
-          (trace(Trace.ServerStopped) *> trace(Trace.ServerError(failure)))
-            .guarantee(stopped.complete(failure).void)
+        .onCancel(
+          LocalServer.cancelled(
+            trace(Trace.ServerStopped),
+            failure => trace(Trace.ServerError(failure)),
+            stopped.complete(_).void
+          )
         )
+        .flatMap(
+          LocalServer
+            .ending(_, trace(Trace.ServerStopped), failure => trace(Trace.ServerError(failure)))
+        )
+        .flatMap(stopped.complete(_).void)
         .background
     yield Listening(listener.address, stopped.get)
 

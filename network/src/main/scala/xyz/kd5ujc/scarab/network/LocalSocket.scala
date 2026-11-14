@@ -151,8 +151,12 @@ trait LocalListener[F[_]]:
   /** `Snocket.listen`, with the reference's backlog of 8. */
   def listen: F[Either[DiffusionFailure, Unit]]
 
-  /** The next client (`Socket.accept`). The bearer is the caller's to close. */
-  def accept: F[Either[SystemCallError, LocalStream[F]]]
+  /** The next client (`Socket.accept`). The bearer is the caller's to close. A failed accept is the
+    * call's `IOError`, or a defect for any other exception of the call that is not asynchronous, as
+    * the reference's `AcceptFailure` carries either (ouroboros-network c45735a5,
+    * `ouroboros-network/framework/lib/Ouroboros/Network/Snocket.hs` 170-214).
+    */
+  def accept: F[Either[AcceptFailure, LocalStream[F]]]
 
 /** An accepted client: its bearer, and how to close the connection. */
 final case class LocalStream[F[_]](bearer: Bearer[F], close: F[Unit])
@@ -341,14 +345,28 @@ object LocalSockets:
 
       def listen: F[Either[DiffusionFailure, Unit]] = F.pure(Right(()))
 
-      def accept: F[Either[SystemCallError, LocalStream[F]]] =
-        F.blocking(Either.catchOnly[IOException](channel.accept()))
-          .cancelable(F.blocking(channel.close()))
-          .flatMap(
-            _.leftMap(SystemCallError.of(SystemCall.Accept, None)).traverse(client =>
-              Mutex[F].map(lock => LocalStream(stream(client, lock), F.blocking(client.close())))
+      // between the accept and the stream that owns its client nothing may cancel, and the client
+      // is closed if the stream is not made; a client accepted as the accept is cancelled is closed
+      // too ([[LocalSockets.acquiring]])
+      def accept: F[Either[AcceptFailure, LocalStream[F]]] =
+        F.uncancelable { poll =>
+          poll(
+            LocalSockets.acquiring(
+              F.blocking(Either.catchNonFatal(channel.accept())),
+              F.blocking(channel.close())
+            )(_.traverse_(client => F.blocking(client.close())))
+          ).flatMap(
+            _.leftMap {
+              case e: IOException =>
+                AcceptFailure.System(SystemCallError.of(SystemCall.Accept, None)(e))
+              case cause => AcceptFailure.Defect(cause)
+            }.traverse(client =>
+              Mutex[F]
+                .map(lock => LocalStream(stream(client, lock), F.blocking(client.close())))
+                .onError { case _ => F.blocking(client.close()) }
             )
           )
+        }
 
   /** The `IOError` of unix 2.8.6.0's `useAsCStringSafe` for a path that holds NUL
     * (`System/Posix/PosixPath/FilePath.hsc` 154-171): it names the path as decoded, NUL included.
