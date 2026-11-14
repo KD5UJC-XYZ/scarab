@@ -907,6 +907,142 @@ class ReferenceImageTest(unittest.TestCase):
                 self.assertRegex(digest, r"^[0-9a-f]{64}$", f"{version} {name}")
 
 
+class ReleaseVerificationTest(unittest.TestCase):
+    """verify_archive and extract_binaries against synthetic releases, so that each check is the one that decides."""
+
+    @staticmethod
+    def release(version, archive, binaries):
+        import hashlib
+        import prepare_reference_image as pri
+        return pri.Release(version, hashlib.sha256(archive).hexdigest(), len(archive),
+                           {n: hashlib.sha256(b).hexdigest() for n, b in binaries.items()})
+
+    @staticmethod
+    def tarball(path, binaries):
+        import io as stdio
+        import tarfile
+        with tarfile.open(path, "w:gz") as archive:
+            for name, data in binaries.items():
+                info = tarfile.TarInfo("./bin/" + name)
+                info.size = len(data)
+                archive.addfile(info, stdio.BytesIO(data))
+        return path.read_bytes()
+
+    def test_an_archive_verifies_against_its_own_release_only(self):
+        import prepare_reference_image as pri
+        with tempfile.TemporaryDirectory() as d:
+            path = pathlib.Path(d) / "a.tar.gz"
+            path.write_bytes(b"the archive of release A")
+            a = self.release("1.0.0", path.read_bytes(), {})
+            b = self.release("2.0.0", b"the archive of the second release", {})
+            pri.verify_archive(path, a)
+            with self.assertRaisesRegex(ValueError, "size mismatch"):
+                pri.verify_archive(path, b)
+            same_size = self.release("3.0.0", b"the archive of release C", {})
+            self.assertEqual(same_size.archive_size, a.archive_size)
+            with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+                pri.verify_archive(path, same_size)
+
+    def test_a_corrupted_archive_of_the_pinned_size_fails_the_checksum(self):
+        import prepare_reference_image as pri
+        with tempfile.TemporaryDirectory() as d:
+            path = pathlib.Path(d) / "a.tar.gz"
+            path.write_bytes(b"the archive of release A")
+            pinned = self.release("1.0.0", path.read_bytes(), {})
+            path.write_bytes(b"the archive of release X")
+            self.assertEqual(path.stat().st_size, pinned.archive_size)
+            with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+                pri.verify_archive(path, pinned)
+
+    def test_the_executables_are_written_when_each_matches_the_selected_release(self):
+        import prepare_reference_image as pri
+        binaries = {"cardano-node": b"node A", "cardano-cli": b"cli A", "cardano-testnet": b"testnet A"}
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            archive = root / "a.tar.gz"
+            self.tarball(archive, binaries)
+            out = root / "bin"
+            out.mkdir()
+            pri.extract_binaries(archive, self.release("1.0.0", b"", binaries), out)
+            for name, data in binaries.items():
+                self.assertEqual((out / name).read_bytes(), data, name)
+                self.assertEqual((out / name).stat().st_mode & 0o777, 0o755, name)
+            other = dict(binaries, **{"cardano-cli": b"cli B"})
+            with self.assertRaisesRegex(ValueError, "unexpected official binary: cardano-cli"):
+                pri.extract_binaries(archive, self.release("2.0.0", b"", other), root)
+
+    def test_a_missing_executable_is_refused(self):
+        import prepare_reference_image as pri
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            archive = root / "a.tar.gz"
+            self.tarball(archive, {"cardano-node": b"node A"})
+            wanted = self.release("1.0.0", b"", {"cardano-node": b"node A", "cardano-cli": b"cli A"})
+            with self.assertRaisesRegex(ValueError, "missing/duplicate binary: cardano-cli"):
+                pri.extract_binaries(archive, wanted, root)
+
+
+class ExtractionContainerTest(unittest.TestCase):
+    """`up --node-image` copies a binary out of a created container: labelled as the devnet's, always removed."""
+
+    def fake(self, cp=None, rm_code=0):
+        calls = []
+
+        def docker(*args, check=True, **_):
+            calls.append(args)
+            if args[0] == "create":
+                return subprocess.CompletedProcess(args, 0, "c0ffee\n", "")
+            if args[0] == "cp" and cp is not None:
+                cp(args)
+            if args[0] == "rm":
+                return subprocess.CompletedProcess(args, rm_code, "", "no such container" if rm_code else "")
+            return subprocess.CompletedProcess(args, 0, "", "")
+        return calls, docker
+
+    def test_the_container_is_labelled_as_the_devnets_and_removed(self):
+        from cleanup import container_labels
+        calls, docker = self.fake()
+        with patch.object(cluster, "docker", docker):
+            with cluster.created_container("repin0", "ref:11") as created:
+                self.assertEqual(created, "c0ffee")
+        create = calls[0]
+        self.assertEqual(create[:2], ("create", "--pull=never"))
+        labels = container_labels("devnet", "repin0")
+        self.assertEqual(list(create[2:2 + len(labels)]), labels, "the devnet owner's labels")
+        self.assertEqual(calls[-1], ("rm", "-f", "c0ffee"))
+
+    def test_an_interruption_still_removes_the_container_and_propagates(self):
+        def interrupted(_):
+            raise KeyboardInterrupt
+        calls, docker = self.fake(cp=interrupted)
+        with tempfile.TemporaryDirectory() as d, patch.object(cluster, "docker", docker):
+            with self.assertRaises(KeyboardInterrupt):
+                cluster.install_node_images("repin0", pathlib.Path(d), {2: "ref:11"})
+        self.assertEqual([c[0] for c in calls], ["create", "cp", "rm"])
+        self.assertEqual(calls[-1], ("rm", "-f", "c0ffee"))
+
+    def test_a_failed_removal_is_reported_with_the_cleanup_command_and_not_raised(self):
+        calls, docker = self.fake(rm_code=1)
+        out = io.StringIO()
+        with patch.object(cluster, "docker", docker):
+            with cluster.created_container("repin0", "ref:11", out=out):
+                pass
+        self.assertIn("c0ffee", out.getvalue())
+        self.assertIn("cleanup.py --owner repin0 --apply", out.getvalue())
+
+    def test_each_image_is_copied_beside_the_dispatcher(self):
+        def copy(args):
+            pathlib.Path(args[2]).write_bytes(b"node")
+        calls, docker = self.fake(cp=copy)
+        with tempfile.TemporaryDirectory() as d, patch.object(cluster, "docker", docker):
+            target = cluster.install_node_images("repin0", pathlib.Path(d), {1: "ref:a", 3: "ref:b"})
+            self.assertEqual((target / "1" / "cardano-node").read_bytes(), b"node")
+            self.assertEqual((target / "3" / "cardano-node").read_bytes(), b"node")
+            self.assertEqual((target / "cardano-node").read_text(), cluster.node_dispatcher({1: "ref:a", 3: "ref:b"}))
+            self.assertEqual((target / "cardano-node").stat().st_mode & 0o777, 0o755)
+        self.assertEqual([c[0] for c in calls], ["create", "cp", "rm", "create", "cp", "rm"])
+
+
 class NodeImageTest(unittest.TestCase):
     def test_an_image_alone_names_every_pool_and_n_equals_one_pool(self):
         self.assertEqual(cluster.node_images(None), {})

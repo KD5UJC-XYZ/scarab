@@ -6,6 +6,7 @@ import os
 import pathlib
 import shutil
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from . import util
@@ -60,17 +61,29 @@ def node_dispatcher(images):
     return "\n".join(["#!/bin/sh", 'case "$*" in', *arms, "esac", f'exec {OWN_NODE} "$@"', ""])
 
 
-def install_node_images(root, images):
+@contextlib.contextmanager
+def created_container(name, image, out=None):
+    """A container of `image` that never runs, labelled as devnet `name`'s, removed on every exit from the block, an
+    interruption included. A removal that fails is reported on `out`, not raised, so that it does not hide the
+    block's own error; the label lets `cleanup.py --owner name` remove it later."""
+    created = docker("create", "--pull=never", *container_labels("devnet", name), image, "/bin/true").stdout.strip()
+    try:
+        yield created
+    finally:
+        removed = docker("rm", "-f", created, check=False)
+        if removed.returncode != 0:
+            print(f"container {created} of {image} was not removed ({removed.stderr.strip()}); "
+                  f"`python3 scripts/cleanup.py --owner {name} --apply` removes it", file=out or sys.stderr, flush=True)
+
+
+def install_node_images(name, root, images):
     """Copy the `cardano-node` of each image in `images` ({pool: image}) to `root/node-bin/<pool>/`, beside the
     dispatcher, and return that directory, to mount at NODE_BIN."""
     target = root / "node-bin"
     for pool, image in images.items():
         (target / str(pool)).mkdir(parents=True)
-        created = docker("create", "--pull=never", image, "/bin/true").stdout.strip()
-        copied = docker("cp", f"{created}:{OWN_NODE}", str(target / str(pool) / "cardano-node"), check=False)
-        docker("rm", created, check=False)
-        if copied.returncode != 0:
-            raise SystemExit(f"no {OWN_NODE} in {image}: {copied.stderr.strip()}")
+        with created_container(name, image) as created:
+            docker("cp", f"{created}:{OWN_NODE}", str(target / str(pool) / "cardano-node"))
     put = target / "cardano-node"
     put.write_text(node_dispatcher(images))
     put.chmod(0o755)
@@ -86,7 +99,7 @@ def up(args):
     except ValueError as error:
         raise SystemExit(str(error))
     (root / "genesis").mkdir(parents=True)
-    start_reference(args.name, install_node_images(root, images) if images else None)
+    start_reference(args.name, install_node_images(args.name, root, images) if images else None)
     in_ref(args.name, f"cardano-testnet create-env --num-pool-nodes 3 --testnet-magic {MAGIC} "
                       f"--output {ENV} > /work/create-env.log 2>&1")
     adapt_reference_config(args.name, f"{ENV}/configuration.yaml")

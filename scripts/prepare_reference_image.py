@@ -63,8 +63,8 @@ class Release:
         return f"cardano-reference-{self.version}:local"
 
 
-# The constants above are 11.1.3's, the release of the default reference build, which the nightly
-# workflows build and the evidence packet records.
+# BINARY_HASHES, BASE and the ARCHIVE_* constants are 11.1.3's, the release of the default reference build,
+# which the nightly workflows build and the evidence packet records.
 DEFAULT_RELEASE = "11.1.3"
 RELEASES = {
     "11.1.3": Release("11.1.3", ARCHIVE_SHA256, ARCHIVE_SIZE, BINARY_HASHES),
@@ -84,6 +84,26 @@ def verify_archive(path, release=RELEASES[DEFAULT_RELEASE]):
     with path.open("rb") as stream:
         if hashlib.file_digest(stream, "sha256").hexdigest() != release.archive_sha256:
             raise ValueError("official archive checksum mismatch")
+
+
+def extract_binaries(archive_path, release, directory):
+    """Write the executables of `release` from the archive into `directory`, each checked against its pinned SHA-256.
+    Raise ValueError on an unsafe member path, a missing or duplicated executable, or an unexpected one."""
+    with tarfile.open(archive_path) as archive:
+        members = archive.getmembers()
+        if any(PurePosixPath(m.name).is_absolute() or ".." in PurePosixPath(m.name).parts
+               or "\\" in m.name for m in members):
+            raise ValueError("unsafe archive path")
+        for name, expected in release.binary_hashes.items():
+            selected = [m for m in members if PurePosixPath(m.name).name == name and m.isfile()]
+            if len(selected) != 1:
+                raise ValueError("missing/duplicate binary: " + name)
+            data = archive.extractfile(selected[0]).read()
+            if hashlib.sha256(data).hexdigest() != expected:
+                raise ValueError("unexpected official binary: " + name)
+            target = directory / name
+            target.write_bytes(data)
+            target.chmod(0o755)
 
 
 def download_archive(directory, release=RELEASES[DEFAULT_RELEASE]):
@@ -143,21 +163,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="cardano-reference-build-") as work:
         root = Path(work)
         (root / "bin").mkdir()
-        with tarfile.open(archive_path) as archive:
-            members = archive.getmembers()
-            if any(PurePosixPath(m.name).is_absolute() or ".." in PurePosixPath(m.name).parts
-                   or "\\" in m.name for m in members):
-                raise ValueError("unsafe archive path")
-            for name, expected in release.binary_hashes.items():
-                selected = [m for m in members if PurePosixPath(m.name).name == name and m.isfile()]
-                if len(selected) != 1:
-                    raise ValueError("missing/duplicate binary: " + name)
-                data = archive.extractfile(selected[0]).read()
-                if hashlib.sha256(data).hexdigest() != expected:
-                    raise ValueError("unexpected official binary: " + name)
-                target = root / "bin" / name
-                target.write_bytes(data)
-                target.chmod(0o755)
+        extract_binaries(archive_path, release, root / "bin")
         (root / "Dockerfile").write_text("FROM " + BASE +
             '\nCOPY bin/ /opt/reference/bin/\nENV PATH="/opt/reference/bin:${PATH}"\nENTRYPOINT []\n')
         subprocess.run(["docker", "build", "--pull=false", "--network=none", "-t", tag, work], check=True)
