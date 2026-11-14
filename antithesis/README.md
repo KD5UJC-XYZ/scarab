@@ -59,6 +59,10 @@ Each reads on from where the last pass in the timeline stopped. The properties, 
   need to follow the longest tip. `driver/forktree.py` builds the block tree from the pools' logs: every forged
   block with its parent, and every pool's tip changes.
 - sometimes: a fork is observed (depth 1 or more), so that the fork-depth property cannot pass vacuously.
+  Each pass also prints the fork tree's result (`forktree: ...`), and the first pass past k in a timeline prints
+  `forks: first past k ...` once, so that a run's search can count the histories that went past k against the
+  blocks forged (runs explore different lengths of chain in the same time) and sample each pool's share of the
+  longest chain.
 - sometimes: the detectors read every pool's log (each log present and not empty), so that the detectors that read
   logs cannot pass unseen on a broken path.
 

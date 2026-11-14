@@ -255,11 +255,18 @@ check_forks() {
   depth=$(jq -r '.depth // empty' <<< "$result")
   [ -n "$depth" ] || return 0
   result=$(jq -c --argjson k "$k" '. + {k: $k}' <<< "$result")
+  # Every pass, for a run's search to sample: each pool's blocks on the longest chain (`forgedOnLongest`).
+  echo "forktree: $result"
   if [ "$depth" -lt "$k" ]; then below=true; else below=false; fi
   if [ "$depth" -ge 1 ]; then seen=true; else seen=false; fi
   always "$FORK_BELOW_K" "$below" "$result"
   sometimes "$FORK_SEEN" "$seen" "$result"
   [ "$below" = true ] || echo "detectors: the cluster's fork depth is $depth, k is $k: $result"
+  # Once per timeline (the marker branches with it), so that a run's search can count the histories that went past k
+  # and set them against the blocks forged, its exposure: runs explore different lengths of chain in the same time.
+  if [ "$below" = false ] && once "forks/past-k"; then
+    echo "forks: first past k in this timeline, depth $depth, k $k: $result"
+  fi
   return 0
 }
 
