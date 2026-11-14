@@ -18,16 +18,26 @@ import xyz.kd5ujc.scarab.plutus.{PlutusBackend, PlutusVm, UnknownPlutusVm}
   * scenario's report schema has it.
   *
   * Arguments: `<scenarios-dir> <documents-root> <report.json> [--sidecar <path>] [--dataset-commit
-  * <sha>] [--plutus-vm scalus|scarab]`. The scenarios are the site's
-  * `scenarios/ledger-rules/fixtures/scenarios`; a fixture's `$ref` (`common/...`) is read from the
-  * documents root, Amaru's `crates/amaru-ledger/tests/data/transaction`. The sidecar records each
-  * fixture's verdict with every failure and its names. `--dataset-commit` is the Amaru commit that
-  * last changed the corpus, which the site compares for freshness.
+  * <sha>] [--plutus-vm scalus|scarab] [--select first|expected-in-failures]`. The scenarios are the
+  * site's `scenarios/ledger-rules/fixtures/scenarios`; a fixture's `$ref` (`common/...`) is read
+  * from the documents root, Amaru's `crates/amaru-ledger/tests/data/transaction`. The sidecar
+  * records each fixture's verdict with every failure, in the reference's order, and its names, and
+  * which rule chose the reported name. `--dataset-commit` is the Amaru commit that last changed the
+  * corpus, which the site compares for freshness.
+  *
+  * The report gives one name for a refused transaction, which may fail several predicates at once.
+  * `--select` says which ([[Selection]]): with `expected-in-failures`, the default, the report
+  * names the expected failure when Scarab raised it among others, and otherwise the first; with
+  * `first`, always the first failure the schema names, in the reference's order. The default is the
+  * criterion cardano-node's report for the scenario is produced by. Either way the report names
+  * only a failure Scarab raised, and an accepted transaction is a pass whatever the fixture
+  * expects.
   */
 object LedgerRulesMain extends IOApp:
   enum Error extends DomainError:
     case Arguments(args: List[String])
     case Vm(cause: UnknownPlutusVm)
+    case Select(text: String)
     case Commit(sha: String)
     case NotADirectory(path: Path)
     case NoFixtures(path: Path)
@@ -35,8 +45,10 @@ object LedgerRulesMain extends IOApp:
     def message: String = this match
       case Arguments(args) =>
         s"usage: <scenarios-dir> <documents-root> <report.json> [--sidecar <path>] " +
-          s"[--dataset-commit <sha>] [--plutus-vm scalus|scarab] (given: ${args.mkString(" ")})"
+          s"[--dataset-commit <sha>] [--plutus-vm scalus|scarab] " +
+          s"[--select first|expected-in-failures] (given: ${args.mkString(" ")})"
       case Vm(cause)           => cause.message
+      case Select(text)        => s"unknown selection '$text' (known: first, expected-in-failures)"
       case Commit(sha)         => s"not a full commit id: $sha"
       case NotADirectory(path) => s"not a directory: $path"
       case NoFixtures(path)    => s"no fixture files in $path"
@@ -47,7 +59,8 @@ object LedgerRulesMain extends IOApp:
       report: Path,
       sidecar: Option[Path],
       commit: Option[String],
-      vm: PlutusVm
+      vm: PlutusVm,
+      selection: Selection
   )
 
   private val CommitId = "^[0-9a-f]{40}$".r
@@ -67,13 +80,16 @@ object LedgerRulesMain extends IOApp:
         for
           opts <- options(rest, Map.empty)
           _ <- Either.cond(
-            opts.keySet.subsetOf(Set("--sidecar", "--dataset-commit", "--plutus-vm")),
+            opts.keySet.subsetOf(Set("--sidecar", "--dataset-commit", "--plutus-vm", "--select")),
             (),
             Error.Arguments(args)
           )
           vm <- opts
             .get("--plutus-vm")
             .fold(Right(PlutusVm.Default))(PlutusVm.parse(_).leftMap(Error.Vm(_)))
+          selection <- opts
+            .get("--select")
+            .fold(Right(Selection.Default))(t => Selection.parse(t).toRight(Error.Select(t)))
           commit <- opts
             .get("--dataset-commit")
             .traverse(c => Either.cond(CommitId.matches(c), c, Error.Commit(c)))
@@ -83,7 +99,8 @@ object LedgerRulesMain extends IOApp:
           Path.of(report),
           opts.get("--sidecar").map(Path.of(_)),
           commit,
-          vm
+          vm,
+          selection
         )
       case _ => Left(Error.Arguments(args))
 
@@ -174,7 +191,9 @@ object LedgerRulesMain extends IOApp:
               LedgerRulesCase(
                 id,
                 file,
-                LedgerRulesRun.judge(file, text, corpus.documents.get, backend)
+                LedgerRulesRun.judge(file, text, corpus.documents.get, backend),
+                LedgerRulesFixture.expectation(file, text).toOption.flatMap(_.refusal),
+                c.selection
               )
             )
           })
@@ -190,6 +209,11 @@ object LedgerRulesMain extends IOApp:
               s"${cases.count(_.result.contains(LedgerRulesCase.Pass))} pass, " +
               s"${cases.count(r => r.result.exists(_ != LedgerRulesCase.Pass))} named failures, " +
               s"${cases.count(_.result.isEmpty)} without a result; wrote in ${millis(writeTime)} ms"
+          )
+          _ <- say(
+            s"names chosen by ${c.selection.flag}: " +
+              s"${cases.count(_.chosen.exists(_._2 == Selection.ExpectedInFailures))} " +
+              "refusals named by the expected failure among others"
           )
         yield ExitCode.Success
     }
