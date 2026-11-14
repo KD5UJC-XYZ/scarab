@@ -152,6 +152,18 @@ the file and symbol that shows it. A claim the source does not show is corrected
 unverified; it is not approved on the design's own reasoning. A section derived from source rather than
 from a capture says so.
 
+### Independent review
+
+Every pull request gets an independent review of its final diff before it is marked ready, whatever its level: by
+someone other than its author, and for agent work by a read-only Codex review. The reviewer makes no edits; the
+review is posted on the pull request as a comment, with the disposition of each finding (fixed in which commit, or
+rejected and why). A review by the agent that wrote the change does not replace it, and a failed, cancelled or
+empty run is no review. The body's "Independent review" section links that comment and summarises the verdict and
+the disposition of each finding. Fixes that change more than wording get a second review, scoped to the fix
+commits. The recipe is [Get an independent review](docs/playbooks/review-a-change.md). `scripts/pr_policy.py`
+refuses a pull request that is not a draft unless the section is there with a link in it; a draft passes, so a pull
+request stays a draft until its review is posted.
+
 ### The one scenario per area
 
 | Area touched | Scenario (`python3 scripts/devnet.py --name <yours> ...`) |
@@ -289,7 +301,8 @@ A claim of compatibility needs evidence a reader can check:
   title, paths, level and "Storage format change" section of a storage format change
   ([FMT-1](docs/design-rules.md#fmt-1)), a bot's pull request included; and, except for a bot's pull request and a
   promotion of `dev`, the level, its floor from the changed files (a file other than documentation makes it at
-  least 1, the persisted-format register, the storage format manifest or its guard at least 3), and both sections
+  least 1, the persisted-format register, the storage format manifest or its guard at least 3), both sections, and
+  the "Independent review" section of a pull request that is not a draft
   (decided 2026-10-29, [#400](https://github.com/KD5UJC-XYZ/scarab/issues/400#issuecomment-6506671003); both
   sections required from level 1, owner decision 2026-11-04 — [decisions register](docs/decisions.md#process),
   [#778](https://github.com/KD5UJC-XYZ/scarab/pull/778)).
