@@ -401,7 +401,10 @@ object DijkstraRules:
       output("82", "00")
     )(o => written(Codec.bytes)(o.address.raw)),
     "voter" -> unwritten("DijkstraVoting.voter")(DijkstraVoting.voter),
-    "voting_procedures" -> unwritten("DijkstraVoting.procedures")(DijkstraVoting.procedures),
+    // non-empty, as the body that holds them requires (`DijkstraTx.body`'s key 19)
+    "voting_procedures" -> unwritten("DijkstraVoting.procedures, non-empty")(n =>
+      DijkstraVoting.procedures(n).flatMap(V12.nonEmpty(_, DecodeField.VotingProcedures))
+    ),
     "voting_procedure" -> DatasetRule.unwritten(
       "DijkstraVoting.procedures",
       Reach.Embedded("{voter: {id: procedure}}")
