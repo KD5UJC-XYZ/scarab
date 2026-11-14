@@ -674,7 +674,21 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
           )
         )
       ),
+      ConwayCodecs.proposalProcedures.write(
+        Vector(Proposal(0, RewardAccount(2, c), GovAction.Info))
+      ),
+      ConwayCodecs.proposalProcedures.write(
+        Vector(
+          Proposal(
+            0,
+            RewardAccount(0, c),
+            GovAction.TreasuryWithdrawals(Vector.fill(2)(RewardAccount(0, c) -> BigInt(1)), None)
+          )
+        )
+      ),
       ConwayCodecs.script.write(ScriptPayload(ScriptKind.Native, hex("ff"))),
+      ConwayCodecs.script.write(ScriptPayload(ScriptKind.Native, hex("00"))),
+      ConwayCodecs.redeemer.write(Redeemer(0, 0, hex("f5"), ExUnits(0, 0))),
       ConwayCodecs.redeemer.write(Redeemer(6, 0, hex("00"), ExUnits(0, 0))),
       ConwayCodecs.redeemer.write(Redeemer(0, 0, Bytes.empty, ExUnits(0, 0)))
     )
@@ -710,6 +724,26 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
         s"block ${b.header.raw.size}"
       )
     }
+  }
+
+  test("a block whose header is a detached record is written with the header as it came") {
+    // `conway-block-detached-header` of the header decoding oracle: the reference accepts it
+    val case112 = Files
+      .readAllLines(Path.of("fixtures/reference/header-decoding/cases.jsonl"))
+      .asScala
+      .find(_.contains("\"id\":\"conway-block-detached-header\""))
+      .getOrElse(fail("the case is not in the fixture"))
+    val raw = "\"bytes\":\"([0-9a-f]+)\"".r
+      .findFirstMatchIn(case112)
+      .map(m => hex(m.group(1)))
+      .getOrElse(fail("the case has no bytes"))
+    // the case is the block inside its `[7, block]` envelope
+    val block = Block.decodeShelley(hex("8207") ++ raw).fold(e => fail(e.message), identity) match
+      case b: Block.Shelley => b
+      case other            => fail(s"not a Shelley-based block: ${other.era}")
+    assert(block.header.raw.hex.startsWith("9fff"), block.header.raw.hex.take(8))
+    // its outer list is definite already: the reference writes the block back as it came
+    assertEquals(written(ConwayCodecs.block)(block), raw)
   }
 
   test("a block built by hand, without the segments it was read with, is refused") {

@@ -16,16 +16,22 @@ import xyz.kd5ujc.scarab.ledger.{
   DRep,
   GovAction,
   GovActionId,
+  ByteStrings,
+  DecoderVersion,
   Metadatum,
+  NativeScript,
   PoolParams,
   PoolRelays,
   Proposal,
   Redeemer,
+  RewardAccount,
   ScriptKind,
   Voter,
   VotingProcedure
 }
 import xyz.kd5ujc.scarab.ledger.state.ProtVer
+import xyz.kd5ujc.scarab.plutus.PlutusData
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.models.runtime.{
   Codec,
   ConstraintViolation,
@@ -87,6 +93,14 @@ object ConwayCodecs:
 
   /** A `Coin` the decoders give, a `Word64` (`Coin.hs:108-109`). */
   private def coin(amount: BigInt): Option[ConstraintViolation] = word(64).check(amount)
+
+  /** An `AccountAddress` of a network the reference reads, testnet (0) or mainnet (1)
+    * (`libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs:930-948`).
+    */
+  private def account(a: RewardAccount): Option[ConstraintViolation] =
+    state.rewardAccount
+      .check(a)
+      .orElse(Codec.refuse(a.network > 1, "AccountAddress", "network 0 or 1", a.network))
 
   /** A key or script hash of 28 bytes. */
   private def credential(c: Credential): Option[ConstraintViolation] = hash28.check(c.hash)
@@ -171,7 +185,7 @@ object ConwayCodecs:
       coin(p.pledge),
       coin(p.cost),
       unitInterval.check(p.margin),
-      state.rewardAccount.check(p.rewardAccount),
+      account(p.rewardAccount),
       p.owners.iterator.flatMap(hash28.check).nextOption(),
       PoolRelays
         .decode(p.relays)
@@ -416,9 +430,14 @@ object ConwayCodecs:
           first(ids(prev), Codec.uintBig(13).check(major), word(32).check(minor))
         case GovAction.TreasuryWithdrawals(ws, pol) =>
           first(
-            ws.iterator
-              .flatMap((account, amount) => state.rewardAccount.check(account).orElse(coin(amount)))
-              .nextOption(),
+            ws.iterator.flatMap((to, amount) => account(to).orElse(coin(amount))).nextOption(),
+            // a `Map AccountAddress Coin` (`Procedures.hs:830-834`): an account once
+            Codec.refuse(
+              ws.map(_._1).distinct.size != ws.size,
+              "TreasuryWithdrawals",
+              "each account once",
+              ws.size
+            ),
             script(pol)
           )
         case GovAction.NoConfidence(prev) => ids(prev)
@@ -448,7 +467,7 @@ object ConwayCodecs:
     } { p =>
       first(
         coin(p.deposit),
-        state.rewardAccount.check(p.returnAccount),
+        account(p.returnAccount),
         action.check(p.action),
         anchor(Some(p.anchor))
       )
@@ -477,7 +496,18 @@ object ConwayCodecs:
     writer[ScriptPayload]("a script") { (s, out) =>
       alternative(out, 2, s.kind.tag)
       if s.kind.isPlutus then out.bytes(s.payload) else out.raw(s.payload)
-    }(s => Option.unless(s.kind.isPlutus)(item("native script", s.payload)).flatten)
+    }(s => Option.unless(s.kind.isPlutus)(nativeScript(s.payload)).flatten)
+
+  /** A native script's kept bytes: one item that Conway's time-lock decoder reads. */
+  private def nativeScript(payload: Bytes): Option[ConstraintViolation] =
+    given ByteStrings = ByteStrings.of(DecoderVersion.of(Era.Conway))
+    item("native script", payload).orElse(
+      Cbor
+        .decode(payload, Cbor.Limits.Unbounded)
+        .toOption
+        .flatMap(n => NativeScript.decode(n, NativeScript.Form.Timelock).left.toOption)
+        .flatMap(e => Codec.refuse(true, "native script", "a time lock", e))
+    )
 
   /** A redeemer as `keyValueEncoder` writes it (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/
     * TxWits.hs:164-169`): `[tag, index, data, ex_units]`, the purpose by its `encCBORGroup` (a
@@ -501,7 +531,11 @@ object ConwayCodecs:
       first(
         Codec.intRange(0, 5).check(r.tag),
         word(32).check(r.index),
-        item("redeemer data", r.data),
+        PlutusData
+          .decode(r.data)
+          .left
+          .toOption
+          .flatMap(e => Codec.refuse(true, "redeemer data", "one item of Plutus data", e)),
         Codec.refuse(
           r.exUnits.mem.signum < 0 || r.exUnits.steps.signum < 0,
           "ExUnits",
@@ -569,8 +603,8 @@ object ConwayCodecs:
     * segments are `encodePreEncoded` in `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/BlockBody/
     * Internal.hs:181-186`, four from Alonzo, and `eras/shelley/impl/src/Cardano/Ledger/Shelley/
     * BlockBody/Internal.hs:204-209`, three before). A block holds its segments only when it was
-    * read from bytes ([[Block.Shelley.segments]]); another is refused, and so is a header or a
-    * segment that is not one CBOR item.
+    * read from bytes ([[Block.Shelley.segments]]); another is refused, and so is an empty header or
+    * segment.
     */
   val block: Codec[Block.Shelley] =
     writer[Block.Shelley]("a block") { (b, out) =>
@@ -586,7 +620,15 @@ object ConwayCodecs:
           s"the $expected body segments it was read with",
           s"${b.segments.size} segments"
         ),
-        item("block header", b.header.raw),
-        b.segments.iterator.flatMap(item("block body segment", _)).nextOption()
+        // the kept bytes are written as they are: a header or a segment may be a detached record
+        // (`DetachedRecords`), several items that the reference reads as one, so only their
+        // presence is checked
+        Codec.refuse(b.header.raw.isEmpty, "Block", "the header it was read with", "none"),
+        Codec.refuse(
+          b.segments.exists(_.isEmpty),
+          "Block",
+          "segments read from bytes",
+          "an empty one"
+        )
       )
     }
