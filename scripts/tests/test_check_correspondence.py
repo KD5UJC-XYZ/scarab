@@ -191,10 +191,11 @@ class GuardTest(unittest.TestCase):
             ({'structure': 'differs', 'evidence': ['MissingSuite']}, 'MissingSuite is not defined'),
             ({'bogus': 1}, 'unknown fields bogus'),
         ]
+        self.fixture.area({key: self.fixture.entry(key)}, [])
+        self.assertEqual(self.fixture.run('--write-baseline')[0], 0)
         for fields, message in cases:
             with self.subTest(fields=fields):
                 self.fixture.area({key: self.fixture.entry(key, **fields)}, [])
-                self.fixture.run('--write-baseline')
                 status, out = self.fixture.run()
                 self.assertEqual(status, 1, out)
                 self.assertIn(message, out)
@@ -241,8 +242,11 @@ class GuardTest(unittest.TestCase):
         self.fixture.area({key: self.fixture.entry(key, upstream=[dict(self.fixture.upstream()[0],
                                                                          revision='c' * 40)])}, [])
         status, out = self.fixture.run(sources=sources)
-        self.assertEqual(status, 0, out)
-        self.assertIn(f'upstream not checked: {REPOSITORY}: revision {"c" * 40} not in the clone', out)
+        self.assertEqual(status, 1, 'clones that cannot check an entry fail the check')
+        self.assertIn(f'cannot check {REPOSITORY} cccccccc', out)
+        status, out = self.fixture.run(sources=Path(self.tmp.name) / 'nowhere')
+        self.assertEqual(status, 1)
+        self.assertIn('no clone of it', out)
 
     def test_a_baseline_hint_is_checked_like_an_entry(self):
         path = self.fixture.root / guard.BASELINE
@@ -274,6 +278,40 @@ class GuardTest(unittest.TestCase):
         self.assertEqual(status, 1, out)
         self.assertIn('keys added to', out)
         self.assertIn('def net.KeepAlive.sneaked', out)
+
+    def commit_base(self) -> None:
+        root = self.fixture.root
+        git(root, 'init', '-q')
+        git(root, 'add', '.')
+        git(root, 'commit', '-q', '-m', 'base')
+
+    def sneak(self) -> None:
+        self.fixture.source(CODE + '\n  def sneaked(n: Int): Int = n\n')
+        path = self.fixture.root / guard.BASELINE
+        body = json.loads(path.read_text())
+        body['areas']['net']['def net.KeepAlive.sneaked'] = None
+        path.write_text(json.dumps(body))
+
+    def test_writing_the_baseline_checks_its_growth_first(self):
+        self.commit_base()
+        git(self.fixture.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+        self.sneak()
+        status, out = self.fixture.run('--write-baseline')
+        self.assertEqual(status, 1, out)
+        self.assertIn('def net.KeepAlive.sneaked', out)
+
+    def test_a_pull_request_in_ci_compares_with_its_target_and_needs_it(self):
+        ci = {'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'pull_request'}
+        self.commit_base()
+        outcome = guard.check(self.fixture.root, None, False, ci)
+        self.assertTrue(any('target is not in this checkout' in p for p in outcome.problems), outcome.problems)
+        self.sneak()
+        git(self.fixture.root, 'add', '.')
+        git(self.fixture.root, 'commit', '-q', '-m', 'change')
+        outcome = guard.check(self.fixture.root, None, False, ci)
+        self.assertTrue(any('def net.KeepAlive.sneaked' in p for p in outcome.problems), outcome.problems)
+        self.assertEqual(guard.check(self.fixture.root, None, False, {}).problems, [],
+                         'outside CI, with no origin/main, the growth check does not run')
 
     def test_show_names_the_file_lines_digest_and_listing(self):
         status, out = self.fixture.run('--show', 'def net.KeepAlive.transition')

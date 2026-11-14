@@ -21,13 +21,15 @@ shrinks. The guard refuses:
     structure that differs with no such evidence is one); an evidence suite that no test source defines;
   * an upstream counterpart (an entry's, or a baseline hint) whose repository and revision are not a pin of
     `docs/data/reference-pins.json`, or whose file, symbol and lines are malformed; and, where a clone of its
-    repository is at hand (`--sources DIR` or SCARAB_REFERENCE_SOURCES: a directory holding one clone per
+    repository is given (`--sources DIR` or SCARAB_REFERENCE_SOURCES: a directory holding one clone per
     repository, named as the repository is), whose file does not exist at that revision, whose lines are past
-    its end, or whose symbol does not occur in those lines. Without the clones that check prints that it did not
-    run, and passes;
-  * where the history of `origin/main` is at hand, a baseline key that the baseline at the merge base did not
-    have: growing the baseline is never the way to admit a new definition. Without it that check prints that it
-    did not run.
+    its end, or whose symbol does not occur in those lines. Given clones must hold every repository and revision
+    the map names, or the check fails; with none given it prints that it did not run, and passes;
+  * a baseline key or hint that the baseline of the change's base did not have: growing the baseline is never the
+    way to admit a new definition. The base is the target branch on a pull request in CI (the merge commit's
+    first parent, which the scripts job fetches; without it the check fails), and otherwise the merge base with
+    origin/main where that history is at hand (without it the check prints that it did not run). A base with no
+    baseline at all is the first one, which this check admits.
 
 What an entry asserts beyond its counterpart (its class, and whether its structure is the reference's) is the
 reviewer's to check: the guard checks only that the claim is complete.
@@ -188,7 +190,6 @@ class Clones:
     def __init__(self, directory: Path | None):
         self.directory = directory
         self.files: dict[tuple[str, str, str], list[str] | None] = {}
-        self.unchecked: set[str] = set()
 
     def clone(self, repository: str) -> Path | None:
         if self.directory is None:
@@ -201,14 +202,12 @@ class Clones:
         (no clone, or the revision is not in it)."""
         clone = self.clone(repository)
         if clone is None:
-            self.unchecked.add(f'{repository}: no clone')
             return False
         key = (repository, revision, file)
         if key not in self.files:
             known = subprocess.run(['git', '-C', str(clone), 'cat-file', '-e', f'{revision}^{{commit}}'],
                                    capture_output=True)
             if known.returncode != 0:
-                self.unchecked.add(f'{repository}: revision {revision} not in the clone')
                 return False
             shown = subprocess.run(['git', '-C', str(clone), 'show', f'{revision}:{file}'], capture_output=True)
             self.files[key] = (shown.stdout.decode('utf-8', 'replace').split('\n') if shown.returncode == 0
@@ -226,7 +225,8 @@ def upstream_problems(what: str, refs, registered: set[tuple[str, str]], clones:
             continue
         repository, revision, file, symbol, lines = (ref[k] for k in ('repository', 'revision', 'file', 'symbol',
                                                                       'lines'))
-        if not isinstance(revision, str) or not REVISION.fullmatch(revision) or (repository, revision) not in registered:
+        if (not isinstance(repository, str) or not isinstance(revision, str) or not REVISION.fullmatch(revision)
+                or (repository, revision) not in registered):
             out.append(f'{what}: {repository} {revision} is not a revision pinned in {PINS}')
             continue
         if not isinstance(file, str) or not file or file.startswith('/') or '..' in file.split('/'):
@@ -241,6 +241,9 @@ def upstream_problems(what: str, refs, registered: set[tuple[str, str]], clones:
             continue
         text = clones.lines(repository, revision, file)
         if text is False:
+            if clones.directory is not None:
+                out.append(f'{what}: cannot check {repository} {revision[:8]}: no clone of it, or the revision is not '
+                           f'in it, under {clones.directory}')
             continue
         if text is None:
             out.append(f'{what}: {file} does not exist at {repository} {revision[:8]}')
@@ -313,16 +316,27 @@ def write_baseline(root: Path, baseline: dict[str, dict]) -> None:
     (root / BASELINE).write_text(json.dumps(body, indent=1, ensure_ascii=False) + '\n', encoding='utf-8')
 
 
-def base_baseline(root: Path) -> dict[str, dict] | str:
-    """The baseline at the merge base with origin/main, or why it cannot be read."""
+class NoBase(Exception):
+    """The base of the change cannot be read where it must be."""
+
+
+def base_baseline(root: Path, environment: dict[str, str]) -> dict[str, dict] | str:
+    """The baseline of the change's base, or why there is none to compare with. On a pull request in CI the base is
+    the merge commit's first parent, which must be there (`NoBase` otherwise); elsewhere it is the merge base with
+    origin/main, where that history is at hand."""
     def git(*args: str) -> subprocess.CompletedProcess:
         return subprocess.run(['git', '-C', str(root), *args], capture_output=True, text=True)
-    base = git('merge-base', 'HEAD', 'origin/main')
-    if base.returncode != 0:
-        return 'no history of origin/main here'
+    if environment.get('GITHUB_ACTIONS') == 'true' and environment.get('GITHUB_EVENT_NAME') == 'pull_request':
+        base = git('rev-parse', '--verify', '--quiet', 'HEAD^1')
+        if base.returncode != 0:
+            raise NoBase('the pull request\'s target is not in this checkout: check it out two commits deep')
+    else:
+        base = git('merge-base', 'HEAD', 'origin/main')
+        if base.returncode != 0:
+            return 'no history of origin/main here'
     shown = git('show', f'{base.stdout.strip()}:{BASELINE}')
     if shown.returncode != 0:
-        return 'the merge base has no baseline'
+        return 'the base has no baseline yet (this is the first)'
     return json.loads(shown.stdout).get('areas', {})
 
 
@@ -336,7 +350,8 @@ class Outcome:
     counts: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
-def check(root: Path, sources: Path | None, write: bool) -> Outcome:
+def check(root: Path, sources: Path | None, write: bool, environment: dict[str, str] | None = None) -> Outcome:
+    environment = dict(os.environ) if environment is None else environment
     outcome = Outcome()
     all_areas = areas(root)
     registered = pins(root)
@@ -379,15 +394,14 @@ def check(root: Path, sources: Path | None, write: bool) -> Outcome:
             'baselined': len(unmapped),
             'hinted': sum(1 for k in unmapped if was.get(k) is not None),
         }
-    outcome.notes += sorted(f'upstream not checked: {u}' for u in clones.unchecked)
     if sources is None:
         outcome.notes.append(f'upstream symbols not checked: no clones given (--sources or {SOURCES_ENV})')
-    baseline_check(root, baseline, outcome, write, {a.name for a in all_areas})
+    baseline_check(root, baseline, outcome, write, {a.name for a in all_areas}, environment)
     return outcome
 
 
 def baseline_check(root: Path, baseline: dict[str, dict] | None, outcome: Outcome, write: bool,
-                   names: set[str]) -> None:
+                   names: set[str], environment: dict[str, str]) -> None:
     now = {area: set(keys) for area, keys in outcome.unmapped.items()}
     if baseline is None:
         if write:
@@ -396,40 +410,43 @@ def baseline_check(root: Path, baseline: dict[str, dict] | None, outcome: Outcom
         else:
             outcome.problems.append(f'{BASELINE} is missing: run with --write-baseline to record the first one')
         return
-    new = sorted((area, k) for area, keys in now.items() for k in keys if k not in baseline.get(area, {}))
-    gone = sorted((area, k) for area, keys in baseline.items() for k in keys if k not in now.get(area, set()))
     for area in sorted(set(baseline) - names):
         outcome.problems.append(f'{BASELINE}: area {area} has no map file')
+    try:
+        base = base_baseline(root, environment)
+    except NoBase as error:
+        outcome.problems.append(f'baseline growth cannot be checked: {error}')
+        return
+    if isinstance(base, str):
+        outcome.notes.append(f'baseline growth not checked: {base}')
+    else:
+        grown = sorted((area, k) for area, keys in baseline.items() for k in keys if k not in base.get(area, {}))
+        if grown:
+            outcome.problems.append(f'keys added to {BASELINE} since its base: a new definition is mapped or glue, '
+                                    'never baselined:')
+            outcome.problems += [f'  {area}: {key}' for area, key in grown]
+        hinted = sorted((area, k) for area, keys in baseline.items() for k, v in keys.items()
+                        if v is not None and base.get(area, {}).get(k, v) != v)
+        if hinted:
+            outcome.problems.append('baseline hints added or changed since its base: a counterpart goes into an '
+                                    'entry, not the baseline:')
+            outcome.problems += [f'  {area}: {key}' for area, key in hinted]
+    new = sorted((area, k) for area, keys in now.items() for k in keys if k not in baseline.get(area, {}))
+    gone = sorted((area, k) for area, keys in baseline.items() for k in keys if k not in now.get(area, set()))
     if new:
         outcome.problems.append(f'new definitions that are neither mapped nor glue ({RULE}, {DESIGN}): add an entry '
                                 'that names the upstream counterpart at its pin, or a glue line with its reason:')
         for area, key in new:
             found = outcome.unmapped[area][key]
             outcome.problems.append(f'  {key} ({found.file}:{found.definition.line})')
-    if not new and write:
+    if write and not outcome.problems:
         write_baseline(root, {area: {k: v for k, v in baseline.get(area, {}).items() if k in now.get(area, set())}
                               for area in sorted(names)})
         outcome.notes.append(f'wrote {BASELINE}: {sum(map(len, now.values()))} definitions')
-        return
-    if gone and not write:
+    elif gone and not write:
         outcome.problems.append(f'fewer unmapped definitions than {BASELINE} lists: run with --write-baseline and '
                                 'commit it:')
         outcome.problems += [f'  {area}: {key}' for area, key in gone]
-    base = base_baseline(root)
-    if isinstance(base, str):
-        outcome.notes.append(f'baseline growth not checked: {base}')
-        return
-    grown = sorted((area, k) for area, keys in baseline.items() for k in keys if k not in base.get(area, {}))
-    if grown:
-        outcome.problems.append(f'keys added to {BASELINE} since the merge base with origin/main: a new definition is '
-                                'mapped or glue, never baselined:')
-        outcome.problems += [f'  {area}: {key}' for area, key in grown]
-    hinted = sorted((area, k) for area, keys in baseline.items() for k, v in keys.items()
-                    if v is not None and base.get(area, {}).get(k, v) != v)
-    if hinted:
-        outcome.problems.append(f'baseline hints added or changed since the merge base: a counterpart goes into an '
-                                'entry, not the baseline:')
-        outcome.problems += [f'  {area}: {key}' for area, key in hinted]
 
 
 def show(root: Path, keys: list[str]) -> int:
