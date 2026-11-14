@@ -13,7 +13,13 @@ import xyz.kd5ujc.scarab.crypto.vrf.{
   PraosLeaderThreshold as Leader,
   PraosVrfCertificate as Vrf
 }
-import xyz.kd5ujc.scarab.protocol.{ChainSync, Mux as WireMux, NetworkError, ProtocolError}
+import xyz.kd5ujc.scarab.protocol.{
+  ChainSync,
+  Mux as WireMux,
+  NetworkError,
+  ProtocolError,
+  ReferenceBuild
+}
 
 /** Closed hierarchy of node failures. Algebras raise the narrowest subtype; because cats-mtl
   * `Raise` is contravariant in its error, one `Raise[F, NodeError]` serves them all.
@@ -512,6 +518,18 @@ enum StorageError extends NodeError:
     */
   case ResyncRequired(what: String, kind: FileKind, found: FormatVersion, loss: FormatLoss)
 
+  /** A ledger snapshot whose Haskell state bytes were written under the reference build `recorded`,
+    * whose layout is not that of the `configured` one. No conversion between builds exists, so the
+    * snapshot is not read, as the reference does not read a snapshot it cannot decode.
+    */
+  case ReferenceBuildMismatch(what: String, recorded: ReferenceBuild, configured: ReferenceBuild)
+
+  /** A ledger snapshot that records a reference build this build does not know (`recorded`, as
+    * written): written by a newer build, most likely. It is not the `configured` build, so it is
+    * treated as [[ReferenceBuildMismatch]] is.
+    */
+  case UnknownReferenceBuild(what: String, recorded: String, configured: ReferenceBuild)
+
   /** A requested block or point is not stored. */
   case Missing(what: String)
 
@@ -526,6 +544,11 @@ enum StorageError extends NodeError:
 
   /** A matching but incomplete v1/v2 identity needs an explicit operator acknowledgement. */
   case LegacyIdentityNeedsConfirmation(version: FormatVersion)
+
+  /** A V6 identity, which records no Dijkstra genesis binding, reached a migration without the
+    * node's configuration to take the binding from: only an open with it binds the file (#824).
+    */
+  case IdentityNeedsDijkstraBinding(version: FormatVersion)
 
   /** Populated data has no identity; associating it with a network needs explicit confirmation. */
   case MissingIdentityNeedsConfirmation(database: String)
@@ -562,6 +585,10 @@ enum StorageError extends NodeError:
       s"$w: retired ${k.label} format '${k.identifier(f)}'; use the archived migration build to convert a copy to '${k.identifier(oldest)}' before opening it"
     case ResyncRequired(w, k, f, loss) =>
       s"$w: the ${k.label} format '${k.identifier(f)}' did not keep ${loss.message}, which '${k.identifier(k.current)}' keeps and no migration can recover; sync the chain again from genesis: replay it from the immutable chunks (stop the node, remove <db>/snapshots and <db>/utxo, start it again) or sync a new database"
+    case ReferenceBuildMismatch(w, recorded, configured) =>
+      s"$w was recorded under the reference build ${recorded.describe}, which is not the configured ${configured.describe}; no conversion between builds exists"
+    case UnknownReferenceBuild(w, recorded, configured) =>
+      s"$w was recorded under the reference build '$recorded', which this build does not know; the configured build is ${configured.describe}"
     case Missing(w)    => s"missing $w"
     case OutOfOrder(r) => s"out of order: $r"
     case NetworkMismatch(f, e) =>
@@ -570,6 +597,8 @@ enum StorageError extends NodeError:
       s"the legacy database identity differs from this node: it records ${f.describe}, configured identity is ${e.describe}; use the matching genesis configuration or another --db"
     case LegacyIdentityNeedsConfirmation(version) =>
       s"the database identity format ${FileKind.IdentityFile.identifier(version)} lacks Alonzo and Conway genesis bindings; rerun with --adopt-legacy-network-identity after verifying the database's origin (this acknowledgement is not historical proof)"
+    case IdentityNeedsDijkstraBinding(version) =>
+      s"the database identity format ${FileKind.IdentityFile.identifier(version)} has no Dijkstra genesis binding, which its first open with the node's configuration records"
     case MissingIdentityNeedsConfirmation(database) =>
       s"database $database contains data but has no network identity; rerun with --adopt-legacy-network-identity only after verifying its origin (this acknowledgement is not historical proof)"
     case IdentityBackupConflict(path) =>
@@ -608,7 +637,7 @@ enum ForgeError extends NodeError:
   /** A cancelled key operation may have mutated key material without completing durability. */
   case KesUpdateInterrupted
 
-  /** The KES key could not be evolved to the slot's period (it has already moved past it). */
+  /** The exact target is before the key's current period or beyond its signing lifetime. */
   case KesEvolution(cause: Sum6KesSigning.Failure)
 
   case VrfInput(cause: Vrf.Failure)
@@ -662,12 +691,16 @@ enum KesFileFailureCause:
   case StagedKeyMismatch(mismatch: KesStageMismatch)
   case StageStillPresentAfterRecovery
 
+  /** `renameat2` with `RENAME_EXCHANGE` failed with this errno (#918). */
+  case Exchange(errno: Int)
+
   def message: String = this match
     case FileSystem(cause)              => Option(cause.getMessage).getOrElse(cause.toString)
     case NoWriteProgress                => "file channel made no write progress"
     case StageReadback(cause)           => cause.message
     case StagedKeyMismatch(value)       => value.message
     case StageStillPresentAfterRecovery => "staged key remains after successful recovery"
+    case Exchange(errno)                => s"renameat2 RENAME_EXCHANGE failed with errno $errno"
 
 enum KesStageMismatch:
   case Period(expected: Int, actual: Int)

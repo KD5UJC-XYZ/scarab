@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.network
 
 import xyz.kd5ujc.scarab.protocol.ChainSync.UInt64
 
-/** `pipelineDecisionLowHighMark`, ouroboros-network `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`,
+/** `pipelineDecisionLowHighMark`, ouroboros-network `c45735a56c567fa977969173d18943bac6bb3821`,
   * `Ouroboros/Network/Protocol/ChainSync/PipelineDecision.hs`.
   */
 object ChainSyncPipelineDecision:

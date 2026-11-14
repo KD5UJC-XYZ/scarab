@@ -58,10 +58,12 @@ class HfcHeaderSuite extends munit.FunSuite:
     }
   }
 
-  test(
-    "the closed decoder of the supported eras refuses index 7 (the baseline this one replaces)"
-  ) {
-    assert(NtNHeader.codec.decode(row("first").envelope).isLeft)
+  test("the closed decoder reads index 7 as a Dijkstra header with the same raw bytes") {
+    val envelope = row("first").envelope
+    val raw = HfcHeader.decode(envelope) match
+      case Right(HfcHeader.Dijkstra(r)) => r
+      case other                        => fail(other.toString)
+    assertEquals(NtNHeader.codec.decode(envelope), Right(NtNHeader(Era.Dijkstra, raw, None)))
   }
 
   test("an index no era has is kept with its payload, not refused") {

@@ -1,0 +1,7 @@
+*
+!scripts/
+scripts/*
+!scripts/oracle/
+scripts/oracle/*
+!scripts/oracle/dijkstra-genesis/
+!scripts/oracle/dijkstra-genesis/Main.hs

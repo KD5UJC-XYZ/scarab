@@ -38,8 +38,8 @@ object Tick:
           globals <- Sts.globals[F]
           now = slot.toBigInt
           epoch = globals.epochOf(now)
-          // `getTheSlotOfNoReturn` (`Slot.hs:106`): `*-` is monus, so it does not go below the first slot
-          pointOfNoReturn = (globals.firstSlot(epoch + 1) - 2 * globals.stabilityWindow).max(0)
+          // `getTheSlotOfNoReturn` (`Slot.hs:106`)
+          pointOfNoReturn = globals.slotOfNoReturn(epoch)
           _ <- nes.modify(n =>
             if now < pointOfNoReturn then n
             else

@@ -72,7 +72,7 @@ object RealLedgerFileCheck:
                 )
       }
 
-  def main(args: Array[String]): Unit =
+  def write(args: Array[String]): Unit =
     val path = Path.of(args(0))
     args.lift(1).foreach { meta =>
       println(s"meta: ${SnapshotMeta.parse(Files.readString(Path.of(meta))).show}")
@@ -91,7 +91,7 @@ object RealLedgerFileCheck:
           ext.ledgerState.state match
             case EraLedgerState.InShelleyEra(_, s) =>
               println(
-                s"  tip ${s.tip.show}, transition ${s.transition.show}, peras ${s.peras.show}"
+                s"  tip ${s.tip.show}, transition ${s.transition.show}, layout ${s.layout.show}"
               )
             case _ => ()
           println(s"  header tip ${ext.headerState.tip.show}")

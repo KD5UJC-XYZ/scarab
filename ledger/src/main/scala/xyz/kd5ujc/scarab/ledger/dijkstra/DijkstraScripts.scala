@@ -2,9 +2,10 @@
 package xyz.kd5ujc.scarab.ledger.dijkstra
 
 import cats.syntax.all.*
+import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, TreeFold}
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.{Credential, DecodeField, LedgerDecodeError}
+import xyz.kd5ujc.scarab.ledger.{Credential, DecodeField, LedgerDecodeError, NativeScript}
 
 import V12.{Result, given}
 
@@ -90,4 +91,57 @@ object DijkstraScript:
       case t if t == 3 => (2, xs => plutus(xs(1), DijkstraLanguage.PlutusV3))
       case t if t == 4 => (2, xs => plutus(xs(1), DijkstraLanguage.PlutusV4))
     }
+
+  /** `upgradeTimelock` (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs:436-444`,
+    * 9df9f98c): a Conway native script as Dijkstra's, rebuilt through the pattern synonyms, whose
+    * constructors memoize a fresh encoding at Dijkstra's version (`mkMemoizedEra`,
+    * `MemoBytes/Internal.hs:299-300`; `Scripts.hs:617-664`) rather than the bytes the script was
+    * read from. The encoding is `EncCBOR DijkstraNativeScriptRaw` (`Scripts.hs:284-293`): each
+    * constructor a definite array of its tag and fields, `m` an `Int` and a slot a `Word64` in
+    * their shortest heads, and the nested scripts a `StrictSeq` (`encodeStrictSeq`,
+    * `Binary/Encoding/Encoder.hs:458-467, 512-518`), definite up to 23 elements and indefinite
+    * above, each in its own new encoding. Its hash, over these bytes, differs from the Conway one
+    * when the script was read in another form. Nesting is unbounded, so the walk keeps its stack on
+    * the heap (ADR 0011).
+    */
+  def upgradeTimelock(script: NativeScript): Bytes =
+    enum Item:
+      case Script(script: NativeScript)
+      case Break
+    def head(major: Int, n: BigInt): Array[Byte] =
+      val m = major << 5
+      def be(bytes: Int): Array[Byte] =
+        n.toByteArray.reverse.padTo(bytes, 0.toByte).take(bytes).reverse
+      if n < 24 then Array((m | n.toInt).toByte)
+      else if n < 0x100 then Array((m | 24).toByte) ++ be(1)
+      else if n < 0x10000 then Array((m | 25).toByte) ++ be(2)
+      else if n <= 0xffffffffL then Array((m | 26).toByte) ++ be(4)
+      else Array((m | 27).toByte) ++ be(8)
+    // an array of `length` items whose first is the constructor's tag
+    def start(length: Int, tag: Int): Array[Byte] = Array(length.toByte, tag.toByte)
+    def int(n: BigInt): Array[Byte] = if n >= 0 then head(0, n) else head(1, -1 - n)
+    def nested(ss: Vector[NativeScript]): (Array[Byte], List[Item]) =
+      val items = ss.toList.map(Item.Script(_))
+      if ss.size <= 23 then (head(4, ss.size), items) else (Array(0x9f.toByte), items :+ Item.Break)
+    @tailrec def go(stack: List[Item], out: List[Array[Byte]]): List[Array[Byte]] = stack match
+      case Nil                => out
+      case Item.Break :: rest => go(rest, Array(0xff.toByte) :: out)
+      case Item.Script(s) :: rest =>
+        s match
+          case NativeScript.Sig(h) =>
+            go(rest, (start(0x82, 0) ++ head(2, h.size) ++ h.toArray) :: out)
+          case NativeScript.AllOf(ss) =>
+            val (open, items) = nested(ss)
+            go(items ++ rest, (start(0x82, 1) ++ open) :: out)
+          case NativeScript.AnyOf(ss) =>
+            val (open, items) = nested(ss)
+            go(items ++ rest, (start(0x82, 2) ++ open) :: out)
+          case NativeScript.NOfK(m, ss) =>
+            val (open, items) = nested(ss)
+            go(items ++ rest, (start(0x83, 3) ++ int(m) ++ open) :: out)
+          case NativeScript.InvalidBefore(slot) =>
+            go(rest, (start(0x82, 4) ++ head(0, slot)) :: out)
+          case NativeScript.InvalidHereafter(slot) =>
+            go(rest, (start(0x82, 5) ++ head(0, slot)) :: out)
+    Bytes.wrap(go(List(Item.Script(script)), Nil).reverse.toArray.flatten)
 end DijkstraScript

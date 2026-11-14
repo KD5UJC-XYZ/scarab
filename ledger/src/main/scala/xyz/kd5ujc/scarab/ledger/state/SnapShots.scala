@@ -5,13 +5,14 @@ import cats.{Eq, Show}
 import cats.derived.*
 import monocle.{Focus, Lens}
 import scala.collection.immutable.{SortedMap, SortedSet}
-import xyz.kd5ujc.scarab.codec.Rational
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
+import xyz.kd5ujc.scarab.protocol.{LayoutPart, StateLayout}
 
 // The stake snapshots of the epoch state (mark, set, go) and the pool distribution derived from
 // one: `State/SnapShots.hs`, `State/Stake.hs`, `State/PoolDistr.hs` of the pinned ledger
 // (cardano-ledger-core 1.21.0.0, rev f649f97; the Preview chain is Conway, so this is the shape
 // 11.1.3 reads and writes). The mirror keeps the fields Haskell encodes; the two it derives
-// (`ssTotalActiveStake`, `ssStakeMarkPoolDistr`) are methods, so a mirror cannot disagree with
+// (`ssTotalActiveStake`, `ssStakeMarkPoolDistr`) are derived, so a mirror cannot disagree with
 // itself about them.
 
 /** `StakeWithDelegation` (`State/Stake.hs:104-108`, encoding `116-117`: `array(2)[stake, pool]`):
@@ -50,8 +51,32 @@ object ActiveStake:
       val sum = a.entries.valuesIterator.foldLeft(BigInt(0))(_ + _.stake.value.toBigInt)
       NonZero.from(Coin(sum)).getOrElse(Coin.oneNonZero)
 
+/** `BlsKey` (cardano-ledger 9df9f98c `State/StakePool.hs:490-494`, encoding `:532-542`): a pool's
+  * Leios voting key, a BLS12-381 MinSig verification key and its proof of possession, as their
+  * compressed encodings (96 and 48 bytes).
+  */
+final case class BlsKey(key: Bytes, proofOfPossession: Bytes) derives Eq, Show, Diff
+
+/** `BlsKeyState` (9df9f98c `State/StakePool.hs:548-570`): a registered voting key and the epoch its
+  * registration took effect in.
+  */
+final case class BlsKeyState(key: BlsKey, registeredIn: EpochNo) derives Eq, Show, Diff
+
+/** The voting key of a pool, in its state and in a stake snapshot, by layout: the 11.1 layout has
+  * no such field; the Leios layout has `spsBlsKey` /`spssBlsKey`, a `StrictMaybe BlsKeyState`,
+  * after the VRF key hash (9df9f98c `State/StakePool.hs:165`, `State/SnapShots.hs:197`).
+  */
+enum PoolBlsKey extends LayoutPart derives Eq, Show, Diff:
+  case Node11_1
+  case Leios(key: Option[BlsKeyState])
+
+  def stateLayout: StateLayout = this match
+    case Node11_1 => StateLayout.Node11_1
+    case Leios(_) => StateLayout.Leios
+
 /** `StakePoolSnapShot` (`State/SnapShots.hs:156-183`, encoding `239-252`: `array(10)` in this
-  * order): what the reward calculation needs of one pool, resolved when the snapshot is taken.
+  * order): what the reward calculation needs of one pool, resolved when the snapshot is taken. The
+  * Leios layout has the voting key after the VRF key hash, `array(11)` ([[PoolBlsKey]]).
   *
   * `numDelegators` is an `Int` in Haskell, only ever a count; the word is its non-negative range.
   * Its only use is the pool-distribution filter (`SnapShots.hs:453`).
@@ -62,6 +87,7 @@ final case class StakePoolSnapShot(
     selfDelegatedOwners: SortedSet[KeyHash[Staking]],
     selfDelegatedOwnersStake: Coin,
     vrf: VRFVerKeyHash,
+    blsKey: PoolBlsKey,
     pledge: Coin,
     cost: Coin,
     margin: Rational,
@@ -79,6 +105,7 @@ object StakePoolSnapShot:
   val selfDelegatedOwnersStake: Lens[StakePoolSnapShot, Coin] =
     Focus[StakePoolSnapShot](_.selfDelegatedOwnersStake)
   val vrf: Lens[StakePoolSnapShot, VRFVerKeyHash] = Focus[StakePoolSnapShot](_.vrf)
+  val blsKey: Lens[StakePoolSnapShot, PoolBlsKey] = Focus[StakePoolSnapShot](_.blsKey)
   val pledge: Lens[StakePoolSnapShot, Coin] = Focus[StakePoolSnapShot](_.pledge)
   val cost: Lens[StakePoolSnapShot, Coin] = Focus[StakePoolSnapShot](_.cost)
   val margin: Lens[StakePoolSnapShot, Rational] = Focus[StakePoolSnapShot](_.margin)
@@ -96,7 +123,12 @@ final case class SnapShot(
     pools: SortedMap[KeyHash[StakePool], StakePoolSnapShot]
 ) derives Eq,
       Show,
-      Diff
+      Diff:
+  /** Share the derived distribution for this immutable snapshot. The reference retains it with
+    * mark/set snapshots (9df9f98c `State/SnapShots.hs:444-459, 495-505`) or the enclosing mark
+    * field (f649f975 `:341-347`).
+    */
+  lazy val poolDistr: PoolDistr = PoolDistr.calculate(this)
 
 object SnapShot:
   /** `emptySnapShot` (`State/SnapShots.hs:390-391`). */
@@ -111,12 +143,15 @@ object SnapShot:
     def totalActiveStake: NonZero[Coin] = s.activeStake.total
 
 /** `IndividualPoolStake` (`State/PoolDistr.hs:54-62`, encoding `70-77`: `array(3)`): the stake of
-  * one pool, as a ratio of the total and as an amount, and the hash of its VRF key.
+  * one pool, as a ratio of the total and as an amount, and the hash of its VRF key. The Leios build
+  * also retains its voting key (9df9f98c `State/PoolDistr.hs:65-75`), without the epoch at which it
+  * was registered.
   */
 final case class IndividualPoolStake(
     stake: Rational,
     totalPoolStake: CompactCoin,
-    vrf: VRFVerKeyHash
+    vrf: VRFVerKeyHash,
+    blsKey: Option[BlsKey] = None
 ) derives Eq,
       Show,
       Diff
@@ -126,6 +161,7 @@ object IndividualPoolStake:
   val totalPoolStake: Lens[IndividualPoolStake, CompactCoin] =
     Focus[IndividualPoolStake](_.totalPoolStake)
   val vrf: Lens[IndividualPoolStake, VRFVerKeyHash] = Focus[IndividualPoolStake](_.vrf)
+  val blsKey: Lens[IndividualPoolStake, Option[BlsKey]] = Focus[IndividualPoolStake](_.blsKey)
 
 /** `PoolDistr` (`State/PoolDistr.hs:98-104`, encoding `117-122`: `array(2)[distribution, total]`).
   */
@@ -147,32 +183,82 @@ object PoolDistr:
   /** `calculatePoolDistr` (`State/SnapShots.hs:446-465`): the pools of the snapshot that have at
     * least one delegator, with their stake and VRF key, over the snapshot's total.
     */
-  def of(snapshot: SnapShot): PoolDistr =
+  def of(snapshot: SnapShot): PoolDistr = snapshot.poolDistr
+
+  private[state] def calculate(snapshot: SnapShot): PoolDistr =
     PoolDistr(
       Sorted.map(snapshot.pools.iterator.collect {
         case (id, p) if !p.numDelegators.isZero =>
-          id -> IndividualPoolStake(p.stakeRatio, p.stake, p.vrf)
+          val key = p.blsKey match
+            case PoolBlsKey.Node11_1 => None
+            case PoolBlsKey.Leios(k) => k.map(_.key)
+          id -> IndividualPoolStake(p.stakeRatio, p.stake, p.vrf, key)
       }),
       snapshot.totalActiveStake
     )
 
+/** `LeiosSeat` (cardano-base c1e1ed8d `cardano-crypto-leios/src/Cardano/Crypto/Leios.hs:131-135`,
+  * encoding cardano-ledger 9df9f98c `Binary/Encoding/EncCBOR.hs:487-491`: `array(2)`): a seat of a
+  * Leios voting committee, its weight and, if it has one, its BLS12-381 MinSig verification key (96
+  * bytes, compressed).
+  */
+final case class LeiosSeat(weight: Rational, verificationKey: Option[Bytes]) derives Eq, Show, Diff
+
+/** `LeiosCommittee` (cardano-base c1e1ed8d `Leios.hs:140`, encoding 9df9f98c `EncCBOR.hs:493-496`:
+  * the list of the seats): the voting committee of an epoch, seats in order. Empty before Dijkstra.
+  */
+final case class LeiosCommittee(seats: Vector[LeiosSeat]) derives Eq, Show, Diff
+
+object LeiosCommittee:
+  /** `emptyLeiosCommittee` (9df9f98c `State/LeiosCommittee.hs:39-41`). */
+  val empty: LeiosCommittee = LeiosCommittee(Vector.empty)
+
 /** `SnapShots` (`State/SnapShots.hs:341-347`, encoding `355-362`: `array(4)[mark, set, go, fee]`).
   * Haskell also holds `ssStakeMarkPoolDistr`, lazily, and does not encode it; here it is
-  * [[SnapShots.markPoolDistr]].
+  * [[SnapShots.markPoolDistr]]. What the Leios layout adds is in [[SnapShots.Layout]].
   */
-final case class SnapShots(mark: SnapShot, set: SnapShot, go: SnapShot, fee: Coin)
-    derives Eq,
+final case class SnapShots(
+    mark: SnapShot,
+    set: SnapShot,
+    go: SnapShot,
+    fee: Coin,
+    layout: SnapShots.Layout
+) derives Eq,
       Show,
       Diff
 
 object SnapShots:
-  /** `emptySnapShots` (`State/SnapShots.hs:393-395`). */
-  val empty: SnapShots = SnapShots(SnapShot.empty, SnapShot.empty, SnapShot.empty, Coin.zero)
+  /** The snapshots by layout. The 11.1 layout writes the three snapshots bare. The Leios layout
+    * (cardano-ledger 9df9f98c `State/SnapShots.hs:386-582`) wraps them: the mark snapshot as
+    * `MarkSnapShot [snapshot, epoch, committee size, maximum key age]`, the epoch at whose start it
+    * was taken and the parameters its committee is selected with (`Word16`, `EpochInterval`, both
+    * zero before Dijkstra); the set snapshot as `SetSnapShot [snapshot, committee]`, the Leios
+    * committee of the epoch it is the leader-election distribution of; the go snapshot as
+    * `GoSnapShot [snapshot]`. The pool distributions and the mark snapshot's committee are derived
+    * there and not written (`:414-432`, `:485-505`).
+    */
+  enum Layout extends LayoutPart derives Eq, Show, Diff:
+    case Node11_1
+    case Leios(
+        markEpoch: EpochNo,
+        markCommitteeSize: BigInt,
+        markMaxKeyAge: BigInt,
+        setCommittee: LeiosCommittee
+    )
+
+    def stateLayout: StateLayout = this match
+      case Node11_1          => StateLayout.Node11_1
+      case Leios(_, _, _, _) => StateLayout.Leios
+
+  /** `emptySnapShots` (`State/SnapShots.hs:393-395`), in the 11.1 layout. */
+  val empty: SnapShots =
+    SnapShots(SnapShot.empty, SnapShot.empty, SnapShot.empty, Coin.zero, Layout.Node11_1)
 
   val mark: Lens[SnapShots, SnapShot] = Focus[SnapShots](_.mark)
   val set: Lens[SnapShots, SnapShot] = Focus[SnapShots](_.set)
   val go: Lens[SnapShots, SnapShot] = Focus[SnapShots](_.go)
   val fee: Lens[SnapShots, Coin] = Focus[SnapShots](_.fee)
+  val layout: Lens[SnapShots, Layout] = Focus[SnapShots](_.layout)
 
   extension (s: SnapShots)
     /** `ssStakeMarkPoolDistr`, derived (`decSharePlusCBOR`, `State/SnapShots.hs:374`). */

@@ -29,7 +29,8 @@ class TxEnvelopeReferenceSuite extends FunSuite:
   private def fromAlonzo(row: Row): Boolean = row.era.ordinal >= Era.Alonzo.ordinal
 
   test("the corpus covers every era, refused and accepted, with and without the flag") {
-    assertEquals(rows.map(_.era).toSet, Era.values.toSet - Era.Byron)
+    // Dijkstra has no corpus here: its transactions are not decoded yet (#54)
+    assertEquals(rows.map(_.era).toSet, Era.values.toSet - Era.Byron - Era.Dijkstra)
     assertEquals(rows.map(_.name).distinct.size, rows.size)
     for e <- rows.map(_.era).distinct do
       assert(rows.exists(r => r.era == e && r.accepted), s"no accepted $e case")

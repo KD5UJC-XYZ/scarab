@@ -22,7 +22,7 @@ mkdir -p /tmp/scarab/reward-oracle
 docker run --rm --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
   -e SBT_GLOBAL_BASE=/tmp/sbt-global -v "$PWD":/work \
   -v /tmp/scarab/reward-oracle:/evidence -w /work scarab-jdk:local \
-  bash scripts/sbtw 'storage/Test/runMain xyz.kd5ujc.scarab.storage.haskell.state.RewardOracleCases /evidence/inputs.json'
+  bash scripts/sbtw 'tools/runMain xyz.kd5ujc.scarab.storage.haskell.state.RewardOracleCasesMain /evidence/inputs.json'
 docker run --rm --network none --read-only \
   -v /tmp/scarab/reward-oracle:/evidence:ro \
   scarab-135-reward-oracle:local /evidence/inputs.json > /tmp/scarab/reward-oracle/results.json

@@ -2,7 +2,7 @@
 """The Haskell side of the comparison on a public network: reference projections at epoch boundaries.
 
 db-analyser, run from the reference image over a ChainDB copy, stores the ledger state after the first block at or
-after the first slot of each epoch (`epoch * epoch_slots`: the block the Scala node digests, `--dump-state-at
+after the first slot of each epoch (`epoch_start`: the block the Scala node digests, `--dump-state-at
 epoch-boundaries`). Each snapshot is projected (`ledger.reduced`) and written to `<out>/<slot>-<hash>.json`, with
 a line in `<out>/index.jsonl`; `compare.compare_dirs` pairs these files with the Scala digests later, so the two
 sides do not have to run at the same time or speed.
@@ -49,11 +49,17 @@ def sync_immutable(source, target):
     return max(len(chunks) - 1, 0)
 
 
-def docker_launch(config_dir, db, cpus, memory, name):
+def docker_launch(config_dir, db, cpus, memory, name, network_none=False, full_ledger_validation=False):
+    """`launch(args)` for an `Analyser`: db-analyser in a one-shot reference container. `network_none` runs it with
+    Docker networking disabled (`--network none`); `full_ledger_validation` applies every block with the full ledger
+    rules, signatures and scripts included, instead of reapplying it (db-analyser's `--full-ledger-validation`, an
+    option of `--store-ledger`)."""
     def launch(args):
-        return ["docker", "run", "--rm", "--name", name, f"--cpus={cpus}", f"--memory={memory}",
+        network = ["--network", "none"] if network_none else []
+        validation = ["--full-ledger-validation"] if full_ledger_validation else []
+        return ["docker", "run", "--rm", "--name", name, *network, f"--cpus={cpus}", f"--memory={memory}",
                 "--user", f"{os.getuid()}:{os.getgid()}", "-v", f"{config_dir}:/config:ro", "-v", f"{db}:/db",
-                "--entrypoint", "db-analyser", REFERENCE_IMAGE, *args]
+                "--entrypoint", "db-analyser", REFERENCE_IMAGE, *args, *validation]
     return launch
 
 
@@ -90,9 +96,21 @@ def project_into(snapshot, out, epoch, target, started, utxo_workers):
             "projectSeconds": round(time.monotonic() - t, 1), "totalSeconds": round(time.monotonic() - started, 1)}
 
 
+def epoch_start(epoch, epoch_slots, byron_epochs=0, byron_epoch_slots=0):
+    """The first slot of `epoch` on a chain whose first `byron_epochs` epochs are Byron epochs of
+    `byron_epoch_slots` slots (ten times the Byron genesis's security parameter) and whose later epochs have
+    `epoch_slots`: Preview has no Byron epoch, preprod four of 21,600 slots, mainnet 208."""
+    if epoch < byron_epochs:
+        return epoch * byron_epoch_slots
+    return byron_epochs * byron_epoch_slots + (epoch - byron_epochs) * epoch_slots
+
+
 def run(config_dir, db, work, out, epoch_slots, first_epoch, last_epoch, jobs=4, seed_every=50, cpus=2,
-        memory="16g", utxo_workers=2, live=False, log=print):
-    """Project the Haskell ledger state at the start of epochs `first_epoch..last_epoch` (all the chain has)."""
+        memory="16g", utxo_workers=2, live=False, log=print, network_none=False, full_ledger_validation=False,
+        byron_epochs=0, byron_epoch_slots=0):
+    """Project the Haskell ledger state at the start of epochs `first_epoch..last_epoch` (all the chain has).
+    `network_none` and `full_ledger_validation` are passed to every db-analyser run (`docker_launch`);
+    `byron_epochs` and `byron_epoch_slots` place the epochs after a Byron prefix (`epoch_start`)."""
     work = pathlib.Path(work)
     work.mkdir(parents=True, exist_ok=True)
     base = work / "base"
@@ -105,7 +123,8 @@ def run(config_dir, db, work, out, epoch_slots, first_epoch, last_epoch, jobs=4,
         if magic.exists():
             shutil.copyfile(magic, base / "protocolMagicId")
     index = Index(out)
-    todo = [(e, e * epoch_slots) for e in range(first_epoch, last_epoch + 1) if e not in index.rows]
+    todo = [(e, epoch_start(e, epoch_slots, byron_epochs, byron_epoch_slots))
+            for e in range(first_epoch, last_epoch + 1) if e not in index.rows]
     if not todo:
         return index.rows
     segments = [todo[i:i + seed_every] for i in range(0, len(todo), seed_every)]
@@ -138,7 +157,8 @@ def run(config_dir, db, work, out, epoch_slots, first_epoch, last_epoch, jobs=4,
 
     def seed_chain():
         d = chain_dir("seed")
-        analyser = Analyser(docker_launch(config_dir, d, cpus, memory, "scarab-k1-seed"), "/db", "/config/config.json")
+        analyser = Analyser(docker_launch(config_dir, d, cpus, memory, "scarab-k1-seed", network_none,
+                                          full_ledger_validation), "/db", "/config/config.json")
         previous = None
         try:
             for i, segment in enumerate(segments):
@@ -170,7 +190,8 @@ def run(config_dir, db, work, out, epoch_slots, first_epoch, last_epoch, jobs=4,
         d = chain_dir(f"seg{i}")
         shutil.copytree(src, d / "ledger", dirs_exist_ok=True)
         previous = int(next(src.iterdir()).name.split("_")[0])
-        analyser = Analyser(docker_launch(config_dir, d, cpus, memory, f"scarab-k1-seg{i}"), "/db", "/config/config.json")
+        analyser = Analyser(docker_launch(config_dir, d, cpus, memory, f"scarab-k1-seg{i}", network_none,
+                                          full_ledger_validation), "/db", "/config/config.json")
         try:
             for epoch, target in segments[i][1:]:
                 try:

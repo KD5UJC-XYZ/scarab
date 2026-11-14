@@ -63,9 +63,18 @@ final case class LeiosHeader(
     * era (docs/leios.md section 11); the "protocol version" is the version info, which the Praos
     * rules do not read. Not a claim that the block is a Conway block.
     */
-  def praosView: Header.Shelley =
+  def praosView: Header.Shelley = viewAs(Era.Conway)
+
+  /** The header as the node's readers of a Dijkstra block or ChainSync header hold it
+    * ([[Header.fromRaw]], [[Block.Dijkstra]]): the [[praosView]] tagged with its own era, so that
+    * the hard-fork combinator's checks see a header of Dijkstra. `signable` stays the body's
+    * original bytes and `protocolVersion` holds the version info.
+    */
+  def dijkstraView: Header.Shelley = viewAs(Era.Dijkstra)
+
+  private def viewAs(era: Era): Header.Shelley =
     Header.Shelley(
-      Era.Conway,
+      era,
       raw,
       signable,
       hash,
@@ -284,8 +293,14 @@ object LeiosBlock:
     * each with its original bytes; no ledger rule is applied.
     */
   def decode(raw: Bytes): Either[ChainError, LeiosBlock] =
+    CborRead.decode(raw, limits).leftMap(fail).flatMap(read)
+
+  /** [[decode]] of a block already read as a tree of items; [[Block.decode]] reads a block of tag 8
+    * with it. A Dijkstra block holds no `RecD` record at its decoder version 12
+    * ([[DetachedRecords.Shapes.block]]), so the tree is the reference's reading of it.
+    */
+  private[ledger] def read(root: Node): Either[ChainError, LeiosBlock] =
     for
-      root <- CborRead.decode(raw, limits).leftMap(fail)
       _ <- CborRead.definite(root, DecodeField.LeiosBlock).leftMap(fail)
       outer <- array(root, 2)
       tag <- uint(outer(0))

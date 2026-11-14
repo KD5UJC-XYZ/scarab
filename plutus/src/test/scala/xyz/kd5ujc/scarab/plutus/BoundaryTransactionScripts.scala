@@ -117,7 +117,7 @@ object BoundaryTransactionScripts:
       Stage.values.find(_.wire == wire).getOrElse(sys.error(s"unexpected stage: $wire"))
     }
 
-  def main(args: Array[String]): Unit =
+  def write(args: Array[String]): Unit =
     require(
       args.length == 2,
       "expected transaction-scripts.jsonl and oracle-requests.jsonl output paths"

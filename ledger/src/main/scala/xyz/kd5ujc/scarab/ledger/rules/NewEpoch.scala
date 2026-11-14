@@ -54,7 +54,7 @@ object NewEpoch:
                   .leftMap(TickFailure.Vocab(_))
               )(using Monad[F], es, failures)
           _ <- era match
-            case ShelleyBasedEra.SConway => Monad[F].unit
+            case ShelleyBasedEra.SConway | ShelleyBasedEra.SDijkstra => Monad[F].unit
             case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
                 ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
               Epoch.within(Mir.sts[E], (), (), NewEpochState.es[E])
@@ -65,7 +65,7 @@ object NewEpoch:
               bprev = before.bcur,
               bcur = BlocksMade.empty,
               ru = None,
-              pd = before.es.snapshots.markPoolDistr
+              layout = NewEpochState.Layout.Node11_1(before.es.snapshots.markPoolDistr)
             )
           )
         yield ()

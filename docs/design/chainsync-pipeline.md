@@ -6,7 +6,7 @@
 ## Reference contract
 
 This replaces fixed send-and-collect rounds with the pinned node's rolling pipeline. The network
-pin is `2fb69829a19b5c04e4fb212bdd78fb63f9d2d776`; see
+pins are `c45735a56c567fa977969173d18943bac6bb3821` (ouroboros-network) and `c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167` (cardano-diffusion); see
 `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/PipelineDecision.hs:175–231`,
 `ClientPipelined.hs:237–265`, and `cardano-diffusion/lib/Cardano/Network/NodeToNode.hs:210–211`.
 The consensus pin is `82ecba329d7d054340bf707d44fe6e9ac27cec40`; see

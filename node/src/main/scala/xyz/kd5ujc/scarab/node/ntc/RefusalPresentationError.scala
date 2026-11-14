@@ -24,3 +24,5 @@ object RefusalPresentationError:
         s"cannot present the Plutus refusal context: invalid $language argument count $count"
       case PlutusContextText.Error.LayoutArity(expected, actual) =>
         s"cannot present the Plutus refusal context: expected $expected layout fields, received $actual"
+      case PlutusContextText.Error.Unported(language) =>
+        s"cannot present the Plutus refusal context: no printer of the $language context"

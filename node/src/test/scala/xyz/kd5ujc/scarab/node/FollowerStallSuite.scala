@@ -25,6 +25,7 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.storage.ChainPersistence
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
+import fs2.concurrent.SignallingRef
 import cats.mtl.{Handle, Stateful}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -495,203 +496,215 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     // withholds the block and the node goes on
     test(s"an injected $injected stops or withholds, without reconnecting or blaming the peer") {
       val storageCause = new java.io.IOException("injected")
-      node {
-        for
-          chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
-            VolatileChain.genesis(ForgedChain.geometry.k.toInt, forged.genesis)
-          )
-          given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
-          seen <- Ref.of[IO, Vector[FollowerEvent]](Vector.empty)
-          events = new FollowerEvents[IO]:
-            def emit(event: FollowerEvent) = seen.update(_ :+ event)
-          stored <- Ref.of[IO, Int](0)
-          failing = new ChainPersistence[IO, MirrorState]:
-            def extended(
-                ref: BlockRef,
-                raw: Bytes,
-                immutable: Vector[BlockRef],
-                anchor: Anchor[MirrorState]
-            )(using
-                cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
-                cats.mtl.Raise[IO, ChainError]
-            ) = stored.getAndUpdate(_ + 1).flatMap { n =>
-              if n != 4 then IO.unit
-              else
-                injected match
-                  case FatalCase.Storage =>
-                    cats.mtl
-                      .Raise[IO, StorageError]
-                      .raise[StorageError, Unit](StorageError.Io("volatile", storageCause))
-                  case FatalCase.Defect =>
-                    IO.raiseError(new IllegalStateException("injected"))
-                  // the rules have no verdict on the block (below), so it is never stored
-                  case FatalCase.Unavailable | FatalCase.UnavailablePhase1 => IO.unit
-            }
-            def rolledBack(to: Point)(using
-                cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
-                cats.mtl.Raise[IO, ChainError]
-            ) = IO.unit
-          // the evaluator has no verdict on the fifth block: it is the rules that say so, before
-          // anything of the block is stored
-          unavailableAt = forged.headers(4).point
-          rules = BlockRules.from[IO, MirrorState] { (state, header, raw) =>
-            if header.point != unavailableAt || injected == FatalCase.Storage ||
-              injected == FatalCase.Defect
-            then ForgedChain.rules.apply(state, header, raw)
-            else
-              val failure = LedgerFailure.Unavailable(
-                Bytes.empty,
-                if injected == FatalCase.UnavailablePhase1 then ScriptLocation.Phase1(Bytes.empty)
-                else ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
-                EvalFailure
-                  .Unsupported(
-                    xyz.kd5ujc.scarab.plutus.BackendFailure
-                      .BuiltinUnavailable(scalus.uplc.DefaultFun.VerifyEd25519Signature)
-                  )
-              )
-              cats.mtl
-                .Raise[IO, ValidationError]
-                .raise[ValidationError, MirrorState](
-                  ValidationError(header.point, BlockFailure.Tx(failure))
-                )
-          }
-          follower <- Follower.create[IO, MirrorState](
-            rules,
-            events,
-            ForgedChain.geometry,
-            persistence = Some(failing)
-          )
-          fatals <- Ref.of[IO, Vector[Fatal]](Vector.empty)
-          pool <- WorkerTesting.pool(follower)
-          good <- serving(forged.raws)
-          peers <- InMemoryPeers.create(magic)
-          first = InMemoryPeers.address(1)
-          _ <- peers.serve(first, good)
-          transport: Transport[IO, PeerNetwork.Addr] = peers
-          manager <- ConnectionManager.create[IO](noTimeWait)
-          last = forged.headers.last
-          hot = OutboundPeers.Hot[IO](
-            magic = magic,
-            network = NodeToNode.Settings(),
-            peer = Peer.Settings(
-              tcp,
-              magic,
-              readAhead = 8,
-              byronEpochSlots = ForgedChain.geometry.byron.epochSlots
-            ),
-            follow = (peer, track) => follower.session(peer, track),
-            heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin,
-            headers = None,
-            transactions = None,
-            observe = None,
-            pool = pool,
-            versus = follower.versus,
-            lost = error => events.emit(FollowerEvent.Reconnecting(error, 1)),
-            fatal = f => fatals.update(_ :+ f)
-          )
-          view = new PeerNetwork.ChainView[IO]:
-            def tip = chainRef.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
-            def geometry = IO.pure(ForgedChain.geometry)
-          local = RootConfig(false, DiffusionMode.InitiatorAndResponder, Provenance.Outbound, false)
-          roots = PeerNetwork.Roots(
-            List(RootGroupSpec(1, 1, List(first -> local))),
-            Set.empty,
-            None,
-            UseLedgerPeers.Disabled
-          )
-          modeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
-          network = PeerNetwork.resource[IO](
-            PeerNetwork.Settings(roots, Targets.relay, seed = 7L),
-            transport,
-            manager,
-            OutboundPeers.Config(repromoteDelay = 1.second),
-            hot,
-            view,
-            modeRef,
-            _ => IO.unit,
-            (_, _) => IO.unit,
-            _ => IO.unit,
-            _ => IO.unit,
-            GsmRunner.Marker.none[IO],
-            LedgerPeersSource.none[IO]
-          )
-          _ <- pool.session.use { origin =>
-            val unavailable =
-              injected == FatalCase.Unavailable || injected == FatalCase.UnavailablePhase1
-            // another session delivered these checked originals; the worker adopts them
-            val loaned = forged.headers
-              .take(8)
-              .zip(forged.raws.take(8))
-              .map((header, raw) =>
-                BlockPool.Delivered.checked(header, raw).fold(e => fail(e.message), identity)
-              )
-            network
-              .flatTap(_ =>
-                FetchTesting.decisions(pool) *>
-                  WorkerTesting.selection(follower, pool, f => fatals.update(_ :+ f)) *>
-                  Resource.eval(
-                    (origin.claim(loaned.map(_.header.hash)) *> origin.fillDelivered(loaned))
-                      .whenA(unavailable)
-                  )
-              )
-              .use { net =>
-                net.run.background.use { _ =>
-                  if unavailable then
-                    eventually("the block is withheld")(seen.get)(_.exists {
-                      case FollowerEvent.NoVerdict(_, _, _, _) => true
-                      case _                                   => false
-                    }).void
-                  else eventually("the node is told to stop")(fatals.get)(_.nonEmpty).void
-                }
-              } *>
-              (for
-                blamed <- origin.blamed.map(Option(_)).timeoutTo(50.millis, IO.pure(None))
-                retained <- pool.take(loaned.last.header.hash)
-              yield
-                assertEquals(blamed, None)
-                // The failing block was borrowed. Treating unavailability as a rejection would
-                // call over.refused/distrust, blame its origin and discard this remaining block.
-                assertEquals(retained, Some(loaned.last.block))
-              ).whenA(unavailable)
-          }
-          stopped <- fatals.get
-          tipNow <- chainRef.get.map(_.tip)
-          lostEvents <- seen.get
-        yield
-          stopped match
-            case Vector(Fatal.Storage(StorageError.Io("volatile", cause)))
-                if injected == FatalCase.Storage =>
-              assert(cause eq storageCause)
-            case Vector()
-                if injected == FatalCase.Unavailable || injected == FatalCase.UnavailablePhase1 =>
-              val withheld = lostEvents.collect {
-                case FollowerEvent.NoVerdict(
-                      point,
-                      BlockNoVerdict.Evaluation(_, unavailable),
-                      _,
-                      _
-                    ) =>
-                  point -> BlockFailure.Tx(unavailable)
+      Settled.timed { _ =>
+        node {
+          for
+            chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
+              VolatileChain.genesis(ForgedChain.geometry.k.toInt, forged.genesis)
+            )
+            given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
+            seen <- SignallingRef.of[IO, Vector[FollowerEvent]](Vector.empty)
+            events = new FollowerEvents[IO]:
+              def emit(event: FollowerEvent) = seen.update(_ :+ event)
+            stored <- Ref.of[IO, Int](0)
+            failing = new ChainPersistence[IO, MirrorState]:
+              def extended(
+                  ref: BlockRef,
+                  raw: Bytes,
+                  immutable: Vector[BlockRef],
+                  anchor: Anchor[MirrorState]
+              )(using
+                  cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
+                  cats.mtl.Raise[IO, ChainError]
+              ) = stored.getAndUpdate(_ + 1).flatMap { n =>
+                if n != 4 then IO.unit
+                else
+                  injected match
+                    case FatalCase.Storage =>
+                      cats.mtl
+                        .Raise[IO, StorageError]
+                        .raise[StorageError, Unit](StorageError.Io("volatile", storageCause))
+                    case FatalCase.Defect =>
+                      IO.raiseError(new IllegalStateException("injected"))
+                    // the rules have no verdict on the block (below), so it is never stored
+                    case FatalCase.Unavailable | FatalCase.UnavailablePhase1 => IO.unit
               }
-              withheld.headOption match
-                case Some((point, BlockFailure.Tx(failure: LedgerFailure.Unavailable))) =>
-                  assertEquals(point, unavailableAt)
-                  val phase1 = failure.location.isInstanceOf[ScriptLocation.Phase1]
-                  assertEquals(phase1, injected == FatalCase.UnavailablePhase1)
-                case other => fail(s"unexpected $other")
-            case Vector(Fatal.Defect(cause)) if injected == FatalCase.Defect =>
-              assertEquals(cause.getMessage, "injected")
-            case other => fail(s"unexpected $other")
-          // the tip that was published is one that is stored: never past the block that failed
-          assert(tipNow != last.point, "the chain went past the block that could not be stored")
-          // nobody is blamed: the loss is not a rejection or a protocol error of the peer
-          assert(
-            !lostEvents.exists {
-              case FollowerEvent.Reconnecting(_, _) => true
-              case _                                => false
-            },
-            lostEvents.toString
-          )
+              def rolledBack(to: Point)(using
+                  cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError],
+                  cats.mtl.Raise[IO, ChainError]
+              ) = IO.unit
+            // the evaluator has no verdict on the fifth block: it is the rules that say so, before
+            // anything of the block is stored
+            unavailableAt = forged.headers(4).point
+            rules = BlockRules.from[IO, MirrorState] { (state, header, raw) =>
+              if header.point != unavailableAt || injected == FatalCase.Storage ||
+                injected == FatalCase.Defect
+              then ForgedChain.rules.apply(state, header, raw)
+              else
+                val failure = LedgerFailure.Unavailable(
+                  Bytes.empty,
+                  if injected == FatalCase.UnavailablePhase1 then ScriptLocation.Phase1(Bytes.empty)
+                  else ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
+                  EvalFailure
+                    .Unsupported(
+                      xyz.kd5ujc.scarab.plutus.BackendFailure
+                        .BuiltinUnavailable(
+                          xyz.kd5ujc.scarab.uplc.DefaultFun.VerifyEd25519Signature
+                        )
+                    )
+                )
+                cats.mtl
+                  .Raise[IO, ValidationError]
+                  .raise[ValidationError, MirrorState](
+                    ValidationError(header.point, BlockFailure.Tx(failure))
+                  )
+            }
+            follower <- Follower.create[IO, MirrorState](
+              rules,
+              events,
+              ForgedChain.geometry,
+              persistence = Some(failing)
+            )
+            fatals <- SignallingRef.of[IO, Vector[Fatal]](Vector.empty)
+            pool <- WorkerTesting.pool(follower)
+            good <- serving(forged.raws)
+            peers <- InMemoryPeers.create(magic)
+            first = InMemoryPeers.address(1)
+            _ <- peers.serve(first, good)
+            transport: Transport[IO, PeerNetwork.Addr] = peers
+            manager <- ConnectionManager.create[IO](noTimeWait)
+            last = forged.headers.last
+            hot = OutboundPeers.Hot[IO](
+              magic = magic,
+              network = NodeToNode.Settings(),
+              peer = Peer.Settings(
+                tcp,
+                magic,
+                readAhead = 8,
+                byronEpochSlots = ForgedChain.geometry.byron.epochSlots
+              ),
+              follow = (peer, track) => follower.session(peer, track),
+              heightSnapshot = xyz.kd5ujc.scarab.node.ChainSyncHeights.origin,
+              headers = None,
+              transactions = None,
+              observe = None,
+              pool = pool,
+              versus = follower.versus,
+              lost = error => events.emit(FollowerEvent.Reconnecting(error, 1)),
+              fatal = f => fatals.update(_ :+ f)
+            )
+            view = new PeerNetwork.ChainView[IO]:
+              def tip = chainRef.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
+              def geometry = IO.pure(ForgedChain.geometry)
+            local = RootConfig(
+              false,
+              DiffusionMode.InitiatorAndResponder,
+              Provenance.Outbound,
+              false
+            )
+            roots = PeerNetwork.Roots(
+              List(RootGroupSpec(1, 1, List(first -> local))),
+              Set.empty,
+              None,
+              UseLedgerPeers.Disabled
+            )
+            modeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
+            network = PeerNetwork.resource[IO](
+              PeerNetwork.Settings(roots, Targets.relay, seed = 7L),
+              transport,
+              manager,
+              OutboundPeers.Config(repromoteDelay = 1.second),
+              hot,
+              view,
+              modeRef,
+              _ => IO.unit,
+              (_, _) => IO.unit,
+              _ => IO.unit,
+              _ => IO.unit,
+              GsmRunner.Marker.none[IO],
+              LedgerPeersSource.none[IO]
+            )
+            _ <- pool.session.use { origin =>
+              val unavailable =
+                injected == FatalCase.Unavailable || injected == FatalCase.UnavailablePhase1
+              // another session delivered these checked originals; the worker adopts them
+              val loaned = forged.headers
+                .take(8)
+                .zip(forged.raws.take(8))
+                .map((header, raw) =>
+                  BlockPool.Delivered.checked(header, raw).fold(e => fail(e.message), identity)
+                )
+              network
+                .flatTap(_ =>
+                  FetchTesting.decisions(pool) *>
+                    WorkerTesting.selection(follower, pool, f => fatals.update(_ :+ f)) *>
+                    Resource.eval(
+                      (origin.claim(loaned.map(_.header.hash)) *> origin.fillDelivered(loaned))
+                        .whenA(unavailable)
+                    )
+                )
+                .use { net =>
+                  net.run.background.use { _ =>
+                    if unavailable then
+                      seen
+                        .waitUntil(_.exists {
+                          case FollowerEvent.NoVerdict(_, _, _, _) => true
+                          case _                                   => false
+                        })
+                        .timeout(40.seconds)
+                        .void
+                    else fatals.waitUntil(_.nonEmpty).timeout(40.seconds).void
+                  }
+                } *>
+                (for
+                  blamed <- origin.blamed.map(Option(_)).timeoutTo(50.millis, IO.pure(None))
+                  retained <- pool.take(loaned.last.header.hash)
+                yield
+                  assertEquals(blamed, None)
+                  // The failing block was borrowed. Treating unavailability as a rejection would
+                  // call over.refused/distrust, blame its origin and discard this remaining block.
+                  assertEquals(retained, Some(loaned.last.block))
+                ).whenA(unavailable)
+            }
+            stopped <- fatals.get
+            tipNow <- chainRef.get.map(_.tip)
+            lostEvents <- seen.get
+          yield
+            stopped match
+              case Vector(Fatal.Storage(StorageError.Io("volatile", cause)))
+                  if injected == FatalCase.Storage =>
+                assert(cause eq storageCause)
+              case Vector()
+                  if injected == FatalCase.Unavailable || injected == FatalCase.UnavailablePhase1 =>
+                val withheld = lostEvents.collect {
+                  case FollowerEvent.NoVerdict(
+                        point,
+                        BlockNoVerdict.Evaluation(_, unavailable),
+                        _,
+                        _
+                      ) =>
+                    point -> BlockFailure.Tx(unavailable)
+                }
+                withheld.headOption match
+                  case Some((point, BlockFailure.Tx(failure: LedgerFailure.Unavailable))) =>
+                    assertEquals(point, unavailableAt)
+                    val phase1 = failure.location.isInstanceOf[ScriptLocation.Phase1]
+                    assertEquals(phase1, injected == FatalCase.UnavailablePhase1)
+                  case other => fail(s"unexpected $other")
+              case Vector(Fatal.Defect(cause)) if injected == FatalCase.Defect =>
+                assertEquals(cause.getMessage, "injected")
+              case other => fail(s"unexpected $other")
+            // the tip that was published is one that is stored: never past the block that failed
+            assert(tipNow != last.point, "the chain went past the block that could not be stored")
+            // nobody is blamed: the loss is not a rejection or a protocol error of the peer
+            assert(
+              !lostEvents.exists {
+                case FollowerEvent.Reconnecting(_, _) => true
+                case _                                => false
+              },
+              lostEvents.toString
+            )
+        }
       }
     }
 

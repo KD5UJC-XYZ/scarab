@@ -8,6 +8,7 @@ import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
+import fs2.concurrent.SignallingRef
 import fs2.io.file.Path
 import java.nio.file.Files
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -37,6 +38,24 @@ enum StorageEvent:
     */
   case FormatMigrated(migrated: Migrated)
   case SnapshotSkipped(name: String, error: StorageError)
+
+  /** A snapshot the restore did not use was deleted, with its checkpoint, as the reference deletes
+    * a temporary snapshot it cannot use (`deleteSnapshotIfTemporary`, which traces
+    * `DeletedSnapshot`, ouroboros-consensus 82ecba32 `Storage/LedgerDB/Snapshots.hs:320-328`).
+    */
+  case SnapshotDeleted(name: String)
+
+  /** A skipped snapshot could not be deleted (`error`); the restore went on, as the reference's
+    * `defaultDeleteSnapshotIfTemporary` catches the failure of its deletion
+    * (`Snapshots.hs:320-330`).
+    */
+  case SnapshotNotDeleted(name: String, error: StorageError)
+
+  /** A checkpoint that no snapshot lists could not be deleted at the start (`error`); the start
+    * went on, as the reference's best-effort deletion of a snapshot's tables does
+    * (`Snapshots.hs:316-330`).
+    */
+  case CheckpointNotDeleted(name: String, error: StorageError)
   case SnapshotRestored(name: String, anchor: Option[BlockRef])
 
   /** The restored snapshot was written before snapshots recorded their checkpoint
@@ -55,7 +74,11 @@ enum StorageEvent:
   case ReplayStarted(from: Option[BlockRef], tip: Option[BlockRef])
   case ReplayProgress(at: BlockRef, replayed: Long, millis: Long)
   case ReplayFinished(at: Option[BlockRef], replayed: Long, millis: Long)
-  case NetworkRecorded(identity: NetworkIdentity, adopted: Boolean)
+
+  /** The identity written: at creation or an operator's adoption (`adopted`), or with the
+    * configured Dijkstra genesis adopted by an identity that recorded none (`dijkstraAdopted`).
+    */
+  case NetworkRecorded(identity: NetworkIdentity, adopted: Boolean, dijkstraAdopted: Boolean)
   case VolatileOpened(report: VolatileStore.OpenReport)
 
   /** The volatile chain was rebuilt from the log: `resumed` blocks applied on top of the immutable
@@ -132,6 +155,36 @@ object ChainStorage:
         Raise[F, StorageError]
     ): F[S]
 
+  /** The events of a snapshot the restore or the migration did not use. */
+  private def skippedEvents[F[_]: cats.Monad](
+      events: StorageEvents[F],
+      skipped: LedgerSnapshots.Skipped
+  ): F[Unit] =
+    events.emit(StorageEvent.SnapshotSkipped(skipped.name, skipped.error)) *>
+      (skipped.unused match
+        case LedgerSnapshots.Unused.Deleted =>
+          events.emit(StorageEvent.SnapshotDeleted(skipped.name))
+        case LedgerSnapshots.Unused.NotDeleted(error) =>
+          events.emit(StorageEvent.SnapshotNotDeleted(skipped.name, error))
+        case LedgerSnapshots.Unused.Kept => cats.Monad[F].unit)
+
+  /** The store made equal to the checkpoint of `anchor`, or the refusal of a checkpoint whose keys
+    * no layout has, which the fallback deletes as the reference deletes a snapshot whose tables do
+    * not decode ([[LedgerSnapshots.Fallback]]). Any other failure, a file system error among them,
+    * is raised, as the reference raises it.
+    */
+  private def restoredInto[F[_]: Async, S](backing: StateBacking[F, S], anchor: Option[BlockRef])(
+      using Raise[F, StorageError]
+  ): F[Either[StorageError, Unit]] =
+    Handle
+      .allow[StorageError](backing.restore(anchor).as(().asRight[StorageError]))
+      .rescue {
+        case e: StorageError.UtxoCheckpoint
+            if LedgerSnapshots.Fallback.of(e) == LedgerSnapshots.Fallback.Delete =>
+          Async[F].pure(Left(e))
+        case e => e.raise[F, Either[StorageError, Unit]]
+      }
+
   /** Stored blocks are prepared this many at a time during replay. */
   private val ReplayBatch = 64
 
@@ -182,6 +235,8 @@ object ChainStorage:
     * @param adopt
     *   Make `blocks` (a prefix of the logged chain that was validated) the persistence's pending
     *   blocks, and cut the log back to them.
+    * @param snapshotsWritten
+    *   Completes once no snapshot is being written in the background.
     */
   final case class Recovered[F[_], S](
       anchor: Option[BlockRef],
@@ -190,7 +245,8 @@ object ChainStorage:
       store: ImmutableStore[F],
       volatile: Vector[(BlockRef, Bytes)],
       adopt: Vector[(BlockRef, Bytes)] => F[Unit],
-      received: ReceivedBlocks[F]
+      received: ReceivedBlocks[F],
+      snapshotsWritten: F[Unit]
   )
 
   /** A volatile block rebuilt by [[resume]]. */
@@ -281,9 +337,19 @@ object ChainStorage:
         )
       )
       _ <- Resource.eval(config.identity.traverse_(NetworkIdentityFile.admit[F](dir, _, admission)))
-      migratedIdentity <- Resource.eval(NetworkIdentityFile.migrate[F](dir))
+      migratedIdentity <- Resource.eval(NetworkIdentityFile.migrate[F](dir, config.identity))
       _ <- Resource.eval(
         migratedIdentity.traverse_(m => events.emit(StorageEvent.FormatMigrated(m)))
+      )
+      adoptedDijkstra <- Resource.eval(
+        config.identity.flatTraverse(NetworkIdentityFile.adoptDijkstra[F](dir, _))
+      )
+      _ <- Resource.eval(
+        adoptedDijkstra.traverse_(identity =>
+          events.emit(
+            StorageEvent.NetworkRecorded(identity, adopted = false, dijkstraAdopted = true)
+          )
+        )
       )
       opened <- FileImmutableStore.open[F](dir / "immutable", config.chunkSlots)
       (store, report) = opened
@@ -297,6 +363,7 @@ object ChainStorage:
             events.emit(
               StorageEvent.NetworkRecorded(
                 identity,
+                dijkstraAdopted = false,
                 adopted = admission match
                   case NetworkIdentityFile.Admission.AdoptLegacy(_, _) |
                       NetworkIdentityFile.Admission.AdoptMissing =>
@@ -322,12 +389,14 @@ object ChainStorage:
         migratedSnapshots.migrated.traverse_(m => events.emit(StorageEvent.FormatMigrated(m))) *>
           migratedSnapshots.refused.traverse_(r =>
             events.emit(StorageEvent.SnapshotRefused(r.name, None, r.refusal))
-          )
+          ) *> migratedSnapshots.skipped.traverse_(skippedEvents(events, _))
       )
       snapshots <- Resource.eval(
         FileLedgerSnapshots.open[F, S](dir / "snapshots", config.keepSnapshots)
       )
       supervisor <- Supervisor[F](await = false)
+      // a snapshot is used once its anchor is stored and its checkpoint is admitted and restored
+      // into the store: a checkpoint whose keys do not decode is refused there, inside the fallback
       restored <- Resource.eval(
         snapshots.restore(snapshot =>
           snapshot.anchor
@@ -335,12 +404,26 @@ object ChainStorage:
             .flatMap {
               case false =>
                 F.pure(Left(StorageError.Missing("snapshot anchor in the immutable store")))
-              case true => backing.admit(snapshot.anchor, snapshot.checkpoint)
+              case true =>
+                backing.admit(snapshot.anchor, snapshot.checkpoint).flatMap {
+                  case Left(error) => F.pure(Left(error))
+                  case Right(())   => restoredInto(backing, snapshot.anchor)
+                }
             }
         )
       )
+      _ <- Resource.eval(restored.skipped.traverse_(skippedEvents(events, _)))
+      _ <- Resource.eval(restored.snapshot.fold(backing.reset)(_ => F.unit))
+      // the checkpoints that no snapshot lists go, by the trim path of a write: those of the
+      // snapshots just deleted, and any a cancelled or failed earlier start left behind
       _ <- Resource.eval(
-        restored.skipped.traverse_(s => events.emit(StorageEvent.SnapshotSkipped(s.name, s.error)))
+        snapshots.list
+          .flatMap(names => backing.trim(names.map(_.stripSuffix(".bin")).toSet))
+          .flatMap(
+            _.traverse_((name, error) =>
+              events.emit(StorageEvent.CheckpointNotDeleted(name, error))
+            )
+          )
       )
       start <- Resource.eval(
         restored.snapshot.fold(F.pure((Option.empty[BlockRef], initial)))((_, s) =>
@@ -355,14 +438,11 @@ object ChainStorage:
             )
         )
       )
-      _ <- Resource.eval(
-        restored.snapshot.fold(backing.reset)((_, s) => backing.restore(s.anchor).void)
-      )
       pending <- Resource.eval(Ref.of[F, Vector[(BlockRef, Bytes)]](Vector.empty))
       lastSlot <- Resource.eval(Ref.of[F, BigInt](start._1.fold(BigInt(0))(_.slot)))
       previousSlot <- Resource.eval(Ref.of[F, BigInt](start._1.fold(BigInt(0))(_.slot)))
       lastTaken <- Resource.eval(Ref.of[F, Option[FiniteDuration]](None))
-      busy <- Resource.eval(Ref.of[F, Boolean](false))
+      busy <- Resource.eval(SignallingRef[F, Boolean](false))
       latest <- Resource.eval(Ref.of[F, Option[(BlockRef, S)]](None))
       written <- Resource.eval(Ref.of[F, Option[BlockRef]](start._1))
       sinceCollect <- Resource.eval(Ref.of[F, Int](0))
@@ -405,7 +485,8 @@ object ChainStorage:
       store,
       logged.chain,
       persistence.adopt,
-      received
+      received,
+      persistence.snapshotsWritten
     )
 
   /** Rebuild the volatile chain from the log: apply the logged blocks after the immutable tip, in
@@ -561,7 +642,7 @@ object ChainStorage:
       lastSlot: Ref[F, BigInt],
       previousSlot: Ref[F, BigInt],
       lastTaken: Ref[F, Option[FiniteDuration]],
-      busy: Ref[F, Boolean],
+      busy: SignallingRef[F, Boolean],
       latest: Ref[F, Option[(BlockRef, S)]],
       written: Ref[F, Option[BlockRef]],
       sinceCollect: Ref[F, Int],
@@ -714,6 +795,9 @@ object ChainStorage:
         )
       yield done
 
+    /** Completes once no snapshot is being written in the background. */
+    def snapshotsWritten: F[Unit] = busy.waitUntil(b => !b)
+
     private def reportSnapshot[A](result: Either[SnapshotFailure, A]): F[Unit] =
       result.fold(error => events.emit(StorageEvent.SnapshotFailed(error)), _ => F.unit)
 
@@ -724,7 +808,7 @@ object ChainStorage:
     def shutdownSnapshot: F[Unit] =
       SnapshotFailure
         .capture {
-          val idle = (F.sleep(20.millis) *> busy.get).iterateUntil(b => !b)
+          val idle = snapshotsWritten
           val body = snapshotLock.lock.surround {
             (latest.get, written.get).flatMapN {
               case (Some((ref, state)), done) if !done.contains(ref) =>
@@ -738,6 +822,6 @@ object ChainStorage:
               case (_, done) => events.emit(StorageEvent.ShutdownSnapshot(done, false))
             }
           }
-          idle.timeoutTo(2.minutes, F.pure(true)) *> body
+          idle.timeoutTo(2.minutes, F.unit) *> body
         }
         .flatMap(reportSnapshot)

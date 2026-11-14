@@ -30,8 +30,8 @@ def restore_problem(events):
     return None
 
 
-# the magic of the snapshot files this build writes (FileKind.SnapshotFile current, SnapshotV8)
-SNAPSHOT_MAGIC = b"SCRBSNP8"
+# the magic of the snapshot files this build writes (FileKind.SnapshotFile current, SnapshotV10)
+SNAPSHOT_MAGIC = b"SCRBSNPA"
 
 
 def format_problem(magics):
@@ -41,6 +41,20 @@ def format_problem(magics):
     stale = sorted({m.decode("latin-1") for m in magics if m != SNAPSHOT_MAGIC})
     if stale:
         return f"snapshot files not in the current format: {', '.join(stale)}"
+    return None
+
+
+# the first line of the network identity this build writes (FileKind.IdentityFile current, #824)
+IDENTITY_HEADER = "scarab network identity v9"
+
+
+def identity_problem(text):
+    """Why the database's network identity is not in the current format, else None (`text`: the file, or None)."""
+    if text is None:
+        return "no network identity in the database"
+    first = text.split("\n", 1)[0].strip()
+    if first != IDENTITY_HEADER:
+        return f"network identity not in the current format: {first!r}"
     return None
 
 
@@ -68,7 +82,7 @@ def _stop(name, process):
 
 
 def restart(args):
-    """Follow with current V8 snapshots, SIGTERM, then restore the snapshot on restart."""
+    """Follow with current V9 snapshots, SIGTERM, then restore the snapshot on restart."""
     root = data_root(args.name)
     up(args)
     failures, stops = [], []
@@ -104,6 +118,10 @@ def restart(args):
             if problem:
                 failures.append(problem)
     problem = format_problem([f.read_bytes()[:8] for f in sorted((root / "db" / "snapshots").glob("snapshot-*.bin"))])
+    if problem:
+        failures.append(problem)
+    identity = root / "db" / "network-identity"
+    problem = identity_problem(identity.read_text() if identity.exists() else None)
     if problem:
         failures.append(problem)
     print(json.dumps({"stopSeconds": stops, "failed": failures}), flush=True)

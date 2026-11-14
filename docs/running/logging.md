@@ -86,7 +86,10 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `started` | `Node.Started` | Notice | `build`, `peer`, `peers`, `networkMagic`, `systemStart`, `epochLength`, `securityParam`, `byronEpochs`, `byronEpochSlots`, `hardForkEpochs`, `genesisHashes`, `configUnsupported`, `topology` |
 | `blst` | `Node.Blst` | Info | `platform`, `cpu`, `library` |
 | `praosSyncUntrusted` | `Node.PraosSyncUntrusted` | Warning | `consensusMode`, `start` (`origin` or `behind`), `slotsBehind` |
+| `referenceBuild` | `Node.ReferenceBuild` | Notice | `build` (the `--reference-build` value), `stability` (`stable` or `unstable`), `node` (the pinned release tag, or the node commit of an unstable build), `ledger`, `ledgerBinary`, `consensus` (pinned commits); logged at start, before any store opens; see [flags](flags.md) |
+| `unstableReferenceBuild` | `Node.UnstableReferenceBuild` | Warning | `build`, `experimentalHardForksEnabled` (`false`): an unstable build runs without `ExperimentalHardForksEnabled`, which it is meant for |
 | `plutusCrypto` | `Node.PlutusCrypto` | Info | `platform`, `library` (`source`, `path`, `sha256`) |
+| `plutusVm` | `Node.PlutusVm` | Notice | `vm` (the `--plutus-vm` value, `scalus` or `scarab`): the Plutus evaluator of the block rules, the mempool and the forger; logged at start, after the native library checks and before any store opens; see [flags](flags.md) |
 | `listening` | `Node.Listening` | Notice | `address` |
 | `createSystemdSocketForSnocketPath` | `Node.CreateSystemdSocketForSnocketPath` | Info | `path`; the node-to-client socket is about to be created. Like the rest of these lines, the reference's `Startup.DiffusionInit` trace of that name: `path` is the reference's `show` of the address, `LocalAddress "<path>"`, the path as configured; see [node-to-client](node-to-client.md#the-socket-path) |
 | `createdLocalSocket` | `Node.CreatedLocalSocket` | Info | `path` |
@@ -131,6 +134,9 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `acceptError` | `Net.AcceptError` | Error | `reason`; an accept failed: after `ECONNABORTED` the server accepts again half a second later, any other failure stops it |
 | `serverStopped` | `Net.ServerStopped` | Notice | none |
 | `serverError` | `Net.ServerError` | Critical | `reason`; the accept loop stopped on a failure (a `diffusionErrored` line follows) |
+| `remoteAcceptError` | `Net.RemoteAcceptError` | Error | `reason`; an accept of the node-to-node server failed. Like the next two, the reference's `Net.Server.Remote` trace (`AcceptError`, `Stopped`, `Error`): after `ECONNABORTED` the server accepts again half a second later (the JDK retries that one itself, so it is not seen: an approved deviation, #944), any other failure stops the node |
+| `remoteServerStopped` | `Net.RemoteServerStopped` | Notice | none; the node-to-node server stopped accepting |
+| `remoteServerError` | `Net.RemoteServerError` | Critical | `reason`; its accept loop stopped on a failure (a `diffusionErrored` line follows) |
 | `peerSelectionTargets` | `Net.PeerSelectionTargets` | Notice | `root`, `known`, `established`, `active`, `knownBigLedger`, `establishedBigLedger`, `activeBigLedger` |
 | `peerSelectionRoots` | `Net.PeerSelectionRoots` | Info (Warning when `action` is `failure`) | `action`, `bigLedger`, `before`, `after`, `target`, `current`, `found`, `backoffs`, `retryInSeconds`; sharing actions `pickInbound`, `peerShareRequests`, `peerShareResults` add `peers`, `amount`, `results`, `added` |
 | `peerSelectionPromote` | `Net.PeerSelectionPromote` | Info (Warning when `action` is `failed`) | `action`, `bigLedger`, `from`, `to`, `peers`, `peer`, `local`, `target`, `current`, `failure`, `retryInSeconds`, `forgotten`, `reason`, `operation` |
@@ -141,7 +147,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `peerSelectionCounters` | `Net.PeerSelectionCounters` | Info | `root`, `cold`, `warm`, `hot`, `known`, `established`, `active`, `availableToConnect`, `coldPromotions`, `warmPromotions`, `warmDemotions`, `activeDemotions`, `localRoots`, `bootstrap`, `bigLedger`, `origins` |
 | `peerSelectionChurn` | `Net.PeerSelectionChurn` | Info | `action` (`round`, `step`, `timeout`, `wait`), `mode`, `step`, `number`, `tookSeconds`, `change`, `delaySeconds` |
 | `ledgerPeers` | `Net.LedgerPeers` | Info (Warning when `action` is `snapshotIgnored`, `poolSkipped` or `unreadable`; Error when it is `snapshotVerificationFailed`) | `action` (`snapshotLoaded`, `snapshotIgnored`, `snapshotVerified`, `snapshotVerificationFailed`, `refreshed`, `poolSkipped`, `unreadable`), `matchesImmutablePoint`, `slot`, `pools`, `source`, `bigLedgerPools`, `ledgerSlot`, `pool`, `reason` |
-| `localRoots` | `Net.LocalRoots` | Info | `action` (`error`), `domainAddress`, `reason`; a local root's DNS lookup threw. As the reference's `LocalRootError` (Info, ouroboros-network `2fb69829` `RootPeersDNS/LocalRootPeers.hs`), the node goes on and the lookups start again at once |
+| `localRoots` | `Net.LocalRoots` | Info | `action` (`error`), `domainAddress`, `reason`; a local root's DNS lookup threw. As the reference's `LocalRootError` (Info, ouroboros-network `c45735a5` `RootPeersDNS/LocalRootPeers.hs`), the node goes on and the lookups start again at once |
 | `outboundConnections` | `Net.OutboundConnections` | Info | `state`, `trusted` |
 | `gsmTransition` | `Net.GsmTransition` | Notice | `transition`, `state`, `peers`, `tipTooOld` |
 | `fetchModeChanged` | `Net.FetchModeChanged` | Info | `mode` |
@@ -153,6 +159,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `mempoolRemoved` | `Mempool.MempoolRemoved` | Info | `tx` |
 | `mempoolSynced` | `Mempool.MempoolSynced` | Info | `count`, `bytes`, `dropped` |
 | `forgeStarted` | `Forge.ForgeStarted` | Notice | `pool`, `vrfKeyHash`, `kesStart`, `kesEvolutions`, `opCertCounter`, `kesPeriod`, `remainingKesPeriods` |
+| `blockForgingUpdate` | `Forge.BlockForgingUpdate` | Info | `enabled` |
 | `startLeadershipCheck` | `Forge.StartLeadershipCheck` | Info | `slot`; the first trace of every slot the forging loop runs. This and the rows down to `adoptedBlock` are cardano-node 11.1.3 `Forge.Loop.*` (one level shallower) with its severities and machine fields (`kind` is the event name), in the order `forkBlockForging` traces them; see [block production](../architecture/block-production.md#the-forging-loop) |
 | `slotIsImmutable` | `Forge.SlotIsImmutable` | Error | `slot`, `tip` (`<hash>@<slot>`), `tipBlockNo`: no volatile block, and the immutable tip is in the slot or a later one |
 | `blockFromFuture` | `Forge.BlockFromFuture` | Error | `current slot` (the key has a space, as in the reference; quoted in the human format), `tip` (the tip's slot): the chain's tip is in a later slot |
@@ -181,6 +188,8 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `kesReloaded` | `Forge.KesReloaded` | Notice | `opCertCounter`, `kesStart`, `kesEvolutions`, `kesPeriod`, `remainingKesPeriods` |
 | `kesReloadRefused` | `Forge.KesReloadRefused` | Error | `kind`, `message` |
 | `kesPersistFailed` | `Forge.KesPersistFailed` | Error | `kesPeriod`, `kind`, `message` |
+| `kesFileAbsent` | `Forge.KesFileAbsent` | Warning | `kesPeriod`, `file` |
+| `kesWrittenByRename` | `Forge.KesWrittenByRename` | Warning | `reason`, `errno` |
 | `keyFileGroupAccess` | `Forge.KeyFileGroupAccess` | Warning | `file`, `mode` |
 | `forgeFailed` | `Forge.ForgeFailed` | Error | `slot`, `kind`, `message`: a slot given up for a reason of Scarab's own, which the reference does not have |
 | `forgeEpoch` | `Forge.ForgeEpoch` | Notice | `epoch`, `slotsChecked`, `leaderSlots`, `notLeader`, `cannotForge`, `stateUpdateError`, `forged`, `adopted`, `lostSlotBattles`, `forgedInvalid`, `replaced`, `failed`, `skipped`, `skippedByReason`, `forgeLatencyMs` |
@@ -189,10 +198,13 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `volatileOpened` | `Storage.VolatileOpened` | Info | `blocks`, `files`, `truncatedBytes`, `removedFiles` |
 | `receivedBlockDiscarded` | `Storage.ReceivedBlockDiscarded` | Warning | Malformed unselected received cache entry discarded at restart. |
 | `volatileResumed` | `Storage.VolatileResumed` | Info | `resumed`, `dropped`, `millis` |
-| `networkRecorded` | `Storage.NetworkRecorded` | Info | `magic`, `shelleyGenesis`, `byronGenesis`, `alonzoGenesis`, `conwayGenesis`, `adoptedExisting` |
+| `networkRecorded` | `Storage.NetworkRecorded` | Info | `magic`, `shelleyGenesis`, `byronGenesis`, `alonzoGenesis`, `conwayGenesis`, `dijkstraGenesis` (null without one), `adoptedExisting`, `adoptedDijkstraGenesis` (the identity recorded no Dijkstra genesis and adopted the configured one) |
 | `snapshotSkipped` | `Storage.SnapshotSkipped` | Warning | `file`, `reason` |
+| `snapshotDeleted` | `Storage.SnapshotDeleted` | Info | `file`: a skipped snapshot deleted with its checkpoint, as the reference deletes a temporary snapshot it cannot use (`DeletedSnapshot`); every native snapshot is temporary |
+| `snapshotNotDeleted` | `Storage.SnapshotNotDeleted` | Warning | `file`, `reason`: a skipped snapshot that could not be deleted; the restore goes on, as the reference's best-effort deletion does |
+| `checkpointNotDeleted` | `Storage.CheckpointNotDeleted` | Warning | `checkpoint`, `reason`: a UTxO checkpoint that no snapshot lists could not be deleted at the start; the start goes on, as the reference's best-effort deletion of a snapshot's tables does |
 | `snapshotRestored` | `Storage.SnapshotRestored` | Info | `file`, `anchor` |
-| `snapshotUnbound` | `Storage.SnapshotUnbound` | Warning | `file`, `anchor`: the restored snapshot predates checkpoint binding (V5 migrated through V7 to V8) and its checkpoint was admitted by directory name. |
+| `snapshotUnbound` | `Storage.SnapshotUnbound` | Warning | `file`, `anchor`: the restored snapshot predates checkpoint binding (V5 migrated through V7, V8 and V9 to V10) and its checkpoint was admitted by directory name. |
 | `snapshotWritten` | `Storage.SnapshotWritten` | Info | `file`, `anchor`, `bytes`, `millis` |
 | `snapshotFailed` | `Storage.SnapshotFailed` | Error | `reason` |
 | `snapshotRefused` | `Storage.SnapshotRefused` | Error | `file`, `anchor`, `reason` |

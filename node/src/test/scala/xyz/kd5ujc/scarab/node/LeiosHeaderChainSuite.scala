@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import java.nio.file.{Files, Path}
 import scala.annotation.tailrec
 import scala.jdk.CollectionConverters.*
@@ -27,7 +28,7 @@ class LeiosHeaderChainSuite extends munit.FunSuite:
 
   private val setup: NodeSetup =
     NodeSetup
-      .fromConfigFile(dir.resolve("config").resolve("config.json"))
+      .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(dir.resolve("config").resolve("config.json"))
       .fold(e => fail(e.message), identity)
   private val config = setup.praos
   private val stake =

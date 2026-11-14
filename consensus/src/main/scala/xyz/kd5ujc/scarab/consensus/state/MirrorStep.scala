@@ -137,7 +137,7 @@ object MirrorStep:
                       WithOrigin.At(ShelleyTip(slot, blockNo, hash)),
                       n.nes,
                       counter,
-                      None
+                      ShelleyLedgerState.Layout.Node11_1(None)
                     )
                   )(using n.era),
                   AnnTip(slot, blockNo, TipInfo.ShelleyBasedTip(n.era, hash))
@@ -150,7 +150,7 @@ object MirrorStep:
           ledger <- telescoped(into(m.ext.ledgerState, era, start, ledgerState))
           dep <- telescoped(into(m.ext.headerState.chainDep, era, start, protocol.dep))
         yield MirrorState(
-          ExtLedgerState(ledger, HeaderState(WithOrigin.At(tip), dep)),
+          ExtLedgerState(ledger, HeaderState(WithOrigin.At(tip), dep), m.ext.layout),
           MirrorExtras.InShelley(
             ledgerExtras.copy(plutus = plutus),
             consensus.copy(protocol = protocol.extras)
@@ -307,7 +307,8 @@ object MirrorStep:
               HeaderState(
                 WithOrigin.At(AnnTip(slot, blockNo, TipInfo.ByronTip(hash, ebb))),
                 m.ext.headerState.chainDep.withState(ChainDepState.PBft(byron.pbft))
-              )
+              ),
+              m.ext.layout
             ),
             MirrorExtras.InByron(pending, boot, protocol),
             m.provenance

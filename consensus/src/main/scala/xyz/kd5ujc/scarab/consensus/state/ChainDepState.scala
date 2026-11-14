@@ -182,10 +182,13 @@ object ChainDepState:
     case Praos(_)  => Era.Babbage
 
   /** The state of a protocol is in the eras that run it: PBFT in Byron, TPraos from Shelley to
-    * Alonzo, Praos from Babbage on (`Era.usesTPraos`).
+    * Alonzo, Praos in Babbage and Conway (`Era.usesTPraos`). Dijkstra runs Praos2, whose state also
+    * holds the Leios announcement (`type ChainDepState (Praos2 c) = PolyPraosState (Praos2 c)`,
+    * ouroboros-consensus 2416493b `Protocol/Praos2.hs:117,180-191`), which this build does not
+    * model yet (#54): no state here is of Dijkstra.
     */
   given EraIndexed[ChainDepState] = EraIndexed.instance {
     case (era, PBft(_))   => era == Era.Byron
     case (era, TPraos(_)) => era.usesTPraos
-    case (era, Praos(_))  => era.ordinal >= Era.Babbage.ordinal
+    case (era, Praos(_))  => era.ordinal >= Era.Babbage.ordinal && era != Era.Dijkstra
   }

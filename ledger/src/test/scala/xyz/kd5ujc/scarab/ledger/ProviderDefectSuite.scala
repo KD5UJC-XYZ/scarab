@@ -247,6 +247,56 @@ class ProviderDefectSuite extends FunSuite:
     )
   }
 
+  test("a KES window reaching 2^64 is refused as the reference's wrapped window is") {
+    val start = BigInt(1)
+    val windowHeader = header.copy(
+      slot = SlotsPerKesPeriod,
+      opCert = header.opCert.copy(kesPeriod = start)
+    )
+    val fits = (BigInt(1) << 64) - 1 - start
+    assertEquals(
+      OCertRules.verifySignaturesWith(windowHeader, SlotsPerKesPeriod, fits, okKes, okCert),
+      Right(())
+    )
+    assertEquals(
+      OCertRules.verifySignaturesWith(windowHeader, SlotsPerKesPeriod, fits + 1, okKes, okCert),
+      Left(OCertError.KesPeriodOutsideWindow(start, start, fits + 1))
+    )
+  }
+
+  private val kesPeriodCases =
+    Files.readAllLines(Path.of("fixtures/sum6/period-boundaries.tsv")).asScala.toVector
+
+  test("the KES period fixture retains all nine reference cases") {
+    assertEquals(kesPeriodCases.size, 9)
+  }
+
+  kesPeriodCases.zipWithIndex.foreach { (line, index) =>
+    test(s"the OCERT KES period matches the unchanged reference: row ${index + 1}") {
+      line.split("\t", -1).toVector match
+        case Vector(name, rootHex, periodText, messageHex, signatureHex, verdict) =>
+          def bytes(hex: String): Bytes =
+            Bytes.fromHex(hex).fold(e => fail(s"invalid reference fixture hex: $e"), identity)
+          val period = BigInt(periodText)
+          val supplied = header.copy(
+            slot = period,
+            signable = bytes(messageHex),
+            opCert = header.opCert.copy(hotVkey = bytes(rootHex), kesPeriod = BigInt(0)),
+            kesSignature = bytes(signatureHex)
+          )
+          val expected: Either[OCertError | ProviderDefect, Unit] = verdict match
+            case "VERIFIED" => Right(())
+            case "REJECTED" => Left(OCertError.KesSignatureRejected)
+            case other      => fail(s"unknown reference verdict: $other")
+          assertEquals(
+            OCertRules.verifySignaturesWith(supplied, 1, period + 1, Sum6Kes.verify, okCert),
+            expected,
+            name
+          )
+        case _ => fail("invalid KES period reference row")
+    }
+  }
+
   test("the real verifiers accept the real header and reject a tampered KES signature") {
     assertEquals(
       OCertRules.verifySignatures(header, SlotsPerKesPeriod, MaxKesEvolutions),

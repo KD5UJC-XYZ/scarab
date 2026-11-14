@@ -8,7 +8,7 @@ import cats.syntax.all.*
 import scala.concurrent.duration.FiniteDuration
 import xyz.kd5ujc.scarab.protocol.PeerSharing.{Amount, State}
 
-/** The peer-polymorphic conversation (`PeerSharing/Client.hs`, `Server.hs` at 2fb69829). Address
+/** The peer-polymorphic conversation (`PeerSharing/Client.hs`, `Server.hs` at c45735a5). Address
   * encoding and Cardano's response policy belong to the wire interpreters.
   */
 private[network] object PeerSharingRuntime:

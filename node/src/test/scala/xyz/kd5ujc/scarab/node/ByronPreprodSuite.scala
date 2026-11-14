@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent}
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -25,7 +26,7 @@ import scala.jdk.CollectionConverters.*
 class ByronPreprodSuite extends CatsEffectSuite:
   private val setup: NodeSetup =
     NodeSetup
-      .fromDirectory(Path.of("fixtures/preprod/genesis"))
+      .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/preprod/genesis"))
       .fold(e => fail(e.message), identity)
 
   private val raws: Vector[Bytes] =
@@ -235,8 +236,9 @@ class ByronPreprodSuite extends CatsEffectSuite:
   ) {
     given cats.mtl.Ask[IO, xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv] =
       setup.mirrorAsk(IO.pure(Map.empty))
-    val format = xyz.kd5ujc.scarab.storage.SnapshotV8.format[IO](
-      xyz.kd5ujc.scarab.storage.SnapshotCheck.Full
+    val format = xyz.kd5ujc.scarab.storage.SnapshotV10.format[IO](
+      xyz.kd5ujc.scarab.storage.SnapshotCheck.Full,
+      xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout.Release11_1
     )
     Vector(1, 20, byronCount, byronCount + 5).traverse_ { i =>
       val state = states(i)

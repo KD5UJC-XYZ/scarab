@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.Mutex
 import cats.mtl.Raise
@@ -24,7 +25,7 @@ import xyz.kd5ujc.scarab.storage.{MemoryUtxoStore, SnapshotFailure, UtxoPinnedRe
 class ServiceStorageScopeSuite extends FailsOnUncaught:
   private val error = StorageError.Io("UTxO read", new IOException("disk unavailable"))
   private val setup = NodeSetup
-    .fromDirectory(Path.of("fixtures/devnet/lsq/genesis"))
+    .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/devnet/lsq/genesis"))
     .fold(e => fail(e.message), identity)
 
   private def broken(

@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node.ntc
 
 import xyz.kd5ujc.scarab.consensus.state.{Bound, EraSummary}
+import xyz.kd5ujc.scarab.ledger.Horizon
 import xyz.kd5ujc.scarab.consensus.state as hfc
 
 /** The era history of the node-to-client answer. The types and the interpreter that computes the
@@ -30,3 +31,18 @@ object EraHistory:
       w.uint(e.genesisWindow)
     }
     w.break
+
+  /** The eras of a summary in the order [[encode]] writes them. */
+  def eras(horizon: Horizon): Vector[EraSummary] =
+    def bound(e: Horizon.Edge): Bound =
+      Bound(e.timePs, e.slot, e.epoch, Bound.Layout.Node11_1(None))
+    horizon.eras.toVector.map(e =>
+      EraSummary(
+        bound(e.start),
+        e.end.map(bound),
+        e.params.epochSize,
+        e.params.slotLengthMillis,
+        e.params.safeZone,
+        e.params.genesisWindow
+      )
+    )

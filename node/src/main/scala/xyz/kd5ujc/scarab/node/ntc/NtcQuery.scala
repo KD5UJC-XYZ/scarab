@@ -104,13 +104,14 @@ enum QueryEra:
 
 object QueryEra:
   def of(era: Era): QueryEra = era match
-    case Era.Byron   => Byron
-    case Era.Shelley => Shelley
-    case Era.Allegra => Allegra
-    case Era.Mary    => Mary
-    case Era.Alonzo  => Alonzo
-    case Era.Babbage => Babbage
-    case Era.Conway  => Conway
+    case Era.Byron    => Byron
+    case Era.Shelley  => Shelley
+    case Era.Allegra  => Allegra
+    case Era.Mary     => Mary
+    case Era.Alonzo   => Alonzo
+    case Era.Babbage  => Babbage
+    case Era.Conway   => Conway
+    case Era.Dijkstra => Dijkstra
 
   /** The era of an index, as `nsFromIndex` finds it; none past the last. */
   def fromIndex(index: Int): Option[QueryEra] = values.lift(index)
@@ -407,14 +408,7 @@ object NtcQuery:
     case _ => Left(Error.ExpectedSetTag(what))
 
   // The `Ord` of a key hash, of a `Hash`, is its bytes', unsigned and lexicographic: `Bytes`'s own.
-
-  /** The `Ord` of `Credential`, derived: a script credential before a key one (`data Credential =
-    * ScriptHashObj | KeyHashObj`, `Cardano/Ledger/Credential.hs:98-101`), then the hash.
-    */
-  private given Ordering[Credential] = Ordering.by {
-    case Credential.Script(h) => (0, h)
-    case Credential.Key(h)    => (1, h)
-  }
+  // The `Ord` of a credential is the derived one, a script before a key: `Credential`'s given.
 
   /** The `Ord` of `Either Coin (Credential Staking)`: every `Left` before every `Right`. */
   private given Ordering[Either[BigInt, Credential]] = (a, b) =>

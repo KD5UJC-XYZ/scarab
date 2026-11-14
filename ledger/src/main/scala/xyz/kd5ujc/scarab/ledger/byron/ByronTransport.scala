@@ -219,6 +219,27 @@ object ByronTransport:
       )
     yield values.exists((key, value) => key == GenesisTagKey && value == GenesisTag)
 
+  /** A main header's extra data as the reference reads it at decoder version 1
+    * (`decCBORBlockVersions`, `Block/Header.hs:392-395`, cardano-ledger f649f975): a definite list
+    * of four items (`enforceSize`), the `ProtocolVersion` (`Update/ProtocolVersion.hs:64-67`: a
+    * definite list of a `Word16`, a `Word16` and a `Word8`), the `SoftwareVersion`
+    * (`Update/SoftwareVersion.hs:73-76`: a definite list of the application name, definite text of
+    * any length (`Update/ApplicationName.hs:61-62`), and a `Word32`), empty attributes
+    * (`dropEmptyAttributes`) and the extra body proof, a definite byte string of any length
+    * (`dropBytes`). The protocol version is the one value kept.
+    */
+  private[ledger] def blockVersions(node: Node): Result[ByronVersion] =
+    for
+      fields <- tuple(node, 4, DecodeField.BlockVersions)
+      _ <- tuple(fields(0), 3, DecodeField.ProtocolVersion)
+      version <- ByronVersion.decode(fields(0)).leftMap(LedgerDecodeError.Version(_))
+      software <- tuple(fields(1), 2, DecodeField.SoftwareVersion)
+      _ <- text(software(0), DecodeField.ApplicationName)
+      _ <- word(software(1), 32, DecodeField.SoftwareNumber)
+      _ <- emptyAttributes(fields(2), DecodeField.HeaderAttributes)
+      _ <- bytes(fields(3))
+    yield version
+
   private val GenesisTagKey = BigInt(255)
   private val GenesisTag =
     Bytes.fromArray("Genesis".getBytes(java.nio.charset.StandardCharsets.US_ASCII))
@@ -478,7 +499,7 @@ object ByronTransport:
         values.traverse_(element)
     }
 
-  private[byron] def tuple(node: Node, size: Int, context: DecodeSite): Result[Vector[Node]] =
+  private[ledger] def tuple(node: Node, size: Int, context: DecodeSite): Result[Vector[Node]] =
     definite(node, context) *> CborRead.arrayN(node, size, context)
 
   private def map(node: Node, context: DecodeSite): Result[Vector[(Node, Node)]] =
@@ -487,7 +508,7 @@ object ByronTransport:
   private def bytes(node: Node): Result[Unit] =
     definite(node, DecodeField.ByronBytes) *> CborRead.bytes(node, DecodeField.ByronBytes).void
 
-  private[byron] def word(node: Node, bits: Int, context: DecodeSite): Result[BigInt] =
+  private[ledger] def word(node: Node, bits: Int, context: DecodeSite): Result[BigInt] =
     CborRead.uint(node, context).flatMap { value =>
       val maximum = (BigInt(1) << bits) - 1
       Either.cond(

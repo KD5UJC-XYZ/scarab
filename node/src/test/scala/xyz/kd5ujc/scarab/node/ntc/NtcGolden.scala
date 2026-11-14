@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import scala.jdk.CollectionConverters.*
@@ -53,7 +54,9 @@ object NtcGolden:
   private val fixtures = Path.of("fixtures/eras")
 
   val setup: NodeSetup =
-    NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => sys.error(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(fixtures.resolve("genesis"))
+      .fold(e => sys.error(e.message), identity)
 
   val mirrorEnv: MirrorEnv =
     MirrorEnv(setup.globals.network, setup.geometry, setup.globals.updateQuorum)
@@ -501,7 +504,7 @@ object NtcGolden:
     }
 
   /** Writes the fixture from today's answers: run once, before the encoders change. */
-  def main(args: Array[String]): Unit =
+  def write(): Unit =
     Files.createDirectories(file.getParent)
     Files.write(file, (lines.mkString("\n") + "\n").getBytes("UTF-8"))
     println(s"wrote ${lines.size} answers to $file")

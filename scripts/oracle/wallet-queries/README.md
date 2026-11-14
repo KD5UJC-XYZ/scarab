@@ -29,9 +29,9 @@ dns (its public library), iproute, network, io-classes, containers and base16-by
 ambiguity between the image's multiple installed dependency units. Compile `PeerSnapshots.hs` with
 `-i<private-source-directory>` and a private output directory, then capture its eleven hex lines.
 
-The Scala input builder is `WalletQueryCases`; run it from the repository root, for example with
-`set node / Test / run / fork := false` followed by
-`node/Test/runMain xyz.kd5ujc.scarab.node.ntc.WalletQueryCases /tmp/wallet-query-inputs.json`.
+The Scala input builder is `WalletQueryCases`; run it from the repository root with
+`tools/runMain xyz.kd5ujc.scarab.node.ntc.WalletQueryCasesMain /tmp/wallet-query-inputs.json`
+(`tools` runs in the build's JVM, whose working directory is the repository root).
 It builds native typed state directly. Ordinary tests use the checked-in inputs and native answers;
 they do not regenerate expectations from Scala.
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.IO
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -27,7 +28,7 @@ import scala.jdk.CollectionConverters.*
 class AllegraRedeemMirrorSuite extends CatsEffectSuite:
   private val setup: NodeSetup =
     NodeSetup
-      .fromDirectory(JPath.of("fixtures/eras/genesis"))
+      .fromDirectory(ReferenceBuild.Default)(JPath.of("fixtures/eras/genesis"))
       .fold(e => fail(e.message), identity)
 
   private val raws: Vector[Bytes] =
@@ -86,6 +87,7 @@ class AllegraRedeemMirrorSuite extends CatsEffectSuite:
             setup.byronRules,
             setup.handOver,
             setup.byronHistory,
+            xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
             utxoStore = Some(store)
           )
           // each block's state becomes immutable at once: the store holds every entry and is at

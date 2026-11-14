@@ -1,7 +1,6 @@
 # Reference refusals
 
-Transactions the pinned reference node (`cardano-node` 11.1.3) refused, each with its **complete**
-refusal: the hard-fork-combinator `ApplyTxErr` it sent over node-to-client LocalTxSubmission, holding
+Transactions a pinned reference node refused, each with its **complete** refusal: the hard-fork-combinator `ApplyTxErr` it sent over node-to-client LocalTxSubmission, holding
 every predicate failure it accumulated, in its order (#401). `ReferenceRefusalSuite` (node module, part
 of `check`) replays every case through Scarab and compares the bytes. The inputs and expected refusals come from runs of `scripts/devnet.py refusal-corpus`;
 repacking the case records preserves every JSON field and all original CBOR bytes.
@@ -13,7 +12,7 @@ no signing key is kept, and it carries the repository's licence.
 | path | content |
 |---|---|
 | `manifest.json` | `coverage`: the predicate-failure families each era must have a case for; `corpora`: each corpus directory with the sha256 of its `corpus.json` |
-| `<corpus>/corpus.json` | era, protocol version, provenance (reference node version and revision, image id, the command, the Scarab commit of the tooling, the time), the sha256 of each genesis file and of each case file |
+| `<corpus>/corpus.json` | era, reference build, protocol version, provenance (reference node version and revision, image and image id, the command, the Scarab commit of the tooling, the time), the sha256 of each genesis file and of each case file |
 | `genesis/<sha256>-<name>` | the clusters' genesis files and node configurations, as `devnet.py` copied them; each file is stored once under the sha256 its corpus pins, so corpora recorded on identically configured clusters share it |
 | `<corpus>/states/<sha256>.cbor` | the reference's `GetCBOR DebugNewEpochState` answer at the tip a case was judged at |
 | `<corpus>/utxo/<sha256>.cbor` | the reference's `GetCBOR GetUTxOWhole` answer at that tip (UTxO-HD keeps the UTxO out of the state) |
@@ -30,6 +29,28 @@ of the same transaction; a diagnostic only, never compared).
 The families are UTXO, UTXOW, UTXOS, PPUP, LEDGER (the ledger rule's own failures), CERTS, DELEGS, DELEG, POOL,
 GOVCERT, GOV and MEMPOOL. `scripts/tests/test_refusalcorpus.py` checks that each recorded family is the
 one the reference's rendering names.
+
+## Reference builds
+
+A corpus is recorded from one reference build, the `--reference-build` value whose node answered
+(`ReferenceBuild`, #826), and `corpus.json` names it in `referenceBuild`. A corpus without the field
+is the 11.1 build's: every corpus recorded before corpora named their build was recorded from
+`cardano-node` 11.1.3. The tooling checks the node against the build when it records (the 11.1 line
+by its version, an unstable build by its commit), and the suite and `scripts/tests/test_refusalcorpus.py`
+check the recorded provenance against it again. Each corpus is replayed under its build's rules,
+through `NodeSetup.fromFiles` with that build, and its states are read in that build's layout.
+`manifest.json`'s coverage is what the 11.1 corpora must hold; a case of another build covers none of it.
+
+`conway-bootstrap-attributes-leios-b004fe0c` (2026-11-10, #826) was recorded from the Leios testnet
+build `leios-b004fe0c` (release rc-2026w44, cardano-node `b004fe0c`, the pinned image digest), on a
+cluster of that build held in Conway (`up-dijkstra --conway-only`, protocol version 12 as on its
+devnet). It holds the bootstrap-attribute transaction of the `<era>-bootstrap-attributes` corpora (below), which that build
+refuses with Conway's `OutputBootAddrAttrsTooBig` (UTXO tag 10), where 11.1 refuses it with
+`OutputTooBigUTxO` (tag 11). The suite also replays this case under the 11.1 rules, and each 11.1
+bootstrap-attribute case from Allegra on under the Leios build's, and requires a different refusal:
+the replay follows the corpus's build. The suite replays this corpus offline, not through a running
+node: `follow --reference-build leios-b004fe0c` still refuses to start (#826). No Dijkstra refusal is
+recorded: Scarab does not read a Dijkstra ledger state yet.
 
 ## What is compared
 
@@ -53,12 +74,64 @@ missing coverage is an incomplete gate, never a pass. Batches were recorded only
 mempool slot held still, with an empty mempool, so the validity-interval slot in a refusal is the one
 the replay judges at; the slot is compared unchanged.
 
+The `<era>-bootstrap-attributes` corpora (2026-11-09, #832) hold one transaction in each of the six eras,
+paying a Byron address whose attributes are 65 bytes, one over the limit. Shelley refuses it with its
+own `OutputBootAddrAttrsTooBig`. From Allegra the reference reports `OutputTooBigUTxO`, which it injects
+through `shelleyToAllegraUtxoPredFailure`, with sizes 0 and 0 from Alonzo.
+
 The certificate-order corpora add three failing certificates in both eras. The Babbage corpus also
 records MIR certificates with successive amounts `[-1, +1, -1]`, once against each pot. The native
 rule retains the signed intermediate update after reporting a negative reward: the complete refusal
 therefore contains two `MIRProducesNegativeUpdate` failures. Other failures in those submissions are
 retained and compared too. Reinstating the old implementation that discarded the negative update
 makes both native MIR cases fail; the corrected rule matches their complete original refusals.
+
+The `conway-governance` corpus (2026-11-13) holds seven Conway transactions, each built to break one
+check: `MalformedProposal`, `ProposalCantFollow`, `InvalidPrevGovActionId`, `DisallowedVoters`,
+`VotingOnExpiredGovAction` and `TreasuryWithdrawalsNetworkIdMismatch` (GOV), and `WrongNetworkInTxBody`
+(UTXO). The reference refused each with exactly that one failure. `refusalcases.conway_governance` cites
+the reference's check for each case. The two vote cases name actions that setup transactions had already
+proposed on the cluster. The first is a DRep's vote on an info action, cast in the one epoch in which the
+action is expired but not yet removed. The second is a stake pool's vote on a live treasury withdrawal,
+which no pool may vote on. Neither vote breaks the other's check.
+The `refusalcoverage` corpora (2026-11-13) hold predicate failures that no earlier corpus provoked, each
+case built to break exactly one check, and `scripts/tests/test_refusalcoverage.py` requires each
+recorded refusal to be that one failure, read from the reference's constructor tags. `scripts/devnet/refusalcoverage.py`
+cites the reference's check for each case at cardano-ledger f649f975.
+
+| corpus | protocol | cases |
+|---|---|---|
+| `conway-deleg-collateral` | 10.0 | DELEG `IncorrectDepositDELEG` (a registration's deposit, an unregistration's refund), `StakeKeyHasNonZeroAccountBalanceDELEG`, `DelegateeDRepNotRegisteredDELEG`; GOVCERT `ConwayDRepIncorrectRefund`; UTXO `ScriptsNotPaidUTxO`, `CollateralContainsNonADA` |
+| `conway-gov-proposals` | 10.0 | GOV `ConflictingCommitteeUpdate`, `ExpirationEpochTooSmall`, `TreasuryWithdrawalReturnAccountsDoNotExist`, `InvalidGuardrailsScriptHash` (a parameter change and a treasury withdrawal), and `MalformedProposal` for each parameter `ppuWellFormed` refuses at zero and for an empty update |
+| `conway-v11-coverage` | 11.0 | DELEG `DepositIncorrectDELEG`, `RefundIncorrectDELEG`; GOV `MalformedProposal` (`nOpt` 0), `UnelectedCommitteeVoters` |
+| `alonzo-collateral` | 6.0 | UTXO `ScriptsNotPaidUTxO`, `CollateralContainsNonADA`, `WrongNetworkInTxBody`, `ExUnitsTooBigUTxO` |
+| `babbage-collateral` | 8.0 | UTXO `ScriptsNotPaidUTxO`, `CollateralContainsNonADA`, `WrongNetworkInTxBody` |
+
+The three Conway corpora come from one cluster, so they share its genesis files. At protocol version 10
+a wrong deposit or refund is `IncorrectDepositDELEG`; version 11 reports `DepositIncorrectDELEG` and
+`RefundIncorrectDELEG` instead, refuses `nOpt` 0 and refuses a vote by a committee member no committee
+elected. The `conway-v11-coverage` builder takes the cluster to version 11 first: it elects a committee of
+one member, then proposes the hard fork, which that member, the three DReps and the three pools vote for.
+The unelected member is one that a pending UpdateCommittee proposal names, which is what allows its hot key
+to be authorised. Disabling Scarab's reward-balance, DRep-refund, script-locked-collateral and
+conflicting-committee checks fails exactly the cases that break them, the Alonzo and Babbage
+script-locked cases among them, since those eras run the same check.
+
+The Alonzo and Babbage corpora each come from an era-walking cluster stopped in that era. A transaction
+whose execution units exceed `maxTxExecutionUnits` is refused by the node's mempool before the ledger
+judges it (ouroboros-consensus 82ecba32, `Mempool/Update.hs:207-224`, `Shelley/Ledger/Mempool.hs:601-641`).
+The Alonzo case's refusal is that check's, which nests the failure as the Alonzo rule does. Babbage has no
+such case: its mempool nests the failure under `AlonzoInBabbageUtxowPredFailure`, where the Babbage rule,
+which this suite compares for a pre-Conway era, reports it under UTXOW's `UtxoFailure`. No era has an
+`OutsideForecast` case. The rule extends the epoch information linearly from the current slot before it
+translates the validity interval's end (`Alonzo/Rules/Utxo.hs:377-382`; cardano-base 060819b5,
+`cardano-slotting/src/Cardano/Slotting/EpochInfo/Extend.hs:54-66`), so that translation cannot fail; the
+`plutus-forecast-horizon` corpora record what the reference does with such a bound instead. Disabling
+Scarab's Alonzo non-ada-collateral and body-network checks, its Babbage non-ada-collateral check (which
+Conway also runs), and its two protocol-11 switches (the deposit and refund failures, the unelected voters)
+fails exactly the cases that break them. All five corpora were recorded from a clean tree, each at the
+commit its `corpus.json` names. The Alonzo corpus's setup sent its change to the funder key's enterprise
+address, the committed builder to the funder's base address.
 
 These expectations come from the released node's submission path. Separately, the offline
 `UpstreamFreshLedgerConformanceSuite` and `UpstreamMultiLedgerConformanceSuite` use the same production
@@ -78,6 +151,28 @@ python3 scripts/devnet.py --name <yours> refusal-corpus                 # writes
 python3 scripts/devnet.py --name <yours> down
 python3 scripts/devnet.py --name <yours> up-eras --final-era babbage   # walks Byron..Babbage and stays there
 python3 scripts/devnet.py --name <yours> refusal-corpus --era babbage  # writes babbage-devnet/
+python3 scripts/devnet.py --name <yours> down
+python3 scripts/devnet.py --name <yours> up-dijkstra --conway-only --dijkstra-epoch 1000   # the Leios build, in Conway
+python3 scripts/devnet.py --name <yours> refusal-corpus --reference-build leios-b004fe0c \
+    --corpus conway-bootstrap-attributes-leios-b004fe0c --cases refusalcases:leios_bootstrap_attributes
+python3 scripts/devnet.py --name <yours> down
+python3 scripts/devnet.py --name <yours> up
+python3 scripts/devnet.py --name <yours> refusal-corpus --corpus conway-governance \
+    --cases refusalcases:conway_governance   # waits about two epochs for its vote cases
+python3 scripts/devnet.py --name <yours> refusal-corpus --corpus conway-deleg-collateral \
+    --cases refusalcoverage:conway_deleg_collateral
+python3 scripts/devnet.py --name <yours> refusal-corpus --corpus conway-gov-proposals \
+    --cases refusalcoverage:conway_gov_proposals
+python3 scripts/devnet.py --name <yours> refusal-corpus --corpus conway-v11-coverage \
+    --cases refusalcoverage:conway_v11     # takes the cluster to protocol version 11, about five epochs
+python3 scripts/devnet.py --name <yours> down
+python3 scripts/devnet.py --name <yours> up-eras --final-era alonzo
+python3 scripts/devnet.py --name <yours> refusal-corpus --era alonzo --corpus alonzo-collateral \
+    --cases refusalcoverage:alonzo_collateral
+python3 scripts/devnet.py --name <yours> down
+python3 scripts/devnet.py --name <yours> up-eras --final-era babbage
+python3 scripts/devnet.py --name <yours> refusal-corpus --era babbage --corpus babbage-collateral \
+    --cases refusalcoverage:babbage_collateral
 python3 scripts/devnet.py --name <yours> down
 python3 scripts/check_test_coverage.py --refresh-fixtures
 ```

@@ -43,9 +43,11 @@ step "secret scan controls" python3 scripts/check_secret_scan.py
 step "secret scan history controls" python3 scripts/check_secret_scan_history.py
 step "workflow lint" "$docker" run --rm --network none -v "$root":/repo -w /repo "$actionlint" -color
 step "fixture identities and comparison contracts" python3 scripts/check_test_coverage.py
+step "plutus reference views" python3 scripts/plutus_reference.py check
 step "closed error channel guard" python3 scripts/check_error_channels.py
 step "text policy guard" python3 scripts/check_text_policy.py
 step "no new try/catch/finally in main sources" python3 scripts/check_imperative.py
+step "no new sleeps in tests" python3 scripts/check_test_sleeps.py
 step "no absolute home paths" python3 scripts/check_local_paths.py
 step "licence records" python3 scripts/check_notice.py
 step "compatibility register" python3 scripts/render_compatibility.py --check

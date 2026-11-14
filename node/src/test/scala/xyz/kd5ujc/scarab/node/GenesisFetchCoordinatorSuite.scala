@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{IO, Ref}
-import cats.effect.testkit.TestControl
+import cats.effect.{IO, Ref, Resource}
 import cats.syntax.all.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.ledger.Fixtures
-import xyz.kd5ujc.scarab.network.FailsOnUncaught
+import xyz.kd5ujc.scarab.network.{FailsOnUncaught, Settled}
 import xyz.kd5ujc.scarab.network.selection.{GenesisBlockFetch, Gsm}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 
@@ -18,7 +17,7 @@ class GenesisFetchCoordinatorSuite extends FailsOnUncaught:
   test(
     "Genesis handover permits overlap, retains old flight, and wakes cached recovery borrowers"
   ) {
-    TestControl.executeEmbed {
+    Settled.timed { settle =>
       val headers = Fixtures.chain(2)
       val local = ChainSelection.Local(Point.Origin, SelectView(-1, 0, None, 0, None), Vector.empty)
       for
@@ -49,12 +48,18 @@ class GenesisFetchCoordinatorSuite extends FailsOnUncaught:
             replacement <- fast.requestedHeaders
             flight <- coordinator.inFlight
             seen <- Ref.of[IO, Boolean](false)
-            borrower <- fast.await(headers.head.hash).flatMap(_ => seen.set(true)).start
-            _ <- IO.cede
-            before <- seen.get
-            _ <- fetched.update(_ + headers.head.hash) *> coordinator.refreshGenesis
-            _ <- borrower.joinWithNever
-            after <- seen.get
+            observation <- Resource
+              .make(fast.await(headers.head.hash).flatMap(_ => seen.set(true)).start)(_.cancel)
+              .use { borrower =>
+                for
+                  _ <- settle
+                  before <- seen.get
+                  _ <- fetched.update(_ + headers.head.hash) *> coordinator.refreshGenesis
+                  _ <- borrower.joinWithNever
+                  after <- seen.get
+                yield (before, after)
+              }
+            (before, after) = observation
           yield
             assertEquals(first, headers)
             assertEquals(replacement, headers)

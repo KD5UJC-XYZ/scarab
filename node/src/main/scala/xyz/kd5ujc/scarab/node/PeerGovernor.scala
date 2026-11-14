@@ -251,7 +251,7 @@ object PeerGovernor:
       supervisor.supervise(result.flatMap(outcome => events.offer(Event.Completed(outcome)))).void
 
     // Capture the retained connection in the governor fiber, before supervising the action.
-    // ActivePeers.hs (2fb69829):167–181,450–461; EstablishedPeers.hs:971–978.
+    // ActivePeers.hs (c45735a5):167–181,450–461; EstablishedPeers.hs:971–978.
     def connectionJob(peer: A, generation: Option[BigInt] = None)(
         run: PeerStateActions.Connection[F] => F[Outcome[A]],
         legacy: F[Option[Outcome[A]]]
@@ -274,7 +274,7 @@ object PeerGovernor:
         }
 
     // Governor demotion jobs, not PeerStateActions, own the manager-release deadline.
-    // ActivePeers.hs (2fb69829):989–1000; EstablishedPeers.hs:971–992.
+    // ActivePeers.hs (c45735a5):987–998; EstablishedPeers.hs:971–992.
     def awaitRelease(handle: PeerStateActions.Connection[F]): F[PeerStateActions.Release] =
       config.reader(_.policy.demotionTimeout).flatMap { timeout =>
         F.timeoutTo(

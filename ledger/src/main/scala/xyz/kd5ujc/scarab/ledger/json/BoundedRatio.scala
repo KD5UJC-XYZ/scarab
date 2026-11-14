@@ -21,6 +21,11 @@ enum BoundedRatio(val lower: Rational, val upper: Rational):
     */
   case PositiveUnit extends BoundedRatio(Rational(1, BigInt(10).pow(19)), Rational.one)
 
+  /** `PositiveInterval`: `[positiveIntervalEpsilon, maxBound :: Word64]` (cardano-ledger 9df9f98c
+    * `BaseTypes.hs:489-510`).
+    */
+  case Positive extends BoundedRatio(Rational(1, BigInt(10).pow(19)), Rational(Word64.max.toBigInt))
+
   /** `boundRational` (`fromRationalBoundedRatio`, `BaseTypes.hs:348-378`): numerator and
     * denominator of the reduced rational within `Word64`, the value within the bounds.
     */

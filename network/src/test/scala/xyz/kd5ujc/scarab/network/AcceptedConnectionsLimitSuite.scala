@@ -10,7 +10,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.AcceptedConnectionsLimit.RateLimitDelay.*
 
 /** The accepted-connection limits against the reference's `Server/RateLimiting.hs`
-  * (`getRateLimitDecision`, `runConnectionRateLimits`; ouroboros-network 2fb69829).
+  * (`getRateLimitDecision`, `runConnectionRateLimits`; ouroboros-network c45735a5).
   */
 class AcceptedConnectionsLimitSuite extends FailsOnUncaught:
   private val reference = AcceptedConnectionsLimit.default
@@ -120,15 +120,16 @@ class AcceptedConnectionsLimitSuite extends FailsOnUncaught:
         Handle
           .allow[ConnectionError] {
             ConnectionManager.create[IO](ConnectionManager.Limits(small)).flatMap { cm =>
-              (0 until held).toList.traverse(i => cm.inbound(peer(i)).allocated).flatMap { open =>
-                val release = releaseAfter.traverse_(d => IO.sleep(d) *> open.head._2)
-                for
-                  start <- IO.monotonic
-                  _ <- release.start
-                  _ <- AcceptedConnectionsLimit.rateLimit(cm, small, sink)
-                  end <- IO.monotonic
-                  traced <- seen.get
-                yield (end - start, traced).asRight[ConnectionError]
+              (0 until held).toList.traverse(i => cm.include(peer(i), None).allocated).flatMap {
+                open =>
+                  val release = releaseAfter.traverse_(d => IO.sleep(d) *> open.head._2)
+                  for
+                    start <- IO.monotonic
+                    _ <- release.start
+                    _ <- AcceptedConnectionsLimit.rateLimit(cm, small, sink)
+                    end <- IO.monotonic
+                    traced <- seen.get
+                  yield (end - start, traced).asRight[ConnectionError]
               }
             }
           }

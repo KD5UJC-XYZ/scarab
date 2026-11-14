@@ -60,14 +60,35 @@ private[selection] object Events:
           )
           Reported(st.copy(peers = st.peers.updated(peer, moved)), Some(delay), false)
 
-  /** The uniform fuzz of a delay, in whole milliseconds, drawn from the state's generator. */
+  /** The uniform fuzz of a delay, drawn from the state's generator as the reference draws it: a
+    * `Double` number of seconds by `randomR` (`Monitor.hs` 146-147, `EstablishedPeers.hs` 521,
+    * `ActivePeers.hs` 498), whose bounds are the reference's literals, made a delay by
+    * `realToFrac`.
+    */
   private def fuzz[A](
       st: GovernorState[A],
       low: FiniteDuration,
       high: FiniteDuration
   ): (FiniteDuration, GovernorState[A]) =
-    val (millis, next) = st.rng.between(low.toMillis, high.toMillis)
-    (millis.millis, st.copy(rng = next))
+    val (seconds, next) = st.rng.uniformDouble(asSeconds(low), asSeconds(high))
+    (fromSeconds(seconds), st.copy(rng = next))
+
+  /** A delay as the `Double` its decimal number of seconds reads as (`0.1 :: Double`): the nearest
+    * one, which the division of the two exact nanosecond counts rounds to.
+    */
+  private[selection] def asSeconds(delay: FiniteDuration): Double = delay.toNanos.toDouble / 1e9
+
+  /** `realToFrac :: Double -> DiffTime` floors the exact binary value to picoseconds
+    * (`Data.Fixed`'s `fromRational`); a `FiniteDuration` holds nanoseconds, so the floor is taken
+    * there, toward negative infinity for a negative fuzz. This sub-nanosecond difference is
+    * approved in the 2026-11-10 networking row of docs/decisions.md (issue 854).
+    */
+  private[selection] def fromSeconds(seconds: Double): FiniteDuration =
+    new java.math.BigDecimal(seconds)
+      .movePointRight(9)
+      .setScale(0, java.math.RoundingMode.FLOOR)
+      .longValueExact
+      .nanos
 
   // ------------------------------------------------------------------ connections
 
@@ -101,7 +122,7 @@ private[selection] object Events:
           // a hot protocol ended and the connection is up: warm again
           case Observation.HotEnded(delay, reason) if record.status == Status.Hot =>
             val (extra, st) = fuzz(st0, policy.warmReconnectFuzz._1, policy.warmReconnectFuzz._2)
-            // the trace carries the fuzzed delay, as `demotions'` does (`Governor/Monitor.hs` 150-161)
+            // the trace carries the fuzzed delay, as `demotions'` does (`Governor/Monitor.hs` 149-160)
             val wait = delay.map(d => (d + extra).max(Duration.Zero))
             Decision(
               st.updated(peer)(_.copy(status = Status.Warm(wait.fold(now)(now + _)))),

@@ -65,7 +65,7 @@ class WarmHotSuite extends FailsOnUncaught:
     Resource
       .eval(Bearer.inMemory[IO]())
       .flatMap { (ours, theirs) =>
-        typed(NodeToNodeServer.accept(theirs, magic, handlers)).void.background
+        typed(Served.accept(theirs, magic, handlers)).void.background
           .flatMap(_ =>
             NodeToNode.warmOver[IO, Bytes](
               ours,
@@ -127,7 +127,7 @@ class WarmHotSuite extends FailsOnUncaught:
                       yield (found, next, ended)
                     }
 
-                NodeToNodeServer
+                Served
                   .accept[IO, Bytes](
                     theirs,
                     magic,
@@ -190,25 +190,26 @@ class WarmHotSuite extends FailsOnUncaught:
     }.map(result => assertEquals(result, Right(())))
 
   test("a connection is activated, finished and activated again on one bearer"):
-    def round(warm: WarmConnection[IO, Bytes, Unit])(using Net) =
+    def round(warm: WarmConnection[IO, Bytes, Unit], settle: IO[Unit])(using Net) =
       warm.activate(Some(emptySource)).use { hot =>
         for
           found <- hot.chainSync.findIntersect(Vector(Point.Origin))
           first <- hot.chainSync.requestNext
           blocks <- hot.blockFetch.requestRange(Peers.point(1), Peers.point(2))
           // the server's TxSubmission2 request arrives while the conversation runs
-          _ <- IO.sleep(100.millis)
+          _ <- settle
           ended <- hot.finish(5.seconds)
         yield (found.isDefined, first, blocks, ended)
       }
-    typed(warm().use(w => (round(w), round(w)).tupled)).map { r =>
-      val expected = (
-        true,
-        ChainSyncClient.Update.RollForward(header(1), Peers.tip(3)),
-        Some(Vector(1, 2).map(Peers.block)),
-        true
-      )
-      assertEquals(r, Right((expected, expected)))
+    Settled(settle => typed(warm().use(w => (round(w, settle), round(w, settle)).tupled))).map {
+      r =>
+        val expected = (
+          true,
+          ChainSyncClient.Update.RollForward(header(1), Peers.tip(3)),
+          Some(Vector(1, 2).map(Peers.block)),
+          true
+        )
+        assertEquals(r, Right((expected, expected)))
     }
 
   test("finishing a standalone hot client completes every application result handle"):

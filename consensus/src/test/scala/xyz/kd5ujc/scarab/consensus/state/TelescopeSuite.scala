@@ -21,9 +21,10 @@ import xyz.kd5ujc.scarab.protocol.Era
   * the only way in.
   */
 class TelescopeSuite extends ScalaCheckSuite:
-  private val start = Bound(0, 0, 0)
+  private val start = Bound(0, 0, 0, Bound.Layout.Node11_1(None))
 
-  private def bound(n: Int) = Bound(BigInt(n) * 1000, BigInt(n), BigInt(n))
+  private def bound(n: Int) =
+    Bound(BigInt(n) * 1000, BigInt(n), BigInt(n), Bound.Layout.Node11_1(None))
 
   private def pasts(n: Int): Vector[Past] = Vector.tabulate(n)(i => Past(bound(i), bound(i + 1)))
 
@@ -88,7 +89,12 @@ class TelescopeSuite extends ScalaCheckSuite:
     forAll(cardanoLedgerState) { t =>
       val next = Era.values.lift(t.era.index + 1)
       val end =
-        Bound(t.current.start.timePs + 1, t.current.start.slot + 1, t.current.start.epoch + 1)
+        Bound(
+          t.current.start.timePs + 1,
+          t.current.start.slot + 1,
+          t.current.start.epoch + 1,
+          Bound.Layout.Node11_1(None)
+        )
       next.fold(
         forAll(conway)(s =>
           t.extend(end, s) === Left(TelescopeError.TooManyPast(Era.values.length))
@@ -111,7 +117,8 @@ class TelescopeSuite extends ScalaCheckSuite:
       ShelleyLedgerState[Conway](
         WithOrigin.Origin,
         NewEpochState.empty[Conway](EpochNo.fromUnsigned(0), LedgerStateGen.params),
-        ShelleyTransition(Word32.fromUnsigned(0))
+        ShelleyTransition(Word32.fromUnsigned(0)),
+        ShelleyLedgerState.Layout.Node11_1(None)
       )
     )(using ShelleyBasedEra[Conway])
     assertEquals(

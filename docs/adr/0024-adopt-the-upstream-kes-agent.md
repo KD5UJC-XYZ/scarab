@@ -26,7 +26,7 @@ JVM. Only (3) removes it, and (3) is a different protocol from the upstream one.
 
 H2 is **(1) only**.
 
-- **Adopt the upstream agent as it is**: `input-output-hk/kes-agent`, pinned by tag and commit, **republished
+- **Adopt the upstream agent as it is**: `input-output-hk/kes-agent`, pinned by ~~tag and~~ commit ([amendment](#amendment-2026-11-07-the-pin-and-the-jvm-flags)), **republished
   by our own dispatch workflow** to `ghcr.io/kd5ujc-xyz/scarab-kes-agent` and pulled by digest, with the
   two-stage recipe under `scripts/` as the fallback for hosts that cannot pull and as the
   reproducibility check. The release assets are unusable: 1.4.0.0 has none, and the 1.1.0.0 binary is a Nix
@@ -39,8 +39,8 @@ H2 is **(1) only**.
 - **The node's in-memory copy is accepted and documented.** It is the current evolution, in the JVM heap,
   replaced rather than accumulated and forgotten on a drop. It is not mlocked, and the design claims no
   parity with the agent's mlocked buffers. The mitigation is the operational hardening in the design:
-  swap, hibernation and core dumps disabled, `-XX:-HeapDumpOnOutOfMemoryError` and
-  `-XX:+DisableAttachMechanism` in the shipped image.
+  swap, hibernation and core dumps disabled, ~~`-XX:-HeapDumpOnOutOfMemoryError`~~ `-XX:-CreateCoredumpOnCrash`
+  ([amendment](#amendment-2026-11-07-the-pin-and-the-jvm-flags)) and `-XX:+DisableAttachMechanism` in the shipped image.
 
 ## Consequences
 
@@ -50,3 +50,17 @@ H2 is **(1) only**.
   the operator documentation rather than implying the key is protected in memory.
 - Revisit if the threat model (O1/#74) finds the in-process copy unacceptable, or if upstream adds a signing
   mode we could conform to. Writing an agent of our own would be a new decision, not a change to this one.
+
+## Amendment (2026-11-07): the pin and the JVM flags
+
+- **The pin is a commit, not a tag.** cardano-node 11.1.3 requires `kes-agent ^>=1.3`, which resolves to
+  1.3.0.0, a CHaP release with no git tag. CHaP records the commit it was cut from
+  (`19ffbb01d4a6514b67af62d59b3cd4e0b4682beb`, `_sources/kes-agent/1.3.0.0/meta.toml`), and the republished
+  image is built from that commit. The `kes-agent-1.4.0.0` tag the design first pinned is outside the range;
+  the design still cites its file paths, whose wire-relevant files match 1.3.0.0's.
+- **The JVM flag.** `-XX:+HeapDumpOnOutOfMemoryError` is off by default, so disabling it does nothing; the
+  flag the shipped image sets is `-XX:-CreateCoredumpOnCrash`, beside `-XX:+DisableAttachMechanism`, as
+  [the design](../design/kes-agent.md#security-what-conformance-does-and-does-not-buy) already says.
+
+The rest of the decision stands: the client only, the upstream agent unmodified, no remote signing, and the
+in-process copy accepted and documented.

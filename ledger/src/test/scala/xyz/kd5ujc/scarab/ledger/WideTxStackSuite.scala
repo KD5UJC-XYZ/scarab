@@ -21,10 +21,17 @@ class WideTxStackSuite extends FunSuite:
       c.tx.body.copy(inputs = ins, outputs = Vector.fill(n)(out), referenceInputs = Vector.empty)
     (c.tx.copy(body = body), ins.map(_ -> out).toMap)
 
-  PlutusLanguage.values.toList.foreach { language =>
+  // PlutusV4's context is the Dijkstra transaction's
+  PlutusLanguage.values.toList.filterNot(_ == PlutusLanguage.V4).foreach { language =>
     test(s"the $language transaction information of 5,000 inputs and 5,000 outputs") {
       val (tx, spent) = wide(5000)
-      val env = ScriptContexts.Environment(c.protocolMajor, spent, Map.empty, c.posix)
+      val env = ScriptContexts.Environment(
+        TestLedger.usualEra(c.protocolMajor),
+        c.protocolMajor,
+        spent,
+        Map.empty,
+        c.posix
+      )
       val info = PreprodDeepTx.onSmallStack(ScriptContexts.txInfo(language, tx, env))
       assert(info.isRight, info.left.toOption.map(_.message))
     }

@@ -322,7 +322,7 @@ class ScriptContextGoldenSuite extends FunSuite:
     val all = outputsOf(language)
     val spent = tx.body.inputs.map(i => i -> all(i)).toMap
     val refs = tx.body.referenceInputs.map(i => i -> all(i)).toMap
-    ScriptContexts.Environment(protocol, spent, refs, clock)
+    ScriptContexts.Environment(TestLedger.usualEra(protocol), protocol, spent, refs, clock)
 
   private def scalusSide(language: PlutusLanguage, protocol: Int) =
     val bytes = bytesOf(arr(body(language), witnesses(language), "f5", Null))
@@ -357,6 +357,7 @@ class ScriptContextGoldenSuite extends FunSuite:
         sl.ExUnits(1000, 2000)
       )
       val theirs: Data = language match
+        case PlutusLanguage.V4 => fail("no PlutusV4 context before Dijkstra")
         case PlutusLanguage.V1 => dataOf(Oracle.getScriptContextV1(sr, stx, utxos, config, pv))
         case PlutusLanguage.V2 => dataOf(Oracle.getScriptContextV2(sr, stx, utxos, config, pv))
         case PlutusLanguage.V3 =>
@@ -405,7 +406,13 @@ class ScriptContextGoldenSuite extends FunSuite:
     val b =
       TestLedger.body("range", Vector.empty, Vector.empty, 0, ttl = ttl, validityStart = start)
     val tx = Tx(b, Witnesses.empty, 0, true, None)
-    val env = ScriptContexts.Environment(protocol, Map.empty, Map.empty, clock)
+    val env = ScriptContexts.Environment(
+      TestLedger.usualEra(protocol),
+      protocol,
+      Map.empty,
+      Map.empty,
+      clock
+    )
     ScriptContexts.txInfo(PlutusLanguage.V2, tx, env) match
       case Right(PlutusData.Constr(_, fields)) => fields(7)
       case other                               => fail(other.toString)
@@ -445,6 +452,7 @@ class ScriptContextGoldenSuite extends FunSuite:
       .copy(requiredSigners = Vector(bytesOf(key)))
     val tx = Tx(b, Witnesses.empty, 0, true, None)
     val env = ScriptContexts.Environment(
+      TestLedger.usualEra(8),
       8,
       Map(spentIn -> TxOut(addr, Value.coin(1700000))),
       Map.empty,
@@ -488,7 +496,7 @@ class ScriptContextGoldenSuite extends FunSuite:
       ScriptContexts.txInfo(
         PlutusLanguage.V1,
         Tx(body, Witnesses.empty, 0, true, None),
-        ScriptContexts.Environment(8, spent, refs, clock)
+        ScriptContexts.Environment(TestLedger.usualEra(8), 8, spent, refs, clock)
       )
     val base = TestLedger.body("v1", Vector(in), Vector(plain), 1)
     assert(info(base, Map(in -> plain)).isRight)
@@ -506,7 +514,8 @@ class ScriptContextGoldenSuite extends FunSuite:
     val b = TestLedger.body("spend", Vector(in), Vector(out), 1)
     val redeemer = Redeemer(0, 0, bytesOf(datumB), ExUnits(1, 2))
     val tx = Tx(b, Witnesses(Vector.empty, redeemers = Vector(redeemer)), 0, true, None)
-    val env = ScriptContexts.Environment(8, Map(in -> out), Map.empty, clock)
+    val env =
+      ScriptContexts.Environment(TestLedger.usualEra(8), 8, Map(in -> out), Map.empty, clock)
     val info = ScriptContexts.txInfo(PlutusLanguage.V2, tx, env).toOption.get
     val purpose = Purpose.resolve(b, env.spent, 0, 0).get
     val args = ScriptContexts.arguments(PlutusLanguage.V2, info, tx, redeemer, purpose)

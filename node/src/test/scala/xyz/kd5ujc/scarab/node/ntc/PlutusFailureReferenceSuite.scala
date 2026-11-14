@@ -83,7 +83,8 @@ class PlutusFailureReferenceSuite extends FunSuite:
       .decode(
         items(field(body(r), 1).getOrElse(fail("no outputs")))(0),
         Address.Mode.Rigorous,
-        TxOut.Forms.Stored
+        TxOut.Forms.Stored,
+        ScriptKind.newestKnown
       )
       .fold(e => fail(e.message), identity)
 

@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.node.{Fatal, Follower}
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
-import xyz.kd5ujc.scarab.ledger.state.PoolDistr
+import xyz.kd5ujc.scarab.ledger.state.{NewEpochState, PoolDistr}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.node.mempool.{Source, TxKit}
@@ -197,7 +197,9 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
             def persist(key: xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning.SigningKey) =
               writes
                 .getAndUpdate(_ + 1)
-                .flatMap(n => IO.sleep(3500.millis).whenA(n == 0).as(Persisted.Written))
+                .flatMap(n =>
+                  IO.sleep(3500.millis).whenA(n == 0).as(Persisted.Written(WriteProtocol.Exchanged))
+                )
           h <- harness(
             p,
             ledgerWith(p, 1),
@@ -288,6 +290,34 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
             case other => fail(s"expected the node to stop: $other")
       }
     )
+  }
+
+  // A wall clock 0.3 ms past the millisecond: a wait to the next slot floored to the millisecond
+  // ended 0.7 ms before it, read the same slot again and traced a clock moved back (#629)
+  test(
+    "the slot loop wakes at the next slot: each slot is read once and no clock moved back is traced"
+  ) {
+    val p = pool(kesStart = 50, seed = 9)
+    val clock = IO.realTimeInstant.map(_.plusSeconds(5000).plusNanos(300000))
+    for
+      control <- TestControl.execute(withHandle {
+        harness(p, ledgerWith(p, 1), live = true, unbounded = true, clock = Some(clock))
+          .flatTap(_.forger.run.start)
+      })
+      _ <- control.tickFor(5500.millis)
+      started <- control.results
+      events <- started match
+        case Some(cats.effect.kernel.Outcome.Succeeded(h)) => h.seen
+        case other => IO.raiseError(new AssertionError(s"the harness did not start: $other"))
+    yield
+      val attempted = events.collect { case ForgeEvent.Loop(ForgeTrace.StartLeadershipCheck(s)) =>
+        s
+      }
+      val movedBack = events.collect { case ForgeEvent.Clock(c: ClockTrace.SystemClockMovedBack) =>
+        c
+      }
+      assertEquals(attempted, (BigInt(5000) to BigInt(5005)).toVector)
+      assertEquals(movedBack, Vector.empty)
   }
 
   test("ForgingStats counts as the reference does, the overcount of missed slots included") {
@@ -850,10 +880,12 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     val half = BigInt(500000)
     val ledger = TxKit
       .native(1)
-      .copy(pd =
-        PoolDistr.of(
-          ForgedChain.snapshotOf(
-            Vector((p.stake.credential, p.creds, half), (q.stake.credential, q.creds, half))
+      .copy(layout =
+        NewEpochState.Layout.Node11_1(
+          PoolDistr.of(
+            ForgedChain.snapshotOf(
+              Vector((p.stake.credential, p.creds, half), (q.stake.credential, q.creds, half))
+            )
           )
         )
       )
@@ -1021,7 +1053,10 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     def bytes(e: xyz.kd5ujc.scarab.node.mempool.Entry) = Capacity.measure(e).bytes
     def pick(entries: Vector[xyz.kd5ujc.scarab.node.mempool.Entry], room: Long) =
       BlockBuilder
-        .select(base, 1001, 1, geometry, globals, entries, BlockBuilder.Limits(room + 1024, units))
+        .select(base, 1001, 1, geometry, globals, entries, BlockBuilder.Limits(room + 1024, units))(
+          xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder,
+          xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator
+        )
         .chosen
         .map(_._1.id)
     assert(bytes(large) > bytes(small3))

@@ -1,7 +1,7 @@
 # Ledger snapshots in the Haskell node's directory layout (Step D)
 
 **Status**: Accepted (owner approved D1-D9, 2026-10-18). Stage S1 (the MemPack `TxOut` codec, [#143](https://github.com/KD5UJC-XYZ/scarab/issues/143))
-is built and measured (section 8: the codec is checked against the 4,526,058 outputs of a real preprod table and 1,731,810 of this node's own stored outputs, and is not adopted as the stored value); S2 is implemented and reference-checked (section 9); S3 import is implemented (section 10); S4 export is implemented and reference-byte-checked (section 11); S5 is reference-checked on six private epoch boundaries, preprod epoch 320 and the captured point reported by an existing synced preprod node (section 12). Tracked in
+is built and measured (section 8: the codec is checked against the 4,526,058 outputs of a real preprod table and 1,731,810 of this node's own stored outputs, and is not adopted as the stored value); S2 is implemented and reference-checked (section 9); S3 import is implemented (section 10); S4 export is implemented and reference-byte-checked (section 11); S5 is reference-checked on six private epoch boundaries, preprod epoch 320 and the captured point reported by an existing synced preprod node (section 12); the reference-build setting and snapshot V10 of #826 step a are in section 13. Tracked in
 [#140](https://github.com/KD5UJC-XYZ/scarab/issues/140) (roadmap E2, D16); the first consumer is the Mithril import
 ([#27](https://github.com/KD5UJC-XYZ/scarab/issues/27), E1), then mainnet from a Mithril snapshot
 ([#69](https://github.com/KD5UJC-XYZ/scarab/issues/69), D9). Part of "Step D" of
@@ -549,3 +549,281 @@ post-replay endpoint table/CRC export claim; the gap-free imported baseline reta
 byte-identical preprod table proof and successful Haskell load/replay. Gap tracking remains
 J3.1/[#129](https://github.com/KD5UJC-XYZ/scarab/issues/129), and the private pending-versus-eager
 reward representation remains J3.5/M11. Those limits are neither masked nor relaxed by #140.
+
+**2026-11-09 rerun on main.** The acceptance was rerun on main `cae900077df88952b32470662171a5ac5ca18c1f`
+against `cardano-node` 11.1.3, whose consensus is 4.2.1.0.
+The images were `scarab-jdk:local`
+`sha256:67175c090fcc5b21ee5411055d7c6e89d42b6a7b90c77399f71632ada6c4c5b5` and
+`cardano-reference-11.1.3:local`
+`sha256:63bb366ad306366653fd9dfb23e16cceadd1ab68de6556c1e761358a5364bb1e`. The chain is a fresh
+`devnet.py up` cluster: 3 pools, Conway from genesis, 500-slot epochs of 0.1 s, k = 5, f = 0.05, with
+232 transactions from `load --seed 5` in 120 of its blocks. Its 183 blocks (0 to 182, 73 chunks) end at
+slot **3,617**, block **182**, hash `644bf1ad6a7168aa0f2c2e067968c202177c70221669a83e876a0dc795cb97a1`,
+and span epochs 0 to 7. The SHA-256 manifest of the recording's 220 files has SHA-256
+`e678c15d67a0a3176172ee368dfbcaf70bd5c072e558ff35d3d118a74e32e05c`. The recording and the raw run
+artifacts are not published. Every item passed:
+
+1. A `db-analyser --store-ledger 302 --full-ledger-validation` snapshot imports. It has 14 outputs at
+   block 10, hash `686564ae0732c7b307039ba4f83a8d514a1ffed7254a292a1acb31d444b4a0d0`.
+2. The export `302_scarab` loads in both reference tools:
+   - db-analyser reads no chunk before slot 302's, chunk 6, and replays to a tip state byte-identical
+     to a run from genesis (`state` `55e09e32b96a69a48091ca02e7ac22d7c092f1657dce832e0881e5e7e9ad2bb6`);
+   - `cardano-node` logs `ReplayFromSnapshot` at slot 302.
+3. Scarab replays from the import with zero oracle differences at all 7 epoch boundaries and at
+   slots 3,494 and 3,617. At 3,494 the reference state holds a pulsing reward update, and both
+   projections hold a null `rewardUpdate`. Scala's digest names only a complete update, so the eager
+   `Complete` difference recorded above did not occur.
+4. A replay from genesis also matches at all 7 boundaries. Its periodic snapshot at slot 2,431 (M)
+   exports with `state` `260c3b6979f235c5101d8a262989d409f2a02b09c5a8513f08388b7a6ff5340a`. From
+   that export, db-analyser reads no chunk before M's, chunk 48, and `cardano-node` logs
+   `ReplayFromSnapshot` at 2,431.
+5. `302_scarab` is byte-identical to db-analyser's snapshot at the same slot: `state`
+   `608518f066819c4d5c8ae946cd56c1cfdbd7351ed916d7190a34f8f4b5c962fa`, `tables`
+   `4ed4e5e67c1f2c9a20ded2cacd7efd74c8d644535a6147494ba891c81e4abb12`, `meta`
+   `407ee3676eb250c69f0d279bbcd3a5307af81edaf50b6eca737bf563bb6759de`.
+
+Nine periodic snapshots export on each path, the replay from genesis and an import-started replay with
+a 300-slot policy. Each is byte-identical to db-analyser's full-validation state at its slot. None of
+these snapshots carries a gap flag. Some snapshots refused to export with `Unsettled`:
+- the shutdown snapshot at 3,617, in all three runs (`Unsettled(182,174,0)`);
+- the import-started periodic snapshots at 400 (`Unsettled(15,14,0)`) and 1,533 (`Unsettled(69,68,0)`).
+
+Each refused snapshot is of a block without transactions: blocks 15, 69 and 182. The UTxO store's stamp
+had stayed at the last block with a change: 14, 68 and 174.
+[#838](https://github.com/KD5UJC-XYZ/scarab/issues/838) brings the store to the snapshot's own block, so
+these snapshots are now settled when written.
+
+Items 2 and 4 were rerun the same day on the same recording, with that fix applied to `cae900077` and
+the shutdown snapshot at 3,617 as M:
+- All 10 snapshots of the replay from genesis export. So do all 12 of the import-started 300-slot
+  replay, 1,533 included. Each `state`, `tables` and `meta` is byte-identical to db-analyser's
+  full-validation state at its slot.
+- The export at 3,617 has `state` `55e09e32b96a69a48091ca02e7ac22d7c092f1657dce832e0881e5e7e9ad2bb6`,
+  `tables` `703bd06e486b38ad5207bd6aa24771c7b0500ada5e7d8b4a423d1e4b0e76e27e` and `meta`
+  `eda3256cb2de8c1a6477c9fcd3d75be9f1a9bbd41edc7dbf7888467a3b13f0af`.
+- From that export, `cardano-node` logs `ReplayFromSnapshot` at slot 3,617, hash `644bf1ad…`, with no
+  `InvalidSnapshot` or `ReplayFromGenesis`. db-analyser `--analyse-from 3617` reads M's chunk, 72, and
+  no earlier one.
+- The 7 boundary digests of the replay from genesis match projections made by
+  `oracle_compare.py reference --network-none --full-ledger-validation`. Item 2 repeats the results
+  above, with the same hashes.
+
+**Load evidence.** Neither `db-analyser --count-blocks` nor an exit status shows that a snapshot was
+loaded:
+- `--count-blocks --analyse-from 302` prints the same count with an empty `ledger/`, and exits 0.
+- With a snapshot whose `meta` checksum is altered, or whose `state` is one byte short,
+  `db-analyser --store-ledger` replays from genesis without a warning. It exits 0, with the same tip
+  bytes.
+- With a snapshot whose `state` is one byte short, `cardano-node` logs `InvalidSnapshot` and
+  `ReplayFromGenesis`, and still exits 0.
+
+The criteria for a load:
+- for `cardano-node`, a `ReplayFromSnapshot` trace at the snapshot's point, and neither
+  `InvalidSnapshot` nor `ReplayFromGenesis`;
+- for db-analyser, the `--verbose` ImmutableDB chunk reads. After a load it reads only from the
+  snapshot's own chunk on. After a fallback it reads from chunk 0.
+
+A control should show that the pattern discriminates: a copy of the same export with `state`
+truncated by one byte. The controls were run on main for `302_scarab`, and with the fix for the
+export at 3,617, in both tools. Each showed the fallback. The `--count-blocks` result for slot 7 above
+rests on the weaker evidence.
+
+**2026-11-09 preprod rerun.** The preprod items were rerun on the preserved inputs: the Mithril
+snapshot at slot 136,511,997, block 5,300,868, `1f6f537b…`, and two recordings after it.
+- **R1** is the initial recording: 2,377 blocks, to slot 136,565,931, block 5,303,245, `deb213bc…`.
+- **R2** is a later capture of the same chain: 5,683 blocks, to slot 136,641,596, block 5,306,551,
+  `5dd3f38675715db46501daccc10b7b7ae15c6ff28e9c5dfd5028e6d2ca92fdd0`. It holds the epoch-320 points
+  above (136,598,413 and 136,602,570), so it covers the 3,980-block capture, but it is not that capture.
+
+Both revisions used the same images as the devnet rerun above. They are `cae900077` (A) and this
+change applied to it (B). Every result below is B's unless it says A.
+
+1. The authenticated import loads 4,526,058 outputs, 30,022,461,204,412,072 lovelace, and verifies the
+   ancillary manifest.
+2. The export of the import is byte-identical to the snapshot it was imported from: `state`
+   `7ecbc476…`, `tables` `62ee546d…`, `meta` `b27a7d1a…`.
+   - `cardano-node` 11.1.3 logs `ReplayFromSnapshot` at 136,511,997 and replays to each tip.
+   - db-analyser reads only from chunk 6319 on. On R2 it never reads chunk 6318, which is present.
+   - The truncated-`state` controls fall back in both tools.
+   - On these sparse ImmutableDBs (no chunk 0), `cardano-node` was given the empty `clean` marker a
+     clean stop leaves. Without it, the node validates every chunk, truncates the database to genesis
+     at the missing chunk 0, and then reports `InvalidSnapshot` and `ReplayFromGenesis`.
+3. Scarab replays from the import with zero oracle differences:
+   - at 136,565,931;
+   - at the epoch-320 boundary (4,532,164 outputs);
+   - at 136,602,570 and 136,641,596.
+
+   The reference holds a complete reward update at 136,565,931, equal to Scala's, and none at the
+   epoch-320 points.
+4. Every one of Scarab's own snapshots exports: 3 on R1 and 7 on R2, the shutdown snapshots included.
+   - A refuses one on each recording: block 5,301,749 at 136,532,011, which has no transactions,
+     with `Unsettled(5301749,5301748,0)`.
+   - The latest periodic export and the shutdown export of each recording load in both tools.
+5. All 75 compared files are byte-identical to the reference's state at their slots, A's exports and
+   B's alike.
+
+The private chain's recording (slot 3,436) and the synced-point capture to 136,651,599 are not among
+the preserved inputs, so they were not rerun.
+
+## 13. The reference build and snapshot V10 as built (#826 step a)
+
+Owner decisions of 2026-11-08 ([#54](https://github.com/KD5UJC-XYZ/scarab/issues/54), refining OD-6,
+and [#826](https://github.com/KD5UJC-XYZ/scarab/issues/826)): import and export only strip or add
+Scarab's envelope around the reference's bytes, and Scarab stores no ledger-state format of its own;
+the layout is chosen by the reference build, never by an era. Step a adds the setting and the
+envelope with the 11.1 codec only; nothing an existing node or file does changes.
+
+**The setting.** `ReferenceBuild` (`protocol`) is a closed enum of the builds of `cardano-node`
+Scarab mirrors, each with its stability and its pins, which `docs/data/reference-pins.json`
+registers with the enum as a dependent: `11.1`, the stable 11.1 release line behaving as its pinned
+release 11.1.3 (cardano-ledger f649f975, cardano-ledger-binary at 048b78d2, ouroboros-consensus
+82ecba32), and `leios-b004fe0c`, the unstable public Leios testnet build (cardano-node b004fe0c,
+cardano-ledger 9df9f98c, ouroboros-consensus 2416493b). Parsing the flag string is total, with
+`UnknownReferenceBuild` for any other text. `--reference-build` is on `follow`,
+`import-ledger-snapshot` and `export-ledger-snapshot`, `11.1` without it; the help text and
+[flags.md](../running/flags.md) say that the value has to be the build the network runs. A build
+selects a layout (`StateLayout`, in `protocol` since step b); several builds may share one. A
+layout's codec (`ReferenceLayout`) is the only way to a snapshot format, an import or an export. In
+step a the Leios build was refused at start for want of its layout's codec; since step b
+(section 14) `ReferenceLayout.of` is total, and `follow` refuses the Leios build with
+`ConfigProblem.ReferenceBuildNotYet(ReferenceBuildNotYet.Rules(...))` until its rules exist, after it
+has logged `referenceBuild` with the pins and, for an unstable build without
+`ExperimentalHardForksEnabled`, `unstableReferenceBuild`. The naming rule and every place a new
+build touches are in [the playbook](../playbooks/add-a-reference-build.md).
+
+**Snapshot V10.** `SnapshotV10` (`SCRBSNPA`) is `SnapshotV9`'s layout with
+`build length u8 | build name` between the magic and the binding. The build goes in the header, not
+the binding: the binding is what admits the UTxO checkpoint (`CheckpointBinding`, a schema of its own
+behind a fingerprint that the V7 to V10 readers share), whereas the build is a property of the
+Haskell bytes and must be read first, because it decides their codec. Recording the flag string
+rather than a numeric tag lets a file say what wrote it to a build that does not know the name. The
+binding, the sidecar and the Haskell section are V9's byte for byte, and so are the sidecar and
+binding fingerprints; `CodecSuite` pins the header bytes. The magic's last character is the format
+number as one base-36 digit, so the magic keeps eight bytes and its family and a V9 build reads a V10
+file as an unknown version.
+
+**V9 migrates as 11.1.** `SnapshotV10.fromV9` records `11.1` and keeps everything else. A V9 file
+can hold only 11.1-layout bytes: the node writes them with the 11.1 codec (`SnapshotV5.parts`), the
+imports keep only bytes that codec decoded completely (`Codec.decodeBytes` refuses trailing bytes),
+and that codec refuses a Dijkstra telescope, era state or tip (`DijkstraNotYet.LedgerState`, in
+`Envelope.telescope`, `ConsensusCodecs` and `LedgerFileCodecs.annTip`) and the Leios build's three-part `ExtLedgerState`
+(`[1, [ledger, header, perasState]]`, ouroboros-consensus 2416493b `Ledger/Extended.hs:420-442`)
+by its arity, as the reference's 11.1 decoder does (`decodeListLenOf 2`, 82ecba32
+`Ledger/Extended.hs:268-280`). Checked against the pinned sources; migrated V9 files written by
+earlier builds hold bytes of those builds' codecs, which were all of the 11.1 line (no Leios codec
+existed before #826): inferred from the history, not re-verified per file.
+
+**A snapshot recorded under another build.** No conversion between builds exists or is planned.
+`SnapshotV10.decode` refuses a file whose recorded build's layout is not the configured one
+(`StorageError.ReferenceBuildMismatch`), or whose recorded name is unknown
+(`StorageError.UnknownReferenceBuild`), before its Haskell bytes are read, and the restore treats it
+as the reference treats a snapshot it cannot decode (the owner's decision on #826). The reference's
+`tryNewestFirst` (82ecba32 `Storage/LedgerDB/API.hs:599-646`) deletes a snapshot ahead of the
+immutable tip if it is temporary and tries the next older one (`:600-604`); keeps a snapshot
+without its metadata file, of another backend or of the legacy layout, traces `InvalidSnapshot`
+and tries the next older one (`:607-623`); deletes a snapshot that fails for any other reason, a
+decoding failure among them, if it is temporary, traces `InvalidSnapshot` and tries the next older
+one (`:625-631`); and replays from genesis when none is left (`:582-598`). A snapshot is temporary
+when its name has no suffix (`diskSnapshotIsTemporary`, `Storage/LedgerDB/Snapshots.hs:288-297`);
+every native snapshot is `snapshot-<slot>-<blockNo>.bin`, whether the node, an import or an SCLS
+import wrote it, so every one is temporary. `FileLedgerSnapshots.restore` and
+`LedgerSnapshots.Fallback.of` mirror it case by case. What the reference returns as a failure goes
+through the fallback: a snapshot whose anchor is not in the immutable store (the too-recent one),
+whose checksum, framing, sidecar or state does not decode, whose recorded build is of another
+layout or unknown, or whose checkpoint is not the one recorded or holds keys that do not decode
+(found when the checkpoint is restored into the store, inside the fallback) is deleted,
+`snapshotDeleted` logged after `snapshotSkipped`, and the next older one tried; a checkpoint of
+another key layout or none (the reference's backend mismatch) is kept. Deletion is best effort, as
+`defaultDeleteSnapshotIfTemporary` catches its failures (`Snapshots.hs:320-330`): one that fails is
+logged (`snapshotNotDeleted`) and the fallback goes on. What the reference raises stops the start
+with a typed error and deletes nothing: a file that cannot be read (`Io`), an absent checkpoint
+(the reference's missing tables file, which `readIncremental` raises, `Util/CBOR.hs:206`), a
+decoder defect. Where the line falls: the snapshot's format version is Scarab's envelope, which ADR
+0006 governs, so an unknown or retired version, or a previous file whose state cannot be converted,
+stops the start, and a binding or sidecar of another schema (`VersionMismatch`) is kept. The
+migration of previous files takes the same fallback for what fails on a file's own content: a V9
+file whose checksum or sidecar fails is deleted, and one of another sidecar schema is left
+unconverted, which the restore then keeps and skips. The checkpoints no snapshot lists, those of
+the snapshots just deleted and any a stopped earlier start left behind, are deleted when the
+database opens (`StateBacking.trim`), each best effort as the reference's deletion of a snapshot's
+tables is: one that cannot be deleted is logged (`checkpointNotDeleted`) and the start goes on.
+Deletion during a periodic write keeps its own failure handling. Snapshot file names do not change, and the V9 to V10
+step copies everything after the magic as it was. In step a a snapshot of another build is
+reachable only in tests. `SnapshotFallbackSuite` and `ChainStorageSuite` have a test per case.
+
+**Import and export.** Import decodes the `state` file with the codec of the build named by
+`--reference-build`, the build that wrote the input database; input that does not decode completely
+is `LedgerSnapshotImport.Error.State(build, cause)`, and the state it decodes to goes into the
+snapshot, written again in that layout, with the build recorded. For the reference files the suites
+hold that is the file's own bytes, but not by promise: the encoding keeps only the first of two
+governance proposals with one id, as the reference reads them, and writes a value the layout allows
+in more than one form in the codec's form (`LedgerSnapshotImport`). Export writes the recorded bytes unchanged and reports their build
+(`referenceBuild` in its JSON); a requested build of another layout than the recorded one is refused
+with `ReferenceBuildMismatch`. Export also reads a V9 file of a database this build has not opened
+yet, as 11.1 bytes, so an existing database exports as before; the SCLS base (`export-scls`,
+`import-scls`) reads such a V9 file as its V10 migration would write it, in memory, and writes V10 in
+the 11.1 layout.
+
+Not in step a: the Leios codec and the model fields behind it (step b, section 14), and rules
+selected by the build (step c).
+
+## 14. The Leios build's layout as built (#826 step b)
+
+The `state` file of `leios-b004fe0c` (cardano-ledger 9df9f98c, ouroboros-consensus 2416493b) is read
+and written in every Shelley-based era up to Conway. The encoders and decoders of every type a
+Shelley-to-Conway `state` file holds were diffed between the pins of the two builds, era by era; the
+records below are those that differ. Everything else, the binary layer below version 12 among it
+(the encoder is 048b78d2's line for line; the decoder accepts chunked strings from version 12 only),
+is the same.
+
+| Record | 11.1 (f649f975, 82ecba32) | Leios (9df9f98c, 2416493b) |
+|---|---|---|
+| `ExtLedgerState` | `[ledger, header]` (`Ledger/Extended.hs:233-280`) | `[ledger, header, perasState]`, two parts read with `defaultPerasState`, three always written (`Ledger/Extended.hs:420-512`) |
+| `PerasState` | none | `[resolver, latest certificate round]`, the resolver `[0, reason]` or `[1, current, previous]` (`Ledger/Peras.hs:45-101`, `Peras/Context.hs:237-301`) |
+| HFC `Bound` | three items, or four with `PerasEnabled` round (`HardFork/History/Summary.hs:526-549`) | four written; three read as round zero (`Summary.hs:90-99, 573-601`) |
+| `ShelleyLedgerState` field 4 | latest Peras certificate round, `StrictMaybe` | `shelleyCumulativeTxBytes :: Word64` (`Shelley/Ledger/Ledger.hs:308, 885-922`) |
+| `NewEpochState` | seven fields, `nesPd` sixth | six; the pool distribution is the set snapshot's (`Shelley/LedgerState/Types.hs:393-422, 643-644`) |
+| `SnapShots` | `[mark, set, go, fee]`, bare snapshots | `[MarkSnapShot [snapshot, epoch, committee size, maximum key age], SetSnapShot [snapshot, committee], GoSnapShot [snapshot], fee]` (`State/SnapShots.hs:386-594`) |
+| `StakePoolSnapShot` | ten fields | eleven, `spssBlsKey :: StrictMaybe BlsKeyState` after the VRF key hash (`State/SnapShots.hs:280-315`) |
+| `StakePoolState` | ten fields | eleven, `spsBlsKey` after the VRF key hash (`State/StakePool.hs:165, 220-266`) |
+| `BlsKeyState`, `BlsKey`, `LeiosCommittee` | none | `[key, epoch]`; `[96-byte G2 key, 48-byte G1 proof]` read by `decodeFixedSized`; the list of seats `[weight, StrictMaybe key]` (`State/StakePool.hs:532-570`, `Binary/Encoding/EncCBOR.hs:487-496`) |
+
+Not differences in these eras: `StakePoolParams` (the BLS key is in it from version 12 only,
+`State/StakePool.hs:716-771`); `IndividualPoolStake` (three or four items, `State/PoolDistr.hs:86-116`,
+but no longer in the `state` file, `nesPd` being gone); `RatifyEnv` (`VotingStakePoolDistr`, but the
+DRep pulser is written completed, `Conway/Governance/DRepPulser.hs:468-472`); `PParams` and
+`PParamsUpdate`; `PraosState` (version 0 and eight fields for Praos, `Protocol/PolyPraos.hs:362-420`).
+
+**The model.** Each record that differs holds one part that the layout decides, a closed enum with a
+case per layout extending `LayoutPart`: `Bound.Layout`, `ShelleyLedgerState.Layout`,
+`ExtLedgerState.Layout` (the `PerasState`), `NewEpochState.Layout` (the stored distribution of 11.1),
+`SnapShots.Layout` (the mark's epoch, committee size and key age, and the set's committee) and
+`PoolBlsKey` (a pool's voting key, in its state and its stake snapshot). The 11.1 case of a part holds
+only what 11.1 writes, so no field is shared between the layouts' values. `NewEpochState.pd` is the
+stored distribution in 11.1 and the set snapshot's in Leios. Each immutable `SnapShot` retains
+its derived `PoolDistr`; deriving it preserves the Leios voting key without its registration epoch
+(ledger 9df9f98c `State/SnapShots.hs:676-695`). A copied snapshot derives its own distribution.
+The Leios individual-pool codec accepts three fields or four with a `StrictMaybe BlsKey`, and
+writes the fourth only for a present key (`State/PoolDistr.hs:84-119`). The stable codec keeps
+three fields and refuses to write a value carrying a voting key. These derived values do not add
+fields to a persisted snapshot. A `PerasResolver` with an epoch context is not modelled: the eras before
+Dijkstra have a `Void` voting committee, refused as the reference refuses it, and Dijkstra's is
+`DijkstraNotYet.LedgerState`.
+
+**The codecs.** The codec traits take the layout (`stateLayout`); `HaskellStateCodecs` is 11.1's
+and `LeiosStateCodecs` the Leios build's. Each record that differs branches on it, and each codec's
+`check` refuses a part of the other layout, naming where it is, so a value read in one layout is
+never written in the other: `HaskellLedgerFile.encode` returns `StateNotWritable`. There is no
+conversion. Records that do not differ are shared.
+
+**The setting.** `ReferenceLayout.of` is total; `import-ledger-snapshot` and
+`export-ledger-snapshot` take `leios-b004fe0c` and add or strip the envelope as for `11.1`.
+`follow` refuses it (`ReferenceBuildFlag.follows`) until step c. The rules this build runs produce
+values of the 11.1 layout; running them on a Leios state is step c's to change.
+
+**Evidence.** The last Conway state of a Leios devnet (`fixtures/leios/state/conway-195`) is read
+and written byte for byte, imported and exported with `state`, `tables` and `meta` unchanged, and
+refused by the 11.1 layout; the first Dijkstra state is refused at its telescope with its Peras
+state and past bounds read (`LeiosLayoutSuite`, `LeiosLayoutImportSuite`, the `leios-*` fuzz
+targets). Only Conway is checked on reference bytes; the other eras on the diff of the sources and
+on property laws.

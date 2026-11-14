@@ -9,7 +9,8 @@ The `fuzz` project (`fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz`) throws mutated
 data from a peer, a client or a block: raw CBOR, the node-to-node and node-to-client handshakes, the mux (header,
 frame, stream), ChainSync, BlockFetch, TxSubmission2, KeepAlive, LocalStateQuery, LocalTxSubmission and
 LocalTxMonitor in every state and for both roles, headers and blocks (Byron and each later era), transaction bodies,
-witness sets and whole submitted transactions per era, addresses and outputs, scripts, Plutus data, node-to-client
+witness sets and whole submitted transactions per era, addresses and outputs, scripts, Plutus data, the own
+evaluator's `deserialiseScript` (`uplc`; an admitted program written back must decode to itself), node-to-client
 queries and protocol-parameter updates, the node's own volatile log, and the operator's `config.json` and `topology.json`. `Targets.all` is the maintained target registry.
 
 Inputs (`Mutate.scala`, `Corpus.scala`): ScalaCheck generators that take a seed item and apply one to four

@@ -264,7 +264,7 @@ def sh(cmd, **kw):
 
 
 def sbt(args, command):
-    sh([*shlex.split(args.sbt), f"models/Test/runMain {SBT_MAIN} {command}"])
+    sh([*shlex.split(args.sbt), f"tools/runMain {SBT_MAIN} {command}"])
 
 
 def generation_controls(text):

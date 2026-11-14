@@ -3,10 +3,11 @@ package xyz.kd5ujc.scarab.network
 
 import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures
 import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures.given
-import cats.effect.{IO, Ref, Resource}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.syntax.all.*
 import com.comcast.ip4s.*
 import fs2.Stream
+import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{
   ChainSync,
@@ -27,7 +28,15 @@ class ServerSuite extends FailsOnUncaught:
 
   /** A chain of blocks numbered 1..n, mutable so tests can extend and fork it. */
   private final class Chain(initial: Vector[Int]):
-    val blocks: Ref[IO, Vector[Int]] = Ref.unsafe(initial)
+    private val blocks: Ref[IO, Vector[Int]] = Ref.unsafe(initial)
+    // completed, and replaced, by every change: a source at the tip waits on it
+    private val changed: Ref[IO, Deferred[IO, Unit]] = Ref.unsafe(Deferred.unsafe[IO, Unit])
+
+    def update(f: Vector[Int] => Vector[Int]): IO[Unit] =
+      Deferred[IO, Unit].flatMap(next =>
+        blocks.update(f) *> changed.getAndSet(next).flatMap(_.complete(())).void
+      )
+
     def tip: IO[Tip] = blocks.get.map(b => b.lastOption.fold(Tip.Origin)(n => Peers.tip(n)))
 
     def source: Resource[IO, ChainSyncServer.Source[IO, Bytes]] =
@@ -73,8 +82,9 @@ class ServerSuite extends FailsOnUncaught:
                     )
                 else IO.pure(None)
             yield next
+          // the change signal is read before the chain, so a change after the read wakes it
           def await: IO[ChainSyncServer.Update[Bytes]] =
-            poll.flatMap(_.fold(IO.sleep(5.millis) *> await)(IO.pure))
+            changed.get.flatMap(change => poll.flatMap(_.fold(change.get *> await)(IO.pure)))
       }
 
     def blockSource: BlockFetchServer.Blocks[IO] = (from, to) =>
@@ -143,25 +153,28 @@ class ServerSuite extends FailsOnUncaught:
     }.map(r => assertEquals(r, Right((Left("HandshakeRefused"), Left("HandshakeRefused")))))
 
   test("ChainSync server: intersection, roll forward, await at the tip, then a new block"):
-    val chain = Chain(Vector(1, 2, 3))
-    typed {
-      linked(protocols = Set(2)).use { (client, server) =>
-        for
-          c <- client.channel(2)
-          s <- server.channel(2, Mux.Role.Responder)
-          _ <- typed(
-            chain.source.use(src => ChainSyncServer.run(s, ChainSyncFixtures.rawItem, src))
-          ).start
-          api <- ChainSyncClient(c, ChainSyncFixtures.rawItem)
-          missing <- api.findIntersect(Vector(Peers.point(9)))
-          found <- api.findIntersect(Vector(Peers.point(9), Peers.point(2), Point.Origin))
-          first <- api.requestNext
-          waiting <- typed(api.requestNext).start
-          _ <- IO.sleep(30.millis)
-          _ <- chain.blocks.update(_ :+ 4)
-          later <- waiting.joinWithNever.flatMap(Fibers.land(_))
-          _ <- IO.pure(()) // no pipelining at the tip
-        yield (missing, found, first, later)
+    Settled { settle =>
+      val chain = Chain(Vector(1, 2, 3))
+      typed {
+        linked(protocols = Set(2)).use { (client, server) =>
+          for
+            c <- client.channel(2)
+            s <- server.channel(2, Mux.Role.Responder)
+            _ <- typed(
+              chain.source.use(src => ChainSyncServer.run(s, ChainSyncFixtures.rawItem, src))
+            ).start
+            api <- ChainSyncClient(c, ChainSyncFixtures.rawItem)
+            missing <- api.findIntersect(Vector(Peers.point(9)))
+            found <- api.findIntersect(Vector(Peers.point(9), Peers.point(2), Point.Origin))
+            first <- api.requestNext
+            waiting <- typed(api.requestNext).start
+            // the server has answered that it awaits, and waits at the tip
+            _ <- settle
+            _ <- chain.update(_ :+ 4)
+            later <- waiting.joinWithNever.flatMap(Fibers.land(_))
+            _ <- IO.pure(()) // no pipelining at the tip
+          yield (missing, found, first, later)
+        }
       }
     }.map { r =>
       assertEquals(
@@ -191,7 +204,7 @@ class ServerSuite extends FailsOnUncaught:
           _ <- api.findIntersect(Vector(Point.Origin))
           batch <- api.requestNextBatch(4)
           // the chain forks back to block 2 and grows a different branch
-          _ <- chain.blocks.set(Vector(1, 2))
+          _ <- chain.update(_ => Vector(1, 2))
           rolled <- api.requestNext
         yield (
           batch.map {
@@ -272,8 +285,9 @@ class ServerSuite extends FailsOnUncaught:
     val txs = (1 to 6).map(txBytes).toVector
     val ids = txs.map(t => TxSubmission2.bodyId(t).toOption.get)
     for
-      received <- Ref.of[IO, Vector[Bytes]](Vector.empty)
-      held <- Ref.of[IO, Vector[TxSubmissionClient.Held]](Vector.empty)
+      received <- SignallingRef[IO, Vector[Bytes]](Vector.empty)
+      held <- SignallingRef[IO, Vector[TxSubmissionClient.Held]](Vector.empty)
+      emptied <- Deferred[IO, Unit]
       bodies = txs.map(t => TxSubmission2.bodyId(t).toOption.get -> t).toMap
       source = new TxSubmissionClient.Source[IO]:
         def reader = TxSubmission2Fixtures.structural
@@ -282,7 +296,7 @@ class ServerSuite extends FailsOnUncaught:
         def awaitAfter(ticket: Long) =
           held.get.flatMap(h =>
             if h.exists(_.ticket > ticket) then IO.unit
-            else IO.sleep(5.millis) *> awaitAfter(ticket)
+            else emptied.complete(()) *> held.waitUntil(_.exists(_.ticket > ticket))
           )
         def body(id: Bytes) = IO.pure(bodies.get(id))
       sink = new TxSubmissionServer.Sink[IO]:
@@ -298,16 +312,17 @@ class ServerSuite extends FailsOnUncaught:
             s <- server.channel(4, Mux.Role.Responder)
             _ <- typed(TxSubmissionClient.run(c, source)).start
             _ <- typed(TxSubmissionServer.run(s, sink)).start
-            _ <- IO.sleep(20.millis) // the server's first request blocks on an empty source
+            // the server's first request blocks on an empty source
+            _ <- emptied.get.timeout(5.seconds)
             _ <- held.set(
               ids.zipWithIndex
                 .take(5)
                 .map((id, i) => TxSubmissionClient.Held(id, txs(i).size, i + 1L))
             )
-            _ <- received.get.iterateUntil(_.size >= 4).timeout(5.seconds)
+            _ <- received.waitUntil(_.size >= 4).timeout(5.seconds)
             // later arrivals are offered too
             _ <- held.update(_ :+ TxSubmissionClient.Held(ids(5), txs(5).size, 6L))
-            _ <- received.get.iterateUntil(_.size >= 5).timeout(5.seconds)
+            _ <- received.waitUntil(_.size >= 5).timeout(5.seconds)
           yield ()
         }
       }
@@ -320,41 +335,45 @@ class ServerSuite extends FailsOnUncaught:
     val chain = new Chain(Vector(1, 2, 3))
     val duplexClient = Mux.Config(role = Mux.Role.Initiator, duplex = true)
     val duplexServer = Mux.Config(role = Mux.Role.Responder, duplex = true)
-    for unbounded <- typed {
-        linked(
-          protocols = NodeToNodeServer.Protocol,
-          client = duplexClient,
-          server = duplexServer
-        ).use { (local, remote) =>
-          for
-            during <- NodeToNodeServer.start(local, handlers(chain)).use { _ =>
-              for
-                _ <- IO.sleep(100.millis)
-                channel <- remote.channel(Protocols.ChainSync, Mux.Role.Initiator)
-                api <- ChainSyncClient(channel, ChainSyncFixtures.rawItem)
-                intersection <- api.findIntersect(Vector(Point.Origin))
-                stillOpen <- IO.race(local.closed, IO.sleep(40.millis))
-              yield (intersection, stillOpen.isRight)
-            }
-            channel <- remote.channel(Protocols.TxSubmission2, Mux.Role.Initiator)
-            init = TxSubmission2
-              .encode(
-                TxSubmission2.State.Init,
-                ChainSync.Role.Client,
-                TxSubmission2.Message.Init
-              )
-              .fold(e => fail(e.message), identity)
-            reply <- channel.send(init) *> IO
-              .race(
-                channel
-                  .recv(TxSubmission2.maxMessageBytes(TxSubmission2.State.Idle))(
-                    TxSubmission2.decodePrefix(TxSubmission2.State.Idle, ChainSync.Role.Server, _)
-                  )
-                  .map(Some(_)),
-                IO.sleep(40.millis).as(Option.empty[TxSubmission2.Message])
-              )
-              .map(_.merge)
-          yield (during, reply)
+    for unbounded <- Settled { settle =>
+        typed {
+          linked(
+            protocols = NodeToNodeServer.Protocol,
+            client = duplexClient,
+            server = duplexServer
+          ).use { (local, remote) =>
+            for
+              during <- NodeToNodeServer.start(local, handlers(chain)).use { _ =>
+                for
+                  // the server's responders are installed and idle
+                  _ <- settle
+                  channel <- remote.channel(Protocols.ChainSync, Mux.Role.Initiator)
+                  api <- ChainSyncClient(channel, ChainSyncFixtures.rawItem)
+                  intersection <- api.findIntersect(Vector(Point.Origin))
+                  stillOpen <- IO.race(local.closed, settle)
+                yield (intersection, stillOpen.isRight)
+              }
+              channel <- remote.channel(Protocols.TxSubmission2, Mux.Role.Initiator)
+              init = TxSubmission2
+                .encode(
+                  TxSubmission2.State.Init,
+                  ChainSync.Role.Client,
+                  TxSubmission2.Message.Init
+                )
+                .fold(e => fail(e.message), identity)
+              reply <- channel.send(init) *> IO
+                .race(
+                  channel
+                    .recv(TxSubmission2.maxMessageBytes(TxSubmission2.State.Idle))(
+                      TxSubmission2.decodePrefix(TxSubmission2.State.Idle, ChainSync.Role.Server, _)
+                    )
+                    .map(Some(_)),
+                  // every fiber has done all it can, and the responder has not replied
+                  settle.as(Option.empty[TxSubmission2.Message])
+                )
+                .map(_.merge)
+            yield (during, reply)
+          }
         }
       }
     yield assert(
@@ -460,14 +479,17 @@ class ServerSuite extends FailsOnUncaught:
     val chain = Chain(Vector(1, 2, 3))
     typed {
       BearerServer
-        .listen[IO, NetworkError](Some(ip"127.0.0.1"), None)((_, error) =>
-          IO(fail(error.toString))
-        ) { (bearer, _) =>
-          typed(NodeToNodeServer.accept(bearer, magic, handlers(chain))).void
+        .listen[IO, NetworkError](
+          TcpListeners.jdk[IO],
+          Some(ip"127.0.0.1"),
+          None,
+          _ => IO.unit
+        )((_, error) => IO(fail(error.toString))) { (bearer, _) =>
+          typed(Served.accept(bearer, magic, handlers(chain))).void
         }
-        .flatMap(bound =>
+        .flatMap(listening =>
           NodeToNode.connect[IO, Bytes](
-            SocketAddress(bound.host, bound.port),
+            SocketAddress(listening.address.host, listening.address.port),
             magic,
             ChainSyncFixtures.rawItem
           )
@@ -497,14 +519,17 @@ class ServerSuite extends FailsOnUncaught:
     val chain = Chain(Vector(1))
     typed {
       BearerServer
-        .listen[IO, NetworkError](Some(ip"127.0.0.1"), None)((_, error) =>
-          IO(fail(error.toString))
-        ) { (bearer, _) =>
-          typed(NodeToNodeServer.accept(bearer, magic, handlers(chain))).void
+        .listen[IO, NetworkError](
+          TcpListeners.jdk[IO],
+          Some(ip"127.0.0.1"),
+          None,
+          _ => IO.unit
+        )((_, error) => IO(fail(error.toString))) { (bearer, _) =>
+          typed(Served.accept(bearer, magic, handlers(chain))).void
         }
-        .flatMap(bound =>
+        .flatMap(listening =>
           NodeToNode.connect[IO, Bytes](
-            SocketAddress(bound.host, bound.port),
+            SocketAddress(listening.address.host, listening.address.port),
             magic + 1,
             ChainSyncFixtures.rawItem
           )

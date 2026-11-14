@@ -84,7 +84,7 @@ scala code … I love the use of type parameters when I can use them"*.
   or an effect interpreter. These exceptions change implementation style only: typed errors,
   capability scope and original-byte guarantees still apply. WartRemover refuses `var`, `while`,
   `throw`, `return`, `null`, casts, mutable collections and partial accessors in the main sources of
-  every module (`build.sbt`); a kept site carries
+  every module but `tools` (`build.sbt`); a kept site carries
   `@SuppressWarnings(Array("org.wartremover.warts.<Wart>"))` on its smallest definition, with a
   comment naming its measurement, the library contract, or why it is erased in place or timed.
   `scripts/check_imperative.py` refuses new `try`/`catch`/`finally` (#650).
@@ -103,6 +103,21 @@ scala code … I love the use of type parameters when I can use them"*.
   assertion can deadlock with a parent's asserted wait. Release latches and finish owned workers in
   guaranteed cleanup. Positive synchronization uses an observable condition or controlled schedule;
   bounded negative observations without a product-side hook remain explicitly tracked in #251.
+- A program run by hand (a benchmark, a probe, the writer of a fixture or golden) lives in the `tools`
+  module (`tools/runMain <class>`), in the package of the code it exercises, never in a test tree.
+  `tools` may use every module's test kits and follows the rules of test code; data the suites read
+  stays in the test tree, and `tools` holds only its entry point.
+- Tests do not sleep: no sleep, delay, timer or yield orders fibers, waits for a state or paces a poll
+  loop. Wait on a `Deferred`, a latch, a change signal or a report of the code under test, or run the
+  test in `Settled` (network test tree), whose `settle` returns once every fiber of the test is
+  blocked; drive time with `TestControl` (`tick`, `advanceAndTick`) or `Settled.timed`.
+  `scripts/check_test_sleeps.py` refuses a new `sleep`, `delayBy`, `andWait`, fs2 timer, `parkNanos`,
+  `onSpinWait`, `cede`, `Thread.yield` or sleep-poll helper in a source outside `src/main` (#870),
+  against a baseline that only shrinks: the change that removes a site commits the smaller
+  `docs/data/test-sleep-baseline.json`. It cannot tell `TestControl`'s clock from the wall clock, so
+  it refuses a new virtual-time sleep too, and it does not see a poll without those calls
+  (`ref.get.iterateUntil(p)`), which this rule forbids all the same. Bounded negative observations
+  without a product-side hook remain tracked in #251; a new sleep for one is still refused.
 - Opaque types, type classes with extension syntax, instances in companions, `derives` where it
   works, Monocle optics for nested state. Type parameters for roles and eras (`KeyHash[StakePool]`,
   `LedgerState[Conway]`).
@@ -113,7 +128,14 @@ scala code … I love the use of type parameters when I can use them"*.
   requested with clearly defined trade-offs and reasoning. Only after that approval is it
   implemented, with a written reason that records the approval. Existing code, earlier PRs, review
   notes and design documents are not approval. If exact fidelity seems impossible, stop and ask the
-  owner.
+  owner. For overflow, underflow and narrowing, follow
+  [ADR 0001's arithmetic procedure](docs/adr/0001-haskell-node-as-reference.md#amendment-2026-11-09-checked-arithmetic-and-compatibility)
+  before choosing the boundary behavior; a reference bug is not blanket permission to change it.
+  Decisions recorded by the owner's `ottobot-ai` account are the owner's.
+- Path names and their encoding are settled by the owner's rule in the
+  [decisions register](docs/decisions.md#networking-and-local-clients) (#953): do not chase the reference's
+  behaviour at other bytes or locales; only the owner reopens the rule. It is not a precedent: any other
+  deviation still needs the owner's approval first.
 - Pure rules; exact `Rational` arithmetic; anything hashed or signed is hashed over its original bytes,
   except where the reference itself signs a re-encoding: a header's KES signature covers its body
   encoded again (`Praos/BlockHeader.hs:113-117`, cardano-ledger f649f975), its hash the original
@@ -158,16 +180,19 @@ scala code … I love the use of type parameters when I can use them"*.
 - Name the level of your change and run its gates, no more
   ([CONTRIBUTING.md](CONTRIBUTING.md#gates-and-ceremony-by-level-of-change)): at least `check`
   (formatting, `-Werror`, every module's tests, scalafix), plus one scenario per area touched.
-  A documentation-only change (level 0) needs only that its relative links resolve.
+  A documentation-only change (level 0) needs only that its relative links resolve, and a design document
+  or ADR also has its reference claims checked against the pinned source ([CONTRIBUTING.md](CONTRIBUTING.md#levels)).
   Soak, repeats and the long network replays are nightly CI's, not yours, unless your stage's design
   names them as its jump gate.
 - A persisted format must not change without a version bump, a migration and a test that reads the
   previous version ([ADR 0006](docs/adr/0006-versioned-formats-migrate-on-open.md)). The snapshot
-  fingerprint golden in `node/src/test/.../storage/CodecSuite.scala` guards this.
+  goldens in `node/src/test/.../storage/CodecSuite.scala` guard this: the schema fingerprints of the
+  sidecar and the checkpoint binding, and the bytes of the V10 header's recorded reference build.
 - Record evidence where the [definition of done](docs/process.md#definition-of-done) says, and track
-  every gap you leave as an issue or roadmap item.
+  every gap you leave as an issue or roadmap item; a P2 gap goes into its parent issue's checklist
+  (`python3 scripts/file_issue.py --parent N`, [process](docs/process.md#lifecycle-of-an-item)).
 - Maintained native snapshot fixtures and ordinary snapshot test builders use the current native
-  format (V8, `fixtures/snapshot-v8`; the V5 and V7 files are the previous-version inputs), and
+  format (V10, `fixtures/snapshot-v10`; the V5, V7, V8 and V9 files are the previous-version inputs), and
   assertions read typed native state directly instead of completing flat-state adapters. Keep pinned conversion provenance and preserve original private archives outside the
   checkout. A future persisted-format change still needs its previous-version read test and
   migration; generic toy-format migration framework tests remain independent of native fixtures.

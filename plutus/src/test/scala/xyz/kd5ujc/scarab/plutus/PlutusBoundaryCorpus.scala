@@ -106,9 +106,8 @@ object PlutusBoundaryCorpus:
     text("case-data", "(program 1.1.0 (case (con data (Constr 0 [])) (lam fields (con unit ()))))")
   ) ++ Vector("G1", "G2").flatMap { group =>
     Vector("zero", "on-curve-bit3-clear", "on-curve-bit3-set").map { name =>
-      val file =
-        s"/${PlutusConformanceSuite.Directory}/builtin/parser/bls12-381/$group/$name/$name.uplc"
-      val literal = resource(file)
+      val file = s"builtin/parser/bls12-381/$group/$name/$name.uplc"
+      val literal = conformance(file)
       val encoded = "0x([0-9a-fA-F]+)".r
         .findFirstMatchIn(literal)
         .fold(sys.error(s"missing BLS literal $file"))(_.group(1))
@@ -123,11 +122,11 @@ object PlutusBoundaryCorpus:
     "builtin/semantics/bls12_381-cardano-crypto-tests/signature/large-dst"
   ).map { id =>
     val name = id.split('/').last
-    val base = s"/${PlutusConformanceSuite.Directory}/$id/$name"
+    val base = s"$id/$name"
     val actual =
-      Program.parseUplc(resource(base + ".uplc")).fold(e => sys.error(e.toString), identity)
+      Program.parseUplc(conformance(base + ".uplc")).fold(e => sys.error(e.toString), identity)
     val expected = Program
-      .parseUplc(resource(base + ".uplc.expected"))
+      .parseUplc(conformance(base + ".uplc.expected"))
       .fold(e => sys.error(e.toString), identity)
     val equal = expected.term match
       case Term.Const(Constant.Bool(true), _) => actual.term
@@ -160,12 +159,7 @@ object PlutusBoundaryCorpus:
     }
   } ++ Vector("dropList-09", "dropList-10", "dropList-14", "dropList-15", "dropList-16").map {
     name =>
-      val file = s"/${PlutusConformanceSuite.Directory}/builtin/semantics/dropList/$name/$name.uplc"
-      val in = getClass.getResourceAsStream(file)
-      val program =
-        try String(in.readAllBytes(), "UTF-8")
-        finally in.close()
-      text(name, program)
+      text(name, conformance(s"builtin/semantics/dropList/$name/$name.uplc"))
   }
 
   private lazy val hashVectors: Vector[Json] =
@@ -176,12 +170,13 @@ object PlutusBoundaryCorpus:
       .toVector
       .map(line => io.circe.parser.parse(line).fold(throw _, identity))
 
-  private def resource(name: String): String =
-    val in = getClass.getResourceAsStream(name)
-    try String(in.readAllBytes(), "UTF-8")
-    finally in.close()
+  /** A file of the conformance cases [[PlutusConformanceSuite]] runs. */
+  private def conformance(name: String): String =
+    PlutusConformanceSuite.reference.read(s"${PlutusConformanceSuite.Conformance}/$name")
 
-  def costModel(language: PlutusLanguage, protocol: Int): Vector[Long] =
+  def costModel(plutusLanguage: PlutusLanguage, protocol: Int): Vector[Long] =
+    // a PlutusV4 cost model is a PlutusV3 one (`plutusVXParamNames`, cardano-ledger 9df9f98c)
+    val language = plutusLanguage.evaluatedAs
     val variant =
       if language == PlutusLanguage.V3 then (if protocol < 11 then "C" else "E")
       else if protocol < 11 then "B"
@@ -204,13 +199,13 @@ object PlutusBoundaryCorpus:
       }
       .toVector
 
-  def main(args: Array[String]): Unit =
+  def write(args: Array[String]): Unit =
     val out = Path.of(args.headOption.getOrElse("/oracle/requests.jsonl"))
     val evaluator = ScalusEvaluator.pure
     val decoder = ScalusEvaluator.pureDecoder
     val rows = for
       probe <- probes
-      language <- PlutusLanguage.values.toVector
+      language <- PlutusLanguage.values.toVector.filterNot(_ == PlutusLanguage.V4)
       protocol <- Vector(9, 10, 11)
     yield
       val model = costModel(language, protocol)

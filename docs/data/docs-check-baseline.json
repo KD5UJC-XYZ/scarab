@@ -78,12 +78,6 @@
    "count": 1
   },
   {
-   "kind": "unregistered-pin",
-   "path": "docs/adr/0016-peer-states-and-the-governor.md",
-   "key": "ouroboros-network 1.2.0.0",
-   "count": 1
-  },
-  {
    "kind": "missing-symbol",
    "path": "docs/adr/0017-fibers-end-with-values.md",
    "key": "Peer.carryingNetwork",
@@ -375,12 +369,6 @@
    "kind": "missing-path",
    "path": "docs/architecture/relay.md",
    "key": "network/Mux.scala",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/architecture/relay.md",
-   "key": "ouroboros-network 1.2.0.0",
    "count": 1
   },
   {
@@ -1266,12 +1254,6 @@
    "count": 1
   },
   {
-   "kind": "unregistered-pin",
-   "path": "docs/design/peer-selection/g1-1-as-built.md",
-   "key": "ouroboros-network 1.2.0.0",
-   "count": 1
-  },
-  {
    "kind": "missing-path",
    "path": "docs/design/peer-selection/g1-3-as-built.md",
    "key": "node/Topology.scala",
@@ -1287,12 +1269,6 @@
    "kind": "missing-symbol",
    "path": "docs/design/peer-selection/g1-3-as-built.md",
    "key": "Source.BigLedger",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/design/peer-selection/g1-3-as-built.md",
-   "key": "cardano-ledger@048b78d",
    "count": 1
   },
   {
@@ -1341,12 +1317,6 @@
    "kind": "missing-symbol",
    "path": "docs/design/peer-selection/reference-model.md",
    "key": "Monitor.ledgerPeerSnapshotChange",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/design/peer-selection/reference-model.md",
-   "key": "ouroboros-network 1.2.0.0",
    "count": 1
   },
   {
@@ -1474,12 +1444,6 @@
    "path": "docs/findings.md",
    "key": "ouroboros-consensus 4.2.0.1",
    "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/findings.md",
-   "key": "ouroboros-network 1.2.0.0",
-   "count": 2
   },
   {
    "kind": "unregistered-pin",
@@ -2025,12 +1989,6 @@
    "kind": "unregistered-pin",
    "path": "docs/running/snapshots.md",
    "key": "ouroboros-consensus 4.2.0.0",
-   "count": 1
-  },
-  {
-   "kind": "unregistered-pin",
-   "path": "docs/running/troubleshooting.md",
-   "key": "ouroboros-network 1.2.0.0",
    "count": 1
   }
  ]

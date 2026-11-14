@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # The monitoring server: Prometheus (metrics, with the remote-write receiver the agents push to),
-# Loki (log streams) and Grafana. Prometheus and Loki are published on BIND_ADDR only (on monitor-host, its
+# Alertmanager (notifications for its alert rules), Loki (log streams) and Grafana. Prometheus and Loki are published on BIND_ADDR only (on monitor-host, its
 # VPN address); Grafana on GRAFANA_BIND_ADDR, which defaults to BIND_ADDR (on monitor-host, 0.0.0.0, so
 # the home network reaches it too). Settings come from .env next to this file (see .env.example).
 name: scarab-monitoring
@@ -21,6 +21,21 @@ services:
       - ${DATA_DIR:-./data}/prometheus:/prometheus
     ports:
       - ${BIND_ADDR:-127.0.0.1}:9090:9090
+
+  # Routes the firing rules to the receivers in alertmanager/alertmanager.yml. That file is the operator's and is
+  # not committed; deploy.sh starts it from alertmanager.example.yml (which sends nothing) and never overwrites it.
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    restart: unless-stopped
+    user: "65534:65534"
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ${DATA_DIR:-./data}/alertmanager:/alertmanager
+    ports:
+      - ${BIND_ADDR:-127.0.0.1}:9093:9093
 
   loki:
     image: grafana/loki:3.5.3

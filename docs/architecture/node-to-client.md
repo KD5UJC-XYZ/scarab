@@ -67,7 +67,9 @@ of the reference scripts of its inputs and reference inputs (`Entry.refScriptByt
 added); the capacity is the one the pool enforces (`MempoolState.capacity`, `Capacity.of`, which also does the
 measures): `computeMempoolCapacity`, a whole number of units, a unit being `maxBlockBodySize -
 1024` bytes, `maxBlockExUnits` and 1 MiB of reference scripts, and the number of units `ceil(--mempool-bytes /
-unit)` (the reference's override rule, and 2 without one). `GetSizes` describes the whole snapshot,
+unit)` (the reference's override rule, and 2 without one). Scarab does not wrap the capacity where the
+reference's `Word32` arithmetic does; `GetSizes` sends a capacity or a size above 2^32 - 1 as 2^32 - 1, and a
+measure is an integer of any size, so a reply always encodes ([approved deviation](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849)). `GetSizes` describes the whole snapshot,
 `GetMeasures` only the transactions `NextTx` has not handed out (the reference's quirk). A transaction is
 `[6, #6.24(tx)]`, an id `[6, h'32 bytes']`.
 

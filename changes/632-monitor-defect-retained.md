@@ -1,0 +1,3 @@
+### Fixed (network, #632)
+
+- An outbound connection whose monitor fails with a defect of our own now retains that defect in its application results before the connection is released, as every other abort does. The connection's race of its release against the multiplexer's closure could see the release first, and an application waiting between messages (KeepAlive between pings) then stayed `Running`: the connection's retained report carried no failure. `OutboundMonitorFailureSuite` waits on the node's and the governor's callbacks instead of polling, and checks the retained failure at the moment the node is told of the loss.

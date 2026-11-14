@@ -56,7 +56,7 @@ object GenesisMirror:
                     WithOrigin.Origin,
                     i.nes,
                     ShelleyTransition(Word32.fromUnsigned(0)),
-                    None
+                    ShelleyLedgerState.Layout.Node11_1(None)
                   )
                 )
               )
@@ -66,7 +66,11 @@ object GenesisMirror:
             .make(past, Current(current.start, dep))
             .leftMap(StateMirrorError.Telescope(_))
         yield MirrorState(
-          ExtLedgerState(ledger, HeaderState(WithOrigin.Origin, header)),
+          ExtLedgerState(
+            ledger,
+            HeaderState(WithOrigin.Origin, header),
+            ExtLedgerState.Layout.Node11_1
+          ),
           MirrorExtras.InShelley(NodeExtras(PlutusStats.zero), consensus),
           MirrorProvenance.complete
         )

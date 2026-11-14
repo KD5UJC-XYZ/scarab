@@ -9,6 +9,7 @@ import io.circe.{ACursor, Decoder, Json}
 import xyz.kd5ujc.scarab.codec.Node
 import xyz.kd5ujc.scarab.ledger.ConfigError
 import xyz.kd5ujc.scarab.ledger.Nonce
+import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
 
 /** Conway pool (SPO) voting thresholds, in the order of the protocol-parameter encoding. */
 final case class PoolVotingThresholds(
@@ -91,6 +92,14 @@ object DRepVotingThresholds:
   *   Alonzo minimum lovelace per 8-byte word of output.
   * @param costModels
   *   Cost model values by language tag (0 = PlutusV1), in the canonical parameter order.
+  * @param maxRefScriptSizePerBlock
+  *   The first of the fields Dijkstra adds (`DijkstraPParams`, cardano-ledger 9df9f98c
+  *   `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:228-299`), in the order of the
+  *   record and of their update keys 34 to 56. Before Dijkstra they are zero or none.
+  * @param maxPledgeLeverage
+  *   `MaxPledgeLeverage`, a `NonNegativeInterval` or none (`Core/PParams.hs:369-373`).
+  * @param perasBootstrapRound
+  *   a `Word32` or none.
   */
 final case class ProtocolParams(
     minFeeA: BigInt,
@@ -129,10 +138,40 @@ final case class ProtocolParams(
     poolVotingThresholds: PoolVotingThresholds = PoolVotingThresholds.zero,
     drepVotingThresholds: DRepVotingThresholds = DRepVotingThresholds.zero,
     committeeMinSize: BigInt = 0,
-    committeeMaxTermLength: BigInt = 0
+    committeeMaxTermLength: BigInt = 0,
+    maxRefScriptSizePerBlock: BigInt = 0,
+    maxRefScriptSizePerTx: BigInt = 0,
+    refScriptCostStride: BigInt = 0,
+    refScriptCostMultiplier: Rational = Rational.zero,
+    maxPledgeLeverage: Option[Rational] = None,
+    minPoolMargin: Rational = Rational.zero,
+    leiosAnnouncementPeriodLength: BigInt = 0,
+    leiosVotePeriodLength: BigInt = 0,
+    leiosDiffusionPeriodLength: BigInt = 0,
+    leiosCommitteeSize: BigInt = 0,
+    leiosQuorumStakeThreshold: Rational = Rational.zero,
+    maxEndorserBlockReferencesSize: BigInt = 0,
+    maxEndorserBlockTxsSize: BigInt = 0,
+    maxEndorserBlockExUnits: ExUnits = ExUnits.zero,
+    maxRefScriptSizePerEndorserBlock: BigInt = 0,
+    perasMinCandidateBlockAge: BigInt = 0,
+    perasHealingFactor: Rational = Rational.zero,
+    perasCertBoost: BigInt = 0,
+    perasTargetCommitteeSize: BigInt = 0,
+    perasBootstrapRound: Option[BigInt] = None,
+    perasQuorumThresholdSafetyMargin: Rational = Rational.zero,
+    refInputsCostPerMultiAssetPolicy: BigInt = 0,
+    refInputsCostPerDatumByte: BigInt = 0
 ):
-  /** The effective decentralisation parameter (Babbage removed `d`). */
-  def effectiveD: Rational = if protocolMajor >= 7 then Rational.zero else d
+  /** `ppDG` of the era: the parameter through Alonzo (`Alonzo/PParams.hs:338`), zero from Babbage
+    * (`Babbage/PParams.hs:198`, cardano-ledger f649f975), whatever the protocol version.
+    */
+  def effectiveD[E <: EraTag](using era: ShelleyBasedEra[E]): Rational = era match
+    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+        ShelleyBasedEra.SAlonzo =>
+      d
+    case ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway | ShelleyBasedEra.SDijkstra =>
+      Rational.zero
 
   def version: (BigInt, BigInt) = (protocolMajor, protocolMinor)
 
@@ -357,15 +396,15 @@ object ProtocolParams:
   private def genesisCostModel(problem: CostModelProblem): ConfigError =
     ConfigError(ConfigProblem.GenesisCostModel(problem))
 
-  /** Apply a protocol-parameter update (field index -> original CBOR). Key 17 is the lovelace per
-    * UTxO word in the eras before Babbage (`Alonzo/PParams.hs:664`) and per byte from Babbage
-    * (`Babbage/PParams.hs`); which one is decided by the version of the parameters the update is
-    * applied to, not by the version it sets, because the update is applied by the rules of the era
-    * it was proposed in and the translation follows. Crossing into Babbage then derives
-    * `coinsPerUTxOByte` from the per-word value, rounded down (`upgradeBabbagePParams True`,
-    * `Babbage/PParams.hs:389-391`), also when the same update names key 17.
+  /** Apply a protocol-parameter update in the era that proposed it (field index -> original CBOR).
+    * Key 17 is per UTxO word in Alonzo (`Alonzo/PParams.hs:658-664`), per byte from Babbage
+    * (`Babbage/PParams.hs:405-412`, cardano-ledger f649f975). A version update does not translate
+    * parameters: [[rules.Translate.alonzoToBabbage]] converts the cost per word to the cost per
+    * byte when the ledger enters Babbage, including its future parameters.
     */
-  def update(p: ProtocolParams, u: ParamUpdate): Either[LedgerDecodeError, ProtocolParams] =
+  def update[E <: EraTag](p: ProtocolParams, u: ParamUpdate)(using
+      era: ShelleyBasedEra[E]
+  ): Either[LedgerDecodeError, ProtocolParams] =
     // The fields are the original bytes of an update that was read before, from a body or from a
     // stored state: they are applied in any form that read took.
     given ByteStrings = ByteStrings.Chunked
@@ -416,7 +455,7 @@ object ProtocolParams:
       field(16)(uint(DecodeField.MinPoolCost)((p, v) => p.copy(minPoolCost = v))),
       field(17)(
         uint(DecodeField.CoinsPerUTxO)((acc, v) =>
-          if p.protocolMajor >= 7 then acc.copy(coinsPerUTxOByte = v)
+          if era.atLeast(ShelleyBasedEra.SBabbage) then acc.copy(coinsPerUTxOByte = v)
           else acc.copy(coinsPerUTxOWord = v)
         )
       ),
@@ -461,11 +500,7 @@ object ProtocolParams:
         )
       )
     )
-    for updated <- steps.foldLeftM(p)((acc, step) => step(acc))
-    yield
-      if p.protocolMajor < 7 && updated.protocolMajor >= 7 then
-        updated.copy(coinsPerUTxOByte = updated.coinsPerUTxOWord / 8)
-      else updated
+    steps.foldLeftM(p)((acc, step) => step(acc))
 
   private def rationals(n: Node, what: DecodeSite): Either[LedgerDecodeError, Vector[Rational]] =
     CborRead.array(n, what).flatMap(_.traverse(CborRead.rational(_, what, CborRead.Bound.Unit)))

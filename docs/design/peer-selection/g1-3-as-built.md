@@ -101,7 +101,7 @@ example, versions 1 and 2, the relay forms, exact stakes, the refusals by case);
 Branch `g1/3b-ledger-peers-wiring`, on `main` after G1.1, G1.2 and G1.3a: [#137](https://github.com/KD5UJC-XYZ/scarab/issues/137) completed. Level 3 (it
 touches the decision function, the network wiring, the topology and a decoder). Sources: the files of section 1.1; the governor files of the
 copy of ouroboros-network `main` in the workspace (1.3.0.0), which agree with the pin at the lines cited (`BigLedgerPeers.hs`,
-`EstablishedPeers.hs` 342-430 and 780-882, `ActivePeers.hs` 122-198 and 679-754, `Types.hs` 1228-1336, `PublicRootPeers.hs`,
+`EstablishedPeers.hs` 342-430 and 780-882, `ActivePeers.hs` 122-198 and 679-753, `Types.hs` 1210-1318, `PublicRootPeers.hs`,
 `RootPeers.hs` 150-260, `Cardano/.../Monitor.hs` 474-682, `PeerSelectionActions.hs`), `cardano-node` `Run.hs` 705-760 and
 `TopologyP2P.hs` 60-170 for the snapshot file, and cardano-ledger-binary 1.9.1.0 `Encoder.hs` 555-580 for the relays.
 
@@ -122,12 +122,12 @@ copy of ouroboros-network `main` in the workspace (1.3.0.0), which agree with th
 **What the reading established** (the reference's behaviour, each of which the code follows):
 
 1. *Big ledger peers are roots.* `rootPeersSet` is `PublicRootPeers.toSet` (ledger, big ledger and the extra peers: configured roots and bootstrap peers)
-   with the local roots (`Types.hs` 1310), so a big ledger peer counts towards the root target, and the request for public roots does not
+   with the local roots (`Types.hs` 1292), so a big ledger peer counts towards the root target, and the request for public roots does not
    turn a known big ledger peer into an ordinary one (`RootPeers.hs` 163-168, `fromDisjointSets`, `PublicRootPeers.hs` 154-158).
-2. *The ordinary views exclude them* (`Types.hs` 1314-1316: "number of known peers excluding big ledger peers"), so `Counters.known`, `established`
+2. *The ordinary views exclude them* (`Types.hs` 1296-1298: "number of known peers excluding big ledger peers"), so `Counters.known`, `established`
    and `active` are the ordinary ones, no ordinary family sees a big ledger peer, and the two targets are independent. `View.known` and the sets
    beside it leave out `Origin.BigLedger`; `View.big` has the same names for them.
-3. *The order of the families* (`Governor.hs` 695-727 and the `<>` of each module): the request and the forgetting of big ledger peers
+3. *The order of the families* (`Governor.hs` 694-726 and the `<>` of each module): the request and the forgetting of big ledger peers
    between the local roots and the request for public roots; in each of connect, close, activate and deactivate the big ledger family first.
 4. *`enableProgressMakingActions` is `not requiresBootstrapPeers`*: it switches off the request for big ledger peers and the promotions of
    big ledger peers to warm and to hot. Their forgetting and their demotions stay on, which is how the targets of zero of a node that became too old shed them.

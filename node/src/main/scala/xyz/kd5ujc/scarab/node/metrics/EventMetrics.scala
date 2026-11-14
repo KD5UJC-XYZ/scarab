@@ -24,7 +24,13 @@ import xyz.kd5ujc.scarab.node.{
   PeerNetwork,
   StallWatchdog
 }
-import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents, ForgeTrace, KesInfo}
+import xyz.kd5ujc.scarab.node.forge.{
+  BlockForgingState,
+  ForgeEvent,
+  ForgeEvents,
+  ForgeTrace,
+  KesInfo
+}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
@@ -94,8 +100,13 @@ final class EventMetrics[F[_]: Sync] private (
         metrics.set(remainingKesPeriods, number(remaining))
 
     def emit(event: ForgeEvent): F[Unit] = event match
+      // `forging_enabled` of the reference's `BlockForgingUpdate` (cardano-node 11.1.3
+      // `Tracers/Startup.hs` 301-307)
+      case ForgeEvent.BlockForgingUpdate(state) =>
+        val enabled: Double = if state == BlockForgingState.EnabledBlockForging then 1.0 else 0.0
+        metrics.set(forgingEnabled, enabled)
       case ForgeEvent.Started(_, _, _, _, counter, _) =>
-        metrics.set(opCertCounter, number(counter)) *> metrics.set(forgingEnabled, 1.0)
+        metrics.set(opCertCounter, number(counter))
       case ForgeEvent.KesReloaded(counter, _, _, _) =>
         metrics.set(opCertCounter, number(counter)) *> metrics.inc(kesReloads, ReloadLabel.Reloaded)
       case ForgeEvent.KesReloadRefused(_)    => metrics.inc(kesReloads, ReloadLabel.Refused)
@@ -110,7 +121,8 @@ final class EventMetrics[F[_]: Sync] private (
       case ForgeEvent.Loop(_) | ForgeEvent.Clock(_) |
           ForgeEvent.Forged(_, _, _, _, _, _, _, _, _, _, _, _) | ForgeEvent.KesEvolved(_, _) |
           ForgeEvent.Lost(_, _, _) | ForgeEvent.Failed(_, _) | ForgeEvent.EpochSummary(_, _) |
-          ForgeEvent.KeyFileGroupAccess(_, _) =>
+          ForgeEvent.KeyFileGroupAccess(_, _) | ForgeEvent.KesFileAbsent(_, _) |
+          ForgeEvent.KesWrittenByRename(_) =>
         // counted from the forger's own statistics at every scrape ([[Collectors.forging]])
         Sync[F].unit
 
@@ -167,8 +179,10 @@ final class EventMetrics[F[_]: Sync] private (
         replayReached(Some(at), replayed, millis)
       case StorageEvent.ReplayFinished(at, replayed, millis) =>
         replayReached(at, replayed, millis)
-      case StorageEvent.NetworkRecorded(_, _) | StorageEvent.VolatileOpened(_) |
-          StorageEvent.VolatileResumed(_, _, _) | StorageEvent.ShutdownSnapshot(_, _) =>
+      case StorageEvent.NetworkRecorded(_, _, _) | StorageEvent.VolatileOpened(_) |
+          StorageEvent.VolatileResumed(_, _, _) | StorageEvent.ShutdownSnapshot(_, _) |
+          StorageEvent.SnapshotDeleted(_) | StorageEvent.SnapshotNotDeleted(_, _) |
+          StorageEvent.CheckpointNotDeleted(_, _) =>
         Sync[F].unit
 
   val connection: ConnectionEvents[F] = new ConnectionEvents[F]:
@@ -179,6 +193,7 @@ final class EventMetrics[F[_]: Sync] private (
         case ConnectionEvent.Changed(_, _, _) => count(ConnectionEventLabel.Changed)
         case ConnectionEvent.Refused(_)       => count(ConnectionEventLabel.Refused)
         case ConnectionEvent.Closed(_, _, _)  => count(ConnectionEventLabel.Closed)
+        case ConnectionEvent.Pruned(_, _, _)  => count(ConnectionEventLabel.Pruned)
         case ConnectionEvent.AcceptRateLimited(_, _) | ConnectionEvent.AcceptHardLimit(_) |
             ConnectionEvent.AcceptResumed(_) =>
           Sync[F].unit
@@ -190,13 +205,8 @@ final class EventMetrics[F[_]: Sync] private (
         case InboundEvent.Accepted       => InboundEventLabel.Accepted
         case InboundEvent.Duplex         => InboundEventLabel.Duplex
         case InboundEvent.Unidirectional => InboundEventLabel.Unidirectional
-        case InboundEvent.Following(_)   => InboundEventLabel.Following
-        case InboundEvent.SessionEnded(_, dropped) =>
-          if dropped then InboundEventLabel.SessionDropped else InboundEventLabel.SessionEnded
-        case InboundEvent.SessionReturned(_, _)        => InboundEventLabel.SessionReturned
-        case InboundEvent.CachedBlockRejected(_, _, _) => InboundEventLabel.CachedBlockRejected
-        case InboundEvent.Closed(_)                    => InboundEventLabel.Closed
-        case InboundEvent.Refused(_)                   => InboundEventLabel.Refused
+        case InboundEvent.Closed(_)      => InboundEventLabel.Closed
+        case InboundEvent.Refused(_)     => InboundEventLabel.Refused
     )
 
   /** What the peer governor tells: its decisions as counts, its counters as the gauges of the

@@ -31,7 +31,7 @@ class BlockFetchRetirementSuite extends FailsOnUncaught:
 
   private def warm(using Net): Resource[IO, WarmConnection[IO, Bytes, Unit]] =
     Resource.eval(Bearer.inMemory[IO]()).flatMap { (ours, theirs) =>
-      typed(NodeToNodeServer.accept(theirs, 42L, handlers)).void.background
+      typed(Served.accept(theirs, 42L, handlers)).void.background
         .flatMap(_ => NodeToNode.warmOver[IO, Bytes](ours, 42L, ChainSyncFixtures.rawItem))
     }
 

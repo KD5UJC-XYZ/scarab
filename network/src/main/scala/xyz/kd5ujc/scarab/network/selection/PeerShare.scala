@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.protocol.PeerSharing
 /** The server side of peer sharing as a pure function: which known peers may be told to others and
   * which of them one answer names. The reference keeps the same split: the governor publishes the
   * set of peers available to share (`getPeerSharingResponsePeers`,
-  * `PS/State/KnownPeers.hs:580-592`, `toPublicState`, `Governor/Types.hs:854-862`) and the server
+  * `PS/State/KnownPeers.hs:580-592`, `toPublicState`, `Governor/Types.hs:836-844`) and the server
   * draws from it (`computePeerSharingPeers`, `ON/PeerSharing.hs:203-237`).
   *
   * The server needs only the state of the known peers, never a connection, so the answer is a pure
@@ -24,6 +24,21 @@ object PeerShare:
     case Failed(error: xyz.kd5ujc.scarab.network.NetworkError)
     case TimedOut()
 
+  /** One round of peer-share requests, until each asked peer has answered or timed out.
+    *
+    * @param remaining
+    *   How many new peers the round may still add: at first the objective, the known-peer target
+    *   less the known peers.
+    * @param salt
+    *   A fresh random salt, by whose hash [[completed]] orders the new peers before it keeps at
+    *   most `remaining`: the order of ouroboros-network 2fb69829 (`jobPeerShare actions policy salt
+    *   (Objective objective)`, `Governor/KnownPeers.hs:202`). In c45735a5, which cardano-node
+    *   11.1.3 links, the call passes the objective where the salt goes and the salt where the cap
+    *   goes (`Governor/KnownPeers.hs:200-201,262-267`), so the new peers are ordered by a hash
+    *   salted with the objective and cut to a random `Int` (`takeNPeers`, 275-278). A reference
+    *   bug, fixed upstream by `2e840f81f` (PR #5434, in 2fb69829), and not reproduced (#474;
+    *   `docs/decisions.md`, #956, 2026-11-14).
+    */
   final case class Batch[A](pending: Set[A], remaining: Int, salt: Long)
 
   /** Peer-sharing bookkeeping, separate from connection temperatures. A batch retains the remaining
@@ -129,7 +144,14 @@ object PeerShare:
 
   /** Filter against the state at completion, limit the whole batch objective, and retain failures
     * as discovery results. Existing peer metadata must never be overwritten by a duplicate answer
-    * (`KnownPeers.hs:316-445`).
+    * (`KnownPeers.hs:316-445`, ouroboros-network 2fb69829).
+    *
+    * A peer whose request failed or timed out is due again `Policy.peerShareFailureRetryTime` after
+    * the completion, as in 2fb69829 (upstream `e0c05c8be`, PR #5439). In c45735a5, which
+    * cardano-node 11.1.3 links, a completion leaves the time the request set, its start plus
+    * `policyPeerShareRetryTime` ("TODO: also update with the failures",
+    * `Governor/KnownPeers.hs:318,361`). An approved deviation (`docs/decisions.md`, #956,
+    * 2026-11-14).
     */
   private[selection] def completed[A: Ordering](
       st: GovernorState[A],

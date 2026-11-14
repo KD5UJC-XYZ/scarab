@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.IO
 import cats.mtl.Handle
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -91,7 +92,9 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
   // ---- the handover over a store
 
   private val setup =
-    NodeSetup.fromDirectory(JPath.of("fixtures/eras/genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(JPath.of("fixtures/eras/genesis"))
+      .fold(e => fail(e.message), identity)
 
   /** The genesis placeholder an earlier build wrote: the UTxO of the Shelley state the genesis
     * Byron UTxO hands over to (`Handover.toShelley`; the Shelley genesis of the capture has no
@@ -140,6 +143,7 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
             setup.byronRules,
             setup.handOver,
             setup.byronHistory,
+            xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
             utxoStore = Some(store)
           )
           // the Byron blocks, then each one's state reaches the immutable tip in turn

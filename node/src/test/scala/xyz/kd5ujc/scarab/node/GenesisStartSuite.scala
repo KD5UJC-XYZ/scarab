@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import io.circe.{Json, parser}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
@@ -50,7 +51,8 @@ class GenesisStartSuite extends FunSuite:
       case other => fail(s"not a Conway start: $other")
 
   private val unchanged = files((_, j) => j)
-  private val setup = NodeSetup.fromFiles(unchanged).fold(e => fail(e.message), identity)
+  private val setup =
+    NodeSetup.fromFiles(ReferenceBuild.Default)(unchanged).fold(e => fail(e.message), identity)
   private val nes = conwayOf(setup)
 
   private def hash[R <: KeyRole](hex: String): KeyHash[R] =
@@ -237,7 +239,7 @@ class GenesisStartSuite extends FunSuite:
   test("a genesis start at protocol 10 with only Shelley configured at epoch 0 stays in Shelley") {
     val later = Vector("Allegra", "Mary", "Alonzo", "Babbage", "Conway")
     val shelleyOnly = NodeSetup
-      .fromFiles(files { (name, value) =>
+      .fromFiles(ReferenceBuild.Default)(files { (name, value) =>
         if name == "configuration.yaml" then
           value.mapObject(o =>
             later.foldLeft(o)((acc, era) => acc.remove(s"Test${era}HardForkAtEpoch"))
@@ -260,7 +262,7 @@ class GenesisStartSuite extends FunSuite:
     })
     // configured up to Mary, the start is in Mary
     val toMary = NodeSetup
-      .fromFiles(files { (name, value) =>
+      .fromFiles(ReferenceBuild.Default)(files { (name, value) =>
         if name == "configuration.yaml" then
           value.mapObject(o =>
             later.drop(2).foldLeft(o)((acc, era) => acc.remove(s"Test${era}HardForkAtEpoch"))
@@ -274,7 +276,7 @@ class GenesisStartSuite extends FunSuite:
   Vector("initialFunds", "stakePools", "stakeCredentials", "initialDReps", "delegs").foreach {
     source =>
       test(s"$source requires an object when supplied, even for a Byron start") {
-        val result = NodeSetup.fromFiles(files { (name, value) =>
+        val result = NodeSetup.fromFiles(ReferenceBuild.Default)(files { (name, value) =>
           val started = byronStart(name, value)
           val genesis =
             if Set("initialDReps", "delegs")(source) then "conway-genesis.json"
@@ -345,7 +347,7 @@ class GenesisStartSuite extends FunSuite:
     "invalid Coin" -> Json.obj(enterpriseFund -> Json.fromString("1"))
   ).foreach { (label, funds) =>
     test(s"a Byron start validates unused initial funds: $label") {
-      val result = NodeSetup.fromFiles(files { (name, value) =>
+      val result = NodeSetup.fromFiles(ReferenceBuild.Default)(files { (name, value) =>
         val started = byronStart(name, value)
         if name == "shelley-genesis.json" then
           replaceExtra(started, "initialFunds", Json.obj("data" -> funds))
@@ -356,7 +358,7 @@ class GenesisStartSuite extends FunSuite:
   }
 
   test("a Byron start parses valid file metadata and conflicts without resolving either") {
-    val result = NodeSetup.fromFiles(files { (name, value) =>
+    val result = NodeSetup.fromFiles(ReferenceBuild.Default)(files { (name, value) =>
       val started = byronStart(name, value)
       if name == "shelley-genesis.json" then
         replaceExtra(
@@ -399,7 +401,7 @@ class GenesisStartSuite extends FunSuite:
     }
 
     test(s"a parsed Mainnet genesis retains signed Coin $amount until the injection guard") {
-      val result = NodeSetup.fromFiles(files { (name, value) =>
+      val result = NodeSetup.fromFiles(ReferenceBuild.Default)(files { (name, value) =>
         if name != "shelley-genesis.json" then value
         else
           value.deepMerge(
@@ -464,7 +466,7 @@ class GenesisStartSuite extends FunSuite:
 
   Vector(Json.fromString("1"), Json.fromBigDecimal(BigDecimal("1.5"))).foreach { amount =>
     test(s"Coin JSON syntax is checked before the Mainnet injection guard: ${amount.noSpaces}") {
-      val result = NodeSetup.fromFiles(files { (name, value) =>
+      val result = NodeSetup.fromFiles(ReferenceBuild.Default)(files { (name, value) =>
         if name != "shelley-genesis.json" then value
         else
           value.deepMerge(
@@ -492,7 +494,7 @@ class GenesisStartSuite extends FunSuite:
     )
     val overflowPointer = "40" + "19" * 28 + "90808080000000"
     assert(GenesisState.address(overflowPointer).isLeft)
-    val result = NodeSetup.fromFiles(files { (name, value) =>
+    val result = NodeSetup.fromFiles(ReferenceBuild.Default)(files { (name, value) =>
       if name != "shelley-genesis.json" then value
       else
         value.deepMerge(
@@ -554,7 +556,7 @@ class GenesisStartSuite extends FunSuite:
   }
 
   test("a negative initial fund without staking cannot enter the genesis UTxO") {
-    val result = NodeSetup.fromFiles(files { (name, value) =>
+    val result = NodeSetup.fromFiles(ReferenceBuild.Default)(files { (name, value) =>
       if name != "shelley-genesis.json" then value
       else
         value.deepMerge(
@@ -671,7 +673,9 @@ class GenesisStartSuite extends FunSuite:
     case _ => value
 
   test("a Byron hand-over keeps base cost models without the era-skipping injection") {
-    val byron = NodeSetup.fromFiles(files(byronStart)).fold(e => fail(e.message), identity)
+    val byron = NodeSetup
+      .fromFiles(ReferenceBuild.Default)(files(byronStart))
+      .fold(e => fail(e.message), identity)
     val context = byron.handOver.getOrElse(fail("a Byron start has no hand-over context"))
     val utxo = byron.mirrorStart.ext.ledgerState.state match
       case EraLedgerState.ByronCurrent(state) =>
@@ -718,7 +722,7 @@ class GenesisStartSuite extends FunSuite:
   }
 
   test("a Byron start does not construct outputs from unused initial-fund injections") {
-    val result = NodeSetup.fromFiles(files { (name, value) =>
+    val result = NodeSetup.fromFiles(ReferenceBuild.Default)(files { (name, value) =>
       val started = byronStart(name, value)
       if name != "shelley-genesis.json" then started
       else
@@ -739,7 +743,7 @@ class GenesisStartSuite extends FunSuite:
   /** The devnet genesis started in Shelley: the staking injection of the eras before Conway. */
   test("before Conway each injected staking key has the pointer of its position") {
     val shelley = NodeSetup
-      .fromFiles(files { (name, j) =>
+      .fromFiles(ReferenceBuild.Default)(files { (name, j) =>
         name match
           case "configuration.yaml" =>
             Vector("Allegra", "Mary", "Alonzo", "Babbage", "Conway")
@@ -769,7 +773,9 @@ class GenesisStartSuite extends FunSuite:
   }
 
   private def refusal(edit: (String, Json) => Json): ConfigProblem =
-    NodeSetup.fromFiles(files(edit)).fold(_.problem, s => fail(s"accepted: $s"))
+    NodeSetup
+      .fromFiles(ReferenceBuild.Default)(files(edit))
+      .fold(_.problem, s => fail(s"accepted: $s"))
 
   test("a staking key delegated to a pool the genesis does not register is refused") {
     val unknown = "ab" * 28
@@ -838,7 +844,7 @@ class GenesisStartSuite extends FunSuite:
     val loner = "ef" * 28
     val drep = "6902ee7cec9b7848293e11580953e11dce23f36289243163b476035f"
     val delegated = NodeSetup
-      .fromFiles(files { (name, j) =>
+      .fromFiles(ReferenceBuild.Default)(files { (name, j) =>
         if name != "conway-genesis.json" then j
         else
           j.deepMerge(

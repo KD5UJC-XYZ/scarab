@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.IO
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -18,7 +19,7 @@ import StorageTestKit.*
   */
 class IdentitySnapshotPreflightSuite extends CatsEffectSuite:
   private val setup = NodeSetup
-    .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
+    .fromDirectory(ReferenceBuild.Default)(java.nio.file.Path.of("fixtures/eras/genesis"))
     .fold(e => fail(e.message), identity)
   private val snapshotName = "snapshot-99999999999999999999-1.bin"
   private val chunkSlots = 100L
@@ -93,7 +94,7 @@ class IdentitySnapshotPreflightSuite extends CatsEffectSuite:
 
   test("unknown snapshot version leaves an adoption candidate byte-for-byte unchanged") {
     tempDir.use { dir =>
-      val futureSnapshot = "SCRBSNP9".getBytes(StandardCharsets.US_ASCII)
+      val futureSnapshot = "SCRBSNPB".getBytes(StandardCharsets.US_ASCII)
       for
         _ <- seed(dir, futureSnapshot)
         original <- tree(dir)
@@ -116,7 +117,7 @@ class IdentitySnapshotPreflightSuite extends CatsEffectSuite:
   test("Main refuses an unknown snapshot before acquiring its UTXO backing") {
     tempDir.use { dir =>
       for
-        _ <- seed(dir, "SCRBSNP9".getBytes(StandardCharsets.US_ASCII))
+        _ <- seed(dir, "SCRBSNPB".getBytes(StandardCharsets.US_ASCII))
         original <- tree(dir)
         code <- Main.run(
           List(

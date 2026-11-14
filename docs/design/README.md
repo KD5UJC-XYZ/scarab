@@ -7,7 +7,7 @@ decisions they rest on are [ADRs](../adr/README.md).
 | Document | Status | Issue |
 |---|---|---|
 | [Rolling ChainSync pipeline](chainsync-pipeline.md) | Implementation under review; combined acceptance pending | [#310](https://github.com/KD5UJC-XYZ/scarab/issues/310) |
-| [KES agent mode](kes-agent.md) | Proposal; decisions settled (ADR 0023/0024), not implemented | [#38](https://github.com/KD5UJC-XYZ/scarab/issues/38) |
+| [KES agent mode](kes-agent.md) | Proposal; ADR 0023/0024 settled, revised and deviations approved 2026-11-07, not implemented | [#38](https://github.com/KD5UJC-XYZ/scarab/issues/38) |
 | [Ouroboros Genesis](genesis.md) | Implemented; local stage acceptance passed, review/main integration pending | [#33](https://github.com/KD5UJC-XYZ/scarab/issues/33) |
 | [Upstream conformance adapters](upstream-conformance.md) | As built for bounded adapters; remaining coverage tracked | [#49](https://github.com/KD5UJC-XYZ/scarab/issues/49) |
 | [Releases and repository hardening](releases.md) | Owner decisions accepted; implementation staged | [#161](https://github.com/KD5UJC-XYZ/scarab/issues/161), [#75](https://github.com/KD5UJC-XYZ/scarab/issues/75), [#76](https://github.com/KD5UJC-XYZ/scarab/issues/76) |
@@ -27,6 +27,7 @@ decisions they rest on are [ADRs](../adr/README.md).
 | [Peer selection: the P2P governor](peer-selection.md) | As built; G1.1–G1.4 and original parent acceptance evidenced | [#31](https://github.com/KD5UJC-XYZ/scarab/issues/31) |
 | [Network resource limits](network-limits.md) | As built; reference state/queue/SDU matrix and explicit local profiles | [#35](https://github.com/KD5UJC-XYZ/scarab/issues/35) |
 | [Haskell snapshot import and export](haskell-snapshots.md) | Accepted (D1–D9); S1–S5 complete, including recorded preprod acceptance | [#140](https://github.com/KD5UJC-XYZ/scarab/issues/140), [#143](https://github.com/KD5UJC-XYZ/scarab/issues/143) |
+| [Block-producer failover](block-producer-failover.md) | Proposal (research); S0 mirrors the reference, later stages need owner approval | [#906](https://github.com/KD5UJC-XYZ/scarab/issues/906) (S0) |
 | [Certified Mithril bootstrap](mithril-bootstrap.md) | Implemented; recorded-Preview acceptance and local integration gates complete | [#27](https://github.com/KD5UJC-XYZ/scarab/issues/27) |
 | [Deterministic adversarial schedules](adversarial-schedules.md) | As built; finite fixed-seed regression schedules, not a security proof; nightly seeded network-fault run of the devnet | [#78](https://github.com/KD5UJC-XYZ/scarab/issues/78), [#224](https://github.com/KD5UJC-XYZ/scarab/issues/224) |
 

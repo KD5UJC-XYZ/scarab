@@ -27,12 +27,23 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, EraLedger}
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.haskell.state.*
 
 /** Offline import of the Mem backend. The source and immutable database are read-only; all writes
   * happen in an owned sibling staging directory. A snapshot is published last, after its durable
   * checkpoint, and no existing ledger artifact is replaced.
+  *
+  * The `state` file is in the layout of the reference build that wrote the input database
+  * ([[Config.layout]], `--reference-build`): it must decode completely in that layout, and the
+  * state it decodes to goes into the snapshot, written again in that layout, with that build
+  * recorded ([[SnapshotV10]]). For the reference files the suites hold, that is the file's own
+  * bytes, but it is not a promise of byte identity: the encoding drops what the reference drops on
+  * reading (of two governance proposals with one id it keeps the first, `decSharePlusCBOR`,
+  * cardano-ledger f649f975, `Conway/Governance/Proposals.hs:401-406`, and the snapshot, read as
+  * written ([[ProposalsReading.AsWritten]]), keeps it alone), and it writes a value the layout
+  * allows in more than one form in the codec's form (`LeiosLayoutSuite` has two). Nothing is
+  * converted between builds.
   */
 object LedgerSnapshotImport:
   enum Trust:
@@ -47,7 +58,12 @@ object LedgerSnapshotImport:
     case Storage(error: StorageError)
     case Ancillary(error: AncillaryManifest.Error)
     case Metadata(error: MetaError)
-    case State(error: xyz.kd5ujc.scarab.models.runtime.DecodeError)
+
+    /** The `state` file does not decode completely in the layout of `build`. */
+    case State(build: ReferenceBuild, error: xyz.kd5ujc.scarab.models.runtime.DecodeError)
+
+    /** The state the file decodes to cannot be written again in its layout. */
+    case NotWritable(cause: StateNotWritable)
     case SourceNotRegular(file: String)
     case Tables(error: SnapshotTables.Error)
     case Byron, Origin
@@ -57,11 +73,18 @@ object LedgerSnapshotImport:
     case InstantStakeMismatch
     case LedgerTablesNotEmpty
     case EraMismatch(ledger: Era, header: Era)
+
+    /** A part of the Dijkstra era this build does not implement yet. */
+    case NotYet(part: xyz.kd5ujc.scarab.protocol.DijkstraNotYet)
     def message: String = this match
       case Storage(e) => e.message
-      case State(e)   => e.render
-      case other      => other.toString
+      case State(build, e) =>
+        s"the ledger state does not decode completely in the layout of the reference build ${build.describe}: ${e.render}"
+      case other => other.toString
 
+  /** @param layout
+    *   The codec of the reference build that wrote the input database.
+    */
   final case class Config(
       ledger: Path,
       db: Path,
@@ -69,14 +92,34 @@ object LedgerSnapshotImport:
       byronEpochSlots: BigInt,
       genesisParams: ProtocolParams,
       bootstrap: BootstrapState,
-      trust: Trust
+      trust: Trust,
+      layout: ReferenceLayout = ReferenceLayout.Release11_1
   )
-  final case class Report(anchor: BlockRef, era: Era, count: Long, coin: BigInt, evidence: Evidence)
+
+  /** @param build
+    *   The reference build recorded with the state bytes.
+    */
+  final case class Report(
+      anchor: BlockRef,
+      era: Era,
+      count: Long,
+      coin: BigInt,
+      evidence: Evidence,
+      build: ReferenceBuild
+  )
 
   private final case class Batch(utxo: Utxo, pending: Vector[(TxIn, TxOut)])
   private val BatchSize = 1024
 
   def run[F[_]: Async](config: Config)(using
+      outer: Handle[F, Error],
+      env: Ask[F, ConsensusMirrorEnv]
+  ): F[Report] = run(config, Async[F].unit)
+
+  /** As [[run]], notifying `copied` after source bytes reach a staging file. The callback runs
+    * before hashing and publication finish, so a test can hold a copy and cancel it there.
+    */
+  private[storage] def run[F[_]: Async](config: Config, copied: F[Unit])(using
       outer: Handle[F, Error],
       env: Ask[F, ConsensusMirrorEnv]
   ): F[Report] =
@@ -112,6 +155,9 @@ object LedgerSnapshotImport:
         files
           .readAll(source)
           .observe(files.writeAll(target))
+          .chunks
+          .evalTap(_ => copied)
+          .unchunks
           .through(fs2.hashing.Hashing.forSync[F].hash(fs2.hashing.HashAlgorithm.SHA256))
           .compile
           .lastOrError
@@ -180,11 +226,12 @@ object LedgerSnapshotImport:
     def prepare(stage: Path, source: Path, evidence: Evidence): F[Report] =
       for
         raw <- files.readAll(source / "state").compile.to(Chunk).map(c => Bytes.wrap(c.toArray))
-        file <- lift(HaskellLedgerFile.decode(raw).leftMap { error =>
+        file <- lift(config.layout.decode(raw).leftMap { error =>
           val classified = DecodeFailure.native("native ledger state", error)
           if DecodeFailure.terminal(classified) then Error.Storage(classified)
-          else Error.State(error)
+          else Error.State(config.layout.build, error)
         })
+        published <- lift(config.layout.encode(file).leftMap(Error.NotWritable(_)))
         ext <- lift(file.ext.toRight(Error.Byron))
         _ <- lift(
           Either.cond(
@@ -218,10 +265,15 @@ object LedgerSnapshotImport:
             given ShelleyBasedEra[e] = i.era
             val state = i.state.nes.es.ls.utxo
             val stamp = anchor.blockNo.toLong
-            val params =
-              Params.complete(i.era, EraLedger.curPParams(state.gov), config.genesisParams)
-            val previous =
-              Params.complete(i.era, EraLedger.prevPParams(state.gov), config.genesisParams)
+            val completed = for
+              params <- Params.complete(
+                i.era,
+                EraLedger.curPParams(state.gov),
+                config.genesisParams
+              )
+              previous <- Params
+                .complete(i.era, EraLedger.prevPParams(state.gov), config.genesisParams)
+            yield (params, previous)
             val observed = (ext.ledgerState.past.map(_.start) :+ ext.ledgerState.current.start)
               .zip(Era.values)
               .map((bound, era) => era -> bound.epoch)
@@ -236,6 +288,8 @@ object LedgerSnapshotImport:
               )
             )
             for
+              both <- lift(completed.leftMap(Error.NotYet(_)))
+              (params, previous) = both
               _ <- lift(Either.cond(state.utxo.utxo.isEmpty, (), Error.LedgerTablesNotEmpty))
               result <- RocksUtxoStore.resource[F](stage / "artifacts" / "utxo" / "live").use {
                 store =>
@@ -263,15 +317,15 @@ object LedgerSnapshotImport:
                 Set.empty,
                 SnapshotSidecar.Chain.InShelley(utxo, params, Some(previous), extras)
               )
-              content = SnapshotV8.framed(binding, sidecar, raw)
-              back <- SnapshotV8.format[F](SnapshotCheck.Structure).decode(content)
+              content = SnapshotV10.framed(config.layout.build, binding, sidecar, published)
+              back <- SnapshotV10.format[F](SnapshotCheck.Structure, config.layout).decode(content)
               _ <- lift(back.leftMap(Error.Storage(_)).void)
               snapshots = stage / "artifacts" / "snapshots"
               _ <- files.createDirectories(snapshots)
               hash = MessageDigest.getInstance("SHA-256").digest(content)
               _ <- AtomicFile
                 .replaceAll[F](snapshots / FileLedgerSnapshots.nameOf(anchor), Seq(content, hash))
-            yield Report(anchor, file.era, utxo.count, utxo.coin, evidence)
+            yield Report(anchor, file.era, utxo.count, utxo.coin, evidence, config.layout.build)
       yield report
 
     DatabaseOwnership

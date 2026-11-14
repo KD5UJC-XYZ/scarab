@@ -586,12 +586,13 @@
     {
       "id": "D6",
       "section": "D",
-      "title": "Mainnet sync",
+      "title": "Measured mainnet sync",
+      "detail": "; mainnet itself is synced from genesis to the tip",
       "priority": null,
       "issues": [
         25
       ],
-      "notes": "Mainnet sync. About 12M blocks: measure throughput and memory, then optimise."
+      "notes": "Measured mainnet sync. Mainnet is synced from genesis to the tip: the live follower reached the tip across several builds, each stop fixed and the run resumed on a newer build (the stops are in [evidence log 3](compatibility/evidence-log-3.md); [status of 2026-11-10](https://github.com/KD5UJC-XYZ/scarab/issues/25#issuecomment-6771192496)). What remains is one uninterrupted genesis-to-tip sync on a single build, its tip equal to a reference source, with throughput, RSS and disk recorded in [performance.md](performance.md); then optimise."
     },
     {
       "id": "D7",
@@ -618,11 +619,12 @@
       "id": "D9",
       "section": "D",
       "title": "Mainnet",
+      "detail": "; the tip is already followed after the genesis sync (D6)",
       "priority": "P1",
       "issues": [
         69
       ],
-      "notes": "Mainnet: start from a Mithril snapshot (E1), follow to the tip and stay there for a week, comparing the ledger at every epoch boundary (K7)."
+      "notes": "Mainnet: the live follower already follows the tip after syncing from genesis (D6). Remaining: start from a Mithril snapshot (E1), follow to the tip and stay there for a week, comparing the ledger at every epoch boundary (K7)."
     },
     {
       "id": "D10",
@@ -938,7 +940,7 @@
       "issues": [
         32
       ],
-      "notes": "Connection management: `ConnectionState` (pure life cycle), `ConnectionManager` (one connection per peer address, inbound and outbound limits, typed refusals, release on failure and cancellation) and `InboundGovernor`, which runs our ChainSync, BlockFetch and KeepAlive clients (the pipelined, header-validating peer, with the follower session) on every inbound duplex connection, so a peer that connected to us is a block source. Outbound connections go through the manager and wait for a peer's inbound duplex connection instead of dialling a second one. Evidence: `ConnectionManagerSuite`, `ConnectionStateSuite`, `InboundGovernorSuite` (in-memory), and the devnet `relay` scenario (the Haskell relay connects to the Scala node and the Scala node follows the relay over that connection; `GET /connections`). Remaining: the manager refuses excess inbound connections at its hard limit rather than selecting established inbound connections to prune (governor churn is implemented in G1); a peer that dials from an ephemeral port is not recognised as the peer we also dial; resource bounds and their explicit local profiles are in [G5](design/network-limits.md). Follow-up [#152](https://github.com/KD5UJC-XYZ/scarab/issues/152) is implemented: a candidate overtaken by the retained window drains pending work and re-intersects on the same connection; typed failures/cancellation, fresh header gates and bounded reuse have deterministic controls, and the unchanged relay300 gate passes. See the [recovery contract](design/network-limits.md#same-connection-chainsync-recovery-152) and compatibility evidence."
+      "notes": "Connection management: `ConnectionState` (pure life cycle), `ConnectionManager` (one connection per remote and local address, inbound and outbound limits, typed refusals, release on failure and cancellation) and `InboundGovernor`, which serves accepted connections. Since [#854](https://github.com/KD5UJC-XYZ/scarab/issues/854) one connection serves both sides of a peer as in the reference: the outbound governor reuses a peer's inbound duplex connection when it promotes the peer, and our clients run only on the connections the outbound governor holds, reused or dialled. Evidence: `ConnectionManagerSuite`, `ConnectionStateSuite`, `InboundGovernorSuite`, `OutboundReuseSuite` (in-memory), and the devnet `relay` scenario (the Haskell relay connects to the Scala node and the Scala node follows the relay over that connection; `GET /connections`). Remaining: a peer that dials from an ephemeral port is not recognised as the peer we also dial; resource bounds and their explicit local profiles are in [G5](design/network-limits.md). Follow-up [#152](https://github.com/KD5UJC-XYZ/scarab/issues/152) is implemented: a candidate overtaken by the retained window drains pending work and re-intersects on the same connection; typed failures/cancellation, fresh header gates and bounded reuse have deterministic controls, and the unchanged relay300 gate passes. See the [recovery contract](design/network-limits.md#same-connection-chainsync-recovery-152) and compatibility evidence."
     },
     {
       "id": "G3",
@@ -1041,7 +1043,7 @@
       "title": "Integrate the upstream KES agent as a separate process",
       "priority": null,
       "issues": [
-        38
+        808
       ],
       "notes": "Integrate the upstream KES agent as a separate process. A typed Unix-socket client receives the current key/certificate and keeps node-local signing; agent-held state survives node restarts without signing-key files. Pin the negotiated upstream service protocol, cover reconnect/rotation and agent-loss recovery, and review the Scala secret-memory boundary before making equivalent security claims. The existing evolved-key file mode remains supported under ADR 0015."
     },
@@ -1075,7 +1077,7 @@
       "issues": [
         120
       ],
-      "folded_into": 38,
+      "folded_into": 808,
       "notes": "Mainnet pool: the cold key stays offline, so rotation prepares the new KES key and an unsigned request, notifies the operator before expiry and installs the certificate once signed (follow-up of H2a)."
     },
     {
@@ -1148,7 +1150,7 @@
       "issues": [
         43
       ],
-      "notes": "Own evaluator. Decide on our own CEK machine versus staying on Scalus, then differential-test it against Scalus and the conformance suite."
+      "notes": "Own evaluator. Decided on 2026-11-12: build Scarab's own UPLC evaluator, with no Scalus in it, as an opt-in correctness backend (`--plutus-vm scalus|scarab`, Scalus the default); the decision, scope and work packages are on [#43](https://github.com/KD5UJC-XYZ/scarab/issues/43) and in ADR 0027 ([#901](https://github.com/KD5UJC-XYZ/scarab/pull/901)), the work in the pull requests stacked on it."
     },
     {
       "id": "I3",

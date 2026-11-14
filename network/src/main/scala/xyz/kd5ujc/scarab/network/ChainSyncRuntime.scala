@@ -120,7 +120,7 @@ object ChainSyncRuntime:
 
   /** `StIdle` of the server in node-to-node:
     * `defaultChainSyncIdleTimeout = ChainSyncIdleTimeout 3373` (cardano-diffusion
-    * `Cardano/Network/Diffusion/Configuration.hs`, ouroboros-network 2fb69829), the idle timeout of
+    * `Cardano/Network/Diffusion/Configuration.hs`, ouroboros-network c5117705), the idle timeout of
     * `timeLimitsChainSync` (`Cardano/Network/Protocol/ChainSync/Codec/TimeLimits.hs:59-60`).
     */
   val DefaultIdle: ProtocolDeadline = ProtocolDeadline.After(3373.seconds)

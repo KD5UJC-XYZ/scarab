@@ -8,7 +8,7 @@ evaluation_interval: 1m
 tests:
   - interval: 1m
     input_series:
-      - series: 'cardano_node_metrics_remainingKESPeriods_int{container="n", host="h"}'
+      - series: 'cardano_node_metrics_remainingKESPeriods_int{container="n", host="h", role="pool"}'
         values: '12+0x10 8+0x10 2+0x10'
       - series: 'scarab_kes_rotation_last_success_timestamp_seconds{host="h"}'
         values: '0+0x400'
@@ -21,7 +21,7 @@ tests:
       - eval_time: 17m
         alertname: PoolKesPeriodsLow
         exp_alerts:
-          - exp_labels: {severity: warning, container: n, host: h}
+          - exp_labels: {severity: warning, container: n, host: h, role: pool}
             exp_annotations:
               summary: "n: 8 KES periods left"
               description: >-
@@ -31,7 +31,7 @@ tests:
       - eval_time: 25m
         alertname: PoolKesPeriodsCritical
         exp_alerts:
-          - exp_labels: {severity: critical, container: n, host: h}
+          - exp_labels: {severity: critical, container: n, host: h, role: pool}
             exp_annotations:
               summary: "n: 2 KES periods left"
               description: >-
@@ -69,15 +69,17 @@ tests:
         values: '3+0x5 0+0x30'
       - series: 'scarab_follower_stalled{container="n", host="h"}'
         values: '0+0x5 1+0x30'
-      - series: 'scarab_kes_persist_failures_total{container="n", host="h"}'
+      - series: 'scarab_kes_persist_failures_total{container="n", host="h", role="pool"}'
         values: '0+0x10 1+0x20'
-      - series: 'cardano_node_metrics_Forge_forged_counter{container="n", host="h"}'
+      - series: 'cardano_node_metrics_Forge_forged_counter{container="n", host="h", role="pool"}'
         values: '0+0x10 1+0x40'
-      - series: 'cardano_node_metrics_Forge_adopted_counter{container="n", host="h"}'
+      - series: 'cardano_node_metrics_Forge_adopted_counter{container="n", host="h", role="pool"}'
         values: '0+0x40'
-      - series: 'cardano_node_metrics_Forge_didnt_adopt_counter{container="n", host="h"}'
+      - series: 'cardano_node_metrics_Forge_didnt_adopt_counter{container="n", host="h", role="pool"}'
         values: '0+0x40'
-      - series: 'process_start_time_seconds{container="n", host="h"}'
+      - series: 'process_start_time_seconds{container="n", host="h", job="scarab"}'
+        values: '1000+0x10 2000+0x30'
+      - series: 'process_start_time_seconds{job="prometheus", instance="localhost:9090"}'
         values: '1000+0x10 2000+0x30'
     alert_rule_test:
       - eval_time: 25m
@@ -111,7 +113,7 @@ tests:
       - eval_time: 12m
         alertname: PoolKesPersistFailed
         exp_alerts:
-          - exp_labels: {severity: critical, container: n, host: h}
+          - exp_labels: {severity: critical, container: n, host: h, role: pool}
             exp_annotations:
               summary: "n: an evolved KES key could not be written back"
               description: >-
@@ -120,7 +122,7 @@ tests:
       - eval_time: 25m
         alertname: PoolForgedBlockNotAdopted
         exp_alerts:
-          - exp_labels: {severity: critical, container: n, host: h}
+          - exp_labels: {severity: critical, container: n, host: h, role: pool}
             exp_annotations:
               summary: "n: a forged block has neither been adopted nor lost"
               description: >-
@@ -129,7 +131,64 @@ tests:
       - eval_time: 11m
         alertname: PoolRestarted
         exp_alerts:
-          - exp_labels: {severity: warning, container: n, host: h}
+          - exp_labels: {severity: warning, container: n, host: h, job: scarab}
             exp_annotations:
               summary: "n: the process restarted"
               description: Uptime was reset (a crash, a deploy or a stall exit). It may need to replay before it forges again.
+
+  # forging rules select role="pool": a following node that does not forge (no role) never fires them
+  - interval: 1m
+    input_series:
+      - series: 'cardano_node_metrics_Forge_about_to_lead_counter{container="p", host="h", role="pool"}'
+        values: '0+0x30'
+      - series: 'scarab_node_phase{container="p", host="h", role="pool", phase="Following"}'
+        values: '1+0x30'
+      - series: 'cardano_node_metrics_Forge_about_to_lead_counter{container="r", host="h"}'
+        values: '0+0x30'
+      - series: 'scarab_node_phase{container="r", host="h", phase="Following"}'
+        values: '1+0x30'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: PoolNotCheckingSlots
+        exp_alerts:
+          - exp_labels: {severity: warning, container: p, host: h, role: pool}
+            exp_annotations:
+              summary: "p: following, but no slot was checked for leadership in 15 minutes"
+              description: A following node checks about one slot per second; none means the forger is not running.
+
+  # series that stop arriving: a labelled node whose container is gone, and a host whose agent stopped
+  - interval: 1m
+    input_series:
+      - series: 'up{job="scarab", container="p", host="h", role="pool", instance="a:1"}'
+        values: '1x60'
+      - series: 'up{job="scarab", container="q", host="h", role="pool", instance="b:1"}'
+        values: '1x120'
+      - series: 'up{job="scarab", container="run", host="h", instance="c:1"}'
+        values: '1x60'
+      - series: 'up{job="integrations/unix", host="g", instance="g"}'
+        values: '1x60'
+      - series: 'up{job="integrations/unix", host="h", instance="h"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: PoolNodeMetricsMissing
+        exp_alerts: []
+      - eval_time: 90m
+        alertname: PoolNodeMetricsMissing
+        exp_alerts:
+          - exp_labels: {severity: critical, container: p, host: h}
+            exp_annotations:
+              summary: "p: no metrics from this node"
+              description: >-
+                A node with a `scarab.role` label reported in the last 7 days and has no series now, so PoolNodeDown
+                (`up == 0`) cannot fire: the container is gone, lost its labels, or the agent stopped scraping it. Fires
+                for 7 days after a node is removed on purpose; silence it then.
+      - eval_time: 90m
+        alertname: HostMetricsMissing
+        exp_alerts:
+          - exp_labels: {severity: critical, host: g}
+            exp_annotations:
+              summary: "g: the agent has pushed nothing"
+              description: >-
+                The host's agent reported in the last 7 days and has pushed no host metrics since: the host is down,
+                off the network, or its agent stopped. Every alert of its nodes is blind until it returns.

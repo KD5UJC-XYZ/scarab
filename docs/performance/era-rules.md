@@ -115,7 +115,7 @@ Issue #131: at the boundaries of the Preview K1 snapshots 1400 to 1449 (protocol
 credentials, 75,972 rewards at the largest) the new rules took 1.4 to 1.7 times the old rules, against the +25% p99 gate of
 `ledger-mirror-step2.md` 2.3, and section 15 measured it at 1.46 (p99) at the start of J2.9. The first measurements here (before the change) were the same: 1.47 mean, 1.86 p99.
 
-**Method.** `BoundaryTickMain <db> <genesis> 1400 1449 4` (a test-side tool): each snapshot of the K1 run is taken in the middle
+**Method.** `BoundaryTickMain <db> <genesis> 1400 1449 4` (a hand-run tool of the `tools` module): each snapshot of the K1 run is taken in the middle
 of an epoch (about 43% in, past the start of the reward update); the tool reads it, finds the first block of the next epoch in
 the ImmutableDB (read only), converts the state to the mirror and times `Hfc.tick` to that block, four times (JDK 21, G1,
 `-Xms4g -Xmx12g`, Linux x86-64 on WSL2). The tables of the next paragraphs were taken on the J2.8 base, before J2.9 removed the

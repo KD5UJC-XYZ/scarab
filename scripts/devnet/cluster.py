@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timezone
 from . import util
 from cleanup import container_labels
-from .util import ENV, cache_dir, jdk_image, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, data_root, docker, in_ref, put_file, query, read_json, ref
+from .util import ALL_FOLLOWERS, ENV, cache_dir, jdk_image, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, adapt_reference_config, data_root, docker, in_ref, put_file, query, read_json, ref, without_resource_statistics
 
 
 def start_reference(name):
@@ -31,6 +31,7 @@ def up(args):
     start_reference(args.name)
     in_ref(args.name, f"cardano-testnet create-env --num-pool-nodes 3 --testnet-magic {MAGIC} "
                       f"--output {ENV} > /work/create-env.log 2>&1")
+    adapt_reference_config(args.name, f"{ENV}/configuration.yaml")
     ports = {n: int(in_ref(args.name, f"cat {ENV}/node-data/node{n}/port").stdout) for n in (1, 2, 3)}
     (root / "ports.json").write_text(json.dumps(ports))
     docker("exec", "-d", ref(args.name), "/bin/sh", "-c",
@@ -110,7 +111,8 @@ def prepare_eras_env(name, args):
                  f"--epoch-length {args.epoch_length} --active-slots-coeff {args.active_slots_coeff} "
                  f"--output {ENV} > /work/create-env.log 2>&1")
     start = int(time.time()) + 10
-    config = place_hard_forks(read_json(name, f"{ENV}/configuration.yaml"), era_plan(args), args.byron_epochs)
+    config = without_resource_statistics(
+        name, place_hard_forks(read_json(name, f"{ENV}/configuration.yaml"), era_plan(args), args.byron_epochs))
     put_file(name, f"{ENV}/configuration.yaml", json.dumps(config, indent=2))
     byron = read_json(name, f"{ENV}/byron-genesis.json")
     byron["startTime"] = start
@@ -153,6 +155,32 @@ def start_nodes(name, which=(1, 2, 3)):
                f"--socket-path {ENV}/socket/node{n}/sock --port {ports[n]} --host-addr 127.0.0.1 "
                f"> /work/node{n}.log 2>&1")
     return ports
+
+
+
+def listening_ports(proc_net_tcp):
+    """The local ports in the LISTEN state (`0A`) of a `/proc/net/tcp` text."""
+    ports = set()
+    for line in proc_net_tcp.splitlines()[1:]:
+        fields = line.split()
+        if len(fields) > 3 and fields[3] == "0A":
+            ports.add(int(fields[1].rsplit(":", 1)[1], 16))
+    return ports
+
+
+def wait_listening(name, ports, seconds=120):
+    """Wait until each of `ports` is listening in the reference container's network namespace. Read from
+    `/proc/net/tcp`, so no probe connection reaches the nodes. A node dialled before it listens refuses the
+    connection, and the dialler's backoff can outlast its first leader slot, after which it forges a fork from
+    genesis (issue 609)."""
+    deadline = time.monotonic() + seconds
+    pending = set(ports)
+    while time.monotonic() < deadline:
+        pending -= listening_ports(in_ref(name, "cat /proc/net/tcp").stdout)
+        if not pending:
+            return
+        time.sleep(0.2)
+    raise SystemExit(f"the reference nodes did not listen on {sorted(pending)} within {seconds} s")
 
 
 class EraDriver:
@@ -375,13 +403,15 @@ def tip(args):
     print(json.dumps(query(args.name, "tip", args.node)))
 
 
-def freeze_classes(root, previous=None):
+def freeze_classes(root, previous=None, frozen=None):
     """Copy the compiled classes so later builds cannot change code under a running node.
 
     Returns the container classpath (the copy is mounted at /run/classes). With `previous`, the
     directory of a copy made earlier (`<run dir>/classes` of a run of another build) is used instead of the
     checkout's classes, for explicit comparisons of pinned builds. This does not imply that the
     current node supports an earlier build's persisted formats; snapshot retirement is independent.
+    The copy goes to `frozen`, `<run dir>/classes` by default; it is replaced, so two nodes that run at once
+    each need a directory of their own (`scala_container`'s `classes`).
     """
     classpath = (REPO / "node/target/runtime-classpath.txt").read_text().strip().split(":")
     sources = []
@@ -400,7 +430,7 @@ def freeze_classes(root, previous=None):
             sources.append((module, source))
     if not sources:
         raise SystemExit("runtime classpath contains no compiled classes; run node/runtimeClasspathFile")
-    frozen = root / "classes"
+    frozen = frozen if frozen is not None else root / "classes"
     shutil.rmtree(frozen, ignore_errors=True)
     for module, source in sources:
         shutil.copytree(source, frozen / module)
@@ -427,17 +457,18 @@ def database_mounts(db):
     return [f"{db}:/db", f"{lock}:/.db.scarab-lock"]
 
 
-def scala_container(args, root, classpath, main_class, program_args, mounts=(), name=None, cpus=None):
+def scala_container(args, root, classpath, main_class, program_args, mounts=(), name=None, cpus=None, classes=None):
     """`docker run` arguments for a JVM of the frozen classes in the reference network namespace.
 
-    The container gets `cpus` CPUs, else `--scala-cpus` of the scenario, else 2.
+    The container gets `cpus` CPUs, else `--scala-cpus` of the scenario, else 2. The frozen classes are those of
+    `classes`, `<run dir>/classes` by default (`freeze_classes`).
     """
     cpus = cpus if cpus is not None else getattr(args, "scala_cpus", 2)
     # MALLOC_ARENA_MAX=2: glibc's per-thread arenas fragment (roadmap K6); also set in the image
     command = ["run", "--rm", "--pull=never", "--network", f"container:{ref(args.name)}",
                f"--cpus={cpus}", "--memory=2g", "--user", USER, "-e", "MALLOC_ARENA_MAX=2",
                "-v", f"{REPO}:/work:ro", "-v", f"{cache_dir()}:/work/.cache:ro",
-               "-v", f"{root / 'classes'}:/run/classes:ro"]
+               "-v", f"{classes if classes is not None else root / 'classes'}:/run/classes:ro"]
     if name:
         command += ["--name", name]
     for mount in mounts:
@@ -609,7 +640,8 @@ def keep_native_evidence(name, root):
 
 
 def down(args, quiet=False):
-    for c in (f"{args.name}-scala", f"{args.name}-cli", ref(args.name)):
+    # every Scala node a run may have started: its only follower, or one per evaluator (`util.FollowerSite`)
+    for c in (*(site.container(args.name) for site in ALL_FOLLOWERS), f"{args.name}-cli", ref(args.name)):
         docker("rm", "-f", c, check=False)
     shutil.rmtree(data_root(args.name), ignore_errors=True)
     if not quiet:

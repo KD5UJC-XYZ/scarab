@@ -4,8 +4,8 @@ package xyz.kd5ujc.scarab.network
 import cats.effect.IO
 
 /** The end a hot protocol reports when the connection failed before it was cancelled: the
-  * reference's `Shutdown (Just e)` (ouroboros-network 2fb69829 network-mux/src/Network/Mux.hs
-  * 800–812), not a cancellation without its cause (issue 597).
+  * reference's `Shutdown (Just e)` (ouroboros-network c45735a5 network-mux/src/Network/Mux.hs
+  * 824–836), not a cancellation without its cause (issue 597).
   */
 class ProtocolEndSuite extends FailsOnUncaught:
   private val cancelled = NetworkError.BearerClosed(NetworkError.Closure.Aborted)

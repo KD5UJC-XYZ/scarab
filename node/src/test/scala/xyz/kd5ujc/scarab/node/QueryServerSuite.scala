@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.{IO, Ref}
 import cats.syntax.all.*
 import java.nio.file.Path
@@ -14,7 +15,7 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 
 class QueryServerSuite extends CatsEffectSuite:
   private val setup = NodeSetup
-    .fromDirectory(Path.of("fixtures/devnet/lsq/genesis"))
+    .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/devnet/lsq/genesis"))
     .fold(e => fail(e.message), identity)
   private given EntityDecoder[IO, io.circe.Json] = jsonOf[IO, io.circe.Json]
   private val hash = "ab" * 32

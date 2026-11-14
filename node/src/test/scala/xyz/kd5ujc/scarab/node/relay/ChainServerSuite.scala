@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtNHeader}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.network.ChainSyncServer.Update
+import xyz.kd5ujc.scarab.network.Settled
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef}
 import xyz.kd5ujc.scarab.storage.{FileImmutableStore, StorageTestKit}
 import munit.ScalaCheckSuite
@@ -15,7 +16,6 @@ import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.node.Fatal
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
-import scala.concurrent.duration.*
 
 import StorageTestKit.*
 
@@ -249,36 +249,39 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   }
 
   test("a client waiting at the tip is woken by the next block and by a rollback") {
-    tempDir.use { dir =>
-      ok {
-        FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
-          for
-            server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
-            persistence = server.persistence[Unit]
-            _ <- (1 to 2).toList.traverse_(i =>
-              persistence.extended(ref(i), raw(i), Vector.empty, Anchor[Unit](None, ()))
-            )
-            outcome <- server.source.use { source =>
-              for
-                _ <- source.intersect(Vector(ref(2).point))
-                _ <- source.poll // the roll-back to the intersection
-                waiting <- source.await.start
-                _ <- IO.sleep(20.millis)
-                _ <- persistence.extended(ref(3), raw(3), Vector.empty, Anchor[Unit](None, ()))
-                forward <- waiting.joinWithNever
-                rollback <- source.await.start
-                _ <- IO.sleep(20.millis)
-                _ <- persistence.rolledBack(ref(1).point)
-                back <- rollback.joinWithNever
-              yield (forward, back)
-            }
-          yield outcome match
-            case (Update.RollForward(h, tip), Update.RollBackward(p, tip2)) =>
-              assertEquals(h.raw, raw(3))
-              assertEquals(tip.blockNo.value, BigInt(3))
-              assertEquals(p, ref(1).point)
-              assertEquals(tip2.blockNo.value, BigInt(1))
-            case other => fail(other.toString)
+    Settled { settle =>
+      tempDir.use { dir =>
+        ok {
+          FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
+            for
+              server <- ChainServer.open[IO](Some(store), None, headerOf, fatal)
+              persistence = server.persistence[Unit]
+              _ <- (1 to 2).toList.traverse_(i =>
+                persistence.extended(ref(i), raw(i), Vector.empty, Anchor[Unit](None, ()))
+              )
+              outcome <- server.source.use { source =>
+                for
+                  _ <- source.intersect(Vector(ref(2).point))
+                  _ <- source.poll // the roll-back to the intersection
+                  waiting <- source.await.start
+                  // the client waits at the tip
+                  _ <- settle
+                  _ <- persistence.extended(ref(3), raw(3), Vector.empty, Anchor[Unit](None, ()))
+                  forward <- waiting.joinWithNever
+                  rollback <- source.await.start
+                  _ <- settle
+                  _ <- persistence.rolledBack(ref(1).point)
+                  back <- rollback.joinWithNever
+                yield (forward, back)
+              }
+            yield outcome match
+              case (Update.RollForward(h, tip), Update.RollBackward(p, tip2)) =>
+                assertEquals(h.raw, raw(3))
+                assertEquals(tip.blockNo.value, BigInt(3))
+                assertEquals(p, ref(1).point)
+                assertEquals(tip2.blockNo.value, BigInt(1))
+              case other => fail(other.toString)
+          }
         }
       }
     }

@@ -1,17 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import cats.effect.Sync
-import cats.mtl.Ask
-import cats.syntax.all.*
 import java.nio.ByteBuffer
-import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState}
-import xyz.kd5ujc.scarab.ledger.{FileKind, StorageError}
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.{FormatVersion, StorageError}
 
-/** The snapshot of format version 8 (the current one): the V5 body behind the binding of the
-  * checkpoint the snapshot was written with, as V7 has it, whose sidecar keeps the installer
-  * metadata of the Byron update state (issue #726):
+/** The snapshot of format version 8, the previous one: the V7 layout whose sidecar keeps the
+  * installer metadata of the Byron update state (issue #726):
   *
   * {{{
   * "SCRBSNP8" | binding length u32 | binding | V5 body
@@ -19,10 +14,10 @@ import xyz.kd5ujc.scarab.ledger.{FileKind, StorageError}
   * V5 body = sidecar length u32 | sidecar | Haskell state bytes   (as in SnapshotV5)
   * }}}
   *
-  * The binding is read before anything else, so a restore checks the checkpoint
-  * ([[StateBacking.admit]]) without decoding the state. The migration from V7 ([[fromV7]]) keeps
-  * the binding and the Haskell bytes and reads the sidecar in the schema V7 wrote
-  * ([[SnapshotSidecarV7]]), then writes it in the current one.
+  * Its sidecar has the frozen V8 schema ([[SnapshotSidecarV8]]), whose eras are Byron to Conway. A
+  * V8 file is read only to be migrated to V9 ([[SnapshotV9.fromV8]]); the migration from V7
+  * ([[fromV7]]) keeps the binding and the Haskell bytes and reads the sidecar in the schema V7
+  * wrote ([[SnapshotSidecarV7]]), then writes it in the V8 one.
   */
 object SnapshotV8:
   val Magic: Array[Byte] = "SCRBSNP8".getBytes("US-ASCII")
@@ -30,82 +25,16 @@ object SnapshotV8:
   /** Magic and the length of the binding. */
   private val HeaderSize = Magic.length + 4
 
-  private def corrupt[E <: DomainError](reason: E): StorageError =
-    StorageError.Corrupt("snapshot", reason)
-
-  /** The format for a chain whose state is the mirror ([[MirrorState]]), writing with `check` (see
-    * [[SnapshotCheck]]).
-    *
-    * With [[SnapshotCheck.Full]] the file is read back and written again: the bytes must be those
-    * written, and the anchor equal (a pool registered with the empty relay list reads back as one
-    * with none, which the state does not tell apart, so the bytes are what is compared, not the
-    * state).
-    */
-  def format[F[_]: Sync](check: SnapshotCheck)(using
-      env: Ask[F, ConsensusMirrorEnv]
-  ): SnapshotFormat[F, MirrorState] =
-    new SnapshotFormat[F, MirrorState]:
-      def encode(snapshot: StateSnapshot[MirrorState]): F[Either[SnapshotRefusal, Array[Byte]]] =
-        env
-          .ask[ConsensusMirrorEnv]
-          .flatMap(e => Sync[F].blocking(written(e, snapshot, check)))
-
-      def decode(content: Array[Byte]): F[Either[StorageError, StateSnapshot[MirrorState]]] =
-        env.ask[ConsensusMirrorEnv].flatMap(e => Sync[F].blocking(SnapshotV8.decode(e, content)))
-
-  private def written(
-      env: ConsensusMirrorEnv,
-      snapshot: StateSnapshot[MirrorState],
-      check: SnapshotCheck
-  ): Either[SnapshotRefusal, Array[Byte]] =
-    encoded(snapshot).flatTap { content =>
-      check match
-        case SnapshotCheck.Structure =>
-          wellFormed(content).leftMap(SnapshotRefusal.WouldNotRead(_))
-        case SnapshotCheck.Full =>
-          for
-            back <- decode(env, content).leftMap(SnapshotRefusal.WouldNotRead(_))
-            again <- encoded(back)
-            _ <- Either.cond(
-              java.util.Arrays.equals(again, content) && back.anchor == snapshot.anchor,
-              (),
-              SnapshotRefusal.WouldDiffer(
-                List(
-                  Option.when(!java.util.Arrays.equals(again, content))(
-                    SnapshotDifference.ReencodedBytes
-                  ),
-                  Option.when(back.anchor != snapshot.anchor)(SnapshotDifference.Anchor)
-                ).flatten
-              )
-            )
-          yield ()
-    }
-
-  /** The binding decodes, and the body is well formed ([[SnapshotV5.bodyWellFormed]]). */
-  private[storage] def wellFormed(content: Array[Byte]): Either[StorageError, Unit] =
-    header(content).flatMap((_, at) => SnapshotV5.bodyWellFormed(content, at))
-
-  private[storage] def encoded(
-      snapshot: StateSnapshot[MirrorState]
-  ): Either[SnapshotRefusal, Array[Byte]] =
-    SnapshotV5
-      .parts(snapshot)
-      .map((sidecar, haskell) => framed(snapshot.checkpoint, sidecar, haskell))
-
-  private[storage] def bindingBytes(binding: CheckpointBinding): Array[Byte] =
-    CheckpointBinding.fingerprint ++ Codec.encode(binding)(using CheckpointBinding.codec)
-
-  /** The file content, in one array of its exact size: the header, the binding, the sidecar and the
-    * Haskell bytes are copied to it once (the Haskell section is a couple of hundred megabytes, and
-    * a copy of it is one more humongous allocation for the collector).
+  /** A V8 file's content, in one array of its exact size: what the migration from V7 writes, and
+    * the previous-version tests (the node writes [[SnapshotV10]]).
     */
   private[storage] def framed(
       binding: CheckpointBinding,
       sidecar: SnapshotSidecar,
       haskell: Bytes
   ): Array[Byte] =
-    val bound = bindingBytes(binding)
-    val side = SnapshotV5.sidecarBytes(sidecar)
+    val bound = SnapshotV9.bindingBytes(binding)
+    val side = SnapshotV5.v8SidecarBytes(sidecar)
     val out = new Array[Byte](HeaderSize + bound.length + 4 + side.length + haskell.size)
     System.arraycopy(Magic, 0, out, 0, Magic.length)
     ByteBuffer.wrap(out, Magic.length, 4).putInt(bound.length)
@@ -114,8 +43,8 @@ object SnapshotV8:
     out
 
   /** The V8 content of a V7 file's content: its binding and Haskell bytes unchanged, its sidecar
-    * read in the V7 schema and written in the current one. A V7 sidecar whose Byron update state
-    * lost the installer metadata of a software proposal or an application version is refused
+    * read in the V7 schema and written in the V8 one. A V7 sidecar whose Byron update state lost
+    * the installer metadata of a software proposal or an application version is refused
     * ([[StorageError.ResyncRequired]]); nothing is invented for it.
     */
   def fromV7(content: Array[Byte]): Either[StorageError, Array[Byte]] =
@@ -123,78 +52,22 @@ object SnapshotV8:
       .sections(content)
       .map((binding, sidecar, haskell) => framed(binding, sidecar, haskell))
 
-  // ---- read
-
-  /** Read current-format content without changing its carried state or metadata. */
-  def decode(
-      env: ConsensusMirrorEnv,
-      content: Array[Byte]
-  ): Either[StorageError, StateSnapshot[MirrorState]] =
-    header(content).flatMap { (binding, at) =>
-      SnapshotV5
-        .decodeBody(env, content, at)
-        .map((anchor, state) => StateSnapshot(anchor, state, binding))
-    }
-
   /** The binding of the content of a V8 file. */
   def bindingOf(content: Array[Byte]): Either[StorageError, CheckpointBinding] =
-    header(content).map(_._1)
+    SnapshotV9.boundHeader(Magic, content).map(_._1)
 
-  /** The sidecar of the content of a V8 file. */
+  /** The sidecar of the content of a V8 file, read into the current types. */
   def sidecarOf(content: Array[Byte]): Either[StorageError, SnapshotSidecar] =
     sections(content).map(_._2)
 
-  /** The binding, the sidecar and the Haskell bytes of a file, after the magic, the lengths and the
-    * fingerprints have been checked.
+  /** The binding, the sidecar and the Haskell bytes of a V8 file, after the magic, the lengths and
+    * the fingerprints have been checked.
     */
   private[storage] def sections(
       content: Array[Byte]
   ): Either[StorageError, (CheckpointBinding, SnapshotSidecar, Bytes)] =
-    header(content).flatMap { (binding, at) =>
+    SnapshotV9.boundHeader(Magic, content).flatMap { (binding, at) =>
       SnapshotV5
-        .body(content, at, SnapshotV5.Schema.Current)
+        .body(content, at, SnapshotV5.Schema.Previous(FormatVersion.V8))
         .map((sidecar, haskell) => (binding, sidecar, haskell))
     }
-
-  /** The binding and the offset of the body, after the magic, the binding length and its
-    * fingerprint have been checked.
-    */
-  private def header(content: Array[Byte]): Either[StorageError, (CheckpointBinding, Int)] =
-    boundHeader(Magic, content)
-
-  /** The binding and the offset of the body of a file that starts with `magic` (V7 or V8, whose
-    * magics have the same length), after the magic, the binding length and its fingerprint have
-    * been checked.
-    */
-  private[storage] def boundHeader(
-      magic: Array[Byte],
-      content: Array[Byte]
-  ): Either[StorageError, (CheckpointBinding, Int)] =
-    if content.length < HeaderSize || !content.startsWith(magic) then
-      SnapshotMigration
-        .versionOf("snapshot format", content)
-        .flatMap(version => FileKind.SnapshotFile.readable("snapshot format", version))
-        .flatMap(_ => Left(corrupt(SnapshotReadError.BadMagic)))
-    else
-      val length = ByteBuffer.wrap(content, Magic.length, 4).getInt
-      val fingerprint = CheckpointBinding.fingerprint
-      val end = HeaderSize.toLong + length
-      if length < fingerprint.length || end > content.length then
-        Left(corrupt(SnapshotReadError.BindingLength(length, content.length)))
-      else
-        val found = content.slice(HeaderSize, HeaderSize + fingerprint.length)
-        if !java.util.Arrays.equals(found, fingerprint) then
-          Left(
-            StorageError.VersionMismatch(
-              "snapshot checkpoint binding schema",
-              found.map(b => f"${b & 0xff}%02x").mkString,
-              fingerprint.map(b => f"${b & 0xff}%02x").mkString
-            )
-          )
-        else
-          Codec
-            .decode[CheckpointBinding](
-              content.slice(HeaderSize + fingerprint.length, end.toInt)
-            )(using CheckpointBinding.codec)
-            .leftMap(DecodeFailure.binary("snapshot checkpoint binding", _))
-            .map(_ -> end.toInt)

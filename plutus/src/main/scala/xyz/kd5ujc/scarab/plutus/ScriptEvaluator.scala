@@ -3,12 +3,9 @@ package xyz.kd5ujc.scarab.plutus
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.ExUnits
-
-/** Plutus language versions. */
-enum PlutusLanguage(val id: Int):
-  case V1 extends PlutusLanguage(0)
-  case V2 extends PlutusLanguage(1)
-  case V3 extends PlutusLanguage(2)
+import xyz.kd5ujc.scarab.uplc.{Availability as UplcAvailability, DefaultFun}
+import xyz.kd5ujc.scarab.uplc.flat.ScriptDecodeError
+import xyz.kd5ujc.scarab.uplc.ledger.{EvaluationError, Unavailability}
 
 /** One script execution: everything the verdict depends on, and nothing else.
   *
@@ -19,7 +16,7 @@ enum PlutusLanguage(val id: Int):
   *   wrapped in a CBOR byte string)
   * @param args
   *   the data arguments applied to the script, in order (V1/V2 `[datum?, redeemer, context]`, V3
-  *   `[context]`)
+  *   and V4 `[context]`)
   * @param costModel
   *   the cost model parameters of the language in the canonical order
   * @param budget
@@ -40,23 +37,44 @@ enum ScriptProblem:
   case Flat(cause: FlatScan.Failure)
   case Availability(cause: PlutusAvailability.Failure)
   case TrailingBytes(count: Int)
+
+  /** Scarab's own evaluator ([[ScarabEvaluator]]): `deserialiseScript` refused the script. */
+  case Uplc(cause: ScriptDecodeError)
+
+  /** Scarab's own evaluator ([[ScarabEvaluator]]): the program's version is not one the language
+    * has at the protocol, the check of `mkTermToEvaluate` that the Scalus backend reports as an
+    * [[Availability]] failure too.
+    */
+  case UplcVersion(cause: UplcAvailability.Refusal)
+
   def message: String = this match
     case CborByteStringExpected => "script is not a CBOR byte string"
     case Flat(cause)            => cause.message
     case Availability(cause)    => cause.message
     case TrailingBytes(count)   => s"$count bytes remain after the script (RemainderError)"
+    case Uplc(cause)            => s"deserialiseScript refused it: ${UplcText.decode(cause)}"
+    case UplcVersion(cause)     => s"the program's version is not available: ${cause.productPrefix}"
 
-/** Why this implementation supplies no verdict for a script: never the reference's verdict. */
+/** Why this implementation supplies no verdict for a script: never the reference's verdict. The
+  * builtins are named by the `uplc` module's [[DefaultFun]], whichever backend reports them (ADR
+  * 0027): the Scalus backend maps its own by name ([[ScalusEvaluator.builtinOf]]).
+  */
 enum BackendFailure:
   case NoResult, StackExhausted
   case BudgetOutOfRange(budget: ExUnits)
   case Defect(cause: Throwable)
-  case BuiltinUnavailable(builtin: scalus.uplc.DefaultFun)
+  case BuiltinUnavailable(builtin: DefaultFun)
 
   /** Scalus's cost model gives the builtin a costing function that [[ReferenceCosting]] does not
     * mirror, so the reference's budget for it is unknown.
     */
-  case CostingUnmirrored(builtin: scalus.uplc.DefaultFun)
+  case CostingUnmirrored(builtin: DefaultFun)
+
+  /** Scarab's own evaluator ([[ScarabEvaluator]]) gives no verdict: protocol 12 and later, or a
+    * defect of the implementation ([[Unavailability]]).
+    */
+  case Uplc(reason: Unavailability)
+
   def message: String = this match
     case NoResult                    => "backend did not return a result"
     case StackExhausted              => "backend stack exhausted"
@@ -64,11 +82,33 @@ enum BackendFailure:
     case Defect(cause)               => Option(cause.getMessage).getOrElse(cause.getClass.getName)
     case BuiltinUnavailable(builtin) => s"builtin $builtin unavailable"
     case CostingUnmirrored(builtin)  => s"the costing function of $builtin is not mirrored"
+    case Uplc(reason) => s"the own evaluator gives no verdict: ${UplcText.unavailable(reason)}"
 
-final case class ScriptFailure(cause: Throwable, logs: Vector[String]):
-  def message: String =
-    val detail = Option(cause.getMessage).getOrElse(cause.getClass.getName)
-    if logs.isEmpty then detail else s"$detail; trace: ${logs.mkString(" | ")}"
+/** Why a script failed, as the backend that evaluated it reports it. */
+sealed trait ScriptFailure:
+  def logs: Vector[String]
+  def message: String
+
+object ScriptFailure:
+  /** The Scalus backend: the machine's typed exception and the `trace` output. It reads as it read
+    * before the own evaluator, `ScriptFailure(cause,logs)`, where a refusal's detail prints it.
+    */
+  final case class Thrown(cause: Throwable, logs: Vector[String]) extends ScriptFailure:
+    override def productPrefix: String = "ScriptFailure"
+    def message: String =
+      val detail = Option(cause.getMessage).getOrElse(cause.getClass.getName)
+      if logs.isEmpty then detail else s"$detail; trace: ${logs.mkString(" | ")}"
+
+  /** Scarab's own evaluator ([[ScarabEvaluator]]): the reference's `EvaluationError` and the
+    * `trace` output. The error's detail names its cases only ([[UplcText]]): never a constant or a
+    * term of the script, which can be as large as a transaction. `logs` is the script's own `trace`
+    * output, which the text includes.
+    */
+  final case class Uplc(error: EvaluationError, logs: Vector[String]) extends ScriptFailure:
+    override def toString: String = s"ScriptFailure.Uplc(${UplcText.evaluation(error)},$logs)"
+    def message: String =
+      val detail = UplcText.evaluation(error)
+      if logs.isEmpty then detail else s"$detail; trace: ${logs.mkString(" | ")}"
 
 /** Why a script did not validate. */
 enum EvalFailure:
@@ -105,7 +145,9 @@ enum EvalResult:
 /** Phase-2 evaluation of one Plutus script. The algebra is effect-polymorphic: evaluation is
   * deterministic, so [[ScalusEvaluator.pure]] interprets it in `cats.Id` and the ledger rules
   * (which are pure functions) take that interpreter; a node that wants to move evaluation off the
-  * main thread or onto a pool uses [[ScalusEvaluator.suspended]] in its effect type instead.
+  * main thread or onto a pool uses [[ScalusEvaluator.suspended]] in its effect type instead. The
+  * own evaluator ([[ScarabEvaluator]]) has the same forms; the node chooses one by `--plutus-vm`
+  * ([[PlutusVm]], ADR 0027).
   */
 trait ScriptEvaluator[F[_]]:
   def evaluate(request: EvalRequest): F[EvalResult]

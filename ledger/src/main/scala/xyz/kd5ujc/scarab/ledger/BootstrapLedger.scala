@@ -39,14 +39,15 @@ object ParamUpdate:
   final case class Rules(keys: Keys, maxMajor: BigInt)
 
   object Rules:
-    /** The rules of the update of `era`; none for Byron and Conway, which have no PPUP. */
+    /** The rules of the update of `era`; none for Byron, Conway and Dijkstra, which have no PPUP.
+      */
     def of(era: Era): Option[Rules] = era match
-      case Era.Shelley            => Some(Rules(Keys.ShelleyToMary, 3))
-      case Era.Allegra            => Some(Rules(Keys.ShelleyToMary, 4))
-      case Era.Mary               => Some(Rules(Keys.ShelleyToMary, 5))
-      case Era.Alonzo             => Some(Rules(Keys.Alonzo, 7))
-      case Era.Babbage            => Some(Rules(Keys.Babbage, 9))
-      case Era.Byron | Era.Conway => None
+      case Era.Shelley                           => Some(Rules(Keys.ShelleyToMary, 3))
+      case Era.Allegra                           => Some(Rules(Keys.ShelleyToMary, 4))
+      case Era.Mary                              => Some(Rules(Keys.ShelleyToMary, 5))
+      case Era.Alonzo                            => Some(Rules(Keys.Alonzo, 7))
+      case Era.Babbage                           => Some(Rules(Keys.Babbage, 9))
+      case Era.Byron | Era.Conway | Era.Dijkstra => None
 
   /** The update of a transaction or proposal from its map of field index to value, as the shared
     * sparse decoder of `PParamsUpdate` reads it below decoder version 12 (`SparseKeyed`,
@@ -227,6 +228,20 @@ object ParamUpdate:
       yield v
       key -> value.getOrElse(Typed.Unread(raw))
     }
+
+  /** `upgradePParamsUpdate ()` at the Alonzo-to-Babbage boundary (`Babbage/Translation.hs:155-168`,
+    * `Babbage/PParams.hs:180,316-345,389-391`, cardano-ledger f649f975): drop the removed fields
+    * and divide the cost per UTxO word by eight, rounded down. Other fields keep their original
+    * bytes. A legacy stored key-17 value that [[typed]] cannot read stays unread and cannot be
+    * adopted, as before (ADR 0006); a reference-decoded proposal always has a `Count` at key 17 if
+    * it has that key.
+    */
+  def toBabbage(u: ParamUpdate): ParamUpdate =
+    val kept = u.fields -- Set(12, 13, 15)
+    typed(u).get(17) match
+      case Some(Typed.Count(words)) =>
+        ParamUpdate(kept.updated(17, byron.ByronCbor.uint(words / 8)))
+      case _ => ParamUpdate(kept)
 
   /** The updates that at least `quorum` of `proposals` vote for: `votedFuturePParams`
     * (`Rules/Ppup.hs:214-220`, f649f975) counts the proposals in a
@@ -577,9 +592,8 @@ object LiteLedger:
   ): Either[LedgerDecodeError, LiteLedger] = e match
     case Effect.Proposal(updates, target) =>
       // `getTheSlotOfNoReturn` (cardano-ledger f649f975, `Slot.hs:106-114`, used by
-      // `Shelley/Rules/Ppup.hs:177`): `*-` is monus, so it does not go below slot 0
-      val tooLate =
-        (geometry.firstSlot(l.epoch + 1) - 2 * geometry.stabilityWindow.toBigInt).max(0)
+      // `Shelley/Rules/Ppup.hs:177`)
+      val tooLate = geometry.slotOfNoReturn(l.epoch)
       if slot < tooLate then
         Either.cond(
           target == l.epoch,

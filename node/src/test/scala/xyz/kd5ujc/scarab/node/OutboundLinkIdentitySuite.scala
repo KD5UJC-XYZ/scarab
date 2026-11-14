@@ -20,6 +20,8 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
   */
 class OutboundLinkIdentitySuite extends FailsOnUncaught:
   private val magic = 42L
+  // the connections' supervisor and, released before it, their monitors' (`OutboundPeers.create`)
+  private val supervisors = (Supervisor[IO](await = false), Supervisor[IO](await = false)).tupled
   private val peer = InMemoryPeers.address(7)
 
   private def handlers: ServerHandlers[IO, NtNHeader] =
@@ -98,19 +100,28 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
       defectInResolution: Boolean = false,
       connected: Option[(PeerNetwork.Addr, SocketAddress[IpAddress]) => IO[Unit]] = None,
       finalizeBearer: IO[Unit] = IO.unit,
-      afterBearer: IO[Unit] = IO.unit
+      afterBearer: IO[Unit] = IO.unit,
+      serverMagic: Long = magic
   ): Resource[IO, Fixture] =
     for
       node <- NodeScope.resource
       _ <- Resource.eval(IO.unit)
-      fixture <- Supervisor[IO](await = false).evalMap { supervisor =>
+      fixture <- supervisors.evalMap { (supervisor, monitors) =>
         given Handle[IO, NodeError] = node
         for
           pool <- BlockPool.create[IO]
           _ <- supervisor.supervise(pool.fetchCoordinator.run)
-          transport <- InMemoryPeers.create(magic)
+          transport <- InMemoryPeers.create(serverMagic)
           _ <- transport.serve(peer, handlers)
-          manager <- ConnectionManager.create[IO](ConnectionManager.Limits(maxOutbound = 4))
+          // a closed connection is cold at once here: the time-wait and the outbound idle timeout
+          // are ConnectionManagerSuite's subject
+          manager <- ConnectionManager.create[IO](
+            ConnectionManager.Limits(
+              maxOutbound = 4,
+              timeWait = Duration.Zero,
+              outboundIdle = Duration.Zero
+            )
+          )
           metrics <- Ref.of[IO, PeerMetrics[PeerNetwork.Addr]](PeerMetrics.empty())
           given Stateful[IO, PeerMetrics[PeerNetwork.Addr]] = RefStateful(metrics)
           hot = OutboundPeers.Hot[IO](
@@ -144,6 +155,7 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
             OutboundPeers.Config(),
             hot,
             supervisor,
+            monitors,
             report,
             summon[Stateful[IO, PeerMetrics[PeerNetwork.Addr]]],
             connected
@@ -151,6 +163,32 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
         yield Fixture(outbound, transport, manager)
       }
     yield fixture
+
+  // `Connected` before the handshake (`ConnectionManager/Core.hs` 1540-1547): a handshake the peer
+  // refuses then moves the connection to `Terminating` (`computeConnStateOnError`) and deletes it
+  // from the table at once (`terminateOutboundWithErrorOrQuery`, 1782-1838): it holds no slot
+  test("a handshake the peer refuses moves the connection through Terminating out of the table") {
+    (Deferred[IO, Unit], Deferred[IO, Unit]).tupled.flatMap { (started, release) =>
+      release.complete(()) *> fixture(
+        started,
+        release,
+        failFirst = false,
+        follow = (_, _) => IO.unit,
+        serverMagic = magic + 1
+      ).use { current =>
+        for
+          result <- current.outbound.establish(
+            peer,
+            DiffusionMode.InitiatorAndResponder,
+            Provenance.Outbound
+          )
+          snapshot <- current.manager.snapshot
+        yield
+          assert(result.isLeft, result.toString)
+          assertEquals(snapshot.connections, Vector.empty)
+      }
+    }
+  }
 
   private def overlap(failFirst: Boolean): IO[Unit] =
     (Deferred[IO, Unit], Deferred[IO, Unit]).tupled.flatMap { (firstStarted, releaseFirst) =>
@@ -337,15 +375,8 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
           _ <- current.outbound.activate(peer)
           _ <- ended.get.timeout(5.seconds)
           closed <- current.outbound.close(peer).timeout(5.seconds)
-          cold <- cats
-            .Monad[IO]
-            .tailRecM(()) { _ =>
-              old.read.flatMap {
-                case value if value.status == PeerStateActions.Status.Cold => IO.pure(Right(value))
-                case _                                                     => IO.cede.as(Left(()))
-              }
-            }
-            .timeout(5.seconds)
+          _ <- old.awaitCold.timeout(5.seconds)
+          cold <- old.read
           _ <- current.outbound.establish(peer, DiffusionMode.InitiatorOnly, Provenance.Outbound)
           fresh <- current.outbound
             .monitorPeerConnection(peer)
@@ -400,7 +431,7 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
   }
 
   test("a close that wins while deactivation drains cannot be reported as warm") {
-    cats.effect.testkit.TestControl.executeEmbed {
+    xyz.kd5ujc.scarab.network.Settled { settle =>
       for
         firstStarted <- Deferred[IO, Unit]
         releaseFirst <- Deferred[IO, Unit]
@@ -437,13 +468,9 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
                     .make(current.outbound.close(peer).start)(_.cancel)
                     .use { closing =>
                       for
-                        _ <- cats.Monad[IO].tailRecM(()) { _ =>
-                          handle.read.flatMap {
-                            case value if value.status == PeerStateActions.Status.Cooling =>
-                              IO.pure(Right(()))
-                            case _ => IO.cede.as(Left(()))
-                          }
-                        }
+                        _ <- settle
+                        cooling <- handle.read
+                        _ <- IO(assertEquals(cooling.status, PeerStateActions.Status.Cooling))
                         before <- IO.monotonic
                         duplicate <- handle.close
                         after <- IO.monotonic

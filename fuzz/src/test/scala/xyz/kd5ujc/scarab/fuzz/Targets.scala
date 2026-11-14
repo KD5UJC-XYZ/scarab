@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.fuzz
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.syntax.all.*
 import fs2.Chunk
 import java.nio.file.Files
@@ -852,7 +854,93 @@ object Targets:
 
   // --- node: blocks, headers, transactions ---------------------------------------------------------
 
-  private val shelleyEras: Vector[Era] = Era.values.toVector.filter(_ != Era.Byron)
+  // Dijkstra's transactions are not of the shape these decoders read: the `dijkstra-*` targets cover
+  // them, and its header is the Leios header
+  private val shelleyEras: Vector[Era] =
+    Era.values.toVector.filter(e => e != Era.Byron && e != Era.Dijkstra)
+
+  /** The decoding entry points of Dijkstra (#54): the block of tag 8 through the node's block
+    * decoder, the header by its era, the transaction in its mempool and block forms, and its body
+    * at each level and its witness set, each seeded with the Conway to Dijkstra devnet chain and
+    * the Leios testnet's blocks and sampled from the pinned `dijkstra.cddl`.
+    */
+  private val dijkstra: Vector[Target] =
+    import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraLevel, DijkstraTx, DijkstraWitnesses}
+    def tree(name: String)(read: xyz.kd5ujc.scarab.codec.Node => Boolean): Input => Unit =
+      probe(name)(b => Cbor.decode(b).foreach(n => seen(name, read(n))))
+    Vector(
+      Target(
+        "dijkstra-block",
+        () => Corpus.dijkstraBlocks ++ Corpus.sampled("dijkstra:block", 20) ++ Corpus.tricky,
+        probe("dijkstra-block") { b =>
+          val decoded = Block.decodeShelley(b)
+          seen("dijkstra-block", decoded.isRight)
+          decoded.foreach {
+            case d: Block.Dijkstra =>
+              req(d.header.era == Era.Dijkstra, "a Dijkstra block's header is of another era")
+              req(
+                LeiosBlock.decode(b) == Right(d.block),
+                "the node's block decoder and the Leios block decoder disagree"
+              )
+            case _ => ()
+          }
+        }
+      ),
+      Target(
+        "dijkstra-header",
+        () => Corpus.dijkstraHeaders ++ Corpus.sampled("dijkstra:header", 40) ++ Corpus.tricky,
+        probe("dijkstra-header") { b =>
+          val decoded = Header.fromRaw(Era.Dijkstra, b)
+          seen("dijkstra-header", decoded.isRight)
+          decoded.foreach { h =>
+            req(h.raw == b, "the header does not keep its original bytes")
+            req(h.hash == Blake2b.hash256.hash(b), "the header hash is not over the input")
+            req(
+              LeiosHeader.decode(b).map(_.dijkstraView) == decoded,
+              "the header by its era is not the Leios header"
+            )
+          }
+        }
+      ),
+      Target(
+        "dijkstra-tx-submitted",
+        () =>
+          Corpus.dijkstraSubmitted ++ Corpus
+            .sampled("dijkstra:mempool_transaction", 40) ++ Corpus.tricky,
+        probe("dijkstra-tx-submitted") { b =>
+          val decoded = DijkstraTx.fromSubmission(b)
+          seen("dijkstra-tx-submitted", decoded.isRight)
+          decoded.foreach(t => req(t.isValid, "a submitted transaction is not valid"))
+        }
+      ),
+      Target(
+        "dijkstra-tx-in-block",
+        () =>
+          Corpus.dijkstraInBlock ++ Corpus
+            .sampled("dijkstra:block_transaction", 40) ++ Corpus.tricky,
+        tree("dijkstra-tx-in-block")(DijkstraTx.inBlock(_).isRight)
+      ),
+      Target(
+        "dijkstra-tx-body",
+        () =>
+          Corpus.dijkstraParts(0) ++ Corpus.sampled("dijkstra:transaction_body", 60) ++
+            Corpus.tricky,
+        tree("dijkstra-tx-body") { n =>
+          val top = DijkstraTx.body(n, DijkstraLevel.Top)
+          val sub = DijkstraTx.body(n, DijkstraLevel.Sub)
+          top.foreach(t => req(t.fee.isDefined, "a top-level body has no fee"))
+          sub.foreach(t => req(t.fee.isEmpty, "a sub-transaction's body has a fee"))
+          top.isRight || sub.isRight
+        }
+      ),
+      Target(
+        "dijkstra-tx-witnesses",
+        () =>
+          Corpus.dijkstraParts(1) ++ Corpus.sampled("dijkstra:transaction_witness_set", 60) ++
+            Corpus.tricky,
+        tree("dijkstra-tx-witnesses")(DijkstraWitnesses.decode(_).isRight)
+      )
+    )
 
   private def eraSeeds(
       fixtures: Era => Vector[Array[Byte]],
@@ -1040,10 +1128,16 @@ object Targets:
                       .toInt -> v.original
                 }.toMap
                 val update = ParamUpdate(fields)
-                Vector(6, 8, 10).foreach { major =>
+                val eras: Vector[(Int, xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra[?])] =
+                  Vector(
+                    6 -> xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SAlonzo,
+                    8 -> xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SBabbage,
+                    10 -> xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SConway
+                  )
+                eras.foreach { (major, era) =>
                   seen(
                     "param-update",
-                    ProtocolParams.update(TestLedger.params(major), update).isRight
+                    ProtocolParams.update(TestLedger.params(major), update)(using era).isRight
                   )
                 }
               case _ => ()
@@ -1087,9 +1181,10 @@ object Targets:
             .sampled("conway:script", 40) ++ Corpus.tricky,
         probe("script") { b =>
           xyz.kd5ujc.scarab.codec.Cbor.decode(b).foreach { n =>
-            seen("script", Script.decode(n).isRight)
-            Script.decodeWrapped(n)
-            NativeScript.decode(n)
+            seen("script", Script.decode(n, ScriptKind.newestKnown).isRight)
+            Script.decodeWrapped(n, ScriptKind.newestKnown)
+            NativeScript.decode(n, NativeScript.Form.MultiSig)
+            NativeScript.decode(n, NativeScript.Form.Timelock)
           }
         }
       )
@@ -1319,6 +1414,109 @@ object Targets:
       )
     )
 
+  /** The `state` file in the layout of the Leios build (#826): the whole file, and the two
+    * envelopes of the extended state that are the Leios layout's own (the Peras state, the bound).
+    * What decodes is writable and its encoding is stable after another decode/write. Whole-file
+    * domain equality is unsuitable here: likelihood equality normalises IEEE floats, including NaN.
+    * Finite generated values also have a semantic equality law in LeiosLayoutSuite.
+    */
+  private val leiosState: Vector[Target] =
+    import xyz.kd5ujc.scarab.protocol.StateLayout
+    import xyz.kd5ujc.scarab.storage.haskell.state.{
+      Envelope,
+      HaskellLedgerFile,
+      HaskellState,
+      LeiosStateCodecs
+    }
+    def fixture(dir: String, name: String): Array[Byte] =
+      java.nio.file.Files.readAllBytes(java.nio.file.Path.of(dir, name, "state"))
+    def roundTrip[A](name: String, codec: xyz.kd5ujc.scarab.models.runtime.Codec[A])(
+        bytes: Bytes
+    ): Unit =
+      codec.decodeBytes(bytes, HaskellState.limits).foreach { a =>
+        hit(name)
+        val written = codec.write(a).fold(e => throw new Violation(s"$name: $e"), identity)
+        req(
+          codec.decodeBytes(written, HaskellState.limits) == Right(a),
+          s"$name: what decodes does not decode as itself after it is written"
+        )
+      }
+    val bound = Envelope.bound(StateLayout.Leios)
+    Vector(
+      Target(
+        "leios-state",
+        () =>
+          val seeds = Vector(fixture("fixtures/leios/state", "conway-195")) ++
+            Vector("shelley-1000", "conway-4593").map(fixture("fixtures/haskell-state", _))
+          req(
+            HaskellLedgerFile.decode(Bytes.fromArray(seeds.head), StateLayout.Leios).isRight,
+            "the Leios state seed does not decode"
+          )
+          seeds ++ Vector(fixture("fixtures/leios/state", "dijkstra-203")) ++ Corpus.tricky
+        ,
+        probe("leios-state") { bytes =>
+          HaskellLedgerFile.decode(bytes, StateLayout.Leios).foreach { file =>
+            hit("leios-state")
+            val written = HaskellLedgerFile
+              .encode(file, StateLayout.Leios)
+              .fold(e => throw new Violation(s"leios-state: ${e.violation.render}"), identity)
+            val back = HaskellLedgerFile
+              .decode(written, StateLayout.Leios)
+              .fold(e => throw new Violation(s"leios-state: ${e.render}"), identity)
+            req(
+              HaskellLedgerFile.encode(back, StateLayout.Leios) == Right(written),
+              "leios-state: the whole-file encoding is not stable after decoding"
+            )
+            req(
+              HaskellLedgerFile.encode(file, StateLayout.Node11_1).isLeft,
+              "leios-state: the 11.1 writer accepts a Leios file"
+            )
+          }
+        }
+      ),
+      Target(
+        "leios-peras-state",
+        () =>
+          Vector("828301808080", "8282004361626381" + "05", "828301808081" + "07")
+            .map(h => Bytes.fromHex(h).fold(e => throw new Violation(e.toString), _.toArray)) ++
+            Corpus.tricky,
+        probe("leios-peras-state")(roundTrip("leios-peras-state", LeiosStateCodecs.perasState))
+      ),
+      Target(
+        "leios-pool-distribution",
+        () =>
+          val seeds = java.nio.file.Files
+            .readString(java.nio.file.Path.of("fixtures/reference/pool-distribution/cases.jsonl"))
+            .linesIterator
+            .filter(_.nonEmpty)
+            .map(line =>
+              io.circe.parser.parse(line).fold(e => throw new Violation(e.toString), _.hcursor)
+            )
+            .filter(_.get[String]("kind").contains("individual"))
+            .map(_.get[String]("cbor").fold(e => throw new Violation(e.toString), identity))
+            .map(h => Bytes.fromHex(h).fold(e => throw new Violation(e.toString), _.toArray))
+            .toVector
+          seeds ++ Corpus.tricky
+        ,
+        probe("leios-pool-distribution") { bytes =>
+          given xyz.kd5ujc.scarab.ledger.state.ProtVer =
+            xyz.kd5ujc.scarab.ledger.state.ProtVer(
+              xyz.kd5ujc.scarab.ledger.state.Word64.fromUnsigned(12),
+              xyz.kd5ujc.scarab.ledger.state.Word64.zero
+            )
+          roundTrip("leios-pool-distribution", LeiosStateCodecs.individualPoolStake)(bytes)
+        }
+      ),
+      Target(
+        "leios-bound",
+        () =>
+          Vector("83030501", "8403050107", "84c2490100000000000000000501" + "00")
+            .map(h => Bytes.fromHex(h).fold(e => throw new Violation(e.toString), _.toArray)) ++
+            Corpus.tricky,
+        probe("leios-bound")(roundTrip("leios-bound", bound))
+      )
+    )
+
   private val sclsFraming: Vector[Target] =
     import xyz.kd5ujc.scarab.storage.scls.{SclsFraming, SclsKey, SclsRecord, SclsValidation}
     // Prepare immutable codec definitions with the targets; every input decode remains in Probe.
@@ -1466,18 +1664,20 @@ object Targets:
       SnapshotCheck,
       SnapshotSidecar,
       SnapshotV7,
-      SnapshotV8
+      SnapshotV8,
+      SnapshotV9,
+      SnapshotV10
     }
     import scala.jdk.CollectionConverters.*
     lazy val env = NodeSetup
-      .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
+      .fromDirectory(ReferenceBuild.Default)(java.nio.file.Path.of("fixtures/eras/genesis"))
       .fold(e => throw new Violation(e.message), _.mirrorEnv())
     lazy val format =
       given Ask[SyncIO, ConsensusMirrorEnv] = Ask.const(env)
-      SnapshotV8.format[SyncIO](SnapshotCheck.Full)
+      SnapshotV10.format[SyncIO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
     Vector(
       Target(
-        "native-snapshot-v8",
+        "native-snapshot-v10",
         () =>
           // Keep decoder allocations visible to Probe's caller-thread counter.
           val caller = Thread.currentThread()
@@ -1485,7 +1685,8 @@ object Targets:
             Sync[SyncIO].blocking(Thread.currentThread()).unsafeRunSync() eq caller,
             "snapshot fuzz interpreter moved off the allocation-guard thread"
           )
-          val listing = java.nio.file.Files.list(java.nio.file.Path.of("fixtures/snapshot-v8/eras"))
+          val listing =
+            java.nio.file.Files.list(java.nio.file.Path.of("fixtures/snapshot-v10/eras"))
           val eraSeeds =
             try
               listing.iterator.asScala.toVector.sorted.map { file =>
@@ -1501,6 +1702,8 @@ object Targets:
               )
             )
             .flatMap(SnapshotV8.fromV7)
+            .flatMap(SnapshotV9.fromV8)
+            .flatMap(SnapshotV10.fromV9)
             .fold(e => throw new Violation(e.message), identity)
           req(
             seeds.forall(b => format.decode(b).unsafeRunSync().isRight),
@@ -1508,10 +1711,10 @@ object Targets:
           )
           seeds
         ,
-        probe("native-snapshot-v8") { bytes =>
+        probe("native-snapshot-v10") { bytes =>
           format.decode(bytes.toArray).unsafeRunSync().foreach { snapshot =>
-            hit("native-snapshot-v8")
-            val sidecar = SnapshotV8
+            hit("native-snapshot-v10")
+            val sidecar = SnapshotV10
               .sidecarOf(bytes.toArray)
               .fold(e => throw new Violation(e.message), identity)
             req(
@@ -1604,19 +1807,22 @@ object Targets:
       Bytes.fromArray(Array.fill[Byte](32)(1)),
       Some(Bytes.fromArray(Array.fill[Byte](32)(2))),
       GenesisFileHash(rawHash),
-      GenesisFileHash(Bytes.fromArray(Array.fill[Byte](32)(3)))
+      GenesisFileHash(Bytes.fromArray(Array.fill[Byte](32)(3))),
+      Some(GenesisFileHash(Bytes.fromArray(Array.fill[Byte](32)(4))))
     )
     val legacyV1 = identity.legacy.renderAs(FormatVersion.V1)
     val legacyV2 = identity.legacy.renderAs(FormatVersion.V2)
-    val current = identity.renderAs(FormatVersion.V6)
+    val current = identity.renderAs(FormatVersion.V9)
     val confirmedMissing = identity.renderAs(
-      FormatVersion.V6,
+      FormatVersion.V9,
       IdentityProvenance.OperatorConfirmedMissing
     )
     val confirmedLegacy = identity.renderAs(
-      FormatVersion.V6,
+      FormatVersion.V9,
       IdentityProvenance.OperatorConfirmedLegacy(FormatVersion.V2, rawHash)
     )
+    val beforeDijkstra = identity.renderAs(FormatVersion.V6)
+    val withoutDijkstra = identity.copy(dijkstraGenesis = None).renderAs(FormatVersion.V9)
     val malformed = Vector(
       current.replace(
         "provenance fresh",
@@ -1625,7 +1831,16 @@ object Targets:
       current.replace("provenance fresh", "provenance operator-confirmed-legacy:v2"),
       current.replace("provenance fresh", "provenance operator-confirmed-legacy:v2:blake2b256=00")
     )
-    val seeds = Vector(legacyV1, legacyV2, current, confirmedMissing, confirmedLegacy) ++ malformed
+    val valid = Vector(
+      legacyV1,
+      legacyV2,
+      current,
+      confirmedMissing,
+      confirmedLegacy,
+      beforeDijkstra,
+      withoutDijkstra
+    )
+    val seeds = valid ++ malformed
     Vector(
       Target(
         "network-identity-file",
@@ -1638,13 +1853,15 @@ object Targets:
               hit("network-identity-file")
               val canonical = parsed._2 match
                 case StoredNetworkIdentity.Legacy(_, value) => value.renderAs(parsed._1)
+                case StoredNetworkIdentity.BeforeDijkstra(value, provenance) =>
+                  value.renderAs(parsed._1, provenance)
                 case StoredNetworkIdentity.Complete(value, provenance) =>
                   value.renderAs(parsed._1, provenance)
               req(
                 NetworkIdentity.parseVersioned("fuzz identity", canonical) == Right(parsed),
                 "identity parse/render/parse changed its version or stored value"
               )
-            case Left(_) => req(!seeds.take(5).contains(text), "valid identity seed was refused")
+            case Left(_) => req(!valid.contains(text), "valid identity seed was refused")
         }
       )
     )
@@ -1753,21 +1970,23 @@ object Targets:
         () => configs ++ minimal ++ Corpus.tricky,
         probe("node-config-strict") { bytes =>
           val text = new String(bytes.toArray, UTF_8)
-          if strictRefused.exists(seed => java.util.Arrays.equals(bytes.toArray, seed)) then
-            req(
-              NodeConfig.parse(text, strict = true).isLeft,
-              "a configuration naming none of the required fields is accepted strictly, so the checks do not bite"
-            )
-            req(
-              NodeConfig.parse(text).isRight,
-              "a configuration refused only for a missing required field is refused without the checks too"
-            )
-          NodeConfig.parse(text, strict = true).foreach { config =>
-            req(
-              NodeConfig.parse(text) == Right(config),
-              "a configuration read strictly is not read with the same value without the checks"
-            )
-            hit("node-config-strict")
+          ReferenceBuild.values.foreach { build =>
+            if strictRefused.exists(seed => java.util.Arrays.equals(bytes.toArray, seed)) then
+              req(
+                NodeConfig.parse(build)(text, strict = true).isLeft,
+                "a configuration naming none of the required fields is accepted strictly, so the checks do not bite"
+              )
+              req(
+                NodeConfig.parse(build)(text).isRight,
+                "a configuration refused only for a missing required field is refused without the checks too"
+              )
+            NodeConfig.parse(build)(text, strict = true).foreach { config =>
+              req(
+                NodeConfig.parse(build)(text) == Right(config),
+                "a configuration read strictly is not read with the same value without the checks"
+              )
+              hit("node-config-strict")
+            }
           }
         }
       )
@@ -2016,14 +2235,16 @@ object Targets:
         ),
       probe("node-config") { bytes =>
         val text = new String(bytes.toArray, java.nio.charset.StandardCharsets.UTF_8)
-        NodeConfig.parse(text).foreach { config =>
-          hit("node-config")
-          if !config.settings.experimentalHardForksEnabled then
-            req(
-              config.files.dijkstra.isEmpty && config.hashes.dijkstra.isEmpty &&
-                config.settings.dijkstraHardForkEpoch.isEmpty && config.settings.dijkstraHardForkVersion.isEmpty,
-              "disabled Dijkstra fields were retained"
-            )
+        ReferenceBuild.values.foreach { build =>
+          NodeConfig.parse(build)(text).foreach { config =>
+            hit("node-config")
+            if !config.settings.experimentalHardForksEnabled then
+              req(
+                config.files.dijkstra.isEmpty && config.hashes.dijkstra.isEmpty &&
+                  config.settings.dijkstraHardForkEpoch.isEmpty && config.settings.dijkstraHardForkVersion.isEmpty,
+                "disabled Dijkstra fields were retained"
+              )
+          }
         }
       }
     )
@@ -2093,7 +2314,8 @@ object Targets:
     )
 
   val all: Vector[Target] =
-    network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++ sclsFraming ++
+    network ++ node ++ dijkstra ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++
+      leiosState ++ sclsFraming ++
       Vector(
         sclsValues,
         genesisInjections,
@@ -2102,4 +2324,4 @@ object Targets:
         injectionJson,
         genesisPoolFields
       ) ++ nativeSnapshots ++ ancillary ++ mithril ++ networkIdentity ++ volatileLog ++
-      nodeConfiguration ++ nodeTopologyFile
+      nodeConfiguration ++ nodeTopologyFile ++ UplcTargets.all

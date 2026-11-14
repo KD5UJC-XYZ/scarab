@@ -33,6 +33,14 @@ class LocalServerSuite extends FailsOnUncaught:
 
   private val temporary = fs2.io.file.Files.forAsync[IO].tempDirectory.map(_.toNioPath)
 
+  /** A temporary directory with a short ASCII path, whatever the default one is, so that a path in
+    * it can be made of a given length in bytes and characters alike.
+    */
+  private val shortTemporary = fs2.io.file.Files
+    .forAsync[IO]
+    .tempDirectory(Some(fs2.io.file.Path("/tmp")), "s", None)
+    .map(_.toNioPath)
+
   /** Bind and close a Unix socket at `path`, as a run that died leaves it: never unlinked. */
   private def staleSocket(path: Path): IO[Unit] = IO.blocking {
     val channel = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
@@ -200,6 +208,29 @@ class LocalServerSuite extends FailsOnUncaught:
     }
   }
 
+  // unix 2.8.6.0's `removeLink` refuses the path before it calls `unlink`, which would stop at the
+  // NUL and remove the file the bytes before it name
+  test("a path that holds NUL refuses with removeLink's check, and removes nothing") {
+    temporary.use { root =>
+      val kept = root.resolve("kept")
+      val path = s"$kept\u0000.socket"
+      for
+        _ <- IO.blocking(Files.writeString(kept, "kept"))
+        removed <- attempt[SocketConfigError, Unit](LocalServer.removeStale(jdk, path))
+        left <- IO.blocking(Files.readString(kept))
+      yield
+        assertEquals(
+          removed.left.map(_.message),
+          Left(
+            s"Failure while attempting to remove the stale local socket: $path : " +
+              s"$path: checkForInteriorNuls: invalid argument " +
+              "(POSIX filepaths must not contain internal NUL octets.)"
+          )
+        )
+        assertEquals(left, "kept", "the file the bytes before the NUL name is left")
+    }
+  }
+
   test("a blocking call cancelled by closing its channel leaves no uncaught failure (#644)") {
     // On one FIFO worker thread the order is fixed: the cancel drops the join of `cancelable` and
     // runs `closing`, which wakes the call and then yields, as the blocking close of a real channel
@@ -336,7 +367,8 @@ class LocalServerSuite extends FailsOnUncaught:
   )
 
   test("bind, check, listen, then accept, each step traced as the reference's withLocalSocket") {
-    serve(Nil)(_ => IO.sleep(50.millis)).map { (result, calls, traces) =>
+    // the server has bound, listened and waits in accept once every fiber has done all it can
+    Settled(settle => serve(Nil)(_ => settle)).map { (result, calls, traces) =>
       assertEquals(result, Right(()))
       assertEquals(
         calls,
@@ -362,7 +394,7 @@ class LocalServerSuite extends FailsOnUncaught:
       assertEquals(calls, Vector(Call.Open, Call.Bind))
       assertEquals(traces, setUp.take(3))
       assertEquals(
-        result.left.map(_.shown),
+        result.left.map(_.show),
         Left("Network.Socket.bind: does not exist (No such file or directory)")
       )
     }
@@ -379,7 +411,7 @@ class LocalServerSuite extends FailsOnUncaught:
     ).map { (result, calls, traces) =>
       assertEquals(result, Left(DiffusionFailure.System(unreadable)))
       assertEquals(
-        result.left.map(_.shown),
+        result.left.map(_.show),
         Left("/run/cardano: getFileStatus: permission denied (Permission denied)")
       )
       assert(!calls.contains(Call.Listen), calls)
@@ -461,7 +493,7 @@ class LocalServerSuite extends FailsOnUncaught:
         )
       )
       assertEquals(
-        DiffusionFailure.System(exhausted).shown,
+        DiffusionFailure.System(exhausted).show,
         "Network.Socket.accept: resource exhausted (No file descriptors available)"
       )
   }
@@ -476,14 +508,39 @@ class LocalServerSuite extends FailsOnUncaught:
   )(handle: cats.mtl.Handle[IO, NetworkError] ?=> (Bearer[IO], LocalConnectionId) => IO[Unit])(
       body: IO[DiffusionFailure] => IO[A]
   ): IO[(Either[DiffusionFailure, A], Vector[Trace])] =
+    onJdkAt(path.toString, failures)(handle)(body)
+
+  /** [[onJdk]] at a path given as text, which a `Path` cannot hold when the JDK refuses it. */
+  private def onJdkAt[A](
+      path: String,
+      failures: (LocalConnectionId, HandlerFailure[NetworkError]) => IO[Unit]
+  )(handle: cats.mtl.Handle[IO, NetworkError] ?=> (Bearer[IO], LocalConnectionId) => IO[Unit])(
+      body: IO[DiffusionFailure] => IO[A]
+  ): IO[(Either[DiffusionFailure, A], Vector[Trace])] =
     Ref.of[IO, Vector[Trace]](Vector.empty).flatMap { traces =>
       attempt[DiffusionFailure, A](
         LocalServer
-          .resource[IO, NetworkError](jdk, LocalAddress(path.toString), t => traces.update(_ :+ t))(
+          .resource[IO, NetworkError](jdk, LocalAddress(path), t => traces.update(_ :+ t))(
             failures
           )(handle)
           .use(body)
       ).product(traces.get)
+    }
+
+  /** A path in `root` (from [[shortTemporary]]) of `length` ASCII characters, so of `length` bytes,
+    * with no repeated `/` for the JDK to collapse.
+    */
+  private def sized(root: Path, length: Int): String =
+    val path = s"$root/" + "m" * (length - root.toString.length - 1)
+    assertEquals(path.getBytes(java.nio.charset.StandardCharsets.UTF_8).length, length)
+    assertEquals(path.length, length)
+    path
+
+  /** The traces end where the bind's failure stops the set-up, as the reference's do. */
+  private def endsAtBind(traces: Vector[Trace]): Boolean =
+    traces.lastOption.exists {
+      case _: Trace.ConfiguringLocalSocket => true
+      case _                               => false
     }
 
   /** Connect to `path`, write `out`, close the output and read until the server closes. */
@@ -527,7 +584,7 @@ class LocalServerSuite extends FailsOnUncaught:
         left <- IO.blocking(Files.getAttribute(path, "unix:mode").asInstanceOf[Integer].toInt)
       yield
         val (result, traces) = outcome
-        val (domain, defect, echoed) = result.fold(e => fail(e.shown), identity)
+        val (domain, defect, echoed) = result.fold(e => fail(e.show), identity)
         assertEquals(
           domain,
           LocalConnectionId(LocalAddress(path.toString), LocalAddress(s"$path@0")) -> HandlerFailure
@@ -574,7 +631,7 @@ class LocalServerSuite extends FailsOnUncaught:
     temporary.use { root =>
       val path = root.resolve("node.socket")
       jdk.open(LocalAddress(path.toString)).use { opened =>
-        val listener = opened.fold(e => fail(e.shown), identity)
+        val listener = opened.fold(e => fail(e.show), identity)
         for
           bound <- listener.bind
           // nobody accepts: Linux queues backlog + 1 connections, the next one would block
@@ -667,7 +724,7 @@ class LocalServerSuite extends FailsOnUncaught:
       val path = root.resolve("absent/node.socket")
       onJdk(path)((_, _) => IO.unit)(_ => IO.unit).map { (result, traces) =>
         assertEquals(
-          result.left.map(_.shown),
+          result.left.map(_.show),
           Left("Network.Socket.bind: does not exist (No such file or directory)")
         )
         assert(
@@ -687,6 +744,110 @@ class LocalServerSuite extends FailsOnUncaught:
       onJdk(path)((_, _) => IO.unit)(_ => IO.unit).map { (result, _) =>
         assertEquals(result, Left(DiffusionFailure.PathTooLong(path.toString)))
       }
+    }
+  }
+
+  // network 3.2.8.0 refuses `len >= unixPathMax` (`Network/Socket/Types.hsc` 1162)
+  test("on the JDK: a path of exactly 108 characters is refused as pokeSockAddr refuses it") {
+    shortTemporary.use { root =>
+      val path = sized(root, 108)
+      onJdkAt(path, (_, _) => IO.unit)((_, _) => IO.unit)(_ => IO.unit).map { (result, traces) =>
+        assertEquals(result, Left(DiffusionFailure.PathTooLong(path)))
+        assert(endsAtBind(traces), traces)
+      }
+    }
+  }
+
+  // the JDK takes `sizeof sun_path - 2` bytes (OpenJDK jdk-25+36 `nio_util.h` 45-49)
+  test("on the JDK: a path of 106 bytes, the JDK's longest, is bound") {
+    shortTemporary.use { root =>
+      val path = sized(root, 106)
+      onJdkAt(path, (_, _) => IO.unit)((_, _) => IO.unit)(_ => IO.unit).map { (result, _) =>
+        assertEquals(result, Right(()))
+      }
+    }
+  }
+
+  test("on the JDK: a path of 107 bytes, which the reference binds, is refused (#949)") {
+    shortTemporary.use { root =>
+      val path = sized(root, 107)
+      onJdkAt(path, (_, _) => IO.unit)((_, _) => IO.unit)(_ => IO.unit).map { (result, traces) =>
+        assertEquals(
+          result,
+          Left(
+            DiffusionFailure.System(
+              SystemCallError(
+                SystemCall.Bind,
+                ErrnoCause.Unrecognised("Unix domain path too long"),
+                None
+              )
+            )
+          )
+        )
+        assert(endsAtBind(traces), traces)
+      }
+    }
+  }
+
+  test("on the JDK: a path that holds NUL is a failed bind, not an exception (#949)") {
+    shortTemporary.use { root =>
+      onJdkAt(s"$root/node\u0000.socket", (_, _) => IO.unit)((_, _) => IO.unit)(_ => IO.unit)
+        .map { (result, traces) =>
+          assertEquals(
+            result,
+            Left(
+              DiffusionFailure.System(
+                SystemCallError(
+                  SystemCall.Bind,
+                  ErrnoCause.Unrecognised("Nul character not allowed"),
+                  None
+                )
+              )
+            )
+          )
+          assert(endsAtBind(traces), traces)
+        }
+    }
+  }
+
+  // run with `café` paths under a UTF-8 locale, cardano-node 11.1.3 binds the path truncated to a
+  // byte per character and then finds no socket at the path's own name; Scarab refuses every path
+  // beyond ASCII at that step with that error and binds nothing, the owner's decision (#949)
+  test(
+    "on the JDK: a path beyond ASCII stops the set-up as the reference's does, binding nothing"
+  ) {
+    shortTemporary.use { root =>
+      val path = s"$root/café.socket"
+      onJdkAt(path, (_, _) => IO.unit)((_, _) => IO.unit)(_ => IO.unit).flatMap {
+        (result, traces) =>
+          IO.blocking(root.toFile.list.length).map { left =>
+            assertEquals(
+              result.left.map(_.show),
+              Left(s"$path: getFileStatus: does not exist (No such file or directory)")
+            )
+            assert(endsAtBind(traces), traces)
+            assertEquals(left, 0, "no socket file is made, under any name")
+          }
+      }
+    }
+  }
+
+  // the reference's length and trailing-`/` refusals come before its check of the socket file,
+  // where a path beyond ASCII stops it (runs of cardano-node 11.1.3, #949)
+  test("on the JDK: a path beyond ASCII is refused for its length or its trailing slash first") {
+    shortTemporary.use { root =>
+      val long = s"$root/é" + "n" * (108 - root.toString.length - 2)
+      val slashed = s"$root/café/"
+      for
+        tooLong <- onJdkAt(long, (_, _) => IO.unit)((_, _) => IO.unit)(_ => IO.unit)
+        ending <- onJdkAt(slashed, (_, _) => IO.unit)((_, _) => IO.unit)(_ => IO.unit)
+      yield
+        assertEquals(long.codePointCount(0, long.length), 108)
+        assertEquals(tooLong._1, Left(DiffusionFailure.PathTooLong(long)))
+        assertEquals(
+          ending._1.left.map(_.show),
+          Left("Network.Socket.bind: does not exist (No such file or directory)")
+        )
     }
   }
 

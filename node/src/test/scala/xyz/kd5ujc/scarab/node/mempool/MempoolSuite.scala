@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.network.Settled
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission.message
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{IO, Ref}
@@ -22,6 +23,12 @@ import Capacity.fits
 
 /** Real transaction bytes over a synthetic Conway ledger. */
 object TxKit:
+  /** `n` as a `MempoolCapacityBytesOverride`, which is a `Word32`. */
+  def word32(n: Long): xyz.kd5ujc.scarab.network.Word32 =
+    xyz.kd5ujc.scarab.network.Word32
+      .fromLong(n)
+      .getOrElse(munit.Assertions.fail(s"$n is not a Word32"))
+
   val alice: Key = key()
   val bob: Key = key()
   val ada: BigInt = 1000000
@@ -35,7 +42,9 @@ object TxKit:
         epochLength = 1000,
         securityParam = TestGeometry.k(5),
         activeSlotsCoeff = TestGeometry.f("0.5")
-      )
+      ),
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
     )
 
   def head(major: Int, n: BigInt): Vector[Byte] =
@@ -48,7 +57,15 @@ object TxKit:
       ((major << 5) | 27).toByte +: Vector(56, 48, 40, 32, 24, 16, 8, 0).map(s => (n >> s).toByte)
   def bstr(b: Bytes): Vector[Byte] = head(2, b.size) ++ b.value
 
-  /** A signed Conway transaction `[body, witnesses, true, null]` and its id. */
+  /** A signed Conway transaction `[body, witnesses, true, null]` and its id.
+    *
+    * @param bootstraps
+    *   bootstrap witnesses `[vkey, signature, chain code, attributes]`: each key signs the body,
+    *   with the chain code and attributes given.
+    * @param invalidBootstraps
+    *   the indexes of `bootstraps` whose key signs other bytes than the body's hash, so that the
+    *   signature does not verify.
+    */
   def tx(
       inputs: Vector[TxIn],
       outputs: Vector[(Address, BigInt)],
@@ -59,10 +76,14 @@ object TxKit:
       referenceScript: Option[(ScriptKind, Bytes)] = None,
       expires: Option[BigInt] = None,
       exUnits: Option[(BigInt, BigInt)] = None,
-      certificates: Vector[Byte] = Vector.empty
+      certificates: Vector[Byte] = Vector.empty,
+      referenceInputs: Vector[TxIn] = Vector.empty,
+      bootstraps: Vector[(Key, Bytes, Bytes)] = Vector.empty,
+      invalidBootstraps: Set[Int] = Set.empty
   ): (Bytes, Bytes) =
-    val ins =
-      head(4, inputs.size) ++ inputs.flatMap(i => head(4, 2) ++ bstr(i.id) ++ head(0, i.index))
+    def inputList(of: Vector[TxIn]): Vector[Byte] =
+      head(4, of.size) ++ of.flatMap(i => head(4, 2) ++ bstr(i.id) ++ head(0, i.index))
+    val ins = inputList(inputs)
     val outs =
       head(4, outputs.size) ++ outputs.flatMap { (a, c) =>
         referenceScript.fold(head(4, 2) ++ bstr(a.raw) ++ head(0, c)) { (kind, code) =>
@@ -75,7 +96,8 @@ object TxKit:
       head(
         5,
         3 + (if votes.isEmpty then 0 else 1) + expires.size + (if certificates.isEmpty then 0
-                                                               else 1)
+                                                               else 1) +
+          (if referenceInputs.isEmpty then 0 else 1)
       ) ++ Vector(
         0x00.toByte
       ) ++ ins ++ Vector(
@@ -83,6 +105,8 @@ object TxKit:
       ) ++ outs ++ Vector(0x02.toByte) ++ head(0, fee) ++
         expires.fold(Vector.empty[Byte])(slot => Vector(0x03.toByte) ++ head(0, slot)) ++
         (if certificates.isEmpty then Vector.empty else Vector(0x04.toByte) ++ certificates) ++
+        (if referenceInputs.isEmpty then Vector.empty
+         else Vector(0x12.toByte) ++ inputList(referenceInputs)) ++
         (if votes.isEmpty then Vector.empty else Vector(0x13.toByte) ++ votes)
     )
     val id = Blake2b.hash256.hash(body)
@@ -94,8 +118,17 @@ object TxKit:
       Vector(0x05.toByte) ++ head(4, 1) ++ head(4, 4) ++ head(0, 0) ++ head(0, 0) ++ head(0, 0) ++
         head(4, 2) ++ head(0, mem) ++ head(0, steps)
     }
+    val bootstrapWitnesses =
+      if bootstraps.isEmpty then Vector.empty[Byte]
+      else
+        Vector(0x02.toByte) ++ head(4, bootstraps.size) ++ bootstraps.zipWithIndex.flatMap {
+          case ((k, code, attrs), i) =>
+            val signed = if invalidBootstraps(i) then Blake2b.hash256.hash(id) else id
+            head(4, 4) ++ bstr(k.vkey) ++ bstr(k.sign(signed)) ++ bstr(code) ++ bstr(attrs)
+        }
     val witnesses =
-      head(5, 1 + exUnits.size) ++ Vector(0x00.toByte) ++ vkeys ++ redeemers
+      head(5, 1 + (if bootstraps.isEmpty then 0 else 1) + exUnits.size) ++ Vector(0x00.toByte) ++
+        vkeys ++ bootstrapWitnesses ++ redeemers
     (
       Bytes(
         head(4, 4) ++ body.value ++ witnesses ++ Vector(
@@ -150,7 +183,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
   import TxKit.*
 
   private def pool(ledger: MempoolLedger, capacityOverride: Option[Long] = None) =
-    MempoolState.empty(Right(ledger), 1000, capacityOverride)
+    MempoolState.empty(Right(ledger), 1000, capacityOverride.map(word32))
 
   private def add(s: MempoolState, raw: Bytes): Either[Rejection, MempoolState] =
     s.add(raw, env, Source.Local).map(_._1)
@@ -583,40 +616,43 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
       .map(r => ((e: MempoolEvent) => r.update(_ :+ e), r))
 
   test("Mempool[F]: add, offer to peers by ticket, collect from peers, sync") {
-    for
-      ev <- events
-      mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, None, ev._1)
-      (t1, id1) = pay(1)
-      (t2, id2) = pay(2)
-      first <- mempool.add(t1, Source.Local)
-      dup <- mempool.add(t1, Source.Local)
-      // as a TxSubmission2 server we collect from a peer; known ids are not fetched
-      knownBefore <- mempool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(id1)
-      knownOther <- mempool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(id2)
-      _ <- mempool
-        .sink(failure => IO(fail(s"unexpected fatal: $failure")))
-        .submit(Vector(t2, Bytes(Vector(1, 2))))
-      // as a client we offer what we hold, once per peer cursor
-      offered <- mempool.source.after(0L, 10)
-      later <- mempool.source.after(offered.head.ticket, 10)
-      body <- mempool.source.body(id2)
-      waiting <- mempool.source.awaitAfter(offered.last.ticket).start
-      (t3, id3) = pay(3)
-      _ <- IO.sleep(scala.concurrent.duration.DurationInt(20).millis)
-      _ <- mempool.add(t3, Source.Local)
-      _ <- waiting.joinWithNever
-      log <- ev._2.get
-    yield
-      assertEquals(first, Right(id1))
-      assertEquals(dup, Left(Rejection.AlreadyHeld(id1)))
-      assert(knownBefore && !knownOther)
-      assertEquals(offered.map(_.id), Vector(id1, id2))
-      assertEquals(later.map(_.id), Vector(id2))
-      assertEquals(body, Some(t2))
-      assert(log.exists { case MempoolEvent.Added(`id3`, _, 3, _) => true; case _ => false })
-      assert(log.exists {
-        case MempoolEvent.Rejected(_, _: Rejection.Malformed) => true; case _ => false
-      })
+    Settled { settle =>
+      for
+        ev <- events
+        mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, None, ev._1)
+        (t1, id1) = pay(1)
+        (t2, id2) = pay(2)
+        first <- mempool.add(t1, Source.Local)
+        dup <- mempool.add(t1, Source.Local)
+        // as a TxSubmission2 server we collect from a peer; known ids are not fetched
+        knownBefore <- mempool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(id1)
+        knownOther <- mempool.sink(failure => IO(fail(s"unexpected fatal: $failure"))).known(id2)
+        _ <- mempool
+          .sink(failure => IO(fail(s"unexpected fatal: $failure")))
+          .submit(Vector(t2, Bytes(Vector(1, 2))))
+        // as a client we offer what we hold, once per peer cursor
+        offered <- mempool.source.after(0L, 10)
+        later <- mempool.source.after(offered.head.ticket, 10)
+        body <- mempool.source.body(id2)
+        waiting <- mempool.source.awaitAfter(offered.last.ticket).start
+        (t3, id3) = pay(3)
+        // the client waits for a transaction after the last it was offered
+        _ <- settle
+        _ <- mempool.add(t3, Source.Local)
+        _ <- waiting.joinWithNever
+        log <- ev._2.get
+      yield
+        assertEquals(first, Right(id1))
+        assertEquals(dup, Left(Rejection.AlreadyHeld(id1)))
+        assert(knownBefore && !knownOther)
+        assertEquals(offered.map(_.id), Vector(id1, id2))
+        assertEquals(later.map(_.id), Vector(id2))
+        assertEquals(body, Some(t2))
+        assert(log.exists { case MempoolEvent.Added(`id3`, _, 3, _) => true; case _ => false })
+        assert(log.exists {
+          case MempoolEvent.Rejected(_, _: Rejection.Malformed) => true; case _ => false
+        })
+    }
   }
 
   test(

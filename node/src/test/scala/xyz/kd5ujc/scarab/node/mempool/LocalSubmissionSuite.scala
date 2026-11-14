@@ -21,7 +21,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
   /** The socket paths of these tests are fresh: a local socket error fails the test. */
   private given Raise[IO, DiffusionFailure] with
     def functor: Functor[IO] = Functor[IO]
-    def raise[E <: DiffusionFailure, A](e: E): IO[A] = IO(fail(e.shown))
+    def raise[E <: DiffusionFailure, A](e: E): IO[A] = IO(fail(e.show))
 
   /** The node-to-client server at `path`, as the node runs it. */
   private def serving(path: java.nio.file.Path)(
@@ -292,7 +292,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
     val original = new scalus.uplc.eval.EvaluationFailure(Vector.empty)
     val failure = xyz.kd5ujc.scarab.ledger.PlutusFailure(
       xyz.kd5ujc.scarab.plutus.EvalFailure
-        .Script(xyz.kd5ujc.scarab.plutus.ScriptFailure(original, Vector("trace"))),
+        .Script(xyz.kd5ujc.scarab.plutus.ScriptFailure.Thrown(original, Vector("trace"))),
       Bytes.empty,
       Some(
         xyz.kd5ujc.scarab.plutus.EvalRequest(
@@ -392,7 +392,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
               assert(error.failure eq failure)
               error.failure.cause match
                 case xyz.kd5ujc.scarab.plutus.EvalFailure
-                      .Script(xyz.kd5ujc.scarab.plutus.ScriptFailure(cause, _)) =>
+                      .Script(xyz.kd5ujc.scarab.plutus.ScriptFailure.Thrown(cause, _)) =>
                   assert(cause eq original)
                 case other => fail(s"original evaluator cause lost: $other")
             case other => fail(s"unexpected server end: $other")

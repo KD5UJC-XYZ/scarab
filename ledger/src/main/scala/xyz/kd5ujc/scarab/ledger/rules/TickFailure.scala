@@ -36,8 +36,26 @@ enum TickFailure derives Eq, Show:
     */
   case UndecodableAddress(in: TxIn)
 
+  /** A part of the Dijkstra era this build does not implement yet (its EPOCH rule). The hard-fork
+    * configuration never lets the chain enter Dijkstra while the maximum major protocol version is
+    * 11 (`xyz.kd5ujc.scarab.consensus.HardForkConfig.transition`).
+    */
+  case NotYet(part: xyz.kd5ujc.scarab.protocol.DijkstraNotYet)
+
+  /** The chain would enter Dijkstra with no Dijkstra genesis, the context of the translation
+    * (`TranslationContext DijkstraEra`, cardano-ledger 9df9f98c `Dijkstra/Translation.hs:51`). A
+    * strict configuration that enables `ExperimentalHardForksEnabled` must name the
+    * `DijkstraGenesisFile` (`NodeConfig`), and the node refuses that setting as unsupported for
+    * now. The reference would translate with `emptyDijkstraGenesis` (cardano-node b004fe0c
+    * `Protocol/Cardano.hs:137-144`) instead, so this refusal stands where Scarab has no genesis.
+    * That difference is a deviation the owner approved on 2026-11-07 (#54, `docs/decisions.md`).
+    */
+  case NoDijkstraGenesis
+
 object TickFailure:
   private given Eq[VocabError] = Eq.fromUniversalEquals
   private given Show[VocabError] = Show.fromToString
   private given Eq[TxIn] = Eq.fromUniversalEquals
   private given Show[TxIn] = Show.fromToString
+  private given Eq[xyz.kd5ujc.scarab.protocol.DijkstraNotYet] = Eq.fromUniversalEquals
+  private given Show[xyz.kd5ujc.scarab.protocol.DijkstraNotYet] = Show.fromToString

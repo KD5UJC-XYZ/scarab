@@ -494,7 +494,8 @@
         "suites": [
           "PraosHeaderValidationSuite",
           "PraosLeaderThresholdSuite",
-          "PraosVrfCertificateSuite"
+          "PraosVrfCertificateSuite",
+          "ProviderDefectSuite"
         ]
       },
       "page": "docs/compatibility/consensus-praos-headers.md"
@@ -506,7 +507,8 @@
       "summary": "TPraos header checks for Shelley to Alonzo: overlay schedule, two VRF certificates, 512-bit leader value",
       "evidence": {
         "suites": [
-          "TPraosSuite"
+          "TPraosSuite",
+          "ProviderDefectSuite"
         ]
       },
       "page": "docs/compatibility/consensus-tpraos-headers.md"
@@ -538,7 +540,8 @@
       "evidence": {
         "suites": [
           "ByronPreprodSuite",
-          "EraTransitionSuite"
+          "EraTransitionSuite",
+          "ByronSlotSuite"
         ]
       },
       "limitations": {
@@ -592,6 +595,29 @@
         ]
       },
       "page": "docs/compatibility/byron-version-widths.md"
+    },
+    {
+      "id": "ledger-byron-header-grammar",
+      "component": "Ledger: the Byron header grammar (#634)",
+      "status": "implemented",
+      "summary": "A Byron main or boundary header is read as decCBORAHeader and decCBORABoundaryHeader read it: definite lists of their exact length, a Word32 main magic and an Int32 boundary magic, Word64 epochs, slot counts and difficulties, and the extra data of decCBORBlockVersions; a boundary block's magic is not compared",
+      "evidence": {
+        "suites": [
+          "HeaderDecodingReferenceSuite",
+          "ByronHeaderBytesSuite",
+          "ByronBoundaryPredecessorSuite"
+        ],
+        "paths": [
+          "fixtures/reference/header-decoding/cases.jsonl",
+          "scripts/oracle/header-decoding/header_cases.py"
+        ]
+      },
+      "page": "docs/compatibility/ledger-byron-header-grammar.md",
+      "limitations": {
+        "issues": [
+          818
+        ]
+      }
     },
     {
       "id": "header-arrival-time",
@@ -680,7 +706,13 @@
       "evidence": {
         "suites": [
           "RewardsSuite",
-          "PreConwayRulesSuite"
+          "PreConwayRulesSuite",
+          "ValueConservationSuite",
+          "EpochGeometrySuite"
+        ],
+        "issues": [
+          828,
+          825
         ]
       },
       "page": "docs/compatibility/ledger-shelley-to-mary.md"
@@ -775,7 +807,9 @@
           "ShelleyInstantStakeReferenceSuite",
           "PreviewEmptyRedeemersSuite",
           "ScriptIntegritySuite",
-          "ShelleyBbodySuite"
+          "ShelleyBbodySuite",
+          "ValueConservationSuite",
+          "EpochGeometrySuite"
         ],
         "paths": [
           "fixtures/reference/instant-stake/README.md",
@@ -785,7 +819,9 @@
           178,
           331,
           299,
-          344
+          344,
+          828,
+          825
         ]
       },
       "page": "docs/compatibility/ledger-alonzo-babbage.md"
@@ -798,7 +834,13 @@
       "evidence": {
         "suites": [
           "DevnetRefusedTxSuite",
-          "BbodySuite"
+          "BbodySuite",
+          "ValueConservationSuite",
+          "EpochGeometrySuite"
+        ],
+        "issues": [
+          828,
+          825
         ]
       },
       "limitations": {
@@ -878,7 +920,6 @@
       },
       "limitations": {
         "issues": [
-          374,
           328
         ]
       },
@@ -895,6 +936,10 @@
         ],
         "paths": [
           "fixtures/reference/pre-conway-sets"
+        ],
+        "issues": [
+          329,
+          374
         ]
       },
       "page": "docs/compatibility/ledger-pre-conway-set-decoding.md"
@@ -927,7 +972,7 @@
       "id": "ledger-definite-byte-strings-headers-queries",
       "component": "Ledger: definite byte strings in headers and node-to-client query arguments (#437)",
       "status": "implemented",
-      "summary": "A block header and a node-to-client query argument read a byte string in the form the era's decoder version implies — header fields through decodeFixedSized or their own DecCBOR instances, query arguments through fromEraCBOR at the era's lowest protocol version — which below version 12 refuses a chunked string",
+      "summary": "A block header and a node-to-client query argument read a byte string in the form the era's decoder version implies \u2014 header fields through decodeFixedSized or their own DecCBOR instances, query arguments through fromEraCBOR at the era's lowest protocol version \u2014 which below version 12 refuses a chunked string",
       "evidence": {
         "suites": [
           "HeaderByteStringsSuite",
@@ -1129,6 +1174,34 @@
       "page": "docs/compatibility/ledger-plutus-data-decoding.md"
     },
     {
+      "id": "plutus-v4-dijkstra",
+      "component": "Plutus at protocol 12: PlutusV4 and case on Data (#54)",
+      "status": "partial",
+      "summary": "The Leios testnet build's Plutus from protocol 12 (plutus 1.71.0.0): program version 1.2.0, case on Data, variants F and G, PlutusV4 as cardano-ledger 9df9f98c runs it, and the PlutusV4 script context of a Dijkstra transaction; the node does not reach protocol 12",
+      "evidence": {
+        "suites": [
+          "PlutusConformance171Suite",
+          "CaseOnDataSuite",
+          "PlutusAvailabilitySuite",
+          "UnliftingBoundsSuite",
+          "DijkstraScriptContextsSuite",
+          "DijkstraContextWireSuite",
+          "CostModelNameTablesSuite"
+        ],
+        "paths": [
+          "plutus/src/test/resources/plutus-reference/README.md",
+          "fixtures/reference/leios-testnet-contexts/README.md",
+          "scripts/oracle/leios-testnet/leios_context_cases.py"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          54
+        ]
+      },
+      "page": "docs/compatibility/plutus-v4-dijkstra.md"
+    },
+    {
       "id": "ledger-repeated-withdrawals",
       "component": "Ledger: repeated withdrawal accounts, decoder versions 2 to 9 (#494)",
       "status": "implemented",
@@ -1253,6 +1326,7 @@
         ],
         "issues": [
           497,
+          573,
           745
         ]
       },
@@ -1306,6 +1380,35 @@
         ]
       },
       "page": "docs/compatibility/plutus-phase-2.md"
+    },
+    {
+      "id": "plutus-own-evaluator",
+      "component": "Plutus: Scarab's own evaluator (--plutus-vm scarab, I2)",
+      "status": "partial",
+      "summary": "An opt-in, Scalus-free UPLC evaluator for phase 2 and script admission in the rules, the mempool and the forger; protocol 12 unsupported by decision",
+      "evidence": {
+        "suites": [
+          "CekConformanceSuite",
+          "FlatConformanceSuite",
+          "CostingOracleSuite",
+          "GeneratedOracleSuite",
+          "LedgerBoundaryOracleSuite",
+          "FlatReferenceCorporaSuite",
+          "ScarabEvaluatorSuite",
+          "PlutusBackendDifferentialSuite",
+          "NoScalusSuite"
+        ],
+        "docs": [
+          "docs/plutus-conformance.md#scarabs-own-evaluator",
+          "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+        ]
+      },
+      "limitations": {
+        "issues": [
+          43
+        ]
+      },
+      "page": "docs/compatibility/plutus-own-evaluator.md"
     },
     {
       "id": "auxiliary-plutus-admission",
@@ -1425,6 +1528,101 @@
       "page": "docs/compatibility/persistence-snapshot-v8.md"
     },
     {
+      "id": "persistence-snapshot-v9",
+      "component": "Persistence: ledger snapshot format (V9)",
+      "status": "implemented",
+      "summary": "Native snapshot format V9: the V8 layout whose sidecar names the Dijkstra era among the eras and holds the protocol parameters with the fields Dijkstra adds; V8 files, and V5 and V7 files through V8, migrate on open with no loss, the previous readers taking a frozen era codec and a frozen parameter codec",
+      "evidence": {
+        "suites": [
+          "SnapshotV9MigrationSuite",
+          "SnapshotGoldenSuite",
+          "CodecSuite"
+        ],
+        "issues": [
+          54
+        ]
+      },
+      "limitations": {
+        "issues": [
+          129,
+          37
+        ]
+      },
+      "page": "docs/compatibility/persistence-snapshot-v9.md"
+    },
+    {
+      "id": "persistence-network-identity-v9",
+      "component": "Persistence: network identity format (V9)",
+      "status": "implemented",
+      "summary": "The database's network identity V9 also binds the configured Dijkstra genesis file, or records none; V6 identities get the configured binding at their first open, and a recorded none adopts a Dijkstra genesis configured later, once; a recorded binding that differs or is no longer configured is refused",
+      "evidence": {
+        "suites": [
+          "NetworkIdentityV9Suite",
+          "ChainStorageSuite",
+          "FormatMigrationSuite"
+        ],
+        "issues": [
+          824,
+          54
+        ]
+      },
+      "page": "docs/compatibility/persistence-network-identity-v9.md"
+    },
+    {
+      "id": "persistence-snapshot-v10",
+      "component": "Persistence: ledger snapshot format (V10) and the reference build",
+      "status": "implemented",
+      "summary": "Native snapshot format V10 records the reference build (`--reference-build`) whose layout the Haskell state bytes are in; V9 files migrate as 11.1 with every other byte kept; import and export keep the reference's bytes and convert nothing; both layouts are read and written, and `follow` refuses the Leios build until its rules exist",
+      "evidence": {
+        "suites": [
+          "SnapshotV10MigrationSuite",
+          "SnapshotGoldenSuite",
+          "CodecSuite",
+          "ReferenceBuildSuite",
+          "LedgerSnapshotImportSuite",
+          "LedgerSnapshotExportSuite"
+        ],
+        "issues": [
+          826
+        ]
+      },
+      "limitations": {
+        "issues": [
+          826,
+          129,
+          37
+        ]
+      },
+      "page": "docs/compatibility/persistence-snapshot-v10.md"
+    },
+    {
+      "id": "persistence-leios-state-layout",
+      "component": "Persistence: the Leios build's `state` layout",
+      "status": "partial",
+      "summary": "The `state` file of the Leios build (`--reference-build leios-b004fe0c`: cardano-ledger 9df9f98c, ouroboros-consensus 2416493b) is read and written in every Shelley-based era up to Conway, byte for byte on a captured state, and imported and exported; each record it writes differently from 11.1 holds a part per layout that the other layout's codec does not write. The Dijkstra state, and the rules of the build, are not implemented",
+      "evidence": {
+        "suites": [
+          "LeiosLayoutSuite",
+          "LeiosLayoutImportSuite",
+          "ReferenceBuildSuite",
+          "ReferenceBuildStartSuite",
+          "LedgerFileSuite",
+          "HaskellStateCodecSuite",
+          "PoolDistributionReferenceSuite"
+        ],
+        "issues": [
+          826
+        ]
+      },
+      "limitations": {
+        "issues": [
+          826,
+          54
+        ]
+      },
+      "page": "docs/compatibility/persistence-leios-state-layout.md"
+    },
+    {
       "id": "persistence-haskell-immutabledb",
       "component": "Persistence: Haskell ImmutableDB format",
       "status": "partial",
@@ -1456,7 +1654,7 @@
       "id": "block-forging",
       "component": "Block forging",
       "status": "implemented",
-      "summary": "Praos (Conway) forging only, with typed terminal outcomes and no signing after a key-update failure",
+      "summary": "Praos (Conway) forging, exact KES evolution targets, typed terminal outcomes after key-update failure, and dynamic block forging (SIGHUP, --start-as-non-producing-node)",
       "evidence": {
         "suites": [
           "Sum6KesSigningSuite",
@@ -1467,7 +1665,11 @@
           "SystemStartSuite"
         ],
         "issues": [
-          82
+          82,
+          474,
+          906,
+          918,
+          919
         ]
       },
       "page": "docs/compatibility/block-forging.md"
@@ -1616,13 +1818,45 @@
     {
       "id": "dijkstra",
       "component": "Dijkstra (next era)",
-      "status": "not implemented",
-      "summary": "The next era is not implemented",
+      "status": "partial",
+      "summary": "Named and refused (OD-4); decoding, genesis, the Conway translation and the crossing pieces as the Leios testnet build, including stored-output upgrades; ledger rules as test-only entry points",
+      "evidence": {
+        "suites": [
+          "DijkstraNotYetSuite",
+          "DijkstraCodecsSuite",
+          "DijkstraGenesisSuite",
+          "DijkstraTranslationSuite",
+          "DijkstraTxTranslationSuite",
+          "DijkstraCrossingSuite",
+          "DijkstraStoredOutputsSuite",
+          "DijkstraRulesSuite",
+          "DijkstraRulesOracleSuite"
+        ],
+        "paths": [
+          "fixtures/reference/dijkstra-genesis",
+          "fixtures/reference/dijkstra-translation",
+          "fixtures/reference/dijkstra-crossing",
+          "fixtures/dijkstra-devnet",
+          "fixtures/reference/dijkstra-rules",
+          "scripts/oracle/dijkstra-rules"
+        ],
+        "issues": [
+          54,
+          823,
+          815
+        ]
+      },
       "limitations": {
+        "issues": [
+          824,
+          826,
+          830
+        ],
         "roadmap": [
           "L1"
         ]
-      }
+      },
+      "page": "docs/compatibility/dijkstra.md"
     },
     {
       "id": "ouroboros-leios",
@@ -1671,10 +1905,12 @@
       "summary": "Metadata hash length and early-era bootstrap output predicates in native order",
       "evidence": {
         "paths": [
-          "fixtures/reference/remaining-predicates/README.md"
+          "fixtures/reference/remaining-predicates/README.md",
+          "fixtures/reference/refusals/README.md"
         ],
         "issues": [
-          141
+          141,
+          832
         ]
       },
       "page": "docs/compatibility/pool-and-early-era-predicates.md"

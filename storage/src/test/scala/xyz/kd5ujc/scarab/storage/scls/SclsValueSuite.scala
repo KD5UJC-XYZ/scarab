@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Credential as LedgerCredential,
   DRep as LedgerDRep,
   PoolRelay,
+  PoolRelayError,
   PoolRelays
 }
 import xyz.kd5ujc.scarab.storage.haskell.state.HaskellStateCodecs.given
@@ -63,18 +64,141 @@ class SclsValueSuite extends FunSuite:
     }
   }
 
-  test("a held pool relay name past the 128-byte wire bound is exported as the state holds it") {
+  private def poolVector: SclsValue.StakePoolValue =
     val (_, ns, raw) = sourceVectors
       .find(_._1 == "stake-pool-current-future-relay-metadata-retirement")
       .getOrElse(fail("stake pool Haskell vector"))
-    val relays = PoolRelays.encode(Vector(PoolRelay.MultiHostName("a" * 200 + ".example")))
     SclsValue.decode(ns, raw) match
-      case Right(SclsValue.Entry.StakePool(pool)) =>
-        val state = pool.state.getOrElse(fail("Haskell pool vector has no registered state"))
-        val held = SclsValue.Entry.StakePool(pool.copy(state = Some(state.copy(relays = relays))))
-        val encoded = SclsValue.encode(held).fold(e => fail(e.toString), identity)
-        assert(encoded.toArray.containsSlice(relays.toArray), "the exported value holds the relays")
+      case Right(SclsValue.Entry.StakePool(pool)) => pool
       case other => fail(s"stake pool vector did not decode: $other")
+
+  private def poolState(pool: SclsValue.StakePoolValue): S.StakePoolState =
+    pool.state.getOrElse(fail("Haskell pool vector has no registered state"))
+
+  private def poolFuture(pool: SclsValue.StakePoolValue) =
+    pool.futureParams.getOrElse(fail("Haskell pool vector has no future parameters"))
+
+  private def withName(bytes: Int): (Bytes, SclsValue.Entry) =
+    val relays = PoolRelays.encode(Vector(PoolRelay.MultiHostName("a" * bytes)))
+    val pool = poolVector
+    relays -> SclsValue.Entry.StakePool(
+      pool.copy(
+        state = Some(poolState(pool).copy(relays = relays)),
+        futureParams = Some(poolFuture(pool).copy(relays = relays))
+      )
+    )
+
+  // The reference's export writes a relay with no bound on its name, and its import reads it at
+  // Conway's lowest protocol version, which bounds the name at 128 bytes (`SclsValue.Reading`).
+  test("a held pool relay name past 128 bytes is exported, and the import refuses it") {
+    val (relays, held) = withName(200)
+    val encoded = SclsValue.encode(held).fold(e => fail(e.toString), identity)
+    assert(encoded.toArray.containsSlice(relays.toArray), "the exported value holds the relays")
+    assertEquals(
+      SclsValue.decode(Namespace.StakePools, encoded),
+      Left(SclsValue.Error.PoolRelay(PoolRelayError.DnsNameTooLong(0, 200)))
+    )
+    assertEquals(
+      SclsValue.decode(Namespace.StakePools, encoded, reading = SclsValue.Reading.Exported),
+      Right(held),
+      "the export's own check reads the name as the state holds it"
+    )
+  }
+
+  test("an imported pool relay name of 128 bytes is read, and one of 129 refused") {
+    val (_, at) = withName(128)
+    val atBytes = SclsValue.encode(at).fold(e => fail(e.toString), identity)
+    assertEquals(SclsValue.decode(Namespace.StakePools, atBytes), Right(at))
+    val (_, past) = withName(129)
+    val pastBytes = SclsValue.encode(past).fold(e => fail(e.toString), identity)
+    assertEquals(
+      SclsValue.decode(Namespace.StakePools, pastBytes),
+      Left(SclsValue.Error.PoolRelay(PoolRelayError.DnsNameTooLong(0, 129)))
+    )
+  }
+
+  private def withMetadata(url: String, hashBytes: Int): SclsValue.Entry =
+    val metadata = Cbor
+      .encode(
+        V.Arr(
+          Vector(
+            Node(V.Text(url), Bytes.empty),
+            Node(V.ByteString(Bytes.wrap(Array.fill[Byte](hashBytes)(7))), Bytes.empty)
+          )
+        )
+      )
+      .fold(e => fail(e.message), identity)
+    val pool = poolVector
+    SclsValue.Entry.StakePool(
+      pool.copy(
+        state = Some(poolState(pool).copy(metadata = Some(metadata))),
+        futureParams = Some(poolFuture(pool).copy(metadata = Some(metadata)))
+      )
+    )
+
+  // `PoolMetadata` is `LedgerCBOR`: its `Url` is written with no bound and read at 128 bytes from
+  // version 9, its hash a `ByteArray` of any length both ways (`StakePool.hs:516-524`).
+  test("a held pool metadata URL past 128 bytes is exported, and the import refuses it") {
+    val held = withMetadata("a" * 200, 32)
+    val encoded = SclsValue.encode(held).fold(e => fail(e.toString), identity)
+    assertEquals(
+      SclsValue.decode(Namespace.StakePools, encoded),
+      Left(
+        SclsValue.Error.WrongShape(Namespace.StakePools, "PoolMetadata URL up to 128 UTF-8 bytes")
+      )
+    )
+    assertEquals(
+      SclsValue.decode(Namespace.StakePools, encoded, reading = SclsValue.Reading.Exported),
+      Right(held)
+    )
+    val at = withMetadata("é" * 64, 32)
+    val atBytes = SclsValue.encode(at).fold(e => fail(e.toString), identity)
+    assertEquals(SclsValue.decode(Namespace.StakePools, atBytes), Right(at), "128 UTF-8 bytes")
+    val past =
+      SclsValue.encode(withMetadata("é" * 64 + "a", 32)).fold(e => fail(e.toString), identity)
+    assert(SclsValue.decode(Namespace.StakePools, past).isLeft, "129 UTF-8 bytes")
+  }
+
+  test("a pool metadata hash of any length is exported and imported") {
+    Vector(0, 1, 31, 33, 64).foreach { size =>
+      val entry = withMetadata("https://example.com/p.json", size)
+      val encoded = SclsValue.encode(entry).fold(e => fail(s"$size: $e"), identity)
+      assertEquals(SclsValue.decode(Namespace.StakePools, encoded), Right(entry), s"$size bytes")
+    }
+  }
+
+  // `mkCanonicalStakePoolState` and `mkCanonicalStakePoolParams` compact the pledge and cost with
+  // `toCompactPartial` (`EntitiesStakePools/V0.hs:195-196,267-269`), which fails for a Coin outside
+  // `Word64` (`Compactible.hs:42-45`, `Coin.hs:153,177-181`): the reference writes no value.
+  test("a pool pledge or cost outside Word64 is refused by the export") {
+    val pool = poolVector
+    val state = poolState(pool)
+    val future = poolFuture(pool)
+    val over = BigInt(1) << 64
+    Vector(BigInt(-1), over).foreach { amount =>
+      val states = Vector(
+        "state pledge" -> pool.copy(state = Some(state.copy(pledge = S.Coin(amount)))),
+        "state cost" -> pool.copy(state = Some(state.copy(cost = S.Coin(amount)))),
+        "future pledge" -> pool.copy(futureParams = Some(future.copy(pledge = amount))),
+        "future cost" -> pool.copy(futureParams = Some(future.copy(cost = amount)))
+      )
+      states.foreach { (name, changed) =>
+        assertEquals(
+          SclsValue.encode(SclsValue.Entry.StakePool(changed)),
+          Left(SclsValue.Error.InvalidInteger(Namespace.StakePools, amount)),
+          s"$name $amount"
+        )
+      }
+    }
+    val max = over - 1
+    val atMax = SclsValue.Entry.StakePool(
+      pool.copy(
+        state = Some(state.copy(pledge = S.Coin(max), cost = S.Coin(max))),
+        futureParams = Some(future.copy(pledge = max, cost = max))
+      )
+    )
+    val written = SclsValue.encode(atMax).fold(e => fail(e.toString), identity)
+    assertEquals(SclsValue.decode(Namespace.StakePools, written), Right(atMax))
   }
 
   test("pinned Haskell typed value vectors cover nonnull account DReps and credential maps") {

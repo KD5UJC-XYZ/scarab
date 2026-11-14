@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.ledger.{EpochGeometry, ForgeError, Header, LedgerFailur
 import xyz.kd5ujc.scarab.ledger.{HeaderBodyEncoding, HeaderVrf}
 import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, PosixClock, ProtocolParams, RefScripts, TxEnv}
 import xyz.kd5ujc.scarab.ledger.rules.Globals
-import xyz.kd5ujc.scarab.plutus.{ExUnits, ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
+import xyz.kd5ujc.scarab.plutus.{ExUnits, ScriptDecoder, ScriptEvaluator}
 import cats.Id
 import xyz.kd5ujc.scarab.protocol.Era
 import scala.annotation.tailrec
@@ -165,6 +165,9 @@ object BlockBuilder:
     * the exception ends its linked forging thread and the node stops (consensus 82ecba32
     * `NodeKernel.hs` `forkBlockForging`). This is the owner's explicit decision of 2026-10-28
     * (issue 584, ADR 0017).
+    *
+    * `decoder` and `evaluator` are the node's backend (`--plutus-vm`, ADR 0027), passed on every
+    * path; the static checks they serve do not run on a reapplication.
     */
   def select(
       ticked: MempoolLedger,
@@ -175,9 +178,9 @@ object BlockBuilder:
       candidates: Vector[Entry],
       limit: Limits,
       clock: Option[PosixClock] = None
-  )(using
-      decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
-      evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default
+  )(
+      decoder: ScriptDecoder[Id],
+      evaluator: ScriptEvaluator[Id]
   ): Selection =
     import Capacity.fits
     final case class Acc(
@@ -202,7 +205,8 @@ object BlockBuilder:
           updateQuorum = globals.updateQuorum,
           clock = Some(clock.getOrElse(PosixClock.total(geometry))),
           decoder = decoder,
-          evaluator = evaluator
+          evaluator = evaluator,
+          referenceBuild = globals.referenceBuild
         )
         val applied = piece(entry).toOption match
           case None => Right(None)

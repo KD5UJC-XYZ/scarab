@@ -179,6 +179,7 @@ object LedgerStateGen:
       .map((vrf, pledge, cost, margin, acct, owners, deposit, delegators) =>
         StakePoolState(
           vrf,
+          PoolBlsKey.Node11_1,
           pledge,
           cost,
           margin,

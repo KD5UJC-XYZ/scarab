@@ -5,6 +5,8 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits, ScriptFailure}
 import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.uplc.cek.{CekError, CekFailure}
+import xyz.kd5ujc.scarab.uplc.ledger.EvaluationError
 import xyz.kd5ujc.scarab.ledger.TestLedger.out
 import munit.FunSuite
 
@@ -25,7 +27,7 @@ class PredicateFailureCborSuite extends FunSuite:
 
   test("typed script failures render only at the wire boundary without changing rejection bytes") {
     val cause = new IllegalArgumentException("failure")
-    val evaluation = EvalFailure.Script(ScriptFailure(cause, Vector("trace")))
+    val evaluation = EvalFailure.Script(ScriptFailure.Thrown(cause, Vector("trace")))
     val failure = PredicateFailure.utxo(
       UtxoFailure.Utxos(
         UtxosFailure.ValidationTagMismatch(
@@ -45,7 +47,7 @@ class PredicateFailureCborSuite extends FunSuite:
         .getOrElse(fail(s"missing $era validity-tag encoding"))
       assert(encoded.hex.endsWith(utxos), s"$era: ${encoded.hex}")
     evaluation match
-      case EvalFailure.Script(ScriptFailure(original: Throwable, logs)) =>
+      case EvalFailure.Script(ScriptFailure.Thrown(original, logs)) =>
         assert(original eq cause)
         assertEquals(logs, Vector("trace"))
       case other => fail(s"changed evaluator cause: $other")
@@ -64,7 +66,7 @@ class PredicateFailureCborSuite extends FunSuite:
       ExUnits.zero
     )
     val failure = PlutusFailure(
-      EvalFailure.Script(ScriptFailure(original, Vector("trace"))),
+      EvalFailure.Script(ScriptFailure.Thrown(original, Vector("trace"))),
       hex("0304"),
       Some(request)
     )
@@ -77,12 +79,49 @@ class PredicateFailureCborSuite extends FunSuite:
           assertEquals(cause, PlutusContextText.Error.Arguments(request.language, 0))
           assert(retained eq failure)
           retained.cause match
-            case EvalFailure.Script(ScriptFailure(throwable, logs)) =>
+            case EvalFailure.Script(ScriptFailure.Thrown(throwable, logs)) =>
               assert(throwable eq original)
               assertEquals(logs, Vector("trace"))
             case other => fail(s"changed evaluator cause: $other")
         case other => fail(s"$era silently encoded malformed context: $other")
     assertEquals(PredicateFailureCbor.applyTxError(Era.Shelley, Vector(predicate)), Right(None))
+  }
+
+  // A malformed context makes the explicit-error description observable: it is a presentation
+  // defect only on that path, and every other path keeps the provider's description.
+  test("the own evaluator's explicit error is described as Scalus's is; its other errors are not") {
+    def request(language: xyz.kd5ujc.scarab.plutus.PlutusLanguage) =
+      xyz.kd5ujc.scarab.plutus.EvalRequest(
+        language,
+        10,
+        hex("0102"),
+        Vector.empty,
+        Vector.empty,
+        ExUnits.zero
+      )
+    def uplc(error: CekError, language: xyz.kd5ujc.scarab.plutus.PlutusLanguage) =
+      PlutusFailure(
+        EvalFailure.Script(
+          ScriptFailure.Uplc(EvaluationError.Cek(CekFailure(error, None)), Vector("trace"))
+        ),
+        hex("0304"),
+        Some(request(language))
+      )
+    val v1 = xyz.kd5ujc.scarab.plutus.PlutusLanguage.V1
+    assertEquals(
+      PlutusFailureCbor.description(uplc(CekError.ErrorTerm, v1)),
+      Left(PlutusContextText.Error.Arguments(v1, 0))
+    )
+    assertEquals(
+      PlutusFailureCbor.description(uplc(CekError.NonFunctionalApplication, v1)),
+      Right(None)
+    )
+    val v4 = xyz.kd5ujc.scarab.plutus.PlutusLanguage.V4
+    assertEquals(
+      PlutusContextText.arguments(request(v4)),
+      Left(PlutusContextText.Error.Unported(v4))
+    )
+    assertEquals(PlutusFailureCbor.description(uplc(CekError.ErrorTerm, v4)), Right(None))
   }
 
   test("an unexpectedly passing script retains the existing validity-tag rejection bytes") {
@@ -215,6 +254,24 @@ class PredicateFailureCborSuite extends FunSuite:
     assertEquals(
       reason(PredicateFailure.TreasuryValueMismatch(Mismatch(1, BigInt("2810157520157")))),
       "8182068183051b0000028e4a70d51d01"
+    )
+  }
+
+  test("reference scripts over the limit: supplied, then the limit, each an Int") {
+    // [6 ConwayTxRefScriptsSizeTooBig, supplied, expected] (`Conway/Rules/Ledger.hs:237`)
+    assertEquals(
+      reason(PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(300000, 204800))),
+      "8182068183061a000493e01a00032000"
+    )
+    // `Mismatch RelLTEQ Int` (`Conway/Rules/Ledger.hs:123`): a size past a 32-bit Int, in the
+    // shortest head (four bytes for 2^31, eight for 2^32)
+    assertEquals(
+      reason(PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(1L << 31, 204800L))),
+      "8182068183061a800000001a00032000"
+    )
+    assertEquals(
+      reason(PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(1L << 32, 204800L))),
+      "8182068183061b00000001000000001a00032000"
     )
   }
 

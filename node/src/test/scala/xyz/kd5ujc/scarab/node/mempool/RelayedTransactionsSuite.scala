@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node.mempool
 
 import cats.effect.{IO, Ref}
 import cats.syntax.all.*
+import fs2.concurrent.SignallingRef
 import cats.mtl.Raise
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -121,13 +122,13 @@ class RelayedTransactionsSuite extends FailsOnUncaught:
       def awaitAfter(ticket: Long) =
         if offered.exists(_.ticket > ticket) then IO.unit else IO.never
       def body(id: Bytes) = IO.pure(bodies.get(id))
-    Ref.of[IO, Vector[Bytes]](Vector.empty).flatMap { taken =>
+    SignallingRef[IO, Vector[Bytes]](Vector.empty).flatMap { taken =>
       val sink = new TxSubmissionServer.Sink[IO]:
         def reader = RelayedTransactions
         def known(id: Bytes) = IO.pure(false)
         def submit(originals: Vector[Bytes])(using Raise[IO, NetworkError]) =
           taken.update(_ ++ originals)
-      val delivered = (IO.sleep(5.millis) *> taken.get).iterateUntil(_.size == distinct.size)
+      val delivered = taken.waitUntil(_.size == distinct.size) *> taken.get
       typed {
         Peers.linked(protocols = Set(4)).use { (client, server) =>
           for

@@ -62,7 +62,8 @@ class ScriptContextOracleSuite extends FunSuite:
       // bound, which the ledger had only from protocol 9 (see ScriptContextGoldenSuite for the
       // earlier, inclusive form). Everything else shown here is protocol independent; what a V1
       // context refuses per era is not Scalus's to say (ScriptContextV1EraSuite, V1ContextSuite).
-      val env = ScriptContexts.Environment(10, c.spent, c.references, c.posix)
+      val env =
+        ScriptContexts.Environment(TestLedger.usualEra(10), 10, c.spent, c.references, c.posix)
       val tx = scalusTx(c)
       val utxos = scalusUtxos(c)
       val pv = sl.MajorProtocolVersion(c.protocolMajor)
@@ -82,6 +83,7 @@ class ScriptContextOracleSuite extends FunSuite:
             sl.ExUnits(r.exUnits.mem.toLong, r.exUnits.steps.toLong)
           )
           lang match
+            case PlutusLanguage.V4 => fail("no PlutusV4 context before Dijkstra")
             case PlutusLanguage.V1 =>
               dataOf(Oracle.getScriptContextV1(sr, tx, utxos, cfg, pv))
             case PlutusLanguage.V2 =>

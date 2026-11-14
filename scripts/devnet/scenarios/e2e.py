@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The `e2e` scenario (and `capture-eras`): walk every era from Byron to Conway and assert the Scala node follows."""
+"""The `e2e` scenario (and `capture-eras`): walk every era from Byron to Conway and assert the Scala node follows.
+
+With more than one `--plutus-vm`, one follower runs per Plutus evaluator in the same cluster: each is judged as the
+only one is, all are compared with the same reference blocks, and then with each other (`followers_cross_check`)."""
 import json
 import pathlib
 import shutil
@@ -9,11 +12,13 @@ import threading
 import time
 import traceback
 from .. import eraload, govextra, protocolversions, protocolwalk
-from ..cluster import down, freeze_classes, keep_native_evidence, scala_container, up_eras
-from ..compare import PROJECTION_SCOPE, Comparisons, compare_era, comparison_table, judge_comparisons, lsq
-from ..follower import follower_problem, start_follower
+from ..cluster import down, freeze_classes, keep_native_evidence, listening_ports, scala_container, up_eras
+from ..compare import (PROJECTION_SCOPE, Comparisons, FollowerAgreement, agreement_failures, compare_era,
+                       comparison_table, judge_comparisons, lsq)
+from ..follower import follower_problem, start_follower, stop_failures, stop_followers
 from ..load import start_conway_load
-from ..util import ERAS, MAGIC, TAG_ERA, data_root, docker, read_log, ref, stall_evidence, starvation_warnings
+from ..util import (ERAS, MAGIC, SINGLE_FOLLOWER, TAG_ERA, data_root, docker, follower_plan, in_ref, read_final_log,
+                    read_log, ref, stall_evidence, starvation_warnings)
 
 
 EXTENDED_WAIT = 600  # seconds the run waits past its target epoch for extended stages that apply but are not done
@@ -99,8 +104,9 @@ def capture_eras(args):
     print(json.dumps({"captured": len(keep), "blocksPerEra": counts, "out": str(out)}))
 
 
-def summarize_e2e(events, other, expected, exit_code):
-    """Assertions and the summary over the follower's JSON log; returns (summary, failures)."""
+def summarize_e2e(events, other, expected, exit_code, plutus_vm=None):
+    """Assertions and the summary over the follower's JSON log; returns (summary, failures). With `plutus_vm`
+    (the `--plutus-vm` the follower was given) the evaluator its start logged (`plutusVm`) must be that one."""
     failures = []
     started = [e for e in events if e["event"] == "started"]
     transitions = []
@@ -181,7 +187,97 @@ def summarize_e2e(events, other, expected, exit_code):
         failures.append(f"unexpected non-JSON output: {other[0][:200]}")
     if exit_code not in (None, 0):
         failures.append(f"the follower exited with {exit_code}")
+    if plutus_vm is not None:
+        chosen = [e.get("vm") for e in events if e["event"] == "plutusVm"]
+        summary["plutusVm"] = chosen
+        if chosen != [plutus_vm]:
+            failures.append(f"the follower logged the Plutus evaluators {chosen} at its start, not [{plutus_vm!r}]")
     return summary, failures
+
+
+def reached(events, target):
+    """Whether the follower log `events` applied a block of Conway epoch `target` or later."""
+    applied = [e["epoch"] for e in events if e["event"] == "extended" and e["era"] == "Conway"]
+    return bool(applied) and max(applied) >= target
+
+
+def stop_reason(kind, sites, keyed):
+    """Why the wait ended (`stoppedBecause`): `kind`, and with several followers the ones it is about."""
+    return kind if not keyed else f"{kind}: {', '.join(site.key for site in sites)}"
+
+
+def block_json(block):
+    return None if block is None else {"slot": block.slot, "blockNo": block.block_no, "hash": block.hash}
+
+
+def chain_agreement(chains, k):
+    """Whether the followers' final chains (key -> `finality.FollowerChain`) agree: (report, failures).
+
+    The followers stop a moment apart and a slot battle at the tip is normal, so their tips need not be equal.
+    Every chain runs from genesis and a header hash fixes the chain before it, so two chains agree when one of them
+    has at most `k` blocks after their last common block: those are its volatile part, which a node may still roll
+    back, and its immutable tip is then on the other chain (the rule `finality.final_chains_agree` judges the
+    oracle's chains by). The first follower's chain is set against each other one."""
+    keys = list(chains)
+    report = {"securityParam": k,
+              "tips": {key: dict(block_json(c.tip) or {}, blocks=len(c.blocks)) for key, c in chains.items()},
+              "pairs": []}
+    failures = [f"the {key} follower's log holds no chain" for key, c in chains.items() if not c.blocks]
+    first = chains[keys[0]]
+    for key in keys[1:]:
+        other = chains[key]
+        common = next((i for i, (a, b) in enumerate(zip(first.blocks, other.blocks)) if a.hash != b.hash),
+                      min(len(first.blocks), len(other.blocks)))
+        beyond = {keys[0]: len(first.blocks) - common, key: len(other.blocks) - common}
+        agreed = min(beyond.values()) <= k
+        report["pairs"].append({"followers": [keys[0], key], "commonBlocks": common,
+                                "lastCommon": block_json(first.blocks[common - 1]) if common else None,
+                                "beyondCommon": beyond, "agreed": agreed})
+        if not agreed:
+            failures.append(f"the {keys[0]} and {key} followers' final chains diverge: {beyond[keys[0]]} and "
+                            f"{beyond[key]} blocks after their last common block "
+                            f"{block_json(first.blocks[common - 1]) if common else 'Origin'}, more than k = {k}")
+    return report, failures
+
+
+def followers_cross_check(root, sites, entries, agreement):
+    """The followers of one run against each other, once the run has stopped them: (report, failures).
+
+    The report repeats, per follower, whether it reached the target epoch and how many validation and fatal errors
+    it logged (each is a failure of that follower's own already), and holds the tally of their projected states at
+    the reference blocks where all were compared (`FollowerAgreement`, judged with the comparisons). The check of
+    its own is that their final chains agree (`chain_agreement`). Each chain is rebuilt from the follower's whole
+    log by the oracle's rules (`oracle.devnet.follower_chain`: every line complete, every event one chain) and must
+    end at the final tip recorded when the run stopped it (`stop_followers`); a log that does not, or a follower
+    without a recorded tip, fails the check, since a shorter chain could hide a divergence. Never raises."""
+    keys = [site.key for site in sites]
+    report = {"followers": keys,
+              "reachedTarget": {key: entries.get(key, {}).get("reachedTarget") for key in keys},
+              "validationErrors": {key: len(entries.get(key, {}).get("validationErrors", [])) for key in keys},
+              "fatalErrors": {key: len(entries.get(key, {}).get("fatalErrors", [])) for key in keys},
+              "projected": agreement.report() if agreement is not None else None}
+    failures, chains = [], {}
+    try:
+        from oracle import devnet as oracle_devnet
+        from oracle import finality
+        k = oracle_devnet.security_param(root)
+    except Exception as e:  # a run that failed early may lack the genesis: never replace its failure
+        report["finalChain"] = {"error": repr(e)[:400]}
+        failures.append(f"the followers' final chains cannot be judged without the genesis: {e!r}")
+        report["failures"] = failures
+        return report, failures
+    for site in sites:
+        try:
+            chains[site.key] = oracle_devnet.follower_chain(root, site)
+        except (finality.ChainRebuildError, OSError, ValueError) as e:
+            failures.append(f"the {site.key} follower's final chain cannot be rebuilt from its log: {e}")
+    if len(chains) == len(sites):
+        report["finalChain"], chain_failures = chain_agreement(chains, k)
+        failures += chain_failures
+    else:
+        report["finalChain"] = {"error": "not every follower's chain could be rebuilt"}
+    report["failures"] = failures
+    return report, failures
 
 
 def reference_evidence(name, root):
@@ -199,24 +295,52 @@ def e2e(args):
 
     The follower starts as soon as the nodes answer, so the Scala ledger tracks the reference
     through every era; during each epoch the load generator submits that era's transactions and the
-    two ledgers are compared at several points (see `compare_pre_conway`, `compare_once`)."""
+    two ledgers are compared at several points (see `compare_pre_conway`, `compare_once`). With several
+    `--plutus-vm` values one follower runs per evaluator (`util.follower_plan`): each is judged as the only one
+    is, every comparison reads the reference once and compares all of them with that block, and at the end they
+    are judged against each other (`followers_cross_check`)."""
     root = data_root(args.name)
+    plan = follower_plan(getattr(args, "plutus_vm", None))
+    sites = [site for site, _ in plan]
+    keyed = len(plan) > 1
+    if keyed and args.oracle:
+        raise SystemExit("--oracle compares the state digests of one follower: give at most one --plutus-vm")
     if root.exists():
         if not (root / "e2e-summary.json").exists():
             raise SystemExit(f"{root} exists and is not an e2e leftover; run `devnet.py --name {args.name} down`")
         down(args, quiet=True)  # leftovers of an earlier e2e run
-    follower, loader, worker, conway_load = None, None, None, None
+    followers = {site: None for site in sites}  # the `follow` process of each follower
+    loader, worker, conway_load = None, None, None
     late = []  # load threads that did not end within LOAD_JOIN_SECONDS of the request to stop
-    comparisons = None
+    tallies, agreement = {}, None
     summary, failures = {}, []
     state = {"last_check": 0.0}
+
+    def entry(site):
+        """Where the summary keeps what is a follower's own: the summary itself for a run's only follower, else
+        the follower's entry under `followers`."""
+        return summary if not keyed else summary.setdefault("followers", {}).setdefault(site.key, {})
+
+    def tagged(site, texts):
+        """A follower's failures, named after it when the run has several."""
+        return list(texts) if not keyed else [f"{site.role}: {text}" for text in texts]
+
     try:
-        comparisons = Comparisons(root)
+        tallies = {site: Comparisons(root, site) for site in sites}
+        agreement = FollowerAgreement(root, sites) if keyed else None
 
         def nodes_up(_root):
-            nonlocal follower
-            follower = start_follower(args.name, root, oracle=args.oracle, scala_cpus=args.scala_cpus,
-                                      consensus_mode=getattr(args, "consensus_mode", None), local_socket=True)
+            if keyed:
+                # every follower binds its ports in the reference container's network namespace; a JVM's listener
+                # is an IPv6 socket, listed in tcp6 even when bound to 127.0.0.1
+                taken = listening_ports(in_ref(args.name, "cat /proc/net/tcp; cat /proc/net/tcp6 2>/dev/null; true").stdout)
+                clash = sorted(p for site in sites for p in (site.query_port, site.metrics_port) if p in taken)
+                if clash:
+                    raise SystemExit(f"the followers' ports {clash} are in use in the reference container")
+            for site, vm in plan:
+                followers[site] = start_follower(args.name, root, oracle=args.oracle, scala_cpus=args.scala_cpus,
+                                                 consensus_mode=getattr(args, "consensus_mode", None),
+                                                 local_socket=True, plutus_vm=vm, site=site)
 
         def pools_ready(driver):
             nonlocal loader, worker
@@ -226,7 +350,7 @@ def e2e(args):
             loader.dynamic_forks = True  # the protocol walk drives the Conway versions
             loader.ready.set()
             compare =(lambda era, label: None) if args.no_compare else \
-                (lambda era, label: compare_era(args.name, era, label, comparisons))
+                (lambda era, label: compare_era(args.name, era, label, list(tallies.values()), agreement))
 
             def conway_hook():
                 nonlocal conway_load
@@ -241,9 +365,10 @@ def e2e(args):
         def on_tick(_tip):
             if time.monotonic() - state["last_check"] > 4:
                 state["last_check"] = time.monotonic()
-                problem = follower_problem(root, follower)
-                if problem:
-                    raise SystemExit(problem)
+                for site, follower in followers.items():
+                    problem = follower_problem(root, follower, site) if follower is not None else None
+                    if problem:
+                        raise SystemExit(problem)
 
         up_eras(args, on_nodes_up=nodes_up, on_pools_ready=pools_ready, on_tick=on_tick)
         eras = json.loads((root / "eras.json").read_text())
@@ -255,21 +380,22 @@ def e2e(args):
                 raise SystemExit(f"eras.json puts {t['era']} at epoch {t['epoch']}, configuration at {epoch}")
             expected.append({"era": t["era"], "epoch": epoch})
         target = args.until_epoch if args.until_epoch is not None else expected[-1]["epoch"] + CONWAY_EPOCHS
-        log = root / "follower.jsonl"
         deadline = time.monotonic() + args.timeout
         reason = "timeout"
         extended_wait = None  # when the target epoch was reached with extended stages still running
         while time.monotonic() < deadline:
             time.sleep(2)
-            events, other = read_log(log)
-            applied = [e["epoch"] for e in events if e["event"] == "extended" and e["era"] == "Conway"]
-            if any(e["event"] == "error" for e in events) or other:
-                reason = "error"
+            logs = {site: read_log(site.log(root)) for site in sites}
+            erred = [site for site, (events, other) in logs.items()
+                     if other or any(e["event"] == "error" for e in events)]
+            if erred:
+                reason = stop_reason("error", erred, keyed)
                 break
-            if follower.poll() is not None:
-                reason = "follower exited"
+            exited = [site for site in sites if followers[site].poll() is not None]
+            if exited:
+                reason = stop_reason("follower exited", exited, keyed)
                 break
-            if applied and max(applied) >= target:
+            if all(reached(events, target) for events, _ in logs.values()):
                 ext = loader.ext if loader is not None else None
                 # the chain is still on its way to the reference's highest version: the walk has a time of its own
                 if ext is not None and ext.walk is not None and ext.walk.pending() and not ext.walk.overdue():
@@ -288,9 +414,44 @@ def e2e(args):
             "worker": worker, "governance": loader.governance_thread, "extended": loader.ext_thread}
         late = join_stopped(load_threads)
         blocked = {} if loader is None else blocked_stacks(load_threads)
-        exit_code = follower.poll()
-        events, other = read_log(log)
-        summary, failures = summarize_e2e(events, other, expected, exit_code)
+        if conway_load is not None:
+            conway_load.terminate()  # it submits to the node the stop below freezes
+        # the followers are stopped on purpose before they are judged, so the verdict is over each one's whole log
+        # (an error or an exit after the wait above counts) and its final tip is recorded (`stop_followers`)
+        if args.oracle:
+            from oracle import devnet as oracle_devnet
+            premature = followers[SINGLE_FOLLOWER].poll()
+            # the oracle removes the follower by force (`docker rm -f`) once its final tip is recorded: the status of
+            # that end is not judged, the log it left is
+            oracle_devnet.stop_follower(args.name, root)
+            stops = {SINGLE_FOLLOWER: {"premature": premature, "endedBy": "itself" if premature is not None else
+                                       "oracle", "endedAt": "before the freeze" if premature is not None else None,
+                                       "finalTip": None, "exit": followers[SINGLE_FOLLOWER].wait()}}
+            stop_problems = []
+        else:
+            stops, stop_problems = stop_followers(args.name, root, followers)
+        ended_badly = stop_failures(stops)
+        judged = {}
+        for site, vm in plan:
+            # the follower has ended: its log is complete, and a last line without its newline is a cut one
+            events, other, unterminated = read_final_log(site.log(root))
+            # an end before the stop is the follower's own failure, and so is an end on the stop with another status
+            # than a SIGTERM gives; a follower given a `--plutus-vm` must log that evaluator at its start, whether it
+            # is the run's only follower or one of several (a run without the flag runs the node's default, unchecked)
+            own, own_failures = summarize_e2e(events, other, expected, stops[site]["premature"], plutus_vm=vm)
+            own_failures += ended_badly.get(site, [])
+            if unterminated is not None:
+                own_failures.append(f"the follower's log ends in a line without its newline: {unterminated[:200]}")
+            if keyed:
+                own["followerStop"] = {k: stops[site][k] for k in ("endedBy", "endedAt", "exit", "finalTip")}
+                own["reachedTarget"] = reached(events, target)
+            judged[site] = (own, own_failures)
+        if keyed:
+            summary = {"followers": {site.key: own for site, (own, _) in judged.items()}}
+            failures = [text for site, (_, own_failures) in judged.items() for text in tagged(site, own_failures)]
+        else:
+            summary, failures = judged[SINGLE_FOLLOWER]
+        failures += stop_problems
         ended = {} if loader is None else dict(loader.ended)
         # a load thread that ended early is the cause of what the run then misses (comparisons, stages): first
         failures[:0] = [ended_failure(name, why) for name, why in sorted(ended.items())]
@@ -299,16 +460,21 @@ def e2e(args):
         summary["blockedThreads"] = blocked
         summary["endedThreads"] = ended
         summary["stoppedBecause"] = reason
-        summary["cpuStarvationWarnings"] = starvation_warnings(log)
+        for site in sites:
+            entry(site)["cpuStarvationWarnings"] = starvation_warnings(site.log(root))
         summary["targetConwayEpoch"] = target
         if reason != "reached":
             failures.append(f"stopped without reaching Conway epoch {target}: {reason}")
         if not args.no_compare:
-            failures += judge_comparisons(comparisons, args.min_comparisons, loader is not None)
+            for site, tally in tallies.items():
+                failures += tagged(site, judge_comparisons(tally, args.min_comparisons, loader is not None))
+            if agreement is not None:
+                failures += agreement_failures(agreement.per_era)
+        if keyed:
+            # the followers have stopped: their logs hold their final chains, ending at their recorded final tips
+            summary["crossCheck"], cross_failures = followers_cross_check(root, sites, summary["followers"], agreement)
+            failures += cross_failures
         if args.oracle:
-            from oracle import devnet as oracle_devnet
-            oracle_devnet.stop_follower(args.name, root)  # its final tip recorded; no digests during the comparison
-            follower.wait()
             summary["oracle"], oracle_failures = oracle_devnet.run(
                 args.name, root, log=lambda m: print(json.dumps(m), flush=True))
             summary["oracle"].pop("results", None)  # the per-epoch rows are in oracle-summary.json
@@ -348,14 +514,17 @@ def e2e(args):
                                 f"{unreported}")
         if conway_load is not None:
             conway_load.terminate()
-        if follower is not None and follower.poll() is None:
-            docker("rm", "-f", f"{args.name}-scala", check=False)
-            follower.wait()
-        if comparisons is not None:
-            summary["ledgerComparison"] = {"scope": PROJECTION_SCOPE, "perEra": comparisons.per_era,
-                                           "mismatches": comparisons.mismatches,
-                                           # complete same-point states but the UTxO (#433, #677)
-                                           "wholeState": comparisons.whole}
+        for site, follower in followers.items():
+            if follower is not None and follower.poll() is None:
+                docker("rm", "-f", site.container(args.name), check=False)
+                follower.wait()
+        for site, tally in tallies.items():
+            entry(site)["ledgerComparison"] = {"scope": PROJECTION_SCOPE, "perEra": tally.per_era,
+                                               "mismatches": tally.mismatches,
+                                               # complete same-point states but the UTxO (#433, #677)
+                                               "wholeState": tally.whole}
+        if keyed and "crossCheck" not in summary:
+            summary["crossCheck"] = {"skipped": "the run ended before its followers were stopped and judged"}
         if loader is not None:
             summary["load"] = loader.stats
             summary["loadEvidence"] = loader.evidence
@@ -365,13 +534,14 @@ def e2e(args):
             # whether each expected refusal was exactly the expected failure list, or held others too
             summary["refusalMatches"] = {"mustReject": eraload.match_counts(loader.must_reject_matches),
                                          "expectRejected": eraload.match_counts(loader.negative_matches)}
-        # the follower's stall evidence (state events, fiber dumps) stays with the run's summary
-        evidence = stall_evidence(root) if root.exists() else None
-        if evidence is not None:
-            summary["stallDiagnostics"] = evidence
+        # each follower's stall evidence (state events, fiber dumps) stays with the run's summary
+        for site in sites:
+            evidence = stall_evidence(root, site) if root.exists() else None
+            if evidence is not None:
+                entry(site)["stallDiagnostics"] = evidence
         # the reference container and the tmpfs its logs live on go with the run: keep the native side's own
-        # evidence first, before the summary is written and that container removed (the Scala node's container,
-        # removed higher up in this `finally` when it was still running). A run that passed keeps none; anything
+        # evidence first, before the summary is written and that container removed (the Scala nodes' containers,
+        # removed higher up in this `finally` when they were still running). A run that passed keeps none; anything
         # that failed, or ended with an exception no failure recorded, keeps what can still be read.
         if failures or sys.exc_info()[0] is not None:
             summary["referenceEvidence"] = reference_evidence(args.name, root)
@@ -382,11 +552,14 @@ def e2e(args):
         summary["passed"] = not failed
         root.mkdir(parents=True, exist_ok=True)
         (root / "e2e-summary.json").write_text(json.dumps(summary, indent=2))
-        shutil.rmtree(root / "classes", ignore_errors=True)
+        for site in sites:
+            shutil.rmtree(site.directory(root, "classes"), ignore_errors=True)
         print(json.dumps(summary, indent=2))
-        if comparisons is not None:
-            print(comparison_table(comparisons))
+        for site, tally in tallies.items():
+            if keyed:
+                print(f"{site.role}:")
+            print(comparison_table(tally))
         if not args.keep:
-            for c in (f"{args.name}-scala", ref(args.name)):
+            for c in (*(site.container(args.name) for site in sites), ref(args.name)):
                 docker("rm", "-f", c, check=False)
     sys.exit(0 if not failures else 1)

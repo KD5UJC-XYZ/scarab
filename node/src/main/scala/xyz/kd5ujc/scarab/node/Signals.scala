@@ -18,8 +18,10 @@ object Signals:
   /** Run `onHangup` each time the process gets SIGHUP, for as long as the resource is held, and put
     * the previous handler back afterwards. The Haskell node reloads its block-forging credentials
     * and topology on SIGHUP (cardano-node 11.1.3, `Cardano/Node/Run.hs`: `installSigHUPHandler`,
-    * line 596); this is the hook for it. A platform without the signal (Windows) just never calls
-    * it.
+    * line 596), and before that, from the start of its node run, keeps an initial handler that
+    * reads the topology again and says the credentials are not (lines 412-435); this is the hook
+    * for both, the run's handler in force over the initial one. A platform without the signal
+    * (Windows) just never calls it.
     *
     * The effect runs on its own fiber: a slow reload does not hold the signal thread, and two
     * signals in a row run one after the other (`Dispatcher.sequential`).

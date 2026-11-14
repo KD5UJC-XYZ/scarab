@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.IO
 import cats.syntax.all.*
 import fs2.io.file.Path
@@ -12,18 +13,19 @@ import xyz.kd5ujc.scarab.consensus.state.EraLedgerState
 import xyz.kd5ujc.scarab.ledger.{FileKind, FormatLoss, FormatVersion, StorageError}
 import xyz.kd5ujc.scarab.ledger.byron.{AppVersion, SoftwareProposal, UpdateState}
 import xyz.kd5ujc.scarab.node.NodeSetup
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 
 import StorageTestKit.*
 
-/** V8 keeps the installer metadata of the Byron update state's software proposals and application
-  * versions, which V5 and V7 discarded (#726). A V5 or V7 snapshot whose Byron update state holds
-  * none migrates as it is; one that holds any is refused with [[StorageError.ResyncRequired]] at
-  * every entry point, before any file is rewritten, and nothing is invented for it (ADR 0006,
-  * amendment of 2026-11-03).
+/** V8 (and V9 after it) keeps the installer metadata of the Byron update state's software proposals
+  * and application versions, which V5 and V7 discarded (#726). A V5 or V7 snapshot whose Byron
+  * update state holds none migrates as it is; one that holds any is refused with
+  * [[StorageError.ResyncRequired]] at every entry point, before any file is rewritten, and nothing
+  * is invented for it (ADR 0006, amendment of 2026-11-03).
   */
 class SnapshotV8MigrationSuite extends CatsEffectSuite:
   private val env: ConsensusMirrorEnv = NodeSetup
-    .fromDirectory(JPath.of("fixtures/eras/genesis"))
+    .fromDirectory(ReferenceBuild.Default)(JPath.of("fixtures/eras/genesis"))
     .fold(e => fail(e.message), _.mirrorEnv())
 
   private val byron = "eras/byron-25.bin"
@@ -125,17 +127,17 @@ class SnapshotV8MigrationSuite extends CatsEffectSuite:
         assertEquals(
           report,
           SnapshotMigration.Report(
-            List(Migrated(FileKind.SnapshotFile, FormatVersion.V7, FormatVersion.V8, 1)),
+            List(Migrated(FileKind.SnapshotFile, FormatVersion.V7, FormatVersion.V10, 1)),
             Nil
           )
         )
         assertEquals(
           after,
-          JFiles.readAllBytes(JPath.of("fixtures/snapshot-v8").resolve(byron)).toVector
+          JFiles.readAllBytes(JPath.of("fixtures/snapshot-v10").resolve(byron)).toVector
         )
         val sidecar = FileLedgerSnapshots
           .verified(after.toArray)
-          .flatMap(SnapshotV8.sidecarOf)
+          .flatMap(SnapshotV10.sidecarOf)
           .fold(e => fail(e.message), identity)
         assertEquals(sidecar, v7._2)
     }
@@ -194,7 +196,9 @@ class SnapshotV8MigrationSuite extends CatsEffectSuite:
       assertEquals(SnapshotV7.fromV5(v5Content), refusal(FormatVersion.V5))
   }
 
-  test("V8 keeps the installer metadata of software proposals and application versions") {
+  test(
+    "V8, V9 and V10 keep the installer metadata of software proposals and application versions"
+  ) {
     val (binding, sidecar, haskell) = v7
     val update = (u: UpdateState) =>
       u.copy(
@@ -202,9 +206,16 @@ class SnapshotV8MigrationSuite extends CatsEffectSuite:
         appVersions = Map("cardano-sl" -> application)
       )
     val changed = withUpdate(sidecar)(update)
-    val written = SnapshotV8.framed(binding, changed, haskell)
-    assertEquals(SnapshotV8.sidecarOf(written).map(updateOf), Right(updateOf(changed)))
-    val state = SnapshotV8.decode(env, written).fold(e => fail(e.message), identity).state
+    val v8 = SnapshotV8.framed(binding, changed, haskell)
+    assertEquals(SnapshotV8.sidecarOf(v8).map(updateOf), Right(updateOf(changed)))
+    val v9 = SnapshotV9.fromV8(v8).fold(e => fail(e.message), identity)
+    assertEquals(SnapshotV9.sidecarOf(v9).map(updateOf), Right(updateOf(changed)))
+    val written = SnapshotV10.fromV9(v9).fold(e => fail(e.message), identity)
+    assertEquals(SnapshotV10.sidecarOf(written).map(updateOf), Right(updateOf(changed)))
+    val state = SnapshotV10
+      .decode(env, ReferenceLayout.Release11_1, written)
+      .fold(e => fail(e.message), identity)
+      .state
     state.ext.ledgerState.state match
       case EraLedgerState.ByronCurrent(b) =>
         assertEquals(b.ledger.map(_.update), Some(updateOf(changed)))

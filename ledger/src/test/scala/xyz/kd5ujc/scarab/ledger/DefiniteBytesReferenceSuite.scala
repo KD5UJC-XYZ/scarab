@@ -96,7 +96,10 @@ class DefiniteBytesReferenceSuite extends FunSuite:
 
   test("a repeated withdrawal account keeps its last amount before version 9 and fails from it") {
     val lastWins = rows.filter(_.withdrawals.isDefined)
-    assertEquals(lastWins.map(_.era).toSet, Era.values.toSet -- Set(Era.Byron, Era.Conway))
+    assertEquals(
+      lastWins.map(_.era).toSet,
+      Era.values.toSet -- Set(Era.Byron, Era.Conway, Era.Dijkstra)
+    )
     val refused = rows.filter(_.expect.contains(Refusal.DuplicateElement))
     assertEquals(refused.map(_.era).toSet, Set(Era.Conway))
     for row <- refused do
@@ -107,9 +110,12 @@ class DefiniteBytesReferenceSuite extends FunSuite:
       )
   }
 
-  test("no era is read at decoder version 12 or above, so every era reads definite strings") {
-    for era <- Era.values do
+  test(
+    "no era before Dijkstra is read at decoder version 12 or above: they read definite strings"
+  ) {
+    for era <- Era.values if era != Era.Dijkstra do
       assertEquals(ByteStrings.of(DecoderVersion.of(era)), ByteStrings.Definite, era.toString)
+    assertEquals(DecoderVersion.of(Era.Dijkstra), DecoderVersion.Dijkstra)
   }
 
   /** The output of the body of `row`, which has one output. */
@@ -163,7 +169,9 @@ class DefiniteBytesReferenceSuite extends FunSuite:
       Bytes.fromHex("8201" + "5f5820" + "5b" * 32 + "ff").fold(e => fail(e.toString), identity)
     val stored = ParamUpdate(Map(13 -> chunked))
     assertEquals(
-      ProtocolParams.update(TestLedger.params(2), stored).map(_.extraEntropy),
+      ProtocolParams
+        .update[xyz.kd5ujc.scarab.ledger.state.Shelley](TestLedger.params(2), stored)
+        .map(_.extraEntropy),
       Right(Nonce.Hash(hash))
     )
     val lite = LiteParams((2, 0), Rational.one, Nonce.Neutral, 65536, 16384, 1100)
@@ -211,7 +219,9 @@ class DefiniteBytesReferenceSuite extends FunSuite:
     val stored =
       ParamUpdate(Map(13 -> Bytes.fromHex("820000").fold(e => fail(e.toString), identity)))
     assertEquals(
-      ProtocolParams.update(TestLedger.params(2), stored).map(_.extraEntropy),
+      ProtocolParams
+        .update[xyz.kd5ujc.scarab.ledger.state.Shelley](TestLedger.params(2), stored)
+        .map(_.extraEntropy),
       Right(Nonce.Neutral)
     )
     val lite = LiteParams(

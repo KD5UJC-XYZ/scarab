@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import cats.Show
 import cats.effect.{Async, Resource}
 import cats.effect.std.Mutex
 import cats.effect.syntax.all.*
@@ -19,19 +20,22 @@ import java.lang.foreign.{
   ValueLayout
 }
 import java.lang.invoke.MethodHandle
-import java.nio.file.{Files, Path}
+import java.nio.file.{Files, InvalidPathException, Path}
 import scala.jdk.OptionConverters.*
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import xyz.kd5ujc.scarab.codec.DomainError
 
 /** The address of the node-to-client socket: the path as it was configured, not normalised (the
-  * reference's `LocalAddress`, ouroboros-network 2fb69829,
+  * reference's `LocalAddress`, ouroboros-network c45735a5,
   * `ouroboros-network/framework/lib/Ouroboros/Network/Snocket.hs` 219-221).
   */
-final case class LocalAddress(path: String):
+final case class LocalAddress(path: String)
+
+object LocalAddress:
   /** `show`: `LocalAddress "<path>"` (`deriving Show via Quiet LocalAddress`). */
-  def shown: String = s"LocalAddress ${HaskellShow.string(path)}"
+  given Show[LocalAddress] =
+    Show.show(address => s"LocalAddress ${HaskellShow.string(address.path)}")
 
 /** A connection to the local socket: the socket's address and the client's. A Unix socket client
   * has no address of its own, so the reference names the `n` th accepted client `<path>@<n>`
@@ -52,8 +56,8 @@ object FileDescriptor:
     /** The descriptor's number. */
     def number: Int = fd
 
-    /** `show`: `FileDescriptor <n>` (`deriving Show via Quiet FileDescriptor`). */
-    def shown: String = s"FileDescriptor ${HaskellShow.intArgument(fd)}"
+  /** `show`: `FileDescriptor <n>` (`deriving Show via Quiet FileDescriptor`). */
+  given Show[FileDescriptor] = Show.show(fd => s"FileDescriptor ${HaskellShow.intArgument(fd)}")
 
 /** Why the sockets the node was configured with cannot be used; the node does not start. The local
   * case of the reference's `SocketConfigError` (cardano-node 11.1.3,
@@ -68,17 +72,20 @@ enum SocketConfigError extends DomainError:
     */
   def message: String = this match
     case LocalSocketError(path, cause) =>
-      s"Failure while attempting to remove the stale local socket: $path : ${cause.shown}"
+      s"Failure while attempting to remove the stale local socket: $path : ${cause.show}"
 
+object SocketConfigError:
   /** The derived `show` (`Socket.hs` 73), the `error` field of the reference's start-up trace: the
     * path is a `File`, whose `Show` is its string's.
     */
-  def shown: String = this match
-    case LocalSocketError(path, cause) =>
-      s"LocalSocketError ${HaskellShow.string(path)} ${cause.shown}"
+  given [A <: SocketConfigError]: Show[A] = Show.show(error =>
+    (error: SocketConfigError) match
+      case LocalSocketError(path, cause) =>
+        s"LocalSocketError ${HaskellShow.string(path)} ${cause.show}"
+  )
 
 /** Why the node-to-client side of the network stopped: what the reference's `DiffusionErrored`
-  * names and `DiffusionError` carries (ouroboros-network 2fb69829,
+  * names and `DiffusionError` carries (ouroboros-network c45735a5,
   * `ouroboros-network/lib/Ouroboros/Network/Diffusion.hs` 905-911). The node then exits.
   */
 enum DiffusionFailure extends DomainError:
@@ -87,8 +94,8 @@ enum DiffusionFailure extends DomainError:
     */
   case System(error: SystemCallError)
 
-  /** The path does not fit a `sockaddr_un`: network 3.2.8.0's `pokeSockAddr` refuses a path of more
-    * than 108 characters with `error`.
+  /** The path does not fit a `sockaddr_un`: network 3.2.8.0's `pokeSockAddr` refuses a path of 108
+    * characters or more with `error` (`len >= unixPathMax`, `Network/Socket/Types.hsc` 1162).
     */
   case PathTooLong(path: String)
 
@@ -101,15 +108,18 @@ enum DiffusionFailure extends DomainError:
     */
   case UserInterrupt
 
+object DiffusionFailure:
   /** The `show` of the exception, the `error` field of `DiffusionErrored`. */
-  def shown: String = this match
-    case System(error) => error.shown
-    case PathTooLong(path) =>
-      val length = path.codePointCount(0, path.length)
-      s"pokeSockAddr: path is too long in SockAddrUnix ${HaskellShow.string(path)}, length $length, " +
-        s"unixPathMax ${LocalSockets.UnixPathMax}\n" + LocalSockets.PokeSockAddrCallStack
-    case Defect(cause) => cause.toString
-    case UserInterrupt => "user interrupt"
+  given [A <: DiffusionFailure]: Show[A] = Show.show(failure =>
+    (failure: DiffusionFailure) match
+      case System(error) => error.show
+      case PathTooLong(path) =>
+        val length = path.codePointCount(0, path.length)
+        s"pokeSockAddr: path is too long in SockAddrUnix ${HaskellShow.string(path)}, length $length, " +
+          s"unixPathMax ${LocalSockets.UnixPathMax}\n" + LocalSockets.PokeSockAddrCallStack
+      case Defect(cause) => cause.toString
+      case UserInterrupt => "user interrupt"
+  )
 
 /** The calls the local socket makes, one for each of the reference's (`removeFile`,
   * `getFileStatus`, the `Snocket` of a Unix socket), each failure a typed value.
@@ -199,8 +209,14 @@ object LocalSockets:
     def close: F[Unit] = F.blocking(client.shutdownOutput()).void
 
   def jdk[F[_]](using F: Async[F]): LocalSockets[F] = new LocalSockets[F]:
+    // unix 2.8.6.0's `removeLink` refuses a path that holds NUL before it calls `unlink`, which would
+    // stop at the NUL and remove another file (`useAsCStringSafe`,
+    // `System/Posix/PosixPath/FilePath.hsc` 154-171)
     def removeFile(path: String): F[Either[SystemCallError, Unit]] =
-      F.blocking(Unlink(path)).map(_.leftMap(SystemCallError(SystemCall.RemoveLink, _, Some(path))))
+      if path.contains('\u0000') then F.pure(Left(interiorNul(path)))
+      else
+        F.blocking(Unlink(path))
+          .map(_.leftMap(SystemCallError(SystemCall.RemoveLink, _, Some(path))))
 
     def fileMode(path: String): F[Either[SystemCallError, Int]] =
       F.blocking(Either.catchOnly[IOException](Files.getAttribute(Path.of(path), "unix:mode")))
@@ -237,7 +253,7 @@ object LocalSockets:
         opened: Option[Int]
     ): LocalListener[F] = new LocalListener[F]:
       def bind: F[Either[DiffusionFailure, Unit]] =
-        if address.path.codePointCount(0, address.path.length) > UnixPathMax then
+        if address.path.codePointCount(0, address.path.length) >= UnixPathMax then
           F.pure(Left(DiffusionFailure.PathTooLong(address.path)))
         // a socket cannot be made at a path that ends in `/` (the kernel's `ENOENT`); the JDK
         // would drop the slash and bind the path without it
@@ -249,14 +265,44 @@ object LocalSockets:
               )
             )
           )
+        // a path beyond ASCII, after the length and trailing-`/` refusals, which come before the
+        // reference's check of the socket file too: Scarab refuses every one, the owner's decision
+        // (#949, confirmed 2026-11-14), because no bytes bound for such a path reach the
+        // reference's clients in every locale. network 3.2.8.0 truncates each character to a byte
+        // on connect as on bind (`castCharToCChar`, `Network/Socket/Types.hsc` 1160): with the
+        // socket bound at the UTF-8 bytes of `/w/café.socket`, cardano-cli 11.1.3 reached it under
+        // `LANG=C` and not under `LANG=C.UTF-8` or with no `LANG`. The reference node itself, run
+        // with that path under `LANG=C.UTF-8` or no `LANG`, bound the truncated name, found nothing
+        // at the path's own name and stopped with this error, leaving the mis-named file; Scarab
+        // binds nothing. Under `LANG=C` it served the path
+        else if address.path.exists(_ > '\u007f') then
+          F.pure(
+            Left(
+              DiffusionFailure.System(
+                SystemCallError(
+                  SystemCall.GetFileStatus,
+                  ErrnoCause.Known(Errno.ENOENT),
+                  Some(address.path)
+                )
+              )
+            )
+          )
+        // an ASCII path: the JDK refuses one that holds NUL with `InvalidPathException`, a refusal
+        // of the bind, as one longer than its 106 bytes is (an approved deviation, #949)
         else
           F.blocking(
             Either
-              .catchOnly[IOException](
-                channel.bind(UnixDomainSocketAddress.of(address.path), Backlog)
+              .catchOnly[InvalidPathException](UnixDomainSocketAddress.of(address.path))
+              .leftMap(e =>
+                SystemCallError(SystemCall.Bind, ErrnoCause.Unrecognised(e.getReason), None)
               )
-              .void
-              .leftMap(e => DiffusionFailure.System(SystemCallError.of(SystemCall.Bind, None)(e)))
+              .flatMap(socket =>
+                Either
+                  .catchOnly[IOException](channel.bind(socket, Backlog))
+                  .void
+                  .leftMap(SystemCallError.of(SystemCall.Bind, None))
+              )
+              .leftMap(DiffusionFailure.System(_))
           )
 
       // bound, the socket is the listening one at its path in `/proc/net/unix`; unbound, the one
@@ -280,6 +326,19 @@ object LocalSockets:
               Mutex[F].map(lock => LocalStream(stream(client, lock), F.blocking(client.close())))
             )
           )
+
+  /** The `IOError` of unix 2.8.6.0's `useAsCStringSafe` for a path that holds NUL
+    * (`System/Posix/PosixPath/FilePath.hsc` 154-171): it names the path as decoded, NUL included.
+    */
+  private[network] def interiorNul(path: String): SystemCallError =
+    SystemCallError(
+      SystemCall.CheckForInteriorNuls,
+      ErrnoCause.Described(
+        IoErrorType.InvalidArgument,
+        "POSIX filepaths must not contain internal NUL octets."
+      ),
+      Some(path)
+    )
 
   /** `unlink(2)` of the path as written, one call, as the reference's `removeFile`: it needs write
     * and search permission on the directory only, refuses a directory (`EISDIR`), and takes a path

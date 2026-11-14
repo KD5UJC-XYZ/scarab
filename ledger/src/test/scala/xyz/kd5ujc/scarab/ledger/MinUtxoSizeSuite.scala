@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.rules.{Test, UtxoTests}
+import xyz.kd5ujc.scarab.ledger.state.{Babbage, Conway}
 
 /** The Babbage and Conway minimum ada of an output is `(160 + size) * coinsPerUTxOByte` over the
   * `Sized` length of the output as it was decoded (`validateOutputTooSmallUTxO`,
@@ -32,10 +33,16 @@ class MinUtxoSizeSuite extends FunSuite:
 
   private val perByte = TestLedger.params(7).coinsPerUTxOByte
 
-  /** The failures of `validateOutputTooSmallUTxO` for the one output, in order. */
+  /** The failures of `validateOutputTooSmallUTxO` for the one output, in order: Babbage's at
+    * protocol 7, Conway's at 9.
+    */
   private def checked(major: Int, out: TxOut): Either[List[PredicateFailure], Unit] =
+    val pp = TestLedger.params(major)
     Test
-      .failures(UtxoTests.outputTooSmall(TestLedger.params(major), Vector(out)))
+      .failures(
+        if major >= 9 then UtxoTests.outputTooSmall[Conway](pp, Vector(out))
+        else UtxoTests.outputTooSmall[Babbage](pp, Vector(out))
+      )
       .fold(Right(()))(failures => Left(failures.toNonEmptyList.toList))
 
   List(7, 9).foreach { major =>

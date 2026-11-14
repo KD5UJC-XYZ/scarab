@@ -22,7 +22,11 @@ and bootstrap mainnet/testnet addresses. The Scala reference suite isolates each
 using a matching network when measuring attributes, then executes combined production
 validation with the original network. Where both captured native predicates fail, the expected
 first failure follows reference source order (network before attributes). It compares typed
-verdicts and complete emitted UTXO failure bytes. Signed Scala
+verdicts and complete emitted UTXO failure bytes. The captured attribute failure is that of
+Shelley's predicate itself, before an era's UTXO injects it: from Allegra the reference reports it
+as `OutputTooBigUTxO` (`Allegra/Rules/Utxo.hs:387`), so the suite applies that injection to the
+captured Allegra and Mary bytes (#832), and the [reference-refusal corpus](../refusals/README.md)
+records the injected failure from the node's own refusals. Signed Scala
 LEDGER regressions additionally verify acceptance, refusal, conservation and ordering. These
 captures do not claim complete native UTXO or LEDGER admission, or identical failure accumulation.
 

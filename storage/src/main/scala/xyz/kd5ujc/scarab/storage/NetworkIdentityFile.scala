@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{
   FileKind,
   FormatVersion,
+  IdentityBeforeDijkstra,
   IdentityProvenance,
   NetworkIdentity,
   StorageError,
@@ -22,6 +23,9 @@ import xyz.kd5ujc.scarab.ledger.{
   * three fields and are represented as incomplete legacy data; opening a populated database with
   * one requires the explicit operator acknowledgement described in the running and
   * storage-migration documentation. That acknowledgement is durable metadata, not historical proof.
+  * A V6 file is complete up to Conway and has no Dijkstra genesis binding: its migration to V9
+  * takes the binding from the configured identity, after the other fields are found equal to it
+  * (OD-2 of #54).
   */
 object NetworkIdentityFile:
   val FileName = "network-identity"
@@ -75,9 +79,13 @@ object NetworkIdentityFile:
       case None if !populated    => Sync[F].pure(Admission.WriteFresh)
       case None if confirmLegacy => Sync[F].pure(Admission.AdoptMissing)
       case None => StorageError.MissingIdentityNeedsConfirmation(dir.toString).raise[F, Admission]
+      // a recorded `none` adopts the configured Dijkstra genesis at the open ([[adoptDijkstra]])
       case Some(StoredNetworkIdentity.Complete(found, _)) =>
-        if found == expected then Sync[F].pure(Admission.Unchanged)
+        if found.consistentWith(expected) then Sync[F].pure(Admission.Unchanged)
         else StorageError.NetworkMismatch(found, expected).raise[F, Admission]
+      // bound by the migration that follows admission ([[migrate]])
+      case Some(StoredNetworkIdentity.BeforeDijkstra(found, _)) =>
+        bound(found, expected).as(Admission.Unchanged)
       case Some(StoredNetworkIdentity.Legacy(version, found)) =>
         if !found.matches(expected) then
           StorageError.LegacyNetworkMismatch(found, expected).raise[F, Admission]
@@ -127,6 +135,16 @@ object NetworkIdentityFile:
           )
         )
 
+  /** A V6 identity with the configured Dijkstra binding, if its other fields are the configured
+    * ones.
+    */
+  private def bound[F[_]: Sync](found: IdentityBeforeDijkstra, expected: NetworkIdentity)(using
+      Raise[F, StorageError]
+  ): F[NetworkIdentity] =
+    val identity = found.bind(expected.dijkstraGenesis)
+    if identity == expected then Sync[F].pure(identity)
+    else StorageError.NetworkMismatch(identity, expected).raise[F, NetworkIdentity]
+
   private def writeWith[F[_]: Sync](
       dir: Path,
       identity: NetworkIdentity,
@@ -141,9 +159,12 @@ object NetworkIdentityFile:
       )
 
   /** The identity file as a migration. Incomplete legacy files are not rewritten here: they need
-    * operator confirmation and a complete identity from the actually loaded genesis inputs.
+    * operator confirmation and a complete identity from the actually loaded genesis inputs. A V6
+    * file is rewritten as V9 with the Dijkstra binding of `expected`, the configured identity, once
+    * its other fields are found equal to it; without a configured identity it is refused
+    * ([[StorageError.IdentityNeedsDijkstraBinding]]).
     */
-  def migration[F[_]: Sync]: Migration[F] = new Migration[F]:
+  def migration[F[_]: Sync](expected: Option[NetworkIdentity]): Migration[F] = new Migration[F]:
     val kind = FileKind.IdentityFile
 
     private def parsed(
@@ -160,20 +181,33 @@ object NetworkIdentityFile:
     def detect(file: Path)(using cats.mtl.Raise[F, StorageError]): F[FormatVersion] =
       parsed(file).map(_._1)
 
+    private def rewrite(file: Path, to: FormatVersion)(
+        identity: NetworkIdentity,
+        provenance: IdentityProvenance
+    )(using cats.mtl.Raise[F, StorageError]): F[Unit] =
+      AtomicFile
+        .replace[F](file, identity.renderAs(to, provenance).getBytes(StandardCharsets.UTF_8))
+
     def step(file: Path, from: FormatVersion, to: FormatVersion)(using
         cats.mtl.Raise[F, StorageError]
     ): F[Unit] =
       validateStep(file, from, to) *> parsed(file).flatMap {
         case (_, StoredNetworkIdentity.Complete(identity, provenance)) =>
-          AtomicFile.replace[F](
-            file,
-            identity.renderAs(to, provenance).getBytes(StandardCharsets.UTF_8)
+          rewrite(file, to)(identity, provenance)
+        case (version, StoredNetworkIdentity.BeforeDijkstra(found, provenance)) =>
+          expected.fold(StorageError.IdentityNeedsDijkstraBinding(version).raise[F, Unit])(
+            bound[F](found, _).flatMap(rewrite(file, to)(_, provenance))
           )
         case (version, StoredNetworkIdentity.Legacy(_, _)) =>
           StorageError.LegacyIdentityNeedsConfirmation(version).raise[F, Unit]
       }
 
-  def migrate[F[_]: Sync](dir: Path)(using Raise[F, StorageError]): F[List[Migrated]] =
+  /** Bring the identity file to the current version; `expected` is the configured identity, which
+    * gives a V6 file its Dijkstra binding (see [[migration]]).
+    */
+  def migrate[F[_]: Sync](dir: Path, expected: Option[NetworkIdentity])(using
+      Raise[F, StorageError]
+  ): F[List[Migrated]] =
     val file = dir / FileName
     guard[F, Boolean](dir.toString)(Files.exists(fileOf(dir))).flatMap {
       case false => Sync[F].pure(Nil)
@@ -181,19 +215,40 @@ object NetworkIdentityFile:
         read[F](dir).flatMap {
           case Some(StoredNetworkIdentity.Legacy(version, _)) =>
             StorageError.LegacyIdentityNeedsConfirmation(version).raise[F, List[Migrated]]
-          case _ => Migrate(migration[F], List(file))
+          case _ => Migrate(migration[F](expected), List(file))
         }
     }
 
-  /** Compare complete identity on every open. Missing identity is handled by the admission plan. */
+  /** The configured Dijkstra genesis adopted by a current identity that records none and is
+    * otherwise the configured identity (OD-2 of #54, refined 2026-11-08): the file is rewritten
+    * with the binding, its provenance and other fields unchanged, and the identity written is
+    * returned, for the open to log. `expected` 's binding is the hash of the configured file, which
+    * node setup checks against `DijkstraGenesisHash` when the configuration lists one. Any other
+    * file is left to the checks of [[preflight]] and [[migrate]], and nothing is written.
+    */
+  def adoptDijkstra[F[_]: Sync](dir: Path, expected: NetworkIdentity)(using
+      Raise[F, StorageError]
+  ): F[Option[NetworkIdentity]] =
+    read[F](dir).flatMap {
+      case Some(StoredNetworkIdentity.Complete(found, provenance)) if found.adopts(expected) =>
+        writeWith[F](dir, expected, provenance).as(Some(expected))
+      case _ => Sync[F].pure(None)
+    }
+
+  /** Compare complete identity on every open. Missing identity is handled by the admission plan. A
+    * V6 file matches when its fields are the configured ones: the binding its migration will record
+    * is the configured one, and nothing is written here.
+    */
   def verify[F[_]: Sync](dir: Path, expected: NetworkIdentity)(using
       Raise[F, StorageError]
   ): F[Boolean] =
     read[F](dir).flatMap {
       case None => Sync[F].pure(false)
       case Some(StoredNetworkIdentity.Complete(found, _)) =>
-        if found == expected then Sync[F].pure(true)
+        if found.consistentWith(expected) then Sync[F].pure(true)
         else StorageError.NetworkMismatch(found, expected).raise[F, Boolean]
+      case Some(StoredNetworkIdentity.BeforeDijkstra(found, _)) =>
+        bound(found, expected).as(true)
       case Some(StoredNetworkIdentity.Legacy(version, found)) =>
         if !found.matches(expected) then
           StorageError.LegacyNetworkMismatch(found, expected).raise[F, Boolean]

@@ -192,6 +192,28 @@ class PeerSelectionSuite extends FunSuite:
     assertEquals(st4.peers(7).failCount, 1)
   }
 
+  // `randomR (-2, 2 :: Double)` and `realToFrac` (`ActivePeers.hs` 498-499, ouroboros-network
+  // `c45735a5`): one word scaled into the range, floored, where a millisecond draw would round
+  test("the fuzz of a failed activation is the reference's Double draw from one word") {
+    val (st1, _, _) = settle(start(List(group(1, 1, 7))), t0)
+    val st2 = complete(st1, Outcome.Connected(7), t0)
+    val (st3, _, _) = settle(st2, t0)
+    val (word, advanced) = st3.rng.nextLong
+    val st4 = complete(st3, Outcome.ActivateFailed(7, FailureClass.Transient), 5.seconds)
+    val Status.Cold(Some(at)) = statusOf(st4, 7): @unchecked
+    assertEquals(at, 15.seconds + Events.fromSeconds(Rng.scaleFloating(-2.0, 2.0, word)))
+    assertEquals(st4.rng, advanced)
+  }
+
+  test("a fuzz of seconds is floored to the nanosecond, toward minus infinity") {
+    // 0.1 is 0.1000000000000000055511151231257827... as a Double
+    assertEquals(Events.asSeconds(100.millis), 0.1)
+    assertEquals(Events.fromSeconds(0.1), 100.millis)
+    assertEquals(Events.fromSeconds(-0.1), -(100.millis + 1.nano))
+    assertEquals(Events.fromSeconds(-2.0), (-2).seconds)
+    assertEquals(Events.fromSeconds(1.9999999999999998), 1999999999.nanos)
+  }
+
   test("a peer that stayed hot loses its fail count after the clearing delay") {
     val (st1, _, _) = settle(start(List(group(1, 1, 7))), t0)
     val st2 = complete(st1, Outcome.Connected(7), t0)
@@ -215,7 +237,7 @@ class PeerSelectionSuite extends FunSuite:
     val ended = returned.state
     val Status.Warm(readyAt) = statusOf(ended, 7): @unchecked
     assert(readyAt >= 90.seconds && readyAt <= 101.seconds, readyAt.toString)
-    // the traced delay is the fuzzed wait the peer is warm for (`Governor/Monitor.hs` 150-161)
+    // the traced delay is the fuzzed wait the peer is warm for (`Governor/Monitor.hs` 149-160)
     assertEquals(delays(returned), List(Some(readyAt - 1.minute)))
     val lingering = PeerSelection
       .apply(
@@ -855,6 +877,46 @@ class PeerSelectionSuite extends FunSuite:
     )
     assertEquals(late.jobs, List(Job.Close(7, Some(BigInt(0)))))
     assertEquals(statusOf(late.state, 7), Status.Cold(None))
+  }
+
+  // a connection kept across a root reload still reports to the governor (`PeerStateActions.hs`
+  // 662-776): its hot protocol's end makes it warm, its loss makes it cold
+  test("what a connection kept across a root reload observes is still applied") {
+    val (st1, _, _) = settle(start(List(group(2, 2, 7, 8))), t0)
+    val st2 = List(7, 8).foldLeft(st1)((s, p) => complete(s, Outcome.Connected(p), t0))
+    val (st3, _, _) = settle(st2, t0)
+    val hot = List(7, 8).foldLeft(st3)((s, p) => complete(s, Outcome.Activated(p), t0))
+    val before = hot.rootsGeneration
+    val reloaded = PeerSelection
+      .apply(hot, Event.RootsConfigured(hot.configuredRoots, false, Set.empty), t0)
+      .state
+    assert(reloaded.rootsGeneration > before)
+    assertEquals(statusOf(reloaded, 7), Status.Hot)
+    val returned = PeerSelection
+      .apply(
+        reloaded,
+        Event.Observed(7, Observation.HotEnded(Some(30.seconds)), Some(before), Some(BigInt(1))),
+        1.minute
+      )
+      .state
+    statusOf(returned, 7) match
+      case Status.Warm(_) => ()
+      case other          => fail(s"not warm: $other")
+    val lost = PeerSelection
+      .apply(
+        returned,
+        Event.Observed(
+          8,
+          Observation.Lost(FailureClass.Transient, 5.seconds, true, "lost"),
+          Some(before),
+          Some(BigInt(2))
+        ),
+        2.minutes
+      )
+      .state
+    statusOf(lost, 8) match
+      case Status.Cold(_) => ()
+      case other          => fail(s"not cold: $other")
   }
 
   test("a root request completing after reload cannot restore the previous roots") {

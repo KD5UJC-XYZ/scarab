@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Tx,
   UtxoFailure
 }
+import xyz.kd5ujc.scarab.network.Word32
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 
 /** What a transaction counts for in the mempool, and how much the mempool may hold: the measures of
@@ -40,13 +41,27 @@ object Capacity:
     )
 
   /** `computeMempoolCapacity`: a whole number of blocks, [[DefaultBlocks]] when there is no
-    * override and otherwise at least one and the least number whose bytes reach the override.
+    * override and otherwise at least one and the least number whose bytes reach the override; one
+    * when a block takes no transaction bytes.
+    *
+    * Scarab does not wrap where the reference does (approved deviation: the owner's standing rule,
+    * https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849, and its record for
+    * this case, https://github.com/KD5UJC-XYZ/scarab/issues/845#issuecomment-6747479546). The
+    * reference takes the number and the capacity in `Word32`, rounding the number down where
+    * rounding it up would overflow and adding the byte sizes modulo 2^32 (ouroboros-consensus
+    * 82ecba32 `Mempool/Capacity.hs:62-79`, `Ledger/SupportsMempool.hs:468-504`), so a large
+    * override can leave it no reference-script bytes at all (4,096 blocks of 1 MiB are 2^32, which
+    * is 0). Here the override is a `Word32`, as the reference reads it, and the number and the
+    * capacity are exact: a `Word32` divided by a positive block size, and that many blocks, fit a
+    * `Long`.
     */
-  def of(params: ProtocolParams, capacityOverride: Option[Long]): TxMeasure =
+  def of(params: ProtocolParams, capacityOverride: Option[Word32]): TxMeasure =
     val unit = blockUnit(params)
-    val count = capacityOverride.fold(DefaultBlocks)(bytes =>
-      if unit.bytes <= 0 then 1L else math.max(1L, (bytes + unit.bytes - 1) / unit.bytes)
-    )
+    val count = capacityOverride.fold(DefaultBlocks) { o =>
+      val bytes = o.toLong
+      if unit.bytes <= 0 then 1L
+      else (bytes / unit.bytes + (if bytes % unit.bytes == 0 then 0L else 1L)).max(1L)
+    }
     TxMeasure(
       unit.bytes * count,
       unit.exUnitsMemory * count,
@@ -61,7 +76,7 @@ object Capacity:
     */
   def measure(entry: Entry): TxMeasure =
     val units = entry.tx.witnesses.totalExUnits
-    TxMeasure(entry.tx.size + PerTxOverhead, units.mem, units.steps, entry.refScriptBytes.toLong)
+    TxMeasure(entry.tx.size + PerTxOverhead, units.mem, units.steps, entry.refScriptBytes)
 
   /** The first phase (`txMeasurePhase1`, `txMeasureAlonzo`): the transaction's size against the
     * maximum and its execution units, pointwise, against the maximum. The two checks accumulate,
@@ -82,14 +97,15 @@ object Capacity:
 
   /** The second phase (`txMeasurePhase2`, `txMeasureRefScripts`, Conway): the reference-script
     * bytes of the transaction's inputs and reference inputs in the state after the held
-    * transactions against the per-transaction maximum.
+    * transactions against the per-transaction maximum, both the reference's 64-bit `Int`.
     */
-  def phase2(ledger: MempoolLedger, tx: Tx): Either[PredicateFailure, Int] =
+  def phase2(ledger: MempoolLedger, tx: Tx): Either[PredicateFailure, Long] =
     val size = MempoolState.refScriptBytes(ledger, tx)
+    val limit = RefScripts.MaxRefScriptSizePerTx.toLong
     Either.cond(
-      size <= RefScripts.MaxRefScriptSizePerTx,
+      size <= limit,
       size,
-      PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(size, RefScripts.MaxRefScriptSizePerTx))
+      PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(size, limit))
     )
 
   extension (m: TxMeasure)

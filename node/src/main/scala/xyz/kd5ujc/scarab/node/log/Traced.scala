@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.ledger.ForgeKeyProblem
 import xyz.kd5ujc.scarab.node.Reports
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.node.forge.{
+  NoExchange,
   CannotForge,
   ForgeEvent,
   ClockTrace,
@@ -170,6 +171,15 @@ object Traced:
       EventKind.SnapshotSkipped.line("file" -> name.asJson, "reason" -> error.message.asJson)
     case StorageEvent.SnapshotRestored(name, a) =>
       EventKind.SnapshotRestored.line("file" -> name.asJson, "anchor" -> anchor(a))
+    case StorageEvent.SnapshotDeleted(name) =>
+      EventKind.SnapshotDeleted.line("file" -> name.asJson)
+    case StorageEvent.SnapshotNotDeleted(name, error) =>
+      EventKind.SnapshotNotDeleted.line("file" -> name.asJson, "reason" -> error.message.asJson)
+    case StorageEvent.CheckpointNotDeleted(name, error) =>
+      EventKind.CheckpointNotDeleted.line(
+        "checkpoint" -> name.asJson,
+        "reason" -> error.message.asJson
+      )
     case StorageEvent.SnapshotUnbound(name, a) =>
       EventKind.SnapshotUnbound.line("file" -> name.asJson, "anchor" -> anchor(a))
     case StorageEvent.SnapshotWritten(name, a, bytes, millis) =>
@@ -201,7 +211,7 @@ object Traced:
         "replayed" -> replayed.asJson,
         "millis" -> millis.asJson
       )
-    case StorageEvent.NetworkRecorded(id, adopted) =>
+    case StorageEvent.NetworkRecorded(id, adopted, dijkstraAdopted) =>
       EventKind.NetworkRecorded.line(
         "magic" -> id.magic.asJson,
         "shelleyGenesis" -> id.shelleyGenesis.hex.asJson,
@@ -212,7 +222,11 @@ object Traced:
         "conwayGenesis" -> xyz.kd5ujc.scarab.ledger.NetworkIdentity
           .renderGenesisHash(id.conwayGenesis)
           .asJson,
-        "adoptedExisting" -> adopted.asJson
+        "dijkstraGenesis" -> id.dijkstraGenesis
+          .map(xyz.kd5ujc.scarab.ledger.NetworkIdentity.renderGenesisHash)
+          .asJson,
+        "adoptedExisting" -> adopted.asJson,
+        "adoptedDijkstraGenesis" -> dijkstraAdopted.asJson
       )
     case StorageEvent.VolatileOpened(r) =>
       EventKind.VolatileOpened.line(
@@ -250,8 +264,8 @@ object Traced:
       EventKind.Connection.line(
         "remote" -> remote.asJson,
         "what" -> "changed".asJson,
-        "from" -> from.toString.asJson,
-        "to" -> to.toString.asJson
+        "from" -> from.abstractName.asJson,
+        "to" -> to.abstractName.asJson
       )
     case ConnectionEvent.Refused(error) =>
       EventKind.Connection
@@ -263,6 +277,13 @@ object Traced:
         "what" -> "closed".asJson,
         "provenance" -> provenance.toString.asJson,
         "reason" -> reason.message.asJson
+      )
+    case ConnectionEvent.Pruned(pruned, number, candidates) =>
+      EventKind.Connection.line(
+        "what" -> "pruned".asJson,
+        "pruned" -> pruned.asJson,
+        "number" -> number.asJson,
+        "candidates" -> candidates.asJson
       )
     case ConnectionEvent.AcceptRateLimited(delay, connections) =>
       EventKind.Connection.line(
@@ -436,6 +457,9 @@ object Traced:
       )
 
   given Traced[ForgeEvent] =
+    // the reference prints the constructor (`showT`) as a string
+    case ForgeEvent.BlockForgingUpdate(state) =>
+      EventKind.BlockForgingUpdate.line("enabled" -> state.toString.asJson)
     case ForgeEvent.Started(pool, vrfHash, start, evolutions, counter, period) =>
       EventKind.ForgeStarted.line(
         "pool" -> pool.hex.asJson,
@@ -506,6 +530,16 @@ object Traced:
       EventKind.KesReloadRefused.line(
         "kind" -> reason.productPrefix.asJson,
         "message" -> reason.message.asJson
+      )
+    case ForgeEvent.KesFileAbsent(period, file) =>
+      EventKind.KesFileAbsent.line("kesPeriod" -> period.asJson, "file" -> file.asJson)
+    case ForgeEvent.KesWrittenByRename(reason) =>
+      val errno = reason match
+        case NoExchange.Refused(n)                        => Some(n)
+        case NoExchange.NotLinux | NoExchange.NoRenameat2 => None
+      EventKind.KesWrittenByRename.line(
+        "reason" -> reason.productPrefix.asJson,
+        "errno" -> errno.asJson
       )
     case ForgeEvent.KesPersistFailed(period, error) =>
       EventKind.KesPersistFailed.line(

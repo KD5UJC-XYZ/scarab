@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.node.mempool.RelayedTransactions
-import cats.effect.{IO, Ref, Resource}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.std.Supervisor
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
@@ -39,33 +39,51 @@ class OutboundMonitorFailureSuite extends FailsOnUncaught:
       ) = IO.unit
     ServerHandlers(NtNHeader.codec, Resource.pure(cursor), blocks, transactions)
 
-  /** What the governor and the node were told. */
+  /** What the governor and the node were told, and the failure the connection's retained report
+    * carried at the moment the node was told of each loss.
+    */
   private final case class Told(
       losses: Vector[PeerError],
+      retainedAtLoss: Vector[Option[PeerError]],
       observed: Vector[Observation.Lost],
       fatalities: Vector[Fatal]
   )
+
+  /** What a test waits on: each completes, with everything told until then, once the governor was
+    * told that the connection was released, or once the node was told to stop.
+    */
+  private final case class Settled(released: IO[Told], stopped: IO[Told])
 
   /** Run one outbound peer whose monitor throws `cause` once, the first time it observes the
     * connection's applications after `use` armed it, with `lost` as the node's loss callback.
     */
   private def run[A](lost: PeerError => IO[Unit], cause: Throwable)(
-      use: (OutboundPeers[IO, PeerNetwork.Addr], IO[Unit], InMemoryPeers, Ref[IO, Told]) => IO[A]
+      use: (OutboundPeers[IO, PeerNetwork.Addr], IO[Unit], InMemoryPeers, Settled) => IO[A]
   ): IO[A] =
     for
       armed <- Ref.of[IO, Boolean](false)
-      told <- Ref.of[IO, Told](Told(Vector.empty, Vector.empty, Vector.empty))
+      told <- Ref.of[IO, Told](Told(Vector.empty, Vector.empty, Vector.empty, Vector.empty))
+      released <- Deferred[IO, Unit]
+      stopped <- Deferred[IO, Unit]
+      installed <- Ref.of[IO, Option[OutboundPeers[IO, PeerNetwork.Addr]]](None)
       peers <- InMemoryPeers.create(magic)
       _ <- peers.serve(peer, handlers)
       report = (event: Event[PeerNetwork.Addr]) =>
         event match
           case Event.Observed(_, observation: Observation.Lost, _, _) =>
-            told.update(t => t.copy(observed = t.observed :+ observation))
+            told.update(t => t.copy(observed = t.observed :+ observation)) *>
+              released.complete(()).void.whenA(observation.released)
           case _ => IO.unit
       probe = armed.getAndSet(false).flatMap(IO.raiseError(cause).whenA(_))
+      // the governor's and the node's callbacks are the observable condition, bounded
+      settled = Settled(
+        released.get.timeout(15.seconds) *> told.get,
+        stopped.get.timeout(15.seconds) *> told.get
+      )
       result <- (for
         node <- NodeScope.resource
         supervisor <- Supervisor[IO](await = false)
+        monitors <- Supervisor[IO](await = false)
         outbound <- Resource.eval {
           given Handle[IO, NodeError] = node
           for
@@ -87,8 +105,21 @@ class OutboundMonitorFailureSuite extends FailsOnUncaught:
               observe = None,
               pool = pool,
               versus = _ => IO.pure(Gsm.Candidate.DoesNotIntersect),
-              lost = error => told.update(t => t.copy(losses = t.losses :+ error)) *> lost(error),
-              fatal = problem => told.update(t => t.copy(fatalities = t.fatalities :+ problem))
+              lost = error =>
+                installed.get
+                  .flatMap(_.flatTraverse(_.monitorPeerConnection(peer)))
+                  .flatMap(_.flatTraverse(_.read.map(_.failure)))
+                  .flatMap(retained =>
+                    told.update(t =>
+                      t.copy(
+                        losses = t.losses :+ error,
+                        retainedAtLoss = t.retainedAtLoss :+ retained
+                      )
+                    )
+                  ) *> lost(error),
+              fatal = problem =>
+                told.update(t => t.copy(fatalities = t.fatalities :+ problem)) *>
+                  stopped.complete(()).void
             )
             outbound <- OutboundPeers.create(
               peers,
@@ -96,35 +127,26 @@ class OutboundMonitorFailureSuite extends FailsOnUncaught:
               OutboundPeers.Config(),
               hot,
               supervisor,
+              monitors,
               report,
               RefStateful(metrics): Stateful[IO, PeerMetrics[PeerNetwork.Addr]],
               beforeObservation = Some(probe)
             )
+            _ <- installed.set(Some(outbound))
           yield outbound
         }
-      yield outbound).use(outbound => use(outbound, armed.set(true), peers, told))
+      yield outbound).use(outbound => use(outbound, armed.set(true), peers, settled))
     yield result
-
-  // the governor's and the node's callbacks are the observable condition; poll them, bounded
-  private def settled(told: Ref[IO, Told])(done: Told => Boolean): IO[Told] =
-    (IO.sleep(5.millis) *> told.get).iterateUntil(done).timeout(15.seconds)
 
   test("a monitor that throws ends its own connection, uncharged, and the node goes on") {
     val cause = new IllegalStateException("injected monitor defect")
     val defect = PeerError.ConnectionDefect(cause)
-    run(_ => IO.unit, cause) { (outbound, arm, peers, told) =>
+    run(_ => IO.unit, cause) { (outbound, arm, peers, settled) =>
       for
         _ <- arm
         established <- outbound.establish(peer, DiffusionMode.InitiatorOnly, Provenance.Outbound)
-        ended <- settled(told)(_.observed.exists(_.released))
+        ended <- settled.released
         closed <- peers.closedConnections
-        // the retained report reads the applications' results, which take the abort a moment
-        // after the release is observed: poll it, bounded
-        retained <- (IO.sleep(5.millis) *> outbound
-          .monitorPeerConnection(peer)
-          .flatMap(_.traverse(_.read)))
-          .iterateUntil(_.exists(_.failure.nonEmpty))
-          .timeout(15.seconds)
         // the node goes on: the same peer is connected to again and promoted
         again <- outbound.establish(peer, DiffusionMode.InitiatorOnly, Provenance.Outbound)
         promoted <- outbound.activate(peer)
@@ -138,7 +160,10 @@ class OutboundMonitorFailureSuite extends FailsOnUncaught:
         )
         assertEquals(ended.fatalities, Vector.empty)
         assertEquals(closed.getOrElse(peer, 0), 1)
-        assertEquals(retained.flatMap(_.failure), Some(defect))
+        // the defect is retained before the node is told of the loss, whichever of the release
+        // and the mux's closure the connection sees first, and whether or not an application
+        // was between messages
+        assertEquals(ended.retainedAtLoss, Vector(Some(defect)))
         assert(again.isRight, again.toString)
         assertEquals(promoted, Right(()))
     }
@@ -147,11 +172,11 @@ class OutboundMonitorFailureSuite extends FailsOnUncaught:
   test("a monitor whose recovery throws again stops the node with the defect") {
     val cause = new IllegalStateException("injected monitor defect")
     val again = new IllegalStateException("injected recovery defect")
-    run(_ => IO.raiseError(again), cause) { (outbound, arm, _, told) =>
+    run(_ => IO.raiseError(again), cause) { (outbound, arm, _, settled) =>
       for
         _ <- arm
         established <- outbound.establish(peer, DiffusionMode.InitiatorOnly, Provenance.Outbound)
-        ended <- settled(told)(_.fatalities.nonEmpty)
+        ended <- settled.stopped
       yield
         assert(established.isRight)
         assertEquals(ended.losses, Vector(PeerError.ConnectionDefect(cause)))

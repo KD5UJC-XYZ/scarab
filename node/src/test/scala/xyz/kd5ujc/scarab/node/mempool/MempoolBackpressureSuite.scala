@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.network.Settled
 import cats.effect.{IO, Ref}
 import cats.effect.std.Queue
 import cats.syntax.all.*
@@ -68,8 +69,9 @@ class MempoolBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
       case _                              => false
     }.void
 
-    def lines(expected: Mempool.Lines): IO[Unit] =
-      (IO.cede *> mempool.lines).iterateUntil(_ == expected).timeout(failsafe).void
+    /** The lines once every fiber has done all it can (`settle`): they must then be `expected`. */
+    def lines(settle: IO[Unit], expected: Mempool.Lines): IO[Unit] =
+      Settled.observed(settle, s"in the lines $expected")(mempool.lines)(_ == expected).void
 
     def indexOf(wanted: MempoolEvent => Boolean): IO[Int] = log.get.map(_.indexWhere(wanted))
 
@@ -94,7 +96,7 @@ class MempoolBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
         Right(base),
         1000,
         env,
-        Some(1),
+        Some(word32(1)),
         (e: MempoolEvent) => log.update(_ :+ e) *> events.offer(e)
       )
     yield Probe(mempool, base, log, events)
@@ -196,68 +198,74 @@ class MempoolBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     val local = spend(4)._1
     val capacity = cost(first) + cost(second) + cost(local)
     assert(cost(held) <= capacity && cost(held) + cost(first) > capacity)
-    for
-      p <- probe(capacity)
-      _ <- p.mempool.add(held, Source.Local)
-      head <- p.mempool.add(first, Source.Remote).start
-      _ <- p.waiting(idOf(first))
-      peer <- p.mempool.add(second, Source.Remote).start
-      client <- p.mempool.add(local, Source.Local).start
-      _ <- p.lines(Mempool.Lines(remote = 1, common = 1))
-      _ <- p.mempool.removeTxsEvenIfValid(Set(idOf(held)))
-      results <- List(head, peer, client).traverse(_.joinWithNever.timeout(failsafe))
-      order <- p.addedIds
-    yield
-      assertEquals(results, List(first, second, local).map(r => Right(idOf(r))))
-      assertEquals(order, Vector(held, first, local, second).map(idOf))
+    Settled { settle =>
+      for
+        p <- probe(capacity)
+        _ <- p.mempool.add(held, Source.Local)
+        head <- p.mempool.add(first, Source.Remote).start
+        _ <- p.waiting(idOf(first))
+        peer <- p.mempool.add(second, Source.Remote).start
+        client <- p.mempool.add(local, Source.Local).start
+        _ <- p.lines(settle, Mempool.Lines(remote = 1, common = 1))
+        _ <- p.mempool.removeTxsEvenIfValid(Set(idOf(held)))
+        results <- List(head, peer, client).traverse(_.joinWithNever.timeout(failsafe))
+        order <- p.addedIds
+      yield
+        assertEquals(results, List(first, second, local).map(r => Right(idOf(r))))
+        assertEquals(order, Vector(held, first, local, second).map(idOf))
+    }
   }
 
   test("only the head of the line waits for room: a smaller transaction does not pass it") {
     val s = sizes
-    for
-      p <- probe(s.capacity)
-      _ <- p.mempool.add(s.held, Source.Local)
-      head <- p.mempool.add(s.wide, Source.Remote).start
-      _ <- p.waiting(idOf(s.wide))
-      small <- p.mempool.add(s.narrow, Source.Local).start
-      // the small one fits beside `held` and is nevertheless in line
-      _ <- p.lines(Mempool.Lines(remote = 0, common = 1))
-      _ <- p.mempool.removeTxsEvenIfValid(Set(idOf(s.held)))
-      first <- head.joinWithNever.timeout(failsafe)
-      // behind `wide` there is no room for it: it is the head now, and waits
-      _ <- p.waiting(idOf(s.narrow))
-      _ <- p.mempool.removeTxsEvenIfValid(Set(idOf(s.wide)))
-      second <- small.joinWithNever.timeout(failsafe)
-      order <- p.addedIds
-    yield
-      assertEquals(first, Right(idOf(s.wide)))
-      assertEquals(second, Right(idOf(s.narrow)))
-      assertEquals(order, Vector(s.held, s.wide, s.narrow).map(idOf))
+    Settled { settle =>
+      for
+        p <- probe(s.capacity)
+        _ <- p.mempool.add(s.held, Source.Local)
+        head <- p.mempool.add(s.wide, Source.Remote).start
+        _ <- p.waiting(idOf(s.wide))
+        small <- p.mempool.add(s.narrow, Source.Local).start
+        // the small one fits beside `held` and is nevertheless in line
+        _ <- p.lines(settle, Mempool.Lines(remote = 0, common = 1))
+        _ <- p.mempool.removeTxsEvenIfValid(Set(idOf(s.held)))
+        first <- head.joinWithNever.timeout(failsafe)
+        // behind `wide` there is no room for it: it is the head now, and waits
+        _ <- p.waiting(idOf(s.narrow))
+        _ <- p.mempool.removeTxsEvenIfValid(Set(idOf(s.wide)))
+        second <- small.joinWithNever.timeout(failsafe)
+        order <- p.addedIds
+      yield
+        assertEquals(first, Right(idOf(s.wide)))
+        assertEquals(second, Right(idOf(s.narrow)))
+        assertEquals(order, Vector(s.held, s.wide, s.narrow).map(idOf))
+    }
   }
 
   test("cancelling a waiting add releases its place in both lines") {
     val s = sizes
-    for
-      p <- probe(s.capacity)
-      _ <- p.mempool.add(s.held, Source.Local)
-      peer <- p.mempool.add(s.wide, Source.Remote).start
-      _ <- p.waiting(idOf(s.wide))
-      later <- p.mempool.add(s.narrow, Source.Remote).start
-      _ <- p.lines(Mempool.Lines(remote = 1, common = 0))
-      _ <- peer.cancel
-      outcome <- peer.join
-      served <- later.joinWithNever.timeout(failsafe)
-      // a local client that waits is cancelable too, and frees the common line
-      client <- p.mempool.add(s.wide, Source.Local).start
-      _ <- p.waiting(idOf(s.wide))
-      _ <- client.cancel
-      _ <- p.lines(Mempool.Lines(0, 0))
-      _ <- p.mempool.removeTxsEvenIfValid(Set(idOf(s.held), idOf(s.narrow)))
-      again <- p.mempool.add(s.wide, Source.Local).timeout(failsafe)
-    yield
-      assert(outcome.isCanceled, s"the cancelled add ended as $outcome")
-      assertEquals(served, Right(idOf(s.narrow)))
-      assertEquals(again, Right(idOf(s.wide)))
+    Settled { settle =>
+      for
+        p <- probe(s.capacity)
+        _ <- p.mempool.add(s.held, Source.Local)
+        peer <- p.mempool.add(s.wide, Source.Remote).start
+        _ <- p.waiting(idOf(s.wide))
+        later <- p.mempool.add(s.narrow, Source.Remote).start
+        _ <- p.lines(settle, Mempool.Lines(remote = 1, common = 0))
+        _ <- peer.cancel
+        outcome <- peer.join
+        served <- later.joinWithNever.timeout(failsafe)
+        // a local client that waits is cancelable too, and frees the common line
+        client <- p.mempool.add(s.wide, Source.Local).start
+        _ <- p.waiting(idOf(s.wide))
+        _ <- client.cancel
+        _ <- p.lines(settle, Mempool.Lines(0, 0))
+        _ <- p.mempool.removeTxsEvenIfValid(Set(idOf(s.held), idOf(s.narrow)))
+        again <- p.mempool.add(s.wide, Source.Local).timeout(failsafe)
+      yield
+        assert(outcome.isCanceled, s"the cancelled add ended as $outcome")
+        assertEquals(served, Right(idOf(s.narrow)))
+        assertEquals(again, Right(idOf(s.wide)))
+    }
   }
 
   test("a duplicate is answered at once by a pool without room") {

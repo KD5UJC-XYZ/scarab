@@ -1,10 +1,13 @@
 # KES agent mode (H2, #38)
 
 **Status**: Proposal. Designed against the pinned reference sources below; no implementation and no captured
-fixtures yet. All decisions are settled: [ADR 0023](../adr/0023-two-kes-credential-sources.md) keeps both
-credential paths with the file path exactly as [ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md)
-defines it, and [ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md) adopts the upstream agent as it is —
-client only, no agent of our own, no remote signing.
+fixtures yet. The credential sources and the scope are settled: [ADR 0023](../adr/0023-two-kes-credential-sources.md)
+keeps both credential paths with the file path exactly as
+[ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md) defines it, and
+[ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md) adopts the upstream agent as it is — client only, no
+agent of our own, no remote signing. A review against the pinned source on 2026-11-07 corrected the reply
+codes, the progress rule and the agent pin, and lists every difference from the reference in
+[Deviations from the reference](#deviations-from-the-reference); every row there is approved (2026-11-07).
 
 ## Why
 
@@ -30,18 +33,22 @@ It does **not** buy equivalent memory protection. The JVM cannot mlock the heap;
 
 | Source | Pin | What it defines | Licence |
 |---|---|---|---|
-| [`input-output-hk/kes-agent`](https://github.com/input-output-hk/kes-agent) | tag `kes-agent-1.4.0.0`, commit `44fdcec892` | the service protocol, the control protocol, the key bundle and its raw encoding | Apache-2.0 |
+| [`input-output-hk/kes-agent`](https://github.com/input-output-hk/kes-agent) | `1.3.0.0`, commit `19ffbb01d4` (its CHaP source, `_sources/kes-agent/1.3.0.0/meta.toml`); the paths below are cited at tag `kes-agent-1.4.0.0`, commit `44fdcec892` | the service protocol, the control protocol, the key bundle and its raw encoding | Apache-2.0 |
 | [`IntersectMBO/cardano-node`](https://github.com/IntersectMBO/cardano-node) | tag `11.1.3` | the node flag, the SIGHUP behaviour, the dependency ranges | Apache-2.0 |
 | [`IntersectMBO/ouroboros-consensus`](https://github.com/IntersectMBO/ouroboros-consensus) | tag `release-ouroboros-consensus-4.2.1.0` | the node-side client (`Ouroboros.Consensus.Protocol.Praos.AgentClient`), the dynamic hot key | Apache-2.0 |
 | [`IntersectMBO/cardano-base`](https://github.com/IntersectMBO/cardano-base) | the pin of that consensus release (`cardano-crypto-class`) | the raw KES key image the bundle carries | Apache-2.0 |
 
 `cardano-node.cabal` at 11.1.3 requires `kes-agent ^>=1.3` (line 170) and
 `ouroboros-consensus ^>= 4.2.0.1` (line 179). **`^>=1.3` means `>=1.3 && <1.4`**, so the version 11.1.3
-resolves is 1.3.0.0 (a CHaP release with no git tag), and **1.4.0.0 is outside that range**. We cite the
-1.4.0.0 tag because it is the newest tagged source and its `Service:2.0` protocol and V2 driver are
-byte-identical to 1.1.0.0's apart from language pragmas and lambda syntax — and identical to 1.0.0.0's
-protocol outright. The wire is the contract here, not the package version: nothing in the node's client
-depends on 1.4.0.0-only API. The flag is `--shelley-kes-agent-socket`
+resolves is 1.3.0.0 (a CHaP release with no git tag), and **1.4.0.0 is outside that range**. CHaP records
+the commit 1.3.0.0 was cut from (`19ffbb01d4a6514b67af62d59b3cd4e0b4682beb`), so that commit is the pin, and
+it is what the test image is built from. The file paths this design cites are those of the 1.4.0.0 tag, the
+newest tagged source; 1.3.0.0 keeps the same modules under `kes-agent/src/` rather than `src/kes-agent/`.
+These files are byte-identical at the two commits: `Serialization/RawUtil.hs`,
+`Processes/ServiceClient.hs`, `Protocols/Service/V2/{Driver,Protocol}.hs`,
+`Protocols/VersionHandshake/Driver.hs`, `Protocols/RecvResult.hs` and `Processes/Agent/ServiceDrivers.hs`.
+The `Service:2.0` protocol is also byte-identical to 1.1.0.0's apart from pragmas and lambda syntax, and
+identical to 1.0.0.0's outright. The flag is `--shelley-kes-agent-socket`
 (`Cardano/Node/Parsers.hs`), and `Cardano.Node.Run.installSigHUPHandler` (line 596) →
 `updateBlockForging` (line 626) re-creates the forging credentials, which is what makes a SIGHUP in agent
 mode a reconnect rather than a file reload.
@@ -213,9 +220,13 @@ which is why the four fields above are laid out plainly (`KES/OCert.hs` says so 
   connection**, unless the node applies its own policy (ours does; see below).
 - That a second key follows a drop: the agent may hold no key, and a session's current bundle can then be a
   deletion rather than a key.
-- That the agent validates anything the node can see: the bundle carries the opcert's **cold signature** but
-  not the cold verification key, so a node can only check it with the key from the `--opcert` envelope (or
-  another out-of-band copy).
+- That whoever is on the socket validated the bundle. The upstream agent does: it refuses to start without a
+  cold verification key (`agentColdVerKey`, `Processes/Agent/Type.hs`) and checks every bundle against it and
+  against the key's own verification key before installing it (`validateBundle`,
+  `Processes/Agent/CommonActions.hs`). But the bundle carries the opcert's **cold signature**, not the cold
+  verification key, so the node can only repeat that check with the key from its `--opcert` envelope. The
+  node's check therefore guards against a process on the socket that is not the operator's agent, or an agent
+  configured with another pool's cold key; it does not replace a check the agent leaves out.
 - That the socket is trustworthy. Anyone who can connect to the service socket receives the signing key.
   The agent's guide tells operators to restrict the directory; Scarab should say so too and warn when the
   socket is group- or world-accessible.
@@ -227,7 +238,13 @@ From `HotKey.hs` and `AgentClient.hs`:
 - **Start without a key.** The dynamic hot key starts in the poisoned state. The node runs, does not forge,
   and installs a key when one arrives. Startup does not wait for the agent and does not fail without it.
 - **Replace, don't merge.** A received bundle replaces the state and the previous key is forgotten
-  (`poisonState` → `forgetSignKeyKES`). A drop poisons the state the same way.
+  (`poisonState` → `forgetSignKeyKES`). A drop poisons the state the same way. The hot key checks nothing
+  when it is set (`mkHotKeyWith`'s `set`, `.../Ledger/HotKey.hs`).
+- **Always answer `RecvOK`.** The consensus client's handler answers `RecvOK` to every key and every drop it
+  passes on (`AgentClient.hs`, `runKESAgentClient`). The only other reply a reference node sends is
+  `RecvErrorKeyOutdated`, from the per-connection timestamp check that `runServiceClient` wraps around that
+  handler. The agent discards the reply in any case (`reportPushResult = return ()`,
+  `Processes/Agent.hs`), so it is an acknowledgement on the wire, not a result anything acts on.
 - **Evolve locally.** Between pushes the node evolves the key once per KES period; the key only moves
   forward, and moving past the end poisons it. The agent also evolves and pushes, so a long-lived node
   mostly receives a bundle only when it connects or when the agent installs a new key.
@@ -324,43 +341,56 @@ The file path's checks (`ReloadRefusal`, `HotKeys`) apply, in this order, before
    use). During bootstrap the counter part is deferred — the node has no judged chain to compare with — and
    forging is blocked then anyway by the forecast bound (`noLedgerView`), so a key adopted without that check
    cannot produce a block.
-6. **Progress**: the bundle must not move the credentials backwards. Compare **lexicographically: counter
-   first, then absolute period** (`startPeriod + index`). A rotation is a higher counter and a fresh key at
-   index 0, which is ahead on the first component and therefore accepted; a same-key push must not lower the
-   absolute period; equal counter and period are allowed, because reinstalling the same key is legitimate.
-   Comparing the raw index instead would refuse every rotation — the index goes back to 0 — which is the trap
-   this ordering exists to avoid.
+6. **Freshness**, which is the reference's own rule rather than a Scarab check, and is applied before the
+   others as the reference's wrapper is: a bundle whose timestamp is less than or equal to the last one
+   accepted **on this connection** is answered `RecvErrorKeyOutdated` and not adopted (`runServiceClient`,
+   `Processes/ServiceClient.hs`). A bundle that passes it updates the timestamp whether or not checks 1 to 5
+   then adopt it, because the reference records the timestamp before it calls its handler. A new connection
+   starts with no timestamp.
 
-**Reply or close, per failure class.** The protocol expects one `Word32` per key or drop, so the session stays
-open for everything the agent can reasonably fix:
+**Withdrawn 2026-11-07: a progress rule across connections.** An earlier version of this design also refused a
+bundle that moved the credentials backwards, comparing counter first, then absolute period
+(`startPeriod + index`), and remembering the value across reconnects. The reference has no such rule, and it
+refused bundles the ledger accepts: a key installed with the same counter and a certificate whose
+`startPeriod` is earlier than the absolute period in force is still valid for the current period, yet it would
+have been refused while the agent believed it installed. What it refused beyond step 5 is only what the
+ledger still accepts: a counter below the chain's fails the counter check, while a counter below the one the
+node holds but not below the chain's (the held certificate never forged) is valid on chain (`m <= n <= m+1`,
+`OCertRules.checkCounter`); a certificate outside its window fails the window check; and an earlier evolution
+of the same key is evolved forward to the current period by the node before it signs.
 
-| Failure | Reply |
+**Replies mirror the reference.** The protocol expects one `Word32` per key or drop:
+
+| Case | Reply |
 |---|---|
-| shape, binding, consistency, certificate signature, window, counter | `RecvErrorInvalidOpCert` (2) |
-| progress / replayed or older bundle | `RecvErrorKeyOutdated` (1) |
-| internal error we cannot classify | `RecvErrorUnknown` (`0xFFFF`) |
+| a key or drop that passes the freshness rule, whether checks 1 to 5 adopt or refuse it | `RecvOK` (0) |
+| a key or drop that fails the freshness rule | `RecvErrorKeyOutdated` (1) |
+
+A key that checks 1 to 5 refuse is answered `RecvOK`, as the reference answers every key it passes on, and
+the refusal is reported where an operator sees it: the typed "key refused" event and
+`scarab_kes_agent_keys_received_total{outcome}`. The agent discards the reply (`reportPushResult = return ()`,
+`Processes/Agent.hs`), so a more informative code (`RecvErrorInvalidOpCert`) would change the bytes on the
+wire and inform no one; it is not proposed.
 
 A **framing** violation is different: an unknown tag, a short body, or a bad version identifier means we can
 no longer trust the byte stream, so the client closes the connection without replying and lets the reconnect
-loop start again. The node never sends `RecvErrorNoKey` (3) or `RecvErrorUnsupportedOperation` (4); those
-exist for the control side.
+loop start again. An internal error does the same, as an exception does in the reference's session loop. The
+node never sends `RecvErrorInvalidOpCert` (2), `RecvErrorNoKey` (3), `RecvErrorUnsupportedOperation` (4) or
+`RecvErrorUnknown` (`0xFFFF`); those exist for the control side.
 
-Answering `RecvOK` for a key we did not adopt would tell the agent its push succeeded, which is the failure
-mode the protocol's confirmation exists to prevent.
+**Nothing is remembered across connections**, as in the reference. After a reconnect or a restart an older
+bundle signed by the same cold key is accepted if it passes checks 1 to 5. The bound is the ledger and step 5:
+a certificate outside its window or with a counter the chain has moved past is refused, so the worst a
+process on the socket can do with a replayed bundle is make the node forge with an older certificate that is
+still valid. Persisting a value to refuse that would reintroduce the on-disk artifact the mode exists to
+remove.
 
-**The progress memory does not survive a restart.** The node persists nothing in agent mode, so after a restart
-there is no "in force" value and a rogue socket owner could replay an older valid bundle. The bound is the
-ledger: a block signed outside the current absolute period is rejected by every peer, so the worst case is
-failed forging until the next push, not a forged block — and status 5's window check already rejects a bundle
-whose certificate has left its window. Recorded as a limitation rather than fixed with a state file, because
-persisting key metadata would reintroduce the on-disk artifact the mode exists to remove.
-
-**Deviation from the reference, deliberate and recorded**: the reference node trusts the agent's validation
-entirely and adopts whatever it receives; steps 2 to 6 are stricter than `handleKey`. That is consistent
-with the file path's documented improvement (ADR 0015 checks what the Haskell node does not) but it must be
-recorded as a behavioural difference in the compatibility matrix. It also means a node whose `--opcert`
-belongs to another pool will refuse every bundle — a misconfiguration that should fail loudly rather than
-silently forge with a key the pool did not authorise.
+**Deviation from the reference** ([table](#deviations-from-the-reference), row D1): the reference node adopts
+whatever it receives; steps 1 to 5 are stricter than its handler. That is consistent with the file path's
+documented improvement (ADR 0015 checks what the Haskell node does not) and must be recorded as a behavioural
+difference in the compatibility matrix. It also means a node whose `--opcert` belongs to another pool will
+refuse every bundle — a misconfiguration that should fail loudly rather than silently forge with a key the
+pool did not authorise.
 
 ### Forging without a key
 
@@ -401,6 +431,25 @@ key dropped, disconnected (reason), reconnect scheduled, protocol error. Metrics
 `scarab_kes_agent_keys_received_total{outcome}`, `scarab_kes_agent_reconnects_total`,
 `scarab_kes_agent_protocol_errors_total`. The existing KES gauges (period, remaining periods) continue to
 read from the hot key, so dashboards and alert rules do not need a second source.
+
+## Recovery when a key is lost
+
+The agent keeps the key in memory only, so the agent's process lifetime is not a disk-backed recovery
+guarantee. What the node does in each case follows from the reference's behaviour above; nothing here needs
+node-side state.
+
+| Event | Node | Recovery |
+|---|---|---|
+| Node restarts, agent stays up | starts with no key and does not forge | automatic: the agent serves its current bundle on the new connection |
+| Agent dies, node stays up | keeps forging on the key it holds, evolving it locally, and reconnects every 10 s | automatic once an agent holding the key is reachable again |
+| Agent restarts empty (single agent), node stays up | keeps forging on its copy: an agent with no key serves nothing on connect (`currentKey` waits on `agentCurrentKeyVar`, `Processes/Agent.hs`), so the node's key is not dropped | the operator generates a staged key on the agent, issues a new opcert with the cold key (counter one above the chain's) and installs it; the push replaces the node's copy |
+| Host reboot or both processes lost (single agent) | starts with no key and does not forge | the same new-key and new-opcert procedure; until it is done the pool does not forge |
+| Backup agent configured | as above | the agents bootstrap from each other (`agentBootstrapConnections`), so a restarted agent is re-keyed by its peer; this is agent configuration, and the node connects to one service socket |
+
+The node supports the backup-agent model by doing nothing special: it is a client of one socket, and which
+agent behind it holds the key is the agent's concern. The operator documentation (stage 5) states the
+single-agent procedure and points at the upstream guide for backup agents. A node never writes a key or
+certificate to make any of these cases recoverable, because that would reintroduce the on-disk key.
 
 ## Security: what conformance does and does not buy
 
@@ -447,7 +496,7 @@ meaningful peer credentials, and must be documented as weaker than a local socke
    truncation at every offset of the **724-byte body** and at every boundary of the **733-byte frame**
    (the tag and timestamp included), plus the client's 4-byte reply; bad version identifier; unknown tag;
    unknown `RecvResult`; a timestamp equal to the last one. Fuzz target over the frame reader.
-2. **Fixtures** (a `kes-agent` directory under `fixtures/`, provenance README with source tag and commit, the
+2. **Fixtures** (a `kes-agent` directory under `fixtures/`, provenance README with source version and commit, the
    built image id or digest, command and licence): frames captured from a real agent — the image built by the
    in-repo recipe — by a probe script under `scripts/` that speaks the node side, replayed offline in
    `check`. The fixtures are what the test path uses, so
@@ -471,7 +520,7 @@ meaningful peer credentials, and must be documented as weaker than a local socke
 
 | Stage | Content | Gate |
 |---|---|---|
-| 1 | A `kes-agent` directory under `scripts/` — a two-stage Dockerfile (pinned tag, commit and base-image digest) plus a build script, and a dispatch workflow that publishes `ghcr.io/kd5ujc-xyz/scarab-kes-agent` with labels, SBOM, signature and LICENSE/NOTICE; the probe script; captured fixtures with provenance; a byte-level verification of this document against them | the image publishes and pulls by digest; fixtures replay in a Python test; the wire section corrected where the capture disagrees |
+| 1 | A `kes-agent` directory under `scripts/` — a two-stage Dockerfile (pinned version, commit and base-image digest) plus a build script, and a dispatch workflow that publishes `ghcr.io/kd5ujc-xyz/scarab-kes-agent` with labels, SBOM, signature and LICENSE/NOTICE; the probe script; captured fixtures with provenance; a byte-level verification of this document against them | the image publishes and pulls by digest; fixtures replay in a Python test; the wire section corrected where the capture disagrees |
 | 2 | `KesAgentWire` and its suite | `check` |
 | 3 | `HotKeys` no-key state, `KesAgentSource`, client, CLI flag, fake-agent suite | `check` + `kes-rotate` (no regression in file mode) |
 | 4 | Devnet `kes-agent` scenario, added the way `docs/playbooks/add-a-devnet-scenario.md` prescribes, and the real-agent matrix | `check` + the scenario (level 3) + evidence row |
@@ -504,10 +553,10 @@ minutes of CPU each time, and a binary that can differ from the next host's even
 GHC version, base image, libsodium and blst builds all vary. Build-from-source becomes the fallback for a
 host that cannot pull, and the reproducibility check on the published artifact, not the normal path.
 
-- **Where.** `ghcr.io/kd5ujc-xyz/scarab-kes-agent:<upstream tag>`, a public package beside the node image the
+- **Where.** `ghcr.io/kd5ujc-xyz/scarab-kes-agent:<upstream version>`, a public package beside the node image the
   release workflow already publishes to `ghcr.io/kd5ujc-xyz/scarab`. Published by dispatch rather than on
   every node release: the two upstreams move independently. Consumed by digest, never by tag alone.
-- **What goes in it.** Built by the two-stage recipe from the pinned tag and commit; labelled with
+- **What goes in it.** Built by the two-stage recipe from the pinned commit; labelled with
   `org.opencontainers.image.{source,revision,version,licences}`; SBOM attached and the manifest signed with
   the same keyless cosign flow the node image uses. The digest and that label set are what the devnet pins.
 - **Licence.** Upstream is Apache-2.0 with a `NOTICE` ("Copyright INTERSECT 2024-2025"), so redistributing a
@@ -528,18 +577,41 @@ is pulled by everyone and its size is paid on every pull: two binaries plus libs
 than GHC and a cabal store. And "no registry yet" is withdrawn: GHCR is the registry this project already
 uses, and public packages are free to store and serve.
 
+## Deviations from the reference
+
+Every behaviour in agent mode that differs from the reference node, with where its approval is recorded. A row
+awaiting approval would not be implemented until the owner approves it; all seven were approved on
+2026-11-07 ([decisions](../decisions.md)).
+
+| Row | Scarab | Reference | Approval |
+|---|---|---|---|
+| D1 | checks 1 to 5 on every bundle (shape, binding, consistency probe, certificate signature under the `--opcert` cold key, window and counter); a refused key is not adopted | adopts every bundle that passes the timestamp rule (`Shelley.hs` TODO; `mkHotKeyWith`'s `set`) | approved with this design (#444, 2026-10-25); recorded in [decisions](../decisions.md), 2026-11-07 |
+| D2 | `--kes-skey` with `--kes-agent-socket` is a configuration error | `asum` takes the file alternative first | [decisions](../decisions.md), 2026-10-25, #38 |
+| D3 | one-time `kesFileMode` warning in file mode on a public network | no warning | [decisions](../decisions.md), 2026-10-25, #38 |
+| D4 | start-up warning when the service socket is group- or world-accessible | no warning | approved with this design (#444, "Confirmations") |
+| D5 | peer-credential check on the socket (`SO_PEERCRED`): the node's uid or root is accepted, another uid warns, and a new flag `--kes-agent-peer-uid` makes a mismatch a refusal | no peer check, no flag | [decisions](../decisions.md), 2026-11-07, #38 |
+| D6 | the flag is `--kes-agent-socket` | `--shelley-kes-agent-socket` | #222 mapping, approved with this design (#444, "Confirmations") |
+| D7 | accepts `Service:2.0` only in the handshake | accepts `Service:2.0`, `Service:1.0` and `Service:0.0` for the standard crypto (`availableServiceClientDrivers`, `Processes/ServiceClient.hs`); every agent since 1.0.0.0 offers 2.0 first, so the outcome against a real agent is the same | approved with this design (#444, "Confirmations") |
+
+Not deviations, because they mirror the reference: the replies (`RecvOK`, or `RecvErrorKeyOutdated` from the
+per-connection timestamp rule), the absence of any memory across connections, the 10-second reconnect, and the
+start without a key. Operational choices outside node behaviour — the JVM flags, the test image we build and
+publish — are recorded in [ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md) and its amendment. The file
+path's own difference (the write-back) is [ADR 0015](../adr/0015-kes-key-written-back-and-checked-reload.md)'s.
+
 ## Decisions
 
 ### Decided 2026-10-25
 
-No decisions remain open for H2.
+These stand, as revised on 2026-11-07 below; the revision and every row of
+[the deviations](#deviations-from-the-reference) were approved on 2026-11-07. No decision remains open.
 
 - **Credential sources.** [ADR 0023](../adr/0023-two-kes-credential-sources.md): both stay, the file path is
   unchanged, the agent path is preferred and documented as such.
 - **Scope.** [ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md): the upstream agent as it is, the client
   only, and no remote signing.
-- **Certificate validation.** Verify every pushed bundle under the cold key in the `--opcert` envelope, with the
-  six checks above. Stricter than the reference's explicit TODO, and it bounds what a hijacked service socket
+- **Certificate validation.** Verify every pushed bundle under the cold key in the `--opcert` envelope, with
+  checks 1 to 5 above (the sixth, a progress rule, was withdrawn on 2026-11-07). Stricter than the reference's explicit TODO, and it bounds what a hijacked service socket
   can achieve.
 - **Counter check.** Apply `OCertRules.checkCounter` when the node has a judged chain — a selected chain whose
   tip is at or beyond the certificate's start period — and defer only that part during bootstrap, where the
@@ -556,7 +628,7 @@ No decisions remain open for H2.
   implied endorsement). The two-stage recipe under `scripts/` is the fallback for a host that cannot
   pull and the reproducibility check on the published artifact. The test path uses the captured fixtures, so
   no host builds the agent to run tests, and no particular host is named anywhere. We do not ship the agent
-  to operators as a supported product; the documentation points at upstream's releases.
+  to operators as a supported product (see the 2026-11-07 revision on what the documentation says instead).
 - **Operator tooling.** Upstream `kes-agent-control`; no Scarab wrapper in H2. There is no devnet scenario to
   motivate one yet, and the scenario we add in stage 4 can call the upstream tool directly.
 - **Confirmations.** `--kes-agent-socket` as the flag name (reference mapping in #222); both flags together
@@ -564,9 +636,34 @@ No decisions remain open for H2.
   costs nothing — the service protocol has existed since the 1.0.0.0 release, and every cardano-node that supports an agent requires
   `kes-agent ^>=1.2`.
 
+### Revised 2026-11-07
+
+A review against the pinned source changed four things; none reverses ADR 0023 or ADR 0024.
+
+- **Replies.** The node answers as the reference does — `RecvOK`, or `RecvErrorKeyOutdated` from the
+  per-connection timestamp rule — and reports a refused key in telemetry. The earlier per-failure codes rested
+  on the claim that the agent acts on the reply; it discards it.
+- **Progress rule withdrawn.** The cross-connection counter-then-period rule is replaced by the reference's
+  per-connection timestamp rule. It refused keys the ledger accepts; beyond the window and counter checks it
+  refused only certificates that are still valid on chain.
+- **Agent pin.** The pin is 1.3.0.0, the version cardano-node 11.1.3 resolves, at the commit CHaP records
+  (`19ffbb01d4`); the published test image is built from it, and its wire files match the 1.4.0.0 tag the
+  paths are cited at.
+- **What operators are told.** Upstream publishes no binary that runs outside Nix (1.4.0.0 has no assets,
+  1.1.0.0 is a Nix closure), so "the documentation points at upstream's releases" was not something an
+  operator could follow. The operator documentation names the ways to obtain an agent — upstream's Nix build,
+  a build from the pinned source, or the published test image — and says plainly that the image is an
+  unmodified build by this project, published for testing, so an operator who runs it trusts our build.
+
 ## Not in scope
 
 Remote signing — decided against for now ([ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md)); the agent
 signs nothing for the node, which signs locally. An agent of our own: the agent is upstream. A Scarab control
 client: operators use upstream `kes-agent-control`. TCP transport, Windows, and multi-agent bootstrap for the
 node; the node is a client and never a bootstrap peer.
+
+Two items folded into #38 on 2026-10-30 are not designed here and need their own design when the work starts:
+mainnet rotation with an offline cold key, where rotation prepares the key and an unsigned request and asks
+the operator to sign it (#120); and `kes-rotate` crash safety end to end, killing the node between the link
+switch and the reload and refusing a reload on purpose (#122). Both concern the file path's rotation tooling
+or the operator's cold-key workflow, not the agent client.

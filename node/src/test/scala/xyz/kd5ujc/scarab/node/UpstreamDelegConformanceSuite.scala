@@ -9,7 +9,7 @@ import io.circe.Json
 import io.circe.parser.parse
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
-import xyz.kd5ujc.scarab.ledger.{Certificate, DecoderVersion, EpochGeometry, LedgerGlobals}
+import xyz.kd5ujc.scarab.ledger.{Certificate, EpochGeometry, LedgerGlobals}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.rules.{ConwayCert, Deleg, Globals, JudgedSts}
 import xyz.kd5ujc.scarab.ledger.state.*
@@ -129,7 +129,7 @@ class UpstreamDelegConformanceSuite extends FunSuite:
           Cbor
             .decode(bytes(dir.resolve("signal.cbor")))
             .fold(e => fail(s"seed $seed signal: $e"), identity),
-          DecoderVersion.of(Era.Conway)
+          Era.Conway
         )
         .fold(e => fail(s"seed $seed certificate: $e"), identity)
       val typed = ConwayCert.of(Bytes.empty, certificate).fold(e => fail(e.toString), identity)

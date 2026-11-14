@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigNumberField, ConfigProblem}
 import xyz.kd5ujc.scarab.ledger.json.FromJson
 import cats.syntax.all.*
@@ -22,7 +23,9 @@ final case class GenesisFiles(
     conway: String,
     dijkstra: Option[String] = None,
     checkpoints: Option[String] = None
-)
+):
+  /** Every name, as written. */
+  def all: List[String] = List(byron, shelley, alonzo, conway) ++ dijkstra ++ checkpoints
 
 object GenesisFiles:
   /** The names a genesis directory (`--genesis-dir`) uses. */
@@ -83,7 +86,7 @@ final case class PeerTargetOverrides(
   * @param lastKnownBlockVersion
   *   `LastKnownBlockVersion-Major`, `-Minor`, `-Alt`: the Byron block version the node supports.
   * @param mempoolCapacityBytes
-  *   `MempoolCapacityBytesOverride` as a number of bytes (`NoOverride` is `None`).
+  *   `MempoolCapacityBytesOverride` as a number of bytes, a `Word32` (`NoOverride` is `None`).
   * @param hardForkVersions
   *   `Test<Era>HardForkAtVersion`: hard forks triggered by a protocol version.
   * @param peerTargets
@@ -100,6 +103,10 @@ final case class PeerTargetOverrides(
   *   `hardLimit`, `softLimit` and `delay` (seconds), all three required when present
   *   (`Ouroboros/Network/OrphanInstances.hs` `FromJSON AcceptedConnectionsLimit`); absent is the
   *   reference's default, hard 512, soft 384, delay 5 s.
+  * @param startAsNonProducingNode
+  *   `StartAsNonProducingNode` (`POM.hs` 325, cardano-node 11.1.3): start with forging disabled;
+  *   absent is the reference's default, false (`POM.hs` 738), and the command line's flag wins
+  *   (`Main.Options.startsNonProducing`).
   */
 final case class ConfigSettings(
     protocol: String = "Cardano",
@@ -112,7 +119,7 @@ final case class ConfigSettings(
     diffusionMode: Option[String] = None,
     socketPath: Option[String] = None,
     databasePath: Option[String] = None,
-    mempoolCapacityBytes: Option[Long] = None,
+    mempoolCapacityBytes: Option[Word32] = None,
     hardForkVersions: Map[Era, BigInt] = Map.empty,
     peerTargets: PeerTargetOverrides = PeerTargetOverrides(),
     syncPeerTargets: PeerTargetOverrides = PeerTargetOverrides(),
@@ -124,7 +131,8 @@ final case class ConfigSettings(
     dijkstraHardForkEpoch: Option[BigInt] = None,
     dijkstraHardForkVersion: Option[BigInt] = None,
     leios: LeiosSettings = LeiosSettings(),
-    ledgerDb: LedgerDbSettings = LedgerDbSettings()
+    ledgerDb: LedgerDbSettings = LedgerDbSettings(),
+    startAsNonProducingNode: Option[Boolean] = None
 ):
   /** The highest node-to-node version the node offers and accepts: 15 unless
     * `ExperimentalProtocolsEnabled` is set, as the reference's `limitToLatestReleasedVersion`.
@@ -167,6 +175,11 @@ final case class NodeConfig(
 ):
   /** The configured first Shelley epoch, if the configuration fixes it. */
   def firstShelleyEpoch: Option[BigInt] = hardForkEpochs.get(Era.Shelley)
+
+  /** Every file name the configuration gives, as written: the genesis files, `SocketPath` and
+    * `DatabasePath`.
+    */
+  def fileNames: List[String] = files.all ++ settings.socketPath ++ settings.databasePath
 
 object NodeConfig:
   val empty: NodeConfig = NodeConfig(None, Map.empty)
@@ -216,8 +229,8 @@ object NodeConfig:
       }
   )
 
-  /** The reference's `FromJSON AcceptedConnectionsLimit` (ouroboros-network 2fb69829,
-    * `ouroboros-network/orphan-instances/Ouroboros/Network/OrphanInstances.hs:303-308`): the three
+  /** The reference's `FromJSON AcceptedConnectionsLimit` (ouroboros-network c45735a5,
+    * `ouroboros-network/orphan-instances/Ouroboros/Network/OrphanInstances.hs:302-307`): the three
     * keys are required, the limits `Word32` and the delay a `DiffTime`
     * (`Server/RateLimiting.hs:26-42`).
     */
@@ -302,11 +315,16 @@ object NodeConfig:
       )
     }
 
-  private def capacity(k: Keys): Either[ConfigError, Option[Long]] =
+  /** `MempoolCapacityBytesOverride` as cardano-node 11.1.3 reads it
+    * (`cardano-node/src/Cardano/Node/Configuration/POM.hs:475-487`): a number is a `Word32`
+    * ([[word32Decoder]]), 0 included, the string `NoOverride` is no override, and a `null` or
+    * absent key is no override.
+    */
+  private def capacity(k: Keys): Either[ConfigError, Option[Word32]] =
     k.opt[Json]("MempoolCapacityBytesOverride").flatMap {
       case None => Right(None)
       case Some(j) =>
-        j.asNumber.flatMap(_.toLong).filter(_ > 0) match
+        word32Decoder.decodeJson(j).toOption match
           case Some(n)                                   => Right(Some(n))
           case None if j.asString.contains("NoOverride") => Right(None)
           case None =>
@@ -322,7 +340,9 @@ object NodeConfig:
     * protocol must be `Cardano`, `GenesisFile` must not be given next to the specific name, and a
     * listed hash must be 32 bytes of hexadecimal.
     */
-  def parse(text: String, strict: Boolean = false): Either[ConfigError, NodeConfig] =
+  def parse(
+      build: ReferenceBuild
+  )(text: String, strict: Boolean = false): Either[ConfigError, NodeConfig] =
     for
       json <- parser
         .parse(text)
@@ -336,7 +356,7 @@ object NodeConfig:
       hardForks <- renamed(k, "ExperimentalHardForksEnabled", "TestEnableDevelopmentHardForkEras")
       fields <- ConfigFields.read("configuration", json)
       leios <- LeiosSettings.parse(fields)
-      ledgerDb <- LedgerDbSettings.parse(fields)
+      ledgerDb <- LedgerDbSettings.parse(fields, build)
       dijkstraEpoch <-
         if hardForks.contains(true) then k.word64(ConfigNumberField.DijkstraHardForkAtEpoch)
         else Right(None)
@@ -400,6 +420,7 @@ object NodeConfig:
             )
           )
       sharing <- k.opt[Boolean]("PeerSharing")
+      nonProducing <- k.opt[Boolean]("StartAsNonProducingNode")
       diffusion <- k
         .opt[String]("DiffusionMode")
         .flatMap(oneOf("DiffusionMode", _, Set("InitiatorOnly", "InitiatorAndResponder")))
@@ -518,6 +539,7 @@ object NodeConfig:
           dijkstraEpoch,
           dijkstraVersion,
           leios,
-          ledgerDb
+          ledgerDb,
+          nonProducing
         )
       )

@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.consensus.ChainSelection
 import xyz.kd5ujc.scarab.ledger.{GenesisInternalProblem, NodeError, PeerError, ValidationError}
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.network.selection.*
-import xyz.kd5ujc.scarab.protocol.{ConnectionState, NtNHeader}
+import xyz.kd5ujc.scarab.protocol.NtNHeader
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 
 /** How a peer's address becomes a bearer: the TCP connection in the node, an in-memory pair in the
@@ -46,8 +46,9 @@ trait Transport[F[_], A]:
   * false`) and once the manager has released it (`released = true`).
   *
   * Each connection is the resource of a fiber of its own and each hot session the resource of a
-  * second one. Its retained result/control handles and status are observed by a separate monitor
-  * under the outer `supervisor`, which survives both resources.
+  * second one, both under the outer `supervisor`. Its retained result/control handles and status
+  * are observed by a separate monitor under `monitors`, which survives both resources and ends
+  * before `supervisor` ends the connections ([[OutboundPeers.create]]).
   */
 final class OutboundPeers[F[_]: Async, A] private (
     node: Handle[F, NodeError],
@@ -56,6 +57,7 @@ final class OutboundPeers[F[_]: Async, A] private (
     config: OutboundPeers.Config,
     hot: OutboundPeers.Hot[F],
     supervisor: Supervisor[F],
+    monitors: Supervisor[F],
     report: Event[A] => F[Unit],
     metrics: Stateful[F, PeerMetrics[A]],
     table: Ref[F, Map[A, OutboundPeers.Link[F]]],
@@ -65,7 +67,8 @@ final class OutboundPeers[F[_]: Async, A] private (
     sourceLock: Mutex[F],
     handles: Ref[F, Map[A, PeerStateActions.Connection[F]]],
     connectionCounter: Ref[F, BigInt],
-    beforeObservation: Option[F[Unit]]
+    beforeObservation: Option[F[Unit]],
+    reports: Ref[F, Map[A, OutboundPeers.SessionReport]]
 ) extends PeerStateActions[F, A],
       PeerStateActions.Connections[F, A]:
   import OutboundPeers.*
@@ -97,7 +100,9 @@ final class OutboundPeers[F[_]: Async, A] private (
           F.uncancelable { poll =>
             for
               ready <- Deferred[F, Either[EstablishmentError, PeerStateActions.Connection[F]]]
-              acquiring <- supervisor.supervise(connection(peer, remote, mode, generation, ready))
+              acquiring <- supervisor.supervise(
+                connection(peer, remote, mode, provenance, generation, ready)
+              )
               result <- poll(ready.get).onCancel(acquiring.cancel)
             yield result
           }
@@ -106,14 +111,111 @@ final class OutboundPeers[F[_]: Async, A] private (
       // counts nothing against the peer for it ([[PeerGovernor]], issue 567)
       .handleErrorWith(cause => F.pure(Left(EstablishmentError.Defect(cause))))
 
+  /** The outbound use of a connection to `peer` (`acquireOutboundConnection`, `Core.hs` 1250-1755):
+    * the peer's duplex connection reused, or one dialled by a fiber of its own under the outer
+    * supervisor, which owns its transport as the reference's connection thread does and keeps it
+    * while the peer still uses it after we let go. Its release ends only our use: after a clean
+    * close the manager decides about the connection ([[Connection.releaseOutbound]]); otherwise the
+    * shared mux is stopped, as the reference stops it on a protocol failure or a close timeout
+    * (`PeerStateActions.hs` 1079-1104).
+    */
+  private def outboundUse(
+      peer: A,
+      remote: SocketAddress[IpAddress],
+      mode: DiffusionMode,
+      provenance: Provenance,
+      demoted: Ref[F, Boolean]
+  )(using Raise[F, PeerError]): Resource[F, (Connection[F], Negotiated[F])] =
+    Resource.makeFull[F, (Connection[F], Negotiated[F])] { poll =>
+      Deferred[F, Either[Fault, (Connection[F], Negotiated[F])]].flatMap { ready =>
+        supervisor
+          .supervise(dial(peer, remote, mode, provenance, ready))
+          // waiting for the dial, we own it: a cancelled establishment leaves no connection
+          .flatMap(thread =>
+            // a use handed over just before the cancellation is given back: the outbound side
+            // releases it, as its owner would (a dialled one ends with its thread)
+            poll(ready.get).onCancel(
+              thread.cancel *> ready.tryGet.flatMap(
+                _.traverse_(_.traverse_((connection, _) => connection.releaseOutbound.void))
+              )
+            )
+          )
+          .flatMap(Fault.land(_))
+      }
+    } { (connection, handle) =>
+      // the stopped connection is closed by its owner before our use of it counts as released
+      demoted.get.flatMap(clean =>
+        (handle.mux.abort(NetworkError.BearerClosed(NetworkError.Closure.Aborted)) *>
+          connection.closed).unlessA(clean)
+      )
+    }
+
+  /** The connection thread of an outbound acquisition: the reused connection is handed over at
+    * once; a reservation is connected (`Connected` as soon as the transport is up, before the
+    * handshake, `Core.hs` 1540-1547), negotiated and held until its mux closes or the manager ends
+    * it. It runs in an error scope of its own and hands its fault to the waiting establishment.
+    */
+  private def dial(
+      peer: A,
+      remote: SocketAddress[IpAddress],
+      mode: DiffusionMode,
+      provenance: Provenance,
+      ready: Deferred[F, Either[Fault, (Connection[F], Negotiated[F])]]
+  ): F[Unit] =
+    Fault
+      .fiber {
+        given Raise[F, ConnectionError] =
+          Peer.contramapped[F, PeerError, ConnectionError](summon)(e =>
+            PeerError.Unavailable(PeerError.Unavailability.Connection(e))
+          )
+        manager.acquire(remote, provenance).use {
+          case Acquired.Reused(connection, handle) =>
+            ready.complete(Right((connection, handle))).void
+          case Acquired.Reserved(connection) =>
+            // a defect of the transport's own release stops the node, as on any connection
+            ConnectionResources
+              .retainReleaseDefects(transport.bearer(peer, remote))(hot.fatal)
+              .use { bearer =>
+                bearer.connectionId
+                  .fold(F.pure(Option.empty[ConnectionId.Endpoint]))(_.map(_.toOption.map(_.local)))
+                  .flatMap(connection.connected) *>
+                  NodeToNode
+                    .negotiate[F, NtNHeader](
+                      bearer,
+                      hot.magic,
+                      connection,
+                      hot.network,
+                      serve = mode match
+                        case DiffusionMode.InitiatorOnly         => None
+                        case DiffusionMode.InitiatorAndResponder => hot.serve
+                    )
+                    .use { handle =>
+                      ready.complete(Right((connection, handle))) *>
+                        F.race(handle.mux.closed, connection.stopped)
+                          .flatMap(end =>
+                            connection.close(end.fold(ConnectionEnd.fromNetwork, identity))
+                          )
+                          .guarantee(
+                            handle.mux
+                              .abort(NetworkError.BearerClosed(NetworkError.Closure.Aborted))
+                          )
+                    }
+              }
+        }
+      }
+      .flatMap(_.fold(fault => ready.complete(Left(fault)).void, F.pure))
+
   /** The life of one connection: opened, registered, held until the governor lets go of it or the
     * bearer closes, and released in every case. It runs in a fiber of its own, in an error scope of
-    * its own: what it meets is a value ([[Fault]]) that it reports, never an exception.
+    * its own: what it meets is a value ([[Fault]]) that it reports, never an exception. The peer is
+    * cold once the outbound side holds the connection no more (`waitForOutboundDemotion`, `Core.hs`
+    * 438-457).
     */
   private def connection(
       peer: A,
       remote: SocketAddress[IpAddress],
       mode: DiffusionMode,
+      provenance: Provenance,
       generation: BigInt,
       ready: Deferred[F, Either[EstablishmentError, PeerStateActions.Connection[F]]]
   ): F[Unit] =
@@ -121,8 +223,10 @@ final class OutboundPeers[F[_]: Async, A] private (
       Deferred[F, Unit],
       Deferred[F, Unit],
       Ref.of[F, Option[Link[F]]](None),
-      Ref.of[F, Vector[Fatal.Defect]](Vector.empty)
-    ).tupled.flatMap { (release, gone, linked, releaseDefects) =>
+      Ref.of[F, Vector[Fatal.Defect]](Vector.empty),
+      Ref.of[F, Boolean](false),
+      Ref.of[F, F[Unit]](F.unit)
+    ).tupled.flatMap { (release, gone, linked, releaseDefects, demoted, demotion) =>
       def releaseOwnership: F[Unit] =
         table.update { current =>
           if current.get(peer).exists(_.release eq release) then current - peer else current
@@ -159,35 +263,21 @@ final class OutboundPeers[F[_]: Async, A] private (
         }
 
       val body: Raise[F, PeerError] ?=> F[Option[EstablishmentError]] =
-        given Raise[F, ConnectionError] =
-          Peer.contramapped[F, PeerError, ConnectionError](summon)(e =>
-            PeerError.Unavailable(PeerError.Unavailability.Connection(e))
-          )
         val open: Resource[
           F,
           (Connection[F], WarmConnection[F, NtNHeader, SessionEnd], Supervisor[F])
         ] =
           for
-            slot <- manager.outbound(remote, alongsideInbound = true)
-            bearer <- transport.bearer(peer, remote)
-            // a handshake that agrees no version holds the slot's time-wait
-            warm <- NodeToNode.warmOverWithResults[F, NtNHeader, SessionEnd](
-              bearer,
-              hot.magic,
+            used <- outboundUse(peer, remote, mode, provenance, demoted)
+            (slot, handle) = used
+            _ <- Resource.eval(demotion.set(slot.awaitOutboundDemotion))
+            warm <- NodeToNode.attach[F, NtNHeader, SessionEnd](
+              handle,
               NtNHeader.codec,
               SessionEnd.Returned,
-              hot.network,
-              serve = mode match
-                case DiffusionMode.InitiatorOnly         => None
-                case DiffusionMode.InitiatorAndResponder => hot.serve
-            )(using summon, ConnectionManager.recordingRefusal(slot))
-            children <- Supervisor[F](await = false)
-            _ <- Resource.eval(
-              slot.connected *> slot.negotiated(
-                if warm.duplex then ConnectionState.DataFlow.Duplex
-                else ConnectionState.DataFlow.Unidirectional
-              )
+              hot.network
             )
+            children <- Supervisor[F](await = false)
           yield (slot, warm, children)
 
         ConnectionResources
@@ -208,7 +298,8 @@ final class OutboundPeers[F[_]: Async, A] private (
                 identity,
                 terminal,
                 transitions,
-                children
+                children,
+                demoted
               )
               handle = PeerStateActions.Connection(
                 identity,
@@ -232,7 +323,7 @@ final class OutboundPeers[F[_]: Async, A] private (
                     report(
                       Event.SharingNegotiated(peer, warm.peerSharing.isDefined, Some(generation))
                     ) *>
-                    supervisor.supervise(peerMonitoringLoop(peer, link)).void *>
+                    monitors.supervise(peerMonitoringLoop(peer, link)).void *>
                     ready.complete(Right(handle)) *>
                     F.race(release.get, warm.mux.closed).flatMap {
                       case Left(_)      => F.unit
@@ -240,6 +331,8 @@ final class OutboundPeers[F[_]: Async, A] private (
                     }).as(None)
             yield result
           }
+          // cold once the outbound side holds the connection no more
+          .flatTap(_ => demotion.get.flatten)
 
       def failed(error: EstablishmentError): F[Unit] =
         ready.tryGet.flatMap {
@@ -278,7 +371,7 @@ final class OutboundPeers[F[_]: Async, A] private (
     link.terminal.complete(end).void *> link.warm.applications.notifyChange
 
   /** One job outside both the bearer and the hot session: PeerStateActions.hs:662–776,838–848 at
-    * ouroboros-network 2fb69829. The loop observes retained application results, handles a clean
+    * ouroboros-network c45735a5. The loop observes retained application results, handles a clean
     * hot return by deactivation, and waits for manager release before Cooling becomes Cold.
     */
   private def peerMonitoringLoop(peer: A, link: Link[F]): F[Unit] =
@@ -418,11 +511,16 @@ final class OutboundPeers[F[_]: Async, A] private (
       yield next
     }
     // the monitor of one connection that fails ends that connection, not the node (issue 567); if
-    // ending it fails too, the node's own connection state is broken, and that stops the node
-    loop.handleErrorWith(cause =>
-      (link.warm.mux.abort(NetworkError.Defect(cause)) *> lost(PeerError.ConnectionDefect(cause)))
+    // ending it fails too, the node's own connection state is broken, and that stops the node.
+    // The defect is retained in the application results before the release, as every other abort
+    // here does: the connection's own race of the release against the mux's closure may see the
+    // release first, and an application asleep between messages never completes on its own
+    loop.handleErrorWith { cause =>
+      val defect = NetworkError.Defect(cause)
+      (link.warm.applications.abortRunning(defect) *> link.warm.mux.abort(defect) *>
+        lost(PeerError.ConnectionDefect(cause)))
         .handleErrorWith(again => fatal(Fatal.Defect(again)))
-    )
+    }
 
   /** Match the adding hot BlockFetch client, never a later activation on the same bearer. The
     * bounded pool reporter retains only immutable metadata; resource-owned callbacks disappear
@@ -553,13 +651,30 @@ final class OutboundPeers[F[_]: Async, A] private (
       }
     }
 
-  /** What the session of `peer` observes: the node's own observer, and the peer metrics (who is
-    * first with a header and a block), one update of the shared board per batch of headers and per
-    * range of blocks.
+  /** What the session of `peer` in `activation` observes: the node's own observer, and the peer
+    * metrics (who is first with a header and a block), one update of the shared board per batch of
+    * headers and per range of blocks.
     */
-  private def metered(peer: A): Peer.Observation => F[Unit] =
+  private def metered(peer: A, activation: BigInt): Peer.Observation => F[Unit] =
     given Stateful[F, PeerMetrics[A]] = metrics
-    PeerMetricsObserver(peer, hot.observe)
+    val measured = PeerMetricsObserver(peer, hot.observe)
+    observation =>
+      reports.update(m =>
+        m.updated(peer, m.getOrElse(peer, SessionReport()).observed(activation, observation))
+      ) *> measured(observation)
+
+  /** The report of `peer` 's session in `activation` over `link` 's connection, for as long as the
+    * session lasts.
+    */
+  private def reporting(peer: A, link: Link[F], activation: BigInt): Resource[F, Unit] =
+    Resource.make(
+      reports.update(m =>
+        m.updated(peer, m.getOrElse(peer, SessionReport()).began(link.connection.id, activation))
+      )
+    )(_ => reports.update(m => m.updatedWith(peer)(_.map(_.ended(activation)))))
+
+  /** What the hot sessions saw of each peer, for `GET /connections`. */
+  def sessionReports: F[Vector[(A, SessionReport)]] = reports.get.map(_.toVector)
 
   /** The hot protocols and the session over them, for as long as the session lasts. The session
     * runs in an error scope of its own and ends with a [[SessionEnd]], a value: what the peer does,
@@ -608,6 +723,7 @@ final class OutboundPeers[F[_]: Async, A] private (
             link.warm.mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
         ).evalTap(key => session.source.set(Some(key.activationGeneration)))
           .onFinalize(session.source.set(None))
+          .flatTap(key => reporting(peer, link, key.activationGeneration))
           .flatMap(key =>
             link.warm
               .startHotProtocols(
@@ -643,7 +759,7 @@ final class OutboundPeers[F[_]: Async, A] private (
                     genesis.fold(Peer.Chain.Praos(hot.headers.map(_.withInvariant(invariant))))(
                       _.chain
                     ),
-                    Some(metered(peer)),
+                    Some(metered(peer, sourceKey.activationGeneration)),
                     Some(hot.pool),
                     Some(rejectedCachedBlock(sourceKey, _)),
                     fetchIdentity = Some(peer.hashCode.toLong),
@@ -908,10 +1024,10 @@ final class OutboundPeers[F[_]: Async, A] private (
           F.timeoutTo(stopApplications.map(Some(_)), config.closeTimeout, F.pure(None)).flatMap {
             case Some(ProtocolResults.LastToFinish.SomeErrored(errors)) =>
               abortAction(link, PeerActionError.ApplicationFailures(errors)).map(Left(_))
-            // every application returned: the reference's idle release, which holds the
-            // time-wait ([[ConnectionManager.holdsTimeWait]])
+            // every application returned: `releaseOutboundConnection` (`PeerStateActions.hs`
+            // 1094-1105); the connection stays while the peer uses it
             case Some(ProtocolResults.LastToFinish.AllSucceeded(_)) =>
-              link.connection.close(ConnectionEnd.Released) *>
+              link.demoted.set(true) *> link.connection.releaseOutbound *>
                 link.release.complete(()).void *> completed()
             case None =>
               val error = NetworkError.Timeout(Protocols.KeepAlive, "close")
@@ -990,7 +1106,7 @@ final class OutboundPeers[F[_]: Async, A] private (
 
 object OutboundPeers:
   /** @param deactivateTimeout
-    *   How long the hot protocols get to end on the wire (`deactivateTimeout`, `Policies.hs` 31).
+    *   How long the hot protocols get to end on the wire (`deactivateTimeout`, `Policies.hs` 30).
     * @param repromoteDelay
     *   The exit policy's wait before a peer whose connection failed is tried again.
     */
@@ -999,6 +1115,79 @@ object OutboundPeers:
       repromoteDelay: FiniteDuration = 10.seconds,
       closeTimeout: FiniteDuration = 120.seconds
   )
+
+  /** What the hot session of a peer that is running saw of it: the connection it runs over (the
+    * manager's [[xyz.kd5ujc.scarab.network.Connection.id]]), its activation (one per hot session),
+    * its intersection, the headers received and the block number of the tip it announced last.
+    */
+  final case class ActiveSession(
+      connection: Long,
+      activation: BigInt,
+      intersection: Option[xyz.kd5ujc.scarab.protocol.ChainSync.Point] = None,
+      headers: Long = 0,
+      peerTip: Option[BigInt] = None
+  )
+
+  /** Over every hot session of a peer: how many there were and the headers they received. */
+  final case class SessionTotals(activations: Long = 0, headers: Long = 0)
+
+  /** What the hot sessions of one peer saw of it: the running one's observations, kept apart from
+    * the totals over all of them, so that what one session saw is never read as another's.
+    */
+  final case class SessionReport(
+      active: Option[ActiveSession] = None,
+      lifetime: SessionTotals = SessionTotals()
+  ):
+    /** A session began in `activation` over the connection `connection`. */
+    def began(connection: Long, activation: BigInt): SessionReport =
+      SessionReport(
+        Some(ActiveSession(connection, activation)),
+        lifetime.copy(activations = lifetime.activations + 1)
+      )
+
+    /** The session of `activation` ended; a later one's report is left as it is. */
+    def ended(activation: BigInt): SessionReport =
+      copy(active = active.filterNot(_.activation == activation))
+
+    /** What the session of `activation` observed: the running session's report takes it only if it
+      * is that session's; the totals take every header.
+      */
+    def observed(activation: BigInt, observation: Peer.Observation): SessionReport =
+      def mine(f: ActiveSession => ActiveSession) =
+        copy(active = active.map(a => if a.activation == activation then f(a) else a))
+      observation match
+        case Peer.Observation.Intersected(point) => mine(_.copy(intersection = Some(point)))
+        case Peer.Observation.HeadersArrived(slots, _) =>
+          mine(a => a.copy(headers = a.headers + slots.size))
+            .copy(lifetime = lifetime.copy(headers = lifetime.headers + slots.size))
+        case Peer.Observation.Announced(tip) => mine(_.copy(peerTip = Some(tip.blockNo.value)))
+        case _                               => this
+
+  /** The session reports as JSON, by peer (`GET /connections`). */
+  def json[A](reports: Vector[(A, SessionReport)]): io.circe.Json =
+    import io.circe.Json
+    import io.circe.syntax.*
+    reports
+      .sortBy(_._1.toString)
+      .map { (peer, r) =>
+        Json.obj(
+          "peer" -> peer.toString.asJson,
+          "active" -> r.active.map { a =>
+            Json.obj(
+              "connection" -> a.connection.asJson,
+              "activation" -> a.activation.asJson,
+              "intersection" -> a.intersection.map(xyz.kd5ujc.scarab.ledger.Points.show).asJson,
+              "headers" -> a.headers.asJson,
+              "peerTipBlock" -> a.peerTip.map(_.toString).asJson
+            )
+          }.asJson,
+          "lifetime" -> Json.obj(
+            "activations" -> r.lifetime.activations.asJson,
+            "headers" -> r.lifetime.headers.asJson
+          )
+        )
+      }
+      .asJson
 
   /** Receives the candidate chain of a session once it exists. */
   type Tracker[F[_]] = Ref[F, ChainSelection.Candidate] => F[Unit]
@@ -1037,12 +1226,13 @@ object OutboundPeers:
   /** A connection of ours, and what its owner can do to it.
     *
     * @param connection
-    *   The manager's slot, where a clean close records its end
-    *   ([[ConnectionManager.holdsTimeWait]]).
+    *   The manager's connection, which a clean close releases from the outbound side.
     * @param release
     *   Completed to let go of the connection.
     * @param gone
-    *   Completed once the connection has been released everywhere.
+    *   Completed once the outbound side holds the connection no more.
+    * @param demoted
+    *   Set once a clean close released the outbound use; letting go otherwise stops the mux.
     */
   private[node] final class Link[F[_]](
       val connection: Connection[F],
@@ -1054,7 +1244,8 @@ object OutboundPeers:
       val identity: BigInt,
       val terminal: Deferred[F, SessionEnd],
       val transitions: Mutex[F],
-      val children: Supervisor[F]
+      val children: Supervisor[F],
+      val demoted: Ref[F, Boolean]
   ):
     def transition[B](body: F[B])(using F: Async[F]): F[B] =
       transitions.lock.surround(F.uncancelable(_ => body))
@@ -1095,6 +1286,15 @@ object OutboundPeers:
 
   /** The outbound connections of the node.
     *
+    * @param supervisor
+    *   Holds each connection, its dialling and its hot session.
+    * @param monitors
+    *   Holds each connection's monitor. Released before `supervisor`, so that every monitor has
+    *   ended before a connection is torn down: a monitor that outlived its connection would report
+    *   the release as a loss. The reference closes the job pool of its peer state actions, which
+    *   holds the monitors, inside the scope of its connection manager (ouroboros-network c45735a5
+    *   `Ouroboros/Network/Diffusion.hs` 769-786, 801-826, `PeerSelection/PeerStateActions.hs` 630,
+    *   836-848, `network-mux` `Control/Concurrent/JobPool.hs` 54-55, 70-73).
     * @param beforeObservation
     *   run by each connection's monitor before it observes the connection's applications: a test
     *   seam for a monitor that fails (issue 579); the node passes none
@@ -1105,6 +1305,7 @@ object OutboundPeers:
       config: Config,
       hot: Hot[F],
       supervisor: Supervisor[F],
+      monitors: Supervisor[F],
       report: Event[A] => F[Unit],
       metrics: Stateful[F, PeerMetrics[A]],
       connected: Option[(A, SocketAddress[IpAddress]) => F[Unit]] = None,
@@ -1116,8 +1317,9 @@ object OutboundPeers:
       Ref.of[F, Map[BigInt, PeerError => F[Unit]]](Map.empty),
       Mutex[F],
       Ref.of[F, Map[A, PeerStateActions.Connection[F]]](Map.empty),
-      Ref.of[F, BigInt](0)
-    ).mapN { (table, counter, sources, lock, handles, connections) =>
+      Ref.of[F, BigInt](0),
+      Ref.of[F, Map[A, SessionReport]](Map.empty)
+    ).mapN { (table, counter, sources, lock, handles, connections, reports) =>
       new OutboundPeers[F, A](
         node,
         transport,
@@ -1125,6 +1327,7 @@ object OutboundPeers:
         config,
         hot,
         supervisor,
+        monitors,
         report,
         metrics,
         table,
@@ -1134,6 +1337,7 @@ object OutboundPeers:
         lock,
         handles,
         connections,
-        beforeObservation
+        beforeObservation,
+        reports
       )
     }

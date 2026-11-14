@@ -17,6 +17,7 @@ body:
         - area:crypto
         - area:protocol
         - area:network
+        - area:uplc
         - area:plutus
         - area:ledger
         - area:consensus
@@ -25,6 +26,7 @@ body:
         - area:models
         - area:node
         - area:fuzz
+        - area:tools
         - area:build
         - area:scripts
         - area:docs

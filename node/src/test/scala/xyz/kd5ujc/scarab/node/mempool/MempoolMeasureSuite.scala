@@ -23,7 +23,7 @@ import TxKit.*
   */
 class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
   private def pool(ledger: MempoolLedger, capacityOverride: Option[Long] = None) =
-    MempoolState.empty(Right(ledger), 1000, capacityOverride)
+    MempoolState.empty(Right(ledger), 1000, capacityOverride.map(word32))
 
   private def add(s: MempoolState, raw: Bytes): Either[Rejection, MempoolState] =
     s.add(raw, env, Source.Local).map(_._1)
@@ -127,7 +127,7 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
   test("reference scripts over the per-transaction maximum are refused with that failure alone") {
     val size = RefScripts.MaxRefScriptSizePerTx + 1
     val l = withRefScript(ledger(1), size)
-    assertEquals(l.utxo.get(txIn(50)).map(_.referenceScriptSize), Some(size))
+    assertEquals(l.utxo.get(txIn(50)).map(_.referenceScriptSize), Some(size.toLong))
     val (raw, id) = spendRefScript
     val expected = PredicateFailure.TxRefScriptsSizeTooBig(
       Mismatch(size, RefScripts.MaxRefScriptSizePerTx)
@@ -140,6 +140,52 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
         .applyTxError(Vector(expected))
         .fold(error => fail(error.message), identity)
     )
+  }
+
+  test("the reference scripts of a transaction are measured in 64 bits, as the reference's Int") {
+    // `txMeasureRefScripts` measures `txNonDistinctRefScriptsSize :: ... -> Int`
+    // (`Shelley/Ledger/Mempool.hs:714-726`): 2048 inputs, each naming a script of 1 MiB, hold 2^31
+    // bytes, one more than a 32-bit Int holds
+    val script = refScriptOutput(1 << 20)
+    val inputs = Vector.tabulate(2048)(i => TxIn(txIn(60).id, i))
+    val base = ledger(1).withParams(_.copy(maxTxSize = 1 << 17))
+    val l = base.withUtxo(inputs.foldLeft(base.utxo)(_.updated(_, script)))
+    val (raw, _) = tx(inputs, Vector(bob.address() -> (99 * ada)), ada, Vector(alice))
+    val parsed = MempoolState.parse(raw).fold(r => fail(r.message), _._2)
+    val total = BigInt(1) << 31
+    assertEquals(BigInt(MempoolState.refScriptBytes(l, parsed)), total)
+    add(pool(l), raw) match
+      case Left(
+            Rejection.Ledger(
+              LedgerFailure.Rejected.Single(_, PredicateFailure.TxRefScriptsSizeTooBig(m))
+            )
+          ) =>
+        assertEquals(
+          (BigInt(m.supplied), BigInt(m.expected)),
+          (total, BigInt(RefScripts.MaxRefScriptSizePerTx))
+        )
+      case other => fail(s"expected the size of the reference scripts refused, got $other")
+  }
+
+  test(
+    "an output that is both spent and a reference input is measured once, as the reference does"
+  ) {
+    // `txNonDistinctRefScriptsSize` measures the union of the inputs and the reference inputs
+    // (`Conway/UTxO.hs:164-170`); from protocol version 11 an input may also be a reference input.
+    // Its script of 150 000 bytes is within the per-transaction maximum once, not twice.
+    val size = 150000
+    val l = withRefScript(ledger(1), size).withProtocol(11)
+    val (raw, id) = tx(
+      Vector(txIn(50)),
+      Vector(alice.address() -> (89 * ada)),
+      10 * ada,
+      Vector(bob),
+      referenceInputs = Vector(txIn(50))
+    )
+    val parsed = MempoolState.parse(raw).fold(r => fail(r.message), _._2)
+    assertEquals(MempoolState.refScriptBytes(l, parsed), size.toLong)
+    val admitted = add(pool(l), raw).fold(r => fail(r.message), identity)
+    assertEquals(admitted.entries.map(e => (e.id, e.refScriptBytes)), Vector((id, size.toLong)))
   }
 
   test("the reference scripts are measured in the state after the held transactions") {
@@ -340,4 +386,60 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
             .fold(error => fail(error.message), identity)
         )
       case other => fail(s"expected a full pool, received $other")
+  }
+
+  /** A pool whose block takes 64 KiB of transactions (a body of 66,560 bytes less the overhead of
+    * 1,024) under an override of `bytes`.
+    */
+  private def sixtyFourKiB(l: MempoolLedger, bytes: Long): MempoolState =
+    pool(l.withParams(_.copy(maxBlockBodySize = 66560)), Some(bytes))
+
+  // The reference takes the capacity in `Word32` and wraps (ouroboros-consensus 82ecba32
+  // `Mempool/Capacity.hs:62-79`, `Ledger/SupportsMempool.hs:468-504`); Scarab does not (approved
+  // deviation, https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849).
+  test("the capacity does not wrap: 4,096 blocks of 1 MiB of reference scripts are 2^32 bytes") {
+    val l = ledger(2)
+    val units = l.params.maxBlockExUnits
+    assertEquals(
+      sixtyFourKiB(l, 268435456L).capacity,
+      TxMeasure(268435456L, 4096 * units.mem, 4096 * units.steps, 4294967296L)
+    )
+    // the number of blocks is the exact ceiling at the top of the override's range, where the
+    // reference's rounds down (65,535)
+    assertEquals(sixtyFourKiB(l, 4294967295L).capacity.bytes, 65536L * 65536)
+  }
+
+  test("a reference-script spend the reference's wrapped capacity would hold back is held") {
+    val l = withRefScript(ledger(2), 1000)
+    // with the reference's wrap the pool's reference-script capacity would be 0
+    val s = sixtyFourKiB(l, 268435456L)
+    val (spend, spent) =
+      tx(Vector(txIn(50)), Vector(alice.address() -> (98 * ada)), ada, Vector(bob))
+    assertEquals(
+      add(s, spend).map(_.entries.map(e => (e.id, e.refScriptBytes))),
+      Right(Vector((spent, 1000L)))
+    )
+  }
+
+  test("LocalTxMonitor saturates a capacity above a Word32 in GetSizes, and the reply encodes") {
+    val snapshot = LocalMonitor.snapshot(sixtyFourKiB(ledger(2), 4294967295L))
+    assertEquals(snapshot.capacity.bytes, 4294967296L)
+    assertEquals(snapshot.sizes.capacityInBytes, 4294967295L)
+    assert(
+      xyz.kd5ujc.scarab.protocol.LocalTxMonitor
+        .encode(
+          xyz.kd5ujc.scarab.protocol.LocalTxMonitor.State
+            .Busy(xyz.kd5ujc.scarab.protocol.LocalTxMonitor.Kind.GetSizes),
+          xyz.kd5ujc.scarab.protocol.ChainSync.Role.Server,
+          xyz.kd5ujc.scarab.protocol.LocalTxMonitor.Message.ReplyGetSizes(snapshot.sizes)
+        )
+        .isRight
+    )
+    assertEquals(
+      xyz.kd5ujc.scarab.network.LocalTxMonitorServer
+        .measures(snapshot.txs, snapshot.capacity)
+        .byName("reference_scripts_bytes")
+        .capacity,
+      BigInt(65536L) << 20
+    )
   }

@@ -48,7 +48,9 @@ import PredicateFailureCbor.*
   * integrity hash, the datum and redeemer checks, a missing key witness, a small output) are
   * byte-equal to the node's answers, Babbage's at protocol version 7
   * (`PlutusFailureReferenceSuite`); Babbage's `ContextError` payloads are also byte-equal to the
-  * reference's matrix rows (`ContextMatrixSuite`).
+  * reference's matrix rows (`ContextMatrixSuite`). A bootstrap address with more than 64 bytes of
+  * attributes is refused byte for byte as the reference refuses it in every era from Shelley to
+  * Babbage (`ReferenceRefusalSuite`, the `<era>-bootstrap-attributes` corpora).
   */
 object PreConwayFailureCbor:
   import NodeOrders.given
@@ -85,7 +87,7 @@ object PreConwayFailureCbor:
       case Era.Mary    => allegra(failures)(using Versions.eraLow(ShelleyBasedEra.SMary))
       case Era.Alonzo  => alonzo(failures)(using Versions.eraLow(ShelleyBasedEra.SAlonzo))
       case Era.Babbage => babbage(failures)(using Versions.eraLow(ShelleyBasedEra.SBabbage))
-      case Era.Byron | Era.Conway => absent
+      case Era.Byron | Era.Conway | Era.Dijkstra => absent
     encoded.map { es =>
       CborOut.build { w =>
         w.array(1).array(2).uint(era.index)

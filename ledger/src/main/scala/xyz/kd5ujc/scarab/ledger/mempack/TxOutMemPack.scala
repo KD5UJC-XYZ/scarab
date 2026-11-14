@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.ledger.{
   CborRead,
   Credential,
   Datum,
+  NativeScript,
   Script,
   ScriptKind,
   TxOut,
@@ -64,7 +65,7 @@ object TxOutMemPack:
     decodeParts(bytes).flatMap(toTxOut)
 
   def encodeParts[E <: EraTag](p: TxOutParts)(using era: ShelleyBasedEra[E]): Result[Bytes] =
-    choose(p).map { rep =>
+    implemented[E] *> choose(p).map { rep =>
       val packer = new Packer(size(rep))
       pack(rep, packer)
       packer.result
@@ -72,7 +73,15 @@ object TxOutMemPack:
 
   def decodeParts[E <: EraTag](bytes: Bytes)(using ShelleyBasedEra[E]): Result[TxOutParts] =
     val in = Unpacker.of(bytes)
-    unpackRep(in).flatMap(rep => in.finished.flatMap(_ => fromRep(rep)))
+    implemented[E] *> unpackRep(in).flatMap(rep => in.finished.flatMap(_ => fromRep(rep)))
+
+  /** Dijkstra's outputs are refused ([[Failure.NotYet]]). */
+  private def implemented[E <: EraTag](using era: ShelleyBasedEra[E]): Result[Unit] =
+    Either.cond(
+      era != ShelleyBasedEra.SDijkstra,
+      (),
+      Failure.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.LedgerState)
+    )
 
   // ---- the output and its parts
 
@@ -107,6 +116,32 @@ object TxOutMemPack:
           else CborRead.bytes(two(1), DecodeField.PlutusScript).leftMap(Failure.ScriptRefused(_))
       yield RefScript(kind, bytes)
 
+  /** `out` with the native reference script `script` encoded as `original` in place of the one it
+    * has, and the encoding the reference writes for an output it holds in compact form as its
+    * original bytes (the translation into Dijkstra memoizes a native script's encoding anew,
+    * `xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraScript.upgradeTimelock`).
+    */
+  def withNativeReference(
+      out: TxOut,
+      original: Bytes,
+      script: xyz.kd5ujc.scarab.ledger.NativeScript
+  ): TxOut =
+    val p = TxOutParts(
+      out.address.raw,
+      out.value,
+      out.datum,
+      Some(RefScript(ScriptKind.Native, original))
+    )
+    val valueCbor = CanonicalCbor.value(p.value)
+    TxOut(
+      CanonicalCbor.output(p, valueCbor),
+      out.address,
+      out.value,
+      out.datum,
+      Some(Script.nativeOf(original, script)),
+      valueCbor.size
+    )
+
   /** The node's output for `p`, with the canonical encoding (the legacy array without an inline
     * datum or a script, else the keyed map) as its original bytes.
     */
@@ -130,7 +165,10 @@ object TxOutMemPack:
       CborRead
         .decode(s.bytes)
         .leftMap(Failure.ScriptRefused(_))
-        .flatMap(n => Script.native(n).leftMap(Failure.ScriptRefused(_)))
+        // a reference script, Babbage's: a time lock
+        .flatMap(n =>
+          Script.native(n, NativeScript.Form.Timelock).leftMap(Failure.ScriptRefused(_))
+        )
     case plutus => Right(Script.plutus(plutus, s.bytes).copy(plutus = None))
 
   // ---- the constructors
@@ -177,12 +215,13 @@ object TxOutMemPack:
   // ---- what an era has
 
   private def eraOf[E <: EraTag](using era: ShelleyBasedEra[E]): Era = era match
-    case ShelleyBasedEra.SShelley => Era.Shelley
-    case ShelleyBasedEra.SAllegra => Era.Allegra
-    case ShelleyBasedEra.SMary    => Era.Mary
-    case ShelleyBasedEra.SAlonzo  => Era.Alonzo
-    case ShelleyBasedEra.SBabbage => Era.Babbage
-    case ShelleyBasedEra.SConway  => Era.Conway
+    case ShelleyBasedEra.SShelley  => Era.Shelley
+    case ShelleyBasedEra.SAllegra  => Era.Allegra
+    case ShelleyBasedEra.SMary     => Era.Mary
+    case ShelleyBasedEra.SAlonzo   => Era.Alonzo
+    case ShelleyBasedEra.SBabbage  => Era.Babbage
+    case ShelleyBasedEra.SConway   => Era.Conway
+    case ShelleyBasedEra.SDijkstra => Era.Dijkstra
 
   /** The highest constructor tag of the era's `TxOut`. */
   private def maxTag[E <: EraTag](using ShelleyBasedEra[E]): Int = eraOf[E] match

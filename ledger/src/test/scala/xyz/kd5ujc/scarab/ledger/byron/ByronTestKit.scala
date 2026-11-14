@@ -27,14 +27,16 @@ object ByronTestKit:
           (n >> 8).toInt & 0xff,
           n.toInt & 0xff
         )
+    // linear copying: `ByronCbor.concat` copies what it has joined at each item, which a
+    // transaction of tens of thousands of outputs makes quadratic
+    private def join(items: Seq[Bytes]): Bytes = Bytes.wrap(Array.concat(items.map(_.toArray)*))
     def uint(n: Long): Bytes = head(0, n)
     def bytes(b: Bytes): Bytes = head(2, b.size) ++ b
     def text(s: String): Bytes = head(3, s.length) ++ Bytes.fromArray(s.getBytes("UTF-8"))
-    def arr(items: Bytes*): Bytes = head(4, items.size) ++ ByronCbor.concat(items*)
-    def indef(items: Bytes*): Bytes =
-      ByronCbor.of(0x9f) ++ ByronCbor.concat(items*) ++ ByronCbor.of(0xff)
+    def arr(items: Bytes*): Bytes = join(head(4, items.size) +: items)
+    def indef(items: Bytes*): Bytes = join((ByronCbor.of(0x9f) +: items) :+ ByronCbor.of(0xff))
     def map(entries: (Bytes, Bytes)*): Bytes =
-      head(5, entries.size) ++ ByronCbor.concat(entries.flatMap((k, v) => Seq(k, v))*)
+      join(head(5, entries.size) +: entries.flatMap((k, v) => Seq(k, v)))
     def tag24(b: Bytes): Bytes = ByronCbor.of(0xd8, 0x18) ++ bytes(b)
     val `true`: Bytes = ByronCbor.of(0xf5)
     val `false`: Bytes = ByronCbor.of(0xf4)
@@ -192,7 +194,8 @@ object ByronTestKit:
 
   /** The first main block after the genesis boundary: one signed transaction and one signed
     * proposal, a header of `headerVersion` signed by `delegate` for the genesis key `leader`, and
-    * body proofs that match. The genesis must delegate from `leader` to `delegate`.
+    * body proofs that match, at `slot` (epoch and slot count). The genesis must delegate from
+    * `leader` to `delegate`.
     */
   def signedBlock(
       config: ByronLedger.Config,
@@ -201,7 +204,8 @@ object ByronTestKit:
       delegate: Key,
       transaction: ByronTxAux,
       proposal: Bytes,
-      headerVersion: (Long, Long, Long)
+      headerVersion: (Long, Long, Long),
+      slot: (Long, Long) = (0L, 1L)
   ): Bytes =
     val blake = xyz.kd5ujc.scarab.crypto.Blake2b.hash256
     val updates = Cb.arr(Cb.arr(proposal), Cb.arr())
@@ -218,7 +222,7 @@ object ByronTestKit:
       Cb.bytes(blake.hash(delegation)),
       Cb.bytes(blake.hash(updates))
     )
-    val slot = Cb.arr(Cb.uint(0), Cb.uint(1))
+    val slotId = Cb.arr(Cb.uint(slot._1), Cb.uint(slot._2))
     val difficulty = Cb.arr(Cb.uint(1))
     val extra = Cb.arr(
       encodedVersion(headerVersion._1, headerVersion._2, headerVersion._3),
@@ -227,7 +231,7 @@ object ByronTestKit:
       Cb.bytes(blake.hash(Cb.arr()))
     )
     val previous = Cb.bytes(genesis.hash)
-    val signed = Cb.arr(previous, proof, slot, difficulty, extra)
+    val signed = Cb.arr(previous, proof, slotId, difficulty, extra)
     val signature = delegate.sign(
       ByronCbor.of(0x30, 0x31) ++ leader.extended ++ ByronCbor.of(0x09) ++ config.magic ++ signed
     )
@@ -241,7 +245,7 @@ object ByronTestKit:
       Cb.bytes(certificate)
     )
     val consensus = Cb.arr(
-      slot,
+      slotId,
       Cb.bytes(leader.extended),
       difficulty,
       Cb.arr(Cb.uint(2), Cb.arr(proxy, Cb.bytes(signature)))

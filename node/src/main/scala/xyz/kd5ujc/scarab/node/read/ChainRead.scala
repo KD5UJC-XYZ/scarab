@@ -74,6 +74,9 @@ trait ChainRead[S]:
     ): flat.PosixClock =
       flat.PosixClock.total(placement.geometry)
 
+    /** The era history at the tip, as `GetInterpreter` answers it ([[MirrorClock.summary]]). */
+    def summary(placement: Placement): flat.Horizon
+
     /** The era history as this state knows it: a chain whose Byron span is derived learns the first
       * Shelley epoch when it enters Shelley.
       */
@@ -117,6 +120,7 @@ object ChainRead:
         case i: EraLedgerState.InShelleyEra[e] => i.state.nes.es.ls.utxo.utxo.utxo
       override def clock(placement: Placement, era: Era, slot: BigInt): flat.PosixClock =
         MirrorClock.of(m, placement, era, slot)
+      def summary(placement: Placement): flat.Horizon = MirrorClock.summary(m, placement)
       def ledger(at: Option[BlockRef]): Read[Option[InEra]] =
         Right(m.ext.ledgerState.state match
           case EraLedgerState.ByronCurrent(_) => None

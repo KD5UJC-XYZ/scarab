@@ -54,6 +54,7 @@ object RewardPulserFixture extends Assertions:
     val stakePools = Sorted.map(Vector.range(0, pools).map { p =>
       pool(p) -> StakePoolState(
         ok(VRFVerKeyHash.fromBytes(bytes(p, 32))),
+        PoolBlsKey.Node11_1,
         coin(0),
         coin(340000000),
         Rational(1, 100),
@@ -111,11 +112,11 @@ object RewardPulserFixture extends Assertions:
       EpochState[Conway](
         ChainAccountState(coin(1000000000000L), coin(Supply / 2)),
         ls,
-        SnapShots(go, go, go, coin(3000000)),
+        SnapShots(go, go, go, coin(3000000), SnapShots.Layout.Node11_1),
         NonMyopic.empty
       ),
       None,
-      PoolDistr.of(go),
+      NewEpochState.Layout.Node11_1(PoolDistr.of(go)),
       ()
     )
 
@@ -169,7 +170,7 @@ object RewardPulserFixture extends Assertions:
         c.es.nonMyopic
       ),
       c.ru,
-      c.pd,
+      NewEpochState.Layout.Node11_1(c.pd),
       ()
     )
 

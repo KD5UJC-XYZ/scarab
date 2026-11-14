@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network.selection
 
-/** Degenerate DeltaQ/GSV model of ouroboros-network 2fb69829, Network/DeltaQ.hs. Time is integral
+/** Degenerate DeltaQ/GSV model of ouroboros-network c45735a5, Network/DeltaQ.hs. Time is integral
   * picoseconds, as in the reference's DiffTime. Its current distribution is degenerate and its
   * sampler deliberately retains the fixed 4Mbps serialisation estimate.
   */

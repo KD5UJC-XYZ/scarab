@@ -35,6 +35,7 @@ paths = [
   '''^fixtures/devnet/lsq/genesis/shelley-genesis\.json$''',
   '''^fixtures/dijkstra-devnet/genesis/shelley-genesis\.json$''',
   '''^fixtures/leios/testnet/config/shelley-genesis\.json$''',
+  '''^fixtures/leios/state/genesis/shelley-genesis\.json$''',
   '''^fixtures/mainnet/byron-genesis-trimmed\.json$''',
   '''^fixtures/mainnet/genesis/byron-genesis\.json$''',
   '''^fixtures/preview/conway-governance\.json$''',
@@ -46,6 +47,11 @@ paths = [
   '''^fixtures/reference/plutus-forecast-horizon/conway-past-horizon/genesis/shelley-genesis\.json$''',
   '''^fixtures/reference/refusals/conway-devnet/genesis/shelley-genesis\.json$''',
   '''^fixtures/reference/refusals/genesis/0852102f056aae15273dd402b5ca44f103b4eef03b19f8a5717ceff2df8c1667-shelley-genesis\.json$''',
+  '''^fixtures/reference/refusals/genesis/1696250c9a45627a3399625b5ef8ffc195f688ece2258c5653ada16f76e62b69-shelley-genesis\.json$''',
+  '''^fixtures/reference/refusals/genesis/3defe6f07cf8268dff8471833cbafc92bf85770011af18d700fe2a2123a65ba3-shelley-genesis\.json$''',
+  '''^fixtures/reference/refusals/genesis/437ce0c3ccf98e298dd8fb8aa5bfc7d57204aa6956eb7b73297249fffe4c9b3f-shelley-genesis\.json$''',
+  '''^fixtures/reference/refusals/genesis/d5bf3b13714bb99cbf96d78d6bf0950fc59f89bfdeb35caedba2a18469226da4-shelley-genesis\.json$''',
+  '''^fixtures/reference/refusals/genesis/fb3803d294bc6f5d0f07bbdee88db55fb85e4b0e861b1b9dbe5f244d2b2c2cc9-shelley-genesis\.json$''',
   '''^fixtures/reference/wallet-queries/manifest\.json$''',
   # A public operational-certificate verification key used as an expected value: the file now, and
   # where it was before the package rename (the scan covers the whole history, so both paths stay).
@@ -53,6 +59,8 @@ paths = [
   '''^node/src/test/scala/lab/node/forge/KeyFilesSuite\.scala$''',
   # A mainnet transaction id (public chain data) held in a constant named Key.
   '''^node/src/test/scala/xyz/kd5ujc/scarab/storage/ByronHandoverUtxoSuite\.scala$''',
+  # RFC 8032 section 7.1 test 1: the published Ed25519 verification key of its first test vector.
+  '''^uplc/src/test/scala/xyz/kd5ujc/scarab/uplc/builtin/extended/SignaturesSuite\.scala$''',
 ]
 commits = [
   # The two commits as they stand after the history rewrite of 2026-10-16 (text scrubbed, content otherwise

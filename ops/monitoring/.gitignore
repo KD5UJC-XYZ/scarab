@@ -1,5 +1,7 @@
 # secrets and state stay on the host
 .env
+# the operator's receivers (alertmanager.example.yml is the committed template)
+server/alertmanager/alertmanager.yml
 data/
 server/grafana/dashboards/imported/
 .docker/

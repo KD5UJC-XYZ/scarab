@@ -72,8 +72,11 @@ def network_dashboard(ui):
                     desc='Ordinary plus big-ledger established peers; includes hot and warm.')),
         (4, ui.stat('Known · total', P, total('Known'), decimals=0,
                     desc='All peers currently known to the governor, including cold peers.')),
-        (4, ui.stat('Manager established', P, gauge('scarab_connections', 'state="Established"'), decimals=0,
-                    desc='Connection-manager established entries. This separate layer is not the hot peer count.')),
+        (4, ui.stat('Manager negotiated', P,
+                    'sum by (host, container) (max by (host, container, state) (scarab_connections{'
+                    + m + ', state=~"OutboundUni|OutboundDup|OutboundIdle|InboundIdle|Inbound|Duplex"}))', decimals=0,
+                    desc='Connection-manager entries whose handshake is done, in any use. This separate layer is not '
+                         'the hot peer count.')),
         (4, ui.stat('Peer slot lag', P,
                     gauge('scarab_peer_tip_slot') + ' - ' + gauge('cardano_node_metrics_slotNum_int'),
                     decimals=0, desc='Peer tip last reported on follower extension minus local slot; may be slightly negative. '
@@ -204,19 +207,22 @@ def network_dashboard(ui):
     p.line(
         (12, lines('Connection state distribution', [
             (f'max by (host, container, state) (scarab_connections{{{m}}})', '{{state}}')], stack=True,
-            desc='Reserved → Unnegotiated → Established → Terminating → Terminated entries. '
-                 'Terminated entries may be removed promptly. This transport state is distinct from peer temperature.')),
+            desc='The reference connection manager\'s states: ReservedOutbound, Unnegotiated, then OutboundUni, '
+                 'OutboundDup, OutboundIdle, InboundIdle, Inbound or Duplex by who uses the connection, then '
+                 'Terminating (time-wait) and Terminated. Terminated entries may be removed promptly. This transport '
+                 'state is distinct from peer temperature.')),
         (12, lines('Inbound, outbound and duplex', [
             (gauge('cardano_node_metrics_connectionManager_' + k + 'Conns_int'), k)
             for k in ('inbound', 'outbound', 'duplex')],
-            desc='Inbound and outbound count nonterminated manager entries by who opened them, including '
-                 'reservations and negotiation in progress. Duplex describes bidirectional '
-                 'protocol capability and overlaps the direction counts. Do not add duplex to a connection total.')))
+            desc='Counted as the reference counts them, by what each connection is used for now: a connection both '
+                 'sides use counts as inbound and as outbound, a reservation counts in neither and a closing one '
+                 'in neither. Duplex counts negotiated duplex connections and overlaps the direction counts. '
+                 'Do not add duplex to a connection total.')))
     p.line(
-        (12, lines('Inbound session outcomes · per minute', [
+        (12, lines('Inbound connection outcomes · per minute', [
             (f'60 * sum by (host, container, event) '
              f'(rate(scarab_inbound_events_total{{{m}}}[$__rate_interval]))', '{{event}}')],
-            desc='Accepted, negotiated capability, following, ended/dropped, refused/closed inbound events. '
+            desc='Accepted, negotiated data flow, refused and closed inbound connections. '
                  'An outbound-only node can legitimately have no inbound event series.')),
         (12, lines('ChainSync activity', [
             (f'sum by (host, container) (rate(scarab_chainsync_headers_total{{{m}}}[$__rate_interval]))', 'headers / second'),

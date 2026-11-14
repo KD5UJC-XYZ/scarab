@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "repository": "IntersectMBO/plutus",
+  "base": "1.71.0.0",
+  "releases": [
+    {
+      "tag": "1.70.0.0",
+      "commit": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+      "archiveSha256": "6c28dcb7a36b14a2dd29c9f6320ca8395aff352bdfbf6cf7cfc2f1c79ab0f7ed",
+      "files": 4852,
+      "digest": "2f74fb501f9384c92c76d8320b497197c4c0540fda9d630b7f68821104479024",
+      "absent": []
+    },
+    {
+      "tag": "1.71.0.0",
+      "commit": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+      "archiveSha256": "5235bf2db188f254998808a7338ef921c5743f513754efaf474d848883d060f1",
+      "files": 4852,
+      "digest": "4355473c4f2836f92b589ca93f0c40b39b63a74ba52ba06094145ae0c118ffad",
+      "absent": []
+    }
+  ],
+  "generated": [
+    {
+      "path": "conformance/builtin/parser/value/currencyIDs-unordered/currencyIDs-unordered.flat.cbor.hex",
+      "sha256": "7bda5df535112882b1fb5318a0281b6e6f018bc3186b41dbeb49d29200574668"
+    },
+    {
+      "path": "conformance/builtin/parser/value/duplicate-currencyIDs/duplicate-currencyIDs.flat.cbor.hex",
+      "sha256": "c4bd8054afba737fd8fb558482ff9dd2222d7937d2c0bd8c1607c08069aba782"
+    },
+    {
+      "path": "conformance/builtin/parser/value/duplicate-tokenIDs/duplicate-tokenIDs.flat.cbor.hex",
+      "sha256": "fd91fc81aec95320be9725b244bc1fc00adc783f3d4026bad315b233b7f62580"
+    },
+    {
+      "path": "conformance/builtin/parser/value/empty-tokens/empty-tokens.flat.cbor.hex",
+      "sha256": "4a9a64703308d998649fca9d9ba07529c66ae2f1f791322b84a36ce6f69830ad"
+    },
+    {
+      "path": "conformance/builtin/parser/value/tokenIDs-unordered/tokenIDs-unordered.flat.cbor.hex",
+      "sha256": "aa4ed8994c3f5a7d8edf0a40b78eeb68b05e430614d057a64f9995f5a4bf339d"
+    },
+    {
+      "path": "conformance/builtin/parser/value/zero-asset/zero-asset.flat.cbor.hex",
+      "sha256": "0d8c7f48504fe72d5512730ec29c06b2135d19fed1844a9042c679ec1ebef65d"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.protocol.Era
 import scala.annotation.tailrec
 import cats.syntax.show.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -102,11 +103,25 @@ object NativeScript:
       case InvalidBefore(a)    => s"InvalidBefore($a)"
       case InvalidHereafter(a) => s"InvalidHereafter($a)"
 
-  /** Decode with the nesting on the heap, so a script as deep as a block can hold decodes (see
-    * [[NativeScript.eval]]); the reference has no limit on the depth of a native script.
+  /** The native script language an era reads. Shelley reads `MultiSig`, tags 0 to 3, and calls
+    * `invalidKey` for any other (`eras/shelley/impl/src/Cardano/Ledger/Shelley/Scripts.hs:264-278`,
+    * cardano-ledger f649f975); from Allegra the language is `Timelock`, which adds the time locks 4
+    * and 5 (`eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:235-245`).
     */
-  def decode(n: Node)(using ByteStrings): Either[DecodeError, NativeScript] =
-    TreeFold.foldE[Node, NativeScript, DecodeError](n)(open)
+  enum Form:
+    case MultiSig
+    case Timelock
+
+  object Form:
+    /** The language of the native scripts of a witness set of `era`. */
+    def of(era: Era): Form = if era.ordinal <= Era.Shelley.ordinal then MultiSig else Timelock
+
+  /** Decode a script of `form` with the nesting on the heap, so a script as deep as a block can
+    * hold decodes (see [[NativeScript.eval]]); the reference has no limit on the depth of a native
+    * script. A tag `form` does not read is no script of its arity.
+    */
+  def decode(n: Node, form: Form)(using ByteStrings): Either[DecodeError, NativeScript] =
+    TreeFold.foldE[Node, NativeScript, DecodeError](n)(open(form))
 
   /** Why bytes are not a native script. */
   enum DecodeError:
@@ -141,7 +156,7 @@ object NativeScript:
       Either.cond(v >= MinInt64 && v <= MaxInt64, v, DecodeError.RequiredOutOfRange(v))
     )
 
-  private def open(n: Node)(using
+  private def open(form: Form)(n: Node)(using
       ByteStrings
   ): Either[DecodeError, TreeFold.Step[Node, NativeScript, DecodeError]] =
     import TreeFold.Step
@@ -169,9 +184,9 @@ object NativeScript:
           case (2, 2) => list(1).map(Step.Branch(_, ss => Right(AnyOf(ss))))
           case (3, 3) =>
             required(xs(1)).flatMap(k => list(2).map(Step.Branch(_, ss => Right(NOfK(k, ss)))))
-          case (4, 2) =>
+          case (4, 2) if form == Form.Timelock =>
             slot(xs(1), DecodeField.InvalidBefore).map(s => Step.Leaf(InvalidBefore(s)))
-          case (5, 2) =>
+          case (5, 2) if form == Form.Timelock =>
             slot(xs(1), DecodeField.InvalidHereafter).map(s => Step.Leaf(InvalidHereafter(s)))
           case (_, k) =>
             Left(
@@ -187,6 +202,22 @@ enum ScriptKind(val tag: Int):
   case PlutusV3 extends ScriptKind(3)
 
   def isPlutus: Boolean = this != Native
+
+object ScriptKind:
+  /** `eraMaxLanguage` (cardano-ledger f649f975 `Alonzo/Scripts.hs:571`, `Babbage/Scripts.hs:63`,
+    * `Conway/Scripts.hs:98`): the newest language a script of `era` may have, native only before
+    * Alonzo.
+    */
+  def newest(era: Era): ScriptKind = era match
+    case Era.Alonzo  => PlutusV1
+    case Era.Babbage => PlutusV2
+    case Era.Conway  => PlutusV3
+    case _           => Native
+
+  /** The newest language the node reads, for a value read again that was checked when it was taken
+    * (a stored output).
+    */
+  val newestKnown: ScriptKind = PlutusV3
 
 /** A script with its hash. The hash is `blake2b-224(tag ‖ payload)`, where the payload is the
   * original encoding of a native script or the bytes of a Plutus script. `plutus` holds the bytes
@@ -204,9 +235,12 @@ object Script:
   private def hashOf(kind: ScriptKind, payload: Bytes): Bytes =
     Blake2b.hash224.hash(Bytes(kind.tag.toByte +: payload.value))
 
-  def native(n: Node)(using ByteStrings): Either[LedgerDecodeError, Script] =
+  /** A native script of `form` ([[NativeScript.Form]]) with its hash. */
+  def native(n: Node, form: NativeScript.Form)(using
+      ByteStrings
+  ): Either[LedgerDecodeError, Script] =
     NativeScript
-      .decode(n)
+      .decode(n, form)
       .left
       .map(LedgerDecodeError.NativeScript(_))
       .map(s => Script(ScriptKind.Native, hashOf(ScriptKind.Native, n.original), Some(s)))
@@ -214,33 +248,46 @@ object Script:
   def plutus(kind: ScriptKind, bytes: Bytes): Script =
     Script(kind, hashOf(kind, bytes), None, Some(bytes))
 
-  /** `script = [0, native_script] / [1, plutus_v1] / [2, plutus_v2] / [3, plutus_v3]`. */
-  def decode(n: Node)(using ByteStrings): Either[LedgerDecodeError, Script] =
+  /** The native script `script` whose encoding is `original`, with the hash over it. */
+  def nativeOf(original: Bytes, script: NativeScript): Script =
+    Script(ScriptKind.Native, hashOf(ScriptKind.Native, original), Some(script))
+
+  /** `script = [0, native_script] / [1, plutus_v1] / [2, plutus_v2] / [3, plutus_v3]`, of a
+    * language no newer than `newest` (`decodeAlonzoScript`, `Alonzo/Scripts.hs:705-720`, f649f975).
+    */
+  def decode(n: Node, newest: ScriptKind)(using ByteStrings): Either[LedgerDecodeError, Script] =
+    def plutusOf(kind: ScriptKind, site: DecodeSite, bytes: Node) =
+      Either
+        .cond(kind.tag <= newest.tag, (), LedgerDecodeError.UnsupportedLanguage(kind, newest))
+        .flatMap(_ => CborRead.bytes(bytes, site))
+        .map(plutus(kind, _))
     CborRead.arrayN(n, 2, DecodeField.Script).flatMap { xs =>
       CborRead.uint(xs(0), DecodeField.ScriptType).flatMap {
-        case t if t == 0 => native(xs(1))
-        case t if t == 1 =>
-          CborRead.bytes(xs(1), DecodeField.PlutusV1).map(plutus(ScriptKind.PlutusV1, _))
-        case t if t == 2 =>
-          CborRead.bytes(xs(1), DecodeField.PlutusV2).map(plutus(ScriptKind.PlutusV2, _))
-        case t if t == 3 =>
-          CborRead.bytes(xs(1), DecodeField.PlutusV3).map(plutus(ScriptKind.PlutusV3, _))
-        case t => Left(LedgerDecodeError.UnknownTag(DecodeField.ScriptType, t))
+        // `[0, native_script]` is Alonzo's form, whose native scripts are time locks
+        case t if t == 0 => native(xs(1), NativeScript.Form.Timelock)
+        case t if t == 1 => plutusOf(ScriptKind.PlutusV1, DecodeField.PlutusV1, xs(1))
+        case t if t == 2 => plutusOf(ScriptKind.PlutusV2, DecodeField.PlutusV2, xs(1))
+        case t if t == 3 => plutusOf(ScriptKind.PlutusV3, DecodeField.PlutusV3, xs(1))
+        case t           => Left(LedgerDecodeError.UnknownTag(DecodeField.ScriptType, t))
       }
     }
 
   /** `#6.24(bytes .cbor script)` as stored in an output's reference-script field; the Plutus bytes
     * are dropped so the ledger state keeps one copy (the output's own encoding).
     */
-  def decodeWrapped(n: Node)(using ByteStrings): Either[LedgerDecodeError, Script] =
-    decodeWrappedWithBytes(n).map(_.copy(plutus = None))
+  def decodeWrapped(n: Node, newest: ScriptKind)(using
+      ByteStrings
+  ): Either[LedgerDecodeError, Script] =
+    decodeWrappedWithBytes(n, newest).map(_.copy(plutus = None))
 
   /** As [[decodeWrapped]], keeping the Plutus bytes. */
-  def decodeWrappedWithBytes(n: Node)(using ByteStrings): Either[LedgerDecodeError, Script] =
+  def decodeWrappedWithBytes(n: Node, newest: ScriptKind)(using
+      ByteStrings
+  ): Either[LedgerDecodeError, Script] =
     n.value match
       case Value.Tag(t, inner) if t == 24 =>
         CborRead
           .bytes(inner, DecodeField.ReferenceScript)
           .flatMap(CborRead.decode(_))
-          .flatMap(decode)
+          .flatMap(decode(_, newest))
       case _ => Left(LedgerDecodeError.ExpectedTag(DecodeField.ReferenceScript, 24, n.value))

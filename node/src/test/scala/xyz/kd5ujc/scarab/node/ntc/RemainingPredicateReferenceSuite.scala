@@ -122,6 +122,19 @@ class RemainingPredicateReferenceSuite extends FunSuite:
     }
   }
 
+  /** The failure the era's UTXO reports for a failure of Shelley's predicate, as captured. The
+    * capture calls `Shelley.validateOutputBootAddrAttrsTooBig` itself, before the era's UTXO
+    * injects its failure: from Allegra, `shelleyToAllegraUtxoPredFailure` makes
+    * `OutputBootAddrAttrsTooBig` (`[10, outputs]`, `Shelley/Rules/Utxo.hs`) Allegra's
+    * `OutputTooBigUTxO` (`[12, outputs]`) with the same outputs (`Allegra/Rules/Utxo.hs:351,387`,
+    * cardano-ledger f649f975; #832). The reference-refusal corpus records that injected failure
+    * from the node itself. `WrongNetwork` is the same constructor in both.
+    */
+  private def injected(era: Era, native: Bytes): Bytes =
+    if era != Era.Shelley && native.take(2) == Bytes(Vector(0x82, 0x0a).map(_.toByte)) then
+      Bytes(Vector(0x82, 0x0c).map(_.toByte)) ++ native.drop(2)
+    else native
+
   test("native early-era bootstrap predicates and exact NtC failure bytes match") {
     val fixtures = rows("outputs.json")
     assertEquals(fixtures.size, 36)
@@ -194,6 +207,6 @@ class RemainingPredicateReferenceSuite extends FunSuite:
             val ledger = array(list.original).headOption.getOrElse(fail("LEDGER error"))
             val utxow = array(ledger.original)(1)
             val utxo = array(utxow.original)(1)
-            assertEquals(utxo.original, hex(native), s"$major $name")
+            assertEquals(utxo.original, injected(era, hex(native)), s"$major $name")
     }
   }

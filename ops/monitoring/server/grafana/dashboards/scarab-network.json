@@ -411,8 +411,8 @@
     },
     {
       "type": "stat",
-      "title": "Manager established",
-      "description": "Connection-manager established entries. This separate layer is not the hot peer count.",
+      "title": "Manager negotiated",
+      "description": "Connection-manager entries whose handshake is done, in any use. This separate layer is not the hot peer count.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -423,7 +423,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (host, container) (scarab_connections{host=~\"$host\", container=~\"$container\", state=\"Established\"})",
+          "expr": "sum by (host, container) (max by (host, container, state) (scarab_connections{host=~\"$host\", container=~\"$container\", state=~\"OutboundUni|OutboundDup|OutboundIdle|InboundIdle|Inbound|Duplex\"}))",
           "legendFormat": "{{host}} {{container}}",
           "refId": "A",
           "instant": true
@@ -2442,7 +2442,7 @@
     {
       "type": "timeseries",
       "title": "Connection state distribution",
-      "description": "Reserved \u2192 Unnegotiated \u2192 Established \u2192 Terminating \u2192 Terminated entries. Terminated entries may be removed promptly. This transport state is distinct from peer temperature.",
+      "description": "The reference connection manager's states: ReservedOutbound, Unnegotiated, then OutboundUni, OutboundDup, OutboundIdle, InboundIdle, Inbound or Duplex by who uses the connection, then Terminating (time-wait) and Terminated. Terminated entries may be removed promptly. This transport state is distinct from peer temperature.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2498,7 +2498,7 @@
     {
       "type": "timeseries",
       "title": "Inbound, outbound and duplex",
-      "description": "Inbound and outbound count nonterminated manager entries by who opened them, including reservations and negotiation in progress. Duplex describes bidirectional protocol capability and overlaps the direction counts. Do not add duplex to a connection total.",
+      "description": "Counted as the reference counts them, by what each connection is used for now: a connection both sides use counts as inbound and as outbound, a reservation counts in neither and a closing one in neither. Duplex counts negotiated duplex connections and overlaps the direction counts. Do not add duplex to a connection total.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2571,8 +2571,8 @@
     },
     {
       "type": "timeseries",
-      "title": "Inbound session outcomes \u00b7 per minute",
-      "description": "Accepted, negotiated capability, following, ended/dropped, refused/closed inbound events. An outbound-only node can legitimately have no inbound event series.",
+      "title": "Inbound connection outcomes \u00b7 per minute",
+      "description": "Accepted, negotiated data flow, refused and closed inbound connections. An outbound-only node can legitimately have no inbound event series.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

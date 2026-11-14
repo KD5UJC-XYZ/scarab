@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.IO
 import cats.mtl.Ask
 import java.nio.file.{Files as JFiles, Path}
@@ -42,7 +44,9 @@ class MainnetPointerSnapshotSuite extends CatsEffectSuite:
 
   private val fixtures = Path.of("fixtures/eras")
   private val setup: NodeSetup =
-    NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(fixtures.resolve("genesis"))
+      .fold(e => fail(e.message), identity)
 
   /** The capture's configuration, on mainnet. */
   private val env: ConsensusMirrorEnv =
@@ -50,7 +54,8 @@ class MainnetPointerSnapshotSuite extends CatsEffectSuite:
     e.copy(ledger = e.ledger.copy(network = Mainnet))
 
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(env)
-  private val format: SnapshotFormat[IO, MirrorState] = SnapshotV8.format[IO](SnapshotCheck.Full)
+  private val format: SnapshotFormat[IO, MirrorState] =
+    SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
 
   /** The state after the first Shelley block of the capture. */
   private lazy val shelley: StateSnapshot[MirrorState] =

@@ -27,7 +27,7 @@ class ScriptResultOracleSuite extends FunSuite:
   cases.foreach { recorded =>
     test(s"${recorded.name}: unchanged reference results, every failure, traces and budgets") {
       val requests = recorded.collect.fold(es => fail(es.toString), identity)
-      val outcome = Phase2.run(requests, ScalusEvaluator.default)
+      val outcome = Phase2.run(requests, PlutusBackends.evaluator)
       val measured = report(outcome)
       val reference = field[Vector[Json]](recorded.oracle, "scripts")
       assertEquals(measured.scripts, reference.size)
@@ -92,7 +92,7 @@ class ScriptResultOracleSuite extends FunSuite:
     val last = requests.lastOption.getOrElse(fail("no requests"))._2
     val evaluator: ScriptEvaluator[Id] = request =>
       if request == last then EvalResult.Failure(limit, ExUnits.zero, Vector.empty)
-      else ScalusEvaluator.default.evaluate(request)
+      else PlutusBackends.evaluator.evaluate(request)
     Phase2.run(requests, evaluator) match
       case Phase2.Outcome.Unavailable(prefix, _, `limit`) =>
         assertEquals(prefix.scripts, 2)
@@ -104,7 +104,8 @@ class ScriptResultOracleSuite extends FunSuite:
     val defect = new IllegalStateException("aggregation backend defect")
     val last = requests.lastOption.getOrElse(fail("no requests"))._2
     val evaluator: ScriptEvaluator[Id] =
-      request => if request == last then throw defect else ScalusEvaluator.default.evaluate(request)
+      request =>
+        if request == last then throw defect else PlutusBackends.evaluator.evaluate(request)
     val actual = intercept[IllegalStateException](Phase2.run(requests, evaluator))
     assert(actual eq defect)
   }

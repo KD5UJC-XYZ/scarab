@@ -220,6 +220,12 @@ class StaleCurrentTest(DocsCase):
         kinds = self.kinds({"docs/x.md": doc, **self.FILES})
         self.assertNotIn(Kind.STALE_CURRENT, [k for k, _ in kinds])
 
+    def test_a_magic_past_nine_is_its_base_36_digit(self):
+        files = {**self.FILES, check_docs.PERSISTED_FORMAT_PATH:
+                 self.FORMAT + 'FormatVersion.V9 -> "SCRBSNP9",\nFormatVersion.V10 -> "SCRBSNPA"\n'}
+        doc = "The current magic is `SCRBSNPA`. Snapshots are currently `SCRBSNP9`.\n"
+        self.assertEqual(self.kinds({"docs/x.md": doc, **files}), [(Kind.STALE_CURRENT, "SCRBSNP9")])
+
     def test_no_format_register_means_no_magic_check(self):
         files = {k: v for k, v in self.FILES.items() if k != check_docs.PERSISTED_FORMAT_PATH}
         self.assertEqual(self.kinds({"docs/x.md": "currently `SCRBSNP5`\n", **files}), [])

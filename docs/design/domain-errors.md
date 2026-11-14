@@ -91,7 +91,7 @@ that meets it, and Scarab does the same in each place:
   submission). The reference evaluates `pureTryAddTx` in the submitting thread
   (`Mempool/Update.hs` 205 and 245) with no handler (`MiniProtocol/LocalTxSubmission/Server.hs`
   26–38; the peer path is `getMempoolWriter` in `Node/NodeKernel.hs`). The mux rethrows a
-  mini-protocol exception (network 2fb69829 `network-mux/src/Network/Mux.hs` 459–464) and the
+  mini-protocol exception (network c45735a5 `network-mux/src/Network/Mux.hs` 458–463) and the
   connection handler applies the rethrow policy (`ConnectionHandler.hs` 285–306), which is
   `ShutdownPeer` for an exception no policy names; the local policy adds nothing
   (`Diffusion.hs` 355, `Node/Node.hs` 812–813, `RethrowPolicy.hs` 64–70 and 99–103). Only that
@@ -243,7 +243,7 @@ the reporter logs it and the connection closes, with no fatal event, and the lis
 The local state acquisition invariant policy is described below.
 
 The reference traces non-cancellation server exceptions before rethrowing
-([network `2fb69829`, Server.hs:169–175](https://github.com/IntersectMBO/ouroboros-network/blob/2fb69829a19b5c04e4fb212bdd78fb63f9d2d776/ouroboros-network/framework/lib/Ouroboros/Network/Server.hs#L169)).
+([network `c45735a5`, Server.hs:169–175](https://github.com/IntersectMBO/ouroboros-network/blob/c45735a56c567fa977969173d18943bac6bb3821/ouroboros-network/framework/lib/Ouroboros/Network/Server.hs#L169)).
 Scarab expresses the node policy through typed values and its fatal reporter rather than thrown
 domain errors. Listener reporters are effect boundaries: their own failures propagate rather than
 being swallowed. Existing event fields, metrics and healthy-session wire behavior are preserved.
@@ -297,6 +297,19 @@ and malformed replacement credentials as operator refusals; other I/O failures a
 KES persistence emits its existing typed failure event and metric, then stops. A terminal key state
 prevents another run/reload fiber from signing while shutdown is being reported; repair requires a
 restart. The pure on-disk KES replacement/recovery protocol is unchanged.
+
+KES evolution keeps the requested relative period as `BigInt` through the signing boundary.
+`Sum6KesSigning.SigningKey.evolveTo` checks its 64-period lifetime before changing key material;
+`PeriodOutOfRange` retains the exact target. Configured certificate expiry is checked first and
+keeps the recoverable `CouldNotEvolve`/`KeyAlreadyPoisoned` sequence. Exhaustion inside that
+window instead becomes `Fatal.Internal(ForgeError.KesEvolution(...))`, retained by `HotKeys` so
+later signing or reload cannot continue. Reload compares the full-width target and consumes an
+evolution failure; forging events use the bounded period of the successfully evolved key.
+This mirrors the terminal outcome of pinned consensus `82ecba329`'s
+[`HotKey.hs:407–438`](https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/Ledger/HotKey.hs#L407):
+configured expiry poisons the key, but an in-window `updateKES` failure terminates the worker.
+The comparison is source-derived; it does not claim identical intermediate key erasure or reload
+timing. Scarab retains its existing eager evolution on reload and file persistence protocol.
 
 The reference links forging workers to their owner and recovers its explicit `CannotForge`,
 `ForgeStateUpdateError` and `NotLeader` cases

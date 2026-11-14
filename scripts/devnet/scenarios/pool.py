@@ -7,14 +7,16 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from .. import metrics as node_metrics
-from . import kes_rotate
-from ..cluster import database_mounts, freeze_classes, scala_container, start_nodes, start_reference
+from .. import eratx, ntcquery, reference_tracing
+from . import dynamic_forging, kes_rotate, pool_plutus
+from ..cluster import database_mounts, freeze_classes, scala_container, start_nodes, start_reference, wait_listening
 from ..compare import Comparisons, compare_or_error, whole_failures, whole_state
 from ..scenarios.relay import SCALA_PORT, log_counts, tip_at
 from .. import util
-from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, data_root, docker, in_ref, put_file, read_json, read_log, ref, scheduling_summary
+from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, adapt_reference_config, data_root, docker, event_time, in_ref, put_file, read_json, read_log, ref, scheduling_summary, spread
 
 
 # ---------------------------------------------------------------- the Scala node as a block producer
@@ -102,6 +104,7 @@ def pool_environment(args):
     """create-env, a short KES period and a system start a few seconds ahead; returns the node ports and the genesis as the network's clock sees it."""
     in_ref(args.name, f"cardano-testnet create-env --num-pool-nodes 3 --testnet-magic {MAGIC} "
                       f"--epoch-length {args.epoch_length} --output {ENV} > /work/create-env.log 2>&1")
+    adapt_reference_config(args.name, f"{ENV}/configuration.yaml")
     start = int(time.time()) + args.start_delay
     shelley = read_json(args.name, f"{ENV}/shelley-genesis.json")
     shelley["systemStart"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(start))
@@ -211,27 +214,276 @@ def slot_clock(events, shelley):
                                  if e["event"] == "extended" and e["block"]["hash"] not in mine])}
 
 
-def missed_leader_slots(events, schedules, shelley):
+FORGE_PHASES = ("toForged", "checkToForgedBlock", "leaderToForgedBlock", "forgedToAdopted", "adoptedLatency")
+
+
+def forge_timing(events, shelley, kinds=None):
+    """What the forger took in the slots it forged in, in milliseconds, per block: from the slot's start by the
+    genesis to `forged` (`toForged`); from `startLeadershipCheck` to `forgedBlock` of the same slot, which does not
+    depend on the slot clock (`checkToForgedBlock`); from `nodeIsLeader` to `forgedBlock`: the tick, the mempool's
+    revalidation and selection, the body and the signature (`leaderToForgedBlock`); from `forged` to
+    `adoptedBlock`: the node's own rules on the block and its commit (`forgedToAdopted`); and `adopted`'s own
+    `latencyMs`, slot start to adoption (`adoptedLatency`). Each as `spread`, over every forged block and, given
+    `kinds` ({hash: kind}, `pool_plutus.block_kinds`), over the blocks of each kind (`withPlutus`, `withoutPlutus`,
+    `unknown`; a block `kinds` does not name is unknown)."""
+    system_start = calendar.timegm(time.strptime(shelley["systemStart"], "%Y-%m-%dT%H:%M:%SZ"))
+    first = {}
+    for e in events:
+        if e["event"] in ("startLeadershipCheck", "nodeIsLeader", "forgedBlock", "adoptedBlock"):
+            first.setdefault((e["event"], e["slot"]), event_time(e))
+    latency = {e["block"]["hash"]: e["latencyMs"] for e in events if e["event"] == "adopted"}
+
+    def gap(start, end):
+        return None if start is None or end is None else (end - start) * 1000
+    blocks = []
+    for e in events:
+        if e["event"] != "forged":
+            continue
+        slot, at = e["slot"], event_time(e)
+        blocks.append((e["hash"], {
+            "toForged": (at - system_start - slot * shelley["slotLength"]) * 1000,
+            "checkToForgedBlock": gap(first.get(("startLeadershipCheck", slot)), first.get(("forgedBlock", slot))),
+            "leaderToForgedBlock": gap(first.get(("nodeIsLeader", slot)), first.get(("forgedBlock", slot))),
+            "forgedToAdopted": gap(at, first.get(("adoptedBlock", slot))),
+            "adoptedLatency": latency.get(e["hash"])}))
+
+    def phases(subset):
+        return {k: spread([b[k] for _, b in subset if b[k] is not None]) for k in FORGE_PHASES}
+    timing = {"all": phases(blocks)}
+    if kinds is not None:
+        for kind in (pool_plutus.WITH_PLUTUS, pool_plutus.WITHOUT_PLUTUS, pool_plutus.UNKNOWN):
+            timing[kind] = phases([b for b in blocks if kinds.get(b[0], pool_plutus.UNKNOWN) == kind])
+    return timing
+
+
+def rules_timing(name):
+    """From one scrape of the Scala node's `/metrics`, the mean time of its own block rules over every block it
+    applied, received or forged (`scarab_block_apply_seconds`), and of slot start to adoption of the blocks it
+    forged (`scarab_forge_adoption_seconds`), in ms with their counts; None when the scrape fails."""
+    got = node_metrics.scrape(name, QUERY_PORT)
+    if got is None:
+        return None
+    try:
+        samples = node_metrics.parse(got[1])
+    except ValueError:
+        return None
+
+    def mean(metric):
+        total, count = node_metrics.value(samples, f"{metric}_sum"), node_metrics.value(samples, f"{metric}_count")
+        return {"count": int(count), "meanMs": round(total / count * 1000, 1)} if count and total is not None else None
+    return {"blockApply": mean("scarab_block_apply_seconds"), "forgeAdoption": mean("scarab_forge_adoption_seconds")}
+
+
+def pool_trace_options(name):
+    """Give the Haskell pools, before they start, the trace options of `reference_tracing.POOL_TRACE_OPTIONS`: the
+    defaults of cardano-node 11.1.3 and `InvalidBlock`. A reference of another version is refused, as its defaults
+    may differ, and so is a configuration that already sets trace options."""
+    version = in_ref(name, "cardano-node --version").stdout
+    if not version.startswith(f"cardano-node {reference_tracing.REFERENCE_VERSION} "):
+        raise SystemExit(f"the pool scenarios' trace options are the defaults of cardano-node "
+                         f"{reference_tracing.REFERENCE_VERSION}; the reference is {version.strip()[:80]!r}")
+    path = f"{ENV}/configuration.yaml"
+    try:
+        config = reference_tracing.pool_configuration(read_json(name, path))
+    except ValueError as e:
+        raise SystemExit(str(e)) from e
+    put_file(name, path, json.dumps(config, indent=2))
+
+
+def read_reference_log(name, n):
+    """The lines of Haskell pool `n`'s log, or None when it cannot be read. The reference image has no grep; the log
+    is read through `cat`."""
+    with subprocess.Popen(["docker", "exec", ref(name), "cat", f"/work/node{n}.log"], stdout=subprocess.PIPE,
+                          stderr=subprocess.DEVNULL, text=True, errors="replace") as read:
+        lines = list(read.stdout)
+    return lines if read.returncode == 0 else None
+
+
+# Seconds the final read of the Haskell pools' logs may wait for its barrier (`drain_reference_logs`).
+DRAIN_TIMEOUT = 240
+REJECTED_TX = "Mempool.RejectedTx"
+
+
+def marker_transaction():
+    """A transaction every pool refuses, as it spends an output that does not exist, and that no other run makes:
+    (its bytes, the first eight hex digits of its id, which a pool's `Mempool.RejectedTx` trace shows as `tx.txid`)."""
+    key = eratx.Key(json.dumps({"cborHex": "5820" + os.urandom(32).hex()}))
+    tx, txid = eratx.build_tx("conway", [(os.urandom(32).hex(), 0)],
+                              [eratx.tx_out("conway", eratx.enterprise_address(key.hash), 2_000_000)], 200_000, [key])
+    return tx, txid[:8]
+
+
+def marker_seen(lines, marker):
+    """Whether the lines of a pool's log hold its `Mempool.RejectedTx` trace of the transaction `marker` names."""
+    for line in lines:
+        if marker not in line or REJECTED_TX not in line:
+            continue
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        tx = entry.get("data", {}).get("tx") if isinstance(entry, dict) and isinstance(entry.get("data"), dict) else None
+        if entry.get("ns") == REJECTED_TX and isinstance(tx, dict) and tx.get("txid") == marker:
+            return True
+    return False
+
+
+def drain_reference_logs(nodes, height, tip_of, submit, read, haskell_ports, cutoff, timeout=DRAIN_TIMEOUT,
+                         pause=1.0):
+    """({pool: `reference_tracing.log_view`}, None) of the Haskell pools' logs once they hold every trace a pool made
+    of what the Scala node sent, or (None, why). The Scala node has stopped at `cutoff` (the forging cutoff), so
+    `height`, the highest block number it forged, is final.
+      1. Each pool's tip (`tip_of`) is past it: chain selection validates none of its blocks again, as none can be a
+         better candidate than the pool's chain (and a block queued earlier was selected on before the tip moved).
+      2. Each pool's log (`read`, None when unreadable) shows every connection with the Scala node ended by the
+         connection handler's error (`reference_tracing.scala_sessions`): its ChainSync client, which validates the
+         Scala node's headers whatever the pool's tip, has then ended.
+      3. Each pool refuses a transaction made for the purpose (`submit`, which returns its marker), and its log is read
+         until that refusal's `Mempool.RejectedTx` is in it: a pool writes its traces in the order it made them,
+         through one queue and one writer (trace-dispatcher 2.13 `Tracer/Standard.hs`), so every earlier trace is in
+         the log too."""
+    deadline = time.monotonic() + timeout
+    for n in nodes:
+        while not ((tip := tip_of(n)) and tip["block"] > height):
+            if time.monotonic() > deadline:
+                return None, f"pool{n} did not pass block {height}, the Scala node's last, within {timeout} s"
+            time.sleep(pause)
+    sessions = {}
+    for n in nodes:
+        while True:
+            lines = read(n)
+            if lines is None:
+                return None, f"the log of pool{n} could not be read"
+            still, sessions[n] = reference_tracing.scala_sessions(lines, haskell_ports, cutoff)
+            if not still:
+                break
+            if time.monotonic() > deadline:
+                return None, f"pool{n} still shows connections with the Scala node open after {timeout} s: {still}"
+            time.sleep(pause)
+    views = {}
+    for n in nodes:
+        marker = submit(n)
+        while True:
+            lines = read(n)
+            if lines is None:
+                return None, f"the log of pool{n} could not be read"
+            if marker_seen(lines, marker):
+                views[f"pool{n}"] = {**reference_tracing.log_view(lines), "scalaConnectionsEnded": sessions[n]}
+                break
+            if time.monotonic() > deadline:
+                return None, f"the log of pool{n} did not show the refusal of the marker {marker} within {timeout} s"
+            time.sleep(pause)
+    return views, None
+
+
+def submit_marker(name, n):
+    """Submit a `marker_transaction` to Haskell pool `n` over LocalTxSubmission; its marker."""
+    tx, marker = marker_transaction()
+    try:
+        with ntcquery.LocalStateQuery(ref(name), f"{ENV}/socket/node{n}/sock", MAGIC, deadline=60) as session:
+            session.submit(tx)
+    except (RuntimeError, EOFError, OSError) as e:  # the drain then waits for a trace that does not come, and says so
+        print(json.dumps({"markerNotSubmitted": n, "error": repr(e)[:200]}), flush=True)
+    return marker
+
+
+def reference_invalid_blocks(views):
+    """{pool: the lines of its log that refuse something the Scala node sent, or a block} of the pools with any."""
+    return {pool: v["invalid"] for pool, v in views.items() if v["invalid"]}
+
+
+class ScheduleCollector:
+    """Takes the leadership schedule of every epoch from the cluster's start to the forging cutoff, in a thread of its
+    own: every `every` seconds it gives the observer's tip (`read_tip`) to `take`, which asks for the schedule of an
+    epoch it has none of. The reference answers `--current` only, and the scenario's own flow blocks for minutes at a
+    time (the start, the join gate, the Plutus load's last round, the settling, the comparisons) while the Scala node
+    forges. A reading that fails is the next one's to make; an epoch it never reaches is reported as absent."""
+
+    def __init__(self, read_tip, take, every=2.0):
+        self.read_tip, self.take, self.every = read_tip, take, every
+        self.errors = []
+        self.stopping = threading.Event()
+        self.thread = threading.Thread(target=self.run, daemon=True)
+
+    def start(self):
+        self.thread.start()
+        return self
+
+    def run(self):
+        while not self.stopping.is_set():
+            try:
+                self.take(self.read_tip())
+            except (Exception, SystemExit) as e:  # the collector's boundary: recorded, and the next reading goes on
+                self.errors.append(repr(e)[:200])
+            self.stopping.wait(self.every)
+
+    def stop(self, timeout=90):
+        """Stop after the reading under way; past `timeout` the thread is left to end on its own."""
+        self.stopping.set()
+        self.thread.join(timeout)
+
+
+def settled_tips(name, nodes, timeout=90, pause=1.0):
+    """{pool: tip} of the Haskell pools once they agree on the tip, or the last reading after `timeout` s."""
+    deadline = time.monotonic() + timeout
+    tips = {}
+    while time.monotonic() < deadline:
+        tips = {f"pool{n}": tip_at(name, f"{ENV}/socket/node{n}/sock") for n in nodes}
+        if all(tips.values()) and len({t["hash"] for t in tips.values()}) == 1:
+            break
+        time.sleep(pause)
+    return tips
+
+
+def forging_counters(name, fetch):
+    """The forger's own counters (`GET /forging`, read inside the Scala container by the script `fetch`), or (None,
+    what came instead)."""
+    got = docker("exec", f"{name}-scala", "python3", "-c", fetch, check=False, timeout=60)
+    try:
+        return json.loads(got.stdout), None
+    except ValueError:
+        return None, f"{got.stdout[:100]!r} {got.stderr[:200]!r}"
+
+
+def wait_joined(name, log, socket, timeout=pool_plutus.JOIN_TIMEOUT):
+    """Seconds until blocks and transactions crossed between the Haskell pools and the Scala node both ways
+    (`pool_plutus.joined`), the observer's tip read at `socket` and the Scala node's events from `log`."""
+    began, tips = time.monotonic(), set()
+    while time.monotonic() - began < timeout:
+        tip = tip_at(name, socket)
+        if tip:
+            tips.add(tip["hash"])
+        if pool_plutus.joined(log_counts(log)[1], tips):
+            return round(time.monotonic() - began, 1)
+        time.sleep(1)
+    raise SystemExit(f"blocks and transactions did not cross between the Haskell pools and the Scala node both ways "
+                     f"within {timeout} s: no Plutus load")
+
+
+def missed_leader_slots(events, schedules, shelley, excluded=None, until=None):
     """Check the Scala pool's forging against the reference node's `leadership-schedule`.
 
     A scheduled slot is accounted for when the pool forged in it, or when another pool's block occupies the slot
     (a slot battle it could not win, or a block that arrived first). Only the window in which the forger ran counts:
-    from the slot after its first synced block to two slots before the last log line. Returns a dict with the
-    scheduled count in the window, the missed slots, the slots lost to another pool's block, and the epochs of the
-    window without a schedule."""
+    from the slot after its first synced block to two slots before `until` (an ISO time: the forging cutoff, when the
+    scenario stopped the node; the events of its shutdown come later and do not lengthen the window) or, without it,
+    before the last log line, and without the slots of `excluded` (first, last; last None: to the end), when forging
+    was disabled. Returns a dict with the scheduled count in the window, the
+    missed slots, the slots lost to another pool's block, and the epochs of the window without a schedule."""
     forged = {e["hash"]: e["slot"] for e in events if e["event"] == "forged"}
     others = {e["block"]["slot"] for e in events if e["event"] == "extended" and e["block"]["hash"] not in forged}
     first = next((slot_at(shelley, e["at"]) for e in events if e["event"] == "extended"), None)
     if first is None:
         return {"window": None, "scheduled": 0, "missed": [], "missedReasons": {}, "occupied": [], "absentEpochs": []}
-    window = (first + 1, slot_at(shelley, events[-1]["at"]) - 2)
+    window = (first + 1, slot_at(shelley, until if until is not None else events[-1]["at"]) - 2)
     length = shelley["epochLength"]
     # The run ends at a time, not at an epoch boundary, so its last epoch may be only a few seconds long: the
     # reference node's schedule for it may not have been read yet (the query is retried at every sample). That
     # tail is left out of the window rather than failing the run; every earlier epoch of the window needs one.
     if window[1] // length not in schedules and window[1] // length > window[0] // length:
         window = (window[0], (window[1] // length) * length - 1)
-    scheduled = sorted(s for slots in schedules.values() for s in slots if window[0] <= s <= window[1])
+    scheduled = sorted(s for slots in schedules.values() for s in slots if window[0] <= s <= window[1]
+                       and not (excluded and excluded[0] <= s and (excluded[1] is None or s <= excluded[1])))
     mine = set(forged.values())
     started = {e["slot"] for e in events if e["event"] == "startLeadershipCheck"}
     # the trace that ended each slot the loop started without a block, by the reference's name
@@ -265,6 +517,12 @@ def kes_rotate_scenario(args):
     pool(args)
 
 
+def dynamic_forging_scenario(args):
+    """`pool` with forging switched off and on again by SIGHUP (see `scenarios/dynamic_forging.py`)."""
+    args.dynamic = True
+    pool(args)
+
+
 def pool(args):
     """Fresh 3-pool cluster in which pool `--pool` is the Scala node. Its Haskell node is never started
     (so no two producers ever hold the keys), the other two pools get the Scala node in their topology, and
@@ -279,10 +537,11 @@ def pool(args):
     others = [n for n in (1, 2, 3) if n != ours]
     observer = others[0]
     util.SOCKET = f"--testnet-magic {MAGIC} --socket-path {ENV}/socket/node{observer}/sock"
-    failures, summary, scala, loader = [], {}, None, None
+    failures, summary, scala, loader, plutus, plutus_evidence, joined_after = [], {}, None, None, None, None, None
     rotate = getattr(args, "rotate", False)  # the kes-rotate scenario: this run with the rotation driver
     sockets_dir = "ipc" if rotate else "scala-sock"  # the Scala node's node-to-client socket, in the run dir
     driver = kes_rotate.Driver(args, root) if rotate else None
+    toggle = None  # the dynamic-forging scenario: the credential files moved away and back
     load_at_start = host_load()
     comparisons, samples = [], []
     whole = Comparisons(root)
@@ -295,9 +554,19 @@ def pool(args):
                            whole_state(args.name, "conway", scala_socket=socket, anchor="reference", attempts=10))
 
     schedules = {}  # epoch -> the slots the oracle says the Scala pool leads
+
+    def take_schedule(seen):
+        # the reference answers `--current` only: the collector asks for the epoch of each tip it reads
+        if seen and seen["epoch"] not in schedules:
+            got = leadership_schedule(args.name, f"{ENV}/socket/node{observer}/sock", ours)
+            if got is not None:
+                schedules[seen["epoch"]] = got
+                print(json.dumps({"schedule": {"epoch": seen["epoch"], "slots": len(got)}}), flush=True)
     completed = False  # the run reached its verdict; an exception other than SystemExit leaves this False
+    collector = None
     try:
         ports, shelley = pool_environment(args)
+        pool_trace_options(args.name)
         (root / "ports.json").write_text(json.dumps(ports))
         pool_topology(args.name, others, {n: ports[n] for n in others})
         for f in ["shelley-genesis.json", "byron-genesis.json", "alonzo-genesis.json",
@@ -315,6 +584,11 @@ def pool(args):
                 path.write_bytes(raw)
                 path.chmod(0o600 if key == "kes.skey" else 0o400)  # the node writes the evolved KES key back
         start_nodes(args.name, tuple(others))
+        # every epoch's schedule, from now to the forging cutoff
+        collector = ScheduleCollector(lambda: tip_at(args.name, f"{ENV}/socket/node{observer}/sock"),
+                                      take_schedule).start()
+        # the Scala node dials the pools at once: it starts only once they listen (issue 609)
+        wait_listening(args.name, [ports[n] for n in others])
         classpath = freeze_classes(root)
         db = root / "scala-db"
         db.mkdir()
@@ -332,12 +606,18 @@ def pool(args):
         program += ["--local-socket", "/ipc/node.socket"]
         for n in others:
             program += ["--peer", f"127.0.0.1:{ports[n]}"]
+        if getattr(args, "plutus_vm", None):
+            program += ["--plutus-vm", args.plutus_vm]
         program += args.scala_flags.split()
         command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
                                   mounts=[f"{root / 'genesis'}:/genesis:ro", *database_mounts(db), f"{root / 'keys'}:/keys",
                                           f"{sockets}:/ipc"], name=f"{args.name}-scala")
         log = root / "follower.jsonl"
+        if getattr(args, "dynamic", False):
+            toggle = dynamic_forging.Toggle(args, root, log)
         scala = subprocess.Popen(["docker", *command], stdout=log.open("a"), stderr=subprocess.STDOUT, text=True)
+        if toggle:
+            toggle.during_startup(scala)
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             tip = tip_at(args.name, f"{ENV}/socket/node{observer}/sock")
@@ -356,6 +636,12 @@ def pool(args):
                                    "--socket", f"{ENV}/socket/node{observer}/sock", "--interval", str(args.interval),
                                    "--stats-every", "5"],
                                   stdout=(root / "load.log").open("w"), stderr=subprocess.STDOUT)
+        if getattr(args, "plutus_load", False):
+            joined_after = wait_joined(args.name, log, f"{ENV}/socket/node{observer}/sock")
+            print(json.dumps({"plutusLoadStarts": {"joinedAfterSeconds": joined_after}}), flush=True)
+            # funded from the delegator of a Haskell pool: the Scala pool's stake is left as it is
+            plutus = pool_plutus.Runner.against(args.name, root, f"{ENV}/socket/node{observer}/sock",
+                                                str(sockets / "node.socket"), others[-1]).start()
         started = time.monotonic()
         stop = started + args.seconds
         next_compare = started + 20
@@ -368,12 +654,8 @@ def pool(args):
             for n in others:
                 sample[f"pool{n}"] = tip_at(args.name, f"{ENV}/socket/node{n}/sock")
             samples.append(sample)
-            seen = sample[f"pool{observer}"]
-            if seen and seen["epoch"] not in schedules:
-                got = leadership_schedule(args.name, f"{ENV}/socket/node{observer}/sock", ours)
-                if got is not None:
-                    schedules[seen["epoch"]] = got
-                    print(json.dumps({"schedule": {"epoch": seen["epoch"], "slots": len(got)}}), flush=True)
+            if toggle:
+                toggle.due(time.monotonic() - started)
             counts, _, _ = log_counts(log)
             print(json.dumps({"t": sample["t"], **{k: v and (v["epoch"], v["block"], v["hash"][:10])
                                                   for k, v in sample.items() if k != "t"},
@@ -387,35 +669,43 @@ def pool(args):
         loader.terminate()
         loader.wait()
         loader = None
+        if plutus:
+            plutus_evidence = plutus.finish()
         if driver:
             driver.stop()
         # let the chain settle; every node must agree on the tip
-        def settled_tips():
-            deadline_ = time.monotonic() + 90
-            tips = {}
-            while time.monotonic() < deadline_:
-                tips = {f"pool{n}": tip_at(args.name, f"{ENV}/socket/node{n}/sock") for n in others}
-                if all(tips.values()) and len({t["hash"] for t in tips.values()}) == 1:
-                    break
-                time.sleep(1)
-            return tips
+        def settled():
+            return settled_tips(args.name, others)
 
-        final = settled_tips()
+        final = settled()
         for r in final_comparisons(lambda: compare_or_error(args.name)):
             comparisons.append(r)
             print(json.dumps({k: r.get(k) for k in ("tip", "matched", "differenceCount", "error")}), flush=True)
         compare_whole("final")
-        final = settled_tips()
+        final = settled()
         time.sleep(3)
         # the forger's own per-epoch counters (H5), from the query server (the Scala container's loopback)
         fetch = (f"import urllib.request,sys;sys.stdout.write(urllib.request.urlopen("
                  f"'http://127.0.0.1:{QUERY_PORT}/forging',timeout=10).read().decode())")
-        got = docker("exec", f"{args.name}-scala", "python3", "-c", fetch, check=False, timeout=60)
+        forging_stats, unread = forging_counters(args.name, fetch)
+        if unread:
+            failures.append(f"GET /forging gave no JSON: {unread}")
+        # what only the running Scala node answers, before the forging cutoff
+        metric_failures = pool_metrics_failures(args.name, forging_stats["total"], fetch) if forging_stats else []
+        rules = rules_timing(args.name)
+        # the collector's last reading, then one more, so that the epoch of the cutoff has its schedule
+        collector.stop()
+        take_schedule(tip_at(args.name, f"{ENV}/socket/node{observer}/sock"))
+        # the counters the log is held against, read again right before the cutoff (the scrapes took a while)
+        at_cutoff = forging_counters(args.name, fetch)[0] or forging_stats
+        # the forging cutoff: the Scala node stops (SIGTERM, as an operator stops it), so its log holds every block it
+        # forged and none comes after; the pools' logs are then read behind a barrier (`drain_reference_logs`)
+        cutoff = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+        docker("stop", "-t", "30", f"{args.name}-scala", check=False, timeout=90)
         try:
-            forging_stats = json.loads(got.stdout)
-        except ValueError:
-            forging_stats = None
-            failures.append(f"GET /forging gave no JSON: {got.stdout[:100]!r} {got.stderr[:200]!r}")
+            scala.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            failures.append("inconclusive: the Scala node did not stop at the forging cutoff")
         events, other = read_log(log)
         counts = {}
         for e in events:
@@ -460,15 +750,38 @@ def pool(args):
         load_lines = (root / "load.log").read_text().strip().splitlines()
         load_stats = next((json.loads(l) for l in reversed(load_lines) if l.startswith("{") and "submitted" in l), {})
         matched = [c for c in comparisons if c.get("matched")]
-        oracle = missed_leader_slots(events, schedules, shelley)
+        disabled = toggle.excluded(lambda at: slot_at(shelley, at)) if toggle else None
+        oracle = missed_leader_slots(events, schedules, shelley, excluded=disabled, until=cutoff)
+        vm = next((e.get("vm") for e in events if e["event"] == "plutusVm"), None)
+        height = max((e["blockNo"] for e in forged), default=-1)
+        logs, undrained = drain_reference_logs(
+            others, height, lambda n: tip_at(args.name, f"{ENV}/socket/node{n}/sock"),
+            lambda n: submit_marker(args.name, n), lambda n: read_reference_log(args.name, n),
+            {ports[n] for n in others}, cutoff)
+        if undrained:
+            failures.append(f"inconclusive: the Haskell pools' logs were not read behind the barrier: {undrained}")
+            logs = {}
+        # the blocks as the observing Haskell pool holds them after the cutoff, for the validity flags of the load
+        observed = None
+        if plutus:
+            try:
+                observed = pool_plutus.read_chain(args.name, f"{ENV}/socket/node{observer}/sock")
+            except (RuntimeError, EOFError, OSError) as e:
+                failures.append(f"the observer's chain could not be read: {e!r}")
+        # the Scala-forged blocks a Haskell pool named as invalid, and those one took as its tip
+        refused = set().union(*(v.get("refused", set()) for v in logs.values()))
+        adopted_by_pools = set().union(*(v.get("tips", set()) for v in logs.values()))
+        # each forged block by its own contents, a lost one too
+        kinds = None if plutus_evidence is None else pool_plutus.block_kinds(forged, observed, plutus_evidence)
         summary = {
-            "oracle": oracle,
+            "oracle": {**oracle, "scheduleCollectorErrors": collector.errors[:5]},
             "pool": {"id": pool_id, "number": ours, "stakeFraction": round(sigma, 4)},
             "slotsPerKesPeriod": POOL_KES_SLOTS,
             "forging": {"forged": len(forged), "adopted": len(adopted), "lost": len(lost),
                         "onFinalChain": len(on_chain), "kesEvolved": counts.get("kesEvolved", 0),
                         **{k_: counts.get(k_, 0) for k_ in ("startLeadershipCheck", "didntAdoptBlock",
-                                                           "noLedgerView", "slotIsImmutable", "blockFromFuture")
+                                                           "noLedgerView", "slotIsImmutable", "blockFromFuture",
+                                                           "kesFileAbsent", "kesWrittenByRename")
                            + FORGE_PROBLEMS}},
             "haskellBlocksMadeByPool": {"total": haskell_count, "perEpoch": per_epoch,
                                         "scalaBlocksOnChainUpToLastComparedTip": upto_compared},
@@ -492,6 +805,13 @@ def pool(args):
             "scheduling": scheduling_summary(events, log, args),
             "slotClock": slot_clock(events, shelley),
             "forgerStats": forging_stats,
+            "plutusVm": vm,
+            "forgeTiming": {**forge_timing(events, shelley, kinds), "rules": rules},
+            "referenceInvalidBlocks": reference_invalid_blocks(logs),
+            "referenceLogCounts": {pool: v.get("counts") for pool, v in logs.items()},
+            "referenceLogDrain": {"cutoff": cutoff, "scalaLastBlockNo": height, "drained": not undrained,
+                                  "unattributedRefusals": {pool: v["unattributed"] for pool, v in logs.items()},
+                                  "scalaConnectionsEnded": {pool: v["scalaConnectionsEnded"] for pool, v in logs.items()}},
         }
         if forging_stats:
             total = forging_stats["total"]
@@ -499,17 +819,18 @@ def pool(args):
             # slot's start. The slowest block is one outlier on a shared CI runner (passing runs saw
             # up to 462 ms against a mean near 25 ms at 100 ms slots).
             budget = 10 * shelley["slotLength"] * 1000
-            # the counters were read a moment before the log: the node may have forged one more block since
-            if not 0 <= len(forged) - total["forged"] <= 2 or total["leaderSlots"] < total["forged"]:
-                failures.append(f"the forger's counters ({total['forged']} forged of {total['leaderSlots']} led slots) "
+            # the counters were read right before the cutoff: the node may have forged one more block since
+            last = at_cutoff["total"]
+            if not 0 <= len(forged) - last["forged"] <= 2 or last["leaderSlots"] < last["forged"]:
+                failures.append(f"the forger's counters ({last['forged']} forged of {last['leaderSlots']} led slots) "
                                 f"disagree with the log ({len(forged)} forged blocks)")
-            if not 0 <= len(adopted) - total["adopted"] <= 2:
-                failures.append(f"the forger's counters say {total['adopted']} adopted, the log {len(adopted)}")
+            if not 0 <= len(adopted) - last["adopted"] <= 2:
+                failures.append(f"the forger's counters say {last['adopted']} adopted, the log {len(adopted)}")
             slowest = total["forgeLatencyMs"]["max"]
             if slowest is not None and slowest > budget:
                 failures.append(f"a block took {slowest} ms from its slot's start to adoption (budget {budget:.0f} ms)")
             print(json.dumps({"forgerStats": forging_stats}), flush=True)
-            failures += [f"metrics: {f}" for f in pool_metrics_failures(args.name, total, fetch)]
+            failures += [f"metrics: {f}" for f in metric_failures]
         if not forged:
             failures.append("the Scala node forged no block")
         if len(adopted) < len(forged) - len(lost):
@@ -529,6 +850,16 @@ def pool(args):
                             f"the Haskell ledger counts {haskell_count}")
         if not txs:
             failures.append("no transaction was included in a Scala-forged block")
+        if getattr(args, "plutus_vm", None) and vm != args.plutus_vm:
+            failures.append(f"the Scala node logged the Plutus evaluator {vm!r}, the run asked for {args.plutus_vm!r}")
+        if summary["referenceInvalidBlocks"]:
+            failures.append(f"a Haskell pool's log traces an invalid block or could not be read: "
+                            f"{summary['referenceInvalidBlocks']}")
+        if plutus and observed is not None:
+            plutus_failures, summary["plutus"] = pool_plutus.check(plutus_evidence, observed, forged, events, refused,
+                                                                   adopted_by_pools)
+            summary["plutus"]["joinedAfterSeconds"] = joined_after
+            failures += [f"plutus: {f}" for f in plutus_failures]
         if len(relative) < 2:
             failures.append("the KES key stayed in one period")
         if not (all(final.values()) and len({t["hash"] for t in final.values()}) == 1):
@@ -548,6 +879,10 @@ def pool(args):
             rotation_failures, summary["kesRotation"] = kes_rotate.check(args, root, events, forged, on_chain, counts,
                                                                        driver, observer)
             failures += [f"rotation: {f}" for f in rotation_failures]
+        if toggle:
+            toggle_failures, summary["dynamicForging"] = toggle.check(events, schedules,
+                                                                      lambda at: slot_at(shelley, at))
+            failures += [f"dynamic forging: {f}" for f in toggle_failures]
         if counts.get("error"):
             failures.append(f"{counts['error']} error events in the Scala log")
         for problem in FORGE_PROBLEMS:
@@ -569,8 +904,12 @@ def pool(args):
     except SystemExit as e:
         failures.append(str(e))
     finally:
+        if collector is not None:
+            collector.stop(timeout=5)
         if loader is not None:
             loader.terminate()
+        if plutus is not None:
+            plutus.load.stop.set()
         if driver:
             driver.stop()
         docker("rm", "-f", f"{args.name}-scala", check=False)

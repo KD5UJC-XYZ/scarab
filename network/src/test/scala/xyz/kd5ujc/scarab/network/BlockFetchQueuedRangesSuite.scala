@@ -25,7 +25,7 @@ class BlockFetchQueuedRangesSuite extends FailsOnUncaught:
 
   test("queued ranges preserve complete FIFO batches across NoBlocks before ClientDone"):
     // BlockFetch's request/response order is observable; the upstream client's scheduling is not.
-    // ouroboros-network 2fb69829, ouroboros-network/protocols/tests-lib/
+    // ouroboros-network c45735a5, ouroboros-network/protocols/tests-lib/
     // Ouroboros/Network/Protocol/BlockFetch/Test.hs:150-169.
     val first = Peers.point(1) -> Peers.point(2)
     val absent = Peers.point(3) -> Peers.point(4)

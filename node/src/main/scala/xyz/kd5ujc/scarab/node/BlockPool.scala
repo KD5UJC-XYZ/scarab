@@ -52,7 +52,7 @@ import scala.concurrent.duration.*
   * that a session waiting for such a claim waits for ever (issue 130).
   */
 final class BlockPool[F[_]: Async] private (
-    slots: Ref[F, BlockPool.Slots[F]],
+    slots: fs2.concurrent.SignallingRef[F, BlockPool.Slots[F]],
     policy: BlockPool.FetchPolicy,
     attribution: BlockPool.AttributionPolicy,
     private[node] val fetchCoordinator: FetchCoordinator[F],
@@ -265,14 +265,30 @@ final class BlockPool[F[_]: Async] private (
     */
   def take(hash: Bytes): F[Option[Bytes]] = takeFilled(hash).map(_.map(_.block))
 
+  /** A live fetched body once its delivery reaches the retained cache. Unlike [[take]], this waits
+    * even when no session has claimed the hash yet; tests use it before starting a client.
+    */
+  private[node] def awaitDelivered(hash: Bytes): F[Bytes] =
+    slots.discrete
+      .map(_.entries.get(hash))
+      .collect { case Some(Slot.Done(block, _, _)) => block }
+      .head
+      .compile
+      .lastOrError
+
   /** As [[take]], with the session that delivered the block. */
-  def takeFilled(hash: Bytes): F[Option[Filled]] =
+  def takeFilled(hash: Bytes): F[Option[Filled]] = takeFilled(hash, F.unit)
+
+  /** As [[takeFilled]]; `waiting` runs when the block is claimed and not yet delivered, so the
+    * caller waits for the session that claimed it. A test synchronizes on it.
+    */
+  private[node] def takeFilled(hash: Bytes, waiting: F[Unit]): F[Option[Filled]] =
     reap *> slots.modify { s =>
       s.entries.get(hash) match
         case Some(Slot.Done(block, _, origin)) =>
           (s, F.pure(Option(Filled(block, origin, s.headers.get(hash)))))
         case Some(Slot.Pending(done, _, _)) =>
-          (s, done.get)
+          (s, waiting *> done.get)
         case None =>
           (
             s,
@@ -481,6 +497,13 @@ final class BlockPool[F[_]: Async] private (
   /** Entries held (tests). */
   def size: F[Int] = slots.get.map(_.entries.size)
 
+  /** Whether a session holds a claim on `hash` that it has not filled: a taker of `hash` waits. */
+  private[node] def claimed(hash: Bytes): F[Boolean] =
+    slots.get.map(_.entries.get(hash).exists {
+      case _: Slot.Pending[F] => true
+      case _                  => false
+    })
+
   /** The bodies the pool holds in memory: those of the received cache and, without a received log,
     * those of the processed forest, each counted once.
     */
@@ -589,7 +612,7 @@ final class BlockPool[F[_]: Async] private (
 object BlockPool:
   /** Global fetching-peer targets and per-peer request credit, shared by both connection
     * directions. Preferred-peer handover follows the pinned policy's target exception. Production
-    * defaults are from `Cardano/Network/Diffusion/Configuration.hs:89-100` and
+    * defaults are from `Cardano/Network/Diffusion/Configuration.hs:85-96` and
     * `Cardano/Network/NodeToNode.hs:209-212` at the pinned ouroboros-network revision.
     */
   final case class FetchPolicy(
@@ -784,8 +807,8 @@ object BlockPool:
       selection: Option[F[ChainSelection.Local]] = None,
       recovered: Option[Recovered[F]] = None
   ): F[BlockPool[F]] =
-    Ref
-      .of[F, Slots[F]](Slots(Map.empty, 0L, 0L, Map.empty, 0, None))
+    fs2.concurrent
+      .SignallingRef[F, Slots[F]](Slots(Map.empty, 0L, 0L, Map.empty, 0, None))
       .flatMap(slots =>
         FetchCoordinator
           .create[F](

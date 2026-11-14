@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.network
 import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.codec.DomainError
 
-/** PeerStateActions.hs:PeerStatus and the requested transition that can fail (2fb69829). */
+/** PeerStateActions.hs:PeerStatus and the requested transition that can fail (c45735a5). */
 enum PeerStatus:
   case Cold, Cooling, Warm, Hot
 

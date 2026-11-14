@@ -10,7 +10,18 @@
    "dependents": [
     "scripts/prepare_reference_image.py",
     "scripts/oracle_compare.py",
-    "docs/conformance-source-review.md"
+    "docs/conformance-source-review.md",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
+   ]
+  },
+  {
+   "name": "cardano-node",
+   "repository": "IntersectMBO/cardano-node",
+   "version": "10.7.0",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-node/releases/tag/{version}",
+   "role": "Release notes cited by the reference-build naming rule: a full chain replay required inside the 10.x line (TablesCodecVersion1).",
+   "dependents": [
+    "docs/playbooks/add-a-reference-build.md"
    ]
   },
   {
@@ -24,7 +35,8 @@
     "fixtures/dijkstra-devnet/README.md",
     "scripts/devnet/dijkstra.py",
     "scripts/oracle/leios-testnet/cabal.project",
-    "scripts/oracle/leios-testnet/README.md"
+    "scripts/oracle/leios-testnet/README.md",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
    ]
   },
   {
@@ -35,7 +47,19 @@
    "role": "Conway governance/certificate conformance corpus and wallet-query encoders.",
    "dependents": [
     "node/src/test/resources/upstream/conway-govcert/manifest.json",
-    "fixtures/reference/wallet-queries/manifest.json"
+    "fixtures/reference/wallet-queries/manifest.json",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
+   ]
+  },
+  {
+   "name": "cardano-ledger",
+   "repository": "IntersectMBO/cardano-ledger",
+   "revision": "048b78d2807ce9644dbe483c605625824f6be88f",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-ledger/commit/{revision}",
+   "role": "cardano-ledger-binary of cardano-node 11.1.3 (released as 1.9.1.0; the release notes name it 1.9.0.1): IPv4 addresses in network order. Part of the 11.1 reference build's pins.",
+   "dependents": [
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala",
+    "docs/playbooks/add-a-reference-build.md"
    ]
   },
   {
@@ -70,7 +94,8 @@
     "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LeiosBlock.scala",
     "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos2.scala",
     "crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/PraosLeaderThreshold.scala",
-    "scripts/oracle/leios-praos2/README.md"
+    "scripts/oracle/leios-praos2/README.md",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
    ]
   },
   {
@@ -108,10 +133,10 @@
    "repository": "IntersectMBO/ouroboros-network",
    "revision": "2fb69829a19b5c04e4fb212bdd78fb63f9d2d776",
    "urlPattern": "https://github.com/IntersectMBO/ouroboros-network/commit/{revision}",
-   "role": "Protocol codec/behaviour test corpora and vendored network CDDL.",
+   "role": "Release merge of 2026-10-01 (network-mux 0.12.0.0, ouroboros-network and cardano-diffusion 1.3.0.0), in neither reference build and not the network reference since the owner's decision of 2026-11-13 (ADR 0008 amendment): the commit the protocol codec and behaviour test corpora and fixtures were exported from, as their manifests record; the amendment names the two whose sources differ from the reference revisions.",
    "dependents": [
     "fixtures/reference/ouroboros-network-protocol-codecs/keepalive.tsv.manifest.json",
-    "models/src/main/cddl/upstream/SOURCES"
+    "docs/adr/0008-networking-mirrors-ouroboros-network.md"
    ]
   },
   {
@@ -119,9 +144,32 @@
    "repository": "IntersectMBO/ouroboros-network",
    "revision": "c45735a56c567fa977969173d18943bac6bb3821",
    "urlPattern": "https://github.com/IntersectMBO/ouroboros-network/commit/{revision}",
-   "role": "Released peer-snapshot query encoders.",
+   "role": "network-mux 0.11.0.0, ouroboros-network 1.2.0.0 (its api, framework, protocols, tracing and orphan-instances sublibraries) and monoidal-synchronisation 0.1.0.8, as cardano-node 11.1.3 links them (CHaP builds each from this commit): the network reference of the 11.1 build (ADR 0008, amendment of 2026-11-13). Also the released peer-snapshot query encoders.",
    "dependents": [
+    "docs/adr/0008-networking-mirrors-ouroboros-network.md",
     "fixtures/reference/wallet-queries/manifest.json"
+   ]
+  },
+  {
+   "name": "ouroboros-network",
+   "repository": "IntersectMBO/ouroboros-network",
+   "version": "1.2.0.0",
+   "urlPattern": "https://github.com/IntersectMBO/ouroboros-network/tree/ouroboros-network-{version}",
+   "role": "The ouroboros-network release cardano-node 11.1.3 links (tag at c45735a56c567fa977969173d18943bac6bb3821).",
+   "dependents": [
+    "docs/adr/0008-networking-mirrors-ouroboros-network.md"
+   ]
+  },
+  {
+   "name": "ouroboros-network",
+   "repository": "IntersectMBO/ouroboros-network",
+   "revision": "c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167",
+   "urlPattern": "https://github.com/IntersectMBO/ouroboros-network/commit/{revision}",
+   "role": "cardano-diffusion 1.1.1.0 (its api, protocols, tracing and orphan-instances sublibraries), as cardano-node 11.1.3 links it (CHaP builds it from this commit): the network reference for cardano-diffusion files (ADR 0008, amendment of 2026-11-13), and the vendored network CDDL.",
+   "dependents": [
+    "docs/adr/0008-networking-mirrors-ouroboros-network.md",
+    "models/src/main/cddl/upstream/SOURCES",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ProtocolVersion.scala"
    ]
   },
   {
@@ -142,7 +190,18 @@
    "urlPattern": "https://github.com/IntersectMBO/ouroboros-consensus/commit/{revision}",
    "role": "Genesis-density test sources the native genesis fixtures mirror.",
    "dependents": [
-    "fixtures/reference/genesis-density/manifest.json"
+    "fixtures/reference/genesis-density/manifest.json",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
+   ]
+  },
+  {
+   "name": "ouroboros-consensus",
+   "repository": "IntersectMBO/ouroboros-consensus",
+   "version": "4.1.0.0",
+   "urlPattern": "https://github.com/IntersectMBO/ouroboros-consensus/releases/tag/release-ouroboros-consensus-{version}",
+   "role": "The consensus of cardano-node 11.1.0, cited for the GetGenesisConfig difference inside the 11.1 reference build.",
+   "dependents": [
+    "docs/playbooks/add-a-reference-build.md"
    ]
   },
   {
@@ -178,7 +237,8 @@
     "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LeiosBlock.scala",
     "scripts/oracle/leios-testnet/README.md",
     "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos2.scala",
-    "scripts/oracle/leios-praos2/README.md"
+    "scripts/oracle/leios-praos2/README.md",
+    "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
    ]
   },
   {
@@ -214,6 +274,20 @@
    "role": "Plutus conformance reference (tag 1.70.0.0) behind the reference node's package pin.",
    "dependents": [
     "docs/plutus-conformance.md"
+   ]
+  },
+  {
+   "name": "plutus",
+   "aliases": [
+    "plutus-core"
+   ],
+   "repository": "IntersectMBO/plutus",
+   "version": "1.71.0.0",
+   "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+   "urlPattern": "https://github.com/IntersectMBO/plutus/commit/{revision}",
+   "role": "Leios testnet reference: the build of the public Leios testnet (release rc-2026w44, #711): the plutus-core and plutus-ledger-api 1.71.0.0 its node binary links (CHaP index-state 2026-10-09), which define PlutusV4, case on Data and the protocol 12 semantics variants.",
+   "dependents": [
+    "plutus/src/test/resources/plutus-reference/releases.json"
    ]
   },
   {
@@ -289,13 +363,37 @@
   {
    "name": "kes-agent",
    "repository": "input-output-hk/kes-agent",
-   "version": "1.4.0.0",
-   "revision": "44fdcec892e2868053f964cad87fc32c590c81e4",
-   "urlPattern": "https://github.com/input-output-hk/kes-agent/tree/kes-agent-{version}",
-   "role": "Upstream KES agent: the Service:2.0 key-handover protocol, the 724-byte bundle encoding and the node-side client this design conforms to. Built by our two-stage recipe and republished as a test image.",
+   "version": "1.3.0.0",
+   "revision": "19ffbb01d4a6514b67af62d59b3cd4e0b4682beb",
+   "urlPattern": "https://github.com/input-output-hk/kes-agent/commit/{revision}",
+   "role": "Upstream KES agent at the version cardano-node 11.1.3 resolves (kes-agent ^>=1.3; the commit CHaP records for 1.3.0.0, which has no git tag): the Service:2.0 key-handover protocol, the 724-byte bundle encoding and the node-side client this design conforms to. Built by our two-stage recipe and republished as a test image.",
    "dependents": [
     "docs/design/kes-agent.md",
     "docs/adr/0024-adopt-the-upstream-kes-agent.md"
+   ]
+  },
+  {
+   "name": "kes-agent",
+   "repository": "input-output-hk/kes-agent",
+   "version": "1.4.0.0",
+   "revision": "44fdcec892e2868053f964cad87fc32c590c81e4",
+   "urlPattern": "https://github.com/input-output-hk/kes-agent/tree/kes-agent-{version}",
+   "role": "Citation source for the KES agent design's file paths: the newest tagged source, outside cardano-node 11.1.3's kes-agent ^>=1.3 range; its wire-relevant files match 1.3.0.0's. Not built or run.",
+   "dependents": [
+    "docs/design/kes-agent.md",
+    "docs/adr/0024-adopt-the-upstream-kes-agent.md"
+   ]
+  },
+  {
+   "name": "cardano-base",
+   "repository": "IntersectMBO/cardano-base",
+   "revision": "060819b59c184b951a54e3c563304983c53a3eac",
+   "urlPattern": "https://github.com/IntersectMBO/cardano-base/commit/{revision}",
+   "role": "Released 11.1.3 Sum6KES verification source, also retained by the original Sum6 fixture corpus.",
+   "dependents": [
+    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/OCertRules.scala",
+    "fixtures/sum6/README.md",
+    "docs/compatibility/consensus-praos-headers.md"
    ]
   }
  ]

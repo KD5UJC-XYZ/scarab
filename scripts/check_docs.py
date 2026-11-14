@@ -560,15 +560,16 @@ def check_pin_citations(doc: str, lines: Sequence[Line], pins: Sequence[Pin]) ->
 # A currency word this many characters or fewer from a citation calls the cited version current.
 CURRENT_PROXIMITY = 30
 CURRENT_WORD = re.compile(r"\b(?:latest|current|currently|now)\b", re.IGNORECASE)
-SNAPSHOT_MAGIC = re.compile(r"\bSCRBSNP(\d+)\b")
-SNAPSHOT_HISTORY = re.compile(r'FormatVersion\.V\d+\s*->\s*"SCRBSNP(\d+)"')
+# The last character of a magic is its format number as one base-36 digit: `SCRBSNP9` is 9, `SCRBSNPA` 10.
+SNAPSHOT_MAGIC = re.compile(r"\bSCRBSNP([0-9A-Z])\b")
+SNAPSHOT_HISTORY = re.compile(r'FormatVersion\.V\d+\s*->\s*"SCRBSNP([0-9A-Z])"')
 
 
 def current_snapshot_magic(repo: Repo) -> int | None:
     """The newest `SCRBSNP<n>` of the snapshot kind's history, or None when the register is not in the tree."""
     if PERSISTED_FORMAT_PATH not in repo.files:
         return None
-    numbers = [int(n) for n in SNAPSHOT_HISTORY.findall(repo.read(PERSISTED_FORMAT_PATH))]
+    numbers = [int(n, 36) for n in SNAPSHOT_HISTORY.findall(repo.read(PERSISTED_FORMAT_PATH))]
     return max(numbers) if numbers else None
 
 
@@ -595,7 +596,7 @@ def check_current_claims(doc: str, lines: Sequence[Line], pins: Sequence[Pin] | 
                     out.append(Violation(Kind.STALE_CURRENT, doc, f"{name} {version}", line.number))
         if magic is not None:
             for match in SNAPSHOT_MAGIC.finditer(text):
-                if int(match.group(1)) != magic and called_current(text, match.start(), match.end()):
+                if int(match.group(1), 36) != magic and called_current(text, match.start(), match.end()):
                     out.append(Violation(Kind.STALE_CURRENT, doc, f"SCRBSNP{match.group(1)}", line.number))
     return out
 

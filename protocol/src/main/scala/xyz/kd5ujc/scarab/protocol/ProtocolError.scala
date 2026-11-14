@@ -134,6 +134,7 @@ enum ProtocolError extends DomainError:
   case UnknownBlockFetchTag
   case UnknownByronSubtag
   case UnknownEraIndex
+
   case UnknownKeepAliveTagStateOrExactArity
   case UndecodableQuery
   case UnknownLocalStateQueryFailure

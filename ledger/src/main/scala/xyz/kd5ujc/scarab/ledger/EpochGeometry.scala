@@ -102,6 +102,12 @@ final case class EpochGeometry(
     */
   lazy val stabilityWindow: Word64 = windowOf(3)
 
+  /** `getTheSlotOfNoReturn` (cardano-ledger f649f975, `Slot.hs:106-114`): the first slot of the
+    * epoch after `epoch` less twice the stability window ([[EpochGeometry.slotOfNoReturn]]).
+    */
+  def slotOfNoReturn(epoch: BigInt): BigInt =
+    EpochGeometry.slotOfNoReturn(firstSlot(epoch + 1), stabilityWindow.toBigInt)
+
   /** 4k/f: randomness stabilisation window used by Praos nonce freezing, as
     * `computeRandomnessStabilisationWindow` (same file, 28-35).
     */
@@ -116,6 +122,15 @@ final case class EpochGeometry(
     Word64.fromUnsigned((Rational(factor * k) / activeSlotsCoeff.rational).ceil.toLong)
 
 object EpochGeometry:
+  /** `firstSlotNextEpoch *- Duration (2 * stabilityWindow)` (cardano-ledger f649f975,
+    * `Slot.hs:113`), computed exactly: `*-` is a monus that stops at slot 0 (`Slot.hs:62-64`). The
+    * reference doubles the window as a `Word64`, which wraps from a window of 2^63; Scarab does not
+    * reproduce that wrap (#825): an approved deviation, recorded in
+    * https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849.
+    */
+  def slotOfNoReturn(firstSlotNextEpoch: BigInt, stabilityWindow: BigInt): BigInt =
+    (firstSlotNextEpoch - 2 * stabilityWindow).max(0)
+
   /** The geometry of the Shelley genesis values. `securityParam` and `activeSlotsCoeff` are bounded
     * by their types as the reference's `FromJSON` reads them. A slot length and an epoch length
     * that are not positive are refused: an approved deviation, recorded in #474 (the reference

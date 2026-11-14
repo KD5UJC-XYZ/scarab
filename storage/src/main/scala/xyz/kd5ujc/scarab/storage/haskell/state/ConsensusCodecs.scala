@@ -6,8 +6,15 @@ import cats.syntax.eq.*
 import cats.syntax.show.*
 import xyz.kd5ujc.scarab.consensus.state.*
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.models.runtime.{Codec, ConstraintViolation, Decoded, Node, Writer}
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.models.runtime.{
+  Codec,
+  ConstraintViolation,
+  DecodeError,
+  Decoded,
+  Node,
+  Writer
+}
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era, StateLayout}
 
 import Envelope.*
 import Wire.*
@@ -21,7 +28,7 @@ trait ConsensusCodecs extends EpochStateCodecs:
   // ---- the ledger state of a Shelley-based era
 
   /** `ShelleyTip` (`Shelley/Ledger/Ledger.hs:828-840`): `[slot, block number, hash]`. */
-  given shelleyTip: Codec[ShelleyTip] = Record.auto[ShelleyTip]
+  given shelleyTip: Codec[ShelleyTip] = arrayIn(stateLayout, Record.auto[ShelleyTip])
 
   /** `ShelleyTransition` (`Ledger.hs:855-864`): a bare `Word32`. */
   given shelleyTransition: Codec[ShelleyTransition] =
@@ -32,19 +39,41 @@ trait ConsensusCodecs extends EpochStateCodecs:
   /** `PerasCertRound` (`SupportsPeras.hs:85`, a `Word64`). */
   given perasRound: Codec[PerasRoundNo] = word64.imap(PerasRoundNo(_))(_.word)
 
+  /** The fourth field of the Shelley ledger state in this codec's layout
+    * ([[ShelleyLedgerState.Layout]]): the latest Peras certificate round, a `StrictMaybe`
+    * (`encodeStrictMaybe`, 82ecba32 `Ledger.hs:866-912`), in the 11.1 layout; the cumulative
+    * transaction bytes, a `Word64` (`toCBOR`/`fromCBOR`, 2416493b `Ledger.hs:885-922`), in the
+    * Leios layout.
+    */
+  private val shelleyLedgerLayout: Codec[ShelleyLedgerState.Layout] =
+    new Codec[ShelleyLedgerState.Layout]:
+      private val round = strictMaybe(perasRound)
+      def decode(n: Node): Decoded[ShelleyLedgerState.Layout] = stateLayout match
+        case StateLayout.Node11_1 => round.decode(n).map(ShelleyLedgerState.Layout.Node11_1(_))
+        case StateLayout.Leios    => word64.decode(n).map(ShelleyLedgerState.Layout.Leios(_))
+      def encode(a: ShelleyLedgerState.Layout, out: Writer): Unit = a match
+        case ShelleyLedgerState.Layout.Node11_1(r) => round.encode(r, out)
+        case ShelleyLedgerState.Layout.Leios(b)    => word64.encode(b, out)
+      override def check(a: ShelleyLedgerState.Layout): Option[ConstraintViolation] =
+        ofThisLayout("ShelleyLedgerState", a)
+
   /** `LedgerState (ShelleyBlock proto era)` (`Ledger.hs:866-912`): `[2, [tip, new-epoch state,
-    * transition, latest Peras certificate round]]`. Only version 2 is read (the pinned decoder
-    * reads no other). The state is written at the era's own version (`toCBOR`, [[Versions]]).
+    * transition, fourth field]]`, the fourth by layout ([[shelleyLedgerLayout]]). Only version 2 is
+    * read (the decoders of both pins read no other). The state is written at the era's own version
+    * (`toCBOR`, [[Versions]]).
     */
   def shelleyLedgerState[E <: EraTag](using ShelleyBasedEra[E]): Codec[ShelleyLedgerState[E]] =
-    versioned(
+    versionedIn(stateLayout)(
       2,
-      Record.of[ShelleyLedgerState[E]](
-        (
-          withOriginMaybe(shelleyTip),
-          newEpochState[E],
-          shelleyTransition,
-          strictMaybe(perasRound)
+      arrayIn(
+        stateLayout,
+        Record.of[ShelleyLedgerState[E]](
+          (
+            withOriginMaybe(shelleyTip, stateLayout),
+            newEpochState[E],
+            shelleyTransition,
+            shelleyLedgerLayout
+          )
         )
       )
     )
@@ -78,16 +107,25 @@ trait ConsensusCodecs extends EpochStateCodecs:
     case Era.Alonzo  => readIn(ShelleyBasedEra.SAlonzo, n)
     case Era.Babbage => readIn(ShelleyBasedEra.SBabbage, n)
     case Era.Conway  => readIn(ShelleyBasedEra.SConway, n)
+    // the state of Dijkstra is not Conway's in this layout (its parameters, its EPOCH's committee)
+    case Era.Dijkstra =>
+      Left(DecodeError.at(n, DecodeError.Kind.Domain(DijkstraNotYet.LedgerState)))
 
   private def writeFileEra(a: LedgerFileEra, out: Writer): Unit = a match
     case LedgerFileEra.ByronItem(item) => originalItem.encode(item, out)
+    case LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(ShelleyBasedEra.SDijkstra, _)) =>
+      () // refused by `checkFileEra`; a decoded telescope never holds it
     case LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(era, state)) =>
       writeIn(era, state, out)
     case LedgerFileEra.Mirrored(EraLedgerState.ByronCurrent(_)) =>
       () // refused by `checkFileEra`; a decoded telescope never holds it
 
   private def checkFileEra(a: LedgerFileEra): Option[ConstraintViolation] = a match
-    case LedgerFileEra.ByronItem(_)                                      => None
+    case LedgerFileEra.ByronItem(_) => None
+    case LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(ShelleyBasedEra.SDijkstra, _)) =>
+      Some(
+        ConstraintViolation("LedgerFileEra", "the state of an era this build writes", "Dijkstra")
+      )
     case LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(era, state)) => checkIn(era, state)
     case LedgerFileEra.Mirrored(EraLedgerState.ByronCurrent(_)) =>
       Some(
@@ -126,7 +164,7 @@ trait ConsensusCodecs extends EpochStateCodecs:
     */
   given pbftState: Codec[PBftState] =
     val keyed = plainMapOf(keyHash[Genesis], signerSlots)
-    versioned(
+    versionedIn(stateLayout)(
       1,
       new Codec[PBftState]:
         def decode(n: Node): Decoded[PBftState] =
@@ -169,24 +207,33 @@ trait ConsensusCodecs extends EpochStateCodecs:
     * last slot is written by `encodeWithOrigin` (`[]` or `[slot]`), unlike Praos's (`toCBOR`).
     */
   given tpraosState: Codec[TPraosState] =
-    versioned(1, Record.of[TPraosState]((withOriginMaybe(slotNo), tpraosLedgerState)))
+    versionedIn(stateLayout)(
+      1,
+      arrayIn(
+        stateLayout,
+        Record.of[TPraosState]((withOriginMaybe(slotNo, stateLayout), tpraosLedgerState))
+      )
+    )
 
   /** `PraosState` (`Protocol/Praos.hs:281-308`): `[0, [last slot, counters, six nonces]]`, the
     * counters in the plain (definite-length) form.
     */
   given praosState: Codec[PraosState] =
-    versioned(
+    versionedIn(stateLayout)(
       0,
-      Record.of[PraosState](
-        (
-          withOriginTagged(slotNo),
-          plainMapOf(keyHash[BlockIssuer], word64),
-          nonce,
-          nonce,
-          nonce,
-          nonce,
-          nonce,
-          nonce
+      arrayIn(
+        stateLayout,
+        Record.of[PraosState](
+          (
+            arrayIn(stateLayout, withOriginTagged(slotNo)),
+            plainMapOf(keyHash[BlockIssuer], word64),
+            nonce,
+            nonce,
+            nonce,
+            nonce,
+            nonce,
+            nonce
+          )
         )
       )
     )

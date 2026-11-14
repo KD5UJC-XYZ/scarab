@@ -5,14 +5,16 @@
     "crypto": "Hashes, signatures, VRF, KES, BLS (jblst, with its start-up check), operational certificates",
     "protocol": "Pure Ouroboros mini-protocol codecs and state machines",
     "network": "Effectful bearer, multiplexer, connections, peer selection",
-    "plutus": "Plutus evaluation through Scalus",
+    "uplc": "Scarab's own UPLC evaluator, with no Scalus on its class path (ADR 0027)",
+    "plutus": "Plutus evaluation through Scalus, or through the own evaluator (--plutus-vm)",
     "ledger": "Blocks, transactions, rules, native ledger state",
     "consensus": "Praos family, chain selection, hard fork, state mirror",
     "storage": "Stores, snapshots, migrations, Haskell formats, SCLS, Mithril",
     "models-gen": "CDDL parser and Scala generator (build time)",
     "models": "Generated CDDL models runtime and equivalence tests",
     "node": "The node: wiring, mempool, forging, relay, node-to-client, tools",
-    "fuzz": "Structured fuzzing of decoder entry points (test only)"
+    "fuzz": "Structured fuzzing of decoder entry points (test only)",
+    "tools": "Programs run by hand, never as tests and never shipped: benchmarks, probes against a live peer, and the writers of committed fixtures and goldens; they use the modules' test kits"
   },
   "packages": [
     {
@@ -282,19 +284,277 @@
       ]
     },
     {
+      "module": "uplc",
+      "path": "uplc",
+      "responsibility": "Plutus data, execution units, language and cost-model parameter names; the term model (builtins with tags and type schemes, constants, terms with Traverse, stack-safe recursion schemes), semantics variants and availability of the own evaluator, with its decoder, machine, builtins and costing as they land",
+      "entryPoints": [
+        "PlutusData",
+        "ExUnits",
+        "PlutusLanguage",
+        "ParamNames",
+        "DefaultFun",
+        "Signature",
+        "DefaultUni",
+        "Constant",
+        "Value",
+        "Text",
+        "TermF",
+        "Term",
+        "Program",
+        "Fix",
+        "Schemes",
+        "SemanticsVariant",
+        "Availability"
+      ],
+      "suites": [
+        "NoScalusSuite",
+        "PlutusDataSuite",
+        "DefaultFunSuite",
+        "TermFLawsSuite",
+        "SchemesSuite",
+        "AvailabilitySuite",
+        "ValueSuite",
+        "ConstantSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
+      "module": "uplc",
+      "path": "uplc/bls",
+      "responsibility": "BLS12-381 constants of the own evaluator (G1 and G2 points as their compressed bytes, Miller-loop results with jblst's value) and the pure facade over jblst and Bouncy Castle that the builtins compute with",
+      "entryPoints": [
+        "G1Element",
+        "G2Element",
+        "MlResult",
+        "Bls12_381",
+        "BlsFailure"
+      ],
+      "suites": [
+        "ConstantSuite",
+        "Bls12_381Suite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
+      "module": "uplc",
+      "path": "uplc/cost",
+      "responsibility": "The reference's saturating integer, budgets, cost streams and the machine's step costs; the cost model: costing-function shapes of each semantics variant, argument measures, the costing of every builtin and the evaluation context from an on-chain cost-model list",
+      "entryPoints": [
+        "SatInt",
+        "ExBudget",
+        "CostStream",
+        "StepKind",
+        "MachineCosts",
+        "Costs",
+        "Model",
+        "CostingFun",
+        "BuiltinCostModel",
+        "BuiltinShapes",
+        "CekMachineCosts",
+        "Measure",
+        "BuiltinCosting",
+        "EvaluationContext",
+        "VariantCosts",
+        "CostModelApplyError",
+        "CostModelApplyWarn"
+      ],
+      "suites": [
+        "SatIntSuite",
+        "CostsSuite",
+        "MeasureSuite",
+        "CostModelSuite",
+        "CostingSuite",
+        "EvaluationContextSuite",
+        "CostingOracleSuite",
+        "CostingWithUnliftingSuite",
+        "ConformanceCostingSuite",
+        "CekConformanceSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
+      "module": "uplc",
+      "path": "uplc/builtin",
+      "responsibility": "The contract between the machine, the builtins and the costing: unlifting, denotations, costing functions and a saturated application in the reference's order",
+      "entryPoints": [
+        "Builtins",
+        "Prepared",
+        "Unlifting",
+        "Denotation",
+        "Denotations",
+        "Costing",
+        "CostingFunction",
+        "MachineValue",
+        "Argument",
+        "Outcome",
+        "BuiltinFailure"
+      ],
+      "suites": [
+        "BuiltinsSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
+      "module": "uplc",
+      "path": "uplc/builtin/core",
+      "responsibility": "The unlifting of every builtin under variants A to E with each variant's bounds, and the denotations of the core builtins (integers, byte strings, strings, Bool, unit, trace, pairs, lists, Data and its CBOR serialisation)",
+      "entryPoints": [
+        "CoreUnlifting",
+        "CoreDenotations",
+        "CoreVariant",
+        "UnsupportedVariant",
+        "DataSerialisation"
+      ],
+      "suites": [
+        "CoreUnliftingSuite",
+        "CoreDenotationsSuite",
+        "SerialiseDataSuite",
+        "UnliftingBoundsReferenceSuite",
+        "SliceByteStringReferenceSuite",
+        "DataReferenceSuite",
+        "CorpusCasesSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
+      "module": "uplc",
+      "path": "uplc/cek",
+      "responsibility": "The CEK machine of the own evaluator: a pure tail-recursive loop over the reference's transitions, values and their discharge, the skew-binary environment, counting and restricting budgets with the slippage, the caser of built-in constants, typed machine errors and the cats-mtl boundary",
+      "entryPoints": [
+        "CekMachine",
+        "MachineParameters",
+        "BudgetMode",
+        "BudgetState",
+        "CekResult",
+        "CekReport",
+        "CekEvaluated",
+        "CekFailed",
+        "CekValue",
+        "Env",
+        "CekError",
+        "CaseBuiltinError",
+        "CekFailure",
+        "Cause",
+        "CaserBuiltin"
+      ],
+      "suites": [
+        "CekMachineSuite",
+        "CekTermCorpusSuite",
+        "CekCoreBuiltinsSuite",
+        "CekDeepSuite",
+        "CekEvaluateSuite",
+        "EnvSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
+      "module": "uplc",
+      "path": "uplc/builtin/extended",
+      "responsibility": "The denotations of the hashes, the Ed25519, ECDSA and Schnorr verifications, the BLS12-381 builtins, the conversions and bitwise builtins, expModInteger, the Value builtins, the arrays and batch 7, with their typed failures and the reference's log lines",
+      "entryPoints": [
+        "ExtendedDenotations",
+        "Bitwise",
+        "Values",
+        "Hashes",
+        "Signatures",
+        "ExpMod",
+        "Arrays"
+      ],
+      "suites": [
+        "ExtendedCorpusSuite",
+        "Batch7Suite",
+        "ExtendedDenotationsSuite",
+        "BitwiseSuite",
+        "ValuesSuite",
+        "SignaturesSuite",
+        "WycheproofEcdsaSuite",
+        "Bls12_381Suite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
+      "module": "uplc",
+      "path": "uplc/flat",
+      "responsibility": "Script bytes to a program: the Flat decoder of programs, terms and constants with every refusal of the reference, and the ledger's deserialiseScript with its predicates, the remainder rule and the version check for evaluation",
+      "entryPoints": [
+        "SerialisedScript",
+        "ScriptDecodeError",
+        "FlatDecoder",
+        "Checks",
+        "FlatError",
+        "ConstantDecoder",
+        "TypeHeader",
+        "Input"
+      ],
+      "suites": [
+        "FlatDecoderSuite",
+        "SerialisedScriptSuite",
+        "FlatReferenceCorporaSuite",
+        "FlatConformanceSuite",
+        "OwnFlatDecoderParitySuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
+      "module": "uplc",
+      "path": "uplc/ledger",
+      "responsibility": "The ledger's evaluation of a script: mkTermToEvaluate (the arguments, the program's version, the scope check), the evaluation context of machines per variant, evaluateScriptRestricting and evaluateScriptCounting with the V3 unit rule, the per-language entry points, and no verdict for protocol 12 and later or for a defect of this evaluator",
+      "entryPoints": [
+        "LedgerEval",
+        "PlutusV1",
+        "PlutusV2",
+        "PlutusV3",
+        "LedgerContext",
+        "VariantMachine",
+        "Scope",
+        "FreeVariableError",
+        "EvaluationError",
+        "Stage",
+        "VerboseMode",
+        "Unavailability",
+        "LedgerOutcome",
+        "ScriptResult"
+      ],
+      "suites": [
+        "LedgerEvalSuite",
+        "LedgerBoundaryOracleSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
       "module": "plutus",
       "path": "plutus",
-      "responsibility": "Script evaluator algebra, Scalus adapter, Plutus data, execution units, builtin availability",
+      "responsibility": "Script evaluator algebra, the Scalus adapter and the adapter of the own evaluator (uplc), the backend choice of --plutus-vm, builtin availability; re-exports PlutusData, ExUnits, PlutusLanguage and ParamNames from uplc",
       "entryPoints": [
         "ScriptEvaluator",
         "ScalusEvaluator",
-        "PlutusData",
-        "ExUnits",
+        "ScarabEvaluator",
+        "PlutusVm",
         "PlutusAvailability",
         "RetryingMemo"
       ],
       "suites": [
         "ScalusEvaluatorSuite",
+        "ScarabEvaluatorSuite",
+        "PlutusBackendsSuite",
         "PlutusDataSuite",
         "PlutusAvailabilitySuite",
         "BuiltinCostingSuite",
@@ -303,6 +563,7 @@
       ],
       "docs": [
         "docs/adr/0003-plutus-through-scalus.md",
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md",
         "docs/adr/0018-parallel-plutus-after-ordered-preparation.md",
         "docs/design/parallel-plutus.md",
         "docs/design/script-results.md"
@@ -343,7 +604,8 @@
         "RatifySuite",
         "ScriptContextOracleSuite",
         "VotingProceduresSuite",
-        "WithdrawalContextsSuite"
+        "WithdrawalContextsSuite",
+        "PlutusBackendDifferentialSuite"
       ],
       "docs": [
         "docs/adr/0007-era-indexed-state.md",
@@ -377,14 +639,16 @@
     {
       "module": "ledger",
       "path": "ledger/dijkstra",
-      "responsibility": "Decoding of a Leios block's Dijkstra transactions at decoder version 12, as the Leios testnet's build reads them; no ledger rule",
+      "responsibility": "Decoding of Dijkstra transactions at decoder version 12, in the block and the mempool form, as the Leios testnet's build reads them, and the predicate failures of the Dijkstra rules",
       "entryPoints": [
         "DijkstraTx",
-        "V12"
+        "V12",
+        "DijkstraLedgerFailure"
       ],
       "suites": [
         "LeiosTestnetBlockReferenceSuite",
-        "DijkstraTxDepthSuite"
+        "DijkstraTxDepthSuite",
+        "DijkstraCodecsSuite"
       ],
       "docs": [
         "docs/leios.md"
@@ -425,7 +689,7 @@
     {
       "module": "ledger",
       "path": "ledger/rules",
-      "responsibility": "Shelley to Conway rule interpreter: LEDGER, UTXO, BBODY, epoch, tick, rewards, governance",
+      "responsibility": "Shelley to Conway rule interpreter: LEDGER, UTXO, BBODY, epoch, tick, rewards, governance; Dijkstra's BBODY, LEDGER, UTXOW, UTXO, CERT, POOL and GOV, reached from tests only",
       "entryPoints": [
         "Ledger",
         "Utxo",
@@ -436,7 +700,10 @@
         "Sts",
         "Gov",
         "Rewards",
-        "GenesisStart"
+        "GenesisStart",
+        "DijkstraBbody",
+        "DijkstraLedgerRule",
+        "DijkstraUtxow"
       ],
       "suites": [
         "BbodySuite",
@@ -445,7 +712,9 @@
         "EpochBoundarySuite",
         "RewardPulserSuite",
         "TxDependenciesSuite",
-        "DuplicateWithdrawalsLedgerSuite"
+        "DuplicateWithdrawalsLedgerSuite",
+        "DijkstraRulesSuite",
+        "DijkstraRulesOracleSuite"
       ],
       "docs": [
         "docs/design/rule-interpreter-as-built.md",
@@ -564,7 +833,7 @@
         "LedgerSnapshots",
         "UtxoStore",
         "RocksUtxoStore",
-        "SnapshotV8",
+        "SnapshotV10",
         "Migrate"
       ],
       "suites": [
@@ -574,7 +843,7 @@
         "UtxoStoreSuite",
         "LedgerSnapshotsSuite",
         "FormatMigrationSuite",
-        "SnapshotV8Suite"
+        "SnapshotV10Suite"
       ],
       "docs": [
         "docs/adr/0006-versioned-formats-migrate-on-open.md",
@@ -754,7 +1023,8 @@
         "ForgeSuite",
         "KesRotationSuite",
         "KeyFilesSuite",
-        "ForgerFailureSuite"
+        "ForgerFailureSuite",
+        "PlutusBackendBlockProbeSuite"
       ],
       "docs": [
         "docs/adr/0015-kes-key-written-back-and-checked-reload.md"
@@ -796,7 +1066,8 @@
         "MempoolSuite",
         "LocalSubmissionSuite",
         "LocalMonitorSuite",
-        "MempoolBackpressureSuite"
+        "MempoolBackpressureSuite",
+        "PlutusBackendProbeSuite"
       ],
       "docs": [
         "docs/architecture.md"
@@ -907,6 +1178,277 @@
         "docs/design/scls-interchange.md",
         "docs/design/mithril-bootstrap.md"
       ]
+    },
+    {
+      "module": "tools",
+      "path": "bench",
+      "responsibility": "Hand-run benchmarks for the `bench` package (its package, for its package-private access)",
+      "entryPoints": [
+        "CastErasureBench",
+        "FlatScanBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "codec",
+      "responsibility": "Hand-run benchmarks for the `codec` package (its package, for its package-private access)",
+      "entryPoints": [
+        "CborDecodeBench",
+        "TreeBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "consensus",
+      "responsibility": "Hand-run benchmarks for the `consensus` package (its package, for its package-private access)",
+      "entryPoints": [
+        "DecideBenchMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "crypto",
+      "responsibility": "Hand-run benchmarks for the `crypto` package (its package, for its package-private access)",
+      "entryPoints": [
+        "VerifyBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "crypto/bls",
+      "responsibility": "Hand-run benchmarks for the `crypto.bls` package (its package, for its package-private access)",
+      "entryPoints": [
+        "BlsBenchmark"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "ledger",
+      "responsibility": "Hand-run benchmarks for the `ledger` package, and the ledger-rules report of node-diversity-conformance: the corpus's transaction fixtures judged by the mempool's decoder and rules (its package, for its package-private access)",
+      "entryPoints": [
+        "ApplyBenchMain",
+        "DetachedRecordsBench",
+        "LedgerRulesMain",
+        "UtxoChangesBench"
+      ],
+      "suites": [
+        "LedgerRulesSuite"
+      ],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "ledger/state",
+      "responsibility": "Hand-run benchmarks for the `ledger.state` package (its package, for its package-private access)",
+      "entryPoints": [
+        "DiffBenchMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "models",
+      "responsibility": "Hand-run benchmarks, checks and comparisons for the `models` package (its package, for its package-private access)",
+      "entryPoints": [
+        "CuddleCrossCheck",
+        "DecodeBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "network",
+      "responsibility": "Hand-run benchmarks, probes for the `network` package (its package, for its package-private access)",
+      "entryPoints": [
+        "LeiosChainProbe",
+        "LeiosProbe",
+        "MuxThroughputBench",
+        "PeerSharingProbe"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node",
+      "responsibility": "Hand-run benchmarks, checks and comparisons for the `node` package (its package, for its package-private access)",
+      "entryPoints": [
+        "FiberBoundaryBench",
+        "HaskellScalaCompareMain",
+        "Memory94Main",
+        "PeerMetricsBench",
+        "PreviewRuleBench",
+        "SelectionReviewBenchmark"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node/differential",
+      "responsibility": "Hand-run checks and comparisons for the `node.differential` package (its package, for its package-private access)",
+      "entryPoints": [
+        "BoundaryTickMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node/governor",
+      "responsibility": "Hand-run checks and comparisons for the `node.governor` package (its package, for its package-private access)",
+      "entryPoints": [
+        "DebugMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node/log",
+      "responsibility": "Hand-run benchmarks for the `node.log` package (its package, for its package-private access)",
+      "entryPoints": [
+        "LogRouterBenchMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node/metrics",
+      "responsibility": "Hand-run fixture and golden writers for the `node.metrics` package (its package, for its package-private access)",
+      "entryPoints": [
+        "CatalogueTable"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node/ntc",
+      "responsibility": "Hand-run fixture and golden writers for the `node.ntc` package (its package, for its package-private access)",
+      "entryPoints": [
+        "NtcGoldenMain",
+        "WalletQueryCasesMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node/preview",
+      "responsibility": "Hand-run checks and comparisons for the `node.preview` package (its package, for its package-private access)",
+      "entryPoints": [
+        "K1OfflineMain"
+      ],
+      "suites": [
+        "K1OfflineMainSuite"
+      ],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node/read",
+      "responsibility": "Hand-run fixture and golden writers for the `node.read` package (its package, for its package-private access)",
+      "entryPoints": [
+        "ProjectionGoldenMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "node/tools",
+      "responsibility": "Hand-run benchmarks for the `node.tools` package (its package, for its package-private access)",
+      "entryPoints": [
+        "WarmBenchMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "plutus",
+      "responsibility": "Hand-run fixture and golden writers for the `plutus` package (its package, for its package-private access)",
+      "entryPoints": [
+        "BoundaryTransactionScriptsMain",
+        "BuiltinCostingCorpusMain",
+        "ConstrIndexCorpusMain",
+        "EqualsDataCorpusMain",
+        "FlatDecodeCorpusMain",
+        "PlutusBoundaryCorpusMain",
+        "SerialiseDataCorpusMain",
+        "SliceByteStringCorpusMain",
+        "UnliftingBoundsCorpusMain"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "protocol",
+      "responsibility": "Hand-run benchmarks for the `protocol` package (its package, for its package-private access)",
+      "entryPoints": [
+        "WireSkipBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "storage",
+      "responsibility": "Hand-run benchmarks, checks and comparisons, fixture and golden writers for the `storage` package (its package, for its package-private access)",
+      "entryPoints": [
+        "BenchCodecMain",
+        "InternDecodeBench",
+        "MemPackJoinMain",
+        "RewardSnapshotFixtureMain",
+        "SnapshotCodecBench",
+        "SnapshotV10FixtureMain",
+        "SnapshotV7FixtureMain",
+        "SnapshotV8FixtureMain",
+        "SnapshotV9FixtureMain",
+        "UtxoScanBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "storage/haskell/state",
+      "responsibility": "Hand-run benchmarks, checks and comparisons, fixture and golden writers for the `storage.haskell.state` package (its package, for its package-private access)",
+      "entryPoints": [
+        "HaskellStateDecodeBench",
+        "RealLedgerFileCheckMain",
+        "RewardLikelihoodCasesMain",
+        "RewardOracleCasesMain",
+        "RewardTimingCasesMain",
+        "SnapshotTablesBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "uplc",
+      "responsibility": "Hand-run benchmarks for the `uplc` package: the own CEK machine's throughput against Scalus's",
+      "entryPoints": [
+        "CekThroughputMain"
+      ],
+      "suites": [],
+      "docs": []
     }
   ]
 }

@@ -37,17 +37,19 @@ jobs:
           persist-credentials: false
       # Everything the fuzz project reads or runs: its own sources; the decoders it calls (codec, protocol with the
       # mini-protocol and mux codecs, ledger with the block, header, transaction, witness and script decoders, plutus
-      # for Plutus data, crypto for hashing, storage for persisted formats, and node for configuration, topology,
-      # node-to-client queries and mempool messages); the CDDL
-      # schemas and overrides it samples (models, models-gen); every committed fixture and fuzz seed (fixtures); and
-      # the build, the launcher and this workflow. Deliberately broad: a decoder missed here escapes the gate.
+      # for Plutus scripts, uplc for Plutus data, crypto for hashing, storage for persisted formats, consensus for the
+      # mirrored chain state, and node for configuration, topology, node-to-client queries and mempool messages); the
+      # CDDL schemas and overrides it samples (models, models-gen); every committed fixture and fuzz seed (fixtures);
+      # the upstream codec vectors it reads from network's test resources; and the build, the launcher and this workflow.
+      # Deliberately broad: a decoder missed here escapes the gate.
       - name: Decide whether decoders or fuzz inputs changed
         id: detect
         env:
           EVENT: ${{ github.event_name }}
         run: |
           paths=(
-            fuzz codec crypto protocol ledger plutus storage node models models-gen fixtures
+            fuzz codec crypto protocol ledger uplc plutus storage consensus node models models-gen fixtures
+            network/src/test/resources/upstream/ouroboros-network-protocol-codecs
             build.sbt project scripts/sbtw scripts/prepare_scalus.py patches/scalus
             .github/workflows/fuzz-gate.yml
           )

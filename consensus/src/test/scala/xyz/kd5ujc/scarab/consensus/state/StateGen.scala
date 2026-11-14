@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   BlockIssuer,
   BlockNo,
   Conway,
+  Dijkstra,
   EpochNo,
   EraTag,
   Genesis,
@@ -61,7 +62,7 @@ object StateGen:
       nes <- newEpochState[E]
       transition <- arb[ShelleyTransition]
       peras <- Gen.option(arb[PerasRoundNo])
-    yield ShelleyLedgerState[E](tip, nes, transition, peras)
+    yield ShelleyLedgerState[E](tip, nes, transition, ShelleyLedgerState.Layout.Node11_1(peras))
 
   /** The ledger state of `era`: Byron's, or a packed Shelley-based one. */
   def eraLedgerState(era: Era): Gen[EraLedgerState] =
@@ -72,12 +73,13 @@ object StateGen:
         Gen
           .oneOf(ByronState.initial, ByronState.initial.copy(firstShelleyEpoch = Some(BigInt(4))))
           .map(EraLedgerState.ByronCurrent(_))
-      case Era.Shelley => packed[Shelley]
-      case Era.Allegra => packed[Allegra]
-      case Era.Mary    => packed[Mary]
-      case Era.Alonzo  => packed[Alonzo]
-      case Era.Babbage => packed[Babbage]
-      case Era.Conway  => packed[Conway]
+      case Era.Shelley  => packed[Shelley]
+      case Era.Allegra  => packed[Allegra]
+      case Era.Mary     => packed[Mary]
+      case Era.Alonzo   => packed[Alonzo]
+      case Era.Babbage  => packed[Babbage]
+      case Era.Conway   => packed[Conway]
+      case Era.Dijkstra => packed[Dijkstra]
 
   private val nonce: Gen[Nonce] = arb[Nonce]
   private val lastSlot: Gen[WithOrigin[SlotNo]] = arb[WithOrigin[SlotNo]]
@@ -134,7 +136,7 @@ object StateGen:
       time <- Gen.choose(0L, 1000L)
       slot <- Gen.choose(0L, 1000L)
       epoch <- Gen.choose(0L, 1000L)
-    yield Bound(BigInt(time), BigInt(slot), BigInt(epoch))
+    yield Bound(BigInt(time), BigInt(slot), BigInt(epoch), Bound.Layout.Node11_1(None))
   )
 
   /** `n + 1` bounds, each after the one before. */
@@ -143,7 +145,7 @@ object StateGen:
       .listOfN(n + 1, Gen.choose(1L, 50L))
       .map(
         _.scanLeft(0L)(_ + _).tail.toVector
-          .map(k => Bound(BigInt(k) * 1000, BigInt(k), BigInt(k / 10)))
+          .map(k => Bound(BigInt(k) * 1000, BigInt(k), BigInt(k / 10), Bound.Layout.Node11_1(None)))
       )
 
   /** A telescope in `era` (so with `era.index` past eras), its state from `state`. */
@@ -156,7 +158,8 @@ object StateGen:
       .make(past, Current(bs(era.index), current))
       .fold(e => sys.error(e.show), identity)
 
-  val anyEra: Gen[Era] = Gen.oneOf(Era.values.toSeq)
+  /** An era a chain of this node can be in: not Dijkstra, which it does not enter yet (#54). */
+  val anyEra: Gen[Era] = Gen.oneOf(Era.values.toSeq.filter(_ != Era.Dijkstra))
 
   val cardanoLedgerState: Gen[CardanoLedgerState] = anyEra.flatMap(telescope(_, eraLedgerState))
 
@@ -191,7 +194,7 @@ object StateGen:
       ledger <- telescope(era, eraLedgerState)
       header <- headerState
       chainDep <- telescope(era, chainDepState)
-    yield ExtLedgerState(ledger, header.copy(chainDep = chainDep))
+    yield ExtLedgerState(ledger, header.copy(chainDep = chainDep), ExtLedgerState.Layout.Node11_1)
 
   // the instances of the tree
   given Arbitrary[NewEpochState[Conway]] = Arbitrary(newEpochState[Conway])
@@ -203,6 +206,12 @@ object StateGen:
   given Arbitrary[HeaderState] = Arbitrary(headerState)
   given Arbitrary[ExtLedgerState] = Arbitrary(extLedgerState)
   given Arbitrary[Option[PerasRoundNo]] = Arbitrary(Gen.option(arb[PerasRoundNo]))
+  given Arbitrary[ShelleyLedgerState.Layout] = Arbitrary(
+    Gen.oneOf(
+      Gen.option(arb[PerasRoundNo]).map(ShelleyLedgerState.Layout.Node11_1(_)),
+      arb[Word64].map(ShelleyLedgerState.Layout.Leios(_))
+    )
+  )
   given cardanoLedgerArbitrary: Arbitrary[Telescope[EraLedgerState]] = Arbitrary(cardanoLedgerState)
   given chainDepArbitrary: Arbitrary[Telescope[ChainDepState]] = Arbitrary(chainDepTelescope)
 
@@ -222,6 +231,7 @@ object StateGen:
   given cogen9: Cogen[HeaderState] = cogen
   given cogen10: Cogen[ExtLedgerState] = cogen
   given cogen11: Cogen[Option[PerasRoundNo]] = cogen
+  given cogen15: Cogen[ShelleyLedgerState.Layout] = cogen
   given cogen12: Cogen[WithOrigin[ShelleyTip]] = cogen
   given cogen13: Cogen[WithOrigin[SlotNo]] = cogen
   given cogen14: Cogen[WithOrigin[AnnTip]] = cogen

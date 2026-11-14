@@ -46,7 +46,8 @@ java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.nod
 
 # 3. The Haskell side: db-analyser over the node's ChainDB, one projection per epoch (Docker, parallel
 #    segments; 86400 slots per epoch on Preview). It works on hard-linked copies; --live first copies the
-#    finished chunks of a node that is still running.
+#    finished chunks of a node that is still running. A chain that begins with Byron epochs names them:
+#    preprod --epoch-slots 432000 --byron-epochs 4 --byron-epoch-slots 21600 (mainnet: --byron-epochs 208).
 python3 scripts/oracle_compare.py reference --config "$D/haskell-preview-config" --db "$D/haskell-preview-db" --live \
   --work "$D/preview-ref-work" --out "$D/preview-ref" --epoch-slots 86400 --jobs 5 --seed-every 60
 
@@ -61,6 +62,9 @@ snapshot load, one epoch of blocks and one snapshot write (5 s with a tiny state
 million UTxO entries); the snapshot is projected, the previous one deleted, and the projection written to
 `<out>/<slot>-<hash>.json` with a line in `<out>/index.jsonl`; a restart skips the epochs in the index.
 `db-analyser` needs a ChainDB of its own (it opens the newest chunk for writing), which `--work` holds.
+`--network-none` runs each `db-analyser` with Docker networking disabled, and `--full-ledger-validation`
+has it apply every block with the full ledger rules instead of reapplying it, as the reference-loading
+acceptance does ([haskell-snapshots.md](../design/haskell-snapshots.md) section 12).
 
 The Scala side does not need the network either: a Scala `--db` directory that holds only `immutable/` is
 replayed from genesis (about 200 to 1,100 blocks/s depending on load and era) and writes the same digests.

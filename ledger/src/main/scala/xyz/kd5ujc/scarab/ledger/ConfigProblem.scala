@@ -73,6 +73,10 @@ enum ConfigProblem:
   case Selection(context: String, value: String, allowed: Set[String])
   case ConflictingFields(fields: Set[String])
   case RenamedField(previous: String, current: String)
+
+  /** `MempoolCapacityBytesOverride` is neither a `Word32` number of bytes nor `NoOverride`, as
+    * cardano-node 11.1.3 reads it (`cardano-node/src/Cardano/Node/Configuration/POM.hs:475-487`).
+    */
   case MempoolCapacity(actual: io.circe.Json)
   case PeerTargets[E <: DomainError](cause: E)
   case PeerAddress[E <: DomainError](cause: E)
@@ -108,6 +112,15 @@ enum ConfigProblem:
   case AncillaryVerificationRequired
   case AncillaryKeyRequired
 
+  /** A `--reference-build` value that names no build this build knows. */
+  case ReferenceBuildUnknown(cause: xyz.kd5ujc.scarab.protocol.UnknownReferenceBuild)
+
+  /** A `--reference-build` value that names a build not implemented yet (#826). */
+  case ReferenceBuildNotYet(cause: xyz.kd5ujc.scarab.protocol.ReferenceBuildNotYet)
+
+  /** A `--plutus-vm` value that names no evaluator. */
+  case PlutusVmUnknown(cause: xyz.kd5ujc.scarab.plutus.UnknownPlutusVm)
+
   def message: String = this match
     case ActiveSlotsCoefficient(e)   => e.message
     case GenesisNumber(field, cause) => s"genesis ${field.key}: ${cause.message}"
@@ -123,13 +136,16 @@ enum ConfigProblem:
     case MissingField(context, field)     => s"$context: missing required field $field"
     case FileMissing(role, file)          => s"missing $role file $file"
     case FileRead(file, cause)            => s"cannot read $file: ${cause.getMessage}"
-    case UnknownFlag(flag)                => s"unknown flag $flag"
-    case DuplicateFlag(flag)              => s"duplicate flag $flag"
-    case MissingFlagValue(flag)           => s"flag $flag needs a value"
-    case UnexpectedArgument(value)        => s"unexpected argument $value"
-    case MissingFlag(flag)                => s"$flag is required"
-    case RemovedFlag(flag)                => s"--$flag was removed"
-    case FlagValue(flag, value)           => s"--${flag.stripPrefix("--")}: cannot use $value"
+    case InvalidPath(value, cause: java.nio.file.InvalidPathException) =>
+      s"cannot name the file $value: ${cause.getReason}"
+    case InvalidPath(value, cause) => s"cannot name the file $value: ${cause.getMessage}"
+    case UnknownFlag(flag)         => s"unknown flag $flag"
+    case DuplicateFlag(flag)       => s"duplicate flag $flag"
+    case MissingFlagValue(flag)    => s"flag $flag needs a value"
+    case UnexpectedArgument(value) => s"unexpected argument $value"
+    case MissingFlag(flag)         => s"$flag is required"
+    case RemovedFlag(flag)         => s"--$flag was removed"
+    case FlagValue(flag, value)    => s"--${flag.stripPrefix("--")}: cannot use $value"
     case FlagDependency(flags, required) =>
       s"${flags.toVector.sorted.mkString(", ")} need --$required"
     case LogSink(value)      => s"no sink $value (stdout, stderr, file)"
@@ -149,6 +165,11 @@ enum ConfigProblem:
       s"byron genesis avvmDistr: $value is not base64(url)"
     case AvvmKey(value, AvvmKeyError.Length(n)) =>
       s"byron genesis avvmDistr: $value is $n bytes, a redeem key is 32"
+    case ReferenceBuildUnknown(cause) => s"--reference-build: ${cause.message}"
+    case ReferenceBuildNotYet(cause)  => s"--reference-build: ${cause.message}"
+    case PlutusVmUnknown(cause)       => s"--plutus-vm: ${cause.message}"
+    case MempoolCapacity(actual) =>
+      s"configuration MempoolCapacityBytesOverride: ${actual.noSpaces} is neither a number of bytes from 0 to 4294967295 nor NoOverride"
     case WithUsage(cause, usage) => s"${cause.message}\n$usage"
     case _                       => toString
 
@@ -164,12 +185,13 @@ enum AvvmKeyError:
 
 /** A genesis file of the Shelley-based eras. */
 enum GenesisFile:
-  case Shelley, Alonzo, Conway
+  case Shelley, Alonzo, Conway, Dijkstra
 
   def label: String = this match
-    case Shelley => "Shelley"
-    case Alonzo  => "Alonzo"
-    case Conway  => "Conway"
+    case Shelley  => "Shelley"
+    case Alonzo   => "Alonzo"
+    case Conway   => "Conway"
+    case Dijkstra => "Dijkstra"
 
 /** Why the reference's genesis parser refuses a field ([[GenesisSchema]]). */
 enum GenesisFieldError:

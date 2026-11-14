@@ -32,7 +32,7 @@ restart were replaced on that day (#743); its chain no longer exists.
 | File | Provenance | Used by |
 |---|---|---|
 | `testnet/handshake-replies.tsv` | Four handshake replies of the relay: a version query reply and the acceptance of versions 14, 15 and 16 for an initiator-only client. First captured 2026-10-14 from the network before the restart; captured again 2026-11-03, byte for byte the same | `LeiosTestnetHandshakeSuite` |
-| `testnet/config/*.json` | The eight files of `https://book.play.dev.cardano.org/environments-pre/leios/` (the deployment of `input-output-hk/cardano-playground` `docs/environments-pre/leios/`), downloaded 2026-11-03 unchanged. The Blake2b-256 hashes `config.json` lists are those of the files (Byron over the canonical JSON) | `LeiosTestnetConfigSuite`, `LeiosHeaderChainSuite`; `peer-snapshot.json` (a version-23 big ledger peer snapshot) also `PeerSnapshotSuite`, `PeerSnapshotUseSuite` and the `peer-snapshot` fuzz target; the Byron, Shelley, Alonzo and Conway genesis files also the genesis oracles (`fixtures/reference/byron-genesis-data`, `fixtures/reference/genesis-fields`) |
+| `testnet/config/*.json` | The eight files of `https://book.play.dev.cardano.org/environments-pre/leios/` (the deployment of `input-output-hk/cardano-playground` `docs/environments-pre/leios/`), downloaded 2026-11-03 unchanged. The Blake2b-256 hashes `config.json` lists are those of the files (Byron over the canonical JSON) | `LeiosTestnetConfigSuite`, `LeiosHeaderChainSuite`; `peer-snapshot.json` (a version-23 big ledger peer snapshot) also `PeerSnapshotSuite`, `PeerSnapshotUseSuite` and the `peer-snapshot` fuzz target; the Byron, Shelley, Alonzo and Conway genesis files also the genesis oracles (`fixtures/reference/byron-genesis-data`, `fixtures/reference/genesis-fields`); the Dijkstra genesis also `DijkstraGenesisSuite`, `DijkstraParamsSuite` and its oracle (`fixtures/reference/dijkstra-genesis`) |
 | `testnet/headers-from-origin.tsv` | The first 1,100 ChainSync headers of the chain, from Origin (blocks 0 to 1,099, slots 16 to 21,870: epoch 0 and the start of epoch 1), as the relay sent them to an initiator-only client (version 14). Columns: HFC era index, block number, slot, header hash (Blake2b-256 of the header), the envelope `[era, tag24(header)]` in hex | `HfcHeaderSuite`, `LeiosHeaderChainSuite`, `LeiosTestnetHeaderSuite`, the fuzz corpus |
 | `testnet/headers-notable.tsv` | Four headers: block 0 (`first`), and three of a ChainSync from the relay's tip: block 64,849 (`announcing`, an endorser block announcement and no certificate) and blocks 64,850 and 64,854 (`certifying`, `certifying-2`, the certificate flag and an announcement). Columns: label, then as above | the same, `LeiosBlockSuite`, `LeiosNotifyCddlSuite` |
 | `testnet/blocks-rc-2026w44.tsv` | Five blocks fetched one at a time over BlockFetch: blocks 0, 1 and 8,562 (slot 174,310, after the peer snapshot's point), empty; block 64,850 (`certifying`, a Leios certificate and no transactions) and block 64,853 (`announcing-with-txs`, 83,896 bytes). Columns: label, block tag, block number, slot, header hash, the block `[tag, block]` in hex | `LeiosBlockSuite`, `LeiosTestnetBlockReferenceSuite` (through the corpus of `fixtures/reference/leios-testnet-blocks`), the fuzz corpus |
@@ -46,3 +46,10 @@ golden `LeiosVote` above.
 
 The test files are plain TSV so that a diff shows a changed byte. The headers and blocks are public
 chain data of a test network.
+
+## `state/` (#826: the Leios build's `state` layout)
+
+Two ledger snapshots a node of the Leios build wrote on a local devnet, the last Conway state and the
+first Dijkstra state, with their tables, metadata and genesis files: [their README](state/README.md).
+The `bls/` keys above are also the voting keys of the generated Leios-layout states
+(`LeiosGen`, storage tests).

@@ -16,7 +16,7 @@ import hashlib
 import threading
 import time
 
-from . import ntcquery
+from . import cborspan, ntcquery
 from .cbor import enc
 from .ntcquery import decode
 
@@ -88,6 +88,13 @@ def raw_tx_id(tx):
     return blake(tx[1:end])
 
 
+def has_redeemers(tx):
+    """Whether a transaction `[body, witnesses, is_valid, aux]` (its bytes) runs scripts: its witness set holds
+    redeemers (key 5)."""
+    witnesses = cborspan.children(tx, 0)[1]
+    return any(decode(tx, key[0])[0] == 5 for key in cborspan.children(tx, witnesses[0])[0::2])
+
+
 def tx_id(item):
     """The transaction id of a `[6, #6.24(tx)]` item."""
     value, _ = decode(item, 0)
@@ -106,6 +113,52 @@ def block_item(raw):
     """The block item of a raw `[2, block, tip]` message."""
     _, end = decode(raw, 2)
     return raw[2:end]
+
+
+def block_number(item):
+    """The block number of a block item `#6.24(bytes)` of `[era, [header, ...]]` (the header body's first field)."""
+    value, _ = decode(item, 0)
+    header, _ = decode(value.value, 3)
+    return header[0][0]
+
+
+def block_transactions(item):
+    """The transactions of a Shelley-based block item `#6.24(bytes)` of `[era, [header, bodies, witness sets,
+    auxiliary data, invalid indices]]`, in order, as (id hex, valid, plutus): the id is the hash of the body's
+    original bytes, `valid` is false for an index the block lists as invalid (the flag a block carries for
+    its transactions), and `plutus` is true when the witness set holds redeemers (key 5)."""
+    value, _ = decode(item, 0)
+    inner = value.value
+    block = cborspan.children(inner, cborspan.children(inner, 0)[1][0])
+    bodies = cborspan.children(inner, block[1][0])
+    witnesses = cborspan.children(inner, block[2][0])
+    invalid = set(decode(inner, block[4][0])[0]) if len(block) > 4 else set()
+    return [(blake(inner[start:end]).hex(), index not in invalid,
+             any(decode(inner, key[0])[0] == 5 for key in cborspan.children(inner, witness[0])[0::2]))
+            for index, ((start, end), witness) in enumerate(zip(bodies, witnesses))]
+
+
+def chain_from_origin(session):
+    """Every block of the chain of an open `Session`, from Origin to the tip the node reports when it sends
+    the last one, as (slot, header hash, block item), rollbacks applied. A rollback to a point that was not
+    received is refused (RuntimeError): what came before it is not known."""
+    if session.find_intersect([None])[0] != 5:
+        raise RuntimeError("no intersection at Origin")
+    blocks = []
+    while True:
+        reply, raw = session.request_next()
+        if reply[0] == 3:
+            to = reply[1]
+            kept = 0 if not to else next((i + 1 for i, b in enumerate(blocks) if b[1] == to[1]), None)
+            if kept is None:
+                raise RuntimeError(f"rollback to a point that was not received: {to}")
+            blocks = blocks[:kept]
+            continue
+        item = block_item(raw)
+        slot, ident = block_point(item)
+        blocks.append((slot, ident, item))
+        if ident == reply[2][0][1]:
+            return blocks
 
 
 # ------------------------------------------------------------------ LocalTxMonitor comparison

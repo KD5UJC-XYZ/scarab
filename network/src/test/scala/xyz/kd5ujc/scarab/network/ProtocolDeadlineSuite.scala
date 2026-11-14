@@ -128,7 +128,7 @@ class ProtocolDeadlineSuite extends FailsOnUncaught:
     }
 
   test(
-    "the server-side idle deadlines are the reference's: timeLimits* of ouroboros-network 2fb69829"
+    "the server-side idle deadlines are the reference's: timeLimits* of the 11.1.3 network packages"
   ):
     // TimeLimits.hs:59-60 with defaultChainSyncIdleTimeout 3373
     assertEquals(ChainSyncServer.Settings().idle, ProtocolDeadline.After(3373.seconds))

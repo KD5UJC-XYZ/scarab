@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import xyz.kd5ujc.scarab.node.WorkerTesting
 import scala.annotation.unused
-import cats.effect.{Deferred, IO, Ref, Resource}
-import cats.effect.std.Queue
+import cats.effect.{Deferred, IO, Outcome, Ref, Resource}
+import cats.effect.std.{Queue, Semaphore}
+import cats.effect.testkit.TestControl
 import cats.mtl.{Ask, Handle, Raise, Stateful}
 import cats.syntax.all.*
 import fs2.io.file.{Files, Path}
@@ -23,7 +26,7 @@ import xyz.kd5ujc.scarab.ledger.{IdentityProvenance, StoredNetworkIdentity}
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.ledger.NetworkIdentity
 import xyz.kd5ujc.scarab.ledger.NodeError
-import xyz.kd5ujc.scarab.ledger.{PeerError, StorageError}
+import xyz.kd5ujc.scarab.ledger.{ChainError, PeerError, StorageError}
 import xyz.kd5ujc.scarab.node.{Fatal, Follower, Main}
 import xyz.kd5ujc.scarab.node.log.NodeEvent
 import xyz.kd5ujc.scarab.consensus.BlockRules
@@ -60,10 +63,13 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private val files = Files.forAsync[IO]
 
   private val setup: NodeSetup =
-    NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(fixtures.resolve("genesis"))
+      .fold(e => fail(e.message), identity)
   private val geometry = setup.geometry
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-  private given SnapshotFormat[IO, MirrorState] = SnapshotV8.format[IO](SnapshotCheck.Full)
+  private given SnapshotFormat[IO, MirrorState] =
+    SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
   private val k = geometry.k.toInt
 
   private val raws: Vector[Bytes] =
@@ -106,7 +112,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       setup.globals,
       setup.byronRules,
       setup.handOver,
-      setup.byronHistory
+      setup.byronHistory,
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
     )
 
   /** Open the storage, follow blocks `[from, until)` with the real follower, wait for snapshots. */
@@ -170,6 +177,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 setup.byronRules,
                 setup.handOver,
                 setup.byronHistory,
+                xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
                 utxoStore = utxoStore
               )
             ChainStorage
@@ -232,8 +240,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                     .pool(follower)
                     .flatMap(blocks => WorkerTesting.follow(follower, blocks, peer, done.get))
                     .timeout(60.seconds)
-                  // Snapshots are written in the background; let them land.
-                  _ <- IO.sleep(500.millis)
+                  // snapshots are written in the background: they land before the state is read
+                  _ <- recovered.snapshotsWritten.timeout(60.seconds)
                   chain <- chainRef.get
                   all <- utxoStore.fold(IO.pure(chain.state.utxo.toMap))(s =>
                     UtxoStore.materialize(s, chain.state.utxo)
@@ -460,7 +468,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       }
     }
 
-  test("a snapshot whose UTxO checkpoint is missing is skipped, the older one is used") {
+  test("a snapshot whose UTxO checkpoint is missing stops the start, and nothing is deleted") {
+    // the reference's missing tables file raises from readIncremental (82ecba32 Util/CBOR.hs:206),
+    // outside the failures tryNewestFirst falls back on: a briefly absent mount never deletes state
     tempDir.use { dir =>
       for
         log1 <- events(dir)
@@ -474,17 +484,200 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           )
         )
         log2 <- events(dir)
-        again <- runWith(dir, 650, 120, log2, Some("rocksdb"))
+        again <- runWith(dir, 650, 120, log2, Some("rocksdb")).attempt
+        after <- snapshotsIn(dir)
         e2 <- log2.get
-        _ <- IO(
-          assertEquals(
-            e2.collect { case e: StorageEvent.SnapshotSkipped => e.name }.toList,
-            List(snaps.head.fileName.toString)
+        _ <- IO {
+          assert(
+            again.left.exists(_.getMessage.contains("checkpoint directory does not exist")),
+            again.toString
           )
-        )
-        _ <- IO(sameLedger(again._2.state, states(650)))
-        _ <- IO(assertEquals(again._3, states(650).utxo.toMap))
+          assertEquals(after, snaps)
+          assert(!e2.exists(_.isInstanceOf[StorageEvent.SnapshotDeleted]))
+        }
       yield ()
+    }
+  }
+
+  test("a migrated snapshot whose checkpoint mixes key layouts is deleted at its restore") {
+    // its Legacy binding admits it by its directory; the keys refuse at the restore, which the
+    // fallback treats as tables that do not decode (82ecba32 API.hs:625-631)
+    tempDir.use { dir =>
+      for
+        left <- checkpointDatabase(dir, CheckpointLayout.BeforeK6, 600, 60, 4, 1, previous = true)
+        _ <- IO(assert(left.size >= 2, s"snapshots left: ${left.size}"))
+        newest = FileLedgerSnapshots.nameOf(left.head)
+        _ <- IO {
+          org.rocksdb.RocksDB.loadLibrary()
+          val options = new org.rocksdb.Options()
+          val db = org.rocksdb.RocksDB.open(options, checkpointOf(dir, newest).toNioPath.toString)
+          try db.put(Array.fill[Byte](34)(7), Array[Byte](1))
+          finally
+            db.close()
+            options.close()
+        }
+        log <- events(dir)
+        _ <- runWith(dir, 731, 120, log, Some("rocksdb"), 4, migrate = true)
+        seen <- log.get
+        snapshotLeft <- IO.blocking(JFiles.exists((dir / "snapshots" / newest).toNioPath))
+        checkpointLeft <- IO.blocking(JFiles.exists(checkpointOf(dir, newest).toNioPath))
+      yield
+        val skipped = seen.collect { case StorageEvent.SnapshotSkipped(name, e) => name -> e }
+        assertEquals(skipped.map(_._1).toList, List(newest))
+        skipped.headOption.map(_._2) match
+          case Some(StorageError.UtxoCheckpoint(_, CheckpointProblem.MixedKeyLayouts)) => ()
+          case other => fail(s"expected mixed key layouts, got $other")
+        assertEquals(
+          seen.collect { case StorageEvent.SnapshotDeleted(name) => name }.toList,
+          List(newest)
+        )
+        assertEquals(
+          seen.collect { case StorageEvent.SnapshotRestored(_, a) => a }.toList,
+          List(left.lift(1))
+        )
+        assert(!snapshotLeft && !checkpointLeft)
+    }
+  }
+
+  /** `inside` run while the database in `dir` is open over RocksDB, before any block is followed.
+    */
+  private def whileOpen[A](dir: Path, log: Ref[IO, Vector[StorageEvent]])(inside: IO[A]): IO[A] =
+    Handle
+      .allow[NodeError] {
+        RocksUtxoStore
+          .resource[IO](dir / "utxo" / "live", 8L * 1024 * 1024)
+          .use { store =>
+            ChainStorage
+              .open[IO, MirrorState](
+                dir,
+                config(120, 4),
+                MirrorRules[IO](
+                  setup.praos,
+                  setup.globals,
+                  setup.byronRules,
+                  setup.handOver,
+                  setup.byronHistory,
+                  xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
+                  utxoStore = Some(store)
+                ),
+                setup.mirrorStart,
+                storageEvents(log),
+                new UtxoBacking[IO, MirrorState](store, dir / "utxo" / "checkpoints"),
+                _ => IO.unit
+              )
+              .use(_ => inside)
+          }
+          .map(_.asRight[NodeError])
+      }
+      .rescue(e => IO.pure(e.asLeft))
+      .flatMap(_.fold(e => IO.raiseError(new AssertionError(e.message)), IO.pure))
+
+  /** What a start stopped between deleting a snapshot and trimming its checkpoint leaves. */
+  private def orphanOf(dir: Path): Path =
+    dir / "utxo" / "checkpoints" / "snapshot-00000000000000000001-1"
+
+  test("a checkpoint no snapshot lists is removed when the database opens") {
+    tempDir.use { dir =>
+      val orphan = orphanOf(dir)
+      for
+        log1 <- events(dir)
+        _ <- runWith(dir, 600, 60, log1, Some("rocksdb"))
+        _ <- IO.blocking(JFiles.createDirectories(orphan.toNioPath))
+        log2 <- events(dir)
+        // before any block is followed or any snapshot written
+        left <- whileOpen(dir, log2)(IO.blocking(JFiles.exists(orphan.toNioPath)))
+      yield assert(!left, s"$orphan is still there once the database is open")
+    }
+  }
+
+  test("a checkpoint that cannot be deleted at the start is reported and the start goes on") {
+    // the reference's deletion of a temporary snapshot directory, tables included, is best effort
+    // (82ecba32 Snapshots.hs:316-330)
+    tempDir.use { dir =>
+      val orphan = orphanOf(dir)
+      val locked = java.nio.file.attribute.PosixFilePermissions.fromString("r-xr-xr-x")
+      val open = java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x")
+      for
+        log1 <- events(dir)
+        _ <- runWith(dir, 600, 60, log1, Some("rocksdb"))
+        snaps <- snapshotsIn(dir)
+        _ <- IO.blocking {
+          JFiles.createDirectories(orphan.toNioPath)
+          JFiles.write((orphan / "CURRENT").toNioPath, Array[Byte](1))
+          JFiles.setPosixFilePermissions(orphan.toNioPath, locked)
+        }
+        log2 <- events(dir)
+        restoredWhileOpen <- whileOpen(dir, log2)(
+          log2.get.map(_.collect { case StorageEvent.SnapshotRestored(name, _) => name })
+        ).guarantee(IO.blocking(JFiles.setPosixFilePermissions(orphan.toNioPath, open)).void)
+        seen <- log2.get
+        left <- IO.blocking(JFiles.exists(orphan.toNioPath))
+      yield
+        assertEquals(restoredWhileOpen.toList, List(snaps.head.fileName.toString))
+        assertEquals(
+          seen.collect { case StorageEvent.CheckpointNotDeleted(name, _) => name }.toList,
+          List(orphan.fileName.toString)
+        )
+        assert(seen.collect { case StorageEvent.CheckpointNotDeleted(_, e) => e }.forall {
+          case _: StorageError.Io => true
+          case _                  => false
+        })
+        assert(left)
+    }
+  }
+
+  /** Whether block `i` changed the UTxO set: a Shelley-based block whose changes carry its number.
+    */
+  private def changesUtxo(i: Int): Boolean = headers(i) match
+    case _: Header.Shelley =>
+      states(i + 1).utxo.diff.exists(_._2.stamp == headers(i).blockNo.toLong)
+    case _ => false
+
+  private def exported(
+      dir: Path,
+      out: Path,
+      anchor: BlockRef
+  ): IO[Either[LedgerSnapshotExport.Error, LedgerSnapshotExport.Report]] =
+    val slot = xyz.kd5ujc.scarab.ledger.state.SlotNo
+      .fromBigInt(anchor.slot)
+      .fold(e => fail(e.toString), identity)
+    Handle
+      .allow[LedgerSnapshotExport.Error](
+        LedgerSnapshotExport
+          .run[IO](LedgerSnapshotExport.Config(dir, out, Some(slot)))
+          .map(_.asRight[LedgerSnapshotExport.Error])
+      )
+      .rescue(e => IO.pure(Left(e)))
+
+  // In this chain only eight Shelley-based blocks change the UTxO set, so nearly every snapshot is
+  // of a block that changed nothing, the shutdown snapshots among them.
+  test("every snapshot exports, the shutdown one included, also of a block that changed no UTxO") {
+    tempDir.use { root =>
+      val dir = root / "db"
+      for
+        log1 <- events(dir)
+        _ <- runWith(dir, 500, 120, log1, Some("rocksdb"), keep = 100)
+        log2 <- events(dir)
+        second <- runWith(dir, 731, 120, log2, Some("rocksdb"), keep = 100)
+        e1 <- log1.get
+        e2 <- log2.get
+        written = (e1 ++ e2).collect { case StorageEvent.SnapshotWritten(_, Some(a), _, _) => a }
+        shutdowns = (e1 ++ e2).collect { case StorageEvent.ShutdownSnapshot(Some(a), true) => a }
+        restored = e2.collectFirst { case StorageEvent.SnapshotRestored(_, a) => a }.flatten
+        results <- written.distinct.traverse(a => exported(dir, root / "out", a).map(a -> _))
+      yield
+        assertEquals(shutdowns.map(_.blockNo), Vector(BigInt(500 - k - 1), BigInt(731 - k - 1)))
+        assert(shutdowns.forall(a => !changesUtxo(a.blockNo.toInt)), shutdowns)
+        assert(
+          written.exists(a => !shutdowns.contains(a) && !changesUtxo(a.blockNo.toInt)),
+          s"a periodic snapshot of a block that changed nothing, among $written"
+        )
+        // the restart restores the first shutdown snapshot and reaches the replayed state
+        assertEquals(restored, shutdowns.headOption)
+        assertState(second._2.state, states(731))
+        assertEquals(second._3, states(731).utxo.toMap)
+        assertEquals(results.collect { case (a, Left(e)) => a.blockNo -> e }, Vector.empty)
+        assertEquals(results.collect { case (a, Right(r)) if r.anchor != a => a }, Vector.empty)
     }
   }
 
@@ -517,6 +710,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       every: Int = 120,
       identity: Option[NetworkIdentity] = Some(setup.identity),
       tap: Int => IO[Unit] = _ => IO.unit,
+      copies: Option[SnapshotCopies] = None,
       adoptLegacy: Boolean = false,
       selectionOnStartup: Boolean = false,
       wrapRules: BlockRules[IO, MirrorState] => BlockRules[IO, MirrorState] = identity
@@ -524,14 +718,17 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     Ref.of[IO, Vector[StorageEvent]](Vector.empty).flatMap { log =>
       Handle
         .allow[NodeError] {
-          val backing = StateBacking.none[IO, MirrorState]
+          val unbacked = StateBacking.none[IO, MirrorState]
+          val backing = copies.fold(unbacked)(_.backing(unbacked))
+          val events = copies.fold(storageEvents(log))(_.events(storageEvents(log)))
           val nodeRules = wrapRules(
             MirrorRules[IO](
               setup.praos,
               setup.globals,
               setup.byronRules,
               setup.handOver,
-              setup.byronHistory
+              setup.byronHistory,
+              xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
             )
           )
           ChainStorage
@@ -540,7 +737,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               volatileConfig(every, identity).copy(adoptLegacyNetworkIdentity = adoptLegacy),
               nodeRules,
               setup.mirrorStart,
-              storageEvents(log),
+              events,
               backing,
               _ => IO.unit
             )
@@ -552,7 +749,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   setup.origin,
                   nodeRules,
                   geometry.byron.epochSlots,
-                  storageEvents(log),
+                  events,
                   _ => IO.unit
                 )
                 chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
@@ -579,10 +776,11 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
                     offered.update(_ :+ candidates).as(candidates.headOption)
                   def next(using Raise[IO, PeerError]) =
-                    count.getAndUpdate(_ + 1).flatMap(tap) *> queue.tryTake.flatMap {
-                      case Some(event) => IO.pure(event)
-                      case None        => done.complete(()) *> IO.never[SyncEvent]
-                    }
+                    count.getAndUpdate(_ + 1).flatMap(tap) *>
+                      queue.tryTake.flatMap {
+                        case Some(event) => IO.pure(event)
+                        case None        => done.complete(()) *> IO.never[SyncEvent]
+                      }
                   def fetch(header: Header)(using Raise[IO, PeerError]) =
                     IO.pure(bodies(header.hash))
                 startupApplications <- Ref.of[IO, Int](0)
@@ -592,7 +790,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   ),
                   noEvents,
                   geometry,
-                  persistence = Some(recovered.persistence),
+                  persistence =
+                    Some(copies.fold(recovered.persistence)(_.persistence(recovered.persistence))),
                   initialViews = resumed.map(r => r.ref.hash -> r.view).toMap
                 )
                 startupReplayed <-
@@ -653,6 +852,121 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       case Left(other)             => fail(s"expected a refusal, got $other")
       case Right(_)                => fail("expected a refusal, the database opened")
     }
+
+  /** A live copy waits for the previous snapshot and excludes persistence mutations. Checkpoint
+    * registration is synchronous, before the snapshot worker starts; its terminal event follows all
+    * snapshot writes and pruning. Shutdown starts only after the session's taps finish.
+    */
+  private final class SnapshotCopies(
+      lock: Semaphore[IO],
+      pending: Ref[IO, Option[Deferred[IO, Unit]]]
+  ):
+    private def awaitSnapshot: IO[Unit] = pending.get.flatMap(_.traverse_(_.get))
+
+    def started: IO[Unit] =
+      awaitSnapshot *> Deferred[IO, Unit].flatMap(done => pending.set(Some(done)))
+
+    def finished: IO[Unit] = pending.get.flatMap(_.traverse_(_.complete(()).void))
+
+    def quiet[A](body: IO[A]): IO[A] = lock.permit.use(_ => awaitSnapshot *> body)
+
+    def events(underlying: StorageEvents[IO]): StorageEvents[IO] = event =>
+      underlying.emit(event) *> (event match
+        case StorageEvent.SnapshotWritten(_, _, _, _) | StorageEvent.SnapshotRefused(_, _, _) |
+            StorageEvent.SnapshotFailed(_) =>
+          finished
+        case _ => IO.unit)
+
+    def backing(underlying: StateBacking[IO, MirrorState]): StateBacking[IO, MirrorState] =
+      new StateBacking[IO, MirrorState]:
+        def advance(state: MirrorState)(using Raise[IO, StorageError]) = underlying.advance(state)
+        def settled(state: MirrorState)(using Raise[IO, StorageError]) = underlying.settled(state)
+        def checkpoint(anchor: BlockRef)(using Raise[IO, StorageError]) =
+          started *> underlying.checkpoint(anchor)
+        def admit(anchor: Option[BlockRef], binding: CheckpointBinding)(using
+            Raise[IO, StorageError]
+        ) =
+          underlying.admit(anchor, binding)
+        def restore(anchor: Option[BlockRef])(using Raise[IO, StorageError]) =
+          underlying.restore(anchor)
+        def reset(using Raise[IO, StorageError]) = underlying.reset
+        def retain(stems: Set[String])(using Raise[IO, StorageError]) = underlying.retain(stems)
+        def trim(stems: Set[String])(using Raise[IO, StorageError]) = underlying.trim(stems)
+
+    def persistence(
+        underlying: ChainPersistence[IO, MirrorState]
+    ): ChainPersistence[IO, MirrorState] =
+      new ChainPersistence[IO, MirrorState]:
+        def extended(
+            ref: BlockRef,
+            raw: Bytes,
+            immutable: Vector[BlockRef],
+            anchor: Anchor[MirrorState]
+        )(using
+            Raise[IO, StorageError],
+            Raise[IO, ChainError]
+        ) = quiet(underlying.extended(ref, raw, immutable, anchor))
+        def rolledBack(to: ChainSync.Point)(using Raise[IO, StorageError], Raise[IO, ChainError]) =
+          quiet(underlying.rolledBack(to))
+
+  private object SnapshotCopies:
+    def create: IO[SnapshotCopies] =
+      (Semaphore[IO](1), Ref.of[IO, Option[Deferred[IO, Unit]]](None))
+        .mapN(new SnapshotCopies(_, _))
+
+  test("crash copies wait for snapshots and exclude persistence until the copy finishes") {
+    for
+      copies <- SnapshotCopies.create
+      copying <- Deferred[IO, Unit]
+      release <- Deferred[IO, Unit]
+      persisted <- Deferred[IO, Unit]
+      _ <- copies.started
+      control <- TestControl.execute(
+        copies.quiet(copying.complete(()).void *> release.get).background.use { _ =>
+          copying.get *> copies.quiet(persisted.complete(()).void)
+        }
+      )
+      _ <- Resource
+        .make(IO.pure(control))(_ =>
+          copies.finished *> release.complete(()).void *> control.tickAll
+        )
+        .use { clock =>
+          for
+            _ <- clock.tickAll
+            before <- copying.tryGet
+            waiting <- clock.results
+            _ <- IO {
+              assertEquals(before, None, "copy must wait for the in-flight snapshot")
+              assertEquals(
+                waiting,
+                None,
+                "the controlled program is blocked on snapshot completion"
+              )
+            }
+            _ <- copies.finished *> clock.tickAll
+            entered <- copying.tryGet
+            early <- persisted.tryGet
+            _ <- IO {
+              assertEquals(entered, Some(()), "snapshot completion permits copying")
+              assertEquals(early, None, "persistence must wait for the copy")
+            }
+            _ <- release.complete(()) *> clock.tickAll
+            after <- persisted.tryGet
+            result <- clock.results
+            _ <- IO {
+              assertEquals(after, Some(()), "persistence resumes after the copy")
+              assert(
+                result.exists {
+                  case Outcome.Succeeded(()) => true
+                  case _                     => false
+                },
+                result.toString
+              )
+            }
+          yield ()
+        }
+    yield ()
+  }
 
   private def copyTree(from: Path, to: Path): IO[Unit] = IO.blocking {
     val src = from.toNioPath
@@ -759,22 +1073,28 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("a crash at any point of a run recovers: copies of the database taken mid-run restart") {
+  test("crash recovery: database copies at quiescent storage boundaries restart") {
     tempDir.use { root =>
       val points = (1 to 700 by 61).toList
       val live = root / "live"
       for
         _ <- files.createDirectories(live)
         taken <- Ref.of[IO, Vector[Int]](Vector.empty)
-        // background snapshots land before the copy, which stands in for the files at the crash
+        copies <- SnapshotCopies.create
         tap = (n: Int) =>
           if points.contains(n) then
-            IO.sleep(60.millis) *> copyTree(live, root / s"crash-$n") *> taken.update(_ :+ n)
+            copies.quiet(copyTree(live, root / s"crash-$n")) *> taken.update(_ :+ n)
           else IO.unit
-        _ <- session(live, 731, tap = tap)
-        copies <- taken.get
-        _ <- IO(assert(copies.size >= 10, copies.toString))
-        results <- copies.traverse(n => session(root / s"crash-$n", 731).map(s => (n, s)))
+        liveSession <- session(live, 731, tap = tap, copies = Some(copies))
+        captured <- taken.get
+        _ <- IO {
+          assert(captured.size >= 10, captured.toString)
+          assertEquals(
+            liveSession.events.collect { case StorageEvent.SnapshotFailed(failure) => failure },
+            Vector.empty
+          )
+        }
+        results <- captured.traverse(n => session(root / s"crash-$n", 731).map(s => (n, s)))
         _ <- results.traverse_ { (n, s) =>
           IO {
             assertState(s.chain.state, states(731), s"restart from the copy at event $n")
@@ -930,6 +1250,41 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  test(
+    "network identity: a V6 file is bound at the next open, and adopts a later Dijkstra genesis once"
+  ) {
+    tempDir.use { dir =>
+      val id = setup.identity
+      val file = (dir / NetworkIdentityFile.FileName).toNioPath
+      def hash(b: Byte) = Some(
+        xyz.kd5ujc.scarab.ledger.GenesisFileHash(
+          xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(Bytes.fromArray(Array[Byte](b)))
+        )
+      )
+      val withDijkstra = id.copy(dijkstraGenesis = hash(9))
+      def recorded(s: Session) =
+        s.events.collect { case StorageEvent.NetworkRecorded(i, a, d) => (i, a, d) }
+      for
+        _ <- session(dir, 40)
+        _ <- IO.blocking(
+          JFiles.writeString(file, id.renderAs(xyz.kd5ujc.scarab.ledger.FormatVersion.V6))
+        )
+        _ <- session(dir, 60)
+        migrated <- IO.blocking(JFiles.readString(file))
+        adopting <- session(dir, 60, identity = Some(withDijkstra))
+        adopted <- IO.blocking(JFiles.readString(file))
+        again <- session(dir, 60, identity = Some(withDijkstra))
+        other <- refusal(session(dir, 60, identity = Some(id.copy(dijkstraGenesis = hash(8)))))
+      yield
+        assertEquals(id.dijkstraGenesis, None)
+        assertEquals(migrated, id.render)
+        assertEquals(adopted, withDijkstra.render)
+        assertEquals(recorded(adopting), Vector((withDijkstra, false, true)))
+        assertEquals(recorded(again), Vector.empty)
+        assert(other.contains("belongs to another network"), other)
+    }
+  }
+
   test("network identity: recorded at creation, accepted on reopen, refused on mismatch") {
     tempDir.use { dir =>
       val id = setup.identity
@@ -982,7 +1337,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         _ <- IO(assertState(adopted.chain.state, states(140)))
         _ <- IO(
           assertEquals(
-            adopted.events.collect { case StorageEvent.NetworkRecorded(_, a) => a },
+            adopted.events.collect { case StorageEvent.NetworkRecorded(_, a, _) => a },
             Vector(true)
           )
         )
@@ -1036,9 +1391,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 stream.iterator().asScala.exists { file =>
                   JFiles.isRegularFile(file) &&
                   new String(JFiles.readAllBytes(file).take(8), StandardCharsets.ISO_8859_1) ==
-                    "SCRBSNP8"
+                    "SCRBSNPA"
                 },
-                "expected a current V8 snapshot before the immutable-header refusal"
+                "expected a current V10 snapshot before the immutable-header refusal"
               )
             finally stream.close()
           }
@@ -1107,7 +1462,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     )
     assert(NetworkIdentity.parse("f", "garbage").isLeft)
     assert(NetworkIdentity.parse("f", id.render.replace("magic", "magick")).isLeft)
-    assert(NetworkIdentity.parse("f", id.render.replace("v6", "v3")).isLeft)
+    assert(NetworkIdentity.parse("f", id.render.replace("v9", "v3")).isLeft)
+    assert(NetworkIdentity.parse("f", id.render.replace("dijkstra-genesis", "dijkstra")).isLeft)
   }
 
   // ---- V5 and V7 snapshots paired with current and pre-K6 checkpoint key layouts (#145, #395)
@@ -1153,8 +1509,10 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             IO(LegacyUtxoCheckpoint.rewrite(checkpointOf(dir, n).toNioPath))
           )
           _ <- IO.whenA(previous) {
-            val (_, sidecar, haskell) =
-              SnapshotV8.sections(content).fold(e => fail(e.message), identity)
+            val (_, _, sidecar, haskell) =
+              SnapshotV10
+                .sections(content, ReferenceLayout.Release11_1)
+                .fold(e => fail(e.message), identity)
             IO.blocking(
               JFiles.write(
                 file.toNioPath,
@@ -1200,7 +1558,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           case StorageEvent.FormatMigrated(m) if m.kind == FileKind.SnapshotFile => m
         }.toList,
         if previous then
-          List(Migrated(FileKind.SnapshotFile, FormatVersion.V5, FormatVersion.V8, left.size))
+          List(Migrated(FileKind.SnapshotFile, FormatVersion.V5, FormatVersion.V10, left.size))
         else List.empty[Migrated],
         s"$label: only V5 snapshot files are rewritten, once"
       )
@@ -1257,7 +1615,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("a V7 snapshot whose checkpoint is not the one it recorded is skipped for an older one") {
+  test(
+    "a snapshot whose checkpoint is not the one it recorded is deleted with it, for an older one"
+  ) {
     tempDir.use { dir =>
       for
         left <- checkpointDatabase(dir, CheckpointLayout.Current, 600, 60, 4, 1)
@@ -1268,7 +1628,15 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         log <- events(dir)
         _ <- runWith(dir, 731, 120, log, Some("rocksdb"), 4, migrate = true)
         seen <- log.get
+        checkpointLeft <- IO.blocking(JFiles.exists(checkpointOf(dir, newest).toNioPath))
       yield
+        // the reference deletes a temporary snapshot it cannot use (82ecba32 API.hs:628-631), and
+        // the trim path takes its checkpoint with it
+        assertEquals(
+          seen.collect { case StorageEvent.SnapshotDeleted(name) => name }.toList,
+          List(newest)
+        )
+        assert(!checkpointLeft, s"the checkpoint of $newest is still there")
         val skipped = seen.collect { case StorageEvent.SnapshotSkipped(name, e) => name -> e }
         assertEquals(skipped.map(_._1).toList, List(newest))
         skipped.headOption.map(_._2) match

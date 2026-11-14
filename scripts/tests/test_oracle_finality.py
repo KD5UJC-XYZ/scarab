@@ -455,6 +455,45 @@ class StopFollowerTest(unittest.TestCase):
                 self.assertIn("could not be confirmed removed", raised)
 
 
+
+class NodePidTest(unittest.TestCase):
+    """`node_pid` finds a reference node by its program's file name and its database, never by the shell that
+    started it."""
+
+    def pid(self, listing, node=1):
+        from types import SimpleNamespace
+        from oracle import devnet
+        saved = devnet.in_ref
+        devnet.in_ref = lambda name, script, timeout=300: SimpleNamespace(stdout=listing)
+        try:
+            return devnet.node_pid("pw-test", node)
+        finally:
+            devnet.in_ref = saved
+
+    def test_the_full_path_cardano_testnet_starts_is_found(self):
+        from oracle import devnet
+        db1, db2 = devnet.NODE_DB, devnet.NODE_DB.replace("node1", "node2")
+        listing = ("5 /bin/sh -c cd /work/env && cardano-testnet cardano --node-env /work/env \n"
+                   f"7 /opt/reference/bin/cardano-node run --config c.json --database-path {db1} --port 1 \n"
+                   f"8 /opt/reference/bin/cardano-node run --config c.json --database-path {db2} --port 2 \n")
+        self.assertEqual(self.pid(listing), 7)
+        self.assertEqual(self.pid(listing, node=2), 8)
+        self.assertIsNone(self.pid(listing, node=3))
+
+    def test_a_node_started_by_name_is_found_and_not_its_shell(self):
+        from oracle import devnet
+        listing = (f"7 /bin/sh -c cd /work/env && cardano-node run --database-path {devnet.NODE_DB} > /work/n.log \n"
+                   f"9 cardano-node run --database-path {devnet.NODE_DB} --port 1 \n")
+        self.assertEqual(self.pid(listing), 9)
+
+    def test_another_program_or_two_nodes_on_one_database_give_none(self):
+        from oracle import devnet
+        db = devnet.NODE_DB
+        self.assertIsNone(self.pid(f"4 /opt/reference/bin/cardano-node-chairman run --database-path {db} \n"))
+        self.assertIsNone(self.pid(f"4 /opt/reference/bin/cardano-node --version --database-path {db} \n"))
+        self.assertIsNone(self.pid(f"4 cardano-node run --database-path {db} \n"
+                                   f"6 /opt/reference/bin/cardano-node run --database-path {db} \n"))
+
 class LoadTest(unittest.TestCase):
     def test_digests_that_share_a_slot_are_separate(self):
         with tempfile.TemporaryDirectory() as t:

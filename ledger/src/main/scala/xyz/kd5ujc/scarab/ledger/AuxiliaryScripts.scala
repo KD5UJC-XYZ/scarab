@@ -64,21 +64,23 @@ private[ledger] object AuxiliaryScripts:
         )
     }
 
+  /** The native scripts of auxiliary data, which holds scripts from Allegra on: time locks. */
   private def native(node: Node)(using ByteStrings): Either[LedgerDecodeError, Vector[Plutus]] =
     CborRead
       .array(node, DecodeField.AuxiliaryNativeScripts)
-      .flatMap(_.traverse_(Script.native))
+      .flatMap(_.traverse_(Script.native(_, NativeScript.Form.Timelock)))
       .as(Vector.empty)
 
+  /** Plutus scripts of `language`, whose scripts are of `kind`, allowed from protocol `minimum`
+    * (`guardPlutus`).
+    */
   private def plutus(
       language: PlutusLanguage,
+      kind: ScriptKind,
+      minimum: Int,
       protocol: BigInt,
       node: Node
   )(using ByteStrings): Either[LedgerDecodeError, Vector[Plutus]] =
-    val (kind, minimum) = language match
-      case PlutusLanguage.V1 => (ScriptKind.PlutusV1, 5)
-      case PlutusLanguage.V2 => (ScriptKind.PlutusV2, 7)
-      case PlutusLanguage.V3 => (ScriptKind.PlutusV3, 9)
     if protocol < minimum then
       Left(
         LedgerDecodeError
@@ -166,9 +168,12 @@ private[ledger] object AuxiliaryScripts:
                     case (n, value) if n == 0 =>
                       metadata(value, protocol).as(Vector.empty[Plutus])
                     case (n, value) if n == 1 => native(value)
-                    case (n, value) if n == 2 => plutus(PlutusLanguage.V1, protocol, value)
-                    case (n, value) if n == 3 => plutus(PlutusLanguage.V2, protocol, value)
-                    case (n, value) if n == 4 => plutus(PlutusLanguage.V3, protocol, value)
+                    case (n, value) if n == 2 =>
+                      plutus(PlutusLanguage.V1, ScriptKind.PlutusV1, 5, protocol, value)
+                    case (n, value) if n == 3 =>
+                      plutus(PlutusLanguage.V2, ScriptKind.PlutusV2, 7, protocol, value)
+                    case (n, value) if n == 4 =>
+                      plutus(PlutusLanguage.V3, ScriptKind.PlutusV3, 9, protocol, value)
                     case (n, _) => Left(LedgerDecodeError.UnknownTag(DecodeField.AuxiliaryField, n))
                   }
                   .map(_.flatten)

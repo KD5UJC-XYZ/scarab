@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
 }
 import xyz.kd5ujc.scarab.ledger.rules.{FromByron, GenesisInjections, GenesisStart, Globals}
 import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.ledger.{
   ByronGenesis,
   ByronGenesisFile,
@@ -43,6 +43,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ProviderDefect
 }
 import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraGenesis
 import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold
 
 /** Everything the follower derives from a genesis directory before it sees a block: the era
@@ -80,6 +81,11 @@ final case class NodeSetup(
 ):
   def geometry: EpochGeometry = genesis.geometry
   def byronRules: Option[ByronRules.Config] = byronConfig
+
+  /** This setup with its ledger following the rules of `build` ([[LedgerGlobals.referenceBuild]]).
+    */
+  def mirroring(build: ReferenceBuild): NodeSetup =
+    copy(globals = globals.copy(referenceBuild = build))
 
   /** What the ledger-state mirror reads of this configuration (`StateMirror`); `observed` is the
     * epoch in which each era was seen to begin, where the configuration does not say.
@@ -197,40 +203,43 @@ object NodeSetup:
 
   val ConfigNames: List[String] = List("configuration.yaml", "configuration.json", "config.json")
 
-  def fromDirectory(dir: Path): Either[ConfigError, NodeSetup] =
+  def fromDirectory(build: ReferenceBuild)(dir: Path): Either[ConfigError, NodeSetup] =
     def read(name: String): Option[Array[Byte]] =
       Option.when(Files.exists(dir.resolve(name)))(Files.readAllBytes(dir.resolve(name)))
-    fromFiles(read)
+    fromFiles(build)(read)
 
   /** The setup `cardano-node run --config` would have: the configuration is read as the reference
     * reads it (`strict`), the genesis files it names are looked up next to it (or in `genesisDir`,
     * when given) and every hash it lists is verified.
     */
-  def fromConfigFile(
+  def fromConfigFile(build: ReferenceBuild)(
       config: Path,
       genesisDir: Option[Path] = None
   ): Either[ConfigError, NodeSetup] =
     for
-      parsed <- readConfig(config)
+      parsed <- readConfig(build)(config)
       base = genesisDir.getOrElse(Option(config.toAbsolutePath.getParent).getOrElse(Path.of(".")))
       read = (name: String) =>
         Option.when(Files.exists(base.resolve(name)))(Files.readAllBytes(base.resolve(name)))
       setup <- assemble(parsed, read)
-    yield setup
+    yield setup.mirroring(build)
 
   /** The configuration file alone, before any genesis file is read. */
-  def readConfig(config: Path): Either[ConfigError, NodeConfig] =
+  def readConfig(build: ReferenceBuild)(config: Path): Either[ConfigError, NodeConfig] =
     Either
       .catchNonFatal(Files.readAllBytes(config))
       .leftMap(e => ConfigError(ConfigProblem.FileRead(config.toString, e)))
-      .flatMap(bytes => NodeConfig.parse(new String(bytes, "UTF-8"), strict = true))
+      .flatMap(bytes => NodeConfig.parse(build)(new String(bytes, "UTF-8"), strict = true))
 
-  def fromFiles(read: String => Option[Array[Byte]]): Either[ConfigError, NodeSetup] =
+  def fromFiles(build: ReferenceBuild)(
+      read: String => Option[Array[Byte]]
+  ): Either[ConfigError, NodeSetup] =
     def text(bytes: Array[Byte]) = new String(bytes, "UTF-8")
     ConfigNames
       .collectFirst(Function.unlift(n => read(n)))
-      .fold(Right(NodeConfig.empty))(b => NodeConfig.parse(text(b)))
+      .fold(NodeConfig.parse(build)("{}"))(b => NodeConfig.parse(build)(text(b)))
       .flatMap(assemble(_, read))
+      .map(_.mirroring(build))
 
   /** Check every hash the configuration lists against the genesis file it names: the Byron one is
     * the hash of the canonical JSON, the Shelley, Alonzo, Conway, Dijkstra and checkpoints ones the
@@ -344,9 +353,20 @@ object NodeSetup:
       _ <- GenesisSchema.shelley(files.shelley)
       _ <- GenesisSchema.alonzo(files.alonzo)
       _ <- GenesisSchema.conway(files.conway)
+      // the Dijkstra genesis, read after the others as the reference reads it (cardano-node
+      // b004fe0c `Protocol/Cardano.hs:137-144`); its hash was checked with theirs
+      dijkstraBytes <- names.dijkstra.traverse(required("Dijkstra", _))
+      dijkstra <- names.dijkstra
+        .zip(dijkstraBytes)
+        .traverse((name, bytes) => json(name, bytes).flatMap(DijkstraGenesis.read))
       injections <- GenesisInjections.read(files)
-      globals <- GenesisState.globals(files, genesis)
-      forks = HardForkConfig.fromEpochs(config.hardForkEpochs)
+      globals <- GenesisState.globals(files, genesis).map(_.copy(dijkstra = dijkstra))
+      // Dijkstra's trigger is carried as the reference carries it (`TestDijkstraHardForkAtEpoch`,
+      // read with `ExperimentalHardForksEnabled`), and never fires below a maximum major protocol
+      // version of 12 (`HardForkConfig.trigger`)
+      forks = HardForkConfig.fromEpochs(
+        config.hardForkEpochs ++ config.settings.dijkstraHardForkEpoch.map(Era.Dijkstra -> _)
+      )
       // The era the first slot is in: Byron unless Shelley starts at epoch 0, then the eras whose
       // transition the genesis state decides (`HardForkConfig.initialEra`), never the Shelley
       // genesis's protocol version.
@@ -425,7 +445,8 @@ object NodeSetup:
         ),
         GenesisFileHash(
           Blake2b.hash256.hash(Bytes.fromArray(conwayBytes))
-        )
+        ),
+        dijkstraBytes.map(bytes => GenesisFileHash(Blake2b.hash256.hash(Bytes.fromArray(bytes))))
       ),
       chainStoreK = chainStoreK,
       byronParams = Some(byronGenesis),

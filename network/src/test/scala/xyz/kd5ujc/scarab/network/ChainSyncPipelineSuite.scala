@@ -314,41 +314,45 @@ class ChainSyncPipelineSuite extends FailsOnUncaught:
   }
 
   test("AwaitReply alone never counts as a complete reply ready to collect") {
-    typed {
-      script.flatMap { s =>
-        Ref.of[IO, Int](0).flatMap { observed =>
-          s.input.offer(encoded(State.NextCanAwait, Message.AwaitReply)) *>
-            ChainSyncClient
-              .resource(
-                s.channel,
-                ChainSyncFixtures.rawItem,
-                e => s.aborts.update(_ :+ e),
-                settings
-              )
-              .use { client =>
-                val onAwait = observed.update(_ + 1)
-                for
-                  _ <- client.submit
-                  _ <- (client
-                    .serviceAwait(onAwait) *> observed.get).iterateUntil(_ == 1).timeout(1.second)
-                  ready <- client.tryCollect(onAwait)
-                  n <- client.outstanding
-                  waiting <- client.idling
-                  _ <- s.input.offer(
-                    encoded(State.NextMustReply, Message.RollForward(header(1), tip(1)))
-                  )
-                  update <- client.collect(onAwait)
-                  calls <- observed.get
-                yield
-                  assertEquals(ready, None)
-                  assertEquals(n, 1)
-                  assert(waiting)
-                  assertEquals(update, ChainSyncClient.Update.RollForward(header(1), tip(1)))
-                  assertEquals(calls, 1)
-              }
+    Settled { settle =>
+      typed {
+        script.flatMap { s =>
+          Ref.of[IO, Int](0).flatMap { observed =>
+            s.input.offer(encoded(State.NextCanAwait, Message.AwaitReply)) *>
+              ChainSyncClient
+                .resource(
+                  s.channel,
+                  ChainSyncFixtures.rawItem,
+                  e => s.aborts.update(_ :+ e),
+                  settings
+                )
+                .use { client =>
+                  val onAwait = observed.update(_ + 1)
+                  for
+                    _ <- client.submit
+                    _ <- settle
+                    _ <- client.serviceAwait(onAwait)
+                    observedAwait <- observed.get
+                    _ <- IO(assertEquals(observedAwait, 1))
+                    ready <- client.tryCollect(onAwait)
+                    n <- client.outstanding
+                    waiting <- client.idling
+                    _ <- s.input.offer(
+                      encoded(State.NextMustReply, Message.RollForward(header(1), tip(1)))
+                    )
+                    update <- client.collect(onAwait)
+                    calls <- observed.get
+                  yield
+                    assertEquals(ready, None)
+                    assertEquals(n, 1)
+                    assert(waiting)
+                    assertEquals(update, ChainSyncClient.Update.RollForward(header(1), tip(1)))
+                    assertEquals(calls, 1)
+                }
+          }
         }
-      }
-    }.map(result => assertEquals(result, Right(())))
+      }.map(result => assertEquals(result, Right(())))
+    }
   }
 
   test("rolling explicit hooks and draining do not invoke retained legacy observers") {

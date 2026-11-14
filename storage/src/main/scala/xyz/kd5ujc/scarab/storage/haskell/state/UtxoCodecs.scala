@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.storage.haskell.state
 
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
-import xyz.kd5ujc.scarab.ledger.{Address, ByteStrings, Datum, TxIn, TxOut, Value}
+import xyz.kd5ujc.scarab.ledger.{Address, ByteStrings, Datum, ScriptKind, TxIn, TxOut, Value}
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, ProtVer, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.models.runtime.{
   Codec,
@@ -64,7 +64,9 @@ object UtxoCodecs:
     // A stored output: it reads in any form of byte string it was stored with.
     def decode(n: Node): Decoded[TxOut] =
       TxOut
-        .decode(n, Address.Mode.Stored, TxOut.Forms.Stored)(using ByteStrings.Chunked)
+        .decode(n, Address.Mode.Stored, TxOut.Forms.Stored, ScriptKind.newestKnown)(using
+          ByteStrings.Chunked
+        )
         .left
         .map(why => DecodeError.at(n, Kind.Domain(why)))
 
@@ -210,6 +212,9 @@ object UtxoCodecs:
       case ShelleyBasedEra.SMary                               => WithAssets
       case ShelleyBasedEra.SAlonzo                             => WithDatumHash
       case ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway  => Babbage
+      // `type TxOut DijkstraEra = BabbageTxOut DijkstraEra` (cardano-ledger 9df9f98c
+      // `Dijkstra/TxOut.hs:29`)
+      case ShelleyBasedEra.SDijkstra => Babbage
 
   /** An output of `era`: [[txOut]], refusing to write an output with a part the era's `TxOut` does
     * not hold.

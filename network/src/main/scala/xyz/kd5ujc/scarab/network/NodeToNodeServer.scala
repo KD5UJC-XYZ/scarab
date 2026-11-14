@@ -2,7 +2,8 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.data.NonEmptySet
-import cats.effect.{Async, Resource}
+import cats.effect.{Async, Outcome, Ref, Resource}
+import cats.effect.std.Mutex
 import fs2.concurrent.SignallingRef
 import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise}
@@ -39,7 +40,7 @@ object NodeToNodeServer:
     * @param protocolIdleTimeout
     *   How long an accepted connection may stay without a byte on any remote-initiated
     *   mini-protocol after the handshake: `defaultProtocolIdleTimeout = 5` in ouroboros-network
-    *   2fb69829 `Ouroboros/Network/ConnectionManager/Core.hs`, armed as `registerDelay idleTimeout`
+    *   c45735a5 `Ouroboros/Network/ConnectionManager/Core.hs`, armed as `registerDelay idleTimeout`
     *   by the inbound governor when it starts an accepted connection (`InboundGovernor.hs`).
     * @param maxVersion
     *   The highest node-to-node version accepted: the latest release unless the configuration
@@ -82,6 +83,13 @@ object NodeToNodeServer:
   private[network] def applicationProtocols(peerSharing: Boolean): Set[Int] =
     application(peerSharing).toSortedSet
 
+  /** The temperature of a responder's mini-protocol in the reference's bundle (`TemperatureBundle`,
+    * cardano-diffusion `NodeToNode.hs` 252-325, ouroboros-network `c5117705`): ChainSync,
+    * BlockFetch and TxSubmission2 are hot; KeepAlive and PeerSharing established; none is warm.
+    */
+  private type Temperature = ProtocolResults.Temperature
+  private val Temperature = ProtocolResults.Temperature
+
   /** Run the servers for the life of the resource. A failed server aborts the multiplexer, which
     * ends the connection; a client that finishes its protocol (`Done`) just ends that conversation,
     * and the server waits for the next one on the same channel: a peer that demotes us from hot to
@@ -104,10 +112,10 @@ object NodeToNodeServer:
         .flatMap(_.fold(mux.abort, _ => Async[F].unit))
     def channel(protocol: Int) = Resource.eval(mux.channel(protocol, Mux.Role.Responder))
     val installed = applicationProtocols(peerSharing)
-    // one run of a responder, started on demand by `trigger`: counted while it runs, when the
-    // connection counts its responders (inbound connections, for the idle timer)
-    def episode(trigger: F[Unit])(run: F[Unit]): F[Unit] =
-      responders.fold(run)(counted => trigger *> counted.running(run))
+    // one run of a responder, started on demand by `trigger`: counted by its temperature while it
+    // runs, when the connection counts its responders (for the peer's activity)
+    def episode(temperature: Temperature, trigger: F[Unit])(run: F[Unit]): F[Unit] =
+      responders.fold(run)(counted => trigger *> counted.running(temperature)(run))
     def onDemand(protocol: Int): F[Unit] = mux.awaitResponderInput(protocol)
     // `StartOnDemandAny`: the first byte of any responder starts it
     val onDemandAny: F[Unit] =
@@ -121,19 +129,19 @@ object NodeToNodeServer:
       txs <- channel(Protocols.TxSubmission2)
       keepAlive <- channel(Protocols.KeepAlive)
       _ <- guarded("chain-sync")(
-        episode(onDemand(Protocols.ChainSync))(
+        episode(Temperature.Hot, onDemand(Protocols.ChainSync))(
           handlers.chainSync
             .use(ChainSyncServer.run(chainSync, handlers.codec, _, settings.chainSync))
             .void
         ).foreverM[Unit]
       ).background
       _ <- guarded("block-fetch")(
-        episode(onDemand(Protocols.BlockFetch))(
+        episode(Temperature.Hot, onDemand(Protocols.BlockFetch))(
           BlockFetchServer.run(blockFetch, handlers.blocks, settings.blockFetch).void
         ).foreverM[Unit]
       ).background
       _ <- guarded("tx-submission")(
-        episode(onDemand(Protocols.TxSubmission2))(
+        episode(Temperature.Hot, onDemand(Protocols.TxSubmission2))(
           TxSubmissionServer.run(txs, handlers.transactions, settings.transactions).void
         ).foreverM[Unit]
       ).background
@@ -144,7 +152,9 @@ object NodeToNodeServer:
         responders.fold(
           mux.awaitResponderActivity *> KeepAliveServer.run(keepAlive, settings.keepAlive).void
         )(_ =>
-          episode(onDemandAny)(KeepAliveServer.run(keepAlive, settings.keepAlive).void)
+          episode(Temperature.Established, onDemandAny)(
+            KeepAliveServer.run(keepAlive, settings.keepAlive).void
+          )
             .foreverM[Unit]
         )
       ).background
@@ -153,7 +163,7 @@ object NodeToNodeServer:
         .traverse_ { source =>
           channel(Protocols.PeerSharing).flatMap { shared =>
             guarded("peer-sharing")(
-              episode(onDemand(Protocols.PeerSharing))(
+              episode(Temperature.Established, onDemand(Protocols.PeerSharing))(
                 PeerSharingServer.run(shared, source, settings.peerSharing).void
               ).foreverM[Unit]
             ).background
@@ -161,68 +171,241 @@ object NodeToNodeServer:
         }
     yield ()
 
-  /** The responders of one inbound connection that are running: each is started on demand by its
-    * mini-protocol's first byte and ends with that protocol, as the reference's inbound governor
-    * starts and restarts them (`InboundGovernor.hs`, ouroboros-network `2fb69829`).
+  /** What the responders of a connection did, in order, as the reference's mux tracer writes it to
+    * the inbound governor's channel (`inboundGovernorMuxTracer`, `InboundGovernor.hs` 602-682).
     */
-  private[network] final class Responders[F[_]: Async] private (count: SignallingRef[F, Int]):
-    /** `run`, counted while it runs. */
-    def running[A](run: F[A]): F[A] =
-      Async[F].bracket(count.update(_ + 1))(_ => run)(_ => count.update(_ - 1))
-    def awaitBusy: F[Unit] = count.waitUntil(_ > 0)
-    def awaitIdle: F[Unit] = count.waitUntil(_ == 0)
+  private[network] enum Activity:
+    /** `AwakeRemote`: a responder started while none ran. */
+    case Awake
+
+    /** `RemotePromotedToHot`: a hot responder started while no hot one ran. */
+    case PromotedToHot
+
+    /** `RemoteDemotedToWarm`: the last running hot responder ended cleanly. */
+    case DemotedToWarm
+
+    /** `WaitIdleRemote`: the last running responder ended cleanly. */
+    case WaitIdle
+
+  /** The running responders of a connection by temperature (`ResponderCounters`,
+    * `InboundGovernor/State.hs` 190-197).
+    */
+  private final case class Running(hot: Int, other: Int):
+    /** A responder of `temperature` starts: what it signals, and the counts after it. */
+    def started(temperature: Temperature): (Vector[Activity], Running) =
+      val hotOne = temperature == Temperature.Hot
+      val signals =
+        Vector(Activity.Awake).filter(_ => hot == 0 && other == 0) ++
+          Vector(Activity.PromotedToHot).filter(_ => hotOne && hot == 0)
+      (signals, if hotOne then copy(hot = hot + 1) else copy(other = other + 1))
+
+    /** A responder of `temperature` ended cleanly: what it signals, and the counts after it. */
+    def ended(temperature: Temperature): (Vector[Activity], Running) =
+      val hotOne = temperature == Temperature.Hot
+      val signals =
+        Vector(Activity.DemotedToWarm).filter(_ => hotOne && hot == 1) ++
+          Vector(Activity.WaitIdle).filter(_ => hot + other == 1)
+      (signals, if hotOne then copy(hot = hot - 1) else copy(other = other - 1))
+
+  /** The responders of one connection that are running: each is started on demand by its
+    * mini-protocol's first byte and ends with that protocol, as the reference's inbound governor
+    * starts and restarts them (`InboundGovernor.hs`, ouroboros-network `c45735a5`). What their
+    * starts and clean ends signal ([[Activity]]) is kept in order for the tracker of the peer's
+    * activity, which waits for it without taking it, so none is lost whatever wins its wait (the
+    * reference's inbound governor reads its channel and its timers in one STM transaction,
+    * `InboundGovernor.hs` 239-274). A responder that would start once the idle timer has expired
+    * waits until the expiry is settled: the reference's tracer retries on an expired `RemoteIdle`
+    * (`InboundGovernor.hs` 638-648). A responder that ends in an error or is cancelled stops the
+    * counting for good, as the tracer then empties its counters (`SNothing`, 688-696): the
+    * connection's mux is ending.
+    *
+    * The counters exist from [[Responders.create]], before the responders start
+    * (`NodeToNodeServer.start`), so a responder that starts before [[remoteActivity]] records the
+    * connection is counted, and what it signals waits for it. In ouroboros-network c45735a5, which
+    * cardano-node 11.1.3 links, the inbound governor starts a new connection's responders before it
+    * records the connection (`InboundGovernor.hs` 321-345 and 385-393), and its mux tracer empties
+    * the counters when it finds no connection for a responder that has started (613-651), so that
+    * connection's responders are no longer restarted nor its remote state updated. A race, fixed
+    * upstream by `e098ed82c` (PR #5440, in 2fb69829), and not reproduced (#474;
+    * `docs/decisions.md`, #956, 2026-11-14). The responders are restarted on demand for the
+    * connection's life: there is no counterpart of the check that change also adds, which stops
+    * restarting them once the connection is no longer recorded (`InboundGovernor.hs` 441-447 at
+    * 2fb69829).
+    */
+  private[network] final class Responders[F[_]: Async] private (
+      count: Ref[F, Option[Running]],
+      pending: SignallingRef[F, Vector[Activity]],
+      lock: Mutex[F],
+      deadline: SignallingRef[F, Option[FiniteDuration]]
+  ):
+    private val F = Async[F]
+
+    private def counted(change: Running => (Vector[Activity], Running)): F[Unit] =
+      count
+        .modify {
+          case Some(running) =>
+            val (signals, after) = change(running)
+            (Some(after), signals)
+          case None => (None, Vector.empty)
+        }
+        .flatMap(signals => pending.update(_ ++ signals).whenA(signals.nonEmpty))
+
+    /** Count a starting responder, once no expired idle timer holds it. */
+    private def enter(temperature: Temperature): F[Unit] = F.tailRecM(()) { _ =>
+      lock.lock
+        .surround((deadline.get, F.monotonic).tupled.flatMap { (until, now) =>
+          val held = until.exists(_ <= now)
+          counted(_.started(temperature)).unlessA(held).as(Option.when(held)(until))
+        })
+        .flatMap {
+          case Some(seen) => deadline.waitUntil(_ != seen).as(Left(()))
+          case None       => F.pure(Right(()))
+        }
+    }
+
+    /** `run`, a responder of `temperature`, counted while it runs. */
+    def running[A](temperature: Temperature)(run: F[A]): F[A] =
+      F.bracketFull(poll => poll(enter(temperature)))(_ => run) {
+        case (_, Outcome.Succeeded(_)) => lock.lock.surround(counted(_.ended(temperature)))
+        case _                         => lock.lock.surround(count.set(None))
+      }
+
+    /** Completes once an activity is waiting; it takes none. */
+    def awaitActivity: F[Unit] = pending.waitUntil(_.nonEmpty)
+
+    /** The oldest waiting activity, once there is one. */
+    def next: F[Activity] = F.tailRecM(()) { _ =>
+      awaitActivity *> lock.lock.surround(pending.modify { waiting =>
+        waiting.headOption.fold((waiting, Left(()): Either[Unit, Activity]))(first =>
+          (waiting.drop(1), Right(first))
+        )
+      })
+    }
+
+    /** The instant the idle timer expires, while it runs; none otherwise. */
+    def arm(until: Option[FiniteDuration]): F[Unit] = deadline.set(until)
 
   private[network] object Responders:
-    def create[F[_]: Async]: F[Responders[F]] = SignallingRef.of[F, Int](0).map(new Responders(_))
+    def create[F[_]: Async]: F[Responders[F]] =
+      (
+        Ref.of[F, Option[Running]](Some(Running(0, 0))),
+        SignallingRef.of[F, Vector[Activity]](Vector.empty),
+        Mutex[F],
+        SignallingRef.of[F, Option[FiniteDuration]](None)
+      )
+        .mapN(new Responders(_, _, _, _))
 
-  /** The idle timer of the reference's inbound governor: end the connection with
-    * [[NetworkError.ProtocolIdleTimeout]] when no responder runs for `after`, first after the
-    * handshake and, when `rearm`, again each time the last running responder ends
-    * (`WaitIdleRemote`, `InboundGovernor.hs` and `ConnectionManager/Core.hs`, ouroboros-network
-    * `2fb69829`). A connection that our own clients use is not released when its remote side goes
-    * idle (the reference keeps a duplex connection in outbound use), so it is armed once only.
+  /** What the inbound governor knows of the peer's side of a connection (`RemoteState`,
+    * `InboundGovernor/State.hs:250-288`): idle since `since` with its timer running, using the
+    * connection with or without a hot responder, or idle and kept because our outbound side uses
+    * it.
     */
-  private[network] def idleWatch[F[_]: Async](
+  private enum RemoteState:
+    case Idle(since: FiniteDuration)
+    case Warm
+    case Hot
+    case Cold
+
+    /** `mkRemoteSt` (`InboundGovernor/State.hs` 344-348). */
+    def st: RemoteSt = this match
+      case Idle(_) => RemoteSt.Idle
+      case Warm    => RemoteSt.Warm
+      case Hot     => RemoteSt.Hot
+      case Cold    => RemoteSt.Cold
+
+  /** The inbound governor's handling of one duplex or accepted connection (`InboundGovernor.hs`
+    * 354-360, 445-543, and its mux tracer 602-682, ouroboros-network `c45735a5`): the first
+    * responder that starts is `AwakeRemote` (`promotedToWarmRemote`, `RemoteWarm`), the first hot
+    * one `RemotePromotedToHot` (`RemoteHot`), the end of the last hot one `RemoteDemotedToWarm`
+    * (`RemoteWarm`), the end of the last one `WaitIdleRemote` (`demotedToColdRemote`, which arms
+    * the idle timer again: `RemoteIdle`), and a timer that expires is `CommitRemote`
+    * (`releaseInbound`): the manager closes the connection, which the inbound governor tracks no
+    * more, or keeps it because our outbound side uses it (`RemoteCold`), and the peer's next
+    * responder wakes it up again. Each remote state is recorded on the connection
+    * ([[Connection.updateRemoteState]]) from `RemoteIdle` on, until a commit or the end of the
+    * resource. It runs on every connection whose responders the peer can start, the ones we dial
+    * included. An expired timer is committed before the activities that are waiting, which are
+    * handled after, as the reference's step puts `CommitRemote` before the channel's messages
+    * (`InboundGovernor.hs` 258-266).
+    *
+    * @param timer
+    *   How the idle timer waits: `Async.sleep`; a test controls what happens as it fires.
+    */
+  private[network] def remoteActivity[F[_]: Async](
       mux: Mux[F],
       responders: Responders[F],
-      after: FiniteDuration,
-      rearm: Boolean
+      idleTimeout: FiniteDuration,
+      connection: Connection[F],
+      timer: Option[FiniteDuration => F[Unit]] = None
   ): Resource[F, Unit] =
     val F = Async[F]
-    // whether the window passed with no responder started
-    val window: F[Boolean] = F.race(responders.awaitBusy, F.sleep(after)).map(_.isRight)
-    val watch: F[Unit] = F.tailRecM(()) { _ =>
-      window.flatMap {
-        case true           => mux.abort(NetworkError.ProtocolIdleTimeout(after)).as(Right(()))
-        case false if rearm => responders.awaitIdle.as(Left(()))
-        case false          => F.pure(Right(()))
+    def recorded(state: RemoteState): F[Either[RemoteState, Unit]] =
+      connection.updateRemoteState(state.st).as(Left(state))
+    // the inbound governor's step for one message of the channel (`InboundGovernor.hs` 445-505)
+    def after(activity: Activity): F[Either[RemoteState, Unit]] =
+      activity match
+        // the manager's answer does not change the remote state
+        case Activity.Awake =>
+          responders.arm(None) *> connection.promotedToWarmRemote *> recorded(RemoteState.Warm)
+        case Activity.PromotedToHot => recorded(RemoteState.Hot)
+        case Activity.DemotedToWarm => recorded(RemoteState.Warm)
+        case Activity.WaitIdle =>
+          connection.demotedToColdRemote.flatMap {
+            case OperationResult.Success(_) =>
+              F.monotonic.flatMap(now => recorded(RemoteState.Idle(now)))
+            case OperationResult.Unsupported(_) => F.pure(Right(()))
+          }
+    // `CommitRemote`; the responders that start meanwhile wait until it is settled
+    def commit(since: FiniteDuration): F[Either[RemoteState, Unit]] =
+      connection.releaseInbound.flatMap {
+        case OperationResult.Success(RemoteRelease.Commit) =>
+          connection.unregisterRemote.as(Right(()))
+        case OperationResult.Success(RemoteRelease.Keep) =>
+          responders.arm(None) *> recorded(RemoteState.Cold)
+        // the reference leaves the expired timer as it is, and commits again
+        case OperationResult.Unsupported(Some(state)) if state.isLive =>
+          F.pure(Left(RemoteState.Idle(since)))
+        case OperationResult.Unsupported(_) => F.pure(Right(()))
+      }
+    val watch: F[Unit] = F.monotonic.flatMap { start =>
+      F.tailRecM[RemoteState, Unit](RemoteState.Idle(start)) {
+        case RemoteState.Idle(since) =>
+          val until = since + idleTimeout
+          responders.arm(Some(until)) *> F.monotonic.flatMap { now =>
+            // what wins the wait decides nothing: the clock is read again after it
+            val left = (until - now).max(Duration.Zero)
+            F.race(responders.awaitActivity, timer.fold(F.sleep(left))(_(left))) *>
+              F.monotonic.flatMap(later =>
+                if later >= until then commit(since) else responders.next.flatMap(after)
+              )
+          }
+        case RemoteState.Warm | RemoteState.Hot | RemoteState.Cold =>
+          responders.next.flatMap(after)
       }
     }
-    Fibers
-      .scoped[F, NetworkError, Unit](t => NetworkError.fromThrowable("protocol-idle", t))(watch)
-      .flatMap(_.fold(mux.abort, F.pure))
-      .background
-      .void
+    // `NewConnection` registers the connection as `RemoteIdle`; `MuxFinished` unregisters it
+    Resource.make(connection.updateRemoteState(RemoteSt.Idle))(_ => connection.unregisterRemote) *>
+      Fibers
+        .scoped[F, NetworkError, Unit](t => NetworkError.fromThrowable("protocol-idle", t))(watch)
+        .flatMap(_.fold(mux.abort, F.pure))
+        .background
+        .void
 
-  /** An inbound connection: negotiate, serve, and return the reason it ended. `negotiated` runs
-    * once the handshake succeeded and may use the multiplexer (a duplex connection also carries our
-    * clients, see [[Mux.Config.duplex]]).
-    *
-    * @param ownClients
-    *   whether our own clients run on the connection once negotiated; the protocol-idle timer is
-    *   then armed once only ([[idleWatch]])
+  /** An inbound connection: negotiate, publish it to the manager, serve, and return the reason it
+    * ended: the peer or a failure closed it, or the manager ended it ([[Connection.stopped]]).
+    * `negotiated` runs once the handshake succeeded and may use the multiplexer.
     */
   def accept[F[_]: Async, P](
       bearer: Bearer[F],
       magic: Long,
       handlers: ServerHandlers[F, P],
+      connection: Connection[F],
       settings: Settings = Settings(),
       negotiated: (HandshakeClient.Agreed, Mux[F]) => Resource[F, Unit] = (_, _: Mux[F]) =>
-        Resource.unit[F],
-      ownClients: HandshakeClient.Agreed => Boolean = _ => false
+        Resource.unit[F]
   )(using Raise[F, NetworkError]): F[ConnectionEnd] =
     val config = settings.mux.copy(role = Mux.Role.Responder, duplex = settings.duplex)
-    Mux.handshakeResource(bearer, Protocol, config).use { mux =>
+    val served = Mux.handshakeResource(bearer, Protocol, config).use { mux =>
       for
         agreed <- mux
           .channel(Protocols.Handshake)
@@ -236,7 +419,7 @@ object NodeToNodeServer:
                 settings.maxVersion
               ),
               ProtocolDeadline.After(settings.handshakeTimeout)
-            )
+            )(using summon, ConnectionManager.recordingRefusal(connection))
           )
         responders <- Responders.create[F]
         reason <- (
@@ -247,15 +430,30 @@ object NodeToNodeServer:
             agreed.data.peerSharing,
             initiators = !agreed.data.initiatorOnly,
             responders = Some(responders)
-          ) *> idleWatch(
-            mux,
-            responders,
-            settings.protocolIdleTimeout,
-            rearm = !ownClients(agreed)
-          ) *> negotiated(agreed, mux)
-        ).surround(mux.closed)
+          ) *> published(connection, Negotiated(mux, agreed)) *>
+            negotiated(agreed, mux) *>
+            remoteActivity(mux, responders, settings.protocolIdleTimeout, connection)
+        ).surround(Async[F].race(mux.closed, connection.stopped))
         result <- reason match
-          case defect: NetworkError.Defect => defect.raise[F, ConnectionEnd]
-          case other                       => Async[F].pure(ConnectionEnd.fromNetwork(other))
+          case Left(defect: NetworkError.Defect) => defect.raise[F, ConnectionEnd]
+          case Left(other)                       => Async[F].pure(ConnectionEnd.fromNetwork(other))
+          case Right(end)                        => Async[F].pure(end)
       yield result
     }
+    // a connection the manager ends while it negotiates (a prune) ends there
+    Async[F].race(connection.stopped, served).map(_.merge)
+
+  /** Publish the negotiated `handle` with its state; a connection the manager refuses now is
+    * stopped (the reference's handler fails, and its mux with it).
+    */
+  private[network] def published[F[_]: Async](
+      connection: Connection[F],
+      handle: Negotiated[F]
+  ): Resource[F, Unit] =
+    Resource.eval(
+      Handle
+        .allow[ConnectionError](connection.negotiated(handle))
+        .rescue(error =>
+          handle.mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error)))
+        )
+    )

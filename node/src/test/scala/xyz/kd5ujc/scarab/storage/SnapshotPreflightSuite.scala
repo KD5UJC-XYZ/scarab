@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.{IO, Ref}
 import cats.mtl.{Ask, Handle, Raise}
 import cats.syntax.all.*
@@ -21,15 +23,16 @@ import StorageTestKit.*
   */
 class SnapshotPreflightSuite extends CatsEffectSuite:
   private val setup = NodeSetup
-    .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
+    .fromDirectory(ReferenceBuild.Default)(java.nio.file.Path.of("fixtures/eras/genesis"))
     .fold(e => fail(e.message), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-  private given SnapshotFormat[IO, MirrorState] = SnapshotV8.format[IO](SnapshotCheck.Full)
+  private given SnapshotFormat[IO, MirrorState] =
+    SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
   private val snapshotName = "snapshot-99999999999999999999-1.bin"
 
   private val versions =
     Vector(FormatVersion.V1, FormatVersion.V2, FormatVersion.V3, FormatVersion.V4)
-      .map(v => Some(v) -> FileKind.SnapshotFile.identifier(v)) :+ (None -> "SCRBSNP9")
+      .map(v => Some(v) -> FileKind.SnapshotFile.identifier(v)) :+ (None -> "SCRBSNPB")
 
   private def header(version: Option[FormatVersion], identifier: String): Array[Byte] =
     version match
@@ -89,6 +92,8 @@ class SnapshotPreflightSuite extends CatsEffectSuite:
         def restore(anchor: Option[BlockRef])(using Raise[IO, StorageError]) = IO.pure(true)
         def reset(using Raise[IO, StorageError]) = resets.update(_ + 1)
         def retain(stems: Set[String])(using Raise[IO, StorageError]) = IO.unit
+        def trim(stems: Set[String])(using Raise[IO, StorageError]) =
+          IO.pure(Vector.empty[(String, StorageError)])
       result <- attemptNode {
         ChainStorage
           .open[IO, MirrorState](
@@ -104,7 +109,8 @@ class SnapshotPreflightSuite extends CatsEffectSuite:
               setup.globals,
               setup.byronRules,
               setup.handOver,
-              setup.byronHistory
+              setup.byronHistory,
+              xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
             ),
             setup.mirrorStart,
             _ => IO.unit,

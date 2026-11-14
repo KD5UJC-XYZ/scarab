@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{
   Address,
   Certificate,
+  EpochGeometry,
   LedgerFailure,
   Mismatch,
   PpupFailure,
@@ -40,9 +41,10 @@ import xyz.kd5ujc.scarab.ledger.state.*
 // the pointer addresses.
 //
 // The shared pure predicates live in `TxChecks`; these rules sequence them in the reference's
-// order and maintain the UTxO state. The era of the rule is the evidence `PreConway[E]`:
-// where the checks branch on the protocol version of the parameters in force, that is the
-// reference's own (`hardfork*`).
+// order and maintain the UTxO state. The era of the rule is the evidence `PreConway[E]`, and the
+// checks each era's rule runs are chosen by it, whatever the protocol version; where the checks
+// branch on the protocol version of the parameters in force, that is the reference's own
+// (`hardfork*`).
 
 /** `PpupEnv` (`Ppup.hs`): the block-level context of the transaction (the slot and epoch, the
   * update quorum), the parameters in force, and the genesis delegations the proposals are checked
@@ -63,71 +65,76 @@ final case class PpupEnv(
   * also makes the prediction of the parameters of the next, `votedFuturePParams` (`Ppup.hs:205`),
   * which the TICK rule solidifies and UPEC adopts.
   */
-object ShelleyPpup
-    extends JudgedSts[PpupEnv, ShelleyGovState, Option[Update], PredicateFailure, LedgerFailure]:
-  def transition[F[_]: Monad](env: PpupEnv, update: Option[Update])(using
-      ask: Ask[F, Globals],
-      st: Stateful[F, ShelleyGovState],
-      raise: Raise[F, LedgerFailure],
-      judge: Judge[F, PredicateFailure]
-  ): F[Unit] =
-    update.traverse_ { u =>
-      val id = env.id
-      val ctx = env.ctx
-      def refuse(f: PpupFailure): PredicateFailure = PredicateFailure.utxo(UtxoFailure.Update(f))
-      val known = env.genDelegs.keysIterator.map(_.bytes).toSet
-      // `getTheSlotOfNoReturn` (cardano-ledger f649f975, `Slot.hs:106-114`, used by
-      // `Shelley/Rules/Ppup.hs:177`): `*-` is monus, so it does not go below slot 0
-      val tooLate = (ctx.firstSlotNextEpoch - 2 * ctx.stabilityWindow).max(0)
-      val current = ctx.slot < tooLate
-      // `firstIllegalProtVerUpdate`: the first proposal, in the order of the genesis keys, whose
-      // protocol version cannot follow the one in force (`Ppup.hs:163-168`)
-      val firstIllegal = u.proposals.toVector
-        .sortBy(_._1)
-        .iterator
-        .map((_, p) => UpdateChecks.canFollow(env.pp, p))
-        .collectFirst { case Left(refusal) => refusal }
-      for
-        _ <- Sts.predicate[F, PredicateFailure](
-          u.proposals.keys.forall(known.contains),
-          refuse(PpupFailure.NonGenesisUpdate(Mismatch(u.proposals.keySet, known)))
-        )
-        _ <- firstIllegal.traverse_ {
-          case UpdateChecks.Refusal.Failed(f) => Sts.failBecause[F, PredicateFailure](refuse(f))
-          case UpdateChecks.Refusal.Unreadable =>
-            (LedgerFailure.Undecodable(id, TxDefect.UnreadableProtocolVersion): LedgerFailure)
-              .raise[F, Unit]
-        }
-        _ <- Sts.predicate[F, PredicateFailure](
-          u.epoch == (if current then ctx.epoch else ctx.epoch + 1),
-          refuse(
-            PpupFailure.PPUpdateWrongEpoch(
-              ctx.epoch,
-              u.epoch,
-              if current then VotingPeriod.VoteForThisEpoch else VotingPeriod.VoteForNextEpoch
+object ShelleyPpup:
+  def sts[E <: EraTag](using
+      ShelleyBasedEra[E]
+  ): JudgedSts[PpupEnv, ShelleyGovState, Option[Update], PredicateFailure, LedgerFailure] =
+    new JudgedSts[PpupEnv, ShelleyGovState, Option[Update], PredicateFailure, LedgerFailure]:
+      def transition[F[_]: Monad](env: PpupEnv, update: Option[Update])(using
+          ask: Ask[F, Globals],
+          st: Stateful[F, ShelleyGovState],
+          raise: Raise[F, LedgerFailure],
+          judge: Judge[F, PredicateFailure]
+      ): F[Unit] =
+        update.traverse_ { u =>
+          val id = env.id
+          val ctx = env.ctx
+          def refuse(f: PpupFailure): PredicateFailure =
+            PredicateFailure.utxo(UtxoFailure.Update(f))
+          val known = env.genDelegs.keysIterator.map(_.bytes).toSet
+          // `getTheSlotOfNoReturn` (cardano-ledger f649f975, `Slot.hs:106-114`, used by
+          // `Shelley/Rules/Ppup.hs:177`)
+          val tooLate = EpochGeometry.slotOfNoReturn(ctx.firstSlotNextEpoch, ctx.stabilityWindow)
+          val current = ctx.slot < tooLate
+          // `firstIllegalProtVerUpdate`: the first proposal, in the order of the genesis keys, whose
+          // protocol version cannot follow the one in force (`Ppup.hs:163-168`)
+          val firstIllegal = u.proposals.toVector
+            .sortBy(_._1)
+            .iterator
+            .map((_, p) => UpdateChecks.canFollow(env.pp, p))
+            .collectFirst { case Left(refusal) => refusal }
+          for
+            _ <- Sts.predicate[F, PredicateFailure](
+              u.proposals.keys.forall(known.contains),
+              refuse(PpupFailure.NonGenesisUpdate(Mismatch(u.proposals.keySet, known)))
             )
-          )
-        )
-        proposed <- Refuse.vocab[F, List[(KeyHash[Genesis], xyz.kd5ujc.scarab.ledger.ParamUpdate)]](
-          u.proposals.toList.traverse((k, p) => Convert.keyHash[Genesis](k).map(_ -> p))
-        )
-        _ <- st.modify { g =>
-          if current then
-            val proposals = g.curProposals ++ proposed
-            g.copy(
-              curProposals = proposals,
-              futurePParams = FuturePParams.PotentialPParamsUpdate(
-                xyz.kd5ujc.scarab.ledger.UpdateChecks.voted(
-                  env.pp,
-                  proposals.iterator.map((k, p) => k.bytes -> p).toMap,
-                  ctx.updateQuorum
+            _ <- firstIllegal.traverse_ {
+              case UpdateChecks.Refusal.Failed(f) => Sts.failBecause[F, PredicateFailure](refuse(f))
+              case UpdateChecks.Refusal.Unreadable =>
+                (LedgerFailure.Undecodable(id, TxDefect.UnreadableProtocolVersion): LedgerFailure)
+                  .raise[F, Unit]
+            }
+            _ <- Sts.predicate[F, PredicateFailure](
+              u.epoch == (if current then ctx.epoch else ctx.epoch + 1),
+              refuse(
+                PpupFailure.PPUpdateWrongEpoch(
+                  ctx.epoch,
+                  u.epoch,
+                  if current then VotingPeriod.VoteForThisEpoch else VotingPeriod.VoteForNextEpoch
                 )
               )
             )
-          else g.copy(futureProposals = g.futureProposals ++ proposed)
+            proposed <- Refuse
+              .vocab[F, List[(KeyHash[Genesis], xyz.kd5ujc.scarab.ledger.ParamUpdate)]](
+                u.proposals.toList.traverse((k, p) => Convert.keyHash[Genesis](k).map(_ -> p))
+              )
+            _ <- st.modify { g =>
+              if current then
+                val proposals = g.curProposals ++ proposed
+                g.copy(
+                  curProposals = proposals,
+                  futurePParams = FuturePParams.PotentialPParamsUpdate(
+                    xyz.kd5ujc.scarab.ledger.UpdateChecks.voted(
+                      env.pp,
+                      proposals.iterator.map((k, p) => k.bytes -> p).toMap,
+                      ctx.updateQuorum
+                    )
+                  )
+                )
+              else g.copy(futureProposals = g.futureProposals ++ proposed)
+            }
+          yield ()
         }
-      yield ()
-    }
 
 /** What the instant stake becomes as outputs are created and spent (`addShelleyInstantStake`,
   * `deleteShelleyInstantStake`, `applyUTxOShelleyInstantStake`, `Shelley/State/Stake.hs:108-145` at
@@ -241,8 +248,9 @@ object ShelleyUtxos:
           judge: Judge[F, PredicateFailure]
       ): F[Unit] =
         val scripts =
-          Utxos.scripts[F](env, ann)(using
+          Utxos.scripts[F, E](env, ann)(using
             summon[Monad[F]],
+            pre.era,
             st.focus(Counted.plutus[UTxOState[E]]),
             raise,
             judge
@@ -274,7 +282,7 @@ object ShelleyUtxo:
     JudgedSts.trans[F, PpupEnv, ShelleyGovState, Counted[UTxOState[E]], Option[
       Update
     ], PredicateFailure, LedgerFailure, LedgerFailure](
-      ShelleyPpup,
+      ShelleyPpup.sts[E](using pre.era),
       PpupEnv(env.ctx, ann.id, env.pp, ShelleyCertLens.genDelegs.get(env.cert)),
       ann.tx.body.update
     )
@@ -294,7 +302,7 @@ object ShelleyUtxo:
           judge: Judge[F, PredicateFailure]
       ): F[Unit] =
         val (deposits, refunds) = ShelleyDeposits.of(env.pp, env.cert, ann.tx.body)
-        val collateral = TxChecks.collateral(ann.utxo, env.pp, ann.tx)
+        val collateral = TxChecks.collateral[E](ann.utxo, ann.tx)(using pre.era)
         val checks = UtxoChecks.of[E](env, ann, deposits, refunds)
         for
           _ <- Sts.require[F, LedgerFailure](checks.defect)
@@ -407,16 +415,16 @@ object UtxoChecks:
     val minFee = pp.minFeeA * tx.size + pp.minFeeB + scriptFee
     val withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
     val consumed = ann.spent.foldLeft(Value.zero)(_ + _.value) +
-      Value.coin(withdrawn + refunds) + Value(0, body.mint)
+      Value.coin(withdrawn + refunds) + Value.minted(body.mint)
     val produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
-      Value.coin(body.fee + deposits)
+      Value.coin(body.fee + deposits) + Value.burned(body.mint)
     val defect = Option.unless(!body.hasGovernance && body.donation == 0)(
       LedgerFailure.Undecodable(ann.id, TxDefect.GovernanceFieldsBeforeConway)
     )
     if pre.atLeast(ShelleyBasedEra.SBabbage) then
       UtxoChecks(
         defect,
-        UtxoTests.babbage(pp, ctx, ann, minFee, consumed, produced),
+        UtxoTests.babbage[E](pp, ctx, ann, minFee, consumed, produced)(using pre.era),
         Test.pass
       )
     else if alonzo then
@@ -428,8 +436,8 @@ object UtxoChecks:
     else
       UtxoChecks(
         defect,
-        UtxoTests.shelleyBeforePpup(pp, ctx.network, ctx.slot, ann, minFee, consumed, produced),
-        UtxoTests.shelleyAfterPpup(pp, tx)
+        UtxoTests.shelleyBeforePpup[E](ctx.network, ctx.slot, ann, minFee, consumed, produced),
+        UtxoTests.shelleyAfterPpup[E](ctx.referenceBuild, pp, tx)
       )
 
 /** UTXOW (`Shelley/Rules/Utxow.hs:270`, `transitionRulesUTXOW`, with the Alonzo and Babbage rules
@@ -455,7 +463,12 @@ object ShelleyUtxow:
         val genDelegs = ShelleyCertLens.genDelegs.get(env.cert)
         for
           _ <- Utxow.record[F](
-            Utxow.checks(env, PreConway.genDelegs(genDelegs), ann, mirSigned(env, ann, genDelegs))
+            Utxow.checks[E](
+              env,
+              PreConway.genDelegs(genDelegs),
+              ann,
+              mirSigned(env, ann, genDelegs)
+            )(using pre.era)
           )
           _ <- JudgedSts.trans[F, UtxoEnv[ShelleyCertState], Counted[UTxOState[E]], Counted[
             UTxOState[E]
@@ -468,7 +481,9 @@ object ShelleyUtxow:
 
   /** `validateMIRInsufficientGenesisSigs` (`Shelley/Rules/Utxow.hs:449-470`): a transaction with a
     * MIR certificate is signed by at least the quorum of the genesis delegates; the refusal names
-    * the delegates that did sign.
+    * the delegates that did sign. The signers are `keyHashWitnessesTxWits` (`Utxow.hs:295`, Alonzo
+    * `:321`, Babbage `:302`; `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:538-544`): the
+    * hashes of the vkey witnesses and the address roots of the bootstrap witnesses the set keeps.
     */
   private def mirSigned(
       env: UtxoEnv[ShelleyCertState],
@@ -479,7 +494,10 @@ object ShelleyUtxow:
       case Certificate.MoveRewards(_, _) => true
       case _                             => false
     }
-    val signers = ann.tx.witnesses.vkeys.map(w => env.ctx.verdicts.keyHash(w._1)).toSet
+    val signers = TxChecks.providedKeyHashes(
+      ann.tx,
+      ann.tx.witnesses.vkeys.map(w => env.ctx.verdicts.keyHash(w._1))
+    )
     val genesisSigners = genDelegs.values.map(_.delegate).toSet.intersect(signers)
     Test.failureUnless(
       !hasMir || genesisSigners.size >= env.ctx.updateQuorum,

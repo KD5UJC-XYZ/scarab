@@ -13,14 +13,16 @@ codec      -> (none)
 crypto     -> codec
 protocol   -> crypto
 network    -> protocol
-plutus     -> codec
+uplc       -> codec, crypto
+plutus     -> codec, uplc
 ledger     -> protocol, plutus
 consensus  -> ledger
-storage    -> consensus, models
+storage    -> consensus, models; test only: network
 node       -> storage, network
 models-gen -> (none)
 models     -> codec, crypto; test only: models-gen, protocol, ledger
 fuzz       -> codec, protocol, node, models-gen
+tools      -> codec, crypto, protocol, network, uplc, plutus, ledger, consensus, storage, node, models
 ```
 
 ## codec
@@ -62,13 +64,29 @@ Effectful bearer, multiplexer, connections, peer selection.
 | network/genesis | Genesis rate limiting primitives: leaky bucket, limit on patience, picosecond clock | `LeakyBucket`, `LimitOnPatience`, `PicosClock` | `LeakyBucketSuite`, `LimitOnPatienceSuite` | [design genesis](design/genesis.md) |
 | network/selection | Pure peer selection: governor state, churn, ledger peers, local roots, GSM, CSJ, fetch policy | `PeerSelection`, `GovernorState`, `Churn`, `LedgerPool`, `LocalRoots`, `Gsm`, `ChainSyncJumping`, `BlockFetchPolicy` | `PeerSelectionSuite`, `ChurnSuite`, `LedgerPeersSuite`, `GsmSuite`, `BlockFetchPolicySuite`, `PeerShareSuite` | [ADR 0016](adr/0016-peer-states-and-the-governor.md), [design peer-selection](design/peer-selection.md), [design block-fetch-coordination](design/block-fetch-coordination.md) |
 
-## plutus
+## uplc
 
-Plutus evaluation through Scalus.
+Scarab's own UPLC evaluator, with no Scalus on its class path (ADR 0027).
 
 | Package | Responsibility | Entry points | Suites | Decisions |
 |---|---|---|---|---|
-| plutus | Script evaluator algebra, Scalus adapter, Plutus data, execution units, builtin availability | `ScriptEvaluator`, `ScalusEvaluator`, `PlutusData`, `ExUnits`, `PlutusAvailability`, `RetryingMemo` | `ScalusEvaluatorSuite`, `PlutusDataSuite`, `PlutusAvailabilitySuite`, `BuiltinCostingSuite`, `ScalusReproducersSuite`, `NativeTextReferenceSuite` | [ADR 0003](adr/0003-plutus-through-scalus.md), [ADR 0018](adr/0018-parallel-plutus-after-ordered-preparation.md), [design parallel-plutus](design/parallel-plutus.md), [design script-results](design/script-results.md) |
+| uplc | Plutus data, execution units, language and cost-model parameter names; the term model (builtins with tags and type schemes, constants, terms with Traverse, stack-safe recursion schemes), semantics variants and availability of the own evaluator, with its decoder, machine, builtins and costing as they land | `PlutusData`, `ExUnits`, `PlutusLanguage`, `ParamNames`, `DefaultFun`, `Signature`, `DefaultUni`, `Constant`, `Value`, `Text`, `TermF`, `Term`, `Program`, `Fix`, `Schemes`, `SemanticsVariant`, `Availability` | `NoScalusSuite`, `PlutusDataSuite`, `DefaultFunSuite`, `TermFLawsSuite`, `SchemesSuite`, `AvailabilitySuite`, `ValueSuite`, `ConstantSuite` | [ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) |
+| uplc/bls | BLS12-381 constants of the own evaluator (G1 and G2 points as their compressed bytes, Miller-loop results with jblst's value) and the pure facade over jblst and Bouncy Castle that the builtins compute with | `G1Element`, `G2Element`, `MlResult`, `Bls12_381`, `BlsFailure` | `ConstantSuite`, `Bls12_381Suite` | [ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) |
+| uplc/cost | The reference's saturating integer, budgets, cost streams and the machine's step costs; the cost model: costing-function shapes of each semantics variant, argument measures, the costing of every builtin and the evaluation context from an on-chain cost-model list | `SatInt`, `ExBudget`, `CostStream`, `StepKind`, `MachineCosts`, `Costs`, `Model`, `CostingFun`, `BuiltinCostModel`, `BuiltinShapes`, `CekMachineCosts`, `Measure`, `BuiltinCosting`, `EvaluationContext`, `VariantCosts`, `CostModelApplyError`, `CostModelApplyWarn` | `SatIntSuite`, `CostsSuite`, `MeasureSuite`, `CostModelSuite`, `CostingSuite`, `EvaluationContextSuite`, `CostingOracleSuite`, `CostingWithUnliftingSuite`, `ConformanceCostingSuite`, `CekConformanceSuite` | [ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) |
+| uplc/builtin | The contract between the machine, the builtins and the costing: unlifting, denotations, costing functions and a saturated application in the reference's order | `Builtins`, `Prepared`, `Unlifting`, `Denotation`, `Denotations`, `Costing`, `CostingFunction`, `MachineValue`, `Argument`, `Outcome`, `BuiltinFailure` | `BuiltinsSuite` | [ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) |
+| uplc/builtin/core | The unlifting of every builtin under variants A to E with each variant's bounds, and the denotations of the core builtins (integers, byte strings, strings, Bool, unit, trace, pairs, lists, Data and its CBOR serialisation) | `CoreUnlifting`, `CoreDenotations`, `CoreVariant`, `UnsupportedVariant`, `DataSerialisation` | `CoreUnliftingSuite`, `CoreDenotationsSuite`, `SerialiseDataSuite`, `UnliftingBoundsReferenceSuite`, `SliceByteStringReferenceSuite`, `DataReferenceSuite`, `CorpusCasesSuite` | [ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) |
+| uplc/cek | The CEK machine of the own evaluator: a pure tail-recursive loop over the reference's transitions, values and their discharge, the skew-binary environment, counting and restricting budgets with the slippage, the caser of built-in constants, typed machine errors and the cats-mtl boundary | `CekMachine`, `MachineParameters`, `BudgetMode`, `BudgetState`, `CekResult`, `CekReport`, `CekEvaluated`, `CekFailed`, `CekValue`, `Env`, `CekError`, `CaseBuiltinError`, `CekFailure`, `Cause`, `CaserBuiltin` | `CekMachineSuite`, `CekTermCorpusSuite`, `CekCoreBuiltinsSuite`, `CekDeepSuite`, `CekEvaluateSuite`, `EnvSuite` | [ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) |
+| uplc/builtin/extended | The denotations of the hashes, the Ed25519, ECDSA and Schnorr verifications, the BLS12-381 builtins, the conversions and bitwise builtins, expModInteger, the Value builtins, the arrays and batch 7, with their typed failures and the reference's log lines | `ExtendedDenotations`, `Bitwise`, `Values`, `Hashes`, `Signatures`, `ExpMod`, `Arrays` | `ExtendedCorpusSuite`, `Batch7Suite`, `ExtendedDenotationsSuite`, `BitwiseSuite`, `ValuesSuite`, `SignaturesSuite`, `WycheproofEcdsaSuite`, `Bls12_381Suite` | [ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) |
+| uplc/flat | Script bytes to a program: the Flat decoder of programs, terms and constants with every refusal of the reference, and the ledger's deserialiseScript with its predicates, the remainder rule and the version check for evaluation | `SerialisedScript`, `ScriptDecodeError`, `FlatDecoder`, `Checks`, `FlatError`, `ConstantDecoder`, `TypeHeader`, `Input` | `FlatDecoderSuite`, `SerialisedScriptSuite`, `FlatReferenceCorporaSuite`, `FlatConformanceSuite`, `OwnFlatDecoderParitySuite` | [ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) |
+| uplc/ledger | The ledger's evaluation of a script: mkTermToEvaluate (the arguments, the program's version, the scope check), the evaluation context of machines per variant, evaluateScriptRestricting and evaluateScriptCounting with the V3 unit rule, the per-language entry points, and no verdict for protocol 12 and later or for a defect of this evaluator | `LedgerEval`, `PlutusV1`, `PlutusV2`, `PlutusV3`, `LedgerContext`, `VariantMachine`, `Scope`, `FreeVariableError`, `EvaluationError`, `Stage`, `VerboseMode`, `Unavailability`, `LedgerOutcome`, `ScriptResult` | `LedgerEvalSuite`, `LedgerBoundaryOracleSuite` | [ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md) |
+
+## plutus
+
+Plutus evaluation through Scalus, or through the own evaluator (--plutus-vm).
+
+| Package | Responsibility | Entry points | Suites | Decisions |
+|---|---|---|---|---|
+| plutus | Script evaluator algebra, the Scalus adapter and the adapter of the own evaluator (uplc), the backend choice of --plutus-vm, builtin availability; re-exports PlutusData, ExUnits, PlutusLanguage and ParamNames from uplc | `ScriptEvaluator`, `ScalusEvaluator`, `ScarabEvaluator`, `PlutusVm`, `PlutusAvailability`, `RetryingMemo` | `ScalusEvaluatorSuite`, `ScarabEvaluatorSuite`, `PlutusBackendsSuite`, `PlutusDataSuite`, `PlutusAvailabilitySuite`, `BuiltinCostingSuite`, `ScalusReproducersSuite`, `NativeTextReferenceSuite` | [ADR 0003](adr/0003-plutus-through-scalus.md), [ADR 0027](adr/0027-own-uplc-evaluator-as-a-correctness-backend.md), [ADR 0018](adr/0018-parallel-plutus-after-ordered-preparation.md), [design parallel-plutus](design/parallel-plutus.md), [design script-results](design/script-results.md) |
 | scalus/uplc | Scarab view over Scalus programs, in Scalus' own package | `ScarabProgramView` | `ScalusEvaluatorSuite` | [ADR 0003](adr/0003-plutus-through-scalus.md) |
 
 ## ledger
@@ -78,12 +96,12 @@ Blocks, transactions, rules, native ledger state.
 | Package | Responsibility | Entry points | Suites | Decisions |
 |---|---|---|---|---|
 | ledger/json | aeson's Value with Scientific numbers, Text keys, its Eq, Ord and Show; unused strict native raw JSON Value parser with original-token validation and the reference's error texts | `JsonValue`, `NativeJson` | `JsonValueSuite`, `NativeJsonSuite` | [native-genesis-start](compatibility/native-genesis-start.md) |
-| ledger | Blocks, headers, transactions, governance, parameters, scripts, ledger view and the closed error vocabulary | `Block`, `Header`, `Tx`, `GovAction`, `ProtocolParams`, `LedgerView`, `ScriptContexts`, `Prepared` | `TxDecodingSuite`, `ProtocolParamsSuite`, `PreparedBlockSuite`, `RatifySuite`, `ScriptContextOracleSuite`, `VotingProceduresSuite`, `WithdrawalContextsSuite` | [ADR 0007](adr/0007-era-indexed-state.md), [ADR 0009](adr/0009-ledger-mirror-step-2.md), [design domain-errors](design/domain-errors.md) |
+| ledger | Blocks, headers, transactions, governance, parameters, scripts, ledger view and the closed error vocabulary | `Block`, `Header`, `Tx`, `GovAction`, `ProtocolParams`, `LedgerView`, `ScriptContexts`, `Prepared` | `TxDecodingSuite`, `ProtocolParamsSuite`, `PreparedBlockSuite`, `RatifySuite`, `ScriptContextOracleSuite`, `VotingProceduresSuite`, `WithdrawalContextsSuite`, `PlutusBackendDifferentialSuite` | [ADR 0007](adr/0007-era-indexed-state.md), [ADR 0009](adr/0009-ledger-mirror-step-2.md), [design domain-errors](design/domain-errors.md) |
 | ledger/byron | Byron ledger: transactions, delegation, update, parameters, transport | `ByronLedger`, `ByronTx`, `ByronUpdate`, `DelegationState`, `ByronParams`, `ByronTransport` | `ByronLedgerSuite`, `ByronUpdateSuite`, `ByronMainnetSuite`, `ByronTransportSuite` | [ADR 0001](adr/0001-haskell-node-as-reference.md), [architecture](architecture.md) |
-| ledger/dijkstra | Decoding of a Leios block's Dijkstra transactions at decoder version 12, as the Leios testnet's build reads them; no ledger rule | `DijkstraTx`, `V12` | `LeiosTestnetBlockReferenceSuite`, `DijkstraTxDepthSuite` | [leios](leios.md) |
+| ledger/dijkstra | Decoding of Dijkstra transactions at decoder version 12, in the block and the mempool form, as the Leios testnet's build reads them, and the predicate failures of the Dijkstra rules | `DijkstraTx`, `V12`, `DijkstraLedgerFailure` | `LeiosTestnetBlockReferenceSuite`, `DijkstraTxDepthSuite`, `DijkstraCodecsSuite` | [leios](leios.md) |
 | ledger/injection | Pure native streaming JSON mechanism for genesis injection files; file/hash wiring remains separate | `InjectionJson` | `InjectionJsonSuite`, `InjectionDecimalSuite` | [native-genesis-start](compatibility/native-genesis-start.md) |
 | ledger/mempack | MemPack TxOut codec and canonical CBOR used by the Haskell snapshot layout | `MemPack`, `TxOutMemPack`, `CanonicalCbor`, `MultiAssetRep` | `TxOutMemPackSuite` | [design haskell-snapshots](design/haskell-snapshots.md) |
-| ledger/rules | Shelley to Conway rule interpreter: LEDGER, UTXO, BBODY, epoch, tick, rewards, governance | `Ledger`, `Utxo`, `Bbody`, `NewEpoch`, `Tick`, `RuleT`, `Sts`, `Gov`, `Rewards`, `GenesisStart` | `BbodySuite`, `StsSuite`, `TickRulesSuite`, `EpochBoundarySuite`, `RewardPulserSuite`, `TxDependenciesSuite`, `DuplicateWithdrawalsLedgerSuite` | [design rule-interpreter-as-built](design/rule-interpreter-as-built.md), [ADR 0009](adr/0009-ledger-mirror-step-2.md), [ADR 0019](adr/0019-incremental-reward-calculation.md), [ADR 0011](adr/0011-stack-safety.md), [design reward-pulser](design/reward-pulser.md) |
+| ledger/rules | Shelley to Conway rule interpreter: LEDGER, UTXO, BBODY, epoch, tick, rewards, governance; Dijkstra's BBODY, LEDGER, UTXOW, UTXO, CERT, POOL and GOV, reached from tests only | `Ledger`, `Utxo`, `Bbody`, `NewEpoch`, `Tick`, `RuleT`, `Sts`, `Gov`, `Rewards`, `GenesisStart`, `DijkstraBbody`, `DijkstraLedgerRule`, `DijkstraUtxow` | `BbodySuite`, `StsSuite`, `TickRulesSuite`, `EpochBoundarySuite`, `RewardPulserSuite`, `TxDependenciesSuite`, `DuplicateWithdrawalsLedgerSuite`, `DijkstraRulesSuite`, `DijkstraRulesOracleSuite` | [design rule-interpreter-as-built](design/rule-interpreter-as-built.md), [ADR 0009](adr/0009-ledger-mirror-step-2.md), [ADR 0019](adr/0019-incremental-reward-calculation.md), [ADR 0011](adr/0011-stack-safety.md), [design reward-pulser](design/reward-pulser.md) |
 | ledger/state | Era-indexed native ledger state: UTxO, accounts, certificates, snapshots, vocabulary, diffs | `LedgerState`, `EpochState`, `CertState`, `SnapShots`, `ShelleyBasedEra`, `KeyRole`, `Diff`, `MirrorEnv` | `LedgerStateSuite`, `EpochStateSuite`, `ErasSuite`, `VocabularySuite`, `DiffSuite`, `EmptySuite` | [ADR 0007](adr/0007-era-indexed-state.md), [ADR 0009](adr/0009-ledger-mirror-step-2.md) |
 
 ## consensus
@@ -102,7 +120,7 @@ Stores, snapshots, migrations, Haskell formats, SCLS, Mithril.
 
 | Package | Responsibility | Entry points | Suites | Decisions |
 |---|---|---|---|---|
-| storage | Immutable, volatile, UTxO and ledger snapshot stores, derived codecs, format migration | `ChainStorage`, `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `UtxoStore`, `RocksUtxoStore`, `SnapshotV8`, `Migrate` | `ChainStorageSuite`, `ImmutableStoreSuite`, `VolatileStoreSuite`, `UtxoStoreSuite`, `LedgerSnapshotsSuite`, `FormatMigrationSuite`, `SnapshotV8Suite` | [ADR 0006](adr/0006-versioned-formats-migrate-on-open.md), [storage-migrations](storage-migrations.md), [design codec-derivation-as-built](design/codec-derivation-as-built.md) |
+| storage | Immutable, volatile, UTxO and ledger snapshot stores, derived codecs, format migration | `ChainStorage`, `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `UtxoStore`, `RocksUtxoStore`, `SnapshotV10`, `Migrate` | `ChainStorageSuite`, `ImmutableStoreSuite`, `VolatileStoreSuite`, `UtxoStoreSuite`, `LedgerSnapshotsSuite`, `FormatMigrationSuite`, `SnapshotV10Suite` | [ADR 0006](adr/0006-versioned-formats-migrate-on-open.md), [storage-migrations](storage-migrations.md), [design codec-derivation-as-built](design/codec-derivation-as-built.md) |
 | storage/haskell | Reader and importer for the Haskell ImmutableDB layout | `ChunkNo`, `HaskellImmutableReader`, `HaskellImport` | `HaskellIndexSuite`, `HaskellRealFilesSuite`, `HaskellImportSuite` | [design haskell-snapshots](design/haskell-snapshots.md) |
 | storage/haskell/state | Codecs for the Haskell ledger-state file, tables and metadata | `HaskellLedgerFile`, `HaskellState`, `HaskellStateCodecs`, `SnapshotMeta`, `SnapshotTables`, `UtxoCodecs` | `LedgerFileSuite`, `HaskellStateCodecSuite`, `SnapshotMetaSuite`, `SnapshotTablesSuite`, `UtxoCodecsSuite` | [design haskell-snapshots](design/haskell-snapshots.md) |
 | storage/mithril | Certified Mithril snapshot client and bootstrap | `MithrilBootstrap`, `MithrilClient` | `MithrilBootstrapSuite`, `MithrilClientSuite` | [design mithril-bootstrap](design/mithril-bootstrap.md) |
@@ -115,9 +133,9 @@ The node: wiring, mempool, forging, relay, node-to-client, tools.
 | Package | Responsibility | Entry points | Suites | Decisions |
 |---|---|---|---|---|
 | node | Node wiring: config, setup, follower, block pool, fetch coordination, governors, header gate, Main | `Main`, `NodeConfig`, `NodeSetup`, `Follower`, `BlockPool`, `FetchCoordinator`, `InboundGovernor`, `HeaderGate`, `OutboundPeers`, `PeerGovernor` | `FollowerSuite`, `BlockPoolSuite`, `FetchCoordinatorSuite`, `ConfigSuite`, `InboundGovernorSuite`, `HeaderGateSuite`, `OutboundLossReportSuite`, `OutboundLinkIdentitySuite`, `ConnectionMonitorSuite`, `ConnectionResourcesSuite`, `GenesisStartSuite` | [design block-fetch-coordination](design/block-fetch-coordination.md), [ADR 0017](adr/0017-fibers-end-with-values.md), [ADR 0018](adr/0018-parallel-plutus-after-ordered-preparation.md), [design peer-selection](design/peer-selection.md) |
-| node/forge | Block production: leadership, hot keys, KES files, block builder, forger | `Forger`, `BlockBuilder`, `HotKeys`, `KesFiles`, `KeyFiles`, `Leadership` | `ForgeSuite`, `KesRotationSuite`, `KeyFilesSuite`, `ForgerFailureSuite` | [ADR 0015](adr/0015-kes-key-written-back-and-checked-reload.md) |
+| node/forge | Block production: leadership, hot keys, KES files, block builder, forger | `Forger`, `BlockBuilder`, `HotKeys`, `KesFiles`, `KeyFiles`, `Leadership` | `ForgeSuite`, `KesRotationSuite`, `KeyFilesSuite`, `ForgerFailureSuite`, `PlutusBackendBlockProbeSuite` | [ADR 0015](adr/0015-kes-key-written-back-and-checked-reload.md) |
 | node/log | Typed node log events, rendering, routing and severity | `Log`, `LogRouter`, `NodeEvent`, `Render`, `EventKind`, `Severity` | `LogRouterSuite`, `LogGoldenSuite`, `LogDocsSuite` | [ADR 0014](adr/0014-typed-log.md) |
-| node/mempool | Mempool state, capacity, local submission and monitor | `Mempool`, `MempoolState`, `LocalSubmission`, `LocalMonitor`, `Capacity` | `MempoolSuite`, `LocalSubmissionSuite`, `LocalMonitorSuite`, `MempoolBackpressureSuite` | [architecture](architecture.md) |
+| node/mempool | Mempool state, capacity, local submission and monitor | `Mempool`, `MempoolState`, `LocalSubmission`, `LocalMonitor`, `Capacity` | `MempoolSuite`, `LocalSubmissionSuite`, `LocalMonitorSuite`, `MempoolBackpressureSuite`, `PlutusBackendProbeSuite` | [architecture](architecture.md) |
 | node/metrics | Prometheus metrics: catalogue, collectors, exposition, event metrics | `Metrics`, `Collectors`, `Exposition`, `EventMetrics`, `MeteredRules`, `Catalogue` | `MetricsSuite`, `CollectorsSuite`, `CatalogueSuite`, `MetricsServerSuite` | [ADR 0014](adr/0014-typed-log.md), [architecture](architecture.md) |
 | node/ntc | Node-to-client queries: query decoding, answers, versions, failure CBOR | `NtcQuery`, `QueryAnswers`, `QueryVersion`, `RewardQueries`, `PredicateFailureCbor`, `GenesisConfig` | `NtcQuerySuite`, `QueryVersionSuite`, `WalletQuerySuite`, `PredicateFailureCborSuite`, `QueryGoldenSuite` | [architecture](architecture.md), [design script-results](design/script-results.md) |
 | node/read | Read-only projections of ledger state by era for queries | `ChainRead`, `EraRead`, `EraViews`, `ConwayView`, `LeaderPools` | `ProjectionSuite`, `RewardsDueSuite` | [ADR 0007](adr/0007-era-indexed-state.md) |
@@ -145,3 +163,33 @@ Generated CDDL models runtime and equivalence tests.
 Structured fuzzing of decoder entry points (test only).
 
 No main sources.
+
+## tools
+
+Programs run by hand, never as tests and never shipped: benchmarks, probes against a live peer, and the writers of committed fixtures and goldens; they use the modules' test kits.
+
+| Package | Responsibility | Entry points | Suites | Decisions |
+|---|---|---|---|---|
+| bench | Hand-run benchmarks for the `bench` package (its package, for its package-private access) | `CastErasureBench`, `FlatScanBench` |  |  |
+| codec | Hand-run benchmarks for the `codec` package (its package, for its package-private access) | `CborDecodeBench`, `TreeBench` |  |  |
+| consensus | Hand-run benchmarks for the `consensus` package (its package, for its package-private access) | `DecideBenchMain` |  |  |
+| crypto | Hand-run benchmarks for the `crypto` package (its package, for its package-private access) | `VerifyBench` |  |  |
+| crypto/bls | Hand-run benchmarks for the `crypto.bls` package (its package, for its package-private access) | `BlsBenchmark` |  |  |
+| ledger | Hand-run benchmarks for the `ledger` package, and the ledger-rules report of node-diversity-conformance: the corpus's transaction fixtures judged by the mempool's decoder and rules (its package, for its package-private access) | `ApplyBenchMain`, `DetachedRecordsBench`, `LedgerRulesMain`, `UtxoChangesBench` | `LedgerRulesSuite` |  |
+| ledger/state | Hand-run benchmarks for the `ledger.state` package (its package, for its package-private access) | `DiffBenchMain` |  |  |
+| models | Hand-run benchmarks, checks and comparisons for the `models` package (its package, for its package-private access) | `CuddleCrossCheck`, `DecodeBench` |  |  |
+| network | Hand-run benchmarks, probes for the `network` package (its package, for its package-private access) | `LeiosChainProbe`, `LeiosProbe`, `MuxThroughputBench`, `PeerSharingProbe` |  |  |
+| node | Hand-run benchmarks, checks and comparisons for the `node` package (its package, for its package-private access) | `FiberBoundaryBench`, `HaskellScalaCompareMain`, `Memory94Main`, `PeerMetricsBench`, `PreviewRuleBench`, `SelectionReviewBenchmark` |  |  |
+| node/differential | Hand-run checks and comparisons for the `node.differential` package (its package, for its package-private access) | `BoundaryTickMain` |  |  |
+| node/governor | Hand-run checks and comparisons for the `node.governor` package (its package, for its package-private access) | `DebugMain` |  |  |
+| node/log | Hand-run benchmarks for the `node.log` package (its package, for its package-private access) | `LogRouterBenchMain` |  |  |
+| node/metrics | Hand-run fixture and golden writers for the `node.metrics` package (its package, for its package-private access) | `CatalogueTable` |  |  |
+| node/ntc | Hand-run fixture and golden writers for the `node.ntc` package (its package, for its package-private access) | `NtcGoldenMain`, `WalletQueryCasesMain` |  |  |
+| node/preview | Hand-run checks and comparisons for the `node.preview` package (its package, for its package-private access) | `K1OfflineMain` | `K1OfflineMainSuite` |  |
+| node/read | Hand-run fixture and golden writers for the `node.read` package (its package, for its package-private access) | `ProjectionGoldenMain` |  |  |
+| node/tools | Hand-run benchmarks for the `node.tools` package (its package, for its package-private access) | `WarmBenchMain` |  |  |
+| plutus | Hand-run fixture and golden writers for the `plutus` package (its package, for its package-private access) | `BoundaryTransactionScriptsMain`, `BuiltinCostingCorpusMain`, `ConstrIndexCorpusMain`, `EqualsDataCorpusMain`, `FlatDecodeCorpusMain`, `PlutusBoundaryCorpusMain`, `SerialiseDataCorpusMain`, `SliceByteStringCorpusMain`, `UnliftingBoundsCorpusMain` |  |  |
+| protocol | Hand-run benchmarks for the `protocol` package (its package, for its package-private access) | `WireSkipBench` |  |  |
+| storage | Hand-run benchmarks, checks and comparisons, fixture and golden writers for the `storage` package (its package, for its package-private access) | `BenchCodecMain`, `InternDecodeBench`, `MemPackJoinMain`, `RewardSnapshotFixtureMain`, `SnapshotCodecBench`, `SnapshotV10FixtureMain`, `SnapshotV7FixtureMain`, `SnapshotV8FixtureMain`, `SnapshotV9FixtureMain`, `UtxoScanBench` |  |  |
+| storage/haskell/state | Hand-run benchmarks, checks and comparisons, fixture and golden writers for the `storage.haskell.state` package (its package, for its package-private access) | `HaskellStateDecodeBench`, `RealLedgerFileCheckMain`, `RewardLikelihoodCasesMain`, `RewardOracleCasesMain`, `RewardTimingCasesMain`, `SnapshotTablesBench` |  |  |
+| uplc | Hand-run benchmarks for the `uplc` package: the own CEK machine's throughput against Scalus's | `CekThroughputMain` |  |  |

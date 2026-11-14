@@ -6,6 +6,7 @@ import cats.data.{EitherT, NonEmptyVector, State}
 import cats.mtl.Stateful
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
+import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.plutus.*
 
 /** Phase-2 validation: every redeemer is evaluated against its script with the script context the
@@ -112,24 +113,26 @@ object Phase2:
   /** Every required, provided Plutus script in the reference's collection order, reversed on
     * success. Missing redeemers keep accumulating after a setup failure, but later contexts are not
     * built (`Alonzo/Plutus/Evaluate.hs:141-185`). This is deliberately not an accumulating
-    * traversal of every context error.
+    * traversal of every context error. The scripts needed and their contexts are those of the era
+    * `E` ([[Purpose.collection]], [[ScriptContexts.Environment]]), whatever the protocol version;
+    * the evaluator is given the version.
     */
-  def collect(
+  def collect[E <: EraTag](
       tx: Tx,
       pp: ProtocolParams,
       scripts: Map[Bytes, Script],
       spent: Map[TxIn, TxOut],
       references: Map[TxIn, TxOut],
       posix: BigInt => Either[TranslationError, BigInt]
-  ): Collected[Vector[(Redeemer, EvalRequest)]] =
-    val env = ScriptContexts.Environment(pp.protocolMajor.toInt, spent, references, posix)
+  )(using era: ShelleyBasedEra[E]): Collected[Vector[(Redeemer, EvalRequest)]] =
+    val env = ScriptContexts.Environment(era, pp.protocolMajor.toInt, spent, references, posix)
     lazy val referenceScripts: Map[Bytes, Bytes] =
       (spent.valuesIterator ++ references.valuesIterator)
         .flatMap(_.referenceScript)
         .flatMap(s => s.plutus.map(s.hash -> _))
         .toMap
     val redeemers = tx.witnesses.redeemers.map(r => (r.tag, r.index) -> r).toMap
-    val needed = Purpose.collection(tx.body, spent, pp.protocolMajor >= 9).flatMap { purpose =>
+    val needed = Purpose.collection(tx.body, spent, era).flatMap { purpose =>
       purpose.scriptHash.flatMap(scripts.get).filter(_.kind.isPlutus).map(purpose -> _)
     }
     type Infos = Map[PlutusLanguage, Either[TranslationError, PlutusData]]
@@ -195,7 +198,7 @@ object Phase2:
   /** `posix` converts a slot to POSIX milliseconds. All contexts are prepared before evaluation; a
     * script failure cannot hide a later setup failure, whichever validity flag the tx carries.
     */
-  def evaluate(
+  def evaluate[E <: EraTag](
       tx: Tx,
       pp: ProtocolParams,
       scripts: Map[Bytes, Script],
@@ -203,8 +206,8 @@ object Phase2:
       references: Map[TxIn, TxOut],
       posix: BigInt => Either[TranslationError, BigInt],
       evaluator: ScriptEvaluator[Id]
-  ): Collected[Outcome] =
-    collect(tx, pp, scripts, spent, references, posix).map(requests => run(requests, evaluator))
+  )(using ShelleyBasedEra[E]): Collected[Outcome] =
+    collect[E](tx, pp, scripts, spent, references, posix).map(requests => run(requests, evaluator))
 
   /** Evaluate every script in reference order. A proven failure does not suppress later results;
     * backend unavailability and raw defects still supply no complete transaction verdict.

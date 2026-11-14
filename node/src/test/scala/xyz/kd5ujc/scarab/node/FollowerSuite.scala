@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Fixtures, Header, NodeError, Pee
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
+import fs2.concurrent.SignallingRef
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -84,7 +85,9 @@ class FollowerSuite extends FailsOnUncaught:
       until: Option[ChainSync.Point] = None
   ): IO[(Either[NodeError, Unit], VolatileChain[BigInt], List[Vector[ChainSync.Point]])] =
     for
-      ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.k.toInt, -1))
+      ref <- SignallingRef.of[IO, VolatileChain[BigInt]](
+        VolatileChain.genesis(geometry.k.toInt, -1)
+      )
       offered <- Ref.of[IO, List[Vector[ChainSync.Point]]](Nil)
       given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
       outcome <- Handle
@@ -119,12 +122,8 @@ class FollowerSuite extends FailsOnUncaught:
                   }
                 )
                 .rescue(e => Handle[IO, NodeError].raise(e))
-              def adopted(point: ChainSync.Point): IO[Unit] =
-                ref.get.flatMap(chain =>
-                  if chain.tip == point then IO.unit else IO.sleep(1.milli) *> adopted(point)
-                )
               until.fold(sessions.timeoutTo(300.millis, IO.unit))(point =>
-                IO.race(sessions, adopted(point).timeout(30.seconds)).void
+                IO.race(sessions, ref.waitUntil(_.tip == point).timeout(30.seconds)).void
               ) <* WorkerTesting.settled(pool)
             }
           yield result.asRight[NodeError]
@@ -134,7 +133,8 @@ class FollowerSuite extends FailsOnUncaught:
       offers <- offered.get
     yield (outcome, chain, offers)
 
-  private def run(sessions: List[List[Either[PeerError, SyncEvent]]]) = runPeers(List(sessions))
+  private def run(sessions: List[List[Either[PeerError, SyncEvent]]]) =
+    TestControl.executeEmbed(runPeers(List(sessions)))
 
   test("with a CPU pool the selection worker applies the blocks on it, and the chain is the same") {
     val main = forged.headers.take(8)
@@ -306,26 +306,28 @@ class FollowerSuite extends FailsOnUncaught:
           IO.pure(None)
         def next(using Raise[IO, PeerError]) = IO.never
         def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(Bytes.empty))
-    for
-      ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.k.toInt, -1))
-      given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
-      outcome <- Handle
-        .allow[NodeError] {
-          for
-            follower <- Follower.create[IO, BigInt](rules, noEvents, geometry)
-            pool <- WorkerTesting.pool(follower)
-            result <- WorkerTesting.selection(follower, pool).surround {
-              Handle
-                .allow[PeerError](
-                  SessionDriver
-                    .supervise(follower, strangers, noEvents, SessionDriver.Retry(2, 1.milli))
-                )
-                .rescue(e => Handle[IO, NodeError].raise(e))
-            }
-          yield result.asRight[NodeError]
-        }
-        .rescue(e => IO.pure(e.asLeft[Unit]))
-    yield assertEquals(outcome, Left(PeerError.NoIntersection))
+    TestControl.executeEmbed {
+      for
+        ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.k.toInt, -1))
+        given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
+        outcome <- Handle
+          .allow[NodeError] {
+            for
+              follower <- Follower.create[IO, BigInt](rules, noEvents, geometry)
+              pool <- WorkerTesting.pool(follower)
+              result <- WorkerTesting.selection(follower, pool).surround {
+                Handle
+                  .allow[PeerError](
+                    SessionDriver
+                      .supervise(follower, strangers, noEvents, SessionDriver.Retry(2, 1.milli))
+                  )
+                  .rescue(e => Handle[IO, NodeError].raise(e))
+              }
+            yield result.asRight[NodeError]
+          }
+          .rescue(e => IO.pure(e.asLeft[Unit]))
+      yield assertEquals(outcome, Left(PeerError.NoIntersection))
+    }
   }
 
   test("CaughtUp reselects the stored LoE-postponed candidate without another peer event") {

@@ -1,13 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import cats.syntax.all.*
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, GenesisMirror, PraosState}
+import xyz.kd5ujc.scarab.consensus.state.{
+  AnnTip,
+  ChainDepState,
+  EraLedgerState,
+  GenesisMirror,
+  PraosState,
+  TipInfo
+}
 import xyz.kd5ujc.scarab.ledger.{Nonce, TxIn}
-import xyz.kd5ujc.scarab.ledger.byron.ByronOut
+import xyz.kd5ujc.scarab.ledger.byron.{ByronOut, ByronVersion, CandidateUpdate}
 import xyz.kd5ujc.scarab.ledger.rules.{EraNes, GenesisStart, Globals, Handover}
-import xyz.kd5ujc.scarab.ledger.state.{EpochNo, ShelleyBasedEra, Sorted, WithOrigin}
+import xyz.kd5ujc.scarab.ledger.state.{
+  BlockNo,
+  EpochNo,
+  Hash32,
+  ShelleyBasedEra,
+  SlotNo,
+  Sorted,
+  WithOrigin
+}
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.Era
@@ -24,7 +41,7 @@ import munit.FunSuite
   */
 class EraHistoryNetworksSuite extends FunSuite:
   private val setup = NodeSetup
-    .fromDirectory(Path.of("fixtures", "preprod", "genesis"))
+    .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures", "preprod", "genesis"))
     .fold(e => fail(e.message), identity)
 
   private val env = QueryEnv(
@@ -81,8 +98,21 @@ class EraHistoryNetworksSuite extends FunSuite:
         )
       )
       .fold(e => fail(s"the state does not mirror: $e"), identity)
-    val point = Point.Block(UInt64.saturating(BigInt(100000000)), Bytes(Vector.fill(32)(1.toByte)))
-    QueryView(point, Some(1), state)
+    val hash = Bytes(Vector.fill(32)(1.toByte))
+    val point = Point.Block(UInt64.saturating(BigInt(100000000)), hash)
+    // The tip of the state is the view's point, as for every acquired state of the node.
+    val tip = AnnTip(
+      SlotNo.fromUnsigned(100000000L),
+      BlockNo.fromUnsigned(1L),
+      TipInfo.ShelleyBasedTip(
+        ShelleyBasedEra.SConway,
+        Hash32.fromBytes(hash).fold(e => fail(e.toString), identity)
+      )
+    )
+    val atTip = state.copy(ext =
+      state.ext.copy(headerState = state.ext.headerState.copy(tip = WithOrigin.At(tip)))
+    )
+    QueryView(point, Some(1), atTip)
 
   private def answer(query: NtcQuery): Bytes =
     QueryAnswers.answer(env, view, Map.empty, query).getOrElse(fail(s"$query is not answered"))
@@ -92,22 +122,79 @@ class EraHistoryNetworksSuite extends FunSuite:
     assertEquals(setup.geometry.firstShelleyEpoch, BigInt(1000000))
   }
 
-  /** Written by hand from the summary of the chain (Byron: epochs 0 to 4 of 21,600 slots of 20 s;
-    * the Shelley-based eras of 432,000 slots of 1 s, here all from epoch 4 because no hard fork was
-    * observed; Conway ends at the safe zone beyond slot 100,000,000, epoch 236, at
-    * 101,952,000,000,000,000,000 ps, which does not fit 64 bits).
+  /** The reference's answers for these states, captured from the unchanged ouroboros-consensus
+    * (`fixtures/reference/era-history`, #118): `mkInterpreter` of `reconstructSummary` with the
+    * production era parameters of the preprod genesis files, encoded with `Serialise`.
     */
-  private val interpreter =
-    "9f8383000000831b17fb16d83be000001a000151800484195460194e2083001910e081001910e083831b17fb16" +
-      "d83be000001a0001518004831b17fb16d83be000001a0001518004841a000697801903e883001a0001fa408100" +
-      "1a0001fa4083831b17fb16d83be000001a0001518004831b17fb16d83be000001a0001518004841a0006978019" +
-      "03e883001a0001fa4081001a0001fa4083831b17fb16d83be000001a0001518004831b17fb16d83be000001a00" +
-      "01518004841a000697801903e883001a0001fa4081001a0001fa4083831b17fb16d83be000001a000151800483" +
-      "1b17fb16d83be000001a0001518004841a000697801903e883001a0001fa4081001a0001fa4083831b17fb16d8" +
-      "3be000001a0001518004831b17fb16d83be000001a0001518004841a000697801903e883001a0001fa4081001a" +
-      "0001fa4083831b17fb16d83be000001a000151800483c2490586de43d5cca000001a05fa9d8018ec841a000697" +
-      "801903e883001a0001fa4081001a0001fa40ff"
+  private val reference: Map[String, String] =
+    java.nio.file.Files
+      .readAllLines(Path.of("fixtures", "reference", "era-history", "cases.jsonl"))
+      .toArray(Array.empty[String])
+      .iterator
+      .filter(_.nonEmpty)
+      .map { line =>
+        val row = io.circe.parser.parse(line).fold(e => fail(e.toString), identity).hcursor
+        (row.get[String]("name"), row.get[String]("interpreter")).tupled
+          .fold(e => fail(e.toString), identity)
+      }
+      .toMap
+
+  /** Byron to epoch 4 (21,600 slots of 20 s); the Shelley-based eras of 432,000 slots of 1 s, all
+    * from epoch 4 because no hard fork was observed; Conway ends at the safe zone beyond slot
+    * 100,000,000, epoch 236, at 101,952,000,000,000,000,000 ps, which does not fit 64 bits.
+    */
+  private val interpreter = reference("conway-tip-100000000")
 
   test("GetInterpreter: Byron ends at epoch 4, and a late time is a tag-2 big number") {
     assertEquals(answer(NtcQuery.HardFork(HardForkQuery.GetInterpreter)).hex, interpreter)
+  }
+
+  test("GetInterpreter at the origin of a chain still in Byron: Byron ends at the safe zone") {
+    val origin = QueryView(Point.Origin, None, setup.mirrorStart)
+    assertEquals(
+      QueryAnswers
+        .answer(env, origin, Map.empty, NtcQuery.HardFork(HardForkQuery.GetInterpreter))
+        .getOrElse(fail("GetInterpreter is not answered at the origin"))
+        .hex,
+      reference("byron-origin")
+    )
+  }
+
+  /** In Byron with a candidate update to version 2 at slot 60,000 that is stable (the tip 2k slots
+    * later): `byronTransition` reports its adoption epoch, `(60,000 + 4k) / 21,600 + 1 = 4`, so the
+    * summary ends Byron there and lists Shelley with its safe zone from its start (#804).
+    */
+  test(
+    "GetInterpreter in Byron with a stable update to Shelley: Byron ends at its adoption epoch"
+  ) {
+    val start = setup.mirrorStart
+    val known = start.ext.ledgerState.state match
+      case EraLedgerState.ByronCurrent(byron) =>
+        val ledger = byron.ledger.getOrElse(fail("the preprod start has a Byron ledger"))
+        val two = ByronVersion.from(2, 0, 0).fold(e => fail(e.message), identity)
+        val candidate = CandidateUpdate(60000, two, ledger.update.adoptedParams)
+        val updated = ledger.copy(
+          lastSlot = 70000,
+          update = ledger.update.copy(candidates = Vector(candidate))
+        )
+        start.copy(ext =
+          start.ext.copy(ledgerState =
+            start.ext.ledgerState.withState(
+              EraLedgerState.ByronCurrent(byron.copy(ledger = Some(updated)))
+            )
+          )
+        )
+      case other => fail(s"the preprod start is in Byron: $other")
+    val view = QueryView(
+      Point.Block(UInt64.saturating(BigInt(70000)), Bytes(Vector.fill(32)(2.toByte))),
+      Some(1),
+      known
+    )
+    assertEquals(
+      QueryAnswers
+        .answer(env, view, Map.empty, NtcQuery.HardFork(HardForkQuery.GetInterpreter))
+        .getOrElse(fail("GetInterpreter is not answered in Byron"))
+        .hex,
+      reference("byron-known-4")
+    )
   }

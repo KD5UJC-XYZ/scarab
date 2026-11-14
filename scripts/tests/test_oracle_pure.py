@@ -16,8 +16,21 @@ from fractions import Fraction
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from oracle import analyse, compare, digest, ledger, mempack  # noqa: E402
+from oracle import analyse, compare, digest, ledger, mempack, reference  # noqa: E402
 
+
+class EpochStartTest(unittest.TestCase):
+    def test_uniform_epochs_without_byron(self):
+        # Preview: no Byron epoch, 86,400 slots each
+        self.assertEqual([reference.epoch_start(e, 86400) for e in (0, 1, 1451)], [0, 86400, 125366400])
+
+    def test_epochs_after_a_byron_prefix(self):
+        # preprod: four Byron epochs of 21,600 slots, Shelley from slot 86,400
+        starts = [reference.epoch_start(e, 432000, 4, 21600) for e in (0, 3, 4, 5)]
+        self.assertEqual(starts, [0, 64800, 86400, 518400])
+        # mainnet: Shelley from epoch 208, slot 4,492,800
+        self.assertEqual(reference.epoch_start(208, 432000, 208, 21600), 4492800)
+        self.assertEqual(reference.epoch_start(209, 432000, 208, 21600), 4924800)
 
 class DigestTest(unittest.TestCase):
     ENTRIES = [("keyHash-aa", {"b": 1, "a": [1, "z", None, True], "c": {"y": "é\"q", "x": 0}}),
@@ -296,6 +309,50 @@ class CompareDirsTest(unittest.TestCase):
             self.assertEqual(summary["firstMismatch"]["differences"][0]["path"], "/treasury")
             self.assertFalse(summary["complete"])
 
+
+
+class DockerLaunchTest(unittest.TestCase):
+    """db-analyser's `docker run`: as before by default, isolated and fully validating when asked."""
+    ARGS = ["--db", "/db", "--store-ledger", "302"]
+
+    def test_the_default_adds_neither_option(self):
+        argv = reference.docker_launch("/cfg", "/chain", 2, "4g", "dba")(self.ARGS)
+        self.assertNotIn("--network", argv)
+        self.assertNotIn("--full-ledger-validation", argv)
+        self.assertEqual(argv[argv.index(reference.REFERENCE_IMAGE) + 1:], self.ARGS)
+
+    def test_network_none_goes_to_docker_and_full_validation_to_db_analyser(self):
+        argv = reference.docker_launch("/cfg", "/chain", 2, "4g", "dba", network_none=True,
+                                       full_ledger_validation=True)(self.ARGS)
+        image = argv.index(reference.REFERENCE_IMAGE)
+        network = argv.index("--network")
+        self.assertLess(network, image, "--network is an option of `docker run`")
+        self.assertEqual(argv[network + 1], "none")
+        self.assertEqual(argv[image + 1:], self.ARGS + ["--full-ledger-validation"])
+
+    def test_the_reference_command_passes_both_options_on(self):
+        import contextlib
+        import io
+        import oracle_compare
+        seen = {}
+
+        def run(*args, **options):
+            seen.update(options)
+            return {}
+        command = ["oracle_compare.py", "reference", "--config", "c", "--db", "d", "--work", "w", "--out", "o",
+                   "--epoch-slots", "500"]
+        saved_run, saved_argv = oracle_compare.reference.run, sys.argv
+        oracle_compare.reference.run = run
+        try:
+            for extra, expected in (([], False), (["--network-none", "--full-ledger-validation"], True)):
+                with self.subTest(extra=extra):
+                    seen.clear()
+                    sys.argv = command + extra
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        oracle_compare.main()
+                    self.assertEqual((seen["network_none"], seen["full_ledger_validation"]), (expected, expected))
+        finally:
+            oracle_compare.reference.run, sys.argv = saved_run, saved_argv
 
 if __name__ == "__main__":
     unittest.main()

@@ -111,9 +111,11 @@ class LedgerPeersWiringSuite extends CatsEffectSuite:
       }.toVector)
     )
     val nes = base.copy[Conway](
-      pd = PoolDistr(
-        Sorted.map(distribution.map((n, s) => key(n) -> s).toVector),
-        base.pd.totalActiveStake
+      layout = NewEpochState.Layout.Node11_1(
+        PoolDistr(
+          Sorted.map(distribution.map((n, s) => key(n) -> s).toVector),
+          base.pd.totalActiveStake
+        )
       ),
       es = base.es.copy[Conway](ls = base.es.ls.copy[Conway](cert = cert.copy(pState = pstate)))
     )

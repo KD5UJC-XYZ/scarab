@@ -106,10 +106,10 @@ final class PeerMetrics[A] private (
   /** The slot at which each peer joined the board (`joinedPeerMetricAt`, 399-415). */
   def joinedAt: Map[A, Long] = registry
 
-  /** The hot-demotion score of every peer the metrics know (`deadlineHotScores`, `Policies.hs`
-    * `hotDemotionPolicy` 127-147 at the tag): `upstreamness + fetchynessBlocks`, and the slot the
-    * peer joined at as the tie-break. A peer that is not here ranks as [[HotScore.Unknown]], below
-    * every peer that is (`Map.findWithDefault (0, Nothing)`).
+  /** The hot-demotion score of every peer the metrics know (`Policies.hs` `hotDemotionPolicy`
+    * 127-147 at the tag): `upstreamness + fetchynessBlocks`, and the slot the peer joined at as the
+    * tie-break. A peer that is not here ranks as [[HotScore.Unknown]], below every peer that is
+    * (`Map.findWithDefault (0, Nothing)`).
     */
   def hotScores: Map[A, HotScore] =
     val total = upstreamness.foldLeft(fetchynessBlocks) { case (m, (p, n)) =>
@@ -131,7 +131,7 @@ final class PeerMetrics[A] private (
     )
 
 object PeerMetrics:
-  /** `maxEntriesToTrack`: one hour of blocks on mainnet (`Policies.hs` 52-61). */
+  /** `maxEntriesToTrack`: one hour of blocks on mainnet (`Policies.hs` 51-60). */
   val MaxEntries = 180
 
   private final case class Header[A](peer: A, at: Time)

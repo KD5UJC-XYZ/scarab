@@ -276,8 +276,7 @@ class PeerSharingSuite extends FailsOnUncaught:
       .eval(Bearer.inMemory[IO]())
       .flatMap { (a, b) =>
         typed(
-          NodeToNodeServer
-            .accept(b, magic, handlers, NodeToNodeServer.Settings(offerPeerSharing = theirs))
+          Served.accept(b, magic, handlers, NodeToNodeServer.Settings(offerPeerSharing = theirs))
         ).void.background
           .flatMap(_ =>
             NodeToNode.warmOver[IO, Bytes](
@@ -315,8 +314,7 @@ class PeerSharingSuite extends FailsOnUncaught:
         .eval(Bearer.inMemory[IO]())
         .flatMap { (a, b) =>
           typed(
-            NodeToNodeServer
-              .accept(b, magic, bare, NodeToNodeServer.Settings(offerPeerSharing = true))
+            Served.accept(b, magic, bare, NodeToNodeServer.Settings(offerPeerSharing = true))
           ).void.background.flatMap(_ =>
             NodeToNode.warmOver[IO, Bytes](
               a,

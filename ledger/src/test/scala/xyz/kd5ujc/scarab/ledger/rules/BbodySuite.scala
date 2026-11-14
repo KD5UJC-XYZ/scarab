@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.ledger.{
   BlockFailure,
   EpochGeometry,
   LedgerGlobals,
+  Mismatch,
   PlutusStats,
   Redeemer,
   RefScripts,
@@ -122,7 +123,9 @@ class BbodySuite extends FunSuite:
       case other                    => fail(s"expected the transaction's refusal, got $other")
   }
 
-  test("the reference scripts of the block are checked before the body commitment") {
+  test(
+    "the reference scripts of the block are checked before the body commitment, and the failure carries the block's total"
+  ) {
     val alice = key()
     val held = Vector.tabulate(18)(i => TxIn(Bytes.fromArray(Array.fill(32)(i.toByte)), 0))
     val utxo = Utxo.empty ++ held.map(_ -> withScript(alice.address(), 60000))
@@ -130,13 +133,41 @@ class BbodySuite extends FunSuite:
       body("naming", Vector(txIn(1)), Vector.empty, 0, referenceInputs = held),
       Vector.empty
     )
-    assert(
-      Bbody.refScriptsSize(pp, utxo, Vector(naming)) > RefScripts.MaxRefScriptSizePerBlock.toLong
-    )
+    // `BodyRefScriptsSizeTooBig` (Conway `Rules/Bbody.hs:342-355`): 18 scripts of 60,000 bytes
+    // supplied, against the limit of 1 MiB expected
     assertEquals(
       run(pp, Vector(naming), state(pp, utxo), BodyCommitment(101, commitment.hash)),
-      Left(BlockFailure.RefScriptsTooLarge(RefScripts.MaxRefScriptSizePerBlock.toLong))
+      Left(
+        BlockFailure.RefScriptsTooLarge(
+          Mismatch(1080000L, RefScripts.MaxRefScriptSizePerBlock.toLong)
+        )
+      )
     )
+  }
+
+  test("Conway at versions 7 and 8 limits the reference scripts of the block too") {
+    // `conwayBbodyTransition` runs `validateBodyRefScriptsSizeTooBig` whatever the version
+    // (`Conway/Rules/Bbody.hs:314,330-355`); a chain that starts Conway by epoch keeps the
+    // version of Babbage
+    val alice = key()
+    val held = Vector.tabulate(18)(i => TxIn(Bytes.fromArray(Array.fill(32)(i.toByte)), 0))
+    val utxo = Utxo.empty ++ held.map(_ -> withScript(alice.address(), 60000))
+    val naming = tx(
+      body("naming", Vector(txIn(1)), Vector.empty, 0, referenceInputs = held),
+      Vector.empty
+    )
+    Vector(7, 8).foreach { pv =>
+      val p = params(pv)
+      assertEquals(
+        run(p, Vector(naming), state(p, utxo), BodyCommitment(101, commitment.hash)),
+        Left(
+          BlockFailure.RefScriptsTooLarge(
+            Mismatch(1080000L, RefScripts.MaxRefScriptSizePerBlock.toLong)
+          )
+        ),
+        s"version $pv"
+      )
+    }
   }
 
   test("BBODY agrees with the reference stack on signed transactions and failures") {
@@ -179,7 +210,8 @@ class BbodySuite extends FunSuite:
     def head(major: Int, n: Int): Vector[Byte] =
       if n < 24 then Vector(((major << 5) | n).toByte)
       else if n < 256 then Vector(((major << 5) | 24).toByte, n.toByte)
-      else Vector(((major << 5) | 25).toByte, (n >> 8).toByte, n.toByte)
+      else if n < 65536 then Vector(((major << 5) | 25).toByte, (n >> 8).toByte, n.toByte)
+      else ((major << 5) | 26).toByte +: Vector(24, 16, 8, 0).map(s => (n >> s).toByte)
     def cborBytes(b: Vector[Byte]) = head(2, b.size) ++ b
     val wrapped = head(4, 2) ++ Vector(0x03.toByte) ++ cborBytes(Vector.fill(size)(0x42.toByte))
     val raw = head(5, 3) ++ Vector(0x00.toByte) ++ cborBytes(address.raw.value) ++
@@ -208,6 +240,31 @@ class BbodySuite extends FunSuite:
       Bbody.refScriptsSize(pp.copy(protocolMajor = 11), utxo, Vector(first, second)),
       800L
     )
+  }
+
+  test("the reference scripts of one transaction are added up in 64 bits, as the reference's Int") {
+    // `totalRefScriptSizeInBlock` sums `txNonDistinctRefScriptsSize :: ... -> Int` (Conway
+    // `Rules/Bbody.hs:357-370`): 2048 reference inputs, each naming a script of 1 MiB, hold 2^31
+    // bytes, one more than a 32-bit Int holds
+    val alice = key()
+    val script = withScript(alice.address(), 1 << 20)
+    val held = Vector.tabulate(2048)(i => TxIn(Bytes.fromArray(Array.fill(32)(9.toByte)), i))
+    val utxo = Utxo.empty ++ held.map(_ -> script)
+    val naming = tx(
+      body("naming", Vector(txIn(1)), Vector.empty, 0, referenceInputs = held),
+      Vector.empty
+    )
+    Vector(pp, pp.copy(protocolMajor = 11)).foreach { p =>
+      assertEquals(Bbody.refScriptsSize(p, utxo, Vector(naming)), 1L << 31)
+      assertEquals(
+        run(p, Vector(naming), state(p, utxo)),
+        Left(
+          BlockFailure.RefScriptsTooLarge(
+            Mismatch(1L << 31, RefScripts.MaxRefScriptSizePerBlock.toLong)
+          )
+        )
+      )
+    }
   }
 
   test("a block of 10,000 transactions runs on a 256 KiB stack") {

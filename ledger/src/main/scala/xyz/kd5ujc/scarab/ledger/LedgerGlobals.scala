@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Rational
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 /** Conway-only parameters taken from the Conway genesis when the chain crosses into Conway.
   *
@@ -31,6 +32,19 @@ final case class ConwayParams(
   *   `lovelacePerUTxOWord` of the Alonzo genesis: the parameter the Mary to Alonzo translation
   *   introduces (`upgradePParams`, `Alonzo/PParams.hs`), which the era-indexed parameters of the
   *   eras before it do not carry.
+  * @param dijkstra
+  *   The Dijkstra genesis, the context of the translation from Conway (`TranslationContext
+  *   DijkstraEra`, cardano-ledger 9df9f98c `Dijkstra/Translation.hs:51`), when the configuration
+  *   names its file. The reference reads it only with `ExperimentalHardForksEnabled` and otherwise
+  *   takes `emptyDijkstraGenesis` (cardano-node b004fe0c `Protocol/Cardano.hs:137-144`), which
+  *   nothing reads, as the Dijkstra trigger is read only with the same setting (`Configuration/
+  *   POM.hs:713-715`).
+  * @param referenceBuild
+  *   The build of `cardano-node` whose rules the ledger follows (`--reference-build`, #826): where
+  *   two builds' rules differ, a rule matches on it. `NodeSetup` sets it to the build its
+  *   constructors are given (`NodeSetup.mirroring`), as it sets [[dijkstra]] from the
+  *   configuration, so the node and every tool that reads a configuration follow the build they
+  *   name; elsewhere it is [[ReferenceBuild.Default]].
   */
 final case class LedgerGlobals(
     maxSupply: BigInt,
@@ -42,5 +56,7 @@ final case class LedgerGlobals(
     startRewards: BigInt = 0,
     firstEpoch: BigInt = 0,
     conway: Option[ConwayParams] = None,
-    alonzoCoinsPerUTxOWord: BigInt = 0
+    alonzoCoinsPerUTxOWord: BigInt = 0,
+    dijkstra: Option[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraGenesis] = None,
+    referenceBuild: ReferenceBuild = ReferenceBuild.Default
 )

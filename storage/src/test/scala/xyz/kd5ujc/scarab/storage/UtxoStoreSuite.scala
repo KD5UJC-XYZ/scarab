@@ -545,6 +545,26 @@ class UtxoStoreSuite extends ScalaCheckSuite:
     }
   }
 
+  test("a store brought to a state is at that state's block, also when the block changed nothing") {
+    val input = TxIn(Bytes.wrap(be(1, 32)), 0)
+    val out = output(0, 1, 1, 10)
+    // block 14 creates the entry, block 15 changes nothing: a snapshot of block 15 is settled
+    val after15 = (Utxo.empty.at(14) ++ Vector(input -> out)).at(15)
+    def check(store: UtxoStore[IO])(using Handle[IO, StorageError]): IO[Unit] =
+      for
+        _ <- UtxoStore.advance(store, after15)
+        flushed <- store.flushed
+        settled = after15.settled(flushed, force = true)
+        stored <- store.all
+      yield
+        assertEquals(flushed, 15L, "the store's stamp")
+        assertEquals(settled.flushed, settled.stamp, "the settled state's flushed stamp")
+        assertEquals(settled.diff, Map.empty, "the settled state's diff")
+        assertEquals(stored, Map(input -> out), "the stored entries")
+    orFail(MemoryUtxoStore[IO].flatMap(check(_)))
+    orFail(rocks(check(_)))
+  }
+
   test("the key is the Haskell node's: the 32-byte txid then the index as a big-endian u16") {
     val id = Bytes.wrap(be(7, 32))
     val key = UtxoStore.Coding.encodeKey(TxIn(id, 0x1234)).get

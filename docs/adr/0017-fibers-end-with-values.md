@@ -310,8 +310,7 @@ the whole process by what it sends".
 - A connection that fails while it is established (`EstablishmentError.Defect`) ends that attempt, uncharged.
 - Peer sharing, and a connection's monitor, that fail abort their connection.
 - A hot session's own work (our ChainSync and BlockFetch clients, the header pipeline, a fiber the session lands):
-  an exception there ends the session as `PeerError.ConnectionDefect`, uncharged (`SessionEnd.scoped`,
-  `InboundGovernor.pipelineEnd`). A session of the node commits no block: the selection worker owns every commit, in
+  an exception there ends the session as `PeerError.ConnectionDefect`, uncharged (`SessionEnd.scoped`). A session of the node commits no block: the selection worker owns every commit, in
   a scope of its own that stops the node (`BlockSelection.run`). A commit, wherever it runs, also raises its own
   exceptions as `ChainError.CommitDefect`, which stops the node (`Follower.commit`). ~~So the boundary holds on the
   follower's direct adoption inside a session too, which only tests use; issue 578 tracks removing that path.~~
@@ -362,7 +361,7 @@ the node, where the reference's linked threads stop it. This covers the evaluato
 (`LedgerFailure.Unavailable`), a crypto provider that fails (`VerificationDefect`), and an exception of the rules.
 It also covers a quantity of the ledger state outside its implementation type (`ChainError.StateOutOfRange`,
 `compactCoinOrError` in the reference). That last is not Scarab-specific, but the owner chose not to crash on it
-until the protocol specification is read (#573). A refusal by the protocol's rules is unchanged: the block is
+~~until the protocol specification is read (#573)~~ ([amendment 2026-11-07](#amendment-2026-11-07-a-quantity-out-of-range-after-the-specification-was-read)). A refusal by the protocol's rules is unchanged: the block is
 recorded as invalid and its sender punished.
 
 - **A block (R1).** `Follower`'s judgement of one block, before anything is committed, has three outcomes: valid,
@@ -448,7 +447,8 @@ against the peer (`NotThePeers`), nothing reaches the node's fatal sink or its n
 waiting fiber is cancelled.
 - outbound: `OutboundGenesisInvariantSuite`, with the check held to the node's clock as in the node (`HeaderClock.grafting`);
   the hot session lives under the connection's own supervisor, which the connection's release ends;
-- inbound: `InboundGovernorSuite`, the session being a `background` resource of the connection.
+- ~~inbound: `InboundGovernorSuite`, the session being a `background` resource of the connection.~~
+  ([superseded](#amendment-2026-11-10-the-inbound-teardown-test-runs-over-a-reused-connection))
 
 The teardown needed no change.
 
@@ -550,3 +550,44 @@ a deterministic cause is judged once, re-delivery and a reconnect move nothing, 
 once and behind no more than the retry in flight, a slow attempt's successor is timed from its end, two blocks
 withheld in turn on one fork, the first twice, both clear, many withheld blocks each keep their schedule, a refusal on a retry blames nobody, pruning ends a schedule,
 the stall report names the block) and `NoVerdictBlocksSuite`.
+
+## Amendment (2026-11-07): a quantity out of range, after the specification was read
+
+The protocol specification gives no verdict here: `Coin` is a natural number (`Coin = ℕ`,
+`Ledger.Prelude.Base` at formal-ledger-specifications `b3a4fd47`, rendered in `site/Ledger.Prelude.Base.html`), and the `Word64` bound is the
+implementation's and the wire format's (`coin = uint`). The decision of 2026-10-28 is confirmed (#573): the node
+follows the reference where it refuses, and does not crash where the reference's `compactCoinOrError` aborts.
+
+What can reach that case at cardano-ledger `f649f975`
+([#573 analysis](https://github.com/KD5UJC-XYZ/scarab/issues/573#issuecomment-6711794248)):
+
+- **A deposit of the Shelley genesis or of a parameter update cannot.** The Shelley genesis fees, deposits and
+  minimums are read as `Word64` (`GenesisSchema.shelleyParams`, as `FromJSON LegacyJSONPParams` reads them into
+  `CompactForm Coin`), so a file outside that range is refused at start-up, and every update reads them as
+  `Word64`. The certificate-time conversions therefore cannot fail.
+- **The Conway genesis deposits can.** `govActionDeposit` and `dRepDeposit` are an unbounded `Coin` in the genesis
+  and are compacted when the chain enters Conway (`asCompactCoinHKD`). Out of range, `Translate.babbageToConway`
+  ends with `TickFailure.Vocab`, which is the no-verdict outcome above at the point where the reference aborts.
+- Rewards, MIR transfers and enacted withdrawals are bounded by the total supply, as upstream's own comments argue.
+  A withdrawal's amount and a proposal's deposit are a `Coin` decoded as `Word64` from the transaction, so the
+  shared account update (`updateAccountBalances`, `State/Account.hs:311-330`) and the governance refund cannot fail
+  either.
+- **The transition counter can only with a malformed genesis.** The `Word32` counter counts the blocks after the
+  voting deadline of one epoch and starts again each epoch (ouroboros-consensus `82ecba32`
+  `Shelley/Ledger/Ledger.hs:570-573, 713-717`), so it counts at most one block per slot of an epoch. Only an epoch
+  of 2^32 slots or more reaches the bound; mainnet and preprod have 432,000. That case, too, ends as no verdict
+  (`StateMirrorError.TransitionCounterOverflow`).
+
+Tests: `GenesisSchemaSuite` against the reference's verdicts in `fixtures/reference/genesis-fields` (the
+negative, `Word64` maximum and past-`Word64` values of each field), and `TickRulesSuite` (the upgrade into Conway).
+
+## Amendment (2026-11-10): the inbound teardown test runs over a reused connection
+
+Issue 854. The inbound governor runs no client sessions of its own: a hot session runs on a peer's own connection
+only when the outbound governor reuses that connection, under the same per-connection supervisor as on a connection
+it dialled. The inbound test of the [2026-10-29 amendment](#amendment-2026-10-29-the-teardown-after-a-genesis-invariant-is-tested)
+went with those sessions. `OutboundGenesisInvariantSuite` now meets the header gate's invariant on a hot session in
+both cases, and checks the same path in each:
+- over a connection we dialled;
+- over the peer's own accepted duplex connection, which the outbound governor reuses with no dial.
+

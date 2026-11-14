@@ -21,6 +21,10 @@ object Epoch:
           failures: Raise[F, TickFailure]
       ): F[Unit] = era match
         case ShelleyBasedEra.SConway => ConwayEpoch.sts.transition[F](env, epoch)
+        // Dijkstra's EPOCH seats the Leios committee (cardano-ledger 9df9f98c
+        // `Dijkstra/Rules/Epoch.hs`), which needs state the node does not hold yet
+        case ShelleyBasedEra.SDijkstra =>
+          failures.raise(TickFailure.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Rules))
         case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
             ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
           shelley[E].transition[F](env, epoch)

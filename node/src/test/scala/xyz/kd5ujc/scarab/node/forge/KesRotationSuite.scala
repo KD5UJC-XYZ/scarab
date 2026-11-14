@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import cats.effect.{IO, Ref}
+import cats.mtl.Handle
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import java.nio.file.{Files, Path}
@@ -9,13 +10,16 @@ import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.io.IOException
 import scala.collection.mutable.ArrayBuffer
+import scala.jdk.CollectionConverters.*
 import scala.concurrent.duration.*
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
+import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   ForgeError,
+  ForgeKeyProblem,
   Header,
   KesFileFailureCause,
   KesFileOperation,
@@ -58,12 +62,23 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       head(0, oc.kesPeriod.toInt) + bstr(oc.sigma) + bstr(h.coldVkey)
     s"""{"type": "${KeyFiles.OpCertType}", "description": "", "cborHex": "$cbor"}"""
 
+  private def vrfText(key: Draft03Prover.SigningKey): String =
+    s"""{"type": "${KeyFiles.VrfSigningKeyType}", "description": "", "cborHex": "${bstr(
+        key.toBytes
+      )}"}"""
+
   private final case class Files3(dir: Path):
+    val vrf: Path = dir.resolve("vrf.skey")
     val kes: Path = dir.resolve("kes.skey")
     val cert: Path = dir.resolve("node.cert")
     def next: Path = dir.resolve("kes.skey.next")
 
     /** What an operator (or the rotation driver) leaves in the key directory. */
+    /** The pool's own credentials: its VRF key, KES key and certificate. */
+    def installPool(p: Pool): Unit =
+      Files.writeString(vrf, vrfText(p.creds.vrf))
+      install(p.creds.hot)
+
     def install(h: HotCredentials): Unit =
       Files.writeString(kes, KeyFiles.kesEnvelope(kes.toString, h.kes).toOption.get)
       Files.writeString(cert, opCertText(h))
@@ -72,8 +87,16 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     def onDisk: Sum6KesSigning.SigningKey =
       KeyFiles.kesSigningKey(kes.toString, Files.readString(kes)).toOption.get
 
+  /** A key directory with a VRF key in it, which a reload reads; a forging test puts the pool's own
+    * there ([[Files3.installPool]]).
+    */
   private def withDir[A](body: Files3 => IO[A]): IO[A] =
-    IO.blocking(Files3(Files.createTempDirectory("kes-rotation"))).flatMap { files =>
+    IO.blocking {
+      val files = Files3(Files.createTempDirectory("kes-rotation"))
+      val vrf = Draft03Prover.SigningKey.fromSeed(Bytes.fromArray(Array.fill(32)(9.toByte)))
+      Files.writeString(files.vrf, vrfText(vrf.toOption.get))
+      files
+    }.flatMap { files =>
       body(files).guarantee(IO.blocking(removeTree(files.dir)))
     }
 
@@ -85,7 +108,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         .forEach(p => Files.deleteIfExists(p))
 
   private def source(files: Files3): IO[HotKeySource[IO]] =
-    HotKeySource.files[IO](files.kes, files.cert)
+    HotKeySource.files[IO](files.vrf, files.kes, files.cert)
 
   private def evolvedTo(h: HotCredentials, period: Int): Sum6KesSigning.SigningKey =
     h.kes.evolveTo(period).toOption.get
@@ -102,6 +125,25 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
   private def rightOrFail[A](value: Either[ForgeError, A]): A =
     value.fold(error => fail(error.message), identity)
 
+  /** The rename protocol: the write-back where there is no atomic exchange, and recovery. */
+  private trait Renaming extends KesFiles.FileOps:
+    override def exchange(next: Path, file: Path): KesFiles.Exchange =
+      KesFiles.Exchange.Unsupported(NoExchange.Refused(22))
+
+  /** The exchange protocol, with the exchange done in three moves: the same outcomes as
+    * `renameat2(RENAME_EXCHANGE)` (nothing moves when either file is not there), on any file
+    * system, for the boundaries.
+    */
+  private trait Swapping extends KesFiles.FileOps:
+    override def exchange(next: Path, file: Path): KesFiles.Exchange =
+      if !Files.exists(file) || !Files.exists(next) then KesFiles.Exchange.Absent
+      else
+        val aside = file.resolveSibling(file.getFileName.toString + ".swap")
+        Files.move(file, aside)
+        Files.move(next, file)
+        Files.move(aside, next)
+        KesFiles.Exchange.Swapped
+
   // ---- the key file: replacement and recovery
 
   test("an evolved key replaces the key in the file, which no longer holds the earlier one") {
@@ -113,7 +155,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         val key = f.onDisk
         assertEquals(key.period, 0)
         key.evolveTo(7)
-        assertEquals(KesFiles.persist(f.kes, key), Persisted.Written)
+        assert(KesFiles.persist(f.kes, key).isInstanceOf[Persisted.Written])
         assertEquals(f.onDisk.period, 7)
         assertEquals(f.onDisk.verificationKey, h.kes.verificationKey)
         assertNotEquals(Files.readString(f.kes), first)
@@ -171,7 +213,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         val evolved = f.onDisk
         evolved.evolveTo(6)
         val writes = ArrayBuffer.empty[Int]
-        val short = new KesFiles.FileOps:
+        val short = new Renaming:
           override def write(channel: FileChannel, bytes: ByteBuffer, position: Long): Int =
             val originalLimit = bytes.limit()
             bytes.limit(math.min(originalLimit, bytes.position() + 7))
@@ -179,7 +221,10 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
             bytes.limit(originalLimit)
             writes += count
             count
-        assertEquals(KesFiles.persistWith(f.kes, evolved, short), Persisted.Written)
+        assertEquals(
+          KesFiles.persistWith(f.kes, evolved, short),
+          Persisted.Written(WriteProtocol.Renamed(NoExchange.Refused(22)))
+        )
         assert(writes.size > 2, s"expected repeated partial writes, saw ${writes.size}")
         assertEquals(f.onDisk.period, 6)
         assert(Files.readAllBytes(f.kes).exists(_ != 0), "the replacement key is complete")
@@ -195,7 +240,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         val before = Files.readAllBytes(f.kes).toVector
         val evolved = f.onDisk
         evolved.evolveTo(4)
-        val stalled = new KesFiles.FileOps:
+        val stalled = new Renaming:
           override def write(channel: FileChannel, bytes: ByteBuffer, position: Long): Int = 0
         KesFiles.persistWith(f.kes, evolved, stalled) match
           case Persisted.Failed(
@@ -221,7 +266,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         val wrongPeriod = f.onDisk
         wrongPeriod.evolveTo(6)
         val wrongPeriodText = rightOrFail(KeyFiles.kesEnvelope("staged", wrongPeriod))
-        val wrongPeriodOps = new KesFiles.FileOps:
+        val wrongPeriodOps = new Renaming:
           override def readStage(file: Path): String = wrongPeriodText
         KesFiles.stageWith(f.kes, expected, wrongPeriodOps) match
           case Left(
@@ -248,7 +293,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         val foreign = hotFor(TestLedger.key(), 58, 0, 0).kes
         foreign.evolveTo(7)
         val foreignText = rightOrFail(KeyFiles.kesEnvelope("staged", foreign))
-        val foreignOps = new KesFiles.FileOps:
+        val foreignOps = new Renaming:
           override def readStage(file: Path): String = foreignText
         KesFiles.stageWith(f.kes, expected, foreignOps) match
           case Left(
@@ -274,7 +319,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         f.install(hotFor(TestLedger.key(), 59, 0, 0))
         val evolved = f.onDisk
         evolved.evolveTo(3)
-        val malformed = new KesFiles.FileOps:
+        val malformed = new Renaming:
           override def readStage(file: Path): String = "not a KES envelope"
         KesFiles.stageWith(f.kes, evolved, malformed) match
           case Left(
@@ -298,7 +343,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         val before = Files.readAllBytes(f.kes).toVector
         val evolved = f.onDisk
         evolved.evolveTo(5)
-        val refuse = new KesFiles.FileOps:
+        val refuse = new Renaming:
           override def forceDirectoryBeforeErase(channel: FileChannel): Unit =
             throw new IOException("injected directory sync refusal")
         KesFiles.persistWith(f.kes, evolved, refuse) match
@@ -309,7 +354,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
           case other => fail(s"expected typed pre-erase sync failure, found $other")
         assertEquals(Files.readAllBytes(f.kes).toVector, before)
         assert(Files.exists(f.next), "the validated replacement remains staged")
-        assertEquals(KesFiles.recoverWith(f.kes, new KesFiles.FileOps {}).map(_.period), Right(5))
+        assertEquals(KesFiles.recoverWith(f.kes, new Renaming {}).map(_.period), Right(5))
       }
     }
   }
@@ -321,7 +366,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         val evolved = f.onDisk
         evolved.evolveTo(8)
         var failed = false
-        val failFirstRename = new KesFiles.FileOps:
+        val failFirstRename = new Renaming:
           override def rename(next: Path, file: Path): Unit =
             if !failed then
               failed = true
@@ -347,7 +392,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         evolved.evolveTo(9)
         var failSync = true
         var syncAttempts = 0
-        val failOnce = new KesFiles.FileOps:
+        val failOnce = new Renaming:
           override def forceDirectoryAfterRename(channel: FileChannel): Unit =
             syncAttempts += 1
             if failSync then
@@ -383,7 +428,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
           f.install(hotFor(TestLedger.key(), 61, 0, 0))
           val evolved = f.onDisk
           evolved.evolveTo(8)
-          val crash = new KesFiles.FileOps:
+          val crash = new Renaming:
             override def checkpoint(at: KesFileBoundary): Unit =
               if at == boundary then throw new IOException(s"crash at $at")
           KesFiles.persistWith(f.kes, evolved, crash) match
@@ -403,6 +448,278 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     }
   }
 
+  test("every boundary of the exchange leaves an intact or recoverable key") {
+    // after the exchange the key file holds the new key and the stage's name the predecessor, which
+    // recovery erases; before it, recovery finishes the stage as for the rename
+    val cases = Vector(
+      (KesFileBoundary.StagedWriteCompleted, 0),
+      (KesFileBoundary.StagedFileForced, 0),
+      (KesFileBoundary.StagedReadbackValidated, 0),
+      (KesFileBoundary.DirectoryForcedBeforeErase, 0),
+      (KesFileBoundary.AtomicExchangeCompleted, 8),
+      (KesFileBoundary.DirectoryForcedAfterRename, 8),
+      (KesFileBoundary.PredecessorScrubCompleted, 8),
+      (KesFileBoundary.PredecessorFileForced, 8)
+    )
+    cases.traverse_ { case (boundary, mainPeriod) =>
+      withDir { f =>
+        IO {
+          f.install(hotFor(TestLedger.key(), 64, 0, 0))
+          val evolved = f.onDisk
+          evolved.evolveTo(8)
+          val crash = new Swapping:
+            override def checkpoint(at: KesFileBoundary): Unit =
+              if at == boundary then throw new IOException(s"crash at $at")
+          KesFiles.persistWith(f.kes, evolved, crash) match
+            case Persisted.Failed(_) => ()
+            case other => fail(s"expected injected failure at $boundary, found $other")
+          assertEquals(f.onDisk.period, mainPeriod, s"the key file at $boundary")
+          assert(Files.exists(f.next), s"stage or predecessor present at $boundary")
+          val recovered = rightOrFail(KesFiles.recover(f.kes))
+          assertEquals(recovered.period, 8, s"recovery after $boundary")
+          recovered.forget()
+          assert(!Files.exists(f.next))
+          evolved.forget()
+        }
+      }
+    }
+  }
+
+  test("the exchange leaves the new key in the file and no copy of the predecessor") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 65, 0, 0))
+        val evolved = f.onDisk
+        evolved.evolveTo(6)
+        assertEquals(
+          KesFiles.persistWith(f.kes, evolved, new Swapping {}),
+          Persisted.Written(WriteProtocol.Exchanged)
+        )
+        assertEquals(f.onDisk.period, 6)
+        assertEquals(listing(f.dir), Set("vrf.skey", "kes.skey", "node.cert"))
+        evolved.forget()
+      }
+    }
+  }
+
+  // ---- #918: a key file moved away is never made again by the write-back
+
+  test(
+    "a key file moved away before the write-back looks is not made again, and nothing is staged"
+  ) {
+    // the write-back checks first, so this holds before either protocol is reached
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 66, 0, 0))
+        val key = f.onDisk
+        Files.move(f.kes, f.dir.resolve("moved-away"))
+        key.evolveTo(3)
+        assertEquals(KesFiles.persist(f.kes, key), Persisted.Absent(f.kes.toString))
+        assertEquals(listing(f.dir), Set("vrf.skey", "node.cert", "moved-away"))
+        key.forget()
+      }
+    }
+  }
+
+  List[(String, () => KesFiles.FileOps)](
+    "exchange" -> (() => new Swapping {}),
+    "rename" -> (() => new Renaming {})
+  ).foreach { case (protocol, ops) =>
+    test(s"$protocol: a key file moved away while the new key is being staged is not made again") {
+      withDir { f =>
+        IO {
+          f.install(hotFor(TestLedger.key(), 67, 0, 0))
+          val key = f.onDisk
+          key.evolveTo(4)
+          val base = ops()
+          // the operator's `mv` lands after the write-back looked at the key file
+          val moving = new KesFiles.FileOps:
+            override def forceDirectoryBeforeErase(channel: FileChannel): Unit =
+              Files.move(f.kes, f.dir.resolve("moved-away"))
+            override def exchange(next: Path, file: Path): KesFiles.Exchange =
+              base.exchange(next, file)
+          assertEquals(KesFiles.persistWith(f.kes, key, moving), Persisted.Absent(f.kes.toString))
+          assertEquals(listing(f.dir), Set("vrf.skey", "node.cert", "moved-away"))
+          assertEquals(
+            KeyFiles
+              .kesSigningKey("k", Files.readString(f.dir.resolve("moved-away")))
+              .map(_.period),
+            Right(0),
+            "the moved file is untouched"
+          )
+          key.forget()
+        }
+      }
+    }
+  }
+
+  test("renameat2 RENAME_EXCHANGE swaps two files, and refuses when the key file is not there") {
+    withDir { f =>
+      IO {
+        val a = f.dir.resolve("a")
+        val b = f.dir.resolve("b")
+        Files.writeString(a, "A")
+        Files.writeString(b, "B")
+        val swapped = KesFiles.AtomicExchange(a, b)
+        assume(
+          System.getProperty("os.name", "").startsWith("Linux"),
+          "renameat2 is Linux's; elsewhere the write-back renames"
+        )
+        // on Linux it must work: a binding defect or a refusal here is a failure, not a skip
+        assertEquals(swapped, KesFiles.Exchange.Swapped)
+        assertEquals((Files.readString(a), Files.readString(b)), ("B", "A"))
+        Files.delete(b)
+        assertEquals(KesFiles.AtomicExchange(a, b), KesFiles.Exchange.Absent)
+        assert(!Files.exists(b), "nothing is made at the key file's path")
+        assertEquals(Files.readString(a), "B")
+      }
+    }
+  }
+
+  test("a retry after a failure that followed the exchange erases the predecessor left behind") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 68, 0, 0))
+        val evolved = f.onDisk
+        evolved.evolveTo(9)
+        var failSync = true
+        val failOnce = new Swapping:
+          override def forceDirectoryAfterRename(channel: FileChannel): Unit =
+            if failSync then
+              failSync = false
+              throw new IOException("injected post-exchange sync failure")
+        KesFiles.persistWith(f.kes, evolved, failOnce) match
+          case Persisted.Failed(
+                ForgeError.KesFileFailure(_, KesFileOperation.DirectorySyncAfterRename, _)
+              ) =>
+            ()
+          case other => fail(s"expected typed post-exchange sync failure, found $other")
+        assertEquals(f.onDisk.period, 9)
+        assert(Files.exists(f.next), "the predecessor is at the stage's name")
+        assertEquals(KesFiles.persistWith(f.kes, evolved, failOnce), Persisted.Unchanged)
+        assert(!Files.exists(f.next), "the retry erases it")
+        evolved.forget()
+      }
+    }
+  }
+
+  test("an exchange that finds the stage gone while the key file is there is a typed failure") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 69, 0, 0))
+        val evolved = f.onDisk
+        evolved.evolveTo(2)
+        val vanishing = new Swapping:
+          override def exchange(next: Path, file: Path): KesFiles.Exchange =
+            Files.delete(next)
+            super.exchange(next, file)
+        KesFiles.persistWith(f.kes, evolved, vanishing) match
+          case Persisted.Failed(
+                ForgeError.KesFileFailure(
+                  _,
+                  KesFileOperation.Rename,
+                  KesFileFailureCause.FileSystem(_: java.nio.file.NoSuchFileException)
+                )
+              ) =>
+            ()
+          case other => fail(s"expected a missing stage, not an absent key file: $other")
+        assertEquals(f.onDisk.period, 0)
+        evolved.forget()
+      }
+    }
+  }
+
+  test("an exchange errno and a binding defect are typed failures, never a quiet rename") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 70, 0, 0))
+        val evolved = f.onDisk
+        evolved.evolveTo(2)
+        val defect = new IllegalStateException("binding")
+        def outcome(e: KesFiles.Exchange) =
+          KesFiles.persistWith(
+            f.kes,
+            evolved,
+            new KesFiles.FileOps:
+              override def exchange(next: Path, file: Path): KesFiles.Exchange = e
+          )
+        assertEquals(
+          outcome(KesFiles.Exchange.Failed(5)),
+          Persisted.Failed(
+            ForgeError
+              .KesFileFailure(
+                f.kes.toString,
+                KesFileOperation.Rename,
+                KesFileFailureCause.Exchange(5)
+              )
+          )
+        )
+        assertEquals(
+          HotKeys.persistenceFailure(
+            ForgeError
+              .KesFileFailure(
+                f.kes.toString,
+                KesFileOperation.Rename,
+                KesFileFailureCause.FileSystem(defect)
+              )
+          ),
+          xyz.kd5ujc.scarab.node.Fatal.Defect(defect)
+        )
+        outcome(KesFiles.Exchange.Defect(defect)) match
+          case Persisted.Failed(
+                ForgeError.KesFileFailure(
+                  _,
+                  KesFileOperation.Rename,
+                  KesFileFailureCause.FileSystem(c)
+                )
+              ) =>
+            assertEquals(c, defect)
+          case other => fail(s"expected the defect, found $other")
+        assertEquals(f.onDisk.period, 0, "nothing was renamed")
+        evolved.forget()
+      }
+    }
+  }
+
+  test("recovery does not make a key file that is not there from a stage") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 71, 0, 0))
+        val evolved = f.onDisk
+        evolved.evolveTo(5)
+        assertEquals(KesFiles.stage(f.kes, evolved), Right(()))
+        Files.move(f.kes, f.dir.resolve("moved-away"))
+        KesFiles.recover(f.kes) match
+          case Left(
+                ForgeError.KeyFile(_, ForgeKeyProblem.Io(_: java.nio.file.NoSuchFileException))
+              ) =>
+            ()
+          case other => fail(s"expected the missing key file, found $other")
+        assert(!Files.exists(f.kes), "the key file is not made")
+        assert(Files.exists(f.next), "the stage is kept")
+        evolved.forget()
+      }
+    }
+  }
+
+  test("a write-back by the rename says so once") {
+    val p = pool(kesStart = 50, seed = 83)
+    for
+      seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
+      src = new HotKeySource[IO]:
+        def read = IO.pure(Left(ForgeError.KesUpdateInterrupted))
+        def persist(key: Sum6KesSigning.SigningKey) =
+          IO.pure(Persisted.Written(WriteProtocol.Renamed(NoExchange.Refused(22))))
+      keys <- HotKeys.create[IO](p.creds, Some(src), config, e => seen.update(_ :+ e))
+      _ <- Forger.scoped(keys.update(51))
+      _ <- Forger.scoped(keys.update(52))
+      events <- seen.get
+    yield assertEquals(
+      events.collect { case e: ForgeEvent.KesWrittenByRename => e },
+      Vector(ForgeEvent.KesWrittenByRename(NoExchange.Refused(22)))
+    )
+  }
+
   test("every recovery durability boundary is retryable") {
     val boundaries = Vector(
       KesFileBoundary.StagedFileForced,
@@ -420,7 +737,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
           val evolved = f.onDisk
           evolved.evolveTo(9)
           assertEquals(KesFiles.stage(f.kes, evolved), Right(()))
-          val crash = new KesFiles.FileOps:
+          val crash = new Renaming:
             override def checkpoint(at: KesFileBoundary): Unit =
               if at == boundary then throw new IOException(s"crash at $at")
           KesFiles.recoverWith(f.kes, crash) match
@@ -453,7 +770,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         assertEquals(KesFiles.scrub(f.kes), Right(()))
         val newer = older.copy
         newer.evolveTo(7)
-        assertEquals(KesFiles.persist(f.kes, newer), Persisted.Written)
+        assert(KesFiles.persist(f.kes, newer).isInstanceOf[Persisted.Written])
         assertEquals(f.onDisk.period, 7)
         assert(!Files.exists(f.next))
       }
@@ -500,7 +817,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       result <- Forger.scoped(keys.locked(c => keys.evolved(c, 49)))
       _ = assertEquals(
         result,
-        Right(Left(ForgeError.KesEvolution(Sum6KesSigning.Failure.PeriodOutOfRange(-1))))
+        Right(Some(Left(ForgeError.KesEvolution(Sum6KesSigning.Failure.PeriodOutOfRange(-1)))))
       )
       _ = assertEquals(p.creds.kes.period, 0)
       _ = assertEquals(p.creds.kes.toBytes, before)
@@ -512,7 +829,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
   test("restart across a KES boundary: the file holds the evolved key and forging goes on") {
     val p = pool(kesStart = 50, seed = 3)
     withDir { f =>
-      f.install(p.creds.hot)
+      f.installPool(p)
       val first = Files.readString(f.kes)
       withHandle {
         for
@@ -544,7 +861,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
   test("the key is evolved and written at the period boundary, whether or not the pool leads") {
     val p = pool(kesStart = 50, seed = 8)
     withDir { f =>
-      f.install(p.creds.hot)
+      f.installPool(p)
       withHandle {
         for
           src <- source(f)
@@ -569,7 +886,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     val p = pool(kesStart = 50, seed = 4)
     val cause = new java.io.IOException("disk full")
     withDir { f =>
-      f.install(p.creds.hot)
+      f.installPool(p)
       withHandle {
         for
           inner <- source(f)
@@ -616,7 +933,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     val p = pool(kesStart = 50, seed = 11)
     TestControl.executeEmbed(
       withDir { f =>
-        f.install(p.creds.hot)
+        f.installPool(p)
         val next = hotFor(p.cold, seed = 21, start = 50, sequence = 1)
         withHandle {
           for
@@ -653,7 +970,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     val p = pool(kesStart = 0, seed = 13) // the window is periods 0..61, slot 6200 is period 62
     TestControl.executeEmbed(
       withDir { f =>
-        f.install(p.creds.hot)
+        f.installPool(p)
         val next = hotFor(p.cold, seed = 23, start = 62, sequence = 0)
         withHandle {
           for
@@ -699,7 +1016,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     val stranger = TestLedger.key()
     TestControl.executeEmbed(
       withDir { f =>
-        f.install(p.creds.hot)
+        f.installPool(p)
         val good = hotFor(p.cold, seed = 22, start = 50, sequence = 1)
         // the certificate is for another KES key than the one in the file
         def mismatch() =
@@ -725,8 +1042,6 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
             _ <- h.forger.reload
             _ = f.install(hotFor(p.cold, seed = 27, start = 60, sequence = 1))
             _ <- h.forger.reload
-            _ = Files.delete(f.cert)
-            _ <- h.forger.reload
             seen <- refusals(h)
             current <- currentHot(h.forger.hot)
             _ <- (5000 until 5040).toList.traverse_(s => h.forger.step(s))
@@ -739,8 +1054,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
                 "BadCertificateSignature",
                 "WrongPool",
                 "Counter",
-                "NotYetValid",
-                "Unreadable"
+                "NotYetValid"
               )
             )
             assertEquals(seen(3), ReloadRefusal.Counter(OCertError.CounterOutOfRange(0, 5)))
@@ -758,7 +1072,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     val p = pool(kesStart = 50, seed = 13)
     TestControl.executeEmbed(
       withDir { f =>
-        f.install(p.creds.hot)
+        f.installPool(p)
         withHandle {
           for
             src <- source(f)
@@ -800,11 +1114,16 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
           Files.move(tmp, link, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
         def periodIn(gen: Path): Int =
           KeyFiles.kesSigningKey("k", Files.readString(gen.resolve("kes.skey"))).toOption.get.period
+        Files.writeString(f.vrf, vrfText(p.creds.vrf))
         install(gen0, p.creds.hot)
         point(gen0)
         withHandle {
           for
-            src <- HotKeySource.files[IO](link.resolve("kes.skey"), link.resolve("node.cert"))
+            src <- HotKeySource.files[IO](
+              f.vrf,
+              link.resolve("kes.skey"),
+              link.resolve("node.cert")
+            )
             h <- harness(p, ledgerWith(p, 1), live = true, source = Some(src))
             // a rotation the node will refuse (counter 5), as the driver leaves it before the signal
             _ = install(gen1, hotFor(p.cold, seed = 41, start = 50, sequence = 5))
@@ -837,6 +1156,332 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     )
   }
 
+  // ---- dynamic block forging (#906): an absent credential file disables forging on SIGHUP, the
+  // files found again enable it (cardano-node 11.1.3 `Run.hs` 620-668)
+
+  private def listing(dir: Path): Set[String] =
+    scala.util.Using.resource(Files.list(dir))(
+      _.iterator.asScala.map(_.getFileName.toString).toSet
+    )
+
+  private def updates(events: Vector[ForgeEvent]): Vector[BlockForgingState] =
+    events.collect { case ForgeEvent.BlockForgingUpdate(state) => state }
+
+  private val atSlot5100 = Some(IO.pure(java.time.Instant.EPOCH.plusSeconds(5100)))
+
+  private val credentialFiles: List[(String, Files3 => Path)] =
+    List("VRF key" -> (_.vrf), "certificate" -> (_.cert), "KES key" -> (_.kes))
+
+  credentialFiles.zipWithIndex.foreach { case ((name, file), i) =>
+    test(s"SIGHUP with the $name moved away disables forging: nothing leads, signs or is written") {
+      val p = pool(kesStart = 50, seed = 60 + i)
+      withDir { f =>
+        f.installPool(p)
+        val moved = f.dir.resolve("moved-away")
+        withHandle {
+          for
+            src <- source(f)
+            h <- harness(p, ledgerWith(p, 1), source = Some(src))
+            _ <- (5000 until 5060).toList.traverse_(s => h.forger.step(s))
+            before <- h.raws.get
+            _ <- IO.blocking(Files.move(file(f), moved))
+            reload <- h.forger.reload
+            reloaded <- h.seen
+            enabled <- h.forger.hot.enabled
+            inUse <- Forger.scoped(h.forger.hot.current)
+            // the slots of KES periods 51 and 52: a forging node would lead, evolve and write back
+            _ <- (5060 until 5260).toList.traverse_(s => h.forger.step(s))
+            events <- h.seen
+            after <- h.raws.get
+            left <- IO.blocking(listing(f.dir))
+          yield
+            val kesNow = if name == "KES key" then moved else f.kes
+            assertEquals(reload, Right(()))
+            assert(before.nonEmpty, "the pool forged before")
+            assertEquals(updates(reloaded), Vector(BlockForgingState.DisabledBlockForging))
+            assert(!reloaded.exists(_.isInstanceOf[ForgeEvent.KesReloadRefused]), reloaded.toString)
+            assert(!enabled)
+            assertEquals(inUse, Right(None))
+            assert(p.creds.kes.isForgotten, "the key in use is erased from memory")
+            assertEquals(events.drop(reloaded.size), Vector.empty, "no slot is attempted")
+            assertEquals(after, before, "no block is signed")
+            assertEquals(
+              left,
+              Set("vrf.skey", "kes.skey", "node.cert", "moved-away") - file(f).getFileName.toString
+            )
+            assertEquals(
+              KeyFiles.kesSigningKey("k", Files.readString(kesNow)).map(_.period),
+              Right(0),
+              "the key file is not written"
+            )
+        }
+      }
+    }
+  }
+
+  test("SIGHUP with the files back enables forging, after the checks of any reload") {
+    val p = pool(kesStart = 50, seed = 70)
+    withDir { f =>
+      f.installPool(p)
+      val next = hotFor(p.cold, seed = 71, start = 50, sequence = 1)
+      withHandle {
+        for
+          src <- source(f)
+          h <- harness(p, ledgerWith(p, 1), source = Some(src), clock = atSlot5100)
+          _ <- IO.blocking(Files.delete(f.kes))
+          _ <- h.forger.reload
+          _ <- (5100 until 5150).toList.traverse_(s => h.forger.step(s))
+          during <- h.raws.get
+          _ = f.install(next)
+          _ <- h.forger.reload
+          current <- currentHot(h.forger.hot)
+          _ <- (5150 until 5200).toList.traverse_(s => h.forger.step(s))
+          blocks <- h.raws.get
+          events <- h.seen
+        yield
+          assertEquals(during, Map.empty[Bytes, Bytes])
+          assertEquals(
+            updates(events),
+            Vector(BlockForgingState.DisabledBlockForging, BlockForgingState.EnabledBlockForging)
+          )
+          assertEquals(
+            events.collect { case e: ForgeEvent.KesReloaded => e },
+            Vector(ForgeEvent.KesReloaded(1, 50, 62, 51))
+          )
+          assertEquals(current.opCert.sequence, BigInt(1))
+          assertEquals(current.vrf.publicKey, p.creds.vrf.publicKey)
+          assert(blocks.nonEmpty)
+          assertEquals(blocks.values.map(sequenceOf).toSet, Set(BigInt(1)))
+          // the period-0 key put back in period 51 is brought to the present and written back
+          assertEquals(f.onDisk.period, 1)
+      }
+    }
+  }
+
+  private def vrfKeyOf(raw: Bytes): Bytes =
+    Block.decode(raw, geometry.byron.epochSlots).toOption.get.header match
+      case s: Header.Shelley => s.vrfVkey
+      case other             => fail(s"not a Praos header: $other")
+
+  test("a reload forges with the VRF key it read, as the reference's new block forging does") {
+    val p = pool(kesStart = 50, seed = 80)
+    val other =
+      Draft03Prover.SigningKey.fromSeed(Bytes.fromArray(Array.fill(32)(81.toByte))).toOption.get
+    // the ledger knows the pool by the new VRF key
+    val registered = p.copy(creds = p.creds.copy(vrf = other))
+    withDir { f =>
+      f.installPool(p)
+      withHandle {
+        for
+          src <- source(f)
+          h <- harness(p, ledgerWith(registered, 1), source = Some(src), clock = atSlot5100)
+          _ <- (5100 until 5130).toList.traverse_(s => h.forger.step(s))
+          before <- h.raws.get
+          _ = Files.writeString(f.vrf, vrfText(other))
+          _ <- h.forger.reload
+          current <- currentHot(h.forger.hot)
+          _ <- (5130 until 5180).toList.traverse_(s => h.forger.step(s))
+          after <- h.raws.get
+        yield
+          val since = after.removedAll(before.keys)
+          assertEquals(current.vrf.publicKey, other.publicKey)
+          assert(before.values.forall(vrfKeyOf(_) == p.creds.vrf.publicKey), before.toString)
+          assert(since.nonEmpty, "the pool leads and forges with the new key")
+          assertEquals(since.values.map(vrfKeyOf).toSet, Set(other.publicKey))
+      }
+    }
+  }
+
+  test("a reload refused while forging is disabled keeps it disabled and says why") {
+    val p = pool(kesStart = 50, seed = 72)
+    val foreign = hotFor(TestLedger.key(), seed = 73, start = 50, sequence = 0)
+    withDir { f =>
+      f.installPool(p)
+      withHandle {
+        for
+          src <- source(f)
+          h <- harness(p, ledgerWith(p, 1), source = Some(src), clock = atSlot5100)
+          _ <- IO.blocking(Files.delete(f.cert))
+          _ <- h.forger.reload
+          _ = f.install(foreign)
+          _ <- h.forger.reload
+          enabled <- h.forger.hot.enabled
+          _ <- (5100 until 5150).toList.traverse_(s => h.forger.step(s))
+          blocks <- h.raws.get
+          seen <- refusals(h)
+          events <- h.seen
+        yield
+          assertEquals(seen.map(_.productPrefix), Vector("WrongPool"))
+          assert(!enabled)
+          assertEquals(blocks, Map.empty[Bytes, Bytes])
+          assertEquals(updates(events), Vector(BlockForgingState.DisabledBlockForging))
+          assertEquals(f.onDisk.period, 0)
+      }
+    }
+  }
+
+  test("a node started as non-producing forges nothing until a reload finds its files") {
+    val p = pool(kesStart = 50, seed = 74)
+    withDir { f =>
+      f.installPool(p)
+      withHandle {
+        for
+          src <- source(f)
+          h <- harness(
+            p,
+            ledgerWith(p, 1),
+            source = Some(src),
+            clock = atSlot5100,
+            enabled = false
+          )
+          erased = p.creds.kes.isForgotten
+          _ <- (5100 until 5150).toList.traverse_(s => h.forger.step(s))
+          quiet <- h.seen
+          _ <- h.forger.reload
+          _ <- (5150 until 5200).toList.traverse_(s => h.forger.step(s))
+          blocks <- h.raws.get
+          events <- h.seen
+        yield
+          assert(erased, "the key read at start-up is erased at once")
+          assertEquals(quiet, Vector.empty)
+          assertEquals(updates(events), Vector(BlockForgingState.EnabledBlockForging))
+          assert(blocks.nonEmpty)
+          assertEquals(blocks.values.map(sequenceOf).toSet, Set(BigInt(0)))
+          assertEquals(f.onDisk.period, 1)
+      }
+    }
+  }
+
+  test("the forger traces at start whether it forges, as the reference's BlockForgingUpdate") {
+    List(true, false).traverse_ { on =>
+      val p = pool(kesStart = 50, seed = if on then 75 else 76)
+      TestControl.executeEmbed(
+        withHandle {
+          for
+            h <- harness(p, ledgerWith(p, 1), live = true, unbounded = true, enabled = on)
+            ended <- h.forger.run.timeoutTo(3.seconds, IO.pure(Right(())))
+            events <- h.seen
+          yield
+            assertEquals(ended, Right(()))
+            if on then
+              assertEquals(updates(events), Vector(BlockForgingState.EnabledBlockForging))
+              assertEquals(
+                events.take(1),
+                Vector(ForgeEvent.BlockForgingUpdate(BlockForgingState.EnabledBlockForging))
+              )
+              assert(events.lift(1).exists(_.isInstanceOf[ForgeEvent.Started]), events.toString)
+            else
+              assertEquals(
+                events,
+                Vector(ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging))
+              )
+        }
+      )
+    }
+  }
+
+  test("#918: a KES key file moved away before the SIGHUP is not made again by a period change") {
+    val p = pool(kesStart = 50, seed = 82)
+    withDir { f =>
+      f.installPool(p)
+      withHandle {
+        for
+          real <- IO.blocking(f.kes.toRealPath())
+          src <- source(f)
+          h <- harness(p, ledgerWith(p, 1), source = Some(src), clock = atSlot5100)
+          _ <- (5050 until 5100).toList.traverse_(s => h.forger.step(s))
+          // only the KES key is moved, and a period boundary passes before the SIGHUP
+          _ <- IO.blocking(Files.move(f.kes, f.dir.resolve("moved-away")))
+          _ <- (5100 until 5110).toList.traverse_(s => h.forger.step(s))
+          during <- h.seen
+          names <- IO.blocking(listing(f.dir))
+          _ <- h.forger.reload
+          enabled <- h.forger.hot.enabled
+          events <- h.seen
+        yield
+          assertEquals(
+            during.collect { case ForgeEvent.KesFileAbsent(period, file) => (period, file) },
+            Vector((BigInt(51), real.toString))
+          )
+          assertEquals(names, Set("vrf.skey", "node.cert", "moved-away"))
+          assertEquals(updates(events), Vector(BlockForgingState.DisabledBlockForging))
+          assert(!enabled, "the SIGHUP finds the key file absent and forging stops")
+      }
+    }
+  }
+
+  test("the key lock stays held while forging is disabled, and nothing appears at the key's path") {
+    val p = pool(kesStart = 50, seed = 78)
+    withDir { f =>
+      f.installPool(p)
+      val locked = ForgeError.KeyFile(
+        f.kes.toString,
+        ForgeKeyProblem.InstanceLocked(KeyGuard.lockFile(f.kes).toString)
+      )
+      def second: IO[Option[ForgeError]] =
+        Handle
+          .allow[ForgeError](
+            KeyGuard.held[IO](f.kes, lock = true).use_.as(Option.empty[ForgeError])
+          )
+          .rescue(e => IO.pure(Some(e)))
+      withHandle {
+        Handle
+          .allow[ForgeError](
+            KeyGuard.held[IO](f.kes, lock = true).use { _ =>
+              for
+                src <- source(f)
+                h <- harness(p, ledgerWith(p, 1), source = Some(src), clock = atSlot5100)
+                _ <- IO.blocking(Files.move(f.kes, f.dir.resolve("moved-away")))
+                _ <- h.forger.reload
+                _ <- (5100 until 5300).toList.traverse_(s => h.forger.step(s))
+                other <- second
+                names <- IO.blocking(listing(f.dir))
+              yield (other, names)
+            }
+          )
+          .rescue(e => IO.raiseError(new AssertionError(e.message)))
+      }.map { (other, names) =>
+        assertEquals(other, Some(locked))
+        assertEquals(
+          names,
+          Set("vrf.skey", "node.cert", "moved-away", KeyGuard.lockFile(f.kes).getFileName.toString)
+        )
+      }
+    }
+  }
+
+  test("a reload reads the VRF key, the certificate and the KES key in the reference's order") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 79, 0, 0))
+        def reread = KesFiles.reread(f.vrf, f.kes, f.cert)
+        reread match
+          case Right(KesFiles.Reread.Found(found, _)) => found.kes.forget()
+          case other => fail(s"expected the credentials, found $other")
+        // the first absent file in that order is the one named, whatever follows it
+        Files.move(f.kes, f.dir.resolve("k"))
+        assertEquals(reread, Right(KesFiles.Reread.Absent(f.kes)))
+        Files.move(f.cert, f.dir.resolve("c"))
+        assertEquals(reread, Right(KesFiles.Reread.Absent(f.cert)))
+        Files.move(f.vrf, f.dir.resolve("v"))
+        assertEquals(reread, Right(KesFiles.Reread.Absent(f.vrf)))
+        // a damaged file read before an absent one fails the read, as the reference's does
+        Files.writeString(f.vrf, "not an envelope")
+        reread match
+          case Left(ForgeError.KeyFile(file, ForgeKeyProblem.Json(_))) =>
+            assertEquals(file, f.vrf.toString)
+          case other => fail(s"expected a damaged VRF key, found $other")
+        // a directory and a link that leads nowhere do not exist for `doesFileExist`
+        Files.delete(f.vrf)
+        Files.createDirectory(f.vrf)
+        assertEquals(reread, Right(KesFiles.Reread.Absent(f.vrf)))
+        Files.delete(f.vrf)
+        Files.createSymbolicLink(f.vrf, f.dir.resolve("nowhere"))
+        assertEquals(reread, Right(KesFiles.Reread.Absent(f.vrf)))
+      }
+    }
+  }
+
   // ---- the rules of a reload, on their own
 
   private val config0 = config
@@ -847,7 +1492,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       period: Int,
       counter: Option[BigInt]
   ): Either[ReloadRefusal, Unit] =
-    HotKeys.validate(p.creds, candidate, period, counter, config0)
+    HotKeys.validate(p.creds.poolId, Some(p.creds.kes), candidate, period, counter, config0)
 
   test("a certificate whose window has passed, or has not begun, is refused") {
     val p = pool(kesStart = 0, seed = 14)
@@ -895,12 +1540,22 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       xyz.kd5ujc.scarab.crypto.witness.WitnessInputError.MalformedSignatureLength(0)
     )
     val expected = ReloadRefusal.CertificateFailure(cause)
-    assertEquals(HotKeys.validate(p.creds, candidate, 50, Some(0), config), Left(expected))
+    assertEquals(
+      HotKeys.validate(p.creds.poolId, Some(p.creds.kes), candidate, 50, Some(0), config),
+      Left(expected)
+    )
     for
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
       adopted <- Ref.of[IO, Boolean](false)
       src = new HotKeySource[IO]:
-        def read = IO.pure(Right(HotKeySource.Candidate(candidate, adopted.set(true))))
+        def read =
+          IO.pure(
+            Right(
+              HotKeySource.Reading.Found(
+                HotKeySource.Candidate(candidate, p.creds.vrf, adopted.set(true))
+              )
+            )
+          )
         def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Unchanged)
       keys <- HotKeys.create[IO](p.creds, Some(src), config, e => seen.update(_ :+ e))
       _ <- Forger.scoped(keys.reload(50, Some(0))).map(result => assertEquals(result, Right(())))
@@ -913,4 +1568,128 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
       assert(!switched)
       assert(!current.kes.isForgotten)
       assert(candidate.kes.isForgotten)
+  }
+
+  private val wideWindow = config.copy(maxKesEvolutions = (BigInt(1) << 64) - 1)
+  private val exhaustedTargets = Vector(
+    BigInt(64),
+    BigInt(Int.MaxValue) + 1,
+    BigInt(1) << 32,
+    (BigInt(1) << 32) + 63,
+    (BigInt(1) << 64) - 2
+  )
+
+  exhaustedTargets.foreach { target =>
+    test(s"an in-window KES target $target beyond the signing lifetime is terminal") {
+      val p = pool(kesStart = 0, seed = 3)
+      for
+        seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
+        keys <- HotKeys.create[IO](p.creds, None, wideWindow, e => seen.update(_ :+ e))
+        result <- Forger.scoped(keys.update(target))
+        later <- Forger.scoped(keys.locked(_ => IO.unit))
+        events <- seen.get
+      yield
+        assertEquals(
+          result,
+          Left(
+            xyz.kd5ujc.scarab.node.Fatal.Internal(
+              ForgeError.KesEvolution(Sum6KesSigning.Failure.PeriodOutOfRange(target))
+            )
+          )
+        )
+        assertEquals(later.left.toOption, result.left.toOption, "the failure remains terminal")
+        assertEquals(events, Vector.empty, "failed evolution emits no success event")
+    }
+
+    test(s"reload cannot wrap the KES target $target into a successful evolution") {
+      val p = pool(kesStart = 0, seed = 3)
+      val next = hotFor(p.cold, seed = 21, start = 0, sequence = 1)
+      val src = new HotKeySource[IO]:
+        def read = IO.pure(
+          Right(HotKeySource.Reading.Found(HotKeySource.Candidate(next, p.creds.vrf, IO.unit)))
+        )
+        def persist(key: Sum6KesSigning.SigningKey) =
+          IO.pure(Persisted.Written(WriteProtocol.Exchanged))
+      for
+        seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
+        keys <- HotKeys.create[IO](p.creds, Some(src), wideWindow, e => seen.update(_ :+ e))
+        result <- Forger.scoped(keys.reload(target, Some(BigInt(0))))
+        later <- Forger.scoped(keys.locked(_ => IO.unit))
+        events <- seen.get
+      yield
+        assertEquals(
+          result,
+          Left(
+            xyz.kd5ujc.scarab.node.Fatal.Internal(
+              ForgeError.KesEvolution(Sum6KesSigning.Failure.PeriodOutOfRange(target))
+            )
+          )
+        )
+        assertEquals(
+          later.left.toOption,
+          result.left.toOption,
+          "the failed reload cannot leave usable credentials"
+        )
+        assertEquals(events, Vector.empty, "failed evolution emits no reload success")
+    }
+  }
+
+  test("the last signing period remains usable with a larger configured window") {
+    val p = pool(kesStart = 0, seed = 3)
+    for
+      seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
+      keys <- HotKeys.create[IO](p.creds, None, wideWindow, e => seen.update(_ :+ e))
+      result <- Forger.scoped(keys.update(63))
+      events <- seen.get
+    yield
+      assertEquals(result, Right(Some(Right(Right(KesInfo(0, wideWindow.maxKesEvolutions, 63))))))
+      assertEquals(p.creds.kes.period, 63)
+      assertEquals(events, Vector(ForgeEvent.KesEvolved(63, 63)))
+  }
+
+  test("configured window expiry precedes signing lifetime exhaustion") {
+    val p = pool(kesStart = 0, seed = 3)
+    val info = KesInfo(0, 64, 0)
+    for
+      keys <- HotKeys.create[IO](p.creds, None, config.copy(maxKesEvolutions = 64), _ => IO.unit)
+      first <- Forger.scoped(keys.update(64))
+      later <- Forger.scoped(keys.update(65))
+    yield
+      assertEquals(first, Right(Some(Right(Left(KesEvolutionError.CouldNotEvolve(info, 64))))))
+      assertEquals(later, Right(Some(Right(Left(KesEvolutionError.KeyAlreadyPoisoned(info, 65))))))
+      assert(p.creds.kes.isForgotten, "expiry erases the key")
+  }
+
+  test("reloading the same key cannot wrap an exhausted target into success") {
+    val p = pool(kesStart = 0, seed = 3)
+    val candidate = hotFor(p.cold, seed = 3, start = 0, sequence = 0)
+    val target = BigInt(1) << 32
+    val src = new HotKeySource[IO]:
+      def read =
+        IO.pure(
+          Right(HotKeySource.Reading.Found(HotKeySource.Candidate(candidate, p.creds.vrf, IO.unit)))
+        )
+      def persist(key: Sum6KesSigning.SigningKey) =
+        IO.pure(Persisted.Written(WriteProtocol.Exchanged))
+    for
+      seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
+      keys <- HotKeys.create[IO](p.creds, Some(src), wideWindow, e => seen.update(_ :+ e))
+      result <- Forger.scoped(keys.reload(target, Some(BigInt(0))))
+      later <- Forger.scoped(keys.locked(_ => IO.unit))
+      events <- seen.get
+    yield
+      assertEquals(
+        result,
+        Left(
+          xyz.kd5ujc.scarab.node.Fatal.Internal(
+            ForgeError.KesEvolution(Sum6KesSigning.Failure.PeriodOutOfRange(target))
+          )
+        )
+      )
+      assertEquals(
+        later.left.toOption,
+        result.left.toOption,
+        "the reused key remains terminal after failed evolution"
+      )
+      assertEquals(events, Vector.empty, "failed evolution emits no reload success")
   }

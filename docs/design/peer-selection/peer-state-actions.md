@@ -59,7 +59,7 @@ starting a prepared bundle cannot overwrite a later Terminate. Replacing the que
 The monitor uses today's Mux terminal cause and ConnectionManager resource-release boundary;
 Mux job ownership and the complete manager state machine remain N-1 and N-2 of that plan.
 
-Reference: ouroboros-network `2fb69829`,
+Reference: ouroboros-network `c45735a5`,
 `ouroboros-network/lib/Ouroboros/Network/PeerSelection/PeerStateActions.hs` 254–422 (result handles),
 662–776 (monitor), 838–848 (monitor lifetime), 904–944 (retained read), 950–1104 (requested transitions),
 and 1164–1174 (bundle replacement). The exit-policy fold combines delays by maximum. The node

@@ -48,17 +48,3 @@ class DocsSuite extends FunSuite:
   test("the documentation names no metric the node does not export") {
     assertEquals(documented.keySet.diff(Catalogue.all.map(_.name.value).toSet), Set.empty[String])
   }
-
-/** Writes the rows of the metrics tables for `docs/running/metrics.md`:
-  * `sbt "node/Test/runMain xyz.kd5ujc.scarab.node.metrics.CatalogueTable"`.
-  */
-object CatalogueTable:
-  def main(args: Array[String]): Unit =
-    Catalogue.all.foreach { d =>
-      val kind = d match
-        case _: CounterDef[?]   => "counter"
-        case _: GaugeDef[?]     => "gauge"
-        case _: HistogramDef[?] => "histogram"
-      val labels = d.labelNames.map(l => s"`${l.value}`").mkString(", ")
-      println(s"| `${d.name.value}` | $kind | $labels | ${d.help} |")
-    }

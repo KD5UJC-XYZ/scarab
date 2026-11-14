@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -107,7 +108,9 @@ class CheckpointsSuite extends FunSuite:
     ) {
       val root = Path.of("fixtures", name)
       val setup =
-        NodeSetup.fromDirectory(root.resolve("genesis")).fold(e => fail(e.message), identity)
+        NodeSetup
+          .fromDirectory(ReferenceBuild.Default)(root.resolve("genesis"))
+          .fold(e => fail(e.message), identity)
       val line = Files
         .readString(root.resolve("blocks.hex"))
         .linesIterator
@@ -137,7 +140,8 @@ class CheckpointsSuite extends FunSuite:
 
   test("a configured checkpoint file is required, rather than silently ignored") {
     val root = Path.of("fixtures/preprod/genesis")
-    val setup = NodeSetup.fromDirectory(root).fold(e => fail(e.message), identity)
+    val setup =
+      NodeSetup.fromDirectory(ReferenceBuild.Default)(root).fold(e => fail(e.message), identity)
     val config = setup.config.copy(files =
       setup.config.files.copy(checkpoints = Some("missing-checkpoints.json"))
     )

@@ -57,5 +57,5 @@ object RewardLikelihoodCases:
     )
   }
 
-  def main(args: Array[String]): Unit =
+  def write(args: Array[String]): Unit =
     Files.writeString(Path.of(args(0)), Json.arr(inputs.map(RewardOracleCases.json)*).spaces2)

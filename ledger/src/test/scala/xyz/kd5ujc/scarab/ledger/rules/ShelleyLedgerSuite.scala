@@ -702,6 +702,52 @@ class ShelleyLedgerSuite extends FunSuite:
     )
   }
 
+  test("MIR: a bootstrap witness counts towards the genesis quorum by its address root") {
+    // `validateMIRInsufficientGenesisSigs` intersects the genesis delegates with
+    // `keyHashWitnessesTxWits`, the vkey witnesses' hashes and each bootstrap witness's
+    // `bootstrapWitKeyHash` (cardano-ledger f649f975, `Shelley/Rules/Utxow.hs:295,449-471`,
+    // `Babbage/Rules/Utxow.hs:302-305`, `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:538-544`)
+    val spender = key()
+    val unsignedWitness =
+      node.BootstrapWitness(
+        spender.vkey,
+        Bytes(Vector.fill(64)(0)),
+        Bytes(Vector.fill(32)(5)),
+        Bytes(Vector(0xa0.toByte))
+      )
+    val root = unsignedWitness.addressRoot
+    val delegs = Map(
+      genesisKeys(0).hash -> GenDelegPair(delegates(0).hash, Bytes(Vector.fill(32)(0))),
+      genesisKeys(1).hash -> GenDelegPair(root, Bytes(Vector.fill(32)(1)))
+    )
+    val cert = Certificate.MoveRewards(Pot.Reserves, Right(Map(bob.credential -> 7 * ada)))
+    def withBootstrap(t: Tx): Tx =
+      val signed = unsignedWitness.copy(signature = spender.sign(t.body.id))
+      t.copy(witnesses = t.witnesses.copy(bootstrap = Vector(signed)))
+    forEras(
+      [E <: EraTag] =>
+        (c: Case[E]) =>
+          val s = base(c, fundedBy(alice), held = Map(bob -> Held(0, 2 * ada)), genDelegs = delegs)
+          val vkeyOnly = pay("mir", alice, certificates = Vector(cert), signers = delegates.take(1))
+          val next = accepted(c, s, withBootstrap(vkeyOnly))
+          assertEquals(reserves(iRewards(c, next), bob), Some(7 * ada), c.name)
+          assertEquals(
+            refused(c, s, vkeyOnly, TestLedger.env),
+            PredicateFailure.utxow(
+              node.UtxowFailure.MIRInsufficientGenesisSigs(Set(delegates(0).hash))
+            ),
+            c.name
+          )
+          // the bootstrap witness alone is one signature of two, and it is named among the signers
+          val bootstrapOnly = withBootstrap(pay("mir", alice, certificates = Vector(cert)))
+          assertEquals(
+            refused(c, s, bootstrapOnly, TestLedger.env),
+            PredicateFailure.utxow(node.UtxowFailure.MIRInsufficientGenesisSigs(Set(root))),
+            c.name
+        )
+    )
+  }
+
   test("MIR: transfers between pots and negative entries need protocol 5 (Alonzo)") {
     forEras(
       [E <: EraTag] =>
@@ -857,7 +903,7 @@ class ShelleyLedgerSuite extends FunSuite:
       case other                  => fail(s"not encoded in this suite: $other")
     xyz.kd5ujc.scarab.codec.Cbor
       .decode(Bytes(go(s)))
-      .flatMap(Script.native)
+      .flatMap(Script.native(_, NativeScript.Form.Timelock))
       .fold(e => fail(e.toString), identity)
 
   test("from Mary a native script mints: it must be provided, hold and be needed") {
@@ -954,7 +1000,7 @@ class ShelleyLedgerSuite extends FunSuite:
         tx(bodyWith(None, None), Vector(alice), wits),
         params,
         Set(ScriptKind.PlutusV1)
-      )
+      )(using c.pre.era)
 
   test(
     "Plutus: the verdict of the scripts must be the block's flag; a failed transaction collects its collateral"

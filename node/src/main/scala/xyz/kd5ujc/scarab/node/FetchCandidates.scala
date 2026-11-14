@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 
 /** Praos candidate boundary of BlockFetch, without Peras weights or Genesis selection. Reference:
   * consensus 82ecba329 MiniProtocol/BlockFetch/ClientInterface.hs 256–284 and
-  * Util/AnchoredFragment.hs 167–210; network 2fb69829 BlockFetch/Decision.hs
+  * Util/AnchoredFragment.hs 167–210; network c45735a5 BlockFetch/Decision.hs
   * filterPlausibleCandidates, selectForkSuffixes and filterNotAlreadyFetched. Headers have already
   * passed the ChainSync header gate. The owner supplies one coherent selected-chain snapshot and
   * any additional downloaded blocks retained outside that chain.

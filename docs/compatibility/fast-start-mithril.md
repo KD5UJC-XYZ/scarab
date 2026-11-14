@@ -13,4 +13,4 @@ genuine recorded Preview epoch 1454/i29089 full bootstrap (3,192,290 outputs), o
 
 ## Explicitly unchecked or unconfirmed
 
-fixed captured bundle endpoint, no ongoing public-tip run or mainnet acceptance; two inactive Conway parameter extras differ from genesis replay under the existing era-lacking parameter policy (raw dump equality is false); ancillary ledger/unfinished trio use the operator key, never Mithril certification; Linux amd64 pinned verifier; mainnet/week-long following remains D9/#69
+fixed captured bundle endpoint; mainnet: a follower started from a verified Mithril snapshot validates forward with full rules and follows the tip with matching hashes ([evidence of 2026-11-10](https://github.com/KD5UJC-XYZ/scarab/issues/69#issuecomment-6771252682)), its week at the tip and the ledger comparison at epoch boundaries (K7) still open; two inactive Conway parameter extras differ from genesis replay under the existing era-lacking parameter policy (raw dump equality is false); ancillary ledger/unfinished trio use the operator key, never Mithril certification; Linux amd64 pinned verifier; the week-long mainnet following and its record remain D9/#69

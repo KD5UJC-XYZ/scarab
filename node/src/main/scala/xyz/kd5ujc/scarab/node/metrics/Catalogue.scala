@@ -23,15 +23,24 @@ object AreaLabel:
 
 /** What state a connection is in, without the data of the state ([[ConnectionState]]). */
 enum ConnectionStateLabel derives LabelValue:
-  case Reserved, Unnegotiated, Established, Terminating, Terminated
+  case ReservedOutbound, Unnegotiated, OutboundUni, OutboundDup, OutboundIdle, InboundIdle, Inbound,
+    Duplex, Terminating, Terminated
 
 object ConnectionStateLabel:
+  /** The reference's connection states (`ConnectionManager/State.hs:191-217`), without their
+    * fields.
+    */
   def of(state: ConnectionState): ConnectionStateLabel = state match
-    case ConnectionState.Reserved          => Reserved
-    case ConnectionState.Unnegotiated(_)   => Unnegotiated
-    case ConnectionState.Established(_, _) => Established
-    case ConnectionState.Terminating       => Terminating
-    case ConnectionState.Terminated        => Terminated
+    case ConnectionState.ReservedOutbound => ReservedOutbound
+    case ConnectionState.Unnegotiated(_)  => Unnegotiated
+    case ConnectionState.OutboundUni      => OutboundUni
+    case ConnectionState.OutboundDup(_)   => OutboundDup
+    case ConnectionState.OutboundIdle(_)  => OutboundIdle
+    case ConnectionState.InboundIdle(_)   => InboundIdle
+    case ConnectionState.Inbound(_)       => Inbound
+    case ConnectionState.Duplex           => Duplex
+    case ConnectionState.Terminating      => Terminating
+    case ConnectionState.Terminated       => Terminated
 
 /** Where the start has got to: reading the snapshot and opening the stores, applying the stored
   * blocks again, or following the chain. Exactly one is current.
@@ -41,12 +50,11 @@ enum PhaseLabel derives LabelValue:
 
 /** What the connection manager did ([[xyz.kd5ujc.scarab.network.ConnectionEvent]]). */
 enum ConnectionEventLabel derives LabelValue:
-  case Opened, Changed, Refused, Closed
+  case Opened, Changed, Refused, Closed, Pruned
 
 /** What the inbound governor did on a connection ([[xyz.kd5ujc.scarab.node.InboundEvent]]). */
 enum InboundEventLabel derives LabelValue:
-  case Accepted, Duplex, Unidirectional, Following, SessionEnded, SessionReturned, SessionDropped,
-    CachedBlockRejected, Closed, Refused
+  case Accepted, Duplex, Unidirectional, Closed, Refused
 
 /** What the peer governor did to a peer, or learnt of it
   * ([[xyz.kd5ujc.scarab.network.selection.Trace]]).
@@ -282,7 +290,7 @@ object Catalogue:
   )
   val forgingEnabled = GaugeDef(
     MetricName("cardano_node_metrics_forging_enabled_int"),
-    "1 when the node has forging credentials."
+    "1 while the node forges, 0 when it has no credentials, was started as non-producing, a reload found a credential file absent, or a SIGHUP arrived during start-up (the reference's BlockForgingUpdate)."
   )
   val currentKesPeriod = GaugeDef(
     MetricName("cardano_node_metrics_currentKESPeriod_int"),
@@ -346,6 +354,25 @@ object Catalogue:
   val duplexConns = GaugeDef(
     MetricName("cardano_node_metrics_connectionManager_duplexConns_int"),
     "Connections on which both sides run the protocols."
+  )
+
+  // the inbound governor's `Counters`, as `TrInboundGovernorCounters` writes them
+  // (`Ouroboros/Network/Tracing/InboundGovernor.hs` 36-49, ouroboros-network `c45735a5`)
+  val inboundGovernorIdle = GaugeDef(
+    MetricName("cardano_node_metrics_inboundGovernor_idle_int"),
+    "Connections on which the peer runs none of our responders, the idle timer armed."
+  )
+  val inboundGovernorCold = GaugeDef(
+    MetricName("cardano_node_metrics_inboundGovernor_cold_int"),
+    "Connections the peer left idle past the timeout, kept for our outbound use."
+  )
+  val inboundGovernorWarm = GaugeDef(
+    MetricName("cardano_node_metrics_inboundGovernor_warm_int"),
+    "Connections on which the peer runs our responders, none of them hot."
+  )
+  val inboundGovernorHot = GaugeDef(
+    MetricName("cardano_node_metrics_inboundGovernor_hot_int"),
+    "Connections on which the peer runs a hot responder of ours."
   )
 
   // ---- scarab_*: the chain
@@ -1061,6 +1088,10 @@ object Catalogue:
     inboundConns,
     outboundConns,
     duplexConns,
+    inboundGovernorIdle,
+    inboundGovernorCold,
+    inboundGovernorWarm,
+    inboundGovernorHot,
     buildInfo,
     currentEra,
     blocksApplied,

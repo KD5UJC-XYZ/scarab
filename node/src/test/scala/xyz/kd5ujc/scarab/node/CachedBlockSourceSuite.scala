@@ -25,6 +25,8 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
       .Limits(timeWait = scala.concurrent.duration.Duration.Zero)
 
   private val magic = 42L
+  // the connections' supervisor and, released before it, their monitors' (`OutboundPeers.create`)
+  private val supervisors = (Supervisor[IO](await = false), Supervisor[IO](await = false)).tupled
   private val hash = Bytes.wrap(Array[Byte](1))
   private val block = Bytes.wrap(Array[Byte](2))
   private val refusal = ValidationError(ChainSync.Point.Origin, BlockFailure.HeaderDiffers)
@@ -50,7 +52,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
     ) {
       NodeScope.resource.use { node =>
         given Handle[IO, NodeError] = node
-        Supervisor[IO](await = false).use { supervisor =>
+        supervisors.use { (supervisor, monitors) =>
           for
             pool <- BlockPool.create[IO]
             _ <- supervisor.supervise(pool.fetchCoordinator.run)
@@ -91,6 +93,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
               OutboundPeers.Config(closeTimeout = 100.millis),
               hot,
               supervisor,
+              monitors,
               e => events.update(_ :+ e),
               summon[Stateful[IO, PeerMetrics[PeerNetwork.Addr]]]
             )
@@ -192,10 +195,10 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
     import xyz.kd5ujc.scarab.node.forge.ForgedChain
     import xyz.kd5ujc.scarab.protocol.ChainSync.Point
     ForgedChain.forge(5000 until 5030).flatMap { chain =>
-      cats.effect.testkit.TestControl.executeEmbed {
+      Settled.timed { settle =>
         NodeScope.resource.use { node =>
           given Handle[IO, NodeError] = node
-          Supervisor[IO](await = false).use { supervisor =>
+          supervisors.use { (supervisor, monitors) =>
             for
               available <- fs2.concurrent.SignallingRef[IO, Int](Peer.Depth + 1)
               offered <- Ref.of[IO, Vector[Point]](Vector(Point.Origin))
@@ -297,7 +300,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
                               h <- next match
                                 case SyncEvent.RollForward(h, _) => IO.pure(h)
                                 case other => IO(fail(s"expected actual header, got $other"))
-                              raw <- WorkerTesting.deliveredBody(pool, h)
+                              raw <- pool.awaitDelivered(h.hash)
                               _ <- IO(assertEquals(raw, chain.raws.head))
                               _ <- delivered.complete(()) *> finishFirst.get
                               missing <- over.intersect(Vector(chain.headers.last.point))
@@ -336,6 +339,7 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
                 OutboundPeers.Config(),
                 hot,
                 supervisor,
+                monitors,
                 e =>
                   events.update(_ :+ e) *> (e match
                     case Event.Observed(_, Observation.HotEnded(_, _), _, _) =>
@@ -359,8 +363,8 @@ class CachedBlockSourceSuite extends FailsOnUncaught:
               _ <- awaiting.get
               _ <- offered.set(Vector(chain.headers.last.point))
               _ <- finishFirst.complete(())
-              // Virtual time advances after drain has stopped submissions and awaits the real reply.
-              _ <- IO.sleep(1.second)
+              // Drain has stopped submissions and awaits the real reply.
+              _ <- settle
               _ <- available.set(Peer.Depth + 2)
               _ <- firstEnded.get.timeout(5.seconds)
               warmSource <- outbound.cachedSource(peer)

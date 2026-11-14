@@ -12,6 +12,7 @@ module Main (main) where
 import Cardano.Binary (DecoderError (..), enforceSize)
 import qualified Cardano.Crypto.Hash as Hash
 import Cardano.Crypto.Util (SignableRepresentation (getSignableRepresentation))
+import Cardano.Ledger.Alonzo.PParams (ppCostModelsL)
 import Cardano.Ledger.Alonzo.Tx (AlonzoEraTx (isPhase2ValidTxL), IsPhase2Valid (..))
 import Cardano.Ledger.Alonzo.TxWits (AlonzoEraTxWits (datsTxWitsL, rdmrsTxWitsL), unRedeemers, unTxDats)
 import Cardano.Ledger.BaseTypes (ProtVer (..), StrictMaybe (..), natVersion)
@@ -19,14 +20,24 @@ import qualified Cardano.Ledger.Binary as Binary
 import qualified Cardano.Ledger.Binary.Plain as Plain
 import Cardano.Ledger.Block (Block (..), BlockHeaderVersionInfo (..), EbReferencesAnnouncement (..))
 import Cardano.Ledger.Conway (ConwayEra)
-import Cardano.Ledger.Core (EraBlockBody (..), EraTx (..), EraTxWits (..), Tx, TxLevel (..), eraDecoder, txIdTx)
-import Cardano.Ledger.Dijkstra (DijkstraEra)
+import Cardano.Ledger.Core (EraBlockBody (..), EraTx (..), EraTxWits (..), PParams, Tx, TxLevel (..), TxOut, emptyPParams, eraDecoder, ppProtocolVersionL, txIdTx)
+import Cardano.Ledger.Dijkstra (DijkstraEra, mkDijkstraStAnnTopTx)
 import Cardano.Ledger.Dijkstra.BlockBody (DijkstraEraBlockBody (..))
-import Cardano.Ledger.Dijkstra.Tx (Tx (MkDijkstraTx), decodeDijkstraTopTxInBlock)
+import Cardano.Ledger.Dijkstra.Tx (DijkstraStAnnTx (..), Tx (MkDijkstraTx), decodeDijkstraTopTxInBlock)
 import Cardano.Ledger.Dijkstra.TxBody (DijkstraEraTxBody (subTransactionsTxBodyL))
 import Cardano.Ledger.Hashes (ScriptHash (..), extractHash)
+import Cardano.Ledger.Plutus.CostModels (mkCostModel, mkCostModels)
+import Cardano.Ledger.Plutus.Evaluate (PlutusWithContext)
 import Cardano.Ledger.Plutus.ExUnits (exUnitsMem, exUnitsSteps)
-import Cardano.Ledger.TxIn (TxId (..))
+import Cardano.Ledger.Plutus.Language (Language (PlutusV4))
+import Cardano.Ledger.State (UTxO (..))
+import Cardano.Ledger.TxIn (TxId (..), TxIn)
+import Cardano.Slotting.EpochInfo (fixedEpochInfo)
+import Cardano.Slotting.Slot (EpochSize (..))
+import Cardano.Slotting.Time (SystemStart (..), mkSlotLength)
+import Data.Function ((&))
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
+import Lens.Micro ((.~))
 import Cardano.Protocol.Crypto (StandardCrypto)
 import qualified Cardano.Protocol.Leios.BlockHeader as Leios
 import qualified Cardano.Protocol.Praos.BlockHeader as Praos
@@ -57,10 +68,22 @@ import System.Exit (die)
 -- `decodeDijkstraTopTxInBlock` (cardano-ledger 9df9f98c, `eras/dijkstra/impl/src/Cardano/Ledger/
 -- Dijkstra/Tx.hs:175-182`) at Dijkstra's version 12 over the whole input, as the block body's
 -- `decodeSeq` reads each of its transactions.
+--
+-- `kind` "context" is a top-level transaction, read as "tx" is, with the outputs it spends and
+-- references (`utxo`: pairs of a `TxIn` and a `TxOut`, each encoded at version 12). The harness
+-- builds the transaction's Plutus script contexts as the ledger does before it evaluates them
+-- (`mkDijkstraStAnnTopTx`, `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra.hs:113-169`): at
+-- protocol version 12.0, with a PlutusV4 cost model (251 zeros; the context does not depend on its
+-- values), slots of one second from the POSIX epoch (`fixedEpochInfo`, epochs of 100 slots, system
+-- start 1970-01-01), and records every context of the top-level transaction and of each of its
+-- sub-transactions, each the `ToCBOR PlutusWithContext` encoding
+-- (`libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs:186-193`), or the collection
+-- failure.
 data Case = Case
   { name :: String
   , kind :: String
   , bytes :: Text.Text
+  , utxo :: Maybe [(Text.Text, Text.Text)]
   }
   deriving (Generic)
 
@@ -182,6 +205,44 @@ dijkstraTx t =
            ]
     )
 
+contextParams :: PParams DijkstraEra
+contextParams =
+  emptyPParams
+    & ppProtocolVersionL .~ ProtVer (natVersion @12) 0
+    & ppCostModelsL .~ mkCostModels (Map.fromList [(PlutusV4, v4)])
+  where
+    v4 = either (error . show) id (mkCostModel PlutusV4 (replicate 251 0))
+
+contexts :: Either e [PlutusWithContext] -> Value
+contexts =
+  either
+    (const (object ["collected" .= False]))
+    (\pwcs -> object ["collected" .= True, "contexts" .= map (hexBytes . Plain.serialize') pwcs])
+
+dijkstraContexts :: Map.Map TxIn (TxOut DijkstraEra) -> Tx TopTx DijkstraEra -> Value
+dijkstraContexts spent t =
+  accepted
+    [ "id" .= hexHash (extractHash (unTxId (txIdTx t)))
+    , "top" .= contexts (dsattPlutusScriptsWithContext annotated)
+    , "subtxs" .= map (contexts . dsastPlutusScriptsWithContext) (dsattSubTransactions annotated)
+    , "failure" .= either (Just . show) (const Nothing) (dsattPlutusScriptsWithContext annotated)
+    ]
+  where
+    epochInfo = fixedEpochInfo (EpochSize 100) (mkSlotLength 1)
+    start = SystemStart (posixSecondsToUTCTime 0)
+    annotated = mkDijkstraStAnnTopTx epochInfo start contextParams (UTxO spent) mempty t
+
+decodeHex :: Text.Text -> IO LBS.ByteString
+decodeHex t = either (die . show . NotHex) (pure . LBS.fromStrict) (Hex.decode (Text.encodeUtf8 t))
+
+spentOutput :: (Text.Text, Text.Text) -> IO (TxIn, TxOut DijkstraEra)
+spentOutput (i, o) = do
+  inBytes <- decodeHex i
+  outBytes <- decodeHex o
+  input <- either (die . show) pure (Binary.decodeFull (natVersion @12) inBytes)
+  output <- either (die . show) pure (Binary.decodeFull (natVersion @12) outBytes)
+  pure (input, output)
+
 conwayBlock :: Block PraosHeader ConwayEra -> Value
 conwayBlock (Block h b) =
   accepted ["tag" .= (7 :: Int), "hash" .= hexHash (Praos.headerHash h), "bodyhash" .= hexHash (hashBlockBody b)]
@@ -201,6 +262,11 @@ runCase c = do
     "tx" ->
       pure $
         either refused (dijkstraTx . MkDijkstraTx) $
+          Binary.decodeFullAnnotator (natVersion @12) "DijkstraTx" decodeDijkstraTopTxInBlock raw
+    "context" -> do
+      spent <- Map.fromList <$> traverse spentOutput (maybe [] id (utxo c))
+      pure $
+        either refused (dijkstraContexts spent . MkDijkstraTx) $
           Binary.decodeFullAnnotator (natVersion @12) "DijkstraTx" decodeDijkstraTopTxInBlock raw
     other -> die (show (UnsupportedKind other))
   pure (object ["name" .= name c, "kind" .= kind c, "result" .= result])

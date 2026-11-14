@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.plutus.*
+import xyz.kd5ujc.scarab.uplc.flat.ScriptDecodeError
 import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.rules.NativeRules
 import xyz.kd5ujc.scarab.ledger.state.{Build, Coin, Conway, ConwayNewEpochState, NewEpochState}
@@ -20,7 +21,7 @@ import TestLedger.*
 class PreprodMalformedRefScriptSuite extends FunSuite:
   private val c = PlutusCase.load(Path.of("fixtures/preprod/plutus/tx-aee75c1c.json"))
   private val ada = BigInt(1000000)
-  private val decoder = ScalusEvaluator.pureDecoder
+  private val decoder = PlutusBackends.decoder
 
   private val script: Bytes =
     c.tx.body.outputs.flatMap(_.referenceScript).head.plutus.get
@@ -60,7 +61,8 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
     firstSlotNextEpoch = c.slot + 100,
     stabilityWindow = 129600,
     clock = None,
-    evaluator = ScalusEvaluator.default
+    evaluator = PlutusBackends.evaluator,
+    decoder = decoder
   )
 
   test("the script is 2156 bytes: one CBOR byte string of 1078 bytes, twice") {
@@ -74,8 +76,14 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
   }
 
   test("the same bytes are a RemainderError as Plutus V3") {
-    assert(
-      decoder.validate(PlutusLanguage.V3, 10, script).left.exists(_.message.contains("remain"))
+    // the second copy is the remainder: each backend names it in its own terms
+    val remainder = Bytes(script.value.drop(1078))
+    val expected = PlutusBackends.vm match
+      case PlutusVm.Scalus => ScriptProblem.TrailingBytes(remainder.size)
+      case PlutusVm.Scarab => ScriptProblem.Uplc(ScriptDecodeError.Remainder(remainder))
+    assertEquals(
+      decoder.validate(PlutusLanguage.V3, 10, script),
+      Left(ScriptDecodeFailure.Malformed(expected))
     )
   }
 
@@ -113,7 +121,7 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
       c.tx.body.copy(outputs = c.tx.body.outputs.updated(at, out.copy(raw = raw3)))
     )
     TxChecks
-      .scriptsWellFormed(params, bad, env)
+      .scriptsWellFormed(params, bad, env)(using TestLedger.usualEra((params).protocolMajor.toInt))
       .flatMap(TestLedger.verdict(bad.body.id, _)) match
       case Left(
             LedgerFailure.Rejected.Single(

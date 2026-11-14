@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.Monad
-import cats.effect.{Deferred, IO, Outcome, Ref, Resource}
-import cats.effect.std.Queue
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -21,30 +19,6 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
   */
 class PeerRootReloadSuite extends FailsOnUncaught:
   import PeerNetwork.given
-
-  /** A checkpoint resumes only after the simulated runtime has drained all runnable work. */
-  private def settled(body: IO[Unit] => IO[Unit]): IO[Unit] =
-    for
-      checkpoints <- Queue.unbounded[IO, Deferred[IO, Unit]]
-      stop <- Deferred[IO, Unit]
-      pause = Deferred[IO, Unit].flatMap(ack => checkpoints.offer(ack) *> ack.get)
-      clock <- TestControl.execute(IO.race(body(pause), stop.get).void)
-      _ <- Resource.make(IO.pure(clock))(_ => stop.complete(()).void *> clock.tickAll).use {
-        control =>
-          Monad[IO].tailRecM(()) { _ =>
-            control.tick *> checkpoints.tryTake.flatMap {
-              case Some(ack) => ack.complete(()).as(Left(()))
-              case None =>
-                control.results.flatMap {
-                  case Some(Outcome.Succeeded(()))  => IO.pure(Right(()))
-                  case Some(Outcome.Errored(cause)) => IO.raiseError(cause)
-                  case other =>
-                    IO(fail(s"controlled test did not reach its next checkpoint: $other"))
-                }
-            }
-          }
-      }
-    yield ()
 
   private val oldConfig = RootConfig(false, DiffusionMode.InitiatorOnly, Provenance.Outbound, false)
   private val nextConfig =
@@ -111,7 +85,7 @@ class PeerRootReloadSuite extends FailsOnUncaught:
     }
 
   test("initial static roots and governor progress do not wait for DNS lookup answers") {
-    settled { settle =>
+    Settled { settle =>
       for
         entered <- Deferred[IO, Unit]
         release <- Deferred[IO, Unit]
@@ -175,7 +149,7 @@ class PeerRootReloadSuite extends FailsOnUncaught:
   }
 
   test("reload installs static roots, kept DNS flags and valencies while new DNS is blocked") {
-    settled { settle =>
+    Settled { settle =>
       for
         entered <- Deferred[IO, Unit]
         active <- Ref.of[IO, Int](0)
@@ -236,7 +210,7 @@ class PeerRootReloadSuite extends FailsOnUncaught:
   }
 
   test("a DNS refresh completing after another reload cannot restore removed roots") {
-    settled { settle =>
+    Settled { settle =>
       for
         entered <- Deferred[IO, Unit]
         release <- Deferred[IO, Unit]
@@ -333,7 +307,7 @@ class PeerRootReloadSuite extends FailsOnUncaught:
     yield ()
 
   test("a reload caller can stop waiting without losing the owner's DNS refresh") {
-    settled { settle =>
+    Settled { settle =>
       for
         entered <- Deferred[IO, Unit]
         active <- Ref.of[IO, Int](0)
@@ -432,7 +406,7 @@ class PeerRootReloadSuite extends FailsOnUncaught:
   }
 
   test("topology reload uses the same bootstrap flag for SRV-only, empty and absent roots") {
-    settled { settle =>
+    Settled { settle =>
       val absent = roots(Nil, hot = 0, warm = 0)
       val domain = DnsName.from("bootstrap.example").fold(e => fail(e.toString), identity)
       val srvOnly = absent.copy(bootstrapSrv = Vector(domain))

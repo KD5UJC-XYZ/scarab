@@ -14,6 +14,7 @@ import java.util.concurrent.{
 }
 import xyz.kd5ujc.scarab.codec.{Bytes, TreeFold}
 import xyz.kd5ujc.scarab.plutus.ExUnits
+import xyz.kd5ujc.scarab.uplc.DefaultFun as UplcFun
 import scalus.cardano.ledger.{CostModels, ExUnits as ScalusExUnits, Language, MajorProtocolVersion}
 import scalus.cardano.onchain.plutus.prelude.List as PList
 import scalus.uplc.builtin.{ByteString, Data, platform}
@@ -36,7 +37,6 @@ import scalus.uplc.eval.{
 }
 import scalus.uplc.{
   BuiltinRuntime,
-  BuiltinSemanticsVariant,
   CardanoBuiltins,
   Constant,
   DeBruijn,
@@ -92,7 +92,8 @@ object ScalusEvaluator:
   private final case class VmKey(
       language: PlutusLanguage,
       protocolMajor: Int,
-      costModel: Vector[Long]
+      costModel: Vector[Long],
+      caseOnData: Boolean
   )
 
   /** A decoded script with what the availability checks need, collected once per script. */
@@ -184,20 +185,27 @@ object ScalusEvaluator:
         .map(ScriptProblem.Availability.apply)
         // `deserialiseScript` tolerates bytes after the script's CBOR item in V1 and V2 only
         .orElse(
-          Option.when(decoded.remainder > 0 && language == PlutusLanguage.V3)(
+          Option.when(decoded.remainder > 0 && language.evaluatedAs == PlutusLanguage.V3)(
             ScriptProblem.TrailingBytes(decoded.remainder)
           )
         )
         .map(ScriptDecodeFailure.Malformed.apply)
         .toLeft(())
 
-    private def vm(request: EvalRequest): Either[EvalFailure.Unsupported, PlutusVM] =
-      val key = VmKey(request.language, request.protocolMajor, request.costModel)
+    /** The machine of the request; `caseOnData` comes from the program's version
+      * ([[PlutusAvailability.caseOnData]]), which the machine parameters of the reference depend on
+      * too (`toMachineParameters`, `PlutusLedgerApi/Common/Eval.hs:133-141`, 1.71.0.0).
+      */
+    private def vm(
+        request: EvalRequest,
+        caseOnData: Boolean
+    ): Either[EvalFailure.Unsupported, PlutusVM] =
+      val key = VmKey(request.language, request.protocolMajor, request.costModel, caseOnData)
       vms.getOrElseUpdate(key)(buildVm(key))
 
     private def buildVm(key: VmKey): Either[EvalFailure.Unsupported, PlutusVM] =
       Either
-        .catchNonFatal(corrected(key.language, key.protocolMajor, key.costModel))
+        .catchNonFatal(corrected(key.language, key.protocolMajor, key.costModel, key.caseOnData))
         .leftMap(BackendFailure.Defect(_))
         .flatten
         .leftMap(EvalFailure.Unsupported(_))
@@ -266,7 +274,11 @@ object ScalusEvaluator:
       if !request.budget.mem.isValidLong || !request.budget.steps.isValidLong then
         failure(EvalFailure.Unsupported(BackendFailure.BudgetOutOfRange(request.budget)))
       else
-        (vm(request), program(request.script).flatMap(admitted(_, request))) match
+        val decoded = program(request.script).flatMap(admitted(_, request))
+        val caseOnData = decoded.exists(d =>
+          PlutusAvailability.caseOnData(request.protocolMajor, d.program.version)
+        )
+        (vm(request, caseOnData), decoded) match
           case (Left(reason), _) => failure(reason)
           case (_, Left(ScriptDecodeFailure.Malformed(reason))) =>
             failure(EvalFailure.Decode(reason))
@@ -299,13 +311,42 @@ object ScalusEvaluator:
                   case error =>
                     val logs = log.getLogs.toVector
                     val reason = log.refused.getOrElse(
-                      if referenceFailure(error) then EvalFailure.Script(ScriptFailure(error, logs))
+                      if referenceFailure(error) then
+                        EvalFailure.Script(ScriptFailure.Thrown(error, logs))
                       else EvalFailure.Unsupported(BackendFailure.Defect(error))
                     )
                     failure(reason, spent, logs)
                 },
                 _ => EvalResult.Success(spent, log.getLogs.toVector)
               )
+
+  private val uplcByName: Map[String, UplcFun] =
+    UplcFun.values.iterator.map(fun => fun.toString -> fun).toMap
+
+  /** The `uplc` module's builtin of a Scalus builtin, by name: [[BackendFailure]] names builtins so
+    * whichever backend reports them (ADR 0027). Every builtin of Scalus 1.4.0 has one, with the
+    * same name, so a failure's message is the one it had when it held Scalus's
+    * (`BackendFailureSuite`).
+    */
+  private[plutus] def builtinOf(fun: DefaultFun): Option[UplcFun] = uplcByName.get(fun.toString)
+
+  /** [[BackendFailure.BuiltinUnavailable]] of a Scalus builtin; a builtin with no `uplc` name,
+    * which `BackendFailureSuite` shows Scalus 1.4.0 does not have, is a defect.
+    */
+  private def builtinUnavailable(fun: DefaultFun): BackendFailure =
+    builtinOf(fun).fold(BackendFailure.Defect(UnnamedBuiltin(fun)))(
+      BackendFailure.BuiltinUnavailable(_)
+    )
+
+  /** [[BackendFailure.CostingUnmirrored]] of a Scalus builtin, as [[builtinUnavailable]]. */
+  private def costingUnmirrored(fun: DefaultFun): BackendFailure =
+    builtinOf(fun).fold(BackendFailure.Defect(UnnamedBuiltin(fun)))(
+      BackendFailure.CostingUnmirrored(_)
+    )
+
+  /** A Scalus builtin that the `uplc` module has no name for, carried as a defect. */
+  private[plutus] final class UnnamedBuiltin(fun: DefaultFun)
+      extends RuntimeException(s"Scalus builtin $fun has no uplc name")
 
   /** The builtins Scalus 1.4.0 evaluates through scalus-crypto-jni (libsodium, libsecp256k1, blst).
     */
@@ -387,6 +428,12 @@ object ScalusEvaluator:
       case _                  => ()
     throw new BuiltinException("builtin evaluation unavailable")
 
+  /** `maximumInputLength` (`PlutusCore/Bitwise.hs` lines 81-82 at plutus 1.70.0.0, `507cab8c`, and
+    * 1.71.0.0, `261766ad`): the longest byte string `writeBits` takes in the variants that bound
+    * byte strings.
+    */
+  private val BitwiseMaximumInputLength = 4096
+
   /** A [[PlutusVM]] with builtins whose meaning Scalus gets wrong replaced, and the reference's
     * budget arithmetic in place of Scalus's. This is `PlutusVM.evaluateDeBruijnedTerm` with those
     * meanings swapped in; the typing schemes of Scalus's builtins are kept.
@@ -401,9 +448,16 @@ object ScalusEvaluator:
     *     variants D and E, where the reference takes an unsigned 64-bit integer only.
     *   - `equalsData` is [[DataEquality]]: Scalus 1.4.0, like 1.3.0, compares a `Data.Map` as a set
     *     of its entries, where the reference compares the ordered list of entries.
+    *   - `writeBits` refuses an input longer than [[BitwiseMaximumInputLength]] bytes in variants D
+    *     to G, as the reference does (`Builtins.hs` lines 2199-2214 under `ensurable` at 1.70.0.0,
+    *     lines 2217-2232 under `ensurableByteString` at 1.71.0.0): it logs the reference's two
+    *     lines and fails the script after its cost is charged. Scalus 1.4.0 has no such limit.
     *   - In variants D and E the 35 builtins that take `CInteger` or `CByteString` refuse an
-    *     argument outside its unlifting bounds ([[UnliftingBounds]]), at no cost; Scalus 1.4.0 has
-    *     no such bound (issue 498).
+    *     argument outside its unlifting bounds ([[UnliftingBounds]]), at no cost, and in variants F
+    *     and G those that take `CByteString`; Scalus 1.4.0 has no such bound (issue 498).
+    *
+    * Scalus 1.4.0 has no variants F and G; the machine runs them under the Scalus variant of the
+    * same meaning ([[SemanticsVariant.scalus]]).
     *
     * Every builtin is costed by [[ReferenceCosting]] (`costing`, the reference's argument measures
     * and costing functions in `SatInt` arithmetic, as a budget stream), and every machine is spent
@@ -414,17 +468,19 @@ object ScalusEvaluator:
     * when every cost parameter is `Int64` 's minimum (issue 485).
     *
     * Reproducers: `DataSerialiserSuite`, `ConstrIndexReferenceSuite`, `DataEqualityReferenceSuite`,
-    * `ReferenceBudgetSuite`, `UnliftingBoundsSuite`; regressions: `PreprodConwayRulesSuite`,
-    * `PreprodSecp256k1RulesSuite`, `CostModelLengthSuite`, `BuiltinCostingOracleSuite`.
+    * `ReferenceBudgetSuite`, `UnliftingBoundsSuite`, `WriteBitsLimitReferenceSuite`; regressions:
+    * `PreprodConwayRulesSuite`, `PreprodSecp256k1RulesSuite`, `CostModelLengthSuite`,
+    * `BuiltinCostingOracleSuite`.
     */
   private[plutus] final class CorrectedVm(
       language: Language,
       params: MachineParams,
-      variant: BuiltinSemanticsVariant,
+      variant: SemanticsVariant,
       protocol: MajorProtocolVersion,
-      costing: Map[DefaultFun, ReferenceCosting.BuiltinCosting]
-  ) extends PlutusVM(language, params, variant, platform, protocol):
-    private val cardano = CardanoBuiltins(params.builtinCostModel, platform, variant)
+      costing: Map[DefaultFun, ReferenceCosting.BuiltinCosting],
+      caseOnData: Boolean
+  ) extends PlutusVM(language, params, variant.scalus, platform, protocol):
+    private val cardano = CardanoBuiltins(params.builtinCostModel, platform, variant.scalus)
     private val serialiseData: BuiltinRuntime =
       cardano.SerialiseData.copy(f =
         (_, args) =>
@@ -449,20 +505,19 @@ object ScalusEvaluator:
       base.copy(f =
         (logger, args) =>
           if !NativeCrypto.available then
-            unavailable(logger, EvalFailure.Unsupported(BackendFailure.BuiltinUnavailable(fun)))
+            unavailable(logger, EvalFailure.Unsupported(builtinUnavailable(fun)))
           else base.f(logger, args)
       )
     private val native: Map[DefaultFun, BuiltinRuntime] =
       ScalusEvaluator.nativeCrypto.iterator.map(fun => fun -> nativeGuarded(fun)).toMap
-    private val ensurable =
-      variant == BuiltinSemanticsVariant.D || variant == BuiltinSemanticsVariant.E
+    private val ensurable = variant.boundsByteStrings
     // a builtin's `f` fails the script only by throwing (see `EvaluationLog`)
     @SuppressWarnings(Array("org.wartremover.warts.Throw"))
     private val constrData: BuiltinRuntime =
       cardano.ConstrData.copy(f = (logger, args) =>
         val index = args(0).asInteger
-        // The `ensurable` variants unlift the index as a Word64; out of range that is a failure
-        // of the script (`Builtins.hs` ConstrData), which a BuiltinException is here.
+        // Variants D to G unlift the index as a Word64; out of range that is a failure of the
+        // script (`Builtins.hs` ConstrData), which a BuiltinException is here.
         if ensurable && !ConstrIndex.word64(index) then
           throw new BuiltinException("constrData index out of the Word64 range")
         else if index >= 0 then cardano.ConstrData.f(logger, args)
@@ -472,24 +527,37 @@ object ScalusEvaluator:
             case _                => throw new DeserializationError(DefaultFun.ConstrData, args(1))
           }
           CekValue.VCon(Constant.Data(ConstrIndex.constr(index, PList.from(fields)))))
-    private val caseOnBuiltins =
-      protocol >= MajorProtocolVersion.vanRossemPV || language == Language.PlutusV4
+
+    // a builtin's `f` fails the script only by throwing (see `EvaluationLog`)
+    @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+    private val writeBits: BuiltinRuntime =
+      cardano.WriteBits.copy(f = (logger, args) =>
+        val length = args(0).asByteString.size
+        // Variants D to G refuse a longer input in the denotation, after the machine has charged
+        // the builtin's cost, and emit these two lines first (`Builtins.hs` WriteBits)
+        if ensurable && length > BitwiseMaximumInputLength then
+          logger.log(s"writeBits: input too long (maximum is $BitwiseMaximumInputLength bytes)")
+          logger.log(s"Length: $length")
+          throw new BuiltinException("writeBits input longer than the maximum input length")
+        else cardano.WriteBits.f(logger, args))
+    private val caseOnBuiltins = protocol >= MajorProtocolVersion.vanRossemPV
 
     private def meaning(fun: DefaultFun): BuiltinRuntime =
       fun match
         case DefaultFun.SerialiseData => serialiseData
         case DefaultFun.ConstrData    => constrData
         case DefaultFun.EqualsData    => equalsData
+        case DefaultFun.WriteBits     => writeBits
         case _                        => native.getOrElse(fun, cardano.getBuiltinRuntime(fun))
 
-    /** `runtime` with the `ensurable` variants' unlifting bounds ([[UnliftingBounds]]): an argument
-      * outside them costs the application nothing and fails the script, as a failed unlifting does
-      * in the reference (`toMonoF`, `mempty`), checked before the builtin's cost.
+    /** `runtime` with the variant's unlifting bounds ([[UnliftingBounds]]): an argument outside
+      * them costs the application nothing and fails the script, as a failed unlifting does in the
+      * reference (`toMonoF`, `mempty`), checked before the builtin's cost.
       */
     @SuppressWarnings(Array("org.wartremover.warts.Throw"))
     private def bounded(fun: DefaultFun, runtime: BuiltinRuntime): BuiltinRuntime =
       val positions = UnliftingBounds.of(fun, variant)
-      if !ensurable || positions.isEmpty then runtime
+      if positions.isEmpty then runtime
       else
         val cost = runtime.costFunction
         runtime.copy(
@@ -510,11 +578,13 @@ object ScalusEvaluator:
       runtimes.getOrElse(fun, meaning(fun))
 
     /** The CEK machine of this evaluation context, the one construction production uses. The ledger
-      * casts built-in values without `Data` before the Dijkstra protocol (`defaultCaserBuiltinFor`,
-      * `PlutusLedgerApi/Common/Eval.hs` lines 142-146 at plutus 1.70.0.0, `507cab8c`), so
-      * `caseOnData` is false here. Only the upstream conformance executable differs: its machine
-      * parameters carry the default caser, `caseBuiltin` with `Data` (`CekEvaluator.hs` lines
-      * 46-61), which `PlutusConformanceSuite` selects with `caseOnData = true`.
+      * casts built-in values without `Data` before the Dijkstra protocol, and from it for programs
+      * of version 1.2.0 or later only (`defaultCaserBuiltinFor`, `PlutusLedgerApi/Common/Eval.hs`
+      * lines 144-148 at plutus 1.71.0.0, `261766ad`): production passes the machine's `caseOnData`,
+      * [[PlutusAvailability.caseOnData]] of the program. The upstream conformance executable of
+      * 1.70.0.0 differs: its machine parameters carry the default caser, `caseBuiltin` with `Data`
+      * (`CekEvaluator.hs` lines 46-61 at `507cab8c`), which `PlutusConformanceSuite` selects with
+      * `caseOnData = true`; that of 1.71.0.0 uses the ledger's rule at protocol 12.
       *
       * The machine charges `spender` through [[ReferenceBudget.Steps]], and charges the steps it
       * has counted when it returns its result, as the reference's does before discharging it.
@@ -546,7 +616,7 @@ object ScalusEvaluator:
         logger: Logger,
         debug: Boolean
     ): Term =
-      DeBruijn.fromDeBruijnTerm(cek(spender, logger, debug, caseOnData = false).evaluateTerm(term))
+      DeBruijn.fromDeBruijnTerm(cek(spender, logger, debug, caseOnData).evaluateTerm(term))
 
   /** The machine of an evaluation request's language, protocol and cost model. [[Interpreter]]
     * builds every machine through it, and so does the upstream conformance suite, which therefore
@@ -555,21 +625,24 @@ object ScalusEvaluator:
   private[plutus] def corrected(
       language: PlutusLanguage,
       protocolMajor: Int,
-      costModel: Vector[Long]
+      costModel: Vector[Long],
+      caseOnData: Boolean
   ): Either[BackendFailure, CorrectedVm] =
-    val scalusLanguage = Language.fromId(language.id)
+    // a PlutusV4 script runs on the PlutusV3 machine, as in the reference ledger
+    val evaluatedAs = language.evaluatedAs
+    val scalusLanguage = Language.fromId(evaluatedAs.id)
     val protocol = MajorProtocolVersion(protocolMajor)
-    val variant = BuiltinSemanticsVariant.fromProtocolAndPlutusVersion(protocol, scalusLanguage)
+    val variant = SemanticsVariant.of(language, protocolMajor)
     val params = MachineParams.fromCostModels(
-      CostModels(Map(language.id -> costModel.toIndexedSeq)),
+      CostModels(Map(evaluatedAs.id -> costModel.toIndexedSeq)),
       scalusLanguage,
       protocol
     )
     ReferenceCosting
-      .table(params.builtinCostModel, variant)
+      .table(params.builtinCostModel, variant.scalus)
       .left
-      .map(unmirrored => BackendFailure.CostingUnmirrored(unmirrored.builtin))
-      .map(CorrectedVm(scalusLanguage, params, variant, protocol, _))
+      .map(unmirrored => costingUnmirrored(unmirrored.builtin))
+      .map(CorrectedVm(scalusLanguage, params, variant, protocol, _, caseOnData))
 
   /** Plutus data as the machine's `Data`; the nesting is walked on the heap. */
   private[scarab] def toData(root: PlutusData): Data =
@@ -586,17 +659,3 @@ object ScalusEvaluator:
       case PlutusData.I(v)        => Step.Leaf(Data.I(v))
       case PlutusData.B(b)        => Step.Leaf(Data.B(ByteString.fromArray(b.toArray)))
     }
-
-  /** A small synchronised LRU map. */
-  private[plutus] final class BoundedCache[K, V](limit: Int):
-    private val map = new java.util.LinkedHashMap[K, V](16, 0.75f, true):
-      override def removeEldestEntry(e: java.util.Map.Entry[K, V]): Boolean = size() > limit
-    def get(key: K): Option[V] = map.synchronized(Option(map.get(key)))
-    def getOrElseUpdate(key: K, compute: => V)(cacheable: V => Boolean): V =
-      val hit = map.synchronized(Option(map.get(key)))
-      hit.getOrElse {
-        val value = compute
-        if cacheable(value) then
-          val _ = map.synchronized(map.put(key, value))
-        value
-      }

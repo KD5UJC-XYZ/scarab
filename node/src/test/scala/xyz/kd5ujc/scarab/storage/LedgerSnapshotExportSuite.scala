@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.{IO, Outcome, Resource}
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -8,21 +9,12 @@ import fs2.io.file.Path
 import java.nio.file.{Files as JFiles, Path as JPath}
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
-import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{ByronState, ConsensusExtras}
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorExtras, ProtocolExtras, StateMirror}
-import xyz.kd5ujc.scarab.ledger.{
-  CheckpointProblem,
-  FileKind,
-  FormatVersion,
-  Nonce,
-  StorageError,
-  TxIn,
-  Utxo
-}
+import xyz.kd5ujc.scarab.ledger.{CheckpointProblem, FileKind, FormatVersion, Nonce, StorageError}
 import xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack
 import xyz.kd5ujc.scarab.ledger.state.{Gap, NodeExtras, ShelleyBasedEra, SlotNo}
 import xyz.kd5ujc.scarab.node.NodeSetup
@@ -31,10 +23,10 @@ import xyz.kd5ujc.scarab.storage.haskell.state.*
 /** The state and tables are original node 11.1.3 fixtures, not Scala re-encodings. Only the V5
   * sidecar and checkpoint are reconstructed, as the import command does.
   */
-class LedgerSnapshotExportSuite extends CatsEffectSuite:
+class LedgerSnapshotExportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   import StorageTestKit.{ok, tempDir}
   private val setup = NodeSetup
-    .fromDirectory(JPath.of("fixtures/eras/genesis"))
+    .fromDirectory(ReferenceBuild.Default)(JPath.of("fixtures/eras/genesis"))
     .fold(e => fail(e.message), identity)
   private val boot = setup.mirrorStart.extras match
     case MirrorExtras.InByron(_, b, _) => b
@@ -132,7 +124,9 @@ class LedgerSnapshotExportSuite extends CatsEffectSuite:
     JFiles.createDirectories((db / "snapshots").toNioPath)
     JFiles.write(
       (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath,
-      FileLedgerSnapshots.closed(SnapshotV8.framed(bindingOf(db, anchor), sidecar, raw))
+      FileLedgerSnapshots.closed(
+        SnapshotV10.framed(ReferenceBuild.Release11_1, bindingOf(db, anchor), sidecar, raw)
+      )
     )
     ()
   }
@@ -206,6 +200,77 @@ class LedgerSnapshotExportSuite extends CatsEffectSuite:
       }
     }
 
+  test("an export names the recorded build; a V9 file not yet migrated exports as 11.1 bytes") {
+    tempDir.use { root =>
+      for
+        input <- fixture(root, "conway-4593")
+        (db, sidecar, raw) = input
+        current <- attempt(
+          LedgerSnapshotExport.run[IO](LedgerSnapshotExport.Config(db, root / "current"))
+        )
+        _ <- IO(assertEquals(current.map(_.build), Right(ReferenceBuild.Release11_1)))
+        anchor = sidecar.anchor.getOrElse(fail("anchor"))
+        _ <- IO.blocking(
+          JFiles.write(
+            (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath,
+            FileLedgerSnapshots.closed(SnapshotV9.framed(bindingOf(db, anchor), sidecar, raw))
+          )
+        )
+        previous <- attempt(
+          LedgerSnapshotExport.run[IO](LedgerSnapshotExport.Config(db, root / "previous"))
+        )
+        report = previous.fold(e => fail(e.message), identity)
+        _ <- IO {
+          assertEquals(report.build, ReferenceBuild.Release11_1)
+          assertEquals(
+            JFiles.readAllBytes((report.directory / "state").toNioPath).toVector,
+            raw.toArray.toVector
+          )
+        }
+      yield ()
+    }
+  }
+
+  test("a snapshot recorded under a build of another layout is refused, not converted") {
+    tempDir.use { root =>
+      for
+        input <- fixture(root, "conway-4593")
+        (db, sidecar, raw) = input
+        anchor = sidecar.anchor.getOrElse(fail("anchor"))
+        _ <- IO.blocking(
+          JFiles.write(
+            (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath,
+            FileLedgerSnapshots.closed(
+              SnapshotV10.framed(ReferenceBuild.LeiosB004fe0c, bindingOf(db, anchor), sidecar, raw)
+            )
+          )
+        )
+        before <- IO(fingerprint(db))
+        refused <- attempt(
+          LedgerSnapshotExport.run[IO](LedgerSnapshotExport.Config(db, root / "out"))
+        )
+        _ <- IO {
+          assertEquals(
+            refused,
+            Left(
+              LedgerSnapshotExport.Error.Storage(
+                StorageError.ReferenceBuildMismatch(
+                  "snapshot",
+                  ReferenceBuild.LeiosB004fe0c,
+                  ReferenceBuild.Release11_1
+                )
+              )
+            )
+          )
+          assertEquals(fingerprint(db), before)
+          val outputs = JFiles.list((root / "out").toNioPath)
+          try assert(!outputs.iterator().asScala.exists(!_.getFileName.toString.startsWith(".")))
+          finally outputs.close()
+        }
+      yield ()
+    }
+  }
+
   test("a nonexistent source is refused without creating a source or ownership inode") {
     tempDir.use { root =>
       val db = root / "absent-parent" / "db"
@@ -275,7 +340,8 @@ class LedgerSnapshotExportSuite extends CatsEffectSuite:
         path = db / "snapshots" / FileLedgerSnapshots.nameOf(
           sidecar.anchor.getOrElse(fail("anchor"))
         )
-        content = SnapshotV8.framed(
+        content = SnapshotV10.framed(
+          ReferenceBuild.Release11_1,
           bindingOf(db, sidecar.anchor.getOrElse(fail("anchor"))),
           sidecar,
           raw
@@ -422,73 +488,30 @@ class LedgerSnapshotExportSuite extends CatsEffectSuite:
   }
 
   test(
-    "cancelling a wide table export removes staging and releases ownership without changing source"
+    "cancelling a table export removes staging and releases ownership without changing source"
   ) {
     tempDir.use { root =>
       for
         input <- fixture(root, "conway-4593")
-        (db, sidecar, raw) = input
-        anchor = sidecar.anchor.getOrElse(fail("anchor"))
-        chain = sidecar.chain match
-          case s: SnapshotSidecar.Chain.InShelley => s
-          case _                                  => fail("Shelley sidecar")
-        checkpoint = db / "utxo" / "checkpoints" / StateBacking.stem(anchor)
-        wide <- ok(RocksUtxoStore.resource[IO](db / "utxo" / "live").use { store =>
-          for
-            entries <- store.all
-            out = entries.values.headOption.getOrElse(fail("fixture output"))
-            rows = Vector
-              .tabulate(100000) { n =>
-                val id = Bytes.wrap(
-                  Array.tabulate[Byte](32)(i =>
-                    if i < 28 then 0.toByte else (n >>> (8 * (31 - i))).toByte
-                  )
-                )
-                TxIn(id, 0) -> out
-              }
-              .toMap
-            _ <- store.reset
-            _ <- store.write(rows.map((key, value) => key -> Some(value)), chain.utxo.stamp)
-            _ <- IO.blocking(RocksUtxoStore.deleteTree(checkpoint.toNioPath))
-            _ <- store.checkpoint(checkpoint)
-          yield Utxo
-            .fromMap(rows)
-            .copy(
-              stamp = chain.utxo.stamp,
-              flushed = chain.utxo.flushed,
-              diff = Map.empty,
-              resident = Map.empty
-            )
-        })
-        _ <- write(db, sidecar.copy(chain = chain.copy(utxo = wide)), raw)
+        (db, _, _) = input
         before <- IO(fingerprint(db))
         out = root / "out"
-        fiber <- attempt(LedgerSnapshotExport.run[IO](LedgerSnapshotExport.Config(db, out))).start
-        _ <- (fs2.Stream
-          .awakeEvery[IO](2.millis)
-          .evalMap { _ =>
-            IO.blocking {
-              if !JFiles.exists(out.toNioPath) then false
-              else
-                val walk = JFiles.walk(out.toNioPath)
-                try
-                  walk
-                    .iterator()
-                    .asScala
-                    .exists(path => path.getFileName.toString == "tables" && JFiles.size(path) > 0)
-                finally walk.close()
-            }
+        written <- cats.effect.Deferred[IO, Unit]
+        writing = written.complete(()).void *> IO.never[Unit]
+        outcome <- cats.effect.Resource
+          .make(
+            attempt(
+              LedgerSnapshotExport.run[IO](LedgerSnapshotExport.Config(db, out), writing)
+            ).start
+          )(_.cancel)
+          .use { fiber =>
+            written.get.timeout(10.seconds) *> fiber.cancel *> fiber.join
           }
-          .filter(identity)
-          .take(1)
-          .compile
-          .drain
-          .timeout(20.seconds) *>
-          fiber.cancel *> fiber.join.flatMap {
-            case Outcome.Canceled() => IO.unit
-            case other =>
-              IO.raiseError(new AssertionError(s"export completed before cancellation: $other"))
-          }).guarantee(fiber.cancel)
+        _ <- IO {
+          outcome match
+            case Outcome.Canceled() => ()
+            case other              => fail(s"export completed before cancellation: $other")
+        }
         _ <- ok(DatabaseOwnership.resource[IO](db).use(_ => IO.unit))
         _ <- IO {
           assertEquals(fingerprint(db), before)

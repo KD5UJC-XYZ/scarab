@@ -181,10 +181,11 @@ object FlatDecodeCorpus:
       language <- PlutusLanguage.values.toVector
       if language != PlutusLanguage.V3 || protocol >= 9
       if language != PlutusLanguage.V2 || protocol >= 7
+      if language != PlutusLanguage.V4 || protocol >= 12
     yield (language, protocol)
 
   /** Writes the oracle's requests (`scripts/oracle/plutus/Main.hs` reads them). */
-  def main(args: Array[String]): Unit =
+  def write(args: Array[String]): Unit =
     val out = Path.of(args.headOption.getOrElse("/oracle/flat-decode-requests.jsonl"))
     val rows = for
       probe <- probes

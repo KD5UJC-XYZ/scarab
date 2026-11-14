@@ -5,8 +5,9 @@ import xyz.kd5ujc.scarab.ledger.{CapacityDimension, TransactionDecodeProblem, Me
 import cats.data.NonEmptyList
 import cats.syntax.all.*
 import cats.Id
+import xyz.kd5ujc.scarab.network.Word32
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
-import xyz.kd5ujc.scarab.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
+import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
 import xyz.kd5ujc.scarab.consensus.BlockRef
@@ -20,6 +21,7 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerGlobals,
   PlutusStats,
   PredicateFailure,
+  RefScripts,
   Tx,
   TxEnv,
   Utxo,
@@ -132,22 +134,24 @@ enum Source:
 
 /** A held transaction. `ticket` grows with arrival order and is how peers are given each
   * transaction once. `refScriptBytes` is the size of the reference scripts the transaction names
-  * (spent and reference inputs, counted per input as the ledger's `txNonDistinctRefScriptsSize`),
-  * measured against the state it was added to; LocalTxMonitor reports it.
+  * (the union of its spent and reference inputs, each output once, as the ledger's
+  * `txNonDistinctRefScriptsSize`), measured against the state it was added to; LocalTxMonitor
+  * reports it.
   */
-final case class Entry(id: Bytes, raw: Bytes, tx: Tx, ticket: Long, refScriptBytes: Int = 0):
+final case class Entry(id: Bytes, raw: Bytes, tx: Tx, ticket: Long, refScriptBytes: Long = 0L):
   def size: Int = raw.size
 
 /** What the transaction rules need besides the ledger state. `clock` is the slot to time
   * translation of the era history at the chain tip the pool is judged against, with its forecast
   * horizon; none is the geometry alone, without a horizon, for pools of tests that have no chain.
-  * `verdicts` are the signature verifiers of the witness checks.
+  * `verdicts` are the signature verifiers of the witness checks. `evaluator` and `decoder` are the
+  * node's Plutus backend (`--plutus-vm`, ADR 0027), with no default.
   */
 final case class MempoolEnv(
     globals: LedgerGlobals,
     geometry: EpochGeometry,
-    evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default,
-    decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
+    evaluator: ScriptEvaluator[Id],
+    decoder: ScriptDecoder[Id],
     clock: Option[PosixClock] = None,
     verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct
 ):
@@ -167,7 +171,8 @@ final case class MempoolEnv(
       clock = Some(clock.getOrElse(PosixClock.total(geometry))),
       evaluator = evaluator,
       decoder = decoder,
-      verdicts = verdicts
+      verdicts = verdicts,
+      referenceBuild = globals.referenceBuild
     )
 
   /** The constants the rules of the era-indexed state read. */
@@ -309,7 +314,7 @@ final case class MempoolState(
     entries: Vector[Entry],
     bytes: Long,
     nextTicket: Long,
-    capacityOverride: Option[Long],
+    capacityOverride: Option[Word32],
     tipHash: Option[Bytes] = None
 ):
   /** The capacity: `computeMempoolCapacity` of the parameters of the ticked ledger at the base of
@@ -368,7 +373,7 @@ final case class MempoolState(
           refScriptBytes <- Capacity
             .phase2(ledger, tx)
             .leftMap(f => Rejection.Ledger(LedgerFailure.Rejected(id, f)))
-          _ <- room(phase1.copy(refScriptsBytes = refScriptBytes.toLong))
+          _ <- room(phase1.copy(refScriptsBytes = refScriptBytes))
           // The MEMPOOL rule of the ledger (`Rules/Mempool.hs`, [[Mempool]]) judges the
           // transaction: one none of whose inputs is unspent is "probably a duplicate" and is
           // refused with that alone; then LEDGER.
@@ -487,19 +492,19 @@ object MempoolState:
     case Credential.Key(h)    => "KeyHashObj (KeyHash {unKeyHash = \"" + h.hex + "\"})"
     case Credential.Script(h) => "ScriptHashObj (ScriptHash \"" + h.hex + "\")"
 
-  /** The reference-script bytes of the transaction's inputs and reference inputs in `ledger`, an
-    * output counted once per set it appears in.
+  /** The reference-script bytes of the transaction's inputs and reference inputs in `ledger`: the
+    * ledger's measure over their union ([[RefScripts.refScriptsSize]]), so an output that is both
+    * spent and a reference input counts once, as `txMeasureRefScripts` measures it with
+    * `txNonDistinctRefScriptsSize` (`Shelley/Ledger/Mempool.hs:714-726`, ouroboros-consensus
+    * 82ecba32; `Conway/UTxO.hs:164-170`, cardano-ledger f649f975).
     */
-  def refScriptBytes(ledger: MempoolLedger, tx: Tx): Int =
-    (tx.body.inputs.iterator ++ tx.body.referenceInputs.iterator)
-      .flatMap(ledger.utxo.get)
-      .map(_.referenceScriptSize)
-      .sum
+  def refScriptBytes(ledger: MempoolLedger, tx: Tx): Long =
+    RefScripts.refScriptsSize(ledger.utxo, tx.body)
 
   def empty(
       ledger: Either[ConwayView.Unavailable, MempoolLedger],
       tipSlot: BigInt,
-      capacityOverride: Option[Long],
+      capacityOverride: Option[Word32],
       tipHash: Option[Bytes] = None
   ): MempoolState =
     MempoolState(ledger, tipSlot, ledger, Vector.empty, 0L, 1L, capacityOverride, tipHash)

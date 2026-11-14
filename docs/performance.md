@@ -12,6 +12,10 @@ Setup (all runs): multi-core host, Docker, JDK 21 Temurin, Preview via
 from the running node and aggregated over `jdk.ExecutionSample`; JFR samples a few threads per
 interval, so shares below are shares of samples.
 
+## Retained mutation
+
+The mutation the main sources still keep — every `@SuppressWarnings` that holds a `var` in place — is indexed in [retained mutable state](performance/mutable-state.md): the cluster, the declarations it keeps, the reason for each, and the section here that measures it, or the issue that owns the missing measurement.
+
 ## Log
 
 One row per measurement section, in the order the sections were written; the section number is the one other documents and code comments cite.
@@ -78,4 +82,6 @@ One row per measurement section, in the order the sections were written; the sec
 | 51 | 2026-10-31 | The ledger's loops: functional against imperative (#650) | #650 | [Memory, snapshots and bootstrap](performance/memory-and-snapshots.md#51-the-ledgers-loops-functional-against-imperative-650) |
 | 52 | 2026-10-31 | The verification cache's warming without try/finally (#650) | #650 | [The mainnet follower and signature checks](performance/mainnet-follower.md#52-the-verification-caches-warming-without-tryfinally-650) |
 | 53 | 2026-11-02 | Detached RecD records: what reading them costs an ordinary decode (#687) | #687 | [Peers, connections and the network path](performance/peers-and-network.md#53-detached-recd-records-what-reading-them-costs-an-ordinary-decode-687) |
+| 54 | 2026-11-08 | The log router's one sink lock (#233) | #233 | [Logging and the router](performance/logging-and-the-router.md#54-the-log-routers-one-sink-lock-233) |
+| 55 | 2026-11-10 | Reusing the derived pool distribution (#826) | #826 | [Memory, snapshots and bootstrap](performance/memory-and-snapshots.md#55-reusing-the-derived-pool-distribution-826) |
 <!-- /register -->

@@ -265,7 +265,7 @@ enum PredicateFailure:
   case Gov(failure: GovFailure)
   case WdrlNotDelegatedToDRep(credentials: Vector[Bytes])
   case TreasuryValueMismatch(mismatch: Mismatch[BigInt])
-  case TxRefScriptsSizeTooBig(mismatch: Mismatch[Int])
+  case TxRefScriptsSizeTooBig(mismatch: Mismatch[Long])
   case Mempool(cause: MempoolProblem)
   case WithdrawalsMissingAccounts(withdrawals: Map[RewardAccount, BigInt])
   case IncompleteWithdrawals(mismatches: Map[RewardAccount, Mismatch[BigInt]])

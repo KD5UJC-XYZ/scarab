@@ -66,10 +66,21 @@ enum EventKind(val area: Area, val severity: Severity):
   case Started extends EventKind(Area.Node, Severity.Notice)
   case Blst extends EventKind(Area.Node, Severity.Info)
   case PraosSyncUntrusted extends EventKind(Area.Node, Severity.Warning)
+
+  /** The reference build the node mirrors (`--reference-build`, #826), with its pins. */
+  case ReferenceBuild extends EventKind(Area.Node, Severity.Notice)
+
+  /** An unstable reference build runs without `ExperimentalHardForksEnabled`, which it is meant
+    * for.
+    */
+  case UnstableReferenceBuild extends EventKind(Area.Node, Severity.Warning)
   case PlutusCrypto extends EventKind(Area.Node, Severity.Info)
+
+  /** The Plutus evaluator the node runs (`--plutus-vm`, ADR 0027). */
+  case PlutusVm extends EventKind(Area.Node, Severity.Notice)
   case Listening extends EventKind(Area.Node, Severity.Notice)
   // the node-to-client socket as the network layer sets it up, the reference's
-  // `Startup.DiffusionInit` traces of it (ouroboros-network 2fb69829,
+  // `Startup.DiffusionInit` traces of it (ouroboros-network c45735a5,
   // `ouroboros-network/tracing/Ouroboros/Network/Tracing/PeerSelection.hs` 155-174)
   case CreateSystemdSocketForSnocketPath extends EventKind(Area.Node, Severity.Info)
   case CreatedLocalSocket extends EventKind(Area.Node, Severity.Info)
@@ -122,12 +133,17 @@ enum EventKind(val area: Area, val severity: Severity):
   case Connection extends EventKind(Area.Net, Severity.Info)
   case Inbound extends EventKind(Area.Net, Severity.Info)
   // the node-to-client server, the reference's `Net.Server.Local` traces (ouroboros-network
-  // 2fb69829, `ouroboros-network/tracing/Ouroboros/Network/Tracing/Server.hs` 99-113)
+  // c45735a5, `ouroboros-network/tracing/Ouroboros/Network/Tracing/Server.hs` 99-113)
   case ServerStarted extends EventKind(Area.Net, Severity.Notice)
   case AcceptConnection extends EventKind(Area.Net, Severity.Debug)
   case AcceptError extends EventKind(Area.Net, Severity.Error)
   case ServerStopped extends EventKind(Area.Net, Severity.Notice)
   case ServerError extends EventKind(Area.Net, Severity.Critical)
+  // the node-to-node server's accept loop, the reference's `Net.Server.Remote` traces of the same
+  // kinds and severities
+  case RemoteAcceptError extends EventKind(Area.Net, Severity.Error)
+  case RemoteServerStopped extends EventKind(Area.Net, Severity.Notice)
+  case RemoteServerError extends EventKind(Area.Net, Severity.Critical)
 
   // the peer governor (G1): the targets, the roots, the moves between temperatures, the sensitive
   // state, the counters, the Genesis State Machine
@@ -157,6 +173,12 @@ enum EventKind(val area: Area, val severity: Severity):
 
   // forging
   case ForgeStarted extends EventKind(Area.Forge, Severity.Notice)
+
+  /** cardano-node 11.1.3 `Startup.BlockForgingUpdate`, with its severity (the default, `Info`) and
+    * its field (`Tracers/Startup.hs` 201-204 and 391): whether the node forges, at start-up and at
+    * each reload.
+    */
+  case BlockForgingUpdate extends EventKind(Area.Forge, Severity.Info)
 
   /** The forging loop's traces, cardano-node 11.1.3 `Forge.Loop.*` one level shallower, with the
     * reference's names and severities (`Cardano/Node/Tracing/Tracers/Consensus.hs` 1541-1600).
@@ -199,6 +221,8 @@ enum EventKind(val area: Area, val severity: Severity):
   case KesReloaded extends EventKind(Area.Forge, Severity.Notice)
   case KesReloadRefused extends EventKind(Area.Forge, Severity.Error)
   case KesPersistFailed extends EventKind(Area.Forge, Severity.Error)
+  case KesFileAbsent extends EventKind(Area.Forge, Severity.Warning)
+  case KesWrittenByRename extends EventKind(Area.Forge, Severity.Warning)
   case KeyFileGroupAccess extends EventKind(Area.Forge, Severity.Warning)
   case ForgeFailed extends EventKind(Area.Forge, Severity.Error)
   case ForgeEpoch extends EventKind(Area.Forge, Severity.Notice)
@@ -211,6 +235,15 @@ enum EventKind(val area: Area, val severity: Severity):
   case VolatileResumed extends EventKind(Area.Storage, Severity.Info)
   case NetworkRecorded extends EventKind(Area.Storage, Severity.Info)
   case SnapshotSkipped extends EventKind(Area.Storage, Severity.Warning)
+
+  /** A skipped snapshot was deleted, as the reference's `DeletedSnapshot`. */
+  case SnapshotDeleted extends EventKind(Area.Storage, Severity.Info)
+
+  /** A skipped snapshot could not be deleted; the restore went on, as the reference's does. */
+  case SnapshotNotDeleted extends EventKind(Area.Storage, Severity.Warning)
+
+  /** A checkpoint no snapshot lists could not be deleted at the start; the start went on. */
+  case CheckpointNotDeleted extends EventKind(Area.Storage, Severity.Warning)
   case SnapshotRestored extends EventKind(Area.Storage, Severity.Info)
   case SnapshotUnbound extends EventKind(Area.Storage, Severity.Warning)
   case SnapshotWritten extends EventKind(Area.Storage, Severity.Info)

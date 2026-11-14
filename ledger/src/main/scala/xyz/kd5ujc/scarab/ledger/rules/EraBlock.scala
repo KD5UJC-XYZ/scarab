@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Verdicts
 }
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
+import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** A block of any Shelley-based era applied to the ledger state, on the era-indexed rules: the
@@ -34,16 +34,17 @@ object EraBlock:
     * and a hook on phase-2 evaluations. `clock` is the slot to time translation of the block's
     * scripts, the era history of the ledger state the block is applied to (the node's blocks always
     * carry it); none is the geometry alone, without a forecast horizon, for fixtures with no era
-    * history.
+    * history. The evaluator and the decoder have no default: the node passes the backend it was
+    * started with (`--plutus-vm`, ADR 0027).
     */
   final case class Context(
       globals: Globals,
       transition: Hfc.Transition,
       afterVoting: Long,
       verdicts: Verdicts = Verdicts.Direct,
-      evaluator: ScriptEvaluator[cats.Id] = ScalusEvaluator.default,
+      evaluator: ScriptEvaluator[cats.Id],
       observer: Option[Phase2.Observation => Unit] = None,
-      decoder: ScriptDecoder[cats.Id] = ScalusEvaluator.defaultDecoder,
+      decoder: ScriptDecoder[cats.Id],
       clock: Option[PosixClock] = None,
       private[ledger] val preparation: Option[Phase2.Preparation] = None
   )
@@ -232,7 +233,8 @@ object EraBlock:
       decoder = ctx.decoder,
       observer = ctx.observer,
       verdicts = ctx.verdicts,
-      preparation = ctx.preparation
+      preparation = ctx.preparation,
+      referenceBuild = globals.ledger.referenceBuild
     )
 
   /** The pool that made the block (the hash of the issuer's key). */

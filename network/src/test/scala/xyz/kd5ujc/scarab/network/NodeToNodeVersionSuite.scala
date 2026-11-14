@@ -38,8 +38,7 @@ class NodeToNodeVersionSuite extends CatsEffectSuite:
         .eval(Bearer.inMemory[IO]())
         .flatMap { (a, b) =>
           typed(
-            NodeToNodeServer
-              .accept(b, magic, handlers, NodeToNodeServer.Settings(maxVersion = server))
+            Served.accept(b, magic, handlers, NodeToNodeServer.Settings(maxVersion = server))
           ).void.background.flatMap(_ =>
             NodeToNode.warmOver[IO, Bytes](
               a,
@@ -63,7 +62,7 @@ class NodeToNodeVersionSuite extends CatsEffectSuite:
       Resource
         .eval(Bearer.inMemory[IO]())
         .flatMap { (a, b) =>
-          typed(NodeToNodeServer.accept(b, magic, handlers)).void.background.flatMap(_ =>
+          typed(Served.accept(b, magic, handlers)).void.background.flatMap(_ =>
             NodeToNode.warmOver[IO, Bytes](a, magic, ChainSyncFixtures.rawItem)
           )
         }

@@ -12,7 +12,7 @@ import json
 import subprocess
 import time
 
-from devnet.util import ENV, QUERY_PORT, docker, is_starvation_warning, ref
+from devnet.util import ENV, SINGLE_FOLLOWER, docker, is_starvation_warning, ref
 from . import compare, finality, ledger
 from .analyse import Analyser, AnalyserError
 
@@ -83,21 +83,23 @@ def byron_epoch_slots(root):
     return 10 * json.loads(genesis.read_text())["protocolConsts"]["k"] if genesis.exists() else None
 
 
-def follower_chain(root):
-    """The follower's final chain, rebuilt from `follower.jsonl` and checked against the recorded final tip."""
-    events = finality.parse_log((root / "follower.jsonl").read_text(errors="strict"), benign)
+def follower_chain(root, site=SINGLE_FOLLOWER):
+    """The follower's final chain, rebuilt from its log (`follower.jsonl`, the log of the follower `site`) and checked
+    against its recorded final tip (`FINAL_TIP`, `site.final_tip`)."""
+    events = finality.parse_log(site.log(root).read_text(errors="strict"), benign)
     chain = finality.FollowerChain.from_events(events, byron_epoch_slots(root))
-    recorded = root / FINAL_TIP
+    recorded = site.final_tip(root)
     chain.check_final_tip(json.loads(recorded.read_text()) if recorded.exists() else None)
     return chain
 
 
-def follower_tip(name):
-    """The follower's tip ({slot, hash}) from its query server's `/tip`, or None when it does not answer."""
-    url = f"http://127.0.0.1:{QUERY_PORT}/tip"
+def follower_tip(name, site=SINGLE_FOLLOWER):
+    """The follower's tip ({slot, hash}) from its query server's `/tip` (of the follower `site`), or None when it
+    does not answer."""
+    url = f"http://127.0.0.1:{site.query_port}/tip"
     script = f"import urllib.request,sys;sys.stdout.write(urllib.request.urlopen('{url}',timeout=10).read().decode())"
     try:
-        r = docker("exec", f"{name}-scala", "python3", "-c", script, check=False, timeout=30)
+        r = docker("exec", site.container(name), "python3", "-c", script, check=False, timeout=30)
     except subprocess.TimeoutExpired:
         return None
     try:
@@ -107,6 +109,16 @@ def follower_tip(name):
     return {"slot": point["slot"], "hash": point["hash"]} if isinstance(point, dict) and "hash" in point else None
 
 
+def is_node_run(args, database):
+    """Whether `args`, a process's arguments joined by spaces, are a `cardano-node run` on `database` (followed by a
+    space). The program is matched by its file name: a cluster's shell starts `cardano-node run`, and
+    `cardano-testnet` (the plain `up` cluster) starts `/opt/reference/bin/cardano-node run`. The shell that started
+    the node is not matched, although its arguments hold the same command line."""
+    argv = args.split()
+    return (len(argv) >= 2 and argv[0].rsplit("/", 1)[-1] == "cardano-node" and argv[1] == "run"
+            and database in args + " ")
+
+
 def node_pid(name, node):
     """The PID, inside the reference container, of reference node `node`'s `cardano-node run` (by its database
     path), or None unless exactly one process matches."""
@@ -114,9 +126,7 @@ def node_pid(name, node):
                            'done', timeout=30)
     database = f"{NODE_DB.replace('node1', f'node{node}')} "
     rows = [line.split(None, 1) for line in listing.stdout.splitlines()]
-    # the node itself, not the shell that started it (whose arguments hold the same command line)
-    found = [int(pid) for pid, args in (row for row in rows if len(row) == 2)
-             if args.startswith("cardano-node run") and database in args + " "]
+    found = [int(pid) for pid, args in (row for row in rows if len(row) == 2) if is_node_run(args, database)]
     return found[0] if len(found) == 1 else None
 
 

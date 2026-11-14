@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.tools
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.haskell.{ChunkSlots, HaskellImport, HaskellImportError}
 import cats.effect.{ExitCode, IO}
 import cats.mtl.Handle
@@ -130,11 +131,12 @@ object HaskellImportCommand:
   private def setupOf(options: Options): Either[ConfigError, (NodeSetup, ChunkSlots)] =
     for
       setup <- options.config match
-        case Some(file) => NodeSetup.fromConfigFile(file, options.genesisDir)
+        case Some(file) =>
+          NodeSetup.fromConfigFile(ReferenceBuild.Default)(file, options.genesisDir)
         case None =>
           options.genesisDir
             .toRight(ConfigError(ConfigProblem.MissingGenesis))
-            .flatMap(NodeSetup.fromDirectory)
+            .flatMap(NodeSetup.fromDirectory(ReferenceBuild.Default))
       // Use 10 * k of the first era, including the Byron genesis when the chain starts there.
       chunkSlots <- ChunkSlots
         .fromSecurityParam(

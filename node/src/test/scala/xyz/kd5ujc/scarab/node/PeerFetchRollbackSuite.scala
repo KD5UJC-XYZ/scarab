@@ -6,6 +6,7 @@ import cats.mtl.{Handle, Raise, Stateful}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import com.comcast.ip4s.*
+import fs2.concurrent.SignallingRef
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, SelectView, VolatileChain}
@@ -66,9 +67,9 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
         expected = if streaming then a else b
         remaining <- Ref.of[IO, List[Vector[ChainSyncClient.Update[NtNHeader]]]](scripts)
         requests <- Ref.of[IO, Vector[(ChainSync.Point, ChainSync.Point)]](Vector.empty)
-        applied <- Ref.of[IO, Vector[Bytes]](Vector.empty)
+        applied <- SignallingRef[IO, Vector[Bytes]](Vector.empty)
         closeReason <- Deferred[IO, NetworkError]
-        chain <- Ref.of[IO, VolatileChain[BigInt]](
+        chain <- SignallingRef[IO, VolatileChain[BigInt]](
           VolatileChain(
             ForgedChain.geometry.k.toInt,
             Anchor(Some(BlockRef(base.slot, base.hash, base.blockNo)), base.blockNo),
@@ -103,10 +104,9 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
             def requestNextBatch(n: Int)(using Raise[IO, NetworkError]) =
               remaining.modify {
                 case next :: rest =>
-                  val first = applied.get.map(_.contains(a.head.hash))
                   val ready =
                     if !streaming && rest.size == scripts.size - 2 then
-                      (IO.sleep(5.millis) *> first).iterateUntil(identity).void
+                      applied.waitUntil(_.contains(a.head.hash))
                     else IO.unit
                   rest -> ready *> IO {
                     assert(next.size <= n, s"scripted batch ${next.size} exceeds requested $n")
@@ -140,15 +140,7 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
                   // Only the streamed-prefix test delays the next wire body until this one
                   // is applied. Legacy batches publish after prefetch completes; making their
                   // transport wait for application would prevent that publication forever.
-                  cats
-                    .Monad[IO]
-                    .tailRecM(()) { _ =>
-                      applied.get.flatMap { hashes =>
-                        if hashes.contains(hash) then IO.pure(Right(()))
-                        else IO.sleep(5.millis).as(Left(()))
-                      }
-                    }
-                    .whenA(streaming)
+                  applied.waitUntil(_.contains(hash)).whenA(streaming)
               }))
             def done(using Raise[IO, NetworkError]) = IO.unit
             def idle = IO.pure(true)
@@ -214,13 +206,9 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
                                 case _                           => false
                               }
                               IO(assertEquals(intersection, base.point)) *>
-                                cats.Monad[IO].tailRecM(()) { _ =>
-                                  applied.get.flatMap { hashes =>
-                                    if !needsEarlierBlock || hashes.contains(a(1).hash) then
-                                      IO.pure(Right(()))
-                                    else IO.sleep(5.millis).as(Left(()))
-                                  }
-                                })
+                                applied
+                                  .waitUntil(_.contains(a(1).hash))
+                                  .whenA(needsEarlierBlock))
                     )
                   ),
                   heightSnapshot =
@@ -239,12 +227,11 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
                       .start
                   )(_.cancel)
                   .use { running =>
-                    val reached = cats.Monad[IO].tailRecM(()) { _ =>
-                      chain.get.flatMap { current =>
-                        if current.tip == expected.last.point then IO.pure(Right(current))
-                        else IO.sleep(5.millis).as(Left(()))
-                      }
-                    }
+                    // the chain as it was when it reached the expected tip
+                    val reached = chain.discrete
+                      .find(_.tip == expected.last.point)
+                      .compile
+                      .lastOrError
                     IO.race(reached, running.joinWithNever).flatMap {
                       case Left(current) => IO.pure(current)
                       case Right(_) =>
@@ -264,7 +251,7 @@ class PeerFetchRollbackSuite extends FailsOnUncaught:
         assert(expected.forall(h => observed.contains(h.hash)))
         // The candidate never held a.last: it was rolled back within the batch that announced it,
         // which ChainSync folds into the candidate as one change. BlockFetch decides from
-        // candidates alone (ouroboros-network 2fb69829 BlockFetch/State.hs:274–281, Decision.hs:
+        // candidates alone (ouroboros-network c45735a5 BlockFetch/State.hs:274–281, Decision.hs:
         // 251–310), so the reference never requests it; ChainDB adopts the longer fork from the
         // fetched blocks.
         if !streaming then

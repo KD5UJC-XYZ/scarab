@@ -6,5 +6,6 @@ RUN cabal exec -- ghc -Wall -Werror -L/usr/local/lib -optl-Wl,-rpath,/usr/local/
       -package cardano-ledger-shelley -package cardano-ledger-allegra -package cardano-ledger-mary \
       -package cardano-ledger-alonzo -package cardano-ledger-babbage -package cardano-ledger-core -package cardano-ledger-conway \
       -package cardano-ledger-binary -package cardano-crypto-class -package aeson -package base16-bytestring \
+      -package validation-selective \
       /oracle/conway-decoding/Main.hs -o /usr/local/bin/scarab-conway-decoding
 ENTRYPOINT ["/usr/local/bin/scarab-conway-decoding"]

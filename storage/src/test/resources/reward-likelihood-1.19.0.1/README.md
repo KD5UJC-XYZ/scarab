@@ -17,7 +17,7 @@ pulse and completion compare as complete encoded CBOR, including exact Float bit
 Generate inputs with:
 
 ```sh
-bash scripts/sbtw 'storage/Test/runMain xyz.kd5ujc.scarab.storage.haskell.state.RewardLikelihoodCases /evidence/likelihood-inputs.json'
+bash scripts/sbtw 'tools/runMain xyz.kd5ujc.scarab.storage.haskell.state.RewardLikelihoodCasesMain /evidence/likelihood-inputs.json'
 ```
 
 Run sbt inside the Docker JDK image and execute the reward observer on those inputs

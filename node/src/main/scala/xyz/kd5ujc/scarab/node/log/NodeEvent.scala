@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.log
 
+import cats.syntax.show.*
 import io.circe.{Encoder, Json}
 import io.circe.syntax.*
 import scala.concurrent.duration.FiniteDuration
 import com.comcast.ip4s.{Host, SocketAddress}
 import xyz.kd5ujc.scarab.crypto.bls.{BlstReport, CpuSupport, LibraryBuild}
-import xyz.kd5ujc.scarab.plutus.{CryptoLibrary, NativeCryptoReport}
+import xyz.kd5ujc.scarab.plutus.{CryptoLibrary, NativeCryptoReport, PlutusVm}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.VolatileChain
-import xyz.kd5ujc.scarab.ledger.{NodeError, Points, ShelleyGenesis, StorageError}
+import xyz.kd5ujc.scarab.ledger.{NodeError, ShelleyGenesis, StorageError}
 import xyz.kd5ujc.scarab.node.{
   BuildInfo,
   Fatal,
@@ -22,7 +23,7 @@ import xyz.kd5ujc.scarab.node.{
   SyncAdvisory,
   Topology
 }
-import xyz.kd5ujc.scarab.network.{DiffusionFailure, LocalServer as LocalServerTraces}
+import xyz.kd5ujc.scarab.network.{BearerServer, DiffusionFailure, LocalServer as LocalServerTraces}
 import xyz.kd5ujc.scarab.network.SocketConfigError as SocketConfig
 import xyz.kd5ujc.scarab.network.selection.{
   AfterSlot,
@@ -58,8 +59,21 @@ enum NodeEvent:
     */
   case PraosSyncUntrusted(position: SyncAdvisory.Position)
 
+  /** The reference build the node mirrors (`--reference-build`): its name, stability and pins, the
+    * exact pinned release among them.
+    */
+  case ReferenceBuildChosen(build: xyz.kd5ujc.scarab.protocol.ReferenceBuild)
+
+  /** `build` is unstable and the configuration does not set `ExperimentalHardForksEnabled`, which
+    * it is meant for.
+    */
+  case UnstableReferenceBuild(build: xyz.kd5ujc.scarab.protocol.ReferenceBuild)
+
   /** The start-up check of the native library of the Plutus builtins passed (ADR 0020). */
   case PlutusCrypto(report: NativeCryptoReport)
+
+  /** The Plutus evaluator of the rules, the mempool and the forger (`--plutus-vm`, ADR 0027). */
+  case PlutusVmChosen(vm: PlutusVm)
 
   /** A listener is open (`--listen`, `--local-socket`). */
   case Listening(address: String)
@@ -142,6 +156,11 @@ enum NodeEvent:
     * ([[xyz.kd5ujc.scarab.network.LocalServer.Trace]]).
     */
   case LocalServer(trace: LocalServerTraces.Trace)
+
+  /** The accept loop of the node-to-node server, as the reference traces it under
+    * `Net.Server.Remote` ([[xyz.kd5ujc.scarab.network.BearerServer.Trace]]).
+    */
+  case RemoteServer(trace: BearerServer.Trace)
 
   /** The configured node-to-client socket cannot be used and the node does not start (the
     * reference's `StartupSocketConfigError`).
@@ -376,6 +395,13 @@ object NodeEvent:
           case _                                   => None
         ).asJson
       )
+    case ReferenceBuildChosen(build) =>
+      EventKind.ReferenceBuild.line(xyz.kd5ujc.scarab.node.ReferenceBuildFlag.fields(build)*)
+    case UnstableReferenceBuild(build) =>
+      EventKind.UnstableReferenceBuild.line(
+        "build" -> build.name.asJson,
+        "experimentalHardForksEnabled" -> false.asJson
+      )
     case PlutusCrypto(report) =>
       EventKind.PlutusCrypto.line(
         "platform" -> report.platform.directory.asJson,
@@ -393,6 +419,7 @@ object NodeEvent:
               "sha256" -> sha256.asJson
             ))
       )
+    case PlutusVmChosen(vm) => EventKind.PlutusVm.line("vm" -> vm.name.asJson)
     case Listening(address) => EventKind.Listening.line("address" -> address.asJson)
     case Memory(sample)     => EventKind.Memory.line("sample" -> sample)
     case CpuStarvation(drift, threshold, interval) =>
@@ -507,32 +534,20 @@ object NodeEvent:
         case InboundEvent.Accepted       => inbound(remote, "accepted", None)
         case InboundEvent.Duplex         => inbound(remote, "duplex", None)
         case InboundEvent.Unidirectional => inbound(remote, "unidirectional", None)
-        case InboundEvent.Following(p)   => inbound(remote, "following", Some(Points.show(p)))
-        case InboundEvent.SessionEnded(reason, dropped) =>
-          inbound(
-            remote,
-            if dropped then "sessionDropped" else "sessionEnded",
-            Some(reason.message)
-          )
-        case InboundEvent.SessionReturned(reason, delay) =>
-          inbound(
-            remote,
-            "sessionReturned",
-            Some(s"${reason.message}; repromote after ${delay.toSeconds}s")
-          )
-        case InboundEvent.CachedBlockRejected(refusal, generation, sourceLive) =>
-          inbound(
-            remote,
-            "cachedBlockRejected",
-            Some(s"${refusal.message}; source generation $generation; live=$sourceLive")
-          ).at(Severity.Warning)
         case InboundEvent.Closed(reason) => inbound(remote, "closed", Some(reason.message))
         case InboundEvent.Refused(reason) =>
           inbound(remote, "refused", Some(reason.message)).at(Severity.Warning)
-    case LocalServer(trace)       => LocalServerLines.line(trace)
-    case SocketConfigError(error) => EventKind.SocketConfigError.line("error" -> error.shown.asJson)
+    case LocalServer(trace) => LocalServerLines.line(trace)
+    case RemoteServer(trace) =>
+      trace match
+        case BearerServer.Trace.AcceptError(failure) =>
+          EventKind.RemoteAcceptError.line("reason" -> failure.show.asJson)
+        case BearerServer.Trace.ServerStopped => EventKind.RemoteServerStopped.line()
+        case BearerServer.Trace.ServerError(failure) =>
+          EventKind.RemoteServerError.line("reason" -> failure.show.asJson)
+    case SocketConfigError(error) => EventKind.SocketConfigError.line("error" -> error.show.asJson)
     case DiffusionErrored(failure) =>
-      EventKind.DiffusionErrored.line("error" -> failure.shown.asJson)
+      EventKind.DiffusionErrored.line("error" -> failure.show.asJson)
     case PeerEstablishmentFailed(peer, error) =>
       EventKind.PeerSelectionPromote
         .line(
@@ -561,7 +576,7 @@ object NodeEvent:
         .at(severity)
 
 /** The lines of the node-to-client socket and server: the reference's names, severities and machine
-  * fields (ouroboros-network 2fb69829,
+  * fields (ouroboros-network c45735a5,
   * `ouroboros-network/tracing/Ouroboros/Network/Tracing/PeerSelection.hs` 29-113 and
   * `ouroboros-network/tracing/Ouroboros/Network/Tracing/Server.hs` 72-97), the event standing for
   * the reference's `kind`. A path is `show` of its `LocalAddress` where the reference shows one
@@ -574,21 +589,21 @@ private object LocalServerLines:
 
   def line(trace: Trace): Line = trace match
     case Trace.CreateSystemdSocketForSnocketPath(a) =>
-      EventKind.CreateSystemdSocketForSnocketPath.line("path" -> a.shown.asJson)
-    case Trace.CreatedLocalSocket(a) => EventKind.CreatedLocalSocket.line("path" -> a.shown.asJson)
+      EventKind.CreateSystemdSocketForSnocketPath.line("path" -> a.show.asJson)
+    case Trace.CreatedLocalSocket(a) => EventKind.CreatedLocalSocket.line("path" -> a.show.asJson)
     case Trace.ConfiguringLocalSocket(a, fd) =>
-      EventKind.ConfiguringLocalSocket.line("path" -> a.shown.asJson, "socket" -> fd.shown.asJson)
+      EventKind.ConfiguringLocalSocket.line("path" -> a.show.asJson, "socket" -> fd.show.asJson)
     case Trace.ConfiguredLocalSocket(a, fd) =>
-      EventKind.ConfiguredLocalSocket.line("path" -> a.shown.asJson, "socket" -> fd.shown.asJson)
+      EventKind.ConfiguredLocalSocket.line("path" -> a.show.asJson, "socket" -> fd.show.asJson)
     case Trace.ListeningLocalSocket(a, fd) =>
-      EventKind.ListeningLocalSocket.line("path" -> a.shown.asJson, "socket" -> fd.shown.asJson)
+      EventKind.ListeningLocalSocket.line("path" -> a.show.asJson, "socket" -> fd.show.asJson)
     case Trace.LocalSocketUp(a, fd) =>
-      EventKind.LocalSocketUp.line("path" -> a.shown.asJson, "socket" -> fd.shown.asJson)
+      EventKind.LocalSocketUp.line("path" -> a.show.asJson, "socket" -> fd.show.asJson)
     case Trace.InsecureLocalSocketPermissions(a, m) =>
-      EventKind.InsecureLocalSocketPermissions.line("path" -> a.shown.asJson, "mode" -> mode(m))
+      EventKind.InsecureLocalSocketPermissions.line("path" -> a.show.asJson, "mode" -> mode(m))
     case Trace.InsecureLocalSocketDirectory(a, m) =>
-      EventKind.InsecureLocalSocketDirectory.line("path" -> a.shown.asJson, "mode" -> mode(m))
-    case Trace.RunLocalServer(a) => EventKind.RunLocalServer.line("localAddress" -> a.shown.asJson)
+      EventKind.InsecureLocalSocketDirectory.line("path" -> a.show.asJson, "mode" -> mode(m))
+    case Trace.RunLocalServer(a) => EventKind.RunLocalServer.line("localAddress" -> a.show.asJson)
     case Trace.ServerStarted(addresses) =>
       EventKind.ServerStarted.line(
         "addresses" -> addresses.map(a => Json.obj("path" -> a.path.asJson)).asJson
@@ -600,6 +615,6 @@ private object LocalServerLines:
           "remoteAddress" -> id.remote.path.asJson
         )
       )
-    case Trace.AcceptError(error)   => EventKind.AcceptError.line("reason" -> error.shown.asJson)
+    case Trace.AcceptError(error)   => EventKind.AcceptError.line("reason" -> error.show.asJson)
     case Trace.ServerStopped        => EventKind.ServerStopped.line()
-    case Trace.ServerError(failure) => EventKind.ServerError.line("reason" -> failure.shown.asJson)
+    case Trace.ServerError(failure) => EventKind.ServerError.line("reason" -> failure.show.asJson)

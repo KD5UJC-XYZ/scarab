@@ -39,8 +39,8 @@ object PeerNetwork:
     }
 
   /** The verification of the peer snapshot against the immutable chain, as the reference's
-    * `jobVerifyPeerSnapshot` (ouroboros-network 2fb69829 `cardano-diffusion/lib/Cardano/Network/
-    * PeerSelection/Governor/Monitor.hs` 689-712): a job whose failure of any kind is `false` (`Job
+    * `jobVerifyPeerSnapshot` (ouroboros-network c5117705 `cardano-diffusion/lib/Cardano/Network/
+    * PeerSelection/Governor/Monitor.hs` 689-708): a job whose failure of any kind is `false` (`Job
     * job (const (completion False))`), never a stop of the node. A failed store is told to
     * `storageFailed` first, so the cause is not lost behind "no match" (an owner-approved
     * deviation, 2026-10-28, issue 586); the node's other storage paths still stop it on such a
@@ -364,6 +364,9 @@ object PeerNetwork:
         )
     for
       supervisor <- Supervisor[F](await = false)
+      // the monitors of the outbound connections, released before `supervisor` ends the
+      // connections ([[OutboundPeers.create]])
+      monitors <- Supervisor[F](await = false)
       dns <- dnsResource
       dnsRng <- Resource.eval(Ref.of[F, Rng](Rng(settings.seed).split._2))
       // Static roots are usable before the owned refresh worker obtains DNS answers.
@@ -472,6 +475,7 @@ object PeerNetwork:
           config,
           hot,
           supervisor,
+          monitors,
           events.offer,
           RefStateful(metrics),
           sharing.map(s =>
@@ -722,7 +726,7 @@ object PeerNetwork:
           runtime.get.flatMap { captured =>
             // The reference restarts its resolvers only when the configuration it resolves has
             // changed (`localRootPeersProvider`, `check (a /= domainsGroups)`, LocalRootPeers.hs of
-            // ouroboros-network 2fb69829). A wake whose generation this pass already resolves is
+            // ouroboros-network c45735a5). A wake whose generation this pass already resolves is
             // spent: restarting would cancel lookups of the installed configuration for nothing.
             F.race(
               refreshLocalDnsCache(captured.roots, captured.localDnsCache, dns, dnsRng),
@@ -773,7 +777,7 @@ object PeerNetwork:
                   // a lookup that threw is traced and the lookups start again at once, as the
                   // reference restarts its domain monitors after one of them fails
                   // (`TraceLocalRootError`, LocalRootPeers.hs 146-168 of ouroboros-network
-                  // 2fb69829); it is still due, so the next pass asks for it again
+                  // c45735a5); it is still due, so the next pass asks for it again
                   _ <- error.traverse_(trace => emit(Output.LocalRoots(trace)))
                   _ <- (for
                     now <- Clock[F].monotonic
@@ -811,9 +815,13 @@ object PeerNetwork:
       )
 
   /** Reload must publish configured IP roots and kept DNS answers before new lookups, as in
-    * ouroboros-network 6a49b6f6, RootPeersDNS/LocalRootPeers.hs. Public DNS answers are requested
-    * separately by the governor. Keep their existing attribution only while their configured source
-    * set is unchanged; a removed name must not leave its old answer configured forever.
+    * ouroboros-network 6a49b6f6, RootPeersDNS/LocalRootPeers.hs. At c45735a5, which cardano-node
+    * 11.1.3 links, a reconfiguration publishes nothing until a domain's lookup answers
+    * (`LocalRootPeers.hs` 98, 153-168, 234-246), so its IP roots wait and a topology without DNS
+    * names is not applied: a bug of the linked packages, not reproduced (issue 956, D10;
+    * decisions.md 2026-11-14). Public DNS answers are requested separately by the governor. Keep
+    * their existing attribution only while their configured source set is unchanged; a removed name
+    * must not leave its old answer configured forever.
     */
   private[node] def retainedPublicRoots(
       previous: Roots,
@@ -853,7 +861,7 @@ object PeerNetwork:
   /** Run due local DNS lookups with a fixed job bound and apply each result to its own key. */
   /** One pass over the local roots' DNS names that are due: the cache it leaves, and the first
     * lookup that threw, if any. A lookup that throws is the reference's domain monitor that fails
-    * (`waitAnyCatchSTMWithCtx`, LocalRootPeers.hs 146-158 of ouroboros-network 2fb69829): it is
+    * (`waitAnyCatchSTMWithCtx`, LocalRootPeers.hs 146-158 of ouroboros-network c45735a5): it is
     * traced, never a stop of the node, and the answers of the other names are kept.
     */
   private[node] def refreshLocalDnsCache[F[_]: Async](

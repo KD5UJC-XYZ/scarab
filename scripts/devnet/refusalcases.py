@@ -17,6 +17,8 @@ from .ntccases import CLI, FAILS, SUCCEEDS, Builder
 from .util import ENV, MAGIC
 
 FEE = 400_000
+# the case whose output has bootstrap attributes over 64 bytes (#832)
+BOOTSTRAP_ATTRIBUTES = "utxo-bootstrap-attributes-too-big"
 PLUTUS_FEE = 1_500_000
 UNITS = (1_000_000, 500_000_000)
 FUND = 10_000_000
@@ -27,6 +29,13 @@ class Case:
     label: str
     tx: bytes
     expect: tuple
+
+
+def bootstrap_outputs(era, address, lovelace):
+    """The outputs of the bootstrap-attribute case (#832): 5 ada to a Byron address with 65 bytes of attributes,
+    one over the limit, and the rest of `lovelace` less the fee back to `address`."""
+    return [eratx.tx_out(era, eratx.bootstrap_address(bytes(64), 65, MAGIC), 5_000_000),
+            eratx.tx_out(era, address, lovelace - FEE - 5_000_000)]
 
 
 def seeded_key(name):
@@ -52,6 +61,11 @@ def setup_outputs(b, funder, key, outputs):
     outs = [out for out, _ in outputs] + [
         eratx.tx_out("conway", eratx.enterprise_address(key.hash), funder["lovelace"] - total - fee)]
     tx, body_hash = eratx.build_tx("conway", [txin(funder)], outs, fee, [key])
+    return submit_and_await(b, tx, body_hash, "the setup transaction of the script cases")
+
+
+def submit_and_await(b, tx, body_hash, what):
+    """Submit the Conway transaction `tx` and wait until the reference holds its first output; its id."""
     b.sh(f"echo '{eratx.envelope('conway', tx)}' > /work/setup.tx")
     b.sh(f"{CLI} transaction submit --testnet-magic {MAGIC} --socket-path {b.socket} --tx-file /work/setup.tx")
     for _ in range(120):
@@ -60,7 +74,7 @@ def setup_outputs(b, funder, key, outputs):
         if utxo:
             return body_hash
         b.sh("sleep 1")
-    raise RuntimeError("the setup transaction of the script cases did not reach a block")
+    raise RuntimeError(f"{what} did not reach a block")
 
 
 def corpus(name, socket):
@@ -99,6 +113,8 @@ def corpus(name, socket):
         **spend(outputs=[eratx.tx_out("conway", here, 1),
                          eratx.tx_out("conway", eratx.enterprise_address(k1.hash, network=1), 5_000_000),
                          eratx.tx_out("conway", here, w["lovelace"] - FEE - 5_000_001)]))
+    # ---- UTXO: bootstrap attributes over 64 bytes (#832), reported as `OutputTooBigUTxO` from Allegra
+    add(BOOTSTRAP_ATTRIBUTES, ["OutputTooBigUTxO"], **spend(outputs=bootstrap_outputs("conway", here, w["lovelace"])))
     # ---- UTXO and UTXOW: an input the UTxO does not hold and a key that did not sign
     add("utxo-bad-input-missing-witness", ["BadInputsUTxO", "MissingVKeyWitnessesUTXOW"],
         **spend(extra_inputs=[unknown_input], signers=[k2]))
@@ -453,15 +469,19 @@ def preconway_families(name, era):
     unknown_pool = eratx.blake2b(b"refusal corpus unknown pool", 28)
     cases = []
 
-    def spend(fee=FEE, delta=0, signers=None, **kw):
-        return dict(inputs=[txin(wd)], outputs=[eratx.tx_out(era, wd["address"], wd["lovelace"] - fee + delta)],
-                    fee=fee, signers=signers or [key], ttl=tip["slot"] + 1_000_000, **kw)
+    def spend(fee=FEE, delta=0, signers=None, outputs=None, **kw):
+        outs = outputs if outputs is not None else [eratx.tx_out(era, wd["address"], wd["lovelace"] - fee + delta)]
+        return dict(inputs=[txin(wd)], outputs=outs, fee=fee, signers=signers or [key], ttl=tip["slot"] + 1_000_000,
+                    **kw)
 
     def add(label, expect, **kw):
         tx, _ = eratx.build_tx(era, **kw)
         cases.append(Case(label, tx, tuple(expect)))
 
     add("fee-too-small", ["FeeTooSmallUTxO"], **spend(fee=1))
+    # bootstrap attributes over 64 bytes (#832): Shelley's own failure, `OutputTooBigUTxO` from Allegra
+    add(BOOTSTRAP_ATTRIBUTES, ["OutputBootAddrAttrsTooBig" if era == "shelley" else "OutputTooBigUTxO"],
+        **spend(outputs=bootstrap_outputs(era, wd["address"], wd["lovelace"])))
     add("missing-witness", ["MissingVKeyWitnessesUTXOW"], **spend(signers=[other["key"]]))
     add("withdrawal-unregistered-account", ["Withdrawals"],
         **spend(withdrawals={eratx.reward_address(fresh_stake.hash): 0}, signers=[key, fresh_stake]))
@@ -480,4 +500,158 @@ def preconway_families(name, era):
         **spend(update=[{fresh_stake.hash: {0: 45}}, tip["epoch"]]))
     if era in ("alonzo", "babbage"):
         add("utxos-empty-script-set-invalid", ["ValidationTagMismatch"], **spend(is_valid=False))
+    return cases
+
+
+def bootstrap_attributes(name):
+    """The bootstrap-attribute case alone (#832), on the Conway cluster or on one stopped in an era before."""
+    from .util import SOCKET
+    era = json.loads(EraWallets(name).sh(f"cardano-cli query tip {SOCKET}"))["era"].lower()
+    cases = (corpus(name, f"{ENV}/socket/node1/sock") if era == "conway" else preconway_families(name, era))
+    return [case for case in cases if case.label == BOOTSTRAP_ATTRIBUTES]
+
+
+def leios_bootstrap_attributes(name):
+    """The bootstrap-attribute case on a Conway cluster of the Leios build (`up-dijkstra --conway-only`, #826), from
+    its one genesis UTxO key. That build's Conway UTXO passes Shelley's failure on as its own
+    `OutputBootAddrAttrsTooBig` (cardano-ledger 9df9f98c `Allegra/Rules/Utxo.hs:394`, `Conway/Rules/Utxo.hs:413,440`),
+    where 11.1 reports `OutputTooBigUTxO`."""
+    b = Builder(name, f"{ENV}/socket/node1/sock")
+    w = b.wallet(1)
+    key = read_key(b, w["skey"])
+    tx, _ = eratx.build_tx("conway", [txin(w)], bootstrap_outputs("conway", eratx.enterprise_address(key.hash),
+                                                                  w["lovelace"]), FEE, [key])
+    return [Case(BOOTSTRAP_ATTRIBUTES, tx, ("OutputBootAddrAttrsTooBig",))]
+
+
+# ---------------------------------------------------------------- Conway GOV: one refusal per case
+
+# The slots that must be left in the voting window's epoch when the cases are returned: the capture and the
+# `cardano-cli` rendering of every case (a second submission) must both be judged in that epoch.
+WINDOW_MARGIN = 300
+
+
+def gov_actions(b):
+    """The reference's governance actions by id (txid hex, index): (proposedIn, expiresAfter)."""
+    state = json.loads(b.sh(f"{CLI} query gov-state --testnet-magic {MAGIC} --socket-path {b.socket}"))
+    return {(p["actionId"]["txId"], p["actionId"]["govActionIx"]): (p["proposedIn"], p["expiresAfter"])
+            for p in state["proposals"]}
+
+
+def tip(b):
+    return json.loads(b.sh(f"{CLI} query tip --testnet-magic {MAGIC} --socket-path {b.socket}"))
+
+
+def await_epoch(b, epoch):
+    """Wait until the reference's tip is in `epoch` or later; the tip."""
+    for _ in range(300):
+        now = tip(b)
+        if now["epoch"] >= epoch:
+            return now
+        b.sh("sleep 1")
+    raise RuntimeError(f"the reference did not reach epoch {epoch}")
+
+
+def propose(b, funder, key, proposals, deposit):
+    """Submit `proposals` from `funder` (a `Builder` wallet whose signing key is `key`) and wait until the
+    reference holds them; the transaction id, whose actions are `(id, 0)`, `(id, 1)`, ..."""
+    change = funder["lovelace"] - FEE - deposit * len(proposals)
+    tx, body_hash = eratx.build_tx("conway", [txin(funder)], [eratx.tx_out("conway", eratx.enterprise_address(
+        key.hash), change)], FEE, [key], proposals=proposals)
+    return submit_and_await(b, tx, body_hash, "the governance setup transaction")
+
+
+def conway_governance(name):
+    """Conway refusals that each break exactly one check (`--corpus conway-governance`), at protocol version 10 on the
+    `up` cluster, whose governance roots are empty and whose constitution has no guardrails script. Citations are
+    to cardano-ledger f649f975 (`eras/conway/impl/src/Cardano/Ledger/Conway/...` unless named).
+
+    The two vote cases need actions on chain. A vote cannot name an action of its own transaction (the action's
+    id is that transaction's id), so two setup transactions propose them first. `govActionLifetime` is 1 on this
+    cluster: an action proposed in epoch e expires after e + 1 (`Rules/Gov.hs:417`), the ratification started at
+    the boundary into e + 2 sees it expired (`Rules/Ratify.hs:357`, `Rules/Epoch.hs:372`), and the boundary into
+    e + 3 removes it. Through epoch e + 2 it is still an action that votes can name, and a vote on it fails
+    `curEpoch <= gasExpiresAfter` (`Rules/Gov.hs:360-362`). The cases are returned early in e + 2: an info action
+    proposed in e, which only the expiry check refuses a DRep vote on, and a treasury withdrawal proposed in
+    e + 1, still live, which no stake pool may vote on. A vote that both checks refuse would carry two failures.
+    Neither setup action can be enacted before the capture: an info action never is, and a treasury withdrawal
+    needs half the DReps' stake, which no vote gives it.
+    """
+    socket = f"{ENV}/socket/node1/sock"
+    b = Builder(name, socket)
+    k1 = read_key(b, b.wallet(1)["skey"])
+    k3 = read_key(b, b.wallet(3)["skey"])
+    kd1 = read_key(b, f"{ENV}/stake-delegators/delegator1/staking.skey")
+    kdrep = read_key(b, f"{ENV}/drep-keys/drep1/drep.skey")
+    kpool = read_key(b, f"{ENV}/pools-keys/pool1/cold.skey")
+    params = json.loads(b.sh(f"{CLI} query protocol-parameters --testnet-magic {MAGIC} --socket-path {socket}"))
+    gov_deposit = params["govActionDeposit"]
+    version = params["protocolVersion"]
+    d1_account = eratx.reward_address(kd1.hash)
+    fake_action = eratx.gov_id("11" * 32, 0)
+
+    info = propose(b, b.wallet(3), k3, [eratx.proposal(gov_deposit, d1_account, eratx.info_action())], gov_deposit)
+    proposed, expires = gov_actions(b)[(info, 0)]
+    await_epoch(b, proposed + 1)
+    withdrawal = propose(b, b.wallet(3), k3, [eratx.proposal(
+        gov_deposit, d1_account, eratx.treasury_withdrawal_action({d1_account: 1_000_000}))], gov_deposit)
+    window = expires + 1
+    now = await_epoch(b, window)
+    actions = gov_actions(b)
+    if now["epoch"] != window or now["slotsToEpochEnd"] < WINDOW_MARGIN:
+        raise RuntimeError(f"missed the voting window, epoch {window} with {WINDOW_MARGIN} slots to spare: {now}")
+    if (info, 0) not in actions or (withdrawal, 0) not in actions or actions[(withdrawal, 0)][1] < window:
+        raise RuntimeError(f"the setup actions are not where the vote cases need them: {actions}")
+
+    w = b.wallet(1)
+    here = eratx.enterprise_address(k1.hash)
+    cases = []
+
+    def add(label, expect, **kw):
+        tx, _ = eratx.build_tx("conway", **kw)
+        cases.append(Case(label, tx, tuple(expect)))
+
+    def spend(delta=0, signers=None, **kw):
+        return dict(inputs=[txin(w)], outputs=[eratx.tx_out("conway", here, w["lovelace"] - FEE + delta)], fee=FEE,
+                    signers=signers or [k1], **kw)
+
+    def proposing(action):
+        return spend(delta=-gov_deposit, proposals=[eratx.proposal(gov_deposit, d1_account, action)])
+
+    # ---- the vote cases first, so that they are judged and rendered at the start of the window
+    # VotingOnExpiredGovAction: a DRep, who may vote on any action, votes on the expired info action
+    # (`Rules/Gov.hs:356-362`, run at 607)
+    add("gov-vote-on-expired-action", ["VotingOnExpiredGovAction"],
+        **spend(votes=eratx.voting_procedures([(eratx.voter("drep", kdrep.hash), [(eratx.gov_id(info, 0), "yes")])]),
+                signers=[k1, kdrep]))
+    # DisallowedVoters: a stake pool votes on a treasury withdrawal (`Rules/Gov.hs:364-376`, run at 608;
+    # `TreasuryWithdrawals {} -> NoVotingAllowed`, `Governance/Internal.hs:405`)
+    add("gov-pool-vote-on-treasury-withdrawal", ["DisallowedVoters"],
+        **spend(votes=eratx.voting_procedures([(eratx.voter("pool", kpool.hash),
+                                                [(eratx.gov_id(withdrawal, 0), "yes")])]),
+                signers=[k1, kpool]))
+    # ---- proposals that break one check of `processProposal`
+    # MalformedProposal: a parameter change setting maxTxSize (key 3) to 0 (`Rules/Gov.hs:393-399`, run at 502;
+    # `ppuWellFormed`, `PParams.hs:935-939`)
+    add("gov-parameter-change-malformed", ["MalformedProposal"],
+        **proposing(eratx.param_change_action({3: 0})))
+    # ProposalCantFollow: a hard fork from the empty root to the next major version with minor version 1;
+    # `pvCanFollow` admits the next major version at minor 0 or the next minor version only
+    # (`Rules/Gov.hs:489-499`, `preceedingHardFork` 680-690; `eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs:305-307`)
+    add("gov-hard-fork-cannot-follow", ["ProposalCantFollow"],
+        **proposing(eratx.hard_fork_action(version["major"] + 1, 1)))
+    # InvalidPrevGovActionId: a motion of no confidence whose previous action does not exist
+    # (`Rules/Gov.hs:561-566`, `proposalsAddAction`)
+    add("gov-previous-action-unknown", ["InvalidPrevGovActionId"],
+        **proposing(eratx.no_confidence_action(fake_action)))
+    # TreasuryWithdrawalsNetworkIdMismatch: a withdrawal to a registered stake credential's mainnet account
+    # (`Rules/Gov.hs:539-544`); the credential is registered, so `TreasuryWithdrawalReturnAccountsDoNotExist`
+    # (510-519, which reads the credential only) holds
+    add("gov-treasury-withdrawal-wrong-network", ["TreasuryWithdrawalsNetworkIdMismatch"],
+        **proposing(eratx.treasury_withdrawal_action({eratx.reward_address(kd1.hash, network=1): 1_000_000})))
+    # ---- UTXO
+    # WrongNetworkInTxBody: the body's network id (key 15) is mainnet (`Rules/Utxo.hs:238` runs Babbage's
+    # validation, `eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs:403`;
+    # `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs:436-446`)
+    add("utxo-body-network-id-wrong", ["WrongNetworkInTxBody"], **spend(network_id=1))
     return cases

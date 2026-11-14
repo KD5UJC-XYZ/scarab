@@ -172,7 +172,8 @@ class MainnetGarbageAddressSuite extends FunSuite:
         Era.Mary -> Address.Mode.Backwards,
         Era.Alonzo -> Address.Mode.Backwards,
         Era.Babbage -> Address.Mode.Rigorous,
-        Era.Conway -> Address.Mode.Strict
+        Era.Conway -> Address.Mode.Strict,
+        Era.Dijkstra -> Address.Mode.Strict
       )
     )
   }

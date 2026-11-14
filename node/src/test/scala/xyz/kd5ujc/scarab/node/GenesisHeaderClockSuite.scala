@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.testkit.TestControl
 import cats.mtl.{Ask, Raise, Stateful, Tell}
@@ -36,7 +37,9 @@ class GenesisHeaderClockSuite extends FailsOnUncaught:
   private def read(directory: String): Capture =
     val root = Path.of(directory)
     val setup =
-      NodeSetup.fromDirectory(root.resolve("genesis")).fold(e => fail(e.message), identity)
+      NodeSetup
+        .fromDirectory(ReferenceBuild.Default)(root.resolve("genesis"))
+        .fold(e => fail(e.message), identity)
     val raws = Files
       .readString(root.resolve("blocks.hex"))
       .linesIterator

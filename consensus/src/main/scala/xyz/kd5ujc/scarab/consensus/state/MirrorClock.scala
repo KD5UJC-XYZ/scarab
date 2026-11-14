@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.state
 
-import xyz.kd5ujc.scarab.ledger.PosixClock
+import xyz.kd5ujc.scarab.ledger.{Horizon, PosixClock}
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
 import xyz.kd5ujc.scarab.ledger.state.WithOrigin
 import xyz.kd5ujc.scarab.protocol.Era
@@ -40,6 +40,34 @@ object MirrorClock:
       era: Era,
       slot: BigInt
   ): PosixClock =
+    val (history, transition) = historyAt(state, placement, era, slot)
+    PosixClock.forecast(
+      placement.geometry,
+      history,
+      transition,
+      Option.when(era == Era.Alonzo)(slot)
+    )
+
+  /** The era history of `state` at its tip, as `GetInterpreter` answers it
+    * (`interpretQueryHardFork` is `mkInterpreter (hardForkSummary cfg st)`,
+    * `HardFork/Combinator/Ledger/Query.hs:529`; `hardForkSummary` is `reconstructSummary` of the
+    * eras the state has passed and its transition, `State/Infra.hs:194-262`, ouroboros-consensus
+    * 82ecba32). While the chain is in Byron the era ends at its safe zone, not where the
+    * configuration would place Shelley (#118).
+    */
+  def summary(state: MirrorState, placement: Placement): Horizon =
+    val telescope = state.ext.ledgerState
+    val (history, transition) =
+      historyAt(state, placement, telescope.era, telescope.current.start.slot)
+    history.at(transition)
+
+  /** The eras up to `era` and what the state tells of the end of `era` ([[of]]). */
+  private def historyAt(
+      state: MirrorState,
+      placement: Placement,
+      era: Era,
+      slot: BigInt
+  ): (Horizon.History, Horizon.Transition) =
     val telescope = state.ext.ledgerState
     val tip = state.ext.headerState.tip match
       case WithOrigin.Origin => None
@@ -64,6 +92,8 @@ object MirrorClock:
           BigInt(i.state.transition.afterVoting.toLong),
           tip
         )
+      case EraLedgerState.ByronCurrent(byron) if era == telescope.era =>
+        EraHistory.byronTransition(placement.geometry, placement.byron, byron.ledger, tip)
       case _ =>
         EraHistory.transition(
           placement.forks,
@@ -74,9 +104,4 @@ object MirrorClock:
           0,
           tip
         )
-    PosixClock.forecast(
-      placement.geometry,
-      history,
-      transition,
-      Option.when(era == Era.Alonzo)(slot)
-    )
+    (history, transition)

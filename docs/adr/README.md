@@ -29,6 +29,7 @@ one says so. New records copy [the template](template.md) and take the next numb
 | [0021](0021-ledger-state-residency-and-utxo-checkpoints.md) | Ledger state residency: snapshots bind their UTxO checkpoint, received bodies are read back from their log | Accepted | 2026-10-23 |
 | [0022](0022-defaults-follow-the-reference-binary.md) | Defaults follow the reference binary | Accepted | 2026-10-23 |
 | [0023](0023-two-kes-credential-sources.md) | Two KES credential sources: the file path keeps ADR 0015's write-back, the agent path is the forward-secure one | Accepted | 2026-10-25 |
-| [0024](0024-adopt-the-upstream-kes-agent.md) | H2 adopts the upstream KES agent as it is: the client only, and no remote signing | Accepted | 2026-10-25 |
+| [0024](0024-adopt-the-upstream-kes-agent.md) | H2 adopts the upstream KES agent as it is: the client only, and no remote signing | Accepted; amended 2026-11-07 | 2026-10-25 |
 | [0025](0025-jblst.md) | BLS12-381 through jblst, the maintained Java binding of blst | Accepted | 2026-10-30 |
 | [0026](0026-scala-3-9.md) | Scala 3.9 | Accepted | 2026-10-30 |
+| [0027](0027-own-uplc-evaluator-as-a-correctness-backend.md) | Scarab's own UPLC evaluator, an opt-in correctness backend with no Scalus in it | Accepted | 2026-11-12 |

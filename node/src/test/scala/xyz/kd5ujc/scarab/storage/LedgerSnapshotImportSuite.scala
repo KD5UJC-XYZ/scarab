@@ -1,23 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.{IO, Outcome}
 import cats.mtl.{Ask, Handle}
 import cats.syntax.all.*
 import fs2.io.file.Path
 import java.nio.file.{Files as JFiles, Path as JPath}
 import java.security.{KeyPairGenerator, MessageDigest, Signature}
-import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.*
 import xyz.kd5ujc.scarab.crypto.witness.PublicKey32
+import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.{Block, StorageError}
-import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
+import xyz.kd5ujc.scarab.ledger.state.{ConwayGovState, ConwayNewEpochState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.haskell.state.*
 import xyz.kd5ujc.scarab.storage.scls.{
   SclsBase,
@@ -29,12 +30,14 @@ import xyz.kd5ujc.scarab.storage.scls.{
   SclsStreaming
 }
 
-class LedgerSnapshotImportSuite extends CatsEffectSuite:
+class LedgerSnapshotImportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   import StorageTestKit.{ok, tempDir}
   import LedgerSnapshotImport.{Error, Evidence, Trust}
   private val fixture = JPath.of("fixtures/eras")
   private val setup =
-    NodeSetup.fromDirectory(fixture.resolve("genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(fixture.resolve("genesis"))
+      .fold(e => fail(e.message), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
   private val raws = JFiles
     .readAllLines(fixture.resolve("blocks.hex"))
@@ -93,8 +96,16 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
         .toMap
     finally walk.close()
 
-  private def source(root: Path, era: Era): IO[(Path, Path, MirrorState, Bytes)] =
-    val (state, rawBlock) = captures(era)
+  /** The capture of `era` written as a reference `state`, `meta` and `tables` under `root`, its
+    * state first changed by `edit`.
+    */
+  private def source(
+      root: Path,
+      era: Era,
+      edit: MirrorState => MirrorState = identity
+  ): IO[(Path, Path, MirrorState, Bytes)] =
+    val (captured, rawBlock) = captures(era)
+    val state = edit(captured)
     val ledger = root / "source" / "ledger" / anchor(state).slot.toString
     val db = root / "db"
     val file = HaskellLedgerFile.of(state.ext).fold(e => fail(e.toString), identity)
@@ -137,7 +148,7 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
     yield (ledger, db, state, raw)
 
   private def restored(db: Path, state: MirrorState): IO[StateSnapshot[MirrorState]] = ok {
-    val format = SnapshotV8.format[IO](SnapshotCheck.Full)
+    val format = SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
     val path = db / "snapshots" / FileLedgerSnapshots.nameOf(anchor(state))
     for
       bytes <- IO.blocking(JFiles.readAllBytes(path.toNioPath))
@@ -147,7 +158,8 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
     yield read
   }
 
-  Era.values.filter(_ != Era.Byron).foreach { era =>
+  // a Dijkstra ledger state is refused by its reader (#54)
+  Era.values.filter(e => e != Era.Byron && e != Era.Dijkstra).foreach { era =>
     test(
       s"$era imports its state and tables into unchanged V5, preserving original bytes and immutable input"
     ) {
@@ -158,6 +170,7 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
           before <- IO(fingerprint(db / "immutable"))
           report <- attempt(LedgerSnapshotImport.run[IO](config(ledger, db)))
           _ <- IO(assertEquals(report.map(_.evidence), Right(Evidence.Unverified)))
+          _ <- IO(assertEquals(report.map(_.build), Right(ReferenceBuild.Release11_1)))
           read <- restored(db, state)
           _ <- IO {
             val content = JFiles
@@ -166,7 +179,9 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
               )
               .dropRight(32)
             assert(content.takeRight(original.size).sameElements(original.toArray))
-            val sidecar = SnapshotV8.sidecarOf(content).fold(e => fail(e.message), identity)
+            // the build that wrote the input is recorded with its bytes
+            assertEquals(SnapshotV10.recordedOf(content), Right("11.1"))
+            val sidecar = SnapshotV10.sidecarOf(content).fold(e => fail(e.message), identity)
             assertEquals(sidecar.gaps, Set.empty)
             assertEquals(read.state.provenance.gaps, Set.empty)
             assertEquals(read.state.provenance.observed, sidecar.observed)
@@ -180,6 +195,67 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
           _ <- IO(assertEquals(entries, MirrorStep.utxoOf(state).fold(Map.empty)(_.toMap)))
         yield ()
       }
+    }
+  }
+
+  /** The Conway proposals of a state. */
+  private def proposalsOf(ext: ExtLedgerState): node.Proposals =
+    ext.ledgerState.state match
+      case EraLedgerState.InShelleyEra(era, ls) =>
+        era match
+          case ShelleyBasedEra.SConway => ConwayNewEpochState.gov.get(ls.nes).proposals
+          case _                       => fail("not a Conway state")
+      case _ => fail("not a Shelley-based state")
+
+  test("an import keeps the first of two proposals with one id, as the reference reads the file") {
+    // `decSharePlusCBOR` keeps the first proposal of an id and rebuilds the store with
+    // `mkProposals` (cardano-ledger f649f975, `Conway/Governance/Proposals.hs:338-354,401-406`):
+    // here the first attaches (an information action) and the second, under an action that is not
+    // stored, would not. The snapshot holds the state as read, and is read again as written.
+    val id = node.GovActionId(Bytes.wrap(Array.fill(32)(3.toByte)), 0)
+    def gas(action: node.GovAction) = node.GovActionState(
+      id,
+      Map.empty,
+      Map.empty,
+      Map.empty,
+      node.Proposal(
+        0,
+        node.RewardAccount(0, node.Credential.Key(Bytes.wrap(Array.fill(28)(9.toByte)))),
+        action
+      ),
+      1,
+      7
+    )
+    val first = gas(node.GovAction.Info)
+    val second = gas(node.GovAction.NoConfidence(Some(id.copy(index = 1))))
+    def repeated(m: MirrorState): MirrorState =
+      m.ext.ledgerState.state match
+        case EraLedgerState.InShelleyEra(era, ls) =>
+          era match
+            case ShelleyBasedEra.SConway =>
+              val nes = ConwayNewEpochState.gov
+                .andThen(ConwayGovState.proposals)
+                .modify(p => node.Proposals(p.actions ++ Vector(first, second), p.roots))(ls.nes)
+              m.copy(ext =
+                m.ext.copy(ledgerState =
+                  m.ext.ledgerState.withState(EraLedgerState.InShelleyEra(era, ls.copy(nes = nes)))
+                )
+              )
+            case _ => fail("not a Conway capture")
+        case _ => fail("not a Shelley-based capture")
+    tempDir.use { root =>
+      for
+        input <- source(root, Era.Conway, repeated)
+        (ledger, db, state, _) = input
+        written = proposalsOf(state.ext)
+        _ <- IO(assertEquals(written.actions.takeRight(2), Vector(first, second)))
+        report <- attempt(LedgerSnapshotImport.run[IO](config(ledger, db)))
+        _ <- IO(assertEquals(report.map(_.era), Right(Era.Conway)))
+        read <- restored(db, state)
+      yield assertEquals(
+        proposalsOf(read.state.ext),
+        node.Proposals(written.actions.dropRight(1), written.roots)
+      )
     }
   }
 
@@ -214,6 +290,35 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
       JFiles.writeString(path.toNioPath, signed.noSpaces)
       path -> key
     }
+
+  test(
+    "a state that does not decode completely in the layout of its build is refused, nothing published"
+  ) {
+    // the Leios build's `ExtLedgerState` has a third part, the Peras state (ouroboros-consensus
+    // 2416493b `Ledger/Extended.hs:420-442`): the 11.1 codec does not read it, nor trailing bytes
+    tempDir.use { root =>
+      for
+        input <- source(root, Era.Conway)
+        (ledger, db, _, original) = input
+        before <- IO(fingerprint(db))
+        bytes = original.toArray
+        _ <- IO(assertEquals(bytes(2) & 0xff, 0x82))
+        threeParts = bytes.updated(2, 0x83.toByte) :+ 0xf6.toByte
+        results <- Vector(threeParts, bytes :+ 0x00.toByte).traverse { state =>
+          IO.blocking(JFiles.write((ledger / "state").toNioPath, state)) *>
+            attempt(LedgerSnapshotImport.run[IO](config(ledger, db)))
+        }
+        _ <- IO {
+          results.foreach {
+            case Left(Error.State(build, _)) => assertEquals(build, ReferenceBuild.Release11_1)
+            case other                       => fail(s"not refused as undecodable: $other")
+          }
+          assertEquals(fingerprint(db), before)
+          assert(!JFiles.exists((db / "snapshots").toNioPath))
+        }
+      yield ()
+    }
+  }
 
   test("signature and all file digests are required by the verified trust path") {
     tempDir.use { root =>
@@ -348,34 +453,14 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
       for
         input <- source(root, Era.Conway)
         (ledger, db, _, _) = input
-        _ <- IO.blocking {
-          val file = java.nio.channels.FileChannel
-            .open((ledger / "tables").toNioPath, java.nio.file.StandardOpenOption.WRITE)
-          try file.write(java.nio.ByteBuffer.wrap(Array(0.toByte)), 512L * 1024 * 1024 - 1)
-          finally file.close()
-        }
         before <- IO(fingerprint(db))
-        fiber <- attempt(LedgerSnapshotImport.run[IO](config(ledger, db))).start
-        _ <- cats.Monad[IO].tailRecM(0) { attempt =>
-          IO.blocking {
-            val dirs = JFiles.list(root.toNioPath)
-            try
-              dirs
-                .iterator()
-                .asScala
-                .exists(p =>
-                  p.getFileName.toString.startsWith(".db.import-") &&
-                    JFiles.exists(p.resolve("source/tables"))
-                )
-            finally dirs.close()
-          }.flatMap {
-            case true                     => IO.pure(Right(()))
-            case false if attempt < 10000 => IO.sleep(1.millis).as(Left(attempt + 1))
-            case _ => IO.raiseError(new AssertionError("source copy did not start"))
+        copied <- cats.effect.Deferred[IO, Unit]
+        copying = copied.complete(()).void *> IO.never[Unit]
+        outcome <- cats.effect.Resource
+          .make(attempt(LedgerSnapshotImport.run[IO](config(ledger, db), copying)).start)(_.cancel)
+          .use { fiber =>
+            copied.get.timeout(10.seconds) *> fiber.cancel *> fiber.join
           }
-        }
-        _ <- fiber.cancel
-        outcome <- fiber.join
         _ <- IO {
           outcome match
             case Outcome.Canceled() => ()

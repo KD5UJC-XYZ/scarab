@@ -12,7 +12,13 @@ import xyz.kd5ujc.scarab.consensus.{
 }
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.crypto.bls.{Blst, BlstProblem, BlstReport}
-import xyz.kd5ujc.scarab.plutus.{NativeCrypto, NativeCryptoProblem, NativeCryptoReport}
+import xyz.kd5ujc.scarab.plutus.{
+  NativeCrypto,
+  NativeCryptoProblem,
+  NativeCryptoReport,
+  PlutusBackend,
+  PlutusVm
+}
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   ConfigError,
@@ -38,7 +44,7 @@ import xyz.kd5ujc.scarab.storage.{
   SnapshotCheck,
   SnapshotMigration,
   SnapshotPolicy,
-  SnapshotV8,
+  SnapshotV10,
   StateBacking,
   UtxoBacking,
   UtxoHandle,
@@ -47,9 +53,10 @@ import xyz.kd5ujc.scarab.storage.{
 import cats.mtl.{Ask, Handle, Raise, Stateful, Tell}
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState}
 import cats.syntax.all.*
-import java.nio.file.Path
+import java.nio.file.{InvalidPathException, Path}
 import com.comcast.ip4s.{Host, Port, SocketAddress}
-import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, ReferenceBuild}
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import xyz.kd5ujc.scarab.protocol.NtNHeader
 import xyz.kd5ujc.scarab.network.{
   AcceptedConnectionsLimit,
@@ -66,9 +73,11 @@ import xyz.kd5ujc.scarab.network.{
   LocalServer,
   LocalSockets,
   ServerHandlers,
-  SocketConfigError
+  SocketConfigError,
+  TcpListeners
 }
 import xyz.kd5ujc.scarab.node.forge.{
+  BlockForgingState,
   ForgeEvent,
   ForgeEvents,
   Forger,
@@ -110,8 +119,8 @@ import scala.concurrent.duration.*
   * [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full]
   * [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds
   * N] [--stall-minutes N] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N]
-  * [--header-first on|off] [--max-inbound N] [--inbound-sync on|off (default off)] [--cpu-threads
-  * N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at
+  * [--header-first on|off] [--max-inbound N] [--cpu-threads N] [--plutus-workers N] [--plutus-vm
+  * scalus|scarab] [--dump-state <dir> [--dump-state-at
   * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket
   * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
@@ -307,8 +316,8 @@ object Main extends IOApp:
     *   `--snapshot-check structure|full`: what a snapshot write proves before it is kept.
     * @param mempoolBytes
     *   `--mempool-bytes`, else the configuration's `MempoolCapacityBytesOverride`: the override in
-    *   bytes, rounded up to whole blocks. `None`: no override, two blocks of the protocol
-    *   parameters in force.
+    *   bytes, a `Word32` as the configuration's, rounded up to whole blocks. `None`: no override,
+    *   two blocks of the protocol parameters in force.
     * @param configFile
     *   `--config`: the Haskell node's configuration file.
     * @param topologyFile
@@ -340,16 +349,16 @@ object Main extends IOApp:
     * @param keyLock
     *   `--key-lock on|off`: with `--forge`, hold an exclusive lock beside the KES key file (see
     *   [[forge.KeyGuard]]).
+    * @param startAsNonProducingNode
+    *   `--start-as-non-producing-node`, or its hidden, deprecated alias `--non-producing-node`
+    *   (cardano-node 11.1.3 `Parsers.hs` 414-436): start with forging disabled even though
+    *   credentials are given (see [[startsNonProducing]]).
     * @param headerFirst
     *   Validate the headers a peer announces before the blocks are fetched (G6).
     * @param maxInbound
     *   `--max-inbound`: overrides the hard limit of accepted connections (G2), the `hardLimit` of
     *   the configuration's `AcceptedConnectionsLimit` (default 512, with soft 384 and delay 5 s:
     *   see [[AcceptedConnectionsLimit]] and [[ConfigSettings]]).
-    * @param inboundSync
-    *   Run our own clients on inbound duplex connections, so that the peer is a source of blocks as
-    *   well (G2). Off by default: the reference starts its clients only on connections its peer
-    *   governor chose, up to its targets (ADR 0008).
     * @param log
     *   `--log-*`: the log's sinks, thresholds and sampling ([[LogSettings]]).
     * @param roots
@@ -359,6 +368,9 @@ object Main extends IOApp:
     *   `--churn-interval <Ns|Nm>`, for tests: the churn governor's rounds follow each other this
     *   often and no step waits longer than it (the reference's are 3300 s and 900 s with fuzz and
     *   waits of up to 300 s). Off by default.
+    * @param plutusVm
+    *   `--plutus-vm scalus|scarab`: the Plutus evaluator of the rules, the mempool and the forger
+    *   (ADR 0027); `scalus` by default. Either one forges.
     */
   final case class Options(
       genesisDir: Option[Path],
@@ -372,7 +384,7 @@ object Main extends IOApp:
       keepSnapshots: Int = SnapshotPolicy.ReferenceKeep,
       snapshotCheck: SnapshotCheck = SnapshotCheck.Structure,
       listen: Option[SocketAddress[Host]] = None,
-      mempoolBytes: Option[Long] = None,
+      mempoolBytes: Option[Word32] = None,
       configFile: Option[Path] = None,
       topologyFile: Option[Path] = None,
       localSocket: Option[String] = None,
@@ -388,7 +400,6 @@ object Main extends IOApp:
       dumpStateFull: Boolean = false,
       headerFirst: Boolean = true,
       maxInbound: Option[Word32] = None,
-      inboundSync: Boolean = false,
       log: LogSettings = LogSettings.default,
       roots: Option[PeerNetwork.Roots] = None,
       churnInterval: Option[FiniteDuration] = None,
@@ -397,8 +408,20 @@ object Main extends IOApp:
       chainSyncWindow: xyz.kd5ujc.scarab.network.ChainSyncPipelineDecision.Window =
         xyz.kd5ujc.scarab.network.ChainSyncPipelineDecision.Window.Default,
       stallDump: Option[Path] = None,
-      keyLock: Boolean = true
+      keyLock: Boolean = true,
+      referenceBuild: ReferenceBuild = ReferenceBuild.Default,
+      startAsNonProducingNode: Boolean = false,
+      plutusVm: PlutusVm = PlutusVm.Default
   ):
+    /** `ncStartAsNonProducingNode` of the reference: the flags give `Just True` or nothing
+      * (`Parsers.hs` 70-72), the configuration file's `StartAsNonProducingNode` a value or nothing
+      * (`Configuration/POM.hs` 325), and the last value given wins in
+      * `defaultPartialNodeConfiguration <> configYamlPc <> cmdPc` (`Run.hs` 217), whose default is
+      * false (`POM.hs` 738). So a flag starts the node non-producing whatever the file says.
+      */
+    def startsNonProducing(settings: ConfigSettings): Boolean =
+      startAsNonProducingNode || settings.startAsNonProducingNode.getOrElse(false)
+
     /** The configuration's limits, with the hard limit of `--max-inbound` where given. */
     def accepted(settings: ConfigSettings): AcceptedConnectionsLimit =
       maxInbound.fold(settings.acceptedConnectionsLimit)(hard =>
@@ -452,7 +475,29 @@ object Main extends IOApp:
       )
     )
 
-  def run(args: List[String]): IO[ExitCode] = args match
+  // the owner's rule for names (#953): an argument the rule refuses is refused before any file is
+  // touched. A name read from a file that the JVM cannot encode, which the JDK refuses with
+  // `InvalidPathException` where the name is used, gives the same kind of line; the configuration's
+  // own names are checked once `follow` has read its setup, so this catches the names read before
+  // that or never checked (the genesis files read first, those of the import commands)
+  def run(args: List[String]): IO[ExitCode] =
+    CommandLine.utf8Output[IO] *> CommandLine
+      .encoding[IO]
+      .flatMap(encoding =>
+        CommandLine
+          .exact(args, encoding)
+          .fold(
+            refused,
+            dispatch(_).recoverWith { case refusal: InvalidPathException =>
+              refused(NameError.of(refusal, encoding))
+            }
+          )
+      )
+
+  /** A name the rule for names refuses: said on standard error, and exit code 2. */
+  private def refused(error: NameError): IO[ExitCode] = failedStart(error.message).as(ExitCode(2))
+
+  private def dispatch(args: List[String]): IO[ExitCode] = args match
     case "export-scls" :: rest       => xyz.kd5ujc.scarab.node.tools.SclsCommand.runExport(rest)
     case "import-scls" :: rest       => xyz.kd5ujc.scarab.node.tools.SclsCommand.runImport(rest)
     case "import-haskell-db" :: rest => xyz.kd5ujc.scarab.node.tools.HaskellImportCommand.run(rest)
@@ -530,11 +575,11 @@ object Main extends IOApp:
   /** The node configuration and genesis the options point to. */
   private[node] def nodeSetup(options: Options): Either[ConfigError, NodeSetup] =
     options.configFile match
-      case Some(file) => NodeSetup.fromConfigFile(file, options.genesisDir)
+      case Some(file) => NodeSetup.fromConfigFile(options.referenceBuild)(file, options.genesisDir)
       case None =>
         options.genesisDir
           .toRight(ConfigError(ConfigProblem.RequiredOneOf(Set("--config", "--genesis-dir"))))
-          .flatMap(NodeSetup.fromDirectory)
+          .flatMap(NodeSetup.fromDirectory(options.referenceBuild))
 
   /** The node-to-client socket path: `--local-socket`, else, with `--config`, the file's
     * `SocketPath`, as it was written (the reference's `ncSocketPath`, not normalised).
@@ -571,6 +616,32 @@ object Main extends IOApp:
       topology
     )
 
+  /** The roots of the topology read again at a SIGHUP (`updateTopologyConfiguration`, cardano-node
+    * 11.1.3 `Run.hs` 670-705): none without `--topology`, or when the file is refused, which is
+    * logged and leaves the roots in force. `options.peers` includes the topology loaded at
+    * start-up, so the roots are read with the command line's own peers only (`cliPeers`): a peer
+    * removed from the topology does not become permanent.
+    */
+  private def rereadRoots(options: Options, cliPeers: List[SocketAddress[Host]], loaded: NodeSetup)(
+      using Log[IO]
+  ): IO[Option[PeerNetwork.Roots]] =
+    options.topologyFile.flatTraverse { _ =>
+      IO.blocking(topologyRoots(options.copy(peers = cliPeers), loaded)).flatMap {
+        case Left(error) =>
+          Log[IO]
+            .emit[NodeEvent](
+              NodeEvent.Library(
+                "scarab.topology",
+                Severity.Warning,
+                s"topology reload refused: ${error.message}",
+                None
+              )
+            )
+            .as(None)
+        case Right((_, roots)) => IO.pure(Some(roots))
+      }
+    }
+
   /** Read a complete topology and its optional snapshot before any running network state changes.
     */
   private[node] def topologyRoots(
@@ -586,11 +657,15 @@ object Main extends IOApp:
         (),
         ConfigError(ConfigProblem.BootstrapPeersInGenesisMode)
       )
-      // `peerSnapshotFile` is relative to the topology file, as the reference reads it
-      snapshotFile = for
+      // `peerSnapshotFile` is relative to the topology file, as the reference reads it. A name the
+      // JDK cannot make a path of (NUL, or a character its file-name encoding cannot encode) is a
+      // typed refusal, not an exception, so a SIGHUP reload refuses it as any other topology (#953)
+      snapshotFile <- (for
         file <- options.topologyFile
         name <- topology.flatMap(_.peerSnapshotFile)
-      yield file.resolveSibling(name)
+      yield Either
+        .catchOnly[InvalidPathException](file.resolveSibling(name))
+        .leftMap(e => ConfigError(ConfigProblem.InvalidPath(name, e)))).sequence
       snapshot <- PeerSnapshot
         .use(
           snapshotFile,
@@ -605,9 +680,10 @@ object Main extends IOApp:
 
   /** The native libraries the JVM is going to load, checked before anything evaluates a script. The
     * BLS12-381 library of Leios certificates: one built for processor features this one lacks kills
-    * the JVM with SIGILL, with no event (ADR 0012). The library of the Plutus builtins: without the
-    * pinned build no signature builtin can be evaluated (ADR 0020). Each report is logged; a
-    * refusal is a [[NativeLibraryError]].
+    * the JVM with SIGILL, with no event (ADR 0012); it is also the library of the BLS12-381
+    * builtins of the own evaluator, `--plutus-vm scarab` (ADR 0025, ADR 0027). The library of the
+    * Plutus builtins: without the pinned build no signature builtin can be evaluated (ADR 0020).
+    * Each report is logged; a refusal is a [[NativeLibraryError]].
     */
   private def nativeLibrary(using Handle[IO, NodeError], Log[IO]): IO[Unit] =
     Handle
@@ -653,17 +729,12 @@ object Main extends IOApp:
             .map(_.asRight[SocketConfigError])
         )
         .rescue(error => IO.pure(error.asLeft[Unit]))
-    for
-      _ <- nativeLibrary
-      // the configuration, then the VRF key's permissions, then the genesis and the credentials
-      // (`Run.hs` 183-201)
-      _ <- requested.configFile.traverse_(file =>
-        IO.blocking(NodeSetup.readConfig(file)).flatMap(admitted)
+    // the start once the setup's names are taken
+    def startFrom(setup: NodeSetup): IO[ExitCode] = for
+      layout <- referenceLayout(
+        requested.referenceBuild,
+        setup.config.settings.experimentalHardForksEnabled
       )
-      _ <- requested.forge.traverse_(files =>
-        KeyGuard.permissions[IO](files.vrfSkey, Log.sink[ForgeEvents, ForgeEvent, IO])
-      )
-      setup <- IO.blocking(nodeSetup(requested)).flatMap(admitted)
       pool <- requested.forge.traverse(credentials)
       removal <- removedStale(setup)
       code <- removal.fold(
@@ -674,10 +745,45 @@ object Main extends IOApp:
           IO.blocking(completed(requested, setup))
             .flatMap(admitted)
             .flatMap((options, setup, topology) =>
-              started(options, setup, topology, requested.peers, pool)
+              started(options, setup, topology, requested.peers, pool, layout)
             )
       )
     yield code
+    for
+      _ <- nativeLibrary
+      _ <- Log[IO].emit[NodeEvent](NodeEvent.PlutusVmChosen(requested.plutusVm))
+      // the configuration, then the VRF key's permissions, then the genesis and the credentials
+      // (`Run.hs` 183-201)
+      _ <- requested.configFile.traverse_(file =>
+        IO.blocking(NodeSetup.readConfig(requested.referenceBuild)(file)).flatMap(admitted)
+      )
+      _ <- requested.forge.traverse_(files =>
+        KeyGuard.permissions[IO](files.vrfSkey, Log.sink[ForgeEvents, ForgeEvent, IO])
+      )
+      setup <- IO.blocking(nodeSetup(requested)).flatMap(admitted)
+      encoding <- CommandLine.encoding[IO]
+      // the file names of the configuration the setup was read from, under the owner's rule for
+      // names (#953), before any is used to remove or make a file: the configuration's text is
+      // decoded leniently, so a byte that is not UTF-8 reads as U+FFFD. The genesis files it names
+      // are only read, and their hashes checked, before this
+      code <- NameError.among(setup.config.fileNames, encoding).fold(startFrom(setup))(refused)
+    yield code
+
+  /** The reference build the node mirrors, logged with its pins, and a warning when an unstable
+    * build runs without `ExperimentalHardForksEnabled`; then the codec of its layout, or the
+    * refusal of a build whose rules are not implemented yet, before any store opens.
+    */
+  private def referenceLayout(build: ReferenceBuild, experimentalHardForksEnabled: Boolean)(using
+      Handle[IO, NodeError],
+      Log[IO]
+  ): IO[ReferenceLayout] =
+    Log[IO].emit[NodeEvent](NodeEvent.ReferenceBuildChosen(build)) *>
+      Log[IO]
+        .emit[NodeEvent](NodeEvent.UnstableReferenceBuild(build))
+        .whenA(ReferenceBuildFlag.warns(build, experimentalHardForksEnabled)) *>
+      ReferenceBuildFlag
+        .follows(build)
+        .fold(e => Handle[IO, NodeError].raise[NodeError, ReferenceLayout](e), IO.pure)
 
   /** The node from its completed options on: the database, the stores and the run. */
   private def started(
@@ -685,7 +791,8 @@ object Main extends IOApp:
       setup: NodeSetup,
       topology: Option[Topology],
       cliPeers: List[SocketAddress[Host]],
-      credentials: Option[PoolCredentials]
+      credentials: Option[PoolCredentials],
+      layout: ReferenceLayout
   )(using Handle[IO, NodeError], Log[IO]): IO[ExitCode] =
     val ownership = options.db.fold(Resource.unit[IO])(db =>
       xyz.kd5ujc.scarab.storage.DatabaseOwnership.resource[IO](fs2.io.file.Path.fromNioPath(db))
@@ -710,12 +817,31 @@ object Main extends IOApp:
     )
     val keys =
       options.forge.fold(Resource.unit[IO])(f => KeyGuard.held[IO](f.kesSkey, options.keyLock))
-    (ownership *> keys *> compatible *> (
-      utxoBacking(options),
-      VerificationCache.resource[IO](),
-      Scheduling.resource[IO](options.cpuThreads),
-      Supervisor[IO](await = false)
-    ).tupled).use { case ((store, checkpoints), cache, scheduling, supervisor) =>
+    // from here a SIGHUP is the reference's initial one until the run installs the full handler
+    val hangup = Resource
+      .eval(
+        (
+          Ref.of[IO, Option[PeerNetwork.Roots]](None),
+          Ref.of[IO, ForgeEvents[IO]](Log.sink[ForgeEvents, ForgeEvent, IO])
+        ).mapN(StartupHangup.apply)
+      )
+      .flatTap(h =>
+        Signals.hangup[IO](
+          rereadRoots(options, cliPeers, setup).flatMap(_.traverse_(r => h.roots.set(Some(r)))) *>
+            h.events.get.flatMap(
+              _.emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.NotEffective))
+            )
+        )
+      )
+    (
+      hangup,
+      ownership *> keys *> compatible *> (
+        utxoBacking(options),
+        VerificationCache.resource[IO](),
+        Scheduling.resource[IO](options.cpuThreads),
+        Supervisor[IO](await = false)
+      ).tupled
+    ).tupled.use { case (hup, ((store, checkpoints), cache, scheduling, supervisor)) =>
       followWith(
         options,
         cliPeers,
@@ -726,7 +852,9 @@ object Main extends IOApp:
         cache,
         scheduling,
         StallDiagnostics.abandoning(supervisor),
-        credentials
+        credentials,
+        layout,
+        hup
       )
     }
 
@@ -742,9 +870,27 @@ object Main extends IOApp:
       store: UtxoStore[IO],
       cache: VerificationCache,
       scheduling: Scheduling[IO],
-      credentials: Option[PoolCredentials]
+      credentials: Option[PoolCredentials],
+      hangup: StartupHangup
   ):
     def genesis: xyz.kd5ujc.scarab.ledger.ShelleyGenesis = setup.genesis
+
+    /** The Plutus backend of `--plutus-vm`, one for the run: the rules, the mempool and the forger
+      * evaluate and admit scripts with it, and with nothing else (ADR 0027).
+      */
+    val plutus: PlutusBackend = PlutusBackend.of(options.plutusVm)
+
+  /** What a SIGHUP does before the node runs its forger and its network: the reference's initial
+    * handler (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Run.hs` 412-435), installed
+    * before the chain database is opened and replayed. It reads the topology again, and the network
+    * starts from what it read (`roots`); it does not reload the forging credentials, which only the
+    * full handler does once consensus has started, and says so (`BlockForgingUpdate NotEffective`,
+    * to `events`: the log, and the metrics once they exist). Without it a SIGHUP would end the JVM.
+    */
+  private final case class StartupHangup(
+      roots: Ref[IO, Option[PeerNetwork.Roots]],
+      events: Ref[IO, ForgeEvents[IO]]
+  )
 
   /** What the run measures and reports with, made before any store is open. */
   private final case class Instruments(
@@ -798,7 +944,7 @@ object Main extends IOApp:
       manager: ConnectionManager[IO],
       governor: InboundGovernor[IO],
       network: Resource[IO, PeerNetwork.Running[IO, PeerNetwork.Addr]],
-      relay: Resource[IO, Unit]
+      relay: Resource[IO, IO[DiffusionFailure]]
   )
 
   /** The services beside the network: the node-to-client server, the forger and the watchers. */
@@ -820,33 +966,48 @@ object Main extends IOApp:
       cache: VerificationCache,
       scheduling: Scheduling[IO],
       background: IO[Unit] => IO[Unit],
-      credentials: Option[PoolCredentials]
+      credentials: Option[PoolCredentials],
+      layout: ReferenceLayout,
+      hangup: StartupHangup
   )(using
       handle: Handle[IO, NodeError],
       log: Log[IO]
   ): IO[ExitCode] =
     val setup = loaded.copy(praos = loaded.praos.copy(verdicts = cache))
     val run =
-      Startup(options, cliPeers, loaded, setup, topology, store, cache, scheduling, credentials)
-    instrumented(run, background).flatMap { instruments =>
-      given Metrics[IO] = instruments.metrics
-      ruled(run).flatMap { rules =>
-        // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
-        // node has seen begin so far.
-        given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(instruments.eraStarts.get)
-        given SnapshotFormat[IO, MirrorState] = SnapshotV8.format[IO](options.snapshotCheck)
-        // What a scrape reads besides the counters the events keep: each source answers for itself
-        // and is added when it exists, so the endpoint can listen before the stores are opened (a
-        // collector that is not there yet leaves its gauges absent).
-        val exposed = options.metricsListen.fold(Resource.unit[IO])(address =>
-          MetricsServer.resource[IO](address, instruments.collectors.scrape).void
-        )
-        exposed
-          .surround(
-            storage(run, instruments, rules, backing).use(following(run, instruments, rules, _))
+      Startup(
+        options,
+        cliPeers,
+        loaded,
+        setup,
+        topology,
+        store,
+        cache,
+        scheduling,
+        credentials,
+        hangup
+      )
+    instrumented(run, background).flatTap(i => hangup.events.set(forgeEvents(i.measured))).flatMap {
+      instruments =>
+        given Metrics[IO] = instruments.metrics
+        ruled(run).flatMap { rules =>
+          // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
+          // node has seen begin so far.
+          given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(instruments.eraStarts.get)
+          given SnapshotFormat[IO, MirrorState] =
+            SnapshotV10.format[IO](options.snapshotCheck, layout)
+          // What a scrape reads besides the counters the events keep: each source answers for itself
+          // and is added when it exists, so the endpoint can listen before the stores are opened (a
+          // collector that is not there yet leaves its gauges absent).
+          val exposed = options.metricsListen.fold(Resource.unit[IO])(address =>
+            MetricsServer.resource[IO](address, instruments.collectors.scrape).void
           )
-          .map(exitCode)
-      }
+          exposed
+            .surround(
+              storage(run, instruments, rules, backing).use(following(run, instruments, rules, _))
+            )
+            .map(exitCode)
+        }
     }
 
   /** The run's instruments, in the order the run makes them. */
@@ -951,6 +1112,7 @@ object Main extends IOApp:
         setup.byronRules,
         setup.handOver,
         setup.byronHistory,
+        run.plutus,
         phase2Observer = cases.map(c => c.observe),
         utxoStore = Some(store),
         afterBlock = Some(afterBlock),
@@ -1142,6 +1304,8 @@ object Main extends IOApp:
             MempoolEnv(
               globals,
               chain.state.geometry(genesis.geometry),
+              run.plutus.evaluator,
+              run.plutus.decoder,
               clock = Some(txClock.at(chain.state, Era.Conway, tip + 1))
             ): E
           }
@@ -1150,7 +1314,16 @@ object Main extends IOApp:
           val tip = resumed.lastOption.map(_.ref).orElse(anchor)
           val current = resumed.lastOption.fold(state)(_.state)
           MempoolLedger
-            .at(current, tip, MempoolEnv(globals, current.geometry(genesis.geometry)))
+            .at(
+              current,
+              tip,
+              MempoolEnv(
+                globals,
+                current.geometry(genesis.geometry),
+                run.plutus.evaluator,
+                run.plutus.decoder
+              )
+            )
             .left
             .map(ChainError.MempoolTick(tip.fold(BigInt(0))(_.slot + 1), _))
         })
@@ -1158,7 +1331,7 @@ object Main extends IOApp:
       mempool <- Mempool.create[IO](
         mempoolLedger,
         resumed.lastOption.map(_.ref).orElse(anchor).fold(BigInt(-1))(_.slot),
-        MempoolEnv(globals, geometry),
+        MempoolEnv(globals, geometry, run.plutus.evaluator, run.plutus.decoder),
         options.mempoolBytes,
         Log.mempool[IO].alongside(measured.mempool),
         utxoStore = Some(store),
@@ -1409,7 +1582,7 @@ object Main extends IOApp:
         peerSharing = Some(sharing.source)
       )
       manager <- ConnectionManager.create[IO](
-        ConnectionManager.Limits(accepted = accepted),
+        ConnectionManager.Limits(accepted = accepted, seed = seed),
         Some(connectionEvents)
       )
       _ <- collectors.add(Collectors.connections(manager))
@@ -1428,7 +1601,8 @@ object Main extends IOApp:
         }
         def unavailable[A](cause: xyz.kd5ujc.scarab.ledger.ChainSyncInternalProblem): IO[A] =
           fatalSink(Fatal.Internal(cause)) *> IO.never[A]
-      // Inbound duplex sessions use the same follower and compute pool as outbound sessions.
+      // The inbound governor serves our chain on accepted connections and tracks the peer's
+      // activity; our clients run only where the outbound governor promotes a peer.
       governor <- InboundGovernor.create[IO](
         manager,
         InboundGovernor.Config(
@@ -1436,29 +1610,11 @@ object Main extends IOApp:
           NodeToNodeServer.Settings(
             offerPeerSharing = peerSharing,
             maxVersion = setup.config.settings.maxNtnVersion
-          ),
-          Peer.Settings(
-            SocketAddress.Wildcard,
-            genesis.networkMagic,
-            readAhead = options.readAhead,
-            network = NodeToNode.Settings().pipelining(options.chainSyncWindow.high),
-            byronEpochSlots = genesis.geometry.byron.epochSlots,
-            pipelineWindow = options.chainSyncWindow
-          ),
-          runClients = options.inboundSync
+          )
         ),
         handlers,
-        follow = peer => scheduling.compute.within(follower.session(peer)),
-        fatal = fatalSink,
-        heightSnapshot = chainSyncHeights,
-        headers = headers.check,
-        transactions = Some(mempool.source),
         events = Some(Log.inbound[IO].alongside(measured.inbound)),
-        observe = Some(headers.observePeer),
-        sharing = Some(sharing),
-        pool = blockPool,
-        genesis = genesisRuntime,
-        peerMetrics = Some(peerMetrics)
+        sharing = Some(sharing)
       )
       // The outbound peer network (G1): the governor chooses the peers, moves them between
       // temperatures and replaces the ones that fail; the Genesis State Machine tells it
@@ -1515,50 +1671,63 @@ object Main extends IOApp:
           case Output.LocalRoots(trace)  => logged(NodeEvent.LocalRoots(trace))
           case Output.Counted(c)         => logged(NodeEvent.PeerCounters(c))
           case Output.Connections(c)     => logged(NodeEvent.OutboundConnections(c)))
-      val network = PeerNetwork.resource[IO](
-        PeerNetwork.Settings(
-          options.roots.getOrElse(
-            PeerNetwork.Roots(Nil, Set.empty, None, UseLedgerPeers.Disabled)
-          ),
-          targets,
-          consensusMode = setup.config.settings.consensusMode,
-          syncTargets = syncTargets,
-          minBigLedgerPeersForTrustedState = setup.config.settings.minBigLedgerPeersForTrustedState,
-          peerSharing = peerSharing,
-          intervals = options.churnInterval.fold(Churn.Intervals())(Churn.Intervals.every),
-          timeouts = options.churnInterval.fold(Churn.Timeouts())(Churn.Timeouts().within),
-          seed = seed
-        ),
-        PeerNetwork.tcp[IO](10.seconds),
-        manager,
-        OutboundPeers.Config(),
-        hot,
-        chainView,
-        fetchModeRef,
-        emitOutput,
-        (phase, event) =>
-          blockPool.fetchCoordinator.transitionGenesis(
-            genesisGovernor.traverse_(_.setPhase(phase))
-          ) *> measured.gsm(phase) *> logged(NodeEvent.GsmTransition(phase, event)),
-        phase =>
-          blockPool.fetchCoordinator.transitionGenesis(
-            genesisGovernor.traverse_(_.setPhase(phase))
-          ) *> measured.gsm(phase),
-        mode =>
-          blockPool.fetchCoordinator.setMode(mode) *>
-            measured.fetchMode(mode) *> logged(NodeEvent.FetchModeChanged(mode)),
-        marker,
-        LedgerPeersSource.fromChain[IO, MirrorState](ref.get),
-        sharing = Some(sharing),
-        immutable = immutable,
-        genesisReadings = genesisRuntime.map(_.gsmReadings(follower.versusHeaders)),
-        peerMetrics = Some(peerMetrics)
-      )
-      val relay = options.listen.fold(Resource.unit[IO])(address =>
+      // the network starts from the topology a SIGHUP during start-up read, as the reference's
+      // diffusion reads the roots its initial handler wrote (`Run.hs` 412-435)
+      val network = Resource
+        .eval(run.hangup.roots.getAndSet(None))
+        .flatMap(reread =>
+          PeerNetwork.resource[IO](
+            PeerNetwork.Settings(
+              reread
+                .orElse(options.roots)
+                .getOrElse(
+                  PeerNetwork.Roots(Nil, Set.empty, None, UseLedgerPeers.Disabled)
+                ),
+              targets,
+              consensusMode = setup.config.settings.consensusMode,
+              syncTargets = syncTargets,
+              minBigLedgerPeersForTrustedState =
+                setup.config.settings.minBigLedgerPeersForTrustedState,
+              peerSharing = peerSharing,
+              intervals = options.churnInterval.fold(Churn.Intervals())(Churn.Intervals.every),
+              timeouts = options.churnInterval.fold(Churn.Timeouts())(Churn.Timeouts().within),
+              seed = seed
+            ),
+            PeerNetwork.tcp[IO](10.seconds),
+            manager,
+            OutboundPeers.Config(),
+            hot,
+            chainView,
+            fetchModeRef,
+            emitOutput,
+            (phase, event) =>
+              blockPool.fetchCoordinator.transitionGenesis(
+                genesisGovernor.traverse_(_.setPhase(phase))
+              ) *> measured.gsm(phase) *> logged(NodeEvent.GsmTransition(phase, event)),
+            phase =>
+              blockPool.fetchCoordinator.transitionGenesis(
+                genesisGovernor.traverse_(_.setPhase(phase))
+              ) *> measured.gsm(phase),
+            mode =>
+              blockPool.fetchCoordinator.setMode(mode) *>
+                measured.fetchMode(mode) *> logged(NodeEvent.FetchModeChanged(mode)),
+            marker,
+            LedgerPeersSource.fromChain[IO, MirrorState](ref.get),
+            sharing = Some(sharing),
+            immutable = immutable,
+            genesisReadings = genesisRuntime.map(_.gsmReadings(follower.versusHeaders)),
+            peerMetrics = Some(peerMetrics)
+          )
+        )
+      // the node-to-node server; its accept loop that stops stops the node, as the reference's
+      // `Server.with` that throws ends its diffusion (`Diffusion.hs` 738-760 and 905-911)
+      val relay = options.listen.fold(Resource.pure[IO, IO[DiffusionFailure]](IO.never))(address =>
         BearerServer
           .listen[IO, NetworkError](
+            TcpListeners.jdk[IO],
             Some(address.host),
             Some(address.port),
+            trace => logged(NodeEvent.RemoteServer(trace)),
             maxConnections = None,
             beforeAccept = Some(
               AcceptedConnectionsLimit.rateLimit(manager, accepted, connectionEvents)
@@ -1568,9 +1737,15 @@ object Main extends IOApp:
           ) { (bearer, remote) =>
             governor.serve(bearer, remote).void
           }
-          .evalMap(bound => logged(NodeEvent.Listening(bound.toString)))
+          .evalMap(listening =>
+            logged(NodeEvent.Listening(listening.address.toString)).as(listening.stopped)
+          )
       )
       Connections(manager, governor, network, relay)
+
+  /** What the forger reports: to the log and the metrics. */
+  private def forgeEvents(measured: EventMetrics[IO])(using Log[IO]): ForgeEvents[IO] =
+    Log.sink[ForgeEvents, ForgeEvent, IO].alongside(measured.forge)
 
   /** The services beside the peer network: the node-to-client server, the forger with `--forge`,
     * the stall watchdog and the memory report.
@@ -1652,25 +1827,33 @@ object Main extends IOApp:
           .evalTap(_ => logged(NodeEvent.Listening(path)))
       )
     for
-      // the credentials were read at start-up, before the sockets ([[follow]])
+      // the credentials were read at start-up, before the sockets ([[follow]]), also for a node
+      // started as non-producing, as the reference reads them (`Run.hs` 195-201)
       forging <- (options.forge, credentials).tupled.traverse { (files, pool) =>
         for
-          source <- HotKeySource.files[IO](files.kesSkey, files.opCert)
+          source <- HotKeySource.files[IO](files.vrfSkey, files.kesSkey, files.opCert)
           forger <- {
             given TxClock[MirrorState] = chain.txClock
             Forger.create[IO, MirrorState](
               setup.praos.copy(geometry = geometry),
               globals,
+              run.plutus,
               pool,
               follower,
               mempool,
-              Log.sink[ForgeEvents, ForgeEvent, IO].alongside(measured.forge),
+              forgeEvents(measured),
               utxoStore = Some(store),
-              source = Some(source)
+              source = Some(source),
+              enabled = !options.startsNonProducing(setup.config.settings)
             )
           }
         yield forger
       }
+      // a node without credentials traces that it does not forge, as the reference does
+      // (`Run.hs` 248-252, with no block forging)
+      _ <- forgeEvents(measured)
+        .emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging))
+        .whenA(forging.isEmpty)
       _ <- forging.traverse_(f => collectors.add(Collectors.forging(f.stats)))
       // the chain we start from is progress made: the watchdog counts from here
       _ <- ref.get.flatMap(c => c.tipRef.traverse_(t => watchdog.extended(t.blockNo)))
@@ -1719,7 +1902,7 @@ object Main extends IOApp:
     import instruments.{collectors, fatalSink, metrics, stall}
     import chain.{follower, ref}
     import supply.{blockPool, genesisRuntime}
-    import connections.{governor, manager, network, relay}
+    import connections.{manager, network, relay}
     import services.{forging, local, production, reporting, watching}
     def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
     def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
@@ -1739,28 +1922,22 @@ object Main extends IOApp:
           )
         )
         .surround(network.use { net =>
-          val reloadTopology: IO[Unit] = options.topologyFile.traverse_ { _ =>
-            // `options.peers` includes the topology loaded at startup. Keep reload roots tied
-            // to the original CLI peers so a removed topology peer cannot become permanent.
-            IO.blocking(topologyRoots(options.copy(peers = cliPeers), loaded)).flatMap {
-              case Left(error) =>
-                logged(
-                  NodeEvent.Library(
-                    "scarab.topology",
-                    Severity.Warning,
-                    s"topology reload refused: ${error.message}",
-                    None
-                  )
-                )
-              case Right((_, nextRoots)) => net.reloadRoots(nextRoots)
-            }
-          }
+          val reloadTopology: IO[Unit] =
+            rereadRoots(options, cliPeers, loaded).flatMap(_.traverse_(net.reloadRoots))
+          // a node without credentials finds none again (`updateBlockForging` with no credential
+          // files reads an empty list, `Run.hs` 641-648)
           val reload =
-            forging.traverse_(f => f.reload.flatMap(_.fold(fatalSink, _ => IO.unit))) *>
+            forging.fold(
+              forgeEvents(instruments.measured)
+                .emit(ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging))
+            )(f => f.reload.flatMap(_.fold(fatalSink, _ => IO.unit))) *>
               reloadTopology
+          // the full handler (`installSigHUPHandler`, `Run.hs` 596), on every node as in the
+          // reference; roots a start-up SIGHUP read after the network took its own are applied
           val signals =
-            if options.topologyFile.isDefined || forging.isDefined then Signals.hangup[IO](reload)
-            else Resource.unit[IO]
+            Signals.hangup[IO](reload) *> Resource.eval(
+              run.hangup.roots.getAndSet(None).flatMap(_.traverse_(net.reloadRoots))
+            )
           // the governor ends the node only by a fault (an invariant, the bootstrap timeout)
           val sync: IO[Unit] =
             collectors.add(Collectors.peerMetrics(net.metrics)) *>
@@ -1778,10 +1955,11 @@ object Main extends IOApp:
               Some(store),
               Some(scheduling.stats.total.map(Reports.schedulingTotal)),
               Some(
-                (manager.snapshot, governor.sessions, net.state.get, IO.monotonic).mapN {
-                  (connections, sessions, selection, now) =>
+                (manager.snapshot, net.state.get, net.outbound.sessionReports, IO.monotonic).mapN {
+                  (connections, selection, sessions, now) =>
                     InboundGovernor
-                      .json(connections, sessions)
+                      .json(connections)
+                      .deepMerge(io.circe.Json.obj("sessions" -> OutboundPeers.json(sessions)))
                       .deepMerge(
                         io.circe.Json.obj(
                           "peerSelection" -> PeerNetwork.json(selection, now)
@@ -1789,17 +1967,19 @@ object Main extends IOApp:
                       )
                 }
               ),
-              forging.map(_.stats.byEpoch.map(Reports.forgeReport)),
+              forging.map(f => (f.stats.byEpoch, f.hot.enabled).mapN(Reports.forgeReport)),
               Some(collectors.scrape)
             )(fatalSink)
             .flatMap(_ => relay)
-            .flatMap(_ => local(raise))
+            .flatMap(relayStopped =>
+              local(raise).map(localStopped => IO.race(relayStopped, localStopped).map(_.merge))
+            )
             .flatTap(_ => signals)
             .flatTap(_ => production)
             .flatTap(_ => reporting)
             .flatTap(_ => watching)
-            .use(localStopped =>
-              IO.race(sync, localStopped.flatMap(raise.raise[DiffusionFailure, Unit])).void
+            .use(serverStopped =>
+              IO.race(sync, serverStopped.flatMap(raise.raise[DiffusionFailure, Unit])).void
             )
         })
     for
@@ -1850,7 +2030,7 @@ object Main extends IOApp:
           logged(NodeEvent.DiffusionErrored(DiffusionFailure.UserInterrupt))
         case RunEnd.Errored(failure) =>
           logged(NodeEvent.DiffusionErrored(failure)) *>
-            failedStart(s"DiffusionError ${failure.shown}")
+            failedStart(s"DiffusionError ${failure.show}")
         case _ => IO.unit
       last <- ref.get
       _ <- finishedLine(ended, logged(NodeEvent.finished(last)))
@@ -1947,7 +2127,8 @@ object Main extends IOApp:
       values.find(r => argument == s"--${r.flag}")
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--key-lock on|off]] " + LogSettings.Usage
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--cpu-threads N] [--plutus-workers N] [--plutus-vm scalus|scarab] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--key-lock on|off]] [--start-as-non-producing-node] [--reference-build <build>] " + LogSettings.Usage +
+      "\n" + ReferenceBuildFlag.Help
 
   /** Flags that take a value and may repeat. */
   private val RepeatedFlags = Set("peer") ++ LogSettings.RepeatedFlags
@@ -1980,16 +2161,17 @@ object Main extends IOApp:
     "chain-sync-high",
     "header-first",
     "max-inbound",
-    "inbound-sync",
     "cpu-threads",
     "plutus-workers",
+    "plutus-vm",
     "dump-state",
     "dump-state-at",
     "local-socket",
     "vrf-skey",
     "kes-skey",
     "opcert",
-    "key-lock"
+    "key-lock",
+    "reference-build"
   )
 
   private[node] def parse(args: List[String]): Either[ConfigError, Options] =
@@ -2006,6 +2188,10 @@ object Main extends IOApp:
         case "--forge" :: tail =>
           if acc.contains("forge") then bad(ConfigProblem.DuplicateFlag("--forge"))
           else go(tail, acc.updated("forge", List("true")))
+        case (flag @ ("--start-as-non-producing-node" | "--non-producing-node")) :: tail =>
+          val name = flag.drop(2)
+          if acc.contains(name) then bad(ConfigProblem.DuplicateFlag(flag))
+          else go(tail, acc.updated(name, List("true")))
         case flag :: _ if RemovedFlag.named(flag).isDefined =>
           Left(RemovedFlag.named(flag).fold(usage)(_.refusal(Usage)))
         case "--dump-state-full" :: tail =>
@@ -2099,7 +2285,7 @@ object Main extends IOApp:
           localSocket = flags.get("local-socket")
           mempool <- flags
             .get("mempool-bytes")
-            .traverse(_.toLongOption.filter(_ > 0).toRight(invalid("mempool-bytes")))
+            .traverse(_.toLongOption.flatMap(Word32.fromLong).toRight(invalid("mempool-bytes")))
           forge <-
             if !flags.contains("forge") then Right(None)
             else
@@ -2162,11 +2348,6 @@ object Main extends IOApp:
                 .filter(_.toLong > 0)
                 .toRight(invalid("max-inbound"))
             )
-          inboundSync <- flags
-            .get("inbound-sync")
-            .fold(Right(false))(v =>
-              Map("on" -> true, "off" -> false).get(v).toRight(invalid("inbound-sync"))
-            )
           cpuThreads <- flags
             .get("cpu-threads")
             .fold(Right(math.max(1, Runtime.getRuntime.availableProcessors())))(
@@ -2178,6 +2359,15 @@ object Main extends IOApp:
               _.toIntOption
                 .flatMap(n => ParallelPlutus.Workers.from(n).toOption)
                 .toRight(invalid("plutus-workers"))
+            )
+          plutusVm <- flags
+            .get("plutus-vm")
+            .fold(Right(PlutusVm.Default))(v =>
+              PlutusVm
+                .parse(v)
+                .leftMap(e =>
+                  ConfigError(ConfigProblem.WithUsage(ConfigProblem.PlutusVmUnknown(e), Usage))
+                )
             )
           dump <- flags.get("dump-state").traverse { d =>
             flags
@@ -2195,6 +2385,7 @@ object Main extends IOApp:
           log <- LogSettings
             .parse(flags, multi)
             .leftMap(e => ConfigError(ConfigProblem.WithUsage(e.problem, Usage)))
+          referenceBuild <- ReferenceBuildFlag.parse(flags.get("reference-build"), Usage)
         yield Options(
           dir,
           peers,
@@ -2223,7 +2414,6 @@ object Main extends IOApp:
           flags.contains("dump-state-full"),
           headerFirst,
           maxInbound,
-          inboundSync,
           log
         ).copy(
           churnInterval = churnInterval,
@@ -2231,6 +2421,10 @@ object Main extends IOApp:
           plutusWorkers = plutusWorkers,
           chainSyncWindow = chainSyncWindow,
           adoptLegacyNetworkIdentity = flags.contains("adopt-legacy-network-identity"),
-          keyLock = keyLock
+          keyLock = keyLock,
+          referenceBuild = referenceBuild,
+          startAsNonProducingNode =
+            flags.contains("start-as-non-producing-node") || flags.contains("non-producing-node"),
+          plutusVm = plutusVm
         )
       case _ => Left(usage)

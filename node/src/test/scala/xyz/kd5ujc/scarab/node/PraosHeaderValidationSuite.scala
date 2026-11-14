@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.node.mempool.RelayedTransactions
 import cats.effect.{IO, Ref, Resource}
 import cats.mtl.{Ask, Handle, Stateful, Tell}
@@ -29,7 +30,9 @@ class PraosHeaderValidationSuite extends FailsOnUncaught:
   private lazy val capture: Capture =
     val root = Path.of("fixtures/eras")
     val setup =
-      NodeSetup.fromDirectory(root.resolve("genesis")).fold(e => fail(e.message), identity)
+      NodeSetup
+        .fromDirectory(ReferenceBuild.Default)(root.resolve("genesis"))
+        .fold(e => fail(e.message), identity)
     val raws = Files
       .readString(root.resolve("blocks.hex"))
       .linesIterator
@@ -118,9 +121,7 @@ class PraosHeaderValidationSuite extends FailsOnUncaught:
       (theirs, ours) = bearers
       result <- Handle
         .allow[NetworkError](
-          NodeToNodeServer
-            .accept(theirs, 42, ServerHandlers(NtNHeader.codec, source, blocks, sink))
-            .void
+          Served.accept(theirs, 42, ServerHandlers(NtNHeader.codec, source, blocks, sink)).void
         )
         .rescue(_ => IO.unit)
         .background

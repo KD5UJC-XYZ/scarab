@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Shared constants and Docker/CLI helpers for the devnet scripts."""
 import contextlib
+import datetime
 import json
 import os
 import pathlib
@@ -21,6 +22,78 @@ FORMER_DATA_DIR = pathlib.Path("/tmp/cardano-scala-lab")  # the data directory's
 MAGIC = 1082026
 ENV = "/work/env"
 QUERY_PORT = 7071
+METRICS_PORT = 12798  # the Scala node's `--metrics-listen` port in the devnet (`metrics.py` reads it)
+PLUTUS_VMS = ("scalus", "scarab")  # the node's `--plutus-vm` values
+
+
+@dataclass(frozen=True)
+class FollowerSite:
+    """Where one Scala follower of a run lives: its container, its files in the run directory and its ports.
+
+    A run's only follower (`key` None) has the names and ports runs have always had: the container `<name>-scala`,
+    `follower.jsonl`, `scala-sock`, `stall`, `db`, `dump`, `classes`, `compare.jsonl` and `whole-state`, the
+    query port `QUERY_PORT` and the metrics port `METRICS_PORT`. With several followers in one run (`e2e` with
+    one per Plutus evaluator), each is named by its `key`, a value of `PLUTUS_VMS`: `<name>-scala-<key>`,
+    `follower-<key>.jsonl`, `scala-sock-<key>` and so on. Every follower runs in the reference container's network
+    namespace, so each of them also takes a query and a metrics port of its own: the default ones plus the
+    position of its key in `PLUTUS_VMS`, plus one."""
+    key: str | None = None
+
+    def __post_init__(self):
+        if self.key is not None and self.key not in PLUTUS_VMS:
+            raise ValueError(f"a follower is keyed by a Plutus evaluator of {PLUTUS_VMS}, not {self.key!r}")
+
+    def named(self, base):
+        """`base`, suffixed with `-<key>` for a keyed follower."""
+        return base if self.key is None else f"{base}-{self.key}"
+
+    def container(self, name):
+        return self.named(f"{name}-scala")
+
+    def log(self, root):
+        return root / f"{self.named('follower')}.jsonl"
+
+    def final_tip(self, root):
+        """The file that records the tip the follower ended on when the run stopped it (`follower.stop_followers`,
+        `oracle.devnet.stop_follower`): `follower-tip.json`, or `follower-tip-<key>.json`."""
+        return root / f"{self.named('follower-tip')}.json"
+
+    def directory(self, root, base):
+        """The follower's own directory `base` of the run directory (`scala-sock`, `stall`, `db`, `dump`, ...)."""
+        return root / self.named(base)
+
+    @property
+    def offset(self):
+        return 0 if self.key is None else PLUTUS_VMS.index(self.key) + 1
+
+    @property
+    def query_port(self):
+        return QUERY_PORT + self.offset
+
+    @property
+    def metrics_port(self):
+        return METRICS_PORT + self.offset
+
+    @property
+    def role(self):
+        """How messages name it: `follower`, or `<key> follower`."""
+        return "follower" if self.key is None else f"{self.key} follower"
+
+
+SINGLE_FOLLOWER = FollowerSite()
+ALL_FOLLOWERS = (SINGLE_FOLLOWER, *(FollowerSite(vm) for vm in PLUTUS_VMS))  # every site a run may use
+
+
+def follower_plan(plutus_vms):
+    """[(site, evaluator)] of a run's followers for its `--plutus-vm` values (None or a list, in order): with none
+    the run's only follower and the node's default evaluator (None), with one the only follower and that
+    evaluator, with several one keyed follower per evaluator. The same evaluator twice is refused."""
+    vms = list(plutus_vms or [])
+    if len(set(vms)) != len(vms):
+        raise SystemExit(f"--plutus-vm names each evaluator once, not {vms}")
+    if len(vms) <= 1:
+        return [(SINGLE_FOLLOWER, vms[0] if vms else None)]
+    return [(FollowerSite(vm), vm) for vm in vms]
 
 
 def _populated(path):
@@ -183,6 +256,32 @@ def read_json(name, path):
     return json.loads(in_ref(name, f"cat {path}").stdout)
 
 
+
+def without_resource_statistics(name, config):
+    """The reference node's configuration, unchanged where its kernel has per-task I/O accounting.
+
+    cardano-node starts a linked thread that reads `/proc/self/io` every `TraceOptionResourceFrequency`
+    milliseconds (default 1000), and the thread's exception stops the node
+    (cardano-node 11.1.3, `Cardano/Node/Tracing/Tracers/Resources.hs:23-36`). A kernel built without
+    `CONFIG_TASKSTATS` has no `/proc/<pid>/io`: the WSL 6.18.54.1 kernel of WSL 3.0.3, fixed in 6.18.58.1
+    (WSL 3.0.5). There, and only there, the frequency is set to 0, which the node takes as "no resource
+    statistics" and starts no thread; nothing else about the node changes. The check runs in the reference
+    container, whose kernel is the one that matters (Docker Desktop's is not the WSL distribution's)."""
+    if in_ref(name, "test -e /proc/self/io", check=False).returncode == 0:
+        return config
+    print(json.dumps({"referenceResourceStatistics": "off",
+                      "reason": "the kernel has no /proc/self/io (CONFIG_TASKSTATS is not set)"}), flush=True)
+    return dict(config, TraceOptionResourceFrequency=0)
+
+
+def adapt_reference_config(name, path):
+    """Rewrite the reference configuration at `path` with [[without_resource_statistics]] when the kernel needs it."""
+    config = read_json(name, path)
+    adapted = without_resource_statistics(name, config)
+    if adapted is not config:
+        put_file(name, path, json.dumps(adapted, indent=2))
+
+
 CLI = "cardano-cli conway"
 SOCKET = f"--testnet-magic {MAGIC} --socket-path {ENV}/socket/node1/sock"
 LOAD = "/work/load"
@@ -226,8 +325,29 @@ def scheduling_summary(events, log, args=None):
     }
 
 
+def event_time(event):
+    """The `at` of a Scala node log event, in seconds since 1970."""
+    return datetime.datetime.fromisoformat(event["at"].replace("Z", "+00:00")).timestamp()
+
+
+def spread(values, digits=0):
+    """n, median, 95th percentile, maximum and mean of `values`, rounded to `digits` decimals, or None without
+    values."""
+    values = sorted(values)
+    if not values:
+        return None
+
+    def rounded(x):
+        return round(x, digits) if digits else round(x)
+    return {"n": len(values), "median": rounded(values[len(values) // 2]),
+            "p95": rounded(values[min(len(values) - 1, int(0.95 * len(values)))]), "max": rounded(values[-1]),
+            "mean": rounded(sum(values) / len(values))}
+
+
 def read_log(path):
-    """(events, other lines) of the follower log; CPU-starvation warnings are not counted as other."""
+    """(events, other lines) of the follower log while the follower runs; CPU-starvation warnings are not counted as
+    other, and a last line without its newline is left out, as one still being written (`read_final_log` reads the
+    log of a follower that has ended)."""
     events, other = [], []
     if path.exists():
         text = path.read_text(errors="replace")
@@ -244,22 +364,40 @@ def read_log(path):
     return events, other
 
 
-def stall_dump_arguments(root):
+def read_final_log(path):
+    """(events, other lines, unterminated) of the log of a follower that has ended, as `read_log`, but its last line
+    without a newline is not one being written: it is a cut line, returned as `unterminated` (None when the log
+    ends with its newline). A cut line that is still a whole JSON object is among the events too, so what it says is
+    judged as well."""
+    events, other = read_log(path)
+    last = path.read_text(errors="replace").split("\n")[-1] if path.exists() else ""
+    if not last:
+        return events, other, None
+    try:
+        event = json.loads(last) if last.startswith("{") else None
+    except json.JSONDecodeError:
+        event = None
+    return (events + [event] if isinstance(event, dict) else events), other, last
+
+
+def stall_dump_arguments(root, site=SINGLE_FOLLOWER):
     """(node arguments, volume) that turn on the node's stall diagnostics (`--stall-dump`, issue
-    371): a stall of the follower writes the runtime's fiber dump into `<run>/stall`, next to its
-    `stallState` event in the follower log."""
-    directory = root / "stall"
+    371): a stall of the follower writes the runtime's fiber dump into `<run>/stall` (the stall directory of
+    `site`), next to its `stallState` event in the follower log."""
+    directory = site.directory(root, "stall")
     directory.mkdir(exist_ok=True)
     directory.chmod(0o777)
     return ["--stall-dump", "/stall"], f"{directory}:/stall"
 
 
-def stall_evidence(root):
+def stall_evidence(root, site=SINGLE_FOLLOWER):
     """What a run keeps of a follower stall: its `stalled`, `stallState` and `stallDump` events and the fiber
-    dumps (name and size; the files stay in `<run>/stall`), or None when the follower never stalled."""
-    events, _ = read_log(root / "follower.jsonl")
+    dumps (name and size; the files stay in `<run>/stall`, the stall directory of `site`), or None when the
+    follower never stalled."""
+    events, _ = read_log(site.log(root))
     kept = [e for e in events if e.get("event") in ("stalled", "stallState", "stallDump")]
-    dumps = sorted((root / "stall").glob("fiber-dump-*.txt")) if (root / "stall").is_dir() else []
+    stall = site.directory(root, "stall")
+    dumps = sorted(stall.glob("fiber-dump-*.txt")) if stall.is_dir() else []
     if not kept and not dumps:
         return None
     return {"events": kept, "fiberDumps": [{"file": str(d.relative_to(root)), "bytes": d.stat().st_size}

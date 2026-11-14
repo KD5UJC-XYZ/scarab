@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.log
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import io.circe.Json
@@ -29,6 +30,8 @@ import xyz.kd5ujc.scarab.ledger.{
   ValidationError
 }
 import xyz.kd5ujc.scarab.network.{
+  AcceptFailure,
+  BearerServer,
   ConnectionEnd,
   ConnectionError,
   ConnectionEvent,
@@ -49,7 +52,6 @@ import xyz.kd5ujc.scarab.network.{
 import xyz.kd5ujc.scarab.node.{
   InboundEnd,
   InboundEvent,
-  InboundGovernor,
   DnsName,
   LedgerPeersTrace,
   LocalRootsTrace,
@@ -60,6 +62,8 @@ import xyz.kd5ujc.scarab.node.{
 import xyz.kd5ujc.scarab.ledger.state.{Derived, MirrorError}
 import xyz.kd5ujc.scarab.ledger.PoolRelayError
 import xyz.kd5ujc.scarab.node.forge.{
+  NoExchange,
+  BlockForgingState,
   CannotForge,
   ClockTrace,
   ForgeEpochStats,
@@ -96,7 +100,9 @@ object LogSamples:
   /** The eras capture: a real genesis and a real header. */
   private val fixtures = Path.of("fixtures/eras")
   val setup: NodeSetup =
-    NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => sys.error(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(fixtures.resolve("genesis"))
+      .fold(e => sys.error(e.message), identity)
   val header: Header =
     val raw = Files.readAllLines(fixtures.resolve("blocks.hex")).asScala.find(_.nonEmpty).get
     Block
@@ -340,6 +346,15 @@ object LogSamples:
     LocalServer.Trace.ServerError(DiffusionFailure.System(exhausted))
   )
 
+  /** The node-to-node server's accept loop: an accept that failed, the server stopped and ended by
+    * that error.
+    */
+  val remoteServer: List[BearerServer.Trace] = List(
+    BearerServer.Trace.AcceptError(AcceptFailure.System(exhausted)),
+    BearerServer.Trace.ServerStopped,
+    BearerServer.Trace.ServerError(DiffusionFailure.System(exhausted))
+  )
+
   /** A directory where the socket should be, as the reference names it. */
   val socketConfigError: SocketConfigError = SocketConfigError.LocalSocketError(
     "/ipc/node.socket",
@@ -354,32 +369,6 @@ object LogSamples:
     InboundEvent.Accepted,
     InboundEvent.Duplex,
     InboundEvent.Unidirectional,
-    InboundEvent.Following(point),
-    InboundEvent.SessionEnded(
-      InboundGovernor.SessionFailure
-        .Peer(PeerError.NoIntersection),
-      dropped = false
-    ),
-    InboundEvent.SessionEnded(
-      InboundGovernor.SessionFailure
-        .Peer(PeerError.NoIntersection),
-      dropped = true
-    ),
-    InboundEvent.SessionReturned(InboundGovernor.ReturnReason.NoMoreIntersection, 120.seconds),
-    InboundEvent.SessionReturned(
-      InboundGovernor.ReturnReason.RolledBackPastIntersection(point),
-      180.seconds
-    ),
-    InboundEvent.CachedBlockRejected(
-      ValidationError(point, BlockFailure.HeaderDiffers),
-      generation = BigInt(7),
-      sourceLive = true
-    ),
-    InboundEvent.CachedBlockRejected(
-      ValidationError(point, BlockFailure.HeaderDiffers),
-      generation = BigInt(8),
-      sourceLive = false
-    ),
     InboundEvent.Closed(
       InboundEnd.Connection(
         ConnectionEnd
@@ -391,9 +380,10 @@ object LogSamples:
 
   val connection: List[ConnectionEvent] = List(
     ConnectionEvent.Opened("10.0.0.1:3001", ConnectionState.Provenance.Outbound),
+    ConnectionEvent.Pruned(Vector("10.0.0.3:3001"), 1, 3),
     ConnectionEvent.Changed(
       "10.0.0.1:3001",
-      ConnectionState.Reserved,
+      ConnectionState.ReservedOutbound,
       ConnectionState.Unnegotiated(ConnectionState.Provenance.Outbound)
     ),
     ConnectionEvent.Refused(ConnectionError.InboundLimit("10.0.0.2:4000", 64)),
@@ -534,6 +524,9 @@ object LogSamples:
     ForgeEvent.Lost(BigInt(4200), hash, "slot battle"),
     ForgeEvent.KesEvolved(BigInt(33), 2),
     ForgeEvent.KesReloaded(BigInt(4), BigInt(30), BigInt(62), BigInt(33)),
+    ForgeEvent.BlockForgingUpdate(BlockForgingState.EnabledBlockForging),
+    ForgeEvent.BlockForgingUpdate(BlockForgingState.DisabledBlockForging),
+    ForgeEvent.BlockForgingUpdate(BlockForgingState.NotEffective),
     ForgeEvent.KesReloadRefused(ReloadRefusal.Counter(OCertError.CounterTooSmall(5, 3))),
     ForgeEvent.KesPersistFailed(
       BigInt(33),
@@ -543,6 +536,9 @@ object LogSamples:
       )
     ),
     ForgeEvent.KeyFileGroupAccess("vrf.skey", 0x1a0),
+    ForgeEvent.KesFileAbsent(BigInt(34), "/keys/kes.skey"),
+    ForgeEvent.KesWrittenByRename(NoExchange.Refused(22)),
+    ForgeEvent.KesWrittenByRename(NoExchange.NotLinux),
     ForgeEvent.Failed(BigInt(4202), ForgeError.KeyPeriodOutOfRange(33, 0, 32)),
     ForgeEvent.EpochSummary(BigInt(3), forgeStats),
     ForgeEvent.EpochSummary(BigInt(4), ForgeEpochStats())
@@ -605,7 +601,8 @@ object LogSamples:
     hash,
     Some(hash),
     xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash),
-    xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash)
+    xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash),
+    Some(xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash))
   )
   val storage: List[StorageEvent] = List(
     StorageEvent.ImmutableOpened(ImmutableStore.OpenReport(anchor, 100L, 2, 1, 64L)),
@@ -616,6 +613,15 @@ object LogSamples:
     StorageEvent.SnapshotSkipped(
       "4200-abab",
       StorageError.Corrupt("snapshot", xyz.kd5ujc.scarab.codec.BinaryError.UnexpectedEnd(0))
+    ),
+    StorageEvent.SnapshotDeleted("4200-abab"),
+    StorageEvent.SnapshotNotDeleted(
+      "4200-abab",
+      StorageError.Io("4200-abab", new java.nio.file.AccessDeniedException("4200-abab"))
+    ),
+    StorageEvent.CheckpointNotDeleted(
+      "4200-abab",
+      StorageError.Io("4200-abab", new java.nio.file.AccessDeniedException("4200-abab"))
     ),
     StorageEvent.SnapshotRestored("4200-abab", anchor),
     StorageEvent.SnapshotRestored("genesis", None),
@@ -632,16 +638,19 @@ object LogSamples:
     StorageEvent.ReplayStarted(None, anchor),
     StorageEvent.ReplayProgress(block, 1000L, 2000L),
     StorageEvent.ReplayFinished(anchor, 1000L, 2500L),
-    StorageEvent.NetworkRecorded(network, adopted = false),
+    StorageEvent.NetworkRecorded(network, adopted = false, dijkstraAdopted = false),
+    StorageEvent.NetworkRecorded(network, adopted = false, dijkstraAdopted = true),
     StorageEvent.NetworkRecorded(
       NetworkIdentity(
         1L,
         hash,
         None,
         xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash),
-        xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash)
+        xyz.kd5ujc.scarab.ledger.GenesisFileHash(hash),
+        None
       ),
-      adopted = true
+      adopted = true,
+      dijkstraAdopted = false
     ),
     StorageEvent.VolatileOpened(VolatileStore.OpenReport(10, 2, 0L, 0)),
     StorageEvent.VolatileResumed(10, 1, 300L),

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.json
 
+import cats.syntax.show.*
 import io.circe.{Json, JsonObject as CirceObject}
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError, Rational}
 import xyz.kd5ujc.scarab.ledger.state.{NonZero, Word64}
@@ -79,20 +80,20 @@ enum NumberError extends DomainError:
     case UnreadNumberText(text, cause) =>
       s"defect: the number $text is not read by the aeson grammar${cause.fold("")(e => s" ($e)")}"
     case NotWord64(value) =>
-      s"parsing Word64 failed, value is either floating or will cause over or underflow ${value.shown}"
+      s"parsing Word64 failed, value is either floating or will cause over or underflow ${value.show}"
     case NotWord(bits, value) =>
-      s"parsing Word$bits failed, value is either floating or will cause over or underflow ${value.shown}"
-    case NotNatural(value) => s"parsing Natural failed, unexpected negative number ${value.shown}"
+      s"parsing Word$bits failed, value is either floating or will cause over or underflow ${value.show}"
+    case NotNatural(value) => s"parsing Natural failed, unexpected negative number ${value.show}"
     case Zero              => "Encountered zero while trying to construct a NonZero value"
     case ExponentOutOfBounds(value) =>
       s"parsing Integer failed, found a number with exponent ${value.base10Exponent}, but it must not be greater than 1024"
-    case Floating(value)     => s"parsing Integer failed, unexpected floating number ${value.shown}"
+    case Floating(value)     => s"parsing Integer failed, unexpected floating number ${value.show}"
     case MissingKey(key)     => s"key \"${key.key}\" not found"
     case InComponent(key, e) => s"${key.key}: ${e.message}"
     case ZeroDenominator     => "Ratio denominator was 0"
-    case Negative(value)     => s"Value is negative: ${value.shown}"
-    case TooPrecise(value)   => s"Value is too precise: ${value.shown}"
-    case TooBig(value)       => s"Value is too big: ${value.shown}"
+    case Negative(value)     => s"Value is negative: ${value.show}"
+    case TooPrecise(value)   => s"Value is too precise: ${value.show}"
+    case TooBig(value)       => s"Value is too big: ${value.show}"
     case OutsideOfBounds(r)  => s"Value is outside of bounds: ${FromJson.showRational(r)}"
 
 /** Mirrors of the aeson `FromJSON` instances the genesis numbers are read with. A number is read

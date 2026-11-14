@@ -16,7 +16,6 @@ import xyz.kd5ujc.scarab.ledger.{
   Committee,
   CommitteeAuth,
   Certificate,
-  DecoderVersion,
   GovFailure,
   LedgerFailure,
   Mismatch,
@@ -189,7 +188,7 @@ class UpstreamGovernanceFunctionalSuite extends FunSuite:
         case Value.Arr(xs) =>
           xs.map(n =>
             Certificate
-              .decode(n, DecoderVersion.of(Era.Conway))
+              .decode(n, Era.Conway)
               .fold(e => fail(e.message), identity)
           )
         case other => fail(s"expected original GOV certificates, got $other")

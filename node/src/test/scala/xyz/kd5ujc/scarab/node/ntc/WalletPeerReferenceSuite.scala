@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.data.NonEmptyVector
 import io.circe.Json
 import io.circe.parser.parse
@@ -9,8 +10,14 @@ import java.security.MessageDigest
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.consensus.{BlockRef, ConsensusExtras}
-import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorProvenance, ProtocolState}
-import xyz.kd5ujc.scarab.ledger.{PlutusStats, PoolRelayError, Utxo}
+import xyz.kd5ujc.scarab.consensus.state.{
+  EraLedgerState,
+  MirrorClock,
+  MirrorProvenance,
+  Placement,
+  ProtocolState
+}
+import xyz.kd5ujc.scarab.ledger.{Horizon, PlutusStats, PoolRelayError, Utxo}
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   ConwayLedgerState,
@@ -46,6 +53,9 @@ class WalletPeerReferenceSuite extends FunSuite:
       def consensus: ConsensusExtras = native.setup.mirrorStart.consensus
       def plutus: PlutusStats = PlutusStats.zero
       def utxo: Utxo = native.nes.es.ls.utxo.utxo.utxo
+      // These cases ask no era history; the genesis state's stands in for it.
+      def summary(placement: Placement): Horizon =
+        MirrorClock.summary(native.setup.mirrorStart, placement)
       def ledger(at: Option[BlockRef]): Read[Option[InEra]] =
         Right(
           Some(
@@ -71,7 +81,9 @@ class WalletPeerReferenceSuite extends FunSuite:
     val name = cursor.get[String]("name").fold(e => fail(e.message), identity)
     val dir = root.resolve(name)
     val setup =
-      NodeSetup.fromDirectory(dir.resolve("genesis")).fold(e => fail(e.message), identity)
+      NodeSetup
+        .fromDirectory(ReferenceBuild.Default)(dir.resolve("genesis"))
+        .fold(e => fail(e.message), identity)
     val nes = HaskellState
       .decode[Conway](Bytes.fromArray(Files.readAllBytes(dir.resolve("new-epoch-state.cbor"))))(
         using ShelleyBasedEra.SConway

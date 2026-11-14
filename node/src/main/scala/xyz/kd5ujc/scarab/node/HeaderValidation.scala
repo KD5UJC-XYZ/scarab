@@ -97,8 +97,10 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
         val checked: Either[HeaderError | ProviderDefect, ProtocolState] =
           genericEnvelope.flatMap(_ => envelope).flatMap { _ =>
             if h.era.usesTPraos then
+              // TPraos runs through Alonzo, whose `ppDG` is the parameter at every version
+              // (`Alonzo/PParams.hs:338`, cardano-ledger f649f975); Babbage runs Praos.
               val view = LedgerView(
-                params.effectiveD,
+                params.d,
                 params.extraEntropy,
                 delegations,
                 StakeView.Known(pools)

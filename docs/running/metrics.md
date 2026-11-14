@@ -103,10 +103,10 @@ Meanings and units worth knowing before building a dashboard:
 
 **Label values.** Each label is a member of a closed set, so a dashboard can list them: `era` is `Byron`,
 `Shelley`, `Allegra`, `Mary`, `Alonzo`, `Babbage` or `Conway`; `rule` is `byron`, `structure`, `decode`, `envelope`,
-`ledger`, `tpraos` or `praos`; `state` (of a connection) is `Reserved`, `Unnegotiated`, `Established`, `Terminating`
-or `Terminated`; `event` is, for `scarab_connection_events_total`, `Opened`, `Changed`, `Refused` or `Closed`, and for
-`scarab_inbound_events_total`, `Accepted`, `Duplex`, `Unidirectional`, `Following`, `SessionEnded`, `SessionReturned`,
-`SessionDropped`, `CachedBlockRejected`, `Closed` or `Refused`; `reason` is, for `scarab_mempool_rejected_total`, `Malformed`,
+`ledger`, `tpraos` or `praos`; `state` (of a connection) is one of the reference connection manager's states, `ReservedOutbound`,
+`Unnegotiated`, `OutboundUni`, `OutboundDup`, `OutboundIdle`, `InboundIdle`, `Inbound`, `Duplex`, `Terminating`
+or `Terminated` (`ConnectionManager/State.hs`, ouroboros-network `c45735a5`); `event` is, for `scarab_connection_events_total`, `Opened`, `Changed`, `Refused`, `Closed` or `Pruned`, and for
+`scarab_inbound_events_total`, `Accepted`, `Duplex`, `Unidirectional`, `Closed` or `Refused`; `reason` is, for `scarab_mempool_rejected_total`, `Malformed`,
 `AlreadyHeld`, `Ledger`, `Full`, `WrongEra`, `NoLedger`, `InputDefect` or `RulesDefect`, and for `scarab_forge_skipped_total`, `SlotIsImmutable`,
 `BlockFromFuture`, `NoLedgerView` or `Other`; `kind` (snapshots) is `Skipped`, `Failed` or `Refused`; `over_ms` is
 `50` or `100`; `area` is `heap` or `nonheap`; `gc` is the name the JVM gives the collector (`G1 Young
@@ -123,8 +123,9 @@ of an enum label that never happened are absent, except `scarab_era` (written fo
   `Cardano/Node/Tracing/Tracers/ChainDB.hs`; the formula is from the source as remembered, not read line by
   line in this work, and the two agree in magnitude on the devnet).
 - `cardano_node_metrics_connectionManager_{inbound,outbound,duplex}Conns_int` count the connections of our
-  connection manager (one per peer address, either direction); the Haskell manager has more states and counts
-  all of them.
+  connection manager as the reference's `connectionStateToCounters` does (`ConnectionManager/Core.hs:173-212`,
+  ouroboros-network `c45735a5`): by what each connection is used for now, so one both sides use counts as inbound
+  and as outbound, a reservation counts in neither, and one in time-wait counts only as terminating.
 - The forger's series mean what the reference's do: the `Forge_*_counter` counters count the forging loop's
   traces of the same name (cardano-node 11.1.3 `Tracers/Consensus.hs` 1507-1538), and `blocksForged_int`,
   `nodeIsLeader_int`, `nodeCannotForge_int` and `slotsMissed_int` are the reference's `ForgingStats`
@@ -132,14 +133,15 @@ of an enum label that never happened are absent, except `scarab_era` (written fo
   slots (at a slot the pool does not lead after a gap, the slot less the last slot led or not led, one more than
   the slots in the gap). The KES gauges are written after each update of the forge state (`Forge.StateInfo`,
   `Tracers/KESInfo.hs` 110-120), and a failed update writes the certificate's window and zero for the current
-  and remaining periods; `scarab_opcert_counter` and `forging_enabled_int` are written at start and after
-  every reload.
+  and remaining periods; `scarab_opcert_counter` is written when forging starts and after every reload that installs
+  credentials, and `forging_enabled_int` with each `blockForgingUpdate` (at start, and at a reload that enables
+  or disables forging), as the reference writes it (`Tracers/Startup.hs` 301-307).
 
 **Not exported** (cardano-node 11.1.3 has them; tracked in roadmap J3e): `cardano_node_metrics_served_block_counter`,
-`served_header_counter` and `served_block_latest_counter` (what the node served to peers; only the inbound
-sessions of `GET /connections` count headers), `utxoSize_int` and `delegMapSize_int` (see
+`served_header_counter` and `served_block_latest_counter` (what the node served to peers; the `sessions` of
+`GET /connections` count the headers our hot sessions received, not those served), `utxoSize_int` and `delegMapSize_int` (see
 `scarab_ledger_utxo_entries` for the UTxO set, once per epoch), `blockReplayProgress_real`, `txsSyncDuration*`,
-`tipBlock` and `basicInfo`, `inboundGovernor_*`, the `blockfetchclient_*` series (see
+`tipBlock` and `basicInfo`, the `blockfetchclient_*` series (see
 `scarab_blockfetch_seconds`), the GHC runtime's `RTS_*`, `rts_gc_*`, `Mem_*` and `Stat_*`, and
 `Forge_adoption_thread_died_counter`, whose trace cannot happen here (the forged block is adopted in the
 forging fiber itself).
@@ -211,7 +213,7 @@ section and the catalogue differ.
 | `cardano_node_metrics_nodeCannotForge_int` | gauge |  | Slots the pool led but could not forge in since the start (TraceNodeCannotForge), as of the start of the current slot (ForgingStats). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_slotsMissed_int` | gauge |  | Slots missed since the start, as the reference's ForgingStats counts them at each slot the pool does not lead. | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_forgedSlotLast_int` | gauge |  | Slot of the last block forged. | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_forging_enabled_int` | gauge |  | 1 when the node has forging credentials. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_forging_enabled_int` | gauge |  | 1 while the node forges, 0 when it has no credentials, was started as non-producing, a reload found a credential file absent, or a SIGHUP arrived during start-up (the reference's BlockForgingUpdate). | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_currentKESPeriod_int` | gauge |  | The KES key's period after the last update of the forge state; 0 after a failed update. | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_remainingKESPeriods_int` | gauge |  | KES periods left before the operational certificate expires, after the last update of the forge state; 0 after a failed update. | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_operationalCertificateStartKESPeriod_int` | gauge |  | The first KES period of the operational certificate. | same name; scraped from 11.1.3 |
@@ -228,9 +230,13 @@ section and the catalogue differ.
 
 | Metric | Type | Labels | Meaning | cardano-node 11.1.3 |
 |---|---|---|---|---|
-| `cardano_node_metrics_connectionManager_inboundConns_int` | gauge |  | Connections the peer opened to us. | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_connectionManager_outboundConns_int` | gauge |  | Connections we opened to a peer. | same name; scraped from 11.1.3 |
-| `cardano_node_metrics_connectionManager_duplexConns_int` | gauge |  | Connections on which both sides run the protocols. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_connectionManager_inboundConns_int` | gauge |  | Connections in inbound use, whoever opened them: an accepted one not yet negotiated, `InboundIdle`, `Inbound` and `Duplex` (`connectionStateToCounters`). | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_connectionManager_outboundConns_int` | gauge |  | Connections in outbound use, whoever opened them: a dialled one not yet negotiated, `OutboundUni`, `OutboundDup`, `OutboundIdle` and `Duplex`; a reservation counts in neither. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_connectionManager_duplexConns_int` | gauge |  | Connections that negotiated duplex, in use or idle (`OutboundDup`, `Duplex`, and a duplex `InboundIdle`, `Inbound` or `OutboundIdle`). | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_inboundGovernor_idle_int` | gauge |  | Connections the inbound governor tracks on which the peer runs none of our responders, with the protocol idle timer armed (`RemoteIdle`): accepted ones and duplex ones we dialled. | same name; `inboundGovernor_*` scraped from 11.1.3, the name from `asMetrics` (`Ouroboros/Network/Tracing/InboundGovernor.hs` 36-49, ouroboros-network `c45735a5`) |
+| `cardano_node_metrics_inboundGovernor_cold_int` | gauge |  | Tracked connections the peer left idle past the timeout, kept because our outbound side uses them (`RemoteCold`). | same name; as `inboundGovernor_idle_int` |
+| `cardano_node_metrics_inboundGovernor_warm_int` | gauge |  | Tracked connections on which the peer runs our responders, none of them hot (`RemoteWarm`: KeepAlive, PeerSharing). | same name; as `inboundGovernor_idle_int` |
+| `cardano_node_metrics_inboundGovernor_hot_int` | gauge |  | Tracked connections on which the peer runs a hot responder of ours (`RemoteHot`: ChainSync, BlockFetch, TxSubmission2). | same name; as `inboundGovernor_idle_int` |
 | `scarab_connections` | gauge | `state` | Connections the connection manager knows, by state. | none |
 | `scarab_connection_events_total` | counter | `event` | What the connection manager did. | none |
 | `scarab_inbound_events_total` | counter | `event` | What the inbound governor did on accepted connections. | none |

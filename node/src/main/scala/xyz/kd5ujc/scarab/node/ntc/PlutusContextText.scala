@@ -35,6 +35,11 @@ private[ntc] object PlutusContextText:
     case Arguments(language: PlutusLanguage, count: Int)
     case LayoutArity(expected: Int, actual: Int)
 
+    /** No printer of this language's script context yet: PlutusV4's, the Leios testnet build's own
+      * context (#796).
+      */
+    case Unported(language: PlutusLanguage)
+
   import Kind.*
   import PlutusData.{Constr, I, B}
   private type Result[A] = Either[Error, A]
@@ -113,10 +118,14 @@ private[ntc] object PlutusContextText:
     evaluate(Task(kind, data)).value.map(_.render)
 
   def arguments(request: EvalRequest): Result[Doc] =
-    val context = request.language match
-      case PlutusLanguage.V1 => ContextV1
-      case PlutusLanguage.V2 => ContextV2
-      case PlutusLanguage.V3 => ContextV3
+    (request.language match
+      case PlutusLanguage.V1 => Right(ContextV1)
+      case PlutusLanguage.V2 => Right(ContextV2)
+      case PlutusLanguage.V3 => Right(ContextV3)
+      case PlutusLanguage.V4 => Left(Error.Unported(PlutusLanguage.V4))
+    ).flatMap(arguments(request, _))
+
+  private def arguments(request: EvalRequest, context: Kind): Result[Doc] =
     if request.language == PlutusLanguage.V3 then
       request.args match
         case Vector(data) => evaluate(Task(context, data)).value

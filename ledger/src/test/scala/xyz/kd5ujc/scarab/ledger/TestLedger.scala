@@ -7,7 +7,12 @@ import java.security.{KeyPair, KeyPairGenerator, Signature}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.rules.{Counted, Globals, JudgedSts, Ledger, LedgerEnv, Test}
-import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState as EraLedgerState, NewEpochState}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Conway,
+  LedgerState as EraLedgerState,
+  NewEpochState,
+  ShelleyBasedEra
+}
 
 /** Builders for ledger rule tests: parameters per era, funded states, keys that really sign, and
   * transactions assembled as values (no CBOR).
@@ -67,6 +72,20 @@ object TestLedger:
     xyz.kd5ujc.scarab.codec.Cbor
       .encode(xyz.kd5ujc.scarab.codec.Value.UInt(v))
       .fold(e => munit.Assertions.fail(s"uint $v: ${e.message}"), identity)
+
+  /** The era that runs at a protocol major version on the public networks, each era at its usual
+    * version (Alonzo 5 and 6, Babbage 7 and 8, Conway 9 to 11, Dijkstra 12): the era of a case
+    * recorded on one of them, or of a test written against the version alone. Tests of an era at
+    * another version pass their era independently.
+    */
+  def usualEra(protocolMajor: Int): ShelleyBasedEra[?] =
+    if protocolMajor <= 2 then ShelleyBasedEra.SShelley
+    else if protocolMajor == 3 then ShelleyBasedEra.SAllegra
+    else if protocolMajor == 4 then ShelleyBasedEra.SMary
+    else if protocolMajor <= 6 then ShelleyBasedEra.SAlonzo
+    else if protocolMajor <= 8 then ShelleyBasedEra.SBabbage
+    else if protocolMajor <= 11 then ShelleyBasedEra.SConway
+    else ShelleyBasedEra.SDijkstra
 
   def params(protocolMajor: Int): ProtocolParams =
     // none before Babbage (the mirror holds none)
@@ -143,7 +162,9 @@ object TestLedger:
       firstSlotNextEpoch = 5000,
       stabilityWindow = 100,
       updateQuorum = 2,
-      clock = Some(PosixClock.Total(slot => slot * 1000 + 1596059091000L))
+      clock = Some(PosixClock.Total(slot => slot * 1000 + 1596059091000L)),
+      evaluator = xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+      decoder = xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
     )
 
   /** An evaluator whose verdict is fixed: every script succeeds or every script fails. */
@@ -154,8 +175,8 @@ object TestLedger:
         xyz.kd5ujc.scarab.plutus.EvalResult
           .Failure(
             xyz.kd5ujc.scarab.plutus.EvalFailure.Script(
-              xyz.kd5ujc.scarab.plutus
-                .ScriptFailure(new IllegalStateException("scripted failure"), Vector.empty)
+              xyz.kd5ujc.scarab.plutus.ScriptFailure
+                .Thrown(new IllegalStateException("scripted failure"), Vector.empty)
             ),
             ExUnits(1, 1),
             Vector.empty

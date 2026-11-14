@@ -125,7 +125,14 @@ class ForgedChainSetup(val geometry: EpochGeometry):
       Raise[IO, ValidationError],
       Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError]
   ): MirrorRules[IO] =
-    MirrorRules[IO](config, globals, None, None, mirrorEnv.byron)
+    MirrorRules[IO](
+      config,
+      globals,
+      None,
+      None,
+      mirrorEnv.byron,
+      xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
+    )
 
   private def hex(b: Array[Byte]) = Bytes.fromArray(b)
 
@@ -154,8 +161,10 @@ class ForgedChainSetup(val geometry: EpochGeometry):
     val nes = TxKit.native(1)
     nes.copy(
       epoch = vocab(EpochNo.fromBigInt(epoch)),
-      es = nes.es.copy(snapshots = SnapShots(dist, dist, dist, nes.es.snapshots.fee)),
-      pd = PoolDistr.of(dist)
+      es = nes.es.copy(snapshots =
+        SnapShots(dist, dist, dist, nes.es.snapshots.fee, SnapShots.Layout.Node11_1)
+      ),
+      layout = NewEpochState.Layout.Node11_1(PoolDistr.of(dist))
     )
 
   private def vocab[A](e: Either[VocabError, A]): A =
@@ -298,7 +307,14 @@ class ForgedChainSetup(val geometry: EpochGeometry):
             initial
           )
           given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
-          rules = MirrorRules[IO](config, globals, None, None, mirrorEnv.byron)
+          rules = MirrorRules[IO](
+            config,
+            globals,
+            None,
+            None,
+            mirrorEnv.byron,
+            xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
+          )
           mempoolBase <- cats.mtl
             .Raise[IO, NodeError]
             .fromEither(
@@ -308,7 +324,12 @@ class ForgedChainSetup(val geometry: EpochGeometry):
                   MempoolLedger.tick(
                     _,
                     Some(initial.tipRef.fold(BigInt(slots.head.toLong - 1))(_.slot)),
-                    MempoolEnv(globals, geometry)
+                    MempoolEnv(
+                      globals,
+                      geometry,
+                      xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+                      xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+                    )
                   )
                 )
                 .left
@@ -320,7 +341,12 @@ class ForgedChainSetup(val geometry: EpochGeometry):
           mempool <- Mempool.create[IO](
             mempoolBase,
             initial.tipRef.fold(slots.head.toLong - 1)(_.slot.toLong),
-            MempoolEnv(globals, geometry),
+            MempoolEnv(
+              globals,
+              geometry,
+              xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+              xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+            ),
             None,
             MempoolEvents.none[IO]
           )
@@ -350,7 +376,16 @@ class ForgedChainSetup(val geometry: EpochGeometry):
                     .Raise[IO, xyz.kd5ujc.scarab.ledger.NodeError]
                     .fromEither(
                       MempoolLedger
-                        .at(c.state, Some(tip), MempoolEnv(globals, geometry))
+                        .at(
+                          c.state,
+                          Some(tip),
+                          MempoolEnv(
+                            globals,
+                            geometry,
+                            xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
+                            xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
+                          )
+                        )
                         .left
                         .map(xyz.kd5ujc.scarab.ledger.ChainError.MempoolTick(tip.slot + 1, _))
                     )
@@ -365,6 +400,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
           forger <- Forger.create[IO, MirrorState](
             config,
             globals,
+            xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
             p.creds,
             follower,
             mempool,
@@ -389,7 +425,8 @@ class ForgedChainSetup(val geometry: EpochGeometry):
                   globals,
                   None,
                   None,
-                  mirrorEnv.byron
+                  mirrorEnv.byron,
+                  xyz.kd5ujc.scarab.plutus.PlutusBackends.backend
                 )
                 .toOption
                 .get

@@ -49,6 +49,12 @@ class FollowerCommandTest(unittest.TestCase):
             sys.executable, str(follower.ENTRY), "--name", "audit", "follow",
             "--dump-state", "--scala-cpus", "4"])
 
+    def test_plutus_vm_reaches_child_cli_only_when_given(self):
+        with patch.object(follower.subprocess, "Popen") as launch:
+            follower.start_follower("audit", pathlib.Path("/tmp/audit"), plutus_vm="scarab")
+        self.assertEqual(launch.call_args.args[0], [
+            sys.executable, str(follower.ENTRY), "--name", "audit", "follow", "--plutus-vm", "scarab"])
+
     def test_omitted_cpu_limit_preserves_child_cli_default(self):
         with patch.object(follower.subprocess, "Popen") as launch:
             follower.start_follower("audit", pathlib.Path("/tmp/audit"))
@@ -525,10 +531,11 @@ class LoadThreadEndingTest(unittest.TestCase):
     def test_a_system_exit_in_a_comparison_is_recorded_as_its_error(self):
         recorded, whole = [], []
         comparisons = types.SimpleNamespace(record=lambda era, label, result: recorded.append((era, label, result)),
-                                            record_whole=lambda era, label, result: whole.append((era, label, result)))
-        with patch.object(compare, "compare_once_detailed", side_effect=SystemExit("docker exec failed")), \
+                                            record_whole=lambda era, label, result: whole.append((era, label, result)),
+                                            site=util.SINGLE_FOLLOWER)
+        with patch.object(compare, "compare_followers_detailed", side_effect=SystemExit("docker exec failed")), \
                 patch.object(compare, "whole_state", side_effect=SystemExit("docker exec failed")):
-            compare.compare_era("n", "conway", "mid", comparisons)
+            compare.compare_era("n", "conway", "mid", [comparisons])
         self.assertEqual([(e, lbl) for e, lbl, _ in recorded], [("conway", "mid")])
         self.assertIn("SystemExit", recorded[0][2]["error"])
         self.assertEqual([(e, lbl) for e, lbl, _ in whole], [("conway", "mid")])
@@ -850,10 +857,18 @@ class RestartScenarioTest(unittest.TestCase):
 
     def test_the_snapshots_must_be_of_the_current_format(self):
         from devnet.scenarios.restart import format_problem
-        self.assertIsNone(format_problem([b"SCRBSNP8", b"SCRBSNP8"]))
-        self.assertIn("SCRBSNP5", format_problem([b"SCRBSNP8", b"SCRBSNP5"]))
-        self.assertIn("SCRBSNP7", format_problem([b"SCRBSNP8", b"SCRBSNP7"]))
+        self.assertIsNone(format_problem([b"SCRBSNPA", b"SCRBSNPA"]))
+        self.assertIn("SCRBSNP5", format_problem([b"SCRBSNPA", b"SCRBSNP5"]))
+        self.assertIn("SCRBSNP7", format_problem([b"SCRBSNPA", b"SCRBSNP7"]))
+        self.assertIn("SCRBSNP8", format_problem([b"SCRBSNPA", b"SCRBSNP8"]))
+        self.assertIn("SCRBSNP9", format_problem([b"SCRBSNPA", b"SCRBSNP9"]))
         self.assertIn("no snapshot", format_problem([]))
+
+    def test_restart_identity_is_current(self):
+        from devnet.scenarios.restart import identity_problem
+        self.assertIsNone(identity_problem("scarab network identity v9\nmagic 42\n"))
+        self.assertIn("v6", identity_problem("scarab network identity v6\nmagic 42\n"))
+        self.assertIn("no network identity", identity_problem(None))
 
     def test_retired_migration_flag_is_refused_before_starting_a_cluster(self):
         import io
@@ -1664,3 +1679,28 @@ class PeercutPolicyTest(unittest.TestCase):
         for field, bad in [("failure", "Misbehaved"), ("action", "done"),
                            ("peer", "127.0.0.1:3001"), ("event", "reconnecting")]:
             self.assertFalse(peercut.transient_proxy_loss([dict(event, **{field: bad})]))
+
+
+class WaitListeningTest(unittest.TestCase):
+    """Issue 609: the pool scenario starts the Scala node only once the Haskell pools listen."""
+
+    TABLE = ("  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
+             "   0: 0100007F:9C4B 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 1 1\n"
+             "   1: 0100007F:0D16 0100007F:9C4B 01 00000000:00000000 00:00000000 00000000  1000        0 2 1\n")
+
+    def test_only_listening_sockets_count(self):
+        self.assertEqual(cluster.listening_ports(self.TABLE), {0x9C4B})
+
+    def test_returns_once_every_port_listens(self):
+        tables = iter(["  sl  local_address\n", self.TABLE])
+        with patch.object(cluster, "in_ref", side_effect=lambda *_: types.SimpleNamespace(stdout=next(tables))), \
+                patch.object(cluster.time, "sleep"):
+            cluster.wait_listening("n", [0x9C4B])
+
+    def test_a_port_that_never_listens_fails(self):
+        clock = iter(range(0, 1000, 50))
+        with patch.object(cluster, "in_ref", return_value=types.SimpleNamespace(stdout=self.TABLE)), \
+                patch.object(cluster.time, "monotonic", side_effect=lambda: next(clock)), \
+                patch.object(cluster.time, "sleep"):
+            with self.assertRaises(SystemExit):
+                cluster.wait_listening("n", [0x9C4B, 3001], seconds=120)

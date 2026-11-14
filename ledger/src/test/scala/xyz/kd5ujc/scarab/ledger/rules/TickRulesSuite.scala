@@ -7,6 +7,7 @@ import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.TestLedger
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraFixture
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -251,7 +252,10 @@ class TickRulesSuite extends FunSuite:
 
   test("the tick asks the transition of the state before it, with the counter it is given") {
     val enough: Hfc.Transition =
-      p => Option.when(p.update.contains(BigInt(9)) && p.afterVoting >= 3)(p.epoch + 1)
+      p =>
+        Option.when(p.era == Era.Babbage && p.update.contains(BigInt(9)) && p.afterVoting >= 3)(
+          p.epoch + 1
+        )
     val from = EraNes.InEra(ShelleyBasedEra.SBabbage, babbage(conway(5, 10, 2)))
     // the definite update only, of the state before the tick
     assertEquals(Hfc.pending(from, 2L), Hfc.Pending(Era.Babbage, 5, Some(9), 2L))
@@ -261,6 +265,33 @@ class TickRulesSuite extends FunSuite:
     val enteredAt =
       Hfc.tick(globals, enough)(from, 3L, slot).fold(e => fail(s"refused: $e"), identity)
     assertEquals(enteredAt.toEra, Era.Conway)
+  }
+
+  test(
+    "a transition out of Conway translates into Dijkstra, whose EPOCH is refused; without a Dijkstra genesis it is refused"
+  ) {
+    val leaveConway: Hfc.Transition = p => Option.when(p.era == Era.Conway)(BigInt(7))
+    val from = EraNes.InEra(ShelleyBasedEra.SConway, enterConway(babbage(conway(5, 10, 2))))
+    val withGenesis =
+      globals.copy(ledger = globals.ledger.copy(dijkstra = Some(DijkstraFixture.genesis)))
+    // the state is of epoch 6: a slot of epoch 7 crosses its boundary in Dijkstra, one of epoch 8
+    // does not (NEWEPOCH moves only to the next epoch)
+    assertEquals(
+      Hfc
+        .tick(withGenesis, leaveConway)(from, 0L, ok(SlotNo.fromBigInt(first(7) + 10)))
+        .map(_.toEra),
+      Left(TickFailure.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Rules))
+    )
+    assertEquals(
+      Hfc
+        .tick(withGenesis, leaveConway)(from, 0L, ok(SlotNo.fromBigInt(first(8) + 10)))
+        .map(_.toEra),
+      Right(Era.Dijkstra)
+    )
+    assertEquals(
+      Hfc.tick(globals, leaveConway)(from, 0L, ok(SlotNo.fromBigInt(first(8) + 10))).map(_.toEra),
+      Left(TickFailure.NoDijkstraGenesis)
+    )
   }
 
   test("the translation into Conway of 150,000 accounts runs on a 256 KiB stack") {
@@ -297,6 +328,36 @@ class TickRulesSuite extends FunSuite:
     assertEquals(after.es.chainAccount.reserves, coin(1000000 + 3500))
     assertEquals(after.es.ls.utxo.utxo.utxo.toMap, Map(kept))
     assertEquals(after.avvm, ())
+  }
+
+  test(
+    "into Conway, a genesis deposit outside Word64 leaves the vocabulary, as compactCoinOrError aborts"
+  ) {
+    val babbage = NativeRules.stateIn[Babbage](7, Vector.empty)
+    val word64Max = BigInt(2).pow(64) - 1
+    def conway(govActionDeposit: BigInt, drepDeposit: BigInt): Globals =
+      val g = NativeRules.globals(NativeRules.ledgerGlobals)
+      val params = xyz.kd5ujc.scarab.ledger.ConwayParams(
+        drepDeposit,
+        20,
+        govActionDeposit,
+        10,
+        xyz.kd5ujc.scarab.codec.Rational(0)
+      )
+      g.copy(ledger = g.ledger.copy(conway = Some(params)))
+    def outcome(g: Globals): Either[TickFailure, Unit] =
+      Translate.babbageToConway(g, babbage).map(_ => ())
+    assertEquals(outcome(conway(word64Max, word64Max)), Right(()))
+    for (gov, drep) <- List(
+        (word64Max + 1, BigInt(0)),
+        (BigInt(0), word64Max + 1),
+        (BigInt(-1), BigInt(0))
+      )
+    do
+      assert(
+        outcome(conway(gov, drep)).left.exists(_.isInstanceOf[TickFailure.Vocab]),
+        s"$gov $drep"
+      )
   }
 
   test("the hand-over from Byron: the UTxO without the empty outputs, the redeem outputs stashed") {

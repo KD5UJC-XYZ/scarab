@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import cats.Show
+import cats.syntax.all.*
 import java.io.IOException
 import java.nio.channels.ClosedChannelException
 import java.nio.file.{
@@ -14,7 +16,7 @@ import xyz.kd5ujc.scarab.codec.DomainError
 /** The kind of an `IOError` as GHC shows it (`GHC.IO.Exception`, `instance Show IOErrorType`), for
   * the kinds a socket or file system call of the local socket can raise.
   */
-enum IoErrorType(val shown: String):
+enum IoErrorType(val text: String):
   case AlreadyExists extends IoErrorType("already exists")
   case NoSuchThing extends IoErrorType("does not exist")
   case ResourceBusy extends IoErrorType("resource busy")
@@ -27,6 +29,9 @@ enum IoErrorType(val shown: String):
   case OtherError extends IoErrorType("failed")
   case ProtocolError extends IoErrorType("protocol error")
   case UnsupportedOperation extends IoErrorType("unsupported operation")
+
+object IoErrorType:
+  given [A <: IoErrorType]: Show[A] = Show.show(_.text)
 
 /** The Linux `errno` values a call of the local socket can fail with. Each carries its number, its
   * text in the C library the JVM runs on (glibc, what the JDK puts in its exceptions), its text in
@@ -208,17 +213,29 @@ object Errno:
       byGlibc.get(m.stripSuffix(LoopSuffix)).fold(ErrnoCause.Unrecognised(m))(ErrnoCause.Known(_))
     }
 
-/** Why a call failed: its errno, or the JDK's text when that names none. */
+/** Why a call failed: its errno, the JDK's text when that names none, or the kind and description
+  * of an `IOError` that a Haskell library raises itself, before any call, with no errno.
+  */
 enum ErrnoCause:
   case Known(errno: Errno)
   case Unrecognised(text: String)
+  case Described(kind: IoErrorType, description: String)
 
-  /** The kind and the reason of the `IOError`, as GHC shows them (an unknown errno is
-    * `OtherError`).
-    */
-  def shown: String = this match
-    case Known(e)        => s"${e.kind.shown} (${e.musl})"
-    case Unrecognised(t) => s"${IoErrorType.OtherError.shown} ($t)"
+  /** The kind of the `IOError` (an unknown errno is `OtherError`). */
+  def errorType: IoErrorType = this match
+    case Known(e)           => e.kind
+    case Unrecognised(_)    => IoErrorType.OtherError
+    case Described(kind, _) => kind
+
+object ErrnoCause:
+  /** The kind and the reason of the `IOError`, as GHC shows them. */
+  given [A <: ErrnoCause]: Show[A] = Show.show(cause =>
+    val reason = (cause: ErrnoCause) match
+      case Known(e)                  => e.musl
+      case Unrecognised(t)           => t
+      case Described(_, description) => description
+    s"${cause.errorType.show} ($reason)"
+  )
 
 /** The calls of the local socket, with the location their `IOError` names: `removeLink` (the
   * `unlink` of `removeFile`, as the reference's binary names it), `getFileStatus` (unix) and the
@@ -226,6 +243,11 @@ enum ErrnoCause:
   */
 enum SystemCall(val location: String):
   case RemoveLink extends SystemCall("removeLink")
+
+  /** Not a call: unix 2.8.6.0's check, before `removeLink` calls `unlink`, that the path holds no
+    * NUL (`useAsCStringSafe`, `System/Posix/PosixPath/FilePath.hsc` 154-171).
+    */
+  case CheckForInteriorNuls extends SystemCall("checkForInteriorNuls")
   case GetFileStatus extends SystemCall("getFileStatus")
   case Socket extends SystemCall("Network.Socket.socket")
   case Bind extends SystemCall("Network.Socket.bind")
@@ -237,20 +259,22 @@ enum SystemCall(val location: String):
   */
 final case class SystemCallError(call: SystemCall, cause: ErrnoCause, file: Option[String])
     extends DomainError:
+  /** The errno, when it is known. */
+  def errno: Option[Errno] = cause match
+    case ErrnoCause.Known(e) => Some(e)
+    case _                   => None
+
+  /** `isDoesNotExistError`: the kind is `NoSuchThing`. */
+  def doesNotExist: Boolean = cause.errorType == IoErrorType.NoSuchThing
+
+object SystemCallError:
   /** GHC's `show` of the `IOError` (`instance Show IOException`): `<file>: <location>: <kind>
     * (<reason>)`, the file as it is, without quotes.
     */
-  def shown: String = file.fold("")(f => s"$f: ") + s"${call.location}: ${cause.shown}"
+  given Show[SystemCallError] = Show.show(error =>
+    error.file.fold("")(f => s"$f: ") + s"${error.call.location}: ${error.cause.show}"
+  )
 
-  /** The errno, when it is known. */
-  def errno: Option[Errno] = cause match
-    case ErrnoCause.Known(e)        => Some(e)
-    case ErrnoCause.Unrecognised(_) => None
-
-  /** `isDoesNotExistError`: the kind is `NoSuchThing`. */
-  def doesNotExist: Boolean = errno.exists(_.kind == IoErrorType.NoSuchThing)
-
-object SystemCallError:
   /** The failure of `call` on `file` that the JDK reported as `e`. */
   def of(call: SystemCall, file: Option[String])(e: IOException): SystemCallError =
     SystemCallError(call, Errno.of(e), file)

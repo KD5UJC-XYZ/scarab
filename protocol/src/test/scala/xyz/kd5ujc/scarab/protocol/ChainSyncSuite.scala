@@ -242,8 +242,8 @@ class ChainSyncSuite extends munit.FunSuite:
     assert(ChainSyncFixtures.cardanoPoint(Point.Block(UInt64.Zero, b("00"))).isLeft)
     assertEquals(decoded(decodePoint(b("82004100"))), Point.Block(UInt64.Zero, b("00")))
   }
-  test("NtN header codec: every Shelley-based era round-trips") {
-    Era.values.filter(_ != Era.Byron).foreach { era =>
+  test("NtN header codec: every Shelley-based era the node follows round-trips") {
+    Era.values.filter(e => e != Era.Byron && e != Era.Dijkstra).foreach { era =>
       val wire = b(f"82${era.index}%02xd818483c4845414445523e")
       val h = right(NtNHeader.codec.decode(wire))
       assertEquals(h, NtNHeader(era, b("3c4845414445523e"), None))
@@ -285,7 +285,7 @@ class ChainSyncSuite extends munit.FunSuite:
     // Cases in order: unknown era, wrong tag, truncated payload, wrong arity, indefinite array,
     // indefinite bytes, missing Byron wrapper, unknown Byron subtag and trailing bytes.
     Vector(
-      "8207d8184100",
+      "8208d8184100",
       "8206d8174100",
       "8206d81800",
       "8306d818410000",
@@ -303,11 +303,12 @@ class ChainSyncSuite extends munit.FunSuite:
     )
   }
   test("era index and block tag mappings") {
-    assertEquals(Era.values.map(_.index).toVector, Vector(0, 1, 2, 3, 4, 5, 6))
+    assertEquals(Era.values.map(_.index).toVector, Vector(0, 1, 2, 3, 4, 5, 6, 7))
     assertEquals(Era.fromBlockTag(0), Some(Era.Byron))
     assertEquals(Era.fromBlockTag(1), Some(Era.Byron))
-    assertEquals((2 to 7).flatMap(t => Era.fromBlockTag(t)), Era.values.drop(1).toSeq)
-    assertEquals(Era.fromBlockTag(8), None)
+    assertEquals((2 to 8).flatMap(t => Era.fromBlockTag(t)), Era.values.drop(1).toSeq)
+    assertEquals(Era.fromBlockTag(9), None)
+    assertEquals(Era.fromIndex(8), None)
     assertEquals(
       Era.values.filter(_.usesTPraos).toSeq,
       Seq(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo)

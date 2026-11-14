@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
 import xyz.kd5ujc.scarab.ledger.state.{NonZero, Word64}
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 enum LedgerDbBackend:
   case V2InMemory
@@ -17,7 +18,7 @@ enum LedgerQueryBatchSize:
   case Default
   case Requested(size: Word64)
 
-/** Mithril defaults: LedgerDB/Snapshots.hs:672-690 at consensus 2416493b. A default interval is
+/** Mithril defaults: LedgerDB/Snapshots.hs:665-683 at consensus 82ecba32. A default interval is
   * resolved to 40*k slots by the reference; integer durations are seconds, of either sign.
   */
 final case class LedgerSnapshotSettings(
@@ -26,8 +27,16 @@ final case class LedgerSnapshotSettings(
     slotOffset: Word64 = Word64.zero,
     rateLimitSeconds: BigInt = 600,
     minimumDelaySeconds: BigInt = 300,
-    maximumDelaySeconds: BigInt = 21600
+    maximumDelaySeconds: BigInt = 600
 )
+
+object LedgerSnapshotSettings:
+  /** The selected binary's Mithril policy: consensus 82ecba32 `Snapshots.hs:665-683` and 2416493b
+    * `Snapshots.hs:673-691`.
+    */
+  def defaults(build: ReferenceBuild): LedgerSnapshotSettings = build match
+    case ReferenceBuild.Release11_1   => LedgerSnapshotSettings()
+    case ReferenceBuild.LeiosB004fe0c => LedgerSnapshotSettings(maximumDelaySeconds = 21600)
 
 /** POM.hs:518-608 at cardano-node b004fe0c. These describe the reference backend, not Scarab's
   * store. Explicit settings are retained and reported as unused.
@@ -47,7 +56,11 @@ object LedgerDbSettings:
   private val snapshotKeys =
     Set("SnapshotInterval", "NumOfDiskSnapshots", "SlotOffset", "RateLimit", "MinDelay", "MaxDelay")
 
-  private[node] def parse(k: ConfigFields): Either[ConfigError, LedgerDbSettings] =
+  private[node] def parse(
+      k: ConfigFields,
+      build: ReferenceBuild
+  ): Either[ConfigError, LedgerDbSettings] =
+    val defaults = LedgerSnapshotSettings.defaults(build)
     for
       interval <- k.nonZeroWord64("SnapshotInterval")
       number <- k.word64("NumOfDiskSnapshots")
@@ -60,7 +73,7 @@ object LedgerDbSettings:
         case None =>
           Right(
             LedgerDbSettings(
-              snapshots = LedgerSnapshotSettings(
+              snapshots = defaults.copy(
                 interval.fold[LedgerSnapshotInterval](LedgerSnapshotInterval.Default)(
                   LedgerSnapshotInterval.Requested(_)
                 ),
@@ -70,7 +83,7 @@ object LedgerDbSettings:
             )
           )
         case Some(fields) =>
-          readDatabase(fields, interval, number).map(
+          readDatabase(fields, interval, number, defaults).map(
             _.copy(deprecated = deprecated, configured = true)
           )
     yield result
@@ -78,7 +91,8 @@ object LedgerDbSettings:
   private def readDatabase(
       k: ConfigFields,
       topInterval: Option[NonZero[Word64]],
-      topNumber: Option[Word64]
+      topNumber: Option[Word64],
+      defaults: LedgerSnapshotSettings
   ): Either[ConfigError, LedgerDbSettings] =
     for
       query <- k.word64("QueryBatchSize")
@@ -95,7 +109,7 @@ object LedgerDbSettings:
             )
           )
       snapshots <- k.value("Snapshots") match
-        case None => readSnapshots(k, topInterval, topNumber)
+        case None => readSnapshots(k, topInterval, topNumber, defaults)
         case Some(value) =>
           val shadowed = snapshotKeys.filter(k.value(_).nonEmpty)
           for
@@ -109,7 +123,7 @@ object LedgerDbSettings:
               )
             )
             settings <- value.asString match
-              case Some("Mithril") => Right(LedgerSnapshotSettings())
+              case Some("Mithril") => Right(defaults)
               case Some(other) =>
                 Left(
                   ConfigError(ConfigProblem.Selection("LedgerDB.Snapshots", other, Set("Mithril")))
@@ -117,7 +131,7 @@ object LedgerDbSettings:
               case None =>
                 ConfigFields
                   .read("LedgerDB.Snapshots", value)
-                  .flatMap(readSnapshots(_, topInterval, topNumber))
+                  .flatMap(readSnapshots(_, topInterval, topNumber, defaults))
           yield settings
     yield LedgerDbSettings(
       backend,
@@ -130,7 +144,8 @@ object LedgerDbSettings:
   private def readSnapshots(
       k: ConfigFields,
       topInterval: Option[NonZero[Word64]],
-      topNumber: Option[Word64]
+      topNumber: Option[Word64],
+      defaults: LedgerSnapshotSettings
   ): Either[ConfigError, LedgerSnapshotSettings] =
     for
       interval <- k.nonZeroWord64("SnapshotInterval")
@@ -146,7 +161,7 @@ object LedgerDbSettings:
             (lo, hi),
             ConfigFields.error(ConfigFieldError.SnapshotDelayRange(lo, hi))
           )
-        case _ => Right((BigInt(300), BigInt(21600)))
+        case _ => Right((defaults.minimumDelaySeconds, defaults.maximumDelaySeconds))
     // POM uses Data.Monoid.Last: the present nested value wins; both values are parsed.
     yield LedgerSnapshotSettings(
       interval

@@ -14,6 +14,7 @@ sealed abstract class Mary extends EraTag
 sealed abstract class Alonzo extends EraTag
 sealed abstract class Babbage extends EraTag
 sealed abstract class Conway extends EraTag
+sealed abstract class Dijkstra extends EraTag
 
 /** The closed witness of an era: matching on it refines `E`, so the match types below reduce in the
   * branch with no cast, and the compiler checks that every era is handled. Era-generic code takes
@@ -31,21 +32,31 @@ enum ShelleyBasedEra[E <: EraTag]:
   case SAlonzo extends ShelleyBasedEra[Alonzo]
   case SBabbage extends ShelleyBasedEra[Babbage]
   case SConway extends ShelleyBasedEra[Conway]
+  case SDijkstra extends ShelleyBasedEra[Dijkstra]
+
+  /** The era is `other` or a later one (`AtLeastEra` in the reference's constraints): the order of
+    * the eras is that of the cases.
+    */
+  def atLeast[F <: EraTag](other: ShelleyBasedEra[F]): Boolean = ordinal >= other.ordinal
 
   // Which shape each type family takes in this era, with the proof. Matching on one case refines `E`
   // to that era, so the families reduce there; this is the one place that lists the eras of each
   // shape, and era-generic code works on the proofs instead of matching on eras.
 
   /** The certificate, account, instant-stake and governance families of this era, with their
-    * shapes: Shelley's records up to Babbage, Conway's from Conway.
+    * shapes: Shelley's records up to Babbage, Conway's from Conway. Dijkstra's are Conway's records
+    * (cardano-ledger 9df9f98c
+    * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/State/CertState.hs:23`, `State/Account.hs:13`,
+    * `State/Stake.hs:19`, `Governance.hs:29`).
     */
   def shapes: Either[ShelleyShapes[E], ConwayShapes[E]] = this match
-    case SShelley => Left(ShelleyShapes(summon, summon, summon, summon))
-    case SAllegra => Left(ShelleyShapes(summon, summon, summon, summon))
-    case SMary    => Left(ShelleyShapes(summon, summon, summon, summon))
-    case SAlonzo  => Left(ShelleyShapes(summon, summon, summon, summon))
-    case SBabbage => Left(ShelleyShapes(summon, summon, summon, summon))
-    case SConway  => Right(ConwayShapes(summon, summon, summon, summon))
+    case SShelley  => Left(ShelleyShapes(summon, summon, summon, summon))
+    case SAllegra  => Left(ShelleyShapes(summon, summon, summon, summon))
+    case SMary     => Left(ShelleyShapes(summon, summon, summon, summon))
+    case SAlonzo   => Left(ShelleyShapes(summon, summon, summon, summon))
+    case SBabbage  => Left(ShelleyShapes(summon, summon, summon, summon))
+    case SConway   => Right(ConwayShapes(summon, summon, summon, summon))
+    case SDijkstra => Right(ConwayShapes(summon, summon, summon, summon))
 
   /** `CertState[E]`: Shelley's record up to Babbage, Conway's from Conway. */
   def cert: EraShape[CertState[E], ShelleyCertState, ConwayCertState] =
@@ -65,12 +76,13 @@ enum ShelleyBasedEra[E <: EraTag]:
 
   /** `StashedAVVM[E]`: the UTxO in Shelley, nothing after. */
   def stashedAvvm: EraShape[StashedAVVM[E], UtxoTables, Unit] = this match
-    case SShelley => Left(summon)
-    case SAllegra => Right(summon)
-    case SMary    => Right(summon)
-    case SAlonzo  => Right(summon)
-    case SBabbage => Right(summon)
-    case SConway  => Right(summon)
+    case SShelley  => Left(summon)
+    case SAllegra  => Right(summon)
+    case SMary     => Right(summon)
+    case SAlonzo   => Right(summon)
+    case SBabbage  => Right(summon)
+    case SConway   => Right(summon)
+    case SDijkstra => Right(summon)
 
 object ShelleyBasedEra:
   def apply[E <: EraTag](using era: ShelleyBasedEra[E]): ShelleyBasedEra[E] = era
@@ -81,6 +93,7 @@ object ShelleyBasedEra:
   given ShelleyBasedEra[Alonzo] = SAlonzo
   given ShelleyBasedEra[Babbage] = SBabbage
   given ShelleyBasedEra[Conway] = SConway
+  given ShelleyBasedEra[Dijkstra] = SDijkstra
 
   given [E <: EraTag]: Show[ShelleyBasedEra[E]] = Show.show(_.toString)
 
@@ -132,51 +145,56 @@ extension [F, A, B](shape: EraShape[F, A, B])
 
 /** `CertState era`: the certificate state grew the voting state in Conway. */
 type CertState[E <: EraTag] = E match
-  case Shelley => ShelleyCertState
-  case Allegra => ShelleyCertState
-  case Mary    => ShelleyCertState
-  case Alonzo  => ShelleyCertState
-  case Babbage => ShelleyCertState
-  case Conway  => ConwayCertState
+  case Shelley  => ShelleyCertState
+  case Allegra  => ShelleyCertState
+  case Mary     => ShelleyCertState
+  case Alonzo   => ShelleyCertState
+  case Babbage  => ShelleyCertState
+  case Conway   => ConwayCertState
+  case Dijkstra => ConwayCertState
 
 /** `Accounts era`: the stake accounts lost the pointer map and gained the DRep in Conway. */
 type Accounts[E <: EraTag] = E match
-  case Shelley => ShelleyAccounts
-  case Allegra => ShelleyAccounts
-  case Mary    => ShelleyAccounts
-  case Alonzo  => ShelleyAccounts
-  case Babbage => ShelleyAccounts
-  case Conway  => ConwayAccounts
+  case Shelley  => ShelleyAccounts
+  case Allegra  => ShelleyAccounts
+  case Mary     => ShelleyAccounts
+  case Alonzo   => ShelleyAccounts
+  case Babbage  => ShelleyAccounts
+  case Conway   => ConwayAccounts
+  case Dijkstra => ConwayAccounts
 
 /** `InstantStake era`: the pointer stake is gone in Conway. */
 type InstantStake[E <: EraTag] = E match
-  case Shelley => ShelleyInstantStake
-  case Allegra => ShelleyInstantStake
-  case Mary    => ShelleyInstantStake
-  case Alonzo  => ShelleyInstantStake
-  case Babbage => ShelleyInstantStake
-  case Conway  => ConwayInstantStake
+  case Shelley  => ShelleyInstantStake
+  case Allegra  => ShelleyInstantStake
+  case Mary     => ShelleyInstantStake
+  case Alonzo   => ShelleyInstantStake
+  case Babbage  => ShelleyInstantStake
+  case Conway   => ConwayInstantStake
+  case Dijkstra => ConwayInstantStake
 
 /** `GovState era`: the governance state of Conway replaces the proposed protocol-parameter updates.
   */
 type GovState[E <: EraTag] = E match
-  case Shelley => ShelleyGovState
-  case Allegra => ShelleyGovState
-  case Mary    => ShelleyGovState
-  case Alonzo  => ShelleyGovState
-  case Babbage => ShelleyGovState
-  case Conway  => ConwayGovState
+  case Shelley  => ShelleyGovState
+  case Allegra  => ShelleyGovState
+  case Mary     => ShelleyGovState
+  case Alonzo   => ShelleyGovState
+  case Babbage  => ShelleyGovState
+  case Conway   => ConwayGovState
+  case Dijkstra => ConwayGovState
 
 /** `StashedAVVMAddresses era`: the UTxO (the same opaque handle as the main one) in Shelley, `()`
   * after (`LedgerState/Types.hs:357-359`).
   */
 type StashedAVVM[E <: EraTag] = E match
-  case Shelley => UtxoTables
-  case Allegra => Unit
-  case Mary    => Unit
-  case Alonzo  => Unit
-  case Babbage => Unit
-  case Conway  => Unit
+  case Shelley  => UtxoTables
+  case Allegra  => Unit
+  case Mary     => Unit
+  case Alonzo   => Unit
+  case Babbage  => Unit
+  case Conway   => Unit
+  case Dijkstra => Unit
 
 /** `Eq` and `Show` of the types the families select, by case analysis on the witness. They cannot
   * be found by implicit search from an abstract `E` (a match type has no implicit scope to look

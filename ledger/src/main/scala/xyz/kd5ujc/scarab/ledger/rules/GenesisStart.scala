@@ -45,9 +45,13 @@ enum GenesisStartError extends DomainError derives Show:
   /** The era the chain starts in is not reached by the translations from Shelley. */
   case UnreachableEra(era: Era)
 
+  /** A part of the Dijkstra era this build does not implement yet. */
+  case NotYet(part: xyz.kd5ujc.scarab.protocol.DijkstraNotYet)
+
 object GenesisStartError:
   private given Show[node.TxIn] = Show.fromToString
   private given Show[Era] = Show.fromToString
+  private given Show[xyz.kd5ujc.scarab.protocol.DijkstraNotYet] = Show.fromToString
 
 /** What the genesis files inject into the state of the era a chain starts in: the
   * `TransitionConfig` data of the reference that is only for test networks (`tcInitialFundsL`,
@@ -300,6 +304,11 @@ object GenesisStart:
       era: ShelleyBasedEra[E]
   ): Either[GenesisStartError, NewEpochState[E]] =
     for
+      _ <- Either.cond(
+        era != ShelleyBasedEra.SDijkstra,
+        (),
+        GenesisStartError.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Genesis)
+      )
       // Conway resolves its governance sources before the Shelley funds/staking guard
       // (Conway/Transition.hs:166-171); Shelley resolves pools/stake after it (252-260).
       drepsSource <- era match
@@ -325,6 +334,9 @@ object GenesisStart:
         case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
             ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
           shelleyStakeCredentials[E](stake, pooled)
+        // refused at the start of the injection
+        case ShelleyBasedEra.SDijkstra =>
+          Left(GenesisStartError.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Genesis))
       ): Either[GenesisStartError, NewEpochState[E]]
       reset <- resetStakeDistribution(staked).leftMap(GenesisStartError.Vocab(_))
     yield reset
@@ -363,6 +375,8 @@ object GenesisStart:
     val alonzoOnwards = era match
       case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary  => false
       case ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway => true
+      // `instance AlonzoEraTransition DijkstraEra` (9df9f98c `Dijkstra/Transition.hs:70`)
+      case ShelleyBasedEra.SDijkstra => true
     if !alonzoOnwards || injections.costModels.isEmpty then nes
     else
       val ls = nes.es.ls
@@ -556,6 +570,6 @@ object GenesisStart:
     Right(
       nes.copy(
         es = nes.es.copy(snapshots = nes.es.snapshots.copy(mark = mark)),
-        pd = PoolDistr.of(mark)
+        layout = NewEpochState.Layout.Node11_1(PoolDistr.of(mark))
       )
     )

@@ -41,6 +41,10 @@ class VerdictCase(unittest.TestCase):
                 self.assertIn(reason, decided.reason)
 
 
+def no_sleep(seconds):
+    raise AssertionError(f"slept {seconds}s for a pull request whose mergeable state was known")
+
+
 class MergeCase(unittest.TestCase):
     def test_the_merge_is_pinned_to_the_checked_head(self):
         calls = []
@@ -52,15 +56,89 @@ class MergeCase(unittest.TestCase):
             if args[:2] == ["pr", "view"]:
                 return json.dumps(pr())
             return ""
-        self.assertIn("merged #77", rs.merge("scarab-sync", False, run))
-        self.assertEqual(calls[-1], ["pr", "merge", "77", "--repo", rs.REPOSITORY, "--squash",
+        self.assertIn("merged #77", rs.merge("scarab-sync", False, run, no_sleep))
+        self.assertEqual(calls[-1], ["pr", "merge", "77", "--repo", rs.REPOSITORY, "--squash", "--admin",
                                      "--match-head-commit", "a" * 40])
         calls.clear()
-        self.assertIn("would merge #77", rs.merge("scarab-sync", True, run))
+        self.assertIn("would merge #77", rs.merge("scarab-sync", True, run, no_sleep))
+        self.assertFalse(any(c[:2] == ["pr", "merge"] for c in calls))
+
+    def test_an_unknown_mergeable_state_is_read_again(self):
+        answers = iter(["UNKNOWN", "UNKNOWN", "MERGEABLE"])
+        calls, slept = [], []
+
+        def run(args):
+            calls.append(list(args))
+            if args[:2] == ["pr", "list"]:
+                return json.dumps([{"number": 77}])
+            if args[:2] == ["pr", "view"]:
+                return json.dumps(pr(mergeable=next(answers)))
+            return ""
+        self.assertIn("merged #77", rs.merge("scarab-sync", False, run, slept.append))
+        self.assertEqual(sum(c[:2] == ["pr", "view"] for c in calls), 3)
+        self.assertEqual(slept, [rs.MERGEABLE_WAIT_SECONDS] * 2)
+
+    def test_a_state_that_stays_unknown_leaves_it_open(self):
+        calls, slept = [], []
+
+        def run(args):
+            calls.append(list(args))
+            if args[:2] == ["pr", "list"]:
+                return json.dumps([{"number": 77}])
+            return json.dumps(pr(mergeable="UNKNOWN"))
+        self.assertIn("left open: GitHub reports it UNKNOWN", rs.merge("scarab-sync", False, run, slept.append))
+        self.assertEqual(sum(c[:2] == ["pr", "view"] for c in calls), rs.MERGEABLE_ATTEMPTS)
+        self.assertEqual(len(slept), rs.MERGEABLE_ATTEMPTS - 1)
         self.assertFalse(any(c[:2] == ["pr", "merge"] for c in calls))
 
     def test_no_open_pull_request_is_nothing_to_do(self):
-        self.assertIn("no open", rs.merge("scarab-sync", False, lambda args: "[]"))
+        self.assertIn("no open", rs.merge("scarab-sync", False, lambda args: "[]", no_sleep))
+
+
+MAIN_ONLY = {"name": "roadmap-sync", "deployment_branch_policy": {"protected_branches": False,
+                                                                   "custom_branch_policies": True}}
+
+
+class EnvironmentCase(unittest.TestCase):
+    def test_an_environment_that_deploys_from_main_alone_may_start_the_job(self):
+        self.assertTrue(rs.environment_verdict([MAIN_ONLY], [{"type": "branch", "name": "main"}]).merge)
+
+    def test_anything_else_skips_the_job(self):
+        for environments, policies, reason in [
+            ([], [], "does not exist"),
+            ([dict(MAIN_ONLY, name="release-prod")], [], "does not exist"),
+            ([dict(MAIN_ONLY, deployment_branch_policy=None)], [], "selected branches"),
+            ([dict(MAIN_ONLY, deployment_branch_policy={"protected_branches": True, "custom_branch_policies": False})],
+             [], "selected branches"),
+            ([MAIN_ONLY], [], "not from main alone"),
+            ([MAIN_ONLY], [{"type": "branch", "name": "main"}, {"type": "branch", "name": "*"}], "not from main alone"),
+            ([MAIN_ONLY], [{"type": "tag", "name": "main"}], "not from main alone"),
+        ]:
+            with self.subTest(reason=reason, policies=policies):
+                decided = rs.environment_verdict(environments, policies)
+                self.assertFalse(decided.merge)
+                self.assertIn(reason, decided.reason)
+
+    def test_a_missing_environment_is_not_asked_for_its_policies(self):
+        calls = []
+
+        def run(args):
+            calls.append(list(args))
+            return "[]"
+        self.assertIn("does not exist", rs.environment(run).reason)
+        self.assertEqual(len(calls), 1)
+
+    def test_an_existing_environment_is_judged_by_its_branch_policies(self):
+        calls = []
+
+        def run(args):
+            calls.append(list(args))
+            if args[1].endswith("/deployment-branch-policies"):
+                return json.dumps([{"type": "branch", "name": "main"}])
+            return json.dumps([MAIN_ONLY])
+        self.assertTrue(rs.environment(run).merge)
+        self.assertEqual([c[1] for c in calls], [f"repos/{rs.REPOSITORY}/environments",
+                                                 f"repos/{rs.REPOSITORY}/environments/roadmap-sync/deployment-branch-policies"])
 
 
 if __name__ == "__main__":

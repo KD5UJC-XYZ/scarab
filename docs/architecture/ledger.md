@@ -81,8 +81,13 @@ follower (no Docker); `EpochGeometrySuite` has the era-history properties.
 
 ## Ledger: Shelley to Babbage
 
-`MirrorRules` applies the full ledger to every Shelley-based block, on the Haskell-shaped, era-indexed state (`ledger/rules/`; the flat rules and state of the first versions were removed in J2.9); era behaviour follows the protocol
-major version of the parameters in force (Allegra 3, Mary 4, Alonzo 5, Babbage 7, Conway 9).
+`MirrorRules` applies the full ledger to every Shelley-based block, on the Haskell-shaped, era-indexed state (`ledger/rules/`; the flat rules and state of the first versions were removed in J2.9). The rule of each
+era is chosen by the era witness (`PreConway[E]`, `ShelleyBasedEra[E]`), and UTXO's and UTXOW's checks follow the era whatever the
+protocol version, as the reference's rule of each era does (#867, #880): a chain that starts an era by `Test<Era>HardForkAtEpoch`
+keeps the version of the era before it. UTXOS and BBODY follow the era too (#881, #882), Conway's LEDGER tests the
+bootstrap phase as the reference does (#885), and the script contexts and the protocol-parameter updates follow the era
+(#883, #884). The reference's own version tests (`hardfork*`) stay
+tests of the version.
 
 - **Decoding** (`ledger/Tx.scala`, `Scripts.scala`): transaction bodies of every era (keys 0-18),
   witness sets (vkey, bootstrap, native and Plutus scripts, datums, redeemers), outputs in legacy and
@@ -92,6 +97,11 @@ major version of the parameters in force (Allegra 3, Mary 4, Alonzo 5, Babbage 7
   bootstrap witnesses, native scripts, required signers, redeemers and datums, auxiliary data hash),
   DELEGS (registration, delegation, pools, genesis delegation, MIR), PPUP (`ledger/UpdateChecks.scala`). The fee size
   counts the array header, body, witnesses and auxiliary data, not the `is_valid` byte.
+- **Parameters** (`ProtocolParams`, `UpdateChecks`): PPUP and UPEC apply an update in the era
+  that proposed it, so key 17 is the cost per UTxO word in Alonzo and per byte in Babbage, whatever
+  the protocol version (#884). Only `Translate.alonzoToBabbage` divides words into bytes, including
+  the future parameters and both stored proposal maps (`ParamUpdate.toBabbage`). BBODY reads the era's `ppDG`: `d` through Alonzo and zero from Babbage;
+  the node's TPraos header views read `d` through Alonzo too.
 - **Epoch boundary** (`ledger/rules/Epoch.scala`, `Snap.scala`, `Rewards.scala`, `Rupd.scala`): reward application (pre-Babbage prefilter against the
   accounts registered when the calculation started, so unclaimed rewards return to the reserves),
   MIR, SNAP with pointer-address stake, pool re-registration and retirement, parameter update
@@ -116,10 +126,10 @@ major version of the parameters in force (Allegra 3, Mary 4, Alonzo 5, Babbage 7
 
 ## Conway
 
-`ledger/rules/Ledger.scala` (with `Gov.scala`, `Certs.scala` and `ConwayTx.scala`) is the LEDGER rule for protocol versions 9 and later (Preview runs 11).
+`ledger/rules/Ledger.scala` (with `Gov.scala`, `Certs.scala` and `ConwayTx.scala`) is Conway's LEDGER rule, selected by the era.
 For a phase-2 valid transaction it follows the ledger's order: treasury value and reference-script
-size checks, the withdrawals (key accounts must be delegated to a DRep from version 10; a withdrawal
-takes the whole balance), the DRep expiry updates, CERTS, GOV; UTXOW (scripts provided, needed and not
+size checks, the withdrawals (key accounts must be delegated to a DRep except in the bootstrap
+phase at protocol version 9; a withdrawal takes the whole balance), the DRep expiry updates, CERTS, GOV; UTXOW (scripts provided, needed and not
 extraneous, datums, redeemers, vkey and bootstrap witnesses, the script data hash), UTXO (validity
 interval, fee, value conservation, collateral) and UTXOS (phase 2). A transaction flagged invalid
 consumes its collateral and nothing else.
@@ -202,14 +212,19 @@ forger.
   rules; the default is at most four workers. Mempool single-transaction validation retains its
   serial interpreter. See [the design](../design/parallel-plutus.md) and ADR 0018.
 - **Script context** (`ledger/ScriptContexts.scala`, `ledger/Purpose.scala`): ours, written against
-  the ledger's `Plutus/TxInfo.hs` modules. V1 and V2 `TxInfo` (V1 rejects inline datums, reference
-  scripts and reference inputs; V2 adds reference inputs, redeemers and a datum map; withdrawals in
-  Plutus credential order; Byron outputs are dropped before Babbage and an error from it), V3 `TxInfo`
+  the ledger's `Plutus/TxInfo.hs` modules, selected by the ledger era carried through UTXOS and
+  `Phase2`, whatever the protocol version. V1 rejects inline datums; Babbage's V1 also rejects
+  reference scripts and reference inputs, which Conway's allows. V2 adds reference inputs,
+  redeemers and a datum map; V1/V2 withdrawals follow Plutus credential order. Alonzo drops Byron
+  outputs, while Babbage and later eras refuse them. V3 `TxInfo`
   and `ScriptContext` (plain transaction ids, ledger-order withdrawals, redeemer and `ScriptInfo`,
   votes, proposals, donation and treasury). Validity intervals are converted to POSIX milliseconds with
   the era history and the system start (`EpochGeometry.slotStart`); the upper bound of an interval
   without a lower bound is inclusive before Conway and exclusive from it. Purposes are spending,
-  minting, certifying, rewarding, voting and proposing, in the ledger's orders.
+  minting, certifying, rewarding, voting and proposing, in the ledger's orders. Alonzo and Babbage
+  reuse a duplicate certificate's first pointer; Conway and Dijkstra use its own position. The
+  bootstrap-phase and protocol-11 checks, and the version handed to the evaluator, remain version
+  tests (`ScriptContextEraSuite`, `ScriptContextUsualVersionSuite`; #883).
 - **Availability** (`plutus/PlutusAvailability.scala`): the builtins and UPLC program versions a script
   may use in each (language, protocol major), transcribed from plutus-ledger-api
   (`Common/Versions.hs`). `ScalusEvaluator` rejects a script that uses another builtin as a decode

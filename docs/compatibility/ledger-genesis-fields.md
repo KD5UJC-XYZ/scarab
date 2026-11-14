@@ -14,10 +14,10 @@ A required field is required, of the type it is read with: the `Word16`, `Word32
 
 ## Evidence
 
-`GenesisSchemaSuite`: 279 retained reference cases ([cases and pins](../../fixtures/reference/genesis-fields/README.md)):
+`GenesisSchemaSuite`: 301 retained reference cases ([cases and pins](../../fixtures/reference/genesis-fields/README.md)):
 - 61 whole genesis files of the repository;
 - every field of the preview files removed or given another JSON type;
-- the values the types decide;
+- the values the types decide, among them the Shelley fees, deposits and minimums, read as `CompactForm Coin` (`Word64`), and the Conway deposits, an unbounded `Coin` until the upgrade into Conway compacts them (#573);
 - the optional fields and the map entries.
 
 Scarab accepts exactly what the reference accepts. A removed field, or one of another type, is refused at its own path. Every accepted file then passes every reader the node runs after the check. For a Shelley file, the parameters and the update quorum read are the reference's.

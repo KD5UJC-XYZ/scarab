@@ -8,13 +8,22 @@ import fs2.io.file.Path
 import io.circe.Json
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
 import xyz.kd5ujc.scarab.ledger.state.SlotNo
+import xyz.kd5ujc.scarab.node.ReferenceBuildFlag
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.LedgerSnapshotExport
 
 object LedgerSnapshotExportCommand:
-  val Usage = "usage: export-ledger-snapshot --db <dir> --out <ledger dir> [--slot N]"
-  private val Flags = Set("--db", "--out", "--slot")
+  val Usage =
+    "usage: export-ledger-snapshot --db <dir> --out <ledger dir> [--slot N] [--reference-build <build>]\n" +
+      "--reference-build names the build the output is for; the snapshot's recorded build must be of its layout, nothing is converted. " + ReferenceBuildFlag.Help
+  private val Flags = Set("--db", "--out", "--slot", "--reference-build")
 
-  def parse(args: List[String]): Either[ConfigError, LedgerSnapshotExport.Config] =
+  /** The output and the reference build it is for (`--reference-build`): its codec is taken at
+    * [[run]], after the build is logged.
+    */
+  final case class Options(config: LedgerSnapshotExport.Config, build: ReferenceBuild)
+
+  def parse(args: List[String]): Either[ConfigError, Options] =
     def bad[A](problem: ConfigProblem): Either[ConfigError, A] = Left(
       ConfigError(ConfigProblem.WithUsage(problem, Usage))
     )
@@ -57,26 +66,32 @@ object LedgerSnapshotExportCommand:
             .leftMap(_ => ConfigError(ConfigProblem.FlagValue("--slot", text)))
         yield slot
       }
-    yield LedgerSnapshotExport.Config(db, out, slot)
+      build <- ReferenceBuildFlag.parse(values.get("--reference-build"), Usage)
+    yield Options(LedgerSnapshotExport.Config(db, out, slot), build)
 
   def run(args: List[String]): IO[ExitCode] = parse(args) match
     case Left(error) => IO.println(error.message).as(ExitCode(2))
-    case Right(config) =>
-      Handle
-        .allow[LedgerSnapshotExport.Error](LedgerSnapshotExport.run[IO](config).map(Some(_)))
-        .rescue(error => log("error", "message" -> Json.fromString(error.message)).as(None))
-        .flatMap {
-          case None => IO.pure(ExitCode(1))
-          case Some(report) =>
-            log(
-              "done",
-              "slot" -> Json.fromBigInt(report.anchor.slot),
-              "hash" -> Json.fromString(report.anchor.hash.hex),
-              "era" -> Json.fromString(report.era.toString),
-              "outputs" -> Json.fromLong(report.outputs),
-              "directory" -> Json.fromString(report.directory.toString)
-            ).as(ExitCode.Success)
-        }
+    case Right(options) =>
+      log("referenceBuild", ReferenceBuildFlag.fields(options.build)*) *>
+        exported(options.config.copy(layout = ReferenceBuildFlag.layout(options.build)))
+
+  private def exported(config: LedgerSnapshotExport.Config): IO[ExitCode] =
+    Handle
+      .allow[LedgerSnapshotExport.Error](LedgerSnapshotExport.run[IO](config).map(Some(_)))
+      .rescue(error => log("error", "message" -> Json.fromString(error.message)).as(None))
+      .flatMap {
+        case None => IO.pure(ExitCode(1))
+        case Some(report) =>
+          log(
+            "done",
+            "slot" -> Json.fromBigInt(report.anchor.slot),
+            "hash" -> Json.fromString(report.anchor.hash.hex),
+            "era" -> Json.fromString(report.era.toString),
+            "outputs" -> Json.fromLong(report.outputs),
+            "directory" -> Json.fromString(report.directory.toString),
+            "referenceBuild" -> Json.fromString(report.build.name)
+          ).as(ExitCode.Success)
+      }
 
   private def log(event: String, fields: (String, Json)*): IO[Unit] =
     IO.println(

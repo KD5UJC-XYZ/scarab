@@ -39,7 +39,7 @@ The hot sessions report to `PeerMetrics` on the per-header and per-block path: o
 batch (the slots of its roll-forwards, one arrival time) and one `BlocksArrived` per BlockFetch request, each a single
 `Ref.update` of an immutable value (two 180-slot sorted maps and two small registries). Mainnet applies about 25 blocks a second.
 
-**Micro-benchmark** (`node/Test/runMain xyz.kd5ujc.scarab.node.PeerMetricsBench`, one JVM, three interleaved rounds, steady
+**Micro-benchmark** (`tools/runMain xyz.kd5ujc.scarab.node.PeerMetricsBench`, one JVM, three interleaved rounds, steady
 state: full boards, 20 peers; median ns after warm-up; the machine was loaded by a devnet and two followers). The first round
 is cold JIT, the last two are the figures:
 
@@ -79,8 +79,8 @@ retries on a 20-peer value of this size costs microseconds, once per batch).
 
 The multiplexer replaces an SDU-counted blocking ingress queue with a byte-counted queue that fails an
 oversized peer without blocking unrelated protocols. Each background fiber returns a closed outcome to
-its owner. `network/Test/runMain xyz.kd5ujc.scarab.network.MuxThroughputBench` measures messages over an
-in-memory bearer with a bounded credit window; `node/Test/runMain
+its owner. `tools/runMain xyz.kd5ujc.scarab.network.MuxThroughputBench` measures messages over an
+in-memory bearer with a bounded credit window; `tools/runMain
 xyz.kd5ujc.scarab.node.FiberBoundaryBench` measures the error scope and pool-attribution race.
 
 Docker JDK 21.0.11, four active processors, shared loaded host, October 18 2026. The same benchmark source
@@ -222,9 +222,9 @@ bound to `3819a43af`.
 ## 39. Received-forest selection and idle decisions (#309 review)
 
 Measured on Euler on 2026-10-22 UTC, Docker JDK 21.0.11 / Scala 3.3.8 / sbt 1.10.7,
-using [SelectionReviewBenchmark](../../node/src/test/scala/xyz/kd5ujc/scarab/node/SelectionReviewBenchmark.scala)
+using [SelectionReviewBenchmark](../../tools/src/main/scala/xyz/kd5ujc/scarab/node/SelectionReviewBenchmark.scala)
 at `b507f895b`. Reproduce with
-`bash scripts/sbtw "node/Test/runMain xyz.kd5ujc.scarab.node.SelectionReviewBenchmark"`
+`bash scripts/sbtw "tools/runMain xyz.kd5ujc.scarab.node.SelectionReviewBenchmark"`
 in the repository's JDK container. These are synthetic header forests: a linear
 path or independent one-header forks. Each condition has 20 warmup and 100 measured
 calls to production `AvailableBlocks.candidates` and `CandidateSelection.project`.
@@ -285,7 +285,7 @@ holds the channel lock, behind `append`, `view`, `consume` and `clear`; bytes on
 again. The decoder also runs once per doubling of the buffer (or when the queue is empty), not after each SDU,
 so a decoder that rereads a long array is also linear overall. The handshake channel still decodes after every SDU.
 
-`network/Test/runMain xyz.kd5ujc.scarab.network.MuxThroughputBench` gained `one message of N MiB`: one message
+`tools/runMain xyz.kd5ujc.scarab.network.MuxThroughputBench` gained `one message of N MiB`: one message
 sent through two node-to-client muxes over an in-memory bearer; milliseconds from send to decoded, median of five
 after a warm-up. Docker JDK 21.0.11, same container image and source for both builds, shared host with a load average
 of about 20 on 24 processors (October 22 2026), so the absolute figures are pessimistic and the small-message rows

@@ -11,7 +11,7 @@ import xyz.kd5ujc.scarab.protocol.{Era, NtcVersion}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.consensus.{BlockRef, HardForkConfig}
-import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ConsensusMirrorEnv}
+import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ConsensusMirrorEnv, Placement}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.rules.StakeDistribution
 import xyz.kd5ujc.scarab.ledger.state as mirror
@@ -257,28 +257,16 @@ object QueryAnswers:
     case NtcQuery.HardFork(HardForkQuery.GetCurrentEra) =>
       Right(CborOut.build(_.uint(view.era.index)))
     case NtcQuery.HardFork(HardForkQuery.GetInterpreter) =>
-      val tipSlot = view.point match
-        case Point.Block(slot, _) => slot.value
-        case Point.Origin         => BigInt(0)
-      val eras = EraHistory.summary(
-        geometry(env, view),
-        env.byron,
-        env.forks,
-        view.read.provenance(view.state).observed,
-        view.era,
-        tipSlot
-      )
+      // `mkInterpreter (hardForkSummary cfg st)`: the eras the state has passed and the end its
+      // tip tells of its own (`interpretQueryHardFork`, `HardFork/Combinator/Ledger/Query.hs:529`)
+      val placement = Placement(geometry(env, view), env.byron, env.forks)
+      val eras = EraHistory.eras(view.read.summary(view.state)(placement))
       Right(CborOut.build(EraHistory.encode(_, eras)))
     case NtcQuery.EraStart(index) =>
+      // the start of an era the state has entered, from the same history as `GetInterpreter`
       val era = view.era
-      val eras = EraHistory.summary(
-        geometry(env, view),
-        env.byron,
-        env.forks,
-        view.read.provenance(view.state).observed,
-        era,
-        BigInt(0)
-      )
+      val placement = Placement(geometry(env, view), env.byron, env.forks)
+      val eras = EraHistory.eras(view.read.summary(view.state)(placement))
       Right(CborOut.build { w =>
         eras.lift(index.index).filter(_ => index.index <= era.index) match
           case Some(e) =>

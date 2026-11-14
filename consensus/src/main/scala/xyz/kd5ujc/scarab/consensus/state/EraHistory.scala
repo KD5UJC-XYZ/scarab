@@ -6,6 +6,7 @@ import cats.{Eq, Show}
 import cats.derived.*
 import xyz.kd5ujc.scarab.consensus.{ForkTrigger, HardForkConfig}
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Horizon}
+import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronLedgerState}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** One era of the history (`EraSummary`, `HardFork/History/Summary.hs:198-205`): where it starts,
@@ -50,7 +51,7 @@ object EraHistory:
       else
         geometry.byron.slots * byron.slotLengthMillis +
           (slot - geometry.byron.slots) * BigInt(geometry.slotLengthMillis)
-    Bound(millis * PsPerMilli, slot, epoch)
+    Bound(millis * PsPerMilli, slot, epoch, Bound.Layout.Node11_1(None))
 
   def summary(
       geometry: EpochGeometry,
@@ -119,7 +120,7 @@ object EraHistory:
     * summary of the reference reconstructs them (`reconstructSummary`,
     * `HardFork/Combinator/State/Infra.hs`): every era has the parameters of the configuration
     * (Byron's own, the Shelley-based ones' 3k/f safe zone and genesis window,
-    * `Shelley/Ledger/Ledger.hs` `shelleyEraParams`), and the last era the node knows (Conway) has
+    * `Shelley/Ledger/Ledger.hs` `shelleyEraParams`), and the last era the node knows (Dijkstra) has
     * no successor.
     */
   def horizonHistory(
@@ -140,7 +141,7 @@ object EraHistory:
     * next era is known from the start; a version trigger is known once the parameters for the next
     * epoch have the next era's first protocol version and at least k blocks have been applied after
     * the voting deadline of the epoch (`shelleyTransition`). The era after the last the node knows
-    * is never known.
+    * is never known, nor one the node does not enter ([[HardForkConfig.trigger]]).
     *
     * @param epoch
     *   the epoch of the new-epoch state (the parameters take effect in the next one)
@@ -151,6 +152,25 @@ object EraHistory:
     * @param tip
     *   the slot of the last block, none at Origin
     */
+  /** What a Byron ledger state at a tip tells of the end of Byron (`singleEraTransition` of
+    * `ByronHFC.hs:240-247`, ouroboros-consensus 82ecba32): a configured epoch
+    * (`TestShelleyHardForkAtEpoch`, a Byron span that is not derived) is known from the start;
+    * otherwise the trigger is version 2 (`TriggerHardForkAtVersion`, as the node configures it) and
+    * `byronTransition` (`:161-190`) reports the adoption epoch of a stable candidate update to it
+    * ([[ByronLedger.transition]]) (#804).
+    */
+  def byronTransition(
+      geometry: EpochGeometry,
+      byron: ByronParams,
+      ledger: Option[ByronLedgerState],
+      tip: Option[BigInt]
+  ): Horizon.Transition =
+    if !geometry.byron.derived then Horizon.Transition.Known(geometry.firstShelleyEpoch)
+    else
+      ledger
+        .flatMap(ByronLedger.transition(byron.k, byron.epochSlots, ByronLedger.ShelleyMajor, _))
+        .fold(Horizon.Transition.Unknown(tip))(Horizon.Transition.Known(_))
+
   def transition(
       forks: HardForkConfig,
       securityParam: BigInt,
@@ -161,7 +181,7 @@ object EraHistory:
       tip: Option[BigInt]
   ): Horizon.Transition =
     val unknown = Horizon.Transition.Unknown(tip)
-    Era.values.lift(era.index + 1).flatMap(forks.triggers.get).fold(unknown) {
+    Era.values.lift(era.index + 1).flatMap(forks.trigger).fold(unknown) {
       case ForkTrigger.AtEpoch(e) => Horizon.Transition.Known(e)
       case ForkTrigger.AtVersion(v) =>
         if futureMajor.contains(BigInt(v)) && afterVoting >= securityParam then

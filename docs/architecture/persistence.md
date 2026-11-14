@@ -11,8 +11,8 @@ composition and `Follower` the consumer, both in `node`):
 | Part | Where | Role |
 |---|---|---|
 | `ImmutableStore[F]` | `ImmutableStore.scala` (`FileImmutableStore`) | Append-only raw blocks older than `k`: `append`, `sync`, `tip`, `get(point)`, `byBlockNo`, `stream(after)` |
-| `LedgerSnapshots[F, S]` | `LedgerSnapshots.scala` (`FileLedgerSnapshots`) | Atomic, checksummed snapshots of the full `MirrorState` at an immutable point; newest valid wins. The file's content is a `SnapshotFormat[F, S]` (`SnapshotV8`: a `CheckpointBinding`, then the Haskell ledger state and a `SnapshotSidecar`); a write refusal is a value (`SnapshotRefusal`), while retired/unknown reads refuse restoration |
-| `SnapshotMigration[F]` | `SnapshotMigration.scala` | Registered migration structure and read-only version admission; historical V1–V4 payloads are retired, V5 and V7 migrate to V8, the current version |
+| `LedgerSnapshots[F, S]` | `LedgerSnapshots.scala` (`FileLedgerSnapshots`) | Atomic, checksummed snapshots of the full `MirrorState` at an immutable point; newest valid wins. The file's content is a `SnapshotFormat[F, S]` (`SnapshotV10`: the reference build of the state's layout, a `CheckpointBinding`, then the Haskell ledger state and a `SnapshotSidecar`); a write refusal is a value (`SnapshotRefusal`), while retired/unknown reads refuse restoration |
+| `SnapshotMigration[F]` | `SnapshotMigration.scala` | Registered migration structure and read-only version admission; historical V1–V4 payloads are retired, V5, V7, V8 and V9 migrate to V10, the current version |
 | `VolatileStore[F]` | `VolatileStore.scala` | Append-only log of the volatile chain's updates (blocks, rollback markers); lets a restart continue at the previous tip |
 | `NetworkIdentityFile` | `NetworkIdentityFile.scala`, `NetworkIdentity.scala` | The network the database was created for (`<db>/network-identity`), checked on every open |
 | `SnapshotPolicy` | `SnapshotPolicy.scala` | When the immutable tip is snapshotted: `Aligned` (the Haskell node's default, a multiple of 40 k slots and at most one per 10 minutes) or `EverySlots` (`--snapshot-every`); the pure `due` |
@@ -69,23 +69,31 @@ built from the upstream encoding rules (`fixtures/eras`); no Byron Haskell datab
 **Snapshot format** (`<db>/snapshots/snapshot-<slot>-<blockNo>.bin`, the newest `--keep-snapshots`,
 default 2, are kept). A file is the content of a `SnapshotFormat` and the SHA-256 of that content;
 the store (`FileLedgerSnapshots`) does the framing, the atomic write and the pruning, and the format
-decides what the content is. Format version 8 (`SnapshotV8`, #726) is format version 7 (`SnapshotV7`, #395) with a sidecar schema that keeps the Byron update state's installer metadata; version 7 is the body of format version 5
+decides what the content is. Format version 10 (`SnapshotV10`, #826) is format version 9 with the reference build whose layout its Haskell state bytes are in recorded after the magic (`--reference-build`, `ReferenceBuild`); format version 9 (`SnapshotV9`, #54) is format version 8 with a sidecar schema whose eras include Dijkstra and whose protocol parameters have the fields Dijkstra adds; format version 8 (`SnapshotV8`, #726) is format version 7 (`SnapshotV7`, #395) with a sidecar schema that keeps the Byron update state's installer metadata; version 7 is the body of format version 5
 (`SnapshotV5`, J2.9; versions 3 and 4, `SCRBSNP3` and `SCRBSNP4`, had the same layout and sidecars that held the node's chain-dependent state in its former shape and, in version 4, the old rules' flat state) behind the binding of the UTxO checkpoint the snapshot was written with:
 
 ```
-"SCRBSNP8" | binding length u32 | binding | sidecar length u32 | sidecar | Haskell state bytes | SHA-256 of all before
+"SCRBSNPA" | build length u8 | build | binding length u32 | binding | sidecar length u32 | sidecar | Haskell state bytes | SHA-256 of all before
+build = the --reference-build name, ASCII ("11.1")
 binding = schema fingerprint[8] | Codec of CheckpointBinding
 sidecar = schema fingerprint[8] | Codec of SnapshotSidecar
 ```
 
-A V7 file is the same under the magic `SCRBSNP7`, its sidecar in the frozen V5/V7 schema
-(`SnapshotSidecarV7`), and a V5 file the same as a V7 one from `sidecar length` on, under the magic
+A V9 file is the same without the build, under the magic `SCRBSNP9` (its Haskell bytes are in the
+11.1 layout, the only one a V9 writer had), a V8 file the same as a V9 one under the magic `SCRBSNP8`, its sidecar in the frozen V8 schema
+(`SnapshotSidecarV8`, whose eras are Byron to Conway, `FrozenEra`), a V7 file the same under the
+magic `SCRBSNP7`, its sidecar in the frozen V5/V7 schema (`SnapshotSidecarV7`), and a V5 file the same as a V7 one from `sidecar length` on, under the magic
 `SCRBSNP5`. The binding
 (`CheckpointBinding.Bound`) holds the key layout of the checkpoint and the digest of its directory,
 and a restore admits the checkpoint only when both still hold (`StateBacking.admit`,
 [ADR 0021](../adr/0021-ledger-state-residency-and-utxo-checkpoints.md)); a V5 file migrates to V7 with
-the `Legacy` binding and is restored with a `snapshotUnbound` warning, and a V7 file to V8 with its
-sidecar rewritten in the current schema.
+the `Legacy` binding and is restored with a `snapshotUnbound` warning, a V7 file to V8 with its
+sidecar rewritten in the V8 schema, a V8 file to V9 with its sidecar rewritten in the V9 one, and a
+V9 file to V10 with the 11.1 build recorded and everything else kept byte for byte. A V10 file
+recorded under a build whose layout is not the configured one is not decoded
+(`StorageError.ReferenceBuildMismatch`, or `UnknownReferenceBuild` for a name this build does not
+know): there is no conversion between builds, and the restore treats it as any snapshot that does
+not decode (Recovery, below).
 
 The Haskell state bytes are a `state` file of a Haskell node (`[1, [ledger state telescope, header
 state]]`, `HaskellLedgerFile`) of the chain's state `MirrorState.ext`, byte-proven against real files;
@@ -125,9 +133,18 @@ packages were renamed). A write goes to `*.tmp`, is fsynced, renamed (atomic) an
 fsynced; leftover `*.tmp` files are removed on open. Snapshots are written by a background fiber
 from the immutable (structurally shared) anchor state, so following does not pause.
 
-**Recovery.** Snapshots are tried newest first. One that fails its checksum, decodes badly, has
-another schema or names an anchor missing from the immutable store is reported (`snapshotSkipped`)
-and the next older one is tried; with none usable the stored blocks are replayed from genesis. The
+**Recovery.** Snapshots are tried newest first, as the reference's `tryNewestFirst` tries them
+(ouroboros-consensus 82ecba32 `Storage/LedgerDB/API.hs:599-646`). One that fails its checksum,
+decodes badly, is recorded under a build of another layout, names an anchor missing from the
+immutable store, or whose checkpoint is not the one it recorded or holds keys that do not decode,
+is reported (`snapshotSkipped`), deleted with its checkpoint (`snapshotDeleted`, best effort:
+`snapshotNotDeleted` when it fails; every native snapshot is temporary in the reference's sense,
+`Snapshots.hs:288-297`) and the next older one is tried; one whose checkpoint has another key
+layout or none, or whose binding or sidecar has another schema, is reported and kept
+(`LedgerSnapshots.Fallback`). With none usable the stored blocks are replayed from genesis. What the
+reference raises stops the start and deletes nothing: a file that cannot be read, an absent
+checkpoint, and an unknown or retired format version (ADR 0006). Checkpoints no snapshot lists are
+deleted when the database opens, each best effort (`checkpointNotDeleted` when one cannot be). The
 stored blocks after the chosen snapshot are re-applied through the same `MirrorRules` with no
 network, then ChainSync resumes with the replayed anchor as the intersection candidate.
 
@@ -176,15 +193,15 @@ identity, the immutable store's `format` file, every chunk `.index` and every le
 identifiers, per version (`FileKind.identifier`, `ledger/.../PersistedFormat.scala`); a kind has a
 new identifier only at a version at which its layout changed, and `FileKind.current` is the newest:
 
-| file | format 1 (until the rename) | format 2 | format 3 | format 4 | format 5 | format 6 | format 7 |
-|---|---|---|---|---|---|---|---|
-| `network-identity`, first line | `cardano-scala-lab network identity v1` | `scarab network identity v2` | (as 2) | (as 2) | (as 2) | `scarab network identity v6` | (as 6) |
-| `immutable/format`, before ` chunkSlots=<n>` | `cardano-scala-lab immutable store v1` | `scarab immutable store v2` | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) |
-| `immutable/<c>.index`, 8-byte magic | `CSLIDX01` | `SCRBIDX2` | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) |
-| `snapshots/snapshot-*.bin`, 8-byte magic | `CSLSNAP1`, number 1 | `CSLSNAP1`, number 2 | `SCRBSNP3` | `SCRBSNP4` | `SCRBSNP5` | (as 5) | `SCRBSNP7` |
+| file | format 1 (until the rename) | format 2 | format 3 | format 4 | format 5 | format 6 | format 7 | format 8 | format 9 |
+|---|---|---|---|---|---|---|---|---|---|
+| `network-identity`, first line | `cardano-scala-lab network identity v1` | `scarab network identity v2` | (as 2) | (as 2) | (as 2) | `scarab network identity v6` | (as 6) | (as 6) | `scarab network identity v9` |
+| `immutable/format`, before ` chunkSlots=<n>` | `cardano-scala-lab immutable store v1` | `scarab immutable store v2` | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) |
+| `immutable/<c>.index`, 8-byte magic | `CSLIDX01` | `SCRBIDX2` | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) | (as 2) |
+| `snapshots/snapshot-*.bin`, 8-byte magic | `CSLSNAP1`, number 1 | `CSLSNAP1`, number 2 | `SCRBSNP3` | `SCRBSNP4` | `SCRBSNP5` | (as 5) | `SCRBSNP7` | `SCRBSNP8` | `SCRBSNP9` |
 
 The immutable format and index layouts are unchanged after the V2 rename. V6 extends the identity
-record with Alonzo/Conway bindings and adoption provenance. Formats 3 to 5 are the snapshot as the
+record with Alonzo/Conway bindings and adoption provenance, and V9 with the Dijkstra genesis binding. Formats 3 to 5 are the snapshot as the
 Haskell ledger state plus a sidecar (see
 "Snapshot format"; 4 and 5 changed the sidecar), and format 7 puts the checkpoint binding in front
 of the V5 body. The versions are a closed `enum FormatVersion` (a version this build does not
@@ -206,9 +223,11 @@ never looks at the magic. The migration is one way: an older build does not
 know the newer formats (keep a copy of a database to run an older build on it).
 
 `SnapshotMigration` retains the generic `Migration` / `Migrate` registration for versioned
-conversions. V5, V7 and V8 snapshot payloads are supported: V5 files are migrated to V7 on open
-(`SnapshotV7.fromV5`, the body copied unchanged behind a `Legacy` binding) and V7 files to V8
-(`SnapshotV8.fromV7`, the sidecar read in the frozen V7 schema and written in the current one). A V5
+conversions. V5, V7, V8, V9 and V10 snapshot payloads are supported: V5 files are migrated to V7 on open
+(`SnapshotV7.fromV5`, the body copied unchanged behind a `Legacy` binding), V7 files to V8
+(`SnapshotV8.fromV7`, the sidecar read in the frozen V7 schema and written in the V8 one), V8 files
+to V9 (`SnapshotV9.fromV8`, the sidecar read in the frozen V8 schema and written in the V9 one, the
+current schema) and V9 files to V10 (`SnapshotV10.fromV9`, the 11.1 reference build recorded). A V5
 or V7 file whose Byron update state holds a software proposal or an application version, whose
 installer metadata it did not keep, is refused before any store opens with `ResyncRequired`
 (ADR 0006, amendment of 2026-11-03). A read-only identity verification
@@ -223,7 +242,7 @@ restore propagates typed incompatible-version errors rather than skipping them. 
 checkpoint-key conversion remains independent. `scripts/oracle/export.py` still reads both index
 magics.
 
-**Snapshot reader retirement (D10).** Current data uses V8 (V5 and V7 migrate to it); historical V1–V4 identifiers stay in
+**Snapshot reader retirement (D10).** Current data uses V10 (V5, V7, V8 and V9 migrate to it); historical V1–V4 identifiers stay in
 `FileKind` so startup can distinguish a known retired format from an unknown one. Retirement requires
 verified current-format replacements for every active local and repository input and transition of
 local old writers. Originals and pinned historical conversion evidence remain recoverable outside
@@ -234,30 +253,47 @@ operational transition (#37/#115 for preprod). The procedure and required checks
 migration have separate dependencies.
 
 **Network identity** (`<db>/network-identity`). A plain-text file, written atomically when the
-database is created. V6 is complete; V1 and V2 are retained as explicitly incomplete legacy
-records:
+database is created. V9 is complete; V6 is complete up to Conway and gets its Dijkstra binding at
+its first open; V1 and V2 are retained as explicitly incomplete legacy records:
 
 ```
-scarab network identity v6
+scarab network identity v9
 magic 2
 shelley-genesis <blake2b-256 of the Shelley genesis file as read>
 byron-genesis <hash, or none for a chain that starts in Shelley>
 alonzo-genesis file:<blake2b-256 of the exact loaded file bytes>
 conway-genesis file:<blake2b-256 of the exact loaded file bytes>
+dijkstra-genesis file:<blake2b-256 of the exact loaded file bytes, or none without a Dijkstra genesis>
 provenance fresh
 ```
+
+The Dijkstra binding is the configured `DijkstraGenesisFile` (read with `ExperimentalHardForksEnabled`),
+whose bytes node setup checks against `DijkstraGenesisHash` when the configuration lists one. A
+configuration without a Dijkstra genesis records `none`, which is its complete identity, not a gap.
+A V6 file is migrated when `ChainStorage.open` runs `NetworkIdentityFile.migrate` with the configured
+identity (the registered migration is `NetworkIdentityFile.migration`): when its other fields equal the
+configured identity it is rewritten as V9 with the configured binding and its provenance unchanged,
+otherwise the open is refused with `NetworkMismatch` (whose recorded side shows the V6 fields with the
+configured binding) and the file is left as it is. `verify` and the read-only preflight accept a
+matching V6 file without writing it (OD-2 of #54, [decisions](../decisions.md)). A
+recorded `none` adopts a configured Dijkstra genesis once: `ChainStorage.open` rewrites the identity with
+the configured binding, its provenance and other fields unchanged (`NetworkIdentityFile.adoptDijkstra`),
+and logs `networkRecorded` with `adoptedDijkstraGenesis: true`; `verify` and the read-only preflight
+accept that case without writing. A recorded binding is compared like every other field: one that
+differs from the configured one, or that the configuration no longer names (as a recorded Byron
+genesis), is a `NetworkMismatch`.
 
 `ChainStorage.open` compares the complete record with the identity built from the files node setup
 loaded; a mismatch raises `StorageError.NetworkMismatch` (use the matching `--genesis-dir` or
 another `--db`). V1/V2 records do not contain Alonzo or Conway bindings and are never upgraded
 automatically. A populated legacy identity or an identity-less database requires the explicit
-`--adopt-legacy-network-identity` option. Before it writes a V6 identity, the node checks every
+`--adopt-legacy-network-identity` option. Before it writes a current identity, the node checks every
 known legacy field, checks the first immutable block's predecessor when available, and preflights
 snapshot and immutable-format headers read-only. The original legacy identity bytes are retained
-beside the new file; V6 records operator confirmation separately from identity equality and does
+beside the new file; the record keeps operator confirmation separately from identity equality and does
 not claim that adoption proves the database's historical genesis. A Shelley-start chain's first
 block has no Byron predecessor, so that check cannot distinguish historical Shelley-start networks.
-Fresh databases receive V6 immediately. Global V6 changes no snapshot or immutable layout, so
+Fresh databases receive V9 immediately. Global V6 changes no snapshot or immutable layout, so
 unchanged file kinds are not rewritten.
 
 Tests (`storage/src/test/.../storage`, and `ChainStorageSuite` in `node/src/test`): round-trip properties for every persisted type from generators

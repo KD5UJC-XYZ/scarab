@@ -28,7 +28,8 @@ from . import ntclocal, ntcquery
 from .cbor import Raw, Tag, enc
 from . import eratx
 from .refusalcases import babbage_corpus, corpus, preconway_families
-from .util import ENV, MAGIC, REFERENCE_IMAGE, REPO, data_root, docker, in_ref, ref
+from .dijkstra import GENESIS_FILES as LEIOS_GENESIS, LEIOS_NODE_REVISION
+from .util import ENV, MAGIC, REPO, data_root, docker, in_ref, ref
 
 # The hard-fork-combinator index of each era the corpus covers: the LocalTxSubmission item `[index, #6.24(tx)]`
 # and the era of the LocalStateQuery queries
@@ -38,6 +39,16 @@ ATTEMPTS = 40
 DEFAULT_OUT = REPO / "fixtures" / "reference" / "refusals"
 GENESIS = ("byron-genesis.json", "shelley-genesis.json", "alonzo-genesis.json", "conway-genesis.json",
            "configuration.yaml")
+# The reference builds a corpus is recorded from, by their `--reference-build` names (`ReferenceBuild.scala`): the
+# node that must answer (the 11.1 release line by its version, the unstable Leios build by its commit) and the files
+# its cluster runs on, and the relay to its socket (`ntcquery.RELAYS`). `up`/`up-eras` run the 11.1 reference;
+# `up-dijkstra --conway-only` the Leios build, whose cluster also has a Dijkstra genesis and names its configuration
+# `config.json`, and whose image has no `socat`.
+DEFAULT_BUILD = "11.1"
+BUILDS = {
+    "11.1": {"version": "cardano-node 11.1.", "files": GENESIS, "relay": "socat"},
+    "leios-b004fe0c": {"revision": LEIOS_NODE_REVISION, "files": (*LEIOS_GENESIS, "config.json"), "relay": "perl"},
+}
 
 # What the manifest requires per era. A family without a case is an incomplete gate in the Scala suite.
 COVERAGE = {
@@ -191,9 +202,9 @@ class Session(ntclocal.Session):
         return self._reason(self.last_raw)
 
 
-def judged(name, era, batch):
+def judged(name, era, batch, build=DEFAULT_BUILD):
     """The refusals of `batch` and the state they were judged against, or None when the tip moved."""
-    with Session(ref(name), f"{ENV}/socket/node1/sock", MAGIC) as s:
+    with Session(ref(name), f"{ENV}/socket/node1/sock", MAGIC, relay=BUILDS[build]["relay"]) as s:
         s.acquire()
         point = s.point(era)
         state = s.cbor(era, [12])
@@ -220,13 +231,28 @@ def rendering(name, era, tx):
     return next((line for line in text.splitlines() if line.startswith("Error:")), text)[:4000]
 
 
-def provenance(name, command):
+def is_build(build, node, revision):
+    """Whether the node that printed `node` (the first line of `cardano-node --version`) at `revision` is `build`."""
+    want = BUILDS[build]
+    return node.startswith(want["version"]) if "version" in want else revision == want["revision"]
+
+
+def reference_node(name, build):
+    """The reference node's version line and revision, refused unless it is `build`'s."""
+    lines = in_ref(name, "cardano-node --version").stdout.strip().splitlines()
+    node, revision = lines[0], lines[1].removeprefix("git rev ").strip()
+    if not is_build(build, node, revision):
+        raise SystemExit(f"the reference node is {node} at {revision}, not the {build} build")
+    return node, revision
+
+
+def provenance(name, command, node, revision):
     def git(*args):
         return subprocess.run(["git", "-C", str(REPO), *args], capture_output=True, text=True).stdout.strip()
-    node = in_ref(name, "cardano-node --version").stdout.strip().splitlines()
-    image = docker("image", "inspect", REFERENCE_IMAGE, "--format", "{{.Id}}").stdout.strip()
-    return {"reference": {"node": node[0], "revision": node[1].removeprefix("git rev ").strip(),
-                          "image": REFERENCE_IMAGE, "imageId": image},
+    # the image the reference container runs, as it was started (a tag, or the Leios build's pinned digest)
+    image = docker("inspect", ref(name), "--format", "{{.Config.Image}}").stdout.strip()
+    image_id = docker("inspect", ref(name), "--format", "{{.Image}}").stdout.strip()
+    return {"reference": {"node": node, "revision": revision, "image": image, "imageId": image_id},
             "command": command, "scarabCommit": git("rev-parse", "HEAD"),
             "scarabDirty": bool(git("status", "--porcelain", "--", "scripts")),
             "recorded": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
@@ -237,12 +263,12 @@ def write(path, data):
     path.write_bytes(data)
 
 
-def capture(name, era, cases):
+def capture(name, era, cases, build=DEFAULT_BUILD):
     """Every case judged, in batches whose state held still."""
     out, pending, attempts = [], list(cases), 0
     while pending:
         batch = pending[:BATCH]
-        result = judged(name, era, batch)
+        result = judged(name, era, batch, build)
         if result is None:
             attempts += 1
             if attempts > ATTEMPTS:
@@ -263,12 +289,16 @@ def refusal_corpus(args):
         raise SystemExit(f"no devnet `{args.name}`: run `devnet.py --name {args.name} up` "
                          f"(or `up-eras --final-era babbage`) first")
     era = args.era
+    build = args.reference_build
+    node, revision = reference_node(args.name, build)
     corpus_name = args.corpus or f"{era}-devnet"
     out = pathlib.Path(args.out)
     directory = out / corpus_name
     if directory.exists():
         raise SystemExit(f"{directory} exists: remove it to refresh the corpus")
     command = f"python3 scripts/devnet.py --name <devnet> refusal-corpus --era {era} --corpus {corpus_name}"
+    if build != DEFAULT_BUILD:
+        command += f" --reference-build {build}"
     if args.cases:
         module, _, function = args.cases.partition(":")
         cases = getattr(importlib.import_module(f".{module}", __package__), function)(args.name)
@@ -284,10 +314,10 @@ def refusal_corpus(args):
     labels = [c.label for c in cases]
     if len(set(labels)) != len(labels):
         raise SystemExit("duplicate case labels")
-    judged_cases = capture(args.name, era, cases)
+    judged_cases = capture(args.name, era, cases, build)
     records, problems = [], []
     # Each genesis file is stored once for all corpora, under the hash its corpus pins.
-    genesis = {name: (root / "genesis" / name).read_bytes() for name in GENESIS}
+    genesis = {name: (root / "genesis" / name).read_bytes() for name in BUILDS[build]["files"]}
     for name, data in genesis.items():
         write(out / "genesis" / f"{sha256(data)}-{name}", data)
     for case, result, reason in judged_cases:
@@ -312,8 +342,8 @@ def refusal_corpus(args):
     files = [{"file": "cases/cases.jsonl", "sha256": sha256(data)}]
     pv = json.loads(in_ref(args.name, f"cardano-cli query protocol-parameters --testnet-magic {MAGIC} "
                                       f"--socket-path {ENV}/socket/node1/sock").stdout)["protocolVersion"]
-    meta = {"format": 2, "era": era, "protocolVersion": [pv["major"], pv["minor"]],
-            "provenance": provenance(args.name, command),
+    meta = {"format": 2, "era": era, "referenceBuild": build, "protocolVersion": [pv["major"], pv["minor"]],
+            "provenance": provenance(args.name, command, node, revision),
             "genesis": {n: sha256(data) for n, data in genesis.items()},
             "cases": files}
     meta_bytes = (json.dumps(meta, indent=2) + "\n").encode()

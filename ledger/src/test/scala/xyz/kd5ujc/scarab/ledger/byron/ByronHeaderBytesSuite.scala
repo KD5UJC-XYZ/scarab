@@ -171,3 +171,181 @@ class ByronHeaderBytesSuite extends FunSuite:
       Left(Header.fail(LedgerDecodeError.UnknownTag(DecodeField.SSCProof, 4)))
     )
   }
+
+  /** The offset in `root` 's bytes of the item at `path` (each step a child index). */
+  private def offset(root: Node, path: List[Int]): Int = path match
+    case Nil => 0
+    case i :: rest =>
+      val children = items(root)
+      head(root) + children.take(i).map(_.original.size).sum + offset(children(i), rest)
+
+  /** The length of an array's head: one byte below 24 items or for an indefinite one. */
+  private def head(n: Node): Int = (n.original.value(0) & 0x1f) match
+    case 24 => 2
+    case 25 => 3
+    case 26 => 5
+    case 27 => 9
+    case _  => 1
+
+  private def at(root: Node, path: List[Int]): Node =
+    path.foldLeft(root)((n, i) => items(n)(i))
+
+  /** `raw` with the item at `path` replaced by `replacement`. */
+  private def spliced(raw: Bytes, path: List[Int], replacement: Vector[Byte]): Bytes =
+    val root = node(raw)
+    val from = offset(root, path)
+    Bytes(raw.value.patch(from, replacement, at(root, path).original.size))
+
+  /** `raw` with the definite list at `path` written as an indefinite list of the same items. */
+  private def indefinite(raw: Bytes, path: List[Int]): Bytes =
+    val item = at(node(raw), path)
+    spliced(raw, path, (0x9f.toByte +: item.original.value.drop(head(item))) :+ 0xff.toByte)
+
+  private def uint(n: BigInt): Vector[Byte] =
+    xyz.kd5ujc.scarab.ledger.byron.ByronCbor.uint(n).value
+
+  private val Max64 = (BigInt(1) << 64) - 1
+  private val Bignum64 = Vector(0xc2, 0x49, 0x01).map(_.toByte) ++ Vector.fill(8)(0.toByte)
+
+  private def cause(raw: Bytes, boundary: Boolean): Option[LedgerDecodeError] =
+    verdict(raw, boundary).left.toOption.map {
+      case ChainError.Decode(_, reason) => reason
+      case other                        => fail(s"not a decode failure: $other")
+    }
+
+  test("every list of a main header is definite (enforceSize, #634)") {
+    for (path, site) <- Vector(
+        Nil -> DecodeField.Header,
+        List(3) -> DecodeField.Header,
+        List(3, 0) -> DecodeField.EpochAndSlot,
+        List(3, 2) -> DecodeField.ChainDifficulty,
+        List(3, 3) -> DecodeField.ByronBlockSignature,
+        List(3, 3, 1) -> DecodeField.ByronBlockSignature,
+        List(3, 3, 1, 0) -> DecodeField.DelegationCertificate,
+        List(4) -> DecodeField.BlockVersions,
+        List(4, 0) -> DecodeField.ProtocolVersion,
+        List(4, 1) -> DecodeField.SoftwareVersion,
+        // the body proof's lists, read since #574
+        List(2) -> DecodeField.BodyProof,
+        List(2, 0) -> DecodeField.TxProof,
+        List(2, 1) -> DecodeField.SSCProof
+      )
+    do
+      assertEquals(
+        cause(indefinite(main, path), false),
+        Some(LedgerDecodeError.IndefiniteLength(site)),
+        path
+      )
+  }
+
+  test("every list of a boundary header is definite (#634)") {
+    for (path, site) <- Vector(
+        Nil -> DecodeField.Header,
+        List(3) -> DecodeField.Header,
+        List(3, 1) -> DecodeField.ChainDifficulty,
+        // the extra data, read since #754
+        List(4) -> DecodeField.BoundaryExtraData
+      )
+    do
+      assertEquals(
+        cause(indefinite(ebb, path), true),
+        Some(LedgerDecodeError.IndefiniteLength(site)),
+        path
+      )
+  }
+
+  test("a main header's magic is a Word32; a boundary header's any Int32, and kept (#634)") {
+    val word32 = (BigInt(1) << 32) - 1
+    assertEquals(
+      Header.byronFromRaw(spliced(main, List(0), uint(word32)), false, 21600).map(_.protocolMagic),
+      Right(word32)
+    )
+    assertEquals(
+      cause(spliced(main, List(0), uint(word32 + 1)), false),
+      Some(LedgerDecodeError.NumberOutOfRange(DecodeField.NetworkMagic, word32 + 1, 0, word32))
+    )
+    val minusOne = Vector(0x20.toByte)
+    assert(cause(spliced(main, List(0), minusOne), false).isDefined, "a negative main magic")
+    assertEquals(
+      Header.byronFromRaw(spliced(ebb, List(0), minusOne), true, 21600).map(_.protocolMagic),
+      Right(BigInt(-1))
+    )
+    val int32 = (BigInt(Int.MinValue), BigInt(Int.MaxValue))
+    assertEquals(
+      cause(spliced(ebb, List(0), uint(int32._2 + 1)), true),
+      Some(
+        LedgerDecodeError.NumberOutOfRange(
+          DecodeField.NetworkMagic,
+          int32._2 + 1,
+          int32._1,
+          int32._2
+        )
+      )
+    )
+  }
+
+  test("epochs, slot counts and difficulties are Word64 (#634)") {
+    for path <- Vector(List(3, 0, 0), List(3, 0, 1), List(3, 2, 0), List(3, 3, 1, 0, 0)) do
+      assert(verdict(spliced(main, path, uint(Max64)), false).isRight, path)
+      assert(verdict(spliced(main, path, Bignum64), false).isLeft, path)
+    for path <- Vector(List(3, 0), List(3, 1, 0)) do
+      assert(verdict(spliced(ebb, path, uint(Max64)), true).isRight, path)
+      assert(verdict(spliced(ebb, path, Bignum64), true).isLeft, path)
+    assertEquals(
+      cause(spliced(main, List(3, 3, 0), uint(258)), false),
+      Some(LedgerDecodeError.NumberOutOfRange(DecodeField.ByronBlockSignature, 258, 0, 255))
+    )
+  }
+
+  test("a main header's extra data is read as decCBORBlockVersions reads it (#634)") {
+    val h = items(node(main))
+    val extra = items(h(4))
+    assertEquals(
+      cause(spliced(main, List(4), uint(0)), false),
+      Some(
+        LedgerDecodeError.Expected(
+          DecodeField.BlockVersions,
+          LedgerDecodeError.Shape.Array,
+          Value.UInt(0)
+        )
+      )
+    )
+    // the empty attributes: a definite map of no entries (`dropEmptyAttributes`)
+    assertEquals(
+      cause(spliced(main, List(4, 2), Vector(0xbf, 0xff).map(_.toByte)), false),
+      Some(LedgerDecodeError.IndefiniteLength(DecodeField.HeaderAttributes))
+    )
+    assertEquals(
+      cause(spliced(main, List(4, 2), Vector(0xa1, 0x00, 0x40).map(_.toByte)), false),
+      Some(LedgerDecodeError.NumberOutOfRange(DecodeField.HeaderAttributes, 1, 0, 0))
+    )
+    // four items, not three
+    val three = (0x83.toByte +: extra.take(3).flatMap(_.original.value))
+    assertEquals(
+      cause(spliced(main, List(4), three), false),
+      Some(LedgerDecodeError.ArrayLength(DecodeField.BlockVersions, 4, 3))
+    )
+    // the software version: definite text and a Word32
+    assertEquals(
+      cause(spliced(main, List(4, 1, 1), uint(BigInt(1) << 32)), false),
+      Some(
+        LedgerDecodeError.NumberOutOfRange(
+          DecodeField.SoftwareNumber,
+          BigInt(1) << 32,
+          0,
+          (BigInt(1) << 32) - 1
+        )
+      )
+    )
+    val chunkedName = (0x7f.toByte +: at(node(main), List(4, 1, 0)).original.value) :+ 0xff.toByte
+    assertEquals(
+      cause(spliced(main, List(4, 1, 0), chunkedName), false),
+      Some(LedgerDecodeError.IndefiniteLength(DecodeField.ApplicationName))
+    )
+    // the extra body proof: a definite byte string of any length (`dropBytes`)
+    assert(verdict(spliced(main, List(4, 3), Vector(0x43, 0, 0, 0).map(_.toByte)), false).isRight)
+    assertEquals(
+      cause(chunked(main, extra(3)), false),
+      Some(LedgerDecodeError.IndefiniteLength(DecodeField.ByronBytes))
+    )
+  }

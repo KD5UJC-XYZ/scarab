@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.state.{Alonzo, Babbage, EraTag, ShelleyBasedEra}
 
 /** Key 17 of a protocol-parameter update is the lovelace per UTxO word before Babbage
   * (`Alonzo/PParams.hs:664`) and per byte from Babbage; an update that raises the version is
@@ -20,30 +21,32 @@ class ProtocolParamsUpdateSuite extends FunSuite:
   private val key17 = hex("19" + "9c40") // 40000
   private val toBabbage = hex("820700") // [7, 0]
 
-  private def applied(p: ProtocolParams, fields: (Int, Bytes)*): ProtocolParams =
+  private def applied[E <: EraTag](p: ProtocolParams, fields: (Int, Bytes)*)(using
+      ShelleyBasedEra[E]
+  ): ProtocolParams =
     ProtocolParams.update(p, ParamUpdate(fields.toMap)).fold(e => fail(e.toString), identity)
 
   test("in Alonzo key 17 sets the lovelace per word, and the per-byte value is not touched") {
-    val after = applied(alonzo, 17 -> key17)
+    val after = applied[Alonzo](alonzo, 17 -> key17)
     assertEquals(after.coinsPerUTxOWord, BigInt(40000))
     assertEquals(after.coinsPerUTxOByte, alonzo.coinsPerUTxOByte)
   }
 
-  test("an Alonzo update that raises the version and names key 17 sets the word, then divides") {
-    val after = applied(alonzo, 14 -> toBabbage, 17 -> key17)
+  test("an Alonzo update that raises the version and names key 17 sets only the word") {
+    val after = applied[Alonzo](alonzo, 14 -> toBabbage, 17 -> key17)
     assertEquals(after.protocolMajor, BigInt(7))
     assertEquals(after.coinsPerUTxOWord, BigInt(40000))
-    assertEquals(after.coinsPerUTxOByte, BigInt(5000))
+    assertEquals(after.coinsPerUTxOByte, alonzo.coinsPerUTxOByte)
   }
 
-  test("an Alonzo update that raises the version without key 17 derives the per-byte value") {
-    val after = applied(alonzo, 14 -> toBabbage)
+  test("an Alonzo update that raises the version leaves translation to the era boundary") {
+    val after = applied[Alonzo](alonzo, 14 -> toBabbage)
     assertEquals(after.coinsPerUTxOWord, alonzo.coinsPerUTxOWord)
-    assertEquals(after.coinsPerUTxOByte, BigInt(4310))
+    assertEquals(after.coinsPerUTxOByte, alonzo.coinsPerUTxOByte)
   }
 
   test("in Babbage key 17 sets the lovelace per byte") {
-    val after = applied(babbage, 17 -> key17)
+    val after = applied[Babbage](babbage, 17 -> key17)
     assertEquals(after.coinsPerUTxOByte, BigInt(40000))
     assertEquals(after.coinsPerUTxOWord, babbage.coinsPerUTxOWord)
   }

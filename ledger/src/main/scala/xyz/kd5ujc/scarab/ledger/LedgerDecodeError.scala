@@ -6,6 +6,7 @@ import cats.syntax.show.*
 import xyz.kd5ujc.scarab.codec.DomainError
 import xyz.kd5ujc.scarab.codec.{Cbor, Value}
 import xyz.kd5ujc.scarab.ledger.byron.{ByronVersion, DelegationError}
+import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
 
 /** Failures while reading ledger values. A [[DecodeSite]] identifies the place; cases identify
   * failures.
@@ -34,6 +35,11 @@ enum LedgerDecodeError extends DomainError:
   case UnknownKey(site: DecodeSite, key: BigInt)
   case DuplicateKey(site: DecodeSite)
   case UnsupportedCostModelLanguage(language: Int)
+
+  /** A Plutus script of a language newer than the era's (`eraUnsupportedLanguage`, cardano-ledger
+    * f649f975 `Alonzo/Scripts.hs:738-741`): `newest` is the era's `eraMaxLanguage`.
+    */
+  case UnsupportedLanguage(language: ScriptKind, newest: ScriptKind)
   case CostModelLength(language: Int, expected: Int, actual: Int)
   case DuplicateElement(site: DecodeSite)
   case Zero(site: DecodeSite)
@@ -76,7 +82,32 @@ enum LedgerDecodeError extends DomainError:
   case ByronBlockUnexpected
   case BodyWitnessCount(bodies: Int, witnesses: Int)
   case TransactionIndex(actual: Value, bound: Int)
+
+  /** An index of a block body's invalid transactions that is not greater than the one before it.
+    * The reference has no decoder failure for this list: `alignedValidFlags`
+    * (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/BlockBody/Internal.hs:278-286`, cardano-ledger
+    * f649f975) calls `Seq.replicate` with the count `index - previous - 1`, and `Data.Sequence`
+    * (containers 0.7) calls `error` for a negative count, so an `ErrorCall` is thrown while the
+    * block body is decoded. Scarab refuses the block body here, as a decoder failure.
+    */
+  case InvalidTransactionOrder(previous: Int, index: Int)
+
+  /** A certificate tag Conway's decoder reads only to fail it: genesis delegation (5) and moving
+    * instantaneous rewards (6) "are no longer supported" (`decCBOR` of `ConwayTxCert`,
+    * `eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:674-681`, cardano-ledger f649f975).
+    */
+  case RetiredCertificate(certificate: LedgerDecodeError.Retired)
+
   case LeiosCertificate(cause: xyz.kd5ujc.scarab.crypto.bls.BlsError)
+
+  /** A part of the Dijkstra era this build does not decode yet. */
+  case NotYet(part: DijkstraNotYet)
+
+  /** A submitted Dijkstra transaction whose validity flag is `false`: the flag may only be supplied
+    * as `true` outside a block (`decodeDijkstraTopTx`,
+    * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:152-169`, cardano-ledger 9df9f98c).
+    */
+  case InvalidFlagSubmitted
 
   /** A datum, a redeemer's data or an inline datum that is not Plutus `Data` as Plutus's
     * `decodeData` reads it (#721).
@@ -109,6 +140,18 @@ object LedgerDecodeError:
     */
   given Show[LedgerDecodeError] = Show.show(repr)
 
+  /** The transaction types of Shelley to Conway ([[TxBody]], [[Witnesses]], [[Tx]]) are what the
+    * ledger rules consume, and no rule of Dijkstra exists yet: a Dijkstra transaction is decoded by
+    * [[dijkstra.DijkstraTx]], and read into those types it is refused ([[NotYet]] of the rules).
+    * One of any other era is read on.
+    */
+  def implemented(era: xyz.kd5ujc.scarab.protocol.Era): Either[LedgerDecodeError, Unit] =
+    Either.cond(
+      era != xyz.kd5ujc.scarab.protocol.Era.Dijkstra,
+      (),
+      NotYet(DijkstraNotYet.Rules)
+    )
+
   private def repr(x: Any): String = x match
     case site: DecodeSite => site.show
     case e: (LedgerDecodeError | xyz.kd5ujc.scarab.ledger.NativeScript.DecodeError |
@@ -122,3 +165,10 @@ object LedgerDecodeError:
 
   enum Shape:
     case Unsigned, Integer, Bytes, Text, Boolean, Null, Array, Map, ArrayOrMap, Metadatum
+
+  /** The certificates of Shelley to Babbage that Conway's decoder refuses ([[RetiredCertificate]]),
+    * by tag.
+    */
+  enum Retired(val tag: Int):
+    case GenesisDelegation extends Retired(5)
+    case MoveInstantaneousRewards extends Retired(6)

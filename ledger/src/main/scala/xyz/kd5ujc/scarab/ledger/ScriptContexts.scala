@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger
 import scala.annotation.unused
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
+import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
 import xyz.kd5ujc.scarab.plutus.{PlutusData, PlutusLanguage}
 
 import PlutusData.{B, I}
@@ -19,17 +20,50 @@ import PlutusData.{B, I}
   * context.
   */
 object ScriptContexts:
-  /** What the translation needs besides the transaction. `posix` converts a slot to POSIX
-    * milliseconds (the start of the slot) through the era history and the system start.
+  /** What the translation needs besides the transaction.
+    *
+    * @param era
+    *   the era of the ledger, whose `EraPlutusTxInfo` instances translate the transaction whatever
+    *   the protocol version (cardano-ledger f649f975). No era before Alonzo has an instance, and
+    *   UTXOS runs from Alonzo (`ShelleyUtxo`), so Shelley, Allegra and Mary take Alonzo's
+    *   translation only to make the choices total.
+    * @param protocolMajor
+    *   the major version of the parameters in force, which only the reference's own version tests
+    *   read (`hardforkConwayBootstrapPhase`, `Conway/TxInfo.hs:575,580`; version 11,
+    *   `Conway/TxInfo.hs:497`)
+    * @param posix
+    *   converts a slot to POSIX milliseconds (the start of the slot) through the era history and
+    *   the system start
     */
   final case class Environment(
+      era: ShelleyBasedEra[?],
       protocolMajor: Int,
       spent: Map[TxIn, TxOut],
       references: Map[TxIn, TxOut],
       posix: BigInt => Either[TranslationError, BigInt]
   ):
-    /** The Conway era (protocol 9 on), where the V1 translation drops Babbage's restrictions. */
-    def conway: Boolean = protocolMajor >= 9
+    /** Conway's translation (`Conway/TxInfo.hs`), which Dijkstra's PlutusV1 to PlutusV3 instances
+      * reuse (cardano-ledger 9df9f98c `Dijkstra/TxInfo.hs:333-348,403,446`), against Babbage's and
+      * Alonzo's: the V1 translation no longer refuses reference scripts and reference inputs, and
+      * an interval without a lower bound has an exclusive upper bound.
+      */
+    def conway: Boolean = era match
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
+        false
+      case ShelleyBasedEra.SConway | ShelleyBasedEra.SDijkstra => true
+
+    /** An output at a Byron address fails the translation (`ByronTxOutInContext`): Babbage's
+      * `transTxOutV1` and `transTxOutV2` (`Babbage/TxInfo.hs:125,154`), which Conway takes for V2
+      * and V3 beside its own V1 (`Conway/TxInfo.hs:319`). Alonzo's `transTxOut` gives `Nothing` for
+      * one, and its V1 `TxInfo` leaves the input or output out
+      * (`Alonzo/Plutus/TxInfo.hs:148-149,277-283`).
+      */
+    def refusesByron: Boolean = era match
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+          ShelleyBasedEra.SAlonzo =>
+        false
+      case ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway | ShelleyBasedEra.SDijkstra => true
 
   private type Result[A] = Either[TranslationError, A]
 
@@ -101,9 +135,10 @@ object ScriptContexts:
     val negInf = constr(0)
     val posInf = constr(2)
     def finite(t: BigInt) = constr(1, I(t))
-    // Conway made the upper bound exclusive for an interval without a lower bound; Alonzo and
-    // Babbage used the inclusive `to`.
-    val openUpperInclusive = env.protocolMajor < 9
+    // Conway's `transValidityInterval` makes the upper bound of an interval without a lower bound
+    // exclusive (`Conway/TxInfo.hs:790-803`); Alonzo's, which Babbage uses
+    // (`Babbage/TxInfo.hs:332,370`), takes the inclusive `to` (`Alonzo/Plutus/TxInfo.hs:252-263`).
+    val openUpperInclusive = !env.conway
     def interval(lower: PlutusData, upper: PlutusData) = constr(0, lower, upper)
     (body.validityStart, body.ttl) match
       case (None, None) => Right(interval(bound(negInf, true), bound(posInf, true)))
@@ -126,8 +161,8 @@ object ScriptContexts:
   /** The Plutus V1 form of an output (`transTxOutV1`): Babbage (`Babbage/TxInfo.hs:119-126`)
     * refuses a reference script, then an inline datum, then a Byron address; Conway
     * (`Conway/TxInfo.hs:315-320`) no longer refuses the reference script, which the V1 output has
-    * no field for and so leaves out. The restriction follows the era, which the protocol major
-    * version selects (Babbage 7 and 8, Conway 9 on).
+    * no field for and so leaves out. The restriction follows the era ([[Environment.conway]]),
+    * whatever the protocol version.
     */
   private def outputV1(
       out: TxOut,
@@ -145,7 +180,7 @@ object ScriptContexts:
     else
       address(out.address) match
         case None =>
-          if env.protocolMajor >= 7 then fail(TranslationError.ByronTxOutInContext(source))
+          if env.refusesByron then fail(TranslationError.ByronTxOutInContext(source))
           else Right(None)
         case Some(a) =>
           Right(
@@ -166,7 +201,7 @@ object ScriptContexts:
   ): Result[Option[PlutusData]] =
     address(out.address) match
       case None =>
-        if env.protocolMajor >= 7 then fail(TranslationError.ByronTxOutInContext(source))
+        if env.refusesByron then fail(TranslationError.ByronTxOutInContext(source))
         else Right(None)
       case Some(a) =>
         val datum = out.datum match
@@ -367,15 +402,18 @@ object ScriptContexts:
       case GovAction.HardFork(prev, major, minor) =>
         Right(constr(1, previous(prev), constr(0, I(major), I(minor))))
       case GovAction.TreasuryWithdrawals(withdrawals, script) =>
-        val entries = withdrawals
-          .sortBy(w => (w._1.credential.isKey, w._1.credential.hash.hex))
+        // `transMap transAccountAddress` over the `Map AccountAddress Coin` (f649f975
+        // Conway/TxInfo.hs:671-673, 697-699): the accounts in their own order, network first, and
+        // an entry for each account even where two share a credential.
+        val entries = withdrawals.toMap.toVector
+          .sortBy(_._1)
           .map { case (a, amount) =>
             (credential(a.credential): PlutusData) -> (I(amount): PlutusData)
           }
         Right(constr(2, PlutusData.Map(entries), policy(script)))
       case GovAction.NoConfidence(prev) => Right(constr(3, previous(prev)))
       case GovAction.UpdateCommittee(prev, removed, added, quorum) =>
-        val ordered = (c: Vector[Credential]) => c.sortBy(c => (c.isKey, c.hash.hex))
+        val ordered = (c: Vector[Credential]) => c.sorted
         Right(
           constr(
             4,
@@ -531,6 +569,7 @@ object ScriptContexts:
           PlutusData.maybe(body.currentTreasury.map(I(_))),
           PlutusData.maybe(Option.when(body.donation > 0)(I(body.donation)))
         )
+      case PlutusLanguage.V4 => Left(TranslationError.LanguageWithoutContext(language))
 
   private def guardNoConway(body: TxBody): Result[Unit] =
     if body.votes.nonEmpty then fail(TranslationError.VotingProceduresFieldNotSupported(body.votes))
@@ -551,6 +590,10 @@ object ScriptContexts:
     // `transWithdrawals` folds the account map in ledger order into a second map keyed only by
     // staking credential. If networks differ, the later account replaces the earlier amount
     // (f649f975 Alonzo/Plutus/TxInfo.hs:301-309); V3's `transMap` instead retains the list entries.
+    // That second map is a `Data.Map PV1.StakingCredential Integer`, listed by `Map.toList` (V1,
+    // `:308-309`) or `unsafeFromList` of that list (V2, Babbage/TxInfo.hs:390), so it is in the
+    // derived `Ord` of plutus-ledger-api's `Credential = PubKeyCredential | ScriptCredential`
+    // (plutus 507cab8c PlutusLedgerApi/V1/Credential.hs:30-37), then the hash's bytes.
     val entries = Purpose
       .sortedWithdrawals(body)
       .map { case (a, amount) => (a.credential, amount) }
@@ -572,6 +615,7 @@ object ScriptContexts:
   ): Result[Vector[PlutusData]] =
     decodeRedeemer(redeemer).flatMap { rdmr =>
       language match
+        case PlutusLanguage.V4 => Left(TranslationError.LanguageWithoutContext(language))
         case PlutusLanguage.V3 =>
           for
             datum <- spendingDatum(tx, purpose)

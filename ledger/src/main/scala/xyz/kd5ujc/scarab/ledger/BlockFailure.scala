@@ -7,7 +7,7 @@ import cats.{Eq, Show}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.ledger.rules.TickFailure
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
 
 /** The rule family a block was refused by. The names are those the JSON log has always carried in
   * its `rule` field (the devnet tools and the remote runs parse them), so [[name]] is fixed.
@@ -111,8 +111,11 @@ enum BlockFailure:
   /** The total supply is not the maximum entering an epoch (before Conway). */
   case SupplyInvariant(epoch: BigInt, total: BigInt, maximum: BigInt)
 
-  /** The reference scripts of the block exceed the Conway limit. */
-  case RefScriptsTooLarge(limit: Long)
+  /** The reference scripts of the block exceed the Conway limit: `BodyRefScriptsSizeTooBig`
+    * (`Conway/Rules/Bbody.hs:103`, cardano-ledger f649f975), the block's total supplied and the
+    * limit expected, each the reference's 64-bit `Int`.
+    */
+  case RefScriptsTooLarge(mismatch: Mismatch[Long])
 
   /** The execution units of the block exceed the maximum of its parameters. */
   case BlockExUnitsTooBig(used: ExUnits, maximum: ExUnits)
@@ -131,6 +134,9 @@ enum BlockFailure:
     */
   case Mirror[E <: DomainError](cause: E) extends BlockFailure
 
+  /** A Dijkstra block, which decodes, but which no ledger rule of this build applies (#54). */
+  case NotYet(part: DijkstraNotYet)
+
   /** The rule family, as the log names it. */
   def rule: BlockRule = this match
     case HeaderDiffers | Transport(_) | BodyCommitment | EraAnnounced(_, _) |
@@ -144,7 +150,7 @@ enum BlockFailure:
     case Praos(_)           => BlockRule.Praos
     case Unverifiable(r, _) => r
     case Lite(_) | Handover(_) | SupplyInvariant(_, _, _) | RefScriptsTooLarge(_) |
-        BlockExUnitsTooBig(_, _) | Tx(_) | Tick(_) | Mirror(_) =>
+        BlockExUnitsTooBig(_, _) | Tx(_) | Tick(_) | Mirror(_) | NotYet(_) =>
       BlockRule.Ledger
 
   /** The reason, as the log renders it (the text of the old `(rule, reason)` pair, unchanged). */
@@ -174,12 +180,14 @@ enum BlockFailure:
     case Handover(error)         => error.message
     case SupplyInvariant(epoch, total, maximum) =>
       s"supply invariant broken entering epoch $epoch: $total != $maximum"
-    case RefScriptsTooLarge(limit) => s"reference scripts of the block exceed $limit bytes"
+    case RefScriptsTooLarge(m) =>
+      s"reference scripts of the block total ${m.supplied} bytes, over the limit of ${m.expected}"
     case BlockExUnitsTooBig(used, maximum) =>
       s"block execution units ${used.mem} mem / ${used.steps} steps exceed the maximum ${maximum.mem} / ${maximum.steps}"
     case Tx(failure)   => failure.message
     case Tick(failure) => s"tick refused: ${Show[TickFailure].show(failure)}"
     case Mirror(text)  => s"the state cannot be held: $text"
+    case NotYet(part)  => part.message
 
 object BlockFailure:
   extension (failure: BlockFailure)

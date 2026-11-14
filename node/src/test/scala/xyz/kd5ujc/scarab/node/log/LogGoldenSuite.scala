@@ -70,6 +70,7 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(NodeEvent.PraosSyncUntrusted(SyncAdvisory.Position.FromOrigin))
         _ <- node(NodeEvent.PraosSyncUntrusted(SyncAdvisory.Position.Behind(BigInt(432001))))
         _ <- localServer.traverse_(t => node(NodeEvent.LocalServer(t)))
+        _ <- remoteServer.traverse_(t => node(NodeEvent.RemoteServer(t)))
         _ <- node(NodeEvent.SocketConfigError(socketConfigError))
         _ <- node(NodeEvent.DiffusionErrored(diffusionErrored))
         _ <- node(NodeEvent.Listening("0.0.0.0:3001"))
@@ -224,6 +225,13 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(
           NodeEvent.Library("fs2.io", Severity.Error, "failed", Some("java.io.IOException: x"))
         )
+        _ <- xyz.kd5ujc.scarab.protocol.ReferenceBuild.values.toList
+          .traverse_(b => node(NodeEvent.ReferenceBuildChosen(b)))
+        _ <- node(
+          NodeEvent.UnstableReferenceBuild(xyz.kd5ujc.scarab.protocol.ReferenceBuild.LeiosB004fe0c)
+        )
+        _ <- xyz.kd5ujc.scarab.plutus.PlutusVm.values.toList
+          .traverse_(vm => node(NodeEvent.PlutusVmChosen(vm)))
         all <- lines.get
       yield all
     }
@@ -260,6 +268,7 @@ class LogGoldenSuite extends CatsEffectSuite:
     covered(forgeTraces, cases[xyz.kd5ujc.scarab.node.forge.ForgeTrace])
     covered(inbound, cases[InboundEvent])
     covered(localServer, cases[xyz.kd5ujc.scarab.network.LocalServer.Trace])
+    covered(remoteServer, cases[xyz.kd5ujc.scarab.network.BearerServer.Trace])
     covered(peerSelection, cases[Trace[SocketAddress[Host]]])
     covered(gsmEvents.map(_._2), cases[Gsm.Event])
     covered(ledgerPeers, cases[LedgerPeersTrace])

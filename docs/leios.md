@@ -7,7 +7,10 @@ cannot follow it, 11.4). Against a Leios node, headers and blocks were checked o
 (154,698 headers, every Praos check but the stake-dependent leader threshold); protocols 18 and 19
 were never answered (sections 8, 10 and 11.7). The Leios reference is the build the testnet runs
 (section 12, #711); the testnet was restarted on 2026-10-18, so section 11 describes the network
-before it. The protocol is
+before it. The node names that build `--reference-build leios-b004fe0c`
+([flags](running/flags.md)): an **unstable** prototype build, meant for `ExperimentalHardForksEnabled`,
+which can change or go away at any time; this build imports and exports its ledger state layout up to
+Conway, and `follow` refuses it at start until its rules are implemented (#826). The protocol is
 still moving: every statement below carries the source and revision it was read from, and where
 the sources disagree the disagreement is recorded rather than resolved. Unofficial research
 software, not audited. Read together with [architecture.md](architecture.md),
@@ -451,7 +454,7 @@ committee (`SignerWithoutKey`); committee seating equals a model sort.
 
 ### Benchmark: 900 seats
 
-`crypto/Test/runMain xyz.kd5ujc.scarab.crypto.bls.BlsBenchmark`, one thread, JDK in the build container, warm, host shared
+`tools/runMain xyz.kd5ujc.scarab.crypto.bls.BlsBenchmark`, one thread, JDK in the build container, warm, host shared
 with other jobs (indicative only):
 
 | Operation | Time |
@@ -474,7 +477,7 @@ Read-only connection to `leios-node.play.dev.cardano.org:3001`, magic 164, with 
 `LeiosNotify`/`LeiosFetch` (`network/`, Blueprint `messages.cddl`; round-trip, state-admission and
 malformed-input tests) with clients `LeiosNotifyClient`/`LeiosFetchClient` (`network/`).
 The probe is `LeiosProbe` in the test sources of `network`
-(`network/Test/runMain xyz.kd5ujc.scarab.network.LeiosProbe <host> <port> <magic> <seconds> <outfile>`).
+(`tools/runMain xyz.kd5ujc.scarab.network.LeiosProbe <host> <port> <magic> <seconds> <outfile>`).
 
 | Attempt | Result |
 |---|---|
@@ -672,7 +675,7 @@ these). "Cited" is the source read, at the revisions of sections 1 and 11.2 and,
 |---|---|---|---|
 | **X1** | The node cannot follow this chain: `NtNHeader` refuses era index 7 and `Header.fromRaw(Conway)` the 12-element Conway header. `HfcHeader`, `LeiosHeader` and `LeiosBlock` exist, but `Follower`, `Peer`, `HeaderGate` and `LedgerRules` do not use them | the follower | `dijkstra.cddl` 56 to 71, 105 to 114; 11.4 |
 | **X2** | `Era` has no `Dijkstra`: the era history, `HardForkConfig` (no trigger at protocol version 12, `eraProtVerLow` 12), `ShelleyBasedEra`, the state mirror and the Haskell state-file telescope know seven eras. The chain enters Dijkstra at epoch 4 with no `TestDijkstraHardForkAtEpoch`, so a governance hard fork to protocol version 12 the node would have to derive from its own ledger. Adding the case breaks exhaustive matches in `consensus` (`HardFork.scala`, `SomeEra.scala`), `storage` (`ConsensusCodecs.scala`, `LedgerFileCodecs.scala`) and the era generators of `consensus` tests; this stage did not touch them | consensus, storage | cardano-ledger-core `Internal/Definition/Era.hs` 140 (pinned) |
-| **X3** | No Dijkstra ledger: `LEDGER`, `BBODY` with the Leios signal (`LeiosBbodySignal`), the transaction body (key 14 `guards` in place of `required_signers`, sub-transactions, the inline `is_valid` flag, Plutus V4 as `language 3` with the cost model of `dijkstra-genesis.json`), certificates, `pool_params.bls_key`, protocol parameters 40 to 54, the translation from Conway | the rules | `dijkstra.cddl` 3 to 54, 116 and following, 719 to 733 (pinned); the Dijkstra changelog (section 3) |
+| **X3** | No Dijkstra ledger: `LEDGER`, `BBODY` with the Leios signal (`LeiosBbodySignal`), the transaction body (key 14 `guards` in place of `required_signers`, sub-transactions, the inline `is_valid` flag, Plutus V4 as `language 3` with the cost model of `dijkstra-genesis.json`), certificates, `pool_params.bls_key`, the rules that use the protocol parameters Dijkstra adds (update keys 34 to 56, which `ProtocolParams` holds; the translation from Conway is implemented, `Translate.conwayToDijkstra`, except for the outputs in the backing store, whose native reference scripts it does not re-encode; the node does not enter Dijkstra) | the rules | `dijkstra.cddl` 3 to 54, 116 and following, 719 to 733 (pinned); the Dijkstra changelog (section 3) |
 | **X4** | No stake distribution without a ledger: from epoch 2 the leader threshold of every header (152,586 of 154,698) is unchecked, and a pool's registered VRF key is not compared | header-first validation | 11.4 |
 | **X5** | The Leios certificate is decoded, not verified: no committee (the BLS keys are in pool registrations, `PoolParams` has no `bls_key`), no quorum from the stake, no lookup of the announcing ranking block | `LeiosBlock`, `Certificate.verify` | `dijkstra.cddl` 937 to 942; section 9 |
 | **X6** | `peras_certificate` is carried as bytes; the ledger's `validatePerasCert` is a placeholder that returns `False` | Peras | cardano-ledger `BlockBody/Internal.hs` 235 to 246 (pinned) |
@@ -825,7 +828,8 @@ the configuration and validation follow-ups are linked below.
 1. The node has no `Era.Dijkstra` and its follower does not use `HfcHeader`, `LeiosHeader` or
    `LeiosBlock` (X1, X2): on this chain it stops at block 0, as every header is of era index 7.
 2. `NodeConfig` reads the Dijkstra genesis file/hash and epoch/version triggers when experimental
-   hard forks are enabled, and `NodeSetup.verifyHashes` checks the supplied file. The Leios and
+   hard forks are enabled, `NodeSetup.verifyHashes` checks the supplied file, and `NodeSetup`
+   reads it as the reference's `FromJSON DijkstraGenesis` does (#54). The Leios and
    `LedgerDB` settings are retained with the pinned reader's types and defaults and reported as
    recognised and unused; they do not activate Dijkstra or configure its services (#745).
    [Configuration behavior](running/configuration.md#configuration-and-topology-files) describes
@@ -918,3 +922,10 @@ Supplied genesis stake covers only
 the capture's first two epochs; these results do not establish Dijkstra ledger-forecast, block-body,
 committee/certificate-aggregation or live-node conformance. The [maintained results](../fixtures/reference/leios-praos2/README.md)
 and [reproduction harness](../scripts/oracle/leios-praos2/README.md) record that scope and the source pins.
+
+The crossing from Conway is in `consensus.DijkstraCrossing` (#823): the Praos state carried into
+Praos2 with no announcement (`TranslateProto (Praos c) (Praos2 c)`, `Protocol/Praos2.hs:189-200`) and
+the Dijkstra ledger view forecast from a Conway ledger state
+(`crossEraForecastConwayToDijkstraWrapper`, `Cardano/CanHardFork.hs:767-808`). `DijkstraCrossingSuite`
+validates the eight Dijkstra headers of [the devnet chain](../fixtures/dijkstra-devnet/README.md) with
+them from its Conway blocks; neither is wired into the node, which does not enter Dijkstra.

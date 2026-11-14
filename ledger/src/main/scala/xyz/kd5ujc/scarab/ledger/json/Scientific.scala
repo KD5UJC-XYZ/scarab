@@ -50,32 +50,6 @@ final case class Scientific(coefficient: BigInt, base10Exponent: Long):
       val n = normalize
       Option.when(n.base10Exponent >= 0)(n.coefficient * BigInt(10).pow(n.base10Exponent.toInt))
 
-  /** `show` (`Data/Scientific.hs:958-1001`): fixed notation for decimal exponents 0 to 7, otherwise
-    * `d.ddde<n>`, as the reference's error texts print a value.
-    */
-  def shown: String =
-    if coefficient < 0 then "-" + Scientific(-coefficient, base10Exponent).shown
-    else
-      val (ds, e) = decimalDigits
-      if e < 0 || e > 7 then
-        ds match
-          case "0"                => "0.0e0"
-          case d if d.sizeIs == 1 => s"$d.0e${e - 1}"
-          case d                  => s"${d.head}.${d.tail}e${e - 1}"
-      else if e <= 0 then "0." + "0" * (-e).toInt + ds
-      else
-        val whole = ds.take(e.toInt).padTo(e.toInt, '0')
-        val fraction = ds.drop(e.toInt)
-        whole + "." + (if fraction.isEmpty then "0" else fraction)
-
-  /** `toDecimalDigits` (`Data/Scientific.hs:1080-1091`) of a non-negative value. */
-  private def decimalDigits: (String, Long) =
-    if coefficient == 0 then ("0", 0L)
-    else
-      val n = normalize
-      val ds = n.coefficient.toString
-      (ds, ds.length + n.base10Exponent)
-
   override def equals(other: Any): Boolean = other match
     case that: Scientific =>
       val (a, b) = (normalize, that.normalize)

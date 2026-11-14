@@ -29,10 +29,16 @@ enum Credential:
     case Script(h) => s"scriptHash-${h.hex}"
 
 object Credential:
-  /** The kind first (key before script), then the hash: the order of the ledger's `Credential`. */
+  /** The ledger's derived `Ord (Credential kr)`: a script before a key (`data Credential =
+    * ScriptHashObj | KeyHashObj`, cardano-ledger f649f975 `Cardano/Ledger/Credential.hs:98-101`),
+    * then the hash, whose `Ord` is its bytes', unsigned and lexicographic: the order of [[Bytes]].
+    */
   given Ordering[Credential] = (a, b) =>
-    val kinds = Integer.compare(a.ordinal, b.ordinal)
-    if kinds != 0 then kinds else a.hash.compareTo(b.hash)
+    (a, b) match
+      case (Script(x), Script(y)) => x.compareTo(y)
+      case (Key(x), Key(y))       => x.compareTo(y)
+      case (Script(_), Key(_))    => -1
+      case (Key(_), Script(_))    => 1
 
   /** Conway credential encoding `[0, keyhash] / [1, scripthash]`. */
   def decode(n: Node, what: DecodeSite)(using ByteStrings): Either[LedgerDecodeError, Credential] =
@@ -326,6 +332,15 @@ object Address:
 final case class RewardAccount(network: Int, credential: Credential)
 
 object RewardAccount:
+  /** The derived `Ord AccountAddress` (`Cardano/Ledger/Address.hs:182-187`, cardano-ledger
+    * f649f975): the network, `Testnet` (0) before `Mainnet` (1) (`BaseTypes.hs:878-881`), then the
+    * credential.
+    */
+  given Ordering[RewardAccount] = (a, b) =>
+    val networks = Integer.compare(a.network, b.network)
+    if networks != 0 then networks
+    else summon[Ordering[Credential]].compare(a.credential, b.credential)
+
   /** `decodeAccountAddress` (`libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs:906-955`,
     * cardano-ledger f649f975), what every era reads a reward account with
     * (`fromCborAccountAddress`, `:913-916`): the header is `0b111x000y` (`headerIsAccountAddress`,
@@ -372,6 +387,27 @@ final case class Value(coin: BigInt, assets: Map[Bytes, Map[Bytes, BigInt]]):
       1 + uintSize(coin) + mapHead(assets.size) + inner
 
 object Value:
+  /** The assets a mint field creates, its positive quantities: what the value consumed counts
+    * (`filterMultiAsset (> 0)` in `getConsumedMaryValue`, cardano-ledger f649f975
+    * `Mary/UTxO.hs:72-82`).
+    */
+  def minted(mint: Map[Bytes, Map[Bytes, BigInt]]): Value =
+    Value(0, select(mint)(q => Option.when(q > 0)(q)))
+
+  /** The assets a mint field destroys, its negative quantities negated: what the value produced
+    * counts (`burnedMultiAssets`, `Mary/UTxO.hs:93-97`).
+    */
+  def burned(mint: Map[Bytes, Map[Bytes, BigInt]]): Value =
+    Value(0, select(mint)(q => Option.when(q < 0)(-q)))
+
+  private def select(mint: Map[Bytes, Map[Bytes, BigInt]])(
+      keep: BigInt => Option[BigInt]
+  ): Map[Bytes, Map[Bytes, BigInt]] =
+    mint.view
+      .map((policy, assets) => policy -> assets.flatMap((name, q) => keep(q).map(name -> _)))
+      .filter(_._2.nonEmpty)
+      .toMap
+
   /** Size of a CBOR head carrying `n` (a length or an unsigned integer up to 2^32). */
   private[ledger] def headSize(n: BigInt): Int =
     if n < 24 then 1
@@ -591,16 +627,19 @@ final case class TxOut(
         field <- f
           .get(3)
           .toRight(LedgerDecodeError.MissingField(DecodeField.Output, DecodeField.ReferenceScript))
-        script <- Script.decodeWrappedWithBytes(field)
+        script <- Script.decodeWrappedWithBytes(field, ScriptKind.newestKnown)
       yield script
       reread.toOption.orElse(Some(kept))
     }
 
   /** Size in bytes of the reference script as the ledger counts it for the reference-script fee:
-    * the Plutus script bytes, or the encoding of a native script.
+    * the Plutus script bytes, or the encoding of a native script. A `Long`, as the reference's
+    * `originalBytesSize` (`Hashes.hs:379`) is a 64-bit `Int`, so that the sizes of a transaction's
+    * scripts add up as the reference adds them (`txNonDistinctRefScriptsSize`,
+    * `Conway/UTxO.hs:166-170`, cardano-ledger f649f975).
     */
-  def referenceScriptSize: Int =
-    if scriptRef.isEmpty then 0
+  def referenceScriptSize: Long =
+    if scriptRef.isEmpty then 0L
     else
       val size = for
         node <- TxOut.node(raw)
@@ -619,8 +658,8 @@ final case class TxOut(
         payload <-
           if tag == 0 then Right(parts(1).original.size)
           else CborRead.bytes(parts(1), DecodeField.PlutusScript).map(_.size)
-      yield payload
-      size.getOrElse(0)
+      yield payload.toLong
+      size.getOrElse(0L)
 
   /** Size of the output for the Babbage and Conway minimum: the length of its original encoding.
     * The reference measures the output as it was decoded, `Sized` by the span the decoder consumed
@@ -677,10 +716,15 @@ object TxOut:
       else if era.ordinal < Era.Babbage.ordinal then PairOrDatumHash
       else PairDatumHashOrMap
 
+  /** An output of a block or transaction, or a stored one (`forms`); its reference script is of a
+    * language no newer than `newest` ([[ScriptKind.newest]] of the era, [[ScriptKind.newestKnown]]
+    * for a stored output).
+    */
   def decode(
       n: Node,
       mode: Address.Mode,
-      forms: Forms
+      forms: Forms,
+      newest: ScriptKind
   )(using ByteStrings): Either[LedgerDecodeError, TxOut] =
     n.value match
       case xyz.kd5ujc.scarab.codec.Value.Arr(xs) if forms.arities.contains(xs.size) =>
@@ -711,7 +755,7 @@ object TxOut:
             LedgerDecodeError.UnknownFields(DecodeField.Output, f.keySet -- Set(0, 1, 2, 3))
           )
           d <- f.get(2).traverse(datumOption(_, forms != Forms.Stored))
-          s <- f.get(3).traverse(Script.decodeWrapped)
+          s <- f.get(3).traverse(Script.decodeWrapped(_, newest))
         yield TxOut(n.original, a, v, d.getOrElse(Datum.NoDatum), s, vn.original.size)
       case _ => Left(LedgerDecodeError.OutputForm(forms, n.value))
 
@@ -750,7 +794,7 @@ object TxOut:
   )(using ByteStrings): Either[LedgerDecodeError, TxOut] =
     DetachedRecords.read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.storedOutput)(
       LedgerDecodeError.Syntax(_)
-    )(decode(_, mode, Forms.Stored))
+    )(decode(_, mode, Forms.Stored, ScriptKind.newestKnown))
 
   /** The encoding of an output read again, as an item: framed as it was read when its value is a
     * detached record ([[DetachedRecords]]). Read without the records, such an output is refused or

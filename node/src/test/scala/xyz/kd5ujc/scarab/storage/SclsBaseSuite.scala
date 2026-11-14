@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.mtl.{Ask, Handle}
 import cats.syntax.all.*
@@ -47,7 +49,9 @@ import xyz.kd5ujc.scarab.storage.scls.{
 class SclsBaseSuite extends CatsEffectSuite:
   import StorageTestKit.{ok, tempDir}
   private val setup =
-    NodeSetup.fromDirectory(JPath.of("fixtures/eras/genesis")).fold(e => fail(e.message), identity)
+    NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(JPath.of("fixtures/eras/genesis"))
+      .fold(e => fail(e.message), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
   private given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
   private val source = Path("fixtures/haskell-state/conway-4593")
@@ -76,7 +80,8 @@ class SclsBaseSuite extends CatsEffectSuite:
       gaps: Set[Gap] = Set.empty,
       checkpointStamp: Long = anchor.blockNo.toLong,
       wrongPoint: Boolean = false,
-      countOffset: Long = 0
+      countOffset: Long = 0,
+      v9: Boolean = false
   ): IO[SclsBase.Config] =
     val db = root / "db"
     ok {
@@ -112,16 +117,15 @@ class SclsBaseSuite extends CatsEffectSuite:
                   )
                   _ <- IO.blocking {
                     Files.createDirectories((db / "snapshots").toNioPath)
+                    val binding =
+                      StorageTestKit.boundTo(
+                        db / "utxo" / "checkpoints" / StateBacking.stem(anchor)
+                      )
                     Files.write(
                       (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath,
                       FileLedgerSnapshots.closed(
-                        SnapshotV8.framed(
-                          StorageTestKit.boundTo(
-                            db / "utxo" / "checkpoints" / StateBacking.stem(anchor)
-                          ),
-                          sidecar,
-                          raw
-                        )
+                        if v9 then SnapshotV9.framed(binding, sidecar, raw)
+                        else SnapshotV10.framed(ReferenceBuild.Release11_1, binding, sidecar, raw)
                       )
                     )
                   }
@@ -226,7 +230,14 @@ class SclsBaseSuite extends CatsEffectSuite:
     }
   }
 
-  test("offline native base exports the exact independently produced Haskell SCLS artifact") {
+  Vector(false, true).foreach { v9 =>
+    val base = if v9 then "a V9 base not yet migrated, read in memory," else "offline native base"
+    test(s"$base exports the exact independently produced Haskell SCLS artifact") {
+      exportsReference(v9)
+    }
+  }
+
+  private def exportsReference(v9: Boolean) = {
     val original =
       Bytes.wrap(Files.readAllBytes(JPath.of("fixtures/scls/conway-4593/reference.scls")))
     val limit = SclsFraming.Limit.fromInt(1024 * 1024).fold(e => fail(e.toString), identity)
@@ -238,7 +249,7 @@ class SclsBaseSuite extends CatsEffectSuite:
     val sorter = SclsEntrySorter.Config.fromInt(1024 * 1024).fold(e => fail(e.toString), identity)
     tempDir.use { root =>
       for
-        config <- fixture(root)
+        config <- fixture(root, v9 = v9)
         before <- IO(fingerprint(config.db))
         written <- Ref.of[IO, Vector[Bytes]](Vector.empty)
         result <- attempt(SclsBase.resource[IO](config).use { base =>
@@ -374,15 +385,19 @@ class SclsBaseSuite extends CatsEffectSuite:
                       .verified(snapshotBytes)
                       .leftMap(e => new AssertionError(e.toString))
                   )
-                  native <- ok(SnapshotV8.format[IO](SnapshotCheck.Full).decode(content)).flatMap(
-                    result => IO.fromEither(result.leftMap(e => new AssertionError(e.toString)))
+                  native <- ok(
+                    SnapshotV10
+                      .format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+                      .decode(content)
+                  ).flatMap(result =>
+                    IO.fromEither(result.leftMap(e => new AssertionError(e.toString)))
                   )
                 yield
                   assertEquals(checkpointRows, baseRows)
                   assertEquals(prepared.snapshot.anchor, Some(anchor))
                   assertEquals(native.anchor, Some(anchor))
                   assertEquals(prepared.utxo.count, 3L)
-                  assertEquals(SnapshotV8.sidecarOf(content).map(_.gaps), Right(Set.empty[Gap]))
+                  assertEquals(SnapshotV10.sidecarOf(content).map(_.gaps), Right(Set.empty[Gap]))
                   prepared.directory
               }
           )

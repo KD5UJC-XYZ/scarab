@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import scala.annotation.unused
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigNumberField, ConfigProblem}
 import io.circe.Json
@@ -29,7 +30,7 @@ class ConfigSuite extends FunSuite:
 
   private def parsed(network: String) =
     NodeConfig
-      .parse(text(network, "config.json"), strict = true)
+      .parse(ReferenceBuild.Default)(text(network, "config.json"), strict = true)
       .fold(e => fail(e.message), identity)
 
   test("the public configurations offer the latest release, 15; experimental protocols add 16") {
@@ -132,16 +133,18 @@ class ConfigSuite extends FunSuite:
     )
     val short = text("preview", "config.json").replace(config.hashes.shelley.get.hex, "abcd")
     assertEquals(
-      NodeConfig.parse(short).left.map(_.problem),
+      NodeConfig.parse(ReferenceBuild.Default)(short).left.map(_.problem),
       Left(ConfigProblem.ByteLength("ShelleyGenesisHash", 32, 2))
     )
   }
 
   test("the setup from the preview configuration is the setup from its directory") {
     val viaConfig = NodeSetup
-      .fromConfigFile(dir("preview").resolve("config.json"))
+      .fromConfigFile(ReferenceBuild.Default)(dir("preview").resolve("config.json"))
       .fold(e => fail(e.message), identity)
-    val viaDir = NodeSetup.fromDirectory(dir("preview")).fold(e => fail(e.message), identity)
+    val viaDir = NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(dir("preview"))
+      .fold(e => fail(e.message), identity)
     assertEquals(viaConfig.identity, viaDir.identity)
     assertEquals(viaConfig.genesis.geometry, viaDir.genesis.geometry)
     assertEquals(viaConfig.config, viaDir.config)
@@ -150,7 +153,7 @@ class ConfigSuite extends FunSuite:
 
   test("the preprod configuration starts a chain with a Byron prefix, and its hashes verify") {
     val setup = NodeSetup
-      .fromConfigFile(dir("preprod").resolve("config.json"))
+      .fromConfigFile(ReferenceBuild.Default)(dir("preprod").resolve("config.json"))
       .fold(e => fail(e.message), identity)
     assertEquals(setup.identity.magic, 1L)
     assert(setup.byron.isDefined)
@@ -163,13 +166,20 @@ class ConfigSuite extends FunSuite:
     // no genesis files next to the configuration: they are missing...
     assertEquals(
       NodeSetup
-        .fromConfigFile(elsewhere.resolve("config.json"))
+        .fromConfigFile(ReferenceBuild.Default)(elsewhere.resolve("config.json"))
         .left
         .map(_.problem.getClass.getSimpleName),
       Left("FileMissing")
     )
     // ...unless the directory is given
-    assert(NodeSetup.fromConfigFile(elsewhere.resolve("config.json"), Some(dir("preview"))).isRight)
+    assert(
+      NodeSetup
+        .fromConfigFile(ReferenceBuild.Default)(
+          elsewhere.resolve("config.json"),
+          Some(dir("preview"))
+        )
+        .isRight
+    )
   }
 
   test("strict reading insists on what cardano-node insists on") {
@@ -193,7 +203,7 @@ class ConfigSuite extends FunSuite:
       "LastKnownBlockVersion-Minor"
     ).foreach { key =>
       assert(
-        NodeConfig.parse(without(key), strict = true).left.exists {
+        NodeConfig.parse(ReferenceBuild.Default)(without(key), strict = true).left.exists {
           case ConfigError(ConfigProblem.MissingField("configuration", field)) =>
             field == key || field == s"$key (or GenesisFile)"
           case _ => false
@@ -202,7 +212,7 @@ class ConfigSuite extends FunSuite:
       )
       // the directory mode takes the standard name instead
       if key.endsWith("File") || key.startsWith("Last") then
-        assert(NodeConfig.parse(without(key)).isRight, key)
+        assert(NodeConfig.parse(ReferenceBuild.Default)(without(key)).isRight, key)
     }
     // GenesisFile is the older name of the Byron and Shelley files, and not allowed next to them
     val both = parser
@@ -211,7 +221,7 @@ class ConfigSuite extends FunSuite:
       .get
       .deepMerge(Json.obj("GenesisFile" -> Json.fromString("g.json")))
     assertEquals(
-      NodeConfig.parse(both.noSpaces).left.map(_.problem),
+      NodeConfig.parse(ReferenceBuild.Default)(both.noSpaces).left.map(_.problem),
       Left(ConfigProblem.ConflictingFields(Set("ByronGenesisFile", "GenesisFile")))
     )
     val old = Json.obj(
@@ -221,7 +231,9 @@ class ConfigSuite extends FunSuite:
       "LastKnownBlockVersion-Major" -> Json.fromInt(3),
       "LastKnownBlockVersion-Minor" -> Json.fromInt(0)
     )
-    val config = NodeConfig.parse(old.noSpaces, strict = true).fold(e => fail(e.message), identity)
+    val config = NodeConfig
+      .parse(ReferenceBuild.Default)(old.noSpaces, strict = true)
+      .fold(e => fail(e.message), identity)
     assertEquals(
       (config.files.byron, config.files.shelley),
       ("shelley-genesis.json", "shelley-genesis.json")
@@ -232,7 +244,7 @@ class ConfigSuite extends FunSuite:
   test("the hard-fork triggers are read as the reference's EpochNo and Word: Word64 numbers") {
     val base = parser.parse(text("preprod", "config.json")).toOption.get
     def parse(key: String, value: Json) =
-      NodeConfig.parse(base.deepMerge(Json.obj(key -> value)).noSpaces)
+      NodeConfig.parse(ReferenceBuild.Default)(base.deepMerge(Json.obj(key -> value)).noSpaces)
     val beyond = Json.fromBigInt(BigInt(2).pow(64))
     val max = BigInt(2).pow(64) - 1
     def refused(key: String, value: Json, field: ConfigNumberField) =
@@ -256,7 +268,9 @@ class ConfigSuite extends FunSuite:
     // `parseBoundedIntegral` takes any notation of a whole number, and `.:?` reads null as absent
     val notations = parser.parse("""{"TestShelleyHardForkAtEpoch": 0.5e1}""").toOption.get
     assertEquals(
-      NodeConfig.parse(base.deepMerge(notations).noSpaces).map(_.firstShelleyEpoch),
+      NodeConfig
+        .parse(ReferenceBuild.Default)(base.deepMerge(notations).noSpaces)
+        .map(_.firstShelleyEpoch),
       Right(Some(BigInt(5)))
     )
     assertEquals(
@@ -280,7 +294,9 @@ class ConfigSuite extends FunSuite:
         )
       )
       val config =
-        NodeConfig.parse(json.noSpaces, strict = true).fold(e => fail(e.message), identity)
+        NodeConfig
+          .parse(ReferenceBuild.Default)(json.noSpaces, strict = true)
+          .fold(e => fail(e.message), identity)
       assertEquals(config.settings.genesis.bucketCapacity, capacity)
       assertEquals(config.settings.genesis.bucketRate, xyz.kd5ujc.scarab.codec.Rational(rate))
     Vector("BucketCapacity", "BucketRate").foreach { field =>
@@ -290,7 +306,7 @@ class ConfigSuite extends FunSuite:
             Json.obj(field -> Json.fromBigDecimal(BigDecimal("0.5")))
         )
       )
-      NodeConfig.parse(fractional.noSpaces).left.map(_.problem) match
+      NodeConfig.parse(ReferenceBuild.Default)(fractional.noSpaces).left.map(_.problem) match
         case Left(ConfigProblem.JsonField("LowLevelGenesisOptions", key, _)) =>
           assertEquals(key, field)
         case other => fail(s"fractional $field was not rejected as an integer field: $other")
@@ -300,15 +316,29 @@ class ConfigSuite extends FunSuite:
   test("other protocols, unknown modes, a renamed key and experimental forks are handled") {
     val base = parser.parse(text("preview", "config.json")).toOption.get
     def with_(key: String, value: Json) = base.deepMerge(Json.obj(key -> value)).noSpaces
-    assert(NodeConfig.parse(with_("Protocol", Json.fromString("Byron"))).isLeft)
-    assert(NodeConfig.parse(with_("ConsensusMode", Json.fromString("Other"))).isLeft)
-    assert(NodeConfig.parse(with_("DiffusionMode", Json.fromString("Other"))).isLeft)
-    assert(NodeConfig.parse(with_("TestEnableDevelopmentHardForkEras", Json.True)).isLeft)
+    assert(
+      NodeConfig.parse(ReferenceBuild.Default)(with_("Protocol", Json.fromString("Byron"))).isLeft
+    )
+    assert(
+      NodeConfig
+        .parse(ReferenceBuild.Default)(with_("ConsensusMode", Json.fromString("Other")))
+        .isLeft
+    )
+    assert(
+      NodeConfig
+        .parse(ReferenceBuild.Default)(with_("DiffusionMode", Json.fromString("Other")))
+        .isLeft
+    )
+    assert(
+      NodeConfig
+        .parse(ReferenceBuild.Default)(with_("TestEnableDevelopmentHardForkEras", Json.True))
+        .isLeft
+    )
     // Dijkstra: required once enabled, and recorded as unsupported
     val enabled = with_("ExperimentalHardForksEnabled", Json.True)
     assert(
       NodeConfig
-        .parse(enabled, strict = true)
+        .parse(ReferenceBuild.Default)(enabled, strict = true)
         .left
         .exists(_.problem == ConfigProblem.MissingField("configuration", "DijkstraGenesisFile"))
     )
@@ -320,12 +350,14 @@ class ConfigSuite extends FunSuite:
         )
       )
       .noSpaces
-    val config = NodeConfig.parse(dijkstra, strict = true).fold(e => fail(e.message), identity)
+    val config = NodeConfig
+      .parse(ReferenceBuild.Default)(dijkstra, strict = true)
+      .fold(e => fail(e.message), identity)
     assert(config.settings.unsupported.exists(_.contains("Dijkstra")))
     assertEquals(parsed("preview").settings.consensusMode, ConsensusMode.GenesisMode)
     // settings the node acts on when started from a configuration file
     val settings = NodeConfig
-      .parse(
+      .parse(ReferenceBuild.Default)(
         base
           .deepMerge(
             Json.obj(
@@ -339,17 +371,25 @@ class ConfigSuite extends FunSuite:
       .fold(e => fail(e.message), _.settings)
     assertEquals(
       (settings.socketPath, settings.databasePath, settings.mempoolCapacityBytes),
-      (Some("/s/node.socket"), Some("db"), Some(2000000L))
+      (Some("/s/node.socket"), Some("db"), Word32.fromLong(2000000))
     )
     assertEquals(
       NodeConfig
-        .parse(with_("MempoolCapacityBytesOverride", Json.fromString("NoOverride")))
+        .parse(ReferenceBuild.Default)(
+          with_("MempoolCapacityBytesOverride", Json.fromString("NoOverride"))
+        )
         .map(_.settings.mempoolCapacityBytes),
       Right(None)
     )
-    assert(NodeConfig.parse(with_("MempoolCapacityBytesOverride", Json.fromString("lots"))).isLeft)
+    assert(
+      NodeConfig
+        .parse(ReferenceBuild.Default)(
+          with_("MempoolCapacityBytesOverride", Json.fromString("lots"))
+        )
+        .isLeft
+    )
     // AcceptedConnectionsLimit (POM.hs 373-375): three required keys, the limits Word32 and the
-    // delay a DiffTime of seconds (OrphanInstances.hs:303-308, aeson's FromJSON Word32/DiffTime)
+    // delay a DiffTime of seconds (OrphanInstances.hs:302-307, aeson's FromJSON Word32/DiffTime)
     def accepted(hard: Long, soft: Long, picos: BigInt) =
       for h <- Word32.fromLong(hard); s <- Word32.fromLong(soft)
       yield AcceptedConnectionsLimit(h, s, DiffTime.picoseconds(picos))
@@ -358,7 +398,7 @@ class ConfigSuite extends FunSuite:
       accepted(512, 384, BigInt(5000000000000L))
     )
     def limit(hard: Json, soft: Json, delay: Json) = NodeConfig
-      .parse(
+      .parse(ReferenceBuild.Default)(
         with_(
           "AcceptedConnectionsLimit",
           Json.obj("hardLimit" -> hard, "softLimit" -> soft, "delay" -> delay)
@@ -408,7 +448,7 @@ class ConfigSuite extends FunSuite:
     assertEquals(limit(Json.fromInt(512), Json.fromInt(384), Json.fromString("5")), None)
     assert(
       NodeConfig
-        .parse(
+        .parse(ReferenceBuild.Default)(
           with_(
             "AcceptedConnectionsLimit",
             Json.obj("hardLimit" -> Json.fromInt(10), "softLimit" -> Json.fromInt(5))
@@ -419,39 +459,100 @@ class ConfigSuite extends FunSuite:
     // Global fetching-peer targets; preferred-peer handover follows the reference.
     assertEquals(
       NodeConfig
-        .parse(with_("MaxConcurrencyDeadline", Json.fromInt(2)))
+        .parse(ReferenceBuild.Default)(with_("MaxConcurrencyDeadline", Json.fromInt(2)))
         .map(_.settings.maxConcurrencyDeadline),
       Right(Some(2))
     )
     assertEquals(parsed("preview").settings.maxConcurrencyDeadline, None)
     assertEquals(
       NodeConfig
-        .parse(with_("MaxConcurrencyDeadline", Json.fromInt(0)))
+        .parse(ReferenceBuild.Default)(with_("MaxConcurrencyDeadline", Json.fromInt(0)))
         .map(_.settings.maxConcurrencyDeadline),
       Right(Some(0))
     )
     assertEquals(
-      NodeConfig.parse(with_("MaxConcurrencyDeadline", Json.fromInt(-1))).left.toOption,
+      NodeConfig
+        .parse(ReferenceBuild.Default)(with_("MaxConcurrencyDeadline", Json.fromInt(-1)))
+        .left
+        .toOption,
       Some(ConfigError(ConfigProblem.Negative("MaxConcurrencyDeadline", BigDecimal(-1))))
     )
     assertEquals(
       NodeConfig
-        .parse(with_("MaxConcurrencyBulkSync", Json.fromInt(3)))
+        .parse(ReferenceBuild.Default)(with_("MaxConcurrencyBulkSync", Json.fromInt(3)))
         .map(_.settings.maxConcurrencyBulkSync),
       Right(Some(3))
     )
     assertEquals(
       NodeConfig
-        .parse(with_("MaxConcurrencyBulkSync", Json.fromInt(0)))
+        .parse(ReferenceBuild.Default)(with_("MaxConcurrencyBulkSync", Json.fromInt(0)))
         .map(_.settings.maxConcurrencyBulkSync),
       Right(Some(0))
     )
     assertEquals(
-      NodeConfig.parse(with_("MaxConcurrencyBulkSync", Json.fromInt(-1))).left.toOption,
+      NodeConfig
+        .parse(ReferenceBuild.Default)(with_("MaxConcurrencyBulkSync", Json.fromInt(-1)))
+        .left
+        .toOption,
       Some(ConfigError(ConfigProblem.Negative("MaxConcurrencyBulkSync", BigDecimal(-1))))
     )
-    assert(NodeConfig.parse("[]").isLeft)
-    assert(NodeConfig.parse("{").isLeft)
+    // `StartAsNonProducingNode` (POM.hs 325): a Boolean, absent or null is the default
+    def nonProducing(value: Json) =
+      NodeConfig
+        .parse(ReferenceBuild.Default)(with_("StartAsNonProducingNode", value))
+        .map(_.settings.startAsNonProducingNode)
+    assertEquals(nonProducing(Json.True), Right(Some(true)))
+    assertEquals(nonProducing(Json.False), Right(Some(false)))
+    assertEquals(nonProducing(Json.Null), Right(None))
+    assert(nonProducing(Json.fromString("true")).isLeft)
+    assertEquals(
+      NodeConfig
+        .parse(ReferenceBuild.Default)(base.noSpaces)
+        .map(_.settings.startAsNonProducingNode),
+      Right(None)
+    )
+    assert(NodeConfig.parse(ReferenceBuild.Default)("[]").isLeft)
+    assert(NodeConfig.parse(ReferenceBuild.Default)("{").isLeft)
+  }
+
+  test("MempoolCapacityBytesOverride is a Word32, as cardano-node 11.1.3 reads it") {
+    // `parseMempoolCapacityBytesOverride` (`POM.hs:475-487`): `FromJSON Word32`, or `NoOverride`
+    val base = parser.parse(text("preview", "config.json")).toOption.get
+    def read(value: Json) = NodeConfig
+      .parse(ReferenceBuild.Default)(
+        base.deepMerge(Json.obj("MempoolCapacityBytesOverride" -> value)).noSpaces
+      )
+      .map(_.settings.mempoolCapacityBytes.map(_.toLong))
+    val held = List(
+      Json.fromLong(0) -> Some(0L),
+      Json.fromLong(4294967295L) -> Some(4294967295L),
+      Json.fromBigDecimal(BigDecimal("5.12e2")) -> Some(512L),
+      Json.fromString("NoOverride") -> None,
+      Json.Null -> None
+    )
+    held.foreach((json, expected) => assertEquals(read(json), Right(expected), json.noSpaces))
+    List(Json.fromLong(4294967296L), Json.fromLong(-1), Json.fromBigDecimal(BigDecimal("1.5")))
+      .foreach(json =>
+        assertEquals(
+          read(json),
+          Left(ConfigError(ConfigProblem.MempoolCapacity(json))),
+          json.noSpaces
+        )
+      )
+    assertEquals(
+      ConfigProblem.MempoolCapacity(Json.fromLong(4294967296L)).message,
+      "configuration MempoolCapacityBytesOverride: 4294967296 is neither a number of bytes from 0 to 4294967295 nor NoOverride"
+    )
+    // `--mempool-bytes` takes the same width
+    def flag(value: String) = Main
+      .parse(
+        List("follow", "--genesis-dir", "/g", "--peer", "127.0.0.1:9", "--mempool-bytes", value)
+      )
+      .map(_.mempoolBytes.map(_.toLong))
+    assertEquals(flag("0"), Right(Some(0L)))
+    assertEquals(flag("4294967295"), Right(Some(4294967295L)))
+    assert(flag("4294967296").isLeft)
+    assert(flag("-1").isLeft)
   }
 
   test("Genesis sync targets and trusted-state threshold are typed settings") {
@@ -466,7 +567,10 @@ class ConfigSuite extends FunSuite:
       "MinBigLedgerPeersForTrustedState" -> Json.fromInt(3)
     )
     val settings =
-      NodeConfig.parse(input.noSpaces).fold(error => fail(error.message), identity).settings
+      NodeConfig
+        .parse(ReferenceBuild.Default)(input.noSpaces)
+        .fold(error => fail(error.message), identity)
+        .settings
     val expected = Targets.validated(0, 40, 8, 4, 50, 20, 10).fold(e => fail(e.message), identity)
     assertEquals(
       settings.syncTargets(Targets.sync),
@@ -685,6 +789,20 @@ class ConfigSuite extends FunSuite:
       rootsB.local.flatMap(_.members.map(_._1.toString)),
       List("127.0.0.1:9")
     )
+    // a snapshot name the JDK cannot make a path of is a typed refusal, which a SIGHUP reload
+    // logs and survives, not an exception that escapes the reload (#953)
+    val topologyNul = Files.createTempFile("topology-nul", ".json")
+    Files.writeString(
+      topologyNul,
+      "{\"localRoots\": [], \"publicRoots\": [], \"peerSnapshotFile\": \"snap\\u0000.json\"}"
+    )
+    assertEquals(
+      Main
+        .topologyRoots(requestedA.copy(topologyFile = Some(topologyNul)), reloadSetup)
+        .left
+        .map(_.message),
+      Left("config: cannot name the file snap\u0000.json: Nul character not allowed")
+    )
     // the file's defaults for the flags (here none are set), and a flag wins over the file
     val withSettings = Files.createTempDirectory("config-suite-settings")
     Files.copy(dir("preview").resolve("checkpoints.json"), withSettings.resolve("checkpoints.json"))
@@ -721,10 +839,25 @@ class ConfigSuite extends FunSuite:
     val (fromFile, _, _) = Main.configured(bare).fold(e => fail(e.message), identity)
     assertEquals(fromFile.localSocket, Some("/s/node.socket"))
     assertEquals(fromFile.db, Some(Path.of("/d")))
-    assertEquals(fromFile.mempoolBytes, Some(3000000L))
-    val flagged = bare.copy(db = Some(Path.of("/mine")), mempoolBytes = Some(5L))
+    assertEquals(fromFile.mempoolBytes, Word32.fromLong(3000000))
+    val five = Word32.fromLong(5)
+    // a flag wins over the file; `SocketPath` is taken at all only by Scarab, an approved
+    // deviation (#949: the reference's command line always replaces it)
+    val flagged = bare.copy(
+      localSocket = Some("/mine.socket"),
+      db = Some(Path.of("/mine")),
+      mempoolBytes = five
+    )
     val (overridden, _, _) = Main.configured(flagged).fold(e => fail(e.message), identity)
-    assertEquals((overridden.db, overridden.mempoolBytes), (Some(Path.of("/mine")), Some(5L)))
+    assertEquals(
+      (overridden.localSocket, overridden.db, overridden.mempoolBytes),
+      (Some("/mine.socket"), Some(Path.of("/mine")), five)
+    )
+    // the evaluator the flag chose is the one the completed options give the run
+    val own = xyz.kd5ujc.scarab.plutus.PlutusVm.Scarab
+    val (chosen, _, _) =
+      Main.configured(bare.copy(plutusVm = own)).fold(e => fail(e.message), identity)
+    assertEquals(chosen.plutusVm, own)
     // a topology that names no peer, and no --peer: nothing to follow
     val empty = Files.createTempFile("topology", ".json")
     Files.writeString(

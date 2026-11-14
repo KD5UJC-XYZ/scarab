@@ -96,6 +96,16 @@ class Sum6KesSigningSuite extends munit.FunSuite:
     )
   }
 
+  Vector(-(BigInt(1) << 32), BigInt(1) << 32, (BigInt(1) << 64) - 1).foreach { target =>
+    test(s"an out-of-range exact target $target leaves the signing key unchanged") {
+      val k = fresh
+      val before = k.toBytes
+      assertEquals(k.evolveTo(target), Left(Failure.PeriodOutOfRange(target)))
+      assertEquals(k.period, 0, "a refused target must not advance the period")
+      assertEquals(k.toBytes, before, "a refused target must not alter key material")
+    }
+  }
+
   test("missing material, invalid lengths and periods have distinct error cases") {
     assertEquals(generate(null), Left(Failure.MissingSeed))
     Vector(0, SeedBytes - 1, SeedBytes + 1).foreach { n =>

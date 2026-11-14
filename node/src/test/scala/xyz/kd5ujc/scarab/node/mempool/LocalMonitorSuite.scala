@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.mempool
 
 import cats.effect.IO
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.network.LocalTxMonitorServer
+import xyz.kd5ujc.scarab.network.{LocalTxMonitorServer, Settled}
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
@@ -19,7 +19,7 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
       fail(error.message)
     )
   private def pool(capacityOverride: Option[Long] = None) =
-    MempoolState.empty(Right(ledger(4)), 1000, capacityOverride)
+    MempoolState.empty(Right(ledger(4)), 1000, capacityOverride.map(word32))
 
   private def held(raws: Bytes*): MempoolState =
     raws.foldLeft(pool())((s, raw) =>
@@ -78,12 +78,12 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
     val one = Capacity.blockUnit(params)
     assertEquals(one.refScriptsBytes, 1048576L)
     assertEquals(Capacity.of(params, None).bytes, 2 * unit)
-    assertEquals(Capacity.of(params, Some(2 * unit)).bytes, 2 * unit)
-    assertEquals(Capacity.of(params, Some(2 * unit - 1)).bytes, 2 * unit)
-    assertEquals(Capacity.of(params, Some(2 * unit + 1)).bytes, 3 * unit)
-    assertEquals(Capacity.of(params, Some(1)).bytes, unit)
-    assertEquals(Capacity.of(params, Some(0)).bytes, unit)
-    assertEquals(Capacity.of(params, Some(2 * unit)).refScriptsBytes, 2L * 1048576)
+    assertEquals(Capacity.of(params, Some(word32(2 * unit))).bytes, 2 * unit)
+    assertEquals(Capacity.of(params, Some(word32(2 * unit - 1))).bytes, 2 * unit)
+    assertEquals(Capacity.of(params, Some(word32(2 * unit + 1))).bytes, 3 * unit)
+    assertEquals(Capacity.of(params, Some(word32(1))).bytes, unit)
+    assertEquals(Capacity.of(params, Some(word32(0))).bytes, unit)
+    assertEquals(Capacity.of(params, Some(word32(2 * unit))).refScriptsBytes, 2L * 1048576)
     assertEquals(LocalMonitor.snapshot(pool()).sizes.capacityInBytes, 2 * unit)
     assertEquals(LocalMonitor.snapshot(pool(Some(1))).sizes.capacityInBytes, unit)
   }
@@ -92,8 +92,8 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
     forAll(Gen.choose(0L, 5000000L), Gen.choose(0L, 5000000L)) { (a, b) =>
       val params = ledger(1).params
       val (lo, hi) = (a.min(b), a.max(b))
-      val cl = Capacity.of(params, Some(lo))
-      val ch = Capacity.of(params, Some(hi))
+      val cl = Capacity.of(params, Some(word32(lo)))
+      val ch = Capacity.of(params, Some(word32(hi)))
       cl.bytes <= ch.bytes && cl.bytes >= Capacity.blockUnit(params).bytes &&
       ch.bytes >= hi
     }
@@ -115,26 +115,29 @@ class LocalMonitorSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with S
 
   test("a client awaiting a new snapshot is woken by a transaction and by a new tip") {
     val (t1, id1) = pay(1)
-    for
-      mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, None, MempoolEvents.none[IO])
-      source = LocalMonitor.source(mempool)
-      first <- source.acquire
-      waiting <- source.awaitChange(first).start
-      _ <- IO.sleep(30.millis)
-      _ <- mempool.add(t1, Source.Local)
-      second <- waiting.joinWithNever
-      again <- source.awaitChange(second).start
-      _ <- IO.sleep(30.millis)
-      _ <- mempool.sync(Right(ledger(4)), 1001)
-      third <- again.joinWithNever
-    yield
-      assertEquals(first.txs.size, 0)
-      assertEquals(second.txs.size, 1)
-      assert(second.has(LocalMonitor.wrapId(id1)))
-      assertEquals(second.slot, BigInt(1001))
-      // the transaction still applies at the new tip, only the slot moved
-      assertEquals(third.slot, BigInt(1002))
-      assertEquals(third.txs.size, 1)
+    Settled { settle =>
+      for
+        mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, None, MempoolEvents.none[IO])
+        source = LocalMonitor.source(mempool)
+        first <- source.acquire
+        waiting <- source.awaitChange(first).start
+        // the client waits for the pool to change
+        _ <- settle
+        _ <- mempool.add(t1, Source.Local)
+        second <- waiting.joinWithNever
+        again <- source.awaitChange(second).start
+        _ <- settle
+        _ <- mempool.sync(Right(ledger(4)), 1001)
+        third <- again.joinWithNever
+      yield
+        assertEquals(first.txs.size, 0)
+        assertEquals(second.txs.size, 1)
+        assert(second.has(LocalMonitor.wrapId(id1)))
+        assertEquals(second.slot, BigInt(1001))
+        // the transaction still applies at the new tip, only the slot moved
+        assertEquals(third.slot, BigInt(1002))
+        assertEquals(third.txs.size, 1)
+    }
   }
 
   test("awaiting a snapshot the pool already differs from returns at once") {

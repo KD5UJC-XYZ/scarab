@@ -22,9 +22,11 @@ Caveats:
   lease file in place after the process exits: unlinking it can split ownership between two inodes.
   This coordinates new Scarab followers and import commands, not older Scarab or Haskell writers.
 
-- A `--db` records the network it was created for (`<db>/network-identity`). Format V6 binds the
-  protocol magic, Byron and Shelley genesis hashes, and BLAKE2b-256 of the exact loaded Alonzo and
-  Conway genesis bytes. A mismatch refuses to open with `NetworkMismatch`. V1/V2 identity records
+- A `--db` records the network it was created for (`<db>/network-identity`). Format V9 binds the
+  protocol magic, Byron and Shelley genesis hashes, and BLAKE2b-256 of the exact loaded Alonzo,
+  Conway and (when the configuration names one) Dijkstra genesis bytes; a V6 record gets the
+  Dijkstra binding of the configuration at its first open, and a record of `none` adopts a Dijkstra
+  genesis configured later, once (logged as `adoptedDijkstraGenesis`). A mismatch refuses to open with `NetworkMismatch`. V1/V2 identity records
   lack the Alonzo and Conway bindings and are never upgraded automatically. A populated legacy
   identity or database without an identity requires `--adopt-legacy-network-identity`; the original
   legacy identity bytes are retained beside the new file, and the recorded operator confirmation is
@@ -94,8 +96,9 @@ Caveats:
   both. Details and numbers: [performance.md](../performance.md) section 13.
 
 **Checking a database before a node is moved to this build.** First inventory its snapshot versions.
-This procedure requires V5, V7 or V8 snapshots and their associated checkpoints (V5 and V7 files
-migrate to V8 on open, #395, #726). A V5 or V7 snapshot taken while the chain was in Byron whose
+This procedure requires V5, V7, V8, V9 or V10 snapshots and their associated checkpoints (V5, V7, V8
+and V9 files migrate to V10 on open, #395, #726, #54, #826; a V9 file migrates as the `11.1`
+reference build, the only one whose layout it can hold). A V5 or V7 snapshot taken while the chain was in Byron whose
 Byron update state holds a software proposal or an application version is refused with
 `ResyncRequired`: its installer metadata was not kept and cannot be recovered, so that chain has to
 be synced again from genesis (ADR 0006, amendment of 2026-11-03). V1–V4 inputs
@@ -136,7 +139,7 @@ What shows the current-format database opens: `snapshotRestored` with the `ancho
 snapshot; `replayStarted` from that anchor; `replayProgress` lines whose `tip` moves past it, with
 `replayed` growing by the progress interval each time and no `"event":"error"` (a `ValidationError ... BadInputsUTxO` right after the restore is this
 bug); no `snapshotRefused`, no `snapshotSkipped`, no `UtxoCheckpoint` error; for a V5 database, one
-`formatMigrated` from `V5` to `V8` and a `snapshotUnbound` for the restored file (it was written
+`formatMigrated` from `V5` to `V10` and a `snapshotUnbound` for the restored file (it was written
 before checkpoint binding); and, after the stop, a
 `snapshotWritten`/`shutdownSnapshot` at a block past the restored anchor. A replay from the newest
 snapshot of a mainnet follower that is a day behind covers some thousands of blocks, so
@@ -222,8 +225,17 @@ read-only, and the destination database and its sibling ownership lease mounted 
 ```sh
 java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main import-ledger-snapshot \
   --haskell-ledger <archive>/ledger/<slot> --db <database> --config <config.json> \
-  --ancillary-verification-key <trusted-ancillary.vkey>
+  --ancillary-verification-key <trusted-ancillary.vkey> [--reference-build <build>]
 ```
+
+`--reference-build` names the reference build that wrote the input database (`11.1` without it; see
+[flags](flags.md) for the values). Its `state` file must decode completely in that build's layout,
+or the import is refused with a typed `error`; the bytes go into the snapshot unchanged, with the
+build recorded beside them. Nothing is converted between builds. The command first prints a
+`referenceBuild` line with the build and its pins. Under `leios-b004fe0c` the state is read in the
+Leios build's layout (every Shelley-based era up to Conway; a Dijkstra state is refused, #54), and
+`11.1` refuses that layout's three-part extended state; a database imported so is not followed yet
+(#826).
 
 First import the immutable blocks with `import-haskell-db` (above). The destination must contain the
 configured network identity and the exact snapshot point in its current-format immutable chunks,
@@ -238,11 +250,14 @@ immutable chunk trio, must be extracted and match their digests. `--no-verify-an
 accepts an unauthenticated ledger instead; the result records `ancillaryVerified: false`.
 
 The command checks metadata, era, exact immutable block and recomputed instant stake, builds a fresh
-RocksDB checkpoint and a V8 snapshot bound to it in staging, and publishes only after validation. It never changes
+RocksDB checkpoint and a V10 snapshot bound to it in staging, and publishes only after validation. It never changes
 existing immutable files or overwrites ledger artifacts. JSON `importLedgerSnapshot` events report
-`done` with slot/hash, era, output count, lovelace and trust, or a typed `error`. A following `follow`
-restores that checkpoint and replays local blocks after the snapshot. Byron and non-Mem snapshots
-are refused. Import/export details and recovery of an interrupted staged import are in
+`done` with slot/hash, era, output count, lovelace, trust and `referenceBuild`, or a typed `error`. A following `follow`
+restores that checkpoint and replays local blocks after the snapshot. Use the same
+`--reference-build` for `follow` as for the import: starting with a different layout deletes the
+incompatible snapshot and its checkpoint, then tries an older snapshot or replays from genesis.
+The default is `11.1`; `follow --reference-build leios-b004fe0c` remains unavailable until the
+Leios rules are implemented. Byron and non-Mem snapshots are refused. Import/export details and recovery of an interrupted staged import are in
 [the accepted design](../design/haskell-snapshots.md#10-stage-3-as-built-offline-import); export and
 cross-node acceptance are recorded in Step D S4/S5 (#140).
 
@@ -254,11 +269,15 @@ example above); source database files can remain read-only.
 
 ```sh
 java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main export-ledger-snapshot \
-  --db <database> --out <ledger directory> [--slot N]
+  --db <database> --out <ledger directory> [--slot N] [--reference-build <build>]
 ```
 
 The default is the newest snapshot; `--slot` selects an exact stored snapshot slot, an unsigned
-64-bit number. The command checks the existing V8 file's checksum and schema, preserves its
+64-bit number. `--reference-build` names the build the output is for (`11.1` without it): the
+snapshot's recorded build must be of that build's layout, or the export is refused with a typed
+`error`; nothing is converted, so a snapshot imported under `leios-b004fe0c` is exported under it.
+The command checks the existing V10 file's checksum and schema (a
+V9 file of a database this build has not opened yet is read as `11.1` bytes), preserves its
 Haskell state bytes, admits its checkpoint against the snapshot's binding and reads it without
 recovery or migration. A state
 with recorded gaps, a Byron state, an unsettled checkpoint or a missing selection is refused.
@@ -270,7 +289,8 @@ The suffix prevents the Haskell node's temporary-snapshot policy from deleting i
 streams sorted MemPack outputs, closes and forces staged files, then publishes the directory
 atomically. An existing destination is refused, and the output must be outside the source
 database. Failure or cancellation removes staging. JSON `exportLedgerSnapshot` events report
-`done` with the point, output count and directory, or a typed `error`.
+`done` with the point, output count, directory and `referenceBuild`, the build whose layout the
+written `state` is in, or a typed `error`.
 
 Reference replay and epoch-boundary acceptance are recorded in #140; the command alone does not prove
 that acceptance. It preserves the native snapshot and the node's stored CBOR values.
@@ -303,5 +323,5 @@ SCLS omits restart and consensus information. Import therefore compares every na
 with the explicit same-point complete base, preserves unrepresented fields, validates the new native
 files, and publishes only after the target's full identity and immutable block match. The target
 must have no existing UTxO, snapshots, volatile or ledger artifacts. This is interchange against an
-explicit base, not standalone bootstrap. Both commands retain native (V8) restart snapshots, stored CBOR,
+explicit base, not standalone bootstrap. Both commands retain native (V10) restart snapshots, stored CBOR,
 and the existing Haskell import/export tools. JSON events report the point/count/path or typed error.

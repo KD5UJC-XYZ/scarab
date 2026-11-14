@@ -7,7 +7,7 @@ import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, SocketAddress}
-import xyz.kd5ujc.scarab.protocol.{ChainSync, Handshake, NtnVersion}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, Handshake, NtnVersion}
 import xyz.kd5ujc.scarab.network.selection.FetchGsv
 import scala.concurrent.duration.*
 
@@ -172,8 +172,8 @@ object NodeToNode:
   /** What a hot protocol that ended with `error` reports. Its own failure is itself. A protocol
     * that was only cancelled (its end is the plain `Aborted` of a cancellation) reports the
     * connection's failure if it has failed, as a mini-protocol still running when the mux fails
-    * completes with `Shutdown (Just e)` (ouroboros-network 2fb69829
-    * network-mux/src/Network/Mux.hs:459–464, 800–812, `completionAction`), and the cancellation
+    * completes with `Shutdown (Just e)` (ouroboros-network c45735a5
+    * network-mux/src/Network/Mux.hs:458–463, 824–836, `completionAction`), and the cancellation
     * otherwise. Without it the connection's monitor, which takes the lowest-numbered finished
     * protocol, would take a cancelled ChainSync's `Aborted` for the fault that ended the connection
     * (issue 597).
@@ -329,6 +329,98 @@ object NodeToNode:
         noInitiatorResult = noInitiatorResult
       )
     yield warm
+
+  /** The handshake of a connection we dialled over `bearer`, for the manager's `connection`: the
+    * negotiated handle is published with its state, and on a duplex connection our responders run
+    * with the peer's activity tracked, as the reference's connection manager tells its inbound
+    * governor of a duplex outbound connection (`ConnectionManager/Core.hs` 1607-1617). The resource
+    * is the connection's: its release closes the multiplexer. A handshake that agreed no version
+    * takes the connection out of the table ([[ConnectionManager.recordingRefusal]]).
+    */
+  def negotiate[F[_]: Async, P](
+      bearer: Bearer[F],
+      magic: Long,
+      connection: Connection[F],
+      settings: Settings = Settings(),
+      serve: Option[ServerHandlers[F, P]] = None,
+      server: NodeToNodeServer.Settings = NodeToNodeServer.Settings()
+  )(using Raise[F, NetworkError]): Resource[F, Negotiated[F]] =
+    val offers = Handshake.nodeToNodeOffers(
+      settings.maxVersion,
+      Handshake.Data(
+        magic,
+        initiatorOnly = serve.isEmpty,
+        peerSharing = settings.offerPeerSharing
+      )
+    )
+    for
+      mux <- Mux.handshakeResource(
+        bearer,
+        NodeToNodeServer.Protocol,
+        settings.mux.copy(duplex = serve.isDefined)
+      )
+      agreed <- Resource.eval(
+        mux
+          .channel(Protocols.Handshake)
+          .flatMap(
+            HandshakeClient.run(_, offers, settings.handshakeTimeout)(using
+              summon,
+              ConnectionManager.recordingRefusal(connection)
+            )
+          )
+      )
+      handle = Negotiated(mux, agreed)
+      _ <- serve
+        .filter(_ => !agreed.data.initiatorOnly)
+        .fold(
+          Resource.eval(
+            mux.installApplication(
+              NodeToNodeServer.applicationProtocols(agreed.data.peerSharing),
+              Set.empty
+            )
+          ) *> NodeToNodeServer.published(connection, handle)
+        ) { handlers =>
+          Resource.eval(NodeToNodeServer.Responders.create[F]).flatMap { responders =>
+            NodeToNodeServer.start(
+              mux,
+              handlers,
+              server,
+              peerSharing = agreed.data.peerSharing,
+              initiators = true,
+              responders = Some(responders)
+            ) *> NodeToNodeServer.published(connection, handle) *>
+              NodeToNodeServer.remoteActivity(
+                mux,
+                responders,
+                server.protocolIdleTimeout,
+                connection
+              )
+          }
+        }
+    yield handle
+
+  /** Our established initiators (KeepAlive, and PeerSharing when the connection agreed to it) on a
+    * connection that is already negotiated: one we dialled, or the peer's duplex connection the
+    * outbound side reuses. No handshake runs and no responder is installed again; the hot protocols
+    * start with [[WarmConnection.activate]]. Releasing it ends our protocols only, not the
+    * connection (`PeerStateActions.hs` 803-830).
+    */
+  def attach[F[_]: Async, P, A](
+      handle: Negotiated[F],
+      codec: ChainSync.PayloadCodec[P],
+      noInitiatorResult: A,
+      settings: Settings = Settings()
+  )(using Raise[F, NetworkError]): Resource[F, WarmConnection[F, P, A]] =
+    warmWithResults(
+      handle.mux,
+      Mux.Role.Initiator,
+      handle.version,
+      codec,
+      settings,
+      peerSharing = handle.peerSharing,
+      duplex = handle.dataFlow == ConnectionState.DataFlow.Duplex,
+      noInitiatorResult = noInitiatorResult
+    )
 
   /** KeepAlive on an established multiplexer, as the initiator side: the warm temperature. With
     * `peerSharing` (both sides agreed to it) the PeerSharing client is there too, idle until asked.

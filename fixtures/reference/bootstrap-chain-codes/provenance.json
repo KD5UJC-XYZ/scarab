@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-13",
+  "scope": "Unchanged released decoders: decodeFullAnnotator of the TxWits, Tx and BlockBody of each era from Shelley to Conway at its eraProtVerLow (2, 3, 4, 5, 7, 9), holding a bootstrap witness whose chain code is 0, 31, 32, 33 or 64 bytes (and in Conway two that differ only in their chain codes), and decodeFull of one BootstrapWitness at each decoder version from 2 to 12; for an accepted case, the bootstrapWitKeyHash of each witness; no ledger rule, signature or script is run",
+  "ledgerSourceCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "consensusSourceCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+  "compiler": "GHC 9.10.3",
+  "referenceNode": "11.1.3 (matching embedded ledger package versions, not a bit-identical node release build)",
+  "packages": {
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-ledger-conway": "1.23.0.0",
+    "cardano-crypto-class": "2.5.1.0",
+    "cborg": "0.2.10.0"
+  },
+  "sourceFiles": {
+    "bootstrap": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Bootstrap.hs",
+      "sourceSha256": "4d6554e046237e4f0dcbbf5d99ba3485a399b77ccbeb2ebc043a1dc80e71d94e",
+      "matchesPin": true,
+      "note": "instance DecCBOR ChainCode, the length checked from version 12 (72-78); DecCBOR BootstrapWitness (102-106); bootstrapWitKeyHash (112-146); verifyBootstrapWit (161-169); the same file at 048b78d2807ce9644dbe483c605625824f6be88f and in the released cardano-ledger-core 1.21.0.0 the harness runs"
+    },
+    "eraDecoder": {
+      "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+      "sourceSha256": "75851ffbea20318fb8563f3531da1195b4d4e5518e54fbdc027144d820977e2a",
+      "matchesPin": true,
+      "note": "eraDecoder reads at eraProtVerLow (259-260); the same file in the released cardano-ledger-core 1.21.0.0"
+    }
+  },
+  "harness": {
+    "file": "scripts/oracle/conway-decoding/Main.hs",
+    "sha256": "7378350bf55b0905f91550ebe13cccf608b680a90012fbecf2d6262eae3a66c8",
+    "image": "scarab-conway-decoding:local built from scripts/oracle/conway-decoding/Dockerfile on scarab-plutus176-context-reference:local (run under another local tag, image sha256:e0c6db3e222e1373e641433fe8bc5f22ea9a3606a2178d762b818b38d516c9a4)",
+    "invocation": "docker run --rm --network none --read-only -v /tmp:/fixtures:ro scarab-conway-decoding:local /fixtures/bootstrap-chain-codes-inputs.json",
+    "unchanged": false,
+    "change": "The kind 'bootstrap' (a BootstrapWitness read alone with decodeFull at the case's decoderVersion) and the flag 'bootstraps' (an accepted witness set or transaction reports the bootstrapWitKeyHash of each bootstrap witness) are added; the decoders are the released ones, and the delegation-hashes inputs replayed through this harness give that corpus's committed cases.jsonl byte for byte"
+  },
+  "generatorSha256": "745a4e47a29d9ce9e520321e0e0a95caa8fcac15cda98d9af0ac143d8bc3b0b2",
+  "harnessInputSha256": "07ef2a9948b45f084481b692d773ae610ddc7eedee13dbb58259c0434cbf286b",
+  "harnessOutputSha256": "98790afa8e62bb6a47737d26af12a48645a3b8f8ed90446d7de84cfcc0f043ac",
+  "casesSha256": "9a09aacab1b04d3977c34ce7187a9df549092bebd8c2f0e29b3edd2a4f53c41e",
+  "cases": 147,
+  "accepted": 143,
+  "refused": 4,
+  "originalBytesRetained": true,
+  "network": "none",
+  "keysRetained": false
+}

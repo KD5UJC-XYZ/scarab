@@ -50,7 +50,7 @@ final class InMemoryPeers private (
           closedOnce <- Resource.eval(Ref.of[IO, Boolean](false))
           _ <- Resource.eval(ends.update(m => m.updated(peer, pair._1 :: m.getOrElse(peer, Nil))))
           _ <- Handle
-            .allow[NetworkError](NodeToNodeServer.accept(pair._1, magic, handlers).void)
+            .allow[NetworkError](Served.accept(pair._1, magic, handlers).void)
             .rescue(_ => IO.unit)
             .background
           clientBearer = new Bearer[IO]:

@@ -71,9 +71,16 @@ object OCertRules:
   ): Either[OCertError | ProviderDefect, Unit] =
     val kesPeriod = header.slot / slotsPerKesPeriod
     val start = header.opCert.kesPeriod
+    // f649f975 TPraos/Rules/OCert.hs:84-90 refuses a Word64 end that wraps below start.
+    val end = start + maxKesEvolutions
     for
       _ <- Either.cond(
-        start <= kesPeriod && kesPeriod < start + maxKesEvolutions,
+        start <= kesPeriod,
+        (),
+        OCertError.KesPeriodOutsideWindow(kesPeriod, start, maxKesEvolutions)
+      )
+      _ <- Either.cond(
+        end.bitLength <= 64 && kesPeriod < end,
         (),
         OCertError.KesPeriodOutsideWindow(kesPeriod, start, maxKesEvolutions)
       )
@@ -91,10 +98,13 @@ object OCertRules:
         (),
         OCertError.OpCertSignatureRejected
       )
+      // The deployed reference selects leaf 63 for every larger relative period: Sum.hs:190-197,
+      // Single.hs:104-106 at cardano-base 060819b5; its binary omits the leaf assertion.
+      // This preserves that branch selection without narrowing the original period modulo 2^32.
       kes <- ProviderDefect.kes(
         kesVerifier(
           header.opCert.hotVkey,
-          (kesPeriod - start).toInt,
+          (kesPeriod - start).min(BigInt(63)).toInt,
           header.signable,
           header.kesSignature
         )
@@ -106,9 +116,16 @@ object OCertRules:
       )
     yield ()
 
+  /** The counters are `Word64` in the reference, and Praos computes `m + 1` in that type
+    * (ouroboros-consensus 82ecba32 `Ouroboros/Consensus/Protocol/Praos.hs` lines 646-647): the
+    * successor of the largest counter wraps to 0.
+    */
+  private val Word64Modulus = BigInt(1) << 64
+
   /** The issue-number rule. `current` is the counter the issuer has, if any. `known`: the issuer
     * may start a counter at 0 (a registered pool or a genesis delegate). `bounded`: Praos also
-    * rejects `n > m + 1`; TPraos only `n < m`.
+    * rejects `n > m + 1`, with `m + 1` in `Word64` arithmetic ([[Word64Modulus]]), so no counter
+    * follows `2^64 - 1`; TPraos only `n < m`.
     */
   def checkCounter(
       current: Option[BigInt],
@@ -120,7 +137,7 @@ object OCertRules:
     current.orElse(Option.when(known)(BigInt(0))) match
       case None => Left(OCertError.NoCounter(issuer))
       case Some(m) =>
-        if bounded && (sequence < m || sequence > m + 1) then
+        if bounded && (sequence < m || sequence > (m + 1).mod(Word64Modulus)) then
           Left(OCertError.CounterOutOfRange(m, sequence))
         else if sequence < m then Left(OCertError.CounterTooSmall(m, sequence))
         else Right(())

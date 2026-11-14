@@ -21,7 +21,7 @@ singleton first can accept two `Full(value)` instances there and return no diffe
 field instead. The original cast-based ordinal dispatch already behaved correctly. This is a
 diagnostic comparison fix; no changed ledger-admission verdict is demonstrated.
 
-**Inputs and sources.** `ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/state/DiffBenchMain.scala`
+**Inputs and sources.** `tools/src/main/scala/xyz/kd5ujc/scarab/ledger/state/DiffBenchMain.scala`
 builds two independent equal diagnostic states, each containing 20,000 sorted accounts with a
 nested enum balance, and persistent copies differing at the first or last account. Every workload
 asserts the expected complete first-difference path before timing. This is a deterministic model;
@@ -55,7 +55,7 @@ Short, count-based exploratory warmups gave unstable equal-state medians and are
 protocol. This is a warmed comparison; it does not measure cold derivation latency or retained heap.
 
 For the maintained candidate, run in the documented Docker build:
-`ledger/Test/runMain xyz.kd5ujc.scarab.ledger.state.DiffBenchMain`. To reproduce a historical row,
+`tools/runMain xyz.kd5ujc.scarab.ledger.state.DiffBenchMain`. To reproduce a historical row,
 compile this identical harness with that revision's `Diff.scala`, rather than replacing runtime
 classes underneath types whose derivation has already been inlined.
 
@@ -108,7 +108,7 @@ frozen classes from the #247 baseline. That build has the visibility-only `priva
 production differences are `Interns` and the reference bounds on `Node.share`/`Wire.interned`.
 The compiled source/class inventories bind the experiment independently of Docker's unknown
 `BuildInfo.gitCommit`. The maintained helper is
-`node/src/test/scala/xyz/kd5ujc/scarab/storage/InternDecodeBench.scala`; at measured source
+`tools/src/main/scala/xyz/kd5ujc/scarab/storage/InternDecodeBench.scala`; at measured source
 `9ac7ea5e`, its formatted source differs only in whitespace from the standalone file
 (stripped-source equality asserted). The later tool-only cleanup puts sampler shutdown in
 `finally` if a decode refuses. A checksummed invalid-content control reproduces the old helper
@@ -244,8 +244,8 @@ conditions apply the **same visibility-only change** to `SnapshotV5.encoded`, so
 calls the actual pure encoder on its current thread, without a disk write or an effect-thread
 allocation-counter mismatch. No encoding implementation change is hidden in this seam.
 
-The maintained helpers are `node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotCodecBench.scala`
-and `storage/src/test/scala/xyz/kd5ujc/scarab/storage/BenchCodecMain.scala`. The latter now actually
+The maintained helpers are `tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotCodecBench.scala`
+and `tools/src/main/scala/xyz/kd5ujc/scarab/storage/BenchCodecMain.scala`. The latter now actually
 uses cheap primitive sinks: byte length, decoded `Row.i`, and decoded `FutureGenDeleg.slot` bits.
 Its former decode sinks called `hashCode`, as review found. Earlier reports saying those hashes
 had been removed were incorrect. Output SHA-256 and structural comparisons are outside timing.

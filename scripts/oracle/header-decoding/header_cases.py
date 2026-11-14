@@ -274,6 +274,100 @@ for name, extra in [
     case(BYRON, "boundaryheader", name, boundary_extra(extra))
 
 
+def splice(raw, path, new):
+    """`raw` with the item at `path` replaced by `new`."""
+    start, end = cborspan.resolve(raw, path)[0]
+    return raw[:start] + new + raw[end:]
+
+
+def item(raw, path):
+    """The bytes of the item at `path`."""
+    start, end = cborspan.resolve(raw, path)[0]
+    return raw[start:end]
+
+
+def indefinite(raw, path):
+    """`raw` with the definite list or map at `path` written indefinite, its items unchanged."""
+    start, end = cborspan.resolve(raw, path)[0]
+    major, _, at = cborspan.head(raw, start)
+    return splice(raw, path, bytes([0x9f if major == 4 else 0xbf]) + raw[at:end] + b"\xff")
+
+
+W64 = 2**64 - 1
+BIG = b"\xc2\x49\x01" + b"\x00" * 8  # 2^64 as a bignum: no Word64 reads it
+# #634: the rest of the Byron header grammar. `decCBORAHeader` reads every list with `enforceSize`
+# (definite only), the magic as a `Word32`, epoch, slot count and difficulty as `Word64`, the
+# signature's kind as a `Word8`, and the extra data as `[ProtocolVersion, SoftwareVersion,
+# empty attributes, bytes]` (`Block/Header.hs:351-395`, `Slotting/EpochAndSlotCount.hs:65-68`,
+# `Common/ChainDifficulty.hs:47-50`, `Update/ProtocolVersion.hs:64-67`,
+# `Update/SoftwareVersion.hs:73-76`, `Common/Attributes.hs:241-244`, `Crypto/ProtocolMagic.hs:58-62`).
+H = original_header
+for name, raw in [
+    ("header indefinite", indefinite(H, [])),
+    ("consensus data indefinite", indefinite(H, [3])),
+    ("slot indefinite", indefinite(H, [3, 0])),
+    ("difficulty indefinite", indefinite(H, [3, 2])),
+    ("signature indefinite", indefinite(H, [3, 3])),
+    ("signature proxy indefinite", indefinite(H, [3, 3, 1])),
+    ("delegation certificate indefinite", indefinite(H, [3, 3, 1, 0])),
+    ("extra data indefinite", indefinite(H, [4])),
+    ("protocol version indefinite", indefinite(H, [4, 0])),
+    ("software version indefinite", indefinite(H, [4, 1])),
+    ("attributes an indefinite empty map", splice(H, [4, 2], b"\xbf\xff")),
+    ("attributes of one entry", splice(H, [4, 2], c.cmap([(c.uint(0), EMPTY)]))),
+    ("extra data of three fields", splice(H, [4], c.array([item(H, [4, i]) for i in range(3)]))),
+    ("extra data of five fields", splice(H, [4], c.array([item(H, [4, i]) for i in range(4)] + [EMPTY]))),
+    ("extra proof of three bytes", splice(H, [4, 3], c.bstr(b"\x00" * 3))),
+    ("extra proof chunked", splice(H, [4, 3], b"\x5f" + item(H, [4, 3]) + b"\xff")),
+    ("extra proof as text", splice(H, [4, 3], c.text("a"))),
+    ("magic 2^32 - 1", splice(H, [0], c.uint(2**32 - 1))),
+    ("magic 2^32", splice(H, [0], c.uint(2**32))),
+    ("magic minus 1", splice(H, [0], c.nint(-1))),
+    ("magic with a non-minimal head", splice(H, [0], c.uint(764824073, width=8))),
+    ("epoch 2^64 - 1", splice(H, [3, 0, 0], c.uint(W64))),
+    ("epoch 2^64", splice(H, [3, 0, 0], BIG)),
+    ("slot count 2^16", splice(H, [3, 0, 1], c.uint(2**16))),
+    ("slot count 2^64 - 1", splice(H, [3, 0, 1], c.uint(W64))),
+    ("slot count 2^64", splice(H, [3, 0, 1], BIG)),
+    ("difficulty 2^64 - 1", splice(H, [3, 2, 0], c.uint(W64))),
+    ("difficulty 2^64", splice(H, [3, 2, 0], BIG)),
+    ("signature kind 258", splice(H, [3, 3, 0], c.uint(258))),
+    ("delegation epoch 2^64 - 1", splice(H, [3, 3, 1, 0, 0], c.uint(W64))),
+    ("delegation epoch 2^64", splice(H, [3, 3, 1, 0, 0], BIG)),
+    ("protocol major 2^16", splice(H, [4, 0, 0], c.uint(2**16))),
+    ("protocol minor 2^16 - 1", splice(H, [4, 0, 1], c.uint(2**16 - 1))),
+    ("protocol alternative 256", splice(H, [4, 0, 2], c.uint(256))),
+    ("protocol version of two fields", splice(H, [4, 0], c.array([c.uint(0), c.uint(0)]))),
+    ("software number 2^32 - 1", splice(H, [4, 1, 1], c.uint(2**32 - 1))),
+    ("software number 2^32", splice(H, [4, 1, 1], c.uint(2**32))),
+    ("application name of 13 characters", splice(H, [4, 1, 0], c.text("cardano-sl-xy"))),
+    ("application name chunked", splice(H, [4, 1, 0], b"\x7f" + c.text("cardano-sl") + b"\xff")),
+    ("application name as bytes", splice(H, [4, 1, 0], c.bstr(b"cardano-sl"))),
+    ("software version of three fields", splice(H, [4, 1], c.array([c.text("cardano-sl"), c.uint(1), c.uint(1)]))),
+]:
+    case(BYRON, "mainheader", name, raw)
+
+# A boundary header drops its magic with `dropInt32` (`Block/Header.hs:613-618`), so a negative one
+# is read; its epoch is a `Word64` and its difficulty a `ChainDifficulty` (`Boundary.hs:33-38`).
+E = boundary_header([])
+for name, raw in [
+    ("header indefinite", indefinite(E, [])),
+    ("consensus data indefinite", indefinite(E, [3])),
+    ("difficulty indefinite", indefinite(E, [3, 1])),
+    ("magic minus 1", splice(E, [0], c.nint(-1))),
+    ("magic minus 2^31", splice(E, [0], c.nint(-(2**31)))),
+    ("magic minus 2^31 - 1", splice(E, [0], c.nint(-(2**31) - 1))),
+    ("magic 2^31 - 1", splice(E, [0], c.uint(2**31 - 1))),
+    ("magic 2^31", splice(E, [0], c.uint(2**31))),
+    ("magic with a non-minimal head", splice(E, [0], c.uint(764824073, width=8))),
+    ("epoch 2^64 - 1", splice(E, [3, 0], c.uint(W64))),
+    ("epoch 2^64", splice(E, [3, 0], BIG)),
+    ("difficulty 2^64 - 1", splice(E, [3, 1, 0], c.uint(W64))),
+    ("difficulty 2^64", splice(E, [3, 1, 0], BIG)),
+]:
+    case(BYRON, "boundaryheader", name, raw)
+
+
 def merge(reference):
     """The corpus lines: each case with the verdict, the signable bytes and the hashes."""
     assert len(reference) == len(CASES), "the harness answered a different number of cases"

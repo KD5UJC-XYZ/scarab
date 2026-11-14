@@ -129,6 +129,9 @@ private[protocol] object ProtocolWire:
       val h = read()
       if h / 32 != 0 then bad(ProtocolError.ExpectedUint64)
       get(UInt64.from(argument(h & 31)))
+
+    /** The major type of the next item, which is not read. */
+    def major: Int = peek / 32
     def tag(): BigInt =
       val h = read()
       if h / 32 != 6 then bad(ProtocolError.ExpectedTag)

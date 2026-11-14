@@ -16,11 +16,17 @@
                                    Haskell relay) + load through that relay; tips and propagation
     devnet.py pool [--seconds N]   the Scala node as one of the three block-producing pools: it takes
                                    pool 1's keys (pool 1's Haskell node is never started), forges in
-                                   its leader slots, and the Haskell pools adopt its blocks
+                                   its leader slots, and the Haskell pools adopt its blocks; with
+                                   --plutus-load also Plutus transactions, each script's verdict
+                                   carried into the blocks it forges as their validity flag
     devnet.py kes-rotate [--seconds N]
                                    pool, with the KES key and operational certificate rotated unattended by
                                    scripts/pool/rotate_kes.py (SIGHUP reload): no restart, forging continues, the
                                    certificate counter goes up, the Haskell pools adopt every block
+    devnet.py dynamic-forging [--seconds N]
+                                   pool, with the credential files moved away and SIGHUP sent (forging stops: no
+                                   block in a leader slot, no key written back), then put back and SIGHUP sent again
+                                   (forging starts), as cardano-node's dynamic block forging
     devnet.py ntc [--seconds N]    the Scala node's node-to-client interface against the reference node's:
                                    LocalStateQuery, local ChainSync and LocalTxMonitor byte for byte, `cardano-cli query`, refused transactions
     devnet.py up-eras              reference cluster that walks Byron, Shelley ... Conway
@@ -31,7 +37,9 @@
                                    Conway, forks into Dijkstra and includes one Dijkstra transaction; no Scala node
     devnet.py capture-dijkstra     REFERENCE ONLY: capture the up-dijkstra chain as fixtures (fixtures/dijkstra-devnet)
     devnet.py e2e [--keep]         up-eras + Scala follower from Origin; assert every era and
-                                   era transition was followed with no validation error
+                                   era transition was followed with no validation error;
+                                   `--plutus-vm scalus --plutus-vm scarab` runs one follower per
+                                   evaluator in the cluster and also checks them against each other
     devnet.py refusal-corpus       the reference-refusal corpus (#401): each transaction of `refusalcases` submitted to the
                                    reference over LocalTxSubmission; its complete rejection, the ledger state and UTxO
                                    it was judged against and the genesis go to fixtures/reference/refusals
@@ -41,7 +49,7 @@
                                    `e2e --oracle`, `soak --oracle` or `follow --dump-state`) with the
                                    Haskell ledger state db-analyser stores in the reference container
     devnet.py restart              up + follow --db, stop it with SIGTERM (the JVM must exit within 30 s, issue 89),
-                                   start it again (it must restore the snapshot, and the files are V8)
+                                   start it again (it must restore the snapshot, and the files are V9)
     devnet.py faults --seed N      the Scala node as pool 1 next to two Haskell pools, under a seeded schedule of network faults
                                    (tc netem latency and loss, partitions and heals, node crashes and restarts);
                                    convergence, growth, no fatal outcome and rejoin are checked, and the schedule
@@ -64,24 +72,25 @@ from .follower import follow
 from .load import govload, load
 from .oracle_cmd import oracle
 from .refused_fixture import DEFAULT_OUT, refused_fixture
-from .refusalcorpus import DEFAULT_OUT as REFUSALS_OUT, refusal_corpus
+from .refusalcorpus import BUILDS as REFUSAL_BUILDS, DEFAULT_BUILD as REFUSAL_DEFAULT_BUILD, DEFAULT_OUT as REFUSALS_OUT, refusal_corpus
 from .scenarios.faults import faults
 from .scenarios.e2e import CONWAY_EPOCHS, capture_eras, e2e
 from .scenarios.governor import governor
 from .scenarios.ntc import ntc
 from .scenarios.peercut import peercut
 from .scenarios.inbound_flood import inbound_flood
-from .scenarios.pool import kes_rotate_scenario, pool
+from .scenarios.pool import dynamic_forging_scenario, kes_rotate_scenario, pool
 from .scenarios.relay import relay
 from .scenarios.peer_sharing import peer_sharing
 from .scenarios.restart import restart
 from .scenarios.v1context import v1_context
 from .scenarios.soak import soak
-from .util import GIB, REPO, data_root, free_space_shortfall, human_bytes, tree_size
+from .util import GIB, PLUTUS_VMS, REPO, data_root, free_space_shortfall, human_bytes, tree_size
 
 # the subcommands that start containers and fill a run directory: the free-space check and the size report apply
 RUNS = frozenset({"up", "up-eras", "capture-eras", "up-dijkstra", "capture-dijkstra", "e2e", "follow", "soak", "relay", "peer-sharing", "peercut",
-                  "inbound-flood", "governor", "ntc", "pool", "kes-rotate", "faults", "restart", "v1-context"})
+                  "inbound-flood", "governor", "ntc", "pool", "kes-rotate", "dynamic-forging", "faults", "restart",
+                  "v1-context"})
 DEFAULT_MIN_FREE_GIB = 5.0
 RUN_MARKER = "SCARAB_DEVNET_RUN"
 
@@ -165,6 +174,9 @@ def main():
                     help="blocks past the Dijkstra transaction's that must be immutable before it returns")
     ud.add_argument("--stall-seconds", type=int, default=60, help="fail when the chain does not grow for this long")
     ud.add_argument("--timeout", type=int, default=900, help="overall time limit in seconds")
+    ud.add_argument("--conway-only", action="store_true",
+                    help="return once the cluster forges Conway blocks, before Dijkstra (with a late --dijkstra-epoch, "
+                         "a Leios-build Conway cluster for refusal-corpus --reference-build leios-b004fe0c)")
     ud.set_defaults(run=up_dijkstra)
     cd = sub.add_parser("capture-dijkstra", help="REFERENCE ONLY: capture the running up-dijkstra chain as fixtures")
     cd.add_argument("--out", default=str(DIJKSTRA_OUT), help="fixture directory")
@@ -186,6 +198,15 @@ def main():
     ac.set_defaults(run=assemble)
     e2 = sub.add_parser("e2e", parents=[eras_options(), scala_options],
                         help="up-eras, follow from Origin, assert every era and transition")
+    plutus_vm_help = ("the Scala node's Plutus evaluator, for its block rules, its mempool and, in the forging "
+                      "scenarios, its forger (default: the node's, scalus)")
+    e2.add_argument("--plutus-vm", choices=PLUTUS_VMS, action="append", default=None,
+                    help=plutus_vm_help + ". Given more than once (`--plutus-vm scalus --plutus-vm scarab`), the run "
+                         "has one follower per evaluator, each with a container, log, sockets and ports of its own "
+                         "(<name>-scala-<vm>, follower-<vm>.jsonl, compare-<vm>.jsonl), each judged as the only one is "
+                         "and all compared with the same reference blocks; then their final chains must agree and so "
+                         "must their projected states at those blocks (`crossCheck` in e2e-summary.json, the followers "
+                         "under `followers`). Not with --oracle")
     e2.add_argument("--timeout", type=int, default=1500, help="overall time limit in seconds")
     e2.add_argument("--until-epoch", type=int,
                     help=f"Conway epoch to reach (default: first Conway epoch + {CONWAY_EPOCHS})")
@@ -202,6 +223,12 @@ def main():
     t.add_argument("--node", type=int, default=1, help="reference node 1..3")
     t.set_defaults(run=tip)
     f = sub.add_parser("follow", parents=[scala_options], help="run the Scala follower against a reference node (logs to the run dir)")
+    f.add_argument("--plutus-vm", choices=PLUTUS_VMS, default=None, help=plutus_vm_help)
+    f.add_argument("--instance", choices=PLUTUS_VMS, default=None,
+                   help="one of several followers of the run, named by an evaluator (as `e2e` starts them with "
+                        "more than one --plutus-vm): its container, log, local socket, stall, dump, database and "
+                        "class directories carry the suffix -<instance>, and it takes a query and a metrics port of "
+                        "its own (`util.FollowerSite`); it does not choose the evaluator, --plutus-vm does")
     f.add_argument("--seconds", type=int, help="stop after this long (default: until killed)")
     f.add_argument("--node", type=int, default=1, help="reference node the follower connects to")
     f.add_argument("--dump-state", action="store_true",
@@ -323,7 +350,13 @@ def main():
         pl.add_argument("--seed", type=int, default=1, help="random seed of the load")
         pl.add_argument("--interval", type=float, default=0.5, help="load generator pause between transactions")
         pl.add_argument("--min-comparisons", type=int, default=5, help="matched ledger comparisons required")
-        pl.add_argument("--scala-flags", default="", help="extra flags for the Scala node, e.g. '--inbound-sync off' (to compare builds or settings)")
+        pl.add_argument("--scala-flags", default="", help="extra flags for the Scala node, e.g. '--header-first off' (to compare builds or settings)")
+        pl.add_argument("--plutus-vm", choices=("scalus", "scarab"), default=None, help=plutus_vm_help)
+        pl.add_argument("--plutus-load", action="store_true",
+                        help="beside the payment load, rounds of Plutus V1 and V2 transactions (scripts/devnet/eraplutus.py): "
+                             "scripts that succeed, scripts that fail submitted with the validity flag false, and both "
+                             "with the opposite flag, which the reference and the Scala node must refuse; the run then "
+                             "requires a Scala-forged block with each of the first two and every flag on the chain right")
         pl.add_argument("--keep", action="store_true", help="leave the cluster running")
 
     pl = sub.add_parser("pool", parents=[scala_options], help="the Scala node as a block-producing pool among two Haskell pools")
@@ -339,6 +372,15 @@ def main():
     kr.add_argument("--rotate-every", type=float, default=10, help="seconds between runs of the driver")
     kr.add_argument("--min-rotations", type=int, default=2, help="reloads the run must show")
     kr.set_defaults(run=kes_rotate_scenario, seconds=300)
+    df = sub.add_parser("dynamic-forging", parents=[scala_options],
+                        help="pool, with the credential files moved away and back and SIGHUP sent: forging stops and "
+                             "starts again, as cardano-node's dynamic block forging (#906)")
+    pool_flags(df)
+    df.add_argument("--disable-after", type=float, default=120,
+                    help="seconds into the load phase at which the credential files are moved away and SIGHUP sent")
+    df.add_argument("--disabled-seconds", type=float, default=90,
+                    help="seconds forging stays disabled before the files are put back (several KES periods)")
+    df.set_defaults(run=dynamic_forging_scenario, seconds=360)
     fl = sub.add_parser("faults", parents=[scala_options],
                         help="seeded network-fault run: tc netem latency and loss, partitions, crashes; checks convergence and growth (issue 224)")
     fl.add_argument("--seed", type=int, default=1, help="seed of the fault schedule; the same seed over the same genesis gives the same schedule")
@@ -365,6 +407,9 @@ def main():
     rc.add_argument("--corpus", help="the corpus directory to write under --out (default <era>-devnet)")
     rc.add_argument("--cases", help="another case builder, `module:function` in scripts/devnet, called with the "
                                     "devnet name and returning `refusalcases.Case`s")
+    rc.add_argument("--reference-build", choices=sorted(REFUSAL_BUILDS), default=REFUSAL_DEFAULT_BUILD,
+                    help="the build of the cluster's reference node, recorded in corpus.json and checked against the "
+                         "node: 11.1 (`up`, `up-eras`) or leios-b004fe0c (`up-dijkstra --conway-only`)")
     rc.add_argument("--out", default=str(REFUSALS_OUT), help="the refusal corpus root (its manifest.json is updated)")
     rc.set_defaults(run=refusal_corpus)
     rf = sub.add_parser("refused-fixture", help="write fixtures/devnet/refused-txs.jsonl from the run directory of a "
@@ -402,5 +447,5 @@ def main():
         scenario.add_argument("--consensus-mode", choices=["PraosMode", "GenesisMode"],
                               help="Scala consensus mode; reference pools retain their original configuration")
     args = p.parse_args()
-    args.name = args.name or ("scarab-dijkstra" if args.command in ("up-dijkstra", "capture-dijkstra") else "scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e", "sample-chain-dep", "assemble-chain-dep") else "scarab-pool" if args.command == "pool" else "scarab-kes-rotate" if args.command == "kes-rotate" else "scarab-devnet")
+    args.name = args.name or ("scarab-dijkstra" if args.command in ("up-dijkstra", "capture-dijkstra") else "scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e", "sample-chain-dep", "assemble-chain-dep") else "scarab-pool" if args.command == "pool" else "scarab-kes-rotate" if args.command == "kes-rotate" else "scarab-dynamic-forging" if args.command == "dynamic-forging" else "scarab-devnet")
     run(args)

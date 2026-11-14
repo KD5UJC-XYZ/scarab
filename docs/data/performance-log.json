@@ -56,6 +56,11 @@
    "file": "docs/performance/plutus-budget-arithmetic.md",
    "title": "The reference's budget arithmetic in the evaluator",
    "prefix": "plutus-budget-arithmetic"
+  },
+  {
+   "file": "docs/performance/logging-and-the-router.md",
+   "title": "Logging and the router",
+   "prefix": "logging-and-the-router"
   }
  ],
  "entries": [
@@ -4249,6 +4254,142 @@
       ]
      ],
      "id": "perf-59.t1"
+    }
+   ],
+   "listings": []
+  },
+  {
+   "id": "perf-60",
+   "section": "54",
+   "heading": "54. The log router's one sink lock (#233)",
+   "subject": "The log router's one sink lock (#233)",
+   "date": "2026-11-08",
+   "dateSource": "text",
+   "issues": [
+    "#233"
+   ],
+   "commits": [
+    "122786612"
+   ],
+   "links": [],
+   "page": "logging-and-the-router",
+   "results": [
+    {
+     "id": "perf-60.t1",
+     "header": [
+      "Sink configuration",
+      "Writer fibers",
+      "µs per line, run 1 / run 2",
+      "Lines a second, run 1 / run 2"
+     ],
+     "separator": "|---|---:|---:|---:|",
+     "rows": [
+      [
+       "`file`: admitted — render, append, lock and clock",
+       "1",
+       "2.31 / 2.17",
+       "433,564 / 460,331"
+      ],
+      [
+       "`file`: admitted — render, append, lock and clock",
+       "4",
+       "15.23 / 16.11",
+       "65,649 / 62,061"
+      ],
+      [
+       "`file`: admitted — render, append, lock and clock",
+       "16",
+       "16.13 / 15.91",
+       "62,005 / 62,844"
+      ],
+      [
+       "`silenced`: route filter only, no lock",
+       "1",
+       "0.016 / 0.016",
+       "61,228,160 / 64,195,720"
+      ],
+      [
+       "`silenced`: route filter only, no lock",
+       "4",
+       "0.007 / 0.005",
+       "153,739,423 / 198,950,206"
+      ],
+      [
+       "`silenced`: route filter only, no lock",
+       "16",
+       "0.005 / 0.004",
+       "213,605,229 / 274,349,991"
+      ]
+     ]
+    }
+   ],
+   "listings": [
+    {
+     "id": "perf-60.c1",
+     "fence": "```text",
+     "lines": [
+      "HOST processors=8",
+      "METRIC config=file writers=1 lines=240000 us_per_line=2.306 lines_per_s=433564",
+      "METRIC config=file writers=4 lines=240000 us_per_line=15.232 lines_per_s=65649",
+      "METRIC config=file writers=16 lines=240000 us_per_line=16.128 lines_per_s=62005",
+      "DIGEST config=file bytes=69119303",
+      "METRIC config=silenced writers=1 lines=240000 us_per_line=0.016 lines_per_s=61228160",
+      "METRIC config=silenced writers=4 lines=240000 us_per_line=0.007 lines_per_s=153739423",
+      "METRIC config=silenced writers=16 lines=240000 us_per_line=0.005 lines_per_s=213605229",
+      "DIGEST config=silenced bytes=0",
+      "HOST processors=8",
+      "METRIC config=file writers=1 lines=240000 us_per_line=2.172 lines_per_s=460331",
+      "METRIC config=file writers=4 lines=240000 us_per_line=16.113 lines_per_s=62061",
+      "METRIC config=file writers=16 lines=240000 us_per_line=15.912 lines_per_s=62844",
+      "DIGEST config=file bytes=69119229",
+      "METRIC config=silenced writers=1 lines=240000 us_per_line=0.016 lines_per_s=64195720",
+      "METRIC config=silenced writers=4 lines=240000 us_per_line=0.005 lines_per_s=198950206",
+      "METRIC config=silenced writers=16 lines=240000 us_per_line=0.004 lines_per_s=274349991",
+      "DIGEST config=silenced bytes=0"
+     ],
+     "close": "```"
+    }
+   ]
+  },
+  {
+   "id": "perf-61",
+   "section": "55",
+   "heading": "55. Reusing the derived pool distribution (#826)",
+   "subject": "Reusing the derived pool distribution (#826)",
+   "date": "2026-11-10",
+   "dateSource": "text",
+   "issues": [
+    "#826"
+   ],
+   "commits": [
+    "dbaf2094d"
+   ],
+   "links": [],
+   "page": "memory-and-snapshots",
+   "results": [
+    {
+     "id": "perf-61.t1",
+     "header": [
+      "Workload",
+      "Median ms / 1,000 reads",
+      "Range ms",
+      "Checksum / sample"
+     ],
+     "separator": "|---|---:|---:|---:|",
+     "rows": [
+      [
+       "Recalculate each read",
+       "735.605",
+       "715.476–746.389",
+       "2,000,000"
+      ],
+      [
+       "Reuse immutable snapshot result",
+       "0.192",
+       "0.170–0.207",
+       "2,000,000"
+      ]
+     ]
     }
    ],
    "listings": []

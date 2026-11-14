@@ -240,3 +240,34 @@ class CollectorsSuite extends CatsEffectSuite:
         assertEquals(counter(s, Catalogue.validationErrors, BlockRule.Ledger), None)
     }
   }
+
+  // `TrInboundGovernorCounters`'s metrics (`Ouroboros/Network/Tracing/InboundGovernor.hs` 36-49,
+  // ouroboros-network `c45735a5`): the tracked connections by remote state
+  test("the connections collector exports the inbound governor's counts of the remote states") {
+    import com.comcast.ip4s.{IpAddress, Ipv4Address, SocketAddress, port}
+    import xyz.kd5ujc.scarab.network.{ConnectionError, ConnectionManager, RemoteSt}
+    val states = Vector.fill(1)(RemoteSt.Cold) ++ Vector.fill(2)(RemoteSt.Idle) ++
+      Vector.fill(3)(RemoteSt.Warm) ++ Vector.fill(4)(RemoteSt.Hot)
+    for
+      metrics <- registry
+      manager <- ConnectionManager.create[IO]()
+      s <- Handle
+        .allow[ConnectionError](
+          states.zipWithIndex
+            .traverse { (state, i) =>
+              val remote =
+                SocketAddress[IpAddress](Ipv4Address.fromLong(0x0a000001L + i), port"3001")
+              manager.include(remote, None).evalTap(_.updateRemoteState(state))
+            }
+            .use { _ =>
+              given Metrics[IO] = metrics
+              Collectors.connections(manager) *> metrics.snapshot
+            }
+        )
+        .rescue(e => IO.raiseError(new AssertionError(e.message)))
+    yield
+      assertEquals(gauge(s, Catalogue.inboundGovernorCold, ()), Some(1.0))
+      assertEquals(gauge(s, Catalogue.inboundGovernorIdle, ()), Some(2.0))
+      assertEquals(gauge(s, Catalogue.inboundGovernorWarm, ()), Some(3.0))
+      assertEquals(gauge(s, Catalogue.inboundGovernorHot, ()), Some(4.0))
+  }

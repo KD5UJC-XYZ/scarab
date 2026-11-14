@@ -191,13 +191,14 @@ object NodeRules:
         (),
         BlockFailure.HeaderDiffers
       )
-      // once the transition is settled (known and stable) no Byron block may be in or after it
+      // once the transition is settled (known and stable) no Byron block may be in or after it; the
+      // epoch is the flattened slot's, as the era history places a block by its slot (#818)
       _ <- cfg.configuredShelleyEpoch
         .orElse(ByronLedger.transition(cfg.ledger, ledger))
-        .filter(_ <= header.epoch)
+        .filter(_ <= header.slotEpoch)
         .toLeft(())
         .leftMap { first =>
-          BlockFailure.ByronAfterTransition(header.epoch, first)
+          BlockFailure.ByronAfterTransition(header.slotEpoch, first)
         }
       validated <- ByronRules
         .update(ByronRules.State(state.tip, ledger, state.pbft), block, cfg)
@@ -207,7 +208,7 @@ object NodeRules:
         }
       (next, check) = validated
     yield
-      val sameEpoch = state.stats.filter(_.epoch == header.epoch)
+      val sameEpoch = state.stats.filter(_.epoch == header.slotEpoch)
       val base = if sameEpoch.isEmpty then state.finish else state
       (
         base.copy(
@@ -215,7 +216,7 @@ object NodeRules:
           ledger = Some(next.ledger),
           pbft = next.pbft,
           stats = Some(
-            sameEpoch.getOrElse(ByronEpochStats(header.epoch, 0, 0, 0, 0)).record(check)
+            sameEpoch.getOrElse(ByronEpochStats(header.slotEpoch, 0, 0, 0, 0)).record(check)
           )
         ),
         boot.copy(era = Some(Era.Byron))
@@ -265,11 +266,13 @@ object NodeRules:
         .leftMap(BlockFailure.Envelope(_))
       validated <-
         if header.era.usesTPraos then
+          // TPraos runs through Alonzo, whose `ppDG` is the parameter at every version
+          // (`Alonzo/PParams.hs:338`, cardano-ledger f649f975); Babbage runs Praos.
           TPraos
             .update(
               Praos.tick(protocol, header.era, epoch, params.extraEntropy),
               header,
-              LedgerView(params.effectiveD, params.extraEntropy, genDelegs, StakeView.Known(pools)),
+              LedgerView(params.d, params.extraEntropy, genDelegs, StakeView.Known(pools)),
               config
             )
             .map(v => v.state -> v.leader)

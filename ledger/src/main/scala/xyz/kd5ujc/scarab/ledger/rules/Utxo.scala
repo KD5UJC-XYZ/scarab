@@ -130,19 +130,27 @@ object Deposits:
   * transaction flagged invalid must have a script that fails, one flagged valid none). The state is
   * the node's counters of what was evaluated.
   */
-object Utxos extends JudgedSts[UtxoEnv[Any], PlutusStats, StAnnTx, PredicateFailure, LedgerFailure]:
-  def transition[F[_]: Monad](env: UtxoEnv[Any], ann: StAnnTx)(using
-      ask: Ask[F, Globals],
-      st: Stateful[F, PlutusStats],
-      raise: Raise[F, LedgerFailure],
-      judge: Judge[F, PredicateFailure]
-  ): F[Unit] = scripts[F](env, ann)
+object Utxos:
+  /** UTXOS of the era `E`, Conway's or Dijkstra's, which collects the era's scripts and contexts.
+    */
+  def sts[E <: EraTag](using
+      ShelleyBasedEra[E]
+  ): JudgedSts[UtxoEnv[Any], PlutusStats, StAnnTx, PredicateFailure, LedgerFailure] =
+    new JudgedSts[UtxoEnv[Any], PlutusStats, StAnnTx, PredicateFailure, LedgerFailure]:
+      def transition[F[_]: Monad](env: UtxoEnv[Any], ann: StAnnTx)(using
+          ask: Ask[F, Globals],
+          st: Stateful[F, PlutusStats],
+          raise: Raise[F, LedgerFailure],
+          judge: Judge[F, PredicateFailure]
+      ): F[Unit] = scripts[F, E](env, ann)
 
   /** `expectScriptsToPass` (`Babbage/Rules/Utxos.hs:132-155`) and `babbageEvalScriptsTxInvalid`
     * (`Babbage/Rules/Utxos.hs:194-220`): the contexts of the scripts are collected, and the scripts
-    * are evaluated only if nothing failed so far in the judgment (`whenFailureFree`).
+    * are evaluated only if nothing failed so far in the judgment (`whenFailureFree`). The scripts
+    * needed and their contexts are the era `E` 's ([[TxChecks.phase2]]).
     */
-  def scripts[F[_]: Monad](env: UtxoEnv[Any], ann: StAnnTx)(using
+  def scripts[F[_]: Monad, E <: EraTag](env: UtxoEnv[Any], ann: StAnnTx)(using
+      era: ShelleyBasedEra[E],
       st: Stateful[F, PlutusStats],
       raise: Raise[F, LedgerFailure],
       judge: Judge[F, PredicateFailure]
@@ -152,7 +160,7 @@ object Utxos extends JudgedSts[UtxoEnv[Any], PlutusStats, StAnnTx, PredicateFail
       failing <- judge.failing
       counters <- st.get
       next <- Refuse.recorded[F, PlutusStats](
-        TxChecks.phase2(
+        TxChecks.phase2[E](
           env.pp,
           counters,
           tx,
@@ -207,10 +215,10 @@ object Utxo
         )
     val withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
     val consumed = ann.spent.foldLeft(Value.zero)(_ + _.value) +
-      Value.coin(withdrawn + refunds) + Value(0, body.mint)
+      Value.coin(withdrawn + refunds) + Value.minted(body.mint)
     val produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
-      Value.coin(body.fee + deposits + body.donation)
-    UtxoTests.babbage(pp, env.ctx, ann, minFee, consumed, produced)
+      Value.coin(body.fee + deposits + body.donation) + Value.burned(body.mint)
+    UtxoTests.babbage[Conway](pp, env.ctx, ann, minFee, consumed, produced)
 
   /** `updateUTxOState` and `updateTreasuryDonation` (`Babbage/Rules/Utxo.hs:449`,
     * `Conway/Rules/Utxo.hs:201`).
@@ -266,12 +274,12 @@ object Utxo
       judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     val (deposits, refunds) = Deposits.of(env.pp, env.cert, ann.tx.body)
-    val collateral = TxChecks.collateral(ann.utxo, env.pp, ann.tx)
+    val collateral = TxChecks.collateral[Conway](ann.utxo, ann.tx)
     for
       _ <- Sts.runTest[F, PredicateFailure](validate(env, ann, deposits, refunds))
       _ <- JudgedSts.trans[F, UtxoEnv[Any], PlutusStats, Counted[
         UTxOState[Conway]
-      ], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](Utxos, env, ann)
+      ], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](Utxos.sts[Conway], env, ann)
       s <- st.get
       next <- Refuse.vocab[F, UTxOState[Conway]](
         update(s.state, ann, collateral, deposits, refunds)
@@ -294,8 +302,8 @@ object Utxow
     ], StAnnTx, PredicateFailure, LedgerFailure]:
   private def utxow(f: UtxowFailure): PredicateFailure = PredicateFailure.utxow(f)
 
-  /** The checks of UTXOW of the era of the parameters in force, in the reference's order, each a
-    * [[Test]] or the defect that leaves no verdict:
+  /** The checks of UTXOW of the era `E`, whatever the protocol version, in the reference's order,
+    * each a [[Test]] or the defect that leaves no verdict:
     *
     *   - Shelley to Mary (`transitionRulesUTXOW`, `Shelley/Rules/Utxow.hs:286-326`): the failing
     *     native scripts, the missing and the extraneous scripts, the signatures, the needed
@@ -316,15 +324,14 @@ object Utxow
     * @param mir
     *   the MIR quorum of an era before Conway (`validateMIRInsufficientGenesisSigs`)
     */
-  def checks(
+  def checks[E <: EraTag](
       env: UtxoEnv[Any],
       genDelegs: Map[Bytes, GenDelegPair],
       ann: StAnnTx,
       mir: Test[PredicateFailure]
-  ): Vector[Either[LedgerDefect, Test[PredicateFailure]]] =
+  )(using era: ShelleyBasedEra[E]): Vector[Either[LedgerDefect, Test[PredicateFailure]]] =
     val tx = ann.tx
     val pp = env.pp
-    val pv = pp.protocolMajor
     val scripts = ann.scripts
     val needed = ann.needed.keySet
     val received = tx.witnesses.scripts.map(_.hash).toSet
@@ -347,8 +354,8 @@ object Utxow
     val signatures = env.ctx.staticOrDefect(TxChecks.verifiedWits(tx, env.ctx.verdicts))
     val witnesses =
       test(TxChecks.neededWitnesses(genDelegs, tx, ann.spent, collateral, provided))
-    val metadata = env.ctx.staticOrDefect(TxChecks.auxiliaryChecks(pp, tx, env.ctx))
-    if pv < 7 then
+    val metadata = env.ctx.staticOrDefect(TxChecks.auxiliaryChecks[E](pp, tx, env.ctx))
+    if !era.atLeast(ShelleyBasedEra.SBabbage) then
       // `validateMissingScripts` (`Shelley/Rules/Utxow.hs:375-388`): the scripts provided are the
       // witnesses' before Babbage
       val missingScripts = test(
@@ -364,21 +371,22 @@ object Utxow
         )
       )
       val native = test(env.ctx.static(TxChecks.failedNativeScripts(tx, scripts, None, signers)))
-      TxChecks.plutusFieldsDefect(pp, tx).map(Left(_)).toVector ++ (
-        if pv < 5 then Vector(native, missingScripts, signatures, witnesses, metadata, test(mir))
+      TxChecks.plutusFieldsDefect[E](tx).map(Left(_)).toVector ++ (
+        if !era.atLeast(ShelleyBasedEra.SAlonzo) then
+          Vector(native, missingScripts, signatures, witnesses, metadata, test(mir))
         else
           Vector(
             native,
             missingScripts,
             test(
-              TxChecks.datumChecks(pp, tx, ann.spentByInput, ann.referenced, scripts)
+              TxChecks.datumChecks[E](tx, ann.spentByInput, ann.referenced, scripts)
             ),
             test(TxChecks.redeemerChecks(tx, ann.spentByInput, scripts, ann.plutusPurposes)),
             signatures,
             witnesses,
             test(mir),
             metadata,
-            test(TxChecks.integrityCheck(pp, tx, ann.spentByInput, scripts))
+            test(TxChecks.integrityCheck[E](pp, tx, ann.spentByInput, scripts))
           )
       )
     else
@@ -401,13 +409,13 @@ object Utxow
             )
           )
         ),
-        test(TxChecks.datumChecks(pp, tx, ann.spentByInput, ann.referenced, scripts)),
+        test(TxChecks.datumChecks[E](tx, ann.spentByInput, ann.referenced, scripts)),
         test(TxChecks.redeemerChecks(tx, ann.spentByInput, scripts, ann.plutusPurposes)),
         signatures,
         witnesses,
         metadata,
-        env.ctx.staticOrDefect(TxChecks.scriptsWellFormed(pp, tx, env.ctx)),
-        test(TxChecks.integrityCheck(pp, tx, ann.spentByInput, scripts))
+        env.ctx.staticOrDefect(TxChecks.scriptsWellFormed[E](pp, tx, env.ctx)),
+        test(TxChecks.integrityCheck[E](pp, tx, ann.spentByInput, scripts))
       )
 
   /** Records the checks in order: every failure of each, or the first defect raised. A check ends
@@ -430,7 +438,7 @@ object Utxow
       judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     for
-      _ <- record[F](checks(env, Map.empty, ann, Test.pass))
+      _ <- record[F](checks[Conway](env, Map.empty, ann, Test.pass))
       _ <- JudgedSts.trans[F, UtxoEnv[ConwayCertState], Counted[UTxOState[Conway]], Counted[
         UTxOState[Conway]
       ], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](Utxo, env, ann)

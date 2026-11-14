@@ -58,8 +58,11 @@ flowchart LR
 **Keeping the open list short.** Open an issue for work that will start within about two weeks, or that
 needs a decision or a tracked gap. Work further out is a roadmap line, not an issue. Sub-items of one
 epic are a checklist in the epic's issue (the Leios items in #73, the performance work in #124), not
-an issue each. Fold or close a shaped issue that has not moved for a quarter, with a pointer to where
-the item now lives.
+an issue each. A P2 item that follows up an open issue is a checklist line of that issue:
+`python3 scripts/file_issue.py --priority P2 --parent N` posts its details as a comment on N and adds the line
+to N's checklist. A P2 item that needs an issue of its own says why with `--own-issue`, and the reason is
+kept in its body; P0 and P1 items are issues. Fold or close a shaped issue that has not moved for a quarter,
+with a pointer to where the item now lives.
 
 **Spikes** (`kind:spike`) are time-boxed explorations. A spike ends in one of three outcomes, recorded
 in its closing comment and, when it shapes the design, in an ADR: *adopt* (follow-up issues opened),
@@ -103,7 +106,8 @@ status is `status:idea` or `status:parked` (owner decision, 2026-10-29):
 reported as stale (the nightly triage below flags it), and so is a
 `status:needs-owner` issue not updated for 14 (triage rule of [#400](https://github.com/KD5UJC-XYZ/scarab/issues/400)).
 File an issue through a form or through `python3 scripts/file_issue.py` (`--help` shows its options), which refuses
-one without the three labels and a milestone.
+one without the three labels and a milestone, and a P2 item with neither a parent nor a reason for an issue of its
+own ([keeping the open list short](#lifecycle-of-an-item)).
 
 An issue that carries a decision of the owner's gets the `owner-decision` label, and the rows of
 [the decisions register](decisions.md) cite the issues their decisions came from. The check below reports a labelled

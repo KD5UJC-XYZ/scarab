@@ -123,7 +123,9 @@ def counts(text: str) -> dict[str, int]:
 def main_sources(root: Path) -> list[str]:
     listed = subprocess.run(['git', '-C', str(root), 'ls-files', '*.scala'], check=True, capture_output=True,
                             text=True).stdout.split()
-    return sorted(p for p in listed if '/src/main/' in p and '/src_managed/' not in p)
+    # `tools` holds the programs run by hand (benchmarks, probes, fixture writers); like test code, it
+    # is outside this guard and outside WartRemover (`build.sbt`)
+    return sorted(p for p in listed if '/src/main/' in p and '/src_managed/' not in p and not p.startswith('tools/'))
 
 
 def current(root: Path) -> dict[str, dict[str, int]]:
