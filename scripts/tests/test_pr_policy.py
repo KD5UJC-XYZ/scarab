@@ -7,6 +7,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import check_storage_format as fmt
 import pr_policy as policy
 
 
@@ -150,7 +151,7 @@ class PrBodyTests(unittest.TestCase):
 
 NOW = datetime(2026, 11, 14, 12, 0, tzinfo=timezone.utc)
 STORAGE_TITLE = "fix(storage)!: storage format V10 drops the bootstrap sidecar fields"
-STORAGE_FILES = [policy.MANIFEST, "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecar.scala",
+STORAGE_FILES = [fmt.MANIFEST, "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecar.scala",
                  "node/src/test/scala/xyz/kd5ujc/scarab/storage/CodecSuite.scala",
                  "fixtures/snapshot-v10/preview-4320.bin", "docs/storage-migrations.md", "changes/994-sidecar.md"]
 RECORD = ("## Storage format change\n\n"
@@ -175,9 +176,13 @@ class StorageFormatTests(unittest.TestCase):
         self.assertTrue(self.check(self.pr()))
         self.assertEqual(policy.check_body(self.pr(), STORAGE_FILES), 3)
         low = self.pr(body=body_of(2, "None", "None") + RECORD)
-        with self.assertRaisesRegex(policy.PolicyError, "level 2 is below 3: the persisted-format register or the "
-                                                        "storage format manifest"):
+        with self.assertRaisesRegex(policy.PolicyError, "level 2 is below 3: the persisted-format register, the "
+                                                        "storage format manifest or its guard"):
             policy.check_body(low, STORAGE_FILES)
+        with self.assertRaisesRegex(policy.PolicyError, "level 3 or more, not 2"):
+            self.check(low)
+        with self.assertRaisesRegex(policy.PolicyError, "level 2 is below 3"):
+            policy.check_body(low, [fmt.GUARD])
 
     def test_a_pull_request_that_leaves_the_manifest_and_the_guard_alone_is_not_one(self):
         self.assertFalse(self.check(self.pr(title="feat(node): accept witness", body=""), ["node/src/main/A.scala"]))
@@ -222,9 +227,37 @@ class StorageFormatTests(unittest.TestCase):
                 self.check(self.pr(body=body))
 
     def test_a_bot_is_checked_and_a_promotion_of_dev_is_not(self):
-        with self.assertRaisesRegex(policy.PolicyError, 'needs a "## Storage format change" section'):
+        with self.assertRaisesRegex(policy.PolicyError, "level 3 or more, not None"):
             self.check(self.pr(body="", user_type="Bot"))
+        with self.assertRaisesRegex(policy.PolicyError, 'needs a "## Storage format change" section'):
+            self.check(self.pr(body=body_of(3, "None", "None"), user_type="Bot"))
         self.assertFalse(self.check(self.pr(title="chore: promote dev", body="", head="dev"), STORAGE_FILES + ["a"]))
+
+    def test_a_branch_named_dev_in_a_fork_is_not_a_promotion(self):
+        fork = self.pr(title="chore: promote dev", body="", head="dev")
+        fork["head"]["repo"] = {"id": 900, "full_name": "fork/scarab"}
+        with self.assertRaisesRegex(policy.PolicyError, r"\(storage\)!"):
+            self.check(fork, STORAGE_FILES)
+        renamed = self.pr(title="chore: promote dev", body="", head="dev")
+        renamed["head"]["repo"] = {"id": 42, "full_name": "example/renamed"}
+        self.assertFalse(policy.promotion(renamed))
+
+    def test_the_record_is_read_as_github_renders_it(self):
+        base = body_of(3, "None", "None")
+        trailing = RECORD + "Evidence: checked the migration.\n### Notes\nmore prose\n"
+        record = policy.approval_record(policy.rendered_section(base + trailing, "storage format change"))
+        self.assertEqual(record["answered_at"], "2026-11-14T09:41:07Z")
+        self.assertTrue(self.check(self.pr(body=base + trailing)))
+        quoted = RECORD.replace("- Answer: just modify V10 directly\n",
+                                "- Answer:\n  > just modify\n  > V10 directly\n")
+        self.assertEqual(policy.approval_record(policy.rendered_section(quoted, "storage format change"))["answer"],
+                         "just modify\nV10 directly")
+        for hidden in ["```\n" + RECORD + "```\n", "~~~~\n" + RECORD + "~~~~\n"]:
+            with self.subTest(hidden=hidden[:4]), self.assertRaisesRegex(policy.PolicyError, "section"):
+                self.check(self.pr(body=base + hidden))
+        ended = "## Storage format change\n\n# Other\n\n" + RECORD.split("\n\n", 1)[1]
+        with self.assertRaisesRegex(policy.PolicyError, "section"):
+            self.check(self.pr(body=base + ended))
 
 
 if __name__ == "__main__":

@@ -32,7 +32,7 @@ import re
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_storage_format import MANIFEST, approval_problems, outside_format_change, touches_freeze  # noqa: E402
+from check_storage_format import approval_problems, outside_format_change, touches_freeze  # noqa: E402
 
 
 MODES = ("transition", "dev-only-main")
@@ -121,32 +121,74 @@ def check_gaps(text):
 
 def level_floor(files):
     """The lowest level the changed files allow, from the levels table of CONTRIBUTING.md."""
-    if PERSISTED_FORMAT in files or MANIFEST in files:
+    if PERSISTED_FORMAT in files or touches_freeze(files):
         return 3
     return 1 if any(not DOCUMENTATION.fullmatch(f) for f in files) else 0
 
 
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+ANY_HEADING = re.compile(r"^ {0,3}(#{1,6})(?:\s+(.*?))?\s*#*\s*$")
+
+
+def rendered_section(body, title):
+    """The text under the first level-2 heading `title` (in lower case) as GitHub renders the body: without HTML
+    comments and fenced code blocks, up to the next heading of level 1 or 2; None when there is no such heading. The
+    level-2 sections of `sections` are read as before; this reading is for the sections whose content is checked."""
+    lines, fence = [], None
+    for line in COMMENT.sub("", body or "").splitlines():
+        opened = FENCE.match(line)
+        if fence is not None:
+            if opened and opened.group(1)[0] == fence[0] and len(opened.group(1)) >= len(fence):
+                fence = None
+        elif opened:
+            fence = opened.group(1)
+        else:
+            lines.append(line)
+    found = None
+    for line in lines:
+        heading = ANY_HEADING.match(line)
+        if found is None:
+            if heading and len(heading.group(1)) == 2 and (heading.group(2) or "").strip().lower() == title:
+                found = []
+        elif heading and len(heading.group(1)) <= 2:
+            break
+        else:
+            found.append(line)
+    return None if found is None else "\n".join(found).strip()
+
+
 def approval_record(text):
     """The `Question:`, `Asked at:`, `Answer:` and `Answered at:` of a "Storage format change" section, keyed as the
-    manifest keys them; a line that names no field continues the one before it (a quoted question of several lines)."""
+    manifest keys them. A time is the rest of its line. A question or an answer goes on over the lines after it that
+    are indented or quoted (`>`); any other line ends it."""
     record, current = {}, None
     for line in (text or "").splitlines():
         found = RECORD_FIELD.match(line)
         if found:
             current = found.group(1).lower().replace(" ", "_")
             record[current] = found.group(2).strip()
-        elif current is not None and line.strip():
+            current = None if current.endswith("_at") else current
+        elif current is not None and line.strip() and (line[:1].isspace() or line.lstrip().startswith(">")):
             record[current] = (record[current] + "\n" + line.strip().lstrip(">").strip()).strip()
+        else:
+            current = None
     return {k: v.strip("`").strip() if k.endswith("_at") else v.lstrip(">").strip() for k, v in record.items()}
 
 
+def promotion(pr):
+    """A promotion of `dev` to `main` within the repository: the branch names and the repository of both sides."""
+    base, head = pr.get("base") or {}, pr.get("head") or {}
+    base_repo, head_repo = base.get("repo") or {}, head.get("repo") or {}
+    return (head.get("ref") == "dev" and base.get("ref") == "main" and base_repo.get("id") is not None
+            and head_repo.get("id") == base_repo.get("id") and head_repo.get("full_name") == base_repo.get("full_name"))
+
+
 def check_storage_format(pr, files, now):
-    """Whether the pull request is a storage format change (FMT-1); one that is must be its own pull request with a
-    title that says so and the record of the owner's answer. A promotion of `dev` is not checked: its changes each
-    passed this check as their own pull request."""
-    if pr.get("head", {}).get("ref") == "dev" and pr.get("base", {}).get("ref") == "main":
-        return False
-    if not touches_freeze(files):
+    """Whether the pull request is a storage format change (FMT-1); one that is must be its own pull request of
+    level 3 or more, with a title that says so and the record of the owner's answer. A bot's pull request is
+    checked too. A promotion of `dev` from the same repository is not: its changes each passed this check as their
+    own pull request."""
+    if promotion(pr) or not touches_freeze(files):
         return False
     title = pr.get("title") if isinstance(pr.get("title"), str) else ""
     named = STORAGE_TITLE.fullmatch(title)
@@ -156,7 +198,9 @@ def check_storage_format(pr, files, now):
     outside = outside_format_change(files)
     require(not outside, "a storage format change must be its own pull request (FMT-1): it may touch only the paths of "
             "FORMAT_CHANGE_PATHS in scripts/check_storage_format.py, and these are outside them: " + ", ".join(outside))
-    section = sections(pr.get("body") or "").get(STORAGE_SECTION)
+    level = level_of(pr.get("body") or "")
+    require(level is not None and level >= 3, f"a storage format change is level 3 or more, not {level} (FMT-1)")
+    section = rendered_section(pr.get("body"), STORAGE_SECTION)
     require(bool(section), 'a storage format change needs a "## Storage format change" section with the owner\'s '
             "question and answer, verbatim, and when each was asked and given in UTC (FMT-1)")
     problems = approval_problems(approval_record(section), now)
@@ -177,7 +221,8 @@ def check_body(pr, files=()):
     require(level is not None, "state the level of the change in the body (pull request template)")
     floor = level_floor(files)
     require(level >= floor, f"level {level} is below {floor}: " + (
-        "the persisted-format register or the storage format manifest changed (CONTRIBUTING.md, Levels)" if floor == 3
+        "the persisted-format register, the storage format manifest or its guard changed (CONTRIBUTING.md, Levels)"
+        if floor == 3
         else "a file other than documentation changed (CONTRIBUTING.md, Levels)"))
     if level >= SECTION_LEVEL:
         found = sections(body)
