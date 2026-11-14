@@ -21,6 +21,17 @@ against covers the address's attributes encoded again with minimal heads and len
 built from those definitions: 65,537 outputs, and addresses whose attribute maps are written as
 the accepted wide-head cases of the [decoding corpus](../../fixtures/reference/conway-decoding/README.md).
 
+Dated evidence (2026-11-14): a transaction's checks run in the order of `updateUTxOTxWitness`
+(cardano-ledger f649f975, `Cardano/Chain/UTxO/Validation.hs:373-397`), so that of two faults the one
+the reference meets first is reported (#969): the inputs and witnesses, then `validateTxAux`
+(`Validation.hs:189-217`: size, minimum fee, output balance, input balance, fee, minimum fee
+reached), then `validateTx` (`Validation.hs:247-258`: transaction attributes, each output's
+attributes and network magic) and the UTxO union. An output address that does not decode is
+refused before any of them, as the reference decodes it with the transaction (`TxOut`'s `decCBOR`,
+`Cardano/Chain/UTxO/Tx.hs:216-219`). `ByronLedgerSuite` has one case for each pair of faults whose first
+error the earlier order reported differently (26 pairs); the order is read from the pinned source,
+not replayed through the reference.
+
 ## Explicitly unchecked or unconfirmed
 
-no preprod Byron transaction exists, so the UTxO rules are pinned by mainnet blocks (not contiguous, state not replayed); mainnet-scale UTxO memory and snapshot size not measured; the mempool reads current epoch geometry; the forger still takes the epoch history at start-up (restart after the transition on a derived chain); ledger-lite bootstrap mode needs a configured Shelley epoch
+no preprod Byron transaction exists, so the UTxO rules are pinned by mainnet blocks (not contiguous, state not replayed); mainnet-scale UTxO memory and snapshot size not measured; the mempool reads current epoch geometry; the forger still takes the epoch history at start-up (restart after the transition on a derived chain); ledger-lite bootstrap mode needs a configured Shelley epoch; an output address that does not decode is refused when the transaction is checked, after the block's own checks and the transactions before it, where the reference fails to decode the block body (cardano-ledger f649f975, `Cardano/Chain/Block/Body.hs:81-88`, `UTxO/TxPayload.hs:70-71`, `UTxO/TxAux.hs:108-115`, `UTxO/Tx.hs:110-113,216-219`, `Common/Address.hs:172-176`)
