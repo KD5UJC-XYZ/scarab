@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
 import scala.util.Try
