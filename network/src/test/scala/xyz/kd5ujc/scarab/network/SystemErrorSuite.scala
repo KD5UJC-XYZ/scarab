@@ -67,9 +67,10 @@ class SystemErrorSuite extends FunSuite:
     )
   }
 
-  // captured 2026-11-13 with `--socket-path /w/café-C.socket` and no `LANG` (the C locale): the
-  // `DiffusionErrored` trace's `error` after `CreatedLocalSocket` and `ConfiguringLocalSocket`; with
-  // `LANG=C.UTF-8` and `/w/café-U.socket` it is the same line for that path
+  // captured 2026-11-13 with `--socket-path /w/café-C.socket` and no `LANG`, under which the
+  // reference decoded the argument as UTF-8: the `DiffusionErrored` trace's `error` after
+  // `CreatedLocalSocket` and `ConfiguringLocalSocket`; with `LANG=C.UTF-8` and `/w/café-U.socket`
+  // it is the same line for that path (under `LANG=C` the reference serves such a path, #949)
   test("a socket path beyond ASCII, as the reference's DiffusionErrored names it (#949)") {
     val path = "/w/café-C.socket"
     assertEquals(

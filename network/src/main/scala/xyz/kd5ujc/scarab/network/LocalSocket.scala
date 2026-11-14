@@ -255,12 +255,15 @@ object LocalSockets:
               )
             )
           )
-        // a path beyond ASCII, after the length and trailing-`/` refusals that come before the
-        // reference's bind too: Scarab refuses every one, the owner's decision (#949). Run with
-        // `café` paths, cardano-node 11.1.3 binds the path under its characters truncated to a byte
-        // each (`castCharToCChar`, `Network/Socket/Types.hsc` 1160), then its check of the socket
-        // finds nothing at the path's own name and stops the set-up with this error. Scarab binds
-        // nothing, so it leaves no socket file under the truncated name
+        // a path beyond ASCII, after the length and trailing-`/` refusals, which come before the
+        // reference's check of the socket file too: Scarab refuses every one, the owner's decision
+        // (#949). Run with `/w/café...` paths under `LANG=C.UTF-8` or no `LANG`, cardano-node
+        // 11.1.3 bound the path under its characters truncated to a byte each (`castCharToCChar`,
+        // `Network/Socket/Types.hsc` 1160), then its check of the socket found nothing at the
+        // path's own name and stopped the set-up with this error; Scarab binds nothing, so it
+        // leaves no socket file under the truncated name. Run with the same path under `LANG=C`,
+        // or with a lone byte 0xE9 under either locale, it kept the argument's bytes and served
+        // the path, which Scarab refuses all the same
         else if address.path.exists(_ > '\u007f') then
           F.pure(
             Left(

@@ -99,15 +99,16 @@ line carrying the reference's text (`Network.Socket.bind: does not exist (No suc
 and exit code 1. A path that the JDK refuses and the reference binds (see the deviations below) stops it
 the same way, but the line carries the JDK's reason in that form (`Network.Socket.bind: failed (Unix
 domain path too long)`). A path beyond ASCII that is not refused for its length or a trailing `/` stops it
-after `configuringLocalSocket` with the line the reference gives on a first start
+after `configuringLocalSocket` with the line observed for `/w/café...` on the reference's first start under
+`LANG=C.UTF-8`
 (`<path>: getFileStatus: does not exist (No such file or directory)`), and no socket is made. A start
 that fails, here or in the removal above, also says why on standard error,
 as the reference's top-level handler does. SIGINT while the node runs is a `diffusionErrored` line with
 `user interrupt` and exit code 130, as the reference's `UserInterrupt`; SIGTERM ends the run without
 it, as the reference's `ExitSuccess` does.
 
-Four approved deviations, as the [decisions register](../decisions.md#networking-and-local-clients) states
-them ([#949](https://github.com/KD5UJC-XYZ/scarab/issues/949)):
+Five approved deviations, as the [decisions register](../decisions.md#networking-and-local-clients) states
+them ([#949](https://github.com/KD5UJC-XYZ/scarab/issues/949), [#953](https://github.com/KD5UJC-XYZ/scarab/issues/953)):
 
 - **Bind and listen.** The JDK binds and listens in one call. So the socket listens before the check after
   the bind rather than after it, and a client that connects in between waits in the backlog instead of being
@@ -115,16 +116,27 @@ them ([#949](https://github.com/KD5UJC-XYZ/scarab/issues/949)):
   succeeds, the lines and the failures keep the reference's order.
 - **Path length.** The JDK binds at most 106 bytes of path, after collapsing repeated `/`, and the reference
   binds up to 107 characters. So a path of 107 ASCII characters with no repeated `/` is refused here and
-  bound by the reference. From 108 characters on, both refuse the path with `pokeSockAddr`'s error.
-- **A path beyond ASCII**: Scarab refuses every one. Runs of the reference with `café` paths:
-  - It binds the socket under the path's characters truncated to a byte each.
-  - It then finds nothing at the path's own name and stops, leaving the mis-named file.
-
-  Scarab stops with the same line and makes no file. So where the reference's second start fails at its
-  bind on the file its first start left (`Network.Socket.bind: resource busy (Address in use)`), or a
-  directory that does not exist fails its bind, Scarab gives the first line again.
+  bound by the reference. From 108 characters on, both refuse an ASCII path with `pokeSockAddr`'s error.
+- **A path beyond ASCII**: Scarab refuses every one. Runs of the reference with `/w/café...` paths show two
+  cases.
+  - **Under `LANG=C.UTF-8` or no `LANG`:** it bound the socket under the path's characters truncated to a
+    byte each, then found nothing at the path's own name and stopped, leaving the mis-named file. Scarab
+    stops with the same line and makes no file. So where the reference's second start failed at its bind on
+    the file its first start left (`Network.Socket.bind: resource busy (Address in use)`), or a directory
+    that does not exist failed its bind, Scarab gives the first line again.
+  - **Under `LANG=C`, or with a lone byte 0xE9 under either locale:** the reference kept the argument's
+    bytes and served the path, where Scarab refuses it.
 - **`SocketPath` in the configuration file** is the default of `--local-socket`, and the flag overrides it.
   The reference parses it and never uses it: its socket path comes from `--socket-path` only.
+- **The command line is UTF-8** whatever the locale. Where the JVM's encoding is not UTF-8 and an argument
+  holds a character beyond ASCII, Scarab reads its arguments' bytes again, so valid UTF-8 in `--local-socket`
+  names the same file in every locale. Where it cannot read them again (an argument file before the main
+  class, `JDK_JAVA_OPTIONS`, `--disable-@files` or `--source` in the launch, no `/proc`), it refuses to start.
+  A sequence that is not
+  UTF-8 becomes U+FFFD, where the reference kept a lone byte 0xE9. Other files are still named in the
+  locale's encoding, so under `LANG=C` a configuration or database path beyond ASCII cannot be opened. Standard output and
+  error are UTF-8 too. Under `LANG=C` the reference's own output stops at the first character it cannot
+  encode.
 
 systemd socket activation (a socket passed in `LISTEN_FDS`) is not supported yet:
 [#542](https://github.com/KD5UJC-XYZ/scarab/issues/542).
