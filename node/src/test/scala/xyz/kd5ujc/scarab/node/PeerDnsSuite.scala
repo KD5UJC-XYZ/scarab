@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{Clock, Deferred, IO, Ref}
+import cats.effect.{Clock, Deferred, IO, Ref, Resource}
 import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, SocketAddress, host, ipv4, port}
-import java.util.concurrent.CompletableFuture
+import java.net.InetAddress
+import java.util.concurrent.{CompletableFuture, CompletionStage, Executor, Executors}
+import java.util.concurrent.atomic.AtomicInteger
+import org.xbill.DNS.{ARecord, DClass, EDNSOption, Flags, Message, Resolver, Section, TSIG, Type}
+import org.xbill.DNS.lookup.LookupSession
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.ledger.{GovernorFault, StorageError}
 import xyz.kd5ujc.scarab.network.selection.*
@@ -752,3 +756,62 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
       _ <- IO(assertEquals(actual.localDnsCache, refreshed))
     yield ()
   }
+
+  // D8 of issue 956: the reference keeps no DNS cache of its own (`resolvCache = Nothing` in the
+  // dns-4.2.0 `defaultResolvConf` that ouroboros-network c45735a5 resolves roots with), so a lookup
+  // within a record's TTL asks the resolver again, where dnsjava's default session would answer it
+  // from its cache until the TTL ran out
+  test("a lookup within a record's TTL asks the resolver again: the session keeps no DNS cache") {
+    val executor =
+      Resource.make(IO(Executors.newSingleThreadExecutor()))(e => IO(e.shutdownNow()).void)
+    executor.use { lookups =>
+      for
+        domain <- name("cached.example")
+        resolver = PeerDnsSuite.Answering(
+          InetAddress.getByAddress(Array[Byte](-64, 0, 2, 10)),
+          3600L
+        )
+        session <- IO(PeerDns.uncached(LookupSession.defaultBuilder().resolver(resolver), lookups))
+        dns = PeerDns.fromSession[IO](session)
+        first <- dns.addresses(domain)
+        second <- dns.addresses(domain)
+        asked <- IO(resolver.asked.get)
+        expected = Vector(DnsAddressRecord(ipv4"192.0.2.10", 900.seconds))
+        _ <- IO(assertEquals(first.records, expected, "the first answer, its TTL clipped"))
+        _ <- IO(assertEquals(second.records, expected, "the second answer"))
+        _ <- IO(assertEquals(asked, 2, "A queries that reached the resolver"))
+      yield ()
+    }
+  }
+
+object PeerDnsSuite:
+  /** A resolver that answers an A query for any name with `address` at `ttl` seconds, and any other
+    * query with no records, and counts the A queries it is asked. dnsjava's `Resolver` is a
+    * callback interface that reports by a returned stage, so the count is an atomic held by the
+    * resolver.
+    */
+  final class Answering(address: InetAddress, ttl: Long) extends Resolver:
+    val asked: AtomicInteger = new AtomicInteger(0)
+    def setPort(port: Int): Unit = ()
+    def setTCP(flag: Boolean): Unit = ()
+    def setIgnoreTruncation(flag: Boolean): Unit = ()
+    def setEDNS(
+        version: Int,
+        payloadSize: Int,
+        flags: Int,
+        options: java.util.List[EDNSOption]
+    ): Unit =
+      ()
+    def setTSIGKey(key: TSIG): Unit = ()
+    def setTimeout(timeout: java.time.Duration): Unit = ()
+    override def sendAsync(query: Message): CompletionStage[Message] =
+      sendAsync(query, (task: Runnable) => task.run())
+    override def sendAsync(query: Message, executor: Executor): CompletionStage[Message] =
+      val question = query.getQuestion
+      val reply = new Message(query.getHeader.getID)
+      reply.getHeader.setFlag(Flags.QR)
+      reply.addRecord(question, Section.QUESTION)
+      if question.getType == Type.A then
+        asked.incrementAndGet()
+        reply.addRecord(new ARecord(question.getName, DClass.IN, ttl, address), Section.ANSWER)
+      CompletableFuture.completedFuture(reply)
