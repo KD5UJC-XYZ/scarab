@@ -20,11 +20,11 @@ import xyz.kd5ujc.scarab.node.mempool.{Capacity, Entry, MempoolLedger}
   * body, the header body and the block. Every function is deterministic in its arguments; the
   * effects (clock, mempool, KES evolution, adoption) live in [[Forger]].
   *
-  * The encodings are the reference's: the block is `[7, [header, [tx_body], [witness_set],
-  * {index: auxiliary_data}, [invalid_index]]]`, the header `[header_body, kes_sig]` and
-  * `header_body` the ten-element Praos array. The four body parts are definite up to 23 entries
-  * and indefinite above, as the reference writes them ([[container]]). The transactions' original
-  * bytes are copied, never re-encoded, so transaction ids and the body hash stay exact.
+  * The encodings are the reference's: the block is `[7, [header, [tx_body], [witness_set], {index:
+  * auxiliary_data}, [invalid_index]]]`, the header `[header_body, kes_sig]` and `header_body` the
+  * ten-element Praos array. The four body parts are definite up to 23 entries and indefinite above,
+  * as the reference writes them ([[container]]). The transactions' original bytes are copied, never
+  * re-encoded, so transaction ids and the body hash stay exact.
   */
 object BlockBuilder:
   val ConwayEra: Int = 7
@@ -63,7 +63,8 @@ object BlockBuilder:
     if n <= LengthThreshold then head(major, n.toLong) ++ items
     else Array(((major << 5) | 31).toByte) ++ items ++ Array(Break)
 
-  /** The bytes [[container]] adds to its entries: the head, or the indefinite head and the break. */
+  /** The bytes [[container]] adds to its entries: the head, or the indefinite head and the break.
+    */
   private def containerOverhead(n: Int): Long = if n <= LengthThreshold then 1L else 2L
 
   /** One transaction split into the pieces a block carries (original bytes). */

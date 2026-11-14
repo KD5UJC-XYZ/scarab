@@ -1136,14 +1136,19 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     }
   }
 
-  test("body encoding: the body of a reference block with 24 transactions is rebuilt byte for byte (#987)") {
+  test(
+    "body encoding: the body of a reference block with 24 transactions is rebuilt byte for byte (#987)"
+  ) {
     // forged by cardano-node 11.1.3 on a devnet (fixtures/devnet/README.md): its bodies and witness
     // sets are indefinite lists, its empty auxiliary data and invalid indices definite
-    val raw = Bytes.fromHex(
-      java.nio.file.Files
-        .readString(java.nio.file.Path.of("fixtures/devnet/burst-24-txs-block.hex"))
-        .trim
-    ).toOption.get
+    val raw = Bytes
+      .fromHex(
+        java.nio.file.Files
+          .readString(java.nio.file.Path.of("fixtures/devnet/burst-24-txs-block.hex"))
+          .trim
+      )
+      .toOption
+      .get
     val reference = Block.decodeShelley(raw).toOption.get.asInstanceOf[Block.Shelley]
     assertEquals(reference.transactions.size, 24)
     val pieces = reference.transactions.map(t =>
@@ -1157,7 +1162,9 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     assertEquals((body.bodies.value.head & 0xff, body.witnesses.value.head & 0xff), (0x9f, 0x9f))
   }
 
-  test("body encoding: a block of 24 transactions decodes back with the body it commits to (#987)") {
+  test(
+    "body encoding: a block of 24 transactions decodes back with the body it commits to (#987)"
+  ) {
     def entry(raw: Bytes) = MempoolStateFixture.entry(raw)
     val pieces =
       Vector.tabulate(24)(i => BlockBuilder.piece(entry(TxKit.pay(i + 1)._1)).toOption.get)

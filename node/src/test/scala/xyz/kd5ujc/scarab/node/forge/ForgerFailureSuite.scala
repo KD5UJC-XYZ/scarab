@@ -264,7 +264,9 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
 
   // #987: a block that fails a check only a bug of ours can fail is a forge defect: the slot ends
   // without a block, the defect is reported, and the node goes on (owner decision of 2026-11-14)
-  test("a body over the maximum size is a forge defect: no block, no fatal, the node goes on (#987)") {
+  test(
+    "a body over the maximum size is a forge defect: no block, no fatal, the node goes on (#987)"
+  ) {
     val p = pool(kesStart = 50)
     // an empty body is 4 bytes, so a maximum of 3 makes every body too large
     val ledger = xyz.kd5ujc.scarab.ledger.state.ConwayNewEpochState.gov

@@ -382,10 +382,10 @@ final class Forger[F[_]: Async, S](
   private def failed(slot: BigInt, error: ForgeError): F[Unit] =
     stats.failed(geometry.epochOf(slot)) *> events.emit(ForgeEvent.Failed(slot, error))
 
-  /** The block built in `slot` failed a check of ours: the slot ends, its transactions (`ids`) leave
-    * the mempool, valid or not, so that the next leader slot does not build the same block, as the
-    * reference does with a forged block its own rules refuse (`NodeKernel.hs` 757-787), and the node
-    * goes on (owner decision of 2026-11-14, #987).
+  /** The block built in `slot` failed a check of ours: the slot ends, its transactions (`ids`)
+    * leave the mempool, valid or not, so that the next leader slot does not build the same block,
+    * as the reference does with a forged block its own rules refuse (`NodeKernel.hs` 757-787), and
+    * the node goes on (owner decision of 2026-11-14, #987).
     */
   private def defect[A](slot: BigInt, epoch: BigInt, d: ForgeDefect, ids: Vector[Bytes])(using
       Handle[F, NodeError]
@@ -632,8 +632,8 @@ final class Forger[F[_]: Async, S](
     * block the steps before let through: the key's window, and the body size and the decoding of
     * the block just built, which only a bug of ours can fail ([[ForgeDefect]]; the body is checked
     * before the key evolves or signs). None: forging was disabled meanwhile, or a reload installed
-    * another VRF key than `vrf`, which proved `cert`; nothing was signed, as the reference's forging
-    * thread ends when its block forging is replaced.
+    * another VRF key than `vrf`, which proved `cert`; nothing was signed, as the reference's
+    * forging thread ends when its block forging is replaced.
     */
   private def assemble(
       context: Forger.Context[S],
@@ -649,24 +649,24 @@ final class Forger[F[_]: Async, S](
         Raise[F, Fatal]
     ): F[Option[Either[ForgeError, (Bytes, Bytes, Int, BigInt)]]] =
       val start = c.opCert.kesPeriod
-      val header = for
-        _ <- Either.cond(
-          start <= kesPeriod && kesPeriod < start + config.maxKesEvolutions,
-          (),
-          ForgeError.KeyPeriodOutOfRange(kesPeriod, start, config.maxKesEvolutions)
+      val header =
+        for _ <- Either.cond(
+            start <= kesPeriod && kesPeriod < start + config.maxKesEvolutions,
+            (),
+            ForgeError.KeyPeriodOutOfRange(kesPeriod, start, config.maxKesEvolutions)
+          )
+        yield BlockBuilder.headerBody(
+          context.blockNo,
+          slot,
+          context.base.tipRef.map(_.hash),
+          c.coldVkey,
+          c.vrf.publicKey,
+          cert,
+          body.size,
+          body.hash,
+          c.opCert,
+          protocolVersion
         )
-      yield BlockBuilder.headerBody(
-        context.blockNo,
-        slot,
-        context.base.tipRef.map(_.hash),
-        c.coldVkey,
-        c.vrf.publicKey,
-        cert,
-        body.size,
-        body.hash,
-        c.opCert,
-        protocolVersion
-      )
       (header match
         case Left(e)           => F.pure(Left(e))
         case Right(headerBody) =>
