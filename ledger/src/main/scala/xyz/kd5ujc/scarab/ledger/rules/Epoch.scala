@@ -74,7 +74,7 @@ object Epoch:
       ): F[Unit] =
         for
           es0 <- es.get
-          _ <- within(Snap.sts[E], es0.ls, (), EpochState.snapshots[E])
+          _ <- within(Snap.sts[E], es0.ls, epoch, EpochState.snapshots[E])
           _ <- within(PoolReap.sts[E], (), epoch, PoolreapState.lens[E])
           es1 <- es.get
           _ <- within(Upec.sts[E], es1.ls, (), shelleyGov[E])

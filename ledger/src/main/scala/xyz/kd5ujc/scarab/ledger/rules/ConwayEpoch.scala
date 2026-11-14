@@ -126,7 +126,7 @@ object ConwayEpoch:
         for
           es0 <- es.get
           globals <- Sts.globals[F]
-          _ <- Epoch.within(Snap.sts[Conway], es0.ls, (), EpochState.snapshots[Conway])
+          _ <- Epoch.within(Snap.sts[Conway], es0.ls, epoch, EpochState.snapshots[Conway])
           _ <- Epoch.within(PoolReap.sts[Conway], (), epoch, PoolreapState.lens[Conway])
           es1 <- es.get
           next <- Sts.lift[F, TickFailure, EpochState[Conway]](

@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.crypto.bls.BlsError
 import xyz.kd5ujc.scarab.crypto.kes.Sum6Kes
 import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
 import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as PraosVrf
@@ -45,6 +46,12 @@ enum ProviderDefect:
   /** The verifier of the operational certificate's cold-key signature failed. */
   case OpCertSignature(failure: OperationalCertificate.Failure)
 
+  /** The BLS12-381 library failed while SNAP checked a seated pool's proof of possession for the
+    * Leios committee (`mkLeiosCommittee`, cardano-base c1e1ed8d `Leios.hs:158-169`): any failure
+    * but `ProofOfPossessionInvalid`, which seats the pool keyless.
+    */
+  case Bls(error: BlsError)
+
   /** The original exception, where the provider threw one. */
   def cause: Option[Throwable] = this match
     case Ed25519(VerificationError.ImplementationFailure(e))                          => Some(e)
@@ -60,7 +67,8 @@ enum ProviderDefect:
           )
         ) =>
       Some(e)
-    case Ed25519(_) | VrfVerifier(_) | VrfInput(_) | Kes(_) | OpCertSignature(_) => None
+    case Bls(BlsError.Backend(e))                                                         => Some(e)
+    case Ed25519(_) | VrfVerifier(_) | VrfInput(_) | Kes(_) | OpCertSignature(_) | Bls(_) => None
 
   def message: String = this match
     case Ed25519(e)         => s"Ed25519 verifier defect: $e"
@@ -68,6 +76,7 @@ enum ProviderDefect:
     case VrfInput(f)        => s"VRF input defect: $f"
     case Kes(f)             => s"KES verifier defect: $f"
     case OpCertSignature(f) => s"certificate signature verifier defect: ${f.message}"
+    case Bls(e)             => s"BLS proof-of-possession verifier defect: $e"
 
 object ProviderDefect:
   /** The defect a VRF answer records, if it records one. */

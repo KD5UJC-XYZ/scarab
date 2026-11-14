@@ -35,6 +35,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ValidationError
 }
 import xyz.kd5ujc.scarab.ledger.rules.{EraBlock, EraNes, FromByron, Globals, Handover, TickFailure}
+import xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeError
 import xyz.kd5ujc.scarab.ledger.state.{EpochNo, ShelleyBasedEra, VocabError}
 import xyz.kd5ujc.scarab.node.read.MirrorEraRead
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -245,21 +246,32 @@ object MirrorRules:
       case i: EraNes.InEra[x] => i.era == ShelleyBasedEra.SDijkstra
 
   /** A quantity of the ledger state outside its vocabulary type, met by the tick or by a rule of a
-    * transaction ([[BlockFailure.stateOutOfRange]]), or the consensus state's per-epoch transition
-    * counter past `Word32` ([[StateMirrorError.TransitionCounterOverflow]]): no verdict on the
-    * block. The reference aborts with an exception there (`compactCoinOrError`; the counter's
-    * `succ`, which throws at `maxBound`), so this is the node's stop and never a refusal.
+    * transaction ([[BlockFailure.stateOutOfRange]]), the consensus state's per-epoch transition
+    * counter past `Word32` ([[StateMirrorError.TransitionCounterOverflow]]), or a state with no
+    * Leios committee for SNAP's rotation ([[xyz.kd5ujc.scarab.ledger.ChainError.LeiosCommittee]]):
+    * no verdict on the block. The reference aborts with an exception there (`compactCoinOrError`;
+    * the counter's `succ`, which throws at `maxBound`) or cannot hold such a state, so this is the
+    * node's stop and never a refusal.
     */
   private[node] def stateOutOfRange(
       header: Header,
       failure: BlockFailure
   ): Option[xyz.kd5ujc.scarab.ledger.ChainError] =
-    failure.stateOutOfRange
-      .orElse(failure match
-        case BlockFailure.Mirror(StateMirrorError.TransitionCounterOverflow) =>
-          Some(VocabError.OutOfRange(VocabError.Kind.Word32, BigInt(1) << 32))
-        case _ => None)
-      .map(xyz.kd5ujc.scarab.ledger.ChainError.StateOutOfRange(header.slot, _))
+    failure match
+      // a failure of the BLS library is a provider defect (`ValidationError.unverifiable`)
+      case BlockFailure.Tick(
+            TickFailure.LeiosCommittee(LeiosCommitteeError.PossessionCheckFailed(_, _))
+          ) =>
+        None
+      case BlockFailure.Tick(TickFailure.LeiosCommittee(cause)) =>
+        Some(xyz.kd5ujc.scarab.ledger.ChainError.LeiosCommittee(header.slot, cause))
+      case _ =>
+        failure.stateOutOfRange
+          .orElse(failure match
+            case BlockFailure.Mirror(StateMirrorError.TransitionCounterOverflow) =>
+              Some(VocabError.OutOfRange(VocabError.Kind.Word32, BigInt(1) << 32))
+            case _ => None)
+          .map(xyz.kd5ujc.scarab.ledger.ChainError.StateOutOfRange(header.slot, _))
 
   /** The label a block application is recorded under: a block that crossed an epoch boundary or ran
     * Plutus scripts says so, as those are the steps that take long.

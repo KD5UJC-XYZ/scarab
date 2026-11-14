@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Compare Leios committee selection with the pinned Leios ledger build; --record captures native results."""
+"""Compare Leios committee selection, SNAP rotation and key age with the pinned Leios ledger build; --record captures native results."""
 import argparse
 import datetime
 import hashlib
@@ -120,6 +120,36 @@ def cases():
     add("weights-as-stored",
         snapshots([(a, pool(300, bls=key(0), weight=(2, 4))), (b, pool(200, bls=key(1), weight=(0, 1))),
                    (c, pool(100, bls=key(2), weight=(3, 2)))]))
+
+    # SNAP's rotation: the old snapshots, the new mark snapshot and SNAP's epoch, committee size,
+    # key age and fee (pre-Dijkstra SNAP passes a size and age of zero, Shelley/Rules/Snap.hs:84-86).
+    def rotate(name, old, mark_pools, epoch, size, age, fee):
+        rows.append({"name": name, "kind": "rotate", "cbor": old.hex(), "mark": snapshot(mark_pools).hex(),
+                     "epoch": epoch, "size": size, "age": age, "fee": fee})
+
+    fresh = [(pool_id(0x40), pool(50, bls=key(1))), (pool_id(0x50), pool(60))]
+    rotate("rotate-seats-the-old-mark", snapshots(keyed), fresh, 8, 0, 0, 12345)
+    rotate("rotate-empty-committee-before-dijkstra", snapshots(keyed, size=0, age=0), fresh, 8, 0, 0, 0)
+    rotate("rotate-with-dijkstra-parameters", snapshots(keyed, size=2, age=21), fresh, 8, 2, 21, 7)
+    rotate("rotate-aged-out-key", snapshots([(a, pool(300, bls=key(0), registered=0))], epoch=20, age=10),
+           fresh, 21, 0, 0, 1)
+    rotate("rotate-epoch-maximum", snapshots(keyed), fresh, WORD64, 0xFFFF, 0xFFFFFFFF, WORD64)
+
+    # kesMaxKeyAgeEpochs (Dijkstra/Rules/Snap.hs:169-179): ceiling ((evo * slots) % epochSize) + 2.
+    def kes_age(name, evolutions, slots, epoch_size):
+        rows.append({"name": name, "kind": "kesAge", "maxKesEvolutions": evolutions,
+                     "slotsPerKesPeriod": slots, "epochSize": epoch_size})
+
+    kes_age("kes-age-public-networks", 62, 129600, 432000)
+    kes_age("kes-age-exact-division", 10, 10, 100)
+    kes_age("kes-age-no-evolutions", 0, 129600, 432000)
+    kes_age("kes-age-epoch-size-maximum", 62, 129600, WORD64)
+    kes_age("kes-age-product-wraps-to-zero", 1 << 32, 1 << 32, 7)
+    kes_age("kes-age-product-wraps-past-maximum", WORD64, 3, 5)
+    kes_age("kes-age-quotient-narrowed", 1 << 40, 1, 1)
+    kes_age("kes-age-ceiling-wraps", (1 << 33) - 1, 1, 2)
+    kes_age("kes-age-sum-wraps-to-zero", (1 << 32) - 2, 1, 1)
+    kes_age("kes-age-sum-wraps-to-one", (1 << 32) - 1, 1, 1)
     return rows
 
 
@@ -160,7 +190,7 @@ def native(rows, name):
                "--network", "none", "--cpus", "2", "--memory", "4g", "--tmpfs", "/build:exec",
                "-v", f"{HERE}:/probe:ro", "-v", f"{inputs}:/inputs.jsonl:ro", "--entrypoint", "sh", IMAGE, "-c",
                "cabal exec -- ghc -Wall -Werror -L/usr/local/lib -optl-Wl,-rpath,/usr/local/lib "
-               "-package cardano-ledger-core -package cardano-ledger-binary -package cardano-ledger-dijkstra "
+               "-package cardano-ledger-core -package cardano-ledger-binary -package cardano-ledger-dijkstra -package cardano-slotting -package time "
                "-package aeson -package base16-bytestring -package text -outputdir /build /probe/Main.hs "
                "-o /build/oracle >&2 && /build/oracle < /inputs.jsonl"]
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -188,9 +218,10 @@ def main():
             "schemaVersion": 1,
             "capturedAt": datetime.datetime.now(datetime.timezone.utc).date().isoformat(),
             "scope": "Native SnapShots decoding at protocol 12 with the mark snapshot's memoized Leios committee "
-                     "(mkMarkSnapShot, selectLeiosCommittee, mkLeiosCommittee) and its rotation into the set "
-                     "position (mkSetSnapShot): exact accepted bytes and acceptance parity; not SNAP, the key-age "
-                     "derivation (maxKeyAgeEpochs), genesis or epoch transitions.",
+                     "(mkMarkSnapShot, selectLeiosCommittee, mkLeiosCommittee), SNAP's rotation of the snapshots "
+                     "(mkMarkSnapShot, mkSetSnapShot, mkGoSnapShot as snapTransition combines them) and "
+                     "kesMaxKeyAgeEpochs: exact accepted bytes, values and acceptance parity; not the stake snapshot "
+                     "SNAP builds, Globals, genesis or epoch transitions.",
             "build": "leios-b004fe0c", "image": IMAGE, "ledgerSourceCommit": LEDGER, "cardanoBase": BASE,
             "imageId": subprocess.check_output(["docker", "image", "inspect", IMAGE, "--format", "{{.Id}}"],
                                                text=True).strip(),

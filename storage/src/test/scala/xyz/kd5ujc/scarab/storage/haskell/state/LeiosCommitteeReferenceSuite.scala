@@ -29,7 +29,13 @@ class LeiosCommitteeReferenceSuite extends FunSuite:
     assert(rows.nonEmpty)
   }
 
-  rows.foreach { row =>
+  /** The case kind of a corpus row: absent for a committee case. */
+  private def kind(row: io.circe.HCursor): Option[String] = row.get[String]("kind").toOption
+
+  private def number(row: io.circe.ACursor, name: String): BigInt =
+    row.get[BigInt](name).fold(e => fail(e.toString), identity)
+
+  rows.filter(kind(_).isEmpty).foreach { row =>
     def field(name: String): String = row.get[String](name).fold(e => fail(e.toString), identity)
     val name = field("name")
     test(s"$name agrees with the native committee and set snapshot") {
@@ -54,6 +60,42 @@ class LeiosCommitteeReferenceSuite extends FunSuite:
         val set = "82" + codecs.snapShot.encodeUnchecked(snapshots.mark).hex + committeeBytes.hex
         assertEquals(set, expected("set"))
       }
+    }
+  }
+
+  rows.filter(kind(_).contains("rotate")).foreach { row =>
+    def field(name: String): String = row.get[String](name).fold(e => fail(e.toString), identity)
+    test(s"${field("name")} agrees with the native SNAP rotation") {
+      val codecs = LeiosStateCodecs
+      def right[E, A](result: Either[E, A]): A = result.fold(e => fail(e.toString), identity)
+      val old = right(codecs.snapShots.decodeBytes(hex(field("cbor")), HaskellState.limits))
+      val mark = right(codecs.snapShot.decodeBytes(hex(field("mark")), HaskellState.limits))
+      val layout = old.layout match
+        case l: SnapShots.Layout.Leios => l
+        case other                     => fail(s"not the Leios layout: $other")
+      val rotated = LeiosCommitteeSelection.rotate(
+        old,
+        layout,
+        mark,
+        right(EpochNo.fromBigInt(number(row, "epoch"))),
+        right(LeiosCommitteeSize.fromBigInt(number(row, "size"))),
+        right(EpochInterval.fromBigInt(number(row, "age"))),
+        Coin(number(row, "fee"))
+      )
+      val reference = row.downField("reference")
+      assertEquals(reference.get[Boolean]("accepted"), Right(true), s"native: ${reference.focus}")
+      val expected = reference.get[String]("snapshots").fold(e => fail(e.toString), identity)
+      assertEquals(rotated.map(codecs.snapShots.encodeUnchecked(_).hex), Right(expected))
+    }
+  }
+
+  rows.filter(kind(_).contains("kesAge")).foreach { row =>
+    // the corpus's numbers are 64-bit unsigned words; `toLong` keeps their bits
+    def word(name: String): Word64 = Word64.fromUnsigned(number(row, name).toLong)
+    test(s"${row.get[String]("name").getOrElse("")} agrees with the native maxKeyAgeEpochs") {
+      val epochSize = NonZero.from(word("epochSize")).fold(e => fail(e.toString), identity)
+      val age = EpochInterval.ofKes(word("maxKesEvolutions"), word("slotsPerKesPeriod"), epochSize)
+      assertEquals(BigInt(age.toLong), number(row.downField("reference"), "maxKeyAge"))
     }
   }
 

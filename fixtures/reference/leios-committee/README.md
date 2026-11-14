@@ -32,9 +32,19 @@ committee with `LeiosCommitteeSelection.ofMark` and compares every acceptance ve
 accepted byte of the committee and the set snapshot. Native decoder messages are kept for
 diagnosis; they are not compared with Scala's typed errors. No fields or cases are excluded.
 
-The corpus does not exercise SNAP or `maxKeyAgeEpochs` (the key age derived from the KES
-parameters). It also does not cover genesis, epoch transitions or a running Leios node; those
-remain under #826. The image uses GHC 9.10.3 and the source packages pinned by its recipe, not the
+Rotation cases (`kind` `rotate`) give old snapshots, a new mark snapshot and SNAP's epoch,
+committee size, key age and fee. The harness builds the snapshots as `snapTransition` does: the
+new mark with `mkMarkSnapShot`, the old mark rotated with `mkSetSnapShot` and the old set with
+`mkGoSnapShot` (`Shelley/Rules/Snap.hs:96-102`, `Dijkstra/Rules/Snap.hs:138-146`). The cases cover a
+mark whose committee is seated, an empty one, Dijkstra-sized parameters, an aged-out key, and
+every word at its maximum. `LeiosCommitteeReferenceSuite` compares the encoded snapshots of
+`LeiosCommitteeSelection.rotate`. Key-age cases (`kind` `kesAge`) call `maxKeyAgeEpochs` through
+`Globals` with the case's KES parameters and fixed epoch size. They cover the public networks'
+values, an exact division, the `Word64` product wrapping, the quotient narrowed to `Word32`, and
+the ceiling and the `+ 2` wrapping. The suite compares `EpochInterval.ofKes` with each value.
+
+The corpus does not build the stake snapshot SNAP takes (`snapShotFromInstantStake`), and it does not
+cover genesis, epoch transitions or a running Leios node; those remain under #826. The image uses GHC 9.10.3 and the source packages pinned by its recipe, not the
 official node executable. Raw build logs are not published.
 
 Regenerate or replay with [the runner](../../../scripts/oracle/leios-committee/run.py).
