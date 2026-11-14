@@ -973,7 +973,7 @@
       "id": "ledger-definite-byte-strings-headers-queries",
       "component": "Ledger: definite byte strings in headers and node-to-client query arguments (#437)",
       "status": "implemented",
-      "summary": "A block header and a node-to-client query argument read a byte string in the form the era's decoder version implies \u2014 header fields through decodeFixedSized or their own DecCBOR instances, query arguments through fromEraCBOR at the era's lowest protocol version \u2014 which below version 12 refuses a chunked string",
+      "summary": "A block header and a node-to-client query argument read a byte string in the form the era's decoder version implies — header fields through decodeFixedSized or their own DecCBOR instances, query arguments through fromEraCBOR at the era's lowest protocol version — which below version 12 refuses a chunked string",
       "evidence": {
         "suites": [
           "HeaderByteStringsSuite",
@@ -1656,7 +1656,7 @@
       "id": "block-forging",
       "component": "Block forging",
       "status": "implemented",
-      "summary": "Praos (Conway) forging, exact KES evolution targets, typed terminal outcomes after key-update failure, and dynamic block forging (SIGHUP, --start-as-non-producing-node)",
+      "summary": "Praos (Conway) forging, the forged body encoded as the reference encodes it, exact KES evolution targets, typed terminal outcomes after key-update failure, forge defects that end the slot without stopping the node, and dynamic block forging (SIGHUP, --start-as-non-producing-node)",
       "evidence": {
         "suites": [
           "Sum6KesSigningSuite",
@@ -1671,7 +1671,8 @@
           474,
           906,
           918,
-          919
+          919,
+          987
         ]
       },
       "page": "docs/compatibility/block-forging.md"
