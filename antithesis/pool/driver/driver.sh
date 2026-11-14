@@ -33,26 +33,38 @@ if [ -x /opt/at/canary/setup_cost_model ]; then
   /opt/at/canary/setup_cost_model || exit 1
   now=$(tips)
 fi
-# Setup completes from a healthy cluster: every pool's ancestry known and on the longest chain (fork depth 0), a block
-# of s1 on each Haskell pool's own chain and a block of a Haskell pool on s1's, so each side has taken the other's. This topology's start race at k = 5 can keep the
-# Haskell pools from taking s1's blocks until s1 has forked past k, a cardano-node in s1's seat as well (#854), and
-# every timeline would inherit that split; such a setup fails and says so, instead of a run that asks nothing.
+# Setup completes from a healthy cluster: every pool answers, every pool's ancestry is known and on the longest chain
+# (fork depth 0), and since this gate began each side has taken the other's blocks: a new block of s1 on each Haskell
+# pool's own chain, and a new block of a Haskell pool on s1's. Counting from the gate's start, not over the cluster's
+# life, keeps out a pool that took blocks once and then stopped, whose stale tip is an ancestor of the longest and
+# so of depth 0. This topology's start race at k = 5 can keep the Haskell pools from taking s1's blocks until s1 has
+# forked past k, a cardano-node in s1's seat as well (#854), and every timeline would inherit that split; such a
+# setup fails and says so, instead of a run that asks nothing.
+forks() {
+  local out
+  out=$(python3 -I /opt/at/forktree.py "$STATE_DIR/forktree.json" /logs/h2.log /logs/h3.log /logs/s1.log 2> /dev/null)
+  jq -e 'type == "object"' <<< "$out" > /dev/null 2>&1 && printf '%s\n' "$out" || echo '{}'
+}
+base=$(forks)
 deadline=$((SECONDS + 600))
 while :; do
-  health=$(python3 -I /opt/at/forktree.py "$STATE_DIR/forktree.json" /logs/h2.log /logs/h3.log /logs/s1.log \
-             2> /dev/null || echo '{}')
-  if jq -e '.depth == 0 and (.pools | length == 3) and ([.pools[]] | all(. != null))
-            and ((.forgedOnChain.h2.s1 // 0) >= 1) and ((.forgedOnChain.h3.s1 // 0) >= 1)
-            and (((.forgedOnChain.s1.h2 // 0) + (.forgedOnChain.s1.h3 // 0)) >= 1)' <<< "$health" > /dev/null; then
+  health=$(forks)
+  now=$(tips)
+  if jq -e --argjson base "$base" --argjson now "$now" '
+       def on($o; $pool; $forger): $o.forgedOnChain[$pool][$forger] // 0;
+       def took($o): {h2: on($o; "h2"; "s1"), h3: on($o; "h3"; "s1"), s1: (on($o; "s1"; "h2") + on($o; "s1"; "h3"))};
+       took(.) as $after | took($base) as $before
+       | .depth == 0 and (.pools | length == 3) and ([.pools[]] | all(. != null)) and ([$now[]] | all(. != null))
+         and $after.h2 > $before.h2 and $after.h3 > $before.h3 and $after.s1 > $before.s1' <<< "$health" \
+       > /dev/null 2>&1; then
     break
   fi
   if [ "$SECONDS" -ge "$deadline" ]; then
-    echo "driver: the cluster is not healthy after 600 s: $health" >&2
+    echo "driver: the cluster is not healthy after 600 s: $health, tips $now, at the gate's start $base" >&2
     exit 1
   fi
   sleep 2
 done
-now=$(tips)
 echo "driver: healthy, $health"
 echo "driver: setup complete at $now"
 printf '%s\n' '{"antithesis_setup": {"status": "complete", "details": {"message": "h2, h3 and s1 report one tip"}}}' >> "$SDK"
