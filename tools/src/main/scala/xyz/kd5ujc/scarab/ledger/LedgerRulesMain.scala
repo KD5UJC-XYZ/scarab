@@ -20,10 +20,11 @@ import xyz.kd5ujc.scarab.plutus.{PlutusBackend, PlutusVm, UnknownPlutusVm}
   * Arguments: `<scenarios-dir> <documents-root> <report.json> [--sidecar <path>] [--dataset-commit
   * <sha>] [--plutus-vm scalus|scarab] [--select first|expected-in-failures]`. The scenarios are the
   * site's `scenarios/ledger-rules/fixtures/scenarios`; a fixture's `$ref` (`common/...`) is read
-  * from the documents root, Amaru's `crates/amaru-ledger/tests/data/transaction`. The sidecar
-  * records each fixture's verdict with every failure, in the reference's order, and its names, and
-  * which rule chose the reported name. `--dataset-commit` is the Amaru commit that last changed the
-  * corpus, which the site compares for freshness.
+  * from the documents root, Amaru's `crates/amaru-ledger/tests/data/transaction`. The report and
+  * the sidecar name the run's `--select` (`selection`), and the sidecar records each fixture's
+  * verdict (`cases`) with every failure, in the reference's order, and its names, and which rule
+  * chose the reported name. `--dataset-commit` is the Amaru commit that last changed the corpus,
+  * which the site compares for freshness.
   *
   * The report gives one name for a refused transaction, which may fail several predicates at once.
   * `--select` says which ([[Selection]]): with `expected-in-failures`, the default, the report
@@ -149,7 +150,32 @@ object LedgerRulesMain extends IOApp:
           )
     yield result
 
-  def report(cases: Vector[LedgerRulesCase], generatedAt: String, commit: Option[String]): Json =
+  /** Every fixture of `corpus` judged as `c` says: its verdict by the evaluator of `c.vm`, and the
+    * name of a refusal chosen by `c.selection` from the fixture's expectation.
+    */
+  def judged(c: Config, corpus: Corpus): Vector[LedgerRulesCase] =
+    val backend = PlutusBackend.of(c.vm)
+    corpus.fixtures.map { (id, file, text) =>
+      LedgerRulesCase(
+        id,
+        file,
+        LedgerRulesRun.judge(file, text, corpus.documents.get, backend),
+        LedgerRulesFixture.expectation(file, text).toOption.flatMap(_.refusal),
+        c.selection
+      )
+    }
+
+  /** The report, with the run's selection in `selection`. The scenario's schema does not declare
+    * that key, but its top level admits keys it does not name, and the site keeps them when it
+    * reads and publishes a report (node-diversity-conformance 9dc68a7,
+    * `scenarios/ledger-rules/schema.json` and `scripts/build_common.py`).
+    */
+  def report(
+      cases: Vector[LedgerRulesCase],
+      generatedAt: String,
+      commit: Option[String],
+      selection: Selection
+  ): Json =
     Json.fromFields(
       Vector(
         "version" -> "1".asJson,
@@ -157,9 +183,28 @@ object LedgerRulesMain extends IOApp:
         "generated_at" -> generatedAt.asJson
       ) ++ commit.map(c => "dataset_commit" -> c.asJson) ++ Vector(
         "implementation" -> Json.obj("name" -> "scarab".asJson),
+        "selection" -> selection.flag.asJson,
         "scenarios" -> cases.flatMap(LedgerRulesCase.entry).asJson
       )
     )
+
+  /** The sidecar: the selection of the run and what [[LedgerRulesCase.detail]] records of each
+    * case.
+    */
+  def sidecar(selection: Selection, cases: Vector[LedgerRulesCase]): Json =
+    Json.obj(
+      "selection" -> selection.flag.asJson,
+      "cases" -> cases.map(LedgerRulesCase.detail).asJson
+    )
+
+  /** What a run of `c` writes, by path: the report, and the sidecar when `c` asks for one. */
+  def written(
+      c: Config,
+      cases: Vector[LedgerRulesCase],
+      generatedAt: String
+  ): Vector[(Path, Json)] =
+    (c.report -> report(cases, generatedAt, c.commit, c.selection)) +:
+      c.sidecar.map(_ -> sidecar(c.selection, cases)).toVector
 
   private def write[F[_]: Sync](path: Path, json: Json): F[Unit] =
     Sync[F].blocking {
@@ -176,7 +221,6 @@ object LedgerRulesMain extends IOApp:
     )
 
   private def main[F[_]: Sync](c: Config)(using clock: Clock[F]): F[ExitCode] =
-    val backend = PlutusBackend.of(c.vm)
     def say(line: String): F[Unit] = Sync[F].blocking(System.err.println(line))
     clock.timed(corpus[F](c)).flatMap {
       case (_, Left(e)) => say(e.message).as(ExitCode(2))
@@ -186,24 +230,13 @@ object LedgerRulesMain extends IOApp:
             s"read ${corpus.fixtures.size} fixtures and ${corpus.documents.size} documents " +
               s"in ${millis(readTime)} ms"
           )
-          judged <- clock.timed(corpus.fixtures.traverse { (id, file, text) =>
-            Sync[F].delay(
-              LedgerRulesCase(
-                id,
-                file,
-                LedgerRulesRun.judge(file, text, corpus.documents.get, backend),
-                LedgerRulesFixture.expectation(file, text).toOption.flatMap(_.refusal),
-                c.selection
-              )
-            )
-          })
-          (runTime, cases) = judged
+          timedJudging <- clock.timed(Sync[F].delay(judged(c, corpus)))
+          (runTime, cases) = timedJudging
           now <- clock.realTimeInstant
-          written <- clock.timed(
-            write(c.report, report(cases, now.toString, c.commit)) *>
-              c.sidecar.traverse_(p => write(p, cases.map(LedgerRulesCase.detail).asJson))
+          timedWriting <- clock.timed(
+            written(c, cases, now.toString).traverse_((path, json) => write[F](path, json))
           )
-          (writeTime, _) = written
+          (writeTime, _) = timedWriting
           _ <- say(
             s"judged ${cases.size} fixtures with the ${c.vm.name} evaluator in ${millis(runTime)} ms: " +
               s"${cases.count(_.result.contains(LedgerRulesCase.Pass))} pass, " +
