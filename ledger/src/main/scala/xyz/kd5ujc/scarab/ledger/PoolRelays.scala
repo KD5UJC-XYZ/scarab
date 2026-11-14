@@ -421,7 +421,9 @@ object PoolRelays:
     if !definite then out.write(0xff)
     Bytes.fromArray(out.toByteArray)
 
-  /** `lengthThreshold` (`Encoder.hs:442-443`): above it a sequence is written indefinite. */
+  /** `lengthThreshold` (`Encoder.hs:442-443`, cardano-ledger f649f975): above it a sequence is
+    * written indefinite.
+    */
   private inline val LengthThreshold = 23
 
   private def optional[A](out: ByteArrayOutputStream, a: Option[A])(write: A => Unit): Unit =

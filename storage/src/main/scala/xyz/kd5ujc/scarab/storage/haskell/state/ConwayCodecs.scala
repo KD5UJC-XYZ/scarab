@@ -91,11 +91,11 @@ object ConwayCodecs:
       .toOption
       .flatMap(e => Codec.refuse(true, what, "one CBOR item", e))
 
-  /** A `Coin` the decoders give, a `Word64` (`Coin.hs:108-109`). */
+  /** A `Coin` the decoders give, a `Word64` (`Coin.hs:108-109`, cardano-ledger f649f975). */
   private def coin(amount: BigInt): Option[ConstraintViolation] = word(64).check(amount)
 
   /** An `AccountAddress` of a network the reference reads, testnet (0) or mainnet (1)
-    * (`libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs:930-948`).
+    * (`libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs:930-948`, cardano-ledger f649f975).
     */
   private def account(a: RewardAccount): Option[ConstraintViolation] =
     state.rewardAccount
@@ -112,8 +112,8 @@ object ConwayCodecs:
   private def anchor(a: Option[Anchor])(using ProtVer): Option[ConstraintViolation] =
     a.flatMap(state.anchor.check)
 
-  /** `encodeNullStrictMaybe` (`Encoding/Encoder.hs:340-343`), [[Wire.nullable]] with the value
-    * inside it checked.
+  /** `encodeNullStrictMaybe` (`Encoding/Encoder.hs:340-343`, cardano-ledger f649f975),
+    * [[Wire.nullable]] with the value inside it checked.
     */
   private def orNull[A](inner: Codec[A]): Codec[Option[A]] = new Codec[Option[A]]:
     private val c = nullable(inner)
@@ -126,12 +126,12 @@ object ConwayCodecs:
     out.arrayHead(size)
     out.uint(tag.toLong)
 
-  /** An `OSet` (`libs/cardano-data/src/Data/OSet/Strict.hs:112-113`): tag 258 whatever the version,
-    * then the elements in the order the set holds them with `encodeStrictSeq` 's framing (a
-    * definite array up to 23, an indefinite one above, `Encoding/Encoder.hs:458-468, 512-518`). A
-    * set holds an element once (`Strict.hs:109-110, 170-174`), so a repeated element is refused.
-    * The element's codec writes its value whatever bytes it was read from, so two elements are one
-    * value when they are written alike.
+  /** An `OSet` (`libs/cardano-data/src/Data/OSet/Strict.hs:112-113`, cardano-ledger f649f975): tag
+    * 258 whatever the version, then the elements in the order the set holds them with
+    * `encodeStrictSeq` 's framing (a definite array up to 23, an indefinite one above,
+    * `Encoding/Encoder.hs:458-468, 512-518`). A set holds an element once (`Strict.hs:109-110,
+    * 170-174`), so a repeated element is refused. The element's codec writes its value whatever
+    * bytes it was read from, so two elements are one value when they are written alike.
     */
   private def orderedSet[A](shape: String, elem: Codec[A]): Codec[Vector[A]] =
     writer[Vector[A]](shape) { (as, out) =>
@@ -151,18 +151,19 @@ object ConwayCodecs:
 
   // ---- certificates
 
-  /** `PoolMetadata` (`libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:516-520`):
-    * `[url, hash]`.
+  /** `PoolMetadata` (`libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:516-520`,
+    * cardano-ledger f649f975): `[url, hash]`.
     */
   private val poolMetadata: Codec[(String, Bytes)] =
     Record.of[(String, Bytes)]((Codec.text, Codec.bytes))
 
   /** The fields of `StakePoolParams` in a flat group (`withStakePoolParamsFlatEncoding`,
-    * `State/StakePool.hs:555-572`): the operator, the VRF key hash, the pledge and the cost (a
-    * `Coin`, `encodeInteger`, `Coin.hs:93-106`), the margin (a unit interval), the reward account,
-    * the owners (a set, [[Wire.sortedSetOf]]), the relays (a sequence, [[PoolRelays.encode]]) and
-    * the metadata or null. The registration keeps its relays and metadata as the bytes it was read
-    * with; the reference writes their values, so they are read again here and written as values.
+    * `State/StakePool.hs:555-572`, cardano-ledger f649f975): the operator, the VRF key hash, the
+    * pledge and the cost (a `Coin`, `encodeInteger`, `Coin.hs:93-106`), the margin (a unit
+    * interval), the reward account, the owners (a set, [[Wire.sortedSetOf]]), the relays (a
+    * sequence, [[PoolRelays.encode]]) and the metadata or null. The registration keeps its relays
+    * and metadata as the bytes it was read with; the reference writes their values, so they are
+    * read again here and written as values.
     */
   private def poolFields(p: PoolParams, out: Writer)(using ProtVer): Unit =
     hash28.encode(p.operator, out)
@@ -201,16 +202,17 @@ object ConwayCodecs:
       )
     )
 
-  /** `EncCBOR (ConwayTxCert era)` (`eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:737-741`):
-    * the delegation certificates (`:488-534`), of which a registration or unregistration without a
-    * deposit and a delegation to a pool alone are Shelley's (`encodeShelleyDelegCert`,
-    * `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs:428-435`), the pool certificates
-    * (`encodePoolCert`, `Shelley/TxCert.hs:437-449`) and the governance ones (`Conway/TxCert.hs:
-    * 614-643`). Every certificate is a definite array of its tag (`encodeWord8`) and fields, a
-    * credential as `[0, key hash] / [1, script hash]` (`Credential.hs:322-325`), a deposit as a
-    * `Coin` and an anchor as itself or null (`encodeNullStrictMaybe`). Conway has no genesis
-    * delegation or instantaneous-rewards certificate, and a delegation names a pool, a DRep or
-    * both: [[Codec.check]] refuses the others. The version reaches the owners of a pool, a set.
+  /** `EncCBOR (ConwayTxCert era)` (`eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:737-741`,
+    * cardano-ledger f649f975): the delegation certificates (`:488-534`), of which a registration or
+    * unregistration without a deposit and a delegation to a pool alone are Shelley's
+    * (`encodeShelleyDelegCert`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs:428-435`),
+    * the pool certificates (`encodePoolCert`, `Shelley/TxCert.hs:437-449`) and the governance ones
+    * (`Conway/TxCert.hs: 614-643`). Every certificate is a definite array of its tag
+    * (`encodeWord8`) and fields, a credential as `[0, key hash] / [1, script hash]`
+    * (`Credential.hs:322-325`), a deposit as a `Coin` and an anchor as itself or null
+    * (`encodeNullStrictMaybe`). Conway has no genesis delegation or instantaneous-rewards
+    * certificate, and a delegation names a pool, a DRep or both: [[Codec.check]] refuses the
+    * others. The version reaches the owners of a pool, a set.
     */
   def certificate(using ProtVer): Codec[Certificate] =
     import Certificate.*
@@ -300,15 +302,17 @@ object ConwayCodecs:
       case Voter.Pool(h)         => hash28.check(h)
     }
 
-  /** `EncCBOR (VotingProcedure era)` (`Procedures.hs:469-474`): `[vote, anchor / null]`. */
+  /** `EncCBOR (VotingProcedure era)` (`Procedures.hs:469-474`, cardano-ledger f649f975):
+    * `[vote, anchor / null]`.
+    */
   def votingProcedure(using ProtVer): Codec[VotingProcedure] =
     Record.of[VotingProcedure]((state.vote, orNull(state.anchor)))
 
   /** `VotingProcedures`, `Map Voter (Map GovActionId (VotingProcedure era))` written by its
-    * newtype-derived `EncCBOR` (`Procedures.hs:400-404`): `encodeMap` at both levels
-    * (`Encoding/Encoder.hs:397-408`), the variable-length framing, the voters in `Ord Voter`
-    * ([[Voter.order]]) and the actions of each in `Ord GovActionId`. A map holds a key once: of two
-    * entries for one voter, or one action of a voter, the later is the one written, as
+    * newtype-derived `EncCBOR` (`Procedures.hs:400-404`, cardano-ledger f649f975): `encodeMap` at
+    * both levels (`Encoding/Encoder.hs:397-408`), the variable-length framing, the voters in
+    * `Ord Voter` ([[Voter.order]]) and the actions of each in `Ord GovActionId`. A map holds a key
+    * once: of two entries for one voter, or one action of a voter, the later is the one written, as
     * `Map.fromList` keeps it.
     */
   def votingProcedures(using
@@ -326,11 +330,11 @@ object ConwayCodecs:
     )(all => outer.check(sorted(all)))
 
   /** One field of a Conway `PParamsUpdate`, written from its value by the field's `encCBOR`
-    * (`eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs:862-894`): a count or an amount a
-    * `Word` or a `Coin`, `a0` and the reference-script price a non-negative interval, `rho` and
-    * `tau` unit intervals, the cost models, the prices (`ExUnits.hs:219-220`), the units of a
-    * transaction or a block (two `Natural` s, `ExUnits.hs:192-193`) and the voting thresholds as
-    * records of unit intervals.
+    * (`eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs:862-894`, cardano-ledger f649f975): a
+    * count or an amount a `Word` or a `Coin`, `a0` and the reference-script price a non-negative
+    * interval, `rho` and `tau` unit intervals, the cost models, the prices (`ExUnits.hs:219-220`),
+    * the units of a transaction or a block (two `Natural` s, `ExUnits.hs:192-193`) and the voting
+    * thresholds as records of unit intervals.
     */
   private def parameter(p: ConwayParam, out: Writer): Unit =
     import ConwayParam.*
@@ -391,8 +395,9 @@ object ConwayCodecs:
 
   /** `EncCBOR (PParamsUpdate era)` (`libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs:
     * 244-255`): a map of a definite length whatever its size, the fields set in the order of
-    * `eraPParams` (`Conway/PParams.hs:862-894`, the order of their keys), each key a `Word` and
-    * each value written from what it is ([[parameter]]), not the bytes the transaction gave.
+    * `eraPParams` (`Conway/PParams.hs:862-894`, cardano-ledger f649f975, the order of their keys),
+    * each key a `Word` and each value written from what it is ([[parameter]]), not the bytes the
+    * transaction gave.
     */
   val parameterUpdate: Codec[ConwayParamUpdate] =
     writer[ConwayParamUpdate]("a parameter update") { (u, out) =>
@@ -404,10 +409,10 @@ object ConwayCodecs:
     }(u => u.params.iterator.flatMap(parameterRefusal).nextOption())
 
   /** `EncCBOR (GovAction era)` (`eras/conway/impl/src/Cardano/Ledger/Conway/Governance/
-    * Procedures.hs:928-946`): a parameter change `[0, previous / null, update, policy / null]` with
-    * its update by [[parameterUpdate]], every other action by [[NodeTypeCodecs.govAction]], which
-    * writes them from their values. The version reaches the sets and maps of a committee update and
-    * the anchor of a constitution.
+    * Procedures.hs:928-946`, cardano-ledger f649f975): a parameter change
+    * `[0, previous / null, update, policy / null]` with its update by [[parameterUpdate]], every
+    * other action by [[NodeTypeCodecs.govAction]], which writes them from their values. The version
+    * reaches the sets and maps of a committee update and the anchor of a constitution.
     */
   def govAction(using ProtVer): Codec[GovAction] =
     val previous = nullable(state.govActionId)
@@ -429,7 +434,7 @@ object ConwayCodecs:
         case GovAction.HardFork(prev, major, minor) =>
           first(ids(prev), Codec.uintBig(13).check(major), word(32).check(minor))
         case GovAction.TreasuryWithdrawals(ws, pol) =>
-          // a `Map AccountAddress Coin` (`Procedures.hs:830-834`): an account once
+          // a `Map AccountAddress Coin` (`Procedures.hs:830-834`, cardano-ledger f649f975): an account once
           val repeated = Codec.refuse(
             ws.map(_._1).distinct.size != ws.size,
             "TreasuryWithdrawals",
@@ -454,8 +459,8 @@ object ConwayCodecs:
         case GovAction.Info => None
     }
 
-  /** `EncCBOR (ProposalProcedure era)` (`Procedures.hs:537-544`): `[deposit, return account,
-    * action, anchor]`, the action by [[govAction]].
+  /** `EncCBOR (ProposalProcedure era)` (`Procedures.hs:537-544`, cardano-ledger f649f975):
+    * `[deposit, return account, action, anchor]`, the action by [[govAction]].
     */
   def proposal(using ProtVer): Codec[Proposal] =
     val action = govAction
@@ -484,14 +489,14 @@ object ConwayCodecs:
 
   /** A script as the reference holds it: its language and the bytes its hash is over, which are the
     * native script's own encoding (a `Timelock` is `MemoBytes`,
-    * `eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:253`) or a Plutus script's bytes (see
-    * [[xyz.kd5ujc.scarab.ledger.Script]]).
+    * `eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:253`, cardano-ledger f649f975) or a
+    * Plutus script's bytes (see [[xyz.kd5ujc.scarab.ledger.Script]]).
     */
   final case class ScriptPayload(kind: ScriptKind, payload: Bytes)
 
   /** `EncCBOR (AlonzoScript era)` (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:667-689`,
-    * `toEraCBOR` of `encodeScript`): `[0, native script]`, the native script as its kept bytes, or
-    * `[language, bytes]` of a Plutus script (1 to 3).
+    * cardano-ledger f649f975, `toEraCBOR` of `encodeScript`): `[0, native script]`, the native
+    * script as its kept bytes, or `[language, bytes]` of a Plutus script (1 to 3).
     */
   val script: Codec[ScriptPayload] =
     writer[ScriptPayload]("a script") { (s, out) =>
@@ -511,13 +516,14 @@ object ConwayCodecs:
     )
 
   /** A redeemer as `keyValueEncoder` writes it (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/
-    * TxWits.hs:164-169`): `[tag, index, data, ex_units]`, the purpose by its `encCBORGroup` (a
-    * `Word8` tag and a `Word32` index, `eras/conway/impl/src/Cardano/Ledger/Conway/Scripts.hs:
-    * 269-278`), the data as its kept bytes (`Data` is `MemoBytes`) and the units by `EncCBOR
-    * ExUnits` (`libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs:192-193`, two
-    * `Natural` s). The reference writes the redeemers of a witness set as a list of these below
-    * version 9 and as a map from version 9 (`TxWits.hs:157-162`); this is one element of the list,
-    * the shape the cardano-cbor-dataset's `redeemer` rule takes as well.
+    * TxWits.hs:164-169`, cardano-ledger f649f975): `[tag, index, data, ex_units]`, the purpose by
+    * its `encCBORGroup` (a `Word8` tag and a `Word32` index,
+    * `eras/conway/impl/src/Cardano/Ledger/Conway/Scripts.hs: 269-278`), the data as its kept bytes
+    * (`Data` is `MemoBytes`) and the units by `EncCBOR ExUnits`
+    * (`libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs:192-193`, two `Natural` s).
+    * The reference writes the redeemers of a witness set as a list of these below version 9 and as
+    * a map from version 9 (`TxWits.hs:157-162`); this is one element of the list, the shape the
+    * cardano-cbor-dataset's `redeemer` rule takes as well.
     */
   val redeemer: Codec[Redeemer] =
     writer[Redeemer]("a redeemer") { (r, out) =>
@@ -546,8 +552,8 @@ object ConwayCodecs:
       )
     }
 
-  /** `EncCBOR (WitVKey kr)` (`libs/cardano-ledger-core/src/Cardano/Ledger/Keys/WitVKey.hs:70-74`):
-    * `[vkey, signature]`, the key and the signature as their raw bytes.
+  /** `EncCBOR (WitVKey kr)` (`libs/cardano-ledger-core/src/Cardano/Ledger/Keys/WitVKey.hs:70-74`,
+    * cardano-ledger f649f975): `[vkey, signature]`, the key and the signature as their raw bytes.
     */
   val vkeyWitness: Codec[(Bytes, Bytes)] =
     Record.of[(Bytes, Bytes)]((Codec.bytesSized(32, 32), Codec.bytesSized(64, 64)))
@@ -562,10 +568,10 @@ object ConwayCodecs:
 
   // ---- metadata and parameters
 
-  /** `encodeMetadatum` (`libs/cardano-ledger-core/src/Cardano/Ledger/Metadata.hs:126-141`): an
-    * integer by `encodeInteger`, a byte or text string definite, a list and a map with a definite
-    * head whatever their size, the pairs of a map in their order. The nesting is walked on the heap
-    * (ADR 0011).
+  /** `encodeMetadatum` (`libs/cardano-ledger-core/src/Cardano/Ledger/Metadata.hs:126-141`,
+    * cardano-ledger f649f975): an integer by `encodeInteger`, a byte or text string definite, a
+    * list and a map with a definite head whatever their size, the pairs of a map in their order.
+    * The nesting is walked on the heap (ADR 0011).
     */
   val metadatum: Codec[Metadatum] =
     writer[Metadatum]("a metadatum")((m, out) => writeMetadatum(m, out))(_ => None)
@@ -597,9 +603,9 @@ object ConwayCodecs:
 
   // ---- blocks
 
-  /** `EncCBOR (Block h era)` (`libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs:83-86`):
-    * `encodeListLen (1 + listLen body)`, then the header and the body's group, both of which the
-    * reference keeps as the bytes it read (a Praos header is `MemoBytes`,
+  /** `EncCBOR (Block h era)` (`libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs:83-86`,
+    * cardano-ledger f649f975): `encodeListLen (1 + listLen body)`, then the header and the body's
+    * group, both of which the reference keeps as the bytes it read (a Praos header is `MemoBytes`,
     * `libs/cardano-protocol/src/Cardano/Protocol/Praos/BlockHeader.hs:138-140, 234`; the body's
     * segments are `encodePreEncoded` in `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/BlockBody/
     * Internal.hs:181-186`, four from Alonzo, and `eras/shelley/impl/src/Cardano/Ledger/Shelley/
