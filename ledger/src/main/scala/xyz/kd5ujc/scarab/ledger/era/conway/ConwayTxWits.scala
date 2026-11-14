@@ -16,8 +16,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Unsigned,
   Witnesses
 }
-import xyz.kd5ujc.scarab.ledger.era.{AsIx, EraTxError, Plutus, WitVKey}
-import xyz.kd5ujc.scarab.plutus.ExUnits
+import xyz.kd5ujc.scarab.ledger.era.{AsIx, EraTxError, Plutus, Redeemers, TxDats, WitVKey}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** Conway's witness set: `AlonzoTxWits ConwayEra` (`data AlonzoTxWitsRaw`,
@@ -28,20 +27,14 @@ import xyz.kd5ujc.scarab.protocol.Era
   *
   * @param bootstrap
   *   the bootstrap witnesses, one per address root ([[BootstrapWitness.set]])
-  * @param datums
-  *   the datums by hash, each the bytes of its data as they arrived
-  * @param redeemers
-  *   per purpose, the redeemer's data as it arrived and its units
   */
 final case class ConwayTxWits private (
     raw: Bytes,
     vkeys: SortedSet[WitVKey],
     bootstrap: Vector[BootstrapWitness],
     scripts: SortedMap[Bytes, ConwayScript],
-    datums: SortedMap[Bytes, Bytes],
-    redeemers: SortedMap[ConwayPlutusPurpose[AsIx], (Bytes, ExUnits)],
-    datumsRaw: Option[Bytes],
-    redeemersRaw: Option[Bytes]
+    datums: TxDats,
+    redeemers: Redeemers[ConwayPlutusPurpose[AsIx]]
 )
 
 object ConwayTxWits:
@@ -90,10 +83,8 @@ object ConwayTxWits:
       SortedSet.from(flat.vkeys.map(WitVKey(_, _))),
       flat.bootstrap,
       scripts,
-      SortedMap.from(flat.datums.map(d => Blake2b.hash256.hash(d) -> d)),
-      SortedMap.from(redeemers),
-      flat.datumsRaw,
-      flat.redeemersRaw
+      TxDats(flat.datumsRaw, SortedMap.from(flat.datums.map(d => Blake2b.hash256.hash(d) -> d))),
+      Redeemers(flat.redeemersRaw, SortedMap.from(redeemers))
     )
 
   // The scripts of the witness set (keys 1, 3, 6 and 7), each read with its own bytes. Each list
@@ -114,8 +105,11 @@ object ConwayTxWits:
       v1 <- plutus(3, fields)(b => ConwayPlutusScript.V1(Plutus(b)))
       v2 <- plutus(6, fields)(b => ConwayPlutusScript.V2(Plutus(b)))
       v3 <- plutus(7, fields)(b => ConwayPlutusScript.V3(Plutus(b)))
+    // of the scripts with one hash, which are one script, the first read, as the flat decoder keeps
     yield SortedMap.from(
-      (native ++ v1 ++ v2 ++ v3).map(s => ConwayScript.instance.hashScript(s) -> s)
+      (native ++ v1 ++ v2 ++ v3)
+        .map(s => ConwayScript.instance.hashScript(s) -> s)
+        .distinctBy(_._1)
     )
 
   val instance
@@ -127,7 +121,6 @@ object ConwayTxWits:
       override def addrTxWits(wits: ConwayTxWits): SortedSet[WitVKey] = wits.vkeys
       override def bootAddrTxWits(wits: ConwayTxWits): Vector[BootstrapWitness] = wits.bootstrap
       override def scriptTxWits(wits: ConwayTxWits): SortedMap[Bytes, ConwayScript] = wits.scripts
-      override def datsTxWits(wits: ConwayTxWits): SortedMap[Bytes, Bytes] = wits.datums
-      override def rdmrsTxWits(
-          wits: ConwayTxWits
-      ): SortedMap[ConwayPlutusPurpose[AsIx], (Bytes, ExUnits)] = wits.redeemers
+      override def datsTxWits(wits: ConwayTxWits): TxDats = wits.datums
+      override def rdmrsTxWits(wits: ConwayTxWits): Redeemers[ConwayPlutusPurpose[AsIx]] =
+        wits.redeemers

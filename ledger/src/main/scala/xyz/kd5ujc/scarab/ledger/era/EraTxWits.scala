@@ -5,7 +5,6 @@ import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.BootstrapWitness
 import xyz.kd5ujc.scarab.ledger.state.{Conway, EraTag}
-import xyz.kd5ujc.scarab.plutus.ExUnits
 
 /** The witnesses every era's witness set has (`EraTxWits`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:503-527`): key witnesses, bootstrap
@@ -31,11 +30,11 @@ trait EraTxWits[E <: EraTag]:
 trait AlonzoEraTxWits[E <: EraTag] extends EraTxWits[E]:
   override def scriptsOf: AlonzoEraScript[E]
 
-  /** `datsTxWitsL`: by hash, each the bytes of its data as they arrived. */
-  def datsTxWits(wits: TxWits[E]): SortedMap[Bytes, Bytes]
+  /** `datsTxWitsL`: the datums, with the bytes they arrived as. */
+  def datsTxWits(wits: TxWits[E]): TxDats
 
-  /** `rdmrsTxWitsL`: per purpose, the redeemer's data as it arrived and its units. */
-  def rdmrsTxWits(wits: TxWits[E]): SortedMap[PlutusPurpose[AsIx, E], (Bytes, ExUnits)]
+  /** `rdmrsTxWitsL`: the redeemers by the era's purpose, with the bytes they arrived as. */
+  def rdmrsTxWits(wits: TxWits[E]): Redeemers[PlutusPurpose[AsIx, E]]
 
 /** The instances of each era, the one place that lists the eras having each witness class. */
 object EraTxWits:

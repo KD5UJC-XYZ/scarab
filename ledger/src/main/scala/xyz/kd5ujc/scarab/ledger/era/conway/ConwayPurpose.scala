@@ -19,7 +19,7 @@ enum ConwayPlutusPurpose[F[_, _]]:
   case ConwayProposing(purpose: F[Unsigned[Unsigned.Width.W32], Proposal])
 
   /** The redeemer tag of the purpose: spend 0, mint 1, cert 2, reward 3, vote 4 and propose 5
-    * (`EncCBORGroup (ConwayPlutusPurpose AsIx era)`, `Conway/Scripts.hs:280-296`, cardano-ledger
+    * (`EncCBORGroup (ConwayPlutusPurpose AsIx era)`, `Conway/Scripts.hs:264-278`, cardano-ledger
     * f649f975).
     */
   def tag: Int = this match

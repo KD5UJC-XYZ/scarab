@@ -21,19 +21,29 @@ import xyz.kd5ujc.scarab.protocol.Era
   * what only the projection from the flat body refuses, the flat Conway decoder never produces.
   */
 class EraConwaySuite extends munit.FunSuite:
-  private lazy val transactions: Vector[Block.Transaction] =
+  // every block of the fixtures from Shelley on (`[era, block]`, era 2 to 7), each of which must
+  // decode, so a regression that loses one fails here rather than shrinking the corpus
+  private lazy val conwayBlocks: Vector[Block.Shelley] =
     Vector(
       "fixtures/eras/blocks.hex",
       "fixtures/preview/conway.hex",
       "fixtures/preview/conway-governance.hex"
-    )
-      .flatMap(f => Files.readString(Path.of(f)).linesIterator)
-      .map(_.trim.split("\\s+").last)
-      .filter(_.nonEmpty)
-      .flatMap(h => Bytes.fromHex(h).toOption)
-      .flatMap(raw => Block.decodeShelley(raw).toOption)
-      .collect { case b: Block.Shelley if b.era == Era.Conway => b }
-      .flatMap(_.transactions)
+    ).flatMap { f =>
+      Files
+        .readString(Path.of(f))
+        .linesIterator
+        .zipWithIndex
+        .map((l, i) => (s"$f:${i + 1}", l.trim.split("\\s+").last))
+        .filter((_, hex) => hex.nonEmpty && !hex.startsWith("8200") && !hex.startsWith("8201"))
+        .map { (at, hex) =>
+          val raw = Bytes.fromHex(hex).fold(e => fail(s"$at: $e"), identity)
+          Block.decodeShelley(raw) match
+            case Right(b: Block.Shelley) => b
+            case other                   => fail(s"$at: not a Shelley-based block: $other")
+        }
+    }.filter(_.era == Era.Conway)
+
+  private lazy val transactions: Vector[Block.Transaction] = conwayBlocks.flatMap(_.transactions)
 
   test(
     "every recorded Conway witness set reads with the flat decoder's witnesses, its scripts typed"
@@ -51,15 +61,38 @@ class EraConwaySuite extends munit.FunSuite:
       val scripts = w.scriptTxWits(c)
       assertEquals(scripts.keySet, flat.scriptsByHash.keySet)
       scripts.foreach((hash, s) => assertEquals(w.scriptsOf.hashScript(s), hash))
-      assertEquals(w.datsTxWits(c).values.toSet, flat.datums.toSet)
+      assertEquals(w.datsTxWits(c).datums.values.toSet, flat.datums.toSet)
+      assertEquals(w.datsTxWits(c).raw, flat.datumsRaw)
+      assertEquals(w.rdmrsTxWits(c).raw, flat.redeemersRaw)
       assertEquals(
-        w.rdmrsTxWits(c).toVector.map((p, v) => (p.tag, BigInt(p.ix.value.toString), v)),
+        w.rdmrsTxWits(c).entries.toVector.map((p, v) => (p.tag, BigInt(p.ix.value.toString), v)),
         flat.redeemers.map(r => (r.tag, r.index, (r.data, r.exUnits))).sortBy(r => (r._1, r._2))
       )
-      (scripts.size, w.rdmrsTxWits(c).size)
+      (scripts.size, w.rdmrsTxWits(c).entries.size)
     }
     assert(counts.map(_._1).sum > 0, "no recorded Conway witness set has a script")
     assert(counts.map(_._2).sum > 0, "no recorded Conway witness set has a redeemer")
+  }
+
+  test("key witnesses are ordered by the key's hash, then the signature's") {
+    // `Ord (WitVKey kr)`: `comparing wvkKeyHash <> comparing (hashTxBodySignature . wvkSignature)`
+    // (`Keys/WitVKey.hs:58-68`, cardano-ledger f649f975), from the hashes directly
+    val keys = (1 to 6).map(i => Bytes(Vector.fill(32)(i.toByte))).toVector
+    val sigs = (1 to 3).map(i => Bytes(Vector.fill(64)((0x40 + i).toByte))).toVector
+    val all = for k <- keys; s <- sigs yield WitVKey(k, s)
+    val expected = all
+      .map(w =>
+        (
+          xyz.kd5ujc.scarab.crypto.Blake2b.hash224.hash(w.vkey).hex,
+          xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(w.signature).hex,
+          w
+        )
+      )
+      .sortBy(t => (t._1, t._2))
+      .map(_._3)
+    assertEquals(scala.collection.immutable.SortedSet.from(all.reverse).toVector, expected)
+    // the order of the keys' hashes is not the order of the keys
+    assertNotEquals(expected.map(_.vkey).distinct, keys)
   }
 
   test("the deep preprod witness set reads on a small stack, its native script typed") {
@@ -74,19 +107,7 @@ class EraConwaySuite extends munit.FunSuite:
     )
   }
 
-  private lazy val bodies: Vector[Bytes] =
-    Vector(
-      "fixtures/eras/blocks.hex",
-      "fixtures/preview/conway.hex",
-      "fixtures/preview/conway-governance.hex"
-    )
-      .flatMap(f => Files.readString(Path.of(f)).linesIterator)
-      .map(_.trim.split("\\s+").last)
-      .filter(_.nonEmpty)
-      .flatMap(h => Bytes.fromHex(h).toOption)
-      .flatMap(raw => Block.decodeShelley(raw).toOption)
-      .collect { case b: Block.Shelley if b.era == Era.Conway => b }
-      .flatMap(_.transactions.map(_.body))
+  private lazy val bodies: Vector[Bytes] = transactions.map(_.body)
 
   private val body = EraTxBody.conway
   private given body.Level[TxLevel.Top] = body.top
