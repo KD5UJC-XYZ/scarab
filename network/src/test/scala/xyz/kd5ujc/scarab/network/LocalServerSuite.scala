@@ -560,6 +560,36 @@ class LocalServerSuite extends FailsOnUncaught:
       assertEquals(errored, Right(DiffusionFailure.Defect(unwritable)))
   }
 
+  // released while it waits in accept: a stop trace that raises is traced as the server's error,
+  // as a synchronous exception of the reference's `finally` replaces the cancellation, and does
+  // not escape the finalizer (`LocalServer.cancelled`); the suite's runtime fails on one that does
+  test("a server released while a stop trace fails traces that failure and reports no error") {
+    val unwritable = new java.io.IOException("No space left on device")
+    Settled { settle =>
+      for
+        traces <- Ref.of[IO, Vector[Trace]](Vector.empty)
+        log <- Ref.of[IO, Vector[Call]](Vector.empty)
+        queue <- Queue.unbounded[IO, Either[AcceptFailure, LocalStream[IO]]]
+        result <- attempt[DiffusionFailure, Unit](
+          LocalServer
+            .resource[IO, NetworkError](
+              Recorded(log, modes, Right(()), queue),
+              address,
+              {
+                case Trace.ServerStopped => IO.raiseError(unwritable)
+                case t                   => traces.update(_ :+ t)
+              }
+            )((_, _) => IO.unit)((_, _) => IO.never)
+            .use(_ => settle)
+        )
+        seen <- traces.get
+      yield (result, seen)
+    }.map { (result, seen) =>
+      assertEquals(result, Right(()))
+      assertEquals(seen.lastOption, Some(Trace.ServerError(DiffusionFailure.Defect(unwritable))))
+    }
+  }
+
   // #945, item 4, at the JDK boundary: accept on a channel that was never bound throws the JDK's
   // `NotYetBoundException`, not an `IOException`
   test("an accept that throws something other than an IOException is a defect, as a value") {

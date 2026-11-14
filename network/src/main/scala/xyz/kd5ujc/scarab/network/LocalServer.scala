@@ -78,6 +78,23 @@ object LocalServer:
       traced.attempt.map(_.fold(DiffusionFailure.Defect(_), _ => current))
     after(stopped, failure).flatMap(current => after(error(current), current))
 
+  /** How an accept loop that is cancelled ends: `stopped` (`TrServerStopped`) alone, as the
+    * reference's `finally` on the asynchronous exception, which its `catch` does not trace. A stop
+    * trace that raises replaces the cancellation, as a synchronous exception of the `finally`
+    * handler replaces an asynchronous one: it is traced with `error` and published as a defect, as
+    * [[ending]] does, so nothing escapes the finalizer.
+    */
+  private[network] def cancelled[F[_]: MonadThrow](
+      stopped: F[Unit],
+      error: DiffusionFailure => F[Unit],
+      publish: DiffusionFailure => F[Unit]
+  ): F[Unit] =
+    stopped.attempt.flatMap(
+      _.swap.toOption.traverse_(raised =>
+        ending(DiffusionFailure.Defect(raised), MonadThrow[F].unit, error).flatMap(publish)
+      )
+    )
+
   /** `removeStaleLocalSocket` (`Socket.hs` 211-224): `removeFile` of the path, where nothing there
     * is fine and any other failure refuses the start.
     */
@@ -179,7 +196,13 @@ object LocalServer:
       stopped <- Resource.eval(Deferred[F, DiffusionFailure])
       // the owner learns that the loop stopped, and why, even if a trace fails ([[ending]])
       _ <- acceptLoop(listener, address, trace, clients, open)(onFailure)(handle)
-        .onCancel(trace(Trace.ServerStopped))
+        .onCancel(
+          cancelled(
+            trace(Trace.ServerStopped),
+            failure => trace(Trace.ServerError(failure)),
+            stopped.complete(_).void
+          )
+        )
         .flatMap(
           ending(_, trace(Trace.ServerStopped), failure => trace(Trace.ServerError(failure)))
         )

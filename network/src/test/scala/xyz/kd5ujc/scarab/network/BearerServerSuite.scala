@@ -299,6 +299,34 @@ class BearerServerSuite extends FailsOnUncaught:
       .map(stopped => assertEquals(stopped, DiffusionFailure.Defect(unwritable)))
   }
 
+  // released while it waits in accept (`LocalServer.cancelled`): the stop trace's failure is traced
+  // as the server's error and does not escape the finalizer
+  test("a server released while a stop trace fails traces that failure and reports no error") {
+    val unwritable = new java.io.IOException("No space left on device")
+    Settled { settle =>
+      for
+        traces <- Ref.of[IO, Vector[BearerServer.Trace]](Vector.empty)
+        calls <- Ref.of[IO, Int](0)
+        _ <- BearerServer
+          .listen[IO, NetworkError](
+            scripted(Nil, calls),
+            Listeners.Loopback,
+            {
+              case BearerServer.Trace.ServerStopped => IO.raiseError(unwritable)
+              case t                                => traces.update(_ :+ t)
+            }
+          )((_, _) => IO.unit)((_, _) => IO.unit)
+          .use(_ => settle)
+        seen <- traces.get
+      yield seen
+    }.map(seen =>
+      assertEquals(
+        seen,
+        Vector(BearerServer.Trace.ServerError(DiffusionFailure.Defect(unwritable)))
+      )
+    )
+  }
+
   test("an accept that fails with a defect is traced and stops the server with it") {
     val broken = new IllegalStateException("accept pending")
     TestControl

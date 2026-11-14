@@ -76,7 +76,13 @@ object BearerServer:
       // the owner learns that the loop stopped, and why, even if a trace fails
       // ([[LocalServer.ending]])
       _ <- acceptLoop(listener, trace, clients, open, slots, beforeAccept)(onFailure)(handle)
-        .onCancel(trace(Trace.ServerStopped))
+        .onCancel(
+          LocalServer.cancelled(
+            trace(Trace.ServerStopped),
+            failure => trace(Trace.ServerError(failure)),
+            stopped.complete(_).void
+          )
+        )
         .flatMap(
           LocalServer
             .ending(_, trace(Trace.ServerStopped), failure => trace(Trace.ServerError(failure)))
