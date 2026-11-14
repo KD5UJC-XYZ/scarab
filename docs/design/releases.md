@@ -29,6 +29,33 @@ milestone evidence suffices. An automated produced-block check could be reconsid
 Repository protection/settings and credential installation are maintainer operations; none are
 applied by this document. Runtime, build and publication implementation is staged below.
 
+## Release checks paused until releases start from main
+
+Paused on 2026-11-14 at the owner's request: nothing is published from `main` yet, so the release checks
+neither run on pull requests and pushes to `main` nor gate them. The pause is temporary; it ends before the first
+release is cut from `main`, under [#995](https://github.com/KD5UJC-XYZ/scarab/issues/995).
+
+- **frozen release identity controls** (`ci.yml` job `build-identity`, `scripts/check_build_identity.py`) runs
+  only when CI is started by hand (`workflow_dispatch`), and the required summary **scalafmt, compile and test**
+  requires only **Scala tests and native guards**.
+- [Release PR preparation](../release-pr-preparation.md) (`release-pr-preparation.yml`: **release proposal
+  controls**, the preview and the preparation jobs) runs only by hand: its `pull_request` and `push` triggers are
+  commented out.
+- **release proposal controls** is left out of the cutover's required checks (`CHECKS` in
+  `scripts/promotion_rules.py`), since it would never report on a pull request.
+
+To restore them:
+
+1. In `ci.yml`, delete the `if:` of `build-identity` and its comment, give the `scala` job
+   `needs: [scala-tests, build-identity]` and an `IDENTITY_RESULT: ${{ needs.build-identity.result }}` that must
+   be `success`, and make `scripts/tests/test_ci_gate.py` require both results again.
+2. In `release-pr-preparation.yml`, remove the comment marks from the `pull_request` and `push` triggers. Its
+   concurrency group already gives each push run a group of its own, as `scripts/check_ci_parity.py` requires.
+3. Put **release proposal controls** back in `CHECKS`.
+4. Remove this section, and the sentences that link to it from
+   [reproducible builds](../reproducible-builds.md), [release PR preparation](../release-pr-preparation.md) and
+   the [promotion cutover](../promotion-cutover.md).
+
 ## Branches and protected promotion
 
 **Transition:** work targets `main` for now (owner direction, 2026-10-21). The owner authorized

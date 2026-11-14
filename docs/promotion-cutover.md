@@ -68,9 +68,11 @@ Path-filtered workflows must not be selected as required checks that can remain 
 
 1. Merge release PR preparation, candidate, publication and promotion tooling PRs and verify their
    CI. The `release proposal controls` required job is supplied by release PR preparation; install
-   that workflow before requiring its check. Review the rendered rulesets, the independent-review
-   requirement and the replacement of main's merge button. An actual independent reviewer is
-   required; automation does not make an owner's self-approval independent.
+   that workflow before requiring its check. While its pull request triggers are paused, `CHECKS` leaves it
+   out ([release design](design/releases.md#release-checks-paused-until-releases-start-from-main)). Review the
+   rendered rulesets, the independent-review requirement and the replacement of main's merge button.
+   An actual independent reviewer is required; automation does not make an owner's self-approval
+   independent.
 2. Reconcile `dev` with `main` through reviewed PRs. Create the release branches only when needed;
    this is not authorization for another forced alignment or branch-history reset.
 3. Register a dedicated promotion App, installed only on Scarab, with contents write and

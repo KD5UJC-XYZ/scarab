@@ -6,6 +6,9 @@ on:
     branches: [main, dev, release/alpha, release/beta, release/preprod, release/prod]
   push:
     branches: [main]
+  # A run started by hand runs the jobs below, among them the frozen release identity controls, which for now run
+  # only so.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -56,8 +59,11 @@ jobs:
           test "${#jars[@]}" -eq 1
           python3 scripts/check_native_isa.py "${jars[0]}" --member natives/linux_64/libscalus_crypto.so
 
+  # Paused on pull requests and pushes, and left out of the required summary below, until releases start from main;
+  # docs/design/releases.md#release-checks-paused-until-releases-start-from-main says how to restore it.
   build-identity:
     name: frozen release identity controls
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
@@ -88,19 +94,17 @@ jobs:
 
   scala:
     name: scalafmt, compile and test
-    needs: [scala-tests, build-identity]
+    needs: [scala-tests]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require Scala tests, native guards and identity controls
+      - name: Require Scala tests and native guards
         env:
           SCALA_RESULT: ${{ needs.scala-tests.result }}
-          IDENTITY_RESULT: ${{ needs.build-identity.result }}
         shell: bash
         run: |
           test "$SCALA_RESULT" = success
-          test "$IDENTITY_RESULT" = success
 
   scripts:
     name: scripts (compile, unit tests, help)

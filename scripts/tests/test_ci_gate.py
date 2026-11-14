@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: Apache-2.0
-import itertools
 import os
 from pathlib import Path
 import re
@@ -21,34 +20,39 @@ class CiGateTests(unittest.TestCase):
         self.assertIsNotNone(match, f"missing CI job {name}")
         return match.group(1)
 
-    def test_required_name_aggregates_both_unconditional_jobs(self):
+    def test_required_name_aggregates_the_unconditional_scala_job(self):
         gate = self.job("scala")
         name = "scalafmt, compile and test"
         self.assertIn(name, promotion_rules.CHECKS)
         self.assertEqual(len(re.findall(r"^    name: " + re.escape(name) + r"$",
                                         self.workflow, re.MULTILINE)), 1)
-        self.assertIn("    needs: [scala-tests, build-identity]\n", gate)
+        self.assertIn("    needs: [scala-tests]\n", gate)
         self.assertIn("    if: ${{ always() }}\n", gate)
         self.assertIn("SCALA_RESULT: ${{ needs.scala-tests.result }}", gate)
-        self.assertIn("IDENTITY_RESULT: ${{ needs.build-identity.result }}", gate)
-        for name in ("scala-tests", "build-identity"):
-            job = self.job(name)
-            self.assertNotRegex(job, r"(?m)^    (?:if|needs):")
-            self.assertNotIn("continue-on-error", job)
+        job = self.job("scala-tests")
+        self.assertNotRegex(job, r"(?m)^    (?:if|needs):")
+        self.assertNotIn("continue-on-error", job)
         self.assertNotIn("continue-on-error", gate)
+
+    def test_identity_controls_are_paused_to_manual_runs_until_releases_start_from_main(self):
+        # docs/design/releases.md, "Release checks paused until releases start from main", says how to restore them.
+        identity = self.job("build-identity")
+        self.assertIn("    if: github.event_name == 'workflow_dispatch'\n", identity)
+        self.assertNotIn("build-identity", self.job("scala"))
+        self.assertRegex(self.workflow, r"(?m)^  workflow_dispatch:$")
+        self.assertNotIn("continue-on-error", identity)
 
     def test_actual_gate_script_refuses_failure_cancellation_skip_and_missing_results(self):
         match = re.search(r"^        run: \|\n((?:^          .*\n)+)",
                           self.job("scala"), re.MULTILINE)
         self.assertIsNotNone(match, "aggregate must execute its result checks")
         script = textwrap.dedent(match.group(1))
-        states = ("success", "failure", "cancelled", "skipped", "", "unknown")
-        for scala, identity in itertools.product(states, repeat=2):
-            with self.subTest(scala=scala, identity=identity):
+        for scala in ("success", "failure", "cancelled", "skipped", "", "unknown"):
+            with self.subTest(scala=scala):
                 result = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
-                                        env=dict(os.environ, SCALA_RESULT=scala, IDENTITY_RESULT=identity),
+                                        env=dict(os.environ, SCALA_RESULT=scala),
                                         capture_output=True, text=True)
-                self.assertEqual(result.returncode == 0, scala == identity == "success")
+                self.assertEqual(result.returncode == 0, scala == "success")
 
     def test_split_keeps_full_controls_and_native_guards_with_separate_budgets(self):
         scala = self.job("scala-tests")

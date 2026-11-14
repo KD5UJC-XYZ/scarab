@@ -107,8 +107,10 @@ The host controls use temporary local repositories:
 `python3 -m unittest scripts.tests.test_release_identity scripts.tests.test_reproducible_build`.
 Inside the JDK image, `python3 scripts/check_build_identity.py` exercises the actual sbt settings
 in isolated minimal projects, including alpha/beta/preprod/prod/development archives and refused metadata.
-CI runs these sbt controls inside the JDK Docker image after its ordinary full check, including
-with Python optimization enabled so control failures cannot disappear with assertions.
+CI's job **frozen release identity controls** runs these sbt controls inside the JDK Docker image,
+with Python optimization enabled so control failures cannot disappear with assertions. For now it
+runs only when CI is started by hand
+([paused until releases start from main](design/releases.md#release-checks-paused-until-releases-start-from-main)).
 The full verifier additionally compiles and smokes the actual node artifacts. SBOMs, provenance and
 image labels must consume this same identity when their separate implementation lands; this PR
 does not claim those outputs exist.
