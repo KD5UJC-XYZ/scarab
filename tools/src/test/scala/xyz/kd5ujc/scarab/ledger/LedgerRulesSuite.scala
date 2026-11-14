@@ -298,12 +298,14 @@ class LedgerRulesSuite extends FunSuite:
         )
       )
     )
-    val report = LedgerRulesMain.report(cases, "2026-11-14T00:00:00Z", Some(Commit))
+    val report =
+      LedgerRulesMain.report(cases, "2026-11-14T00:00:00Z", Some(Commit), Selection.First)
     val c = report.hcursor
     assertEquals(c.get[String]("version"), Right("1"))
     assertEquals(c.get[String]("scenario"), Right("ledger-rules"))
     assertEquals(c.get[String]("dataset_commit"), Right(Commit))
     assertEquals(c.downField("implementation").get[String]("name"), Right("scarab"))
+    assertEquals(c.get[String]("selection"), Right("first"))
     assertEquals(
       c.get[Vector[Json]]("scenarios"),
       Right(
@@ -314,7 +316,11 @@ class LedgerRulesSuite extends FunSuite:
       )
     )
     assertEquals(
-      LedgerRulesMain.report(cases, "t", None).hcursor.downField("dataset_commit").succeeded,
+      LedgerRulesMain
+        .report(cases, "t", None, Selection.Default)
+        .hcursor
+        .downField("dataset_commit")
+        .succeeded,
       false
     )
   }
@@ -407,11 +413,15 @@ class LedgerRulesSuite extends FunSuite:
       .fold(e => fail(e.getMessage), identity)
       .map(_.hcursor)
 
-  test("a run names a refusal by the expected failure among Scarab's, unless --select first") {
+  test(
+    "a run names a refusal by the expected failure among Scarab's, unless --select first, and its report says which"
+  ) {
     val expected = run(SelectionCorpus)
     assertEquals(expected.keySet, Set(Path.of("report.json")), "no sidecar without --sidecar")
+    val expectedReport = file(expected, "report.json")
+    assertEquals(expectedReport.hcursor.get[String]("selection"), Right("expected-in-failures"))
     assertEquals(
-      results(file(expected, "report.json")),
+      results(expectedReport),
       Vector(
         "00001" -> "MaxTxSizeUTxO",
         "00002" -> "BadInputsUTxO",
@@ -420,8 +430,10 @@ class LedgerRulesSuite extends FunSuite:
       ),
       "expected-in-failures, the default"
     )
+    val firstReport = file(run(SelectionCorpus, "--select", "first"), "report.json")
+    assertEquals(firstReport.hcursor.get[String]("selection"), Right("first"))
     assertEquals(
-      results(file(run(SelectionCorpus, "--select", "first"), "report.json")),
+      results(firstReport),
       Vector(
         "00001" -> "FeeTooSmallUTxO",
         "00002" -> "BadInputsUTxO",

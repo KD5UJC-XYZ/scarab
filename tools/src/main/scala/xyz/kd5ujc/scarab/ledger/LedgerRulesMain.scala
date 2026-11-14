@@ -20,11 +20,11 @@ import xyz.kd5ujc.scarab.plutus.{PlutusBackend, PlutusVm, UnknownPlutusVm}
   * Arguments: `<scenarios-dir> <documents-root> <report.json> [--sidecar <path>] [--dataset-commit
   * <sha>] [--plutus-vm scalus|scarab] [--select first|expected-in-failures]`. The scenarios are the
   * site's `scenarios/ledger-rules/fixtures/scenarios`; a fixture's `$ref` (`common/...`) is read
-  * from the documents root, Amaru's `crates/amaru-ledger/tests/data/transaction`. The sidecar
-  * records the run's `--select` (`selection`), which the report's schema has no field for, and each
-  * fixture's verdict (`cases`) with every failure, in the reference's order, and its names, and
-  * which rule chose the reported name. `--dataset-commit` is the Amaru commit that last changed the
-  * corpus, which the site compares for freshness.
+  * from the documents root, Amaru's `crates/amaru-ledger/tests/data/transaction`. The report and
+  * the sidecar name the run's `--select` (`selection`), and the sidecar records each fixture's
+  * verdict (`cases`) with every failure, in the reference's order, and its names, and which rule
+  * chose the reported name. `--dataset-commit` is the Amaru commit that last changed the corpus,
+  * which the site compares for freshness.
   *
   * The report gives one name for a refused transaction, which may fail several predicates at once.
   * `--select` says which ([[Selection]]): with `expected-in-failures`, the default, the report
@@ -165,7 +165,17 @@ object LedgerRulesMain extends IOApp:
       )
     }
 
-  def report(cases: Vector[LedgerRulesCase], generatedAt: String, commit: Option[String]): Json =
+  /** The report, with the run's selection in `selection`. The scenario's schema does not declare
+    * that key, but its top level admits keys it does not name, and the site keeps them when it
+    * reads and publishes a report (node-diversity-conformance 9dc68a7,
+    * `scenarios/ledger-rules/schema.json` and `scripts/build_common.py`).
+    */
+  def report(
+      cases: Vector[LedgerRulesCase],
+      generatedAt: String,
+      commit: Option[String],
+      selection: Selection
+  ): Json =
     Json.fromFields(
       Vector(
         "version" -> "1".asJson,
@@ -173,6 +183,7 @@ object LedgerRulesMain extends IOApp:
         "generated_at" -> generatedAt.asJson
       ) ++ commit.map(c => "dataset_commit" -> c.asJson) ++ Vector(
         "implementation" -> Json.obj("name" -> "scarab".asJson),
+        "selection" -> selection.flag.asJson,
         "scenarios" -> cases.flatMap(LedgerRulesCase.entry).asJson
       )
     )
@@ -192,7 +203,7 @@ object LedgerRulesMain extends IOApp:
       cases: Vector[LedgerRulesCase],
       generatedAt: String
   ): Vector[(Path, Json)] =
-    (c.report -> report(cases, generatedAt, c.commit)) +:
+    (c.report -> report(cases, generatedAt, c.commit, c.selection)) +:
       c.sidecar.map(_ -> sidecar(c.selection, cases)).toVector
 
   private def write[F[_]: Sync](path: Path, json: Json): F[Unit] =
