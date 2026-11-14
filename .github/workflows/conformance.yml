@@ -128,16 +128,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check out the reports repository with its deploy key
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: KD5UJC-XYZ/scarab-conformance
-          ref: main
-          path: scarab-conformance
-          fetch-depth: 1
-          ssh-key: ${{ secrets.CONFORMANCE_REPO_DEPLOY_KEY }}
-          persist-credentials: true
-
       - name: Fetch the checked reports
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -147,7 +137,21 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
+          DEPLOY_KEY: ${{ secrets.CONFORMANCE_REPO_DEPLOY_KEY }}
+        # publish.py clones the reports repository into a temporary directory of its own and pushes from it. Git
+        # reaches it over SSH with the deploy key, checking GitHub's published host keys (api.github.com/meta).
         run: |
-          python3 -I -B scripts/conformance/publish.py --apply --checkout scarab-conformance \
+          umask 077
+          key="$RUNNER_TEMP/conformance-deploy-key"
+          hosts="$RUNNER_TEMP/github-known-hosts"
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$DEPLOY_KEY" > "$key"
+          cat > "$hosts" <<'HOSTS'
+          github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+          github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=
+          HOSTS
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$hosts"
+          python3 -I -B scripts/conformance/publish.py --apply \
+            --repo-url git@github.com:KD5UJC-XYZ/scarab-conformance.git \
             --identity 'github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>' \
             "$RUNNER_TEMP/conformance"

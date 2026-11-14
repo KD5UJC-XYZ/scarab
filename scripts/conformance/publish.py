@@ -4,7 +4,7 @@
 node-diversity-conformance site reads them.
 
     python3 -I -B scripts/conformance/publish.py DIR_OR_FILES... [--dry-run | --apply] [--replace]
-        [--checkout DIR | --repo-url URL] [--identity 'Name <email>']
+        [--repo-url URL] [--identity 'Name <email>']
 
 The repository holds
 
@@ -19,17 +19,15 @@ The repository holds
 `--apply` it
 
   1. checks that each report's Scarab commit is on GitHub (`gh api`), so that the provenance resolves;
-  2. clones the reports repository shallowly into a temporary directory (`--repo-url`, with the caller's own Git
-     credentials), or uses the clone `--checkout` names (the workflow checks it out with its deploy key). The clone
-     must be clean, nothing staged or untracked, and at the remote's `main`, so that what is pushed is this
-     publication and nothing else;
+  2. clones the reports repository shallowly into a temporary directory of its own (`--repo-url`; Git's own
+     credentials, which the workflow gives through `GIT_SSH_COMMAND` and its deploy key);
   3. copies each report and its provenance under `reports/`, refusing a dated file that is already there unless
      `--replace` is given; points `latest/` at a report unless a newer one is there; writes `README.md`;
   4. stages exactly those files, commits, with a message that names the Scarab commits, and pushes to `main`.
 
-If any step after the clone fails, a copy, the commit or the push, the clone is put back at the remote's `main`
-(`git reset --hard`, and the files it wrote removed), so that running it again publishes from a clean start. When
-the files are already those of the remote's `main`, nothing is committed and it says so.
+The clone is the script's own and is deleted when it ends, whatever happens: a failure before the push publishes
+nothing and leaves nothing behind, and running it again starts from the remote's `main`. When the files are already
+those of the remote's `main`, nothing is committed and it says so.
 
 Every file is checked first: its name is `scarab-YYYYMMDD-<scenario>[-<era>].json.gz`, its provenance beside it
 names it with the same sha256, and records a passed validation of a checkout with no uncommitted changes.
@@ -136,35 +134,31 @@ def collect(paths: Sequence[Path]) -> list[Report]:
 class Placement:
     """Where a report goes in the reports repository, and whether it becomes the latest of its scenario."""
     report: Report
-    replaces: bool
     latest: bool
 
 
-def latest_date(checkout: Path, report: Report) -> str | None:
+def latest_date(clone: Path, report: Report) -> str | None:
     """The date of the report `latest/` holds for the scenario and era of `report`, from its provenance."""
-    record = checkout / provenance_name(report.latest)
+    record = clone / provenance_name(report.latest)
     if not record.is_file():
         return None
     match = NAME.match(str(json.loads(record.read_text(encoding="utf-8")).get("report", "")))
     return match.group("date") if match else None
 
 
-def place(reports: list[Report], checkout: Path | None, replace: bool) -> list[Placement]:
-    """Each report's placement against the clone (None when it is not known yet). A dated file already there is
-    refused unless `replace`; `latest/` moves to a report unless a newer one is there."""
-    if checkout is None:
-        return [Placement(report, False, True) for report in reports]
-    there = [report.dated for report in reports if (checkout / report.dated).exists()]
+def place(reports: list[Report], clone: Path, replace: bool) -> list[Placement]:
+    """Each report's placement in the clone. A dated file already there is refused unless `replace`; `latest/`
+    moves to a report unless a newer one is there."""
+    there = [report.dated for report in reports if (clone / report.dated).exists()]
     if there and not replace:
         raise PublishError(f"already published: {', '.join(there)} (--replace to replace them)")
-    return [Placement(report, report.dated in there,
-                      (latest_date(checkout, report) or "") <= report.date) for report in reports]
+    return [Placement(report, (latest_date(clone, report) or "") <= report.date) for report in reports]
 
 
-def readme(checkout: Path) -> str:
+def readme(clone: Path) -> str:
     """The reports repository's README, from the provenance of what `latest/` holds."""
     rows = []
-    for record_path in sorted((checkout / "latest").glob("*.provenance.json")):
+    for record_path in sorted((clone / "latest").glob("*.provenance.json")):
         record = json.loads(record_path.read_text(encoding="utf-8"))
         name = record_path.name.removesuffix(".provenance.json")
         match = NAME.match(str(record.get("report", "")))
@@ -192,7 +186,7 @@ also writes this file: do not edit it by hand. The Plutus scenarios report Scara
 """
 
 
-def lay_out(placements: list[Placement], checkout: Path) -> list[str]:
+def lay_out(placements: list[Placement], clone: Path) -> list[str]:
     """Copy the reports into the clone and write its README; the paths written, relative to the clone."""
     written = []
     for placement in placements:
@@ -201,11 +195,11 @@ def lay_out(placements: list[Placement], checkout: Path) -> list[str]:
         if placement.latest:
             targets += [(report.path, report.latest), (report.provenance, provenance_name(report.latest))]
         for source, target in targets:
-            destination = checkout / target
+            destination = clone / target
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, destination)
             written.append(target)
-    (checkout / "README.md").write_text(readme(checkout), encoding="utf-8")
+    (clone / "README.md").write_text(readme(clone), encoding="utf-8")
     return written + ["README.md"]
 
 
@@ -236,30 +230,16 @@ def clone_command(url: str, target: Path) -> list[str]:
     return ["git", "clone", "--quiet", "--depth", "1", "--no-tags", "--branch", BRANCH, url, str(target)]
 
 
-# What publish.py writes in the reports repository, and so all it may reset or remove there.
-OWNED = ("README.md", "latest", "reports")
-
-
-def git_commands(checkout: Path, reports: list[Report], identity: str | None,
-                 paths: Sequence[str] = OWNED) -> dict[str, list[str]]:
-    """The Git commands of a publication in `checkout`. `paths` are the files it wrote, which alone are staged."""
-    git = ["git", "-C", str(checkout)]
+def git_commands(clone: Path, reports: list[Report], identity: str | None,
+                 paths: Sequence[str]) -> dict[str, list[str]]:
+    """The Git commands of a publication in `clone`. `paths` are the files it wrote, which alone are staged."""
+    git = ["git", "-C", str(clone)]
     return {
-        "remote": git + ["ls-remote", "--exit-code", "origin", f"refs/heads/{BRANCH}"],
-        "head": git + ["rev-parse", "HEAD"],
-        "status": git + ["status", "--porcelain", "--untracked-files=all"],
         "add": git + ["add", "--", *paths],
         "staged": git + ["diff", "--cached", "--quiet"],
         "commit": git + identity_flags(identity) + ["commit", "--quiet", "-m", message(reports)],
         "push": git + ["push", "--quiet", "origin", f"HEAD:refs/heads/{BRANCH}"],
     }
-
-
-def restore_commands(checkout: Path, start: str) -> list[list[str]]:
-    """Put the clone back at `start`, the remote's `main` it began from: its commit, its index and the files
-    publish.py owns. The clone was clean when the publication began, so nothing else is lost."""
-    git = ["git", "-C", str(checkout)]
-    return [git + ["reset", "--quiet", "--hard", start], git + ["clean", "-fdq", "--", *OWNED]]
 
 
 Run = Callable[[Sequence[str]], subprocess.CompletedProcess]
@@ -269,93 +249,52 @@ def execute(argv: Sequence[str]) -> subprocess.CompletedProcess:
     return subprocess.run(list(argv), text=True, capture_output=True)
 
 
-def dry_run(reports: list[Report], checkout: Path | None, url: str, replace: bool, identity: str | None) -> None:
-    """Print every action of `--apply`, running none. With `--checkout`, its files are read to say what each
-    placement does; nothing in it is written."""
+def dry_run(reports: list[Report], url: str, replace: bool, identity: str | None) -> None:
+    """Print every action of `--apply`, running none."""
     print(f"# dry run: nothing is checked, cloned, written, committed or pushed. With --apply, for {len(reports)} "
           "report(s):")
     for commit in sorted({report.commit for report in reports}):
         print(shlex.join(commit_check(commit)))
-    where = checkout if checkout is not None else Path("<temporary clone>")
-    if checkout is None:
-        print(shlex.join(clone_command(url, where)))
-    else:
-        print(f"# uses the clone in {checkout}")
-    for placement in place(reports, checkout, replace):
-        report = placement.report
-        state = ("replaces the file there" if placement.replaces else
-                 "new" if checkout is not None else "refused if already there, unless --replace")
-        print(f"# copy {report.path} -> {report.dated} ({state}), and its provenance")
-        if checkout is None:
-            print(f"# copy {report.path} -> {report.latest}, and its provenance, unless a newer report is there")
-        elif placement.latest:
-            print(f"# copy {report.path} -> {report.latest}, and its provenance")
-        else:
-            print(f"# {report.latest} keeps the newer report it holds")
+    clone = Path("<temporary clone>")
+    print(shlex.join(clone_command(url, clone)))
+    written = []
+    for report in reports:
+        print(f"# copy {report.path} -> {report.dated}, and its provenance "
+              f"({'replacing one already there' if replace else 'refused if one is already there'})")
+        print(f"# copy {report.path} -> {report.latest}, and its provenance, unless a newer report is there")
+        written += [report.dated, provenance_name(report.dated), report.latest, provenance_name(report.latest)]
     print("# write README.md from latest/")
-    commands = git_commands(where, reports, identity)
-    print("# the clone must be clean and at the remote's main:")
-    for step in ("remote", "head", "status"):
-        print(shlex.join(commands[step]))
-    print("# stage exactly the files written, then:")
+    commands = git_commands(clone, reports, identity, [*written, "README.md"])
     for step in ("add", "commit", "push"):
         print(shlex.join(commands[step]))
-    print("# on a failure after the clone: " + "; ".join(shlex.join(c) for c in restore_commands(where, "<main>")))
+    print("# then delete the temporary clone, also when a step fails")
 
 
-def git(run: Run, command: list[str], step: str) -> str:
+def git(run: Run, command: list[str], step: str) -> None:
     done = run(command)
     if done.returncode != 0:
         raise PublishError(f"git {step} failed: {done.stderr.strip()}")
-    return done.stdout
 
 
-def clean_start(checkout: Path, reports: list[Report], identity: str | None, run: Run) -> str:
-    """The commit of the remote's `main`, once the clone is checked to be at it with nothing changed, staged or
-    untracked: a publication pushes its own files and nothing left by anything else."""
-    commands = git_commands(checkout, reports, identity)
-    listed = git(run, commands["remote"], "ls-remote").split()
-    head = git(run, commands["head"], "rev-parse").strip()
-    if not listed or listed[0] != head:
-        raise PublishError(f"the clone's HEAD ({head[:9]}) is not the remote's main "
-                           f"({listed[0][:9] if listed else 'absent'}): use a fresh clone, or bring this one to "
-                           f"the remote's main first (`git -C {checkout} fetch origin {BRANCH}` and "
-                           f"`git -C {checkout} reset --hard FETCH_HEAD`)")
-    changed = git(run, commands["status"], "status").strip()
-    if changed:
-        raise PublishError(f"the clone has changed, staged or untracked files: {changed.splitlines()[0]} ...; "
-                           "use a fresh clone, or clean this one first")
-    return head
-
-
-def apply(reports: list[Report], checkout: Path | None, url: str, replace: bool, identity: str | None,
-          run: Run) -> None:
+def apply(reports: list[Report], url: str, replace: bool, identity: str | None, run: Run) -> None:
     for commit in sorted({report.commit for report in reports}):
         found = run(commit_check(commit))
         if found.returncode != 0 or found.stdout.strip() != commit:
             raise PublishError(f"Scarab commit {commit} is not on GitHub: push it before publishing its reports")
     with tempfile.TemporaryDirectory(prefix="scarab-conformance-") as scratch:
-        if checkout is None:
-            checkout = Path(scratch) / "clone"
-            cloned = run(clone_command(url, checkout))
-            if cloned.returncode != 0:
-                raise PublishError(f"cannot clone {url}: {cloned.stderr.strip()}")
-        start = clean_start(checkout, reports, identity, run)
-        placements = place(reports, checkout, replace)
+        clone = Path(scratch) / "clone"
+        git(run, clone_command(url, clone), "clone")
         try:
-            written = lay_out(placements, checkout)
-            commands = git_commands(checkout, reports, identity, written)
+            placements = place(reports, clone, replace)
+            commands = git_commands(clone, reports, identity, lay_out(placements, clone))
             git(run, commands["add"], "add")
             if run(commands["staged"]).returncode == 0:
-                print(f"already published: the remote's main ({start[:9]}) holds these files; nothing committed")
+                print("already published: the remote's main holds these files; nothing committed")
                 return
             git(run, commands["commit"], "commit")
             git(run, commands["push"], "push")
-        except (PublishError, OSError) as error:
-            for command in restore_commands(checkout, start):
-                run(command)
-            raise PublishError(f"{error}; nothing was published, and the clone is back at the remote's main "
-                               f"({start[:9]}): run it again once the cause is fixed") from error
+        except (PublishError, OSError, ValueError) as error:
+            raise PublishError(f"{error}; nothing was published, and the temporary clone is deleted") from error
     for placement in placements:
         print(f"published {placement.report.dated}"
               + (f" and {placement.report.latest}" if placement.latest else ""))
@@ -368,24 +307,20 @@ def main(argv: list[str] | None = None, run: Run = execute) -> int:
     mode.add_argument("--dry-run", action="store_true", help="print every action and run none (the default)")
     mode.add_argument("--apply", action="store_true", help="publish: copy, commit and push to the reports repository")
     parser.add_argument("--replace", action="store_true", help="replace a dated report already published")
-    source = parser.add_mutually_exclusive_group()
-    source.add_argument("--checkout", type=Path, help="an existing clone of the reports repository to publish from")
-    source.add_argument("--repo-url", default=REPOSITORY_URL, help="the reports repository to clone "
+    parser.add_argument("--repo-url", default=REPOSITORY_URL, help="the reports repository to clone "
                         "(default: %(default)s)")
     parser.add_argument("--identity", help="the commit's author, 'Name <email>' (default: Git's configuration)")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     try:
         identity_flags(args.identity)
-        if args.checkout is not None and not (args.checkout / ".git").exists():
-            raise PublishError(f"{args.checkout} is not a clone of the reports repository")
         reports = collect(args.paths)
         if not reports:
             print("no report to publish")
             return 0
         if args.apply:
-            apply(reports, args.checkout, args.repo_url, args.replace, args.identity, run)
+            apply(reports, args.repo_url, args.replace, args.identity, run)
         else:
-            dry_run(reports, args.checkout, args.repo_url, args.replace, args.identity)
+            dry_run(reports, args.repo_url, args.replace, args.identity)
     except (PublishError, OSError, json.JSONDecodeError) as error:
         print(f"refused: {error}", file=sys.stderr)
         return 1

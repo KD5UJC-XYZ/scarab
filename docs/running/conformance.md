@@ -83,17 +83,20 @@ python3 -I -B scripts/conformance/publish.py <dir> --apply    # clones the repor
 ```
 
 With `--apply` it checks that each report's Scarab commit is on GitHub (with `gh`), clones the reports repository
-shallowly with your own Git credentials (`--repo-url` names another; `--checkout <dir>` uses an existing clone),
-copies each report under `reports/`, points `latest/` at it unless a newer report is there, writes `README.md`,
-commits with a message that names the Scarab commits, and pushes to `main`. It refuses a file whose provenance does
+shallowly into a temporary directory of its own with your Git credentials (`--repo-url` names another), copies
+each report under `reports/`, points `latest/` at it unless a newer report is there, writes `README.md`, stages
+exactly those files, commits with a message that names the Scarab commits, and pushes to `main`. The clone is
+deleted when it ends: a failure before the push publishes nothing and leaves nothing behind, so run it again once
+the cause is fixed. It refuses a file whose provenance does
 not match it or records a failed check or uncommitted changes, a report whose commit is not on GitHub, and a dated
 report that is already published, unless `--replace` (a second run on the same day replaces the first).
 
 On GitHub, the **Conformance reports** workflow (`.github/workflows/conformance.yml`, run by hand only) runs the
 runner for the scenarios ticked (`ledger-rules`, `uplc-conformance` and `cbor-decoding`; turbo is not offered) and
-keeps the files as a workflow artifact. When `publish` is ticked and the run is on `main`, a job of its own checks
-out the reports repository with the deploy key in the secret `CONFORMANCE_REPO_DEPLOY_KEY` and runs
-`publish.py --apply` there; this repository's token stays read-only. The job fails at once if the secret is not
+keeps the files as a workflow artifact. When `publish` is ticked and the run is on `main`, a job of its own runs
+`publish.py --apply`, with Git reaching the reports repository over SSH through the deploy key in the secret
+`CONFORMANCE_REPO_DEPLOY_KEY` (`GIT_SSH_COMMAND`, checking GitHub's published host keys); this repository's token
+stays read-only. The job fails at once if the secret is not
 set. A turbo report from a local machine is published with `publish.py` directly.
 
 ### Setting up the reports repository and its key
@@ -109,8 +112,7 @@ Done once, by a maintainer of both repositories:
    `gh secret set CONFORMANCE_REPO_DEPLOY_KEY --repo KD5UJC-XYZ/scarab < <key-file>`, then delete `<key-file>`.
 
 The key can push to the reports repository only. To revoke it, delete the deploy key; to rotate it, repeat
-steps 2 to 4. A failed publication, locally or in the workflow, puts its clone back at the remote's `main` and
-says so; run it again once the cause is fixed. A clone with other changes or commits is refused.
+steps 2 to 4.
 
 ## Moving to a newer corpus
 
