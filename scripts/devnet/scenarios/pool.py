@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 from .. import metrics as node_metrics
-from .. import reference_tracing
+from .. import eratx, ntcquery, reference_tracing
 from . import dynamic_forging, kes_rotate, pool_plutus
 from ..cluster import database_mounts, freeze_classes, scala_container, start_nodes, start_reference, wait_listening
 from ..compare import Comparisons, compare_or_error, whole_failures, whole_state
@@ -289,22 +289,88 @@ def pool_trace_options(name):
     put_file(name, path, json.dumps(config, indent=2))
 
 
-def reference_logs(name, nodes):
-    """{pool: `reference_tracing.log_view` of the Haskell pool's log, or {"unreadable": exit status}}. The reference
-    image has no grep; the log is read through `cat`."""
+def read_reference_log(name, n):
+    """The lines of Haskell pool `n`'s log, or None when it cannot be read. The reference image has no grep; the log
+    is read through `cat`."""
+    with subprocess.Popen(["docker", "exec", ref(name), "cat", f"/work/node{n}.log"], stdout=subprocess.PIPE,
+                          stderr=subprocess.DEVNULL, text=True, errors="replace") as read:
+        lines = list(read.stdout)
+    return lines if read.returncode == 0 else None
+
+
+# Seconds the final read of the Haskell pools' logs may wait for its barrier (`drain_reference_logs`).
+DRAIN_TIMEOUT = 240
+REJECTED_TX = "Mempool.RejectedTx"
+
+
+def marker_transaction():
+    """A transaction every pool refuses, as it spends an output that does not exist, and that no other run makes:
+    (its bytes, the first eight hex digits of its id, which a pool's `Mempool.RejectedTx` trace shows as `tx.txid`)."""
+    key = eratx.Key(json.dumps({"cborHex": "5820" + os.urandom(32).hex()}))
+    tx, txid = eratx.build_tx("conway", [(os.urandom(32).hex(), 0)],
+                              [eratx.tx_out("conway", eratx.enterprise_address(key.hash), 2_000_000)], 200_000, [key])
+    return tx, txid[:8]
+
+
+def marker_seen(lines, marker):
+    """Whether the lines of a pool's log hold its `Mempool.RejectedTx` trace of the transaction `marker` names."""
+    for line in lines:
+        if marker not in line or REJECTED_TX not in line:
+            continue
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        tx = entry.get("data", {}).get("tx") if isinstance(entry, dict) and isinstance(entry.get("data"), dict) else None
+        if entry.get("ns") == REJECTED_TX and isinstance(tx, dict) and tx.get("txid") == marker:
+            return True
+    return False
+
+
+def drain_reference_logs(nodes, height, tip_of, submit, read, timeout=DRAIN_TIMEOUT, pause=1.0):
+    """({pool: `reference_tracing.log_view`}, None) of the Haskell pools' logs once they hold every trace a pool made
+    of the Scala node's blocks, or (None, why). The Scala node has stopped (the forging cutoff), so `height`, the
+    highest block number it forged, is final. A pool whose tip (`tip_of`) is past it validates none of the Scala node's
+    blocks again, as none can be a better candidate than its chain. Then each pool refuses a transaction made for the
+    purpose (`submit`, which returns its marker), and its log (`read`, None when unreadable) is read until that
+    refusal's `Mempool.RejectedTx` is in it: a pool writes its traces in the order it made them, through one queue and
+    one writer (trace-dispatcher 2.13 `Tracer/Standard.hs`), so every earlier trace is in the log too."""
+    deadline = time.monotonic() + timeout
+    for n in nodes:
+        while not ((tip := tip_of(n)) and tip["block"] > height):
+            if time.monotonic() > deadline:
+                return None, f"pool{n} did not pass block {height}, the Scala node's last, within {timeout} s"
+            time.sleep(pause)
     views = {}
     for n in nodes:
-        with subprocess.Popen(["docker", "exec", ref(name), "cat", f"/work/node{n}.log"], stdout=subprocess.PIPE,
-                              stderr=subprocess.DEVNULL, text=True, errors="replace") as read:
-            view = reference_tracing.log_view(read.stdout)
-        views[f"pool{n}"] = view if read.returncode == 0 else {"unreadable": read.returncode}
-    return views
+        marker = submit(n)
+        while True:
+            lines = read(n)
+            if lines is None:
+                return None, f"the log of pool{n} could not be read"
+            if marker_seen(lines, marker):
+                views[f"pool{n}"] = reference_tracing.log_view(lines)
+                break
+            if time.monotonic() > deadline:
+                return None, f"the log of pool{n} did not show the refusal of the marker {marker} within {timeout} s"
+            time.sleep(pause)
+    return views, None
+
+
+def submit_marker(name, n):
+    """Submit a `marker_transaction` to Haskell pool `n` over LocalTxSubmission; its marker."""
+    tx, marker = marker_transaction()
+    try:
+        with ntcquery.LocalStateQuery(ref(name), f"{ENV}/socket/node{n}/sock", MAGIC, deadline=60) as session:
+            session.submit(tx)
+    except (RuntimeError, EOFError, OSError) as e:  # the drain then waits for a trace that does not come, and says so
+        print(json.dumps({"markerNotSubmitted": n, "error": repr(e)[:200]}), flush=True)
+    return marker
 
 
 def reference_invalid_blocks(views):
-    """{pool: the lines of its log that name an invalid block, or why it could not be read} of the pools with either."""
-    return {pool: [f"the log could not be read (exit status {v['unreadable']})"] if "unreadable" in v else v["invalid"]
-            for pool, v in views.items() if "unreadable" in v or v["invalid"]}
+    """{pool: the lines of its log that refuse something the Scala node sent, or a block} of the pools with any."""
+    return {pool: v["invalid"] for pool, v in views.items() if v["invalid"]}
 
 
 def wait_joined(name, log, socket, on_tip=lambda tip: None, timeout=pool_plutus.JOIN_TIMEOUT):
@@ -551,13 +617,6 @@ def pool(args):
         compare_whole("final")
         final = settled_tips()
         time.sleep(3)
-        # the blocks as the observing Haskell pool holds them, for the validity flags of the Plutus load
-        observed = None
-        if plutus:
-            try:
-                observed = pool_plutus.read_chain(args.name, f"{ENV}/socket/node{observer}/sock")
-            except (RuntimeError, EOFError, OSError) as e:
-                failures.append(f"the observer's chain could not be read: {e!r}")
         # the forger's own per-epoch counters (H5), from the query server (the Scala container's loopback)
         fetch = (f"import urllib.request,sys;sys.stdout.write(urllib.request.urlopen("
                  f"'http://127.0.0.1:{QUERY_PORT}/forging',timeout=10).read().decode())")
@@ -567,6 +626,17 @@ def pool(args):
         except ValueError:
             forging_stats = None
             failures.append(f"GET /forging gave no JSON: {got.stdout[:100]!r} {got.stderr[:200]!r}")
+        # what only the running Scala node answers, before the forging cutoff
+        metric_failures = pool_metrics_failures(args.name, forging_stats["total"], fetch) if forging_stats else []
+        rules = rules_timing(args.name)
+        # the forging cutoff: the Scala node stops (SIGTERM, as an operator stops it), so its log holds every block it
+        # forged and none comes after; the pools' logs are then read behind a barrier (`drain_reference_logs`)
+        docker("stop", "-t", "30", f"{args.name}-scala", check=False, timeout=90)
+        try:
+            scala.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            failures.append("inconclusive: the Scala node did not stop at the forging cutoff")
+        cutoff = datetime.datetime.now(datetime.timezone.utc).isoformat()
         events, other = read_log(log)
         counts = {}
         for e in events:
@@ -614,7 +684,20 @@ def pool(args):
         disabled = toggle.excluded(lambda at: slot_at(shelley, at)) if toggle else None
         oracle = missed_leader_slots(events, schedules, shelley, excluded=disabled)
         vm = next((e.get("vm") for e in events if e["event"] == "plutusVm"), None)
-        logs = reference_logs(args.name, others)
+        height = max((e["blockNo"] for e in forged), default=-1)
+        logs, undrained = drain_reference_logs(
+            others, height, lambda n: tip_at(args.name, f"{ENV}/socket/node{n}/sock"),
+            lambda n: submit_marker(args.name, n), lambda n: read_reference_log(args.name, n))
+        if undrained:
+            failures.append(f"inconclusive: the Haskell pools' logs were not read behind the barrier: {undrained}")
+            logs = {}
+        # the blocks as the observing Haskell pool holds them after the cutoff, for the validity flags of the load
+        observed = None
+        if plutus:
+            try:
+                observed = pool_plutus.read_chain(args.name, f"{ENV}/socket/node{observer}/sock")
+            except (RuntimeError, EOFError, OSError) as e:
+                failures.append(f"the observer's chain could not be read: {e!r}")
         # the Scala-forged blocks a Haskell pool named as invalid, and those one took as its tip
         refused = set().union(*(v.get("refused", set()) for v in logs.values()))
         adopted_by_pools = set().union(*(v.get("tips", set()) for v in logs.values()))
@@ -653,9 +736,11 @@ def pool(args):
             "slotClock": slot_clock(events, shelley),
             "forgerStats": forging_stats,
             "plutusVm": vm,
-            "forgeTiming": {**forge_timing(events, shelley, kinds), "rules": rules_timing(args.name)},
+            "forgeTiming": {**forge_timing(events, shelley, kinds), "rules": rules},
             "referenceInvalidBlocks": reference_invalid_blocks(logs),
             "referenceLogCounts": {pool: v.get("counts") for pool, v in logs.items()},
+            "referenceLogDrain": {"cutoff": cutoff, "scalaLastBlockNo": height, "drained": not undrained,
+                                  "unattributedRefusals": {pool: v["unattributed"] for pool, v in logs.items()}},
         }
         if forging_stats:
             total = forging_stats["total"]
@@ -673,7 +758,7 @@ def pool(args):
             if slowest is not None and slowest > budget:
                 failures.append(f"a block took {slowest} ms from its slot's start to adoption (budget {budget:.0f} ms)")
             print(json.dumps({"forgerStats": forging_stats}), flush=True)
-            failures += [f"metrics: {f}" for f in pool_metrics_failures(args.name, total, fetch)]
+            failures += [f"metrics: {f}" for f in metric_failures]
         if not forged:
             failures.append("the Scala node forged no block")
         if len(adopted) < len(forged) - len(lost):

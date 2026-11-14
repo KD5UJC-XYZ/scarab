@@ -644,8 +644,8 @@ class LogViewTest(unittest.TestCase):
                                            client_exception(f"InvalidBlock ({point_show(44, H['d'])})")])
         self.assertEqual((view["refused"], view["unattributed"], len(view["invalid"])), (set(), 2, 2))
 
-    def test_the_logs_of_each_pool_and_one_that_cannot_be_read(self):
-        logs = {"/work/node2.log": [self.TIP + "\n"], "/work/node3.log": ["x\n", self.INVALID + "\n"]}
+    def test_a_log_that_cannot_be_read(self):
+        logs = {"/work/node2.log": [self.TIP + "\n"]}
 
         class Read:
             def __init__(self, command, **kwargs):
@@ -658,11 +658,52 @@ class LogViewTest(unittest.TestCase):
             def __exit__(self, *exc):
                 return False
         with patch.object(pool.subprocess, "Popen", Read):
-            views = pool.reference_logs("n", [1, 2, 3])
-        self.assertEqual(views["pool1"], {"unreadable": 1})
-        self.assertEqual(views["pool2"]["tips"], {H["x"]})
-        self.assertEqual(pool.reference_invalid_blocks(views),
-                         {"pool1": ["the log could not be read (exit status 1)"], "pool3": [self.INVALID]})
+            self.assertEqual(pool.read_reference_log("n", 2), [self.TIP + "\n"])
+            self.assertIsNone(pool.read_reference_log("n", 1))
+
+
+class DrainTest(unittest.TestCase):
+    """The pools' logs are read behind a barrier once the Scala node has stopped."""
+
+    @staticmethod
+    def rejected(marker):
+        return json.dumps({"at": "2026-11-13T22:10:00Z", "ns": "Mempool.RejectedTx",
+                           "data": {"kind": "TraceMempoolRejectedTx", "mempoolSize": {"bytes": 0, "numTxs": 0},
+                                    "tx": {"txid": marker}}, "sev": "Info"})
+
+    def test_a_refusal_traced_after_the_first_read_is_read(self):
+        # pool 2 had not written its refusal of the Scala node's last header when it was first read
+        reads = {2: [[LogViewTest.TIP], [LogViewTest.TIP, LogViewTest.HEADER_ERROR, self.rejected("m2")]],
+                 3: [[LogViewTest.TIP, self.rejected("m3")]]}
+        tips = {2: [{"block": 5}, {"block": 7}], 3: [{"block": 6}]}
+        calls = []
+
+        def read(n):
+            calls.append(n)
+            return reads[n].pop(0)
+        views, why = pool.drain_reference_logs([2, 3], 5, lambda n: tips[n].pop(0) if len(tips[n]) > 1 else tips[n][0],
+                                               lambda n: f"m{n}", read, timeout=5, pause=0)
+        self.assertIsNone(why)
+        self.assertEqual(views["pool2"]["refused"], {H["z"]})
+        self.assertEqual(calls, [2, 2, 3])
+
+    def test_without_a_pool_past_the_last_block_or_its_marker_the_read_is_inconclusive(self):
+        views, why = pool.drain_reference_logs([2], 5, lambda n: {"block": 5}, lambda n: "m", lambda n: [],
+                                               timeout=0.05, pause=0.01)
+        self.assertEqual((views, why), (None, "pool2 did not pass block 5, the Scala node's last, within 0.05 s"))
+        views, why = pool.drain_reference_logs([2], 5, lambda n: {"block": 6}, lambda n: "m", lambda n: [self.rejected("x")],
+                                               timeout=0.05, pause=0.01)
+        self.assertEqual(why, "the log of pool2 did not show the refusal of the marker m within 0.05 s")
+        views, why = pool.drain_reference_logs([2], 5, lambda n: {"block": 6}, lambda n: "m", lambda n: None, timeout=1)
+        self.assertEqual(why, "the log of pool2 could not be read")
+
+    def test_the_marker_is_the_refusal_of_a_transaction_of_its_own(self):
+        tx, marker = pool.marker_transaction()
+        self.assertEqual(marker, ntclocal.raw_tx_id(tx).hex()[:8])
+        self.assertNotEqual(marker, pool.marker_transaction()[1])
+        self.assertTrue(pool.marker_seen(["x", self.rejected(marker)], marker))
+        self.assertFalse(pool.marker_seen([self.rejected("0" * 8)], marker))
+        self.assertFalse(pool.marker_seen([json.dumps({"ns": "Mempool.AddedTx", "data": {"tx": {"txid": marker}}})], marker))
 
 
 class ScheduleDuringJoinTest(unittest.TestCase):
