@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, TreeFold, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 
 /** An original-byte view of auxiliary scripts, never added to the transaction's script witnesses.
@@ -17,30 +17,7 @@ private[ledger] object AuxiliaryScripts:
 
   /** Metadata.hs:153-222: the 64-byte bound is checked when the decoder version is above 2. */
   private def metadatum(root: Node, bounded: Boolean): Either[LedgerDecodeError, Unit] =
-    TreeFold.foldE[Node, Unit, LedgerDecodeError](root) { node =>
-      import TreeFold.Step
-      def length(actual: Int): Either[LedgerDecodeError, Step[Node, Unit, LedgerDecodeError]] =
-        Either.cond(
-          !bounded || actual <= 64,
-          Step.Leaf(()),
-          LedgerDecodeError.NumberOutOfRange(DecodeField.MetadataByteLength, actual, 0, 64)
-        )
-      node.value match
-        case _: Value.UInt | _: Value.NInt => Right(Step.Leaf(()))
-        case Value.ByteString(bytes)       => length(bytes.size)
-        case Value.Text(text) =>
-          length(text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
-        case Value.Arr(children) => Right(Step.Branch(children, _ => Right(())))
-        case Value.Map(pairs)    => Right(Step.Branch(TreeFold.flatten(pairs), _ => Right(())))
-        case other =>
-          Left(
-            LedgerDecodeError.Expected(
-              DecodeField.MetadataValue,
-              LedgerDecodeError.Shape.Metadatum,
-              other
-            )
-          )
-    }
+    Metadatum.read(root, bounded).void
 
   private def metadata(node: Node, protocol: BigInt): Either[LedgerDecodeError, Unit] =
     metadata(node, protocol, protocol > 2)

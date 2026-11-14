@@ -47,7 +47,7 @@ OWNER = "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala"
 # Keep this short: an entry names the distinct reading, inspection or encoding contract. An entry
 # without a reason is a failure, and so is one whose file no longer mentions the constructor.
 ALLOWED: Mapping[str, str] = {
-    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/AuxiliaryScripts.scala":
+    "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Metadatum.scala":
         "the metadata reader: `decodeMetadatum` reads a chunked text as the joined text and a definite "
         "one as itself (Metadata.hs:153-222), so the chunked form is legal here and the policy's "
         "refusal would be wrong",
