@@ -38,7 +38,7 @@ CANARY_SUBMITTED="the writeBits transaction was submitted to s1 and answered"
 HASKELL_REFUSED="a Haskell pool never refuses a block as invalid"
 SCARAB_REFUSED="Scarab never refuses a block as invalid"
 SCARAB_FATAL="Scarab never logs a fatal event"
-SCARAB_FALSE_CLOCK="Scarab never traces the clock moved back on a wake over 1 µs before its slot, time moving forward"
+SCARAB_FALSE_CLOCK="Scarab never traces the clock moved back on a wake 1 µs to 1 ms before its slot, time moving on"
 FORK_BELOW_K="the cluster's fork depth stays below k"
 FORK_SEEN="a fork is observed"
 PAYMENT_S1="s1 accepts a payment"
@@ -177,8 +177,11 @@ scarab_fatal() {
 }
 
 # The first `systemClockMovedBack` of s1's log past its offset whose `prevTime` and `newTime` fall in one slot, with
-# `newTime` the later and more than 1 µs (1.5, for the log's microseconds and float error) before the next slot's
-# start: a wake that early is #629's millisecond floor. The reference floors its wait to the microsecond
+# `newTime` the later and more than 1 µs (1.5, for the log's microseconds and float error) but less than 1 ms before
+# the next slot's start: #629's millisecond floor woke at most that early. A clock skip back by less than a slot
+# during the wait also wakes the loop inside the slot it read, but earlier: the platform's skips are 10 ms or more in
+# all but a few, and the cardano-node pools traced `SystemClockMovedBack` hundreds of times in a run with them, none
+# in a run without. The reference floors its wait to the microsecond
 # (`threadDelay`), so it too can wake a fraction of a microsecond early and trace `SystemClockMovedBack`. A
 # cardano-node 11.1.3 pool did, 144 ns before its slot, in a platform run of 2026-11-14. Scarab, floored as the
 # reference since #955, does that far more often on the platform (why is not checked); that is not what this detects.
@@ -201,7 +204,7 @@ scarab_false_clock() {
     first(inputs | fromjson? | select(.newTime != null and .prevTime != null)
           | select((.newTime | slot) == (.prevTime | slot)
                    and ((.newTime | whole) - (.prevTime | whole)) + (.newTime | fraction) - (.prevTime | fraction) > 0
-                   and (.newTime | early) > 0.0000015))
+                   and (.newTime | early) > 0.0000015 and (.newTime | early) < 0.001))
     // empty')
   echo $(( size > 4096 ? size - 4096 : 0 )) > "$offset_file"
   [ -n "$found" ] || return 1
