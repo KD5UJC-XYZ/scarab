@@ -279,7 +279,11 @@ final class Forger[F[_]: Async, S](
 
   /** Until the next slot, as the reading at `instant` puts it (`timeLeft` of `getCurrentSlot'`),
     * waited on the monotonic clock as `threadDelay` waits: `elapsed` of it is already spent, and a
-    * wall clock moved meanwhile does not lengthen it.
+    * wall clock moved meanwhile does not lengthen it. `threadDelay` floors its delay to a
+    * microsecond (io-classes 1.8 si-timers, `Control/Monad/Class/MonadTimer/SI.hs:72-101`, as
+    * `AcceptedConnectionsLimit.threadDelay` has it), which a timer's overshoot covers. A floor to
+    * the millisecond ended most waits before the next slot, which then read as the same slot and
+    * was traced as a clock moved back (#629).
     */
   private def untilNext(slot: BigInt, instant: Instant, elapsed: FiniteDuration): F[Unit] =
     // A wait of a century or more is cut to a century, compared before it is converted: its slot
@@ -288,9 +292,9 @@ final class Forger[F[_]: Async, S](
     val until = Duration.between(instant, geometry.slotStart(slot + 1))
     val bounded =
       if until.toDays >= Forger.LongestWait.toDays then Forger.LongestWait
-      else until.toMillis.millis
+      else until.toNanos.nanos
     val left = bounded - elapsed
-    sleep(left.max(1.millis))
+    sleep(left.toMicros.micros.max(1.millis))
 
   /** The slots, as the reference's blockchain time and `knownSlotWatcher` hand them to
     * `forkBlockForging` (`HardFork.hs` 103-151, `BlockchainTime/API.hs` 57-77). Each reading is
