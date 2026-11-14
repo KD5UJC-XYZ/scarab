@@ -125,7 +125,7 @@ trait ForgeFixture:
       val forger: Forger[IO, MirrorState],
       val ref: Ref[IO, VolatileChain[MirrorState]],
       val mempool: Mempool[IO],
-      val events: Ref[IO, Vector[ForgeEvent]],
+      val events: fs2.concurrent.SignallingRef[IO, Vector[ForgeEvent]],
       val raws: Ref[IO, Map[Bytes, Bytes]]
   ):
     def chain: IO[VolatileChain[MirrorState]] = ref.get
@@ -249,7 +249,7 @@ trait ForgeFixture:
           )
         )
       )
-      seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
+      seen <- fs2.concurrent.SignallingRef.of[IO, Vector[ForgeEvent]](Vector.empty)
       // `live` drives the real loop on the test clock from slot 5000; otherwise steps are manual.
       forger <- Forger.create[IO, MirrorState](
         config,

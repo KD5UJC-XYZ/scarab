@@ -249,10 +249,11 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
   }
 
   test("on a steady clock the loop waits until the next slot and traces no clock move") {
-    // `threadDelay` waits the whole time left to the next slot (`HardFork.hs` 114-119, consensus
-    // 82ecba32); a wait cut short of the boundary reads the same slot again, which
-    // `checkValidClockChange` takes for a clock moved back. The clock is half a millisecond past a
-    // whole millisecond, so a wait truncated to milliseconds ends before the boundary.
+    // `loop` waits the time left to the next slot (`HardFork.hs` 114-119, consensus 82ecba32) and
+    // `checkValidClockChange` takes a reading of the same slot for a clock moved back (137-149). A
+    // wait cut to whole milliseconds ended before the boundary on this clock, half a millisecond
+    // past a whole millisecond, so the loop read the same slot again and traced a move. The test
+    // waits on the loop's own traces (a change signal), not on a timer.
     val p = pool(kesStart = 50, seed = 9)
     TestControl.executeEmbed(
       withHandle {
@@ -265,7 +266,10 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
             clock = Some(IO.realTimeInstant.map(_.plusSeconds(5000).plusNanos(500000L)))
           )
           fiber <- h.forger.run.start
-          _ <- IO.sleep(5200.millis)
+          _ <- h.events.waitUntil(_.exists {
+            case ForgeEvent.Loop(ForgeTrace.StartLeadershipCheck(s)) => s >= 5005
+            case _                                                   => false
+          })
           _ <- fiber.cancel
           events <- h.seen
         yield
