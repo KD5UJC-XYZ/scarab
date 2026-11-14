@@ -43,9 +43,10 @@ Pure standard library.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 import argparse
+import itertools
 import re
 import subprocess
 import sys
@@ -72,10 +73,10 @@ BEFORE_CALL = re.compile(r'(`[^`\n]+`|[\w$]+|[\])])[ \t]*$')
 BRACKET = re.compile(r'[()\[\]{},]')
 NESTED = re.compile(r'\([^()\[\]{}]*\)|\[[^()\[\]{}]*\]|\{[^()\[\]{}]*\}')
 BODY = re.compile(r'=>|:[ \t]*$', re.MULTILINE)
+CODE = re.compile(r'\S')
 
 
-@dataclass
-class Frame:
+class Frame(NamedTuple):
     """An open bracket at `at`, and where its current argument begins."""
     bracket: str
     at: int
@@ -90,17 +91,12 @@ def opens_list(code: str, at: int) -> bool:
 
 
 def previous_code(code: str, at: int) -> str:
-    k = at - 1
-    while k >= 0 and code[k].isspace():
-        k -= 1
-    return code[k] if k >= 0 else ''
+    return code[:at].rstrip()[-1:]
 
 
 def next_code(code: str, at: int) -> str:
-    k = at
-    while k < len(code) and code[k].isspace():
-        k += 1
-    return code[k] if k < len(code) else ''
+    following = CODE.search(code, at)
+    return '' if following is None else following.group()
 
 
 def opens_body(argument: str) -> bool:
@@ -120,34 +116,31 @@ def in_list(code: str, frame: Frame | None, block: scala_comments.Block) -> bool
 
 
 def sites(source: str) -> list[int]:
-    """The line of each comment block inside a parameter or argument list."""
+    """The line of each comment block inside a parameter or argument list.
+
+    The brackets and commas of the code are read in order with a stack of the open brackets, and each comment
+    block is judged against the innermost one open where it starts. The reading stops after the last comment."""
     split = scala_comments.split(source)
     code = split.code
     pending = scala_comments.blocks(source, split.comments)
     found: list[int] = []
     stack: list[Frame] = []
-    following = 0
-
-    def judge(upto: int) -> None:
-        nonlocal following
-        while following < len(pending) and pending[following].start < upto:
-            if in_list(code, stack[-1] if stack else None, pending[following]):
-                found.append(pending[following].line)
-            following += 1
-
-    for match in BRACKET.finditer(code):
-        if following == len(pending):
+    judged, total = 0, len(pending)
+    # the end of the code closes nothing, and judges the comments after the last bracket
+    events = itertools.chain(((m.start(), m.group()) for m in BRACKET.finditer(code)), [(len(code) + 1, '')])
+    for at, bracket in events:
+        while judged < total and pending[judged].start < at:
+            if in_list(code, stack[-1] if stack else None, pending[judged]):
+                found.append(pending[judged].line)
+            judged += 1
+        if judged == total:
             break
-        judge(match.start())
-        bracket, at = match.group(), match.start()
-        if bracket in '([{':
+        if bracket in ('(', '[', '{'):
             stack.append(Frame(bracket, at, at + 1))
-        elif bracket == ',':
-            if stack:
-                stack[-1].argument = at + 1
-        elif stack:
+        elif bracket == ',' and stack:
+            stack[-1] = stack[-1]._replace(argument=at + 1)
+        elif bracket in (')', ']', '}') and stack:
             stack.pop()
-    judge(len(code) + 1)
     return found
 
 
