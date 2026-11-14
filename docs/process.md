@@ -12,6 +12,7 @@ work can be parked and resumed, and nothing goes stale silently.
 | What work exists, and what state is it in? | [GitHub issues](https://github.com/KD5UJC-XYZ/scarab/issues), one per roadmap ID, with a `status:` label | whoever moves the work, when it moves |
 | What is planned, grouped by area? | [roadmap.md](roadmap.md), generated from the register [roadmap.json](data/roadmap.json) by `scripts/render_roadmap.py`: one entry per item, ID, issue link and status; each status derived from its issues through a snapshot that a nightly pull request refreshes | the change that finishes or adds an item |
 | What scope does an open issue belong to? | [Milestones](https://github.com/KD5UJC-XYZ/scarab/milestones), scope buckets ([labels and milestones](#labels-and-milestones); each described in [the roadmap](roadmap.md#milestones)) | triage |
+| What rules does the code follow? | [design-rules.md](design-rules.md): one entry per rule, with its ID, scope, exceptions, enforcement and reason | the change that adds or changes a rule, with its sweep of the tree |
 | Why is it built this way? | [Architecture decision records](adr/README.md) | a new ADR when a decision is made or reversed |
 | What has the owner decided, and what would reopen it? | [decisions.md](decisions.md): one row per decision, linking its record (the ADR or the issue comment) | the change that first relies on the decision |
 | How will a large piece of work be built? | [Design documents](design/README.md): approved plans, with their stages | the plan's owner, as stages land |

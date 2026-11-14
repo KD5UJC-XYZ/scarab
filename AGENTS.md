@@ -8,7 +8,7 @@ rules through [CONTRIBUTING.md](CONTRIBUTING.md).
 For orientation only: [docs/codemap.md](docs/codemap.md) (modules, entry points, suites),
 [docs/questions.md](docs/questions.md) (where to start reading), [docs/glossary.md](docs/glossary.md)
 (terms) and [docs/playbooks/](docs/playbooks/README.md) (recurring tasks). They set no rules; where
-they differ from this file or CONTRIBUTING, this file and CONTRIBUTING win.
+they differ from this file, CONTRIBUTING or the [design rules](docs/design-rules.md), those win.
 
 ## Before you start
 
@@ -29,8 +29,8 @@ Then:
   use protected PRs. Do not treat a shared commit's green check as source-branch authority; do not claim
   protections are enabled or change repository settings.
 - Feedback from the owner arrives as inline commit comments and issues labelled `owner-review`; triage
-  it as [CONTRIBUTING.md](CONTRIBUTING.md#owner-review-feedback) says, and a general rule goes into this
-  file together with a sweep of the tree.
+  it as [CONTRIBUTING.md](CONTRIBUTING.md#owner-review-feedback) says, and a general rule goes into
+  [docs/design-rules.md](docs/design-rules.md) together with a sweep of the tree.
 
 ## Build and run: Docker only
 
@@ -57,118 +57,71 @@ Then:
 The owner's requirements, in their words: *"functional type safe code that leans on the compiler to
 enforce correctness as much as possible"*; *"retain the use of Ask/Stateful/Reader and so on from
 MTL. Lean on the compiler with syntax classes, implicit derivation, givens, using, etc. … elegant
-scala code … I love the use of type parameters when I can use them"*.
+scala code … I love the use of type parameters when I can use them"*; *"correct by construction, not
+correct by sequence of operations"*.
 
-- Tagless final at effect boundaries; capabilities through cats-mtl (`Ask`, `Local`, `Stateful`,
-  `Raise`, `Handle`, `Tell`). `IO` only in `Main` and tools.
-- Closed, domain/service-specific error ADTs, including pure functions and test helpers. Use
-  `Either[DomainError, A]` for pure failures and cats-mtl capabilities at effect boundaries. Preserve
-  typed causes across layers; render text only for logs, CLI output or wire presentation. A generic
-  `Failure(message: String)` wrapper is not a migration to domain error cases. No `Either[String, …]`,
-  no string-based control flow, no `throw` for domain errors, no `.get` on values that are not
-  provably present ([CONTRIBUTING.md](CONTRIBUTING.md#style-rules) says where the remaining migration
-  is tracked).
-- Functional code is the default. Imperative, side-effecting implementations are allowed only in
-  performance-critical code, with profiling or benchmark evidence and a written reason for the
-  specific path (record measurements in [performance.md](docs/performance.md)). The other exceptions
-  are narrow: a third-party interface that requires it, a callback whose contract signals failure by
-  exception or keeps its state by mutation (Scalus's `BudgetSpender` and builtin functions), in the
-  smallest definition that implements it; secret key material that must be erased in place so that
-  no copy outlives its use (a KES signing key evolves by zeroing the periods it leaves,
-  `Sum6KesSigning.SigningKey`); and the timed region of a measurement tool, where a wrapper would
-  add allocation to what is timed (`TimingProbeMain`). Keep mutation local behind a pure interface
-  or an effect interpreter. These exceptions change implementation style only: typed errors,
-  capability scope and original-byte guarantees still apply. WartRemover refuses `var`, `while`,
-  `throw`, `return`, `null`, casts, mutable collections and partial accessors in the main sources of
-  every module but `tools` (`build.sbt`); a kept site carries
-  `@SuppressWarnings(Array("org.wartremover.warts.<Wart>"))` on its smallest definition, with a
-  comment naming its measurement, the library contract, or why it is erased in place or timed.
-  `scripts/check_imperative.py` refuses new `try`/`catch`/`finally` (#650).
-- A fiber never raises through a capability it did not create ([ADR 0017](docs/adr/0017-fibers-end-with-values.md)).
-  A `Raise` from `Handle.allow` is valid in the fibers of its scope only; raised in any other fiber it
-  is an exception that nobody catches. A fiber that outlives the call (`background`, `supervise`, a kept
-  `start`) runs its body in a scope of its own and returns `Either` at its boundary (`Fibers.scoped`,
-  `Fault.fiber`), its owner raises the value again in its own fiber (`Fibers.land`, `Fault.land`), and a
-  channel or client takes the caller's `Raise` as a `using` clause instead of holding one
-  ([ADR 0017](docs/adr/0017-fibers-end-with-values.md)). A fiber that its owner joins at once (`race`,
-  `parSequence`, `Compute.within`) may use the owner's capabilities. An exception that is not ours is
-  wrapped at the boundary into a typed case that says it is a defect; it is never "the peer is
-  unavailable". Suites that start fibers extend `FailsOnUncaught`.
-- In concurrency tests, evaluate blocking latch waits and joins before passing their results to
-  MUnit assertions: clue capture holds the suite monitor while evaluating an assertion, so a worker
-  assertion can deadlock with a parent's asserted wait. Release latches and
-  finish owned workers in guaranteed cleanup. Positive synchronization uses an observable condition or
-  controlled schedule; the remaining sleeps are the sites of `docs/data/test-sleep-baseline.json`.
-- A program run by hand (a benchmark, a probe, the writer of a fixture or golden) lives in the `tools`
-  module (`tools/runMain <class>`), in the package of the code it exercises, never in a test tree.
-  `tools` may use every module's test kits and follows the rules of test code; data the suites read
-  stays in the test tree, and `tools` holds only its entry point.
-- Tests do not sleep: no sleep, delay, timer or yield orders fibers, waits for a state or paces a poll
-  loop. Wait on a `Deferred`, a latch, a change signal or a report of the code under test, or run the
-  test in `Settled` (network test tree; its Scaladoc says what `settle` waits for); drive time with
-  `TestControl` (`tick`, `advanceAndTick`) or `Settled.timed`. `scripts/check_test_sleeps.py` refuses
-  a new sleep, delay, timer, yield or sleep-poll helper in a source outside `src/main` (#870; its
-  docstring lists the calls), against a baseline that only shrinks: the change that removes a site
-  commits the smaller `docs/data/test-sleep-baseline.json`. It refuses a new virtual-time sleep too,
-  and a poll it does not see (`ref.get.iterateUntil(p)`) this rule forbids all the same. A new sleep is
-  refused even for a bounded negative observation.
-- Opaque types, type classes with extension syntax, instances in companions, `derives` where it
-  works, Monocle optics for nested state. Type parameters for roles and eras (`KeyHash[StakePool]`,
-  `LedgerState[Conway]`).
-- The Haskell node is the reference ([ADR 0001](docs/adr/0001-haskell-node-as-reference.md)): mirror
-  its behaviour, types and formats exactly, and cite the upstream file and line at the pinned
-  version. **Agents may not deviate from the reference on their own accord.** A deviation, even for a
-  measured performance benefit or another strong reason, needs the owner's explicit approval first,
-  requested with clearly defined trade-offs and reasoning. Only after that approval is it
-  implemented, with a written reason that records the approval. Existing code, earlier PRs, review
-  notes and design documents are not approval. If exact fidelity seems impossible, stop and ask the
-  owner. For overflow, underflow and narrowing, follow
-  [ADR 0001's arithmetic procedure](docs/adr/0001-haskell-node-as-reference.md#amendment-2026-11-09-checked-arithmetic-and-compatibility)
-  before choosing the boundary behavior; a reference bug is not blanket permission to change it.
-  Decisions recorded by the owner's `ottobot-ai` account are the owner's.
-- Path names and their encoding are settled by the owner's rule in the
-  [decisions register](docs/decisions.md#networking-and-local-clients) (#953): do not chase the reference's
-  behaviour at other bytes or locales; only the owner reopens the rule. It is not a precedent: any other
-  deviation still needs the owner's approval first.
-- Pure rules; exact `Rational` arithmetic.
-- Hash and sign exactly the bytes the reference hashes and signs: by default the bytes as received,
-  kept beside the decoded value; where the reference hashes or signs a re-encoding, re-encode as it
-  does and cite the pinned upstream line at that site. An exception is established only by reading
-  the reference at its pinned version ([the known re-encodings](docs/design/hashed-bytes.md)).
-- Stack safety ([ADR 0011](docs/adr/0011-stack-safety.md)): recursion whose depth or width comes from outside
-  data (blocks, peers, files, queries) is a library fold/traversal, `@tailrec`, `tailRecM` over a typed
-  state, or an explicit stack machine; never recursion inside an `Either`/`Option` for-comprehension.
-  Test it on a small-stack thread.
-- Comment density and naming like the surrounding code; SPDX header on new files.
-- Keep parameter lists free of comments, including constructor fields and call arguments. Put
-  parameter contracts in the declaration's Scaladoc (`@param` where useful), and explain a call
-  before the expression. Elsewhere, preserve comments that explain intent, invariants, reference
-  correspondence or a non-obvious tradeoff; check their reason before rewriting or removing them.
-  Refer to maintained symbols, ADRs and pinned upstream sources rather than private notes,
-  implementation-stage labels or unpinned line numbers.
-- An accepted ADR's decision text is not rewritten. A stale example or symbol name may be corrected
-  in place; any other correction, and a supersession, goes in a dated "Amendment (YYYY-MM-DD)"
-  section that links what replaced it, and the superseded words in the decision are struck through
-  (`~~…~~`) with a link to that amendment, so a reader sees where they read it that the text is stale.
-- Each policy or fact has one authoritative home (gates in CONTRIBUTING, decisions in ADRs, process
-  in [docs/process.md](docs/process.md)); other documents link to it rather than restating it.
-- No volatile facts in static documents: issue state, test counts and "current" versions come from
-  GitHub, the registries (`docs/data/reference-pins.json`, `PersistedFormat.scala`) or dated
-  evidence rows.
+The rules are in [docs/design-rules.md](docs/design-rules.md), one home each: its ID, scope (main, tools,
+tests), exceptions and how a kept site is marked, enforcement and reason. Read the groups your change touches.
 
-## Conformance expectations
-
-- Diagnostic and refusal presentation follows the
-  [ADR 0001 diagnostic-parity amendment](docs/adr/0001-haskell-node-as-reference.md#amendment-2026-11-04-exact-diagnostic-and-refusal-parity).
-  Staged printer changes identify their covered categories and link the remaining inventory under
-  [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796).
-- Run original upstream cases without Scarab-specific expected-failure lists, field masks or
-  numeric tolerances. Historical differences and transaction reachability do not justify an
-  exclusion. A JVM-specific exception needs a minimal reproducer, evidence of the platform
-  limitation, exact affected cases and an issue with a removal condition.
-- A missing implementation or fixture is an explicit incomplete gate, never a conformance pass.
-  Environmental availability skips and intentionally partial projections must be reported with
-  their scope; neither establishes agreement for untested cases or fields.
+- [Effects and capabilities](docs/design-rules.md#eff): [EFF-1](docs/design-rules.md#eff-1) tagless final with
+  cats-mtl capabilities; [EFF-2](docs/design-rules.md#eff-2) `IO` only in `Main`, the node's shipped commands,
+  `tools` and tests; [EFF-3](docs/design-rules.md#eff-3) pure rules; [EFF-4](docs/design-rules.md#eff-4) no
+  hidden global state; [EFF-5](docs/design-rules.md#eff-5) no `unsafeRun*` but a `Dispatcher` bridge;
+  [EFF-6](docs/design-rules.md#eff-6) time only from `Clock[F]`.
+- [Errors](docs/design-rules.md#err): [ERR-1](docs/design-rules.md#err-1) closed domain error types;
+  [ERR-2](docs/design-rules.md#err-2) typed causes survive; [ERR-3](docs/design-rules.md#err-3) no
+  `Either[String, …]` or free-text wrapper; [ERR-4](docs/design-rules.md#err-4) no `throw` for domain errors;
+  [ERR-5](docs/design-rules.md#err-5) no partial accessors.
+- [Strings are values](docs/design-rules.md#str): [STR-1](docs/design-rules.md#str-1) a String is output or
+  parser input; [STR-2](docs/design-rules.md#str-2) parsers and their tables;
+  [STR-3](docs/design-rules.md#str-3) no decision on a String's contents.
+- [Functional style](docs/design-rules.md#fun): [FUN-1](docs/design-rules.md#fun-1) functional code by
+  default; [FUN-2](docs/design-rules.md#fun-2) the narrow imperative exceptions;
+  [FUN-3](docs/design-rules.md#fun-3) a kept site is marked and contained.
+- [Fibers](docs/design-rules.md#fib): [FIB-1](docs/design-rules.md#fib-1) a fiber never raises through a
+  capability it did not create; [FIB-2](docs/design-rules.md#fib-2) a fiber that outlives the call ends with a
+  value; [FIB-3](docs/design-rules.md#fib-3) a fiber joined at once may use its owner's capabilities.
+- [Tests](docs/design-rules.md#tst): [TST-1](docs/design-rules.md#tst-1) what binds tests;
+  [TST-2](docs/design-rules.md#tst-2) no sleeps; [TST-3](docs/design-rules.md#tst-3) `FailsOnUncaught`;
+  [TST-4](docs/design-rules.md#tst-4) assertions on typed errors; [TST-5](docs/design-rules.md#tst-5)
+  concurrency tests evaluate their waits first; [TST-6](docs/design-rules.md#tst-6) laws and properties.
+- [Conformance](docs/design-rules.md#cnf): [CNF-1](docs/design-rules.md#cnf-1) upstream cases run whole;
+  [CNF-2](docs/design-rules.md#cnf-2) incomplete is not a pass; [CNF-3](docs/design-rules.md#cnf-3) diagnostics
+  and refusals as the reference presents them.
+- [Hand-run programs](docs/design-rules.md#tool): [TOOL-1](docs/design-rules.md#tool-1) they live in `tools`;
+  [TOOL-2](docs/design-rules.md#tool-2) `tools` follows the rules of tests.
+- [Types: correct by construction](docs/design-rules.md#typ): [TYP-1](docs/design-rules.md#typ-1) illegal
+  states unrepresentable; [TYP-2](docs/design-rules.md#typ-2) parse, don't validate;
+  [TYP-3](docs/design-rules.md#typ-3) opaque types; [TYP-4](docs/design-rules.md#typ-4) ADTs, not flags;
+  [TYP-5](docs/design-rules.md#typ-5) non-empty collections; [TYP-6](docs/design-rules.md#typ-6) exhaustive
+  matches; [TYP-7](docs/design-rules.md#typ-7) type-level sizes; [TYP-8](docs/design-rules.md#typ-8) lean on
+  the compiler; [TYP-9](docs/design-rules.md#typ-9) Free only where a program must be inspected.
+- [Stack safety](docs/design-rules.md#stk): [STK-1](docs/design-rules.md#stk-1) recursion over outside data is
+  stack safe by construction; [STK-2](docs/design-rules.md#stk-2) recursion schemes over outside data;
+  [STK-3](docs/design-rules.md#stk-3) tested on a small stack.
+- [Arithmetic](docs/design-rules.md#ari): [ARI-1](docs/design-rules.md#ari-1) exact arithmetic;
+  [ARI-2](docs/design-rules.md#ari-2) overflow, underflow and narrowing by ADR 0001's procedure.
+- [Hashed bytes](docs/design-rules.md#byt): [BYT-1](docs/design-rules.md#byt-1) hash and sign exactly the
+  bytes the reference hashes and signs.
+- [The reference](docs/design-rules.md#ref): [REF-1](docs/design-rules.md#ref-1) to
+  [REF-4](docs/design-rules.md#ref-4) interoperability, reference defects, which reference governs, and the
+  four classes (Mirror, Improvement, Deviation, Gap); [REF-5](docs/design-rules.md#ref-5) **agents may not
+  deviate from the reference on their own accord**; [REF-6](docs/design-rules.md#ref-6) mirror it and cite it
+  at its pin; [REF-7](docs/design-rules.md#ref-7) how a pull request records each class;
+  [REF-8](docs/design-rules.md#ref-8) settled Deviations.
+- [Persisted formats and fixtures](docs/design-rules.md#fmt): [FMT-1](docs/design-rules.md#fmt-1) a format
+  changes only with a version bump and a migration; [FMT-2](docs/design-rules.md#fmt-2) native snapshot
+  fixtures use the current format; [FMT-3](docs/design-rules.md#fmt-3) no secrets, and fixtures with
+  provenance and licence.
+- [Cryptography](docs/design-rules.md#cry): [CRY-1](docs/design-rules.md#cry-1) variable-time crypto stays
+  contained.
+- [Comments, naming and source files](docs/design-rules.md#cmt): [CMT-1](docs/design-rules.md#cmt-1) like the
+  surrounding code; [CMT-2](docs/design-rules.md#cmt-2) no comments in parameter lists;
+  [CMT-3](docs/design-rules.md#cmt-3) comments that explain are kept; [CMT-4](docs/design-rules.md#cmt-4) SPDX
+  header; [CMT-5](docs/design-rules.md#cmt-5) scalafmt and scalafix.
+- [Documents](docs/design-rules.md#doc): [DOC-1](docs/design-rules.md#doc-1) an accepted ADR is amended, not
+  rewritten; [DOC-2](docs/design-rules.md#doc-2) one home per policy or fact;
+  [DOC-3](docs/design-rules.md#doc-3) no volatile facts in static documents.
 
 ## Before you hand back
 
@@ -180,19 +133,12 @@ scala code … I love the use of type parameters when I can use them"*.
   ([CONTRIBUTING.md](CONTRIBUTING.md#levels)). Soak, repeats and the long network replays are nightly
   CI's, not yours, unless your stage's design names them as its jump gate.
 - A persisted format must not change without a version bump, a migration and a test that reads the
-  previous version ([ADR 0006](docs/adr/0006-versioned-formats-migrate-on-open.md)). The snapshot
-  goldens in `node/src/test/.../storage/CodecSuite.scala` guard this
-  ([what they pin](docs/storage-migrations.md#register-the-change-before-changing-the-writer)).
+  previous version ([FMT-1](docs/design-rules.md#fmt-1)).
 - Record evidence where the [definition of done](docs/process.md#definition-of-done) says, and track
   every gap you leave as an issue or roadmap item; a P2 gap goes into its parent issue's checklist
   (`python3 scripts/file_issue.py --parent N`, [process](docs/process.md#lifecycle-of-an-item)).
-- Maintained native snapshot fixtures and ordinary snapshot test builders use the current native
-  format (V10, `fixtures/snapshot-v10`; the V5, V7, V8 and V9 files are the previous-version inputs), and
-  assertions read typed native state directly instead of completing flat-state adapters
-  ([CONTRIBUTING.md](CONTRIBUTING.md#style-rules)). Keep pinned conversion provenance and preserve
-  original private archives outside the checkout. A future persisted-format change still needs its
-  previous-version read test and migration; generic toy-format migration framework tests remain
-  independent of native fixtures.
+- Snapshot fixtures and test builders use the current native format, and assertions read typed native
+  state ([FMT-2](docs/design-rules.md#fmt-2)).
 - Small, logical commits as CONTRIBUTING describes. A changelog entry is a fragment in `changes/`,
   never an edit of `CHANGELOG.md`. Do not push to `main` unless you were asked to.
 - Before reporting a change ready, and again after every rebase or merge of its base, run

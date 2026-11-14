@@ -100,12 +100,13 @@ def apply[F[_]: Monad](using Ask[F, MirrorEnv], Raise[F, MirrorError]): LedgerMi
 - **Tagless final** at every effect boundary; `IO` appears only in `Main` and the tools.
 - **Closed error types** raised with `Raise` and handled with `Handle`; no exceptions for domain errors,
   no stringly-typed control flow.
-- **Original bytes kept**: whatever is hashed or signed is hashed over the bytes as received.
+- **Original bytes kept**: what is hashed or signed is the bytes the reference hashes and signs, by default
+  the bytes as received.
 - **Exact arithmetic** (`Rational`) in the ledger; no floating point except where Haskell has it.
 - **Laws and properties**: cats-laws, monocle-law and ScalaCheck properties on the algebras, codecs and state conversions.
 
-The design is described in [docs/architecture.md](docs/architecture.md); the rules for contributions in
-[CONTRIBUTING.md](CONTRIBUTING.md).
+The design is described in [docs/architecture.md](docs/architecture.md), the rules the code follows in
+[docs/design-rules.md](docs/design-rules.md), and how to contribute in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Quick start
 

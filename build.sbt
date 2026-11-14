@@ -70,9 +70,10 @@ val testDependencies = Seq(
 // Initialisation safety applies to main sources (-Wsafe-init).
 // Test sources exclude it because munit registers tests in constructors; the initial sweep found
 // 19 warnings for that idiom and none in main sources.
-// WartRemover (issue 650): the imperative and partial patterns the code rules disallow (AGENTS.md:
-// functional code by default; mutation only on measured performance paths, kept local; no throw for
-// domain errors; no partial accessor on a value not provably present). Main sources only; generated
+// WartRemover (issue 650): the imperative and partial patterns the code rules disallow
+// (docs/design-rules.md, FUN-1 to FUN-3, ERR-4 and ERR-5: functional code by default; mutation only on
+// measured performance paths, kept local; no throw for domain errors; no partial accessor on a value not
+// provably present). Main sources only; generated
 // code is excluded. try/catch/finally has no wart and is checked by scripts/check_imperative.py.
 lazy val disallowedWarts: Seq[wartremover.Wart] = Seq(
   Wart.Var,
@@ -471,8 +472,8 @@ lazy val fuzz = scarab("fuzz")
   )
 
 // Benchmarks, probes and the programs that write fixtures: run by hand (`tools/runMain <class>`), never as
-// tests and never shipped. They use the modules' test kits, so they follow the rules of test code: no
-// `-Wsafe-init`, no WartRemover errors.
+// tests and never shipped. They use the modules' test kits, so they follow the rules of test code
+// (docs/design-rules.md, TOOL-2): no `-Wsafe-init`, no WartRemover errors.
 lazy val tools = scarab("tools")
   .dependsOn(
     codec % "compile->compile;compile->test",

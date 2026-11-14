@@ -25,7 +25,7 @@ commit with its changes, and your branch still holds the original commits. This 
    your commit, the reverse of a merge.
 4. Dated sections appended by several pull requests (an ADR's amendments, a changelog list) keep every
    entry, in date order. If yours supersedes a sentence the merged one added, strike it through with a
-   link to your amendment, as [AGENTS.md](../../AGENTS.md#how-code-is-written-here) describes.
+   link to your amendment, as [DOC-1](../design-rules.md#doc-1) describes.
 5. Generated files are regenerated, never merged by hand: `docs/data/fixture-inventory.json` with
    `python3 scripts/check_test_coverage.py --refresh-fixtures`, a fixture an oracle recorded with its recorder
    (for example `scripts/oracle/genesis-fields/run.py --record`, then `--replay`), and a rendered page with its
