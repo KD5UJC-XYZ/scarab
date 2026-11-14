@@ -72,7 +72,7 @@ class SnapshotV11MigrationSuite extends CatsEffectSuite:
 
   test("the committed V10 files hold eras and epoch verdicts, which the migration has to keep") {
     val boots = names.map(name => boot(sections(name)._3))
-    assert(boots.forall(!_.active), "a writer since V5 set the flag")
+    assert(boots.forall(!_.active), "a committed fixture holds a set flag")
     assert(boots.exists(_.era.isDefined), "no fixture holds an era")
     assert(boots.exists(_.stats.exists(_.total > 0)), "no fixture holds verdicts of an epoch")
     assert(boots.exists(_.completed.exists(_.total > 0)), "no fixture holds a completed epoch")

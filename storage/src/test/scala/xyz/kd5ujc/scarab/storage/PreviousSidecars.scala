@@ -7,9 +7,9 @@ import xyz.kd5ujc.scarab.ledger.Nonce
 
 /** The sidecar of a snapshot version before V11 ([[FrozenSidecar]]) for a current one, so the
   * previous-version tests can write files of those versions from the states they make. Its
-  * bootstrap state holds the follow state and, as every writer since V5 wrote it, a flag that is
-  * off; its lite ledger is `lite`, by default an empty one: no writer's lite ledger was read, and
-  * the migration to V11 drops it.
+  * bootstrap state holds the follow state, the flag `active` (by default off: no writer since V5
+  * set it, though one kept a flag its state already held) and the lite ledger `lite` (by default an
+  * empty one: no lite ledger was read); the migration to V11 drops both.
   */
 object PreviousSidecars:
   /** A lite ledger with nothing in it. */
