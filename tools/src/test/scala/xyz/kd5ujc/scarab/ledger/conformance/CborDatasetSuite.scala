@@ -101,11 +101,23 @@ class CborDatasetSuite extends FunSuite:
     )
     assertEquals(
       checkInventory(corpus, inventory, all.drop(1)),
-      Left(Failure.InventoryMismatch(3, 2, Vector.empty))
+      Left(Failure.InventoryMismatch(3, 2, Vector.empty, Vector.empty))
     )
     assertEquals(
       checkInventory(corpus, inventory, all.take(2)),
-      Left(Failure.InventoryMismatch(3, 2, Vector("epoch")))
+      Left(Failure.InventoryMismatch(3, 2, Vector("epoch"), Vector.empty))
+    )
+    // a sample moved to a rule the inventory does not list, the count unchanged
+    val moved = all.updated(1, "slot/valid/1" -> "slot")
+    assertEquals(
+      checkInventory(corpus, inventory, moved),
+      Left(Failure.InventoryMismatch(3, 3, Vector.empty, Vector("slot")))
+    )
+    // every sample of a rule moved to an unlisted one, the count unchanged
+    val renamed = all.map((path, rule) => if rule == "epoch" then path -> "era" else path -> rule)
+    assertEquals(
+      checkInventory(corpus, inventory, renamed),
+      Left(Failure.InventoryMismatch(3, 3, Vector("epoch"), Vector("era")))
     )
   }
 
@@ -149,6 +161,37 @@ class CborDatasetSuite extends FunSuite:
     assert(!block(of("81a0", "81a0", "a0")), "a body without its inputs")
     assert(!block(of("81" + body, "81a109f6", "a0")), "a witness set of an unknown key")
     assert(!block(of("81" + body, "81a0", "a100a100f7")), "auxiliary data of an undefined value")
+  }
+
+  test(
+    "a Conway part read alone takes a detached record where its parent does, and no broken one"
+  ) {
+    val z28 = zeros(28)
+    val anchor = "60" + "5820" + zeros(32)
+    val value = "00" + "a1581c" + "11" * 28 + "a14001"
+    val proposal = "00" + "581de0" + z28 + "8106"
+    // the rule, a part holding a `RecD` record written detached (`9f ff` then its fields), which
+    // production reads at that place and a generic parse refuses, and the same part broken
+    val cases = Vector(
+      ("ex_units", "9fff0000", "9fff00"),
+      ("ex_unit_prices", "9fffd81e820102d81e820103", "9fffd81e820102"),
+      ("protocol_param_update", "a1149fff0000", "a1149fff00"),
+      ("anchor", "9fff" + anchor, "9fff60"),
+      ("gov_action_id", "9fff5820" + zeros(32) + "00", "9fff5820" + zeros(32)),
+      ("value", "9fff" + value, "9fff00"),
+      ("proposal_procedure", "9fff" + proposal + "82" + anchor, "9fff" + proposal),
+      ("proposal_procedures", "819fff" + proposal + "82" + anchor, "819fff" + proposal),
+      ("voting_procedure", "9fff00f6", "9fff00"),
+      (
+        "certificate",
+        "84108200581c" + z28 + "00" + "9fff" + anchor,
+        "84108200581c" + z28 + "009fff60"
+      ),
+      ("transaction_output", "82581d61" + z28 + "9fff" + value, "82581d61" + z28 + "9fff00")
+    )
+    for (rule, detached, broken) <- cases do
+      assert(decoded(ConwayRules.rules, rule)(detached), s"$rule: the detached record is read")
+      assert(!decoded(ConwayRules.rules, rule)(broken), s"$rule: the broken record is refused")
   }
 
   test("the Conway rules read detached records as production does (recd-detached corpus)") {

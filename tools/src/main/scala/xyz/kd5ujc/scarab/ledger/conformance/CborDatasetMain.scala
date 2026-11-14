@@ -33,9 +33,15 @@ object CborDatasetMain extends IOApp:
     case NoVectors(directory: Path)
     case NoVectorTable(file: Path)
     case MissingVectors(names: Vector[String])
-    case NoInventory(file: Path, cause: String)
+    case NoInventory(file: Path)
+    case BadInventory(file: Path, cause: io.circe.Error)
     case EmptyCorpus(directory: Path)
-    case InventoryMismatch(expected: Int, found: Int, missingRules: Vector[String])
+    case InventoryMismatch(
+        expected: Int,
+        found: Int,
+        missingRules: Vector[String],
+        unexpectedRules: Vector[String]
+    )
 
     def message: String = this match
       case Arguments =>
@@ -51,12 +57,15 @@ object CborDatasetMain extends IOApp:
         s"incomplete: no table of normalisation vectors in $file"
       case MissingVectors(names) =>
         s"incomplete: the normalisation vectors ${names.mkString(", ")} are listed and missing"
-      case NoInventory(file, cause) =>
-        s"incomplete: the corpus inventory $file does not read: $cause"
+      case NoInventory(file) => s"incomplete: no corpus inventory at $file"
+      case BadInventory(file, cause) =>
+        s"incomplete: the corpus inventory $file does not read: ${cause.getMessage}"
       case EmptyCorpus(directory) => s"incomplete: no samples in $directory"
-      case InventoryMismatch(expected, found, missing) =>
+      case InventoryMismatch(expected, found, missing, unexpected) =>
         s"incomplete: the inventory lists $expected samples, $found are present" +
-          (if missing.isEmpty then "" else s"; rules without samples: ${missing.mkString(", ")}")
+          (if missing.isEmpty then "" else s"; rules without samples: ${missing.mkString(", ")}") +
+          (if unexpected.isEmpty then ""
+           else s"; samples of rules it does not list: ${unexpected.mkString(", ")}")
 
   /** An era of the dataset, the decoder version Scarab reads it at and Scarab's rules for it. The
     * report names that decoder version as its protocol version: it is the version the samples were
@@ -182,19 +191,23 @@ object CborDatasetMain extends IOApp:
       ).mapN((samples, rules) => Inventory(samples, rules.toSet))
     }
 
-  /** The corpus found against its inventory: not empty, every sample and every rule present. */
+  /** The corpus found against its inventory: not empty, its count of samples, and its rules
+    * exactly, none missing and none it does not list.
+    */
   def checkInventory(
       corpus: Path,
       inventory: Inventory,
       found: Vector[(String, String)]
   ): Either[Failure, Unit] =
-    val missing = (inventory.rules -- found.map(_._2).toSet).toVector.sorted
+    val rules = found.map(_._2).toSet
+    val missing = (inventory.rules -- rules).toVector.sorted
+    val unexpected = (rules -- inventory.rules).toVector.sorted
     if found.isEmpty then Left(Failure.EmptyCorpus(corpus))
     else
       Either.cond(
-        found.size == inventory.samples && missing.isEmpty,
+        found.size == inventory.samples && missing.isEmpty && unexpected.isEmpty,
         (),
-        Failure.InventoryMismatch(inventory.samples, found.size, missing)
+        Failure.InventoryMismatch(inventory.samples, found.size, missing, unexpected)
       )
 
   private def inventory(corpus: Path): IO[Either[Failure, Inventory]] =
@@ -202,8 +215,8 @@ object CborDatasetMain extends IOApp:
     IO.blocking(Files.isRegularFile(file))
       .ifM(
         IO.blocking(Files.readString(file))
-          .map(inventoryOf(_).leftMap(e => Failure.NoInventory(file, e.getMessage))),
-        IO.pure(Left(Failure.NoInventory(file, "missing")))
+          .map(inventoryOf(_).leftMap(Failure.BadInventory(file, _))),
+        IO.pure(Left(Failure.NoInventory(file)))
       )
 
   private def outcome(rules: Map[String, DatasetRule])(s: Sample): IO[DatasetCheck.Outcome] =
