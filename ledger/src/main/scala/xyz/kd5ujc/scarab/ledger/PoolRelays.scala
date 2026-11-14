@@ -394,12 +394,16 @@ object PoolRelays:
 
   // ---------------------------------------------------------------------------------- encoding
 
-  /** The relays as a registration holds them (definite-length arrays, the form the reference
-    * writes); no relays is the empty array. `decode(encode(rs)) == Right(rs)` for every `rs`.
+  /** The relays as the reference writes them: `encCBOR` of the `StrictSeq StakePoolRelay`
+    * (`encodeStrictSeq`, `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs:
+    * 458-468, 512-518`, cardano-ledger f649f975), a definite array up to 23 relays and an
+    * indefinite one above, each relay a definite array (`State/StakePool.hs:389-404`); no relays is
+    * the empty array. `decode(encode(rs)) == Right(rs)` for every `rs`.
     */
   def encode(relays: Vector[PoolRelay]): Bytes =
     val out = new ByteArrayOutputStream()
-    head(out, 4, relays.size.toLong)
+    val definite = relays.size <= LengthThreshold
+    if definite then head(out, 4, relays.size.toLong) else out.write(0x9f)
     relays.foreach {
       case PoolRelay.SingleHostAddr(p, v4, v6) =>
         head(out, 4, 4); head(out, 0, 0)
@@ -414,7 +418,11 @@ object PoolRelays:
         head(out, 4, 2); head(out, 0, 2)
         text(out, name)
     }
+    if !definite then out.write(0xff)
     Bytes.fromArray(out.toByteArray)
+
+  /** `lengthThreshold` (`Encoder.hs:442-443`): above it a sequence is written indefinite. */
+  private inline val LengthThreshold = 23
 
   private def optional[A](out: ByteArrayOutputStream, a: Option[A])(write: A => Unit): Unit =
     a.fold(out.write(0xf6))(write)
