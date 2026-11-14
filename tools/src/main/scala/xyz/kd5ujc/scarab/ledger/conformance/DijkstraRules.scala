@@ -2,17 +2,17 @@
 package xyz.kd5ujc.scarab.ledger.conformance
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value as CborValue}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{
   Anchor,
   GovAction,
   Block,
   ByteStrings,
-  CborRead,
   Credential,
   DecodeField,
   DecoderVersion,
+  DetachedRecords,
   GovActionId,
   Header,
   LedgerDecodeError,
@@ -66,8 +66,14 @@ object DijkstraRules:
   import Embedding.*
   import Step.*
 
+  /** A part as production reads it: `DetachedRecords.read` with the shape of the era's body at
+    * [[version]], which from 12 holds no `RecD` record anywhere ([[DetachedRecords.Shapes]]), so
+    * every part of it is an item read as it is written.
+    */
   private def node(bytes: Bytes): Either[Refusal, Node] =
-    CborRead.decode(bytes).leftMap(Refusal.Ledger(_))
+    DetachedRecords.read(bytes, Cbor.Limits.Unbounded, DetachedRecords.Shapes.body(era, version))(
+      e => Refusal.Ledger(LedgerDecodeError.Syntax(e))
+    )(Right(_))
 
   private def ledger[A](r: Either[LedgerDecodeError, A]) = r.leftMap(Refusal.Ledger(_))
 
@@ -369,7 +375,10 @@ object DijkstraRules:
       Reach.Embedded("an interval of a body's key 26")
     )(b => body("181a")(hex("a1581de0" + zeros(28)) ++ b)),
     "certificate" -> unwritten("DijkstraCert.decode")(DijkstraCert.decode),
-    "certificates" -> unwritten("DijkstraCert.set")(DijkstraCert.set),
+    // the set at the body's key 4, which refuses it empty (`DijkstraTx.body`), as the reference's
+    // body does where the set's own decoder takes an empty one
+    "certificates" -> DatasetRule
+      .unwritten("DijkstraTx.body (Top)", Reach.Embedded("a body's key 4"))(body("04")),
     "relay" -> unwritten("DijkstraRelay.decode")(DijkstraRelay.decode),
     "dns_name" -> DatasetRule
       .unwritten("DijkstraRelay.decode", Reach.Embedded("a multi-host relay"))(relay("8202")),
@@ -449,7 +458,9 @@ object DijkstraRules:
       written(HaskellStateCodecs.anchor)(Anchor(a.url, a.hash)).flatMap(Step.at(_, List(Index(0))))
     ),
     "proposal_procedure" -> unwritten("DijkstraProposal.decode")(DijkstraProposal.decode),
-    "proposal_procedures" -> unwritten("DijkstraProposal.set")(DijkstraProposal.set),
+    // the set at the body's key 20, which refuses it empty, as for the certificates
+    "proposal_procedures" -> DatasetRule
+      .unwritten("DijkstraTx.body (Top)", Reach.Embedded("a body's key 20"))(body("14")),
     "gov_action" -> DatasetRule
       .unwritten("DijkstraProposal.decode", Reach.Embedded("a proposal procedure"))(b =>
         read(DijkstraProposal.decode)(

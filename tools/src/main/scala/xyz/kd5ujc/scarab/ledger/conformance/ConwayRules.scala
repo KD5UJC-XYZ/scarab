@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.conformance
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{
   Address,
@@ -16,6 +16,7 @@ import xyz.kd5ujc.scarab.ledger.{
   CostModelDecode,
   Credential,
   DRep,
+  DetachedRecords,
   DecodeField,
   DecoderVersion,
   GovAction,
@@ -68,8 +69,55 @@ object ConwayRules:
   import Embedding.*
   import Step.*
 
-  private def node(bytes: Bytes): Either[Refusal, Node] =
-    CborRead.decode(bytes).leftMap(Refusal.Ledger(_))
+  /** The production shapes ([[DetachedRecords.Shapes]]) of the parts of a Conway body read at
+    * [[version]], where each part sits in the body that production reads it in.
+    */
+  private object At:
+    import DetachedRecords.{Shape as Recd, Token}
+    private val body = DetachedRecords.Shapes.body(era, version)
+    private def keyed(s: Recd, key: Long) = s match
+      case Recd.Keyed(f) => f(key)
+      case _             => Recd.Item
+    private def element(s: Recd) = s match
+      case Recd.ListOf(e) => e
+      case _              => Recd.Item
+    private def field(s: Recd, i: Int) = s match
+      case Recd.Record(fields)       => fields.lift(i).getOrElse(Recd.Item)
+      case Recd.Fields(fields, rest) => fields.lift(i).getOrElse(rest)
+      case _                         => Recd.Item
+    private def summand(s: Recd, tag: Long, i: Int) = s match
+      case Recd.Sum(f) => f(tag).lift(i).getOrElse(Recd.Item)
+      case _           => Recd.Item
+    private def key(s: Recd) = s match
+      case Recd.MapOf(k, _) => k
+      case _                => Recd.Item
+    private def value(s: Recd) = s match
+      case Recd.MapOf(_, v) => v
+      case _                => Recd.Item
+    private def picked(s: Recd, t: Token) = s match
+      case Recd.ByToken(pick) => pick(t)
+      case other              => other
+
+    val item: Recd = Recd.Item
+    val output: Recd = element(keyed(body, 1))
+    val outputValue: Recd = keyed(picked(output, Token.Map), 1)
+    val certificates: Recd = keyed(body, 4)
+    val certificate: Recd = element(certificates)
+    val votingProcedures: Recd = keyed(body, 19)
+    val actionId: Recd = key(value(votingProcedures))
+    val proposals: Recd = keyed(body, 20)
+    val proposal: Recd = element(proposals)
+    val anchor: Recd = field(proposal, 3)
+    val parameterUpdate: Recd = summand(field(proposal, 2), 0, 1)
+
+  /** A part as production reads it at its place ([[At]]): `DetachedRecords.read` with the shape the
+    * parent gives it, so that a `RecD` record written detached is read as the reference reads it
+    * there.
+    */
+  private def tree(shape: DetachedRecords.Shape)(bytes: Bytes): Either[Refusal, Node] =
+    DetachedRecords.read(bytes, Cbor.Limits.Unbounded, shape)(e =>
+      Refusal.Ledger(xyz.kd5ujc.scarab.ledger.LedgerDecodeError.Syntax(e))
+    )(Right(_))
 
   private def ledger[A](r: Either[xyz.kd5ujc.scarab.ledger.LedgerDecodeError, A]) =
     r.leftMap(Refusal.Ledger(_))
@@ -98,7 +146,7 @@ object ConwayRules:
 
   /** A proposal procedure of a zero deposit, a testnet key reward account and an empty anchor. */
   private def proposalAround(action: Bytes): Either[Refusal, Proposal] =
-    node(hex("8400581de0" + zeros(28)) ++ action ++ hex("8260" + "5820" + zeros(32)))
+    tree(At.proposal)(hex("8400581de0" + zeros(28)) ++ action ++ hex("8260" + "5820" + zeros(32)))
       .flatMap(n => ledger(Proposal.decode(n, version)))
 
   private def action(prefix: String, suffix: String = "")(sample: Bytes) =
@@ -106,7 +154,9 @@ object ConwayRules:
 
   /** A pool's vote on a governance action, with the sample as the voting procedure. */
   private def procedure(sample: Bytes) =
-    node(hex("a18204581c" + zeros(28) + "a1825820" + zeros(32) + "00") ++ sample)
+    tree(At.votingProcedures)(
+      hex("a18204581c" + zeros(28) + "a1825820" + zeros(32) + "00") ++ sample
+    )
       .flatMap(n =>
         VotingProcedures.decode(n, version).leftMap(Refusal.Voting(_)).flatMap { all =>
           present(all.headOption.flatMap(_._2.headOption.map(_._2)))
@@ -120,34 +170,46 @@ object ConwayRules:
       .leftMap(Refusal.Chain(_))
 
   private def output(prefix: String, head: String = "a3")(sample: Bytes) =
-    node(hex(head + "00581d61" + zeros(28) + "0100" + prefix) ++ sample)
+    tree(At.output)(hex(head + "00581d61" + zeros(28) + "0100" + prefix) ++ sample)
       .flatMap(n => ledger(TxOut.decode(n, mode, forms, newest)))
 
   private def value(n: Node) =
     ledger(Value.decode(n, DecodeField.OutputValue, mode.values, forms.records))
 
   private def relays(prefix: String, suffix: String = "")(sample: Bytes) =
-    node(hex(prefix) ++ sample ++ hex(suffix))
+    tree(At.item)(hex(prefix) ++ sample ++ hex(suffix))
       .flatMap(n => PoolRelays.fromBody(n, version).leftMap(Refusal.Relay(_)))
 
   private def param(key: String)(sample: Bytes) =
-    node(hex("a1" + key) ++ sample).flatMap(n => ledger(ConwayParamUpdate.decode(n)))
+    tree(At.parameterUpdate)(hex("a1" + key) ++ sample).flatMap(n =>
+      ledger(ConwayParamUpdate.decode(n))
+    )
 
   /** A whole transaction of an empty body and witness set whose auxiliary data is the sample, of
     * `shape` when the rule's type takes one form only, and the auxiliary data it keeps.
     */
   private def auxiliary(shape: Option[Shape])(bytes: Bytes): Either[Refusal, Bytes] =
-    node(bytes).flatMap { n =>
-      val fits = (shape, n.value) match
-        case (None, _)                                             => true
-        case (Some(Shape.Map), CborValue.Map(_))                   => true
-        case (Some(Shape.Array), CborValue.Arr(_))                 => true
-        case (Some(Shape.Tag259), CborValue.Tag(t, _)) if t == 259 => true
-        case _                                                     => false
-      shape.filterNot(_ => fits).map(Refusal.Form(_)).toLeft(()).flatMap { _ =>
-        ledger(Tx.fromEnvelope(hex("84a3008001800200a0f5") ++ bytes, era, version))
-          .flatMap(t => present(t.auxiliary))
-      }
+    // the form is told by the first head alone, as `decodeTxAuxDataByTokenType` peeks at it (a
+    // tag of any head width): the auxiliary data itself is read by the transaction's production
+    // decoder, detached records included, never by a generic parse first
+    def head(i: Int) = bytes.byteOr(i)(-1)(_ & 0xff)
+    def argument(width: Int) = (1 to width).foldLeft(BigInt(0))((a, i) => a * 256 + head(i))
+    val tag: Option[BigInt] = head(0) match
+      case h if h >= 0xc0 && h <= 0xd7 => Some(BigInt(h - 0xc0))
+      case 0xd8                        => Some(argument(1))
+      case 0xd9                        => Some(argument(2))
+      case 0xda                        => Some(argument(4))
+      case 0xdb                        => Some(argument(8))
+      case _                           => None
+    val fits = shape match
+      case None               => true
+      case Some(Shape.Map)    => head(0) >= 0xa0 && head(0) <= 0xbf
+      case Some(Shape.Array)  => head(0) >= 0x80 && head(0) <= 0x9f
+      case Some(Shape.Tag259) => tag.contains(BigInt(259))
+      case Some(_)            => false
+    shape.filterNot(_ => fits).map(Refusal.Form(_)).toLeft(()).flatMap { _ =>
+      ledger(Tx.fromEnvelope(hex("84a3008001800200a0f5") ++ bytes, era, version))
+        .flatMap(t => present(t.auxiliary))
     }
 
   // ---- writers
@@ -171,7 +233,7 @@ object ConwayRules:
 
   private def leafHash(name: String, size: Int, site: DecodeField) =
     DatasetRule(s"CborRead.bytesN($size, $name)", Reach.Direct, Writing.Leaf(s"Wire.hash($size)"))(
-      b => node(b).flatMap(n => ledger(CborRead.bytesN(n, size, site)))
+      b => tree(At.item)(b).flatMap(n => ledger(CborRead.bytesN(n, size, site)))
     )(hash(size))
 
   private def credential(site: DecodeField) =
@@ -179,13 +241,13 @@ object ConwayRules:
       "Credential.decode",
       Reach.Direct,
       Writing.Encoder("HaskellStateCodecs.nodeCredential")
-    )(b => node(b).flatMap(n => ledger(Credential.decode(n, site))))(
+    )(b => tree(At.item)(b).flatMap(n => ledger(Credential.decode(n, site))))(
       written(HaskellStateCodecs.nodeCredential)
     )
 
   private def output(forms: TxOut.Forms, name: String) =
     DatasetRule(name, Reach.Direct, txOutCodec)(b =>
-      node(b).flatMap(n => ledger(TxOut.decode(n, mode, forms, newest)))
+      tree(At.output)(b).flatMap(n => ledger(TxOut.decode(n, mode, forms, newest)))
     )(written(UtxoCodecs.txOut))
 
   private def auxiliaryRule(shape: Option[Shape]) =
@@ -226,8 +288,17 @@ object ConwayRules:
 
   /** The rules, by the name of their directory in the corpus. */
   val rules: Map[String, DatasetRule] = Map(
-    "block" -> DatasetRule.unwritten("Block.decodeShelley", Reach.Embedded("[7, block]"))(b =>
-      Block.decodeShelley(hex("8207") ++ b, _ => version).leftMap(Refusal.Chain(_))
+    // as `BlockTransport.check` reads a fetched block: each transaction's body, witness set and
+    // auxiliary data are decoded too (`Tx.fromBlock`)
+    "block" -> DatasetRule.unwritten(
+      "Block.decodeShelley, then Tx.fromBlock",
+      Reach.Embedded("[7, block]")
+    )(b =>
+      Block.decodeShelley(hex("8207") ++ b, _ => version).leftMap(Refusal.Chain(_)).flatMap {
+        case block: Block.Shelley =>
+          block.transactions.traverse_(t => ledger(Tx.fromBlock(t, era, version))).as(block)
+        case other => Right(other)
+      }
     ),
     "header" -> DatasetRule("Header.fromRaw", Reach.Direct, Writing.Kept("Header.Shelley.raw"))(b =>
       Header.fromRaw(era, b, version).leftMap(Refusal.Chain(_))
@@ -258,21 +329,23 @@ object ConwayRules:
       "TxIn.decode",
       Reach.Direct,
       Writing.Encoder("UtxoCodecs.txIn")
-    )(b => node(b).flatMap(n => ledger(TxIn.decode(n))))(written(UtxoCodecs.txIn)),
+    )(b => tree(At.item)(b).flatMap(n => ledger(TxIn.decode(n))))(written(UtxoCodecs.txIn)),
     "transaction_output" -> output(forms, "TxOut.decode"),
     "babbage_transaction_output" -> output(forms, "TxOut.decode"),
     "alonzo_transaction_output" -> output(
       TxOut.Forms.PairOrDatumHash,
       "TxOut.decode (PairOrDatumHash)"
     ),
-    "value" -> DatasetRule("Value.decode", Reach.Direct, valueCodec)(b => node(b).flatMap(value))(
+    "value" -> DatasetRule("Value.decode", Reach.Direct, valueCodec)(b =>
+      tree(At.outputValue)(b).flatMap(value)
+    )(
       written(UtxoCodecs.value)
     ),
     "%multiasset<positive_coin>" -> DatasetRule(
       "Value.decode",
       Reach.Embedded("[0, multiasset]"),
       valueCodec
-    )(b => node(hex("8200") ++ b).flatMap(value))(v =>
+    )(b => tree(At.outputValue)(hex("8200") ++ b).flatMap(value))(v =>
       written(UtxoCodecs.value)(v).flatMap(Step.at(_, List(Index(1))))
     ),
     "mint" -> DatasetRule("TxBody.decode", Reach.Embedded("a body's key 9"), valueCodec)(
@@ -286,7 +359,7 @@ object ConwayRules:
       mintMap(t.mint).flatMap(Step.at(_, List(FirstValue, FirstValue)))
     ),
     "asset_name" -> DatasetRule("Value.decode", Reach.Embedded("an output value"), valueCodec)(b =>
-      node(hex("8200a1581c" + zeros(28) + "a1") ++ b ++ hex("01")).flatMap(value)
+      tree(At.outputValue)(hex("8200a1581c" + zeros(28) + "a1") ++ b ++ hex("01")).flatMap(value)
     )(v => written(UtxoCodecs.value)(v).flatMap(Step.at(_, List(Index(1), FirstValue, FirstKey)))),
     "withdrawals" -> DatasetRule("TxBody.decode", Reach.Embedded("a body's key 5"), govActionCodec)(
       body("05")
@@ -311,14 +384,14 @@ object ConwayRules:
       body("16")
     )(t => written(unsigned)(t.donation)),
     "script" -> DatasetRule.unwritten("Script.decode", Reach.Direct)(b =>
-      node(b).flatMap(n => ledger(Script.decode(n, newest)))
+      tree(At.item)(b).flatMap(n => ledger(Script.decode(n, newest)))
     ),
     "native_script" -> DatasetRule(
       "Script.native (Timelock)",
       Reach.Direct,
       Writing.Kept("the bytes Script.hash is taken over")
     )(b =>
-      node(b).flatMap(n =>
+      tree(At.item)(b).flatMap(n =>
         ledger(Script.native(n, NativeScript.Form.Timelock)).tupleLeft(n.original)
       )
     )((original, script) =>
@@ -343,11 +416,11 @@ object ConwayRules:
     "big_int" -> dataRule(Some(Shape.Integer)),
     "bounded_bytes" -> dataRule(Some(Shape.ByteString)),
     "certificate" -> DatasetRule.unwritten("Certificate.decode", Reach.Direct)(b =>
-      node(b).flatMap(n => ledger(Certificate.decode(n, era, version)))
+      tree(At.certificate)(b).flatMap(n => ledger(Certificate.decode(n, era, version)))
     ),
     "certificates" -> DatasetRule
       .unwritten("CborRead.oset of Certificate.decode, non-empty", Reach.Direct)(b =>
-        node(b).flatMap(n =>
+        tree(At.certificates)(b).flatMap(n =>
           ledger(
             CborRead
               .oset(n, DecodeField.Certificates, version)(Certificate.decode(_, era, version))(
@@ -409,9 +482,11 @@ object ConwayRules:
       "DRep.decode",
       Reach.Direct,
       Writing.Encoder("HaskellStateCodecs.nodeDRep")
-    )(b => node(b).flatMap(n => ledger(DRep.decode(n))))(written(HaskellStateCodecs.nodeDRep)),
+    )(b => tree(At.item)(b).flatMap(n => ledger(DRep.decode(n))))(
+      written(HaskellStateCodecs.nodeDRep)
+    ),
     "voter" -> DatasetRule.unwritten("Voter.decode", Reach.Direct)(b =>
-      node(b).flatMap(n => ledger(Voter.decode(n)))
+      tree(At.item)(b).flatMap(n => ledger(Voter.decode(n)))
     ),
     "vote" -> DatasetRule(
       "VotingProcedures.decode",
@@ -426,7 +501,7 @@ object ConwayRules:
       "VotingProcedures.decode, requireBodyDecodable, non-empty",
       Reach.Direct
     )(b =>
-      node(b).flatMap(n =>
+      tree(At.votingProcedures)(b).flatMap(n =>
         VotingProcedures
           .decode(n, version)
           .flatMap(VotingProcedures.requireBodyDecodable)
@@ -445,21 +520,21 @@ object ConwayRules:
       "GovActionId.decode",
       Reach.Direct,
       Writing.Encoder("HaskellStateCodecs.govActionId")
-    )(b => node(b).flatMap(n => ledger(GovActionId.decode(n))))(
+    )(b => tree(At.actionId)(b).flatMap(n => ledger(GovActionId.decode(n))))(
       written(HaskellStateCodecs.govActionId)
     ),
     "proposal_procedure" -> DatasetRule(
       "Proposal.decode",
       Reach.Direct,
       Writing.Encoder("HaskellStateCodecs.proposal")
-    )(b => node(b).flatMap(n => ledger(Proposal.decode(n, version))))(
+    )(b => tree(At.proposal)(b).flatMap(n => ledger(Proposal.decode(n, version))))(
       written(HaskellStateCodecs.proposal)
     ),
     "proposal_procedures" -> DatasetRule.unwritten(
       "CborRead.oset of Proposal.decode, non-empty",
       Reach.Direct
     )(b =>
-      node(b).flatMap(n =>
+      tree(At.proposals)(b).flatMap(n =>
         ledger(
           CborRead
             .oset(n, DecodeField.ProposalProcedures, version)(Proposal.decode(_, version))(
@@ -478,18 +553,11 @@ object ConwayRules:
         written(HaskellStateCodecs.constitution)(Constitution(anchor, script))
       case _ => Left(Unwritten.NotKept)
     },
-    "protocol_version" -> DatasetRule(
-      "Proposal.decode",
-      Reach.Embedded("a HardFork action"),
-      govActionCodec
-    )(
-      action("8301f6")
-    )(a => govAction(a).flatMap(Step.at(_, List(Index(2))))),
-    "major_protocol_version" -> DatasetRule(
-      "Proposal.decode",
-      Reach.Embedded("a HardFork action's major version"),
-      govActionCodec
-    )(action("8301f682", "00"))(a => govAction(a).flatMap(Step.at(_, List(Index(2), Index(0))))),
+    // `ProtVer` and `Version` themselves, the dataset's types (`EraSpec.hs:131, 169`): the header's
+    // reader of them (a major up to `MaxVersion`, 13), not a hard fork action's, which bounds the
+    // major by the era's `ProtVerHigh` + 1
+    "protocol_version" -> headerLeaf(9, Nil),
+    "major_protocol_version" -> headerLeaf(9, List(Index(0)), b => hex("82") ++ b ++ hex("00")),
     "epoch" -> DatasetRule(
       "Proposal.decode",
       Reach.Embedded("an UpdateCommittee action's member term"),
@@ -502,14 +570,15 @@ object ConwayRules:
       Reach.Embedded("a proposal's deposit"),
       Writing.Encoder("HaskellStateCodecs.proposal")
     )(b =>
-      node(hex("84") ++ b ++ hex("581de0" + zeros(28) + "8106" + "8260" + "5820" + zeros(32)))
-        .flatMap(n => ledger(Proposal.decode(n, version)))
+      tree(At.proposal)(
+        hex("84") ++ b ++ hex("581de0" + zeros(28) + "8106" + "8260" + "5820" + zeros(32))
+      ).flatMap(n => ledger(Proposal.decode(n, version)))
     )(p => written(HaskellStateCodecs.proposal)(p).flatMap(Step.at(_, List(Index(0))))),
     "anchor" -> DatasetRule(
       "Anchor.decode",
       Reach.Direct,
       Writing.Encoder("HaskellStateCodecs.anchor")
-    )(b => node(b).flatMap(n => ledger(Anchor.decode(n, version))))(
+    )(b => tree(At.anchor)(b).flatMap(n => ledger(Anchor.decode(n, version))))(
       written(HaskellStateCodecs.anchor)
     ),
     "url" -> DatasetRule(
@@ -517,7 +586,7 @@ object ConwayRules:
       Reach.Embedded("an anchor"),
       Writing.Encoder("HaskellStateCodecs.anchor")
     )(b =>
-      node(hex("82") ++ b ++ hex("5820" + zeros(32))).flatMap(n =>
+      tree(At.anchor)(hex("82") ++ b ++ hex("5820" + zeros(32))).flatMap(n =>
         ledger(Anchor.decode(n, version))
       )
     )(a => written(HaskellStateCodecs.anchor)(a).flatMap(Step.at(_, List(Index(0))))),
@@ -526,12 +595,12 @@ object ConwayRules:
       Reach.Direct,
       Writing.Encoder("HaskellStateCodecs.rewardAccount")
     )(b =>
-      node(b).flatMap(n =>
+      tree(At.item)(b).flatMap(n =>
         ledger(CborRead.bytes(n, DecodeField.RewardAccount).flatMap(RewardAccount.decode))
       )
     )(written(HaskellStateCodecs.rewardAccount)),
     "address" -> DatasetRule("Address.decode", Reach.Direct, Writing.Kept("Address.raw"))(b =>
-      node(b).flatMap(n =>
+      tree(At.item)(b).flatMap(n =>
         ledger(CborRead.bytes(n, DecodeField.OutputAddress).flatMap(Address.decode(_, mode)))
       )
     )(a => leafBytes(a.raw)),
@@ -568,7 +637,7 @@ object ConwayRules:
       Reach.Embedded("a pool registration"),
       Writing.Kept("PoolParams.metadata")
     )(b =>
-      node(
+      tree(At.certificate)(
         hex(
           "8a03581c" + zeros(28) + "5820" + zeros(32) + "0000d81e820001581de0" + zeros(28) + "8080"
         ) ++ b
@@ -578,21 +647,23 @@ object ConwayRules:
       }
     )(Right(_)),
     "protocol_param_update" -> DatasetRule("ConwayParamUpdate.decode", Reach.Direct, paramValue)(
-      b => node(b).flatMap(n => ledger(ConwayParamUpdate.decode(n)))
+      b => tree(At.parameterUpdate)(b).flatMap(n => ledger(ConwayParamUpdate.decode(n)))
     )(written(HaskellStateCodecs.conwayParamUpdate)),
     "drep_voting_thresholds" -> paramRule("181a", 26),
     "pool_voting_thresholds" -> paramRule("1819", 25),
     "ex_units" -> paramRule("14", 20),
     "ex_unit_prices" -> paramRule("13", 19),
     "cost_models" -> DatasetRule.unwritten("CostModelDecode.decode (Open)", Reach.Direct)(b =>
-      node(b).flatMap(n => ledger(CostModelDecode.decode(n, CostModelDecode.Format.Open)))
+      tree(At.item)(b).flatMap(n => ledger(CostModelDecode.decode(n, CostModelDecode.Format.Open)))
     ),
     "unit_interval" -> DatasetRule(
       "CborRead.rational (Unit)",
       Reach.Direct,
       Writing.Encoder("Wire.unitInterval")
     )(b =>
-      node(b).flatMap(n => ledger(CborRead.rational(n, DecodeField.Quorum, CborRead.Bound.Unit)))
+      tree(At.item)(b).flatMap(n =>
+        ledger(CborRead.rational(n, DecodeField.Quorum, CborRead.Bound.Unit))
+      )
     )(
       written(Wire.unitInterval)
     ),
@@ -601,7 +672,7 @@ object ConwayRules:
       Reach.Direct,
       Writing.Encoder("Wire.nonNegativeInterval")
     )(b =>
-      node(b).flatMap(n =>
+      tree(At.item)(b).flatMap(n =>
         ledger(CborRead.rational(n, DecodeField.PriceMem, CborRead.Bound.NonNegative))
       )
     )(written(Wire.nonNegativeInterval)),
@@ -630,7 +701,7 @@ object ConwayRules:
       "CborRead.bytes (Script.decode's Plutus bytes)",
       Reach.Direct,
       Writing.Leaf("Codec.bytes")
-    )(b => node(b).flatMap(n => ledger(CborRead.bytes(n, site))))(leafBytes)
+    )(b => tree(At.item)(b).flatMap(n => ledger(CborRead.bytes(n, site))))(leafBytes)
 
   private def paramRule(key: String, field: Int) =
     DatasetRule(
