@@ -475,7 +475,17 @@ object Main extends IOApp:
       )
     )
 
-  def run(args: List[String]): IO[ExitCode] = args match
+  def run(args: List[String]): IO[ExitCode] =
+    CommandLine.utf8Output[IO] *> CommandLine
+      .of[IO](args)
+      .flatMap(
+        _.fold(
+          error => IO.consoleForIO.errorln(s"scarab: ${error.message}").as(ExitCode(2)),
+          dispatch
+        )
+      )
+
+  private def dispatch(args: List[String]): IO[ExitCode] = args match
     case "export-scls" :: rest       => xyz.kd5ujc.scarab.node.tools.SclsCommand.runExport(rest)
     case "import-scls" :: rest       => xyz.kd5ujc.scarab.node.tools.SclsCommand.runImport(rest)
     case "import-haskell-db" :: rest => xyz.kd5ujc.scarab.node.tools.HaskellImportCommand.run(rest)
