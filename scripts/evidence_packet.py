@@ -51,6 +51,9 @@ import check_test_coverage
 SCHEMA = "scarab-reviewer-evidence-packet-v1"
 GENERATOR = Path(__file__).resolve()
 REPO = GENERATOR.parents[1]
+# The registry of the Python guards, and the command that runs them all.
+GUARD_REGISTRY = "scripts/guards.json"
+GUARD_RUNNER = b"scripts/guards.py"
 # The generator's own inputs: older revisions are interpreted with this code, so the packet names it.
 GENERATOR_FILES = ("scripts/evidence_packet.py", "scripts/check_test_coverage.py",
                    "scripts/check_conformance_sources.py", "scripts/check_local_paths.py",
@@ -195,12 +198,23 @@ def runs_in_jdk_image(command: Command) -> bool:
     return command.environment in {Environment.JDK_IMAGE, Environment.DEVNET} or command.family is Family.CANDIDATE
 
 
+def registered(root: Path, command: Command) -> bool:
+    """Whether the revision's guard registry (`scripts/guards.json`, read as data) lists the command."""
+    registry = root / GUARD_REGISTRY
+    if not registry.is_file():
+        return False
+    guards = json.loads(registry.read_text())["guards"]
+    return any(command.probe in " ".join(guard.get("argv", ())) for guard in guards)
+
+
 def defined_in(root: Path, records: list[dict], command: Command) -> list[str]:
-    """The revision's workflows and CONTRIBUTING.md that state the command; empty is reported, not hidden."""
+    """The revision's workflows and CONTRIBUTING.md that state the command, or that run the guard registry
+    (`scripts/guards.py`) when it lists the command; empty is reported, not hidden."""
     probe = command.probe.encode()
+    listed = registered(root, command)
     return [r["path"] for r in records
             if (r["path"].startswith(".github/workflows/") or r["path"] == "CONTRIBUTING.md")
-            and probe in (root / r["path"]).read_bytes()]
+            and (probe in (text := (root / r["path"]).read_bytes()) or (listed and GUARD_RUNNER in text))]
 
 
 def git(repo: Path, *args: str, stdin: bytes | None = None) -> bytes:

@@ -42,20 +42,16 @@ step "secret scan (gitleaks, full history)" \
 step "secret scan controls" python3 scripts/check_secret_scan.py
 step "secret scan history controls" python3 scripts/check_secret_scan_history.py
 step "workflow lint" "$docker" run --rm --network none -v "$root":/repo -w /repo "$actionlint" -color
-step "fixture identities and comparison contracts" python3 scripts/check_test_coverage.py
-step "plutus reference views" python3 scripts/plutus_reference.py check
-step "closed error channel guard" python3 scripts/check_error_channels.py
-step "text policy guard" python3 scripts/check_text_policy.py
-step "no new try/catch/finally in main sources" python3 scripts/check_imperative.py
-step "no new sleeps in tests" python3 scripts/check_test_sleeps.py
-step "no absolute home paths" python3 scripts/check_local_paths.py
-step "licence records" python3 scripts/check_notice.py
-step "compatibility register" python3 scripts/render_compatibility.py --check
-step "roadmap register" python3 scripts/render_roadmap.py --check
-step "performance register" python3 scripts/render_performance.py
-step "documented flags" python3 scripts/check_flags_doc.py
-step "documentation drift" python3 scripts/check_docs.py
-step "code map is current" python3 scripts/render_codemap.py --check
+# The Python guards are registered once, in scripts/guards.json, which CI's scripts job runs too; each is a step.
+# The list is read on a descriptor of its own, so a guard that reads its standard input cannot consume it.
+if guards=$(python3 scripts/guards.py --list); then
+  while IFS=$'\t' read -r -u 3 id title; do
+    step "$title" python3 scripts/guards.py --run "$id"
+  done 3<<< "$guards"
+else
+  printf '== guard registry\n   FAILED: guard registry\n'
+  failed+=("guard registry")
+fi
 
 # The triage check reads the live issue list, which is a property of the repository, not of the change under
 # test, so its result is shown but never fails preflight; the nightly triage workflow keeps the report.

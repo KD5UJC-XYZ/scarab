@@ -408,6 +408,38 @@ def scanner_requirement(available, environment):
     raise unittest.SkipTest(SCANNER_SCOPE)
 
 
+class DefinedInTest(unittest.TestCase):
+    """A workflow that runs the guard registry defines the commands the revision's registry lists."""
+
+    def test_the_guard_registry_defines_its_commands_where_it_runs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            files = {".github/workflows/ci.yml": "  - run: python3 scripts/guards.py\n",
+                     ".github/workflows/other.yml": "  - run: python3 scripts/check_error_channels.py\n",
+                     "CONTRIBUTING.md": "Run the guards.\n",
+                     packet.GUARD_REGISTRY: json.dumps({"guards": [
+                         {"id": "local-paths", "title": "t", "argv": ["scripts/check_local_paths.py"]}]})}
+            for name, text in files.items():
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                (root / name).write_text(text)
+            records = [dict(path=name) for name in sorted(files)]
+            by_probe = {c.probe: c for c in packet.commands(COMMIT)}
+            self.assertEqual(packet.defined_in(root, records, by_probe["scripts/check_local_paths.py"]),
+                             [".github/workflows/ci.yml"])
+            self.assertEqual(packet.defined_in(root, records, by_probe["scripts/check_error_channels.py"]),
+                             [".github/workflows/other.yml"], "a command the registry does not list is read as text")
+            (root / packet.GUARD_REGISTRY).unlink()
+            self.assertEqual(packet.defined_in(root, records, by_probe["scripts/check_local_paths.py"]), [],
+                             "a revision without the registry is read as text")
+
+    def test_this_revision_defines_every_guard_command_in_ci(self):
+        records = [dict(path=".github/workflows/ci.yml")]
+        for probe in ("scripts/check_test_coverage.py", "scripts/check_local_paths.py",
+                      "scripts/check_error_channels.py"):
+            command = next(c for c in packet.commands(COMMIT) if c.probe == probe)
+            self.assertEqual(packet.defined_in(packet.REPO, records, command), [".github/workflows/ci.yml"], probe)
+
+
 def marked(member):
     """`member` with gitleaks' inline allow marker on the same line as its secret."""
     return member.replace(b'"}', b' # gitleaks:allow"}').replace(b'\\u0022"}', b'\\u0022 # gitleaks:allow"}')
