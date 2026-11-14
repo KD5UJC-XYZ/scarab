@@ -10,7 +10,7 @@ and the gates of a change in [CONTRIBUTING.md](../CONTRIBUTING.md#gates-and-cere
 Three requirements of the owner underlie the rules (owner's decisions, 2026-10-15 and 2026-11-14,
 [decisions register](decisions.md#code)):
 - write functional, type-safe code that leans on the compiler to enforce correctness as far as it can;
-- keep using the cats-mtl capabilities (`Ask`, `Local`, `Stateful` and the others), and lean on the compiler with
+- keep using `Ask`, `Stateful`, Reader and the other capabilities of cats-mtl, and lean on the compiler with
   syntax classes, implicit derivation, givens and `using` clauses: elegant Scala, with type parameters wherever
   they fit;
 - make code correct by construction, not correct by the order of its operations.
@@ -139,7 +139,7 @@ avoided. A suite returns its effect to the test framework, or runs it under `Tes
   may block for it (a JVM signal handler, a library's log hook), is a `Dispatcher` owned by a `Resource`.
   The site carries a comment that gives the callback's contract.
 - **Enforcement:** review only; a guard is planned.
-- **Why:** the owner's ruling of 2026-11-14.
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)).
 
 <a id="eff-6"></a>
 ### EFF-6. Time comes from `Clock[F]`
@@ -151,7 +151,7 @@ Code reads the time only through `Clock[F]` (`realTime`, `monotonic`, `timed`). 
 - **Exceptions:** the timed region of a measurement tool ([FUN-2](#fun-2) (e)), where `Clock[F]` would add
   allocation to what is timed. The site carries a comment that says so.
 - **Enforcement:** review only; a guard is planned.
-- **Why:** the owner's ruling of 2026-11-14; [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md): time is
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)); [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md): time is
   an effect, swappable for tests (`TestControl`).
 
 <a id="err"></a>
@@ -241,7 +241,7 @@ parser at a boundary ([STR-2](#str-2)). Between the two, text is a typed value.
 - **Exceptions:** none.
 - **Enforcement:** review only; a guard is planned. Leftovers are tracked under
   [#386](https://github.com/KD5UJC-XYZ/scarab/issues/386).
-- **Why:** the owner's ruling of 2026-11-14; [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md): no
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)); [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md): no
   string-based control flow.
 
 <a id="str-2"></a>
@@ -258,7 +258,7 @@ them up by name later.
 - **Enforcement:** review only, except one part: `scripts/check_text_policy.py` refuses, in `ledger` main, a
   read of a CBOR text field (`Value.Text`) outside its shared reader (`CborRead.text`) and the sites the
   guard allowlists with a reason.
-- **Why:** the owner's ruling of 2026-11-14.
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)).
 
 <a id="str-3"></a>
 ### STR-3. No decision depends on a String's contents
@@ -273,7 +273,7 @@ Outside a parser, no decision depends on the contents of a String:
 - **Scope:** main.
 - **Exceptions:** none.
 - **Enforcement:** review only; a guard is planned.
-- **Why:** the owner's ruling of 2026-11-14; [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md).
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)); [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md).
 
 <a id="fun"></a>
 ## Functional style and the narrow imperative exceptions
@@ -393,7 +393,7 @@ them in their scope. In particular:
 - **Scope:** tests, tools.
 - **Exceptions:** as stated.
 - **Enforcement:** the warts and `-Wsafe-init` do not apply to tests or `tools` (`build.sbt`).
-- **Why:** the owner's ruling of 2026-11-14.
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)).
 
 <a id="tst-2"></a>
 ### TST-2. Tests do not sleep
@@ -434,7 +434,7 @@ rendered text (`getMessage`, `toString`, a substring of either).
 - **Scope:** tests, tools.
 - **Exceptions:** a test of the rendering itself (a log line, CLI output, wire text; [CNF-3](#cnf-3)).
 - **Enforcement:** review only; a guard is planned.
-- **Why:** the owner's ruling of 2026-11-14; [ERR-2](#err-2).
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)); [ERR-2](#err-2).
 
 <a id="tst-5"></a>
 ### TST-5. Concurrency tests evaluate their waits first
@@ -530,7 +530,7 @@ may read the system clock and mutate.
 - **Scope:** tools.
 - **Exceptions:** as stated.
 - **Enforcement:** `build.sbt` drops `-Wsafe-init` and the wart errors for `tools`. The rest is review only.
-- **Why:** the owner's ruling of 2026-11-14; `build.sbt`.
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)); `build.sbt`.
 
 <a id="typ"></a>
 ## Types: correct by construction
@@ -638,7 +638,7 @@ in more than one way. Effect boundaries stay tagless final ([EFF-1](#eff-1)).
 - **Scope:** main.
 - **Exceptions:** none.
 - **Enforcement:** review only.
-- **Why:** the owner's ruling of 2026-11-14.
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)).
 
 <a id="stk"></a>
 ## Stack safety
@@ -670,7 +670,7 @@ CEK machine of the Plutus evaluator stays an explicit machine.
 - **Scope:** main.
 - **Exceptions:** the CEK machine, as stated.
 - **Enforcement:** review only.
-- **Why:** the owner's ruling of 2026-11-14; [ADR 0011](adr/0011-stack-safety.md).
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)); [ADR 0011](adr/0011-stack-safety.md).
 
 <a id="stk-3"></a>
 ### STK-3. Tested on a small stack
@@ -735,8 +735,8 @@ exception to the default is established only by reading the reference at its pin
 ## The reference
 
 The Haskell node is the reference ([ADR 0001](adr/0001-haskell-node-as-reference.md)). REF-1 to REF-4 are
-the owner's decision of 2026-11-14
-([#474](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6880015076)), which restates
+the owner's decision of 2026-11-14 ([decisions register](decisions.md#reference-fidelity),
+[#474](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6880015076)), which restates
 the standing rule on reference bugs
 ([#474](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849)) with exact boundaries.
 ADR 0001 is not amended by it.
@@ -781,8 +781,8 @@ For REF-1 to REF-4:
 - **Exceptions:** none.
 - **Enforcement:** `scripts/pr_policy.py` requires the "Deviations from the reference" section
   ([REF-7](#ref-7)). Classification is review only.
-- **Why:** [ADR 0001](adr/0001-haskell-node-as-reference.md);
-  [the owner's approval](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6880015076).
+- **Why:** [ADR 0001](adr/0001-haskell-node-as-reference.md); owner's decision, 2026-11-14
+  ([decisions register](decisions.md#reference-fidelity)).
 
 <a id="ref-5"></a>
 ### REF-5. No Deviation on an agent's own accord
@@ -1069,8 +1069,9 @@ document's text.
 ### DOC-4. Instructions, not quotations
 
 An agent-facing document states each rule as an instruction to follow. It never quotes the owner and never
-excerpts a conversation. Where a rule needs a reason, it names the owner's decision with its date and links its row
-in the [decisions register](decisions.md), as "owner's decision, 2026-11-14" does.
+excerpts a conversation. Where a rule's reason is a decision of the owner, the rule names it with its date and links
+its row in the [decisions register](decisions.md), as "owner's decision, 2026-11-14" does; any other reason (an ADR,
+a measurement, the reference, an issue) is cited as it is.
 
 - **Scope:** [AGENTS.md](../AGENTS.md), [CONTRIBUTING.md](../CONTRIBUTING.md), this document, the
   [playbooks](playbooks/README.md), the pull request template and the issue templates.

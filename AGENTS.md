@@ -62,7 +62,7 @@ Then:
 
 Three requirements of the owner underlie the rules ([decisions register](docs/decisions.md#code)):
 - write functional, type-safe code that leans on the compiler to enforce correctness as far as it can;
-- keep using the cats-mtl capabilities (`Ask`, `Local`, `Stateful` and the others), and lean on the compiler with
+- keep using `Ask`, `Stateful`, Reader and the other capabilities of cats-mtl, and lean on the compiler with
   syntax classes, implicit derivation, givens and `using` clauses: elegant Scala, with type parameters wherever
   they fit;
 - make code correct by construction, not correct by the order of its operations.
