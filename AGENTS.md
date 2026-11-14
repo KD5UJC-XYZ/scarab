@@ -131,10 +131,11 @@ scala code … I love the use of type parameters when I can use them"*.
   [decisions register](docs/decisions.md#networking-and-local-clients) (#953): do not chase the reference's
   behaviour at other bytes or locales; only the owner reopens the rule. It is not a precedent: any other
   deviation still needs the owner's approval first.
-- Pure rules; exact `Rational` arithmetic; anything hashed or signed is hashed over its original bytes,
-  except where the reference itself signs a re-encoding: a header's KES signature covers its body
-  encoded again (`Praos/BlockHeader.hs:113-117`, cardano-ledger f649f975), its hash the original
-  bytes ([CONTRIBUTING.md](CONTRIBUTING.md#style-rules), original-bytes rule).
+- Pure rules; exact `Rational` arithmetic.
+- Hash and sign exactly the bytes the reference hashes and signs: by default the bytes as received,
+  kept beside the decoded value; where the reference hashes or signs a re-encoding, re-encode as it
+  does and cite the pinned upstream line at that site. An exception is established only by reading
+  the reference at its pinned version ([original-bytes rule](CONTRIBUTING.md#style-rules)).
 - Stack safety ([ADR 0011](docs/adr/0011-stack-safety.md)): recursion whose depth or width comes from outside
   data (blocks, peers, files, queries) is a library fold/traversal, `@tailrec`, `tailRecM` over a typed
   state, or an explicit stack machine; never recursion inside an `Either`/`Option` for-comprehension.
