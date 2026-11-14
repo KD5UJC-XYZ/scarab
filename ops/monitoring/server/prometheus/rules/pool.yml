@@ -92,13 +92,16 @@ groups:
         expr: >-
           delta(cardano_node_metrics_nodeCannotForge_int{role="pool"}[15m]) > 0
           or increase(scarab_forge_failed_total{role="pool"}[15m]) > 0
+          or increase(scarab_forge_defects_total{role="pool"}[15m]) > 0
         for: 0m
         labels: {severity: critical}
         annotations:
           summary: "{{ $labels.container }}: the forger gave a slot up for a fault of its own"
           description: >-
             `nodeCannotForge` (the pool led the slot and the certificate's window has not begun) or `forgeFailed`
-            (a refusal of Scarab's own: the ledger view, the protocol, the block's assembly) in the node log.
+            (a refusal of Scarab's own: the ledger view, the protocol, the block's assembly) or `forgeDefect` (a block
+            built that failed a check only a bug of Scarab's can fail; no block, its transactions evicted) in the
+            node log.
       - alert: PoolForgingDisabled
         expr: cardano_node_metrics_forging_enabled_int{role="pool"} == 0
         for: 5m
