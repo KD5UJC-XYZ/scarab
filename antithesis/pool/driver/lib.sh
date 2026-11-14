@@ -38,7 +38,7 @@ CANARY_SUBMITTED="the writeBits transaction was submitted to s1 and answered"
 HASKELL_REFUSED="a Haskell pool never refuses a block as invalid"
 SCARAB_REFUSED="Scarab never refuses a block as invalid"
 SCARAB_FATAL="Scarab never logs a fatal event"
-SCARAB_FALSE_CLOCK="Scarab never reports the clock moved back for two readings in one slot, time moving forward"
+SCARAB_FALSE_CLOCK="Scarab never traces the clock moved back on a wake over 1 µs before its slot, time moving forward"
 FORK_BELOW_K="the cluster's fork depth stays below k"
 FORK_SEEN="a fork is observed"
 PAYMENT_S1="s1 accepts a payment"
@@ -160,8 +160,13 @@ scarab_fatal() {
 }
 
 # The first `systemClockMovedBack` of s1's log past its offset whose `prevTime` and `newTime` fall in one slot, with
-# `newTime` the later. Slots are counted from the genesis's `systemStart` by its `slotLength`, as `EpochGeometry`
-# counts them; whole seconds are subtracted before the fraction is added, so the arithmetic stays exact enough.
+# `newTime` the later and more than 1 µs (1.5, for the log's microseconds and float error) before the next slot's
+# start: a wake that early is #629's millisecond floor. The reference floors its wait to the microsecond
+# (`threadDelay`), so it too can wake a fraction of a microsecond early and trace `SystemClockMovedBack`. A
+# cardano-node 11.1.3 pool did, 144 ns before its slot, in a platform run of 2026-11-14. Scarab, floored as the
+# reference since #955, does that on the platform's exact sleeps far more often; that is not what this detects.
+# Slots are counted from the genesis's `systemStart` by its `slotLength`, as `EpochGeometry` counts them; whole
+# seconds are subtracted before the fraction is added, so the arithmetic stays exact enough.
 scarab_false_clock() {
   local offset_file="$STATE_DIR/offset-clock-s1" log=/logs/s1.log genesis=/env/net/shelley-genesis.json size from found
   [ -f "$log" ] && [ -f "$genesis" ] || return 1
@@ -173,10 +178,13 @@ scarab_false_clock() {
     def whole: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
     def fraction: (capture("\\.(?<f>[0-9]+)Z$") | "0." + .f | tonumber) // 0;
     ($g.systemStart | whole) as $start
-    | def slot: ((whole - $start) + fraction) / $g.slotLength | floor;
+    | def since: (whole - $start) + fraction;
+    def slot: since / $g.slotLength | floor;
+    def early: ((slot + 1) * $g.slotLength) - since;
     first(inputs | fromjson? | select(.newTime != null and .prevTime != null)
           | select((.newTime | slot) == (.prevTime | slot)
-                   and ((.newTime | whole) - (.prevTime | whole)) + (.newTime | fraction) - (.prevTime | fraction) > 0))
+                   and ((.newTime | whole) - (.prevTime | whole)) + (.newTime | fraction) - (.prevTime | fraction) > 0
+                   and (.newTime | early) > 0.0000015))
     // empty')
   echo $(( size > 4096 ? size - 4096 : 0 )) > "$offset_file"
   [ -n "$found" ] || return 1
