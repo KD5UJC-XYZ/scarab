@@ -37,11 +37,13 @@ import xyz.kd5ujc.scarab.storage.haskell.state.*
   * The `state` file is in the layout of the reference build that wrote the input database
   * ([[Config.layout]], `--reference-build`): it must decode completely in that layout, and the
   * state it decodes to goes into the snapshot, written again in that layout, with that build
-  * recorded ([[SnapshotV10]]). The codec writes a reference state again byte for byte, so the
-  * snapshot holds the file's own bytes, but for what the reference itself drops on reading: of two
-  * governance proposals with one id it keeps the first (`decSharePlusCBOR`, cardano-ledger
-  * f649f975, `Conway/Governance/Proposals.hs:401-406`), and the snapshot, read as written
-  * ([[ProposalsReading.AsWritten]]), keeps it alone. Nothing is converted between builds.
+  * recorded ([[SnapshotV10]]). For the reference files the suites hold, that is the file's own
+  * bytes, but it is not a promise of byte identity: the encoding drops what the reference drops on
+  * reading (of two governance proposals with one id it keeps the first, `decSharePlusCBOR`,
+  * cardano-ledger f649f975, `Conway/Governance/Proposals.hs:401-406`, and the snapshot, read as
+  * written ([[ProposalsReading.AsWritten]]), keeps it alone), and it writes a value the layout
+  * allows in more than one form in the codec's form (`LeiosLayoutSuite` has two). Nothing is
+  * converted between builds.
   */
 object LedgerSnapshotImport:
   enum Trust:
