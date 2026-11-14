@@ -131,9 +131,8 @@ with a pattern that matches your own shell command line.
   helpers too: no `Either[String, …]`, string-based control flow or generic `Failure(message: String)`
   wrapper standing in for domain cases. Never use `raiseError`/`throw` for a domain error; IO
   exceptions are mapped to `StorageError`/`PeerError` at the boundary only. No `.get`/`.toOption.get`
-  on values that are not provably present. The remaining sweep and CI guard are tracked by M11-E
-  in [the roadmap](docs/roadmap.md). The original #82 is closed; the semantic follow-up is
-  [#189](https://github.com/KD5UJC-XYZ/scarab/issues/189).
+  on values that are not provably present. `scripts/check_error_channels.py` refuses a declared `Either[String, …]`; the free-form strings
+  left in error ADTs are tracked in [#386](https://github.com/KD5UJC-XYZ/scarab/issues/386).
 - **Functional code by default.** Imperative, side-effecting implementations are kept only for the
   exceptions that [AGENTS.md](AGENTS.md#how-code-is-written-here) lists (a measured
   performance-critical path, recorded in [performance.md](docs/performance.md), and a few narrow
@@ -142,14 +141,9 @@ with a pattern that matches your own shell command line.
   values. Effects wrap them, not the other way around.
 - **Laws and properties.** New algebras and stateful structures get cats-laws or ScalaCheck
   properties (round trips, model equivalence, rollback), not only examples.
-- **Original-bytes rule.** Anything that is hashed or signed (block bodies, transaction bodies,
-  witness sets, scripts, datums, auxiliary data) is hashed over the bytes as received, never over a
-  re-encoding. Keep the original bytes next to the decoded value. The exception is where the
-  reference itself signs a re-encoding: a block header's KES signature is checked over the header
-  body encoded again (`getSignableRepresentation`, cardano-ledger f649f975
-  `libs/cardano-protocol/src/Cardano/Protocol/Praos/BlockHeader.hs:113-117`,
-  `TPraos/BlockHeader.hs:170-171`; `HeaderBodyEncoding`), while the header hash is over the bytes as
-  received.
+- **Original-bytes rule.** Hash and sign exactly the bytes the reference hashes and signs: by
+  default the bytes as received. [Hashed and signed bytes](docs/design/hashed-bytes.md) lists the
+  places where the reference hashes or signs a re-encoding.
 - Exact arithmetic (`Rational`) in ledger calculations; no floating point.
 - Format with scalafmt (`scalafmtAll`); SPDX header (`// SPDX-License-Identifier: Apache-2.0`) on new source files.
 - Keep comments outside parameter and argument lists. Document parameter contracts in the

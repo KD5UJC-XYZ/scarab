@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.json
 
+import xyz.kd5ujc.scarab.codec.HaskellShow
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 

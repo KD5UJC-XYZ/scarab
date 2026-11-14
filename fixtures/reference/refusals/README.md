@@ -66,11 +66,9 @@ LocalTxSubmission serve Conway only, so this compares the rule and its encoding,
 path.
 
 The 2026-10-26 corpus contains 105 transactions: 7 each in Shelley, Allegra and Mary,
-8 in Alonzo, 28 in Babbage and 48 in Conway. Of these, 103 compare the complete refusal bytes. Two `utxos-script-fails-flag-true` cases (one in Babbage and one in Conway)
-have an explicitly incomplete comparison under [#491](https://github.com/KD5UJC-XYZ/scarab/issues/491):
-the suite removes only the `PlutusFailure` text to compare the remaining structure, checks that the
-original refusal bytes still differ, and cancels the case. Neither is counted as a conformance pass;
-the recorded original bytes are unchanged. Every other case whose bytes differ fails. A family
+8 in Alonzo, 28 in Babbage and 48 in Conway. Every case compares the complete refusal bytes,
+including the `PlutusFailure` descriptions of both `utxos-script-fails-flag-true` cases. The original
+recordings are unchanged. Every difference fails; no field is removed and no case is canceled. A family
 that `manifest.json` requires for an era and no case of that era covers fails the era's coverage test:
 missing coverage is an incomplete gate, never a pass. Batches were recorded only while the tip and the
 mempool slot held still, with an empty mempool, so the validity-interval slot in a refusal is the one
@@ -142,8 +140,7 @@ native refusal lists as complete bytes. Their original inputs and native/formal 
 separate from these devnet captures. The recorded devnet corpus covers the six Shelley-based eras.
 PPUP is identified at its era-specific embedding: directly under UTXO through Mary and under UTXOS
 in Alonzo and Babbage. The early-era cases include three failing certificates and complete accumulated
-failures; Alonzo also includes an invalid validity flag with an empty script set, requiring no
-PlutusFailure-text exception. These STS/LEDGERS comparisons do not establish Byron transaction-error
+failures; Alonzo also includes an invalid validity flag with an empty script set, with complete failure-byte comparison. These STS/LEDGERS comparisons do not establish Byron transaction-error
 coverage or exhaust every constructor within each family.
 
 ## Refresh

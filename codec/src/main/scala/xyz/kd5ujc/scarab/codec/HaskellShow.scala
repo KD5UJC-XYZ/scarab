@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package xyz.kd5ujc.scarab.ledger.json
-
-import xyz.kd5ujc.scarab.codec.Bytes
+package xyz.kd5ujc.scarab.codec
 
 /** The `Show` renderings of `String`, `Char` and `ByteString` that the reference's JSON values and
   * parse errors print through: ghc-internal 9.1003.0 `GHC/Internal/Show.hs` (`showLitChar` 375-388,
@@ -9,7 +7,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * 2.1.3 `Show Text` (`Data/Text/Show.hs:48-49`, a `String` of the code points) and bytestring
   * 0.12.2.0 `Show ByteString` (`Data/ByteString/Internal/Type.hs:330-331`, one `Char` per byte).
   */
-private[json] object HaskellShow:
+private[scarab] object HaskellShow:
   private val asciiTab =
     ("NUL SOH STX ETX EOT ENQ ACK BEL BS HT LF VT FF CR SO SI " +
       "DLE DC1 DC2 DC3 DC4 NAK SYN ETB CAN EM SUB ESC FS GS RS US SP").split(' ').toVector

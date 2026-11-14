@@ -36,4 +36,6 @@ Original Apache-2.0 thin observer/generation code; upstream notices/licenses rem
 `fixtures/licenses` and fetched source distributions. No signing keys or production data.
 
 This finite decoder/predicate matrix does not prove all auxiliary inputs, surrounding transaction
-admission or historical diagnostic bytes. Diagnostic strings are outside the acceptance scope.
+admission or historical diagnostic bytes. These observations do not measure diagnostic strings;
+complete remaining presentation parity is required under [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796)
+and the [ADR 0001 amendment](../../../docs/adr/0001-haskell-node-as-reference.md#amendment-2026-11-04-exact-diagnostic-and-refusal-parity).

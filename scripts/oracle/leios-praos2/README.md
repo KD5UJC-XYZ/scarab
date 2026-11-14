@@ -32,7 +32,10 @@ confined to this fixture generator.
 Every accepted protocol-state field is compared: last slot, counters, six nonces and the
 announcement (issuer, hash and size). Refusals compare their constructor and domain arguments.
 The fixture also retains the complete native diagnostic. The comparison does not establish
-equivalence of backend diagnostic strings or the textual rendering of errors; the VRF certificate
+equivalence of backend diagnostic strings or the textual rendering of errors. Complete remaining
+native presentation parity is required under [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796)
+and the [ADR 0001 amendment](../../../docs/adr/0001-haskell-node-as-reference.md#amendment-2026-11-04-exact-diagnostic-and-refusal-parity);
+the VRF certificate
 is already retained in the input header. This is header validation and state-transition evidence,
 not ledger/body validation, forecast production, certificate aggregation, forging or live-node
 interoperability. `reupdate` cases exercise the trusted-header path and do not imply that a

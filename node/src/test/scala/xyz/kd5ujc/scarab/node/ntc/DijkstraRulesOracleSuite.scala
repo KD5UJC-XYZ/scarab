@@ -147,6 +147,9 @@ class DijkstraRulesOracleSuite extends FunSuite:
       )
 
   /** The item after the tag of `[tag, item]`, as its bytes. */
+  private def encoded(f: PredicateFailure): Bytes =
+    PredicateFailureCbor.ledger(f).fold(error => fail(error.message), identity)
+
   private def payload(conway: Bytes): Bytes = node(conway).value match
     case Value.Arr(Vector(_, item)) => item.original
     case other                      => fail(s"not a constructor of one field: $other")
@@ -155,7 +158,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
     * UTXOW's `UtxoFailure`.
     */
   private def conway(f: PredicateFailure): Bytes =
-    payload(CborOut.build(w => PredicateFailureCbor.ledger(w, f)))
+    payload(encoded(f))
 
   /** Dijkstra's failure types write a `Mismatch` as a record of its two values (`To mm`:
     * `Dijkstra/Rules/Gov.hs:168-169, 180-181`, `GovCert.hs:81, 83`), where Conway's write them in
@@ -245,7 +248,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
     def conwayUtxo(tag: Int, u: UtxoFailure): Bytes =
       val conway =
         payload(
-          payload(CborOut.build(w => PredicateFailureCbor.ledger(w, PredicateFailure.utxo(u))))
+          payload(encoded(PredicateFailure.utxo(u)))
         )
       node(conway).value match
         case Value.Arr(items) =>
@@ -259,7 +262,7 @@ class DijkstraRulesOracleSuite extends FunSuite:
       }
     // the UTXOW failures without a `Mismatch` keep Conway's tags and payloads (`Utxow.hs:381-401`)
     def conwayUtxow(c: UtxowFailure): Bytes =
-      payload(CborOut.build(w => PredicateFailureCbor.ledger(w, PredicateFailure.utxow(c))))
+      payload(encoded(PredicateFailure.utxow(c)))
     def utxo(u: DijkstraUtxoFailure): Bytes = u match
       case DijkstraUtxoFailure.FeeTooSmall(m) => mismatch(u.tag, m)(PredicateFailureCbor.coin)
       case DijkstraUtxoFailure.MaxTxSize(m)   => mismatch(u.tag, m)(PredicateFailureCbor.coin)

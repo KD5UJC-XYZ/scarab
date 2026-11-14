@@ -42,7 +42,11 @@ changes are made. The original 13 conformance-harness qualifications remain unch
 
 `manifest.json` binds the source, image, native executable and original/public file hashes. Raw
 requests, native diagnostics and build output remain outside the checkout; the fixture omits
-unstable diagnostic text and retains typed stage categories. No semantic native run failed. An
+unstable diagnostic text and retains typed stage categories. This bounded evidence does not establish
+diagnostic parity; the required exposure/repeatability proof and remaining presentation work are
+tracked under [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796) in
+[the diagnostic plan](../../../docs/design/diagnostic-parity.md#stage-2-prove-exposure-repeatability-and-diagnostic-capture).
+No semantic native run failed. An
 initial build-launch attempt used a login shell that hid GHC from PATH; it failed before compiling,
 was retained in private evidence, and was corrected by preserving the image's normal environment.
 

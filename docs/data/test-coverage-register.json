@@ -582,14 +582,16 @@
       "id": "v1context-refusal-membership",
       "classification": "sampling-limit",
       "status": "bounded",
-      "scope": "Refused cases of V1ContextSuite (v1-context, context-errors submissions and plutus-boundaries transactions).",
-      "assertion": "The one cause the recorded reference text names (validation-tag mismatch, or a translation error and its source) is exactly the failure the Scala phase-2, transaction and block rules give.",
-      "rationale": "The recorded texts are cut at 1,500 characters and most cases keep no raw reason, so neither the reference's whole failure list nor the encoded reason is compared.",
+      "scope": "Refused cases of V1ContextSuite and ContextRefusalReasonSuite (v1-context, context-errors submissions and plutus-boundaries transactions).",
+      "assertion": "Every refused context submission with recorded reference ApplyTxErr bytes is replayed through the Conway transaction rule and its complete encoded reason must equal the recording, without exclusions. For cases without raw reason bytes, the recorded cause is checked against the Scala phase-2, transaction and block rules.",
+      "rationale": "The v1-context and plutus-boundaries texts are cut at 1,500 characters and keep no raw reason, so those cases compare neither the whole reference failure list nor the encoded reason; a fresh recording lifts that bound (#434).",
       "owner": "ledger maintainer",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/434",
-      "resolution": "Covered once each refused case carries the reference's raw reason and a node-module suite asserts the encoded Scala refusal equals it byte for byte.",
+      "resolution": "Covered once every refused case carries the reference's raw reason; the recorded submissions already do and are compared byte for byte, the rest await a re-recording.",
       "evidence": [
+        "node/src/test/scala/xyz/kd5ujc/scarab/ledger/ContextRefusalReasonSuite.scala",
         "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/V1ContextSuite.scala",
+        "fixtures/reference/context-errors/submissions/conway-pv10.json",
         "fixtures/reference/v1-context/README.md"
       ],
       "candidateRequired": false
@@ -620,7 +622,7 @@
       "rationale": "First-failure comparisons cannot show check-order regressions or a missing accumulated failure, and replays of accepted chains never contain a refused transaction.",
       "owner": "Scarab maintainers",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/401",
-      "resolution": "Covered when every recorded case compares equal and the complete required era/family scope is covered (#401). The 2026-10-26 corpus has 105 transactions comprising 103 complete byte comparisons and two incomplete PlutusFailure-text comparisons (#491). Those two remove only that text for the partial comparison, assert the original bytes still differ and cancel; they are not conformance passes. Other differing cases fail.",
+      "resolution": "Covered when every recorded case compares equal and the complete required era/family scope is covered (#401). Every retained case now compares complete bytes, including both former #491 explicit-error text gaps. The recorded corpus does not cover every evaluation-error constructor (#796), and missing raw context refusals remain #434.",
       "evidence": [
         "fixtures/reference/refusals/manifest.json",
         "fixtures/reference/refusals/README.md",
@@ -669,15 +671,52 @@
       "id": "leios-praos2-headers",
       "classification": "native-parity",
       "status": "covered",
-      "scope": "Praos2 header verdict constructor and domain arguments, all accepted protocol-state fields, and certification-slot arithmetic under supplied forecast inputs. Native backend diagnostic rendering is retained but not compared; this is not ledger/body or forecast-production conformance.",
+      "scope": "Praos2 header verdict constructor and domain arguments, all accepted protocol-state fields, and certification-slot arithmetic under supplied forecast inputs. Native backend diagnostic rendering is retained but not compared in this bounded evidence; complete remaining presentation parity is required under #796; this is not ledger/body or forecast-production conformance.",
       "assertion": "Praos2ReferenceSuite compares all 1100 recorded headers and 61 synthetic native results without exclusions, state-field masks or numeric tolerances.",
       "rationale": "The captured chain has no announcement/certificate headers; deterministic native-signed synthetic headers and explicit state/forecast boundaries supply those cases.",
       "owner": "consensus",
       "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/746",
-      "resolution": "Keep the exact header-decision/state contract when refreshing the pinned build; node integration and its ledger forecast remain #73.",
+      "resolution": "Keep the exact header-decision/state contract when refreshing the pinned build; node integration and its ledger forecast remain #73. Complete native diagnostic rendering/exposure remains required under #796 and the ADR0001 amendment.",
       "evidence": [
         "fixtures/reference/leios-praos2/provenance.json",
         "node/src/test/scala/xyz/kd5ujc/scarab/consensus/Praos2ReferenceSuite.scala"
+      ],
+      "candidateRequired": false
+    },
+    {
+      "id": "plutus-diagnostic-contexts",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The complete finite typed-context/argument/Data diagnostic corpus in plutus-diagnostics, plus recorded explicit-error refusal descriptions in context-errors and refusals.",
+      "assertion": "Assert every native context/argument/Data text and every recorded raw refusal as a whole; no expected divergence, field mask or canceled case. Check arbitrary datum nesting on a small-stack thread.",
+      "rationale": "The reference failure description includes the script/hash, CEK error, protocol version and formatted context; a short provider message or constructor-name containment cannot establish byte equality.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/781",
+      "resolution": "Retain all native observations and whole refusal comparisons. The finite corpus covers explicit UPLC error descriptions; other CEK error printers remain required under #796, and unrecorded raw reasons remain #434.",
+      "evidence": [
+        "fixtures/reference/plutus-diagnostics/README.md",
+        "fixtures/reference/plutus-diagnostics/provenance.json",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/PlutusContextTextSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/ledger/ContextRefusalReasonSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
+      ],
+      "candidateRequired": true
+    },
+    {
+      "id": "reference-diagnostic-presentation",
+      "classification": "native-parity",
+      "status": "open",
+      "scope": "Complete diagnostics and refusal presentation at supported reference-facing interfaces across mirrored subsystems, including all evaluation-error constructors and raw refusal recordings.",
+      "assertion": "Require the complete native bytes and corresponding text for every inventoried category; distinguish API-only evidence, actual wire exposure and missing cases. No provider-message fallback, mask, divergence or cancellation establishes conformance.",
+      "rationale": "Finite explicit-error context controls do not establish full error-printer or codebase-wide diagnostic parity; the earlier wording waiver is superseded.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/796",
+      "resolution": "Complete the inventory, native exposure and repeatability proofs, lossless typed diagnostics, full printers and provenance-bound raw captures described in the diagnostic plan. Any demonstrated native variability on a required boundary remains an explicit owner blocker.",
+      "evidence": [
+        "docs/adr/0001-haskell-node-as-reference.md",
+        "docs/design/diagnostic-parity.md",
+        "fixtures/reference/plutus-diagnostics/README.md",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
       ],
       "candidateRequired": false
     },

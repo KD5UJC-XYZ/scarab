@@ -165,7 +165,11 @@ class UpstreamMultiLedgerConformanceSuite extends FunSuite:
             case LedgerFailure.Rejected(_, causes) => causes.toChain.toVector
             case other                             => fail(s"expected a ledger refusal, got $other")
           val wire = Cbor
-            .decode(PredicateFailureCbor.applyTxError(predicates))
+            .decode(
+              PredicateFailureCbor
+                .applyTxError(predicates)
+                .fold(error => fail(error.message), identity)
+            )
             .fold(e => fail(e.message), identity)
           val encoded = array(array(wire).head)(1).original
           assertEquals(encoded.hex, item(id, "implementation-failure").original.hex)

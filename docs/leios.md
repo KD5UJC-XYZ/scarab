@@ -915,7 +915,10 @@ or certificates. A further 61 synthetic cases cover 19 accepted transitions, 36 
 timing results, including valid native-signed announcements/certificates, rejection precedence,
 counter increments and unsigned overflow. `Praos2ReferenceSuite` retains all cases and compares
 all accepted state fields and the exact refusal constructor/domain arguments. Native diagnostic
-text is retained but its rendering is outside the comparison. Supplied genesis stake covers only
+text is retained but its rendering is outside this measured comparison; complete remaining native
+presentation parity is required under [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796) and
+[the diagnostic-parity decision](adr/0001-haskell-node-as-reference.md#amendment-2026-11-04-exact-diagnostic-and-refusal-parity).
+Supplied genesis stake covers only
 the capture's first two epochs; these results do not establish Dijkstra ledger-forecast, block-body,
 committee/certificate-aggregation or live-node conformance. The [maintained results](../fixtures/reference/leios-praos2/README.md)
 and [reproduction harness](../scripts/oracle/leios-praos2/README.md) record that scope and the source pins.
