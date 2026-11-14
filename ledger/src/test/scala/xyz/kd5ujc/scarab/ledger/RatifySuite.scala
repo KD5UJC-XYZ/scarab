@@ -434,6 +434,21 @@ class RatifySuite extends ScalaCheckSuite:
     assert(afterFirst.add(committee).isEmpty)
   }
 
+  test("a proposal whose id is stored replaces that entry in its position, as OMap.||> does") {
+    // `runProposalsAddAction` adds with `OMap.||>`, which overwrites a stored key where it stands
+    // (cardano-ledger f649f975, `Conway/Governance/Proposals.hs:310-312`; `Data/OMap/Strict.hs:192-205`)
+    val stored = Vector(update(1, None), update(2, None), update(3, Some(id(1))))
+      .foldLeft(Proposals.empty)((p, g) => p.add(g).get)
+    val replacement =
+      gas(2, GovAction.ParameterChange(None, TestLedger.conwayUpdate(16 -> 99), None))
+    assertNotEquals(stored.byId(id(2)), replacement)
+    val replaced = stored.add(replacement).get
+    assertEquals(replaced.actions, Vector(stored.byId(id(1)), replacement, stored.byId(id(3))))
+    assertEquals(replaced.roots, stored.roots)
+    // the check that it attaches is made against the store before the replacement
+    assert(stored.add(update(2, Some(id(77)))).isEmpty, "an unknown parent")
+  }
+
   test(
     "enacting a proposal promotes it to the root and drops its competitors with their descendants"
   ) {

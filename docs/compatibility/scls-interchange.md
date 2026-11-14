@@ -17,6 +17,15 @@ with `mkProposals`, as the reference's `recreateProposals` does
 attaches to neither its lineage's root nor an earlier proposal of its lineage
 (`SclsStateMapperSuite`; the reading rule is in [the state-file entry](haskell-ledger-state-file.md#evidence)).
 
+Dated evidence (2026-11-14): the state mapper orders the imported proposals as the reference's
+import does (#968): sorted by their order value, the arrival order kept for equal values, and the
+first of a repeated id kept (cardano-ledger f649f975, `CanonicalState/Conway/Import.hs:219-227`;
+`libs/cardano-data/src/Data/OMap/Strict.hs:178-184,227-231`); the order values need not run from 0
+to n-1 (`SclsStateMapperSuite`). This is not visible through the import service: the reference's
+export numbers the proposals from 0 (`CanonicalState/Conway/Export.hs:191-199`), as Scarab's does,
+the reader refuses keys that do not strictly increase, so no file repeats an id, and complete-base
+admission refuses a file whose proposal rows differ from the base's own projection.
+
 ## Explicitly unchecked or unconfirmed
 
 Requires an explicit complete Conway base and matching target immutable point; SCLS alone omits restart/consensus state. Pinned profile differs from draft CIP namespace list; no future-profile or standalone-bootstrap claim. Haskell full-state equality retains the documented MemPack-constructor discrepancy; large acceptance datasets are not committed. [Design](../design/scls-interchange.md).

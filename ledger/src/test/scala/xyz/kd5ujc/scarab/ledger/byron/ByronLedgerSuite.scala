@@ -456,3 +456,175 @@ class ByronLedgerSuite extends ScalaCheckSuite:
       xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(Bytes.empty)
     )
   }
+
+  // ---------------------------------------------------------------------------------------------
+  // The order of the checks (#969). A transaction with two faults is refused with the one that
+  // `updateUTxOTxWitness` meets first (cardano-ledger f649f975, `Cardano/Chain/UTxO/Validation.hs`):
+  // the input addresses and witnesses (373-390), `validateTxAux` (189-217: size, minimum fee, output
+  // balance, input balance, fee, minimum fee reached), then `validateTx` through `updateUTxOTx`
+  // (247-258, 365-370: transaction attributes, then each output's attributes and network magic). An
+  // output address that does not decode fails before all of them, with the transaction's decoding
+  // (`TxOut`'s `decCBOR`, `Cardano/Chain/UTxO/Tx.hs:216-219`). The order is read from that source;
+  // these cases are not replayed through the reference.
+
+  /** A transaction, the UTxO it spends from and the parameters it is checked under. */
+  private final case class Checked(aux: ByronTxAux, utxo: Map[TxIn, ByronOut], params: ByronParams):
+    def tx(f: ByronTx => ByronTx): Checked = copy(aux = aux.copy(tx = f(aux.tx)))
+    def address(index: Int, to: Bytes): Checked =
+      tx(t => t.copy(outputs = t.outputs.updated(index, t.outputs(index).copy(address = to))))
+    def values(paid: BigInt*): Checked =
+      tx(t => t.copy(outputs = t.outputs.zip(paid).map((o, v) => o.copy(value = v))))
+    def verdict: Either[ByronError | ProviderDefect, Unit] =
+      ByronLedger.applyTx(config, params, utxo, aux).map(_ => ())
+
+  /** A fault and the error it alone is refused with. */
+  private final case class Fault(name: String, inject: Checked => Checked, error: ByronError)
+
+  private val spentIn = addrIn(aliceAddr)
+  private val clean =
+    Checked(spendAlice(Seq(bobAddr -> 1000000, aliceAddr -> 50000000)), utxo0, params)
+  private val cleanSize = clean.aux.raw.size
+
+  private val excessiveAttributes =
+    val attrs = Cb.map(Cb.uint(3) -> Cb.bytes(Bytes.fromArray(Array.fill(128)(0.toByte))))
+    val payload = Cb.arr(
+      Cb.bytes(ByronAddress.rootOf(ByronAddress.VerKey, bob.extended, attrs)),
+      attrs,
+      Cb.uint(0)
+    )
+    Cb.arr(Cb.tag24(payload), ByronCbor.uint(ByronCbor.crc32(payload)))
+  private val undecodable = Cb.arr()
+  private val undecodableCause =
+    ByronAddress.decode(undecodable).fold(identity, a => fail(s"an address: $a"))
+
+  private val missingInput =
+    Fault("a missing input", c => c.copy(utxo = c.utxo - spentIn), ByronError.MissingInput(spentIn))
+  private val wrongSignature = Fault(
+    "a wrong signature",
+    c =>
+      c.copy(aux = c.aux.copy(witnesses = c.aux.witnesses.map {
+        case ByronWitness.VerKey(k, s) =>
+          ByronWitness.VerKey(k, Bytes(s.value.updated(5, (s.value(5) ^ 1).toByte)))
+        case other => other
+      })),
+    ByronError.WrongSignature(spentIn)
+  )
+
+  /** The transaction witnessed by `signer` alone, with a valid signature. */
+  private def witnessedBy(signer: Key)(c: Checked): Checked =
+    val signed =
+      ByronSig.tag(ByronSig.SignTx, config.magic) ++ ByronCbor.of(0x58, 0x20) ++ c.aux.tx.id
+    c.copy(aux =
+      c.aux.copy(witnesses = Vector(ByronWitness.VerKey(signer.extended, signer.sign(signed))))
+    )
+  private val wrongKey =
+    Fault("a witness of another key", witnessedBy(bob), ByronError.WrongKey(spentIn))
+  private val tooLarge = Fault(
+    "a transaction too large",
+    c => c.copy(params = c.params.copy(maxTxSize = cleanSize - 1)),
+    ByronError.TxTooLarge(cleanSize - 1, cleanSize)
+  )
+  private val feeCalculation = Fault(
+    "a minimum fee out of range",
+    c =>
+      c.copy(params =
+        c.params.copy(txFeePolicy = TxFeePolicy(ByronLedger.MaxLovelace * 1000000000, 1000000000))
+      ),
+    ByronError.FeeCalculation(TxFeePolicy.Error.Overflow(ByronLedger.MaxLovelace + cleanSize))
+  )
+  private val outputBalance = Fault(
+    "an output balance out of range",
+    _.values(ByronLedger.MaxLovelace, 1),
+    ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.OutputBalance)
+  )
+  private val inputBalance = Fault(
+    "an input balance out of range",
+    c => c.copy(utxo = c.utxo.updated(spentIn, ByronOut(aliceAddr, ByronLedger.MaxLovelace + 1))),
+    ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.InputBalance)
+  )
+  private val feeUnderflow = Fault(
+    "outputs above the inputs",
+    _.values(99999999, 2),
+    ByronError.LovelaceOutOfRange(ByronError.LovelaceContext.Fee)
+  )
+  private val feeTooSmall = Fault(
+    "a fee below the minimum",
+    _.values(1000000, 98999999),
+    ByronError.FeeTooSmall(minFee(clean.aux), 1)
+  )
+  private val txAttributes = Fault(
+    "unknown transaction attributes",
+    _.tx(_.copy(attributesLength = 128)),
+    ByronError.UnknownAttributes(ByronError.AttributeOwner.Transaction)
+  )
+  private val addressAttributes = Fault(
+    "unknown address attributes in the first output",
+    _.address(0, excessiveAttributes),
+    ByronError.UnknownAttributes(ByronError.AttributeOwner.Address)
+  )
+  private val networkMagic = Fault(
+    "another network in the first output",
+    _.address(0, address(bob, Some(Magic + 1))),
+    ByronError.NetworkMagicMismatch(Some(Magic), Some(Magic + 1))
+  )
+  private val undecodableOutput = Fault(
+    "an undecodable address in the last output",
+    _.address(1, undecodable),
+    ByronError.Decode(undecodableCause)
+  )
+
+  private val faults = Vector(
+    missingInput,
+    wrongSignature,
+    wrongKey,
+    tooLarge,
+    feeCalculation,
+    outputBalance,
+    inputBalance,
+    feeUnderflow,
+    feeTooSmall,
+    txAttributes,
+    addressAttributes,
+    networkMagic,
+    undecodableOutput
+  )
+
+  test("each fault of the check-order cases alone is refused with its own error") {
+    assertEquals(clean.verdict, Right(()))
+    faults.foreach(f => assertEquals(f.inject(clean).verdict, Left(f.error), f.name))
+  }
+
+  /** The pairs whose first error the order decides: the fault the reference meets first, then the
+    * other.
+    */
+  private val firstOfPairs: Vector[(Fault, Fault)] =
+    val feeSide = Vector(feeCalculation, outputBalance, inputBalance, feeUnderflow, feeTooSmall)
+    val validateTx = Vector(txAttributes, addressAttributes, networkMagic)
+    val decodedFirst = Vector(
+      missingInput,
+      wrongSignature,
+      wrongKey,
+      tooLarge,
+      txAttributes,
+      addressAttributes,
+      networkMagic
+    )
+    feeSide.flatMap(fee => validateTx.map(fee -> _)) ++
+      Vector(
+        outputBalance -> inputBalance,
+        feeCalculation -> outputBalance,
+        feeCalculation -> inputBalance,
+        feeCalculation -> feeUnderflow
+      ) ++ decodedFirst.map(undecodableOutput -> _)
+
+  firstOfPairs.foreach { (first, second) =>
+    test(s"first error: ${first.name} before ${second.name}") {
+      val both = second.inject(first.inject(clean))
+      assertEquals(both.verdict, Left(first.error))
+      assertEquals(
+        first.inject(second.inject(clean)).verdict,
+        Left(first.error),
+        "injected reversed"
+      )
+    }
+  }
