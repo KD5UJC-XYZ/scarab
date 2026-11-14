@@ -143,10 +143,35 @@ object StateGen:
   def prevIds: Gen[node.PrevIds] =
     Gen.zip(previousId, previousId, previousId, previousId).map(node.PrevIds(_, _, _, _))
 
+  private def withPrevious(a: node.GovAction, p: Option[node.GovActionId]): node.GovAction =
+    a match
+      case x: node.GovAction.ParameterChange => x.copy(previous = p)
+      case x: node.GovAction.HardFork        => x.copy(previous = p)
+      case x: node.GovAction.NoConfidence    => x.copy(previous = p)
+      case x: node.GovAction.UpdateCommittee => x.copy(previous = p)
+      case x: node.GovAction.NewConstitution => x.copy(previous = p)
+      case other                             => other
+
+  /** A store the reference's `mkProposals` accepts ([[node.Proposals.rebuild]]): each action of a
+    * lineage names, as drawn, the root of its lineage or an earlier action of the lineage.
+    */
   def proposals: Gen[node.Proposals] =
-    Gen
-      .zip(Gen.choose(0, 3).flatMap(Gen.listOfN(_, govActionState)).map(_.toVector), prevIds)
-      .map(node.Proposals(_, _))
+    val drawn = Gen.zip(govActionState, Gen.choose(0, Int.MaxValue))
+    Gen.zip(Gen.choose(0, 3).flatMap(Gen.listOfN(_, drawn)), prevIds).map { (actions, roots) =>
+      actions.foldLeft(node.Proposals(Vector.empty, roots)) { case (store, (gas, pick)) =>
+        val attached = node.GovActions.lineage(gas.action).fold(gas) { (purpose, _) =>
+          val parents = roots.get(purpose) +: store.actions.collect {
+            case s if node.GovActions.lineage(s.action).exists(_._1 == purpose) => Some(s.id)
+          }
+          val action = withPrevious(gas.action, parents(pick % parents.size))
+          gas.copy(proposal = gas.proposal.copy(action = action))
+        }
+        Option
+          .unless(store.byId.contains(attached.id))(attached)
+          .flatMap(store.add)
+          .getOrElse(store)
+      }
+    }
 
   def committee: Gen[node.Committee] =
     Gen.zip(smallMap(nodeCredential, epochs), unit).map(node.Committee(_, _))

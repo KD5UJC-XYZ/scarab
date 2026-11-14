@@ -11,6 +11,8 @@ import xyz.kd5ujc.scarab.ledger.{
   GovActionId,
   GovActionState,
   PoolParams,
+  Proposals,
+  ProposalsError,
   Purposeful
 }
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -72,6 +74,11 @@ object SclsStateMapper:
     case ProposalProcedureDecode(cause: DecodeError)
     case ProposalProcedureMismatch(id: GovActionId)
     case ProposalOrder(expected: BigInt, found: BigInt)
+
+    /** The proposals do not form the store `mkProposals` rebuilds from them and their roots
+      * (cardano-ledger@f649f975, CanonicalState/Conway/Import.hs:396-401, [[Proposals.rebuild]]).
+      */
+    case ProposalForest(cause: ProposalsError)
 
   private final case class Acc(
       blocks: SortedMap[KeyHash[StakePool], Word64],
@@ -438,6 +445,7 @@ object SclsStateMapper:
         withDReps <- SclsDRepMapper.overlay(base, acc.dreps.iterator).leftMap(Error.DReps(_))
         roots = rootsFrom(acc.proposalRoots)
         actions <- rebuildProposals(acc.proposals)
+        store <- Proposals.rebuild(roots, actions).leftMap(Error.ProposalForest(_))
       yield
         val pStateLens = ConwayNewEpochState.ls.andThen(ConwayLedgerState.pState)
         val updatedPState = pStateLens
@@ -474,7 +482,7 @@ object SclsStateMapper:
         val withFuture = govLens.andThen(ConwayGovState.futurePParams).replace(future)(withCurr)
         val withRoots = govLens
           .andThen(ConwayGovState.proposals)
-          .replace(xyz.kd5ujc.scarab.ledger.Proposals(actions, roots))(withFuture)
+          .replace(store)(withFuture)
         ConwayNewEpochState.dreps.replace(ConwayNewEpochState.dreps.get(withDReps))(withRoots)
     }
 

@@ -481,7 +481,9 @@ object ShelleyUtxow:
 
   /** `validateMIRInsufficientGenesisSigs` (`Shelley/Rules/Utxow.hs:449-470`): a transaction with a
     * MIR certificate is signed by at least the quorum of the genesis delegates; the refusal names
-    * the delegates that did sign.
+    * the delegates that did sign. The signers are `keyHashWitnessesTxWits` (`Utxow.hs:295`, Alonzo
+    * `:321`, Babbage `:302`; `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:538-544`): the
+    * hashes of the vkey witnesses and the address roots of the bootstrap witnesses the set keeps.
     */
   private def mirSigned(
       env: UtxoEnv[ShelleyCertState],
@@ -492,7 +494,10 @@ object ShelleyUtxow:
       case Certificate.MoveRewards(_, _) => true
       case _                             => false
     }
-    val signers = ann.tx.witnesses.vkeys.map(w => env.ctx.verdicts.keyHash(w._1)).toSet
+    val signers = TxChecks.providedKeyHashes(
+      ann.tx,
+      ann.tx.witnesses.vkeys.map(w => env.ctx.verdicts.keyHash(w._1))
+    )
     val genesisSigners = genDelegs.values.map(_.delegate).toSet.intersect(signers)
     Test.failureUnless(
       !hasMir || genesisSigners.size >= env.ctx.updateQuorum,

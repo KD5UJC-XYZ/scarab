@@ -148,6 +148,54 @@ class ByronLedgerSuite extends ScalaCheckSuite:
     )
   }
 
+  test("a signed transaction of 65,537 outputs pays for its full size and indexes 65,536") {
+    // `txOutputUTxO` zips the outputs with `[0 ..] :: [Word16]` (cardano-ledger f649f975,
+    // `Cardano/Chain/UTxO/UTxO.hs:176-185`) and `validateTxAux` takes the output balance of that
+    // UTxO (`Cardano/Chain/UTxO/Validation.hs:202-204`); its size and its fee are those of the
+    // whole `TxAux` as encoded (`Validation.hs:191-199,212-217,224-225`), and `validateTx` checks
+    // the network magic of every output (`Validation.hs:255`). The transactions are encoded,
+    // signed and decoded whole, every value below 2^32 (the widest head `Cb.uint` writes).
+    val funds = BigInt(1000000000)
+    val spent = addrIn(aliceAddr)
+    val utxo = utxo0.updated(spent, ByronOut(aliceAddr, funds))
+    val indexed = Seq.fill(65536)(bobAddr -> 1L)
+    def spend(outs: Seq[(Bytes, Long)]) = aux(config, Seq((spent, alice, false)), outs)
+    def fitting(a: ByronTxAux) = params.copy(maxTxSize = a.raw.size)
+    def applied(p: ByronParams, u: Map[TxIn, ByronOut], a: ByronTxAux) =
+      ByronLedger.applyTx(config, p, u, a)
+    def created(u: Map[TxIn, ByronOut], a: ByronTxAux) = u.keySet.filter(_.id == a.tx.id)
+    // an output past the first 65,536 that alone exceeds the input is neither spent nor kept
+    val beyond = spend(indexed :+ (bobAddr -> 2000000000L))
+    assertEquals(beyond.tx.outputs.size, 65537)
+    val size = beyond.raw.size
+    assert(size > 65537 * (bobAddr.size + 2), s"$size bytes")
+    val minFee = params.txFeePolicy.minimumFee(size).fold(e => fail(e.toString), identity)
+    val next = applied(fitting(beyond), utxo, beyond).fold(e => fail(e.toString), identity)
+    assertEquals(created(next, beyond).size, 65536)
+    assertEquals(created(next, beyond).map(_.index).max, BigInt(65535))
+    assertEquals(next.size, utxo.size - 1 + 65536)
+    // the size is the whole encoding's, and so is the fee: one byte or one lovelace short refuses it
+    assertEquals(
+      applied(params.copy(maxTxSize = size - 1), utxo, beyond).map(_ => ()),
+      Left(ByronError.TxTooLarge(size - 1, size))
+    )
+    val short = utxo.updated(spent, ByronOut(aliceAddr, 65536 + minFee - 1))
+    assertEquals(
+      applied(fitting(beyond), short, beyond).map(_ => ()),
+      Left(ByronError.FeeTooSmall(minFee, minFee - 1))
+    )
+    // exactly 65,536 outputs: all kept
+    val exact = spend(indexed)
+    val all = applied(fitting(exact), utxo, exact).fold(e => fail(e.toString), identity)
+    assertEquals(created(all, exact).size, 65536)
+    // the network of the 65,537th output is still checked
+    val foreign = spend(indexed :+ (address(bob, Some(Magic + 1)) -> 1L))
+    assertEquals(
+      applied(fitting(foreign), utxo, foreign).map(_ => ()),
+      Left(ByronError.NetworkMagicMismatch(Some(Magic), Some(Magic + 1)))
+    )
+  }
+
   test("unknown attribute refusals distinguish transaction and address payloads") {
     val good = spendAlice(Seq(bobAddr -> 1000000, aliceAddr -> 50000000))
     assertEquals(
@@ -202,6 +250,41 @@ class ByronLedgerSuite extends ScalaCheckSuite:
   test("the wrong key signing is refused: a valid signature that does not hash to the address") {
     val forged = aux(config, Seq((addrIn(aliceAddr), bob, false)), Seq(bobAddr -> 99000000))
     assert(apply(forged).left.exists(_.isInstanceOf[ByronError.WrongKey]))
+  }
+
+  test("the address root covers the attributes encoded again, not as written") {
+    // `checkAddrSpendingData` hashes `Address' (addrType, spendingData, addrAttributes addr)`
+    // (cardano-ledger f649f975, `Cardano/Chain/Common/Address.hs:306-313`, `AddressHash.hs:16-25`):
+    // the decoded attributes encoded again by `encCBORAttributes` (`Attributes.hs:192-196`,
+    // `AddrAttributes.hs:96-119`) at `byronProtVer`, a map with a minimal head
+    // (`exactMapLenEncoding`, cardano-ledger-binary 048b78d2, `Encoding/Encoder.hs:397-430`) and
+    // minimal keys and lengths. The written maps are those of two addresses the reference decodes
+    // in `fixtures/reference/conway-decoding` ("attribute map with a wide key and length",
+    // "unknown attribute kept with a wide length").
+    val carol = key(4)
+    val maps = Vector(
+      ByronCbor.of(0xb8, 0x01, 0x18, 0x01, 0x42, 0x41, 0x01) -> ByronCbor.of(0xa1, 0x01, 0x42, 0x41,
+        0x01),
+      ByronCbor.of(0xa1, 0x05, 0x58, 0x02, 0x01, 0x02) -> ByronCbor.of(0xa1, 0x05, 0x42, 0x01, 0x02)
+    )
+    def rootOver(attributes: Bytes) =
+      ByronCbor.addressHash(
+        Cb.arr(Cb.uint(0), Cb.arr(Cb.uint(0), Cb.bytes(carol.extended)), attributes)
+      )
+    def address(root: Bytes, attributes: Bytes) =
+      val body = Cb.arr(Cb.bytes(root), attributes, Cb.uint(0))
+      Cb.arr(Cb.tag24(body), Cb.uint(ByronCbor.crc32(body)))
+    def spend(addr: Bytes) =
+      val in = addrIn(addr)
+      val a = aux(config, Seq((in, carol, false)), Seq(bobAddr -> 1000000))
+      (in, apply(a, utxo0.updated(in, ByronOut(addr, 10000000))).map(_ => ()))
+    maps.foreach { (written, canonical) =>
+      val canonicalRoot = address(rootOver(canonical), written)
+      assertEquals(ByronAddress.decode(canonicalRoot).map(_.attributes), Right(written))
+      assertEquals(spend(canonicalRoot)._2, Right(()), written.hex)
+      val (in, verdict) = spend(address(rootOver(written), written))
+      assertEquals(verdict, Left(ByronError.WrongKey(in)), written.hex)
+    }
   }
 
   test("a signature over other content is refused") {

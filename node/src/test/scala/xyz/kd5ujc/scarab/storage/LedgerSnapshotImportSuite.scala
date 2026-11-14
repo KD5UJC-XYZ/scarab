@@ -14,8 +14,9 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.*
 import xyz.kd5ujc.scarab.crypto.witness.PublicKey32
+import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.{Block, StorageError}
-import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
+import xyz.kd5ujc.scarab.ledger.state.{ConwayGovState, ConwayNewEpochState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.haskell.state.*
@@ -95,8 +96,16 @@ class LedgerSnapshotImportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
         .toMap
     finally walk.close()
 
-  private def source(root: Path, era: Era): IO[(Path, Path, MirrorState, Bytes)] =
-    val (state, rawBlock) = captures(era)
+  /** The capture of `era` written as a reference `state`, `meta` and `tables` under `root`, its
+    * state first changed by `edit`.
+    */
+  private def source(
+      root: Path,
+      era: Era,
+      edit: MirrorState => MirrorState = identity
+  ): IO[(Path, Path, MirrorState, Bytes)] =
+    val (captured, rawBlock) = captures(era)
+    val state = edit(captured)
     val ledger = root / "source" / "ledger" / anchor(state).slot.toString
     val db = root / "db"
     val file = HaskellLedgerFile.of(state.ext).fold(e => fail(e.toString), identity)
@@ -186,6 +195,67 @@ class LedgerSnapshotImportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
           _ <- IO(assertEquals(entries, MirrorStep.utxoOf(state).fold(Map.empty)(_.toMap)))
         yield ()
       }
+    }
+  }
+
+  /** The Conway proposals of a state. */
+  private def proposalsOf(ext: ExtLedgerState): node.Proposals =
+    ext.ledgerState.state match
+      case EraLedgerState.InShelleyEra(era, ls) =>
+        era match
+          case ShelleyBasedEra.SConway => ConwayNewEpochState.gov.get(ls.nes).proposals
+          case _                       => fail("not a Conway state")
+      case _ => fail("not a Shelley-based state")
+
+  test("an import keeps the first of two proposals with one id, as the reference reads the file") {
+    // `decSharePlusCBOR` keeps the first proposal of an id and rebuilds the store with
+    // `mkProposals` (cardano-ledger f649f975, `Conway/Governance/Proposals.hs:338-354,401-406`):
+    // here the first attaches (an information action) and the second, under an action that is not
+    // stored, would not. The snapshot holds the state as read, and is read again as written.
+    val id = node.GovActionId(Bytes.wrap(Array.fill(32)(3.toByte)), 0)
+    def gas(action: node.GovAction) = node.GovActionState(
+      id,
+      Map.empty,
+      Map.empty,
+      Map.empty,
+      node.Proposal(
+        0,
+        node.RewardAccount(0, node.Credential.Key(Bytes.wrap(Array.fill(28)(9.toByte)))),
+        action
+      ),
+      1,
+      7
+    )
+    val first = gas(node.GovAction.Info)
+    val second = gas(node.GovAction.NoConfidence(Some(id.copy(index = 1))))
+    def repeated(m: MirrorState): MirrorState =
+      m.ext.ledgerState.state match
+        case EraLedgerState.InShelleyEra(era, ls) =>
+          era match
+            case ShelleyBasedEra.SConway =>
+              val nes = ConwayNewEpochState.gov
+                .andThen(ConwayGovState.proposals)
+                .modify(p => node.Proposals(p.actions ++ Vector(first, second), p.roots))(ls.nes)
+              m.copy(ext =
+                m.ext.copy(ledgerState =
+                  m.ext.ledgerState.withState(EraLedgerState.InShelleyEra(era, ls.copy(nes = nes)))
+                )
+              )
+            case _ => fail("not a Conway capture")
+        case _ => fail("not a Shelley-based capture")
+    tempDir.use { root =>
+      for
+        input <- source(root, Era.Conway, repeated)
+        (ledger, db, state, _) = input
+        written = proposalsOf(state.ext)
+        _ <- IO(assertEquals(written.actions.takeRight(2), Vector(first, second)))
+        report <- attempt(LedgerSnapshotImport.run[IO](config(ledger, db)))
+        _ <- IO(assertEquals(report.map(_.era), Right(Era.Conway)))
+        read <- restored(db, state)
+      yield assertEquals(
+        proposalsOf(read.state.ext),
+        node.Proposals(written.actions.dropRight(1), written.roots)
+      )
     }
   }
 
