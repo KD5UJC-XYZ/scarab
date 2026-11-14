@@ -45,8 +45,8 @@ sessions end, and each asks for the work it does.
 - A subagent cannot obtain approval. It stops and reports to its lead, and the lead asks the owner in the chat
   session doing the work.
 - The work records the question and the answer verbatim, with the UTC times they were asked and given (in the pull
-  request, and where a rule says, in a register). That record is evidence of an approval given in the chat session,
-  never an approval itself.
+  request, and where a rule says, in a register). That record is evidence of an approval given in the chat session
+  doing the work, never an approval itself.
 - No comment, label, review, commit, ADR, decisions row, document or memory is approval, whoever wrote it and through
   whichever account. No rule depends on a GitHub account: the owner's agents act through more than one.
 - The decisions already recorded in the [decisions register](decisions.md) and in ADR amendments stand, and are not
@@ -881,22 +881,26 @@ An approved change is a pull request of its own, never mixed with other work:
 - the same four, with the digest of the surface they admit, are the `approval` entry of
   `docs/data/storage-format.json`.
 
-That record is evidence of an approval given in the chat session, never an approval itself. No comment, label,
-review, commit, ADR, decisions row, document or memory, by any account, is approval. The V8 reader and the
-migration path from V8 stay. An approved change is level 3, and a new version follows the
+That record is evidence of an approval given in the chat session doing the work, never an approval itself. No
+comment, label, review, commit, ADR, decisions row, document or memory, by any account, is approval. The V8 reader
+and the migration path from V8 stay, and the reader retirement of the storage migration procedure does not apply to
+it while the freeze holds. An approved change is level 3, and a new version follows the
 [storage migration procedure](storage-migrations.md): its migration, and a test that reads the previous version.
 
 - **Scope:** main, tools, tests and fixtures: the persisted-format surface.
 - **Exceptions:** none. An in-place edit of a version no store has deployed is a change like any other.
 - **Enforcement:** `scripts/check_storage_format.py`, a guard that `scripts/preflight` and CI run, computes the
-  persisted-format surface (its docstring lists it) and fails on any difference from
-  `docs/data/storage-format.json` with a message that starts `STORAGE FORMAT CHANGE`; it refuses a surface
-  without the V8 reader or a migration path from V8, and checks the form of the approval entry only. The goldens of
-  `CodecSuite`, `FormatGoldenSuite` and `SnapshotGoldenSuite`
-  ([what they pin](storage-migrations.md#register-the-change-before-changing-the-writer)) make `check` fail when
-  format code changes, so the change reaches the surface. `scripts/pr_policy.py` refuses a pull request that changes
-  the manifest or the guard unless its title, its paths and its "Storage format change" section are as above, and
-  raises its level floor to 3. That the owner gave the answer in the chat session is review only: no tool can see it.
+  persisted-format surface its docstring lists and fails on any difference from `docs/data/storage-format.json`
+  with a message that starts `STORAGE FORMAT CHANGE`. The surface is the format registry, the magics, the
+  registered migration, the sources that are only format code (the snapshot readers and writers, the sidecar and
+  frozen schemas, the checkpoint binding, the codec and its instances, the network identity), the format
+  definitions of the UTxO store and the snapshot files, the golden and previous-version suites, and the fixtures.
+  The guard refuses a surface without the V8 reader or a migration path from V8, and checks the form of the
+  approval entry only. It does not see a persisted byte that none of these pins, such as a record of the volatile,
+  immutable or RocksDB store outside what `FormatGoldenSuite` pins: there a change is review only. `scripts/pr_policy.py`
+  refuses a pull request that changes the manifest, the guard or its tests unless its title, its paths, its level
+  and its "Storage format change" section are as above. That the owner gave the answer in the chat session doing
+  the work is review only: no tool can see it.
 - **Why:** the owner's rulings of 2026-11-14, in the chat session doing the work of
   [PR #1008](https://github.com/KD5UJC-XYZ/scarab/pull/1008) (expletives elided): *"UNTIL WE
   ARE OUT OF PRE_RELEASE we should not be moving the […] storage format every […] day"*; *"I need EXPLICIT […]

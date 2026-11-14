@@ -91,7 +91,9 @@ the work before the change is written: not a version, the snapshot, sidecar or s
 a migration step or a regenerated native snapshot fixture, and not an in-place edit of an existing version, V9 and
 V10 included. An approved change is a pull request of its own, and it is what the approval names: a new version
 with its migration and a test that reads the previous version, or an in-place edit of a version that no deployed
-store uses. The V8 reader and the migration path from V8 stay.
+store uses. The V8 reader and the migration path from V8 stay: the reader retirement of the
+[amendment of 2026-10-19](#amendment-2026-10-19-reader-retirement-and-preflight-83) does not apply to them while the
+freeze holds, and any other retirement is a change that needs the owner's approval.
 
 The rule, the record an approved change carries and the guard that refuses an unrecorded change are
 [FMT-1](../design-rules.md#fmt-1); the procedure for an approved change is

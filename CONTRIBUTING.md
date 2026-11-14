@@ -285,10 +285,11 @@ A claim of compatibility needs evidence a reader can check:
   as [REF-7](docs/design-rules.md#ref-7) says) and a "Gaps" section
   (`None`, or bullets that each start with the issue tracking the gap); a section that opens with `None` may go on
   in prose. Scarab references the Haskell cardano-node in every respect for production behaviour, so a deviation
-  is the owner's decision, never a silent choice. `scripts/pr_policy.py` checks the level, its floor from the
-  changed files (a file other than documentation makes it at least 1, the persisted-format register or the storage
-  format manifest at least 3), the title, paths and "Storage format change" section of a storage format change
-  ([FMT-1](docs/design-rules.md#fmt-1)), and both sections on every pull request event, except for a bot's pull request and a promotion of `dev`
+  is the owner's decision, never a silent choice. `scripts/pr_policy.py` checks, on every pull request event, the
+  title, paths, level and "Storage format change" section of a storage format change
+  ([FMT-1](docs/design-rules.md#fmt-1)), a bot's pull request included; and, except for a bot's pull request and a
+  promotion of `dev`, the level, its floor from the changed files (a file other than documentation makes it at
+  least 1, the persisted-format register, the storage format manifest or its guard at least 3), and both sections
   (decided 2026-10-29, [#400](https://github.com/KD5UJC-XYZ/scarab/issues/400#issuecomment-6506671003); both
   sections required from level 1, owner decision 2026-11-04 — [decisions register](docs/decisions.md#process),
   [#778](https://github.com/KD5UJC-XYZ/scarab/pull/778)).

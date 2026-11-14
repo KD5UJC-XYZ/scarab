@@ -133,7 +133,8 @@ then has no work for V10. Unchanged kinds retain their own current versions.
 A new snapshot version, if the owner approves one ([FMT-1](design-rules.md#fmt-1)), appends global `V11`, the
 magic `SCRBSNPB` (the last character of a snapshot magic is its format number as one base-36 digit). Retire the V5
 reader only after the inventory and conversion conditions below hold, then advance the snapshot
-kind's `readableFrom` to V7 (and retire the V7 and V8 readers the same way). Use caller-scoped `Raise[F, StorageError]` for every migration operation;
+kind's `readableFrom` to V7 (and retire the V7 reader the same way). The V8 reader stays, and so does the migration
+path from V8, while persisted formats are frozen: deployed stores are V8 ([FMT-1](design-rules.md#fmt-1)). Use caller-scoped `Raise[F, StorageError]` for every migration operation;
 do not capture an earlier caller's error interpreter in a long-lived migration object.
 
 Acquire `DatabaseOwnership` before inspecting a database that could have another writer. Its lock
@@ -313,7 +314,9 @@ checkpoints at matching anchors, identity, immutable and volatile data. Do not e
 to read a new file or mix arbitrary old checkpoints with new snapshots. Any operator transition of a
 running writer is an explicit operation; producing verified copies does not update that writer.
 
-For this greenfield repository, an old payload reader can leave the development runtime once all
+Reader retirement is itself a storage format change, which needs the owner's approval first, and it never retires
+the V8 reader while persisted formats are frozen ([FMT-1](design-rules.md#fmt-1)). Beyond that, for this greenfield
+repository, an old payload reader can leave the development runtime once all
 local active inputs and repository test/tool dependencies have verified current-format replacements,
 local writers no longer emit that format, and useful historical evidence is recoverable from pinned
 Git source or an archived one-shot bridge. There is no speculative release support horizon. Keep

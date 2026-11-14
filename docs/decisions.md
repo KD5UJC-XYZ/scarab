@@ -4,7 +4,8 @@
 **Status: Current.** One row per decision the owner has taken that fixes how Scarab behaves or how its
 work is run, with the invariant it fixes and what would reopen it. The record column links where the
 decision is written down (an ADR, a design document or the issue comment that recorded it); the record
-is authoritative and this register is its index. Indexing changes nothing about a decision's authority: an
+is authoritative and this register is its index. A record is evidence of the owner's answer, not an approval in
+itself ([what approval is](design-rules.md#approval)). Indexing changes nothing about a decision's authority: an
 explicit owner decision binds whether or not a row cites it yet, and a decision is added here in the change
 that first relies on it ([one place per question](process.md#one-place-per-question)). The register was seeded
 on 2026-10-29 from the #474, #567, #573 and #584 decision comments, the ADR amendments and ADRs they cite, and
