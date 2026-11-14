@@ -11,12 +11,14 @@ import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import munit.Assertions
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.ledger.{FileKind, FormatVersion, StorageError}
 
-/** Brings the V9 snapshot fixtures to V10, the current version, with the registered migration
-  * ([[SnapshotMigration.toCurrent]] through [[Migrate]]), into a fresh directory, and writes the
-  * conversion manifest. Arguments: the V9 fixture directory and a directory that does not exist.
-  * `SnapshotGoldenSuite` checks every output against [[SnapshotV10.fromV9]] of its source.
+/** Brings the V9 snapshot fixtures to V10 with the registered migration's V9 → V10 step
+  * ([[SnapshotMigration.toCurrent]], its `step`), into a fresh directory, and writes the conversion
+  * manifest. Arguments: the V9 fixture directory and a directory that does not exist.
+  * `SnapshotGoldenSuite` checks every output against [[SnapshotV10.fromV9]] of its source. (Before
+  * V11 this ran the whole migration, whose current version was V10; [[SnapshotV11FixtureMain]]
+  * takes these files on to V11.)
   */
 object SnapshotV10FixtureMain extends Assertions:
   private def sha256(bytes: Array[Byte]): String =
@@ -38,12 +40,21 @@ object SnapshotV10FixtureMain extends Assertions:
       Files.createDirectories(target.resolve(name).getParent)
       Files.copy(source.resolve(name), target.resolve(name))
     }
+    val migration = SnapshotMigration.toCurrent[IO]
     val migrated = Handle
       .allow[StorageError](
-        Migrate(
-          SnapshotMigration.toCurrent[IO],
-          names.toList.map(n => fs2.io.file.Path.fromNioPath(target.resolve(n)))
-        ).map(_.asRight[StorageError])
+        names.toList
+          .traverse(n =>
+            migration.step(
+              fs2.io.file.Path.fromNioPath(target.resolve(n)),
+              FormatVersion.V9,
+              FormatVersion.V10
+            )
+          )
+          .as(
+            List(Migrated(FileKind.SnapshotFile, FormatVersion.V9, FormatVersion.V10, names.size))
+          )
+          .map(_.asRight[StorageError])
       )
       .rescue(e => IO.pure(Left(e)))
       .unsafeRunSync()

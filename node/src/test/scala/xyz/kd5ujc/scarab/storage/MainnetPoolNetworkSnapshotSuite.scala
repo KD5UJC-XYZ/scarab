@@ -77,7 +77,7 @@ class MainnetPoolNetworkSnapshotSuite extends CatsEffectSuite:
 
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(env)
   private val format: SnapshotFormat[IO, MirrorState] =
-    SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+    SnapshotV11.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
 
   /** The state after the first Shelley block of the capture. */
   private lazy val shelley: StateSnapshot[MirrorState] =

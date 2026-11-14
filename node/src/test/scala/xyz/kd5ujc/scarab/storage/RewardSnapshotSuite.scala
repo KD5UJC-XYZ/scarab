@@ -28,7 +28,7 @@ class RewardSnapshotSuite extends CatsEffectSuite:
       .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/eras/genesis"))
       .fold(e => fail(e.toString), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-  private val format = SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+  private val format = SnapshotV11.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
   private given ProtVer = Versions.eraLow(ShelleyBasedEra.SConway)
 
   private def pending(state: MirrorState): PulsingRewUpdate =
@@ -62,6 +62,7 @@ class RewardSnapshotSuite extends CatsEffectSuite:
       .flatMap(SnapshotV8.fromV7)
       .flatMap(SnapshotV9.fromV8)
       .flatMap(SnapshotV10.fromV9)
+      .flatMap(SnapshotV11.fromV10)
       .fold(e => fail(e.toString), identity)
     for
       restored <- format.decode(old).map(_.fold(e => fail(e.toString), identity))
@@ -96,6 +97,7 @@ class RewardSnapshotSuite extends CatsEffectSuite:
           .flatMap(SnapshotV8.fromV7)
           .flatMap(SnapshotV9.fromV8)
           .flatMap(SnapshotV10.fromV9)
+          .flatMap(SnapshotV11.fromV10)
           .fold(e => fail(e.toString), identity)
       finally stream.close()
     val rows = load("results.json").filter { row =>

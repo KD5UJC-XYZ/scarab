@@ -6,18 +6,17 @@ import cats.effect.{IO, Outcome, Resource}
 import cats.mtl.Handle
 import cats.syntax.all.*
 import fs2.io.file.Path
-import java.nio.file.{Files as JFiles, Path as JPath}
+import java.nio.file.Files as JFiles
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{ByronState, ConsensusExtras}
+import xyz.kd5ujc.scarab.consensus.{ByronState, ConsensusExtras, FollowState}
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorExtras, ProtocolExtras, StateMirror}
 import xyz.kd5ujc.scarab.ledger.{CheckpointProblem, FileKind, FormatVersion, Nonce, StorageError}
 import xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack
 import xyz.kd5ujc.scarab.ledger.state.{Gap, NodeExtras, ShelleyBasedEra, SlotNo}
-import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.storage.haskell.state.*
 
 /** The state and tables are original node 11.1.3 fixtures, not Scala re-encodings. Only the V5
@@ -25,15 +24,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.*
   */
 class LedgerSnapshotExportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   import StorageTestKit.{ok, tempDir}
-  private val setup = NodeSetup
-    .fromDirectory(ReferenceBuild.Default)(JPath.of("fixtures/eras/genesis"))
-    .fold(e => fail(e.message), identity)
-  private val boot = setup.mirrorStart.extras match
-    case MirrorExtras.InByron(_, b, _) => b
-    case MirrorExtras.InShelley(_, c)  => c.boot
   private val extras: MirrorExtras.InShelley = MirrorExtras.InShelley(
     NodeExtras.empty,
-    ConsensusExtras(boot, ByronState.initial, ProtocolExtras(0, Nonce.Neutral))
+    ConsensusExtras(FollowState.initial, ByronState.initial, ProtocolExtras(0, Nonce.Neutral))
   )
 
   private def attempt[A](
@@ -125,7 +118,7 @@ class LedgerSnapshotExportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
     JFiles.write(
       (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath,
       FileLedgerSnapshots.closed(
-        SnapshotV10.framed(ReferenceBuild.Release11_1, bindingOf(db, anchor), sidecar, raw)
+        SnapshotV11.framed(ReferenceBuild.Release11_1, bindingOf(db, anchor), sidecar, raw)
       )
     )
     ()
@@ -213,7 +206,9 @@ class LedgerSnapshotExportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
         _ <- IO.blocking(
           JFiles.write(
             (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath,
-            FileLedgerSnapshots.closed(SnapshotV9.framed(bindingOf(db, anchor), sidecar, raw))
+            FileLedgerSnapshots.closed(
+              SnapshotV9.framed(bindingOf(db, anchor), PreviousSidecars.of(sidecar), raw)
+            )
           )
         )
         previous <- attempt(
@@ -231,6 +226,38 @@ class LedgerSnapshotExportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
     }
   }
 
+  test("a V10 file not yet migrated exports its recorded build's bytes, read in memory") {
+    tempDir.use { root =>
+      for
+        input <- fixture(root, "conway-4593")
+        (db, sidecar, raw) = input
+        anchor = sidecar.anchor.getOrElse(fail("anchor"))
+        file = (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath
+        content = FileLedgerSnapshots.closed(
+          SnapshotV10.framed(
+            ReferenceBuild.Release11_1,
+            bindingOf(db, anchor),
+            PreviousSidecars.of(sidecar),
+            raw
+          )
+        )
+        _ <- IO.blocking(JFiles.write(file, content))
+        previous <- attempt(
+          LedgerSnapshotExport.run[IO](LedgerSnapshotExport.Config(db, root / "previous"))
+        )
+        report = previous.fold(e => fail(e.message), identity)
+        _ <- IO {
+          assertEquals(report.build, ReferenceBuild.Release11_1)
+          assertEquals(
+            JFiles.readAllBytes((report.directory / "state").toNioPath).toVector,
+            raw.toArray.toVector
+          )
+          assertEquals(JFiles.readAllBytes(file).toVector, content.toVector, "the source unchanged")
+        }
+      yield ()
+    }
+  }
+
   test("a snapshot recorded under a build of another layout is refused, not converted") {
     tempDir.use { root =>
       for
@@ -241,7 +268,7 @@ class LedgerSnapshotExportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
           JFiles.write(
             (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath,
             FileLedgerSnapshots.closed(
-              SnapshotV10.framed(ReferenceBuild.LeiosB004fe0c, bindingOf(db, anchor), sidecar, raw)
+              SnapshotV11.framed(ReferenceBuild.LeiosB004fe0c, bindingOf(db, anchor), sidecar, raw)
             )
           )
         )
@@ -340,7 +367,7 @@ class LedgerSnapshotExportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
         path = db / "snapshots" / FileLedgerSnapshots.nameOf(
           sidecar.anchor.getOrElse(fail("anchor"))
         )
-        content = SnapshotV10.framed(
+        content = SnapshotV11.framed(
           ReferenceBuild.Release11_1,
           bindingOf(db, sidecar.anchor.getOrElse(fail("anchor"))),
           sidecar,

@@ -27,12 +27,12 @@ class SnapshotPreflightSuite extends CatsEffectSuite:
     .fold(e => fail(e.message), identity)
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
   private given SnapshotFormat[IO, MirrorState] =
-    SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+    SnapshotV11.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
   private val snapshotName = "snapshot-99999999999999999999-1.bin"
 
   private val versions =
     Vector(FormatVersion.V1, FormatVersion.V2, FormatVersion.V3, FormatVersion.V4)
-      .map(v => Some(v) -> FileKind.SnapshotFile.identifier(v)) :+ (None -> "SCRBSNPB")
+      .map(v => Some(v) -> FileKind.SnapshotFile.identifier(v)) :+ (None -> "SCRBSNPC")
 
   private def header(version: Option[FormatVersion], identifier: String): Array[Byte] =
     version match

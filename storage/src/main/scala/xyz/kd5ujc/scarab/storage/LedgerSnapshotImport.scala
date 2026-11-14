@@ -12,7 +12,7 @@ import fs2.io.file.{Files, Path}
 import java.nio.file.{Files as JFiles, LinkOption}
 import java.security.MessageDigest
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{BlockRef, BootstrapState, ByronState, ConsensusExtras}
+import xyz.kd5ujc.scarab.consensus.{BlockRef, ByronState, ConsensusExtras, FollowState}
 import xyz.kd5ujc.scarab.consensus.state.*
 import xyz.kd5ujc.scarab.crypto.witness.PublicKey32
 import xyz.kd5ujc.scarab.ledger.{
@@ -37,7 +37,7 @@ import xyz.kd5ujc.scarab.storage.haskell.state.*
   * The `state` file is in the layout of the reference build that wrote the input database
   * ([[Config.layout]], `--reference-build`): it must decode completely in that layout, and the
   * state it decodes to goes into the snapshot, written again in that layout, with that build
-  * recorded ([[SnapshotV10]]). For the reference files the suites hold, that is the file's own
+  * recorded ([[SnapshotV11]]). For the reference files the suites hold, that is the file's own
   * bytes, but it is not a promise of byte identity: the encoding drops what the reference drops on
   * reading (of two governance proposals with one id it keeps the first, `decSharePlusCBOR`,
   * cardano-ledger f649f975, `Conway/Governance/Proposals.hs:401-406`, and the snapshot, read as
@@ -91,7 +91,6 @@ object LedgerSnapshotImport:
       identity: NetworkIdentity,
       byronEpochSlots: BigInt,
       genesisParams: ProtocolParams,
-      bootstrap: BootstrapState,
       trust: Trust,
       layout: ReferenceLayout = ReferenceLayout.Release11_1
   )
@@ -281,8 +280,7 @@ object LedgerSnapshotImport:
             val extras: MirrorExtras.InShelley = MirrorExtras.InShelley(
               NodeExtras.empty,
               ConsensusExtras(
-                config.bootstrap
-                  .copy(active = false, era = Some(file.era), stats = None, completed = None),
+                FollowState(Some(file.era), None, None),
                 ByronState.initial.copy(firstShelleyEpoch = observed.get(Era.Shelley)),
                 ProtocolExtras(i.state.nes.epoch.toBigInt, Nonce.Neutral)
               )
@@ -317,8 +315,8 @@ object LedgerSnapshotImport:
                 Set.empty,
                 SnapshotSidecar.Chain.InShelley(utxo, params, Some(previous), extras)
               )
-              content = SnapshotV10.framed(config.layout.build, binding, sidecar, published)
-              back <- SnapshotV10.format[F](SnapshotCheck.Structure, config.layout).decode(content)
+              content = SnapshotV11.framed(config.layout.build, binding, sidecar, published)
+              back <- SnapshotV11.format[F](SnapshotCheck.Structure, config.layout).decode(content)
               _ <- lift(back.leftMap(Error.Storage(_)).void)
               snapshots = stage / "artifacts" / "snapshots"
               _ <- files.createDirectories(snapshots)

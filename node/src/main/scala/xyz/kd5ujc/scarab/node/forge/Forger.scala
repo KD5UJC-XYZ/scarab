@@ -736,13 +736,6 @@ final class Forger[F[_]: Async, S](
       case Some(c) if c.key == key => F.pure(c)
       case _ =>
         for
-          _ <- lift(
-            Either.cond(
-              !state.consensus.boot.active,
-              (),
-              ForgeError.UnsupportedProtocol(ForgeProtocolProblem.Bootstrap)
-            )
-          )
           nes <- lift(
             ConwayView(state, current.tipRef).left.map(why =>
               ForgeError.UnsupportedProtocol(why match

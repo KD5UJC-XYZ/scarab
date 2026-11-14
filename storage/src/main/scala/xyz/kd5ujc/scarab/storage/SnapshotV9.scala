@@ -17,11 +17,11 @@ import xyz.kd5ujc.scarab.ledger.{FileKind, StorageError}
   * V5 body = sidecar length u32 | sidecar | Haskell state bytes   (as in SnapshotV5)
   * }}}
   *
-  * Its sidecar has the schema V10 has, the current one. A V9 file is read only to be migrated to
-  * V10 ([[SnapshotV10.fromV9]]), and by the export of a database not yet opened by this build; the
-  * migration from V8 ([[fromV8]]) keeps the binding and the Haskell bytes and reads the sidecar in
-  * the schema V8 wrote ([[SnapshotSidecarV8]]), then writes it in the V9 one. The binding and its
-  * readers here are those of V7 to V10.
+  * Its sidecar has the schema V10 has, frozen at V11 ([[SnapshotSidecarV10]]). A V9 file is read
+  * only to be migrated to V10 ([[SnapshotV10.fromV9]]), also in memory by the export of a database
+  * not yet opened by this build; the migration from V8 ([[fromV8]]) keeps the binding and the
+  * Haskell bytes and reads the sidecar in the schema V8 wrote ([[SnapshotSidecarV8]]), then writes
+  * it in the V9 one. The binding and its readers here are those of V7 to V11.
   */
 object SnapshotV9:
   val Magic: Array[Byte] = "SCRBSNP9".getBytes("US-ASCII")
@@ -36,15 +36,15 @@ object SnapshotV9:
     CheckpointBinding.fingerprint ++ Codec.encode(binding)(using CheckpointBinding.codec)
 
   /** A V9 file's content, in one array of its exact size: what the migration from V8 writes, and
-    * the previous-version tests (the node writes [[SnapshotV10]]).
+    * the previous-version tests (the node writes [[SnapshotV11]]).
     */
   private[storage] def framed(
       binding: CheckpointBinding,
-      sidecar: SnapshotSidecar,
+      sidecar: FrozenSidecar.SnapshotSidecar,
       haskell: Bytes
   ): Array[Byte] =
     val bound = bindingBytes(binding)
-    val side = SnapshotV5.sidecarBytes(sidecar)
+    val side = SnapshotV5.v10SidecarBytes(sidecar)
     val out = new Array[Byte](HeaderSize + bound.length + 4 + side.length + haskell.size)
     System.arraycopy(Magic, 0, out, 0, Magic.length)
     ByteBuffer.wrap(out, Magic.length, 4).putInt(bound.length)
@@ -68,19 +68,19 @@ object SnapshotV9:
   def bindingOf(content: Array[Byte]): Either[StorageError, CheckpointBinding] =
     boundHeader(Magic, content).map(_._1)
 
-  /** The sidecar of the content of a V9 file. */
+  /** The sidecar of the content of a V9 file, read into the current types. */
   def sidecarOf(content: Array[Byte]): Either[StorageError, SnapshotSidecar] =
-    sections(content).map(_._2)
+    sections(content).map(s => FrozenSidecar.live(s._2))
 
   /** The binding, the sidecar and the Haskell bytes of a V9 file, after the magic, the lengths and
     * the fingerprints have been checked.
     */
   private[storage] def sections(
       content: Array[Byte]
-  ): Either[StorageError, (CheckpointBinding, SnapshotSidecar, Bytes)] =
+  ): Either[StorageError, (CheckpointBinding, FrozenSidecar.SnapshotSidecar, Bytes)] =
     boundHeader(Magic, content).flatMap { (binding, at) =>
       SnapshotV5
-        .body(content, at, SnapshotV5.Schema.Current)
+        .previousBody(content, at, SnapshotV5.Schema.V10)
         .map((sidecar, haskell) => (binding, sidecar, haskell))
     }
 
@@ -100,7 +100,7 @@ object SnapshotV9:
     else bindingAt(content, magic.length)
 
   /** The binding whose length is at `at` and the offset of the body after it, once the length and
-    * the binding's fingerprint have been checked: the binding of V7 to V10 files.
+    * the binding's fingerprint have been checked: the binding of V7 to V11 files.
     */
   private[storage] def bindingAt(
       content: Array[Byte],

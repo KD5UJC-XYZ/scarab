@@ -511,7 +511,7 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   test("the node's block rules accept the whole chain from the genesis state") {
     assertEquals(states.size, blocks.size + 1)
-    assertEquals(states.last.consensus.boot.era, Some(Era.Conway))
+    assertEquals(states.last.consensus.follow.era, Some(Era.Conway))
     assertEquals(states.last.consensus.byron.tip.map(_.hash), Some(headers(49).hash))
   }
 
@@ -801,8 +801,8 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     // the chain-dependent state Shelley starts from, held by the Byron mirror, with another nonce
     val other = ProtocolState.initial(Era.Byron, Blake2b.hash256.hash(Bytes(Vector(1, 2, 3))))
     val wrong = states(first).extras match
-      case MirrorExtras.InByron(_, boot, _) =>
-        states(first).copy(extras = MirrorExtras.InByron(other.dep, boot, other.extras))
+      case MirrorExtras.InByron(_, follow, _) =>
+        states(first).copy(extras = MirrorExtras.InByron(other.dep, follow, other.extras))
       case _ => fail("the state before the first Shelley block is not Byron's")
     val result = validate(wrong, first)
     assert(result.left.exists(_.rule == BlockRule.TPraos), result.toString)
@@ -918,7 +918,7 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(events.count(_.isInstanceOf[FollowerEvent.Extended]), blocks.size)
       assertEquals(chain.tip, headers.last.point)
       assertEquals(chain.length, geometry.k.toInt)
-      assertEquals(chain.state.consensus.boot.era, Some(Era.Conway))
+      assertEquals(chain.state.consensus.follow.era, Some(Era.Conway))
       assert(!events.exists(_.isInstanceOf[FollowerEvent.RolledBack]))
     }
   }
@@ -985,7 +985,7 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           rolled = first.rollback(headers(b - 1).point).fold(e => fail(e.message), identity)
           replayed <- apply(rolled, b until b + 6)
         yield
-          assertEquals(rolled.state.consensus.boot.era, Some(Era.Byron))
+          assertEquals(rolled.state.consensus.follow.era, Some(Era.Byron))
           assertEquals(rolled.state, states(b))
           assertEquals(first.length - rolled.length, 3)
           assertEquals(
@@ -1051,6 +1051,6 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           MirrorStep.mapUtxo(expected)(_ => ledger.Utxo.empty)
         )
         assertEquals(last.protocol, expected.protocol)
-        assertEquals(last.consensus.boot, expected.consensus.boot)
+        assertEquals(last.consensus.follow, expected.consensus.follow)
       }
   }

@@ -69,7 +69,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private val geometry = setup.geometry
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
   private given SnapshotFormat[IO, MirrorState] =
-    SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+    SnapshotV11.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
   private val k = geometry.k.toInt
 
   private val raws: Vector[Bytes] =
@@ -1391,9 +1391,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 stream.iterator().asScala.exists { file =>
                   JFiles.isRegularFile(file) &&
                   new String(JFiles.readAllBytes(file).take(8), StandardCharsets.ISO_8859_1) ==
-                    "SCRBSNPA"
+                    "SCRBSNPB"
                 },
-                "expected a current V10 snapshot before the immutable-header refusal"
+                "expected a current V11 snapshot before the immutable-header refusal"
               )
             finally stream.close()
           }
@@ -1510,13 +1510,13 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           )
           _ <- IO.whenA(previous) {
             val (_, _, sidecar, haskell) =
-              SnapshotV10
+              SnapshotV11
                 .sections(content, ReferenceLayout.Release11_1)
                 .fold(e => fail(e.message), identity)
             IO.blocking(
               JFiles.write(
                 file.toNioPath,
-                FileLedgerSnapshots.closed(SnapshotV5.framed(sidecar, haskell))
+                FileLedgerSnapshots.closed(SnapshotV5.framed(PreviousSidecars.of(sidecar), haskell))
               )
             ).void
           }
@@ -1558,7 +1558,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           case StorageEvent.FormatMigrated(m) if m.kind == FileKind.SnapshotFile => m
         }.toList,
         if previous then
-          List(Migrated(FileKind.SnapshotFile, FormatVersion.V5, FormatVersion.V10, left.size))
+          List(Migrated(FileKind.SnapshotFile, FormatVersion.V5, FormatVersion.V11, left.size))
         else List.empty[Migrated],
         s"$label: only V5 snapshot files are rewritten, once"
       )

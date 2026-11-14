@@ -138,7 +138,7 @@ object K1OfflineMain extends IOApp:
           val setup = loaded.copy(praos = loaded.praos.copy(verdicts = cache))
           given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
           given SnapshotFormat[IO, MirrorState] =
-            SnapshotV10.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
+            SnapshotV11.format[IO](SnapshotCheck.Full, ReferenceLayout.Release11_1)
           val backing = new UtxoBacking[IO, MirrorState](
             store,
             FsPath.fromNioPath(c.db.resolve("utxo/checkpoints"))

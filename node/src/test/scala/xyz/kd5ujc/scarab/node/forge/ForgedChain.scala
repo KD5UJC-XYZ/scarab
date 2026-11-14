@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.consensus.Anchor
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState}
+import xyz.kd5ujc.scarab.consensus.{ByronState, FollowState}
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
@@ -202,16 +202,6 @@ class ForgedChainSetup(val geometry: EpochGeometry):
 
   /** The chain's state at the origin: `ledger` in Conway, its epoch nonce [[epochNonce]]. */
   def genesisOf(env: ConsensusMirrorEnv, ledger: NewEpochState[Conway]): MirrorState =
-    val lite = LiteLedger(
-      0,
-      LiteParams((10, 0), Rational.zero, Nonce.Neutral, 65536, 16384, 1100),
-      Map.empty,
-      Vector.empty,
-      Map.empty,
-      Map.empty,
-      Map.empty,
-      2
-    )
     val praos = ProtocolState(
       ChainDepState.Praos(
         PraosState(
@@ -232,7 +222,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
         env,
         EraNes.InEra(ShelleyBasedEra.SConway, ledger),
         praos.dep,
-        ConsensusExtras(BootstrapState.initial(lite), ByronState.initial, praos.extras)
+        ConsensusExtras(FollowState.initial, ByronState.initial, praos.extras)
       )
       .fold(e => throw new AssertionError(e.toString), identity)
 

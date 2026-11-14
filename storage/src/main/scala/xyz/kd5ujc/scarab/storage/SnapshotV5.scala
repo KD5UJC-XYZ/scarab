@@ -32,9 +32,9 @@ import xyz.kd5ujc.scarab.ledger.state.{
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState, ReferenceLayout}
 
 /** The snapshot of format version 5, the Haskell ledger state with a sidecar, and the body of the
-  * versions after it ([[SnapshotV7]], [[SnapshotV8]], [[SnapshotV9]] and the current
-  * [[SnapshotV10]]), which put a checkpoint binding (and from V10 the reference build) in front of
-  * it:
+  * versions after it ([[SnapshotV7]], [[SnapshotV8]], [[SnapshotV9]], [[SnapshotV10]] and the
+  * current [[SnapshotV11]]), which put a checkpoint binding (and from V10 the reference build) in
+  * front of it:
   *
   * {{{
   * "SCRBSNP5" | sidecar length u32 | sidecar | Haskell state bytes
@@ -61,26 +61,31 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState,
   * A V5 file is read only to be migrated ([[SnapshotV7.fromV5]]): the body after its magic becomes
   * the body of the V7 file byte for byte, so the sidecar and Haskell readers here are those of all
   * versions. V5 and V7 sidecars have the frozen schema [[SnapshotSidecarV7]], V8 sidecars the
-  * frozen [[SnapshotSidecarV8]] and V9 and V10 sidecars the current one ([[SnapshotSidecar]]):
-  * which one a body is read with is its [[Schema]], and the fingerprint goldens of all three
-  * (`CodecSuite`) keep guarding them. The Haskell section is read and written with the codec of the
-  * configured reference build ([[ReferenceLayout]]); the bodies before V10 hold 11.1-layout bytes
-  * only.
+  * frozen [[SnapshotSidecarV8]], V9 and V10 sidecars the frozen [[SnapshotSidecarV10]], all three
+  * read into the frozen types of [[FrozenSidecar]], and V11 sidecars the current one
+  * ([[SnapshotSidecar]]): which frozen one a previous body is read with is its [[Schema]], and the
+  * fingerprint goldens of all four (`CodecSuite`) keep guarding them. The Haskell section is read
+  * and written with the codec of the configured reference build ([[ReferenceLayout]]); the bodies
+  * before V10 hold 11.1-layout bytes only.
   */
 object SnapshotV5:
   val Magic: Array[Byte] = "SCRBSNP5".getBytes("US-ASCII")
 
-  /** The sidecar schema a body is read with: the current one, or the frozen one of a file of a
-    * previous version `found` (V5, V7 or V8).
-    */
+  /** The frozen sidecar schema the body of a previous version is read with. */
   private[storage] enum Schema:
-    case Current
-    case Previous(found: FormatVersion)
+    /** [[SnapshotSidecarV7]], of a file of version `found` (V5 or V7). */
+    case V7(found: FormatVersion)
+
+    /** [[SnapshotSidecarV8]]. */
+    case V8
+
+    /** [[SnapshotSidecarV10]], of a V9 or V10 file. */
+    case V10
 
   /** Magic and the length of the sidecar. */
   private val HeaderSize = Magic.length + 4
 
-  /** The sidecar and the Haskell section of a snapshot (the body the V5 to V10 files share), the
+  /** The sidecar and the Haskell section of a snapshot (the body the V5 to V11 files share), the
     * Haskell section in the layout of `layout`, or the refusal of the state.
     */
   private[storage] def parts(
@@ -97,11 +102,11 @@ object SnapshotV5:
       )
     (m.extras, m.ext.ledgerState.state) match
       case (
-            MirrorExtras.InByron(pending, boot, protocol),
+            MirrorExtras.InByron(pending, follow, protocol),
             EraLedgerState.ByronCurrent(b)
           ) =>
         Right(
-          sidecar(SnapshotSidecar.Chain.InByron(pending, ConsensusExtras(boot, b, protocol))) ->
+          sidecar(SnapshotSidecar.Chain.InByron(pending, ConsensusExtras(follow, b, protocol))) ->
             Bytes.empty
         )
       case (shelley: MirrorExtras.InShelley, i: EraLedgerState.InShelleyEra[e]) =>
@@ -130,14 +135,20 @@ object SnapshotV5:
   /** The encoded sidecar with its fingerprint as a V5 or V7 file holds it ([[SnapshotSidecarV7]]):
     * what the previous-version tests and fixture recipes write.
     */
-  private[storage] def previousSidecarBytes(sidecar: SnapshotSidecar): Array[Byte] =
+  private[storage] def previousSidecarBytes(sidecar: FrozenSidecar.SnapshotSidecar): Array[Byte] =
     SnapshotSidecarV7.fingerprint ++ Codec.encode(sidecar)(using SnapshotSidecarV7.codec)
 
   /** The encoded sidecar with its fingerprint as a V8 file holds it ([[SnapshotSidecarV8]]): what
     * the migration from V7 and the previous-version tests write.
     */
-  private[storage] def v8SidecarBytes(sidecar: SnapshotSidecar): Array[Byte] =
+  private[storage] def v8SidecarBytes(sidecar: FrozenSidecar.SnapshotSidecar): Array[Byte] =
     SnapshotSidecarV8.fingerprint ++ Codec.encode(sidecar)(using SnapshotSidecarV8.codec)
+
+  /** The encoded sidecar with its fingerprint as a V9 or V10 file holds it
+    * ([[SnapshotSidecarV10]]): what the migration from V8 and the previous-version tests write.
+    */
+  private[storage] def v10SidecarBytes(sidecar: FrozenSidecar.SnapshotSidecar): Array[Byte] =
+    SnapshotSidecarV10.fingerprint ++ Codec.encode(sidecar)(using SnapshotSidecarV10.codec)
 
   /** Write the body (`sidecar length u32 | sidecar | Haskell bytes`) into `out` at `at`. */
   private[storage] def writeBody(
@@ -151,9 +162,9 @@ object SnapshotV5:
     haskell.copyTo(out, at + 4 + sidecar.length)
 
   /** A V5 file's content, in one array of its exact size (the previous-version tests and fixture
-    * recipes write it; the node writes [[SnapshotV10]]).
+    * recipes write it; the node writes [[SnapshotV11]]).
     */
-  private[storage] def framed(sidecar: SnapshotSidecar, haskell: Bytes): Array[Byte] =
+  private[storage] def framed(sidecar: FrozenSidecar.SnapshotSidecar, haskell: Bytes): Array[Byte] =
     val side = previousSidecarBytes(sidecar)
     val out = new Array[Byte](HeaderSize + side.length + haskell.size)
     System.arraycopy(Magic, 0, out, 0, Magic.length)
@@ -174,7 +185,7 @@ object SnapshotV5:
       content: Array[Byte],
       at: Int
   ): Either[StorageError, (Option[BlockRef], MirrorState)] =
-    body(content, at, Schema.Current).flatMap { (sidecar, haskell) =>
+    body(content, at).flatMap { (sidecar, haskell) =>
       val state: Either[StorageError, MirrorState] = sidecar.chain match
         case SnapshotSidecar.Chain.InByron(pending, extras) =>
           Either
@@ -210,7 +221,7 @@ object SnapshotV5:
     * dropped.
     */
   private[storage] def bodyWellFormed(content: Array[Byte], at: Int): Either[StorageError, Unit] =
-    body(content, at, Schema.Current).flatMap { (_, haskell) =>
+    body(content, at).flatMap { (_, haskell) =>
       if haskell.size == 0 then Right(())
       else Cbor.decode(haskell, HaskellState.limits).bimap(corrupt, _ => ())
     }
@@ -243,37 +254,62 @@ object SnapshotV5:
     * update state lost its installer metadata is refused, [[SnapshotSidecarV7]]).
     */
   def sidecarOf(content: Array[Byte]): Either[StorageError, SnapshotSidecar] =
-    sections(content).map(_._1)
+    sections(content).map(s => FrozenSidecar.live(s._1))
 
   /** The sidecar and the Haskell bytes of a V5 file, after the magic, the length and the
     * fingerprint have been checked.
     */
   private[storage] def sections(
       content: Array[Byte]
-  ): Either[StorageError, (SnapshotSidecar, Bytes)] =
+  ): Either[StorageError, (FrozenSidecar.SnapshotSidecar, Bytes)] =
     if content.length < HeaderSize || !content.startsWith(Magic) then
       SnapshotMigration
         .versionOf("snapshot format", content)
         .flatMap(version => FileKind.SnapshotFile.readable("snapshot format", version))
         .flatMap(_ => Left(corrupt(SnapshotReadError.BadMagic)))
-    else body(content, Magic.length, Schema.Previous(FormatVersion.V5))
+    else previousBody(content, Magic.length, Schema.V7(FormatVersion.V5))
 
-  /** The sidecar and the Haskell bytes of the body that starts at `at`, after its length and
-    * fingerprint (that of `schema`) have been checked.
+  /** The sidecar and the Haskell bytes of the current body that starts at `at`, after its length
+    * and fingerprint have been checked.
     */
   private[storage] def body(
       content: Array[Byte],
+      at: Int
+  ): Either[StorageError, (SnapshotSidecar, Bytes)] =
+    framedBody(content, at, SnapshotSidecar.fingerprint)(bytes =>
+      Codec
+        .decode[SnapshotSidecar](bytes)(using SnapshotSidecar.codec)
+        .leftMap(DecodeFailure.binary("snapshot sidecar", _))
+    )
+
+  /** The sidecar and the Haskell bytes of the body of a previous version that starts at `at`, after
+    * its length and fingerprint (that of `schema`) have been checked.
+    */
+  private[storage] def previousBody(
+      content: Array[Byte],
       at: Int,
       schema: Schema
-  ): Either[StorageError, (SnapshotSidecar, Bytes)] =
+  ): Either[StorageError, (FrozenSidecar.SnapshotSidecar, Bytes)] =
+    schema match
+      case Schema.V7(found) =>
+        framedBody(content, at, SnapshotSidecarV7.fingerprint)(SnapshotSidecarV7.decode(_, found))
+      case Schema.V8 =>
+        framedBody(content, at, SnapshotSidecarV8.fingerprint)(SnapshotSidecarV8.decode)
+      case Schema.V10 =>
+        framedBody(content, at, SnapshotSidecarV10.fingerprint)(SnapshotSidecarV10.decode)
+
+  /** The sidecar (read by `decode`) and the Haskell bytes of the body that starts at `at`, after
+    * its length and its `fingerprint` have been checked.
+    */
+  private def framedBody[A](
+      content: Array[Byte],
+      at: Int,
+      fingerprint: Array[Byte]
+  )(decode: Array[Byte] => Either[StorageError, A]): Either[StorageError, (A, Bytes)] =
     if content.length < at + 4 then
       Left(corrupt(SnapshotReadError.SidecarLength(0, content.length)))
     else
       val length = ByteBuffer.wrap(content, at, 4).getInt
-      val fingerprint = schema match
-        case Schema.Current                    => SnapshotSidecar.fingerprint
-        case Schema.Previous(FormatVersion.V8) => SnapshotSidecarV8.fingerprint
-        case Schema.Previous(_)                => SnapshotSidecarV7.fingerprint
       val start = at + 4
       val end = start.toLong + length
       if length < fingerprint.length || end > content.length then
@@ -289,15 +325,8 @@ object SnapshotV5:
             )
           )
         else
-          val bytes = content.slice(start + fingerprint.length, end.toInt)
-          val sidecar = schema match
-            case Schema.Current =>
-              Codec
-                .decode[SnapshotSidecar](bytes)(using SnapshotSidecar.codec)
-                .leftMap(DecodeFailure.binary("snapshot sidecar", _))
-            case Schema.Previous(FormatVersion.V8) => SnapshotSidecarV8.decode(bytes)
-            case Schema.Previous(found)            => SnapshotSidecarV7.decode(bytes, found)
-          sidecar.map(_ -> Bytes.wrap(content).drop(end.toInt))
+          decode(content.slice(start + fingerprint.length, end.toInt))
+            .map(_ -> Bytes.wrap(content).drop(end.toInt))
 
   /** The ledger state with the node's UTxO set put back where the Haskell section has `map(0)`. */
   private def withUtxo(ext: ExtLedgerState, utxo: Utxo): Either[StorageError, ExtLedgerState] =

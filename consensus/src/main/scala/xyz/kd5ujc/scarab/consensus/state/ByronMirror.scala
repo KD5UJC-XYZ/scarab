@@ -61,6 +61,6 @@ object ByronMirror:
       }
       MirrorState(
         ExtLedgerState(ledger, HeaderState(tip, dep), ExtLedgerState.Layout.Node11_1),
-        MirrorExtras.InByron(pending, consensus.boot, consensus.protocol),
+        MirrorExtras.InByron(pending, consensus.follow, consensus.protocol),
         provenance
       )

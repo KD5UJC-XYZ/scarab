@@ -103,9 +103,9 @@ object ChainRead:
       def afterVoting: Long = MirrorStep.afterVotingOf(m)
       def consensus: ConsensusExtras = m.extras match
         case MirrorExtras.InShelley(_, c) => c
-        case MirrorExtras.InByron(_, boot, protocol) =>
+        case MirrorExtras.InByron(_, follow, protocol) =>
           ConsensusExtras(
-            boot,
+            follow,
             m.ext.ledgerState.state match
               case EraLedgerState.ByronCurrent(b) => b
               case _                              => ByronState.initial

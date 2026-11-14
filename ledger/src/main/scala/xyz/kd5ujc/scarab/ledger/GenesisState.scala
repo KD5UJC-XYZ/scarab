@@ -265,6 +265,23 @@ object GenesisState:
           yield result
     yield parsed
 
+  /** The genesis delegations of the Shelley genesis, `sgGenDelegs` (`Shelley/Genesis.hs:320, 510`,
+    * f649f975): the delegate's key hash and its VRF key hash by genesis key hash.
+    */
+  def genDelegs(shelley: Json): Either[ConfigError, Map[Bytes, GenDelegPair]] =
+    def hex(h: String) = Bytes.fromHex(h).leftMap(e => ConfigError(ConfigProblem.Hex(e)))
+    def field(m: Map[String, String], name: String) =
+      m.get(name).toRight(ConfigError(ConfigProblem.MissingField("genDeleg", name))).flatMap(hex)
+    shelley.hcursor
+      .downField("genDelegs")
+      .as[Map[String, Map[String, String]]]
+      .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis", "genDelegs", e)))
+      .flatMap(_.toVector.traverse { case (g, m) =>
+        (hex(g), field(m, "delegate"), field(m, "vrf"))
+          .mapN((gk, dk, vk) => gk -> GenDelegPair(dk, vk))
+      })
+      .map(_.toMap)
+
   def get[A: Decoder](c: ACursor, name: String): Either[ConfigError, A] =
     c.downField(name).as[A].leftMap(e => ConfigError(ConfigProblem.JsonField("genesis", name, e)))
 

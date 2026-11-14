@@ -25,9 +25,9 @@ import xyz.kd5ujc.scarab.storage.{
   RocksUtxoCheckpoint,
   RocksUtxoStore,
   SnapshotCheck,
+  SnapshotMigration,
   SnapshotSidecar,
-  SnapshotV9,
-  SnapshotV10,
+  SnapshotV11,
   StateBacking,
   StateSnapshot,
   UtxoCheckpoint
@@ -111,14 +111,11 @@ object SclsBase:
       _ <- lift(Either.cond(exists, (), Error.MissingSource(path)))
       raw <- guard(path)(Files.readAllBytes(path.toNioPath))
       verified <- lift(FileLedgerSnapshots.verified(raw).leftMap(Error.Storage(_)))
-      // a V9 snapshot of a database this build has not opened yet is read as its V10 migration
+      // a V9 or V10 snapshot of a database this build has not opened yet is read as its migration
       // would write it, in memory: nothing is written to the source
-      content <- lift(
-        (if verified.startsWith(SnapshotV9.Magic) then SnapshotV10.fromV9(verified)
-         else Right(verified)).leftMap(Error.Storage(_))
-      )
+      content <- lift(SnapshotMigration.unopened(verified).leftMap(Error.Storage(_)))
       sections <- lift(
-        SnapshotV10.sections(content, ReferenceLayout.Release11_1).leftMap(Error.Storage(_))
+        SnapshotV11.sections(content, ReferenceLayout.Release11_1).leftMap(Error.Storage(_))
       )
       (_, binding, sidecar, _) = sections
       _ <- lift(Either.cond(sidecar.gaps.isEmpty, (), Error.Gaps(sidecar.gaps)))
@@ -146,7 +143,7 @@ object SclsBase:
           Error.Unsettled(utxo.stamp, utxo.flushed, utxo.diff.size)
         )
       )
-      decoded <- SnapshotV10
+      decoded <- SnapshotV11
         .format[F](SnapshotCheck.Full, ReferenceLayout.Release11_1)
         .decode(content)
       snapshot <- lift(decoded.leftMap(Error.Storage(_)))

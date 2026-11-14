@@ -15,10 +15,10 @@ enum SnapshotReadError extends DomainError:
   case SidecarLength(length: Int, fileLength: Int)
   case BindingLength(length: Int, fileLength: Int)
 
-  /** The recorded reference build of a V10 file is empty or longer than the file. */
+  /** The recorded reference build of a V10 or V11 file is empty or longer than the file. */
   case BuildLength(length: Int, fileLength: Int)
 
-  /** The recorded reference build of a V10 file is not printable ASCII without spaces. */
+  /** The recorded reference build of a V10 or V11 file is not printable ASCII without spaces. */
   case BuildName
   case ByronWithLedgerState
   case ByronLedgerInShelley

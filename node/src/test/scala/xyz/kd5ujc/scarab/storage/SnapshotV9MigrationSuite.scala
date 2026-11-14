@@ -51,7 +51,9 @@ class SnapshotV9MigrationSuite extends CatsEffectSuite:
     }
   }
 
-  test("a committed V8 file migrates once, through V9, and reads as the maintained V10 file") {
+  test(
+    "a committed V8 file migrates once, through V9 and V10, and reads as the maintained V11 file"
+  ) {
     names.traverse_ { name =>
       tempDir.use { dir =>
         val file = dir / "snapshot-00000000000000000025-25.bin"
@@ -64,12 +66,12 @@ class SnapshotV9MigrationSuite extends CatsEffectSuite:
           after <- IO.blocking(JFiles.readAllBytes(file.toNioPath))
           migrated <- NativeSnapshots.decode[IO](after, env)
           maintained <- NativeSnapshots
-            .read[IO](JPath.of("fixtures/snapshot-v10").resolve(name), env)
+            .read[IO](JPath.of("fixtures/snapshot-v11").resolve(name), env)
         yield
           assertEquals(
             first,
             SnapshotMigration.Report(
-              List(Migrated(FileKind.SnapshotFile, FormatVersion.V8, FormatVersion.V10, 1)),
+              List(Migrated(FileKind.SnapshotFile, FormatVersion.V8, FormatVersion.V11, 1)),
               Nil
             ),
             name
@@ -77,14 +79,14 @@ class SnapshotV9MigrationSuite extends CatsEffectSuite:
           assertEquals(second, SnapshotMigration.Report.empty, name)
           assertEquals(
             after.toVector,
-            JFiles.readAllBytes(JPath.of("fixtures/snapshot-v10").resolve(name)).toVector,
+            JFiles.readAllBytes(JPath.of("fixtures/snapshot-v11").resolve(name)).toVector,
             name
           )
           assert(migrated.isRight, s"$name: the migrated file does not read")
           assertEquals(migrated, maintained, name)
           assertEquals(
             SnapshotV8.sidecarOf(content("fixtures/snapshot-v8", name)),
-            SnapshotV10.sidecarOf(
+            SnapshotV11.sidecarOf(
               FileLedgerSnapshots.verified(after).fold(e => fail(e.message), identity)
             ),
             s"$name: the sidecar converts with no loss"
@@ -108,8 +110,8 @@ class SnapshotV9MigrationSuite extends CatsEffectSuite:
     val (_, sidecar, _) = SnapshotV9.sections(v9).fold(e => fail(e.message), identity)
     val dijkstra = sidecar.copy(observed = sidecar.observed + (Era.Dijkstra -> BigInt(9)))
     assertEquals(
-      Codec.decode(Codec.encode(dijkstra)(using SnapshotSidecar.codec))(using
-        SnapshotSidecar.codec
+      Codec.decode(Codec.encode(dijkstra)(using SnapshotSidecarV10.codec))(using
+        SnapshotSidecarV10.codec
       ),
       Right(dijkstra)
     )
@@ -121,9 +123,10 @@ class SnapshotV9MigrationSuite extends CatsEffectSuite:
     }
   }
 
-  private def shelleyParams(sidecar: SnapshotSidecar): ProtocolParams = sidecar.chain match
-    case SnapshotSidecar.Chain.InShelley(_, params, _, _) => params
-    case other => fail(s"not a Shelley-based sidecar: $other")
+  private def shelleyParams(sidecar: FrozenSidecar.SnapshotSidecar): ProtocolParams =
+    sidecar.chain match
+      case FrozenSidecar.Chain.InShelley(_, params, _, _) => params
+      case other => fail(s"not a Shelley-based sidecar: $other")
 
   test("a V8 sidecar's parameters read with the fields Dijkstra adds at their defaults") {
     val (_, sidecar, _) = SnapshotV8
@@ -156,10 +159,12 @@ class SnapshotV9MigrationSuite extends CatsEffectSuite:
       refInputsCostPerDatumByte = 7
     )
     val withDijkstra = sidecar.chain match
-      case c: SnapshotSidecar.Chain.InShelley => sidecar.copy(chain = c.copy(params = dijkstra))
-      case other                              => fail(s"not a Shelley-based sidecar: $other")
+      case c: FrozenSidecar.Chain.InShelley => sidecar.copy(chain = c.copy(params = dijkstra))
+      case other                            => fail(s"not a Shelley-based sidecar: $other")
     val back = Codec
-      .decode(Codec.encode(withDijkstra)(using SnapshotSidecar.codec))(using SnapshotSidecar.codec)
+      .decode(Codec.encode(withDijkstra)(using SnapshotSidecarV10.codec))(using
+        SnapshotSidecarV10.codec
+      )
       .fold(e => fail(e.toString), identity)
     assertEquals(shelleyParams(back), dijkstra)
     Vector(SnapshotSidecarV8.codec, SnapshotSidecarV7.codec).foreach { codec =>

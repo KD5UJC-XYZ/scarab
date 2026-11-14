@@ -38,7 +38,7 @@ import xyz.kd5ujc.scarab.storage.{
   RocksUtxoStore,
   SnapshotCheck,
   SnapshotSidecar,
-  SnapshotV10,
+  SnapshotV11,
   StateBacking,
   StateSnapshot,
   UtxoStore
@@ -255,8 +255,8 @@ object SclsImport:
               )
             )
           case _ => Error.UnsupportedBase.raise[F, SnapshotSidecar]
-        content = SnapshotV10.framed(ReferenceBuild.Release11_1, binding, sidecar, haskell)
-        readback <- SnapshotV10
+        content = SnapshotV11.framed(ReferenceBuild.Release11_1, binding, sidecar, haskell)
+        readback <- SnapshotV11
           .format[F](SnapshotCheck.Full, ReferenceLayout.Release11_1)
           .decode(content)
         back <- lift(readback.leftMap(Error.Storage(_)))
