@@ -37,12 +37,22 @@ by decision. What each suite shows is in [the conformance profile](../plutus-con
   matched, 0 mismatched, none excluded. The node logged the own evaluator as its backend, and thread
   samples in the first epochs showed the own machine evaluating and no Scalus frame. Raw run data is
   not published.
+- **Preprod from genesis**, at `2cf627c2` on 2026-11-14, with `--plutus-vm scarab`, beside the same build with
+  `--plutus-vm scalus` as the control: all 5,406,450 blocks of a verified Mithril preprod snapshot, to block
+  5,406,449 at slot 138,866,397, replayed through the full block rules each way (`import-haskell-db`, then
+  `follow --dump-state --dump-state-at epoch-boundaries` with its peer unreachable). The ledger state at every
+  epoch boundary from 5 to 325 was compared with the `db-analyser` projection of cardano-node 11.1.3 for the
+  same block (`oracle_compare.py reference --byron-epochs 4 --byron-epoch-slots 21600 --epoch-slots 432000`,
+  then `diff --require-complete --expected-epochs 321`): 321 of 321 matched with each evaluator, 0
+  mismatched. Epoch 4, the first Shelley epoch, has no digest because the replay starts in Byron
+  ([the oracle](../running/oracle.md)). Each run logged the evaluator it was given. Raw run data is not
+  published.
 
 ## Explicitly unchecked or unconfirmed
 
 - **Forging** with the own evaluator is refused until its evidence is reviewed (I2-WP11, owner decision).
 - **Protocol 12 and later** (Leios, PlutusV4) get no verdict, by decision.
-- **Preprod and mainnet:** no replay with the own evaluator is recorded.
+- **Mainnet:** no replay with the own evaluator is recorded.
 - **Projection scope:** the Preview comparison covers the fields of the oracle's projection
   ([the oracle](../running/oracle.md)), not every byte of the state, and only the state at epoch
   boundaries. It compares no single script's verdict or budget with the Scalus backend's; a different
