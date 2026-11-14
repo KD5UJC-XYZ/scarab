@@ -154,9 +154,7 @@ tests), exceptions and how a kept site is marked, enforcement and reason. Read t
   not ready while it fails.
 - After a rebase, re-check every factual claim your change makes against the new base, not only that
   it builds.
-- Every pull request gets an independent, read-only Codex review of its final diff before it is marked ready,
-  posted on it and linked from its "Independent review" section
-  ([CONTRIBUTING.md](CONTRIBUTING.md#independent-review)).
+- Get the [independent review](CONTRIBUTING.md#independent-review) before a pull request leaves draft.
 - Run `python3 scripts/cleanup.py --owner <each devnet, container owner and run name you made> --apply`
   (its docstring says what it removes and what it keeps).
 - Report: branch and commits, what changed, gate results, deviations from the plan and why, and what
