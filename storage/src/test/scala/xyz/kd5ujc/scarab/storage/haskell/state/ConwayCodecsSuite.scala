@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{
   BootstrapWitness,
   ByteStrings,
   Certificate,
+  ConwayParamUpdate,
   CostModelDecode,
   Credential,
   DRep,
@@ -49,16 +50,17 @@ import xyz.kd5ujc.scarab.protocol.Era
 
 import ConwayCodecs.ScriptPayload
 
-/** The reference's `EncCBOR` of the Conway values of [[ConwayCodecs]]. Each codec is checked three
-  * ways: what it writes is read back by the ledger's own decoder as the value written (a property
-  * over generated values); its framing, map order and tags are the bytes worked out by hand from
-  * the encoders at cardano-ledger f649f975 (sets and sequences above 23 items, a cost model of 166
-  * parameters, a list of 24 metadata, a script voter before a key voter); and on chain data the
-  * repository holds (`fixtures/eras`, a devnet of the reference node 11.1.3, and
-  * `fixtures/preview`, blocks of the Preview network), decoding and writing again gives the bytes
-  * of the chain. A few cases are written by hand after samples of the cardano-cbor-dataset
-  * (r2rationality, `ed6c49a4`), which carries no licence, so none of its bytes is copied: each says
-  * so.
+/** The reference's `EncCBOR` of the Conway values of [[ConwayCodecs]]. What a codec writes is read
+  * back by the ledger's own decoder as the value written (a property over generated values, for
+  * every codec but the block's); framing, map order and tags are checked against bytes worked out
+  * by hand from the encoders at cardano-ledger f649f975 (sets, sequences and maps above 23 items, a
+  * cost model of 166 parameters, a list of 24 metadata, a script voter before a key voter, a
+  * parameter update read from a wider head); refusals of values that cannot be written are checked;
+  * and on the chain data the repository holds (`fixtures/eras`, a devnet of the reference node
+  * 11.1.3, and `fixtures/preview`, blocks of the Preview network) decoding and writing again gives
+  * the chain's bytes for blocks, certificates, votes, proposals and vkey witnesses. A few cases are
+  * written by hand after samples of the cardano-cbor-dataset (r2rationality, `ed6c49a4`), which
+  * carries no licence, so none of its bytes is copied: each says so.
   */
 class ConwayCodecsSuite extends ScalaCheckSuite:
   private given ProtVer = ProtVer(Word64.fromUnsigned(9), Word64.zero)
@@ -195,8 +197,36 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
         .zip(previous, Gen.option(hash28), anchor)
         .map(GovAction.NewConstitution(_, _, _))
     )
+
+  /** The keys of a Conway update whose value is a count or an amount. */
+  private val countKeys =
+    Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 16, 17, 22, 23, 24, 27, 28, 29, 30, 31, 32)
+
+  /** An update read by the ledger from canonical bytes: counts and amounts, and `rho`. */
+  private val update: Gen[ConwayParamUpdate] =
+    for
+      keys <- Gen.atLeastOne(countKeys).map(_.toVector.sorted)
+      values <- Gen.listOfN(keys.size, Gen.choose(1, 65535))
+      rho <- Gen.option(unit)
+    yield
+      val out = new Writer
+      out.mapHead(keys.size + rho.size)
+      keys.zip(values).foreach { (k, v) =>
+        out.uint(k.toLong)
+        out.uint(v.toLong)
+      }
+      // `rho` (10) last: the update holds its fields by key, in any order they came
+      rho.foreach { r =>
+        out.uint(10L)
+        Wire.unitInterval.encode(r, out)
+      }
+      ConwayParamUpdate.decode(node(out.result)).fold(e => fail(e.message), identity)
+
   private val proposal: Gen[Proposal] =
-    Gen.zip(word64, account, action, anchor).map(Proposal(_, _, _, _))
+    val change = Gen
+      .zip(Gen.option(actionId), update, Gen.option(hash28))
+      .map(GovAction.ParameterChange(_, _, _))
+    Gen.zip(word64, account, Gen.oneOf(action, change), anchor).map(Proposal(_, _, _, _))
 
   /** A native script and its encoding, written here as the reference writes a time lock. */
   private def nativeScript(depth: Int): Gen[NativeScript] =
@@ -414,7 +444,7 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
   test("a pool registration writes its owners as a tagged set and its relays as their values") {
     // the relays kept indefinite and with a wide port head are written as the reference writes
     // the values: a definite array and the shortest head
-    val relays = hex("9f 83 01 19 0bb8 61 61 ff")
+    val relays = hex("9f 83 01 1a00000bb8 61 61 ff")
     val metadata = hex("82 7f 6161 ff 4100")
     val params = PoolParams(
       hex("01" * 28),
@@ -451,6 +481,11 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
     assert(written(ConwayCodecs.certificates)(certs(23)).hex.startsWith("d9010297"))
     val above = written(ConwayCodecs.certificates)(certs(24)).hex
     assert(above.startsWith("d901029f") && above.endsWith("ff"), above.take(12))
+    val proposals = Vector.tabulate(24)(i =>
+      Proposal(i, RewardAccount(0, c), GovAction.Info, Anchor("", hex("00" * 32)))
+    )
+    val tagged = written(ConwayCodecs.proposalProcedures)(proposals).hex
+    assert(tagged.startsWith("d901029f") && tagged.endsWith("ff"), tagged.take(12))
     // the tag is written whatever the version: `OSet` does not ask it
     assert(
       ConwayCodecs
@@ -483,6 +518,13 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
     )
     val bytes = written(ConwayCodecs.votingProcedures)(all).hex
     assert(bytes.startsWith("bf") && bytes.endsWith("ff"), bytes.take(8))
+    // and the actions of one voter: 24 of them are an indefinite inner map
+    val pool = s"8204581c${"00" * 28}"
+    val actions =
+      Vector.tabulate(24)(i => GovActionId(hex("55" * 32), i) -> VotingProcedure(Vote.No, None))
+    val inner =
+      written(ConwayCodecs.votingProcedures)(Vector(Voter.Pool(hex("00" * 28)) -> actions))
+    assert(inner.hex.startsWith(s"a1${pool}bf") && inner.hex.endsWith("ff"), inner.hex.take(80))
   }
 
   test("a voting procedure is [vote, anchor / null]") {
@@ -592,6 +634,53 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
     )
   }
 
+  test("a parameter update is written from its values, definite whatever its size") {
+    val proposal = s"84 00 581de0${"00" * 28} 84 00 f6 %s f6 82 60 5820${"00" * 32}"
+    def read(update: String) =
+      body("14", hex("81" + proposal.format(update))).fold(e => fail(e.message), _.proposals)
+    // a count read from a wider head than it needs is written with the shortest one
+    same(s"d9010281 ${proposal.format("a1 00 01")}")(
+      written(ConwayCodecs.proposalProcedures)(read("a1 00 18 01"))
+    )
+    // 24 fields: the counts, then `a0`, `rho`, `tau` and the reference-script price
+    val half = "d81e820102"
+    val fields = countKeys.map(k => (k, "01")) ++ Vector(9, 10, 11, 33).map(k => (k, half))
+    def map(head: String) =
+      head + fields.sortBy(_._1).map((k, v) => Codec.int.encodeUnchecked(k).hex + v).mkString
+    assertEquals(fields.size, 24)
+    same(s"d9010281 ${proposal.format(map("b818"))}")(
+      written(ConwayCodecs.proposalProcedures)(read(map("bf") + "ff"))
+    )
+  }
+
+  test("a value outside the reference's type, or kept bytes that are not one item, are refused") {
+    val short = Credential.Key(Bytes.empty)
+    val c = Credential.Key(hex(key))
+    val refused = Vector(
+      ConwayCodecs.certificate.write(Certificate.Register(short, None)),
+      ConwayCodecs.certificate.write(Certificate.Delegate(c, Some(Bytes.empty), None, None)),
+      ConwayCodecs.certificate.write(Certificate.Register(c, Some(BigInt(-1)))),
+      ConwayCodecs.certificates.write(Vector.fill(2)(Certificate.Register(c, None))),
+      ConwayCodecs.proposalProcedures.write(
+        Vector(Proposal(0, RewardAccount(0, c), GovAction.HardFork(None, 10, BigInt(1) << 32)))
+      ),
+      ConwayCodecs.votingProcedures.write(
+        Vector(
+          Voter.Pool(hex(key)) -> Vector(
+            GovActionId(hex("55" * 32), 0) -> VotingProcedure(
+              Vote.Yes,
+              Some(Anchor("a", hex("55")))
+            )
+          )
+        )
+      ),
+      ConwayCodecs.script.write(ScriptPayload(ScriptKind.Native, hex("ff"))),
+      ConwayCodecs.redeemer.write(Redeemer(6, 0, hex("00"), ExUnits(0, 0))),
+      ConwayCodecs.redeemer.write(Redeemer(0, 0, Bytes.empty, ExUnits(0, 0)))
+    )
+    refused.zipWithIndex.foreach((r, i) => assert(r.isLeft, s"case $i was written: $r"))
+  }
+
   // ---------------------------------------------------------------------- chain data
 
   private def blocks(file: String): Vector[(Bytes, Block.Shelley)] =
@@ -601,8 +690,12 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
       .toVector
       .filter(_.nonEmpty)
       .map(hex)
-      .flatMap(raw =>
-        Block.decodeShelley(raw).toOption.collect { case b: Block.Shelley => raw -> b }
+      // `[tag, block]`: tags 0 and 1 are Byron's, which this decoder does not read
+      .filter(raw => raw.lift(1).exists(_ >= 2))
+      .map(raw =>
+        Block.decodeShelley(raw).fold(e => fail(e.message), identity) match
+          case b: Block.Shelley => raw -> b
+          case other            => fail(s"not a Shelley-based block: ${other.era}")
       )
 
   test("blocks of the reference node and of Preview are written again as the bytes they came as") {
@@ -622,6 +715,7 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
   test("a block built by hand, without the segments it was read with, is refused") {
     val (_, b) = blocks("fixtures/preview/conway.hex").head
     assert(ConwayCodecs.block.write(b.copy(segments = Vector.empty)).isLeft)
+    assert(ConwayCodecs.block.write(b.copy(segments = Vector.fill(4)(Bytes.empty))).isLeft)
   }
 
   test("the certificates, votes, proposals and vkey witnesses of Preview are written as on chain") {

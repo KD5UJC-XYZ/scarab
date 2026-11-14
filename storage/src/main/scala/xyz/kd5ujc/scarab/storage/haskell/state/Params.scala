@@ -130,7 +130,7 @@ object Params:
     Record.of[(BigInt, BigInt)]((Codec.uintBig(13), w32))
 
   /** `Prices` (`ExUnits.hs:219-229`): `[memory price, steps price]`. */
-  private val prices: Codec[(Rational, Rational)] =
+  private[state] val prices: Codec[(Rational, Rational)] =
     Record.of[(Rational, Rational)]((nonNegativeInterval, nonNegativeInterval))
 
   /** `ExUnits` (`ExUnits.hs:192-215`): `[memory, steps]`, each at most `maxBound :: Int64`. */
@@ -201,13 +201,13 @@ object Params:
         costModels.check(value)
 
   /** `PoolVotingThresholds`: five unit intervals. */
-  private val poolThresholds: Codec[PoolVotingThresholds] =
+  private[state] val poolThresholds: Codec[PoolVotingThresholds] =
     Record.of[PoolVotingThresholds](
       (unitInterval, unitInterval, unitInterval, unitInterval, unitInterval)
     )
 
   /** `DRepVotingThresholds`: ten unit intervals. */
-  private val drepThresholds: Codec[DRepVotingThresholds] =
+  private[state] val drepThresholds: Codec[DRepVotingThresholds] =
     Record.of[DRepVotingThresholds](
       (
         unitInterval,
