@@ -27,9 +27,18 @@ also verifies reuse of the distribution for one immutable snapshot and fresh der
 copy changes its pools or active stake. The `leios-pool-distribution` fuzz target exercises the
 optional-field decoder. This does not establish agreement for lifecycle rules or committee selection.
 
+`LeiosCommitteeReferenceSuite` compares the Leios committee that a mark snapshot memoizes, and the
+set snapshot it rotates into, with the native `mkMarkSnapShot` and `mkSetSnapShot` in
+[the Leios corpus](../../fixtures/reference/leios-committee/README.md). The cases cover the size
+and key-age limits, unsigned stake order with pool-id ties, keyless seats, the key-age boundaries,
+and the `Word64` wrap of the key-age sum and of the mark epoch. Every accepted byte and every
+acceptance verdict is compared. `LeiosCommitteeSelection` gives a typed defect, never a keyless
+seat, for states the reference cannot hold: a seated pool of the 11.1 layout, an undecodable seated
+key, a parameter outside its word, or a failure of the native BLS library.
+
 ## Explicitly unchecked or unconfirmed
 
-The Dijkstra state in this layout is not read (`DijkstraNotYet.LedgerState`, #54, #826 step d), and an epoch context of the Peras state with a Dijkstra voting committee with it. Build selection reaches the bootstrap-attribute failure rule through `LedgerGlobals.referenceBuild`, `TxEnv.referenceBuild` and `UtxoTests.injectedBootAddrAttrsTooBig`; it does not yet select the complete state lifecycle. `Snap`, `NewEpoch` and `MirrorStep` still need the Leios rotation and layout behavior, and `follow` retains `ReferenceBuildNotYet.Rules`. Derived pool distributions do not implement committee selection or epoch transitions. The layout was diffed against the pinned sources era by era; only Conway is checked on reference bytes.
+The Dijkstra state in this layout is not read (`DijkstraNotYet.LedgerState`, #54, #826 step d), and an epoch context of the Peras state with a Dijkstra voting committee with it. Build selection reaches the bootstrap-attribute failure rule through `LedgerGlobals.referenceBuild`, `TxEnv.referenceBuild` and `UtxoTests.injectedBootAddrAttrsTooBig`; it does not yet select the complete state lifecycle. `Snap`, `NewEpoch` and `MirrorStep` still need the Leios rotation and layout behavior, and `follow` retains `ReferenceBuildNotYet.Rules`. The committee selection and the mark-to-set rotation's committee are pure functions (`LeiosCommitteeSelection`) that `Snap` does not call yet, and the key age that SNAP derives from the KES parameters (`maxKeyAgeEpochs`, ledger 9df9f98c `Dijkstra/Rules/Snap.hs:148-179`) is not implemented. The layout was diffed against the pinned sources era by era; only Conway is checked on reference bytes.
 
 The remaining per-build behavior, state lifecycle and Dijkstra persistence acceptance criteria are
 tracked in [#826](https://github.com/KD5UJC-XYZ/scarab/issues/826). The broader Dijkstra integration
