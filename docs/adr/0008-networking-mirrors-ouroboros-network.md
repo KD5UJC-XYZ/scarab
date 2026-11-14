@@ -209,7 +209,7 @@ the amendment above left to that issue ([the decision](https://github.com/KD5UJC
 indexed in [decisions.md](../decisions.md#networking-and-local-clients). Five are approved deviations, each
 following an upstream change made after the packages cardano-node 11.1.3 links; they add to those of
 [Approved deviations](#approved-deviations) and of
-[the amendment of 2026-11-13](#amendment-2026-11-13-later-approved-deviations). Four are bugs of the linked
+[the amendment of 2026-11-13](#amendment-2026-11-13-later-approved-deviations). Five are bugs of the linked
 packages, fixed upstream after them, which Scarab does not reproduce
 ([#474 comment](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849)). Each
 reference citation is at the revision of its package in the table above, `c45735a5`, or `c5117705` for
@@ -330,6 +330,18 @@ Bugs of the linked packages, not reproduced:
   - **What Scarab does.** `MuxJobPool.fork` removes a job's entry only once the parent has inserted it.
   - **Decision.** Not reproduced: a race, fixed upstream by ouroboros-network pull request
     [#5417](https://github.com/IntersectMBO/ouroboros-network/pull/5417), in `2fb69829`.
+- **D10. The IP roots of a reconfiguration.**
+  - **What the reference does.** The local-root provider writes the groups it publishes at startup
+    (`ouroboros-network/lib/Ouroboros/Network/PeerSelection/RootPeersDNS/LocalRootPeers.hs` 98 at
+    `c45735a5`) and then only from a domain's monitor, when its lookup answers with a change (234-246). A
+    reconfiguration is detected (153-162) and restarts the loop with the new groups (168) without
+    publishing them, so the new topology's IP roots wait for the next DNS answer, and a topology with no
+    DNS names is not applied: read from the source, not observed.
+  - **What Scarab does.** A reload publishes the configured IP roots and the kept DNS answers before it
+    starts new lookups (`PeerNetwork.retainedPublicRoots` and the reload in `PeerNetwork`).
+  - **Decision.** Not reproduced: fixed upstream by ouroboros-network pull request
+    [#5455](https://github.com/IntersectMBO/ouroboros-network/pull/5455), the change D7 follows. Found
+    after the decision and recorded in #956 under the rule above.
 
 `fixtures/peer-selection/policies` stays as exported at `2fb69829`: it records the warm promotion of D3
 and the hot-demotion scores of D5, both approved. The mux lifecycle corpus ran the job pool of
