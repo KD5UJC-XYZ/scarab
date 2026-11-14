@@ -235,6 +235,7 @@ class CompiledTests(unittest.TestCase):
 class CommittedWeightsTests(unittest.TestCase):
     weights = shards.load_weights(ROOT)
     build = (ROOT / "build.sbt").read_text()
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
 
     def test_every_module_of_check_has_a_weight(self):
         listed = re.search(r"^val modules = Seq\((.*?)\)$", self.build, re.MULTILINE | re.DOTALL)
@@ -255,6 +256,11 @@ class CommittedWeightsTests(unittest.TestCase):
                                                                 re.MULTILINE)
                                 and re.search(rf"\bclass {re.escape(simple)}\b", p.read_text())]
                     self.assertEqual(len(declared), 1, f"{suite} is declared once in {directory}'s tests")
+
+    def test_the_workflow_runs_one_job_per_shard(self):
+        matrix = re.search(r"^        shard: \[([\d, ]+)\]$", self.workflow, re.MULTILINE)
+        self.assertIsNotNone(matrix, "the shard job's matrix")
+        self.assertEqual([int(n) for n in matrix.group(1).split(",")], list(range(1, self.weights.shards + 1)))
 
 
 if __name__ == "__main__":
