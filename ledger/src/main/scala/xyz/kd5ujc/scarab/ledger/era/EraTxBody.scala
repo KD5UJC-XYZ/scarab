@@ -26,13 +26,14 @@ trait EraTxBody[E <: EraTag]:
   def fee(body: TxBody[TxLevel.Top, E]): BigInt
 
 /** The protocol-parameter update of a body, up to Babbage (`ShelleyEraTxBody`, whose instances end
-  * at Babbage: `AtMostEra "Babbage"`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxBody.hs:97`).
+  * at Babbage: `AtMostEra "Babbage"`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxBody.hs:97`,
+  * cardano-ledger f649f975).
   */
 trait ShelleyEraTxBody[E <: EraTag] extends EraTxBody[E]:
   def update(body: TxBody[TxLevel.Top, E]): Option[Update]
 
 /** The treasury a Conway body states (`ConwayEraTxBody`,
-  * `eras/conway/impl/src/Cardano/Ledger/Conway/TxBody.hs:626-629`).
+  * `eras/conway/impl/src/Cardano/Ledger/Conway/TxBody.hs:626-629`, cardano-ledger f649f975).
   */
 trait ConwayEraTxBody[E <: EraTag] extends EraTxBody[E]:
   def currentTreasury[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Option[BigInt]

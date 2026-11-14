@@ -140,9 +140,12 @@ era types. A public `rep` gives read-only access to the shared fields.
 Until stage 6a restricts the flat `TxOut`, this holds only by convention inside `ledger`: any code there can
 still build a flat output and project it.
 
-**Equality.** The `era` packages use strict equality: `CanEqual` is given per era type, so `babbageOut ==
-conwayOut` does not compile. `Eq` and `Show` derive on the representation and are forwarded to each era type
-by one helper.
+**Equality.** `CanEqual` is given per era type, with itself only, so in code compiled under strict equality
+(`import scala.language.strictEquality`) `babbageOut == conwayOut` does not compile. The module does not
+compile under strict equality, so each era's rule files import it as they move onto the era types (from
+stage 2); until then a cross-era comparison outside them compiles. The shared representations have no
+`CanEqual`, so under strict equality their values are not compared either. `Eq` and `Show` derive on the representation and are forwarded to each era type by
+one helper, from stage 2.
 
 ### 3.2 Families as match types, capabilities as classes
 
@@ -272,9 +275,10 @@ several commits or small pull requests into the branch per stage, and reaches `m
 
 **How stage 1 lands on the branch.** A match type needs a case and a class names the families it uses, so a
 family and its classes are declared in the commit that brings the first era having them, not ahead of every
-era. Stage 1 carries the families, classes and representations for the eras the spike has (Allegra, Mary,
-Babbage, Conway), and each later stage adds its era's cases and instances. The state and Plutus-context
-classes come with Conway (stage 2), whose rules are their first users.
+era. Stage 1 carries the value, output and script families, classes and representations for the eras the
+spike has (Allegra, Mary, Babbage, Conway), and each later stage adds its era's cases and instances. The
+other representations of §3.1 (the witness sets, auxiliary data, certificates and Allegra's body) and the
+state and Plutus-context classes arrive with their first era, Conway's in stage 2.
 
 **What stage 5 removes:** every era comparison (`ShelleyBasedEra.atLeast`), wherever it is:
 - the rules;

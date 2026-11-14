@@ -54,7 +54,7 @@ object MaryTxOut:
     override def raw(out: MaryTxOut): Bytes = out.raw
 
 /** Mary's native script and script: `Timelock MaryEra`
-  * (`eras/mary/impl/src/Cardano/Ledger/Mary/Scripts.hs:21-22`).
+  * (`eras/mary/impl/src/Cardano/Ledger/Mary/Scripts.hs:21-22`, cardano-ledger f649f975).
   */
 opaque type MaryTimelock = Timelock
 
@@ -66,7 +66,7 @@ object MaryTimelock:
       .leftMap(e => EraTxError.Decode(LedgerDecodeError.NativeScript(e)))
 
   /** An Allegra script carried into Mary with its bytes (`translateTimelock`,
-    * `eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:202-217`).
+    * `eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:202-217`, cardano-ledger f649f975).
     */
   def translate(t: AllegraTimelock): MaryTimelock = t.rep
 

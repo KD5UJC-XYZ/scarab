@@ -61,7 +61,7 @@ object BabbageTimelock:
   given CanEqual[BabbageTimelock, BabbageTimelock] = CanEqual.derived
 
 /** Babbage's Plutus script: the languages Babbage has, V1 and V2 (`data PlutusScript BabbageEra`,
-  * `Babbage/Scripts.hs:57-59`).
+  * `Babbage/Scripts.hs:57-59`, cardano-ledger f649f975).
   */
 enum BabbagePlutusScript:
   case V1(plutus: Plutus[Language.PlutusV1])
@@ -84,14 +84,14 @@ object BabbagePlutusScript:
     case ScriptKind.PlutusV2                     => Some(b => V2(Plutus(b)))
     case ScriptKind.PlutusV3 | ScriptKind.Native => None
 
-/** Babbage's script: `AlonzoScript BabbageEra` (`Babbage/Scripts.hs:41`), a Babbage native script
-  * or a Babbage Plutus script.
+/** Babbage's script: `AlonzoScript BabbageEra` (`Babbage/Scripts.hs:41`, cardano-ledger f649f975),
+  * a Babbage native script or a Babbage Plutus script.
   */
 opaque type BabbageScript = AlonzoScriptRep[BabbageTimelock, BabbagePlutusScript]
 
 object BabbageScript:
   /** Babbage's script decoder (`decodeAlonzoScript` at `eraMaxLanguage = PlutusV2`,
-    * `Babbage/Scripts.hs:63`).
+    * `Babbage/Scripts.hs:63`, cardano-ledger f649f975).
     */
   def decode(n: Node)(using ByteStrings): Either[EraTxError, BabbageScript] =
     read(n).leftMap(EraTxError.Decode(_))
@@ -128,8 +128,8 @@ object BabbageScript:
       AlonzoScriptRep.PlutusScript(plutus)
 
 /** A Babbage output: `BabbageTxOut BabbageEra`
-  * (`eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs:133-158`), its reference script a
-  * Babbage script.
+  * (`eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs:133-158`, cardano-ledger f649f975), its
+  * reference script a Babbage script.
   */
 opaque type BabbageTxOut = BabbageTxOutRep[BabbageScript]
 

@@ -23,7 +23,7 @@ trait EraTxOut[E <: EraTag]:
   def raw(out: TxOut[E]): Bytes
 
 /** The datum hash of an output, from Alonzo on (`AlonzoEraTxOut`,
-  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs:92-95`).
+  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs:92-95`, cardano-ledger f649f975).
   */
 trait AlonzoEraTxOut[E <: EraTag] extends EraTxOut[E]:
   /** `dataHashTxOutL`: the hash of a datum the output names by its hash. */
@@ -33,10 +33,10 @@ trait AlonzoEraTxOut[E <: EraTag] extends EraTxOut[E]:
   def datum(out: TxOut[E]): Datum
 
 /** The inline datum and reference script of an output, from Babbage on (`BabbageEraTxOut`,
-  * `eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs:126-131`), whose class asks for the era's
-  * Plutus scripts too (`AlonzoEraScript era`): an instance names the era's script instance, so a
-  * rule given the output class has the script class it asks for, and the era has one instance of
-  * each.
+  * `eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs:126-131`, cardano-ledger f649f975), whose
+  * class asks for the era's Plutus scripts too (`AlonzoEraScript era`): an instance names the era's
+  * script instance, so a rule given the output class has the script class it asks for, and the era
+  * has one instance of each.
   */
 trait BabbageEraTxOut[E <: EraTag] extends AlonzoEraTxOut[E]:
   /** The era's scripts (the superclass `AlonzoEraScript era`). */

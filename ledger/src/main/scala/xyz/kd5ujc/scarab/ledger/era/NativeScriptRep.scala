@@ -34,10 +34,11 @@ object NativeForm:
 
 /** A native script of language `F` with the bytes of each of its levels as they arrived: the
   * reference's `MultiSig era` and `Timelock era` are `MemoBytes` of their raw form at every level
-  * (`newtype Timelock era = MkTimelock (MemoBytes (TimelockRaw era))`, `Allegra/Scripts.hs:253`),
-  * so a sub-script read from a script has its own bytes (`getRequireAllOfTimelock`,
-  * `Allegra/Scripts.hs:432-433`). Each level's bytes are a window of one copy the script owns, so a
-  * script as deep as a block holds one copy of them and keeps nothing else it was read with alive.
+  * (`newtype Timelock era = MkTimelock (MemoBytes (TimelockRaw era))`, `Allegra/Scripts.hs:253`,
+  * cardano-ledger f649f975), so a sub-script read from a script has its own bytes
+  * (`getRequireAllOfTimelock`, `Allegra/Scripts.hs:432-433`). Each level's bytes are a window of
+  * one copy the script owns, so a script as deep as a block holds one copy of them and keeps
+  * nothing else it was read with alive.
   *
   * Equal when the bytes and the scripts are (`instance Eq (MemoBytes t)`,
   * `libs/cardano-ledger-core/src/Cardano/Ledger/MemoBytes/Internal.hs:182-183`); the comparison of
@@ -56,7 +57,7 @@ final class NativeScriptRep[F <: NativeForm] private (
     val children: Vector[NativeScriptRep[F]]
 ):
   /** `hashScript`: blake2b-224 of the native tag `0` and the bytes (`nativeMultiSigTag`,
-    * `Allegra/Scripts.hs:336`; `hashScript`,
+    * `Allegra/Scripts.hs:336`, cardano-ledger f649f975; `hashScript`,
     * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:603-608`).
     */
   lazy val hash: Bytes = Blake2b.hash224.hash(NativeScriptRep.nativeTag ++ raw)

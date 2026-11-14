@@ -51,14 +51,14 @@ object ConwayTimelock:
       .leftMap(LedgerDecodeError.NativeScript(_))
 
   /** A Babbage script carried into Conway with its bytes (`translateTimelock`,
-    * `eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:202-217`).
+    * `eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:202-217`, cardano-ledger f649f975).
     */
   def translate(t: BabbageTimelock): ConwayTimelock = t.rep
 
   given CanEqual[ConwayTimelock, ConwayTimelock] = CanEqual.derived
 
 /** Conway's Plutus script: the languages Conway has, V1 to V3 (`data PlutusScript ConwayEra`,
-  * `Conway/Scripts.hs:90-93`).
+  * `Conway/Scripts.hs:90-93`, cardano-ledger f649f975).
   */
 enum ConwayPlutusScript:
   case V1(plutus: Plutus[Language.PlutusV1])
@@ -85,19 +85,21 @@ object ConwayPlutusScript:
     case ScriptKind.PlutusV3 => Some(b => V3(Plutus(b)))
     case ScriptKind.Native   => None
 
-  /** A Babbage Plutus script carried into Conway (`upgradeScript`, `Conway/Scripts.hs:76-79`). */
+  /** A Babbage Plutus script carried into Conway (`upgradeScript`, `Conway/Scripts.hs:76-79`,
+    * cardano-ledger f649f975).
+    */
   def translate(p: BabbagePlutusScript): ConwayPlutusScript = p match
     case BabbagePlutusScript.V1(s) => V1(s)
     case BabbagePlutusScript.V2(s) => V2(s)
 
-/** Conway's script: `AlonzoScript ConwayEra` (`Conway/Scripts.hs:73`), a Conway native script or a
-  * Conway Plutus script.
+/** Conway's script: `AlonzoScript ConwayEra` (`Conway/Scripts.hs:73`, cardano-ledger f649f975), a
+  * Conway native script or a Conway Plutus script.
   */
 opaque type ConwayScript = AlonzoScriptRep[ConwayTimelock, ConwayPlutusScript]
 
 object ConwayScript:
   /** Conway's script decoder (`decodeAlonzoScript` at `eraMaxLanguage = PlutusV3`,
-    * `Conway/Scripts.hs:98`).
+    * `Conway/Scripts.hs:98`, cardano-ledger f649f975).
     */
   def decode(n: Node)(using ByteStrings): Either[EraTxError, ConwayScript] =
     read(n).leftMap(EraTxError.Decode(_))
@@ -105,7 +107,9 @@ object ConwayScript:
   private[conway] def read(n: Node)(using ByteStrings): Either[LedgerDecodeError, ConwayScript] =
     AlonzoScriptRep.decode(n, ScriptKind.PlutusV3)(ConwayTimelock.read(_), ConwayPlutusScript.of)
 
-  /** A Babbage script carried into Conway (`upgradeScript`, `Conway/Scripts.hs:76-79`). */
+  /** A Babbage script carried into Conway (`upgradeScript`, `Conway/Scripts.hs:76-79`,
+    * cardano-ledger f649f975).
+    */
   def translate(s: BabbageScript): ConwayScript = s.rep match
     case AlonzoScriptRep.NativeScript(t) =>
       AlonzoScriptRep.NativeScript(ConwayTimelock.translate(t))
@@ -149,8 +153,9 @@ object ConwayTxOut:
   ): Either[EraTxError, ConwayTxOut] =
     BabbageTxOutRep.fromStored(out)(n => ConwayScript.read(n)).leftMap(EraTxError.Decode(_))
 
-  /** A Babbage output carried into Conway (`upgradeBabbageTxOut`, `Conway/TxOut.hs:68-81`): the
-    * same address, value, datum and bytes, its reference script carried into Conway.
+  /** A Babbage output carried into Conway (`upgradeBabbageTxOut`, `Conway/TxOut.hs:68-81`,
+    * cardano-ledger f649f975): the same address, value, datum and bytes, its reference script
+    * carried into Conway.
     */
   def translate(out: BabbageTxOut): ConwayTxOut =
     val r = out.rep

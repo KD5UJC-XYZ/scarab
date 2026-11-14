@@ -12,13 +12,14 @@ object TxLevel:
   sealed abstract class Sub extends TxLevel
 
 /** The levels of an era that has top-level transactions only (`STxTopLevel`, whose one constructor
-  * is `STopTxOnly`, `Core/TxLevel.hs:36-37`): every era up to Conway. Matching on it shows the
-  * level is `Top`.
+  * is `STopTxOnly`, `Core/TxLevel.hs:36-37`, cardano-ledger f649f975): every era up to Conway.
+  * Matching on it shows the level is `Top`.
   */
 enum TopOnly[L <: TxLevel]:
   case Top extends TopOnly[TxLevel.Top]
 
-/** The levels of an era with sub-transactions (`STxBothLevels`, `Core/TxLevel.hs:47-49`): Dijkstra.
+/** The levels of an era with sub-transactions (`STxBothLevels`, `Core/TxLevel.hs:47-49`,
+  * cardano-ledger f649f975): Dijkstra.
   */
 enum BothLevels[L <: TxLevel]:
   case Top extends BothLevels[TxLevel.Top]

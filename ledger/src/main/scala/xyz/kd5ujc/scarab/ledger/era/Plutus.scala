@@ -15,10 +15,12 @@ object Language:
   sealed abstract class PlutusV2 extends Language
   sealed abstract class PlutusV3 extends Language
 
-/** The language `L` at the value level (`PlutusLanguage l`, `Plutus/Language.hs:452`). */
+/** The language `L` at the value level (`PlutusLanguage l`, `Plutus/Language.hs:452`,
+  * cardano-ledger f649f975).
+  */
 trait PlutusLanguage[L <: Language]:
   /** The language's kind, whose tag is the script's hash prefix (`plutusLanguageTag`,
-    * `Plutus/Language.hs:468`).
+    * `Plutus/Language.hs:468`, cardano-ledger f649f975).
     */
   def kind: ScriptKind
 
@@ -31,8 +33,8 @@ object PlutusLanguage:
     def kind: ScriptKind = ScriptKind.PlutusV3
 
 /** A Plutus script of language `L`: its bytes (`newtype Plutus (l :: Language)`,
-  * `Plutus/Language.hs:180-183`). The language is shared by the eras that have it; which eras have
-  * which language is each era's own Plutus script type ([[PlutusScript]]).
+  * `Plutus/Language.hs:180-183`, cardano-ledger f649f975). The language is shared by the eras that
+  * have it; which eras have which language is each era's own Plutus script type ([[PlutusScript]]).
   */
 final case class Plutus[L <: Language](binary: Bytes)
 

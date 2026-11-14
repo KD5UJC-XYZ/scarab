@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Conway, EraTag, Mary}
 trait EraScript[E <: EraTag]:
   /** The prefix of the hash (`scriptPrefixTag`): `0` for a native script, the language's tag for a
     * Plutus script (`alonzoScriptPrefixTag`,
-    * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:537-543`).
+    * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:537-543`, cardano-ledger f649f975).
     */
   def scriptPrefixTag(script: Script[E]): Byte
 
@@ -26,14 +26,16 @@ trait EraScript[E <: EraTag]:
   def getNativeScript(script: Script[E]): Option[NativeScript[E]]
   def fromNativeScript(native: NativeScript[E]): Script[E]
 
-  /** `hashScript` (`Core.hs:603-608`): blake2b-224 of the prefix and the bytes. */
+  /** `hashScript` (`Core.hs:603-608`, cardano-ledger f649f975): blake2b-224 of the prefix and the
+    * bytes.
+    */
   final def hashScript(script: Script[E]): Bytes =
     Blake2b.hash224.hash(Bytes(Vector(scriptPrefixTag(script))) ++ originalBytes(script))
 
 /** The native scripts of Shelley's language, by constructor (`ShelleyEraScript`,
-  * `eras/shelley/impl/src/Cardano/Ledger/Shelley/Scripts.hs:107-118`). The reference's builders
-  * (`mkRequireSignature` and the others) make a script and its encoding; they are not here, as no
-  * native-script encoder is.
+  * `eras/shelley/impl/src/Cardano/Ledger/Shelley/Scripts.hs:107-118`, cardano-ledger f649f975). The
+  * reference's builders (`mkRequireSignature` and the others) make a script and its encoding; they
+  * are not here, as no native-script encoder is.
   */
 trait ShelleyEraScript[E <: EraTag] extends EraScript[E]:
   def getRequireSignature(native: NativeScript[E]): Option[Bytes]
@@ -46,15 +48,15 @@ trait ShelleyEraScript[E <: EraTag] extends EraScript[E]:
   def getRequireMOf(native: NativeScript[E]): Option[(BigInt, Vector[NativeScript[E]])]
 
 /** The time locks from Allegra (`AllegraEraScript`,
-  * `eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:189-195`).
+  * `eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:189-195`, cardano-ledger f649f975).
   */
 trait AllegraEraScript[E <: EraTag] extends ShelleyEraScript[E]:
   def getTimeStart(native: NativeScript[E]): Option[BigInt]
   def getTimeExpire(native: NativeScript[E]): Option[BigInt]
 
 /** The Plutus scripts from Alonzo (`AlonzoEraScript`,
-  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:139-188`). Its Plutus purposes come with
-  * the purpose family.
+  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:139-188`, cardano-ledger f649f975). Its
+  * Plutus purposes come with the purpose family.
   */
 trait AlonzoEraScript[E <: EraTag] extends AllegraEraScript[E]:
   /** The newest language of the era (`eraMaxLanguage`). */
@@ -66,9 +68,9 @@ trait AlonzoEraScript[E <: EraTag] extends AllegraEraScript[E]:
 /** The native-script readers of every era whose native script is a [[Timelock]], written once over
   * the representation as the reference writes them once over `Timelock era`
   * (`getRequireSignatureTimelock` to `getTimeExpireTimelock`,
-  * `eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:425-462`). An era's instance names the
-  * two conversions between its native script and the representation, which only its own file can
-  * write.
+  * `eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:425-462`, cardano-ledger f649f975). An
+  * era's instance names the two conversions between its native script and the representation, which
+  * only its own file can write.
   */
 abstract class TimelockScripts[E <: EraTag] extends AllegraEraScript[E]:
   protected def timelock(native: NativeScript[E]): Timelock

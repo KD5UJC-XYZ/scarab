@@ -54,7 +54,8 @@ object AllegraTxOut:
     override def raw(out: AllegraTxOut): Bytes = out.raw
 
 /** Allegra's native script and script: `Timelock AllegraEra`, both its `NativeScript` and its
-  * `Script` (`eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:331-332`).
+  * `Script` (`eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:331-332`, cardano-ledger
+  * f649f975).
   */
 opaque type AllegraTimelock = Timelock
 
