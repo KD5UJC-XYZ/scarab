@@ -1,0 +1,1420 @@
+[
+  {
+    "id": "explicit-error-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Error"
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "explicit-error-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Error"
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "explicit-error-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Error"
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "nonpolymorphic-force-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Force",
+          "body": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con unit ())"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "nonpolymorphic-force-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Force",
+          "body": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con unit ())"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "nonpolymorphic-force-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Force",
+        "body": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con unit ())"
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "nonfunctional-application-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con unit ())"
+            }
+          },
+          "argument": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con integer 1)"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "nonfunctional-application-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con unit ())"
+            }
+          },
+          "argument": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con integer 1)"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "nonfunctional-application-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Apply",
+        "function": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con unit ())"
+          }
+        },
+        "argument": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con integer 1)"
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "builtin-term-expected-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Force",
+          "body": {
+            "tag": "Builtin",
+            "name": "AddInteger"
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "builtin-term-expected-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Force",
+          "body": {
+            "tag": "Builtin",
+            "name": "AddInteger"
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "builtin-term-expected-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Force",
+        "body": {
+          "tag": "Builtin",
+          "name": "AddInteger"
+        }
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "unexpected-builtin-term-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Builtin",
+            "name": "IfThenElse"
+          },
+          "argument": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con bool True)"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "unexpected-builtin-term-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Builtin",
+            "name": "IfThenElse"
+          },
+          "argument": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con bool True)"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "unexpected-builtin-term-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Apply",
+        "function": {
+          "tag": "Builtin",
+          "name": "IfThenElse"
+        },
+        "argument": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con bool True)"
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "unlifting-type-mismatch-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Apply",
+            "function": {
+              "tag": "Builtin",
+              "name": "AddInteger"
+            },
+            "argument": {
+              "tag": "Constant",
+              "value": {
+                "tag": "NativeConstant",
+                "syntax": "(con unit ())"
+              }
+            }
+          },
+          "argument": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con integer 1)"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "unlifting-type-mismatch-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Apply",
+            "function": {
+              "tag": "Builtin",
+              "name": "AddInteger"
+            },
+            "argument": {
+              "tag": "Constant",
+              "value": {
+                "tag": "NativeConstant",
+                "syntax": "(con unit ())"
+              }
+            }
+          },
+          "argument": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con integer 1)"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "unlifting-type-mismatch-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Apply",
+        "function": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Builtin",
+            "name": "AddInteger"
+          },
+          "argument": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con unit ())"
+            }
+          }
+        },
+        "argument": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con integer 1)"
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "unlifting-not-constant-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Apply",
+            "function": {
+              "tag": "Builtin",
+              "name": "AddInteger"
+            },
+            "argument": {
+              "tag": "Lam",
+              "name": "i",
+              "index": "0",
+              "body": {
+                "tag": "Var",
+                "name": "i",
+                "index": "1"
+              }
+            }
+          },
+          "argument": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con integer 1)"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "unlifting-not-constant-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Apply",
+            "function": {
+              "tag": "Builtin",
+              "name": "AddInteger"
+            },
+            "argument": {
+              "tag": "Lam",
+              "name": "i",
+              "index": "0",
+              "body": {
+                "tag": "Var",
+                "name": "i",
+                "index": "1"
+              }
+            }
+          },
+          "argument": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con integer 1)"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "unlifting-not-constant-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Apply",
+        "function": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Builtin",
+            "name": "AddInteger"
+          },
+          "argument": {
+            "tag": "Lam",
+            "name": "i",
+            "index": "0",
+            "body": {
+              "tag": "Var",
+              "name": "i",
+              "index": "1"
+            }
+          }
+        },
+        "argument": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con integer 1)"
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "builtin-division-by-zero-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Apply",
+            "function": {
+              "tag": "Builtin",
+              "name": "DivideInteger"
+            },
+            "argument": {
+              "tag": "Constant",
+              "value": {
+                "tag": "NativeConstant",
+                "syntax": "(con integer 1)"
+              }
+            }
+          },
+          "argument": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con integer 0)"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "builtin-division-by-zero-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Apply",
+            "function": {
+              "tag": "Builtin",
+              "name": "DivideInteger"
+            },
+            "argument": {
+              "tag": "Constant",
+              "value": {
+                "tag": "NativeConstant",
+                "syntax": "(con integer 1)"
+              }
+            }
+          },
+          "argument": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con integer 0)"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "builtin-division-by-zero-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Apply",
+        "function": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Builtin",
+            "name": "DivideInteger"
+          },
+          "argument": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con integer 1)"
+            }
+          }
+        },
+        "argument": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con integer 0)"
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "builtin-byte-index-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Apply",
+            "function": {
+              "tag": "Builtin",
+              "name": "IndexByteString"
+            },
+            "argument": {
+              "tag": "Constant",
+              "value": {
+                "tag": "NativeConstant",
+                "syntax": "(con bytestring #)"
+              }
+            }
+          },
+          "argument": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con integer 0)"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "builtin-byte-index-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Apply",
+            "function": {
+              "tag": "Builtin",
+              "name": "IndexByteString"
+            },
+            "argument": {
+              "tag": "Constant",
+              "value": {
+                "tag": "NativeConstant",
+                "syntax": "(con bytestring #)"
+              }
+            }
+          },
+          "argument": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con integer 0)"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "builtin-byte-index-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Apply",
+        "function": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Builtin",
+            "name": "IndexByteString"
+          },
+          "argument": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con bytestring #)"
+            }
+          }
+        },
+        "argument": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con integer 0)"
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "builtin-invalid-utf8-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Builtin",
+            "name": "DecodeUtf8"
+          },
+          "argument": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con bytestring #ff)"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "builtin-invalid-utf8-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Apply",
+          "function": {
+            "tag": "Builtin",
+            "name": "DecodeUtf8"
+          },
+          "argument": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con bytestring #ff)"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "builtin-invalid-utf8-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Apply",
+        "function": {
+          "tag": "Builtin",
+          "name": "DecodeUtf8"
+        },
+        "argument": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con bytestring #ff)"
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "free-index-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Var",
+          "name": "i",
+          "index": "100"
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "free-index-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Var",
+          "name": "i",
+          "index": "100"
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "free-index-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Var",
+        "name": "i",
+        "index": "100"
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "nonconstructor-case-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Case",
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con unit ())"
+          }
+        },
+        "branches": []
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "missing-case-branch-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Case",
+        "scrutinee": {
+          "tag": "Constr",
+          "index": "1",
+          "fields": []
+        },
+        "branches": [
+          {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con unit ())"
+            }
+          }
+        ]
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "invalid-return-value-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Constant",
+        "value": {
+          "tag": "NativeConstant",
+          "syntax": "(con integer 1)"
+        }
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "unicode-constant-cause-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Force",
+          "body": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con string \"A\\0\\&\\14\\&H\\233\\&\\8232\\&\\8205\\&\\128512\\&\\191472\\&\\1114111\\&9\")"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "unicode-constant-cause-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Force",
+          "body": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con string \"A\\0\\&\\14\\&H\\233\\&\\8232\\&\\8205\\&\\128512\\&\\191472\\&\\1114111\\&9\")"
+            }
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "unicode-constant-cause-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "0",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Force",
+        "body": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con string \"A\\0\\&\\14\\&H\\233\\&\\8232\\&\\8205\\&\\128512\\&\\191472\\&\\1114111\\&9\")"
+          }
+        }
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  }
+]

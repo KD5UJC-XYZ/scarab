@@ -1,0 +1,10 @@
+cabal-version: 3.0
+-- SPDX-License-Identifier: Apache-2.0
+name: scarab-context-oracle
+version: 0.1.0.0
+build-type: Simple
+executable scarab-context-oracle
+  main-is: Main.hs
+  build-depends: base, aeson, base16-bytestring, bytestring, text, serialise, prettyprinter, plutus-core, plutus-ledger-api, mtl, vector
+  default-language: GHC2021
+  ghc-options: -Wall -Werror

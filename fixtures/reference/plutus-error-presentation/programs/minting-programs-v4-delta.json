@@ -1,0 +1,1318 @@
+[
+  {
+    "id": "delta-v4-case-builtin-unavailable-v3",
+    "kind": "Compile",
+    "script": "46010100294981",
+    "subject": {
+      "body": {
+        "branches": [],
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "UnitValue"
+          }
+        },
+        "tag": "Case"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-nonconstructor-case-v3",
+    "kind": "Compile",
+    "script": "4701010029200101",
+    "subject": {
+      "body": {
+        "branches": [],
+        "scrutinee": {
+          "body": {
+            "index": "1",
+            "name": "i",
+            "tag": "Var"
+          },
+          "index": "0",
+          "name": "i",
+          "tag": "Lam"
+        },
+        "tag": "Case"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-plc-version-unavailable-v1",
+    "kind": "Compile",
+    "script": "450101002261",
+    "subject": {
+      "body": {
+        "body": {
+          "tag": "Error"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-plc-version-unavailable-v2",
+    "kind": "Compile",
+    "script": "450101002261",
+    "subject": {
+      "body": {
+        "body": {
+          "tag": "Error"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-integer-negative-v1",
+    "kind": "Compile",
+    "script": "49010100229480069301",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "UnitValue"
+              }
+            }
+          ],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "Integer",
+              "value": "-1"
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-integer-negative-v2",
+    "kind": "Compile",
+    "script": "49010100229480069301",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "UnitValue"
+              }
+            }
+          ],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "Integer",
+              "value": "-1"
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-integer-negative-v3",
+    "kind": "Compile",
+    "script": "480101002948006931",
+    "subject": {
+      "body": {
+        "branches": [
+          {
+            "tag": "Constant",
+            "value": {
+              "tag": "UnitValue"
+            }
+          }
+        ],
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "Integer",
+            "value": "-1"
+          }
+        },
+        "tag": "Case"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-integer-large-v1",
+    "kind": "Compile",
+    "script": "58380101002294820202020202020202020202020202223f768316c322b357f2d213c62322cf17ce5ee29b33c32617afe6369b6693ae904a9301",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "UnitValue"
+              }
+            }
+          ],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "Integer",
+              "value": "10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-integer-large-v2",
+    "kind": "Compile",
+    "script": "58380101002294820202020202020202020202020202223f768316c322b357f2d213c62322cf17ce5ee29b33c32617afe6369b6693ae904a9301",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "UnitValue"
+              }
+            }
+          ],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "Integer",
+              "value": "10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-integer-large-v3",
+    "kind": "Compile",
+    "script": "5837010100294820202020202020202020202020202223f768316c322b357f2d213c62322cf17ce5ee29b33c32617afe6369b6693ae904a931",
+    "subject": {
+      "body": {
+        "branches": [
+          {
+            "tag": "Constant",
+            "value": {
+              "tag": "UnitValue"
+            }
+          }
+        ],
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "Integer",
+            "value": "10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+          }
+        },
+        "tag": "Case"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-unit-no-branch-v1",
+    "kind": "Compile",
+    "script": "46010100229499",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "UnitValue"
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-unit-no-branch-v2",
+    "kind": "Compile",
+    "script": "46010100229499",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "UnitValue"
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-unit-no-branch-v3",
+    "kind": "Compile",
+    "script": "46010100294981",
+    "subject": {
+      "body": {
+        "branches": [],
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "UnitValue"
+          }
+        },
+        "tag": "Case"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-true-one-branch-v1",
+    "kind": "Compile",
+    "script": "480101002294a34981",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "UnitValue"
+              }
+            }
+          ],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "Bool",
+              "value": true
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-true-one-branch-v2",
+    "kind": "Compile",
+    "script": "480101002294a34981",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "UnitValue"
+              }
+            }
+          ],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "Bool",
+              "value": true
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-true-one-branch-v3",
+    "kind": "Compile",
+    "script": "47010100294a3499",
+    "subject": {
+      "body": {
+        "branches": [
+          {
+            "tag": "Constant",
+            "value": {
+              "tag": "UnitValue"
+            }
+          }
+        ],
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "Bool",
+            "value": true
+          }
+        },
+        "tag": "Case"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-empty-list-v1",
+    "kind": "Compile",
+    "script": "490101002294bd605261",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "UnitValue"
+              }
+            }
+          ],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "elementType": {
+                "tag": "Integer"
+              },
+              "tag": "List",
+              "values": []
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-empty-list-v2",
+    "kind": "Compile",
+    "script": "490101002294bd605261",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "UnitValue"
+              }
+            }
+          ],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "elementType": {
+                "tag": "Integer"
+              },
+              "tag": "List",
+              "values": []
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-empty-list-v3",
+    "kind": "Compile",
+    "script": "49010100294bd6052601",
+    "subject": {
+      "body": {
+        "branches": [
+          {
+            "tag": "Constant",
+            "value": {
+              "tag": "UnitValue"
+            }
+          }
+        ],
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "elementType": {
+              "tag": "Integer"
+            },
+            "tag": "List",
+            "values": []
+          }
+        },
+        "tag": "Case"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-list-no-branch-v1",
+    "kind": "Compile",
+    "script": "4b0101002294bd60814120c1",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "elementType": {
+                "tag": "Integer"
+              },
+              "tag": "List",
+              "values": [
+                {
+                  "tag": "Integer",
+                  "value": "1"
+                },
+                {
+                  "tag": "Integer",
+                  "value": "2"
+                },
+                {
+                  "tag": "Integer",
+                  "value": "3"
+                }
+              ]
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-list-no-branch-v2",
+    "kind": "Compile",
+    "script": "4b0101002294bd60814120c1",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "elementType": {
+                "tag": "Integer"
+              },
+              "tag": "List",
+              "values": [
+                {
+                  "tag": "Integer",
+                  "value": "1"
+                },
+                {
+                  "tag": "Integer",
+                  "value": "2"
+                },
+                {
+                  "tag": "Integer",
+                  "value": "3"
+                }
+              ]
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-list-no-branch-v3",
+    "kind": "Compile",
+    "script": "4b010100294bd60814120c01",
+    "subject": {
+      "body": {
+        "branches": [],
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "elementType": {
+              "tag": "Integer"
+            },
+            "tag": "List",
+            "values": [
+              {
+                "tag": "Integer",
+                "value": "1"
+              },
+              {
+                "tag": "Integer",
+                "value": "2"
+              },
+              {
+                "tag": "Integer",
+                "value": "3"
+              }
+            ]
+          }
+        },
+        "tag": "Case"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-long-list-no-branch-v1",
+    "kind": "Compile",
+    "script": "58be0101002294bd64810c6c6f6e672076616c7565203000810c6c6f6e672076616c7565203100810c6c6f6e672076616c7565203200810c6c6f6e672076616c7565203300810c6c6f6e672076616c7565203400810c6c6f6e672076616c7565203500810c6c6f6e672076616c7565203600810c6c6f6e672076616c7565203700810c6c6f6e672076616c7565203800810c6c6f6e672076616c7565203900810d6c6f6e672076616c756520313000810d6c6f6e672076616c75652031310001",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "elementType": {
+                "tag": "Text"
+              },
+              "tag": "List",
+              "values": [
+                {
+                  "tag": "Text",
+                  "value": "long value 0"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 1"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 2"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 3"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 4"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 5"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 6"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 7"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 8"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 9"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 10"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 11"
+                }
+              ]
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-long-list-no-branch-v2",
+    "kind": "Compile",
+    "script": "58be0101002294bd64810c6c6f6e672076616c7565203000810c6c6f6e672076616c7565203100810c6c6f6e672076616c7565203200810c6c6f6e672076616c7565203300810c6c6f6e672076616c7565203400810c6c6f6e672076616c7565203500810c6c6f6e672076616c7565203600810c6c6f6e672076616c7565203700810c6c6f6e672076616c7565203800810c6c6f6e672076616c7565203900810d6c6f6e672076616c756520313000810d6c6f6e672076616c75652031310001",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "elementType": {
+                "tag": "Text"
+              },
+              "tag": "List",
+              "values": [
+                {
+                  "tag": "Text",
+                  "value": "long value 0"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 1"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 2"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 3"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 4"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 5"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 6"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 7"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 8"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 9"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 10"
+                },
+                {
+                  "tag": "Text",
+                  "value": "long value 11"
+                }
+              ]
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-long-list-no-branch-v3",
+    "kind": "Compile",
+    "script": "58bd010100294bd6490c6c6f6e672076616c7565203000810c6c6f6e672076616c7565203100810c6c6f6e672076616c7565203200810c6c6f6e672076616c7565203300810c6c6f6e672076616c7565203400810c6c6f6e672076616c7565203500810c6c6f6e672076616c7565203600810c6c6f6e672076616c7565203700810c6c6f6e672076616c7565203800810c6c6f6e672076616c7565203900810d6c6f6e672076616c756520313000810d6c6f6e672076616c75652031310001",
+    "subject": {
+      "body": {
+        "branches": [],
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "elementType": {
+              "tag": "Text"
+            },
+            "tag": "List",
+            "values": [
+              {
+                "tag": "Text",
+                "value": "long value 0"
+              },
+              {
+                "tag": "Text",
+                "value": "long value 1"
+              },
+              {
+                "tag": "Text",
+                "value": "long value 2"
+              },
+              {
+                "tag": "Text",
+                "value": "long value 3"
+              },
+              {
+                "tag": "Text",
+                "value": "long value 4"
+              },
+              {
+                "tag": "Text",
+                "value": "long value 5"
+              },
+              {
+                "tag": "Text",
+                "value": "long value 6"
+              },
+              {
+                "tag": "Text",
+                "value": "long value 7"
+              },
+              {
+                "tag": "Text",
+                "value": "long value 8"
+              },
+              {
+                "tag": "Text",
+                "value": "long value 9"
+              },
+              {
+                "tag": "Text",
+                "value": "long value 10"
+              },
+              {
+                "tag": "Text",
+                "value": "long value 11"
+              }
+            ]
+          }
+        },
+        "tag": "Case"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-pair-no-branch-v1",
+    "kind": "Compile",
+    "script": "520101002294bded0900810576616c75650001",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "left": {
+                "tag": "Integer",
+                "value": "1"
+              },
+              "right": {
+                "tag": "Text",
+                "value": "value"
+              },
+              "tag": "Pair"
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-pair-no-branch-v2",
+    "kind": "Compile",
+    "script": "520101002294bded0900810576616c75650001",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "left": {
+                "tag": "Integer",
+                "value": "1"
+              },
+              "right": {
+                "tag": "Text",
+                "value": "value"
+              },
+              "tag": "Pair"
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-pair-no-branch-v3",
+    "kind": "Compile",
+    "script": "51010100294bded090090576616c75650001",
+    "subject": {
+      "body": {
+        "branches": [],
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "left": {
+              "tag": "Integer",
+              "value": "1"
+            },
+            "right": {
+              "tag": "Text",
+              "value": "value"
+            },
+            "tag": "Pair"
+          }
+        },
+        "tag": "Case"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-data-v1",
+    "kind": "Compile",
+    "script": "4d0101002294c103d8798000a4c1",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "UnitValue"
+              }
+            }
+          ],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "cbor": "d87980",
+              "tag": "Data"
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-data-v2",
+    "kind": "Compile",
+    "script": "4d0101002294c103d8798000a4c1",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "UnitValue"
+              }
+            }
+          ],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "cbor": "d87980",
+              "tag": "Data"
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-data-v3",
+    "kind": "Compile",
+    "script": "4d010100294c0103d8798000a4c1",
+    "subject": {
+      "body": {
+        "branches": [
+          {
+            "tag": "Constant",
+            "value": {
+              "tag": "UnitValue"
+            }
+          }
+        ],
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "cbor": "d87980",
+            "tag": "Data"
+          }
+        },
+        "tag": "Case"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-string-v1",
+    "kind": "Compile",
+    "script": "4e0101002294910576616c75650001",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "Text",
+              "value": "value"
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-string-v2",
+    "kind": "Compile",
+    "script": "4e0101002294910576616c75650001",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "Text",
+              "value": "value"
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-string-v3",
+    "kind": "Compile",
+    "script": "4e0101002949010576616c75650001",
+    "subject": {
+      "body": {
+        "branches": [],
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "Text",
+            "value": "value"
+          }
+        },
+        "tag": "Case"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-bytes-v1",
+    "kind": "Compile",
+    "script": "4b0101002294890200ff0001",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "hex": "00ff",
+              "tag": "ByteString"
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-bytes-v2",
+    "kind": "Compile",
+    "script": "4b0101002294890200ff0001",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "hex": "00ff",
+              "tag": "ByteString"
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-bytes-v3",
+    "kind": "Compile",
+    "script": "4b0101002948810200ff0001",
+    "subject": {
+      "body": {
+        "branches": [],
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "hex": "00ff",
+            "tag": "ByteString"
+          }
+        },
+        "tag": "Case"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-array-v1",
+    "kind": "Compile",
+    "script": "490101002294bf208101",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "elementType": {
+                "tag": "Integer"
+              },
+              "tag": "Array",
+              "values": [
+                {
+                  "tag": "Integer",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-array-v2",
+    "kind": "Compile",
+    "script": "490101002294bf208101",
+    "subject": {
+      "body": {
+        "body": {
+          "branches": [],
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "elementType": {
+                "tag": "Integer"
+              },
+              "tag": "Array",
+              "values": [
+                {
+                  "tag": "Integer",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "tag": "Case"
+        },
+        "index": "0",
+        "name": "i",
+        "tag": "Lam"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-array-v3",
+    "kind": "Compile",
+    "script": "48010100294bf20811",
+    "subject": {
+      "body": {
+        "branches": [],
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "elementType": {
+              "tag": "Integer"
+            },
+            "tag": "Array",
+            "values": [
+              {
+                "tag": "Integer",
+                "value": "1"
+              }
+            ]
+          }
+        },
+        "tag": "Case"
+      },
+      "index": "0",
+      "name": "i",
+      "tag": "Lam"
+    }
+  }
+]

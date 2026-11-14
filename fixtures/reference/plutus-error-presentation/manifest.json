@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-05",
+  "scope": "Native API and direct native constructor/helper controls; official-node wire evidence is recorded separately without normalization.",
+  "plutusRevision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+  "plutusPackage": "1.70.0.0",
+  "prettyprinterPackage": "1.7.2",
+  "compiler": "GHC9.10.3",
+  "cabal": "3.14.1.1",
+  "baseImage": "sha256:345960f221ef0e5dd5d6b2db8f085d832212ffa91374b5c54113eb1af5a4a7f5",
+  "cases": 1586,
+  "independentIdenticalProcesses": 2,
+  "rawOutputSha256": "9be14be38f511a7e3837bbb59be9efd5eed4b4378e5e5bc7e85a4c622eaa6e2d",
+  "files": {
+    "requests.json": "3fe109c6b107f8c4f689f8b344daf33f8cb1bd9da6dedd45ee67e2be536cb8f9",
+    "observations.json": "d2308e75c8ce59a0c893c6a19e9d0727868f2f6980e840ecc428da252e9860b1",
+    "builtin-names.json": "84396ced849259ee57b84e49c3d8242bfce4dd62167a49bf1c236aa0f0698145",
+    "unicode-isprint.json": "1211403d21dc0e60d4f776e8bd1a79f29e26c8c8bd2c378f66bbb5945cad0f73",
+    "programs/minting-definitions-v1-39.json": "bd6bd50d80fce6deeb98044a99a00e3cba0d51814d8514a360b4897290924263",
+    "programs/minting-definitions-v4-delta.json": "e304f42e7261ac58329c47b2799eb4e76b49e7288ee9f059dd6bd14b94463944",
+    "programs/minting-programs-v1-39.json": "2c1a40ec48b57aab87a83dac375536af5b29aa50597f1237bfaa4b5e3b255caf",
+    "programs/minting-programs-v4-delta.json": "ce44991c6497b2b3903375e8eae5fd4e1f241869aaa0d2ff49cbb57cce403424"
+  },
+  "imageId": "sha256:922ac6afd2c422c38f98560f2c33e04acab83b922cc32aea18d124d30d6e0b2c",
+  "binarySha256": "42565eb37520523c5b79c82ba907a4d880838593c7a4d226b1b15defd2202a19",
+  "sources": {
+    "scripts/oracle/plutus/error-presentation/Main.hs": "95fb8ed37f6c965accbb0e19230162d9a1f433ebfd5a857d935827e945e2225b",
+    "scripts/oracle/plutus/error-presentation/scarab-context-oracle.cabal": "c198c4af6ed978ea9994d2d4cae563aeea12dabc0ef82811780c6689b8e1a6d6",
+    "scripts/oracle/plutus/context-matrix/cabal.project": "c8e3e046ac067d88cb9315a4f962bf318b7184ab95f5c2d1f5ef059b01b95618",
+    "scripts/oracle/plutus/context-matrix/cabal.project.freeze": "f7e6220cf1d723bb8722b4a7e90be5993c4f1fa5a380e64a13c3303546e8a68c",
+    "scripts/oracle/plutus/error-presentation/Dockerfile": "70874180a759e5b8e1150a1ceee4a87a22c7222117b5199b7994a0ff44e99fbd",
+    "scripts/oracle/plutus/error-presentation/Dockerfile.dockerignore": "dd96034a5e60b620f0fd99c526b68330e78589c920bc11bd957670d49b5941d2",
+    "scripts/oracle/plutus/error-presentation/inputs.py": "ed08c19c5eb016f7fba17b96128723e921436745791eb6d78260f2bf3cff6227",
+    "scripts/oracle/plutus/error-presentation/run.py": "f343cebe72b303f97e0539666763b4eb78ab71b4ebd18651866d82591a837866",
+    "scripts/oracle/plutus/error-presentation/UnicodeProbe.hs": "44d3462d1ebe0c522ee1f609537bf26398717c6b90f8ebc9a9b1180e4d8217ff",
+    "scripts/oracle/plutus/error-presentation/unicode.py": "2e1c0b54ba43a8938bc4055d999de3e82abead1b67ed8bad94da609577d32fe0",
+    "fixtures/reference/plutus-costing/models.jsonl": "e085f37a591c0f018a16205d69f854631ce20328deead3852bacece0251d2755"
+  }
+}

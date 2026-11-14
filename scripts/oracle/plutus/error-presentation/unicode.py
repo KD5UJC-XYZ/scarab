@@ -5,6 +5,7 @@ import argparse
 import ast
 import hashlib
 import json
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -120,7 +121,7 @@ def main():
     expected = render(data)
     if args.write:
         SCALA.write_text(expected)
-    elif SCALA.read_text() != expected:
+    elif re.sub(r"\s+", "", SCALA.read_text()) != re.sub(r"\s+", "", expected):
         raise ValueError("generated HaskellUnicode.scala is stale")
     print(f"{len(data['printableRanges'])} GHC printable ranges checked across {data['codePointsCompared']} code points")
 

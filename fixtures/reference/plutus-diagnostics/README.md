@@ -12,7 +12,8 @@ The 2026-11-04 capture covers V1/V2 purposes and two/three-argument layouts; V3 
 all legacy certificates and V3 certificate constructors; governance actions, proposals and voters;
 inline/hash/absent datums and reference scripts; staking hashes/pointers; finite/infinite interval
 bounds; duplicate data-map keys, large/negative integers, byte escaping and long data layouts.
-Every row is asserted without masks or expected failures by `PlutusContextTextSuite`. Its deep-data
+The 2026-11-05 extension adds V3 optional-field complements and empty collections in all three
+context versions. Every row is asserted without masks or expected failures by `PlutusContextTextSuite`. Its deep-data
 control separately checks stack safety on a small-stack thread. The original whole refusals remain
 in their existing corpora and are compared unconditionally by `ContextRefusalReasonSuite` and
 `ReferenceRefusalSuite`.

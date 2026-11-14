@@ -1,0 +1,1425 @@
+[
+  {
+    "id": "delta-v4-case-builtin-unavailable-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Case",
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con unit ())"
+          }
+        },
+        "branches": []
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-nonconstructor-case-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Case",
+        "scrutinee": {
+          "tag": "Lam",
+          "name": "i",
+          "index": "0",
+          "body": {
+            "tag": "Var",
+            "name": "i",
+            "index": "1"
+          }
+        },
+        "branches": []
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-plc-version-unavailable-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Error"
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-plc-version-unavailable-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Error"
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-integer-negative-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con integer -1)"
+            }
+          },
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "NativeConstant",
+                "syntax": "(con unit ())"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-integer-negative-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con integer -1)"
+            }
+          },
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "NativeConstant",
+                "syntax": "(con unit ())"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-integer-negative-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Case",
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con integer -1)"
+          }
+        },
+        "branches": [
+          {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con unit ())"
+            }
+          }
+        ]
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-integer-large-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con integer 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000)"
+            }
+          },
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "NativeConstant",
+                "syntax": "(con unit ())"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-integer-large-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con integer 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000)"
+            }
+          },
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "NativeConstant",
+                "syntax": "(con unit ())"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-integer-large-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Case",
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con integer 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000)"
+          }
+        },
+        "branches": [
+          {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con unit ())"
+            }
+          }
+        ]
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-unit-no-branch-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con unit ())"
+            }
+          },
+          "branches": []
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-unit-no-branch-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con unit ())"
+            }
+          },
+          "branches": []
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-unit-no-branch-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Case",
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con unit ())"
+          }
+        },
+        "branches": []
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-true-one-branch-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con bool True)"
+            }
+          },
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "NativeConstant",
+                "syntax": "(con unit ())"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-true-one-branch-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con bool True)"
+            }
+          },
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "NativeConstant",
+                "syntax": "(con unit ())"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-true-one-branch-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Case",
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con bool True)"
+          }
+        },
+        "branches": [
+          {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con unit ())"
+            }
+          }
+        ]
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-empty-list-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con (list integer) [])"
+            }
+          },
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "NativeConstant",
+                "syntax": "(con unit ())"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-empty-list-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con (list integer) [])"
+            }
+          },
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "NativeConstant",
+                "syntax": "(con unit ())"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-empty-list-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Case",
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con (list integer) [])"
+          }
+        },
+        "branches": [
+          {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con unit ())"
+            }
+          }
+        ]
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-list-no-branch-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con (list integer) [1, 2, 3])"
+            }
+          },
+          "branches": []
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-list-no-branch-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con (list integer) [1, 2, 3])"
+            }
+          },
+          "branches": []
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-list-no-branch-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Case",
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con (list integer) [1, 2, 3])"
+          }
+        },
+        "branches": []
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-long-list-no-branch-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con (list string) [\"long value 0\", \"long value 1\", \"long value 2\", \"long value 3\", \"long value 4\", \"long value 5\", \"long value 6\", \"long value 7\", \"long value 8\", \"long value 9\", \"long value 10\", \"long value 11\"])"
+            }
+          },
+          "branches": []
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-long-list-no-branch-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con (list string) [\"long value 0\", \"long value 1\", \"long value 2\", \"long value 3\", \"long value 4\", \"long value 5\", \"long value 6\", \"long value 7\", \"long value 8\", \"long value 9\", \"long value 10\", \"long value 11\"])"
+            }
+          },
+          "branches": []
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-long-list-no-branch-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Case",
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con (list string) [\"long value 0\", \"long value 1\", \"long value 2\", \"long value 3\", \"long value 4\", \"long value 5\", \"long value 6\", \"long value 7\", \"long value 8\", \"long value 9\", \"long value 10\", \"long value 11\"])"
+          }
+        },
+        "branches": []
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-pair-no-branch-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con (pair integer string) (1, \"value\"))"
+            }
+          },
+          "branches": []
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-pair-no-branch-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con (pair integer string) (1, \"value\"))"
+            }
+          },
+          "branches": []
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-pair-no-branch-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Case",
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con (pair integer string) (1, \"value\"))"
+          }
+        },
+        "branches": []
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-data-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con data (Constr 0 []))"
+            }
+          },
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "NativeConstant",
+                "syntax": "(con unit ())"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-data-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con data (Constr 0 []))"
+            }
+          },
+          "branches": [
+            {
+              "tag": "Constant",
+              "value": {
+                "tag": "NativeConstant",
+                "syntax": "(con unit ())"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-data-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Case",
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con data (Constr 0 []))"
+          }
+        },
+        "branches": [
+          {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con unit ())"
+            }
+          }
+        ]
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-string-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con string \"value\")"
+            }
+          },
+          "branches": []
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-string-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con string \"value\")"
+            }
+          },
+          "branches": []
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-string-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Case",
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con string \"value\")"
+          }
+        },
+        "branches": []
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-bytes-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con bytestring #00ff)"
+            }
+          },
+          "branches": []
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-bytes-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con bytestring #00ff)"
+            }
+          },
+          "branches": []
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-bytes-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Case",
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con bytestring #00ff)"
+          }
+        },
+        "branches": []
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-array-v1",
+    "kind": "Compile",
+    "language": 1,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con (array integer) [1])"
+            }
+          },
+          "branches": []
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-array-v2",
+    "kind": "Compile",
+    "language": 2,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Lam",
+        "name": "i",
+        "index": "0",
+        "body": {
+          "tag": "Case",
+          "scrutinee": {
+            "tag": "Constant",
+            "value": {
+              "tag": "NativeConstant",
+              "syntax": "(con (array integer) [1])"
+            }
+          },
+          "branches": []
+        }
+      }
+    },
+    "arguments": [
+      "00",
+      "00"
+    ]
+  },
+  {
+    "id": "delta-v4-case-builtin-unsupported-array-v3",
+    "kind": "Compile",
+    "language": 3,
+    "version": {
+      "major": "1",
+      "minor": "1",
+      "patch": "0"
+    },
+    "term": {
+      "tag": "Lam",
+      "name": "i",
+      "index": "0",
+      "body": {
+        "tag": "Case",
+        "scrutinee": {
+          "tag": "Constant",
+          "value": {
+            "tag": "NativeConstant",
+            "syntax": "(con (array integer) [1])"
+          }
+        },
+        "branches": []
+      }
+    },
+    "arguments": [
+      "00"
+    ]
+  }
+]

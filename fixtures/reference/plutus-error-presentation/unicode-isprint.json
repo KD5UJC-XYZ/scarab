@@ -22,6 +22,10 @@
         209,
         221
       ]
+    },
+    {
+      "url": "https://raw.githubusercontent.com/ghc/ghc/ghc-9.6.7-release/libraries/base/GHC/Unicode/Internal/Bits.hs",
+      "sha256": "3b6cb218617e7a60bddf0c682c0156216151de5a58928733e0685c54f19ab6b9"
     }
   ],
   "printableRanges": [

@@ -120,6 +120,29 @@ def inputs():
             cases.append((f"v1-bound-{tag}-{closed}", "ContextV1", c(0, c(0, *fields), purposes1[0])))
     negative_quorum = c(0, 100, cred, c(4, nothing, [cred], m(), c(0, -1, 2)))
     cases.append(("v3-negative-quorum-show", "ContextV3", c(0, info3, datum, c(5, 0, negative_quorum))))
+    optional_certs = list(txcerts) + [c(1, script_cred, nothing)]
+    optional_actions = [c(0, just(gid), datum, nothing), c(1, nothing, c(0, 11, 2)),
+                        c(2, m(), just(h)), c(3, nothing),
+                        c(4, nothing, [], m(), c(0, 2, 3)), c(5, just(gid), c(0, nothing))]
+    optional_info = list(info3.fields)
+    optional_info[5] = optional_certs
+    optional_info[13] = [c(0, 100, script_cred, action) for action in optional_actions]
+    optional_info[14], optional_info[15] = nothing, just(234)
+    cases.append(("v3-optional-complements", "ContextV3", c(0, c(0, *optional_info), datum, script_infos[0])))
+    for version, info, purpose in ((1, info1, purposes1[0]), (2, info2, purposes1[0]), (3, info3, script_infos[0])):
+        fields = list(info.fields)
+        list_fields = {1: [0, 1, 4, 5, 7, 8], 2: [0, 1, 2, 5, 8], 3: [0, 1, 2, 5, 8, 13]}[version]
+        map_fields = {1: [2, 3], 2: [3, 4, 6, 9, 10], 3: [4, 6, 9, 10, 12]}[version]
+        for i in list_fields:
+            fields[i] = []
+        for i in map_fields:
+            fields[i] = m()
+        if version == 3:
+            fields[14], fields[15] = nothing, nothing
+            context = c(0, c(0, *fields), datum, purpose)
+        else:
+            context = c(0, c(0, *fields), purpose)
+        cases.append((f"v{version}-empty-collections", f"ContextV{version}", context))
     cases += [("data-layout", "RawData", datum), ("data-empty", "RawData", c(42)),
               ("data-long", "RawData", [bytes(range(60))] * 4)]
     return [dict(name=name, kind=kind, dataCbor=encode(d).hex()) for name, kind, d in cases]

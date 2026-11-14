@@ -1,0 +1,7 @@
+Native observations derive from Plutus at commit 507cab8cf6192e5143f12be5b2d3005a2928dc6d
+(https://github.com/IntersectMBO/plutus), Apache License 2.0, and prettyprinter 1.7.2
+(https://hackage.haskell.org/package/prettyprinter-1.7.2), BSD 2-Clause License.
+The printable-character facts are generated from GHC's released Unicode 15.1 category table
+(https://github.com/ghc/ghc/tree/ghc-9.6.7-release/libraries/base), BSD 3-Clause License;
+Unicode data copyright Unicode, Inc., https://www.unicode.org/license.txt.
+No reference implementation source is modified or copied into these observation fixtures.
