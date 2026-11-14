@@ -6,7 +6,8 @@
 # CONFIG names the config directory (default config); the canary's run is named scarab-canary. The run records the
 # commit of the Scarab image that build.sh labelled.
 # The tenant predates --max-compute-hours (release 66), so the duration bounds the run. A 15m resilient run cost 18 to
-# 20 compute hours, about 7 of them setup.
+# 20 compute hours, about 7 of them setup. The trial's tenant did not apply --fault-tolerance or --fault-exclusions
+# (README, "did not apply"): check a run's parameters and fault events before reading it as a level's.
 set -euo pipefail
 
 faults=$1
