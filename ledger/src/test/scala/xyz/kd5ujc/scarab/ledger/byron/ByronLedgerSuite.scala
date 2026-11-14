@@ -148,27 +148,50 @@ class ByronLedgerSuite extends ScalaCheckSuite:
     )
   }
 
-  test("only the first 65,536 outputs enter the UTxO and the output balance") {
+  test("a signed transaction of 65,537 outputs pays for its full size and indexes 65,536") {
     // `txOutputUTxO` zips the outputs with `[0 ..] :: [Word16]` (cardano-ledger f649f975,
     // `Cardano/Chain/UTxO/UTxO.hs:176-185`) and `validateTxAux` takes the output balance of that
-    // UTxO (`Cardano/Chain/UTxO/Validation.hs:202-204`); `validateTx` checks the network magic of
-    // every output (`Validation.hs:255`). The outputs replace those of a signed transaction, as the
-    // balance test above does: the signature covers the id, which is kept.
-    val signed = spendAlice(Seq(bobAddr -> 1000000, aliceAddr -> 50000000))
-    def withOutputs(outs: Vector[ByronOut]) = signed.copy(tx = signed.tx.copy(outputs = outs))
-    val indexed = Vector.fill(65536)(ByronOut(bobAddr, 1))
-    def created(u: Map[TxIn, ByronOut]) = u.keySet.filter(_.id == signed.tx.id)
+    // UTxO (`Cardano/Chain/UTxO/Validation.hs:202-204`); its size and its fee are those of the
+    // whole `TxAux` as encoded (`Validation.hs:191-199,212-217,224-225`), and `validateTx` checks
+    // the network magic of every output (`Validation.hs:255`). The transactions are encoded,
+    // signed and decoded whole, every value below 2^32 (the widest head `Cb.uint` writes).
+    val funds = BigInt(1000000000)
+    val spent = addrIn(aliceAddr)
+    val utxo = utxo0.updated(spent, ByronOut(aliceAddr, funds))
+    val indexed = Seq.fill(65536)(bobAddr -> 1L)
+    def spend(outs: Seq[(Bytes, Long)]) = aux(config, Seq((spent, alice, false)), outs)
+    def fitting(a: ByronTxAux) = params.copy(maxTxSize = a.raw.size)
+    def applied(p: ByronParams, u: Map[TxIn, ByronOut], a: ByronTxAux) =
+      ByronLedger.applyTx(config, p, u, a)
+    def created(u: Map[TxIn, ByronOut], a: ByronTxAux) = u.keySet.filter(_.id == a.tx.id)
     // an output past the first 65,536 that alone exceeds the input is neither spent nor kept
-    val beyond = apply(withOutputs(indexed :+ ByronOut(bobAddr, 100000000)))
-      .fold(e => fail(e.toString), identity)
-    assertEquals(created(beyond).size, 65536)
-    assertEquals(created(beyond).map(_.index).max, BigInt(65535))
-    assertEquals(beyond.size, utxo0.size - 1 + 65536)
-    val exact = apply(withOutputs(indexed)).fold(e => fail(e.toString), identity)
-    assertEquals(created(exact), created(beyond))
-    val foreign = address(bob, Some(Magic + 1))
+    val beyond = spend(indexed :+ (bobAddr -> 2000000000L))
+    assertEquals(beyond.tx.outputs.size, 65537)
+    val size = beyond.raw.size
+    assert(size > 65537 * (bobAddr.size + 2), s"$size bytes")
+    val minFee = params.txFeePolicy.minimumFee(size).fold(e => fail(e.toString), identity)
+    val next = applied(fitting(beyond), utxo, beyond).fold(e => fail(e.toString), identity)
+    assertEquals(created(next, beyond).size, 65536)
+    assertEquals(created(next, beyond).map(_.index).max, BigInt(65535))
+    assertEquals(next.size, utxo.size - 1 + 65536)
+    // the size is the whole encoding's, and so is the fee: one byte or one lovelace short refuses it
     assertEquals(
-      apply(withOutputs(indexed :+ ByronOut(foreign, 1))).map(_ => ()),
+      applied(params.copy(maxTxSize = size - 1), utxo, beyond).map(_ => ()),
+      Left(ByronError.TxTooLarge(size - 1, size))
+    )
+    val short = utxo.updated(spent, ByronOut(aliceAddr, 65536 + minFee - 1))
+    assertEquals(
+      applied(fitting(beyond), short, beyond).map(_ => ()),
+      Left(ByronError.FeeTooSmall(minFee, minFee - 1))
+    )
+    // exactly 65,536 outputs: all kept
+    val exact = spend(indexed)
+    val all = applied(fitting(exact), utxo, exact).fold(e => fail(e.toString), identity)
+    assertEquals(created(all, exact).size, 65536)
+    // the network of the 65,537th output is still checked
+    val foreign = spend(indexed :+ (address(bob, Some(Magic + 1)) -> 1L))
+    assertEquals(
+      applied(fitting(foreign), utxo, foreign).map(_ => ()),
       Left(ByronError.NetworkMagicMismatch(Some(Magic), Some(Magic + 1)))
     )
   }
