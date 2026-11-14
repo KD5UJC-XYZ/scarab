@@ -307,6 +307,21 @@ def reference_invalid_blocks(views):
             for pool, v in views.items() if "unreadable" in v or v["invalid"]}
 
 
+def wait_joined(name, log, socket, timeout=pool_plutus.JOIN_TIMEOUT):
+    """Seconds until blocks and transactions crossed between the Haskell pools and the Scala node both ways
+    (`pool_plutus.joined`), the observer's tip read at `socket` and the Scala node's events from `log`."""
+    began, tips = time.monotonic(), set()
+    while time.monotonic() - began < timeout:
+        tip = tip_at(name, socket)
+        if tip:
+            tips.add(tip["hash"])
+        if pool_plutus.joined(log_counts(log)[1], tips):
+            return round(time.monotonic() - began, 1)
+        time.sleep(1)
+    raise SystemExit(f"blocks and transactions did not cross between the Haskell pools and the Scala node both ways "
+                     f"within {timeout} s: no Plutus load")
+
+
 def missed_leader_slots(events, schedules, shelley, excluded=None):
     """Check the Scala pool's forging against the reference node's `leadership-schedule`.
 
@@ -382,7 +397,7 @@ def pool(args):
     others = [n for n in (1, 2, 3) if n != ours]
     observer = others[0]
     util.SOCKET = f"--testnet-magic {MAGIC} --socket-path {ENV}/socket/node{observer}/sock"
-    failures, summary, scala, loader, plutus, plutus_evidence = [], {}, None, None, None, None
+    failures, summary, scala, loader, plutus, plutus_evidence, joined_after = [], {}, None, None, None, None, None
     rotate = getattr(args, "rotate", False)  # the kes-rotate scenario: this run with the rotation driver
     sockets_dir = "ipc" if rotate else "scala-sock"  # the Scala node's node-to-client socket, in the run dir
     driver = kes_rotate.Driver(args, root) if rotate else None
@@ -470,6 +485,8 @@ def pool(args):
                                    "--stats-every", "5"],
                                   stdout=(root / "load.log").open("w"), stderr=subprocess.STDOUT)
         if getattr(args, "plutus_load", False):
+            joined_after = wait_joined(args.name, log, f"{ENV}/socket/node{observer}/sock")
+            print(json.dumps({"plutusLoadStarts": {"joinedAfterSeconds": joined_after}}), flush=True)
             # funded from the delegator of a Haskell pool: the Scala pool's stake is left as it is
             plutus = pool_plutus.Runner.against(args.name, root, f"{ENV}/socket/node{observer}/sock",
                                                 str(sockets / "node.socket"), others[-1]).start()
@@ -678,6 +695,7 @@ def pool(args):
         if plutus and observed is not None:
             plutus_failures, summary["plutus"] = pool_plutus.check(plutus_evidence, observed, forged, events, refused,
                                                                    adopted_by_pools)
+            summary["plutus"]["joinedAfterSeconds"] = joined_after
             failures += [f"plutus: {f}" for f in plutus_failures]
         if len(relative) < 2:
             failures.append("the KES key stayed in one period")

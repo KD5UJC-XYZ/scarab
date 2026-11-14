@@ -43,6 +43,9 @@ REFUSED, ADOPTED, UNCONFIRMED = "refusedByHaskellPools", "adoptedByHaskellPools"
 VALIDATION_TAG_MISMATCH = [1, 0, 0, 0]
 REFUSED_CASES = ("reject-success-invalid", "reject-failure-valid")
 
+# Seconds the Plutus load waits for blocks and transactions to cross both ways (`joined`) before it starts.
+JOIN_TIMEOUT = 180
+
 # Whether a case's script succeeds: its transaction belongs in a block with this flag.
 SUCCEEDS = {"success": True, "reject-success-invalid": True, "collateral": False, "reject-failure-valid": False}
 ACCEPTED = ("success", "collateral")
@@ -68,6 +71,33 @@ def failure_path(reason):
     return path
 
 
+def joined(events, tips):
+    """Whether blocks and transactions cross between the Haskell pools and the Scala node both ways: a block the Scala
+    node forged has been the observer's tip (`tips`, the tip hashes read so far), and the Scala node's mempool has added
+    a transaction, which before the Plutus load starts can only have come from its Haskell peers. Until a pool has
+    promoted its connection to the Scala node, a transaction it holds does not reach the Scala node, and a fork can then
+    take a block of the pools, with a round's setup transaction in it, off the chain while no mempool holds the
+    transaction to bring it back (consensus does not put an orphaned block's transactions back in the mempool)."""
+    forged = {e["hash"] for e in events if e["event"] == "forged"}
+    return bool(forged & tips) and any(e["event"] == "mempoolAdded" for e in events)
+
+
+class Rows(list):
+    """The rows `eraplutus.exercise` appends, each of a refused case linked (`judgement`, an index into
+    `load.scala_refusals`) to the judgement `Load.expect_rejected` made of it just before. Rounds rebuilt from the
+    same outputs give the same transactions again, so a transaction id does not tell two rounds' judgements apart."""
+
+    def __init__(self, load):
+        super().__init__()
+        self.load = load
+
+    def append(self, row):
+        if row.get("case") in REFUSED_CASES:
+            row = {**row, "judgement": self.load.last_judgement}
+            self.load.last_judgement = None
+        super().append(row)
+
+
 class Load(eraload.EraLoad):
     """`EraLoad` against the observing pool (`socket`, inside the reference container) that also has the Scala node
     (`scala_socket`, its local socket on the host) judge every transaction the reference refused."""
@@ -78,6 +108,8 @@ class Load(eraload.EraLoad):
                          log=self.write)
         self.scala_socket = scala_socket
         self.scala_refusals = []
+        self.last_judgement = None  # the index of the judgement the next refused case's row is linked to
+        self.plutus_evidence = Rows(self)
         self.plutus_txids = set()  # every transaction with redeemers the load submitted, recorded before it went out
 
     def write(self, message):
@@ -118,7 +150,11 @@ class Load(eraload.EraLoad):
                                                          if reference else None, "scalaReason": scala.hex() if scala else None})
         except (RuntimeError, EOFError, OSError) as e:  # recorded: the check fails on a judgement that did not end
             row["error"] = repr(e)[:400]
+        self.record_judgement(row)
+
+    def record_judgement(self, row):
         self.scala_refusals.append(row)
+        self.last_judgement = len(self.scala_refusals) - 1
         self.log({"scalaJudgement": row})
 
 
@@ -318,21 +354,28 @@ def judgement_problem(judgement):
 
 
 def judgements(rows, refusals):
-    """The Scala node's judgement of every refused case of `rows`: matched by transaction id, language and case
-    (`Load.scala_judgement`'s label), those refused for the reference's rule, the cases without a judgement, the
-    judgements with a problem (`judgement_problem`), and those that match no case."""
+    """The Scala node's judgement of every refused case of `rows`, the one each row is linked to (`Rows`), which must be
+    of the row's transaction, language and case (`Load.scala_judgement`'s label): those refused for the reference's
+    rule, the cases without a judgement, the judgements with a problem (`judgement_problem`), and the judgements no
+    case is linked to."""
     cases = [r for r in rows if r["case"] in REFUSED_CASES]
 
     def of(r):
-        return [j for j in refusals if j.get("tx") == r["txid"] and j.get("label", "").endswith(f"-v{r['language']}-{r['case']}")]
-    matched = {id(j) for r in cases for j in of(r)}
-    problems = [{"case": r["case"], "language": r["language"], "tx": r["txid"], "problem": judgement_problem(j)}
-                for r in cases for j in of(r) if judgement_problem(j)]
-    return {"expected": len(cases),
-            "refusedForTheSameRule": sum(1 for r in cases if of(r) and all(judgement_problem(j) is None for j in of(r))),
+        i = r.get("judgement")
+        return refusals[i] if type(i) is int and 0 <= i < len(refusals) else None
+
+    def problem(r):
+        j = of(r)
+        if j.get("tx") != r["txid"] or not j.get("label", "").endswith(f"-v{r['language']}-{r['case']}"):
+            return f"the judgement linked to it is of another case: {j.get('label')} {j.get('tx')}"
+        return judgement_problem(j)
+    judged = [r for r in cases if of(r) is not None]
+    return {"expected": len(cases), "refusedForTheSameRule": sum(1 for r in judged if problem(r) is None),
             "sameBytes": sum(1 for j in refusals if j.get("sameBytes")),
-            "missing": [{"case": r["case"], "language": r["language"], "tx": r["txid"]} for r in cases if not of(r)],
-            "problems": problems, "unmatched": sum(1 for j in refusals if id(j) not in matched)}
+            "missing": [{"case": r["case"], "language": r["language"], "tx": r["txid"]} for r in cases if of(r) is None],
+            "problems": [{"case": r["case"], "language": r["language"], "tx": r["txid"], "problem": problem(r)}
+                         for r in judged if problem(r)],
+            "unmatched": len(refusals) - len({r["judgement"] for r in judged})}
 
 
 def reason_kind(reason):

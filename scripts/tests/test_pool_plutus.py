@@ -111,6 +111,17 @@ ROWS = [row("reject-success-invalid", "a"), row("success", "a"), row("reject-fai
         row("collateral", "d", 2)]
 
 
+def linked(rows, count):
+    """`rows` with each of the first `count` refused cases linked, in order, to the judgement of the same index."""
+    out, k = [], 0
+    for r in rows:
+        if r["case"] in pool_plutus.REFUSED_CASES:
+            r = {**r, "judgement": k if k < count else None}
+            k += 1
+        out.append(r)
+    return out
+
+
 class InclusionTest(unittest.TestCase):
     CHAIN = [("s1", 10, 1, [("a", True, True), ("pay", True, False)]), ("h1", 20, 2, [("b", False, True)]),
              ("s2", 30, 3, [("d", False, True)]), ("h2", 40, 4, [("c", True, True)])]
@@ -147,8 +158,10 @@ class InclusionTest(unittest.TestCase):
 class CheckTest(unittest.TestCase):
     SHELLEY_AT = "2026-01-01T00:00:{:06.3f}Z"
 
-    def runner(self, refusals, rows=ROWS, errors=(), **how):
-        """The evidence of a load that completed one round and ended in time (`how` changes the ending)."""
+    def runner(self, refusals, rows=None, errors=(), **how):
+        """The evidence of a load that completed one round and ended in time (`how` changes the ending); the refused
+        cases of `rows` (`ROWS`) linked in order to `refusals`."""
+        rows = linked(ROWS, len(refusals)) if rows is None else rows
         return pool_plutus.Evidence(rows=tuple(rows), refusals=tuple(refusals), plutus_txids=frozenset(), passes=1,
                                     errors=tuple(errors),
                                     ended=None, **{"finished": True, "stopped": True, **how})
@@ -235,13 +248,42 @@ class CheckTest(unittest.TestCase):
         self.assertIn("the Scala node's refusal could not be read", failures[0])
 
     def test_a_refused_case_without_its_own_judgement_fails_the_run(self):
-        # three judgements and one more for the first case: the V2 failing script with the flag true has none
-        judged = self.judgements()[:3] + [self.judgements()[0]]
-        failures, summary = pool_plutus.check(self.runner(judged), InclusionTest.CHAIN, self.forged(), self.events())
+        # three judgements: the V2 failing script with the flag true has none
+        failures, summary = pool_plutus.check(self.runner(self.judgements()[:3]), InclusionTest.CHAIN, self.forged(),
+                                              self.events())
         self.assertEqual(summary["scalaLocalSubmission"]["missing"],
                          [{"case": "reject-failure-valid", "language": 2, "tx": "d"}])
         self.assertEqual(failures, ["1 refused cases have no judgement by the Scala node: "
                                     "[{'case': 'reject-failure-valid', 'language': 2, 'tx': 'd'}]"])
+
+    def test_a_round_rebuilt_from_the_same_outputs_is_judged_by_its_own_judgement(self):
+        # the first round's setup left the chain; the second built the same transactions again: the first round's
+        # judgement (all inputs spent) is that round's alone, and a judgement of another case is not taken for a row's
+        judged = self.judgements()
+        stale = {**judged[0], "scala": [7]}
+        rows = linked(ROWS, 4)
+        again = {**rows[0], "judgement": 4, "passed": False}
+        failures, summary = pool_plutus.check(self.runner(judged + [stale], rows=[again] + rows), InclusionTest.CHAIN,
+                                              self.forged(), self.events())
+        judged_ = summary["scalaLocalSubmission"]
+        self.assertEqual((judged_["expected"], judged_["refusedForTheSameRule"], judged_["unmatched"]), (5, 4, 0))
+        self.assertEqual([p["problem"] for p in judged_["problems"]], ["the Scala node refused it for another rule: [7]"])
+        crossed = {**rows[0], "judgement": 1}
+        _, summary = pool_plutus.check(self.runner(judged, rows=[crossed] + rows[1:]), InclusionTest.CHAIN,
+                                       self.forged(), self.events())
+        self.assertTrue(summary["scalaLocalSubmission"]["problems"][0]["problem"].startswith(
+            "the judgement linked to it is of another case"))
+        self.assertEqual(summary["scalaLocalSubmission"]["unmatched"], 1)
+
+    def test_the_load_links_each_refused_case_to_the_judgement_made_of_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            load = pool_plutus.Load("n", pathlib.Path(d), "/sock", "/scala.sock")
+            load.record_judgement({"label": "legacy-plutus-conway-v1-reject-success-invalid", "tx": "a"})
+            load.plutus_evidence.append(row("reject-success-invalid", "a"))
+            load.plutus_evidence.append(row("success", "a"))
+            load.plutus_evidence.append(row("reject-failure-valid", "b"))
+            load.out.close()
+        self.assertEqual([r.get("judgement", "-") for r in load.plutus_evidence], [0, "-", None])
 
     def test_no_judgement_by_the_scala_node_fails_the_run(self):
         failures, _ = pool_plutus.check(self.runner([]), InclusionTest.CHAIN, self.forged(), self.events())
@@ -252,6 +294,15 @@ class CheckTest(unittest.TestCase):
 # 64-hex-character stand-ins for block hashes, one hex digit repeated per name
 H = {name: digit * 64 for name, digit in zip("abcdvwxyz", "abcd01234")}
 NAME = {h: name for name, h in H.items()}
+
+
+class JoinedTest(unittest.TestCase):
+    def test_the_load_waits_for_a_scala_block_on_the_observer_and_a_transaction_in_the_scala_mempool(self):
+        forged = {"event": "forged", "hash": H["a"]}
+        added = {"event": "mempoolAdded", "tx": "t"}
+        self.assertTrue(pool_plutus.joined([forged, added], {H["b"], H["a"]}))
+        self.assertFalse(pool_plutus.joined([forged], {H["a"]}))
+        self.assertFalse(pool_plutus.joined([forged, added], {H["b"]}))
 
 
 class RunnerTest(unittest.TestCase):
