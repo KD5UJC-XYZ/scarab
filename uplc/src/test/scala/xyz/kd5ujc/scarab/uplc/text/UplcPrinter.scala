@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.uplc.text
 
 import cats.{Applicative, Eval, Traverse}
-import cats.data.Chain
+import cats.data.{Chain, State}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.uplc.{
   Constant as Con,
@@ -22,14 +22,31 @@ import xyz.kd5ujc.scarab.uplc.{
   * reference's, which the conformance runner does not compare (it parses the expected result,
   * `PlutusConformance/Common.hs:438-440`).
   *
-  * A `lam` at depth `d` (the number of `lam` s around it) binds the name `x-d`: text `x`, unique
-  * `d`. A variable of index `i` at depth `d` is then `x-(d - i)`; a free index gets a negative
-  * unique, written as the unsigned decimal that the parser wraps back to it.
+  * The names of binders follow a [[Naming]]. By default ([[Naming.Depth]]) a `lam` at depth `d`
+  * (the number of `lam` s around it) binds the name `x-d`: text `x`, unique `d`. A variable then
+  * prints the name of the `lam` its index reaches; a free index gets a negative unique, written as
+  * the unsigned decimal that the parser wraps back to it.
   *
   * Printing is an unfold of the program into nested groups of text, folded into a [[Chain]] of
-  * pieces ([[Schemes.hylo]]): a deep term or constant is printed in constant stack.
+  * pieces ([[Schemes.hyloM]], whose state numbers the binders): a deep term or constant is printed
+  * in constant stack.
   */
 object UplcPrinter:
+
+  /** How the binders of a de Bruijn term are named. */
+  enum Naming(val text: String):
+    /** `x-d`, the unique of a binder its depth. */
+    case Depth extends Naming("x")
+
+    /** The names the reference gives a de Bruijn term it makes named: text `i` (`fakeName`,
+      * `PlutusCore/DeBruijn/Internal.hs:134`, plutus 1.70.0.0 `507cab8c`) and a fresh unique for
+      * each binder (`declareBinder`, `Internal.hs:240-243`), counted from 0 (`emptyFreshState`,
+      * `PlutusCore/Quote.hs:51-52`) in the order `unDeBruijnTermWithM` visits them
+      * (`UntypedPlutusCore/DeBruijn.hs:105-125`): a `lam` before its body, the function of an
+      * application before its argument, fields and branches left to right. Two sibling `lam` s
+      * therefore have different names, where [[Depth]] gives them the same.
+      */
+    case Fresh extends Naming("i")
 
   /** A piece of the output: an atom, or a group of children between an opening and a closing text,
     * with a separator between them.
@@ -57,7 +74,8 @@ object UplcPrinter:
     * text.
     */
   private enum Seed:
-    case OfTerm(term: Term, depth: Int)
+    /** A term under its binders: the uniques of the `lam` s around it, the innermost last. */
+    case OfTerm(term: Term, scope: Vector[Long])
     case OfType(t: DefaultUni)
     case OfValue(c: Con, parens: Boolean)
     case OfData(d: PlutusData)
@@ -67,31 +85,49 @@ object UplcPrinter:
   import Layout.{Atom, Group}
   import Seed.*
 
-  private def name(level: Long): String = s"x-${java.lang.Long.toUnsignedString(level)}"
+  private def name(naming: Naming, unique: Long): String =
+    s"${naming.text}-${java.lang.Long.toUnsignedString(unique)}"
 
-  private def unfold(seed: Seed): Layout[Seed] = seed match
-    case Verbatim(text)    => Atom(text)
-    case OfTerm(t, depth)  => termLayout(t, depth)
-    case OfType(t)         => typeOf(t)
-    case OfValue(c, paren) => value(c, paren)
-    case OfData(d)         => data(d)
-    case OfEntry(k, v)     => Group("(", Vector(OfData(k), OfData(v)), ", ", ")")
+  /** The state of an unfold: the next fresh unique ([[Naming.Fresh]]). */
+  private type Fresh[A] = State[Long, A]
 
-  private def termLayout(t: Term, depth: Int): Layout[Seed] = t.unfix match
-    case TermF.Var(i) => Atom(name(depth.toLong - i.index.bits))
-    case TermF.LamAbs(body) =>
-      Group("(lam ", Vector(Verbatim(name(depth.toLong)), OfTerm(body, depth + 1)), " ", ")")
-    case TermF.Apply(f, a) => Group("[", Vector(OfTerm(f, depth), OfTerm(a, depth)), " ", "]")
-    case TermF.Force(x)    => Group("(force ", Vector(OfTerm(x, depth)), "", ")")
-    case TermF.Delay(x)    => Group("(delay ", Vector(OfTerm(x, depth)), "", ")")
-    case TermF.Constant(c) =>
-      Group("(con ", Vector(OfType(c.typeOf), OfValue(c, parens = true)), " ", ")")
-    case TermF.Builtin(f) => Atom(s"(builtin ${f.name})")
-    case TermF.Error      => Atom("(error)")
-    case TermF.Constr(tag, xs) =>
-      Group("(constr ", Verbatim(tag.toBigInt.toString) +: xs.map(OfTerm(_, depth)), " ", ")")
-    case TermF.Case(s, bs) =>
-      Group("(case ", (s +: bs).map(OfTerm(_, depth)), " ", ")")
+  private def unfold(naming: Naming)(seed: Seed): Fresh[Layout[Seed]] = seed match
+    case OfTerm(t, scope)  => termLayout(naming, t, scope)
+    case Verbatim(text)    => State.pure(Atom(text))
+    case OfType(t)         => State.pure(typeOf(t))
+    case OfValue(c, paren) => State.pure(value(c, paren))
+    case OfData(d)         => State.pure(data(d))
+    case OfEntry(k, v)     => State.pure(Group("(", Vector(OfData(k), OfData(v)), ", ", ")"))
+
+  /** The unique a variable of `index` names under `scope`; a free index gets the negative one
+    * `depth - index`.
+    */
+  private def unique(scope: Vector[Long], index: Long): Long =
+    if index >= 1 && index <= scope.size then scope(scope.size - index.toInt)
+    else scope.size.toLong - index
+
+  private def termLayout(naming: Naming, t: Term, scope: Vector[Long]): Fresh[Layout[Seed]] =
+    def group(open: String, children: Vector[Seed], separator: String, close: String) =
+      State.pure[Long, Layout[Seed]](Group(open, children, separator, close))
+    t.unfix match
+      case TermF.LamAbs(body) =>
+        val binder: Fresh[Long] = naming match
+          case Naming.Depth => State.pure(scope.size.toLong)
+          case Naming.Fresh => State(next => (next + 1, next))
+        binder.map(u =>
+          Group("(lam ", Vector(Verbatim(name(naming, u)), OfTerm(body, scope :+ u)), " ", ")")
+        )
+      case TermF.Var(i)      => State.pure(Atom(name(naming, unique(scope, i.index.bits))))
+      case TermF.Apply(f, a) => group("[", Vector(OfTerm(f, scope), OfTerm(a, scope)), " ", "]")
+      case TermF.Force(x)    => group("(force ", Vector(OfTerm(x, scope)), "", ")")
+      case TermF.Delay(x)    => group("(delay ", Vector(OfTerm(x, scope)), "", ")")
+      case TermF.Constant(c) =>
+        group("(con ", Vector(OfType(c.typeOf), OfValue(c, parens = true)), " ", ")")
+      case TermF.Builtin(f) => State.pure(Atom(s"(builtin ${f.name})"))
+      case TermF.Error      => State.pure(Atom("(error)"))
+      case TermF.Constr(tag, xs) =>
+        group("(constr ", Verbatim(tag.toBigInt.toString) +: xs.map(OfTerm(_, scope)), " ", ")")
+      case TermF.Case(s, bs) => group("(case ", (s +: bs).map(OfTerm(_, scope)), " ", ")")
 
   // `Pretty (SomeTypeIn DefaultUni)`: an applied operator in parentheses.
   private def typeOf(t: DefaultUni): Layout[Seed] = t match
@@ -156,16 +192,28 @@ object UplcPrinter:
       }
       Chain.one(open) ++ inner :+ close
 
-  private def render(seed: Seed): String =
-    Schemes.hylo[Layout, Seed, Chain[String]](seed)(unfold, fold).iterator.mkString
+  private def render(seed: Seed, naming: Naming): String =
+    Schemes
+      .hyloM[Layout, Fresh, Seed, Chain[String]](seed)(unfold(naming), l => State.pure(fold(l)))
+      .runA(0L)
+      .value
+      .iterator
+      .mkString
 
   /** The program in the textual syntax. */
-  def program(p: Program): String =
-    s"(program ${p.version.show} ${render(Seed.OfTerm(p.term, 0))})"
+  def program(p: Program): String = program(p, Naming.Depth)
+
+  /** The program in the textual syntax, its binders named by `naming`. */
+  def program(p: Program, naming: Naming): String =
+    s"(program ${p.version.show} ${render(Seed.OfTerm(p.term, Vector.empty), naming)})"
 
   /** A closed term in the textual syntax. */
-  def term(t: Term): String = render(Seed.OfTerm(t, 0))
+  def term(t: Term): String = term(t, Naming.Depth)
+
+  /** A term in the textual syntax, its binders named by `naming`. */
+  def term(t: Term, naming: Naming): String = render(Seed.OfTerm(t, Vector.empty), naming)
 
   /** A constant as it is written after `con`: its type and its value. */
   def constant(c: Con): String =
-    s"${render(Seed.OfType(c.typeOf))} ${render(Seed.OfValue(c, parens = true))}"
+    val types = render(Seed.OfType(c.typeOf), Naming.Depth)
+    s"$types ${render(Seed.OfValue(c, parens = true), Naming.Depth)}"
