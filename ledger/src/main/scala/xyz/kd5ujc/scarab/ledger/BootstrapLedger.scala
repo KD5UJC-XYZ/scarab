@@ -107,7 +107,7 @@ object ParamUpdate:
   ): Either[LedgerDecodeError, Unit] = key match
     case 12              => CborRead.rational(v, DecodeField.D, CborRead.Bound.Unit).void
     case 13              => Nonce.decode(v, Nonce.NeutralFields.Exact).void
-    case 14              => protocolVersion(v, rules.maxMajor)
+    case 14              => protocolVersion(v, rules.maxMajor).void
     case 15              => Unsigned.read[Unsigned.Width.W64](v, DecodeField.MinUTxOValue).void
     case CostModelsField => CostModelDecode.decode(v, costModels).void
     case _ =>
@@ -117,23 +117,36 @@ object ParamUpdate:
         .flatMap(_(v))
         .void
 
-  /** `decodeProtVer` (`BaseTypes.hs:253-262`): the `ProtVer` record, `CBORGroup` over a list of two
-    * (`BaseTypes.hs:211-214, 243-244`; `groupRecord`, `Binary/Group.hs:27-35`), of a major read by
-    * `decodeVersion` (a `Word32` within `MaxVersion`, `Decoder.hs:462-463`) and a `Word32` minor; a
-    * major above the era's `maxMajor` is refused. The era's bound is below `MaxVersion`, so it is
-    * the only bound of the major.
+  /** `decodeProtVer` (`BaseTypes.hs:253-263`): the `ProtVer` record, `CBORGroup` over a list of two
+    * (`BaseTypes.hs:211-214, 243-244`; `groupRecord`, `Binary/Group.hs:27-35`), read whole before
+    * the era's bound is checked. Its major is read by `decodeVersion`, a `Word32` that
+    * `mkVersion32` takes up to [[DecoderVersion.MaxVersion]] (`Decoder.hs:462-463`,
+    * `Binary/Version.hs:111-124`), then its minor, a `Word32`; only then is a major above the era's
+    * `maxMajor`, `succVersion (ProtVerHigh era)`, refused. So of a major and a minor both out of
+    * range, a major beyond `MaxVersion` is the failure, and a major within it but over the era's
+    * bound fails at the minor. The pre-Conway update's key 14 reads it ([[Rules]]), and so does
+    * Conway's hard fork action ([[Proposal.decode]]).
     */
-  private def protocolVersion(v: Node, maxMajor: BigInt): Either[LedgerDecodeError, Unit] =
+  private[ledger] def protocolVersion(
+      v: Node,
+      maxMajor: BigInt
+  ): Either[LedgerDecodeError, (BigInt, BigInt)] =
     for
       xs <- CborRead.arrayN(v, 2, DecodeField.ProtocolVersion)
       major <- Unsigned.read[Unsigned.Width.W32](xs(0), DecodeField.Major)
+      _ <- Either.cond(
+        major.value <= DecoderVersion.MaxVersion,
+        (),
+        LedgerDecodeError
+          .NumberOutOfRange(DecodeField.Major, major.value, 0, DecoderVersion.MaxVersion)
+      )
+      minor <- Unsigned.read[Unsigned.Width.W32](xs(1), DecodeField.Minor)
       _ <- Either.cond(
         major.value <= maxMajor,
         (),
         LedgerDecodeError.NumberOutOfRange(DecodeField.Major, major.value, 0, maxMajor)
       )
-      _ <- Unsigned.read[Unsigned.Width.W32](xs(1), DecodeField.Minor)
-    yield ()
+    yield (major.value, minor.value)
 
   /** The value of a field of a pre-Conway update at the type of its field, as the derived
     * `Ord (PParamsUpdate era)` compares it (`Shelley/PParams.hs:156`, `Alonzo/PParams.hs:306`,

@@ -104,7 +104,8 @@ object StateGen:
     Gen.oneOf(
       Gen.zip(previousId, conwayParamUpdate, policy).map(node.GovAction.ParameterChange(_, _, _)),
       Gen
-        .zip(previousId, Gen.choose(0, 13), Gen.choose(0, 5))
+        // a Conway state's hard fork names a major of at most 12 (`decodeProtVer`)
+        .zip(previousId, Gen.choose(0, 12), Gen.choose(0, 5))
         .map((p, a, b) => node.GovAction.HardFork(p, a, b)),
       Gen
         .zip(
