@@ -49,7 +49,8 @@ DEVIATIONS = "deviations from the reference"
 GAPS = "gaps"
 REVIEW = "independent review"
 LINK = re.compile(r"https?://\S+")
-REFERENCE_DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:\s*\S")
+REFERENCE_DEFINITION = re.compile(r"^ {0,3}\[([^\]]+)\]:[ \t]*(?:\n[ \t]*)?(\S+)[^\n]*$", re.MULTILINE)
+REFERENCE = re.compile(r"\[([^\]]+)\](?:\[([^\]]*)\])?(?![(:])")
 ISSUE_LINK = re.compile(r"(?:\[#\d+\]\([^)]*\)|#\d+\b|https://github\.com/[^/\s]+/[^/\s]+/issues/\d+)")
 APPROVAL = re.compile(r"(?:https?://|#\d+|\]\()")
 SECTION_LEVEL = 1
@@ -161,15 +162,23 @@ def without_code_spans(text):
     return "".join(out)
 
 
+def has_link(text):
+    """Whether `text` renders a link: an inline link, an autolink or a bare URL outside link reference definitions,
+    or a reference link whose label one of them defines with a URL."""
+    defined = {label.strip().lower(): target for label, target in REFERENCE_DEFINITION.findall(text)}
+    rest = REFERENCE_DEFINITION.sub("", text)
+    if LINK.search(rest):
+        return True
+    return any(LINK.match(defined.get((ref or label).strip().lower(), "")) for label, ref in REFERENCE.findall(rest))
+
+
 def check_review(pr):
-    """A pull request that is not a draft links the independent review of its final diff: a link GitHub renders, in
-    the section as `rendered_section` reads it, outside code spans and link reference definitions."""
+    """A pull request that is not a draft links the independent review of its final diff: a link GitHub renders
+    (`has_link`), in the section as `rendered_section` reads it, outside code spans."""
     if pr.get("draft") is True:
         return
     text = rendered_section(pr.get("body"), REVIEW)
-    rendered = None if text is None else without_code_spans(
-        "\n".join(line for line in text.splitlines() if not REFERENCE_DEFINITION.match(line)))
-    require(rendered is not None and LINK.search(rendered) is not None,
+    require(text is not None and has_link(without_code_spans(text)),
             'a pull request that is not a draft needs an "## Independent review" section that links the review of its '
             "final diff posted on it (CONTRIBUTING.md, \"Independent review\"); keep it a draft until then")
 

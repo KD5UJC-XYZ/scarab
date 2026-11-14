@@ -174,6 +174,8 @@ class PrBodyTests(unittest.TestCase):
                        f"## Independent review\n\n` a``b````{link} `\n",
                        f"## Independent review\n\nThe review:\n\n    {link}\n",
                        f"## Independent review\n\n[review]: {link}\n",
+                       f"## Independent review\n\n[review]:\n  {link}\n",
+                       f"## Independent review\n    {link}\n",
                        f"```\n## Independent review\n\n{link}\n```\n",
                        f"## Independent review\n\n~~~\n{link}\n~~~\n",
                        f"## Independent review\n\n# Evidence\n\n{link}\n"]:
@@ -184,7 +186,9 @@ class PrBodyTests(unittest.TestCase):
                        f"## Independent review\n\n### Findings\n\nnone; <{link}>\n",
                        f"## Independent review\n\n- verdict: clean\n- comment: {link}\n",
                        f"## Independent review\n\n\\`[review]({link})\\`\n",
-                       f"## Independent review\n\n`code` and {link}\n"]:
+                       f"## Independent review\n\n`code` and {link}\n",
+                       f"## Independent review\n\nClean: [review].\n\n[review]: {link}\n",
+                       f"## Independent review\n\nClean: [the comment][r].\n\n[R]:\n  {link}\n"]:
             pr["body"] = body_of(1, "None", "None", review)
             with self.subTest(review=review):
                 self.assertEqual(policy.check_body(pr), 1)
