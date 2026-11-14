@@ -5,8 +5,10 @@ import json
 import os
 import pathlib
 import shutil
+import signal
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from . import util
@@ -61,19 +63,56 @@ def node_dispatcher(images):
     return "\n".join(["#!/bin/sh", 'case "$*" in', *arms, "esac", f'exec {OWN_NODE} "$@"', ""])
 
 
+def extraction_container(name, pool):
+    """The name of the container `up --node-image` copies pool `pool`'s `cardano-node` out of."""
+    return f"{name}-extract-{pool}"
+
+
 @contextlib.contextmanager
-def created_container(name, image, out=None):
-    """A container of `image` that never runs, labelled as devnet `name`'s, removed on every exit from the block, an
-    interruption included. A removal that fails is reported on `out`, not raised, so that it does not hide the
-    block's own error; the label lets `cleanup.py --owner name` remove it later."""
-    created = docker("create", "--pull=never", *container_labels("devnet", name), image, "/bin/true").stdout.strip()
+def terminated_as_exit():
+    """Within the block, SIGTERM raises SystemExit(143), so that `finally` clauses run instead of the process ending
+    at once; the previous handler is put back after. Only the main thread can set a handler; elsewhere nothing
+    changes."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def stop(signum, _frame):
+        raise SystemExit(128 + signum)
+    previous = signal.signal(signal.SIGTERM, stop)
     try:
-        yield created
+        yield
     finally:
-        removed = docker("rm", "-f", created, check=False)
-        if removed.returncode != 0:
-            print(f"container {created} of {image} was not removed ({removed.stderr.strip()}); "
-                  f"`python3 scripts/cleanup.py --owner {name} --apply` removes it", file=out or sys.stderr, flush=True)
+        signal.signal(signal.SIGTERM, previous)
+
+
+def remove_container(container, image, name, out=None):
+    """Remove `container` if it exists. A failure, an exception of the removal itself included, is reported on `out`
+    and not raised, so that it never replaces the error that ended the block; the container's label lets
+    `cleanup.py --owner name` remove it later."""
+    try:
+        removed = docker("rm", "-f", container, check=False)
+        gone = removed.returncode == 0 or "No such container" in removed.stderr
+        problem = None if gone else removed.stderr.strip()
+    except (OSError, subprocess.SubprocessError) as error:
+        problem = repr(error)
+    if problem:
+        print(f"container {container} of {image} was not removed ({problem}); "
+              f"`python3 scripts/cleanup.py --owner {name} --apply` removes it", file=out or sys.stderr, flush=True)
+
+
+@contextlib.contextmanager
+def created_container(name, image, pool, out=None):
+    """A container of `image` that never runs, named `extraction_container(name, pool)` and labelled as devnet
+    `name`'s. It is created inside the guarded block under that known name, so an interruption at any point (before
+    `docker create` returns included) or a SIGTERM still removes it; `down` removes one that a SIGKILL left."""
+    container = extraction_container(name, pool)
+    with terminated_as_exit():
+        try:
+            docker("create", "--pull=never", "--name", container, *container_labels("devnet", name), image, "/bin/true")
+            yield container
+        finally:
+            remove_container(container, image, name, out)
 
 
 def install_node_images(name, root, images):
@@ -82,7 +121,7 @@ def install_node_images(name, root, images):
     target = root / "node-bin"
     for pool, image in images.items():
         (target / str(pool)).mkdir(parents=True)
-        with created_container(name, image) as created:
+        with created_container(name, image, pool) as created:
             docker("cp", f"{created}:{OWN_NODE}", str(target / str(pool) / "cardano-node"))
     put = target / "cardano-node"
     put.write_text(node_dispatcher(images))
@@ -715,7 +754,9 @@ def keep_native_evidence(name, root):
 
 def down(args, quiet=False):
     # every Scala node a run may have started: its only follower, or one per evaluator (`util.FollowerSite`)
-    for c in (*(site.container(args.name) for site in ALL_FOLLOWERS), f"{args.name}-cli", ref(args.name)):
+    # and the containers `up --node-image` copies binaries out of, should a SIGKILL have left one
+    for c in (*(site.container(args.name) for site in ALL_FOLLOWERS), f"{args.name}-cli", ref(args.name),
+              *(extraction_container(args.name, pool) for pool in POOLS)):
         docker("rm", "-f", c, check=False)
     shutil.rmtree(data_root(args.name), ignore_errors=True)
     if not quiet:

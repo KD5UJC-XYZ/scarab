@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import types
 import unittest
 from unittest.mock import patch
@@ -983,35 +984,40 @@ class ReleaseVerificationTest(unittest.TestCase):
 
 
 class ExtractionContainerTest(unittest.TestCase):
-    """`up --node-image` copies a binary out of a created container: labelled as the devnet's, always removed."""
+    """`up --node-image` copies a binary out of a created container: named and labelled as the devnet's, and removed
+    however the block ends."""
 
-    def fake(self, cp=None, rm_code=0):
+    def fake(self, create=None, cp=None, rm=None):
         calls = []
 
         def docker(*args, check=True, **_):
             calls.append(args)
-            if args[0] == "create":
-                return subprocess.CompletedProcess(args, 0, "c0ffee\n", "")
-            if args[0] == "cp" and cp is not None:
-                cp(args)
-            if args[0] == "rm":
-                return subprocess.CompletedProcess(args, rm_code, "", "no such container" if rm_code else "")
-            return subprocess.CompletedProcess(args, 0, "", "")
+            hook = {"create": create, "cp": cp, "rm": rm}.get(args[0])
+            outcome = hook(args) if hook is not None else None
+            return outcome if outcome is not None else subprocess.CompletedProcess(args, 0, "c0ffee\n", "")
         return calls, docker
 
-    def test_the_container_is_labelled_as_the_devnets_and_removed(self):
+    def test_the_container_has_the_known_name_and_the_devnets_labels_and_is_removed(self):
         from cleanup import container_labels
         calls, docker = self.fake()
         with patch.object(cluster, "docker", docker):
-            with cluster.created_container("repin0", "ref:11") as created:
-                self.assertEqual(created, "c0ffee")
-        create = calls[0]
-        self.assertEqual(create[:2], ("create", "--pull=never"))
+            with cluster.created_container("repin0", "ref:11", 2) as created:
+                self.assertEqual(created, "repin0-extract-2")
         labels = container_labels("devnet", "repin0")
-        self.assertEqual(list(create[2:2 + len(labels)]), labels, "the devnet owner's labels")
-        self.assertEqual(calls[-1], ("rm", "-f", "c0ffee"))
+        self.assertEqual(calls[0], ("create", "--pull=never", "--name", "repin0-extract-2", *labels, "ref:11", "/bin/true"))
+        self.assertEqual(calls[-1], ("rm", "-f", "repin0-extract-2"))
 
-    def test_an_interruption_still_removes_the_container_and_propagates(self):
+    def test_an_interruption_before_create_returns_still_removes_the_named_container(self):
+        def interrupted(_):
+            raise KeyboardInterrupt
+        calls, docker = self.fake(create=interrupted)
+        with patch.object(cluster, "docker", docker):
+            with self.assertRaises(KeyboardInterrupt):
+                with cluster.created_container("repin0", "ref:11", 2):
+                    self.fail("the block must not run when the creation was interrupted")
+        self.assertEqual(calls[-1], ("rm", "-f", "repin0-extract-2"))
+
+    def test_an_interruption_during_the_copy_removes_the_container_and_propagates(self):
         def interrupted(_):
             raise KeyboardInterrupt
         calls, docker = self.fake(cp=interrupted)
@@ -1019,16 +1025,61 @@ class ExtractionContainerTest(unittest.TestCase):
             with self.assertRaises(KeyboardInterrupt):
                 cluster.install_node_images("repin0", pathlib.Path(d), {2: "ref:11"})
         self.assertEqual([c[0] for c in calls], ["create", "cp", "rm"])
-        self.assertEqual(calls[-1], ("rm", "-f", "c0ffee"))
+        self.assertEqual(calls[-1], ("rm", "-f", "repin0-extract-2"))
 
-    def test_a_failed_removal_is_reported_with_the_cleanup_command_and_not_raised(self):
-        calls, docker = self.fake(rm_code=1)
+    def test_sigterm_inside_the_block_removes_the_container_and_exits_143(self):
+        program = textwrap.dedent("""
+            import json, os, signal, subprocess, sys
+            sys.path.insert(0, sys.argv[1])
+            from devnet import cluster
+            log = open(sys.argv[2], "w")
+            def docker(*args, check=True, **_):
+                log.write(json.dumps(args) + "\\n"); log.flush()
+                return subprocess.CompletedProcess(args, 0, "", "")
+            cluster.docker = docker
+            with cluster.created_container("repin0", "ref:11", 2):
+                os.kill(os.getpid(), signal.SIGTERM)
+                log.write(json.dumps(["after the signal"]) + "\\n")
+        """)
+        with tempfile.TemporaryDirectory() as d:
+            calls = pathlib.Path(d) / "calls.jsonl"
+            done = subprocess.run([sys.executable, "-c", program, str(pathlib.Path(__file__).resolve().parents[1]),
+                                   str(calls)], capture_output=True, text=True, timeout=60)
+            recorded = [json.loads(line) for line in calls.read_text().splitlines()]
+        self.assertEqual(done.returncode, 143, done.stderr)
+        self.assertEqual([c[0] for c in recorded], ["create", "rm"], "the block stops at the signal, then the removal")
+        self.assertEqual(recorded[-1], ["rm", "-f", "repin0-extract-2"])
+
+    def test_a_removal_that_raises_reports_itself_and_keeps_the_blocks_own_error(self):
+        def raises(_):
+            raise OSError("docker went away")
+        calls, docker = self.fake(rm=raises)
         out = io.StringIO()
         with patch.object(cluster, "docker", docker):
-            with cluster.created_container("repin0", "ref:11", out=out):
-                pass
-        self.assertIn("c0ffee", out.getvalue())
+            with self.assertRaisesRegex(SystemExit, "the copy failed"):
+                with cluster.created_container("repin0", "ref:11", 2, out=out):
+                    raise SystemExit("the copy failed")
+        self.assertIn("repin0-extract-2", out.getvalue())
+        self.assertIn("docker went away", out.getvalue())
         self.assertIn("cleanup.py --owner repin0 --apply", out.getvalue())
+
+    def test_a_failed_removal_is_reported_and_a_missing_container_is_not(self):
+        def refused(args):
+            return subprocess.CompletedProcess(args, 1, "", "permission denied")
+        out = io.StringIO()
+        with patch.object(cluster, "docker", self.fake(rm=refused)[1]):
+            with cluster.created_container("repin0", "ref:11", 2, out=out):
+                pass
+        self.assertIn("permission denied", out.getvalue())
+        self.assertIn("cleanup.py --owner repin0 --apply", out.getvalue())
+
+        def missing(args):
+            return subprocess.CompletedProcess(args, 1, "", "Error response from daemon: No such container: x")
+        quiet = io.StringIO()
+        with patch.object(cluster, "docker", self.fake(rm=missing)[1]):
+            with cluster.created_container("repin0", "ref:11", 2, out=quiet):
+                pass
+        self.assertEqual(quiet.getvalue(), "", "a container that is already gone is not a failure")
 
     def test_each_image_is_copied_beside_the_dispatcher(self):
         def copy(args):
@@ -1040,7 +1091,17 @@ class ExtractionContainerTest(unittest.TestCase):
             self.assertEqual((target / "3" / "cardano-node").read_bytes(), b"node")
             self.assertEqual((target / "cardano-node").read_text(), cluster.node_dispatcher({1: "ref:a", 3: "ref:b"}))
             self.assertEqual((target / "cardano-node").stat().st_mode & 0o777, 0o755)
-        self.assertEqual([c[0] for c in calls], ["create", "cp", "rm", "create", "cp", "rm"])
+        self.assertEqual([(c[0], c[-1]) for c in calls if c[0] == "rm"],
+                         [("rm", "repin0-extract-1"), ("rm", "repin0-extract-3")])
+
+    def test_down_removes_a_leftover_extraction_container(self):
+        calls, docker = self.fake()
+        with tempfile.TemporaryDirectory() as d, patch.object(cluster, "docker", docker), \
+                patch.object(cluster, "data_root", lambda name: pathlib.Path(d) / name):
+            cluster.down(types.SimpleNamespace(name="repin0"), quiet=True)
+        removed = [c[-1] for c in calls if c[:2] == ("rm", "-f")]
+        for pool in (1, 2, 3):
+            self.assertIn(f"repin0-extract-{pool}", removed)
 
 
 class NodeImageTest(unittest.TestCase):
