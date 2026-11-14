@@ -1,0 +1,3 @@
+### Added (ledger decoding)
+
+- The decoders of an era's parts take an explicit decoder version, as cardano-ledger-binary's `decodeFull'` does: `TxBody.decode`, `Witnesses.decode`, `Tx.fromEnvelope`, `Tx.fromBlock`, `Certificate.decode` and `Header.fromRaw` take an optional `DecoderVersion`, and `Block.decode` and `Block.decodeShelley` one per era. `DecoderVersion.at(era, major)` builds one of the era's range, `eraProtVerLow` to `eraProtVerHigh` (Conway 9 to 11), and refuses any other with a typed error; an entry point refuses a version of another era (`VersionOutsideEra`). Without one they read at the era's `eraProtVerLow`, as before.

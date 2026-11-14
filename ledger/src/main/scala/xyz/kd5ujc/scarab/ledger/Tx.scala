@@ -163,7 +163,18 @@ object Certificate:
     * ([[arities]]).
     */
   def decode(n: Node, era: Era): Either[LedgerDecodeError, Certificate] =
-    val version = DecoderVersion.of(era)
+    decodeAt(n, era, DecoderVersion.of(era))
+
+  /** [[decode]] at `version`, which must be one of the era's ([[DecoderVersion.at]]). */
+  def decode(n: Node, era: Era, version: DecoderVersion): Either[LedgerDecodeError, Certificate] =
+    LedgerDecodeError.readsAt(era, version).flatMap(decodeAt(n, era, _))
+
+  /** [[decode]] at `version`, unchecked against the era: a body's certificates, read at its own. */
+  private[ledger] def decodeAt(
+      n: Node,
+      era: Era,
+      version: DecoderVersion
+  ): Either[LedgerDecodeError, Certificate] =
     given ByteStrings = ByteStrings.of(version)
     def cred(i: Int, xs: Vector[Node]) = Credential.decode(xs(i), DecodeField.CertificateCredential)
     def pool(i: Int, xs: Vector[Node]) = CborRead.bytesN(xs(i), 28, DecodeField.PoolId)
@@ -399,8 +410,12 @@ object TxBody:
         Either.cond(v <= 1, v, LedgerDecodeError.NumberOutOfRange(DecodeField.NetworkId, v, 0, 1))
       )
 
-  private def update(n: Node, era: Era): Either[LedgerDecodeError, Update] =
-    given ByteStrings = ByteStrings.of(DecoderVersion.of(era))
+  private def update(
+      n: Node,
+      era: Era,
+      version: DecoderVersion
+  ): Either[LedgerDecodeError, Update] =
+    given ByteStrings = ByteStrings.of(version)
     for
       // `Update`, a `RecD` record (`Shelley/PParams.hs:267`, f649f975)
       xs <- CborRead.record(n, 2, DecodeField.Update)
@@ -423,14 +438,30 @@ object TxBody:
     * `decodeOSet`).
     */
   def decode(raw: Bytes, era: Era): Either[LedgerDecodeError, TxBody] =
-    LedgerDecodeError.implemented(era) *>
-      DetachedRecords.read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.body(era))(
-        LedgerDecodeError.Syntax(_)
-      )(read(raw, era, _))
+    decodeAt(raw, era, DecoderVersion.of(era))
 
-  private def read(raw: Bytes, era: Era, root: Node): Either[LedgerDecodeError, TxBody] =
+  /** [[decode]] at `version`, which must be one of the era's ([[DecoderVersion.at]]). */
+  def decode(raw: Bytes, era: Era, version: DecoderVersion): Either[LedgerDecodeError, TxBody] =
+    LedgerDecodeError.readsAt(era, version).flatMap(decodeAt(raw, era, _))
+
+  /** [[decode]] at `version`, unchecked against the era. */
+  private[ledger] def decodeAt(
+      raw: Bytes,
+      era: Era,
+      version: DecoderVersion
+  ): Either[LedgerDecodeError, TxBody] =
+    LedgerDecodeError.implemented(era) *>
+      DetachedRecords.read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.body(era, version))(
+        LedgerDecodeError.Syntax(_)
+      )(read(raw, era, version, _))
+
+  private def read(
+      raw: Bytes,
+      era: Era,
+      version: DecoderVersion,
+      root: Node
+  ): Either[LedgerDecodeError, TxBody] =
     val mode = Address.Mode.of(era)
-    val version = DecoderVersion.of(era)
     given ByteStrings = ByteStrings.of(version)
     val conway = era.ordinal >= Era.Conway.ordinal
     val forms = TxOut.Forms.of(era)
@@ -470,7 +501,9 @@ object TxBody:
       certs <- present(DecodeField.Certificates)(
         f.get(4)
           .traverse(
-            CborRead.oset(_, DecodeField.Certificates, version)(Certificate.decode(_, era))(
+            CborRead.oset(_, DecodeField.Certificates, version)(
+              Certificate.decodeAt(_, era, version)
+            )(
               Certificate.identity
             )
           )
@@ -496,7 +529,7 @@ object TxBody:
               )
           )
       ).map(_.map(_.toMap))
-      upd <- f.get(6).traverse(update(_, era))
+      upd <- f.get(6).traverse(update(_, era, version))
       auxHash <- f.get(7).traverse(CborRead.bytesN(_, 32, DecodeField.AuxiliaryDataHash))
       mint <-
         if era == Era.Allegra then f.get(9).traverse(unit(_, DecodeField.Mint)).as(None)
@@ -696,13 +729,31 @@ object Witnesses:
     * ([[BootstrapWitness.set]]).
     */
   def decode(raw: Bytes, era: Era): Either[LedgerDecodeError, Witnesses] =
-    LedgerDecodeError.implemented(era) *>
-      DetachedRecords.read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.witnesses(era))(
-        LedgerDecodeError.Syntax(_)
-      )(read(raw, era, _))
+    decodeAt(raw, era, DecoderVersion.of(era))
 
-  private def read(raw: Bytes, era: Era, root: Node): Either[LedgerDecodeError, Witnesses] =
-    val version = DecoderVersion.of(era)
+  /** [[decode]] at `version`, which must be one of the era's ([[DecoderVersion.at]]). */
+  def decode(raw: Bytes, era: Era, version: DecoderVersion): Either[LedgerDecodeError, Witnesses] =
+    LedgerDecodeError.readsAt(era, version).flatMap(decodeAt(raw, era, _))
+
+  /** [[decode]] at `version`, unchecked against the era. */
+  private[ledger] def decodeAt(
+      raw: Bytes,
+      era: Era,
+      version: DecoderVersion
+  ): Either[LedgerDecodeError, Witnesses] =
+    LedgerDecodeError.implemented(era) *>
+      DetachedRecords.read(
+        raw,
+        Cbor.Limits.Unbounded,
+        DetachedRecords.Shapes.witnesses(era, version)
+      )(LedgerDecodeError.Syntax(_))(read(raw, era, version, _))
+
+  private def read(
+      raw: Bytes,
+      era: Era,
+      version: DecoderVersion,
+      root: Node
+  ): Either[LedgerDecodeError, Witnesses] =
     given ByteStrings = ByteStrings.of(version)
     val strict = version.atLeast(9)
     // Shelley, Allegra and Mary read keys 0 to 2 (`Shelley/TxWits.hs`); the Alonzo witness set of
@@ -871,10 +922,26 @@ object Tx:
     * block's parts are ([[fromBlock]]).
     */
   def fromEnvelope(bytes: Bytes, era: Era): Either[LedgerDecodeError, Tx] =
+    envelopeAt(bytes, era, DecoderVersion.of(era))
+
+  /** [[fromEnvelope]] at `version`, which must be one of the era's ([[DecoderVersion.at]]). */
+  def fromEnvelope(bytes: Bytes, era: Era, version: DecoderVersion): Either[LedgerDecodeError, Tx] =
+    LedgerDecodeError.readsAt(era, version).flatMap(envelopeAt(bytes, era, _))
+
+  /** [[fromEnvelope]] at `version`, unchecked against the era. */
+  private[ledger] def envelopeAt(
+      bytes: Bytes,
+      era: Era,
+      version: DecoderVersion
+  ): Either[LedgerDecodeError, Tx] =
     LedgerDecodeError.implemented(era) *>
-      DetachedRecords.read(bytes, Cbor.Limits.Unbounded, DetachedRecords.Shapes.transaction(era))(
-        LedgerDecodeError.Syntax(_)
-      )(node => envelopeParts(node, era).flatMap(fromBlock(_, era)))
+      DetachedRecords.read(
+        bytes,
+        Cbor.Limits.Unbounded,
+        DetachedRecords.Shapes.transaction(era, version)
+      )(LedgerDecodeError.Syntax(_))(node =>
+        envelopeParts(node, era).flatMap(fromBlockAt(_, era, version))
+      )
 
   /** The parts of a whole transaction `node` of `era`, each as its original bytes, with the
     * validity flag it is read with. A whole transaction is reached through submission only: a block
@@ -946,13 +1013,26 @@ object Tx:
     * Alonzo, `[body, witnesses, aux]` before.
     */
   def fromBlock(t: Block.Transaction, era: Era): Either[LedgerDecodeError, Tx] =
-    given ByteStrings = ByteStrings.of(DecoderVersion.of(era))
+    fromBlockAt(t, era, DecoderVersion.of(era))
+
+  /** [[fromBlock]] at `version`, which must be one of the era's ([[DecoderVersion.at]]). */
+  def fromBlock(
+      t: Block.Transaction,
+      era: Era,
+      version: DecoderVersion
+  ): Either[LedgerDecodeError, Tx] =
+    LedgerDecodeError.readsAt(era, version).flatMap(fromBlockAt(t, era, _))
+
+  private def fromBlockAt(
+      t: Block.Transaction,
+      era: Era,
+      version: DecoderVersion
+  ): Either[LedgerDecodeError, Tx] =
+    given ByteStrings = ByteStrings.of(version)
     for
-      body <- TxBody.decode(t.body, era)
-      witnesses <- Witnesses.decode(t.witnesses, era)
-      _ <- t.auxiliaryData.traverse_(bytes =>
-        AuxiliaryScripts.read(bytes, DecoderVersion.of(era).value)
-      )
+      body <- TxBody.decodeAt(t.body, era, version)
+      witnesses <- Witnesses.decodeAt(t.witnesses, era, version)
+      _ <- t.auxiliaryData.traverse_(bytes => AuxiliaryScripts.read(bytes, version.value))
     yield
       // The fee size is the array header, body, witnesses and auxiliary data (`null` is one byte);
       // the `is_valid` flag is not counted (checked against Preview transactions).

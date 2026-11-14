@@ -28,7 +28,9 @@ import xyz.kd5ujc.scarab.protocol.Era
   * witness twice, two vkey witnesses of one key), and witness sets read at each decoder version
   * from the era's to 12, with the witnesses the unchanged released decoders kept and the verdict of
   * `validateVerifiedWits`. Scarab's decoders must keep the same witnesses, in the order of the
-  * reference's set for the bootstrap witnesses, and its signature check give the same verdict.
+  * reference's set for the bootstrap witnesses, and its signature check give the same verdict. A
+  * line read at a version of its era's range ([[DecoderVersion.at]]) is read by Scarab at that
+  * version; one read at a later era's version is the reference's alone.
   */
 class BootstrapDuplicatesReferenceSuite extends FunSuite:
   import BootstrapDuplicatesReferenceSuite.*
@@ -76,7 +78,7 @@ class BootstrapDuplicatesReferenceSuite extends FunSuite:
       )
   }
 
-  for row <- rows if DecoderVersion.of(row.era).value == row.version do
+  for row <- rows if DecoderVersion.at(row.era, row.version).isRight do
     test(row.name) {
       scarab(row) match
         case Left(refused) =>
@@ -177,10 +179,15 @@ object BootstrapDuplicatesReferenceSuite:
   def encoded(w: (Bytes, Bytes)): Bytes = Bytes(Vector(0x82.toByte)) ++ bstr(w._1) ++ bstr(w._2)
 
   def scarab(row: Row): Either[LedgerDecodeError, Read] =
-    row.kind match
-      case Kind.Witnesses => Witnesses.decode(row.raw, row.era).map(Read(_, None))
-      case Kind.Transaction =>
-        Tx.fromEnvelope(row.raw, row.era).map(t => Read(t.witnesses, Some(t)))
+    DecoderVersion
+      .at(row.era, row.version)
+      .leftMap(LedgerDecodeError.VersionOutsideEra(_))
+      .flatMap { version =>
+        row.kind match
+          case Kind.Witnesses => Witnesses.decode(row.raw, row.era, version).map(Read(_, None))
+          case Kind.Transaction =>
+            Tx.fromEnvelope(row.raw, row.era, version).map(t => Read(t.witnesses, Some(t)))
+      }
 
   private given Decoder[Row] = Decoder.instance { c =>
     def unknown(what: String) = io.circe.DecodingFailure(s"unknown $what", c.history)

@@ -92,6 +92,17 @@ tests of the version.
 - **Decoding** (`ledger/Tx.scala`, `Scripts.scala`): transaction bodies of every era (keys 0-18),
   witness sets (vkey, bootstrap, native and Plutus scripts, datums, redeemers), outputs in legacy and
   map form (inline datums, reference scripts), certificates 0-6 (genesis delegation, MIR).
+- **Decoder version** (`DecoderVersion`): the parts of an era are read at its
+  `eraProtVerLow` by default, as consensus reads a block. A reader may name another version of the
+  era's range, `eraProtVerLow` to `eraProtVerHigh` (`DecoderVersion.at`, `range`, `high`): the
+  version cardano-ledger-binary's `decodeFull'` takes, and the one the cardano-cbor-dataset reads
+  its samples at (`eraProtVerHigh`). `TxBody.decode`, `Witnesses.decode`, `Tx.fromEnvelope`,
+  `Tx.fromBlock`, `Certificate.decode` and `Header.fromRaw` take it as an optional last argument,
+  `Block.decode` and `decodeShelley` as one per era, and each refuses a version outside its era
+  (`LedgerDecodeError.VersionOutsideEra`). At cardano-ledger f649f975 no decoder branches at a
+  version above an era's lowest and within its range (6, 8, 10 or 11), so every version of an era
+  gives the verdict and the value its lowest gives (a refusal of an auxiliary Plutus script names
+  the version it was read at).
 - **Rules** (`ledger/rules/ShelleyUtxo.scala`, `ShelleyLedger.scala`, `ShelleyCerts.scala`, `PreConway.scala`, with the checks shared with Conway in `ledger/TxChecks.scala`): UTXO (fee including the Alonzo execution-unit price,
   min-UTxO per era, validity interval, sizes, network ids, collateral), UTXOW (vkey and Byron
   bootstrap witnesses, native scripts, required signers, redeemers and datums, auxiliary data hash),
