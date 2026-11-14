@@ -325,7 +325,9 @@ def scheduling_summary(events, log, args=None):
 
 
 def read_log(path):
-    """(events, other lines) of the follower log; CPU-starvation warnings are not counted as other."""
+    """(events, other lines) of the follower log while the follower runs; CPU-starvation warnings are not counted as
+    other, and a last line without its newline is left out, as one still being written (`read_final_log` reads the
+    log of a follower that has ended)."""
     events, other = [], []
     if path.exists():
         text = path.read_text(errors="replace")
@@ -340,6 +342,22 @@ def read_log(path):
             if line.strip() and not line.startswith("SLF4J") and not is_starvation_warning(line):
                 other.append(line)
     return events, other
+
+
+def read_final_log(path):
+    """(events, other lines, unterminated) of the log of a follower that has ended, as `read_log`, but its last line
+    without a newline is not one being written: it is a cut line, returned as `unterminated` (None when the log
+    ends with its newline). A cut line that is still a whole JSON object is among the events too, so what it says is
+    judged as well."""
+    events, other = read_log(path)
+    last = path.read_text(errors="replace").split("\n")[-1] if path.exists() else ""
+    if not last:
+        return events, other, None
+    try:
+        event = json.loads(last) if last.startswith("{") else None
+    except json.JSONDecodeError:
+        event = None
+    return (events + [event] if isinstance(event, dict) else events), other, last
 
 
 def stall_dump_arguments(root, site=SINGLE_FOLLOWER):

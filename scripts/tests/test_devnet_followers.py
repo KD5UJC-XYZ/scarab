@@ -485,15 +485,18 @@ class SummaryEvaluatorTest(unittest.TestCase):
 class StopFollowersTest(unittest.TestCase):
     """`follower.stop_followers`: the run's own stop, after which every follower's log is whole and its tip known."""
     A, B = {"slot": 5, "hash": "a"}, {"slot": 6, "hash": "b"}
+    docker_status = 0
 
-    def stop(self, tips, processes, pid=42, resumes=True):
+    def stop(self, tips, processes, pid=42, resumes=True, on_freeze=None):
         """(report, problems, signals, docker calls, root) of a stop whose followers' `/tip` readings are `tips`
-        (site -> readings in order)."""
+        (site -> readings in order); `on_freeze` runs when the node is frozen."""
         from oracle import devnet as oracle_devnet
         signals, calls, readings = [], [], {site: iter(r) for site, r in tips.items()}
 
         def signal(name, pid_, sig):
             signals.append(sig)
+            if sig == "STOP" and on_freeze is not None:
+                on_freeze()
             return sig == "STOP" or resumes
         d = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, d, True)
@@ -501,7 +504,7 @@ class StopFollowersTest(unittest.TestCase):
         with patch.object(oracle_devnet, "node_pid", return_value=pid), \
                 patch.object(oracle_devnet, "signal_node", side_effect=signal), \
                 patch.object(oracle_devnet, "follower_tip", side_effect=lambda name, site: next(readings[site], None)), \
-                patch.object(follower, "docker", side_effect=lambda *a, **k: calls.append(a)), \
+                patch.object(follower, "docker", side_effect=lambda *a, **k: calls.append(a) or done(a, self.docker_status)), \
                 patch.object(follower.time, "sleep"):
             report, problems = follower.stop_followers("n", root, processes)
         return report, problems, signals, calls, root
@@ -513,18 +516,45 @@ class StopFollowersTest(unittest.TestCase):
         self.assertEqual(problems, [])
         self.assertEqual(signals, ["STOP", "CONT"])
         self.assertEqual(calls, [("stop", "-t", "30", "n-scala-scalus", "n-scala-scarab")])
+        stopped = {"premature": None, "endedBy": "stop", "endedAt": None, "exit": 143}
         self.assertEqual({s.key: r for s, r in report.items()},
-                         {"scalus": {"premature": None, "finalTip": self.A, "exit": 143},
-                          "scarab": {"premature": None, "finalTip": self.B, "exit": 143}})
+                         {"scalus": {**stopped, "finalTip": self.A}, "scarab": {**stopped, "finalTip": self.B}})
         self.assertEqual(json.loads(SCARAB.final_tip(root).read_text()), self.B)
+        self.assertEqual(json.loads((root / "follower-stop-scarab.json").read_text()), {**stopped, "finalTip": self.B})
+        self.assertEqual(follower.stop_failures(report), {})
 
     def test_a_follower_that_had_ended_is_reported_and_not_stopped(self):
         ended = FakeFollower()
         ended.code = 1
         report, _, _, calls, root = self.stop({SCALUS: [self.A, self.A]}, {SCALUS: FakeFollower(), SCARAB: ended})
-        self.assertEqual(report[SCARAB], {"premature": 1, "finalTip": None, "exit": None})
+        self.assertEqual(report[SCARAB], {"premature": 1, "endedBy": "itself", "endedAt": "before the freeze",
+                                          "finalTip": None, "exit": None})
         self.assertEqual(calls, [("stop", "-t", "30", "n-scala-scalus")])
         self.assertFalse(SCARAB.final_tip(root).exists())
+
+    def test_a_follower_that_ends_while_frozen_ended_by_itself_and_is_not_stopped(self):
+        ending = FakeFollower()
+        report, _, _, calls, root = self.stop({SCALUS: [self.A, self.A], SCARAB: [self.A, self.A]},
+                                              {SCALUS: FakeFollower(), SCARAB: ending}, on_freeze=lambda: setattr(
+                                                  ending, "code", 0))
+        self.assertEqual(report[SCARAB], {"premature": 0, "endedBy": "itself", "endedAt": "while frozen",
+                                          "finalTip": None, "exit": None})
+        self.assertEqual(calls, [("stop", "-t", "30", "n-scala-scalus")])
+        self.assertFalse(SCARAB.final_tip(root).exists())
+        self.assertEqual(follower.stop_failures(report)[SCARAB],
+                         ["the follower ended by itself with 0 while frozen, before the run asked it to stop"])
+
+    def test_a_stop_command_that_fails_is_a_problem(self):
+        self.docker_status = 1
+        _, problems, _, _, _ = self.stop({SCALUS: [self.A, self.A]}, {SCALUS: FakeFollower()})
+        self.assertEqual(problems, ["docker stop of the followers returned 1: "])
+
+    def test_an_end_on_the_stop_with_another_status_than_a_sigterms_fails(self):
+        for status, more in ((1, ""), (0, ""), (137, " (killed after the stop's limit)")):
+            with self.subTest(status=status):
+                report, _, _, _, _ = self.stop({SCALUS: [self.A, self.A]}, {SCALUS: FakeFollower(stop_status=status)})
+                self.assertEqual(follower.stop_failures(report), {SCALUS: [
+                    f"the follower ended with {status} on the run's stop{more}, not 143, the end of a SIGTERM"]})
 
     def test_a_tip_that_never_settles_is_not_recorded(self):
         moving = [{"slot": n, "hash": str(n)} for n in range(20)]
@@ -579,12 +609,18 @@ def green_log(vm=None, chain=None, extra=()):
     return "".join(json.dumps(e) + "\n" for e in [*events, *extra])
 
 
-class FakeFollower:
-    """A follower's `follow` process: running until it is waited for after its stop, then ended with 143 (SIGTERM).
-    `on_stop` runs when it ends, as the log lines a node writes while it shuts down."""
+def done(command, status=0):
+    """The completed `docker` command `command`, with `status`."""
+    import subprocess
+    return subprocess.CompletedProcess(command, status, "", "")
 
-    def __init__(self, on_stop=None):
-        self.code, self.on_stop = None, on_stop
+
+class FakeFollower:
+    """A follower's `follow` process: running until it is waited for after its stop, then ended with `stop_status`
+    (143, the end of a SIGTERM, by default). `on_stop` runs when it ends, as what a node logs while it shuts down."""
+
+    def __init__(self, on_stop=None, stop_status=143):
+        self.code, self.on_stop, self.stop_status = None, on_stop, stop_status
 
     def poll(self):
         return self.code
@@ -597,7 +633,7 @@ class FakeFollower:
         if self.code is None:
             if self.on_stop is not None:
                 self.on_stop()
-            self.code = 143
+            self.code = self.stop_status
         return self.code
 
 
@@ -605,13 +641,15 @@ class GreenRunTest(unittest.TestCase):
     """`e2e()` driven through a mocked run that is green unless a test makes it otherwise: the cluster, the
     containers and the reference node's freeze are replaced, the followers' logs are written by the test."""
 
-    def run_e2e(self, plutus_vm, logs=None, on_stop=None, exited=None, after_walk=None, oracle=None):
+    def run_e2e(self, plutus_vm, logs=None, on_stop=None, exited=None, after_walk=None, oracle=None, stop_status=None):
         """(summary, exit status) of one mocked run. Each argument maps a follower key (None for a run's only
         follower) to: `logs` its log text, `after_walk` the events it logs once the era walk is over (while the run
         waits for its target), `exited` the status it ends with then, before the run stops it, and `on_stop` what it
-        logs while it is stopped. `oracle`, when given, is the (summary, failures) of the db-analyser comparison of an
+        logs while it is stopped (events, or raw text), `stop_status` the status it ends with on the stop (143 by
+        default). `oracle`, when given, is the (summary, failures) of the db-analyser comparison of an
         `--oracle` run, whose own stop of the follower is replaced too (`self.order` records the oracle's steps)."""
         logs, on_stop, exited, after_walk = logs or {}, on_stop or {}, exited or {}, after_walk or {}
+        stop_status = stop_status or {}
         processes = {}
         with tempfile.TemporaryDirectory() as d:
             root = pathlib.Path(d) / "run"
@@ -619,7 +657,8 @@ class GreenRunTest(unittest.TestCase):
             def start(name, root_, site=SINGLE_FOLLOWER, plutus_vm=None, **kwargs):
                 site.log(root).write_text(logs.get(site.key, green_log(plutus_vm)))
                 extra = on_stop.get(site.key)
-                processes[site] = FakeFollower(None if extra is None else lambda: self.append(site.log(root), extra))
+                processes[site] = FakeFollower(None if extra is None else lambda: self.append(site.log(root), extra),
+                                               stop_status.get(site.key, 143))
                 return processes[site]
 
             def up_eras(args, on_nodes_up, on_pools_ready, on_tick):
@@ -658,7 +697,8 @@ class GreenRunTest(unittest.TestCase):
                     patch.object(e2e_scenario, "in_ref", return_value=types.SimpleNamespace(stdout="")), \
                     patch.object(e2e_scenario, "keep_native_evidence", return_value={"kept": [], "notKept": {}}), \
                     patch.object(e2e_scenario, "docker", side_effect=lambda *a, **k: self.docker.append(a)), \
-                    patch.object(follower, "docker", create=True, side_effect=lambda *a, **k: self.docker.append(a)), \
+                    patch.object(follower, "docker", create=True,
+                                 side_effect=lambda *a, **k: self.docker.append(a) or done(a)), \
                     patch.object(oracle_devnet, "node_pid", return_value=42), \
                     patch.object(oracle_devnet, "signal_node", return_value=True), \
                     patch.object(oracle_devnet, "follower_tip", side_effect=tip), \
@@ -672,8 +712,9 @@ class GreenRunTest(unittest.TestCase):
 
     @staticmethod
     def append(path, events):
+        """Append `events` to a log, each a complete line, or `events` as it is when it is text."""
         with path.open("a") as out:
-            out.write("".join(json.dumps(e) + "\n" for e in events))
+            out.write(events if isinstance(events, str) else "".join(json.dumps(e) + "\n" for e in events))
 
     def test_the_mocked_run_is_green_with_one_follower_and_with_two(self):
         for plutus_vm in (None, ["scalus", "scarab"]):
@@ -741,6 +782,28 @@ class GreenRunTest(unittest.TestCase):
         summary, code = self.run_e2e(None, oracle=({"digests": 3}, ["oracle: 1 digest differs"]), on_stop={None: late})
         self.assertEqual(code, 1)
         self.assertEqual(summary["failures"], ["1 fatal errors: late", "oracle: 1 digest differs"])
+
+    def test_an_end_on_the_stop_with_another_status_fails_the_run(self):
+        for plutus_vm, statuses, expected in (
+                (["scalus", "scarab"], {"scalus": 1, "scarab": 1},
+                 ["scalus follower: the follower ended with 1 on the run's stop, not 143, the end of a SIGTERM",
+                  "scarab follower: the follower ended with 1 on the run's stop, not 143, the end of a SIGTERM"]),
+                (None, {None: 137}, ["the follower ended with 137 on the run's stop (killed after the stop's limit), "
+                                     "not 143, the end of a SIGTERM"]),
+                (None, {None: 0}, ["the follower ended with 0 on the run's stop, not 143, the end of a SIGTERM"])):
+            with self.subTest(plutus_vm=plutus_vm, statuses=statuses):
+                summary, code = self.run_e2e(plutus_vm, stop_status=statuses)
+                self.assertEqual((summary["failures"], code), (expected, 1))
+
+    def test_a_last_line_cut_while_stopping_fails_and_is_still_judged(self):
+        cut = json.dumps({"event": "error", "kind": "LedgerFailure", "message": "at the end"})  # no newline
+        for plutus_vm, key, prefix in ((None, None, ""), (["scalus", "scarab"], "scarab", "scarab follower: ")):
+            with self.subTest(plutus_vm=plutus_vm):
+                summary, code = self.run_e2e(plutus_vm, on_stop={key: cut})
+                self.assertEqual(code, 1)
+                self.assertEqual(summary["failures"][:2], [
+                    f"{prefix}1 fatal errors: at the end",
+                    f"{prefix}the follower's log ends in a line without its newline: {cut}"])
 
     def test_a_follower_that_ended_before_the_stop_is_a_premature_exit(self):
         summary, code = self.run_e2e(["scalus", "scarab"], exited={"scalus": 1})

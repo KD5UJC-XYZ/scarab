@@ -15,10 +15,10 @@ from .. import eraload, govextra, protocolversions, protocolwalk
 from ..cluster import down, freeze_classes, keep_native_evidence, listening_ports, scala_container, up_eras
 from ..compare import (PROJECTION_SCOPE, Comparisons, FollowerAgreement, agreement_failures, compare_era,
                        comparison_table, judge_comparisons, lsq)
-from ..follower import follower_problem, start_follower, stop_followers
+from ..follower import follower_problem, start_follower, stop_failures, stop_followers
 from ..load import start_conway_load
-from ..util import (ERAS, MAGIC, SINGLE_FOLLOWER, TAG_ERA, data_root, docker, follower_plan, in_ref, read_log, ref,
-                    stall_evidence, starvation_warnings)
+from ..util import (ERAS, MAGIC, SINGLE_FOLLOWER, TAG_ERA, data_root, docker, follower_plan, in_ref, read_final_log,
+                    read_log, ref, stall_evidence, starvation_warnings)
 
 
 EXTENDED_WAIT = 600  # seconds the run waits past its target epoch for extended stages that apply but are not done
@@ -421,22 +421,30 @@ def e2e(args):
         if args.oracle:
             from oracle import devnet as oracle_devnet
             premature = followers[SINGLE_FOLLOWER].poll()
-            oracle_devnet.stop_follower(args.name, root)  # its final tip recorded; no digests during the comparison
-            stops = {SINGLE_FOLLOWER: {"premature": premature, "finalTip": None,
-                                       "exit": followers[SINGLE_FOLLOWER].wait()}}
+            # the oracle removes the follower by force (`docker rm -f`) once its final tip is recorded: the status of
+            # that end is not judged, the log it left is
+            oracle_devnet.stop_follower(args.name, root)
+            stops = {SINGLE_FOLLOWER: {"premature": premature, "endedBy": "itself" if premature is not None else
+                                       "oracle", "endedAt": "before the freeze" if premature is not None else None,
+                                       "finalTip": None, "exit": followers[SINGLE_FOLLOWER].wait()}}
             stop_problems = []
         else:
             stops, stop_problems = stop_followers(args.name, root, followers)
+        ended_badly = stop_failures(stops)
         judged = {}
         for site, vm in plan:
-            events, other = read_log(site.log(root))
-            # an exit before the stop is the follower's own failure, the status of the stop the run asked for is not;
-            # the evaluator each follower logged is judged when the run has several (a run's only follower keeps the
-            # verdicts it always had, with one `--plutus-vm` or none)
+            # the follower has ended: its log is complete, and a last line without its newline is a cut one
+            events, other, unterminated = read_final_log(site.log(root))
+            # an end before the stop is the follower's own failure, and so is an end on the stop with another status
+            # than a SIGTERM gives; the evaluator each follower logged is judged when the run has several (a run's
+            # only follower keeps the verdicts it always had, with one `--plutus-vm` or none)
             own, own_failures = summarize_e2e(events, other, expected, stops[site]["premature"],
                                               plutus_vm=vm if keyed else None)
+            own_failures += ended_badly.get(site, [])
+            if unterminated is not None:
+                own_failures.append(f"the follower's log ends in a line without its newline: {unterminated[:200]}")
             if keyed:
-                own["followerStop"] = {"exit": stops[site]["exit"], "finalTip": stops[site]["finalTip"]}
+                own["followerStop"] = {k: stops[site][k] for k in ("endedBy", "endedAt", "exit", "finalTip")}
                 own["reachedTarget"] = reached(events, target)
             judged[site] = (own, own_failures)
         if keyed:
