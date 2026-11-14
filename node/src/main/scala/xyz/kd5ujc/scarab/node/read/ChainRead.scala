@@ -25,9 +25,7 @@ enum InEra:
   */
 trait ChainRead[S]:
   extension (s: S)
-    /** The era the state is in: Byron while the Byron ledger is the chain's, else the era of the
-      * bootstrap mode, else the one the protocol version and epoch put it in.
-      */
+    /** The era the state is in: the era of the current entry of its ledger state's telescope. */
     def era: Era
 
     /** Completeness and era observations belonging to this exact acquired/rollback state. */

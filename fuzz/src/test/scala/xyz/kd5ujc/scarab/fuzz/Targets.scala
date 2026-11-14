@@ -1145,16 +1145,6 @@ object Targets:
         }
       ),
       Target(
-        "lite-ledger-effects",
-        () =>
-          Corpus.txBodies(Era.Alonzo) ++ Corpus.txBodies(Era.Shelley) ++ Corpus
-            .sampled("shelley:transaction_body", 60) ++ Corpus.tricky,
-        probe("lite-ledger-effects") { b =>
-          seen("lite-ledger-effects", LiteLedger.effects(b, Era.Shelley).isRight)
-          LiteLedger.effects(b, Era.Babbage)
-        }
-      ),
-      Target(
         "voting-procedures",
         () => Corpus.sampled("conway:voting_procedures", 40) ++ Corpus.tricky,
         probe("voting-procedures") { b =>

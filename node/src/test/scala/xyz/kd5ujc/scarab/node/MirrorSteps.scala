@@ -42,7 +42,7 @@ object MirrorSteps:
   /** The ledger state of the Shelley-based era a mirror is in, read as a test reads it. */
   def ledger(s: MirrorState): Option[InEra] = s.ledger(None).toOption.flatten
 
-  /** The mirror with its consensus bookkeeping (the bootstrap state, the Byron state, the protocol
+  /** The mirror with its consensus bookkeeping (the follow state, the Byron state, the protocol
     * extras) changed by `f`: a state of a chain at another point of its history, for the tests of
     * what is read from it.
     */

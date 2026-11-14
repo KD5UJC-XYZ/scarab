@@ -253,7 +253,7 @@ object Praos:
               PraosError.NotElected(header.slot, decision)
             )
           yield LeaderCheck.Threshold
-        case None => Right(LeaderCheck.Unchecked(LeaderCheck.UncheckedReason.BootstrapStakeUnknown))
+        case None => Right(LeaderCheck.Unchecked(LeaderCheck.UncheckedReason.StakeUnknown))
     yield output -> leader
 
   /** The VRF input of a slot under an epoch nonce. */

@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.all.*
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -174,8 +174,6 @@ class DefiniteBytesReferenceSuite extends FunSuite:
         .map(_.extraEntropy),
       Right(Nonce.Hash(hash))
     )
-    val lite = LiteParams((2, 0), Rational.one, Nonce.Neutral, 65536, 16384, 1100)
-    assertEquals(LiteLedger.applyUpdate(lite, stored).map(_.extraEntropy), Right(Nonce.Hash(hash)))
     val body =
       rows.find(_.id == "shelley-body-update-extra-entropy-indefinite").getOrElse(fail("no case"))
     assertEquals(
@@ -192,17 +190,12 @@ class DefiniteBytesReferenceSuite extends FunSuite:
     assert(definite.raw.hex.contains(own))
     Bytes.fromHex(definite.raw.hex.replace(own, nonce)).fold(e => fail(e.toString), identity)
 
-  private def ingress(nonce: String): Vector[Either[LedgerDecodeError, Unit]] =
-    val body = shelleyBodyWith(nonce)
-    Vector(
-      TxBody.decode(body, Era.Shelley).map(_ => ()),
-      LiteLedger.effects(body, Era.Shelley).map(_ => ())
-    )
+  private def ingress(nonce: String): Either[LedgerDecodeError, Unit] =
+    TxBody.decode(shelleyBodyWith(nonce), Era.Shelley).map(_ => ())
 
-  test("a neutral nonce has exactly one field at both ingress paths, as Summands checks") {
+  test("a neutral nonce has exactly one field at ingress, as Summands checks") {
     val refused = Left(LedgerDecodeError.TaggedArity(DecodeField.Nonce, BigInt(0), 2))
-    for nonce <- Vector("820000", "9f0000ff") do
-      assertEquals(ingress(nonce), Vector(refused, refused), nonce)
+    for nonce <- Vector("820000", "9f0000ff") do assertEquals(ingress(nonce), refused, nonce)
   }
 
   test("a neutral nonce of one field and a hash nonce of two are still accepted at ingress") {
@@ -212,7 +205,7 @@ class DefiniteBytesReferenceSuite extends FunSuite:
         "82015820" + "5b" * 32,
         "9f01" + "5820" + "5b" * 32 + "ff"
       )
-    do assertEquals(ingress(nonce), Vector(Right(()), Right(())), nonce)
+    do assertEquals(ingress(nonce), Right(()), nonce)
   }
 
   test("an update stored with a neutral nonce of two fields still applies (ADR 0006)") {
@@ -224,13 +217,4 @@ class DefiniteBytesReferenceSuite extends FunSuite:
         .map(_.extraEntropy),
       Right(Nonce.Neutral)
     )
-    val lite = LiteParams(
-      (2, 0),
-      Rational.one,
-      Nonce.Hash(Bytes(Vector.fill(32)(1.toByte))),
-      65536,
-      16384,
-      1100
-    )
-    assertEquals(LiteLedger.applyUpdate(lite, stored).map(_.extraEntropy), Right(Nonce.Neutral))
   }

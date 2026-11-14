@@ -92,7 +92,6 @@ class UpdateValuesReferenceSuite extends FunSuite:
   for row <- rows do
     test(s"${row.era}: ${row.name}") {
       val body = TxBody.decode(row.raw, row.era)
-      val effects = LiteLedger.effects(row.raw, row.era)
       (row.expect, body) match
         case (None, Right(b)) =>
           assertEquals(b.raw, row.raw, "the original bytes are retained")
@@ -101,7 +100,4 @@ class UpdateValuesReferenceSuite extends FunSuite:
         case (Some(_), Right(_)) => fail(s"the reference refuses this encoding: ${row.failure}")
         case (Some(refusal), Left(e)) =>
           assertEquals(ReferenceCorpus.Refusal.of(e), Some(refusal), s"Scarab gave $e")
-      // The bootstrap ledger reads the update of an era with PPUP; Conway's proposals are not its.
-      if ParamUpdate.Rules.of(row.era).isDefined then
-        assertEquals(effects.isRight, row.accepted, s"the bootstrap ledger's reading: $effects")
     }

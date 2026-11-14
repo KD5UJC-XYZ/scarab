@@ -14,7 +14,8 @@ enum StakeView:
   /** The ticked stake distribution of the epoch: leader thresholds are checked. */
   case Known(pools: PoolDistribution)
 
-  /** No stake distribution (bootstrap): pool -> VRF key hashes it has registered. Every
+  /** No stake distribution: pool -> VRF key hashes it has been seen with
+    * ([[xyz.kd5ujc.scarab.consensus.LeiosHeaderChain]] after the genesis epochs). Every
     * cryptographic check still runs; the leader threshold cannot.
     */
   case Unknown(registered: Map[Bytes, Set[Bytes]])
@@ -37,15 +38,19 @@ enum LeaderCheck:
     case Threshold    => "threshold"
     case Unchecked(_) => "unchecked"
 
-/** The slice of the ledger that TPraos header validation reads (`LedgerView`). */
+/** The slice of the ledger that TPraos header validation reads: `TPraosLedgerView` (cardano-ledger
+  * f649f975 `libs/cardano-protocol-tpraos/src/Cardano/Protocol/TPraos/API.hs:272-278`), whose pool
+  * distribution `tplvPoolDistr` is the ledger's, always known.
+  */
 final case class LedgerView(
     d: Rational,
     extraEntropy: Nonce,
     genDelegs: Map[Bytes, GenDelegPair],
-    stake: StakeView
+    pools: PoolDistribution
 )
 
 object LeaderCheck:
   enum UncheckedReason:
-    case BootstrapStakeUnknown
-    def message: String = "stake distribution unknown (bootstrap)"
+    /** The stake view is [[StakeView.Unknown]]: no stake distribution to evaluate a threshold. */
+    case StakeUnknown
+    def message: String = "stake distribution unknown"

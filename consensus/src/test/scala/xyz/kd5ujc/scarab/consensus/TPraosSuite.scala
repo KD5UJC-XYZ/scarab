@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.ledger.LeaderCheck
 import xyz.kd5ujc.scarab.ledger.LedgerView
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.TPraosError
-import xyz.kd5ujc.scarab.ledger.{LiteLedger, ParamUpdate, PoolDistribution, StakeView}
+import xyz.kd5ujc.scarab.ledger.{GenesisFile, GenesisSchema, GenesisState, PoolDistribution}
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.crypto.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
 import munit.FunSuite
@@ -26,7 +26,22 @@ class TPraosSuite extends FunSuite:
   private val genesisBytes = Files.readAllBytes(genesisFile)
   private val genesisText = new String(genesisBytes, "UTF-8")
   private val genesis = Genesis.shelley(genesisText).fold(e => fail(e.message), identity)
-  private val lite = LiteLedger.fromGenesis(genesis.raw).fold(e => fail(e.message), identity)
+  private val genDelegs = GenesisState.genDelegs(genesis.raw).fold(e => fail(e.message), identity)
+
+  /** The ledger view of the genesis: its decentralisation parameter, a neutral extra entropy, its
+    * genesis delegations and no pool.
+    */
+  private val view = LedgerView(
+    GenesisSchema
+      .ratio(GenesisFile.Shelley, xyz.kd5ujc.scarab.ledger.json.BoundedRatio.Unit)(
+        genesis.raw.hcursor.downField("protocolParams").downField("decentralisationParam"),
+        Vector("protocolParams", "decentralisationParam")
+      )
+      .fold(e => fail(e.message), identity),
+    Nonce.Neutral,
+    genDelegs,
+    PoolDistribution(Map.empty, Map.empty)
+  )
   private val config = PraosConfig(
     genesis.geometry,
     genesis.slotsPerKesPeriod,
@@ -61,7 +76,7 @@ class TPraosSuite extends FunSuite:
   test("the first 20 Preview headers validate as active overlay slots") {
     val (last, leaders) = headers.foldLeft((initial, Vector.empty[LeaderCheck])) {
       case ((s, acc), h) =>
-        TPraos.update(s, h, lite.view, config) match
+        TPraos.update(s, h, view, config) match
           case Right(v) => (v.state, acc :+ v.leader)
           case Left(e)  => fail(s"block ${h.blockNo} slot ${h.slot}: $e")
     }
@@ -72,8 +87,8 @@ class TPraosSuite extends FunSuite:
     assertEquals(last.view.labNonce, Nonce.Hash(headers.last.prevHash.get))
   }
 
-  private def firstError(h: Header.Shelley, view: LedgerView = lite.view) =
-    TPraos.update(initial, h, view, config).left.toOption
+  private def firstError(h: Header.Shelley, ledger: LedgerView = view) =
+    TPraos.update(initial, h, ledger, config).left.toOption
 
   private def flip(b: Bytes, i: Int): Bytes =
     Bytes(b.value.updated(i, (b.value(i) ^ 1).toByte))
@@ -114,13 +129,13 @@ class TPraosSuite extends FunSuite:
 
   test("a block from the wrong genesis delegate in an active overlay slot is rejected") {
     val h = headers.head
-    val rotated = lite.genDelegs.keys.toVector.sortBy(_.hex)
-    val values = rotated.map(lite.genDelegs)
+    val rotated = genDelegs.keys.toVector.sortBy(_.hex)
+    val values = rotated.map(genDelegs)
     val shifted = rotated.zip(values.tail :+ values.head).toMap
-    val view = lite.view.copy(genDelegs = shifted)
+    val wrong = view.copy(genDelegs = shifted)
     assert(
-      firstError(h, view).exists(_.isInstanceOf[TPraosError.WrongGenesisColdKey]),
-      firstError(h, view).toString
+      firstError(h, wrong).exists(_.isInstanceOf[TPraosError.WrongGenesisColdKey]),
+      firstError(h, wrong).toString
     )
   }
 
@@ -144,7 +159,7 @@ class TPraosSuite extends FunSuite:
       def tpraosVrf(alpha: Bytes, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
         Vrf.Result.InternalFailure(boom)
     assertEquals(
-      TPraos.update(initial, headers.head, lite.view, config.copy(verdicts = vrfDefect)),
+      TPraos.update(initial, headers.head, view, config.copy(verdicts = vrfDefect)),
       Left(ProviderDefect.VrfVerifier(Vrf.Result.InternalFailure(boom)))
     )
     val kesDefect = new Verdicts:
@@ -156,21 +171,21 @@ class TPraosSuite extends FunSuite:
       ): Either[OCertError | ProviderDefect, Unit] =
         Left(ProviderDefect.Kes(Sum6Kes.Failure.Defect(boom)))
     assertEquals(
-      TPraos.update(initial, headers.head, lite.view, config.copy(verdicts = kesDefect)),
+      TPraos.update(initial, headers.head, view, config.copy(verdicts = kesDefect)),
       Left(ProviderDefect.Kes(Sum6Kes.Failure.Defect(boom)))
     )
   }
 
   test("a non-overlay slot of an unregistered issuer is rejected before any crypto") {
-    val view = lite.view.copy(d = Rational(0))
+    val decentralised = view.copy(d = Rational(0))
     assert(
-      firstError(headers.head, view).exists(_.isInstanceOf[TPraosError.VrfKeyUnknown]),
-      firstError(headers.head, view).toString
+      firstError(headers.head, decentralised).exists(_.isInstanceOf[TPraosError.VrfKeyUnknown]),
+      firstError(headers.head, decentralised).toString
     )
   }
 
   test("overlay schedule: d = 1 owns every slot, every 20th active, round robin by sorted key") {
-    val keys = lite.genDelegs.keys.toVector.sortBy(_.hex)
+    val keys = genDelegs.keys.toVector.sortBy(_.hex)
     val one = Rational(1)
     assert((0 until 100).forall(s => TPraos.isOverlaySlot(0, one, s)))
     assertEquals(TPraos.overlayOwner(0, keys, one, TestGeometry.f("0.05"), 0), Some(keys(0)))
@@ -180,7 +195,7 @@ class TPraosSuite extends FunSuite:
   }
 
   test("overlay schedule: d = 1/2 owns every other slot, active every 20th overlay slot") {
-    val keys = lite.genDelegs.keys.toVector.sortBy(_.hex)
+    val keys = genDelegs.keys.toVector.sortBy(_.hex)
     val half = Rational(1, 2)
     assertEquals((0 until 10).filter(s => TPraos.isOverlaySlot(0, half, s)), Vector(0, 2, 4, 6, 8))
     assertEquals(TPraos.overlayOwner(0, keys, half, TestGeometry.f("0.05"), 40), Some(keys(1)))
@@ -208,35 +223,18 @@ class TPraosSuite extends FunSuite:
     assertEquals(tpraos.in(Era.Alonzo), tpraos)
   }
 
-  test("protocol parameter updates need a quorum of identical proposals") {
-    val d = Bytes.fromHex("d81e820102").toOption.get // 1/2
-    val e = Bytes.fromHex("d81e820103").toOption.get // 1/3
-    val a = ParamUpdate(Map(12 -> d))
-    val b = ParamUpdate(Map(12 -> e))
-    def key(i: Int) = Bytes(Vector.fill(28)(i.toByte))
-    val params = lite.params
-    assertEquals(
-      LiteLedger.voted(Map(key(1) -> a, key(2) -> a, key(3) -> a), params, 3).map(_.map(_.d)),
-      Right(Some(Rational(1, 2)))
-    )
-    assertEquals(
-      LiteLedger.voted(Map(key(1) -> a, key(2) -> a, key(3) -> b), params, 3),
-      Right(None)
-    )
-  }
-
   test("non-overlay TPraos retains threshold validation causes") {
     val h = headers.head
     val issuer = Blake2b.hash224.hash(h.issuerVkey)
     val vrf = Blake2b.hash256.hash(h.vrfVkey)
     val pools = PoolDistribution(Map(issuer -> BigInt(1)), Map(issuer -> vrf))
-    val view = lite.view.copy(d = Rational.zero, stake = StakeView.Known(pools))
+    val staked = view.copy(d = Rational.zero, pools = pools)
     val active = Leader.Fraction.checked(0, 1).fold(e => fail(e.message), identity)
     assertEquals(
-      TPraos.update(initial, h, view, config.copy(activeSlotsCoeff = active)),
+      TPraos.update(initial, h, staked, config.copy(activeSlotsCoeff = active)),
       Left(TPraosError.LeaderThreshold(Leader.Error.NonPositiveActiveSlotsCoefficient(0, 1)))
     )
-    val invalid = view.copy(stake = StakeView.Known(pools.copy(stake = Map(issuer -> BigInt(-1)))))
+    val invalid = staked.copy(pools = pools.copy(stake = Map(issuer -> BigInt(-1))))
     assertEquals(
       TPraos.update(initial, h, invalid, config),
       Left(TPraosError.LeaderThreshold(Leader.Error.InvalidFraction(-1, -1)))
@@ -246,12 +244,12 @@ class TPraosSuite extends FunSuite:
   test("wrong protocol state and header family have distinct TPraos cases") {
     val h = headers.head
     assertEquals(
-      TPraos.update(initial.in(Era.Conway), h, lite.view, config),
+      TPraos.update(initial.in(Era.Conway), h, view, config),
       Left(TPraosError.WrongState(h.era))
     )
     val praos = h.copy(vrf = HeaderVrf.Praos(h.vrf.asInstanceOf[HeaderVrf.TPraos].leader))
     assertEquals(
-      TPraos.update(initial, praos, lite.view, config),
+      TPraos.update(initial, praos, view, config),
       Left(TPraosError.PraosHeader(h.era))
     )
   }

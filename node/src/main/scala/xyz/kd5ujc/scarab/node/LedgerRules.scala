@@ -272,7 +272,7 @@ object NodeRules:
             .update(
               Praos.tick(protocol, header.era, epoch, params.extraEntropy),
               header,
-              LedgerView(params.d, params.extraEntropy, genDelegs, StakeView.Known(pools)),
+              LedgerView(params.d, params.extraEntropy, genDelegs, pools),
               config
             )
             .map(v => v.state -> v.leader)

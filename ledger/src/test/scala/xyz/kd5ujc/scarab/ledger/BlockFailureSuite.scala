@@ -77,10 +77,6 @@ class BlockFailureSuite extends FunSuite:
       "praos" -> "issuer not elected for slot 42: Ineligible"
     )
     assertEquals(
-      rendered(BlockFailure.Lite(LedgerDecodeError.Empty(DecodeField.Value))),
-      "ledger" -> LedgerDecodeError.Empty(DecodeField.Value).message
-    )
-    assertEquals(
       rendered(BlockFailure.Handover(HandoverProblem.MissingByronRules)),
       "ledger" -> "a Byron state, and no Byron rules to leave it"
     )

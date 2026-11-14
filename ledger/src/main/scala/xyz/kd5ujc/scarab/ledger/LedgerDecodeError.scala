@@ -76,7 +76,6 @@ enum LedgerDecodeError extends DomainError:
   case CrcMismatch(expected: BigInt, actual: BigInt)
   case EmptyInputsOrOutputs
   case DuplicateGenesisAddress
-  case ProposalEpochMismatch(target: BigInt, epoch: BigInt, beforePointOfNoReturn: Boolean)
 
   case ByronLayout
   case ByronBlockUnexpected
