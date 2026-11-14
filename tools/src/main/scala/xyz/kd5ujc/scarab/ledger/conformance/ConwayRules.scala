@@ -7,7 +7,6 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{
   Address,
   Anchor,
-  AuxiliaryScripts,
   Block,
   ByteStrings,
   CborRead,
@@ -17,14 +16,12 @@ import xyz.kd5ujc.scarab.ledger.{
   CostModelDecode,
   Credential,
   DRep,
-  Data,
   DecodeField,
   DecoderVersion,
   GovAction,
   GovActionId,
   Header,
   NativeScript,
-  PoolParams,
   PoolRelay,
   PoolRelays,
   Proposal,
@@ -127,18 +124,22 @@ object ConwayRules:
   private def param(key: String)(sample: Bytes) =
     node(hex("a1" + key) ++ sample).flatMap(n => ledger(ConwayParamUpdate.decode(n)))
 
-  private def auxiliary(shape: Shape)(bytes: Bytes): Either[Refusal, Bytes] =
+  /** A whole transaction of an empty body and witness set whose auxiliary data is the sample, of
+    * `shape` when the rule's type takes one form only, and the auxiliary data it keeps.
+    */
+  private def auxiliary(shape: Option[Shape])(bytes: Bytes): Either[Refusal, Bytes] =
     node(bytes).flatMap { n =>
       val fits = (shape, n.value) match
-        case (Shape.Map, CborValue.Map(_))                   => true
-        case (Shape.Array, CborValue.Arr(_))                 => true
-        case (Shape.Tag259, CborValue.Tag(t, _)) if t == 259 => true
-        case _                                               => false
-      if fits then ledger(AuxiliaryScripts.read(bytes, BigInt(version.value))).as(bytes)
-      else Left(Refusal.Form(shape))
+        case (None, _)                                             => true
+        case (Some(Shape.Map), CborValue.Map(_))                   => true
+        case (Some(Shape.Array), CborValue.Arr(_))                 => true
+        case (Some(Shape.Tag259), CborValue.Tag(t, _)) if t == 259 => true
+        case _                                                     => false
+      shape.filterNot(_ => fits).map(Refusal.Form(_)).toLeft(()).flatMap { _ =>
+        ledger(Tx.fromEnvelope(hex("84a3008001800200a0f5") ++ bytes, era))
+          .flatMap(t => present(t.auxiliary))
+      }
     }
-
-  private def plutus(n: Node) = PlutusData.fromNode(n).leftMap(Refusal.Data(_))
 
   // ---- writers
 
@@ -178,29 +179,32 @@ object ConwayRules:
       node(b).flatMap(n => ledger(TxOut.decode(n, mode, forms, newest)))
     )(written(UtxoCodecs.txOut))
 
-  private def auxiliaryRule(shape: Shape) =
+  private def auxiliaryRule(shape: Option[Shape]) =
     DatasetRule(
-      s"AuxiliaryScripts.read (${shape.render} only)",
-      Reach.Direct,
-      Writing.Kept("Tx.auxiliary, the bytes read")
+      s"Tx.fromEnvelope${shape.fold("")(s => s" (${s.render} only)")}",
+      Reach.Embedded("a transaction's auxiliary data"),
+      Writing.Kept("Tx.auxiliary")
     )(auxiliary(shape))(Right(_))
 
-  /** Plutus data of `shape`, written again as the bytes read: a transaction keeps the original
-    * bytes of its datums and redeemer data ([[Witnesses.datums]],
-    * [[xyz.kd5ujc.scarab.ledger.Redeemer.data]]), as the reference keeps those of `Data era`
-    * (`MemoBytes`), and hashes them.
+  /** Plutus data of `shape`, read as a datum of a witness set and written again as the bytes the
+    * witness set keeps of it ([[Witnesses.datums]]), as the reference keeps those of `Data era`
+    * (`MemoBytes`) and hashes them. The shape is read from those bytes by [[PlutusData.decode]].
     */
-  private def dataRule(name: String, shape: Option[Shape]) =
-    DatasetRule(name, Reach.Direct, Writing.Kept("Witnesses.datums, the bytes read"))(b =>
-      node(b).flatMap(n =>
-        plutus(n).flatMap { d =>
+  private def dataRule(shape: Option[Shape]) =
+    DatasetRule(
+      "Witnesses.decode",
+      Reach.Embedded("a witness set's datums"),
+      Writing.Kept("Witnesses.datums")
+    )(b =>
+      witnesses("a10481")(b).flatMap(w => present(w.datums.headOption)).flatMap { kept =>
+        PlutusData.decode(kept).leftMap(Refusal.Data(_)).flatMap { d =>
           (shape, d) match
-            case (None, _)                                 => Right(n.original)
-            case (Some(Shape.Integer), _: PlutusData.I)    => Right(n.original)
-            case (Some(Shape.ByteString), _: PlutusData.B) => Right(n.original)
+            case (None, _)                                 => Right(kept)
+            case (Some(Shape.Integer), _: PlutusData.I)    => Right(kept)
+            case (Some(Shape.ByteString), _: PlutusData.B) => Right(kept)
             case (Some(s), _)                              => Left(Refusal.Form(s))
         }
-      )
+      }
     )(Right(_))
 
   private def headerLeaf(field: Int, path: List[Step], inner: Bytes => Bytes = identity) =
@@ -323,14 +327,10 @@ object ConwayRules:
     "data" -> DatasetRule("TxOut.decode", Reach.Embedded("an output's inline datum"), txOutCodec)(
       output("028201")
     )(o => written(UtxoCodecs.txOut)(o).flatMap(Step.at(_, List(Key(2), Index(1))))),
-    "plutus_data" -> DatasetRule(
-      "Data.read",
-      Reach.Direct,
-      Writing.Kept("Witnesses.datums, the bytes read")
-    )(b => node(b).flatMap(n => ledger(Data.read(n, DecodeField.Datums)).as(n.original)))(Right(_)),
-    "%constr<plutus_data>" -> dataRule("PlutusData.fromNode", None),
-    "big_int" -> dataRule("PlutusData.fromNode (an integer)", Some(Shape.Integer)),
-    "bounded_bytes" -> dataRule("PlutusData.fromNode (bytes)", Some(Shape.ByteString)),
+    "plutus_data" -> dataRule(None),
+    "%constr<plutus_data>" -> dataRule(None),
+    "big_int" -> dataRule(Some(Shape.Integer)),
+    "bounded_bytes" -> dataRule(Some(Shape.ByteString)),
     "certificate" -> DatasetRule.unwritten("Certificate.decode", Reach.Direct)(b =>
       node(b).flatMap(n => ledger(Certificate.decode(n, era)))
     ),
@@ -376,22 +376,19 @@ object ConwayRules:
       "Witnesses.decode",
       Reach.Embedded("{2: [bootstrap_witness]}")
     )(b => witnesses("a10281")(b).flatMap(w => present(w.bootstrap.headOption))),
-    "auxiliary_data" -> DatasetRule(
-      "AuxiliaryScripts.read",
-      Reach.Direct,
-      Writing.Kept("Tx.auxiliary, the bytes read")
-    )(b => ledger(AuxiliaryScripts.read(b, BigInt(version.value))).as(b))(Right(_)),
-    "metadata" -> auxiliaryRule(Shape.Map),
-    "auxiliary_data_map" -> auxiliaryRule(Shape.Tag259),
-    "auxiliary_data_array" -> auxiliaryRule(Shape.Array),
+    "auxiliary_data" -> auxiliaryRule(None),
+    "metadata" -> auxiliaryRule(Some(Shape.Map)),
+    "auxiliary_data_map" -> auxiliaryRule(Some(Shape.Tag259)),
+    "auxiliary_data_array" -> auxiliaryRule(Some(Shape.Array)),
     "auxiliary_scripts" -> DatasetRule(
-      "AuxiliaryScripts.read",
-      Reach.Embedded("[{}, scripts]"),
-      Writing.Kept("Tx.auxiliary, the bytes read")
-    )(b => auxiliary(Shape.Array)(hex("82a0") ++ b))(Step.at(_, List(Index(1)))),
-    "metadatum" -> DatasetRule.unwritten("AuxiliaryScripts.read", Reach.Embedded("{0: metadatum}"))(
-      b => ledger(AuxiliaryScripts.read(hex("a100") ++ b, BigInt(version.value)))
-    ),
+      "Tx.fromEnvelope",
+      Reach.Embedded("[{}, scripts], a transaction's auxiliary data"),
+      Writing.Kept("Tx.auxiliary")
+    )(b => auxiliary(None)(hex("82a0") ++ b))(Step.at(_, List(Index(1)))),
+    "metadatum" -> DatasetRule.unwritten(
+      "Tx.fromEnvelope",
+      Reach.Embedded("{0: metadatum}, a transaction's auxiliary data")
+    )(b => auxiliary(None)(hex("a100") ++ b)),
     "credential" -> credential(DecodeField.CertificateCredential),
     "stake_credential" -> credential(DecodeField.CertificateCredential),
     "drep_credential" -> credential(DecodeField.CertificateCredential),
@@ -556,10 +553,19 @@ object ConwayRules:
       )
     )(rs => Step.at(PoolRelays.encode(rs), List(Index(0), Index(3)))),
     "pool_metadata" -> DatasetRule(
-      "PoolParams.decodeMetadata",
-      Reach.Direct,
+      "Certificate.decode",
+      Reach.Embedded("a pool registration"),
       Writing.Kept("PoolParams.metadata")
-    )(b => ledger(PoolParams.decodeMetadata(b, version)).as(b))(Right(_)),
+    )(b =>
+      node(
+        hex(
+          "8a03581c" + zeros(28) + "5820" + zeros(32) + "0000d81e820001581de0" + zeros(28) + "8080"
+        ) ++ b
+      ).flatMap(n => ledger(Certificate.decode(n, era))).flatMap {
+        case Certificate.RegisterPool(params) => present(params.metadata)
+        case _                                => present(None)
+      }
+    )(Right(_)),
     "protocol_param_update" -> DatasetRule("ConwayParamUpdate.decode", Reach.Direct, paramValue)(
       b => node(b).flatMap(n => ledger(ConwayParamUpdate.decode(n)))
     )(written(HaskellStateCodecs.conwayParamUpdate)),

@@ -116,20 +116,27 @@ object DijkstraRules:
       read(Credential.decode(_, site))
     )(written(HaskellStateCodecs.nodeCredential))
 
-  /** Plutus data of `shape`, written again as the bytes read, which a Dijkstra witness set keeps
-    * for its datums ([[DijkstraWitnesses.datums]]) as the reference keeps those of `Data era`.
+  /** Plutus data of `shape`, read as a datum of a witness set and written again as the bytes the
+    * witness set keeps of it ([[DijkstraWitnesses.datums]]), as the reference keeps those of
+    * `Data era`.
     */
-  private def dataRule(name: String, shape: Option[Shape]) =
-    DatasetRule(name, Reach.Direct, Writing.Kept("DijkstraWitnesses.datums, the bytes read"))(b =>
-      node(b).flatMap(n =>
-        PlutusData.fromNode(n).leftMap(Refusal.Data(_)).flatMap { d =>
-          (shape, d) match
-            case (None, _)                                 => Right(n.original)
-            case (Some(Shape.Integer), _: PlutusData.I)    => Right(n.original)
-            case (Some(Shape.ByteString), _: PlutusData.B) => Right(n.original)
-            case (Some(s), _)                              => Left(Refusal.Form(s))
+  private def dataRule(shape: Option[Shape]) =
+    DatasetRule(
+      "DijkstraWitnesses.decode",
+      Reach.Embedded("a witness set's datums"),
+      Writing.Kept("DijkstraWitnesses.datums")
+    )(b =>
+      read(DijkstraWitnesses.decode)(hex("a10481") ++ b)
+        .flatMap(w => w.datums.headOption.toRight(Refusal.Form(Shape.Present)))
+        .flatMap { kept =>
+          PlutusData.decode(kept).leftMap(Refusal.Data(_)).flatMap { d =>
+            (shape, d) match
+              case (None, _)                                 => Right(kept)
+              case (Some(Shape.Integer), _: PlutusData.I)    => Right(kept)
+              case (Some(Shape.ByteString), _: PlutusData.B) => Right(kept)
+              case (Some(s), _)                              => Left(Refusal.Form(s))
+          }
         }
-      )
     )(Right(_))
 
   /** A Leios header whose body holds the sample at `field`, the item at `path` of the body's
@@ -247,16 +254,10 @@ object DijkstraRules:
     "plutus_v1_script" -> plutusScript(DecodeField.PlutusV1),
     "plutus_v2_script" -> plutusScript(DecodeField.PlutusV2),
     "plutus_v3_script" -> plutusScript(DecodeField.PlutusV3),
-    "plutus_data" -> DatasetRule(
-      "DijkstraDatum.data",
-      Reach.Direct,
-      Writing.Kept("DijkstraWitnesses.datums")
-    )(b => node(b).flatMap(n => ledger(DijkstraDatum.data(n, DecodeField.Datums)).as(n.original)))(
-      Right(_)
-    ),
-    "%constr<plutus_data>" -> dataRule("PlutusData.fromNode", None),
-    "big_int" -> dataRule("PlutusData.fromNode (an integer)", Some(Shape.Integer)),
-    "bounded_bytes" -> dataRule("PlutusData.fromNode (bytes)", Some(Shape.ByteString)),
+    "plutus_data" -> dataRule(None),
+    "%constr<plutus_data>" -> dataRule(None),
+    "big_int" -> dataRule(Some(Shape.Integer)),
+    "bounded_bytes" -> dataRule(Some(Shape.ByteString)),
     "datum_option" -> unwritten("DijkstraDatum.decode")(DijkstraDatum.decode),
     "data" -> notEmbedded("an output's inline datum"),
     "transaction_input" -> DatasetRule(
