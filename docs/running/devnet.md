@@ -102,16 +102,19 @@ node's `/state` shape. Byron is not compared directly (the CLI cannot query a By
 is compared through the first Shelley epoch, which starts from it.
 
 Same-point states (`whole_state` in [`scripts/devnet/compare.py`](../../scripts/devnet/compare.py)): the volatile tip
-of one node, the anchor, is sampled and the other node acquires exactly that point, so both answers are of one state.
-In `e2e` and `soak` the anchor is the follower; when the reference refuses its point as not on its chain because a
-fork has just taken it off (`PointNotOnChain`, #785), the follower's tip is sampled again a second later, at most
-twice, and a point refused as too old (`PointTooOld`) is not sampled again. `pool` anchors on the reference and asks
-the Scala node for the point up to ten times, two seconds apart, and after a `PointNotOnChain` on the last of them
-samples one new point, with up to ten attempts again. A refusal past these bounds, a reply that is neither an
-acquisition nor a refusal, a failed query, a closed connection or a deadline is a comparison error, and a byte
-difference after a new sample stays a difference. Every record keeps its acquisitions in order (stage, node, point,
-outcome, parsed refusal); an error keeps them also under `errorDetails` in the summary's `wholeState` rows, and
-`afterRefusal` there counts the answers taken after a refusal.
+of one node, the anchor, is sampled and the other node acquires exactly that point, so both answers are of one state;
+a sampled point that is not a block point ends the comparison before the other node is asked. In `e2e` and `soak` the
+anchor is the follower; when the reference refuses its point as not on its chain because a fork has just taken it off
+(`PointNotOnChain`, #785), the follower's tip is sampled again a second later, at most twice. `pool` anchors on the
+reference and asks the Scala node for the point up to ten times, two seconds apart, and after a `PointNotOnChain` on
+the last of them samples one new point, with up to ten attempts again. A point refused as too old (`PointTooOld`) ends
+the comparison at its first refusal. A refusal past these bounds, a reply the protocol does not allow (by message tag
+and types: only `[1]` and `[2, 0 | 1]` answer an acquire, only `[4, result]` a query), a failed query, a closed
+connection, a deadline or an error of the harness is a comparison error, never a recovery, and a byte difference after
+a new sample stays a difference. Every record keeps its acquisitions in order as they happened (stage, node, point,
+outcome, parsed refusal); an error also keeps its kind (`refused`, `malformed`, `transient`, `defect`), the stage it
+ended at and the point selected by then, under `errorDetails` in the summary's `wholeState` rows, and `afterRefusal`
+there counts the answers taken after a refusal.
 
 `e2e` shares the `up-eras` options but changes four defaults so the pre-Allegra rules have something to
 decide: `--shelley-epochs 3` (the pools hold stake from epoch 2, produce blocks from epoch 3 and the
@@ -176,13 +179,17 @@ version the chain never reached is reported under `extended.notApplicable` of `e
 rule applies from version 11: `hardforkConwayDisallowDuplicatedVRFKeys`, `Shelley/Rules/Pool.hs:265`); a stage whose version was
 reached gets up to ten minutes past the target epoch (`EXTENDED_WAIT`) and fails the run if it is still not done.
 
-Once the wait for the target epoch is over, `e2e` stops its follower itself before it judges it, as the oracle does
-(`stop_followers` in [`scripts/devnet/follower.py`](../../scripts/devnet/follower.py)): reference node 1, the
-follower's only peer, is frozen, the follower's tip is final once two readings of its `/tip` agree and is recorded
-(`follower-tip.json`), the follower is stopped with SIGTERM so that its node ends its log itself, and the node is
-continued. The follower is then judged over its whole log, so an error or an exit after the wait fails the run, and a
-follower that had ended before the stop is a premature exit. With `--oracle` the oracle's own stop of the follower
-does this.
+Once the wait for the target epoch is over, `e2e` stops its follower itself before it judges it (`stop_followers` in
+[`scripts/devnet/follower.py`](../../scripts/devnet/follower.py)): reference node 1, the follower's only peer, is
+frozen; the follower's tip is taken as final once two readings of its `/tip`, two seconds apart, agree (a heuristic: a
+node that gets no block cannot say its tip is final) and is recorded (`follower-tip.json`); the follower is checked
+once more and, still running, stopped with SIGTERM (`docker stop -t 30`), so that its node ends its log itself; and
+the node is continued. A follower that had ended by then ended by itself, a premature exit; one that ends on the stop
+must end with 143, the end of a SIGTERM, and any other status, a kill after the limit (137) among them, fails the run,
+as does a failed stop command. Each stop is recorded in `follower-stop.json`. The follower is then judged over its
+whole log, so an error or an exit after the wait fails the run, and a log whose last line has no newline is a cut log
+and fails too. With `--oracle` the oracle's own stop ends the follower instead, by forced removal (`docker rm -f`)
+once its tip has settled: the status of that end is not judged, the log it left is.
 
 #### Several followers in one e2e
 
@@ -206,15 +213,15 @@ their projected states (the part of `/state` the reference view is compared with
 such block per Shelley-based era (`compare-followers.jsonl`; a point where they were judged at different blocks is
 `notCompared`). The whole-state comparison is taken per follower at its own tip.
 
-The run stops every follower as it stops a single one, each final tip recorded in `follower-tip-<vm>.json`, and judges
-each over its whole log. Their final chains, rebuilt from their logs by the oracle's rules
-([`finality`](../../scripts/oracle/finality.py)), every line complete and each chain ending at its recorded tip, must
-agree: one of the two has at most `k` blocks after their last common block, so a follower that stopped a little
-earlier, or that still held a rival block at its tip, agrees; a cut log or a missing tip fails. `e2e-summary.json`
-keeps each follower's own results under `followers.<vm>` (with `followerStop`, the status and tip of its stop) and the
-comparison of the followers under `crossCheck`; a follower's failures are named after it (`scarab follower: ...`). The
-load and its Plutus evidence (`legacyPlutus`, `auxiliaryPlutus`) are the reference's verdicts, so they are reported
-once for the run.
+The run stops every follower as it stops a single one, each final tip recorded in `follower-tip-<vm>.json` and each
+stop in `follower-stop-<vm>.json`, and judges each over its whole log. Their final chains, rebuilt from their logs by
+the oracle's rules ([`finality`](../../scripts/oracle/finality.py)), every line complete and each chain ending at its
+recorded tip, must agree: one of the two has at most `k` blocks after their last common block, so a follower that
+stopped a little earlier, or that still held a rival block at its tip, agrees; a cut log or a missing tip fails.
+`e2e-summary.json` keeps each follower's own results under `followers.<vm>` (with `followerStop`, the status and tip
+of its stop) and the comparison of the followers under `crossCheck`; a follower's failures are named after it (`scarab
+follower: ...`). The load and its Plutus evidence (`legacyPlutus`, `auxiliaryPlutus`) are the reference's verdicts, so
+they are reported once for the run.
 
 #### Protocol versions in the e2e
 
