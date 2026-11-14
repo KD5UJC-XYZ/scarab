@@ -5,7 +5,7 @@ Part of [Performance](../performance.md). The index is maintained by hand; the c
 
 **Status**: An index of the mutation the main sources retain, one row per cluster, checked against the tree at commit `c93f09b` (2026-11-04). It is an index, not a measurement: the sections it links are the evidence, and the issues it names are where the evidence is missing.
 
-AGENTS.md allows imperative, side-effecting code only in performance-critical paths, with profiling or
+[FUN-2](../design-rules.md#fun-2) allows imperative, side-effecting code only in performance-critical paths, with profiling or
 benchmark evidence and a written reason for the specific path. It also names narrow exceptions that are
 not performance claims at all: a third-party interface that requires the form, and key material that
 must be erased in place. WartRemover enforces the default — it refuses `var`, `while`, `throw` and the
@@ -57,7 +57,7 @@ the same rule and are not indexed here, and `try`/`catch`/`finally` has its own 
 | The mux receive buffer | network, `network/src/main/scala/xyz/kd5ujc/scarab/network/ReceiveBuffer.scala` | 4 (1) | One array that doubles, instead of `held ++ more` copying the whole buffer on every appended read: a 64 MiB message fell from 10.1 s to 0.88 s, and 32 MiB from 1.88 s to 0.42 s | [Section 23, mux receive buffer](peers-and-network.md#23-mux-receive-buffer-356) |
 | The Scalus budget spenders | plutus, `plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ReferenceBudget.scala` | 3 (2) | Scalus's `BudgetSpender` is a mutable callback of the machine, as the reference's spender is a counter array; the restricting spender also signals an exhausted budget only by throwing, which the machine stops on | [Section 44](plutus-budget-arithmetic.md#44-the-references-budget-arithmetic-in-the-evaluator-485) for the arithmetic; the callback contract for the form |
 | The evaluation-local refusal log | plutus, `plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ScalusEvaluator.scala` | 1 (1) | `BuiltinRuntime.f` returns a `CekValue`, not an `Either`, and the machine catches callback exceptions into a `BuiltinError`: there is no failure-value path, so the typed refusal is kept here and signalled by the documented exception | Exemption: a library contract, not a performance claim |
-| The KES signing key's period | crypto, `crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/kes/Sum6KesSigning.scala` | 1 (1) | The key evolves in place and zeroes the material of the periods it leaves, so that no copy of an earlier period's key survives: forward security, not speed | Exemption: erased in place, which AGENTS.md allows without a measurement |
+| The KES signing key's period | crypto, `crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/kes/Sum6KesSigning.scala` | 1 (1) | The key evolves in place and zeroes the material of the periods it leaves, so that no copy of an earlier period's key survives: forward security, not speed | Exemption: erased in place, which [FUN-2](../design-rules.md#fun-2) (d) allows without a measurement |
 | The models runtime writer | models, `models/src/main/scala/xyz/kd5ujc/scarab/models/runtime/Writer.scala` | 2 (1) | The buffer and its fill count that every encoder of the models runtime writes through; a functional writer would thread the output through every codec. Not measured yet | Exemption: the measurement is [#664](https://github.com/KD5UJC-XYZ/scarab/issues/664) |
 
 Each row either cites a section that measures the path (or the walk the site belongs to) or names, in its

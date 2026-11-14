@@ -4,9 +4,9 @@
 
 WartRemover refuses the other disallowed patterns at compile time (`build.sbt`, `disallowedWarts`), but it has
 no wart for `try`, `catch` or `finally`. Effects use `Resource`, `bracket` and `attempt` instead; a performance
-path keeps imperative code only with measured evidence (AGENTS.md). This guard counts the three keywords per
-main Scala source, with comments and the text of string literals removed (the `${...}` expressions of an
-interpolated string count), and compares the counts with the committed baseline
+path keeps imperative code only with measured evidence (docs/design-rules.md, FUN-2). This guard counts the
+three keywords per main Scala source, with comments and the text of string literals removed (the `${...}`
+expressions of an interpolated string count), and compares the counts with the committed baseline
 `docs/data/imperative-baseline.json`: a file may not go up, a file not in the baseline must have none, and a
 count that went down fails until the change also commits the smaller baseline. The baseline only shrinks.
 

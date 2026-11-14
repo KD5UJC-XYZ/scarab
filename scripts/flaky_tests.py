@@ -99,7 +99,7 @@ def body_of(flake: Flake) -> str:
     return (f"**What.** `{flake.suite}` \"{flake.test}\" failed and then passed on the same commit `{flake.sha[:9]}` "
             f"([failed run]({flake.run_url})), so its outcome does not depend on the change under test alone.\n\n"
             "**Acceptance.** The test's outcome depends only on the code under test: an observable condition or a "
-            "controlled schedule instead of a timing assumption (AGENTS.md, concurrency tests), and a regression run "
+            "controlled schedule instead of a timing assumption (docs/design-rules.md, TST-5), and a regression run "
             "of the suite under load. Filed by the nightly flaky-test workflow (`scripts/flaky_tests.py`).")
 
 

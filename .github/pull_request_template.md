@@ -12,12 +12,14 @@
 
 ## Deviations from the reference
 
-<!-- Level 1 and above: `None`, or one row per deviation, each with the owner's approval
-(ADR 0001; docs/decisions.md). Scarab references the Haskell cardano-node in every respect for production
-behaviour, so a deviation is the owner's decision, never a silent choice. The PR policy check reads this section.
+<!-- Level 1 and above: `None`, or one row per difference from the reference that is not a Mirror, with its
+class and record in the approval cell (docs/design-rules.md, REF-7): `Improvement (e): [#474](link)` or
+`Deviation: [decision](link)`. A Gap goes under Gaps instead. Scarab references the Haskell cardano-node in every
+respect for production behaviour, so a deviation is the owner's decision, never a silent choice (ADR 0001;
+docs/decisions.md). The PR policy check reads this section.
 | Behaviour | Reference (pinned) | Scarab | Approval |
 |---|---|---|---|
-| what differs | repository revision `File.hs:line` | what Scarab does | link to the decision |
+| what differs | repository revision `File.hs:line` | what Scarab does | Deviation: [decision](link) |
 -->
 
 ## Gaps
@@ -39,7 +41,7 @@ behaviour, so a deviation is the owner's decision, never a silent choice. The PR
 ## Hygiene
 
 - [ ] No keys, secrets or run data committed; fixtures have provenance and licence recorded (NOTICE/README)
-- [ ] Domain errors are closed ADTs through `Raise`; hashed and signed bytes are the bytes the reference hashes and signs (`docs/design/hashed-bytes.md`)
+- [ ] The code follows the rules of `docs/design-rules.md` for the groups it touches (for example closed error types through `Raise`, ERR-1; hashed and signed bytes are the bytes the reference hashes and signs, BYT-1), and each kept exception is marked as its rule says
 
 <!-- End with `Closes #N`, or `Related to #N; this PR leaves the issue open: <reason>`.
 GitHub treats a closing keyword followed by an issue reference as a closing link even when the sentence negates it. -->

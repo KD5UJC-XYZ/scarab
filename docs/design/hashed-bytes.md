@@ -1,8 +1,7 @@
 # Hashed and signed bytes
 
-**Status: Current.** It records which bytes Scarab hashes or signs. The rule itself is in
-[AGENTS.md](../../AGENTS.md#how-code-is-written-here) and [CONTRIBUTING.md](../../CONTRIBUTING.md#style-rules):
-hash and sign exactly the bytes the reference hashes and signs.
+**Status: Current.** It records which bytes Scarab hashes or signs. The rule itself is
+[BYT-1](../design-rules.md#byt-1): hash and sign exactly the bytes the reference hashes and signs.
 
 ## The default: the bytes as received
 
