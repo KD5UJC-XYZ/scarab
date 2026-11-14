@@ -93,7 +93,7 @@ object LocalRoots:
     /** The first `limit` roots, group by group (`clampToLimit`, 213-220): the root peers may not
       * outnumber the known-peers target. `size == min limit size`.
       */
-    def clampToLimit(limit: Int)(using Ordering[A]): LocalRoots[A] =
+    def clampToLimit(limit: Int): LocalRoots[A] =
       val (_, kept) = roots.groups.foldLeft((0, Vector.empty[RootGroup[A]])) {
         case ((n, acc), group) =>
           if n >= limit then (n, acc)
@@ -113,7 +113,7 @@ object LocalRoots:
       * `Cardano/Network/PeerSelection/State/LocalRootPeers.hs`): a group keeps its trustable
       * members with valencies lowered to fit, and a group with none is dropped.
       */
-    def clampToTrustable(using Ordering[A]): LocalRoots[A] =
+    def clampToTrustable: LocalRoots[A] =
       val kept = roots.groups.flatMap { group =>
         val members = group.members.filter(peer => roots.config.get(peer).exists(_.trustable))
         if members.isEmpty then None
@@ -124,7 +124,7 @@ object LocalRoots:
       }
       rebuilt(roots, kept)
 
-  private def rebuilt[A: Ordering](
+  private def rebuilt[A](
       roots: LocalRoots[A],
       groups: Vector[RootGroup[A]]
   ): LocalRoots[A] =

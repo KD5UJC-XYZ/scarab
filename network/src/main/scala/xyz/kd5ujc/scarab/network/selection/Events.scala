@@ -98,7 +98,7 @@ private[selection] object Events:
       observation: Observation,
       now: Time,
       policy: Policy
-  )(using Ordering[A]): Decision[A] =
+  ): Decision[A] =
     observation match
       case Observation.ActionFailed(operation, error) =>
         Decision(st0, Nil, List(Trace.PeerActionFailed(peer, operation, error)))
@@ -112,7 +112,7 @@ private[selection] object Events:
       observation: Observation,
       now: Time,
       policy: Policy
-  )(using Ordering[A]): Decision[A] =
+  ): Decision[A] =
     st0.peers.get(peer) match
       case None => Decision(st0, Nil, Nil)
       case Some(record) =>
@@ -180,7 +180,7 @@ private[selection] object Events:
       outcome: Outcome[A],
       now: Time,
       policy: Policy
-  )(using Ordering[A]): Decision[A] =
+  ): Decision[A] =
     def status(peer: A): Option[Status] = st0.peers.get(peer).map(_.status)
     // the count of the population the peer is in: ordinary, or big ledger peers
     def big(st: GovernorState[A], peer: A): Boolean = st.peers.get(peer).exists(_.origin.big)

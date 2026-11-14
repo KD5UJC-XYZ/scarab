@@ -342,7 +342,7 @@ object GenesisRuntime:
   /** The Genesis controls of one connection. `fatal` is told an invariant that does not hold in a
     * fiber of the connection; one met while the controls are acquired is raised to the caller.
     */
-  def controls[F[_]: Async](
+  def controls[F[_]](
       runtime: Option[GenesisRuntime[F]],
       pool: BlockPool[F],
       identity: Long,

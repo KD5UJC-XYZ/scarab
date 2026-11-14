@@ -658,7 +658,7 @@ object Main extends IOApp:
   private def backing(
       store: UtxoStore[IO],
       checkpoints: Option[fs2.io.file.Path]
-  )(using Handle[IO, NodeError]): StateBacking[IO, MirrorState] =
+  ): StateBacking[IO, MirrorState] =
     checkpoints.fold(StateBacking.none[IO, MirrorState])(new UtxoBacking[IO, MirrorState](store, _))
 
   /** The node configuration and topology the options point to, and the options completed from them:
@@ -1259,7 +1259,6 @@ object Main extends IOApp:
       rules: Rules,
       backing: StateBacking[IO, MirrorState]
   )(using
-      Ask[IO, ConsensusMirrorEnv],
       SnapshotFormat[IO, MirrorState],
       Handle[IO, NodeError],
       Log[IO],
@@ -1614,9 +1613,7 @@ object Main extends IOApp:
   )(using
       Handle[IO, NodeError],
       Log[IO],
-      Metrics[IO],
-      Ask[IO, consensus.ChainSelection.Local],
-      Tell[IO, xyz.kd5ujc.scarab.ledger.GenesisInternalProblem]
+      Metrics[IO]
   ): IO[Supply] =
     import run.{genesis, setup}
     import instruments.{collectors, fatalSink, stall}
@@ -1690,9 +1687,6 @@ object Main extends IOApp:
       Handle[IO, NodeError],
       Log[IO],
       Metrics[IO],
-      Stateful[IO, VolatileChain[MirrorState]],
-      Ask[IO, consensus.ChainSelection.Local],
-      Tell[IO, xyz.kd5ujc.scarab.ledger.GenesisInternalProblem],
       Assertions[IO]
   ): IO[Connections] =
     import run.{genesis, options, scheduling, setup}
@@ -1898,7 +1892,6 @@ object Main extends IOApp:
       globals: xyz.kd5ujc.scarab.ledger.LedgerGlobals,
       geometry: xyz.kd5ujc.scarab.ledger.EpochGeometry
   )(using
-      Handle[IO, NodeError],
       Log[IO],
       Metrics[IO],
       Stateful[IO, VolatileChain[MirrorState]],
@@ -2038,8 +2031,7 @@ object Main extends IOApp:
   )(using
       Handle[IO, NodeError],
       Log[IO],
-      Metrics[IO],
-      Stateful[IO, VolatileChain[MirrorState]]
+      Metrics[IO]
   ): IO[RunEnd] =
     import run.{cliPeers, genesis, loaded, options, scheduling, setup, store, topology}
     import instruments.{collectors, fatalSink, metrics, stall}

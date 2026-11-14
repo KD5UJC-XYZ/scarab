@@ -28,7 +28,7 @@ trait ChainSyncClient[F[_], P]:
   def idling: F[Boolean]
 
   /** Observe AwaitReply immediately inside the collector, including a partially collected batch. */
-  def observe(observer: ChainSyncClient.Observer[F])(using Applicative[F]): Resource[F, Unit] =
+  def observe(observer: ChainSyncClient.Observer[F]): Resource[F, Unit] =
     Resource.pure[F, ChainSyncClient.Observer[F]](observer).void
 
 object ChainSyncClient:
@@ -130,7 +130,7 @@ object ChainSyncClient:
               cats.Monad[F]
           ): F[Vector[Update[P]]] =
             runtime.requestNextBatchObserved(n)(u => onUpdate(translated(u))).map(_.map(translated))
-          override def observe(observer: Observer[F])(using Applicative[F]): Resource[F, Unit] =
+          override def observe(observer: Observer[F]): Resource[F, Unit] =
             runtime.observe(observer)
       }
 
@@ -218,6 +218,6 @@ object ChainSyncClient:
           def done(using Raise[F, NetworkError]): F[Unit] = runtime.done
           def idle: F[Boolean] = runtime.idle
           def idling: F[Boolean] = runtime.idling
-          override def observe(observer: Observer[F])(using Applicative[F]): Resource[F, Unit] =
+          override def observe(observer: Observer[F]): Resource[F, Unit] =
             runtime.observe(observer)
       }

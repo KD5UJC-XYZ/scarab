@@ -725,7 +725,7 @@ object Peer:
             * is requested is the decisions' alone; publishing headers never waits for it. Byte
             * credit returns after each checked original is visible in the shared body pool.
             */
-          def fetchClient(using Raise[F, PeerError]): F[Unit] =
+          def fetchClient: F[Unit] =
             F.tailRecM(()) { _ =>
               fetcher.acquire.flatMap {
                 case None             => F.pure(Right(()))
@@ -1019,7 +1019,7 @@ object Peer:
           /** Client.hs:1255–1291 asks CSJ after every handled response. A jump consumes its
             * instruction once, then discards already-submitted replies before FindIntersect.
             */
-          def afterReply(using Raise[F, PeerError]): F[Unit] =
+          def afterReply: F[Unit] =
             genesis.traverse_ { control =>
               F.tailRecM(()) { _ =>
                 F.race(drainRequested.get.flatMap(_.get), control.nextAfterReply).flatMap {

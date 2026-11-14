@@ -40,10 +40,7 @@ class ScriptResultWireSuite extends FunSuite:
           )
         case other => fail(s"no verdict: $other")
       val encoded = PredicateFailureCbor
-        .utxos(failure)(using
-          xyz.kd5ujc.scarab.storage.haskell.state.Versions
-            .eraLow(xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SConway)
-        )
+        .utxos(failure)
         .fold(error => fail(error.message), identity)
       val oracleKey = if valid then "validTagFailureCbor" else "invalidTagFailureCbor"
       val reference = hex(field[String](recorded.oracle, oracleKey))

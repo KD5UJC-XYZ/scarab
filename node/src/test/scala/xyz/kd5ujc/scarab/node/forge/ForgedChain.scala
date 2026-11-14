@@ -19,7 +19,7 @@ import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.Header
-import xyz.kd5ujc.scarab.ledger.{NodeError, ValidationError}
+import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.node.Follower
 import xyz.kd5ujc.scarab.consensus.ConsensusExtras
 import xyz.kd5ujc.scarab.consensus.state.{
@@ -125,10 +125,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
   )
 
   /** The block rules of the forged chain's configuration: no Byron prefix. */
-  def rules(using
-      Raise[IO, ValidationError],
-      Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError]
-  ): MirrorRules[IO] =
+  def rules: MirrorRules[IO] =
     MirrorRules[IO](
       config,
       globals,

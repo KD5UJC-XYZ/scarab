@@ -44,7 +44,7 @@ import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity.Fragment
   * tip of a candidate with ours, and the volatile chain itself keeps only identities and ledger
   * states, so the views are recorded here as blocks are adopted.
   */
-final class SelectViews[F[_]: cats.effect.Sync] private (ref: Ref[F, Map[Bytes, SelectView]]):
+final class SelectViews[F[_]] private (ref: Ref[F, Map[Bytes, SelectView]]):
   def get: F[Map[Bytes, SelectView]] = ref.get
   def record(hash: Bytes, view: SelectView): F[Unit] = ref.update(_.updated(hash, view))
   def retain(keep: Set[Bytes]): F[Unit] = ref.update(_.filter((h, _) => keep(h)))

@@ -34,9 +34,9 @@ ThisBuild / headerMappings := {
   )
   Map(HeaderFileType.scala -> spdxLine, HeaderFileType.java -> spdxLine, HeaderFileType("sbt") -> spdxLine)
 }
-// Enable the unused-code warnings supported by the maintained source. At Scala 3.3.8, the excluded
-// -Wunused:implicits, -Wvalue-discard and -Wnonunit-statement produced 13, 243 and 308 warnings;
-// the latter two were mostly fluent CborOut calls in node/ntc. Generated models are warning-silent.
+// The warnings on, each an error under -Werror (docs/design-rules.md, "What enforces the rules today").
+// -Wvalue-discard and -Wnonunit-statement stay off: at Scala 3.9.0 they found 239 and 257 sites in main
+// sources (2026-11-14), mostly fluent CborOut calls in node/ntc (#201). Generated models are warning-silent.
 ThisBuild / scalacOptions ++= Seq(
   "-deprecation",
   "-feature",
@@ -46,6 +46,7 @@ ThisBuild / scalacOptions ++= Seq(
   "-Wunused:privates",
   "-Wunused:locals",
   "-Wunused:explicits",
+  "-Wunused:implicits",
   "-Wunused:patvars",
   "-Wunused:nowarn",
   "-Wimplausible-patterns",

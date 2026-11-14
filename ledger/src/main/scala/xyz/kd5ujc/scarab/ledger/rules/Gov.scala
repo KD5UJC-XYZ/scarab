@@ -288,7 +288,7 @@ object GovKernel
       registered: node.RewardAccount => F[Boolean],
       ps: Proposals,
       indexed: (Proposal, Int)
-  )(using Raise[F, LedgerFailure], Judge[F, PredicateFailure]): F[Proposals] =
+  )(using Judge[F, PredicateFailure]): F[Proposals] =
     val (proposal, idx) = indexed
     val id = env.id
     val pp = env.pp

@@ -341,7 +341,7 @@ object PreConwayFailureCbor:
     case Pot.Treasury => 1
 
   /** `ShelleyDelegPredFailure`. */
-  private def shelleyDeleg(f: DelegFailure)(using ProtVer): Encoding[Enc] = f match
+  private def shelleyDeleg(f: DelegFailure): Encoding[Enc] = f match
     case DelegFailure.StakeKeyAlreadyRegistered(c)              => present(sum(0)(credential(_, c)))
     case DelegFailure.StakeKeyNotRegistered(c)                  => present(sum(1)(credential(_, c)))
     case DelegFailure.StakeKeyHasNonZeroAccountBalance(balance) => present(sum(2)(_.uint(balance)))

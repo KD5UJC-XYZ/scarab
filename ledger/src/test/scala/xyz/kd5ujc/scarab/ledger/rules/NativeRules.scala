@@ -107,15 +107,15 @@ object NativeRules:
           t
         ).map(after)
       case ShelleyBasedEra.SShelley =>
-        shelley[E](nes, t, ctx, plutus, globals)(using era, summon[PreConway[Shelley]]).map(after)
+        shelley[E](nes, t, ctx, plutus, globals)(using summon[PreConway[Shelley]]).map(after)
       case ShelleyBasedEra.SAllegra =>
-        shelley[E](nes, t, ctx, plutus, globals)(using era, summon[PreConway[Allegra]]).map(after)
+        shelley[E](nes, t, ctx, plutus, globals)(using summon[PreConway[Allegra]]).map(after)
       case ShelleyBasedEra.SMary =>
-        shelley[E](nes, t, ctx, plutus, globals)(using era, summon[PreConway[Mary]]).map(after)
+        shelley[E](nes, t, ctx, plutus, globals)(using summon[PreConway[Mary]]).map(after)
       case ShelleyBasedEra.SAlonzo =>
-        shelley[E](nes, t, ctx, plutus, globals)(using era, summon[PreConway[Alonzo]]).map(after)
+        shelley[E](nes, t, ctx, plutus, globals)(using summon[PreConway[Alonzo]]).map(after)
       case ShelleyBasedEra.SBabbage =>
-        shelley[E](nes, t, ctx, plutus, globals)(using era, summon[PreConway[Babbage]]).map(after)
+        shelley[E](nes, t, ctx, plutus, globals)(using summon[PreConway[Babbage]]).map(after)
       case ShelleyBasedEra.SDijkstra => broken("the node has no Dijkstra rules (#54)")
 
   private def shelley[E <: EraTag](
@@ -124,7 +124,7 @@ object NativeRules:
       ctx: TxEnv,
       plutus: PlutusStats,
       globals: Globals
-  )(using ShelleyBasedEra[E], PreConway[E]): Either[LedgerFailure, Counted[LedgerState[E]]] =
+  )(using PreConway[E]): Either[LedgerFailure, Counted[LedgerState[E]]] =
     JudgedSts(ShelleyLedger.sts[E])(LedgerFailure.Rejected(t.body.id, _))(
       globals,
       ShelleyLedgerEnv(ctx, nes.es.chainAccount),
