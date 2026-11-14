@@ -107,17 +107,21 @@ representation parameterised by what differs, not by the era, and each era's typ
 |---|---|
 | `ShelleyTxOutRep[V]` | `ShelleyTxOut`, `AllegraTxOut` (`V = AdaValue`); `MaryTxOut` (`V = MultiAssetValue`) |
 | `AlonzoTxOutRep` | `AlonzoTxOut` |
-| `BabbageTxOutRep[S]` | `BabbageTxOut`, `ConwayTxOut` (`S = Timelock`); `DijkstraTxOut` (`S = DijkstraNativeScript`) |
+| `BabbageTxOutRep[S]` | `BabbageTxOut`, `ConwayTxOut`, `DijkstraTxOut`, `S` the era's script (`BabbageScript`, `ConwayScript`, Dijkstra's), so carrying an output into the next era carries its reference script (`upgradeScript`) |
 | `ShelleyTxWitsRep[S]` | the witness sets of Shelley (`S = MultiSig`), Allegra and Mary (`S = Timelock`) |
 | `AlonzoTxWitsRep[S]` | the witness sets of Alonzo to Conway (`S = Timelock`), Dijkstra (`S = DijkstraNativeScript`) |
 | `AllegraTxAuxDataRep` | the auxiliary data of Allegra and Mary |
 | `AlonzoTxAuxDataRep[S]` | the auxiliary data of Alonzo to Conway (`S = Timelock`), Dijkstra (`S = DijkstraNativeScript`) |
 | `ShelleyTxCertRep` | the certificates of Shelley to Babbage |
+| `NativeScriptRep[F]` | `MultiSig` (`F = NativeForm.MultiSig`), behind Shelley's native script; `Timelock` (`F = NativeForm.Timelock`), behind each era's native script from Allegra to Conway (`AllegraTimelock` to `ConwayTimelock`) |
+| `AlonzoScriptRep[N, P]` | the scripts of Alonzo to Conway: the era's native script `N` or its Plutus script `P` (`BabbageScript`, `ConwayScript`) |
+| `Plutus[L]` | a Plutus script of language `L`, shared by the eras that have the language; which eras have which language is each era's own Plutus script (`BabbagePlutusScript` has V1 and V2, `ConwayPlutusScript` V1 to V3) |
 | `AllegraTxBodyRep[M]` | `AllegraTxBody` (`M = Unit`), `MaryTxBody` (`M = MultiAsset`) |
 
 Bodies and certificates that the reference does not share are plain case classes of their era: Shelley's,
 Alonzo's to Dijkstra's bodies, and Conway's and Dijkstra's certificates. Purposes follow the same rule. Each
-representation keeps the bytes it was decoded from. The output representations also keep the value's encoded
+representation keeps the bytes it was decoded from; a native script keeps them at every level, as the
+reference's `MemoBytes` does, each a window of the bytes it was read from rather than a copy. The output representations also keep the value's encoded
 size and the reference-script re-read that the size rules and the reference-script fee use today.
 
 **Where the opaqueness ends.** A top-level opaque type is transparent only in the file that defines it. Each
@@ -265,6 +269,12 @@ several commits or small pull requests into the branch per stage, and reaches `m
 | 6c. Mempool and submission before Conway | The mempool, local submission, TxSubmission2, the local monitor and the failure encoders for every Shelley-based era. |
 | 6d. Forging in every era (#544) | On 6b and 6c, with a devnet gate that starts in Shelley. |
 
+**How stage 1 lands on the branch.** A match type needs a case and a class names the families it uses, so a
+family and its classes are declared in the commit that brings the first era having them, not ahead of every
+era. Stage 1 carries the families, classes and representations for the eras the spike has (Allegra, Mary,
+Babbage, Conway), and each later stage adds its era's cases and instances. The state and Plutus-context
+classes come with Conway (stage 2), whose rules are their first users.
+
 **What stage 5 removes:** every era comparison (`ShelleyBasedEra.atLeast`), wherever it is:
 - the rules;
 - `ledger`'s `ProtocolParams`, `Block`, `Governance` and `ScriptIntegrity`;
@@ -337,6 +347,28 @@ passes `check`.
   - an Allegra output given as a Mary one;
   - an `EraRules` without all its members;
   - a Mary output made from its representation in a sibling file of the same package.
+
+**The core** (stage 1, for the spike's eras):
+- The families `Value`, `TxOut`, `TxBody`, `NativeScript`, `Script` and `PlutusScript` are match types, in
+  their own file with the level types. The value is the `Value era` family, not a type member of the output
+  class.
+- Each era has its own native script, Plutus script and script: Babbage's Plutus script has V1 and V2 and
+  Conway's V1 to V3, so a V3 script of Babbage does not compile. Babbage's and Conway's decoders read as the
+  flat script decoder does and refuse what it refuses with the same error; a Babbage script carries into
+  Conway with its hash.
+- A native script keeps the bytes of every level (`NativeScriptRep`), read through the flat decoder and a
+  second walk on the heap. The 5,388-level preprod script reads on a 256 KiB stack, and its hash is the flat
+  decoder's.
+- The script classes run from `EraScript` to `AlonzoEraScript`, and the output classes from `EraTxOut` to
+  `BabbageEraTxOut`. A class whose reference superclass is of another family names that instance as a
+  member (`BabbageEraTxOut.scripts`, `EraTxBody.outputsOf`), so each era keeps one given per class family.
+- `BabbageTxOutRep[S]` carries the era's script. The store's read into Babbage or Conway reads the reference
+  script again from the output's bytes in the era's type, and a stored V3 reference script is refused as a
+  Babbage one.
+- Each era type has `CanEqual` with itself only. Every compile-failure test has a twin that differs in the
+  one thing refused and compiles.
+- Not yet: the reference's native-script builders (`mkRequireSignature` and the others) need a
+  native-script encoder, which the node does not have. They come with the per-era test kits.
 
 **What it does not show yet:** a full rule pipeline (LEDGER) on typed transactions, which is stage 2.
 Bodies decoded from recorded blocks are compared on id, fee, output bytes and one era-only field.
