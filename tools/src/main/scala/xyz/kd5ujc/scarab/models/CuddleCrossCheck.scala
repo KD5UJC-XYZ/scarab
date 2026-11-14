@@ -280,7 +280,7 @@ object CuddleCrossCheck:
       f.getParent.getParent.getParent.resolve("normalized").resolve(mode).resolve(fileName(id)),
       normalized.result()
     )
-    Seq(id, mode, terms.size, accepted, exact, stable, firstReject, firstInexact)
+    Seq[Int | String](id, mode, terms.size, accepted, exact, stable, firstReject, firstInexact)
       .mkString("\t")
 
   private def encode(codec: Codec[?], value: Any): Bytes =

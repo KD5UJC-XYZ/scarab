@@ -230,7 +230,7 @@ object BlockBuilder:
           evaluator = evaluator,
           referenceBuild = globals.referenceBuild
         )
-        val applied = piece(entry).toOption match
+        val applied: Either[NoVerdict, Option[(MempoolLedger, Piece)]] = piece(entry).toOption match
           case None => Right(None)
           case Some(p) =>
             acc.state

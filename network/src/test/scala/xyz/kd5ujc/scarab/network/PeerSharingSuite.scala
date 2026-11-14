@@ -159,7 +159,9 @@ class PeerSharingSuite extends FailsOnUncaught:
   test("more peers than requested is a protocol violation"):
     typed(scripted(_ => sharePeers(Vector(addr(1), addr(2), addr(3)))).use(_.request(amount(2))))
       .map {
-        case Left(NetworkError.IllegalTransition(Protocol, detail)) =>
+        case Left(
+              NetworkError.IllegalTransition(Protocol, detail: NetworkError.RuntimeViolation)
+            ) =>
           assertEquals(
             detail,
             NetworkError.RuntimeViolation.PeerSharingPolicy(

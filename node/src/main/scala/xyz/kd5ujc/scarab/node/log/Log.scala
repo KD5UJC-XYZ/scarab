@@ -41,7 +41,11 @@ object Log:
   ): FollowerEvents[F] =
     case e: (FollowerEvent.EpochValidated | FollowerEvent.ByronEpochValidated |
           FollowerEvent.LedgerEpoch) =>
-      sched.traverse(_.window).flatMap(report => log.emit(Scheduled[FollowerLine](e, report)))
+      sched
+        .traverse(_.window)
+        .flatMap(report =>
+          log.emit(Scheduled[FollowerLine](e, report))(using Traced.withScheduling[FollowerLine])
+        )
     case FollowerEvent.Immutable(_) => Monad[F].unit
     case e: FollowerLine            => log.emit[FollowerLine](e)
 

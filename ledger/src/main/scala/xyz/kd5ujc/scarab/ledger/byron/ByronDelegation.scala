@@ -191,7 +191,7 @@ object DelegationRules:
         (),
         DelegationError.MultipleDelegationsForSlot(env.currentSlot, delegator)
       )
-      valid <- cert.isValid(env.magic, env.signatures)
+      valid <- cert.isValid(env.magic, env.signatures).leftWiden[DelegationError | ProviderDefect]
       _ <- Either.cond(valid, (), DelegationError.InvalidCertificate)
     yield st.copy(
       scheduled = st.scheduled :+ ScheduledDelegation(activation, delegator, cert.delegateHash),

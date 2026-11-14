@@ -529,7 +529,7 @@ class LedgerSnapshotImportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
         for
           input <- source(root, Era.Conway)
           (ledger, db, state, _) = input
-          _ <- IO.blocking {
+          _ <- IO.blocking[Unit] {
             failure match
               case "byron" =>
                 Vector("state", "tables", "meta").foreach { name =>

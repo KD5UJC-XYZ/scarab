@@ -35,6 +35,8 @@ ThisBuild / headerMappings := {
   Map(HeaderFileType.scala -> spdxLine, HeaderFileType.java -> spdxLine, HeaderFileType("sbt") -> spdxLine)
 }
 // The warnings on, each an error under -Werror (docs/design-rules.md, "What enforces the rules today").
+// -Winfer-union refuses a type argument inferred as a union, such as the error type of an Either built
+// from two error types: a union of errors is declared where it is meant (ERR-1).
 // -Wvalue-discard and -Wnonunit-statement stay off: at Scala 3.9.0 they found 239 and 257 sites in main
 // sources (2026-11-14), mostly fluent CborOut calls in node/ntc (#201). Generated models are warning-silent.
 ThisBuild / scalacOptions ++= Seq(
@@ -54,6 +56,7 @@ ThisBuild / scalacOptions ++= Seq(
   "-Wwrong-arrow",
   "-Wshadow:all",
   "-Wenum-comment-discard",
+  "-Winfer-union",
   "-Wconf:src=.*/src_managed/.*:silent"
 )
 // scalafix needs the semantic database of the compiler.

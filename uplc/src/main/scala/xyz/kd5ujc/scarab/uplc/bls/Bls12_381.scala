@@ -169,7 +169,11 @@ object Bls12_381:
               Option.when(affine.in_group())(
                 G1Element.fromCompressed(Bytes.wrap(affine.compress()))
               )
-            }.flatMap(_.toRight(BlsFailure.Uncompress(Group.G1, BlstError.PointNotInGroup)))
+            }.flatMap(
+              _.toRight[BlsFailure | BlsDefect](
+                BlsFailure.Uncompress(Group.G1, BlstError.PointNotInGroup)
+              )
+            )
       }
 
     def add(a: G1Element, b: G1Element): Either[BlsDefect, G1Element] =
@@ -267,7 +271,11 @@ object Bls12_381:
               Option.when(affine.in_group())(
                 G2Element.fromCompressed(Bytes.wrap(affine.compress()))
               )
-            }.flatMap(_.toRight(BlsFailure.Uncompress(Group.G2, BlstError.PointNotInGroup)))
+            }.flatMap(
+              _.toRight[BlsFailure | BlsDefect](
+                BlsFailure.Uncompress(Group.G2, BlstError.PointNotInGroup)
+              )
+            )
       }
 
     def add(a: G2Element, b: G2Element): Either[BlsDefect, G2Element] =

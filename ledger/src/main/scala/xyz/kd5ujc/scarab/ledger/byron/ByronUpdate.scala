@@ -234,12 +234,14 @@ object ByronUpdate:
       (env.slot == BigInt(969188) || env.slot == BigInt(1915231))
     for
       _ <- Either.cond(env.isDelegate(proposer), (), UpdateError.InvalidProposer(proposer))
-      signed <- ByronSig.verify(
-        p.issuer,
-        p.signature,
-        ByronSig.tag(ByronSig.SignUpdateProposal, env.magic) ++ p.signedBody,
-        env.signatures
-      )
+      signed <- ByronSig
+        .verify(
+          p.issuer,
+          p.signature,
+          ByronSig.tag(ByronSig.SignUpdateProposal, env.magic) ++ p.signedBody,
+          env.signatures
+        )
+        .leftWiden[UpdateError | ProviderDefect]
       _ <- Either.cond(signed, (), UpdateError.InvalidSignature)
       _ <- Either.cond(
         protocolChanged || softwareChanged || exempt,
@@ -360,12 +362,14 @@ object ByronUpdate:
         (),
         UpdateError.VoteAlreadyCast(delegator)
       )
-      verified <- ByronSig.verify(
-        v.voter,
-        v.signature,
-        ByronSig.tag(ByronSig.SignUpdateVote, env.magic) ++ signed,
-        env.signatures
-      )
+      verified <- ByronSig
+        .verify(
+          v.voter,
+          v.signature,
+          ByronSig.tag(ByronSig.SignUpdateVote, env.magic) ++ signed,
+          env.signatures
+        )
+        .leftWiden[UpdateError | ProviderDefect]
       _ <- Either.cond(verified, (), UpdateError.InvalidSignature)
     yield
       val votes = st.votes.updated(

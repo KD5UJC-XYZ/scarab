@@ -96,7 +96,7 @@ final class DataReferenceSuite extends munit.FunSuite:
       val one = constr(index, PlutusData.I(1))
       def bytesOf(hex: String) = c(Constant.ByteString(hexBytes(hex)))
       val pair = call(v, UnConstrData, one)
-      val choose = none.flatMap { d =>
+      val choose = none.flatMap[BuiltinFailure | Outcome[Probe], Boolean] { d =>
         val branches = Vector("constr", "map", "list", "i", "b").map(Probe.Lambda(_))
         CoreTesting(v, ChooseData, (con(d) +: branches)*) match
           case Outcome.Success(Probe.Lambda("constr"), _) => Right(true)

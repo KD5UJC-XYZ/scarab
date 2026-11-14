@@ -96,7 +96,7 @@ object ProviderDefect:
   ): Either[E | ProviderDefect, Bytes] =
     result match
       case PraosVrf.Result.VerifiedCertificate(output) => Right(output)
-      case other => Left(ofVrf(other).getOrElse(refused(other)))
+      case other => Left(ofVrf(other).getOrElse[E | ProviderDefect](refused(other)))
 
   /** The VRF input; a provider defect as itself, an input outside the domain as `refused`. */
   def vrfInput[E, A](

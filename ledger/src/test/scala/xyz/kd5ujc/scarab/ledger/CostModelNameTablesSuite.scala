@@ -82,8 +82,7 @@ class CostModelNameTablesSuite extends FunSuite:
       val raw = head(5, 1) + head(0, language) + head(4, length) + (0 until length)
         .map(i => head(0, i % 24))
         .mkString
-      val node = Bytes
-        .fromHex(raw)
+      val node = (Bytes.fromHex(raw): Either[Bytes.HexError | Cbor.Error, Bytes])
         .flatMap(Cbor.decode(_))
         .fold(e => fail(e.toString), identity)
       assertEquals(

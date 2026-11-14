@@ -8,7 +8,7 @@ import PlutusData.*
 
 class PlutusDataSuite extends FunSuite:
   private def decode(hex: String) =
-    Bytes.fromHex(hex).flatMap(PlutusData.decode)
+    (Bytes.fromHex(hex): Either[Bytes.HexError | DecodeError, Bytes]).flatMap(PlutusData.decode)
 
   test("integers, byte strings, lists and maps") {
     assertEquals(decode("182a"), Right(I(42)))

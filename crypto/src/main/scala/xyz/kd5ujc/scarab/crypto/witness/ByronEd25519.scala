@@ -10,6 +10,7 @@ import com.weavechain.curve25519.{
 }
 import java.security.MessageDigest
 import java.util.Arrays
+import cats.syntax.bifunctor.*
 import cats.syntax.either.*
 
 /** Ed25519 verification as the Byron era of the reference performs it. For Byron signatures only:
@@ -47,7 +48,7 @@ object ByronEd25519:
     for
       key <- PublicKey32.create(publicKey)
       sig <- Signature64.create(signature)
-      result <- verifyEd25519(key, sig, message)
+      result <- verifyEd25519(key, sig, message).leftWiden[WitnessInputError | VerificationError]
     yield result
 
   def verifyEd25519(

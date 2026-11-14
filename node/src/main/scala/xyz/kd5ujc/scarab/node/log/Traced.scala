@@ -58,7 +58,7 @@ object Traced:
   /** An event with the scheduling measurements of the window it closes (the epoch lines). */
   final case class Scheduled[E](event: E, report: Option[SchedulingReport])
 
-  given [E](using traced: Traced[E]): Traced[Scheduled[E]] = scheduled =>
+  given withScheduling[E](using traced: Traced[E]): Traced[Scheduled[E]] = scheduled =>
     val line = traced.line(scheduled.event)
     line.copy(fields =
       line.fields ++ scheduled.report.map(r => "scheduling" -> Reports.scheduling(r))

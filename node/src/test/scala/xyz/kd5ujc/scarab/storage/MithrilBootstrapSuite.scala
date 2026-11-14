@@ -110,6 +110,7 @@ class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val ledger = directory / "ledger" / anchor.slot.toString
     val encoded = HaskellLedgerFile
       .of(state.ext)
+      .leftWiden[TelescopeError | StateNotWritable]
       .flatMap(HaskellLedgerFile.encode)
       .fold(error => fail(error.toString), bytes => bytes)
     val tableCrc = state.ext.ledgerState.state match

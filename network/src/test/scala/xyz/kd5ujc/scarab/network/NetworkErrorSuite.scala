@@ -21,7 +21,9 @@ class NetworkErrorSuite extends FunSuite:
   test("mini-protocol decode and local validation retain structured causes") {
     val cause = ProtocolError.OutsideUint64(BigInt(-1))
     assertEquals(NetworkError.Decode(2, cause).cause, cause)
-    assertEquals(NetworkError.IllegalTransition(2, cause).cause, cause)
+    NetworkError.IllegalTransition(2, cause).cause match
+      case retained: ProtocolError => assertEquals(retained, cause)
+      case other                   => fail(s"the cause became $other")
   }
 
   test("service abort and query refusal retain domain causes and reject raw strings") {

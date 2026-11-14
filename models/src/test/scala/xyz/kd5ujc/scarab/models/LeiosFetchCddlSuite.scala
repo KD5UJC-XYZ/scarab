@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.models
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.models.leios.fetch.LeiosBlockFetchMessage
+import xyz.kd5ujc.scarab.models.runtime.DecodeError
 import xyz.kd5ujc.scarab.protocol.{
   EbHash,
   EbPoint,
@@ -95,7 +96,9 @@ class LeiosFetchCddlSuite extends munit.FunSuite:
         case _: LeiosFetch.Message.BlockTxsRequest =>
           assertNotEquals(back, Right(bytes), m.toString)
           assertEquals(
-            back.flatMap(b => LeiosFetch.decodePrefix(LeiosFetch.State.Idle, b)).map(_._1),
+            (back: Either[DecodeError | LeiosWireError, Bytes])
+              .flatMap(b => LeiosFetch.decodePrefix(LeiosFetch.State.Idle, b))
+              .map(_._1),
             Right(m)
           )
         case _ => assertEquals(back, Right(bytes), m.toString)

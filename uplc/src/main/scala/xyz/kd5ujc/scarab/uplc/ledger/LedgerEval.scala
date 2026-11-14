@@ -169,7 +169,7 @@ object LedgerEval:
       script: Bytes
   ): Either[NotAdmitted, Program] =
     for
-      _ <- supported(protocol).leftMap(ScriptResult.Unavailable(_))
+      _ <- supported(protocol).leftMap[NotAdmitted](ScriptResult.Unavailable(_))
       program <- SerialisedScript
         .deserialiseScript(language, protocol, script)
         .leftMap(LedgerOutcome.Refused(_))

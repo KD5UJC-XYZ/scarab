@@ -187,9 +187,9 @@ object Praos2:
       )
       registered <- ticked.ledger.pools
         .get(pool)
-        .toRight(Error.Praos(PraosError.IssuerWithoutStake(pool.bytes)))
+        .toRight[Failure](Error.Praos(PraosError.IssuerWithoutStake(pool.bytes)))
       vrfHash = Blake2b.hash256.hash(header.vrfVkey)
-      _ <- Either.cond(
+      _ <- Either.cond[Failure, Unit](
         vrfHash == registered.vrf.bytes,
         (),
         Error.Praos(PraosError.VrfKeyMismatch(pool.bytes, vrfHash, Set(registered.vrf.bytes)))
@@ -202,7 +202,7 @@ object Praos2:
           config.praos,
           Some(Right(PraosLeaderThreshold.Fraction.storedStake(registered.share)))
         )
-        .leftMap {
+        .leftMap[Failure] {
           case e: PraosError     => Error.Praos(e)
           case d: ProviderDefect => d
         }
@@ -242,8 +242,8 @@ object Praos2:
         case Some(t) =>
           t.blockNo.word.successor
             .map(w => BlockNo.fromUnsigned(w.bits))
-            .toRight(Defect.SuccessorOverflow(VocabError.Kind.BlockNo))
-      _ <- Either.cond(
+            .toRight[Failure](Defect.SuccessorOverflow(VocabError.Kind.BlockNo))
+      _ <- Either.cond[Failure, Unit](
         header.blockNo == expectedNo.toBigInt,
         (),
         Error.UnexpectedBlockNo(expectedNo, header.blockNo)
@@ -253,7 +253,7 @@ object Praos2:
         case Some(t) =>
           t.slot.word.successor
             .map(w => SlotNo.fromUnsigned(w.bits))
-            .toRight(Defect.SuccessorOverflow(VocabError.Kind.SlotNo))
+            .toRight[Failure](Defect.SuccessorOverflow(VocabError.Kind.SlotNo))
       _ <- Either.cond(
         header.slot >= expectedSlot.toBigInt,
         (),
@@ -311,7 +311,7 @@ object Praos2:
   ): Either[Error | Defect, Unit] =
     for
       _ <- header.leios.announcement.traverse_ { a =>
-        Either.cond(
+        Either.cond[Error | Defect, Unit](
           a.size <= ledger.maxEbReferencesSize.toLong,
           (),
           Error.LeiosEbTooBig(a.size, ledger.maxEbReferencesSize)
@@ -325,7 +325,7 @@ object Praos2:
               for
                 millis <- info.slotLengthMillis(slot)
                 earliest <- minCertificationSlot(millis, ledger, announcingSlot)
-                _ <- Either.cond(
+                _ <- Either.cond[Error | Defect, Unit](
                   slot.toBigInt >= earliest.toBigInt,
                   (),
                   Error.LeiosCertTooYoung(announcingSlot, slot, earliest)
