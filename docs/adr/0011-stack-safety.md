@@ -15,10 +15,8 @@ B17 and B18 had already met the same failure for the depth of nested items (CBOR
 scripts) and made those walks iterative (`TreeFold`). This record states the rule for both the width
 (a count of elements) and the depth of anything that comes from a block, a peer, a file or a query.
 
-The owner's words: *"I prefer to use tail recursive algorithms when possible, even so far as to
-define a stack machine for use with Monad.tailRecM. We don't necessarily need to apply that if it is
-not applicable, but it is an example that I don't want us to shy away from strictly typed, stack safe
-code."*
+Prefer tail-recursive algorithms, up to an explicit stack machine run with `Monad.tailRecM` where it fits; where it
+does not apply it is not required, but do not shy away from strictly typed, stack-safe code.
 
 ## Decision
 
