@@ -191,6 +191,13 @@ class PoolRelaysSuite extends ScalaCheckSuite:
     )
   }
 
+  test("relays are a definite array up to 23 and an indefinite one above, as encodeStrictSeq") {
+    val rs = Vector.fill(24)(PoolRelay.MultiHostName("a"))
+    assertEquals(PoolRelays.encode(rs.take(23)).hex, "97" + "82026161" * 23)
+    assertEquals(PoolRelays.encode(rs).hex, "9f" + "82026161" * 24 + "ff")
+    assertEquals(PoolRelays.decode(PoolRelays.encode(rs)), Right(rs))
+  }
+
   // ---------------------------------------------------------------------- properties
 
   private val ports: Gen[Option[RelayPort]] =
@@ -211,7 +218,7 @@ class PoolRelaysSuite extends ScalaCheckSuite:
     forAll(relays)(rs => PoolRelays.decode(PoolRelays.encode(rs)) == Right(rs))
   }
 
-  property("encode writes definite-length arrays that decode to the same ledger relays") {
+  property("encode writes arrays that decode to the same ledger relays") {
     forAll(relays) { rs =>
       PoolRelays.decode(PoolRelays.encode(rs)).map(PoolRelays.ledgerRelays) ==
         Right(PoolRelays.ledgerRelays(rs))

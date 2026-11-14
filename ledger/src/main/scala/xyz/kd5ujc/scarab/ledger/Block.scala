@@ -18,13 +18,21 @@ object Block:
   /** Shelley..Conway block: header, transactions and the body commitment recomputed from the
     * original bytes. `bodySize` /`bodyHash` are what the header's `block_body_size`
     * /`block_body_hash` must equal.
+    *
+    * @param segments
+    *   the parts of the body after the header (the bodies, the witness sets, the auxiliary data
+    *   and, from Alonzo, the invalid transactions), each as the bytes it was read from: the
+    *   reference keeps them and writes them again (`AlonzoBlockBodyInternal`,
+    *   `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/BlockBody/Internal.hs:181-186, 222-258`,
+    *   cardano-ledger f649f975). Empty for a block not read from bytes.
     */
   final case class Shelley(
       era: Era,
       header: Header.Shelley,
       transactions: Vector[Transaction],
       bodySize: Long,
-      bodyHash: Bytes
+      bodyHash: Bytes,
+      segments: Vector[Bytes] = Vector.empty
   ) extends Block
 
   /** A Dijkstra block, tag 8: the Leios header and the body `[transactions, leios_cert / nil,
@@ -131,7 +139,7 @@ object Block:
       parts <- array(n, if era.hasInvalidTransactions then 5 else 4)
       header <- Header.fromRaw(era, parts(0).original)
       body <- segregated(parts, era)
-    yield Shelley(era, header, body.transactions, body.size, body.hash)
+    yield Shelley(era, header, body.transactions, body.size, body.hash, body.segments)
 
   /** The transactions of a block body in the segregated layout of Shelley to Conway (`[header,
     * bodies, witnesses, auxiliary data, invalid]`, the header first and so ignored here) with the
@@ -140,7 +148,8 @@ object Block:
   private[ledger] final case class SegregatedBody(
       transactions: Vector[Transaction],
       size: Long,
-      hash: Bytes
+      hash: Bytes,
+      segments: Vector[Bytes]
   )
 
   private[ledger] def segregated(
@@ -181,7 +190,8 @@ object Block:
         Transaction(bodies(i).original, witnesses(i).original, aux.get(i), !invalid.contains(i))
       ),
       components.map(_.size.toLong).sum,
-      Blake2b.hash256.hash(Bytes(components.flatMap(c => Blake2b.hash256.hash(c).value)))
+      Blake2b.hash256.hash(Bytes(components.flatMap(c => Blake2b.hash256.hash(c).value))),
+      components
     )
 
   /** The keys of a block body's auxiliary data map, its transactions' indices, read by

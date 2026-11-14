@@ -130,7 +130,7 @@ object Params:
     Record.of[(BigInt, BigInt)]((Codec.uintBig(13), w32))
 
   /** `Prices` (`ExUnits.hs:219-229`): `[memory price, steps price]`. */
-  private val prices: Codec[(Rational, Rational)] =
+  private[state] val prices: Codec[(Rational, Rational)] =
     Record.of[(Rational, Rational)]((nonNegativeInterval, nonNegativeInterval))
 
   /** `ExUnits` (`ExUnits.hs:192-215`): `[memory, steps]`, each at most `maxBound :: Int64`. */
@@ -154,9 +154,13 @@ object Params:
 
   /** `CostModels` (`CostModels.hs:446-471`): a map from the language (a `Word8`) to its parameters,
     * each an `Int64`; a list of more than 23 is indefinite. Keys are in order, and a repeated one
-    * is refused.
+    * is refused. It is `encCBOR` of the cost models of a parameter update in a transaction as well
+    * (`encCBOR . flattenCostModels`, `libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/
+    * CostModels.hs:470-471`, cardano-ledger f649f975: `encodeMap` of `encodeList`,
+    * `Encoding/Encoder.hs:397-408, 499-508`), whose value
+    * [[xyz.kd5ujc.scarab.ledger.CostModelDecode]] reads.
     */
-  private val costModels: Codec[Map[Int, Vector[BigInt]]] = new Codec[Map[Int, Vector[BigInt]]]:
+  val costModels: Codec[Map[Int, Vector[BigInt]]] = new Codec[Map[Int, Vector[BigInt]]]:
     private val language = Codec.uintBig(255)
     private val values = seqOf(Codec.bigRange(BigInt(Long.MinValue), BigInt(Long.MaxValue)))
     def decode(n: Node): Decoded[Map[Int, Vector[BigInt]]] =
@@ -197,13 +201,13 @@ object Params:
         costModels.check(value)
 
   /** `PoolVotingThresholds`: five unit intervals. */
-  private val poolThresholds: Codec[PoolVotingThresholds] =
+  private[state] val poolThresholds: Codec[PoolVotingThresholds] =
     Record.of[PoolVotingThresholds](
       (unitInterval, unitInterval, unitInterval, unitInterval, unitInterval)
     )
 
   /** `DRepVotingThresholds`: ten unit intervals. */
-  private val drepThresholds: Codec[DRepVotingThresholds] =
+  private[state] val drepThresholds: Codec[DRepVotingThresholds] =
     Record.of[DRepVotingThresholds](
       (
         unitInterval,

@@ -265,7 +265,7 @@
   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/LedgerFileCodecs.scala": 5,
   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeOrders.scala": 4,
   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeTypeCodecs.scala": 11,
-  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Params.scala": 7,
+  "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Params.scala": 6,
   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/RewardCodecs.scala": 12,
   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/SnapshotCodecs.scala": 6,
   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/SnapshotMeta.scala": 4,

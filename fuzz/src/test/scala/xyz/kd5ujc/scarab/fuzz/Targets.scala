@@ -1214,6 +1214,47 @@ object Targets:
       )
     }
 
+  /** What the node reads and writes again as the reference does
+    * ([[xyz.kd5ujc.scarab.storage.haskell.state.ConwayCodecs]]): a metadatum read at Conway's
+    * decoder version, and a Shelley-based block, whose writing is its header and the body segments
+    * it was read with, each read back as itself.
+    */
+  private val reencoded: Vector[Target] =
+    import xyz.kd5ujc.scarab.storage.haskell.state.ConwayCodecs
+    val conway = DecoderVersion.of(Era.Conway)
+    def metadatum(b: Bytes) = Cbor.decode(b).toOption.map(Metadatum.decode(_, conway))
+    Vector(
+      Target(
+        "metadatum",
+        () => Corpus.sampled("conway:metadatum", 60) ++ Corpus.tricky,
+        in =>
+          // three walks of an input as deep as it is long: read, written again and read back
+          Probe.run("metadatum", in, perByte = 3000) {
+            metadatum(raw(in)).foreach { read =>
+              seen("metadatum", read.isRight)
+              read.foreach(m =>
+                req(
+                  metadatum(ConwayCodecs.metadatum.encodeUnchecked(m)).contains(Right(m)),
+                  "a metadatum written again does not read as itself"
+                )
+              )
+            }
+          }
+      ),
+      Target(
+        "block-written-again",
+        () => Corpus.blocks ++ Corpus.tricky,
+        probe("block-written-again") { b =>
+          Block.decodeShelley(b).toOption.collect { case s: Block.Shelley => s }.foreach { s =>
+            hit("block-written-again")
+            val again = Bytes.fromArray(Array(0x82.toByte, s.era.blockTag.toByte)) ++
+              ConwayCodecs.block.encodeUnchecked(s)
+            req(Block.decodeShelley(again) == Right(s), "a block written again reads otherwise")
+          }
+        }
+      )
+    )
+
   /** The relays of a pool registration and the big ledger peer snapshot file (G1.3): both are read
     * from data the node does not write. The seeds are real: the relays of the mainnet registration
     * in `fixtures/mainnet/shelley-pool-network-block.hex` and the other shapes of `StakePoolRelay`,
@@ -2304,7 +2345,8 @@ object Targets:
     )
 
   val all: Vector[Target] =
-    network ++ node ++ dijkstra ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++ snapshotTables ++
+    network ++ node ++ dijkstra ++ reencoded ++ ledgerPeers ++ mempackTxOut ++ snapshotMeta ++
+      snapshotTables ++
       leiosState ++ sclsFraming ++
       Vector(
         sclsValues,
