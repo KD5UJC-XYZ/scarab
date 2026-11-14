@@ -24,9 +24,15 @@ object AlonzoScriptRep:
   ] = CanEqual.derived
 
   /** `script = [0, native_script] / [1, plutus_v1] / [2, plutus_v2] / [3, plutus_v3]`, of a
-    * language no newer than `newest` (`decodeAlonzoScript`, `Alonzo/Scripts.hs:705-720`), as the
-    * flat decoder reads it ([[xyz.kd5ujc.scarab.ledger.Script.decode]]): the same checks in the
-    * same order, so the same bytes are refused with the same error.
+    * language no newer than `newest`, as the flat decoder reads it
+    * ([[xyz.kd5ujc.scarab.ledger.Script.decode]]): the same checks in the same order, so the same
+    * bytes are refused with the same error. The flat decoder differs from the reference's
+    * (`decodeAlonzoScript`, `Alonzo/Scripts.hs:705-720`) in which error two refusals report, not in
+    * what is refused: the reference reads a Plutus script's bytes before it refuses a language the
+    * era lacks (`decodePlutusScript`, `Alonzo/Scripts.hs:663-665`), and it reads tag 4 as Plutus
+    * V4, which no era here has, where the flat decoder reports an unknown tag. Both are tracked
+    * with the other differences in what a refusal reports (#796); this decoder keeps the flat
+    * decoder's, as the stage changes no refusal.
     *
     * @param native
     *   the era's native-script decoder, for `[0, native_script]`
@@ -42,6 +48,7 @@ object AlonzoScriptRep:
       plutus(kind)
         .toRight(LedgerDecodeError.UnsupportedLanguage(kind, newest))
         .flatMap(make => CborRead.bytes(bytes, field).map(b => PlutusScript(make(b))))
+    // `arrayN` read two items, so `xs(0)` and `xs(1)` are present
     CborRead.arrayN(n, 2, DecodeField.Script).flatMap { xs =>
       CborRead.uint(xs(0), DecodeField.ScriptType).flatMap {
         case t if t == 0 => native(xs(1)).map(NativeScript(_))

@@ -36,8 +36,8 @@ object NativeForm:
   * reference's `MultiSig era` and `Timelock era` are `MemoBytes` of their raw form at every level
   * (`newtype Timelock era = MkTimelock (MemoBytes (TimelockRaw era))`, `Allegra/Scripts.hs:253`),
   * so a sub-script read from a script has its own bytes (`getRequireAllOfTimelock`,
-  * `Allegra/Scripts.hs:432-433`). Each level's bytes are a window of the bytes it was read from,
-  * not a copy, so a script as deep as a block holds one copy of them.
+  * `Allegra/Scripts.hs:432-433`). Each level's bytes are a window of one copy the script owns, so a
+  * script as deep as a block holds one copy of them and keeps nothing else it was read with alive.
   *
   * Equal when the bytes and the scripts are (`instance Eq (MemoBytes t)`,
   * `libs/cardano-ledger-core/src/Cardano/Ledger/MemoBytes/Internal.hs:182-183`); the comparison of
@@ -74,6 +74,10 @@ object NativeScriptRep:
   /** A native script of language `F` from its encoding, read by the era decoder's native-script
     * reader ([[FlatNativeScript.decode]]), each level given the bytes it was read from. The walk
     * keeps its stack on the heap, as the decoder's does.
+    *
+    * The script owns one copy of its bytes, and each level's bytes are a window of that copy: a
+    * script kept from a transaction or a block does not keep the rest of it alive, and the levels
+    * of a deep script add no copies.
     */
   def decode[F <: NativeForm](n: Node)(using
       f: NativeForm.Of[F],
@@ -84,13 +88,24 @@ object NativeScriptRep:
       .flatMap(script =>
         TreeFold.foldE[(Node, FlatNativeScript), NativeScriptRep[F], FlatNativeScript.DecodeError](
           (n, script)
-        )(level)
+        )(level(Owned(n.original)))
       )
+
+  /** The root's bytes copied once, and each level's bytes as a window of the copy: a level's bytes
+    * are a window of the same input as the root's, at an offset from the root's start.
+    */
+  private final class Owned(root: Bytes):
+    private val copy = root.compact
+    def of(level: Bytes): Bytes =
+      if level.unsafeArray eq root.unsafeArray then
+        val from = level.unsafeOffset - root.unsafeOffset
+        copy.slice(from, from + level.size)
+      else level.compact
 
   // A level of a script the decoder has read: its sub-scripts are the items of the list it was read
   // from (index 1 of `AllOf` and `AnyOf`, 2 of `NOfK`), one per sub-script, in order, so the items
   // and the decoded sub-scripts pair one to one.
-  private def level[F <: NativeForm](at: (Node, FlatNativeScript)): Either[
+  private def level[F <: NativeForm](owned: Owned)(at: (Node, FlatNativeScript)): Either[
     FlatNativeScript.DecodeError,
     TreeFold.Step[(Node, FlatNativeScript), NativeScriptRep[F], FlatNativeScript.DecodeError]
   ] =
@@ -100,7 +115,7 @@ object NativeScriptRep:
         TreeFold.Step.Branch(
           nodes.zip(subs),
           (reps: Vector[NativeScriptRep[F]]) =>
-            Right(new NativeScriptRep[F](node.original, script, reps))
+            Right(new NativeScriptRep[F](owned.of(node.original), script, reps))
         )
       )
     script match
@@ -109,7 +124,9 @@ object NativeScriptRep:
       case FlatNativeScript.NOfK(_, subs) => branch(2, subs)
       case FlatNativeScript.Sig(_) | FlatNativeScript.InvalidBefore(_) |
           FlatNativeScript.InvalidHereafter(_) =>
-        Right(TreeFold.Step.Leaf(new NativeScriptRep[F](node.original, script, Vector.empty)))
+        Right(
+          TreeFold.Step.Leaf(new NativeScriptRep[F](owned.of(node.original), script, Vector.empty))
+        )
 
   private def items(
       node: Node,

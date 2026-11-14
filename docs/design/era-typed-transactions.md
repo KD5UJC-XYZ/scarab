@@ -121,8 +121,9 @@ representation parameterised by what differs, not by the era, and each era's typ
 Bodies and certificates that the reference does not share are plain case classes of their era: Shelley's,
 Alonzo's to Dijkstra's bodies, and Conway's and Dijkstra's certificates. Purposes follow the same rule. Each
 representation keeps the bytes it was decoded from; a native script keeps them at every level, as the
-reference's `MemoBytes` does, each a window of the bytes it was read from rather than a copy. The output representations also keep the value's encoded
-size and the reference-script re-read that the size rules and the reference-script fee use today.
+reference's `MemoBytes` does, each level a window of one copy the script owns. The output representations
+also keep the value's encoded size. Their reference script is the era's script, read again from the
+output's bytes when a stored output is read into the era, as the flat output's reference-script reads are.
 
 **Where the opaqueness ends.** A top-level opaque type is transparent only in the file that defines it. Each
 era therefore has one file of its types (`conway/ConwayTypes.scala`). That file defines the opaque types and
@@ -355,9 +356,14 @@ passes `check`.
 - Each era has its own native script, Plutus script and script: Babbage's Plutus script has V1 and V2 and
   Conway's V1 to V3, so a V3 script of Babbage does not compile. Babbage's and Conway's decoders read as the
   flat script decoder does and refuse what it refuses with the same error; a Babbage script carries into
-  Conway with its hash.
+  Conway with its hash. The flat decoder refuses what the reference refuses, but two of its refusals report
+  another error than the reference's: a language the era lacks before the script's bytes are read, and tag
+  4 as unknown rather than Plutus V4. They are tracked with the other differences in what a refusal reports
+  ([#796](https://github.com/KD5UJC-XYZ/scarab/issues/796)), and the era decoders keep the flat decoder's
+  until that work changes both.
 - A native script keeps the bytes of every level (`NativeScriptRep`), read through the flat decoder and a
-  second walk on the heap. The 5,388-level preprod script reads on a 256 KiB stack, and its hash is the flat
+  second walk on the heap. It owns one copy of its bytes and each level is a window of it, so a script kept
+  from a block does not keep the block alive. The preprod script that nests 5,383 `all` levels reads on a 256 KiB stack, and its hash is the flat
   decoder's.
 - The script classes run from `EraScript` to `AlonzoEraScript`, and the output classes from `EraTxOut` to
   `BabbageEraTxOut`. A class whose reference superclass is of another family names that instance as a

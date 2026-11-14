@@ -56,8 +56,11 @@ class EraCoreSuite extends munit.FunSuite:
     assertEquals(conway.getRequireAnyOf(t), None)
   }
 
-  test("a native script as deep as a preprod transaction reads on a small stack") {
-    // the witness set's native scripts (key 1) of the 5,388-level preprod transaction
+  test(
+    "a native script as deep as a preprod transaction reads on a small stack, owning its bytes"
+  ) {
+    // the witness set's native scripts (key 1) of the preprod transaction whose script nests 5,383
+    // `all` levels over a signature
     val scripts = CborRead.decode(PreprodDeepTx.bytes).toOption.get.value match
       case CborValue.Arr(xs) =>
         val set =
@@ -77,6 +80,13 @@ class EraCoreSuite extends munit.FunSuite:
       val flat = FlatScript.native(n, FlatNativeScript.Form.Timelock).toOption.get
       assertEquals(EraScript.conway.hashScript(EraScript.conway.fromNativeScript(typed)), flat.hash)
       assert(PreprodDeepTx.onSmallStack(typed == again))
+      // the script owns exactly its bytes, and a level's bytes are a window of them
+      val conway = EraScript.conway
+      val root = conway.originalBytes(conway.fromNativeScript(typed))
+      assertEquals(root.unsafeArray.length, root.size)
+      assert(root.size < PreprodDeepTx.bytes.size)
+      val child = conway.getRequireAllOf(typed).get.head
+      assert(conway.originalBytes(conway.fromNativeScript(child)).unsafeArray eq root.unsafeArray)
     }
   }
 
@@ -102,10 +112,9 @@ class EraCoreSuite extends munit.FunSuite:
     )
     // an unknown tag is refused alike
     val tag5 = node("8205420102")
-    assertEquals(
-      ConwayScript.decode(tag5).left.toOption,
-      FlatScript.decode(tag5, ScriptKind.PlutusV3).left.toOption.map(EraTxError.Decode(_))
-    )
+    val unknown = LedgerDecodeError.UnknownTag(xyz.kd5ujc.scarab.ledger.DecodeField.ScriptType, 5)
+    assertEquals(ConwayScript.decode(tag5), Left(EraTxError.Decode(unknown)))
+    assertEquals(FlatScript.decode(tag5, ScriptKind.PlutusV3).left.toOption, Some(unknown))
   }
 
   test("a Babbage Plutus script carried into Conway keeps its language, bytes and hash") {
