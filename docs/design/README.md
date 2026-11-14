@@ -12,6 +12,7 @@ decisions they rest on are [ADRs](../adr/README.md).
 | [Upstream conformance adapters](upstream-conformance.md) | As built for bounded adapters; remaining coverage tracked | [#49](https://github.com/KD5UJC-XYZ/scarab/issues/49) |
 | [Releases and repository hardening](releases.md) | Owner decisions accepted; implementation staged | [#161](https://github.com/KD5UJC-XYZ/scarab/issues/161), [#75](https://github.com/KD5UJC-XYZ/scarab/issues/75), [#76](https://github.com/KD5UJC-XYZ/scarab/issues/76) |
 | [SCLS binary interchange](scls-interchange.md) | Current; pinned profile, complete-base offline import/export and CLI implemented; full check, extended fuzz and restart passed | [#77](https://github.com/KD5UJC-XYZ/scarab/issues/77) |
+| [Complete diagnostic parity](diagnostic-parity.md) | Plan; required remaining implementation and proof obligations | [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796) |
 | [Multi-script Plutus results](script-results.md) | As built for aggregation/reconstruction; diagnostic presentation remains open | [#195](https://github.com/KD5UJC-XYZ/scarab/issues/195) |
 | [Bounded parallel Plutus](parallel-plutus.md) | Current; bounded execution and captured Preview acceptance complete | [#21](https://github.com/KD5UJC-XYZ/scarab/issues/21) |
 | [Incremental reward calculation](reward-pulser.md) | Implemented; typed resumable runtime and unchanged-reference oracle | [#135](https://github.com/KD5UJC-XYZ/scarab/issues/135) |

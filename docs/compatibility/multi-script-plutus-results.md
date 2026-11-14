@@ -13,4 +13,4 @@ Released-source unchanged API oracle: 25 cases, all eight three-script patterns 
 
 ## Explicitly unchecked or unconfirmed
 
-Exact failing-tag diagnostic wording/full rejection-byte parity is optional future work in [#208](https://github.com/KD5UJC-XYZ/scarab/issues/208), outside v0.2. The reference restricting API exposes consumed units on success only; native failure units are retained without an independent parity claim. API-only derived transactions make no signed admission claim.
+Complete diagnostic wording and rejection-byte parity is required by the [ADR 0001 amendment](../adr/0001-haskell-node-as-reference.md#amendment-2026-11-04-exact-diagnostic-and-refusal-parity). All 25 recorded aggregation rows now compare complete validity-tag predicate bytes, including explicit-error text; remaining evaluation-error categories are incomplete under [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796). The reference restricting API exposes consumed units on success only; native failure units are retained without an independent parity claim. API-only derived transactions make no signed admission claim.

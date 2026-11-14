@@ -158,6 +158,10 @@ scala code … I love the use of type parameters when I can use them"*.
 
 ## Conformance expectations
 
+- Diagnostic and refusal presentation follows the
+  [ADR 0001 diagnostic-parity amendment](docs/adr/0001-haskell-node-as-reference.md#amendment-2026-11-04-exact-diagnostic-and-refusal-parity).
+  Staged printer changes identify their covered categories and link the remaining inventory under
+  [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796).
 - Run original upstream cases without Scarab-specific expected-failure lists, field masks or
   numeric tolerances. Historical differences and transaction reachability do not justify an
   exclusion. A JVM-specific exception needs a minimal reproducer, evidence of the platform

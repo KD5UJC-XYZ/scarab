@@ -7,7 +7,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{LedgerFailure, PredicateFailure}
-import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
+import xyz.kd5ujc.scarab.node.ntc.{PredicateFailureCbor, RefusalPresentationError}
 import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
 import xyz.kd5ujc.scarab.network.LocalTxSubmissionServer
 
@@ -21,7 +21,7 @@ object LocalSubmission:
     * a witness, or a decoder or the rules that threw on the transaction.
     */
   type NoReply = LedgerFailure.Unavailable | LedgerFailure.Unverifiable | Rejection.InputDefect |
-    Rejection.RulesDefect
+    Rejection.RulesDefect | RefusalPresentationError
 
   extension (reason: NoReply)
     def message: String = reason match
@@ -29,6 +29,7 @@ object LocalSubmission:
       case f: LedgerFailure.Unverifiable => f.message
       case d: Rejection.InputDefect      => d.message
       case d: Rejection.RulesDefect      => d.message
+      case d: RefusalPresentationError   => d.message
 
   val ConwayEra = 6
 
@@ -82,14 +83,14 @@ object LocalSubmission:
           )
         )
       case Rejection.Ledger(LedgerFailure.Rejected(_, failures)) =>
-        Right(PredicateFailureCbor.applyTxError(failures.toChain.toVector))
-      case Rejection.Ledger(error) => Right(text(MempoolProblem.Ledger(error)))
+        PredicateFailureCbor.applyTxError(failures.toChain.toVector)
+      case Rejection.Ledger(error) => text(MempoolProblem.Ledger(error))
       case Rejection.AlreadyHeld(_) =>
-        Right(text(MempoolProblem.AllInputsSpent))
-      case Rejection.Malformed(cause) => Right(text(MempoolProblem.Malformed(cause)))
+        text(MempoolProblem.AllInputsSpent)
+      case Rejection.Malformed(cause) => text(MempoolProblem.Malformed(cause))
       case Rejection.Limits(_, failures) =>
-        Right(PredicateFailureCbor.applyTxError(failures.toList.toVector))
-      case full: Rejection.Full => Right(text(full.problem))
+        PredicateFailureCbor.applyTxError(failures.toList.toVector)
+      case full: Rejection.Full => text(full.problem)
       case Rejection.NoLedger(why) =>
         val cause = why match
           case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.InByron =>
@@ -98,9 +99,9 @@ object LocalSubmission:
             MempoolLedgerProblem.Earlier(era)
           case xyz.kd5ujc.scarab.node.read.ConwayView.Unavailable.Refused(error) =>
             MempoolLedgerProblem.Refused(error)
-        Right(text(MempoolProblem.NoLedger(cause)))
+        text(MempoolProblem.NoLedger(cause))
 
-  private def text(message: MempoolProblem): Bytes =
+  private def text(message: MempoolProblem): Either[RefusalPresentationError, Bytes] =
     PredicateFailureCbor.applyTxError(Vector(PredicateFailure.Mempool(message)))
 
   /** Service unavailability has no ledger rejection bytes. The transport closes this connection;
@@ -116,6 +117,10 @@ object LocalSubmission:
         case error: LedgerFailure.Unverifiable =>
           LocalTxSubmissionServer.Response.ServiceUnavailable(
             LocalTxSubmissionServer.Unavailable.Verification(error)
+          )
+        case error: RefusalPresentationError =>
+          LocalTxSubmissionServer.Response.ServiceUnavailable(
+            LocalTxSubmissionServer.Unavailable.Presentation(error)
           )
         // the decoder threw on the client's bytes: no reply, the client's connection is closed
         case Rejection.InputDefect(cause) => LocalTxSubmissionServer.Response.InputDefect(cause)

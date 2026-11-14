@@ -138,7 +138,7 @@
       },
       "limitations": {
         "issues": [
-          208
+          796
         ]
       },
       "page": "docs/compatibility/multi-script-plutus-results.md"
@@ -163,7 +163,7 @@
         "issues": [
           21,
           209,
-          208
+          796
         ]
       },
       "page": "docs/compatibility/bounded-parallel-plutus.md"
@@ -1375,7 +1375,7 @@
       },
       "limitations": {
         "issues": [
-          208,
+          796,
           44,
           286
         ]

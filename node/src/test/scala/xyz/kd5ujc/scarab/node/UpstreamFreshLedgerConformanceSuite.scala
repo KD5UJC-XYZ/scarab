@@ -132,7 +132,9 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
       case LedgerFailure.Rejected(_, causes) => causes.toChain.toVector
       case other                             => fail(s"expected typed native refusal, got $other")
     val answer = Cbor
-      .decode(PredicateFailureCbor.applyTxError(predicates))
+      .decode(
+        PredicateFailureCbor.applyTxError(predicates).fold(error => fail(error.message), identity)
+      )
       .fold(e => fail(e.message), identity)
     val ledgerFailures = array(array(array(answer).head)(1))
     val encoded = ledgerFailures.map { ledgerFailure =>
@@ -374,7 +376,11 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
     val cause = PredicateFailure.utxo(UtxoFailure.BadInputs(transaction.body.collateral.toSet))
     assertEquals(actual.swap.toOption, Some(LedgerFailure.Rejected(signal.id, cause)))
     val encoded = Cbor
-      .decode(PredicateFailureCbor.applyTxError(Vector(cause)))
+      .decode(
+        PredicateFailureCbor
+          .applyTxError(Vector(cause))
+          .fold(error => fail(error.message), identity)
+      )
       .fold(e => fail(e.message), identity)
     val ledgerFailure = array(array(array(encoded).head)(1)).head
     val utxoFailure = array(array(ledgerFailure)(1))(1)

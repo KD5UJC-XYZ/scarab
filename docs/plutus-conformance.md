@@ -138,7 +138,7 @@ It separates structural decoding from the unchanged reference validity predicate
 auxiliary fields are refused; top metadata labels become unique from protocol 9, while nested
 metadata map keys retain their historical duplicate behavior. The metadata walk is stack safe. The normal era-load driver
 also retains signed-reference auxiliary transactions and observed input/output effects separately
-from the API corpus. Exact diagnostic prose is outside both comparisons.
+from the API corpus. Those comparisons do not measure diagnostic prose; the required remaining parity work is tracked in [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796).
 
 The [historical corpus](../fixtures/reference/auxiliary-historical/README.md) (#290) records
 the same unchanged-reference observations for Shelley, Allegra and Mary at protocols 2-4 (504
@@ -167,7 +167,7 @@ restricting observations. Inputs mention all 101 released builtins and sample ar
 diagonal branches, byte-word boundaries, structured Data/list/array/Value sizes, and real crypto.
 The cost-shape inventory explicitly identifies unreleased names. These finite grids establish neither
 universal equality for all parameter vectors nor consumed-budget equality after failure; the reference
-restricting API does not expose failure consumption. Diagnostic prose remains outside the comparison.
+restricting API does not expose failure consumption. This dated comparison does not measure diagnostic prose; it does not satisfy the required remaining parity work in [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796).
 
 [#288](https://github.com/KD5UJC-XYZ/scarab/issues/288) adds an era-dispatched unchanged-Haskell
 [context corpus](../fixtures/reference/context-matrix/README.md): 309 cases, including 98 original
@@ -252,7 +252,7 @@ A future GraalVM Native Image experiment adds JNI reachability, library packagin
 initialization constraints; it does not remove the native crypto dependency. It is outside this
 correctness stage. See the official [JNI design](https://docs.oracle.com/en/java/javase/21/docs/specs/jni/design.html)
 and [Native Image JNI requirements](https://www.graalvm.org/latest/reference-manual/native-image/dynamic-features/JNI/).
-Exact diagnostic string parity remains optional [#208](https://github.com/KD5UJC-XYZ/scarab/issues/208).
+Exact diagnostic presentation is required by the [ADR 0001 amendment](adr/0001-haskell-node-as-reference.md#amendment-2026-11-04-exact-diagnostic-and-refusal-parity), with incomplete categories tracked in [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796).
 
 ## 3. Historical classification of the original 22 cases
 

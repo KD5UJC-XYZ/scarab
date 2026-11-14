@@ -7,7 +7,9 @@ The thin observer calls unchanged released `collectPlutusScriptsWithContext` sep
 `PlutusWithContext`: protocol major, language and original script, the complete ordered argument
 list/context, declared budget and cost model. Each collected script also executes through the
 unchanged released evaluator. Failure rows retain closed collector categories and original error
-CBOR. Diagnostic prose is deliberately not compared.
+CBOR. This matrix does not compare diagnostic prose; complete remaining presentation parity is
+required under [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796) and the
+[ADR 0001 amendment](../../../../docs/adr/0001-haskell-node-as-reference.md#amendment-2026-11-04-exact-diagnostic-and-refusal-parity).
 
 Pins: cardano-node11.1.3, cardano-ledger `f649f9751074d2ab3de033fc3912f29c9862c1f5`,
 Plutus1.70.0.0 `507cab8cf6192e5143f12be5b2d3005a2928dc6d`. The existing

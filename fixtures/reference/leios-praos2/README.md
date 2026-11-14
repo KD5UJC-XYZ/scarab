@@ -20,7 +20,10 @@ stored pool fractions independently of coin amounts, including a denominator bey
 
 `Praos2ReferenceSuite` compares every accepted protocol-state field, each refusal constructor and
 its domain arguments, and every timing result. Native diagnostic text is retained but its rendering
-is not compared. See the harness README for the exact projection and untested scope. The genesis
+is not compared in these observations. Complete remaining native presentation parity is required
+under [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796) and
+[the ADR 0001 amendment](../../../docs/adr/0001-haskell-node-as-reference.md#amendment-2026-11-04-exact-diagnostic-and-refusal-parity).
+See the harness README for the exact projection and untested scope. The genesis
 pool forecast is supplied as input; these results do not validate a Dijkstra ledger forecast or
 enable the node to follow or produce blocks on the testnet. Raw generated run/build artifacts are
 not published.

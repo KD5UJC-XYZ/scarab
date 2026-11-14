@@ -239,3 +239,10 @@ with aeson 2.2.5.0, plus 48 original controls and unchanged native decoder obser
 JSONTestSuite is Copyright (c) 2016 Nicolas Seriot, MIT licensed; the complete license is in
 fixtures/reference/native-json/JSONTestSuite-LICENSE. Original-byte/archive identities and the
 license source are in provenance.json. The observer and Scala implementation are Apache-2.0.
+
+fixtures/reference/plutus-diagnostics contains synthetic typed Data inputs and complete diagnostic
+text observed from unchanged released Plutus 1.70.0.0 and Cardano Ledger 1.21.0.0 APIs. The observer
+and input generator are original Apache-2.0 code. Plutus and Cardano Ledger are Apache-2.0; existing
+ledger licenses/notices are retained in fixtures/licenses and upstream package distributions. The
+printer follows prettyprinter 1.7.2 (BSD-2-Clause); its algorithms are reimplemented in Scala without
+copying Haskell implementation source. Package pins, source links and hashes accompany the corpus.

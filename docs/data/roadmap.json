@@ -1194,20 +1194,17 @@
       "issues": [
         195
       ],
-      "notes": "Unchanged-reference three-script oracle covers all pass/fail patterns in V1/V2/V3; serial/prepared paths now retain all typed results, logs and budgets, and reconstruct exact failure-context bytes. Exact diagnostic wording is optional future work in I4a (#208); see [the as-built result contract](design/script-results.md). Closed REF-11 #176 covers context collection."
+      "notes": "Unchanged-reference three-script oracle covers all pass/fail patterns in V1/V2/V3; serial/prepared paths now retain all typed results, logs and budgets, and reconstruct exact failure-context bytes. Complete diagnostic parity is required and incomplete in I4a (#796); see [the as-built result contract](design/script-results.md). Closed REF-11 #176 covers context collection."
     },
     {
       "id": "I4a",
       "section": "I",
-      "title": "Consider exact Haskell diagnostic wording if a concrete consumer needs it; no v0.2 requirement",
-      "detail": ", later",
-      "status": "folded",
-      "priority": null,
+      "title": "Complete exact diagnostic and refusal parity across reference-facing printers",
+      "priority": "P2",
       "issues": [
-        208
+        796
       ],
-      "folded_into": 491,
-      "notes": "Consider exact Haskell diagnostic wording if a concrete consumer needs it; no v0.2 requirement. Retain the existing typed causes and exact reconstruction payloads."
+      "notes": "Required diagnostic parity supersedes the historical #208 wording waiver and folded #491 scope. Retain typed causes and exact reconstruction payloads; complete constructor/exposure inventory, native oracles, lossless diagnostics, printers and raw refusals. See [the implementation plan](design/diagnostic-parity.md) and [ADR 0001](adr/0001-haskell-node-as-reference.md#amendment-2026-11-04-exact-diagnostic-and-refusal-parity)."
     },
     {
       "id": "J1",
