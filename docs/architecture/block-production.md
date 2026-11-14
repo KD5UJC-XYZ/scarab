@@ -94,7 +94,7 @@ the rows from `startLeadershipCheck` to `adoptedBlock`, and `stateInfo`):
    transactions leave the mempool, valid or not, and the slot ends.
 
 The forger needs no peer: like the reference it forges on its own chain. Only Praos with Conway transactions
-is forged: a TPraos era, Byron or the bootstrap mode is `ForgeError.UnsupportedProtocol`, the ledger view of a
+is forged: a TPraos era or Byron is `ForgeError.UnsupportedProtocol`, the ledger view of a
 slot in an epoch before the tip's is `LedgerViewUnavailable`, a protocol version below 9 is refused after the
 tick, and a body over the maximum size or a block that does not decode is `Assembly`. Each of these is a
 `forgeFailed` (counted in `failed` and `scarab_forge_failed_total`). The reference has none of these refusals

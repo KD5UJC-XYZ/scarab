@@ -48,6 +48,10 @@ final case class NodeState(ext: ExtLedgerState, extras: ConsensusExtras)
 //                     NodeExtras(plutus, utxo bookkeeping, rewardDraft [until J3.5])
 ```
 
+As built (#988): the bootstrap state and its lite ledger went with the bootstrap follow mode, which
+nothing had entered since J2.9; `ConsensusExtras` holds the follow state (`FollowState`, the era of
+the last block applied and the epoch verdicts) in their place, from snapshot format V11.
+
 - `NodeExtras` shrinks to node bookkeeping:
   - `rewardAmounts`, `prevParamsExplicit`, `pulserAbsent`, `snapshots` (pool residue), `poolDistribution`, `params` (`DroppedParams`) and `Residue` go away. The new rules hold Haskell's own fields, so a residue becomes impossible by type.
   - `Utxo.stake`/`ptrStake` move out of `Utxo` into `UTxOState.instantStake: InstantStake[E]`.

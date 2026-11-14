@@ -133,7 +133,7 @@ About 60 uses in main sources, in three kinds. Only the first is the hard requir
 2. **Carried opaquely**: `Codec.any` (`Codec.scala:199`), the Haskell state's items that are not
    modelled (`Envelope.scala:106`, `NodeTypeCodecs.scala:61,168`, `RewardCodecs.scala:93`,
    `UtxoCodecs.scala:62,66`), parameter-update values (`Tx.scala:252`, `Governance.scala:118`,
-   `BootstrapLedger.scala:257`), set deduplication by window (`CborRead.scala:58`), the 29 generated
+   `ParamUpdate.toBabbage`), set deduplication by window (`CborRead.scala:58`), the 29 generated
    `node.original`. These are slices of the input; an offset and a length describe them exactly.
 3. **Error location and message only**: `DecodeError.at` (`DecodeError.scala:89`), `Codec.scala:29,278`
    (`unsafeOffset`), `Codec.scala:404` (a duplicate key's text). These need the start offset, not

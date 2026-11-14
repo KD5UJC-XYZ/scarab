@@ -11,8 +11,8 @@ composition and `Follower` the consumer, both in `node`):
 | Part | Where | Role |
 |---|---|---|
 | `ImmutableStore[F]` | `ImmutableStore.scala` (`FileImmutableStore`) | Append-only raw blocks older than `k`: `append`, `sync`, `tip`, `get(point)`, `byBlockNo`, `stream(after)` |
-| `LedgerSnapshots[F, S]` | `LedgerSnapshots.scala` (`FileLedgerSnapshots`) | Atomic, checksummed snapshots of the full `MirrorState` at an immutable point; newest valid wins. The file's content is a `SnapshotFormat[F, S]` (`SnapshotV10`: the reference build of the state's layout, a `CheckpointBinding`, then the Haskell ledger state and a `SnapshotSidecar`); a write refusal is a value (`SnapshotRefusal`), while retired/unknown reads refuse restoration |
-| `SnapshotMigration[F]` | `SnapshotMigration.scala` | Registered migration structure and read-only version admission; historical V1–V4 payloads are retired, V5, V7, V8 and V9 migrate to V10, the current version |
+| `LedgerSnapshots[F, S]` | `LedgerSnapshots.scala` (`FileLedgerSnapshots`) | Atomic, checksummed snapshots of the full `MirrorState` at an immutable point; newest valid wins. The file's content is a `SnapshotFormat[F, S]` (`SnapshotV11`: the reference build of the state's layout, a `CheckpointBinding`, then the Haskell ledger state and a `SnapshotSidecar`); a write refusal is a value (`SnapshotRefusal`), while retired/unknown reads refuse restoration |
+| `SnapshotMigration[F]` | `SnapshotMigration.scala` | Registered migration structure and read-only version admission; historical V1–V4 payloads are retired, V5, V7, V8, V9 and V10 migrate to V11, the current version |
 | `VolatileStore[F]` | `VolatileStore.scala` | Append-only log of the volatile chain's updates (blocks, rollback markers); lets a restart continue at the previous tip |
 | `NetworkIdentityFile` | `NetworkIdentityFile.scala`, `NetworkIdentity.scala` | The network the database was created for (`<db>/network-identity`), checked on every open |
 | `SnapshotPolicy` | `SnapshotPolicy.scala` | When the immutable tip is snapshotted: `Aligned` (the Haskell node's default, a multiple of 40 k slots and at most one per 10 minutes) or `EverySlots` (`--snapshot-every`); the pure `due` |
@@ -69,17 +69,19 @@ built from the upstream encoding rules (`fixtures/eras`); no Byron Haskell datab
 **Snapshot format** (`<db>/snapshots/snapshot-<slot>-<blockNo>.bin`, the newest `--keep-snapshots`,
 default 2, are kept). A file is the content of a `SnapshotFormat` and the SHA-256 of that content;
 the store (`FileLedgerSnapshots`) does the framing, the atomic write and the pruning, and the format
-decides what the content is. Format version 10 (`SnapshotV10`, #826) is format version 9 with the reference build whose layout its Haskell state bytes are in recorded after the magic (`--reference-build`, `ReferenceBuild`); format version 9 (`SnapshotV9`, #54) is format version 8 with a sidecar schema whose eras include Dijkstra and whose protocol parameters have the fields Dijkstra adds; format version 8 (`SnapshotV8`, #726) is format version 7 (`SnapshotV7`, #395) with a sidecar schema that keeps the Byron update state's installer metadata; version 7 is the body of format version 5
+decides what the content is. Format version 11 (`SnapshotV11`, #988) is format version 10 with a sidecar that holds the follow state (`FollowState`: the era of the last block applied and the epoch verdicts of the headers) where version 10's held the bootstrap (ledger-lite) state, whose flag no writer set and whose lite ledger nothing read; format version 10 (`SnapshotV10`, #826) is format version 9 with the reference build whose layout its Haskell state bytes are in recorded after the magic (`--reference-build`, `ReferenceBuild`); format version 9 (`SnapshotV9`, #54) is format version 8 with a sidecar schema whose eras include Dijkstra and whose protocol parameters have the fields Dijkstra adds; format version 8 (`SnapshotV8`, #726) is format version 7 (`SnapshotV7`, #395) with a sidecar schema that keeps the Byron update state's installer metadata; version 7 is the body of format version 5
 (`SnapshotV5`, J2.9; versions 3 and 4, `SCRBSNP3` and `SCRBSNP4`, had the same layout and sidecars that held the node's chain-dependent state in its former shape and, in version 4, the old rules' flat state) behind the binding of the UTxO checkpoint the snapshot was written with:
 
 ```
-"SCRBSNPA" | build length u8 | build | binding length u32 | binding | sidecar length u32 | sidecar | Haskell state bytes | SHA-256 of all before
+"SCRBSNPB" | build length u8 | build | binding length u32 | binding | sidecar length u32 | sidecar | Haskell state bytes | SHA-256 of all before
 build = the --reference-build name, ASCII ("11.1")
 binding = schema fingerprint[8] | Codec of CheckpointBinding
 sidecar = schema fingerprint[8] | Codec of SnapshotSidecar
 ```
 
-A V9 file is the same without the build, under the magic `SCRBSNP9` (its Haskell bytes are in the
+A V10 file is the same under the magic `SCRBSNPA`, its sidecar in the frozen V9/V10 schema
+(`SnapshotSidecarV10`, with the bootstrap state, `FrozenSidecar`), a V9 file the same as a V10 one
+without the build, under the magic `SCRBSNP9` (its Haskell bytes are in the
 11.1 layout, the only one a V9 writer had), a V8 file the same as a V9 one under the magic `SCRBSNP8`, its sidecar in the frozen V8 schema
 (`SnapshotSidecarV8`, whose eras are Byron to Conway, `FrozenEra`), a V7 file the same under the
 magic `SCRBSNP7`, its sidecar in the frozen V5/V7 schema (`SnapshotSidecarV7`), and a V5 file the same as a V7 one from `sidecar length` on, under the magic
@@ -89,8 +91,9 @@ and a restore admits the checkpoint only when both still hold (`StateBacking.adm
 [ADR 0021](../adr/0021-ledger-state-residency-and-utxo-checkpoints.md)); a V5 file migrates to V7 with
 the `Legacy` binding and is restored with a `snapshotUnbound` warning, a V7 file to V8 with its
 sidecar rewritten in the V8 schema, a V8 file to V9 with its sidecar rewritten in the V9 one, and a
-V9 file to V10 with the 11.1 build recorded and everything else kept byte for byte. A V10 file
-recorded under a build whose layout is not the configured one is not decoded
+V9 file to V10 with the 11.1 build recorded and everything else kept byte for byte, and a V10 file
+to V11 with its sidecar rewritten in the V11 schema, the bootstrap state's flag and lite ledger
+dropped and its era and epoch verdicts kept. A V11 file recorded under a build whose layout is not the configured one is not decoded
 (`StorageError.ReferenceBuildMismatch`, or `UnknownReferenceBuild` for a name this build does not
 know): there is no conversion between builds, and the restore treats it as any snapshot that does
 not decode (Recovery, below).
@@ -223,11 +226,12 @@ never looks at the magic. The migration is one way: an older build does not
 know the newer formats (keep a copy of a database to run an older build on it).
 
 `SnapshotMigration` retains the generic `Migration` / `Migrate` registration for versioned
-conversions. V5, V7, V8, V9 and V10 snapshot payloads are supported: V5 files are migrated to V7 on open
+conversions. V5, V7, V8, V9, V10 and V11 snapshot payloads are supported: V5 files are migrated to V7 on open
 (`SnapshotV7.fromV5`, the body copied unchanged behind a `Legacy` binding), V7 files to V8
 (`SnapshotV8.fromV7`, the sidecar read in the frozen V7 schema and written in the V8 one), V8 files
-to V9 (`SnapshotV9.fromV8`, the sidecar read in the frozen V8 schema and written in the V9 one, the
-current schema) and V9 files to V10 (`SnapshotV10.fromV9`, the 11.1 reference build recorded). A V5
+to V9 (`SnapshotV9.fromV8`, the sidecar read in the frozen V8 schema and written in the V9 one), V9
+files to V10 (`SnapshotV10.fromV9`, the 11.1 reference build recorded) and V10 files to V11
+(`SnapshotV11.fromV10`, the sidecar read in the frozen V10 schema and written in the current one). A V5
 or V7 file whose Byron update state holds a software proposal or an application version, whose
 installer metadata it did not keep, is refused before any store opens with `ResyncRequired`
 (ADR 0006, amendment of 2026-11-03). A read-only identity verification
@@ -242,7 +246,7 @@ restore propagates typed incompatible-version errors rather than skipping them. 
 checkpoint-key conversion remains independent. `scripts/oracle/export.py` still reads both index
 magics.
 
-**Snapshot reader retirement (D10).** Current data uses V10 (V5, V7, V8 and V9 migrate to it); historical V1–V4 identifiers stay in
+**Snapshot reader retirement (D10).** Current data uses V11 (V5, V7, V8, V9 and V10 migrate to it); historical V1–V4 identifiers stay in
 `FileKind` so startup can distinguish a known retired format from an unknown one. Retirement requires
 verified current-format replacements for every active local and repository input and transition of
 local old writers. Originals and pinned historical conversion evidence remain recoverable outside

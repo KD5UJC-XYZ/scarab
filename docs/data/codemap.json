@@ -858,7 +858,7 @@
         "LedgerSnapshots",
         "UtxoStore",
         "RocksUtxoStore",
-        "SnapshotV10",
+        "SnapshotV11",
         "Migrate"
       ],
       "suites": [
@@ -868,7 +868,7 @@
         "UtxoStoreSuite",
         "LedgerSnapshotsSuite",
         "FormatMigrationSuite",
-        "SnapshotV10Suite"
+        "SnapshotV11Suite"
       ],
       "docs": [
         "docs/adr/0006-versioned-formats-migrate-on-open.md",
@@ -1460,6 +1460,7 @@
         "RewardSnapshotFixtureMain",
         "SnapshotCodecBench",
         "SnapshotV10FixtureMain",
+        "SnapshotV11FixtureMain",
         "SnapshotV7FixtureMain",
         "SnapshotV8FixtureMain",
         "SnapshotV9FixtureMain",

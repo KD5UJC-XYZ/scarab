@@ -96,9 +96,9 @@ Caveats:
   both. Details and numbers: [performance.md](../performance.md) section 13.
 
 **Checking a database before a node is moved to this build.** First inventory its snapshot versions.
-This procedure requires V5, V7, V8, V9 or V10 snapshots and their associated checkpoints (V5, V7, V8
-and V9 files migrate to V10 on open, #395, #726, #54, #826; a V9 file migrates as the `11.1`
-reference build, the only one whose layout it can hold). A V5 or V7 snapshot taken while the chain was in Byron whose
+This procedure requires V5, V7, V8, V9, V10 or V11 snapshots and their associated checkpoints (V5,
+V7, V8, V9 and V10 files migrate to V11 on open, #395, #726, #54, #826, #988; a V9 file migrates as
+the `11.1` reference build, the only one whose layout it can hold). A V5 or V7 snapshot taken while the chain was in Byron whose
 Byron update state holds a software proposal or an application version is refused with
 `ResyncRequired`: its installer metadata was not kept and cannot be recovered, so that chain has to
 be synced again from genesis (ADR 0006, amendment of 2026-11-03). V1–V4 inputs
@@ -139,7 +139,7 @@ What shows the current-format database opens: `snapshotRestored` with the `ancho
 snapshot; `replayStarted` from that anchor; `replayProgress` lines whose `tip` moves past it, with
 `replayed` growing by the progress interval each time and no `"event":"error"` (a `ValidationError ... BadInputsUTxO` right after the restore is this
 bug); no `snapshotRefused`, no `snapshotSkipped`, no `UtxoCheckpoint` error; for a V5 database, one
-`formatMigrated` from `V5` to `V10` and a `snapshotUnbound` for the restored file (it was written
+`formatMigrated` from `V5` to `V11` and a `snapshotUnbound` for the restored file (it was written
 before checkpoint binding); and, after the stop, a
 `snapshotWritten`/`shutdownSnapshot` at a block past the restored anchor. A replay from the newest
 snapshot of a mainnet follower that is a day behind covers some thousands of blocks, so
@@ -250,7 +250,7 @@ immutable chunk trio, must be extracted and match their digests. `--no-verify-an
 accepts an unauthenticated ledger instead; the result records `ancillaryVerified: false`.
 
 The command checks metadata, era, exact immutable block and recomputed instant stake, builds a fresh
-RocksDB checkpoint and a V10 snapshot bound to it in staging, and publishes only after validation. It never changes
+RocksDB checkpoint and a V11 snapshot bound to it in staging, and publishes only after validation. It never changes
 existing immutable files or overwrites ledger artifacts. JSON `importLedgerSnapshot` events report
 `done` with slot/hash, era, output count, lovelace, trust and `referenceBuild`, or a typed `error`. A following `follow`
 restores that checkpoint and replays local blocks after the snapshot. Use the same
@@ -276,8 +276,9 @@ The default is the newest snapshot; `--slot` selects an exact stored snapshot sl
 64-bit number. `--reference-build` names the build the output is for (`11.1` without it): the
 snapshot's recorded build must be of that build's layout, or the export is refused with a typed
 `error`; nothing is converted, so a snapshot imported under `leios-b004fe0c` is exported under it.
-The command checks the existing V10 file's checksum and schema (a
-V9 file of a database this build has not opened yet is read as `11.1` bytes), preserves its
+The command checks the existing V11 file's checksum and schema (a
+V9 or V10 file of a database this build has not opened yet is read as its migration would write it,
+in memory, a V9 file as `11.1` bytes), preserves its
 Haskell state bytes, admits its checkpoint against the snapshot's binding and reads it without
 recovery or migration. A state
 with recorded gaps, a Byron state, an unsettled checkpoint or a missing selection is refused.
@@ -323,5 +324,5 @@ SCLS omits restart and consensus information. Import therefore compares every na
 with the explicit same-point complete base, preserves unrepresented fields, validates the new native
 files, and publishes only after the target's full identity and immutable block match. The target
 must have no existing UTxO, snapshots, volatile or ledger artifacts. This is interchange against an
-explicit base, not standalone bootstrap. Both commands retain native (V10) restart snapshots, stored CBOR,
+explicit base, not standalone bootstrap. Both commands retain native (V11) restart snapshots, stored CBOR,
 and the existing Haskell import/export tools. JSON events report the point/count/path or typed error.

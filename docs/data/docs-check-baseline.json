@@ -1016,12 +1016,6 @@
   {
    "kind": "line-citation",
    "path": "docs/design/memory-lean-decoding.md",
-   "key": "BootstrapLedger.scala:257",
-   "count": 1
-  },
-  {
-   "kind": "line-citation",
-   "path": "docs/design/memory-lean-decoding.md",
    "key": "ByronAddress.scala:138",
    "count": 1
   },
