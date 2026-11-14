@@ -23,5 +23,6 @@ for _ in $(seq "$CHECKS"); do
   if agree "$now" 0; then together=true; else together=false; fi
   sometimes "$ALL_AGREE" "$together" "$details"
   check_divergence
+  check_forks
   prev=$now
 done

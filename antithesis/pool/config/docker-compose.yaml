@@ -90,6 +90,7 @@ services:
     volumes:
       - ipc-h2:/ipc/h2
       - ipc-h3:/ipc/h3
+      - env:/env:ro
       - ipc-s1:/ipc/s1
       - logs:/logs:ro
 

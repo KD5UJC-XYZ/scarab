@@ -6,3 +6,4 @@ set -uo pipefail
 source /opt/at/lib.sh
 
 check_divergence
+check_forks
