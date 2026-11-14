@@ -897,7 +897,8 @@ migration path from V8 stay. An approved change is level 3, and a new version fo
   format code changes, so the change reaches the surface. `scripts/pr_policy.py` refuses a pull request that changes
   the manifest or the guard unless its title, its paths and its "Storage format change" section are as above, and
   raises its level floor to 3. That the owner gave the answer in the chat session is review only: no tool can see it.
-- **Why:** the owner's rulings of 2026-11-14, in the chat session doing this change (expletives elided): *"UNTIL WE
+- **Why:** the owner's rulings of 2026-11-14, in the chat session doing the work of
+  [PR #1008](https://github.com/KD5UJC-XYZ/scarab/pull/1008) (expletives elided): *"UNTIL WE
   ARE OUT OF PRE_RELEASE we should not be moving the […] storage format every […] day"*; *"I need EXPLICIT […]
   APPROVAL for new storage formats, like a […] timestamp of when the question was asked"*; *"the agent cannot hide
   that it is creating a new format, IT MUST SURFACE that it wants to create a new format and ask for that approval

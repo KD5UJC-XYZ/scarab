@@ -81,7 +81,8 @@ resync; none is repaired by hand. The procedure is in [Storage migrations](../st
 
 ## Amendment (2026-11-14): formats are frozen until Scarab leaves pre-release
 
-Decided by the owner on 2026-11-14, in the chat session doing the work of this amendment
+Decided by the owner on 2026-11-14, in the chat session doing the work of
+[PR #1008](https://github.com/KD5UJC-XYZ/scarab/pull/1008)
 ([decisions register](../decisions.md#genesis-storage-and-keys)). Format changes are suspended until Scarab leaves
 pre-release. Deployed stores use V8 only; V9 and V10 are not deployed.
 
