@@ -99,7 +99,7 @@ class EraTxSpikeSuite extends munit.FunSuite:
     assert(wrongEra.nonEmpty, wrongEra)
     // and only the era's package or decoder makes one
     val noConstructor = compileErrors(
-      "def f(r: BabbageTxOutRep): ConwayTxOut = r"
+      "def f(r: BabbageTxOutRep[xyz.kd5ujc.scarab.ledger.era.conway.ConwayScript]): ConwayTxOut = r"
     )
     assert(noConstructor.nonEmpty, noConstructor)
   }
