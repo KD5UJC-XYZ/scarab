@@ -422,7 +422,8 @@ def first_difference(a, b):
 def ask_raw(session, query):
     """The complete raw bytes of the answer to `query` on an acquired session."""
     session._send(7, ntcquery.enc([3, query]))
-    ntcquery.query_result(session._recv(7))
+    session._recv(7)
+    ntcquery.result_offset(session.last_raw)
     return session.last_raw
 
 
@@ -456,15 +457,21 @@ def acquire_refusal(error):
     return None
 
 
+class AtOrigin(RuntimeError):
+    """The anchor's chain point is Origin: valid protocol data (`[]`), but no block to compare a state at."""
+
+
 def failure_kind(error):
     """How a same-point comparison ended without answers: `refused` (a well-formed refusal past its bounds, or a
-    point too old), `malformed` (a reply the protocol does not allow, or a sampled point that is not a block point),
-    `transient` (the node or its connection: a closed connection, a deadline, a cut message, an error of the
-    session), or `defect` (anything else, an error of the harness)."""
+    point too old), `malformed` (a reply the protocol does not allow, by message shape and CBOR types), `origin` (the
+    anchor sampled at Origin), `transient` (the node or its connection: a closed connection, a deadline, a cut
+    message, an error of the session), or `defect` (anything else, an error of the harness)."""
     if isinstance(error, ntcquery.AcquireRefused):
         return "refused"
     if isinstance(error, ntcquery.MalformedReply):
         return "malformed"
+    if isinstance(error, AtOrigin):
+        return "origin"
     if isinstance(error, (RuntimeError, EOFError, OSError, ntcquery.Deadline, ntcquery.Incomplete)):
         return "transient"
     return "defect"
@@ -475,8 +482,10 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
     one session per node acquired at one point, and judged on every byte (`ledgercompare`). The point is the volatile
     tip of `anchor`: the Scala node's when it follows, as every block it holds is the reference's; the reference's
     when the Scala node forges too, as a block it has just forged may not have reached the reference yet. The other
-    node acquires exactly that point, so both answers are of one state; a sampled point that is not a block point
-    (`block_point`) ends the comparison. `scala_socket` is the Scala node's node-to-client socket
+    node acquires exactly that point, so both answers are of one state. The sampled point is judged on its bytes
+    (`ntcquery.chain_point`): anything but a block point ends the comparison, Origin too (valid protocol data, `[]`,
+    but no block to compare a state at). Every reply is judged on its bytes as well (`ntcquery.acquire_reply`,
+    `ntcquery.result_offset`). `scala_socket` is the Scala node's node-to-client socket
     (`scala-sock/node.socket` of the run dir by default, the socket directory of the follower `site`).
 
     The acquisitions are bounded. The other node is asked for a point at most `attempts` times, `SAME_POINT_PAUSE`
@@ -521,10 +530,12 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
             row = {"pick": pick, "stage": "anchor", "node": anchor, "point": None, "outcome": "acquired"}
             history.append(row)
             now["stage"] = "anchor-point"
-            point = session.query_raw([3])
-            now["point"], row["point"] = point, point_json(point)
-            if not block_point(point):
-                raise ntcquery.MalformedReply(f"the anchor's chain point is not a block point: {point!r}"[:300])
+            decoded = session.query_raw([3])
+            now["point"], row["point"] = decoded, point_json(decoded)
+            # the point is judged on its own bytes, as a block point the reference encodes one
+            point = ntcquery.chain_point(session.last_raw)
+            if point is None:
+                raise AtOrigin("the anchor is at Origin: no block to compare a state at")
             now["stage"] = "anchor-query"
             return point, {label: ask_raw(session, q) for label, q in queries.items()}
 

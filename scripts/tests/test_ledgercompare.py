@@ -246,7 +246,9 @@ class WholeStateAnchorTest(unittest.TestCase):
                     raise ntcquery.AcquireRefused(1)
 
             def query_raw(self, query):
-                return [test.tip, b"\x07" * 32]
+                point = [test.tip, b"\x07" * 32]
+                self.last_raw = cbor.enc([4, point])
+                return point
 
             def _send(self, protocol, payload):
                 pass
@@ -350,7 +352,9 @@ class WholeStateForkTest(unittest.TestCase):
                     raise outcome
 
             def query_raw(self, query):
-                return test.point(test.tip) if point is ... else point
+                answered = test.point(test.tip) if point is ... else point
+                self.last_raw = cbor.enc([4, answered])
+                return answered
 
             def _send(self, protocol, payload):
                 pass
@@ -359,7 +363,11 @@ class WholeStateForkTest(unittest.TestCase):
                 state = scala_answer if self.side == "scala" and scala_answer is not None else answer(nes())
                 self.last_raw = utxo if self.asked else state
                 self.asked += 1
-                return [4, None] if query_reply is None else query_reply(self.side, self.asked)
+                instead = None if query_reply is None else query_reply(self.side, self.asked)
+                if instead is not None:  # the message the node sends instead of the answer
+                    self.last_raw = cbor.enc(instead)
+                    return instead
+                return [4, None]
         with self.mock.patch.object(self.compare.ntcquery, "LocalStateQuery", Session), \
                 self.mock.patch.object(self.compare.util, "data_root", lambda name: self.root), \
                 self.mock.patch.object(self.compare, "ref", lambda name: "ref-container"), \
@@ -448,7 +456,7 @@ class WholeStateForkTest(unittest.TestCase):
         self.assertEqual(self.outcomes(result), [("anchor", None, "acquired", None)])
 
     def test_a_query_that_fails_after_the_point_was_read_keeps_the_point(self):
-        result = self.run_whole([None], query_reply=lambda side, asked: [5] if side == "scala" else [4, None])
+        result = self.run_whole([None], query_reply=lambda side, asked: [5] if side == "scala" else None)
         self.assertEqual((result["kind"], result["stage"], result["point"]["slot"]), ("malformed", "anchor-query", 7))
         self.assertEqual(self.outcomes(result), [("anchor", 7, "acquired", None)])
 
@@ -510,6 +518,28 @@ class TransportRepliesTest(unittest.TestCase):
         for reply in ([2, True], [1, 999], [2, []], [2, 5], [True], [1, None], [3], 7, [2]):
             with self.subTest(reply=reply), self.assertRaises(ntcquery.MalformedReply):
                 self.session(reply).acquire([7, bytes(32)])
+
+    # bytes the decoder reads as `[1]` or `[2, 1]`, but that are not the definite array of unsigned words the
+    # reference's codec reads: a simple value, a bignum, set tag 258, an indefinite array
+    TYPE_ERASED = {"81e1": "an array holding simple(1)", "8202e1": "a failure whose code is simple(1)",
+                   "81c24101": "a bignum 1", "d901028101": "tag 258 around [1]", "9f01ff": "an indefinite [1]"}
+
+    def test_a_reply_is_judged_on_its_bytes_not_on_what_the_decoder_makes_of_them(self):
+        for raw, what in self.TYPE_ERASED.items():
+            with self.subTest(raw=raw, what=what), self.assertRaises(ntcquery.MalformedReply):
+                self.session(bytes.fromhex(raw)).acquire([7, bytes(32)])
+        for raw in ("9f0400ff", "82c2410400", "8104"):
+            with self.subTest(raw=raw), self.assertRaises(ntcquery.MalformedReply):
+                self.session(bytes.fromhex(raw)).query_raw([3])
+
+    def test_a_chain_point_is_judged_on_its_bytes(self):
+        block = cbor.enc([4, [7, b"\x07" * 32]])
+        self.assertEqual(ntcquery.chain_point(block), [7, b"\x07" * 32])
+        self.assertIsNone(ntcquery.chain_point(cbor.enc([4, []])), "Origin, valid protocol data")
+        for raw in ("8204f6", "820482c241075820" + "07" * 32, "82049f075820" + "07" * 32 + "ff",
+                    "820482075f5820" + "07" * 32 + "ff", "820482075819" + "07" * 31, block.hex() + "00"):
+            with self.subTest(raw=raw[:24]), self.assertRaises(ntcquery.MalformedReply):
+                ntcquery.chain_point(bytes.fromhex(raw))
 
     def test_only_a_result_answers_a_query(self):
         self.assertEqual(self.session([4, [7, b"\x01" * 32]]).query_raw([3]), [7, b"\x01" * 32])
@@ -589,6 +619,24 @@ class WholeStateTransportTest(unittest.TestCase):
         result, _ = self.run_whole([self.anchor(self.POINT7), frames([2, []]), self.anchor(self.POINT8),
                                     self.other([1])], reselections=2)
         self.assertEqual((result.get("kind"), result.get("stage")), ("malformed", "other-acquire"), result)
+
+    def test_an_acquire_reply_the_decoder_would_read_as_one_ends_the_comparison(self):
+        # before, `81e1` was an acquisition with two matched answers, and `8202e1` a refusal, a new sample and a match
+        for raw in TransportRepliesTest.TYPE_ERASED:
+            with self.subTest(raw=raw):
+                result, opened = self.run_whole([self.anchor(self.POINT7), self.other(bytes.fromhex(raw)),
+                                                 self.anchor(self.POINT8), self.other([1])], reselections=2)
+                self.assertEqual(opened, 2)
+                self.assertEqual((result.get("kind"), result.get("stage")), ("malformed", "other-acquire"), result)
+
+    def test_a_chain_point_with_a_tagged_slot_ends_the_comparison(self):
+        tagged = bytes.fromhex("820482c241075820") + b"\x07" * 32
+        result, opened = self.run_whole([frames([1], tagged, answer(nes()), cbor.enc([4, [{}]])), self.other([1])])
+        self.assertEqual((opened, result.get("kind"), result.get("stage")), (1, "malformed", "anchor-point"), result)
+
+    def test_an_anchor_at_origin_has_no_block_to_compare_at(self):
+        result, opened = self.run_whole([self.anchor([]), self.other([1])], reselections=2)
+        self.assertEqual((opened, result.get("kind"), result.get("stage")), (1, "origin", "anchor-point"), result)
 
     def test_an_anchor_without_a_block_point_is_never_compared_with_the_other_nodes_tip(self):
         # a null point would have the other node acquire its own volatile tip: no same-point comparison at all
