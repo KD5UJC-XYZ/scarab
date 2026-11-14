@@ -1076,8 +1076,6 @@ a measurement, the reference, an issue) is cited as it is.
 - **Scope:** [AGENTS.md](../AGENTS.md), [CONTRIBUTING.md](../CONTRIBUTING.md), this document, the
   [playbooks](playbooks/README.md), the pull request template and the issue templates.
 - **Exceptions:** the historical records (rows of the decisions register as they were merged, the evidence logs,
-  the findings), and the decision text of an accepted ADR, which is amended, not rewritten ([DOC-1](#doc-1)). The
-  record of an approval in a pull request and in the storage format manifest ([FMT-1](#fmt-1)) holds the question
-  and the answer verbatim: it is evidence, not an instruction.
+  the findings).
 - **Enforcement:** review only.
 - **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#process)).
