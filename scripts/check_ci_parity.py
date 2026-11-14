@@ -20,7 +20,9 @@ Every workflow under `.github/workflows` is read. For each one that a push to `m
   a local action, which it cannot read. A step that runs differently must not write `$GITHUB_ENV` or `$GITHUB_PATH`
   for the steps after it. What the scripts and actions a step runs do beyond what the workflow shows is beyond the
   guard. A step that the pull request's run skips because an earlier step or job failed is not compared: that run
-  is already red;
+  is already red, unless the job continues on error, and then the steps after one that runs differently are
+  compared with their status functions taken to depend on the event. Names of contexts, properties, jobs and
+  steps are read ignoring case, as the runner reads them;
 - the concurrency of such a workflow, and of each job that can run on the push, must neither cancel a push run
   (`cancel-in-progress` false on push) nor let another run take its group: GitHub replaces a waiting run with a
   newer one of the same group even without `cancel-in-progress`, and groups are shared across the repository's
@@ -528,7 +530,7 @@ class _ExpressionParser:
                 self.pos += 1
                 if self.pos >= len(self.tokens) or self.tokens[self.pos][0] != "name":
                     raise ReadError(f"expression {self.source!r}: expected a property name")
-                node = ("get", node, ("literal", self.tokens[self.pos][1]))
+                node = ("get", node, ("literal", self.tokens[self.pos][1].lower()))
                 self.pos += 1
             elif op == "[":
                 self.pos += 1
@@ -562,7 +564,8 @@ class _ExpressionParser:
                         args.append(self.nested(self.disjunction))
                 self.take(")")
                 return ("call", text.lower(), tuple(args))
-            return ("context", text)
+            # Context and property names are read ignoring case, as the runner reads them.
+            return ("context", text.lower())
         if text == "(":
             node = self.nested(self.disjunction)
             self.take(")")
@@ -597,7 +600,8 @@ class Event:
 
     `github` and `payload` hold the fields the event fixes; any other is Unknown, or VARIABLE when `variables` is
     set (used for a pull request's concurrency group, whose text is what matters). The jobs and steps named in
-    `tainted_needs` and `tainted_steps` ran differently on the two events, so what they produced may differ.
+    `tainted_needs` and `tainted_steps` ran differently on the two events, so what they produced may differ; with
+    `status_tainted`, so may success(), failure() and cancelled().
     """
     name: str
     github: Mapping[str, Value]
@@ -605,6 +609,7 @@ class Event:
     variables: bool = False
     tainted_needs: frozenset[str] = frozenset()
     tainted_steps: frozenset[str] = frozenset()
+    status_tainted: bool = False
 
 
 PUSH_TO_MAIN = Event("push", {"event_name": "push", "ref": "refs/heads/main", "ref_name": "main",
@@ -656,6 +661,8 @@ def evaluate(tree: tuple, event: Event) -> Value:
 
 
 def _property(tree: tuple, base: Value, key: Value, event: Event) -> Value:
+    if isinstance(key, str) and not _symbolic(key) and not isinstance(base, (dict, list)):
+        key = _identifier(key)
     if isinstance(base, Unknown) and base.tree in (("context", "needs"), ("context", "steps")) and isinstance(key, str):
         tainted = event.tainted_needs if base.tree == ("context", "needs") else event.tainted_steps
         return Unknown(("get", base.tree, _tree(key)), key in tainted)
@@ -689,7 +696,8 @@ def _call(tree: tuple, event: Event) -> Value:
     if name == "always" and not args:
         return True
     if name in STATUS_FUNCTIONS or name == "hashfiles" or any(isinstance(arg, Unknown) for arg in args):
-        return Unknown(("call", name, tuple(_tree(arg) for arg in args)), any(_is_event(arg) for arg in args))
+        return Unknown(("call", name, tuple(_tree(arg) for arg in args)),
+                       any(_is_event(arg) for arg in args) or name in STATUS_FUNCTIONS and event.status_tainted)
     if name == "format" and args and isinstance(args[0], str):
         def argument(match: re.Match[str]) -> str:
             if match.group(1) is None:
@@ -862,7 +870,8 @@ def _reads_event_tree(tree: tuple) -> bool:
     nodes = list(_nodes(tree))
     reads = [node for node in nodes if node[0] == "get" and node[1] == ("context", "github")]
     whole = sum(1 for node in nodes if node == ("context", "github")) > len(reads)
-    return whole or any(node[2][0] != "literal" or node[2][1] in EVENT_FIELDS for node in reads)
+    return whole or any(node[2][0] != "literal" or not isinstance(node[2][1], str)
+                        or _identifier(node[2][1]) in EVENT_FIELDS for node in reads)
 
 
 def _children(tree: tuple) -> tuple:
@@ -1064,17 +1073,21 @@ class Uniformity:
     jobs: Mapping[str, bool]
 
     def needs_scope(self, job: Mapping[str, object]) -> frozenset[str]:
-        return frozenset(need for need in needs(job) if not self.jobs[need])
+        return frozenset(_identifier(need) for need in needs(job) if not self.jobs[need])
 
 
 def uniformity(jobs: Mapping[str, dict]) -> Uniformity:
+    """A job runs alike when what it needs runs alike, it can run on both events or on neither, its `if` holds
+    alike, it reads nothing that differs, and all its steps run alike."""
     result: dict[str, bool] = {}
+    on_push, on_pull = can_run(jobs, PUSH_TO_MAIN), can_run(jobs, PULL_REQUEST_TO_MAIN)
     for name in _job_order(jobs):
         job = jobs[name]
-        tainted = frozenset(need for need in needs(job) if not result[need])
+        tainted = frozenset(_identifier(need) for need in needs(job) if not result[need])
         push = _scoped(PUSH_TO_MAIN, tainted_needs=tainted)
         pull = _scoped(PULL_REQUEST_TO_MAIN, tainted_needs=tainted)
-        alike = ("uses" not in job and same_condition(condition(job.get("if")), push, pull)
+        alike = (not tainted and on_push[name] == on_pull[name] and "uses" not in job
+                 and same_condition(condition(job.get("if")), push, pull)
                  and not any(_reads_run_dependent(text, push) for key, value in job.items()
                              if key not in ("if", "concurrency", "steps") for text in expressions(value)))
         result[name] = alike and all(alike_steps(_steps(name, job), push, pull))
@@ -1098,8 +1111,8 @@ def alike_steps(steps: list[dict], push: Event, pull: Event) -> list[bool]:
                  and not any(_reads_run_dependent(text, scoped_push) for key, value in step.items() if key != "if"
                              for text in expressions(value)))
         result.append(alike)
-        if not alike and isinstance(step.get("id"), str):
-            tainted.add(step["id"])
+        if not alike and "id" in step:
+            tainted.add(_identifier(step["id"]))
     return result
 
 
@@ -1118,9 +1131,16 @@ def reads_tainted(text: str, scope: Event) -> bool:
                 continue
             reads = [node for node in nodes if node[0] == "get" and node[1] == ("context", context)]
             if sum(1 for node in nodes if node == ("context", context)) > len(reads) or any(
-                    node[2][0] != "literal" or node[2][1] in tainted for node in reads):
+                    node[2][0] != "literal" or _identifier(node[2][1]) in tainted for node in reads):
                 return True
     return False
+
+
+def _identifier(name: object) -> str:
+    """A job, step or property name as the runner matches it: ignoring case; only ASCII names are read."""
+    if not isinstance(name, str) or not name.isascii():
+        raise ReadError(f"name {name!r} is not read")
+    return name.lower()
 
 
 def _local_action(step: Mapping[str, object]) -> bool:
@@ -1181,19 +1201,26 @@ def job_problems(where: str, job: Mapping[str, object], on_pull: bool, push: Eve
     problems += [f"{where}: `{key}` reads the event, or what ran differently on the two events"
                  for key, value in job.items() if key not in ("if", "concurrency", "steps")
                  and any(_reads_run_dependent(text, push) for text in expressions(value))]
-    return problems + step_findings(where, _steps(where, job), push, pull)
+    continues = template(job.get("continue-on-error", False), push)
+    return problems + step_findings(where, _steps(where, job), push, pull, _undecided(continues) or _truthy(continues))
 
 
 def step_findings(where: str, steps: list[dict], push: Event = PUSH_TO_MAIN,
-                  pull: Event = PULL_REQUEST_TO_MAIN) -> list[str]:
+                  pull: Event = PULL_REQUEST_TO_MAIN, continues_on_error: bool = False) -> list[str]:
+    """The steps' problems. A pull request's run that a step which runs differently fails is red, so the steps it
+    then skips need no comparison, unless the job continues on error and stays green: then what follows such a
+    step depends on the event through its status functions."""
     findings = []
     alike = alike_steps(steps, push, pull)
     tainted: set[str] = set()
+    status_tainted = False
     for number, step in enumerate(steps, start=1):
-        scoped_push = _scoped(push, tainted_steps=frozenset(tainted))
-        scoped_pull = _scoped(pull, tainted_steps=frozenset(tainted))
-        if not alike[number - 1] and isinstance(step.get("id"), str):
-            tainted.add(step["id"])
+        scope = dict(tainted_steps=frozenset(tainted), status_tainted=status_tainted)
+        scoped_push, scoped_pull = _scoped(push, **scope), _scoped(pull, **scope)
+        if not alike[number - 1]:
+            status_tainted = continues_on_error
+            if "id" in step:
+                tainted.add(_identifier(step["id"]))
         label = _step_label(where, number, step)
         verdict = compare_condition(condition(step.get("if")), scoped_push, scoped_pull)
         if not verdict.on_push:

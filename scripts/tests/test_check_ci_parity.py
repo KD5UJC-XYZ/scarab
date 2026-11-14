@@ -262,6 +262,26 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(problems(workflow(select + env)), [
             f"{WORKFLOW}: job check: `env` reads the event, or what ran differently on the two events"])
 
+    def test_what_ran_differently_taints_what_needs_it_and_names_ignore_case(self):
+        chain = (job("a", "if: github.event_name == 'pull_request'\n") + job("b", "needs: a\n")
+                 + job("check", "needs: b\nif: always() && needs.b.result != 'success'\n"))
+        self.assertEqual(problems(workflow(chain)), [
+            f"{WORKFLOW}: job check: its `if` may hold on a push to main where it does not on a pull request"])
+        steps = ("- id: a\n  if: github.event_name == 'pull_request'\n  run: echo skip=true >> \"$GITHUB_OUTPUT\"\n"
+                 "- if: steps.A.outputs.skip != 'true'\n  run: make check\n")
+        self.assertEqual(problems(workflow(job(steps=steps))), [
+            f"{WORKFLOW}: job check, step 2 (run): its `if` may hold on a push to main where it does not on a pull "
+            "request"])
+        self.assertEqual(problems(workflow(job(steps="- run: echo ${{ GitHub.EVENT_NAME }}\n"))), [
+            f"{WORKFLOW}: job check, step 1 (run): `run` reads the event, or what ran differently on the two events"])
+
+    def test_a_job_that_continues_on_error_compares_the_steps_after_one_that_ran_differently(self):
+        steps = "- if: github.event_name == 'pull_request'\n  run: exit 1\n- run: make check\n"
+        self.assertEqual(problems(workflow(job(steps=steps))), [], "the pull request's run is red at the first step")
+        self.assertEqual(problems(workflow(job(lines="continue-on-error: true\n", steps=steps))), [
+            f"{WORKFLOW}: job check, step 2 (run): its `if` may hold on a push to main where it does not on a pull "
+            "request"])
+
     def test_failure_handlers_can_run_whatever_their_needs(self):
         jobs = (job("a", steps="- run: exit 1\n") + job("b", "needs: a\nif: false\n")
                 + job("check", "needs: [a, b]\nif: failure() && github.event_name == 'push'\n"))
