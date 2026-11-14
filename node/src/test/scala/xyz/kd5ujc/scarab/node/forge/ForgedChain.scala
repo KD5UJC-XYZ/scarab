@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.node.ConfigSettings
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import xyz.kd5ujc.scarab.ledger.ChainError
 import cats.effect.{IO, Ref}
@@ -401,6 +402,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
             config,
             globals,
             xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
+            ConfigSettings().protocolVersion,
             p.creds,
             follower,
             mempool,
