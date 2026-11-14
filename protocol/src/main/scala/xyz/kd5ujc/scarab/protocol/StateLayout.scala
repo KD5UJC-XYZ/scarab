@@ -20,10 +20,13 @@ enum StateLayout derives CanEqual:
   case Leios
 
 object StateLayout:
-  /** The layout `build` writes. */
-  def of(build: ReferenceBuild): StateLayout = build match
-    case ReferenceBuild.Release11_1   => Node11_1
-    case ReferenceBuild.LeiosB004fe0c => Leios
+  /** The layout `build` writes, or the refusal of a build whose layout this build does not read or
+    * write yet ([[ReferenceBuildNotYet.Layout]]): 11.2's is neither of these.
+    */
+  def of(build: ReferenceBuild): Either[ReferenceBuildNotYet, StateLayout] = build match
+    case ReferenceBuild.Release11_1   => Right(Node11_1)
+    case ReferenceBuild.Release11_2   => Left(ReferenceBuildNotYet.Layout(build))
+    case ReferenceBuild.LeiosB004fe0c => Right(Leios)
 
   given Eq[StateLayout] = Eq.fromUniversalEquals
   given Show[StateLayout] = Show.fromToString

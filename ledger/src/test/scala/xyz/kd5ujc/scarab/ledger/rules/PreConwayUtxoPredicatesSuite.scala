@@ -307,10 +307,12 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       val cert = Empty.ledgerState[Conway](pp).cert
       Test.failures(ConwayUtxo.validate(UtxoEnv(env(build), pp, cert), StAnnTx(tx, utxo), 0, 0))
     ReferenceBuild.values.foreach { build =>
-      // 11.1 injects Shelley's failure as `OutputTooBigUTxO` from Allegra; the Leios build keeps it
+      // 11.1 injects Shelley's failure as `OutputTooBigUTxO` from Allegra; 11.2 and the Leios build
+      // keep it
       def expected(injected: Boolean) = build match
-        case ReferenceBuild.Release11_1   => attrsTooBig(injected, big)
-        case ReferenceBuild.LeiosB004fe0c => UtxoFailure.OutputBootAddrAttrsTooBig(big)
+        case ReferenceBuild.Release11_1 => attrsTooBig(injected, big)
+        case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c =>
+          UtxoFailure.OutputBootAddrAttrsTooBig(big)
       // the usual version of each era, then Shelley and Allegra each at the other's version: the
       // injection follows the era (`Allegra/Rules/Utxo.hs:374-387`), and a chain whose eras are set
       // by epoch keeps its genesis version across a hard fork

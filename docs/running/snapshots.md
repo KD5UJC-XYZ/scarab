@@ -257,7 +257,8 @@ restores that checkpoint and replays local blocks after the snapshot. Use the sa
 `--reference-build` for `follow` as for the import: starting with a different layout deletes the
 incompatible snapshot and its checkpoint, then tries an older snapshot or replays from genesis.
 The default is `11.1`; `follow --reference-build leios-b004fe0c` remains unavailable until the
-Leios rules are implemented. Byron and non-Mem snapshots are refused. Import/export details and recovery of an interrupted staged import are in
+Leios rules are implemented. `11.2` is refused by `follow` and both commands until its layout is
+implemented. Byron and non-Mem snapshots are refused. Import/export details and recovery of an interrupted staged import are in
 [the accepted design](../design/haskell-snapshots.md#10-stage-3-as-built-offline-import); export and
 cross-node acceptance are recorded in Step D S4/S5 (#140).
 

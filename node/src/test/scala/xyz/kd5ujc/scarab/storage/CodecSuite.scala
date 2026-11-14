@@ -199,6 +199,7 @@ class CodecSuite extends ScalaCheckSuite:
   test("golden: the reference build a V10 file records after its magic, before the binding") {
     assertEquals(new String(SnapshotV10.Magic, "US-ASCII"), "SCRBSNPA")
     assertEquals(hex(SnapshotV10.buildBytes(ReferenceBuild.Release11_1)), "0431312e31")
+    assertEquals(hex(SnapshotV10.buildBytes(ReferenceBuild.Release11_2)), "0431312e32")
     assertEquals(
       hex(SnapshotV10.buildBytes(ReferenceBuild.LeiosB004fe0c)),
       "0e6c65696f732d6230303466653063"

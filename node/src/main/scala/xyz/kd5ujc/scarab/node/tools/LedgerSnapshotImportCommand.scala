@@ -123,12 +123,13 @@ object LedgerSnapshotImportCommand:
   ): Either[ConfigError, (NodeSetup, LedgerSnapshotImport.Config)] =
     setupOf(options).flatMap(setup => inputs(options, setup).map(setup -> _))
 
-  /** What the import needs from `setup`, the codec of the build's layout last. */
+  /** What the import needs from `setup`, the codec of the build's layout first. */
   private[tools] def inputs(
       options: Options,
       setup: NodeSetup
   ): Either[ConfigError, LedgerSnapshotImport.Config] =
     for
+      layout <- ReferenceBuildFlag.layout(options.build)
       params <- setup.handOver
         .map(_.protocolParams)
         .orElse(setup.mirrorStart.ext.ledgerState.state match
@@ -158,7 +159,6 @@ object LedgerSnapshotImportCommand:
                 .toRight(ConfigError(ConfigProblem.MissingFlag("--ancillary-manifest")))
                 .map(path => LedgerSnapshotImport.Trust.Verify(FsPath.fromNioPath(path), key))
             }
-      layout = ReferenceBuildFlag.layout(options.build)
     yield LedgerSnapshotImport.Config(
       FsPath.fromNioPath(options.ledger),
       FsPath.fromNioPath(options.db),
@@ -174,14 +174,20 @@ object LedgerSnapshotImportCommand:
     case Right(options) =>
       def refused(error: ConfigError) = IO.println(error.message).as(ExitCode(2))
       log("referenceBuild", ReferenceBuildFlag.fields(options.build)*) *>
-        IO.blocking(setupOf(options)).flatMap {
-          case Left(error) => refused(error)
-          case Right(setup) =>
-            val experimental = setup.config.settings.experimentalHardForksEnabled
-            log("unstableReferenceBuild", "build" -> Json.fromString(options.build.name))
-              .whenA(ReferenceBuildFlag.warns(options.build, experimental)) *>
-              IO.blocking(inputs(options, setup)).flatMap(_.fold(refused, imported(setup, _)))
-        }
+        ReferenceBuildFlag
+          .layout(options.build)
+          .fold(
+            refused,
+            _ =>
+              IO.blocking(setupOf(options)).flatMap {
+                case Left(error) => refused(error)
+                case Right(setup) =>
+                  val experimental = setup.config.settings.experimentalHardForksEnabled
+                  log("unstableReferenceBuild", "build" -> Json.fromString(options.build.name))
+                    .whenA(ReferenceBuildFlag.warns(options.build, experimental)) *>
+                    IO.blocking(inputs(options, setup)).flatMap(_.fold(refused, imported(setup, _)))
+              }
+          )
 
   private def imported(setup: NodeSetup, config: LedgerSnapshotImport.Config): IO[ExitCode] =
     given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(IO.pure(Map.empty))

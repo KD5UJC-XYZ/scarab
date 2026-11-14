@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
-import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, StateLayout, UnknownReferenceBuild}
+import xyz.kd5ujc.scarab.protocol.{
+  ReferenceBuild,
+  ReferenceBuildNotYet,
+  StateLayout,
+  UnknownReferenceBuild
+}
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission.message
 import cats.Show
 import cats.data.NonEmptyChain
@@ -127,7 +132,7 @@ class ReferenceRefusalSuite extends FunSuite:
         }
         c.states.foreach { (file, bytes) =>
           test(s"${c.path}: the reference's state $file reads and writes back byte for byte") {
-            val codecs = stateCodecs(c.build)
+            val codecs = stateCodecs(c.build).fold(e => fail(e.message), identity)
             c.era match
               case RefusalEra.Shelley => roundTrip[Shelley](codecs, bytes)
               case RefusalEra.Allegra => roundTrip[Allegra](codecs, bytes)
@@ -219,7 +224,8 @@ class ReferenceRefusalSuite extends FunSuite:
         .leftMap(ReplayProblem.Genesis(_))
       state <- c.states.get(rc.state).toRight(ReplayProblem.NoFile(rc.state))
       utxoBytes <- c.utxos.get(rc.utxo).toRight(ReplayProblem.NoFile(rc.utxo))
-      nes <- stateCodecs(c.build)
+      codecs <- stateCodecs(c.build).leftMap(ReplayProblem.Layout(_))
+      nes <- codecs
         .newEpochState[E]
         .decodeBytes(state, HaskellState.limits)
         .leftMap(ReplayProblem.State(_))
@@ -366,9 +372,9 @@ object ReferenceRefusalSuite:
       case ReferenceBuild.Stability.Stable   => node.startsWith(s"cardano-node ${build.name}.")
       case ReferenceBuild.Stability.Unstable => revision == build.pins.node
 
-  /** The codecs of the reference's state in the layout `build` writes. */
-  def stateCodecs(build: ReferenceBuild): LedgerFileCodecs =
-    HaskellLedgerFile.codecs(StateLayout.of(build))
+  /** The codecs of the reference's state in the layout `build` writes, or why there are none. */
+  def stateCodecs(build: ReferenceBuild): Either[ReferenceBuildNotYet, LedgerFileCodecs] =
+    StateLayout.of(build).map(HaskellLedgerFile.codecs)
 
   /** The failures of a Conway `ApplyTxErr` `[[era, [failure, ...]]]`, as their bytes; none when the
     * item is not one.
@@ -440,6 +446,7 @@ object ReferenceRefusalSuite:
 
   enum ReplayProblem:
     case Genesis(error: ConfigError)
+    case Layout(cause: ReferenceBuildNotYet)
     case NoFile(file: String)
     case State(error: DecodeError)
     case Utxo(error: DecodeError)
@@ -450,6 +457,7 @@ object ReferenceRefusalSuite:
   object ReplayProblem:
     given Show[ReplayProblem] = Show.show {
       case Genesis(e)     => s"the corpus genesis does not set up a node: ${e.message}"
+      case Layout(e)      => s"the corpus's build has no state layout here: ${e.message}"
       case NoFile(f)      => s"the case names $f, which the corpus does not hold"
       case State(e)       => s"the reference's state does not decode: ${e.render}"
       case Utxo(e)        => s"the reference's UTxO does not decode: ${e.render}"

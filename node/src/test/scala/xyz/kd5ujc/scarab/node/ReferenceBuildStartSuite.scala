@@ -4,10 +4,12 @@ package xyz.kd5ujc.scarab.node
 import cats.effect.ExitCode
 import java.nio.file.Files
 import munit.CatsEffectSuite
+import xyz.kd5ujc.scarab.node.tools.LedgerSnapshotExportCommand
 import xyz.kd5ujc.scarab.storage.StorageTestKit
 
 /** `follow --reference-build` end to end (#826): a build not implemented yet is refused at start,
-  * before the database is touched; an unknown one is refused with the usage.
+  * before the database is touched; an unknown one is refused with the usage. `11.2`, whose layout
+  * is not implemented yet, is refused by `export-ledger-snapshot` too.
   */
 class ReferenceBuildStartSuite extends CatsEffectSuite:
   private def follow(db: String, build: String): List[String] =
@@ -25,15 +27,33 @@ class ReferenceBuildStartSuite extends CatsEffectSuite:
       build
     )
 
-  test("the Leios build is refused at start, before any store, lease or file of the database") {
-    StorageTestKit.tempDir.use { dir =>
-      val db = dir / "db"
-      Main.run(follow(db.toString, "leios-b004fe0c")).map { code =>
-        assertEquals(code, ExitCode(1))
-        val listing = Files.list(dir.toNioPath)
-        try assertEquals(listing.toArray.toVector, Vector.empty)
-        finally listing.close()
+  private def untouched(dir: fs2.io.file.Path): Unit =
+    val listing = Files.list(dir.toNioPath)
+    try assertEquals(listing.toArray.toVector, Vector.empty)
+    finally listing.close()
+
+  List("leios-b004fe0c", "11.2").foreach { build =>
+    test(s"$build is refused at start, before any store, lease or file of the database") {
+      StorageTestKit.tempDir.use { dir =>
+        Main.run(follow((dir / "db").toString, build)).map { code =>
+          assertEquals(code, ExitCode(1))
+          untouched(dir)
+        }
       }
+    }
+  }
+
+  test("11.2 is refused by export-ledger-snapshot before any file; reading it would exit 1") {
+    StorageTestKit.tempDir.use { dir =>
+      LedgerSnapshotExportCommand
+        .run(
+          List("--db", (dir / "db").toString, "--out", (dir / "out").toString) ++
+            List("--reference-build", "11.2")
+        )
+        .map { code =>
+          assertEquals(code, ExitCode(2))
+          untouched(dir)
+        }
     }
   }
 

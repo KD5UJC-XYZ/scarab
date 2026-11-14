@@ -11,6 +11,7 @@ class LeiosSettingsSuite extends FunSuite:
 
   private val snapshotBuilds = List(
     ReferenceBuild.Release11_1 -> BigInt(600),
+    ReferenceBuild.Release11_2 -> BigInt(21600),
     ReferenceBuild.LeiosB004fe0c -> BigInt(21600)
   )
 

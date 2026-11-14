@@ -156,10 +156,10 @@ object UtxoTests:
     *     `Babbage/Rules/Utxo.hs:110-114`, `Conway/Rules/Utxo.hs:158-161,426`). From Allegra the
     *     failure is therefore an [[UtxoFailure.OutputTooBig]] of its own, apart from
     *     [[outputTooBig]]'s, with the outputs in their order.
-    *   - The Leios build (cardano-ledger 9df9f98c): it stays `OutputBootAddrAttrsTooBig`
-    *     (`Allegra/Rules/Utxo.hs:394`), which Alonzo, Babbage and Conway pass on as their own
-    *     (`Alonzo/Rules/Utxo.hs:759`, `Babbage/Rules/Utxo.hs:115-119`,
-    *     `Conway/Rules/Utxo.hs:413,440`).
+    *   - 11.2 (cardano-ledger 29a7d656) and the Leios build (cardano-ledger 9df9f98c): it stays
+    *     `OutputBootAddrAttrsTooBig` (`Allegra/Rules/Utxo.hs:394` at both), which Alonzo, Babbage
+    *     and Conway pass on as their own (`Alonzo/Rules/Utxo.hs:759`,
+    *     `Babbage/Rules/Utxo.hs:115-119`, `Conway/Rules/Utxo.hs:413,440`, at both).
     */
   def injectedBootAddrAttrsTooBig(
       build: ReferenceBuild,
@@ -170,7 +170,7 @@ object UtxoTests:
         nonEmpty(bootstrapAttrsOver64(outs))(_.isEmpty)(big =>
           UtxoFailure.OutputTooBig(big.map((0, 0, _)))
         )
-      case ReferenceBuild.LeiosB004fe0c => bootAddrAttrsTooBig(outs)
+      case ReferenceBuild.Release11_2 | ReferenceBuild.LeiosB004fe0c => bootAddrAttrsTooBig(outs)
 
   /** `validateMaxTxSizeUTxO` (`Shelley/Rules/Utxo.hs:554-570`). */
   def maxTxSize(pp: ProtocolParams, tx: Tx): Test[PredicateFailure] =

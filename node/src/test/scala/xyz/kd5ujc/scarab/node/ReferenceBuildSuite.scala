@@ -22,7 +22,11 @@ class ReferenceBuildSuite extends FunSuite:
     "configuration defaults follow the selected build through file, directory and absent config setup"
   ) {
     val dir = Path.of("fixtures", "preview", "genesis")
-    List(ReferenceBuild.Release11_1 -> BigInt(600), ReferenceBuild.LeiosB004fe0c -> BigInt(21600))
+    List(
+      ReferenceBuild.Release11_1 -> BigInt(600),
+      ReferenceBuild.Release11_2 -> BigInt(21600),
+      ReferenceBuild.LeiosB004fe0c -> BigInt(21600)
+    )
       .foreach { (build, maximum) =>
         val options = Main
           .parse(
@@ -68,16 +72,33 @@ class ReferenceBuildSuite extends FunSuite:
 
   test("every build prints as its flag string and parses back; any other text is a typed error") {
     ReferenceBuild.values.foreach(b => assertEquals(ReferenceBuild.parse(b.name), Right(b)))
-    assertEquals(ReferenceBuild.values.map(_.name).toVector, Vector("11.1", "leios-b004fe0c"))
-    Vector("11.1.3", "11.1.0", "11", "", " 11.1", "11.1 ", "mainline", "leios", "Leios-b004fe0c")
+    assertEquals(
+      ReferenceBuild.values.map(_.name).toVector,
+      Vector("11.1", "11.2", "leios-b004fe0c")
+    )
+    Vector(
+      "11.1.3",
+      "11.1.0",
+      "11.2.1",
+      "11.2.0",
+      "11",
+      "",
+      " 11.1",
+      "11.1 ",
+      "mainline",
+      "leios",
+      "Leios-b004fe0c"
+    )
       .foreach(text => assertEquals(ReferenceBuild.parse(text), Left(UnknownReferenceBuild(text))))
     assertEquals(ReferenceBuild.Default, ReferenceBuild.Release11_1)
   }
 
   test(
-    "a stable release line and an unstable Leios build, and only the unstable one wants the flag"
+    "stable release lines and an unstable Leios build, and only the unstable one wants the flag"
   ) {
     assertEquals(ReferenceBuild.Release11_1.stability, ReferenceBuild.Stability.Stable)
+    assertEquals(ReferenceBuild.Release11_2.stability, ReferenceBuild.Stability.Stable)
+    assert(!ReferenceBuildFlag.warns(ReferenceBuild.Release11_2, false))
     assertEquals(ReferenceBuild.LeiosB004fe0c.stability, ReferenceBuild.Stability.Unstable)
     assert(!ReferenceBuildFlag.warns(ReferenceBuild.Release11_1, false))
     assert(!ReferenceBuildFlag.warns(ReferenceBuild.Release11_1, true))
@@ -86,6 +107,10 @@ class ReferenceBuildSuite extends FunSuite:
     assertEquals(
       ReferenceBuild.Release11_1.describe,
       "11.1 (stable, cardano-node 11.1.3)"
+    )
+    assertEquals(
+      ReferenceBuild.Release11_2.describe,
+      "11.2 (stable, cardano-node 11.2.1)"
     )
     assertEquals(
       ReferenceBuild.LeiosB004fe0c.describe,
@@ -116,6 +141,11 @@ class ReferenceBuildSuite extends FunSuite:
     registered("IntersectMBO/cardano-ledger", "revision", release.ledger)
     registered("IntersectMBO/cardano-ledger", "revision", release.binary)
     registered("IntersectMBO/ouroboros-consensus", "revision", release.consensus)
+    val next = ReferenceBuild.Release11_2.pins
+    registered("IntersectMBO/cardano-node", "version", next.node)
+    registered("IntersectMBO/cardano-ledger", "revision", next.ledger)
+    registered("IntersectMBO/cardano-ledger", "revision", next.binary)
+    registered("IntersectMBO/ouroboros-consensus", "revision", next.consensus)
     val leios = ReferenceBuild.LeiosB004fe0c.pins
     registered("IntersectMBO/cardano-node", "revision", leios.node)
     registered("IntersectMBO/cardano-ledger", "revision", leios.ledger)
@@ -123,13 +153,26 @@ class ReferenceBuildSuite extends FunSuite:
     assert(ReferenceBuild.LeiosB004fe0c.name.endsWith(leios.node.take(8)))
   }
 
-  test("both layouts are read and written; follow refuses the Leios build's rules, not yet") {
-    assertEquals(StateLayout.of(ReferenceBuild.Release11_1), StateLayout.Node11_1)
-    assertEquals(StateLayout.of(ReferenceBuild.LeiosB004fe0c), StateLayout.Leios)
+  test(
+    "11.1's and the Leios layouts are read and written, 11.2's not yet; follow refuses all but 11.1"
+  ) {
+    assertEquals(StateLayout.of(ReferenceBuild.Release11_1), Right(StateLayout.Node11_1))
+    assertEquals(StateLayout.of(ReferenceBuild.LeiosB004fe0c), Right(StateLayout.Leios))
     assertEquals(
-      ReferenceBuildFlag.layout(ReferenceBuild.LeiosB004fe0c).layout,
-      StateLayout.Leios
+      StateLayout.of(ReferenceBuild.Release11_2),
+      Left(ReferenceBuildNotYet.Layout(ReferenceBuild.Release11_2))
     )
+    assertEquals(
+      ReferenceBuildFlag.layout(ReferenceBuild.LeiosB004fe0c).map(_.layout),
+      Right(StateLayout.Leios)
+    )
+    val notYet = Left(
+      ConfigError(
+        ConfigProblem.ReferenceBuildNotYet(ReferenceBuildNotYet.Layout(ReferenceBuild.Release11_2))
+      )
+    )
+    assertEquals(ReferenceBuildFlag.layout(ReferenceBuild.Release11_2).map(_.build), notYet)
+    assertEquals(ReferenceBuildFlag.follows(ReferenceBuild.Release11_2).map(_.build), notYet)
     assertEquals(
       ReferenceBuildFlag.follows(ReferenceBuild.Release11_1).map(_.build),
       Right(ReferenceBuild.Release11_1)
@@ -146,7 +189,13 @@ class ReferenceBuildSuite extends FunSuite:
     )
     assert(ReferenceLayout.Release11_1.reads(ReferenceBuild.Release11_1))
     assert(!ReferenceLayout.Release11_1.reads(ReferenceBuild.LeiosB004fe0c))
-    assert(ReferenceLayout.of(ReferenceBuild.LeiosB004fe0c).reads(ReferenceBuild.LeiosB004fe0c))
+    assert(!ReferenceLayout.Release11_1.reads(ReferenceBuild.Release11_2))
+    assertEquals(
+      ReferenceLayout
+        .of(ReferenceBuild.LeiosB004fe0c)
+        .map(l => (l.reads(ReferenceBuild.LeiosB004fe0c), l.reads(ReferenceBuild.Release11_2))),
+      Right((true, false))
+    )
   }
 
   private val follow = List("follow", "--genesis-dir", "/g", "--peer", "127.0.0.1:3001")
@@ -156,6 +205,10 @@ class ReferenceBuildSuite extends FunSuite:
     assertEquals(
       Main.parse(follow ++ List("--reference-build", "leios-b004fe0c")).map(_.referenceBuild),
       Right(ReferenceBuild.LeiosB004fe0c)
+    )
+    assertEquals(
+      Main.parse(follow ++ List("--reference-build", "11.2")).map(_.referenceBuild),
+      Right(ReferenceBuild.Release11_2)
     )
     Main.parse(follow ++ List("--reference-build", "11.1.3")).map(_.referenceBuild) match
       case Left(ConfigError(ConfigProblem.WithUsage(ConfigProblem.ReferenceBuildUnknown(e), _))) =>
@@ -224,6 +277,12 @@ class ReferenceBuildSuite extends FunSuite:
         .parse(required ++ List("--reference-build", "leios-b004fe0c"))
         .map(_.build),
       Right(ReferenceBuild.LeiosB004fe0c)
+    )
+    assertEquals(
+      LedgerSnapshotImportCommand
+        .parse(required ++ List("--reference-build", "11.2"))
+        .map(_.build),
+      Right(ReferenceBuild.Release11_2)
     )
     assert(LedgerSnapshotImportCommand.parse(required ++ List("--reference-build", "x")).isLeft)
   }
