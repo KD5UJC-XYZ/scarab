@@ -75,7 +75,7 @@ private[node] enum ConfigFieldError extends DomainError:
   def message: String = this match
     case Number(context, field, cause) => s"$context.$field: ${cause.message}"
     case NotInt64(context, field, value) =>
-      s"$context.$field: not a signed 64-bit integer: ${value.shown}"
+      s"$context.$field: not a signed 64-bit integer: ${value.show}"
     case NotDouble(context, field, found) =>
       s"$context.$field: expected a number or +/-inf, found $found"
     case SnapshotDelayRange(minimum, maximum) =>

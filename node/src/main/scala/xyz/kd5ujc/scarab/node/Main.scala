@@ -2030,7 +2030,7 @@ object Main extends IOApp:
           logged(NodeEvent.DiffusionErrored(DiffusionFailure.UserInterrupt))
         case RunEnd.Errored(failure) =>
           logged(NodeEvent.DiffusionErrored(failure)) *>
-            failedStart(s"DiffusionError ${failure.shown}")
+            failedStart(s"DiffusionError ${failure.show}")
         case _ => IO.unit
       last <- ref.get
       _ <- finishedLine(ended, logged(NodeEvent.finished(last)))
