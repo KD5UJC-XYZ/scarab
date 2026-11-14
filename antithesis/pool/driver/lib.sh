@@ -44,16 +44,32 @@ FORK_SEEN="a fork is observed"
 PAYMENT_S1="s1 accepts a payment"
 PAYMENT_HASKELL="a Haskell pool accepts a payment"
 S1_FORGES_TXS="s1 forges a block with transactions"
+LOGS_READ="the detectors read every pool's log"
 
 # assertion HIT MUST_HIT TYPE DISPLAY MESSAGE CONDITION [DETAILS]
+# Copies of the test commands run at once, so each line is appended under a lock, whole (after
+# cardano-foundation/cardano-node-antithesis `components/composer-sdk/helper_sdk_common.sh`). A lock not had within
+# 10 s is passed over rather than waited on: a line written without it is better than a command that hangs.
 assertion() {
-  jq -cn --argjson hit "$1" --argjson must "$2" --arg type "$3" --arg display "$4" --arg msg "$5" \
+  local line
+  line=$(jq -cn --argjson hit "$1" --argjson must "$2" --arg type "$3" --arg display "$4" --arg msg "$5" \
      --argjson cond "$6" --argjson details "${7:-null}" '
     {antithesis_assert: ({hit: $hit, must_hit: $must, assert_type: $type, display_type: $display,
                           message: $msg, id: $msg, condition: $cond,
                           location: {class: "", function: "main", file: "antithesis/pool/driver/lib.sh",
                                      begin_line: 0, begin_column: 0}}
-                         + (if $details == null then {} else {details: $details} end))}' >> "$SDK"
+                         + (if $details == null then {} else {details: $details} end))}') || return 0
+  {
+    flock -w 10 9 || true
+    printf '%s\n' "$line" >> "$SDK"
+  } 9>> "$STATE_DIR/sdk.lock"
+}
+
+# A test command ends with exit code 0 when a signal stops it (the platform's per-command bound, or a closed pipe):
+# its non-zero exit would fail the platform's "Commands finish with zero exit code", which is about the workload, not
+# the system under test. What it had not yet asserted is simply not asserted.
+exit_zero_on_signal() {
+  trap 'echo "$(basename "$0"): stopped by a signal" >&2; exit 0' TERM INT HUP PIPE
 }
 
 # once KEY: succeeds the first time KEY is given in this timeline, in any process (mkdir is atomic).
@@ -102,6 +118,7 @@ declare_catalog() {
     done
     assertion false false always AlwaysOrUnreachable "$FORK_BELOW_K" true
     assertion false true sometimes Sometimes "$FORK_SEEN" false
+    assertion false true sometimes Sometimes "$LOGS_READ" false
   fi
   if [ -d /opt/at/canary ]; then
     assertion false true sometimes Sometimes "$CANARY_SUBMITTED" false
@@ -191,10 +208,18 @@ scarab_false_clock() {
   printf '%s\n' "$found"
 }
 
-# One pass of the divergence detectors, where /logs is mounted.
+# One pass of the divergence detectors, where /logs is mounted. The detectors that read a log find nothing in a log
+# that is missing or empty, so that they cannot pass unseen on a broken path, a sometimes property records that every
+# pool's log was there to read (after dingo's removed analyzer, which asserted that it read each node's log).
 check_divergence() {
-  local found
+  local found readable=true sizes='{}' n size
   [ -d /logs ] || return 0
+  for n in h2 h3 s1; do
+    size=$(stat -c %s "/logs/$n.log" 2> /dev/null || echo 0)
+    [ "$size" -gt 0 ] || readable=false
+    sizes=$(jq -cn --argjson s "$sizes" --arg n "$n" --argjson b "$size" '$s + {($n): $b}')
+  done
+  sometimes "$LOGS_READ" "$readable" "$(jq -cn --argjson s "$sizes" '{bytes: $s}')"
   if found=$(haskell_refusal); then
     echo "detectors: a Haskell pool refused a block: $found"
     unreachable_hit "$HASKELL_REFUSED" "$found"
@@ -222,8 +247,8 @@ check_forks() {
   [ -d /logs ] || return 0
   k=$(jq -r '.securityParam // empty' /env/net/shelley-genesis.json 2> /dev/null)
   [ -n "$k" ] || return 0
-  result=$(python3 -I /opt/at/forktree.py "$STATE_DIR/forktree.json" /logs/h2.log /logs/h3.log /logs/s1.log) \
-    || return 0
+  result=$(timeout 60 python3 -I /opt/at/forktree.py "$STATE_DIR/forktree.json" /logs/h2.log /logs/h3.log \
+             /logs/s1.log) || return 0
   depth=$(jq -r '.depth // empty' <<< "$result")
   [ -n "$depth" ] || return 0
   result=$(jq -c --argjson k "$k" '. + {k: $k}' <<< "$result")

@@ -13,6 +13,7 @@
 # `build-raw` does not evaluate the script, so the transaction reaches s1 whatever the reference makes of it.
 set -uo pipefail
 source /opt/at/lib.sh
+exit_zero_on_signal
 
 bytes=${WRITEBITS_BYTES:-4097}
 script=/opt/at/canary/writebits-$bytes.plutus
@@ -31,9 +32,9 @@ fail() {
 
 addr=$(cardano-cli conway address build --payment-verification-key-file "$keys/utxo.vkey" --testnet-magic "$MAGIC") \
   || fail "address build failed"
-cardano-cli conway query protocol-parameters --testnet-magic "$MAGIC" --socket-path "$reference" \
+timeout 60 cardano-cli conway query protocol-parameters --testnet-magic "$MAGIC" --socket-path "$reference" \
   --out-file "$work/pp.json" || fail "protocol parameters query failed"
-utxo=$(cardano-cli conway query utxo --address "$addr" --testnet-magic "$MAGIC" --socket-path "$reference" \
+utxo=$(timeout 60 cardano-cli conway query utxo --address "$addr" --testnet-magic "$MAGIC" --socket-path "$reference" \
   --output-json) || fail "UTxO query failed"
 # the largest output that holds only ada: collateral may hold nothing else
 txin=$(jq -r 'to_entries | map(select(.value.value | keys == ["lovelace"])) | max_by(.value.value.lovelace) | .key' \
@@ -61,7 +62,7 @@ for _ in $(seq 60); do
     > /dev/null 2>&1 && break
   sleep 2
 done
-answer=$(cardano-cli conway transaction submit --tx-file "$work/tx.signed" --testnet-magic "$MAGIC" \
+answer=$(timeout 60 cardano-cli conway transaction submit --tx-file "$work/tx.signed" --testnet-magic "$MAGIC" \
   --socket-path /ipc/s1/node.socket 2>&1)
 code=$?
 # cardano-cli 11.2.3's two answers from a node; anything else (a refused connection, a timeout) is no answer, and

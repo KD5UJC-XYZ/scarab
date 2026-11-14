@@ -7,6 +7,7 @@
 # 120 s, by when its payment is on a chain or lost.
 set -uo pipefail
 source /opt/at/lib.sh
+exit_zero_on_signal
 
 PAYMENTS=5
 WALLETS=4
