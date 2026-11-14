@@ -473,13 +473,13 @@ object ScalusEvaluator:
     * `BuiltinCostingOracleSuite`.
     */
   private[plutus] final class CorrectedVm(
-      language: Language,
+      scalusLanguage: Language,
       params: MachineParams,
       variant: SemanticsVariant,
       protocol: MajorProtocolVersion,
       costing: Map[DefaultFun, ReferenceCosting.BuiltinCosting],
       caseOnData: Boolean
-  ) extends PlutusVM(language, params, variant.scalus, platform, protocol):
+  ) extends PlutusVM(scalusLanguage, params, variant.scalus, platform, protocol):
     private val cardano = CardanoBuiltins(params.builtinCostModel, platform, variant.scalus)
     private val serialiseData: BuiltinRuntime =
       cardano.SerialiseData.copy(f =

@@ -7,8 +7,8 @@ class DomainErrorContractSuite extends FunSuite:
   test("an encoder preserves its own narrow error type and cause identity") {
     val cause = Cbor.Error.InvalidAdditionalInformation(31)
     val encoder = new Encoder[Int]:
-      type Error = Cbor.Error
-      def encode(value: Int): Either[Error, Bytes] = Left(cause)
+      type Cause = Cbor.Error
+      def encode(value: Int): Either[Cause, Bytes] = Left(cause)
     val retained: Either[Cbor.Error, Bytes] = encoder.encode(1)
     assert(retained.left.exists(_ eq cause))
   }
@@ -16,17 +16,17 @@ class DomainErrorContractSuite extends FunSuite:
   test("associated error types reject arbitrary products") {
     assert(
       compileErrors(
-        """new xyz.kd5ujc.scarab.codec.Encoder[Int] { type Error = String; def encode(value: Int): Either[Error, xyz.kd5ujc.scarab.codec.Bytes] = ??? }"""
+        """new xyz.kd5ujc.scarab.codec.Encoder[Int] { type Cause = String; def encode(value: Int): Either[Cause, xyz.kd5ujc.scarab.codec.Bytes] = ??? }"""
       ).nonEmpty
     )
     assert(
       compileErrors(
-        """new xyz.kd5ujc.scarab.codec.Encoder[Int] { type Error = Some[String]; def encode(value: Int): Either[Error, xyz.kd5ujc.scarab.codec.Bytes] = ??? }"""
+        """new xyz.kd5ujc.scarab.codec.Encoder[Int] { type Cause = Some[String]; def encode(value: Int): Either[Cause, xyz.kd5ujc.scarab.codec.Bytes] = ??? }"""
       ).nonEmpty
     )
     assert(
       compileErrors(
-        """new xyz.kd5ujc.scarab.codec.Encoder[Int] { type Error = (Int, String); def encode(value: Int): Either[Error, xyz.kd5ujc.scarab.codec.Bytes] = ??? }"""
+        """new xyz.kd5ujc.scarab.codec.Encoder[Int] { type Cause = (Int, String); def encode(value: Int): Either[Cause, xyz.kd5ujc.scarab.codec.Bytes] = ??? }"""
       ).nonEmpty
     )
   }

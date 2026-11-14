@@ -200,14 +200,14 @@ object Value:
     def name(v: Value): String = Value.name(v)
 
 trait Encoder[A]:
-  type Error <: DomainError
-  def encode(value: A): Either[Error, Bytes]
+  type Cause <: DomainError
+  def encode(value: A): Either[Cause, Bytes]
 
 object Encoder:
-  type Aux[A, E <: DomainError] = Encoder[A] { type Error = E }
+  type Aux[A, E <: DomainError] = Encoder[A] { type Cause = E }
 
 trait Serde[A] extends Encoder[A]:
-  def decode(bytes: Bytes): Either[Error, A]
+  def decode(bytes: Bytes): Either[Cause, A]
 
 object Serde:
-  type Aux[A, E <: DomainError] = Serde[A] { type Error = E }
+  type Aux[A, E <: DomainError] = Serde[A] { type Cause = E }

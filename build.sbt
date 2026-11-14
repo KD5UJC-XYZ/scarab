@@ -51,6 +51,7 @@ ThisBuild / scalacOptions ++= Seq(
   "-Wimplausible-patterns",
   "-Wrecurse-with-default",
   "-Wwrong-arrow",
+  "-Wshadow:all",
   "-Wconf:src=.*/src_managed/.*:silent"
 )
 // scalafix needs the semantic database of the compiler.

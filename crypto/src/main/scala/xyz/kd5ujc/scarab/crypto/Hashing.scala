@@ -7,7 +7,7 @@ import org.bouncycastle.crypto.digests.Blake2bDigest
 /** A byte-first hash: serialization is an explicit, separate operation. */
 trait Hasher:
   def hash(bytes: Bytes): Bytes
-  final def encoded[A](value: A, encoder: Encoder[A]): Either[encoder.Error, Bytes] =
+  final def encoded[A](value: A, encoder: Encoder[A]): Either[encoder.Cause, Bytes] =
     encoder.encode(value).map(hash)
 
 object Blake2b:

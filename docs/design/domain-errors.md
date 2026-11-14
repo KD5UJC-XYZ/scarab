@@ -22,10 +22,10 @@ cause and storing the resulting message in another error loses the contract.
 | Storage and legacy | Typed binary and metadata decoding, snapshot differences and import causes; `StorageError.Corrupt` retains its cause and `Io` retains the exception |
 | Node and adapters | Configuration, CLI, peer, query, validation, mempool and forging errors retain the originating cases; fixtures and fuzz adapters use the same contracts |
 
-`Encoder[A]` has an associated `type Error <: DomainError`; `encode` returns
-`Either[Error, Bytes]`. `Serde[A]` uses that same family for decoding. `Encoder.Aux[A, E]` and
+`Encoder[A]` has an associated `type Cause <: DomainError`; `encode` returns
+`Either[Cause, Bytes]`. `Serde[A]` uses that same family for decoding. `Encoder.Aux[A, E]` and
 `Serde.Aux[A, E]` name the refinement when needed. A generic consumer can preserve it:
-`Hasher.encoded(value, encoder)` returns `Either[encoder.Error, Bytes]`, rather than widening or
+`Hasher.encoded(value, encoder)` returns `Either[encoder.Cause, Bytes]`, rather than widening or
 rendering the failure. Protocol payload adapters return `ProtocolError` and retain specific
 codec causes in its cases.
 
