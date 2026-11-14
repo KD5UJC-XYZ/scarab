@@ -1,0 +1,271 @@
+{
+ "_comment": "Networking: the mini-protocol codecs and state machines (module protocol) and the bearer, multiplexer, connection manager, protocol clients and servers, and peer selection (module network). Their reference is ouroboros-network, and ouroboros-consensus for the block and transaction types the protocols carry. docs/design/correspondence-map.md says what an entry holds; scripts/check_correspondence.py checks it.",
+ "area": "network",
+ "roots": [
+  "protocol/src/main/scala",
+  "network/src/main/scala"
+ ],
+ "entries": {
+  "class protocol.KeepAlive.Cookie": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Type.hs",
+     "symbol": "Cookie",
+     "lines": [
+      39,
+      40
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "a newtype of Word16; the Scala class holds an Int checked to that range at construction",
+   "digest": "2a4402785d15e716"
+  },
+  "def protocol.KeepAlive.encode": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Codec.hs",
+     "symbol": "encodeMsg",
+     "lines": [
+      43,
+      56
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "list length, then the word 0, 1 or 2, then the cookie as a word16",
+   "digest": "a68c9b67ad143d32"
+  },
+  "def protocol.KeepAlive.matchResponse": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Client.hs",
+     "symbol": "keepAliveClientPeer",
+     "lines": [
+      31,
+      53
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's client compares the response's cookie with the request's and throws KeepAliveCookieMissmatch; a response without a request is a decode failure there and a typed refusal here",
+   "digest": "69fc0c739cd0c3d7"
+  },
+  "def protocol.KeepAlive.transition": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Type.hs",
+     "symbol": "Message",
+     "lines": [
+      85,
+      106
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's transitions and agency are in the message and StateAgency types; this is the same table at run time",
+   "digest": "70e5056f6b28535e"
+  },
+  "def protocol.TxSubmission2.codec": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/CanHardFork.hs",
+     "symbol": "hardForkInjectTxs",
+     "lines": [
+      182,
+      224
+     ]
+    }
+   ],
+   "class": "Gap",
+   "structure": "differs",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/934",
+   "note": "a GenTx not tagged Conway is a protocol error here; the reference decodes it and the mempool translates a Shelley to Babbage transaction into the current era",
+   "digest": "6b949bb496023fdc"
+  },
+  "enum protocol.KeepAlive.Message": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Type.hs",
+     "symbol": "Message",
+     "lines": [
+      85,
+      102
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "MsgKeepAlive, MsgKeepAliveResponse and MsgDone; the states they go between are checked by transition",
+   "digest": "fc08a98a740b3f16"
+  },
+  "enum protocol.KeepAlive.State": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Type.hs",
+     "symbol": "KeepAlive",
+     "lines": [
+      50,
+      62
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "1b7f5f516eaa1b4b"
+  },
+  "object protocol.KeepAlive.UpstreamTimeLimits": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Codec.hs",
+     "symbol": "timeLimitsKeepAlive",
+     "lines": [
+      108,
+      116
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "9aae5338d53dcd97"
+  },
+  "val protocol.KeepAlive.CodecVersion": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Codec.hs",
+     "symbol": "codecKeepAlive_v2",
+     "lines": [
+      37,
+      41
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the codec in use is codecKeepAlive_v2",
+   "digest": "b17dfd06fa7e6dab"
+  },
+  "val protocol.KeepAlive.MiniProtocolId": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167",
+     "file": "cardano-diffusion/lib/Cardano/Network/NodeToNode.hs",
+     "symbol": "keepAliveMiniProtocolNum",
+     "lines": [
+      484,
+      485
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "3936bc041a643ceb"
+  },
+  "val protocol.KeepAlive.UpstreamMessageBytes": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Codec.hs",
+     "symbol": "byteLimitsKeepAlive",
+     "lines": [
+      87,
+      95
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/Protocol/Limits.hs",
+     "symbol": "smallByteLimit",
+     "lines": [
+      108,
+      109
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "both active states take smallByteLimit, 65535 bytes",
+   "digest": "d688beb3c206d6eb"
+  },
+  "val protocol.KeepAlive.UpstreamTimeLimits.client": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Codec.hs",
+     "symbol": "timeLimitForState",
+     "lines": [
+      114,
+      114
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "StClient: 97 seconds",
+   "digest": "e799a5e7b3cbc83e"
+  },
+  "val protocol.KeepAlive.UpstreamTimeLimits.server": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Codec.hs",
+     "symbol": "timeLimitForState",
+     "lines": [
+      115,
+      115
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "StServer: 60 seconds",
+   "digest": "e1a0cff71d90d400"
+  }
+ },
+ "glue": [
+  {
+   "reason": "Scala value equality and rendering of a class with a private constructor; the reference's Cookie derives Eq and Show",
+   "definitions": [
+    "def protocol.KeepAlive.Cookie#equals",
+    "def protocol.KeepAlive.Cookie#hashCode",
+    "def protocol.KeepAlive.Cookie#toString"
+   ]
+  },
+  {
+   "reason": "construction of a Cookie inside Word16's range, the range of the reference's Cookie",
+   "definitions": [
+    "object protocol.KeepAlive.Cookie",
+    "val protocol.KeepAlive.Cookie.Max",
+    "val protocol.KeepAlive.Cookie.Zero",
+    "def protocol.KeepAlive.Cookie.from"
+   ]
+  }
+ ]
+}

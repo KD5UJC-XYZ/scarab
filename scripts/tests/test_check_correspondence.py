@@ -200,6 +200,7 @@ class GuardTest(unittest.TestCase):
                 self.assertIn(message, out)
         for fields in ({'structure': 'differs', 'evidence': ['KeepAliveSuite']},
                        {'class': 'Gap', 'record': 'https://github.com/KD5UJC-XYZ/scarab/issues/932'},
+                       {'class': 'Gap', 'structure': 'differs', 'record': 'https://github.com/KD5UJC-XYZ/scarab/issues/9'},
                        {'class': 'Deviation', 'record': 'docs/data/reference-pins.json'}):
             with self.subTest(fields=fields):
                 self.fixture.area({key: self.fixture.entry(key, **fields)}, [])

@@ -17,8 +17,8 @@ shrinks. The guard refuses:
   * a mapped definition whose code changed while its entry did not: the entry's `digest` is not the definition's;
   * an entry whose `class` is not Mirror, Improvement, Deviation or Gap, or whose `structure` is not `same` or
     `differs`; an Improvement, Deviation or Gap without a `record` link (a Gap's is its issue); a `differs` entry
-    without `evidence`, the test suites that compare that behaviour with the reference; an evidence suite that no
-    test source defines;
+    without `evidence`, the test suites that compare that behaviour with the reference, unless it is a Gap (a
+    structure that differs with no such evidence is one); an evidence suite that no test source defines;
   * an upstream counterpart (an entry's, or a baseline hint) whose repository and revision are not a pin of
     `docs/data/reference-pins.json`, or whose file, symbol and lines are malformed; and, where a clone of its
     repository is at hand (`--sources DIR` or SCARAB_REFERENCE_SOURCES: a directory holding one clone per
@@ -287,7 +287,7 @@ def entry_problems(root: Path, key: str, entry, digest: str, registered, clones:
     if not isinstance(evidence, list) or not all(isinstance(s, str) for s in evidence):
         out.append(f'{key}: "evidence" is a list of test suite names')
         evidence = []
-    if structure == 'differs' and not evidence:
+    if structure == 'differs' and not evidence and kind != 'Gap':
         out.append(f'{key}: its structure differs from the reference\'s, so it names the suites that compare that '
                    'behaviour with the reference ("evidence")')
     out += [f'{key}: evidence suite {s} is not defined by any test source' for s in evidence if s not in suites]
