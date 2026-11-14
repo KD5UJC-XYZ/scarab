@@ -436,10 +436,9 @@ def e2e(args):
             # the follower has ended: its log is complete, and a last line without its newline is a cut one
             events, other, unterminated = read_final_log(site.log(root))
             # an end before the stop is the follower's own failure, and so is an end on the stop with another status
-            # than a SIGTERM gives; the evaluator each follower logged is judged when the run has several (a run's
-            # only follower keeps the verdicts it always had, with one `--plutus-vm` or none)
-            own, own_failures = summarize_e2e(events, other, expected, stops[site]["premature"],
-                                              plutus_vm=vm if keyed else None)
+            # than a SIGTERM gives; a follower given a `--plutus-vm` must log that evaluator at its start, whether it
+            # is the run's only follower or one of several (a run without the flag runs the node's default, unchecked)
+            own, own_failures = summarize_e2e(events, other, expected, stops[site]["premature"], plutus_vm=vm)
             own_failures += ended_badly.get(site, [])
             if unterminated is not None:
                 own_failures.append(f"the follower's log ends in a line without its newline: {unterminated[:200]}")

@@ -198,7 +198,8 @@ once its tip has settled: the status of that end is not judged, the log it left 
 
 `e2e --plutus-vm scalus --plutus-vm scarab` (the nightly run's arguments) starts one Scala follower per evaluator,
 both from Origin and following reference node 1, so both judge the same chain and its Plutus transactions. With one
-`--plutus-vm`, or none, the run has its single follower, and the flag adds no check and no summary field. Each
+`--plutus-vm` the run has its single follower, which must log that evaluator at its start (`plutusVm`, also in the
+summary); with none it runs the node's default evaluator, and nothing about the evaluator is checked or summarized. Each
 follower has its own container `<name>-scala-<vm>`, log `follower-<vm>.jsonl`, comparison log `compare-<vm>.jsonl`,
 socket, stall and class directories (`scala-sock-<vm>`, `stall-<vm>`, `classes-<vm>`), and a query and a metrics port
 of its own, since all run in the reference container's network namespace (`FollowerSite` in

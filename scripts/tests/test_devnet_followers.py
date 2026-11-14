@@ -823,16 +823,25 @@ class GreenRunTest(unittest.TestCase):
                       "ledgerComparison", "blockedThreads", "endedThreads", "stoppedBecause", "cpuStarvationWarnings",
                       "targetConwayEpoch", "failures", "passed"}
 
-    def test_one_explicit_evaluator_keeps_the_summary_and_verdicts_of_none(self):
-        # with one `--plutus-vm` the run's only follower is not asked which evaluator its start logged: a log that
-        # names another, or none, changes neither the verdict nor the summary's layout
+    def test_one_explicit_evaluator_is_checked_as_each_of_several_is(self):
+        # with one `--plutus-vm` the run's only follower must log that evaluator at its start, as each of several
+        # must: a wiring slip that left it on another would otherwise pass as a run of the one asked for. Its summary
+        # gains `plutusVm` only; a run without the flag is not asked about the evaluator
         plain, _ = self.run_e2e(None)
         self.assertEqual(set(plain), self.SINGLE_SUMMARY)
-        for vm, logged in (("scalus", None), ("scarab", "scalus"), ("scarab", "scarab")):
+        for vm, logged, failures in (
+                ("scalus", "scalus", []),
+                ("scarab", "scarab", []),
+                ("scalus", None, ["the follower logged the Plutus evaluators [] at its start, not ['scalus']"]),
+                ("scarab", "scalus",
+                 ["the follower logged the Plutus evaluators ['scalus'] at its start, not ['scarab']"])):
             with self.subTest(vm=vm, logged=logged):
                 summary, code = self.run_e2e([vm], logs={None: green_log(logged)})
-                self.assertEqual((summary["failures"], code), ([], 0))
-                self.assertEqual(set(summary), self.SINGLE_SUMMARY)
+                self.assertEqual((summary["failures"], code), (failures, 1 if failures else 0))
+                # a failed run also keeps the reference's own evidence
+                kept = {"referenceEvidence"} if failures else set()
+                self.assertEqual(set(summary), self.SINGLE_SUMMARY | {"plutusVm"} | kept)
+                self.assertEqual(summary["plutusVm"], [logged] if logged else [])
 
     def test_with_two_followers_each_must_have_run_the_evaluator_it_was_given(self):
         summary, code = self.run_e2e(["scalus", "scarab"], logs={"scarab": green_log("scalus")})

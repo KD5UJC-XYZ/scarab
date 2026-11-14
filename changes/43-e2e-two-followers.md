@@ -5,8 +5,9 @@
   follower that answered there; a judgment stands, and only a follower that did not answer is asked again. At the
   end their final chains, each rebuilt from the follower's whole log and ending at the tip it was stopped on, must
   agree, and so must their projected states wherever all were judged at one block (`crossCheck` in
-  `e2e-summary.json`, each follower under `followers`). With one `--plutus-vm`, or none, the run keeps its single
-  follower, and the flag adds no check and no summary field; `--oracle` takes one follower.
+  `e2e-summary.json`, each follower under `followers`). With one `--plutus-vm` the run keeps its single follower,
+  which must log that evaluator at its start (`plutusVm` in the summary); with none the node's default evaluator runs
+  and is not checked. `--oracle` takes one follower.
 
 ### Fixed (devnet, #785)
 - **A same-point whole-state comparison no longer fails on a follower tip that a fork has just taken off the
