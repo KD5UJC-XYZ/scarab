@@ -573,30 +573,76 @@ class TraceOptionsTest(unittest.TestCase):
         self.assertEqual(calls, ["environment", "traceOptions"])
 
 
+def point_show(slot, h):
+    """A `Point` as `show` gives it (ouroboros-network-api), with a header hash shown as bare hex (`OneEraHash`)."""
+    return f"Point (At (Block {{blockPointSlot = SlotNo {slot}, blockPointHash = {h}}}))"
+
+
+def tip_show(slot, h, number):
+    return f"Tip (SlotNo {slot}) {h} (BlockNo {number})"
+
+
+def client_exception(text):
+    return json.dumps({"at": "2026-11-13T22:00:01Z", "ns": reference_tracing.CLIENT_EXCEPTION,
+                       "data": {"kind": "Exception", "exception": text}, "sev": "Warning"})
+
+
 class LogViewTest(unittest.TestCase):
     INVALID = json.dumps({"at": "2026-11-13T22:00:00Z", "ns": reference_tracing.INVALID_BLOCK,
-                          "data": {"kind": "InvalidBlock", "block": {"hash": H["w"], "slot": 35},
+                          "data": {"kind": "InvalidBlock", "block": {"kind": "Point", "slot": 35, "hash": H["w"]},
                                    "error": f"ValidationTagMismatch in a block whose parent is {H['b']}"}})
     TIP = json.dumps({"ns": "ChainDB.AddBlockEvent.AddedToCurrentChain",
                       "data": {"kind": "AddedToCurrentChain", "newtip": f"{H['x']}@12", "headers": []}})
     FORK = json.dumps({"ns": "ChainDB.AddBlockEvent.SwitchedToAFork",
                        "data": {"kind": "TraceAddBlockEvent.SwitchedToAFork", "newtip": f"{H['y']}@41"}})
-    EXCEPTION = json.dumps({"ns": "ChainSync.Client.Exception",
-                            "data": {"kind": "Exception", "exception": f"InvalidBlock (At (Block 43 {H['z']}))"}})
+    # a header refused at validation, before its body was fetched: no `InvalidBlock` anywhere on the line
+    HEADER_ERROR = client_exception(
+        f"HeaderError ({point_show(43, H['z'])}) (HeaderProtocolError (HardForkValidationErrFromEra (S (S (S (S (S (S "
+        f"(Z (WrapValidationErr {{unwrapValidationErr = VRFKeyBadProof (SlotNo 43)}}))))))))) "
+        f"(Our ({tip_show(41, H['y'], 4)})) (Their ({tip_show(43, H['z'], 5)}))")
+    # the invalid block is the second argument; the first is the point that triggered the check
+    INVALID_EXCEPTION = client_exception(
+        f"InvalidBlock ({point_show(44, H['d'])}) {H['v']} (ExtValidationErrorLedger (HardForkLedgerErrorFromEra "
+        f"(BadInputsUTxO (fromList [TxIn (TxId {{unTxId = SafeHash \"{H['c']}\"}}) (TxIx 0)]))))")
+    CLOCK_SKEW = client_exception(
+        f"InFutureHeaderExceedsClockSkew (FarFutureHeaderException {{ageUponArrival = -0.6s, arrivedPoint = RealPoint "
+        f"(SlotNo 52) {H['a']}, arrivalTime = RelativeTime 4.6s, tolerableClockSkew = 0.25s}})")
+    INTERSECTION = client_exception(
+        f"InvalidIntersection ({point_show(40, H['b'])}) (Our ({tip_show(41, H['y'], 4)})) (Their ({tip_show(40, H['b'], 3)}))")
+    PUNISHMENT = json.dumps({"ns": "Net.ConnectionManager.Remote.ConnectionHandler.Error",
+                             "data": {"kind": "Error", "error": "PeerSentAnInvalidBlockException"}})
 
-    def test_refused_blocks_tips_and_counts(self):
+    def test_each_refusal_blames_the_block_its_known_field_names(self):
         # the node's start-up text and the dispatcher's echo of its trace options name `InvalidBlock` too, as text
         echo = json.dumps({"ns": "Reflection.TracerInfoConfig",
                            "data": {"conf": {"Options": {reference_tracing.INVALID_BLOCK: {"severity": "Info"}}}}})
         view = reference_tracing.log_view(["Node configuration: NodeConfiguration {InvalidBlock in its text}", echo,
-                                           self.INVALID + "\n", self.TIP, self.FORK, self.EXCEPTION,
+                                           self.INVALID + "\n", self.TIP, self.FORK, self.HEADER_ERROR,
+                                           self.INVALID_EXCEPTION, self.CLOCK_SKEW, self.INTERSECTION, self.PUNISHMENT,
                                            json.dumps({"ns": "Forge.Loop.ForgedBlock", "data": {"block": H["v"]}})])
-        # the invalid block's own field names it; its error text's other hash is not a refusal of that block
-        self.assertEqual(view["refused"], {H["w"], H["z"]})
+        # not the parent in an error text, not either tip of a header error, not the point that triggered a check
+        self.assertEqual(view["refused"], {H["w"], H["z"], H["v"], H["a"]})
+        self.assertEqual(view["unattributed"], 2)
         self.assertEqual(view["tips"], {H["x"], H["y"]})
-        self.assertEqual(len(view["invalid"]), 2)
+        self.assertEqual(len(view["invalid"]), 5)
         self.assertEqual(view["counts"], {reference_tracing.INVALID_BLOCK: 1, "ChainDB.AddBlockEvent.AddedToCurrentChain": 1,
-                                          "ChainDB.AddBlockEvent.SwitchedToAFork": 1, "ChainSync.Client.Exception": 1})
+                                          "ChainDB.AddBlockEvent.SwitchedToAFork": 1, reference_tracing.CLIENT_EXCEPTION: 4})
+
+    def test_a_run_healthy_but_for_one_refused_header_fails(self):
+        view = reference_tracing.log_view([self.TIP, self.HEADER_ERROR])
+        self.assertEqual((view["refused"], view["unattributed"]), ({H["z"]}, 0))
+        self.assertEqual(pool.reference_invalid_blocks({"pool2": view}), {"pool2": [self.HEADER_ERROR[:600]]})
+        # the refused block is the Scala node's block at slot 43, which is not on the observer's chain
+        forged = [LostBlocksTest.forged("a", 5, 1, None), LostBlocksTest.forged("z", 43, 4, "y")]
+        failures, summary = pool_plutus.check(CheckTest().runner(CheckTest().judgements()), LostBlocksTest.CHAIN, forged,
+                                              [], view["refused"], view["tips"])
+        self.assertEqual([b["class"] for b in summary["lostScalaBlocks"]], [pool_plutus.REFUSED])
+        self.assertTrue(any(f.startswith("the Haskell pools refused 1 Scala-forged blocks") for f in failures), failures)
+
+    def test_an_exception_whose_argument_cannot_be_read_is_an_unattributed_refusal(self):
+        view = reference_tracing.log_view([client_exception("HeaderError (garbled"),
+                                           client_exception(f"InvalidBlock ({point_show(44, H['d'])})")])
+        self.assertEqual((view["refused"], view["unattributed"], len(view["invalid"])), (set(), 2, 2))
 
     def test_the_logs_of_each_pool_and_one_that_cannot_be_read(self):
         logs = {"/work/node2.log": [self.TIP + "\n"], "/work/node3.log": ["x\n", self.INVALID + "\n"]}

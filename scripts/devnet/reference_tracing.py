@@ -17,6 +17,8 @@ only `InvalidBlock`'s filter changes. Options are looked up per kind, the most s
 import json
 import re
 
+from .eraload import _split_top
+
 REFERENCE_VERSION = "11.1.3"
 
 SILENCE = {"severity": "Silence"}
@@ -64,8 +66,26 @@ TIP_CHANGES = ("ChainDB.AddBlockEvent.AddedToCurrentChain", "ChainDB.AddBlockEve
 
 SEVERITIES = ("Debug", "Info", "Notice", "Warning", "Error", "Critical", "Alert", "Emergency")
 
-# What a pool's log names an invalid block with: the traces above and the exceptions that carry the name
-# (`InvalidBlock` of the ChainSync client, `PeerSentAnInvalidBlockException` of the punishment).
+# The refusals of a block that name it in a field: `ChainDB`'s validation traces give the block's `RealPoint` as
+# `block` = {"kind": "Point", "slot", "hash"} (cardano-node 11.1.3 `Cardano/Node/Tracing/Formatting.hs` 60-65,
+# `Tracers/ChainDB.hs` `InvalidBlock`, `IgnoreInvalidBlock`); a pool's own forged invalid block names none of ours.
+BLOCK_REFUSALS = (INVALID_BLOCK, "ChainDB.AddBlockEvent.IgnoreInvalidBlock",
+                  "ChainDB.InitChainSelEvent.Validation.InvalidBlock")
+FORGED_INVALID = "Forge.Loop.ForgedInvalidBlock"
+
+# A ChainSync client that ends a session because of what the peer sent traces the exception's `show` as `exception`
+# (cardano-node 11.1.3 `Tracers/Consensus.hs`, `TraceException`). Of `ChainSyncClientException` (ouroboros-consensus
+# 82ecba32 `MiniProtocol/ChainSync/Client.hs`), three blame a block, each at an argument of its own: `HeaderError`
+# the point of the header that failed validation (its first argument, before the error, our tip and theirs),
+# `InvalidBlock` the hash of the invalid block (its second; the first is the point that triggered the check), and
+# `InFutureHeaderExceedsClockSkew` the `arrivedPoint` of the header that arrived too early. Every one of them ends a
+# session with the Scala node for something it sent, and so fails the run, blamed or not.
+CLIENT_EXCEPTION = "ChainSync.Client.Exception"
+BLAMED_ARGUMENT = {"HeaderError": 1, "InvalidBlock": 2}
+CLOCK_SKEW = "InFutureHeaderExceedsClockSkew"
+
+# Other lines that name an invalid block, by name only: the BlockFetch punishment `PeerSentAnInvalidBlockException`
+# in a connection's exit.
 INVALID_MARK = "InvalidBlock"
 
 # The trace dispatcher's own traces, which echo the configuration (`Reflection.TracerInfoConfig` prints the trace
@@ -100,15 +120,46 @@ def pool_configuration(config):
     return {**config, "TraceOptions": POOL_TRACE_OPTIONS}
 
 
+def single_hash(text):
+    """The one block hash in `text`, or None when it holds none or more than one."""
+    found = set(HASH.findall(text))
+    return found.pop() if len(found) == 1 else None
+
+
+def blamed_by_exception(exception):
+    """The hash of the block a ChainSync client exception (its `show`) blames, read from the argument that holds it
+    (`BLAMED_ARGUMENT`, `CLOCK_SKEW`), or None for an exception that blames none or whose argument cannot be read."""
+    parts = _split_top(exception.strip(), " ")
+    constructor = parts[0]
+    if constructor in BLAMED_ARGUMENT and len(parts) > BLAMED_ARGUMENT[constructor]:
+        return single_hash(parts[BLAMED_ARGUMENT[constructor]])
+    if constructor == CLOCK_SKEW and len(parts) > 1:
+        at = parts[1].find("arrivedPoint = ")
+        return None if at < 0 else single_hash(_split_top(parts[1][at:], ",")[0])
+    return None
+
+
+def refusal(ns, data, line):
+    """(refuses, blamed hash or None) of one trace: whether it is a pool's refusal of something a peer sent, or of a
+    block it forged, and the block it blames, from the field that names it."""
+    if ns in BLOCK_REFUSALS:
+        block = data.get("block") if isinstance(data, dict) else None
+        hash_ = block.get("hash") if isinstance(block, dict) else None
+        return True, hash_ if isinstance(hash_, str) and HASH.fullmatch(hash_) else None
+    if ns == CLIENT_EXCEPTION:
+        exception = data.get("exception") if isinstance(data, dict) else None
+        return True, blamed_by_exception(exception) if isinstance(exception, str) else None
+    return ns == FORGED_INVALID or INVALID_MARK in line, None
+
+
 def log_view(lines):
-    """What the harness reads from a pool's log (its lines): the traces that name an invalid block (first five), the
-    hashes of the blocks they name, the hashes its chain changes named as its new tip, and how many of these lines
-    each read namespace logged. Only traces count (a JSON line with a namespace), not the node's start-up text, and not
-    the trace dispatcher's own traces (`OWN_TRACES`)."""
-    invalid, refused, tips, counts = [], set(), set(), {}
+    """What the harness reads from a pool's log (its lines): its refusals (`refusal`: the first five lines, the hashes
+    of the blocks they blame, and how many blame none they can be read for), the hashes its chain changes named as
+    its new tip, and how many lines each read namespace logged. Only traces count (a JSON line with a namespace), not
+    the node's start-up text, and not the trace dispatcher's own traces (`OWN_TRACES`)."""
+    invalid, refused, unattributed, tips, counts = [], set(), 0, set(), {}
     for line in lines:
-        named = INVALID_MARK in line
-        if not named and not any(ns in line for ns in TIP_CHANGES):
+        if INVALID_MARK not in line and CLIENT_EXCEPTION not in line and not any(ns in line for ns in TIP_CHANGES):
             continue
         try:
             entry = json.loads(line)
@@ -120,11 +171,14 @@ def log_view(lines):
         data = entry.get("data", {})
         if ns in READ:
             counts[ns] = counts.get(ns, 0) + 1
-        if named:
+        refuses, blamed = refusal(ns, data, line)
+        if refuses:
             if len(invalid) < 5:
                 invalid.append(line.strip()[:600])
-            block = data.get("block") if isinstance(data, dict) else None
-            refused.update(HASH.findall(json.dumps(block) if block is not None else line))
+            if blamed is None:
+                unattributed += 1
+            else:
+                refused.add(blamed)
         elif ns in TIP_CHANGES and isinstance(data, dict) and isinstance(data.get("newtip"), str):
-            tips.update(HASH.findall(data["newtip"]))
-    return {"invalid": invalid, "refused": refused, "tips": tips, "counts": counts}
+            tips.update(HASH.findall(data["newtip"].split("@")[0]))
+    return {"invalid": invalid, "refused": refused, "unattributed": unattributed, "tips": tips, "counts": counts}
