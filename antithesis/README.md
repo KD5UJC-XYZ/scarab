@@ -15,8 +15,9 @@ topologies at setup and sets the start time a minute ahead. `s1` starts once bot
 devnet starts it (issue 609).
 
 The `driver` reports setup complete once the cluster is healthy. All three pools must first report one tip at
-block 2 or later. Then all three must be on the longest chain, at fork depth 0, with blocks of s1 and of a Haskell
-pool on that chain, so that each side has taken the other's blocks. At k = 5 this topology's start race can keep the
+block 2 or later. Then all three must answer and be on the longest chain, at fork depth 0. Since the gate began,
+each Haskell pool's own chain must have taken a new block of s1, and s1's a new block of a Haskell pool, so that each
+side is taking the other's blocks now, not only at some earlier time. At k = 5 this topology's start race can keep the
 Haskell pools from taking s1's blocks until s1 has forked past k; a cardano-node in s1's seat does the same (#854).
 Every timeline would inherit that split, so such a setup fails after 600 s and says so.
 Antithesis then runs its test commands under faults, many times per timeline:
