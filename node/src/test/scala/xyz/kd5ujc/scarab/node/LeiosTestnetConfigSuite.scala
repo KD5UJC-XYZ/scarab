@@ -23,7 +23,7 @@ class LeiosTestnetConfigSuite extends FunSuite:
     Option.when(Files.exists(dir.resolve(name)))(Files.readAllBytes(dir.resolve(name)))
 
   test("every genesis hash the configuration lists is the hash of the published file") {
-    assertEquals(NodeSetup.verifyHashes(config, read), Right(()))
+    assertEquals(NodeSetup.readGenesis(config, read).map(_ => ()), Right(()))
     // the Dijkstra hash is listed and checked too
     val dijkstra = Blake2b.hash256.hash(Bytes.fromArray(read("dijkstra-genesis.json").get))
     assertEquals(

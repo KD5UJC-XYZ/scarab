@@ -6,7 +6,7 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorExtras, MirrorProvenance}
-import xyz.kd5ujc.scarab.ledger.{ConfigProblem, CostModelProblem, GenesisState, ProtocolParams, Ptr}
+import xyz.kd5ujc.scarab.ledger.{ConfigProblem, GenesisState, ProtocolParams, Ptr}
 import xyz.kd5ujc.scarab.ledger.rules.{
   CertLens,
   GenesisInjections,
@@ -281,7 +281,12 @@ class GenesisStartSuite extends FunSuite:
             else "shelley-genesis.json"
           if name == genesis then replaceExtra(started, source, Json.arr()) else started
         })
-        assert(result.left.toOption.exists(_.problem.isInstanceOf[ConfigProblem.JsonField]))
+        assertEquals(
+          decodeRefusal(result),
+          Some(
+            s"Error in $$.extraConfig.$source: parsing InjectionData failed, expected Object, but encountered Array"
+          )
+        )
       }
   }
 
@@ -476,9 +481,13 @@ class GenesisStartSuite extends FunSuite:
             )
           )
       })
-      result.left.toOption.map(_.problem) match
-        case Some(_: ConfigProblem.JsonField) => ()
-        case other                            => fail(s"expected Coin JSON refusal, got $other")
+      val expected =
+        if amount.isString then "parsing Integer failed, expected Number, but encountered String"
+        else "parsing Integer failed, unexpected floating number 1.5"
+      assertEquals(
+        decodeRefusal(result),
+        Some(s"Error in $$.extraConfig.initialFunds.data: $expected")
+      )
     }
   }
 
@@ -504,7 +513,12 @@ class GenesisStartSuite extends FunSuite:
           )
         )
     })
-    assert(result.left.toOption.exists(_.problem.isInstanceOf[ConfigProblem.Hex]))
+    assertEquals(
+      decodeRefusal(result),
+      Some(
+        "Error in $.extraConfig.initialFunds.data: Addresses are expected in hex encoding for now: \"invalid bytestring size\""
+      )
+    )
   }
 
   test("initial-fund pseudo inputs hash the decoded pointer address serialization") {
@@ -712,9 +726,12 @@ class GenesisStartSuite extends FunSuite:
           )
         )
     }
-    problem match
-      case ConfigProblem.GenesisCostModel(CostModelProblem.NotObjectOrArray(_, _)) => ()
-      case other => fail(s"unexpected refusal: $other")
+    assertEquals(
+      decodeText(problem),
+      Some(
+        "Error in $.extraConfig: Expected either an Array or an Object, but got: String \"not a cost model\""
+      )
+    )
   }
 
   test("a Byron start does not construct outputs from unused initial-fund injections") {
@@ -767,6 +784,21 @@ class GenesisStartSuite extends FunSuite:
         assertEquals(state.nes.es.ls.utxo.gov.curPParams.costModels.get(1), None)
       case other => fail(s"not a Shelley start: $other")
   }
+
+  /** The reference's `eitherDecodeStrict` text of a genesis file the start-up check refused. */
+  private def decodeRefusal(result: Either[xyz.kd5ujc.scarab.ledger.ConfigError, NodeSetup]) =
+    result.left.toOption.map(_.problem).flatMap(decodeText)
+
+  private def decodeText(problem: ConfigProblem): Option[String] =
+    Some(problem).collect {
+      case ConfigProblem.ProtocolStart(
+            xyz.kd5ujc.scarab.ledger.ProtocolStartError.Genesis(
+              _,
+              xyz.kd5ujc.scarab.ledger.GenesisReadError.Decode(_, cause)
+            )
+          ) =>
+        cause.message
+    }
 
   private def refusal(edit: (String, Json) => Json): ConfigProblem =
     NodeSetup.fromFiles(files(edit)).fold(_.problem, s => fail(s"accepted: $s"))

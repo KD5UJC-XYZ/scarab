@@ -178,9 +178,7 @@ object ByronGenesisFile:
         Either.cond(
           h == computed,
           h,
-          ConfigError(
-            ConfigProblem.GenesisHashMismatch("Byron", "byron genesis", h.hex, computed.hex)
-          )
+          ConfigError(ConfigProblem.ProtocolStart(ProtocolStartError.ByronHash(computed, h)))
         )
       )
     yield ByronGenesis(

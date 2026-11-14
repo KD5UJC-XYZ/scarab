@@ -47,7 +47,7 @@ Genesis stake pools follow the reference `StakePoolParams` reader in every field
 
 ## Strict raw JSON prerequisite (#497)
 
-The unused `NativeJson` primitive mirrors installed Aeson 2.2.5.0's strict byte-to-Value boundary:
+The `NativeJson` primitive mirrors installed Aeson 2.2.5.0's strict byte-to-Value boundary:
 `bsToTokens` (`Decoding/ByteString.hs:32-126,132-166,182-273`), read into a Value as
 `Decoding/Conversion.hs:48-94` does, then `eitherDecodeStrict`'s trailing-input check
 (`Decoding.hs:48-53`). `parse` returns the value and where it ends, and `onlySpace` is the separate
@@ -77,10 +77,14 @@ pinned reference image. JVM hash values are consistent with equality but are not
 values, an owner decision recorded in [#474](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6452723958)
 (2026-10-27).
 
-This parser is not wired into genesis loaders; the genesis number readers below use it only to read
-a number's text into aeson's `Scientific`. Original-file hash/parse ordering, required fields,
-the other field decoders and multi-file failure order remain incomplete under #497. The separate permissive
-json-stream mechanism for injection files must not reuse this strict grammar.
+`NodeSetup.readGenesis` reads the Shelley, Alonzo and Conway files' original bytes with it, as
+`readGenesisAny` does: each file is read, hashed, parsed, checked by `GenesisSchema` and checked
+for trailing input before the next file is read, in the reference's order, and a refusal is the
+reference's `GenesisReadError` in `ConfigProblem.ProtocolStart` ([#796](https://github.com/KD5UJC-XYZ/scarab/issues/796),
+[start-up corpus](../../fixtures/reference/genesis-startup/README.md)). The node's own readers then
+read the same bytes with circe; a file with a repeated key is checked on the reference's
+first-wins value and read on circe's. The separate permissive json-stream mechanism for injection
+files must not reuse this strict grammar.
 
 ## Shelley genesis numbers and validation (#399)
 

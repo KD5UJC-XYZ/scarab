@@ -1,0 +1,28 @@
+{
+  "base": {
+    "alonzo-genesis.json": "7333bfafe311589fa09e8bf59a47ec0d85a1959f00748cc0800591d2c7646408",
+    "byron-genesis.json": "71d2a0844c5b613b7ba30231544e401c836980b92993e6e4f8035b870b8c454d",
+    "checkpoints.json": "6f1e5d7b7da8bed39fae89aeab3f8d238f9841d9bcd047cc91b6d0e59a676155",
+    "config.json": "b419ad6346f6397686ec012b18fc43462ccd64979bc68c5c612bf05e260d22ba",
+    "conway-genesis.json": "8084f642f123b534e7a728ce39a475e347edb7cf98383601d1c968df62439c97",
+    "shelley-genesis.json": "c5ccb45161676718a8c08b1362ec1ef2cee516fd123aecafacf0f3e4625a746a",
+    "topology.json": "86730003ad7b160317ac6eb8ed7c1384ef8606625caaa7d810c353f42e1d80a5"
+  },
+  "binary": {
+    "path": "/opt/reference/bin/cardano-node",
+    "sha256": "ee396604345cc07c7169391ef3f5364886d4b7fe0d539aff6919b470e7a336c3",
+    "version": "cardano-node 11.1.3 - linux-x86_64 - ghc-9.6\ngit rev 938cba990357ae7c4b7f95c8f75dd9d31174bbeb"
+  },
+  "cases": 43,
+  "image": "cardano-reference-11.1.3:local",
+  "imageId": "sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b",
+  "node": {
+    "repository": "IntersectMBO/cardano-node",
+    "revision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+    "tag": "11.1.3"
+  },
+  "program": "scripts/oracle/genesis-startup/run.py",
+  "referenceGitRevision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+  "schemaVersion": 1,
+  "scope": "cardano-node run on the preview configuration with one genesis change; standard error and exit code before any database or network"
+}

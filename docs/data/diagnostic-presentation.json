@@ -267,17 +267,33 @@
       "state": "incomplete",
       "scope": "Native genesis JSON/parser/domain error payloads and protocol-startup presentation for supported node configurations.",
       "sources": [
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/Aeson.scala",
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/Iso8601.scala",
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/GenesisSchema.scala",
+        "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ProtocolStartError.scala",
         "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConfigProblem.scala",
+        "node/src/main/scala/xyz/kd5ujc/scarab/node/NodeSetup.scala",
+        "node/src/main/scala/xyz/kd5ujc/scarab/node/ProgramName.scala",
+        "node/src/main/scala/xyz/kd5ujc/scarab/node/Main.scala",
         "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/FromJson.scala",
         "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/GenesisPoolFields.scala",
         "node/src/main/scala/xyz/kd5ujc/scarab/node/ntc/GenesisConfig.scala"
       ],
       "native": [
-        "cardano-node11.1.3:Cardano/Node/Protocol/Shelley.hs and protocol genesis-read errors; aeson parser path/error presentation"
+        "cardano-node 11.1.3 (938cba99): Protocol/Shelley.hs:106-153,307-337; Protocol/Cardano.hs:112-152,276-318; Protocol/Byron.hs:87-113,157-187; Protocol.hs:51-63; Handlers/TopLevel.hs:135-209",
+        "aeson 2.2.5.0: Decoding.hs:48-53; Types/Internal.hs:300-345,597-631; Types/FromJSON.hs (combinators and instances cited in Aeson.scala)",
+        "cardano-ledger f649f975 genesis FromJSON instances (shelley 1.19.0.1, alonzo 1.16.0.0, conway 1.23.0.0, core 1.21.0.0); text-iso8601 0.1.1.1 FromText.hs"
       ],
-      "tests": [],
-      "observations": [],
-      "evidence": "Current startup errors embed Circe text and custom field wording. Native lexical/parser and genesis error envelope need source verification and retained startup-stderr controls; dynamic program name is an input, not a blanket wording waiver.",
+      "tests": [
+        "ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/GenesisSchemaSuite.scala",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/NativeGenesisStartupSuite.scala"
+      ],
+      "observations": [
+        "fixtures/reference/genesis-startup/README.md",
+        "fixtures/reference/genesis-fields/README.md",
+        "fixtures/reference/genesis-cost-models/README.md"
+      ],
+      "evidence": "Whole-text comparison of every refusal of three native corpora: 185 genesis field refusals and 54 cost-model refusals of the unchanged FromJSON instances (aeson formatError path and message), and 42 of 43 native cardano-node 11.1.3 start-up stderr captures (show and prettyError envelope, getProgName from argv[0], IOException, hash mismatch, text-iso8601 time refusals, eitherDecodeStrict syntax and trailing garbage, relative configuration path). byron/truncated (canonical-json Parsec text) is an explicit incomplete gate. Byron schema refusals other than an absent field, Byron IO errors, Dijkstra decoding, checkpoints errors, configuration YAML errors and non-ASCII stderr encoding are not reproduced; the stdout configuration dump is not compared.",
       "resolution": "Use native JSON diagnostics and typed aeson path/domain failures at the startup presentation boundary; compare controlled original malformed inputs and native stderr without changing validation or inventing native failures."
     }
   ],
@@ -1071,6 +1087,7 @@
         "xyz.kd5ujc.scarab.ledger.ConfigProblem.PeerAddress",
         "xyz.kd5ujc.scarab.ledger.ConfigProblem.PeerSnapshot",
         "xyz.kd5ujc.scarab.ledger.ConfigProblem.PeerTargets",
+        "xyz.kd5ujc.scarab.ledger.ConfigProblem.ProtocolStart",
         "xyz.kd5ujc.scarab.ledger.ConfigProblem.RemovedFlag",
         "xyz.kd5ujc.scarab.ledger.ConfigProblem.RenamedField",
         "xyz.kd5ujc.scarab.ledger.ConfigProblem.RequiredOneOf",
@@ -1087,11 +1104,7 @@
         "xyz.kd5ujc.scarab.ledger.ConfigProblem.UntrustedBootstrap",
         "xyz.kd5ujc.scarab.ledger.ConfigProblem.Usage",
         "xyz.kd5ujc.scarab.ledger.ConfigProblem.WithUsage",
-        "xyz.kd5ujc.scarab.ledger.GenesisFieldError.Choice",
-        "xyz.kd5ujc.scarab.ledger.GenesisFieldError.Hash",
-        "xyz.kd5ujc.scarab.ledger.GenesisFieldError.Kind",
         "xyz.kd5ujc.scarab.ledger.GenesisFieldError.Missing",
-        "xyz.kd5ujc.scarab.ledger.GenesisFieldError.Nested",
         "xyz.kd5ujc.scarab.ledger.GenesisFieldError.Number"
       ]
     },
@@ -1576,6 +1589,30 @@
       ]
     },
     {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ProtocolStartError.scala",
+      "boundary": "genesis-startup",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.GenesisDecodeFailure.message : String",
+        "xyz.kd5ujc.scarab.ledger.GenesisFileFailure.shown : String",
+        "xyz.kd5ujc.scarab.ledger.GenesisReadError.pretty : String",
+        "xyz.kd5ujc.scarab.ledger.GenesisReadError.shown : String",
+        "xyz.kd5ujc.scarab.ledger.ProtocolStartError.pretty : String",
+        "xyz.kd5ujc.scarab.ledger.ProtocolStartError.rendered ( program : String ) : String",
+        "xyz.kd5ujc.scarab.ledger.ProtocolStartError.shown : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.GenesisDecodeFailure.Field",
+        "xyz.kd5ujc.scarab.ledger.GenesisDecodeFailure.Value",
+        "xyz.kd5ujc.scarab.ledger.GenesisFileFailure",
+        "xyz.kd5ujc.scarab.ledger.GenesisReadError.Decode",
+        "xyz.kd5ujc.scarab.ledger.GenesisReadError.HashMismatch",
+        "xyz.kd5ujc.scarab.ledger.GenesisReadError.ReadFile",
+        "xyz.kd5ujc.scarab.ledger.ProtocolStartError.ByronHash",
+        "xyz.kd5ujc.scarab.ledger.ProtocolStartError.ByronMissingField",
+        "xyz.kd5ujc.scarab.ledger.ProtocolStartError.Genesis"
+      ]
+    },
+    {
       "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ProviderDefect.scala",
       "boundary": "ledger-diagnostics",
       "methods": [
@@ -1842,6 +1879,34 @@
       "constructors": []
     },
     {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/Aeson.scala",
+      "boundary": "genesis-startup",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.json.AddressDecodeError.message : String",
+        "xyz.kd5ujc.scarab.ledger.json.AesonCause.message : String",
+        "xyz.kd5ujc.scarab.ledger.json.AesonError.message : String",
+        "xyz.kd5ujc.scarab.ledger.json.Base16Error.message : String",
+        "xyz.kd5ujc.scarab.ledger.json.JsonPath.format ( path : List [ PathElement ] ) : String",
+        "xyz.kd5ujc.scarab.ledger.json.JsonPath.formatKey ( key : String ) : String",
+        "xyz.kd5ujc.scarab.ledger.json.NumberTextError.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.json.AddressDecodeError.ByronAddress",
+        "xyz.kd5ujc.scarab.ledger.json.AddressDecodeError.InvalidHeader",
+        "xyz.kd5ujc.scarab.ledger.json.AddressDecodeError.LeftOver",
+        "xyz.kd5ujc.scarab.ledger.json.AddressDecodeError.NotEnoughBytes",
+        "xyz.kd5ujc.scarab.ledger.json.AddressDecodeError.Overlong",
+        "xyz.kd5ujc.scarab.ledger.json.AddressDecodeError.ShortHash",
+        "xyz.kd5ujc.scarab.ledger.json.AddressDecodeError.TooManyBytes",
+        "xyz.kd5ujc.scarab.ledger.json.AesonError",
+        "xyz.kd5ujc.scarab.ledger.json.Base16Error.Character",
+        "xyz.kd5ujc.scarab.ledger.json.Base16Error.Size",
+        "xyz.kd5ujc.scarab.ledger.json.NumberTextError.End",
+        "xyz.kd5ujc.scarab.ledger.json.NumberTextError.Trailing",
+        "xyz.kd5ujc.scarab.ledger.json.NumberTextError.Unexpected"
+      ]
+    },
+    {
       "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/CanonicalJson.scala",
       "boundary": "ledger-json",
       "methods": [
@@ -1874,6 +1939,25 @@
         "xyz.kd5ujc.scarab.ledger.json.NumberError.UnreadNumberText",
         "xyz.kd5ujc.scarab.ledger.json.NumberError.Zero",
         "xyz.kd5ujc.scarab.ledger.json.NumberError.ZeroDenominator"
+      ]
+    },
+    {
+      "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/Iso8601.scala",
+      "boundary": "genesis-startup",
+      "methods": [
+        "xyz.kd5ujc.scarab.ledger.json.Iso8601.Error.message : String"
+      ],
+      "constructors": [
+        "xyz.kd5ujc.scarab.ledger.json.Iso8601.Error.InvalidDay",
+        "xyz.kd5ujc.scarab.ledger.json.Iso8601.Error.InvalidTimeOfDay",
+        "xyz.kd5ujc.scarab.ledger.json.Iso8601.Error.InvalidTimeZone",
+        "xyz.kd5ujc.scarab.ledger.json.Iso8601.Error.NoDecimals",
+        "xyz.kd5ujc.scarab.ledger.json.Iso8601.Error.NonAscii",
+        "xyz.kd5ujc.scarab.ledger.json.Iso8601.Error.OverTwelveDecimals",
+        "xyz.kd5ujc.scarab.ledger.json.Iso8601.Error.ShortYear",
+        "xyz.kd5ujc.scarab.ledger.json.Iso8601.Error.UnexpectedChar",
+        "xyz.kd5ujc.scarab.ledger.json.Iso8601.Error.UnexpectedEnd",
+        "xyz.kd5ujc.scarab.ledger.json.Iso8601.Error.UnexpectedYearStart"
       ]
     },
     {

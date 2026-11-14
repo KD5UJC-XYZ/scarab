@@ -14,6 +14,11 @@ enum ConfigProblem:
   case FileMissing(role: String, file: String)
   case GenesisHashMismatch(role: String, file: String, expected: String, actual: String)
   case UnsupportedTopology
+
+  /** A genesis file the reference's `mkConsensusProtocol` refuses as it reads it, in the form its
+    * top-level handler writes to standard error ([[ProtocolStartError.rendered]]).
+    */
+  case ProtocolStart(cause: ProtocolStartError)
   case RemovedFlag(flag: String)
   case JsonSyntax(context: String, cause: ParsingFailure)
 
@@ -109,6 +114,7 @@ enum ConfigProblem:
   case AncillaryKeyRequired
 
   def message: String = this match
+    case ProtocolStart(cause)        => cause.pretty
     case ActiveSlotsCoefficient(e)   => e.message
     case GenesisNumber(field, cause) => s"genesis ${field.key}: ${cause.message}"
     case ConfigNumber(field, cause)  => s"configuration ${field.key}: ${cause.message}"
@@ -171,35 +177,20 @@ enum GenesisFile:
     case Alonzo  => "Alonzo"
     case Conway  => "Conway"
 
-/** Why the reference's genesis parser refuses a field ([[GenesisSchema]]). */
+/** Why a reader of an accepted genesis file refuses a field it reads with the instance the check
+  * read it with ([[GenesisSchema.ratio]], [[GenesisSchema.unit]], [[GenesisSchema.updateQuorum]]):
+  * a defect of the reader, which the check ran before.
+  */
 enum GenesisFieldError:
   /** `.:` of an absent key. */
   case Missing
 
-  /** A JSON value of another type than the instance reads (`typeMismatch`). */
-  case Kind(expected: json.JsonKind, found: json.JsonKind)
-
   /** A number its instance refuses. */
   case Number(cause: json.NumberError)
 
-  /** A text outside the values the instance knows (`Network`, the `Nonce` tag). */
-  case Choice(value: String, allowed: Vector[String])
-
-  /** Hexadecimal text of the wrong length or alphabet (a hash). */
-  case Hash(expectedBytes: Int, value: String)
-
-  /** A value a reader of its own refuses: an address ([[GenesisState.address]]) or a credential
-    * ([[GenesisState.credential]]).
-    */
-  case Nested(cause: ConfigProblem)
-
   def message: String = this match
-    case Missing                => "key not found"
-    case Kind(expected, found)  => s"expected $expected, but encountered $found"
-    case Number(cause)          => cause.message
-    case Choice(value, allowed) => s"$value is not one of ${allowed.mkString(", ")}"
-    case Hash(bytes, value)     => s"expected $bytes bytes of hexadecimal, got $value"
-    case Nested(cause)          => cause.message
+    case Missing       => "key not found"
+    case Number(cause) => cause.message
 
 /** A configuration field read with a number instance of the reference: the hard-fork triggers of
   * the test networks, `Maybe EpochNo` and `Maybe Word` (cardano-node 11.1.3

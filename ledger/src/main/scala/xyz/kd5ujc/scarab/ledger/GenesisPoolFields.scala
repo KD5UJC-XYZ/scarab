@@ -11,13 +11,24 @@ import xyz.kd5ujc.scarab.ledger.json.{BoundedRatio, FromJson, NumberError, Scien
   * protocol-versioned CBOR decoders (`BaseTypes.hs:674-701`).
   */
 object GenesisPoolFields:
+  /** A pool field this reader refuses. The genesis pools were accepted at start-up by the
+    * reference's `FromJSON StakePoolParams` ([[GenesisSchema]]), so a refusal here is a defect of
+    * the reader, with no reference text of its own.
+    */
   enum Error extends DomainError:
     case Port(value: Json, cause: NumberError)
     case Ipv4(value: String)
     case Ipv6(value: String)
     case Encoding(cause: Cbor.Error)
     case Number(field: String, cause: NumberError)
-    def message: String = toString
+
+    def message: String = this match
+      case Port(value, cause) =>
+        s"defect: genesis pool relay port ${value.noSpaces}: ${cause.message}"
+      case Ipv4(value)     => s"defect: genesis pool relay IPv4 $value is not an address"
+      case Ipv6(value)     => s"defect: genesis pool relay IPv6 $value is not an address"
+      case Encoding(cause) => s"defect: genesis pool metadata does not encode: ${cause.message}"
+      case Number(field, cause) => s"defect: genesis pool $field: ${cause.message}"
 
   /** The parameters of the pool under genesis key `id`. The operator is the inner `poolId` (or its
     * old name `publicKey`), which `mkStakePoolState` drops; the state is keyed by `id`
@@ -169,7 +180,7 @@ object GenesisPoolFields:
   /** cardano-base 0.1.6.0 `IP.hs` delegates to iproute 1.7.15 `Addr.hs:513-546`: four decimal
     * octets, no leading zeros, and ASCII spaces before/after the address.
     */
-  private def ipv4(s: String): Option[Ipv4] =
+  private[ledger] def ipv4(s: String): Option[Ipv4] =
     val parts = s.dropWhile(_ == ' ').reverse.dropWhile(_ == ' ').reverse.split("\\.", -1).toVector
     Option
       .when(parts.size == 4)(parts)
@@ -188,7 +199,7 @@ object GenesisPoolFields:
   /** The IPv6 alternatives in iproute `Addr.hs:553-640`, including the IPv4 tail. `readMaybe`
     * consumes trailing whitespace for the hex form; the embedded IPv4 parser terminates itself.
     */
-  private def ipv6(s: String): Option[Ipv6] =
+  private[ledger] def ipv6(s: String): Option[Ipv6] =
     def whitespace(c: Char): Boolean =
       c == ' ' || (c >= '\t' && c <= '\r') || Character.getType(c) == Character.SPACE_SEPARATOR
     val text = s.dropWhile(_ == ' ')

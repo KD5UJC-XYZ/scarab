@@ -539,7 +539,7 @@ forwarder queues). The live `config.json` is the authority.
 | `conway-genesis.json` | `51e9d92f09ea79e61811983b4b1e299926a61b352c3313aaebc7c287169ae2f0` | `e2951aa7f08dcd89bb6ca7fcf9acae5c46bdefb5a9affbac769bbe1902e982eb` |
 | `dijkstra-genesis.json` | `e3a0f8edd086e0c1fccc9fa04b58fa76b8f735ce1214f854072078f7c823e8be` | `aa1238f505479a9b104d2cc001b4bf951062cd527200bea9a1857bdd0dc41085` |
 
-`LeiosTestnetConfigSuite` checks every listed hash with the node's own `NodeSetup.verifyHashes`.
+`LeiosTestnetConfigSuite` checks every listed hash with the node's own `NodeSetup.readGenesis`.
 Not published: signing, KES, VRF or operational-certificate keys of the pools (none are needed for a
 read-only follower), a checkpoints file, and the committee: the testnet's BLS voting keys exist only
 in the pool registrations on the chain (the Shelley genesis pool has `blsKey: null`).
@@ -825,7 +825,7 @@ the configuration and validation follow-ups are linked below.
 1. The node has no `Era.Dijkstra` and its follower does not use `HfcHeader`, `LeiosHeader` or
    `LeiosBlock` (X1, X2): on this chain it stops at block 0, as every header is of era index 7.
 2. `NodeConfig` reads the Dijkstra genesis file/hash and epoch/version triggers when experimental
-   hard forks are enabled, and `NodeSetup.verifyHashes` checks the supplied file. The Leios and
+   hard forks are enabled, and `NodeSetup.readGenesis` checks the supplied file's hash. The Leios and
    `LedgerDB` settings are retained with the pinned reader's types and defaults and reported as
    recognised and unused; they do not activate Dijkstra or configure its services (#745).
    [Configuration behavior](running/configuration.md#configuration-and-topology-files) describes

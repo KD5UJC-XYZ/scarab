@@ -15,6 +15,15 @@ object JsonKind:
   def of(json: Json): JsonKind =
     json.fold(Null, _ => Boolean, _ => Number, _ => String, _ => Array, _ => Object)
 
+  /** `typeOf` of the reference's own `Value`. */
+  def of(value: JsonValue): JsonKind = value match
+    case JsonValue.Object(_) => Object
+    case JsonValue.Array(_)  => Array
+    case JsonValue.String(_) => String
+    case JsonValue.Number(_) => Number
+    case JsonValue.Bool(_)   => Boolean
+    case JsonValue.Null      => Null
+
 /** A key of the object form of a rational (`FromJSON (Ratio a)`). */
 enum RatioKey:
   case Numerator, Denominator
@@ -72,8 +81,8 @@ enum NumberError extends DomainError:
 
   /** Text for logs, modelled on aeson's messages (`Data/Aeson/Types/FromJSON.hs:194-212, 537-543,
     * 799-810, 918-921, 1708-1724`) and cardano-ledger's `failWith` (`BaseTypes.hs:464-465`); the
-    * cases retain typed causes. Reference-facing presentation follows the exact diagnostic
-    * contract of ADR 0001; a finite parser corpus does not waive remaining wording parity.
+    * cases retain typed causes. Reference-facing presentation follows the exact diagnostic contract
+    * of ADR 0001; a finite parser corpus does not waive remaining wording parity.
     */
   def message: String = this match
     case TypeMismatch(found) => s"expected Number, but encountered $found"

@@ -473,7 +473,7 @@ object Main extends IOApp:
             .allow[NodeError](follow(options))
             .rescue { error =>
               val (event, code) = startupFailure(error)
-              logged(event) *> failedStart(error.message).as(code)
+              logged(event) *> reported(error).as(code)
             }
         }
 
@@ -631,6 +631,20 @@ object Main extends IOApp:
     * `cardano-node/src/Cardano/Node/Handlers/TopLevel.hs` 190-195).
     */
   private def failedStart(text: String): IO[Unit] = IO.consoleForIO.errorln(s"scarab: $text")
+
+  /** A start that fails as the reference's `mkConsensusProtocol` fails is written as its top-level
+    * handler writes it, under the name the program was started with
+    * ([[ProtocolStartError.rendered]], [[ProgramName]]); without a name, and for every other
+    * failure, as [[failedStart]].
+    */
+  private def reported(error: NodeError): IO[Unit] = error match
+    case ConfigError(ConfigProblem.ProtocolStart(cause)) =>
+      ProgramName
+        .current[IO]
+        .flatMap(
+          _.fold(failedStart(error.message))(name => IO.consoleForIO.error(cause.rendered(name)))
+        )
+    case _ => failedStart(error.message)
 
   private def follow(requested: Options)(using
       Handle[IO, NodeError],

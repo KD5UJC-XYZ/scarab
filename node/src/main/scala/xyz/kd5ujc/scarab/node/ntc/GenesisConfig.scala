@@ -23,6 +23,11 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{NodeOrders, Versions, Wire}
   * 82ecba329d7d054340bf707d44fe6e9ac27cec40).
   */
 object GenesisConfig:
+  /** A field of the Shelley genesis that this encoder does not read. The genesis was accepted at
+    * start-up by the reference's parser ([[xyz.kd5ujc.scarab.ledger.GenesisSchema]]), so each is a
+    * defect of the encoder, which the query answers as unwritable; it has no reference text. The
+    * causes are kept for a log, which names them by case.
+    */
   enum Error:
     case InvalidField(field: String, cause: io.circe.DecodingFailure)
     case InvalidHex(field: String, cause: Bytes.HexError)
@@ -31,11 +36,12 @@ object GenesisConfig:
     case InvalidSystemStart(value: String, cause: Throwable)
 
     def message: String = this match
-      case InvalidField(field, detail)  => s"genesis $field: $detail"
-      case InvalidHex(field, detail)    => s"genesis $field: $detail"
-      case InvalidDecimal(field)        => s"genesis $field"
-      case InvalidActiveSlotsCoeff(e)   => s"genesis activeSlotsCoeff: ${e.message}"
-      case InvalidSystemStart(value, _) => s"systemStart $value"
+      case InvalidField(field, _)    => s"defect: the accepted genesis $field does not read"
+      case InvalidHex(field, detail) => s"defect: the accepted genesis $field: ${detail.message}"
+      case InvalidDecimal(field)     => s"defect: the accepted genesis $field is not a decimal"
+      case InvalidActiveSlotsCoeff(e) =>
+        s"defect: the accepted genesis activeSlotsCoeff: ${e.message}"
+      case InvalidSystemStart(value, _) => s"defect: the accepted genesis systemStart $value"
 
   private type R[A] = Either[Error, A]
 

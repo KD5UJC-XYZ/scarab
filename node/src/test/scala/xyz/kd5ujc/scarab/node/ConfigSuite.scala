@@ -2,7 +2,17 @@
 package xyz.kd5ujc.scarab.node
 
 import scala.annotation.unused
-import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigNumberField, ConfigProblem}
+import xyz.kd5ujc.scarab.ledger.{
+  ConfigError,
+  ConfigNumberField,
+  ConfigProblem,
+  GenesisEra,
+  GenesisFileErrno,
+  GenesisFileFailure,
+  GenesisFileStep,
+  GenesisReadError,
+  ProtocolStartError
+}
 import io.circe.Json
 import io.circe.parser
 import java.nio.file.{Files, Path}
@@ -64,7 +74,7 @@ class ConfigSuite extends FunSuite:
   test("every hash of every public configuration equals the file it names") {
     networks.foreach { network =>
       val config = parsed(network)
-      val result = NodeSetup.verifyHashes(config, read(network))
+      val result = NodeSetup.readGenesis(config, read(network)).map(_ => ())
       assertEquals(result, Right(()), network)
       List(
         config.files.shelley -> config.hashes.shelley,
@@ -78,10 +88,10 @@ class ConfigSuite extends FunSuite:
   }
 
   test("the mainnet Byron hash is verified against the complete pinned public file") {
-    assertEquals(NodeSetup.verifyHashes(parsed("mainnet"), read("mainnet")), Right(()))
+    assertEquals(NodeSetup.readGenesis(parsed("mainnet"), read("mainnet")).map(_ => ()), Right(()))
   }
 
-  test("a genesis file that differs from its listed hash is a typed GenesisHashMismatch") {
+  test("a genesis file that differs from its listed hash is the reference's GenesisHashMismatch") {
     networks.filter(_ != "mainnet").foreach { network =>
       val config = parsed(network)
       List(
@@ -102,9 +112,25 @@ class ConfigSuite extends FunSuite:
                   .getBytes("UTF-8")
               else b :+ ' '.toByte
             )
-          NodeSetup.verifyHashes(config, altered) match
-            case Left(ConfigError(ConfigProblem.GenesisHashMismatch(r, f, expected, actual))) =>
-              assertEquals((r, f), (role, file))
+          NodeSetup.readGenesis(config, altered) match
+            case Left(
+                  ConfigError(
+                    ConfigProblem.ProtocolStart(ProtocolStartError.ByronHash(actual, expected))
+                  )
+                ) if role == "Byron" =>
+              assertEquals(Some(expected), config.hashes.byron)
+              assertNotEquals(expected, actual)
+            case Left(
+                  ConfigError(
+                    ConfigProblem.ProtocolStart(
+                      ProtocolStartError.Genesis(
+                        era,
+                        GenesisReadError.HashMismatch(actual, expected)
+                      )
+                    )
+                  )
+                ) =>
+              assertEquals(era.toString, role)
               assertNotEquals(expected, actual)
             case other => fail(s"$network $role: $other")
         }
@@ -119,16 +145,31 @@ class ConfigSuite extends FunSuite:
           parser.parse(new String(b, "UTF-8")).toOption.get.spaces4.getBytes("UTF-8")
         else b
       )
-    assertEquals(NodeSetup.verifyHashes(config, reformatted), Right(()))
+    assertEquals(NodeSetup.readGenesis(config, reformatted).map(_ => ()), Right(()))
   }
 
-  test("a missing genesis file is a typed FileMissing, and a hash of the wrong shape is invalid") {
+  test(
+    "a missing genesis file is the reference's read error, and a hash of the wrong shape is invalid"
+  ) {
     val config = parsed("preview")
     val without: String => Option[Array[Byte]] =
       name => if name == config.files.alonzo then None else read("preview")(name)
     assertEquals(
-      NodeSetup.verifyHashes(config, without).left.map(_.problem),
-      Left(ConfigProblem.FileMissing("Alonzo", "alonzo-genesis.json"))
+      NodeSetup.readGenesis(config, without).left.map(_.problem),
+      Left(
+        ConfigProblem.ProtocolStart(
+          ProtocolStartError.Genesis(
+            GenesisEra.Alonzo,
+            GenesisReadError.ReadFile(
+              GenesisFileFailure(
+                "alonzo-genesis.json",
+                GenesisFileStep.Size,
+                GenesisFileErrno.NoSuchFile
+              )
+            )
+          )
+        )
+      )
     )
     val short = text("preview", "config.json").replace(config.hashes.shelley.get.hex, "abcd")
     assertEquals(

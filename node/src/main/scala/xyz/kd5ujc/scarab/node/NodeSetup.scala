@@ -30,13 +30,24 @@ import cats.{Applicative, Monad}
 import cats.mtl.Ask
 import cats.syntax.all.*
 import io.circe.{Json, parser}
-import java.nio.file.{Files, Path}
+import java.nio.file.{AccessDeniedException, Files, NoSuchFileException, Path}
+import java.nio.file.attribute.BasicFileAttributes
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{ByronRules, ByronRulesConfig, HardForkConfig, PraosConfig}
+import xyz.kd5ujc.scarab.ledger.json.{AesonError, JsonValue, NativeJson}
 import xyz.kd5ujc.scarab.ledger.{
+  ByronFieldError,
+  ByronGenesisField,
+  GenesisDecodeFailure,
+  GenesisEra,
+  GenesisFileErrno,
+  GenesisFileFailure,
+  GenesisFileStep,
+  GenesisReadError,
   GenesisSchema,
   GenesisState,
+  ProtocolStartError,
   LedgerDecodeError,
   LedgerGlobals,
   LiteLedger,
@@ -204,18 +215,27 @@ object NodeSetup:
 
   /** The setup `cardano-node run --config` would have: the configuration is read as the reference
     * reads it (`strict`), the genesis files it names are looked up next to it (or in `genesisDir`,
-    * when given) and every hash it lists is verified.
+    * when given) and read as [[readGenesis]] reads them. A message names a file as the reference
+    * does, `takeDirectory config </> name` (`Configuration/POM.hs` `adjustFilePaths`).
     */
   def fromConfigFile(
       config: Path,
       genesisDir: Option[Path] = None
+  ): Either[ConfigError, NodeSetup] = fromConfigNamed(config, config.toString, genesisDir)
+
+  /** [[fromConfigFile]] of the file at `config`, whose path as the command line gave it is `named`:
+    * messages name the genesis files under `takeDirectory named`.
+    */
+  private[node] def fromConfigNamed(
+      config: Path,
+      named: String,
+      genesisDir: Option[Path]
   ): Either[ConfigError, NodeSetup] =
     for
       parsed <- readConfig(config)
       base = genesisDir.getOrElse(Option(config.toAbsolutePath.getParent).getOrElse(Path.of(".")))
-      read = (name: String) =>
-        Option.when(Files.exists(base.resolve(name)))(Files.readAllBytes(base.resolve(name)))
-      setup <- assemble(parsed, read)
+      shown = genesisDir.fold(HaskellPath.takeDirectory(named))(_.toString)
+      setup <- assembleFrom(parsed, GenesisFiles.on(base, HaskellPath.combine(shown, _)))
     yield setup
 
   /** The configuration file alone, before any genesis file is read. */
@@ -232,97 +252,211 @@ object NodeSetup:
       .fold(Right(NodeConfig.empty))(b => NodeConfig.parse(text(b)))
       .flatMap(assemble(_, read))
 
-  /** Check every hash the configuration lists against the genesis file it names: the Byron one is
-    * the hash of the canonical JSON, the Shelley, Alonzo, Conway, Dijkstra and checkpoints ones the
-    * blake2b-256 of the file's bytes. A mismatch is a `GenesisHashMismatch`. The four genesis files
-    * the node needs must exist. A configured checkpoints file is also required; an optional
-    * Dijkstra file is hash-checked when present.
+  /** Why a file the configuration names could not be read: an `IOException` the reference shows
+    * ([[GenesisFileFailure]]), or a failure of the JVM's file system that has no such form, kept as
+    * the defect it is.
     */
-  def verifyHashes(
-      config: NodeConfig,
-      read: String => Option[Array[Byte]]
-  ): Either[ConfigError, Unit] =
-    def hashOf(bytes: Array[Byte]) = Blake2b.hash256.hash(Bytes.fromArray(bytes))
-    def check(
-        role: String,
-        file: String,
-        expected: Option[Bytes],
-        required: Boolean,
-        actual: Array[Byte] => Either[ConfigError, Bytes]
-    ): Either[ConfigError, Unit] =
-      read(file) match
-        case None =>
-          Either.cond(
-            !required,
-            (),
-            ConfigError(ConfigProblem.FileMissing(role, file))
+  enum ReadFault:
+    case Native(failure: GenesisFileFailure)
+    case Defect(file: String, cause: Throwable)
+
+  /** The files a configuration names: the path a message shows for a name, and the bytes. */
+  final case class GenesisFiles(
+      shown: String => String,
+      read: String => Either[ReadFault, Array[Byte]]
+  )
+
+  object GenesisFiles:
+    /** Files given by name; an absent one as `getFileSize` reports a missing file. */
+    def of(read: String => Option[Array[Byte]]): GenesisFiles =
+      GenesisFiles(
+        identity,
+        name =>
+          read(name).toRight(
+            ReadFault.Native(
+              GenesisFileFailure(name, GenesisFileStep.Size, GenesisFileErrno.NoSuchFile)
+            )
           )
-        case Some(bytes) =>
-          expected.traverse_ { want =>
-            actual(bytes).flatMap { got =>
+      )
+
+    /** The files under `base`, read as `readGenesisAny` does: `getFileSize` (a `stat`, which
+      * follows links), then `BS.readFile`, whose `openFile` refuses a directory. A file of 10 MiB
+      * or more the reference maps into memory instead (`Protocol/Shelley.hs:136-138`), so a failure
+      * to read one has no `withBinaryFile` form and is a defect.
+      */
+    def on(base: Path, shown: String => String): GenesisFiles =
+      GenesisFiles(
+        shown,
+        name =>
+          val path = base.resolve(name)
+          def native(step: GenesisFileStep, errno: GenesisFileErrno) =
+            ReadFault.Native(GenesisFileFailure(shown(name), step, errno))
+          def fault(step: GenesisFileStep, mapped: Boolean)(cause: Throwable): ReadFault =
+            cause match
+              case _: NoSuchFileException if mapped => native(step, GenesisFileErrno.NoSuchFile)
+              case _: AccessDeniedException if mapped =>
+                native(step, GenesisFileErrno.PermissionDenied)
+              case other => ReadFault.Defect(shown(name), other)
+          Either
+            .catchNonFatal(Files.readAttributes(path, classOf[BasicFileAttributes]))
+            .leftMap(fault(GenesisFileStep.Size, mapped = true))
+            .flatMap(attributes =>
+              if attributes.isDirectory then
+                Left(native(GenesisFileStep.Read, GenesisFileErrno.IsDirectory))
+              else
+                Either
+                  .catchNonFatal(Files.readAllBytes(path))
+                  .leftMap(fault(GenesisFileStep.Read, mapped = attributes.size < MappedSize))
+            )
+      )
+
+  /** `readGenesisAny` maps a file of this size or more into memory. */
+  private val MappedSize: Long = 10485760L
+
+  /** The bytes of the genesis files, each accepted as the reference accepts it. */
+  final case class GenesisBytes(
+      byron: Array[Byte],
+      shelley: Array[Byte],
+      alonzo: Array[Byte],
+      conway: Array[Byte]
+  )
+
+  /** The genesis files the configuration names, read as the reference's `mkConsensusProtocol` reads
+    * them (cardano-node 11.1.3 `Protocol/Cardano.hs:112-152`), one after another: the Byron genesis
+    * whole, and its hash over the canonical JSON (`Protocol/Byron.hs:91-113`); then the Shelley,
+    * Alonzo and Conway files, each read, hashed (blake2b-256 of its bytes) and decoded
+    * (`readGenesisAny`, `Protocol/Shelley.hs:126-153`) before the next is read; then the Dijkstra
+    * file, when one is configured and present, hashed. The checkpoints file, required when
+    * configured, is read and hashed last.
+    */
+  def readGenesis(config: NodeConfig, files: GenesisFiles): Either[ConfigError, GenesisBytes] =
+    def hashOf(bytes: Array[Byte]) = Blake2b.hash256.hash(Bytes.fromArray(bytes))
+    def start(era: GenesisEra, cause: GenesisReadError) =
+      ConfigError(ConfigProblem.ProtocolStart(ProtocolStartError.Genesis(era, cause)))
+    def bytes(era: GenesisEra, name: String): Either[ConfigError, Array[Byte]] =
+      files
+        .read(name)
+        .leftMap {
+          case ReadFault.Native(failure)     => start(era, GenesisReadError.ReadFile(failure))
+          case ReadFault.Defect(file, cause) => ConfigError(ConfigProblem.FileRead(file, cause))
+        }
+    def hashed(era: GenesisEra, data: Array[Byte], expected: Option[Bytes]) =
+      expected.traverse_ { want =>
+        val got = hashOf(data)
+        Either.cond(got == want, (), start(era, GenesisReadError.HashMismatch(got, want)))
+      }
+    // `eitherDecodeStrict'`: the value, the instance, then nothing but space after the value
+    def decoded(era: GenesisEra, name: String, data: Array[Byte])(
+        check: JsonValue => Either[AesonError, Unit]
+    ): Either[ConfigError, Unit] =
+      val input = Bytes.fromArray(data)
+      def refused(cause: GenesisDecodeFailure) =
+        start(era, GenesisReadError.Decode(files.shown(name), cause))
+      for
+        parsed <- NativeJson
+          .parse(input)
+          .leftMap(e => refused(GenesisDecodeFailure.Value(NativeJson.DecodeError.Syntax(e))))
+        _ <- check(parsed.value).leftMap(e => refused(GenesisDecodeFailure.Field(e)))
+        _ <- Either.cond(
+          NativeJson.onlySpace(input, parsed.end),
+          (),
+          refused(GenesisDecodeFailure.Value(NativeJson.DecodeError.TrailingGarbage))
+        )
+      yield ()
+    def genesis(era: GenesisEra, name: String, expected: Option[Bytes])(
+        check: JsonValue => Either[AesonError, Unit]
+    ): Either[ConfigError, Array[Byte]] =
+      for
+        data <- bytes(era, name)
+        _ <- hashed(era, data, expected)
+        _ <- decoded(era, name, data)(check)
+      yield data
+    val names = config.files
+    val hashes = config.hashes
+    for
+      // the Byron genesis is read by its own reader; an absent field and the hash take the
+      // reference's form, its other refusals keep their own
+      byron <- files
+        .read(names.byron)
+        .leftMap(_ => ConfigError(ConfigProblem.FileMissing("Byron", names.byron)))
+      _ <- ByronGenesisFile.parse(Bytes.fromArray(byron), hashes.byron).leftMap {
+        case ConfigError(ConfigProblem.ByronGenesisValue(field, ByronFieldError.Missing))
+            if field != ByronGenesisField.Top =>
+          ConfigError(
+            ConfigProblem.ProtocolStart(
+              ProtocolStartError.ByronMissingField(files.shown(names.byron), field)
+            )
+          )
+        case other => other
+      }
+      shelley <- genesis(GenesisEra.Shelley, names.shelley, hashes.shelley)(GenesisSchema.shelley)
+      alonzo <- genesis(GenesisEra.Alonzo, names.alonzo, hashes.alonzo)(GenesisSchema.alonzo)
+      conway <- genesis(GenesisEra.Conway, names.conway, hashes.conway)(GenesisSchema.conway)
+      _ <- names.dijkstra.traverse_(file =>
+        files.read(file).toOption.traverse_(hashed(GenesisEra.Dijkstra, _, hashes.dijkstra))
+      )
+      _ <- names.checkpoints.traverse_(file =>
+        files
+          .read(file)
+          .leftMap(_ => ConfigError(ConfigProblem.FileMissing("Checkpoints", file)))
+          .flatMap(data =>
+            hashes.checkpoints.traverse_ { want =>
+              val got = hashOf(data)
               Either.cond(
                 got == want,
                 (),
-                ConfigError(ConfigProblem.GenesisHashMismatch(role, file, want.hex, got.hex))
+                ConfigError(
+                  ConfigProblem.GenesisHashMismatch("Checkpoints", file, want.hex, got.hex)
+                )
               )
             }
-          }
-    // `readGenesis` reads the Byron genesis whole before it compares its hash (cardano-node 11.1.3
-    // `Cardano/Node/Protocol/Byron.hs:91-95`), so a genesis the schema refuses is refused for that
-    val byron = (bytes: Array[Byte]) =>
-      ByronGenesisFile.parse(Bytes.fromArray(bytes), None).map(_.hash)
-    val plain = (bytes: Array[Byte]) => Right(hashOf(bytes))
-    val files = config.files
-    val hashes = config.hashes
-    for
-      _ <- check("Byron", files.byron, hashes.byron, required = true, byron)
-      _ <- check("Shelley", files.shelley, hashes.shelley, required = true, plain)
-      _ <- check("Alonzo", files.alonzo, hashes.alonzo, required = true, plain)
-      _ <- check("Conway", files.conway, hashes.conway, required = true, plain)
-      _ <- files.dijkstra.traverse_(f =>
-        check("Dijkstra", f, hashes.dijkstra, required = false, plain)
+          )
       )
-      _ <- files.checkpoints.traverse_(f =>
-        check("Checkpoints", f, hashes.checkpoints, required = true, plain)
-      )
-    yield ()
+    yield GenesisBytes(byron, shelley, alonzo, conway)
+
+  /** [[readGenesis]] of files given by name. */
+  def readGenesis(
+      config: NodeConfig,
+      read: String => Option[Array[Byte]]
+  ): Either[ConfigError, GenesisBytes] = readGenesis(config, GenesisFiles.of(read))
 
   /** The setup from a configuration and the genesis files it names (read by name). */
   def assemble(
       config: NodeConfig,
       read: String => Option[Array[Byte]]
-  ): Either[ConfigError, NodeSetup] =
+  ): Either[ConfigError, NodeSetup] = assembleFrom(config, GenesisFiles.of(read))
+
+  /** The setup from a configuration and its files: [[readGenesis]], then the node's readers. */
+  def assembleFrom(config: NodeConfig, sources: GenesisFiles): Either[ConfigError, NodeSetup] =
     val names = config.files
     def required(role: String, name: String): Either[ConfigError, Array[Byte]] =
-      read(name).toRight(
-        ConfigError(ConfigProblem.FileMissing(role, name))
-      )
+      sources.read(name).leftMap(_ => ConfigError(ConfigProblem.FileMissing(role, name)))
     def text(bytes: Array[Byte]) = new String(bytes, "UTF-8")
     def json(name: String, bytes: Array[Byte]): Either[ConfigError, Json] =
       parser.parse(text(bytes)).leftMap(e => ConfigError(ConfigProblem.JsonSyntax(name, e)))
     for
-      _ <- verifyHashes(config, read)
+      genesisBytes <- readGenesis(config, sources)
       checkpoints <- names.checkpoints
         .traverse(file =>
           required("Checkpoints", file)
             .flatMap(CheckpointsFile.parse(file, _, config.hashes.checkpoints))
         )
         .map(_.getOrElse(HeaderCheckpoints.empty))
-      shelleyBytes <- required("Shelley", names.shelley)
+      shelleyBytes = genesisBytes.shelley
       shelleyBase <- Genesis.shelley(text(shelleyBytes))
       // The chain store and the volatile chain count blocks in an `Int`: a larger security parameter
       // is refused, which the reference's `NonZero Word64` would accept. An approved deviation,
       // recorded in #474.
       chainStoreK <- ChainStoreK.from(shelleyBase.geometry.k)
       firstShelley = config.firstShelleyEpoch
-      byronBytes <- required("Byron", names.byron)
+      byronBytes = genesisBytes.byron
       // The reference reads the whole Byron genesis whichever era the chain starts in
       // (`readGenesisData`, #734); a chain that starts in Shelley takes only its start time from it.
       byronFile <- ByronGenesisFile.read(Bytes.fromArray(byronBytes))
       byronGenesis <- ByronGenesisFile.fromJson(byronFile._1, byronFile._2, config.byronGenesisHash)
       byron = Option.unless(firstShelley.contains(BigInt(0)))(byronGenesis)
-      alonzoBytes <- required("Alonzo", names.alonzo)
-      conwayBytes <- required("Conway", names.conway)
+      alonzoBytes = genesisBytes.alonzo
+      conwayBytes = genesisBytes.conway
       prefixed <- Genesis.withByronPrefix(shelleyBase, byron, firstShelley)
       genesis = Genesis.withSystemStart(prefixed, Some(byronGenesis))
       byronJson = byronFile._1
@@ -340,10 +474,6 @@ object NodeSetup:
         json(names.conway, conwayBytes),
         byronJson.asRight[ConfigError]
       ).mapN(GenesisState.Files(_, _, _, _, addressMagic))
-      // each file as the reference node reads it at start-up, before any reader of ours
-      _ <- GenesisSchema.shelley(files.shelley)
-      _ <- GenesisSchema.alonzo(files.alonzo)
-      _ <- GenesisSchema.conway(files.conway)
       injections <- GenesisInjections.read(files)
       globals <- GenesisState.globals(files, genesis)
       forks = HardForkConfig.fromEpochs(config.hardForkEpochs)

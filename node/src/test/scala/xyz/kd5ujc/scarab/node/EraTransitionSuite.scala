@@ -271,7 +271,11 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       ByronGenesisFile
         .parse(Bytes.fromArray(text.getBytes("UTF-8")), wrong)
         .left
-        .exists(_.problem.isInstanceOf[xyz.kd5ujc.scarab.ledger.ConfigProblem.GenesisHashMismatch])
+        .exists(
+          _.problem == xyz.kd5ujc.scarab.ledger.ConfigProblem.ProtocolStart(
+            xyz.kd5ujc.scarab.ledger.ProtocolStartError.ByronHash(setup.origin.get, wrong.get)
+          )
+        )
     )
     assertEquals(
       ByronGenesisFile.parse(Bytes.fromArray(text.getBytes("UTF-8")), setup.origin).map(_.hash),

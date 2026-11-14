@@ -16,12 +16,15 @@ not shape the node are kept in `ConfigSettings` and logged; `ConfigSettings.unsu
 for something not implemented (the Dijkstra era, Genesis syncing, hard forks triggered by a version, peer
 sharing).
 
-`NodeSetup.verifyHashes(config, read)` checks every hash the configuration lists against the file it names: the
-Byron hash is the blake2b-256 of the canonical JSON (sorted keys, no whitespace), the Shelley, Alonzo, Conway
-(and Dijkstra and checkpoints, when the file is present) hashes the blake2b-256 of the file's bytes. A
-mismatch is `ConfigProblem.GenesisHashMismatch(role, file, expected, actual)`. It runs for a genesis
-directory and for `--config`, before anything is derived from the files; the Shelley hash is also the initial
-Praos nonce, so the bytes hashed are the bytes used. `NodeSetup.fromConfigFile(config, genesisDir)` resolves
+`NodeSetup.readGenesis(config, files)` reads the genesis files in the reference's order: the Byron file and its
+hash (the blake2b-256 of the canonical JSON: sorted keys, no whitespace), then the Shelley, Alonzo and Conway
+files, each read, hashed (the blake2b-256 of the file's bytes) and decoded by `GenesisSchema` before the next,
+then the Dijkstra file (when present) and the checkpoints file, hashed. A refusal the reference's
+`mkConsensusProtocol` gives is `ConfigProblem.ProtocolStart`, which `Main` writes to standard error as the
+reference's top-level handler does; a checkpoints mismatch is
+`ConfigProblem.GenesisHashMismatch(role, file, expected, actual)`. It runs for a genesis directory and for
+`--config`, before anything is derived from the files; the Shelley hash is also the initial Praos nonce, so the
+bytes hashed are the bytes used. `NodeSetup.fromConfigFile(config, genesisDir)` resolves
 the names against the configuration's directory (or `genesisDir`), as the reference does; `Main.configured`
 completes the options (the peers of the topology after the `--peer` ones, and, with `--config` only, the socket,
 database and mempool capacity of the file as defaults of their flags).

@@ -10,7 +10,7 @@ implemented. At start-up the node checks the Shelley, Alonzo and Conway genesis 
 - `FromJSON AlonzoGenesis`, `Alonzo/Genesis.hs:222-242`, with `ExUnits` and `Prices`, `Plutus/ExUnits.hs:118-128,176-181`;
 - `FromJSON ConwayGenesis` and `UpgradeConwayPParams`, `Conway/Genesis.hs:156-165`, `Conway/PParams.hs:1082-1095`.
 
-A required field is required, of the type it is read with: the `Word16`, `Word32` and `Word64` bounds, the bounded ratios as decimals or objects, the nonce tag, the network, hashes, credentials and addresses. A refusal is a typed `ConfigProblem.GenesisField` naming the file and the field's path. The readers that run after the check read the same instances and keep no defaults: `ProtocolParams.fromGenesis`, `GenesisState.globals` and `LiteLedger.fromGenesis`. `minPoolCost` and `minUTxOValue` are optional, as in the reference.
+A required field is required, of the type it is read with: the `Word16`, `Word32` and `Word64` bounds, the bounded ratios as decimals or objects, the nonce tag, the network, hashes, credentials and addresses. The instances are transcribed onto aeson 2.2.5.0's combinators (`json.Aeson`), so a refusal is the reference's `IError`: its JSON path, as the instances' `.:` and `<?>` scope it, and a typed cause that renders the reference's message (`AesonError`, within `ConfigProblem.ProtocolStart`, [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796)). The readers that run after the check read the same instances and keep no defaults: `ProtocolParams.fromGenesis`, `GenesisState.globals` and `LiteLedger.fromGenesis`. `minPoolCost` and `minUTxOValue` are optional, as in the reference.
 
 ## Evidence
 
@@ -20,7 +20,7 @@ A required field is required, of the type it is read with: the `Word16`, `Word32
 - the values the types decide;
 - the optional fields and the map entries.
 
-Scarab accepts exactly what the reference accepts. A removed field, or one of another type, is refused at its own path. Every accepted file then passes every reader the node runs after the check. For a Shelley file, the parameters and the update quorum read are the reference's.
+Scarab accepts exactly what the reference accepts, and each of the 185 refusals is the reference's whole `eitherDecodeStrict` text. Every accepted file then passes every reader the node runs after the check. For a Shelley file, the parameters and the update quorum read are the reference's. The 54 cost-model refusals of the [cost-model corpus](../../fixtures/reference/genesis-cost-models/README.md) are compared whole too, and the [start-up corpus](../../fixtures/reference/genesis-startup/README.md) compares what `cardano-node` writes to standard error.
 
 ### Bounded integer exponents
 
@@ -47,6 +47,8 @@ These are numeric-reader comparisons, not a whole-node configuration conformance
 
 ## Explicitly unchecked or unconfirmed
 
-- The entries of `staking`, `delegs`, `initialDReps` and the `extraConfig` injections are checked to their shape only. Their contents are read by `GenesisInjections` and not compared with the reference's entry parsers ([#563](https://github.com/KD5UJC-XYZ/scarab/issues/563)).
+- The entries of `staking`, `delegs`, `initialDReps` and the `extraConfig` injections are checked with instances transcribed from the reference's source (`StakePoolParams`, `Delegatee`, `DRepState`, `InjectionData`), but no retained case exercises them; comparing them with the reference's entry parsers is [#563](https://github.com/KD5UJC-XYZ/scarab/issues/563).
+- A Shelley address in `initialFunds` is refused with the reference's `decodeAddr` text; a Byron address is read by the node's own reader, whose refusal is not the reference's `DecoderError`.
+- `isIdentifierKey`, which decides how a key appears in a path, uses the JDK's Unicode character categories, not those of the reference's GHC.
 - An `updateQuorum` past `Int` is read as `Int.MaxValue`, which no vote count reaches, as none reaches the larger value.
 - The cost models are [ledger-genesis-cost-models](ledger-genesis-cost-models.md).
