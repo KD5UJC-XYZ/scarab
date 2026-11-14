@@ -663,6 +663,38 @@ class LogViewTest(unittest.TestCase):
             self.assertIsNone(pool.read_reference_log("n", 1))
 
 
+CUTOFF = "2026-11-13T22:10:00Z"
+POOL_PORTS = {34327, 40957}
+
+
+def session(ns, local, remote, at="2026-11-13T22:10:01Z", **data):
+    ports = {"localAddress": {"address": "127.0.0.1", "port": str(local)},
+             "remoteAddress": {"address": "127.0.0.1", "port": str(remote)}}
+    return json.dumps({"at": at, "ns": ns, "data": {"connectionId": ports, **data}})
+
+
+# pool 2's connections: to pool 3, its own to the Scala node's listener, the Scala node's to it
+HANDSHAKES = [session(reference_tracing.HANDSHAKE, 34327, port, at="2026-11-13T22:00:00Z") for port in (40957, 3350, 41018)]
+ENDED = [session(reference_tracing.HANDLER_ERROR, 34327, port, connectionHandler={"command": "ShutdownPeer"})
+         for port in (3350, 41018)]
+
+
+class ScalaSessionsTest(unittest.TestCase):
+    def test_the_connections_with_the_scala_node_end_with_the_handlers_error(self):
+        self.assertEqual(reference_tracing.scala_sessions(HANDSHAKES, POOL_PORTS, CUTOFF),
+                         (["127.0.0.1:34327 127.0.0.1:3350", "127.0.0.1:34327 127.0.0.1:41018"], 2))
+        # the mux's Dead after the cutoff comes before its threads are cancelled: not an end
+        dead = json.dumps({"at": "2026-11-13T22:10:01Z", "ns": reference_tracing.MUX_STATE,
+                           "data": {"bearer": {"connectionId": "127.0.0.1:34327 127.0.0.1:3350"},
+                                    "event": {"kind": "Mux.TraceState", "state": "Dead"}}})
+        self.assertEqual(reference_tracing.scala_sessions(HANDSHAKES + [dead, ENDED[1]], POOL_PORTS, CUTOFF)[0],
+                         ["127.0.0.1:34327 127.0.0.1:3350"])
+        self.assertEqual(reference_tracing.scala_sessions(HANDSHAKES + ENDED, POOL_PORTS, CUTOFF), ([], 2))
+        # one that ended before the cutoff, by its mux alone, is ended
+        earlier = dead.replace("22:10:01", "22:05:00")
+        self.assertEqual(reference_tracing.scala_sessions(HANDSHAKES + [earlier, ENDED[1]], POOL_PORTS, CUTOFF), ([], 2))
+
+
 class DrainTest(unittest.TestCase):
     """The pools' logs are read behind a barrier once the Scala node has stopped."""
 
@@ -674,8 +706,8 @@ class DrainTest(unittest.TestCase):
 
     def test_a_refusal_traced_after_the_first_read_is_read(self):
         # pool 2 had not written its refusal of the Scala node's last header when it was first read
-        reads = {2: [[LogViewTest.TIP], [LogViewTest.TIP, LogViewTest.HEADER_ERROR, self.rejected("m2")]],
-                 3: [[LogViewTest.TIP, self.rejected("m3")]]}
+        reads = {2: [[LogViewTest.TIP], [LogViewTest.TIP], [LogViewTest.TIP, LogViewTest.HEADER_ERROR, self.rejected("m2")]],
+                 3: [[LogViewTest.TIP], [LogViewTest.TIP, self.rejected("m3")]]}
         tips = {2: [{"block": 5}, {"block": 7}], 3: [{"block": 6}]}
         calls = []
 
@@ -683,20 +715,47 @@ class DrainTest(unittest.TestCase):
             calls.append(n)
             return reads[n].pop(0)
         views, why = pool.drain_reference_logs([2, 3], 5, lambda n: tips[n].pop(0) if len(tips[n]) > 1 else tips[n][0],
-                                               lambda n: f"m{n}", read, timeout=5, pause=0)
+                                               lambda n: f"m{n}", read, POOL_PORTS, CUTOFF, timeout=5, pause=0)
         self.assertIsNone(why)
         self.assertEqual(views["pool2"]["refused"], {H["z"]})
-        self.assertEqual(calls, [2, 2, 3])
+        self.assertEqual(calls, [2, 3, 2, 2, 3])
 
     def test_without_a_pool_past_the_last_block_or_its_marker_the_read_is_inconclusive(self):
         views, why = pool.drain_reference_logs([2], 5, lambda n: {"block": 5}, lambda n: "m", lambda n: [],
-                                               timeout=0.05, pause=0.01)
+                                               POOL_PORTS, CUTOFF, timeout=0.05, pause=0.01)
         self.assertEqual((views, why), (None, "pool2 did not pass block 5, the Scala node's last, within 0.05 s"))
         views, why = pool.drain_reference_logs([2], 5, lambda n: {"block": 6}, lambda n: "m", lambda n: [self.rejected("x")],
-                                               timeout=0.05, pause=0.01)
+                                               POOL_PORTS, CUTOFF, timeout=0.05, pause=0.01)
         self.assertEqual(why, "the log of pool2 did not show the refusal of the marker m within 0.05 s")
-        views, why = pool.drain_reference_logs([2], 5, lambda n: {"block": 6}, lambda n: "m", lambda n: None, timeout=1)
+        views, why = pool.drain_reference_logs([2], 5, lambda n: {"block": 6}, lambda n: "m", lambda n: None, POOL_PORTS,
+                                               CUTOFF, timeout=1)
         self.assertEqual(why, "the log of pool2 could not be read")
+
+    def test_a_header_refused_after_the_tip_passed_and_before_the_sessions_ended_is_read(self):
+        # the pool's tip is past the Scala node's last block from the start, but its ChainSync client for the Scala
+        # node is still validating a header: the refusal comes two reads later, before the connections' end
+        log = list(HANDSHAKES)
+        script = [[], [LogViewTest.HEADER_ERROR], ENDED]
+
+        def read(n):
+            if script:
+                log.extend(script.pop(0))
+            return list(log)
+
+        def submit(n):
+            log.append(self.rejected("m2"))
+            return "m2"
+        views, why = pool.drain_reference_logs([2], 5, lambda n: {"block": 9}, submit, read, POOL_PORTS, CUTOFF,
+                                               timeout=5, pause=0)
+        self.assertIsNone(why)
+        self.assertEqual((views["pool2"]["refused"], views["pool2"]["scalaConnectionsEnded"]), ({H["z"]}, 2))
+        self.assertLess(log.index(LogViewTest.HEADER_ERROR), log.index(self.rejected("m2")))
+
+    def test_connections_with_the_scala_node_still_open_make_the_read_inconclusive(self):
+        views, why = pool.drain_reference_logs([2], 5, lambda n: {"block": 6}, lambda n: "m", lambda n: list(HANDSHAKES),
+                                               POOL_PORTS, CUTOFF, timeout=0.05, pause=0.01)
+        self.assertIsNone(views)
+        self.assertTrue(why.startswith("pool2 still shows connections with the Scala node open after 0.05 s"), why)
 
     def test_the_marker_is_the_refusal_of_a_transaction_of_its_own(self):
         tx, marker = pool.marker_transaction()

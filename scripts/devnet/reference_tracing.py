@@ -14,6 +14,7 @@ its parent `ChainDB` has. With the defaults written out, `cardano-node trace-doc
 document as for the empty options (the effective options it prints are these, key for key); with the entry added,
 only `InvalidBlock`'s filter changes. Options are looked up per kind, the most specific namespace first
 (`Configuration.hs` `getOption`), which `effective` follows."""
+import datetime
 import json
 import re
 
@@ -94,6 +95,17 @@ OWN_TRACES = "Reflection."
 
 HASH = re.compile(r"(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f])")
 
+# A connection's start and end as a pool traces them at the default options: the handshake's success, and the
+# connection handler's error, which it traces only once `Mx.run` has thrown (ouroboros-network 1.2.0.0
+# `ConnectionHandler.hs`, `classifyExceptions` around `Mx.run`), when the mux's job pool has cancelled and joined every
+# mini-protocol thread of the connection (network-mux 0.11.0.0 `Control/Concurrent/JobPool.hs`, `withJobPool`: a
+# `bracket` whose `close` runs `uninterruptibleCancel` on every job). After it no ChainSync client of the connection
+# validates a header. The mux's own `Dead` comes before the threads are cancelled (`Mux.hs`, the demuxer's
+# `BearerClosed`), so it marks only a connection that ended before the forging cutoff.
+HANDSHAKE = "Net.ConnectionManager.Remote.ConnectionHandler.HandshakeSuccess"
+HANDLER_ERROR = "Net.ConnectionManager.Remote.ConnectionHandler.Error"
+MUX_STATE = "Net.Mux.Remote.State"
+
 
 def effective(options, namespace, kind):
     """The value of option `kind` (`severity`, `detail`, `backends`, `maxFrequency`) for `namespace` under `options`,
@@ -150,6 +162,51 @@ def refusal(ns, data, line):
         exception = data.get("exception") if isinstance(data, dict) else None
         return True, blamed_by_exception(exception) if isinstance(exception, str) else None
     return ns == FORGED_INVALID or INVALID_MARK in line, None
+
+
+def connection_id(data):
+    """(local, remote) of a connection-manager trace's `connectionId` or a mux trace's `bearer`, as "host:port"."""
+    cid = data.get("connectionId")
+    if isinstance(cid, dict) and isinstance(cid.get("localAddress"), dict) and isinstance(cid.get("remoteAddress"), dict):
+        local, remote = cid["localAddress"], cid["remoteAddress"]
+        return f"{local.get('address')}:{local.get('port')}", f"{remote.get('address')}:{remote.get('port')}"
+    bearer = data.get("bearer")
+    parts = bearer.get("connectionId", "").split() if isinstance(bearer, dict) else []
+    return tuple(parts) if len(parts) == 2 else None
+
+
+def instant(stamp):
+    return datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
+
+
+def scala_sessions(lines, haskell_ports, cutoff):
+    """(the connections with the Scala node a pool's log still shows open, how many it shows). A connection with the
+    Scala node is one whose remote port is not a Haskell pool's listening port (`haskell_ports`): the pool's own to the
+    Scala node's listener, and the Scala node's to the pool. It is open from its `HANDSHAKE` until its `HANDLER_ERROR`,
+    or until a mux `Dead` traced before `cutoff` (an ISO time), which ends one that closed before the cutoff."""
+    pools = {str(p) for p in haskell_ports}
+    edge = instant(cutoff)
+    state = {}
+    for line in lines:
+        if HANDSHAKE not in line and HANDLER_ERROR not in line and MUX_STATE not in line:
+            continue
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        data = entry.get("data") if isinstance(entry, dict) else None
+        cid = connection_id(data) if isinstance(data, dict) else None
+        if cid is None or cid[1].rsplit(":", 1)[-1] in pools:
+            continue
+        ns = entry.get("ns")
+        if ns == HANDSHAKE:
+            state[cid] = "open"
+        elif ns == HANDLER_ERROR:
+            state[cid] = "closed"
+        elif ns == MUX_STATE and isinstance(data.get("event"), dict) and data["event"].get("state") == "Dead" \
+                and state.get(cid) == "open" and instant(entry.get("at", cutoff)) < edge:
+            state[cid] = "closed"
+    return sorted(" ".join(c) for c, s in state.items() if s == "open"), len(state)
 
 
 def log_view(lines):

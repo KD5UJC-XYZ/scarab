@@ -327,19 +327,37 @@ def marker_seen(lines, marker):
     return False
 
 
-def drain_reference_logs(nodes, height, tip_of, submit, read, timeout=DRAIN_TIMEOUT, pause=1.0):
+def drain_reference_logs(nodes, height, tip_of, submit, read, haskell_ports, cutoff, timeout=DRAIN_TIMEOUT,
+                         pause=1.0):
     """({pool: `reference_tracing.log_view`}, None) of the Haskell pools' logs once they hold every trace a pool made
-    of the Scala node's blocks, or (None, why). The Scala node has stopped (the forging cutoff), so `height`, the
-    highest block number it forged, is final. A pool whose tip (`tip_of`) is past it validates none of the Scala node's
-    blocks again, as none can be a better candidate than its chain. Then each pool refuses a transaction made for the
-    purpose (`submit`, which returns its marker), and its log (`read`, None when unreadable) is read until that
-    refusal's `Mempool.RejectedTx` is in it: a pool writes its traces in the order it made them, through one queue and
-    one writer (trace-dispatcher 2.13 `Tracer/Standard.hs`), so every earlier trace is in the log too."""
+    of what the Scala node sent, or (None, why). The Scala node has stopped at `cutoff` (the forging cutoff), so
+    `height`, the highest block number it forged, is final.
+      1. Each pool's tip (`tip_of`) is past it: chain selection validates none of its blocks again, as none can be a
+         better candidate than the pool's chain (and a block queued earlier was selected on before the tip moved).
+      2. Each pool's log (`read`, None when unreadable) shows every connection with the Scala node ended by the
+         connection handler's error (`reference_tracing.scala_sessions`): its ChainSync client, which validates the
+         Scala node's headers whatever the pool's tip, has then ended.
+      3. Each pool refuses a transaction made for the purpose (`submit`, which returns its marker), and its log is read
+         until that refusal's `Mempool.RejectedTx` is in it: a pool writes its traces in the order it made them,
+         through one queue and one writer (trace-dispatcher 2.13 `Tracer/Standard.hs`), so every earlier trace is in
+         the log too."""
     deadline = time.monotonic() + timeout
     for n in nodes:
         while not ((tip := tip_of(n)) and tip["block"] > height):
             if time.monotonic() > deadline:
                 return None, f"pool{n} did not pass block {height}, the Scala node's last, within {timeout} s"
+            time.sleep(pause)
+    sessions = {}
+    for n in nodes:
+        while True:
+            lines = read(n)
+            if lines is None:
+                return None, f"the log of pool{n} could not be read"
+            still, sessions[n] = reference_tracing.scala_sessions(lines, haskell_ports, cutoff)
+            if not still:
+                break
+            if time.monotonic() > deadline:
+                return None, f"pool{n} still shows connections with the Scala node open after {timeout} s: {still}"
             time.sleep(pause)
     views = {}
     for n in nodes:
@@ -349,7 +367,7 @@ def drain_reference_logs(nodes, height, tip_of, submit, read, timeout=DRAIN_TIME
             if lines is None:
                 return None, f"the log of pool{n} could not be read"
             if marker_seen(lines, marker):
-                views[f"pool{n}"] = reference_tracing.log_view(lines)
+                views[f"pool{n}"] = {**reference_tracing.log_view(lines), "scalaConnectionsEnded": sessions[n]}
                 break
             if time.monotonic() > deadline:
                 return None, f"the log of pool{n} did not show the refusal of the marker {marker} within {timeout} s"
@@ -711,7 +729,8 @@ def pool(args):
         height = max((e["blockNo"] for e in forged), default=-1)
         logs, undrained = drain_reference_logs(
             others, height, lambda n: tip_at(args.name, f"{ENV}/socket/node{n}/sock"),
-            lambda n: submit_marker(args.name, n), lambda n: read_reference_log(args.name, n))
+            lambda n: submit_marker(args.name, n), lambda n: read_reference_log(args.name, n),
+            {ports[n] for n in others}, cutoff)
         if undrained:
             failures.append(f"inconclusive: the Haskell pools' logs were not read behind the barrier: {undrained}")
             logs = {}
@@ -764,7 +783,8 @@ def pool(args):
             "referenceInvalidBlocks": reference_invalid_blocks(logs),
             "referenceLogCounts": {pool: v.get("counts") for pool, v in logs.items()},
             "referenceLogDrain": {"cutoff": cutoff, "scalaLastBlockNo": height, "drained": not undrained,
-                                  "unattributedRefusals": {pool: v["unattributed"] for pool, v in logs.items()}},
+                                  "unattributedRefusals": {pool: v["unattributed"] for pool, v in logs.items()},
+                                  "scalaConnectionsEnded": {pool: v["scalaConnectionsEnded"] for pool, v in logs.items()}},
         }
         if forging_stats:
             total = forging_stats["total"]
