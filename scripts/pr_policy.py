@@ -49,7 +49,7 @@ DEVIATIONS = "deviations from the reference"
 GAPS = "gaps"
 REVIEW = "independent review"
 LINK = re.compile(r"https?://\S+")
-CODE_SPAN = re.compile(r"(`+)(?:.|\n)+?\1")
+REFERENCE_DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:\s*\S")
 ISSUE_LINK = re.compile(r"(?:\[#\d+\]\([^)]*\)|#\d+\b|https://github\.com/[^/\s]+/[^/\s]+/issues/\d+)")
 APPROVAL = re.compile(r"(?:https?://|#\d+|\]\()")
 SECTION_LEVEL = 1
@@ -124,13 +124,52 @@ def check_gaps(text):
                 "Gaps: each bullet starts with the issue that tracks the gap")
 
 
+def without_code_spans(text):
+    """`text` without its code spans: a run of backticks that no backslash escapes opens one, and the next run of
+    the same length closes it; an opening run with no closing run is plain text (CommonMark, "Code spans")."""
+    out, i, n = [], 0, len(text)
+    while i < n:
+        if text[i] == "\\" and i + 1 < n:
+            out.append(text[i:i + 2])
+            i += 2
+        elif text[i] == "`":
+            j = i
+            while j < n and text[j] == "`":
+                j += 1
+            run, k = j - i, j
+            close = None
+            while k < n:
+                if text[k] == "`":
+                    m = k
+                    while m < n and text[m] == "`":
+                        m += 1
+                    if m - k == run:
+                        close = m
+                        break
+                    k = m
+                else:
+                    k += 1
+            if close is None:
+                out.append(text[i:j])
+                i = j
+            else:
+                out.append(" ")
+                i = close
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out)
+
+
 def check_review(pr):
     """A pull request that is not a draft links the independent review of its final diff: a link GitHub renders, in
-    the section as `rendered_section` reads it and outside code spans."""
+    the section as `rendered_section` reads it, outside code spans and link reference definitions."""
     if pr.get("draft") is True:
         return
     text = rendered_section(pr.get("body"), REVIEW)
-    require(text is not None and LINK.search(CODE_SPAN.sub("", text)) is not None,
+    rendered = None if text is None else without_code_spans(
+        "\n".join(line for line in text.splitlines() if not REFERENCE_DEFINITION.match(line)))
+    require(rendered is not None and LINK.search(rendered) is not None,
             'a pull request that is not a draft needs an "## Independent review" section that links the review of its '
             "final diff posted on it (CONTRIBUTING.md, \"Independent review\"); keep it a draft until then")
 
