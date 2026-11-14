@@ -106,11 +106,11 @@ representation parameterised by what differs, not by the era, and each era's typ
 |---|---|
 | `ShelleyTxOutRep[V]` | `ShelleyTxOut`, `AllegraTxOut` (`V = AdaValue`); `MaryTxOut` (`V = MultiAssetValue`) |
 | `AlonzoTxOutRep` | `AlonzoTxOut` |
-| `BabbageTxOutRep` | `BabbageTxOut`, `ConwayTxOut`, `DijkstraTxOut` |
+| `BabbageTxOutRep[S]` | `BabbageTxOut`, `ConwayTxOut` (`S = Timelock`); `DijkstraTxOut` (`S = DijkstraNativeScript`) |
 | `ShelleyTxWitsRep[S]` | the witness sets of Shelley (`S = MultiSig`), Allegra and Mary (`S = Timelock`) |
 | `AlonzoTxWitsRep[S]` | the witness sets of Alonzo to Conway (`S = Timelock`), Dijkstra (`S = DijkstraNativeScript`) |
 | `AllegraTxAuxDataRep` | the auxiliary data of Allegra and Mary |
-| `AlonzoTxAuxDataRep` | the auxiliary data of Alonzo to Dijkstra |
+| `AlonzoTxAuxDataRep[S]` | the auxiliary data of Alonzo to Conway (`S = Timelock`), Dijkstra (`S = DijkstraNativeScript`) |
 | `ShelleyTxCertRep` | the certificates of Shelley to Babbage |
 | `AllegraTxBodyRep[M]` | `AllegraTxBody` (`M = Unit`), `MaryTxBody` (`M = MultiAsset`) |
 
@@ -120,15 +120,16 @@ representation keeps the bytes it was decoded from. The output representations a
 size and the reference-script re-read that the size rules and the reference-script fee use today.
 
 **Where the opaqueness ends.** A top-level opaque type is transparent only in the file that defines it. Each
-era therefore has one file of its types (`conway/ConwayTypes.scala`). That file defines the opaque types,
-their companions, the constructors (`private[conway]`), the instances, the decoder entry points and the
-translation in from the previous era. Other code sees only the era types. A public `rep` gives read-only
-access to the shared fields.
+era therefore has one file of its types (`conway/ConwayTypes.scala`). That file defines the opaque types and
+their companions. The constructors are private members of the companions, and the companions hold the
+instances, the decoder entry points and the translation in from the previous era. Other code sees only the
+era types. A public `rep` gives read-only access to the shared fields.
 
 **Controlled construction.** A value of an era is made only by:
 - that era's decoder;
 - its translation from the previous era (§3.7);
-- the store's projection (§3.6), which is partial and visible to `storage` only.
+- the projection of a stored output (§3.6), which is partial and `private[ledger]`. Its callers are the
+  rules' reads of the UTxO set, in `ledger`.
 
 **Equality.** The `era` packages use strict equality: `CanEqual` is given per era type, so `babbageOut ==
 conwayOut` does not compile. `Eq` and `Show` derive on the representation and are forwarded to each era type
@@ -195,7 +196,11 @@ The persisted form stays exactly as it is: the store keeps no era, as the refere
   - `UtxoStore`'s value encoding and its `utxo.bin` checkpoint;
   - `FrozenProtocolParams`;
   - the Haskell-state output codecs (`haskell/state/UtxoCodecs.scala`, already routed by era);
-  - `mempack/TxOutMemPack`.
+  - `mempack/TxOutMemPack`, which `haskell/state/SnapshotTableStream` also reaches.
+
+  The storage form keeps its simple name `TxOut`, because the fingerprint uses the type's label. Code that
+  also uses the era family imports it under an alias; it is never renamed. Its value stays the flat `Value`,
+  not `AdaValue` or `MultiAssetValue`.
 - **A stored output is read into the era that reads it**, as `indexedUnpackM` does. Each era's `fromStored` returns an `Either`: it refuses an output of a later era (the reference's `anachrony`) and a shape the era
   cannot hold.
 - **The invariant this rests on:** an output whose encoding changes at a crossing is rewritten when the chain
@@ -238,16 +243,27 @@ several commits or small pull requests into the branch per stage, and reaches `m
 
 | Stage | Deliverable |
 |---|---|
-| 1. Core | `TxLevel`; the match types; the transaction, state and Plutus classes in the reference's chains, with per-era instance traits; the value types (`AdaValue`, `MultiAssetValue`); the representations; the storage form's frozen codec; compile-failure tests (missing capability, another era's value, construction outside the era's file, equality across eras). No rule changes. |
-| 2. Conway | Conway's types, decoder and translation. Its rules on the classes (LEDGER, UTXO, UTXOW, CERTS, GOV, MEMPOOL), with failures identical. The mempool, local submission, TxSubmission2 relay and the forger typed by Conway. The performance of Conway's UTXO path on the preprod replay is measured here. |
+| 1. Core | `TxLevel`; the match types and the transaction, state and Plutus classes in the reference's chains (each era's match-type cases and instances are added in that era's stage); the value types (`AdaValue`, `MultiAssetValue`); the representations; compile-failure tests (missing capability, another era's value, construction outside the era's file, equality across eras). No change to the rules, to `Utxo` or to any codec. |
+| 2. Conway | Conway's types and decoder. Its rules on the classes (LEDGER, UTXO, UTXOW, CERTS, GOV, MEMPOOL), with failures identical. The mempool, local submission, TxSubmission2 relay and the forger typed by Conway. The performance of Conway's UTXO path on the preprod replay is measured here. |
 | 3. Dijkstra | Converge on the shared representations, `TxBody[Sub, Dijkstra]`, remove the re-decode as Conway, its translation from Conway. Coordinated with the Leios work before it starts. |
-| 4. Babbage and Alonzo | Their types, decoders, translations and rules on the classes, with failures identical. |
+| 4. Babbage and Alonzo | Their types, decoders, translations and rules on the classes, with failures identical. Conway's translation in from Babbage, and the mempool's injection of a Babbage transaction into Conway. |
 | 4b. #412 | The accumulation of predicate failures in the reference's STS order, in its own pull request, after the rules are typed. The refusal corpus is regenerated and compared against the reference. |
-| 5. Mary, Allegra, Shelley | Their types, decoders, translations and rules. Then remove `PreConway`, the grouped shapes and every era `atLeast`, in rules, storage codecs, node-to-client queries and the predicate-failure encoders (the per-era failure CBOR). |
-| 6a. Remove the flat types | Delete `TxBody`, `Witnesses`, `Tx`, `Certificate` from the rules, fuzz targets and tools; the storage form stays (§3.6). |
+| 5. Mary, Allegra, Shelley | Their types, decoders, translations and rules. Then remove `PreConway`, the grouped shapes and every era comparison (below). |
+| 6a. Remove the flat types | Delete `TxBody`, `Witnesses`, `Tx`, `Certificate` from the rules, fuzz targets and tools, once each is confirmed absent from every persisted codec. The storage form `TxOut` stays (§3.6). |
 | 6b. Era-typed headers and consensus parameters | Per-era consensus configuration, with headers indexed by era (§5). |
 | 6c. Mempool and submission before Conway | The mempool, local submission, TxSubmission2, the local monitor and the failure encoders for every Shelley-based era. |
 | 6d. Forging in every era (#544) | On 6b and 6c, with a devnet gate that starts in Shelley. |
+
+**What stage 5 removes:** every era comparison (`ShelleyBasedEra.atLeast`), wherever it is:
+- the rules;
+- `ledger`'s `ProtocolParams`, `Block`, `Governance` and `ScriptIntegrity`;
+- the storage codecs;
+- the node-to-client queries;
+- the predicate-failure encoders (the per-era failure CBOR).
+
+A decoder-version comparison (`DecoderVersion.atLeast`), which mirrors the reference's
+`ifDecoderVersionAtLeast`, stays. The ledger-state translations of `Translate` already work per era and are
+unchanged, apart from reading outputs through §3.6.
 
 **Scenarios by stage:** `e2e` for every stage that touches rules or headers; `pool` and `ntc` for 2 and 6c;
 `pool` for 6d; `restart` wherever a storage reader is touched.
