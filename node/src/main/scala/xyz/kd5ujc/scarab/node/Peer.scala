@@ -358,8 +358,9 @@ object Peer:
     * `fib n` from `n = 2` that is below the length, and the length, whose point is the anchor. An
     * empty chain offers its anchor twice, since `selectOffsets` returns a point for each offset
     * (ouroboros-network c45735a5 `api/lib/Ouroboros/Network/AnchoredSeq.hs:670-688`). The
-    * reference's length is `min k` of its fragment's, which is ours: a
-    * [[xyz.kd5ujc.scarab.consensus.VolatileChain]] retains at most `k` blocks. `fib` rounds
+    * reference's length is `min k` of its fragment's, which is ours: the node's sessions pass a
+    * [[xyz.kd5ujc.scarab.consensus.VolatileChain]]'s candidates, at most `k` blocks. (A tool that
+    * names a single starting point, as `CaptureMain` does, has it offered twice.) `fib` rounds
     * `phi ** n / sqrt 5` in Double (`Util.hs:444-449`); with the 11.1.3 release binary's own `pow`
     * it is the exact Fibonacci number for every `n` up to 70, past any length a `Vector` can have,
     * so the exact numbers are used.
