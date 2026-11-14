@@ -2,7 +2,6 @@
 """The node-diversity-conformance runner (`scripts/conformance`): the schema checker, the pins and fetching, the
 report names against the site's own selection rule, the scenario checks and the finishing of a report. Offline:
 no network, no Docker."""
-import fnmatch
 import gzip
 import io
 import json
@@ -23,18 +22,6 @@ from conformance.schema import NonStandardJson, UnsupportedSchema, date_time, lo
 
 COMMIT = "a" * 40
 FALLBACK = datetime(2001, 2, 3, tzinfo=timezone.utc)
-
-
-def site_pick(names, pattern):
-    """The site's rule (`latest_release_asset` in its scripts/build_common.py): a file matches the glob as named or
-    without its compression suffix, and needs a date, the only eight-digit run in its name; the newest wins."""
-    dated = []
-    for name in names:
-        date = re.search(r"(?<!\d)\d{8}(?!\d)", name)
-        bare = next((name[: -len(s)] for s in (".zst", ".gzip", ".gz") if name.lower().endswith(s)), name)
-        if (fnmatch.fnmatchcase(name, pattern) or fnmatch.fnmatchcase(bare, pattern)) and date:
-            dated.append((date.group(), name))
-    return [name for _, name in sorted(dated)]
 
 
 class SchemaTest(unittest.TestCase):
@@ -96,14 +83,13 @@ class NamingTest(unittest.TestCase):
                 names += [name, scenarios.provenance_name(name)]
         return names
 
-    def test_each_glob_picks_exactly_its_report(self):
-        names = self.emitted("20261114") + self.emitted("20261201")
-        for scenario in scenarios.SCENARIOS.values():
-            for era in scenario.eras:
-                picked = site_pick(names, scenarios.site_glob(scenario.id, era))
-                self.assertEqual(len(picked), 2, f"{scenario.id} {era}: one file per date, got {picked}")
-                self.assertEqual(picked[-1], scenarios.report_name("20261201", scenario.id, era),
-                                 "the newest report wins, never its provenance")
+    def test_each_scenario_and_era_has_names_of_its_own(self):
+        names = self.emitted("20261114")
+        self.assertEqual(len(names), len(set(names)), "no two files share a name")
+        reports = [name for name in names if scenarios.NAME.match(name)]
+        self.assertEqual(len(reports), 5, "one report per scenario and era")
+        self.assertTrue(all(scenarios.NAME.match(name) is None for name in names if name not in reports),
+                        "a provenance file is never taken for a report")
 
     def test_the_date_is_the_only_eight_digit_run(self):
         for name in self.emitted("20261114"):

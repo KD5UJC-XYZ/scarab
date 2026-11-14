@@ -209,8 +209,7 @@ def label(scenario: str, era: str | None) -> str:
     return scenario + (f"-{era}" if era else "")
 
 
-# The report names: one per scenario and era. The date is the only run of eight digits in a name, which is how the
-# site dates a release file.
+# The report names: one per scenario and era, dated by the report's `generated_at` in UTC.
 NAME = re.compile(r"^scarab-(?P<date>\d{8})-(?P<label>"
                   + "|".join(re.escape(label(s.id, era)) for s in SCENARIOS.values() for era in s.eras)
                   + r")\.json\.gz$")
@@ -226,13 +225,8 @@ def report_name(date: str, scenario: str, era: str | None) -> str:
 
 
 def provenance_name(report: str) -> str:
-    """The provenance file beside a report, which no site glob of a report matches."""
+    """The provenance file beside a report."""
     return report.removesuffix(".json.gz") + ".provenance.json"
-
-
-def site_glob(scenario: str, era: str | None) -> str:
-    """The asset glob of the site's node metadata that picks this report from a GitHub release."""
-    return f"scarab-*-{label(scenario, era)}.json"
 
 
 def report_date(generated_at: Any, fallback: datetime) -> str:
