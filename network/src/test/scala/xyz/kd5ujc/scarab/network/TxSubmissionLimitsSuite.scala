@@ -5,6 +5,7 @@ import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures
 import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures.given
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{RelayOffer, TxSubmission2, TxSubmission2Engine}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
@@ -76,6 +77,120 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
       }
       valid
     }
+
+  /** What a requester does to the window: offer ids of a small alphabet (so that an id is offered
+    * again), acknowledge the oldest, or ask for some.
+    */
+  private enum Step:
+    case Offer(ids: List[Int])
+    case Acknowledge(count: Int)
+    case Ask(picks: List[Int])
+
+  private val step: Gen[Step] = Gen.frequency(
+    3 -> Gen.choose(1, 4).flatMap(Gen.listOfN(_, Gen.choose(0, 2))).map(Step.Offer(_)),
+    2 -> Gen.choose(0, 4).map(Step.Acknowledge(_)),
+    4 -> Gen.choose(1, 3).flatMap(Gen.listOfN(_, Gen.choose(0, 9))).map(Step.Ask(_))
+  )
+
+  private type Window = Vector[TxSubmissionPolicy.Advertised[Bytes]]
+
+  property("a requester that asks once per advertisement it holds is never refused"):
+    // the requester keeps its own view, the advertisements by position, and asks for any of
+    // those it has not asked for, one per id in a request, not necessarily the oldest
+    forAll(Gen.listOfN(200, step)) { steps =>
+      val (_, _, refusals) =
+        steps.foldLeft((Vector.empty[(Int, Boolean)], Vector.empty: Window, 0)) {
+          case ((mine, window, refusals), Step.Offer(ns)) =>
+            val fresh = ns.take(TxSubmissionPolicy.MaxUnacknowledged - mine.size)
+            (
+              mine ++ fresh.map(_ -> false),
+              window ++ fresh.map(n => TxSubmissionPolicy.Advertised(id(n))),
+              refusals
+            )
+          case ((mine, window, refusals), Step.Acknowledge(n)) =>
+            (mine.drop(n), window.drop(n), refusals)
+          case ((mine, window, refusals), Step.Ask(picks)) =>
+            val open = mine.indices.filterNot(mine(_)._2)
+            val chosen = picks
+              .flatMap(p => open.lift(p))
+              .distinct
+              .foldLeft(Vector.empty[Int])((kept, at) =>
+                if kept.exists(mine(_)._1 == mine(at)._1) then kept else kept :+ at
+              )
+            if chosen.isEmpty then (mine, window, refusals)
+            else
+              TxSubmissionPolicy.bodies(window, chosen.map(at => id(mine(at)._1))) match
+                case Right(marked) =>
+                  (
+                    chosen.foldLeft(mine)((m, at) => m.updated(at, (m(at)._1, true))),
+                    marked,
+                    refusals
+                  )
+                case Left(_) => (mine, window, refusals + 1)
+        }
+      refusals == 0
+    }
+
+  property("no request sequence is served an id more often than it was advertised"):
+    forAll(Gen.listOfN(200, step)) { steps =>
+      val (_, offered, asked, bounded) =
+        steps.foldLeft((Vector.empty: Window, Map.empty[Int, Int], Map.empty[Int, Int], true)) {
+          case ((window, offered, asked, ok), Step.Offer(ns)) =>
+            val fresh = ns.take(TxSubmissionPolicy.MaxUnacknowledged - window.size)
+            (
+              window ++ fresh.map(n => TxSubmissionPolicy.Advertised(id(n))),
+              fresh.foldLeft(offered)((o, n) => o.updated(n, o.getOrElse(n, 0) + 1)),
+              asked,
+              ok
+            )
+          case ((window, offered, asked, ok), Step.Acknowledge(n)) =>
+            (window.drop(n), offered, asked, ok)
+          case ((window, offered, asked, ok), Step.Ask(picks)) =>
+            val ns = picks.map(_ % 3)
+            TxSubmissionPolicy.bodies(window, ns.toVector.map(id)) match
+              case Right(marked) =>
+                val now = ns.foldLeft(asked)((a, n) => a.updated(n, a.getOrElse(n, 0) + 1))
+                val within = now.forall((n, k) => k <= offered.getOrElse(n, 0)) &&
+                  ns.distinct.size == ns.size
+                (marked, offered, now, ok && within)
+              case Left(_) => (window, offered, asked, ok)
+        }
+      bounded && asked.values.sum <= offered.values.sum
+    }
+
+  test("a request for an id is refused once all its advertisements were asked for"):
+    val window: Window =
+      Vector(0, 1, 0).map(n => TxSubmissionPolicy.Advertised(id(n)))
+    val twice = for
+      first <- TxSubmissionPolicy.bodies(window, Vector(id(0)))
+      second <- TxSubmissionPolicy.bodies(first, Vector(id(0), id(1)))
+    yield second
+    assertEquals(twice.map(_.map(_.requested)), Right(Vector(true, true, true)))
+    assertEquals(
+      twice.flatMap(TxSubmissionPolicy.bodies(_, Vector(id(0)))),
+      Left(TxSubmissionPolicy.Violation.AlreadyRequested(id(0)))
+    )
+    assertEquals(
+      TxSubmissionPolicy.bodies(window, Vector(id(2))),
+      Left(TxSubmissionPolicy.Violation.UnadvertisedBody(id(2)))
+    )
+    assertEquals(
+      TxSubmissionPolicy.bodies(window, Vector(id(0), id(0))),
+      Left(TxSubmissionPolicy.Violation.DuplicateBody(id(0)))
+    )
+    // acknowledging the oldest drops its mark with it; the later advertisement keeps its own
+    assertEquals(
+      twice.map(_.drop(1)).flatMap(TxSubmissionPolicy.bodies(_, Vector(id(0)))),
+      Left(TxSubmissionPolicy.Violation.AlreadyRequested(id(0)))
+    )
+    assertEquals(
+      TxSubmissionPolicy
+        .bodies(window, Vector(id(0)))
+        .map(_.drop(1))
+        .flatMap(TxSubmissionPolicy.bodies(_, Vector(id(0))))
+        .map(_.map(_.requested)),
+      Right(Vector(false, true))
+    )
 
   test("the runtime rejects credit above10, even though each reply is limited to8"):
     TestControl
@@ -194,9 +309,9 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
       .fold(error => fail(error.message), identity)
 
   private val wideRules = new TxSubmission2Runtime.Rules[Bytes]:
-    def acknowledge(unacked: Vector[Bytes], blocking: Boolean, ack: Int, request: Int) =
+    def acknowledge[A](unacked: Vector[A], blocking: Boolean, ack: Int, request: Int) =
       TxSubmissionPolicy.acknowledge(unacked, blocking, ack, request)
-    def bodies(unacked: Vector[Bytes], ids: Vector[Bytes]) =
+    def bodies(unacked: Vector[TxSubmission2Runtime.Advertised[Bytes]], ids: Vector[Bytes]) =
       TxSubmissionPolicy.bodies(unacked, ids)
     def offers(ids: Vector[Bytes], requested: Int) = TxSubmissionPolicy.offers(ids, requested)
 
@@ -290,32 +405,132 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
       )
     }
 
-  test("the same advertised body may be requested in later messages before acknowledgement"):
-    TestControl
-      .executeEmbed(typed {
-        linked(protocols = Set(4)).use { (client, server) =>
-          for
-            c <- client.channel(4)
-            s <- server.channel(4)
-            running <- typed(TxSubmissionClient.run(c, source)).start
-            _ <- receive(s, State.Init, Role.Client)
-            _ <- send(s, State.Idle, Role.Server, Message.RequestIds(true, 0, 1))
-            _ <- receive(s, State.Ids(true), Role.Client)
-            _ <- send(s, State.Idle, Role.Server, Message.RequestTxs(Vector(id(0))))
-            first <- receive(s, State.Txs, Role.Client)
-            _ <- send(s, State.Idle, Role.Server, Message.RequestTxs(Vector(id(0))))
-            second <- receive(s, State.Txs, Role.Client)
-            _ <- send(s, State.Idle, Role.Server, Message.RequestIds(false, 0, 0))
-            _ <- running.joinWithNever
-          yield (first, second)
-        }
-      })
-      .map(result =>
-        assertEquals(
-          result,
-          Right((Message.ReplyTxs(Vector.empty), Message.ReplyTxs(Vector.empty)))
+  /** Offers `id(0)`, `id(1)`, then `id(0)` again under a later ticket, as a mempool that took the
+    * transaction back after it left holds it.
+    */
+  private val readmitting: TxSubmissionClient.Source[IO] = new TxSubmissionClient.Source[IO]:
+    private val held = Vector(0, 1, 0).zipWithIndex.map { (n, at) =>
+      TxSubmissionClient.Held(id(n), transaction.size, at + 1L)
+    }
+    def reader = TxSubmission2Fixtures.structural
+    def after(ticket: Long, max: Int) = IO.pure(held.filter(_.ticket > ticket).take(max))
+    def awaitAfter(ticket: Long) = IO.unit
+    def body(txId: Bytes) = IO.pure(Some(transaction))
+
+  /** Sends `requests` to the offering side one at a time, each after the answer to the one before:
+    * the answers, and how the side ended if it ended.
+    */
+  private def converse(
+      offering: TxSubmissionClient.Source[IO],
+      requests: List[Message]
+  ): IO[Either[NetworkError, (Vector[Message], Option[Either[NetworkError, Unit]])]] =
+    TestControl.executeEmbed(typed {
+      linked(protocols = Set(4)).use { (client, server) =>
+        for
+          c <- client.channel(4)
+          s <- server.channel(4)
+          running <- typed(TxSubmissionClient.run(c, offering)).start
+          _ <- receive(s, State.Init, Role.Client)
+          result <- requests.foldLeftM(
+            (Vector.empty[Message], Option.empty[Either[NetworkError, Unit]])
+          ) {
+            case (done @ (_, Some(_)), _) => IO.pure(done)
+            case ((answers, None), request) =>
+              val answer = request match
+                case Message.RequestIds(blocking, _, _) => State.Ids(blocking)
+                case _                                  => State.Txs
+              send(s, State.Idle, Role.Server, request) *>
+                IO.race(receive(s, answer, Role.Client), running.joinWithNever).map {
+                  case Left(reply)  => (answers :+ reply, None)
+                  case Right(ended) => (answers, Some(ended))
+                }
+          }
+          _ <- running.cancel
+        yield result
+      }
+    })
+
+  private val served = Message.ReplyTxs(Vector(transaction))
+  private def refused(n: Int) =
+    Some(Left(NetworkError.TxSubmission(TxSubmissionPolicy.Violation.AlreadyRequested(id(n)))))
+
+  test("a body asked for again under the same advertisement ends the connection"):
+    converse(
+      holding,
+      List(
+        Message.RequestIds(true, 0, 1),
+        Message.RequestTxs(Vector(id(0))),
+        Message.RequestTxs(Vector(id(0)))
+      )
+    ).map(result =>
+      assertEquals(
+        result,
+        Right((Vector(Message.ReplyIds(Vector(RelayOffer(id(0), 10))), served), refused(0)))
+      )
+    )
+
+  test("an id advertised twice in the window is served once per advertisement, and no more"):
+    // the order of the reference's default inbound side (`Inbound/V1.hs` 291-292, 365-375, 417-447):
+    // the omitted or served first advertisement is acknowledged locally, the id offered again is
+    // asked for before that acknowledgement is sent
+    converse(
+      readmitting,
+      List(
+        Message.RequestIds(true, 0, 2),
+        Message.RequestTxs(Vector(id(0))),
+        Message.RequestIds(false, 0, 1),
+        Message.RequestTxs(Vector(id(0))),
+        Message.RequestTxs(Vector(id(1))),
+        Message.RequestIds(false, 1, 0),
+        Message.RequestTxs(Vector(id(0)))
+      )
+    ).map(result =>
+      assertEquals(
+        result,
+        Right(
+          (
+            Vector(
+              Message.ReplyIds(Vector(RelayOffer(id(0), 10), RelayOffer(id(1), 10))),
+              served,
+              Message.ReplyIds(Vector(RelayOffer(id(0), 10))),
+              served,
+              served,
+              Message.ReplyIds(Vector.empty)
+            ),
+            refused(0)
+          )
         )
       )
+    )
+
+  test("acknowledgement drops the advertisements with their marks, and only those"):
+    converse(
+      readmitting,
+      List(
+        Message.RequestIds(true, 0, 1),
+        Message.RequestTxs(Vector(id(0))),
+        Message.RequestIds(true, 1, 2),
+        Message.RequestTxs(Vector(id(0))),
+        Message.RequestIds(false, 1, 0),
+        Message.RequestTxs(Vector(id(0)))
+      )
+    ).map(result =>
+      assertEquals(
+        result,
+        Right(
+          (
+            Vector(
+              Message.ReplyIds(Vector(RelayOffer(id(0), 10))),
+              served,
+              Message.ReplyIds(Vector(RelayOffer(id(1), 10), RelayOffer(id(0), 10))),
+              served,
+              Message.ReplyIds(Vector.empty)
+            ),
+            refused(0)
+          )
+        )
+      )
+    )
 
   for unexpected <- List(false, true) do
     test(s"uncaught local source ${if unexpected then "bug" else "IOException"} remains a defect"):

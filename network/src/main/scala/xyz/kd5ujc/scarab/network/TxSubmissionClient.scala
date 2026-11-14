@@ -53,9 +53,9 @@ object TxSubmissionClient:
       def awaitAfter(ticket: Long) = source.awaitAfter(ticket)
       def body(id: Bytes) = source.body(id)
     val rules = new TxSubmission2Runtime.Rules[Bytes]:
-      def acknowledge(unacked: Vector[Bytes], blocking: Boolean, ack: Int, request: Int) =
+      def acknowledge[A](unacked: Vector[A], blocking: Boolean, ack: Int, request: Int) =
         TxSubmissionPolicy.acknowledge(unacked, blocking, ack, request)
-      def bodies(unacked: Vector[Bytes], ids: Vector[Bytes]) =
+      def bodies(unacked: Vector[TxSubmission2Runtime.Advertised[Bytes]], ids: Vector[Bytes]) =
         TxSubmissionPolicy.bodies(unacked, ids)
       def offers(ids: Vector[Bytes], requested: Int) = TxSubmissionPolicy.offers(ids, requested)
     TxSubmission2Runtime.client(
