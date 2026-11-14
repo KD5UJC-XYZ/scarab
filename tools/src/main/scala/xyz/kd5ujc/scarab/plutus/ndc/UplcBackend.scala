@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{
   BackendFailure,
   FlatScan,
+  NativeCrypto,
   PlutusAvailability,
   PlutusLanguage,
   PlutusScriptBytes,
@@ -72,6 +73,13 @@ enum Unanswered:
   /** The Scalus machine threw what is not the reference's failure. */
   case Thrown(error: Throwable)
 
+  /** The native library through which Scalus evaluates the BLS12-381, secp256k1 and Ed25519
+    * builtins did not load ([[NativeCrypto]]). `ScalusEvaluator` reports such a builtin as no
+    * verdict through its own log; a machine run outside it would read the refusal as the script's
+    * failure.
+    */
+  case NativeCryptoMissing
+
   def message: String = this match
     case Own(reason)          => UplcText.unavailable(reason)
     case Scalus(reason)       => reason.message
@@ -79,6 +87,7 @@ enum Unanswered:
     case NoFlatContent        => "an admitted script has no Flat content"
     case Conversion(error)    => error.message
     case Thrown(error)        => error.toString
+    case NativeCryptoMissing  => "the native crypto library did not load"
 
 /** A program decoded, admitted and closed for its language and protocol, with the machine of its
   * evaluation context: what remains is the pure CEK evaluation.
@@ -205,13 +214,26 @@ object ScalusBackend extends UplcBackend:
       protocol: Int,
       costModel: Vector[Long]
   ): Either[Unanswered, Context] =
+    contextWith(NativeCrypto.available)(language, protocol, costModel)
+
+  /** The context, which there is none of without the native crypto library: the harness runs the
+    * machine without `ScalusEvaluator` 's log, which is where a missing library's refusal is kept.
+    */
+  private[ndc] def contextWith(nativeCrypto: Boolean)(
+      language: PlutusLanguage,
+      protocol: Int,
+      costModel: Vector[Long]
+  ): Either[Unanswered, Context] =
     def made(caseOnData: Boolean) =
       ScalusEvaluator
         .corrected(language, protocol, costModel, caseOnData)
         .leftMap(Unanswered.Scalus(_))
     val withoutData = made(false)
     val withData = made(true)
-    withoutData.as(Context(language, protocol, if _ then withData else withoutData))
+    Either
+      .cond(nativeCrypto, withoutData, Unanswered.NativeCryptoMissing)
+      .flatten
+      .as(Context(language, protocol, if _ then withData else withoutData))
 
   def script(context: Context, script: Bytes): Either[Run, Prepared] =
     decoder.validate(context.language, context.protocol, script) match

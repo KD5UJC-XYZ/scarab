@@ -138,6 +138,20 @@ class UplcConformanceMainSuite extends FunSuite:
     }
   }
 
+  test("without the native crypto library the Scalus backend gives no context, never a verdict") {
+    val language = V3
+    assertEquals(
+      ScalusBackend
+        .contextWith(nativeCrypto = false)(language, 11, costs(language, 11))
+        .left
+        .toOption,
+      Some(Unanswered.NativeCryptoMissing)
+    )
+    assert(
+      ScalusBackend.contextWith(nativeCrypto = true)(language, 11, costs(language, 11)).isRight
+    )
+  }
+
   test("no verdict is written as such, with why, and never as one of the README's outcomes") {
     val json = item(scenario("x", V3, 11), None, Run.NoVerdict(Unanswered.NoFlatContent))
     assertEquals(evaluation(json), Some("no verdict"))
