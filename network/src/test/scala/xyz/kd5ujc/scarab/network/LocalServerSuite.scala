@@ -810,9 +810,9 @@ class LocalServerSuite extends FailsOnUncaught:
     }
   }
 
-  // run with `café` paths, cardano-node 11.1.3 binds the path truncated to a byte per character and
-  // then finds no socket at the path's own name; Scarab refuses every path beyond ASCII at that
-  // step with that error and binds nothing, the owner's decision (#949)
+  // run with `café` paths under a UTF-8 locale, cardano-node 11.1.3 binds the path truncated to a
+  // byte per character and then finds no socket at the path's own name; Scarab refuses every path
+  // beyond ASCII at that step with that error and binds nothing, the owner's decision (#949)
   test(
     "on the JDK: a path beyond ASCII stops the set-up as the reference's does, binding nothing"
   ) {
@@ -832,8 +832,8 @@ class LocalServerSuite extends FailsOnUncaught:
     }
   }
 
-  // the reference's length and trailing-`/` refusals come before its bind, so before what a path
-  // beyond ASCII meets there (runs of cardano-node 11.1.3, #949)
+  // the reference's length and trailing-`/` refusals come before its check of the socket file,
+  // where a path beyond ASCII stops it (runs of cardano-node 11.1.3, #949)
   test("on the JDK: a path beyond ASCII is refused for its length or its trailing slash first") {
     shortTemporary.use { root =>
       val long = s"$root/é" + "n" * (108 - root.toString.length - 2)

@@ -23,7 +23,9 @@ final case class GenesisFiles(
     conway: String,
     dijkstra: Option[String] = None,
     checkpoints: Option[String] = None
-)
+):
+  /** Every name, as written. */
+  def all: List[String] = List(byron, shelley, alonzo, conway) ++ dijkstra ++ checkpoints
 
 object GenesisFiles:
   /** The names a genesis directory (`--genesis-dir`) uses. */
@@ -173,6 +175,11 @@ final case class NodeConfig(
 ):
   /** The configured first Shelley epoch, if the configuration fixes it. */
   def firstShelleyEpoch: Option[BigInt] = hardForkEpochs.get(Era.Shelley)
+
+  /** Every file name the configuration gives, as written: the genesis files, `SocketPath` and
+    * `DatabasePath`.
+    */
+  def fileNames: List[String] = files.all ++ settings.socketPath ++ settings.databasePath
 
 object NodeConfig:
   val empty: NodeConfig = NodeConfig(None, Map.empty)

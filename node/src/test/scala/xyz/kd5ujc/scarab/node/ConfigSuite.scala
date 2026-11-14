@@ -789,6 +789,20 @@ class ConfigSuite extends FunSuite:
       rootsB.local.flatMap(_.members.map(_._1.toString)),
       List("127.0.0.1:9")
     )
+    // a snapshot name the JDK cannot make a path of is a typed refusal, which a SIGHUP reload
+    // logs and survives, not an exception that escapes the reload (#953)
+    val topologyNul = Files.createTempFile("topology-nul", ".json")
+    Files.writeString(
+      topologyNul,
+      "{\"localRoots\": [], \"publicRoots\": [], \"peerSnapshotFile\": \"snap\\u0000.json\"}"
+    )
+    assertEquals(
+      Main
+        .topologyRoots(requestedA.copy(topologyFile = Some(topologyNul)), reloadSetup)
+        .left
+        .map(_.message),
+      Left("config: cannot name the file snap\u0000.json: Nul character not allowed")
+    )
     // the file's defaults for the flags (here none are set), and a flag wins over the file
     val withSettings = Files.createTempDirectory("config-suite-settings")
     Files.copy(dir("preview").resolve("checkpoints.json"), withSettings.resolve("checkpoints.json"))
