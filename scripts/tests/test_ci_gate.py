@@ -98,6 +98,10 @@ class CiGateTests(unittest.TestCase):
         key = re.compile(r"^          key: (sbt-.*)$", re.MULTILINE)
         self.assertEqual(key.findall(shards), key.findall(self.job("scala-build")), "the shards read what the build saved")
         self.assertEqual(len(key.findall(shards)), 1)
+        self.assertIn("          fail-on-cache-miss: true\n", shards)
+        self.assertNotIn("restore-keys", shards, "an older cache could make a shard build the prepared Scalus")
+        retention = re.findall(r"^          retention-days: (\d+)$", self.job("scala-build"), re.MULTILINE)
+        self.assertEqual(retention, ["7", "7"], "a failed shard can be re-run while the plan's reports are kept")
 
     def test_check_is_the_build_alias_with_every_module_tests_in_between(self):
         self.assertIn('val checkTests = modules.map(m => s"$m/Test/test")\n', self.build)

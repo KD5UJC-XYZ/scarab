@@ -17,8 +17,11 @@ test seconds in `scripts/ci_test_shards.json`:
 
 `plan` refuses a module without a weight, a weight for a module or a suite that sbt does not report, and a suite
 name that `testOnly` would read as a pattern; it then checks that every suite of the inventory is in exactly one
-shard. `verify` reads the JUnit reports the shards wrote and refuses a suite without exactly one report from the
-shard it was planned in, a report for a suite the plan does not hold, and a report with a failure or an error.
+shard, and that each shard's commands run each of its suites exactly once (`commands` checks the plan again).
+`verify` reads the JUnit reports the shards wrote and refuses a suite without exactly one report from the shard it
+was planned in, a report for a suite the plan does not hold, and a report with a failure or an error. sbt writes a
+suite's report to one file per module, so a second run of a suite in the same shard would replace the first; the
+check of the commands is what rules that out.
 `compiled` refuses a shard's sbt log in which sbt compiled anything: a shard runs the build job's classes as they
 are.
 
@@ -230,8 +233,38 @@ def plan_inventory(plan: dict) -> list[Module]:
     return [Module(m["module"], m["directory"], tuple(m["suites"])) for m in plan["modules"]]
 
 
+def command_suites(inventory: list[Module], command: str) -> list[tuple[str, str]]:
+    """The (module, suite) pairs an sbt command of the plan runs: every suite of the module for
+    `<module>/Test/test`, the named ones for `<module>/Test/testOnly <suites>`."""
+    modules = {m.name: m for m in inventory}
+    target, _, rest = command.partition(" ")
+    name, _, task = target.partition("/")
+    names = rest.split(" ") if rest else []
+    if name not in modules:
+        raise ShardError([f"command {command!r} names no module of the inventory"])
+    if task == "Test/test" and not names:
+        return [(name, s) for s in modules[name].suites]
+    if task == "Test/testOnly" and names and all(s in modules[name].suites for s in names):
+        return [(name, s) for s in names]
+    raise ShardError([f"command {command!r} is not a whole module's tests or some of its suites by name"])
+
+
 def check_plan(plan: dict) -> None:
-    check_partition(plan_inventory(plan), [[tuple(pair) for pair in s["suites"]] for s in plan["shards"]])
+    """Refuses a plan whose shards do not partition the inventory, or whose commands do not run each suite of
+    their shard exactly once (a suite run twice in one shard would leave one report, the second run's)."""
+    inventory = plan_inventory(plan)
+    check_partition(inventory, [[tuple(pair) for pair in s["suites"]] for s in plan["shards"]])
+    problems = []
+    for shard in plan["shards"]:
+        ran = Counter(pair for command in shard["commands"] for pair in command_suites(inventory, command))
+        declared = Counter(tuple(pair) for pair in shard["suites"])
+        if ran != declared:
+            problems.append(f"shard {shard['shard']}: its commands run "
+                            + ", ".join(f"{s} of {m} {ran[(m, s)]} times" for m, s in sorted(ran.keys() | declared.keys())
+                                        if ran[(m, s)] != 1 or (m, s) not in declared)
+                            + "; each of its suites must run exactly once")
+    if problems:
+        raise ShardError(problems)
 
 
 def shard_of(plan: dict, number: int) -> dict:
@@ -338,7 +371,9 @@ def main(argv: list[str]) -> int:
                       + ", ".join(c.split(" ")[0] for c in shard["commands"]))
             print(f"every one of {sum(len(m['suites']) for m in plan['modules'])} suites is in exactly one shard")
         elif args.action == "commands":
-            print("\n".join(shard_of(json.loads(args.plan.read_text(encoding="utf-8")), args.shard)["commands"]))
+            plan = json.loads(args.plan.read_text(encoding="utf-8"))
+            check_plan(plan)
+            print("\n".join(shard_of(plan, args.shard)["commands"]))
         elif args.action == "collect":
             count = collect(json.loads(args.plan.read_text(encoding="utf-8")), args.shard, Path.cwd(), args.out)
             print(f"shard {args.shard}: {count} reports")

@@ -125,6 +125,27 @@ class PlanTests(unittest.TestCase):
                 with self.assertRaisesRegex(shards.ShardError, re.escape(message)):
                     shards.check_partition(inventory, assignment)
 
+    def test_refuses_commands_that_run_a_suite_twice_or_not_as_the_shard_declares(self):
+        def altered(change):
+            result = json.loads(json.dumps(plan()))
+            change(result["shards"])
+            return result
+
+        cases = {
+            # The same suite twice in one shard leaves one report, so only the commands can show it.
+            "x.node.HeavySuite of node 2 times": lambda s: s[0]["commands"].append(s[0]["commands"][0]),
+            "x.node.LightSuite of node 0 times": lambda s: s[1]["commands"].remove("node/Test/testOnly x.node.LightSuite"
+                                                                                   " x.storage.CodecSuite"),
+            "x.node.LightSuite of node 1 times": lambda s: s[0]["commands"].append("node/Test/testOnly x.node.LightSuite"),
+            "names no module of the inventory": lambda s: s[0]["commands"].append("gone/Test/test"),
+            "is not a whole module's tests or some of its suites by name":
+                lambda s: s[0]["commands"].append("node/Test/testOnly x.node.*"),
+        }
+        for message, change in cases.items():
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(shards.ShardError, re.escape(message)):
+                    shards.check_plan(altered(change))
+
     def test_commands_of_a_shard_and_of_a_shard_the_plan_has_not(self):
         result = plan()
         self.assertEqual(shards.shard_of(result, 1)["commands"], ["node/Test/testOnly x.node.HeavySuite"])
