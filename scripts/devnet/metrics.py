@@ -8,9 +8,7 @@ of the same run.
 """
 import re
 import time
-from .util import docker
-
-METRICS_PORT = 12798
+from .util import METRICS_PORT, docker  # noqa: F401 (METRICS_PORT: the scenarios read it here)
 
 _NAME = r"[a-zA-Z_:][a-zA-Z0-9_:]*"
 _SAMPLE = re.compile(rf"^({_NAME})(?:\{{(.*)\}})? (\S+)$")

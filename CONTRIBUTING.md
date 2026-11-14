@@ -225,7 +225,7 @@ belong to nightly CI, not to a change.
 
 ### Nightly CI is the safety net
 
-`.github/workflows/e2e.yml` runs soak, e2e, relay, pool, kes-rotate, ntc and restart every night, each scenario in its own job (a matrix), and on demand and on
+`.github/workflows/e2e.yml` runs soak, e2e (one Scala follower per Plutus evaluator, `--plutus-vm scalus --plutus-vm scarab`), relay, pool, kes-rotate, ntc and restart every night, each scenario in its own job (a matrix), and on demand and on
 version tags; `fuzz.yml` and `cuddle-crosscheck.yml` run the longer fuzzing (rotating daily seeds) and the CDDL cross-check; `fuzz-gate.yml` runs the fixed-seed `fuzz 100000 1 4` gate on pull requests that change decoder or fuzz inputs and passes without fuzzing on any other. `.github/workflows/ci.yml` runs `check`, the script tests, actionlint, a gitleaks
 scan of the checked-out commit's full history, including merge parents (unrelated fetched branches
 are scanned in their own runs; `.gitleaks.toml`; a new false positive is allowlisted there by path or

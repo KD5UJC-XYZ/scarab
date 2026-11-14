@@ -12,7 +12,7 @@ import json
 import subprocess
 import time
 
-from devnet.util import ENV, QUERY_PORT, docker, is_starvation_warning, ref
+from devnet.util import ENV, SINGLE_FOLLOWER, docker, is_starvation_warning, ref
 from . import compare, finality, ledger
 from .analyse import Analyser, AnalyserError
 
@@ -83,21 +83,23 @@ def byron_epoch_slots(root):
     return 10 * json.loads(genesis.read_text())["protocolConsts"]["k"] if genesis.exists() else None
 
 
-def follower_chain(root):
-    """The follower's final chain, rebuilt from `follower.jsonl` and checked against the recorded final tip."""
-    events = finality.parse_log((root / "follower.jsonl").read_text(errors="strict"), benign)
+def follower_chain(root, site=SINGLE_FOLLOWER):
+    """The follower's final chain, rebuilt from its log (`follower.jsonl`, the log of the follower `site`) and checked
+    against its recorded final tip (`FINAL_TIP`, `site.final_tip`)."""
+    events = finality.parse_log(site.log(root).read_text(errors="strict"), benign)
     chain = finality.FollowerChain.from_events(events, byron_epoch_slots(root))
-    recorded = root / FINAL_TIP
+    recorded = site.final_tip(root)
     chain.check_final_tip(json.loads(recorded.read_text()) if recorded.exists() else None)
     return chain
 
 
-def follower_tip(name):
-    """The follower's tip ({slot, hash}) from its query server's `/tip`, or None when it does not answer."""
-    url = f"http://127.0.0.1:{QUERY_PORT}/tip"
+def follower_tip(name, site=SINGLE_FOLLOWER):
+    """The follower's tip ({slot, hash}) from its query server's `/tip` (of the follower `site`), or None when it
+    does not answer."""
+    url = f"http://127.0.0.1:{site.query_port}/tip"
     script = f"import urllib.request,sys;sys.stdout.write(urllib.request.urlopen('{url}',timeout=10).read().decode())"
     try:
-        r = docker("exec", f"{name}-scala", "python3", "-c", script, check=False, timeout=30)
+        r = docker("exec", site.container(name), "python3", "-c", script, check=False, timeout=30)
     except subprocess.TimeoutExpired:
         return None
     try:
