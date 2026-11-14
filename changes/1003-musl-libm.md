@@ -1,0 +1,3 @@
+### Fixed (rewards, #1003)
+
+- The pool-ranking likelihoods and the wallet queries' performance estimates compute `log`, `pow` and `exp` as the cardano-node release binaries do: with a port of musl's functions (`MuslMath`), the libm those static binaries link, instead of the JVM's `Math`. The JVM differed in the last bit often enough that, for a pool with a tiny stake share, up to half of the stored `Float` likelihood samples differed from the release node's. Those values reach exported snapshots, `DebugEpochState`, `DebugNewEpochState`, `GetNonMyopicMemberRewards` and the pool reward-info query; they never reached a validity verdict or the rewards paid. The stored values change only for the affected pools; the snapshot format does not change.

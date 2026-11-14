@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node.ntc
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{Credential, ProtocolParams}
-import xyz.kd5ujc.scarab.ledger.rules.Rewards
+import xyz.kd5ujc.scarab.ledger.rules.{MuslMath, Rewards}
 import xyz.kd5ujc.scarab.ledger.state.{Likelihood, NonMyopic, SnapShot, StakePoolSnapShot}
 import xyz.kd5ujc.scarab.node.read.EraRead
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Wire}
@@ -83,21 +83,22 @@ private[ntc] object RewardQueries:
           math.scalb(rounded.toDouble, -scale)
       if r.numerator.signum < 0 then -magnitude else magnitude
 
+  // `exp` and `log` are the release node's own, musl's (`MuslMath`), as in the likelihoods (#1003).
   private def normalise(values: Vector[Float]): Vector[Float] =
     values.maxOption.fold(values) { largest =>
       val shifted = values.map(_ - largest)
-      val area = shifted.foldLeft(0.0)((sum, x) => sum + 0.01 * math.exp(x.toDouble))
-      val logArea = math.log(area).toFloat
+      val area = shifted.foldLeft(0.0)((sum, x) => sum + 0.01 * MuslMath.exp(x.toDouble))
+      val logArea = MuslMath.log(area).toFloat
       shifted.map(_ - logArea)
     }
 
-  private val prior = normalise(positions.map(x => (39.0 * math.log(x)).toFloat))
+  private val prior = normalise(positions.map(x => (39.0 * MuslMath.log(x)).toFloat))
 
   /** `percentile'`: the CDF is the upstream scan with an initial zero and no bin-width factor. */
   def performance(likelihood: Option[Likelihood]): Double =
     val weights = likelihood.fold(Vector.fill(100)(0.0f))(_.weights.map(_.float))
     val posterior = normalise(prior.zip(weights).map(_ + _))
-    val cumulative = posterior.scanLeft(0.0)((sum, x) => sum + math.exp(x.toDouble))
+    val cumulative = posterior.scanLeft(0.0)((sum, x) => sum + MuslMath.exp(x.toDouble))
     positions.zip(cumulative).find(_._2 > 0.5).fold(1.0)(_._1)
 
   private def ratio(n: BigInt, d: BigInt): Rational =

@@ -400,7 +400,8 @@ lazy val node = scarab("node")
       // that uses their component, under the module's name.
       val kept = Seq(
         root / "plutus" / "licenses" -> "plutus",
-        root / "crypto" / "licenses" -> "crypto"
+        root / "crypto" / "licenses" -> "crypto",
+        root / "ledger" / "licenses" -> "ledger"
       ).flatMap { case (dir, name) =>
         (dir * "LICENSE-*").get.map(file => file -> s"$name/${file.getName}")
       }

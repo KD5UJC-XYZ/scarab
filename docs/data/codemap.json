@@ -714,7 +714,7 @@
     {
       "module": "ledger",
       "path": "ledger/rules",
-      "responsibility": "Shelley to Conway rule interpreter: LEDGER, UTXO, BBODY, epoch, tick, rewards, governance; Dijkstra's BBODY, LEDGER, UTXOW, UTXO, CERT, POOL and GOV, reached from tests only",
+      "responsibility": "Shelley to Conway rule interpreter: LEDGER, UTXO, BBODY, epoch, tick, rewards (with `MuslMath`, the release node's musl `log`, `pow` and `exp`), governance; Dijkstra's BBODY, LEDGER, UTXOW, UTXO, CERT, POOL and GOV, reached from tests only",
       "entryPoints": [
         "Ledger",
         "Utxo",
@@ -725,6 +725,7 @@
         "Sts",
         "Gov",
         "Rewards",
+        "MuslMath",
         "GenesisStart",
         "DijkstraBbody",
         "DijkstraLedgerRule",
@@ -736,6 +737,7 @@
         "TickRulesSuite",
         "EpochBoundarySuite",
         "RewardPulserSuite",
+        "MuslMathSuite",
         "TxDependenciesSuite",
         "DuplicateWithdrawalsLedgerSuite",
         "DijkstraRulesSuite",
@@ -746,7 +748,8 @@
         "docs/adr/0009-ledger-mirror-step-2.md",
         "docs/adr/0019-incremental-reward-calculation.md",
         "docs/adr/0011-stack-safety.md",
-        "docs/design/reward-pulser.md"
+        "docs/design/reward-pulser.md",
+        "docs/compatibility/ledger-pool-ranking-libm.md"
       ]
     },
     {
@@ -1282,6 +1285,18 @@
       ],
       "suites": [],
       "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "ledger/rules",
+      "responsibility": "Hand-run comparison and benchmark of `MuslMath` against the release node's own functions and JVM `Math` (its package, for its package-private access)",
+      "entryPoints": [
+        "MuslMathMain"
+      ],
+      "suites": [],
+      "docs": [
+        "docs/compatibility/ledger-pool-ranking-libm.md"
+      ]
     },
     {
       "module": "tools",

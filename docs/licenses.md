@@ -50,6 +50,11 @@ SLF4J (`node/log/LibraryLogs.scala`).
   time. The node's assembly JAR (and the candidate OCI image, which adds only that JAR to its base)
   redistributes all of the below, so it carries their licence texts: see
   [Licence texts in binaries](#licence-texts-in-binaries).
+- Two sources are adapted from MIT-licensed code rather than taken as dependencies: the draft03 VRF arithmetic
+  (`crypto/src/main/java/xyz/kd5ujc/scarab/crypto/vrf`, from Bloxbean CCL; notice in
+  `fixtures/vrf/licenses/CCL-LICENSE`), and `MuslMath` and `MuslData` (`ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules`),
+  a port of musl 1.2.5's `log`, `pow` and `exp` (Arm's optimized-routines). The musl notice is
+  `ledger/licenses/LICENSE-musl`, which the assembly carries as `META-INF/scarab/licenses/ledger/LICENSE-musl`.
 
 ## Native libraries bundled in jars
 
@@ -193,6 +198,9 @@ in the JAR, the texts its licence asks a binary to carry, and where each text co
   bcprov, borer);
 - or a text kept elsewhere in this repository with its own provenance (`plutus/licenses/`, `crypto/licenses/`),
   packaged under the module's name.
+
+One text is not a dependency's: `ledger/licenses/LICENSE-musl`, the notice of the musl code that `MuslMath` and
+`MuslData` adapt, is packaged the same way as `META-INF/scarab/licenses/ledger/LICENSE-musl`.
 
 The upstream legal files that jars carry at their root or in `META-INF/` are kept as well: the merge
 strategy renames them per artifact (for example `META-INF/LICENSE_dnsjava-3.6.5`), and
