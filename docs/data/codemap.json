@@ -688,10 +688,12 @@
         "Script",
         "TxCert",
         "TxWits",
+        "TxAuxData",
         "EraTxOut",
         "EraTxBody",
         "EraTxCert",
         "EraTxWits",
+        "EraTxAuxData",
         "EraScript",
         "NativeScriptRep",
         "BabbageTxOutRep",
@@ -740,13 +742,14 @@
     {
       "module": "ledger",
       "path": "ledger/era/conway",
-      "responsibility": "Conway's own types: its native, Plutus and script types and its output, opaque outside their file, with their translations from Babbage; its certificate, purpose, witness set and body, made by its decoders",
+      "responsibility": "Conway's own types: its native, Plutus and script types and its output, opaque outside their file, with their translations from Babbage; its certificate, purpose, witness set, auxiliary data and body, made by its decoders",
       "entryPoints": [
         "ConwayScript",
         "ConwayTxOut",
         "ConwayTxCert",
         "ConwayPlutusPurpose",
         "ConwayTxWits",
+        "ConwayTxAuxData",
         "ConwayTxBody"
       ],
       "suites": [

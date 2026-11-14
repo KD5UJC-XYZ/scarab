@@ -5,15 +5,26 @@ import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
   Block,
+  ByteStrings,
   CborRead,
   Certificate,
   LedgerDecodeError,
+  Metadatum,
+  NativeScript as FlatNativeScript,
   PreprodDeepTx,
   Purpose,
+  Script as FlatScript,
+  ScriptKind,
+  Unsigned,
   TxBody as FlatTxBody,
   Witnesses
 }
-import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayTxBody, ConwayTxCert, ConwayTxWits}
+import xyz.kd5ujc.scarab.ledger.era.conway.{
+  ConwayTxAuxData,
+  ConwayTxBody,
+  ConwayTxCert,
+  ConwayTxWits
+}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** Conway's types (stage 2 of `docs/design/era-typed-transactions.md`): every recorded Conway body
@@ -304,4 +315,53 @@ class EraConwaySuite extends munit.FunSuite:
         hex
       )
     }
+  }
+
+  test("every recorded Conway auxiliary data reads, keeping the bytes its hash is over") {
+    val aux = transactions.flatMap(_.auxiliaryData)
+    assert(aux.nonEmpty, "no recorded Conway transaction has auxiliary data")
+    aux.foreach { raw =>
+      val a = ConwayTxAuxData.decode(raw).toOption.get
+      assertEquals(a.raw, raw)
+      // a metadata map: one entry per label it has
+      CborRead.decode(raw).toOption.get.value match
+        case xyz.kd5ujc.scarab.codec.Value.Map(kvs) =>
+          assertEquals(EraTxAuxData.conway.metadata(a).size, kvs.size, raw.hex)
+        case _ => ()
+    }
+  }
+
+  test("Conway's auxiliary data reads in each of its three forms") {
+    val c = EraTxAuxData.conway
+    val label = Unsigned.from[Unsigned.Width.W64](BigInt(674)).get
+    // `{674: 7}`: metadata alone
+    val byMap = ConwayTxAuxData.decode(Bytes.fromHex("a11902a207").toOption.get).toOption.get
+    assertEquals(c.metadata(byMap).toVector, Vector(label -> Metadatum.Num(7)))
+    // `[{674: 7}, [[0, h]]]`: metadata and native scripts
+    val byList =
+      ConwayTxAuxData.decode(Bytes.fromHex(s"82a11902a207818200581c$k").toOption.get).toOption.get
+    assertEquals(c.metadata(byList).toVector, Vector(label -> Metadatum.Num(7)))
+    assertEquals(
+      c.nativeScripts(byList)
+        .map(t => EraScript.conway.hashScript(EraScript.conway.fromNativeScript(t))),
+      Vector(
+        FlatScript
+          .native(node(s"8200581c$k"), FlatNativeScript.Form.Timelock)(using ByteStrings.Definite)
+          .toOption
+          .get
+          .hash
+      )
+    )
+    // `259({0: {674: 7}, 2: [h'0102'], 4: [h'03']})`: metadata and Plutus V1 and V3 scripts
+    val byTag = ConwayTxAuxData
+      .decode(Bytes.fromHex("d90103a300a11902a207028142010204814103").toOption.get)
+      .toOption
+      .get
+    assertEquals(c.metadata(byTag).toVector, Vector(label -> Metadatum.Num(7)))
+    assertEquals(
+      c.plutusScripts(byTag).toVector.map((kind, scripts) => kind -> scripts.map(_.hex)),
+      Vector(ScriptKind.PlutusV1 -> Vector("0102"), ScriptKind.PlutusV3 -> Vector("03"))
+    )
+    // and what Conway's decoder refuses, the era's decoder refuses: an unknown key of the tagged form
+    assert(ConwayTxAuxData.decode(Bytes.fromHex("d90103a10580").toOption.get).isLeft)
   }

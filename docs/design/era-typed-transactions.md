@@ -404,6 +404,12 @@ passes `check`.
   refuses. Its scripts are then read again from the same bytes into Conway's types, each native script with
   its own bytes, and they must be the flat decoder's by hash. Every recorded Conway witness set reads with
   the flat decoder's witnesses, and the deep preprod witness set reads on a small stack.
+- Conway's auxiliary data has `AlonzoTxAuxDataRaw`'s fields: metadata by `Word64` label, Conway native
+  scripts, and Plutus scripts' bytes per language. It keeps the bytes the body's auxiliary data hash is
+  over, and reads the three forms Conway reads (a metadata map, the `[metadata, native scripts]` list, the
+  map tagged 259). The flat decoder reads it and refuses what Conway refuses, and its fields are read again
+  from the same bytes. The classes are `EraTxAuxData`, `AllegraEraTxAuxData` and `AlonzoEraTxAuxData`;
+  validating auxiliary data takes the protocol version and comes with the rules.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
   delegation, instantaneous rewards) the flat Conway decoder refuses first, with the same error, as tests on
   crafted bytes show.
