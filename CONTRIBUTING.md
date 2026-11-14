@@ -131,9 +131,8 @@ with a pattern that matches your own shell command line.
   helpers too: no `Either[String, …]`, string-based control flow or generic `Failure(message: String)`
   wrapper standing in for domain cases. Never use `raiseError`/`throw` for a domain error; IO
   exceptions are mapped to `StorageError`/`PeerError` at the boundary only. No `.get`/`.toOption.get`
-  on values that are not provably present. The remaining sweep and CI guard are tracked by M11-E
-  in [the roadmap](docs/roadmap.md). The original #82 is closed; the semantic follow-up is
-  [#189](https://github.com/KD5UJC-XYZ/scarab/issues/189).
+  on values that are not provably present. `scripts/check_error_channels.py` refuses a declared `Either[String, …]`; the free-form strings
+  left in error ADTs are tracked in [#386](https://github.com/KD5UJC-XYZ/scarab/issues/386).
 - **Functional code by default.** Imperative, side-effecting implementations are kept only for the
   exceptions that [AGENTS.md](AGENTS.md#how-code-is-written-here) lists (a measured
   performance-critical path, recorded in [performance.md](docs/performance.md), and a few narrow

@@ -98,8 +98,7 @@ scala code … I love the use of type parameters when I can use them"*.
   MUnit assertions: clue capture holds the suite monitor while evaluating an assertion, so a worker
   assertion can deadlock with a parent's asserted wait. Release latches and
   finish owned workers in guaranteed cleanup. Positive synchronization uses an observable condition or
-  controlled schedule; bounded negative observations without a product-side hook remain explicitly
-  tracked in #251.
+  controlled schedule; the remaining sleeps are the sites of `docs/data/test-sleep-baseline.json`.
 - A program run by hand (a benchmark, a probe, the writer of a fixture or golden) lives in the `tools`
   module (`tools/runMain <class>`), in the package of the code it exercises, never in a test tree.
   `tools` may use every module's test kits and follows the rules of test code; data the suites read
@@ -111,9 +110,8 @@ scala code … I love the use of type parameters when I can use them"*.
   a new sleep, delay, timer, yield or sleep-poll helper in a source outside `src/main` (#870; its
   docstring lists the calls), against a baseline that only shrinks: the change that removes a site
   commits the smaller `docs/data/test-sleep-baseline.json`. It refuses a new virtual-time sleep too,
-  and a poll it does not see (`ref.get.iterateUntil(p)`) this rule forbids all the same. Bounded
-  negative observations without a product-side hook remain tracked in #251; a new sleep for one is
-  still refused.
+  and a poll it does not see (`ref.get.iterateUntil(p)`) this rule forbids all the same. A new sleep is
+  refused even for a bounded negative observation.
 - Opaque types, type classes with extension syntax, instances in companions, `derives` where it
   works, Monocle optics for nested state. Type parameters for roles and eras (`KeyHash[StakePool]`,
   `LedgerState[Conway]`).
