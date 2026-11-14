@@ -1398,6 +1398,23 @@
     },
     {
       "module": "tools",
+      "path": "plutus/ndc",
+      "responsibility": "Hand-run writers of Scarab's reports for the uplc-conformance and uplc-turbo scenarios of pragma-org's node-diversity-conformance site, on either Plutus evaluator (in the `plutus` package for the Scalus backend's package-private machine)",
+      "entryPoints": [
+        "UplcConformanceMain",
+        "UplcTurboMain",
+        "UplcBackend"
+      ],
+      "suites": [
+        "UplcConformanceMainSuite",
+        "UplcTurboMainSuite"
+      ],
+      "docs": [
+        "docs/adr/0027-own-uplc-evaluator-as-a-correctness-backend.md"
+      ]
+    },
+    {
+      "module": "tools",
       "path": "protocol",
       "responsibility": "Hand-run benchmarks for the `protocol` package (its package, for its package-private access)",
       "entryPoints": [
