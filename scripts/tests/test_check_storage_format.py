@@ -20,6 +20,7 @@ CODEC = 'node/src/test/scala/xyz/kd5ujc/scarab/storage/CodecSuite.scala'
 GOLDEN = 'node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotGoldenSuite.scala'
 IDENTITY = 'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NetworkIdentity.scala'
 UTXO = 'storage/src/main/scala/xyz/kd5ujc/scarab/storage/UtxoStore.scala'
+STORAGE = 'storage/src/main/scala/xyz/kd5ujc/scarab/storage'
 
 
 def record(**changes):
@@ -134,6 +135,49 @@ class SurfaceTest(TreeTest):
         self.edit(UTXO, 'object Coding:', 'object Codings:')
         self.assertLoud(self.check(), 'cannot be read', 'UtxoStore.Coding')
 
+    def test_a_constant_or_codec_of_the_stores_that_changes_is_a_change(self):
+        for path, old, new, key in [
+            (f'{STORAGE}/RocksUtxoStore.scala', 'private val StampKey = Array[Byte](0)',
+             'private val StampKey = Array[Byte](1)', '#RocksUtxoStore.StampKey'),
+            (f'{STORAGE}/ImmutableStore.scala', 'private val Suffix = " chunkSlots="', 'private val Suffix = " slots="',
+             '#FileImmutableStore.formatMigration'),
+            (f'{STORAGE}/VolatileStore.scala', 'private val FlagOrigin = 2', 'private val FlagOrigin = 4',
+             '#VolatileStore.FlagOrigin'),
+        ]:
+            with self.subTest(key=key):
+                self.setUp()
+                self.edit(path, old, new)
+                self.assertLoud(self.check(), 'format_members.' + path + key)
+        self.setUp()
+        self.edit(f'{STORAGE}/VolatileStore.scala', 'def open[F[_]: Async](dir: Path, blocksPerFile: Int = 512)',
+                  'def open[F[_]: Async](dir: Path, blocksPerFile: Int = 1024)')
+        self.assertEqual(self.check(), [])
+
+    def test_a_consistent_new_version_passes_the_registry_checks_and_still_fires(self):
+        self.edit(fmt.REGISTRY, 'case V1, V2, V3, V4, V5, V6, V7, V8, V9, V10',
+                  'case V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11')
+        self.edit(fmt.REGISTRY, 'FormatVersion.V10 -> "SCRBSNPA"',
+                  'FormatVersion.V10 -> "SCRBSNPA",\n          FormatVersion.V11 -> "SCRBSNPB"')
+        self.write(f'{STORAGE}/SnapshotV11.scala', 'object SnapshotV11:\n  val Magic = "SCRBSNPB".getBytes("US-ASCII")\n'
+                   '  def fromV10(content: Array[Byte]) = Right(content)\n')
+        self.edit(fmt.MIGRATION, '        .flatMap(SnapshotV10.fromV9)\n    case FormatVersion.V7',
+                  '        .flatMap(SnapshotV10.fromV9)\n        .flatMap(SnapshotV11.fromV10)\n    case FormatVersion.V7')
+        self.edit(fmt.MIGRATION, 'SnapshotV8.fromV7(content).flatMap(SnapshotV9.fromV8).flatMap(SnapshotV10.fromV9)',
+                  'SnapshotV8.fromV7(content).flatMap(SnapshotV9.fromV8).flatMap(SnapshotV10.fromV9)'
+                  '.flatMap(SnapshotV11.fromV10)')
+        self.edit(fmt.MIGRATION, 'case FormatVersion.V8 => SnapshotV9.fromV8(content).flatMap(SnapshotV10.fromV9)',
+                  'case FormatVersion.V8 => SnapshotV9.fromV8(content).flatMap(SnapshotV10.fromV9)'
+                  '.flatMap(SnapshotV11.fromV10)')
+        self.edit(fmt.MIGRATION, 'case FormatVersion.V9 => SnapshotV10.fromV9(content)',
+                  'case FormatVersion.V9 => SnapshotV10.fromV9(content).flatMap(SnapshotV11.fromV10)\n'
+                  '    case FormatVersion.V10 => SnapshotV11.fromV10(content)')
+        self.edit(fmt.MIGRATION, 'case (FormatVersion.V9, FormatVersion.V10) =>',
+                  'case (FormatVersion.V10, FormatVersion.V11) => ???\n        case (FormatVersion.V9, FormatVersion.V10) =>')
+        found = fmt.surface(self.root)
+        self.assertEqual(fmt.migration_problems(found['registry'], found['migrations']), [])
+        self.assertEqual(fmt.deployed_problems(found), [])
+        self.assertLoud(self.check(), 'registry.versions', 'magics.' + f'{STORAGE}/SnapshotV11.scala')
+
     def test_a_weakened_golden_assertion_is_a_change(self):
         self.edit(CODEC, 'assertEquals(hex(SnapshotSidecar.fingerprint), GoldenSidecarFingerprint)', 'assert(true)')
         self.assertLoud(self.check(), 'code_sha256')
@@ -235,6 +279,10 @@ class DigestTest(unittest.TestCase):
 
     def test_literals_and_indentation_count(self):
         self.assertNotEqual(fmt.code_digest('val a = "x y"'), fmt.code_digest('val a = "x  y"'))
+        text = 'val a = s"""|magic $m\n       |next"""\n'
+        for changed in ('val a = s"""|magic $m  \n       |next"""\n', 'val a = s"""|magic $m\n\n       |next"""\n'):
+            with self.subTest(changed=changed):
+                self.assertNotEqual(fmt.code_digest(text), fmt.code_digest(changed))
         self.assertNotEqual(fmt.code_digest('if c then\n  f()\ng()'), fmt.code_digest('if c then\n  f()\n  g()'))
 
     def test_a_member_is_its_header_and_what_is_indented_under_it(self):
@@ -242,6 +290,21 @@ class DigestTest(unittest.TestCase):
         self.assertEqual(fmt.member(code, r'object A:', r'def f\(', 'f'), '  def f(x: Int) =\n    x + 1\n\n    + 2')
         with self.assertRaisesRegex(fmt.SurfaceError, '2 definitions'):
             fmt.member(code, None, r'def f\(', 'f')
+
+    def test_a_member_whose_signature_or_body_spans_lines_is_whole(self):
+        for code, body in [
+            ('object S:\n  def stem(\n      a: BlockRef\n  )(using\n      R: Raise[F, E]\n  ): String =\n    "snapshot-"\n'
+             '  def other = 1\n', '    "snapshot-"'),
+            ('object S:\n  def stem(a: BlockRef): String = {\n  "snapshot-"\n  }\n  def other = 1\n', '  }'),
+        ]:
+            with self.subTest(code=code):
+                source, texts = fmt.masked(code)
+                found = fmt.member(source, r'object S:', r'def stem\(', 'stem')
+                self.assertEqual(found.splitlines()[-1].replace('\x000\x00', '"snapshot-"'), body)
+                self.assertNotIn('other', found)
+                changed, more = fmt.masked(code.replace('snapshot-', 'checkpoint-'))
+                self.assertNotEqual(fmt.digest_of_masked(found, texts),
+                                    fmt.digest_of_masked(fmt.member(changed, r'object S:', r'def stem\(', 'stem'), more))
 
 
 class AllowlistTest(unittest.TestCase):

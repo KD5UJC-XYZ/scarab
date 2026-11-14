@@ -22,8 +22,12 @@ points to FMT-1 (docs/design-rules.md). The surface is:
   network identity record and its file;
 - `format_members`: a code digest of each persisted-format definition in a file that also holds other code: the
   UTxO store's key and value coding (`UtxoStore.Coding`), the memory store's `utxo.bin` (`MemoryUtxoStore`'s
-  `checkpoint` and `restore`), the snapshot file's checksum and name (`FileLedgerSnapshots`) and the checkpoint
-  directory's name (`StateBacking.stem`);
+  `checkpoint` and `restore`), the RocksDB store's stamp key, its writes and stamp read and its companion (key
+  layouts and their conversion), the immutable store's index and `format` file (`FileImmutableStore`'s magic,
+  sizes, entry codec and migrations), the volatile log's records (`VolatileRecord`, `VolatileStore`'s sizes,
+  kinds, flags, codec and file names), the snapshot file's checksum and name (`FileLedgerSnapshots`) and the
+  checkpoint directory's name (`StateBacking.stem`). A definition is its header line and what follows while a
+  bracket it opened is open or the lines are indented under it;
 - `frozen_schemas`: a code digest of each frozen schema (`SnapshotSidecarV<n>.scala`, `Frozen*.scala`);
 - `goldens`: for `CodecSuite`, `FormatGoldenSuite` and `SnapshotGoldenSuite`, every string literal (the golden
   bytes, fingerprints, magics and file hashes, and the test names) and a code digest;
@@ -32,15 +36,17 @@ points to FMT-1 (docs/design-rules.md). The surface is:
 - `fixtures`: the SHA-256 of every file under `fixtures/snapshot-*` and `fixtures/network-identity-*` but their
   Markdown (the READMEs that record provenance).
 
-A code digest is of the source without its comments, with trailing white space and empty lines dropped; string
-literals and indentation are kept as written, so a comment edit does not fire and a change of meaning does. A
+A code digest is of the source without its comments, with trailing white space and empty lines dropped outside
+string literals; literals and indentation are kept as written, so a comment edit does not fire and a change of
+meaning does. A
 missing anchor (a file, a definition, a parse that finds nothing) is a STORAGE FORMAT CHANGE too, never a smaller
 surface. Whatever the surface is, the snapshot kind must stay readable from V8 with a registered migration path
 from V8 to its current version: deployed stores are V8 (FMT-1).
 
-The guard does not see a persisted byte that none of these pins: the files it reads in part (the volatile store,
-the immutable store and the RocksDB store are pinned only where `FormatGoldenSuite` pins their records) and an
-encoding that a golden does not cover. Its docstring is the list of what it sees.
+The guard does not see a persisted byte that none of these pins: a layout written inline in the rest of a file it
+reads in part (the immutable store's chunk and index file names in its `open` and preflight code, the RocksDB
+options in the store's class), or an encoding defined in a file not listed here. Its docstring is the list of what
+it sees.
 
 The manifest holds the surface and the record of the approval that admitted it. Its `approval` entry holds
 `question`, `asked_at`, `answer` and `answered_at` (UTC ISO 8601 with seconds and `Z`, answered after asked, not in
@@ -107,6 +113,29 @@ FORMAT_MEMBERS = (
     ('MemoryUtxoStore.checkpoint', f'{STORAGE_MAIN}/UtxoStore.scala', r'final class MemoryUtxoStore\b',
      r'def checkpoint\('),
     ('MemoryUtxoStore.restore', f'{STORAGE_MAIN}/UtxoStore.scala', r'final class MemoryUtxoStore\b', r'def restore\('),
+    ('RocksUtxoStore.StampKey', f'{STORAGE_MAIN}/RocksUtxoStore.scala', r'final class RocksUtxoStore\b',
+     r'private val StampKey\b'),
+    ('RocksUtxoStore.write', f'{STORAGE_MAIN}/RocksUtxoStore.scala', r'final class RocksUtxoStore\b', r'def write\('),
+    ('RocksUtxoStore.flushed', f'{STORAGE_MAIN}/RocksUtxoStore.scala', r'final class RocksUtxoStore\b',
+     r'def flushed\b'),
+    ('object RocksUtxoStore', f'{STORAGE_MAIN}/RocksUtxoStore.scala', None, r'object RocksUtxoStore:'),
+    *(('FileImmutableStore.' + name, f'{STORAGE_MAIN}/ImmutableStore.scala', r'object FileImmutableStore:', header)
+      for name, header in (('IndexMagic', r'val IndexMagic\b'), ('FormatText', r'val FormatText\b'),
+                           ('HeaderSize', r'val HeaderSize\b'), ('EntrySize', r'val EntrySize\b'),
+                           ('magicOf', r'private def magicOf\('),
+                           ('indexMigration', r'private\[storage\] def indexMigration\['),
+                           ('formatMigration', r'private\[storage\] def formatMigration\['),
+                           ('encode', r'private\[storage\] def encode\('), ('decode', r'private def decode\('),
+                           ('crcOf', r'private\[storage\] def crcOf\('),
+                           ('entries', r'private\[storage\] def entries\('))),
+    ('VolatileRecord', f'{STORAGE_MAIN}/VolatileStore.scala', None, r'enum VolatileRecord:'),
+    *(('VolatileStore.' + name, f'{STORAGE_MAIN}/VolatileStore.scala', r'object VolatileStore:', header)
+      for name, header in (('HeaderSize', r'val HeaderSize\b'), ('KindBlock', r'private val KindBlock\b'),
+                           ('KindRollback', r'private val KindRollback\b'),
+                           ('FlagBoundary', r'private val FlagBoundary\b'),
+                           ('FlagOrigin', r'private val FlagOrigin\b'), ('encode', r'def encode\('),
+                           ('decodeAll', r'def decodeAll\('), ('Scanned', r'private object Scanned:'),
+                           ('Suffix', r'private val Suffix\b'), ('nameOf', r'private def nameOf\('))),
     ('FileLedgerSnapshots', f'{STORAGE_MAIN}/LedgerSnapshots.scala', None, r'object FileLedgerSnapshots:'),
     ('StateBacking.stem', f'{STORAGE_MAIN}/StateBacking.scala', r'object StateBacking:', r'def stem\('),
     ('StateBacking.Stem', f'{STORAGE_MAIN}/StateBacking.scala', r'object StateBacking:', r'private val Stem\b'),
@@ -117,7 +146,7 @@ MAGIC = re.compile(r'(?:SCRB|CSL)[A-Z0-9]{4,5}')
 DEPLOYED = 'V8'
 # The digest of the surface of main (458e201bd) on 2026-11-14, when the freeze began. It admits that surface with
 # no approval entry; it approves nothing.
-BASELINE_SURFACE_SHA256 = 'f24cc9b35a5dd3c0307cf450081887e4554aace64fb7c2d2151d3fe97c3bc66d'
+BASELINE_SURFACE_SHA256 = '81701cee77a1f5bb530fb0d709325734a43625711bbbb9c186859e73d0edf484'
 
 # The paths a storage format change may touch, and nothing else (FMT-1). First what the owner named: the
 # persisted-format code and its tests, the migration, the snapshot fixtures, the manifest, the storage-migration
@@ -290,51 +319,86 @@ def expression_end(source: str, i: int) -> int:
     return n
 
 
-def scan(source: str) -> tuple[str, list[str]]:
-    """`source` without its comments (string and character literals kept as written, line breaks kept), and the
-    contents of its string literals."""
-    out: list[str] = []
-    literals: list[str] = []
-    i, n = 0, len(source)
+def lex(source: str) -> list[tuple[str, str]]:
+    """`source` as code and literal pieces, comments removed (a comment becomes a space, and keeps its line breaks):
+    (`code`, text) and (`literal`, the string or character literal as written, quotes included)."""
+    out: list[tuple[str, str]] = []
+    i, n, start = 0, len(source), 0
+
+    def code_to(j: int) -> None:
+        if j > start:
+            out.append(('code', source[start:j]))
+
     while i < n:
         if source.startswith('/*', i):
             end = comment_end(source, i)
-            out.append(' ' + '\n' * source.count('\n', i, end))
-            i = end
+            code_to(i)
+            out.append(('code', ' ' + '\n' * source.count('\n', i, end)))
+            i = start = end
         elif source.startswith('//', i):
             end = source.find('\n', i)
-            out.append(' ')
-            i = n if end < 0 else end
+            end = n if end < 0 else end
+            code_to(i)
+            out.append(('code', ' '))
+            i = start = end
         elif source[i] == '"':
             interpolated = i > 0 and (source[i - 1].isalnum() or source[i - 1] == '_')
             triple = source.startswith('"""', i)
-            quote = 3 if triple else 1
-            end = literal_end(source, i + quote, triple, interpolated)
-            out.append(source[i:end])
-            literals.append(source[i + quote:max(i + quote, end - quote)])
-            i = end
+            end = literal_end(source, i + (3 if triple else 1), triple, interpolated)
+            code_to(i)
+            out.append(('literal', source[i:end]))
+            i = start = end
         elif source[i] == "'" and i + 2 < n and (source[i + 2] == "'" or source[i + 1] == '\\'):
             end = source.find("'", i + 2)
             end = n if end < 0 else end + 1
-            out.append(source[i:end])
-            i = end
+            code_to(i)
+            out.append(('literal', source[i:end]))
+            i = start = end
         else:
-            out.append(source[i])
             i += 1
-    return ''.join(out), literals
+    code_to(n)
+    return out
+
+
+def scan(source: str) -> tuple[str, list[str]]:
+    """`source` without its comments (string and character literals kept as written, line breaks kept), and the
+    contents of its string literals."""
+    pieces = lex(source)
+    contents = []
+    for kind, text in pieces:
+        if kind == 'literal' and text.startswith('"'):
+            quote = 3 if text.startswith('"""') else 1
+            contents.append(text[quote:max(quote, len(text) - quote)])
+    return ''.join(text for _, text in pieces), contents
+
+
+def masked(source: str) -> tuple[str, list[str]]:
+    """`source` without its comments, each literal replaced by a placeholder of one line, and the literals in order:
+    white space is read outside literals only, and their braces and line breaks do not count as code."""
+    texts: list[str] = []
+    out = []
+    for kind, text in lex(source):
+        if kind == 'literal':
+            out.append(f'\0{len(texts)}\0')
+            texts.append(text)
+        else:
+            out.append(text)
+    return ''.join(out), texts
 
 
 def normalized(code: str) -> str:
-    """Code without trailing white space and empty lines: indentation and literals are kept."""
+    """Code without trailing white space and empty lines: indentation is kept."""
     return '\n'.join(line.rstrip() for line in code.splitlines() if line.strip())
 
 
-def digest_of_code(code: str) -> str:
-    return hashlib.sha256(normalized(code).encode()).hexdigest()
+def digest_of_masked(code: str, texts: list[str]) -> str:
+    """The digest of masked code: normalized outside its literals, which are put back as written."""
+    plain = re.sub('\0(\\d+)\0', lambda m: texts[int(m.group(1))], normalized(code))
+    return hashlib.sha256(plain.encode()).hexdigest()
 
 
 def code_digest(source: str) -> str:
-    return digest_of_code(scan(source)[0])
+    return digest_of_masked(*masked(source))
 
 
 def read(root: Path, path: str) -> str:
@@ -361,18 +425,27 @@ def indent(line: str) -> int:
     return len(line) - len(line.lstrip())
 
 
+def depth_change(line: str) -> int:
+    return sum({'(': 1, '[': 1, '{': 1, ')': -1, ']': -1, '}': -1}.get(c, 0) for c in line)
+
+
 def member(code: str, scope: str | None, header: str, what: str) -> str:
-    """The definition whose header line matches `header` (once, within `scope`'s definition when one is given): the
-    header line and every line after it that is empty or indented further."""
+    """In masked code, the definition whose header line matches `header` (once, within `scope`'s definition when one
+    is given): the header line, and every line after it while a bracket it opened is still open or the line is empty
+    or indented further, so that a signature over several lines and a body in braces are whole."""
     if scope is not None:
         code = member(code, None, scope, what)
     lines = code.splitlines()
     heads = [i for i, line in enumerate(lines) if re.match(r'\s*' + header, line)]
     if len(heads) != 1:
         raise SurfaceError(f'{what}: {len(heads)} definitions where one was expected')
-    start = heads[0]
-    end = next((i for i in range(start + 1, len(lines))
-                if lines[i].strip() and indent(lines[i]) <= indent(lines[start])), len(lines))
+    start, depth = heads[0], depth_change(lines[heads[0]])
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        if depth <= 0 and lines[i].strip() and indent(lines[i]) <= indent(lines[start]):
+            end = i
+            break
+        depth += depth_change(lines[i])
     return '\n'.join(lines[start:end])
 
 
@@ -405,7 +478,7 @@ def registry(root: Path) -> dict:
         'utxoKeyLayoutCurrent': required(re.search(r'val current: UtxoKeyLayout = (\w+)', code),
                                          'the current UtxoKeyLayout').group(1),
         'formatLosses': required(re.findall(r'\n\s*case (\w+\([^)]*\))', losses), 'the FormatLoss cases'),
-        'code_sha256': digest_of_code(code),
+        'code_sha256': code_digest(source),
     }
 
 
@@ -515,8 +588,8 @@ def format_sources(root: Path) -> dict:
 def format_members(root: Path) -> dict:
     out = {}
     for name, path, scope, header in FORMAT_MEMBERS:
-        code, _ = scan(read(root, path))
-        out[f'{path}#{name}'] = digest_of_code(member(code, scope, header, f'{path}#{name}'))
+        code, texts = masked(read(root, path))
+        out[f'{path}#{name}'] = digest_of_masked(member(code, scope, header, f'{path}#{name}'), texts)
     return out
 
 
