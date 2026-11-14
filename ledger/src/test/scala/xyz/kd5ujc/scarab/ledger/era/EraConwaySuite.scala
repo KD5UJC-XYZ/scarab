@@ -19,6 +19,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Witnesses
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{
+  ConwayTx,
   ConwayTxAuxData,
   ConwayTxBody,
   ConwayTxCert,
@@ -383,4 +384,17 @@ class EraConwaySuite extends munit.FunSuite:
       )
     )
     assertEquals(ConwayTxAuxData.decode(Bytes.fromHex("d90103a10680").toOption.get), unknown)
+  }
+
+  test("every recorded Conway transaction reads with the flat transaction's size and flag") {
+    val tx = EraTx.conway
+    given tx.bodyOf.Level[TxLevel.Top] = tx.bodyOf.top
+    transactions.foreach { t =>
+      val flat = xyz.kd5ujc.scarab.ledger.Tx.fromBlock(t, Era.Conway).toOption.get
+      val c = ConwayTx.decode(t).toOption.get
+      assertEquals(tx.sizeTxForFeeCalculation[TxLevel.Top](c), flat.size)
+      assertEquals(tx.isValid(c), IsPhase2Valid.of(flat.isValid))
+      assertEquals(tx.bodyOf.id[TxLevel.Top](tx.body[TxLevel.Top](c)), flat.body.id)
+      assertEquals(tx.auxData[TxLevel.Top](c).map(_.raw), flat.auxiliary)
+    }
   }

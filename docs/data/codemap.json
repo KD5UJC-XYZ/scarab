@@ -684,11 +684,13 @@
       "path": "ledger/era",
       "responsibility": "Era-specific transaction types (#85): the type families as match types, the reference's era classes with one instance per era, and what the eras share (output and script representations, certificate parts)",
       "entryPoints": [
+        "Tx",
         "TxOut",
         "Script",
         "TxCert",
         "TxWits",
         "TxAuxData",
+        "EraTx",
         "EraTxOut",
         "EraTxBody",
         "EraTxCert",
@@ -696,8 +698,7 @@
         "EraTxAuxData",
         "EraScript",
         "NativeScriptRep",
-        "BabbageTxOutRep",
-        "WitVKey"
+        "BabbageTxOutRep"
       ],
       "suites": [
         "EraCoreSuite",
@@ -742,15 +743,16 @@
     {
       "module": "ledger",
       "path": "ledger/era/conway",
-      "responsibility": "Conway's own types: its native, Plutus and script types and its output, opaque outside their file, with their translations from Babbage; its certificate, purpose, witness set, auxiliary data and body, made by its decoders",
+      "responsibility": "Conway's own types: its native, Plutus and script types and its output, opaque outside their file, with their translations from Babbage; its certificate, purpose, witness set, auxiliary data, body and transaction, made by its decoders",
       "entryPoints": [
-        "ConwayScript",
-        "ConwayTxOut",
-        "ConwayTxCert",
-        "ConwayPlutusPurpose",
+        "ConwayTx",
+        "ConwayTxBody",
         "ConwayTxWits",
         "ConwayTxAuxData",
-        "ConwayTxBody"
+        "ConwayTxCert",
+        "ConwayPlutusPurpose",
+        "ConwayScript",
+        "ConwayTxOut"
       ],
       "suites": [
         "EraCoreSuite",

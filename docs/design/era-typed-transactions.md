@@ -413,6 +413,10 @@ passes `check`.
   then refuses it below decoder version 12. That is a reported-error difference, recorded with the others
   ([#796](https://github.com/KD5UJC-XYZ/scarab/issues/796)). The classes are `EraTxAuxData`, `AllegraEraTxAuxData` and `AlonzoEraTxAuxData`;
   validating auxiliary data takes the protocol version and comes with the rules.
+- A Conway transaction is its body, witness set, phase-two flag (`IsPhase2Valid`) and auxiliary data,
+  read by Conway's decoders. The classes are `EraTx` and `AlonzoEraTx`, at the levels of the era's bodies.
+  Every recorded Conway transaction reads with the flat transaction's fee size
+  (`sizeTxForFeeCalculation`) and flag.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
   delegation, instantaneous rewards) the flat Conway decoder refuses first, with the same error, as tests on
   crafted bytes show.

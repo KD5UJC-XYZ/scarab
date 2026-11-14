@@ -308,96 +308,97 @@ object ConwayTxBody:
       Coin(b.donation)
     )
 
-  val instance: ConwayEraTxBody[Conway] = new ConwayEraTxBody[Conway]:
-    type Level[L <: TxLevel] = TopOnly[L]
-    override def top: TopOnly[TxLevel.Top] = TopOnly.Top
-    override def outputsOf: BabbageEraTxOut[Conway] = ConwayTxOut.instance
-    override def certsOf: ConwayEraTxCert[Conway] = ConwayTxCert.instance
-    override def id[L <: TxLevel](body: TxBody[L, Conway])(using l: TopOnly[L]): Bytes =
-      l match
-        case TopOnly.Top => body.id
-    override def inputs[L <: TxLevel](body: TxBody[L, Conway])(using
-        l: TopOnly[L]
-    ): SortedSet[TxIn] =
-      l match
-        case TopOnly.Top => body.spendInputs
-    override def outputs[L <: TxLevel](body: TxBody[L, Conway])(using
-        l: TopOnly[L]
-    ): Vector[ConwayTxOut] =
-      l match
-        case TopOnly.Top => body.outputs.map(_.value)
-    override def sizedOutputs[L <: TxLevel](body: TxBody[L, Conway])(using
-        l: TopOnly[L]
-    ): Vector[Sized[ConwayTxOut]] =
-      l match
-        case TopOnly.Top => body.outputs
-    override def fee(body: ConwayTxBody): Coin = body.fee
-    override def withdrawals[L <: TxLevel](body: TxBody[L, Conway])(using
-        l: TopOnly[L]
-    ): Map[RewardAccount, Coin] =
-      l match
-        case TopOnly.Top => body.withdrawals
-    override def auxDataHash[L <: TxLevel](body: TxBody[L, Conway])(using
-        l: TopOnly[L]
-    ): Option[Bytes] =
-      l match
-        case TopOnly.Top => body.auxDataHash
-    override def certs[L <: TxLevel](body: TxBody[L, Conway])(using
-        l: TopOnly[L]
-    ): OSet[ConwayTxCert] =
-      l match
-        case TopOnly.Top => body.certs
-    override def vldt[L <: TxLevel](body: TxBody[L, Conway])(using
-        l: TopOnly[L]
-    ): ValidityInterval =
-      l match
-        case TopOnly.Top => body.validity
-    override def mint[L <: TxLevel](body: TxBody[L, Conway])(using
-        l: TopOnly[L]
-    ): Map[Bytes, Map[Bytes, BigInt]] =
-      l match
-        case TopOnly.Top => body.mint
-    override def collateralInputs(body: ConwayTxBody): SortedSet[TxIn] = body.collateralInputs
-    override def reqSignerHashes[L <: TxLevel](body: TxBody[L, Conway])(using
-        l: TopOnly[L]
-    ): SortedSet[Bytes] =
-      l match
-        case TopOnly.Top => body.reqSignerHashes
-    override def scriptIntegrityHash[L <: TxLevel](body: TxBody[L, Conway])(using
-        l: TopOnly[L]
-    ): Option[Bytes] =
-      l match
-        case TopOnly.Top => body.scriptIntegrityHash
-    override def networkId[L <: TxLevel](body: TxBody[L, Conway])(using
-        l: TopOnly[L]
-    ): Option[Network] =
-      l match
-        case TopOnly.Top => body.networkId
-    override def referenceInputs[L <: TxLevel](body: TxBody[L, Conway])(using
-        l: TopOnly[L]
-    ): SortedSet[TxIn] =
-      l match
-        case TopOnly.Top => body.referenceInputs
-    override def totalCollateral(body: ConwayTxBody): Option[Coin] = body.totalCollateral
-    override def sizedCollateralReturn(body: ConwayTxBody): Option[Sized[ConwayTxOut]] =
-      body.collateralReturn
-    override def currentTreasuryValue[L <: TxLevel](body: TxBody[L, Conway])(using
-        l: TopOnly[L]
-    ): Option[Coin] =
-      l match
-        case TopOnly.Top => body.currentTreasuryValue
-    override def votingProcedures[L <: TxLevel](body: TxBody[L, Conway])(using
-        l: TopOnly[L]
-    ): SortedMap[Voter, SortedMap[GovActionId, VotingProcedure]] =
-      l match
-        case TopOnly.Top => body.votingProcedures
-    override def proposalProcedures[L <: TxLevel](body: TxBody[L, Conway])(using
-        l: TopOnly[L]
-    ): OSet[Proposal] =
-      l match
-        case TopOnly.Top => body.proposalProcedures
-    override def treasuryDonation[L <: TxLevel](body: TxBody[L, Conway])(using
-        l: TopOnly[L]
-    ): Coin =
-      l match
-        case TopOnly.Top => body.treasuryDonation
+  val instance: ConwayEraTxBody[Conway] { type Level[L <: TxLevel] = TopOnly[L] } =
+    new ConwayEraTxBody[Conway]:
+      type Level[L <: TxLevel] = TopOnly[L]
+      override def top: TopOnly[TxLevel.Top] = TopOnly.Top
+      override def outputsOf: BabbageEraTxOut[Conway] = ConwayTxOut.instance
+      override def certsOf: ConwayEraTxCert[Conway] = ConwayTxCert.instance
+      override def id[L <: TxLevel](body: TxBody[L, Conway])(using l: TopOnly[L]): Bytes =
+        l match
+          case TopOnly.Top => body.id
+      override def inputs[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): SortedSet[TxIn] =
+        l match
+          case TopOnly.Top => body.spendInputs
+      override def outputs[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): Vector[ConwayTxOut] =
+        l match
+          case TopOnly.Top => body.outputs.map(_.value)
+      override def sizedOutputs[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): Vector[Sized[ConwayTxOut]] =
+        l match
+          case TopOnly.Top => body.outputs
+      override def fee(body: ConwayTxBody): Coin = body.fee
+      override def withdrawals[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): Map[RewardAccount, Coin] =
+        l match
+          case TopOnly.Top => body.withdrawals
+      override def auxDataHash[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): Option[Bytes] =
+        l match
+          case TopOnly.Top => body.auxDataHash
+      override def certs[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): OSet[ConwayTxCert] =
+        l match
+          case TopOnly.Top => body.certs
+      override def vldt[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): ValidityInterval =
+        l match
+          case TopOnly.Top => body.validity
+      override def mint[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): Map[Bytes, Map[Bytes, BigInt]] =
+        l match
+          case TopOnly.Top => body.mint
+      override def collateralInputs(body: ConwayTxBody): SortedSet[TxIn] = body.collateralInputs
+      override def reqSignerHashes[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): SortedSet[Bytes] =
+        l match
+          case TopOnly.Top => body.reqSignerHashes
+      override def scriptIntegrityHash[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): Option[Bytes] =
+        l match
+          case TopOnly.Top => body.scriptIntegrityHash
+      override def networkId[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): Option[Network] =
+        l match
+          case TopOnly.Top => body.networkId
+      override def referenceInputs[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): SortedSet[TxIn] =
+        l match
+          case TopOnly.Top => body.referenceInputs
+      override def totalCollateral(body: ConwayTxBody): Option[Coin] = body.totalCollateral
+      override def sizedCollateralReturn(body: ConwayTxBody): Option[Sized[ConwayTxOut]] =
+        body.collateralReturn
+      override def currentTreasuryValue[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): Option[Coin] =
+        l match
+          case TopOnly.Top => body.currentTreasuryValue
+      override def votingProcedures[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): SortedMap[Voter, SortedMap[GovActionId, VotingProcedure]] =
+        l match
+          case TopOnly.Top => body.votingProcedures
+      override def proposalProcedures[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): OSet[Proposal] =
+        l match
+          case TopOnly.Top => body.proposalProcedures
+      override def treasuryDonation[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): Coin =
+        l match
+          case TopOnly.Top => body.treasuryDonation

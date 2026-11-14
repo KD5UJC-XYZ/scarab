@@ -86,3 +86,9 @@ type PlutusPurpose[F[_, _], E <: EraTag] = E match
   */
 type TxAuxData[E <: EraTag] = E match
   case Conway => conway.ConwayTxAuxData
+
+/** The transaction of era `E` at level `L` (`type Tx l era`,
+  * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:167`, cardano-ledger f649f975).
+  */
+type Tx[L <: TxLevel, E <: EraTag] = E match
+  case Conway => AtTop[L, conway.ConwayTx]

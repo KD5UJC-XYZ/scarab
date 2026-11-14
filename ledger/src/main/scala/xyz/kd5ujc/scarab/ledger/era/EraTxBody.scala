@@ -150,4 +150,5 @@ enum EraField:
 
 /** The instances of each era, the one place that lists the eras having each body class. */
 object EraTxBody:
-  given conway: ConwayEraTxBody[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxBody.instance
+  given conway: (ConwayEraTxBody[Conway] { type Level[L <: TxLevel] = TopOnly[L] }) =
+    xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxBody.instance
