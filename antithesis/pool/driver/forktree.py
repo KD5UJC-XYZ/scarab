@@ -12,12 +12,13 @@ its tip's last common ancestor with the longest tip, so a pool whose tip is an a
 not forked. The cluster-wide depth is the largest; past Praos's k, a fork is unrecoverable by protocol.
 
 STATE (JSON) keeps the tree, each pool's tip and how far each log has been read, across the test commands' runs in a
-timeline. The result is one JSON line: {"depth", "pools": {pool: depth or null}, "longest", "blocks"}. A tip whose
+timeline; an exclusive lock on STATE with the suffix .lock makes each run's read, update and write one transaction. The result is one JSON line: {"depth", "pools": {pool: depth or null}, "longest", "blocks"}. A tip whose
 ancestry is not yet known (its forger's log not yet read that far) counts as null and is left out.
 
 This mirrors the fork tree of cardano-foundation/cardano-node-antithesis (`components/tracer-sidecar`,
 `ForkTree.hs`), which takes the parents from `AddedToCurrentChain`; the forge events name them directly.
 """
+import fcntl
 import json
 import os
 import pathlib
@@ -102,6 +103,14 @@ def depths(state):
 
 def main():
     state_file = pathlib.Path(sys.argv[1])
+    # Copies of the test commands run at once: the whole read, update and write is one transaction under a lock,
+    # or an older state could replace a newer one.
+    with open(state_file.with_suffix(".lock"), "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        update(state_file)
+
+
+def update(state_file):
     try:
         state = json.loads(state_file.read_text())
     except (OSError, ValueError):
