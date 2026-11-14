@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger.rules
 
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.Monad
-import cats.data.{Kleisli, StateT}
+import cats.data.{Kleisli, StateT, NonEmptyChain}
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import java.time.Instant
 import munit.FunSuite
@@ -11,6 +11,8 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{
   Address,
   BlockFailure,
+  BbodyFailure,
+  Mismatch,
   EpochGeometry,
   LedgerGlobals,
   PlutusStats,
@@ -60,11 +62,11 @@ class BbodySuite extends FunSuite:
       from: BbodyState,
       declared: BodyCommitment = commitment
   ) =
-    Sts(Bbody)(
+    BlockJudgment(Bbody)(
       globals,
       BbodyEnv(TestLedger.env, pp, Coin(0)),
       from,
-      BbodySignal(txs, issuer, declared, commitment)
+      BbodySignal(txs, issuer, declared, commitment, pp.protocolMajor)
     )
 
   private val pp = params(10)
@@ -86,7 +88,7 @@ class BbodySuite extends FunSuite:
 
   test("a body that is not what the header commits to is refused") {
     val other = BodyCommitment(101, commitment.hash)
-    assertEquals(run(pp, Vector.empty, state(pp), other), Left(BlockFailure.BodyCommitment))
+    assertEquals(run(pp, Vector.empty, state(pp), other), Left(BlockFailure.Refused(NonEmptyChain.one(BbodyFailure.WrongBlockBodySizeBBODY(Mismatch(commitment.size, commitment.size + 1)))))))
   }
 
   test("the execution units of the block are limited, the failure naming the units of the block") {
@@ -109,7 +111,7 @@ class BbodySuite extends FunSuite:
     val limit = ExUnits(-1, 0)
     assertEquals(
       run(pp.copy(maxBlockExUnits = limit), txs, state(pp, utxo)),
-      Left(BlockFailure.BlockExUnitsTooBig(ExUnits.zero, limit))
+      Left(BlockFailure.Refused(NonEmptyChain.one(BbodyFailure.TooManyExUnits(Mismatch(ExUnits.zero, limit)))))
     )
   }
 
@@ -118,8 +120,10 @@ class BbodySuite extends FunSuite:
     // the transactions spend an input the set does not hold, and together exceed the units
     val txs = Vector(redeeming(half, "a"), redeeming(half, "b"))
     run(pp, txs, state(pp)) match
-      case Left(BlockFailure.Tx(_)) => ()
-      case other                    => fail(s"expected the transaction's refusal, got $other")
+      case Left(BlockFailure.Refused(failures)) =>
+        assertEquals(failures.head, BbodyFailure.TooManyExUnits(Mismatch(half + half, pp.maxBlockExUnits)))
+        assert(failures.tail.exists { case BbodyFailure.LedgersFailure(_) => true; case _ => false })
+      case other => fail(s"expected every transaction refusal and block units, got $other")
   }
 
   test("the reference scripts of the block are checked before the body commitment") {
@@ -133,10 +137,17 @@ class BbodySuite extends FunSuite:
     assert(
       Bbody.refScriptsSize(pp, utxo, Vector(naming)) > RefScripts.MaxRefScriptSizePerBlock.toLong
     )
-    assertEquals(
-      run(pp, Vector(naming), state(pp, utxo), BodyCommitment(101, commitment.hash)),
-      Left(BlockFailure.RefScriptsTooLarge(RefScripts.MaxRefScriptSizePerBlock.toLong))
-    )
+    run(pp, Vector(naming), state(pp, utxo), BodyCommitment(101, commitment.hash)) match
+      case Left(BlockFailure.Refused(failures)) =>
+        val own = failures.toChain.toVector.collect {
+          case f: BbodyFailure.WrongBlockBodySizeBBODY => f
+          case f: BbodyFailure.BodyRefScriptsSizeTooBig => f
+        }
+        assertEquals(own, Vector(
+          BbodyFailure.WrongBlockBodySizeBBODY(Mismatch(BigInt(100), BigInt(101))),
+          BbodyFailure.BodyRefScriptsSizeTooBig(Mismatch(
+            Bbody.refScriptsSize(pp, utxo, Vector(naming)), RefScripts.MaxRefScriptSizePerBlock.toLong))))
+      case other => fail(s"expected all block and transaction predicates, got $other")
   }
 
   test("BBODY agrees with the reference stack on signed transactions and failures") {
@@ -159,10 +170,12 @@ class BbodySuite extends FunSuite:
       (Vector(signed, signed), commitment)
     )
     val results = cases.map { (txs, declared) =>
-      val signal = BbodySignal(txs, issuer, declared, commitment)
-      val onRuleT = Sts(Bbody)(globals, env, from, signal)
+      val signal = BbodySignal(txs, issuer, declared, commitment, pp.protocolMajor)
+      val wrap = (failure: BbodyFailure) => BlockFailure.Refused(NonEmptyChain.one(failure))
+      val onRuleT = JudgedSts(Bbody)(wrap)(globals, env, from, signal)
       val onStack = Bbody
-        .transition[K](env, signal)(using summon, summon, summon, summon)
+        .transition[K](env, signal)(using summon, summon, summon, summon,
+          Judge.raising[K, BbodyFailure, BlockFailure](wrap))
         .run(globals)
         .run(from)
         .map(_._1)
@@ -170,7 +183,7 @@ class BbodySuite extends FunSuite:
       onRuleT
     }
     assert(results.head.isRight)
-    assertEquals(results(1), Left(BlockFailure.BodyCommitment))
+    assertEquals(results(1), Left(BlockFailure.Refused(NonEmptyChain.one(BbodyFailure.WrongBlockBodySizeBBODY(Mismatch(commitment.size, commitment.size + 1)))))))
     assert(results(2).isLeft, "the second transaction spends the first transaction's spent input")
   }
 

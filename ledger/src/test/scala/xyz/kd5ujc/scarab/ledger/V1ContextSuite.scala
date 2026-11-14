@@ -225,20 +225,20 @@ class V1ContextSuite extends FunSuite:
       pre: PreConway[E]
   ): Either[BlockFailure, ?] =
     val nes = Build.funded(Build.nes[E](5, c.params), utxoOf(c))
-    Sts(ShelleyBbody.sts[E])(
+    BlockJudgment(ShelleyBbody.sts[E])(
       globals,
       ShelleyBbodyEnv(TestLedger.env, c.params, ChainAccountState(Coin.zero, Coin.zero)),
       ShelleyBbodyState(Build.counted(nes), BlocksMade.empty),
-      BbodySignal(Vector(c.tx), issuer, commitment, commitment)
+      BbodySignal(Vector(c.tx), issuer, commitment, commitment, c.params.protocolMajor)
     )
 
   private def conwayBlock(c: PlutusCase): Either[BlockFailure, ?] =
     val nes = Build.funded(Build.nes[Conway](5, c.params), utxoOf(c))
-    Sts(Bbody)(
+    BlockJudgment(Bbody)(
       globals,
       BbodyEnv(TestLedger.env, c.params, Coin.zero),
       BbodyState(Build.counted(nes), BlocksMade.empty),
-      BbodySignal(Vector(c.tx), issuer, commitment, commitment)
+      BbodySignal(Vector(c.tx), issuer, commitment, commitment, c.params.protocolMajor)
     )
 
   recorded.foreach { r =>

@@ -215,7 +215,7 @@ class JudgmentSuite extends DisciplineSuite:
 
   test("a defect raised after a recorded failure ends the judgment with the defect") {
     val program = judge.fail(1) *> Raise[J, Defect].raise[Defect, Unit](Defect.Big) *> judge.fail(2)
-    assertEquals(accumulate(program), Outcome.Raised(Defect.Big))
+    assertEquals(accumulate(program), Outcome.Raised(Defect.Big, Chain.one(1)))
     assertEquals(
       Judgment.judge(program, Policy.Accumulate)(globals, 0),
       Left(Defect.Big)
@@ -224,6 +224,16 @@ class JudgmentSuite extends DisciplineSuite:
       Judgment.judge(judge.fail(1), Policy.Accumulate)(globals, 0),
       Right(Left(NonEmptyChain.one(1)))
     )
+  }
+
+  test("a nested defect retains the flattened completed prefix without becoming a refusal") {
+    val program = judge.fail(1) *> judge.nest(
+      judge.fail(2) *> judge.nest(judge.fail(3) *> Raise[J, Defect].raise[Defect, Unit](Defect.Big))
+    )
+    assertEquals(accumulate(program), Outcome.Raised(Defect.Big, Chain(2, 3, 1)))
+    assertEquals(Judgment.judge(program, Policy.Accumulate)(globals, 0), Left(Defect.Big))
+    val recovered = Handle[J, Defect].handleWith(program)(_ => judge.fail(4))
+    assertEquals(accumulate(recovered), refused(4))
   }
 
   test(

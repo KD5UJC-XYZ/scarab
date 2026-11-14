@@ -251,7 +251,8 @@ object EraBlock:
       txs,
       pool,
       BodyCommitment(header.bodySize, header.bodyHash),
-      BodyCommitment(BigInt(block.bodySize), block.bodyHash)
+      BodyCommitment(BigInt(block.bodySize), block.bodyHash),
+      header.protocolVersion._1
     )
 
   /** BBODY on the ticked state of an era before Conway. */
@@ -270,7 +271,7 @@ object EraBlock:
       ls.utxo.copy[E](utxo = UtxoTables(ls.utxo.utxo.utxo.at(header.blockNo.toLong)))
     )
     issuer(header).flatMap { pool =>
-      Sts(ShelleyBbody.sts[E])(
+      BlockJudgment(ShelleyBbody.sts[E])(
         ctx.globals,
         ShelleyBbodyEnv(environment(ctx, header), pp, ticked.es.chainAccount),
         ShelleyBbodyState(Counted(stamped, plutus), ticked.bcur),
@@ -319,7 +320,7 @@ object EraBlock:
     )
     issuer(header)
       .flatMap { pool =>
-        Sts(Bbody)(
+        BlockJudgment(Bbody)(
           ctx.globals,
           BbodyEnv(environment(ctx, header), pp, ticked.es.chainAccount.treasury),
           BbodyState(Counted(stamped, plutus), ticked.bcur),

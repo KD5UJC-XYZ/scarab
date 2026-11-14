@@ -52,7 +52,7 @@ class ShelleyDelegsPointerSuite extends FunSuite:
     ShelleyDelegs
       .transition[F](env, Vector(Certificate.Register(Credential.Key(key), None)))
       .judge(RuleT.Policy.Accumulate, globals, start) match
-      case RuleT.Outcome.Raised(failure)   => Left(failure)
+      case RuleT.Outcome.Raised(failure, _)   => Left(failure)
       case RuleT.Outcome.Refused(failures) => Left(LedgerFailure.Rejected(Bytes.empty, failures))
       case RuleT.Outcome.Passed(state, _)  => Right(state)
 

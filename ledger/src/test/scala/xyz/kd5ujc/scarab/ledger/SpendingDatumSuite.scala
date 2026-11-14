@@ -191,11 +191,11 @@ class SpendingDatumSuite extends FunSuite:
       TestLedger.conwayLedger(nes, c.tx, TestLedger.env) match
         case Right(after) => assert(r.accepted); disposition(r, after.state.utxo.utxo.utxo)
         case Left(error)  => assert(!r.accepted); refusal(r, error)
-      Sts(Bbody)(
+      BlockJudgment(Bbody)(
         TestLedger.globals,
         BbodyEnv(TestLedger.env, c.params, Coin.zero),
         BbodyState(Build.counted(nes), BlocksMade.empty),
-        BbodySignal(Vector(c.tx), issuer, commitment, commitment)
+        BbodySignal(Vector(c.tx), issuer, commitment, commitment, c.params.protocolMajor)
       ) match
         case Right(after) => assert(r.accepted); disposition(r, after.ledger.state.utxo.utxo.utxo)
         case Left(BlockFailure.Tx(error)) => assert(!r.accepted); refusal(r, error)

@@ -200,18 +200,22 @@ final case class LedgersEnv(ctx: xyz.kd5ujc.scarab.ledger.TxEnv, treasury: Coin)
   * each by LEDGER with its position in the block. The block's verdict is its first failure, so a
   * transaction's rules run to their first failure ([[Judge.raising]]), raised as the transaction's.
   */
-object Ledgers extends Sts[LedgersEnv, ConwayLedger, Vector[Tx], LedgerFailure]:
+object Ledgers
+    extends JudgedSts[LedgersEnv, ConwayLedger, Vector[Tx], PredicateFailure, LedgerFailure]:
   def transition[F[_]: Monad](env: LedgersEnv, txs: Vector[Tx])(using
       ask: Ask[F, Globals],
       st: Stateful[F, ConwayLedger],
-      raise: Raise[F, LedgerFailure]
+      raise: Raise[F, LedgerFailure],
+      judge: Judge[F, PredicateFailure]
   ): F[Unit] =
     TxIx.enumerate(txs).traverse_ { (tx, ix) =>
-      Ledger.transition[F](LedgerEnv(env.ctx.copy(txIndex = ix.index), env.treasury), tx)(using
-        summon[Monad[F]],
-        ask,
-        st,
-        raise,
-        Judge.raising[F, PredicateFailure, LedgerFailure](LedgerFailure.Rejected(tx.body.id, _))
+      judge.nest(
+        Ledger.transition[F](LedgerEnv(env.ctx.copy(txIndex = ix.index), env.treasury), tx)(using
+          summon[Monad[F]],
+          ask,
+          st,
+          raise,
+          judge
+        )
       )
     }

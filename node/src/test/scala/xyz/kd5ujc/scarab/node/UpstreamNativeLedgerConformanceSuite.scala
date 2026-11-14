@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   Counted,
   Globals,
   JudgedSts,
+  Judgment,
   Ledger,
   LedgerEnv,
   Ledgers,
@@ -189,14 +190,17 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
         assertEquals(tx.original, node("LEDGER-2", "signal").original)
         Vector(transaction(tx))
       case other => fail(s"expected original singleton payment batch, got $other")
-    val actual = Sts
-      .apply(Ledgers)(
+    val actual = Judgment
+      .run(Ledgers, Judgment.Policy.Accumulate)(
         globals,
         LedgersEnv(txEnv(slot.toBigInt, epoch.toBigInt), account.treasury),
         Counted(before, PlutusStats.zero),
         txs
       )
-      .fold(e => fail(e.message), identity)
+      .fold(
+        e => fail(e.message),
+        _.fold(failures => fail(s"native LEDGERS refused: $failures"), identity)
+      )
     assertLedger(actual.state, expected)
   }
 

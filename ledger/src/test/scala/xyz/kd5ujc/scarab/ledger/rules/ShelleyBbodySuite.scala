@@ -7,6 +7,8 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{
   BlockFailure,
+  BbodyFailure,
+  Mismatch,
   EpochGeometry,
   LedgerGlobals,
   PlutusStats,
@@ -65,7 +67,7 @@ class ShelleyBbodySuite extends FunSuite:
       at: Int = 0,
       declared: BodyCommitment = commitment
   )(using ShelleyBasedEra[E], PreConway[E]) =
-    Sts(ShelleyBbody.sts[E])(
+    BlockJudgment(ShelleyBbody.sts[E])(
       globals,
       ShelleyBbodyEnv(
         TestLedger.env.copy(slot = slot(at), epoch = 5),
@@ -73,7 +75,7 @@ class ShelleyBbodySuite extends FunSuite:
         ChainAccountState(Coin.zero, Coin.zero)
       ),
       from,
-      BbodySignal(txs, issuer, declared, commitment)
+      BbodySignal(txs, issuer, declared, commitment, pp.protocolMajor)
     )
 
   private def made[E <: EraTag](s: ShelleyBbodyState[E]): Option[Long] =
@@ -119,7 +121,7 @@ class ShelleyBbodySuite extends FunSuite:
     val other = BodyCommitment(101, commitment.hash)
     assertEquals(
       run[Babbage](pp, Vector.empty, state[Babbage](pp), declared = other),
-      Left(BlockFailure.BodyCommitment)
+      Left(BlockFailure.Refused(cats.data.NonEmptyChain.one(BbodyFailure.WrongBlockBodySizeBBODY(Mismatch(commitment.size, commitment.size + 1))))))
     )
   }
 
@@ -151,7 +153,7 @@ class ShelleyBbodySuite extends FunSuite:
     val limit = ExUnits(-1, 0)
     assertEquals(
       run[Alonzo](pp.copy(maxBlockExUnits = limit), txs, state[Alonzo](pp, utxo)),
-      Left(BlockFailure.BlockExUnitsTooBig(ExUnits.zero, limit))
+      Left(BlockFailure.Refused(cats.data.NonEmptyChain.one(BbodyFailure.TooManyExUnits(Mismatch(ExUnits.zero, limit)))))
     )
   }
 
@@ -161,8 +163,10 @@ class ShelleyBbodySuite extends FunSuite:
     // the transactions spend an input the set does not hold, and together exceed the units
     val txs = Vector(redeeming(half, "a"), redeeming(half, "b"))
     run[Alonzo](pp, txs, state[Alonzo](pp)) match
-      case Left(BlockFailure.Tx(_)) => ()
-      case other                    => fail(s"expected the transaction's refusal, got $other")
+      case Left(BlockFailure.Refused(failures)) =>
+        assertEquals(failures.head, BbodyFailure.TooManyExUnits(Mismatch(half + half, pp.maxBlockExUnits)))
+        assert(failures.tail.exists { case BbodyFailure.LedgersFailure(_) => true; case _ => false })
+      case other => fail(s"expected all transaction and block predicates, got $other")
   }
 
   test("a block of 10,000 transactions runs on a 256 KiB stack") {

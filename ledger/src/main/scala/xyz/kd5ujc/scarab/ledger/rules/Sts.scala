@@ -208,6 +208,22 @@ object JudgedSts:
       state: Stateful[F, S0],
       raise: Raise[F, Fail0],
       judge: Judge[F, Rec]
+  ): F[Unit] = transMapped(sub, env, signal)(identity[Rec])
+
+  /** A sub-rule whose native predicate constructor is wrapped at this rule boundary. The sub-rule
+    * inherits the same failing flag and its entire nested trace; mapping does not restart a
+    * judgment or flatten its ordering.
+    */
+  def transMapped[F[_]: Monad, Env, S, S0, Sig, Rec, Rec0, Fail, Fail0](
+      sub: JudgedSts[Env, S, Sig, Rec, Fail],
+      env: Env,
+      signal: Sig
+  )(wrap: Rec => Rec0)(using
+      embed: Embed[S, S0, Fail, Fail0],
+      ask: Ask[F, Globals],
+      state: Stateful[F, S0],
+      raise: Raise[F, Fail0],
+      judge: Judge[F, Rec0]
   ): F[Unit] =
     judge.nest(
       sub.transition[F](env, signal)(using
@@ -215,7 +231,7 @@ object JudgedSts:
         ask,
         state.focus(embed.state),
         raise.contramap(embed.failure),
-        judge
+        judge.contramap(wrap)
       )
     )
 

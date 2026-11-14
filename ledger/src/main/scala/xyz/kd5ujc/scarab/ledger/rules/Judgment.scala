@@ -77,7 +77,7 @@ object Judgment:
       state: S
   ): Either[Defect, Either[NonEmptyChain[Rec], (S, A)]] =
     program.judge(policy, globals, state) match
-      case RuleT.Outcome.Raised(defect)    => Left(defect)
+      case RuleT.Outcome.Raised(defect, _) => Left(defect)
       case RuleT.Outcome.Refused(failures) => Right(Left(failures))
       case RuleT.Outcome.Passed(s, a)      => Right(Right((s, a)))
 
@@ -94,6 +94,6 @@ object Judgment:
     rule
       .transition[RuleT.Judged[P, Fail, S]](env, signal)
       .judge(policy, globals, state) match
-      case RuleT.Outcome.Raised(raised)    => refusal.split(raised).map(Left(_))
+      case RuleT.Outcome.Raised(raised, _) => refusal.split(raised).map(Left(_))
       case RuleT.Outcome.Refused(failures) => Right(Left(failures))
       case RuleT.Outcome.Passed(after, _)  => Right(Right(after))

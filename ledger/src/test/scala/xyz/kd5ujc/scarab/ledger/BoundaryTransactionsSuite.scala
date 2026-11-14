@@ -188,11 +188,11 @@ class BoundaryTransactionsSuite extends FunSuite:
 
     test(s"${c.name}: BBODY admission and both input roles match the reference") {
       val nes = Build.funded(Build.nes[Conway](5, c.params), r.allInputs)
-      val result = Sts(Bbody)(
+      val result = BlockJudgment(Bbody)(
         TestLedger.globals,
         BbodyEnv(TestLedger.env, c.params, Coin.zero),
         BbodyState(Build.counted(nes), BlocksMade.empty),
-        BbodySignal(Vector(c.tx), issuer, commitment, commitment)
+        BbodySignal(Vector(c.tx), issuer, commitment, commitment, c.params.protocolMajor)
       )
       result match
         case Right(after) =>

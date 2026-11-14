@@ -122,7 +122,7 @@ object RuleT:
     * the reference reports them ([[Judgment.flatten]]), or the state and the value.
     */
   enum Outcome[+Rec, +Fail, +S, +A]:
-    case Raised(failure: Fail)
+    case Raised(failure: Fail, recorded: Chain[Rec])
     case Refused(failures: NonEmptyChain[Rec])
     case Passed(state: S, value: A)
 
@@ -155,7 +155,7 @@ object RuleT:
         current match
           case Left(e) =>
             frames match
-              case Frames.Done() => Outcome.Raised(e)
+              case Frames.Done() => Outcome.Raised(e, Judgment.flatten(trace))
               case Frames.Cons(head, tail) =>
                 head match
                   case Frame.Next(_)        => go(Left(e), g, s, trace, failing, tail)
@@ -230,7 +230,7 @@ object RuleT:
     def run(globals: Globals, state: S): Either[Fail, (S, A)] =
       rule.judge(Policy.FirstFailure, globals, state) match
         case Outcome.Passed(s, a) => Right((s, a))
-        case Outcome.Raised(e)    => Left(e)
+        case Outcome.Raised(e, _) => Left(e)
         // Nothing is recorded, so a refusal holds no value: its head is of type `Nothing`.
         case Outcome.Refused(failures) => Left(failures.head)
 

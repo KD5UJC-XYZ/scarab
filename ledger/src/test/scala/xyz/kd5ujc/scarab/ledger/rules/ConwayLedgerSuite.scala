@@ -89,7 +89,7 @@ class ConwayLedgerSuite extends FunSuite:
   ): Either[LedgerFailure, Counted[NewEpochState[Conway]]] =
     val result =
       if block then
-        Sts(Ledgers)(
+        JudgedSts(Ledgers)(LedgerFailure.Rejected(t.body.id, _))(
           NativeRules.globalsOf(ctx),
           LedgersEnv(ctx, s.es.chainAccount.treasury),
           Build.counted(s),

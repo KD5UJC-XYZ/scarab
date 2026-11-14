@@ -6,6 +6,9 @@ import cats.mtl.{Ask, Raise, Stateful}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
+  BbodyFailure,
+  PredicateFailure,
+  Mismatch,
   BlockFailure,
   RefScripts,
   LedgerFailure,
@@ -39,7 +42,8 @@ final case class BbodySignal(
     txs: Vector[Tx],
     issuer: KeyHash[StakePool],
     declared: BodyCommitment,
-    actual: BodyCommitment
+    actual: BodyCommitment,
+    headerProtocolMajor: BigInt
 )
 
 /** BBODY (`Conway/Rules/Bbody.hs:268`, `conwayBbodyTransition` then `alonzoBbodyTransition` of
@@ -62,7 +66,7 @@ final case class BbodySignal(
   * The state is [[BbodyState]]; LEDGERS runs on its ledger part, its failures wrapped as the
   * block's (`BlockFailure.Tx`).
   */
-object Bbody extends Sts[BbodyEnv, BbodyState, BbodySignal, BlockFailure]:
+object Bbody extends JudgedSts[BbodyEnv, BbodyState, BbodySignal, BbodyFailure, BlockFailure]:
   given Embed[ConwayLedger, BbodyState, LedgerFailure, BlockFailure] =
     Embed(
       monocle.Lens[BbodyState, ConwayLedger](_.ledger)(l => s => s.copy(ledger = l)),
@@ -101,25 +105,46 @@ object Bbody extends Sts[BbodyEnv, BbodyState, BbodySignal, BlockFailure]:
   def transition[F[_]: Monad](env: BbodyEnv, signal: BbodySignal)(using
       ask: Ask[F, Globals],
       st: Stateful[F, BbodyState],
-      raise: Raise[F, BlockFailure]
+      raise: Raise[F, BlockFailure],
+      judge: Judge[F, BbodyFailure]
   ): F[Unit] =
     val pp = env.pp
     for
       before <- st.get
-      refBytes = refScriptsSize(pp, before.ledger.state.utxo.utxo.utxo, signal.txs)
-      _ <- Sts.check[F, BlockFailure](
-        pp.protocolMajor < 9 || refBytes <= RefScripts.MaxRefScriptSizePerBlock,
-        BlockFailure.RefScriptsTooLarge(RefScripts.MaxRefScriptSizePerBlock.toLong)
+      globals <- ask.ask[Globals]
+      _ <- Sts.predicate[F, BbodyFailure](
+        (globals.networkId != 1 && pp.protocolMajor < 12) ||
+          BigInt(pp.protocolMajor) >= BigInt("4294967295") ||
+          signal.headerProtocolMajor <= BigInt(pp.protocolMajor) + 1,
+        BbodyFailure.HeaderProtVerTooHigh(
+          Mismatch(signal.headerProtocolMajor, BigInt(pp.protocolMajor) + 1)
+        )
       )
-      _ <- Sts.check[F, BlockFailure](signal.declared == signal.actual, BlockFailure.BodyCommitment)
-      _ <- Sts
-        .trans[F, LedgersEnv, ConwayLedger, BbodyState, Vector[Tx], LedgerFailure, BlockFailure](
+      refBytes = refScriptsSize(pp, before.ledger.state.utxo.utxo.utxo, signal.txs)
+      _ <- Sts.predicate[F, BbodyFailure](
+        pp.protocolMajor < 9 || refBytes <= RefScripts.MaxRefScriptSizePerBlock,
+        BbodyFailure.BodyRefScriptsSizeTooBig(
+          Mismatch(refBytes, RefScripts.MaxRefScriptSizePerBlock.toLong)
+        )
+      )
+      _ <- Sts.predicate[F, BbodyFailure](
+        signal.declared.size == signal.actual.size,
+        BbodyFailure.WrongBlockBodySizeBBODY(Mismatch(signal.actual.size, signal.declared.size))
+      )
+      _ <- Sts.predicate[F, BbodyFailure](
+        signal.declared.hash == signal.actual.hash,
+        BbodyFailure.InvalidBodyHashBBODY(Mismatch(signal.actual.hash, signal.declared.hash))
+      )
+      _ <- JudgedSts
+        .transMapped[F, LedgersEnv, ConwayLedger, BbodyState, Vector[
+          Tx
+        ], PredicateFailure, BbodyFailure, LedgerFailure, BlockFailure](
           Ledgers,
           LedgersEnv(env.ctx, env.treasury),
           signal.txs
-        )
-      _ <- Sts.require[F, BlockFailure](
-        exUnitsExceeded(pp, signal.txs).map(BlockFailure.BlockExUnitsTooBig(_, pp.maxBlockExUnits))
+        )(BbodyFailure.LedgersFailure(_))
+      _ <- Sts.failOnJust[F, ExUnits, BbodyFailure](exUnitsExceeded(pp, signal.txs))(used =>
+        BbodyFailure.TooManyExUnits(Mismatch(used, pp.maxBlockExUnits))
       )
       _ <- st.modify(s =>
         s.copy(blocksMade =

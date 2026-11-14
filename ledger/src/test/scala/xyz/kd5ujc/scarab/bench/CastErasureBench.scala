@@ -29,7 +29,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   BodyCommitment,
   Counted,
   Globals as RuleGlobals,
-  Sts
+  BlockJudgment
 }
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.plutus.ExUnits
@@ -237,11 +237,11 @@ object CastErasureBench:
   private def run(pp: ProtocolParams, txs: Vector[Tx], from: BbodyState) =
     val issuer = ok(KeyHash.fromBytes[StakePool](Bytes.fromArray(Array.fill(28)(7.toByte))))
     val commitment = BodyCommitment(100, Bytes.fromArray(Array.fill(32)(1.toByte)))
-    Sts(Bbody)(
+    BlockJudgment(Bbody)(
       globals,
       BbodyEnv(TestLedger.env, pp, Coin(0)),
       from,
-      BbodySignal(txs, issuer, commitment, commitment)
+      BbodySignal(txs, issuer, commitment, commitment, pp.protocolMajor)
     )
 
   private def benchRules(count: Int): Unit =

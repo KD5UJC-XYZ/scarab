@@ -6,6 +6,8 @@ import cats.mtl.{Ask, Raise, Stateful}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.{
+  BbodyFailure,
+  Mismatch,
   BlockFailure,
   Certificate,
   LedgerFailure,
@@ -109,25 +111,30 @@ object ShelleyLedger:
 object ShelleyLedgers:
   def sts[E <: EraTag](using
       PreConway[E]
-  ): Sts[ShelleyLedgerEnv, Counted[LedgerState[E]], Vector[Tx], LedgerFailure] =
-    new Sts[ShelleyLedgerEnv, Counted[LedgerState[E]], Vector[Tx], LedgerFailure]:
+  ): JudgedSts[ShelleyLedgerEnv, Counted[LedgerState[E]], Vector[
+    Tx
+  ], PredicateFailure, LedgerFailure] =
+    new JudgedSts[ShelleyLedgerEnv, Counted[LedgerState[E]], Vector[
+      Tx
+    ], PredicateFailure, LedgerFailure]:
       def transition[F[_]: Monad](env: ShelleyLedgerEnv, txs: Vector[Tx])(using
           ask: Ask[F, Globals],
           st: Stateful[F, Counted[LedgerState[E]]],
-          raise: Raise[F, LedgerFailure]
+          raise: Raise[F, LedgerFailure],
+          judge: Judge[F, PredicateFailure]
       ): F[Unit] =
         TxIx.enumerate(txs).traverse_ { (tx, ix) =>
-          ShelleyLedger
-            .sts[E]
-            .transition[F](env.copy(ctx = env.ctx.copy(txIndex = ix.index)), tx)(using
-              summon[Monad[F]],
-              ask,
-              st,
-              raise,
-              Judge.raising[F, PredicateFailure, LedgerFailure](
-                LedgerFailure.Rejected(tx.body.id, _)
+          judge.nest(
+            ShelleyLedger
+              .sts[E]
+              .transition[F](env.copy(ctx = env.ctx.copy(txIndex = ix.index)), tx)(using
+                summon[Monad[F]],
+                ask,
+                st,
+                raise,
+                judge
               )
-            )
+          )
         }
 
 /** `BbodyEnv` (`Shelley/Rules/Bbody.hs`): the parameters in force, the chain account, and the
@@ -164,8 +171,8 @@ object ShelleyBbody:
 
   def sts[E <: EraTag](using
       PreConway[E]
-  ): Sts[ShelleyBbodyEnv, ShelleyBbodyState[E], BbodySignal, BlockFailure] =
-    new Sts[ShelleyBbodyEnv, ShelleyBbodyState[E], BbodySignal, BlockFailure]:
+  ): JudgedSts[ShelleyBbodyEnv, ShelleyBbodyState[E], BbodySignal, BbodyFailure, BlockFailure] =
+    new JudgedSts[ShelleyBbodyEnv, ShelleyBbodyState[E], BbodySignal, BbodyFailure, BlockFailure]:
       private given Embed[Counted[LedgerState[E]], ShelleyBbodyState[
         E
       ], LedgerFailure, BlockFailure] =
@@ -179,27 +186,32 @@ object ShelleyBbody:
       def transition[F[_]: Monad](env: ShelleyBbodyEnv, signal: BbodySignal)(using
           ask: Ask[F, Globals],
           st: Stateful[F, ShelleyBbodyState[E]],
-          raise: Raise[F, BlockFailure]
+          raise: Raise[F, BlockFailure],
+          judge: Judge[F, BbodyFailure]
       ): F[Unit] =
         val pp = env.pp
         for
-          _ <- Sts.check[F, BlockFailure](
-            signal.declared == signal.actual,
-            BlockFailure.BodyCommitment
+          _ <- Sts.predicate[F, BbodyFailure](
+            signal.declared.size == signal.actual.size,
+            BbodyFailure.WrongBlockBodySizeBBODY(Mismatch(signal.actual.size, signal.declared.size))
+          )
+          _ <- Sts.predicate[F, BbodyFailure](
+            signal.declared.hash == signal.actual.hash,
+            BbodyFailure.InvalidBodyHashBBODY(Mismatch(signal.actual.hash, signal.declared.hash))
           )
           globals <- Sts.globals[F]
-          _ <- Sts.trans[F, ShelleyLedgerEnv, Counted[
+          _ <- JudgedSts.transMapped[F, ShelleyLedgerEnv, Counted[
             LedgerState[E]
-          ], ShelleyBbodyState[E], Vector[Tx], LedgerFailure, BlockFailure](
+          ], ShelleyBbodyState[E], Vector[
+            Tx
+          ], PredicateFailure, BbodyFailure, LedgerFailure, BlockFailure](
             ShelleyLedgers.sts[E],
             ShelleyLedgerEnv(env.ctx, env.account),
             signal.txs
-          )
-          _ <- Sts.require[F, BlockFailure](
-            Bbody
-              .exUnitsExceeded(pp, signal.txs)
-              .map(BlockFailure.BlockExUnitsTooBig(_, pp.maxBlockExUnits))
-          )
+          )(BbodyFailure.LedgersFailure(_))
+          _ <- Sts.failOnJust[F, xyz.kd5ujc.scarab.plutus.ExUnits, BbodyFailure](
+            Bbody.exUnitsExceeded(pp, signal.txs)
+          )(used => BbodyFailure.TooManyExUnits(Mismatch(used, pp.maxBlockExUnits)))
           counted = !isOverlaySlot(globals.firstSlot(env.ctx.epoch), pp.effectiveD, env.ctx.slot)
           _ <- st.modify(s =>
             if !counted then s

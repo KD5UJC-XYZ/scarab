@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.show.*
+import cats.data.NonEmptyChain
 import xyz.kd5ujc.scarab.codec.DomainError
 import cats.{Eq, Show}
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -33,6 +34,8 @@ object BlockRule:
   * the text. Nested rule and decoding failures retain their typed causes through this boundary.
   */
 enum BlockFailure:
+  /** Every BBODY predicate failure in the pinned native interpreter's order. */
+  case Refused(failures: NonEmptyChain[BbodyFailure])
   // ---- structure: the block against the chain and its own header
 
   /** The decoded block's header is not the announced one. */
@@ -143,15 +146,16 @@ enum BlockFailure:
     case TPraos(_)          => BlockRule.TPraos
     case Praos(_)           => BlockRule.Praos
     case Unverifiable(r, _) => r
-    case Lite(_) | Handover(_) | SupplyInvariant(_, _, _) | RefScriptsTooLarge(_) |
+    case Refused(_) | Lite(_) | Handover(_) | SupplyInvariant(_, _, _) | RefScriptsTooLarge(_) |
         BlockExUnitsTooBig(_, _) | Tx(_) | Tick(_) | Mirror(_) =>
       BlockRule.Ledger
 
   /** The reason, as the log renders it (the text of the old `(rule, reason)` pair, unchanged). */
   def reason: String = this match
-    case HeaderDiffers                   => "block header differs from announced header"
-    case Transport(cause)                => cause.message
-    case BodyCommitment                  => "body does not match the header commitment"
+    case Refused(failures) => failures.toChain.toList.mkString("BBODY refused: ", ", ", "")
+    case HeaderDiffers     => "block header differs from announced header"
+    case Transport(cause)  => cause.message
+    case BodyCommitment    => "body does not match the header commitment"
     case EraAnnounced(actual, announced) => s"$actual block announced as $announced"
     case EpochPrecedesLedger(epoch)      => s"block epoch $epoch precedes ledger epoch"
     case LedgerEra(ledger, block)        => s"the ledger is in $ledger, the block is of $block"
