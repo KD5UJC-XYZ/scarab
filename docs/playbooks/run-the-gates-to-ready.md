@@ -31,7 +31,9 @@
    tracked by an issue or a roadmap item ([definition of done](../process.md#definition-of-done)); file it
    with `python3 scripts/file_issue.py` (`--help` lists its options; [where a P2 gap goes](../process.md#lifecycle-of-an-item))
    or an issue form.
-5. Wait for CI on that same head. Then `gh pr ready <number>`.
-6. After any later rebase or merge of the base, go back to step 2: the level's gates, including its
-   scenarios, and preflight run again on the new head, and every factual claim the change makes is
-   re-checked against the new base.
+5. Get the independent review of the final diff, post it on the pull request and link it from the body's
+   "Independent review" section ([review-a-change.md](review-a-change.md)).
+6. Wait for CI on that same head. Then `gh pr ready <number>`.
+7. After any later rebase or merge of the base, go back to step 2: the level's gates, including its
+   scenarios, and preflight run again on the new head, every factual claim the change makes is
+   re-checked against the new base, and the review covers the new head.
