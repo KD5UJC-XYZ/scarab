@@ -18,9 +18,10 @@ REFUSAL_PATTERN='InvalidBlock (Point'
 # skips can cause it, so it is not a detector hit.
 FATAL_PATTERN='"event":"fatal"'
 CLOCK_STOP_PATTERN='the system clock moved back'
-# Scarab's `systemClockMovedBack` trace (`ClockTrace.SystemClockMovedBack`): the reference traces it when a reading
-# falls in the slot of the previous one or earlier, which only a clock moved back makes happen; one whose `newTime` is
-# later than its `prevTime` is the slot loop waking before the next slot (#629).
+# Scarab's `systemClockMovedBack` trace (`ClockTrace.SystemClockMovedBack`), traced as the reference traces it when a
+# reading falls in the previous reading's slot or earlier. The slot loop waits until the next slot's start, so two
+# readings in one slot with the time moving forward are a wake before that start (#629). After a clock really moved
+# back, the loop keeps the old slot and later readings move forward through earlier slots, which this tells apart.
 CLOCK_TRACE_PATTERN='"event":"systemClockMovedBack"'
 SDK="${ANTITHESIS_OUTPUT_DIR:-/tmp}/sdk.jsonl"
 # What the test commands remember within a timeline (markers and log offsets): each runs as a process of its own,
@@ -37,7 +38,7 @@ CANARY_SUBMITTED="the writeBits transaction was submitted to s1 and answered"
 HASKELL_REFUSED="a Haskell pool never refuses a block as invalid"
 SCARAB_REFUSED="Scarab never refuses a block as invalid"
 SCARAB_FATAL="Scarab never logs a fatal event"
-SCARAB_FALSE_CLOCK="Scarab never reports the clock moved back while its readings move forward"
+SCARAB_FALSE_CLOCK="Scarab never reports the clock moved back for two readings in one slot, time moving forward"
 FORK_BELOW_K="the cluster's fork depth stays below k"
 FORK_SEEN="a fork is observed"
 
@@ -150,18 +151,25 @@ scarab_fatal() {
   jq -cn --arg line "$line" '{line: $line[0:2000]}'
 }
 
-# The first `systemClockMovedBack` of s1's log past its offset whose `newTime` is later than its `prevTime`. Instants
-# are compared as numbers: Java writes 0, 3, 6 or 9 digits of a second's fraction.
+# The first `systemClockMovedBack` of s1's log past its offset whose `prevTime` and `newTime` fall in one slot, with
+# `newTime` the later. Slots are counted from the genesis's `systemStart` by its `slotLength`, as `EpochGeometry`
+# counts them; whole seconds are subtracted before the fraction is added, so the arithmetic stays exact enough.
 scarab_false_clock() {
-  local offset_file="$STATE_DIR/offset-clock-s1" log=/logs/s1.log size from found
-  [ -f "$log" ] || return 1
+  local offset_file="$STATE_DIR/offset-clock-s1" log=/logs/s1.log genesis=/env/net/shelley-genesis.json size from found
+  [ -f "$log" ] && [ -f "$genesis" ] || return 1
   size=$(stat -c %s "$log")
   from=$(cat "$offset_file" 2> /dev/null || echo 0)
   [ "$from" -le "$size" ] || from=0
-  found=$(tail -c +"$((from + 1))" "$log" | grep -F -- "$CLOCK_TRACE_PATTERN" | jq -R -c -n '
-    def secs: (sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601)
-              + ((capture("\\.(?<f>[0-9]+)Z$") | "0." + .f | tonumber) // 0);
-    first(inputs | fromjson? | select(.newTime != null and (.newTime | secs) > (.prevTime | secs))) // empty')
+  found=$(tail -c +"$((from + 1))" "$log" | grep -F -- "$CLOCK_TRACE_PATTERN" | jq -R -c -n \
+      --argjson g "$(jq -c '{systemStart, slotLength}' "$genesis")" '
+    def whole: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
+    def fraction: (capture("\\.(?<f>[0-9]+)Z$") | "0." + .f | tonumber) // 0;
+    ($g.systemStart | whole) as $start
+    | def slot: ((whole - $start) + fraction) / $g.slotLength | floor;
+    first(inputs | fromjson? | select(.newTime != null and .prevTime != null)
+          | select((.newTime | slot) == (.prevTime | slot)
+                   and ((.newTime | whole) - (.prevTime | whole)) + (.newTime | fraction) - (.prevTime | fraction) > 0))
+    // empty')
   echo $(( size > 4096 ? size - 4096 : 0 )) > "$offset_file"
   [ -n "$found" ] || return 1
   printf '%s\n' "$found"
@@ -184,7 +192,7 @@ check_divergence() {
     unreachable_hit "$SCARAB_FATAL" "$found"
   fi
   if found=$(scarab_false_clock); then
-    echo "detectors: s1 reported the clock moved back while it moved forward: $found"
+    echo "detectors: s1 reported the clock moved back for two readings in one slot: $found"
     unreachable_hit "$SCARAB_FALSE_CLOCK" "$found"
   fi
   return 0
