@@ -76,6 +76,9 @@ topology() {
 }
 topology h3 s1 > topology-h2.json
 topology h2 s1 > topology-h3.json
+# pool 1 as a cardano-node, in s1's seat (config-reference): the local roots that s1's `--peer h2:3001 --peer h3:3001`
+# give Scarab
+topology h2 h3 > topology-h1.json
 
 # Scarab reads the genesis directory the devnet gives it: these five files, byte for byte.
 mkdir genesis
