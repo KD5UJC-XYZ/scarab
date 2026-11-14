@@ -373,6 +373,30 @@ def reference_invalid_blocks(views):
     return {pool: v["invalid"] for pool, v in views.items() if v["invalid"]}
 
 
+def settled_tips(name, nodes, on_tips=lambda tips: None, timeout=90, pause=1.0):
+    """{pool: tip} of the Haskell pools once they agree on the tip, or the last reading after `timeout` s; each reading
+    is also given to `on_tips`, which takes the leadership schedule of an epoch the wait spans."""
+    deadline = time.monotonic() + timeout
+    tips = {}
+    while time.monotonic() < deadline:
+        tips = {f"pool{n}": tip_at(name, f"{ENV}/socket/node{n}/sock") for n in nodes}
+        on_tips(tips)
+        if all(tips.values()) and len({t["hash"] for t in tips.values()}) == 1:
+            break
+        time.sleep(pause)
+    return tips
+
+
+def forging_counters(name, fetch):
+    """The forger's own counters (`GET /forging`, read inside the Scala container by the script `fetch`), or (None,
+    what came instead)."""
+    got = docker("exec", f"{name}-scala", "python3", "-c", fetch, check=False, timeout=60)
+    try:
+        return json.loads(got.stdout), None
+    except ValueError:
+        return None, f"{got.stdout[:100]!r} {got.stderr[:200]!r}"
+
+
 def wait_joined(name, log, socket, on_tip=lambda tip: None, timeout=pool_plutus.JOIN_TIMEOUT):
     """Seconds until blocks and transactions crossed between the Haskell pools and the Scala node both ways
     (`pool_plutus.joined`), the observer's tip read at `socket` and the Scala node's events from `log`. Each tip read is
@@ -595,40 +619,38 @@ def pool(args):
         loader.terminate()
         loader.wait()
         loader = None
+        # the Scala node forges until the cutoff: every step of the end phase that reads the observer's tip, or waits
+        # for one that may span an epoch boundary, asks for its epoch's schedule
+        observe = lambda: take_schedule(tip_at(args.name, f"{ENV}/socket/node{observer}/sock"))
         if plutus:
             plutus_evidence = plutus.finish()
+            observe()
         if driver:
             driver.stop()
         # let the chain settle; every node must agree on the tip
-        def settled_tips():
-            deadline_ = time.monotonic() + 90
-            tips = {}
-            while time.monotonic() < deadline_:
-                tips = {f"pool{n}": tip_at(args.name, f"{ENV}/socket/node{n}/sock") for n in others}
-                if all(tips.values()) and len({t["hash"] for t in tips.values()}) == 1:
-                    break
-                time.sleep(1)
-            return tips
+        def settled():
+            return settled_tips(args.name, others, lambda tips: take_schedule(tips.get(f"pool{observer}")))
 
-        final = settled_tips()
+        final = settled()
         for r in final_comparisons(lambda: compare_or_error(args.name)):
             comparisons.append(r)
             print(json.dumps({k: r.get(k) for k in ("tip", "matched", "differenceCount", "error")}), flush=True)
+        observe()
         compare_whole("final")
-        final = settled_tips()
+        final = settled()
         time.sleep(3)
         # the forger's own per-epoch counters (H5), from the query server (the Scala container's loopback)
         fetch = (f"import urllib.request,sys;sys.stdout.write(urllib.request.urlopen("
                  f"'http://127.0.0.1:{QUERY_PORT}/forging',timeout=10).read().decode())")
-        got = docker("exec", f"{args.name}-scala", "python3", "-c", fetch, check=False, timeout=60)
-        try:
-            forging_stats = json.loads(got.stdout)
-        except ValueError:
-            forging_stats = None
-            failures.append(f"GET /forging gave no JSON: {got.stdout[:100]!r} {got.stderr[:200]!r}")
+        forging_stats, unread = forging_counters(args.name, fetch)
+        if unread:
+            failures.append(f"GET /forging gave no JSON: {unread}")
         # what only the running Scala node answers, before the forging cutoff
         metric_failures = pool_metrics_failures(args.name, forging_stats["total"], fetch) if forging_stats else []
         rules = rules_timing(args.name)
+        observe()
+        # the counters the log is held against, read again right before the cutoff (the scrapes took a while)
+        at_cutoff = forging_counters(args.name, fetch)[0] or forging_stats
         # the forging cutoff: the Scala node stops (SIGTERM, as an operator stops it), so its log holds every block it
         # forged and none comes after; the pools' logs are then read behind a barrier (`drain_reference_logs`)
         docker("stop", "-t", "30", f"{args.name}-scala", check=False, timeout=90)
@@ -748,12 +770,13 @@ def pool(args):
             # slot's start. The slowest block is one outlier on a shared CI runner (passing runs saw
             # up to 462 ms against a mean near 25 ms at 100 ms slots).
             budget = 10 * shelley["slotLength"] * 1000
-            # the counters were read a moment before the log: the node may have forged one more block since
-            if not 0 <= len(forged) - total["forged"] <= 2 or total["leaderSlots"] < total["forged"]:
-                failures.append(f"the forger's counters ({total['forged']} forged of {total['leaderSlots']} led slots) "
+            # the counters were read right before the cutoff: the node may have forged one more block since
+            last = at_cutoff["total"]
+            if not 0 <= len(forged) - last["forged"] <= 2 or last["leaderSlots"] < last["forged"]:
+                failures.append(f"the forger's counters ({last['forged']} forged of {last['leaderSlots']} led slots) "
                                 f"disagree with the log ({len(forged)} forged blocks)")
-            if not 0 <= len(adopted) - total["adopted"] <= 2:
-                failures.append(f"the forger's counters say {total['adopted']} adopted, the log {len(adopted)}")
+            if not 0 <= len(adopted) - last["adopted"] <= 2:
+                failures.append(f"the forger's counters say {last['adopted']} adopted, the log {len(adopted)}")
             slowest = total["forgeLatencyMs"]["max"]
             if slowest is not None and slowest > budget:
                 failures.append(f"a block took {slowest} ms from its slot's start to adoption (budget {budget:.0f} ms)")

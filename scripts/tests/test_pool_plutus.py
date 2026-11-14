@@ -7,6 +7,7 @@ import hashlib
 import io
 import json
 import pathlib
+import subprocess
 import tempfile
 import threading
 import sys
@@ -704,6 +705,25 @@ class DrainTest(unittest.TestCase):
         self.assertTrue(pool.marker_seen(["x", self.rejected(marker)], marker))
         self.assertFalse(pool.marker_seen([self.rejected("0" * 8)], marker))
         self.assertFalse(pool.marker_seen([json.dumps({"ns": "Mempool.AddedTx", "data": {"tx": {"txid": marker}}})], marker))
+
+
+class EndPhaseTest(unittest.TestCase):
+    def test_every_reading_of_the_settling_is_offered_for_its_epochs_schedule(self):
+        readings = iter([{"hash": H["a"], "epoch": 4}, {"hash": H["b"], "epoch": 5},
+                         {"hash": H["c"], "epoch": 5}, {"hash": H["c"], "epoch": 5}])
+        offered = []
+        with patch.object(pool, "tip_at", side_effect=lambda name, socket: next(readings)), \
+                patch.object(pool.time, "sleep"):
+            tips = pool.settled_tips("n", [2, 3], offered.append)
+        self.assertEqual([t["pool2"]["epoch"] for t in offered], [4, 5])
+        self.assertEqual(tips["pool2"]["hash"], tips["pool3"]["hash"])
+
+    def test_the_forgers_counters_or_what_came_instead(self):
+        answers = iter([subprocess.CompletedProcess([], 0, '{"total": {"forged": 3}}', ""),
+                        subprocess.CompletedProcess([], 1, "", "no such container")])
+        with patch.object(pool, "docker", side_effect=lambda *a, **k: next(answers)):
+            self.assertEqual(pool.forging_counters("n", "fetch"), ({"total": {"forged": 3}}, None))
+            self.assertEqual(pool.forging_counters("n", "fetch"), (None, "'' 'no such container'"))
 
 
 class ScheduleDuringJoinTest(unittest.TestCase):
