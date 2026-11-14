@@ -1,0 +1,544 @@
+{
+ "_comment": [
+  "The persisted-format surface that scripts/check_storage_format.py computes, and the record of the approval that admitted it (FMT-1, docs/design-rules.md#fmt-1).",
+  "Persisted formats are frozen until Scarab leaves pre-release. This file changes only in a storage format change of its own, approved by the owner in the chat session doing the work in answer to an explicit question asked there before the change was written.",
+  "`approval` records that question and answer, verbatim, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (4a1a7ab96) on 2026-11-14, when the freeze began, which approves nothing."
+ ],
+ "approval": null,
+ "surface": {
+  "fixtures": {
+   "fixtures/network-identity-v6/network-identity": "933037d584eefcb4357e1f1c3857c5854175b2e5636196d9152662dba89b9588",
+   "fixtures/snapshot-v10/SHA256SUMS": "6e8e6c133fe7c310687a45df1b101785390390f49dc80cf419a1f0858645c601",
+   "fixtures/snapshot-v10/conway-native-730.bin": "01d2ad4f9b2ab0962aafe20625620747f5e33c653016521bed46729805ceb859",
+   "fixtures/snapshot-v10/eras/allegra-151.bin": "3180b8f3e054d6967a74b3f907f92323c818287f7ee7653c4ba5967ee2c56525",
+   "fixtures/snapshot-v10/eras/allegra-249.bin": "0819a7b2045b2c9f139cb22fb66601bf53add5269cdbfe44c1d7df6579379132",
+   "fixtures/snapshot-v10/eras/alonzo-349.bin": "4c1151ce6438e4ff5ea7b285a4a3b63d051ca429c259632eb932736efedcced0",
+   "fixtures/snapshot-v10/eras/alonzo-539.bin": "e067ba5f0bead11a97afa070f3f3cd3bd5a3e19d9ee4f17ecff6750bc5ebec0b",
+   "fixtures/snapshot-v10/eras/babbage-541.bin": "8cd626be1d21f5fde793e2cfc8547b44cb9c6a22f8a616827fb419b780f7e1ef",
+   "fixtures/snapshot-v10/eras/babbage-727.bin": "7803eb43820faf38829050fdeefe7d327c86dbf71a2a52060954d86d9db1decb",
+   "fixtures/snapshot-v10/eras/byron-1.bin": "19a215df346b075c2da8c29743174667f0598b901a4379252189f1189ad7d49f",
+   "fixtures/snapshot-v10/eras/byron-25.bin": "afabcea56beb1f254d652e0e1abf9cde0adc4790bfc4c460129f887e724b2b16",
+   "fixtures/snapshot-v10/eras/byron-49.bin": "1791ba433badc84ed177b5020d188e7dc29e006bce908bb88d43411e838bf9aa",
+   "fixtures/snapshot-v10/eras/conway-729.bin": "c2898dd0b2964d515a1d3a70b2bedcab1bb0ae0b506fc0b92df9de4eb1ae6aab",
+   "fixtures/snapshot-v10/eras/conway-730.bin": "3fc6824aeedfda88e54fc8bd9ac1664681778086a757d38a70aa390d3c2a3ed9",
+   "fixtures/snapshot-v10/eras/mary-251.bin": "3bfaa83e0f9f0af00bc51dea63d9e907f58d22dd8a099b09ef022f36bd88e17e",
+   "fixtures/snapshot-v10/eras/mary-347.bin": "a788c9ee08ab5342d396b155db30f97b815257ef0edcdfd0d215090df5f131bb",
+   "fixtures/snapshot-v10/eras/shelley-149.bin": "3870b992ab8ca9b5ce5d53bec92e79bdcdd40a4f00df2771719bae3043b25b62",
+   "fixtures/snapshot-v10/eras/shelley-51.bin": "ae06f16995ed4caba7a463ed48266447fcea6d409b27755e8d4a533d56d1e05e",
+   "fixtures/snapshot-v10/manifest.json": "185e71a2d16243345fccddacb3991547c19c0ffa3fc4dbde34cc23a49d68b614",
+   "fixtures/snapshot-v10/preview-4320.bin": "d1017fff1b9c58415115206fb825b45950ac8cb2826dac6e176aa48b237a47bb",
+   "fixtures/snapshot-v5/SHA256SUMS": "6cc54802c9add4a6a513d84cd2ab35e5393c4c423d3b9bb4b5033b47ddb7d2b2",
+   "fixtures/snapshot-v5/conway-native-730.bin": "cc5d5d6a248499a0b1505d0a44174f97d447ffadebde5f1d5408c30d2a206734",
+   "fixtures/snapshot-v5/eras/allegra-151.bin": "182d4215a0114967feb338abb195e0718a127c7c7b7847dc3335da5861238727",
+   "fixtures/snapshot-v5/eras/allegra-249.bin": "615f6a2042161642da33bef944ff60336c717566dda2a80b9604ec58dff4e1dd",
+   "fixtures/snapshot-v5/eras/alonzo-349.bin": "e184576abd40d9ad711946df01376793d33c01c90fa2644369509c4b48b14003",
+   "fixtures/snapshot-v5/eras/alonzo-539.bin": "d80056938ac86af1c5408d4d12c3afaad18c5d0a19ae78ef09aa3d3d09c23ff8",
+   "fixtures/snapshot-v5/eras/babbage-541.bin": "7cdb8555f038cc6d1dfd059f4f21a23b944366be20c0a26b0cfc5f9a98a9a74d",
+   "fixtures/snapshot-v5/eras/babbage-727.bin": "d6fb32c2e2ff082be9f92a2250b72b570f4d8b1eadc7b4fb272c92e09c01091b",
+   "fixtures/snapshot-v5/eras/byron-1.bin": "211a2ec3b8b4932e7c0b8c9f4b8d100ffd65e72330c433f08ebe366b3de2f7cf",
+   "fixtures/snapshot-v5/eras/byron-25.bin": "42ec928a69bfca583b258118de480225bab39b9829b8ab8f1c4ebb25dd1c2f84",
+   "fixtures/snapshot-v5/eras/byron-49.bin": "2393b7e6548c859a6350d8b4d8488ca1fb02239c7d0e743b9385e7bcfb595000",
+   "fixtures/snapshot-v5/eras/conway-729.bin": "1a9490eca99f277d587d8785e7330bfcf014902fac76784d65afa289e6ba3f7c",
+   "fixtures/snapshot-v5/eras/conway-730.bin": "ce2dcdd6bcc747169817defc3158cb364c79d72cbbea41319b51360b5edeabf2",
+   "fixtures/snapshot-v5/eras/mary-251.bin": "c01ca64f579082d0c1e9f44bef586d0e5d47c8ee99e61d1bf7fbbe84ec6cb3da",
+   "fixtures/snapshot-v5/eras/mary-347.bin": "909c9ab3955a140df245d676b2ade9e9dc90f7b56a98973bd5f698e31e2fbc56",
+   "fixtures/snapshot-v5/eras/shelley-149.bin": "8108ea797845fc27dd6ae4f6f90c3bf0461daa66a4dfc72d36ab88649fd5e292",
+   "fixtures/snapshot-v5/eras/shelley-51.bin": "0d5554f31fbfc7e2ae35608a80e5375cc97e8168904251861996c01457b6ebcb",
+   "fixtures/snapshot-v5/manifest.json": "874580cea6a2435cab02d0a25ae74764968b25871871317f5a19489459a3bf41",
+   "fixtures/snapshot-v5/preview-4320.bin": "02c716ef8de7d837c86c4b8da3588a583a1f17f5a93fdc0c152916e3d6534bcd",
+   "fixtures/snapshot-v7/SHA256SUMS": "6e9824b0fdf5ad269cc46261968267e811c432b3b86e3aeb0493b9653bbfde9a",
+   "fixtures/snapshot-v7/conway-native-730.bin": "27a5e02eee38bc3c565d8f85830ea01804406a2b562dca957db368d9883699b2",
+   "fixtures/snapshot-v7/eras/allegra-151.bin": "fe887ec7244109dfe1c5d36a2fb91b1bd8e19e91dd4a177434cdb7af63827437",
+   "fixtures/snapshot-v7/eras/allegra-249.bin": "352123da126ffa7800160daa32845779b78c7e89befcb428392e06dc87cd9eb7",
+   "fixtures/snapshot-v7/eras/alonzo-349.bin": "1dd99619cd62428880908ac961d1deee0ba59b50547df961b2a785b9c6fa32d2",
+   "fixtures/snapshot-v7/eras/alonzo-539.bin": "36c18a6e12806257b6c7b0bfd892e5523c73dabe64853e9ba3a9f520f1fe0d3d",
+   "fixtures/snapshot-v7/eras/babbage-541.bin": "230522d97dc4fb3d6482d3893e7885825e3a5e4ed25df025c3dff2f89775ca44",
+   "fixtures/snapshot-v7/eras/babbage-727.bin": "9b79644cf607fd4957eb063d9e8d63dc551fc650c057d32ecf2991cceef492cf",
+   "fixtures/snapshot-v7/eras/byron-1.bin": "e4167690e948174c83416aebe66e99a67c54fed884ea2bfb998944ffa21783e8",
+   "fixtures/snapshot-v7/eras/byron-25.bin": "a18c2f7381b9c6b4e32a706e9a5633bf474e6dd43f631d4a2dab96b839b8e90c",
+   "fixtures/snapshot-v7/eras/byron-49.bin": "f5f7d97cd636e87d9bc29918d2bec26787657c2fca32c6bf938de7011f26e3d3",
+   "fixtures/snapshot-v7/eras/conway-729.bin": "669fb85c789dda5da25d18578f7746a0861cb689302b1b7dc7628479168c443f",
+   "fixtures/snapshot-v7/eras/conway-730.bin": "a104434df873e4c7406fa57d00fe4b861a773d697312744c8ac30ea1de6ff97a",
+   "fixtures/snapshot-v7/eras/mary-251.bin": "5f51c51baa4c097a9456d98ffe8fff52921cc047291783e0fd9926034bc201a1",
+   "fixtures/snapshot-v7/eras/mary-347.bin": "c3477152e0c4865a9b20222bffe76d973f410a71ab37e046942ec4071cfcf2da",
+   "fixtures/snapshot-v7/eras/shelley-149.bin": "093429e71ba26fcb85544ae9bbb35af4703e287930ba7557df70d6f0b675898a",
+   "fixtures/snapshot-v7/eras/shelley-51.bin": "0c22e4bef9a50ed2d5fe2742998fe76d76fbd0eb5fdcd5a801f7d8f31edfbe03",
+   "fixtures/snapshot-v7/manifest.json": "6b7fc4c49038a7a545e1e93b7611755198d8244328dfc4c7a6d6e01f94e73b7d",
+   "fixtures/snapshot-v7/preview-4320.bin": "692acd226a7da77730114ae646643f3f6b8f3557763cdba28b65eaaae37248bc",
+   "fixtures/snapshot-v8/SHA256SUMS": "de7fe81b61bae17b5c4d62d39c2fe5338c9caa296b9fc2b369dfb4698d523f01",
+   "fixtures/snapshot-v8/conway-native-730.bin": "c27be6850661f3fe1c01e5662d55873cf7f60074a5a16f285a62ca806908b647",
+   "fixtures/snapshot-v8/eras/allegra-151.bin": "6d0b3248c47768d6dd54eb6df5c28aa50799df50dcfc73764739398b537a1d97",
+   "fixtures/snapshot-v8/eras/allegra-249.bin": "36a62db888a66a1f7bef5d7467f0522b97d04441ecf5b17318c0970ef59840fb",
+   "fixtures/snapshot-v8/eras/alonzo-349.bin": "8479b03e80b77b5a22f6c48d8dfbb14b43376284b937d044476f56af7322f4a6",
+   "fixtures/snapshot-v8/eras/alonzo-539.bin": "cf90c2ec1e1677c6fe4f4b8b1e57d095329f38c6d7cbb68b4167fe94af1666cc",
+   "fixtures/snapshot-v8/eras/babbage-541.bin": "c1d50d814ba2a19829df817ba9780ce2a35748dcb998c53bfa60484b72a2894d",
+   "fixtures/snapshot-v8/eras/babbage-727.bin": "d1ac2708f0333ebd1e3f296348f1fa46b0fb9c8261ab27a7f0fcf1cac3acbde2",
+   "fixtures/snapshot-v8/eras/byron-1.bin": "d246612c5e7cb8294b6fd6b4560205c937ae341bcdb677d734b28139e85a9959",
+   "fixtures/snapshot-v8/eras/byron-25.bin": "9e4a76be2c830cdf080cf6a9d65c6c7ed618222fa1d06dd8057cf1f581aba014",
+   "fixtures/snapshot-v8/eras/byron-49.bin": "866868977ce3ee03224b0e502a32e356045944e00480b0ed441203c7c3eb17e7",
+   "fixtures/snapshot-v8/eras/conway-729.bin": "1b1773a745f0d0cb9038a61c36379774277d2029c207635c864c9b26a93c29e4",
+   "fixtures/snapshot-v8/eras/conway-730.bin": "2eba1699708be0c1c99a2224f596ebedfced2043e5c92354e7413a534f443e95",
+   "fixtures/snapshot-v8/eras/mary-251.bin": "9a0f39fe3da34b445f8b513be35ad6fa802146c740090964072e5942ee3b1854",
+   "fixtures/snapshot-v8/eras/mary-347.bin": "4abe29a4e5c78a2b5131e6e756977c1a0bb0ff1d9ea3dc1cc7fbcac2fbf53e95",
+   "fixtures/snapshot-v8/eras/shelley-149.bin": "bd61f8f176c6c3c7bcc7020d7491da4035a33f4e8ce049f5f4cf4dfe35e7b177",
+   "fixtures/snapshot-v8/eras/shelley-51.bin": "a35098ff8ff5c326d27640fedd700fd7197ada35d33f178eb670d674fb28f0d3",
+   "fixtures/snapshot-v8/manifest.json": "58efa5b4b7a55654790e82e4abe41b92b4685b86ec452082eaf44df5340cdf2e",
+   "fixtures/snapshot-v8/preview-4320.bin": "f5e2584a862e521162c2098a99dd3268e74300f7aae6fd069279cbe94d831ad0",
+   "fixtures/snapshot-v9/SHA256SUMS": "9aa55e0ab44f5b1f9e2afd03ddf24513eb41455bb339c297eb1239e4d310eb49",
+   "fixtures/snapshot-v9/conway-native-730.bin": "a91a5009ff79d542fb1a63bb6e59433b952b0047b3df0266580736f8f0ce74bc",
+   "fixtures/snapshot-v9/eras/allegra-151.bin": "792bfb05d8eacdf11074fbdc37099bdd946606979c7049166a28850373cf2c00",
+   "fixtures/snapshot-v9/eras/allegra-249.bin": "b61783a430dfcdd160ee258a4a91cca2166ec025a7f1232e20d2bae923179b40",
+   "fixtures/snapshot-v9/eras/alonzo-349.bin": "2f6164eaf34348b899063159b64453d9de3ad18105edf0f28597d4f2d45667ec",
+   "fixtures/snapshot-v9/eras/alonzo-539.bin": "67d2d62d93fb52007576a5bcc0c018a1b214173033f1ce0f9ca3a5c060d28405",
+   "fixtures/snapshot-v9/eras/babbage-541.bin": "fb473b7991f18f2cf246ac2e84360cfc77eec48a22fa95f69336f90663debdaf",
+   "fixtures/snapshot-v9/eras/babbage-727.bin": "f8a88120828b0c744970fb906a15dcbad3b1e228eed5ea3f69a7cdda9387f9d5",
+   "fixtures/snapshot-v9/eras/byron-1.bin": "14e4f3a6be66505f929c37693a80f77f3bda498d1d1748d7c4e2e3eddb15866c",
+   "fixtures/snapshot-v9/eras/byron-25.bin": "9df0e2d8de31136629b857ead40441e195722b2a2f50487e4fe5cf6723502861",
+   "fixtures/snapshot-v9/eras/byron-49.bin": "b847410bf3bab642f69ef43db82fcd9fc3c3c4def48247f71bc21e04c9fc5daa",
+   "fixtures/snapshot-v9/eras/conway-729.bin": "5333481bff5bc9c848e3eb23059b6ca10e9c93f64a6b266dd7568cd451e13385",
+   "fixtures/snapshot-v9/eras/conway-730.bin": "399826ff08ab1945ae258f53d7e3d23d060d587b6902a403107f5c656690d954",
+   "fixtures/snapshot-v9/eras/mary-251.bin": "0402743701207e351a1ef3f51c8229963fab83e6beb07268f94d3d50617acd7b",
+   "fixtures/snapshot-v9/eras/mary-347.bin": "5bb8085bdffa54f4b96af36cf7dc40bd9690964f2b2c2b487b989e09ab7e6068",
+   "fixtures/snapshot-v9/eras/shelley-149.bin": "50b0ed352b86d8d457267938c28cf953e492d8a56dcb309db29178f23f864d54",
+   "fixtures/snapshot-v9/eras/shelley-51.bin": "4333439494631d795b2fa12e95eb88cd42a17870c781e827fbefbe31ae3b8d0a",
+   "fixtures/snapshot-v9/manifest.json": "b4b3c215cd4fa6abd6c9c44df3fbfc21b7da83ff78954a722f98d22c6a7e752a",
+   "fixtures/snapshot-v9/preview-4320.bin": "ddaad24d00de33e82cd4459f2f86fa9cb0d9bafc1681fc01ca639f3283bf6acf"
+  },
+  "frozen_schemas": {
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenEra.scala": "4f23ca8bc3f80ead57548408b8191c1be4fd8082b4e1ef5d1453452f107addc8",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenProtocolParams.scala": "eff024ce7a8c9e0ddefddd2b37c78f1923b274fcf73d53534a7d1b91580b6343",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV7.scala": "51ed7aa9556f92611a682115012931ac3903fe63c25d43a27b199f5d9ed4db7c",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV8.scala": "97b4f7dd20e30ea91dcfc02cffd4c9d69936e9c9e3baa93bbd3783e1cad5b2c3"
+  },
+  "goldens": {
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/CodecSuite.scala": {
+    "code_sha256": "5027fba577d19aac8af3d66ef1426273c3a32aefef423addd7f7670b4d96a498",
+    "literals": [
+     "$i%02x",
+     "${b & 0xff}%02x",
+     "00",
+     "01",
+     "0100",
+     "010101",
+     "01010102",
+     "010107",
+     "0101090105",
+     "01ac02",
+     "01ff",
+     "020020",
+     "020100",
+     "0210e1",
+     "03010001",
+     "03010203",
+     "03015180",
+     "0431312e31",
+     "06",
+     "0e6c65696f732d6230303466653063",
+     "20",
+     "31718eaf81232a77",
+     "577b9a786e5562dd44cf11e09fe8255ac01dcc276042751cc9e8aef67690a9b2",
+     "7650a759442924ec",
+     "7c483457b06802d6",
+     "Account",
+     "Address",
+     "BigInt",
+     "BlockRef",
+     "BootstrapState",
+     "Byron version snapshot readers reject values outside the reference widths",
+     "Byron versions retain the previous three-BigInt layout and schema",
+     "ByronState",
+     "ByronVersion(major:BigInt,minor:BigInt,alt:BigInt)",
+     "Bytes",
+     "ChainDepState",
+     "ConsensusExtras",
+     "Credential",
+     "Era",
+     "LiteLedger",
+     "Map",
+     "NativeScript",
+     "Nonce",
+     "PoolParams",
+     "ProtocolExtras",
+     "ProtocolParams",
+     "Rational",
+     "SCRBSNPA",
+     "SHA-256",
+     "TxIn",
+     "TxOut",
+     "US-ASCII",
+     "Value",
+     "a huge collection count is rejected without allocating",
+     "a strict prefix of an encoding never decodes",
+     "an encoding with trailing bytes does not decode",
+     "bd43aa08b4fae886",
+     "decoded $back",
+     "decoding arbitrary bytes never throws",
+     "fixtures/eras/genesis",
+     "golden: BlockRef",
+     "golden: primitives and containers",
+     "golden: sums are a variant index then the variant",
+     "golden: the frozen sidecar schema of V5 and V7 files keeps its fingerprint",
+     "golden: the frozen sidecar schema of V8 files keeps its fingerprint",
+     "golden: the reference build a V10 file records after its magic, before the binding",
+     "golden: the schema fingerprint and encodings of the V7 checkpoint binding",
+     "golden: the schema fingerprint of the sidecar of the V5 body (V9 and V10)",
+     "golden: the sidecar of the initial state of the eras fixture encodes to a fixed digest",
+     "round trip: $name",
+     "size $size",
+     "the initial state is not Byron",
+     "the reader never reads past its limit, wherever a value straddles its buffer"
+    ]
+   },
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotGoldenSuite.scala": {
+    "code_sha256": "fc24c4dde93cec3044917817ba4e4ab774b423e150e864336c34c725c90a1b19",
+    "literals": [
+     "${b & 0xff}%02x",
+     "${g.file} at ${g.version}: migrates once, then restores its state and carried gaps",
+     "${g.file}: a Shelley-based snapshot became Byron",
+     "${g.file}: not restored",
+     "01d2ad4f9b2ab0962aafe20625620747f5e33c653016521bed46729805ceb859",
+     "02c716ef8de7d837c86c4b8da3588a583a1f17f5a93fdc0c152916e3d6534bcd",
+     "11.1",
+     "27a5e02eee38bc3c565d8f85830ea01804406a2b562dca957db368d9883699b2",
+     "29999998493562207",
+     "2eba1699708be0c1c99a2224f596ebedfced2043e5c92354e7413a534f443e95",
+     "399826ff08ab1945ae258f53d7e3d23d060d587b6902a403107f5c656690d954",
+     "3fc6824aeedfda88e54fc8bd9ac1664681778086a757d38a70aa390d3c2a3ed9",
+     "4a9761ddc291b0c352d1712b624759132936a07b3e02d1d3bdaaf17b9abfe683",
+     "648aed117f826d06117f616b5c0a3716a50485a7",
+     "692acd226a7da77730114ae646643f3f6b8f3557763cdba28b65eaaae37248bc",
+     "874580cea6a2435cab02d0a25ae74764968b25871871317f5a19489459a3bf41",
+     "8996400000",
+     "89cdfee8525e74ec5188e54c0ae7dc373025531e8e3465524e01e8b25fd2fef9",
+     "SCRBSNP7",
+     "SCRBSNP8",
+     "SCRBSNP9",
+     "SCRBSNPA",
+     "SHA-256",
+     "US-ASCII",
+     "UTF-8",
+     "a104434df873e4c7406fa57d00fe4b861a773d697312744c8ac30ea1de6ff97a",
+     "a91a5009ff79d542fb1a63bb6e59433b952b0047b3df0266580736f8f0ce74bc",
+     "anchor",
+     "blockNo",
+     "c27be6850661f3fe1c01e5662d55873cf7f60074a5a16f285a62ca806908b647",
+     "cc5d5d6a248499a0b1505d0a44174f97d447ffadebde5f1d5408c30d2a206734",
+     "ce2dcdd6bcc747169817defc3158cb364c79d72cbbea41319b51360b5edeabf2",
+     "conversionSourceCommit",
+     "conway-native-730.bin",
+     "d1017fff1b9c58415115206fb825b45950ac8cb2826dac6e176aa48b237a47bb",
+     "ddaad24d00de33e82cd4459f2f86fa9cb0d9bafc1681fc01ca639f3283bf6acf",
+     "eras/conway-730.bin",
+     "every V7 file is the registered conversion of its V5 source",
+     "every V8 file is the registered conversion of its V7 source",
+     "every V9 file is the registered conversion of its V8 source",
+     "every maintained V10 file is the registered conversion of its V9 source",
+     "every supported snapshot version has an immutable current-format golden",
+     "f5e2584a862e521162c2098a99dd3268e74300f7aae6fd069279cbe94d831ad0",
+     "file",
+     "files",
+     "fixtures/eras/genesis",
+     "fixtures/preview/genesis",
+     "fixtures/snapshot-v10",
+     "fixtures/snapshot-v5",
+     "fixtures/snapshot-v7",
+     "fixtures/snapshot-v8",
+     "fixtures/snapshot-v9",
+     "format",
+     "gaps",
+     "hash",
+     "manifest.json",
+     "observed",
+     "preview-4320.bin",
+     "slot",
+     "sourceSha256",
+     "targetSha256",
+     "the complete era conversion manifest pins every file and carried metadata"
+    ]
+   },
+   "storage/src/test/scala/xyz/kd5ujc/scarab/storage/FormatGoldenSuite.scala": {
+    "code_sha256": "2b7f3e0c06fdcd5e6c8ea943d23c565f8bab84f261b5e54846a37ff09cd6ab1b",
+    "literals": [
+     "00",
+     "00000000",
+     "0000000000000000",
+     "0000000000001000",
+     "0000000000001388",
+     "00000000000f1206",
+     "00000000075bcd15",
+     "00000001",
+     "00000003",
+     "00000038",
+     "00000070",
+     "000004d2",
+     "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+     "0003",
+     "01",
+     "01000000",
+     "0100000000000000380000003800000070",
+     "0102030405060708",
+     "02",
+     "02aba1a4",
+     "1122334455667788",
+     "80000001",
+     "a10203",
+     "cb595e13",
+     "deadbeef",
+     "ef972cde",
+     "ff",
+     "fffe",
+     "haskell primary index: version byte, then big-endian u32 offsets",
+     "haskell secondary entry: 56 bytes, big-endian, unsigned u16 fields",
+     "immutable store index entry: all-ones fields",
+     "immutable store index entry: flags other than bit 0 read as not boundary",
+     "immutable store index entry: layout, and the three padding bytes are ignored on read",
+     "immutable store index: a partial last entry is not read",
+     "volatile log: decoding stops at a bad checksum, a torn tail or an unknown kind",
+     "volatile record: block, rollback to a block and rollback to origin"
+    ]
+   }
+  },
+  "magics": {
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala": [
+    "CSLIDX01",
+    "SCRBIDX2",
+    "SCRBSNP3",
+    "SCRBSNP4",
+    "SCRBSNP5",
+    "SCRBSNP7",
+    "SCRBSNP8",
+    "SCRBSNP9",
+    "SCRBSNPA"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala": [
+    "CSLSNAP1"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV10.scala": [
+    "SCRBSNPA"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV5.scala": [
+    "SCRBSNP5"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7.scala": [
+    "SCRBSNP7"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8.scala": [
+    "SCRBSNP8"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9.scala": [
+    "SCRBSNP9"
+   ],
+   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV10FixtureMain.scala": [
+    "SCRBSNPA"
+   ],
+   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7FixtureMain.scala": [
+    "SCRBSNP7"
+   ],
+   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8FixtureMain.scala": [
+    "SCRBSNP8"
+   ],
+   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9FixtureMain.scala": [
+    "SCRBSNP9"
+   ]
+  },
+  "migrations": {
+   "conversions": {
+    "SnapshotV10": [
+     "fromV9"
+    ],
+    "SnapshotV5": [],
+    "SnapshotV7": [
+     "fromV5"
+    ],
+    "SnapshotV8": [
+     "fromV7"
+    ],
+    "SnapshotV9": [
+     "fromV8"
+    ]
+   },
+   "converted": {
+    "V5": [
+     "SnapshotV7.fromV5",
+     "SnapshotV8.fromV7",
+     "SnapshotV9.fromV8",
+     "SnapshotV10.fromV9"
+    ],
+    "V7": [
+     "SnapshotV8.fromV7",
+     "SnapshotV9.fromV8",
+     "SnapshotV10.fromV9"
+    ],
+    "V8": [
+     "SnapshotV9.fromV8",
+     "SnapshotV10.fromV9"
+    ],
+    "V9": [
+     "SnapshotV10.fromV9"
+    ]
+   },
+   "implementers": [
+    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala",
+    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/NetworkIdentityFile.scala",
+    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala"
+   ],
+   "steps": [
+    [
+     "V5",
+     "V7"
+    ],
+    [
+     "V7",
+     "V8"
+    ],
+    [
+     "V8",
+     "V9"
+    ],
+    [
+     "V9",
+     "V10"
+    ]
+   ]
+  },
+  "previous_version_suites": {
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/NetworkIdentityV9Suite.scala": "00bf40318d2ec69658c3b39c2b7f69f57ac2675ee15cd981edd7e60689211d5a",
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV10MigrationSuite.scala": "2c3d0848cb8dad37b153e969a912da92db11341063a88c5bec7cb09d70a99bc5",
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV8MigrationSuite.scala": "f9dbcc52f9e639cddc0ce4d20d74bca10d6399941a2a3d8958a81ab7ec433286",
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV9MigrationSuite.scala": "856a7c7fdfd39b87d9d765658568ac1247c9b0edfdce127e1582e91969c0cfa5",
+   "storage/src/test/scala/xyz/kd5ujc/scarab/storage/FormatMigrationSuite.scala": "f17b544cda940cf0c708b02f350fd8e18da4381b076ec668d512586876bb32ff"
+  },
+  "registry": {
+   "code_sha256": "312af1e0881c1d64a542e3ef490a911c97c2da41854eacb0b04ba501483156d1",
+   "formatLosses": [
+    "ByronSoftwareMetadata(proposals: Int, applications: Int)"
+   ],
+   "kinds": {
+    "FormatFile": {
+     "families": [
+      "cardano-scala-lab immutable",
+      "scarab immutable"
+     ],
+     "history": [
+      [
+       "V1",
+       "cardano-scala-lab immutable store v1"
+      ],
+      [
+       "V2",
+       "scarab immutable store v2"
+      ]
+     ],
+     "label": "immutable store format"
+    },
+    "IdentityFile": {
+     "families": [
+      "cardano-scala-lab network",
+      "scarab network"
+     ],
+     "history": [
+      [
+       "V1",
+       "cardano-scala-lab network identity v1"
+      ],
+      [
+       "V2",
+       "scarab network identity v2"
+      ],
+      [
+       "V6",
+       "scarab network identity v6"
+      ],
+      [
+       "V9",
+       "scarab network identity v9"
+      ]
+     ],
+     "label": "network identity"
+    },
+    "IndexFile": {
+     "families": [
+      "CSLIDX",
+      "SCRBIDX"
+     ],
+     "history": [
+      [
+       "V1",
+       "CSLIDX01"
+      ],
+      [
+       "V2",
+       "SCRBIDX2"
+      ]
+     ],
+     "label": "chunk index"
+    },
+    "SnapshotFile": {
+     "families": [
+      "CSLSNAP",
+      "SCRBSNP"
+     ],
+     "history": [
+      [
+       "V1",
+       "CSLSNAP1 v1"
+      ],
+      [
+       "V2",
+       "CSLSNAP1 v2"
+      ],
+      [
+       "V3",
+       "SCRBSNP3"
+      ],
+      [
+       "V4",
+       "SCRBSNP4"
+      ],
+      [
+       "V5",
+       "SCRBSNP5"
+      ],
+      [
+       "V7",
+       "SCRBSNP7"
+      ],
+      [
+       "V8",
+       "SCRBSNP8"
+      ],
+      [
+       "V9",
+       "SCRBSNP9"
+      ],
+      [
+       "V10",
+       "SCRBSNPA"
+      ]
+     ],
+     "label": "ledger snapshot"
+    }
+   },
+   "readableFrom": {
+    "SnapshotFile": "FormatVersion.V5",
+    "_": "history.head._1"
+   },
+   "utxoKeyLayoutCurrent": "TxIdIndex16",
+   "utxoKeyLayouts": [
+    "TxIdIndex16"
+   ],
+   "versions": [
+    "V1",
+    "V2",
+    "V3",
+    "V4",
+    "V5",
+    "V6",
+    "V7",
+    "V8",
+    "V9",
+    "V10"
+   ]
+  }
+ }
+}

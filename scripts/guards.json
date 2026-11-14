@@ -17,6 +17,7 @@
   {"id": "performance", "title": "performance register", "argv": ["scripts/render_performance.py"]},
   {"id": "flags", "title": "documented flags", "argv": ["scripts/check_flags_doc.py"]},
   {"id": "docs", "title": "documentation drift", "argv": ["scripts/check_docs.py"]},
-  {"id": "codemap", "title": "code map is current", "argv": ["scripts/render_codemap.py", "--check"]}
+  {"id": "codemap", "title": "code map is current", "argv": ["scripts/render_codemap.py", "--check"]},
+  {"id": "storage-format", "title": "persisted formats are frozen (FMT-1)", "argv": ["scripts/check_storage_format.py"]}
  ]
 }
