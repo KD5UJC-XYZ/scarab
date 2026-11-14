@@ -299,6 +299,21 @@ final class UplcParserSuite extends ScalaCheckSuite:
     assertEquals(refusal(program("(builtin )")), TextError.UnknownBuiltin(""))
   }
 
+  test(
+    "a former builtin name is not an alias: only the printed names are read (Builtin.hs:36-37)"
+  ) {
+    // `cachedBuiltin` maps `display fn` of each builtin; `VerifyEd25519Signature` was formerly
+    // `verifySignature` (`PlutusCore/Default/Builtins.hs:115`), which the parser does not keep
+    assertEquals(
+      program("(builtin verifyEd25519Signature)").map(_.term),
+      Right(Term.builtin(DefaultFun.VerifyEd25519Signature))
+    )
+    assertEquals(
+      refusal(program("(builtin verifySignature)")),
+      TextError.UnknownBuiltin("verifySignature")
+    )
+  }
+
   // ---- printing (PrettyConst.hs:112-121) ----
 
   test("a numeric escape before a digit, and \\SO before H, are followed by \\&") {
