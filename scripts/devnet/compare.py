@@ -526,8 +526,16 @@ def whole_state(name, era, scala_socket=None, anchor="scala", attempts=1, site=S
         now.update(stage="anchor-connect", point=None)
         with first() as session:
             now["stage"] = "anchor-acquire"
-            session.acquire()
-            row = {"pick": pick, "stage": "anchor", "node": anchor, "point": None, "outcome": "acquired"}
+            row = {"pick": pick, "stage": "anchor", "node": anchor, "point": None}
+            try:
+                session.acquire()
+            except ntcquery.AcquireRefused as e:
+                history.append({**row, "outcome": "refused", "refusal": acquire_refusal(e)})
+                raise
+            except Exception as e:
+                history.append({**row, "outcome": "failed", "error": repr(e)[:200]})
+                raise
+            row["outcome"] = "acquired"
             history.append(row)
             now["stage"] = "anchor-point"
             decoded = session.query_raw([3])

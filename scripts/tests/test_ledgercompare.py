@@ -638,6 +638,18 @@ class WholeStateTransportTest(unittest.TestCase):
         result, opened = self.run_whole([self.anchor([]), self.other([1])], reselections=2)
         self.assertEqual((opened, result.get("kind"), result.get("stage")), (1, "origin", "anchor-point"), result)
 
+    def test_a_refused_anchor_acquisition_is_in_the_history(self):
+        result, _ = self.run_whole([frames([2, 1])])
+        self.assertEqual((result.get("kind"), result.get("stage")), ("refused", "anchor-acquire"), result)
+        self.assertEqual(result["acquisitions"], [{"pick": 0, "stage": "anchor", "node": "scala", "point": None,
+                                                   "outcome": "refused",
+                                                   "refusal": {"reply": "[2, 1]", "failure": "PointNotOnChain"}}])
+
+    def test_a_failed_anchor_acquisition_is_in_the_history(self):
+        result, _ = self.run_whole([frames([1, 999])])
+        self.assertEqual((result.get("kind"), result.get("stage")), ("malformed", "anchor-acquire"), result)
+        self.assertEqual([(a["stage"], a["outcome"]) for a in result["acquisitions"]], [("anchor", "failed")])
+
     def test_an_anchor_without_a_block_point_is_never_compared_with_the_other_nodes_tip(self):
         # a null point would have the other node acquire its own volatile tip: no same-point comparison at all
         result, opened = self.run_whole([self.anchor(None), self.other([1])], reselections=2)
