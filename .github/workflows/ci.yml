@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 # A newer push to a pull request cancels its older run. Every other run, each push to main among them, has a group of
-# its own, so it is never cancelled, and never replaced while it waits (scripts/check_ci_parity.py).
+# its own, so it is never cancelled, and never replaced while it waits (guard `ci-parity`, scripts/guards.json).
 concurrency:
   group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

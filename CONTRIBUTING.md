@@ -181,6 +181,13 @@ run going and one waiting, and a plain `gh workflow run` replaces, and so cancel
 `.github/workflows/flaky-tests.yml` reads the last day's CI runs every night: a test that failed and then passed on
 the same commit gets an issue of its own, or a comment on its existing one (`scripts/flaky_tests.py`).
 
+A push to `main` runs nothing its pull request did not: every job a push to `main` can start also runs on pull
+requests to `main`, under a condition no narrower, and only a pull request's newer push cancels a run; each push to
+`main` runs to the end. `scripts/check_ci_parity.py` refuses a workflow that breaks this (its docstring has the
+rules); a job with side effects only, which cannot run on a pull request, goes in its allowlist with the reason.
+Publishing that checks nothing runs on a schedule instead: `dependency-graph.yml` submits the sbt dependency graph
+daily and on demand.
+
 The scenarios need the reference image (see [docs/reference-image.md](docs/reference-image.md))
 and are described in [docs/running.md](docs/running.md). `prepare_reference_image.py --download`
 fetches and verifies the official release itself. Every scenario exits non-zero on any mismatch or
