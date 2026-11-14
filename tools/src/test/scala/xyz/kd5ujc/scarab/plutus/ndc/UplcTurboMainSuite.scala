@@ -36,7 +36,8 @@ class UplcTurboMainSuite extends FunSuite:
         .program("(program 1.0.0 [(lam x [(builtin addInteger) x x]) (con integer 21)])")
         .fold(e => fail(e.toString), identity)
       val prepared = backend.text(context, program).fold(r => fail(r.toString), identity)
-      val measured = measure(prepared, counterOverhead()).fold(e => fail(e.message), identity)
+      val measured =
+        measure(prepared, counterOverhead(), Limit).fold(e => fail(e.message), identity)
       assert(measured.cpuMicros > 0, "a time is measured")
       assert(measured.allocated >= 0, "allocation is never negative")
       assert(measured.spent.cpu.toLong > 0 && measured.spent.memory.toLong > 0, "a budget is spent")
@@ -68,10 +69,21 @@ class UplcTurboMainSuite extends FunSuite:
       val program =
         UplcParser.program("(program 1.0.0 (error))").fold(e => fail(e.toString), identity)
       val prepared = backend.text(context, program).fold(r => fail(r.toString), identity)
-      assert(measure(prepared, 0L).isLeft)
+      assert(measure(prepared, 0L, Limit).isLeft)
     }
   }
 
-  test("the README's budget is the restricting limit") {
+  test("the README's budget is the restricting limit, and the default of the options") {
     assertEquals(Limit, ExBudget.of(10_000_000_000L, 10_000_000L))
+    assertEquals(options(Nil), Some(Options(Memory.Allocated, 1, Limit)))
+  }
+
+  test("the options are read in any order, and anything else refuses the command line") {
+    assertEquals(
+      options(List("--memory-limit", "14000000", "--memory", "null", "--warm-up", "0")),
+      Some(Options(Memory.Unreported, 0, ExBudget.of(10_000_000_000L, 14_000_000L)))
+    )
+    assertEquals(options(List("--warm-up", "-1")), None)
+    assertEquals(options(List("--memory", "rss")), None)
+    assertEquals(options(List("--memory-limit")), None)
   }

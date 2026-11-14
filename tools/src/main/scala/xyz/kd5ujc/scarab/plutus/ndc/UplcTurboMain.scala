@@ -6,6 +6,7 @@ import cats.syntax.all.*
 import io.circe.Json
 import java.lang.management.ManagementFactory
 import java.nio.file.{Files, Path}
+import scala.annotation.tailrec
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{PlutusLanguage, PlutusVm}
@@ -18,7 +19,7 @@ import xyz.kd5ujc.scarab.uplc.cost.{DefaultCostModels, ExBudget}
   * site's commit 9dc68a75).
   *
   * `tools/runMain xyz.kd5ujc.scarab.plutus.ndc.UplcTurboMain <scalus|scarab> <corpus-dir>
-  * <report.json> [allocated|null] [warm-up passes]`
+  * <report.json> [--memory allocated|null] [--warm-up <passes>] [--memory-limit <units>]`
   *
   * Each `<epoch>/<name>-v<n>.flat` of the corpus is a script as the ledger holds it (a CBOR byte
   * string around the Flat program), of language `n`, at the protocol the README gives the epoch
@@ -27,11 +28,12 @@ import xyz.kd5ujc.scarab.uplc.cost.{DefaultCostModels, ExBudget}
   * `cekMachineCosts` files, through [[DefaultCostModels]]) as the list the ledger would pass. The
   * script is admitted and checked before anything is timed. Every program is then run once,
   * untimed, so that the JVM's compilers have seen the corpus; then fifty times each, timed, within
-  * 10,000,000,000 CPU and 10,000,000 memory units, restricting, as the README sets. Of the fifty
-  * the thirty fastest are kept: `cpu_us` is their mean time and `mem_bytes` the mean of the bytes
-  * the evaluating thread allocated in them (`allocated`, the default) or null (`null`). The budget
-  * is what the runs spent, which must be the same in each. A program that does not evaluate is left
-  * out of the report, which the site counts as a failure, and named on the console.
+  * 10,000,000,000 CPU and 10,000,000 memory units, restricting, as the README sets
+  * (`--memory-limit` changes the second, for an experiment only). Of the fifty the thirty fastest
+  * are kept: `cpu_us` is their mean time and `mem_bytes` the mean of the bytes the evaluating
+  * thread allocated in them (`--memory allocated`, the default) or null (`--memory null`). The
+  * budget is what the runs spent, which must be the same in each. A program that does not evaluate
+  * is left out of the report, which the site counts as a failure, and named on the console.
   */
 object UplcTurboMain extends IOApp:
 
@@ -59,6 +61,30 @@ object UplcTurboMain extends IOApp:
 
     /** Nothing: the schema's null. */
     case Unreported
+
+  /** The options after the three paths. */
+  final case class Options(memory: Memory, passes: Int, limit: ExBudget)
+
+  object Options:
+    val Default: Options = Options(Memory.Allocated, 1, Limit)
+
+  /** `--memory allocated|null`, `--warm-up <passes>`, `--memory-limit <units>`, in any order; none
+    * for anything else.
+    */
+  @tailrec
+  def options(rest: List[String], so: Options = Options.Default): Option[Options] = rest match
+    case Nil                               => Some(so)
+    case "--memory" :: "allocated" :: tail => options(tail, so.copy(memory = Memory.Allocated))
+    case "--memory" :: "null" :: tail      => options(tail, so.copy(memory = Memory.Unreported))
+    case "--warm-up" :: n :: tail =>
+      n.toIntOption.filter(_ >= 0) match
+        case Some(passes) => options(tail, so.copy(passes = passes))
+        case None         => None
+    case "--memory-limit" :: n :: tail =>
+      n.toLongOption.filter(_ > 0) match
+        case Some(units) => options(tail, so.copy(limit = ExBudget.of(Limit.cpu.toLong, units)))
+        case None        => None
+    case _ => None
 
   /** A program of the corpus. */
   final case class Bench(name: String, language: PlutusLanguage, protocol: Int, script: Bytes)
@@ -139,10 +165,10 @@ object UplcTurboMain extends IOApp:
     * clock and the allocation counter are read around the evaluation alone, with no effect wrapper
     * between them that would add its own allocation and time to what is measured.
     */
-  def sample(prepared: Prepared): Sample =
+  def sample(prepared: Prepared, limit: ExBudget): Sample =
     val before = allocatedSoFar()
     val start = System.nanoTime()
-    val run = prepared.evaluate(Limit)
+    val run = prepared.evaluate(limit)
     val end = System.nanoTime()
     val after = allocatedSoFar()
     Sample(end - start, after - before, run)
@@ -159,8 +185,8 @@ object UplcTurboMain extends IOApp:
       .min
 
   /** The README's measurement of one program: fifty runs, the thirty fastest kept. */
-  def measure(prepared: Prepared, overhead: Long): Either[Unmeasured, Measured] =
-    val samples = Vector.fill(Runs)(sample(prepared))
+  def measure(prepared: Prepared, overhead: Long, limit: ExBudget): Either[Unmeasured, Measured] =
+    val samples = Vector.fill(Runs)(sample(prepared, limit))
     val budgets = samples.map(_.run).collect { case Run.Evaluated(spent, _) => spent }
     samples.map(_.run).find {
       case _: Run.Evaluated => false
@@ -214,28 +240,21 @@ object UplcTurboMain extends IOApp:
       .map(_.sortBy(_._1.name))
 
   def run(args: List[String]): IO[ExitCode] =
-    val memory = args.lift(3) match
-      case Some("null")             => Some(Memory.Unreported)
-      case Some("allocated") | None => Some(Memory.Allocated)
-      case Some(_)                  => None
-    val passes = args.lift(4).fold(Some(1))(_.toIntOption.filter(_ >= 0))
-    (args.take(3), memory, passes) match
-      case (List(vmName, corpusDir, reportFile), Some(m), Some(p)) =>
-        PlutusVm.parse(vmName) match
-          case Left(unknown) => IO.println(unknown.message).as(ExitCode(2))
-          case Right(vm)     => bench(vm, Path.of(corpusDir), Path.of(reportFile), m, p)
-      case _ =>
-        IO.println(
-          "usage: UplcTurboMain <scalus|scarab> <corpus-dir> <report.json> [allocated|null] [warm-up passes]"
-        ).as(ExitCode(2))
+    args match
+      case vmName :: corpusDir :: reportFile :: rest =>
+        (PlutusVm.parse(vmName), options(rest)) match
+          case (Left(unknown), _)    => IO.println(unknown.message).as(ExitCode(2))
+          case (Right(vm), Some(so)) => bench(vm, Path.of(corpusDir), Path.of(reportFile), so)
+          case (Right(_), None)      => usage
+      case _ => usage
 
-  private def bench(
-      vm: PlutusVm,
-      root: Path,
-      out: Path,
-      memory: Memory,
-      passes: Int
-  ): IO[ExitCode] =
+  private val usage: IO[ExitCode] =
+    IO.println(
+      "usage: UplcTurboMain <scalus|scarab> <corpus-dir> <report.json> " +
+        "[--memory allocated|null] [--warm-up <passes>] [--memory-limit <units>]"
+    ).as(ExitCode(2))
+
+  private def bench(vm: PlutusVm, root: Path, out: Path, so: Options): IO[ExitCode] =
     val backend = UplcBackend.of(vm)
     NdcReport.bigStack.use { stack =>
       for
@@ -249,12 +268,12 @@ object UplcTurboMain extends IOApp:
               b -> Unmeasured.NotPrepared(run)
             }
             for
-              warm <- IO(Vector.fill(passes)(ready.foreach((_, p) => p.evaluate(Limit))))
+              warm <- IO(Vector.fill(so.passes)(ready.foreach((_, p) => p.evaluate(so.limit))))
                 .evalOn(stack)
                 .timed
               measured <- IO {
                 val overhead = counterOverhead()
-                ready.map((b, p) => b -> measure(p, overhead))
+                ready.map((b, p) => b -> measure(p, overhead, so.limit))
               }.evalOn(stack).timed
               results = measured._2
               failed = unprepared ++ results.collect { case (b, Left(why)) => b -> why }
@@ -271,7 +290,7 @@ object UplcTurboMain extends IOApp:
                   )
                 ) ++ Vector(
                   "machine" -> machine,
-                  "benchmarks" -> Json.fromValues(items.map((b, m) => item(b, m, memory)))
+                  "benchmarks" -> Json.fromValues(items.map((b, m) => item(b, m, so.memory)))
                 )
               )
               written <- NdcReport.write(out, report).timed
@@ -279,7 +298,7 @@ object UplcTurboMain extends IOApp:
               _ <- IO.println(
                 s"${vm.name}: ${items.size} of ${programs.size} programs measured, ${failed.size} not; " +
                   s"sum of cpu_us ${items.map(_._2.cpuMicros).sum.round} us; read ${read._1.toMillis} ms, " +
-                  s"prepare ${prepared._1.toMillis} ms, warm-up ${warm._1.toMillis} ms ($passes passes), " +
+                  s"prepare ${prepared._1.toMillis} ms, warm-up ${warm._1.toMillis} ms (${so.passes} passes, memory limit ${so.limit.memory.toLong}), " +
                   s"measure ${measured._1.toMillis} ms, write ${written._1.toMillis} ms"
               )
             yield ExitCode.Success
