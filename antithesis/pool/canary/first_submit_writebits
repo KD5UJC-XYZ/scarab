@@ -1,0 +1,81 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# The canary's first command; Antithesis runs it once per timeline, after setup complete and before any fault. It
+# submits to s1 a transaction that mints with the writeBits policy of GHSA-vfw2-hhrc-87v5 (writebits_script.py) and
+# records s1's answer. At protocol 11 the reference fails the policy, and a fixed Scarab refuses the transaction at its
+# mempool. Scarab before the fix accepts it and relays it, and the first pool to forge it splits the chain:
+# - a Haskell pool admits a peer's transaction whose script fails with `is_valid` false and forges it so
+#   (`applyAlonzoBasedTx`, ouroboros-consensus 82ecba32 `Shelley/Eras.hs`), and s1, whose script passes, refuses
+#   that block;
+# - s1 forges it with `is_valid` true, and the Haskell pools refuse s1's block.
+# Every timeline starts from one setup snapshot, so a run takes the same path in all of them; the platform positive
+# control of 2026-11-14 took the first.
+# `build-raw` does not evaluate the script, so the transaction reaches s1 whatever the reference makes of it.
+set -uo pipefail
+source /opt/at/lib.sh
+exit_zero_on_signal
+
+bytes=${WRITEBITS_BYTES:-4097}
+script=/opt/at/canary/writebits-$bytes.plutus
+# utxo2's funds: the canary's setup spends utxo1's
+keys=/env/net/utxo-keys/utxo2
+reference=/ipc/h2/node.socket
+fee=2000000
+token=63616e617279
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+fail() {
+  echo "canary: $1" >&2
+  exit 1
+}
+
+addr=$(cardano-cli conway address build --payment-verification-key-file "$keys/utxo.vkey" --testnet-magic "$MAGIC") \
+  || fail "address build failed"
+timeout 60 cardano-cli conway query protocol-parameters --testnet-magic "$MAGIC" --socket-path "$reference" \
+  --out-file "$work/pp.json" || fail "protocol parameters query failed"
+utxo=$(timeout 60 cardano-cli conway query utxo --address "$addr" --testnet-magic "$MAGIC" --socket-path "$reference" \
+  --output-json) || fail "UTxO query failed"
+# the largest output that holds only ada: collateral may hold nothing else
+txin=$(jq -r 'to_entries | map(select(.value.value | keys == ["lovelace"])) | max_by(.value.value.lovelace) | .key' \
+  <<< "$utxo")
+[ "$txin" != null ] || fail "no output of $addr holds only ada"
+amount=$(jq -r --arg k "$txin" '.[$k].value.lovelace' <<< "$utxo")
+policy=$(cardano-cli conway transaction policyid --script-file "$script") || fail "policy id failed"
+echo "canary: protocol $(jq -c .protocolVersion "$work/pp.json"), input $txin, policy $policy, $bytes bytes"
+
+cardano-cli conway transaction build-raw \
+  --tx-in "$txin" --tx-in-collateral "$txin" \
+  --tx-out "$addr+$((amount - fee))+1 $policy.$token" \
+  --mint "1 $policy.$token" --mint-script-file "$script" --mint-redeemer-value 0 \
+  --mint-execution-units "(10000000, 100000)" \
+  --fee "$fee" --protocol-params-file "$work/pp.json" --out-file "$work/tx.raw" || fail "build-raw failed"
+cardano-cli conway transaction sign --tx-body-file "$work/tx.raw" --signing-key-file "$keys/utxo.skey" \
+  --out-file "$work/tx.signed" || fail "sign failed"
+# cardano-cli 11.2.3 prints {"txhash": ...}; older ones print the hash alone
+raw=$(cardano-cli conway transaction txid --tx-file "$work/tx.signed")
+txid=$(jq -r '.txhash' <<< "$raw" 2> /dev/null || printf '%s' "$raw")
+
+# No fault runs alongside a first command, but s1 may still be catching up after setup: wait until it answers.
+for _ in $(seq 60); do
+  timeout 10 cardano-cli conway query tip --testnet-magic "$MAGIC" --socket-path /ipc/s1/node.socket \
+    > /dev/null 2>&1 && break
+  sleep 2
+done
+answer=$(timeout 60 cardano-cli conway transaction submit --tx-file "$work/tx.signed" --testnet-magic "$MAGIC" \
+  --socket-path /ipc/s1/node.socket 2>&1)
+code=$?
+# cardano-cli 11.2.3's two answers from a node; anything else (a refused connection, a timeout) is no answer, and
+# then the canary has not exercised s1's validation.
+if [ "$code" -eq 0 ] && [[ $answer == *"Transaction successfully submitted"* ]]; then
+  verdict=accepted
+elif [ "$code" -ne 0 ] && [[ $answer == *"Error while submitting tx"* ]]; then
+  verdict=refused
+else
+  verdict="no answer"
+fi
+echo "canary: s1 $verdict ($code) $txid: $answer"
+details=$(jq -cn --arg txid "$txid" --argjson code "$code" --arg answer "$answer" --argjson bytes "$bytes" \
+  --arg verdict "$verdict" '{txid: $txid, bytes: $bytes, verdict: $verdict, exitCode: $code, answer: $answer}')
+if [ "$verdict" = "no answer" ]; then answered=false; else answered=true; fi
+assertion true true sometimes Sometimes "$CANARY_SUBMITTED" "$answered" "$details"

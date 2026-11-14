@@ -1,0 +1,10 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# One pass of the divergence detectors (lib.sh `check_divergence`); Antithesis runs it at any time, under faults,
+# alongside the drivers. Each detector reads its log from where the last pass in the timeline stopped.
+set -uo pipefail
+source /opt/at/lib.sh
+exit_zero_on_signal
+
+check_divergence
+check_forks
