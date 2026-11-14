@@ -86,6 +86,10 @@ block, and a cluster split at the start cannot answer that. At k = 5, this topol
 in three positive controls in a row; a cardano-node in s1's seat loses the same race (#854). The pool config keeps
 k = 5. Setup takes about 15 minutes, for the two epoch boundaries the governance change needs.
 
+`pool/config-canary-k5` is a stated experiment: the same canary at k = 5 with 500-slot epochs, s1 started with the
+pools. Every k = 20 canary run on the platform ended "incomplete" at about 1 h 15 min with no property report, with or
+without setup complete. The k = 5 runs completed in about 31 minutes. It asks whether the long setup is why.
+
 The genesis starts at protocol 11. cardano-node reads a Conway genesis only with create-env's 251 PlutusV3
 parameters, which do not price `writeBits`. So the driver's setup enacts the reference's 361-parameter model at
 protocol 11 by a governance parameter change, as mainnet did; a genesis overlay sets the technical group's DRep
@@ -110,6 +114,7 @@ SCARAB_JAR=node/target/scala-3.9.0/scarab-node-<version>-assembly.jar \
 antithesis/pool/scripts/validate.sh                   # snouty validate: setup complete locally, then cleaned up
 antithesis/pool/scripts/launch.sh resilient 15m       # validate, then a basic_test run
 CONFIG=config-canary antithesis/pool/scripts/launch.sh none 15m   # the canary
+CONFIG=config-canary-k5 antithesis/pool/scripts/launch.sh none 15m   # experiment: the canary at k = 5, short setup
 CONFIG=config-k200 antithesis/pool/scripts/launch.sh resilient 15m  # k = 200
 python3 -I antithesis/pool/canary/writebits_script.py # regenerate the canary's policies and cost model
 ```
