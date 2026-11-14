@@ -6,7 +6,7 @@ import xyz.kd5ujc.scarab.protocol.TxSubmission2Fixtures.given
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.{RelayOffer, TxSubmission2}
+import xyz.kd5ujc.scarab.protocol.{RelayOffer, TxSubmission2, TxSubmission2Engine}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import xyz.kd5ujc.scarab.protocol.TxSubmission2.{Message, State}
 import munit.ScalaCheckSuite
@@ -168,6 +168,115 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
         )
         assertEquals(reported, Vector(2L * transaction.size, transaction.size.toLong))
       }
+
+  /** A profile with the reference's byte limits and no batch cap of its own, so that only the reply
+    * bound limits what one reply carries. Ids and bodies are single CBOR byte strings.
+    */
+  private val wide: TxSubmission2Engine.Codec[Bytes, Bytes] =
+    TxSubmission2Engine
+      .fromCodecs[Bytes, Bytes](
+        maxBatch = 65535,
+        maxOriginalBytes = 2500000,
+        maxAdvertisedSize = 0xffffffffL,
+        maxMessageBytes = {
+          case State.Init | State.Idle  => 65535
+          case State.Ids(_) | State.Txs => 2500000
+          case State.Done               => 0
+        },
+        encodeId = Right(_),
+        decodeId = Right(_),
+        encodeBody = Right(_),
+        decodeBody = Right(_),
+        checkOffer = _ => Right(()),
+        advertisedSize = n => Right(n.toLong),
+        bodyId = Right(_)
+      )
+      .fold(error => fail(error.message), identity)
+
+  private val wideRules = new TxSubmission2Runtime.Rules[Bytes]:
+    def acknowledge(unacked: Vector[Bytes], blocking: Boolean, ack: Int, request: Int) =
+      TxSubmissionPolicy.acknowledge(unacked, blocking, ack, request)
+    def bodies(unacked: Vector[Bytes], ids: Vector[Bytes]) =
+      TxSubmissionPolicy.bodies(unacked, ids)
+    def offers(ids: Vector[Bytes], requested: Int) = TxSubmissionPolicy.offers(ids, requested)
+
+  /** A CBOR byte string of `n` bytes, all `fill`. */
+  private def byteString(n: Int, fill: Int): Bytes =
+    Bytes(
+      Vector(0x5a.toByte) ++ java.nio.ByteBuffer.allocate(4).putInt(n).array().toVector ++
+        Vector.fill(n)(fill.toByte)
+    )
+
+  test("a reply carries the requested bodies only while it stays within the receiver's limit"):
+    val large = Vector.tabulate(3)(n => byteString(1000000, n))
+    val ids = Vector.tabulate(3)(n => Bytes(Vector(0x41.toByte, n.toByte)))
+    val wideSource = new TxSubmission2Runtime.Source[IO, Bytes, Bytes]:
+      private val held =
+        ids.zip(large).zipWithIndex.map { case ((i, b), n) =>
+          TxSubmission2Runtime.Held(i, b.size, n + 1L)
+        }
+      def after(ticket: Long, max: Int) = IO.pure(held.filter(_.ticket > ticket).take(max))
+      def awaitAfter(ticket: Long) = IO.unit
+      def body(id: Bytes) = IO.pure(ids.indexOf(id) match
+        case -1 => None
+        case n  => Some(large(n)))
+    def put(
+        channel: MuxChannel[IO],
+        state: State,
+        message: TxSubmission2Engine.Message[Bytes, Bytes]
+    )(using
+        Net
+    ): IO[Unit] = wide.encode(state, Role.Server, message).fold(e => fail(e.toString), channel.send)
+    def take(channel: MuxChannel[IO], state: State)(using Net) =
+      channel.recv(wide.maxMessageBytes(state))(wide.decodePrefix(state, Role.Client, _))
+    TestControl
+      .executeEmbed(typed {
+        linked(
+          protocols = Set(4),
+          server = Mux.Config(role = Mux.Role.Responder, ingressLimit = _ => 4000000L)
+        ).use { (client, server) =>
+          for
+            c <- client.channel(4)
+            s <- server.channel(4)
+            running <- typed(
+              TxSubmission2Runtime.client(
+                c,
+                wideSource,
+                wide,
+                wideRules,
+                None,
+                _ => xyz.kd5ujc.scarab.protocol.ProtocolError.UnknownTxSubmission2TagStateArity
+              )
+            ).start
+            _ <- take(s, State.Init)
+            _ <- put(s, State.Idle, TxSubmission2Engine.Message.RequestIds(true, 0, 3))
+            _ <- take(s, State.Ids(true))
+            _ <- put(s, State.Idle, TxSubmission2Engine.Message.RequestTxs(ids))
+            reply <- IO.race(take(s, State.Txs), running.joinWithNever)
+            _ <- running.cancel
+          yield reply
+        }
+      })
+      .map(result =>
+        assertEquals(
+          result.map(_.left.map {
+            case TxSubmission2Engine.Message.ReplyTxs(originals) =>
+              (originals.map(_.size), originals == large.take(2))
+            case _ => (Vector.empty, false)
+          }),
+          Right(Left((Vector(1000005, 1000005), true)))
+        )
+      )
+
+  test("the reply bound counts the reply's framing and keeps the longest prefix within it"):
+    assertEquals(TxSubmissionPolicy.ReplyByteLimit, 2500000L)
+    assertEquals(TxSubmissionPolicy.replyWithin(Vector.empty), 0)
+    assertEquals(TxSubmissionPolicy.replyWithin(Vector(2499996L)), 1)
+    assertEquals(TxSubmissionPolicy.replyWithin(Vector(2499997L)), 0)
+    assertEquals(TxSubmissionPolicy.replyWithin(Vector(1L, 2499996L, 1L)), 1)
+    // the largest reply the local profile builds: eight bodies of 65,536 bytes
+    assertEquals(TxSubmissionPolicy.replyWithin(Vector.fill(8)(65545L)), 8)
+    assertEquals(TxSubmission2.advertisedSize(TxSubmission2.MaxOriginalBytes), Right(65545L))
 
   test("credit is checked before the reply batch cap; invalid numeric callers stay typed"):
     assertEquals(

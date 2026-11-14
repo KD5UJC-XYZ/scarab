@@ -78,6 +78,32 @@ object TxSubmissionPolicy:
       }
       .map(_ => ())
 
+  /** The receiver's byte limit for a message in state `StTxs`: `largeByteLimit`
+    * (`byteLimitsTxSubmission2`, ouroboros-network c45735a5
+    * `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/TxSubmission2/Codec.hs:47-58`;
+    * `ouroboros-network/api/lib/Ouroboros/Network/Protocol/Limits.hs:105-106`).
+    */
+  val ReplyByteLimit: Long = 2500000L
+
+  /** `MsgReplyTxs` around its transactions: the array of two, the tag, and the indefinite list's
+    * start and break.
+    */
+  private val ReplyFraming = 4L
+
+  /** How many of the bodies of one reply, of the encoded `sizes` in request order, it carries: the
+    * longest prefix whose reply stays within [[ReplyByteLimit]], so a reply is never one an honest
+    * receiver refuses. A body left out is one the reply omits, as one no longer held is omitted.
+    *
+    * The bound cannot be reached today and is kept as defence in depth. The bodies of one reply are
+    * those of distinct ids of the unacknowledged window, so at most [[MaxUnacknowledged]] (10),
+    * each at most `TxSubmission2.MaxOriginalBytes` (65,536) bytes, 65,545 encoded (a held
+    * transaction is also no larger than the protocol's maximum transaction size): 655,454 bytes at
+    * most. The codec reads at most `TxSubmission2.MaxBatch` (8) ids in a request, which makes
+    * 524,364, within the local profile's own 524,400 for `StTxs` (`TxSubmission2.maxMessageBytes`).
+    */
+  def replyWithin(sizes: Vector[Long]): Int =
+    sizes.scanLeft(ReplyFraming)(_ + _).drop(1).takeWhile(_ <= ReplyByteLimit).size
+
   def offers(ids: Vector[Bytes], requested: Int): Either[Violation, Unit] =
     if ids.size > requested then Left(Violation.ExcessOffers(ids.size, requested))
     else if ids.distinct.size != ids.size then Left(Violation.DuplicateOffer)

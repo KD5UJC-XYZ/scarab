@@ -150,9 +150,12 @@ private[network] object TxSubmission2Runtime:
       rules.bodies(window.unacked, ids).fold(illegal, F.pure) *>
         ids
           .flatTraverse(id => source.body(id).map(_.toVector))
-          .flatMap(bodies =>
-            send(State.Txs, TxSubmission2Engine.Message.ReplyTxs(bodies)) *>
-              served.traverse_(_(bodies))
+          .flatMap(found =>
+            found.traverse(body => codec.bodySize(body).fold(illegal, F.pure)).flatMap { sizes =>
+              val bodies = found.take(TxSubmissionPolicy.replyWithin(sizes))
+              send(State.Txs, TxSubmission2Engine.Message.ReplyTxs(bodies)) *>
+                served.traverse_(_(bodies))
+            }
           )
     def loop(window: Window[I]): F[Unit] =
       receive(State.Idle).flatMap {
