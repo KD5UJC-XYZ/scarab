@@ -104,11 +104,20 @@ final case class GovActionState(
 final case class Proposals(actions: Vector[GovActionState], roots: PrevIds):
   lazy val byId: Map[GovActionId, GovActionState] = actions.map(a => a.id -> a).toMap
 
-  /** Add a proposal; `None` if its previous action is neither the root nor a stored proposal. */
+  /** Add a proposal; `None` if its previous action is neither the root nor a stored proposal. A
+    * proposal whose id is already stored replaces that entry where it stands, as `OMap.||>` does
+    * (cardano-ledger f649f975,
+    * `eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs:310-312`;
+    * `libs/cardano-data/src/Data/OMap/Strict.hs:192-205`).
+    */
   def add(gas: GovActionState): Option[Proposals] =
     val lineageOf =
       (id: GovActionId) => byId.get(id).flatMap(s => GovActions.lineage(s.action)).map(_._1)
-    Option.when(Proposals.attaches(roots, lineageOf, gas))(copy(actions = actions :+ gas))
+    Option.when(Proposals.attaches(roots, lineageOf, gas))(
+      copy(actions = actions.indexWhere(_.id == gas.id) match
+        case -1    => actions :+ gas
+        case index => actions.updated(index, gas))
+    )
 
   def vote(voter: Voter, vote: Vote, id: GovActionId): Proposals =
     withVotes(Vector((voter, vote, id)))
