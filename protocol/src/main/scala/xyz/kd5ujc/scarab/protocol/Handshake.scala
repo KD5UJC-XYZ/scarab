@@ -9,17 +9,12 @@ import cats.syntax.all.*
 
 /** Handshake-only source conformance to ouroboros-network c45735a56c567fa977969173d18943bac6bb3821.
   * Independently implemented from Protocol/Handshake/{Codec,Client,Server}.hs and Cardano version
-  * codecs. Resource policy (stricter than wire): depth 24, 512 terms, 4096 string bytes, 1024
-  * refusal bytes. Unknown map entries are parsed as bounded generic CBOR before being skipped.
-  * Refusal arrays must have exact arity locally; the pinned decoder reads but ignores that length.
+  * codecs. Generic values are decoded within the native 5760-byte transport budget. Unknown map
+  * entries retain their native CBOR syntax before being skipped; input-controlled depth uses Eval.
   */
 object Handshake:
   val MaxMessageBytes = 5760
   val DefaultPhaseTimeout: FiniteDuration = 10.seconds
-  val MaxDepth = 24
-  val MaxItems = 512
-  val MaxStringBytes = 4096
-  val MaxRefusalBytes = 1024
 
   enum Suite:
     case NodeToNode, NodeToClient
@@ -27,11 +22,12 @@ object Handshake:
     case Propose, Confirm, Done
   enum Term:
     case Integer(value: BigInt)
+    case BigInteger(value: BigInt)
     case Bool(value: Boolean)
     case Arr(values: Vector[Term], definite: Boolean = true)
     case Map(values: Vector[(Term, Term)], definite: Boolean = true)
     case Text(value: String, definite: Boolean = true)
-    case ByteString(value: Bytes)
+    case ByteString(value: Bytes, definite: Boolean = true)
     case Tag(number: BigInt, value: Term)
     case Simple(value: Int)
     case FloatBits(width: Int, bits: BigInt)
@@ -106,13 +102,6 @@ object Handshake:
   private def arr(t: Term)(using ProtocolWire.Scope): Vector[Term] = t match
     case Term.Arr(v, true) => v
     case _                 => bad(ProtocolError.ExpectedDefiniteArray)
-  private def bool(t: Term)(using ProtocolWire.Scope): Boolean = t match
-    case Term.Bool(b) => b
-    case _            => bad(ProtocolError.ExpectedBoolean)
-  private def magic(t: Term)(using ProtocolWire.Scope): Long = t match
-    case Term.Integer(n) if n >= 0 && n <= BigInt("ffffffff", 16) => n.toLong
-    case _ => bad(ProtocolError.NetworkMagicOutsideUint32)
-
   /** Whether node-to-node version data of this version has the Peras flag. */
   private def carriesPeras(version: Int): Boolean =
     NtnVersion.fromNumber(version).exists(_.carriesPeras)
@@ -136,38 +125,9 @@ object Handshake:
           (if carriesPeras(version) then Vector(Term.Bool(data.peras)) else Vector.empty)
       )
   }
-  def decodeData(suite: Suite, version: Int, term: Term): Either[ProtocolError, Data] = attempt {
-    if !recognized(suite, version) then bad(ProtocolError.UnsupportedLogicalVersion)
-    val fields = arr(term)
-    if suite == Suite.NodeToClient then
-      if fields.size != 2 then bad(ProtocolError.NtCDataArity)
-      Data(magic(fields(0)), query = bool(fields(1)))
-    else
-      if fields.size != (if carriesPeras(version) then 5 else 4) then
-        bad(ProtocolError.NtNDataArity)
-      val peers = fields(2) match
-        case Term.Integer(n) if n == 0 || n == 1 => n == 1
-        case _                                   => bad(ProtocolError.PeerSharingMustBe0Or1)
-      Data(
-        magic(fields(0)),
-        bool(fields(1)),
-        peers,
-        bool(fields(3)),
-        if carriesPeras(version) then bool(fields(4)) else false
-      )
-  }
-  private def agree(local: Data, remote: Data): Either[ProtocolError, Data] =
-    if local.magic != remote.magic then Left(ProtocolError.NetworkMagicMismatch)
-    else
-      Right(
-        Data(
-          local.magic,
-          local.initiatorOnly || remote.initiatorOnly,
-          local.peerSharing && remote.peerSharing,
-          local.query || remote.query,
-          local.peras && remote.peras
-        )
-      )
+  def decodeData(suite: Suite, version: Int, term: Term): Either[ProtocolError, Data] =
+    if !recognized(suite, version) then Left(ProtocolError.UnsupportedLogicalVersion)
+    else HandshakeVersionData.decode(suite, version, term).leftMap(ProtocolError.HandshakeVersionData.apply)
 
   private def versionMap[V: VersionCodec](term: Term)(using
       ordering: Ordering[V],
@@ -185,7 +145,7 @@ object Handshake:
     if entries.map(_._1).distinct.size != entries.size then bad(ProtocolError.DuplicateVersion)
     Term.Map(entries.sortBy(_._1).map { case (v, d) => (versionTerm(v), d) })
   private def text(t: Term)(using ProtocolWire.Scope): String = t match
-    case Term.Text(s, true) if s.getBytes(StandardCharsets.UTF_8).length <= MaxRefusalBytes => s
+    case Term.Text(s, true) => s
     case _ => bad(ProtocolError.InvalidOrOversizedRefusalText)
   private def reason[V: VersionCodec](term: Term)(using ProtocolWire.Scope): WireReason[V] =
     arr(term) match
@@ -235,8 +195,9 @@ object Handshake:
       bytes: Bytes
   ): Either[DecodeError, (WireMessage[V], Bytes)] =
     new Parser(bytes)
-      .term(0)
-      .run(Cursor(0, 0))
+      .term
+      .run(Cursor(0))
+      .value.value
       .flatMap { case (cursor, term) =>
         attempt((message[V](state, term), bytes.drop(cursor.position)))
       }
@@ -266,8 +227,9 @@ object Handshake:
     attempt(encodeTerm(reasonTerm(value)))
   def decodeReason[V: VersionCodec](bytes: Bytes): Either[DecodeError, WireReason[V]] =
     new Parser(bytes)
-      .term(0)
-      .run(Cursor(0, 0))
+      .term
+      .run(Cursor(0))
+      .value.value
       .flatMap { case (cursor, term) =>
         if cursor.position != bytes.size then Left(ProtocolError.TrailingBytes)
         else attempt(reason[V](term))
@@ -315,12 +277,12 @@ object Handshake:
     def encode(msg: Message): Either[ProtocolError, Bytes] = typed(msg).flatMap(Handshake.encode[V])
     def decodePrefix(state: State, bytes: Bytes): Either[DecodeError, (Message, Bytes)] =
       Handshake.decodePrefix[V](state, bytes).map((msg, rest) => (untyped(msg), rest))
-    private given DataCodec[V, Data, ProtocolError] with
-      def decode(version: V, term: Term): Either[ProtocolError, Data] =
-        decodeData(suite, number(version), term)
-      def agree(local: Data, remote: Data): Either[ProtocolError, Data] =
-        Handshake.agree(local, remote)
-      def refusalText(error: ProtocolError): String = error.message
+    private given DataCodec[V, Data, HandshakeVersionData.Error] with
+      def decode(version: V, term: Term): Either[HandshakeVersionData.Error, Data] =
+        HandshakeVersionData.decode(suite, number(version), term)
+      def agree(local: Data, remote: Data): Either[HandshakeVersionData.Error, Data] =
+        HandshakeVersionData.agree(suite, local, remote)
+      def refusalText(error: HandshakeVersionData.Error): String = HandshakeVersionData.text(error)
     def negotiate(offers: Vector[(Int, Data)], remote: Vector[(Int, Term)]): Result =
       // Preserve the integer facade's explicit diagnostic for a manually supplied unsupported
       // highest version. Normal network input already belongs to the closed profile.
@@ -431,7 +393,9 @@ object Handshake:
             offers.find(_._1 == v) match
               case None => Left(ProtocolError.ServerSelectedAVersionNotOffered)
               case Some((_, local)) =>
-                decodeData(suite, v, t).flatMap(agree(local, _)).map(Result.Negotiated(v, _))
+                decodeData(suite, v, t).flatMap(remote =>
+                  HandshakeVersionData.agree(suite, local, remote).leftMap(ProtocolError.HandshakeVersionData.apply)
+                ).map(Result.Negotiated(v, _))
         result.map(r => (copy(state = State.Done), r))
   def clientStart(
       suite: Suite,
@@ -459,8 +423,10 @@ object Handshake:
         case _ => Left(ProtocolError.ResponderExpectsProposal)
     }
 
-  private final case class Cursor(position: Int, items: Int)
-  private type ResultOf[A] = Either[ProtocolError, A]
+  private final case class Cursor(position: Int)
+  private type ResultOf[A] = cats.data.EitherT[cats.Eval, ProtocolError, A]
+  private def lifted[A](value: Either[ProtocolError, A]): ResultOf[A] =
+    cats.data.EitherT.fromEither[cats.Eval](value)
   private type Read[A] = cats.data.StateT[ResultOf, Cursor, A]
 
   /** Handshake negotiation is infrequent: keep its bounded parser as immutable state. */
@@ -468,22 +434,18 @@ object Handshake:
     private def pure[A](value: A): Read[A] = cats.data.StateT.pure(value)
     private def failed[A](error: ProtocolError): Read[A] = checked(Left(error))
     private def checked[A](result: Either[ProtocolError, A]): Read[A] =
-      cats.data.StateT.liftF(result)
+      cats.data.StateT.liftF(lifted(result))
     private def cursor: Read[Cursor] = cats.data.StateT.get
-    private def read(): Read[Int] = cats.data.StateT { state =>
+    private def read(): Read[Int] = cats.data.StateT { state => lifted {
       if state.position >= MaxMessageBytes then Left(ProtocolError.HandshakeByteLimitExceeded)
       else
         input
           .lift(state.position)
           .toRight(ProtocolError.IncompleteCbor)
           .map(b => (state.copy(position = state.position + 1), b & 255))
-    }
+    }}
     private def peekBreak: Read[Boolean] = cursor.map { state =>
       input.lift(state.position).contains(0xff.toByte)
-    }
-    private def count: Read[Unit] = cats.data.StateT { state =>
-      if state.items >= MaxItems then Left(ProtocolError.CBORItemLimitExceeded)
-      else Right((state.copy(items = state.items + 1), ()))
     }
     private def argument(ai: Int): Read[BigInt] =
       if ai < 24 then pure(BigInt(ai))
@@ -519,25 +481,24 @@ object Handshake:
       yield bytes
     private def string(major: Int, ai: Int): Read[Term] =
       val bytes =
-        if ai != 31 then chunk(major, ai, MaxStringBytes)
+        if ai != 31 then chunk(major, ai, MaxMessageBytes)
         else
           cats.Monad[Read].tailRecM(Vector.empty[Byte]) { collected =>
             peekBreak.flatMap {
               case true => read().as(Right(collected))
               case false =>
                 for
-                  _ <- count
                   head <- read()
                   _ <-
                     if head / 32 != major || (head & 31) == 31 then
                       failed[Unit](ProtocolError.InvalidIndefiniteStringChunk)
                     else pure(())
-                  next <- chunk(major, head & 31, MaxStringBytes - collected.size)
+                  next <- chunk(major, head & 31, MaxMessageBytes - collected.size)
                 yield Left(collected ++ next)
             }
           }
       bytes.flatMap { value =>
-        if major == 2 then pure(Term.ByteString(Bytes(value)))
+        if major == 2 then pure(Term.ByteString(Bytes(value), ai != 31))
         else checked(utf8(value)).map(Term.Text(_, ai != 31))
       }
     private def indefinite[A](item: Read[A]): Read[Vector[A]] =
@@ -547,38 +508,44 @@ object Handshake:
           case false => item.map(value => Left(collected :+ value))
         }
       }
-    def term(depth: Int): Read[Term] =
+    def term: Read[Term] = cats.data.StateT { state =>
+      cats.data.EitherT(cats.Eval.defer(termStep.run(state).value))
+    }
+    private def termStep: Read[Term] =
       for
-        _ <-
-          if depth > MaxDepth then failed[Unit](ProtocolError.CBORDepthLimitExceeded) else pure(())
-        _ <- count
         head <- read()
         major = head / 32
         ai = head & 31
         value <- major match
-          case 0     => argument(ai).map(Term.Integer(_))
-          case 1     => argument(ai).map(n => Term.Integer(-1 - n))
+          case 0     => argument(ai).map(n => if n.isValidLong then Term.Integer(n) else Term.BigInteger(n))
+          case 1     => argument(ai).map(n => if n.isValidLong then Term.Integer(-1 - n) else Term.BigInteger(-1 - n))
           case 2 | 3 => string(major, ai)
           case 4 =>
             val values =
-              if ai == 31 then indefinite(term(depth + 1))
+              if ai == 31 then indefinite(term)
               else
                 for
-                  state <- cursor; n <- argument(ai).flatMap(size(_, MaxItems - state.items));
-                  values <- Vector.fill(n)(term(depth + 1)).sequence
+                  state <- cursor; n <- argument(ai).flatMap(size(_, MaxMessageBytes - state.position));
+                  values <- Vector.fill(n)(term).sequence
                 yield values
             values.map(Term.Arr(_, ai != 31))
           case 5 =>
-            val pair = (term(depth + 1), term(depth + 1)).tupled
+            val pair = (term, term).tupled
             val values =
               if ai == 31 then indefinite(pair)
               else
                 for
-                  state <- cursor; n <- argument(ai).flatMap(size(_, (MaxItems - state.items) / 2));
+                  state <- cursor; n <- argument(ai).flatMap(size(_, (MaxMessageBytes - state.position) / 2));
                   values <- Vector.fill(n)(pair).sequence
                 yield values
             values.map(Term.Map(_, ai != 31))
-          case 6 => (argument(ai), term(depth + 1)).mapN(Term.Tag(_, _))
+          case 6 => (argument(ai), term).mapN { (number, value) =>
+            (number, value) match
+              case (tag, Term.ByteString(bytes, true)) if tag == 2 || tag == 3 =>
+                val magnitude = bytes.value.foldLeft(BigInt(0))((done, next) => (done << 8) | (next & 255))
+                Term.BigInteger(if tag == 2 then magnitude else -1 - magnitude)
+              case _ => Term.Tag(number, value)
+          }
           case _ =>
             ai match
               case 20 => pure(Term.Bool(false))
@@ -597,16 +564,16 @@ object Handshake:
               case n => pure(Term.Simple(n))
       yield value
 
-  private final case class Written(bytes: Vector[Byte], items: Int)
+  private final case class Written(bytes: Vector[Byte])
   private type Write[A] = cats.data.StateT[ResultOf, Written, A]
 
   private def encodeTerm(term: Term)(using ProtocolWire.Scope): Bytes =
     def checked[A](result: Either[ProtocolError, A]): Write[A] = cats.data.StateT.liftF(result)
-    def emit(bytes: Vector[Byte]): Write[Unit] = cats.data.StateT { state =>
+    def emit(bytes: Vector[Byte]): Write[Unit] = cats.data.StateT { state => lifted {
       if bytes.size > MaxMessageBytes - state.bytes.size then
         Left(ProtocolError.HandshakeByteLimitExceeded)
       else Right((state.copy(bytes = state.bytes ++ bytes), ()))
-    }
+    }}
     def byte(value: Int): Write[Unit] = emit(Vector(value.toByte))
     def number(value: BigInt, width: Int): Vector[Byte] =
       (0 until width).reverseIterator.map(i => ((value >> (i * 8)) & 255).toByte).toVector
@@ -623,13 +590,13 @@ object Handshake:
                         else 27)
         ) *> emit(number(n, width))
     def raw(major: Int, bytes: Vector[Byte]): Write[Unit] =
-      if bytes.size > MaxStringBytes then checked(Left(ProtocolError.StringByteLimitExceeded))
-      else head(major, bytes.size) *> emit(bytes)
-    def count(depth: Int): Write[Unit] = cats.data.StateT { state =>
-      if state.items >= MaxItems || depth > MaxDepth then
-        Left(ProtocolError.CBORResourceLimitExceeded)
-      else Right((state.copy(items = state.items + 1), ()))
-    }
+      head(major, bytes.size) *> emit(bytes)
+    def integer(value: BigInt): Write[Unit] =
+      val magnitude = if value >= 0 then value else -1 - value
+      if magnitude < (BigInt(1) << 64) then head(if value >= 0 then 0 else 1, magnitude)
+      else
+        val unsigned = magnitude.toByteArray.toVector.dropWhile(_ == 0.toByte)
+        head(6, if value >= 0 then 2 else 3) *> raw(2, unsigned)
     def unicode(value: String): Either[ProtocolError, Vector[Byte]] =
       Either
         .catchOnly[CharacterCodingException](
@@ -643,17 +610,21 @@ object Handshake:
           _ => ProtocolError.InvalidUnicodeText,
           encoded => Vector.tabulate(encoded.remaining())(i => encoded.get(i))
         )
-    def go(value: Term, depth: Int): Write[Unit] = count(depth).flatMap { _ =>
+    def go(value: Term): Write[Unit] = cats.data.StateT { state =>
+      cats.data.EitherT(cats.Eval.defer(goStep(value).run(state).value))
+    }
+    def goStep(value: Term): Write[Unit] =
       value match
-        case Term.Integer(n) => if n >= 0 then head(0, n) else head(1, -1 - n)
+        case Term.Integer(n) => integer(n)
+        case Term.BigInteger(n) => integer(n)
         case Term.Bool(b)    => byte(if b then 245 else 244)
         case Term.Arr(values, definite) =>
           (if definite then head(4, values.size) else byte(159)) *> values.traverse_(
-            go(_, depth + 1)
+            go(_)
           ) *> (if definite then cats.data.StateT.pure[ResultOf, Written, Unit](()) else byte(255))
         case Term.Map(values, definite) =>
           (if definite then head(5, values.size) else byte(191)) *> values.traverse_((k, v) =>
-            go(k, depth + 1) *> go(v, depth + 1)
+            go(k) *> go(v)
           ) *> (if definite then cats.data.StateT.pure[ResultOf, Written, Unit](()) else byte(255))
         case Term.Text(value, definite) =>
           checked(unicode(value)).flatMap(bytes =>
@@ -664,8 +635,10 @@ object Handshake:
             ) *> (if definite then cats.data.StateT.pure[ResultOf, Written, Unit](())
                   else byte(255))
           )
-        case Term.ByteString(bytes)  => raw(2, bytes.value)
-        case Term.Tag(number, value) => head(6, number) *> go(value, depth + 1)
+        case Term.ByteString(bytes, definite) =>
+          (if definite then cats.data.StateT.pure[ResultOf, Written, Unit](()) else byte(95)) *>
+            raw(2, bytes.value) *> (if definite then cats.data.StateT.pure[ResultOf, Written, Unit](()) else byte(255))
+        case Term.Tag(number, value) => head(6, number) *> go(value)
         case Term.Simple(n) =>
           if n < 0 || n > 255 || (n >= 20 && n <= 21) || (n >= 24 && n < 32) then
             checked(Left(ProtocolError.InvalidSimpleValue))
@@ -678,5 +651,4 @@ object Handshake:
             byte(if width == 2 then 249 else if width == 4 then 250 else 251) *> emit(
               number(bits, width)
             )
-    }
-    Bytes(ProtocolWire.get(go(term, 0).runS(Written(Vector.empty, 0))).bytes)
+    Bytes(ProtocolWire.get(go(term).runS(Written(Vector.empty)).value.value).bytes)

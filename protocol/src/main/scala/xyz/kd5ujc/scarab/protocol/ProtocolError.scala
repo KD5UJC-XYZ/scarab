@@ -5,6 +5,7 @@ import xyz.kd5ujc.scarab.codec.DomainError
 
 /** Semantic failures of mini-protocol framing, agency and payload validation. */
 enum ProtocolError extends DomainError:
+  case HandshakeVersionData(cause: xyz.kd5ujc.scarab.protocol.HandshakeVersionData.Error)
   case AckExceedsOutstandingInventory(acknowledged: Int, outstanding: Int)
   case ArrayLimitExceeded
   case BatchLimitExceeded(actual: Int, maximum: Int)
@@ -179,6 +180,7 @@ enum ProtocolError extends DomainError:
     case _                                              => false
 
   def message: String = this match
+    case HandshakeVersionData(cause) => xyz.kd5ujc.scarab.protocol.HandshakeVersionData.text(cause)
     case AckExceedsOutstandingInventory(_, _)   => "ack exceeds outstanding inventory"
     case ArrayLimitExceeded                     => "array limit exceeded"
     case BatchLimitExceeded(_, _)               => "batch limit exceeded"
