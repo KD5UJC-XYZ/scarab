@@ -6,13 +6,18 @@ on:
     branches: [main, dev, release/alpha, release/beta, release/preprod, release/prod]
   push:
     branches: [main]
+  # A run started by hand runs the jobs below, among them the frozen release identity controls, which for now run
+  # only so.
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# A newer push to a pull request cancels its older run. Every other run, each push to main among them, has a group of
+# its own, so it is never cancelled, and never replaced while it waits (guard `ci-parity`, scripts/guards.json).
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   scala-tests:
@@ -54,8 +59,11 @@ jobs:
           test "${#jars[@]}" -eq 1
           python3 scripts/check_native_isa.py "${jars[0]}" --member natives/linux_64/libscalus_crypto.so
 
+  # Paused on pull requests and pushes, and left out of the required summary below, until releases start from main;
+  # docs/design/releases.md#release-checks-paused-until-releases-start-from-main says how to restore it.
   build-identity:
     name: frozen release identity controls
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
@@ -86,19 +94,17 @@ jobs:
 
   scala:
     name: scalafmt, compile and test
-    needs: [scala-tests, build-identity]
+    needs: [scala-tests]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require Scala tests, native guards and identity controls
+      - name: Require Scala tests and native guards
         env:
           SCALA_RESULT: ${{ needs.scala-tests.result }}
-          IDENTITY_RESULT: ${{ needs.build-identity.result }}
         shell: bash
         run: |
           test "$SCALA_RESULT" = success
-          test "$IDENTITY_RESULT" = success
 
   scripts:
     name: scripts (compile, unit tests, help)
@@ -197,45 +203,10 @@ jobs:
         with:
           persist-credentials: false
       # Compares the dependency graph of the base and the head commit. sbt is not part of GitHub's own
-      # dependency detection: the graph comes from the dependency-graph job below, submitted on every
-      # push to main, so a pull request is compared against the last submitted snapshot of main.
+      # dependency detection, and nothing submits a pull request head's sbt graph automatically
+      # (dependency-graph.yml submits main's daily), so the review is not shown to cover sbt dependencies.
       - name: Review dependency changes
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
           comment-summary-in-pr: never
-
-  dependency-graph:
-    name: submit sbt dependency graph
-    if: github.event_name == 'push'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    # Needs the repository's dependency graph (enabled with Dependabot alerts).
-    permissions:
-      contents: write
-    steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Cache sbt launcher, boot, ivy and coursier
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: .cache/scarab
-          key: sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'project/*.scala', 'scripts/sbtw', 'scripts/prepare_scalus.py', 'patches/scalus/**') }}
-          restore-keys: |
-            sbt-${{ runner.os }}-
-      - name: Build the tested JDK image
-        run: docker build -f docker/jdk.Dockerfile -t scarab-dependency-jdk:ci .
-      - name: Use the prepared project launcher
-        run: |
-          mkdir -p "$RUNNER_TEMP/scarab-dependency-bin"
-          install -m 755 scripts/dependency_sbt "$RUNNER_TEMP/scarab-dependency-bin/sbt"
-          echo "$RUNNER_TEMP/scarab-dependency-bin" >> "$GITHUB_PATH"
-      - name: Submit the dependency graph to GitHub
-        uses: scalacenter/sbt-dependency-submission@d84eef4c09e633bcf5f113bcad7fd5e9af1baee9 # v3.2.3
-        with:
-          # Submit what we build and ship (compile, runtime) and what tests use. The Scala compiler's
-          # own classpath (scala-tool: scala3-compiler, jline) and the scaladoc classpath
-          # (scala-doc-tool: jackson, jsoup) are build tools, not on the node's runtime classpath.
-          configs-ignore: scala-tool scala-doc-tool

@@ -60,17 +60,19 @@ creation/update/deletion ruleset would allow it to rewrite release identities.
 
 The required checks are the named always-reporting jobs in `promotion_rules.py`. PR CI, native
 comparison and decoder fuzz reporting cover every protected target; main push checks stay enabled.
-CDDL selection reports **CDDL comparison gate** on every protected PR, and builds its tool only
-when relevant inputs change. A selection failure or requested comparison failure fails that gate.
+The CDDL cross-check runs on every protected PR and reports **CDDL comparison gate**, which fails
+unless the comparison succeeded.
 Path-filtered workflows must not be selected as required checks that can remain pending forever.
 
 ## Owner activation sequence
 
 1. Merge release PR preparation, candidate, publication and promotion tooling PRs and verify their
    CI. The `release proposal controls` required job is supplied by release PR preparation; install
-   that workflow before requiring its check. Review the rendered rulesets, the independent-review
-   requirement and the replacement of main's merge button. An actual independent reviewer is
-   required; automation does not make an owner's self-approval independent.
+   that workflow before requiring its check. While its pull request triggers are paused, `CHECKS` leaves it
+   out ([release design](design/releases.md#release-checks-paused-until-releases-start-from-main)). Review the
+   rendered rulesets, the independent-review requirement and the replacement of main's merge button.
+   An actual independent reviewer is required; automation does not make an owner's self-approval
+   independent.
 2. Reconcile `dev` with `main` through reviewed PRs. Create the release branches only when needed;
    this is not authorization for another forced alignment or branch-history reset.
 3. Register a dedicated promotion App, installed only on Scarab, with contents write and

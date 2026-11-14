@@ -10,7 +10,10 @@ from pr_policy import require
 
 
 BRANCHES = ["main", "dev", "release/alpha", "release/beta", "release/preprod", "release/prod"]
-CHECKS = ["PR title and promotion source", "release proposal controls", "scalafmt, compile and test",
+# "release proposal controls" is left out while release PR preparation runs only by hand, as it would never report
+# on a pull request; it comes back with that workflow's triggers (docs/design/releases.md, "Release checks paused
+# until releases start from main").
+CHECKS = ["PR title and promotion source", "scalafmt, compile and test",
           "scripts (compile, unit tests, help)", "workflow lint", "secret scan (gitleaks, full history)",
           "dependency review", "crypto guard (variable-time math stays in the vrf package)",
           "semgrep (crypto rules, WARNING-gated)", "portable Linux amd64 native byte comparison",

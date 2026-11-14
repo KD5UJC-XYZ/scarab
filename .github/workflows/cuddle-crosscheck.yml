@@ -3,26 +3,14 @@ name: CDDL cross-check (cuddle)
 
 # The generated CDDL codecs against cuddle, upstream's independent CDDL tool (docs/models.md, section 13):
 # cuddle-generated terms must decode with the generated codecs, our sampler's terms must validate in cuddle,
-# and both tools must read the same rules from the vendored files. Runs on every change to the vendored CDDL,
-# the generator or the cross-check itself, and nightly (a new cuddle behaviour cannot arrive unnoticed because
-# the image is pinned, but the sampler seeds and the sbt dependencies move).
+# and both tools must read the same rules from the vendored files. Runs on every pull request, every push to main
+# and nightly, with no path selection: the check reports on every pull request, and a push to main runs nothing its
+# pull request did not (scripts/check_ci_parity.py).
 on:
   pull_request:
     branches: [main, dev, release/alpha, release/beta, release/preprod, release/prod]
   push:
     branches: [main]
-    paths:
-      - 'models/src/main/cddl/**'
-      - 'models/src/main/scala/**'
-      - 'tools/src/main/scala/**/CuddleCrossCheck.scala'
-      - 'models/cuddle-allowlist.tsv'
-      - 'models-gen/**'
-      - 'codec/src/main/scala/**'
-      - 'scripts/cddl_crosscheck.py'
-      - 'docker/cuddle.Dockerfile'
-      - 'build.sbt'
-      - 'project/**'
-      - '.github/workflows/cuddle-crosscheck.yml'
   schedule:
     - cron: '41 4 * * *'
   workflow_dispatch:
@@ -30,47 +18,14 @@ on:
 permissions:
   contents: read
 
+# A newer push to a pull request cancels its older run; every other run has a group of its own (ci.yml).
 concurrency:
-  group: cuddle-crosscheck-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: cuddle-crosscheck-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  changes:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      run: ${{ steps.detect.outputs.run }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 2
-      - name: Select CDDL changes without suppressing the required check
-        id: detect
-        run: |
-          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          paths=(
-            models/src/main/cddl models/src/main/scala
-            'tools/src/main/scala/**/CuddleCrossCheck.scala' models/cuddle-allowlist.tsv
-            models-gen codec/src/main/scala scripts/cddl_crosscheck.py
-            docker/cuddle.Dockerfile build.sbt project scripts/sbtw scripts/prepare_scalus.py patches/scalus
-            .github/workflows/cuddle-crosscheck.yml
-          )
-          if git diff --quiet HEAD^1 HEAD -- "${paths[@]}"; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          else
-            comparison_status=$?
-            test "$comparison_status" = 1
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          fi
-
   crosscheck:
     name: cuddle 1.8.1.0 against the generated codecs
-    needs: changes
-    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
@@ -127,23 +82,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # The name the cutover's required checks list (scripts/promotion_rules.py); it fails unless the comparison passed.
   gate:
     name: CDDL comparison gate
     if: always()
-    needs: [changes, crosscheck]
+    needs: [crosscheck]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
-      DETECTION_RESULT: ${{ needs.changes.result }}
-      COMPARISON_REQUIRED: ${{ needs.changes.outputs.run }}
       COMPARISON_RESULT: ${{ needs.crosscheck.result }}
     steps:
-      - name: Require successful selection and its requested comparison
-        run: |
-          test "$DETECTION_RESULT" = success
-          if [ "$COMPARISON_REQUIRED" = true ]; then
-            test "$COMPARISON_RESULT" = success
-          else
-            test "$COMPARISON_REQUIRED" = false
-            test "$COMPARISON_RESULT" = skipped
-          fi
+      - name: Require a successful comparison
+        run: test "$COMPARISON_RESULT" = success

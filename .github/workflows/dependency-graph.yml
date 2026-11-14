@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Dependency graph
+
+# Submits the sbt dependency graph to GitHub, which does not detect sbt builds itself; Dependabot alerts read it.
+# It publishes and checks nothing, and is not a gate: it runs daily and on demand rather than on each push to main.
+# Nothing submits a pull request head's sbt graph automatically, so a pull request's dependency review (ci.yml) is not
+# shown to cover sbt dependencies; run by hand on a branch, this submits that branch's graph.
+on:
+  schedule:
+    - cron: '7 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-graph:
+    name: submit sbt dependency graph
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # Needs the repository's dependency graph (enabled with Dependabot alerts).
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Cache sbt launcher, boot, ivy and coursier
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .cache/scarab
+          key: sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'project/*.scala', 'scripts/sbtw', 'scripts/prepare_scalus.py', 'patches/scalus/**') }}
+          restore-keys: |
+            sbt-${{ runner.os }}-
+      - name: Build the tested JDK image
+        run: docker build -f docker/jdk.Dockerfile -t scarab-dependency-jdk:ci .
+      - name: Use the prepared project launcher
+        run: |
+          mkdir -p "$RUNNER_TEMP/scarab-dependency-bin"
+          install -m 755 scripts/dependency_sbt "$RUNNER_TEMP/scarab-dependency-bin/sbt"
+          echo "$RUNNER_TEMP/scarab-dependency-bin" >> "$GITHUB_PATH"
+      - name: Submit the dependency graph to GitHub
+        uses: scalacenter/sbt-dependency-submission@d84eef4c09e633bcf5f113bcad7fd5e9af1baee9 # v3.2.3
+        with:
+          # Submit what we build and ship (compile, runtime) and what tests use. The Scala compiler's
+          # own classpath (scala-tool: scala3-compiler, jline) and the scaladoc classpath
+          # (scala-doc-tool: jackson, jsoup) are build tools, not on the node's runtime classpath.
+          configs-ignore: scala-tool scala-doc-tool
+          # The name of the snapshots ci.yml submitted before this workflow took the job over (the action's default
+          # is the workflow, job and action names). GitHub keeps the latest snapshot of each, so a new name would
+          # leave the last one from ci.yml in the graph for good.
+          correlator: CI_dependency-graph___scalacenter_sbt-dependency-submission

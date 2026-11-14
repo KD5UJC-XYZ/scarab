@@ -8,8 +8,8 @@ name: Security
 #   that declare that package (public inputs only). This is a containment rule, not a data-flow
 #   proof: that secret scalars never reach the classes also rests on the #219 review and the
 #   timing probe.
-# CVE coverage of the dependency graph comes from Dependabot alerts via the
-# dependency-graph job in ci.yml.
+# CVE coverage of the sbt dependency graph comes from Dependabot alerts, which read the graph
+# that dependency-graph.yml submits daily.
 
 on:
   pull_request:
@@ -19,9 +19,10 @@ on:
 permissions:
   contents: read
 
+# A newer push to a pull request cancels its older run; every other run has a group of its own (ci.yml).
 concurrency:
-  group: security-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: security-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   semgrep:

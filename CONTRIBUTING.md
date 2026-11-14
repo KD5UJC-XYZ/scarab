@@ -170,7 +170,7 @@ belong to nightly CI, not to a change.
 ### Nightly CI is the safety net
 
 `.github/workflows/e2e.yml` runs soak, e2e (one Scala follower per Plutus evaluator, `--plutus-vm scalus --plutus-vm scarab`), relay, pool, kes-rotate, ntc and restart every night, each scenario in its own job (a matrix), and on demand and on
-version tags; `fuzz.yml` and `cuddle-crosscheck.yml` run the longer fuzzing (rotating daily seeds) and the CDDL cross-check; `fuzz-gate.yml` runs the fixed-seed `fuzz 100000 1 4` gate on pull requests that change decoder or fuzz inputs and passes without fuzzing on any other. `.github/workflows/ci.yml` runs `check`, the script tests, actionlint, a gitleaks
+version tags; `fuzz.yml` runs the longer fuzzing (rotating daily seeds); `cuddle-crosscheck.yml` runs the CDDL cross-check on every pull request, every push to `main` and nightly; `fuzz-gate.yml` runs the fixed-seed `fuzz 100000 1 4` gate on pull requests that change decoder or fuzz inputs and passes without fuzzing on any other. `.github/workflows/ci.yml` runs `check`, the script tests, actionlint, a gitleaks
 scan of the checked-out commit's full history, including merge parents (unrelated fetched branches
 are scanned in their own runs; `.gitleaks.toml`; a new false positive is allowlisted there by path or
 commit, scoped to its rule, with a reason) and, on pull requests, a dependency review. A red
@@ -180,6 +180,13 @@ per-change gates did not cover. Run the E2E scenarios on a branch with `python3 
 run going and one waiting, and a plain `gh workflow run` replaces, and so cancels, the waiting one.
 `.github/workflows/flaky-tests.yml` reads the last day's CI runs every night: a test that failed and then passed on
 the same commit gets an issue of its own, or a comment on its existing one (`scripts/flaky_tests.py`).
+
+A push to `main` runs nothing its pull request did not: every job a push to `main` can start also runs on pull
+requests to `main`, under a condition no narrower, and only a pull request's newer push cancels a run; each push to
+`main` runs to the end. `scripts/check_ci_parity.py` refuses a workflow that breaks this (its docstring has the
+rules); a job with side effects only, which cannot run on a pull request, goes in its allowlist with the reason.
+Publishing that checks nothing runs on a schedule instead: `dependency-graph.yml` submits the sbt dependency graph
+daily and on demand.
 
 The scenarios need the reference image (see [docs/reference-image.md](docs/reference-image.md))
 and are described in [docs/running.md](docs/running.md). `prepare_reference_image.py --download`

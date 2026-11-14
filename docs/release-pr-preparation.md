@@ -10,7 +10,9 @@ release tag or publication was configured by this implementation. The broader
 
 [The workflow](../.github/workflows/release-pr-preparation.yml) runs an unprivileged
 `release proposal controls` job for every PR to the six planned protected targets and every push to
-main. Manual runs can generate a preview or, after separate protected approval, create/update one
+main; for now it runs only by hand
+([paused until releases start from main](design/releases.md#release-checks-paused-until-releases-start-from-main)).
+Manual runs can generate a preview or, after separate protected approval, create/update one
 preparation PR. Both paths execute the same coordinator and pinned release-please **17.11.2** library.
 Node **24.22.1**, the npm dependency lock, and the existing hash-pinned Scriv environment are explicit.
 There is no release-please action that could separately publish a release. The Node pin was checked
@@ -132,8 +134,10 @@ an explicit owner setup obligation. Local library and transport tests are not th
 ## Review, concurrency and recovery
 
 There is one branch per approved target, `release-please--branches--<target>`, shared by all channels.
-One workflow concurrency group serializes coordinator runs. A new frozen integration source must be
-the target tip at write preflight. Open-PR arrivals regenerate from that source and renew review;
+One workflow concurrency group serializes coordinator runs; the control runs of a pull request, and each run
+on a push to `main`, have groups of their own while those triggers are on, so they never replace a waiting
+coordinator run. A new frozen
+integration source must be the target tip at write preflight. Open-PR arrivals regenerate from that source and renew review;
 source files added after an older selection are not silently deleted.
 
 The PR writer authenticates Git through the App installation token in its process environment,
