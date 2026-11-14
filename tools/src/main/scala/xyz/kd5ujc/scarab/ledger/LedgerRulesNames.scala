@@ -34,11 +34,16 @@ enum ReportName derives CanEqual:
     TreasuryDonationFieldNotSupported, UnspendableUTxONoDatumHash,
     VotingProceduresFieldNotSupported
 
+object ReportName:
+  /** The name a fixture's `expected.predicate` gives, if the report schema has it. */
+  def parse(name: String): Option[ReportName] = values.find(_.toString == name)
+
 /** Scarab's predicate failures as the report's names, following the names the reference harness of
   * the corpus gives the reference's failures (Amaru `crates/amaru/tests/conformance/
   * validation-rules/src/Command/ValidatePhaseOne/Run.hs`, `normalizeLedgerFailure` and below, at
   * 40ba9950). Scarab's failures are the reference's constructors, so the correspondence is the
-  * harness's, with two differences: no name is chosen by the fixture's expectation, and a failure
+  * harness's, with two differences: a failure is never named after the fixture's expectation (the
+  * expectation only chooses among the names Scarab's failures have, [[Selection]]), and a failure
   * that the harness names only by matching the expectation against its text is named by its case.
   *
   * A failure has no name or one: none where the schema lists no name for it (a failure of a
