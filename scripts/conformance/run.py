@@ -151,7 +151,7 @@ def tool_command(scenario: Scenario, era: str | None, checkout: Checkout, contex
             "java", *scenario.jvm, "-cp", classpath, scenario.main, *scenario.arguments(context, era, "/out")]
 
 
-def environment(image: str) -> dict:
+def environment(image: str, owner: str) -> dict:
     def ask(argv: list[str]) -> str | None:
         done = subprocess.run(argv, text=True, capture_output=True)
         text = (done.stdout or done.stderr).strip()
@@ -160,7 +160,8 @@ def environment(image: str) -> dict:
     return {
         "image": image,
         "image_id": ask(["docker", "image", "inspect", "--format", "{{.Id}}", image]),
-        "java": ask(["docker", "run", "--rm", "--network", "none", image, "java", "-version"]),
+        "java": ask(["docker", "run", "--rm", "--network", "none", *labels("conformance", owner), image,
+                      "java", "-version"]),
         "docker": ask(["docker", "version", "--format", "{{.Server.Version}}"]),
         "python": platform.python_version(),
         "runner": "github-actions" if os.environ.get("GITHUB_ACTIONS") == "true" else "local",
@@ -309,7 +310,7 @@ def run_scenarios(args: argparse.Namespace, checkout: Checkout, selected: list[S
         return outcomes + [Outcome(scenario.id, era, "failed", str(error))
                            for scenario in runnable for era in scenario.eras]
     build_seconds = time.monotonic() - clock
-    env = environment(args.image)
+    env = environment(args.image, args.owner)
     for scenario in runnable:
         if not has_class(classpath, scenario.main, checkout):
             outcomes += [Outcome(scenario.id, era, "skipped", f"{scenario.main} is not on the tools classpath")

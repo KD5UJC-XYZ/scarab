@@ -224,7 +224,10 @@ class Site:
             (fixtures / name).write_text("{}")
         uplc = self.root / "scenarios" / "uplc-conformance"
         uplc.mkdir(parents=True)
-        (uplc / "expectations.json").write_text(json.dumps({"scenarios": [{"id": "v1"}, {"id": "v2"}]}))
+        (uplc / "expectations.json").write_text(json.dumps({"scenarios": [
+            {"id": "v1", "plutus_version": "V3", "protocol_version": "10.0"},
+            {"id": "v1", "plutus_version": "V3", "protocol_version": "11.0"},
+            {"id": "v2", "plutus_version": "V2", "protocol_version": "11.0"}]}))
         (self.root / "scenarios" / "ledger-rules" / "schema.json").write_text(json.dumps({
             "type": "object", "required": ["version", "scenario", "generated_at", "scenarios"],
             "properties": {"version": {"const": "1"}, "scenario": {"const": "ledger-rules"},
@@ -254,7 +257,7 @@ class ChecksTest(unittest.TestCase):
             check = scenarios.SCENARIOS["ledger-rules"].checks
             self.assertEqual(check(ledger_report(["00001", "00002"]), ctx, None), [])
             self.assertTrue(any("have no result" in p for p in check(ledger_report(["00001"]), ctx, None)))
-            self.assertTrue(any("more than once" in p
+            self.assertTrue(any("more often than expected" in p
                                 for p in check(ledger_report(["00001", "00002", "00002"]), ctx, None)))
             self.assertTrue(any("dataset_commit" in p
                                 for p in check(ledger_report(["00001", "00002"], "b" * 40), ctx, None)))
@@ -263,11 +266,19 @@ class ChecksTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ctx = context(Site(tmp).root)
             check = scenarios.SCENARIOS["uplc-conformance"].checks
-            full = {"scenarios": [{"id": "v1", "evaluation": "(program 1.1.0 (con integer 1))"},
-                                  {"id": "v2", "evaluation": "evaluation failure"}]}
-            self.assertEqual(check(full, ctx, None), [])
-            full["scenarios"][1]["evaluation"] = "no verdict"
+            def item(id, protocol, evaluation, plutus="V3"):
+                return {"id": id, "plutus_version": plutus, "protocol_version": protocol, "evaluation": evaluation}
+
+            full = {"scenarios": [item("v1", "10.0", "(program 1.1.0 (con integer 1))"),
+                                  item("v1", "11.0", "(program 1.1.0 (con integer 1))"),
+                                  item("v2", "11.0", "evaluation failure", "V2")]}
+            self.assertEqual(check(full, ctx, None), [], "an id may recur at another protocol")
+            full["scenarios"][2]["evaluation"] = "no verdict"
             self.assertEqual(check(full, ctx, None), ["1 vectors have no verdict from the evaluator"])
+            twice = {"scenarios": full["scenarios"][:1] * 2 + full["scenarios"][2:]}
+            problems = check(twice, ctx, None)
+            self.assertTrue(any("more often than expected" in p for p in problems), problems)
+            self.assertTrue(any("1 of 3 vectors have no result: v1/V3/11.0" in p for p in problems), problems)
 
     def test_cbor_report_must_be_of_its_era(self):
         ctx = context(Path("/nonexistent"))

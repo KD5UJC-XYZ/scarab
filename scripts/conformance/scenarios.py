@@ -10,6 +10,7 @@ from __future__ import annotations
 import gzip
 import json
 import re
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -56,32 +57,30 @@ class Scenario:
         return f"scenarios/{self.id}/schema.json"
 
 
-def _ids(items: list, key: str) -> tuple[set[str], list[str]]:
-    seen: set[str] = set()
-    duplicates = []
-    for item in items:
-        value = str(item.get(key, "")) if isinstance(item, dict) else ""
-        if value in seen:
-            duplicates.append(value)
-        seen.add(value)
-    return seen, duplicates
+def _keys(items: list, fields: tuple[str, ...]) -> Counter:
+    return Counter(tuple(str(item.get(f, "")) for f in fields) if isinstance(item, dict) else ("",) for item in items)
 
 
-def _coverage(reported: set[str], duplicates: list[str], expected: set[str], what: str) -> list[str]:
+def _coverage(reported: Counter, expected: Counter, what: str) -> list[str]:
+    """Every expected result once: none missing, none repeated. A key is what the site matches a result by."""
+    def show(keys):
+        return ", ".join("/".join(key) for key in sorted(keys)[:10])
+
     problems = []
-    if duplicates:
-        problems.append(f"{len(duplicates)} {what} reported more than once: {', '.join(sorted(duplicates)[:10])}")
-    missing = sorted(expected - reported)
+    repeated = [key for key, count in reported.items() if count > max(expected.get(key, 0), 1)]
+    if repeated:
+        problems.append(f"{len(repeated)} {what} reported more often than expected: {show(repeated)}")
+    missing = list((expected - reported).elements())
     if missing:
-        problems.append(f"{len(missing)} of {len(expected)} {what} have no result: {', '.join(missing[:10])}")
+        problems.append(f"{len(missing)} of {sum(expected.values())} {what} have no result: {show(missing)}")
     return problems
 
 
-def ledger_fixture_ids(site: Path) -> set[str]:
+def ledger_fixture_ids(site: Path) -> Counter:
     """The fixture ids of the site's ledger-rules corpus, as its build reads them: the first five digits of each
     file name."""
     root = site / "scenarios" / "ledger-rules" / "fixtures" / "scenarios"
-    return {match.group(1) for path in root.glob("*.json") if (match := FIXTURE_ID.match(path.name))}
+    return Counter((match.group(1),) for path in root.glob("*.json") if (match := FIXTURE_ID.match(path.name)))
 
 
 def _ledger_arguments(context: Context, era: str | None, out: str) -> list[str]:
@@ -93,17 +92,21 @@ def _ledger_arguments(context: Context, era: str | None, out: str) -> list[str]:
 
 
 def _ledger_checks(report: dict, context: Context, era: str | None) -> list[str]:
-    reported, duplicates = _ids(report.get("scenarios", []), "id")
-    problems = _coverage(reported, duplicates, ledger_fixture_ids(context.host["site"]), "fixtures")
+    problems = _coverage(_keys(report.get("scenarios", []), ("id",)), ledger_fixture_ids(context.host["site"]),
+                         "fixtures")
     pinned = context.pins["ledger-rules-documents"].spec["commit"]
     if report.get("dataset_commit") != pinned:
         problems.append(f"dataset_commit is {report.get('dataset_commit')!r}, not the pinned {pinned}")
     return problems
 
 
-def uplc_expected_ids(site: Path) -> set[str]:
+# The site matches a uplc-conformance result to its expectation by these fields: an id recurs across protocols.
+UPLC_KEY = ("id", "plutus_version", "protocol_version")
+
+
+def uplc_expected(site: Path) -> Counter:
     expectations = json.loads((site / "scenarios" / "uplc-conformance" / "expectations.json").read_text())
-    return {str(item["id"]) for item in expectations["scenarios"]}
+    return _keys(expectations["scenarios"], UPLC_KEY)
 
 
 def _uplc_arguments(context: Context, era: str | None, out: str) -> list[str]:
@@ -113,8 +116,7 @@ def _uplc_arguments(context: Context, era: str | None, out: str) -> list[str]:
 
 def _uplc_checks(report: dict, context: Context, era: str | None) -> list[str]:
     items = report.get("scenarios", [])
-    reported, duplicates = _ids(items, "id")
-    problems = _coverage(reported, duplicates, uplc_expected_ids(context.host["site"]), "vectors")
+    problems = _coverage(_keys(items, UPLC_KEY), uplc_expected(context.host["site"]), "vectors")
     no_verdict = sum(1 for item in items if isinstance(item, dict) and item.get("evaluation") == "no verdict")
     if no_verdict:
         problems.append(f"{no_verdict} vectors have no verdict from the evaluator")
