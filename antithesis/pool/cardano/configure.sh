@@ -21,8 +21,16 @@ if [ -e /env/ready ]; then
   exit 0
 fi
 
+# SECURITY_PARAM and EPOCH_LENGTH, when the compose file sets them, are the chain's k and epoch length: settings of
+# the experiment suite, each with its own question. create-env's k = 5 turns a fork at the start into a permanent
+# split; a large k asks whether the forks that faults cause heal. k goes into the Byron genesis too, as create-env
+# writes it into both.
+create=(--num-pool-nodes 3 --testnet-magic "$MAGIC")
+if [ -n "${EPOCH_LENGTH:-}" ]; then
+  create+=(--epoch-length "$EPOCH_LENGTH")
+fi
 rm -rf "$NET"
-cardano-testnet create-env --num-pool-nodes 3 --testnet-magic "$MAGIC" --output "$NET"
+cardano-testnet create-env "${create[@]}" --output "$NET"
 cd "$NET"
 
 start=$(( $(date +%s) + LEAD_SECONDS ))
@@ -31,6 +39,12 @@ mv shelley.tmp shelley-genesis.json
 jq --argjson t "$start" '.startTime = $t' byron-genesis.json > byron.tmp
 mv byron.tmp byron-genesis.json
 
+if [ -n "${SECURITY_PARAM:-}" ]; then
+  jq --argjson k "$SECURITY_PARAM" '.securityParam = $k' shelley-genesis.json > shelley.tmp
+  mv shelley.tmp shelley-genesis.json
+  jq --argjson k "$SECURITY_PARAM" '.protocolConsts.k = $k' byron-genesis.json > byron.tmp
+  mv byron.tmp byron-genesis.json
+fi
 # PROTOCOL_MAJOR, when the compose file sets it, is the genesis protocol version's major, as
 # `scripts/devnet/dijkstra.py` sets it; without it the chain starts at create-env's.
 if [ -n "${PROTOCOL_MAJOR:-}" ]; then
@@ -71,5 +85,6 @@ done
 
 touch /env/ready
 echo "configurator: systemStart $(jq -r .systemStart shelley-genesis.json), magic $MAGIC," \
+  "k $(jq .securityParam shelley-genesis.json), epochs of $(jq .epochLength shelley-genesis.json) slots," \
   "protocol $(jq -c .protocolParams.protocolVersion shelley-genesis.json)," \
   "PlutusV3 cost model of $(jq '.plutusV3CostModel | length' conway-genesis.json)"
