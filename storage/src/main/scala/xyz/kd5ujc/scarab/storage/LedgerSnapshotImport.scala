@@ -12,7 +12,7 @@ import fs2.io.file.{Files, Path}
 import java.nio.file.{Files as JFiles, LinkOption}
 import java.security.MessageDigest
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{BlockRef, BootstrapState, ByronState, ConsensusExtras}
+import xyz.kd5ujc.scarab.consensus.{BlockRef, ByronState, ConsensusExtras, FollowState}
 import xyz.kd5ujc.scarab.consensus.state.*
 import xyz.kd5ujc.scarab.crypto.witness.PublicKey32
 import xyz.kd5ujc.scarab.ledger.{
@@ -91,7 +91,6 @@ object LedgerSnapshotImport:
       identity: NetworkIdentity,
       byronEpochSlots: BigInt,
       genesisParams: ProtocolParams,
-      bootstrap: BootstrapState,
       trust: Trust,
       layout: ReferenceLayout = ReferenceLayout.Release11_1
   )
@@ -281,8 +280,7 @@ object LedgerSnapshotImport:
             val extras: MirrorExtras.InShelley = MirrorExtras.InShelley(
               NodeExtras.empty,
               ConsensusExtras(
-                config.bootstrap
-                  .copy(active = false, era = Some(file.era), stats = None, completed = None),
+                FollowState(Some(file.era), None, None),
                 ByronState.initial.copy(firstShelleyEpoch = observed.get(Era.Shelley)),
                 ProtocolExtras(i.state.nes.epoch.toBigInt, Nonce.Neutral)
               )

@@ -93,7 +93,7 @@ class EraHistoryNetworksSuite extends FunSuite:
         conway,
         ChainDepState.Praos(praos),
         start.consensus.copy(
-          boot = start.consensus.boot.copy(era = Some(Era.Conway)),
+          follow = start.consensus.follow.copy(era = Some(Era.Conway)),
           byron = start.consensus.byron.copy(firstShelleyEpoch = Some(firstShelley))
         )
       )

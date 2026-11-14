@@ -72,9 +72,11 @@ class SnapshotGoldenSuite extends CatsEffectSuite:
   private val previewV9 = "ddaad24d00de33e82cd4459f2f86fa9cb0d9bafc1681fc01ca639f3283bf6acf"
   private val conwayV9 = "399826ff08ab1945ae258f53d7e3d23d060d587b6902a403107f5c656690d954"
   private val nativeV9 = "a91a5009ff79d542fb1a63bb6e59433b952b0047b3df0266580736f8f0ce74bc"
-  private val previewV10 = "d1017fff1b9c58415115206fb825b45950ac8cb2826dac6e176aa48b237a47bb"
-  private val conwayV10 = "3fc6824aeedfda88e54fc8bd9ac1664681778086a757d38a70aa390d3c2a3ed9"
-  private val nativeV10 = "01d2ad4f9b2ab0962aafe20625620747f5e33c653016521bed46729805ceb859"
+  // V10 regenerated when its sidecar was changed in place, before any deployment (the owner's
+  // decision of 2026-11-14, #988): the follow state in place of the bootstrap state
+  private val previewV10 = "68fe4dfa8682e2d40d8cf56820397cce9f4d867e60e28aacef014144326f9058"
+  private val conwayV10 = "da4fd85c96689e113455eb22e41c7833c076cf3c6281904ef9c48817910db569"
+  private val nativeV10 = "2fc38d5bf4ece2d5b7a1d4203e692c3f1493a8564718961d04aabea8d993391a"
   private def all(
       file: String,
       hashes: (String, String, String, String, String),
@@ -266,8 +268,9 @@ class SnapshotGoldenSuite extends CatsEffectSuite:
       assert(java.util.Arrays.equals(converted, target), file)
       val content = FileLedgerSnapshots.verified(target).fold(e => fail(e.message), identity)
       val sourceContent = FileLedgerSnapshots.verified(source).fold(e => fail(e.message), identity)
-      // the 11.1 build recorded; the binding, the sidecar and the Haskell bytes those of V9, byte
-      // for byte: the V9 file after its magic, with the five bytes of the build in front
+      // the 11.1 build recorded; the binding and the Haskell bytes those of V9, byte for byte, and
+      // the sidecar V9's without the bootstrap state's flag and lite ledger: V10's sidecar holds the
+      // follow state, changed in place before any deployment (owner's decision of 2026-11-14, #988)
       assertEquals(SnapshotV10.recordedOf(content), Right("11.1"), file)
       val (build, binding, sidecar, haskell) =
         SnapshotV10
@@ -277,12 +280,13 @@ class SnapshotGoldenSuite extends CatsEffectSuite:
         SnapshotV9.sections(sourceContent).fold(e => fail(e.message), identity)
       assertEquals(build, ReferenceBuild.Release11_1, file)
       assertEquals(binding, sourceBinding, file)
-      assertEquals(sidecar, sourceSidecar, file)
+      assertEquals(sidecar, FrozenSidecar.live(sourceSidecar), file)
       assertEquals(haskell, sourceHaskell, file)
+      val bound = 12 + java.nio.ByteBuffer.wrap(sourceContent, 8, 4).getInt
       assertEquals(
-        content.toVector,
+        content.take(bound + 5).toVector,
         (SnapshotV10.Magic ++ Array(4.toByte) ++ "11.1".getBytes("US-ASCII") ++
-          sourceContent.drop(SnapshotV9.Magic.length)).toVector,
+          sourceContent.slice(SnapshotV9.Magic.length, bound)).toVector,
         file
       )
     }

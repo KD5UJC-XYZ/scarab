@@ -5,7 +5,7 @@ import cats.{Eq, Show}
 import xyz.kd5ujc.scarab.ledger as node
 
 /** The node-only bookkeeping that has no place in the Haskell state, kept beside a mirror. The
-  * consensus side of the mirror adds its own (the Byron and bootstrap state, the previous epoch
+  * consensus side of the mirror adds its own (the follow state, the Byron state, the previous epoch
   * nonce of the TPraos eras).
   *
   * The UTxO's own counters (`Utxo.count`, `coin`, `stamp`, `flushed`, the diff) are not here: the

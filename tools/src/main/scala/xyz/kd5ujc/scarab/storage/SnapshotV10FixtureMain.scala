@@ -63,8 +63,9 @@ object SnapshotV10FixtureMain extends Assertions:
     val manifest = Json.obj(
       "format" -> "SCRBSNPA".asJson,
       "conversion" -> ("registered SnapshotMigration V9 -> V10 step (SnapshotV10.fromV9): the " +
-        "reference build 11.1 recorded after the magic; the binding, the sidecar and the Haskell " +
-        "bytes unchanged").asJson,
+        "reference build 11.1 recorded after the magic; the binding and the Haskell bytes " +
+        "unchanged; the sidecar written in the V10 schema, the bootstrap state's flag and lite " +
+        "ledger dropped and its era and epoch verdicts kept as the follow state").asJson,
       "migrated" -> migrated.map(m => s"${m.kind} ${m.from} -> ${m.to}: ${m.count}").asJson,
       "files" -> files.asJson
     )

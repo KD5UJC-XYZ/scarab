@@ -233,7 +233,6 @@ enum DecodeField(val label: String) extends DecodeSite:
   case NonceTag extends DecodeField("nonce tag")
   case NOpt extends DecodeField("nOpt")
   case ParameterIndex extends DecodeField("parameter index")
-  case Pool extends DecodeField("pool")
   case PoolDeposit extends DecodeField("poolDeposit")
   case PoolVotingThresholds extends DecodeField("pool voting thresholds")
   case PriceMem extends DecodeField("price mem")

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus
 
-import xyz.kd5ujc.scarab.ledger.{LeaderCheck, LedgerView, Nonce, OCertRules, StakeView, TPraosError}
+import xyz.kd5ujc.scarab.ledger.{LeaderCheck, LedgerView, Nonce, OCertRules, TPraosError}
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ProtocolState, TPraosState}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -122,9 +122,8 @@ object TPraos:
       yield ()
     val genesisKeys = view.genDelegs.keys.toVector.sortBy(_.hex)
     val delegateHashes = view.genDelegs.valuesIterator.map(_.delegate).toSet
-    val registered = view.stake match
-      case StakeView.Known(pools)      => pools.stake.contains(issuer)
-      case StakeView.Unknown(registry) => registry.contains(issuer)
+    val pools = view.pools
+    val registered = pools.stake.contains(issuer)
     for
       issuerKey <- Praos.issuerKey(header.issuerVkey).leftMap(TPraosError.Vocabulary(_))
       sequence <- Praos.counterOf(header.opCert.sequence).leftMap(TPraosError.Vocabulary(_))
@@ -132,42 +131,29 @@ object TPraos:
       leader <-
         if !isOverlaySlot(firstSlot, view.d, slot) then
           for
-            registeredVrf <- view.stake match
-              case StakeView.Known(pools) =>
-                pools.stake
-                  .get(issuer)
-                  .flatMap(_ => pools.vrf.get(issuer))
-                  .map(Set(_))
-                  .toRight(TPraosError.VrfKeyUnknown(issuer))
-              case StakeView.Unknown(registry) =>
-                registry.get(issuer).toRight(TPraosError.VrfKeyUnknown(issuer))
+            stake <- pools.stake.get(issuer).toRight(TPraosError.VrfKeyUnknown(issuer))
+            registeredVrf <- pools.vrf.get(issuer).toRight(TPraosError.VrfKeyUnknown(issuer))
             _ <- Either.cond(
-              registeredVrf.contains(vrfHash),
+              registeredVrf == vrfHash,
               (),
               TPraosError.VrfKeyWrong(issuer)
             )
             _ <- vrfChecks
-            check <- view.stake match
-              case StakeView.Known(pools) =>
-                for
-                  value <- Leader
-                    .rawLeaderValue(leaderCert.output)
-                    .leftMap(TPraosError.LeaderThreshold(_))
-                  fraction <- Leader.Fraction
-                    .checked(pools.stake(issuer), pools.total)
-                    .leftMap(TPraosError.LeaderThreshold(_))
-                  decision <- Leader
-                    .check(value, fraction, config.activeSlotsCoeff, Leader.Range512)
-                    .leftMap(TPraosError.LeaderThreshold(_))
-                  _ <- Either.cond(
-                    decision == Leader.Decision.Eligible,
-                    (),
-                    TPraosError.LeaderValueTooBig(slot)
-                  )
-                yield LeaderCheck.Threshold
-              case StakeView.Unknown(_) =>
-                Right(LeaderCheck.Unchecked(LeaderCheck.UncheckedReason.BootstrapStakeUnknown))
-          yield check
+            value <- Leader
+              .rawLeaderValue(leaderCert.output)
+              .leftMap(TPraosError.LeaderThreshold(_))
+            fraction <- Leader.Fraction
+              .checked(stake, pools.total)
+              .leftMap(TPraosError.LeaderThreshold(_))
+            decision <- Leader
+              .check(value, fraction, config.activeSlotsCoeff, Leader.Range512)
+              .leftMap(TPraosError.LeaderThreshold(_))
+            _ <- Either.cond(
+              decision == Leader.Decision.Eligible,
+              (),
+              TPraosError.LeaderValueTooBig(slot)
+            )
+          yield LeaderCheck.Threshold
         else
           for
             gkey <- overlayOwner(firstSlot, genesisKeys, view.d, geometry.activeSlotsCoeff, slot)

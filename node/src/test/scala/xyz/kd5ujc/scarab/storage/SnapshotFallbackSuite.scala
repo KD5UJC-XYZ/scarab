@@ -506,10 +506,11 @@ class SnapshotFallbackSuite extends CatsEffectSuite:
       binding.take(8) ++ Array(0x80.toByte, 0x00.toByte) ++ source.drop(12 + length)
     assertEquals(SnapshotV9.bindingOf(stretched), Right(CheckpointBinding.Legacy))
     val converted = SnapshotV10.fromV9(stretched).fold(e => fail(e.message), identity)
+    // the binding as it was; the sidecar after it is written again in V10's schema
     assertEquals(
-      converted.toVector,
+      converted.take(8 + 5 + 4 + length + 1).toVector,
       (SnapshotV10.Magic ++ SnapshotV10.buildBytes(ReferenceBuild.Release11_1) ++
-        stretched.drop(SnapshotV9.Magic.length)).toVector
+        stretched.slice(SnapshotV9.Magic.length, 12 + length + 1)).toVector
     )
     assertEquals(SnapshotV10.bindingOf(converted), Right(CheckpointBinding.Legacy))
   }

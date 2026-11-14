@@ -5,7 +5,7 @@ import cats.Eq
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.consensus.BootstrapState
+import xyz.kd5ujc.scarab.consensus.FollowState
 import xyz.kd5ujc.scarab.consensus.ByronState
 import xyz.kd5ujc.scarab.consensus.state.{
   ChainDepState,
@@ -58,8 +58,7 @@ class CodecSuite extends ScalaCheckSuite:
   // (`NodeTypeCodecs`), whose laws `HaskellStateCodecSuite` checks on the proposals.
   roundTrip[ChainDepState]("ChainDepState")
   roundTrip[ProtocolExtras]("ProtocolExtras")
-  roundTrip[LiteLedger]("LiteLedger")
-  roundTrip[BootstrapState]("BootstrapState")
+  roundTrip[FollowState]("FollowState")
   roundTrip[ByronState]("ByronState")
   roundTrip[BlockRef]("BlockRef")
   roundTrip[ConsensusExtras]("ConsensusExtras")
@@ -163,8 +162,12 @@ class CodecSuite extends ScalaCheckSuite:
       .fromDirectory(ReferenceBuild.Default)(java.nio.file.Path.of("fixtures/eras/genesis"))
       .fold(e => fail(e.message), _.mirrorStart)
 
-  test("golden: the schema fingerprint of the sidecar of the V5 body (V9 and V10)") {
+  test("golden: the schema fingerprint of the sidecar of the V5 body (V10)") {
     assertEquals(hex(SnapshotSidecar.fingerprint), GoldenSidecarFingerprint)
+  }
+
+  test("golden: the frozen sidecar schema of V9 files keeps its fingerprint") {
+    assertEquals(hex(SnapshotSidecarV9.fingerprint), GoldenV9SidecarFingerprint)
   }
 
   test("golden: the frozen sidecar schema of V5 and V7 files keeps its fingerprint") {
@@ -204,8 +207,8 @@ class CodecSuite extends ScalaCheckSuite:
 
   test("golden: the sidecar of the initial state of the eras fixture encodes to a fixed digest") {
     val (pending, extras) = (initial.extras, initial.ext.ledgerState.state) match
-      case (MirrorExtras.InByron(pending, boot, protocol), EraLedgerState.ByronCurrent(b)) =>
-        (pending, ConsensusExtras(boot, b, protocol))
+      case (MirrorExtras.InByron(pending, follow, protocol), EraLedgerState.ByronCurrent(b)) =>
+        (pending, ConsensusExtras(follow, b, protocol))
       case _ => fail("the initial state is not Byron")
     val sidecar = SnapshotSidecar(
       None,
@@ -229,7 +232,11 @@ class CodecSuite extends ScalaCheckSuite:
   // and the installer metadata of the Byron update state's software proposals and application
   // versions (V8, #726), and the Dijkstra era among the eras and the fields Dijkstra adds to the
   // protocol parameters (V9, #54).
-  private val GoldenSidecarFingerprint = "7650a759442924ec"
+  // V10's sidecar was then changed in place, before any deployment, by the owner's decision of
+  // 2026-11-14 (#988): the follow state in place of the bootstrap state, with no version bump.
+  private val GoldenSidecarFingerprint = "96de6ee331c309c3"
+  // The sidecar schema of V9 files (`SnapshotSidecarV9`), frozen at V10's change: never regenerated.
+  private val GoldenV9SidecarFingerprint = "7650a759442924ec"
   // The sidecar schema of V5 and V7 files (`SnapshotSidecarV7`), frozen at V8: never regenerated.
   private val GoldenPreviousSidecarFingerprint = "7c483457b06802d6"
   // The sidecar schema of V8 files (`SnapshotSidecarV8`), frozen at V9: never regenerated.
@@ -237,4 +244,4 @@ class CodecSuite extends ScalaCheckSuite:
   // The V7 binding in front of the V5 body (#395): a change to it is a new version too.
   private val GoldenBindingFingerprint = "bd43aa08b4fae886"
   private val GoldenSidecar =
-    ("577b9a786e5562dd44cf11e09fe8255ac01dcc276042751cc9e8aef67690a9b2", 1214)
+    ("404c9ad6acb477adf63fa1ca450c4e116761663b9dabe1f19f276f530933db5b", 913)

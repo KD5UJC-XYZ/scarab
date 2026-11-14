@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{BlockRef, BootstrapState, ByronEpochStats, FollowerEvent}
+import xyz.kd5ujc.scarab.consensus.{BlockRef, ByronEpochStats, FollowState, FollowerEvent}
 import xyz.kd5ujc.scarab.ledger.{Block, EpochGeometry, Header, Prepared, Verdicts}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -51,11 +51,11 @@ object NodeRules:
   ): List[FollowerEvent] =
     val was = before.consensus
     val now = after.consensus
-    val era = now.boot.era
-      .filter(e => !was.boot.era.contains(e))
+    val era = now.follow.era
+      .filter(e => !was.follow.era.contains(e))
       .map(to =>
         FollowerEvent.EraEntered(
-          was.boot.era,
+          was.follow.era,
           to,
           at,
           now.byron.firstShelleyEpoch.fold(geometry)(geometry.resolved).epochOf(at.slot)
@@ -66,8 +66,8 @@ object NodeRules:
       .map(c =>
         FollowerEvent.ByronEpochValidated(c.epoch, c.boundary, c.verified, c.offSchedule, c.txs)
       )
-    val epoch = now.boot.completed
-      .filter(c => !was.boot.completed.contains(c))
+    val epoch = now.follow.completed
+      .filter(c => !was.follow.completed.contains(c))
       .map(c => FollowerEvent.EpochValidated(c.epoch, c.era, c.threshold, c.overlay, c.unchecked))
     val ledger =
       if after.ledgerEpoch == before.ledgerEpoch then None
@@ -164,21 +164,21 @@ object NodeRules:
             yield Entry.Entering(first, ledger, cfg, glob)
           case _ => Right(Entry.Within(config, globals))
 
-  /** The chain-follow state and the bootstrap state after a Byron block: what the old rules and the
-    * era-indexed ones share (Byron has no new-epoch state).
+  /** The Byron chain-follow state and the follow state after a Byron block (Byron has no new-epoch
+    * state). A Byron block after a Shelley-based one is refused.
     */
   def byronStep(
       state: ByronState,
-      boot: BootstrapState,
+      follow: FollowState,
       header: Header.Byron,
       raw: Bytes,
       byron: Option[ByronRules.Config]
-  ): Either[BlockFailure, (ByronState, BootstrapState)] =
+  ): Either[BlockFailure, (ByronState, FollowState)] =
     for
       cfg <- byron.toRight(BlockFailure.NoByronGenesis)
       ledger <- state.ledger.toRight(BlockFailure.ByronAfterShelley)
       _ <- Either.cond(
-        !boot.active && boot.era.forall(_ == Era.Byron),
+        follow.era.forall(_ == Era.Byron),
         (),
         BlockFailure.ByronAfterShelley
       )
@@ -219,7 +219,7 @@ object NodeRules:
             sameEpoch.getOrElse(ByronEpochStats(header.slotEpoch, 0, 0, 0, 0)).record(check)
           )
         ),
-        boot.copy(era = Some(Era.Byron))
+        follow.copy(era = Some(Era.Byron))
       )
 
   /** The header's own checks against the ledger as the block's slot finds it: the envelope (the
@@ -272,7 +272,7 @@ object NodeRules:
             .update(
               Praos.tick(protocol, header.era, epoch, params.extraEntropy),
               header,
-              LedgerView(params.d, params.extraEntropy, genDelegs, StakeView.Known(pools)),
+              LedgerView(params.d, params.extraEntropy, genDelegs, pools),
               config
             )
             .map(v => v.state -> v.leader)

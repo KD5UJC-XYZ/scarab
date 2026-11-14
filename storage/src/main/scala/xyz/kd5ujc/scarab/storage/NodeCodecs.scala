@@ -5,7 +5,6 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.BinaryError
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.consensus.BootstrapState
 import xyz.kd5ujc.scarab.consensus.ByronState
 import xyz.kd5ujc.scarab.consensus.*
 import xyz.kd5ujc.scarab.consensus.state.{
@@ -105,9 +104,8 @@ object NodeCodecs:
   given chainDepState: Codec[ChainDepState] = Codec.auto
   given protocolExtras: Codec[ProtocolExtras] = Codec.auto
 
-  // Consensus and bootstrap.
-  given lite: Codec[LiteLedger] = Codec.auto
-  given bootstrap: Codec[BootstrapState] = Codec.auto
+  // Consensus.
+  given follow: Codec[FollowState] = Codec.auto
   // Keep the historical case-class layout and fingerprint as the domain becomes bounded.
   given byronVersion: Codec[ByronVersion] =
     val number = summon[Codec[BigInt]]

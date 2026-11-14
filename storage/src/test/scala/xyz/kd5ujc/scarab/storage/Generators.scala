@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.storage
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.consensus.BootstrapState
+import xyz.kd5ujc.scarab.consensus.FollowState
 import xyz.kd5ujc.scarab.consensus.ByronState
 import xyz.kd5ujc.scarab.consensus.*
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, PBftState, ProtocolExtras, StateGen}
@@ -135,8 +135,7 @@ object Gens extends LowPriorityGens:
   given enactState: Gens[EnactState] = auto
   given ratifyState: Gens[RatifyState] = auto
   given pulsingSnapshot: Gens[PulsingSnapshot] = auto
-  given lite: Gens[LiteLedger] = auto
-  given bootstrap: Gens[BootstrapState] = auto
+  given follow: Gens[FollowState] = auto
   given byronVersion: Gens[ByronVersion] = of(for
     major <- Gen.choose(0, 65535)
     minor <- Gen.choose(0, 65535)

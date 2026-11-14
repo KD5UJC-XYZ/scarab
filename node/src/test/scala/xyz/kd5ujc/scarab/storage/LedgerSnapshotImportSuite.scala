@@ -63,9 +63,6 @@ class LedgerSnapshotImportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
       .toMap
       .map { (era, i) => (era, (states(i), raws(i))) }
   private val genesis = setup.handOver.fold(fail("expected Byron genesis"))(_.protocolParams)
-  private val boot = setup.mirrorStart.extras match
-    case MirrorExtras.InByron(_, b, _) => b
-    case MirrorExtras.InShelley(_, c)  => c.boot
 
   private def attempt[A](body: Handle[IO, Error] ?=> IO[A]): IO[Either[Error, A]] =
     Handle.allow[Error](body.map(_.asRight[Error])).rescue(e => IO.pure(Left(e)))
@@ -76,7 +73,6 @@ class LedgerSnapshotImportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
       setup.identity,
       setup.geometry.byron.epochSlots,
       genesis,
-      boot,
       trust
     )
   private def anchor(state: MirrorState): BlockRef =

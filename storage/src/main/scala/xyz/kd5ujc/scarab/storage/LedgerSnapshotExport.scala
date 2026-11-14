@@ -189,7 +189,7 @@ object LedgerSnapshotExport:
           val build = ReferenceBuild.Release11_1
           Either.cond(
             config.layout.reads(build),
-            (build, binding, sidecar, haskell),
+            (build, binding, FrozenSidecar.live(sidecar), haskell),
             StorageError.ReferenceBuildMismatch("snapshot", build, config.layout.build)
           )
         }

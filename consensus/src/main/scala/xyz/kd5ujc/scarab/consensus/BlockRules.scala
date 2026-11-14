@@ -153,7 +153,7 @@ enum FollowerEvent:
   /** The first block of a new era was applied (`from` is empty for the chain's first era). */
   case EraEntered(from: Option[Era], to: Era, first: BlockRef, epoch: BigInt)
 
-  /** An epoch of bootstrap-mode headers is complete: how each one was established. */
+  /** An epoch of Shelley-based headers is complete: how each one's leadership was established. */
   case EpochValidated(
       epoch: BigInt,
       era: Era,

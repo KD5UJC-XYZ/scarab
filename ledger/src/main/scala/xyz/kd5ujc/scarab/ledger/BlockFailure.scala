@@ -102,9 +102,6 @@ enum BlockFailure:
 
   // ---- ledger
 
-  /** The ledger-lite rules of the bootstrap mode refused the block. */
-  case Lite(error: LedgerDecodeError)
-
   /** The Byron-to-Shelley hand-over refused the final Byron state. */
   case Handover(cause: HandoverProblem)
 
@@ -149,8 +146,8 @@ enum BlockFailure:
     case TPraos(_)          => BlockRule.TPraos
     case Praos(_)           => BlockRule.Praos
     case Unverifiable(r, _) => r
-    case Lite(_) | Handover(_) | SupplyInvariant(_, _, _) | RefScriptsTooLarge(_) |
-        BlockExUnitsTooBig(_, _) | Tx(_) | Tick(_) | Mirror(_) | NotYet(_) =>
+    case Handover(_) | SupplyInvariant(_, _, _) | RefScriptsTooLarge(_) | BlockExUnitsTooBig(_, _) |
+        Tx(_) | Tick(_) | Mirror(_) | NotYet(_) =>
       BlockRule.Ledger
 
   /** The reason, as the log renders it (the text of the old `(rule, reason)` pair, unchanged). */
@@ -176,7 +173,6 @@ enum BlockFailure:
     case TPraos(error)           => error.message
     case Praos(error)            => error.message
     case Unverifiable(_, defect) => s"no verdict: ${defect.message}"
-    case Lite(error)             => error.message
     case Handover(error)         => error.message
     case SupplyInvariant(epoch, total, maximum) =>
       s"supply invariant broken entering epoch $epoch: $total != $maximum"

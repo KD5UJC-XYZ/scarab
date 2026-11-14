@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational}
 import xyz.kd5ujc.scarab.plutus.PlutusData
@@ -11,7 +10,7 @@ import xyz.kd5ujc.scarab.plutus.PlutusData.{I, List as PList, Map as PMap}
   * (`decodeRationalWithTag`, `Binary/Plain.hs:155-163`, then `boundRational`,
   * `BaseTypes.hs:348-374`, f649f975): signed and bignum parts are accepted when the reduced value
   * is in the field's interval, and a value outside it is refused. The oracle corpus reaches body
-  * decoding; these cases reach the three readers of an already decoded parameter update.
+  * decoding; these cases reach the two readers of an already decoded parameter update.
   */
 class RationalFieldsSuite extends FunSuite:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
@@ -101,22 +100,22 @@ class RationalFieldsSuite extends FunSuite:
     assert(applied(26 -> array(Seq.fill(9)(halfBig) :+ threeHalves*)).isLeft)
   }
 
-  private val lite =
-    val genesis = Genesis
-      .shelley(Files.readString(Path.of("fixtures/preview/genesis/shelley-genesis.json")))
-      .fold(e => fail(e.message), identity)
-    LiteLedger.fromGenesis(genesis.raw).fold(e => fail(e.message), identity).params
+  private def shelley(fields: (Int, String)*): Either[LedgerDecodeError, ProtocolParams] =
+    ProtocolParams.update[xyz.kd5ujc.scarab.ledger.state.Shelley](
+      TestLedger.params(2),
+      update(fields*)
+    )
 
-  test("LiteLedger.applyUpdate reads d as a unit-interval rational") {
+  test("ProtocolParams.update reads d as a unit-interval rational") {
     for form <- Seq(half, halfSigned, halfBig) do
-      assertEquals(LiteLedger.applyUpdate(lite, update(12 -> form)).map(_.d), Right(Rational(1, 2)))
+      assertEquals(shelley(12 -> form).map(_.d), Right(Rational(1, 2)))
     for (form, numerator) <- Seq(threeHalves -> 3, threeHalvesSigned -> 3, minusHalf -> -1) do
       assertEquals(
-        LiteLedger.applyUpdate(lite, update(12 -> form)),
+        shelley(12 -> form),
         Left(LedgerDecodeError.RationalOutOfBounds(DecodeField.D, BigInt(numerator), 2))
       )
     assertEquals(
-      LiteLedger.applyUpdate(lite, update(12 -> zeroDenominator)),
+      shelley(12 -> zeroDenominator),
       Left(LedgerDecodeError.ZeroDenominator(DecodeField.D))
     )
   }
