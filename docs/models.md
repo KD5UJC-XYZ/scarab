@@ -452,8 +452,7 @@ Risks and answers:
 
 Issue K10. cuddle is upstream's own Haskell CDDL tool (the ledger's `*.cddl` files are generated with it), a second
 implementation of the same schemas that shares no code with ours. The generator is a single point of failure, so CI runs
-it against cuddle on every change to the vendored CDDL, the generator or the runtime, and nightly
-(`.github/workflows/cuddle-crosscheck.yml`).
+it against cuddle on every pull request, every push to `main` and nightly (`.github/workflows/cuddle-crosscheck.yml`).
 
 **Tool and image.** cuddle 1.8.1.0 (Hackage, uploaded 2026-07-15; the version `cardano-ledger-binary` needs, `>=1.8`),
 built by `docker/cuddle.Dockerfile` from the Hackage source with GHC 9.10.3 and cabal-install 3.14.1.1 (the official

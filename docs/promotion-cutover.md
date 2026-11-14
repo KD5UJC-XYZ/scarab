@@ -60,8 +60,8 @@ creation/update/deletion ruleset would allow it to rewrite release identities.
 
 The required checks are the named always-reporting jobs in `promotion_rules.py`. PR CI, native
 comparison and decoder fuzz reporting cover every protected target; main push checks stay enabled.
-CDDL selection reports **CDDL comparison gate** on every protected PR, and builds its tool only
-when relevant inputs change. A selection failure or requested comparison failure fails that gate.
+The CDDL cross-check runs on every protected PR and reports **CDDL comparison gate**, which fails
+unless the comparison succeeded.
 Path-filtered workflows must not be selected as required checks that can remain pending forever.
 
 ## Owner activation sequence
