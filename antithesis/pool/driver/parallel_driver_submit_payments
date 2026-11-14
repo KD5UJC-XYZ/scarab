@@ -1,0 +1,124 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# A driver command: payments between create-env's utxo3 key and wallets of the workload's own, each submitted to a
+# random pool. They put transactions into every pool's blocks, so both implementations' ledgers run under the
+# faults, and a block that one side refuses trips a detector. Antithesis runs copies at once: a payment holds its
+# source wallet's lock while it reads the wallet's outputs and submits, and an input it spent is not used again for
+# 120 s, by when its payment is on a chain or lost.
+set -uo pipefail
+source /opt/at/lib.sh
+
+PAYMENTS=5
+WALLETS=4
+# Above the minimum fee of a one-input, two-output payment (44 lovelace a byte and 155,381, about 0.17 ada), and
+# outputs well above the minimum ada of an output (about 1 ada at 4,310 lovelace a byte).
+FEE=300000
+ADA=1000000
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# key_dir NAME: create-env's utxo3, or a wallet of the workload's own, made on its first use.
+key_dir() {
+  if [ "$1" = utxo3 ]; then
+    printf '%s\n' /env/net/utxo-keys/utxo3
+    return
+  fi
+  local dir="$STATE_DIR/wallets/$1"
+  if [ ! -f "$dir/utxo.vkey" ]; then
+    mkdir -p "$dir"
+    (
+      flock 9
+      [ -f "$dir/utxo.vkey" ] || cardano-cli conway address key-gen --verification-key-file "$dir/utxo.vkey.tmp" \
+        --signing-key-file "$dir/utxo.skey" > /dev/null && mv "$dir/utxo.vkey.tmp" "$dir/utxo.vkey"
+    ) 9> "$dir.lock"
+  fi
+  printf '%s\n' "$dir"
+}
+
+address_of() {
+  cardano-cli conway address build --payment-verification-key-file "$(key_dir "$1")/utxo.vkey" --testnet-magic "$MAGIC"
+}
+
+# pay SOURCE DESTINATIONS POOL: one payment to each of the comma-separated DESTINATIONS in one transaction, under
+# SOURCE's lock; prints its verdict as JSON, or nothing when SOURCE has no output to spend.
+pay() {
+  local source=$1 destinations=$2 pool=$3 keys from utxo spent txin amount pay change raw txid answer code verdict
+  local outputs=() d count
+  keys=$(key_dir "$source")
+  from=$(address_of "$source") || return 0
+  IFS=, read -r -a targets <<< "$destinations"
+  count=${#targets[@]}
+  exec 8> "$STATE_DIR/payments-$source.lock"
+  flock 8
+  spent="$STATE_DIR/payments-$source.spent"
+  touch "$spent"
+  # inputs spent less than 120 s ago are left out
+  awk -v now="$(date +%s)" '$1 > now - 120' "$spent" > "$spent.tmp" && mv "$spent.tmp" "$spent"
+  utxo=$(timeout 20 cardano-cli conway query utxo --address "$from" --testnet-magic "$MAGIC" \
+           --socket-path "/ipc/$pool/node.socket" --output-json 2> /dev/null) || { flock -u 8; return 0; }
+  txin=$(jq -r --rawfile spent "$spent" --argjson least $((FEE + (2 * count + 1) * ADA)) '
+    ($spent | split("\n") | map(split(" ")[1] // empty)) as $used
+    | to_entries | map(select((.value.value | keys) == ["lovelace"] and .value.value.lovelace >= $least
+                              and (.key as $k | $used | any(. == $k) | not)))
+    | max_by(.value.value.lovelace) | .key // empty' <<< "$utxo")
+  if [ -z "$txin" ]; then
+    flock -u 8
+    return 0
+  fi
+  amount=$(jq -r --arg k "$txin" '.[$k].value.lovelace' <<< "$utxo")
+  # 2 to 5 ada to each destination, and never more than leaves the change 1 ada or more
+  pay=$(( (2 + RANDOM % 4) * ADA ))
+  [ $((amount - FEE - count * pay)) -ge "$ADA" ] || pay=$(( (amount - FEE - ADA) / count ))
+  change=$((amount - FEE - count * pay))
+  for d in "${targets[@]}"; do
+    outputs+=(--tx-out "$(address_of "$d")+$pay")
+  done
+  cardano-cli conway transaction build-raw --tx-in "$txin" "${outputs[@]}" --tx-out "$from+$change" \
+    --fee "$FEE" --out-file "$work/tx.raw" 2> /dev/null || { flock -u 8; return 0; }
+  cardano-cli conway transaction sign --tx-body-file "$work/tx.raw" --signing-key-file "$keys/utxo.skey" \
+    --out-file "$work/tx.signed" 2> /dev/null || { flock -u 8; return 0; }
+  raw=$(cardano-cli conway transaction txid --tx-file "$work/tx.signed")
+  txid=$(jq -r '.txhash' <<< "$raw" 2> /dev/null || printf '%s' "$raw")
+  answer=$(timeout 20 cardano-cli conway transaction submit --tx-file "$work/tx.signed" --testnet-magic "$MAGIC" \
+             --socket-path "/ipc/$pool/node.socket" 2>&1)
+  code=$?
+  if [ "$code" -eq 0 ] && [[ $answer == *"Transaction successfully submitted"* ]]; then
+    verdict=accepted
+    printf '%s %s\n' "$(date +%s)" "$txin" >> "$spent"
+  elif [ "$code" -ne 0 ] && [[ $answer == *"Error while submitting tx"* ]]; then
+    verdict=refused
+  else
+    verdict="no answer"
+  fi
+  flock -u 8
+  jq -cn --arg source "$source" --arg destination "$destinations" --arg pool "$pool" --arg txid "$txid" \
+    --arg txin "$txin" --argjson pay "$pay" --arg verdict "$verdict" --arg answer "${answer:0:600}" \
+    '{source: $source, destination: $destination, pool: $pool, txid: $txid, input: $txin, lovelace: $pay,
+      verdict: $verdict, answer: $answer}'
+}
+
+reached "$STARTS"
+for _ in $(seq "$PAYMENTS"); do
+  # half of the payments leave utxo3 for every wallet in one transaction, half move funds from one wallet to another
+  # or back to utxo3
+  if [ $((RANDOM % 2)) -eq 0 ]; then
+    source=utxo3
+    destination=$(seq -s, -f 'w%.0f' 0 $((WALLETS - 1)))
+  else
+    source="w$((RANDOM % WALLETS))"
+    destination="w$((RANDOM % WALLETS))"
+    [ "$destination" != "$source" ] || destination=utxo3
+  fi
+  pool=${NODES[$((RANDOM % ${#NODES[@]}))]}
+  result=$(pay "$source" "$destination" "$pool")
+  if [ -n "$result" ]; then
+    echo "payments: $result"
+    accepted=$(jq -r '.verdict == "accepted"' <<< "$result")
+    if [ "$pool" = s1 ]; then
+      sometimes "$PAYMENT_S1" "$accepted" "$result"
+    else
+      sometimes "$PAYMENT_HASKELL" "$accepted" "$result"
+    fi
+  fi
+  sleep 2
+done

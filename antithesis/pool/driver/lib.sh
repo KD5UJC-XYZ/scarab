@@ -41,6 +41,9 @@ SCARAB_FATAL="Scarab never logs a fatal event"
 SCARAB_FALSE_CLOCK="Scarab never reports the clock moved back for two readings in one slot, time moving forward"
 FORK_BELOW_K="the cluster's fork depth stays below k"
 FORK_SEEN="a fork is observed"
+PAYMENT_S1="s1 accepts a payment"
+PAYMENT_HASKELL="a Haskell pool accepts a payment"
+S1_FORGES_TXS="s1 forges a block with transactions"
 
 # assertion HIT MUST_HIT TYPE DISPLAY MESSAGE CONDITION [DETAILS]
 assertion() {
@@ -84,7 +87,8 @@ unreachable_hit() {
 declare_catalog() {
   assertion false true reachability Reachable "$STARTS" false
   local m
-  for m in "$SCARAB_EXTENDS" "$HASKELL_EXTENDS" "$ALL_EXTEND" "$ALL_AGREE"; do
+  for m in "$SCARAB_EXTENDS" "$HASKELL_EXTENDS" "$ALL_EXTEND" "$ALL_AGREE" "$PAYMENT_S1" "$PAYMENT_HASKELL" \
+           "$S1_FORGES_TXS"; do
     assertion false true sometimes Sometimes "$m" false
   done
   # The divergence detectors run where the compose file mounts the pools' logs at /logs.

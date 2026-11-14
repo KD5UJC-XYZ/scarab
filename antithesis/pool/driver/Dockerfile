@@ -14,5 +14,6 @@ COPY --from=cardano /opt/reference/bin/cardano-cli /usr/local/bin/cardano-cli
 RUN mkdir -p /ipc/h2 /ipc/h3 /ipc/s1 /opt/at /opt/antithesis/test/v1/main
 COPY --chmod=0644 lib.sh forktree.py /opt/at/
 COPY --chmod=0755 driver.sh /opt/at/driver.sh
-COPY --chmod=0755 parallel_driver_watch_tips anytime_check_divergence /opt/antithesis/test/v1/main/
+COPY --chmod=0755 parallel_driver_watch_tips parallel_driver_submit_payments anytime_check_divergence \
+  /opt/antithesis/test/v1/main/
 CMD ["/opt/at/driver.sh"]
