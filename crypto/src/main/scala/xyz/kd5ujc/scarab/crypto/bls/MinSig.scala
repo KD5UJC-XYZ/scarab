@@ -204,10 +204,16 @@ object MinSig:
       pop <- ProofOfPossession.fromBytes(Bytes.wrap(raw))
     yield pop
 
+  /** `verifyPossessionProofDSIGN` (cardano-base c1e1ed8d `BLS12381/Internal.hs:593-596`). A proof
+    * that does not verify is [[BlsError.ProofOfPossessionInvalid]]; a failure of the native library
+    * stays [[BlsError.Backend]], which the reference has no counterpart of and a caller must not
+    * read as an invalid proof.
+    */
   def verifyPossession(vk: VerificationKey, pop: ProofOfPossession): Either[BlsError, Unit] =
-    verifyUnder(vk, vk.bytes, pop.point, possessionDst).left.map(_ =>
-      BlsError.ProofOfPossessionInvalid
-    )
+    verifyUnder(vk, vk.bytes, pop.point, possessionDst).leftMap {
+      case BlsError.SignatureInvalid => BlsError.ProofOfPossessionInvalid
+      case other                     => other
+    }
 
   /** Sum of signatures (all over the same message for same-message aggregation). Rejects an empty
     * list and an identity sum, like cardano-base's `aggregateSigsDSIGN`.
