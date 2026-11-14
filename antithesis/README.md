@@ -19,7 +19,9 @@ block 2 or later. Then all three must answer and be on the longest chain, at for
 each Haskell pool's own chain must have taken a new block of s1, and s1's a new block of a Haskell pool, so that each
 side is taking the other's blocks now, not only at some earlier time. At k = 5 this topology's start race can keep the
 Haskell pools from taking s1's blocks until s1 has forked past k; a cardano-node in s1's seat does the same (#854).
-Every timeline would inherit that split, so such a setup fails after 600 s and says so.
+Every timeline would inherit that split, so such a setup fails after 1200 s and says so. The gate waits that long
+because, in the configs that start s1's container after the pools, the pools' first DNS lookup of `s1` fails, and the
+reference then waits 900 s before it looks again: until then the pools take none of s1's blocks.
 Antithesis then runs its test commands under faults, many times per timeline:
 
 - `parallel_driver_watch_tips` reads every pool's tip over its local socket every 5 s for a minute;

@@ -40,13 +40,17 @@ fi
 # so of depth 0. This topology's start race at k = 5 can keep the Haskell pools from taking s1's blocks until s1 has
 # forked past k, a cardano-node in s1's seat as well (#854), and every timeline would inherit that split; such a
 # setup fails and says so, instead of a run that asks nothing.
+# The gate waits up to 1200 s. In the configs that start s1's container after the pools, Docker's DNS has no name for
+# s1 at the pools' first local-root lookup, and after that NXDOMAIN the reference waits 900 s before it looks again
+# (`ttlForDnsError`, ouroboros-network `RootPeersDNS/LocalRootPeers.hs`). Until then the pools take none of s1's
+# blocks. On the platform that window outlasted a 600 s gate. Locally it is about a minute.
 forks() {
   local out
   out=$(python3 -I /opt/at/forktree.py "$STATE_DIR/forktree.json" /logs/h2.log /logs/h3.log /logs/s1.log 2> /dev/null)
   jq -e 'type == "object"' <<< "$out" > /dev/null 2>&1 && printf '%s\n' "$out" || echo '{}'
 }
 base=$(forks)
-deadline=$((SECONDS + 600))
+deadline=$((SECONDS + 1200))
 while :; do
   health=$(forks)
   now=$(tips)
@@ -60,7 +64,7 @@ while :; do
     break
   fi
   if [ "$SECONDS" -ge "$deadline" ]; then
-    echo "driver: the cluster is not healthy after 600 s: $health, tips $now, at the gate's start $base" >&2
+    echo "driver: the cluster is not healthy after 1200 s: $health, tips $now, at the gate's start $base" >&2
     exit 1
   fi
   sleep 2
