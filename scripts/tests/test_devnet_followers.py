@@ -104,7 +104,8 @@ class FollowerSiteTest(unittest.TestCase):
                 patch.object(cluster, "docker", side_effect=lambda *a, **k: removed.append(a)):
             cluster.down(types.SimpleNamespace(name="n"), quiet=True)
         self.assertEqual([a[2] for a in removed],
-                         ["n-scala", "n-scala-scalus", "n-scala-scarab", "n-cli", "n-ref"])
+                         ["n-scala", "n-scala-scalus", "n-scala-scarab", "n-cli", "n-ref",
+                          "n-extract-1", "n-extract-2", "n-extract-3"])
 
 
 class FollowerProcessTest(unittest.TestCase):
