@@ -15,6 +15,25 @@ ThisBuild / isVersionStable := (ThisBuild / scarabBuildIdentity).value.mode == "
 ThisBuild / isSnapshot := !(ThisBuild / isVersionStable).value
 ThisBuild / organization := "xyz.kd5ujc"
 ThisBuild / licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
+// sbt-header (`headerCheckAll`, part of `check`): every Scala, Java and sbt source starts with the SPDX line,
+// with no copyright line. The header is that line alone: the plugin's own `//` style takes every leading comment
+// line for the header, and would replace the notes below it. A source adapted from code under another licence
+// names that licence on the same line (`Apache-2.0 AND MIT`), and an existing line of that form is kept. A source
+// with a second SPDX comment line (indented or in a block comment too) fails the check, so that `headerCreateAll`
+// cannot settle a conflicting declaration by adding a line above it.
+ThisBuild / headerLicense := Some(HeaderLicense.Custom("SPDX-License-Identifier: Apache-2.0"))
+ThisBuild / headerEmptyLine := false
+ThisBuild / headerMappings := {
+  val header = raw"""// SPDX-License-Identifier: Apache-2\.0(?: AND [\w.+-]+)*(?:\r\n|\r|\n|\z)"""
+  val spdxLine = HeaderCommentStyle.cppStyleLineComment.copy(
+    commentCreator = new sbtheader.CommentCreator {
+      def apply(text: String, existingText: Option[String]): String =
+        existingText.fold(s"// $text")(_.stripLineEnd)
+    },
+    pattern = raw"""(?sm)($header)(?!.*^[\t ]*(?://|/\*+|\*)[\t ]*SPDX-License-Identifier:)(.*)""".r
+  )
+  Map(HeaderFileType.scala -> spdxLine, HeaderFileType.java -> spdxLine, HeaderFileType("sbt") -> spdxLine)
+}
 // Enable the unused-code warnings supported by the maintained source. At Scala 3.3.8, the excluded
 // -Wunused:implicits, -Wvalue-discard and -Wnonunit-statement produced 13, 243 and 308 warnings;
 // the latter two were mostly fluent CborOut calls in node/ntc. Generated models are warning-silent.
@@ -494,6 +513,14 @@ lazy val tools = scarab("tools")
     publish / skip := true
   )
 
+// The sources that belong to no module, whose headers the root project checks: the build definition (without
+// the git-ignored metals.sbt and local.sbt) and the conversion programs kept beside the scripts.
+lazy val sourcesOutsideModules = Def.task {
+  val root = baseDirectory.value
+  val build = (root * "build.sbt") +++ (root / "project" * (("*.scala" || "*.sbt") -- "metals.sbt" -- "local.sbt"))
+  (build +++ (root / "scripts" / "fixtures" ** "*.scala")).get.filterNot(_.getPath.contains("/target/"))
+}
+
 lazy val root = project
   .in(file("."))
   .disablePlugins(TpolecatPlugin)
@@ -514,6 +541,7 @@ lazy val root = project
     tools
   )
   .settings(
+    Compile / headerSources ++= sourcesOutsideModules.value,
     reproducibleCheck := {
       val root = baseDirectory.value
       val status = scala.sys.process
@@ -571,7 +599,7 @@ val modules = Seq(
 
 addCommandAlias(
   "check",
-  (";scalafmtCheckAll;checkUplcClasspath" +: (modules.map(m => s"$m/Test/compile") ++ modules
-    .map(m => s"$m/Test/test")) :+ "scalafixAll --check")
+  (";scalafmtCheckAll;headerCheckAll;checkUplcClasspath" +: (modules.map(m => s"$m/Test/compile") ++
+    modules.map(m => s"$m/Test/test")) :+ "scalafixAll --check")
     .mkString(";")
 )
