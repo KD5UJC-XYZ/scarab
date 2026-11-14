@@ -102,19 +102,22 @@ node's `/state` shape. Byron is not compared directly (the CLI cannot query a By
 is compared through the first Shelley epoch, which starts from it.
 
 Same-point states (`whole_state` in [`scripts/devnet/compare.py`](../../scripts/devnet/compare.py)): the volatile tip
-of one node, the anchor, is sampled and the other node acquires exactly that point, so both answers are of one state;
-a sampled point that is not a block point ends the comparison before the other node is asked. In `e2e` and `soak` the
-anchor is the follower; when the reference refuses its point as not on its chain because a fork has just taken it off
-(`PointNotOnChain`, #785), the follower's tip is sampled again a second later, at most twice. `pool` anchors on the
-reference and asks the Scala node for the point up to ten times, two seconds apart, and after a `PointNotOnChain` on
-the last of them samples one new point, with up to ten attempts again. A point refused as too old (`PointTooOld`) ends
-the comparison at its first refusal. A refusal past these bounds, a reply the protocol does not allow (by message tag
-and types: only `[1]` and `[2, 0 | 1]` answer an acquire, only `[4, result]` a query), a failed query, a closed
-connection, a deadline or an error of the harness is a comparison error, never a recovery, and a byte difference after
-a new sample stays a difference. Every record keeps its acquisitions in order as they happened (stage, node, point,
-outcome, parsed refusal); an error also keeps its kind (`refused`, `malformed`, `transient`, `defect`), the stage it
-ended at and the point selected by then, under `errorDetails` in the summary's `wholeState` rows, and `afterRefusal`
-there counts the answers taken after a refusal.
+of one node, the anchor, is sampled and the other node acquires exactly that point, so both answers are of one state.
+The sampled point, judged on its bytes, must be a block point (an unsigned slot and a 32-byte hash); any other ends
+the comparison before the other node is asked, Origin too: it is valid protocol data (`[]`) but holds no block to
+compare a state at (kind `origin`). In `e2e` and `soak` the anchor is the follower; when the reference refuses its
+point as not on its chain because a fork has just taken it off (`PointNotOnChain`, #785), the follower's tip is
+sampled again a second later, at most twice. `pool` anchors on the reference and asks the Scala node for the point up
+to ten times, two seconds apart, and after a `PointNotOnChain` on the last of them samples one new point, with up to
+ten attempts again. A point refused as too old (`PointTooOld`) ends the comparison at its first refusal. A refusal
+past these bounds, a reply the protocol does not allow (judged on its bytes as the reference's codec reads it: a
+definite array whose key and failure code are unsigned integers, so only `[1]` and `[2, 0 | 1]` answer an acquire and
+only `[4, result]` a query; a tag, a bignum, a simple value or an indefinite length where one of those is read is
+malformed), a failed query, a closed connection, a deadline or an error of the harness is a comparison error, never a
+recovery, and a byte difference after a new sample stays a difference. Every record keeps its acquisitions in order as
+they happened (stage, node, point, outcome, parsed refusal); an error also keeps its kind (`refused`, `malformed`,
+`origin`, `transient`, `defect`), the stage it ended at and the point selected by then, under `errorDetails` in the
+summary's `wholeState` rows, and `afterRefusal` there counts the answers taken after a refusal.
 
 `e2e` shares the `up-eras` options but changes four defaults so the pre-Allegra rules have something to
 decide: `--shelley-epochs 3` (the pools hold stake from epoch 2, produce blocks from epoch 3 and the

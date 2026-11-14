@@ -13,7 +13,7 @@
   reference's chain.** When the reference refuses the point as not on its chain (`PointNotOnChain`), `e2e` and `soak`
   sample the follower's tip again, a second later, at most twice; both answers are still taken at exactly one point,
   and a refusal past that bound, a point too old, a sampled point that is not a block point, a reply the protocol does
-  not allow or a byte difference still fails. Every comparison keeps its acquisitions (stage, node, point, outcome,
+  not allow (judged on its bytes) or a byte difference still fails. Every comparison keeps its acquisitions (stage, node, point, outcome,
   parsed refusal) in its record as they happen, and an error also its kind, its stage and the point selected by then.
 
 ### Fixed (devnet)
