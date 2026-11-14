@@ -22,9 +22,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
   * }}}
   *
   * Modes: `cbor` (`Cbor.decode` of the Haskell section: since stage 1 of #94 the index of its
-  * items, before it the object tree), `ledger` (`HaskellLedgerFile.decode`), `v4` (the whole
-  * `SnapshotV9` read), `written` (the node's write of the decoded state, with its read-back),
-  * `votes` (the synthetic committee-votes map, `VOTES=<n>` entries),
+  * items, before it the object tree), `ledger` (`ReferenceLayout.decodeNative`, as a snapshot is
+  * read), `v4` (the whole `SnapshotV9` read), `written` (the node's write of the decoded state,
+  * with its read-back), `votes` (the synthetic committee-votes map, `VOTES=<n>` entries),
   * `spam <snapshot> <voters> <out>` (writes a snapshot with the vote spam of epochs 188 to 193 put
   * into the Conway gov state of a current one, see [[spamMain]]), `tape` (the offsets-only index of
   * the first spike, which `Cbor.decode` has replaced). Each prints the heap in use after a full GC
@@ -241,8 +241,8 @@ object Memory94Main:
     import xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileEra
     val sidecarLength = ByteBuffer.wrap(content, 8, 4).getInt
     val haskellFrom = 12 + sidecarLength
-    val file = HaskellLedgerFile
-      .decode(Bytes.wrap(content).drop(haskellFrom))
+    val file = ReferenceLayout.Release11_1
+      .decodeNative(Bytes.wrap(content).drop(haskellFrom))
       .fold(e => sys.error(e.render), identity)
     val votes: Map[NodeCredential, Vote] = Iterator
       .range(0, voters)
@@ -323,7 +323,7 @@ object Memory94Main:
         case "cbor" =>
           Cbor.decode(haskell, HaskellState.limits).fold(m => sys.error(m.message), identity)
         case "ledger" =>
-          HaskellLedgerFile.decode(haskell).fold(e => sys.error(e.render), identity)
+          ReferenceLayout.Release11_1.decodeNative(haskell).fold(e => sys.error(e.render), identity)
         case "tape" =>
           tape(content, haskellFrom)
         case "v5" =>

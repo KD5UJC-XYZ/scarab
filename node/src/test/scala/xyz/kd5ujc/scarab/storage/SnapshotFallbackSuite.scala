@@ -199,11 +199,8 @@ class SnapshotFallbackSuite extends CatsEffectSuite:
             )
           case _ => fail("not a Conway fixture")
       case _ => fail("not a Shelley-based fixture")
-    val haskell = HaskellLedgerFile
-      .of(edited)
-      .leftMap(_.toString)
-      .flatMap(layout.encode(_).leftMap(_.toString))
-      .fold(fail(_), identity)
+    val editedFile = HaskellLedgerFile.of(edited).fold(e => fail(e.toString), identity)
+    val haskell = layout.encode(editedFile).fold(e => fail(e.toString), identity)
     assertEquals(
       layout.decode(haskell).left.map(_.deepest.kind),
       Left(DecodeError.Kind.Domain(ProposalsError.Unattached(orphan.id)))

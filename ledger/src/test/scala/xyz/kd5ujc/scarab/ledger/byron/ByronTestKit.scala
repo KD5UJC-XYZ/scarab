@@ -27,7 +27,7 @@ object ByronTestKit:
           (n >> 8).toInt & 0xff,
           n.toInt & 0xff
         )
-    // one copy of every item: `ByronCbor.concat` copies what it has joined at each item, which a
+    // linear copying: `ByronCbor.concat` copies what it has joined at each item, which a
     // transaction of tens of thousands of outputs makes quadratic
     private def join(items: Seq[Bytes]): Bytes = Bytes.wrap(Array.concat(items.map(_.toArray)*))
     def uint(n: Long): Bytes = head(0, n)
