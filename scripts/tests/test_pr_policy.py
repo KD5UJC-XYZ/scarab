@@ -158,7 +158,7 @@ RECORD = ("## Storage format change\n\n"
           "- Question: May I change the storage format? The V10 sidecar drops the bootstrap fields; V8 stores are\n"
           "  unaffected; V9 and V10 files are refused; the alternative keeps the fields unused.\n"
           "- Asked at: `2026-11-14T09:30:00Z`\n"
-          "- Answer: just modify V10 directly\n"
+          "- Answer: Yes, the edit is approved.\n"
           "- **Answered at:** 2026-11-14T09:41:07Z\n")
 
 
@@ -212,13 +212,13 @@ class StorageFormatTests(unittest.TestCase):
         record = policy.approval_record(policy.sections(RECORD)["storage format change"])
         self.assertEqual(record["asked_at"], "2026-11-14T09:30:00Z")
         self.assertEqual(record["answered_at"], "2026-11-14T09:41:07Z")
-        self.assertEqual(record["answer"], "just modify V10 directly")
+        self.assertEqual(record["answer"], "Yes, the edit is approved.")
         self.assertTrue(record["question"].endswith("the alternative keeps the fields unused."))
         base = body_of(3, "None", "None")
         for body, message in [
             (base, "Storage format change\" section"),
             (base + "<!--\n" + RECORD + "-->", "Storage format change\" section"),
-            (base + RECORD.replace("- Answer: just modify V10 directly\n", ""), "answer is missing"),
+            (base + RECORD.replace("- Answer: Yes, the edit is approved.\n", ""), "answer is missing"),
             (base + RECORD.replace("`2026-11-14T09:30:00Z`", "this morning"), "asked_at is not a UTC"),
             (base + RECORD.replace("2026-11-14T09:41:07Z", "2026-11-14T09:00:00Z"), "not after asked_at"),
             (base + RECORD.replace("May I change the storage format?", "May I?"), "does not say plainly"),
@@ -248,10 +248,10 @@ class StorageFormatTests(unittest.TestCase):
         record = policy.approval_record(policy.rendered_section(base + trailing, "storage format change"))
         self.assertEqual(record["answered_at"], "2026-11-14T09:41:07Z")
         self.assertTrue(self.check(self.pr(body=base + trailing)))
-        quoted = RECORD.replace("- Answer: just modify V10 directly\n",
-                                "- Answer:\n  > just modify\n  > V10 directly\n")
+        quoted = RECORD.replace("- Answer: Yes, the edit is approved.\n",
+                                "- Answer:\n  > Yes, the edit\n  > is approved.\n")
         self.assertEqual(policy.approval_record(policy.rendered_section(quoted, "storage format change"))["answer"],
-                         "just modify\nV10 directly")
+                         "Yes, the edit\nis approved.")
         for hidden in ["```\n" + RECORD + "```\n", "~~~~\n" + RECORD + "~~~~\n"]:
             with self.subTest(hidden=hidden[:4]), self.assertRaisesRegex(policy.PolicyError, "section"):
                 self.check(self.pr(body=base + hidden))

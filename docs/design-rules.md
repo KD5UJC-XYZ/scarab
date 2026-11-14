@@ -899,15 +899,9 @@ them while the freeze holds. An approved change is level 3, and a new version fo
   a surface without the V8 reader or a migration path from V8, and checks the form of the approval entry only. It
   does not see a persisted byte that none of these pins, such as a file name written inline in a store's opening
   code: there a change is review only. `scripts/pr_policy.py` refuses a pull request that changes the manifest, the
-  guard or its tests unless its title, its paths, its level and its "Storage format change" section are as above. That the owner gave the answer in the chat session doing
-  the work is review only: no tool can see it.
-- **Why:** the owner's rulings of 2026-11-14, in the chat session doing the work of
-  [PR #1008](https://github.com/KD5UJC-XYZ/scarab/pull/1008) (expletives elided): *"UNTIL WE
-  ARE OUT OF PRE_RELEASE we should not be moving the […] storage format every […] day"*; *"I need EXPLICIT […]
-  APPROVAL for new storage formats, like a […] timestamp of when the question was asked"*; *"the agent cannot hide
-  that it is creating a new format, IT MUST SURFACE that it wants to create a new format and ask for that approval
-  EXPLICITLY"*; and, of an in-place edit of an undeployed version, a new migration step or regenerated fixtures,
-  *"Nothing without asking"* ([decisions register](decisions.md#genesis-storage-and-keys)).
+  guard or its tests unless its title, its paths, its level and its "Storage format change" section are as above.
+  That the owner gave the answer in the chat session doing the work is review only: no tool can see it.
+- **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#genesis-storage-and-keys));
   [ADR 0006](adr/0006-versioned-formats-migrate-on-open.md) and its
   [amendment of 2026-11-14](adr/0006-versioned-formats-migrate-on-open.md#amendment-2026-11-14-formats-are-frozen-until-scarab-leaves-pre-release).
 

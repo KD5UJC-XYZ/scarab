@@ -25,7 +25,7 @@ STORAGE = 'storage/src/main/scala/xyz/kd5ujc/scarab/storage'
 
 def record(**changes):
     entry = {'question': 'May I change the storage format: the V10 sidecar drops two fields? Stores: V8, unaffected.',
-             'asked_at': '2026-11-14T09:30:00Z', 'answer': 'Yes, modify V10 directly.',
+             'asked_at': '2026-11-14T09:30:00Z', 'answer': 'Yes, the edit is approved.',
              'answered_at': '2026-11-14T09:41:07Z'}
     entry.update(changes)
     return entry
