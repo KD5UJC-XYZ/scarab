@@ -38,6 +38,8 @@ HASKELL_REFUSED="a Haskell pool never refuses a block as invalid"
 SCARAB_REFUSED="Scarab never refuses a block as invalid"
 SCARAB_FATAL="Scarab never logs a fatal event"
 SCARAB_FALSE_CLOCK="Scarab never reports the clock moved back while its readings move forward"
+FORK_BELOW_K="the cluster's fork depth stays below k"
+FORK_SEEN="a fork is observed"
 
 # assertion HIT MUST_HIT TYPE DISPLAY MESSAGE CONDITION [DETAILS]
 assertion() {
@@ -66,6 +68,12 @@ reached() {
   assertion true true reachability Reachable "$1" true
 }
 
+# always MESSAGE CONDITION DETAILS: an evaluation of the always-or-unreachable MESSAGE, its first true and first false.
+always() {
+  once "always/$1/$2" || return 0
+  assertion true false always AlwaysOrUnreachable "$1" "$2" "$3"
+}
+
 # unreachable_hit MESSAGE DETAILS: the unreachable MESSAGE was reached; recorded once per timeline.
 unreachable_hit() {
   once "unreachable/$1" || return 0
@@ -83,6 +91,8 @@ declare_catalog() {
     for m in "$HASKELL_REFUSED" "$SCARAB_REFUSED" "$SCARAB_FATAL" "$SCARAB_FALSE_CLOCK"; do
       assertion false false reachability Unreachable "$m" false
     done
+    assertion false false always AlwaysOrUnreachable "$FORK_BELOW_K" true
+    assertion false true sometimes Sometimes "$FORK_SEEN" false
   fi
   if [ -d /opt/at/canary ]; then
     assertion false true sometimes Sometimes "$CANARY_SUBMITTED" false
@@ -177,6 +187,27 @@ check_divergence() {
     echo "detectors: s1 reported the clock moved back while it moved forward: $found"
     unreachable_hit "$SCARAB_FALSE_CLOCK" "$found"
   fi
+  return 0
+}
+
+# The cluster's fork depth (forktree.py) against k from the genesis: past k a fork is permanent by protocol. At
+# create-env's k = 5 the start race of this topology can pass it, the reference in s1's seat as well (#854); at a
+# large k it asks whether the forks that faults cause heal.
+check_forks() {
+  local k result depth below seen
+  [ -d /logs ] || return 0
+  k=$(jq -r '.securityParam // empty' /env/net/shelley-genesis.json 2> /dev/null)
+  [ -n "$k" ] || return 0
+  result=$(python3 -I /opt/at/forktree.py "$STATE_DIR/forktree.json" /logs/h2.log /logs/h3.log /logs/s1.log) \
+    || return 0
+  depth=$(jq -r '.depth // empty' <<< "$result")
+  [ -n "$depth" ] || return 0
+  result=$(jq -c --argjson k "$k" '. + {k: $k}' <<< "$result")
+  if [ "$depth" -lt "$k" ]; then below=true; else below=false; fi
+  if [ "$depth" -ge 1 ]; then seen=true; else seen=false; fi
+  always "$FORK_BELOW_K" "$below" "$result"
+  sometimes "$FORK_SEEN" "$seen" "$result"
+  [ "$below" = true ] || echo "detectors: the cluster's fork depth is $depth, k is $k: $result"
   return 0
 }
 

@@ -35,7 +35,16 @@ Each reads on from where the last pass in the timeline stopped. The properties, 
 - unreachable: Scarab never reports the clock moved back while its readings move forward (a
   `systemClockMovedBack` whose `newTime` is later than its `prevTime`, #629).
 
-There is no `always` on the tips: at k = 5 a partition can split the chain for good, which is the protocol working.
+- always (or unreachable): the cluster's fork depth stays below k. The depth is the deepest rollback any pool would
+  need to follow the longest tip. `driver/forktree.py` builds the block tree from the pools' logs: every forged
+  block with its parent, and every pool's tip changes.
+- sometimes: a fork is observed (depth 1 or more), so that the fork-depth property cannot pass vacuously.
+
+There is no `always` on tip agreement. A pool that has just forged is ahead by definition, so "all tips agree at
+an instant" is no invariant: cardano-foundation/cardano-node-antithesis removed such probes as false positives
+(issue 119) for the same fork-depth property. At k = 5 the fork depth fails whenever this topology's start race
+splits the chain, and a cardano-node in s1's seat does the same (#854). `config-k200` asks whether the forks that
+faults cause heal.
 
 Scarab is a JAR assembled from a commit (`node/assembly` in `scarab-jdk:local`). It runs on the Java 25 runtime of
 `docker/candidate.Dockerfile`, and the image's label records the commit. The JAR is linked into
