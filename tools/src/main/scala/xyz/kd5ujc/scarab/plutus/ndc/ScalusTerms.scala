@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.plutus.ndc
 
 import cats.syntax.all.*
+import scala.annotation.tailrec
 import scalus.cardano.ledger.Word64 as SWord64
 import scalus.uplc.{Constant as SConstant, DefaultUni as SUni, NamedDeBruijn, Term as STerm}
 import scalus.uplc.builtin.{BuiltinValue, ByteString as SByteString, Data}
@@ -107,6 +108,36 @@ object ScalusTerms:
       case STerm.Constr(tag, fs, _) => Right(TermF.Constr(Word64.fromBits(tag.value), fs.toVector))
       case STerm.Case(s, bs, _)     => Right(TermF.Case(s, bs.toVector))
     }
+
+  /** Whether a Scalus term holds a BLS12-381 point or Miller-loop result, which the reference's
+    * Flat cannot write and Scalus's writes as a call of `uncompress` (another program, with another
+    * cost).
+    */
+  def holdsBls(term: STerm): Boolean =
+    @tailrec def go(terms: List[STerm], constants: List[SConstant]): Boolean = constants match
+      case c :: rest =>
+        c match
+          case _: SConstant.BLS12_381_G1_Element | _: SConstant.BLS12_381_G2_Element |
+              _: SConstant.BLS12_381_MlResult =>
+            true
+          case SConstant.List(_, items)  => go(terms, items ++ rest)
+          case SConstant.Array(_, items) => go(terms, items.toList ++ rest)
+          case SConstant.Pair(a, b)      => go(terms, a :: b :: rest)
+          case _                         => go(terms, rest)
+      case Nil =>
+        terms match
+          case Nil => false
+          case t :: rest =>
+            t match
+              case STerm.Const(c, _)      => go(rest, List(c))
+              case STerm.LamAbs(_, b, _)  => go(b :: rest, Nil)
+              case STerm.Apply(f, a, _)   => go(f :: a :: rest, Nil)
+              case STerm.Force(x, _)      => go(x :: rest, Nil)
+              case STerm.Delay(x, _)      => go(x :: rest, Nil)
+              case STerm.Constr(_, fs, _) => go(fs ++ rest, Nil)
+              case STerm.Case(x, bs, _)   => go(x :: bs ++ rest, Nil)
+              case _                      => go(rest, Nil)
+    go(List(term), Nil)
 
   private val scalusBuiltins: Map[String, scalus.uplc.DefaultFun] =
     scalus.uplc.DefaultFun.values.iterator.map(f => f.toString -> f).toMap

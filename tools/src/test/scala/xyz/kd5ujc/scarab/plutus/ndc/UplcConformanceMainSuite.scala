@@ -123,10 +123,12 @@ class UplcConformanceMainSuite extends FunSuite:
       assertEquals(budget(json), Some(Json.Null))
     }
 
-    test(s"${vm.name}: text the test-tree parser refuses gets no verdict, never a README outcome") {
-      val json = observed(vm, V3, 11, Input.Text("(program 1.0.0 (con integer))"))
-      assertEquals(evaluation(json), Some("no verdict"))
-      assert(json.hcursor.get[String]("error").toOption.exists(_.contains("text parser")))
+    test(s"${vm.name}: text the backend's parser refuses is a parse/decode error") {
+      val backend = UplcBackend.of(vm)
+      val context = backend.context(V3, 11, costs(V3, 11)).fold(e => fail(e.message), identity)
+      val text = Input.Text("(program 1.0.0 (con integer))")
+      assertEquals(evaluation(observed(vm, V3, 11, text)), Some("parse/decode error"))
+      assertEquals(evaluate(backend)(context, text)._1, Route.Refused)
     }
 
     test(s"${vm.name}: text the parser reads is admitted in Flat by the backend's decoder") {

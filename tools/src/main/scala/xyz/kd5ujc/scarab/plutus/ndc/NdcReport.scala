@@ -18,10 +18,8 @@ import xyz.kd5ujc.scarab.uplc.cost.ExBudget
   * 1): the header, the budget object, and the names and versions of a program's context.
   */
 object NdcReport:
-  /** The `implementation.name` of a report of `vm`: the node's default evaluator is the node. */
-  def implementation(vm: PlutusVm): String = vm match
-    case PlutusVm.Scalus => "Scarab"
-    case PlutusVm.Scarab => "Scarab (--plutus-vm scarab)"
+  /** The `implementation.name` of a report of `vm`, which names the evaluator. */
+  def implementation(vm: PlutusVm): String = s"Scarab (--plutus-vm ${vm.name})"
 
   def header(scenario: String, generated: Instant, implementation: Json): Vector[(String, Json)] =
     Vector(

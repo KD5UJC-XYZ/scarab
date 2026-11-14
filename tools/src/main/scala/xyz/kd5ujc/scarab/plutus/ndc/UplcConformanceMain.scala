@@ -11,8 +11,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
 import xyz.kd5ujc.scarab.plutus.{PlutusLanguage, PlutusVm}
 import xyz.kd5ujc.scarab.uplc.{Program, ProgramVersion}
 import xyz.kd5ujc.scarab.uplc.cost.ExBudget
-import xyz.kd5ujc.scarab.uplc.oracle.ScriptWriter
-import xyz.kd5ujc.scarab.uplc.text.{UplcParser, UplcPrinter}
+import xyz.kd5ujc.scarab.uplc.text.UplcPrinter
 
 /** The `uplc-conformance` scenario of pragma-org's node-diversity-conformance site: every vector of
   * its corpus evaluated by one of the node's Plutus evaluators, written as the scenario's report
@@ -32,9 +31,9 @@ import xyz.kd5ujc.scarab.uplc.text.{UplcParser, UplcPrinter}
   *
   * A vector with a `.flat` file (the hex of a Flat program) is admitted as the ledger admits a
   * script: the program in a CBOR byte string through the backend's `deserialiseScript`. One with
-  * only a `.uplc` file is read by the `uplc` module's text parser (test code: a program it refuses
-  * gets no verdict) and written in Flat, then admitted the same way; one whose constants Flat
-  * cannot write (BLS12-381) goes to the checks of `mkTermToEvaluate` without a Flat admission,
+  * only a `.uplc` file is read by the backend's own text parser, whose refusal is a parse/decode
+  * error, written in Flat and admitted the same way ([[UplcBackend.source]]); one whose constants
+  * Flat cannot write (BLS12-381) goes to the checks of `mkTermToEvaluate` without a Flat admission,
   * which no ledger could give it. Then the program's version and scope are checked as
   * `mkTermToEvaluate` checks them, and the machine of the protocol runs within 10,000,000,000 CPU
   * and 14,000,000 memory units, restricting, as the README sets. The result is written in the
@@ -179,26 +178,8 @@ object UplcConformanceMain extends IOApp:
       )
     else read(dir.resolve(s"$name.uplc")).map(Input.Text(_))
 
-  /** How a vector reached its backend. */
-  enum Route:
-    /** Its `.flat`, through the backend's `deserialiseScript`. */
-    case Flat
-
-    /** Its `.uplc` read by the text parser and written in Flat, then as [[Flat]]. */
-    case Encoded
-
-    /** Its `.uplc` read by the text parser, with a constant Flat cannot write (BLS12-381): the
-      * checks of `mkTermToEvaluate` and the machine only ([[UplcBackend.text]]).
-      */
-    case Unencodable
-
-    /** Its `.uplc`, which the text parser refused: no verdict. */
-    case Refused
-
   /** One vector on `backend` in `context`: how it reached the backend, the version of its program
-    * once it is read, and the run or why it did not get to one. The text parser is test code: a
-    * program it refuses gets no verdict, and one it reads goes to the backend as a script in Flat
-    * ([[ScriptWriter]]) where Flat can write it.
+    * once it is read, and the run or why it did not get to one.
     */
   def evaluate(backend: UplcBackend)(
       context: backend.Context,
@@ -206,16 +187,7 @@ object UplcConformanceMain extends IOApp:
   ): (Route, Option[ProgramVersion], Run) =
     val (route, prepared) = input match
       case Input.Script(bytes) => (Route.Flat, backend.script(context, bytes))
-      case Input.Text(text) =>
-        UplcParser.program(text) match
-          case Left(error) => (Route.Refused, Left(Run.NoVerdict(Unanswered.TextRefused(error))))
-          case Right(program) =>
-            Either
-              .catchNonFatal(ScriptWriter.script(program))
-              .fold(
-                _ => (Route.Unencodable, backend.text(context, program)),
-                bytes => (Route.Encoded, backend.script(context, bytes))
-              )
+      case Input.Text(text)    => backend.source(context, text)
     prepared.fold(run => (route, None, run), p => (route, Some(p.version), p.evaluate(Limit)))
 
   /** The report's item of a scenario. */

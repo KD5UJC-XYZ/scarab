@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.plutus.ndc
 
 import cats.syntax.all.*
 import scalus.cardano.ledger.ExUnits as ScalusExUnits
-import scalus.uplc.Term as STerm
+import scalus.uplc.{Program as SProgram, Term as STerm}
 import scalus.uplc.eval.{Log, OutOfExBudgetError}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{
@@ -22,7 +22,8 @@ import xyz.kd5ujc.scarab.plutus.{
 import xyz.kd5ujc.scarab.uplc.{Program, ProgramVersion, ProtocolMajor, Term}
 import xyz.kd5ujc.scarab.uplc.cek.{BudgetMode, CekError, CekResult, MachineParameters}
 import xyz.kd5ujc.scarab.uplc.cost.ExBudget
-import xyz.kd5ujc.scarab.uplc.text.ProgramError
+import xyz.kd5ujc.scarab.uplc.flat.{FlatEncodeError, FlatEncoder}
+import xyz.kd5ujc.scarab.uplc.text.UplcParser
 import xyz.kd5ujc.scarab.uplc.ledger.{
   EvaluationError,
   LedgerContext,
@@ -74,9 +75,8 @@ enum Unanswered:
   /** The Scalus machine threw what is not the reference's failure. */
   case Thrown(error: Throwable)
 
-  /** The `uplc` module's text parser, test code, refused the program: no production code judged it.
-    */
-  case TextRefused(error: ProgramError)
+  /** The program could not be written in Flat for a reason other than its constants. */
+  case Encoding(error: FlatEncodeError)
 
   /** The native library through which Scalus evaluates the BLS12-381, secp256k1 and Ed25519
     * builtins did not load ([[NativeCrypto]]). `ScalusEvaluator` reports such a builtin as no
@@ -93,7 +93,7 @@ enum Unanswered:
     case Conversion(error)    => error.message
     case Thrown(error)        => error.toString
     case NativeCryptoMissing  => "the native crypto library did not load"
-    case TextRefused(error)   => s"the test-tree text parser refused it: $error"
+    case Encoding(error)      => s"the program could not be written in Flat: $error"
 
 /** A program decoded, admitted and closed for its language and protocol, with the machine of its
   * evaluation context: what remains is the pure CEK evaluation.
@@ -128,6 +128,28 @@ trait UplcBackend:
     * backend's order, with no Flat admission.
     */
   def text(context: Context, program: Program): Either[Run, Prepared]
+
+  /** A text-only vector: read by the backend's text parser, whose refusal is a parse/decode error;
+    * written in Flat and admitted by [[script]]; or, when Flat cannot write its constants, checked
+    * and run without that admission ([[Route.Unencodable]]).
+    */
+  def source(context: Context, text: String): (Route, Either[Run, Prepared])
+
+/** How a vector reached its backend. */
+enum Route:
+  /** Its `.flat`, through the backend's `deserialiseScript`. */
+  case Flat
+
+  /** Its `.uplc`, read by the backend's text parser, written in Flat and admitted as [[Flat]]. */
+  case Encoded
+
+  /** Its `.uplc`, read by the backend's text parser, with a constant Flat cannot write (BLS12-381):
+    * the checks of `mkTermToEvaluate` and the machine only.
+    */
+  case Unencodable
+
+  /** Its `.uplc`, which the backend's text parser refused: a parse/decode error. */
+  case Refused
 
 object UplcBackend:
   def of(vm: PlutusVm): UplcBackend = vm match
@@ -170,6 +192,19 @@ object OwnBackend extends UplcBackend:
         Left(Run.Failed(Verdict.ParseDecode, UplcText.evaluation(error)))
       case Left(error) => Left(Run.Failed(Verdict.EvaluationFailure, UplcText.evaluation(error)))
       case Right(term) => Right(Prepared(program.version, evaluate(context, term)))
+
+  /** The `uplc` module's parser ([[UplcParser]], the grammar of plutus 1.70.0.0's) and its Flat
+    * writer ([[FlatEncoder]]).
+    */
+  def source(context: Context, text: String): (Route, Either[Run, Prepared]) =
+    UplcParser.program(text) match
+      case Left(error) => (Route.Refused, Left(Run.Failed(Verdict.ParseDecode, error.toString)))
+      case Right(program) =>
+        FlatEncoder.script(program) match
+          case Right(bytes) => (Route.Encoded, script(context, bytes))
+          case Left(FlatEncodeError.Unencodable(_)) =>
+            (Route.Unencodable, this.text(context, program))
+          case Left(error) => (Route.Encoded, Left(Run.NoVerdict(Unanswered.Encoding(error))))
 
   /** `evaluateTerm` (`LedgerEval.evaluateTerm`) within `limit`; a failure the ledger reads as a
     * defect of this implementation ([[LedgerEval.defect]]) is no verdict.
@@ -268,6 +303,25 @@ object ScalusBackend extends UplcBackend:
       term <- ScalusTerms.toScalus(program.term).leftMap(unconverted)
       prepared <- prepared(context, version, open, term)
     yield prepared
+
+  /** Scalus's own text parser (`Program.parseUplc`) and Flat writer (`Program.cborEncoded`). A free
+    * variable, which Scalus's conversion to de Bruijn indices refuses, is a parse/decode error, as
+    * the upstream conformance runner reports it.
+    */
+  def source(context: Context, text: String): (Route, Either[Run, Prepared]) =
+    SProgram.parseUplc(text) match
+      case Left(error) => (Route.Refused, Left(Run.Failed(Verdict.ParseDecode, error.toString)))
+      case Right(program) =>
+        Either.catchNonFatal(program.deBruijnedProgram) match
+          case Left(error) =>
+            (Route.Refused, Left(Run.Failed(Verdict.ParseDecode, error.toString)))
+          case Right(indexed) if ScalusTerms.holdsBls(indexed.term) =>
+            (Route.Unencodable, prepared(context, indexed.version, None, indexed.term))
+          case Right(_) =>
+            Either.catchNonFatal(program.cborEncoded) match
+              case Right(bytes) => (Route.Encoded, script(context, Bytes.fromArray(bytes)))
+              case Left(error) =>
+                (Route.Encoded, Left(Run.NoVerdict(Unanswered.Thrown(error))))
 
   private def unconverted(error: ConversionError): Run =
     Run.NoVerdict(Unanswered.Conversion(error))
