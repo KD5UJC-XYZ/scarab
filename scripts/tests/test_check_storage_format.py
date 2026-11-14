@@ -84,8 +84,8 @@ class SurfaceTest(TreeTest):
 
     def test_comments_and_white_space_do_not_count(self):
         self.edit(fmt.REGISTRY, 'enum FormatVersion', '// a comment with "SCRBSNPB" and { braces\nenum FormatVersion')
-        self.edit(CODEC, 'private val GoldenSidecarFingerprint = "7650a759442924ec"',
-                  'private val GoldenSidecarFingerprint = "7650a759442924ec" /* "00" { */   ')
+        self.edit(CODEC, 'private val GoldenSidecarFingerprint = "96de6ee331c309c3"',
+                  'private val GoldenSidecarFingerprint = "96de6ee331c309c3" /* "00" { */   ')
         self.assertEqual(self.check(), [])
 
     def test_a_new_version_a_changed_identifier_or_a_new_layout_is_a_change(self):

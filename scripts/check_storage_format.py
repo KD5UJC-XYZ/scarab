@@ -145,9 +145,9 @@ FORMAT_MEMBERS = (
 FIXTURE_DIRS = ('fixtures/snapshot-*', 'fixtures/network-identity-*')
 MAGIC = re.compile(r'(?:SCRB|CSL)[A-Z0-9]{4,5}')
 DEPLOYED = 'V8'
-# The digest of the surface of main (458e201bd) on 2026-11-14, when the freeze began. It admits that surface with
-# no approval entry; it approves nothing.
-BASELINE_SURFACE_SHA256 = '81701cee77a1f5bb530fb0d709325734a43625711bbbb9c186859e73d0edf484'
+# The digest of the surface of main (bc0e4995a, after #994 merged) on 2026-11-14, when the freeze began. It admits
+# that surface with no approval entry; it approves nothing.
+BASELINE_SURFACE_SHA256 = '70764189f895a35b3fd61c4f52d4e968c8fc3e729ea0dfe5d4d8e6f8f8289c0d'
 
 # The paths a storage format change may touch, and nothing else (FMT-1). First what the owner named: the
 # persisted-format code and its tests, the migration, the snapshot fixtures, the manifest, the storage-migration
