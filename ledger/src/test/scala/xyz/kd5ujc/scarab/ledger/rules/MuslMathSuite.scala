@@ -8,14 +8,15 @@ import java.nio.file.{Files, Path}
 import munit.ScalaCheckSuite
 import org.scalacheck.{Gen, Prop}
 import org.scalacheck.Prop.forAll
+import xyz.kd5ujc.scarab.codec.Rational
 
 /** [[MuslMath]] against the cardano-node 11.1.3 release binary's own `log`, `pow` and `exp`
   * (#1003).
   *
   * `fixtures/reference/release-libm` holds what `scripts/oracle/release-libm/run.py` measured by
   * calling the binary's machine code: function cases over the likelihood and query inputs, every
-  * table interval and every special branch; 63 likelihood records; and the bytes of the binary's
-  * tables.
+  * table interval and every special branch; 63 likelihood records, among them the 11 stake shares
+  * whose `Float` samples JVM `Math` got wrong; and the bytes of the binary's tables.
   */
 class MuslMathSuite extends ScalaCheckSuite:
 
@@ -226,6 +227,67 @@ class MuslMathSuite extends ScalaCheckSuite:
       Vector(Exp.invln2N, Exp.shift, Exp.negln2hiN, Exp.negln2loN) ++ Exp.poly
     )
     assertEquals(exp.drop(14), Exp.tab.toVector)
+  }
+
+  // ---- the likelihoods (`Rewards.likelihood`)
+
+  private final case class Record(
+      c: BigInt,
+      total: BigInt,
+      s: Long,
+      d: Long,
+      asc: Long,
+      n: BigInt,
+      m: BigInt,
+      samples: Vector[Int]
+  )
+
+  private val records: Vector[Record] = rows.filter(r => text(r, "f") == "lik").map { row =>
+    val c = row.hcursor
+    def number(key: String): BigInt = c.get[BigInt](key).fold(e => fail(e.message), identity)
+    val stake = c.get[Vector[BigInt]]("stake").fold(e => fail(e.message), identity)
+    Record(
+      stake(0),
+      stake(1),
+      hex(row, "s"),
+      hex(row, "d"),
+      hex(row, "asc"),
+      number("n"),
+      number("m"),
+      c.get[Vector[String]]("samples")
+        .fold(e => fail(e.message), identity)
+        .map(Integer.parseUnsignedInt(_, 16))
+    )
+  }
+
+  private def samples(r: Record): Vector[Int] =
+    Rewards
+      .likelihood(r.n, Rational(r.c, r.total), fromBits(r.asc), fromBits(r.d), r.n + r.m)
+      .weights
+      .map(w => java.lang.Float.floatToRawIntBits(w.float))
+
+  /** Stake shares of Preview's circulation where JVM `Math` 's samples differed from the release
+    * binary's, 4 to 50 of 100, by up to 52 Float ulps: a 1-ulp difference in `pow` that
+    * `1 - pow(...)` magnifies.
+    */
+  private val flips = Set(530407219L, 100255168L, 223921727L, 58649595L, 4478023683L, 1158886040L,
+    23328003492L, 2461254950L, 468304424L, 1328391258L, 11766585580L).map(BigInt(_))
+
+  test("the stake shares of #1003 give the release binary's Float samples") {
+    val flipped = records.filter(r => flips(r.c))
+    assertEquals(flipped.size, 22)
+    flipped.foreach(r => assertEquals(samples(r), r.samples, s"stake ${r.c}/${r.total}, m ${r.m}"))
+  }
+
+  test("every likelihood record gives the release binary's Float samples") {
+    records.foreach { r =>
+      assertEquals(
+        bitsOf(Rewards.asDouble(Rational(r.c, r.total))),
+        r.s,
+        s"stake ${r.c}/${r.total}"
+      )
+      assertEquals(samples(r), r.samples, s"stake ${r.c}/${r.total}, n ${r.n}, m ${r.m}")
+    }
   }
 
   // ---- beyond the corpus

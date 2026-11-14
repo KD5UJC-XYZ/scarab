@@ -1036,7 +1036,7 @@
     "fixtures/reference/refusals/shelley-families/states/f2519ee254ffb65cc5721007ce0867bb2435518ca6d068948381e1212e1862a2.cbor": "f2519ee254ffb65cc5721007ce0867bb2435518ca6d068948381e1212e1862a2",
     "fixtures/reference/refusals/shelley-families/utxo/20c6d1db23c2e5139fd6eb11bbbf7c1c0c78ed11305d8c1f6203df5c5ddcc814.cbor": "20c6d1db23c2e5139fd6eb11bbbf7c1c0c78ed11305d8c1f6203df5c5ddcc814",
     "fixtures/reference/release-libm/cases.jsonl": "5e64d122e10a3e90f5c9affc02b38391d173539b01f005ed1c4264bd23b29d38",
-    "fixtures/reference/release-libm/provenance.json": "823e2479db33a6d08cc81a82babca66322a1cfd6e4dc2c83dcdd01a9e0a02461",
+    "fixtures/reference/release-libm/provenance.json": "19324291ccbcc606d457025cf7204a31c04023f4ca7635595e1ef447ed44729b",
     "fixtures/reference/release-libm/tables.txt": "af3a5fbb3d0aaba21812a4e5e2cc63e14bd20f4b501688449ff45497e38401fa",
     "fixtures/reference/remaining-predicates/metadata-bodies.hex": "8cd3c0a8693a022f1cb5cb558a6844a41a3d3df4ad0f9390f978471671a6e38e",
     "fixtures/reference/remaining-predicates/outputs.json": "e92a1ad9239729e382082e47c2a11c09d73efb115cad0ccbacd56f57a76bf4c2",

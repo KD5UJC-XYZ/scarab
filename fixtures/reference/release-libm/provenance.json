@@ -35,5 +35,8 @@
       "pow": 1855
     }
   },
-  "replay": "python3 scripts/oracle/release-libm/run.py"
+  "replay": "python3 scripts/oracle/release-libm/run.py",
+  "notCovered": {
+    "nodeCodePath": "The node's own likelihoods for a pool with a tiny stake share: no capture holds them; the follow-up of #1003 tracks it."
+  }
 }

@@ -795,6 +795,32 @@
       "page": "docs/compatibility/ledger-incremental-rewards.md"
     },
     {
+      "id": "ledger-pool-ranking-libm",
+      "component": "Ledger: pool-ranking floating point on the reference's libm (#1003)",
+      "status": "implemented",
+      "summary": "Likelihoods and performance estimates call a port of musl's log, pow and exp, bit for bit with the release node",
+      "evidence": {
+        "suites": [
+          "MuslMathSuite",
+          "WalletPeerReferenceSuite",
+          "RewardLikelihoodSuite"
+        ],
+        "paths": [
+          "fixtures/reference/release-libm/cases.jsonl",
+          "scripts/oracle/release-libm/run.py"
+        ],
+        "issues": [
+          1003
+        ]
+      },
+      "limitations": {
+        "issues": [
+          1003
+        ]
+      },
+      "page": "docs/compatibility/ledger-pool-ranking-libm.md"
+    },
+    {
       "id": "ledger-alonzo-babbage",
       "component": "Ledger: Alonzo and Babbage",
       "status": "implemented",

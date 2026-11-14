@@ -15,8 +15,9 @@ import xyz.kd5ujc.scarab.ledger.state.*
   * credential's rewards are a set of [[Reward]] s that name the pool they came from and whether as
   * leader or as member. The native update retains this per-pool attribution through application.
   *
-  * Pool-performance likelihoods use the reference Double computation rounded to Float; completion
-  * combines their captured values with previous history, including imported updates.
+  * Pool-performance likelihoods use the reference Double computation, on the reference's libm,
+  * rounded to Float; completion combines their captured values with previous history, including
+  * imported updates.
   */
 object Rewards:
 
@@ -30,7 +31,7 @@ object Rewards:
   // and denominator separately. Eighty decimal digits distinguish the Double rounding boundaries
   // for the bounded ledger stake/parameter fractions (Word64 numerator and denominator).
   private val doublePrecision = new java.math.MathContext(80)
-  private def asDouble(r: Rational): Double =
+  private[ledger] def asDouble(r: Rational): Double =
     new java.math.BigDecimal(r.numerator.bigInteger)
       .divide(new java.math.BigDecimal(r.denominator.bigInteger), doublePrecision)
       .doubleValue
@@ -38,21 +39,24 @@ object Rewards:
   /** `leaderProbability` and `likelihood` (`PoolRank.hs:125-178`, shelley 1.19.0.1). Every snapshot
     * pool contributes, including pools that produced no blocks. Keep the reference's operation
     * order, Double logarithms and final Float rounding; this is ranking data, not monetary maths.
+    * `pow` and `log` are the release node's own, musl's ([[MuslMath]]): the JVM's differ in the
+    * last bit, and for a tiny stake `1 - pow(...)` magnifies that into different Float samples
+    * (#1003).
     */
-  private def likelihood(
+  private[ledger] def likelihood(
       made: BigInt,
       stake: Rational,
       active: Double,
       d: Double,
       slots: BigInt
   ): Likelihood =
-    val t = (1.0 - math.pow(1.0 - active, asDouble(stake))) * (1.0 - d)
+    val t = (1.0 - MuslMath.pow(1.0 - active, asDouble(stake))) * (1.0 - d)
     val n = made.toDouble
     // `unEpochSize` subtraction is Word64 subtraction in the reference.
     val m = ((slots - made) & ((BigInt(1) << 64) - 1)).toDouble
     Likelihood(Vector.tabulate(100) { i =>
       val x = (i.toDouble + 0.5) / 100.0
-      LogWeight((n * math.log(x) + m * math.log(1.0 - t * x)).toFloat)
+      LogWeight((n * MuslMath.log(x) + m * MuslMath.log(1.0 - t * x)).toFloat)
     })
 
   /** `hardforkAllegraAggregatedRewards` (`HardForks.hs`): from protocol version 3 a credential gets

@@ -17,11 +17,15 @@ import xyz.kd5ujc.scarab.consensus.state.{
   Placement,
   ProtocolState
 }
+import java.lang.Float.floatToRawIntBits
 import xyz.kd5ujc.scarab.ledger.{Horizon, PlutusStats, PoolRelayError, Utxo}
+import xyz.kd5ujc.scarab.ledger.rules.{Globals as RuleGlobals, Rewards}
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   ConwayLedgerState,
   NewEpochState,
+  NonMyopic,
+  PulsingRewUpdate,
   ShelleyBasedEra,
   SlotNo,
   WithOrigin
@@ -195,6 +199,34 @@ class WalletPeerReferenceSuite extends FunSuite:
           case other => fail(s"expected successful HFC result, got $other")
       case other => fail(s"expected MsgResult, got $other")
     assert(amounts.exists(_ > 0), "fixture must exercise the nonzero member reward formula")
+  }
+
+  /* The release node's completed reward update of the epoch, recomputed from its own state (#1003): the
+   * likelihoods of each pool from the go snapshot and the blocks of the previous epoch, combined with the
+   * stored history, Float bit for Float bit, and the rest of the update. The pools hold about a third of the
+   * stake each, so this is the whole pipeline at large stake shares; tiny shares, where the libm matters, are
+   * `MuslMathSuite`'s.
+   */
+  test("the native completed reward updates, likelihoods included, are recomputed bit for bit") {
+    val completed = fixtures.flatMap { fixture =>
+      fixture.state.nes.ru.collect { case PulsingRewUpdate.Complete(update) => fixture -> update }
+    }
+    assertEquals(completed.map(_._1.name), Vector("reward-history", "reward-later"))
+    completed.foreach { (fixture, native) =>
+      val nes = fixture.state.nes
+      val globals = RuleGlobals(fixture.state.setup.globals, fixture.state.setup.geometry)
+      val recomputed = Rewards
+        .start(nes.es, nes.bprev, globals, nes.epoch.toBigInt)(using ShelleyBasedEra.SConway)
+        .flatMap(Rewards.complete)
+        .fold(e => fail(e.toString), identity)
+      def bits(n: NonMyopic) =
+        n.likelihoods.toVector.map((pool, l) =>
+          pool -> l.weights.map(w => floatToRawIntBits(w.float))
+        )
+      assertEquals(native.nonMyopic.likelihoods.size, 3, fixture.name)
+      assertEquals(bits(recomputed.nonMyopic), bits(native.nonMyopic), fixture.name)
+      assertEquals(recomputed, native, fixture.name)
+    }
   }
 
   test("genesis bootstrap keeps the injected pool relays and metadata the native node registered") {
