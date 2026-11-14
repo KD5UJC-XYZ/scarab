@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.Monad
+import cats.{Monad, MonadThrow}
 import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.std.Supervisor
 import cats.effect.syntax.all.*
@@ -62,6 +62,21 @@ object LocalServer:
     * `Server.hs` 81-84).
     */
   val ConnAbortedDelay: FiniteDuration = 500.millis
+
+  /** How an accept loop that stopped with `failure` ends, as the reference's `finally` within its
+    * `catch` (`Server.hs` 168-175): `stopped` (`TrServerStopped`), then `error` of the failure
+    * (`TrServerError`), whose value is what the server stops with. A trace that raises replaces the
+    * failure, as an exception of the reference's `finally` handler replaces the one it handles, and
+    * becomes a defect: the loop's fiber ends with a value, whatever its traces do.
+    */
+  private[network] def ending[F[_]: MonadThrow](
+      failure: DiffusionFailure,
+      stopped: F[Unit],
+      error: DiffusionFailure => F[Unit]
+  ): F[DiffusionFailure] =
+    def after(traced: F[Unit], current: DiffusionFailure): F[DiffusionFailure] =
+      traced.attempt.map(_.fold(DiffusionFailure.Defect(_), _ => current))
+    after(stopped, failure).flatMap(current => after(error(current), current))
 
   /** `removeStaleLocalSocket` (`Socket.hs` 211-224): `removeFile` of the path, where nothing there
     * is fine and any other failure refuses the start.
@@ -162,14 +177,13 @@ object LocalServer:
       clients <- supervisor
       _ <- Resource.eval(trace(Trace.ServerStarted(List(address))))
       stopped <- Resource.eval(Deferred[F, DiffusionFailure])
-      // `TrServerStopped` then `TrServerError`, as the reference's `finally` within its `catch`
-      // (`Server.hs` 168-175); the owner learns that the loop stopped even if a trace fails
+      // the owner learns that the loop stopped, and why, even if a trace fails ([[ending]])
       _ <- acceptLoop(listener, address, trace, clients, open)(onFailure)(handle)
         .onCancel(trace(Trace.ServerStopped))
-        .flatMap(failure =>
-          (trace(Trace.ServerStopped) *> trace(Trace.ServerError(failure)))
-            .guarantee(stopped.complete(failure).void)
+        .flatMap(
+          ending(_, trace(Trace.ServerStopped), failure => trace(Trace.ServerError(failure)))
         )
+        .flatMap(stopped.complete(_).void)
         .background
     yield stopped.get
 

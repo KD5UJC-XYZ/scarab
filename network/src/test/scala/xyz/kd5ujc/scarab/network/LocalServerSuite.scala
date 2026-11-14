@@ -530,11 +530,14 @@ class LocalServerSuite extends FailsOnUncaught:
       )
   }
 
-  // #945, item 1: as the reference's `finally` (`Server.hs` 168-175), and as BearerServer since #931
-  test("the owner learns that the accept loop stopped even if tracing it fails") {
+  // #945, item 1: as the reference's `finally` within its `catch` (`Server.hs` 168-175), a trace
+  // that raises replaces the failure, and the loop's fiber still ends with a value
+  // (`LocalServer.ending`). Run on the suite's runtime, which fails the test on a fiber error that
+  // nobody observes.
+  test("the owner learns that the accept loop stopped, and why, even if tracing it fails") {
     val exhausted = acceptFailure(Errno.EMFILE)
     val unwritable = new java.io.IOException("No space left on device")
-    val program =
+    def stopsWith(failing: Trace => Boolean) =
       for
         log <- Ref.of[IO, Vector[Call]](Vector.empty)
         queue <- Queue.unbounded[IO, Either[AcceptFailure, LocalStream[IO]]]
@@ -544,17 +547,32 @@ class LocalServerSuite extends FailsOnUncaught:
             .resource[IO, NetworkError](
               Recorded(log, modes, Right(()), queue),
               address,
-              {
-                case Trace.ServerStopped => IO.raiseError(unwritable)
-                case _                   => IO.unit
-              }
+              t => if failing(t) then IO.raiseError(unwritable) else IO.unit
             )((_, _) => IO.unit)((_, _) => IO.never)
-            .use(identity)
+            .use(_.timeout(3.seconds))
         )
       yield result
-    TestControl
-      .executeEmbed(program)
-      .map(result => assertEquals(result, Right(DiffusionFailure.System(exhausted))))
+    for
+      stopped <- stopsWith(_ == Trace.ServerStopped)
+      errored <- stopsWith { case Trace.ServerError(_) => true; case _ => false }
+    yield
+      assertEquals(stopped, Right(DiffusionFailure.Defect(unwritable)))
+      assertEquals(errored, Right(DiffusionFailure.Defect(unwritable)))
+  }
+
+  // #945, item 4, at the JDK boundary: accept on a channel that was never bound throws the JDK's
+  // `NotYetBoundException`, not an `IOException`
+  test("an accept that throws something other than an IOException is a defect, as a value") {
+    temporary
+      .flatMap(dir => jdk.open(LocalAddress(dir.resolve("unbound.socket").toString)))
+      .use {
+        case Left(error) => IO(fail(s"open failed: ${error.show}"))
+        case Right(listener) =>
+          listener.accept.map {
+            case Left(AcceptFailure.Defect(_: java.nio.channels.NotYetBoundException)) => ()
+            case other => fail(s"not a defect value: $other")
+          }
+      }
   }
 
   // #945, item 4: the reference traces every exception of the accept that is not asynchronous

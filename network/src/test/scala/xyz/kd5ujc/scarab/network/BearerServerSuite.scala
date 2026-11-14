@@ -277,26 +277,26 @@ class BearerServerSuite extends FailsOnUncaught:
       }
   }
 
-  test("the owner learns that the accept loop stopped even if tracing it fails") {
+  // a trace that raises replaces the failure, as an exception of the reference's `finally` handler
+  // replaces the one it handles (`Server.hs` 168-175, `LocalServer.ending`); on the suite's runtime,
+  // which fails the test on a fiber error that nobody observes
+  test("the owner learns that the accept loop stopped, and why, even if tracing it fails") {
     val unwritable = new java.io.IOException("No space left on device")
-    TestControl
-      .executeEmbed(
-        Ref
-          .of[IO, Int](0)
-          .flatMap(calls =>
-            BearerServer
-              .listen[IO, NetworkError](
-                scripted(List(Left(AcceptFailure.System(exhausted))), calls),
-                Listeners.Loopback,
-                {
-                  case BearerServer.Trace.ServerStopped => IO.raiseError(unwritable)
-                  case _                                => IO.unit
-                }
-              )((_, _) => IO.unit)((_, _) => IO.unit)
-              .use(_.stopped)
-          )
+    Ref
+      .of[IO, Int](0)
+      .flatMap(calls =>
+        BearerServer
+          .listen[IO, NetworkError](
+            scripted(List(Left(AcceptFailure.System(exhausted))), calls),
+            Listeners.Loopback,
+            {
+              case BearerServer.Trace.ServerStopped => IO.raiseError(unwritable)
+              case _                                => IO.unit
+            }
+          )((_, _) => IO.unit)((_, _) => IO.unit)
+          .use(_.stopped.timeout(3.seconds))
       )
-      .map(stopped => assertEquals(stopped, DiffusionFailure.System(exhausted)))
+      .map(stopped => assertEquals(stopped, DiffusionFailure.Defect(unwritable)))
   }
 
   test("an accept that fails with a defect is traced and stops the server with it") {
