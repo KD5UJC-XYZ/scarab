@@ -1,9 +1,8 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Get an independent review of a pull request
 
-**Status: Current.** The rule is [CONTRIBUTING](../../CONTRIBUTING.md#independent-review): every pull request
-gets an independent review of its final diff before it is marked ready, and for agent work that is a read-only
-Codex review. This is the order of work.
+**Status: Current.** The rule is [CONTRIBUTING's independent review](../../CONTRIBUTING.md#independent-review);
+this is the order of work.
 
 1. Review the final diff: after the level's gates and preflight pass on the head
    ([run the gates](run-the-gates-to-ready.md)), and before `gh pr ready`. The pull request stays a draft until
@@ -29,8 +28,7 @@ Codex review. This is the order of work.
 6. Post the review on the pull request (`gh pr comment <number> --body-file <file>`): each finding quoted, and its
    disposition, fixed in which commit or rejected and why.
 7. Fill in the body's "Independent review" section: the link to that comment, the verdict, and the disposition of
-   each finding in a line. `scripts/pr_policy.py` refuses a pull request that is not a draft without the section
-   and a link in it.
+   each finding in a line.
 8. If the fixes changed more than wording, run a second, shorter review scoped to the fix commits, and post and
    link it the same way. After a rebase that changes the diff, the review covers the new head.
 
