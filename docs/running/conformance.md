@@ -52,34 +52,61 @@ python3 -I scripts/conformance/run.py uplc-turbo --out <dir> [--cpus 3] [--memor
 
 A busy or shared machine moves its `cpu_us` measurements and the score the site gives them.
 
-## Names
+## Names and the reports repository
 
 A report is `scarab-YYYYMMDD-<scenario>.json.gz`, or `scarab-YYYYMMDD-cbor-decoding-<era>.json.gz`, dated by its
-`generated_at` in UTC. The date is the only run of eight digits in the name: the site takes, for each scenario, the
-newest file of a release whose name carries a date and matches the asset glob of Scarab's node entry
-(`scarab-*-<scenario>.json`, the compression suffix aside). The provenance file,
-`scarab-YYYYMMDD-<scenario>.provenance.json`, matches no such glob.
+`generated_at` in UTC, with `scarab-YYYYMMDD-<scenario>[-<era>].provenance.json` beside it.
+
+Reports are published to the public repository `KD5UJC-XYZ/scarab-conformance`, which holds nothing else:
+
+- `reports/<scenario>/scarab-YYYYMMDD-<scenario>[-<era>].json.gz`: every published report, with its provenance;
+- `latest/<scenario>[-<era>].json.gz`: the newest report of each scenario and era, with its provenance;
+- `README.md`, which `publish.py` writes from `latest/`.
+
+The site reads a node's reports from the URLs of its entry, one per scenario and one per era for `cbor-decoding`,
+and decompresses a `.gz` it downloads. Scarab's entry names the fixed files of `latest/`, for example
+`https://raw.githubusercontent.com/KD5UJC-XYZ/scarab-conformance/main/latest/ledger-rules.json.gz` and
+`.../latest/cbor-decoding-conway.json.gz`.
 
 ## Publishing on demand
 
-`scripts/conformance/publish.py` uploads reports and their provenance to the `conformance-reports` pre-release of
-`KD5UJC-XYZ/scarab`, creating it when absent. It is published, never marked latest, and its notes say that it
-holds generated reports and is not a Scarab release. Unless `--apply` is given it is a dry run (`--dry-run`,
-the default) that prints the `gh` commands and runs none:
+`scripts/conformance/publish.py` commits reports and their provenance to the reports repository and pushes them.
+Unless `--apply` is given it is a dry run (`--dry-run`, the default) that prints every action and runs none: no
+`gh` or `git` command, and no file written:
 
 ```sh
 python3 -I scripts/conformance/publish.py <dir> --dry-run  # the default
-python3 -I scripts/conformance/publish.py <dir> --apply    # needs gh with write access to the repository
+python3 -I scripts/conformance/publish.py <dir> --apply    # clones the reports repository, commits and pushes
 ```
 
-It refuses a file whose provenance does not match it or records a failed check or uncommitted changes, a report
-whose commit is not on GitHub, and a file of the same name already released, unless `--replace` (a second run on
-the same day replaces the first).
+With `--apply` it checks that each report's Scarab commit is on GitHub (with `gh`), clones the reports repository
+shallowly with your own Git credentials (`--repo-url` names another; `--checkout <dir>` uses an existing clone),
+copies each report under `reports/`, points `latest/` at it unless a newer report is there, writes `README.md`,
+commits with a message that names the Scarab commits, and pushes to `main`. It refuses a file whose provenance does
+not match it or records a failed check or uncommitted changes, a report whose commit is not on GitHub, and a dated
+report that is already published, unless `--replace` (a second run on the same day replaces the first).
 
 On GitHub, the **Conformance reports** workflow (`.github/workflows/conformance.yml`, run by hand only) runs the
-runner for the scenarios ticked (`ledger-rules`, `uplc-conformance` and `cbor-decoding`; turbo is not offered),
-keeps the files as a workflow artifact, and publishes them when `publish` is ticked and the run is on `main`.
-A turbo report from a local machine is published with `publish.py` directly.
+runner for the scenarios ticked (`ledger-rules`, `uplc-conformance` and `cbor-decoding`; turbo is not offered) and
+keeps the files as a workflow artifact. When `publish` is ticked and the run is on `main`, a job of its own checks
+out the reports repository with the deploy key in the secret `CONFORMANCE_REPO_DEPLOY_KEY` and runs
+`publish.py --apply` there; this repository's token stays read-only. The job fails at once if the secret is not
+set. A turbo report from a local machine is published with `publish.py` directly.
+
+### Setting up the reports repository and its key
+
+Done once, by a maintainer of both repositories:
+
+1. Create the public repository `KD5UJC-XYZ/scarab-conformance` with a first commit on `main` (for example
+   GitHub's "Add a README"); `publish.py` replaces that README.
+2. Make a key pair for it alone, outside any checkout:
+   `ssh-keygen -t ed25519 -N '' -C scarab-conformance-deploy -f <key-file>`.
+3. Add `<key-file>.pub` to the reports repository as a deploy key with write access (Settings, Deploy keys).
+4. Store the private key as an Actions secret of `KD5UJC-XYZ/scarab`:
+   `gh secret set CONFORMANCE_REPO_DEPLOY_KEY --repo KD5UJC-XYZ/scarab < <key-file>`, then delete `<key-file>`.
+
+The key can push to the reports repository only. To revoke it, delete the deploy key; to rotate it, repeat
+steps 2 to 4.
 
 ## Moving to a newer corpus
 
