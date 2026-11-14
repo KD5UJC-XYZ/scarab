@@ -58,20 +58,27 @@ offsets and line breaks are kept. It finds headers by their keyword and extents 
 needs no build, so the guard runs in CI's scripts job, which compiles nothing.
 
 SemanticDB is on in the build, but its output exists only after compiling, and reading it needs a protobuf
-decoder. The reader fails closed instead. If a line under a root is held by no definition and is not a `package`,
-`import` or `export` clause or an `end` marker, the guard refuses the line. So a construct the reader does not know
-fails the guard; it never passes unseen.
+decoder. The reader fails closed instead, and the guard refuses these lines as unread:
+- a line under a root that no definition holds and that is not a `package a.b`, `import`, `export` or `end`
+  line;
+- a clause line with a `;`, or a `package` with a body;
+- a definition written after a `{` or `;` on a line of a class, object, trait, enum or extension body
+  (`object A { def f = 1 }`);
+- a second definition after a `;` on a definition's header line.
 
-At e1662cda7 the reader found 7,609 definitions and no unread line. A looser scan for definition keywords at the
+So a definition is written on a line of its own, where the reader keys it.
+
+At bc0e4995a the reader found 7,609 definitions and no unread line. A looser scan for definition keywords at the
 start of a statement found nothing the reader had missed.
 
 ### Granularity
 
 The map works at the member level, so a decision function, a data type and a state machine are each one entry.
 
-Measured over the 20 commits of `main` before e1662cda7 that touched the roots:
-- member-level digests changed for 451 keys, 253 of them new;
-- digests of whole top-level definitions changed 190 times;
+Measured over the 20 most recent first-parent commits of `main` at bc0e4995a that change a Scala file under the
+roots. For each commit, the keys of its changed files are compared between the commit and its first parent:
+- at the member level, 240 keys were new, 50 removed and 136 changed;
+- at the level of whole top-level definitions, 185 changed;
 - the four commits whose changes under the roots were comments only changed no digest at either level.
 
 The coarser level would mean fewer entries to update, but one entry for a whole object can name no counterpart
@@ -116,14 +123,21 @@ plumbing, local policy, adapters. It is not a hiding place for code that mirrors
 ### The digest
 
 The digest covers a definition's own lines. These are its extent, without the extents of the keyed definitions it
-holds, plus the header of the `extension` block it is in. Comments, trailing white space and empty lines are
-dropped. Indentation under the header is kept, because Scala 3's indentation carries meaning, and lines inside a
-multi-line literal are kept as written.
+holds, plus the header of the `extension` block it is in. Comments and empty lines are dropped, and outside
+literals each run of white space after the indentation becomes one space, with none at a line's end. Indentation
+under the header is kept, because Scala 3's indentation carries meaning, and the text of every literal is kept as
+written. An `extension` block with only private methods belongs to its owner.
 
 So:
-- a comment edit changes no digest;
+- a comment edit, or a change of alignment, changes no digest;
 - a change to a definition's code, its annotations or a private helper changes its own digest;
 - a change to a member with its own key changes that member's digest only.
+
+It is not insensitive to everything that leaves the meaning alone:
+- a line break that scalafmt moves changes the digest;
+- so does a comment inside a string interpolation's `${...}`;
+- so does a blank line between an annotation and its definition, which moves the annotation to the owner;
+- an anonymous given's name is made from its first line only.
 
 ## The baseline
 
@@ -134,18 +148,23 @@ Each key holds either `null` or a hint. A hint is the counterpart the definition
 at the pin like an entry's `upstream`. It was seeded only where all of these held:
 - the comment names a registered revision or release in the same comment;
 - the cited file resolves at that revision;
-- the symbol it names is defined there, and the cited lines cover that definition.
+- a symbol the comment names, or the declaration the cited line starts, is declared in the cited lines;
+- that symbol shares the definition's name: one contains the other, ignoring case, or the owner's name where the
+  definition's own is a verb such as `decode`.
 
-A hint says where the counterpart is. It does not say that the definition mirrors it. That claim needs a
-reviewed entry.
+A hint is where to start the review. It can point at a related declaration rather than the counterpart, such as
+the universe tag of a type rather than the type itself. It does not say that the definition mirrors it. That claim
+needs a reviewed entry.
 
 The baseline shrinks:
 - a key that is mapped or glue now fails the check until `--write-baseline` drops it;
-- `--write-baseline` never adds a key;
-- where the history of `origin/main` is at hand, a key or hint added since the merge base is refused.
+- `--write-baseline` never adds a key, and writes only when the rest of the check passes;
+- a key or hint that the base's baseline did not have is refused.
 
-CI's checkout is shallow, so there the growth check reports that it did not run. A reviewer sees the baseline's
-diff.
+The base is the target branch on a pull request in CI: the merge commit's first parent, which the scripts job
+checks out two commits deep for this. Without it the check fails. Elsewhere the base is the merge base with
+`origin/main`, and without that history the check reports that it did not run. A base with no baseline admits
+the first one.
 
 ## Upstream checks
 
@@ -153,8 +172,8 @@ The guard always checks that an upstream counterpart names a pinned revision and
 given (`--sources DIR` or `SCARAB_REFERENCE_SOURCES`), it reads each file at the revision with `git show`, never
 from a working tree. It then checks that the file exists, that `lines` lie within it, and that `symbol` occurs
 in those lines. The directory holds one clone per repository, named as the repository is (`ouroboros-network`,
-`cardano-ledger`, `plutus`, ...). Without clones, as in CI, the guard prints that the check did not run, and
-passes.
+`cardano-ledger`, `plutus`, ...). Given clones must hold every repository and revision the map names, or the check
+fails. Without clones, as in CI, the guard prints that the check did not run, and passes.
 
 ## How to update the map
 
@@ -174,7 +193,10 @@ passes.
 
 ## What the guard does not check
 
-- Whether a class or a `same` structure is true. A reviewer checks that against the pinned source.
+- Whether a class or a `same` structure is true. A reviewer checks that against the pinned source. `same` covers
+  the whole definition: a definition that also does what its counterpart does not, or only part of it, is
+  `differs`.
+- Changes to a baselined or glue definition: neither has a digest.
 - Whether an evidence suite compares with the reference. The guard checks only that the suite exists.
 - Whether a glue reason is honest.
 - Code outside the roots, including `node`.
