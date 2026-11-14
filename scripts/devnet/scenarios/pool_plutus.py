@@ -74,10 +74,12 @@ def failure_path(reason):
 def joined(events, tips):
     """Whether blocks and transactions cross between the Haskell pools and the Scala node both ways: a block the Scala
     node forged has been the observer's tip (`tips`, the tip hashes read so far), and the Scala node's mempool has added
-    a transaction, which before the Plutus load starts can only have come from its Haskell peers. Until a pool has
-    promoted its connection to the Scala node, a transaction it holds does not reach the Scala node, and a fork can then
-    take a block of the pools, with a round's setup transaction in it, off the chain while no mempool holds the
-    transaction to bring it back (consensus does not put an orphaned block's transactions back in the mempool)."""
+    a transaction, which before the Plutus load starts can only have come from its Haskell peers. The pools start
+    before the Scala node listens: their first connections to it fail, and the reference's backoff puts the next ones
+    seconds later. Until a pool's own connection to the Scala node is up it fetches none of its blocks and offers it none
+    of its transactions, so a fork can take a block of the pools, with a round's setup transaction in it, off the chain
+    while no mempool holds the transaction to bring it back (consensus does not put an orphaned block's transactions
+    back in the mempool)."""
     forged = {e["hash"] for e in events if e["event"] == "forged"}
     return bool(forged & tips) and any(e["event"] == "mempoolAdded" for e in events)
 
