@@ -80,6 +80,16 @@ regexTarget = "line"
 paths = ['''^docs/data/fixture-inventory\.json$''']
 regexes = ['''^\n?[ \t]*"(?:fixtures|[a-z][a-z0-9-]*/src/test/resources)/(?:[A-Za-z0-9_+.-]+/)*[A-Za-z0-9_+.-]+"[ \t]*:[ \t]*"[0-9a-f]{64}",?[ \t]*$''']
 
+# The storage format manifest (FMT-1, scripts/check_storage_format.py): SHA-256 digests of format code, goldens and
+# fixtures, keyed by path and definition name, so a name such as "RocksUtxoStore.StampKey" next to a digest looks
+# like a key to the entropy check. Only a complete `"name": "<lowercase SHA-256>"` line of that one file is allowed.
+[[rules.allowlists]]
+description = "storage format manifest name to lowercase SHA-256 entry"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^docs/data/storage-format\.json$''']
+regexes = ['''^\n?[ \t]*"[^"\n]+"[ \t]*:[ \t]*"[0-9a-f]{64}",?[ \t]*$''']
+
 # Exact public reward-account credentials from the native three-certificate capture.
 # These are Blake2b-224 stake key hashes, not signing material; other values still scan.
 [[rules.allowlists]]
