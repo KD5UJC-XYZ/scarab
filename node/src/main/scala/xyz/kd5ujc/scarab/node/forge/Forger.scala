@@ -279,7 +279,10 @@ final class Forger[F[_]: Async, S](
 
   /** Until the next slot, as the reading at `instant` puts it (`timeLeft` of `getCurrentSlot'`),
     * waited on the monotonic clock as `threadDelay` waits: `elapsed` of it is already spent, and a
-    * wall clock moved meanwhile does not lengthen it.
+    * wall clock moved meanwhile does not lengthen it. The whole time left is waited, to the
+    * nanosecond: a wait cut short of the boundary would read the same slot again, which
+    * `checkValidClockChange` takes for a clock moved back (`HardFork.hs` 114-149, consensus
+    * 82ecba32).
     */
   private def untilNext(slot: BigInt, instant: Instant, elapsed: FiniteDuration): F[Unit] =
     // A wait of a century or more is cut to a century, compared before it is converted: its slot
@@ -288,7 +291,7 @@ final class Forger[F[_]: Async, S](
     val until = Duration.between(instant, geometry.slotStart(slot + 1))
     val bounded =
       if until.toDays >= Forger.LongestWait.toDays then Forger.LongestWait
-      else until.toMillis.millis
+      else until.toNanos.nanos
     val left = bounded - elapsed
     sleep(left.max(1.millis))
 

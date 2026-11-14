@@ -248,6 +248,39 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     )
   }
 
+  test("on a steady clock the loop waits until the next slot and traces no clock move") {
+    // `threadDelay` waits the whole time left to the next slot (`HardFork.hs` 114-119, consensus
+    // 82ecba32); a wait cut short of the boundary reads the same slot again, which
+    // `checkValidClockChange` takes for a clock moved back. The clock is half a millisecond past a
+    // whole millisecond, so a wait truncated to milliseconds ends before the boundary.
+    val p = pool(kesStart = 50, seed = 9)
+    TestControl.executeEmbed(
+      withHandle {
+        for
+          h <- harness(
+            p,
+            ledgerWith(p, 1),
+            live = true,
+            unbounded = true,
+            clock = Some(IO.realTimeInstant.map(_.plusSeconds(5000).plusNanos(500000L)))
+          )
+          fiber <- h.forger.run.start
+          _ <- IO.sleep(5200.millis)
+          _ <- fiber.cancel
+          events <- h.seen
+        yield
+          val moved = events.collect { case ForgeEvent.Clock(t: ClockTrace.SystemClockMovedBack) =>
+            t
+          }
+          val attempted = events.collect {
+            case ForgeEvent.Loop(ForgeTrace.StartLeadershipCheck(s)) => s.toInt
+          }
+          assertEquals(moved, Vector.empty[ClockTrace.SystemClockMovedBack])
+          assertEquals(attempted, (5000 to 5005).toVector)
+      }
+    )
+  }
+
   test("a clock moved back 20 s or less is traced and the slot kept; further back the node stops") {
     val p = pool(kesStart = 50, seed = 9)
     def run(back: Long)(using Handle[IO, NodeError]) =
