@@ -12,6 +12,14 @@ x-after-configurator: &after-configurator
   configurator:
     condition: service_completed_successfully
 
+# The pools' containers start once s1's has: Docker's DNS knows a name only while its container runs, so s1's name
+# resolves at the pools' first lookup. The node in s1 still waits until both pools listen (WAIT_FOR).
+x-after-s1: &after-s1
+  configurator:
+    condition: service_completed_successfully
+  s1:
+    condition: service_started
+
 # s1 dials both Haskell pools at once, so it starts only when they listen (cardano/listening.sh, issue 609).
 x-listening: &listening
   test: ["CMD", "/opt/at/listening.sh", "3001"]
@@ -39,7 +47,7 @@ services:
     command: ["/opt/at/haskell-node.sh", "2"]
     healthcheck: *listening
     labels: *labels
-    depends_on: *after-configurator
+    depends_on: *after-s1
     volumes:
       - env:/env:ro
       - ipc-h2:/ipc
@@ -54,7 +62,7 @@ services:
     command: ["/opt/at/haskell-node.sh", "3"]
     healthcheck: *listening
     labels: *labels
-    depends_on: *after-configurator
+    depends_on: *after-s1
     volumes:
       - env:/env:ro
       - ipc-h3:/ipc

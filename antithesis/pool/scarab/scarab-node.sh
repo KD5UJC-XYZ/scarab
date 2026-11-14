@@ -22,7 +22,7 @@ if [ ! -e "$keys/kes.skey" ]; then
 fi
 mkdir -p /data/db
 # WAIT_FOR, when the compose file sets it (every config but config-late-start), names the host:port pairs that must
-# accept a TCP connection before the node starts: the container starts with the pools, so that its name resolves from
+# accept a TCP connection before the node starts: the container starts before the pools', so that its name resolves at
 # their first DNS lookup, and the node still dials them only once they listen (issue 609).
 for target in ${WAIT_FOR:-}; do
   until (exec 3<> "/dev/tcp/${target%:*}/${target#*:}") 2> /dev/null; do

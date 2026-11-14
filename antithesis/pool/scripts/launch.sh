@@ -16,12 +16,12 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 commit=$(docker image inspect scarab-at-scarab:trial --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
 [ -n "$commit" ] || { echo "launch: scarab-at-scarab:trial has no commit label; build it with build.sh" >&2; exit 1; }
 # Validation waits for setup complete: up to 600 s for the pools to agree, then up to 1200 s for the healthy-setup gate,
-# and the canary's cost-model enactment before that gate.
+# and for the canary up to 600 s of cost-model enactment between the two.
 validate_timeout=35m
 case ${CONFIG:-config} in
-  config-canary) name=scarab-canary
+  config-canary) name=scarab-canary validate_timeout=45m
     description="writeBits canary (GHSA-vfw2-hhrc-87v5), k = 5, on Scarab $commit with two cardano-node pools" ;;
-  config-canary-scarab-vm) name=scarab-canary-scarab-vm
+  config-canary-scarab-vm) name=scarab-canary-scarab-vm validate_timeout=45m
     description="writeBits canary (GHSA-vfw2-hhrc-87v5), k = 5, Scarab $commit on its own Plutus evaluator" ;;
   config-reference) name=scarab-pool-reference
     description="control: cardano-node 11.1.3 in s1's seat with two cardano-node 11.1.3 pools, create-env defaults" ;;
