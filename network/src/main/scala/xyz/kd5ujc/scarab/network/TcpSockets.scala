@@ -275,14 +275,15 @@ object TcpSockets:
     def address: SocketAddress[IpAddress] = bound
 
     // between the accept and the stream that owns its channel nothing may cancel, and the channel
-    // is closed if the stream is not made
+    // is closed if the stream is not made; a channel accepted as the accept is cancelled is closed
+    // too ([[LocalSockets.acquiring]])
     def accept: F[Either[AcceptFailure, TcpStream[F]]] =
       F.uncancelable { poll =>
         poll(
-          LocalSockets.interruptible(
+          LocalSockets.acquiring(
             F.blocking(Either.catchNonFatal(server.accept())),
             F.blocking(server.close())
-          )
+          )(_.traverse_(channel => F.blocking(channel.close())))
         ).flatMap {
           case Right(channel) =>
             F.blocking(onAccepted.traverse_(set(channel, _)))

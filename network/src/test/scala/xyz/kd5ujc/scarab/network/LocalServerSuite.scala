@@ -296,6 +296,36 @@ class LocalServerSuite extends FailsOnUncaught:
       .map(result => assertEquals(result, Left(failure)))
   }
 
+  // The call cannot be cancelled, as a blocking accept cannot: the close wakes it, and it returns
+  // what it accepted at that moment, which the cancelled caller never receives.
+  test("what a blocking call acquires as it is cancelled is released, not dropped (#854)") {
+    for
+      started <- Deferred[IO, Unit]
+      closed <- Deferred[IO, Unit]
+      released <- Ref[IO].of(List.empty[Int])
+      call = IO.uncancelable(_ => started.complete(()) *> closed.get.as(7))
+      fiber <- LocalSockets
+        .acquiring(call, closed.complete(()).void)(n => released.update(n :: _))
+        .start
+      _ <- started.get
+      _ <- fiber.cancel
+      outcome <- fiber.join
+      closes <- released.get
+    yield
+      assert(outcome.isCanceled, outcome.toString)
+      assertEquals(closes, List(7))
+  }
+
+  test("a blocking call that acquires and is not cancelled returns its value") {
+    for
+      released <- Ref[IO].of(List.empty[Int])
+      result <- LocalSockets.acquiring(IO.pure(7), IO.unit)(n => released.update(n :: _))
+      closes <- released.get
+    yield
+      assertEquals(result, 7)
+      assertEquals(closes, Nil)
+  }
+
   /** The calls of the server on the sockets, in order. */
   private enum Call:
     case Open, Bind, Listen, Accept
