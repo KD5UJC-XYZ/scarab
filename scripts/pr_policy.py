@@ -6,7 +6,9 @@ Besides the title and the promotion source, the body states the level of the cha
 pull request of level 1 or higher carries the two sections CONTRIBUTING.md asks for ("Commits and pull requests"):
 "Deviations from the reference" (`None`, or a table of behaviour, the pinned reference, what Scarab does and the
 approval link) and "Gaps" (`None`, or bullets that each start with an issue link). A section that opens with
-`None` may go on in prose. The stated level has floors from the changed files (`--files`, the pull request's file
+`None` may go on in prose. A pull request that is not a draft (the event's `draft` flag) also carries an
+"Independent review" section with a link, to the review of its final diff posted on it (CONTRIBUTING.md,
+"Independent review"); a draft passes without it. The stated level has floors from the changed files (`--files`, the pull request's file
 list): a file that is not documentation makes it at least 1, and the persisted-format register at least 3, as the
 levels table of CONTRIBUTING.md defines them. A bot's pull request (a release
 proposal, a dependency update) and a promotion of `dev` to `main` are not checked for these. The promotion controller
@@ -45,6 +47,8 @@ COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 HEADING = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 DEVIATIONS = "deviations from the reference"
 GAPS = "gaps"
+REVIEW = "independent review"
+LINK = re.compile(r"https?://\S+")
 ISSUE_LINK = re.compile(r"(?:\[#\d+\]\([^)]*\)|#\d+\b|https://github\.com/[^/\s]+/[^/\s]+/issues/\d+)")
 APPROVAL = re.compile(r"(?:https?://|#\d+|\]\()")
 SECTION_LEVEL = 1
@@ -117,6 +121,16 @@ def check_gaps(text):
         item = bullet.lstrip("-* ").strip()
         require(bullet.lstrip().startswith(("-", "*")) and ISSUE_LINK.match(item) is not None,
                 "Gaps: each bullet starts with the issue that tracks the gap")
+
+
+def check_review(pr):
+    """A pull request that is not a draft links the independent review of its final diff."""
+    if pr.get("draft") is True:
+        return
+    text = sections(pr.get("body") or "").get(REVIEW)
+    require(text is not None and LINK.search(text) is not None,
+            'a pull request that is not a draft needs an "## Independent review" section that links the review of its '
+            "final diff posted on it (CONTRIBUTING.md, \"Independent review\"); keep it a draft until then")
 
 
 def level_floor(files):
@@ -252,6 +266,7 @@ def check_body(pr, files=()):
         found = sections(body)
         check_deviations(found.get(DEVIATIONS))
         check_gaps(found.get(GAPS))
+    check_review(pr)
     return level
 
 
