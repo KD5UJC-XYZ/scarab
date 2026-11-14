@@ -3,36 +3,22 @@ package xyz.kd5ujc.scarab.ledger.era.babbage
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
-import xyz.kd5ujc.scarab.ledger.{
-  Address,
-  ByteStrings,
-  Datum,
-  LedgerDecodeError,
-  ScriptKind,
-  TxIn,
-  Update
-}
+import xyz.kd5ujc.scarab.ledger.{Address, ByteStrings, Datum, LedgerDecodeError, ScriptKind}
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraScript,
   AlonzoScriptRep,
   BabbageEraTxOut,
   BabbageTxOutRep,
   EraTxError,
-  EraTxOut,
   Language,
   MultiAssetValue,
   NativeScriptRep,
   Plutus,
-  ShelleyEraTxBody,
   Timelock,
   TimelockScripts,
-  TopOnly,
-  TxBody,
-  TxLevel,
   Val
 }
 import xyz.kd5ujc.scarab.ledger.state.Babbage
-import xyz.kd5ujc.scarab.protocol.Era
 
 // Babbage's types: the opaque types are transparent in this file only, so only this file makes a
 // value of Babbage.
@@ -163,48 +149,3 @@ object BabbageTxOut:
       case Datum.Inline(d)               => Some(d)
       case Datum.NoDatum | Datum.Hash(_) => None
     override def referenceScript(out: BabbageTxOut): Option[BabbageScript] = out.scriptRef
-
-/** A Babbage transaction body: `TxBody l BabbageEra` (`BabbageTxBodyRaw`,
-  * `eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs`). Spike: the fields the spike's rules
-  * read; the whole body comes with Babbage's stage.
-  */
-final case class BabbageTxBody private (
-    raw: Bytes,
-    inputs: Vector[TxIn],
-    outputs: Vector[BabbageTxOut],
-    fee: BigInt,
-    update: Option[Update]
-):
-  lazy val id: Bytes = xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(raw)
-
-object BabbageTxBody:
-  given CanEqual[BabbageTxBody, BabbageTxBody] = CanEqual.derived
-
-  /** A Babbage body from its bytes: the era's decoder, its outputs Babbage outputs. */
-  def decode(raw: Bytes): Either[EraTxError, BabbageTxBody] =
-    xyz.kd5ujc.scarab.ledger.TxBody
-      .decode(raw, Era.Babbage)
-      .leftMap(EraTxError.Decode(_))
-      .flatMap(b =>
-        b.outputs
-          .traverse(BabbageTxOut.fromStored)
-          .map(BabbageTxBody(b.raw, b.inputs, _, b.fee, b.update))
-      )
-
-  val instance: ShelleyEraTxBody[Babbage] = new ShelleyEraTxBody[Babbage]:
-    type Level[L <: TxLevel] = TopOnly[L]
-    override def top: TopOnly[TxLevel.Top] = TopOnly.Top
-    override def outputsOf: EraTxOut[Babbage] = BabbageTxOut.instance
-    override def id[L <: TxLevel](body: TxBody[L, Babbage])(using l: TopOnly[L]): Bytes =
-      l match
-        case TopOnly.Top => body.id
-    override def inputs[L <: TxLevel](body: TxBody[L, Babbage])(using l: TopOnly[L]): Vector[TxIn] =
-      l match
-        case TopOnly.Top => body.inputs
-    override def outputs[L <: TxLevel](body: TxBody[L, Babbage])(using
-        l: TopOnly[L]
-    ): Vector[BabbageTxOut] =
-      l match
-        case TopOnly.Top => body.outputs
-    override def fee(body: BabbageTxBody): BigInt = body.fee
-    override def update(body: BabbageTxBody): Option[Update] = body.update

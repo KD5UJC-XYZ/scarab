@@ -682,18 +682,21 @@
     {
       "module": "ledger",
       "path": "ledger/era",
-      "responsibility": "Era-specific transaction types (#85): the type families as match types, the reference's era classes with one instance per era, and the representations the eras share (outputs, native scripts, Alonzo scripts)",
+      "responsibility": "Era-specific transaction types (#85): the type families as match types, the reference's era classes with one instance per era, and what the eras share (output and script representations, certificate parts)",
       "entryPoints": [
         "TxOut",
         "Script",
+        "TxCert",
         "EraTxOut",
         "EraTxBody",
+        "EraTxCert",
         "EraScript",
         "NativeScriptRep",
         "BabbageTxOutRep"
       ],
       "suites": [
         "EraCoreSuite",
+        "EraConwaySuite",
         "EraTxSpikeSuite",
         "EraValueSpikeSuite"
       ],
@@ -719,15 +722,13 @@
     {
       "module": "ledger",
       "path": "ledger/era/babbage",
-      "responsibility": "Babbage's own types: its native, Plutus and script types, its output and its body, opaque outside their file",
+      "responsibility": "Babbage's own types: its native, Plutus and script types and its output, opaque outside their file",
       "entryPoints": [
         "BabbageScript",
-        "BabbageTxOut",
-        "BabbageTxBody"
+        "BabbageTxOut"
       ],
       "suites": [
-        "EraCoreSuite",
-        "EraTxSpikeSuite"
+        "EraCoreSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"
@@ -736,14 +737,16 @@
     {
       "module": "ledger",
       "path": "ledger/era/conway",
-      "responsibility": "Conway's own types: its native, Plutus and script types, its output and its body, and their translations from Babbage, opaque outside their file",
+      "responsibility": "Conway's own types: its native, Plutus and script types, its output, certificate and body, and their translations from Babbage, opaque outside their file",
       "entryPoints": [
         "ConwayScript",
         "ConwayTxOut",
+        "ConwayTxCert",
         "ConwayTxBody"
       ],
       "suites": [
         "EraCoreSuite",
+        "EraConwaySuite",
         "EraTxSpikeSuite"
       ],
       "docs": [

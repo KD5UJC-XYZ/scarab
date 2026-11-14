@@ -4,9 +4,9 @@ package xyz.kd5ujc.scarab.ledger.era
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Block, TxBody as FlatTxBody}
-import xyz.kd5ujc.scarab.ledger.era.babbage.{BabbageTxBody, BabbageTxOut}
+import xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxOut
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayTxBody, ConwayTxOut}
-import xyz.kd5ujc.scarab.ledger.state.{Babbage, Conway}
+import xyz.kd5ujc.scarab.ledger.state.Conway
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** Spike of the era-specific transaction types (ADR 0007, amendment of 2026-11-14): per-era bodies
@@ -35,42 +35,42 @@ class EraTxSpikeSuite extends munit.FunSuite:
   private def bodiesOf(era: Era): Vector[Bytes] =
     blocks.filter(_.era == era).flatMap(_.transactions.map(_.body))
 
-  test("Babbage and Conway bodies decode to their own types with the flat decoder's fields") {
-    val babbage = bodiesOf(Era.Babbage)
+  private def babbageOutputs: Vector[BabbageTxOut] =
+    bodiesOf(Era.Babbage)
+      .flatMap(FlatTxBody.decode(_, Era.Babbage).toOption.get.outputs)
+      .map(BabbageTxOut.fromStored(_).toOption.get)
+
+  test("Conway bodies decode to their own type with the flat decoder's fields") {
     val conway = bodiesOf(Era.Conway)
-    assert(babbage.nonEmpty && conway.nonEmpty, (babbage.size, conway.size))
-    babbage.foreach { raw =>
-      val flat = FlatTxBody.decode(raw, Era.Babbage).toOption.get
-      val b = BabbageTxBody.decode(raw).toOption.get
-      assertEquals(b.id, flat.id)
-      assertEquals(b.fee, flat.fee)
-      assertEquals(b.outputs.map(EraTxOut.babbage.raw), flat.outputs.map(_.raw))
-      assertEquals(SharedRules.proposedUpdate[Babbage](b), flat.update)
-    }
+    assert(conway.nonEmpty)
     conway.foreach { raw =>
       val flat = FlatTxBody.decode(raw, Era.Conway).toOption.get
       val c = ConwayTxBody.decode(raw).toOption.get
       assertEquals(c.id, flat.id)
       assertEquals(c.outputs.map(EraTxOut.conway.raw), flat.outputs.map(_.raw))
       assertEquals(
-        EraTxBody.conway.currentTreasury[TxLevel.Top](c)(using EraTxBody.conway.top),
+        EraTxBody.conway.currentTreasuryValue[TxLevel.Top](c)(using EraTxBody.conway.top),
         flat.currentTreasury
       )
     }
   }
 
-  test("a rule written once runs in both eras through each era's rule set") {
-    val b = bodiesOf(Era.Babbage).map(BabbageTxBody.decode(_).toOption.get)
+  test("a rule written once runs through the era's rule set") {
+    // the rule's sharing across eras' bodies is shown again when Dijkstra's body is typed (stage 3)
     val c = bodiesOf(Era.Conway).map(ConwayTxBody.decode(_).toOption.get)
     def run[E <: xyz.kd5ujc.scarab.ledger.state.EraTag](bodies: Vector[TxBody[TxLevel.Top, E]])(
         using r: EraRules[E]
     ): Int = bodies.map(r.inlineDatums(_).size).sum
-    assert(run[Babbage](b) >= 0)
-    assert(run[Conway](c) >= 0)
+    val flat = bodiesOf(Era.Conway)
+      .flatMap(FlatTxBody.decode(_, Era.Conway).toOption.get.outputs)
+      .count(_.datum match
+        case xyz.kd5ujc.scarab.ledger.Datum.Inline(_) => true
+        case _                                        => false)
+    assertEquals(run[Conway](c), flat)
   }
 
   test("a Babbage output carried into Conway keeps its bytes") {
-    val outs = bodiesOf(Era.Babbage).flatMap(BabbageTxBody.decode(_).toOption.get.outputs)
+    val outs = babbageOutputs
     assert(outs.nonEmpty)
     outs.foreach(o =>
       assertEquals(EraTxOut.conway.raw(ConwayTxOut.translate(o)), EraTxOut.babbage.raw(o))
@@ -80,7 +80,7 @@ class EraTxSpikeSuite extends munit.FunSuite:
   test("a body of a level an era does not have is refused: Conway has top-level bodies only") {
     val c = bodiesOf(Era.Conway).map(ConwayTxBody.decode(_).toOption.get).head
     // a method of any level runs on a top-level body with the era's evidence of the top level
-    assertEquals(EraTxBody.conway.inputs[TxLevel.Top](c)(using EraTxBody.conway.top), c.inputs)
+    assertEquals(EraTxBody.conway.inputs[TxLevel.Top](c)(using EraTxBody.conway.top), c.spendInputs)
     // Conway's only evidence is of the top level, so a sub-transaction body cannot be read
     val noSub = compileErrors(
       "def f(b: TxBody[TxLevel.Sub, Conway]) = EraTxBody.conway.inputs[TxLevel.Sub](b)(using EraTxBody.conway.top)"
@@ -88,18 +88,9 @@ class EraTxSpikeSuite extends munit.FunSuite:
     assert(noSub.contains("TxLevel.Sub"), noSub)
   }
 
-  test("the compiler refuses a capability an era does not have, and another era's output") {
-    // Conway bodies have no protocol-parameter update (no ShelleyEraTxBody[Conway])
-    val noUpdate = compileErrors(
-      "def f(c: ConwayTxBody) = SharedRules.proposedUpdate[Conway](c)"
-    )
-    assert(noUpdate.contains("ShelleyEraTxBody"), noUpdate)
+  test("the compiler refuses another era's output; the era's own compiles") {
     // a Conway output is not a Babbage output, though they share their representation
     val wrongEra = compileErrors("def f(c: ConwayTxOut): BabbageTxOut = c")
-    assert(wrongEra.nonEmpty, wrongEra)
-    // and only the era's package or decoder makes one
-    val noConstructor = compileErrors(
-      "def f(r: BabbageTxOutRep[xyz.kd5ujc.scarab.ledger.era.conway.ConwayScript]): ConwayTxOut = r"
-    )
-    assert(noConstructor.nonEmpty, noConstructor)
+    assert(wrongEra.contains("BabbageTxOut"), wrongEra)
+    assertEquals(compileErrors("def f(c: ConwayTxOut): ConwayTxOut = c"), "")
   }

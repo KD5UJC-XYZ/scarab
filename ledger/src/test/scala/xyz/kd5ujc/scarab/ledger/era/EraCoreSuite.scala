@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ScriptKind,
   TxBody as FlatTxBody
 }
-import xyz.kd5ujc.scarab.ledger.era.babbage.{BabbageScript, BabbageTxBody}
+import xyz.kd5ujc.scarab.ledger.era.babbage.BabbageScript
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayScript, ConwayTimelock, ConwayTxBody}
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -153,7 +153,8 @@ class EraCoreSuite extends munit.FunSuite:
     assert(babbage.nonEmpty && conway.nonEmpty, (babbage.size, conway.size))
     val withScripts = babbage.map { raw =>
       val flat = FlatTxBody.decode(raw, Era.Babbage).toOption.get.outputs
-      val typed = BabbageTxBody.decode(raw).toOption.get.outputs
+      val typed =
+        flat.map(xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxOut.fromStored(_).toOption.get)
       assertEquals(typed.map(EraTxOut.babbage.raw), flat.map(_.raw))
       val hashes = typed.map(EraTxOut.babbage.referenceScript(_).map(EraScript.babbage.hashScript))
       assertEquals(hashes, flat.map(_.scriptRef.map(_.hash)))

@@ -380,6 +380,23 @@ passes `check`.
 - Not yet: the reference's native-script builders (`mkRequireSignature` and the others) need a
   native-script encoder, which the node does not have. They come with the per-era test kits.
 
+**Conway's types** (stage 2, first part):
+- Conway's body has every field of the reference's `ConwayTxBodyRaw`, read through the body classes from
+  `EraTxBody` to `ConwayEraTxBody`. Each recorded Conway body reads with every field equal to the flat
+  decoder's.
+- Conway's certificate is its own type over the shared `PoolCert`, `ConwayDelegCert`, `ConwayGovCert` and
+  `Delegatee`. A delegation to neither a pool nor a DRep cannot be written, and a certificate's script
+  witness equals the one the flat rules ask for. The certificate classes are `EraTxCert`,
+  `ShelleyEraTxCert` and `ConwayEraTxCert`. The reference's genesis-delegation and instantaneous-reward
+  readers are on `ShelleyEraTxCert` with `AtMostEra "Babbage"` on the method; they come with those eras, in
+  a class of their own, since a Scala class cannot bound one method by era.
+- The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
+  delegation, instantaneous rewards) the flat Conway decoder refuses first, with the same error, as tests on
+  crafted bytes show.
+- The spike's Babbage body is removed, so no partial body remains, and Babbage keeps its output and script
+  types. A rule written once over the body classes runs in Conway alone until Dijkstra's body is typed
+  (stage 3).
+
 **What it does not show yet:** a full rule pipeline (LEDGER) on typed transactions, which is stage 2.
 Bodies decoded from recorded blocks are compared on id, fee, output bytes and one era-only field.
 
