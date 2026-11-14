@@ -132,6 +132,42 @@ class DefinitionsTest(unittest.TestCase):
         source = 'object A:\n  private[net] def a = 1\n  protected def b = 2\n  private[this] def c = 3\n'
         self.assertEqual(keys(source), ['object A', 'def A.a', 'def A.b'])
 
+    def test_a_definition_after_a_brace_or_a_semicolon_on_a_line_is_unread(self):
+        cases = {
+            'object A { def hidden = 1 }\n': (1,),
+            'import a.B; def hidden = 1\n': (1,),
+            'package p { object A }\n': (1,),
+            'object A:\n  val x = 1; def hidden = 2\n': (2,),
+            'object A:\n  extension (x: Int) { def f = 1 }\n': (2,),
+        }
+        for source, unread in cases.items():
+            with self.subTest(source=source):
+                self.assertEqual(defs.read(source).unread, unread)
+        # inside a method body, braces and semicolons are the method's own code
+        self.assertEqual(defs.read('object A:\n  def f = { val a = 1; def g = a; g }\n').unread, ())
+        # a class header's parameters are not a body
+        self.assertEqual(defs.read('final class A(val x: Int, var y: Int):\n  def f = x\n').unread, ())
+
+    def test_a_private_only_extension_block_belongs_to_its_owner(self):
+        source = 'object A:\n  extension (x: Int)\n    private def f = 1\n'
+        edited = source.replace('= 1', '= 2')
+        self.assertNotEqual(digest(source, 'object A'), digest(edited, 'object A'))
+        header = source.replace('(x: Int)', '(x: Long)')
+        self.assertNotEqual(digest(source, 'object A'), digest(header, 'object A'))
+        self.assertEqual(defs.read(source).unread, ())
+
+    def test_white_space_outside_literals_is_one_space_and_inside_them_as_written(self):
+        source = 'object A:\n  val x = 1 + 2\n'
+        for same in ('object A:\n  val x = 1 /* c */ + 2\n', 'object A:\n  val x   =   1 + 2   \n'):
+            with self.subTest(same=same):
+                self.assertEqual(digest(source, 'val A.x'), digest(same, 'val A.x'))
+        self.assertNotEqual(digest('object A:\n  val s = """abc \nend"""\n', 'val A.s'),
+                            digest('object A:\n  val s = """abc  \nend"""\n', 'val A.s'))
+        self.assertNotEqual(digest('object A:\n  val s = "a  b"\n', 'val A.s'),
+                            digest('object A:\n  val s = "a b"\n', 'val A.s'))
+        self.assertNotEqual(digest('object A:\n  def f =\n    a\n    b\n', 'def A.f'),
+                            digest('object A:\n  def f =\n    a\n  b\n', 'def A.f'))
+
     def test_given_names(self):
         self.assertEqual(defs.given_name(' Ordering[Cookie] = Ordering.by(_.value)'), 'given_Ordering_Cookie')
         self.assertEqual(defs.given_name(' ord: Ordering[Int] = ???'), 'ord')

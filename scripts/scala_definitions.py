@@ -54,6 +54,7 @@ PRIVATE = re.compile(r'\bprivate(?:\[this\])?\s')
 OPERATOR = r'[!#%&*+\-/:<=>?@\\^|~]+'
 NAME = re.compile(r'\s*(`[^`]+`|[A-Za-z_$][\w$]*(?:_' + OPERATOR + r')?|' + OPERATOR + r')')
 TOP_LEVEL = re.compile(r'(?:package|import|export|end)\b')
+PACKAGE = re.compile(r'package\s+[\w.]+')
 DIGEST_LENGTH = 16
 
 
@@ -186,6 +187,49 @@ def literal_lines(source: str, literals: tuple[tuple[int, int], ...]) -> set[int
     return inside
 
 
+def inline_definition(code: str, braces: bool = False) -> bool:
+    """Whether a line of code holds a definition keyword after a `{` or `;` outside parentheses and brackets; with
+    `braces`, after a `;` outside braces too (the `{` of a body then opens the body's own code)."""
+    depth, opened = 0, False
+    for match in re.finditer(r'[(\[\])]|[{};]|\b(?:' + '|'.join(KEYWORDS) + r')\b', code):
+        token = match.group()
+        if token in '([' or (braces and token == '{'):
+            depth += 1
+        elif token in ')]' or (braces and token == '}'):
+            depth -= 1
+        elif token in '{;':
+            opened = opened or depth == 0
+        elif token == '}':
+            continue
+        elif opened and depth == 0:
+            return True
+    return False
+
+
+def normalized_line(text: str, literal: bytearray, start: int) -> str:
+    """A line of code without comments: its indentation kept, each run of white space after it one space and none
+    at its end, except inside a literal, whose text is kept as written."""
+    out: list[str] = []
+    indentation = len(text) - len(text.lstrip(' \t'))
+    out.append(text[:indentation])
+    space = False
+    for k in range(indentation, len(text)):
+        c = text[k]
+        if literal[start + k]:
+            if space:
+                out.append(' ')
+                space = False
+            out.append(c)
+        elif c in ' \t':
+            space = True
+        else:
+            if space:
+                out.append(' ')
+                space = False
+            out.append(c)
+    return ''.join(out)
+
+
 def without_comments(source: str, comments: tuple[scala_comments.Comment, ...]) -> str:
     pieces, at = [], 0
     for comment in comments:
@@ -201,6 +245,10 @@ def read(source: str) -> Read:
     code_lines = split.code.split('\n')
     text_lines = without_comments(source, split.comments).split('\n')
     in_literal = literal_lines(source, split.literals)
+    literal = bytearray(len(source) + 1)
+    for start, end in split.literals:
+        literal[start:end] = b'\x01' * (end - start)
+    starts = [0] + [m.end() for m in re.finditer('\n', source)]
     n = len(code_lines)
     blank = [not code_lines[i].strip() or i in in_literal for i in range(n)]
     indent = [len(line) - len(line.lstrip()) for line in code_lines]
@@ -283,6 +331,13 @@ def read(source: str) -> Read:
         node.keyed = not node.transparent and member_of(node) and (owner(node) is None or not node.private)
         if node.transparent:
             node.private = not member_of(node)
+    # an extension block with no keyed method (only private ones) leaves its lines to its owner, so that no line
+    # is held by a block whose text no digest reads
+    with_methods = {id(node.parent) for node in nodes if node.keyed and node.parent is not None
+                    and node.parent.transparent}
+    for node in nodes:
+        if node.transparent and id(node) not in with_methods:
+            node.private = True
 
     def path(node: Node) -> str:
         chain = []
@@ -307,9 +362,25 @@ def read(source: str) -> Read:
     unread = []
     clause_end = 0
     for i in range(n):
-        if blank[i] or holder_of[i] is not None or i < clause_end:
+        if blank[i]:
             continue
-        if TOP_LEVEL.match(code_lines[i].strip()):
+        holder = holder_of[i]
+        if holder is not None:
+            # a line of a body whose members are keyed holds nothing after a `{` or `;` that defines: a definition
+            # written there (`object A { def f = 1 }`) would have no key of its own
+            if (holder.kind in TEMPLATES or holder.transparent) and inline_definition(code_lines[i]):
+                unread.append(i + 1)
+            # nor does a definition's header line hold a second definition after a `;` (`val a = 1; def f = 2`)
+            elif holder.header == i and inline_definition(code_lines[i], braces=True):
+                unread.append(i + 1)
+            continue
+        if i < clause_end:
+            if ';' in code_lines[i]:
+                unread.append(i + 1)
+            continue
+        stripped = code_lines[i].strip()
+        if TOP_LEVEL.match(stripped) and ';' not in stripped and (
+                not stripped.startswith('package') or PACKAGE.fullmatch(stripped)):
             # a clause over several lines (`import a.{\n  B,\n  C\n}`) is read whole
             clause_end = extent_end(i)
         else:
@@ -330,8 +401,8 @@ def read(source: str) -> Read:
             if j in in_literal:
                 out.append(text)
                 continue
-            text = text.rstrip()
-            if not text:
+            text = normalized_line(text, literal, starts[j])
+            if not text.strip():
                 continue
             cut = min(base, len(text) - len(text.lstrip()))
             out.append(text[cut:])
