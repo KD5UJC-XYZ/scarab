@@ -10,6 +10,7 @@ import java.nio.file.{Files, Path}
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
+import xyz.kd5ujc.scarab.ledger.DecoderVersion
 
 /** Runs one era of the cardano-cbor-dataset (r2rationality/cardano-cbor-dataset) through Scarab's
   * production decoders and encoders ([[ConwayRules]], [[DijkstraRules]]) and writes the version 2
@@ -17,7 +18,8 @@ import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
   *
   * Arguments: the era's corpus directory (`dataset/<era>`), the era (`conway` or `dijkstra`), the
   * dataset's commit, Scarab's commit, and the report to write. Before the corpus, the normaliser is
-  * checked against the dataset's `dataset/normalization` vectors beside the era's directory.
+  * checked against the dataset's `dataset/normalization` vectors beside the era's directory, and
+  * without them, or with one it fails, no report is written.
   */
 object CborDatasetMain extends IOApp:
   enum Failure extends DomainError:
@@ -26,6 +28,7 @@ object CborDatasetMain extends IOApp:
     case Commit(value: String)
     case UnknownCategory(sample: String)
     case Normaliser(cases: Vector[String])
+    case NoVectors(directory: Path)
 
     def message: String = this match
       case Arguments =>
@@ -35,13 +38,24 @@ object CborDatasetMain extends IOApp:
       case UnknownCategory(sample) => s"$sample is not under a known sample category"
       case Normaliser(cases) =>
         s"the normaliser fails the dataset's vectors ${cases.mkString(", ")}"
+      case NoVectors(directory) =>
+        s"no normalisation vectors in $directory: the dataset's normalization directory is missing or empty"
 
-  /** An era of the dataset, the protocol version its samples are generated at (`eraProtVerHigh` in
-    * the dataset's `EraSpec.hs`), and Scarab's rules for it.
+  /** An era of the dataset, the decoder version Scarab reads it at and Scarab's rules for it. The
+    * report names that decoder version as its protocol version: it is the version the samples were
+    * decoded at. The dataset decodes at `eraProtVerHigh` (its `EraSpec.hs`), Conway 11 and Dijkstra
+    * 12; Scarab reads Conway at 9, `eraProtVerLow`, as the node reads a Conway block.
     */
-  enum DatasetEra(val protocolVersion: String, val rules: Map[String, DatasetRule]):
-    case Conway extends DatasetEra("11.0", ConwayRules.rules)
-    case Dijkstra extends DatasetEra("12.0", DijkstraRules.rules)
+  enum DatasetEra(val version: DecoderVersion, val rules: Map[String, DatasetRule]):
+    case Conway extends DatasetEra(ConwayRules.version, ConwayRules.rules)
+    case Dijkstra extends DatasetEra(DijkstraRules.version, DijkstraRules.rules)
+
+    def protocolVersion: String = s"${version.value}.0"
+
+  /** A normalisation vector of the dataset: its name, its input, and its normal form when the file
+    * of it is there.
+    */
+  final case class NormalVector(name: String, input: Bytes, expected: Option[Bytes])
 
   private final case class Config(
       corpus: Path,
@@ -87,16 +101,34 @@ object CborDatasetMain extends IOApp:
   private def expectedOf(file: Path): Path =
     file.resolveSibling(file.getFileName.toString.stripSuffix(".input.cbor") + ".expected.cbor")
 
-  /** The normalisation vectors the normaliser fails, by name. */
-  private def normaliserFailures(corpus: Path): IO[Vector[String]] =
-    val vectors = Option(corpus.toAbsolutePath.getParent).map(_.resolve("normalization"))
-    vectors.filter(Files.isDirectory(_)).fold(IO.pure(Vector.empty[String])) { dir =>
-      inputs(dir).flatMap(_.flatTraverse { file =>
-        (read(file), read(expectedOf(file))).mapN { (input, expected) =>
-          Vector(file.getFileName.toString).filter(_ => CborNormalForm.of(input) != Right(expected))
-        }
-      })
-    }
+  /** The dataset's normalisation vectors, `dataset/normalization` beside the era's directory, and
+    * that directory; none when it is missing.
+    */
+  private def vectorsOf(corpus: Path): IO[(Path, Vector[NormalVector])] =
+    val dir = corpus.toAbsolutePath.normalize.resolveSibling("normalization")
+    IO.blocking(Files.isDirectory(dir))
+      .ifM(
+        inputs(dir).flatMap(_.traverse { file =>
+          val expected = expectedOf(file)
+          (
+            read(file),
+            IO.blocking(Files.exists(expected)).ifM(read(expected).map(Some(_)), IO.pure(None))
+          ).mapN(NormalVector(file.getFileName.toString, _, _))
+        }),
+        IO.pure(Vector.empty)
+      )
+      .tupleLeft(dir)
+
+  /** How many vectors the normaliser meets, or why the run stops before it reads the corpus: there
+    * are no vectors, or the normaliser fails one or one has no normal form to meet.
+    */
+  def checkVectors(dir: Path, vectors: Vector[NormalVector]): Either[Failure, Int] =
+    if vectors.isEmpty then Left(Failure.NoVectors(dir))
+    else
+      val failed = vectors.collect {
+        case v if !v.expected.exists(e => CborNormalForm.of(v.input) == Right(e)) => v.name
+      }
+      Either.cond(failed.isEmpty, vectors.size, Failure.Normaliser(failed))
 
   private def outcome(rules: Map[String, DatasetRule])(s: Sample): IO[DatasetCheck.Outcome] =
     for
@@ -151,11 +183,11 @@ object CborDatasetMain extends IOApp:
     config(args).fold(f => IO.println(f.message).as(ExitCode.Error), runWith)
 
   private def runWith(c: Config): IO[ExitCode] =
-    normaliserFailures(c.corpus).flatMap {
-      case failed if failed.nonEmpty =>
-        IO.println(Failure.Normaliser(failed).message).as(ExitCode.Error)
-      case _ =>
+    vectorsOf(c.corpus).map((dir, vectors) => checkVectors(dir, vectors)).flatMap {
+      case Left(failure) => IO.println(failure.message).as(ExitCode.Error)
+      case Right(count) =>
         for
+          _ <- IO.println(s"normaliser: the dataset's $count normalisation vectors pass")
           listed <- Clock[IO].timed(inputs(c.corpus))
           samples <- listed._2
             .traverse(sample(c.corpus))

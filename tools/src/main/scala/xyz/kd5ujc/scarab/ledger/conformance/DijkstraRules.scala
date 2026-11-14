@@ -53,7 +53,11 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, UtxoCodecs, 
   */
 object DijkstraRules:
   private val era = Era.Dijkstra
-  private val version = DecoderVersion.of(era)
+
+  /** The decoder version every rule of this era is read at: the era's `eraProtVerLow`, as the node
+    * reads a block of the era, whatever its protocol version.
+    */
+  val version: DecoderVersion = DecoderVersion.of(era)
   private given ByteStrings = ByteStrings.of(version)
   private given ProtVer = Versions.eraLow(ShelleyBasedEra.SDijkstra)
 

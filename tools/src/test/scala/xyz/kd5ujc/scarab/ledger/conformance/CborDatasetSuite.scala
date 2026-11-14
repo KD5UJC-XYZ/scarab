@@ -21,12 +21,39 @@ class CborDatasetSuite extends FunSuite:
     assertEquals(normal("5f41aa42bbccff"), Right("43aabbcc"))
     assertEquals(normal("7f6178617aff"), Right("62787a"))
     assertEquals(normal("190007"), Right("07"))
-    assertEquals(normal("d81e9f0306ff"), Right("d81e820306"))
+    assertEquals(normal("d81e9f0305ff"), Right("d81e820305"))
   }
 
-  test("the normal form keeps key order, repeated keys, tags, rationals and float widths") {
-    for same <- Vector("a203010401", "a203010302", "d81e820408", "d9010380", "fa3f800000", "f6")
+  test("the normal form keeps key order, repeated keys, other tags and float widths") {
+    for same <- Vector("a203010401", "a203010302", "d9010380", "d9050f01", "fa3f800000", "f6")
     do assertEquals(normal(same), Right(same))
+  }
+
+  test("the normal form reduces a rational to its lowest terms, the sign on the numerator") {
+    assertEquals(normal("d81e820408"), Right("d81e820102"))
+    assertEquals(normal("d81e9f1904001808ff"), Right("d81e82188001"))
+    assertEquals(normal("d81e820223"), Right("d81e822002"))
+    assertEquals(normal("d81e82c2410204"), Right("d81e820102"))
+    assertEquals(normal("82d81e820609d81e820102"), Right("82d81e820203d81e820102"))
+    // a zero denominator, or an item that is not an integer, is no rational to reduce
+    assertEquals(normal("d81e820200"), Right("d81e820200"))
+    assertEquals(normal("d81e82410204"), Right("d81e82410204"))
+  }
+
+  test("the normalisation vectors stop the run when missing, failed or without a normal form") {
+    import CborDatasetMain.{Failure, NormalVector, checkVectors}
+    val dir = java.nio.file.Path.of("normalization")
+    val good = NormalVector("a", hex("9f01ff"), Some(hex("8101")))
+    assertEquals(checkVectors(dir, Vector.empty), Left(Failure.NoVectors(dir)))
+    assertEquals(checkVectors(dir, Vector(good)), Right(1))
+    assertEquals(
+      checkVectors(dir, Vector(good, good.copy(name = "b", expected = Some(hex("9f01ff"))))),
+      Left(Failure.Normaliser(Vector("b")))
+    )
+    assertEquals(
+      checkVectors(dir, Vector(good.copy(name = "c", expected = None))),
+      Left(Failure.Normaliser(Vector("c")))
+    )
   }
 
   test("the normal form folds a bignum that fits a head and keeps one that does not") {
