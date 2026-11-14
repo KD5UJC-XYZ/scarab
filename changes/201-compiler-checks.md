@@ -9,7 +9,8 @@
   `scala.Enumeration`, a descendant of a sealed type that is neither final nor sealed, a lock on a value-based
   class, a String built with `+` from a value that is not one, an inferred `Product`, a conversion to the type a
   value already has, and a size compared where `sizeIs` would do. `DisallowedWartsSuite` shows that each wart
-  the build names fires on a probe, so a wart that loads but finds nothing cannot pass unnoticed.
+  the build names fires on a probe, so a wart that loads but finds nothing cannot pass unnoticed; `ThreadSleep`
+  is the exception, since `scripts/check_test_sleeps.py` would count its probe as a sleep.
 - No behaviour changes. Each site is fixed with a type annotation, a rename, the removal of an implicit parameter
   nothing reads or of a conversion to the type a value already has, `sizeIs` for `size`, an explicit
   `toString`, or a comment's form; three `toSet` calls on sorted sets are written `Set.from`, which is what

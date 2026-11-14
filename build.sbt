@@ -107,7 +107,7 @@ val testDependencies = Seq(
 // with + from a value that is not one, an inferred Product, a conversion to the type a value already has and
 // a size compared where sizeIs would do. Main sources only; generated code is excluded. try/catch/finally has
 // no wart and is checked by scripts/check_imperative.py. DisallowedWartsSuite (tools tests) shows that each
-// wart fires.
+// wart but ThreadSleep fires; a ThreadSleep probe would be a sleep to scripts/check_test_sleeps.py.
 lazy val disallowedWarts: Seq[wartremover.Wart] = Seq(
   Wart.Var,
   Wart.While,
@@ -518,8 +518,8 @@ lazy val fuzz = scarab("fuzz")
 // Benchmarks, probes and the programs that write fixtures: run by hand (`tools/runMain <class>`), never as
 // tests and never shipped. They use the modules' test kits, so they follow the rules of test code
 // (docs/design-rules.md, TOOL-2): no `-Wsafe-init`, no WartRemover errors. Its tests hold DisallowedWartsSuite,
-// which shows that each wart of `disallowedWarts` fires: it reads their names from a source the build writes, and
-// types its probes with WartRemover's own test traverser.
+// which shows that each wart of `disallowedWarts` but ThreadSleep fires: it reads their names from a source the
+// build writes, and types its probes with WartRemover's own test traverser.
 lazy val tools = scarab("tools")
   .dependsOn(
     codec % "compile->compile;compile->test",
