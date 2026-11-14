@@ -87,10 +87,14 @@ unreachable_hit() {
 declare_catalog() {
   assertion false true reachability Reachable "$STARTS" false
   local m
-  for m in "$SCARAB_EXTENDS" "$HASKELL_EXTENDS" "$ALL_EXTEND" "$ALL_AGREE" "$PAYMENT_S1" "$PAYMENT_HASKELL" \
-           "$S1_FORGES_TXS"; do
+  for m in "$SCARAB_EXTENDS" "$HASKELL_EXTENDS" "$ALL_EXTEND" "$ALL_AGREE" "$PAYMENT_S1" "$PAYMENT_HASKELL"; do
     assertion false true sometimes Sometimes "$m" false
   done
+  # Scarab's `forged` event names a block's transactions; cardano-node's forge traces do not, so the reference
+  # controls (S1_IMPLEMENTATION=cardano-node) leave this one out.
+  if [ "${S1_IMPLEMENTATION:-scarab}" = scarab ]; then
+    assertion false true sometimes Sometimes "$S1_FORGES_TXS" false
+  fi
   # The divergence detectors run where the compose file mounts the pools' logs at /logs.
   if [ -d /logs ]; then
     for m in "$HASKELL_REFUSED" "$SCARAB_REFUSED" "$SCARAB_FATAL" "$SCARAB_FALSE_CLOCK"; do

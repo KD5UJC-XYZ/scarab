@@ -14,7 +14,8 @@ not forked. The cluster-wide depth is the largest; past Praos's k, a fork is unr
 STATE (JSON) keeps the tree, each pool's tip and how far each log has been read, across the test commands' runs in a
 timeline; an exclusive lock on STATE with the suffix .lock makes each run's read, update and write one
 transaction. The result is one JSON line: {"depth", "pools": {pool: depth or null}, "longest", "forgedOnLongest":
-{pool: blocks it forged on the longest chain}, "blocks"}. A tip whose ancestry is not yet known (its forger's log
+{pool: blocks it forged on the longest chain}, "forgedOnChain": {pool: {forger: blocks on that pool's own chain}},
+"blocks"}. A tip whose ancestry is not yet known (its forger's log
 not yet read that far) counts as null and is left out.
 
 This mirrors the fork tree of cardano-foundation/cardano-node-antithesis (`components/tracer-sidecar`,
@@ -89,7 +90,7 @@ def depths(state):
     known = {pool: c for pool, c in chains.items() if c is not None}
     if not known:
         return {"depth": None, "pools": {pool: None for pool in chains}, "longest": None,
-                "forgedOnLongest": {}, "blocks": len(state["parents"])}
+                "forgedOnLongest": {}, "forgedOnChain": {}, "blocks": len(state["parents"])}
     numbers = state["numbers"]
     longest_pool = max(known, key=lambda p: (numbers.get(known[p][0]) or 0, p))
     longest = set(known[longest_pool])
@@ -103,13 +104,19 @@ def depths(state):
         pools[pool] = tip_no - ((numbers.get(common) or 0) if common else -1)
     known_depths = [d for d in pools.values() if d is not None]
     forgers = state.get("forgers", {})
-    on_longest = {}
-    for block in known[longest_pool]:
-        forger = forgers.get(block)
-        if forger:
-            on_longest[forger] = on_longest.get(forger, 0) + 1
+
+    def forged_on(chain):
+        counts = {}
+        for block in chain:
+            forger = forgers.get(block)
+            if forger:
+                counts[forger] = counts.get(forger, 0) + 1
+        return counts
+
     return {"depth": max(known_depths) if known_depths else None, "pools": pools,
-            "longest": longest_pool, "forgedOnLongest": on_longest, "blocks": len(state["parents"])}
+            "longest": longest_pool, "forgedOnLongest": forged_on(known[longest_pool]),
+            "forgedOnChain": {pool: forged_on(chain) for pool, chain in known.items()},
+            "blocks": len(state["parents"])}
 
 
 def main():
