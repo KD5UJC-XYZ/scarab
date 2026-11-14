@@ -44,9 +44,11 @@ Each reads on from where the last pass in the timeline stopped. The properties, 
 - unreachable: Scarab never refuses a block as invalid (`scarab_validation_errors_total` on s1's metrics);
 - unreachable: Scarab never logs a `fatal` event, other than the stop for a clock moved back more than
   `Forger.MaxClockRewind`, which cardano-node makes too and Antithesis's clock skips can cause;
-- unreachable: Scarab never reports the clock moved back for two readings in one slot, time moving forward (#629).
-  The slot loop waits until the next slot's start, so only a wake before it does that. A clock moved back for real
-  is told apart: its traces move forward through earlier slots.
+- unreachable: Scarab never traces the clock moved back on a wake over 1 µs before its slot, time moving
+  forward (#629). The slot loop waits until the next slot's start, floored to the microsecond as the reference's
+  `threadDelay` floors it, so only a wake earlier than that is #629's millisecond floor. A cardano-node pool on the
+  platform also woke a fraction of a microsecond early and traced `SystemClockMovedBack`. A clock moved back for
+  real is told apart: its traces move forward through earlier slots.
 
 - sometimes: s1 accepts a payment; a Haskell pool accepts a payment; s1 forges a block with transactions;
 - always (or unreachable): the cluster's fork depth stays below k. The depth is the deepest rollback any pool would
