@@ -479,7 +479,7 @@ object Main extends IOApp:
   // touched. A name read from a file that the JVM cannot encode, which the JDK refuses with
   // `InvalidPathException` where the name is used, gives the same kind of line; the configuration's
   // own names are checked once `follow` has read its setup, so this catches the names read before
-  // that or never checked (the genesis files, the topology's snapshot file)
+  // that or never checked (the genesis files read first, those of the import commands)
   def run(args: List[String]): IO[ExitCode] =
     CommandLine.utf8Output[IO] *> CommandLine
       .encoding[IO]
@@ -657,11 +657,15 @@ object Main extends IOApp:
         (),
         ConfigError(ConfigProblem.BootstrapPeersInGenesisMode)
       )
-      // `peerSnapshotFile` is relative to the topology file, as the reference reads it
-      snapshotFile = for
+      // `peerSnapshotFile` is relative to the topology file, as the reference reads it. A name the
+      // JDK cannot make a path of (NUL, or a character its file-name encoding cannot encode) is a
+      // typed refusal, not an exception, so a SIGHUP reload refuses it as any other topology (#953)
+      snapshotFile <- (for
         file <- options.topologyFile
         name <- topology.flatMap(_.peerSnapshotFile)
-      yield file.resolveSibling(name)
+      yield Either
+        .catchOnly[InvalidPathException](file.resolveSibling(name))
+        .leftMap(e => ConfigError(ConfigProblem.InvalidPath(name, e)))).sequence
       snapshot <- PeerSnapshot
         .use(
           snapshotFile,
