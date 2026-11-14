@@ -154,9 +154,13 @@ object Params:
 
   /** `CostModels` (`CostModels.hs:446-471`): a map from the language (a `Word8`) to its parameters,
     * each an `Int64`; a list of more than 23 is indefinite. Keys are in order, and a repeated one
-    * is refused.
+    * is refused. It is `encCBOR` of the cost models of a parameter update in a transaction as well
+    * (`encCBOR . flattenCostModels`, `libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/
+    * CostModels.hs:470-471`, cardano-ledger f649f975: `encodeMap` of `encodeList`,
+    * `Encoding/Encoder.hs:397-408, 499-508`), whose value
+    * [[xyz.kd5ujc.scarab.ledger.CostModelDecode]] reads.
     */
-  private val costModels: Codec[Map[Int, Vector[BigInt]]] = new Codec[Map[Int, Vector[BigInt]]]:
+  val costModels: Codec[Map[Int, Vector[BigInt]]] = new Codec[Map[Int, Vector[BigInt]]]:
     private val language = Codec.uintBig(255)
     private val values = seqOf(Codec.bigRange(BigInt(Long.MinValue), BigInt(Long.MaxValue)))
     def decode(n: Node): Decoded[Map[Int, Vector[BigInt]]] =

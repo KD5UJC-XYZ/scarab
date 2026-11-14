@@ -897,8 +897,9 @@
     {
       "module": "storage",
       "path": "storage/haskell/state",
-      "responsibility": "Codecs for the Haskell ledger-state file, tables and metadata",
+      "responsibility": "Codecs for the Haskell ledger-state file, tables and metadata, and the reference's encoders of the Conway transaction and block parts",
       "entryPoints": [
+        "ConwayCodecs",
         "HaskellLedgerFile",
         "HaskellState",
         "HaskellStateCodecs",
@@ -907,6 +908,7 @@
         "UtxoCodecs"
       ],
       "suites": [
+        "ConwayCodecsSuite",
         "LedgerFileSuite",
         "HaskellStateCodecSuite",
         "SnapshotMetaSuite",
