@@ -77,6 +77,11 @@ up so that a known, published divergence
 ([GHSA-vfw2-hhrc-87v5](https://github.com/KD5UJC-XYZ/scarab/security/advisories/GHSA-vfw2-hhrc-87v5), `writeBits`
 on more than 4,096 bytes at protocol 11) would happen.
 
+The canary runs at k = 20, with epochs of 4,000 slots. It asks whether the detectors fire when s1 forges an invalid
+block, and a cluster split at the start cannot answer that. At k = 5, this topology's start race split it for good
+in three positive controls in a row; a cardano-node in s1's seat loses the same race (#854). The pool config keeps
+k = 5. Setup takes about 15 minutes, for the two epoch boundaries the governance change needs.
+
 The genesis starts at protocol 11. cardano-node reads a Conway genesis only with create-env's 251 PlutusV3
 parameters, which do not price `writeBits`. So the driver's setup enacts the reference's 361-parameter model at
 protocol 11 by a governance parameter change, as mainnet did; a genesis overlay sets the technical group's DRep

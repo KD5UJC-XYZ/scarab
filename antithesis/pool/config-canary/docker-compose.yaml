@@ -28,6 +28,12 @@ services:
     command: ["/opt/at/configure.sh"]
     environment:
       PROTOCOL_MAJOR: "11"
+      # k = 20, with epochs of 10k/f = 4,000 slots: the canary asks whether the detectors fire when s1 forges an
+      # invalid block, which a cluster split at the start cannot answer. At k = 5 this topology's start race splits
+      # it for good in many setups, a cardano-node in s1's seat as well (#854), and three positive controls in a
+      # row failed on it. At k = 20 that fork heals. The pool config keeps k = 5.
+      SECURITY_PARAM: "20"
+      EPOCH_LENGTH: "4000"
     labels: *labels
     volumes:
       - env:/env

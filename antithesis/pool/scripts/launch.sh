@@ -14,8 +14,9 @@ duration=$2
 here=$(cd "$(dirname "$0")/.." && pwd)
 commit=$(docker image inspect scarab-at-scarab:trial --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
 [ -n "$commit" ] || { echo "launch: scarab-at-scarab:trial has no commit label; build it with build.sh" >&2; exit 1; }
+validate_timeout=10m
 case ${CONFIG:-config} in
-  config-canary) name=scarab-canary
+  config-canary) name=scarab-canary validate_timeout=35m
     description="writeBits canary (GHSA-vfw2-hhrc-87v5) on Scarab $commit with two cardano-node 11.1.3 pools" ;;
   config-reference) name=scarab-pool-reference
     description="control: cardano-node 11.1.3 in s1's seat with two cardano-node 11.1.3 pools, create-env defaults" ;;
@@ -25,7 +26,7 @@ case ${CONFIG:-config} in
     description="Scarab $commit pool with two cardano-node 11.1.3 pools, create-env defaults" ;;
 esac
 
-"$here/scripts/validate.sh"
+"$here/scripts/validate.sh" "$validate_timeout"
 SNOUTY_CONTAINER_ENGINE=docker exec snouty launch \
   --launcher basic_test \
   --config "$here/${CONFIG:-config}" \
