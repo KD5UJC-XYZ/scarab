@@ -18,8 +18,10 @@ import xyz.kd5ujc.scarab.ledger.DecoderVersion
   *
   * Arguments: the era's corpus directory (`dataset/<era>`), the era (`conway` or `dijkstra`), the
   * dataset's commit, Scarab's commit, and the report to write. Before the corpus, the normaliser is
-  * checked against the dataset's `dataset/normalization` vectors beside the era's directory, and
-  * without them, or with one it fails, no report is written.
+  * checked against the dataset's `dataset/normalization` vectors beside the era's directory, every
+  * one its README's table lists; and the corpus is checked against the era's `coverage.json`, its
+  * count of samples and its rules. A missing vector, a vector the normaliser fails, an empty corpus
+  * or one that differs from its inventory is an incomplete run: no report is written, never a pass.
   */
 object CborDatasetMain extends IOApp:
   enum Failure extends DomainError:
@@ -29,6 +31,11 @@ object CborDatasetMain extends IOApp:
     case UnknownCategory(sample: String)
     case Normaliser(cases: Vector[String])
     case NoVectors(directory: Path)
+    case NoVectorTable(file: Path)
+    case MissingVectors(names: Vector[String])
+    case NoInventory(file: Path, cause: String)
+    case EmptyCorpus(directory: Path)
+    case InventoryMismatch(expected: Int, found: Int, missingRules: Vector[String])
 
     def message: String = this match
       case Arguments =>
@@ -39,7 +46,17 @@ object CborDatasetMain extends IOApp:
       case Normaliser(cases) =>
         s"the normaliser fails the dataset's vectors ${cases.mkString(", ")}"
       case NoVectors(directory) =>
-        s"no normalisation vectors in $directory: the dataset's normalization directory is missing or empty"
+        s"incomplete: no normalisation vectors in $directory: the dataset's normalization directory is missing or empty"
+      case NoVectorTable(file) =>
+        s"incomplete: no table of normalisation vectors in $file"
+      case MissingVectors(names) =>
+        s"incomplete: the normalisation vectors ${names.mkString(", ")} are listed and missing"
+      case NoInventory(file, cause) =>
+        s"incomplete: the corpus inventory $file does not read: $cause"
+      case EmptyCorpus(directory) => s"incomplete: no samples in $directory"
+      case InventoryMismatch(expected, found, missing) =>
+        s"incomplete: the inventory lists $expected samples, $found are present" +
+          (if missing.isEmpty then "" else s"; rules without samples: ${missing.mkString(", ")}")
 
   /** An era of the dataset, the decoder version Scarab reads it at and Scarab's rules for it. The
     * report names that decoder version as its protocol version: it is the version the samples were
@@ -101,34 +118,93 @@ object CborDatasetMain extends IOApp:
   private def expectedOf(file: Path): Path =
     file.resolveSibling(file.getFileName.toString.stripSuffix(".input.cbor") + ".expected.cbor")
 
-  /** The dataset's normalisation vectors, `dataset/normalization` beside the era's directory, and
-    * that directory; none when it is missing.
+  /** The dataset's normalisation vectors, `dataset/normalization` beside the era's directory, that
+    * directory, and the names its README's table lists; no vectors when it is missing.
     */
-  private def vectorsOf(corpus: Path): IO[(Path, Vector[NormalVector])] =
+  private def vectorsOf(corpus: Path): IO[(Path, Vector[String], Vector[NormalVector])] =
     val dir = corpus.toAbsolutePath.normalize.resolveSibling("normalization")
-    IO.blocking(Files.isDirectory(dir))
+    val readme = dir.resolve("README.md")
+    val table = IO
+      .blocking(Files.isRegularFile(readme))
+      .ifM(IO.blocking(Files.readString(readme)).map(vectorTable), IO.pure(Vector.empty))
+    val vectors = IO
+      .blocking(Files.isDirectory(dir))
       .ifM(
         inputs(dir).flatMap(_.traverse { file =>
           val expected = expectedOf(file)
           (
             read(file),
             IO.blocking(Files.exists(expected)).ifM(read(expected).map(Some(_)), IO.pure(None))
-          ).mapN(NormalVector(file.getFileName.toString, _, _))
+          ).mapN(NormalVector(file.getFileName.toString.stripSuffix(".input.cbor"), _, _))
         }),
         IO.pure(Vector.empty)
       )
-      .tupleLeft(dir)
+    (table, vectors).mapN((t, v) => (dir, t, v))
 
-  /** How many vectors the normaliser meets, or why the run stops before it reads the corpus: there
-    * are no vectors, or the normaliser fails one or one has no normal form to meet.
+  private val tableRow = raw"\|\s*(\d+)\s*\|\s*([^|\s]+)\s*\|.*".r
+
+  /** The vectors a normalization README's table lists, by their files' name:
+    * `0001-indefinite-array` for the row `| 1 | indefinite-array | ...`.
     */
-  def checkVectors(dir: Path, vectors: Vector[NormalVector]): Either[Failure, Int] =
-    if vectors.isEmpty then Left(Failure.NoVectors(dir))
+  def vectorTable(readme: String): Vector[String] =
+    readme.linesIterator.toVector.collect { case tableRow(n, name) =>
+      f"${n.toInt}%04d-$name"
+    }
+
+  /** How many vectors the normaliser meets, or why the run stops before it reads the corpus: the
+    * table of them is missing, one it lists is missing, there are none, the normaliser fails one or
+    * one has no normal form to meet.
+    */
+  def checkVectors(
+      dir: Path,
+      table: Vector[String],
+      vectors: Vector[NormalVector]
+  ): Either[Failure, Int] =
+    val missing = table.filterNot(vectors.map(_.name).toSet)
+    if table.isEmpty then Left(Failure.NoVectorTable(dir.resolve("README.md")))
+    else if missing.nonEmpty then Left(Failure.MissingVectors(missing))
+    else if vectors.isEmpty then Left(Failure.NoVectors(dir))
     else
       val failed = vectors.collect {
         case v if !v.expected.exists(e => CborNormalForm.of(v.input) == Right(e)) => v.name
       }
       Either.cond(failed.isEmpty, vectors.size, Failure.Normaliser(failed))
+
+  /** What an era's `coverage.json` says the corpus holds: its samples and its rules. */
+  final case class Inventory(samples: Int, rules: Set[String])
+
+  def inventoryOf(json: String): Either[io.circe.Error, Inventory] =
+    io.circe.parser.parse(json).flatMap { doc =>
+      val c = doc.hcursor
+      (
+        c.get[Int]("samples"),
+        c.downField("rules").as[Vector[Json]].flatMap(_.traverse(_.hcursor.get[String]("name")))
+      ).mapN((samples, rules) => Inventory(samples, rules.toSet))
+    }
+
+  /** The corpus found against its inventory: not empty, every sample and every rule present. */
+  def checkInventory(
+      corpus: Path,
+      inventory: Inventory,
+      found: Vector[(String, String)]
+  ): Either[Failure, Unit] =
+    val missing = (inventory.rules -- found.map(_._2).toSet).toVector.sorted
+    if found.isEmpty then Left(Failure.EmptyCorpus(corpus))
+    else
+      Either.cond(
+        found.size == inventory.samples && missing.isEmpty,
+        (),
+        Failure.InventoryMismatch(inventory.samples, found.size, missing)
+      )
+
+  private def inventory(corpus: Path): IO[Either[Failure, Inventory]] =
+    val file = corpus.resolve("coverage.json")
+    IO.blocking(Files.isRegularFile(file))
+      .ifM(
+        IO.blocking(Files.readString(file))
+          .map(inventoryOf(_).leftMap(e => Failure.NoInventory(file, e.getMessage))),
+        IO.pure(Left(Failure.NoInventory(file, "missing")))
+      )
 
   private def outcome(rules: Map[String, DatasetRule])(s: Sample): IO[DatasetCheck.Outcome] =
     for
@@ -183,14 +259,19 @@ object CborDatasetMain extends IOApp:
     config(args).fold(f => IO.println(f.message).as(ExitCode.Error), runWith)
 
   private def runWith(c: Config): IO[ExitCode] =
-    vectorsOf(c.corpus).map((dir, vectors) => checkVectors(dir, vectors)).flatMap {
+    vectorsOf(c.corpus).map((dir, table, vectors) => checkVectors(dir, table, vectors)).flatMap {
       case Left(failure) => IO.println(failure.message).as(ExitCode.Error)
       case Right(count) =>
         for
           _ <- IO.println(s"normaliser: the dataset's $count normalisation vectors pass")
           listed <- Clock[IO].timed(inputs(c.corpus))
-          samples <- listed._2
-            .traverse(sample(c.corpus))
+          listing <- inventory(c.corpus)
+          samples <- listing
+            .flatMap(inv =>
+              listed._2
+                .traverse(sample(c.corpus))
+                .flatTap(all => checkInventory(c.corpus, inv, all.map(s => s.path -> s.rule)))
+            )
             .fold(f => IO.println(f.message).as(None), s => IO.pure(Some(s)))
           code <- samples.fold(IO.pure(ExitCode.Error)) { all =>
             for

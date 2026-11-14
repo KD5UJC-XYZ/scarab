@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.conformance
 
+import cats.syntax.all.*
 import java.util.concurrent.FutureTask
 import munit.FunSuite
 
@@ -44,16 +45,143 @@ class CborDatasetSuite extends FunSuite:
     import CborDatasetMain.{Failure, NormalVector, checkVectors}
     val dir = java.nio.file.Path.of("normalization")
     val good = NormalVector("a", hex("9f01ff"), Some(hex("8101")))
-    assertEquals(checkVectors(dir, Vector.empty), Left(Failure.NoVectors(dir)))
-    assertEquals(checkVectors(dir, Vector(good)), Right(1))
     assertEquals(
-      checkVectors(dir, Vector(good, good.copy(name = "b", expected = Some(hex("9f01ff"))))),
+      checkVectors(dir, Vector("a"), Vector.empty),
+      Left(Failure.MissingVectors(Vector("a")))
+    )
+    assertEquals(checkVectors(dir, Vector("a"), Vector(good)), Right(1))
+    assertEquals(
+      checkVectors(dir, Vector("a", "b"), Vector(good)),
+      Left(Failure.MissingVectors(Vector("b")))
+    )
+    assertEquals(
+      checkVectors(dir, Vector.empty, Vector(good)),
+      Left(Failure.NoVectorTable(dir.resolve("README.md")))
+    )
+    assertEquals(
+      checkVectors(
+        dir,
+        Vector("a", "b"),
+        Vector(good, good.copy(name = "b", expected = Some(hex("9f01ff"))))
+      ),
       Left(Failure.Normaliser(Vector("b")))
     )
     assertEquals(
-      checkVectors(dir, Vector(good.copy(name = "c", expected = None))),
+      checkVectors(dir, Vector("c"), Vector(good.copy(name = "c", expected = None))),
       Left(Failure.Normaliser(Vector("c")))
     )
+  }
+
+  test("the vectors are the rows of the normalization README's table") {
+    val readme =
+      """| #   | Name                | In        | Out    | Why |
+        || --- | ------------------- | --------- | ------ | --- |
+        || 1   | indefinite-array    | `9f0102ff` | `820102` | x |
+        || 20  | bignum-too-large    | `c249` | `c249` | y |
+        |Rows 9 to 14 are the must-not-change cases.""".stripMargin
+    assertEquals(
+      CborDatasetMain.vectorTable(readme),
+      Vector("0001-indefinite-array", "0020-bignum-too-large")
+    )
+  }
+
+  test("an empty corpus, or one that differs from its inventory, is an incomplete run") {
+    import CborDatasetMain.{Failure, Inventory, checkInventory, inventoryOf}
+    val corpus = java.nio.file.Path.of("conway")
+    assertEquals(
+      inventoryOf("""{"samples": 3, "rules": [{"name": "coin"}, {"name": "epoch"}]}"""),
+      Right(Inventory(3, Set("coin", "epoch")))
+    )
+    val inventory = Inventory(3, Set("coin", "epoch"))
+    val all = Vector("coin/valid/1" -> "coin", "coin/valid/2" -> "coin", "epoch/valid/1" -> "epoch")
+    assertEquals(checkInventory(corpus, inventory, all), Right(()))
+    assertEquals(
+      checkInventory(corpus, inventory, Vector.empty),
+      Left(Failure.EmptyCorpus(corpus))
+    )
+    assertEquals(
+      checkInventory(corpus, inventory, all.drop(1)),
+      Left(Failure.InventoryMismatch(3, 2, Vector.empty))
+    )
+    assertEquals(
+      checkInventory(corpus, inventory, all.take(2)),
+      Left(Failure.InventoryMismatch(3, 2, Vector("epoch")))
+    )
+  }
+
+  private def decoded(rules: Map[String, DatasetRule], rule: String)(bytes: String): Boolean =
+    rules.get(rule) match
+      case Some(DatasetRule.Mapped(_, _, _, run)) => run(hex(bytes)).isRight
+      case other                                  => fail(s"$rule is not mapped: $other")
+
+  test("a Conway protocol version is read as the header reads one, its major up to 13") {
+    val version = decoded(ConwayRules.rules, "protocol_version")
+    val major = decoded(ConwayRules.rules, "major_protocol_version")
+    assert(version("820c00") && version("820d00"), "12.0 and 13.0 are versions")
+    assert(!version("820e00"), "14.0 is beyond MaxVersion")
+    assert(major("0c") && major("0d"), "12 and 13 are versions")
+    assert(!major("0e"), "14 is beyond MaxVersion")
+  }
+
+  test("auxiliary data under tag 259 is told by its tag at any head width") {
+    val keyed = decoded(ConwayRules.rules, "auxiliary_data_map")
+    for head <- Vector("d90103", "da00000103", "db0000000000000103") do
+      assert(keyed(head + "a0"), s"$head")
+    assert(!keyed("a0"), "a bare map is not the keyed form")
+    assert(!keyed("d90104a0"), "another tag is not the keyed form")
+  }
+
+  test("a Dijkstra body's certificates and proposals are not empty, as the body requires") {
+    val certificates = decoded(DijkstraRules.rules, "certificates")
+    val proposals = decoded(DijkstraRules.rules, "proposal_procedures")
+    for empty <- Vector("80", "d9010280") do
+      assert(!certificates(empty), s"certificates $empty")
+      assert(!proposals(empty), s"proposals $empty")
+  }
+
+  test("a Conway block is read with each of its transactions, as BlockTransport reads one") {
+    val block = decoded(ConwayRules.rules, "block")
+    val header = Embedding.headerAround(Embedding.headerBody(0, hex("00"))).hex
+    val body = "a3008001800200"
+    def of(bodies: String, witnesses: String, aux: String) =
+      "85" + header + bodies + witnesses + aux + "80"
+    assert(block(of("81" + body, "81a0", "a0")), "a block of one well-formed transaction")
+    assert(!block(of("81a0", "81a0", "a0")), "a body without its inputs")
+    assert(!block(of("81" + body, "81a109f6", "a0")), "a witness set of an unknown key")
+    assert(!block(of("81" + body, "81a0", "a100a100f7")), "auxiliary data of an undefined value")
+  }
+
+  test("the Conway rules read detached records as production does (recd-detached corpus)") {
+    import io.circe.parser
+    import scala.jdk.CollectionConverters.*
+    val rules = Map(
+      "body" -> "transaction_body",
+      "witnesses" -> "transaction_witness_set",
+      "auxiliary" -> "auxiliary_data",
+      "transaction" -> "transaction",
+      "blockbody" -> "block"
+    )
+    val header = Embedding.headerAround(Embedding.headerBody(0, hex("00"))).hex
+    val lines = java.nio.file.Files
+      .readAllLines(java.nio.file.Path.of("fixtures/reference/recd-detached/cases.jsonl"))
+      .asScala
+      .toVector
+      .filter(_.nonEmpty)
+    val rows = lines.map(l => parser.parse(l).fold(e => fail(e.toString), _.hcursor))
+    val conway = rows.flatMap { c =>
+      (
+        c.get[String]("era").toOption.filter(_ == "conway"),
+        c.get[String]("kind").toOption.flatMap(rules.get),
+        c.get[Boolean]("accepted").toOption,
+        c.get[String]("bytes").toOption,
+        c.get[String]("name").toOption
+      ).mapN((_, rule, accepted, bytes, name) => (rule, accepted, bytes, name))
+    }
+    assertEquals(conway.map(_._1).toSet, rules.values.toSet)
+    assert(conway.exists(r => r._2 && r._3.contains("9fff")), "no accepted detached record")
+    for (rule, accepted, bytes, name) <- conway do
+      val input = if rule == "block" then "85" + header + bytes else bytes
+      assertEquals(decoded(ConwayRules.rules, rule)(input), accepted, s"$rule: $name")
   }
 
   test("the normal form folds a bignum that fits a head and keeps one that does not") {
