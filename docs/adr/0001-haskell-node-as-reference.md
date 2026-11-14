@@ -93,7 +93,8 @@ is unclear, ask the owner before changing the boundary behavior. The approval re
 ## Amendment (2026-11-14): the newest release, re-pinned in stages
 
 The owner decided on 2026-11-14 which release of `cardano-node` is the reference, and how Scarab
-moves to it. The decision above names no release, so no words of it are superseded.
+moves to it. [The decision](#decision) names no release, so no words of it are superseded. The stages are tracked in
+[#1002](https://github.com/KD5UJC-XYZ/scarab/issues/1002).
 
 - **The newest release.** The reference is the newest release of `cardano-node`, a pre-release
   included, and never a release with known bugs: Scarab takes upstream's fixes and improvements.
@@ -127,7 +128,7 @@ which is released on Hackage only, at the commit of its version bump):
 | Area | Packages | Revision |
 |---|---|---|
 | Node | cardano-node 11.2.1 | tag `11.2.1` at `90bc1cd9` |
-| Ledger | the cardano-ledger packages | `29a7d656`, where each has the source it was released from |
+| Ledger | the cardano-ledger packages | `29a7d656`, where each has the library source it was released from |
 | Consensus | ouroboros-consensus 5.4.0.0 | `808e4005` |
 | Networking | network-mux 1.0.0.0, ouroboros-network 2.0.0.0, cardano-diffusion 1.3.0.1 | `4646039f` |
 | Networking | typed-protocols 1.2.2.0 | `4493962e` |
