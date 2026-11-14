@@ -219,7 +219,7 @@ Approved deviations:
 
 - **D1. A duplicate transaction id in one `MsgRequestTxs`.**
   - **What the reference does.** Its outbound side looks each requested id up in its window and sends
-    the transaction once for each time the request names it; only an id outside the window is an error,
+    the transaction, while it is still in the mempool, once for each time the request names it; only an id outside the window is an error,
     `ProtocolErrorRequestedUnavailableTx` (`ouroboros-network/lib/Ouroboros/Network/TxSubmission/Outbound.hs`
     171-193 at `c45735a5`).
   - **What Scarab does.** `TxSubmissionPolicy.bodies` refuses the request with `Violation.DuplicateBody`,
@@ -286,8 +286,9 @@ Bugs of the linked packages, not reproduced:
     numPeersToReq`, whose parameters are `salt maxAmount requestAmount`
     (`ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/KnownPeers.hs` 200-201 and 262-267
     at `c45735a5`). So the new peers are ordered by a hash salted with the objective, and cut to a random
-    `Int`, not to the objective (`takeNPeers`, 275-278): read from the source, a negative draw keeps none
-    of them and a positive one keeps all.
+    `Int`, not to the objective (`takeNPeers`, 275-278): read from the source, a draw that is not positive
+    keeps none of them, and a positive one keeps at most that many, which for a random `Int` is nearly
+    always all of them.
   - **What Scarab does.** `PeerShare.Batch` holds the objective as its `remaining` and a fresh random
     salt, and `PeerShare.completed` orders the new peers by their hash under the salt and keeps at most
     the objective.

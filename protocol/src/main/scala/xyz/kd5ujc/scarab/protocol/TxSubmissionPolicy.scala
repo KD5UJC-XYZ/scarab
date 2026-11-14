@@ -63,8 +63,8 @@ object TxSubmissionPolicy:
     * `ProtocolErrorDuplicateTxIds` of ouroboros-network `3e6802b18` (PR #5435, in 2fb69829,
     * `TxSubmission/Outbound.hs:185-209`) and the network specification's `MsgRequestTxs` ("MUST NOT
     * contain duplicates") require. ouroboros-network c45735a5, which cardano-node 11.1.3 links,
-    * sends the transaction once for each time the request names it
-    * (`TxSubmission/Outbound.hs:171-193`). An approved deviation (`docs/decisions.md`, #956,
+    * sends the transaction, while it is still in the mempool, once for each time the request names
+    * it (`TxSubmission/Outbound.hs:171-193`). An approved deviation (`docs/decisions.md`, #956,
     * 2026-11-14): no 11.1.3 peer names an id twice, as its requests are maps from id to size.
     */
   def bodies(unacked: Vector[Bytes], ids: Vector[Bytes]): Either[Violation, Unit] =
