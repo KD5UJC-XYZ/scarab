@@ -1,0 +1,3 @@
+### Added (conformance)
+
+- `tools/runMain xyz.kd5ujc.scarab.ledger.LedgerRulesMain` writes Scarab's report for the ledger-rules scenario of [node-diversity-conformance](https://github.com/pragma-org/node-diversity-conformance): each transaction fixture of the corpus is decoded by the mempool's decoder and applied by the MEMPOOL rule, scripts evaluated, on the ledger state the fixture declares, and its verdict is written as the scenario's schema names it. A sidecar keeps every failure of each fixture with the names it maps to; a fixture Scarab gives no verdict is left out of the report, which the site counts as failed.
