@@ -25,6 +25,7 @@ object Reports:
       "forgedInvalid" -> s.forgedInvalid.asJson,
       "replaced" -> s.replaced.asJson,
       "failed" -> s.failed.asJson,
+      "defects" -> s.defects.asJson,
       "skipped" -> s.skippedTotal.asJson,
       "skippedByReason" -> s.skipped.toList
         .map((reason, count) => reason.key -> count)

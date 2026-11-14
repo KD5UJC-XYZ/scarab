@@ -96,10 +96,17 @@ the rows from `startLeadershipCheck` to `adoptedBlock`, and `stateInfo`):
 The forger needs no peer: like the reference it forges on its own chain. Only Praos with Conway transactions
 is forged: a TPraos era, Byron or the bootstrap mode is `ForgeError.UnsupportedProtocol`, the ledger view of a
 slot in an epoch before the tip's is `LedgerViewUnavailable`, a protocol version below 9 is refused after the
-tick, and a body over the maximum size or a block that does not decode is `Assembly`. Each of these is a
-`forgeFailed` (counted in `failed` and `scarab_forge_failed_total`). The reference has none of these refusals
-(it forges in every Shelley-based era and bounds the body through the transaction selection); they are kept
-pending the owner's decision under [#399](https://github.com/KD5UJC-XYZ/scarab/issues/399).
+tick. Each of these is a `forgeFailed` (counted in `failed` and `scarab_forge_failed_total`). The reference
+has none of these refusals (it forges in every Shelley-based era); the era refusals go when the node forges in
+every era ([#544](https://github.com/KD5UJC-XYZ/scarab/issues/544)).
+
+Two checks of the block just built only a bug of ours can fail: a body over the maximum size (the selection
+bounds it) and a block that does not decode. Either is a `ForgeDefect`, logged as `forgeDefect` (Critical) and
+counted in `defects` and `scarab_forge_defects_total`: the slot ends without a block, the block's transactions
+leave the mempool, valid or not, so that the next leader slot does not build it again, and the node goes on, as
+the reference goes on after a forged block its own rules refuse (`TraceForgedInvalidBlock`, `NodeKernel.hs`
+757-787). The body is checked before the KES key evolves or signs. This is the owner's decision of 2026-11-14
+([#987](https://github.com/KD5UJC-XYZ/scarab/issues/987), [decisions](../decisions.md)).
 
 Errors are a closed ADT, `ForgeError` (`ledger/.../NodeError.scala`): the key files and their checks
 (`KeyFile`, `KesKey`, `KesKeyNotCertified`, `CertificateFailure`, `CertificateSignatureRejected`,
@@ -124,6 +131,7 @@ Counters (`ForgeStats`, per epoch; roadmap H5) are folded over the loop's traces
 and the metrics cannot disagree: slots started (`slotsChecked`, the reference's `Forge.about-to-lead`), led
 (`leaderSlots`), not led, could not forge, forge-state update errors, forged, adopted, slot battles lost at
 adoption (`lostSlotBattles`), forged invalid, adopted blocks replaced later, Scarab's own refusals (`failed`),
+forge defects (`defects`),
 slots given up before the leader check by reason (`slotIsImmutable`, `blockFromFuture`, `noLedgerView`), and
 the forge latency (slot start to adoption: count, mean, max). The reference's `ForgingStats` (`nodeIsLeader`,
 `nodeCannotForge`, `blocksForged`, `slotsMissed`) are folded as cardano-node folds them and published at the

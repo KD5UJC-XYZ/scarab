@@ -233,6 +233,7 @@ section and the catalogue differ.
 | `scarab_forge_skipped_total` | counter | `reason` | Slots the forger gave up before the leader check, by reason. | none (the first two reasons are also `Forge.slot-is-immutable` and `Forge.block-from-future`; `NoLedgerView` is one of the causes the reference counts as `Forge.could-not-forge`) |
 | `scarab_forge_replaced_total` | counter |  | Forged blocks adopted and later replaced on our chain by another block at their height. | none |
 | `scarab_forge_failed_total` | counter |  | Slots given up for a reason of Scarab's own, which the reference does not have (forgeFailed). | none |
+| `scarab_forge_defects_total` | counter |  | Blocks built that failed a check only a bug of ours can fail; the slot ended without a block (forgeDefect). | none |
 | `scarab_forge_adoption_seconds` | histogram |  | Time from the start of the slot to the adoption of the block forged in it. | none |
 
 ### Peers and connections

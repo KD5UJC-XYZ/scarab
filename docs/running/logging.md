@@ -192,7 +192,8 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `kesWrittenByRename` | `Forge.KesWrittenByRename` | Warning | `reason`, `errno` |
 | `keyFileGroupAccess` | `Forge.KeyFileGroupAccess` | Warning | `file`, `mode` |
 | `forgeFailed` | `Forge.ForgeFailed` | Error | `slot`, `kind`, `message`: a slot given up for a reason of Scarab's own, which the reference does not have |
-| `forgeEpoch` | `Forge.ForgeEpoch` | Notice | `epoch`, `slotsChecked`, `leaderSlots`, `notLeader`, `cannotForge`, `stateUpdateError`, `forged`, `adopted`, `lostSlotBattles`, `forgedInvalid`, `replaced`, `failed`, `skipped`, `skippedByReason`, `forgeLatencyMs` |
+| `forgeDefect` | `Forge.ForgeDefect` | Critical | `slot`, `kind` (`BodySize` with `bodySize` and `maxBodySize`, or `BlockDecode` with `cause`), `evicted` (the ids of the transactions the block held, which left the mempool): the block built in the slot failed a check only a bug of Scarab's can fail; no block, and the node goes on (#987) |
+| `forgeEpoch` | `Forge.ForgeEpoch` | Notice | `epoch`, `slotsChecked`, `leaderSlots`, `notLeader`, `cannotForge`, `stateUpdateError`, `forged`, `adopted`, `lostSlotBattles`, `forgedInvalid`, `replaced`, `failed`, `defects`, `skipped`, `skippedByReason`, `forgeLatencyMs` |
 | `formatMigrated` | `Storage.FormatMigrated` | Notice | `kind`, `from`, `to`, `count` |
 | `immutableOpened` | `Storage.ImmutableOpened` | Info | `tip`, `blocks`, `chunks`, `truncatedEntries`, `truncatedBytes` |
 | `volatileOpened` | `Storage.VolatileOpened` | Info | `blocks`, `files`, `truncatedBytes`, `removedFiles` |

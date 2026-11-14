@@ -165,7 +165,7 @@ reference's release binary is a static musl build), whatever C library the JVM r
 consensus state at a block; the devnet comparator diffs this against the Haskell node. It binds to
 loopback and is a development interface, not a stable API. `GET /scheduling` serves the scheduling
 measurements and, on a node started with `--forge`, `GET /forging` the forger's counters per epoch and in
-total (`slotsChecked`, `leaderSlots`, `forged`, `adopted`, `lostSlotBattles`, `failed`, `skipped` and
+total (`slotsChecked`, `leaderSlots`, `forged`, `adopted`, `lostSlotBattles`, `failed`, `defects`, `skipped` and
 `skippedByReason`, `forgeLatencyMs` from the slot's start to adoption); the same counters of an epoch are
 logged as a `forgeEpoch` line when the next epoch begins. `GET /metrics` serves the Prometheus text format
 (next section).

@@ -20,15 +20,16 @@ import xyz.kd5ujc.scarab.node.mempool.{Capacity, Entry, MempoolLedger}
   * body, the header body and the block. Every function is deterministic in its arguments; the
   * effects (clock, mempool, KES evolution, adoption) live in [[Forger]].
   *
-  * The encodings are the ones a `cardano-node` accepts: the block is `[7, [header, [tx_body],
-  * [witness_set], {index: auxiliary_data}, [invalid_index]]]`, the header `[header_body, kes_sig]`
-  * and `header_body` the ten-element Praos array. The transactions' original bytes are copied,
-  * never re-encoded, so transaction ids and the body hash stay exact.
+  * The encodings are the reference's: the block is `[7, [header, [tx_body], [witness_set], {index:
+  * auxiliary_data}, [invalid_index]]]`, the header `[header_body, kes_sig]` and `header_body` the
+  * ten-element Praos array. The four body parts are definite up to 23 entries and indefinite above,
+  * as the reference writes them ([[container]]). The transactions' original bytes are copied, never
+  * re-encoded, so transaction ids and the body hash stay exact.
   */
 object BlockBuilder:
   val ConwayEra: Int = 7
 
-  // ---- minimal CBOR writer (definite lengths, canonical minimal heads)
+  // ---- minimal CBOR writer (canonical minimal heads)
 
   private def head(major: Int, n: Long): Array[Byte] =
     val m = major << 5
@@ -44,6 +45,27 @@ object BlockBuilder:
   private def arr(n: Int): Array[Byte] = head(4, n.toLong)
 
   private def headLength(n: Int): Long = head(0, n.toLong).length.toLong
+
+  /** The most entries a body part is written with a definite length (`lengthThreshold`). */
+  private val LengthThreshold = 23
+
+  private val Break: Byte = 0xff.toByte
+
+  /** A body part of `n` entries (`items`, encoded) as the reference writes it: definite up to
+    * [[LengthThreshold]] entries, indefinite above. The transaction bodies and the witness sets go
+    * through `encodeFoldableEncoder`, the auxiliary data through `encodeFoldableMapEncoder` and the
+    * invalid indices through `encodeList` (cardano-ledger f649f975
+    * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/BlockBody/Internal.hs:130-149`), which all end in
+    * that rule (`libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs:361-385`,
+    * `:433-443`, `:458-468`, `:499-508`).
+    */
+  private def container(major: Int, n: Int, items: Array[Byte]): Array[Byte] =
+    if n <= LengthThreshold then head(major, n.toLong) ++ items
+    else Array(((major << 5) | 31).toByte) ++ items ++ Array(Break)
+
+  /** The bytes [[container]] adds to its entries: the head, or the indefinite head and the break.
+    */
+  private def containerOverhead(n: Int): Long = if n <= LengthThreshold then 1L else 2L
 
   /** One transaction split into the pieces a block carries (original bytes). */
   final case class Piece(
@@ -90,14 +112,14 @@ object BlockBuilder:
 
   def body(pieces: Vector[Piece]): Body =
     def seq(items: Vector[Array[Byte]]): Bytes =
-      Bytes.fromArray(arr(items.size) ++ items.flatten.toArray)
+      Bytes.fromArray(container(4, items.size, items.flatten.toArray))
     val auxEntries = pieces.zipWithIndex.collect { case (Piece(_, _, _, Some(a), _), i) =>
       uint(i) ++ a.toArray
     }
     Body(
       seq(pieces.map(_.body.toArray)),
       seq(pieces.map(_.witnesses.toArray)),
-      Bytes.fromArray(head(5, auxEntries.size.toLong) ++ auxEntries.flatten.toArray),
+      Bytes.fromArray(container(5, auxEntries.size, auxEntries.flatten.toArray)),
       seq(pieces.zipWithIndex.collect { case (p, i) if !p.valid => uint(i) }),
       pieces.map(_.id)
     )
@@ -107,10 +129,10 @@ object BlockBuilder:
     val n = pieces.size
     val aux = pieces.zipWithIndex.flatMap((p, i) => p.aux.map(a => (i, a)))
     val invalid = pieces.zipWithIndex.collect { case (p, i) if !p.valid => i }
-    headLength(n) + pieces.map(_.body.size.toLong).sum +
-      headLength(n) + pieces.map(_.witnesses.size.toLong).sum +
-      head(5, aux.size.toLong).length + aux.map((i, a) => headLength(i) + a.size).sum +
-      headLength(invalid.size) + invalid.map(i => headLength(i)).sum
+    containerOverhead(n) + pieces.map(_.body.size.toLong).sum +
+      containerOverhead(n) + pieces.map(_.witnesses.size.toLong).sum +
+      containerOverhead(aux.size) + aux.map((i, a) => headLength(i) + a.size).sum +
+      containerOverhead(invalid.size) + invalid.map(i => headLength(i)).sum
 
   /** No verdict of ours on a held transaction: missing evaluator support or a crypto provider that
     * failed on a witness, or a quantity of the ledger state outside its vocabulary type, which the

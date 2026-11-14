@@ -540,6 +540,16 @@ object LogSamples:
     ForgeEvent.KesWrittenByRename(NoExchange.Refused(22)),
     ForgeEvent.KesWrittenByRename(NoExchange.NotLinux),
     ForgeEvent.Failed(BigInt(4202), ForgeError.KeyPeriodOutOfRange(33, 0, 32)),
+    ForgeEvent.Defect(
+      BigInt(4203),
+      xyz.kd5ujc.scarab.ledger.ForgeDefect.BodySize(90116, BigInt(90112)),
+      Vector(hash)
+    ),
+    ForgeEvent.Defect(
+      BigInt(4205),
+      xyz.kd5ujc.scarab.ledger.ForgeDefect.BlockDecode(ChainError.NoIntersection),
+      Vector.empty
+    ),
     ForgeEvent.EpochSummary(BigInt(3), forgeStats),
     ForgeEvent.EpochSummary(BigInt(4), ForgeEpochStats())
   )

@@ -75,8 +75,8 @@ that meets it, and Scarab does the same in each place:
   way, as `SessionEnd.Unavailable` and `Fatal.Unavailable` (exit 8); the 2026-10-23 hold of ADR
   0017 is removed. Startup recovery
   (`ChainStorage.resume`) raises it without cutting the volatile log back; a provider defect on
-  the node's own block stops the forger with `Fatal.Unverifiable` and evicts no transaction from
-  the pool.
+  the node's own block ends the slot without a block and evicts its transactions from the pool,
+  and the node goes on (the #584 decision in [the register](../decisions.md); `ForgerFailureSuite`).
 - **A header from a peer** (header-first validation). The exception is raised in that peer's
   ChainSync thread, which no rethrow policy names, so the default applies: log it, disconnect the
   peer in both directions (`ShutdownPeer`) and allow a reconnect after a short delay

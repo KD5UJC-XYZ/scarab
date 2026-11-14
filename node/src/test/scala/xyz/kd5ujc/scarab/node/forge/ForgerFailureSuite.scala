@@ -262,6 +262,35 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     }
   }
 
+  // #987: a block that fails a check only a bug of ours can fail is a forge defect: the slot ends
+  // without a block, the defect is reported, and the node goes on (owner decision of 2026-11-14)
+  test(
+    "a body over the maximum size is a forge defect: no block, no fatal, the node goes on (#987)"
+  ) {
+    val p = pool(kesStart = 50)
+    // an empty body is 4 bytes, so a maximum of 3 makes every body too large
+    val ledger = xyz.kd5ujc.scarab.ledger.state.ConwayNewEpochState.gov
+      .modify(g => g.copy(curPParams = g.curPParams.copy(maxBlockBodySize = BigInt(3))))(
+        ledgerWith(p, 1)
+      )
+    withHandle {
+      for
+        h <- harness(p, ledger)
+        result <- h.forger.step(leaderSlot(p))
+        events <- h.seen
+        chain <- h.chain
+      yield
+        assertEquals(result, Right(()))
+        assertEquals(chain.tipRef, None)
+        assertEquals(
+          events.collect { case ForgeEvent.Defect(_, d, evicted) => (d, evicted) },
+          Vector((xyz.kd5ujc.scarab.ledger.ForgeDefect.BodySize(4, BigInt(3)), Vector.empty))
+        )
+        assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]))
+        assert(!events.exists(_.isInstanceOf[ForgeEvent.Forged]))
+    }
+  }
+
   /** A key source whose write-back fails with a defect, counting its calls. */
   private def defective(cause: Throwable, calls: Ref[IO, Int]) =
     new HotKeySource[IO]:

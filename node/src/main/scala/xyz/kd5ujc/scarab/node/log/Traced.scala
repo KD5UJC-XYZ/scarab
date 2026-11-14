@@ -6,7 +6,7 @@ import io.circe.Json
 import io.circe.syntax.*
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, SchedulingReport}
 import xyz.kd5ujc.scarab.network.{ConnectionEvent, DiffTime}
-import xyz.kd5ujc.scarab.ledger.ForgeKeyProblem
+import xyz.kd5ujc.scarab.ledger.{ForgeDefect, ForgeKeyProblem}
 import xyz.kd5ujc.scarab.node.Reports
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.node.forge.{
@@ -557,4 +557,13 @@ object Traced:
         "slot" -> slot.asJson,
         "kind" -> error.productPrefix.asJson,
         "message" -> error.message.asJson
+      )
+    case ForgeEvent.Defect(slot, defect, evicted) =>
+      val detail = defect match
+        case ForgeDefect.BodySize(actual, maximum) =>
+          List("bodySize" -> actual.asJson, "maxBodySize" -> maximum.asJson)
+        case ForgeDefect.BlockDecode(cause) => List("cause" -> cause.message.asJson)
+      EventKind.ForgeDefect.line(
+        (List("slot" -> slot.asJson, "kind" -> defect.productPrefix.asJson) ++ detail :+
+          ("evicted" -> evicted.map(_.hex).asJson))*
       )

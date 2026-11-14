@@ -172,6 +172,7 @@ object Collectors:
         metrics.advance(forgeDidntAdopt, t.didntAdopt.toDouble) *>
         metrics.advance(forgeReplaced, t.replaced.toDouble) *>
         metrics.advance(forgeFailed, t.failed.toDouble) *>
+        metrics.advance(forgeDefects, t.defects.toDouble) *>
         metrics.set(blocksForged, f.blocksForged.toDouble) *>
         metrics.set(nodeIsLeader, f.nodeIsLeader.toDouble) *>
         metrics.set(nodeCannotForge, f.nodeCannotForge.toDouble) *>
