@@ -1234,13 +1234,16 @@
     {
       "module": "tools",
       "path": "ledger",
-      "responsibility": "Hand-run benchmarks for the `ledger` package (its package, for its package-private access)",
+      "responsibility": "Hand-run benchmarks for the `ledger` package, and the ledger-rules report of node-diversity-conformance: the corpus's transaction fixtures judged by the mempool's decoder and rules (its package, for its package-private access)",
       "entryPoints": [
         "ApplyBenchMain",
         "DetachedRecordsBench",
+        "LedgerRulesMain",
         "UtxoChangesBench"
       ],
-      "suites": [],
+      "suites": [
+        "LedgerRulesSuite"
+      ],
       "docs": []
     },
     {
