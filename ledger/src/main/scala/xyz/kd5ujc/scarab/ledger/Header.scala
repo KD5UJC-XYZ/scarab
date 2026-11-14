@@ -240,18 +240,10 @@ object Header:
     * (Praos2 c) = Leios.Header c`, `Ouroboros/Consensus/Protocol/Praos2.hs:57`).
     */
   def fromRaw(era: Era, raw: Bytes): Either[ChainError, Header.Shelley] =
-    fromRawAt(era, raw, DecoderVersion.of(era))
+    fromRaw(era, raw, DecoderVersion.of(era))
 
-  /** [[fromRaw]] at `version`, which must be one of the era's ([[DecoderVersion.at]]). */
+  /** [[fromRaw]] at `version`, read as given, as `decodeFull'` reads a type at any `Version`. */
   def fromRaw(era: Era, raw: Bytes, version: DecoderVersion): Either[ChainError, Header.Shelley] =
-    LedgerDecodeError.readsAt(era, version).leftMap(fail).flatMap(fromRawAt(era, raw, _))
-
-  /** [[fromRaw]] at `version`, unchecked against the era: a block's header, read at its own. */
-  private[ledger] def fromRawAt(
-      era: Era,
-      raw: Bytes,
-      version: DecoderVersion
-  ): Either[ChainError, Header.Shelley] =
     era match
       case Era.Byron => Left(fail(LedgerDecodeError.ByronLayout))
       // the twelve-field Leios header of Praos2, signed over its body's original bytes
@@ -578,8 +570,8 @@ object Header:
   // 82ecba32: `Block.hs:337` is `encodeShelleyHeader = toEraCBOR @era`, and `:346` is the
   // `eraDecoder @era` inside `decodeShelleyHeader` — 2..9 from Shelley to Conway, so `Header.fromRaw`
   // passes `ByteStrings.of(DecoderVersion.of(era))` and every era Scarab reads takes a definite string.
-  // A version a reader names (`fromRaw(era, raw, version)`) is one of the era's, 2 to 11 from Shelley
-  // to Conway, all below 12, so it takes a definite string too.
+  // A version a reader names (`fromRaw(era, raw, version)`) is read as given: from 12 a chunked string
+  // is taken, as `decodeBytes` takes it there.
   //
   // The policy-less forms (`bytes(n, size)`, `optHash(n)`, `vrfCert(n)`) keep the policy this file had
   // before #437: `Chunked`. They serve `LeiosBlock`, which #437 did not measure (#570 Leios). The

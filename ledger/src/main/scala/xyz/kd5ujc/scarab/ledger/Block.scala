@@ -76,8 +76,7 @@ object Block:
   def decode(raw: Bytes, byronEpochSlots: BigInt): Either[ChainError, Block] =
     decodeWith(raw, Some(byronEpochSlots), DecoderVersion.of, DetachedRecords.Shapes.block)
 
-  /** [[decode]] with the block read at the decoder version `version` names for its era, which must
-    * be one of the era's ([[DecoderVersion.at]]).
+  /** [[decode]] with the block read at the decoder version `version` names for its era, as given.
     */
   def decode(
       raw: Bytes,
@@ -90,8 +89,8 @@ object Block:
   def decodeShelley(raw: Bytes): Either[ChainError, Block] =
     decodeWith(raw, None, DecoderVersion.of, DetachedRecords.Shapes.block)
 
-  /** [[decodeShelley]] with the block read at the decoder version `version` names for its era,
-    * which must be one of the era's ([[DecoderVersion.at]]).
+  /** [[decodeShelley]] with the block read at the decoder version `version` names for its era, as
+    * given.
     */
   def decodeShelley(raw: Bytes, version: Era => DecoderVersion): Either[ChainError, Block] =
     decodeWith(raw, None, version, DetachedRecords.Shapes.blockAt(version))
@@ -131,7 +130,6 @@ object Block:
       era <- Era
         .fromBlockTag(tag)
         .toRight(fail(LedgerDecodeError.UnknownTag(DecodeField.BlockEra, tag)))
-      version <- LedgerDecodeError.readsAt(era, at(era)).leftMap(fail)
       block <- era match
         case Era.Byron =>
           byronEpochSlots
@@ -140,7 +138,7 @@ object Block:
         // `[header, [txs, leios_cert / nil, peras_cert / nil]]`, read as the Leios testnet's build
         // reads it: the envelope again (a definite list), then the block at decoder version 12
         case Era.Dijkstra => LeiosBlock.read(root).map(Dijkstra(_))
-        case _            => shelley(era, version, outer(1))
+        case _            => shelley(era, at(era), outer(1))
     yield block
 
   private def byron(
@@ -164,7 +162,7 @@ object Block:
   private def shelley(era: Era, version: DecoderVersion, n: Node): Either[ChainError, Block] =
     for
       parts <- array(n, if era.hasInvalidTransactions then 5 else 4)
-      header <- Header.fromRawAt(era, parts(0).original, version)
+      header <- Header.fromRaw(era, parts(0).original, version)
       body <- segregated(parts, era, version)
     yield Shelley(era, header, body.transactions, body.size, body.hash, body.segments)
 

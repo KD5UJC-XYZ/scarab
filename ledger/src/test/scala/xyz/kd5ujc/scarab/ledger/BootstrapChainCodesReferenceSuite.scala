@@ -120,6 +120,7 @@ object BootstrapChainCodesReferenceSuite:
     case Decode(cause: LedgerDecodeError)
     case Chain(cause: ChainError)
     case Syntax(cause: Cbor.Error)
+    case Version(cause: DecoderVersion.OutOfRange)
     case NotShelleyBased
     case NoEra
 
@@ -170,9 +171,10 @@ object BootstrapChainCodesReferenceSuite:
         case (Kind.Alone, _) =>
           DecoderVersion
             .at(era, row.version)
-            .leftMap(LedgerDecodeError.VersionOutsideEra(_))
-            .flatMap(Witnesses.decode(holding(row.raw), era, _))
-            .bimap(Refused.Decode(_), _.bootstrap)
+            .leftMap(Refused.Version(_))
+            .flatMap(
+              Witnesses.decode(holding(row.raw), era, _).bimap(Refused.Decode(_), _.bootstrap)
+            )
         case (Kind.Witnesses, _) =>
           Witnesses.decode(row.raw, era).bimap(Refused.Decode(_), _.bootstrap)
         case (Kind.Transaction, _) =>

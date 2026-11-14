@@ -9,26 +9,27 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** An explicit decoder version ([[DecoderVersion.at]]): one of the era's range, `eraProtVerLow` to
-  * `eraProtVerHigh`
+/** An explicit decoder version. [[DecoderVersion.at]] builds one of an era's range, `ProtVerLow` to
+  * `ProtVerHigh`
   * (`libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs:87-141`,
-  * cardano-ledger f649f975), any other refused; the era's entry points read at it.
+  * cardano-ledger f649f975), and refuses any other; the era's entry points read at whatever version
+  * they are given, as `decodeFull'` does
+  * (`libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding.hs:93-100`).
   *
   * At f649f975 no decoder branches inside an era's range: the decoders branch at versions 2, 7, 9
   * and 12 (`ifDecoderVersionAtLeast`, `whenDecoderVersionAtLeast`), 3 (`decodeMetadatum`'s `> 2`),
   * 12 (`decodeAnnSet`'s `>= 12`) and 5, 7, 9 and 12 (`guardPlutus`), against ranges of Alonzo 5 to
-  * 6, Babbage 7 to 8 and Conway 9 to 11. So every version of an era gives the verdict and the
-  * value its lowest gives; a refusal can still differ in the version it names (an auxiliary Plutus
-  * script refused before its language's version, `AuxiliaryScriptProtocol`), which no line of these
-  * corpora reaches. That a version is threaded is shown by reading a part at its neighbouring era's
-  * version, across the branch at 9 and the one at 12, with the unchecked readers the entry points
-  * share.
+  * 6, Babbage 7 to 8 and Conway 9 to 11. So every version of an era gives the verdict and the value
+  * its lowest gives; a refusal can still differ in the version it names (an auxiliary Plutus script
+  * refused before its language's version, `AuxiliaryScriptProtocol`), which no line of these
+  * corpora reaches. That a version reaches each place that branches on it is shown by reading a
+  * part across the branch it meets, at 9 or at 12, through each entry point.
   */
 class DecoderVersionSuite extends FunSuite:
   import DecoderVersionSuite.*
 
   private val reference: Map[Era, (Int, Int)] = Map(
-    Era.Byron -> (2, 2),
+    Era.Byron -> (0, 1),
     Era.Shelley -> (2, 2),
     Era.Allegra -> (3, 3),
     Era.Mary -> (4, 4),
@@ -38,22 +39,26 @@ class DecoderVersionSuite extends FunSuite:
     Era.Dijkstra -> (12, 12)
   )
 
-  test("an era's range is eraProtVerLow to eraProtVerHigh, its lowest the version of the era") {
+  test("an era's range is ProtVerLow to ProtVerHigh, from Shelley its lowest the era's version") {
     assertEquals(reference.keySet, Era.values.toSet)
     for era <- Era.values do
       val range = DecoderVersion.range(era)
       assertEquals((range.low, range.high), reference(era), s"$era")
-      assertEquals(range.low, DecoderVersion.of(era).value, s"$era: the lowest is the era's")
       assertEquals(DecoderVersion.high(era).value, range.high, s"$era: eraProtVerHigh")
       assertEquals(range.versions.map(_.value), (range.low to range.high).toVector, s"$era")
+    for era <- Era.values.filterNot(_ == Era.Byron) do
+      assertEquals(DecoderVersion.range(era).low, DecoderVersion.of(era).value, s"$era")
+    // the readers of Shelley-shaped parts read a Byron era as Shelley, outside Byron's own range
+    assertEquals(DecoderVersion.of(Era.Byron), DecoderVersion.of(Era.Shelley))
+    assert(!DecoderVersion.range(Era.Byron).contains(DecoderVersion.of(Era.Byron).value))
   }
 
-  test("every version of an era's range is built, and the lowest is the era's own") {
+  test("every version of an era's range is built, and from Shelley the lowest is the era's own") {
     for
       era <- Era.values
       major <- DecoderVersion.range(era).low to DecoderVersion.range(era).high
     do assertEquals(DecoderVersion.at(era, major).map(_.value), Right(major), s"$era $major")
-    for era <- Era.values do
+    for era <- Era.values.filterNot(_ == Era.Byron) do
       assertEquals(
         DecoderVersion.at(era, DecoderVersion.of(era).value),
         Right(DecoderVersion.of(era))
@@ -63,7 +68,7 @@ class DecoderVersionSuite extends FunSuite:
   test("a version outside an era's range is refused, with the era and its range") {
     for era <- Era.values do
       val range = DecoderVersion.range(era)
-      for major <- Vector(range.low - 1, range.high + 1, 0, DecoderVersion.MaxVersion + 1) do
+      for major <- Vector(range.low - 1, range.high + 1, DecoderVersion.MaxVersion + 1) do
         assertEquals(
           DecoderVersion.at(era, major),
           Left(DecoderVersion.OutOfRange(era, major, range)),
@@ -73,110 +78,68 @@ class DecoderVersionSuite extends FunSuite:
       DecoderVersion.at(Era.Conway, 12).leftMap(_.range),
       Left(DecoderVersion.Range(9, 11))
     )
-  }
-
-  test("an entry point refuses a version of another era before it reads") {
-    val dijkstra = DecoderVersion.Dijkstra
-    val babbage = version(Era.Babbage, 8)
-    val outside = LedgerDecodeError.VersionOutsideEra(
-      DecoderVersion.OutOfRange(Era.Conway, 12, DecoderVersion.Range(9, 11))
-    )
-    val below = LedgerDecodeError.VersionOutsideEra(
-      DecoderVersion.OutOfRange(Era.Conway, 8, DecoderVersion.Range(9, 11))
-    )
-    assertEquals(TxBody.decode(duplicateInputs, Era.Conway, dijkstra), Left(outside))
-    assertEquals(TxBody.decode(duplicateInputs, Era.Conway, babbage), Left(below))
-    assertEquals(Witnesses.decode(chainCode31, Era.Conway, dijkstra), Left(outside))
-    assertEquals(Tx.fromEnvelope(transaction, Era.Conway, babbage), Left(below))
     assertEquals(
-      Tx.fromBlock(
-        Block.Transaction(duplicateInputs, Bytes(Vector(0xa0.toByte)), None, true),
-        Era.Conway,
-        babbage
-      ),
-      Left(below)
-    )
-    assertEquals(
-      Certificate.decode(node(hex("82008200581c" + "11" * 28)), Era.Conway, dijkstra),
-      Left(outside)
-    )
-    assertEquals(
-      Header.fromRaw(Era.Conway, Bytes.empty, dijkstra),
-      Left(Header.fail(outside))
-    )
-    val block = DetachedRecordsReferenceSuite.block(Era.Conway, hex("80" + "80" + "a0" + "80"))
-    assert(Block.decodeShelley(block).isRight, "the block is read at the era's version")
-    assertEquals(
-      Block.decodeShelley(block, _ => babbage),
-      Left(ChainError.Decode(DecodeField.Block, below))
-    )
-    assertEquals(
-      Block.decodeShelley(block, DecoderVersion.high).map(_.header),
-      Block.decodeShelley(block).map(_.header)
+      DecoderVersion.at(Era.Byron, 2).leftMap(_.range),
+      Left(DecoderVersion.Range(0, 1))
     )
   }
 
-  test("a version is threaded: the branch at 9 is taken from 9, through a body and a transaction") {
-    val at8 = version(Era.Babbage, 8)
-    val at9 = DecoderVersion.of(Era.Conway)
+  private val at8 = version(Era.Babbage, 8)
+  private val at9 = DecoderVersion.of(Era.Conway)
+  private val at11 = DecoderVersion.high(Era.Conway)
+  private val at12 = DecoderVersion.Dijkstra
+
+  test("a body reads its inputs, withdrawals and certificates at the version given (9)") {
     val duplicate = LedgerDecodeError.DuplicateElement(DecodeField.Inputs)
     // `decodeSetEnforceNoDuplicates` from 9 (`Decoder.hs`, f649f975); `Set.fromList` below it
-    assertEquals(TxBody.decodeAt(duplicateInputs, Era.Conway, at8).map(_.inputs.size), Right(1))
-    assertEquals(TxBody.decodeAt(duplicateInputs, Era.Conway, at9), Left(duplicate))
+    assertEquals(TxBody.decode(duplicateInputs, Era.Conway, at8).map(_.inputs.size), Right(1))
+    assertEquals(TxBody.decode(duplicateInputs, Era.Conway, at9), Left(duplicate))
     assertEquals(TxBody.decode(duplicateInputs, Era.Conway), Left(duplicate))
     for v <- DecoderVersion.range(Era.Conway).versions do
       assertEquals(TxBody.decode(duplicateInputs, Era.Conway, v), Left(duplicate), s"${v.value}")
-    assertEquals(Tx.envelopeAt(transaction, Era.Conway, at8).map(_.body.inputs.size), Right(1))
-    assertEquals(Tx.envelopeAt(transaction, Era.Conway, at9), Left(duplicate))
-  }
-
-  test(
-    "a version is threaded: the branch at 9 is taken from 9, through a certificate and a block"
-  ) {
-    val at8 = version(Era.Babbage, 8)
-    val at9 = DecoderVersion.of(Era.Conway)
-    // a pool registration whose two owners are one key: `decodeSet` refuses it from 9
-    val owner = "581c" + "11" * 28
-    val registration = node(
-      hex(
-        "8a03581c" + "00" * 28 + "5820" + "00" * 32 + "0000d81e820001581de0" + "00" * 28 + "82" +
-          owner + owner + "80" + "f6"
-      )
+    // the same account withdrawn twice: refused from 9, the last kept below it
+    val withdrawals = hex("a400800180020005a2" + account + "00" + account + "01")
+    assertEquals(TxBody.decode(withdrawals, Era.Conway, at8).map(_.withdrawals.size), Right(1))
+    assertEquals(
+      TxBody.decode(withdrawals, Era.Conway, at9),
+      Left(LedgerDecodeError.DuplicateElement(DecodeField.Withdrawals))
+    )
+    // the body's certificates are read at the body's version
+    val certificates = hex("a40080018002000481") ++ registration
+    assertEquals(
+      TxBody.decode(certificates, Era.Conway, at8).map(_.certificates.map(owners)),
+      Right(Vector(1))
     )
     assertEquals(
-      Certificate.decodeAt(registration, Era.Conway, at8).map {
-        case Certificate.RegisterPool(params) => params.owners.size
-        case _                                => 0
-      },
-      Right(1)
-    )
-    assertEquals(
-      Certificate.decode(registration, Era.Conway),
+      TxBody.decode(certificates, Era.Conway, at9),
       Left(LedgerDecodeError.DuplicateElement(DecodeField.PoolOwners))
     )
-    // a block body whose auxiliary data names the one transaction twice: `decodeIntMap` refuses it
-    // from 9 and keeps the last entry below it
-    val parts = node(
-      hex("85" + "80" + "81a0" + "81a0" + "a2" + "00a1" + "0001" + "00a1" + "0002" + "80")
-    ).value match
-      case xyz.kd5ujc.scarab.codec.Value.Arr(xs) => xs
-      case other                                 => fail(s"not a list: $other")
-    assertEquals(
-      Block.segregated(parts, Era.Conway, at8).map(_.transactions.map(_.auxiliaryData)),
-      Right(Vector(Some(hex("a10002"))))
-    )
-    assertEquals(
-      Block.segregated(parts, Era.Conway, at9).map(_.transactions.size),
-      Left(
-        ChainError.Decode(
-          DecodeField.Block,
-          LedgerDecodeError.DuplicateKey(DecodeField.AuxiliaryData)
-        )
-      )
-    )
   }
 
-  test("a version is threaded: the branch at 12 is taken from 12, through a witness set") {
+  test("a certificate reads its pool owners and its anchor's url at the version given (9)") {
+    assertEquals(Certificate.decode(node(registration), Era.Conway, at8).map(owners), Right(1))
+    assertEquals(
+      Certificate.decode(node(registration), Era.Conway, at9),
+      Left(LedgerDecodeError.DuplicateElement(DecodeField.PoolOwners))
+    )
+    // `textDecCBOR 64` below 9 and 128 from it (`BaseTypes.hs:644-697`, f649f975)
+    val url = "7864" + "61" * 100
+    val drep = node(hex("841082" + "00581c" + "11" * 28 + "0082" + url + "5820" + "22" * 32))
+    assertEquals(
+      Certificate.decode(drep, Era.Conway, at8),
+      Left(LedgerDecodeError.TextTooLong(DecodeField.AnchorUrl, 64, 100))
+    )
+    assert(Certificate.decode(drep, Era.Conway, at9).isRight)
+  }
+
+  test("a witness set reads its lists and chain codes at the version given (9, 12)") {
+    // `decodeNonEmptyList` from 9 (`Alonzo/TxWits.hs`, f649f975)
+    val empty = hex("a10080")
+    assertEquals(Witnesses.decode(empty, Era.Conway, at8).map(_.vkeys), Right(Vector.empty))
+    assertEquals(
+      Witnesses.decode(empty, Era.Conway, at9),
+      Left(LedgerDecodeError.Empty(DecodeField.VkeyWitnesses))
+    )
     // `DecCBOR ChainCode` checks 32 bytes from 12 (`Keys/Bootstrap.hs:72-78`, f649f975)
     for v <- DecoderVersion.range(Era.Conway).versions do
       assertEquals(
@@ -185,9 +148,83 @@ class DecoderVersionSuite extends FunSuite:
         s"${v.value}"
       )
     assertEquals(
-      Witnesses.decodeAt(chainCode31, Era.Conway, DecoderVersion.Dijkstra),
+      Witnesses.decode(chainCode31, Era.Conway, at12),
       Left(LedgerDecodeError.ByteLength(DecodeField.ChainCode, 32, 31))
     )
+  }
+
+  test("a transaction reads its body and auxiliary data at the version given (9)") {
+    assertEquals(Tx.fromEnvelope(transaction, Era.Conway, at8).map(_.body.inputs.size), Right(1))
+    assertEquals(
+      Tx.fromEnvelope(transaction, Era.Conway, at9),
+      Left(LedgerDecodeError.DuplicateElement(DecodeField.Inputs))
+    )
+    // a metadata label written twice: refused from 9 (`decodeMetadata`, `Metadata.hs`, f649f975)
+    val labels = hex("a200000000")
+    val duplicateLabels = LedgerDecodeError.DuplicateKey(DecodeField.MetadataLabels)
+    val whole = hex("84a3008001800200a0f5") ++ labels
+    assert(Tx.fromEnvelope(whole, Era.Conway, at8).isRight)
+    assertEquals(Tx.fromEnvelope(whole, Era.Conway, at9), Left(duplicateLabels))
+    val parts = Block.Transaction(hex("a3008001800200"), hex("a0"), Some(labels), true)
+    assert(Tx.fromBlock(parts, Era.Conway, at8).isRight)
+    assertEquals(Tx.fromBlock(parts, Era.Conway, at9), Left(duplicateLabels))
+  }
+
+  test("a header reads its byte strings at the version given (12)") {
+    // `decodeBytes` takes a chunked string from 12 only (`Decoder.hs:350-373`, f649f975)
+    val definite = hex("82" + headerBody + "5901c0" + "08" * 448)
+    val chunked = hex("82" + headerBody + "5f" + ("5900e0" + "08" * 224) * 2 + "ff")
+    val read = Header.fromRaw(Era.Conway, definite).map(_.signable)
+    assert(read.isRight, s"$read")
+    assert(Header.fromRaw(Era.Conway, chunked, at11).isLeft)
+    assertEquals(Header.fromRaw(Era.Conway, chunked, at12).map(_.signable), read)
+  }
+
+  test("a block reads its records, header and auxiliary data at the version given (9, 12)") {
+    // a block body whose auxiliary data names the one transaction twice: `decodeIntMap` refuses it
+    // from 9 and keeps the last entry below it
+    val aux = DetachedRecordsReferenceSuite.block(
+      Era.Conway,
+      hex("81a0" + "81a0" + "a2" + "00a10001" + "00a10002" + "80")
+    )
+    assertEquals(
+      Block.decodeShelley(aux, _ => at8).map {
+        case b: Block.Shelley => b.transactions.map(_.auxiliaryData)
+        case _                => Vector.empty
+      },
+      Right(Vector(Some(hex("a10002"))))
+    )
+    assertEquals(
+      Block.decodeShelley(aux, _ => at9),
+      Left(
+        ChainError.Decode(
+          DecodeField.Block,
+          LedgerDecodeError.DuplicateKey(DecodeField.AuxiliaryData)
+        )
+      )
+    )
+    // a block whose header is a detached record: read below 12, where `RecD` reads one, and
+    // refused at 12, where no record is detached ([[DetachedRecords.Shapes]])
+    val detached = rows
+      .find(r => r.source == "header-decoding" && r.name == "babbage block detached header")
+      .map(r => hex("8206") ++ r.raw)
+      .getOrElse(fail("no detached Babbage block in the header-decoding corpus"))
+    for v <- DecoderVersion.range(Era.Babbage).versions do
+      assert(Block.decodeShelley(detached, _ => v).isRight, s"${v.value}")
+    assert(Block.decodeShelley(detached, _ => at12).isLeft)
+  }
+
+  test("a body, a witness set and a transaction read detached records below 12 only") {
+    for kind <- Vector(Kind.Body, Kind.Witnesses, Kind.Transaction) do
+      val detached = rows.filter(r =>
+        r.source == "recd-detached" && r.era == Era.Conway && r.kind == kind &&
+          DetachedRecords.mayHold(r.raw) && accepted(read(r, None))
+      )
+      assert(detached.nonEmpty, s"no accepted detached Conway $kind")
+      assert(
+        detached.exists(r => !accepted(read(r, Some(at12)))),
+        s"every detached Conway $kind read at 12"
+      )
   }
 
   private val rows: Vector[Row] = load.fold(e => fail(e.toString), identity)
@@ -234,6 +271,36 @@ object DecoderVersionSuite:
     DecoderVersion.at(era, major).fold(e => sys.error(e.toString), identity)
 
   private val input = "825820" + "11" * 32 + "00"
+
+  /** A testnet key reward account. */
+  private val account = "581de0" + "11" * 28
+
+  /** A pool registration whose two owners are one key: `decodeSet` refuses it from 9. */
+  val registration: Bytes =
+    val owner = "581c" + "11" * 28
+    hex(
+      "8a03581c" + "00" * 28 + "5820" + "00" * 32 + "0000d81e820001581de0" + "00" * 28 + "82" +
+        owner + owner + "80" + "f6"
+    )
+
+  /** The owners of a pool registration, 0 for any other certificate. */
+  def owners(c: Certificate): Int = c match
+    case Certificate.RegisterPool(params) => params.owners.size
+    case _                                => 0
+
+  /** A Praos header body of protocol version 9.0 (`Praos/BlockHeader.hs:203-229`, f649f975). */
+  val headerBody: String =
+    "8a" + "01" + "02" + "f6" + "5820" + "03" * 32 + "5820" + "04" * 32 + "82" + "5840" +
+      "01" * 64 + "5850" + "02" * 80 + "00" + "5820" + "05" * 32 + "84" + "5820" + "06" * 32 +
+      "00" + "00" + "5840" + "07" * 64 + "82" + "09" + "00"
+
+  /** Whether an entry point read a line. */
+  def accepted(r: Read): Boolean = r match
+    case Read.Body(result)                => result.isRight
+    case Read.Witnesses(result)           => result.isRight
+    case Read.Transaction(result)         => result.isRight
+    case Read.Header(result)              => result.isRight
+    case Read.Block(result, transactions) => result.isRight && transactions.forall(_.isRight)
 
   /** A Conway body of one input written twice, no outputs and no fee. */
   val duplicateInputs: Bytes = hex("a300" + "82" + input + input + "0180" + "0200")
@@ -323,8 +390,12 @@ object DecoderVersionSuite:
       name <- c.get[String]("name")
       era <- c.get[String]("era").map(eras.get)
       kind <- c.get[String]("kind").map(k => Kind.values.find(_.wire == k))
-      raw <- c.get[String]("bytes")
-    yield (era.filter(Shelley.contains), kind).mapN((e, k) => Row(source, name, e, k, hex(raw)))
+      raw <- c
+        .get[String]("bytes")
+        .flatMap(h =>
+          Bytes.fromHex(h).leftMap(e => io.circe.DecodingFailure(s"bytes: $e", c.history))
+        )
+    yield (era.filter(Shelley.contains), kind).mapN((e, k) => Row(source, name, e, k, raw))
   }
 
   def load: Either[LoadError, Vector[Row]] =

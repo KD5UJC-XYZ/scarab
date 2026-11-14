@@ -102,11 +102,6 @@ enum LedgerDecodeError extends DomainError:
   /** A part of the Dijkstra era this build does not decode yet. */
   case NotYet(part: DijkstraNotYet)
 
-  /** A decoder version a reader named for an era it is not one of ([[DecoderVersion.at]]): a reader
-    * of an era's parts reads them at one of the era's versions only.
-    */
-  case VersionOutsideEra(cause: DecoderVersion.OutOfRange)
-
   /** A submitted Dijkstra transaction whose validity flag is `false`: the flag may only be supplied
     * as `true` outside a block (`decodeDijkstraTopTx`,
     * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:152-169`, cardano-ledger 9df9f98c).
@@ -155,13 +150,6 @@ object LedgerDecodeError:
       (),
       NotYet(DijkstraNotYet.Rules)
     )
-
-  /** `version` when a reader of `era`'s parts may read at it ([[DecoderVersion.within]]). */
-  def readsAt(
-      era: xyz.kd5ujc.scarab.protocol.Era,
-      version: DecoderVersion
-  ): Either[LedgerDecodeError, DecoderVersion] =
-    DecoderVersion.within(era, version).left.map(VersionOutsideEra(_))
 
   private def repr(x: Any): String = x match
     case site: DecodeSite => site.show

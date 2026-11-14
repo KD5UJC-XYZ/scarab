@@ -163,18 +163,10 @@ object Certificate:
     * ([[arities]]).
     */
   def decode(n: Node, era: Era): Either[LedgerDecodeError, Certificate] =
-    decodeAt(n, era, DecoderVersion.of(era))
+    decode(n, era, DecoderVersion.of(era))
 
-  /** [[decode]] at `version`, which must be one of the era's ([[DecoderVersion.at]]). */
+  /** [[decode]] at `version`, read as given, as `decodeFull'` reads a type at any `Version`. */
   def decode(n: Node, era: Era, version: DecoderVersion): Either[LedgerDecodeError, Certificate] =
-    LedgerDecodeError.readsAt(era, version).flatMap(decodeAt(n, era, _))
-
-  /** [[decode]] at `version`, unchecked against the era: a body's certificates, read at its own. */
-  private[ledger] def decodeAt(
-      n: Node,
-      era: Era,
-      version: DecoderVersion
-  ): Either[LedgerDecodeError, Certificate] =
     given ByteStrings = ByteStrings.of(version)
     def cred(i: Int, xs: Vector[Node]) = Credential.decode(xs(i), DecodeField.CertificateCredential)
     def pool(i: Int, xs: Vector[Node]) = CborRead.bytesN(xs(i), 28, DecodeField.PoolId)
@@ -438,18 +430,10 @@ object TxBody:
     * `decodeOSet`).
     */
   def decode(raw: Bytes, era: Era): Either[LedgerDecodeError, TxBody] =
-    decodeAt(raw, era, DecoderVersion.of(era))
+    decode(raw, era, DecoderVersion.of(era))
 
-  /** [[decode]] at `version`, which must be one of the era's ([[DecoderVersion.at]]). */
+  /** [[decode]] at `version`, read as given, as `decodeFull'` reads a type at any `Version`. */
   def decode(raw: Bytes, era: Era, version: DecoderVersion): Either[LedgerDecodeError, TxBody] =
-    LedgerDecodeError.readsAt(era, version).flatMap(decodeAt(raw, era, _))
-
-  /** [[decode]] at `version`, unchecked against the era. */
-  private[ledger] def decodeAt(
-      raw: Bytes,
-      era: Era,
-      version: DecoderVersion
-  ): Either[LedgerDecodeError, TxBody] =
     LedgerDecodeError.implemented(era) *>
       DetachedRecords.read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.body(era, version))(
         LedgerDecodeError.Syntax(_)
@@ -502,7 +486,7 @@ object TxBody:
         f.get(4)
           .traverse(
             CborRead.oset(_, DecodeField.Certificates, version)(
-              Certificate.decodeAt(_, era, version)
+              Certificate.decode(_, era, version)
             )(
               Certificate.identity
             )
@@ -729,18 +713,10 @@ object Witnesses:
     * ([[BootstrapWitness.set]]).
     */
   def decode(raw: Bytes, era: Era): Either[LedgerDecodeError, Witnesses] =
-    decodeAt(raw, era, DecoderVersion.of(era))
+    decode(raw, era, DecoderVersion.of(era))
 
-  /** [[decode]] at `version`, which must be one of the era's ([[DecoderVersion.at]]). */
+  /** [[decode]] at `version`, read as given, as `decodeFull'` reads a type at any `Version`. */
   def decode(raw: Bytes, era: Era, version: DecoderVersion): Either[LedgerDecodeError, Witnesses] =
-    LedgerDecodeError.readsAt(era, version).flatMap(decodeAt(raw, era, _))
-
-  /** [[decode]] at `version`, unchecked against the era. */
-  private[ledger] def decodeAt(
-      raw: Bytes,
-      era: Era,
-      version: DecoderVersion
-  ): Either[LedgerDecodeError, Witnesses] =
     LedgerDecodeError.implemented(era) *>
       DetachedRecords.read(
         raw,
@@ -922,25 +898,18 @@ object Tx:
     * block's parts are ([[fromBlock]]).
     */
   def fromEnvelope(bytes: Bytes, era: Era): Either[LedgerDecodeError, Tx] =
-    envelopeAt(bytes, era, DecoderVersion.of(era))
+    fromEnvelope(bytes, era, DecoderVersion.of(era))
 
-  /** [[fromEnvelope]] at `version`, which must be one of the era's ([[DecoderVersion.at]]). */
+  /** [[fromEnvelope]] at `version`, read as given, as `decodeFull'` reads a type at any `Version`.
+    */
   def fromEnvelope(bytes: Bytes, era: Era, version: DecoderVersion): Either[LedgerDecodeError, Tx] =
-    LedgerDecodeError.readsAt(era, version).flatMap(envelopeAt(bytes, era, _))
-
-  /** [[fromEnvelope]] at `version`, unchecked against the era. */
-  private[ledger] def envelopeAt(
-      bytes: Bytes,
-      era: Era,
-      version: DecoderVersion
-  ): Either[LedgerDecodeError, Tx] =
     LedgerDecodeError.implemented(era) *>
       DetachedRecords.read(
         bytes,
         Cbor.Limits.Unbounded,
         DetachedRecords.Shapes.transaction(era, version)
       )(LedgerDecodeError.Syntax(_))(node =>
-        envelopeParts(node, era).flatMap(fromBlockAt(_, era, version))
+        envelopeParts(node, era).flatMap(fromBlock(_, era, version))
       )
 
   /** The parts of a whole transaction `node` of `era`, each as its original bytes, with the
@@ -1013,25 +982,18 @@ object Tx:
     * Alonzo, `[body, witnesses, aux]` before.
     */
   def fromBlock(t: Block.Transaction, era: Era): Either[LedgerDecodeError, Tx] =
-    fromBlockAt(t, era, DecoderVersion.of(era))
+    fromBlock(t, era, DecoderVersion.of(era))
 
-  /** [[fromBlock]] at `version`, which must be one of the era's ([[DecoderVersion.at]]). */
+  /** [[fromBlock]] at `version`, read as given, as `decodeFull'` reads a type at any `Version`. */
   def fromBlock(
-      t: Block.Transaction,
-      era: Era,
-      version: DecoderVersion
-  ): Either[LedgerDecodeError, Tx] =
-    LedgerDecodeError.readsAt(era, version).flatMap(fromBlockAt(t, era, _))
-
-  private def fromBlockAt(
       t: Block.Transaction,
       era: Era,
       version: DecoderVersion
   ): Either[LedgerDecodeError, Tx] =
     given ByteStrings = ByteStrings.of(version)
     for
-      body <- TxBody.decodeAt(t.body, era, version)
-      witnesses <- Witnesses.decodeAt(t.witnesses, era, version)
+      body <- TxBody.decode(t.body, era, version)
+      witnesses <- Witnesses.decode(t.witnesses, era, version)
       _ <- t.auxiliaryData.traverse_(bytes => AuxiliaryScripts.read(bytes, version.value))
     yield
       // The fee size is the array header, body, witnesses and auxiliary data (`null` is one byte);

@@ -78,9 +78,12 @@ class BootstrapDuplicatesReferenceSuite extends FunSuite:
       )
   }
 
-  for row <- rows if DecoderVersion.at(row.era, row.version).isRight do
+  for
+    row <- rows
+    version <- DecoderVersion.at(row.era, row.version).toOption
+  do
     test(row.name) {
-      scarab(row) match
+      scarab(row, version) match
         case Left(refused) =>
           fail(s"the reference accepts it (${row.failure}), Scarab refused it: $refused")
         case Right(read) =>
@@ -178,16 +181,12 @@ object BootstrapDuplicatesReferenceSuite:
   /** `encCBOR` of a vkey witness: the list of its key and signature. */
   def encoded(w: (Bytes, Bytes)): Bytes = Bytes(Vector(0x82.toByte)) ++ bstr(w._1) ++ bstr(w._2)
 
-  def scarab(row: Row): Either[LedgerDecodeError, Read] =
-    DecoderVersion
-      .at(row.era, row.version)
-      .leftMap(LedgerDecodeError.VersionOutsideEra(_))
-      .flatMap { version =>
-        row.kind match
-          case Kind.Witnesses => Witnesses.decode(row.raw, row.era, version).map(Read(_, None))
-          case Kind.Transaction =>
-            Tx.fromEnvelope(row.raw, row.era, version).map(t => Read(t.witnesses, Some(t)))
-      }
+  /** What Scarab reads from a line at `version`, one of its era's ([[DecoderVersion.at]]). */
+  def scarab(row: Row, version: DecoderVersion): Either[LedgerDecodeError, Read] =
+    row.kind match
+      case Kind.Witnesses => Witnesses.decode(row.raw, row.era, version).map(Read(_, None))
+      case Kind.Transaction =>
+        Tx.fromEnvelope(row.raw, row.era, version).map(t => Read(t.witnesses, Some(t)))
 
   private given Decoder[Row] = Decoder.instance { c =>
     def unknown(what: String) = io.circe.DecodingFailure(s"unknown $what", c.history)

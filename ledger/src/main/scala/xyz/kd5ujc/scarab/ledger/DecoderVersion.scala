@@ -8,10 +8,10 @@ import xyz.kd5ujc.scarab.protocol.Era
   * blocks at `eraProtVerLow` (`eraDecoder`, consensus 82ecba32 `Shelley/Ledger/Block.hs:340-350`;
   * `Cardano/Ledger/Core/Internal/Definition/Era.hs` in cardano-ledger at the pinned commit
   * f649f975), the version [[DecoderVersion.of]] gives and every decoder of an era takes by default.
-  * cardano-ledger-binary's `decodeFull'` takes any version, and a reader of an era's parts may name
-  * one of the era's range ([[DecoderVersion.at]]); the decoders that take it refuse one outside the
-  * era they read ([[LedgerDecodeError.VersionOutsideEra]]). Collection and field decoders branch on
-  * it with `ifDecoderVersionAtLeast`.
+  * cardano-ledger-binary's `decodeFull'` takes any `Version`, with no check against the type it
+  * reads (`libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding.hs:93-100`), and so do the
+  * decoders that take one here; [[DecoderVersion.at]] builds one of an era's range for a reader
+  * that names it. Collection and field decoders branch on it with `ifDecoderVersionAtLeast`.
   */
 opaque type DecoderVersion = Int
 
@@ -32,7 +32,10 @@ object DecoderVersion:
   /** A major protocol version that is not one of `era`'s ([[Range]]). */
   final case class OutOfRange(era: Era, major: Int, range: Range) extends DomainError
 
-  /** `eraProtVerLow`. Byron has no transactions of this shape and reads as Shelley. */
+  /** `eraProtVerLow`, the version every decoder of an era reads at by default. Byron has no parts
+    * of the shapes these decoders read, which read a Byron era as Shelley, at 2: outside Byron's
+    * own [[range]], and Shelley's `eraProtVerLow`.
+    */
   def of(era: Era): DecoderVersion = era match
     case Era.Byron | Era.Shelley => 2
     case Era.Allegra             => 3
@@ -44,17 +47,18 @@ object DecoderVersion:
 
   /** `ProtVerLow` and `ProtVerHigh` of the era
     * (`libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs:87-141`,
-    * cardano-ledger f649f975): Alonzo 5 to 6, Babbage 7 to 8, Conway 9 to 11, and one version for
-    * each other era. Byron reads as Shelley ([[of]]), so its range is Shelley's, not the
-    * reference's 0 to 1, which no decoder of these shapes is read at.
+    * cardano-ledger f649f975): Byron 0 to 1, Shelley 2, Allegra 3, Mary 4, Alonzo 5 to 6, Babbage 7
+    * to 8, Conway 9 to 11, Dijkstra 12. From Shelley on its lowest is [[of]].
     */
-  def range(era: Era): Range =
-    val low = of(era)
-    era match
-      case Era.Alonzo  => Range(low, 6)
-      case Era.Babbage => Range(low, 8)
-      case Era.Conway  => Range(low, 11)
-      case _           => Range(low, low)
+  def range(era: Era): Range = era match
+    case Era.Byron    => Range(0, 1)
+    case Era.Shelley  => Range(2, 2)
+    case Era.Allegra  => Range(3, 3)
+    case Era.Mary     => Range(4, 4)
+    case Era.Alonzo   => Range(5, 6)
+    case Era.Babbage  => Range(7, 8)
+    case Era.Conway   => Range(9, 11)
+    case Era.Dijkstra => Range(12, 12)
 
   /** `eraProtVerHigh`, the version the cardano-cbor-dataset reads an era's samples at. */
   def high(era: Era): DecoderVersion = range(era).high

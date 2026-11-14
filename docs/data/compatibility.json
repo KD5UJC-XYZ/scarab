@@ -1155,9 +1155,9 @@
     },
     {
       "id": "ledger-decoder-version",
-      "component": "Ledger: explicit decoder versions within an era's range",
+      "component": "Ledger: explicit decoder versions",
       "status": "implemented",
-      "summary": "The era decoders take an explicit decoder version, one of the era's eraProtVerLow to eraProtVerHigh, as decodeFull' takes a Version, and refuse one outside the era; without one they read at eraProtVerLow, as consensus reads a block",
+      "summary": "The era decoders take an explicit decoder version and read at it as given, as decodeFull' takes any Version; DecoderVersion.at builds one of an era's ProtVerLow to ProtVerHigh; without one they read at eraProtVerLow, as consensus reads a block",
       "evidence": {
         "suites": [
           "DecoderVersionSuite",
