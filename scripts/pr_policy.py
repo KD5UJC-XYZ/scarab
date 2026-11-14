@@ -11,13 +11,28 @@ list): a file that is not documentation makes it at least 1, and the persisted-f
 levels table of CONTRIBUTING.md defines them. A bot's pull request (a release
 proposal, a dependency update) and a promotion of `dev` to `main` are not checked for these. The promotion controller
 (`promote_main.py`) calls `evaluate` only, never the body checks.
+
+A storage format change (FMT-1, docs/design-rules.md) is a pull request that changes the format manifest
+`docs/data/storage-format.json` or its guard `scripts/check_storage_format.py`. It is a pull request of its own: its
+title is conventional with the `storage` scope and the breaking-change marker, and its description names the
+storage format (`fix(storage)!: storage format V10 drops the bootstrap sidecar fields`); it touches only the paths of
+`check_storage_format.FORMAT_CHANGE_PATHS`; and its body has a "Storage format change" section with the owner's
+question and answer, verbatim, and the UTC times they were asked and given (`Question:`, `Asked at:`, `Answer:`,
+`Answered at:`). Those lines record an approval the owner gave in the chat session doing the work; this check reads
+their form only. It applies to a bot's pull request too, and not to a promotion of `dev`, whose changes each passed
+it as their own pull request. A storage format change is at least level 3.
 """
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from check_storage_format import MANIFEST, approval_problems, outside_format_change, touches_freeze  # noqa: E402
 
 
 MODES = ("transition", "dev-only-main")
@@ -35,6 +50,12 @@ APPROVAL = re.compile(r"(?:https?://|#\d+|\]\()")
 SECTION_LEVEL = 1
 DOCUMENTATION = re.compile(r"(?:.*\.md|docs/.*|changes/.*|LICENSE|NOTICE)")
 PERSISTED_FORMAT = "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala"
+STORAGE_SECTION = "storage format change"
+STORAGE_TITLE = re.compile(r"[a-z]+\(storage\)!: (?P<description>.*)")
+STORAGE_WORDS = re.compile(r"\bstorage format\b", re.IGNORECASE)
+STORAGE_TITLE_FORM = ('"<type>(storage)!: <description that names the storage format change>", for example '
+                      '"fix(storage)!: storage format V10 drops the bootstrap sidecar fields"')
+RECORD_FIELD = re.compile(r"^\s*(?:[-*]\s+)?\**(question|asked at|answer|answered at)\**\s*:\**\s*(.*)$", re.IGNORECASE)
 
 
 class PolicyError(ValueError):
@@ -100,9 +121,48 @@ def check_gaps(text):
 
 def level_floor(files):
     """The lowest level the changed files allow, from the levels table of CONTRIBUTING.md."""
-    if PERSISTED_FORMAT in files:
+    if PERSISTED_FORMAT in files or MANIFEST in files:
         return 3
     return 1 if any(not DOCUMENTATION.fullmatch(f) for f in files) else 0
+
+
+def approval_record(text):
+    """The `Question:`, `Asked at:`, `Answer:` and `Answered at:` of a "Storage format change" section, keyed as the
+    manifest keys them; a line that names no field continues the one before it (a quoted question of several lines)."""
+    record, current = {}, None
+    for line in (text or "").splitlines():
+        found = RECORD_FIELD.match(line)
+        if found:
+            current = found.group(1).lower().replace(" ", "_")
+            record[current] = found.group(2).strip()
+        elif current is not None and line.strip():
+            record[current] = (record[current] + "\n" + line.strip().lstrip(">").strip()).strip()
+    return {k: v.strip("`").strip() if k.endswith("_at") else v.lstrip(">").strip() for k, v in record.items()}
+
+
+def check_storage_format(pr, files, now):
+    """Whether the pull request is a storage format change (FMT-1); one that is must be its own pull request with a
+    title that says so and the record of the owner's answer. A promotion of `dev` is not checked: its changes each
+    passed this check as their own pull request."""
+    if pr.get("head", {}).get("ref") == "dev" and pr.get("base", {}).get("ref") == "main":
+        return False
+    if not touches_freeze(files):
+        return False
+    title = pr.get("title") if isinstance(pr.get("title"), str) else ""
+    named = STORAGE_TITLE.fullmatch(title)
+    require(TITLE.fullmatch(title) is not None and named is not None
+            and STORAGE_WORDS.search(named.group("description")) is not None,
+            "a storage format change (FMT-1) needs a title of the form " + STORAGE_TITLE_FORM)
+    outside = outside_format_change(files)
+    require(not outside, "a storage format change must be its own pull request (FMT-1): it may touch only the paths of "
+            "FORMAT_CHANGE_PATHS in scripts/check_storage_format.py, and these are outside them: " + ", ".join(outside))
+    section = sections(pr.get("body") or "").get(STORAGE_SECTION)
+    require(bool(section), 'a storage format change needs a "## Storage format change" section with the owner\'s '
+            "question and answer, verbatim, and when each was asked and given in UTC (FMT-1)")
+    problems = approval_problems(approval_record(section), now)
+    require(not problems, "Storage format change: " + "; ".join(problems) +
+            " (Question:, Asked at:, Answer:, Answered at:, times as 2026-11-14T09:30:00Z)")
+    return True
 
 
 def check_body(pr, files=()):
@@ -117,7 +177,7 @@ def check_body(pr, files=()):
     require(level is not None, "state the level of the change in the body (pull request template)")
     floor = level_floor(files)
     require(level >= floor, f"level {level} is below {floor}: " + (
-        "the persisted-format register changed (CONTRIBUTING.md, Levels)" if floor == 3
+        "the persisted-format register or the storage format manifest changed (CONTRIBUTING.md, Levels)" if floor == 3
         else "a file other than documentation changed (CONTRIBUTING.md, Levels)"))
     if level >= SECTION_LEVEL:
         found = sections(body)
@@ -165,7 +225,8 @@ def main():
     pr = event.get("pull_request", {})
     result = evaluate(pr, args.repository, args.repository_id, args.mode)
     files = args.files.read_text(encoding="utf-8").split() if args.files else []
-    print(json.dumps(dict(result, level=check_body(pr, files)), sort_keys=True))
+    storage = check_storage_format(pr, files, datetime.now(timezone.utc))
+    print(json.dumps(dict(result, level=check_body(pr, files), storageFormatChange=storage), sort_keys=True))
 
 
 if __name__ == "__main__":
