@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus.ndc
 
+import cats.data.EitherT
 import cats.effect.{ExitCode, IO, IOApp}
 import cats.syntax.all.*
 import io.circe.Json
 import java.lang.management.ManagementFactory
 import java.nio.file.{Files, Path}
 import scala.annotation.tailrec
-import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{PlutusLanguage, PlutusVm}
 import xyz.kd5ujc.scarab.uplc.{ProtocolMajor, SemanticsVariant}
@@ -29,11 +29,12 @@ import xyz.kd5ujc.scarab.uplc.cost.{DefaultCostModels, ExBudget}
   * script is admitted and checked before anything is timed. Every program is then run once,
   * untimed, so that the JVM's compilers have seen the corpus; then fifty times each, timed, within
   * 10,000,000,000 CPU and 10,000,000 memory units, restricting, as the README sets
-  * (`--memory-limit` changes the second, for an experiment only). Of the fifty the thirty fastest
-  * are kept: `cpu_us` is their mean time and `mem_bytes` the mean of the bytes the evaluating
-  * thread allocated in them (`--memory allocated`, the default) or null (`--memory null`). The
-  * budget is what the runs spent, which must be the same in each. A program that does not evaluate
-  * is left out of the report, which the site counts as a failure, and named on the console.
+  * (`--memory-limit` changes the second, for an experiment only: the report is then in a format the
+  * site refuses, [[report]]). Of the fifty the thirty fastest are kept: `cpu_us` is their mean time
+  * and `mem_bytes` the mean of the bytes the evaluating thread allocated in them (`--memory
+  * allocated`, the default) or null (`--memory null`). The budget is what the runs spent, which
+  * must be the same in each. A program that does not evaluate is left out of the report, which the
+  * site counts as a failure, and named on the console.
   */
 object UplcTurboMain extends IOApp:
 
@@ -100,28 +101,26 @@ object UplcTurboMain extends IOApp:
       case UnnamedLanguage(path)   => s"$path does not name its language"
       case CostModel(l, p, cause)  => s"no default cost model of $l at $p: $cause"
 
-  /** Every program of the corpus, in the order of their names. */
-  def corpus(root: Path): Either[CorpusError, Vector[Bench]] =
-    def list(dir: Path) =
-      Either
-        .catchNonFatal(Files.list(dir).iterator.asScala.toVector)
-        .leftMap(CorpusError.Unreadable(dir, _))
-    for
-      epochs <- list(root).map(_.flatMap(d => d.getFileName.toString.toIntOption.map(d -> _)))
+  /** Every program of the corpus, in the order of their names; each listing is closed once read. */
+  def corpus(root: Path): IO[Either[CorpusError, Vector[Bench]]] =
+    def list(dir: Path)(keep: Path => Boolean) =
+      EitherT(NdcReport.entries(dir)(keep)).leftMap(CorpusError.Unreadable(dir, _))
+    def bench(file: Path, epoch: Int): Either[CorpusError, Bench] =
+      val name = file.getFileName.toString
+      for
+        language <- languageOf(name).toRight(CorpusError.UnnamedLanguage(file))
+        bytes <- Either
+          .catchNonFatal(Bytes.fromArray(Files.readAllBytes(file)))
+          .leftMap(CorpusError.Unreadable(file, _))
+      yield Bench(name, language, protocolOf(epoch), bytes)
+    (for
+      dirs <- list(root)(Files.isDirectory(_))
+      epochs = dirs.flatMap(d => d.getFileName.toString.toIntOption.map(d -> _))
       benches <- epochs.flatTraverse { (dir, epoch) =>
-        list(dir).flatMap(
-          _.filter(_.getFileName.toString.endsWith(".flat")).traverse { file =>
-            val name = file.getFileName.toString
-            for
-              language <- languageOf(name).toRight(CorpusError.UnnamedLanguage(file))
-              bytes <- Either
-                .catchNonFatal(Bytes.fromArray(Files.readAllBytes(file)))
-                .leftMap(CorpusError.Unreadable(file, _))
-            yield Bench(name, language, protocolOf(epoch), bytes)
-          }
-        )
+        list(dir)(_.getFileName.toString.endsWith(".flat"))
+          .flatMap(files => EitherT(IO.blocking(files.traverse(bench(_, epoch)))))
       }
-    yield benches.sortBy(_.name)
+    yield benches.sortBy(_.name)).value
 
   /** The default cost-model list of a language at a protocol: that of the variant of the pair. */
   def defaultCostModel(language: PlutusLanguage, protocol: Int): Either[CorpusError, Vector[Long]] =
@@ -131,11 +130,13 @@ object UplcTurboMain extends IOApp:
       )
       .leftMap(CorpusError.CostModel(language, protocol, _))
 
-  /** One timed evaluation: its time, the bytes the thread allocated in it, and its run. */
-  final case class Sample(nanos: Long, allocated: Long, run: Run)
+  /** One timed evaluation: its time, the bytes the thread allocated in it (none when the JVM cannot
+    * say), and its run.
+    */
+  final case class Sample(nanos: Long, allocated: Option[Long], run: Run)
 
-  /** What the benchmark of one program gives. */
-  final case class Measured(spent: ExBudget, cpuMicros: Double, allocated: Double)
+  /** What the benchmark of one program gives; `allocated` is none when it was not measured. */
+  final case class Measured(spent: ExBudget, cpuMicros: Double, allocated: Option[Double])
 
   /** Why a program has no measurement. */
   enum Unmeasured:
@@ -153,13 +154,20 @@ object UplcTurboMain extends IOApp:
         case NotEvaluated(run)      => show(run)
         case BudgetsDiffer(budgets) => s"the runs spent different budgets: ${budgets.distinct}"
 
+  /** The JVM's per-thread allocation counter, when it has one and it is on. */
   private val threads: Option[com.sun.management.ThreadMXBean] =
     ManagementFactory.getThreadMXBean match
-      case bean: com.sun.management.ThreadMXBean if bean.isThreadAllocatedMemorySupported =>
+      case bean: com.sun.management.ThreadMXBean
+          if bean.isThreadAllocatedMemorySupported && bean.isThreadAllocatedMemoryEnabled =>
         Some(bean)
       case _ => None
 
-  private def allocatedSoFar(): Long = threads.fold(0L)(_.getCurrentThreadAllocatedBytes)
+  /** The counter's reading, -1 when there is none (the bean's own value for an unavailable one). */
+  private def allocatedSoFar(): Long = threads.fold(-1L)(_.getCurrentThreadAllocatedBytes)
+
+  /** The bytes between two readings, none when either is unavailable. */
+  private def between(before: Long, after: Long): Option[Long] =
+    Option.when(before >= 0 && after >= 0)(after - before)
 
   /** The timed region of the benchmark, a measurement tool's (AGENTS.md: `TimingProbeMain`): the
     * clock and the allocation counter are read around the evaluation alone, with no effect wrapper
@@ -171,21 +179,27 @@ object UplcTurboMain extends IOApp:
     val run = prepared.evaluate(limit)
     val end = System.nanoTime()
     val after = allocatedSoFar()
-    Sample(end - start, after - before, run)
+    Sample(end - start, between(before, after), run)
 
-  /** The bytes the allocation counter itself reports for an empty measurement, the least of many.
+  /** The bytes the allocation counter itself reports for an empty measurement, the least of many;
+    * none when it gives no readings.
     */
-  def counterOverhead(): Long =
+  def counterOverhead(): Option[Long] =
     Vector
       .fill(1000) {
         val before = allocatedSoFar()
         val after = allocatedSoFar()
-        after - before
+        between(before, after)
       }
-      .min
+      .flatten
+      .minOption
 
   /** The README's measurement of one program: fifty runs, the thirty fastest kept. */
-  def measure(prepared: Prepared, overhead: Long, limit: ExBudget): Either[Unmeasured, Measured] =
+  def measure(
+      prepared: Prepared,
+      overhead: Option[Long],
+      limit: ExBudget
+  ): Either[Unmeasured, Measured] =
     val samples = Vector.fill(Runs)(sample(prepared, limit))
     val budgets = samples.map(_.run).collect { case Run.Evaluated(spent, _) => spent }
     samples.map(_.run).find {
@@ -201,7 +215,9 @@ object UplcTurboMain extends IOApp:
               Measured(
                 spent,
                 kept.map(_.nanos).sum.toDouble / kept.size / 1000.0,
-                kept.map(s => (s.allocated - overhead).max(0L)).sum.toDouble / kept.size
+                (overhead, kept.traverse(_.allocated)).mapN((o, bytes) =>
+                  bytes.map(b => (b - o).max(0L)).sum.toDouble / bytes.size
+                )
               )
             )
           case different => Left(Unmeasured.BudgetsDiffer(different))
@@ -217,9 +233,36 @@ object UplcTurboMain extends IOApp:
       "budget_mem" -> Json.fromLong(measured.spent.memory.toLong),
       "cpu_us" -> Json.fromBigDecimal(rounded(measured.cpuMicros)),
       "mem_bytes" -> (memory match
-        case Memory.Allocated  => Json.fromBigDecimal(rounded(measured.allocated))
+        case Memory.Allocated =>
+          measured.allocated.fold(Json.Null)(a => Json.fromBigDecimal(rounded(a)))
         case Memory.Unreported => Json.Null)
     )
+
+  /** The report: the scenario's format with the README's limit, else a format the site refuses
+    * (`version` `experimental`, and an `experiment` naming the limit), so that an experiment cannot
+    * be published as a report of the scenario.
+    */
+  def report(
+      implementation: Json,
+      generated: java.time.Instant,
+      machine: Json,
+      items: Vector[Json],
+      so: Options
+  ): Json =
+    val header = NdcReport.header("uplc-turbo", generated, implementation)
+    val experiment = Option.when(so.limit != Limit)(
+      Json.obj(
+        "memory_limit" -> Json.fromLong(so.limit.memory.toLong),
+        "note" -> Json.fromString("not a uplc-turbo report: the memory limit is not the README's")
+      )
+    )
+    val fields = experiment.fold(header)(e =>
+      header.map {
+        case ("version", _) => "version" -> Json.fromString("experimental")
+        case other          => other
+      } :+ ("experiment" -> e)
+    )
+    Json.fromFields(fields ++ Vector("machine" -> machine, "benchmarks" -> Json.fromValues(items)))
 
   /** Every program prepared on `backend`, the context made once for each language and protocol. */
   def prepareAll(
@@ -258,7 +301,7 @@ object UplcTurboMain extends IOApp:
     val backend = UplcBackend.of(vm)
     NdcReport.bigStack.use { stack =>
       for
-        read <- IO.blocking(corpus(root)).timed
+        read <- corpus(root).timed
         prepared <- IO(read._2.flatMap(prepareAll(backend, _))).evalOn(stack).timed
         code <- prepared._2 match
           case Left(error) => IO.println(error.message).as(ExitCode(1))
@@ -280,19 +323,21 @@ object UplcTurboMain extends IOApp:
               items = results.collect { case (b, Right(m)) => (b, m) }
               generated <- NdcReport.now
               machine <- NdcReport.machine
-              report = Json.fromFields(
-                NdcReport.header(
-                  "uplc-turbo",
-                  generated,
-                  Json.obj(
-                    "name" -> Json.fromString(NdcReport.implementation(vm)),
-                    "language" -> Json.fromString("Scala")
-                  )
-                ) ++ Vector(
-                  "machine" -> machine,
-                  "benchmarks" -> Json.fromValues(items.map((b, m) => item(b, m, so.memory)))
-                )
+              report = UplcTurboMain.report(
+                Json.obj(
+                  "name" -> Json.fromString(NdcReport.implementation(vm)),
+                  "language" -> Json.fromString("Scala")
+                ),
+                generated,
+                machine,
+                items.map((b, m) => item(b, m, so.memory)),
+                so
               )
+              _ <- IO
+                .println(
+                  s"experimental memory limit ${so.limit.memory.toLong}: the report is marked experimental"
+                )
+                .whenA(so.limit != Limit)
               written <- NdcReport.write(out, report).timed
               _ <- failed.traverse_((b, why) => IO.println(s"${b.name}: ${why.message}"))
               _ <- IO.println(

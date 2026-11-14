@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus.ndc
 
+import io.circe.Json
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{PlutusLanguage, PlutusVm}
@@ -39,7 +40,7 @@ class UplcTurboMainSuite extends FunSuite:
       val measured =
         measure(prepared, counterOverhead(), Limit).fold(e => fail(e.message), identity)
       assert(measured.cpuMicros > 0, "a time is measured")
-      assert(measured.allocated >= 0, "allocation is never negative")
+      assert(measured.allocated.forall(_ >= 0), "allocation is never negative")
       assert(measured.spent.cpu.toLong > 0 && measured.spent.memory.toLong > 0, "a budget is spent")
       val json = item(Bench("b-0-c-v2.flat", language, 8, Bytes.empty), measured, Memory.Unreported)
       assertEquals(
@@ -69,13 +70,34 @@ class UplcTurboMainSuite extends FunSuite:
       val program =
         UplcParser.program("(program 1.0.0 (error))").fold(e => fail(e.toString), identity)
       val prepared = backend.text(context, program).fold(r => fail(r.toString), identity)
-      assert(measure(prepared, 0L, Limit).isLeft)
+      assert(measure(prepared, Some(0L), Limit).isLeft)
     }
   }
 
   test("the README's budget is the restricting limit, and the default of the options") {
     assertEquals(Limit, ExBudget.of(10_000_000_000L, 10_000_000L))
     assertEquals(options(Nil), Some(Options(Memory.Allocated, 1, Limit)))
+  }
+
+  test("a measurement without allocation readings reports no mem_bytes, never zero") {
+    val measured = Measured(ExBudget.of(1L, 1L), 1.0, None)
+    val json =
+      item(Bench("b-0-c-v2.flat", PlutusLanguage.V2, 8, Bytes.empty), measured, Memory.Allocated)
+    assert(json.hcursor.downField("mem_bytes").focus.exists(_.isNull))
+  }
+
+  test("a report with another memory limit is marked experimental, in a format the site refuses") {
+    val at = java.time.Instant.EPOCH
+    val standard = report(Json.obj(), at, Json.obj(), Vector.empty, Options.Default)
+    assertEquals(standard.hcursor.get[String]("version").toOption, Some("1"))
+    assertEquals(standard.hcursor.downField("experiment").focus, None)
+    val other = Options.Default.copy(limit = ExBudget.of(10_000_000_000L, 14_000_000L))
+    val experimental = report(Json.obj(), at, Json.obj(), Vector.empty, other)
+    assertEquals(experimental.hcursor.get[String]("version").toOption, Some("experimental"))
+    assertEquals(
+      experimental.hcursor.downField("experiment").get[Long]("memory_limit").toOption,
+      Some(14_000_000L)
+    )
   }
 
   test("the options are read in any order, and anything else refuses the command line") {
