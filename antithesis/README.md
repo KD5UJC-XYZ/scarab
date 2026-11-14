@@ -14,7 +14,11 @@ one Scarab pool (`s1`, pool 1's keys), on the genesis `cardano-testnet create-en
 topologies at setup and sets the start time a minute ahead. `s1` starts once both Haskell pools listen, as the
 devnet starts it (issue 609).
 
-The `driver` waits until the three pools report the same tip at block 2 or later and reports setup complete.
+The `driver` reports setup complete once the cluster is healthy. All three pools must first report one tip at
+block 2 or later. Then all three must be on the longest chain, at fork depth 0, with blocks of s1 and of a Haskell
+pool on that chain, so that each side has taken the other's blocks. At k = 5 this topology's start race can keep the
+Haskell pools from taking s1's blocks until s1 has forked past k; a cardano-node in s1's seat does the same (#854).
+Every timeline would inherit that split, so such a setup fails after 600 s and says so.
 Antithesis then runs its test commands under faults, many times per timeline:
 
 - `parallel_driver_watch_tips` reads every pool's tip over its local socket every 5 s for a minute;

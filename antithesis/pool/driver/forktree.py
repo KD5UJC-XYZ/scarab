@@ -12,8 +12,10 @@ its tip's last common ancestor with the longest tip, so a pool whose tip is an a
 not forked. The cluster-wide depth is the largest; past Praos's k, a fork is unrecoverable by protocol.
 
 STATE (JSON) keeps the tree, each pool's tip and how far each log has been read, across the test commands' runs in a
-timeline; an exclusive lock on STATE with the suffix .lock makes each run's read, update and write one transaction. The result is one JSON line: {"depth", "pools": {pool: depth or null}, "longest", "blocks"}. A tip whose
-ancestry is not yet known (its forger's log not yet read that far) counts as null and is left out.
+timeline; an exclusive lock on STATE with the suffix .lock makes each run's read, update and write one
+transaction. The result is one JSON line: {"depth", "pools": {pool: depth or null}, "longest", "forgedOnLongest":
+{pool: blocks it forged on the longest chain}, "blocks"}. A tip whose ancestry is not yet known (its forger's log
+not yet read that far) counts as null and is left out.
 
 This mirrors the fork tree of cardano-foundation/cardano-node-antithesis (`components/tracer-sidecar`,
 `ForkTree.hs`), which takes the parents from `AddedToCurrentChain`; the forge events name them directly.
@@ -46,12 +48,14 @@ def absorb(state, pool, line):
     if not isinstance(e, dict):
         return
     parents, numbers, tips = state["parents"], state["numbers"], state["tips"]
+    forgers = state.setdefault("forgers", {})
     ns = e.get("ns", "")
     if ns == "Forge.Loop.ForgedBlock":
         d = e.get("data", {})
         prev = d.get("blockPrev")
         parents[d["block"]] = None if prev == "GenesisHash" else prev
         numbers[d["block"]] = d.get("blockNo")
+        forgers[d["block"]] = pool
     elif ns.endswith(("AddedToCurrentChain", "SwitchedToAFork")):
         tip = e.get("data", {}).get("newtip")
         if tip:
@@ -59,6 +63,7 @@ def absorb(state, pool, line):
     elif e.get("event") == "forged":
         parents[e["hash"]] = e.get("prev")
         numbers[e["hash"]] = e.get("blockNo")
+        forgers[e["hash"]] = pool
     elif e.get("event") == "extended":
         tips[pool] = e["block"]["hash"]
     elif e.get("event") == "rolledBack":
@@ -84,7 +89,7 @@ def depths(state):
     known = {pool: c for pool, c in chains.items() if c is not None}
     if not known:
         return {"depth": None, "pools": {pool: None for pool in chains}, "longest": None,
-                "blocks": len(state["parents"])}
+                "forgedOnLongest": {}, "blocks": len(state["parents"])}
     numbers = state["numbers"]
     longest_pool = max(known, key=lambda p: (numbers.get(known[p][0]) or 0, p))
     longest = set(known[longest_pool])
@@ -97,8 +102,14 @@ def depths(state):
         tip_no = numbers.get(chain[0]) or 0
         pools[pool] = tip_no - ((numbers.get(common) or 0) if common else -1)
     known_depths = [d for d in pools.values() if d is not None]
+    forgers = state.get("forgers", {})
+    on_longest = {}
+    for block in known[longest_pool]:
+        forger = forgers.get(block)
+        if forger:
+            on_longest[forger] = on_longest.get(forger, 0) + 1
     return {"depth": max(known_depths) if known_depths else None, "pools": pools,
-            "longest": longest_pool, "blocks": len(state["parents"])}
+            "longest": longest_pool, "forgedOnLongest": on_longest, "blocks": len(state["parents"])}
 
 
 def main():
