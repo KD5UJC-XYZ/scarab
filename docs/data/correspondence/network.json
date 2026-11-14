@@ -119,42 +119,6 @@
    "note": "exact arity and local caps here; the reference reads and ignores the outer length",
    "digest": "e6bd5367f6b19d59"
   },
-  "def protocol.KeepAlive.encode": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Codec.hs",
-     "symbol": "encodeMsg",
-     "lines": [
-      43,
-      56
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "note": "list length, then the word 0, 1 or 2, then the cookie as a word16",
-   "digest": "a68c9b67ad143d32"
-  },
-  "def protocol.KeepAlive.matchResponse": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Client.hs",
-     "symbol": "keepAliveClientPeer",
-     "lines": [
-      31,
-      53
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "note": "the reference's client compares the response's cookie with the request's and throws KeepAliveCookieMissmatch; a response without a request is a decode failure there and a typed refusal here",
-   "digest": "69fc0c739cd0c3d7"
-  },
   "def protocol.KeepAlive.transition": {
    "upstream": [
     {
@@ -171,7 +135,7 @@
    "class": "Mirror",
    "structure": "same",
    "note": "the reference's transitions and agency are in the message and StateAgency types; this is the same table at run time",
-   "digest": "70e5056f6b28535e"
+   "digest": "c79bc53cce242619"
   },
   "def protocol.PeerSharing.decodePrefix": {
    "upstream": [
@@ -200,7 +164,7 @@
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
    "note": "the declared length of a message and of an address must match here; the reference reads and ignores it",
-   "digest": "f68539c5f72d730e"
+   "digest": "c498351d7a2a6b81"
   },
   "def protocol.TxSubmission2.codec": {
    "upstream": [

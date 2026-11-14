@@ -112,18 +112,7 @@
    "def consensus.ByronRules.scheduledLeader": null,
    "def consensus.ByronRules.update": null,
    "def consensus.ByronRules.validateHeader": null,
-   "def consensus.ByronRules.windowThreshold": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Protocol/PBFT.hs",
-     "symbol": "pbftWindowParams",
-     "lines": [
-      403,
-      417
-     ]
-    }
-   ],
+   "def consensus.ByronRules.windowThreshold": null,
    "def consensus.ByronState#finish": null,
    "def consensus.ByronState.starting": null,
    "def consensus.ChainSelection.Candidate#extend": null,
@@ -154,18 +143,7 @@
    "def consensus.EpochStats#total": null,
    "def consensus.FollowerEvents#emit": null,
    "def consensus.HardForkConfig#eraOf": null,
-   "def consensus.HardForkConfig#initialEra": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Embed/Nary.hs",
-     "symbol": "injectInitialExtLedgerState",
-     "lines": [
-      272,
-      328
-     ]
-    }
-   ],
+   "def consensus.HardForkConfig#initialEra": null,
    "def consensus.HardForkConfig#transition": null,
    "def consensus.HardForkConfig#trigger": null,
    "def consensus.HardForkConfig.eraProtVerLow": null,
@@ -268,18 +246,7 @@
    "def consensus.state.Current.start": null,
    "def consensus.state.Current.state": null,
    "def consensus.state.EraHistory.boundAt": null,
-   "def consensus.state.EraHistory.byronTransition": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus-cardano/src/byron/Ouroboros/Consensus/Byron/ByronHFC.hs",
-     "symbol": "singleEraTransition",
-     "lines": [
-      240,
-      247
-     ]
-    }
-   ],
+   "def consensus.state.EraHistory.byronTransition": null,
    "def consensus.state.EraHistory.horizonHistory": null,
    "def consensus.state.EraHistory.summary": null,
    "def consensus.state.EraHistory.transition": null,
@@ -293,16 +260,6 @@
    "def consensus.state.HeaderState.live": null,
    "def consensus.state.MirrorClock.of": null,
    "def consensus.state.MirrorClock.summary": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Ledger/Query.hs",
-     "symbol": "interpretQueryHardFork",
-     "lines": [
-      521,
-      536
-     ]
-    },
     {
      "repository": "IntersectMBO/ouroboros-consensus",
      "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
@@ -388,18 +345,7 @@
    "enum consensus.state.ExtLedgerState.Layout": null,
    "enum consensus.state.IsEBB": null,
    "enum consensus.state.MirrorExtras": null,
-   "enum consensus.state.PerasResolver": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Peras/Context.hs",
-     "symbol": "PerasEpochContextResolver",
-     "lines": [
-      237,
-      262
-     ]
-    }
-   ],
+   "enum consensus.state.PerasResolver": null,
    "enum consensus.state.ShelleyLedgerState.Layout": null,
    "enum consensus.state.SomeEra": null,
    "enum consensus.state.StateMirrorError": null,
@@ -489,18 +435,7 @@
    "object consensus.state.EraIndexed": null,
    "object consensus.state.EraLedgerState": null,
    "object consensus.state.ExtLedgerState": null,
-   "object consensus.state.GenesisMirror": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Embed/Nary.hs",
-     "symbol": "injectInitialExtLedgerState",
-     "lines": [
-      272,
-      328
-     ]
-    }
-   ],
+   "object consensus.state.GenesisMirror": null,
    "object consensus.state.HeaderState": null,
    "object consensus.state.MirrorClock": null,
    "object consensus.state.MirrorExtras": null,
@@ -615,35 +550,13 @@
    "class ledger.Block.Transaction": null,
    "class ledger.BootstrapWitness": null,
    "class ledger.ByronDelegation": null,
-   "class ledger.ByronGenesis": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Genesis/Data.hs",
-     "symbol": "GenesisData",
-     "lines": [
-      53,
-      63
-     ]
-    }
-   ],
+   "class ledger.ByronGenesis": null,
    "class ledger.ByronGenesisRead.Fields": null,
    "class ledger.ByronSpan": null,
    "class ledger.Committee": null,
    "class ledger.ConfigError": null,
    "class ledger.Constitution": null,
-   "class ledger.ConwayParamUpdate": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
-     "symbol": "PParamsUpdate",
-     "lines": [
-      224,
-      224
-     ]
-    }
-   ],
+   "class ledger.ConwayParamUpdate": null,
    "class ledger.ConwayParamUpdate.Entry": null,
    "class ledger.ConwayParams": null,
    "class ledger.DRepState": null,
@@ -678,44 +591,12 @@
    "class ledger.Ipv4": null,
    "class ledger.Ipv6": null,
    "class ledger.LedgerFailure.Rejected": null,
-   "class ledger.LedgerFailure.StateOutOfRange": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs",
-     "symbol": "compactCoinOrError",
-     "lines": [
-      184,
-      188
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Deleg.hs",
-     "symbol": "compactCoinOrError",
-     "lines": [
-      197,
-      197
-     ]
-    }
-   ],
+   "class ledger.LedgerFailure.StateOutOfRange": null,
    "class ledger.LedgerFailure.Unavailable": null,
    "class ledger.LedgerFailure.Undecodable": null,
    "class ledger.LedgerFailure.Unverifiable": null,
    "class ledger.LedgerFailure.Vocab": null,
-   "class ledger.LedgerGlobals": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Translation.hs",
-     "symbol": "TranslationContext",
-     "lines": [
-      51,
-      51
-     ]
-    }
-   ],
+   "class ledger.LedgerGlobals": null,
    "class ledger.LedgerView": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -731,45 +612,13 @@
    "class ledger.LegacyNetworkIdentity": null,
    "class ledger.LeiosBlock": null,
    "class ledger.LeiosBlock.CertificateBytes": null,
-   "class ledger.LeiosHeader": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/Praos2.hs",
-     "symbol": "ShelleyProtocolHeader",
-     "lines": [
-      57,
-      57
-     ]
-    }
-   ],
+   "class ledger.LeiosHeader": null,
    "class ledger.LeiosHeaderFields": null,
    "class ledger.Mismatch": null,
    "class ledger.NativeLibraryError": null,
    "class ledger.NetworkIdentity": null,
    "class ledger.ParamUpdate": null,
-   "class ledger.ParamUpdate.Rules": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "decodeProtVer",
-     "lines": [
-      253,
-      263
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
-     "symbol": "ppProtocolVersion",
-     "lines": [
-      472,
-      479
-     ]
-    }
-   ],
+   "class ledger.ParamUpdate.Rules": null,
    "class ledger.Phase2.Completed": null,
    "class ledger.Phase2.Defect": null,
    "class ledger.Phase2.Evaluation": null,
@@ -778,18 +627,7 @@
    "class ledger.Phase2.Observation": null,
    "class ledger.Phase2.Preparation": null,
    "class ledger.Phase2.Report": null,
-   "class ledger.PlutusFailure": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxos.hs",
-     "symbol": "FailureDescription",
-     "lines": [
-      259,
-      261
-     ]
-    }
-   ],
+   "class ledger.PlutusFailure": null,
    "class ledger.PlutusStats": null,
    "class ledger.PoolDistribution": null,
    "class ledger.PoolIdentity": null,
@@ -802,41 +640,9 @@
    "class ledger.Prepared": null,
    "class ledger.PrevIds": null,
    "class ledger.Proposal": null,
-   "class ledger.ProposalIdentity": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
-     "symbol": "ProposalProcedure",
-     "lines": [
-      498,
-      504
-     ]
-    }
-   ],
+   "class ledger.ProposalIdentity": null,
    "class ledger.Proposals": null,
-   "class ledger.ProtocolParams": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
-     "symbol": "DijkstraPParams",
-     "lines": [
-      161,
-      301
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
-     "symbol": "MaxPledgeLeverage",
-     "lines": [
-      369,
-      373
-     ]
-    }
-   ],
+   "class ledger.ProtocolParams": null,
    "class ledger.Ptr": null,
    "class ledger.PtrMap": null,
    "class ledger.PulsingSnapshot": null,
@@ -845,18 +651,7 @@
    "class ledger.Redeemer": null,
    "class ledger.RewardAccount": null,
    "class ledger.Script": null,
-   "class ledger.ScriptContexts.Environment": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
-     "symbol": "hardforkConwayBootstrapPhase",
-     "lines": [
-      575,
-      575
-     ]
-    }
-   ],
+   "class ledger.ScriptContexts.Environment": null,
    "class ledger.ShelleyGenesis": null,
    "class ledger.ShelleyGenesisValidation.Input": null,
    "class ledger.Tx": null,
@@ -875,18 +670,7 @@
    "class ledger.VotingProcedure": null,
    "class ledger.VrfCert": null,
    "class ledger.Witnesses": null,
-   "class ledger.byron.AppVersion": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/Validation/Registration.hs",
-     "symbol": "ApplicationVersion",
-     "lines": [
-      99,
-      105
-     ]
-    }
-   ],
+   "class ledger.byron.AppVersion": null,
    "class ledger.byron.ByronAddress": null,
    "class ledger.byron.ByronBody": null,
    "class ledger.byron.ByronCert": null,
@@ -914,18 +698,7 @@
    "class ledger.dijkstra.DijkstraAuxData": null,
    "class ledger.dijkstra.DijkstraBlsKey": null,
    "class ledger.dijkstra.DijkstraBootstrap": null,
-   "class ledger.dijkstra.DijkstraCertsFailure": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
-     "symbol": "ConwayCertsPredFailure",
-     "lines": [
-      111,
-      114
-     ]
-    }
-   ],
+   "class ledger.dijkstra.DijkstraCertsFailure": null,
    "class ledger.dijkstra.DijkstraGenesis": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -935,36 +708,6 @@
      "lines": [
       32,
       35
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
-     "symbol": "UpgradeDijkstraPParams",
-     "lines": [
-      410,
-      440
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Translation.hs",
-     "symbol": "DijkstraGenesis",
-     "lines": [
-      51,
-      51
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
-     "symbol": "MaxPledgeLeverage",
-     "lines": [
-      369,
-      373
      ]
     }
    ],
@@ -1037,18 +780,7 @@
    "class ledger.rules.GovEnv": null,
    "class ledger.rules.GovSignal": null,
    "class ledger.rules.GovViewEnv": null,
-   "class ledger.rules.Hfc.Pending": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/ShelleyHFC.hs",
-     "symbol": "shelleyTransition",
-     "lines": [
-      194,
-      201
-     ]
-    }
-   ],
+   "class ledger.rules.Hfc.Pending": null,
    "class ledger.rules.LedgerEnv": null,
    "class ledger.rules.LedgersEnv": null,
    "class ledger.rules.Pool.RuleEnv": null,
@@ -1144,18 +876,7 @@
    "class ledger.state.NewEpochState": null,
    "class ledger.state.NodeExtras": null,
    "class ledger.state.NonMyopic": null,
-   "class ledger.state.PState": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Transition.hs",
-     "symbol": "injectStakePools",
-     "lines": [
-      526,
-      545
-     ]
-    }
-   ],
+   "class ledger.state.PState": null,
    "class ledger.state.Path": null,
    "class ledger.state.PoolDistr": null,
    "class ledger.state.PoolRewardInfo": null,
@@ -1217,33 +938,11 @@
    "def ledger.BlockTransport.check": null,
    "def ledger.BlockTransportError#message": null,
    "def ledger.BootstrapWitness.chainCode": null,
-   "def ledger.BootstrapWitness.set": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxow.hs",
-     "symbol": "validateVerifiedWits",
-     "lines": [
-      391,
-      411
-     ]
-    }
-   ],
+   "def ledger.BootstrapWitness.set": null,
    "def ledger.ByronChainError#message": null,
    "def ledger.ByronFieldError#message": null,
    "def ledger.ByronGenesis#epochSlots": null,
-   "def ledger.ByronGenesis#slotLengthMillis": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus-cardano/src/byron/Ouroboros/Consensus/Byron/Ledger/Conversions.hs",
-     "symbol": "fromByronSlotLength",
-     "lines": [
-      50,
-      57
-     ]
-    }
-   ],
+   "def ledger.ByronGenesis#slotLengthMillis": null,
    "def ledger.ByronGenesisFile.avvmBalances": null,
    "def ledger.ByronGenesisFile.avvmKey": null,
    "def ledger.ByronGenesisFile.fromJson": null,
@@ -1299,70 +998,16 @@
    ],
    "def ledger.CborRead.ratio": null,
    "def ledger.CborRead.rational": null,
-   "def ledger.CborRead.record": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Coders.hs",
-     "symbol": "decodeRecordNamed",
-     "lines": [
-      482,
-      482
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
-     "symbol": "decodeListLikeT",
-     "lines": [
-      691,
-      709
-     ]
-    }
-   ],
+   "def ledger.CborRead.record": null,
    "def ledger.CborRead.set": null,
-   "def ledger.CborRead.small": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
-     "symbol": "decodeRecordSum",
-     "lines": [
-      670,
-      678
-     ]
-    }
-   ],
+   "def ledger.CborRead.small": null,
    "def ledger.CborRead.text": null,
    "def ledger.CborRead.tolerantSet": null,
    "def ledger.CborRead.uint": null,
    "def ledger.CborRead.unique": null,
-   "def ledger.CborRead.url": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "textSizeN",
-     "lines": [
-      644,
-      657
-     ]
-    }
-   ],
+   "def ledger.CborRead.url": null,
    "def ledger.Certificate.decode": null,
-   "def ledger.Certificate.identity": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs",
-     "symbol": "ConwayDelegCert",
-     "lines": [
-      473,
-      486
-     ]
-    }
-   ],
+   "def ledger.Certificate.identity": null,
    "def ledger.ChainError#message": null,
    "def ledger.ChainSyncInternalProblem#message": null,
    "def ledger.CheckpointProblem#render": null,
@@ -1384,18 +1029,7 @@
    "def ledger.ConwayParamUpdate#isEmpty": null,
    "def ledger.ConwayParamUpdate#keys": null,
    "def ledger.ConwayParamUpdate#params": null,
-   "def ledger.ConwayParamUpdate.decode": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
-     "symbol": "decCBOR",
-     "lines": [
-      257,
-      293
-     ]
-    }
-   ],
+   "def ledger.ConwayParamUpdate.decode": null,
    "def ledger.ConwayParamUpdate.decodeStored": null,
    "def ledger.ConwayParamUpdate.fromEncoded": null,
    "def ledger.CostModelDecode.decode": null,
@@ -1513,45 +1147,13 @@
    "def ledger.GenesisState.get": null,
    "def ledger.GenesisState.globals": null,
    "def ledger.GenesisState.hex28": null,
-   "def ledger.GenesisState.initialOutput": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
-     "symbol": "mkTxOut",
-     "lines": [
-      449,
-      460
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
-     "symbol": "initialFundsPseudoTxIn",
-     "lines": [
-      660,
-      675
-     ]
-    }
-   ],
+   "def ledger.GenesisState.initialOutput": null,
    "def ledger.GenesisState.injection": null,
    "def ledger.GenesisState.optionalObject": null,
    "def ledger.GenesisState.output": null,
    "def ledger.GenesisState.outputBytes": null,
    "def ledger.GenesisState.pool": null,
-   "def ledger.GovActionId.decode": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
-     "symbol": "GovActionIx",
-     "lines": [
-      162,
-      173
-     ]
-    }
-   ],
+   "def ledger.GovActionId.decode": null,
    "def ledger.GovActionId.optional": null,
    "def ledger.GovActionState#action": null,
    "def ledger.GovActionState#cast": null,
@@ -1572,140 +1174,16 @@
    "def ledger.Header#slot": null,
    "def ledger.Header.Byron#era": null,
    "def ledger.Header.Byron#isBoundary": null,
-   "def ledger.Header.Byron#namesGenesis": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Block/Header.hs",
-     "symbol": "decCBORABoundaryHeader",
-     "lines": [
-      613,
-      632
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Block/Block.hs",
-     "symbol": "abobHdrPrevHash",
-     "lines": [
-      620,
-      624
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus-cardano/src/byron/Ouroboros/Consensus/Byron/Ledger/Block.hs",
-     "symbol": "headerPrevHash",
-     "lines": [
-      241,
-      246
-     ]
-    }
-   ],
+   "def ledger.Header.Byron#namesGenesis": null,
    "def ledger.Header.Byron#slot": null,
-   "def ledger.Header.Byron#slotEpoch": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Slotting/EpochAndSlotCount.hs",
-     "symbol": "slotNumberEpoch",
-     "lines": [
-      98,
-      99
-     ]
-    }
-   ],
+   "def ledger.Header.Byron#slotEpoch": null,
    "def ledger.Header.Byron#withoutSizeHint": null,
    "def ledger.Header.UnsizedByron#slot": null,
    "def ledger.Header.UnsizedByron#withSizeHint": null,
    "def ledger.Header.array": null,
-   "def ledger.Header.byronFromRaw": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs",
-     "symbol": "byronProtVer",
-     "lines": [
-      162,
-      164
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
-     "symbol": "decodeBytes",
-     "lines": [
-      355,
-      373
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Block/Header.hs",
-     "symbol": "decCBORAHeader",
-     "lines": [
-      351,
-      390
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Block/Boundary.hs",
-     "symbol": "decCBORBoundaryConsensusData",
-     "lines": [
-      33,
-      42
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/crypto/src/Cardano/Crypto/ProtocolMagic.hs",
-     "symbol": "ProtocolMagicId",
-     "lines": [
-      57,
-      63
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Block/Header.hs",
-     "symbol": "decCBORABoundaryHeader",
-     "lines": [
-      613,
-      632
-     ]
-    }
-   ],
+   "def ledger.Header.byronFromRaw": null,
    "def ledger.Header.byronSizeHint": null,
-   "def ledger.Header.byronSlot": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Slotting/EpochAndSlotCount.hs",
-     "symbol": "toSlotNumber",
-     "lines": [
-      71,
-      79
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Block/Block.hs",
-     "symbol": "boundaryBlockSlot",
-     "lines": [
-      533,
-      543
-     ]
-    }
-   ],
+   "def ledger.Header.byronSlot": null,
    "def ledger.Header.bytes": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -1716,63 +1194,12 @@
       355,
       373
      ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
-     "symbol": "decodeFixedSized",
-     "lines": [
-      375,
-      379
-     ]
     }
    ],
    "def ledger.Header.fail": null,
    "def ledger.Header.fromEnvelope": null,
    "def ledger.Header.fromNtN": null,
-   "def ledger.Header.fromRaw": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Group.hs",
-     "symbol": "CBORGroup",
-     "lines": [
-      27,
-      35
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-protocol/src/Cardano/Protocol/TPraos/BlockHeader.hs",
-     "symbol": "decodeRecordNamed",
-     "lines": [
-      193,
-      241
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
-     "symbol": "decodeVersion",
-     "lines": [
-      462,
-      473
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/Praos2.hs",
-     "symbol": "ShelleyProtocolHeader",
-     "lines": [
-      57,
-      57
-     ]
-    }
-   ],
+   "def ledger.Header.fromRaw": null,
    "def ledger.Header.optHash": null,
    "def ledger.Header.praosVrf": null,
    "def ledger.Header.protocolVersion": null,
@@ -1828,18 +1255,7 @@
    "def ledger.LeiosHeader#dijkstraView": null,
    "def ledger.LeiosHeader#point": null,
    "def ledger.LeiosHeader#praosView": null,
-   "def ledger.LeiosHeader.byEra": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Block.hs",
-     "symbol": "CardanoShelleyEras",
-     "lines": [
-      269,
-      278
-     ]
-    }
-   ],
+   "def ledger.LeiosHeader.byEra": null,
    "def ledger.LeiosHeader.decode": null,
    "def ledger.MempoolLedgerProblem#message": null,
    "def ledger.MempoolProblem#message": null,
@@ -1889,58 +1305,7 @@
    "def ledger.OCertRules.verifySignatures": null,
    "def ledger.OCertRules.verifySignaturesWith": null,
    "def ledger.ParamUpdate.Rules.of": null,
-   "def ledger.ParamUpdate.protocolVersion": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "decodeProtVer",
-     "lines": [
-      253,
-      263
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "ProtVer",
-     "lines": [
-      211,
-      214
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Group.hs",
-     "symbol": "groupRecord",
-     "lines": [
-      33,
-      39
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
-     "symbol": "decodeVersion",
-     "lines": [
-      462,
-      473
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs",
-     "symbol": "mkVersion32",
-     "lines": [
-      111,
-      111
-     ]
-    }
-   ],
+   "def ledger.ParamUpdate.protocolVersion": null,
    "def ledger.ParamUpdate.read": null,
    "def ledger.ParamUpdate.toBabbage": null,
    "def ledger.ParamUpdate.typed": null,
@@ -1966,58 +1331,15 @@
    "def ledger.Phase2.run": null,
    "def ledger.Points.show": null,
    "def ledger.PoolParams.decodeMetadata": null,
-   "def ledger.PoolParams.identity": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
-     "symbol": "StakePoolParams",
-     "lines": [
-      424,
-      435
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
-     "symbol": "PoolMetadata",
-     "lines": [
-      293,
-      299
-     ]
-    }
-   ],
+   "def ledger.PoolParams.identity": null,
    "def ledger.PoolParams.metadataHash": null,
    "def ledger.PoolParams.registeredOn": null,
    "def ledger.PoolRelay#ledgerRelay": null,
    "def ledger.PoolRelays.connectable": null,
    "def ledger.PoolRelays.decode": null,
    "def ledger.PoolRelays.decodeWire": null,
-   "def ledger.PoolRelays.encode": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
-     "symbol": "encCBOR",
-     "lines": [
-      389,
-      404
-     ]
-    }
-   ],
-   "def ledger.PoolRelays.fromBody": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
-     "symbol": "decodeStakePoolParamsFlat",
-     "lines": [
-      578,
-      589
-     ]
-    }
-   ],
+   "def ledger.PoolRelays.encode": null,
+   "def ledger.PoolRelays.fromBody": null,
    "def ledger.PoolRelays.ledgerRelays": null,
    "def ledger.PoolRelays.peerRelays": null,
    "def ledger.PoolVotingThresholds#toVector": null,
@@ -2050,59 +1372,16 @@
    "def ledger.Proposals#vote": null,
    "def ledger.Proposals#withVotes": null,
    "def ledger.Proposals.rebuild": null,
-   "def ledger.ProtocolParams#effectiveD": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
-     "symbol": "ppDG",
-     "lines": [
-      198,
-      198
-     ]
-    }
-   ],
+   "def ledger.ProtocolParams#effectiveD": null,
    "def ledger.ProtocolParams#restrictsPoolMetadataHash": null,
    "def ledger.ProtocolParams#validatesPoolRewardAccountNetwork": null,
    "def ledger.ProtocolParams#version": null,
    "def ledger.ProtocolParams.costModels": null,
    "def ledger.ProtocolParams.fromGenesis": null,
-   "def ledger.ProtocolParams.injectedCostModels": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Transition.hs",
-     "symbol": "alonzoInjectCostModels",
-     "lines": [
-      47,
-      53
-     ]
-    }
-   ],
+   "def ledger.ProtocolParams.injectedCostModels": null,
    "def ledger.ProtocolParams.overlay": null,
    "def ledger.ProtocolParams.translatedFromGenesis": null,
-   "def ledger.ProtocolParams.update": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
-     "symbol": "ppCoinsPerUTxOWord",
-     "lines": [
-      658,
-      665
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
-     "symbol": "ppCoinsPerUTxOByte",
-     "lines": [
-      405,
-      412
-     ]
-    }
-   ],
+   "def ledger.ProtocolParams.update": null,
    "def ledger.ProviderDefect#cause": null,
    "def ledger.ProviderDefect#message": null,
    "def ledger.ProviderDefect.kes": null,
@@ -2114,18 +1393,7 @@
    "def ledger.Ptr#fits": null,
    "def ledger.Ptr#normalised": null,
    "def ledger.Ptr.encode": null,
-   "def ledger.Ptr.ofCertificate": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Credential.hs",
-     "symbol": "SlotNo32",
-     "lines": [
-      233,
-      246
-     ]
-    }
-   ],
+   "def ledger.Ptr.ofCertificate": null,
    "def ledger.Ptr.read": null,
    "def ledger.PtrMap#equals": null,
    "def ledger.PtrMap#get": null,
@@ -2202,28 +1470,7 @@
    "def ledger.ScriptIntegrity.plutusLanguageViews": null,
    "def ledger.ScriptIntegrity.preimage": null,
    "def ledger.ScriptKind#isPlutus": null,
-   "def ledger.ScriptKind.newest": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Scripts.hs",
-     "symbol": "eraMaxLanguage",
-     "lines": [
-      63,
-      63
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Scripts.hs",
-     "symbol": "eraMaxLanguage",
-     "lines": [
-      98,
-      98
-     ]
-    }
-   ],
+   "def ledger.ScriptKind.newest": null,
    "def ledger.Semantic.of": null,
    "def ledger.Semantic.ofBytes": null,
    "def ledger.ShelleyGenesisValidation.ValidationErr#description": null,
@@ -2238,45 +1485,13 @@
    "def ledger.TransitionCounterProblem#message": null,
    "def ledger.TranslationError#message": null,
    "def ledger.Tx#hasAuxiliaryData": null,
-   "def ledger.Tx.envelope": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
-     "symbol": "toCBORForMempoolSubmission",
-     "lines": [
-      489,
-      495
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
-     "symbol": "wireSizeTxF",
-     "lines": [
-      667,
-      681
-     ]
-    }
-   ],
+   "def ledger.Tx.envelope": null,
    "def ledger.Tx.envelopeParts": null,
    "def ledger.Tx.fromBlock": null,
    "def ledger.Tx.fromEnvelope": null,
    "def ledger.TxBody#hasScriptData": null,
    "def ledger.TxBody.decode": null,
-   "def ledger.TxChecks.auxiliaryChecks": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxow.hs",
-     "symbol": "validateMetadata",
-     "lines": [
-      427,
-      448
-     ]
-    }
-   ],
+   "def ledger.TxChecks.auxiliaryChecks": null,
    "def ledger.TxChecks.bootstrapOutputs": null,
    "def ledger.TxChecks.checkedPhase2": null,
    "def ledger.TxChecks.collateral": null,
@@ -2292,82 +1507,11 @@
       366,
       377
      ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxow.hs",
-     "symbol": "validateFailedBabbageScripts",
-     "lines": [
-      211,
-      233
-     ]
     }
    ],
    "def ledger.TxChecks.integrityCheck": null,
    "def ledger.TxChecks.maxOutputValueSize": null,
-   "def ledger.TxChecks.minUTxO": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxOut.hs",
-     "symbol": "getMinCoinTxOut",
-     "lines": [
-      94,
-      94
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/allegra/impl/src/Cardano/Ledger/Allegra/TxOut.hs",
-     "symbol": "getMinCoinTxOut",
-     "lines": [
-      31,
-      31
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
-     "symbol": "getMinCoinTxOut",
-     "lines": [
-      370,
-      372
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
-     "symbol": "babbageMinUTxOValue",
-     "lines": [
-      230,
-      230
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxOut.hs",
-     "symbol": "babbageMinUTxOValue",
-     "lines": [
-      49,
-      49
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxOut.hs",
-     "symbol": "babbageMinUTxOValue",
-     "lines": [
-      41,
-      41
-     ]
-    }
-   ],
+   "def ledger.TxChecks.minUTxO": null,
    "def ledger.TxChecks.neededWitnesses": null,
    "def ledger.TxChecks.phase2": null,
    "def ledger.TxChecks.plutusFieldsDefect": null,
@@ -2383,44 +1527,12 @@
    "def ledger.TxEnv#static": null,
    "def ledger.TxEnv#staticOrDefect": null,
    "def ledger.TxIn#render": null,
-   "def ledger.TxIn.decode": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "TxIx",
-     "lines": [
-      918,
-      921
-     ]
-    }
-   ],
+   "def ledger.TxIn.decode": null,
    "def ledger.TxOut#hasDatum": null,
    "def ledger.TxOut#hasScriptRef": null,
    "def ledger.TxOut#ledgerSize": null,
    "def ledger.TxOut#referenceScript": null,
-   "def ledger.TxOut#referenceScriptSize": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Hashes.hs",
-     "symbol": "originalBytesSize",
-     "lines": [
-      379,
-      379
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
-     "symbol": "txNonDistinctRefScriptsSize",
-     "lines": [
-      166,
-      170
-     ]
-    }
-   ],
+   "def ledger.TxOut#referenceScriptSize": null,
    "def ledger.TxOut.Forms.of": null,
    "def ledger.TxOut.apply": null,
    "def ledger.TxOut.decode": null,
@@ -2479,18 +1591,7 @@
    ],
    "def ledger.Value.headSize": null,
    "def ledger.Value.mapHead": null,
-   "def ledger.Value.minted": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/UTxO.hs",
-     "symbol": "getConsumedMaryValue",
-     "lines": [
-      65,
-      81
-     ]
-    }
-   ],
+   "def ledger.Value.minted": null,
    "def ledger.Value.multiasset": null,
    "def ledger.Verdicts#keyHash": null,
    "def ledger.Verdicts#opCert": null,
@@ -2518,34 +1619,12 @@
    "def ledger.byron.ByronAddress#checks": null,
    "def ledger.byron.ByronAddress#isRedeem": null,
    "def ledger.byron.ByronAddress#network": null,
-   "def ledger.byron.ByronAddress#rootFor": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Common/AddressHash.hs",
-     "symbol": "unsafeAddressHash",
-     "lines": [
-      16,
-      22
-     ]
-    }
-   ],
+   "def ledger.byron.ByronAddress#rootFor": null,
    "def ledger.byron.ByronAddress.attributesLength": null,
    "def ledger.byron.ByronAddress.decode": null,
    "def ledger.byron.ByronAddress.make": null,
    "def ledger.byron.ByronAddress.redeem": null,
-   "def ledger.byron.ByronAddress.reencoded": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/UTxO/UTxO.hs",
-     "symbol": "fromBalances",
-     "lines": [
-      121,
-      129
-     ]
-    }
-   ],
+   "def ledger.byron.ByronAddress.reencoded": null,
    "def ledger.byron.ByronAddress.rootOf": null,
    "def ledger.byron.ByronBody.decode": null,
    "def ledger.byron.ByronBodyProof.check": null,
@@ -2599,18 +1678,7 @@
      ]
     }
    ],
-   "def ledger.byron.ByronTransport.bodyProof": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Ssc.hs",
-     "symbol": "dropSscProof",
-     "lines": [
-      169,
-      192
-     ]
-    }
-   ],
+   "def ledger.byron.ByronTransport.bodyProof": null,
    "def ledger.byron.ByronTransport.boundaryExtra": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -2620,16 +1688,6 @@
      "lines": [
       61,
       71
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
-     "symbol": "decodeMapSkel",
-     "lines": [
-      736,
-      766
      ]
     }
    ],
@@ -2647,26 +1705,6 @@
      "lines": [
       216,
       216
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/SystemTag.hs",
-     "symbol": "SystemTag",
-     "lines": [
-      42,
-      49
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
-     "symbol": "decodeMapSkel",
-     "lines": [
-      736,
-      766
      ]
     }
    ],
@@ -2774,18 +1812,7 @@
    "def ledger.dijkstra.DijkstraPurposes.sortedWithdrawals": null,
    "def ledger.dijkstra.DijkstraRelay.decode": null,
    "def ledger.dijkstra.DijkstraScript#hash": null,
-   "def ledger.dijkstra.DijkstraScript.native": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
-     "symbol": "decodeRecordSum",
-     "lines": [
-      295,
-      319
-     ]
-    }
-   ],
+   "def ledger.dijkstra.DijkstraScript.native": null,
    "def ledger.dijkstra.DijkstraScript.plutus": null,
    "def ledger.dijkstra.DijkstraScript.script": null,
    "def ledger.dijkstra.DijkstraScript.upgradeTimelock": [
@@ -2797,26 +1824,6 @@
      "lines": [
       436,
       444
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/MemoBytes/Internal.hs",
-     "symbol": "mkMemoizedEra",
-     "lines": [
-      299,
-      300
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
-     "symbol": "variableListLenEncoding",
-     "lines": [
-      458,
-      478
      ]
     }
    ],
@@ -2841,18 +1848,7 @@
      ]
     }
    ],
-   "def ledger.dijkstra.DijkstraTx.submitted": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
-     "symbol": "decodeDijkstraTopTx",
-     "lines": [
-      152,
-      174
-     ]
-    }
-   ],
+   "def ledger.dijkstra.DijkstraTx.submitted": null,
    "def ledger.dijkstra.DijkstraTxIn.decode": null,
    "def ledger.dijkstra.DijkstraTxIn.nonEmptySet": null,
    "def ledger.dijkstra.DijkstraTxIn.set": null,
@@ -3301,48 +2297,7 @@
    "def ledger.rules.Translate.reencodedInDijkstra": null,
    "def ledger.rules.Translate.shelleyToAllegra": null,
    "def ledger.rules.Translate.upgradeTxOut": null,
-   "def ledger.rules.Translate.upgradeUtxo": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/CanHardFork.hs",
-     "symbol": "translateLedgerTablesConwayToDijkstraWrapper",
-     "lines": [
-      757,
-      772
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LedgerDB/V2/InMemory.hs",
-     "symbol": "implDuplicateWithDiffs",
-     "lines": [
-      131,
-      152
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Ledger.hs",
-     "symbol": "ejectHardForkTxOut",
-     "lines": [
-      137,
-      162
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus/src/ouroboros-consensus-lsm/Ouroboros/Consensus/Storage/LedgerDB/V2/LSM.hs",
-     "symbol": "implDuplicateWithDiffs",
-     "lines": [
-      262,
-      302
-     ]
-    }
-   ],
+   "def ledger.rules.Translate.upgradeUtxo": null,
    "def ledger.rules.TxDependencies.batches": null,
    "def ledger.rules.TxDependencies.levels": null,
    "def ledger.rules.Upec.step": null,
@@ -3426,18 +2381,7 @@
    "def ledger.state.Empty.ledgerState": null,
    "def ledger.state.Empty.stashedAvvm": null,
    "def ledger.state.EpochInterval.fromBigInt": null,
-   "def ledger.state.EpochInterval.ofKes": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Snap.hs",
-     "symbol": "kesMaxKeyAgeEpochs",
-     "lines": [
-      169,
-      179
-     ]
-    }
-   ],
+   "def ledger.state.EpochInterval.ofKes": null,
    "def ledger.state.EpochInterval.toLong": null,
    "def ledger.state.EpochNo.fromBigInt": null,
    "def ledger.state.EpochNo.fromUnsigned": null,
@@ -3468,28 +2412,7 @@
    "def ledger.state.LedgerState.pState": null,
    "def ledger.state.LedgerState.utxo": null,
    "def ledger.state.LeiosCommitteeSelection.ofMark": null,
-   "def ledger.state.LeiosCommitteeSelection.rotate": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Snap.hs",
-     "symbol": "snapTransition",
-     "lines": [
-      75,
-      102
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Snap.hs",
-     "symbol": "snapTransition",
-     "lines": [
-      105,
-      156
-     ]
-    }
-   ],
+   "def ledger.state.LeiosCommitteeSelection.rotate": null,
    "def ledger.state.LeiosCommitteeSelection.select": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -3500,16 +2423,6 @@
       65,
       95
      ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/SnapShots.hs",
-     "symbol": "leiosCandidates",
-     "lines": [
-      630,
-      637
-     ]
     }
    ],
    "def ledger.state.LeiosCommitteeSize.fromBigInt": null,
@@ -3518,28 +2431,7 @@
    "def ledger.state.LogWeight.apply": null,
    "def ledger.state.LogWeight.float": null,
    "def ledger.state.LogWeight.normalise": null,
-   "def ledger.state.NewEpochState#pd": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/LedgerState/Types.hs",
-     "symbol": "nesStakePoolDistrG",
-     "lines": [
-      643,
-      644
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/SnapShots.hs",
-     "symbol": "calculatePoolDistr",
-     "lines": [
-      495,
-      505
-     ]
-    }
-   ],
+   "def ledger.state.NewEpochState#pd": null,
    "def ledger.state.NewEpochState.Layout#stateLayout": null,
    "def ledger.state.NewEpochState.avvm": null,
    "def ledger.state.NewEpochState.bcur": null,
@@ -3622,18 +2514,7 @@
    "def ledger.state.Word64.wrappingAdd": null,
    "def ledger.state.Word64.wrappingMultiply": null,
    "def ledger.state.Word64.wrappingSubtract": null,
-   "def ledger.state.addInterval": [
-    {
-     "repository": "IntersectMBO/cardano-base",
-     "revision": "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c",
-     "file": "cardano-slotting/src/Cardano/Slotting/Slot.hs",
-     "symbol": "addEpochInterval",
-     "lines": [
-      157,
-      158
-     ]
-    }
-   ],
+   "def ledger.state.addInterval": null,
    "def ledger.state.checked": null,
    "def ledger.state.firstDifference": null,
    "def ledger.state.instance": null,
@@ -3652,18 +2533,7 @@
    "enum ledger.ByronChainError": null,
    "enum ledger.ByronFieldError": null,
    "enum ledger.ByronGenesisField": null,
-   "enum ledger.ByteStrings": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
-     "symbol": "decodeBytes",
-     "lines": [
-      355,
-      373
-     ]
-    }
-   ],
+   "enum ledger.ByteStrings": null,
    "enum ledger.CapacityDimension": null,
    "enum ledger.CborRead.Bound": null,
    "enum ledger.CertFailure": null,
@@ -3680,18 +2550,7 @@
    "enum ledger.ConwayParam": null,
    "enum ledger.ConwayParam.Records": null,
    "enum ledger.CostModelDecode.Format": null,
-   "enum ledger.CostModelLanguage": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
-     "symbol": "costModelInitParamCount",
-     "lines": [
-      233,
-      246
-     ]
-    }
-   ],
+   "enum ledger.CostModelLanguage": null,
    "enum ledger.CostModelProblem": null,
    "enum ledger.Credential": null,
    "enum ledger.DRep": null,
@@ -3776,70 +2635,8 @@
    "enum ledger.Nonce": null,
    "enum ledger.Nonce.NeutralFields": null,
    "enum ledger.OCertError": null,
-   "enum ledger.ParamUpdate.Keys": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
-     "symbol": "eraPParams",
-     "lines": [
-      344,
-      369
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
-     "symbol": "eraPParams",
-     "lines": [
-      203,
-      226
-     ]
-    }
-   ],
-   "enum ledger.ParamUpdate.Typed": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Plain.hs",
-     "symbol": "decodeRationalWithTag",
-     "lines": [
-      159,
-      172
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "Nonce",
-     "lines": [
-      566,
-      570
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "ProtVer",
-     "lines": [
-      211,
-      214
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
-     "symbol": "OrdExUnits",
-     "lines": [
-      413,
-      415
-     ]
-    }
-   ],
+   "enum ledger.ParamUpdate.Keys": null,
+   "enum ledger.ParamUpdate.Typed": null,
    "enum ledger.PeerError": null,
    "enum ledger.PeerError.Divergence": null,
    "enum ledger.PeerError.GenesisProblem": null,
@@ -3877,18 +2674,7 @@
    "enum ledger.TranslationError": null,
    "enum ledger.TxDefect": null,
    "enum ledger.TxEnv.Validation": null,
-   "enum ledger.TxOut.Forms": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
-     "symbol": "decodeBabbageTxOut",
-     "lines": [
-      542,
-      579
-     ]
-    }
-   ],
+   "enum ledger.TxOut.Forms": null,
    "enum ledger.TxOutSource": null,
    "enum ledger.UpdateChecks.Refusal": null,
    "enum ledger.UtxoFailure": null,
@@ -3926,18 +2712,7 @@
    ],
    "enum ledger.byron.TxFeePolicy.Error": null,
    "enum ledger.byron.UpdateError": null,
-   "enum ledger.dijkstra.DijkstraBalanceInterval": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
-     "symbol": "AccountBalanceInterval",
-     "lines": [
-      670,
-      675
-     ]
-    }
-   ],
+   "enum ledger.dijkstra.DijkstraBalanceInterval": null,
    "enum ledger.dijkstra.DijkstraBbodyFailure": null,
    "enum ledger.dijkstra.DijkstraCert": null,
    "enum ledger.dijkstra.DijkstraCertFailure": null,
@@ -3958,35 +2733,13 @@
    "enum ledger.dijkstra.DijkstraDelegatee": null,
    "enum ledger.dijkstra.DijkstraGovAction": null,
    "enum ledger.dijkstra.DijkstraHalt": null,
-   "enum ledger.dijkstra.DijkstraLanguage": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
-     "symbol": "guardPlutus",
-     "lines": [
-      643,
-      651
-     ]
-    }
-   ],
+   "enum ledger.dijkstra.DijkstraLanguage": null,
    "enum ledger.dijkstra.DijkstraLedgerFailure": null,
    "enum ledger.dijkstra.DijkstraLevel": null,
    "enum ledger.dijkstra.DijkstraParamValue": null,
    "enum ledger.dijkstra.DijkstraPending": null,
    "enum ledger.dijkstra.DijkstraPoolFailure": null,
-   "enum ledger.dijkstra.DijkstraPurpose": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
-     "symbol": "DijkstraPlutusPurpose",
-     "lines": [
-      122,
-      130
-     ]
-    }
-   ],
+   "enum ledger.dijkstra.DijkstraPurpose": null,
    "enum ledger.dijkstra.DijkstraRelay": null,
    "enum ledger.dijkstra.DijkstraScript": null,
    "enum ledger.dijkstra.DijkstraScriptContexts.Collected": null,
@@ -4009,18 +2762,7 @@
    "enum ledger.injection.InjectionLexer.TextStep": null,
    "enum ledger.injection.InjectionLexer.Token": null,
    "enum ledger.json.BoundedRatio": null,
-   "enum ledger.json.CanonicalJson": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Genesis/Data.hs",
-     "symbol": "readGenesisData",
-     "lines": [
-      165,
-      181
-     ]
-    }
-   ],
+   "enum ledger.json.CanonicalJson": null,
    "enum ledger.json.CanonicalJson.Kind": null,
    "enum ledger.json.JsonKind": null,
    "enum ledger.json.JsonValue": null,
@@ -4042,18 +2784,7 @@
    "enum ledger.rules.EraNes": null,
    "enum ledger.rules.Frame": null,
    "enum ledger.rules.Frames": null,
-   "enum ledger.rules.GenesisStartError": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Transition.hs",
-     "symbol": "mergeUtxoNoOverlap",
-     "lines": [
-      700,
-      710
-     ]
-    }
-   ],
+   "enum ledger.rules.GenesisStartError": null,
    "enum ledger.rules.GovCert.CommitteeRuleSignal": null,
    "enum ledger.rules.GovCert.DRepRuleSignal": null,
    "enum ledger.rules.Inconsistency": null,
@@ -4074,44 +2805,12 @@
    "enum ledger.state.LeiosCommitteeError.Parameter": null,
    "enum ledger.state.MirrorError": null,
    "enum ledger.state.NewEpochState.Layout": null,
-   "enum ledger.state.PoolBlsKey": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
-     "symbol": "spsBlsKey",
-     "lines": [
-      165,
-      165
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/SnapShots.hs",
-     "symbol": "spssBlsKey",
-     "lines": [
-      197,
-      197
-     ]
-    }
-   ],
+   "enum ledger.state.PoolBlsKey": null,
    "enum ledger.state.PulsingRewUpdate": null,
    "enum ledger.state.RewardType": null,
    "enum ledger.state.Shape": null,
    "enum ledger.state.ShelleyBasedEra": null,
-   "enum ledger.state.SnapShots.Layout": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/SnapShots.hs",
-     "symbol": "MarkSnapShot",
-     "lines": [
-      386,
-      405
-     ]
-    }
-   ],
+   "enum ledger.state.SnapShots.Layout": null,
    "enum ledger.state.SnapshotBasis": null,
    "enum ledger.state.Step": null,
    "enum ledger.state.VocabError": null,
@@ -4143,18 +2842,7 @@
    "given ledger.Nonce.given_Eq_Nonce": null,
    "given ledger.Nonce.given_Show_Nonce": null,
    "given ledger.Ptr.given_Ordering_Ptr": null,
-   "given ledger.RewardAccount.given_Ordering_RewardAccount": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "Network",
-     "lines": [
-      878,
-      881
-     ]
-    }
-   ],
+   "given ledger.RewardAccount.given_Ordering_RewardAccount": null,
    "given ledger.TxIn.given_Ordering_TxIn": null,
    "given ledger.Unsigned.Bound.w16": null,
    "given ledger.Unsigned.Bound.w32": null,
@@ -4164,18 +2852,7 @@
    "given ledger.Voter.order": null,
    "given ledger.Voter.ordering": null,
    "given ledger.byron.ByronVersion.given_Ordering_ByronVersion": null,
-   "given ledger.byron.given_ByteStrings": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs",
-     "symbol": "byronProtVer",
-     "lines": [
-      162,
-      164
-     ]
-    }
-   ],
+   "given ledger.byron.given_ByteStrings": null,
    "given ledger.dijkstra.V12.strings": null,
    "given ledger.json.JsonKey.given_Ordering_JsonKey": null,
    "given ledger.json.JsonKey.order": null,
@@ -4346,18 +3023,7 @@
    "object ledger.Address": null,
    "object ledger.Address.Mode": null,
    "object ledger.Anchor": null,
-   "object ledger.AuxiliaryScripts": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Metadata.hs",
-     "symbol": "decodeMetadatum",
-     "lines": [
-      153,
-      222
-     ]
-    }
-   ],
+   "object ledger.AuxiliaryScripts": null,
    "object ledger.Base58": null,
    "object ledger.Block": null,
    "object ledger.BlockFailure": null,
@@ -4373,28 +3039,7 @@
    "object ledger.ConwayGenesis": null,
    "object ledger.ConwayParam": null,
    "object ledger.ConwayParamUpdate": null,
-   "object ledger.CostModelDecode": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
-     "symbol": "flattenCostModels",
-     "lines": [
-      446,
-      451
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
-     "symbol": "mkCostModel",
-     "lines": [
-      278,
-      291
-     ]
-    }
-   ],
+   "object ledger.CostModelDecode": null,
    "object ledger.Credential": null,
    "object ledger.DRep": null,
    "object ledger.DRepVotingThresholds": null,
@@ -4434,28 +3079,7 @@
    "object ledger.DecodeSite": null,
    "object ledger.DecodeSite.Qualifier": null,
    "object ledger.DecoderVersion": null,
-   "object ledger.DetachedRecords": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Coders.hs",
-     "symbol": "decodeRecordNamed",
-     "lines": [
-      482,
-      482
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
-     "symbol": "decodeListLikeT",
-     "lines": [
-      691,
-      709
-     ]
-    }
-   ],
+   "object ledger.DetachedRecords": null,
    "object ledger.DetachedRecords.Shapes": null,
    "object ledger.EpochGeometry": null,
    "object ledger.ForgeKeyProblem": null,
@@ -4463,28 +3087,7 @@
    "object ledger.Genesis": null,
    "object ledger.GenesisCostModels": null,
    "object ledger.GenesisCostModels.Models": null,
-   "object ledger.GenesisPoolFields": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
-     "symbol": "PoolMetadata",
-     "lines": [
-      293,
-      299
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "Url",
-     "lines": [
-      674,
-      676
-     ]
-    }
-   ],
+   "object ledger.GenesisPoolFields": null,
    "object ledger.GenesisSchema": null,
    "object ledger.GenesisState": null,
    "object ledger.GenesisState.FundAddress": null,
@@ -4493,28 +3096,7 @@
    "object ledger.GovActions": null,
    "object ledger.GovChecks": null,
    "object ledger.Header": null,
-   "object ledger.HeaderBodyEncoding": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-protocol/src/Cardano/Protocol/Praos/BlockHeader.hs",
-     "symbol": "serialize'",
-     "lines": [
-      113,
-      117
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-protocol/src/Cardano/Protocol/TPraos/BlockHeader.hs",
-     "symbol": "serialize'",
-     "lines": [
-      170,
-      171
-     ]
-    }
-   ],
+   "object ledger.HeaderBodyEncoding": null,
    "object ledger.Horizon": null,
    "object ledger.IdentityProvenance": null,
    "object ledger.Ipv6": null,
@@ -4563,28 +3145,7 @@
    "object ledger.ScriptIntegrity": null,
    "object ledger.ScriptKind": null,
    "object ledger.Semantic": null,
-   "object ledger.ShelleyGenesisValidation": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
-     "symbol": "validateGenesis",
-     "lines": [
-      718,
-      718
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Util/Assert.hs",
-     "symbol": "assertWithMsg",
-     "lines": [
-      9,
-      15
-     ]
-    }
-   ],
+   "object ledger.ShelleyGenesisValidation": null,
    "object ledger.Tx": null,
    "object ledger.TxBody": null,
    "object ledger.TxChecks": null,
@@ -4619,28 +3180,7 @@
    "object ledger.byron.ByronNames": null,
    "object ledger.byron.ByronParamsUpdate": null,
    "object ledger.byron.ByronSig": null,
-   "object ledger.byron.ByronTransport": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Block/Boundary.hs",
-     "symbol": "dropBoundaryBody",
-     "lines": [
-      73,
-      78
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Ssc.hs",
-     "symbol": "dropSscPayload",
-     "lines": [
-      76,
-      99
-     ]
-    }
-   ],
+   "object ledger.byron.ByronTransport": null,
    "object ledger.byron.ByronTx": null,
    "object ledger.byron.ByronUpdate": null,
    "object ledger.byron.ByronVersion": null,
@@ -4660,18 +3200,7 @@
    "object ledger.dijkstra.DijkstraHalt": null,
    "object ledger.dijkstra.DijkstraLedgerFailure": null,
    "object ledger.dijkstra.DijkstraParamUpdate": null,
-   "object ledger.dijkstra.DijkstraParams": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
-     "symbol": "DijkstraPParams",
-     "lines": [
-      161,
-      301
-     ]
-    }
-   ],
+   "object ledger.dijkstra.DijkstraParams": null,
    "object ledger.dijkstra.DijkstraPoolParams": null,
    "object ledger.dijkstra.DijkstraProposal": null,
    "object ledger.dijkstra.DijkstraPurposes": null,
@@ -4688,28 +3217,7 @@
    "object ledger.dijkstra.DijkstraWitnesses": null,
    "object ledger.dijkstra.MultiAsset": null,
    "object ledger.dijkstra.Sparse": null,
-   "object ledger.dijkstra.V12": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
-     "symbol": "decodeBytes",
-     "lines": [
-      359,
-      364
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
-     "symbol": "decodeSetLikeEnforceNoDuplicates",
-     "lines": [
-      1058,
-      1079
-     ]
-    }
-   ],
+   "object ledger.dijkstra.V12": null,
    "object ledger.injection.InjectionJson": null,
    "object ledger.injection.InjectionLexer": null,
    "object ledger.injection.InjectionShow": null,
@@ -4742,16 +3250,6 @@
      "lines": [
       169,
       214
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Bbody.hs",
-     "symbol": "validateExUnits",
-     "lines": [
-      149,
-      167
      ]
     }
    ],
@@ -4799,26 +3297,6 @@
       333,
       404
      ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs",
-     "symbol": "validateBlockBodySize",
-     "lines": [
-      251,
-      274
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
-     "symbol": "validatePerasCert",
-     "lines": [
-      245,
-      246
-     ]
     }
    ],
    "object ledger.rules.DijkstraCertRule": null,
@@ -4827,31 +3305,9 @@
    "object ledger.rules.DijkstraFromConway": null,
    "object ledger.rules.DijkstraGov": null,
    "object ledger.rules.DijkstraGovSignal": null,
-   "object ledger.rules.DijkstraLedgerRule": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Ledger.hs",
-     "symbol": "dijkstraLedgerTransition",
-     "lines": [
-      364,
-      487
-     ]
-    }
-   ],
+   "object ledger.rules.DijkstraLedgerRule": null,
    "object ledger.rules.DijkstraLedgers": null,
-   "object ledger.rules.DijkstraPool": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Pool.hs",
-     "symbol": "poolTransition",
-     "lines": [
-      187,
-      318
-     ]
-    }
-   ],
+   "object ledger.rules.DijkstraPool": null,
    "object ledger.rules.DijkstraStAnnTx": null,
    "object ledger.rules.DijkstraSts": null,
    "object ledger.rules.DijkstraTxMeasures": null,
@@ -4865,16 +3321,6 @@
       301,
       429
      ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
-     "symbol": "getConwayMinFeeTxUtxo",
-     "lines": [
-      149,
-      165
-     ]
     }
    ],
    "object ledger.rules.DijkstraUtxow": null,
@@ -4886,18 +3332,7 @@
    "object ledger.rules.EraNes": null,
    "object ledger.rules.Expiry": null,
    "object ledger.rules.GenesisInjections": null,
-   "object ledger.rules.GenesisStart": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Embed/Nary.hs",
-     "symbol": "injectInitialExtLedgerState",
-     "lines": [
-      272,
-      328
-     ]
-    }
-   ],
+   "object ledger.rules.GenesisStart": null,
    "object ledger.rules.GenesisStartError": null,
    "object ledger.rules.Gov": null,
    "object ledger.rules.GovCert": null,
@@ -4910,18 +3345,7 @@
    "object ledger.rules.HardFork": null,
    "object ledger.rules.Hfc": null,
    "object ledger.rules.Inconsistency": null,
-   "object ledger.rules.InstantStakeOps": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/Stake.hs",
-     "symbol": "addConwayInstantStake",
-     "lines": [
-      87,
-      89
-     ]
-    }
-   ],
+   "object ledger.rules.InstantStakeOps": null,
    "object ledger.rules.Invariants": null,
    "object ledger.rules.Judge": null,
    "object ledger.rules.JudgedSts": null,
@@ -4934,18 +3358,7 @@
    "object ledger.rules.MuslData.Exp": null,
    "object ledger.rules.MuslData.Log": null,
    "object ledger.rules.MuslData.PowLog": null,
-   "object ledger.rules.MuslMath": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PoolRank.hs",
-     "symbol": "leaderProbability",
-     "lines": [
-      126,
-      132
-     ]
-    }
-   ],
+   "object ledger.rules.MuslMath": null,
    "object ledger.rules.NewEpoch": null,
    "object ledger.rules.Pool": null,
    "object ledger.rules.Pool.Adapter": null,
@@ -4961,144 +3374,16 @@
    "object ledger.rules.ShelleyCertLens": null,
    "object ledger.rules.ShelleyCertOps": null,
    "object ledger.rules.ShelleyDeleg": null,
-   "object ledger.rules.ShelleyDelegs": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Delegs.hs",
-     "symbol": "delegsTransition",
-     "lines": [
-      169,
-      197
-     ]
-    }
-   ],
-   "object ledger.rules.ShelleyDelpl": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Delpl.hs",
-     "symbol": "delplTransition",
-     "lines": [
-      174,
-      203
-     ]
-    }
-   ],
+   "object ledger.rules.ShelleyDelegs": null,
+   "object ledger.rules.ShelleyDelpl": null,
    "object ledger.rules.ShelleyDeposits": null,
-   "object ledger.rules.ShelleyInstantStakeOps": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/Stake.hs",
-     "symbol": "addShelleyInstantStake",
-     "lines": [
-      108,
-      110
-     ]
-    }
-   ],
-   "object ledger.rules.ShelleyLedger": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Ledger.hs",
-     "symbol": "ledgerTransition",
-     "lines": [
-      300,
-      339
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Ledger.hs",
-     "symbol": "ledgerTransition",
-     "lines": [
-      90,
-      139
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Ledger.hs",
-     "symbol": "testIncompleteAndMissingWithdrawals",
-     "lines": [
-      341,
-      359
-     ]
-    }
-   ],
+   "object ledger.rules.ShelleyInstantStakeOps": null,
+   "object ledger.rules.ShelleyLedger": null,
    "object ledger.rules.ShelleyLedgers": null,
-   "object ledger.rules.ShelleyPpup": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Ppup.hs",
-     "symbol": "ppupTransitionNonEmpty",
-     "lines": [
-      146,
-      204
-     ]
-    }
-   ],
-   "object ledger.rules.ShelleyUtxo": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxo.hs",
-     "symbol": "utxoInductive",
-     "lines": [
-      336,
-      413
-     ]
-    }
-   ],
-   "object ledger.rules.ShelleyUtxos": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxos.hs",
-     "symbol": "alonzoEvalScriptsTxValid",
-     "lines": [
-      189,
-      221
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs",
-     "symbol": "babbageEvalScriptsTxValid",
-     "lines": [
-      157,
-      190
-     ]
-    }
-   ],
-   "object ledger.rules.ShelleyUtxow": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxow.hs",
-     "symbol": "transitionRulesUTXOW",
-     "lines": [
-      270,
-      326
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxow.hs",
-     "symbol": "validateMIRInsufficientGenesisSigs",
-     "lines": [
-      449,
-      471
-     ]
-    }
-   ],
+   "object ledger.rules.ShelleyPpup": null,
+   "object ledger.rules.ShelleyUtxo": null,
+   "object ledger.rules.ShelleyUtxos": null,
+   "object ledger.rules.ShelleyUtxow": null,
    "object ledger.rules.Snap": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -5121,48 +3406,7 @@
    "object ledger.rules.Upec": null,
    "object ledger.rules.Utxo": null,
    "object ledger.rules.UtxoChecks": null,
-   "object ledger.rules.UtxoTests": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxo.hs",
-     "symbol": "utxoInductive",
-     "lines": [
-      336,
-      413
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/allegra/impl/src/Cardano/Ledger/Allegra/Rules/Utxo.hs",
-     "symbol": "utxoTransition",
-     "lines": [
-      148,
-      229
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs",
-     "symbol": "feesOK",
-     "lines": [
-      278,
-      302
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
-     "symbol": "babbageUtxoValidation",
-     "lines": [
-      325,
-      414
-     ]
-    }
-   ],
+   "object ledger.rules.UtxoTests": null,
    "object ledger.rules.Utxos": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -5287,113 +3531,11 @@
    "trait ledger.Unsigned.Width.W64": null,
    "trait ledger.Unsigned.Width.W8": null,
    "trait ledger.Verdicts": null,
-   "trait ledger.rules.Judge": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
-     "symbol": "isFailing",
-     "lines": [
-      668,
-      730
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
-     "symbol": "failBecause",
-     "lines": [
-      401,
-      405
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
-     "symbol": "isFailing",
-     "lines": [
-      690,
-      697
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
-     "symbol": "ifFailureFree",
-     "lines": [
-      479,
-      480
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
-     "symbol": "trans",
-     "lines": [
-      475,
-      477
-     ]
-    }
-   ],
+   "trait ledger.rules.Judge": null,
    "trait ledger.rules.JudgedSts": null,
    "trait ledger.rules.PreConway": null,
    "trait ledger.rules.Refusal": null,
-   "trait ledger.rules.Sts": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "ShelleyBase",
-     "lines": [
-      796,
-      800
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
-     "symbol": "applyRuleInternal",
-     "lines": [
-      668,
-      730
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
-     "symbol": "trans",
-     "lines": [
-      475,
-      477
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
-     "symbol": "Embed",
-     "lines": [
-      270,
-      276
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
-     "symbol": "tellEvent",
-     "lines": [
-      872,
-      875
-     ]
-    }
-   ],
+   "trait ledger.rules.Sts": null,
    "trait ledger.state.BlockIssuer": null,
    "trait ledger.state.ColdCommittee": null,
    "trait ledger.state.DRepRole": null,
@@ -5419,18 +3561,7 @@
    "type ledger.TxEnv.Result": null,
    "type ledger.Unsigned": null,
    "type ledger.byron.ByronSig.Verifier": null,
-   "type ledger.byron.ByronVersion": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/ProtocolVersion.hs",
-     "symbol": "ProtocolVersion",
-     "lines": [
-      28,
-      34
-     ]
-    }
-   ],
+   "type ledger.byron.ByronVersion": null,
    "type ledger.dijkstra.DijkstraScriptContexts.Collection": null,
    "type ledger.dijkstra.DijkstraScriptContexts.Result": null,
    "type ledger.dijkstra.MultiAsset": null,
@@ -5445,18 +3576,7 @@
    "type ledger.rules.Refusal#Defect": null,
    "type ledger.rules.Refusal#Predicate": null,
    "type ledger.rules.Refusal.Aux": null,
-   "type ledger.rules.RuleT": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
-     "symbol": "applyRuleInternal",
-     "lines": [
-      668,
-      730
-     ]
-    }
-   ],
+   "type ledger.rules.RuleT": null,
    "type ledger.rules.RuleT.Judged": null,
    "type ledger.rules.RuleT.Of": null,
    "type ledger.rules.Test": null,
@@ -5527,43 +3647,10 @@
    "val ledger.Address.Mode#headers": null,
    "val ledger.Address.Mode#pointers": null,
    "val ledger.Address.Mode#values": null,
-   "val ledger.Address.UnusedHeaderBits": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
-     "symbol": "headerNonShelleyBits",
-     "lines": [
-      554,
-      555
-     ]
-    }
-   ],
-   "val ledger.Block.MaxInputBytes": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/BlockFetch/Codec.hs",
-     "symbol": "largeByteLimit",
-     "lines": [
-      42,
-      45
-     ]
-    }
-   ],
+   "val ledger.Address.UnusedHeaderBits": null,
+   "val ledger.Block.MaxInputBytes": null,
    "val ledger.Block.Transaction#id": null,
-   "val ledger.BootstrapWitness#addressRoot": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Bootstrap.hs",
-     "symbol": "bootstrapWitKeyHash",
-     "lines": [
-      112,
-      146
-     ]
-    }
-   ],
+   "val ledger.BootstrapWitness#addressRoot": null,
    "val ledger.ByronSpan.Absent": null,
    "val ledger.ConwayGenesis.noAnchor": null,
    "val ledger.ConwayGenesis.noConstitution": null,
@@ -5595,18 +3682,7 @@
    "val ledger.FileKind#label": null,
    "val ledger.GenesisCostModels.Models.empty": null,
    "val ledger.GenesisCostModels.genesisNamesV1": null,
-   "val ledger.Header.headerLimits": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Codec.hs",
-     "symbol": "smallByteLimit",
-     "lines": [
-      47,
-      51
-     ]
-    }
-   ],
+   "val ledger.Header.headerLimits": null,
    "val ledger.Metadatum.MaxStringBytes": null,
    "val ledger.Phase2.Completed#job": null,
    "val ledger.Phase2.Completed#outcome": null,
@@ -5647,18 +3723,7 @@
    "val ledger.byron.ByronAddress.Redeem": null,
    "val ledger.byron.ByronAddress.VerKey": null,
    "val ledger.byron.ByronCbor.BodyLimits": null,
-   "val ledger.byron.ByronLedger.IndexedOutputs": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/byron/ledger/impl/src/Cardano/Chain/UTxO/UTxO.hs",
-     "symbol": "txOutputUTxO",
-     "lines": [
-      176,
-      188
-     ]
-    }
-   ],
+   "val ledger.byron.ByronLedger.IndexedOutputs": null,
    "val ledger.byron.ByronLedger.MaxLovelace": null,
    "val ledger.byron.ByronLedger.ShelleyMajor": null,
    "val ledger.byron.ByronSig.SignCertificate": null,
@@ -5962,56 +4027,14 @@
    "class network.KeepAliveClient.Settings": null,
    "class network.KeepAliveServer.Settings": null,
    "class network.LeiosFetchClient.Settings": null,
-   "class network.LeiosNotifyClient.Settings": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
-     "symbol": "timeLimitsLeiosNotify",
-     "lines": [
-      249,
-      257
-     ]
-    }
-   ],
+   "class network.LeiosNotifyClient.Settings": null,
    "class network.LocalAddress": null,
    "class network.LocalConnectionId": null,
    "class network.LocalStream": null,
    "class network.LocalTxMonitorServer.Held": null,
    "class network.LocalTxMonitorServer.Snapshot": null,
    "class network.LocalTxMonitorServer.TxMeasure": null,
-   "class network.Mux.Config": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "network-mux/src/Network/Mux/Codec.hs",
-     "symbol": "decodeSDU",
-     "lines": [
-      54,
-      82
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "network-mux/src/Network/Mux/Bearer.hs",
-     "symbol": "makeSocketBearer'",
-     "lines": [
-      83,
-      87
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/framework/lib/Ouroboros/Network/ConnectionHandler.hs",
-     "symbol": "sduTimeout",
-     "lines": [
-      94,
-      100
-     ]
-    }
-   ],
+   "class network.Mux.Config": null,
    "class network.MuxEgress.Lane": null,
    "class network.MuxEgress.Outbox": null,
    "class network.MuxJobPool": null,
@@ -6107,20 +4130,10 @@
      "repository": "IntersectMBO/ouroboros-network",
      "revision": "c45735a56c567fa977969173d18943bac6bb3821",
      "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/BlockFetch/Codec.hs",
-     "symbol": "longWait",
+     "symbol": "timeLimitsBlockFetch",
      "lines": [
       59,
-      68
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/api/lib/Ouroboros/Network/Protocol/Limits.hs",
-     "symbol": "longWait",
-     "lines": [
-      114,
-      115
+      73
      ]
     }
    ],
@@ -6143,18 +4156,7 @@
    "class protocol.KeepAlive.Limits": null,
    "class protocol.LeiosStream.Cursor": null,
    "class protocol.LeiosStream.Head": null,
-   "class protocol.LocalTxMonitor.Measure": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalTxMonitor/Codec.hs",
-     "symbol": "encodeSizeAndCapacity",
-     "lines": [
-      204,
-      208
-     ]
-    }
-   ],
+   "class protocol.LocalTxMonitor.Measure": null,
    "class protocol.LocalTxMonitor.Measures": null,
    "class protocol.LocalTxMonitor.Sizes": null,
    "class protocol.Mux.Decoder": null,
@@ -6319,18 +4321,7 @@
    "def network.HandshakeClient.run": null,
    "def network.HandshakeServer.localOffers": null,
    "def network.HandshakeServer.offers": null,
-   "def network.HandshakeServer.run": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
-     "symbol": "timeLimitsHandshake",
-     "lines": [
-      80,
-      88
-     ]
-    }
-   ],
+   "def network.HandshakeServer.run": null,
    "def network.HaskellShow.intArgument": null,
    "def network.HaskellShow.string": null,
    "def network.InboundGovernorCounters.of": null,
@@ -6569,18 +4560,7 @@
    "def network.selection.BigLedgerRoots#origin": null,
    "def network.selection.BigLedgerRoots.fromLedger": null,
    "def network.selection.BlockFetchPolicy.Config#concurrency": null,
-   "def network.selection.BlockFetchPolicy.compareGsv": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/lib/Ouroboros/Network/BlockFetch/DeltaQ.hs",
-     "symbol": "comparePeerGSV",
-     "lines": [
-      38,
-      70
-     ]
-    }
-   ],
+   "def network.selection.BlockFetchPolicy.compareGsv": null,
    "def network.selection.BlockFetchPolicy.decide": null,
    "def network.selection.BlockFetchPolicy.filterFragments": null,
    "def network.selection.BlockFetchPolicy.probabilityBand": null,
@@ -6911,24 +4891,15 @@
    "def protocol.KeepAlive.decode": null,
    "def protocol.KeepAlive.decodePrefix": null,
    "def protocol.KeepAlive.direction": null,
+   "def protocol.KeepAlive.encode": null,
+   "def protocol.KeepAlive.matchResponse": null,
    "def protocol.LayoutPart#stateLayout": null,
    "def protocol.LeiosFetch.answers": null,
    "def protocol.LeiosFetch.byteLimit": null,
    "def protocol.LeiosFetch.decodePrefix": null,
    "def protocol.LeiosFetch.encode": null,
    "def protocol.LeiosFetch.next": null,
-   "def protocol.LeiosFetchDecoder.decode": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
-     "symbol": "codecLeiosFetch",
-     "lines": [
-      255,
-      282
-     ]
-    }
-   ],
+   "def protocol.LeiosFetchDecoder.decode": null,
    "def protocol.LeiosNotify.AnnouncementReader#read": null,
    "def protocol.LeiosNotify.byteLimit": [
     {
@@ -7269,16 +5240,6 @@
       191,
       217
      ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/framework/lib/Ouroboros/Network/ConnectionManager/Types.hs",
-     "symbol": "TimeoutExpired",
-     "lines": [
-      228,
-      238
-     ]
     }
    ],
    "enum protocol.ConnectionState.ConnectionType": null,
@@ -7422,31 +5383,9 @@
    "object network.LocalTxSubmissionServer": null,
    "object network.Mux": null,
    "object network.Mux.Config": null,
-   "object network.MuxEgress": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "network-mux/src/Network/Mux/Egress.hs",
-     "symbol": "muxer",
-     "lines": [
-      149,
-      191
-     ]
-    }
-   ],
+   "object network.MuxEgress": null,
    "object network.MuxJobPool": null,
-   "object network.MuxLifecycle": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "network-mux/src/Network/Mux/Types.hs",
-     "symbol": "StartOnDemandOrEagerly",
-     "lines": [
-      169,
-      183
-     ]
-    }
-   ],
+   "object network.MuxLifecycle": null,
    "object network.NodeAddresses": null,
    "object network.NodeToClientServer": null,
    "object network.NodeToClientServer.MuxFactory": null,
@@ -7571,43 +5510,11 @@
      ]
     }
    ],
-   "object protocol.LeiosNotifyDecoder": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
-     "symbol": "codecLeiosNotify",
-     "lines": [
-      259,
-      283
-     ]
-    }
-   ],
+   "object protocol.LeiosNotifyDecoder": null,
    "object protocol.LeiosStream": null,
    "object protocol.LeiosTxHash": null,
    "object protocol.LeiosWire": null,
-   "object protocol.LeiosWord": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "7b239a16465f1e517a1f3dd2a3761a2b2a153b51",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
-     "symbol": "decodeLeiosPoint",
-     "lines": [
-      202,
-      205
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "7b239a16465f1e517a1f3dd2a3761a2b2a153b51",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/LeiosFetch/Type.hs",
-     "symbol": "encodeBitmaps",
-     "lines": [
-      387,
-      395
-     ]
-    }
-   ],
+   "object protocol.LeiosWord": null,
    "object protocol.LeiosWord.Word16": null,
    "object protocol.LeiosWord.Word32": null,
    "object protocol.LeiosWord.Word64": null,
@@ -7699,32 +5606,10 @@
    "trait protocol.Handshake.VersionCodec": null,
    "trait protocol.IncrementalDecoder": null,
    "trait protocol.LayoutPart": null,
-   "trait protocol.LeiosNotify.AnnouncementReader": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Serialisation/SerialiseNodeToNode.hs",
-     "symbol": "decodeNodeToNode",
-     "lines": [
-      125,
-      130
-     ]
-    }
-   ],
+   "trait protocol.LeiosNotify.AnnouncementReader": null,
    "trait protocol.LocalStateQuery.QueryReader": null,
    "trait protocol.PeerSharingEngine.PeerCodec": null,
-   "trait protocol.TxSubmission2.TransactionReader": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Serialisation/SerialiseNodeToNode.hs",
-     "symbol": "dispatchDecoder",
-     "lines": [
-      80,
-      109
-     ]
-    }
-   ],
+   "trait protocol.TxSubmission2.TransactionReader": null,
    "trait protocol.TxSubmission2Engine.Codec": null,
    "trait protocol.TxSubmission2Engine.Profile": null,
    "type network.ChainSyncClient.Intersection": null,
@@ -7802,18 +5687,7 @@
    "type protocol.TxSubmission2.State": null,
    "val network.AcceptedConnectionsLimit.default": null,
    "val network.ChainSyncPipelineDecision.Window.Default": null,
-   "val network.ChainSyncRuntime.DefaultIdle": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167",
-     "file": "cardano-diffusion/protocols/lib/Cardano/Network/Protocol/ChainSync/Codec/TimeLimits.hs",
-     "symbol": "timeLimitsChainSync",
-     "lines": [
-      43,
-      87
-     ]
-    }
-   ],
+   "val network.ChainSyncRuntime.DefaultIdle": null,
    "val network.ChainSyncRuntime.NodeToClient": null,
    "val network.ChainSyncServer.NodeToClient": null,
    "val network.ChainSyncTimeouts.MaxSeconds": null,
@@ -7949,38 +5823,7 @@
    "val protocol.HfcHeader.DijkstraBlockTag": null,
    "val protocol.HfcHeader.DijkstraIndex": null,
    "val protocol.HfcHeader.codec": null,
-   "val protocol.LeiosFetch.BlockByteLimit": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
-     "symbol": "byteLimitsLeiosFetch",
-     "lines": [
-      231,
-      243
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
-     "file": "ouroboros-network/api/lib/Ouroboros/Network/Protocol/Limits.hs",
-     "symbol": "smallByteLimit",
-     "lines": [
-      131,
-      132
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
-     "file": "cardano-diffusion/lib/Cardano/Network/NodeToNode.hs",
-     "symbol": "addSafetyMargin",
-     "lines": [
-      327,
-      328
-     ]
-    }
-   ],
+   "val protocol.LeiosFetch.BlockByteLimit": null,
    "val protocol.LeiosFetch.BlockTxsByteLimit": null,
    "val protocol.LeiosFetch.MaxBitmapEntries": null,
    "val protocol.LeiosFetch.MaxTxsPerEb": null,
@@ -8040,28 +5883,7 @@
    "val protocol.TxSubmission2.MiniProtocolId": null,
    "val protocol.TxSubmission2.State": null,
    "val protocol.TxSubmissionPolicy.MaxUnacknowledged": null,
-   "val protocol.TxSubmissionPolicy.ReplyByteLimit": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/TxSubmission2/Codec.hs",
-     "symbol": "byteLimitsTxSubmission2",
-     "lines": [
-      47,
-      77
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/api/lib/Ouroboros/Network/Protocol/Limits.hs",
-     "symbol": "largeByteLimit",
-     "lines": [
-      105,
-      106
-     ]
-    }
-   ],
+   "val protocol.TxSubmissionPolicy.ReplyByteLimit": null,
    "val protocol.TxSubmissionPolicy.ShortWait": null
   },
   "plutus": {
@@ -8084,18 +5906,7 @@
    "class plutus.ScriptFailure.Uplc": null,
    "class plutus.UnknownPlutusVm": null,
    "class uplc.Availability.MaxBounds": null,
-   "class uplc.Constant": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Universe.hs",
-     "symbol": "DefaultUni",
-     "lines": [
-      136,
-      153
-     ]
-    }
-   ],
+   "class uplc.Constant": null,
    "class uplc.Constant.Array": null,
    "class uplc.Constant.Bls12_381_G1_Element": null,
    "class uplc.Constant.Bls12_381_G2_Element": null,
@@ -8122,30 +5933,10 @@
       44,
       47
      ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/FlatInstances.hs",
-     "symbol": "Version",
-     "lines": [
-      177,
-      179
-     ]
     }
    ],
    "class uplc.Signature": null,
    "class uplc.Text": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Universe.hs",
-     "symbol": "DefaultUniString",
-     "lines": [
-      139,
-      139
-     ]
-    },
     {
      "repository": "IntersectMBO/plutus",
      "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
@@ -8210,38 +6001,7 @@
    "class uplc.cek.Context.Cases": null,
    "class uplc.cek.Context.Constr": null,
    "class uplc.cek.Context.Force": null,
-   "class uplc.cek.Env": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/untyped-plutus-core/src/UntypedPlutusCore/Evaluation/Machine/Cek/Internal.hs",
-     "symbol": "CekValEnv",
-     "lines": [
-      322,
-      324
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/index-envs/src/Data/RandomAccessList/SkewBinary.hs",
-     "symbol": "cons",
-     "lines": [
-      70,
-      79
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/index-envs/src/Data/RandomAccessList/SkewBinary.hs",
-     "symbol": "contIndexZero",
-     "lines": [
-      104,
-      126
-     ]
-    }
-   ],
+   "class uplc.cek.Env": null,
    "class uplc.cek.Env.Leaf": null,
    "class uplc.cek.Env.Lookup": null,
    "class uplc.cek.Env.Node": null,
@@ -8270,18 +6030,7 @@
      ]
     }
    ],
-   "class uplc.cost.BuiltinCosting": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Builtins.hs",
-     "symbol": "toBuiltinMeaning",
-     "lines": [
-      1092,
-      2528
-     ]
-    }
-   ],
+   "class uplc.cost.BuiltinCosting": null,
    "class uplc.cost.BuiltinCosting.Refinements": null,
    "class uplc.cost.CekMachineCosts": [
     {
@@ -8292,16 +6041,6 @@
      "lines": [
       46,
       63
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Evaluation/Machine/CostModelInterface.hs",
-     "symbol": "splitParams",
-     "lines": [
-      328,
-      333
      ]
     }
    ],
@@ -8331,18 +6070,7 @@
    "class uplc.cost.StepBudget": null,
    "class uplc.cost.Subtracted": null,
    "class uplc.cost.VariantCosts": null,
-   "class uplc.flat.Checks": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/untyped-plutus-core/src/UntypedPlutusCore/Core/Instance/Flat.hs",
-     "symbol": "decodeProgram",
-     "lines": [
-      241,
-      244
-     ]
-    }
-   ],
+   "class uplc.flat.Checks": null,
    "class uplc.flat.Got": null,
    "class uplc.flat.Input": null,
    "class uplc.ledger.LedgerContext": null,
@@ -8350,18 +6078,7 @@
    "class uplc.ledger.ScriptResult.Failure": null,
    "class uplc.ledger.ScriptResult.Success": null,
    "class uplc.ledger.ScriptResult.Unavailable": null,
-   "class uplc.ledger.VariantMachine": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Evaluation/Machine/MachineParameters/Default.hs",
-     "symbol": "DefaultMachineVariantParameters",
-     "lines": [
-      20,
-      23
-     ]
-    }
-   ],
+   "class uplc.ledger.VariantMachine": null,
    "class uplc.text.FreeVariable": null,
    "class uplc.text.Name": [
     {
@@ -8551,32 +6268,10 @@
    "def uplc.PlutusData.constr": null,
    "def uplc.PlutusData.decode": null,
    "def uplc.PlutusData.decodePrefix": null,
-   "def uplc.PlutusData.fromNode": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Data.hs",
-     "symbol": "decodeBoundedBigInteger",
-     "lines": [
-      232,
-      247
-     ]
-    }
-   ],
+   "def uplc.PlutusData.fromNode": null,
    "def uplc.PlutusData.int": null,
    "def uplc.PlutusData.maybe": null,
-   "def uplc.PlutusLanguage#evaluatedAs": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
-     "symbol": "guardPlutus",
-     "lines": [
-      643,
-      651
-     ]
-    }
-   ],
+   "def uplc.PlutusLanguage#evaluatedAs": null,
    "def uplc.ProgramVersion#allowsConstrAndCase": null,
    "def uplc.ProgramVersion#show": null,
    "def uplc.ProgramVersion.of": null,
@@ -8998,16 +6693,6 @@
       136,
       153
      ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-ledger-api/src/PlutusLedgerApi/Common/Versions.hs",
-     "symbol": "maxBoundsByPV",
-     "lines": [
-      394,
-      399
-     ]
     }
    ],
    "enum uplc.PlutusData": null,
@@ -9026,64 +6711,13 @@
       88,
       114
      ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/untyped-plutus-core/src/UntypedPlutusCore/Core/Instance/Flat.hs",
-     "symbol": "encodeTerm",
-     "lines": [
-      120,
-      130
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/flat/src/PlutusCore/Flat/Decoder/Strict.hs",
-     "symbol": "decodeListWith",
-     "lines": [
-      60,
-      88
-     ]
     }
    ],
    "enum uplc.Text.Invalid": null,
    "enum uplc.Value.Invalid": null,
    "enum uplc.bls.BlsDefect": null,
    "enum uplc.bls.BlsFailure": null,
-   "enum uplc.bls.BlstError": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Crypto/BLS12_381/G1.hs",
-     "symbol": "uncompress",
-     "lines": [
-      148,
-      175
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Crypto/BLS12_381/G2.hs",
-     "symbol": "uncompress",
-     "lines": [
-      129,
-      134
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Builtins.hs",
-     "symbol": "eitherToBuiltinResult",
-     "lines": [
-      270,
-      274
-     ]
-    }
-   ],
+   "enum uplc.bls.BlstError": null,
    "enum uplc.bls.Group": null,
    "enum uplc.bls.ScalarOperation": null,
    "enum uplc.builtin.Argument": null,
@@ -9116,41 +6750,10 @@
       45,
       50
      ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-conformance/src/PlutusConformance/CekEvaluator.hs",
-     "symbol": "mkCekEvaluator",
-     "lines": [
-      46,
-      61
-     ]
     }
    ],
    "enum uplc.cek.CaserBuiltin.Selection": null,
-   "enum uplc.cek.CekError": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Evaluation/Machine/Exception.hs",
-     "symbol": "MachineError",
-     "lines": [
-      43,
-      65
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/untyped-plutus-core/src/UntypedPlutusCore/Evaluation/Machine/Cek/Internal.hs",
-     "symbol": "CekUserError",
-     "lines": [
-      497,
-      505
-     ]
-    }
-   ],
+   "enum uplc.cek.CekError": null,
    "enum uplc.cost.CostModelApplyError": null,
    "enum uplc.cost.CostModelApplyWarn": [
     {
@@ -9228,28 +6831,7 @@
      ]
     }
    ],
-   "enum uplc.text.Kinded": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Parser/Type.hs",
-     "symbol": "defaultUniApplication",
-     "lines": [
-      93,
-      103
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/Universe/Core.hs",
-     "symbol": "tryUniApply",
-     "lines": [
-      622,
-      627
-     ]
-    }
-   ],
+   "enum uplc.text.Kinded": null,
    "enum uplc.text.NamedTermF": null,
    "enum uplc.text.PointProblem": null,
    "enum uplc.text.ProgramError": null,
@@ -9303,30 +6885,8 @@
    "object plutus.PlutusBackend": null,
    "object plutus.PlutusScriptBytes": null,
    "object plutus.PlutusVm": null,
-   "object plutus.ReferenceBudget": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/untyped-plutus-core/src/UntypedPlutusCore/Evaluation/Machine/Cek/ExBudgetMode.hs",
-     "symbol": "restricting",
-     "lines": [
-      129,
-      174
-     ]
-    }
-   ],
-   "object plutus.ReferenceCosting": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Evaluation/Machine/ExBudgetStream.hs",
-     "symbol": "zipCostStreamGo",
-     "lines": [
-      58,
-      68
-     ]
-    }
-   ],
+   "object plutus.ReferenceBudget": null,
+   "object plutus.ReferenceCosting": null,
    "object plutus.ReferenceCosting.CostStream": null,
    "object plutus.SatInt": null,
    "object plutus.ScalusEvaluator": null,
@@ -9373,101 +6933,9 @@
    "object uplc.bls.MlResult": null,
    "object uplc.builtin.Outcome": null,
    "object uplc.builtin.core.CoreDenotations": null,
-   "object uplc.builtin.core.CoreUnlifting": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Builtin/Meaning.hs",
-     "symbol": "toMonoF",
-     "lines": [
-      304,
-      330
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Builtin/KnownType.hs",
-     "symbol": "readKnownConstant",
-     "lines": [
-      310,
-      325
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Universe.hs",
-     "symbol": "readKnownAsInteger",
-     "lines": [
-      589,
-      611
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Universe/Cardano.hs",
-     "symbol": "minBoundInteger",
-     "lines": [
-      9,
-      11
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Builtin/Result.hs",
-     "symbol": "notAConstant",
-     "lines": [
-      141,
-      143
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/untyped-plutus-core/src/UntypedPlutusCore/Evaluation/Machine/Cek/Internal.hs",
-     "symbol": "asConstant",
-     "lines": [
-      711,
-      713
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Builtin/KnownType.hs",
-     "symbol": "typeMismatchError",
-     "lines": [
-      289,
-      305
-     ]
-    }
-   ],
+   "object uplc.builtin.core.CoreUnlifting": null,
    "object uplc.builtin.core.CoreVariant": null,
-   "object uplc.builtin.core.DataSerialisation": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Data.hs",
-     "symbol": "encodeData",
-     "lines": [
-      146,
-      169
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Bitwise.hs",
-     "symbol": "integerToBytesBE",
-     "lines": [
-      304,
-      309
-     ]
-    }
-   ],
+   "object uplc.builtin.core.DataSerialisation": null,
    "object uplc.builtin.core.Reader": null,
    "object uplc.builtin.core.Reading": null,
    "object uplc.builtin.extended.Arrays": null,
@@ -9490,28 +6958,7 @@
    "object uplc.cek.Env": null,
    "object uplc.cek.Env.Absent": null,
    "object uplc.cost.BuiltinCosting": null,
-   "object uplc.cost.BuiltinShapes": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Evaluation/Machine/ExBudgetingDefaults.hs",
-     "symbol": "cekCostModelForVariant",
-     "lines": [
-      153,
-      159
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Evaluation/Machine/CostModelInterface.hs",
-     "symbol": "applyParams",
-     "lines": [
-      295,
-      319
-     ]
-    }
-   ],
+   "object uplc.cost.BuiltinShapes": null,
    "object uplc.cost.CekMachineCosts": null,
    "object uplc.cost.CostStream": null,
    "object uplc.cost.Costs": null,
@@ -9528,95 +6975,11 @@
    "object uplc.cost.ThreeArguments": null,
    "object uplc.cost.TwoArguments": null,
    "object uplc.flat.Checks": null,
-   "object uplc.flat.ConstantDecoder": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Universe.hs",
-     "symbol": "decodeDefaultUniValue",
-     "lines": [
-      167,
-      190
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/flat/src/PlutusCore/Flat/Decoder/Strict.hs",
-     "symbol": "decodeListWith",
-     "lines": [
-      60,
-      88
-     ]
-    }
-   ],
-   "object uplc.flat.FlatDecoder": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/untyped-plutus-core/src/UntypedPlutusCore/Core/Instance/Flat.hs",
-     "symbol": "decodeTerm",
-     "lines": [
-      141,
-      186
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/flat/src/PlutusCore/Flat/Run.hs",
-     "symbol": "unflatWith",
-     "lines": [
-      34,
-      37
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/flat/src/PlutusCore/Flat/Decoder/Strict.hs",
-     "symbol": "decodeListWith",
-     "lines": [
-      60,
-      88
-     ]
-    }
-   ],
+   "object uplc.flat.ConstantDecoder": null,
+   "object uplc.flat.FlatDecoder": null,
    "object uplc.flat.FlatEncoder": null,
-   "object uplc.flat.SerialisedScript": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-ledger-api/src/PlutusLedgerApi/Common/SerialisedScript.hs",
-     "symbol": "deserialiseScript",
-     "lines": [
-      254,
-      278
-     ]
-    },
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-ledger-api/src/PlutusLedgerApi/Common/Eval.hs",
-     "symbol": "mkTermToEvaluate",
-     "lines": [
-      118,
-      130
-     ]
-    }
-   ],
-   "object uplc.flat.TypeHeader": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/FlatInstances.hs",
-     "symbol": "constantWidth",
-     "lines": [
-      118,
-      119
-     ]
-    }
-   ],
+   "object uplc.flat.SerialisedScript": null,
+   "object uplc.flat.TypeHeader": null,
    "object uplc.ledger.LedgerContext": null,
    "object uplc.ledger.LedgerEval": null,
    "object uplc.ledger.LedgerOutcome": null,
@@ -9624,16 +6987,6 @@
    "object uplc.ledger.PlutusV2": null,
    "object uplc.ledger.PlutusV3": null,
    "object uplc.ledger.Scope": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-ledger-api/src/PlutusLedgerApi/Common/Eval.hs",
-     "symbol": "mkTermToEvaluate",
-     "lines": [
-      118,
-      130
-     ]
-    },
     {
      "repository": "IntersectMBO/plutus",
      "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
@@ -9646,30 +6999,8 @@
     }
    ],
    "object uplc.ledger.ScriptResult": null,
-   "object uplc.text.BlsLiteral": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Parser/Builtin.hs",
-     "symbol": "conBLS12_381_G1_Element",
-     "lines": [
-      138,
-      143
-     ]
-    }
-   ],
-   "object uplc.text.HaskellChar": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Parser/Builtin.hs",
-     "symbol": "conText",
-     "lines": [
-      86,
-      89
-     ]
-    }
-   ],
+   "object uplc.text.BlsLiteral": null,
+   "object uplc.text.HaskellChar": null,
    "object uplc.text.NamedTerm": null,
    "object uplc.text.NamedTermF": null,
    "object uplc.text.UplcParser": null,
@@ -9683,18 +7014,7 @@
    "trait uplc.builtin.MachineValue": null,
    "trait uplc.builtin.Unlifting": null,
    "trait uplc.builtin.core.Reader": null,
-   "trait uplc.builtin.extended.LogLines": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Builtin/Result.hs",
-     "symbol": "emit",
-     "lines": [
-      150,
-      154
-     ]
-    }
-   ],
+   "trait uplc.builtin.extended.LogLines": null,
    "trait uplc.builtin.extended.Reads": null,
    "trait uplc.cost.Measure": null,
    "trait uplc.cost.Model": [
@@ -9711,58 +7031,14 @@
    ],
    "trait uplc.ledger.LedgerOutcome": null,
    "trait uplc.ledger.ScriptResult": null,
-   "type plutus.SatInt": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/Evaluation/Machine/ExMemory.hs",
-     "symbol": "CostingInteger",
-     "lines": [
-      72,
-      74
-     ]
-    }
-   ],
+   "type plutus.SatInt": null,
    "type uplc.ConstantValue": null,
-   "type uplc.DeBruijn": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/DeBruijn/Internal.hs",
-     "symbol": "Index",
-     "lines": [
-      102,
-      106
-     ]
-    }
-   ],
-   "type uplc.ProtocolMajor": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-ledger-api/src/PlutusLedgerApi/Common/ProtocolVersions.hs",
-     "symbol": "MajorProtocolVersion",
-     "lines": [
-      42,
-      44
-     ]
-    }
-   ],
+   "type uplc.DeBruijn": null,
+   "type uplc.ProtocolMajor": null,
    "type uplc.Term": null,
    "type uplc.Value.Key": null,
    "type uplc.Value.Quantity": null,
-   "type uplc.Word64": [
-    {
-     "repository": "IntersectMBO/plutus",
-     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
-     "file": "plutus-core/plutus-core/src/PlutusCore/DeBruijn/Internal.hs",
-     "symbol": "Index",
-     "lines": [
-      102,
-      106
-     ]
-    }
-   ],
+   "type uplc.Word64": null,
    "type uplc.bls.Bls12_381.Result": null,
    "type uplc.bls.G1Element": [
     {
@@ -10023,18 +7299,7 @@
    "class storage.haskell.Validated": null,
    "class storage.haskell.state.AncillaryManifest": null,
    "class storage.haskell.state.AncillaryManifest.File": null,
-   "class storage.haskell.state.ConwayCodecs.ScriptPayload": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs",
-     "symbol": "Timelock",
-     "lines": [
-      253,
-      255
-     ]
-    }
-   ],
+   "class storage.haskell.state.ConwayCodecs.ScriptPayload": null,
    "class storage.haskell.state.HaskellLedgerFile": null,
    "class storage.haskell.state.IndividualPoolStake11": null,
    "class storage.haskell.state.NewEpochStateLeios": null,
@@ -10240,28 +7505,7 @@
    "def storage.ReceivedBlocks#get": null,
    "def storage.ReceivedBlocks#hashes": null,
    "def storage.ReceivedBlocks#invalidate": null,
-   "def storage.ReceivedBlocks#original": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl.hs",
-     "symbol": "getBlockComponentImpl",
-     "lines": [
-      259,
-      375
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Types.hs",
-     "symbol": "cdbInvalid",
-     "lines": [
-      354,
-      354
-     ]
-    }
-   ],
+   "def storage.ReceivedBlocks#original": null,
    "def storage.ReceivedBlocks#put": null,
    "def storage.ReceivedBlocks#refs": null,
    "def storage.ReceivedBlocks#residency": null,
@@ -10427,18 +7671,7 @@
    "def storage.VolatileStore.decodeAll": null,
    "def storage.VolatileStore.encode": null,
    "def storage.VolatileStore.open": null,
-   "def storage.VolatileStore.openIndex": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/State.hs",
-     "symbol": "OpenState",
-     "lines": [
-      92,
-      119
-     ]
-    }
-   ],
+   "def storage.VolatileStore.openIndex": null,
    "def storage.haskell.ByteOffset.of": null,
    "def storage.haskell.ByteOffset.value": null,
    "def storage.haskell.CborItem.length": null,
@@ -10475,28 +7708,7 @@
    "def storage.haskell.state.CertStateCodecs#blsVerificationKey": null,
    "def storage.haskell.state.CertStateCodecs#leiosPoolBlsKey": null,
    "def storage.haskell.state.ConsensusCodecs#shelleyLedgerState": null,
-   "def storage.haskell.state.ConwayCodecs.certificate": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
-     "symbol": "encodeShelleyDelegCert",
-     "lines": [
-      428,
-      435
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
-     "symbol": "encodePoolCert",
-     "lines": [
-      437,
-      448
-     ]
-    }
-   ],
+   "def storage.haskell.state.ConwayCodecs.certificate": null,
    "def storage.haskell.state.ConwayCodecs.certificates": null,
    "def storage.haskell.state.ConwayCodecs.govAction": null,
    "def storage.haskell.state.ConwayCodecs.proposal": null,
@@ -10511,16 +7723,6 @@
      "lines": [
       400,
       406
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
-     "symbol": "encodeMap",
-     "lines": [
-      397,
-      410
      ]
     }
    ],
@@ -10606,18 +7808,7 @@
    "def storage.haskell.state.ReferenceLayout#reads": null,
    "def storage.haskell.state.ReferenceLayout.of": null,
    "def storage.haskell.state.SnapshotBackend.named": null,
-   "def storage.haskell.state.SnapshotCrc.combined": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Util/CRC.hs",
-     "symbol": "crcOfConcat",
-     "lines": [
-      20,
-      26
-     ]
-    }
-   ],
+   "def storage.haskell.state.SnapshotCrc.combined": null,
    "def storage.haskell.state.SnapshotCrc.of": null,
    "def storage.haskell.state.SnapshotCrc.update": null,
    "def storage.haskell.state.SnapshotCrc.value": null,
@@ -10707,18 +7898,7 @@
    "def storage.scls.SclsCommitment.Merkle#addNamespace": null,
    "def storage.scls.SclsCommitment.Merkle#root": null,
    "def storage.scls.SclsCommitment.entry": null,
-   "def storage.scls.SclsDRepMapper.normalizeExpiry": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs",
-     "symbol": "updateDormantDRepExpiry",
-     "lines": [
-      308,
-      328
-     ]
-    }
-   ],
+   "def storage.scls.SclsDRepMapper.normalizeExpiry": null,
    "def storage.scls.SclsDRepMapper.overlay": null,
    "def storage.scls.SclsDRepMapper.project": null,
    "def storage.scls.SclsEntrySorter#add": null,
@@ -10774,28 +7954,7 @@
    "enum storage.LedgerSnapshotImport.Error": null,
    "enum storage.LedgerSnapshotImport.Evidence": null,
    "enum storage.LedgerSnapshotImport.Trust": null,
-   "enum storage.LedgerSnapshots.Fallback": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LedgerDB/API.hs",
-     "symbol": "tryNewestFirst",
-     "lines": [
-      599,
-      646
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Util/CBOR.hs",
-     "symbol": "readIncremental",
-     "lines": [
-      198,
-      244
-     ]
-    }
-   ],
+   "enum storage.LedgerSnapshots.Fallback": null,
    "enum storage.LedgerSnapshots.Unused": null,
    "enum storage.NetworkIdentityFile.Admission": null,
    "enum storage.SnapshotCheck": null,
@@ -10857,38 +8016,7 @@
    "enum storage.scls.SclsValidation.Expected": null,
    "enum storage.scls.SclsValue.Entry": null,
    "enum storage.scls.SclsValue.Error": null,
-   "enum storage.scls.SclsValue.Reading": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
-     "symbol": "fromEraCBOR",
-     "lines": [
-      241,
-      249
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "DnsName",
-     "lines": [
-      687,
-      689
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-canonical-state/src/Cardano/Ledger/CanonicalState/LedgerCBOR.hs",
-     "symbol": "assumeCanonicalEncoding",
-     "lines": [
-      84,
-      85
-     ]
-    }
-   ],
+   "enum storage.scls.SclsValue.Reading": null,
    "given storage.CheckpointBinding.codec": null,
    "given storage.CheckpointBinding.layoutCodec": null,
    "given storage.Codec.given_Codec_BigInt": null,
@@ -11026,18 +8154,7 @@
    "given storage.haskell.state.NodeTypeCodecs#conwayParamUpdate": null,
    "given storage.haskell.state.NodeTypeCodecs#enactState": null,
    "given storage.haskell.state.NodeTypeCodecs#genDelegPair": null,
-   "given storage.haskell.state.NodeTypeCodecs#govAction": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "ProtVer",
-     "lines": [
-      243,
-      263
-     ]
-    }
-   ],
+   "given storage.haskell.state.NodeTypeCodecs#govAction": null,
    "given storage.haskell.state.NodeTypeCodecs#govActionId": null,
    "given storage.haskell.state.NodeTypeCodecs#govActionState": null,
    "given storage.haskell.state.NodeTypeCodecs#nodeCredential": null,
@@ -11047,28 +8164,7 @@
    "given storage.haskell.state.NodeTypeCodecs#poolParams": null,
    "given storage.haskell.state.NodeTypeCodecs#prevIds": null,
    "given storage.haskell.state.NodeTypeCodecs#proposal": null,
-   "given storage.haskell.state.NodeTypeCodecs#proposals": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "048b78d2807ce9644dbe483c605625824f6be88f",
-     "file": "libs/cardano-data/src/Data/OMap/Strict.hs",
-     "symbol": "snoc",
-     "lines": [
-      179,
-      179
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "048b78d2807ce9644dbe483c605625824f6be88f",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
-     "symbol": "decodeListLikeWithCountT",
-     "lines": [
-      1013,
-      1042
-     ]
-    }
-   ],
+   "given storage.haskell.state.NodeTypeCodecs#proposals": null,
    "given storage.haskell.state.NodeTypeCodecs#pulsingSnapshot": null,
    "given storage.haskell.state.NodeTypeCodecs#ratifyState": null,
    "given storage.haskell.state.NodeTypeCodecs#rewardAccount": null,
@@ -11144,18 +8240,7 @@
    "object storage.ImmutableStore": null,
    "object storage.LedgerSnapshotExport": null,
    "object storage.LedgerSnapshotExport.DirectorySync": null,
-   "object storage.LedgerSnapshotImport": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
-     "symbol": "decSharePlusCBOR",
-     "lines": [
-      401,
-      406
-     ]
-    }
-   ],
+   "object storage.LedgerSnapshotImport": null,
    "object storage.LedgerSnapshotImport.Move": null,
    "object storage.LedgerSnapshots": null,
    "object storage.LedgerSnapshots.Fallback": null,
@@ -11220,28 +8305,7 @@
    "object storage.haskell.state.SnapshotCrc": null,
    "object storage.haskell.state.SnapshotMeta": null,
    "object storage.haskell.state.SnapshotTableStream": null,
-   "object storage.haskell.state.SnapshotTables": [
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Ledger/Tables.hs",
-     "symbol": "valuesMKEncoder",
-     "lines": [
-      276,
-      285
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-consensus",
-     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
-     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LedgerDB/V2/InMemory.hs",
-     "symbol": "yieldCborMapS",
-     "lines": [
-      373,
-      402
-     ]
-    }
-   ],
+   "object storage.haskell.state.SnapshotTables": null,
    "object storage.haskell.state.UtxoCodecs": null,
    "object storage.haskell.state.UtxoCodecs.OutputForm": null,
    "object storage.haskell.state.Versions": null,
@@ -11267,28 +8331,7 @@
    "object storage.scls.SclsFraming.Limit": null,
    "object storage.scls.SclsImport": null,
    "object storage.scls.SclsInterchange": null,
-   "object storage.scls.SclsKey": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-canonical-state/src/Cardano/Ledger/CanonicalState/Namespace/GovPParams/V0.hs",
-     "symbol": "GovPParamsIn",
-     "lines": [
-      59,
-      64
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-canonical-state/src/Cardano/Ledger/CanonicalState/Namespace/GovProposals/Roots/V0.hs",
-     "symbol": "GovProposalsRootsIn",
-     "lines": [
-      53,
-      58
-     ]
-    }
-   ],
+   "object storage.scls.SclsKey": null,
    "object storage.scls.SclsOutput": null,
    "object storage.scls.SclsOutput.Config": null,
    "object storage.scls.SclsRecord": null,
@@ -11398,18 +8441,7 @@
     }
    ],
    "val storage.haskell.state.ConwayCodecs.parameterUpdate": null,
-   "val storage.haskell.state.ConwayCodecs.redeemer": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Scripts.hs",
-     "symbol": "encCBORGroup",
-     "lines": [
-      269,
-      278
-     ]
-    }
-   ],
+   "val storage.haskell.state.ConwayCodecs.redeemer": null,
    "val storage.haskell.state.ConwayCodecs.script": [
     {
      "repository": "IntersectMBO/cardano-ledger",
@@ -11432,38 +8464,7 @@
    "val storage.haskell.state.Params.Param#name": null,
    "val storage.haskell.state.Params.conwayCodec": null,
    "val storage.haskell.state.Params.conwayPParamsCodec": null,
-   "val storage.haskell.state.Params.costModels": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
-     "symbol": "encCBOR",
-     "lines": [
-      446,
-      471
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
-     "symbol": "encCBOR",
-     "lines": [
-      470,
-      471
-     ]
-    },
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
-     "symbol": "encodeMap",
-     "lines": [
-      397,
-      410
-     ]
-    }
-   ],
+   "val storage.haskell.state.Params.costModels": null,
    "val storage.haskell.state.Params.drepThresholds": null,
    "val storage.haskell.state.Params.empty": null,
    "val storage.haskell.state.Params.exUnits": null,

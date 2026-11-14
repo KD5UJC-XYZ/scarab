@@ -19,9 +19,9 @@
     }
    ],
    "class": "Gap",
-   "structure": "same",
+   "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/966",
-   "note": "the outputs a transaction creates are keyed by the hash of its bytes as received; the reference's txId is serializeCborHash of the transaction encoded again",
+   "note": "the outputs a transaction creates are keyed by the hash of its bytes as received; the reference's txId is serializeCborHash of the transaction encoded again. The rule's other checks are not mapped here: the counterpart named is where the difference is",
    "digest": "465b654b1a437b16"
   }
  },
