@@ -403,7 +403,7 @@ A test that expects a failure asserts its typed error case, or that case's field
 rendered text (`getMessage`, `toString`, a substring of either).
 
 - **Scope:** tests, tools.
-- **Exceptions:** a test of the rendering itself (a log line, CLI output, wire text).
+- **Exceptions:** a test of the rendering itself (a log line, CLI output, wire text; [CNF-3](#cnf-3)).
 - **Enforcement:** review only; a guard is planned.
 - **Why:** the owner's ruling of 2026-11-14; [ERR-2](#err-2).
 
@@ -461,6 +461,19 @@ fields not tested.
 - **Exceptions:** none.
 - **Enforcement:** review only.
 - **Why:** [ADR 0001](adr/0001-haskell-node-as-reference.md).
+
+<a id="cnf-3"></a>
+### CNF-3. Diagnostics and refusals as the reference presents them
+
+Diagnostic and refusal presentation follows
+[ADR 0001's diagnostic-parity amendment](adr/0001-haskell-node-as-reference.md#amendment-2026-11-04-exact-diagnostic-and-refusal-parity),
+which is the authoritative policy. A staged printer change identifies the categories it covers and links
+the remaining inventory under [#796](https://github.com/KD5UJC-XYZ/scarab/issues/796).
+
+- **Scope:** main, tests.
+- **Exceptions:** those the amendment states, and no other.
+- **Enforcement:** review only.
+- **Why:** [ADR 0001](adr/0001-haskell-node-as-reference.md), amendment of 2026-11-04.
 
 <a id="tool"></a>
 ## Hand-run programs
