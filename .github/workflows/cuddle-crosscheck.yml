@@ -30,9 +30,10 @@ on:
 permissions:
   contents: read
 
+# A newer push to a pull request cancels its older run; every other run has a group of its own (ci.yml).
 concurrency:
-  group: cuddle-crosscheck-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: cuddle-crosscheck-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:

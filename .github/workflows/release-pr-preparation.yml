@@ -47,8 +47,11 @@ permissions:
   contents: read
   actions: read
 
+# Manual coordinator runs share one group, which serializes them. A pull request's control runs share a group of
+# their own and each other run has one to itself, so a control run never replaces a waiting coordinator run, a
+# run of another pull request or a run on main (scripts/check_ci_parity.py).
 concurrency:
-  group: release-pr-preparation
+  group: ${{ github.event_name == 'workflow_dispatch' && 'release-pr-preparation' || github.event_name == 'pull_request' && format('release-pr-preparation-pr-{0}', github.event.pull_request.number) || format('release-pr-preparation-run-{0}', github.run_id) }}
   cancel-in-progress: false
 
 env:

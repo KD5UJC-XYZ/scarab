@@ -132,8 +132,9 @@ an explicit owner setup obligation. Local library and transport tests are not th
 ## Review, concurrency and recovery
 
 There is one branch per approved target, `release-please--branches--<target>`, shared by all channels.
-One workflow concurrency group serializes coordinator runs. A new frozen integration source must be
-the target tip at write preflight. Open-PR arrivals regenerate from that source and renew review;
+One workflow concurrency group serializes coordinator runs; the control runs of a pull request, and each run
+on a push to `main`, have groups of their own, so they never replace a waiting coordinator run. A new frozen
+integration source must be the target tip at write preflight. Open-PR arrivals regenerate from that source and renew review;
 source files added after an older selection are not silently deleted.
 
 The PR writer authenticates Git through the App installation token in its process environment,
