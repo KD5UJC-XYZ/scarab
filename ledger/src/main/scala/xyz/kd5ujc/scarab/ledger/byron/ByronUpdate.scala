@@ -378,7 +378,7 @@ object ByronUpdate:
       )
       val threshold = st.adoptedParams.adoptionThreshold(env.genesisKeys)
       val confirmed =
-        if votes(v.proposalId).size >= threshold && !st.confirmed.contains(v.proposalId) then
+        if votes(v.proposalId).sizeIs >= threshold && !st.confirmed.contains(v.proposalId) then
           st.confirmed.updated(v.proposalId, env.slot)
         else st.confirmed
       st.copy(votes = votes, confirmed = confirmed)

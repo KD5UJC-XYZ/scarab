@@ -438,7 +438,7 @@ object LedgerSnapshotImport:
         def insert(key: TxIn, value: TxOut): F[Unit] =
           batch.get.flatMap { current =>
             val next = current.copy(pending = current.pending :+ (key -> value))
-            (if next.pending.size >= BatchSize then flush(next) else F.pure(next))
+            (if next.pending.sizeIs >= BatchSize then flush(next) else F.pure(next))
               .flatMap(batch.set)
           }
       summary <- SnapshotTableStream.readInto[F, E](files.readAll(source / "tables"), sink)

@@ -89,7 +89,7 @@ object GenesisDensity:
             Vector(
               peer -> Bounds(
                 clipped,
-                suffix.headers.size > k,
+                suffix.headers.sizeIs > k,
                 lower,
                 lower + potential,
                 after,

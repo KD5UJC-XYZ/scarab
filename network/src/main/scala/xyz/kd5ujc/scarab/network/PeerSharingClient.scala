@@ -56,7 +56,7 @@ object PeerSharingClient:
         )
       def peers(amount: Amount, reply: Reply)(using Raise[F, NetworkError]): F[Vector[Address]] =
         reply match
-          case PeerSharing.Message.SharePeers(peers) if peers.size > amount.value =>
+          case PeerSharing.Message.SharePeers(peers) if peers.sizeIs > amount.value =>
             illegal[Vector[Address]](
               RuntimeViolation
                 .PeerSharingPolicy(PeerSharing.Violation.TooManyPeers(amount, peers.size))

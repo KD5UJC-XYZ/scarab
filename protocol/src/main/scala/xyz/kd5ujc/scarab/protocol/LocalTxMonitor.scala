@@ -193,7 +193,7 @@ object LocalTxMonitor:
             if r.arrayLength() != 2 then bad(ProtocolError.MeasureArity)
             name -> Measure(integer(), integer())
           }
-          if entries.map(_._1).distinct.size != entries.size then
+          if entries.map(_._1).distinct.sizeIs != entries.size then
             bad(ProtocolError.DuplicateMeasureName)
           Message.ReplyGetMeasures(Measures(count, SortedMap.from(entries)))
         case _ => bad(ProtocolError.UnknownLocalTxMonitorTagOrArity)

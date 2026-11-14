@@ -602,7 +602,7 @@ object Value:
   ): Either[LedgerDecodeError, Map[Bytes, Map[Bytes, BigInt]]] =
     for
       _ <- Either.cond(
-        policies.map(_._1).distinct.size == policies.size,
+        policies.map(_._1).distinct.sizeIs == policies.size,
         (),
         LedgerDecodeError.DuplicateKey(what / Qualifier.Policy)
       )
@@ -610,7 +610,7 @@ object Value:
         for
           _ <- Either.cond(qs.nonEmpty, (), LedgerDecodeError.Empty(what / Qualifier.Assets))
           _ <- Either.cond(
-            qs.map(_._1).distinct.size == qs.size,
+            qs.map(_._1).distinct.sizeIs == qs.size,
             (),
             LedgerDecodeError.DuplicateKey(what / Qualifier.AssetName)
           )
@@ -772,7 +772,7 @@ object TxOut:
           a <- CborRead.bytes(xs(0), DecodeField.OutputAddress).flatMap(Address.decode(_, mode))
           v <- Value.decode(xs(1), DecodeField.OutputValue, values, forms.records)
           d <-
-            if xs.size == 3 then
+            if xs.sizeIs == 3 then
               CborRead.bytesN(xs(2), 32, DecodeField.DatumHash).map(Datum.Hash(_))
             else Right(Datum.NoDatum)
         yield TxOut(n.original, a, v, d, None, xs(1).original.size)

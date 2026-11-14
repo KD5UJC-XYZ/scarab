@@ -122,7 +122,7 @@ private[ledger] object V12:
         .flatMap(word(_, what, Word64Max))
       chosen <- branch.lift(tag).toRight(LedgerDecodeError.UnknownTag(what, tag))
       (size, read) = chosen
-      _ <- Either.cond(xs.size == size, (), LedgerDecodeError.TaggedArity(what, tag, xs.size))
+      _ <- Either.cond(xs.sizeIs == size, (), LedgerDecodeError.TaggedArity(what, tag, xs.size))
       a <- read(xs)
     yield a
 
@@ -156,7 +156,7 @@ private[ledger] object V12:
 
   def unique[A, K](xs: Vector[A], what: DecodeSite)(key: A => K): Result[Vector[A]] =
     Either.cond(
-      xs.map(key).distinct.size == xs.size,
+      xs.map(key).distinct.sizeIs == xs.size,
       xs,
       LedgerDecodeError.DuplicateElement(what)
     )

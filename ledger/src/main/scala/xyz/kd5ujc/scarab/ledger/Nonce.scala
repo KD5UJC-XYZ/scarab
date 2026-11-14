@@ -49,8 +49,8 @@ object Nonce:
         .toRight(LedgerDecodeError.Empty(DecodeField.Nonce))
         .flatMap(CborRead.uint(_, DecodeField.NonceTag))
         .flatMap {
-          case t if t == 0 && (xs.size == 1 || neutral == NeutralFields.Stored) => Right(Neutral)
-          case t if t == 1 && xs.size == 2 =>
+          case t if t == 0 && (xs.sizeIs == 1 || neutral == NeutralFields.Stored) => Right(Neutral)
+          case t if t == 1 && xs.sizeIs == 2 =>
             CborRead.bytesN(xs(1), 32, DecodeField.Nonce).map(Hash(_))
           case t => Left(LedgerDecodeError.TaggedArity(DecodeField.Nonce, t, xs.size))
         }

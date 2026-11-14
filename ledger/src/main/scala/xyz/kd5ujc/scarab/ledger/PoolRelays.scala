@@ -333,7 +333,7 @@ object PoolRelays:
       expected: Int
   ): Either[PoolRelayError, Vector[Node]] =
     Either.cond(
-      fields.size == expected,
+      fields.sizeIs == expected,
       fields,
       PoolRelayError.WrongLength(index, tag, fields.size)
     )
@@ -416,7 +416,7 @@ object PoolRelays:
     */
   def encode(relays: Vector[PoolRelay]): Bytes =
     val out = new ByteArrayOutputStream()
-    val definite = relays.size <= LengthThreshold
+    val definite = relays.sizeIs <= LengthThreshold
     if definite then head(out, 4, relays.size.toLong) else out.write(0x9f)
     relays.foreach {
       case PoolRelay.SingleHostAddr(p, v4, v6) =>

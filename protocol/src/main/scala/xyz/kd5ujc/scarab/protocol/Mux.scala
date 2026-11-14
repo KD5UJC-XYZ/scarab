@@ -315,7 +315,7 @@ object Mux:
                 val total = received + count
                 if total < current.payloadLength then
                   go(headerBytes, header, more, total, offset + count, output)
-                else if output.size >= limits.maxFramesPerFeed then
+                else if output.sizeIs >= limits.maxFramesPerFeed then
                   Left(Error.FeedFrameLimit(output.size + 1, limits.maxFramesPerFeed))
                 else
                   val sdu =

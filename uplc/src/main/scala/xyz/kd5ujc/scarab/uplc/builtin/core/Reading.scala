@@ -70,7 +70,7 @@ private[core] final class Reading[V](
     BuiltinFailure.Unlifting(UnliftingFailure(errorClass, cause))
 
   private def argument(position: Int): Either[BuiltinFailure, Argument[V]] =
-    if arguments.size != arity then
+    if arguments.sizeIs != arity then
       Left(unlifting(ErrorClass.Structural, UnliftingCause.Arity(arity, arguments.size)))
     else
       arguments

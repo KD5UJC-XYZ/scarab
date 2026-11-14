@@ -174,7 +174,7 @@ object ByronTransport:
         node,
         DecodeField.InstallerMetadata
       )((a, b) =>
-        a.zip(b).collectFirst { case (x, y) if x != y => x < y }.getOrElse(a.size < b.size)
+        a.zip(b).collectFirst { case (x, y) if x != y => x < y }.getOrElse(a.sizeIs < b.size)
       )
     yield entries.toMap
 
@@ -256,7 +256,7 @@ object ByronTransport:
         case t if t == 3           => Right(2)
         case t                     => Left(LedgerDecodeError.UnknownTag(DecodeField.SSCProof, t))
       _ <- Either.cond(
-        fields.size == size,
+        fields.sizeIs == size,
         (),
         LedgerDecodeError.ArrayLength(DecodeField.SSCProof, size, fields.size)
       )
@@ -432,7 +432,7 @@ object ByronTransport:
         case t if t == 3           => Right(2)
         case t                     => Left(LedgerDecodeError.UnknownTag(DecodeField.SSCPayload, t))
       _ <- Either.cond(
-        fields.size == size,
+        fields.sizeIs == size,
         (),
         LedgerDecodeError.ArrayLength(DecodeField.SSCPayload, size, fields.size)
       )

@@ -36,7 +36,7 @@ object TransactionId:
   def bodyBytes(transaction: Bytes): Either[Error, Bytes] =
     Cbor.decode(transaction).left.map(Error.Syntax.apply).flatMap { node =>
       node.value match
-        case Value.Arr(items @ (body +: _)) if items.size == 4 =>
+        case Value.Arr(items @ (body +: _)) if items.sizeIs == 4 =>
           body.value match
             case Value.Map(_) => Right(body.original)
             case actual       => Left(Error.ExpectedBodyMap(actual))

@@ -97,7 +97,7 @@ object CaptureMain extends IOApp:
       Raise[IO, NodeError]
   ): IO[Vector[Bytes]] =
     def loop(chain: Vector[(Header, Bytes)]): IO[Vector[Bytes]] =
-      if n != All && chain.size >= n + Depth then IO.pure(chain.take(n).map(_._2))
+      if n != All && chain.sizeIs >= n + Depth then IO.pure(chain.take(n).map(_._2))
       else
         peer.next.flatMap {
           case SyncEvent.RollForward(h, tip) =>

@@ -39,9 +39,9 @@ object JsonValue:
       pair match
         case (Object(a), Object(b)) =>
           val (x, y) = (a.toVector, b.toVector)
-          x.size == y.size && x.lazyZip(y).forall((p, q) => p._1 == q._1) &&
+          x.sizeIs == y.size && x.lazyZip(y).forall((p, q) => p._1 == q._1) &&
           same(x.lazyZip(y).map((p, q) => p._2 -> q._2).toList ::: rest)
-        case (Array(a), Array(b))   => a.size == b.size && same(a.lazyZip(b).toList ::: rest)
+        case (Array(a), Array(b))   => a.sizeIs == b.size && same(a.lazyZip(b).toList ::: rest)
         case (String(a), String(b)) => a == b && same(rest)
         case (Number(a), Number(b)) => a == b && same(rest)
         case (Bool(a), Bool(b))     => a == b && same(rest)

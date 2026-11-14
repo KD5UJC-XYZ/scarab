@@ -111,7 +111,8 @@ class DisallowedWartsSuite extends munit.FunSuite:
     Probe(
       warts.RedundantConversions,
       WartTestTraverser(warts.RedundantConversions)((n: Int) => n.toInt)
-    )
+    ),
+    Probe(warts.SizeIs, WartTestTraverser(warts.SizeIs)((xs: List[Int]) => xs.size > 1))
   )
 
   test("every wart build.sbt refuses has a probe here"):

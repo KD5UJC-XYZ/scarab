@@ -227,7 +227,7 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     def decode(n: Node): Decoded[ParamUpdate] =
       Codec.pairs(key, rawItem).decode(n).flatMap { pairs =>
         val fields = pairs.map((k, v) => k.toInt -> v).toMap
-        if fields.size == pairs.size then Right(ParamUpdate(fields))
+        if fields.sizeIs == pairs.size then Right(ParamUpdate(fields))
         else Left(DecodeError.at(n, Kind.DuplicateKey("a parameter index")))
       }
     def encode(a: ParamUpdate, out: Writer): Unit =

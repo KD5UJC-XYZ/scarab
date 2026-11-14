@@ -992,7 +992,7 @@ object Tx:
             // read as the flag, the auxiliary data after it missing
             case xyz.kd5ujc.scarab.codec.Value.Bool(_) => length(4, 3)
             case _ => Right(transaction(body, witnesses, aux, true))
-        case xs => length(if xs.size < 3 then 3 else 4, xs.size)
+        case xs => length(if xs.sizeIs < 3 then 3 else 4, xs.size)
       }
 
   /** The whole transaction `[body, witnesses, is_valid, auxiliary_data / nil]` of Alonzo onward of

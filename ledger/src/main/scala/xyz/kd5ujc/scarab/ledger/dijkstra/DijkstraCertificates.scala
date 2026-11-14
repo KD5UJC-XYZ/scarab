@@ -217,7 +217,7 @@ object DijkstraCert:
             .flat(xs.drop(1))
             .flatMap((size, params) =>
               Either.cond(
-                xs.size == 1 + size,
+                xs.sizeIs == 1 + size,
                 RegisterPool(params),
                 LedgerDecodeError.TaggedArity(DecodeField.Certificate, 3, xs.size)
               )

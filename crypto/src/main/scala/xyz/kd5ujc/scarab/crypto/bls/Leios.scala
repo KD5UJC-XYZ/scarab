@@ -33,7 +33,7 @@ object Committee:
   def fromSeats(
       seats: Vector[(Weight, Option[(VerificationKey, ProofOfPossession)])]
   ): Either[BlsError, Committee] =
-    if seats.size > SeatId.maxIndex + 1 then Left(BlsError.CommitteeTooLarge(seats.size))
+    if seats.sizeIs > SeatId.maxIndex + 1 then Left(BlsError.CommitteeTooLarge(seats.size))
     else
       Right(
         new Committee(seats.map { case (w, reg) =>
@@ -212,7 +212,7 @@ private object Wire:
         case Value.Arr(xs) => Right(xs.map(_.value))
         case _             => Left(BlsError.MalformedCbor(CborFault.NotAnArray))
       _ <- Either.cond(
-        items.size == arity,
+        items.sizeIs == arity,
         (),
         BlsError.MalformedCbor(CborFault.WrongArity(arity, items.size))
       )

@@ -122,7 +122,8 @@ object DijkstraScript:
     def int(n: BigInt): Array[Byte] = if n >= 0 then head(0, n) else head(1, -1 - n)
     def nested(ss: Vector[NativeScript]): (Array[Byte], List[Item]) =
       val items = ss.toList.map(Item.Script(_))
-      if ss.size <= 23 then (head(4, ss.size), items) else (Array(0x9f.toByte), items :+ Item.Break)
+      if ss.sizeIs <= 23 then (head(4, ss.size), items)
+      else (Array(0x9f.toByte), items :+ Item.Break)
     @tailrec def go(stack: List[Item], out: List[Array[Byte]]): List[Array[Byte]] = stack match
       case Nil                => out
       case Item.Break :: rest => go(rest, Array(0xff.toByte) :: out)

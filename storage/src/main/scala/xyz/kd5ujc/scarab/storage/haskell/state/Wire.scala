@@ -110,7 +110,7 @@ object Wire:
   // ---- rationals
 
   private def ratioItems(n: Node): Decoded[(BigInt, BigInt)] = n.value match
-    case Value.Arr(xs) if xs.size == 2 =>
+    case Value.Arr(xs) if xs.sizeIs == 2 =>
       for
         num <- integer.decode(xs(0)).at("numerator")
         den <- integer.decode(xs(1)).at("denominator")
@@ -181,8 +181,8 @@ object Wire:
   /** `StrictMaybe a` and `Maybe a` (`encodeStrictMaybe`, `Encoder.hs:331`): `[]` or `[x]`. */
   def strictMaybe[A](inner: Codec[A]): Codec[Option[A]] = new Codec[Option[A]]:
     def decode(n: Node): Decoded[Option[A]] = n.value match
-      case Value.Arr(xs) if xs.isEmpty   => Right(None)
-      case Value.Arr(xs) if xs.size == 1 => inner.decode(xs(0)).map(Some(_))
+      case Value.Arr(xs) if xs.isEmpty     => Right(None)
+      case Value.Arr(xs) if xs.sizeIs == 1 => inner.decode(xs(0)).map(Some(_))
       case Value.Arr(xs) => Left(DecodeError.at(n, Kind.BadArity(Arity.OneOf(0, 1), xs.size)))
       case _             => Left(Codec.mismatch("array", n))
     def encode(a: Option[A], out: Writer): Unit = a match
@@ -250,7 +250,7 @@ object Wire:
               val builder = SortedSet.newBuilder[A](using Order[A].toOrdering)
               Elements.decodeInto(items, elem)(builder += _).flatMap { seen =>
                 val set = builder.result()
-                if v.atLeast(9) && set.size != seen then
+                if v.atLeast(9) && set.sizeIs != seen then
                   Left(DecodeError.at(b, Kind.DuplicateElement(s"${seen - set.size} repeated")))
                 else Right(set)
               }
@@ -278,7 +278,7 @@ object Wire:
           val builder = SortedMap.newBuilder[K, V](using Order[K].toOrdering)
           Elements.decodePairsInto(entries, key, value)(builder += _ -> _).flatMap { seen =>
             val map = builder.result()
-            if v.atLeast(9) && map.size != seen then
+            if v.atLeast(9) && map.sizeIs != seen then
               Left(DecodeError.at(n, Kind.DuplicateKey(s"${seen - map.size} repeated")))
             else Right(map)
           }

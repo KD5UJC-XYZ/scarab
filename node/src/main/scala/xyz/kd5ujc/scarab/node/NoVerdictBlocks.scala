@@ -166,7 +166,7 @@ object NoVerdictBlocks:
 
     def pruned(immutableSlot: BigInt): Entries =
       val kept = byHash.filter((_, withheld) => withheld.slot >= immutableSlot)
-      if kept.size == byHash.size then this else changed(kept)
+      if kept.sizeIs == byHash.size then this else changed(kept)
 
     /** The earliest next attempt of any block judged again. */
     def nextAt: Option[FiniteDuration] =

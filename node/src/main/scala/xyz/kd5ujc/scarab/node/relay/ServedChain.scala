@@ -128,4 +128,4 @@ object ServedChain:
     chain.blocks.zipWithIndex.forall((b, i) =>
       chain.seqs.get(b.ref.hash).contains(chain.first + i)
     ) &&
-      chain.seqs.size == chain.blocks.size
+      chain.seqs.sizeIs == chain.blocks.size

@@ -31,7 +31,7 @@ enum CpuSupport:
 
   /** The processor is known to have every feature the upstream library needs. */
   def complete: Boolean = this match
-    case Known(features) => features.size == CpuFeature.values.length
+    case Known(features) => features.sizeIs == CpuFeature.values.length
     case Unknown         => false
 
 object CpuSupport:

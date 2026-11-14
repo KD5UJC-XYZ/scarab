@@ -194,7 +194,7 @@ object SclsImport:
                     case (SclsKey.Key.Utxo(input), SclsValue.Entry.Utxo(output)) =>
                       batch.get.flatMap { current =>
                         val next = current.copy(pending = current.pending :+ (input -> output))
-                        (if next.pending.size >= BatchSize then flush(store, next)
+                        (if next.pending.sizeIs >= BatchSize then flush(store, next)
                          else F.pure(next)).flatMap(batch.set)
                       }
                     case _ =>

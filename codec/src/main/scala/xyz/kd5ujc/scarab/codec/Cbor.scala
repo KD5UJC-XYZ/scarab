@@ -127,7 +127,7 @@ object Cbor:
       * other records refuses them with [[Error.DetachedRecord]].
       */
     def wellFormed: Boolean =
-      offsets.size == fields.size && fields.forall(_ > 0) &&
+      offsets.sizeIs == fields.size && fields.forall(_ > 0) &&
         offsets.lazyZip(offsets.drop(1)).forall(_ < _) && offsets.forall(_ >= 0)
 
   object Detached:

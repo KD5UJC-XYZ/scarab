@@ -382,7 +382,7 @@ object NtcQuery:
     items
       .flatMap(_.traverse(each))
       .flatMap(xs =>
-        Either.cond(!conway || xs.distinct.size == xs.size, xs.toSet, Error.Duplicate(what))
+        Either.cond(!conway || xs.distinct.sizeIs == xs.size, xs.toSet, Error.Duplicate(what))
       )
 
   /** A set an argument reads with `fromCBOR` of cardano-binary (`decodeSetSkel`,
@@ -449,11 +449,11 @@ object NtcQuery:
   private def drep(n: Node)(using ByteStrings): R[DRep] =
     arr(n, "drep").flatMap { xs =>
       xs.headOption.toRight(Error.Empty("drep")).flatMap(uint(_, "drep kind")).flatMap {
-        case 0 if xs.size == 2 => keyHash(xs(1)).map(h => DRep.Registered(Credential.Key(h)))
-        case 1 if xs.size == 2 => keyHash(xs(1)).map(h => DRep.Registered(Credential.Script(h)))
-        case 2 if xs.size == 1 => Right(DRep.AlwaysAbstain)
-        case 3 if xs.size == 1 => Right(DRep.AlwaysNoConfidence)
-        case _                 => Left(Error.InvalidDRep)
+        case 0 if xs.sizeIs == 2 => keyHash(xs(1)).map(h => DRep.Registered(Credential.Key(h)))
+        case 1 if xs.sizeIs == 2 => keyHash(xs(1)).map(h => DRep.Registered(Credential.Script(h)))
+        case 2 if xs.sizeIs == 1 => Right(DRep.AlwaysAbstain)
+        case 3 if xs.sizeIs == 1 => Right(DRep.AlwaysNoConfidence)
+        case _                   => Left(Error.InvalidDRep)
       }
     }
 
@@ -497,12 +497,12 @@ object NtcQuery:
   private def top(root: Node): R[NtcQuery] =
     definite(root, "query").flatMap { xs =>
       xs.headOption.toRight(Error.Empty("query")).flatMap(uint(_, "query tag")).flatMap {
-        case 0 if xs.size == 2 => hardFork(xs(1))
-        case 1 if xs.size == 1 => Right(NtcQuery.SystemStart)
-        case 2 if xs.size == 1 => Right(NtcQuery.ChainBlockNo)
-        case 3 if xs.size == 1 => Right(NtcQuery.ChainPoint)
-        case 4 if xs.size == 1 => Right(NtcQuery.DebugLedgerConfig)
-        case t                 => Left(Error.Constructor("query", t, xs.size))
+        case 0 if xs.sizeIs == 2 => hardFork(xs(1))
+        case 1 if xs.sizeIs == 1 => Right(NtcQuery.SystemStart)
+        case 2 if xs.sizeIs == 1 => Right(NtcQuery.ChainBlockNo)
+        case 3 if xs.sizeIs == 1 => Right(NtcQuery.ChainPoint)
+        case 4 if xs.sizeIs == 1 => Right(NtcQuery.DebugLedgerConfig)
+        case t                   => Left(Error.Constructor("query", t, xs.size))
       }
     }
 
@@ -512,7 +512,7 @@ object NtcQuery:
         .toRight(Error.Empty("block query"))
         .flatMap(uint(_, "block query tag"))
         .flatMap {
-          case 0 if xs.size == 2 =>
+          case 0 if xs.sizeIs == 2 =>
             // `decodeNS`: two items, the era index and the era's own query
             definite(xs(1), "query in era").flatMap {
               case Vector(e, q) =>
@@ -521,7 +521,7 @@ object NtcQuery:
                 }
               case qs => Left(Error.Arity("query in era", 2, qs.size))
             }
-          case 1 if xs.size == 3 =>
+          case 1 if xs.sizeIs == 3 =>
             // [1, <Some GetEraStart>, era index]: the query is `[0]` (GetEraStart)
             (definite(xs(1), "anytime query"), eraIndex(xs(2))).tupled.flatMap {
               // QueryAnytime's Serialise instance: Ledger/Query.hs:536-551 at 82ecba3.
@@ -532,7 +532,7 @@ object NtcQuery:
                 }
               case (q, _) => Left(Error.Arity("anytime query", 1, q.size))
             }
-          case 2 if xs.size == 2 =>
+          case 2 if xs.sizeIs == 2 =>
             // SerialiseNodeToClient.hs:410-417 at 82ecba3 enforces a singleton.
             definite(xs(1), "hard fork query").flatMap {
               case Vector(tag) =>
@@ -600,9 +600,9 @@ object NtcQuery:
         .flatMap { tag =>
           import LedgerQuery.*
           def arg1[A](f: Node => R[A]): R[A] =
-            if xs.size == 2 then f(xs(1)) else Left(Error.Arity(s"ledger query $tag", 2, xs.size))
+            if xs.sizeIs == 2 then f(xs(1)) else Left(Error.Arity(s"ledger query $tag", 2, xs.size))
           def none(q: LedgerQuery): R[LedgerQuery] =
-            if xs.size == 1 then Right(q) else Left(Error.Arity(s"ledger query $tag", 1, xs.size))
+            if xs.sizeIs == 1 then Right(q) else Left(Error.Arity(s"ledger query $tag", 1, xs.size))
           // the queries `requireCG` guards, refused before Conway whatever their arguments
           val governance = Set(23, 25, 26, 27, 28, 30, 31, 32, 33, 35, 39)
           if governance(tag) && !read.governance then Left(Error.ConwayOnly(tag))
@@ -657,7 +657,7 @@ object NtcQuery:
                 arg1(plainSet(_, "credentials")(credential)).map(xs => GetDRepState(xs.toSet))
               case 26 => arg1(set(_, "dreps")(drep)).map(GetDRepStakeDistr(_))
               case 27 =>
-                if xs.size != 4 then Left(Error.Arity("committee members state", 4, xs.size))
+                if xs.sizeIs != 4 then Left(Error.Arity("committee members state", 4, xs.size))
                 else
                   (
                     plainSet(xs(1), "cold credentials")(credential).map(_.toSet),
@@ -674,7 +674,7 @@ object NtcQuery:
               case 32 => none(GetRatifyState)
               case 33 => none(GetFuturePParams)
               case 34 =>
-                if xs.size == 1 then Right(GetLedgerPeerSnapshotLegacy)
+                if xs.sizeIs == 1 then Right(GetLedgerPeerSnapshotLegacy)
                 else
                   arg1(uint(_, "peer kind")).flatMap {
                     case n if n == 0 => Right(GetLedgerPeerSnapshot(LedgerPeerKind.All))

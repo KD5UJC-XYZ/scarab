@@ -436,7 +436,7 @@ object PeerSelection:
       */
     def connectLocal: Guard[A] =
       val below = st.localRoots.groups.filter { g =>
-        g.members.intersect(view.established).size < g.warm.value
+        g.members.intersect(view.established).sizeIs < g.warm.value
       }
       val localAvailable = view.availableToConnect.intersect(view.localRoots)
       val chosen = below.foldLeft((List.empty[A], st.rng)) { case ((acc, g0), group) =>
@@ -547,7 +547,7 @@ object PeerSelection:
       */
     def activateLocal: Guard[A] =
       val below = st.localRoots.groups.filter { g =>
-        g.members.intersect(view.active).size < g.hot.value
+        g.members.intersect(view.active).sizeIs < g.hot.value
       }
       val readyLocal = view.localRoots.intersect(view.ready) -- view.active -- view.activating --
         view.closing -- view.cooling
@@ -617,7 +617,7 @@ object PeerSelection:
       */
     def deactivateLocal: Guard[A] =
       val above = st.localRoots.groups.filter { g =>
-        g.members.intersect(view.active).size > g.hot.value
+        g.members.intersect(view.active).sizeIs > g.hot.value
       }
       val availableLocal = view.localRoots.intersect(view.active) -- view.deactivating --
         view.cooling

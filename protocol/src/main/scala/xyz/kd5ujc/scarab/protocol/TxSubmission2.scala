@@ -205,7 +205,7 @@ object TxSubmission2:
     }
     def requestTxs(ids: Vector[Bytes]): Either[ProtocolError, Inventory] = attempt {
       batch(ids.size)
-      if ids.distinct.size != ids.size then bad(ProtocolError.DuplicateBodyRequest)
+      if ids.distinct.sizeIs != ids.size then bad(ProtocolError.DuplicateBodyRequest)
       val known = outstanding.map(_.transactionId).toSet
       if ids.exists(id => !known(id) || requested(id)) then
         bad(ProtocolError.UnadvertisedAcknowledgedOrRepeatedBodyRequest)
@@ -214,7 +214,7 @@ object TxSubmission2:
   object Inventory:
     def create(offers: Vector[RelayOffer]): Either[ProtocolError, Inventory] = attempt {
       batch(offers.size); offers.foreach(checkOffer)
-      if offers.map(_.transactionId).distinct.size != offers.size then
+      if offers.map(_.transactionId).distinct.sizeIs != offers.size then
         bad(ProtocolError.DuplicateOfferID)
       Inventory(offers, Vector.empty, Set.empty)
     }

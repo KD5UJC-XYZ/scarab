@@ -134,9 +134,10 @@ object Diff extends LowPriorityDiff:
               case None        => first(i + 1)
               case Some(found) => Some(found.under(Step.Index(i)))
         first(0).orElse {
-          if a.size == b.size then None
+          if a.sizeIs == b.size then None
           else
-            val shown = (v: Vector[A]) => if v.size > common then d.show(v(common)) else "<absent>"
+            val shown =
+              (v: Vector[A]) => if v.sizeIs > common then d.show(v(common)) else "<absent>"
             Some(Difference(Path(Vector(Step.Index(common))), shown(a), shown(b)))
         }
     def show(a: Vector[A]): String =

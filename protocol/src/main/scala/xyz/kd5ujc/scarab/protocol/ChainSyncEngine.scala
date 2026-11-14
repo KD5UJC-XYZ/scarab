@@ -111,7 +111,7 @@ object ChainSyncEngine:
         point.writeTo(writer, serverPoint, bounds)
         tip.writeTo(writer, serverTip, bounds)
       case Message.FindIntersect(points) =>
-        if points.size > limits.maxCandidates then bad(ProtocolError.CandidateLimitExceeded)
+        if points.sizeIs > limits.maxCandidates then bad(ProtocolError.CandidateLimitExceeded)
         outer(2, 4)
         if points.isEmpty then writer.head(4, 0)
         else

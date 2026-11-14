@@ -145,12 +145,12 @@ object CardanoBlockFetch:
       else
         NonEmptyVector
           .fromVector(expected)
-          .filter(_ => expected.size <= limits.maxBlocks)
+          .filter(_ => expected.sizeIs <= limits.maxBlocks)
           .toRight(
             ProtocolError.ExpectedPointCountOutsideRequestLimits(expected.size, limits.maxBlocks)
           )
           .flatMap { points =>
-            if expected.distinct.size != expected.size then
+            if expected.distinct.sizeIs != expected.size then
               Left(ProtocolError.DuplicateExpectedPoints)
             else if expected.zip(expected.drop(1)).exists((a, b) => a.slot.value > b.slot.value)
             then Left(ProtocolError.ReversedExpectedSlotOrder)
@@ -189,7 +189,7 @@ object CardanoBlockFetch:
             case Message.NoBlocks =>
               Right(new Batch(plan, next, BatchResult.Unavailable, received, blocks))
             case Message.Block(block) =>
-              if blocks.size >= plan.expected.size then
+              if blocks.sizeIs >= plan.expected.size then
                 Left(ProtocolError.ExtraBlockInRequestedBatch)
               else
                 for
@@ -202,7 +202,7 @@ object CardanoBlockFetch:
                   )
                 yield new Batch(plan, next, result, count, blocks :+ block)
             case Message.BatchDone =>
-              if blocks.size != plan.expected.size then
+              if blocks.sizeIs != plan.expected.size then
                 Left(ProtocolError.EarlyBatchDoneIncompleteRequestedRange)
               else Right(new Batch(plan, next, BatchResult.Complete(blocks), received, blocks))
             case _ => Left(ProtocolError.UnexpectedClientMessageInServerBatch)

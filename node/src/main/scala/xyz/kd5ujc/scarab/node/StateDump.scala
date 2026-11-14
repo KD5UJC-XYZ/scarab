@@ -152,7 +152,7 @@ object StateDump:
       else
         val parts = text.split(',').toList.map(_.trim)
         val slots = parts.flatMap(p => scala.util.Try(BigInt(p)).toOption)
-        if parts.nonEmpty && slots.size == parts.size then Some(Slots(slots.sorted)) else None
+        if parts.nonEmpty && slots.sizeIs == parts.size then Some(Slots(slots.sorted)) else None
 
   /** The hook the follower runs after each block. */
   final class Dumper[F[_]: Sync, S] private (

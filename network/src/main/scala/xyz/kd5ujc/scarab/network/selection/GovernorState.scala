@@ -178,7 +178,7 @@ object GovernorState:
       case AssociationMode.Unrestricted =>
         view.state.sensitivity.consensusMode match
           case ConsensusMode.GenesisMode =>
-            if view.big.active.size >=
+            if view.big.active.sizeIs >=
                 view.state.sensitivity.minBigLedgerPeersForTrustedState
             then TrustedStateWithExternalPeers
             else UntrustedState

@@ -482,7 +482,7 @@ object ConwayCodecs:
       first(
         ws.iterator.flatMap((_, amount) => coin(amount)).nextOption(),
         Codec.refuse(
-          ws.map(_._1).distinct.size != ws.size,
+          ws.map(_._1).distinct.sizeIs != ws.size,
           "TreasuryWithdrawals",
           "each account once",
           ws.size
@@ -694,7 +694,7 @@ object ConwayCodecs:
       // is checked
       first(
         Codec.refuse(
-          b.segments.size != expected,
+          b.segments.sizeIs != expected,
           "Block",
           s"the $expected body segments it was read with",
           s"${b.segments.size} segments"

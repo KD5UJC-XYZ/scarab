@@ -731,7 +731,7 @@ object HeaderCheck:
             compute.within(
               state.get
                 .flatMap(hc => hc.tipState.traverse_(h => warm.traverse_(_(leading, h))))
-                .whenA(leading.size > 1) *>
+                .whenA(leading.sizeIs > 1) *>
                 batch.traverse_ {
                   case SyncEvent.RollBackward(point, _) =>
                     rollback(point) *> publication.traverse_(_(Event.RolledBack(point)))

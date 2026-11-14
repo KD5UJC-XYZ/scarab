@@ -140,10 +140,10 @@ object Handshake:
     if !recognized(suite, version) then bad(ProtocolError.UnsupportedLogicalVersion)
     val fields = arr(term)
     if suite == Suite.NodeToClient then
-      if fields.size != 2 then bad(ProtocolError.NtCDataArity)
+      if fields.sizeIs != 2 then bad(ProtocolError.NtCDataArity)
       Data(magic(fields(0)), query = bool(fields(1)))
     else
-      if fields.size != (if carriesPeras(version) then 5 else 4) then
+      if fields.sizeIs != (if carriesPeras(version) then 5 else 4) then
         bad(ProtocolError.NtNDataArity)
       val peers = fields(2) match
         case Term.Integer(n) if n == 0 || n == 1 => n == 1
@@ -182,7 +182,7 @@ object Handshake:
   private def mapTerm[V: VersionCodec: Ordering](entries: Vector[(V, Term)])(using
       ProtocolWire.Scope
   ): Term =
-    if entries.map(_._1).distinct.size != entries.size then bad(ProtocolError.DuplicateVersion)
+    if entries.map(_._1).distinct.sizeIs != entries.size then bad(ProtocolError.DuplicateVersion)
     Term.Map(entries.sortBy(_._1).map { case (v, d) => (versionTerm(v), d) })
   private def text(t: Term)(using ProtocolWire.Scope): String = t match
     case Term.Text(s, true) if s.getBytes(StandardCharsets.UTF_8).length <= MaxRefusalBytes => s
@@ -300,7 +300,7 @@ object Handshake:
       case WireReason.DecodeError(v, s) => Reason.DecodeError(number(v), s)
       case WireReason.Refused(v, s)     => Reason.Refused(number(v), s)
     private def typedEntries(vs: Vector[(Int, Term)]): Either[ProtocolError, Vector[(V, Term)]] =
-      if vs.map(_._1).distinct.size != vs.size then Left(ProtocolError.DuplicateVersion)
+      if vs.map(_._1).distinct.sizeIs != vs.size then Left(ProtocolError.DuplicateVersion)
       else vs.traverse((v, t) => version(v).map(_ -> t))
     private def typed(msg: Message): Either[ProtocolError, WireMessage[V]] = msg match
       case Message.Propose(vs)    => typedEntries(vs).map(WireMessage.Propose(_))
@@ -350,7 +350,7 @@ object Handshake:
         for xs <- acc; d <- dataTerm(suite, entry._1, entry._2) yield xs :+ (entry._1 -> d)
       }
       .flatMap(vs =>
-        if vs.map(_._1).distinct.size != vs.size then Left(ProtocolError.DuplicateVersion)
+        if vs.map(_._1).distinct.sizeIs != vs.size then Left(ProtocolError.DuplicateVersion)
         else Right(Message.Propose(vs.sortBy(_._1)))
       )
 
@@ -603,7 +603,7 @@ object Handshake:
   private def encodeTerm(term: Term)(using ProtocolWire.Scope): Bytes =
     def checked[A](result: Either[ProtocolError, A]): Write[A] = cats.data.StateT.liftF(result)
     def emit(bytes: Vector[Byte]): Write[Unit] = cats.data.StateT { state =>
-      if bytes.size > MaxMessageBytes - state.bytes.size then
+      if bytes.sizeIs > MaxMessageBytes - state.bytes.size then
         Left(ProtocolError.HandshakeByteLimitExceeded)
       else Right((state.copy(bytes = state.bytes ++ bytes), ()))
     }
@@ -623,7 +623,7 @@ object Handshake:
                         else 27)
         ) *> emit(number(n, width))
     def raw(major: Int, bytes: Vector[Byte]): Write[Unit] =
-      if bytes.size > MaxStringBytes then checked(Left(ProtocolError.StringByteLimitExceeded))
+      if bytes.sizeIs > MaxStringBytes then checked(Left(ProtocolError.StringByteLimitExceeded))
       else head(major, bytes.size) *> emit(bytes)
     def count(depth: Int): Write[Unit] = cats.data.StateT { state =>
       if state.items >= MaxItems || depth > MaxDepth then

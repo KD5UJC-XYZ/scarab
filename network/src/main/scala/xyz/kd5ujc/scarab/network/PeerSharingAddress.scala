@@ -27,8 +27,8 @@ object PeerSharingAddress:
     val octets = address.host.toBytes.toVector
     PeerSharing.Port.from(address.port.value).flatMap { port =>
       octets match
-        case v if v.size == 4 => Some(Address.V4(word(v.reverse), port))
-        case v if v.size == 16 =>
+        case v if v.sizeIs == 4 => Some(Address.V4(word(v.reverse), port))
+        case v if v.sizeIs == 16 =>
           v.grouped(4).map(word).toList match
             case a :: b :: c :: d :: Nil => Some(Address.V6(a, b, c, d, port))
             case _                       => None

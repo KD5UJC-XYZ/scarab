@@ -331,7 +331,7 @@ final class Follower[F[_]: Async, S] private (
 
   /** A cheap check that the kept window is the chain's: anchor, length and tip. */
   private def describes(l: ChainSelection.Local, current: VolatileChain[S]): Boolean =
-    l.anchor == current.anchor.point && l.blocks.size == current.blocks.size &&
+    l.anchor == current.anchor.point && l.blocks.sizeIs == current.blocks.size &&
       l.blocks.lastOption.forall(b => current.blocks.lastOption.exists(_._1.point == b.point))
 
   private final case class Applied(

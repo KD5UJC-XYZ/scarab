@@ -78,7 +78,7 @@ private[ntc] object PlutusContextText:
       labels.zip(docs).map((label, doc) => text(label + " = ") ++ doc)
     ) ++ text("}")
   private def fields(task: Task, kinds: Vector[Kind]): Result[Vector[PlutusData]] = task.data match
-    case Constr(tag, values) if tag == 0 && values.size == kinds.size => Right(values)
+    case Constr(tag, values) if tag == 0 && values.sizeIs == kinds.size => Right(values)
     case other => Left(Error.Shape(task.kind, other))
   private def product(task: Task, kinds: Vector[Kind], precedence: Int = 0)(
       assemble: PartialFunction[Vector[Doc], Doc]
@@ -95,7 +95,7 @@ private[ntc] object PlutusContextText:
       case Constr(tag, values) if tag.isValidInt =>
         constructors.lift(tag.toInt).toRight(Error.Constructor(task.kind, tag)).flatMap {
           constructor =>
-            if constructor.fields.size != values.size then Left(Error.Shape(task.kind, task.data))
+            if constructor.fields.sizeIs != values.size then Left(Error.Shape(task.kind, task.data))
             else
               val show = prettyShow || task.show
               many(
