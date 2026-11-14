@@ -4,7 +4,8 @@
 Everything fetched is untrusted data: nothing in it is run, Git checks it out without symbolic links, hooks or
 submodules, a tarball is checked against its sha256 before it is opened and unpacked with the `data` filter (no
 absolute or escaping paths, no links out, no devices), and a file is written only under its own directory. A
-directory is reused only when the record written beside it after its verification names the same pin.
+directory is reused only when the record written beside it after its verification names the same pin and the
+directory still holds exactly the files it held then, byte for byte (`tree_digest`); otherwise it is fetched again.
 """
 from __future__ import annotations
 
@@ -202,15 +203,45 @@ def fetch_tarball(pin: Pin, target: Path, holding: Path, get: Callable[[str, Pat
     tar.unlink()
 
 
+def tree_digest(target: Path) -> str:
+    """A digest of every file under `target` but Git's own `.git`: each path, its kind and its bytes' sha256 (a
+    symbolic link by its target, never followed), in a fixed order. Any file added, removed, changed or replaced
+    changes it."""
+    digest = hashlib.sha256()
+    for directory, subdirectories, files in os.walk(target, followlinks=False):
+        here = Path(directory)
+        subdirectories[:] = sorted(d for d in subdirectories if not (here == target and d == ".git"))
+        links = [d for d in subdirectories if (here / d).is_symlink()]
+        for name in sorted(files + links):
+            path = here / name
+            relative = path.relative_to(target).as_posix()
+            if path.is_symlink():
+                entry = f"link {relative} {os.readlink(path)}"
+            else:
+                entry = f"file {relative} {sha256_file(path)}"
+            digest.update(entry.encode("utf-8") + b"\n")
+    return digest.hexdigest()
+
+
+def receipt(pin: Pin, target: Path) -> dict:
+    """What is written beside a verified directory, and checked again before it is reused."""
+    return {"pin": pin.record(), "tree_sha256": tree_digest(target)}
+
+
 def fetch(pin: Pin, root: Path, run: Run = run_command, get: Callable[[str, Path], None] = download) -> Path:
-    """The verified directory of `pin` under `root`, fetched unless a record beside it names the same pin."""
+    """The verified directory of `pin` under `root`, fetched unless the receipt beside it names the same pin and the
+    directory's files are still those it was verified with."""
     target = root / pin.directory
     record = root / f"{pin.directory}.verified.json"
-    if record.is_file() and target.is_dir() and json.loads(record.read_text(encoding="utf-8")) == pin.record():
-        return target
+    if record.is_file() and target.is_dir() and not target.is_symlink():
+        kept = json.loads(record.read_text(encoding="utf-8"))
+        if kept.get("pin") == pin.record() and kept.get("tree_sha256") == tree_digest(target):
+            return target
     if record.exists():
         record.unlink()
-    if target.exists():
+    if target.is_symlink():
+        target.unlink()
+    elif target.exists():
         shutil.rmtree(target)
     target.mkdir(parents=True)
     if pin.kind == "git":
@@ -219,5 +250,5 @@ def fetch(pin: Pin, root: Path, run: Run = run_command, get: Callable[[str, Path
         fetch_files(pin, target, get)
     else:
         fetch_tarball(pin, target, root / "archives", get)
-    record.write_text(json.dumps(pin.record(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    record.write_text(json.dumps(receipt(pin, target), indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return target

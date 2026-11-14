@@ -18,8 +18,8 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from conformance import inputs, run, scenarios  # noqa: E402
-from conformance.schema import UnsupportedSchema, validate  # noqa: E402
+from conformance import inputs, publish, run, scenarios  # noqa: E402
+from conformance.schema import NonStandardJson, UnsupportedSchema, date_time, loads, validate  # noqa: E402
 
 COMMIT = "a" * 40
 FALLBACK = datetime(2001, 2, 3, tzinfo=timezone.utc)
@@ -66,7 +66,19 @@ class SchemaTest(unittest.TestCase):
     def test_date_time_is_asserted(self):
         schema = {"type": "string", "format": "date-time"}
         self.assertEqual(validate("2026-11-14T15:04:05.123456789Z", schema), [])
-        self.assertTrue(validate("2026-11-14 15:04", schema))
+        self.assertEqual(validate("2016-12-31T23:59:60Z", schema), [], "a leap second")
+        for bad in ("2026-11-14 15:04", "2026-11-14T00:00:00+00:99", "2026-02-30T00:00:00Z",
+                    "2026-11-14T24:00:00Z", "2026-11-14T00:00:00Z\n", "2026-13-01T00:00:00Z"):
+            self.assertTrue(validate(bad, schema), repr(bad))
+            self.assertIsNone(date_time(bad), repr(bad))
+
+    def test_json_has_no_nan_or_infinity(self):
+        for text in ('{"x": NaN}', '{"x": Infinity}', '{"x": -Infinity}', '{"x": 1e999}'):
+            with self.assertRaises(NonStandardJson, msg=text):
+                loads(text)
+        self.assertEqual(loads('{"x": 1.5, "y": 2}'), {"x": 1.5, "y": 2})
+        self.assertTrue(validate(float("nan"), {"type": "number", "minimum": 0}), "NaN is not a number")
+        self.assertTrue(validate(float("inf"), {"type": ["number", "null"]}), "nor is an infinity")
 
     def test_unknown_keyword_is_refused(self):
         with self.assertRaises(UnsupportedSchema):
@@ -111,6 +123,8 @@ class NamingTest(unittest.TestCase):
         self.assertEqual(scenarios.report_date("2026-11-14T20:00:00-05:00", FALLBACK), "20261115", "UTC date")
         self.assertEqual(scenarios.report_date(1763164800000, FALLBACK), "20251115", "milliseconds since the epoch")
         self.assertEqual(scenarios.report_date("yesterday", FALLBACK), "20010203")
+        self.assertEqual(scenarios.report_date("2026-11-14T00:00:00+00:99", FALLBACK), "20010203",
+                         "an impossible offset gives no date of its own")
         self.assertEqual(scenarios.report_date(True, FALLBACK), "20010203")
 
     def test_compression_is_reproducible(self):
@@ -178,6 +192,14 @@ class FetchTest(unittest.TestCase):
             self.assertEqual(seen, [f"https://raw.githubusercontent.com/o/r/{COMMIT}/t/common/x.json"])
             inputs.fetch(self.files_pin(digest), root, get=get)
             self.assertEqual(len(seen), 1, "a verified directory is reused")
+            cached = directory / "common" / "x.json"
+            for change in (lambda: cached.write_bytes(b'{"a": 2}'), cached.unlink,
+                           lambda: (directory / "common" / "extra.json").write_text("{}")):
+                change()
+                inputs.fetch(self.files_pin(digest), root, get=get)
+                self.assertEqual(cached.read_bytes(), body, "a changed cache is fetched again")
+                self.assertFalse((directory / "common" / "extra.json").exists())
+            self.assertEqual(len(seen), 4, "each change to the cache made it fetch again")
             with self.assertRaises(inputs.InputError):
                 inputs.fetch(self.files_pin("0" * 64), root, get=get)
             self.assertFalse(list(root.rglob("*.part")), "a mismatched file is not kept")
@@ -239,9 +261,17 @@ class Site:
             "type": "object", "properties": {"implementation_commit": {"type": "string"}}}))
 
 
-def context(site):
+def context(site, dataset=Path("/nonexistent")):
     pins = inputs.load_pins()
-    return scenarios.Context(COMMIT, pins, {"site": site}, {})
+    return scenarios.Context(COMMIT, pins, {"site": site, "cbor-dataset": dataset}, {})
+
+
+def cbor_dataset(root, era, samples):
+    for sample in samples:
+        path = Path(root, "dataset", era, *sample.split("/"))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"\xa0")
+    return Path(root)
 
 
 def ledger_report(ids, dataset=None):
@@ -279,14 +309,34 @@ class ChecksTest(unittest.TestCase):
             problems = check(twice, ctx, None)
             self.assertTrue(any("more often than expected" in p for p in problems), problems)
             self.assertTrue(any("1 of 3 vectors have no result: v1/V3/11.0" in p for p in problems), problems)
+            numeric = {"scenarios": [dict(entry) for entry in full["scenarios"]]}
+            numeric["scenarios"][2]["evaluation"] = "evaluation failure"
+            numeric["scenarios"][1]["protocol_version"] = 11.0
+            problems = check(numeric, ctx, None)
+            self.assertTrue(any("name no vector of the corpus: v1/V3/11.0" in p for p in problems),
+                            f"11.0 as a number is not the site's '11.0': {problems}")
 
-    def test_cbor_report_must_be_of_its_era(self):
-        ctx = context(Path("/nonexistent"))
-        check = scenarios.SCENARIOS["cbor-decoding"].checks
-        dataset = inputs.load_pins()["cbor-dataset"].spec["commit"]
-        report = {"protocol_version": "11.0", "dataset_commit": dataset, "results": {"a/valid/x.input.cbor": True}}
-        self.assertEqual(check(report, ctx, "conway"), [])
-        self.assertTrue(check(report, ctx, "dijkstra"))
+    def test_cbor_report_must_be_of_its_era_and_cover_its_samples(self):
+        samples = ["a/valid/x.input.cbor", "a/invalid-zap-1/y.input.cbor"]
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset = cbor_dataset(tmp, "conway", samples)
+            cbor_dataset(tmp, "dijkstra", samples)
+            Path(tmp, "dataset", "conway", "a", "valid", "x.expected.cbor").write_bytes(b"\xa0")
+            ctx = context(Path("/nonexistent"), dataset)
+            check = scenarios.SCENARIOS["cbor-decoding"].checks
+            commit = inputs.load_pins()["cbor-dataset"].spec["commit"]
+
+            def report(results, version="11.0"):
+                return {"protocol_version": version, "dataset_commit": commit, "results": results}
+
+            full = {sample: True for sample in samples}
+            self.assertEqual(check(report(full), ctx, "conway"), [])
+            self.assertTrue(check(report(full), ctx, "dijkstra"), "11.0 is Conway")
+            self.assertEqual(check(report(full, "12.0"), ctx, "dijkstra"), [])
+            missing = check(report({samples[0]: True}), ctx, "conway")
+            self.assertTrue(any("1 of 2 samples have no result" in p for p in missing), missing)
+            stray = check(report({**full, "nonexistent.input.cbor": True}), ctx, "conway")
+            self.assertTrue(any("name no sample of the corpus: nonexistent.input.cbor" in p for p in stray), stray)
         self.assertEqual(scenarios.era_of_protocol("12.0"), "dijkstra")
         self.assertIsNone(scenarios.era_of_protocol("9.0"))
 
@@ -373,9 +423,35 @@ class RunTest(unittest.TestCase):
             raw = Path(tmp, "report.json")
             raw.write_text(json.dumps({"protocol_version": "11.0", "dataset_commit": dataset, "generated_at": 0,
                                        "implementation_commit": "b" * 40, "results": {"r/valid/x.input.cbor": True}}))
+            ctx = context(site, cbor_dataset(Path(tmp, "cbor"), "conway", ["r/valid/x.input.cbor"]))
             outcome = run.finish(scenarios.SCENARIOS["cbor-decoding"], "conway", raw, ctx, Path(tmp), {})
             self.assertEqual(outcome.status, "failed")
             self.assertTrue(any("implementation_commit" in check for check in outcome.checks))
+
+    def test_a_report_with_nan_is_neither_named_nor_published(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            site = Site(Path(tmp, "site")).root
+            out = Path(tmp, "out")
+            out.mkdir()
+            raw = Path(tmp, "report.json")
+            raw.write_text(json.dumps(ledger_report(["00001", "00002"]))[:-1] + ', "extra": NaN}')
+            outcome = run.finish(scenarios.SCENARIOS["ledger-rules"], None, raw, context(site), out, {})
+            self.assertEqual(outcome.status, "failed")
+            self.assertIn("not standard JSON", outcome.detail)
+            self.assertEqual(list(out.iterdir()), [], "nothing is named")
+            self.assertEqual(publish.collect([out]), [], "and nothing is there to publish")
+
+    def test_the_cache_is_created_before_docker_mounts_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp, "fresh", "cache")
+            run.prepare_cache(cache)
+            self.assertTrue(cache.is_dir())
+            if os.geteuid() != 0:
+                locked = Path(tmp, "locked")
+                locked.mkdir(mode=0o500)
+                with self.assertRaises(run.RunError):
+                    run.prepare_cache(locked)
+                locked.chmod(0o700)
 
     def test_turbo_is_refused_on_ci(self):
         with mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}), \

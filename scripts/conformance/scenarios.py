@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from conformance.schema import date_time
+
 PLUTUS_VM = "scarab"
 JDK_FLAGS = ("--enable-native-access=ALL-UNNAMED", "--sun-misc-unsafe-memory-access=allow")
 # The thread stack sbt's own JVM has (`scripts/sbtw`), where `tools/runMain` runs these tools.
@@ -57,23 +59,39 @@ class Scenario:
         return f"scenarios/{self.id}/schema.json"
 
 
-def _keys(items: list, fields: tuple[str, ...]) -> Counter:
-    return Counter(tuple(str(item.get(f, "")) for f in fields) if isinstance(item, dict) else ("",) for item in items)
+def _value(value: Any) -> Any:
+    """A field as the site compares it, with Python's `==`: the value itself, or, for a list or an object, its
+    canonical JSON text. `"10.0"` and `10.0` stay apart."""
+    return json.dumps(value, sort_keys=True) if isinstance(value, (list, dict)) else value
+
+
+def _keys(items: list, key: Callable[[dict], tuple]) -> Counter:
+    return Counter(key(item) if isinstance(item, dict) else (None,) for item in items)
 
 
 def _coverage(reported: Counter, expected: Counter, what: str) -> list[str]:
-    """Every expected result once: none missing, none repeated. A key is what the site matches a result by."""
+    """Every expected result exactly once: none missing, none repeated, none the corpus lacks. A key is what the
+    site matches a result by."""
     def show(keys):
-        return ", ".join("/".join(key) for key in sorted(keys)[:10])
+        return ", ".join("/".join(repr(part) if not isinstance(part, str) else part for part in key)
+                         for key in sorted(keys, key=repr)[:10])
 
     problems = []
-    repeated = [key for key, count in reported.items() if count > max(expected.get(key, 0), 1)]
+    repeated = [key for key, count in reported.items() if key in expected and count > expected[key]]
     if repeated:
         problems.append(f"{len(repeated)} {what} reported more often than expected: {show(repeated)}")
+    unexpected = [key for key in reported if key not in expected]
+    if unexpected:
+        problems.append(f"{len(unexpected)} results name no {what[:-1]} of the corpus: {show(unexpected)}")
     missing = list((expected - reported).elements())
     if missing:
         problems.append(f"{len(missing)} of {sum(expected.values())} {what} have no result: {show(missing)}")
     return problems
+
+
+def _ledger_key(item: dict) -> tuple:
+    """How the site's ledger-rules build reads a result's id: its text, cut to five characters."""
+    return (str(item.get("id", ""))[:5],)
 
 
 def ledger_fixture_ids(site: Path) -> Counter:
@@ -92,7 +110,7 @@ def _ledger_arguments(context: Context, era: str | None, out: str) -> list[str]:
 
 
 def _ledger_checks(report: dict, context: Context, era: str | None) -> list[str]:
-    problems = _coverage(_keys(report.get("scenarios", []), ("id",)), ledger_fixture_ids(context.host["site"]),
+    problems = _coverage(_keys(report.get("scenarios", []), _ledger_key), ledger_fixture_ids(context.host["site"]),
                          "fixtures")
     pinned = context.pins["ledger-rules-documents"].spec["commit"]
     if report.get("dataset_commit") != pinned:
@@ -100,13 +118,18 @@ def _ledger_checks(report: dict, context: Context, era: str | None) -> list[str]
     return problems
 
 
-# The site matches a uplc-conformance result to its expectation by these fields: an id recurs across protocols.
+# The site matches a uplc-conformance result to its expectation by these fields, as they are: an id recurs across
+# protocols, and a version given as a number is not the same as one given as text.
 UPLC_KEY = ("id", "plutus_version", "protocol_version")
+
+
+def _uplc_key(item: dict) -> tuple:
+    return tuple(_value(item.get(field)) for field in UPLC_KEY)
 
 
 def uplc_expected(site: Path) -> Counter:
     expectations = json.loads((site / "scenarios" / "uplc-conformance" / "expectations.json").read_text())
-    return _keys(expectations["scenarios"], UPLC_KEY)
+    return _keys(expectations["scenarios"], _uplc_key)
 
 
 def _uplc_arguments(context: Context, era: str | None, out: str) -> list[str]:
@@ -116,7 +139,7 @@ def _uplc_arguments(context: Context, era: str | None, out: str) -> list[str]:
 
 def _uplc_checks(report: dict, context: Context, era: str | None) -> list[str]:
     items = report.get("scenarios", [])
-    problems = _coverage(_keys(items, UPLC_KEY), uplc_expected(context.host["site"]), "vectors")
+    problems = _coverage(_keys(items, _uplc_key), uplc_expected(context.host["site"]), "vectors")
     no_verdict = sum(1 for item in items if isinstance(item, dict) and item.get("evaluation") == "no verdict")
     if no_verdict:
         problems.append(f"{no_verdict} vectors have no verdict from the evaluator")
@@ -141,6 +164,13 @@ def _cbor_arguments(context: Context, era: str | None, out: str) -> list[str]:
             context.pins["cbor-dataset"].spec["commit"], context.commit, f"{out}/report-{era}.json"]
 
 
+def cbor_samples(dataset: Path, era: str | None) -> Counter:
+    """The samples of an era of the pinned dataset, as a report names them: each `.input.cbor` file's path below
+    `dataset/<era>`, with forward slashes."""
+    root = dataset / "dataset" / str(era)
+    return Counter((path.relative_to(root).as_posix(),) for path in root.rglob("*.input.cbor") if path.is_file())
+
+
 def _cbor_checks(report: dict, context: Context, era: str | None) -> list[str]:
     problems = []
     read = era_of_protocol(report.get("protocol_version"))
@@ -149,9 +179,9 @@ def _cbor_checks(report: dict, context: Context, era: str | None) -> list[str]:
     pinned = context.pins["cbor-dataset"].spec["commit"]
     if report.get("dataset_commit") != pinned:
         problems.append(f"dataset_commit is {report.get('dataset_commit')!r}, not the pinned {pinned}")
-    if not report.get("results"):
-        problems.append("the report has no sample results")
-    return problems
+    results = report.get("results")
+    reported = Counter((path,) for path in results) if isinstance(results, dict) else Counter()
+    return problems + _coverage(reported, cbor_samples(context.host["cbor-dataset"], era), "samples")
 
 
 SCENARIOS: dict[str, Scenario] = {scenario.id: scenario for scenario in (
@@ -212,10 +242,7 @@ def report_date(generated_at: Any, fallback: datetime) -> str:
     if isinstance(generated_at, int) and not isinstance(generated_at, bool) and generated_at >= 0:
         moment = datetime.fromtimestamp(generated_at / 1000, tz=timezone.utc)
     elif isinstance(generated_at, str):
-        match = re.match(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:\d\d)$", generated_at, re.I)
-        if match:
-            offset = "+00:00" if match.group(2).upper() == "Z" else match.group(2)
-            moment = datetime.fromisoformat(match.group(1) + offset)
+        moment = date_time(generated_at) or fallback
     return moment.astimezone(timezone.utc).strftime("%Y%m%d")
 
 

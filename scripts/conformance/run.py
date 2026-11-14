@@ -47,7 +47,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from conformance import inputs as fetching  # noqa: E402
 from conformance.scenarios import (SCENARIOS, Context, Scenario, compress, label, provenance_name,  # noqa: E402
                                    report_date, report_name)
-from conformance.schema import UnsupportedSchema, validate  # noqa: E402
+from conformance.schema import UnsupportedSchema, loads, validate  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 REPOSITORY = "KD5UJC-XYZ/scarab"
@@ -99,6 +99,14 @@ def checkout_facts(root: Path) -> Checkout:
 
 def labels(kind: str, owner: str) -> list[str]:
     return ["--label", f"{LABEL}.kind={kind}", "--label", f"{LABEL}.owner={owner}"]
+
+
+def prepare_cache(cache: Path) -> None:
+    """Create the dependency cache before Docker mounts it: a bind mount of a missing directory is created by the
+    daemon, as root under a rootful daemon, and the build, which runs as the caller, could not write in it."""
+    cache.mkdir(parents=True, exist_ok=True)
+    if not os.access(cache, os.W_OK | os.X_OK):
+        raise RunError(f"the dependency cache {cache} is not writable: set SCARAB_CACHE_DIR to one that is")
 
 
 def build_command(checkout: Checkout, image: str, owner: str) -> list[str]:
@@ -183,7 +191,12 @@ def stamp(moment: datetime) -> str:
 def finish(scenario: Scenario, era: str | None, raw: Path, context: Context, out: Path, record: dict) -> Outcome:
     """Check the tool's report, then name, compress and record it; a failed check names no report."""
     outcome = Outcome(scenario.id, era, "failed")
-    report = json.loads(raw.read_text(encoding="utf-8"))
+    try:
+        report = loads(raw.read_text(encoding="utf-8"))
+    except ValueError as error:
+        outcome.detail = f"the report is not standard JSON: {error}"
+        record["validation"] = {"schema": scenario.schema, "valid": False, "checks": [outcome.detail]}
+        return outcome
     schema_path = context.host["site"] / scenario.schema
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     errors = validate(report, schema)
@@ -300,6 +313,7 @@ def run_scenarios(args: argparse.Namespace, checkout: Checkout, selected: list[S
                                               capture_output=True).returncode != 0:
             subprocess.run(["docker", "build", "-f", "docker/jdk.Dockerfile", "-t", args.image, str(checkout.root)],
                            cwd=checkout.root, check=True)
+        prepare_cache(checkout.cache)
         print(f"building tools at {checkout.commit} in {args.image}", file=sys.stderr)
         done = subprocess.run(build_command(checkout, args.image, args.owner), text=True, capture_output=True)
         (args.out / "work").mkdir(parents=True, exist_ok=True)

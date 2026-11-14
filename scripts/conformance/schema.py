@@ -2,17 +2,65 @@
 """A checker for the subset of JSON Schema 2020-12 that the site's scenario schemas use.
 
 It fails closed: a schema that uses a keyword outside the subset is refused rather than half checked. `const` and
-`enum` compare types as well as values, so `true` is not `1`. `format: date-time` is asserted (RFC 3339).
+`enum` compare types as well as values, so `true` is not `1`. `format: date-time` is asserted (RFC 3339, section
+5.6, with its calendar and clock ranges). A number must be finite: `loads` refuses JSON's non-standard constants
+(`NaN`, `Infinity`) and a literal that overflows to infinity.
 """
 from __future__ import annotations
 
+import calendar
+import json
+import math
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 ANNOTATIONS = frozenset({"$schema", "$id", "$comment", "title", "description", "examples", "default"})
 CHECKED = frozenset({"type", "const", "enum", "pattern", "format", "minimum", "required", "properties",
                      "additionalProperties", "propertyNames", "items", "oneOf", "anyOf", "$ref", "$defs"})
-DATE_TIME = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)$", re.IGNORECASE)
+DATE_TIME = re.compile(r"(\d{4})-(\d\d)-(\d\d)[Tt](\d\d):(\d\d):(\d\d)(?:\.\d+)?(?:([Zz])|([+-])(\d\d):(\d\d))")
+
+
+def date_time(text: str) -> datetime | None:
+    """The moment an RFC 3339 `date-time` names, in UTC; None when `text` is not one: the whole string must match,
+    with a real calendar date, hours below 24, minutes below 60, seconds up to 60 (a leap second, read as 59) and an
+    offset within 23:59."""
+    match = DATE_TIME.fullmatch(text)
+    if match is None:
+        return None
+    year, month, day, hour, minute, second = (int(match.group(i)) for i in range(1, 7))
+    if not (1 <= month <= 12 and 1 <= day <= calendar.monthrange(year, month)[1] and hour <= 23 and minute <= 59
+            and second <= 60):
+        return None
+    if match.group(7):
+        offset = timedelta(0)
+    else:
+        hours, minutes = int(match.group(9)), int(match.group(10))
+        if hours > 23 or minutes > 59:
+            return None
+        offset = (1 if match.group(8) == "+" else -1) * timedelta(hours=hours, minutes=minutes)
+    local = datetime(year, month, day, hour, minute, min(second, 59), tzinfo=timezone(offset))
+    return local.astimezone(timezone.utc)
+
+
+class NonStandardJson(ValueError):
+    """The text holds a value JSON does not have: NaN, an infinity, or a number too large to be finite."""
+
+
+def _constant(name: str) -> Any:
+    raise NonStandardJson(f"{name} is not a JSON value")
+
+
+def _finite(text: str) -> float:
+    value = float(text)
+    if not math.isfinite(value):
+        raise NonStandardJson(f"{text} is not a finite number")
+    return value
+
+
+def loads(text: str) -> Any:
+    """`json.loads` without Python's extensions: no NaN or infinities, no number that overflows."""
+    return json.loads(text, parse_constant=_constant, parse_float=_finite)
 
 
 class UnsupportedSchema(ValueError):
@@ -27,7 +75,7 @@ def _is_type(value: Any, name: str) -> bool:
     if name == "integer":
         return isinstance(value, int) and not isinstance(value, bool) or isinstance(value, float) and value.is_integer()
     if name == "number":
-        return isinstance(value, (int, float)) and not isinstance(value, bool)
+        return isinstance(value, int) and not isinstance(value, bool) or isinstance(value, float) and math.isfinite(value)
     if name == "string":
         return isinstance(value, str)
     if name == "array":
@@ -105,7 +153,7 @@ class Checker:
         if isinstance(value, str):
             if "pattern" in schema and not re.search(schema["pattern"], value):
                 found.append(f"{path}: {_show(value)} does not match {schema['pattern']}")
-            if schema.get("format") == "date-time" and not DATE_TIME.match(value):
+            if schema.get("format") == "date-time" and date_time(value) is None:
                 found.append(f"{path}: {_show(value)} is not an RFC 3339 date-time")
         if "minimum" in schema and _is_type(value, "number") and value < schema["minimum"]:
             found.append(f"{path}: {value} is below the minimum {schema['minimum']}")

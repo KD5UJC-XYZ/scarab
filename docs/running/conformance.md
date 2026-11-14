@@ -25,11 +25,16 @@ python3 -I scripts/conformance/run.py ledger-rules uplc-conformance cbor-decodin
 2. It fetches each scenario's inputs, pinned in `scripts/conformance/pins.json`, into a directory of its own under
    `--inputs` (default `<dir>/inputs`): the site at a commit (fixtures, expectations and schemas), Amaru's shared
    ledger-rules documents at the corpus commit, the uplc tarballs and the CBOR dataset at a commit. Each is
-   verified against its commit or sha256 and treated as untrusted data: nothing in it is run.
+   verified against its commit or sha256 and treated as untrusted data: nothing in it is run. A directory kept from
+   an earlier run is reused only while its files are byte for byte those it was verified with.
 3. It runs the tool in a container of the image with no network, the checkout, the dependency cache and the inputs
    read-only.
-4. It checks the report against the scenario's `schema.json` at the pinned site commit, that every fixture or
-   vector has one result, and that `implementation_commit`, in a schema that has it, is the checkout's commit.
+4. It checks the report: standard JSON (no `NaN` or infinities), valid against the scenario's `schema.json` at the
+   pinned site commit, and, with `implementation_commit` in the schema, naming the checkout's commit. It also
+   checks that the report covers the corpus, matching results as the site does: in `ledger-rules` each fixture
+   once; in `uplc-conformance` each vector once by id, language and protocol version, none without a verdict; in
+   `cbor-decoding` exactly the samples of the era. `uplc-turbo` has no such check, since its tool leaves out a
+   program that does not evaluate and the site counts it as failed; the provenance records how many it reports.
 5. It writes the report, compressed, beside a `.provenance.json` (commit, inputs and pins, tool and arguments,
    image, checks, timings; no host name or path) and `summary.json`.
 
