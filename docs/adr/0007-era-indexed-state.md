@@ -70,11 +70,20 @@ adopted design. The code reaches it in stages, and until a stage lands the const
    - matching an era tag read from bytes against the era the chain is in.
 
    Some of these could be carried by other refined types; an era index alone does not carry them.
-8. **Open, for a later amendment:**
-   - how a type the reference shares across eras with the era as a parameter is mirrored (`ShelleyTxOut era`
-     for Shelley, Allegra and Mary);
-   - how a rule the reference shares across eras is mirrored (Mary's UTXO is Allegra's);
-   - whether certificates become per era in this work.
+8. **Every era has its own types, and the sharing is mirrored underneath.** Where the reference shares one
+   type across eras with the era as a parameter (`ShelleyTxOut era` for Shelley, Allegra and Mary), each era
+   still has its own nominal type, an opaque type in its own era's package (`ShelleyTxOut`, `AllegraTxOut`,
+   `MaryTxOut`). The shared representation is parameterised by what differs between the eras, not by the era.
+   For example, `ShelleyTxOutRep[AdaValue]` sits behind the Shelley and Allegra outputs and
+   `ShelleyTxOutRep[MultiAssetValue]` behind Mary's, as the reference's `Value era` is `Coin` or `MaryValue`.
+   Fields therefore have concrete types, and a value moves between eras only through an explicit translation,
+   as the reference's `TranslateEra` does. The bytes are the reference's.
+9. **Each era names its complete rule set.** A rule the reference shares across eras (Mary's UTXO is
+   Allegra's) is written once and asks for the reference's capability class. Each era names every one of its
+   rules in a rule set of its own (`EraRules[E]`), and the compiler checks the set is complete, so no era
+   falls through to a shared default. Predicate failure types get per-era names in the same way.
+10. **Certificates are per era**, as the reference's `TxCert era` is (`ShelleyTxCert` up to Babbage,
+    `ConwayTxCert` in Conway). Each era's transaction body carries its own certificate type.
 
 The work lands on one feature branch and reaches `main` stage by stage. The accumulation of predicate
 failures in the reference's order ([#412](https://github.com/KD5UJC-XYZ/scarab/issues/412)) is done with the
