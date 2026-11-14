@@ -49,6 +49,15 @@ class UnpinnedTest(unittest.TestCase):
         self.assertEqual(citations.unpinned('/** `constr` in a program older than 1.1.0 (`Flat.hs:167-171`). */\n'), [1])
         self.assertEqual(citations.unpinned('// a program of version 1.2.0 or later (`Parser.hs:40`)\n'), [1])
 
+    def test_a_citation_wrapped_over_two_lines(self):
+        # GenesisCostModels and ReferenceCosting: the file at the end of one line, its lines on the next
+        text = '/** `parseCostModels` (`Cardano/Ledger/Plutus/CostModels.hs`\n  * lines 141-165).\n  */\n'
+        self.assertEqual(citations.unpinned(text), [1])
+        self.assertEqual(citations.unpinned('// the rule of `Rules/Utxo.hs`\n// lines 3-4\n'), [1])
+        self.assertEqual(citations.unpinned('  /** `mkCostModelsLenient` (`CostModels.hs` lines\n    * 421-436): the models\n'
+                                            '    */\n'), [1])
+        self.assertEqual(citations.unpinned(text.replace('165)', '165, cardano-ledger f649f975)')), [])
+
     def test_every_citation_spelling_of_the_tree(self):
         for citation in ('`Foo.hs:12`', '`Foo.hs: 12`', 'Foo.hs:L12', 'Foo.hs#L12', '`Foo.hs` lines 12-34',
                          'ExBudgetMode.hs lines 126-172', '`Conway/PParams.hs` line 1095', 'Foo.hs, lines 3-4'):

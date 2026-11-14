@@ -115,7 +115,8 @@ class RunTest(unittest.TestCase):
     def test_an_invalid_registry_runs_nothing(self):
         registry = self.root / 'scripts' / 'guards.json'
         for text in (json.dumps({'guards': [{'id': 'first', 'title': 'the first', 'argv': ['scripts/absent.py']}]}),
-                     '{"guards": [', json.dumps({'checks': []}), json.dumps({'guards': ['first']})):
+                     '{"guards": [', json.dumps({'checks': []}), json.dumps({'guards': ['first']}),
+                     '{"guards": [' + '9' * 5000 + ']}', b'\xff\xfe'.decode('latin-1')):
             registry.write_text(text)
             for args in ((), ('--list',), ('--run', 'first')):
                 with self.subTest(text=text, args=args):

@@ -10,10 +10,11 @@ meant once the file cites more than one upstream repository. This guard reads th
 recorded provenance and are left as they are) and counts the comment blocks that cite a Haskell file and line
 (`Foo.hs:123`, `Foo/Bar.hs:12-34`, `Foo.hs: 12`, `Foo.hs#L12`, ``Foo.hs` lines 12-34``, `Foo.hs line 12`) and
 carry no pin in the same block. A block is a `/* ... */` or `/** ... */` comment, or a run of `//` comments on
-consecutive lines (`scala_comments.blocks`). Its text is read for a pin without the comment's decoration (the
-`/**`, `*` and `//` that begin its lines, and its `*/`), its line breaks and its backquotes, so a pin may be
-wrapped over two lines or quoted (`` `cardano-ledger-binary` 1.9.1.0 ``). A pin is one of the forms the tree
-already writes:
+consecutive lines (`scala_comments.blocks`). Its text is read without the comment's decoration (the `/**`, `*`
+and `//` that begin its lines, and its `*/`), so a citation may be wrapped over two lines (``Foo.hs` `` at the end
+of one, `lines 12-34` at the start of the next), and for a pin also without its line breaks and backquotes, so a
+pin may be wrapped or quoted (`` `cardano-ledger-binary` 1.9.1.0 ``). A pin is one of the forms the tree already
+writes:
 
   * a revision of 7 to 40 hexadecimal digits, at least one of them a decimal digit and one a letter, as
     `check_docs.py` reads a commit id (`cardano-ledger f649f975`, `c45735a5:`, `@f649f975`, `@ 8e2bba94...`);
@@ -81,9 +82,14 @@ NAMED_RELEASE = re.compile(r'(?<![\w.-])([A-Za-z][\w-]*) v?\d+\.\d+\.\d+(?:\.\d+
 NOT_A_PACKAGE = frozenset(('version', 'versions', 'than'))
 
 
+def undecorated(text: str) -> str:
+    """A comment block's text with its decoration blanked, offsets and line breaks kept."""
+    return DECORATION.sub(lambda decoration: ' ' * len(decoration.group()), text)
+
+
 def pinned(text: str) -> bool:
     """Whether a comment block's text carries a pin, read without its decoration, line breaks and backquotes."""
-    plain = ' '.join(DECORATION.sub(' ', SPDX.sub('', text)).replace('`', '').split())
+    plain = ' '.join(undecorated(SPDX.sub('', text)).replace('`', '').split())
     return (REVISION.search(plain) is not None or RELEASE.search(plain) is not None
             or any(m.group(1).lower() not in NOT_A_PACKAGE for m in NAMED_RELEASE.finditer(plain)))
 
@@ -92,7 +98,7 @@ def unpinned(source: str) -> list[int]:
     """The line of the first citation of each comment block that cites a Haskell file and line with no pin."""
     found = []
     for block in scala_comments.blocks(source, scala_comments.split(source).comments):
-        citation = CITATION.search(block.text)
+        citation = CITATION.search(undecorated(block.text))
         if citation and not pinned(block.text):
             found.append(block.line + block.text.count('\n', 0, citation.start()))
     return found

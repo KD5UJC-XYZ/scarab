@@ -72,7 +72,8 @@ def load(root: Path) -> tuple[list[Guard], list[str]]:
     """The guards in their order, or the problems of the registry."""
     try:
         registry = json.loads((root / REGISTRY).read_text(encoding='utf-8'))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+    # `ValueError` covers a decoding error, a malformed document and a number past the conversion limit
+    except (OSError, ValueError) as error:
         return [], [f'{REGISTRY} cannot be read as JSON: {error}']
     trouble = problems(root, registry)
     if trouble:
