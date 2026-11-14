@@ -298,9 +298,9 @@ object PeerDns:
         records.collect { case record: SRVRecord => record }.flatMap { record =>
           DnsName.from(record.getTarget.toString).toOption.map { target =>
             DnsServiceRecord(
-              record.getPriority.toInt,
-              record.getWeight.toInt,
-              record.getPort.toInt,
+              record.getPriority,
+              record.getWeight,
+              record.getPort,
               target,
               ttl(record)
             )

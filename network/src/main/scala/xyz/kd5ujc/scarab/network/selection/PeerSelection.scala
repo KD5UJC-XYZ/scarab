@@ -165,7 +165,7 @@ object PeerSelection:
     }
     val peers = reorigin(withNew, st.localRoots, wanted)
     val toDemote = removed.filter(p => st.peers.get(p).exists(_.status == Status.Hot))
-    val onlyTrusted = peers.keySet.subsetOf((st.view(now).bootstrap ++ wanted.keys).toSet)
+    val onlyTrusted = peers.keySet.subsetOf(Set.from(st.view(now).bootstrap ++ wanted.keys))
     val sensitivity =
       if st.sensitivity.sensitive && !onlyTrusted then
         st.sensitivity.copy(

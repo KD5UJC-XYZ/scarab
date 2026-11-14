@@ -87,7 +87,7 @@ object LedgerSnapshotExport:
         s"the snapshot's ledger state does not decode in the layout of the reference build ${build.describe}: ${cause.render}"
       case Tables(cause)               => cause.toString
       case Metadata(cause)             => cause.toString
-      case MissingSnapshot(Some(slot)) => "no stored snapshot at slot " + slot.toBigInt
+      case MissingSnapshot(Some(slot)) => "no stored snapshot at slot " + slot.toBigInt.toString
       case MissingSnapshot(None)       => "no stored snapshot"
       case other                       => other.toString
 

@@ -103,8 +103,9 @@ val testDependencies = Seq(
 // FUN-1 to FUN-3, ERR-4 and ERR-5: functional code by default; mutation only on measured performance paths,
 // kept local; no throw for domain errors; no partial accessor on a value not provably present), and from
 // ArrayEquals on, mistakes the compiler lets through: reference equality on arrays, scala.Enumeration, a
-// descendant of a sealed type that is neither final nor sealed and a lock on a value-based class. Main
-// sources only; generated code is excluded. try/catch/finally has no wart and is checked by
+// descendant of a sealed type that is neither final nor sealed, a lock on a value-based class, a String built
+// with + from a value that is not one, an inferred Product and a conversion to the type a value already has.
+// Main sources only; generated code is excluded. try/catch/finally has no wart and is checked by
 // scripts/check_imperative.py. DisallowedWartsSuite (tools tests) shows that each wart fires.
 lazy val disallowedWarts: Seq[wartremover.Wart] = Seq(
   Wart.Var,
@@ -125,7 +126,10 @@ lazy val disallowedWarts: Seq[wartremover.Wart] = Seq(
   Wart.ArrayEquals,
   Wart.Enumeration,
   Wart.LeakingSealed,
-  Wart.SynchronizedValueBasedClasses
+  Wart.SynchronizedValueBasedClasses,
+  Wart.StringPlusAny,
+  Wart.Product,
+  Wart.RedundantConversions
 )
 
 def scarab(id: String, dir: String = null): Project =

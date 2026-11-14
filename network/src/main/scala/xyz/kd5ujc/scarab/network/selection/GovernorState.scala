@@ -200,7 +200,7 @@ object GovernorState:
     val roots = st.localRoots.keys
     List(
       Option.when(!roots.forall(st.peers.contains))(Violation.LocalRootNotKnown),
-      Option.when(local != roots.toSet)(Violation.OriginDisagreesWithLocalRoots),
+      Option.when(local != Set.from(roots))(Violation.OriginDisagreesWithLocalRoots),
       Option.when(!roots.forall(st.configuredRoots.contains))(Violation.RootNotConfigured),
       Option.when(st.localRoots.size > st.targets.known.max(0) && st.targets != Targets.zero)(
         Violation.RootsAboveKnownTarget

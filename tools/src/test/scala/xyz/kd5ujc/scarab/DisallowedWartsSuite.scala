@@ -99,6 +99,18 @@ class DisallowedWartsSuite extends munit.FunSuite:
       WartTestTraverser(warts.SynchronizedValueBasedClasses)((n: java.lang.Long) =>
         n.synchronized(n)
       )
+    ),
+    Probe(warts.StringPlusAny, WartTestTraverser(warts.StringPlusAny)((n: Int) => "n = " + n)),
+    Probe(
+      warts.Product,
+      WartTestTraverser(warts.Product)(() => {
+        val arity: Product => Int = p => p.productArity
+        arity
+      })
+    ),
+    Probe(
+      warts.RedundantConversions,
+      WartTestTraverser(warts.RedundantConversions)((n: Int) => n.toInt)
     )
   )
 

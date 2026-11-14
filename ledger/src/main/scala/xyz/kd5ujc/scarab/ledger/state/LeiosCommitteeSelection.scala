@@ -68,7 +68,7 @@ extension (e: EpochNo)
     * a `Word64` sum, which wraps past 2^64 - 1 as the reference's does.
     */
   def addInterval(i: EpochInterval): EpochNo =
-    EpochNo.fromUnsigned(Word64.wrappingAdd(e.word, Word64.fromUnsigned(i.toLong)).bits)
+    EpochNo.fromUnsigned(Word64.wrappingAdd(e.word, Word64.fromUnsigned(i)).bits)
 
 /** The number of seats of a Leios committee, `ppLeiosCommitteeSize` and `msLeiosCommitteeSize`: a
   * `Word16`.

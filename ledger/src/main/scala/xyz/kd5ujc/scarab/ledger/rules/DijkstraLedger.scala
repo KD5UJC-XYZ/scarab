@@ -45,7 +45,7 @@ object DijkstraTxMeasures:
 
   /** The size of the reference script of an output of the UTxO set, if the set holds it. */
   def inUtxo(utxo: NodeUtxo): TxIn => Option[Long] =
-    in => utxo.get(in).map(_.referenceScriptSize.toLong)
+    in => utxo.get(in).map(_.referenceScriptSize)
 
   /** `batchNonDistinctRefScriptsSize` (`Dijkstra/UTxO.hs:301-314`): the transaction's and each of
     * its sub-transactions', `size` as for [[refScriptsSize]].

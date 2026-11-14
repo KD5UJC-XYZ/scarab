@@ -44,7 +44,7 @@ object ShelleyGenesisValidation:
       case MaxKESEvolutionsUnsupported(reqKES, supportedKES) =>
         "You have specified a 'maxKESEvolutions' higher" +
           " than that supported by the underlying algorithm." + " You requested " +
-          reqKES.decimal + " but the algorithm supports a maximum of " + supportedKES
+          reqKES.decimal + " but the algorithm supports a maximum of " + supportedKES.toString
       case QuorumTooSmall(q, maxTooSmal, nodes) =>
         "You have specified an 'updateQuorum' which is" +
           " too small compared to the number of genesis nodes." + " You requested " + q.decimal +

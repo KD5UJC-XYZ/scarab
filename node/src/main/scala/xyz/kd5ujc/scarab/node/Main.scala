@@ -767,7 +767,7 @@ object Main extends IOApp:
       snapshot <- PeerSnapshot
         .use(
           snapshotFile,
-          setup.genesis.networkMagic.toLong,
+          setup.genesis.networkMagic,
           topology.fold[UseLedgerPeers](UseLedgerPeers.Disabled)(_.useLedgerAfterSlot),
           setup.config.settings.consensusMode
         )
@@ -1923,7 +1923,7 @@ object Main extends IOApp:
         genesis.raw,
         setup.mirrorEnv(observed).ledger,
         observed,
-        genesis.networkMagic.toLong
+        genesis.networkMagic
       )
     )
     // the node-to-client server; a failure to set it up, or an accept loop that stops,

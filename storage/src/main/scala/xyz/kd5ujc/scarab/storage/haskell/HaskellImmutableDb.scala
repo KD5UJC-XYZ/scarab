@@ -37,7 +37,7 @@ object ChunkSlots:
     def value: Long = s
 
     /** The first slot of chunk `c`. */
-    def firstSlot(c: ChunkNo): Long = c.value.toLong * s
+    def firstSlot(c: ChunkNo): Long = c.value * s
 
 /** A byte offset into a chunk file. */
 opaque type ByteOffset = Long

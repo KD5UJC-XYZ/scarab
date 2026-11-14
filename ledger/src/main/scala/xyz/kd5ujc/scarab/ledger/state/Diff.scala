@@ -247,7 +247,7 @@ object Diff extends LowPriorityDiff:
         val ct = summonInline[ClassTag[t]]
         val held = new Memo(() => summonInline[Diff[t]])
         val name = constValue[l].toString
-        val step: (Product, Product) => Option[Difference] = (p, q) =>
+        val step: (Product, Product) => Option[Difference] = (p: Product, q: Product) =>
           (p.productElement(i), q.productElement(i)) match
             case (ct(x), ct(y)) => held.value.diff(x, y).map(_.under(Step.Field(name)))
             // unreachable for a well-formed mirror; reported loudly rather than silently skipped

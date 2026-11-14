@@ -290,7 +290,7 @@ object PredicateFailureCbor:
       })
     case UtxowFailure.MissingRedeemers(ps) =>
       Right(Prepared { w =>
-        ps.toVector
+        ps
           .traverse((purpose, script) => conwayPurpose(purpose).map(_ -> script))
           .fold(notInConway(w)) { entries =>
             w.array(2).uint(10)

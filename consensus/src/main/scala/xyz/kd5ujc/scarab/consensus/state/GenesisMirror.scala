@@ -70,7 +70,6 @@ object GenesisMirror:
           )
           past <- summaries.zipWithIndex
             .take(era.index)
-            .toVector
             .traverse((summary, index) =>
               summary.end
                 .toRight(StateMirrorError.OpenPastEra(index))

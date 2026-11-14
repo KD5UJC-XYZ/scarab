@@ -252,7 +252,8 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
   private def uniq(base: String, used: Set[String]): (String, Set[String]) =
     val b0 = if reservedFieldNames(base) then base + "_" else base
     val n =
-      if !used(b0) then b0 else Iterator.from(2).map(i => b0 + i).find(n => !used(n)).getOrElse(b0)
+      if !used(b0) then b0
+      else Iterator.from(2).map(i => b0 + i.toString).find(n => !used(n)).getOrElse(b0)
     (esc(n), used + n)
 
   private object Literal:
@@ -519,7 +520,7 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
     def position(index: Int): String =
       Iterator
         .from(0)
-        .map(n => s"position$index" + (if n == 0 then "" else "_" + n))
+        .map(n => s"position$index" + (if n == 0 then "" else "_" + n.toString))
         .find(name => !fieldNames(name))
         .getOrElse(s"position${index}_")
     val (end, positioned) =

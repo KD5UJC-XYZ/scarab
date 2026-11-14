@@ -259,8 +259,8 @@ object ScalusEvaluator:
             case Term.Apply(f, a, _)                         => walk(a :: f :: rest, found)
             case Term.Force(t, _)                            => walk(t :: rest, found)
             case Term.Delay(t, _)                            => walk(t :: rest, found)
-            case Term.Constr(_, as, _)                       => walk(as.toList ++ rest, found)
-            case Term.Case(a, cs, _)                         => walk(a :: cs.toList ++ rest, found)
+            case Term.Constr(_, as, _)                       => walk(as ++ rest, found)
+            case Term.Case(a, cs, _)                         => walk(a :: cs ++ rest, found)
             case _: Term.Var | _: Term.Const | _: Term.Error => walk(rest, found)
       walk(List(term), Set.empty)
 
@@ -634,7 +634,7 @@ object ScalusEvaluator:
     val protocol = MajorProtocolVersion(protocolMajor)
     val variant = SemanticsVariant.of(language, protocolMajor)
     val params = MachineParams.fromCostModels(
-      CostModels(Map(evaluatedAs.id -> costModel.toIndexedSeq)),
+      CostModels(Map(evaluatedAs.id -> costModel)),
       scalusLanguage,
       protocol
     )

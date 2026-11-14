@@ -442,7 +442,7 @@ private[plutus] object ReferenceCosting:
       if values.sizeIs != args.size || !args.lazyZip(values).forall(accepts) then
         ScalusExUnits(0L, 0L)
       else
-        val streams = args.lazyZip(values).map(usage).toVector
+        val streams = args.lazyZip(values).map(usage)
         zip(run(cpu, streams), run(memory, streams))
 
   /** A costing function of Scalus's cost model that has no counterpart here. */

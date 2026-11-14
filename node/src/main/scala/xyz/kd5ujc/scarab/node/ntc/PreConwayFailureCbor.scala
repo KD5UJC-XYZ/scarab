@@ -172,7 +172,7 @@ object PreConwayFailureCbor:
   ): Encoding[Enc] = u match
     case UtxowFailure.MissingRedeemers(ps) =>
       supported(
-        ps.toVector
+        ps
           .traverse((purpose, script) => ContextFailureCbor.purpose(era, purpose).map(_ -> script))
       )
         .map(entries =>
