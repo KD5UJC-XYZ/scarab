@@ -1327,6 +1327,24 @@
         "storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/LeiosCommitteeReferenceSuite.scala"
       ],
       "candidateRequired": false
+    },
+    {
+      "id": "leios-genesis-injection",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The genesis injection of a chain that starts in Conway as the Leios testnet's build makes it (cardano-ledger 9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c eras/conway/impl/src/Cardano/Ledger/Conway/Transition.hs:161-185, eras/shelley/impl/src/Cardano/Ledger/Shelley/Transition.hs:526-618): the pools' voting keys as the Leios build's StakePoolParams reads them (libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:517-530, 604-619), registered in the state's epoch, and the stake distribution seeded into the mark, set and go snapshots, on the Leios testnet's genesis files and changes to its pool's voting key. Not the Byron to Conway translations before the injection, a Dijkstra start or the consensus layer's parts of the start state.",
+      "assertion": "LeiosGenesisReferenceSuite reads each case's genesis files with GenesisInjections.read in the Leios layout, injects them into the native start state with GenesisStart.inject and requires the native acceptance verdict and, for an accepted case, the SHA-256 of the resulting state without its UTxO and the complete bytes of its UTxO, snapshots and pool states; scripts/oracle/leios-genesis/run.py refuses an image whose ledger and cardano-base sources differ from the pinned files.",
+      "rationale": "The genesis state is where the Leios testnet's pools first get their voting keys and leader-election stake; the corpus covers every refusal the voting key's reader has and the seeded set snapshot, so a change to either fails a case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/826",
+      "resolution": "Refresh only by recording a new corpus with scripts/oracle/leios-genesis/run.py --record against the pinned Leios image.",
+      "evidence": [
+        "fixtures/reference/leios-genesis/cases.jsonl",
+        "scripts/oracle/leios-genesis/run.py",
+        "scripts/oracle/leios-genesis/Main.hs",
+        "node/src/test/scala/xyz/kd5ujc/scarab/node/LeiosGenesisReferenceSuite.scala"
+      ],
+      "candidateRequired": false
     }
   ]
 }

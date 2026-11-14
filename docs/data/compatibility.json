@@ -1636,7 +1636,8 @@
           "LedgerFileSuite",
           "HaskellStateCodecSuite",
           "PoolDistributionReferenceSuite",
-          "LeiosCommitteeReferenceSuite"
+          "LeiosCommitteeReferenceSuite",
+          "LeiosGenesisReferenceSuite"
         ],
         "issues": [
           826
