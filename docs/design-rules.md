@@ -45,8 +45,8 @@ A new general rule, and a change to one, comes here, with a sweep of the tree fo
 | scalafmt | `.scalafmt.conf`, `scalafmtCheckAll` in `check` | all | a file not formatted |
 | scalafix | `.scalafix.conf`, `scalafixAll --check` in `check` | all | imports not laid out as `OrganizeImports` is configured: one group, the order as written, unused imports not removed. It is the only rule configured |
 | Python guards | `scripts/check_*.py`, run by `scripts/preflight` and the CI `scripts` job | as each rule says | as each rule says; each script's docstring has its detail |
-| Documentation check | `scripts/check_docs.py`, a guard like the others | `docs/**/*.md`, `README.md`, `AGENTS.md` and `CONTRIBUTING.md`, outside fenced code | a new broken link or anchor, missing path or symbol, unregistered pin or stale "current" version. Findings already in `docs/data/docs-check-baseline.json` pass; the baseline only shrinks |
-| Crypto guards | `.github/workflows/security.yml`: semgrep with `.semgrep/scarab-crypto.yaml`, and `scripts/check_crypto_guard.py` | semgrep: every Scala and Java source but `tools`, `target` and `fixtures`; the containment guard: every Scala and Java source, so that it sees a reference that escapes its package | [CRY-1](#cry-1) |
+| Documentation check | `scripts/check_docs.py`, a guard like the others | `docs/**/*.md`, `README.md`, `AGENTS.md`, `CONTRIBUTING.md` and `changes/README.md`, outside fenced code; the other `changes/*.md` for relative links only | a new broken link or anchor, missing path or symbol, unregistered pin or stale "current" version. A finding listed in `docs/data/docs-check-baseline.json` passes, and one fixed must leave it; accepting a new one means rewriting the baseline, a diff a reviewer sees |
+| Crypto guards | `.github/workflows/security.yml`: semgrep with `.semgrep/scarab-crypto.yaml`, and `scripts/check_crypto_guard.py` | semgrep: every Scala and Java source but `tools`, `target` and `fixtures`; the containment guard: every Scala and Java source but `target`, `.git`, `.cache` and `fixtures`, so that it sees a reference that escapes its package | [CRY-1](#cry-1) |
 | Secret scan | gitleaks with `.gitleaks.toml`, in CI and `scripts/preflight` | full history | committed secrets ([FMT-3](#fmt-3)) |
 | SPDX step | `.github/workflows/ci.yml`, "SPDX header on every script and workflow" | `.py`, `.yml` and `sbtw` under `scripts/` and `.github/workflows/` | a file without the header ([CMT-4](#cmt-4)) |
 | PR policy | `scripts/pr_policy.py`, on every pull request event | pull request body | a missing level, a level below its floor, or a missing or malformed "Deviations from the reference" or "Gaps" section ([REF-7](#ref-7)) |
@@ -632,12 +632,12 @@ machine. It is never a recursion inside an `Either` or `Option` for-comprehensio
 - **Why:** [ADR 0011](adr/0011-stack-safety.md).
 
 <a id="stk-2"></a>
-### STK-2. Recursion schemes where the walk is a tree
+### STK-2. Recursion schemes over outside data
 
-Where the depth comes from outside data, a tree walk is a recursion scheme (a stack-safe fold over the
-structure's base functor) in preference to recursion written by hand. On a hot path it is adopted only
-after a benchmark shows it is no slower. The CEK machine of the Plutus evaluator stays an explicit
-machine.
+A recursion whose depth comes from outside data is written as a recursion scheme (a stack-safe fold or
+unfold over the structure's base functor; a library fold over a collection is one) in preference to
+recursion written by hand. On a hot path it is adopted only after a benchmark shows it is no slower. The
+CEK machine of the Plutus evaluator stays an explicit machine.
 
 - **Scope:** main.
 - **Exceptions:** the CEK machine, as stated.

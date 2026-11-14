@@ -97,7 +97,7 @@ tests), exceptions and how a kept site is marked, enforcement and reason. Read t
   matches; [TYP-7](docs/design-rules.md#typ-7) type-level sizes; [TYP-8](docs/design-rules.md#typ-8) lean on
   the compiler; [TYP-9](docs/design-rules.md#typ-9) Free only where a program must be inspected.
 - [Stack safety](docs/design-rules.md#stk): [STK-1](docs/design-rules.md#stk-1) recursion over outside data is
-  stack safe by construction; [STK-2](docs/design-rules.md#stk-2) recursion schemes for tree walks;
+  stack safe by construction; [STK-2](docs/design-rules.md#stk-2) recursion schemes over outside data;
   [STK-3](docs/design-rules.md#stk-3) tested on a small stack.
 - [Arithmetic](docs/design-rules.md#ari): [ARI-1](docs/design-rules.md#ari-1) exact arithmetic;
   [ARI-2](docs/design-rules.md#ari-2) overflow, underflow and narrowing by ADR 0001's procedure.
