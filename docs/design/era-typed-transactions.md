@@ -37,8 +37,9 @@ The consequences:
 **Bodies and transactions.** Every era has its own body and transaction type: `TxBody l era` and `Tx l era`
 are data families, one newtype per era (`Core.hs:241`, `Core.hs:167`). Both are indexed by a level, `TxLevel`
 (`TopTx | SubTx`, `Core/TxLevel.hs:34`):
-- most of a body's lenses take a body of any level: inputs, outputs, certificates, withdrawals, the
-  validity interval, mint, the treasury (`Core.hs:245-265`);
+- most of a body's lenses take a body of any level: inputs, outputs, certificates and withdrawals
+  (`Core.hs:245-265`), the validity interval (`Allegra/TxBody.hs:90`), mint, the treasury
+  (`Conway/TxBody.hs:632`);
 - fee, collateral, total collateral, collateral return, sub-transactions and starting balance intervals take
   a `TopTx` body only;
 - eras up to Conway have only `TopTx`; Dijkstra has both, `SubTx` being its sub-transactions.
@@ -131,6 +132,9 @@ era types. A public `rep` gives read-only access to the shared fields.
 - the projection of a stored output (§3.6), which is partial and `private[ledger]`. Its callers are the
   rules' reads of the UTxO set, in `ledger`.
 
+Until stage 6a restricts the flat `TxOut`, this holds only by convention inside `ledger`: any code there can
+still build a flat output and project it.
+
 **Equality.** The `era` packages use strict equality: `CanEqual` is given per era type, so `babbageOut ==
 conwayOut` does not compile. `Eq` and `Show` derive on the representation and are forwarded to each era type
 by one helper.
@@ -199,8 +203,12 @@ The persisted form stays exactly as it is: the store keeps no era, as the refere
   - `mempack/TxOutMemPack`, which `haskell/state/SnapshotTableStream` also reaches.
 
   The storage form keeps its simple name `TxOut`, because the fingerprint uses the type's label. Code that
-  also uses the era family imports it under an alias; it is never renamed. Its value stays the flat `Value`,
-  not `AdaValue` or `MultiAssetValue`.
+  also uses the era family imports it under an alias; it is never renamed. The fingerprint walks every type
+  nested in it, so these stay the flat types they are today, unchanged: its `Value` (not `AdaValue` or
+  `MultiAssetValue`), `Address`, `Datum` and `Script` (not the per-era `Script[E]`).
+- **Other persisted state stays byte-identical too.** That covers the derived protocol-state codecs
+  (`NodeCodecs`) and the chain-dependent state in the sidecar. Stage 6b retypes headers and consensus
+  configuration, not the persisted chain-dependent state.
 - **A stored output is read into the era that reads it**, as `indexedUnpackM` does. Each era's `fromStored` returns an `Either`: it refuses an output of a later era (the reference's `anachrony`) and a shape the era
   cannot hold.
 - **The invariant this rests on:** an output whose encoding changes at a crossing is rewritten when the chain
@@ -238,6 +246,9 @@ several commits or small pull requests into the branch per stage, and reaches `m
 - **does not change behaviour**: the reference refusal corpus, the upstream conformance suites and an
   old-against-new differential on recorded blocks give identical verdicts and identical failures, except in
   the one stage that changes them on purpose (#412);
+- **does not change the persisted format**: no fingerprint golden in `CodecSuite` and no maintained snapshot
+  fixture changes. A stage that cannot meet this stops, and the change is put to the owner as its own
+  question first;
 - moves its test builders to per-era test kits that build through the encoders and decoders, so a test
   value's bytes stay true.
 
@@ -264,6 +275,12 @@ several commits or small pull requests into the branch per stage, and reaches `m
 A decoder-version comparison (`DecoderVersion.atLeast`), which mirrors the reference's
 `ifDecoderVersionAtLeast`, stays. The ledger-state translations of `Translate` already work per era and are
 unchanged, apart from reading outputs through §3.6.
+
+**The old and new paths side by side.** From stage 2 an era's rules run on its typed transactions, and
+the flat path stays alive for the eras not yet typed. Conway's checks on the flat `Tx` stay until stage 3,
+because Dijkstra still runs them on its transactions decoded as Conway ones. The differential gate compares
+the two paths while both exist. An era's flat path is deleted at the end of the stage that types the last
+era using it: Conway's at the end of stage 3, the shared Shelley-to-Babbage code at the end of stage 5.
 
 **Scenarios by stage:** `e2e` for every stage that touches rules or headers; `pool` and `ntc` for 2 and 6c;
 `pool` for 6d; `restart` wherever a storage reader is touched.
@@ -301,9 +318,11 @@ passes `check`.
   file. Two of these tests check only that compilation fails, not the message.
 
 **What it does not show yet:**
+- the level parameter on a class method generic in the level, for an era whose body exists only at `Top`.
+  This may need a level witness like the reference's `STxLevel`; stage 1 spikes it first, because it changes
+  every class signature;
 - a representation parameterised by value (Allegra and Mary outputs, arithmetic over `Value[E]` through the
   reference's `Val` class);
-- the level parameter;
 - a rule reading a stored output through `fromStored`;
 - a complete rule set;
 - a refusal tested from a sibling file in the same package.

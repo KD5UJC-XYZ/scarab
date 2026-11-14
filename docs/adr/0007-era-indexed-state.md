@@ -48,8 +48,8 @@ adopted design. The code reaches it in stages, and until a stage lands the const
    era without it does not compile.
 4. **Transactions per era.** Transaction bodies, witness sets, auxiliary data, outputs and whole
    transactions are types of their era, as the reference's are, so a transaction of one era cannot be given
-   where another era's is expected. Outputs are included. Their stored bytes and schema fingerprints are kept,
-   or changed only as [ADR 0006](0006-versioned-formats-migrate-on-open.md) allows.
+   where another era's is expected. Outputs are included. The persisted format does not change: stored
+   outputs keep today's storage form and fingerprints. Any change to it is put to the owner first.
 5. **The witness is for unpacking and routing.** `ShelleyBasedEra[E]` stays as the runtime proof of an era.
    It unpacks an era known only at run time (an era tag read from bytes, a snapshot, a hard fork), and an
    exhaustive match on it routes to that era's own code. It is never used to compare eras.
@@ -72,8 +72,8 @@ adopted design. The code reaches it in stages, and until a stage lands the const
    Some of these could be carried by other refined types; an era index alone does not carry them.
 8. **Every era has its own types, and the sharing is mirrored underneath.** Where the reference shares one
    type across eras with the era as a parameter (`ShelleyTxOut era` for Shelley, Allegra and Mary), each era
-   still has its own nominal type, an opaque type in its own era's package (`ShelleyTxOut`, `AllegraTxOut`,
-   `MaryTxOut`). The shared representation is parameterised by what differs between the eras, not by the era.
+   still has its own nominal type, an opaque type defined in that era's types file (`ShelleyTxOut`,
+   `AllegraTxOut`, `MaryTxOut`). The shared representation is parameterised by what differs between the eras, not by the era.
    For example, `ShelleyTxOutRep[AdaValue]` sits behind the Shelley and Allegra outputs and
    `ShelleyTxOutRep[MultiAssetValue]` behind Mary's, as the reference's `Value era` is `Coin` or `MaryValue`.
    Fields therefore have concrete types, and a value moves between eras only through an explicit translation,
