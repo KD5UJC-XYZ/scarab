@@ -46,6 +46,8 @@ paths = [
   '''^fixtures/reference/plutus-forecast-horizon/conway-past-horizon/genesis/shelley-genesis\.json$''',
   '''^fixtures/reference/refusals/conway-devnet/genesis/shelley-genesis\.json$''',
   '''^fixtures/reference/refusals/genesis/0852102f056aae15273dd402b5ca44f103b4eef03b19f8a5717ceff2df8c1667-shelley-genesis\.json$''',
+  '''^fixtures/reference/refusals/genesis/25cc26153bd18e8a21037a74a7dea785c70924f690fa92352f463ea98635e268-shelley-genesis\.json$''',
+  '''^fixtures/reference/refusals/genesis/d47563d1cb55ab530a128d7590f4d5199479356c8620f786f0a8c982208d2916-shelley-genesis\.json$''',
   '''^fixtures/reference/wallet-queries/manifest\.json$''',
   # A public operational-certificate verification key used as an expected value: the file now, and
   # where it was before the package rename (the scan covers the whole history, so both paths stay).

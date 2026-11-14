@@ -86,6 +86,42 @@
       "sha256": "335673554ec6b794302fdbb70f0d941b0c143af6f0814c964a2de2c613088aa3"
     },
     {
+      "path": "diagnostic-conway-pv10-binary-dst",
+      "sha256": "2ba437d46e796c47442623911e444bf54817a43562ea27cf533cb1174a142f59"
+    },
+    {
+      "path": "diagnostic-conway-pv10-context",
+      "sha256": "00e9c85d0a19d8b93b70136cd8f9660e070b194e340c29799bedacf894f8f33b"
+    },
+    {
+      "path": "diagnostic-conway-pv10-evaluation",
+      "sha256": "a0b8f288665cdfd88792265d6897a1dd218c2a5f4250adefe3ef992dcf6474af"
+    },
+    {
+      "path": "diagnostic-conway-pv10-evaluation-delta",
+      "sha256": "9edfde3bfd6def8986a13ef3d5bcabfef9874d16d1bba9f226a46cfe4df9038b"
+    },
+    {
+      "path": "diagnostic-conway-pv10-malformed",
+      "sha256": "8eeb4f128f580b932bd64612479af6172386061b2369e8f64619e4e3d997100f"
+    },
+    {
+      "path": "diagnostic-conway-pv9-context",
+      "sha256": "a15b99ec19365febaaf33c022df52a4e6f0793fc87cff4144332c6809b48d90d"
+    },
+    {
+      "path": "diagnostic-conway-pv9-evaluation",
+      "sha256": "007059893c95c95bb3a363573db1f9e595ca2ccd567b03a5d70fd51916e823c9"
+    },
+    {
+      "path": "diagnostic-conway-pv9-evaluation-delta",
+      "sha256": "dda45fc88711df96c3d0a67bf0ca7ddd497a8d2fd4683baf0fa130fe20f10665"
+    },
+    {
+      "path": "diagnostic-conway-pv9-malformed",
+      "sha256": "b6dc0c339dfee040c97cfe4dcf2eb2602a924c7074743d3790b60a6993fa1b91"
+    },
+    {
       "path": "mary-families",
       "sha256": "68d547e20ab3da1300d0044d25b035aee69d01bced016a13876b44f22d0e02b1"
     },

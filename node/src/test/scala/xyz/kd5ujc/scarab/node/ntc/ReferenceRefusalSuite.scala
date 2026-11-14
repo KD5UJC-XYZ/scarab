@@ -130,8 +130,9 @@ class ReferenceRefusalSuite extends FunSuite:
     val nes = HaskellState.decode[E](bytes).fold(e => fail(e.render), identity)
     assertEquals(HaskellState.encode[E](nes).map(_.hex), Right(bytes.hex))
 
+object ReferenceRefusalSuite:
   /** What Scarab answers for one case, from the recorded state. */
-  private def replay(c: Corpus, rc: RefusalCase): Either[ReplayProblem, Judgement] = rc.era match
+  def replay(c: Corpus, rc: RefusalCase): Either[ReplayProblem, Judgement] = rc.era match
     case RefusalEra.Shelley => replayPreConway[Shelley](c, rc)
     case RefusalEra.Allegra => replayPreConway[Allegra](c, rc)
     case RefusalEra.Mary    => replayPreConway[Mary](c, rc)
@@ -196,8 +197,8 @@ class ReferenceRefusalSuite extends FunSuite:
             failures =>
               PreConwayFailureCbor
                 .applyTxError(rc.era.wire, failures.toChain.toVector)
-                .fold(error => fail(error.message), identity)
-                .fold(Judgement.Unencodable(failures))(Judgement.Refused(_)),
+                .fold(Judgement.Unavailable(_),
+                  _.fold(Judgement.Unencodable(failures))(Judgement.Refused(_))),
             _ => Judgement.Accepted
           )
         )
@@ -230,7 +231,7 @@ class ReferenceRefusalSuite extends FunSuite:
         .fold(judge, _ => Judgement.Accepted)
 
   /** Where the two refusals part: the failure counts and the first failure that differs. */
-  private def difference(scarab: Bytes, rc: RefusalCase): String =
+  def difference(scarab: Bytes, rc: RefusalCase): String =
     val ours = failures(scarab)
     val theirs = failures(rc.reason)
     val first = ours.zip(theirs).indexWhere(_ != _)
@@ -243,7 +244,6 @@ class ReferenceRefusalSuite extends FunSuite:
       .reasonItem(rejection)
       .fold(Judgement.Unavailable(_), Judgement.Refused(_))
 
-object ReferenceRefusalSuite:
   /** The failures of a Conway `ApplyTxErr` `[[era, [failure, ...]]]`, as their bytes; none when the
     * item is not one.
     */

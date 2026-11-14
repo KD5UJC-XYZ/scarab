@@ -1,0 +1,38 @@
+{
+  "format": 2,
+  "era": "conway",
+  "protocolVersion": [
+    9,
+    0
+  ],
+  "provenance": {
+    "reference": {
+      "node": "cardano-node 11.1.3 - linux-x86_64 - ghc-9.6",
+      "revision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+      "image": "cardano-reference-11.1.3:local",
+      "imageId": "sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b"
+    },
+    "command": "python3 -m devnet.refusalexport --name <devnet> --input <recording> --corpus diagnostic-conway-pv9-evaluation-delta --era conway --protocol 9 --source-commit 32349d2c5c694d4ca9c121e650e680e47dd102fc",
+    "scarabCommit": "32349d2c5c694d4ca9c121e650e680e47dd102fc",
+    "scarabDirty": true,
+    "recorded": "2026-11-05T06:30:23Z"
+  },
+  "captureSourceCommit": "32349d2c5c694d4ca9c121e650e680e47dd102fc",
+  "recording": {
+    "file": "recording.json",
+    "sha256": "093a0f8890f390581182bcddefb3e2002ca71ae65fc00494e91cfc7529234ac2"
+  },
+  "genesis": {
+    "byron-genesis.json": "0bc76cc223c1ad50b9a5a22c19fe4293b400679303f2b6fc7ad4d7088d2a4d8e",
+    "shelley-genesis.json": "25cc26153bd18e8a21037a74a7dea785c70924f690fa92352f463ea98635e268",
+    "alonzo-genesis.json": "4291b3e5fbcdd1f1daed9ab8f78e4d0181eb7eac4506e34c8aa0fecab6051f3b",
+    "conway-genesis.json": "5fd787ab53dc5067523113382698a2d567f045359c477751e8a39ff5c95cd0c1",
+    "configuration.yaml": "879960a310eccd7c435e7eb802638fa885f59da1c50ecbfeefd5756dcb747e15"
+  },
+  "cases": [
+    {
+      "file": "cases/cases.jsonl",
+      "sha256": "1f086e338269f69278e139a390186bde41e8668bdbbada3f6bc580de29fe369a"
+    }
+  ]
+}
