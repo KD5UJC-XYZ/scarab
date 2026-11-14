@@ -967,9 +967,16 @@ object PeerNetwork:
       case Left(cause)                      => cats.MonadThrow[F].raiseError(cause)
     }
 
-  /** The TCP transport: the first address a name resolves to, and a plain connection to it. */
-  def tcp[F[_]: Async](connectTimeout: FiniteDuration): Transport[F, Addr] = new Transport[F, Addr]:
-    def resolve(peer: Addr) = PeerNetwork.resolve(peer.host, ConnectionManager.resolve[F](peer))
+  /** The TCP transport: the first address a name resolves to, and a socket configured and bound as
+    * the reference's connection manager does before it connects (`ConnectionManager/Core.hs`
+    * 1472-1491, [[OutboundPlan]]): bound to the node's own listening address of the remote's family
+    * in `InitiatorAndResponder` mode, so a peer sees the connection come from that address.
+    */
+  def tcp[F[_]: Async](connectTimeout: FiniteDuration, own: NodeAddresses): Transport[F, Addr] =
+    new Transport[F, Addr]:
+      def resolve(peer: Addr) = PeerNetwork.resolve(peer.host, ConnectionManager.resolve[F](peer))
 
-    def bearer(peer: Addr, remote: SocketAddress[IpAddress])(using Raise[F, NetworkError]) =
-      Bearer.tcp[F](SocketAddress[Host](remote.host, remote.port), connectTimeout)
+      def bearer(peer: Addr, remote: SocketAddress[IpAddress], mode: DiffusionMode)(using
+          Raise[F, NetworkError]
+      ) =
+        TcpSockets.dial[F](OutboundPlan.of(remote, own, mode), connectTimeout).map(_.bearer)

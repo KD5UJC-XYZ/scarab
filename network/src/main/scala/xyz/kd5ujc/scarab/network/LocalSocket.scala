@@ -84,11 +84,16 @@ object SocketConfigError:
         s"LocalSocketError ${HaskellShow.string(path)} ${cause.show}"
   )
 
-/** Why the node-to-client side of the network stopped: what the reference's `DiffusionErrored`
-  * names and `DiffusionError` carries (ouroboros-network c45735a5,
+/** Why the node's servers stopped: what the reference's `DiffusionErrored` names and
+  * `DiffusionError` carries (ouroboros-network c45735a5,
   * `ouroboros-network/lib/Ouroboros/Network/Diffusion.hs` 905-911). The node then exits.
   */
 enum DiffusionFailure extends DomainError:
+  /** The node-to-node listener: opening, configuring or binding its socket, or configuring a socket
+    * it accepted ([[BearerServer]], [[AcceptFailure.Configure]]).
+    */
+  case NodeToNode(error: TcpSocketError)
+
   /** A call failed: creating, binding or listening on the socket, reading its mode or its
     * directory's, or an accept that is not `ECONNABORTED`.
     */
@@ -112,7 +117,8 @@ object DiffusionFailure:
   /** The `show` of the exception, the `error` field of `DiffusionErrored`. */
   given [A <: DiffusionFailure]: Show[A] = Show.show(failure =>
     (failure: DiffusionFailure) match
-      case System(error) => error.show
+      case System(error)     => error.show
+      case NodeToNode(error) => error.show
       case PathTooLong(path) =>
         val length = path.codePointCount(0, path.length)
         s"pokeSockAddr: path is too long in SockAddrUnix ${HaskellShow.string(path)}, length $length, " +
@@ -180,6 +186,23 @@ object LocalSockets:
   private[network] def interruptible[F[_], A](call: F[A], closing: F[Unit])(using
       F: Async[F]
   ): F[A] = call.attempt.cancelable(closing).rethrow
+
+  /** A blocking call that may acquire something to close (an accepted channel), cancelled by
+    * closing the channel it blocks on (`closing`). Unlike [[interruptible]], whose cancel drops
+    * what the call returns once the call has ended, the call's fiber is joined, never cancelled:
+    * what it acquired when the cancel came is closed (`release`), not left open. That fiber ends
+    * with a value (ADR 0017), and a failed `closing` is not raised in place of the cancel.
+    */
+  private[network] def acquiring[F[_], A](call: F[A], closing: F[Unit])(release: A => F[Unit])(using
+      F: Async[F]
+  ): F[A] =
+    F.uncancelable { poll =>
+      F.start(call.attempt).flatMap { fiber =>
+        poll(fiber.joinWithNever)
+          .onCancel(closing.attempt *> fiber.joinWithNever.flatMap(_.traverse_(release)))
+          .rethrow
+      }
+    }
 
   /** A connected local socket as a bearer: reads and writes block on the channel and are cancelled
     * by closing it ([[interruptible]]); writes are serialised by `writes`.

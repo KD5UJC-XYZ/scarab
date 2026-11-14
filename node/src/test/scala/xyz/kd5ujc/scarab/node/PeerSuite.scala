@@ -3,6 +3,8 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, VrfCert, PeerError}
 import xyz.kd5ujc.scarab.codec.Bytes
+import com.comcast.ip4s.{IpAddress, SocketAddress, ip, port}
+import xyz.kd5ujc.scarab.network.ConnectFailures
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, Mux as WireMux}
 import xyz.kd5ujc.scarab.consensus.ChainSelection
 import munit.ScalaCheckSuite
@@ -81,7 +83,7 @@ class PeerSuite extends ScalaCheckSuite:
       case Fault.Defect(cause)   => fail(s"unexpected defect $cause")
     // a lost or slow connection is tried again
     assertEquals(
-      classified(NetworkError.Connect("peer", new java.io.IOException("refused"))),
+      classified(ConnectFailures.connect(SocketAddress(ip"192.0.2.1", port"3001"))),
       FailureClass.Transient
     )
     assertEquals(classified(NetworkError.Timeout(2, "StNext")), FailureClass.Transient)
@@ -175,9 +177,9 @@ class PeerSuite extends ScalaCheckSuite:
     val network: xyz.kd5ujc.scarab.network.NetworkError.Decode =
       xyz.kd5ujc.scarab.network.NetworkError.Decode(3, malformed)
     assertEquals(Peer.networkFault(network), Fault.Failed(PeerError.Protocol(network)))
-    val cause = new java.io.IOException("connection refused")
+    val remote = SocketAddress[IpAddress](ip"192.0.2.1", port"3001")
     val connect: xyz.kd5ujc.scarab.network.NetworkError.Connect =
-      xyz.kd5ujc.scarab.network.NetworkError.Connect("peer", cause)
+      xyz.kd5ujc.scarab.network.NetworkError.Connect("peer", ConnectFailures.refused(remote))
     assertEquals(
       Peer.networkFault(connect),
       Fault.Failed(PeerError.Unavailable(PeerError.Unavailability.Network(connect)))

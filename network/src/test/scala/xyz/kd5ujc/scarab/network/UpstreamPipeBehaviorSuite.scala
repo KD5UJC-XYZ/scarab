@@ -306,7 +306,7 @@ class UpstreamPipeBehaviorSuite extends FailsOnUncaught:
             .evalMap { socket =>
               Mux
                 .resource(
-                  Bearer.fromSocket(socket),
+                  Fs2Bearer.fromSocket(socket),
                   NodeToNodeServer.Protocol,
                   Mux.Config(role = Mux.Role.Responder)
                 )

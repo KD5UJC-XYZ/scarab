@@ -212,6 +212,15 @@ disposable devnets have been removed. No operational database was modified.
   - **Commit:** `a756657361a6f0d5bd443d82e97860ad59c781b1`, based on `3c5d3b99a17ad4225246d3229a0ea7f25a5d97f6`; run before the subsequent documentation-register rebase
   - **Environment:** 2026-10-26; Docker JDK 21.0.11, sbt 1.10.7; build/test CPU cap 4 and 8 MiB stack, private sbt socket; cardano-node 11.1.3/CLI 11.2.3, cuddle 1.8.1.0; devnet runtime settings unchanged. Owned devnet data and containers removed.
 
+- **Run:** Configured and bound node-to-node sockets (#854, 2026-11-10): `python3 scripts/devnet.py --name codex854-sockets relay --seconds 300`
+  - **Result:** PASS. Final tips equal; 54 of 56 samples within one block, maximum lag 2, epochs 5–11; 182 transactions submitted through the Haskell relay and 182 included, no mempool refusals/drops, zero errors and reconnects. The relay's duplex connection is reused and local submission is adopted. TcpSocketsSuite and SystemErrorSuite pass all 18 tests after moving socket causes to a closed shared vocabulary. This run does not establish governor time-wait (#893), aborted-accept (#854 checklist), or IPv6 (#859) conformance.
+  - **Commit:** `610e207a9f826a55d7ae72de09d115898b6179b7`
+  - **Environment:** Private reference 11.1.3 cluster, image `sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b`; JDK 25 image `sha256:8f00ab6b6e1eed196c2b835bfd558507dfc29fac3153936fa38596248d7ebc76`, Scala 3.9.0, sbt 1.10.7. Raw generated run data is not published; completed disposable resources are removed.
+
+- **Run:** Configured sockets after #889, #877, #892 and #888 (#854, 2026-11-10): `python3 scripts/devnet.py --name codex854-sockets relay --seconds 300`
+  - **Result:** PASS. All 59 samples at the tip (maximum lag 0), all final tips equal, epochs 4–10; 221 submitted through the Haskell relay and 221 included, zero drops, errors and reconnects. One `ConwayMempoolFailure: Mempool(AllInputsSpent)` refusal is retained in the result. Reuse and local submission pass. Targeted checks: 50 network and 13 node tests pass; the moved tool compiles. Full local preflight on this base is deferred by the owner; no claim covers #893 or the accept/flood/IPv6 gaps.
+  - **Commit:** `51db8aec6a1bf931ef756a31388c74b499984a3b`, based on `9d027beeb`
+
 - **Run:** Connection-manager follow-ups (#854, 2026-11-10): `python3 scripts/devnet.py --name codex854-followups relay --seconds 300`
   - **Result:** PASS. All 56 samples within one block (maximum lag 1), all final tips equal, epochs 5–11; 168 submitted through the Haskell relay and 168 included, no mempool refusals/drops, zero errors and reconnects. The relay's inbound duplex connection is reused; local submission is adopted. Removing waiter-side compensation fails the new cancellation regression because the manager stays Duplex rather than returning to Inbound Duplex; restored source passes all seven OutboundReuseSuite tests. No verdict is claimed for the remaining #854 checklist items.
   - **Commit:** `2aa23a044fe0fa0294fe4d25353db63c3aa401ba`

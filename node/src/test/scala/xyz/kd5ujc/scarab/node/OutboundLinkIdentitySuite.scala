@@ -60,8 +60,8 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
       }
       if defectInResolution then defectFirst.fold(resolving)(IO.raiseError(_)) else resolving
 
-    def bearer(address: PeerNetwork.Addr, remote: SocketAddress[IpAddress])(using
-        raise: Raise[IO, NetworkError]
+    def bearer(address: PeerNetwork.Addr, remote: SocketAddress[IpAddress], mode: DiffusionMode)(
+        using raise: Raise[IO, NetworkError]
     ): Resource[IO, Bearer[IO]] =
       if remote.port == firstPort then
         Resource.eval(firstStarted.complete(()).void *> releaseFirst.get).flatMap { _ =>
@@ -69,18 +69,19 @@ class OutboundLinkIdentitySuite extends FailsOnUncaught:
             case Some(problem) => Resource.eval(IO.raiseError[Bearer[IO]](problem))
             case None if failFirst =>
               Resource.eval(
-                raise.raise[NetworkError, Bearer[IO]](
-                  NetworkError
-                    .Connect(address.toString, new java.io.IOException("old attempt failed"))
-                )
+                raise.raise[NetworkError, Bearer[IO]](ConnectFailures.connect(remote))
               )
             case None =>
               underlying
-                .bearer(address, remote)
+                .bearer(address, remote, mode)
                 .onFinalize(finalizeBearer)
                 .evalTap(_ => afterBearer)
         }
-      else underlying.bearer(address, remote).onFinalize(finalizeBearer).evalTap(_ => afterBearer)
+      else
+        underlying
+          .bearer(address, remote, mode)
+          .onFinalize(finalizeBearer)
+          .evalTap(_ => afterBearer)
 
   private final case class Fixture(
       outbound: OutboundPeers[IO, PeerNetwork.Addr],

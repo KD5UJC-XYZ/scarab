@@ -175,7 +175,7 @@
 {"event":"extended","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"epoch":3,"era":"Conway","peerTip":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"rolledBack","at":"2026-10-16T12:00:00Z","from":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"},"to":{"origin":true},"depth":2}
 {"event":"epoch","at":"2026-10-16T12:00:00Z","epoch":4,"first":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
-{"event":"reconnecting","at":"2026-10-16T12:00:00Z","reason":"unavailable: connect 10.0.0.1:3001: connection refused","attempt":3}
+{"event":"reconnecting","at":"2026-10-16T12:00:00Z","reason":"unavailable: connect 10.0.0.1:3001: Network.Socket.connect: does not exist (Connection refused)","attempt":3}
 {"event":"blockNoVerdict","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"},"kind":"defect","reason":"the rules threw: java.lang.IllegalStateException: injected rules defect","attempt":2,"retryInMs":2000}
 {"event":"blockNoVerdictRetry","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"},"attempt":3}
 {"event":"eraTransition","at":"2026-10-16T12:00:00Z","from":null,"to":"Byron","epoch":0,"slot":4200,"block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
@@ -188,7 +188,7 @@
 {"event":"extended","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"epoch":3,"era":"Conway","peerTip":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"rolledBack","at":"2026-10-16T12:00:00Z","from":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"},"to":{"origin":true},"depth":2}
 {"event":"epoch","at":"2026-10-16T12:00:00Z","epoch":4,"first":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
-{"event":"reconnecting","at":"2026-10-16T12:00:00Z","reason":"unavailable: connect 10.0.0.1:3001: connection refused","attempt":3}
+{"event":"reconnecting","at":"2026-10-16T12:00:00Z","reason":"unavailable: connect 10.0.0.1:3001: Network.Socket.connect: does not exist (Connection refused)","attempt":3}
 {"event":"blockNoVerdict","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"},"kind":"defect","reason":"the rules threw: java.lang.IllegalStateException: injected rules defect","attempt":2,"retryInMs":2000}
 {"event":"blockNoVerdictRetry","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"},"attempt":3}
 {"event":"eraTransition","at":"2026-10-16T12:00:00Z","from":null,"to":"Byron","epoch":0,"slot":4200,"block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}

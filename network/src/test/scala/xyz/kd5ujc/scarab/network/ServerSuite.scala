@@ -478,18 +478,13 @@ class ServerSuite extends FailsOnUncaught:
   test("TCP: a node-to-node client connects to the accepting server and syncs"):
     val chain = Chain(Vector(1, 2, 3))
     typed {
-      BearerServer
-        .listen[IO, NetworkError](
-          TcpListeners.jdk[IO],
-          Some(ip"127.0.0.1"),
-          None,
-          _ => IO.unit
-        )((_, error) => IO(fail(error.toString))) { (bearer, _) =>
+      Listeners
+        .loopback[NetworkError]()((_, error) => IO(fail(error.toString))) { (bearer, _) =>
           typed(Served.accept(bearer, magic, handlers(chain))).void
         }
-        .flatMap(listening =>
+        .flatMap(bound =>
           NodeToNode.connect[IO, Bytes](
-            SocketAddress(listening.address.host, listening.address.port),
+            SocketAddress(bound.host, bound.port),
             magic,
             ChainSyncFixtures.rawItem
           )
@@ -518,18 +513,13 @@ class ServerSuite extends FailsOnUncaught:
   test("TCP: a wrong network magic is refused by the server"):
     val chain = Chain(Vector(1))
     typed {
-      BearerServer
-        .listen[IO, NetworkError](
-          TcpListeners.jdk[IO],
-          Some(ip"127.0.0.1"),
-          None,
-          _ => IO.unit
-        )((_, error) => IO(fail(error.toString))) { (bearer, _) =>
+      Listeners
+        .loopback[NetworkError]()((_, error) => IO(fail(error.toString))) { (bearer, _) =>
           typed(Served.accept(bearer, magic, handlers(chain))).void
         }
-        .flatMap(listening =>
+        .flatMap(bound =>
           NodeToNode.connect[IO, Bytes](
-            SocketAddress(listening.address.host, listening.address.port),
+            SocketAddress(bound.host, bound.port),
             magic + 1,
             ChainSyncFixtures.rawItem
           )

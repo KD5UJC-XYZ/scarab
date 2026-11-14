@@ -4,18 +4,18 @@ package xyz.kd5ujc.scarab.network
 import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.std.{Semaphore, Supervisor}
 import cats.effect.syntax.all.*
-import cats.mtl.Handle
+import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
-import com.comcast.ip4s.{Host, IpAddress, Ipv4Address, Port, SocketAddress}
-import fs2.io.net.Network
+import com.comcast.ip4s.{IpAddress, SocketAddress}
 import scala.util.control.NonFatal
 import xyz.kd5ujc.scarab.codec.DomainError
 
-/** Inbound side of the transport: a listening TCP socket whose accepted connections are handed to
-  * one handler each, at most `maxConnections` at a time (`None`: not bounded here, the caller's
-  * `beforeAccept` and connection manager limit them). A handler that fails closes only its own
-  * connection and is reported to the owner as a typed value. Each handler owns its error scope;
-  * cancellation releases its socket without reporting a failure (ADR0017).
+/** Inbound side of the transport: a listening TCP socket configured as the reference's
+  * ([[TcpSockets.listen]]), whose accepted connections are handed to one handler each, at most
+  * `maxConnections` at a time (`None`: not bounded here, the caller's `beforeAccept` and connection
+  * manager limit them). A handler that fails closes only its own connection and is reported to the
+  * owner as a typed value. Each handler owns its error scope; cancellation releases its socket
+  * without reporting a failure (ADR0017).
   *
   * The accept loop is the reference's (`Server.hs` 188-254, ouroboros-network c45735a5), as
   * [[LocalServer]] runs it for the node-to-client socket: an accept that failed is traced, then,
@@ -47,14 +47,14 @@ object BearerServer:
     */
   final case class Listening[F[_]](address: SocketAddress[IpAddress], stopped: F[DiffusionFailure])
 
-  /** Listen on `host:port` (`None`: all interfaces / an ephemeral port) with a socket of
-    * `listeners`. The resource keeps accepting until it is released. `beforeAccept`, if given, runs
-    * before each accept, as the reference's accept loop runs `runConnectionRateLimits`.
+  /** Listen on `address` (port 0: one the kernel chooses) with a socket of `listeners`. The socket
+    * is opened, configured and bound while the resource is acquired, a failure there raised to the
+    * caller; then the connections are accepted until the resource is released. `beforeAccept`, if
+    * given, runs before each accept, as the reference's accept loop runs `runConnectionRateLimits`.
     */
   def listen[F[_]: Async, E <: DomainError](
       listeners: TcpListeners[F],
-      host: Option[Host],
-      port: Option[Port],
+      address: SocketAddress[IpAddress],
       trace: Trace => F[Unit],
       maxConnections: Option[Int] = Some(64),
       beforeAccept: Option[F[Unit]] = None
@@ -62,17 +62,9 @@ object BearerServer:
       onFailure: (SocketAddress[IpAddress], HandlerFailure[E]) => F[Unit]
   )(
       handle: Handle[F, E] ?=> (Bearer[F], SocketAddress[IpAddress]) => F[Unit]
-  ): Resource[F, Listening[F]] =
-    val dns = Network.forAsync[F].dns
+  )(using Raise[F, TcpSocketError]): Resource[F, Listening[F]] =
     for
-      requested <- Resource.eval(
-        host
-          .traverse(_.resolve[F](using dns, Async[F]))
-          .map(ip =>
-            SocketAddress(ip.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard))
-          )
-      )
-      listener <- listeners.bind(requested)
+      listener <- listeners.bind(address).evalMap(Fibers.land(_))
       // the clients accepted and not yet closed, closed when the server is released: a handler's
       // fiber that the supervisor cancels before it starts never runs its own close
       open <- Resource.make(Ref.of[F, Map[Long, F[Unit]]](Map.empty))(

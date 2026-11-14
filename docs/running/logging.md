@@ -100,7 +100,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `listeningLocalSocket` | `Node.ListeningLocalSocket` | Info | `path`, `socket` |
 | `localSocketUp` | `Node.LocalSocketUp` | Info | `path`, `socket` |
 | `runLocalServer` | `Node.RunLocalServer` | Info | `localAddress` (as `path`) |
-| `diffusionErrored` | `Node.DiffusionErrored` | Critical | `error`, the reference's text of the failure; the node-to-client socket could not be set up (its bind, or the status of the socket or its directory, failed) or its accept loop stopped, and the node exits with 1 |
+| `diffusionErrored` | `Node.DiffusionErrored` | Critical | `error`, the reference's text of the failure; the node-to-client socket could not be set up (its bind, or the status of the socket or its directory, failed), the node-to-node listener could not be set up (its socket, an option or its bind failed), or the accept loop of either stopped, and the node exits with 1 |
 | `memory` | `Node.Memory` | Info | `sample` |
 | `cpuStarvation` | `Node.CpuStarvation` | Warning | `clockDriftMs`, `threshold`, `intervalMs` |
 | `stateDump` | `Node.StateDump` | Info | `slot`, `hash`, `epoch`, `millis` |

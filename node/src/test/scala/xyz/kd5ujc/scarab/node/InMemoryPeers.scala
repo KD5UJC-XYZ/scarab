@@ -7,6 +7,7 @@ import cats.syntax.all.*
 import com.comcast.ip4s.*
 import xyz.kd5ujc.scarab.ledger.PeerError
 import xyz.kd5ujc.scarab.network.*
+import xyz.kd5ujc.scarab.network.selection.DiffusionMode
 import xyz.kd5ujc.scarab.protocol.NtNHeader
 
 /** Peers on in-memory bearers: the `Transport` of the governor tests. A peer is the address of a
@@ -33,14 +34,14 @@ final class InMemoryPeers private (
         )
   )
 
-  def bearer(peer: PeerNetwork.Addr, remote: SocketAddress[IpAddress])(using
+  def bearer(peer: PeerNetwork.Addr, remote: SocketAddress[IpAddress], mode: DiffusionMode)(using
       raise: Raise[IO, NetworkError]
   ): Resource[IO, Bearer[IO]] =
     Resource.eval(servers.get.map(_.get(peer))).flatMap {
       case None =>
         Resource.eval(
           raise.raise[NetworkError, Bearer[IO]](
-            NetworkError.Connect(peer.toString, new java.io.IOException("refused"))
+            ConnectFailures.connect(remote)
           )
         )
       case Some(handlers) =>

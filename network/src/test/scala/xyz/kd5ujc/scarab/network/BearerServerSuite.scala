@@ -4,17 +4,20 @@ package xyz.kd5ujc.scarab.network
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
+import cats.mtl.Handle
 import cats.mtl.syntax.all.*
 import com.comcast.ip4s.*
 import fs2.io.net.{Network, Socket}
 import scala.concurrent.duration.*
 import fs2.{Chunk, Stream}
+import xyz.kd5ujc.scarab.network.selection.DiffusionMode
 
 class BearerServerSuite extends FailsOnUncaught:
+  import Listeners.failing
+
   private val network = Network.forAsync[IO]
   private val refused = NetworkError.BearerClosed(NetworkError.Closure.PeerClosed)
   private val bug = new IllegalStateException("handler defect")
-  private val jdk = TcpListeners.jdk[IO]
   private val quiet = (_: BearerServer.Trace) => IO.unit
   private val exhausted = SystemCallError(SystemCall.Accept, ErrnoCause.Known(Errno.EMFILE), None)
   private val aborted =
@@ -25,9 +28,11 @@ class BearerServerSuite extends FailsOnUncaught:
       results: List[Either[AcceptFailure, TcpStream[IO]]],
       calls: Ref[IO, Int]
   ): TcpListeners[IO] = new TcpListeners[IO]:
-    def bind(requested: SocketAddress[IpAddress]): Resource[IO, TcpListener[IO]] =
+    def bind(
+        requested: SocketAddress[IpAddress]
+    ): Resource[IO, Either[TcpSocketError, TcpListener[IO]]] =
       Resource.eval(Ref.of[IO, List[Either[AcceptFailure, TcpStream[IO]]]](results)).map { left =>
-        new TcpListener[IO]:
+        Right(new TcpListener[IO]:
           val address: SocketAddress[IpAddress] = SocketAddress(ip"127.0.0.1", port"3001")
           def accept: IO[Either[AcceptFailure, TcpStream[IO]]] =
             calls.update(_ + 1) *> left
@@ -35,7 +40,7 @@ class BearerServerSuite extends FailsOnUncaught:
                 case next :: rest => (rest, Some(next))
                 case Nil          => (Nil, None)
               }
-              .flatMap(_.fold(IO.never)(IO.pure))
+              .flatMap(_.fold(IO.never)(IO.pure)))
       }
 
   /** A connection with nothing to read whose close completes `closed`. */
@@ -46,19 +51,30 @@ class BearerServerSuite extends FailsOnUncaught:
         def write(bytes: Chunk[Byte]): IO[Unit] = IO.unit
         def close: IO[Unit] = IO.unit
       ,
+      SocketAddress(ip"127.0.0.1", port"3001"),
       SocketAddress(ip"127.0.0.2", port"4000"),
+      IO.never,
       closed.complete(()).void
     )
+
+  /** The server's end of a connection closes with linger 0 once its handler ends: the client reads
+    * a reset, not the end of the stream (`configureSocket`, `Socket.hs` 148-170).
+    */
+  private def reset(socket: Socket[IO]): IO[Unit] =
+    socket.read(1).attempt.timeout(3.seconds).map {
+      case Left(e: java.io.IOException) => assertEquals(e.getMessage, "Connection reset")
+      case other                        => fail(s"expected a reset, got $other")
+    }
 
   private def exercise(
       connect: Resource[IO, Socket[IO]],
       failures: Queue[IO, HandlerFailure[NetworkError]]
   ): IO[Unit] =
     for
-      _ <- connect.use(_.read(1).map(bytes => assertEquals(bytes, None)))
+      _ <- connect.use(reset)
       domain <- failures.take.timeout(3.seconds)
       _ <- IO(assertEquals(domain, HandlerFailure.Domain(refused)))
-      _ <- connect.use(_.read(1).map(bytes => assertEquals(bytes, None)))
+      _ <- connect.use(reset)
       defect <- failures.take.timeout(3.seconds)
       _ <- IO(assert(defect match
         case HandlerFailure.Defect(cause) => cause eq bug
@@ -74,17 +90,19 @@ class BearerServerSuite extends FailsOnUncaught:
     for
       count <- Ref.of[IO, Int](0)
       failures <- Queue.unbounded[IO, HandlerFailure[NetworkError]]
-      _ <- BearerServer
-        .listen[IO, NetworkError](jdk, Some(ip"127.0.0.1"), None, quiet, maxConnections = Some(1))(
-          (_, error) => failures.offer(error)
-        ) { (bearer, _) =>
-          count.getAndUpdate(_ + 1).flatMap {
-            case 0 => refused.raise[IO, Unit]
-            case 1 => IO.raiseError(bug)
-            case _ => bearer.write(Chunk.singleton(42.toByte))
-          }
+      _ <- Listeners
+        .loopback[NetworkError](maxConnections = Some(1))((_, error) => failures.offer(error)) {
+          (bearer, _) =>
+            // The client has completed connect before sending this byte; linger 0 cannot race it.
+            bearer.reads.take(1).compile.drain *> count.getAndUpdate(_ + 1).flatMap {
+              case 0 => refused.raise[IO, Unit]
+              case 1 => IO.raiseError(bug)
+              case _ => bearer.write(Chunk.singleton(42.toByte))
+            }
         }
-        .use(listening => exercise(network.connect(listening.address), failures))
+        .use(bound =>
+          exercise(network.connect(bound).evalTap(_.write(Chunk.singleton(0.toByte))), failures)
+        )
     yield ()
   }
 
@@ -98,15 +116,14 @@ class BearerServerSuite extends FailsOnUncaught:
         case 0 => IO.unit
         case _ => held.complete(()) *> gate.get
       }
-      _ <- BearerServer
-        .listen[IO, NetworkError](jdk, Some(ip"127.0.0.1"), None, quiet, None, Some(before))(
-          (_, _) => IO.unit
-        )((_, _) => served.offer(()))
-        .use { listening =>
-          val bound = listening.address
+      _ <- Listeners
+        .loopback[NetworkError](maxConnections = None, Some(before))((_, _) => IO.unit)(
+          (bearer, _) => bearer.reads.take(1).compile.drain *> served.offer(())
+        )
+        .use { bound =>
           for
             // the served connection is closed although the next accept is held back
-            _ <- network.connect(bound).use(_.read(1).timeout(3.seconds).map(assertEquals(_, None)))
+            _ <- network.connect(bound).evalTap(_.write(Chunk.singleton(0.toByte))).use(reset)
             _ <- served.take.timeout(3.seconds)
             // the second accept waits in `beforeAccept`: this connection is not served yet
             _ <- held.get.timeout(3.seconds)
@@ -122,17 +139,14 @@ class BearerServerSuite extends FailsOnUncaught:
   test("a defect while constructing a handler effect is reported with its original cause") {
     for
       failures <- Queue.unbounded[IO, HandlerFailure[NetworkError]]
-      _ <- BearerServer
-        .listen[IO, NetworkError](jdk, Some(ip"127.0.0.1"), None, quiet)((_, error) =>
-          failures.offer(error)
-        ) { (_, _) =>
+      _ <- Listeners
+        .loopback[NetworkError]()((_, error) => failures.offer(error)) { (_, _) =>
           throw bug
         }
-        .use { listening =>
-          network
-            .connect(listening.address)
-            .use(_.read(1)) *> failures.take.timeout(3.seconds).map { failure =>
-            assertEquals(failure, HandlerFailure.Defect(bug))
+        .use { bound =>
+          network.connect(bound).use(_.read(1)).attempt *> failures.take.timeout(3.seconds).map {
+            failure =>
+              assertEquals(failure, HandlerFailure.Defect(bug))
           }
         }
     yield ()
@@ -143,18 +157,61 @@ class BearerServerSuite extends FailsOnUncaught:
       entered <- Deferred[IO, Unit]
       released <- Deferred[IO, Unit]
       failures <- Ref.of[IO, Vector[HandlerFailure[NetworkError]]](Vector.empty)
-      _ <- BearerServer
-        .listen[IO, NetworkError](jdk, Some(ip"127.0.0.1"), None, quiet)((_, error) =>
-          failures.update(_ :+ error)
-        ) { (_, _) =>
+      _ <- Listeners
+        .loopback[NetworkError]()((_, error) => failures.update(_ :+ error)) { (_, _) =>
           (entered.complete(()) *> IO.never).guarantee(released.complete(()).void)
         }
-        .use(listening =>
-          network.connect(listening.address).use(_ => entered.get.timeout(3.seconds))
-        )
+        .use(bound => network.connect(bound).use(_ => entered.get.timeout(3.seconds)))
       _ <- released.get.timeout(3.seconds)
       errors <- failures.get
     yield assertEquals(errors, Vector.empty)
+  }
+
+  test(
+    "the listener sets SO_REUSEPORT: the node's outbound socket binds to its port and connects"
+  ) {
+    // binding to the port of a listener without SO_REUSEPORT (fs2's) fails with EADDRINUSE
+    // (`TcpSocketsSuite`), and the reference binds its outbound sockets to the listening address
+    Listeners.loopback[NetworkError]()((_, _) => IO.unit)((_, _) => IO.never).use { node =>
+      network.bind(Listeners.Loopback).use { server =>
+        val (peer, accepted) = (server.address.asIpUnsafe, server.accept)
+        val own = NodeAddresses(Some(SocketAddress(ipv4"127.0.0.1", node.port)), None)
+        TcpSockets
+          .connect[IO](
+            OutboundPlan.of(peer, own, DiffusionMode.InitiatorAndResponder),
+            3.seconds
+          )
+          .use(dialled =>
+            IO(assertEquals(dialled.map(_.local), Right(node))) *>
+              accepted.take(1).compile.lastOrError.flatMap { inbound =>
+                IO(assertEquals(inbound.peerAddress.asIpUnsafe, node))
+              }
+          )
+      }
+    }
+  }
+
+  test("a listener that cannot bind raises its typed error") {
+    network.bind(Listeners.Loopback).map(_.address.asIpUnsafe).use { taken =>
+      Handle
+        .allow[TcpSocketError](
+          BearerServer
+            .listen[IO, NetworkError](TcpListeners.configured[IO], taken, quiet)((_, _) => IO.unit)(
+              (_, _) => IO.unit
+            )
+            .use(_ => IO.pure(Option.empty[TcpSocketError]))
+        )
+        .rescue(error => IO.pure(Some(error)))
+        .map(raised =>
+          assertEquals(
+            raised,
+            Some(
+              TcpSocketError
+                .Failed(SocketStep.Bind(taken), ErrnoCause.Known(Errno.EADDRINUSE))
+            )
+          )
+        )
+    }
   }
 
   test("an accept that fails other than with ECONNABORTED is traced and stops the server with it") {
@@ -166,8 +223,7 @@ class BearerServerSuite extends FailsOnUncaught:
           stopped <- BearerServer
             .listen[IO, NetworkError](
               scripted(List(Left(AcceptFailure.System(exhausted))), calls),
-              None,
-              None,
+              Listeners.Loopback,
               trace => traces.update(_ :+ trace)
             )((_, _) => IO.unit)((_, _) => IO.unit)
             .use(_.stopped)
@@ -203,8 +259,7 @@ class BearerServerSuite extends FailsOnUncaught:
           result <- BearerServer
             .listen[IO, NetworkError](
               scripted(List(Left(AcceptFailure.System(aborted)), Right(idle(closed))), calls),
-              None,
-              None,
+              Listeners.Loopback,
               trace => traces.update(_ :+ trace)
             )((_, _) => IO.unit)((_, _) => IO.monotonic.flatMap(served.complete).void)
             .use(_ =>
@@ -232,8 +287,7 @@ class BearerServerSuite extends FailsOnUncaught:
             BearerServer
               .listen[IO, NetworkError](
                 scripted(List(Left(AcceptFailure.System(exhausted))), calls),
-                None,
-                None,
+                Listeners.Loopback,
                 {
                   case BearerServer.Trace.ServerStopped => IO.raiseError(unwritable)
                   case _                                => IO.unit
@@ -255,8 +309,7 @@ class BearerServerSuite extends FailsOnUncaught:
           stopped <- BearerServer
             .listen[IO, NetworkError](
               scripted(List(Left(AcceptFailure.Defect(broken))), calls),
-              None,
-              None,
+              Listeners.Loopback,
               trace => traces.update(_ :+ trace)
             )((_, _) => IO.unit)((_, _) => IO.unit)
             .use(_.stopped)
@@ -286,8 +339,7 @@ class BearerServerSuite extends FailsOnUncaught:
           _ <- BearerServer
             .listen[IO, NetworkError](
               scripted(List(Right(failing), Right(idle(second))), calls),
-              None,
-              None,
+              Listeners.Loopback,
               quiet,
               maxConnections = Some(1)
             )((_, _) => IO.unit)((_, _) => served.offer(()))

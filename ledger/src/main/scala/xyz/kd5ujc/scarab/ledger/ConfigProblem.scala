@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.DomainError
 import io.circe.{DecodingFailure, ParsingFailure}
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -80,6 +81,11 @@ enum ConfigProblem:
   case MempoolCapacity(actual: io.circe.Json)
   case PeerTargets[E <: DomainError](cause: E)
   case PeerAddress[E <: DomainError](cause: E)
+
+  /** `--listen` names an address the node cannot listen on: a name that does not resolve, or an
+    * IPv6 address, which is refused until `IPV6_V6ONLY` can be set (issues 854 and 859).
+    */
+  case ListenAddress(address: String, cause: xyz.kd5ujc.scarab.protocol.TcpSocketError[?, ?])
   case PeerSnapshot[E <: DomainError](cause: E)
   case StateMirror[E <: DomainError](cause: E)
   case GenesisStart(cause: rules.GenesisStartError)
@@ -170,8 +176,9 @@ enum ConfigProblem:
     case PlutusVmUnknown(cause)       => s"--plutus-vm: ${cause.message}"
     case MempoolCapacity(actual) =>
       s"configuration MempoolCapacityBytesOverride: ${actual.noSpaces} is neither a number of bytes from 0 to 4294967295 nor NoOverride"
-    case WithUsage(cause, usage) => s"${cause.message}\n$usage"
-    case _                       => toString
+    case ListenAddress(address, cause) => s"--listen $address: ${cause.show}"
+    case WithUsage(cause, usage)       => s"${cause.message}\n$usage"
+    case _                             => toString
 
 /** Why `fromAvvmVK` refuses an AVVM key (`AvvmVKError`,
   * `Cardano/Crypto/Signing/Redeem/VerificationKey.hs:94-98`, cardano-crypto-wrapper 1.7.0.0).

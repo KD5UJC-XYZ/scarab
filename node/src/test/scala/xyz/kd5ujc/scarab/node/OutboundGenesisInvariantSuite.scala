@@ -69,22 +69,18 @@ class OutboundGenesisInvariantSuite extends FailsOnUncaught:
   /** The in-memory peers, with the TCP identity that the Genesis controls of a connection need. */
   private final class Identified(underlying: InMemoryPeers) extends Transport[IO, PeerNetwork.Addr]:
     def resolve(address: PeerNetwork.Addr) = underlying.resolve(address)
-    def bearer(address: PeerNetwork.Addr, remote: SocketAddress[IpAddress])(using
-        Raise[IO, NetworkError]
+    def bearer(address: PeerNetwork.Addr, remote: SocketAddress[IpAddress], mode: DiffusionMode)(
+        using Raise[IO, NetworkError]
     ): Resource[IO, Bearer[IO]] =
-      underlying.bearer(address, remote).map(identified(_, remote))
+      underlying.bearer(address, remote, mode).map(identified(_, remote))
 
   /** A transport that dials nothing: a session over the peer's own connection must not need it. */
   private final class NoDial(to: SocketAddress[IpAddress]) extends Transport[IO, PeerNetwork.Addr]:
     def resolve(address: PeerNetwork.Addr) = IO.pure(Right(to))
-    def bearer(address: PeerNetwork.Addr, remote: SocketAddress[IpAddress])(using
-        raise: Raise[IO, NetworkError]
+    def bearer(address: PeerNetwork.Addr, remote: SocketAddress[IpAddress], mode: DiffusionMode)(
+        using raise: Raise[IO, NetworkError]
     ): Resource[IO, Bearer[IO]] =
-      Resource.eval(
-        raise.raise[NetworkError, Bearer[IO]](
-          NetworkError.Connect(address.toString, new java.io.IOException("no dial"))
-        )
-      )
+      Resource.eval(raise.raise[NetworkError, Bearer[IO]](ConnectFailures.connect(remote)))
 
   /** The node's header check as a Genesis node has it, whose gate meets an invariant of the Genesis
     * code when it starts, the way the header gate does at its intersection (`invariant(...) *>
