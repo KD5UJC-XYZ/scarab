@@ -12,11 +12,9 @@ they differ from this file or CONTRIBUTING, this file and CONTRIBUTING win.
 
 ## Before you start
 
-1. Run `python3 scripts/status.py --issue <N>` first. It prints the issue's state, labels and milestone, its
-   roadmap ID (or those of the issues it follows up), the [decisions](docs/decisions.md) that cite it, the
-   [playbooks](docs/playbooks/README.md) for its areas, a suggested level with its gates
-   ([CONTRIBUTING.md](CONTRIBUTING.md#gates-and-ceremony-by-level-of-change) decides), and its own triage
-   problems. If it is `status:in-progress` and you were not asked to take it over, someone else is on it.
+1. Run `python3 scripts/status.py --issue <N>` first (its docstring says what it prints). Its suggested level
+   is a starting point; [CONTRIBUTING.md](CONTRIBUTING.md#gates-and-ceremony-by-level-of-change) decides. If
+   the issue is `status:in-progress` and you were not asked to take it over, someone else is on it.
 2. Read the issue, then any [design document](docs/design/README.md) and [ADRs](docs/adr/README.md) it links;
    [docs/process.md](docs/process.md) says how work is tracked, and [docs/codemap.md](docs/codemap.md) where
    the code and its suites are.
@@ -24,14 +22,12 @@ they differ from this file or CONTRIBUTING, this file and CONTRIBUTING win.
 Then:
 
 - Work in your own git worktree from `main` for now, and rebase onto the PR target before reporting.
-  The owner will activate `feat/*` -> `dev` -> `main` promotion under
-  [the release design](docs/design/releases.md): after cutover only same-repository `dev` may
-  target `main`; other targets accept any source. `release/alpha`, `release/beta`,
-  `release/preprod` and `release/prod` also use protected PRs. Until then `main` remains the
-  working target. At cutover use the [reviewed promotion workflow](docs/promotion-cutover.md)
-  for `dev` -> `main`; do not treat a shared commit's green check as source-branch authority.
-  #161 tracks enforcement;
-  do not claim protections are enabled or change repository settings.
+  `main` remains the working target until the owner activates `feat/*` -> `dev` -> `main` promotion
+  ([CONTRIBUTING.md](CONTRIBUTING.md#landing-in-parallel)); after cutover only same-repository `dev` may
+  target `main`, through the [reviewed promotion workflow](docs/promotion-cutover.md), while other
+  targets accept any source; `release/alpha`, `release/beta`, `release/preprod` and `release/prod` also
+  use protected PRs. Do not treat a shared commit's green check as source-branch authority; do not claim
+  protections are enabled or change repository settings.
 - Feedback from the owner arrives as inline commit comments and issues labelled `owner-review`; triage
   it as [CONTRIBUTING.md](CONTRIBUTING.md#owner-review-feedback) says, and a general rule goes into this
   file together with a sweep of the tree.
@@ -41,16 +37,16 @@ Then:
 - Never run `java` or `sbt` on the host. Build and test in the JDK image (`scarab-jdk:local`, built
   from `docker/jdk.Dockerfile`), as [CONTRIBUTING.md](CONTRIBUTING.md#build-docker-only) shows.
 - For many small edits use a persistent sbt server container **of your own**, and give it a private
-  server socket with `-e SBT_GLOBAL_BASE=/tmp/sbt-global`. Containers that share the dependency cache
-  otherwise share one socket path, and a client can reach another session's server.
+  server socket with `-e SBT_GLOBAL_BASE=/tmp/sbt-global`
+  ([CONTRIBUTING.md](CONTRIBUTING.md#fast-iteration-a-persistent-sbt-server-optional) says why).
 - Use your own devnet name: `python3 scripts/devnet.py --name <yours> <scenario>`, then
   `python3 scripts/devnet.py --name <yours> down`. Run data goes to `${SCARAB_DATA_DIR:-/tmp/scarab}`,
   never into the checkout or a home directory. `/tmp` is commonly emptied at boot and aged out after 30
   days, so data that must outlive a run goes in a dated `.workspace/data/` directory, and drafts awaiting
   the owner go in `.workspace/notes/`, never only in `/tmp` or a session scratchpad. A document records
-  what a reader needs (results, hashes, commands, pinned versions) and says that raw run artifacts are not
-  published; it never names a directory on your machine as where evidence lives
-  (`scripts/check_local_paths.py` refuses that).
+  what a reader needs and says that raw run artifacts are not published; it never names a directory on
+  your machine as where evidence lives (`scripts/check_local_paths.py` refuses that; its docstring has
+  the detail).
 - Never kill processes by pattern (`pkill -f`): it can match your own shell. Kill by PID, or remove
   your own container.
 - Remove the containers you started when you finish. Label every container that outlives one command
@@ -70,8 +66,8 @@ scala code … I love the use of type parameters when I can use them"*.
   typed causes across layers; render text only for logs, CLI output or wire presentation. A generic
   `Failure(message: String)` wrapper is not a migration to domain error cases. No `Either[String, …]`,
   no string-based control flow, no `throw` for domain errors, no `.get` on values that are not
-  provably present. The remaining migration and CI guard are tracked by M11-E in
-  [the roadmap](docs/roadmap.md) under [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82).
+  provably present ([CONTRIBUTING.md](CONTRIBUTING.md#style-rules) says where the remaining migration
+  is tracked).
 - Functional code is the default. Imperative, side-effecting implementations are allowed only in
   performance-critical code, with profiling or benchmark evidence and a written reason for the
   specific path (record measurements in [performance.md](docs/performance.md)). The other exceptions
@@ -93,31 +89,30 @@ scala code … I love the use of type parameters when I can use them"*.
   is an exception that nobody catches. A fiber that outlives the call (`background`, `supervise`, a kept
   `start`) runs its body in a scope of its own and returns `Either` at its boundary (`Fibers.scoped`,
   `Fault.fiber`), its owner raises the value again in its own fiber (`Fibers.land`, `Fault.land`), and a
-  channel or client takes the caller's `Raise` as a `using` clause instead of holding one. Example:
-  `Fibers.scoped[F, NetworkError, Unit](defect)(client.ping).flatMap(_.fold(mux.abort, _ => F.unit))`.
-  A fiber that its owner joins at once (`race`, `parSequence`, `Compute.within`) may use the owner's
-  capabilities. An exception that is not ours is wrapped at the boundary into a typed case that says
-  it is a defect; it is never "the peer is unavailable". Suites that start fibers extend `FailsOnUncaught`.
+  channel or client takes the caller's `Raise` as a `using` clause instead of holding one
+  ([example](CONTRIBUTING.md#style-rules)). A fiber that its owner joins at once (`race`,
+  `parSequence`, `Compute.within`) may use the owner's capabilities. An exception that is not ours is
+  wrapped at the boundary into a typed case that says it is a defect; it is never "the peer is
+  unavailable". Suites that start fibers extend `FailsOnUncaught`.
 - In concurrency tests, evaluate blocking latch waits and joins before passing their results to
-  MUnit assertions: clue capture holds the suite monitor while evaluating an assertion, so a worker
-  assertion can deadlock with a parent's asserted wait. Release latches and finish owned workers in
-  guaranteed cleanup. Positive synchronization uses an observable condition or controlled schedule;
-  bounded negative observations without a product-side hook remain explicitly tracked in #251.
+  MUnit assertions ([CONTRIBUTING.md](CONTRIBUTING.md#style-rules) says why). Release latches and
+  finish owned workers in guaranteed cleanup. Positive synchronization uses an observable condition or
+  controlled schedule; bounded negative observations without a product-side hook remain explicitly
+  tracked in #251.
 - A program run by hand (a benchmark, a probe, the writer of a fixture or golden) lives in the `tools`
   module (`tools/runMain <class>`), in the package of the code it exercises, never in a test tree.
   `tools` may use every module's test kits and follows the rules of test code; data the suites read
   stays in the test tree, and `tools` holds only its entry point.
 - Tests do not sleep: no sleep, delay, timer or yield orders fibers, waits for a state or paces a poll
   loop. Wait on a `Deferred`, a latch, a change signal or a report of the code under test, or run the
-  test in `Settled` (network test tree), whose `settle` returns once every fiber of the test is
-  blocked; drive time with `TestControl` (`tick`, `advanceAndTick`) or `Settled.timed`.
-  `scripts/check_test_sleeps.py` refuses a new `sleep`, `delayBy`, `andWait`, fs2 timer, `parkNanos`,
-  `onSpinWait`, `cede`, `Thread.yield` or sleep-poll helper in a source outside `src/main` (#870),
-  against a baseline that only shrinks: the change that removes a site commits the smaller
-  `docs/data/test-sleep-baseline.json`. It cannot tell `TestControl`'s clock from the wall clock, so
-  it refuses a new virtual-time sleep too, and it does not see a poll without those calls
-  (`ref.get.iterateUntil(p)`), which this rule forbids all the same. Bounded negative observations
-  without a product-side hook remain tracked in #251; a new sleep for one is still refused.
+  test in `Settled` (network test tree; its Scaladoc says what `settle` waits for); drive time with
+  `TestControl` (`tick`, `advanceAndTick`) or `Settled.timed`. `scripts/check_test_sleeps.py` refuses
+  a new sleep, delay, timer, yield or sleep-poll helper in a source outside `src/main` (#870; its
+  docstring lists the calls), against a baseline that only shrinks: the change that removes a site
+  commits the smaller `docs/data/test-sleep-baseline.json`. It refuses a new virtual-time sleep too,
+  and a poll it does not see (`ref.get.iterateUntil(p)`) this rule forbids all the same. Bounded
+  negative observations without a product-side hook remain tracked in #251; a new sleep for one is
+  still refused.
 - Opaque types, type classes with extension syntax, instances in companions, `derives` where it
   works, Monocle optics for nested state. Type parameters for roles and eras (`KeyHash[StakePool]`,
   `LedgerState[Conway]`).
@@ -175,36 +170,36 @@ scala code … I love the use of type parameters when I can use them"*.
 
 - Name the level of your change and run its gates, no more
   ([CONTRIBUTING.md](CONTRIBUTING.md#gates-and-ceremony-by-level-of-change)): at least `check`
-  (formatting, `-Werror`, every module's tests, scalafix), plus one scenario per area touched.
-  A documentation-only change (level 0) needs only that its relative links resolve, and a design document
-  or ADR also has its reference claims checked against the pinned source ([CONTRIBUTING.md](CONTRIBUTING.md#levels)).
-  Soak, repeats and the long network replays are nightly CI's, not yours, unless your stage's design
-  names them as its jump gate.
+  (formatting, `-Werror`, every module's tests, scalafix), plus one scenario per area touched. A
+  documentation-only change (level 0) needs only that its relative links resolve, and a design document
+  or ADR also has its reference claims checked against the pinned source
+  ([CONTRIBUTING.md](CONTRIBUTING.md#levels)). Soak, repeats and the long network replays are nightly
+  CI's, not yours, unless your stage's design names them as its jump gate.
 - A persisted format must not change without a version bump, a migration and a test that reads the
   previous version ([ADR 0006](docs/adr/0006-versioned-formats-migrate-on-open.md)). The snapshot
-  goldens in `node/src/test/.../storage/CodecSuite.scala` guard this: the schema fingerprints of the
-  sidecar and the checkpoint binding, and the bytes of the V10 header's recorded reference build.
+  goldens in `node/src/test/.../storage/CodecSuite.scala` guard this
+  ([what they pin](docs/storage-migrations.md#register-the-change-before-changing-the-writer)).
 - Record evidence where the [definition of done](docs/process.md#definition-of-done) says, and track
   every gap you leave as an issue or roadmap item; a P2 gap goes into its parent issue's checklist
   (`python3 scripts/file_issue.py --parent N`, [process](docs/process.md#lifecycle-of-an-item)).
 - Maintained native snapshot fixtures and ordinary snapshot test builders use the current native
   format (V10, `fixtures/snapshot-v10`; the V5, V7, V8 and V9 files are the previous-version inputs), and
-  assertions read typed native state directly instead of completing flat-state adapters. Keep pinned conversion provenance and preserve original private archives outside the
-  checkout. A future persisted-format change still needs its previous-version read test and
-  migration; generic toy-format migration framework tests remain independent of native fixtures.
+  assertions read typed native state directly instead of completing flat-state adapters
+  ([CONTRIBUTING.md](CONTRIBUTING.md#style-rules)). Keep pinned conversion provenance and preserve
+  original private archives outside the checkout. A future persisted-format change still needs its
+  previous-version read test and migration; generic toy-format migration framework tests remain
+  independent of native fixtures.
 - Small, logical commits as CONTRIBUTING describes. A changelog entry is a fragment in `changes/`,
   never an edit of `CHANGELOG.md`. Do not push to `main` unless you were asked to.
 - Before reporting a change ready, and again after every rebase or merge of its base, run
-  `scripts/preflight --check` and report its result. It runs the repository-wide CI checks locally
-  (the full-history secret scan, workflow lint, the Python guards and `check`); a PR is not ready while
-  it fails.
+  `scripts/preflight --check` and report its result (its header says which CI checks it runs); a PR is
+  not ready while it fails.
 - After a rebase, re-check every factual claim your change makes against the new base, not only that
   it builds.
 - A change to an ADR, or to agent-facing documents that state facts about the code, gets an
   independent review against the code before it is reported ready.
-- Run `python3 scripts/cleanup.py --owner <each devnet, container owner and run name you made> --apply`.
-  It removes unused worktrees whose pull request was merged into `main` and your stopped labelled containers
-  and run directories, keeps anything in use, cited by a tracked file or not provably finished, and says why.
+- Run `python3 scripts/cleanup.py --owner <each devnet, container owner and run name you made> --apply`
+  (its docstring says what it removes and what it keeps).
 - Report: branch and commits, what changed, gate results, deviations from the plan and why, and what
   the next stage needs to know.
 

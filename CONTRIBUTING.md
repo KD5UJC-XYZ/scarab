@@ -142,6 +142,12 @@ with a pattern that matches your own shell command line.
   values. Effects wrap them, not the other way around.
 - **Laws and properties.** New algebras and stateful structures get cats-laws or ScalaCheck
   properties (round trips, model equivalence, rollback), not only examples.
+- **Fibers and concurrency tests.** The rules are in [AGENTS.md](AGENTS.md#how-code-is-written-here)
+  and [ADR 0017](docs/adr/0017-fibers-end-with-values.md). An example of a fiber's boundary:
+  `Fibers.scoped[F, NetworkError, Unit](defect)(client.ping).flatMap(_.fold(mux.abort, _ => F.unit))`.
+  A concurrency test evaluates its blocking latch waits and joins before passing their results to
+  MUnit assertions because clue capture holds the suite monitor while evaluating an assertion, so a
+  worker assertion can deadlock with a parent's asserted wait.
 - **Original-bytes rule.** Anything that is hashed or signed (block bodies, transaction bodies,
   witness sets, scripts, datums, auxiliary data) is hashed over the bytes as received, never over a
   re-encoding. Keep the original bytes next to the decoded value. The exception is where the
