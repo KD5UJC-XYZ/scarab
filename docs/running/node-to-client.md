@@ -98,8 +98,8 @@ status of the socket or its directory that cannot be read, stops the node with o
 line carrying the reference's text (`Network.Socket.bind: does not exist (No such file or directory)`)
 and exit code 1. A path that the JDK refuses and the reference binds (see the deviations below) stops it
 the same way, but the line carries the JDK's reason in that form (`Network.Socket.bind: failed (Unix
-domain path too long)`). A path beyond ASCII that is not refused for its length or a trailing `/` stops it
-after `configuringLocalSocket` with the line observed for `/w/café...` on the reference's first start under
+domain path too long)`). Under a UTF-8 locale, a path beyond ASCII that is not refused for its length or a
+trailing `/` stops it after `configuringLocalSocket` with the line observed for `/w/café...` on the reference's first start under
 `LANG=C.UTF-8`
 (`<path>: getFileStatus: does not exist (No such file or directory)`), and no socket is made. A start
 that fails, here or in the removal above, also says why on standard error,
@@ -117,8 +117,12 @@ them ([#949](https://github.com/KD5UJC-XYZ/scarab/issues/949), [#953](https://gi
 - **Path length.** The JDK binds at most 106 bytes of path, after collapsing repeated `/`, and the reference
   binds up to 107 characters. So a path of 107 ASCII characters with no repeated `/` is refused here and
   bound by the reference. From 108 characters on, both refuse an ASCII path with `pokeSockAddr`'s error.
-- **A path beyond ASCII**: Scarab refuses every one. Runs of the reference with `/w/café...` paths show two
-  cases.
+- **A path beyond ASCII**: Scarab refuses every one, in every locale; under a locale that is not UTF-8, at
+  start-up, as below. Such a path cannot work with the
+  reference's own clients in every locale: their network library cuts each character down to a byte when it
+  connects, as when it binds. With the socket bound at the UTF-8 bytes of `/w/café.socket`, `cardano-cli`
+  11.1.3 reached it under `LANG=C` and not under `LANG=C.UTF-8` or with no `LANG`. So name the socket in ASCII.
+  Runs of the reference node with `/w/café...` paths:
   - **Under `LANG=C.UTF-8` or no `LANG`:** it bound the socket under the path's characters truncated to a
     byte each, then found nothing at the path's own name and stopped, leaving the mis-named file. Scarab
     stops with the same line and makes no file. So where the reference's second start failed at its bind on
@@ -128,15 +132,16 @@ them ([#949](https://github.com/KD5UJC-XYZ/scarab/issues/949), [#953](https://gi
     bytes and served the path, where Scarab refuses it.
 - **`SocketPath` in the configuration file** is the default of `--local-socket`, and the flag overrides it.
   The reference parses it and never uses it: its socket path comes from `--socket-path` only.
-- **The command line is UTF-8** whatever the locale. Where the JVM's encoding is not UTF-8 and an argument
-  holds a character beyond ASCII, Scarab reads its arguments' bytes again, so valid UTF-8 in `--local-socket`
-  names the same file in every locale. Where it cannot read them again (an argument file before the main
-  class, `JDK_JAVA_OPTIONS`, `--disable-@files` or `--source` in the launch, no `/proc`), it refuses to start.
-  A sequence that is not
-  UTF-8 becomes U+FFFD, where the reference kept a lone byte 0xE9. Other files are still named in the
-  locale's encoding, so under `LANG=C` a configuration or database path beyond ASCII cannot be opened. Standard output and
-  error are UTF-8 too. Under `LANG=C` the reference's own output stops at the first character it cannot
-  encode.
+- **Other paths and the command line.** Any other path, such as `--config`, `--db` or a genesis file the
+  configuration names, may be any valid UTF-8 under a UTF-8 locale, and must be ASCII under any other; the
+  Docker image runs under a UTF-8 locale. A name holding U+FFFD is refused in every locale: the JVM decodes
+  bytes it cannot read as U+FFFD, and the node reads its configuration the same way, so such a name may stand
+  for another file. The node refuses to start, with exit code 2 and a line on standard error, on an argument
+  it does not take, before it touches any file, and on a file name in its configuration (the genesis files,
+  `SocketPath`, `DatabasePath`), before it removes or makes any file by them. Rename the path, or run the node under a UTF-8
+  locale (such as `LANG=C.UTF-8`). The reference, under `LANG=C`, starts with such a path and keeps bytes that
+  are not UTF-8. Standard output and error are UTF-8 whatever the locale; under `LANG=C` the reference's own
+  output stops at the first character it cannot encode.
 
 systemd socket activation (a socket passed in `LISTEN_FDS`) is not supported yet:
 [#542](https://github.com/KD5UJC-XYZ/scarab/issues/542).

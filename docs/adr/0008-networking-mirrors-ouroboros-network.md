@@ -81,47 +81,27 @@ taken by the owner after 2026-10-25 and indexed in
     `UnixDomainSockets.c` 85-86), counted after it collapses repeated `/`
     (`src/java.base/unix/classes/sun/nio/fs/UnixPath.java` 75-123). So an ASCII path of 107 characters
     with no repeated `/` is refused where the reference binds it, as a run of cardano-node 11.1.3 shows.
-    From 108 characters on, both refuse an ASCII path with `pokeSockAddr`'s error.
+    From 108 characters on, both refuse ~~the path~~ an ASCII path
+    ([amendment of 2026-11-14](#amendment-2026-11-14-path-names)) with `pokeSockAddr`'s error.
 
   Not taken for now: calling `socket`, `bind`, `listen` and `accept` through the foreign-function
   interface, which would remove both deviations.
-- **A local socket path beyond ASCII** (#949, 2026-11-13, recorded
-  [here](https://github.com/KD5UJC-XYZ/scarab/issues/949#issuecomment-6866875724) and
-  [corrected](https://github.com/KD5UJC-XYZ/scarab/issues/949#issuecomment-6867502879)):
-  - **What the reference does.** Runs of cardano-node 11.1.3 in its image show it.
-    - **`/w/café...` under `LANG=C.UTF-8` or no `LANG`:** its bind made the socket under the path's
-      characters truncated to a byte each (`castCharToCChar`, `Types.hsc` 1160). Its check of the socket at
-      the path's own name then found nothing. It stopped after `ConfiguringLocalSocket` with `<path>:
-      getFileStatus: does not exist (No such file or directory)` and left the mis-named file.
-    - **The same path under `LANG=C`, or a lone byte 0xE9 under either locale:** it kept the argument's
-      bytes, bound the path as given and served it.
-    - **Its length and trailing-`/` refusals come before its check of the socket file.** Runs show a
-      108-character such path stopping with `pokeSockAddr`'s error, and one ending in `/` failing at the
-      bind.
-  - **What Scarab does.** The owner decided that Scarab refuses every path beyond ASCII. After the same
-    length and trailing-`/` checks, it stops at that step with that error and binds nothing.
-  - **Trade-off.**
-    - **Where the reference stops,** Scarab never makes the mis-named file. So on a second start, and in a
-      directory that does not exist, Scarab gives that first error, where the reference gives its bind's:
-      `Address in use` from the file its first start left, and `does not exist`.
-    - **Where the reference serves the path,** Scarab refuses it. The owner took this decision on runs that
-      showed only the first case, and it is put to them again.
-- **The command line's encoding** (#953, 2026-11-13, [recorded](https://github.com/KD5UJC-XYZ/scarab/issues/953#issuecomment-6867498258)):
-  - **What Scarab does.** It decodes its command line as UTF-8 whatever the locale. Where the JVM's
-    encoding is not UTF-8 and an argument has bytes beyond ASCII, it reads them again from
-    `/proc/self/cmdline`, and a sequence that is not UTF-8 becomes U+FFFD. Where it cannot read them
-    again (an argument file before the main class, `JDK_JAVA_OPTIONS`, `--disable-@files` or `--source` in the
-    launch, no `/proc`), it refuses to start. So valid UTF-8 in `--local-socket` names
-    the same file in every locale, as in the reference's runs.
-  - **The differences.**
-    - The JVM still names other files in the locale's encoding, so under `LANG=C` a path beyond ASCII
-      other than the socket's cannot be opened.
-    - The reference kept a lone byte 0xE9 as a character that stands for the byte, so for such a byte
-      Scarab's stale-socket removal names a different file.
-  - **Output.** Scarab also writes standard output and error as UTF-8 whatever the locale
-    ([recorded](https://github.com/KD5UJC-XYZ/scarab/issues/953#issuecomment-6867584733)). Under `LANG=C` the
-    reference's own output stops at the first character it cannot encode, a bug that Scarab does not
-    reproduce.
+- **A local socket path beyond ASCII** (#949, 2026-11-13, [recorded](https://github.com/KD5UJC-XYZ/scarab/issues/949#issuecomment-6866875724)):
+  - **What the reference does.** Runs of cardano-node 11.1.3 with `café` paths ~~show it~~ under
+    `LANG=C.UTF-8` or with no `LANG` show it ([amendment of 2026-11-14](#amendment-2026-11-14-path-names)).
+    - Its bind makes the socket under the path's characters truncated to a byte each (`castCharToCChar`,
+      `Types.hsc` 1160).
+    - Its check of the socket at the path's own name then finds nothing.
+    - It stops after `ConfiguringLocalSocket` with `<path>: getFileStatus: does not exist (No such file or
+      directory)` and leaves the mis-named file.
+    - Its length and trailing-`/` refusals come before all this. Runs show a 108-character path beyond
+      ASCII stopping with `pokeSockAddr`'s error, and one ending in `/` failing at the bind.
+  - **What Scarab does.** The owner decided that Scarab refuses every path beyond ASCII~~, an improvement on
+    the reference~~ ([amendment of 2026-11-14](#amendment-2026-11-14-path-names)). After the same length and trailing-`/` checks, it stops at that step with that error
+    and binds nothing.
+  - **Trade-off.** Scarab never makes the mis-named file, so on a second start, and in a directory that does
+    not exist, it gives that first error. The reference gives its bind's: `Address in use` from the file its
+    first start left, and `does not exist`.
 - **`SocketPath` in the configuration file** (#949, 2026-11-13, same record):
   - **What the reference does.** It parses `SocketPath` (`cardano-node/src/Cardano/Node/Configuration/POM.hs`
     328, cardano-node 11.1.3) and never uses it: its command line's `SocketConfig`
@@ -197,3 +177,25 @@ these revisions, or follows neither, differs from the reference, as the first co
 the places found when the reference was re-pinned, and two races of the linked packages that Scarab
 does not reproduce, each wait on the owner's decision in
 [#956](https://github.com/KD5UJC-XYZ/scarab/issues/956). The approved deviations above are unchanged.
+
+## Amendment (2026-11-14): path names
+
+Corrections to the [amendment of 2026-11-13](#amendment-2026-11-13-later-approved-deviations), and one later
+decision, indexed in [decisions.md](../decisions.md#networking-and-local-clients):
+
+- **A local socket path beyond ASCII** (#949, [correction](https://github.com/KD5UJC-XYZ/scarab/issues/949#issuecomment-6867502879),
+  [confirmation](https://github.com/KD5UJC-XYZ/scarab/issues/949#issuecomment-6874231942)).
+  - **The runs.** The runs of `café` paths behind that amendment had `LANG=C.UTF-8` or no `LANG`. Under
+    `LANG=C`, and with a lone byte 0xE9, cardano-node 11.1.3 kept the argument's bytes and served the path,
+    where Scarab refuses it. The agreement from 108 characters on holds for ASCII paths.
+  - **Why the refusal stays.** The owner confirmed it on 2026-11-14. network 3.2.8.0 truncates each
+    character to a byte on connect as on bind (`Network/Socket/Types.hsc` 1097, 1141, 1158-1160). So with the
+    socket bound at the UTF-8 bytes of `/w/café.socket`, `cardano-cli` 11.1.3 reached it under `LANG=C` and
+    not under `LANG=C.UTF-8` or with no `LANG`: no bytes bound for such a path reach the reference's clients
+    in every locale.
+- **Names and the command line's encoding** (#953, 2026-11-14,
+  [recorded](https://github.com/KD5UJC-XYZ/scarab/issues/953#issuecomment-6874230519)). A local socket path is
+  ASCII only; any other path may be any valid UTF-8 under a UTF-8 locale and must be ASCII under any other,
+  and the node refuses to start on a name it does not take: under a locale that is not UTF-8, a socket path
+  beyond ASCII is refused that way, before the socket's set-up. Standard output and error are UTF-8 whatever
+  the locale. The rule and its reasons are in the [decisions register](../decisions.md#networking-and-local-clients).
