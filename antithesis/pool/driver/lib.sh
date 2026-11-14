@@ -177,8 +177,8 @@ scarab_false_clock() {
       --argjson g "$(jq -c '{systemStart, slotLength}' "$genesis")" '
     def whole: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
     def fraction: (capture("\\.(?<f>[0-9]+)Z$") | "0." + .f | tonumber) // 0;
-    ($g.systemStart | whole) as $start
-    | def since: (whole - $start) + fraction;
+    ($g.systemStart | whole) as $start | ($g.systemStart | fraction) as $startFraction
+    | def since: (whole - $start) + (fraction - $startFraction);
     def slot: since / $g.slotLength | floor;
     def early: ((slot + 1) * $g.slotLength) - since;
     first(inputs | fromjson? | select(.newTime != null and .prevTime != null)
