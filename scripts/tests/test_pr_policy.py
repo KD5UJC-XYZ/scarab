@@ -169,6 +169,19 @@ class PrBodyTests(unittest.TestCase):
             policy.check_body(pr)
         pr["body"] = body_of(0)
         self.assertEqual(policy.check_body(pr), 0)
+        link = "https://github.com/o/r/pull/8#issuecomment-1"
+        for review in [f"## Independent review\n\n`{link}`\n",
+                       f"```\n## Independent review\n\n{link}\n```\n",
+                       f"## Independent review\n\n~~~\n{link}\n~~~\n",
+                       f"## Independent review\n\n# Evidence\n\n{link}\n"]:
+            pr["body"] = body_of(1, "None", "None", review)
+            with self.subTest(review=review), self.assertRaisesRegex(policy.PolicyError, "not a draft needs"):
+                policy.check_body(pr)
+        for review in [f"## Independent review\n\nCodex, clean: [the review]({link}).\n",
+                       f"## Independent review\n\n<{link}>\n\n### Findings\n\nnone\n"]:
+            pr["body"] = body_of(1, "None", "None", review)
+            with self.subTest(review=review):
+                self.assertEqual(policy.check_body(pr), 1)
         pr.pop("draft")
         with self.subTest(draft="absent"):
             pr["body"] = body_of(0, review=None)

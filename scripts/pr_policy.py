@@ -49,6 +49,7 @@ DEVIATIONS = "deviations from the reference"
 GAPS = "gaps"
 REVIEW = "independent review"
 LINK = re.compile(r"https?://\S+")
+CODE_SPAN = re.compile(r"(`+)(?:.|\n)+?\1")
 ISSUE_LINK = re.compile(r"(?:\[#\d+\]\([^)]*\)|#\d+\b|https://github\.com/[^/\s]+/[^/\s]+/issues/\d+)")
 APPROVAL = re.compile(r"(?:https?://|#\d+|\]\()")
 SECTION_LEVEL = 1
@@ -124,11 +125,12 @@ def check_gaps(text):
 
 
 def check_review(pr):
-    """A pull request that is not a draft links the independent review of its final diff."""
+    """A pull request that is not a draft links the independent review of its final diff: a link GitHub renders, in
+    the section as `rendered_section` reads it and outside code spans."""
     if pr.get("draft") is True:
         return
-    text = sections(pr.get("body") or "").get(REVIEW)
-    require(text is not None and LINK.search(text) is not None,
+    text = rendered_section(pr.get("body"), REVIEW)
+    require(text is not None and LINK.search(CODE_SPAN.sub("", text)) is not None,
             'a pull request that is not a draft needs an "## Independent review" section that links the review of its '
             "final diff posted on it (CONTRIBUTING.md, \"Independent review\"); keep it a draft until then")
 
