@@ -33,16 +33,17 @@ if [ -x /opt/at/canary/setup_cost_model ]; then
   /opt/at/canary/setup_cost_model || exit 1
   now=$(tips)
 fi
-# Setup completes from a healthy cluster: every pool on the longest chain (fork depth 0), with blocks of s1 and of a
-# Haskell pool on it, so each side has taken the other's blocks. This topology's start race at k = 5 can keep the
+# Setup completes from a healthy cluster: every pool's ancestry known and on the longest chain (fork depth 0), a block
+# of s1 on each Haskell pool's own chain and a block of a Haskell pool on s1's, so each side has taken the other's. This topology's start race at k = 5 can keep the
 # Haskell pools from taking s1's blocks until s1 has forked past k, a cardano-node in s1's seat as well (#854), and
 # every timeline would inherit that split; such a setup fails and says so, instead of a run that asks nothing.
 deadline=$((SECONDS + 600))
 while :; do
   health=$(python3 -I /opt/at/forktree.py "$STATE_DIR/forktree.json" /logs/h2.log /logs/h3.log /logs/s1.log \
              2> /dev/null || echo '{}')
-  if jq -e '.depth == 0 and (.pools | length == 3) and ((.forgedOnLongest.s1 // 0) >= 1)
-            and (((.forgedOnLongest.h2 // 0) + (.forgedOnLongest.h3 // 0)) >= 1)' <<< "$health" > /dev/null; then
+  if jq -e '.depth == 0 and (.pools | length == 3) and ([.pools[]] | all(. != null))
+            and ((.forgedOnChain.h2.s1 // 0) >= 1) and ((.forgedOnChain.h3.s1 // 0) >= 1)
+            and (((.forgedOnChain.s1.h2 // 0) + (.forgedOnChain.s1.h3 // 0)) >= 1)' <<< "$health" > /dev/null; then
     break
   fi
   if [ "$SECONDS" -ge "$deadline" ]; then

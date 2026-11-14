@@ -81,6 +81,8 @@ services:
     image: scarab-at-driver:trial
     platform: linux/amd64
     init: true
+    environment:
+      S1_IMPLEMENTATION: cardano-node
     labels: *labels
     depends_on: *after-configurator
     volumes:
