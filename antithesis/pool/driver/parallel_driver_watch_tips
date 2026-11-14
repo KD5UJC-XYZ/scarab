@@ -1,0 +1,33 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# A driver command: Antithesis runs it many times per timeline under faults, copies of it at once. Each run reads
+# every pool's tip CHECKS times at a fixed interval, records whether each extends its chain and whether all three
+# agree, runs the divergence detectors at every check, and exits 0, so that the command runs to completion.
+set -uo pipefail
+source /opt/at/lib.sh
+exit_zero_on_signal
+
+reached "$STARTS"
+
+CHECKS=12
+prev=$(tips)
+for _ in $(seq "$CHECKS"); do
+  sleep "$INTERVAL_SECONDS"
+  now=$(tips)
+  echo "watch: tips $now"
+  extended=$(jq -cn --argjson p "$prev" --argjson c "$now" \
+    '$c | with_entries(.value = ($p[.key] != null and .value != null and .value.block > $p[.key].block))')
+  details=$(jq -cn --argjson p "$prev" --argjson c "$now" '{previous: $p, current: $c}')
+  sometimes "$SCARAB_EXTENDS" "$(jq -r '.s1' <<< "$extended")" "$details"
+  sometimes "$HASKELL_EXTENDS" "$(jq -r '.h2 or .h3' <<< "$extended")" "$details"
+  sometimes "$ALL_EXTEND" "$(jq -r '[.[]] | all' <<< "$extended")" "$details"
+  if agree "$now" 0; then together=true; else together=false; fi
+  sometimes "$ALL_AGREE" "$together" "$details"
+  check_divergence
+  check_forks
+  if [ "${S1_IMPLEMENTATION:-scarab}" = scarab ] \
+       && forged=$(log_match forged-txs /logs/s1.log '"event":"forged"' '"txs":[]'); then
+    sometimes "$S1_FORGES_TXS" true "$(jq -cn --arg line "$forged" '{line: $line[0:600]}')"
+  fi
+  prev=$now
+done

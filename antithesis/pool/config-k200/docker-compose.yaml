@@ -1,0 +1,113 @@
+# SPDX-License-Identifier: Apache-2.0
+# The cluster of ../config at k = 200, with epochs of 10k/f = 40,000 slots (about 67 minutes). An experiment of its
+# own: at create-env's k = 5 a fork deeper than 5 blocks (about 10 s of divergence at 0.5 blocks/s) is permanent by
+# protocol, so ../config cannot ask whether the forks that faults cause heal; this one can. ../config stays in the
+# suite, since a startup fork shows there as a permanent split.
+# No restart policies: Antithesis restarts what it kills.
+
+x-labels: &labels
+  xyz.kd5ujc.scarab.kind: antithesis-pool-k200
+  xyz.kd5ujc.scarab.owner: antithesis
+
+x-after-configurator: &after-configurator
+  configurator:
+    condition: service_completed_successfully
+
+# The pools' containers start once s1's has: Docker's DNS knows a name only while its container runs, so s1's name
+# resolves at the pools' first lookup. The node in s1 still waits until both pools listen (WAIT_FOR).
+x-after-s1: &after-s1
+  configurator:
+    condition: service_completed_successfully
+  s1:
+    condition: service_started
+
+# Whether a Haskell pool listens (cardano/listening.sh). s1 dials both at once, so it starts only when they listen
+# (issue 609): here its node waits for that itself (WAIT_FOR), and ../config-late-start starts its container on it.
+x-listening: &listening
+  test: ["CMD", "/opt/at/listening.sh", "3001"]
+  interval: 1s
+  timeout: 5s
+  retries: 600
+
+services:
+  configurator:
+    container_name: configurator
+    hostname: configurator
+    image: scarab-at-cardano:trial
+    platform: linux/amd64
+    command: ["/opt/at/configure.sh"]
+    environment:
+      SECURITY_PARAM: "200"
+      EPOCH_LENGTH: "40000"
+    labels: *labels
+    volumes:
+      - env:/env
+
+  h2:
+    container_name: h2
+    hostname: h2
+    image: scarab-at-cardano:trial
+    platform: linux/amd64
+    init: true
+    command: ["/opt/at/haskell-node.sh", "2"]
+    healthcheck: *listening
+    labels: *labels
+    depends_on: *after-s1
+    volumes:
+      - env:/env:ro
+      - ipc-h2:/ipc
+      - logs:/logs
+
+  h3:
+    container_name: h3
+    hostname: h3
+    image: scarab-at-cardano:trial
+    platform: linux/amd64
+    init: true
+    command: ["/opt/at/haskell-node.sh", "3"]
+    healthcheck: *listening
+    labels: *labels
+    depends_on: *after-s1
+    volumes:
+      - env:/env:ro
+      - ipc-h3:/ipc
+      - logs:/logs
+
+  s1:
+    container_name: s1
+    hostname: s1
+    image: scarab-at-scarab:trial
+    platform: linux/amd64
+    init: true
+    # s1's container starts before the pools', so that its name resolves at their first lookup, and the node waits
+    # inside it until both listen.
+    environment:
+      WAIT_FOR: "h2:3001 h3:3001"
+    labels: *labels
+    depends_on: *after-configurator
+    volumes:
+      - env:/env:ro
+      - ipc-s1:/ipc
+      - logs:/logs
+
+  driver:
+    container_name: driver
+    hostname: driver
+    image: scarab-at-driver:trial
+    platform: linux/amd64
+    init: true
+    labels: *labels
+    depends_on: *after-configurator
+    volumes:
+      - ipc-h2:/ipc/h2
+      - ipc-h3:/ipc/h3
+      - env:/env:ro
+      - ipc-s1:/ipc/s1
+      - logs:/logs:ro
+
+volumes:
+  env:
+  ipc-h2:
+  ipc-h3:
+  ipc-s1:
+  logs:
