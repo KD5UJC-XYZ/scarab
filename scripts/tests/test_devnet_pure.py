@@ -67,6 +67,15 @@ class BurstLoadTest(unittest.TestCase):
         self.assertEqual(ok, ["/l/a.signed"])
         self.assertEqual(failed, {"/l/b.signed": "Command failed: BadInputsUTxO"})
 
+    def test_funding_takes_the_largest_outputs_that_cover_the_burst(self):
+        held = {f"t#{i}": {"value": {"lovelace": 5_000_000}} for i in range(1000)}
+        held["big#0"] = {"value": {"lovelace": 400_000_000}}
+        self.assertEqual(load_tool.funding_inputs(held, 300_000_000), ["big#0"])
+        # many small outputs: never more than the bound, and None when they cannot cover it
+        chosen = load_tool.funding_inputs({k: v for k, v in held.items() if k != "big#0"}, 150_000_000)
+        self.assertEqual(len(chosen), 30)
+        self.assertIsNone(load_tool.funding_inputs({k: v for k, v in held.items() if k != "big#0"}, 300_000_000))
+
     def test_cli_offers_the_mode_and_the_burst_options(self):
         entry = pathlib.Path(__file__).resolve().parents[1] / "devnet.py"
         out = subprocess.run([sys.executable, "-I", str(entry), "load", "--help"],

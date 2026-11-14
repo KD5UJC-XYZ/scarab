@@ -181,6 +181,20 @@ def submit_results(stdout):
     return ok, failed
 
 
+def funding_inputs(held, need, most=40):
+    """The fewest of a wallet's outputs (`held`: txin -> its query entry) that cover `need`
+    lovelace, largest first, at most `most` of them so that the fan-out transaction stays well
+    inside the transaction size limit; None if those do not cover it."""
+    largest = sorted(held.items(), key=lambda kv: kv[1]["value"]["lovelace"], reverse=True)[:most]
+    chosen, total = [], 0
+    for txin, entry in largest:
+        if total >= need:
+            break
+        chosen.append(txin)
+        total += entry["value"]["lovelace"]
+    return chosen if total >= need else None
+
+
 def burst_load(args):
     """Bursts of independent transfers submitted at once, so that one block can carry many of them.
 
@@ -216,10 +230,9 @@ def burst_load(args):
     while (deadline is None or time.monotonic() < deadline) and (args.bursts is None or round_no < args.bursts):
         started = time.monotonic()
         need = size * lovelace + 50_000_000
-        funded = [(w, u) for w in wallets for u in [utxo(address[w])]
-                  if sum(v["value"]["lovelace"] for v in u.values()) >= need]
+        funded = [(w, ins) for w in wallets for ins in [funding_inputs(utxo(address[w]), need)] if ins]
         if not funded:
-            raise SystemExit(f"burst: no load wallet holds {need} lovelace for a burst of {size}")
+            raise SystemExit(f"burst: no load wallet holds {need} lovelace in its largest outputs for a burst of {size}")
         w, held = rng.choice(funded)
         fan = f"{LOAD}/fan-{round_no}"
         outs = " ".join(f"--tx-out {burst_address}+{lovelace}" for _ in range(size))
