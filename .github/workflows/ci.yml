@@ -20,8 +20,11 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  scala-tests:
-    name: Scala tests and native guards
+  # `check` built once, then its tests fanned out: this job runs `checkBuild` (`check` without the tests; build.sbt)
+  # and the native guards, and hands its compiled output to the shards, which run every module's suites
+  # (scripts/ci_test_shards.py) without compiling. "Scala tests and native guards" requires both.
+  scala-build:
+    name: Scala build, static checks and native guards
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
@@ -48,8 +51,13 @@ jobs:
           key: sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'project/*.scala', 'scripts/sbtw', 'scripts/prepare_scalus.py', 'patches/scalus/**') }}
           restore-keys: |
             sbt-${{ runner.os }}-
-      - name: scalafmt, compile and all tests
-        run: bash scripts/sbtw check node/runtimeClasspathFile
+      - name: scalafmt, headers, compile and scalafix (check without the tests), and the test suites
+        run: bash scripts/sbtw checkBuild node/runtimeClasspathFile testSuiteInventory
+      - name: Plan the test shards, every suite in exactly one
+        run: |
+          mkdir -p "$RUNNER_TEMP/scala-test-plan"
+          python3 scripts/ci_test_shards.py plan --inventory target/ci/test-suites.tsv \
+            --out "$RUNNER_TEMP/scala-test-plan/test-plan.json"
       - name: ADX/BMI2 code of the Linux/amd64 native libraries is behind the CPU switch
         run: |
           mapfile -t jblst < <(find .cache/scarab/coursier -name 'jblst-*.jar' ! -name '*-sources.jar')
@@ -58,6 +66,146 @@ jobs:
           mapfile -t jars < <(find .cache/scarab/coursier -name scalus-crypto-jni-0.1.0.jar)
           test "${#jars[@]}" -eq 1
           python3 scripts/check_native_isa.py "${jars[0]}" --member natives/linux_64/libscalus_crypto.so
+      # Every `target` directory: classes, zinc's analysis, generated sources and sbt's caches under `streams`,
+      # the meta-build's `project/target` among them, as one file. The shards check out the same commit at the
+      # same path, with the same JDK and dependency cache, so zinc finds nothing to compile; each shard refuses
+      # a log that shows a compilation.
+      - name: Pack the compiled output
+        run: |
+          mapfile -t outputs < <(find . \( -path ./.cache -o -path ./.git \) -prune -o -type d -name target -prune -print | sort)
+          printf '%s\n' "${outputs[@]}"
+          tar --format=posix --use-compress-program='zstd -T0 -3' -cf "$RUNNER_TEMP/scala-build.tar.zst" "${outputs[@]}"
+          du -h "$RUNNER_TEMP/scala-build.tar.zst"
+      - name: Upload the compiled output
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scala-build
+          path: ${{ runner.temp }}/scala-build.tar.zst
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+          overwrite: true
+      - name: Upload the test plan
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scala-test-plan
+          path: ${{ runner.temp }}/scala-test-plan
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  scala-shards:
+    name: Scala tests, shard ${{ matrix.shard }}
+    needs: [scala-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tested JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '25.0.4+101.0.LTS'
+          check-latest: false
+          overwrite-settings: false
+      # Exactly the dependency cache the build job ran with, which it saved or found under this key; the shards only
+      # read it. An older cache could lack the prepared Scalus repository, and `scripts/sbtw` would build it here, so
+      # a miss stops the shard at once: re-running all jobs saves the cache again.
+      - name: Restore sbt launcher, boot, ivy and coursier
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .cache/scarab
+          key: sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'project/*.scala', 'scripts/sbtw', 'scripts/prepare_scalus.py', 'patches/scalus/**') }}
+          fail-on-cache-miss: true
+      - name: Download the compiled output
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: scala-build
+          path: ${{ runner.temp }}/scala-build
+      - name: Download the test plan
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: scala-test-plan
+          path: ${{ runner.temp }}/scala-test-plan
+      - name: Unpack the compiled output where the build job wrote it
+        run: tar --use-compress-program=zstd -xf "$RUNNER_TEMP/scala-build/scala-build.tar.zst"
+      - name: The shard's suites
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python3 scripts/ci_test_shards.py commands --plan "$RUNNER_TEMP/scala-test-plan/test-plan.json" \
+            --shard "$SHARD" > "$RUNNER_TEMP/shard-commands.txt"
+          mapfile -t commands < "$RUNNER_TEMP/shard-commands.txt"
+          test "${#commands[@]}" -gt 0
+          printf '%s\n' "${commands[@]}"
+          bash scripts/sbtw "${commands[@]}" 2>&1 | tee "$RUNNER_TEMP/shard.log"
+      - name: The shard compiled nothing
+        run: python3 scripts/ci_test_shards.py compiled "$RUNNER_TEMP/shard.log"
+      - name: Collect the shard's test reports
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python3 scripts/ci_test_shards.py collect --plan "$RUNNER_TEMP/scala-test-plan/test-plan.json" \
+            --shard "$SHARD" --out "$RUNNER_TEMP/scala-test-reports"
+      - name: Upload the shard's test reports
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scala-test-reports-${{ matrix.shard }}
+          path: ${{ runner.temp }}/scala-test-reports
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  scala-tests:
+    name: Scala tests and native guards
+    needs: [scala-build, scala-shards]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Require the build, its static checks and native guards, and every test shard
+        env:
+          BUILD_RESULT: ${{ needs.scala-build.result }}
+          SHARDS_RESULT: ${{ needs.scala-shards.result }}
+        run: |
+          test "$BUILD_RESULT" = success
+          test "$SHARDS_RESULT" = success
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download the test plan
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: scala-test-plan
+          path: ${{ runner.temp }}/scala-test-plan
+      - name: Download every shard's test reports
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: scala-test-reports-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/scala-test-reports
+      - name: Every suite ran once, in its shard, and passed
+        run: |
+          python3 scripts/ci_test_shards.py verify --plan "$RUNNER_TEMP/scala-test-plan/test-plan.json" \
+            --reports "$RUNNER_TEMP/scala-test-reports"
 
   # Paused on pull requests and pushes, and left out of the required summary below, until releases start from main;
   # docs/design/releases.md#release-checks-paused-until-releases-start-from-main says how to restore it.
@@ -94,16 +242,20 @@ jobs:
 
   scala:
     name: scalafmt, compile and test
-    needs: [scala-tests]
+    needs: [scala-build, scala-shards, scala-tests]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require Scala tests and native guards
+      - name: Require the Scala build, every test shard, and Scala tests and native guards
         env:
+          BUILD_RESULT: ${{ needs.scala-build.result }}
+          SHARDS_RESULT: ${{ needs.scala-shards.result }}
           SCALA_RESULT: ${{ needs.scala-tests.result }}
         shell: bash
         run: |
+          test "$BUILD_RESULT" = success
+          test "$SHARDS_RESULT" = success
           test "$SCALA_RESULT" = success
 
   scripts:

@@ -522,6 +522,15 @@ lazy val sourcesOutsideModules = Def.task {
   (build +++ (root / "scripts" / "fixtures" ** "*.scala")).get.filterNot(_.getPath.contains("/target/"))
 }
 
+// Every module's test suites as sbt detects them, for CI's test shards (scripts/ci_test_shards.py): a line
+// `<module>\t<directory>\t<suite>` for each, in the order of `modules`, and `<module>\t<directory>` for a module
+// without suites.
+lazy val testSuiteInventory = taskKey[File]("Write every module's test suites for CI's test shards")
+def testSuitesOfModules: Def.Initialize[Task[Seq[(String, File, Seq[String])]]] =
+  modules.map { m =>
+    Def.task((m, (LocalProject(m) / baseDirectory).value, (LocalProject(m) / Test / definedTestNames).value))
+  }.join.apply(_.join)
+
 lazy val root = project
   .in(file("."))
   .disablePlugins(TpolecatPlugin)
@@ -543,6 +552,18 @@ lazy val root = project
   )
   .settings(
     Compile / headerSources ++= sourcesOutsideModules.value,
+    testSuiteInventory := {
+      val root = baseDirectory.value
+      val lines = testSuitesOfModules.value.flatMap { case (module, directory, suites) =>
+        val relative = IO
+          .relativize(root, directory)
+          .getOrElse(sys.error(s"module $module is outside the build: $directory"))
+        if (suites.isEmpty) Seq(s"$module\t$relative") else suites.map(suite => s"$module\t$relative\t$suite")
+      }
+      val output = target.value / "ci" / "test-suites.tsv"
+      IO.writeLines(output, lines)
+      output
+    },
     reproducibleCheck := {
       val root = baseDirectory.value
       val status = scala.sys.process
@@ -598,9 +619,13 @@ val modules = Seq(
   "tools"
 )
 
-addCommandAlias(
-  "check",
-  (";scalafmtCheckAll;headerCheckAll;checkUplcClasspath" +: (modules.map(m => s"$m/Test/compile") ++
-    modules.map(m => s"$m/Test/test")) :+ "scalafixAll --check")
-    .mkString(";")
-)
+// `check` runs these in order: formatting, the SPDX headers, the uplc class path and every module's test sources
+// compiled, every module's tests, then scalafix. CI runs the same commands in two parts (.github/workflows/ci.yml):
+// its build job runs `checkBuild`, which is `check` without the tests, and its test shards run every suite of every
+// module (scripts/ci_test_shards.py, over the suites `testSuiteInventory` lists).
+val checkBeforeTests =
+  Seq("scalafmtCheckAll", "headerCheckAll", "checkUplcClasspath") ++ modules.map(m => s"$m/Test/compile")
+val checkTests = modules.map(m => s"$m/Test/test")
+val checkAfterTests = Seq("scalafixAll --check")
+addCommandAlias("check", (checkBeforeTests ++ checkTests ++ checkAfterTests).mkString(";", ";", ""))
+addCommandAlias("checkBuild", (checkBeforeTests ++ checkAfterTests).mkString(";", ";", ""))

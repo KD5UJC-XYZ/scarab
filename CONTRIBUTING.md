@@ -25,7 +25,7 @@ docker run --rm -v "$PWD":/work -v "$scarab_cache":/work/.cache \
   scarab-jdk:local bash scripts/sbtw check
 ```
 
-`check` (an alias in `build.sbt`, built from its `modules` list; CI runs the same alias) runs `scalafmtCheckAll`, compiles all test sources, runs the
+`check` (an alias in `build.sbt`, built from its `modules` list; CI runs the same commands, built once by `checkBuild`, which is `check` without its tests, and the tests fanned out over parallel shards by `scripts/ci_test_shards.py`) runs `scalafmtCheckAll`, compiles all test sources, runs the
 tests of all modules (`crypto`'s `BlstSuite` among them: the pinned jblst library, start-up checks, the export list of the JNI glue), the fuzz suite among them, and ends with `scalafixAll --check`; the compiler runs with `-Werror` and the unused-code warnings (imports, privates, locals, explicit parameters, pattern variables), and WartRemover refuses the disallowed patterns in the main sources of every module except `tools` (`build.sbt`, issue 650; [FUN-1](docs/design-rules.md#fun-1)); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture/modules.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are
 cached under `.cache/` (gitignored). `bash scripts/sbtw node/runtimeClasspathFile` writes
 `node/target/runtime-classpath.txt`, which the scenarios use.
@@ -170,7 +170,7 @@ belong to nightly CI, not to a change.
 ### Nightly CI is the safety net
 
 `.github/workflows/e2e.yml` runs soak, e2e (one Scala follower per Plutus evaluator, `--plutus-vm scalus --plutus-vm scarab`), relay, pool, kes-rotate, ntc and restart every night, each scenario in its own job (a matrix), and on demand and on
-version tags; `fuzz.yml` runs the longer fuzzing (rotating daily seeds); `cuddle-crosscheck.yml` runs the CDDL cross-check on every pull request, every push to `main` and nightly; `fuzz-gate.yml` runs the fixed-seed `fuzz 100000 1 4` gate on pull requests that change decoder or fuzz inputs and passes without fuzzing on any other. `.github/workflows/ci.yml` runs `check`, the script tests, actionlint, a gitleaks
+version tags; `fuzz.yml` runs the longer fuzzing (rotating daily seeds); `cuddle-crosscheck.yml` runs the CDDL cross-check on every pull request, every push to `main` and nightly; `fuzz-gate.yml` runs the fixed-seed `fuzz 100000 1 4` gate on pull requests that change decoder or fuzz inputs and passes without fuzzing on any other. `.github/workflows/ci.yml` runs `check` (built once, its tests in parallel shards), the script tests, actionlint, a gitleaks
 scan of the checked-out commit's full history, including merge parents (unrelated fetched branches
 are scanned in their own runs; `.gitleaks.toml`; a new false positive is allowlisted there by path or
 commit, scoped to its rule, with a reason) and, on pull requests, a dependency review. A red

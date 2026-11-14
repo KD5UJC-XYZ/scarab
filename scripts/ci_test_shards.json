@@ -1,0 +1,49 @@
+{
+ "_comment": "Measured test seconds for CI's test shards (scripts/ci_test_shards.py): `modules` is each module's whole Test/test, `split` the suites of a module spread over the shards. A suite of a split module not named here shares what is left of its module's seconds with the other unnamed ones. Measured in the six shards of CI run 43629636860 (2026-11-14, ubuntu-24.04), each suite's time from the sbt log: tests run one suite at a time (build.sbt, `Test / parallelExecution`), and sbt writes a suite's lines when it ends. `node`'s total includes the cold start of each part it ran in there: split six ways it took 476 to 513 s in two sharded runs (43629636860, 43632138307), against 372 s as one module in `check`, and ledger took 123 to 128 s against 94 s. Other modules vary between runs by as much as the shards differ (plutus 150 s, then 90 s).",
+ "shards": 4,
+ "modules": {
+  "codec": 5.0,
+  "crypto": 26.8,
+  "protocol": 13.5,
+  "network": 55.2,
+  "uplc": 115.9,
+  "plutus": 150.3,
+  "ledger": 127.6,
+  "consensus": 14.8,
+  "storage": 38.3,
+  "node": 513.4,
+  "modelsGen": 3.9,
+  "models": 5.7,
+  "fuzz": 86.1,
+  "tools": 7.6
+ },
+ "split": {
+  "node": {
+   "xyz.kd5ujc.scarab.consensus.DijkstraCrossingSuite": 6.4,
+   "xyz.kd5ujc.scarab.consensus.Praos2ReferenceSuite": 11.5,
+   "xyz.kd5ujc.scarab.node.AdversarialScheduleSuite": 22.6,
+   "xyz.kd5ujc.scarab.node.BlockSelectionWorkerSuite": 14.7,
+   "xyz.kd5ujc.scarab.node.CachedBlockSourceSuite": 23.4,
+   "xyz.kd5ujc.scarab.node.DijkstraCrossingSuite": 14.1,
+   "xyz.kd5ujc.scarab.node.EraTransitionSuite": 8.6,
+   "xyz.kd5ujc.scarab.node.FetchCoordinationBenchSuite": 5.3,
+   "xyz.kd5ujc.scarab.node.FetchCoordinatorSuite": 6.9,
+   "xyz.kd5ujc.scarab.node.FollowerStallSuite": 4.8,
+   "xyz.kd5ujc.scarab.node.GenesisHeaderRulesSuite": 4.8,
+   "xyz.kd5ujc.scarab.node.PeerRootReloadSuite": 3.7,
+   "xyz.kd5ujc.scarab.node.VerificationCacheSuite": 61.1,
+   "xyz.kd5ujc.scarab.node.forge.ForgeSuite": 9.5,
+   "xyz.kd5ujc.scarab.node.forge.KesRotationSuite": 4.5,
+   "xyz.kd5ujc.scarab.node.genesis.UpstreamGenesisReplaySuite": 25.0,
+   "xyz.kd5ujc.scarab.node.genesis.UpstreamGenesisTerminalsSuite": 4.0,
+   "xyz.kd5ujc.scarab.node.governor.BigLedgerPropertiesSuite": 38.4,
+   "xyz.kd5ujc.scarab.node.governor.FortyBearersSuite": 4.1,
+   "xyz.kd5ujc.scarab.node.governor.GovernorPropertiesSuite": 47.9,
+   "xyz.kd5ujc.scarab.node.metrics.MetricsServerSuite": 3.6,
+   "xyz.kd5ujc.scarab.node.ntc.MirrorAnswersSuite": 3.7,
+   "xyz.kd5ujc.scarab.storage.ChainStorageSuite": 76.0,
+   "xyz.kd5ujc.scarab.storage.LedgerSnapshotImportSuite": 3.9,
+   "xyz.kd5ujc.scarab.storage.SnapshotV10Suite": 7.5
+  }
+ }
+}
