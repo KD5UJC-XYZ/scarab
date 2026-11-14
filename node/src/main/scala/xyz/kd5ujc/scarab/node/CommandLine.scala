@@ -3,144 +3,85 @@ package xyz.kd5ujc.scarab.node
 
 import cats.effect.Sync
 import cats.syntax.all.*
-import java.io.{IOException, PrintStream}
+import java.io.PrintStream
 import java.nio.charset.{Charset, StandardCharsets}
-import java.nio.file.{Files, Path}
+import java.nio.file.InvalidPathException
 import xyz.kd5ujc.scarab.codec.DomainError
 
-/** Why the command line cannot be read as UTF-8. */
-enum CommandLineError extends DomainError:
-  /** The JVM decoded an argument's bytes beyond ASCII in `encoding`, which is not UTF-8, and the
-    * bytes could not be read again: no `/proc/self/cmdline`, an argument file before the
-    * application's arguments, or arguments that are not its last ones after the main class.
+/** A name the node does not take, under the owner's rule for names of 2026-11-14 (#953): it refuses
+  * to start rather than risk naming another file.
+  */
+enum NameError extends DomainError:
+  /** `name` holds a character beyond ASCII, and the JVM's file-name encoding (`encoding`) is not
+    * UTF-8. The rule takes such names only under a UTF-8 locale: under another, the JVM may have
+    * decoded an argument's bytes into other characters, or may encode the name in bytes other than
+    * its UTF-8 ones.
     */
-  case NotUtf8(encoding: String)
+  case NotAscii(name: String, encoding: String)
+
+  /** `name` holds U+FFFD, the character the JVM decodes, and the node decodes its configuration
+    * with, in place of bytes that are not valid: the name may stand for other bytes, so the node
+    * cannot tell which file it names. One typed as U+FFFD is refused all the same.
+    */
+  case Replaced(name: String)
+
+  /** The JVM refused to name a file `name`, for `reason` (`InvalidPathException`): a name that
+    * holds NUL, or that its file-name encoding cannot encode for another cause.
+    */
+  case Invalid(name: String, reason: String)
 
   def message: String = this match
-    case NotUtf8(encoding) =>
-      s"the command line holds bytes beyond ASCII that the JVM decoded as $encoding and that " +
-        "cannot be read again as UTF-8; run the node under a UTF-8 locale"
+    case NotAscii(name, encoding) =>
+      s"the name '$name' holds characters beyond ASCII, which the node takes only under a UTF-8 " +
+        s"locale, and the JVM's file-name encoding is $encoding; use ASCII names, or run the node " +
+        "under a UTF-8 locale (such as LANG=C.UTF-8)"
+    case Replaced(name) =>
+      s"the name '$name' holds U+FFFD, which stands where bytes could not be decoded, so the file " +
+        "it names is not known; use a name in valid UTF-8 without U+FFFD"
+    case Invalid(name, reason) => s"the JVM cannot name the file '$name' ($reason); rename it"
 
-/** The command line, and standard output and error, as UTF-8 whatever the locale (the owner's
-  * decision on #953).
+object NameError:
+  /** Whether `encoding` names UTF-8; an encoding the JVM does not know is taken for another. */
+  def utf8(encoding: String): Boolean =
+    Either.catchNonFatal(Charset.forName(encoding)).toOption.contains(StandardCharsets.UTF_8)
+
+  /** The first of `names` the rule refuses under the file-name encoding `encoding`: with `encoding`
+    * UTF-8, one that holds U+FFFD; with any other, one beyond ASCII.
+    */
+  def among(names: List[String], encoding: String): Option[NameError] =
+    val unicode = utf8(encoding)
+    names.collectFirstSome(name =>
+      if !unicode && name.exists(_ > '\u007f') then Some(NotAscii(name, encoding))
+      else Option.when(name.contains('�'))(Replaced(name))
+    )
+
+  /** The JDK's refusal to name a file, which it raises where it cannot encode the name in its
+    * file-name encoding (`encoding`) or the name holds NUL (`sun/nio/fs/UnixPath.java` 98-101 and
+    * 125-133, jdk-25+36).
+    */
+  def of(refusal: InvalidPathException, encoding: String): NameError =
+    if !utf8(encoding) && refusal.getInput.exists(_ > '\u007f') then
+      NotAscii(refusal.getInput, encoding)
+    else Invalid(refusal.getInput, refusal.getReason)
+
+/** The command line taken only where the JVM decoded it exactly, and standard output and error as
+  * UTF-8 whatever the locale: the owner's rule for names of 2026-11-14 (#953).
   *
-  * The JVM decodes its arguments in the locale's encoding (`sun.jnu.encoding`), fixed when it
-  * starts: under `LANG=C` each byte beyond ASCII arrives as U+FFFD. So when that encoding is not
-  * UTF-8, Scarab reads its arguments' bytes again from `/proc/self/cmdline` (Linux) and decodes
-  * them as UTF-8, a sequence that is not UTF-8 as U+FFFD. Where that is needed and cannot be done,
-  * it refuses to start rather than use the damaged arguments.
+  * The JVM decodes its arguments, and encodes the names of the files it opens, in the locale's
+  * encoding (`sun.jnu.encoding`), fixed when it starts. Under a UTF-8 locale any valid UTF-8 comes
+  * through exactly, and a byte that is not UTF-8 becomes U+FFFD; under `LANG=C` each byte beyond
+  * ASCII becomes U+FFFD (JDK 25, scarab-jdk:local, 2026-11-14). An argument decoded that way names
+  * another file, so the node refuses to start before it touches any file. Names are operational and
+  * easily changed, so the reference's behaviour at other bytes and locales is not reproduced.
   */
 object CommandLine:
-  /** `args`, as the JVM decoded them in `jnu`, decoded again as UTF-8 from `raw` (the process's
-    * command line, each argument ended by NUL). The launcher's options are read as the launcher
-    * reads them, to find its main class, JAR or module. The arguments after it are the
-    * application's, used only where they are as many as `args`, decode in `jnu` to `args`, and
-    * follow what `javaCommand` (`sun.java.command`) begins with.
-    *
-    * `None` where the application's arguments may not be those of `raw`: an argument file (`@file`)
-    * anywhere before the main target, an option's value included; options from `JDK_JAVA_OPTIONS`
-    * (`environment`), which `raw` does not hold; a launch with `--disable-@files`, or of a source
-    * file (`--source`), which this does not follow; or anything else that does not match.
-    */
-  def recovered(
-      args: List[String],
-      jnu: Charset,
-      javaCommand: String,
-      environment: Option[String],
-      raw: Array[Byte]
-  ): Option[List[String]] =
-    val entries = arguments(raw)
-    val decoded = entries.map(String(_, jnu))
-    val plain = environment.forall(_.isBlank) && !decoded.contains("--disable-@files")
-    Option.when(plain)(decoded).flatMap(mainTarget(_, 1)).flatMap { (at, target) =>
-      val application = entries.drop(at + 1)
-      Option.when(
-        application.length == args.length &&
-          decoded.drop(at + 1) == args &&
-          (javaCommand == target || javaCommand.startsWith(target + " "))
-      )(application.map(String(_, StandardCharsets.UTF_8)))
-    }
+  /** `args`, where [[NameError.among]] refuses none of them under `encoding`. */
+  def exact(args: List[String], encoding: String): Either[NameError, List[String]] =
+    NameError.among(args, encoding).toLeft(args)
 
-  /** The launcher's options that take the next argument as their value (`IsWhiteSpaceOption`,
-    * OpenJDK jdk-25+36 `src/java.base/share/native/libjli/java.c` 680-746), but for `-m` and
-    * `--module`, whose value is the main target.
-    */
-  private val withValue = Set(
-    "-classpath",
-    "-cp",
-    "--class-path",
-    "--describe-module",
-    "-d",
-    "--source",
-    "--module-path",
-    "-p",
-    "--upgrade-module-path",
-    "--add-modules",
-    "--enable-native-access",
-    "--limit-modules",
-    "--add-exports",
-    "--add-opens",
-    "--add-reads",
-    "--patch-module"
-  )
-
-  /** Where the launcher's main target is among the arguments of `launcher` from `at` on, and what
-    * it is, as `ParseArguments` finds it (`java.c` 1180-1250): the first argument that is not an
-    * option, or the value of `-m`, `--module` or `--module=`. `None` at an argument file, an
-    * option's value included.
-    */
-  @scala.annotation.tailrec
-  private def mainTarget(launcher: List[String], at: Int): Option[(Int, String)] =
-    launcher.lift(at) match
-      case None                                       => None
-      case Some(argument) if argument.startsWith("@") => None
-      case Some("-m" | "--module")                    => launcher.lift(at + 1).map(at + 1 -> _)
-      case Some(argument) if argument.startsWith("--module=") =>
-        Some(at -> argument.stripPrefix("--module="))
-      case Some(argument) if withValue(argument) =>
-        if launcher.lift(at + 1).exists(_.startsWith("@")) then None
-        else mainTarget(launcher, at + 2)
-      case Some(argument) if argument.startsWith("-") => mainTarget(launcher, at + 1)
-      case Some(target)                               => Some(at -> target)
-
-  /** The arguments as UTF-8: as the JVM decoded them where its encoding is UTF-8 or they are all
-    * ASCII, otherwise [[recovered]], or [[CommandLineError.NotUtf8]] where that fails. Under an
-    * encoding such as ISO-8859-1 a byte beyond ASCII decodes to another character, not U+FFFD, so
-    * any character beyond ASCII asks for the bytes.
-    */
-  def utf8(
-      args: List[String],
-      jnu: Charset,
-      javaCommand: String,
-      environment: Option[String],
-      raw: Option[Array[Byte]]
-  ): Either[CommandLineError, List[String]] =
-    if jnu == StandardCharsets.UTF_8 || args.forall(_.forall(_ < '\u0080')) then Right(args)
-    else
-      raw
-        .flatMap(recovered(args, jnu, javaCommand, environment, _))
-        .toRight(CommandLineError.NotUtf8(jnu.name))
-
-  /** The arguments of a command line as `/proc/<pid>/cmdline` holds them, empty ones included. */
-  private def arguments(raw: Array[Byte]): List[Array[Byte]] =
-    val ends = raw.indices.filter(raw(_) == 0).toList
-    (0 :: ends.map(_ + 1)).zip(ends).map((start, end) => raw.slice(start, end))
-
-  /** [[utf8]] of this process's arguments. */
-  def of[F[_]](args: List[String])(using F: Sync[F]): F[Either[CommandLineError, List[String]]] =
-    F.blocking {
-      val jnu = Either
-        .catchNonFatal(Charset.forName(System.getProperty("sun.jnu.encoding")))
-        .getOrElse(Charset.defaultCharset)
-      val raw = Either.catchOnly[IOException](Files.readAllBytes(Path.of("/proc/self/cmdline")))
-      utf8(
-        args,
-        jnu,
-        Option(System.getProperty("sun.java.command")).getOrElse(""),
-        Option(System.getenv("JDK_JAVA_OPTIONS")),
-        raw.toOption
-      )
-    }
+  /** The JVM's file-name encoding (`sun.jnu.encoding`), or `unknown` where it names none. */
+  def encoding[F[_]](using F: Sync[F]): F[String] =
+    F.delay(Option(System.getProperty("sun.jnu.encoding")).getOrElse("unknown"))
 
   /** Standard output and error written as UTF-8 whatever the locale, where the stream's charset is
     * another: under `LANG=C` the JVM writes each character beyond ASCII as `?`. The reference's own
@@ -150,8 +91,8 @@ object CommandLine:
     * which passes bytes through as they are, so wherever that one wrote, this one does.
     */
   def utf8Output[F[_]](using F: Sync[F]): F[Unit] =
-    def utf8(stream: PrintStream) = PrintStream(stream, true, StandardCharsets.UTF_8)
+    def encoded(stream: PrintStream) = PrintStream(stream, true, StandardCharsets.UTF_8)
     F.delay {
-      if System.out.charset != StandardCharsets.UTF_8 then System.setOut(utf8(System.out))
-      if System.err.charset != StandardCharsets.UTF_8 then System.setErr(utf8(System.err))
+      if System.out.charset != StandardCharsets.UTF_8 then System.setOut(encoded(System.out))
+      if System.err.charset != StandardCharsets.UTF_8 then System.setErr(encoded(System.err))
     }

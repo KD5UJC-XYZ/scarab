@@ -53,7 +53,7 @@ import xyz.kd5ujc.scarab.storage.{
 import cats.mtl.{Ask, Handle, Raise, Stateful, Tell}
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState}
 import cats.syntax.all.*
-import java.nio.file.Path
+import java.nio.file.{InvalidPathException, Path}
 import com.comcast.ip4s.{Host, Port, SocketAddress}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
@@ -475,15 +475,27 @@ object Main extends IOApp:
       )
     )
 
+  // the owner's rule for names (#953): an argument the rule refuses is refused before any file is
+  // touched. A name read from a file that the JVM cannot encode, which the JDK refuses with
+  // `InvalidPathException` where the name is used, gives the same kind of line; the configuration's
+  // own names are checked once `follow` has read its setup, so this catches the names read before
+  // that or never checked (the genesis files, the topology's snapshot file)
   def run(args: List[String]): IO[ExitCode] =
     CommandLine.utf8Output[IO] *> CommandLine
-      .of[IO](args)
-      .flatMap(
-        _.fold(
-          error => IO.consoleForIO.errorln(s"scarab: ${error.message}").as(ExitCode(2)),
-          dispatch
-        )
+      .encoding[IO]
+      .flatMap(encoding =>
+        CommandLine
+          .exact(args, encoding)
+          .fold(
+            refused,
+            dispatch(_).recoverWith { case refusal: InvalidPathException =>
+              refused(NameError.of(refusal, encoding))
+            }
+          )
       )
+
+  /** A name the rule for names refuses: said on standard error, and exit code 2. */
+  private def refused(error: NameError): IO[ExitCode] = failedStart(error.message).as(ExitCode(2))
 
   private def dispatch(args: List[String]): IO[ExitCode] = args match
     case "export-scls" :: rest       => xyz.kd5ujc.scarab.node.tools.SclsCommand.runExport(rest)
@@ -713,18 +725,8 @@ object Main extends IOApp:
             .map(_.asRight[SocketConfigError])
         )
         .rescue(error => IO.pure(error.asLeft[Unit]))
-    for
-      _ <- nativeLibrary
-      _ <- Log[IO].emit[NodeEvent](NodeEvent.PlutusVmChosen(requested.plutusVm))
-      // the configuration, then the VRF key's permissions, then the genesis and the credentials
-      // (`Run.hs` 183-201)
-      _ <- requested.configFile.traverse_(file =>
-        IO.blocking(NodeSetup.readConfig(requested.referenceBuild)(file)).flatMap(admitted)
-      )
-      _ <- requested.forge.traverse_(files =>
-        KeyGuard.permissions[IO](files.vrfSkey, Log.sink[ForgeEvents, ForgeEvent, IO])
-      )
-      setup <- IO.blocking(nodeSetup(requested)).flatMap(admitted)
+    // the start once the setup's names are taken
+    def startFrom(setup: NodeSetup): IO[ExitCode] = for
       layout <- referenceLayout(
         requested.referenceBuild,
         setup.config.settings.experimentalHardForksEnabled
@@ -742,6 +744,25 @@ object Main extends IOApp:
               started(options, setup, topology, requested.peers, pool, layout)
             )
       )
+    yield code
+    for
+      _ <- nativeLibrary
+      _ <- Log[IO].emit[NodeEvent](NodeEvent.PlutusVmChosen(requested.plutusVm))
+      // the configuration, then the VRF key's permissions, then the genesis and the credentials
+      // (`Run.hs` 183-201)
+      _ <- requested.configFile.traverse_(file =>
+        IO.blocking(NodeSetup.readConfig(requested.referenceBuild)(file)).flatMap(admitted)
+      )
+      _ <- requested.forge.traverse_(files =>
+        KeyGuard.permissions[IO](files.vrfSkey, Log.sink[ForgeEvents, ForgeEvent, IO])
+      )
+      setup <- IO.blocking(nodeSetup(requested)).flatMap(admitted)
+      encoding <- CommandLine.encoding[IO]
+      // the file names of the configuration the setup was read from, under the owner's rule for
+      // names (#953), before any is used to remove or make a file: the configuration's text is
+      // decoded leniently, so a byte that is not UTF-8 reads as U+FFFD. The genesis files it names
+      // are only read, and their hashes checked, before this
+      code <- NameError.among(setup.config.fileNames, encoding).fold(startFrom(setup))(refused)
     yield code
 
   /** The reference build the node mirrors, logged with its pins, and a warning when an unstable

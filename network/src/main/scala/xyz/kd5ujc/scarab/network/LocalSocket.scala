@@ -257,13 +257,14 @@ object LocalSockets:
           )
         // a path beyond ASCII, after the length and trailing-`/` refusals, which come before the
         // reference's check of the socket file too: Scarab refuses every one, the owner's decision
-        // (#949). Run with `/w/café...` paths under `LANG=C.UTF-8` or no `LANG`, cardano-node
-        // 11.1.3 bound the path under its characters truncated to a byte each (`castCharToCChar`,
-        // `Network/Socket/Types.hsc` 1160), then its check of the socket found nothing at the
-        // path's own name and stopped the set-up with this error; Scarab binds nothing, so it
-        // leaves no socket file under the truncated name. Run with the same path under `LANG=C`,
-        // or with a lone byte 0xE9 under either locale, it kept the argument's bytes and served
-        // the path, which Scarab refuses all the same
+        // (#949, confirmed 2026-11-14), because no bytes bound for such a path reach the
+        // reference's clients in every locale. network 3.2.8.0 truncates each character to a byte
+        // on connect as on bind (`castCharToCChar`, `Network/Socket/Types.hsc` 1160): with the
+        // socket bound at the UTF-8 bytes of `/w/café.socket`, cardano-cli 11.1.3 reached it under
+        // `LANG=C` and not under `LANG=C.UTF-8` or with no `LANG`. The reference node itself, run
+        // with that path under `LANG=C.UTF-8` or no `LANG`, bound the truncated name, found nothing
+        // at the path's own name and stopped with this error, leaving the mis-named file; Scarab
+        // binds nothing. Under `LANG=C` it served the path
         else if address.path.exists(_ > '\u007f') then
           F.pure(
             Left(

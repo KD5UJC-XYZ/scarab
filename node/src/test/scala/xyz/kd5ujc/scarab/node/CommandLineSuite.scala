@@ -2,157 +2,148 @@
 package xyz.kd5ujc.scarab.node
 
 import java.nio.charset.StandardCharsets.{ISO_8859_1, US_ASCII, UTF_8}
+import java.nio.file.{Files, InvalidPathException, Path}
 import munit.FunSuite
+import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
-/** The command line decoded as UTF-8 whatever the locale (#953). */
+/** The command line taken only where the JVM decoded it exactly, and the JDK's refusals of file
+  * names (#953, the owner's decision of 2026-11-14). The decoded forms are those JDK 25 gave `main`
+  * in scarab-jdk:local.
+  */
 class CommandLineSuite extends FunSuite:
-  private def bytes(arguments: Seq[Array[Byte]]): Array[Byte] =
-    arguments.flatMap(_.toList :+ 0.toByte).toArray
+  private val path = "/w/café.socket"
+  private val typed = List("follow", "--local-socket", path)
 
-  private def raw(arguments: String*): Array[Byte] = bytes(arguments.map(_.getBytes(UTF_8)))
-
-  /** What the JVM gives `main` under `LANG=C`: each byte beyond ASCII as U+FFFD, as seen in
-    * scarab-jdk:local.
+  /** What the JVM gives `main` under `LANG=C` or `POSIX` (`ANSI_X3.4-1968`): each byte beyond ASCII
+    * as U+FFFD.
     */
   private def underC(argument: String): String = String(argument.getBytes(UTF_8), US_ASCII)
 
-  private val main = "xyz.kd5ujc.scarab.node.Main"
-  private val path = "/w/café.socket"
-  private val jvm = List("java", "-cp", "scarab.jar", main)
-  private val typed = List("follow", "--local-socket", path)
-  private def command(args: List[String]) = (main :: args).mkString(" ")
-
-  test("under a UTF-8 locale the JVM's arguments are kept as they are") {
-    assertEquals(CommandLine.utf8(typed, UTF_8, command(typed), None, None), Right(typed))
+  test("under a UTF-8 encoding valid UTF-8 is kept as the JVM decoded it") {
+    assertEquals(CommandLine.exact(typed, "UTF-8"), Right(typed))
   }
 
-  test("under LANG=C an argument beyond ASCII is decoded again from its bytes, as UTF-8") {
-    val asDecoded = typed.map(underC)
-    assertEquals(asDecoded(2), "/w/caf��.socket")
+  test("under a UTF-8 encoding a byte that is not UTF-8, which the JVM gives as U+FFFD, refuses") {
+    val decoded = String(Array[Byte]('/', 'w', '/', 'c', 'a', 'f', 0xe9.toByte), UTF_8)
+    assertEquals(decoded, "/w/caf�")
     assertEquals(
-      CommandLine.utf8(asDecoded, US_ASCII, command(asDecoded), None, Some(raw((jvm ++ typed)*))),
-      Right(typed)
+      CommandLine.exact(List("follow", "--db", decoded), "UTF-8"),
+      Left(NameError.Replaced(decoded))
     )
   }
 
-  test("an empty argument stays one, and the JVM's own options are not taken for arguments") {
-    val args = List("follow", "", path)
-    val asDecoded = args.map(underC)
-    assertEquals(
-      CommandLine.utf8(asDecoded, US_ASCII, command(asDecoded), None, Some(raw((jvm ++ args)*))),
-      Right(args)
-    )
-  }
-
-  // the reference keeps such a byte as a character standing for it (cardano-node 11.1.3,
-  // `caf\56553`), a difference recorded on #953
-  test("a byte that is not UTF-8 is decoded as U+FFFD, and the valid ones around it as UTF-8") {
-    val argument = Array[Byte]('/', 'c', 'a', 'f', 0xe9.toByte) ++ "é".getBytes(UTF_8)
-    val asDecoded = List("follow", String(argument, US_ASCII))
-    assertEquals(asDecoded(1), "/caf���")
-    val line = bytes(jvm.map(_.getBytes(UTF_8)) ++ List("follow".getBytes(UTF_8), argument))
-    assertEquals(
-      CommandLine.utf8(asDecoded, US_ASCII, command(asDecoded), None, Some(line)),
-      Right(List("follow", "/caf�é"))
-    )
-  }
-
-  // the arguments came from an argument file, so their bytes are not in the command line, though
-  // the command line's last argument decodes to the same text (a case Codex's review gave)
-  test("arguments that do not follow the main class are not taken from the command line") {
-    val asDecoded = List(underC("@à"))
-    val fromFile = raw("java", "@é")
-    assertEquals(String("@é".getBytes(UTF_8), US_ASCII), asDecoded.head)
-    assertEquals(
-      CommandLine.utf8(asDecoded, US_ASCII, command(asDecoded), None, Some(fromFile)),
-      Left(CommandLineError.NotUtf8("US-ASCII"))
-    )
-  }
-
-  test("where the bytes cannot be read again, a damaged command line refuses to start") {
-    val asDecoded = typed.map(underC)
-    assertEquals(
-      CommandLine.utf8(asDecoded, US_ASCII, command(asDecoded), None, None),
-      Left(CommandLineError.NotUtf8("US-ASCII"))
-    )
-  }
-
-  test("an ASCII command line is used as the JVM decoded it under any locale") {
-    val ascii = List("follow", "--local-socket", "/w/node.socket")
-    assertEquals(CommandLine.utf8(ascii, US_ASCII, command(ascii), None, None), Right(ascii))
-  }
-
-  // the classpath names the main class, the real main class and arguments come from an argument
-  // file, and the command line's last argument decodes to the same text (a case Codex's review gave)
-  test("an argument file before the main target refuses, though a classpath names the main class") {
-    val asDecoded = List(underC("@\u00e0"))
-    val line = raw("java", "-cp", main, "@\u00e9")
-    assertEquals(
-      CommandLine.utf8(asDecoded, US_ASCII, command(asDecoded), None, Some(line)),
-      Left(CommandLineError.NotUtf8("US-ASCII"))
-    )
-  }
-
-  // under ISO-8859-1 the JVM decodes the bytes of `é` as `Ã©`, with no U+FFFD
-  test("under ISO-8859-1 an argument beyond ASCII is decoded again, or refused without its bytes") {
-    val asDecoded = typed.map(argument => String(argument.getBytes(UTF_8), ISO_8859_1))
-    assertEquals(asDecoded(2), "/w/caf\u00c3\u00a9.socket")
-    assertEquals(
-      CommandLine.utf8(asDecoded, ISO_8859_1, command(asDecoded), None, Some(raw((jvm ++ typed)*))),
-      Right(typed)
-    )
-    assertEquals(
-      CommandLine.utf8(asDecoded, ISO_8859_1, command(asDecoded), None, None),
-      Left(CommandLineError.NotUtf8("ISO-8859-1"))
-    )
-  }
-
-  test("the main target is found after options with values, -jar, and each form of --module") {
-    val asDecoded = typed.map(underC)
-    def check(launcher: List[String], target: String) = assertEquals(
-      CommandLine.utf8(
-        asDecoded,
-        US_ASCII,
-        (target :: asDecoded).mkString(" "),
-        None,
-        Some(raw((launcher ++ typed)*))
-      ),
-      Right(typed),
-      launcher
-    )
-    check(
-      List("java", "-Xmx3g", "-cp", "a.jar:b.jar", "--add-opens", "x/y=ALL-UNNAMED", main),
-      main
-    )
-    check(List("java", "--enable-native-access=ALL-UNNAMED", "-jar", "scarab.jar"), "scarab.jar")
-    check(List("java", "-m", "scarab/" + main), "scarab/" + main)
-    check(List("java", "--module", "scarab/" + main), "scarab/" + main)
-    check(List("java", "--module=scarab/" + main), "scarab/" + main)
-  }
-
-  // an empty argument file as an option's value moves where the launcher finds the main class, and
-  // JDK_JAVA_OPTIONS can hold an option whose value is the command line's first argument (cases
-  // Codex's review gave)
-  test("an argument file as an option's value, or JDK_JAVA_OPTIONS, refuses the recovery") {
-    val asDecoded = List(underC("@\u00e0"))
-    assertEquals(
-      CommandLine.utf8(
-        asDecoded,
-        US_ASCII,
-        command(asDecoded),
-        None,
-        Some(raw("java", "-cp", "@empty", main, "@\u00e9"))
-      ),
-      Left(CommandLineError.NotUtf8("US-ASCII"))
-    )
+  test("under ANSI_X3.4-1968 an argument beyond ASCII refuses, naming the encoding") {
     val decoded = typed.map(underC)
+    assertEquals(decoded(2), "/w/caf��.socket")
     assertEquals(
-      CommandLine
-        .utf8(decoded, US_ASCII, command(decoded), Some("-cp"), Some(raw((jvm ++ typed)*))),
-      Left(CommandLineError.NotUtf8("US-ASCII"))
+      CommandLine.exact(decoded, "ANSI_X3.4-1968"),
+      Left(NameError.NotAscii(decoded(2), "ANSI_X3.4-1968"))
+    )
+  }
+
+  test("under ISO-8859-1 an argument beyond ASCII refuses, though it holds no U+FFFD") {
+    val decoded = String(path.getBytes(UTF_8), ISO_8859_1)
+    assert(!decoded.contains('�'), decoded)
+    assertEquals(
+      CommandLine.exact(List("--config", decoded), "ISO-8859-1"),
+      Left(NameError.NotAscii(decoded, "ISO-8859-1"))
+    )
+  }
+
+  test("an ASCII command line, an empty argument included, is kept under any encoding") {
+    val ascii = List("follow", "", "--local-socket", "/w/node.socket")
+    for encoding <- List("UTF-8", "ANSI_X3.4-1968", "ISO-8859-1", "unknown") do
+      assertEquals(CommandLine.exact(ascii, encoding), Right(ascii), encoding)
+  }
+
+  test("an encoding the JVM does not name, or does not know, is not taken for UTF-8") {
+    assertEquals(
+      CommandLine.exact(typed, "unknown"),
+      Left(NameError.NotAscii(path, "unknown"))
+    )
+  }
+
+  test("the first argument refused is the one reported") {
+    val second = "/w/naïve.db"
+    assertEquals(
+      CommandLine.exact(List("--db", second, "--local-socket", path), "ANSI_X3.4-1968"),
+      Left(NameError.NotAscii(second, "ANSI_X3.4-1968"))
+    )
+  }
+
+  test("a file name the JDK cannot encode under an encoding other than UTF-8 is refused alike") {
+    val refusal = InvalidPathException(
+      "alonzo-é.json",
+      "Malformed input or input contains unmappable characters"
     )
     assertEquals(
-      CommandLine.utf8(decoded, US_ASCII, command(decoded), Some(" "), Some(raw((jvm ++ typed)*))),
-      Right(typed)
+      NameError.of(refusal, "ANSI_X3.4-1968"),
+      NameError.NotAscii("alonzo-é.json", "ANSI_X3.4-1968")
+    )
+  }
+
+  test("any other refusal of a file name keeps the JDK's reason") {
+    val nul = InvalidPathException("alonzo\u0000.json", "Nul character not allowed")
+    assertEquals(
+      NameError.of(nul, "ANSI_X3.4-1968"),
+      NameError.Invalid("alonzo\u0000.json", "Nul character not allowed")
+    )
+    val surrogate = InvalidPathException(
+      "alonzo-\ud800.json",
+      "Malformed input or input contains unmappable characters"
+    )
+    assertEquals(
+      NameError.of(surrogate, "UTF-8"),
+      NameError.Invalid(
+        "alonzo-\ud800.json",
+        "Malformed input or input contains unmappable characters"
+      )
+    )
+  }
+
+  test("a configuration's file names: a byte that is not UTF-8 reads as U+FFFD and is refused") {
+    val dir = Files.createTempDirectory("names-suite")
+    val preview = Files.readAllBytes(Path.of("fixtures", "preview", "genesis", "config.json"))
+    val database =
+      "{\"DatabasePath\": \"/w/caf".getBytes(UTF_8) ++ Array(0xe9.toByte) ++ "\",".getBytes(UTF_8)
+    Files.write(dir.resolve("config.json"), database ++ preview.dropWhile(_ != '{'.toByte).drop(1))
+    val config = NodeSetup
+      .readConfig(ReferenceBuild.Default)(dir.resolve("config.json"))
+      .fold(e => fail(e.message), identity)
+    assertEquals(config.settings.databasePath, Some("/w/caf\ufffd"))
+    assertEquals(config.fileNames, config.files.all :+ "/w/caf\ufffd")
+    assertEquals(
+      NameError.among(config.fileNames, "UTF-8"),
+      Some(NameError.Replaced("/w/caf\ufffd"))
+    )
+  }
+
+  test(
+    "a configuration's file names: beyond ASCII refused under ISO-8859-1, which can encode them"
+  ) {
+    val files = GenesisFiles.standard.copy(alonzo = "alonzo-é.json", checkpoints = Some("c.json"))
+    assertEquals(files.all.last, "c.json")
+    assertEquals(
+      NameError.among(files.all, "ISO-8859-1"),
+      Some(NameError.NotAscii("alonzo-é.json", "ISO-8859-1"))
+    )
+    assertEquals(NameError.among(files.all, "UTF-8"), None)
+  }
+
+  test("the refusals say what to do") {
+    assertEquals(
+      NameError.NotAscii("/w/caf\ufffd\ufffd", "ANSI_X3.4-1968").message,
+      "the name '/w/caf\ufffd\ufffd' holds characters beyond ASCII, which the node takes only " +
+        "under a UTF-8 locale, and the JVM's file-name encoding is ANSI_X3.4-1968; use ASCII " +
+        "names, or run the node under a UTF-8 locale (such as LANG=C.UTF-8)"
+    )
+    assertEquals(
+      NameError.Replaced("/w/caf\ufffd").message,
+      "the name '/w/caf\ufffd' holds U+FFFD, which stands where bytes could not be decoded, so " +
+        "the file it names is not known; use a name in valid UTF-8 without U+FFFD"
+    )
+    assertEquals(
+      NameError.Invalid("a\u0000", "Nul character not allowed").message,
+      "the JVM cannot name the file 'a\u0000' (Nul character not allowed); rename it"
     )
   }
