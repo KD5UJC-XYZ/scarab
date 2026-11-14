@@ -5,22 +5,27 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{CollectError, Phase2, Redeemer}
 import xyz.kd5ujc.scarab.plutus.*
 
-/** Typed replay observations with same-backend diagnostic evidence. Replay additionally compares
-  * provider diagnostic text, concrete exception classes and trace output; it does not establish
-  * Haskell presentation parity, which remains required under #796. All other evaluator failures
-  * retain their original typed payload.
+/** Typed replay observations with same-backend diagnostic evidence. Replay compares the typed
+  * native error (or its typed gap), the concrete provider exception class and trace output, never
+  * provider text or exception identity; it does not establish Haskell presentation parity, which
+  * remains required under #796. Backend unavailability retains its original typed payload.
   */
 object ReplayTrace:
-  final case class ScriptCause(kind: Class[? <: Throwable], diagnostic: Option[String])
+  final case class ScriptCause(
+      provider: Option[Class[? <: Throwable]],
+      diagnostic: Either[DiagnosticGap, ReferenceDiagnostic.EvaluationError]
+  )
 
   enum Failure:
     case Evaluator(reason: EvalFailure)
-    case Script(cause: ScriptCause, traces: Vector[String])
+    case Script(cause: ScriptCause)
 
   object Failure:
     def from(reason: EvalFailure): Failure = reason match
-      case EvalFailure.Script(ScriptFailure(cause, traces)) =>
-        Script(ScriptCause(cause.getClass, Option(cause.getMessage)), traces)
+      case EvalFailure.Refused(error, provider) =>
+        Script(ScriptCause(provider.map(_.getClass), Right(error)))
+      case EvalFailure.Unresolved(gap, provider) =>
+        Script(ScriptCause(provider.map(_.getClass), Left(gap)))
       case other => Evaluator(other)
 
   enum Result:

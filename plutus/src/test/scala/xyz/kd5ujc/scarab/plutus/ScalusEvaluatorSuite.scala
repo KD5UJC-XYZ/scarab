@@ -175,8 +175,10 @@ class ScalusEvaluatorSuite extends FunSuite:
       budget = ExUnits(1000, 1000)
     )
     result match
-      case EvalResult.Failure(EvalFailure.OutOfBudget, _, _) => ()
-      case other                                             => fail(other.toString)
+      case EvalResult.Failure(Refusals.Budget(remaining), _, _) =>
+        // `CekOutOfExError` reports what remained after the charge that overspent
+        assert(remaining.cpu < 0 || remaining.memory < 0, remaining)
+      case other => fail(other.toString)
   }
 
   test("a script that is not a flat program is a decode failure") {
@@ -191,19 +193,23 @@ class ScalusEvaluatorSuite extends FunSuite:
       )
     )
     result match
-      case EvalResult.Failure(EvalFailure.Decode(_), _, _) => ()
-      case other                                           => fail(other.toString)
+      case EvalResult.Failure(Refusals.Admission(), _, _) => ()
+      case other                                          => fail(other.toString)
   }
 
-  test("a failing script's trace output is part of the failure reason") {
+  test("a failing script keeps its trace output beside the typed refusal of `error`") {
     val result = run(
       """(lam ctx [ (lam _ (error)) [ [ (force (builtin trace)) (con string "H41") ] (con unit ()) ] ])""",
       PlutusLanguage.V2,
       protocol = 10
     )
     result match
-      case EvalResult.Failure(EvalFailure.Script(reason), _, logs) =>
+      case EvalResult.Failure(
+            EvalFailure.Refused(error, Some(_: scalus.uplc.eval.EvaluationFailure)),
+            _,
+            logs
+          ) =>
         assertEquals(logs, Vector("H41"))
-        assert(reason.message.contains("trace: H41"), reason)
+        assertEquals(error, Refusals.explicitError)
       case other => fail(other.toString)
   }

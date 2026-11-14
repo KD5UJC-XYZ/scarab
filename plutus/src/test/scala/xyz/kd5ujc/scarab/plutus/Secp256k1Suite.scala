@@ -63,7 +63,7 @@ class Secp256k1Suite extends FunSuite:
       munit.Location
   ): Unit =
     body match
-      case Left(_: EvalFailure.Script) => ()
+      case Left(Refusals.Evaluation()) => ()
       case other                       => fail(s"$label: expected a script failure, got $other")
 
   test("a valid signature verifies, a signature on another message does not") {

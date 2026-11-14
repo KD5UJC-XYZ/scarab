@@ -32,7 +32,15 @@ object Phase2:
   /** An immutable machine result, in collection order, including budgets and trace output. */
   final case class Evaluation(redeemer: Redeemer, request: EvalRequest, result: EvalResult)
 
-  final case class Failure(redeemer: Redeemer, request: EvalRequest, reason: EvalFailure)
+  /** A proven refusal of one script: its typed native diagnostic (or the typed gap where one is not
+    * reconstructed) and what the machine spent before it stopped.
+    */
+  final case class Failure(
+      redeemer: Redeemer,
+      request: EvalRequest,
+      reason: EvalFailure,
+      used: ExUnits
+  )
 
   final case class Report(evaluations: Vector[Evaluation]):
     def scripts: Int = evaluations.size
@@ -226,8 +234,8 @@ object Phase2:
         val report = Report(evaluations)
         NonEmptyVector
           .fromVector(evaluations.collect {
-            case Evaluation(r, request, EvalResult.Failure(reason, _, _)) =>
-              Failure(r, request, reason)
+            case Evaluation(r, request, EvalResult.Failure(reason, used, _)) =>
+              Failure(r, request, reason, used)
           })
           .fold[Outcome](Outcome.Passed(report))(Outcome.Failed(report, _))
     )

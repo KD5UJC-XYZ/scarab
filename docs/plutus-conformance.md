@@ -268,7 +268,7 @@ flat bytes that handles the `value` constants:
 - A constant whose type header exceeds 32 tags, or a `constr` with more than 1024 fields, does not
   decode from protocol 11 (below it there is no bound). A header is always odd, so the boundary is 31
   against 33.
-- The scope check is phase 2 (`EvalFailure.OpenTerm`) and mirrors `checkScope`: it applies to
+- The scope check is phase 2 (`DeBruijnError (FreeIndex i)`) and mirrors `checkScope`: it applies to
   variables, lambdas, applications, `force` and `delay`, and does not look inside `constr` fields or
   `case` terms. Original variable indices are checked as Word64 values: 65-bit naturals fail decoding. Wide
   indices under the checked syntax fail scope setup. Under skipped `constr`/`case` subterms, an

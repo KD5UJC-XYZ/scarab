@@ -240,7 +240,7 @@ class WycheproofSecp256k1Suite extends FunSuite:
         case Outcome.DerRejects => fail(s"DER-only input entered compact replay: $clue")
         case Outcome.CompactFails =>
           answer match
-            case ProductionBuiltin.Answer.Fails(_: EvalFailure.Script) => ()
+            case ProductionBuiltin.Answer.Fails(Refusals.Evaluation()) => ()
             case other => fail(s"expected a script failure, got $other: $clue")
           assert(model.isLeft, clue)
         case Outcome.Verdict(value) =>

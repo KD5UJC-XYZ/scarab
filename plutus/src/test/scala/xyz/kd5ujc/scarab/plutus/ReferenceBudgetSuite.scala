@@ -235,7 +235,7 @@ class ReferenceBudgetSuite extends FunSuite:
       )
     )
     result match
-      case EvalResult.Failure(EvalFailure.Script(_), used, _) =>
+      case EvalResult.Failure(Refusals.Evaluation(), used, _) =>
         assertEquals(used, ExUnits(BigInt(100), BigInt(100)))
       case other => fail(s"the reference's script failure, got $other")
   }

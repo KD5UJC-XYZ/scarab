@@ -179,8 +179,10 @@ forger.
   `evaluate(EvalRequest): F[EvalResult]`. A request is the language (`PlutusV1`, `V2`, `V3`), the
   protocol major version (it selects the builtin semantics), the script bytes, the data arguments,
   the language's cost model and the declared budget. The result is `Success(spent, logs)` or
-  `Failure(reason, spent, logs)` with a closed `EvalFailure` (`Decode`, `Unsupported`,
-  `OutOfBudget`, `Script`).
+  `Failure(reason, spent, logs)` with a closed `EvalFailure`: `Refused` (the reference's typed
+  `EvaluationError`, `ReferenceDiagnostic`, with the provider exception kept apart), `Unresolved`
+  (a proven refusal whose native error is not yet reconstructed, a typed `DiagnosticGap`) or
+  `Unsupported` (no verdict).
 - **Interpreter** (`plutus/ScalusEvaluator.scala`): the UPLC machine and builtins of Scalus (Apache-2.0,
   `org.scalus:scalus_3:1.4.0`); nothing else of Scalus is used by the node. Ed25519, secp256k1 and
   BLS12-381 run on `libscalus_crypto` of `org.scalus:scalus-crypto-jni:0.1.0` (libsodium,

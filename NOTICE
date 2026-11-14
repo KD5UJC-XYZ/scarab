@@ -95,7 +95,7 @@ The reference Cardano node binaries used by scripts/prepare_reference_image.py a
 the official IntersectMBO 11.1.3 release (Apache-2.0); they are downloaded by the
 user and never redistributed in this repository.
 
-Plutus evaluation: the node depends at runtime on Scalus (org.scalus:scalus_3 1.4.0-scarab-8f34d0a964eaab8f565e40642bc37f35a44c234536e6ab870a3365d47a8196db,
+Plutus evaluation: the node depends at runtime on Scalus (org.scalus:scalus_3 1.4.0-scarab-6ad637b9b4c58c1f891b3da61a01671202cb8edaa4cdc8df5d0838792426d0e4,
 https://github.com/scalus3/scalus, Apache-2.0) for the UPLC machine and its builtins only; the
 script context, cost-model selection and phase-2 rules are original code written against the
 Cardano ledger's published behaviour. Scalus brings org.scalus:scalus-crypto-jni 0.1.0 (Apache-2.0),
@@ -116,7 +116,7 @@ and notice texts of every bundled library and native library under META-INF/scar
 listed with their sources in META-INF/scarab/licenses/index.json (licenses/ in this repository).
 borer is MPL-2.0: its Source Code Form is https://github.com/sirthias/borer at tag v1.18.0.
 
-  Scalus (org.scalus:scalus_3 1.4.0-scarab-8f34d0a964eaab8f565e40642bc37f35a44c234536e6ab870a3365d47a8196db)                       Apache-2.0   UPLC machine and builtins
+  Scalus (org.scalus:scalus_3 1.4.0-scarab-6ad637b9b4c58c1f891b3da61a01671202cb8edaa4cdc8df5d0838792426d0e4)                       Apache-2.0   UPLC machine and builtins
   jblst (tech.pegasys:jblst 0.3.18)                        Apache-2.0   bundles supranational/blst v0.3.17
                                                            AND MIT      (Leios BLS); repository LICENSE is MIT
   scalus-crypto-jni (org.scalus 0.1.0)                     Apache-2.0   bundles libsodium (ISC), libsecp256k1

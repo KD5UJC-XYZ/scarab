@@ -62,17 +62,29 @@ class Phase2UnavailableSuite extends FunSuite:
 
   test("a proven script failure still supplies the invalid-tag collateral verdict") {
     val failing: ScriptEvaluator[Id] =
-      _ => EvalResult.Failure(EvalFailure.OutOfBudget, ExUnits.zero, Vector.empty)
+      _ => EvalResult.Failure(Refusals.outOfBudget(), ExUnits.zero, Vector.empty)
     assert(checked(c.tx.copy(isValid = false), failing).isRight)
     checked(c.tx.copy(isValid = true), failing) match
       case Left(LedgerFailure.Rejected.Single(_, _)) => ()
       case other => fail(s"unexpected script-failure outcome: $other")
   }
 
-  test("a validity-tag mismatch retains the evaluator cause and its original exception") {
+  test("a proven failure retains what the machine spent before it stopped") {
+    val used = ExUnits(BigInt(3), BigInt(7))
+    val failing: ScriptEvaluator[Id] =
+      _ => EvalResult.Failure(Refusals.outOfBudget(), used, Vector.empty)
+    Phase2.evaluate(c.tx, c.params, scripts, c.spent, c.references, c.posix, failing) match
+      case Right(Phase2.Outcome.Failed(_, failures)) =>
+        assert(failures.forall(_.used == used), failures)
+        assert(failures.forall(_.reason == Refusals.outOfBudget()), failures)
+      case other => fail(s"unexpected phase-2 outcome: $other")
+  }
+
+  test("a validity-tag mismatch retains the typed native error and its original exception") {
     val defect = new IllegalArgumentException("script machine refused")
-    val reason = EvalFailure.Script(ScriptFailure(defect, Vector("before refusal")))
-    val evaluator: ScriptEvaluator[Id] = _ => EvalResult.Failure(reason, ExUnits.zero, Vector.empty)
+    val reason = Refusals.scripted(defect)
+    val evaluator: ScriptEvaluator[Id] =
+      _ => EvalResult.Failure(reason, ExUnits(BigInt(3), BigInt(7)), Vector("before refusal"))
     checked(c.tx.copy(isValid = true), evaluator) match
       case Left(
             LedgerFailure.Rejected.Single(
@@ -87,9 +99,9 @@ class Phase2UnavailableSuite extends FunSuite:
         assert(failures.forall(_.cause == reason))
         assert(failures.forall(_.request.isDefined))
         failures.headOption.map(_.cause) match
-          case Some(EvalFailure.Script(ScriptFailure(cause: Throwable, logs))) =>
+          case Some(EvalFailure.Refused(error, Some(cause))) =>
             assert(cause eq defect)
-            assertEquals(logs, Vector("before refusal"))
+            assertEquals(error, Refusals.explicitError)
           case other => fail(s"lost evaluator cause: $other")
       case other => fail(s"unexpected script-failure outcome: $other")
   }

@@ -169,7 +169,11 @@ def original_artifact(cache: Path, pin: dict, offline: bool) -> Path:
 
 def compose_jar(original: Path, compiled: Path, members: list[str], compilation_members: list[str]) -> dict:
     """One jar, exact replacement and source-family inventories; preserve all other release bytes."""
-    family = re.compile(r"scalus/uplc/(?:eval/CekMachine|Constant|UplcParser)(?:\$[^/]*)?\.(?:class|tasty)")
+    family = re.compile(
+        r"scalus/uplc/(?:eval/(?:CekMachine|MissingCaseBranch|NonPolymorphicInstantiationMachineError"
+        r"|NonFunctionalApplicationMachineError|OpenTermEvaluatedMachineError"
+        r"|BuiltinTermArgumentExpectedMachineError|UnexpectedBuiltinTermArgumentMachineError)"
+        r"|Constant|UplcParser)(?:\$[^/]*)?\.(?:class|tasty)")
     allowed, expected = set(members), set(compilation_members)
     if (len(allowed) != len(members) or len(expected) != len(compilation_members)
             or not allowed or not allowed <= expected or any(not family.fullmatch(n) for n in expected)):

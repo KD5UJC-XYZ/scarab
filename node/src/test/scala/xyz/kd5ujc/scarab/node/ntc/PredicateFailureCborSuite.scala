@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.ntc
 
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits, ScriptFailure}
+import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits, Refusals}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.TestLedger.out
 import munit.FunSuite
@@ -23,9 +23,9 @@ class PredicateFailureCborSuite extends FunSuite:
 
   private val keyHash = hex("683acdaa374d6ef02de93bea119185477b17c8298d59967b06528a2d")
 
-  test("typed script failures render only at the wire boundary without changing rejection bytes") {
+  test("typed script failures render only at the wire boundary, never from provider text") {
     val cause = new IllegalArgumentException("failure")
-    val evaluation = EvalFailure.Script(ScriptFailure(cause, Vector("trace")))
+    val evaluation = Refusals.scripted(cause)
     val failure = PredicateFailure.utxo(
       UtxoFailure.Utxos(
         UtxosFailure.ValidationTagMismatch(
@@ -35,8 +35,13 @@ class PredicateFailureCborSuite extends FunSuite:
       )
     )
     // Alonzo/Rules/Utxos.hs:259-309 (f649f975): PlutusFailure keeps constructor tag 1,
-    // its rendered text and opaque reconstruction bytes. The outer UTXOS tag stays 0.
-    val utxos = "8300f58201818301756661696c7572653b2074726163653a207472616365420102"
+    // its rendered text and opaque reconstruction bytes. The outer UTXOS tag stays 0. Without a
+    // request there is no native text yet (#796): the interim text is the typed summary, never the
+    // provider's message.
+    val text = evaluation.message.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+    assert(text.length >= 24 && text.length < 256, evaluation.message)
+    val utxos = "8300f5820181830178" + f"${text.length}%02x" + Bytes.fromArray(text).hex + "420102"
+    assert(!evaluation.message.contains("failure;"), evaluation.message)
     assertEquals(reason(failure), "81820681820182008200" + utxos)
     for era <- Vector(Era.Alonzo, Era.Babbage, Era.Conway) do
       val encoded = PredicateFailureCbor
@@ -45,10 +50,8 @@ class PredicateFailureCborSuite extends FunSuite:
         .getOrElse(fail(s"missing $era validity-tag encoding"))
       assert(encoded.hex.endsWith(utxos), s"$era: ${encoded.hex}")
     evaluation match
-      case EvalFailure.Script(ScriptFailure(original: Throwable, logs)) =>
-        assert(original eq cause)
-        assertEquals(logs, Vector("trace"))
-      case other => fail(s"changed evaluator cause: $other")
+      case EvalFailure.Refused(_, Some(original)) => assert(original eq cause)
+      case other                                  => fail(s"changed evaluator cause: $other")
   }
 
   test(
@@ -63,11 +66,7 @@ class PredicateFailureCborSuite extends FunSuite:
       Vector.empty,
       ExUnits.zero
     )
-    val failure = PlutusFailure(
-      EvalFailure.Script(ScriptFailure(original, Vector("trace"))),
-      hex("0304"),
-      Some(request)
-    )
+    val failure = PlutusFailure(Refusals.scripted(original), hex("0304"), Some(request))
     val predicate = PredicateFailure.utxo(
       UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(true, Some(Vector(failure))))
     )
@@ -77,10 +76,8 @@ class PredicateFailureCborSuite extends FunSuite:
           assertEquals(cause, PlutusContextText.Error.Arguments(request.language, 0))
           assert(retained eq failure)
           retained.cause match
-            case EvalFailure.Script(ScriptFailure(throwable, logs)) =>
-              assert(throwable eq original)
-              assertEquals(logs, Vector("trace"))
-            case other => fail(s"changed evaluator cause: $other")
+            case EvalFailure.Refused(_, Some(throwable)) => assert(throwable eq original)
+            case other                                   => fail(s"changed evaluator cause: $other")
         case other => fail(s"$era silently encoded malformed context: $other")
     assertEquals(PredicateFailureCbor.applyTxError(Era.Shelley, Vector(predicate)), Right(None))
   }

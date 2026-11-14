@@ -215,7 +215,7 @@ class ParallelPlutusSuite extends FailsOnUncaught:
         else Verdicts.Direct.witness(key, signature, message)
     val failing: ScriptEvaluator[Id] = _ =>
       xyz.kd5ujc.scarab.plutus.EvalResult.Failure(
-        xyz.kd5ujc.scarab.plutus.EvalFailure.OutOfBudget,
+        xyz.kd5ujc.scarab.plutus.Refusals.outOfBudget(),
         xyz.kd5ujc.scarab.plutus.ExUnits.zero,
         Vector.empty
       )

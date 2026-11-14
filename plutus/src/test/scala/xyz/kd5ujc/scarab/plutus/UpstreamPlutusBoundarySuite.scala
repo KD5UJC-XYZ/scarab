@@ -46,13 +46,14 @@ class UpstreamPlutusBoundarySuite extends FunSuite:
 
   private def stage(admitted: Boolean, result: EvalResult): Stage = result match
     case EvalResult.Success(_, _) => Stage.Success
-    case EvalResult.Failure(EvalFailure.Decode(_), _, _) =>
+    case EvalResult.Failure(Refusals.Admission(), _, _) =>
       if admitted then Stage.Setup else Stage.Decode
-    case EvalResult.Failure(EvalFailure.OpenTerm(_), _, _) => Stage.Scope
-    case EvalResult.Failure(EvalFailure.OutOfBudget, _, _) => Stage.Budget
-    case EvalResult.Failure(EvalFailure.Script(_), _, _)   => Stage.Evaluation
+    case EvalResult.Failure(Refusals.Scope(_), _, _)  => Stage.Scope
+    case EvalResult.Failure(Refusals.Budget(_), _, _) => Stage.Budget
     case EvalResult.Failure(EvalFailure.Unsupported(cause), _, _) =>
       fail(s"reference comparison unavailable: $cause")
+    case EvalResult.Failure(EvalFailure.Refused(_, _) | EvalFailure.Unresolved(_, _), _, _) =>
+      Stage.Evaluation
 
   test("all six original-byte inputs have complete language/PV9–11 observations") {
     assertEquals(scripts.size, 6)

@@ -66,13 +66,14 @@ class PlutusBoundaryOracleSuite extends FunSuite:
         )
         val stage = result match
           case EvalResult.Success(_, _) => "success"
-          case EvalResult.Failure(EvalFailure.Decode(_), _, _) =>
+          case EvalResult.Failure(Refusals.Admission(), _, _) =>
             if admitted then "setup" else "decode"
-          case EvalResult.Failure(EvalFailure.OpenTerm(_), _, _) => "scope"
-          case EvalResult.Failure(EvalFailure.OutOfBudget, _, _) => "budget"
+          case EvalResult.Failure(Refusals.Scope(_), _, _)  => "scope"
+          case EvalResult.Failure(Refusals.Budget(_), _, _) => "budget"
           case EvalResult.Failure(EvalFailure.Unsupported(why), _, _) =>
             fail(s"implementation unavailable at $language/$protocol: $why")
-          case EvalResult.Failure(EvalFailure.Script(_), _, _) => "evaluation"
+          case EvalResult.Failure(EvalFailure.Refused(_, _) | EvalFailure.Unresolved(_, _), _, _) =>
+            "evaluation"
         assertEquals(stage, field[String](row, "stage"), s"$language/$protocol")
       }
     }

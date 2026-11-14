@@ -97,7 +97,7 @@ class ScalusConformanceReproducersSuite extends FunSuite:
       )
     )
     result match
-      case EvalResult.Failure(EvalFailure.OutOfBudget, used, _) =>
+      case EvalResult.Failure(Refusals.Budget(_), used, _) =>
         assertEquals(used.steps, BigInt(Long.MaxValue))
       case other => fail(s"the reference runs out of budget, got $other")
   }

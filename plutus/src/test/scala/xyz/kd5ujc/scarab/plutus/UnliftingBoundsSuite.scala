@@ -49,7 +49,7 @@ class UnliftingBoundsSuite extends FunSuite:
 
   private def fails(language: PlutusLanguage, protocol: Int, body: String): Unit =
     run(language, protocol, body) match
-      case EvalResult.Failure(EvalFailure.Script(_), _, _) => ()
+      case EvalResult.Failure(Refusals.Evaluation(), _, _) => ()
       case other => fail(s"$language/$protocol: expected a script failure, got $other")
 
   private def bytes(n: Int): String = "#" + "ab" * n
@@ -159,7 +159,7 @@ class UnliftingBoundsSuite extends FunSuite:
         )
       ) match
         case EvalResult.Success(used, _)                     => ("success", Some(used))
-        case EvalResult.Failure(EvalFailure.Script(_), _, _) => ("evaluation", None)
+        case EvalResult.Failure(Refusals.Evaluation(), _, _) => ("evaluation", None)
         case other                                           => (s"unexpected $other", None)
       val stage = field[String](row, "stage")
       val theirs = (

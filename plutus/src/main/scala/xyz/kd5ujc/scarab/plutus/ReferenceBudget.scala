@@ -108,6 +108,17 @@ private[plutus] object ReferenceBudget:
 
     def getSpentBudget: ScalusExUnits = mode.getSpentBudget
 
+  /** The refusal [[Restricting]] raises: Scalus's `OutOfExBudgetError`, which its machine stops on,
+    * carrying the remaining budget at the failing charge. It is the reference's
+    * `CekOutOfExError (ExRestrictingBudget budgetLeft)` (`ExBudgetMode.hs` lines 155-165), negative
+    * in a component that the charge overspent, captured at the throw rather than read afterwards.
+    */
+  final class Exhausted(
+      limit: ScalusExUnits,
+      env: CekValEnv,
+      val remaining: ReferenceDiagnostic.Budget
+  ) extends OutOfExBudgetError(limit, env)
+
   /** `restricting` (`ExBudgetMode.hs` lines 126-172): the remaining budget in [[SatInt]], updated
     * before it is compared with zero, so a refusal keeps the final state; the budget used is the
     * limit minus what remains (`evaluateScriptRestricting`, `PlutusLedgerApi/Common/Eval.hs` of
@@ -124,7 +135,11 @@ private[plutus] object ReferenceBudget:
       cpuLeft = cpuLeft - SatInt(budget.steps)
       memoryLeft = memoryLeft - SatInt(budget.memory)
       if cpuLeft < SatInt.Zero || memoryLeft < SatInt.Zero then
-        throw new OutOfExBudgetError(limit, env)
+        throw new Exhausted(
+          limit,
+          env,
+          ReferenceDiagnostic.Budget(BigInt(cpuLeft.toLong), BigInt(memoryLeft.toLong))
+        )
 
     def getSpentBudget: ScalusExUnits =
       ScalusExUnits(

@@ -150,8 +150,8 @@ class PlutusReachabilitySuite extends FunSuite:
     assert(wrapping.nonEmpty)
     for n <- wrapping ++ Seq(BigInt(1) << 62, (BigInt(1) << 63) - 1, BigInt(1) << 63) do
       dropped(n) match
-        case EvalResult.Failure(EvalFailure.OutOfBudget, _, _) => ()
-        case other                                             => fail(s"count $n: $other")
+        case EvalResult.Failure(Refusals.Budget(_), _, _) => ()
+        case other                                        => fail(s"count $n: $other")
   }
 
   // ---- the three hashToGroup cases: answered wrongly by Scalus for a non-ASCII tag --------------
@@ -179,12 +179,14 @@ class PlutusReachabilitySuite extends FunSuite:
       case EvalResult.Failure(f, _, _) => f
       case other                       => fail(s"unexpected $other")
     // a conformance case's tag (`hash-dst-len-255`: bytes of 0x90 and above) and a plain one
-    assert(verdict("90").isInstanceOf[EvalFailure.Script])
-    assert(verdict("4100").isInstanceOf[EvalFailure.Script])
-    assert(
-      verdict("41").isInstanceOf[EvalFailure.Script],
-      "ASCII tag: evaluated, a bytestring is no unit"
-    )
+    // a non-unit V3 result is `InvalidReturnValue` (`Common/Eval.hs:314-320`)
+    val invalid = EvalFailure.Refused(ReferenceDiagnostic.EvaluationError.InvalidReturnValue, None)
+    def refused(f: EvalFailure) = f match
+      case EvalFailure.Refused(error, Some(_)) => EvalFailure.Refused(error, None)
+      case other                               => other
+    assertEquals(refused(verdict("90")), invalid)
+    assertEquals(refused(verdict("4100")), invalid)
+    assertEquals(refused(verdict("41")), invalid, "ASCII tag: evaluated, a bytestring is no unit")
   }
 
   // ---- protocol 11 admission limits (#166) -------------------------------------------------------
@@ -221,7 +223,7 @@ class PlutusReachabilitySuite extends FunSuite:
     assert(decodes(PlutusLanguage.V3, 11, script(v110, free)))
     assertEquals(
       run(11, free),
-      EvalResult.Failure(EvalFailure.OpenTerm(5), ExUnits.zero, Vector.empty)
+      EvalResult.Failure(Refusals.scope(5), ExUnits.zero, Vector.empty)
     )
     val bound = Ap(Lam(unit), Delay(Lam(Var(1))))
     assert(run(11, bound).isSuccess)
@@ -233,8 +235,8 @@ class PlutusReachabilitySuite extends FunSuite:
     // 2^32 + 2 narrows to 2, which is bound under two lambdas
     val wide = Ap(Lam(Ap(Lam(unit), Delay(Var(BigInt(4294967298L))))), unit)
     assert(run(11, wide) match
-      case EvalResult.Failure(EvalFailure.OpenTerm(i), _, _) => i == BigInt(4294967298L)
-      case _                                                 => false)
+      case EvalResult.Failure(Refusals.Scope(i), _, _) => i == BigInt(4294967298L)
+      case _                                           => false)
     // a word of 65 bits is no Word64 for the reference either
     assert(
       !decodes(PlutusLanguage.V3, 11, script(v110, Ap(Lam(unit), Delay(Var(BigInt(1) << 64)))))
@@ -255,8 +257,24 @@ class PlutusReachabilitySuite extends FunSuite:
     for pv <- Vector(9, 10, 11) do
       assert(run(pv, Ap(Lam(unit), Delay(Constr(0, Vector(Var(wide)))))).isSuccess)
     assert(run(11, Case(integer(0), Vector(unit, Var(wide)))).isSuccess)
+    // `lookupVarName` refuses the open variable with its whole Word64 index as the cause
     run(11, Ap(Lam(unit), Constr(0, Vector(Var(wide))))) match
-      case EvalResult.Failure(EvalFailure.Script(_), _, _) => ()
+      case EvalResult.Failure(
+            EvalFailure.Refused(
+              ReferenceDiagnostic.EvaluationError.Cek(
+                ReferenceDiagnostic.ErrorWithCause(
+                  ReferenceDiagnostic.CekError.Structural(
+                    ReferenceDiagnostic.MachineError.OpenTermEvaluated
+                  ),
+                  Some(ReferenceDiagnostic.Term.Var("i", index))
+                )
+              ),
+              Some(_: scalus.uplc.eval.OpenTermEvaluatedMachineError)
+            ),
+            _,
+            _
+          ) =>
+        assertEquals(index, wide)
       case other => fail(s"evaluated wide variable: $other")
   }
 
@@ -272,7 +290,7 @@ class PlutusReachabilitySuite extends FunSuite:
       () =>
         result.set(
           try
-            val repaired = WideIndices.repair(deep, Set(0))
+            val repaired = WideIndices.repair(deep, Map(0 -> (BigInt(1) << 40)))
             val inner = (0 until 20000).foldLeft(repaired) { (term, _) =>
               term match
                 case UplcTerm.Delay(body, _) => body

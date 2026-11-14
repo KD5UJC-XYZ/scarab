@@ -34,7 +34,7 @@ final case class EvalRequest(
     budget: ExUnits
 )
 
-/** Admission and VM failures retain the provider's typed cause at the interpreter boundary. */
+/** Admission failures retain the decoder's typed cause at the interpreter boundary. */
 enum ScriptProblem:
   case CborByteStringExpected
   case Flat(cause: FlatScan.Failure)
@@ -65,29 +65,76 @@ enum BackendFailure:
     case BuiltinUnavailable(builtin) => s"builtin $builtin unavailable"
     case CostingUnmirrored(builtin)  => s"the costing function of $builtin is not mirrored"
 
-final case class ScriptFailure(cause: Throwable, logs: Vector[String]):
-  def message: String =
-    val detail = Option(cause.getMessage).getOrElse(cause.getClass.getName)
-    if logs.isEmpty then detail else s"$detail; trace: ${logs.mkString(" | ")}"
-
-/** Why a script did not validate. */
-enum EvalFailure:
-  case Decode(reason: ScriptProblem)
-  case Unsupported(reason: BackendFailure)
-  case OutOfBudget
-  case Script(reason: ScriptFailure)
-
-  /** A variable the ledger's scope check refuses, found when the evaluation is set up (a failure of
-    * phase 2, as in the reference's `mkTermToEvaluate`, not of deserialisation).
+/** Why the native error of a proven refusal is not yet reconstructed. Each case names the missing
+  * source correspondence and keeps the typed inputs a later derivation needs; presenting one is a
+  * typed missing-diagnostic defect, never substitute text (#796).
+  */
+enum DiagnosticGap:
+  /** An admission refusal the reference reports from its CBOR/flat decoder as
+    * `CBORDeserialiseError` (`SerialisedScript.hs:268-278`): its byte offset and the decoder's
+    * reason are not derived from the walk.
     */
-  case OpenTerm(index: BigInt)
+  case DecoderReason(problem: ScriptProblem)
 
+  /** A builtin whose argument the reference refuses by a structural unlifting error
+    * (`BuiltinResult.hs:136-146`, `CekInternal.hs:519-521`): the native `UnliftingError` text is
+    * not derived. `cause` is the discharged application term, already native.
+    */
+  case UnliftingText(builtin: scalus.uplc.DefaultFun, cause: ReferenceDiagnostic.Term)
+
+  /** `case` on a constant, refused by the reference's `CaserBuiltin` as `CekCaseBuiltinError`
+    * (`CekInternal.hs:946-947`): the caser's `HeadError` text is not derived. The scrutinee is
+    * present when Scalus kept it.
+    */
+  case CaseBuiltinText(scrutinee: Option[ReferenceDiagnostic.Term])
+
+  /** An `OutOfExBudgetError` that [[ReferenceBudget.Restricting]] did not raise, whose remaining
+    * budget (`ExBudgetMode.hs:161-165`) is therefore unknown.
+    */
+  case ForeignBudgetRefusal
+
+  /** A `MissingCaseBranch` constructed without the scrutinee the patched machine passes. */
+  case UncapturedScrutinee(tag: BigInt)
+
+  /** A Scalus machine error outside every mapped error site, such as a costing function refusing an
+    * argument before the builtin's application term exists.
+    */
+  case UnattributedMachineError
+
+  /** A variable Scalus holds lowered whose original index the decoder did not record. */
+  case UnknownVariableOrigin(name: scalus.uplc.NamedDeBruijn)
+
+  /** A Scalus value without a native counterpart (`CekValue.VList`). */
+  case NonNativeValue
+
+  /** A partly applied builtin whose arguments do not match the kinds it has taken. */
+  case InconsistentBuiltin(builtin: scalus.uplc.DefaultFun)
+
+  /** Compressing a BLS12-381 point for its native constant failed. */
+  case BlsCompression
+
+/** Why a script did not validate: a proven refusal of the reference, with or without its native
+  * error reconstructed, or no verdict of this implementation at all.
+  */
+enum EvalFailure:
+  /** The reference refuses the script with `error`. `provider` is the Scalus or JDK exception that
+    * signalled it, retained for identity and logs only: no diagnostic is derived from its text.
+    * Admission and scope refusals have none.
+    */
+  case Refused(error: ReferenceDiagnostic.EvaluationError, provider: Option[Throwable])
+
+  /** The reference refuses the script (the verdict is proven) but its native error is not yet
+    * reconstructed; see [[DiagnosticGap]].
+    */
+  case Unresolved(gap: DiagnosticGap, provider: Option[Throwable])
+  case Unsupported(reason: BackendFailure)
+
+  /** For logs: the native error's family and case, never its terms or provider text. */
   def message: String = this match
-    case Decode(r)      => s"script does not decode: ${r.message}"
-    case Unsupported(r) => s"unsupported: ${r.message}"
-    case OutOfBudget    => "execution budget exceeded"
-    case Script(r)      => r.message
-    case OpenTerm(i)    => s"free variable $i in the script"
+    case Refused(error, _) => s"script refused: ${NativeDiagnostics.summary(error)}"
+    case Unresolved(gap, _) =>
+      s"script refused; native diagnostic not reconstructed: ${gap.productPrefix}"
+    case Unsupported(reason) => s"unsupported: ${reason.message}"
 
 /** Outcome of one execution; `used` is what the machine spent, `logs` the `trace` output. */
 enum EvalResult:

@@ -21,9 +21,9 @@ class ReplayContractSuite extends FunSuite:
     Evaluation(Redeemer(0, index, Bytes.empty, request.budget), request, Result.from(result))
   private val passed = evaluation(0, EvalResult.Success(ExUnits(1, 10), Vector("pass")))
   private val firstFailure =
-    evaluation(1, EvalResult.Failure(EvalFailure.OutOfBudget, ExUnits(2, 20), Vector("first")))
+    evaluation(1, EvalResult.Failure(Refusals.outOfBudget(), ExUnits(2, 20), Vector("first")))
   private val secondFailure =
-    evaluation(2, EvalResult.Failure(EvalFailure.OpenTerm(3), ExUnits(3, 30), Vector("second")))
+    evaluation(2, EvalResult.Failure(Refusals.scope(3), ExUnits(3, 30), Vector("second")))
   private val transaction = Transaction(
     Bytes.empty,
     7,
@@ -31,8 +31,8 @@ class ReplayContractSuite extends FunSuite:
     Outcome.Failed(
       Vector(passed, firstFailure, secondFailure),
       Vector(
-        Refusal(firstFailure.redeemer, request, Failure.from(EvalFailure.OutOfBudget)),
-        Refusal(secondFailure.redeemer, request, Failure.from(EvalFailure.OpenTerm(3)))
+        Refusal(firstFailure.redeemer, request, Failure.from(Refusals.outOfBudget())),
+        Refusal(secondFailure.redeemer, request, Failure.from(Refusals.scope(3)))
       )
     )
   )
@@ -90,13 +90,9 @@ class ReplayContractSuite extends FunSuite:
   }
 
   test("same-backend native failure diagnostics compare as evidence without exception identity") {
-    def failure(error: Throwable) =
-      Failure.from(EvalFailure.Script(ScriptFailure(error, Vector("trace"))))
+    def failure(error: Throwable) = Failure.from(Refusals.scripted(error))
+    // equal typed diagnostics and provider classes compare equal whatever the provider's text
     assertEquals(
-      failure(new IllegalArgumentException("first")),
-      failure(new IllegalArgumentException("first"))
-    )
-    assertNotEquals(
       failure(new IllegalArgumentException("first")),
       failure(new IllegalArgumentException("second"))
     )
@@ -104,7 +100,11 @@ class ReplayContractSuite extends FunSuite:
       failure(new IllegalArgumentException("first")),
       failure(new IllegalStateException("first"))
     )
-    assertNotEquals(Failure.from(EvalFailure.OutOfBudget), Failure.from(EvalFailure.OpenTerm(0)))
+    assertNotEquals(Failure.from(Refusals.outOfBudget()), Failure.from(Refusals.scope(0)))
+    assertNotEquals(
+      Failure.from(Refusals.outOfBudget(ReferenceDiagnostic.Budget(-1, 0))),
+      Failure.from(Refusals.outOfBudget(ReferenceDiagnostic.Budget(0, -1)))
+    )
   }
 
   private val environment = Map(

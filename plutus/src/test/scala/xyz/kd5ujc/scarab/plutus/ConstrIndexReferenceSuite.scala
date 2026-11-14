@@ -96,7 +96,7 @@ class ConstrIndexReferenceSuite extends FunSuite:
       )
     ) match
       case EvalResult.Success(used, _)                     => ("success", Some(used))
-      case EvalResult.Failure(EvalFailure.Script(_), _, _) => ("evaluation", None)
+      case EvalResult.Failure(Refusals.Evaluation(), _, _) => ("evaluation", None)
       case other => fail(s"$language/$protocol: unexpected outcome $other")
 
   private def reference(row: Json): (String, Option[ExUnits]) =

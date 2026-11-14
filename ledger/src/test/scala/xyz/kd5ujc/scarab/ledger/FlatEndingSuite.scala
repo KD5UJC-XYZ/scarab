@@ -133,7 +133,12 @@ class FlatEndingSuite extends FunSuite:
         case Phase2.Outcome.Failed(_, failures) =>
           assertEquals(
             failures.map(_.reason).toVector,
-            Vector(EvalFailure.Decode(ScriptProblem.Flat(FlatScan.Failure.TooMuchSpace(8))))
+            Vector(
+              EvalFailure.Unresolved(
+                DiagnosticGap.DecoderReason(ScriptProblem.Flat(FlatScan.Failure.TooMuchSpace(8))),
+                None
+              )
+            )
           )
         case other => fail(s"protocol $protocol: unexpected $other")
   }

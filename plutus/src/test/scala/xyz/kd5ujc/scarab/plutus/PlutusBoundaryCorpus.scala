@@ -220,11 +220,11 @@ object PlutusBoundaryCorpus:
       )
       val stage = outcome match
         case EvalResult.Success(_, _) => "success"
-        case EvalResult.Failure(EvalFailure.Decode(_), _, _) =>
+        case EvalResult.Failure(Refusals.Admission(), _, _) =>
           if admitted then "setup" else "decode"
-        case EvalResult.Failure(EvalFailure.OpenTerm(_), _, _)    => "scope"
+        case EvalResult.Failure(Refusals.Scope(_), _, _)          => "scope"
         case EvalResult.Failure(EvalFailure.Unsupported(_), _, _) => "unsupported"
-        case EvalResult.Failure(EvalFailure.OutOfBudget, _, _)    => "budget"
+        case EvalResult.Failure(Refusals.Budget(_), _, _)         => "budget"
         case _                                                    => "evaluation"
       Json.obj(
         "id" -> Json.fromString(probe.id),

@@ -153,10 +153,8 @@ object TestLedger:
       else
         xyz.kd5ujc.scarab.plutus.EvalResult
           .Failure(
-            xyz.kd5ujc.scarab.plutus.EvalFailure.Script(
-              xyz.kd5ujc.scarab.plutus
-                .ScriptFailure(new IllegalStateException("scripted failure"), Vector.empty)
-            ),
+            xyz.kd5ujc.scarab.plutus.Refusals
+              .scripted(new IllegalStateException("scripted failure")),
             ExUnits(1, 1),
             Vector.empty
           )

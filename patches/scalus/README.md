@@ -5,6 +5,19 @@ The two protected hooks in `cek-hooks.patch` expose successful-result discharge 
 charging without changing their default behavior. They are preparation for the reference budget repair
 [#485](https://github.com/KD5UJC-XYZ/scarab/issues/485), not that repair: settlement before discharge and demand-driven costing remain outstanding.
 
+The same patch keeps the operand of six machine errors at their throw sites, so that the node builds the
+reference's typed `EvaluationError` and its cause ([#796](https://github.com/KD5UJC-XYZ/scarab/issues/796),
+`NativeDiagnostics`) without reading an exception message or machine state after the throw. The
+constructor parameters `value` of `NonPolymorphicInstantiationMachineError`, `arg` of
+`NonFunctionalApplicationMachineError`, `name` of `OpenTermEvaluatedMachineError` and `term` of
+`BuiltinTermArgumentExpectedMachineError` and `UnexpectedBuiltinTermArgumentMachineError` become public
+`val`s; their constructors and messages are unchanged. `MissingCaseBranch` gains a `scrutinee` field: the
+machine's two throw sites pass the `VConstr` they scrutinized, and a secondary constructor keeps the
+original `(tag, env, sourcePos = empty)` descriptor and its default for every other caller. These are
+the error sites of Plutus `507cab8cf6192e5143f12be5b2d3005a2928dc6d`,
+`plutus-core/untyped-plutus-core/src/UntypedPlutusCore/Evaluation/Machine/Cek/Internal.hs:936-950,974-1008,1082-1088`,
+whose causes are those operands (discharged where the reference discharges them).
+
 The two native-text patches normalize unpaired surrogate values to U+FFFD, retain UTF-8 byte length
 with each immutable `Constant.String`, and align the actual `Program.parseUplc` string-token boundary
 with the pinned native parser. Numeric supplementary escapes preserve their complete scalar value;
@@ -17,7 +30,8 @@ and JDK. The source is upstream commit `b836856a5b4e54cd40fe0aa5947922478e8f1237
 is byte-identical to that in the published 1.4.0 source artifact. The CEK patch adds only:
 
 - `beforeResultDischarge`, a no-op immediately before `dischargeCekValue` in `returnCek NoFrame`;
-- `spendBuiltinBudget`, whose default body is the existing costing call followed by the existing charge.
+- `spendBuiltinBudget`, whose default body is the existing costing call followed by the existing charge;
+- the error-site fields above.
 
 These are the positions needed by the reference's `returnCek` and `evalBuiltinApp`, respectively:
 Plutus `507cab8cf6192e5143f12be5b2d3005a2928dc6d`,
@@ -29,9 +43,12 @@ No transition, denotation, discharge implementation, exception boundary or nativ
 Run the ordinary `bash scripts/sbtw ...` inside the repository's pinned JDK image. It first runs
 `scripts/prepare_scalus.py`, which checks the JDK, downloads and verifies the source archive, applies
 each patch with exact context, and builds the upstream JVM artifact. It then produces one jar from the separately SHA-pinned released
-1.4.0 jar, replacing only thirteen explicit class/TASTy members listed in the manifest: the original five CEK
-members and eight scalar-text/parser members. The complete affected source-family inventory of 52
-members is also pinned; untouched siblings retain their original released bytes.
+1.4.0 jar, replacing only 26 explicit class/TASTy members listed in the manifest: the original five CEK
+members, thirteen members of the six machine-error classes (each class and its TASTy, and the
+`MissingCaseBranch$` companion that holds its constructor default; the other five companions compile
+to their released bytes and are kept) and eight scalar-text/parser members. The complete affected
+source-family inventory of 70 members is also pinned; untouched siblings retain their original
+released bytes.
 Every other released member's bytes, including license and manifest resources, must be unchanged;
 the compiler output cannot add an unlisted member to those source families. The published POM is the pinned
 original with only its root artifact version changed, preserving dependencies and license metadata.

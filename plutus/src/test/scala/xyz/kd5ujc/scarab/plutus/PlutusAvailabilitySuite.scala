@@ -164,7 +164,7 @@ class PlutusAvailabilitySuite extends FunSuite:
       )
     // Keccak-256 is not a PlutusV2 builtin before the van Rossem hard fork, protocol 11.
     run(PlutusLanguage.V2, 10, DefaultFun.Keccak_256, (1, 0, 0)) match
-      case EvalResult.Failure(EvalFailure.Decode(reason), _, _) =>
+      case EvalResult.Failure(Refusals.Decoder(reason), _, _) =>
         assertEquals(
           reason,
           ScriptProblem.Availability(
@@ -172,17 +172,24 @@ class PlutusAvailabilitySuite extends FunSuite:
           )
         )
       case other => fail(other.toString)
-    // The program version is checked too: 1.1.0 is not available to PlutusV1 before protocol 11.
+    // The program version is checked too: 1.1.0 is not available to PlutusV1 before protocol 11,
+    // `PlutusCoreLanguageNotAvailableError` of the version as the bytes give it.
     run(PlutusLanguage.V1, 10, DefaultFun.AddInteger, (1, 1, 0)) match
-      case EvalResult.Failure(EvalFailure.Decode(reason), _, _) =>
+      case EvalResult.Failure(EvalFailure.Refused(error, None), _, _) =>
         assertEquals(
-          reason,
-          ScriptProblem.Availability(Failure.VersionUnavailable((1, 1, 0), PlutusLanguage.V1, 10))
+          error,
+          ReferenceDiagnostic.EvaluationError.Codec(
+            ReferenceDiagnostic.ScriptDecodeError.PlutusCoreLanguageNotAvailable(
+              ReferenceDiagnostic.Version(1, 1, 0),
+              PlutusLanguage.V1,
+              10
+            )
+          )
         )
       case other => fail(other.toString)
     // Where the table allows the program it is not a decode failure (it fails later: the script
     // is a bare builtin, not a function of the arguments).
     run(PlutusLanguage.V1, 11, DefaultFun.AddInteger, (1, 1, 0)) match
-      case EvalResult.Failure(EvalFailure.Decode(reason), _, _) => fail(reason.message)
-      case _                                                    => ()
+      case EvalResult.Failure(failure @ Refusals.Admission(), _, _) => fail(failure.message)
+      case _                                                        => ()
   }

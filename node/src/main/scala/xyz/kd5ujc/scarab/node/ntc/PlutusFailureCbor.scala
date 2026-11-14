@@ -5,15 +5,28 @@ import xyz.kd5ujc.scarab.codec.HaskellShow
 import java.util.Base64
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.plutus.{EvalFailure, ScriptFailure}
-import scalus.uplc.eval.EvaluationFailure
 import xyz.kd5ujc.scarab.ledger.PlutusFailure
-import xyz.kd5ujc.scarab.plutus.{DataSerialiser, EvalRequest, PlutusLanguage, ScalusEvaluator}
+import xyz.kd5ujc.scarab.plutus.{
+  DataSerialiser,
+  EvalFailure,
+  EvalRequest,
+  PlutusLanguage,
+  ReferenceDiagnostic,
+  ScalusEvaluator
+}
 
 /** Wire presentation only: ledger-core/Plutus/Evaluate.hs `ToCBOR PlutusWithContext` and
   * Alonzo/Rules/Utxos.hs `scriptFailureToFailureDescription`, pinned at f649f975.
   */
 private[ntc] object PlutusFailureCbor:
+  /** The machine evaluated `error` (`CekInternal.hs:874-875`, Plutus 507cab8c). */
+  private val ExplicitError = ReferenceDiagnostic.EvaluationError.Cek(
+    ReferenceDiagnostic.ErrorWithCause(
+      ReferenceDiagnostic.CekError.Operational(ReferenceDiagnostic.CekUserError.EvaluationFailure),
+      Some(ReferenceDiagnostic.Term.Error)
+    )
+  )
+
   def context(request: EvalRequest): Bytes = CborOut.build { w =>
     w.array(5).uint(request.protocolMajor)
     w.array(2).uint(request.language.id).bytes(request.script)
@@ -34,7 +47,7 @@ private[ntc] object PlutusFailureCbor:
     */
   def description(failure: PlutusFailure): Either[PlutusContextText.Error, Option[String]] =
     (failure.request, failure.cause) match
-      case (Some(request), EvalFailure.Script(ScriptFailure(_: EvaluationFailure, _))) =>
+      case (Some(request), EvalFailure.Refused(ExplicitError, _)) =>
         PlutusContextText.arguments(request).map { arguments =>
           val language = s"PlutusV${request.language.id + 1}"
           val binary = Base64.getEncoder.encodeToString(request.script.toArray)

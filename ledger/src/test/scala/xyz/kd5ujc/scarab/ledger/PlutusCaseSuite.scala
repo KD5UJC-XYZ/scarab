@@ -69,7 +69,7 @@ class PlutusCaseSuite extends FunSuite:
     cases.filter(_.tx.isValid).foreach { c =>
       evaluate(c, starved) match
         case Right(Phase2.Outcome.Failed(_, failures)) =>
-          assert(failures.toVector.forall(_.reason == EvalFailure.OutOfBudget))
+          assert(failures.toVector.forall(f => Refusals.Budget.unapply(f.reason).isDefined))
         case other => fail(s"${c.name}: $other")
     }
   }

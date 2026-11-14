@@ -49,18 +49,32 @@ import xyz.kd5ujc.scarab.codec.Bytes
   *   enclosing lambdas). The reference checks neither `constr` fields nor `case` scrutinee and
   *   branches.
   * @param wideVariables
-  *   preorder variable ordinals whose original Word64 cannot fit Scalus's positive Int index; the
-  *   decoded term keeps them explicitly open (index -1) without narrowing them
+  *   the original Word64 of each variable, by preorder ordinal, that cannot fit Scalus's positive
+  *   Int index; the decoded term keeps it explicitly open (index -1) under a name of its own
+  *   ([[FlatScan.wideVariable]]), so that a native diagnostic recovers it ([[wideOrigins]])
+  * @param version
+  *   the program version as the bytes give it; the decoded program holds it saturated to `Int`
   */
 final case class FlatScan(
     malformedValue: Option[FlatScan.ValueFault],
     maxTypeHeader: Int,
     maxConstrFields: Int,
     openVariable: Option[BigInt],
-    wideVariables: Set[Int]
-)
+    wideVariables: Map[Int, BigInt],
+    version: ReferenceDiagnostic.Version
+):
+  /** The original index of each lowered variable, keyed by the exact variable the decoded term
+    * holds (an association made when decoding; the name is never parsed).
+    */
+  def wideOrigins: Map[NamedDeBruijn, BigInt] =
+    wideVariables.valuesIterator.map(index => FlatScan.wideVariable(index) -> index).toMap
 
 object FlatScan:
+  /** The variable a wide index decodes to: open for Scalus (index -1), named after the whole index
+    * so that distinct wide indices stay distinct.
+    */
+  def wideVariable(index: BigInt): NamedDeBruijn = NamedDeBruijn(s"i$index", -1)
+
   /** Why `buildValueWith`, `K` or `Quantity` refuse a `value` constant. */
   enum ValueFault:
     case KeyTooLong
@@ -172,11 +186,11 @@ object FlatScan:
       typeHeader: Int,
       constrFields: Int,
       open: Option[BigInt],
-      wide: Set[Int]
+      wide: Map[Int, BigInt]
   )
 
   private object Facts:
-    val empty: Facts = Facts(None, 0, 0, None, Set.empty)
+    val empty: Facts = Facts(None, 0, 0, None, Map.empty)
 
   private enum Unary:
     case Delay, Force, Lambda
@@ -254,7 +268,14 @@ object FlatScan:
     yield
       val facts = walked.value.facts
       Decoded(
-        FlatScan(facts.malformed, facts.typeHeader, facts.constrFields, facts.open, facts.wide),
+        FlatScan(
+          facts.malformed,
+          facts.typeHeader,
+          facts.constrFields,
+          facts.open,
+          facts.wide,
+          ReferenceDiagnostic.Version(version._1, version._2, version._3)
+        ),
         ScarabProgramView.program(
           (saturated(version._1), saturated(version._2), saturated(version._3)),
           walked.value.term
@@ -348,17 +369,17 @@ object FlatScan:
     if (scopeViolation && facts.open.isEmpty) || wide then
       facts.copy(
         open = facts.open.orElse(Option.when(scopeViolation)(index)),
-        wide = if wide then facts.wide + ordinal else facts.wide
+        wide = if wide then facts.wide.updated(ordinal, index) else facts.wide
       )
     else facts
 
-  /** Scalus's name for the variable, of the index narrowed as its decoder narrows it; a wide index
-    * is kept open, which Scalus's lookupVarName refuses before indexing the environment
-    * (Cek.scala:1465-1478 in the pinned 1.3.0 sources).
+  /** Scalus's name for the variable, of its index as Scalus's decoder names it; a wide index is
+    * kept open ([[wideVariable]]), which Scalus's lookupVarName refuses before indexing the
+    * environment (`Cek.scala:1497-1499` of Scalus 1.4.0).
     */
   private def variableTerm(index: BigInt): Uplc =
-    val wide = index >= IntIndexLimit
-    Uplc.Var(NamedDeBruijn(s"i${index.toInt}", if wide then -1 else index.toInt))
+    if index >= IntIndexLimit then Uplc.Var(wideVariable(index))
+    else Uplc.Var(NamedDeBruijn(s"i${index.toInt}", index.toInt))
 
   private final class Input(bytes: Array[Byte]):
     private val end = bytes.length.toLong * 8

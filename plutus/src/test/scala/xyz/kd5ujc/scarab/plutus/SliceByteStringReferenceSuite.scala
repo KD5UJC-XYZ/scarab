@@ -102,7 +102,7 @@ class SliceByteStringReferenceSuite extends FunSuite:
       )
     ) match
       case EvalResult.Success(used, _)                     => (Stage.Success, Some(used))
-      case EvalResult.Failure(EvalFailure.Script(_), _, _) => (Stage.Evaluation, None)
+      case EvalResult.Failure(Refusals.Evaluation(), _, _) => (Stage.Evaluation, None)
       case other => fail(s"$language/$protocol: unexpected outcome $other")
 
   private def reference(row: Json): (Stage, Option[ExUnits]) =

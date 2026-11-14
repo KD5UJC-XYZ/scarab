@@ -81,7 +81,7 @@ class SerialiseDataReferenceSuite extends FunSuite:
       )
     ) match
       case EvalResult.Success(_, _)                        => "success"
-      case EvalResult.Failure(EvalFailure.Script(_), _, _) => "evaluation"
+      case EvalResult.Failure(Refusals.Evaluation(), _, _) => "evaluation"
       case other => fail(s"$language/$protocol: unexpected outcome $other")
 
   // From protocol 11 the reference takes the index of `constrData` as an unsigned 64-bit integer

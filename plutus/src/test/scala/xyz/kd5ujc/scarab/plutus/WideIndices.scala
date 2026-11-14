@@ -6,15 +6,15 @@ import cats.syntax.all.*
 import scalus.uplc.Term
 import xyz.kd5ujc.scarab.codec.TreeFold
 
-/** Scalus 1.3.0 stores a de Bruijn index in an Int, and its flat decoder narrows a wider Word64. A
-  * wider index is necessarily unbound in any ledger script, but narrowing it can capture a
-  * variable. [[FlatScan.decode]] keeps those variables explicitly open (index -1); this is the same
-  * repair of a term Scalus decoded, which the parity check against Scalus's decoder applies before
-  * comparing. Scalus's lookupVarName rejects a negative index before indexing the environment
-  * (Cek.scala:1465-1478 in the pinned 1.3.0 sources).
+/** Scalus stores a de Bruijn index in an Int, and its flat decoder narrows a wider Word64. A wider
+  * index is necessarily unbound in any ledger script, but narrowing it can capture a variable.
+  * [[FlatScan.decode]] keeps those variables explicitly open ([[FlatScan.wideVariable]] of the
+  * original index); this is the same repair of a term Scalus decoded, by preorder ordinal, which
+  * the parity check against Scalus's decoder applies before comparing. Scalus's lookupVarName
+  * rejects a negative index before indexing the environment.
   */
 private[plutus] object WideIndices:
-  def repair(root: Term, wide: Set[Int]): Term =
+  def repair(root: Term, wide: Map[Int, BigInt]): Term =
     if wide.isEmpty then root
     else
       type Rebuild = State[Int, Term]
@@ -26,9 +26,9 @@ private[plutus] object WideIndices:
       val rebuilt = TreeFold.fold[Term, Rebuild](root) {
         case Term.Var(name, annotation) =>
           Step.Leaf(State { ordinal =>
-            val variable =
-              if wide(ordinal) then Term.Var(name.copy(index = -1), annotation)
-              else Term.Var(name, annotation)
+            val variable = wide
+              .get(ordinal)
+              .fold(Term.Var(name, annotation))(i => Term.Var(FlatScan.wideVariable(i), annotation))
             (ordinal + 1, variable)
           })
         // Each fixed arity below is the arity of the children handed to TreeFold.

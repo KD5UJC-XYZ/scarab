@@ -1,6 +1,65 @@
 --- a/scalus-core/shared/src/main/scala/scalus/uplc/eval/Cek.scala
 +++ b/scalus-core/shared/src/main/scala/scalus/uplc/eval/Cek.scala
-@@ -1266,7 +1266,9 @@
+@@ -280,20 +280,20 @@
+ }
+ 
+ class NonPolymorphicInstantiationMachineError(
+-    value: CekValue,
++    val value: CekValue,
+     env: CekValEnv,
+     sourcePos: ScalusSourcePos = ScalusSourcePos.empty
+ ) extends StackTraceMachineError(s"Non-polymorphic instantiation: $value", env, sourcePos)
+ 
+ class NonFunctionalApplicationMachineError(
+-    arg: CekValue,
++    val arg: CekValue,
+     env: CekValEnv,
+     sourcePos: ScalusSourcePos = ScalusSourcePos.empty,
+     sourceTrace: Seq[ScalusSourcePos] = Seq.empty
+ ) extends StackTraceMachineError(s"Non-functional application: $arg", env, sourcePos, sourceTrace)
+ 
+ class OpenTermEvaluatedMachineError(
+-    name: NamedDeBruijn,
++    val name: NamedDeBruijn,
+     env: CekValEnv,
+     sourcePos: ScalusSourcePos = ScalusSourcePos.empty
+ ) extends StackTraceMachineError(
+@@ -303,13 +303,13 @@
+     )
+ 
+ class BuiltinTermArgumentExpectedMachineError(
+-    term: Term,
++    val term: Term,
+     env: CekValEnv,
+     sourcePos: ScalusSourcePos = ScalusSourcePos.empty
+ ) extends StackTraceMachineError(s"Expected builtin term argument, got $term", env, sourcePos)
+ 
+ class UnexpectedBuiltinTermArgumentMachineError(
+-    term: Term,
++    val term: Term,
+     env: CekValEnv,
+     sourcePos: ScalusSourcePos = ScalusSourcePos.empty
+ ) extends StackTraceMachineError(s"Unexpected builtin term argument: $term", env, sourcePos)
+@@ -329,12 +329,16 @@
+ class MissingCaseBranch(
+     val tag: Word64,
+     env: CekValEnv,
+-    sourcePos: ScalusSourcePos = ScalusSourcePos.empty
++    sourcePos: ScalusSourcePos,
++    val scrutinee: Option[CekValue]
+ ) extends StackTraceMachineError(
+       s"Case expression missing the branch required by the scrutinee tag: $tag",
+       env,
+       sourcePos
+-    )
++    ) {
++    def this(tag: Word64, env: CekValEnv, sourcePos: ScalusSourcePos = ScalusSourcePos.empty) =
++        this(tag, env, sourcePos, None)
++}
+ class NonConstrScrutinized(
+     val value: CekValue,
+     env: CekValEnv,
+@@ -1266,7 +1270,9 @@
  
      private def returnCek(ctx: Context, env: CekValEnv, value: CekValue): CekState = {
          ctx match
@@ -11,7 +70,25 @@
              case FrameForce(ctx) => forceEvaluate(ctx, env, value)
              case FrameAwaitFunTerm(env, arg, ctx, callPos) =>
                  Compute(FrameAwaitArg(value, ctx, callPos), env, arg)
-@@ -1656,17 +1658,29 @@
+@@ -1290,7 +1296,7 @@
+                         // script can carry 2^31 of them. Plutus does the same at its own Int
+                         // width (Cek/Internal.hs: `i > maxBound::Int` before indexing).
+                         if tag.compareUnsigned(maxIndexableTag) > 0 then
+-                            throw new MissingCaseBranch(tag, env, lastSourcePos)
++                            throw new MissingCaseBranch(tag, env, lastSourcePos, Some(value))
+                         val index = tag.value.toInt
+                         if index < cases.size then
+                             // Session-18 diagnostic (gated by -Dscalus.assert.apply.data.to.uc=1):
+@@ -1309,7 +1315,7 @@
+                                       s"  branch=${cases(index).pretty.render(200).take(600)}"
+                                     )
+                             Compute(transferArgStack(args, ctx), env, cases(index))
+-                        else throw new MissingCaseBranch(tag, env, lastSourcePos)
++                        else throw new MissingCaseBranch(tag, env, lastSourcePos, Some(value))
+                     case VCon(const) if caseOnBuiltinsEnabled =>
+                         const match
+                             case Constant.Integer(i) =>
+@@ -1656,17 +1662,29 @@
                  throw new NonPolymorphicInstantiationMachineError(value, env, lastSourcePos)
      }
  

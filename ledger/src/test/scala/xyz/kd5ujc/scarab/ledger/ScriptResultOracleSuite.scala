@@ -48,7 +48,7 @@ class ScriptResultOracleSuite extends FunSuite:
         case Phase2.Outcome.Passed(_) => assertEquals(failures.size, 0)
         case Phase2.Outcome.Failed(_, actual) =>
           assertEquals(actual.length, failures.size)
-          assert(actual.toVector.forall(_.reason.isInstanceOf[EvalFailure.Script]))
+          assert(actual.toVector.forall(f => Refusals.Evaluation.unapply(f.reason)))
           assertEquals(
             actual.toVector.map { failure =>
               val request = failure.request

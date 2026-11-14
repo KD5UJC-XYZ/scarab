@@ -193,8 +193,8 @@ class PlutusConformanceSuite extends FunSuite:
     ScalusEvaluator.pure.evaluate(request) match
       case EvalResult.Failure(EvalFailure.Unsupported(reason), _, _) =>
         Outcome.Unavailable(reason.message)
-      case EvalResult.Failure(EvalFailure.Decode(r), _, _) => Outcome.Undecodable(r.message)
-      case EvalResult.Failure(r, spent, _)                 =>
+      case EvalResult.Failure(r @ Refusals.Admission(), _, _) => Outcome.Undecodable(r.message)
+      case EvalResult.Failure(r, spent, _)                    =>
         // the failure happened inside the program, after the wrapper's application and lambda
         Outcome.Failed(minus(spent, 2), r.message)
       case EvalResult.Success(spent, _) =>

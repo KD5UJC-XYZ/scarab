@@ -87,7 +87,7 @@ object FlatScanImperative:
     private var constrFields = 0
     private var open: Option[BigInt] = None
     private var variableOrdinal = 0
-    private var wideVariables = Set.empty[Int]
+    private var wideVariables = Map.empty[Int, BigInt]
     private var constrCaseAllowed = false
     private val tasks = ArrayDeque.empty[Task]
     // The values built so far, last on top. Every task that pops pushed its children's tasks before
@@ -258,12 +258,12 @@ object FlatScanImperative:
       val scopeViolation = checked && (index <= 0 || index > BigInt(depth))
       if open.isEmpty && scopeViolation then open = Some(index)
       val wide = index >= IntIndexLimit
-      if wide then wideVariables += variableOrdinal
+      if wide then wideVariables += variableOrdinal -> index
       variableOrdinal += 1
-      // Scalus's name for the variable, of the index narrowed as its decoder narrows it; a wide
-      // index is kept open, which Scalus's lookupVarName refuses before indexing the environment
-      // (Cek.scala:1465-1478 in the pinned 1.3.0 sources).
-      Uplc.Var(NamedDeBruijn(s"i${index.toInt}", if wide then -1 else index.toInt))
+      // Scalus's name for the variable; a wide index is kept open under a name of its own, which
+      // Scalus's lookupVarName refuses before indexing the environment.
+      if wide then Uplc.Var(FlatScan.wideVariable(index))
+      else Uplc.Var(NamedDeBruijn(s"i${index.toInt}", index.toInt))
 
     private def popTerms(n: Int): List[Uplc] =
       var out = List.empty[Uplc]
@@ -291,7 +291,17 @@ object FlatScanImperative:
         (saturated(version._1), saturated(version._2), saturated(version._3)),
         terms.removeLast()
       )
-      Decoded(FlatScan(malformed, typeHeader, constrFields, open, wideVariables), program)
+      Decoded(
+        FlatScan(
+          malformed,
+          typeHeader,
+          constrFields,
+          open,
+          wideVariables,
+          ReferenceDiagnostic.Version(version._1, version._2, version._3)
+        ),
+        program
+      )
 
     /** `unflatWith` reads the program with `postAlignedDecoder` (`PlutusCore/Flat/Filler.hs`
       * 77-81): zero or more 0 bits and a 1, and then `strictDecoder` requires the end of the input

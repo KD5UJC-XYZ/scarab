@@ -79,8 +79,7 @@ class PreprodManyRedeemersSuite extends FunSuite:
     var calls = 0
     val failingAt: ScriptEvaluator[Id] = _ =>
       calls += 1
-      if calls == 15000 then
-        EvalResult.Failure(EvalFailure.OutOfBudget, ExUnits(0, 0), Vector.empty)
+      if calls == 15000 then EvalResult.Failure(Refusals.outOfBudget(), ExUnits(0, 0), Vector.empty)
       else EvalResult.Success(ExUnits(0, 0), Vector.empty)
     val outcome = PreprodDeepTx.onSmallStack(evaluate(many, failingAt, spent))
     outcome match
@@ -88,7 +87,7 @@ class PreprodManyRedeemersSuite extends FunSuite:
         assertEquals(report.scripts, 20000)
         assertEquals(failures.length, 1)
         assertEquals(failures.head.redeemer, many.witnesses.redeemers(5000))
-        assertEquals(failures.head.reason, EvalFailure.OutOfBudget)
+        assertEquals(failures.head.reason, Refusals.outOfBudget())
       case other => fail(s"not a script failure: $other")
     assertEquals(calls, 20000)
   }

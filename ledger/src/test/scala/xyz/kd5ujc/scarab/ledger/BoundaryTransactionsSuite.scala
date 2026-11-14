@@ -9,7 +9,7 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.rules.*
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.plutus.{EvalFailure, ScalusEvaluator}
+import xyz.kd5ujc.scarab.plutus.{Refusals, ScalusEvaluator}
 
 /** Complete reference submissions, including phase-1 refusals that never enter evaluation. Unlike
   * the context-only harness, decode refusals cannot supply an invalid-tag collateral verdict.
@@ -162,13 +162,13 @@ class BoundaryTransactionsSuite extends FunSuite:
             case (Stage.Success, Right(Phase2.Outcome.Passed(_))) => ()
             case (Stage.Scope, Right(Phase2.Outcome.Failed(_, failures))) =>
               val index = failures.head.reason match
-                case EvalFailure.OpenTerm(value) => value
-                case other                       => fail(s"not an open term: $other")
+                case Refusals.Scope(value) => value
+                case other                 => fail(s"not an open term: $other")
               assert(
                 field[Vector[String]](r.boundary, "sourceIndices").map(BigInt(_)).contains(index)
               )
             case (Stage.Evaluation, Right(Phase2.Outcome.Failed(_, failures))) =>
-              assert(failures.toVector.forall(_.reason.isInstanceOf[EvalFailure.Script]))
+              assert(failures.toVector.forall(f => Refusals.Evaluation.unapply(f.reason)))
             case other => fail(s"not the reference evaluation stage: $other")
       val spent = obj(r.boundary, "spentAfter")
       assertEquals(field[Boolean](spent, "funding"), r.accepted && c.tx.isValid)

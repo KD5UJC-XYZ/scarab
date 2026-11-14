@@ -133,7 +133,7 @@ class DataEqualityReferenceSuite extends FunSuite:
       EvalRequest(language, protocol, script, Vector.empty, model, PlutusBoundaryCorpus.budget)
     ) match
       case EvalResult.Success(used, _)                     => ("success", Some(used))
-      case EvalResult.Failure(EvalFailure.Script(_), _, _) => ("evaluation", None)
+      case EvalResult.Failure(Refusals.Evaluation(), _, _) => ("evaluation", None)
       case other => fail(s"$language/$protocol: unexpected outcome $other")
 
   private def reference(row: Json): (String, Option[ExUnits]) =
@@ -179,7 +179,7 @@ class DataEqualityReferenceSuite extends FunSuite:
     assert(run(deep(ab), deep(ab)).isInstanceOf[EvalResult.Success], run(deep(ab), deep(ab)))
     assert(
       run(deep(ab), deep(ba)) match
-        case EvalResult.Failure(EvalFailure.Script(_), _, _) => true
+        case EvalResult.Failure(Refusals.Evaluation(), _, _) => true
         case _                                               => false
     )
     assert(pair(1, 2) != pair(2, 1))

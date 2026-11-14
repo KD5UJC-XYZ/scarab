@@ -61,10 +61,10 @@ class BoundaryTransactionScriptsSuite extends FunSuite:
           )
         )
         val stage = outcome match
-          case EvalResult.Success(_, _)                                     => "success"
-          case EvalResult.Failure(EvalFailure.Decode(_), _, _) if !admitted => "decode"
-          case EvalResult.Failure(EvalFailure.OpenTerm(_), _, _)            => "scope"
-          case EvalResult.Failure(EvalFailure.Script(_), _, _)              => "evaluation"
+          case EvalResult.Success(_, _)                                    => "success"
+          case EvalResult.Failure(Refusals.Admission(), _, _) if !admitted => "decode"
+          case EvalResult.Failure(Refusals.Scope(_), _, _)                 => "scope"
+          case EvalResult.Failure(Refusals.Evaluation(), _, _)             => "evaluation"
           case other => fail(s"unexpected boundary outcome: $other")
         assertEquals(stage, field[String](row, "stage"))
       }

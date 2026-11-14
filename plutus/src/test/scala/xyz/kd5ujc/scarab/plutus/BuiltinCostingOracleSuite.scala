@@ -26,12 +26,13 @@ class BuiltinCostingOracleSuite extends FunSuite:
   private val unlimited = ExUnits(BigInt(1) << 60, BigInt(1) << 60)
 
   private def stage(result: EvalResult, admitted: Boolean): String = result match
-    case EvalResult.Success(_, _)                          => "success"
-    case EvalResult.Failure(EvalFailure.Decode(_), _, _)   => if admitted then "setup" else "decode"
-    case EvalResult.Failure(EvalFailure.OpenTerm(_), _, _) => "scope"
-    case EvalResult.Failure(EvalFailure.OutOfBudget, _, _) => "budget"
-    case EvalResult.Failure(EvalFailure.Script(_), _, _)   => "evaluation"
+    case EvalResult.Success(_, _)                       => "success"
+    case EvalResult.Failure(Refusals.Admission(), _, _) => if admitted then "setup" else "decode"
+    case EvalResult.Failure(Refusals.Scope(_), _, _)    => "scope"
+    case EvalResult.Failure(Refusals.Budget(_), _, _)   => "budget"
     case EvalResult.Failure(EvalFailure.Unsupported(why), _, _) => fail(s"unavailable: $why")
+    case EvalResult.Failure(EvalFailure.Refused(_, _) | EvalFailure.Unresolved(_, _), _, _) =>
+      "evaluation"
 
   test("input hashes, original upstream seeds, profiles and cardinality are complete") {
     val manifest =

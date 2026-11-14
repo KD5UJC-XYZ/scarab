@@ -160,18 +160,31 @@ object ScalusEvaluator:
         .catchOnly[ExecutionException](bigStacks.submit(() => body).get())
         .fold(error => failed(Option(error.getCause).getOrElse(error)), identity)
 
-    /** The checks of the ledger's deserialisation and of `mkTermToEvaluate`, in that order. */
-    private def admitted(
-        decoded: Decoded,
-        request: EvalRequest
-    ): Either[ScriptDecodeFailure, Decoded] =
-      for
-        _ <- available(decoded, request.language, request.protocolMajor)
-        _ <- PlutusAvailability
-          .versionFailure(request.language, request.protocolMajor, decoded.program.version)
-          .map(f => ScriptDecodeFailure.Malformed(ScriptProblem.Availability(f)))
-          .toLeft(())
-      yield decoded
+    /** The checks of the ledger's deserialisation and of `mkTermToEvaluate`, in that order: the
+      * refusal of the first that fails, as the reference's `EvaluationError`.
+      */
+    private def admitted(decoded: Decoded, request: EvalRequest): Option[EvalFailure] =
+      available(decoded, request.language, request.protocolMajor).left.toOption
+        .map(refusedAdmission(request))
+        .orElse(
+          PlutusAvailability
+            .versionFailure(request.language, request.protocolMajor, decoded.program.version)
+            .map(_ =>
+              NativeDiagnostics
+                .programVersion(decoded.scan.version, request.language, request.protocolMajor)
+            )
+        )
+
+    private def refusedAdmission(request: EvalRequest)(failure: ScriptDecodeFailure): EvalFailure =
+      failure match
+        case ScriptDecodeFailure.Unavailable(reason) => EvalFailure.Unsupported(reason)
+        case ScriptDecodeFailure.Malformed(problem) =>
+          NativeDiagnostics.admission(
+            problem,
+            request.language,
+            request.protocolMajor,
+            request.script.drop(PlutusScriptBytes.cborItemLength(request.script.toArray))
+          )
 
     private def available(
         decoded: Decoded,
@@ -266,46 +279,49 @@ object ScalusEvaluator:
       if !request.budget.mem.isValidLong || !request.budget.steps.isValidLong then
         failure(EvalFailure.Unsupported(BackendFailure.BudgetOutOfRange(request.budget)))
       else
-        (vm(request), program(request.script).flatMap(admitted(_, request))) match
-          case (Left(reason), _) => failure(reason)
-          case (_, Left(ScriptDecodeFailure.Malformed(reason))) =>
-            failure(EvalFailure.Decode(reason))
-          case (_, Left(ScriptDecodeFailure.Unavailable(reason))) =>
-            failure(EvalFailure.Unsupported(reason))
-          case (Right(_), Right(Decoded(_, _, _, FlatScan(_, _, _, Some(index), _)))) =>
-            // `mkTermToEvaluate` checks the scope of the applied term before the machine starts
-            failure(EvalFailure.OpenTerm(index))
-          case (Right(machine), Right(Decoded(script, _, _, _))) =>
-            val spender = ReferenceBudget.Restricting(
-              ScalusExUnits(request.budget.mem.toLong, request.budget.steps.toLong)
-            )
-            val log = EvaluationLog()
-            def spent = ExUnits(spender.getSpentBudget.memory, spender.getSpentBudget.steps)
-            Thrown
-              .orAlso[StackOverflowError, Unit] {
-                val applied = request.args.foldLeft(script)((p, a) => p.applyArg(toData(a)))
-                runMachine(machine, applied, spender, log)
-              }
-              .fold(
-                {
-                  case _: OutOfExBudgetError =>
-                    failure(EvalFailure.OutOfBudget, spent, log.getLogs.toVector)
-                  case _: StackOverflowError =>
-                    failure(
-                      EvalFailure.Unsupported(BackendFailure.StackExhausted),
-                      spent,
-                      log.getLogs.toVector
-                    )
-                  case error =>
-                    val logs = log.getLogs.toVector
-                    val reason = log.refused.getOrElse(
-                      if referenceFailure(error) then EvalFailure.Script(ScriptFailure(error, logs))
-                      else EvalFailure.Unsupported(BackendFailure.Defect(error))
-                    )
-                    failure(reason, spent, logs)
-                },
-                _ => EvalResult.Success(spent, log.getLogs.toVector)
+        (vm(request), program(request.script)) match
+          case (Left(reason), _)  => failure(reason)
+          case (_, Left(refusal)) => failure(refusedAdmission(request)(refusal))
+          case (Right(machine), Right(decoded)) =>
+            admitted(decoded, request) match
+              case Some(refusal) => failure(refusal)
+              case None =>
+                decoded.scan.openVariable match
+                  // `mkTermToEvaluate` checks the scope of the applied term before the machine starts
+                  case Some(index) => failure(NativeDiagnostics.scope(index))
+                  case None        => execute(request, machine, decoded)
+
+    private def execute(request: EvalRequest, machine: PlutusVM, decoded: Decoded): EvalResult =
+      val spender = ReferenceBudget.Restricting(
+        ScalusExUnits(request.budget.mem.toLong, request.budget.steps.toLong)
+      )
+      val log = EvaluationLog()
+      def spent = ExUnits(spender.getSpentBudget.memory, spender.getSpentBudget.steps)
+      Thrown
+        .orAlso[StackOverflowError, Unit] {
+          val applied = request.args.foldLeft(decoded.program)((p, a) => p.applyArg(toData(a)))
+          runMachine(machine, applied, spender, log)
+        }
+        .fold(
+          {
+            case error: OutOfExBudgetError =>
+              EvalResult.Failure(NativeDiagnostics.budget(error), spent, log.getLogs.toVector)
+            case _: StackOverflowError =>
+              EvalResult.Failure(
+                EvalFailure.Unsupported(BackendFailure.StackExhausted),
+                spent,
+                log.getLogs.toVector
               )
+            case error =>
+              val reason = log.refused.getOrElse(
+                if referenceFailure(error) then
+                  NativeDiagnostics.machine(error, NativeDiagnostics.Origins.of(decoded.scan))
+                else EvalFailure.Unsupported(BackendFailure.Defect(error))
+              )
+              EvalResult.Failure(reason, spent, log.getLogs.toVector)
+          },
+          _ => EvalResult.Success(spent, log.getLogs.toVector)
+        )
 
   /** The builtins Scalus 1.4.0 evaluates through scalus-crypto-jni (libsodium, libsecp256k1, blst).
     */

@@ -291,8 +291,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
   test("a malformed refusal context sends no MsgRejectTx and a fresh client can still submit") {
     val original = new scalus.uplc.eval.EvaluationFailure(Vector.empty)
     val failure = xyz.kd5ujc.scarab.ledger.PlutusFailure(
-      xyz.kd5ujc.scarab.plutus.EvalFailure
-        .Script(xyz.kd5ujc.scarab.plutus.ScriptFailure(original, Vector("trace"))),
+      xyz.kd5ujc.scarab.plutus.Refusals.scripted(original),
       Bytes.empty,
       Some(
         xyz.kd5ujc.scarab.plutus.EvalRequest(
@@ -391,8 +390,7 @@ class LocalSubmissionSuite extends FailsOnUncaught:
                 ) =>
               assert(error.failure eq failure)
               error.failure.cause match
-                case xyz.kd5ujc.scarab.plutus.EvalFailure
-                      .Script(xyz.kd5ujc.scarab.plutus.ScriptFailure(cause, _)) =>
+                case xyz.kd5ujc.scarab.plutus.EvalFailure.Refused(_, Some(cause)) =>
                   assert(cause eq original)
                 case other => fail(s"original evaluator cause lost: $other")
             case other => fail(s"unexpected server end: $other")

@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.plutus.*
 class PreparedBlockSuite extends FunSuite:
   private val passing = TestLedger.scripted(true)
   private val failure: ScriptEvaluator[Id] = _ =>
-    EvalResult.Failure(EvalFailure.OutOfBudget, ExUnits.zero, Vector.empty)
+    EvalResult.Failure(Refusals.outOfBudget(), ExUnits.zero, Vector.empty)
 
   private def check(evaluator: ScriptEvaluator[Id], txs: Vector[Tx] = PreparedBlockFixture.txs) =
     val serialSeen = Vector.newBuilder[Phase2.Observation]
@@ -119,7 +119,7 @@ class PreparedBlockSuite extends FunSuite:
       .toSet
     val defect = new IllegalArgumentException("later worker defect")
     val evaluator: ScriptEvaluator[Id] = request =>
-      if first(request) then EvalResult.Failure(EvalFailure.OutOfBudget, ExUnits.zero, Vector.empty)
+      if first(request) then EvalResult.Failure(Refusals.outOfBudget(), ExUnits.zero, Vector.empty)
       else throw defect
     val body = PreparedBlockFixture.body(evaluator)
     val plan = body.prepare
