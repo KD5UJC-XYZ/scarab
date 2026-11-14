@@ -1,0 +1,3 @@
+### Added (ledger, #826)
+
+- Select the Leios voting committee as the Leios testnet's build does (`LeiosCommitteeSelection`): the largest pools by unsigned stake, ties by pool id, keys honoured while their age allows with the reference's wrapping epoch sums, and keyless seats for absent, aged-out or unproven keys. The committee a mark snapshot rotates into the set position agrees byte for byte with the native `mkMarkSnapShot` and `mkSetSnapShot` on the recorded cases. A failure of the native BLS library while checking a proof of possession is now reported as such rather than as an invalid proof. The epoch rules do not call the selection yet, and the key age is not derived from the KES parameters yet (#826).

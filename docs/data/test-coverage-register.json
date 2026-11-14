@@ -1309,6 +1309,24 @@
         "node/src/test/scala/xyz/kd5ujc/scarab/node/ntc/ReferenceRefusalSuite.scala"
       ],
       "candidateRequired": true
+    },
+    {
+      "id": "leios-committee-selection",
+      "classification": "native-parity",
+      "status": "covered",
+      "scope": "The Leios voting committee a mark snapshot memoizes and mkSetSnapShot rotates into the set position, as the Leios testnet's build selects it (cardano-ledger 9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c libs/cardano-ledger-core/src/Cardano/Ledger/State/LeiosCommittee.hs:65-93, State/SnapShots.hs:444-467, 542-550; cardano-base c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c cardano-crypto-leios/src/Cardano/Crypto/Leios.hs:146-169), on synthetic Leios-layout SnapShots at protocol 12. Not SNAP, maxKeyAgeEpochs, genesis or an epoch transition.",
+      "assertion": "LeiosCommitteeReferenceSuite decodes each case with the Leios codecs, derives the committee with LeiosCommitteeSelection.ofMark and requires the native acceptance verdict and the complete bytes of the committee and the SetSnapShot; scripts/oracle/leios-committee/run.py refuses an image whose ledger and cardano-base sources differ from the pinned files.",
+      "rationale": "Committee selection decides which pools may vote on endorser blocks; the corpus covers the size and key-age words, unsigned stake order and id ties, keyless seats, key-age boundaries and the Word64 wraps, so a change to any of them fails a case.",
+      "owner": "Scarab maintainers",
+      "tracking": "https://github.com/KD5UJC-XYZ/scarab/issues/826",
+      "resolution": "Refresh only by recording a new corpus with scripts/oracle/leios-committee/run.py --record against the pinned Leios image.",
+      "evidence": [
+        "fixtures/reference/leios-committee/cases.jsonl",
+        "scripts/oracle/leios-committee/run.py",
+        "scripts/oracle/leios-committee/Main.hs",
+        "storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/LeiosCommitteeReferenceSuite.scala"
+      ],
+      "candidateRequired": false
     }
   ]
 }

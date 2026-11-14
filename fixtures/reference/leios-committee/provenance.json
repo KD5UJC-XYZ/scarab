@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-11-14",
+  "scope": "Native SnapShots decoding at protocol 12 with the mark snapshot's memoized Leios committee (mkMarkSnapShot, selectLeiosCommittee, mkLeiosCommittee) and its rotation into the set position (mkSetSnapShot): exact accepted bytes and acceptance parity; not SNAP, the key-age derivation (maxKeyAgeEpochs), genesis or epoch transitions.",
+  "build": "leios-b004fe0c",
+  "image": "scarab-leios-testnet:local",
+  "ledgerSourceCommit": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+  "cardanoBase": "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c",
+  "imageId": "sha256:51057b9d6f1e806b316fb4fc68488ef51c5e1236728647d711aad772bacf733d",
+  "cases": 24,
+  "sourceSha256": {
+    "LeiosCommittee.hs": "2bbdb60617b43aa92a9b7bfaaf2a951767690d581f38f2f8cd9b018e653e11bb",
+    "SnapShots.hs": "ae7d5e0db3afe5f97183008047d2f7ecf2974c7d1249752284a600b55557d414",
+    "Leios.hs": "9297f0a31091614d4e667a7d7a4e00413bc1b3133e84aa01e4da9e1438be7e84",
+    "BLS12381/Internal.hs": "9ac5419c5febe57d72c5673cb1b12802ce3787058dbfebcd83103e5105986025"
+  },
+  "harnessSha256": "bc1f2f862c75033eba71b1d2c72e9db4d96af4c05ea70bbd53a857fccf8515b6",
+  "casesSha256": "52549a0b14d1ef66a8368b208b531b0fe9c8b9f917b10bd158fce0e06122ad4b"
+}
