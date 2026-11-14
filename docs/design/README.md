@@ -19,6 +19,7 @@ decisions they rest on are [ADRs](../adr/README.md).
 | [Domain and service errors](domain-errors.md) | As built for runtime contracts and declared-channel guard; follow-ups tracked | [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82) |
 | [Ledger-state mirror, step 1](ledger-mirror.md) | Historical (done 2026-10-15) | [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82) |
 | [Ledger-state mirror, step 2](ledger-mirror-step2.md) | Accepted; jumps 1 and 2 done (J2.9, 2026-10-17), jump 3 open | [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82) |
+| [Era-specific transaction types](era-typed-transactions.md) | Proposal 2026-11-14; decisions in the ADR 0007 amendment; spike on `feat/era-types` | [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85), [#544](https://github.com/KD5UJC-XYZ/scarab/issues/544) |
 | [Ouroboros Leios](../leios.md) | Proposal (research, not implemented) | [#70](https://github.com/KD5UJC-XYZ/scarab/issues/70) |
 | [Memory-lean decoding](memory-lean-decoding.md) | Stages 0 to 3 implemented and measured, stage 4 a proposal | [#94](https://github.com/KD5UJC-XYZ/scarab/issues/94) |
 | [Typed rule interpreter](rule-interpreter-as-built.md) | Current; typed continuations and measured interpreter | [#202](https://github.com/KD5UJC-XYZ/scarab/issues/202) |
