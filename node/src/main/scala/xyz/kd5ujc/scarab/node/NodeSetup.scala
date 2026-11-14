@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
 }
 import xyz.kd5ujc.scarab.ledger.rules.{FromByron, GenesisInjections, GenesisStart, Globals}
 import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
-import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
+import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, StateLayout}
 import xyz.kd5ujc.scarab.ledger.{
   ByronGenesis,
   ByronGenesisFile,
@@ -218,7 +218,7 @@ object NodeSetup:
       base = genesisDir.getOrElse(Option(config.toAbsolutePath.getParent).getOrElse(Path.of(".")))
       read = (name: String) =>
         Option.when(Files.exists(base.resolve(name)))(Files.readAllBytes(base.resolve(name)))
-      setup <- assemble(parsed, read)
+      setup <- assemble(build)(parsed, read)
     yield setup.mirroring(build)
 
   /** The configuration file alone, before any genesis file is read. */
@@ -235,7 +235,7 @@ object NodeSetup:
     ConfigNames
       .collectFirst(Function.unlift(n => read(n)))
       .fold(NodeConfig.parse(build)("{}"))(b => NodeConfig.parse(build)(text(b)))
-      .flatMap(assemble(_, read))
+      .flatMap(assemble(build)(_, read))
       .map(_.mirroring(build))
 
   /** Check every hash the configuration lists against the genesis file it names: the Byron one is
@@ -293,8 +293,10 @@ object NodeSetup:
       )
     yield ()
 
-  /** The setup from a configuration and the genesis files it names (read by name). */
-  def assemble(
+  /** The setup from a configuration and the genesis files it names (read by name), its genesis read
+    * and its ledger started as `build` reads and starts them.
+    */
+  def assemble(build: ReferenceBuild)(
       config: NodeConfig,
       read: String => Option[Array[Byte]]
   ): Either[ConfigError, NodeSetup] =
@@ -356,8 +358,10 @@ object NodeSetup:
       dijkstra <- names.dijkstra
         .zip(dijkstraBytes)
         .traverse((name, bytes) => json(name, bytes).flatMap(DijkstraGenesis.read))
-      injections <- GenesisInjections.read(files)
-      globals <- GenesisState.globals(files, genesis).map(_.copy(dijkstra = dijkstra))
+      injections <- GenesisInjections.read(StateLayout.of(build))(files)
+      globals <- GenesisState
+        .globals(files, genesis)
+        .map(_.copy(dijkstra = dijkstra, referenceBuild = build))
       // Dijkstra's trigger is carried as the reference carries it (`TestDijkstraHardForkAtEpoch`,
       // read with `ExperimentalHardForksEnabled`), and never fires below a maximum major protocol
       // version of 12 (`HardForkConfig.trigger`)

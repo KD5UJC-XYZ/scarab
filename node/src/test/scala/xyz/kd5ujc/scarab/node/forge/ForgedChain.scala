@@ -46,6 +46,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   KeyHash,
   NewEpochState,
   NonZero,
+  PoolBlsKey,
   PoolDistr,
   ShelleyBasedEra,
   SnapShot,
@@ -192,7 +193,8 @@ class ForgedChainSetup(val geometry: EpochGeometry):
       val staking = vocab(Convert.credential[xyz.kd5ujc.scarab.ledger.state.Staking](cred))
       val id = vocab(KeyHash.fromBytes[StakePool](creds.poolId))
       val stake = vocab(CompactCoin.fromBigInt(amount).flatMap(NonZero.from))
-      val pool = vocab(Convert.poolState(params, deposit, Sorted.set(List(staking))))
+      val pool =
+        vocab(Convert.poolState(params, PoolBlsKey.Node11_1, deposit, Sorted.set(List(staking))))
       (staking -> StakeWithDelegation(stake, id), id -> pool)
     }
     StakeDistribution.snapshot(

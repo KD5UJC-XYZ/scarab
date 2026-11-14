@@ -67,6 +67,7 @@ object Build:
     val state = Convert
       .poolState(
         params,
+        PoolBlsKey.Node11_1,
         CompactCoin.fromBigInt(deposit).fold(e => fail(s"$e"), identity),
         Sorted.emptySet[Credential[Staking]]
       )

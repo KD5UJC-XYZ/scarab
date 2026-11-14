@@ -6,6 +6,7 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.rules.GenesisInjections
+import xyz.kd5ujc.scarab.protocol.StateLayout
 
 /** The Shelley, Alonzo and Conway genesis files against the unchanged reference parsers (#497).
   *
@@ -103,7 +104,7 @@ class GenesisSchemaSuite extends FunSuite:
           .fold(e => fail(e.toString), _._1),
         Some(genesis.networkMagic)
       )
-      _ <- GenesisInjections.read(files)
+      _ <- GenesisInjections.read(StateLayout.Node11_1)(files)
       globals <- GenesisState.globals(files, genesis)
       params <- ProtocolParams.fromGenesis(shelley, alonzo, Some(conway))
       _ <- ProtocolParams.translatedFromGenesis(shelley, alonzo, Some(conway))

@@ -4,7 +4,9 @@ package xyz.kd5ujc.scarab.ledger
 import cats.syntax.all.*
 import io.circe.{ACursor, Json, JsonObject}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, DomainError, Node, Value}
+import xyz.kd5ujc.scarab.crypto.bls.{BlsError, ProofOfPossession, VerificationKey}
 import xyz.kd5ujc.scarab.ledger.json.{BoundedRatio, FromJson, NumberError, Scientific}
+import xyz.kd5ujc.scarab.protocol.StateLayout
 
 /** The genesis `StakePoolParams` as the reference's `FromJSON` reads it (cardano-ledger f649f975,
   * `State/StakePool.hs:293-360,467-483`). JSON names and URLs are unrestricted Text, unlike their
@@ -17,6 +19,11 @@ object GenesisPoolFields:
     case Ipv6(value: String)
     case Encoding(cause: Cbor.Error)
     case Number(field: String, cause: NumberError)
+
+    /** A voting key field whose bytes `rawDecodeFixedSized` refuses: not of the size, or not a
+      * point of the group (cardano-ledger 9df9f98c `State/StakePool.hs:517-530`).
+      */
+    case BlsKey(field: String, cause: BlsError)
     def message: String = toString
 
   /** The parameters of the pool under genesis key `id`. The operator is the inner `poolId` (or its
@@ -51,6 +58,39 @@ object GenesisPoolFields:
       fields._1,
       fields._2
     )
+
+  /** The voting key of the genesis pool `j` as the build of `layout` reads it. The 11.1 build's
+    * `StakePoolParams` has no such field and ignores a `blsKey` (cardano-ledger f649f975
+    * `State/StakePool.hs:467-483`). The Leios build's reads it with `.:? "blsKey" .!= SNothing`
+    * (9df9f98c `State/StakePool.hs:604-619`): absent or `null` is no key; anything else must be the
+    * `BlsKey` object, its two fields hex text that `rawDecodeFixedSized` takes (`:517-530`).
+    */
+  def blsKey(layout: StateLayout, j: Json): Either[ConfigError, state.PoolParamsBlsKey] =
+    layout match
+      case StateLayout.Node11_1 => Right(state.PoolParamsBlsKey.Node11_1)
+      case StateLayout.Leios =>
+        j.hcursor
+          .downField("blsKey")
+          .focus
+          .filterNot(_.isNull)
+          .traverse(leiosKey)
+          .map(state.PoolParamsBlsKey.Leios(_))
+
+  private def leiosKey(j: Json): Either[ConfigError, state.BlsKey] =
+    val c = j.hcursor
+    def bytes(field: String): Either[ConfigError, Bytes] =
+      GenesisState
+        .get[String](c, field)
+        .flatMap(Bytes.fromHex(_).leftMap(e => ConfigError(ConfigProblem.Hex(e))))
+    for
+      _ <- GenesisState.get[JsonObject](Json.obj("blsKey" -> j).hcursor, "blsKey")
+      key <- bytes("blsPubKey")
+      proof <- bytes("blsPossessionProof")
+      _ <- VerificationKey.fromBytes(key).leftMap(e => failure(Error.BlsKey("blsPubKey", e)))
+      _ <- ProofOfPossession
+        .fromBytes(proof)
+        .leftMap(e => failure(Error.BlsKey("blsPossessionProof", e)))
+    yield state.BlsKey(key, proof)
 
   private def number[A](c: ACursor, field: String)(
       read: Json => Either[NumberError, A]

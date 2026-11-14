@@ -129,6 +129,15 @@ object NewEpochState:
       case Node11_1(_) => StateLayout.Node11_1
       case Leios       => StateLayout.Leios
 
+  object Layout:
+    /** The layout part of a state with no stake yet: the 11.1 layout's `nesPd` is the empty
+      * distribution (`def`, cardano-ledger f649f975 `Shelley/API/ByronTranslation.hs:110`); the
+      * Leios layout has no such field (9df9f98c `Shelley/API/ByronTranslation.hs:104-118`).
+      */
+    def empty(layout: StateLayout): Layout = layout match
+      case StateLayout.Node11_1 => Node11_1(PoolDistr.empty)
+      case StateLayout.Leios    => Leios
+
   given [E <: EraTag](using ShelleyBasedEra[E]): Eq[NewEpochState[E]] = Eq.instance((a, b) =>
     Eq[EpochNo].eqv(a.epoch, b.epoch) &&
       Eq[BlocksMade].eqv(a.bprev, b.bprev) &&

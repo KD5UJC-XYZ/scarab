@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronOut}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.state.given
+import xyz.kd5ujc.scarab.protocol.StateLayout
 
 /** `FromByronTranslationContext` (`Shelley/Translation.hs:46`): what the Shelley genesis gives the
   * ledger state that the chain enters Shelley with: the genesis delegations, the protocol
@@ -31,10 +32,15 @@ final case class FromByron(
   */
 object Handover:
 
+  /** The state in `layout`, the layout of the build the node mirrors: in the Leios layout the empty
+    * snapshots and the new-epoch state are that layout's (`emptySnapShots`, cardano-ledger 9df9f98c
+    * `Shelley/API/ByronTranslation.hs:148`; no `nesPd`, `:104-118`).
+    */
   def toShelley(
       context: FromByron,
       epoch: EpochNo,
-      utxo: Map[node.TxIn, ByronOut]
+      utxo: Map[node.TxIn, ByronOut],
+      layout: StateLayout
   ): Either[TickFailure, NewEpochState[Shelley]] =
     (for
       outputs <- utxo.toVector
@@ -85,11 +91,11 @@ object Handover:
               Coin.zero
             )
           ),
-          SnapShots.empty,
+          SnapShots.emptyOf(layout),
           NonMyopic.empty
         ),
         None,
-        NewEpochState.Layout.Node11_1(PoolDistr.empty),
+        NewEpochState.Layout.empty(layout),
         UtxoTables(stash)
       )
     )

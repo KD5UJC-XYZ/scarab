@@ -135,7 +135,10 @@ class LeiosTestnetConfigSuite extends FunSuite:
     val unhashed = config.copy(hashes = config.hashes.copy(dijkstra = None))
     def withDijkstra(text: String)(name: String) =
       if name == "dijkstra-genesis.json" then Some(text.getBytes("UTF-8")) else read(name)
-    val refused = NodeSetup.assemble(unhashed, withDijkstra("""{"maxRefScriptSizePerBlock": 1}"""))
+    val refused = NodeSetup.assemble(ReferenceBuild.LeiosB004fe0c)(
+      unhashed,
+      withDijkstra("""{"maxRefScriptSizePerBlock": 1}""")
+    )
     assertEquals(
       refused.left.map(_.problem),
       Left(

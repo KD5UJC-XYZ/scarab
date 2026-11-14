@@ -40,10 +40,12 @@ object Convert:
     case DRep.DRepAlwaysNoConfidence => node.DRep.AlwaysNoConfidence
 
   /** `mkStakePoolState` (`State/StakePool.hs`): the registered state of a pool from its (future)
-    * parameters, the deposit it was registered with and its delegators.
+    * parameters, its voting key in the state's layout ([[PoolParamsBlsKey.registered]]), the
+    * deposit it was registered with and its delegators.
     */
   def poolState(
       params: node.PoolParams,
+      blsKey: PoolBlsKey,
       deposit: CompactCoin,
       delegators: SortedSet[Credential[Staking]]
   ): Either[VocabError, StakePoolState] =
@@ -54,7 +56,7 @@ object Convert:
     ).mapN((vrf, account, owners) =>
       StakePoolState(
         vrf,
-        PoolBlsKey.Node11_1,
+        blsKey,
         Coin(params.pledge),
         Coin(params.cost),
         params.margin,

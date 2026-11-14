@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
-import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, StateLayout}
 import cats.syntax.all.*
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -78,7 +78,12 @@ class EraHistoryNetworksSuite extends FunSuite:
     val byronUtxo = start.consensus.byron.ledger.fold(Map.empty[TxIn, ByronOut])(_.utxo)
     val context = setup.handOver.getOrElse(fail("preprod starts in Byron: it has a hand-over"))
     val shelley = Handover
-      .toShelley(context, EpochNo.fromUnsigned(firstShelley.toLong), byronUtxo)
+      .toShelley(
+        context,
+        EpochNo.fromUnsigned(firstShelley.toLong),
+        byronUtxo,
+        StateLayout.Node11_1
+      )
       .fold(e => fail(s"the hand-over refuses: $e"), identity)
     val conway = GenesisStart
       .translateTo(

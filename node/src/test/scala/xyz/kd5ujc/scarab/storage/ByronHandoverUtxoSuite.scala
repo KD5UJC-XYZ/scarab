@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, StateLayout}
 import cats.effect.IO
 import cats.mtl.Handle
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -105,7 +105,7 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
       setup.mirrorStart.consensus.byron.ledger.fold(Map.empty[TxIn, ByronOut])(_.utxo)
     val context = setup.handOver.getOrElse(fail("the capture starts in Byron: it has a hand-over"))
     Handover
-      .toShelley(context, EpochNo.fromUnsigned(0L), genesisUtxo)
+      .toShelley(context, EpochNo.fromUnsigned(0L), genesisUtxo, StateLayout.Node11_1)
       .fold(
         e => fail(s"the hand-over refuses: $e"),
         _.es.ls.utxo.utxo.utxo.changesAfter(-1).toVector
