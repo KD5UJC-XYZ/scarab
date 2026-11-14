@@ -94,6 +94,12 @@ that `canary/writebits_script.py` writes from the reference fixture.
   records s1's verdict (accepted, refused or no answer), and holds only where s1 answered.
 - Against Scarab before the fix (v0.2.0-alpha.1, locally), s1 accepts it, and the Haskell pools take it as phase-2
   invalid. Each side then refuses the other's block, and the first two detectors fail.
+- Which detector fails depends on who forges the transaction into the longest chain first. Every timeline starts from
+  one setup snapshot, so a platform run takes one path in all of them. The platform positive control of 2026-11-14
+  (main with the fix reverted) took this one in all of them: h2 forged it with `is_valid` false and s1 refused h2's
+  block. s1's own block was on the shorter fork, so the pools never validated it. The Haskell-side detector was
+  checked locally instead, with the pools paused while s1 forged the transaction: they refused s1's block
+  (`ChainSync.Client.Exception`, `InvalidBlock (Point ...`).
 
 ```sh
 # from the checkout root; the JAR comes from node/assembly
