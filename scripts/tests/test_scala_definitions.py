@@ -128,6 +128,10 @@ class DefinitionsTest(unittest.TestCase):
         source = 'object A:\n  case class B(x: Int)\n  object B:\n    val y = 1\n  case object C\n'
         self.assertEqual(keys(source), ['object A', 'class A.B', 'object A.B', 'val A.B.y', 'object A.C'])
 
+    def test_a_qualified_private_or_protected_member_is_a_definition(self):
+        source = 'object A:\n  private[net] def a = 1\n  protected def b = 2\n  private[this] def c = 3\n'
+        self.assertEqual(keys(source), ['object A', 'def A.a', 'def A.b'])
+
     def test_given_names(self):
         self.assertEqual(defs.given_name(' Ordering[Cookie] = Ordering.by(_.value)'), 'given_Ordering_Cookie')
         self.assertEqual(defs.given_name(' ord: Ordering[Int] = ???'), 'ord')
