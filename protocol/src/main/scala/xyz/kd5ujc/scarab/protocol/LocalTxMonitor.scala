@@ -23,6 +23,14 @@ import ProtocolWire.{attempt, bad, get}
   * `AwaitAcquire` has the same wire form as `Acquire` (`[1]`): the codec tells them apart by the
   * state, as the reference does. The codec of ouroboros-network 2fb69829 answers `GetMeasures` on
   * every version it offers (`LocalTxMonitor_V2`), so this one does too.
+  *
+  * cardano-diffusion c5117705, which cardano-node 11.1.3 links, selects `LocalTxMonitor_V1` below
+  * node-to-client version 20 (`Cardano/Network/Protocol/LocalTxMonitor/Codec.hs:41-48`). That codec
+  * decodes `MsgGetMeasures` but calls `error` when it encodes `MsgReplyGetMeasures`
+  * (ouroboros-network c45735a5, `Ouroboros/Network/Protocol/LocalTxMonitor/Codec.hs:102-113`), so
+  * on versions 16 to 19 the reference's server fails to send the reply (read from the source, not
+  * observed). A reference bug, not reproduced (#474; `docs/decisions.md`, #956, 2026-11-14):
+  * upstream later dropped those versions and the selection (`54a30a77e`, PR #5426, in 2fb69829).
   */
 object LocalTxMonitor:
   val MiniProtocolId = 9
