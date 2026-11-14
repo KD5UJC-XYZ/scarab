@@ -96,6 +96,16 @@ class PublishTest(unittest.TestCase):
         self.assertIn("gh release upload conformance-reports", text)
         self.assertNotIn("--clobber", text)
 
+    def test_explicit_dry_run_runs_nothing_and_excludes_apply(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("sys.stdout", new=io.StringIO()):
+            write_report(tmp)
+            self.assertEqual(publish.main([tmp, "--dry-run"], run=never), 0)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("sys.stderr", new=io.StringIO()), \
+                self.assertRaises(SystemExit) as refused:
+            write_report(tmp)
+            publish.main([tmp, "--dry-run", "--apply"], run=never)
+        self.assertEqual(refused.exception.code, 2)
+
     def test_apply_creates_an_absent_release_then_uploads(self):
         gh = Gh()
         with tempfile.TemporaryDirectory() as tmp, mock.patch("sys.stdout", new=io.StringIO()):
@@ -107,6 +117,7 @@ class PublishTest(unittest.TestCase):
         self.assertIn("--prerelease", create)
         self.assertIn("--latest=false", create)
         self.assertNotIn("--draft", create)
+        self.assertEqual(create[create.index("--title") + 1], "conformance-reports")
         self.assertIn("not a Scarab release", create[create.index("--notes") + 1])
         self.assertTrue(gh.calls[-1][-1].endswith(".provenance.json"))
 

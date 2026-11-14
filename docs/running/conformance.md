@@ -59,10 +59,11 @@ newest file of a release whose name carries a date and matches the asset glob of
 
 `scripts/conformance/publish.py` uploads reports and their provenance to the `conformance-reports` pre-release of
 `KD5UJC-XYZ/scarab`, creating it when absent. It is published, never marked latest, and its notes say that it
-holds generated reports and is not a Scarab release. Without `--apply` it only prints the `gh` commands:
+holds generated reports and is not a Scarab release. Unless `--apply` is given it is a dry run (`--dry-run`,
+the default) that prints the `gh` commands and runs none:
 
 ```sh
-python3 -I scripts/conformance/publish.py <dir>            # dry run
+python3 -I scripts/conformance/publish.py <dir> --dry-run  # the default
 python3 -I scripts/conformance/publish.py <dir> --apply    # needs gh with write access to the repository
 ```
 

@@ -3,10 +3,9 @@
 """Publish the reports `run.py` wrote to the `conformance-reports` pre-release, where the node-diversity-conformance
 site finds them.
 
-    python3 -I scripts/conformance/publish.py DIR_OR_FILES... [--apply] [--replace] [--repo OWNER/NAME]
+    python3 -I scripts/conformance/publish.py DIR_OR_FILES... [--dry-run | --apply] [--replace] [--repo OWNER/NAME]
 
-Without `--apply` it is a dry run: it prints the `gh` commands it would run and runs none, not even a read. With
-`--apply` it
+`--dry-run`, the default, prints the `gh` commands it would run and runs none, not even a read. With `--apply` it
 
   1. reads the release (`gh release view`); if it is absent, creates it as a published pre-release that is never
      marked latest, with a body that says it holds generated conformance reports and is not a Scarab release. A
@@ -40,7 +39,7 @@ from conformance.scenarios import NAME, provenance_name  # noqa: E402
 
 TAG = "conformance-reports"
 REPOSITORY = "KD5UJC-XYZ/scarab"
-TITLE = "Conformance reports (not a Scarab release)"
+TITLE = TAG
 NOTES = """Generated conformance reports of Scarab for pragma-org's node-diversity-conformance site \
 (https://pragma-org.github.io/node-diversity-conformance/). This is not a Scarab release: it holds no runnable \
 artifact, and its tag marks no Scarab version.
@@ -167,7 +166,9 @@ def apply(reports: list[Report], repo: str, replace: bool, run: Run) -> None:
 def main(argv: list[str] | None = None, run: Run = gh) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("paths", nargs="+", type=Path, help="report files, or directories that hold them")
-    parser.add_argument("--apply", action="store_true", help="run the commands (default: print them only)")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="print the commands and run none (the default)")
+    mode.add_argument("--apply", action="store_true", help="run the commands: create the release if absent, upload")
     parser.add_argument("--replace", action="store_true", help="replace files of the same name in the release")
     parser.add_argument("--repo", default=REPOSITORY, help="the repository (default: %(default)s)")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
