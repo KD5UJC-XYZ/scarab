@@ -23,7 +23,12 @@ Antithesis then runs its test commands under faults, many times per timeline:
 
 - `parallel_driver_watch_tips` reads every pool's tip over its local socket every 5 s for a minute;
 - `anytime_check_divergence` makes one pass of the divergence detectors, which the watcher also makes at every
-  check.
+  check;
+- `parallel_driver_submit_payments` makes five payments, each submitted to a random pool. Half go from create-env's
+  `utxo3` key to four wallets of the workload's own in one transaction; the other half go from one wallet to another
+  or back to `utxo3`. Every pool's blocks then carry transactions, so both implementations' ledgers run under the
+  faults, and the detectors judge them. A payment holds its source wallet's lock while it reads the wallet's outputs
+  and submits, since copies run at once.
 
 The detectors read the pools' logs, which every pool also writes to a shared volume at `/logs`, and s1's metrics.
 Each reads on from where the last pass in the timeline stopped. The properties, in the fallback SDK's format:
@@ -40,6 +45,7 @@ Each reads on from where the last pass in the timeline stopped. The properties, 
   The slot loop waits until the next slot's start, so only a wake before it does that. A clock moved back for real
   is told apart: its traces move forward through earlier slots.
 
+- sometimes: s1 accepts a payment; a Haskell pool accepts a payment; s1 forges a block with transactions;
 - always (or unreachable): the cluster's fork depth stays below k. The depth is the deepest rollback any pool would
   need to follow the longest tip. `driver/forktree.py` builds the block tree from the pools' logs: every forged
   block with its parent, and every pool's tip changes.
