@@ -20,7 +20,8 @@ implemented. This is the order of work when a difference from the reference is f
    subagent stops and reports to its lead, which asks. Note the UTC time of the question.
 4. Until the owner answers there, implement nothing that deviates. Earlier code, pull requests, review notes,
    design documents, comments and labels are not approval ([what approval is](../design-rules.md#approval)).
-   Record the question and the answer verbatim, with their UTC times, in the pull request.
+   Record the question and the owner's decision in neutral words, never the owner's exact answer, with their UTC
+   times, in the pull request.
 5. Once decided, record the decision where it shapes the design (an ADR amendment, or the networking
    ADR's approved-deviations section) and add its row to [decisions.md](../decisions.md) in the change
    that first relies on it. The wording is neutral: the decision, its date and issue, never a quotation.

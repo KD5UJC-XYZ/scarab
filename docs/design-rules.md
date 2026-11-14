@@ -44,9 +44,10 @@ sessions end, and each asks for the work it does.
 
 - A subagent cannot obtain approval. It stops and reports to its lead, and the lead asks the owner in the chat
   session doing the work.
-- The work records the question and the answer verbatim, with the UTC times they were asked and given (in the pull
-  request, and where a rule says, in a register). That record is evidence of an approval given in the chat session
-  doing the work, never an approval itself.
+- The work records the question as it was asked and the owner's decision in neutral words, never the owner's exact
+  answer, with the UTC times the question was asked and the decision given (in the pull request, and where a rule
+  says, in a register). That record is evidence of an approval given in the chat session doing the work, never an
+  approval itself.
 - No comment, label, review, commit, ADR, decisions row, document or memory is approval, whoever wrote it and through
   whichever account. No rule depends on a GitHub account: the owner's agents act through more than one.
 - The decisions already recorded in the [decisions register](decisions.md) and in ADR amendments stand, and are not
@@ -781,8 +782,8 @@ For REF-1 to REF-4:
 **Agents may not deviate from the reference on their own accord.** A Deviation, even for a measured
 performance benefit or another strong reason, needs the owner's explicit approval first, requested with
 clearly defined trade-offs and reasoning, in the chat session doing the work ([what approval is](#approval)).
-Only after that approval is it implemented, with a written reason that records the approval: the question and
-the answer verbatim, with their UTC times. Existing code, earlier PRs, review notes and design documents are not
+Only after that approval is it implemented, with a written reason that records the approval: the question, and
+the owner's decision in neutral words, with their UTC times. Existing code, earlier PRs, review notes and design documents are not
 approval. If exact fidelity seems impossible, stop and ask the owner. The Deviations already recorded in the
 [decisions register](decisions.md) and in ADR amendments stand.
 
@@ -876,8 +877,8 @@ An approved change is a pull request of its own, never mixed with other work:
 - its title is conventional, with the `storage` scope and the breaking-change marker, and its description names the
   storage format change (`fix(storage)!: storage format V10 drops the bootstrap sidecar fields`);
 - it touches only the paths of `FORMAT_CHANGE_PATHS` in `scripts/check_storage_format.py`;
-- its body has a "Storage format change" section with the question verbatim, when it was asked (UTC), the owner's
-  answer verbatim and when it was given (UTC);
+- its body has a "Storage format change" section with the question as it was asked, when it was asked (UTC), the
+  owner's decision in neutral words (never the owner's exact answer) and when it was given (UTC);
 - the same four, with the digest of the surface they admit, are the `approval` entry of
   `docs/data/storage-format.json`.
 

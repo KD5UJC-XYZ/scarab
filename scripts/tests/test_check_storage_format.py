@@ -25,8 +25,8 @@ STORAGE = 'storage/src/main/scala/xyz/kd5ujc/scarab/storage'
 
 def record(**changes):
     entry = {'question': 'May I change the storage format: the V10 sidecar drops two fields? Stores: V8, unaffected.',
-             'asked_at': '2026-11-14T09:30:00Z', 'answer': 'Yes, the edit is approved.',
-             'answered_at': '2026-11-14T09:41:07Z'}
+             'asked_at': '2026-11-14T09:30:00Z', 'decision': 'Approved: edit the V10 sidecar in place.',
+             'decided_at': '2026-11-14T09:41:07Z'}
     entry.update(changes)
     return entry
 
@@ -234,8 +234,8 @@ class RecordTest(TreeTest):
 
     def test_a_malformed_record_is_refused(self):
         found = self.changed()
-        entry = dict(record(answered_at='2026-11-14T09:00:00Z'), surface_sha256=fmt.digest(found))
-        self.assertLoud(self.check({'surface': found, 'approval': entry}), 'answered_at is not after asked_at')
+        entry = dict(record(decided_at='2026-11-14T09:00:00Z'), surface_sha256=fmt.digest(found))
+        self.assertLoud(self.check({'surface': found, 'approval': entry}), 'decided_at is not after asked_at')
 
 
 class ApprovalFormTest(unittest.TestCase):
@@ -252,16 +252,16 @@ class ApprovalFormTest(unittest.TestCase):
                     self.assertEqual(fmt.approval_problems(entry, NOW), [f'{field} is missing or empty'])
         self.assertEqual(len(fmt.approval_problems('yes', NOW)), 1)
 
-    def test_times_are_utc_with_seconds_and_the_answer_follows_the_question(self):
+    def test_times_are_utc_with_seconds_and_the_decision_follows_the_question(self):
         for asked in ('2026-11-14 09:30:00Z', '2026-11-14T09:30Z', '2026-11-14T09:30:00+00:00',
                       '2026-11-14T10:30:00+01:00', 'this morning'):
             with self.subTest(asked=asked):
                 self.assertIn('asked_at is not a UTC ISO 8601 time with seconds and Z, such as 2026-11-14T09:30:00Z',
                               fmt.approval_problems(record(asked_at=asked), NOW))
-        self.assertEqual(fmt.approval_problems(record(answered_at='2026-11-14T09:30:00Z'), NOW),
-                         ['answered_at is not after asked_at: the question comes first'])
-        self.assertEqual(fmt.approval_problems(record(answered_at='2026-11-15T09:41:07Z'), NOW),
-                         ['answered_at is in the future'])
+        self.assertEqual(fmt.approval_problems(record(decided_at='2026-11-14T09:30:00Z'), NOW),
+                         ['decided_at is not after asked_at: the question comes first'])
+        self.assertEqual(fmt.approval_problems(record(decided_at='2026-11-15T09:41:07Z'), NOW),
+                         ['decided_at is in the future'])
 
     def test_a_date_that_is_not_in_the_calendar_is_a_problem_not_an_error(self):
         self.assertIn('asked_at is not a UTC ISO 8601 time with seconds and Z, such as 2026-11-14T09:30:00Z',

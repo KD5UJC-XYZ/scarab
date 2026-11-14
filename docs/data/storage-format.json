@@ -2,7 +2,7 @@
  "_comment": [
   "The persisted-format surface that scripts/check_storage_format.py computes, and the record of the approval that admitted it (FMT-1, docs/design-rules.md#fmt-1).",
   "Persisted formats are frozen until Scarab leaves pre-release. This file changes only in a storage format change of its own, approved by the owner in the chat session doing the work in answer to an explicit question asked there before the change was written.",
-  "`approval` records that question and answer, verbatim, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (458e201bd) on 2026-11-14, when the freeze began, which approves nothing."
+  "`approval` records that question and the owner's decision, in neutral words and never as a quotation, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (458e201bd) on 2026-11-14, when the freeze began, which approves nothing."
  ],
  "approval": null,
  "surface": {

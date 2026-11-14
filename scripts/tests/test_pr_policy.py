@@ -158,8 +158,8 @@ RECORD = ("## Storage format change\n\n"
           "- Question: May I change the storage format? The V10 sidecar drops the bootstrap fields; V8 stores are\n"
           "  unaffected; V9 and V10 files are refused; the alternative keeps the fields unused.\n"
           "- Asked at: `2026-11-14T09:30:00Z`\n"
-          "- Answer: Yes, the edit is approved.\n"
-          "- **Answered at:** 2026-11-14T09:41:07Z\n")
+          "- Decision: approved, the V10 sidecar is edited in place\n"
+          "- **Decided at:** 2026-11-14T09:41:07Z\n")
 
 
 class StorageFormatTests(unittest.TestCase):
@@ -208,19 +208,19 @@ class StorageFormatTests(unittest.TestCase):
                                                                    + re.escape(extra)):
                 self.check(self.pr(), STORAGE_FILES + [extra])
 
-    def test_the_body_records_the_question_and_the_answer_with_their_utc_times(self):
+    def test_the_body_records_the_question_and_the_decision_with_their_utc_times(self):
         record = policy.approval_record(policy.sections(RECORD)["storage format change"])
         self.assertEqual(record["asked_at"], "2026-11-14T09:30:00Z")
-        self.assertEqual(record["answered_at"], "2026-11-14T09:41:07Z")
-        self.assertEqual(record["answer"], "Yes, the edit is approved.")
+        self.assertEqual(record["decided_at"], "2026-11-14T09:41:07Z")
+        self.assertEqual(record["decision"], "approved, the V10 sidecar is edited in place")
         self.assertTrue(record["question"].endswith("the alternative keeps the fields unused."))
         base = body_of(3, "None", "None")
         for body, message in [
             (base, "Storage format change\" section"),
             (base + "<!--\n" + RECORD + "-->", "Storage format change\" section"),
-            (base + RECORD.replace("- Answer: Yes, the edit is approved.\n", ""), "answer is missing"),
+            (base + RECORD.replace("- Decision: approved, the V10 sidecar is edited in place\n", ""), "decision is missing"),
             (base + RECORD.replace("`2026-11-14T09:30:00Z`", "this morning"), "asked_at is not a UTC"),
-            (base + RECORD.replace("2026-11-14T09:41:07Z", "2026-11-14T09:00:00Z"), "not after asked_at"),
+            (base + RECORD.replace("2026-11-14T09:41:07Z", "2026-11-14T09:00:00Z"), "decided_at is not after asked_at"),
             (base + RECORD.replace("May I change the storage format?", "May I?"), "does not say plainly"),
         ]:
             with self.subTest(message=message), self.assertRaisesRegex(policy.PolicyError, message):
@@ -246,12 +246,12 @@ class StorageFormatTests(unittest.TestCase):
         base = body_of(3, "None", "None")
         trailing = RECORD + "Evidence: checked the migration.\n### Notes\nmore prose\n"
         record = policy.approval_record(policy.rendered_section(base + trailing, "storage format change"))
-        self.assertEqual(record["answered_at"], "2026-11-14T09:41:07Z")
+        self.assertEqual(record["decided_at"], "2026-11-14T09:41:07Z")
         self.assertTrue(self.check(self.pr(body=base + trailing)))
-        quoted = RECORD.replace("- Answer: Yes, the edit is approved.\n",
-                                "- Answer:\n  > Yes, the edit\n  > is approved.\n")
-        self.assertEqual(policy.approval_record(policy.rendered_section(quoted, "storage format change"))["answer"],
-                         "Yes, the edit\nis approved.")
+        quoted = RECORD.replace("- Decision: approved, the V10 sidecar is edited in place\n",
+                                "- Decision:\n  > approved, the V10 sidecar\n  > is edited in place\n")
+        self.assertEqual(policy.approval_record(policy.rendered_section(quoted, "storage format change"))["decision"],
+                         "approved, the V10 sidecar\nis edited in place")
         for hidden in ["```\n" + RECORD + "```\n", "~~~~\n" + RECORD + "~~~~\n"]:
             with self.subTest(hidden=hidden[:4]), self.assertRaisesRegex(policy.PolicyError, "section"):
                 self.check(self.pr(body=base + hidden))

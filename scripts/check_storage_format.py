@@ -49,10 +49,11 @@ options in the store's class), or an encoding defined in a file not listed here.
 it sees.
 
 The manifest holds the surface and the record of the approval that admitted it. Its `approval` entry holds
-`question`, `asked_at`, `answer` and `answered_at` (UTC ISO 8601 with seconds and `Z`, answered after asked, not in
-the future), all nonempty, the question naming the storage format, and `surface_sha256`, the digest of the surface
-it admits. That entry RECORDS an approval the owner gave in the chat session doing the work, in answer to the
-question asked there before the change was written. It is evidence of that answer, never an approval itself: this
+`question`, `asked_at`, `decision` and `decided_at` (UTC ISO 8601 with seconds and `Z`, decided after asked, not
+in the future), all nonempty, the question naming the storage format, and `surface_sha256`, the digest of the
+surface it admits. The question is recorded as it was asked and the decision in neutral words, never as the owner's
+exact answer. That entry RECORDS an approval the owner gave in the chat session doing the work, in answer to the
+question asked there before the change was written. It is evidence of that decision, never an approval itself: this
 guard checks only its presence and its form, and cannot see whether the owner gave it. With no approval entry the
 surface must be the baseline this guard pins (`BASELINE_SURFACE_SHA256`), the surface of `main` when the freeze
 began, which records what existed and approves nothing.
@@ -190,7 +191,7 @@ FORMAT_CHANGE_PATHS = OWNER_NAMED_PATHS + REQUIRED_BY_OTHER_GATES
 FREEZE_PATHS = (MANIFEST, GUARD, GUARD_TESTS)
 NOT_A_FRAGMENT = 'changes/README.md'
 
-FIELDS = ('question', 'asked_at', 'answer', 'answered_at')
+FIELDS = ('question', 'asked_at', 'decision', 'decided_at')
 UTC = re.compile(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z')
 CLOCK_SKEW = timedelta(minutes=10)
 STORAGE_FORMAT = re.compile(r'\bstorage[ -]format\b', re.IGNORECASE)
@@ -236,23 +237,23 @@ def parse_utc(text) -> datetime | None:
 
 
 def approval_problems(entry, now: datetime) -> list[str]:
-    """What is wrong with the form of an approval record (`question`, `asked_at`, `answer`, `answered_at`); nothing
-    when it is well formed. The form is all a tool can check: whether the owner gave the answer in the chat session
-    doing the work is not in the tree."""
+    """What is wrong with the form of an approval record (`question`, `asked_at`, `decision`, `decided_at`); nothing
+    when it is well formed. The form is all a tool can check: whether the owner gave that decision in the chat
+    session doing the work is not in the tree."""
     if not isinstance(entry, dict):
-        return ['the approval record is an object with question, asked_at, answer and answered_at']
+        return ['the approval record is an object with question, asked_at, decision and decided_at']
     found = [f'{f} is missing or empty' for f in FIELDS if not isinstance(entry.get(f), str) or not entry[f].strip()]
     if found:
         return found
-    asked, answered = parse_utc(entry['asked_at']), parse_utc(entry['answered_at'])
-    for name, value in (('asked_at', asked), ('answered_at', answered)):
+    asked, decided = parse_utc(entry['asked_at']), parse_utc(entry['decided_at'])
+    for name, value in (('asked_at', asked), ('decided_at', decided)):
         if value is None:
             found.append(f'{name} is not a UTC ISO 8601 time with seconds and Z, such as 2026-11-14T09:30:00Z')
-    if asked is not None and answered is not None:
-        if answered <= asked:
-            found.append('answered_at is not after asked_at: the question comes first')
-        if answered > now + CLOCK_SKEW:
-            found.append('answered_at is in the future')
+    if asked is not None and decided is not None:
+        if decided <= asked:
+            found.append('decided_at is not after asked_at: the question comes first')
+        if decided > now + CLOCK_SKEW:
+            found.append('decided_at is in the future')
     if not STORAGE_FORMAT.search(entry['question']):
         found.append('the question does not say plainly that it is a storage format change')
     return found
@@ -673,7 +674,7 @@ def loud(lines) -> str:
                       f'Persisted formats are frozen until Scarab leaves pre-release ({RULE}). Stop: ask the owner',
                       'explicitly, in the chat session doing the work, before the change is written; a subagent',
                       'stops and reports to its lead. A change the owner approves there is a pull request of its',
-                      f'own, and {MANIFEST} records the question and the answer with their UTC times.'])
+                      f'own, and {MANIFEST} records the question and the decision with their UTC times.'])
 
 
 def problems(root: Path, manifest, now: datetime) -> list[str]:

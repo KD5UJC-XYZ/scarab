@@ -16,10 +16,10 @@ A storage format change (FMT-1, docs/design-rules.md) is a pull request that cha
 `docs/data/storage-format.json` or its guard `scripts/check_storage_format.py`. It is a pull request of its own: its
 title is conventional with the `storage` scope and the breaking-change marker, and its description names the
 storage format (`fix(storage)!: storage format V10 drops the bootstrap sidecar fields`); it touches only the paths of
-`check_storage_format.FORMAT_CHANGE_PATHS`; and its body has a "Storage format change" section with the owner's
-question and answer, verbatim, and the UTC times they were asked and given (`Question:`, `Asked at:`, `Answer:`,
-`Answered at:`). Those lines record an approval the owner gave in the chat session doing the work; this check reads
-their form only. It applies to a bot's pull request too, and not to a promotion of `dev`, whose changes each passed
+`check_storage_format.FORMAT_CHANGE_PATHS`; and its body has a "Storage format change" section with the question
+as it was asked and the owner's decision in neutral words, and the UTC times they were asked and given (`Question:`,
+`Asked at:`, `Decision:`, `Decided at:`). Those lines record an approval the owner gave in the chat session doing the
+work; this check reads their form only. It applies to a bot's pull request too, and not to a promotion of `dev`, whose changes each passed
 it as their own pull request. A storage format change is at least level 3.
 """
 import argparse
@@ -55,7 +55,7 @@ STORAGE_TITLE = re.compile(r"[a-z]+\(storage\)!: (?P<description>.*)")
 STORAGE_WORDS = re.compile(r"\bstorage format\b", re.IGNORECASE)
 STORAGE_TITLE_FORM = ('"<type>(storage)!: <description that names the storage format change>", for example '
                       '"fix(storage)!: storage format V10 drops the bootstrap sidecar fields"')
-RECORD_FIELD = re.compile(r"^\s*(?:[-*]\s+)?\**(question|asked at|answer|answered at)\**\s*:\**\s*(.*)$", re.IGNORECASE)
+RECORD_FIELD = re.compile(r"^\s*(?:[-*]\s+)?\**(question|asked at|decision|decided at)\**\s*:\**\s*(.*)$", re.IGNORECASE)
 
 
 class PolicyError(ValueError):
@@ -182,8 +182,8 @@ def rendered_section(body, title):
 
 
 def approval_record(text):
-    """The `Question:`, `Asked at:`, `Answer:` and `Answered at:` of a "Storage format change" section, keyed as the
-    manifest keys them. A time is the rest of its line. A question or an answer goes on over the lines after it that
+    """The `Question:`, `Asked at:`, `Decision:` and `Decided at:` of a "Storage format change" section, keyed as the
+    manifest keys them. A time is the rest of its line. A question or a decision goes on over the lines after it that
     are indented or quoted (`>`); any other line ends it."""
     record, current = {}, None
     for line in (text or "").splitlines():
@@ -209,7 +209,7 @@ def promotion(pr):
 
 def check_storage_format(pr, files, now):
     """Whether the pull request is a storage format change (FMT-1); one that is must be its own pull request of
-    level 3 or more, with a title that says so and the record of the owner's answer. A bot's pull request is
+    level 3 or more, with a title that says so and the record of the owner's decision. A bot's pull request is
     checked too. A promotion of `dev` from the same repository is not: its changes each passed this check as their
     own pull request."""
     if promotion(pr) or not touches_freeze(files):
@@ -226,10 +226,10 @@ def check_storage_format(pr, files, now):
     require(level is not None and level >= 3, f"a storage format change is level 3 or more, not {level} (FMT-1)")
     section = rendered_section(pr.get("body"), STORAGE_SECTION)
     require(bool(section), 'a storage format change needs a "## Storage format change" section with the owner\'s '
-            "question and answer, verbatim, and when each was asked and given in UTC (FMT-1)")
+            "question and decision, in neutral words, and when each was asked and given in UTC (FMT-1)")
     problems = approval_problems(approval_record(section), now)
     require(not problems, "Storage format change: " + "; ".join(problems) +
-            " (Question:, Asked at:, Answer:, Answered at:, times as 2026-11-14T09:30:00Z)")
+            " (Question:, Asked at:, Decision:, Decided at:, times as 2026-11-14T09:30:00Z)")
     return True
 
 

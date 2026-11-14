@@ -16,8 +16,8 @@ deployed stores it affects (V8 today), the migration, and the alternatives that 
 stops and reports to its lead, which asks. Without the owner's approval given there, stop: write nothing of the
 change.
 
-With it, the change is a pull request of its own. Record the question and the answer verbatim with their UTC times
-in its "Storage format change" section and in the `approval` entry of `docs/data/storage-format.json` (with the
+With it, the change is a pull request of its own. Record the question as it was asked and the owner's decision in neutral
+words, never the owner's exact answer, with their UTC times, in its "Storage format change" section and in the `approval` entry of `docs/data/storage-format.json` (with the
 surface digest that `python3 scripts/check_storage_format.py --print-surface` prints), as FMT-1 says. The rest of
 this page is the procedure for an approved new version. An approved in-place edit of a version that no deployed
 store uses (V9 or V10) changes that version's schema, goldens and fixtures in place, exactly as the approval names,
