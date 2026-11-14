@@ -707,6 +707,29 @@ class DrainTest(unittest.TestCase):
         self.assertFalse(pool.marker_seen([json.dumps({"ns": "Mempool.AddedTx", "data": {"tx": {"txid": marker}}})], marker))
 
 
+class OracleWindowTest(unittest.TestCase):
+    """The oracle's window ends at the forging cutoff, not at the last event of the node's shutdown."""
+    SHELLEY = {"systemStart": "2026-01-01T00:00:00Z", "slotLength": 0.1, "epochLength": 500}
+
+    @staticmethod
+    def at(slot):
+        return f"2026-01-01T00:00:{slot / 10:09.6f}Z"
+
+    def events(self):
+        events = [{"event": "extended", "at": self.at(10), "block": {"slot": 10, "hash": "x"}},
+                  {"event": "forged", "at": self.at(50), "slot": 50, "hash": "f"}]
+        events += [{"event": "startLeadershipCheck", "at": self.at(s), "slot": s} for s in range(11, 101)]
+        # the cutoff at slot 100; the shutdown snapshot two seconds later
+        return events + [{"event": "shutdownSnapshot", "at": self.at(120), "written": True}]
+
+    def test_the_shutdown_after_the_cutoff_is_not_time_the_node_should_have_forged(self):
+        r = pool.missed_leader_slots(self.events(), {0: [50, 110]}, self.SHELLEY, until=self.at(100))
+        self.assertEqual((r["window"], r["scheduled"], r["missed"]), ([11, 98], 1, []))
+        # without the cutoff the window would run to the shutdown's last event and miss slot 110
+        r = pool.missed_leader_slots(self.events(), {0: [50, 110]}, self.SHELLEY)
+        self.assertEqual((r["window"], r["missed"]), ([11, 118], [110]))
+
+
 class EndPhaseTest(unittest.TestCase):
     def test_every_reading_of_the_settling_is_offered_for_its_epochs_schedule(self):
         readings = iter([{"hash": H["a"], "epoch": 4}, {"hash": H["b"], "epoch": 5},

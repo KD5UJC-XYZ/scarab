@@ -414,20 +414,22 @@ def wait_joined(name, log, socket, on_tip=lambda tip: None, timeout=pool_plutus.
                      f"within {timeout} s: no Plutus load")
 
 
-def missed_leader_slots(events, schedules, shelley, excluded=None):
+def missed_leader_slots(events, schedules, shelley, excluded=None, until=None):
     """Check the Scala pool's forging against the reference node's `leadership-schedule`.
 
     A scheduled slot is accounted for when the pool forged in it, or when another pool's block occupies the slot
     (a slot battle it could not win, or a block that arrived first). Only the window in which the forger ran counts:
-    from the slot after its first synced block to two slots before the last log line, without the slots of
-    `excluded` (first, last; last None: to the end), when forging was disabled. Returns a dict with the scheduled count in the window, the
+    from the slot after its first synced block to two slots before `until` (an ISO time: the forging cutoff, when the
+    scenario stopped the node; the events of its shutdown come later and do not lengthen the window) or, without it,
+    before the last log line, and without the slots of `excluded` (first, last; last None: to the end), when forging
+    was disabled. Returns a dict with the scheduled count in the window, the
     missed slots, the slots lost to another pool's block, and the epochs of the window without a schedule."""
     forged = {e["hash"]: e["slot"] for e in events if e["event"] == "forged"}
     others = {e["block"]["slot"] for e in events if e["event"] == "extended" and e["block"]["hash"] not in forged}
     first = next((slot_at(shelley, e["at"]) for e in events if e["event"] == "extended"), None)
     if first is None:
         return {"window": None, "scheduled": 0, "missed": [], "missedReasons": {}, "occupied": [], "absentEpochs": []}
-    window = (first + 1, slot_at(shelley, events[-1]["at"]) - 2)
+    window = (first + 1, slot_at(shelley, until if until is not None else events[-1]["at"]) - 2)
     length = shelley["epochLength"]
     # The run ends at a time, not at an epoch boundary, so its last epoch may be only a few seconds long: the
     # reference node's schedule for it may not have been read yet (the query is retried at every sample). That
@@ -653,12 +655,12 @@ def pool(args):
         at_cutoff = forging_counters(args.name, fetch)[0] or forging_stats
         # the forging cutoff: the Scala node stops (SIGTERM, as an operator stops it), so its log holds every block it
         # forged and none comes after; the pools' logs are then read behind a barrier (`drain_reference_logs`)
+        cutoff = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
         docker("stop", "-t", "30", f"{args.name}-scala", check=False, timeout=90)
         try:
             scala.wait(timeout=60)
         except subprocess.TimeoutExpired:
             failures.append("inconclusive: the Scala node did not stop at the forging cutoff")
-        cutoff = datetime.datetime.now(datetime.timezone.utc).isoformat()
         events, other = read_log(log)
         counts = {}
         for e in events:
@@ -704,7 +706,7 @@ def pool(args):
         load_stats = next((json.loads(l) for l in reversed(load_lines) if l.startswith("{") and "submitted" in l), {})
         matched = [c for c in comparisons if c.get("matched")]
         disabled = toggle.excluded(lambda at: slot_at(shelley, at)) if toggle else None
-        oracle = missed_leader_slots(events, schedules, shelley, excluded=disabled)
+        oracle = missed_leader_slots(events, schedules, shelley, excluded=disabled, until=cutoff)
         vm = next((e.get("vm") for e in events if e["event"] == "plutusVm"), None)
         height = max((e["blockNo"] for e in forged), default=-1)
         logs, undrained = drain_reference_logs(
