@@ -14,13 +14,22 @@
 # compute hours, about 7 of them setup.
 set -euo pipefail
 
+usage() { echo "usage: [CONFIG=...] [LAUNCHER=amaru-cardano|basic_test] launch.sh on|off DURATION" >&2; exit 2; }
+[ $# -eq 2 ] || usage
 faults=$1
 duration=$2
 case $faults in
   on | off) ;;
-  *) echo "launch: FAULTS is on or off, not $faults" >&2; exit 2 ;;
+  *) echo "launch: FAULTS is on or off, not $faults" >&2; usage ;;
 esac
+# snouty's form, checked before the local validation: whole numbers with h, m or s, in that order, such as 1h30m.
+[[ $duration =~ ^([0-9]+h)?([0-9]+m)?([0-9]+s)?$ && -n $duration ]] ||
+  { echo "launch: DURATION is like 15m, 1h or 1h30m, not $duration" >&2; usage; }
 launcher=${LAUNCHER:-amaru-cardano}
+case $launcher in
+  amaru-cardano | basic_test) ;;
+  *) echo "launch: LAUNCHER is amaru-cardano or basic_test, not $launcher" >&2; usage ;;
+esac
 if [ "$launcher" = basic_test ]; then
   level=none
   [ "$faults" = off ] || level=high_availability

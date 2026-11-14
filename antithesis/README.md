@@ -50,25 +50,31 @@ Each reads on from where the last pass in the timeline stopped. The properties, 
   (#629). The slot loop waits until the next slot's start, floored to the microsecond as the reference's
   `threadDelay` floors it, so only a wake earlier than that is #629's millisecond floor, which woke less than 1 ms
   early. A cardano-node pool on the platform also woke a fraction of a microsecond early and traced
-  `SystemClockMovedBack`. A clock moved back for real is told apart: by more than a slot, its traces move forward
-  through earlier slots; by less, during the wait, the wake comes 10 ms or more early with the platform's clock
-  skips, and the cardano-node pools trace `SystemClockMovedBack` for those too.
+  `SystemClockMovedBack`. A clock moved back by more than a slot is told apart: its traces move forward through
+  earlier slots. By less, during the wait, the wake mostly comes earlier than the window (20 to 80 ms in a run with
+  the platform's clock skips, which the cardano-node pools traced as `SystemClockMovedBack` too), but a skip back
+  with a late wake can still land inside it: the bound is a heuristic, and a hit in a run with clock faults is
+  checked against the skips and the pools' traces before it is called #629.
 
 - sometimes: s1 accepts a payment; a Haskell pool accepts a payment; s1 forges a block with transactions;
 - always (or unreachable): the cluster's fork depth stays below k. The depth is the deepest rollback any pool would
   need to follow the longest tip. `driver/forktree.py` builds the block tree from the pools' logs: every forged
   block with its parent, and every pool's tip changes.
 - sometimes: a fork is observed (depth 1 or more), so that the fork-depth property cannot pass vacuously.
-  Each pass also prints the fork tree's result (`forktree: ...`), and the first pass past k in a timeline prints
-  `forks: first past k ...` once, so that a run's search can count the histories that went past k against the
-  blocks forged (runs explore different lengths of chain in the same time) and sample each pool's share of the
-  longest chain.
-- sometimes: the detectors read every pool's log (each log present and not empty), so that the detectors that read
-  logs cannot pass unseen on a broken path.
+  Each pass also prints the fork tree's result (`forktree: ...`), and the first pass past k prints
+  `forks: first past k ...` at most once along each history: a branch taken after it inherits it, one taken before
+  prints its own. A run's search then counts the distinct crossings in the run's tree of histories against the
+  distinct forge events in it (runs explore different lengths of chain in the same time), and samples each pool's
+  share of the longest chain from the `forktree:` lines; those samples are cumulative, so they are averaged, never
+  summed.
+- sometimes: every pool's log is present and not empty, so that the detectors that read logs cannot pass unseen on
+  a broken path. It is declared in every config, and fails where `/logs` is not mounted; it says the logs were
+  there, not that each detector read them through.
 
-The test commands append each assertion line under a lock, bound every call to a node with `timeout`, and exit 0
-when a signal stops them, so that the platform's "Commands finish with zero exit code" is about the workload's own
-failures (after cardano-foundation/cardano-node-antithesis, whose commands meet killed nodes).
+The test commands append each assertion line under a lock, waited on and never bypassed, bound every call to a node
+with `timeout`, and exit 0 when a signal stops them, so that the platform's "Commands finish with zero exit code" is
+about the workload's own failures (after cardano-foundation/cardano-node-antithesis, whose commands meet killed
+nodes). A command stopped by a signal therefore also exits 0: that code alone does not say it finished.
 
 There is no `always` on tip agreement. A pool that has just forged is ahead by definition, so "all tips agree at
 an instant" is no invariant: cardano-foundation/cardano-node-antithesis removed such probes as false positives

@@ -44,12 +44,14 @@ FORK_SEEN="a fork is observed"
 PAYMENT_S1="s1 accepts a payment"
 PAYMENT_HASKELL="a Haskell pool accepts a payment"
 S1_FORGES_TXS="s1 forges a block with transactions"
-LOGS_READ="the detectors read every pool's log"
+LOGS_PRESENT="every pool's log is present and not empty"
 
 # assertion HIT MUST_HIT TYPE DISPLAY MESSAGE CONDITION [DETAILS]
 # Copies of the test commands run at once, so each line is appended under a lock, whole (after
-# cardano-foundation/cardano-node-antithesis `components/composer-sdk/helper_sdk_common.sh`). A lock not had within
-# 10 s is passed over rather than waited on: a line written without it is better than a command that hangs.
+# cardano-foundation/cardano-node-antithesis `components/composer-sdk/helper_sdk_common.sh`). The lock is waited on:
+# a holder keeps it for one append, and the driver is left out of every fault. A line is never appended without it;
+# if `flock` itself fails, the line is dropped with a note on stderr, and the sometimes properties that then go
+# unrecorded show it.
 assertion() {
   local line
   line=$(jq -cn --argjson hit "$1" --argjson must "$2" --arg type "$3" --arg display "$4" --arg msg "$5" \
@@ -60,16 +62,18 @@ assertion() {
                                      begin_line: 0, begin_column: 0}}
                          + (if $details == null then {} else {details: $details} end))}') || return 0
   {
-    flock -w 10 9 || true
+    flock 9 || { echo "assertion: no lock on $STATE_DIR/sdk.lock, not recorded: $5" >&2; return 0; }
     printf '%s\n' "$line" >> "$SDK"
   } 9>> "$STATE_DIR/sdk.lock"
 }
 
 # A test command ends with exit code 0 when a signal stops it (the platform's per-command bound, or a closed pipe):
 # its non-zero exit would fail the platform's "Commands finish with zero exit code", which is about the workload, not
-# the system under test. What it had not yet asserted is simply not asserted.
+# the system under test. What it had not yet asserted is simply not asserted, and an exit code of 0 alone does not
+# say a command finished. A closed pipe exits silently: a note on a closed stderr would raise SIGPIPE again.
 exit_zero_on_signal() {
-  trap 'echo "$(basename "$0"): stopped by a signal" >&2; exit 0' TERM INT HUP PIPE
+  trap 'exit 0' PIPE
+  trap 'trap "" PIPE; echo "$(basename "$0"): stopped by a signal" >&2; exit 0' TERM INT HUP
 }
 
 # once KEY: succeeds the first time KEY is given in this timeline, in any process (mkdir is atomic).
@@ -118,8 +122,9 @@ declare_catalog() {
     done
     assertion false false always AlwaysOrUnreachable "$FORK_BELOW_K" true
     assertion false true sometimes Sometimes "$FORK_SEEN" false
-    assertion false true sometimes Sometimes "$LOGS_READ" false
   fi
+  # Every config mounts /logs; without it this fails rather than the detectors passing unseen.
+  assertion false true sometimes Sometimes "$LOGS_PRESENT" false
   if [ -d /opt/at/canary ]; then
     assertion false true sometimes Sometimes "$CANARY_SUBMITTED" false
   fi
@@ -179,12 +184,14 @@ scarab_fatal() {
 # The first `systemClockMovedBack` of s1's log past its offset whose `prevTime` and `newTime` fall in one slot, with
 # `newTime` the later and more than 1 µs (1.5, for the log's microseconds and float error) but less than 1 ms before
 # the next slot's start: #629's millisecond floor woke at most that early. A clock skip back by less than a slot
-# during the wait also wakes the loop inside the slot it read, but earlier: the platform's skips are 10 ms or more in
-# all but a few, and the cardano-node pools traced `SystemClockMovedBack` hundreds of times in a run with them, none
-# in a run without. The reference floors its wait to the microsecond
-# (`threadDelay`), so it too can wake a fraction of a microsecond early and trace `SystemClockMovedBack`. A
-# cardano-node 11.1.3 pool did, 144 ns before its slot, in a platform run of 2026-11-14. Scarab, floored as the
-# reference since #955, does that far more often on the platform (why is not checked); that is not what this detects.
+# during the wait also wakes the loop inside the slot it read, mostly earlier: in a run with the platform's clock
+# skips, s1 woke 20 to 80 ms early, and the cardano-node pools traced `SystemClockMovedBack` hundreds of times, none
+# in a run without. The bound is a heuristic: a skip back together with a late wake can still land inside it, so a
+# hit in a run with clock faults is checked against the skips and the pools' traces before it is called #629. The
+# reference floors its wait to the microsecond (`threadDelay`), so it too can wake a fraction of a microsecond early
+# and trace `SystemClockMovedBack`. A cardano-node 11.1.3 pool did, 144 ns before its slot, in a platform run of
+# 2026-11-14. Scarab, floored as the reference since #955, does that far more often on the platform (why is not
+# checked); that is not what this detects.
 # Slots are counted from the genesis's `systemStart` by its `slotLength`, as `EpochGeometry` counts them; whole
 # seconds are subtracted before the fraction is added, so the arithmetic stays exact enough.
 scarab_false_clock() {
@@ -213,16 +220,17 @@ scarab_false_clock() {
 
 # One pass of the divergence detectors, where /logs is mounted. The detectors that read a log find nothing in a log
 # that is missing or empty, so that they cannot pass unseen on a broken path, a sometimes property records that every
-# pool's log was there to read (after dingo's removed analyzer, which asserted that it read each node's log).
+# pool's log was present and not empty (after dingo's removed analyzer, which asserted that it read each node's log).
+# It says the logs were there, not that each detector read them through.
 check_divergence() {
   local found readable=true sizes='{}' n size
-  [ -d /logs ] || return 0
+  [ -d /logs ] || { sometimes "$LOGS_PRESENT" false '{"logs":"not mounted"}'; return 0; }
   for n in h2 h3 s1; do
     size=$(stat -c %s "/logs/$n.log" 2> /dev/null || echo 0)
     [ "$size" -gt 0 ] || readable=false
     sizes=$(jq -cn --argjson s "$sizes" --arg n "$n" --argjson b "$size" '$s + {($n): $b}')
   done
-  sometimes "$LOGS_READ" "$readable" "$(jq -cn --argjson s "$sizes" '{bytes: $s}')"
+  sometimes "$LOGS_PRESENT" "$readable" "$(jq -cn --argjson s "$sizes" '{bytes: $s}')"
   if found=$(haskell_refusal); then
     echo "detectors: a Haskell pool refused a block: $found"
     unreachable_hit "$HASKELL_REFUSED" "$found"
@@ -262,8 +270,10 @@ check_forks() {
   always "$FORK_BELOW_K" "$below" "$result"
   sometimes "$FORK_SEEN" "$seen" "$result"
   [ "$below" = true ] || echo "detectors: the cluster's fork depth is $depth, k is $k: $result"
-  # Once per timeline (the marker branches with it), so that a run's search can count the histories that went past k
-  # and set them against the blocks forged, its exposure: runs explore different lengths of chain in the same time.
+  # At most once along each history: the marker branches with the timeline, so a branch taken after the line inherits
+  # it and logs none of its own, and one taken before logs its own. A run's search then counts distinct crossings in
+  # the run's tree of histories, to set against the distinct forge events in that tree, its exposure: runs explore
+  # different lengths of chain in the same time. A signal between the marker and the line loses that line.
   if [ "$below" = false ] && once "forks/past-k"; then
     echo "forks: first past k in this timeline, depth $depth, k $k: $result"
   fi
