@@ -52,11 +52,20 @@ class RegistryTest(unittest.TestCase):
             {'id': 'missing', 'title': 'four', 'argv': ['scripts/no_such_guard.py']},
             {'id': 'outside', 'title': 'five', 'argv': ['README.md']},
         ]
-        trouble = guards.problems(ROOT, entries)
+        entries += [
+            {'id': 'newline', 'title': 'one\ntwo', 'argv': ['scripts/guards.py']},
+            {'id': ['unhashable'], 'title': 'six', 'argv': ['scripts/guards.py']},
+            'not an object',
+        ]
+        trouble = guards.problems(ROOT, {'guards': entries})
         for expected in ('a: registered twice', "'Bad Id'", 'tab: a title', 'missing: the command',
-                         'outside: the command'):
+                         'outside: the command', 'newline: a title', "['unhashable']: an id",
+                         "'not an object': a guard is an object"):
             self.assertTrue(any(expected in line for line in trouble), f'{expected!r} not in {trouble}')
-        self.assertEqual(len(trouble), 5)
+        self.assertEqual(len(trouble), 8)
+        for shape in ([], {}, {'guards': {}}, None):
+            with self.subTest(shape=shape):
+                self.assertEqual(guards.problems(ROOT, shape), ['the registry is an object whose "guards" is a list'])
 
 
 class RunTest(unittest.TestCase):
@@ -104,13 +113,15 @@ class RunTest(unittest.TestCase):
         self.assertIn("no guard 'fourth'", err)
 
     def test_an_invalid_registry_runs_nothing(self):
-        (self.root / 'scripts' / 'guards.json').write_text(json.dumps({'guards': [
-            {'id': 'first', 'title': 'the first', 'argv': ['scripts/absent.py']}]}))
-        for args in ((), ('--list',), ('--run', 'first')):
-            with self.subTest(args=args):
-                code, out, err = self.main(*args)
-                self.assertEqual((code, out), (2, ''))
-                self.assertIn('not a valid guard registry', err)
+        registry = self.root / 'scripts' / 'guards.json'
+        for text in (json.dumps({'guards': [{'id': 'first', 'title': 'the first', 'argv': ['scripts/absent.py']}]}),
+                     '{"guards": [', json.dumps({'checks': []}), json.dumps({'guards': ['first']})):
+            registry.write_text(text)
+            for args in ((), ('--list',), ('--run', 'first')):
+                with self.subTest(text=text, args=args):
+                    code, out, err = self.main(*args)
+                    self.assertEqual((code, out), (2, ''))
+                    self.assertIn('not a valid guard registry', err)
 
 
 if __name__ == '__main__':
