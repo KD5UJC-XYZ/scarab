@@ -37,7 +37,7 @@ release is cut from `main`, under [#995](https://github.com/KD5UJC-XYZ/scarab/is
 
 - **frozen release identity controls** (`ci.yml` job `build-identity`, `scripts/check_build_identity.py`) runs
   only when CI is started by hand (`workflow_dispatch`), and the required summary **scalafmt, compile and test**
-  requires only **Scala tests and native guards**.
+  requires only the Scala jobs: the build, every test shard and **Scala tests and native guards**.
 - [Release PR preparation](../release-pr-preparation.md) (`release-pr-preparation.yml`: **release proposal
   controls**, the preview and the preparation jobs) runs only by hand: its `pull_request` and `push` triggers are
   commented out.
@@ -46,9 +46,10 @@ release is cut from `main`, under [#995](https://github.com/KD5UJC-XYZ/scarab/is
 
 To restore them:
 
-1. In `ci.yml`, delete the `if:` of `build-identity` and its comment, give the `scala` job
-   `needs: [scala-tests, build-identity]` and an `IDENTITY_RESULT: ${{ needs.build-identity.result }}` that must
-   be `success`, and make `scripts/tests/test_ci_gate.py` require both results again.
+1. In `ci.yml`, delete the `if:` of `build-identity` and its comment, add `build-identity` to the `scala` job's
+   `needs` (`[scala-build, scala-shards, scala-tests, build-identity]`) with an
+   `IDENTITY_RESULT: ${{ needs.build-identity.result }}` that must be `success`, and make
+   `scripts/tests/test_ci_gate.py` require that result too.
 2. In `release-pr-preparation.yml`, remove the comment marks from the `pull_request` and `push` triggers. Its
    concurrency group already gives each push run a group of its own, as `scripts/check_ci_parity.py` requires.
 3. Put **release proposal controls** back in `CHECKS`.
