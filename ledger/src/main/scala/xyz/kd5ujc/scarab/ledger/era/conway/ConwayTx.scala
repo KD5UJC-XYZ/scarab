@@ -4,7 +4,15 @@ package xyz.kd5ujc.scarab.ledger.era.conway
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Address, Datum, Script, TxIn, Value}
-import xyz.kd5ujc.scarab.ledger.era.{BabbageEraTxOut, BabbageTxOutRep, ConwayEraTxBody, EraTxError}
+import xyz.kd5ujc.scarab.ledger.era.{
+  BabbageEraTxOut,
+  BabbageTxOutRep,
+  ConwayEraTxBody,
+  EraTxError,
+  TopOnly,
+  TxBody,
+  TxLevel
+}
 import xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxOut
 import xyz.kd5ujc.scarab.ledger.state.Conway
 import xyz.kd5ujc.scarab.protocol.Era
@@ -63,8 +71,22 @@ object ConwayTxBody:
       )
 
   val instance: ConwayEraTxBody[Conway] = new ConwayEraTxBody[Conway]:
-    override def id(body: ConwayTxBody): Bytes = body.id
-    override def inputs(body: ConwayTxBody): Vector[TxIn] = body.inputs
-    override def outputs(body: ConwayTxBody): Vector[ConwayTxOut] = body.outputs
+    type Level[L <: TxLevel] = TopOnly[L]
+    override def top: TopOnly[TxLevel.Top] = TopOnly.Top
+    override def id[L <: TxLevel](body: TxBody[L, Conway])(using l: TopOnly[L]): Bytes =
+      l match
+        case TopOnly.Top => body.id
+    override def inputs[L <: TxLevel](body: TxBody[L, Conway])(using l: TopOnly[L]): Vector[TxIn] =
+      l match
+        case TopOnly.Top => body.inputs
+    override def outputs[L <: TxLevel](body: TxBody[L, Conway])(using
+        l: TopOnly[L]
+    ): Vector[ConwayTxOut] =
+      l match
+        case TopOnly.Top => body.outputs
     override def fee(body: ConwayTxBody): BigInt = body.fee
-    override def currentTreasury(body: ConwayTxBody): Option[BigInt] = body.currentTreasury
+    override def currentTreasury[L <: TxLevel](body: TxBody[L, Conway])(using
+        l: TopOnly[L]
+    ): Option[BigInt] =
+      l match
+        case TopOnly.Top => body.currentTreasury

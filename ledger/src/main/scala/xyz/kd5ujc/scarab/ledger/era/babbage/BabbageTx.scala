@@ -4,7 +4,15 @@ package xyz.kd5ujc.scarab.ledger.era.babbage
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Address, Datum, Script, TxIn, Update, Value}
-import xyz.kd5ujc.scarab.ledger.era.{BabbageEraTxOut, BabbageTxOutRep, EraTxError, ShelleyEraTxBody}
+import xyz.kd5ujc.scarab.ledger.era.{
+  BabbageEraTxOut,
+  BabbageTxOutRep,
+  EraTxError,
+  ShelleyEraTxBody,
+  TopOnly,
+  TxBody,
+  TxLevel
+}
 import xyz.kd5ujc.scarab.ledger.state.Babbage
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -55,8 +63,18 @@ object BabbageTxBody:
       )
 
   val instance: ShelleyEraTxBody[Babbage] = new ShelleyEraTxBody[Babbage]:
-    override def id(body: BabbageTxBody): Bytes = body.id
-    override def inputs(body: BabbageTxBody): Vector[TxIn] = body.inputs
-    override def outputs(body: BabbageTxBody): Vector[BabbageTxOut] = body.outputs
+    type Level[L <: TxLevel] = TopOnly[L]
+    override def top: TopOnly[TxLevel.Top] = TopOnly.Top
+    override def id[L <: TxLevel](body: TxBody[L, Babbage])(using l: TopOnly[L]): Bytes =
+      l match
+        case TopOnly.Top => body.id
+    override def inputs[L <: TxLevel](body: TxBody[L, Babbage])(using l: TopOnly[L]): Vector[TxIn] =
+      l match
+        case TopOnly.Top => body.inputs
+    override def outputs[L <: TxLevel](body: TxBody[L, Babbage])(using
+        l: TopOnly[L]
+    ): Vector[BabbageTxOut] =
+      l match
+        case TopOnly.Top => body.outputs
     override def fee(body: BabbageTxBody): BigInt = body.fee
     override def update(body: BabbageTxBody): Option[Update] = body.update

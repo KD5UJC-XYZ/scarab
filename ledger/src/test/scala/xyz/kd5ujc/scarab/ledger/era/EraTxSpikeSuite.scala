@@ -52,15 +52,18 @@ class EraTxSpikeSuite extends munit.FunSuite:
       val c = ConwayTxBody.decode(raw).toOption.get
       assertEquals(c.id, flat.id)
       assertEquals(c.outputs.map(EraTxOut.conway.raw), flat.outputs.map(_.raw))
-      assertEquals(EraTxBody.conway.currentTreasury(c), flat.currentTreasury)
+      assertEquals(
+        EraTxBody.conway.currentTreasury[TxLevel.Top](c)(using EraTxBody.conway.top),
+        flat.currentTreasury
+      )
     }
   }
 
   test("a rule written once runs in both eras through each era's rule set") {
     val b = bodiesOf(Era.Babbage).map(BabbageTxBody.decode(_).toOption.get)
     val c = bodiesOf(Era.Conway).map(ConwayTxBody.decode(_).toOption.get)
-    def run[E <: xyz.kd5ujc.scarab.ledger.state.EraTag](bodies: Vector[TxBody[E]])(using
-        r: EraRules[E]
+    def run[E <: xyz.kd5ujc.scarab.ledger.state.EraTag](bodies: Vector[TxBody[TxLevel.Top, E]])(
+        using r: EraRules[E]
     ): Int = bodies.map(r.inlineDatums(_).size).sum
     assert(run[Babbage](b) >= 0)
     assert(run[Conway](c) >= 0)
@@ -72,6 +75,17 @@ class EraTxSpikeSuite extends munit.FunSuite:
     outs.foreach(o =>
       assertEquals(EraTxOut.conway.raw(ConwayTxOut.translate(o)), EraTxOut.babbage.raw(o))
     )
+  }
+
+  test("a body of a level an era does not have is refused: Conway has top-level bodies only") {
+    val c = bodiesOf(Era.Conway).map(ConwayTxBody.decode(_).toOption.get).head
+    // a method of any level runs on a top-level body with the era's evidence of the top level
+    assertEquals(EraTxBody.conway.inputs[TxLevel.Top](c)(using EraTxBody.conway.top), c.inputs)
+    // Conway's only evidence is of the top level, so a sub-transaction body cannot be read
+    val noSub = compileErrors(
+      "def f(b: TxBody[TxLevel.Sub, Conway]) = EraTxBody.conway.inputs[TxLevel.Sub](b)(using EraTxBody.conway.top)"
+    )
+    assert(noSub.contains("TxLevel.Sub"), noSub)
   }
 
   test("the compiler refuses a capability an era does not have, and another era's output") {

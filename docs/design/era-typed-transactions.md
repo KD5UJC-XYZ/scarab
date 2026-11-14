@@ -317,10 +317,16 @@ passes `check`.
 - the compiler refusing a missing capability, another era's output, and construction outside the defining
   file. Two of these tests check only that compilation fails, not the message.
 
+**The level parameter** (stage 1's first task, done):
+- Each era's instance names the levels it has, as a type member (`Level[L]`), the reference's `STxLevel`.
+  Eras up to Conway use `TopOnly`, whose one case is `Top`; Dijkstra will use `BothLevels`.
+- A class method of any level takes the evidence, and an instance matches on it, which shows the compiler the
+  level and reduces the body type with no cast.
+- Code asking for a sub-transaction body of Conway does not compile.
+- Given a concrete body, the caller names the level (`inputs[TxLevel.Top](body)`), because the level cannot
+  be inferred back from the body type. Generic rules carry the evidence instead.
+
 **What it does not show yet:**
-- the level parameter on a class method generic in the level, for an era whose body exists only at `Top`.
-  This may need a level witness like the reference's `STxLevel`; stage 1 spikes it first, because it changes
-  every class signature;
 - a representation parameterised by value (Allegra and Mary outputs, arithmetic over `Value[E]` through the
   reference's `Val` class);
 - a rule reading a stored output through `fromStored`;
