@@ -1237,8 +1237,8 @@ object Targets:
       Target(
         "metadatum",
         () => Corpus.sampled("conway:metadatum", 60) ++ Corpus.tricky,
-        // three walks of an input as deep as it is long: read, written again and read back
         in =>
+          // three walks of an input as deep as it is long: read, written again and read back
           Probe.run("metadatum", in, perByte = 3000) {
             metadatum(raw(in)).foreach { read =>
               seen("metadatum", read.isRight)

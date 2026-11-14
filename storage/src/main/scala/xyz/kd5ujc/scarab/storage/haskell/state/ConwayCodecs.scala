@@ -429,15 +429,16 @@ object ConwayCodecs:
         case GovAction.HardFork(prev, major, minor) =>
           first(ids(prev), Codec.uintBig(13).check(major), word(32).check(minor))
         case GovAction.TreasuryWithdrawals(ws, pol) =>
+          // a `Map AccountAddress Coin` (`Procedures.hs:830-834`): an account once
+          val repeated = Codec.refuse(
+            ws.map(_._1).distinct.size != ws.size,
+            "TreasuryWithdrawals",
+            "each account once",
+            ws.size
+          )
           first(
             ws.iterator.flatMap((to, amount) => account(to).orElse(coin(amount))).nextOption(),
-            // a `Map AccountAddress Coin` (`Procedures.hs:830-834`): an account once
-            Codec.refuse(
-              ws.map(_._1).distinct.size != ws.size,
-              "TreasuryWithdrawals",
-              "each account once",
-              ws.size
-            ),
+            repeated,
             script(pol)
           )
         case GovAction.NoConfidence(prev) => ids(prev)
@@ -613,6 +614,9 @@ object ConwayCodecs:
       b.segments.foreach(out.raw)
     } { b =>
       val expected = if b.era.hasInvalidTransactions then 4 else 3
+      // the kept bytes are written as they are: a header or a segment may be a detached record
+      // (`DetachedRecords`), several items that the reference reads as one, so only their presence
+      // is checked
       first(
         Codec.refuse(
           b.segments.size != expected,
@@ -620,9 +624,6 @@ object ConwayCodecs:
           s"the $expected body segments it was read with",
           s"${b.segments.size} segments"
         ),
-        // the kept bytes are written as they are: a header or a segment may be a detached record
-        // (`DetachedRecords`), several items that the reference reads as one, so only their
-        // presence is checked
         Codec.refuse(b.header.raw.isEmpty, "Block", "the header it was read with", "none"),
         Codec.refuse(
           b.segments.exists(_.isEmpty),
