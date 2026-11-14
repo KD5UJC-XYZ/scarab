@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger
 import cats.data.NonEmptyVector
 import io.circe.Json
 import io.circe.syntax.*
+import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{PlutusBackend, PlutusLanguage, PlutusVm}
@@ -346,6 +347,144 @@ class LedgerRulesSuite extends FunSuite:
     )
   }
 
+  private def expecting(fixture: Json, expected: Json): Json =
+    fixture.mapObject(_.add("expected", expected))
+
+  private def predicate(name: String): Json = Json.obj("predicate" -> name.asJson)
+
+  /** Fixture files judged by every case of [[Selection]]: a refusal whose expected failure is the
+    * second of two Scarab raised, a refusal of one failure, a refusal of a transaction expected to
+    * pass, a refusal none of whose failures the schema names, and a pass.
+    */
+  private val SelectionCorpus: Vector[(String, Json)] = Vector(
+    "00001-fail-later.json" -> expecting(
+      withParams("max_transaction_size" -> 100.asJson, "min_fee_constant" -> 1000000.asJson),
+      predicate("MaxTxSizeUTxO")
+    ),
+    "00002-fail-singleton.json" -> expecting(
+      withState(Json.obj("utxo" -> Json.arr())),
+      predicate("BadInputsUTxO")
+    ),
+    "00003-pass-refused.json" -> expecting(
+      withState(Json.obj("utxo" -> Json.arr())),
+      "Pass".asJson
+    ),
+    "00004-fail-unnamed.json" -> expecting(
+      fixture(UnregisteredTwice, Unregistered("00100")._2),
+      predicate("StakeCredentialInvalidPoolDelegation")
+    ),
+    "00005-pass.json" -> SimpleTransfer
+  )
+
+  /** The files a run with `options` writes for `fixtures`, through the wiring of
+    * [[LedgerRulesMain]] with the configuration its arguments parse to.
+    */
+  private def run(fixtures: Vector[(String, Json)], options: String*): Map[Path, Json] =
+    val config = LedgerRulesMain
+      .config(List("scenarios", "documents", "report.json") ++ options)
+      .fold(e => fail(e.message), identity)
+    val corpus = LedgerRulesMain.Corpus(
+      fixtures.flatMap((file, json) => LedgerRulesCase.id(file).map((_, file, json.noSpaces))),
+      Documents
+    )
+    val cases = LedgerRulesMain.judged(config, corpus)
+    LedgerRulesMain.written(config, cases, "2026-11-14T00:00:00Z").toMap
+
+  private def file(files: Map[Path, Json], name: String): Json =
+    files.getOrElse(Path.of(name), fail(s"no $name among ${files.keySet}"))
+
+  private def results(report: Json): Vector[(String, String)] =
+    report.hcursor
+      .get[Vector[Json]]("scenarios")
+      .fold(e => fail(e.getMessage), identity)
+      .map(e =>
+        e.hcursor.get[String]("id").getOrElse("") -> e.hcursor.get[String]("result").getOrElse("")
+      )
+
+  private def sidecarCases(sidecar: Json): Vector[io.circe.ACursor] =
+    sidecar.hcursor
+      .get[Vector[Json]]("cases")
+      .fold(e => fail(e.getMessage), identity)
+      .map(_.hcursor)
+
+  test("a run names a refusal by the expected failure among Scarab's, unless --select first") {
+    val expected = run(SelectionCorpus)
+    assertEquals(expected.keySet, Set(Path.of("report.json")), "no sidecar without --sidecar")
+    assertEquals(
+      results(file(expected, "report.json")),
+      Vector(
+        "00001" -> "MaxTxSizeUTxO",
+        "00002" -> "BadInputsUTxO",
+        "00003" -> "BadInputsUTxO",
+        "00005" -> "pass"
+      ),
+      "expected-in-failures, the default"
+    )
+    assertEquals(
+      results(file(run(SelectionCorpus, "--select", "first"), "report.json")),
+      Vector(
+        "00001" -> "FeeTooSmallUTxO",
+        "00002" -> "BadInputsUTxO",
+        "00003" -> "BadInputsUTxO",
+        "00005" -> "pass"
+      ),
+      "first"
+    )
+  }
+
+  test("the sidecar records the run's selection, and the rule that chose each name") {
+    def sidecar(options: String*): Json =
+      file(run(SelectionCorpus, ("--sidecar" +: "sidecar.json" +: options)*), "sidecar.json")
+    def selectedBy(sidecar: Json): Vector[(String, Option[String])] =
+      sidecarCases(sidecar).map(c =>
+        c.get[String]("id").getOrElse("") -> c.get[Option[String]]("selected").toOption.flatten
+      )
+    val expected = sidecar()
+    assertEquals(expected.hcursor.get[String]("selection"), Right("expected-in-failures"))
+    assertEquals(
+      selectedBy(expected),
+      Vector(
+        "00001" -> Some("expected-in-failures"),
+        "00002" -> Some("first"),
+        "00003" -> Some("first"),
+        "00004" -> None,
+        "00005" -> None
+      )
+    )
+    val cases = sidecarCases(expected)
+    assertEquals(
+      cases.map(_.get[Vector[String]]("names").getOrElse(Vector.empty)),
+      Vector(
+        Vector("FeeTooSmallUTxO", "MaxTxSizeUTxO"),
+        Vector("BadInputsUTxO"),
+        Vector("BadInputsUTxO"),
+        Vector.empty,
+        Vector.empty
+      ),
+      "every name of every failure, in the reference's order"
+    )
+    val unnamed = cases(3)
+    assertEquals(unnamed.get[String]("verdict"), Right("refused"))
+    assertEquals(unnamed.get[Option[String]]("result"), Right(None))
+    assertEquals(
+      unnamed.downField("failures").as[Vector[Json]].map(_.size),
+      Right(2),
+      "both certificates refuse the credential"
+    )
+    val first = sidecar("--select", "first")
+    assertEquals(first.hcursor.get[String]("selection"), Right("first"))
+    assertEquals(
+      selectedBy(first),
+      Vector(
+        "00001" -> Some("first"),
+        "00002" -> Some("first"),
+        "00003" -> Some("first"),
+        "00004" -> None,
+        "00005" -> None
+      )
+    )
+  }
+
   test("the report names are the schema's 80, each once") {
     assertEquals(ReportName.values.length, 80)
     assertEquals(ReportName.values.map(_.toString).distinct.length, 80)
@@ -453,6 +592,17 @@ object LedgerRulesSuite:
         "6e1597a55a0a04208b1cf66636ad12daf6c81d6f8ee40ed5bbbf0df5f6"
     )
   )
+
+  /** The initial state of fixture `00100` without the account of its credential, and its input
+    * holding 7,000,000, what the transaction produces without the refund of a deposit. The
+    * transaction's only failures are then the refusals of the unregistered credential by both of
+    * its certificates, an unregistration and a delegation: refused by certificates of two kinds,
+    * the credential is named by neither ([[LedgerRulesRun]]).
+    */
+  private val UnregisteredTwice: String =
+    """{"utxo": [{"input": "825820827273a8722791f640b59ba20ba9340cb0398535b36e1957ed8e8dde693976d500",""" +
+      """ "output": "bf00581d6093c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd8011a006acfc0ff"}],""" +
+      """ "pools": ["deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"]}"""
 
   /** Fixture `00154` of the corpus (same provenance): a vote by the hot key of a committee member
     * that holds no term, below protocol version 11, so that only the mempool refuses it.
