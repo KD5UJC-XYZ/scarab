@@ -341,14 +341,24 @@ object LocalSockets:
 
       def listen: F[Either[DiffusionFailure, Unit]] = F.pure(Right(()))
 
+      // between the accept and the stream that owns its client nothing may cancel, and the client
+      // is closed if the stream is not made; a client accepted as the accept is cancelled is closed
+      // too ([[LocalSockets.acquiring]])
       def accept: F[Either[SystemCallError, LocalStream[F]]] =
-        F.blocking(Either.catchOnly[IOException](channel.accept()))
-          .cancelable(F.blocking(channel.close()))
-          .flatMap(
+        F.uncancelable { poll =>
+          poll(
+            LocalSockets.acquiring(
+              F.blocking(Either.catchOnly[IOException](channel.accept())),
+              F.blocking(channel.close())
+            )(_.traverse_(client => F.blocking(client.close())))
+          ).flatMap(
             _.leftMap(SystemCallError.of(SystemCall.Accept, None)).traverse(client =>
-              Mutex[F].map(lock => LocalStream(stream(client, lock), F.blocking(client.close())))
+              Mutex[F]
+                .map(lock => LocalStream(stream(client, lock), F.blocking(client.close())))
+                .onError { case _ => F.blocking(client.close()) }
             )
           )
+        }
 
   /** The `IOError` of unix 2.8.6.0's `useAsCStringSafe` for a path that holds NUL
     * (`System/Posix/PosixPath/FilePath.hsc` 154-171): it names the path as decoded, NUL included.
