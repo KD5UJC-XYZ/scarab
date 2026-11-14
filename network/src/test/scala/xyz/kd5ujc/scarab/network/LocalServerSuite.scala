@@ -336,7 +336,7 @@ class LocalServerSuite extends FailsOnUncaught:
       log: Ref[IO, Vector[Call]],
       modes: String => Either[SystemCallError, Int],
       bound: Either[DiffusionFailure, Unit],
-      accepts: Queue[IO, Either[SystemCallError, LocalStream[IO]]]
+      accepts: Queue[IO, Either[AcceptFailure, LocalStream[IO]]]
   ) extends LocalSockets[IO]:
     def removeFile(path: String) = IO.pure(Right(()))
     def fileMode(path: String) = log.update(_ :+ Call.Status(path)).as(modes(path))
@@ -361,14 +361,14 @@ class LocalServerSuite extends FailsOnUncaught:
 
   /** The server on recorded sockets, used by `body`: its traces, its calls and what it raised. */
   private def serve[A](
-      accepts: List[Either[SystemCallError, LocalStream[IO]]],
+      accepts: List[Either[AcceptFailure, LocalStream[IO]]],
       modes: String => Either[SystemCallError, Int] = modes,
       bound: Either[DiffusionFailure, Unit] = Right(())
   )(body: IO[DiffusionFailure] => IO[A]) =
     for
       log <- Ref.of[IO, Vector[Call]](Vector.empty)
       traces <- Ref.of[IO, Vector[Trace]](Vector.empty)
-      queue <- Queue.unbounded[IO, Either[SystemCallError, LocalStream[IO]]]
+      queue <- Queue.unbounded[IO, Either[AcceptFailure, LocalStream[IO]]]
       _ <- accepts.traverse_(queue.offer)
       result <- attempt[DiffusionFailure, A](
         LocalServer
@@ -457,8 +457,10 @@ class LocalServerSuite extends FailsOnUncaught:
         times <- Ref.of[IO, Vector[FiniteDuration]](Vector.empty)
         log <- Ref.of[IO, Vector[Call]](Vector.empty)
         traces <- Ref.of[IO, Vector[Trace]](Vector.empty)
-        queue <- Queue.unbounded[IO, Either[SystemCallError, LocalStream[IO]]]
-        _ <- queue.offer(Left(aborted)) *> queue.offer(Right(LocalStream(ends._1, IO.unit)))
+        queue <- Queue.unbounded[IO, Either[AcceptFailure, LocalStream[IO]]]
+        _ <- queue.offer(Left(AcceptFailure.System(aborted))) *> queue.offer(
+          Right(LocalStream(ends._1, IO.unit))
+        )
         timed = new LocalSockets[IO]:
           private val inner = Recorded(log, modes, Right(()), queue)
           def removeFile(path: String) = inner.removeFile(path)
@@ -489,7 +491,7 @@ class LocalServerSuite extends FailsOnUncaught:
       assertEquals(
         traces,
         Vector(
-          Trace.AcceptError(aborted),
+          Trace.AcceptError(AcceptFailure.System(aborted)),
           Trace.AcceptConnection(LocalConnectionId(address, LocalAddress(s"${address.path}@0"))),
           Trace.ServerStopped
         )
@@ -506,7 +508,7 @@ class LocalServerSuite extends FailsOnUncaught:
         List(
           Right(LocalStream(first._1, IO.unit)),
           Right(LocalStream(second._1, IO.unit)),
-          Left(exhausted)
+          Left(AcceptFailure.System(exhausted))
         )
       )(_.timeout(3.seconds))
     yield
@@ -517,7 +519,7 @@ class LocalServerSuite extends FailsOnUncaught:
         Vector(
           Trace.AcceptConnection(LocalConnectionId(address, LocalAddress(s"${address.path}@0"))),
           Trace.AcceptConnection(LocalConnectionId(address, LocalAddress(s"${address.path}@1"))),
-          Trace.AcceptError(exhausted),
+          Trace.AcceptError(AcceptFailure.System(exhausted)),
           Trace.ServerStopped,
           Trace.ServerError(DiffusionFailure.System(exhausted))
         )
@@ -526,6 +528,86 @@ class LocalServerSuite extends FailsOnUncaught:
         DiffusionFailure.System(exhausted).show,
         "Network.Socket.accept: resource exhausted (No file descriptors available)"
       )
+  }
+
+  // #945, item 1: as the reference's `finally` (`Server.hs` 168-175), and as BearerServer since #931
+  test("the owner learns that the accept loop stopped even if tracing it fails") {
+    val exhausted = acceptFailure(Errno.EMFILE)
+    val unwritable = new java.io.IOException("No space left on device")
+    val program =
+      for
+        log <- Ref.of[IO, Vector[Call]](Vector.empty)
+        queue <- Queue.unbounded[IO, Either[AcceptFailure, LocalStream[IO]]]
+        _ <- queue.offer(Left(AcceptFailure.System(exhausted)))
+        result <- attempt[DiffusionFailure, DiffusionFailure](
+          LocalServer
+            .resource[IO, NetworkError](
+              Recorded(log, modes, Right(()), queue),
+              address,
+              {
+                case Trace.ServerStopped => IO.raiseError(unwritable)
+                case _                   => IO.unit
+              }
+            )((_, _) => IO.unit)((_, _) => IO.never)
+            .use(identity)
+        )
+      yield result
+    TestControl
+      .executeEmbed(program)
+      .map(result => assertEquals(result, Right(DiffusionFailure.System(exhausted))))
+  }
+
+  // #945, item 4: the reference traces every exception of the accept that is not asynchronous
+  // (`Snocket.hs` 170-214, `Server.hs` 218-231), not only an `IOError`
+  test("an accept that fails with a defect is traced and stops the server with it") {
+    val broken = new IllegalStateException("accept pending")
+    serve(List(Left(AcceptFailure.Defect(broken))))(_.timeout(3.seconds)).map {
+      (result, _, traces) =>
+        assertEquals(result, Right(DiffusionFailure.Defect(broken)))
+        assertEquals(
+          traces.drop(setUp.length),
+          Vector(
+            Trace.AcceptError(AcceptFailure.Defect(broken)),
+            Trace.ServerStopped,
+            Trace.ServerError(DiffusionFailure.Defect(broken))
+          )
+        )
+    }
+  }
+
+  // #945, item 3: a handler's fiber cancelled before it starts never runs its own close, so the
+  // server closes every client still open when it is released. The supervisor here drops each
+  // handler, as a release can cancel one before it starts.
+  test("a client whose handler never started is closed when the server is released") {
+    val dropping: Resource[IO, cats.effect.std.Supervisor[IO]] = Resource.pure(
+      new cats.effect.std.Supervisor[IO]:
+        def supervise[A](fa: IO[A]): IO[cats.effect.kernel.Fiber[IO, Throwable, A]] =
+          IO.never[A].start.flatTap(_.cancel)
+    )
+    for
+      ends <- Bearer.inMemory[IO]()
+      closes <- Ref.of[IO, Int](0)
+      accepted <- Deferred[IO, Unit]
+      log <- Ref.of[IO, Vector[Call]](Vector.empty)
+      queue <- Queue.unbounded[IO, Either[AcceptFailure, LocalStream[IO]]]
+      _ <- queue.offer(Right(LocalStream(ends._1, closes.update(_ + 1))))
+      result <- attempt[DiffusionFailure, Unit](
+        LocalServer
+          .resource[IO, NetworkError](
+            Recorded(log, modes, Right(()), queue),
+            address,
+            {
+              case Trace.AcceptConnection(_) => accepted.complete(()).void
+              case _                         => IO.unit
+            },
+            dropping
+          )((_, _) => IO.unit)((_, _) => IO.never)
+          .use(_ => accepted.get)
+      )
+      closed <- closes.get
+    yield
+      assertEquals(result, Right(()))
+      assertEquals(closed, 1)
   }
 
   private val refused = NetworkError.BearerClosed(NetworkError.Closure.PeerClosed)

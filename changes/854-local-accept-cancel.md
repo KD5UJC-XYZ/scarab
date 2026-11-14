@@ -1,3 +1,4 @@
-### Fixed (network, #854)
+### Fixed (network, #854, #945)
 
 - A local client accepted just as the node-to-client server is cancelled is closed, not left open with no owner: the accept joins the blocking call instead of dropping its result (`LocalSockets.acquiring`, as the node-to-node listener has done since #898), and a client whose stream is not made is closed.
+- The node-to-client server gets the accept-loop fixes the node-to-node server got in #931: every client still open when the server is released is closed, including one whose handler never started; the owner learns that the accept loop stopped even if tracing `ServerStopped` or `ServerError` fails; and an accept that fails with an exception other than an `IOError` is traced as an `acceptError` and stops the server as a defect, as the reference traces every exception of its accept that is not asynchronous.

@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.Monad
-import cats.effect.{Async, Deferred, Resource}
+import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.std.Supervisor
 import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise}
@@ -49,8 +49,8 @@ object LocalServer:
     /** `TrAcceptConnection`. */
     case AcceptConnection(id: LocalConnectionId)
 
-    /** `TrAcceptError`. */
-    case AcceptError(error: SystemCallError)
+    /** `TrAcceptError`: a failed call, or a defect. */
+    case AcceptError(failure: AcceptFailure)
 
     /** `TrServerStopped`. */
     case ServerStopped
@@ -119,12 +119,28 @@ object LocalServer:
     * clients are then accepted, each served by `handle` in a fiber and an error scope of its own
     * (`onFailure` receives how it failed). The value completes only if the accept loop stops: an
     * accept failed for another reason than `ECONNABORTED`, which stops the reference's node. On
-    * release the server stops and the socket is closed; its file stays, as the reference leaves it.
+    * release the server stops, every client not yet closed is closed, and the socket is closed; its
+    * file stays, as the reference leaves it.
     */
   def resource[F[_]: Async, E <: DomainError](
       sockets: LocalSockets[F],
       address: LocalAddress,
       trace: Trace => F[Unit]
+  )(
+      onFailure: (LocalConnectionId, HandlerFailure[E]) => F[Unit]
+  )(
+      handle: Handle[F, E] ?=> (Bearer[F], LocalConnectionId) => F[Unit]
+  )(using Raise[F, DiffusionFailure]): Resource[F, F[DiffusionFailure]] =
+    resource(sockets, address, trace, Supervisor[F](await = false))(onFailure)(handle)
+
+  /** [[resource]] with the supervisor of the clients' fibers given: a test's can drop a handler
+    * before it starts, as a release can cancel one.
+    */
+  private[network] def resource[F[_]: Async, E <: DomainError](
+      sockets: LocalSockets[F],
+      address: LocalAddress,
+      trace: Trace => F[Unit],
+      supervisor: Resource[F, Supervisor[F]]
   )(
       onFailure: (LocalConnectionId, HandlerFailure[E]) => F[Unit]
   )(
@@ -138,13 +154,22 @@ object LocalServer:
       _ <- Resource.eval(trace(Trace.CreatedLocalSocket(address)))
       _ <- Resource.eval(configure(sockets, listener, address, trace))
       _ <- Resource.eval(trace(Trace.RunLocalServer(address)))
-      clients <- Supervisor[F](await = false)
+      // the clients accepted and not yet closed, closed when the server is released: a handler's
+      // fiber that the supervisor cancels before it starts never runs its own close
+      open <- Resource.make(Ref.of[F, Map[Long, F[Unit]]](Map.empty))(
+        _.get.flatMap(_.values.toList.traverse_(_.attempt.void))
+      )
+      clients <- supervisor
       _ <- Resource.eval(trace(Trace.ServerStarted(List(address))))
       stopped <- Resource.eval(Deferred[F, DiffusionFailure])
-      _ <- acceptLoop(listener, address, trace, clients)(onFailure)(handle)
-        .guarantee(trace(Trace.ServerStopped))
-        .flatTap(failure => trace(Trace.ServerError(failure)))
-        .flatMap(stopped.complete)
+      // `TrServerStopped` then `TrServerError`, as the reference's `finally` within its `catch`
+      // (`Server.hs` 168-175); the owner learns that the loop stopped even if a trace fails
+      _ <- acceptLoop(listener, address, trace, clients, open)(onFailure)(handle)
+        .onCancel(trace(Trace.ServerStopped))
+        .flatMap(failure =>
+          (trace(Trace.ServerStopped) *> trace(Trace.ServerError(failure)))
+            .guarantee(stopped.complete(failure).void)
+        )
         .background
     yield stopped.get
 
@@ -173,25 +198,26 @@ object LocalServer:
 
   /** The accept loop of `Server.hs` 188-254, for one socket: each client traced and handed to a
     * fiber of its own, an accept that failed traced, and then, for `ECONNABORTED` (the client gave
-    * up before it was accepted), tried again after [[ConnAbortedDelay]]; any other failure ends the
-    * loop with its value. An exception of the loop itself ends it as a defect. The counter that
-    * names the clients counts the accepted ones.
+    * up before it was accepted), tried again after [[ConnAbortedDelay]]; any other failure, a
+    * defect included, ends the loop with its value. An exception of the loop itself ends it as a
+    * defect. The counter that names the clients counts the accepted ones, and names them in `open`.
     */
   private def acceptLoop[F[_], E <: DomainError](
       listener: LocalListener[F],
       address: LocalAddress,
       trace: Trace => F[Unit],
-      clients: Supervisor[F]
+      clients: Supervisor[F],
+      open: Ref[F, Map[Long, F[Unit]]]
   )(
       onFailure: (LocalConnectionId, HandlerFailure[E]) => F[Unit]
   )(
       handle: Handle[F, E] ?=> (Bearer[F], LocalConnectionId) => F[Unit]
   )(using F: Async[F]): F[DiffusionFailure] =
-    def serve(client: LocalStream[F], id: LocalConnectionId): F[Unit] =
+    def serve(client: LocalStream[F], id: LocalConnectionId, n: Long): F[Unit] =
       HandlerFailure
         .capture[F, E, Unit](handle(client.bearer, id))
         .flatMap(_.fold(onFailure(id, _), _ => F.unit))
-        .guarantee(client.close)
+        .guarantee(client.close.guarantee(open.update(_ - n)))
 
     // between the accept and the start of its fiber nothing may cancel, or the client leaks
     def round(accepted: Long): F[Either[Long, DiffusionFailure]] =
@@ -199,13 +225,14 @@ object LocalServer:
         poll(listener.accept).flatMap {
           case Right(client) =>
             val id = LocalConnectionId(address, LocalAddress(s"${address.path}@$accepted"))
-            trace(Trace.AcceptConnection(id)) *>
-              clients.supervise(serve(client, id)).as(Left(accepted + 1))
-          case Left(error) =>
-            trace(Trace.AcceptError(error)) *>
-              (if error.errno.contains(Errno.ECONNABORTED) then
-                 poll(F.sleep(ConnAbortedDelay)).as(Left(accepted))
-               else F.pure(Right(DiffusionFailure.System(error))))
+            open.update(_.updated(accepted, client.close)) *>
+              trace(Trace.AcceptConnection(id)) *>
+              clients.supervise(serve(client, id, accepted)).as(Left(accepted + 1))
+          case Left(failure) =>
+            trace(Trace.AcceptError(failure)) *> (failure match
+              case AcceptFailure.System(error) if error.errno.contains(Errno.ECONNABORTED) =>
+                poll(F.sleep(ConnAbortedDelay)).as(Left(accepted))
+              case _ => F.pure(Right(failure.diffusion)))
         }
       }
 
