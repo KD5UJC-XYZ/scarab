@@ -43,9 +43,10 @@ A new general rule, and a change to one, comes here, with a sweep of the tree fo
 | WartRemover | `build.sbt`, `disallowedWarts` | main; not `tools`, not generated code | the 15 warts listed under [FUN-1](#fun-1) |
 | `@tailrec` | at the definition | all | a call to itself that is not in tail position |
 | scalafmt | `.scalafmt.conf`, `scalafmtCheckAll` in `check` | all | a file not formatted |
-| scalafix | `.scalafix.conf`, `scalafixAll --check` in `check` | all | imports out of their groups (`OrganizeImports` only; no semantic rule) |
+| scalafix | `.scalafix.conf`, `scalafixAll --check` in `check` | all | imports not laid out as `OrganizeImports` is configured: one group, the order as written, unused imports not removed. It is the only rule configured |
 | Python guards | `scripts/check_*.py`, run by `scripts/preflight` and the CI `scripts` job | as each rule says | as each rule says; each script's docstring has its detail |
-| Crypto guards | `.github/workflows/security.yml`: semgrep with `.semgrep/scarab-crypto.yaml`, and `scripts/check_crypto_guard.py` | crypto code | [CRY-1](#cry-1) |
+| Documentation check | `scripts/check_docs.py`, a guard like the others | `docs/**/*.md`, `README.md`, `AGENTS.md` and `CONTRIBUTING.md`, outside fenced code | a new broken link or anchor, missing path or symbol, unregistered pin or stale "current" version. Findings already in `docs/data/docs-check-baseline.json` pass; the baseline only shrinks |
+| Crypto guards | `.github/workflows/security.yml`: semgrep with `.semgrep/scarab-crypto.yaml`, and `scripts/check_crypto_guard.py` | semgrep: every Scala and Java source but `tools`, `target` and `fixtures`; the containment guard: every Scala and Java source, so that it sees a reference that escapes its package | [CRY-1](#cry-1) |
 | Secret scan | gitleaks with `.gitleaks.toml`, in CI and `scripts/preflight` | full history | committed secrets ([FMT-3](#fmt-3)) |
 | SPDX step | `.github/workflows/ci.yml`, "SPDX header on every script and workflow" | `.py`, `.yml` and `sbtw` under `scripts/` and `.github/workflows/` | a file without the header ([CMT-4](#cmt-4)) |
 | PR policy | `scripts/pr_policy.py`, on every pull request event | pull request body | a missing level, a level below its floor, or a missing or malformed "Deviations from the reference" or "Gaps" section ([REF-7](#ref-7)) |
@@ -68,8 +69,9 @@ typed errors and accumulation as cats-mtl capabilities (`Ask`/`Local`, `Stateful
 <a id="eff-2"></a>
 ### EFF-2. `IO` only at the edge
 
-`cats.effect.IO`, `IOApp` and `cats.effect.unsafe` appear only in `Main`, in the commands of package
-`xyz.kd5ujc.scarab.node.tools`, in `tools` and in tests. Everything else is polymorphic in `F`.
+`cats.effect.IO` and `IOApp` appear only in `Main`, in the commands of package
+`xyz.kd5ujc.scarab.node.tools`, in `tools` and in tests. Everything else is polymorphic in `F`. Running an
+effect from outside `F` is [EFF-5](#eff-5)'s concern, not this rule's.
 
 - **Scope:** main.
 - **Exceptions:** none.
@@ -622,8 +624,9 @@ machine. It is never a recursion inside an `Either` or `Option` for-comprehensio
 `foldRight` on a strict collection, or a mutual recursion without one of those forms.
 
 - **Scope:** main.
-- **Exceptions:** a depth that is a constant of the format, or of our own schema, with its bound stated
-  ([ADR 0011](adr/0011-stack-safety.md)).
+- **Exceptions:** as [ADR 0011](adr/0011-stack-safety.md) allows: a depth that is a constant of the
+  format, or of our own schema, with its bound stated; and an effect loop (`flatMap` in tail position,
+  `F.cede *> go(...)`), written for an `F` whose `flatMap` is stack safe and never run in `Id`.
 - **Enforcement:** `@tailrec` makes the compiler refuse a call that is not in tail position. The rest is
   review only.
 - **Why:** [ADR 0011](adr/0011-stack-safety.md).
@@ -781,8 +784,9 @@ differ only where every observable result is identical
 
 - **Scope:** main.
 - **Exceptions:** none.
-- **Enforcement:** in documents, `scripts/check_docs.py` refuses a cited upstream version or revision that
-  no registered pin covers (`UNREGISTERED_PIN`). In code, citations are review only; a guard is planned.
+- **Enforcement:** in the documents `scripts/check_docs.py` reads, it refuses a new citation of an upstream
+  version or revision that no registered pin covers (`UNREGISTERED_PIN`). In code, citations are review
+  only; a guard is planned.
 - **Why:** [ADR 0001](adr/0001-haskell-node-as-reference.md).
 
 <a id="ref-7"></a>
@@ -843,7 +847,8 @@ Maintained native snapshot payload fixtures, and ordinary snapshot test builders
 format (`FileKind.SnapshotFile.current`; its fixtures are in `fixtures/snapshot-v<N>`). The files of
 earlier versions are the previous-version inputs. Assertions read typed native state directly: a
 flat-state completion adapter is not the fixture's expected state. Conversion provenance is pinned, and
-original private captures are preserved outside the checkout. Generic toy-format migration framework tests
+original private captures are preserved outside the checkout. A future format bump still needs its
+migration and previous-version read test ([FMT-1](#fmt-1)). Generic toy-format migration framework tests
 keep testing version transitions independently of the native fixtures. Converting a fixture does not, on
 its own, retire a production reader or authorise an operational writer upgrade.
 
@@ -875,7 +880,7 @@ The variable-time ECVRF math (`Draft03Math`, `Ed25519Point`) takes public inputs
 only from package `xyz.kd5ujc.scarab.crypto.vrf`. Crypto code follows the rules of
 `.semgrep/scarab-crypto.yaml` (its messages give each rule).
 
-- **Scope:** main, tests.
+- **Scope:** main, tests; the containment part also `tools`.
 - **Exceptions:** none.
 - **Enforcement:** `scripts/check_crypto_guard.py` (containment) and semgrep, failing on a `WARNING`
   finding, both in `.github/workflows/security.yml`; that secret scalars never reach the variable-time math
@@ -956,7 +961,7 @@ that amendment, so that a reader sees, where they read it, that the text is stal
 - **Scope:** `docs/adr/`.
 - **Exceptions:** none.
 - **Enforcement:** review only. `scripts/check_docs.py` refuses an ADR that the index does not link
-  (`ADR_UNINDEXED`).
+  (`ADR_UNINDEXED`), against its baseline.
 - **Why:** [the ADR index](adr/README.md): a decision is not edited away.
 
 <a id="doc-2"></a>
@@ -968,7 +973,8 @@ process in [process.md](process.md). Other documents link to it rather than rest
 
 - **Scope:** every document.
 - **Exceptions:** none.
-- **Enforcement:** review only. `scripts/check_docs.py` refuses a broken link or anchor.
+- **Enforcement:** review only. `scripts/check_docs.py` refuses a new broken link or anchor in the documents
+  it reads.
 - **Why:** [one place per question](process.md#one-place-per-question).
 
 <a id="doc-3"></a>
@@ -980,6 +986,7 @@ document's text.
 
 - **Scope:** every document.
 - **Exceptions:** a dated evidence row, which records what was true when it was written.
-- **Enforcement:** `scripts/check_docs.py` refuses a watched version or snapshot magic called current that
-  is not the current one (`STALE_CURRENT`). The rest is review only; a guard is planned.
+- **Enforcement:** `scripts/check_docs.py` refuses, in the documents it reads, a watched version or
+  snapshot magic called current that is not the current one (`STALE_CURRENT`). The rest is review only; a
+  guard is planned.
 - **Why:** a static document cannot stay current.
