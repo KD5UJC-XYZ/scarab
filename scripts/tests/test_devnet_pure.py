@@ -18,6 +18,7 @@ from fractions import Fraction
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+from devnet import load as load_tool  # noqa: E402
 from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, follower, govextra, govview, ntccases, ntccli, ntclocal, ntcqueries, ntcquery, refused_fixture, util  # noqa: E402
 from devnet.scenarios import e2e as e2e_scenario  # noqa: E402
 from devnet.scenarios import peercut
@@ -39,6 +40,40 @@ def bech32_text(hrp, data):
     acc <<= pad
     chars = [encoding.BECH32[(acc >> (5 * i)) & 31] for i in reversed(range((bits + pad) // 5))]
     return hrp + "1" + "".join(chars) + "qqqqqq"
+
+
+class BurstLoadTest(unittest.TestCase):
+    """`load --mode parallel`: every transaction of a burst is submitted at once, and each one's
+    outcome is read back by file."""
+
+    def test_every_file_is_submitted_concurrently_and_reported(self):
+        script = load_tool.submit_all_script(["/l/a.signed", "/l/b.signed"])
+        self.assertEqual(script.count("transaction submit"), 2)
+        self.assertEqual(script.count(") &"), 2)
+        self.assertTrue(script.endswith(" wait"))
+        # five files, two at a time: three groups, each waited for before the next starts
+        grouped = load_tool.submit_all_script([f"/l/{i}.signed" for i in range(5)], parallelism=2)
+        self.assertEqual(grouped.count(" wait"), 3)
+        self.assertEqual(grouped.count(") &"), 5)
+        self.assertIn('echo "ok /l/a.signed"', script)
+        self.assertIn('echo "fail /l/b.signed', script)
+        # a full socket backlog is tried again; any other error ends the file's attempts
+        self.assertEqual(script.count("grep -q 'resource exhausted'"), 2)
+        self.assertIn("$(seq 10)", script)
+
+    def test_results_split_accepted_and_refused(self):
+        ok, failed = load_tool.submit_results(
+            "ok /l/a.signed\nfail /l/b.signed Command failed: BadInputsUTxO \nnoise\n")
+        self.assertEqual(ok, ["/l/a.signed"])
+        self.assertEqual(failed, {"/l/b.signed": "Command failed: BadInputsUTxO"})
+
+    def test_cli_offers_the_mode_and_the_burst_options(self):
+        entry = pathlib.Path(__file__).resolve().parents[1] / "devnet.py"
+        out = subprocess.run([sys.executable, "-I", str(entry), "load", "--help"],
+                             capture_output=True, text=True, check=True).stdout
+        for option in ("--mode {sequential,parallel}", "--burst-size", "--bursts", "--burst-amount",
+                       "--burst-parallelism"):
+            self.assertIn(option, out)
 
 
 class FollowerCommandTest(unittest.TestCase):
