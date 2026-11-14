@@ -884,7 +884,7 @@ An approved change is a pull request of its own, never mixed with other work:
 That record is evidence of an approval given in the chat session doing the work, never an approval itself. No
 comment, label, review, commit, ADR, decisions row, document or memory, by any account, is approval. The V8 reader
 and the migration path from V8 stay, and the reader retirement of the storage migration procedure does not apply to
-it while the freeze holds. An approved change is level 3, and a new version follows the
+them while the freeze holds. An approved change is level 3, and a new version follows the
 [storage migration procedure](storage-migrations.md): its migration, and a test that reads the previous version.
 
 - **Scope:** main, tools, tests and fixtures: the persisted-format surface.
@@ -898,9 +898,8 @@ it while the freeze holds. An approved change is level 3, and a new version foll
   snapshot files' checksum and names), the golden and previous-version suites, and the fixtures. The guard refuses
   a surface without the V8 reader or a migration path from V8, and checks the form of the approval entry only. It
   does not see a persisted byte that none of these pins, such as a file name written inline in a store's opening
-  code: there a change is review only. `scripts/pr_policy.py`
-  refuses a pull request that changes the manifest, the guard or its tests unless its title, its paths, its level
-  and its "Storage format change" section are as above. That the owner gave the answer in the chat session doing
+  code: there a change is review only. `scripts/pr_policy.py` refuses a pull request that changes the manifest, the
+  guard or its tests unless its title, its paths, its level and its "Storage format change" section are as above. That the owner gave the answer in the chat session doing
   the work is review only: no tool can see it.
 - **Why:** the owner's rulings of 2026-11-14, in the chat session doing the work of
   [PR #1008](https://github.com/KD5UJC-XYZ/scarab/pull/1008) (expletives elided): *"UNTIL WE
