@@ -2,10 +2,471 @@
  "_comment": [
   "The persisted-format surface that scripts/check_storage_format.py computes, and the record of the approval that admitted it (FMT-1, docs/design-rules.md#fmt-1).",
   "Persisted formats are frozen until Scarab leaves pre-release. This file changes only in a storage format change of its own, approved by the owner in the chat session doing the work in answer to an explicit question asked there before the change was written.",
-  "`approval` records that question and answer, verbatim, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (4a1a7ab96) on 2026-11-14, when the freeze began, which approves nothing."
+  "`approval` records that question and answer, verbatim, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (458e201bd) on 2026-11-14, when the freeze began, which approves nothing."
  ],
  "approval": null,
  "surface": {
+  "registry": {
+   "versions": [
+    "V1",
+    "V2",
+    "V3",
+    "V4",
+    "V5",
+    "V6",
+    "V7",
+    "V8",
+    "V9",
+    "V10"
+   ],
+   "kinds": {
+    "IdentityFile": {
+     "label": "network identity",
+     "families": [
+      "cardano-scala-lab network",
+      "scarab network"
+     ],
+     "history": [
+      [
+       "V1",
+       "cardano-scala-lab network identity v1"
+      ],
+      [
+       "V2",
+       "scarab network identity v2"
+      ],
+      [
+       "V6",
+       "scarab network identity v6"
+      ],
+      [
+       "V9",
+       "scarab network identity v9"
+      ]
+     ]
+    },
+    "FormatFile": {
+     "label": "immutable store format",
+     "families": [
+      "cardano-scala-lab immutable",
+      "scarab immutable"
+     ],
+     "history": [
+      [
+       "V1",
+       "cardano-scala-lab immutable store v1"
+      ],
+      [
+       "V2",
+       "scarab immutable store v2"
+      ]
+     ]
+    },
+    "IndexFile": {
+     "label": "chunk index",
+     "families": [
+      "CSLIDX",
+      "SCRBIDX"
+     ],
+     "history": [
+      [
+       "V1",
+       "CSLIDX01"
+      ],
+      [
+       "V2",
+       "SCRBIDX2"
+      ]
+     ]
+    },
+    "SnapshotFile": {
+     "label": "ledger snapshot",
+     "families": [
+      "CSLSNAP",
+      "SCRBSNP"
+     ],
+     "history": [
+      [
+       "V1",
+       "CSLSNAP1 v1"
+      ],
+      [
+       "V2",
+       "CSLSNAP1 v2"
+      ],
+      [
+       "V3",
+       "SCRBSNP3"
+      ],
+      [
+       "V4",
+       "SCRBSNP4"
+      ],
+      [
+       "V5",
+       "SCRBSNP5"
+      ],
+      [
+       "V7",
+       "SCRBSNP7"
+      ],
+      [
+       "V8",
+       "SCRBSNP8"
+      ],
+      [
+       "V9",
+       "SCRBSNP9"
+      ],
+      [
+       "V10",
+       "SCRBSNPA"
+      ]
+     ]
+    }
+   },
+   "readableFrom": {
+    "SnapshotFile": "FormatVersion.V5",
+    "_": "history.head._1"
+   },
+   "utxoKeyLayouts": [
+    "TxIdIndex16"
+   ],
+   "utxoKeyLayoutCurrent": "TxIdIndex16",
+   "formatLosses": [
+    "ByronSoftwareMetadata(proposals: Int, applications: Int)"
+   ],
+   "code_sha256": "9e713b69e7c860357e9c3c7684e21b54148900933e5b47846da2f0ab54770908"
+  },
+  "magics": {
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala": [
+    "CSLIDX01",
+    "SCRBIDX2",
+    "SCRBSNP3",
+    "SCRBSNP4",
+    "SCRBSNP5",
+    "SCRBSNP7",
+    "SCRBSNP8",
+    "SCRBSNP9",
+    "SCRBSNPA"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala": [
+    "CSLSNAP1"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV10.scala": [
+    "SCRBSNPA"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV5.scala": [
+    "SCRBSNP5"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7.scala": [
+    "SCRBSNP7"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8.scala": [
+    "SCRBSNP8"
+   ],
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9.scala": [
+    "SCRBSNP9"
+   ],
+   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV10FixtureMain.scala": [
+    "SCRBSNPA"
+   ],
+   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7FixtureMain.scala": [
+    "SCRBSNP7"
+   ],
+   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8FixtureMain.scala": [
+    "SCRBSNP8"
+   ],
+   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9FixtureMain.scala": [
+    "SCRBSNP9"
+   ]
+  },
+  "migrations": {
+   "converted": {
+    "V5": [
+     "SnapshotV7.fromV5",
+     "SnapshotV8.fromV7",
+     "SnapshotV9.fromV8",
+     "SnapshotV10.fromV9"
+    ],
+    "V7": [
+     "SnapshotV8.fromV7",
+     "SnapshotV9.fromV8",
+     "SnapshotV10.fromV9"
+    ],
+    "V8": [
+     "SnapshotV9.fromV8",
+     "SnapshotV10.fromV9"
+    ],
+    "V9": [
+     "SnapshotV10.fromV9"
+    ]
+   },
+   "steps": [
+    [
+     "V5",
+     "V7"
+    ],
+    [
+     "V7",
+     "V8"
+    ],
+    [
+     "V8",
+     "V9"
+    ],
+    [
+     "V9",
+     "V10"
+    ]
+   ],
+   "conversions": {
+    "SnapshotV10": [
+     "fromV9"
+    ],
+    "SnapshotV5": [],
+    "SnapshotV7": [
+     "fromV5"
+    ],
+    "SnapshotV8": [
+     "fromV7"
+    ],
+    "SnapshotV9": [
+     "fromV8"
+    ]
+   },
+   "implementers": [
+    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala",
+    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/NetworkIdentityFile.scala",
+    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala"
+   ]
+  },
+  "format_sources": {
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NetworkIdentity.scala": "e1b498d43e8ba9b46b451bd42807e566df57dcec16cfad9c23fd16a42f80ecf6",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/CheckpointBinding.scala": "6715cb7b26e20a9a55d6641f1df28cdfd54b58bc359d07eb4cd7c0cd9c143914",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/Codec.scala": "4609832427c5a9a6a51a10af9dc39468c82fcfb2edcf2fe205f4027bf8dbe547",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/Migrate.scala": "df1ac6aa1c643ba755072cb43b0efd1b35d452ec74789a50b0ddc40c5908a150",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/NetworkIdentityFile.scala": "c9a54d01a7d73d4138418b444c1460cd77c144eb338faa6c8cc5ec1165ce5cee",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/NodeCodecs.scala": "e197e122f3fb2c1b6b97622abc8d62b8d03a47b483467fcddea0b094a1dccc8d",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ProductFields.scala": "1ed8c65c8fa67d29c4a205cde6f9d259d6dc2fb86d9fab900e743fdc27ad48fc",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala": "25e4606de501019a542cf49c3905897b5dd30185bfb0f0d79ecafe064ee62d90",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecar.scala": "8936c1c5b3ef5ad1ef96e303c142485c3914490cb1625e7f7248250446109860",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV10.scala": "a8cc0a89aeb8b8f9ade90fcb08fe9235021c0dabe73e43752e472df74bc234bf",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV5.scala": "6f8721a3ccab133ba25b3d8af8ad764258fa29bf570c106e2c0df3045a1bb97e",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7.scala": "c6b03166eec8919e8886f3d429bf0063818d07335774d3d15937fe09eb438926",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8.scala": "653d90b745d27dfb1038c6eddd0b325f9af61abc84f4bf71148507ba3022f146",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9.scala": "1d357e5931cfa6a299e44148f07867e57de072462982e6f6d97986f4ec23c1d5"
+  },
+  "format_members": {
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/UtxoStore.scala#UtxoStore.Coding": "72e8b74b8ffc95b29f030937c8d31777e41d35645c3677abb86df1e64e36f42b",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/UtxoStore.scala#MemoryUtxoStore.checkpoint": "faadeeef0aee201dee018c7227e9bfe04abfbe2327547b4d5543f660c58dddc5",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/UtxoStore.scala#MemoryUtxoStore.restore": "87169b81baf8b1be8805398b5cec5d71fa74019d2626e862ec824d888b4bbafd",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshots.scala#FileLedgerSnapshots": "2af02b2458e6f5052cca5657d5fe654502d1e249dc75c888e9d660a0620425e5",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.stem": "f0d96db9f6078ee0a1fd70da93ab9201a5b789113dc1d78aa00bbc7563a0fd74",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.Stem": "ebc2ae76bf4aab10145b5e249e2eb46ca5bba8540d2f3dd632bc058e335cc82f",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.isStem": "2ed76a5e221935e901fab245602b37e4014be1b094075a7269b6987416424b8c"
+  },
+  "frozen_schemas": {
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenEra.scala": "dc1bd190d36c791cf081e7e602a0c6c1c28d145c684b618be0c33b1f760a4498",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenProtocolParams.scala": "b4356c8b94c6087772811896e6fe6cbc2ecfcba6b029d12e2905fbf33dcc90f2",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV7.scala": "1c1e08c04dbf0984a7f75c97508833360b1386d5b65d040a7f4cc34e563af8b2",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV8.scala": "35a1285edd7b0476549ba50280439e035b4d166292a06f05722e93a8899f0420"
+  },
+  "goldens": {
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/CodecSuite.scala": {
+    "literals": [
+     "$i%02x",
+     "${b & 0xff}%02x",
+     "00",
+     "01",
+     "0100",
+     "010101",
+     "01010102",
+     "010107",
+     "0101090105",
+     "01ac02",
+     "01ff",
+     "020020",
+     "020100",
+     "0210e1",
+     "03010001",
+     "03010203",
+     "03015180",
+     "0431312e31",
+     "06",
+     "0e6c65696f732d6230303466653063",
+     "20",
+     "31718eaf81232a77",
+     "577b9a786e5562dd44cf11e09fe8255ac01dcc276042751cc9e8aef67690a9b2",
+     "7650a759442924ec",
+     "7c483457b06802d6",
+     "Account",
+     "Address",
+     "BigInt",
+     "BlockRef",
+     "BootstrapState",
+     "Byron version snapshot readers reject values outside the reference widths",
+     "Byron versions retain the previous three-BigInt layout and schema",
+     "ByronState",
+     "ByronVersion(major:BigInt,minor:BigInt,alt:BigInt)",
+     "Bytes",
+     "ChainDepState",
+     "ConsensusExtras",
+     "Credential",
+     "Era",
+     "LiteLedger",
+     "Map",
+     "NativeScript",
+     "Nonce",
+     "PoolParams",
+     "ProtocolExtras",
+     "ProtocolParams",
+     "Rational",
+     "SCRBSNPA",
+     "SHA-256",
+     "TxIn",
+     "TxOut",
+     "US-ASCII",
+     "Value",
+     "a huge collection count is rejected without allocating",
+     "a strict prefix of an encoding never decodes",
+     "an encoding with trailing bytes does not decode",
+     "bd43aa08b4fae886",
+     "decoded $back",
+     "decoding arbitrary bytes never throws",
+     "fixtures/eras/genesis",
+     "golden: BlockRef",
+     "golden: primitives and containers",
+     "golden: sums are a variant index then the variant",
+     "golden: the frozen sidecar schema of V5 and V7 files keeps its fingerprint",
+     "golden: the frozen sidecar schema of V8 files keeps its fingerprint",
+     "golden: the reference build a V10 file records after its magic, before the binding",
+     "golden: the schema fingerprint and encodings of the V7 checkpoint binding",
+     "golden: the schema fingerprint of the sidecar of the V5 body (V9 and V10)",
+     "golden: the sidecar of the initial state of the eras fixture encodes to a fixed digest",
+     "round trip: $name",
+     "size $size",
+     "the initial state is not Byron",
+     "the reader never reads past its limit, wherever a value straddles its buffer"
+    ],
+    "code_sha256": "d471fcd4122bc03f379360010abbca9c49d33fb0b0358a0fc3b0d1f7bf90976b"
+   },
+   "storage/src/test/scala/xyz/kd5ujc/scarab/storage/FormatGoldenSuite.scala": {
+    "literals": [
+     "00",
+     "00000000",
+     "0000000000000000",
+     "0000000000001000",
+     "0000000000001388",
+     "00000000000f1206",
+     "00000000075bcd15",
+     "00000001",
+     "00000003",
+     "00000038",
+     "00000070",
+     "000004d2",
+     "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+     "0003",
+     "01",
+     "01000000",
+     "0100000000000000380000003800000070",
+     "0102030405060708",
+     "02",
+     "02aba1a4",
+     "1122334455667788",
+     "80000001",
+     "a10203",
+     "cb595e13",
+     "deadbeef",
+     "ef972cde",
+     "ff",
+     "fffe",
+     "haskell primary index: version byte, then big-endian u32 offsets",
+     "haskell secondary entry: 56 bytes, big-endian, unsigned u16 fields",
+     "immutable store index entry: all-ones fields",
+     "immutable store index entry: flags other than bit 0 read as not boundary",
+     "immutable store index entry: layout, and the three padding bytes are ignored on read",
+     "immutable store index: a partial last entry is not read",
+     "volatile log: decoding stops at a bad checksum, a torn tail or an unknown kind",
+     "volatile record: block, rollback to a block and rollback to origin"
+    ],
+    "code_sha256": "fbcae2dc5d881ade7d5184a84d99ab7c6c8e25e15d75c28798e2a188c7b54217"
+   },
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotGoldenSuite.scala": {
+    "literals": [
+     "${b & 0xff}%02x",
+     "${g.file} at ${g.version}: migrates once, then restores its state and carried gaps",
+     "${g.file}: a Shelley-based snapshot became Byron",
+     "${g.file}: not restored",
+     "01d2ad4f9b2ab0962aafe20625620747f5e33c653016521bed46729805ceb859",
+     "02c716ef8de7d837c86c4b8da3588a583a1f17f5a93fdc0c152916e3d6534bcd",
+     "11.1",
+     "27a5e02eee38bc3c565d8f85830ea01804406a2b562dca957db368d9883699b2",
+     "29999998493562207",
+     "2eba1699708be0c1c99a2224f596ebedfced2043e5c92354e7413a534f443e95",
+     "399826ff08ab1945ae258f53d7e3d23d060d587b6902a403107f5c656690d954",
+     "3fc6824aeedfda88e54fc8bd9ac1664681778086a757d38a70aa390d3c2a3ed9",
+     "4a9761ddc291b0c352d1712b624759132936a07b3e02d1d3bdaaf17b9abfe683",
+     "648aed117f826d06117f616b5c0a3716a50485a7",
+     "692acd226a7da77730114ae646643f3f6b8f3557763cdba28b65eaaae37248bc",
+     "874580cea6a2435cab02d0a25ae74764968b25871871317f5a19489459a3bf41",
+     "8996400000",
+     "89cdfee8525e74ec5188e54c0ae7dc373025531e8e3465524e01e8b25fd2fef9",
+     "SCRBSNP7",
+     "SCRBSNP8",
+     "SCRBSNP9",
+     "SCRBSNPA",
+     "SHA-256",
+     "US-ASCII",
+     "UTF-8",
+     "a104434df873e4c7406fa57d00fe4b861a773d697312744c8ac30ea1de6ff97a",
+     "a91a5009ff79d542fb1a63bb6e59433b952b0047b3df0266580736f8f0ce74bc",
+     "anchor",
+     "blockNo",
+     "c27be6850661f3fe1c01e5662d55873cf7f60074a5a16f285a62ca806908b647",
+     "cc5d5d6a248499a0b1505d0a44174f97d447ffadebde5f1d5408c30d2a206734",
+     "ce2dcdd6bcc747169817defc3158cb364c79d72cbbea41319b51360b5edeabf2",
+     "conversionSourceCommit",
+     "conway-native-730.bin",
+     "d1017fff1b9c58415115206fb825b45950ac8cb2826dac6e176aa48b237a47bb",
+     "ddaad24d00de33e82cd4459f2f86fa9cb0d9bafc1681fc01ca639f3283bf6acf",
+     "eras/conway-730.bin",
+     "every V7 file is the registered conversion of its V5 source",
+     "every V8 file is the registered conversion of its V7 source",
+     "every V9 file is the registered conversion of its V8 source",
+     "every maintained V10 file is the registered conversion of its V9 source",
+     "every supported snapshot version has an immutable current-format golden",
+     "f5e2584a862e521162c2098a99dd3268e74300f7aae6fd069279cbe94d831ad0",
+     "file",
+     "files",
+     "fixtures/eras/genesis",
+     "fixtures/preview/genesis",
+     "fixtures/snapshot-v10",
+     "fixtures/snapshot-v5",
+     "fixtures/snapshot-v7",
+     "fixtures/snapshot-v8",
+     "fixtures/snapshot-v9",
+     "format",
+     "gaps",
+     "hash",
+     "manifest.json",
+     "observed",
+     "preview-4320.bin",
+     "slot",
+     "sourceSha256",
+     "targetSha256",
+     "the complete era conversion manifest pins every file and carried metadata"
+    ],
+    "code_sha256": "8cd552f7ec3ded9b786eb697d2f462b1ac4b9376e296c4dff58ccb0e58390f58"
+   }
+  },
+  "previous_version_suites": {
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/NetworkIdentityV9Suite.scala": "49b14bec11130a92faf00540155bf843ca78da7dde004f0154a9075bc6b2afb6",
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV10MigrationSuite.scala": "41ec831a6b49e1bb07f02a55b1e64068ae27d2a495476a74c549cbc8e4edc00e",
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV8MigrationSuite.scala": "1ac73b76ba15c7a3f520d0ec53efab2167d64074ffaa0a26860f3eaadae1a1a2",
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV9MigrationSuite.scala": "29f932b471edbc665e53b608d971652253eac8aa6785196d7d525068cf73bbfd",
+   "storage/src/test/scala/xyz/kd5ujc/scarab/storage/FormatMigrationSuite.scala": "6f3da29eae04425b0312d9013f0825208b5def3988640e5220b0572ce0a997ec"
+  },
   "fixtures": {
    "fixtures/network-identity-v6/network-identity": "933037d584eefcb4357e1f1c3857c5854175b2e5636196d9152662dba89b9588",
    "fixtures/snapshot-v10/SHA256SUMS": "6e8e6c133fe7c310687a45df1b101785390390f49dc80cf419a1f0858645c601",
@@ -103,442 +564,6 @@
    "fixtures/snapshot-v9/eras/shelley-51.bin": "4333439494631d795b2fa12e95eb88cd42a17870c781e827fbefbe31ae3b8d0a",
    "fixtures/snapshot-v9/manifest.json": "b4b3c215cd4fa6abd6c9c44df3fbfc21b7da83ff78954a722f98d22c6a7e752a",
    "fixtures/snapshot-v9/preview-4320.bin": "ddaad24d00de33e82cd4459f2f86fa9cb0d9bafc1681fc01ca639f3283bf6acf"
-  },
-  "frozen_schemas": {
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenEra.scala": "4f23ca8bc3f80ead57548408b8191c1be4fd8082b4e1ef5d1453452f107addc8",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenProtocolParams.scala": "eff024ce7a8c9e0ddefddd2b37c78f1923b274fcf73d53534a7d1b91580b6343",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV7.scala": "51ed7aa9556f92611a682115012931ac3903fe63c25d43a27b199f5d9ed4db7c",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV8.scala": "97b4f7dd20e30ea91dcfc02cffd4c9d69936e9c9e3baa93bbd3783e1cad5b2c3"
-  },
-  "goldens": {
-   "node/src/test/scala/xyz/kd5ujc/scarab/storage/CodecSuite.scala": {
-    "code_sha256": "5027fba577d19aac8af3d66ef1426273c3a32aefef423addd7f7670b4d96a498",
-    "literals": [
-     "$i%02x",
-     "${b & 0xff}%02x",
-     "00",
-     "01",
-     "0100",
-     "010101",
-     "01010102",
-     "010107",
-     "0101090105",
-     "01ac02",
-     "01ff",
-     "020020",
-     "020100",
-     "0210e1",
-     "03010001",
-     "03010203",
-     "03015180",
-     "0431312e31",
-     "06",
-     "0e6c65696f732d6230303466653063",
-     "20",
-     "31718eaf81232a77",
-     "577b9a786e5562dd44cf11e09fe8255ac01dcc276042751cc9e8aef67690a9b2",
-     "7650a759442924ec",
-     "7c483457b06802d6",
-     "Account",
-     "Address",
-     "BigInt",
-     "BlockRef",
-     "BootstrapState",
-     "Byron version snapshot readers reject values outside the reference widths",
-     "Byron versions retain the previous three-BigInt layout and schema",
-     "ByronState",
-     "ByronVersion(major:BigInt,minor:BigInt,alt:BigInt)",
-     "Bytes",
-     "ChainDepState",
-     "ConsensusExtras",
-     "Credential",
-     "Era",
-     "LiteLedger",
-     "Map",
-     "NativeScript",
-     "Nonce",
-     "PoolParams",
-     "ProtocolExtras",
-     "ProtocolParams",
-     "Rational",
-     "SCRBSNPA",
-     "SHA-256",
-     "TxIn",
-     "TxOut",
-     "US-ASCII",
-     "Value",
-     "a huge collection count is rejected without allocating",
-     "a strict prefix of an encoding never decodes",
-     "an encoding with trailing bytes does not decode",
-     "bd43aa08b4fae886",
-     "decoded $back",
-     "decoding arbitrary bytes never throws",
-     "fixtures/eras/genesis",
-     "golden: BlockRef",
-     "golden: primitives and containers",
-     "golden: sums are a variant index then the variant",
-     "golden: the frozen sidecar schema of V5 and V7 files keeps its fingerprint",
-     "golden: the frozen sidecar schema of V8 files keeps its fingerprint",
-     "golden: the reference build a V10 file records after its magic, before the binding",
-     "golden: the schema fingerprint and encodings of the V7 checkpoint binding",
-     "golden: the schema fingerprint of the sidecar of the V5 body (V9 and V10)",
-     "golden: the sidecar of the initial state of the eras fixture encodes to a fixed digest",
-     "round trip: $name",
-     "size $size",
-     "the initial state is not Byron",
-     "the reader never reads past its limit, wherever a value straddles its buffer"
-    ]
-   },
-   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotGoldenSuite.scala": {
-    "code_sha256": "fc24c4dde93cec3044917817ba4e4ab774b423e150e864336c34c725c90a1b19",
-    "literals": [
-     "${b & 0xff}%02x",
-     "${g.file} at ${g.version}: migrates once, then restores its state and carried gaps",
-     "${g.file}: a Shelley-based snapshot became Byron",
-     "${g.file}: not restored",
-     "01d2ad4f9b2ab0962aafe20625620747f5e33c653016521bed46729805ceb859",
-     "02c716ef8de7d837c86c4b8da3588a583a1f17f5a93fdc0c152916e3d6534bcd",
-     "11.1",
-     "27a5e02eee38bc3c565d8f85830ea01804406a2b562dca957db368d9883699b2",
-     "29999998493562207",
-     "2eba1699708be0c1c99a2224f596ebedfced2043e5c92354e7413a534f443e95",
-     "399826ff08ab1945ae258f53d7e3d23d060d587b6902a403107f5c656690d954",
-     "3fc6824aeedfda88e54fc8bd9ac1664681778086a757d38a70aa390d3c2a3ed9",
-     "4a9761ddc291b0c352d1712b624759132936a07b3e02d1d3bdaaf17b9abfe683",
-     "648aed117f826d06117f616b5c0a3716a50485a7",
-     "692acd226a7da77730114ae646643f3f6b8f3557763cdba28b65eaaae37248bc",
-     "874580cea6a2435cab02d0a25ae74764968b25871871317f5a19489459a3bf41",
-     "8996400000",
-     "89cdfee8525e74ec5188e54c0ae7dc373025531e8e3465524e01e8b25fd2fef9",
-     "SCRBSNP7",
-     "SCRBSNP8",
-     "SCRBSNP9",
-     "SCRBSNPA",
-     "SHA-256",
-     "US-ASCII",
-     "UTF-8",
-     "a104434df873e4c7406fa57d00fe4b861a773d697312744c8ac30ea1de6ff97a",
-     "a91a5009ff79d542fb1a63bb6e59433b952b0047b3df0266580736f8f0ce74bc",
-     "anchor",
-     "blockNo",
-     "c27be6850661f3fe1c01e5662d55873cf7f60074a5a16f285a62ca806908b647",
-     "cc5d5d6a248499a0b1505d0a44174f97d447ffadebde5f1d5408c30d2a206734",
-     "ce2dcdd6bcc747169817defc3158cb364c79d72cbbea41319b51360b5edeabf2",
-     "conversionSourceCommit",
-     "conway-native-730.bin",
-     "d1017fff1b9c58415115206fb825b45950ac8cb2826dac6e176aa48b237a47bb",
-     "ddaad24d00de33e82cd4459f2f86fa9cb0d9bafc1681fc01ca639f3283bf6acf",
-     "eras/conway-730.bin",
-     "every V7 file is the registered conversion of its V5 source",
-     "every V8 file is the registered conversion of its V7 source",
-     "every V9 file is the registered conversion of its V8 source",
-     "every maintained V10 file is the registered conversion of its V9 source",
-     "every supported snapshot version has an immutable current-format golden",
-     "f5e2584a862e521162c2098a99dd3268e74300f7aae6fd069279cbe94d831ad0",
-     "file",
-     "files",
-     "fixtures/eras/genesis",
-     "fixtures/preview/genesis",
-     "fixtures/snapshot-v10",
-     "fixtures/snapshot-v5",
-     "fixtures/snapshot-v7",
-     "fixtures/snapshot-v8",
-     "fixtures/snapshot-v9",
-     "format",
-     "gaps",
-     "hash",
-     "manifest.json",
-     "observed",
-     "preview-4320.bin",
-     "slot",
-     "sourceSha256",
-     "targetSha256",
-     "the complete era conversion manifest pins every file and carried metadata"
-    ]
-   },
-   "storage/src/test/scala/xyz/kd5ujc/scarab/storage/FormatGoldenSuite.scala": {
-    "code_sha256": "2b7f3e0c06fdcd5e6c8ea943d23c565f8bab84f261b5e54846a37ff09cd6ab1b",
-    "literals": [
-     "00",
-     "00000000",
-     "0000000000000000",
-     "0000000000001000",
-     "0000000000001388",
-     "00000000000f1206",
-     "00000000075bcd15",
-     "00000001",
-     "00000003",
-     "00000038",
-     "00000070",
-     "000004d2",
-     "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-     "0003",
-     "01",
-     "01000000",
-     "0100000000000000380000003800000070",
-     "0102030405060708",
-     "02",
-     "02aba1a4",
-     "1122334455667788",
-     "80000001",
-     "a10203",
-     "cb595e13",
-     "deadbeef",
-     "ef972cde",
-     "ff",
-     "fffe",
-     "haskell primary index: version byte, then big-endian u32 offsets",
-     "haskell secondary entry: 56 bytes, big-endian, unsigned u16 fields",
-     "immutable store index entry: all-ones fields",
-     "immutable store index entry: flags other than bit 0 read as not boundary",
-     "immutable store index entry: layout, and the three padding bytes are ignored on read",
-     "immutable store index: a partial last entry is not read",
-     "volatile log: decoding stops at a bad checksum, a torn tail or an unknown kind",
-     "volatile record: block, rollback to a block and rollback to origin"
-    ]
-   }
-  },
-  "magics": {
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala": [
-    "CSLIDX01",
-    "SCRBIDX2",
-    "SCRBSNP3",
-    "SCRBSNP4",
-    "SCRBSNP5",
-    "SCRBSNP7",
-    "SCRBSNP8",
-    "SCRBSNP9",
-    "SCRBSNPA"
-   ],
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala": [
-    "CSLSNAP1"
-   ],
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV10.scala": [
-    "SCRBSNPA"
-   ],
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV5.scala": [
-    "SCRBSNP5"
-   ],
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7.scala": [
-    "SCRBSNP7"
-   ],
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8.scala": [
-    "SCRBSNP8"
-   ],
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9.scala": [
-    "SCRBSNP9"
-   ],
-   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV10FixtureMain.scala": [
-    "SCRBSNPA"
-   ],
-   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7FixtureMain.scala": [
-    "SCRBSNP7"
-   ],
-   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8FixtureMain.scala": [
-    "SCRBSNP8"
-   ],
-   "tools/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9FixtureMain.scala": [
-    "SCRBSNP9"
-   ]
-  },
-  "migrations": {
-   "conversions": {
-    "SnapshotV10": [
-     "fromV9"
-    ],
-    "SnapshotV5": [],
-    "SnapshotV7": [
-     "fromV5"
-    ],
-    "SnapshotV8": [
-     "fromV7"
-    ],
-    "SnapshotV9": [
-     "fromV8"
-    ]
-   },
-   "converted": {
-    "V5": [
-     "SnapshotV7.fromV5",
-     "SnapshotV8.fromV7",
-     "SnapshotV9.fromV8",
-     "SnapshotV10.fromV9"
-    ],
-    "V7": [
-     "SnapshotV8.fromV7",
-     "SnapshotV9.fromV8",
-     "SnapshotV10.fromV9"
-    ],
-    "V8": [
-     "SnapshotV9.fromV8",
-     "SnapshotV10.fromV9"
-    ],
-    "V9": [
-     "SnapshotV10.fromV9"
-    ]
-   },
-   "implementers": [
-    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala",
-    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/NetworkIdentityFile.scala",
-    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala"
-   ],
-   "steps": [
-    [
-     "V5",
-     "V7"
-    ],
-    [
-     "V7",
-     "V8"
-    ],
-    [
-     "V8",
-     "V9"
-    ],
-    [
-     "V9",
-     "V10"
-    ]
-   ]
-  },
-  "previous_version_suites": {
-   "node/src/test/scala/xyz/kd5ujc/scarab/storage/NetworkIdentityV9Suite.scala": "00bf40318d2ec69658c3b39c2b7f69f57ac2675ee15cd981edd7e60689211d5a",
-   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV10MigrationSuite.scala": "2c3d0848cb8dad37b153e969a912da92db11341063a88c5bec7cb09d70a99bc5",
-   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV8MigrationSuite.scala": "f9dbcc52f9e639cddc0ce4d20d74bca10d6399941a2a3d8958a81ab7ec433286",
-   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV9MigrationSuite.scala": "856a7c7fdfd39b87d9d765658568ac1247c9b0edfdce127e1582e91969c0cfa5",
-   "storage/src/test/scala/xyz/kd5ujc/scarab/storage/FormatMigrationSuite.scala": "f17b544cda940cf0c708b02f350fd8e18da4381b076ec668d512586876bb32ff"
-  },
-  "registry": {
-   "code_sha256": "312af1e0881c1d64a542e3ef490a911c97c2da41854eacb0b04ba501483156d1",
-   "formatLosses": [
-    "ByronSoftwareMetadata(proposals: Int, applications: Int)"
-   ],
-   "kinds": {
-    "FormatFile": {
-     "families": [
-      "cardano-scala-lab immutable",
-      "scarab immutable"
-     ],
-     "history": [
-      [
-       "V1",
-       "cardano-scala-lab immutable store v1"
-      ],
-      [
-       "V2",
-       "scarab immutable store v2"
-      ]
-     ],
-     "label": "immutable store format"
-    },
-    "IdentityFile": {
-     "families": [
-      "cardano-scala-lab network",
-      "scarab network"
-     ],
-     "history": [
-      [
-       "V1",
-       "cardano-scala-lab network identity v1"
-      ],
-      [
-       "V2",
-       "scarab network identity v2"
-      ],
-      [
-       "V6",
-       "scarab network identity v6"
-      ],
-      [
-       "V9",
-       "scarab network identity v9"
-      ]
-     ],
-     "label": "network identity"
-    },
-    "IndexFile": {
-     "families": [
-      "CSLIDX",
-      "SCRBIDX"
-     ],
-     "history": [
-      [
-       "V1",
-       "CSLIDX01"
-      ],
-      [
-       "V2",
-       "SCRBIDX2"
-      ]
-     ],
-     "label": "chunk index"
-    },
-    "SnapshotFile": {
-     "families": [
-      "CSLSNAP",
-      "SCRBSNP"
-     ],
-     "history": [
-      [
-       "V1",
-       "CSLSNAP1 v1"
-      ],
-      [
-       "V2",
-       "CSLSNAP1 v2"
-      ],
-      [
-       "V3",
-       "SCRBSNP3"
-      ],
-      [
-       "V4",
-       "SCRBSNP4"
-      ],
-      [
-       "V5",
-       "SCRBSNP5"
-      ],
-      [
-       "V7",
-       "SCRBSNP7"
-      ],
-      [
-       "V8",
-       "SCRBSNP8"
-      ],
-      [
-       "V9",
-       "SCRBSNP9"
-      ],
-      [
-       "V10",
-       "SCRBSNPA"
-      ]
-     ],
-     "label": "ledger snapshot"
-    }
-   },
-   "readableFrom": {
-    "SnapshotFile": "FormatVersion.V5",
-    "_": "history.head._1"
-   },
-   "utxoKeyLayoutCurrent": "TxIdIndex16",
-   "utxoKeyLayouts": [
-    "TxIdIndex16"
-   ],
-   "versions": [
-    "V1",
-    "V2",
-    "V3",
-    "V4",
-    "V5",
-    "V6",
-    "V7",
-    "V8",
-    "V9",
-    "V10"
-   ]
   }
  }
 }

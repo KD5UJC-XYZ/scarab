@@ -8,24 +8,39 @@ points to FMT-1 (docs/design-rules.md). The surface is:
 
 - `registry`: what `PersistedFormat.scala` declares: the `FormatVersion` cases, each `FileKind`'s label, families
   and history (version and identifier), the `readableFrom` cases, the `UtxoKeyLayout` cases and the current one,
-  the `FormatLoss` cases, and a digest of the file's code (comments removed, white space collapsed);
+  the `FormatLoss` cases, and a digest of the file's code;
 - `magics`: every eight-byte format magic (`SCRB...`, `CSL...`) written as a string literal in a `src/main` Scala
   source of any module, by file, so that a new magic anywhere is seen;
-- `migrations`: the registered snapshot steps of `SnapshotMigration.scala` (the `converted` chains and the
-  `step` pairs), the `fromV<n>` conversions each `SnapshotV<n>` defines, and the files that implement
-  `Migration[F]`;
+- `migrations`: the registered snapshot steps of `SnapshotMigration.scala` (the `converted` chains and the `step`
+  pairs), the `fromV<n>` conversions each `SnapshotV<n>` defines, and the files that implement `Migration[F]`.
+  They must agree with the registry: one step between each pair of consecutive readable snapshot versions, each
+  conversion defined by its `SnapshotV<n>`, and each `converted` chain the steps from its version to the current
+  one; a tree in which they do not is refused, whatever the manifest says;
+- `format_sources`: a code digest of each source that is nothing but persisted-format code: the readers and writers
+  of the snapshot versions (`SnapshotV<n>.scala`), the sidecar schema, the checkpoint binding and its digest, the
+  snapshot migration, the generic migration and atomic replacement, the storage codec and its instances, the
+  network identity record and its file;
+- `format_members`: a code digest of each persisted-format definition in a file that also holds other code: the
+  UTxO store's key and value coding (`UtxoStore.Coding`), the memory store's `utxo.bin` (`MemoryUtxoStore`'s
+  `checkpoint` and `restore`), the snapshot file's checksum and name (`FileLedgerSnapshots`) and the checkpoint
+  directory's name (`StateBacking.stem`);
+- `frozen_schemas`: a code digest of each frozen schema (`SnapshotSidecarV<n>.scala`, `Frozen*.scala`);
 - `goldens`: for `CodecSuite`, `FormatGoldenSuite` and `SnapshotGoldenSuite`, every string literal (the golden
-  bytes, fingerprints, magics and file hashes, and the test names) and a digest of the suite's code;
+  bytes, fingerprints, magics and file hashes, and the test names) and a code digest;
 - `previous_version_suites`: a code digest of each suite that reads a previous version (`*Migration*Suite`,
   `NetworkIdentity*Suite` in the storage test packages);
-- `frozen_schemas`: a code digest of each frozen schema (`SnapshotSidecarV<n>.scala`, `Frozen*.scala`);
 - `fixtures`: the SHA-256 of every file under `fixtures/snapshot-*` and `fixtures/network-identity-*` but their
   Markdown (the READMEs that record provenance).
 
-Comments do not count, so a comment edit does not fire; a missing anchor (a file, a golden suite, a parse that
-finds nothing) is a STORAGE FORMAT CHANGE too, never a smaller surface. Whatever the surface is, the snapshot kind
-must stay readable from V8 with a registered migration path from V8 to its current version: deployed stores are
-V8 (FMT-1).
+A code digest is of the source without its comments, with trailing white space and empty lines dropped; string
+literals and indentation are kept as written, so a comment edit does not fire and a change of meaning does. A
+missing anchor (a file, a definition, a parse that finds nothing) is a STORAGE FORMAT CHANGE too, never a smaller
+surface. Whatever the surface is, the snapshot kind must stay readable from V8 with a registered migration path
+from V8 to its current version: deployed stores are V8 (FMT-1).
+
+The guard does not see a persisted byte that none of these pins: the files it reads in part (the volatile store,
+the immutable store and the RocksDB store are pinned only where `FormatGoldenSuite` pins their records) and an
+encoding that a golden does not cover. Its docstring is the list of what it sees.
 
 The manifest holds the surface and the record of the approval that admitted it. Its `approval` entry holds
 `question`, `asked_at`, `answer` and `answered_at` (UTC ISO 8601 with seconds and `Z`, answered after asked, not in
@@ -36,9 +51,10 @@ guard checks only its presence and its form, and cannot see whether the owner ga
 surface must be the baseline this guard pins (`BASELINE_SURFACE_SHA256`), the surface of `main` when the freeze
 began, which records what existed and approves nothing.
 
-`FORMAT_CHANGE_PATHS` is the one list of the paths a storage format change may touch: `scripts/pr_policy.py`
-refuses a pull request that changes the manifest or this guard and touches anything else, because a storage
-format change is a pull request of its own. Every path the surface reads is in it.
+`FORMAT_CHANGE_PATHS` is the one list of the paths a storage format change may touch, and `FREEZE_PATHS` the paths
+whose change makes a pull request one: `scripts/pr_policy.py` refuses such a pull request unless it follows FMT-1,
+and touches nothing outside the list, because a storage format change is a pull request of its own. Every path the
+surface reads is in the list. The guard is self-contained, so that no other script's change alters what it sees.
 
     python3 scripts/check_storage_format.py                   check (the default)
     python3 scripts/check_storage_format.py --print-surface   print the surface and its digest as JSON
@@ -55,12 +71,10 @@ import json
 import re
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_imperative import comment_end, string_literal  # noqa: E402
-
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = 'docs/data/storage-format.json'
 GUARD = 'scripts/check_storage_format.py'
+GUARD_TESTS = 'scripts/tests/test_check_storage_format.py'
 RULE = 'docs/design-rules.md#fmt-1'
 REGISTRY = 'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala'
 STORAGE_MAIN = 'storage/src/main/scala/xyz/kd5ujc/scarab/storage'
@@ -73,12 +87,37 @@ GOLDEN_SUITES = (
 STORAGE_TESTS = ('node/src/test/scala/xyz/kd5ujc/scarab/storage', 'storage/src/test/scala/xyz/kd5ujc/scarab/storage')
 PREVIOUS_VERSION_SUITE = re.compile(r'(?:\w*Migration\w*|NetworkIdentity\w*)Suite\.scala')
 FROZEN_SCHEMA = re.compile(r'(?:SnapshotSidecarV\d+|Frozen\w+)\.scala')
+SNAPSHOT_READER = re.compile(r'SnapshotV(\d+)\.scala')
+# The sources that are nothing but persisted-format code, besides the `SnapshotV<n>` readers and the frozen schemas.
+FORMAT_SOURCES = (
+    'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NetworkIdentity.scala',
+    f'{STORAGE_MAIN}/NetworkIdentityFile.scala',
+    f'{STORAGE_MAIN}/SnapshotSidecar.scala',
+    f'{STORAGE_MAIN}/CheckpointBinding.scala',
+    MIGRATION,
+    f'{STORAGE_MAIN}/Migrate.scala',
+    f'{STORAGE_MAIN}/Codec.scala',
+    f'{STORAGE_MAIN}/NodeCodecs.scala',
+    f'{STORAGE_MAIN}/ProductFields.scala',
+)
+# The persisted-format definitions in files that also hold other code: (name, file, enclosing definition or None,
+# the definition), each a header the code holds once; a definition is its header line and the lines indented under it.
+FORMAT_MEMBERS = (
+    ('UtxoStore.Coding', f'{STORAGE_MAIN}/UtxoStore.scala', None, r'object Coding:'),
+    ('MemoryUtxoStore.checkpoint', f'{STORAGE_MAIN}/UtxoStore.scala', r'final class MemoryUtxoStore\b',
+     r'def checkpoint\('),
+    ('MemoryUtxoStore.restore', f'{STORAGE_MAIN}/UtxoStore.scala', r'final class MemoryUtxoStore\b', r'def restore\('),
+    ('FileLedgerSnapshots', f'{STORAGE_MAIN}/LedgerSnapshots.scala', None, r'object FileLedgerSnapshots:'),
+    ('StateBacking.stem', f'{STORAGE_MAIN}/StateBacking.scala', r'object StateBacking:', r'def stem\('),
+    ('StateBacking.Stem', f'{STORAGE_MAIN}/StateBacking.scala', r'object StateBacking:', r'private val Stem\b'),
+    ('StateBacking.isStem', f'{STORAGE_MAIN}/StateBacking.scala', r'object StateBacking:', r'def isStem\('),
+)
 FIXTURE_DIRS = ('fixtures/snapshot-*', 'fixtures/network-identity-*')
 MAGIC = re.compile(r'(?:SCRB|CSL)[A-Z0-9]{4,5}')
 DEPLOYED = 'V8'
-# The digest of the surface of main (4a1a7ab96) on 2026-11-14, when the freeze began. It admits that surface with
+# The digest of the surface of main (458e201bd) on 2026-11-14, when the freeze began. It admits that surface with
 # no approval entry; it approves nothing.
-BASELINE_SURFACE_SHA256 = '5cce4194e3aa3b73e811744a6b0fa00b736c93cb55e34434cb927ff1804531bb'
+BASELINE_SURFACE_SHA256 = 'f24cc9b35a5dd3c0307cf450081887e4554aace64fb7c2d2151d3fe97c3bc66d'
 
 # The paths a storage format change may touch, and nothing else (FMT-1). First what the owner named: the
 # persisted-format code and its tests, the migration, the snapshot fixtures, the manifest, the storage-migration
@@ -86,7 +125,7 @@ BASELINE_SURFACE_SHA256 = '5cce4194e3aa3b73e811744a6b0fa00b736c93cb55e34434cb927
 OWNER_NAMED_PATHS = (
     MANIFEST,
     GUARD,
-    'scripts/tests/test_check_storage_format.py',
+    GUARD_TESTS,
     REGISTRY,
     'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NetworkIdentity.scala',
     f'{STORAGE_MAIN}/*.scala',
@@ -117,8 +156,9 @@ REQUIRED_BY_OTHER_GATES = (
     'fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Targets.scala',
 )
 FORMAT_CHANGE_PATHS = OWNER_NAMED_PATHS + REQUIRED_BY_OTHER_GATES
-# A pull request that changes one of these is a storage format change (scripts/pr_policy.py).
-FREEZE_PATHS = (MANIFEST, GUARD)
+# A pull request that changes one of these is a storage format change (scripts/pr_policy.py): the manifest, and the
+# guard and its tests, so that weakening the guard is as loud as a format change.
+FREEZE_PATHS = (MANIFEST, GUARD, GUARD_TESTS)
 NOT_A_FRAGMENT = 'changes/README.md'
 
 FIELDS = ('question', 'asked_at', 'answer', 'answered_at')
@@ -160,7 +200,10 @@ def touches_freeze(files) -> bool:
 def parse_utc(text) -> datetime | None:
     if not isinstance(text, str) or not UTC.fullmatch(text.strip()):
         return None
-    return datetime.fromisoformat(text.strip().replace('Z', '+00:00'))
+    try:
+        return datetime.fromisoformat(text.strip().replace('Z', '+00:00'))
+    except ValueError:
+        return None
 
 
 def approval_problems(entry, now: datetime) -> list[str]:
@@ -188,16 +231,76 @@ def approval_problems(entry, now: datetime) -> list[str]:
 
 # ------------------------------------------------------------------ reading Scala sources
 
+def comment_end(source: str, i: int) -> int:
+    """The index after the block comment that opens at `i`; Scala block comments nest."""
+    depth, n = 0, len(source)
+    while i < n:
+        if source.startswith('/*', i):
+            depth, i = depth + 1, i + 2
+        elif source.startswith('*/', i):
+            depth, i = depth - 1, i + 2
+            if depth == 0:
+                return i
+        else:
+            i += 1
+    return n
+
+
+def literal_end(source: str, i: int, triple: bool, interpolated: bool) -> int:
+    """From just after the opening quote: the index after the closing quote. An interpolation's `${...}` is skipped
+    as code, so a quote or a brace inside it does not end the literal."""
+    n = len(source)
+    while i < n:
+        if triple and source.startswith('"""', i):
+            i += 3
+            while i < n and source[i] == '"':
+                i += 1
+            return i
+        if not triple and source[i] in '"\n':
+            return i + 1
+        if interpolated and source.startswith('${', i):
+            i = expression_end(source, i + 2)
+        elif interpolated and (source.startswith('$$', i) or source.startswith('$"', i)):
+            i += 2
+        elif source[i] == '\\' and not triple:
+            i += 2 if not interpolated or source[i + 1:i + 2] in ('"', '\\') else 1
+        else:
+            i += 1
+    return n
+
+
+def expression_end(source: str, i: int) -> int:
+    """From just after `${`: the index after its closing brace, with literals and comments inside it skipped."""
+    depth, n = 0, len(source)
+    while i < n:
+        if source.startswith('/*', i):
+            i = comment_end(source, i)
+        elif source.startswith('//', i):
+            end = source.find('\n', i)
+            i = n if end < 0 else end
+        elif source[i] == '"':
+            triple = source.startswith('"""', i)
+            interpolated = i > 0 and (source[i - 1].isalnum() or source[i - 1] == '_')
+            i = literal_end(source, i + (3 if triple else 1), triple, interpolated)
+        elif source[i] == '}' and depth == 0:
+            return i + 1
+        else:
+            depth += {'{': 1, '}': -1}.get(source[i], 0)
+            i += 1
+    return n
+
+
 def scan(source: str) -> tuple[str, list[str]]:
-    """`source` without its comments (string literals kept as written), and the contents of its string literals.
-    Uses the literal and comment rules of `check_imperative`."""
+    """`source` without its comments (string and character literals kept as written, line breaks kept), and the
+    contents of its string literals."""
     out: list[str] = []
     literals: list[str] = []
     i, n = 0, len(source)
     while i < n:
         if source.startswith('/*', i):
-            i = comment_end(source, i)
-            out.append(' ')
+            end = comment_end(source, i)
+            out.append(' ' + '\n' * source.count('\n', i, end))
+            i = end
         elif source.startswith('//', i):
             end = source.find('\n', i)
             out.append(' ')
@@ -206,7 +309,7 @@ def scan(source: str) -> tuple[str, list[str]]:
             interpolated = i > 0 and (source[i - 1].isalnum() or source[i - 1] == '_')
             triple = source.startswith('"""', i)
             quote = 3 if triple else 1
-            end, _ = string_literal(source, i + quote, triple, interpolated)
+            end = literal_end(source, i + quote, triple, interpolated)
             out.append(source[i:end])
             literals.append(source[i + quote:max(i + quote, end - quote)])
             i = end
@@ -221,9 +324,17 @@ def scan(source: str) -> tuple[str, list[str]]:
     return ''.join(out), literals
 
 
+def normalized(code: str) -> str:
+    """Code without trailing white space and empty lines: indentation and literals are kept."""
+    return '\n'.join(line.rstrip() for line in code.splitlines() if line.strip())
+
+
+def digest_of_code(code: str) -> str:
+    return hashlib.sha256(normalized(code).encode()).hexdigest()
+
+
 def code_digest(source: str) -> str:
-    code, _ = scan(source)
-    return hashlib.sha256(re.sub(r'\s+', ' ', code).strip().encode()).hexdigest()
+    return digest_of_code(scan(source)[0])
 
 
 def read(root: Path, path: str) -> str:
@@ -246,15 +357,35 @@ def block(code: str, start: str, end: str, what: str) -> str:
     return code[opened.start():opened.end() + (closed.start() if closed else len(code) - opened.end())]
 
 
+def indent(line: str) -> int:
+    return len(line) - len(line.lstrip())
+
+
+def member(code: str, scope: str | None, header: str, what: str) -> str:
+    """The definition whose header line matches `header` (once, within `scope`'s definition when one is given): the
+    header line and every line after it that is empty or indented further."""
+    if scope is not None:
+        code = member(code, None, scope, what)
+    lines = code.splitlines()
+    heads = [i for i, line in enumerate(lines) if re.match(r'\s*' + header, line)]
+    if len(heads) != 1:
+        raise SurfaceError(f'{what}: {len(heads)} definitions where one was expected')
+    start = heads[0]
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i].strip() and indent(lines[i]) <= indent(lines[start])), len(lines))
+    return '\n'.join(lines[start:end])
+
+
 # ------------------------------------------------------------------ the surface
 
 def registry(root: Path) -> dict:
-    code, _ = scan(read(root, REGISTRY))
+    source = read(root, REGISTRY)
+    code, _ = scan(source)
     versions = required(re.search(r'enum FormatVersion\b[^:]*:\s*case ([^\n]+)', code), 'the FormatVersion cases')
     kinds = {}
     for match in required(list(re.finditer(r'case (\w+)\s+extends FileKind\(', code)), 'the FileKind cases'):
         body = block(code[match.start():], r'case \w+\s+extends FileKind\(', r'\n\s*case \w+\s+extends|\n\s*def ',
-                      f'FileKind.{match.group(1)}')
+                     f'FileKind.{match.group(1)}')
         families = required(re.search(r'List\(([^)]*)\)', body), f'the families of {match.group(1)}')
         kinds[match.group(1)] = {
             'label': required(re.search(r'"([^"]*)"', body), f'the label of {match.group(1)}').group(1),
@@ -274,7 +405,7 @@ def registry(root: Path) -> dict:
         'utxoKeyLayoutCurrent': required(re.search(r'val current: UtxoKeyLayout = (\w+)', code),
                                          'the current UtxoKeyLayout').group(1),
         'formatLosses': required(re.findall(r'\n\s*case (\w+\([^)]*\))', losses), 'the FormatLoss cases'),
-        'code_sha256': code_digest(read(root, REGISTRY)),
+        'code_sha256': digest_of_code(code),
     }
 
 
@@ -284,8 +415,8 @@ def scala_main_sources(root: Path) -> list[str]:
 
 
 def mentioning(root: Path, raw: re.Pattern[str]) -> list[tuple[str, str]]:
-    """The main sources whose raw text matches `raw`, with their text: a cheap filter before the lexer, which
-    only drops what cannot match after it."""
+    """The main sources whose raw text matches `raw`, with their text: a cheap filter before the lexer, which only
+    drops what cannot match after it."""
     return [(p, t) for p in scala_main_sources(root) for t in (read(root, p),) if raw.search(t)]
 
 
@@ -299,27 +430,65 @@ def magics(root: Path) -> dict:
     return required(found, 'the format magics in src/main')
 
 
+def snapshot_readers(root: Path) -> dict[str, Path]:
+    return {f'V{m.group(1)}': p for p in sorted((root / STORAGE_MAIN).glob('SnapshotV*.scala'))
+            for m in (SNAPSHOT_READER.fullmatch(p.name),) if m}
+
+
 def migrations(root: Path) -> dict:
     code, _ = scan(read(root, MIGRATION))
-    converted = block(code, r'def converted\b', r'\n\s*(?:/\*\*|def |final class )', 'SnapshotMigration.converted')
+    converted = block(code, r'def converted\b', r'\n\s*(?:def |final class |object |val )', 'SnapshotMigration.converted')
+    cases = list(re.finditer(r'case\s+FormatVersion\s*\.\s*(V\d+)\s*=>', converted))
+    if len(cases) != len(re.findall(r'\bcase\b', converted)) - len(re.findall(r'case\s+_\s*=>', converted)):
+        raise SurfaceError('SnapshotMigration.converted has a case this guard cannot read')
     chains = {}
-    for match in required(list(re.finditer(r'case FormatVersion\.(V\d+)\s*=>', converted)), 'the converted cases'):
-        rest = converted[match.end():]
-        nxt = re.search(r'case ', rest)
-        chains[match.group(1)] = re.findall(r'(SnapshotV\d+)\s*\.\s*(fromV\d+)', rest[:nxt.start() if nxt else None])
-    steps = required(re.findall(r'case \(FormatVersion\.(V\d+),\s*FormatVersion\.(V\d+)\)', code), 'the step pairs')
+    for at, match in enumerate(required(cases, 'the converted cases')):
+        rest = converted[match.end():cases[at + 1].start() if at + 1 < len(cases) else None]
+        rest = re.split(r'\bcase\s+_\s*=>', rest)[0]
+        chains[match.group(1)] = [f'{o}.{f}' for o, f in re.findall(r'(SnapshotV\d+)\s*\.\s*(fromV\d+)', rest)]
+    steps = required(re.findall(r'case\s*\(\s*FormatVersion\s*\.\s*(V\d+)\s*,\s*FormatVersion\s*\.\s*(V\d+)\s*\)',
+                                code), 'the step pairs')
     conversions = {}
-    for path in sorted((root / STORAGE_MAIN).glob('SnapshotV*.scala')):
+    for version, path in snapshot_readers(root).items():
         body, _ = scan(path.read_text(encoding='utf-8'))
         conversions[path.stem] = sorted(set(re.findall(r'\bdef (fromV\d+)\b', body)))
-    implementers = sorted(p for p, t in mentioning(root, re.compile(r'\bMigration\['))
-                          if re.search(r'\bnew Migration\[|\bextends\b[^{\n]*\bMigration\[', scan(t)[0]))
+    implementers = sorted(p for p, t in mentioning(root, re.compile(r'\bMigration\s*\['))
+                          if re.search(r'\bnew\s+Migration\s*\[|\bextends\b[^{\n]*\bMigration\s*\[', scan(t)[0]))
     return {
-        'converted': {v: [f'{o}.{f}' for o, f in c] for v, c in chains.items()},
+        'converted': chains,
         'steps': [list(s) for s in steps],
         'conversions': required(conversions, 'the SnapshotV<n> readers'),
         'implementers': required(implementers, 'the Migration implementations'),
     }
+
+
+def migration_problems(reg: dict, found: dict) -> list[str]:
+    """Where the registered snapshot migration disagrees with the registry: the readable versions are the snapshot
+    history from `readableFrom` on, and each but the current one has its step to the next, defined by the next
+    version's reader, and a `converted` chain of the steps to the current one."""
+    snapshot = reg['kinds'].get('SnapshotFile')
+    if snapshot is None:
+        return ['the SnapshotFile kind is gone']
+    history = [v for v, _ in snapshot['history']]
+    oldest = reg['readableFrom'].get('SnapshotFile', 'FormatVersion.' + history[0]).removeprefix('FormatVersion.')
+    if oldest not in history:
+        return [f'readableFrom {oldest} is not a snapshot version']
+    readable = history[history.index(oldest):]
+    pairs = list(zip(readable, readable[1:]))
+    out = []
+    if sorted(map(tuple, found['steps'])) != sorted(pairs):
+        out.append(f'the step pairs {found["steps"]} are not the consecutive readable versions {pairs}')
+    for at, (before, after) in enumerate(pairs):
+        conversion = f'fromV{before[1:]}'
+        if conversion not in found['conversions'].get(f'Snapshot{after}', []):
+            out.append(f'Snapshot{after} does not define {conversion}')
+        expected = [f'Snapshot{b}.fromV{a[1:]}' for a, b in pairs[at:]]
+        if found['converted'].get(before) != expected:
+            out.append(f'converted {before} is {found["converted"].get(before)}, not the steps {expected}')
+    extra = sorted(set(found['converted']) - {a for a, _ in pairs})
+    if extra:
+        out.append(f'converted has cases for {extra}, which are not readable versions before the current one')
+    return out
 
 
 def goldens(root: Path) -> dict:
@@ -338,6 +507,19 @@ def digests_of(root: Path, directories, name: re.Pattern[str], what: str) -> dic
     return dict(sorted(required(found, what).items()))
 
 
+def format_sources(root: Path) -> dict:
+    paths = [*FORMAT_SOURCES, *(p.relative_to(root).as_posix() for p in snapshot_readers(root).values())]
+    return {path: code_digest(read(root, path)) for path in sorted(set(paths))}
+
+
+def format_members(root: Path) -> dict:
+    out = {}
+    for name, path, scope, header in FORMAT_MEMBERS:
+        code, _ = scan(read(root, path))
+        out[f'{path}#{name}'] = digest_of_code(member(code, scope, header, f'{path}#{name}'))
+    return out
+
+
 def fixtures(root: Path) -> dict:
     found = {}
     for glob in FIXTURE_DIRS:
@@ -353,10 +535,12 @@ def surface(root: Path = ROOT) -> dict:
         'registry': registry(root),
         'magics': magics(root),
         'migrations': migrations(root),
+        'format_sources': format_sources(root),
+        'format_members': format_members(root),
+        'frozen_schemas': digests_of(root, (STORAGE_MAIN,), FROZEN_SCHEMA, 'the frozen schemas'),
         'goldens': goldens(root),
         'previous_version_suites': digests_of(root, STORAGE_TESTS, PREVIOUS_VERSION_SUITE,
                                               'the previous-version suites'),
-        'frozen_schemas': digests_of(root, (STORAGE_MAIN,), FROZEN_SCHEMA, 'the frozen schemas'),
         'fixtures': fixtures(root),
     }
 
@@ -368,10 +552,9 @@ def digest(found: dict) -> str:
 def surface_paths(root: Path = ROOT) -> list[str]:
     """Every file the surface reads, for the check that the allowlist covers them."""
     found = surface(root)
-    return sorted({REGISTRY, MIGRATION, *found['magics'], *found['goldens'], *found['previous_version_suites'],
-                   *found['frozen_schemas'], *found['fixtures'],
-                   *(f'{STORAGE_MAIN}/{name}.scala' for name in found['migrations']['conversions']),
-                   *found['migrations']['implementers']})
+    return sorted({REGISTRY, *found['magics'], *found['format_sources'], *found['frozen_schemas'],
+                   *found['goldens'], *found['previous_version_suites'], *found['fixtures'],
+                   *(path for _, path, _, _ in FORMAT_MEMBERS), *found['migrations']['implementers']})
 
 
 # ------------------------------------------------------------------ the checks
@@ -430,8 +613,12 @@ def problems(root: Path, manifest, now: datetime) -> list[str]:
     held = deployed_problems(found)
     if held:
         out.append(loud([f'FMT-1: the {DEPLOYED} reader and the migration path from {DEPLOYED} stay.', *held]))
+    inconsistent = migration_problems(found['registry'], found['migrations'])
+    if inconsistent:
+        out.append(loud(['the registered snapshot migration disagrees with the format registry:',
+                         *(f'  {p}' for p in inconsistent)]))
     if not isinstance(manifest, dict) or not isinstance(manifest.get('surface'), dict):
-        return out + [loud([f'{MANIFEST} has no surface'])]
+        return out + [loud([f'{MANIFEST} is missing, is not JSON, or has no surface'])]
     if manifest['surface'] != found:
         out.append(loud([f'the persisted-format surface differs from {MANIFEST}:',
                          *differences(manifest['surface'], found)]))
@@ -450,18 +637,31 @@ def problems(root: Path, manifest, now: datetime) -> list[str]:
     return out
 
 
+def load_manifest(root: Path):
+    """The manifest, or None when it is missing or is not JSON (`problems` reports either)."""
+    file = root / MANIFEST
+    if not file.is_file():
+        return None
+    try:
+        return json.loads(file.read_text(encoding='utf-8'))
+    except (ValueError, UnicodeDecodeError):
+        return None
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--print-surface', action='store_true', help='print the surface and its digest as JSON')
     parser.add_argument('--root', type=Path, default=ROOT)
     args = parser.parse_args(argv)
     if args.print_surface:
-        found = surface(args.root)
+        try:
+            found = surface(args.root)
+        except SurfaceError as error:
+            print(loud([f'the persisted-format surface cannot be read: {error}']), file=sys.stderr)
+            return 1
         print(json.dumps({'surface': found, 'surface_sha256': digest(found)}, indent=1, sort_keys=True))
         return 0
-    manifest_file = args.root / MANIFEST
-    manifest = json.loads(manifest_file.read_text(encoding='utf-8')) if manifest_file.is_file() else None
-    found = problems(args.root, manifest, datetime.now(timezone.utc))
+    found = problems(args.root, load_manifest(args.root), datetime.now(timezone.utc))
     for report in found:
         print(report, file=sys.stderr)
     if not found:

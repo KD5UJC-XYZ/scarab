@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 """check_storage_format: a change to the persisted-format surface is never silent (FMT-1)."""
+from contextlib import redirect_stderr
 from datetime import datetime, timezone
 from pathlib import Path
 import copy
+import io
 import json
 import shutil
 import sys
@@ -16,6 +18,8 @@ ROOT = Path(__file__).resolve().parents[2]
 NOW = datetime(2026, 11, 14, 12, 0, tzinfo=timezone.utc)
 CODEC = 'node/src/test/scala/xyz/kd5ujc/scarab/storage/CodecSuite.scala'
 GOLDEN = 'node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotGoldenSuite.scala'
+IDENTITY = 'ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NetworkIdentity.scala'
+UTXO = 'storage/src/main/scala/xyz/kd5ujc/scarab/storage/UtxoStore.scala'
 
 
 def record(**changes):
@@ -79,7 +83,8 @@ class SurfaceTest(TreeTest):
 
     def test_comments_and_white_space_do_not_count(self):
         self.edit(fmt.REGISTRY, 'enum FormatVersion', '// a comment with "SCRBSNPB" and { braces\nenum FormatVersion')
-        self.edit(CODEC, 'private val GoldenSidecarFingerprint', '/* "00" */   private val GoldenSidecarFingerprint')
+        self.edit(CODEC, 'private val GoldenSidecarFingerprint = "7650a759442924ec"',
+                  'private val GoldenSidecarFingerprint = "7650a759442924ec" /* "00" { */   ')
         self.assertEqual(self.check(), [])
 
     def test_a_new_version_a_changed_identifier_or_a_new_layout_is_a_change(self):
@@ -112,6 +117,23 @@ class SurfaceTest(TreeTest):
         self.edit('storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenEra.scala', 'enum ', 'enum  Renamed')
         self.assertLoud(self.check(), 'frozen_schemas.')
 
+    def test_a_reader_or_writer_of_a_format_source_that_changes_is_a_change(self):
+        self.edit(IDENTITY, '|conway-genesis ${', '|conway-genesis  ${')
+        self.assertLoud(self.check(), 'format_sources.' + IDENTITY)
+        self.setUp()
+        self.edit(fmt.MIGRATION, 'SnapshotV10.fromV9(content)', 'SnapshotV10.fromV9(content.clone())')
+        self.assertLoud(self.check(), 'format_sources.' + fmt.MIGRATION)
+
+    def test_a_format_definition_in_a_mixed_file_is_pinned_and_the_rest_of_the_file_is_not(self):
+        self.edit(UTXO, 'a(0) = 1', 'a(0) = 2')
+        self.assertLoud(self.check(), 'format_members.' + UTXO + '#UtxoStore.Coding')
+        self.setUp()
+        self.edit(UTXO, '  /** Value encoding shared', '  private val unrelated = 1\n\n  /** Value encoding shared')
+        self.assertEqual(self.check(), [])
+        self.setUp()
+        self.edit(UTXO, 'object Coding:', 'object Codings:')
+        self.assertLoud(self.check(), 'cannot be read', 'UtxoStore.Coding')
+
     def test_a_weakened_golden_assertion_is_a_change(self):
         self.edit(CODEC, 'assertEquals(hex(SnapshotSidecar.fingerprint), GoldenSidecarFingerprint)', 'assert(true)')
         self.assertLoud(self.check(), 'code_sha256')
@@ -127,6 +149,17 @@ class SurfaceTest(TreeTest):
         self.setUp()
         self.edit(fmt.REGISTRY, 'enum UtxoKeyLayout', 'enum KeyLayouts')
         self.assertLoud(self.check(), 'cannot be read', 'UtxoKeyLayout')
+
+    def test_a_registered_migration_that_disagrees_with_the_registry_is_refused(self):
+        self.edit(fmt.MIGRATION, 'case FormatVersion.V9 => SnapshotV10.fromV9(content)', '')
+        self.assertLoud(self.check(), 'disagrees with the format registry', 'converted V9 is None')
+        self.setUp()
+        self.edit(fmt.MIGRATION, 'case FormatVersion.V8 => SnapshotV9.fromV8(content).flatMap(SnapshotV10.fromV9)',
+                  'case FormatVersion.V8 => SnapshotV10.fromV9(content)')
+        self.assertLoud(self.check(), "converted V8 is ['SnapshotV10.fromV9']")
+        self.setUp()
+        self.edit(fmt.MIGRATION, 'case FormatVersion.V9 =>', 'case\n      FormatVersion\n        .V9 =>')
+        self.assertEqual(fmt.migration_problems(fmt.registry(self.root), fmt.migrations(self.root)), [])
 
     def test_the_v8_reader_and_the_path_from_v8_stay(self):
         self.edit(fmt.REGISTRY, 'case SnapshotFile => FormatVersion.V5', 'case SnapshotFile => FormatVersion.V9')
@@ -186,9 +219,29 @@ class ApprovalFormTest(unittest.TestCase):
         self.assertEqual(fmt.approval_problems(record(answered_at='2026-11-15T09:41:07Z'), NOW),
                          ['answered_at is in the future'])
 
+    def test_a_date_that_is_not_in_the_calendar_is_a_problem_not_an_error(self):
+        self.assertIn('asked_at is not a UTC ISO 8601 time with seconds and Z, such as 2026-11-14T09:30:00Z',
+                      fmt.approval_problems(record(asked_at='2026-02-30T09:30:00Z'), NOW))
+
     def test_the_question_says_plainly_that_it_is_a_storage_format_change(self):
         self.assertEqual(fmt.approval_problems(record(question='May I drop two sidecar fields?'), NOW),
                          ['the question does not say plainly that it is a storage format change'])
+
+
+class DigestTest(unittest.TestCase):
+    def test_comments_trailing_space_and_empty_lines_do_not_count(self):
+        self.assertEqual(fmt.code_digest('val a = 1\n\n// note\nval b = 2   \n'),
+                         fmt.code_digest('/** doc */\nval a = 1 // why\nval b = 2\n'))
+
+    def test_literals_and_indentation_count(self):
+        self.assertNotEqual(fmt.code_digest('val a = "x y"'), fmt.code_digest('val a = "x  y"'))
+        self.assertNotEqual(fmt.code_digest('if c then\n  f()\ng()'), fmt.code_digest('if c then\n  f()\n  g()'))
+
+    def test_a_member_is_its_header_and_what_is_indented_under_it(self):
+        code = 'object A:\n  def f(x: Int) =\n    x + 1\n\n    + 2\n  def g = 3\nobject B:\n  def f(x: Int) = 0\n'
+        self.assertEqual(fmt.member(code, r'object A:', r'def f\(', 'f'), '  def f(x: Int) =\n    x + 1\n\n    + 2')
+        with self.assertRaisesRegex(fmt.SurfaceError, '2 definitions'):
+            fmt.member(code, None, r'def f\(', 'f')
 
 
 class AllowlistTest(unittest.TestCase):
@@ -209,9 +262,10 @@ class AllowlistTest(unittest.TestCase):
     def test_every_file_the_surface_reads_is_inside_the_allowlist(self):
         self.assertEqual([p for p in fmt.surface_paths(ROOT) if not fmt.allowed(p)], [])
 
-    def test_the_manifest_and_the_guard_are_the_freeze_paths(self):
+    def test_the_manifest_the_guard_and_its_tests_are_the_freeze_paths(self):
         self.assertTrue(fmt.touches_freeze(['a', fmt.MANIFEST]))
         self.assertTrue(fmt.touches_freeze([fmt.GUARD]))
+        self.assertTrue(fmt.touches_freeze([fmt.GUARD_TESTS]))
         self.assertFalse(fmt.touches_freeze([fmt.REGISTRY, CODEC]))
 
 
@@ -222,11 +276,33 @@ class LexerTest(unittest.TestCase):
         self.assertEqual(literals, ['x // y', '${c}d'])
         self.assertIn('\'"\'', code)
 
+    def test_an_interpolation_with_quotes_does_not_end_its_literal(self):
+        code, literals = fmt.scan('val a = s"v${f("x")}" // gone\nval b = 1')
+        self.assertEqual(literals, ['v${f("x")}'])
+        self.assertNotIn('gone', code)
+        self.assertIn('val b = 1', code)
+
 
 class CommittedManifestTest(unittest.TestCase):
     def test_the_committed_manifest_admits_the_tree(self):
         manifest = json.loads((ROOT / fmt.MANIFEST).read_text(encoding='utf-8'))
-        self.assertEqual(fmt.problems(ROOT, manifest, NOW), [])
+        self.assertEqual(fmt.problems(ROOT, manifest, datetime.now(timezone.utc)), [])
+
+    def test_the_guard_is_registered_so_that_preflight_and_ci_run_it(self):
+        registry = json.loads((ROOT / 'scripts/guards.json').read_text(encoding='utf-8'))
+        self.assertIn([fmt.GUARD], [g['argv'] for g in registry['guards']])
+
+    def test_a_manifest_that_is_not_json_is_a_report_not_a_traceback(self):
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        root = Path(scratch.name)
+        (root / fmt.MANIFEST).parent.mkdir(parents=True)
+        (root / fmt.MANIFEST).write_text('{ not json', encoding='utf-8')
+        self.assertIsNone(fmt.load_manifest(root))
+        err = io.StringIO()
+        with redirect_stderr(err):
+            self.assertEqual(fmt.main(['--root', str(root)]), 1)
+        self.assertTrue(err.getvalue().startswith('STORAGE FORMAT CHANGE'))
 
     def test_the_baseline_admits_only_its_own_surface(self):
         manifest = json.loads((ROOT / fmt.MANIFEST).read_text(encoding='utf-8'))
