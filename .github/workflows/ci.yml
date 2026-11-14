@@ -203,8 +203,8 @@ jobs:
         with:
           persist-credentials: false
       # Compares the dependency graph of the base and the head commit. sbt is not part of GitHub's own
-      # dependency detection, and a pull request's head has no submitted snapshot, so the review covers the
-      # dependencies GitHub detects itself; the sbt graph of main is submitted by dependency-graph.yml.
+      # dependency detection, and no sbt graph is submitted for a pull request's head (dependency-graph.yml
+      # submits main's), so the review does not cover sbt dependencies.
       - name: Review dependency changes
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:

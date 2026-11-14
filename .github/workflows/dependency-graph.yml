@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 name: Dependency graph
 
-# Submits the sbt dependency graph of main to GitHub, which does not detect sbt builds itself; Dependabot alerts
-# read it. It publishes and checks nothing, and is not a gate: it runs daily and on demand rather than on each push
-# to main, and a pull request's dependency review (ci.yml) does not read it, as a pull request's head has no snapshot.
+# Submits the sbt dependency graph to GitHub, which does not detect sbt builds itself; Dependabot alerts read it.
+# It publishes and checks nothing, and is not a gate: it runs daily and on demand rather than on each push to main.
+# No sbt graph is submitted for a pull request's head, so a pull request's dependency review (ci.yml) does not cover
+# sbt dependencies either way; run by hand on a branch, this submits that branch's graph.
 on:
   schedule:
     - cron: '7 2 * * *'
@@ -46,3 +47,7 @@ jobs:
           # own classpath (scala-tool: scala3-compiler, jline) and the scaladoc classpath
           # (scala-doc-tool: jackson, jsoup) are build tools, not on the node's runtime classpath.
           configs-ignore: scala-tool scala-doc-tool
+          # The name of the snapshots ci.yml submitted before this workflow took the job over (the action's default
+          # is the workflow, job and action names). GitHub keeps the latest snapshot of each, so a new name would
+          # leave the last one from ci.yml in the graph for good.
+          correlator: CI_dependency-graph___scalacenter_sbt-dependency-submission
