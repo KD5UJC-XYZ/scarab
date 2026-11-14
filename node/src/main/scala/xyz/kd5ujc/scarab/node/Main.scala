@@ -370,7 +370,7 @@ object Main extends IOApp:
     *   waits of up to 300 s). Off by default.
     * @param plutusVm
     *   `--plutus-vm scalus|scarab`: the Plutus evaluator of the rules, the mempool and the forger
-    *   (ADR 0027); `scalus` by default. With `scarab`, `--forge` is refused ([[parse]]).
+    *   (ADR 0027); `scalus` by default. Either one forges.
     */
   final case class Options(
       genesisDir: Option[Path],
@@ -2334,12 +2334,6 @@ object Main extends IOApp:
                   ConfigError(ConfigProblem.WithUsage(ConfigProblem.PlutusVmUnknown(e), Usage))
                 )
             )
-          // an evaluator that may not forge yet refuses `--forge` at start (`PlutusVm.forges`)
-          _ <- Either.cond(
-            forge.isEmpty || plutusVm.forges,
-            (),
-            ConfigError(ConfigProblem.WithUsage(ConfigProblem.PlutusVmForging(plutusVm), Usage))
-          )
           dump <- flags.get("dump-state").traverse { d =>
             flags
               .get("dump-state-at")

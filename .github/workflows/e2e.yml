@@ -33,6 +33,7 @@ jobs:
           - {scenario: e2e, args: 'e2e --plutus-vm scalus --plutus-vm scarab'}
           - {scenario: relay, args: 'relay --seconds 300'}
           - {scenario: pool, args: 'pool'}
+          - {scenario: pool-plutus-scarab, args: 'pool --plutus-vm scarab --plutus-load'}
           - {scenario: kes-rotate, args: 'kes-rotate'}
           - {scenario: dynamic-forging, args: 'dynamic-forging'}
           - {scenario: ntc, args: 'ntc'}

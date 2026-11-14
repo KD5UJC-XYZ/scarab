@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Shared constants and Docker/CLI helpers for the devnet scripts."""
 import contextlib
+import datetime
 import json
 import os
 import pathlib
@@ -322,6 +323,25 @@ def scheduling_summary(events, log, args=None):
         "longestStepMs": longest.get("longestStepMs"),
         "longestStep": longest.get("longestStep"),
     }
+
+
+def event_time(event):
+    """The `at` of a Scala node log event, in seconds since 1970."""
+    return datetime.datetime.fromisoformat(event["at"].replace("Z", "+00:00")).timestamp()
+
+
+def spread(values, digits=0):
+    """n, median, 95th percentile, maximum and mean of `values`, rounded to `digits` decimals, or None without
+    values."""
+    values = sorted(values)
+    if not values:
+        return None
+
+    def rounded(x):
+        return round(x, digits) if digits else round(x)
+    return {"n": len(values), "median": rounded(values[len(values) // 2]),
+            "p95": rounded(values[min(len(values) - 1, int(0.95 * len(values)))]), "max": rounded(values[-1]),
+            "mean": rounded(sum(values) / len(values))}
 
 
 def read_log(path):

@@ -8,7 +8,7 @@ Part of the [compatibility matrix](../compatibility.md); the register entry is `
 partial (I2, [#43](https://github.com/KD5UJC-XYZ/scarab/issues/43), [ADR 0027](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md)):
 the `uplc` module, with no Scalus on its class path, evaluates phase 2 and admits scripts in the block
 rules, the mempool and the forger under `--plutus-vm scarab` ([flags](../running/flags.md)). Scalus stays
-the default. `--forge` with `scarab` is refused at start, and protocol 12 and later get no verdict, both
+the default. The node forges with `scarab` too ([ADR 0027, amendment of 2026-11-13](../adr/0027-own-uplc-evaluator-as-a-correctness-backend.md#amendment-2026-11-13-the-own-evaluator-forges)), and protocol 12 and later get no verdict, both
 by decision. What each suite shows is in [the conformance profile](../plutus-conformance.md#scarabs-own-evaluator).
 
 ## Evidence
@@ -50,7 +50,10 @@ by decision. What each suite shows is in [the conformance profile](../plutus-con
 
 ## Explicitly unchecked or unconfirmed
 
-- **Forging** with the own evaluator is refused until its evidence is reviewed (I2-WP11, owner decision).
+- **Forging on a public network:** no pool has forged on preprod or mainnet with the own evaluator. The devnet
+  `pool` run's scripts are trivial (one that always succeeds and one that fails with `error`, in V1 and V2, at
+  protocol 10): it shows the path of a validity flag from admission to a forged block that the Haskell pools
+  adopt, not the evaluator's agreement on real scripts. Plutus V3 is not in its load.
 - **Protocol 12 and later** (Leios, PlutusV4) get no verdict, by decision.
 - **Mainnet:** no replay with the own evaluator is recorded.
 - **Projection scope:** the Preview comparison covers the fields of the oracle's projection

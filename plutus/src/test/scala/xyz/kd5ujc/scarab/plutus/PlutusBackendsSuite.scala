@@ -27,7 +27,3 @@ class PlutusBackendsSuite extends FunSuite:
     assert(scarab.evaluator eq ScarabEvaluator.default)
     assert(scarab.decoder eq ScarabEvaluator.defaultDecoder)
   }
-
-  test("the own evaluator may not forge; the Scalus backend may (ADR 0027)") {
-    assertEquals(PlutusVm.values.toVector.filterNot(_.forges), Vector(PlutusVm.Scarab))
-  }
