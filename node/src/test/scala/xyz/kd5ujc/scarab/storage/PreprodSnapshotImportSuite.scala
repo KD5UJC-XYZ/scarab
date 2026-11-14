@@ -11,7 +11,7 @@ import java.nio.file.{Files as JFiles, Path as JPath, StandardCopyOption}
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorExtras}
+import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.AncillaryManifest
@@ -37,9 +37,6 @@ class PreprodSnapshotImportSuite extends CatsEffectSuite:
         .fold(e => fail(e.message), identity)
       given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
       val params = setup.handOver.fold(fail("preprod starts in Byron"))(_.protocolParams)
-      val boot = setup.mirrorStart.extras match
-        case MirrorExtras.InByron(_, b, _) => b
-        case MirrorExtras.InShelley(_, c)  => c.boot
       val key = AncillaryManifest
         .verificationKey(JFiles.readString(JPath.of("fixtures/mempack/ancillary/preprod.vkey")))
         .fold(e => fail(e.toString), identity)
@@ -68,7 +65,6 @@ class PreprodSnapshotImportSuite extends CatsEffectSuite:
                   setup.identity,
                   setup.geometry.byron.epochSlots,
                   params,
-                  boot,
                   LedgerSnapshotImport.Trust.Verify(source / "ancillary_manifest.json", key)
                 )
               )

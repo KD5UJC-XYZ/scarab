@@ -321,7 +321,7 @@
       "issues": [
         15
       ],
-      "notes": "Hard-fork rules: envelope checks (`ObsoleteNode`, header and body size, Conway mainnet `HeaderProtVerTooHigh`) and the era of every block derived from the ledger's protocol version (`TriggerHardForkAtVersion`) unless a `Test<Era>HardForkAtEpoch` key gives an epoch (`consensus/HardFork.scala`). Byron to Shelley is derived from the Byron update state (C1); in bootstrap (ledger-lite) mode the Babbage to Conway version cannot be seen, so the check is relaxed there."
+      "notes": "Hard-fork rules: envelope checks (`ObsoleteNode`, header and body size, Conway mainnet `HeaderProtVerTooHigh`) and the era of every block derived from the ledger's protocol version (`TriggerHardForkAtVersion`) unless a `Test<Era>HardForkAtEpoch` key gives an epoch (`consensus/HardFork.scala`). Byron to Shelley is derived from the Byron update state (C1); the bootstrap (ledger-lite) mode, in which the Babbage to Conway version could not be seen and the check was relaxed, was removed (#988)."
     },
     {
       "id": "B14",

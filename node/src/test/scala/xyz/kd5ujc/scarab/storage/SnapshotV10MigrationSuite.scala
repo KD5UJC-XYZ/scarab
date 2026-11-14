@@ -44,7 +44,7 @@ class SnapshotV10MigrationSuite extends CatsEffectSuite:
       SnapshotV10.sections(v10, ReferenceLayout.Release11_1).fold(e => fail(e.message), identity)
     SnapshotV10.framed(build, binding, sidecar, haskell)
 
-  test("a committed V9 file migrates once to V10, recorded as 11.1, its sections byte for byte") {
+  test("a committed V9 file migrates once to V10, recorded as 11.1, its era and verdicts kept") {
     names.traverse_ { name =>
       tempDir.use { dir =>
         val file = dir / "snapshot-00000000000000000025-25.bin"
@@ -77,9 +77,10 @@ class SnapshotV10MigrationSuite extends CatsEffectSuite:
           val v10 = FileLedgerSnapshots.verified(after).fold(e => fail(e.message), identity)
           val (binding, sidecar, haskell) =
             SnapshotV9.sections(v9).fold(e => fail(e.message), identity)
+          // the sidecar converted, its follow state the bootstrap state's era and verdicts
           assertEquals(
             SnapshotV10.sections(v10, ReferenceLayout.Release11_1),
-            Right((ReferenceBuild.Release11_1, binding, sidecar, haskell)),
+            Right((ReferenceBuild.Release11_1, binding, FrozenSidecar.live(sidecar), haskell)),
             name
           )
           assert(migrated.isRight, s"$name: the migrated file does not read")

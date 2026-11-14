@@ -1516,7 +1516,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             IO.blocking(
               JFiles.write(
                 file.toNioPath,
-                FileLedgerSnapshots.closed(SnapshotV5.framed(sidecar, haskell))
+                FileLedgerSnapshots.closed(SnapshotV5.framed(PreviousSidecars.of(sidecar), haskell))
               )
             ).void
           }

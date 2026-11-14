@@ -89,7 +89,9 @@ and a restore admits the checkpoint only when both still hold (`StateBacking.adm
 [ADR 0021](../adr/0021-ledger-state-residency-and-utxo-checkpoints.md)); a V5 file migrates to V7 with
 the `Legacy` binding and is restored with a `snapshotUnbound` warning, a V7 file to V8 with its
 sidecar rewritten in the V8 schema, a V8 file to V9 with its sidecar rewritten in the V9 one, and a
-V9 file to V10 with the 11.1 build recorded and everything else kept byte for byte. A V10 file
+V9 file to V10 with the 11.1 build recorded, the binding and the Haskell bytes kept byte for byte
+and the sidecar rewritten in the V10 schema, which holds the follow state where V9's holds the
+bootstrap state (#988). A V10 file
 recorded under a build whose layout is not the configured one is not decoded
 (`StorageError.ReferenceBuildMismatch`, or `UnknownReferenceBuild` for a name this build does not
 know): there is no conversion between builds, and the restore treats it as any snapshot that does
@@ -226,8 +228,9 @@ know the newer formats (keep a copy of a database to run an older build on it).
 conversions. V5, V7, V8, V9 and V10 snapshot payloads are supported: V5 files are migrated to V7 on open
 (`SnapshotV7.fromV5`, the body copied unchanged behind a `Legacy` binding), V7 files to V8
 (`SnapshotV8.fromV7`, the sidecar read in the frozen V7 schema and written in the V8 one), V8 files
-to V9 (`SnapshotV9.fromV8`, the sidecar read in the frozen V8 schema and written in the V9 one, the
-current schema) and V9 files to V10 (`SnapshotV10.fromV9`, the 11.1 reference build recorded). A V5
+to V9 (`SnapshotV9.fromV8`, the sidecar read in the frozen V8 schema and written in the V9 one) and
+V9 files to V10 (`SnapshotV10.fromV9`, the 11.1 reference build recorded, the sidecar read in the
+frozen V9 schema and written in the current one). A V5
 or V7 file whose Byron update state holds a software proposal or an application version, whose
 installer metadata it did not keep, is refused before any store opens with `ResyncRequired`
 (ADR 0006, amendment of 2026-11-03). A read-only identity verification

@@ -99,12 +99,7 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
             if h.era.usesTPraos then
               // TPraos runs through Alonzo, whose `ppDG` is the parameter at every version
               // (`Alonzo/PParams.hs:338`, cardano-ledger f649f975); Babbage runs Praos.
-              val view = LedgerView(
-                params.d,
-                params.extraEntropy,
-                delegations,
-                StakeView.Known(pools)
-              )
+              val view = LedgerView(params.d, params.extraEntropy, delegations, pools)
               TPraos
                 .update(Praos.tick(prev, h.era, epoch, params.extraEntropy), h, view, cfg)
                 .map(_.state)

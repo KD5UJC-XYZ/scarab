@@ -7,7 +7,7 @@ import cats.syntax.all.*
 import fs2.io.file.Path as FsPath
 import io.circe.Json
 import java.nio.file.{Files, Path}
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraLedgerState, MirrorExtras}
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraLedgerState}
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
 import xyz.kd5ujc.scarab.node.{NodeSetup, ReferenceBuildFlag}
@@ -137,9 +137,6 @@ object LedgerSnapshotImportCommand:
             Some(EraLedger.curPParams(i.state.nes.es.ls.utxo.gov))
           case _ => None)
         .toRight(ConfigError(ConfigProblem.MissingGenesisParameters))
-      boot = setup.mirrorStart.extras match
-        case MirrorExtras.InByron(_, b, _) => b
-        case MirrorExtras.InShelley(_, c)  => c.boot
       trust <- options.key match
         case None => Right(LedgerSnapshotImport.Trust.Unverified)
         case Some(path) =>
@@ -168,7 +165,6 @@ object LedgerSnapshotImportCommand:
       setup.identity,
       setup.geometry.byron.epochSlots,
       params,
-      boot,
       trust,
       layout
     )

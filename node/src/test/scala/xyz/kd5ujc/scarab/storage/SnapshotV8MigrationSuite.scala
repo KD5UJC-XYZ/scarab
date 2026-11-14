@@ -46,14 +46,14 @@ class SnapshotV8MigrationSuite extends CatsEffectSuite:
     SoftwareProposal("cardano-sl", 1, Map("linux" -> hash(1), "win64" -> hash(2)))
   private val application = AppVersion(1, 21, Map("macos64" -> hash(3)))
 
-  private def withUpdate(sidecar: SnapshotSidecar)(f: UpdateState => UpdateState): SnapshotSidecar =
+  private def withUpdate(
+      sidecar: FrozenSidecar.SnapshotSidecar
+  )(f: UpdateState => UpdateState): FrozenSidecar.SnapshotSidecar =
     sidecar.chain match
-      case SnapshotSidecar.Chain.InByron(pending, extras) =>
+      case FrozenSidecar.Chain.InByron(pending, extras) =>
         val ledger = extras.byron.ledger.getOrElse(fail("the Byron fixture has no ledger"))
         val byronState = extras.byron.copy(ledger = Some(ledger.copy(update = f(ledger.update))))
-        sidecar.copy(chain =
-          SnapshotSidecar.Chain.InByron(pending, extras.copy(byron = byronState))
-        )
+        sidecar.copy(chain = FrozenSidecar.Chain.InByron(pending, extras.copy(byron = byronState)))
       case _ => fail("the fixture is not a Byron snapshot")
 
   private def updateOf(sidecar: SnapshotSidecar): UpdateState = sidecar.chain match
@@ -139,7 +139,7 @@ class SnapshotV8MigrationSuite extends CatsEffectSuite:
           .verified(after.toArray)
           .flatMap(SnapshotV10.sidecarOf)
           .fold(e => fail(e.message), identity)
-        assertEquals(sidecar, v7._2)
+        assertEquals(sidecar, FrozenSidecar.live(v7._2))
     }
   }
 
@@ -206,19 +206,20 @@ class SnapshotV8MigrationSuite extends CatsEffectSuite:
         appVersions = Map("cardano-sl" -> application)
       )
     val changed = withUpdate(sidecar)(update)
+    val expected = updateOf(FrozenSidecar.live(changed))
     val v8 = SnapshotV8.framed(binding, changed, haskell)
-    assertEquals(SnapshotV8.sidecarOf(v8).map(updateOf), Right(updateOf(changed)))
+    assertEquals(SnapshotV8.sidecarOf(v8).map(updateOf), Right(expected))
     val v9 = SnapshotV9.fromV8(v8).fold(e => fail(e.message), identity)
-    assertEquals(SnapshotV9.sidecarOf(v9).map(updateOf), Right(updateOf(changed)))
+    assertEquals(SnapshotV9.sidecarOf(v9).map(updateOf), Right(expected))
     val written = SnapshotV10.fromV9(v9).fold(e => fail(e.message), identity)
-    assertEquals(SnapshotV10.sidecarOf(written).map(updateOf), Right(updateOf(changed)))
+    assertEquals(SnapshotV10.sidecarOf(written).map(updateOf), Right(expected))
     val state = SnapshotV10
       .decode(env, ReferenceLayout.Release11_1, written)
       .fold(e => fail(e.message), identity)
       .state
     state.ext.ledgerState.state match
       case EraLedgerState.ByronCurrent(b) =>
-        assertEquals(b.ledger.map(_.update), Some(updateOf(changed)))
+        assertEquals(b.ledger.map(_.update), Some(expected))
       case _ => fail("not a Byron state")
   }
 
@@ -232,7 +233,7 @@ object SnapshotV8MigrationSuite extends munit.Assertions:
     sections match
       case Right((binding, sidecar, haskell)) =>
         val chain = sidecar.chain match
-          case SnapshotSidecar.Chain.InByron(pending, extras) =>
+          case FrozenSidecar.Chain.InByron(pending, extras) =>
             val byron = extras.byron.copy(ledger = extras.byron.ledger.map { ledger =>
               val software =
                 SoftwareProposal("cardano-sl", 1, Map("linux" -> Bytes(Vector.fill(32)(1))))
@@ -240,7 +241,7 @@ object SnapshotV8MigrationSuite extends munit.Assertions:
                 ledger.update.copy(registeredSoftware = Map(Bytes(Vector.fill(32)(9)) -> software))
               )
             })
-            SnapshotSidecar.Chain.InByron(pending, extras.copy(byron = byron))
+            FrozenSidecar.Chain.InByron(pending, extras.copy(byron = byron))
           case other => other
         FileLedgerSnapshots.closed(SnapshotV7.framed(binding, sidecar.copy(chain = chain), haskell))
       case Left(error) => fail(error.message)

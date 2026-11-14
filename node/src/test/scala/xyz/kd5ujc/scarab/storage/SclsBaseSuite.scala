@@ -14,7 +14,7 @@ import java.security.MessageDigest
 import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{ByronState, ConsensusExtras}
+import xyz.kd5ujc.scarab.consensus.{ByronState, ConsensusExtras, FollowState}
 import xyz.kd5ujc.scarab.consensus.state.{
   ConsensusMirrorEnv,
   EraLedgerState,
@@ -62,12 +62,9 @@ class SclsBaseSuite extends CatsEffectSuite:
     case EraLedgerState.InShelleyEra(ShelleyBasedEra.SConway, state) => state.nes
     case _ => fail("Conway reference state")
   private val gov = ConwayNewEpochState.gov.get(nes)
-  private val boot = setup.mirrorStart.extras match
-    case MirrorExtras.InByron(_, value, _) => value
-    case MirrorExtras.InShelley(_, value)  => value.boot
   private val extras: MirrorExtras.InShelley = MirrorExtras.InShelley(
     NodeExtras.empty,
-    ConsensusExtras(boot, ByronState.initial, ProtocolExtras(0, Nonce.Neutral))
+    ConsensusExtras(FollowState.initial, ByronState.initial, ProtocolExtras(0, Nonce.Neutral))
   )
 
   private def attempt[A](
@@ -124,7 +121,7 @@ class SclsBaseSuite extends CatsEffectSuite:
                     Files.write(
                       (db / "snapshots" / FileLedgerSnapshots.nameOf(anchor)).toNioPath,
                       FileLedgerSnapshots.closed(
-                        if v9 then SnapshotV9.framed(binding, sidecar, raw)
+                        if v9 then SnapshotV9.framed(binding, PreviousSidecars.of(sidecar), raw)
                         else SnapshotV10.framed(ReferenceBuild.Release11_1, binding, sidecar, raw)
                       )
                     )

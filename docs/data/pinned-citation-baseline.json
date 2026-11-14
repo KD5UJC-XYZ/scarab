@@ -24,7 +24,6 @@
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Address.scala": 2,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/AuxiliaryScripts.scala": 1,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/BlockTransport.scala": 1,
-  "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/BootstrapLedger.scala": 3,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ByronGenesisRead.scala": 11,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala": 1,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CollectError.scala": 1,

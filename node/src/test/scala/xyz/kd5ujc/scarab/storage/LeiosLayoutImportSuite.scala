@@ -9,7 +9,7 @@ import java.nio.file.{Files as JFiles, Path as JPath}
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraLedgerState, MirrorExtras}
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraLedgerState}
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
 import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
@@ -40,9 +40,6 @@ class LeiosLayoutImportSuite extends CatsEffectSuite:
       given ShelleyBasedEra[e] = i.era
       EraLedger.curPParams(i.state.nes.es.ls.utxo.gov)
     case _ => fail("expected a Shelley-based genesis state")
-  private val boot = setup.mirrorStart.extras match
-    case MirrorExtras.InByron(_, b, _) => b
-    case MirrorExtras.InShelley(_, c)  => c.boot
   private val leios = ReferenceLayout.of(ReferenceBuild.LeiosB004fe0c)
 
   private def read(name: String): Bytes =
@@ -82,7 +79,6 @@ class LeiosLayoutImportSuite extends CatsEffectSuite:
       setup.identity,
       setup.geometry.byron.epochSlots,
       genesis,
-      boot,
       LedgerSnapshotImport.Trust.Unverified,
       layout
     )

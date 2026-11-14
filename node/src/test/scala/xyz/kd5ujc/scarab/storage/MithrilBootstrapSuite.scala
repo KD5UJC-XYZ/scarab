@@ -37,9 +37,6 @@ class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     .fold(e => fail(e.message), identity)
   private val endpoint =
     Client.Endpoint.parse("http://127.0.0.1:1234").fold(e => fail(e.message), identity)
-  private val boot = setup.mirrorStart.extras match
-    case MirrorExtras.InByron(_, value, _) => value
-    case MirrorExtras.InShelley(_, value)  => value.boot
   private def config(root: Path, source: Client.Source): Bootstrap.Config =
     val identity = setup.identity.copy(magic = 2L)
     Bootstrap.Config(
@@ -65,7 +62,6 @@ class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         identity,
         setup.geometry.byron.epochSlots,
         setup.handOver.fold(fail("Byron"))(_.protocolParams),
-        boot,
         LedgerSnapshotImport.Trust.Unverified
       )
     )

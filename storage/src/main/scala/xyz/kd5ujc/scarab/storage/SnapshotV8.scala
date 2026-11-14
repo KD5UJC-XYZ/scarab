@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.storage
 
 import java.nio.ByteBuffer
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{FormatVersion, StorageError}
+import xyz.kd5ujc.scarab.ledger.StorageError
 
 /** The snapshot of format version 8, the previous one: the V7 layout whose sidecar keeps the
   * installer metadata of the Byron update state (issue #726):
@@ -30,7 +30,7 @@ object SnapshotV8:
     */
   private[storage] def framed(
       binding: CheckpointBinding,
-      sidecar: SnapshotSidecar,
+      sidecar: FrozenSidecar.SnapshotSidecar,
       haskell: Bytes
   ): Array[Byte] =
     val bound = SnapshotV9.bindingBytes(binding)
@@ -58,16 +58,16 @@ object SnapshotV8:
 
   /** The sidecar of the content of a V8 file, read into the current types. */
   def sidecarOf(content: Array[Byte]): Either[StorageError, SnapshotSidecar] =
-    sections(content).map(_._2)
+    sections(content).map(s => FrozenSidecar.live(s._2))
 
   /** The binding, the sidecar and the Haskell bytes of a V8 file, after the magic, the lengths and
     * the fingerprints have been checked.
     */
   private[storage] def sections(
       content: Array[Byte]
-  ): Either[StorageError, (CheckpointBinding, SnapshotSidecar, Bytes)] =
+  ): Either[StorageError, (CheckpointBinding, FrozenSidecar.SnapshotSidecar, Bytes)] =
     SnapshotV9.boundHeader(Magic, content).flatMap { (binding, at) =>
       SnapshotV5
-        .body(content, at, SnapshotV5.Schema.Previous(FormatVersion.V8))
+        .previousBody(content, at, SnapshotV5.Schema.V8)
         .map((sidecar, haskell) => (binding, sidecar, haskell))
     }

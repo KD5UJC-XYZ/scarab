@@ -107,7 +107,7 @@ class GenesisSchemaSuite extends FunSuite:
       globals <- GenesisState.globals(files, genesis)
       params <- ProtocolParams.fromGenesis(shelley, alonzo, Some(conway))
       _ <- ProtocolParams.translatedFromGenesis(shelley, alonzo, Some(conway))
-      _ <- LiteLedger.fromGenesis(shelley)
+      _ <- GenesisState.genDelegs(shelley)
     yield (params, globals)
 
   private def decimal(json: Json, key: String): Rational =

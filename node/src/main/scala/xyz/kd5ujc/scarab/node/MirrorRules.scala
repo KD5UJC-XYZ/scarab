@@ -271,7 +271,7 @@ object MirrorRules:
       case Left(_) => "rejected"
       case Right(after) =>
         if after.ledgerEpoch != before.ledgerEpoch ||
-          after.consensus.boot.completed != before.consensus.boot.completed
+          after.consensus.follow.completed != before.consensus.follow.completed
         then "epochBoundary"
         else if after.plutus.scripts != before.plutus.scripts then "plutus"
         else "block"
@@ -377,8 +377,10 @@ object MirrorRules:
           case h: Header.Byron =>
             val chain = state.consensus
             NodeRules
-              .byronStep(chain.byron, chain.boot, h, raw, byron)
-              .flatMap((next, boot) => MirrorStep.byronBlock(state, h, next, boot).leftMap(mirror))
+              .byronStep(chain.byron, chain.follow, h, raw, byron)
+              .flatMap((next, follow) =>
+                MirrorStep.byronBlock(state, h, next, follow).leftMap(mirror)
+              )
               .pure[F]
           case h: Header.Shelley =>
             val ready = for
@@ -477,11 +479,11 @@ object MirrorRules:
             case EraBlock.Outcome.Refused(failure)     => Left(failure)
             case EraBlock.Outcome.NotInEra(era) => Left(BlockFailure.LedgerEra(era, announced.era))
           (nes, plutus) = applied
-          boot = pre.consensus.boot
-          previous = boot.stats.filter(_.epoch == epoch)
-          finished = boot.stats.filter(_.epoch != epoch).orElse(boot.completed)
+          follow = pre.consensus.follow
+          previous = follow.stats.filter(_.epoch == epoch)
+          finished = follow.stats.filter(_.epoch != epoch).orElse(follow.completed)
           consensus = pre.consensus.copy(
-            boot = boot.copy(
+            follow = follow.copy(
               era = Some(announced.era),
               stats = Some(
                 previous.getOrElse(EpochStats(epoch, announced.era, 0, 0, 0)).record(leader)

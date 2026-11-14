@@ -75,11 +75,11 @@ class DecodeBoundsSuite extends FunSuite:
   /** 200,000 nested single-item lists around a zero. */
   private val nested: Bytes = Bytes(Vector.fill(200000)(0x81.toByte)) ++ head(0, 0)
 
-  test("a body read for its bootstrap effects, a proposal nested 200,000 deep, is refused typed") {
-    // a Babbage body {0: [], 1: [], 2: 0, 6: [[[...]]]}: the update proposal is read for its effects
+  test("a body whose update proposal is nested 200,000 deep is refused typed") {
+    // a Babbage body {0: [], 1: [], 2: 0, 6: [[[...]]]}
     val body = head(5, 4) ++ head(0, 0) ++ head(4, 0) ++ head(0, 1) ++ head(4, 0) ++ head(0, 2) ++
       head(0, 0) ++ head(0, 6) ++ nested
-    val read = onSmallStack(LiteLedger.effects(body, Era.Babbage))
+    val read = onSmallStack(TxBody.decode(body, Era.Babbage))
     assert(read.isLeft, s"read: $read")
   }
 

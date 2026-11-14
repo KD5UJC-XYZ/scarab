@@ -1,24 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{
-  BootstrapState,
-  ByronRules,
-  ByronRulesConfig,
-  ByronState,
-  ByronTip
-}
+import xyz.kd5ujc.scarab.consensus.{ByronRules, ByronRulesConfig, ByronState, ByronTip, FollowState}
 import xyz.kd5ujc.scarab.consensus.state.PBftState
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   BlockFailure,
   BlockRule,
-  Genesis,
   Header,
-  LiteLedger,
   PeerError,
   ProviderDefect,
   TxIn,
@@ -81,7 +72,7 @@ class ByronLedgerDefectSuite extends FunSuite:
   test("the same block is accepted with a working provider") {
     assert(ByronRules.update(start, block, rules(ByronSig.SignTx)).isLeft)
     assert(ByronRules.update(start, block, working).isRight)
-    assert(NodeRules.byronStep(byronState, boot, header, raw, Some(working)).isRight)
+    assert(NodeRules.byronStep(byronState, follow, header, raw, Some(working)).isRight)
   }
 
 object ByronLedgerDefectKit:
@@ -142,18 +133,10 @@ object ByronLedgerDefectKit:
   val byronState: ByronState =
     ByronState.starting(initial).copy(tip = start.tip)
 
-  val boot: BootstrapState =
-    val text = new String(
-      Files.readAllBytes(Path.of("fixtures/preview/genesis/shelley-genesis.json")),
-      "UTF-8"
-    )
-    val shelley = Genesis.shelley(text).fold(e => throw new AssertionError(e.message), identity)
-    BootstrapState.initial(
-      LiteLedger.fromGenesis(shelley.raw).fold(e => throw new AssertionError(e.message), identity)
-    )
+  val follow: FollowState = FollowState.initial
 
   /** The block through the node's Byron step, over a failing provider for one signing kind. */
-  def step(kind: Int) = NodeRules.byronStep(byronState, boot, header, raw, Some(rules(kind)))
+  def step(kind: Int) = NodeRules.byronStep(byronState, follow, header, raw, Some(rules(kind)))
 
   /** The failure the node's block rules give for the block over a provider failing on `kind`. */
   def failure(kind: Int): BlockFailure =

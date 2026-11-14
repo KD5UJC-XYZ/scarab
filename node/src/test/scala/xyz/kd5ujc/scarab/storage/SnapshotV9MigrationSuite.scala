@@ -51,7 +51,9 @@ class SnapshotV9MigrationSuite extends CatsEffectSuite:
     }
   }
 
-  test("a committed V8 file migrates once, through V9, and reads as the maintained V10 file") {
+  test(
+    "a committed V8 file migrates once, through V9, and reads as the maintained V10 file"
+  ) {
     names.traverse_ { name =>
       tempDir.use { dir =>
         val file = dir / "snapshot-00000000000000000025-25.bin"
@@ -108,8 +110,8 @@ class SnapshotV9MigrationSuite extends CatsEffectSuite:
     val (_, sidecar, _) = SnapshotV9.sections(v9).fold(e => fail(e.message), identity)
     val dijkstra = sidecar.copy(observed = sidecar.observed + (Era.Dijkstra -> BigInt(9)))
     assertEquals(
-      Codec.decode(Codec.encode(dijkstra)(using SnapshotSidecar.codec))(using
-        SnapshotSidecar.codec
+      Codec.decode(Codec.encode(dijkstra)(using SnapshotSidecarV9.codec))(using
+        SnapshotSidecarV9.codec
       ),
       Right(dijkstra)
     )
@@ -121,9 +123,10 @@ class SnapshotV9MigrationSuite extends CatsEffectSuite:
     }
   }
 
-  private def shelleyParams(sidecar: SnapshotSidecar): ProtocolParams = sidecar.chain match
-    case SnapshotSidecar.Chain.InShelley(_, params, _, _) => params
-    case other => fail(s"not a Shelley-based sidecar: $other")
+  private def shelleyParams(sidecar: FrozenSidecar.SnapshotSidecar): ProtocolParams =
+    sidecar.chain match
+      case FrozenSidecar.Chain.InShelley(_, params, _, _) => params
+      case other => fail(s"not a Shelley-based sidecar: $other")
 
   test("a V8 sidecar's parameters read with the fields Dijkstra adds at their defaults") {
     val (_, sidecar, _) = SnapshotV8
@@ -156,10 +159,12 @@ class SnapshotV9MigrationSuite extends CatsEffectSuite:
       refInputsCostPerDatumByte = 7
     )
     val withDijkstra = sidecar.chain match
-      case c: SnapshotSidecar.Chain.InShelley => sidecar.copy(chain = c.copy(params = dijkstra))
-      case other                              => fail(s"not a Shelley-based sidecar: $other")
+      case c: FrozenSidecar.Chain.InShelley => sidecar.copy(chain = c.copy(params = dijkstra))
+      case other                            => fail(s"not a Shelley-based sidecar: $other")
     val back = Codec
-      .decode(Codec.encode(withDijkstra)(using SnapshotSidecar.codec))(using SnapshotSidecar.codec)
+      .decode(Codec.encode(withDijkstra)(using SnapshotSidecarV9.codec))(using
+        SnapshotSidecarV9.codec
+      )
       .fold(e => fail(e.toString), identity)
     assertEquals(shelleyParams(back), dijkstra)
     Vector(SnapshotSidecarV8.codec, SnapshotSidecarV7.codec).foreach { codec =>

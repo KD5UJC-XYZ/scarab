@@ -76,11 +76,13 @@ object SnapshotMigration:
     * the V5 body unchanged behind a [[CheckpointBinding.Legacy]] binding), V7 files to V8
     * ([[SnapshotV8.fromV7]]: the sidecar read in the frozen V7 schema and written in the frozen V8
     * one), V8 files to V9 ([[SnapshotV9.fromV8]]: the sidecar read in the frozen V8 schema and
-    * written in the current one), and V9 files to V10 ([[SnapshotV10.fromV9]]: the 11.1 reference
-    * build recorded, everything else kept byte for byte), each step atomically. A future format
-    * adds its frozen previous reader and atomic conversion here; retired V1–V4 identifiers remain
-    * recognized and refuse admission before any mutable store opens, and so does a V5 or V7 file
-    * that no migration can convert without inventing state ([[StorageError.ResyncRequired]]).
+    * written in the V9 one), and V9 files to V10 ([[SnapshotV10.fromV9]]: the 11.1 reference build
+    * recorded, the binding and the Haskell bytes kept byte for byte, the sidecar written in the
+    * current schema without the bootstrap state's flag and lite ledger), each step atomically. A
+    * future format adds its frozen previous reader and atomic conversion here; retired V1–V4
+    * identifiers remain recognized and refuse admission before any mutable store opens, and so does
+    * a V5 or V7 file that no migration can convert without inventing state
+    * ([[StorageError.ResyncRequired]]).
     */
   def toCurrent[F[_]: Sync]: NodeSnapshotMigration[F] =
     new NodeSnapshotMigration[F]

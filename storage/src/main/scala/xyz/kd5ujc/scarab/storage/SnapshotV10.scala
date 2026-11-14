@@ -29,10 +29,16 @@ import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
   * is not the configured one is not read ([[StorageError.ReferenceBuildMismatch]],
   * [[StorageError.UnknownReferenceBuild]]): no conversion between builds exists.
   *
-  * The migration from V9 ([[fromV9]]) records the 11.1 build and keeps the binding, the sidecar and
-  * the Haskell bytes byte for byte: a V9 file holds only 11.1-layout bytes. Every V9 writer either
-  * encodes with the 11.1 codec ([[SnapshotV5.parts]]) or keeps bytes that the 11.1 codec decoded
-  * completely (the imports), and that codec refuses every other layout: a Dijkstra telescope or tip
+  * Its sidecar holds the follow state ([[xyz.kd5ujc.scarab.consensus.FollowState]]). Until the
+  * owner's decision of 2026-11-14 (#988) V10's sidecar held the bootstrap (ledger-lite) state, as
+  * V9's does; V10 was changed in place rather than bumped, no store of it being deployed.
+  *
+  * The migration from V9 ([[fromV9]]) records the 11.1 build, keeps the binding and the Haskell
+  * bytes byte for byte, and writes the sidecar again in the current schema, the bootstrap state's
+  * flag and lite ledger dropped and its era and epoch verdicts kept ([[FrozenSidecar.live]]): a V9
+  * file holds only 11.1-layout bytes. Every V9 writer either encodes with the 11.1 codec
+  * ([[SnapshotV5.parts]]) or keeps bytes that the 11.1 codec decoded completely (the imports), and
+  * that codec refuses every other layout: a Dijkstra telescope or tip
   * (`DijkstraNotYet.LedgerState`), and the Leios build's three-part `ExtLedgerState`
   * (ouroboros-consensus 2416493b `Ledger/Extended.hs:420-442`), as the reference's 11.1 decoder
   * does (`decodeListLenOf 2`, 82ecba32 `Ledger/Extended.hs:268-280`).
@@ -135,18 +141,25 @@ object SnapshotV10:
     SnapshotV5.writeBody(out, at + 4 + bound.length, side, haskell)
     out
 
-  /** The V10 content of a V9 file's content: the 11.1 build recorded, and the binding, the sidecar
-    * and the Haskell bytes copied as they were, after they have been read (so a file that does not
-    * read does not convert). Nothing after the magic is encoded again: a V9 file whose binding or
-    * sidecar is in an encoding the reader takes but the writer would not produce keeps it. Every V9
-    * file converts, its Haskell bytes being in the 11.1 layout (see above).
+  /** The V10 content of a V9 file's content: the 11.1 build recorded, the binding and the Haskell
+    * bytes copied as they were, after they have been read (so a file that does not read does not
+    * convert), and the sidecar written again in the current schema ([[FrozenSidecar.live]]). A V9
+    * file whose binding is in an encoding the reader takes but the writer would not produce keeps
+    * it. Every V9 file converts, its Haskell bytes being in the 11.1 layout (see above).
     */
   def fromV9(content: Array[Byte]): Either[StorageError, Array[Byte]] =
-    SnapshotV9
-      .sections(content)
-      .map(_ =>
-        Magic ++ buildBytes(ReferenceBuild.Release11_1) ++ content.drop(SnapshotV9.Magic.length)
-      )
+    SnapshotV9.located(content).map { (at, sidecar, haskell) =>
+      val recorded = buildBytes(ReferenceBuild.Release11_1)
+      val side = SnapshotV5.sidecarBytes(FrozenSidecar.live(sidecar))
+      val bound = content.slice(SnapshotV9.Magic.length, at)
+      val body = Magic.length + recorded.length + bound.length
+      val out = new Array[Byte](body + 4 + side.length + haskell.size)
+      System.arraycopy(Magic, 0, out, 0, Magic.length)
+      System.arraycopy(recorded, 0, out, Magic.length, recorded.length)
+      System.arraycopy(bound, 0, out, Magic.length + recorded.length, bound.length)
+      SnapshotV5.writeBody(out, body, side, haskell)
+      out
+    }
 
   // ---- read
 
@@ -175,9 +188,7 @@ object SnapshotV10:
 
   /** The sidecar of the content of a V10 file. */
   def sidecarOf(content: Array[Byte]): Either[StorageError, SnapshotSidecar] =
-    header(content).flatMap((_, _, at) =>
-      SnapshotV5.body(content, at, SnapshotV5.Schema.Current).map(_._1)
-    )
+    header(content).flatMap((_, _, at) => SnapshotV5.body(content, at).map(_._1))
 
   /** The recorded build, the binding, the sidecar and the Haskell bytes of a file whose Haskell
     * bytes `layout` reads, after the magic, the lengths and the fingerprints have been checked.
@@ -188,7 +199,7 @@ object SnapshotV10:
   ): Either[StorageError, (ReferenceBuild, CheckpointBinding, SnapshotSidecar, Bytes)] =
     admitted(content, layout).flatMap { (build, binding, at) =>
       SnapshotV5
-        .body(content, at, SnapshotV5.Schema.Current)
+        .body(content, at)
         .map((sidecar, haskell) => (build, binding, sidecar, haskell))
     }
 
