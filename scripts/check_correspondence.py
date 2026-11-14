@@ -404,11 +404,21 @@ def baseline_check(root: Path, baseline: dict[str, dict] | None, outcome: Outcom
                    names: set[str], environment: dict[str, str]) -> None:
     now = {area: set(keys) for area, keys in outcome.unmapped.items()}
     if baseline is None:
-        if write:
+        try:
+            base = base_baseline(root, environment)
+        except NoBase as error:
+            outcome.problems.append(f'baseline growth cannot be checked: {error}')
+            return
+        if not isinstance(base, str):
+            outcome.problems.append(f'{BASELINE} is missing and its base has one: restore it; a baseline is never '
+                                    'written again from scratch')
+        elif not write:
+            outcome.problems.append(f'{BASELINE} is missing: run with --write-baseline to record the first one')
+        elif outcome.problems:
+            outcome.problems.append(f'{BASELINE} not written: the problems above come first')
+        else:
             write_baseline(root, {area: {k: None for k in keys} for area, keys in now.items()})
             outcome.notes.append(f'wrote the first {BASELINE}: {sum(map(len, now.values()))} definitions')
-        else:
-            outcome.problems.append(f'{BASELINE} is missing: run with --write-baseline to record the first one')
         return
     for area in sorted(set(baseline) - names):
         outcome.problems.append(f'{BASELINE}: area {area} has no map file')
@@ -473,7 +483,7 @@ def show(root: Path, keys: list[str]) -> int:
     return status
 
 
-def main(argv: list[str] | None = None, root: Path = ROOT) -> int:
+def main(argv: list[str] | None = None, root: Path = ROOT, environment: dict[str, str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     parser.add_argument('--sources', type=Path, default=None,
                         help=f'a directory of upstream clones, one per repository (default: ${SOURCES_ENV})')
@@ -484,7 +494,7 @@ def main(argv: list[str] | None = None, root: Path = ROOT) -> int:
     if args.show:
         return show(root, args.show)
     sources = args.sources or (Path(os.environ[SOURCES_ENV]) if os.environ.get(SOURCES_ENV) else None)
-    outcome = check(root, sources, args.write_baseline)
+    outcome = check(root, sources, args.write_baseline, environment)
     if args.unmapped:
         for key, item in sorted(outcome.unmapped.get(args.unmapped, {}).items(),
                                 key=lambda kv: (kv[1].file, kv[1].definition.line)):

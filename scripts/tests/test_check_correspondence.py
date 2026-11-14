@@ -87,8 +87,9 @@ class Fixture:
     def run(self, *args: str, sources: Path | None = None) -> tuple[int, str]:
         out = io.StringIO()
         argv = list(args) + (['--sources', str(sources)] if sources is not None else [])
+        # an empty environment: a run in CI must not read as a pull request's check of this fixture
         with redirect_stdout(out):
-            status = guard.main(argv, root=self.root)
+            status = guard.main(argv, root=self.root, environment={})
         return status, out.getvalue()
 
 
@@ -312,6 +313,24 @@ class GuardTest(unittest.TestCase):
         self.assertTrue(any('def net.KeepAlive.sneaked' in p for p in outcome.problems), outcome.problems)
         self.assertEqual(guard.check(self.fixture.root, None, False, {}).problems, [],
                          'outside CI, with no origin/main, the growth check does not run')
+
+    def test_the_first_baseline_is_written_only_when_the_rest_passes_and_never_again(self):
+        path = self.fixture.root / guard.BASELINE
+        path.unlink()
+        key = 'enum net.KeepAlive.State'
+        self.fixture.area({key: self.fixture.entry(key, **{'class': 'Same'})}, [])
+        status, out = self.fixture.run('--write-baseline')
+        self.assertEqual(status, 1, out)
+        self.assertFalse(path.exists(), 'a first baseline is not written while the check fails')
+        self.fixture.area({}, [])
+        self.assertEqual(self.fixture.run('--write-baseline')[0], 0)
+        self.commit_base()
+        git(self.fixture.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+        path.unlink()
+        status, out = self.fixture.run('--write-baseline')
+        self.assertEqual(status, 1, out)
+        self.assertIn('its base has one', out)
+        self.assertFalse(path.exists())
 
     def test_show_names_the_file_lines_digest_and_listing(self):
         status, out = self.fixture.run('--show', 'def net.KeepAlive.transition')
