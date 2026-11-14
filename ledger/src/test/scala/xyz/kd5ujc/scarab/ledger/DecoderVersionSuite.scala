@@ -17,9 +17,12 @@ import xyz.kd5ujc.scarab.protocol.Era
   * At f649f975 no decoder branches inside an era's range: the decoders branch at versions 2, 7, 9
   * and 12 (`ifDecoderVersionAtLeast`, `whenDecoderVersionAtLeast`), 3 (`decodeMetadatum`'s `> 2`),
   * 12 (`decodeAnnSet`'s `>= 12`) and 5, 7, 9 and 12 (`guardPlutus`), against ranges of Alonzo 5 to
-  * 6, Babbage 7 to 8 and Conway 9 to 11. So every version of an era reads what its lowest reads,
-  * and that a version is threaded is shown by reading a part at its neighbouring era's version,
-  * across the branch at 9 and the one at 12, with the unchecked readers the entry points share.
+  * 6, Babbage 7 to 8 and Conway 9 to 11. So every version of an era gives the verdict and the
+  * value its lowest gives; a refusal can still differ in the version it names (an auxiliary Plutus
+  * script refused before its language's version, `AuxiliaryScriptProtocol`), which no line of these
+  * corpora reaches. That a version is threaded is shown by reading a part at its neighbouring era's
+  * version, across the branch at 9 and the one at 12, with the unchecked readers the entry points
+  * share.
   */
 class DecoderVersionSuite extends FunSuite:
   import DecoderVersionSuite.*
