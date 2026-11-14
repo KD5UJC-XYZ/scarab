@@ -193,7 +193,9 @@ final case class NodeConfig(
 object NodeConfig:
   val empty: NodeConfig = NodeConfig(None, Map.empty)
 
-  /** The ouroboros-consensus default (`defaultPBftSignatureThreshold`). */
+  /** The ouroboros-consensus default (`defaultPBftSignatureThreshold`), taken when the key is
+    * absent or null (82ecba32 `Ouroboros/Consensus/Byron/Node.hs:176-177, 239`).
+    */
   val DefaultPBftSignatureThreshold: Double = 0.22
 
   private val Eras = Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
@@ -385,7 +387,9 @@ object NodeConfig:
           oneOf("RequiresNetworkMagic", _, Set("RequiresMagic", "RequiresNoMagic"))
         )
         .map(_.map(_ == "RequiresMagic"))
-      threshold <- k.opt[Double]("PBftSignatureThreshold")
+      // `npcByronPbftSignatureThresh <- v .:? "PBftSignatureThreshold"`, a `Maybe Double`
+      // (cardano-node 11.1.3 `POM.hs:600`)
+      threshold <- fields.realFloat("PBftSignatureThreshold")
       byronFile <- fileName(k, "Byron")
       shelleyFile <- fileName(k, "Shelley")
       alonzoFile <- k.opt[String]("AlonzoGenesisFile")
