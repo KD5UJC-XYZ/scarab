@@ -106,6 +106,27 @@ class YamlReaderTests(unittest.TestCase):
                 with self.assertRaises(parity.ReadError):
                     parity.read_yaml(text)
 
+    def test_scalars_resolve_as_the_yaml_1_2_core_schema_says(self):
+        self.assertEqual(parity.read_yaml("a: [0x1f, 0o17, 1e3, .inf, -.Inf, 7, '7', ~, True]\n"),
+                         {"a": [31, 15, 1000.0, float("inf"), float("-inf"), 7, "7", None, True]})
+        self.assertNotEqual(parity.read_yaml("a: .nan\n")["a"], parity.read_yaml("a: .nan\n")["a"])
+
+    def test_block_scalars_keep_exactly_their_line_breaks(self):
+        cases = {"a: |+\n\n": "\n", "a: |+\n\n\n": "\n\n", "a: |\n\n": "", "a: |\n  x": "x", "a: |+\n  x": "x",
+                 "a: |\n  x\n\n": "x\n", "a: |+\n  x\n \n": "x\n\n", "a: >\n  x\n  y": "x y"}
+        for text, value in cases.items():
+            with self.subTest(text):
+                self.assertEqual(parity.read_yaml(text), {"a": value})
+
+    def test_deep_nesting_is_refused_rather_than_exhausting_the_stack(self):
+        nested = "a:\n" + "".join(" " * (depth + 1) + "b:\n" for depth in range(400))
+        with self.assertRaises(parity.ReadError):
+            parity.read_yaml(nested)
+        for source in ("(" * 200 + "true" + ")" * 200, " && ".join(["true"] * 200), "!" * 200 + "true"):
+            with self.subTest(source[:10]):
+                with self.assertRaises(parity.ReadError):
+                    parity.parse_expression(source)
+
     def test_every_workflow_of_the_repository_is_read(self):
         files = parity.workflow_files(ROOT)
         self.assertGreater(len(files), 0)
@@ -147,6 +168,15 @@ class ExpressionTests(unittest.TestCase):
         self.assertEqual(self.value("format('{0}-{{x}}-{1}', 'a', 2)"), "a-{x}-2")
         self.assertIs(self.value("contains('Hello', 'ELL')"), True)
         self.assertIs(self.value("startsWith(github.ref, 'refs/heads/')"), True)
+
+    def test_equality_converts_and_ignores_case_as_the_runner_does(self):
+        self.assertIs(self.value("'true' == 1"), False, "a string that is not a number is NaN")
+        self.assertIs(self.value("' 1 ' == 1"), True)
+        self.assertIs(self.value("'0x10' == 16"), True)
+        self.assertIs(self.value("'' == 0"), True)
+        self.assertIs(self.value("'\u00df' == 'ss'"), False, "case is ignored one character at a time")
+        self.assertIs(self.value("'stra\u00dfe' == 'STRA\u00dfE'"), True)
+        self.assertIs(self.value("always()"), True)
 
     def test_unknowns_are_kept_with_what_they_depend_on(self):
         shared = self.value("needs.a.outputs.run == 'true'")
@@ -195,6 +225,31 @@ class RuleTests(unittest.TestCase):
                                  "pull request"])
         self.assertEqual(problems(workflow(job("check", "if: github.repository == 'o/r'\n"))), [])
 
+    def test_a_condition_on_what_ran_differently_is_refused(self):
+        select = job("select", "if: github.event_name == 'pull_request'\noutputs:\n  skip: ${{ steps.s.outputs.skip }}\n",
+                     steps="- id: s\n  run: echo skip=true >> \"$GITHUB_OUTPUT\"\n")
+        check = job("check", "needs: select\nif: always() && needs.select.outputs.skip != 'true'\n")
+        self.assertEqual(problems(workflow(select + check)), [
+            f"{WORKFLOW}: job check: its `if` may hold on a push to main where it does not on a pull request"])
+        steps = ("- if: github.event_name == 'pull_request'\n  id: s\n  run: echo SKIP=1 >> \"$GITHUB_ENV\"\n"
+                 "- if: env.SKIP != '1'\n  run: make\n- if: steps.s.outcome != 'success'\n  run: make\n")
+        self.assertEqual(problems(workflow(job(steps=steps))), [
+            f"{WORKFLOW}: job check, step {n} (run): its `if` may hold on a push to main where it does not on a pull "
+            "request" for n in (2, 3)])
+
+    def test_failure_handlers_can_run_whatever_their_needs(self):
+        jobs = (job("a", steps="- run: exit 1\n") + job("b", "needs: a\nif: false\n")
+                + job("check", "needs: [a, b]\nif: failure() && github.event_name == 'push'\n"))
+        self.assertEqual(problems(workflow(jobs)), [
+            f"{WORKFLOW}: job check: runs on a push to main but cannot run on a pull request to main"])
+
+    def test_conditions_the_runner_decides_differently_from_python_are_refused(self):
+        for condition in ("github.event_name == 'push' || 'true' == 1", "github.event_name == 'push' || '\u00df' == 'ss'"):
+            with self.subTest(condition):
+                self.assertEqual(problems(workflow(job("check", f"if: {condition}\n"))), [
+                    f"{WORKFLOW}: job check: runs on a push to main but cannot run on a pull request to main"])
+        self.assertEqual(problems(workflow(job("check", "if: github.event_name == 'push' || always()\n"))), [])
+
     def test_a_condition_on_the_run_alone_passes(self):
         jobs = job("select") + job("check", "needs: select\nif: needs.select.outputs.run == 'true'\n")
         self.assertEqual(problems(workflow(jobs)), [])
@@ -236,6 +291,12 @@ class RuleTests(unittest.TestCase):
                 self.assertEqual(problems(workflow(job(steps=steps))), [f"{WORKFLOW}: job check, {message}"])
         found = problems(workflow(job(lines="continue-on-error: ${{ github.event_name == 'push' }}\n")))
         self.assertEqual(found, [f"{WORKFLOW}: job check: `continue-on-error` reads the event"])
+        for script in ("echo ${{ github[format('event{0}', '_name')] }}", "echo '${{ toJSON(github) }}'",
+                       'test "$GITHUB_ACTOR" = bot', "echo ${{ github.triggering_actor }}"):
+            with self.subTest(script):
+                self.assertEqual(problems(workflow(job(steps=f"- run: {script}\n"))),
+                                 [f"{WORKFLOW}: job check, step 1 (run): `run` reads the event"])
+        self.assertEqual(problems(workflow(job(steps="- run: echo ${{ github.sha }} ${{ github.repository }}\n"))), [])
 
     def test_reusable_workflows_and_local_actions_are_refused(self):
         found = problems(workflow("call:\n  uses: ./.github/workflows/other.yml\n"))
@@ -273,6 +334,15 @@ class TriggerTests(unittest.TestCase):
             with self.subTest(on):
                 self.assertEqual(problems(workflow(job(), on=on)), [])
 
+    def test_a_globstar_also_matches_no_directory(self):
+        on = "on:\n  push:\n    branches: ['**/main']\n"
+        self.assertEqual(problems(workflow(job(), on=on)),
+                         [f"{WORKFLOW}: runs on a push to main but not on pull requests (`pull_request`)"])
+        self.assertTrue(parity.branch_matches(["release/**"], "release/beta"))
+        self.assertFalse(parity.branch_matches(["release/*"], "release/a/b"))
+        with self.assertRaises(parity.ReadError):
+            parity.branch_matches(["ma?n"], "main")
+
     def test_workflows_main_pushes_do_not_start_are_not_checked(self):
         for on in ("on:\n  push:\n    tags: ['v*']\n", "on:\n  schedule:\n    - cron: '1 2 * * *'\n",
                    "on:\n  push:\n    branches: [dev]\n", "on:\n  push:\n    branches-ignore: [main]\n"):
@@ -301,6 +371,24 @@ class ConcurrencyTests(unittest.TestCase):
                 self.assertEqual(problems(text), expected)
         self.assertEqual(problems(workflow(job(), concurrency="concurrency: static\n")), [replaced])
         self.assertEqual(problems(workflow(job(), concurrency="")), [])
+
+    def test_groups_within_a_run_or_of_a_pull_request_may_not_meet_a_push_run(self):
+        shared = job("a", "concurrency: jobs-${{ github.run_id }}\n") + job("b", "concurrency: jobs-${{ github.run_id }}\n")
+        self.assertEqual(problems(workflow(shared)), [
+            f"{WORKFLOW}: job b: shares its concurrency group with {WORKFLOW}: job a in the same run"])
+        matrix = job(lines="strategy:\n  matrix:\n    n: [1, 2]\nconcurrency: check-${{ github.run_id }}\n")
+        self.assertEqual(problems(workflow(matrix)), [
+            f"{WORKFLOW}: job check: every job of its matrix takes the same concurrency group on a push to main"])
+        titled = ("concurrency:\n  group: w-${{ github.event_name == 'pull_request' && github.event.pull_request.title "
+                  "|| github.run_id }}\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n")
+        self.assertEqual(problems(workflow(job(), concurrency=titled)), [
+            f"{WORKFLOW}: a pull_request run's group ({WORKFLOW}) may equal its group on a push to main; give them "
+            "different fixed text"])
+        other = ("name: O\non:\n  pull_request_target:\nconcurrency:\n  group: w-run-${{ github.event.pull_request.number }}\n"
+                 "  cancel-in-progress: true\njobs:\n" + textwrap.indent(job(), "  "))
+        self.assertEqual(parity.findings([(WORKFLOW, workflow(job())), (".github/workflows/o.yml", other)], {}), [
+            f"{WORKFLOW}: a pull_request_target run's group (.github/workflows/o.yml) may equal its group on a push to "
+            "main; give them different fixed text"])
 
     def test_job_concurrency_counts_too(self):
         found = problems(workflow(job(lines="concurrency:\n  group: deploy\n")))
