@@ -251,28 +251,24 @@ private[plutus] object ReferenceCosting:
       */
     case Opaque
 
-    /** `SomeConstant uni a`, `SomeConstant uni [a]`, `(a, b)` and `Vector a`: a constant of the
-      * shape, measured by its type.
-      */
+    // `SomeConstant uni a`, `SomeConstant uni [a]`, `(a, b)` and `Vector a`: a constant of the
+    // shape, measured by its type.
     case AnyConstant, ListOf, PairOf, ArrayOf
 
-    /** Monomorphic types. `CInteger` and `CByteString` of the `ensurable` variants measure as
-      * `Integer` and `ByteString` (`Default/Universe/Cardano.hs` lines 21-27, plutus 1.70.0.0);
-      * their bounds, which Scalus's builtins do not check either, are issue 498.
-      */
+    // Monomorphic types. `CInteger` and `CByteString` of the `ensurable` variants measure as
+    // `Integer` and `ByteString` (`Default/Universe/Cardano.hs` lines 21-27, plutus 1.70.0.0);
+    // their bounds, which Scalus's builtins do not check either, are issue 498.
     case Integer, ByteString, Text, Unit, Bool, Data, DataList, DataPairList, IntegerList
     case G1, G2, MlResult, G1List, G2List, Value
 
-    /** `Int`, `Word8` and `Word64`: an integer within the type's bounds (`readKnownAsInteger`,
-      * `Default/Universe.hs` lines 585-606), measured as 1 (`ExMemoryUsage.hs` lines 267-273,
-      * 343-346; plutus 1.70.0.0).
-      */
+    // `Int`, `Word8` and `Word64`: an integer within the type's bounds (`readKnownAsInteger`,
+    // `Default/Universe.hs` lines 585-606), measured as 1 (`ExMemoryUsage.hs` lines 267-273,
+    // 343-346; plutus 1.70.0.0).
     case Int, Word8, Word64
 
-    /** The size measures of `ExMemoryUsage.hs`: `NumBytesCostedAsNumWords` (lines 287-291),
-      * `IntegerCostedLiterally` (304-308), `TextCostedByByteLength` (336-341), `DataNodeCount`
-      * (399-412) and `ValueMaxDepth` (452-463).
-      */
+    // The size measures of `ExMemoryUsage.hs`: `NumBytesCostedAsNumWords` (lines 287-291),
+    // `IntegerCostedLiterally` (304-308), `TextCostedByByteLength` (336-341), `DataNodeCount`
+    // (399-412) and `ValueMaxDepth` (452-463).
     case NumBytes, Literally, TextBytes, DataNodes, ValueMaxDepth
 
   private val Word8Max = BigInt(255)

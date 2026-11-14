@@ -52,6 +52,7 @@ ThisBuild / scalacOptions ++= Seq(
   "-Wrecurse-with-default",
   "-Wwrong-arrow",
   "-Wshadow:all",
+  "-Wenum-comment-discard",
   "-Wconf:src=.*/src_managed/.*:silent"
 )
 // scalafix needs the semantic database of the compiler.
