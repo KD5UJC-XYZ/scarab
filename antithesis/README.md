@@ -11,9 +11,9 @@ divergence is reproduced locally before it is reported.
 Two Haskell cardano-node 11.1.3 pools (`h2`, `h3`, from the [reference image](../docs/reference-image.md)) and
 one Scarab pool (`s1`, pool 1's keys), on the genesis `cardano-testnet create-env` writes with its defaults
 (k = 5, f = 0.05, 0.1 s slots, 500-slot epochs). A one-shot `configurator` writes the genesis, keys and
-topologies at setup and sets the start time a minute ahead. `s1`'s container starts with the pools, so that its name
-resolves from their first DNS lookup, and Scarab waits inside it until both Haskell pools listen, as the devnet starts
-it (issue 609). `config-late-start` keeps the earlier order as an experiment (below).
+topologies at setup and sets the start time a minute ahead. `s1`'s container starts just before the pools', so that
+its name resolves at their first DNS lookup, and Scarab waits inside it until both Haskell pools listen, as the devnet
+starts it (issue 609). `config-late-start` keeps the earlier order as an experiment (below).
 
 The `driver` reports setup complete once the cluster is healthy. All three pools must first report one tip at
 block 2 or later. Then all three must answer and be on the longest chain, at fork depth 0. Since the gate began,

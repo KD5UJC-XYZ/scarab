@@ -18,6 +18,14 @@ x-after-configurator: &after-configurator
   configurator:
     condition: service_completed_successfully
 
+# The pools' containers start once s1's has: Docker's DNS knows a name only while its container runs, so s1's name
+# resolves at the pools' first lookup. The node in s1 still waits until both pools listen (WAIT_FOR).
+x-after-s1: &after-s1
+  configurator:
+    condition: service_completed_successfully
+  s1:
+    condition: service_started
+
 # s1 dials both Haskell pools at once, so it starts only when they listen (cardano/listening.sh, issue 609).
 x-listening: &listening
   test: ["CMD", "/opt/at/listening.sh", "3001"]
@@ -48,7 +56,7 @@ services:
     command: ["/opt/at/haskell-node.sh", "2"]
     healthcheck: *listening
     labels: *labels
-    depends_on: *after-configurator
+    depends_on: *after-s1
     volumes:
       - env:/env:ro
       - ipc-h2:/ipc
@@ -63,7 +71,7 @@ services:
     command: ["/opt/at/haskell-node.sh", "3"]
     healthcheck: *listening
     labels: *labels
-    depends_on: *after-configurator
+    depends_on: *after-s1
     volumes:
       - env:/env:ro
       - ipc-h3:/ipc
@@ -75,7 +83,7 @@ services:
     image: scarab-at-scarab:trial
     platform: linux/amd64
     init: true
-    # s1's container starts with the pools, so that its name resolves from their first lookup, and the node waits
+    # s1's container starts before the pools', so that its name resolves at their first lookup, and the node waits
     # inside it until both listen (as in ../config): the canary needs a cluster that is together.
     environment:
       WAIT_FOR: "h2:3001 h3:3001"

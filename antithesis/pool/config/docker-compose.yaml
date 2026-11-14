@@ -2,8 +2,8 @@
 # The first Antithesis trial cluster: two Haskell cardano-node 11.1.3 pools (h2, h3) and one Scarab pool (s1) on pool
 # 1's keys, a one-shot configurator that writes the genesis, keys and topologies, and the driver, which launch.sh asks
 # to keep out of faults (the README says when that is applied).
-# s1's container starts with the pools, so that its name resolves from their first DNS lookup, and Scarab waits inside
-# it until both listen (WAIT_FOR). ../config-late-start keeps the earlier order as an experiment.
+# s1's container starts just before the pools', so that its name resolves at their first DNS lookup, and Scarab waits
+# inside it until both listen (WAIT_FOR). ../config-late-start keeps the earlier order as an experiment.
 # The pools' logs go to a shared volume as well, for the driver's divergence detectors.
 # No restart policies: Antithesis restarts what it kills.
 
@@ -14,6 +14,14 @@ x-labels: &labels
 x-after-configurator: &after-configurator
   configurator:
     condition: service_completed_successfully
+
+# The pools' containers start once s1's has: Docker's DNS knows a name only while its container runs, so s1's name
+# resolves at the pools' first lookup. The node in s1 still waits until both pools listen (WAIT_FOR).
+x-after-s1: &after-s1
+  configurator:
+    condition: service_completed_successfully
+  s1:
+    condition: service_started
 
 # Whether a Haskell pool listens (cardano/listening.sh). s1 dials both at once, so it starts only when they listen
 # (issue 609): here its node waits for that itself (WAIT_FOR), and ../config-late-start starts its container on it.
@@ -43,7 +51,7 @@ services:
     command: ["/opt/at/haskell-node.sh", "2"]
     healthcheck: *listening
     labels: *labels
-    depends_on: *after-configurator
+    depends_on: *after-s1
     volumes:
       - env:/env:ro
       - ipc-h2:/ipc
@@ -58,7 +66,7 @@ services:
     command: ["/opt/at/haskell-node.sh", "3"]
     healthcheck: *listening
     labels: *labels
-    depends_on: *after-configurator
+    depends_on: *after-s1
     volumes:
       - env:/env:ro
       - ipc-h3:/ipc
@@ -70,7 +78,7 @@ services:
     image: scarab-at-scarab:trial
     platform: linux/amd64
     init: true
-    # s1's container starts with the pools, so that its name resolves from their first lookup, and the node waits
+    # s1's container starts before the pools', so that its name resolves at their first lookup, and the node waits
     # inside it until both listen.
     environment:
       WAIT_FOR: "h2:3001 h3:3001"
