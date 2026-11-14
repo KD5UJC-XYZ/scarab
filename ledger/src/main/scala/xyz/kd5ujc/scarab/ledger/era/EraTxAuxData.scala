@@ -3,8 +3,10 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Metadatum, ScriptKind, Unsigned}
+import cats.data.NonEmptyVector
+import xyz.kd5ujc.scarab.ledger.{Metadatum, Unsigned}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, EraTag}
+import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 
 /** The metadata every era's auxiliary data has (`EraTxAuxData`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:467-490`). Its validation takes the
@@ -25,8 +27,10 @@ trait AllegraEraTxAuxData[E <: EraTag] extends EraTxAuxData[E]:
   * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs:121-122`, cardano-ledger f649f975).
   */
 trait AlonzoEraTxAuxData[E <: EraTag] extends AllegraEraTxAuxData[E]:
-  /** `plutusScriptsTxAuxDataL`: per language, the scripts' bytes, none empty. */
-  def plutusScripts(aux: TxAuxData[E]): SortedMap[ScriptKind, Vector[Bytes]]
+  /** `plutusScriptsTxAuxDataL`: per language, the scripts' bytes (`Map Language (NonEmpty
+    * PlutusBinary)`).
+    */
+  def plutusScripts(aux: TxAuxData[E]): SortedMap[PlutusLanguage, NonEmptyVector[Bytes]]
 
 /** The instances of each era, the one place that lists the eras having each class. */
 object EraTxAuxData:

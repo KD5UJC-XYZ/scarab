@@ -14,7 +14,6 @@ import xyz.kd5ujc.scarab.ledger.{
   PreprodDeepTx,
   Purpose,
   Script as FlatScript,
-  ScriptKind,
   Unsigned,
   TxBody as FlatTxBody,
   Witnesses
@@ -359,9 +358,29 @@ class EraConwaySuite extends munit.FunSuite:
       .get
     assertEquals(c.metadata(byTag).toVector, Vector(label -> Metadatum.Num(7)))
     assertEquals(
-      c.plutusScripts(byTag).toVector.map((kind, scripts) => kind -> scripts.map(_.hex)),
-      Vector(ScriptKind.PlutusV1 -> Vector("0102"), ScriptKind.PlutusV3 -> Vector("03"))
+      c.plutusScripts(byTag)
+        .toVector
+        .map((language, scripts) => language -> scripts.toVector.map(_.hex)),
+      Vector(
+        xyz.kd5ujc.scarab.plutus.PlutusLanguage.V1 -> Vector("0102"),
+        xyz.kd5ujc.scarab.plutus.PlutusLanguage.V3 -> Vector("03")
+      )
     )
-    // and what Conway's decoder refuses, the era's decoder refuses: an unknown key of the tagged form
-    assert(ConwayTxAuxData.decode(Bytes.fromHex("d90103a10580").toOption.get).isLeft)
+    // a record whose head is detached, `[_ ]` then its two items, as the flat decoder reads it
+    // (`RecD`), with empty metadata and no scripts
+    val detached = ConwayTxAuxData.decode(Bytes.fromHex("9fffa080").toOption.get)
+    assert(
+      xyz.kd5ujc.scarab.ledger.AuxiliaryScripts
+        .read(Bytes.fromHex("9fffa080").toOption.get, 9)(using ByteStrings.Definite)
+        .isRight
+    )
+    assertEquals(detached.map(c.metadata(_).size), Right(0))
+    // what Conway's decoder refuses, the era's decoder refuses with the same error: key 6 of the
+    // tagged form is no field
+    val unknown = Left(
+      EraTxError.Decode(
+        LedgerDecodeError.UnknownTag(xyz.kd5ujc.scarab.ledger.DecodeField.AuxiliaryField, 6)
+      )
+    )
+    assertEquals(ConwayTxAuxData.decode(Bytes.fromHex("d90103a10680").toOption.get), unknown)
   }

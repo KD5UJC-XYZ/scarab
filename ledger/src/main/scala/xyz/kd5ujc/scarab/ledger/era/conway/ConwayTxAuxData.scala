@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era.conway
 
 import scala.collection.immutable.SortedMap
+import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{
@@ -13,9 +14,9 @@ import xyz.kd5ujc.scarab.ledger.{
   DetachedRecords,
   LedgerDecodeError,
   Metadatum,
-  ScriptKind,
   Unsigned
 }
+import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 import xyz.kd5ujc.scarab.ledger.era.{AlonzoEraTxAuxData, EraTxError}
 import xyz.kd5ujc.scarab.ledger.state.Conway
 import xyz.kd5ujc.scarab.protocol.Era
@@ -28,20 +29,20 @@ import xyz.kd5ujc.scarab.protocol.Era
   * @param metadata
   *   by label (a `Word64`)
   * @param plutusScripts
-  *   per language, the Plutus scripts' bytes, none empty
+  *   per language, the Plutus scripts' bytes
   */
 final case class ConwayTxAuxData private (
     raw: Bytes,
     metadata: SortedMap[Unsigned[Unsigned.Width.W64], Metadatum],
     nativeScripts: Vector[ConwayTimelock],
-    plutusScripts: SortedMap[ScriptKind, Vector[Bytes]]
+    plutusScripts: SortedMap[PlutusLanguage, NonEmptyVector[Bytes]]
 )
 
 object ConwayTxAuxData:
   given CanEqual[ConwayTxAuxData, ConwayTxAuxData] = CanEqual.derived
 
-  // the languages by their tag, as `Map Language` orders them
-  private given Ordering[ScriptKind] = Ordering.by(_.tag)
+  // the languages in `Language`'s order, as `Map Language` keeps them
+  private given Ordering[PlutusLanguage] = Ordering.by(_.id)
 
   private given Ordering[Unsigned[Unsigned.Width.W64]] = Ordering.by(_.value)
 
@@ -64,12 +65,12 @@ object ConwayTxAuxData:
     yield ConwayTxAuxData(raw, parts._1, parts._2, parts._3)).leftMap(EraTxError.Decode(_))
 
   private val noMetadata = SortedMap.empty[Unsigned[Unsigned.Width.W64], Metadatum]
-  private val noPlutus = SortedMap.empty[ScriptKind, Vector[Bytes]]
+  private val noPlutus = SortedMap.empty[PlutusLanguage, NonEmptyVector[Bytes]]
 
   private type Parts = (
       SortedMap[Unsigned[Unsigned.Width.W64], Metadatum],
       Vector[ConwayTimelock],
-      SortedMap[ScriptKind, Vector[Bytes]]
+      SortedMap[PlutusLanguage, NonEmptyVector[Bytes]]
   )
 
   // The fields of auxiliary data the flat decoder has read: each form and field is one it took.
@@ -77,9 +78,10 @@ object ConwayTxAuxData:
     node.value match
       case _: Value.Map => metadata(node).map((_, Vector.empty, noPlutus))
       case _: Value.Arr =>
-        // `arrayN` read two items, so `xs(0)` and `xs(1)` are present
+        // the `RecD` record the flat decoder read (`CborRead.record`, which takes it detached as
+        // well); it read two items, so `xs(0)` and `xs(1)` are present
         CborRead
-          .arrayN(node, 2, DecodeField.AuxiliaryData)
+          .record(node, 2, DecodeField.AuxiliaryData)
           .flatMap(xs => (metadata(xs(0)), native(xs(1))).mapN((m, n) => (m, n, noPlutus)))
       case Value.Tag(_, contents) =>
         CborRead.map(contents, DecodeField.AuxiliaryData).flatMap { kvs =>
@@ -87,7 +89,7 @@ object ConwayTxAuxData:
             .traverse((k, v) => CborRead.uint(k, DecodeField.AuxiliaryField).map(_ -> v))
             .flatMap { keyed =>
               val byKey = keyed.toMap
-              def plutus(key: Int, kind: ScriptKind) =
+              def plutus(key: Int, language: PlutusLanguage) =
                 byKey
                   .get(BigInt(key))
                   .traverse(
@@ -95,13 +97,15 @@ object ConwayTxAuxData:
                       .array(_, DecodeField.AuxiliaryPlutusScripts)
                       .flatMap(_.traverse(CborRead.bytes(_, DecodeField.AuxiliaryPlutusScript)))
                   )
-                  .map(_.filter(_.nonEmpty).map(kind -> _))
+                  // an empty list adds no language (`addPlutusScripts`, `Alonzo/TxAuxData.hs:315-321`,
+                  // cardano-ledger f649f975)
+                  .map(_.flatMap(NonEmptyVector.fromVector).map(language -> _))
               (
                 byKey.get(BigInt(0)).traverse(metadata).map(_.getOrElse(noMetadata)),
                 byKey.get(BigInt(1)).traverse(native).map(_.orEmpty),
-                plutus(2, ScriptKind.PlutusV1),
-                plutus(3, ScriptKind.PlutusV2),
-                plutus(4, ScriptKind.PlutusV3)
+                plutus(2, PlutusLanguage.V1),
+                plutus(3, PlutusLanguage.V2),
+                plutus(4, PlutusLanguage.V3)
               ).mapN((m, n, v1, v2, v3) => (m, n, SortedMap.from(Vector(v1, v2, v3).flatten)))
             }
         }
@@ -139,5 +143,7 @@ object ConwayTxAuxData:
     ): SortedMap[Unsigned[Unsigned.Width.W64], Metadatum] =
       aux.metadata
     override def nativeScripts(aux: ConwayTxAuxData): Vector[ConwayTimelock] = aux.nativeScripts
-    override def plutusScripts(aux: ConwayTxAuxData): SortedMap[ScriptKind, Vector[Bytes]] =
+    override def plutusScripts(
+        aux: ConwayTxAuxData
+    ): SortedMap[PlutusLanguage, NonEmptyVector[Bytes]] =
       aux.plutusScripts
