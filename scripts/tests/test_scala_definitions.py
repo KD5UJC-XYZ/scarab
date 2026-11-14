@@ -143,8 +143,17 @@ class DefinitionsTest(unittest.TestCase):
         for source, unread in cases.items():
             with self.subTest(source=source):
                 self.assertEqual(defs.read(source).unread, unread)
+        # back at a member's level after a body in braces, or after a literal
+        self.assertEqual(defs.read('object A {\n  def f = {\n    1\n  }; def g = 2\n}\n').unread, (4,))
+        self.assertEqual(defs.read('object A:\n  given Ordering[Int] with {\n    def compare(a: Int, b: Int) = 0\n'
+                                   '  }; def g = 2\n').unread, (4,))
+        self.assertEqual(defs.read('object A:\n  val s = """x\n  """; def g = 2\n').unread, (3,))
         # inside a method body, braces and semicolons are the method's own code
         self.assertEqual(defs.read('object A:\n  def f = { val a = 1; def g = a; g }\n').unread, ())
+        self.assertEqual(defs.read('object A:\n  private def f = { val a = 1; a }\n').unread, ())
+        self.assertEqual(defs.read('object A:\n  private given Ordering[Int] with { def compare(x: Int, y: Int) = 0 }'
+                                   '\n').unread, ())
+        self.assertEqual(defs.read('object A:\n  def f =\n    val a = 1; def g = a\n    g\n').unread, ())
         # a class header's parameters are not a body
         self.assertEqual(defs.read('final class A(val x: Int, var y: Int):\n  def f = x\n').unread, ())
 
@@ -163,6 +172,10 @@ class DefinitionsTest(unittest.TestCase):
                 self.assertEqual(digest(source, 'val A.x'), digest(same, 'val A.x'))
         self.assertNotEqual(digest('object A:\n  val s = """abc \nend"""\n', 'val A.s'),
                             digest('object A:\n  val s = """abc  \nend"""\n', 'val A.s'))
+        closing = 'object A:\n  val s = """a\nb""" + "c"\n'
+        for same in ('object A:\n  val s = """a\nb"""   +   "c"\n', 'object A:\n  val s = """a\nb""" + "c" // c\n'):
+            with self.subTest(same=same):
+                self.assertEqual(digest(closing, 'val A.s'), digest(same, 'val A.s'))
         self.assertNotEqual(digest('object A:\n  val s = "a  b"\n', 'val A.s'),
                             digest('object A:\n  val s = "a b"\n', 'val A.s'))
         self.assertNotEqual(digest('object A:\n  def f =\n    a\n    b\n', 'def A.f'),

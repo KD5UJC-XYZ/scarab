@@ -187,46 +187,60 @@ def literal_lines(source: str, literals: tuple[tuple[int, int], ...]) -> set[int
     return inside
 
 
-def inline_definition(code: str, braces: bool = False) -> bool:
-    """Whether a line of code holds a definition keyword after a `{` or `;` outside parentheses and brackets; with
-    `braces`, after a `;` outside braces too (the `{` of a body then opens the body's own code)."""
+def inline_definition(code: str) -> bool:
+    """Whether a line of code holds a definition keyword after a `{` or `;` outside parentheses and brackets."""
     depth, opened = 0, False
-    for match in re.finditer(r'[(\[\])]|[{};]|\b(?:' + '|'.join(KEYWORDS) + r')\b', code):
+    for match in re.finditer(r'[(\[\])]|[{;]|\b(?:' + '|'.join(KEYWORDS) + r')\b', code):
         token = match.group()
-        if token in '([' or (braces and token == '{'):
+        if token in '([':
             depth += 1
-        elif token in ')]' or (braces and token == '}'):
+        elif token in ')]':
             depth -= 1
         elif token in '{;':
             opened = opened or depth == 0
-        elif token == '}':
-            continue
         elif opened and depth == 0:
             return True
     return False
 
 
+def member_after_semicolon(code: str, depth: int, level: int) -> bool:
+    """Whether a line of code, starting at bracket depth `depth`, holds a definition keyword after a `;`, both at
+    depth `level` or less: back at the level of a member's header."""
+    armed = False
+    for match in re.finditer(r'[(\[{]|[)\]}]|;|\b(?:' + '|'.join(KEYWORDS) + r')\b', code):
+        token = match.group()
+        if token in '([{':
+            depth += 1
+        elif token in ')]}':
+            depth -= 1
+        elif token == ';':
+            armed = armed or depth <= level
+        elif armed and depth <= level:
+            return True
+    return False
+
+
 def normalized_line(text: str, literal: bytearray, start: int) -> str:
-    """A line of code without comments: its indentation kept, each run of white space after it one space and none
-    at its end, except inside a literal, whose text is kept as written."""
+    """A line of code without comments: the text of literals as written, its indentation kept, and elsewhere each
+    run of white space one space, with none at the line's end."""
     out: list[str] = []
-    indentation = len(text) - len(text.lstrip(' \t'))
-    out.append(text[:indentation])
-    space = False
-    for k in range(indentation, len(text)):
-        c = text[k]
+    leading, space = True, False
+    for k, c in enumerate(text):
         if literal[start + k]:
             if space:
                 out.append(' ')
-                space = False
             out.append(c)
+            leading, space = False, False
         elif c in ' \t':
-            space = True
+            if leading:
+                out.append(c)
+            else:
+                space = True
         else:
             if space:
                 out.append(' ')
-                space = False
             out.append(c)
+            leading, space = False, False
     return ''.join(out)
 
 
@@ -339,6 +353,21 @@ def read(source: str) -> Read:
         if node.transparent and id(node) not in with_methods:
             node.private = True
 
+    def hidden_definition(scope: Node, i: int) -> bool:
+        """Whether line `i`, inside `scope`, defines something where a member would go that has no header line of
+        its own: after a `{` or `;` on a line of a class, object, trait, enum or extension body whose members are
+        read (`object A { def f = 1 }`), or after a `;` that is back at the level of a member's header
+        (`val a = 1; def f = 2`, or `}; def g = 2` after a body in braces, or `\"\"\"; def g` after a literal)."""
+        if scope.kind in TEMPLATES or scope.transparent:
+            members_read = scope.keyed or (scope.transparent and member_of(scope))
+            return members_read and not blank[i] and inline_definition(code_lines[i])
+        if not member_of(scope):
+            return False
+        level = depths[scope.header]
+        if i not in in_literal and i != scope.header and indent[i] > scope.indent:
+            return False
+        return member_after_semicolon(code_lines[i], depths[i], level)
+
     def path(node: Node) -> str:
         chain = []
         at: Node | None = node
@@ -359,20 +388,23 @@ def read(source: str) -> Read:
             for j in range(node.first, node.end):
                 holder_of[j] = node
 
+    # the innermost header around each line, keyed or not: the scope a definition written on it would belong to
+    scope_of: list[Node | None] = [None] * n
+    for node in nodes:
+        for j in range(node.first, node.end):
+            scope_of[j] = node
+
     unread = []
     clause_end = 0
     for i in range(n):
-        if blank[i]:
+        if blank[i] and i not in in_literal:
             continue
-        holder = holder_of[i]
-        if holder is not None:
-            # a line of a body whose members are keyed holds nothing after a `{` or `;` that defines: a definition
-            # written there (`object A { def f = 1 }`) would have no key of its own
-            if (holder.kind in TEMPLATES or holder.transparent) and inline_definition(code_lines[i]):
+        scope = scope_of[i]
+        if scope is not None:
+            if hidden_definition(scope, i):
                 unread.append(i + 1)
-            # nor does a definition's header line hold a second definition after a `;` (`val a = 1; def f = 2`)
-            elif holder.header == i and inline_definition(code_lines[i], braces=True):
-                unread.append(i + 1)
+            continue
+        if blank[i]:
             continue
         if i < clause_end:
             if ';' in code_lines[i]:
@@ -399,7 +431,7 @@ def read(source: str) -> Read:
         for j in lines:
             text = text_lines[j]
             if j in in_literal:
-                out.append(text)
+                out.append(normalized_line(text, literal, starts[j]))
                 continue
             text = normalized_line(text, literal, starts[j])
             if not text.strip():
