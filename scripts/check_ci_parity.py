@@ -21,8 +21,9 @@ Every workflow under `.github/workflows` is read. For each one that a push to `m
   for the steps after it. What the scripts and actions a step runs do beyond what the workflow shows is beyond the
   guard. A step that the pull request's run skips because an earlier step or job failed is not compared: that run
   is already red, unless the job continues on error, and then the steps after one that runs differently are
-  compared with their status functions taken to depend on the event. Names of contexts, properties, jobs and
-  steps are read ignoring case, as the runner reads them;
+  compared with their status functions (and `job.status`) taken to depend on the event. An `if` that calls no
+  status function is read with the `success() &&` that GitHub puts before it. Names of contexts, jobs, steps and
+  `github` fields are read ignoring case, as the runner reads them; `env` names keep their case;
 - the concurrency of such a workflow, and of each job that can run on the push, must neither cancel a push run
   (`cancel-in-progress` false on push) nor let another run take its group: GitHub replaces a waiting run with a
   newer one of the same group even without `cancel-in-progress`, and groups are shared across the repository's
@@ -530,7 +531,7 @@ class _ExpressionParser:
                 self.pos += 1
                 if self.pos >= len(self.tokens) or self.tokens[self.pos][0] != "name":
                     raise ReadError(f"expression {self.source!r}: expected a property name")
-                node = ("get", node, ("literal", self.tokens[self.pos][1].lower()))
+                node = ("get", node, ("literal", self.tokens[self.pos][1]))
                 self.pos += 1
             elif op == "[":
                 self.pos += 1
@@ -631,9 +632,11 @@ def evaluate(tree: tuple, event: Event) -> Value:
             return {}
         if name == "github":
             return GITHUB
-        # The whole of `needs` or `steps` holds what a tainted job or step produced, if there is one.
+        # The whole of `needs` or `steps` holds what a tainted job or step produced, if there is one; `job.status`
+        # follows the steps' outcomes.
         return Unknown(tree, bool(event.tainted_needs) if name == "needs" else
-                       bool(event.tainted_steps) if name == "steps" else False)
+                       bool(event.tainted_steps) if name == "steps" else
+                       event.status_tainted if name == "job" else False)
     if kind == "get":
         return _property(tree, evaluate(tree[1], event), evaluate(tree[2], event), event)
     if kind == "not":
@@ -661,11 +664,12 @@ def evaluate(tree: tuple, event: Event) -> Value:
 
 
 def _property(tree: tuple, base: Value, key: Value, event: Event) -> Value:
-    if isinstance(key, str) and not _symbolic(key) and not isinstance(base, (dict, list)):
-        key = _identifier(key)
+    # The runner matches the names of jobs, steps and `github` fields ignoring case; `env` keeps its case.
     if isinstance(base, Unknown) and base.tree in (("context", "needs"), ("context", "steps")) and isinstance(key, str):
         tainted = event.tainted_needs if base.tree == ("context", "needs") else event.tainted_steps
-        return Unknown(("get", base.tree, _tree(key)), key in tainted)
+        return Unknown(("get", base.tree, _tree(_identifier(key))), _identifier(key) in tainted)
+    if base in (GITHUB, PAYLOAD) and isinstance(key, str) and not _symbolic(key):
+        key = _identifier(key)
     if base == VARIABLE or event.variables and (key == VARIABLE or _symbolic(key)):
         return VARIABLE
     if isinstance(base, Unknown) or _undecided(key) or _symbolic(key):
@@ -816,20 +820,26 @@ def _kleene(tree: tuple) -> bool | None:
 
 
 def condition(text: object) -> tuple:
-    """The syntax tree of an `if`; absent is `success()`."""
+    """The syntax tree of an `if`, with the `success() &&` that GitHub puts before one that calls no status function;
+    absent is `success()`."""
     if text is None:
         return ("call", "success", ())
     if isinstance(text, bool):
-        return ("literal", text)
-    if not isinstance(text, str):
+        tree = ("literal", text)
+    elif not isinstance(text, str):
         raise ReadError(f"`if: {text!r}` is not read")
-    stripped = text.strip()
-    match = re.fullmatch(r"\$\{\{(.*)\}\}", stripped, re.DOTALL)
-    if match is not None and "${{" not in match.group(1) and "}}" not in match.group(1):
-        return parse_expression(match.group(1))
-    if "${{" in stripped:
-        raise ReadError(f"`if: {text}` mixes text and an expression")
-    return parse_expression(stripped)
+    else:
+        stripped = text.strip()
+        match = re.fullmatch(r"\$\{\{(.*)\}\}", stripped, re.DOTALL)
+        if match is not None and "${{" not in match.group(1) and "}}" not in match.group(1):
+            tree = parse_expression(match.group(1))
+        elif "${{" in stripped:
+            raise ReadError(f"`if: {text}` mixes text and an expression")
+        else:
+            tree = parse_expression(stripped)
+    if any(node[0] == "call" and node[1] in STATUS_FUNCTIONS for node in _nodes(tree)):
+        return tree
+    return ("and", ("call", "success", ()), tree)
 
 
 def template(value: object, event: Event) -> Value:
@@ -1004,6 +1014,12 @@ def compare_condition(tree: tuple, push: Event = PUSH_TO_MAIN, pull: Event = PUL
     if truth(on_push) is False:
         return Verdict(False, True)
     if truth(on_pull) is True:
+        return Verdict(True, True)
+    # `success() && x` on both, where success() means the same on both: the pull request's is no narrower when its x
+    # is true.
+    if (not push.status_tainted and not pull.status_tainted and isinstance(on_pull, Unknown)
+            and on_pull.tree[0] == "and" and on_pull.tree[1] == ("call", "success", ())
+            and _kleene(on_pull.tree[2]) is True):
         return Verdict(True, True)
     return Verdict(True, _same_unknown(on_push, on_pull))
 

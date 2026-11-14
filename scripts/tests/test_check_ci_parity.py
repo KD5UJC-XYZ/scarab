@@ -224,6 +224,10 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(found, [f"{WORKFLOW}: job check: its `if` may hold on a push to main where it does not on a "
                                  "pull request"])
 
+    def test_a_condition_true_on_every_pull_request_passes(self):
+        self.assertEqual(problems(workflow(job("check", "if: github.event_name == 'pull_request' || vars.FULL == '1'\n"))),
+                         [], "the pull request runs whenever its needs succeed, the push only when FULL is set")
+
     def test_a_condition_on_who_pushed_is_refused(self):
         found = problems(workflow(job("check", "if: github.actor != 'dependabot[bot]'\n")))
         self.assertEqual(found, [f"{WORKFLOW}: job check: its `if` may hold on a push to main where it does not on a "
@@ -278,8 +282,18 @@ class RuleTests(unittest.TestCase):
     def test_a_job_that_continues_on_error_compares_the_steps_after_one_that_ran_differently(self):
         steps = "- if: github.event_name == 'pull_request'\n  run: exit 1\n- run: make check\n"
         self.assertEqual(problems(workflow(job(steps=steps))), [], "the pull request's run is red at the first step")
-        self.assertEqual(problems(workflow(job(lines="continue-on-error: true\n", steps=steps))), [
-            f"{WORKFLOW}: job check, step 2 (run): its `if` may hold on a push to main where it does not on a pull "
+        for later in ("- run: make check\n", "- if: true\n  run: make check\n",
+                      "- if: always() && job.status == 'success'\n  run: make check\n"):
+            with self.subTest(later):
+                found = problems(workflow(job(lines="continue-on-error: true\n", steps=steps.split("- run")[0] + later)))
+                self.assertEqual(found, [f"{WORKFLOW}: job check, step 2 (run): its `if` may hold on a push to main "
+                                         "where it does not on a pull request"])
+
+    def test_environment_names_keep_their_case(self):
+        lines = "env:\n  FOO: 'yes'\n  foo: 'no'\n"
+        steps = "- if: env[github.event_name == 'push' && 'FOO' || 'foo'] == 'yes'\n  run: make check\n"
+        self.assertEqual(problems(workflow(job(lines=lines, steps=steps))), [
+            f"{WORKFLOW}: job check, step 1 (run): its `if` may hold on a push to main where it does not on a pull "
             "request"])
 
     def test_failure_handlers_can_run_whatever_their_needs(self):
