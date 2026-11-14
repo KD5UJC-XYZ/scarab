@@ -47,6 +47,11 @@ import Wire.*
   * so the codecs sort on writing (by [[NodeOrders]]) and check the sizes on reading.
   */
 trait NodeTypeCodecs extends VocabularyCodecs:
+  /** How this family reads the governance proposals of a Conway state: as the reference reads its
+    * `state` file, or as a native snapshot wrote them.
+    */
+  def proposalsReading: ProposalsReading
+
   // ---- byte strings and numbers the node keeps as `Bytes` and `BigInt`
 
   private val hash28: Codec[Bytes] = Wire.hash(28)
@@ -347,22 +352,26 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     Record.of[PrevIds]((id, id, id, id))
 
   /** `Proposals` (`Proposals.hs:385-388`, `encCBOR (roots, props)`): the lineage roots and the
-    * proposals in order. A state is read as `decSharePlusCBOR` reads it (`Proposals.hs:401-406`):
-    * of the proposals with one id the first is kept (`OMap.|>`, `Data/OMap/Strict.hs:179-188`,
-    * under `decodeListLikeWithCountT`, cardano-ledger-binary 048b78d2,
-    * `Decoding/Decoder.hs:1013-1039`), and the store is rebuilt by `mkProposals`
+    * proposals in order. A reference `state` file is read as `decSharePlusCBOR` reads it
+    * (`Proposals.hs:401-406`): of the proposals with one id the first is kept (`OMap.|>`,
+    * `Data/OMap/Strict.hs:179-188`, under `decodeListLikeWithCountT`, cardano-ledger-binary
+    * 048b78d2, `Decoding/Decoder.hs:1013-1039`), and the store is rebuilt by `mkProposals`
     * ([[Proposals.rebuild]]), which refuses a proposal that attaches to neither its lineage's root
-    * nor an earlier proposal of its lineage.
+    * nor an earlier proposal of its lineage. A native snapshot's store is read as it was written
+    * ([[ProposalsReading.AsWritten]]).
     */
   given proposals(using ProtVer): Codec[Proposals] = new Codec[Proposals]:
     private val stored =
       Record.of[(PrevIds, Vector[GovActionState])]((prevIds, seqOf(govActionState)))
     def decode(n: Node): Decoded[Proposals] =
       stored.decode(n).flatMap { (roots, actions) =>
-        Proposals
-          .rebuild(roots, actions.distinctBy(_.id))
-          .left
-          .map(why => DecodeError.at(n, Kind.Domain(why)))
+        proposalsReading match
+          case ProposalsReading.Reference =>
+            Proposals
+              .rebuild(roots, actions.distinctBy(_.id))
+              .left
+              .map(why => DecodeError.at(n, Kind.Domain(why)))
+          case ProposalsReading.AsWritten => Right(Proposals(actions, roots))
       }
     def encode(p: Proposals, out: Writer): Unit = stored.encode((p.roots, p.actions), out)
     override def check(p: Proposals): Option[ConstraintViolation] =

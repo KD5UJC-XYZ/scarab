@@ -8,11 +8,30 @@ import fs2.io.file.Path
 import java.nio.file.{Files as JFiles, Path as JPath}
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState}
-import xyz.kd5ujc.scarab.ledger.{CheckpointProblem, StorageError, UtxoKeyLayout}
+import xyz.kd5ujc.scarab.consensus.state.{
+  ConsensusMirrorEnv,
+  EraLedgerState,
+  ExtLedgerState,
+  MirrorState
+}
+import xyz.kd5ujc.scarab.ledger.{
+  CheckpointProblem,
+  Credential,
+  GovAction,
+  GovActionId,
+  GovActionState,
+  Proposal,
+  Proposals,
+  ProposalsError,
+  RewardAccount,
+  StorageError,
+  UtxoKeyLayout
+}
+import xyz.kd5ujc.scarab.ledger.state.{ConwayGovState, ConwayNewEpochState, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.models.runtime.DecodeError
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
-import xyz.kd5ujc.scarab.storage.haskell.state.ReferenceLayout
+import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, ReferenceLayout}
 
 import LedgerSnapshots.{Fallback, Unused}
 import StorageTestKit.*
@@ -130,6 +149,82 @@ class SnapshotFallbackSuite extends CatsEffectSuite:
         assertEquals(restored.skipped.map(s => (s.name, s.unused)), Vector(newer -> Unused.Deleted))
         assert(restored.skipped.forall(_.error.isInstanceOf[StorageError.Corrupt[?]]))
         assert(!present)
+    }
+  }
+
+  /** The Conway proposals of a restored or decoded state. */
+  private def proposalsOf(ext: ExtLedgerState): Proposals =
+    ext.ledgerState.state match
+      case EraLedgerState.InShelleyEra(era, ls) =>
+        era match
+          case ShelleyBasedEra.SConway => ConwayNewEpochState.gov.get(ls.nes).proposals
+          case _                       => fail("not a Conway fixture")
+      case _ => fail("not a Shelley-based fixture")
+
+  test("a snapshot holding proposals mkProposals refuses is restored as written, not deleted") {
+    // ADR 0006: a native snapshot is read under the rules it was written under. The reference's
+    // `state` reader rebuilds the proposals with `mkProposals` and keeps the first of a repeated id
+    // (cardano-ledger f649f975, `Conway/Governance/Proposals.hs:338-354,401-406`); a snapshot
+    // written before Scarab's reader of that file did so may hold a proposal under an action that is
+    // not stored, and an id twice, and the restore reads it as written
+    val (_, binding, sidecar, state) = sections
+    val layout = ReferenceLayout.Release11_1
+    val file = layout.decodeNative(state).fold(e => fail(e.render), identity)
+    val ext = file.ext.getOrElse(fail("a Byron fixture"))
+    val orphan = GovActionState(
+      GovActionId(Bytes.wrap(Array.fill(32)(3.toByte)), 0),
+      Map.empty,
+      Map.empty,
+      Map.empty,
+      Proposal(
+        0,
+        RewardAccount(0, Credential.Key(Bytes.wrap(Array.fill(28)(9.toByte)))),
+        GovAction.NoConfidence(Some(GovActionId(Bytes.wrap(Array.fill(32)(7.toByte)), 0)))
+      ),
+      1,
+      7
+    )
+    val store = Proposals(
+      proposalsOf(ext).actions ++ Vector(orphan, orphan.copy(proposedIn = 2)),
+      proposalsOf(ext).roots
+    )
+    val edited = ext.ledgerState.state match
+      case EraLedgerState.InShelleyEra(era, ls) =>
+        era match
+          case ShelleyBasedEra.SConway =>
+            val nes =
+              ConwayNewEpochState.gov.andThen(ConwayGovState.proposals).replace(store)(ls.nes)
+            ext.copy(ledgerState =
+              ext.ledgerState.withState(EraLedgerState.InShelleyEra(era, ls.copy(nes = nes)))
+            )
+          case _ => fail("not a Conway fixture")
+      case _ => fail("not a Shelley-based fixture")
+    val haskell = HaskellLedgerFile
+      .of(edited)
+      .leftMap(_.toString)
+      .flatMap(layout.encode(_).leftMap(_.toString))
+      .fold(fail(_), identity)
+    assertEquals(
+      layout.decode(haskell).left.map(_.deepest.kind),
+      Left(DecodeError.Kind.Domain(ProposalsError.Unattached(orphan.id)))
+    )
+    tempDir.use { dir =>
+      for
+        _ <- write(dir, older, FileLedgerSnapshots.closed(olderContent))
+        _ <- write(
+          dir,
+          newer,
+          FileLedgerSnapshots.closed(
+            SnapshotV10.framed(ReferenceBuild.Release11_1, binding, sidecar, haskell)
+          )
+        )
+        restored <- restore(dir).map(_.fold(e => fail(e.message), identity))
+        present <- IO.blocking(JFiles.exists((dir / newer).toNioPath))
+      yield
+        assertEquals(restored.skipped, Vector.empty)
+        assertEquals(restored.snapshot.map(_._1), Some(newer))
+        assertEquals(restored.snapshot.map(s => proposalsOf(s._2.state.ext)), Some(store))
+        assert(present, s"$newer on disk")
     }
   }
 

@@ -229,7 +229,7 @@ object SnapshotV5:
       provenance: MirrorProvenance
   ): Either[StorageError, MirrorState] =
     for
-      file <- layout.decode(haskell).leftMap(DecodeFailure.native("snapshot", _))
+      file <- layout.decodeNative(haskell).leftMap(DecodeFailure.native("snapshot", _))
       decoded <- file.ext.toRight(corrupt(SnapshotReadError.ByronLedgerInShelley))
       ext <- withUtxo(decoded, utxo)
       _ <- Either.cond(

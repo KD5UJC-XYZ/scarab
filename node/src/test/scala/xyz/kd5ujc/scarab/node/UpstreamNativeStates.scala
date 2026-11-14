@@ -6,7 +6,7 @@ import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Decoded, Node, Writer}
 import xyz.kd5ujc.scarab.protocol.StateLayout
-import xyz.kd5ujc.scarab.storage.haskell.state.{EpochStateCodecs, Record, Wire}
+import xyz.kd5ujc.scarab.storage.haskell.state.{EpochStateCodecs, ProposalsReading, Record, Wire}
 import xyz.kd5ujc.scarab.storage.haskell.state.NodeOrders.given
 import xyz.kd5ujc.scarab.storage.scls.{SclsKey, SclsRecord}
 
@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.storage.scls.{SclsKey, SclsRecord}
 // MemPack keys and Conway MemPack values. Reuse those production codecs without dropping it.
 private[node] object UpstreamNativeStates extends EpochStateCodecs with munit.Assertions:
   def stateLayout: StateLayout = StateLayout.Node11_1
+  def proposalsReading: ProposalsReading = ProposalsReading.Reference
 
   private enum TraceError extends xyz.kd5ujc.scarab.codec.DomainError:
     case MemPack(cause: xyz.kd5ujc.scarab.ledger.mempack.MemPack.Failure)
