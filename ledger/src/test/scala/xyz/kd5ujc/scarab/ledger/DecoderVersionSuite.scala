@@ -193,6 +193,16 @@ class DecoderVersionSuite extends FunSuite:
       )
   }
 
+  test("Mary-family mint maps must be non-empty from version 12") {
+    val raw = hex("a400800180020009a0")
+    for era <- Vector(Era.Mary, Era.Alonzo, Era.Babbage) do
+      assert(TxBody.decode(raw, era, at11).isRight, s"$era at 11 accepts an empty mint map")
+      assertEquals(
+        TxBody.decode(raw, era, at12),
+        Left(LedgerDecodeError.Empty(DecodeField.Mint))
+      )
+  }
+
   test("witness script languages remain tied to the era at explicit versions") {
     val plutusV2 = hex("a1068140")
     assertEquals(
