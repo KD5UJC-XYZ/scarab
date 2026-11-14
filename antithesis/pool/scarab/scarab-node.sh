@@ -21,6 +21,14 @@ if [ ! -e "$keys/kes.skey" ]; then
   mv "$keys/kes.skey.copy" "$keys/kes.skey"
 fi
 mkdir -p /data/db
+# WAIT_FOR, when the compose file sets it (config-start-together), names the host:port pairs that must accept a TCP
+# connection before the node starts: the container starts with the pools, so that its name resolves from their first
+# DNS lookup, and the node still dials them only once they listen (issue 609).
+for target in ${WAIT_FOR:-}; do
+  until (exec 3<> "/dev/tcp/${target%:*}/${target#*:}") 2> /dev/null; do
+    sleep 1
+  done
+done
 # Where the compose file mounts /logs, the node's log also goes to a file there, for the driver's detectors; stdout
 # still carries it.
 if [ -d /logs ]; then
