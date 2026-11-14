@@ -47,9 +47,9 @@ object TxSubmissionServer:
       def known(id: Bytes) = sink.known(id)
       def submit(originals: Vector[Bytes])(using Raise[F, NetworkError]) = sink.submit(originals)
     val rules = new TxSubmission2Runtime.Rules[Bytes]:
-      def acknowledge(unacked: Vector[Bytes], blocking: Boolean, ack: Int, request: Int) =
+      def acknowledge[A](unacked: Vector[A], blocking: Boolean, ack: Int, request: Int) =
         TxSubmissionPolicy.acknowledge(unacked, blocking, ack, request)
-      def bodies(unacked: Vector[Bytes], ids: Vector[Bytes]) =
+      def bodies(unacked: Vector[TxSubmission2Runtime.Advertised[Bytes]], ids: Vector[Bytes]) =
         TxSubmissionPolicy.bodies(unacked, ids)
       def offers(ids: Vector[Bytes], requested: Int) = TxSubmissionPolicy.offers(ids, requested)
     // The configured UInt16 request count is independent of the reply-list batch ceiling.

@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.consensus.{SchedulingStats, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.network.{ConnectionManager, InboundGovernorCounters}
 import xyz.kd5ujc.scarab.network.selection.PeerMetrics
-import xyz.kd5ujc.scarab.node.BlockPool
+import xyz.kd5ujc.scarab.node.{BlockPool, OutboundPeers}
 import xyz.kd5ujc.scarab.node.forge.ForgeStats
 import xyz.kd5ujc.scarab.node.mempool.Mempool
 import xyz.kd5ujc.scarab.storage.ReceivedBlocks
@@ -105,6 +105,19 @@ object Collectors:
       metrics.set(peerMetricsBoard, MetricsBoardLabel.Headers, headers.toDouble) *>
         metrics.set(peerMetricsBoard, MetricsBoardLabel.Blocks, blocks.toDouble)
     }
+
+  /** The bytes of the transactions served over TxSubmission2, summed over the hot sessions of every
+    * peer since the start (the totals of `GET /connections` 's `sessions`).
+    */
+  def txSubmissionServed[F[_]: Monad](sessions: F[Vector[OutboundPeers.SessionTotals]])(using
+      metrics: Metrics[F]
+  ): F[Unit] =
+    sessions.flatMap(totals =>
+      metrics.advance(
+        Catalogue.txSubmissionServedBytes,
+        totals.foldLeft(0L)(_ + _.txBytesServed).toDouble
+      )
+    )
 
   /** The connection table: the three counts the Haskell node's connection manager reports, the
     * connections by state, and the inbound governor's counts of the peers' remote states.

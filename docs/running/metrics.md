@@ -97,6 +97,14 @@ Meanings and units worth knowing before building a dashboard:
   opened; `scarab_snapshot_last_write_seconds` and `_bytes` describe the last snapshot written.
 - `scarab_scheduling_*` and `scarab_cpu_*` are the whole-run measurements of `GET /scheduling` (roadmap D8): a
   timer that fires late means the node's threads were starved.
+- `scarab_txsubmission_served_bytes_total` counts the bytes of the transactions in every `MsgReplyTxs` this
+  node has sent, as the transactions are held (each one's CBOR, without the reply's framing). The same figure
+  per peer is in `GET /connections`: `sessions[].active.txBytesServed` for the running hot session (over the
+  connection `sessions[].active.connection`) and `sessions[].lifetime.txBytesServed` over all of that peer's
+  sessions; the counter is the sum of the latter. The network layer cardano-node 11.1.3 links has no
+  metric for the transaction bytes it serves: the `txSubmission.*` counters of ouroboros-network
+  `c45735a5` (`ouroboros-network/tracing/Ouroboros/Network/Tracing/TxSubmission.hs` 95-111) count what
+  the receiving side requests and receives, so the name is ours.
 - `jvm_gc_collection_seconds_total` is the time the JVM reports for each collector (a counter, in seconds, as
   precise as the JVM's own millisecond count); `jvm_memory_bytes_max{area="nonheap"}` is -1 when the JVM sets no
   limit.
@@ -169,6 +177,7 @@ section and the catalogue differ.
 | `scarab_peer_tip_slot` | gauge |  | Slot of the tip of the peer's chain, as the peer last announced it. | none |
 | `scarab_peer_tip_block` | gauge |  | Block number of the tip of the peer's chain, as the peer last announced it. | none |
 | `scarab_peer_reconnects_total` | counter |  | Times the connection to the peer was lost and opened again. | none |
+| `scarab_txsubmission_served_bytes_total` | counter |  | Bytes of the transactions this node sent to peers in TxSubmission2 replies. | none (see "Meanings") |
 | `scarab_block_no_verdict_total` | counter |  | Blocks the node has no verdict on: its own implementation could not judge them (issue 567). | none |
 | `scarab_block_no_verdict_retries_total` | counter |  | Attempts to judge again a block the node had no verdict on, for a cause that can pass (issue 693). | none |
 | `scarab_follower_stalls_total` | counter |  | Times the follower went the stall-minutes without extending its chain while a peer announced a longer one. | none |
