@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import xyz.kd5ujc.scarab.plutus.PlutusBackend
-import xyz.kd5ujc.scarab.ledger.{ForgeAssemblyProblem, ForgeLedgerProblem, ForgeProtocolProblem}
+import xyz.kd5ujc.scarab.ledger.{ForgeDefect, ForgeLedgerProblem, ForgeProtocolProblem}
 import cats.data.EitherT
 import cats.effect.{Async, Clock, Ref}
 import cats.mtl.{Handle, Raise, Stateful}
@@ -138,6 +138,11 @@ enum ForgeEvent:
 
   /** A slot given up for a reason the reference does not have (see [[ForgeError]]). */
   case Failed(slot: BigInt, error: ForgeError)
+
+  /** The block built in `slot` failed a check that only a bug of ours can fail ([[ForgeDefect]]):
+    * no block, and the transactions it held (`evicted`) left the mempool.
+    */
+  case Defect(slot: BigInt, defect: ForgeDefect, evicted: Vector[Bytes])
 
   /** The forger's counters for an epoch that has just ended (see [[ForgeStats]]). */
   case EpochSummary(epoch: BigInt, stats: ForgeEpochStats)
@@ -377,6 +382,19 @@ final class Forger[F[_]: Async, S](
   private def failed(slot: BigInt, error: ForgeError): F[Unit] =
     stats.failed(geometry.epochOf(slot)) *> events.emit(ForgeEvent.Failed(slot, error))
 
+  /** The block built in `slot` failed a check of ours: the slot ends, its transactions (`ids`)
+    * leave the mempool, valid or not, so that the next leader slot does not build the same block,
+    * as the reference does with a forged block its own rules refuse (`NodeKernel.hs` 757-787), and
+    * the node goes on (owner decision of 2026-11-14, #987).
+    */
+  private def defect[A](slot: BigInt, epoch: BigInt, d: ForgeDefect, ids: Vector[Bytes])(using
+      Handle[F, NodeError]
+  ): Step[A] =
+    EitherT.left(
+      stats.defect(epoch) *> events.emit(ForgeEvent.Defect(slot, d, ids)) *>
+        mempool.removeTxsEvenIfValid(ids.toSet).void.whenA(ids.nonEmpty)
+    )
+
   /** A step of the loop that may end the slot early, as `withEarlyExit` does in the reference: the
     * left side is the slot given up, after its trace.
     */
@@ -467,6 +485,7 @@ final class Forger[F[_]: Async, S](
       )
       block <- perform(assemble(context, slot, ticked, cert, vrf, chosen.map(_._2)))
         .flatMap(_.fold(disabled)(proceed))
+        .flatMap(_.fold(d => defect(slot, epoch, d, chosen.map(_._1.id)), proceed))
       _ <- say(
         ForgeTrace.ForgedBlock(
           slot,
@@ -610,10 +629,11 @@ final class Forger[F[_]: Async, S](
     yield chosen
 
   /** Build and sign the block (`forgeBlock`). The checks here are Scarab's own and never refuse a
-    * block the steps before let through: the key's window, the body size and the decoding of the
-    * block just built. None: forging was disabled meanwhile, or a reload installed another VRF key
-    * than `vrf`, which proved `cert`; nothing was signed, as the reference's forging thread ends
-    * when its block forging is replaced.
+    * block the steps before let through: the key's window, and the body size and the decoding of
+    * the block just built, which only a bug of ours can fail ([[ForgeDefect]]; the body is checked
+    * before the key evolves or signs). None: forging was disabled meanwhile, or a reload installed
+    * another VRF key than `vrf`, which proved `cert`; nothing was signed, as the reference's
+    * forging thread ends when its block forging is replaced.
     */
   private def assemble(
       context: Forger.Context[S],
@@ -622,38 +642,31 @@ final class Forger[F[_]: Async, S](
       cert: VrfCert,
       vrf: Draft03Prover.SigningKey,
       pieces: Vector[BlockBuilder.Piece]
-  )(using Handle[F, NodeError], Raise[F, Fatal]): F[Option[Forger.Built]] =
+  )(using Handle[F, NodeError], Raise[F, Fatal]): F[Option[Either[ForgeDefect, Forger.Built]]] =
     val body = BlockBuilder.body(pieces)
     val kesPeriod = kesPeriodOf(slot)
     def signedWith(c: PoolCredentials)(using
         Raise[F, Fatal]
     ): F[Option[Either[ForgeError, (Bytes, Bytes, Int, BigInt)]]] =
       val start = c.opCert.kesPeriod
-      val header = for
-        _ <- Either.cond(
-          start <= kesPeriod && kesPeriod < start + config.maxKesEvolutions,
-          (),
-          ForgeError.KeyPeriodOutOfRange(kesPeriod, start, config.maxKesEvolutions)
-        )
-        _ <- Either.cond(
-          body.size <= ticked.params.maxBlockBodySize,
-          (),
-          ForgeError.Assembly(
-            ForgeAssemblyProblem.BodySize(body.size, ticked.params.maxBlockBodySize)
+      val header =
+        for _ <- Either.cond(
+            start <= kesPeriod && kesPeriod < start + config.maxKesEvolutions,
+            (),
+            ForgeError.KeyPeriodOutOfRange(kesPeriod, start, config.maxKesEvolutions)
           )
+        yield BlockBuilder.headerBody(
+          context.blockNo,
+          slot,
+          context.base.tipRef.map(_.hash),
+          c.coldVkey,
+          c.vrf.publicKey,
+          cert,
+          body.size,
+          body.hash,
+          c.opCert,
+          protocolVersion
         )
-      yield BlockBuilder.headerBody(
-        context.blockNo,
-        slot,
-        context.base.tipRef.map(_.hash),
-        c.coldVkey,
-        c.vrf.publicKey,
-        cert,
-        body.size,
-        body.hash,
-        c.opCert,
-        protocolVersion
-      )
       (header match
         case Left(e)           => F.pure(Left(e))
         case Right(headerBody) =>
@@ -672,20 +685,21 @@ final class Forger[F[_]: Async, S](
         if c.vrf.publicKey != vrf.publicKey then F.pure(None) else signedWith(c)
       }
       .map(_.flatten)
-    assembled.flatMap(
-      _.traverse(signed =>
-        lift(signed).flatMap { (headerBody, signature, relative, counter) =>
-          val raw = BlockBuilder.block(headerBody, signature, body)
-          lift(
+    if body.size > ticked.params.maxBlockBodySize then
+      F.pure(Some(Left(ForgeDefect.BodySize(body.size, ticked.params.maxBlockBodySize))))
+    else
+      assembled.flatMap(
+        _.traverse(signed =>
+          lift(signed).map { (headerBody, signature, relative, counter) =>
+            val raw = BlockBuilder.block(headerBody, signature, body)
             Block
               .decode(raw, geometry.byron.epochSlots)
               .left
-              .map(e => ForgeError.Assembly(ForgeAssemblyProblem.BlockDecode(e)))
+              .map(ForgeDefect.BlockDecode(_))
               .map(decoded => Forger.Built(decoded.header, raw, body, relative, counter))
-          )
-        }
+          }
+        )
       )
-    )
 
   /** The Conway ledger state at `slot` from the state at the tip: the combinator's tick
     * ([[Hfc.tick]]: the translation into the slot's era, then the slot's own work), as the block

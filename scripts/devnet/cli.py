@@ -257,6 +257,14 @@ def main():
     ld.add_argument("--fresh-wallets-only", action="store_true", help="skip the genesis utxo-keys wallets")
     ld.add_argument("--stats-every", type=int, default=20, help="print the running totals every N transactions")
     ld.add_argument("--socket", help="node socket (inside the reference container) to build and submit through")
+    ld.add_argument("--mode", choices=["sequential", "parallel"], default="sequential",
+                    help="sequential: one transaction at a time, each wallet waiting for its last to be confirmed; "
+                         "parallel: bursts of independent transfers submitted at once")
+    ld.add_argument("--burst-size", type=int, default=30, help="parallel: transactions per burst")
+    ld.add_argument("--bursts", type=int, help="parallel: number of bursts (default: until --seconds or killed)")
+    ld.add_argument("--burst-amount", type=int, default=5, help="parallel: ADA each burst transaction moves")
+    ld.add_argument("--burst-parallelism", type=int, default=8,
+                    help="parallel: submissions in flight at once (the node's local socket refuses many more)")
     ld.set_defaults(run=load)
     gl = sub.add_parser("govload", help="Conway governance and Plutus scenarios on a Conway-only cluster")
     gl.add_argument("--seconds", type=int, help="stop after this long (default: until killed)")

@@ -1109,6 +1109,87 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
     )
   }
 
+  test("body encoding: each part is definite up to 23 entries and indefinite above (#987)") {
+    // every piece has auxiliary data and is invalid, so the four parts have one entry per piece;
+    // each part's entries are an empty map, which is enough for the containers around them
+    val emptyMap = Bytes(Vector(0xa0.toByte))
+    def pieces(n: Int) = Vector.tabulate(n)(i =>
+      BlockBuilder.Piece(Bytes(Vector(i.toByte)), emptyMap, emptyMap, Some(emptyMap), false)
+    )
+    def first(part: Bytes): Int = part.value.head & 0xff
+    def last(part: Bytes): Int = part.value.last & 0xff
+    List(0, 1, 23).foreach { n =>
+      val body = BlockBuilder.body(pieces(n))
+      assertEquals(first(body.bodies), 0x80 | n, s"$n bodies")
+      assertEquals(first(body.witnesses), 0x80 | n, s"$n witnesses")
+      assertEquals(first(body.aux), 0xa0 | n, s"$n auxiliary data")
+      assertEquals(first(body.invalid), 0x80 | n, s"$n invalid indices")
+      assertEquals(BlockBuilder.bodySize(pieces(n)), body.size, s"$n size")
+    }
+    List(24, 300).foreach { n =>
+      val body = BlockBuilder.body(pieces(n))
+      List(body.bodies, body.witnesses, body.invalid).foreach { part =>
+        assertEquals((first(part), last(part)), (0x9f, 0xff), s"$n list")
+      }
+      assertEquals((first(body.aux), last(body.aux)), (0xbf, 0xff), s"$n map")
+      assertEquals(BlockBuilder.bodySize(pieces(n)), body.size, s"$n size")
+    }
+  }
+
+  test(
+    "body encoding: the body of a reference block with 24 transactions is rebuilt byte for byte (#987)"
+  ) {
+    // forged by cardano-node 11.1.3 on a devnet (fixtures/devnet/README.md): its bodies and witness
+    // sets are indefinite lists, its empty auxiliary data and invalid indices definite
+    val raw = Bytes
+      .fromHex(
+        java.nio.file.Files
+          .readString(java.nio.file.Path.of("fixtures/devnet/burst-24-txs-block.hex"))
+          .trim
+      )
+      .toOption
+      .get
+    val reference = Block.decodeShelley(raw).toOption.get.asInstanceOf[Block.Shelley]
+    assertEquals(reference.transactions.size, 24)
+    val pieces = reference.transactions.map(t =>
+      BlockBuilder.Piece(t.id, t.body, t.witnesses, t.auxiliaryData, t.isValid)
+    )
+    val body = BlockBuilder.body(pieces)
+    assertEquals(body.size, reference.bodySize)
+    assertEquals(BlockBuilder.bodySize(pieces), reference.bodySize)
+    assertEquals(body.hash, reference.bodyHash)
+    assertEquals(body.hash, reference.header.bodyHash)
+    assertEquals((body.bodies.value.head & 0xff, body.witnesses.value.head & 0xff), (0x9f, 0x9f))
+  }
+
+  test(
+    "body encoding: a block of 24 transactions decodes back with the body it commits to (#987)"
+  ) {
+    def entry(raw: Bytes) = MempoolStateFixture.entry(raw)
+    val pieces =
+      Vector.tabulate(24)(i => BlockBuilder.piece(entry(TxKit.pay(i + 1)._1)).toOption.get)
+    val body = BlockBuilder.body(pieces)
+    assertEquals(BlockBuilder.bodySize(pieces), body.size)
+    val p = pool(50)
+    val hb = BlockBuilder.headerBody(
+      7,
+      123456,
+      Some(Blake2b.hash256.hash(Bytes(Vector(1)))),
+      p.creds.coldVkey,
+      p.creds.vrf.publicKey,
+      VrfCert(Bytes.fromArray(new Array[Byte](64)), Bytes.fromArray(new Array[Byte](80))),
+      body.size,
+      body.hash,
+      p.creds.opCert,
+      (10, 3)
+    )
+    val raw = BlockBuilder.block(hb, Bytes.fromArray(new Array[Byte](448)), body)
+    val decoded = Block.decodeShelley(raw).toOption.get.asInstanceOf[Block.Shelley]
+    assertEquals(decoded.bodySize, body.size)
+    assertEquals(decoded.bodyHash, body.hash)
+    assertEquals(decoded.transactions.map(_.id), body.ids)
+  }
+
   test("body encoding: the computed size equals the encoded size and the block decodes back") {
     val (t1, _) = TxKit.pay(1)
     val (t2, _) = TxKit.pay(2)

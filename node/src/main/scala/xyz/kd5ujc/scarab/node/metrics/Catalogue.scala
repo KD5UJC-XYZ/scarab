@@ -334,6 +334,10 @@ object Catalogue:
     MetricName("scarab_forge_failed_total"),
     "Slots given up for a reason of Scarab's own, which the reference does not have (forgeFailed)."
   )
+  val forgeDefects = CounterDef(
+    MetricName("scarab_forge_defects_total"),
+    "Blocks built that failed a check only a bug of ours can fail; the slot ended without a block (forgeDefect)."
+  )
   val forgeAdoptionSeconds = HistogramDef(
     MetricName("scarab_forge_adoption_seconds"),
     "Time from the start of the slot to the adoption of the block forged in it.",
@@ -1088,6 +1092,7 @@ object Catalogue:
     forgeSkipped,
     forgeReplaced,
     forgeFailed,
+    forgeDefects,
     forgeAdoptionSeconds,
     inboundConns,
     outboundConns,

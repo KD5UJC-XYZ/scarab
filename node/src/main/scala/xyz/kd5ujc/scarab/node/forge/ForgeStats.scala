@@ -38,6 +38,8 @@ import scala.collection.immutable.SortedMap
   *   Adopted blocks that another block at their height replaced later (Scarab only).
   * @param failed
   *   Slots given up for a reason the reference does not have (`forgeFailed`, Scarab only).
+  * @param defects
+  *   Blocks built that failed a check only a bug of ours can fail (`forgeDefect`, Scarab only).
   */
 final case class ForgeEpochStats(
     slotsChecked: Long = 0,
@@ -54,6 +56,7 @@ final case class ForgeEpochStats(
     forgedInvalid: Long = 0,
     replaced: Long = 0,
     failed: Long = 0,
+    defects: Long = 0,
     latencyCount: Long = 0,
     latencyTotalMs: Long = 0,
     latencyMaxMs: Long = 0
@@ -103,6 +106,7 @@ final case class ForgeEpochStats(
       forgedInvalid + o.forgedInvalid,
       replaced + o.replaced,
       failed + o.failed,
+      defects + o.defects,
       latencyCount + o.latencyCount,
       latencyTotalMs + o.latencyTotalMs,
       latencyMaxMs.max(o.latencyMaxMs)
@@ -164,6 +168,7 @@ final class ForgeStats[F[_]: Sync] private (ref: Ref[F, ForgeStats.State]):
     }
 
   def failed(epoch: BigInt): F[Unit] = update(epoch)(s => s.copy(failed = s.failed + 1))
+  def defect(epoch: BigInt): F[Unit] = update(epoch)(s => s.copy(defects = s.defects + 1))
   def replaced(epoch: BigInt): F[Unit] = update(epoch)(s => s.copy(replaced = s.replaced + 1))
 
   /** An adopted block became our tip `latencyMs` after the start of its slot. */

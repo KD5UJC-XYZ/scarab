@@ -31,3 +31,22 @@ the same shape instead.
 
 The genesis directory of a devnet and the reference node's answers to the LocalStateQuery queries
 that do not depend on activity, replayed by `QueryGoldenSuite`; see [lsq/README.md](lsq/README.md).
+
+## A block with more than 23 transactions
+
+`burst-24-txs-block.hex` is one Conway block, in hex, that the Haskell `cardano-node` 11.1.3 reference cluster
+forged on 2026-11-14 during `devnet.py load --mode parallel --burst-size 80`. It holds 24 transactions, so its
+transaction bodies and witness sets are written as indefinite-length lists (`0x9f`), while its empty auxiliary
+data map and invalid-index list stay definite (#987). The block is 5674 bytes, SHA-256
+`113c27f92600771cc998fbcfd717eb922364a293ffdd396bdea907cad3811452`; it was copied from node 1's volatile DB.
+`ForgeSuite` rebuilds its body from its own transactions with `BlockBuilder` and checks the size and the body
+hash against the block.
+
+Regenerate (the block, its transaction count and its bytes differ from run to run):
+
+```sh
+python3 scripts/devnet.py --name scarab-devnet up
+python3 scripts/devnet.py --name scarab-devnet load --mode parallel --burst-size 80 --bursts 2
+# copy node1's db/volatile/blocks-*.dat out of the reference container and pick a block with 24 or more transactions
+python3 scripts/devnet.py --name scarab-devnet down
+```

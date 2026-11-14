@@ -47,7 +47,18 @@ enum ForgeAssemblyProblem:
 
   /** A held transaction whose parts are not read again ([[Tx.envelopeParts]]). */
   case Envelope(id: Bytes, cause: LedgerDecodeError)
+
+/** A check of the block just built that only a bug of ours can fail. The slot ends without a block,
+  * the block's transactions leave the mempool, and the node goes on (owner decision of 2026-11-14,
+  * #987). The released reference has no such check: its selection bounds the body, and a block its
+  * own rules refuse is traced and its transactions evicted (`TraceForgedInvalidBlock`,
+  * ouroboros-consensus 82ecba329 `NodeKernel.hs` 757-787).
+  */
+enum ForgeDefect:
+  /** The body is larger than the maximum, though the transaction selection bounds it. */
   case BodySize(actual: Long, maximum: BigInt)
+
+  /** The block just built does not decode. */
   case BlockDecode(cause: ChainError)
 
 enum ForgeLedgerProblem:

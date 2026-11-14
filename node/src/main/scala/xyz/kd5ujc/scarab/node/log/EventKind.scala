@@ -225,6 +225,7 @@ enum EventKind(val area: Area, val severity: Severity):
   case KesWrittenByRename extends EventKind(Area.Forge, Severity.Warning)
   case KeyFileGroupAccess extends EventKind(Area.Forge, Severity.Warning)
   case ForgeFailed extends EventKind(Area.Forge, Severity.Error)
+  case ForgeDefect extends EventKind(Area.Forge, Severity.Critical)
   case ForgeEpoch extends EventKind(Area.Forge, Severity.Notice)
 
   // the chain database
