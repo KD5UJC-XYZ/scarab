@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import java.time.Instant
 import java.util.concurrent.{ExecutorService, Executors}
+import scala.jdk.CollectionConverters.*
 import scala.concurrent.ExecutionContext
 import xyz.kd5ujc.scarab.plutus.{PlutusLanguage, PlutusVm}
 import xyz.kd5ujc.scarab.uplc.cost.ExBudget
@@ -48,6 +49,13 @@ object NdcReport:
       case Vector(major, minor) => (major.toIntOption, minor.toIntOption).mapN((m, _) => m)
       case Vector(major)        => major.toIntOption
       case _                    => None
+
+  /** The entries of `dir` that `keep` keeps, read before the listing is closed. */
+  def entries(dir: Path)(keep: Path => Boolean): IO[Either[Throwable, Vector[Path]]] =
+    Resource
+      .fromAutoCloseable(IO.blocking(Files.list(dir)))
+      .use(listing => IO.blocking(listing.iterator.asScala.filter(keep).toVector))
+      .attempt
 
   def write(path: Path, report: Json): IO[Unit] =
     IO.blocking(Files.writeString(path, report.spaces2 + "\n", StandardCharsets.UTF_8)).void

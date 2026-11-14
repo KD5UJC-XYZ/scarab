@@ -48,7 +48,7 @@ class UplcConformanceMainSuite extends FunSuite:
     val context = backend
       .context(language, protocol, costs(language, protocol))
       .fold(e => fail(e.message), identity)
-    val (version, run) = evaluate(backend)(context, input)
+    val (_, version, run) = evaluate(backend)(context, input)
     item(scenario("x", language, protocol), version, run)
 
   private def evaluation(json: Json): Option[String] =
@@ -123,9 +123,30 @@ class UplcConformanceMainSuite extends FunSuite:
       assertEquals(budget(json), Some(Json.Null))
     }
 
-    test(s"${vm.name}: text the reference's parser refuses is a parse/decode error") {
+    test(s"${vm.name}: text the test-tree parser refuses gets no verdict, never a README outcome") {
+      val json = observed(vm, V3, 11, Input.Text("(program 1.0.0 (con integer))"))
+      assertEquals(evaluation(json), Some("no verdict"))
+      assert(json.hcursor.get[String]("error").toOption.exists(_.contains("text parser")))
+    }
+
+    test(s"${vm.name}: text the parser reads is admitted in Flat by the backend's decoder") {
+      // 1.1.0 is not V1's at protocol 10: the production check refuses what the parser read
+      val text = Input.Text("(program 1.1.0 (con unit ()))")
       assertEquals(
-        evaluation(observed(vm, V3, 11, Input.Text("(program 1.0.0 (con integer))"))),
+        evaluation(observed(vm, PlutusLanguage.V1, 10, text)),
+        Some("parse/decode error")
+      )
+      val backend = UplcBackend.of(vm)
+      val context = backend
+        .context(V3, 11, costs(V3, 11))
+        .fold(e => fail(e.message), identity)
+      assertEquals(evaluate(backend)(context, text)._1, Route.Encoded)
+    }
+
+    test(s"${vm.name}: the program's version is checked before its scope, as in production") {
+      val both = Input.Script(program((1, 1, 0), free))
+      assertEquals(
+        evaluation(observed(vm, PlutusLanguage.V1, 10, both)),
         Some("parse/decode error")
       )
     }
@@ -135,6 +156,9 @@ class UplcConformanceMainSuite extends FunSuite:
         "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb"
       val text = s"(program 1.0.0 (con bls12_381_G1_element $g1))"
       assertEquals(evaluation(observed(vm, V3, 11, Input.Text(text))), Some(text))
+      val backend = UplcBackend.of(vm)
+      val context = backend.context(V3, 11, costs(V3, 11)).fold(e => fail(e.message), identity)
+      assertEquals(evaluate(backend)(context, Input.Text(text))._1, Route.Unencodable)
     }
   }
 

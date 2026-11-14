@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus.ndc
 
+import cats.data.EitherT
 import cats.effect.{ExitCode, IO, IOApp}
 import cats.syntax.all.*
 import io.circe.{Decoder, Json, parser}
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
-import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
 import xyz.kd5ujc.scarab.plutus.{PlutusLanguage, PlutusVm}
 import xyz.kd5ujc.scarab.uplc.{Program, ProgramVersion}
 import xyz.kd5ujc.scarab.uplc.cost.ExBudget
-import xyz.kd5ujc.scarab.uplc.text.{ProgramError, UplcParser, UplcPrinter}
+import xyz.kd5ujc.scarab.uplc.oracle.ScriptWriter
+import xyz.kd5ujc.scarab.uplc.text.{UplcParser, UplcPrinter}
 
 /** The `uplc-conformance` scenario of pragma-org's node-diversity-conformance site: every vector of
   * its corpus evaluated by one of the node's Plutus evaluators, written as the scenario's report
@@ -31,9 +32,10 @@ import xyz.kd5ujc.scarab.uplc.text.{ProgramError, UplcParser, UplcPrinter}
   *
   * A vector with a `.flat` file (the hex of a Flat program) is admitted as the ledger admits a
   * script: the program in a CBOR byte string through the backend's `deserialiseScript`. One with
-  * only a `.uplc` file is read by the `uplc` module's text parser (the reference's grammar), for
-  * either backend; a free variable is then refused as the ledger's scope check refuses it, a
-  * failure of the evaluation. Then the program's version and scope are checked as
+  * only a `.uplc` file is read by the `uplc` module's text parser (test code: a program it refuses
+  * gets no verdict) and written in Flat, then admitted the same way; one whose constants Flat
+  * cannot write (BLS12-381) goes to the checks of `mkTermToEvaluate` without a Flat admission,
+  * which no ledger could give it. Then the program's version and scope are checked as
   * `mkTermToEvaluate` checks them, and the machine of the protocol runs within 10,000,000,000 CPU
   * and 14,000,000 memory units, restricting, as the README sets. The result is written in the
   * textual syntax with the names the reference gives a de Bruijn term
@@ -124,62 +126,97 @@ object UplcConformanceMain extends IOApp:
     val path = corpus.resolve(s"cost-models/protocol-version-$protocol/v${language.id + 1}.json")
     json(path).flatMap(_.as[Vector[Long]].leftMap(e => CorpusError.Malformed(path, e.message)))
 
+  /** The names of the directories in `dir`, the listing closed once read. */
+  def directories(dir: Path): IO[Either[CorpusError, Vector[String]]] =
+    NdcReport
+      .entries(dir)(Files.isDirectory(_))
+      .map(_.bimap(CorpusError.Unreadable(dir, _), _.map(_.getFileName.toString)))
+
   /** The vector of a scenario: its directory found by the scenario's id, its `.flat` if it has one,
     * else its `.uplc`.
     */
-  def locate(corpus: Path, scenario: Scenario): Either[CorpusError, Located] =
-    for
-      language <- NdcReport
-        .language(scenario.plutusVersion)
-        .toRight(CorpusError.UnknownLanguage(scenario.id, scenario.plutusVersion))
-      protocol <- NdcReport
-        .protocol(scenario.protocolVersion)
-        .toRight(CorpusError.UnknownProtocol(scenario.id, scenario.protocolVersion))
+  def locate(corpus: Path, scenario: Scenario): IO[Either[CorpusError, Located]] =
+    (for
+      language <- EitherT.fromEither[IO](
+        NdcReport
+          .language(scenario.plutusVersion)
+          .toRight(CorpusError.UnknownLanguage(scenario.id, scenario.plutusVersion))
+      )
+      protocol <- EitherT.fromEither[IO](
+        NdcReport
+          .protocol(scenario.protocolVersion)
+          .toRight(CorpusError.UnknownProtocol(scenario.id, scenario.protocolVersion))
+      )
       directory = corpus.resolve(
         s"protocol-version-$protocol/v${language.id + 1}/${scenario.group}"
       )
-      names <- Either
-        .catchNonFatal(Files.list(directory).iterator.asScala.toVector)
-        .leftMap(CorpusError.Unreadable(directory, _))
-        .map(_.filter(Files.isDirectory(_)).map(_.getFileName.toString))
-      matching = names.filter(scenarioId(scenario.group, _, language) == scenario.id).sorted
-      name <- matching match
-        case Vector(one) => Right(one)
-        case Vector()    => Left(CorpusError.NoVector(scenario.id, directory))
-        case several     => Left(CorpusError.Ambiguous(scenario.id, several))
-      flat = directory.resolve(s"$name/$name.flat")
-      input <-
-        if Files.exists(flat) then
-          read(flat).flatMap(hex =>
-            Bytes
-              .fromHex(hex.trim)
-              .leftMap(e => CorpusError.Malformed(flat, e.toString))
-              .flatMap(script =>
-                Cbor
-                  .encode(CborValue.ByteString(script))
-                  .leftMap(e => CorpusError.Malformed(flat, e.toString))
-              )
-              .map(Input.Script(_))
-          )
-        else read(directory.resolve(s"$name/$name.uplc")).map(Input.Text(_))
-    yield Located(scenario, language, protocol, input)
+      names <- EitherT(directories(directory))
+      name <- EitherT.fromEither[IO](
+        names.filter(scenarioId(scenario.group, _, language) == scenario.id).sorted match
+          case Vector(one) => Right(one)
+          case Vector()    => Left(CorpusError.NoVector(scenario.id, directory))
+          case several     => Left(CorpusError.Ambiguous(scenario.id, several))
+      )
+      input <- EitherT(IO.blocking(input(directory.resolve(name), name)))
+    yield Located(scenario, language, protocol, input)).value
 
-  /** One vector on `backend` in `context`: the version of its program once it is read, and the run
-    * or why it did not get to one.
+  /** The program of a vector's directory: its `.flat` in the CBOR byte string the ledger holds, or
+    * the text of its `.uplc`.
+    */
+  private def input(dir: Path, name: String): Either[CorpusError, Input] =
+    val flat = dir.resolve(s"$name.flat")
+    if Files.exists(flat) then
+      read(flat).flatMap(hex =>
+        Bytes
+          .fromHex(hex.trim)
+          .leftMap(e => CorpusError.Malformed(flat, e.toString))
+          .flatMap(script =>
+            Cbor
+              .encode(CborValue.ByteString(script))
+              .leftMap(e => CorpusError.Malformed(flat, e.toString))
+          )
+          .map(Input.Script(_))
+      )
+    else read(dir.resolve(s"$name.uplc")).map(Input.Text(_))
+
+  /** How a vector reached its backend. */
+  enum Route:
+    /** Its `.flat`, through the backend's `deserialiseScript`. */
+    case Flat
+
+    /** Its `.uplc` read by the text parser and written in Flat, then as [[Flat]]. */
+    case Encoded
+
+    /** Its `.uplc` read by the text parser, with a constant Flat cannot write (BLS12-381): the
+      * checks of `mkTermToEvaluate` and the machine only ([[UplcBackend.text]]).
+      */
+    case Unencodable
+
+    /** Its `.uplc`, which the text parser refused: no verdict. */
+    case Refused
+
+  /** One vector on `backend` in `context`: how it reached the backend, the version of its program
+    * once it is read, and the run or why it did not get to one. The text parser is test code: a
+    * program it refuses gets no verdict, and one it reads goes to the backend as a script in Flat
+    * ([[ScriptWriter]]) where Flat can write it.
     */
   def evaluate(backend: UplcBackend)(
       context: backend.Context,
       input: Input
-  ): (Option[ProgramVersion], Run) =
-    val prepared = input match
-      case Input.Script(bytes) => backend.script(context, bytes)
+  ): (Route, Option[ProgramVersion], Run) =
+    val (route, prepared) = input match
+      case Input.Script(bytes) => (Route.Flat, backend.script(context, bytes))
       case Input.Text(text) =>
         UplcParser.program(text) match
-          case Left(ProgramError.Unparsable(e)) => Left(Run.Failed(Verdict.ParseDecode, e.toString))
-          case Left(ProgramError.Open(free)) =>
-            Left(Run.Failed(Verdict.EvaluationFailure, free.toString))
-          case Right(program) => backend.text(context, program)
-    prepared.fold(run => (None, run), p => (Some(p.version), p.evaluate(Limit)))
+          case Left(error) => (Route.Refused, Left(Run.NoVerdict(Unanswered.TextRefused(error))))
+          case Right(program) =>
+            Either
+              .catchNonFatal(ScriptWriter.script(program))
+              .fold(
+                _ => (Route.Unencodable, backend.text(context, program)),
+                bytes => (Route.Encoded, backend.script(context, bytes))
+              )
+    prepared.fold(run => (route, None, run), p => (route, Some(p.version), p.evaluate(Limit)))
 
   /** The report's item of a scenario. */
   def item(scenario: Scenario, version: Option[ProgramVersion], run: Run): Json =
@@ -215,7 +252,7 @@ object UplcConformanceMain extends IOApp:
       corpus: Path,
       backend: UplcBackend,
       vectors: Vector[Located]
-  ): Either[CorpusError, Vector[Json]] =
+  ): Either[CorpusError, Vector[(Route, Json)]] =
     vectors.zipWithIndex
       .groupBy((v, _) => (v.language, v.protocol))
       .toVector
@@ -223,9 +260,11 @@ object UplcConformanceMain extends IOApp:
         costModel(corpus, language, protocol).map { model =>
           val context = backend.context(language, protocol, model)
           group.map { (v, index) =>
-            val (version, run) =
-              context.fold(cause => (None, Run.NoVerdict(cause)), evaluate(backend)(_, v.input))
-            index -> item(v.scenario, version, run)
+            val (route, version, run) = context.fold(
+              cause => (Route.Flat, None, Run.NoVerdict(cause)),
+              evaluate(backend)(_, v.input)
+            )
+            index -> (route, item(v.scenario, version, run))
           }
         }
       }
@@ -246,13 +285,18 @@ object UplcConformanceMain extends IOApp:
     val backend = UplcBackend.of(vm)
     NdcReport.bigStack.use { stack =>
       for
-        read <- IO.blocking(scenarios(expectations).flatMap(_.traverse(locate(corpus, _)))).timed
+        read <- IO
+          .blocking(scenarios(expectations))
+          .flatMap(_.flatTraverse(_.traverse(locate(corpus, _)).map(_.sequence)))
+          .timed
         (readTime, vectors) = read
         ran <- IO(vectors.traverse(runAll(corpus, backend, _))).evalOn(stack).timed
         (runTime, items) = ran
         code <- items.flatten match
           case Left(error) => IO.println(error.message).as(ExitCode(1))
-          case Right(results) =>
+          case Right(routed) =>
+            val results = routed.map(_._2)
+            val routes = routed.groupBy(_._1).view.mapValues(_.size).toMap
             for
               generated <- NdcReport.now
               report = Json.fromFields(
@@ -271,7 +315,7 @@ object UplcConformanceMain extends IOApp:
                 .mapValues(_.size)
                 .toMap
               _ <- IO.println(
-                s"${vm.name}: ${results.size} scenarios $counts; read ${readTime.toMillis} ms, " +
+                s"${vm.name}: ${results.size} scenarios $counts; routes $routes; read ${readTime.toMillis} ms, " +
                   s"run ${runTime.toMillis} ms, write ${written._1.toMillis} ms"
               )
             yield ExitCode.Success

@@ -22,6 +22,7 @@ import xyz.kd5ujc.scarab.plutus.{
 import xyz.kd5ujc.scarab.uplc.{Program, ProgramVersion, ProtocolMajor, Term}
 import xyz.kd5ujc.scarab.uplc.cek.{BudgetMode, CekError, CekResult, MachineParameters}
 import xyz.kd5ujc.scarab.uplc.cost.ExBudget
+import xyz.kd5ujc.scarab.uplc.text.ProgramError
 import xyz.kd5ujc.scarab.uplc.ledger.{
   EvaluationError,
   LedgerContext,
@@ -73,6 +74,10 @@ enum Unanswered:
   /** The Scalus machine threw what is not the reference's failure. */
   case Thrown(error: Throwable)
 
+  /** The `uplc` module's text parser, test code, refused the program: no production code judged it.
+    */
+  case TextRefused(error: ProgramError)
+
   /** The native library through which Scalus evaluates the BLS12-381, secp256k1 and Ed25519
     * builtins did not load ([[NativeCrypto]]). `ScalusEvaluator` reports such a builtin as no
     * verdict through its own log; a machine run outside it would read the refusal as the script's
@@ -88,6 +93,7 @@ enum Unanswered:
     case Conversion(error)    => error.message
     case Thrown(error)        => error.toString
     case NativeCryptoMissing  => "the native crypto library did not load"
+    case TextRefused(error)   => s"the test-tree text parser refused it: $error"
 
 /** A program decoded, admitted and closed for its language and protocol, with the machine of its
   * evaluation context: what remains is the pure CEK evaluation.
@@ -117,8 +123,9 @@ trait UplcBackend:
     */
   def script(context: Context, script: Bytes): Either[Run, Prepared]
 
-  /** A program read from text by the shared text front end, checked as `mkTermToEvaluate` checks
-    * it. The ledger never reads text, so no Flat admission applies.
+  /** A program read from text by the shared text front end that has no Flat encoding (a BLS12-381
+    * constant), so that no ledger could hold it: checked as `mkTermToEvaluate` checks it, in the
+    * backend's order, with no Flat admission.
     */
   def text(context: Context, program: Program): Either[Run, Prepared]
 
@@ -249,34 +256,36 @@ object ScalusBackend extends UplcBackend:
             FlatScan.decode(flat).leftMap(f => Run.NoVerdict(Unanswered.Undecodable(f)))
           )
           .flatMap { decoded =>
-            decoded.scan.openVariable match
-              case Some(index) =>
-                Left(Run.Failed(Verdict.EvaluationFailure, s"free variable $index"))
-              case None => prepared(context, decoded.program.version, decoded.program.term)
+            val open = decoded.scan.openVariable.map(index => s"free variable $index")
+            prepared(context, decoded.program.version, open, decoded.program.term)
           }
 
   def text(context: Context, program: Program): Either[Run, Prepared] =
     // the text front end is the `uplc` module's, so is the scope check of its program
-    Scope.check(program.term) match
-      case Left(error) => Left(Run.Failed(Verdict.EvaluationFailure, error.toString))
-      case Right(()) =>
-        for
-          version <- ScalusTerms.version(program.version).leftMap(unconverted)
-          term <- ScalusTerms.toScalus(program.term).leftMap(unconverted)
-          prepared <- prepared(context, version, term)
-        yield prepared
+    val open = Scope.check(program.term).left.toOption.map(_.toString)
+    for
+      version <- ScalusTerms.version(program.version).leftMap(unconverted)
+      term <- ScalusTerms.toScalus(program.term).leftMap(unconverted)
+      prepared <- prepared(context, version, open, term)
+    yield prepared
 
   private def unconverted(error: ConversionError): Run =
     Run.NoVerdict(Unanswered.Conversion(error))
 
+  /** The checks `ScalusEvaluator` makes before its machine, in its order: the program's version
+    * (`admitted`), then the open variable the scope check found, then the machine of the program's
+    * caser.
+    */
   private def prepared(
       context: Context,
       version: (Int, Int, Int),
+      open: Option[String],
       term: STerm
   ): Either[Run, Prepared] =
-    PlutusAvailability.versionFailure(context.language, context.protocol, version) match
-      case Some(failure) => Left(Run.Failed(Verdict.ParseDecode, failure.message))
-      case None =>
+    (PlutusAvailability.versionFailure(context.language, context.protocol, version), open) match
+      case (Some(failure), _) => Left(Run.Failed(Verdict.ParseDecode, failure.message))
+      case (None, Some(free)) => Left(Run.Failed(Verdict.EvaluationFailure, free))
+      case (None, None) =>
         val caseOnData = PlutusAvailability.caseOnData(context.protocol, version)
         for
           machine <- context.machines(caseOnData).leftMap(Run.NoVerdict(_))
