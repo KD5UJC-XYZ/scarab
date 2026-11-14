@@ -126,31 +126,53 @@ def level_floor(files):
     return 1 if any(not DOCUMENTATION.fullmatch(f) for f in files) else 0
 
 
-FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 ANY_HEADING = re.compile(r"^ {0,3}(#{1,6})(?:\s+(.*?))?\s*#*\s*$")
+SETEXT = re.compile(r"^ {0,3}(=+|-+)\s*$")
+LIST_ITEM = re.compile(r"^ {0,3}(?:[-*+]|\d+[.)])\s")
+
+
+def rendered_lines(body):
+    """The lines of `body` that GitHub renders as text: without HTML comments, fenced code blocks (a fence closes
+    only on a line of the same character, at least as long, and nothing else) and indented code blocks (lines
+    indented four spaces or more after an empty line). A Setext underline is kept: `rendered_section` ends there."""
+    lines, fence, code, previous = [], None, False, ""
+    for line in COMMENT.sub("", body or "").splitlines():
+        opened = FENCE.match(line)
+        blank, indented = not line.strip(), line.startswith(("    ", "\t"))
+        if fence is not None:
+            if opened and opened.group(1)[0] == fence[0] and len(opened.group(1)) >= len(fence) \
+                    and not opened.group(2).strip():
+                fence = None
+        elif opened and not (opened.group(1)[0] == "`" and "`" in opened.group(2)):
+            fence = opened.group(1)
+        elif indented and not blank and (code or not previous.strip()):
+            code = True
+        elif not blank:
+            code = False
+            lines.append(line)
+        else:
+            lines.append(line)
+        previous = line
+    return lines
 
 
 def rendered_section(body, title):
-    """The text under the first level-2 heading `title` (in lower case) as GitHub renders the body: without HTML
-    comments and fenced code blocks, up to the next heading of level 1 or 2; None when there is no such heading. The
-    level-2 sections of `sections` are read as before; this reading is for the sections whose content is checked."""
-    lines, fence = [], None
-    for line in COMMENT.sub("", body or "").splitlines():
-        opened = FENCE.match(line)
-        if fence is not None:
-            if opened and opened.group(1)[0] == fence[0] and len(opened.group(1)) >= len(fence):
-                fence = None
-        elif opened:
-            fence = opened.group(1)
-        else:
-            lines.append(line)
-    found = None
-    for line in lines:
+    """The text under the first level-2 heading `title` (in lower case) as GitHub renders the body
+    (`rendered_lines`), up to the next heading of level 1 or 2, ATX or Setext; None when there is no such heading.
+    The level-2 sections of `sections` are read as before; this reading is for the sections whose content is
+    checked."""
+    found, lines = None, rendered_lines(body)
+    for at, line in enumerate(lines):
         heading = ANY_HEADING.match(line)
         if found is None:
             if heading and len(heading.group(1)) == 2 and (heading.group(2) or "").strip().lower() == title:
                 found = []
         elif heading and len(heading.group(1)) <= 2:
+            break
+        elif SETEXT.match(line) and found and found[-1].strip() and not LIST_ITEM.match(found[-1]) \
+                and not found[-1].startswith((" ", "\t")):
+            found.pop()
             break
         else:
             found.append(line)
