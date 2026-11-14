@@ -128,3 +128,11 @@ python3 -I antithesis/pool/canary/writebits_script.py # regenerate the canary's 
 `launch.sh` takes the fault level and a duration, since the tenant predates `--max-compute-hours`. A 15-minute
 `resilient` run cost 18 to 20 compute hours, about 7 of them setup, so a longer run pays for setup once. Snouty
 pushes the images and the config image to the tenant registry.
+
+**The trial's tenant did not apply the fault level or the exclusion (checked 2026-11-14).** Its runs record neither
+`antithesis.fault_tolerance` nor `antithesis.fault_exclusions` among their parameters, although snouty sends both.
+Runs launched at `none`, `resilient` and `high_availability` got the same faults: network partitions and clogs,
+`Stopped` included, with clogs naming the driver, and no node pause, throttle or termination and no clock skip.
+Read a result as one under those network faults, not under the level named. Before reading a run as a level's, check
+its `parameters` (`snouty runs show <id> --json`) and count its fault events that are not network ones
+(`snouty runs search <id> 'filter(ev => ev.fault && ev.fault.type != "network")' --count`).
