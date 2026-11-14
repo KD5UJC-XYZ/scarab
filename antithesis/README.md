@@ -18,8 +18,9 @@ it (issue 609). `config-late-start` keeps the earlier order as an experiment (be
 The `driver` reports setup complete once the cluster is healthy. All three pools must first report one tip at
 block 2 or later. Then all three must answer and be on the longest chain, at fork depth 0. Since the gate began,
 each Haskell pool's own chain must have taken a new block of s1, and s1's a new block of a Haskell pool, so that each
-side is taking the other's blocks now, not only at some earlier time. At k = 5 this topology's start race can keep the
-Haskell pools from taking s1's blocks until s1 has forked past k; a cardano-node in s1's seat does the same (#854).
+side is taking the other's blocks now, not only at some earlier time. At k = 5 a split at the start, above all the
+late start's DNS window below, can keep the Haskell pools from taking s1's blocks until s1 has forked past k; a
+cardano-node in s1's seat does the same (#854).
 Every timeline would inherit that split, so such a setup fails after 1200 s and says so. The gate waits that long
 because, in `config-late-start` and its control, the pools' first DNS lookup of `s1` fails, and the reference then
 waits 900 s before it looks again: until then the pools take none of s1's blocks.
@@ -59,9 +60,9 @@ Each reads on from where the last pass in the timeline stopped. The properties, 
 
 There is no `always` on tip agreement. A pool that has just forged is ahead by definition, so "all tips agree at
 an instant" is no invariant: cardano-foundation/cardano-node-antithesis removed such probes as false positives
-(issue 119) for the same fork-depth property. At k = 5 the fork depth fails whenever this topology's start race
-splits the chain, and a cardano-node in s1's seat does the same (#854). `config-k200` asks whether the forks that
-faults cause heal.
+(issue 119) for the same fork-depth property. At k = 5 the fork depth fails in this topology under the platform's
+network faults, in a third or more of the timelines, and as often with a cardano-node in s1's seat (#854).
+`config-k200` asks whether the forks that faults cause heal.
 
 Scarab is a JAR assembled from a commit (`node/assembly` in `scarab-jdk:local`). It runs on the Java 25 runtime of
 `docker/candidate.Dockerfile`, and the image's label records the commit. The JAR is linked into
