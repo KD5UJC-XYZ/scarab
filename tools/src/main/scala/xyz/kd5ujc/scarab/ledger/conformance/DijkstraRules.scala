@@ -39,11 +39,11 @@ import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraWitnesses,
   V12
 }
-import xyz.kd5ujc.scarab.ledger.state.{ProtVer, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Word64}
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.plutus.PlutusData
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, UtxoCodecs, Versions, Wire}
+import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, UtxoCodecs, Wire}
 
 /** The rules of the Dijkstra corpus, each mapped to the decoder of the Leios testnet's Dijkstra
   * that Scarab reads a Leios block with ([[DijkstraTx]], [[DijkstraWitnesses]] and the readers of
@@ -54,12 +54,14 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, UtxoCodecs, 
 object DijkstraRules:
   private val era = Era.Dijkstra
 
-  /** The decoder version every rule of this era is read at: the era's `eraProtVerLow`, as the node
-    * reads a block of the era, whatever its protocol version.
+  /** The decoder version every rule of this era is read and written at: the era's `eraProtVerHigh`,
+    * 12, as the dataset's verify reads and writes a sample (`app/Generation/EraSpec.hs:81-82, 197`,
+    * dataset ed6c49a4). It is also Dijkstra's `eraProtVerLow`, the version the readers of [[V12]]
+    * take.
     */
-  val version: DecoderVersion = DecoderVersion.of(era)
+  val version: DecoderVersion = DecoderVersion.high(era)
   private given ByteStrings = ByteStrings.of(version)
-  private given ProtVer = Versions.eraLow(ShelleyBasedEra.SDijkstra)
+  private given ProtVer = ProtVer(Word64.fromUnsigned(version.value.toLong), Word64.zero)
 
   import Embedding.*
   import Step.*
@@ -155,7 +157,7 @@ object DijkstraRules:
       Writing.Kept("the header body's original bytes (LeiosHeader.signable)")
     )(b =>
       Header
-        .fromRaw(era, headerAround(headerBody(field, inner(b), leios = true)))
+        .fromRaw(era, headerAround(headerBody(field, inner(b), leios = true)), version)
         .leftMap(Refusal.Chain(_))
     )(h => Step.at(h.signable, Index(field) :: path))
 
@@ -189,17 +191,19 @@ object DijkstraRules:
     "block" -> DatasetRule.unwritten(
       "Block.decodeShelley (LeiosBlock)",
       Reach.Embedded("[8, block]")
-    )(b => Block.decodeShelley(hex("8208") ++ b).leftMap(Refusal.Chain(_))),
+    )(b => Block.decodeShelley(hex("8208") ++ b, _ => version).leftMap(Refusal.Chain(_))),
     "header" -> DatasetRule(
       "Header.fromRaw (LeiosHeader)",
       Reach.Direct,
       Writing.Kept("Header.Shelley.raw")
-    )(b => Header.fromRaw(era, b).leftMap(Refusal.Chain(_)))(h => Right(h.raw)),
+    )(b => Header.fromRaw(era, b, version).leftMap(Refusal.Chain(_)))(h => Right(h.raw)),
     "header_body" -> DatasetRule(
       "Header.fromRaw (LeiosHeader)",
       Reach.Embedded("[body, kes signature]"),
       Writing.Kept("the header body's original bytes (LeiosHeader.signable)")
-    )(b => Header.fromRaw(era, headerAround(b)).leftMap(Refusal.Chain(_)))(h => Right(h.signable)),
+    )(b => Header.fromRaw(era, headerAround(b), version).leftMap(Refusal.Chain(_)))(h =>
+      Right(h.signable)
+    ),
     "operational_cert" -> headerLeaf(8, Nil),
     "kes_vkey" -> headerLeaf(8, List(Index(0)), opCert(0, _)),
     "kes_period" -> headerLeaf(8, List(Index(2)), opCert(2, _)),

@@ -271,6 +271,17 @@ class CborDatasetSuite extends FunSuite:
     )
   }
 
+  test("each era is read at its eraProtVerHigh, the version the report names") {
+    import xyz.kd5ujc.scarab.ledger.DecoderVersion
+    import xyz.kd5ujc.scarab.protocol.Era
+    assertEquals(ConwayRules.version, DecoderVersion.high(Era.Conway))
+    assertEquals(DijkstraRules.version, DecoderVersion.high(Era.Dijkstra))
+    assertEquals(CborDatasetMain.DatasetEra.Conway.version, ConwayRules.version)
+    assertEquals(CborDatasetMain.DatasetEra.Dijkstra.version, DijkstraRules.version)
+    assertEquals(CborDatasetMain.DatasetEra.Conway.protocolVersion, "11.0")
+    assertEquals(CborDatasetMain.DatasetEra.Dijkstra.protocolVersion, "12.0")
+  }
+
   test("the report holds the version 2 fields and one result per sample path") {
     val json = CborDatasetMain.reportJson(
       "11.0",

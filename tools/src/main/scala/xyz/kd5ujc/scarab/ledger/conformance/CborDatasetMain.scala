@@ -43,8 +43,8 @@ object CborDatasetMain extends IOApp:
 
   /** An era of the dataset, the decoder version Scarab reads it at and Scarab's rules for it. The
     * report names that decoder version as its protocol version: it is the version the samples were
-    * decoded at. The dataset decodes at `eraProtVerHigh` (its `EraSpec.hs`), Conway 11 and Dijkstra
-    * 12; Scarab reads Conway at 9, `eraProtVerLow`, as the node reads a Conway block.
+    * decoded and written again at, the era's `eraProtVerHigh` ([[DecoderVersion.high]]), Conway 11
+    * and Dijkstra 12, as the dataset decodes them (its `EraSpec.hs`).
     */
   enum DatasetEra(val version: DecoderVersion, val rules: Map[String, DatasetRule]):
     case Conway extends DatasetEra(ConwayRules.version, ConwayRules.rules)

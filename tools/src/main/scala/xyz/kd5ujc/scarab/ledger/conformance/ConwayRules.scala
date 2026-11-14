@@ -37,27 +37,30 @@ import xyz.kd5ujc.scarab.ledger.{
   VotingProcedures,
   Witnesses
 }
-import xyz.kd5ujc.scarab.ledger.state.{Coin, ProtVer, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.{Coin, ProtVer, Word64}
 import xyz.kd5ujc.scarab.models.runtime.{Codec, Writer}
 import xyz.kd5ujc.scarab.plutus.PlutusData
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, UtxoCodecs, Versions, Wire}
+import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, UtxoCodecs, Wire}
 
 /** The rules of the Conway corpus, each mapped to the decoder Scarab reads that structure with in a
-  * Conway block, at the era's decoder version ([[DecoderVersion.of]], 9), and to the production
-  * encoder of the decoded value where Scarab has one: the Haskell-format codecs of the ledger state
-  * (`storage.haskell.state`), the header body's [[xyz.kd5ujc.scarab.ledger.HeaderBodyEncoding]],
-  * [[Tx.envelope]] and [[PoolRelays.encode]].
+  * Conway block, at the dataset's decoder version ([[DecoderVersion.high]], 11), and to the
+  * production encoder of the decoded value where Scarab has one: the Haskell-format codecs of the
+  * ledger state (`storage.haskell.state`), the header body's
+  * [[xyz.kd5ujc.scarab.ledger.HeaderBodyEncoding]], [[Tx.envelope]] and [[PoolRelays.encode]].
   */
 object ConwayRules:
   private val era = Era.Conway
 
-  /** The decoder version every rule of this era is read at: the era's `eraProtVerLow`, as the node
-    * reads a block of the era, whatever its protocol version.
+  /** The decoder version every rule of this era is read and written at: the era's `eraProtVerHigh`,
+    * 11, as the dataset's verify decodes a sample with `decodeFull'` and writes it with
+    * `serialize'` at that version (`app/Generation/EraSpec.hs:81-88`,
+    * `app/Generation/Rule.hs:46-62`, dataset ed6c49a4). The node reads a Conway block at
+    * `eraProtVerLow`, 9; no decoder or encoder branches between the two.
     */
-  val version: DecoderVersion = DecoderVersion.of(era)
+  val version: DecoderVersion = DecoderVersion.high(era)
   private given ByteStrings = ByteStrings.of(version)
-  private given ProtVer = Versions.eraLow(ShelleyBasedEra.SConway)
+  private given ProtVer = ProtVer(Word64.fromUnsigned(version.value.toLong), Word64.zero)
   private val mode = Address.Mode.of(era)
   private val forms = TxOut.Forms.of(era)
   private val newest = ScriptKind.newest(era)
@@ -87,11 +90,11 @@ object ConwayRules:
 
   /** A Conway body of no inputs, no outputs and no fee, with `key` holding the sample. */
   private def body(key: String)(sample: Bytes): Either[Refusal, TxBody] =
-    ledger(TxBody.decode(hex("a4008001800200" + key) ++ sample, era))
+    ledger(TxBody.decode(hex("a4008001800200" + key) ++ sample, era, version))
 
   /** A witness set holding the sample under `prefix`. */
   private def witnesses(prefix: String, suffix: String = "")(sample: Bytes) =
-    ledger(Witnesses.decode(hex(prefix) ++ sample ++ hex(suffix), era))
+    ledger(Witnesses.decode(hex(prefix) ++ sample ++ hex(suffix), era, version))
 
   /** A proposal procedure of a zero deposit, a testnet key reward account and an empty anchor. */
   private def proposalAround(action: Bytes): Either[Refusal, Proposal] =
@@ -112,7 +115,9 @@ object ConwayRules:
 
   /** A Praos header whose body holds the sample at `field` ([[Embedding.headerBody]]). */
   private def header(field: Int, inner: Bytes => Bytes)(sample: Bytes) =
-    Header.fromRaw(era, headerAround(headerBody(field, inner(sample)))).leftMap(Refusal.Chain(_))
+    Header
+      .fromRaw(era, headerAround(headerBody(field, inner(sample))), version)
+      .leftMap(Refusal.Chain(_))
 
   private def output(prefix: String, head: String = "a3")(sample: Bytes) =
     node(hex(head + "00581d61" + zeros(28) + "0100" + prefix) ++ sample)
@@ -140,7 +145,7 @@ object ConwayRules:
         case (Some(Shape.Tag259), CborValue.Tag(t, _)) if t == 259 => true
         case _                                                     => false
       shape.filterNot(_ => fits).map(Refusal.Form(_)).toLeft(()).flatMap { _ =>
-        ledger(Tx.fromEnvelope(hex("84a3008001800200a0f5") ++ bytes, era))
+        ledger(Tx.fromEnvelope(hex("84a3008001800200a0f5") ++ bytes, era, version))
           .flatMap(t => present(t.auxiliary))
       }
     }
@@ -222,31 +227,33 @@ object ConwayRules:
   /** The rules, by the name of their directory in the corpus. */
   val rules: Map[String, DatasetRule] = Map(
     "block" -> DatasetRule.unwritten("Block.decodeShelley", Reach.Embedded("[7, block]"))(b =>
-      Block.decodeShelley(hex("8207") ++ b).leftMap(Refusal.Chain(_))
+      Block.decodeShelley(hex("8207") ++ b, _ => version).leftMap(Refusal.Chain(_))
     ),
     "header" -> DatasetRule("Header.fromRaw", Reach.Direct, Writing.Kept("Header.Shelley.raw"))(b =>
-      Header.fromRaw(era, b).leftMap(Refusal.Chain(_))
+      Header.fromRaw(era, b, version).leftMap(Refusal.Chain(_))
     )(h => Right(h.raw)),
     "header_body" -> DatasetRule(
       "Header.fromRaw",
       Reach.Embedded("[body, kes signature]"),
       signable
-    )(b => Header.fromRaw(era, headerAround(b)).leftMap(Refusal.Chain(_)))(h => Right(h.signable)),
+    )(b => Header.fromRaw(era, headerAround(b), version).leftMap(Refusal.Chain(_)))(h =>
+      Right(h.signable)
+    ),
     "transaction" -> DatasetRule("Tx.fromEnvelope", Reach.Direct, Writing.Encoder("Tx.envelope"))(
-      b => ledger(Tx.fromEnvelope(b, era))
+      b => ledger(Tx.fromEnvelope(b, era, version))
     )(t =>
       t.witnesses.raw
         .toRight(Unwritten.NotKept)
         .map(w => Tx.envelope(Block.Transaction(t.body.raw, w, t.auxiliary, t.isValid)))
     ),
     "transaction_body" -> DatasetRule("TxBody.decode", Reach.Direct, Writing.Kept("TxBody.raw"))(
-      b => ledger(TxBody.decode(b, era))
+      b => ledger(TxBody.decode(b, era, version))
     )(t => Right(t.raw)),
     "transaction_witness_set" -> DatasetRule(
       "Witnesses.decode",
       Reach.Direct,
       Writing.Kept("Witnesses.raw")
-    )(b => ledger(Witnesses.decode(b, era)))(_.raw.toRight(Unwritten.NotKept)),
+    )(b => ledger(Witnesses.decode(b, era, version)))(_.raw.toRight(Unwritten.NotKept)),
     "transaction_input" -> DatasetRule(
       "TxIn.decode",
       Reach.Direct,
@@ -336,14 +343,14 @@ object ConwayRules:
     "big_int" -> dataRule(Some(Shape.Integer)),
     "bounded_bytes" -> dataRule(Some(Shape.ByteString)),
     "certificate" -> DatasetRule.unwritten("Certificate.decode", Reach.Direct)(b =>
-      node(b).flatMap(n => ledger(Certificate.decode(n, era)))
+      node(b).flatMap(n => ledger(Certificate.decode(n, era, version)))
     ),
     "certificates" -> DatasetRule
       .unwritten("CborRead.oset of Certificate.decode, non-empty", Reach.Direct)(b =>
         node(b).flatMap(n =>
           ledger(
             CborRead
-              .oset(n, DecodeField.Certificates, version)(Certificate.decode(_, era))(
+              .oset(n, DecodeField.Certificates, version)(Certificate.decode(_, era, version))(
                 Certificate.identity
               )
               .flatMap(CborRead.nonEmpty(_, DecodeField.Certificates, true))
@@ -565,7 +572,7 @@ object ConwayRules:
         hex(
           "8a03581c" + zeros(28) + "5820" + zeros(32) + "0000d81e820001581de0" + zeros(28) + "8080"
         ) ++ b
-      ).flatMap(n => ledger(Certificate.decode(n, era))).flatMap {
+      ).flatMap(n => ledger(Certificate.decode(n, era, version))).flatMap {
         case Certificate.RegisterPool(params) => present(params.metadata)
         case _                                => present(None)
       }
