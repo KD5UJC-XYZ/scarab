@@ -406,6 +406,9 @@ final class Follower[F[_]: Async, S] private (
               Left(outOfRange: xyz.kd5ujc.scarab.ledger.ChainError.StateOutOfRange)
             ) =>
           F.pure(Left(Judged.NoVerdict(BlockNoVerdict.StateOutOfRange(outOfRange))))
+        // a state with no Leios committee is held no better: the same state, the same failure
+        case Right(Left(noCommittee: xyz.kd5ujc.scarab.ledger.ChainError.LeiosCommittee)) =>
+          F.pure(Left(Judged.NoVerdict(BlockNoVerdict.StateOutOfRange(noCommittee))))
         // storage and every other failure of the node stay the node's
         case Right(Left(other)) => other.raise[F, Either[Judged, S]]
         case Left(thrown)       => F.pure(Left(Judged.NoVerdict(BlockNoVerdict.Defect(thrown))))

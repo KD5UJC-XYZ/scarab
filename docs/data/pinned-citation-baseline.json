@@ -112,7 +112,6 @@
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyCerts.scala": 7,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyLedger.scala": 2,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyUtxo.scala": 5,
-  "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Snap.scala": 1,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/StakeDistribution.scala": 4,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Sts.scala": 15,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Test.scala": 2,

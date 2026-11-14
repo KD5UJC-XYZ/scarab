@@ -50,7 +50,8 @@ enum BlockNoVerdict:
     * (`ChainError.StateOutOfRange`). The specification gives no verdict (`Coin` is a natural
     * number); only a malformed genesis reaches it: a Conway genesis deposit outside `Word64` at the
     * upgrade into Conway, or an epoch of 2^32 slots or more for the transition counter (#573, ADR
-    * 0017's amendment of 2026-11-07).
+    * 0017's amendment of 2026-11-07). A Leios snapshot state SNAP finds no committee for
+    * (`ChainError.LeiosCommittee`) is no verdict the same way.
     */
   case StateOutOfRange(error: xyz.kd5ujc.scarab.ledger.ChainError)
 

@@ -52,6 +52,15 @@ enum TickFailure derives Eq, Show:
     */
   case NoDijkstraGenesis
 
+  /** SNAP found no Leios committee for the mark snapshot it rotates into the set position: a state
+    * the reference cannot hold, or a failure of the native BLS library while it checked a proof of
+    * possession ([[xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeError]]). The reference's selection
+    * is total, and a library failure is an exception there, so this is no verdict on the block: the
+    * node stops, for a state ([[xyz.kd5ujc.scarab.ledger.ChainError.LeiosCommittee]]) as for a
+    * provider defect ([[xyz.kd5ujc.scarab.ledger.ValidationError.unverifiable]]).
+    */
+  case LeiosCommittee(cause: xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeError)
+
 object TickFailure:
   private given Eq[VocabError] = Eq.fromUniversalEquals
   private given Show[VocabError] = Show.fromToString
@@ -59,3 +68,5 @@ object TickFailure:
   private given Show[TxIn] = Show.fromToString
   private given Eq[xyz.kd5ujc.scarab.protocol.DijkstraNotYet] = Eq.fromUniversalEquals
   private given Show[xyz.kd5ujc.scarab.protocol.DijkstraNotYet] = Show.fromToString
+  private given Eq[xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeError] = Eq.fromUniversalEquals
+  private given Show[xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeError] = Show.fromToString

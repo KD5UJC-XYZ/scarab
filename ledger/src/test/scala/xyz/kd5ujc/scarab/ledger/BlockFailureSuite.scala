@@ -111,3 +111,22 @@ class BlockFailureSuite extends FunSuite:
     assertEquals(e.reason, "block header differs from announced header")
     assert(e.message.endsWith("rejected by structure: block header differs from announced header"))
   }
+
+  test("a BLS library failure in SNAP's committee is a provider defect, a held state no defect") {
+    import xyz.kd5ujc.scarab.crypto.bls.BlsError
+    import xyz.kd5ujc.scarab.ledger.rules.TickFailure
+    import xyz.kd5ujc.scarab.ledger.state.{KeyHash, LeiosCommitteeError, StakePool}
+    val pool = KeyHash
+      .fromBytes[StakePool](Bytes.fromArray(Array.fill[Byte](28)(1)))
+      .fold(e => fail(e.toString), identity)
+    val thrown = new IllegalStateException("library")
+    def refused(cause: LeiosCommitteeError) =
+      ValidationError(ChainSync.Point.Origin, BlockFailure.Tick(TickFailure.LeiosCommittee(cause)))
+    val defect =
+      refused(
+        LeiosCommitteeError.PossessionCheckFailed(pool, BlsError.Backend(thrown))
+      ).unverifiable
+    assertEquals(defect.map(_.site), Some(VerificationDefect.Site.LeiosCommittee(pool.bytes)))
+    assertEquals(defect.flatMap(_.defect.cause), Some(thrown))
+    assertEquals(refused(LeiosCommitteeError.LayoutMismatch(pool)).unverifiable, None)
+  }

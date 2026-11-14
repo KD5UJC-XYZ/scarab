@@ -317,10 +317,20 @@ enum ChainError extends NodeError:
     */
   case CommitDefect(cause: Throwable)
 
+  /** SNAP met no Leios committee for the mark snapshot it rotates, because of a state the reference
+    * cannot hold ([[rules.TickFailure.LeiosCommittee]]: a parameter outside its word, a seated pool
+    * of the 11.1 layout or a seated key its decoder refuses). The node stops: this is neither a
+    * verdict on a block nor a fault of the peer that sent it. A failure of the BLS library there is
+    * a provider defect instead ([[ValidationError.unverifiable]]).
+    */
+  case LeiosCommittee(slot: BigInt, cause: xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeError)
+
   def message: String = this match
     case MempoolTick(slot, cause) => s"cannot tick mempool ledger to slot $slot: $cause"
     case CommitDefect(cause) =>
       s"the node's own code threw while committing a chain: ${NetworkError.describe(cause)}"
+    case LeiosCommittee(slot, cause) =>
+      s"no Leios committee for the snapshots rotated at slot $slot: $cause"
     case StateOutOfRange(slot, cause) =>
       s"the ledger state in the rules for slot $slot is out of range: ${cats.Show[xyz.kd5ujc.scarab.ledger.state.VocabError].show(cause)}"
     case StateAcquire(cause) => cause.message
@@ -346,6 +356,18 @@ final case class ValidationError(point: ChainSync.Point, failure: BlockFailure) 
       Some(VerificationDefect(point, VerificationDefect.Site.Header, defect))
     case BlockFailure.Tx(LedgerFailure.Unverifiable(txId, defect)) =>
       Some(VerificationDefect(point, VerificationDefect.Site.Witness(txId), defect))
+    case BlockFailure.Tick(
+          rules.TickFailure.LeiosCommittee(
+            xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeError.PossessionCheckFailed(pool, error)
+          )
+        ) =>
+      Some(
+        VerificationDefect(
+          point,
+          VerificationDefect.Site.LeiosCommittee(pool.bytes),
+          ProviderDefect.Bls(error)
+        )
+      )
     case _ => None
 
 object ValidationError:
@@ -369,13 +391,17 @@ final case class VerificationDefect(
   def message: String = s"${Points.show(point)} has no verdict: ${site.message}: ${defect.message}"
 
 object VerificationDefect:
-  /** What was being verified: the header's VRF, KES or certificate, or a transaction witness. */
+  /** What was being verified: the header's VRF, KES or certificate, a transaction witness, or a
+    * seated pool's proof of possession for the Leios committee.
+    */
   enum Site:
     case Header
     case Witness(txId: Bytes)
+    case LeiosCommittee(pool: Bytes)
     def message: String = this match
-      case Header      => "header"
-      case Witness(tx) => s"witness of tx ${tx.hex.take(16)}"
+      case Header               => "header"
+      case Witness(tx)          => s"witness of tx ${tx.hex.take(16)}"
+      case LeiosCommittee(pool) => s"Leios committee key of pool ${pool.hex.take(16)}"
 
 /** Why a UTxO store has no open database ([[StorageError.UtxoStoreClosed]]). */
 enum UtxoStoreClosure derives CanEqual:

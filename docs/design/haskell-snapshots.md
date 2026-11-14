@@ -809,7 +809,8 @@ three fields and refuses to write a value carrying a voting key. These derived v
 fields to a persisted snapshot. The mark snapshot's committee is not stored, as in the reference:
 `LeiosCommitteeSelection.ofMark` derives it from the mark's pools, committee size and key age for
 the following epoch when the mark rotates into the set position (`State/SnapShots.hs:453-467,
-544-550`, `State/LeiosCommittee.hs:65-93`); `Snap` does not perform that rotation yet (#826). A `PerasResolver` with an epoch context is not modelled: the eras before
+544-550`, `State/LeiosCommittee.hs:65-93`). `Snap` performs that rotation before Dijkstra; Dijkstra's
+SNAP is not implemented (#826). A `PerasResolver` with an epoch context is not modelled: the eras before
 Dijkstra have a `Void` voting committee, refused as the reference refuses it, and Dijkstra's is
 `DijkstraNotYet.LedgerState`.
 

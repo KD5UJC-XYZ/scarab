@@ -394,6 +394,51 @@ class TickRulesSuite extends FunSuite:
     assertEquals(nes.ru, None)
   }
 
+  /** A Conway state whose snapshots are in the Leios layout: the mark of a boundary already ticked,
+    * its pools given `key`, and the committee metadata the mark was taken with.
+    */
+  private def leios(key: PoolBlsKey, size: Int): NewEpochState[Conway] =
+    val ticked = tick(conway(5, 10, 2), first(6) + 10)
+    val s = ticked.es.snapshots
+    val mark = s.mark.copy(pools =
+      Sorted.map(s.mark.pools.iterator.map((id, p) => id -> p.copy(blsKey = key)))
+    )
+    val layout = SnapShots.Layout.Leios(ok(EpochNo.fromBigInt(6)), size, 10, LeiosCommittee.empty)
+    ticked.copy(es = ticked.es.copy(snapshots = s.copy(mark = mark, layout = layout)))
+
+  test("SNAP in the Leios layout stamps the mark's epoch and seats the old mark's committee") {
+    val before = leios(PoolBlsKey.Leios(None), 2)
+    val old = before.es.snapshots
+    val layout = old.layout match
+      case l: SnapShots.Layout.Leios => l
+      case other                     => fail(s"not the Leios layout: $other")
+    val committee =
+      LeiosCommitteeSelection.ofMark(old.mark, layout).fold(e => fail(e.toString), identity)
+    assertEquals(committee.seats.size, 2)
+    assert(committee.seats.forall(_.verificationKey.isEmpty), "the pools have no voting key")
+    val after = tick(before, first(7) + 10).es.snapshots
+    assertEquals(after.set, old.mark)
+    assertEquals(after.go, old.set)
+    // before Dijkstra the new mark is taken with a committee size and key age of zero
+    // (`Shelley/Rules/Snap.hs:84-86`, cardano-ledger 9df9f98c)
+    assertEquals(after.layout, SnapShots.Layout.Leios(ok(EpochNo.fromBigInt(7)), 0, 0, committee))
+  }
+
+  test("SNAP in the Leios layout stops on a seated pool of the 11.1 layout, seating none") {
+    val before = leios(PoolBlsKey.Node11_1, 1)
+    val result = Hfc.tick(globals, noEra)(
+      EraNes.InEra(ShelleyBasedEra.SConway, before),
+      0L,
+      ok(SlotNo.fromBigInt(first(7) + 10))
+    )
+    assert(
+      result match
+        case Left(TickFailure.LeiosCommittee(LeiosCommitteeError.LayoutMismatch(_))) => true
+        case _                                                                       => false,
+      s"expected a layout mismatch, got $result"
+    )
+  }
+
   test("only the future parameters that are certain are adopted at the boundary") {
     val before = conway(5, 10, 2)
     val next = TestLedger.params(10).copy(maxTxSize = 20000)
