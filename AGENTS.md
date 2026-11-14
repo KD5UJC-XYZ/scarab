@@ -113,9 +113,10 @@ tests), exceptions and how a kept site is marked, enforcement and reason. Read t
 - [The reference](docs/design-rules.md#ref): [REF-1](docs/design-rules.md#ref-1) to
   [REF-4](docs/design-rules.md#ref-4) interoperability, reference defects, which reference governs, and the
   four classes (Mirror, Improvement, Deviation, Gap); [REF-5](docs/design-rules.md#ref-5) **agents may not
-  deviate from the reference on their own accord**; [REF-6](docs/design-rules.md#ref-6) mirror it and cite it
-  at its pin; [REF-7](docs/design-rules.md#ref-7) how a pull request records each class;
-  [REF-8](docs/design-rules.md#ref-8) settled Deviations.
+  deviate from the reference on their own accord**; [REF-6](docs/design-rules.md#ref-6) mirror its structure by
+  default, cite it at its pin, and differ internally only with differential evidence;
+  [REF-7](docs/design-rules.md#ref-7) how a pull request records each class; [REF-8](docs/design-rules.md#ref-8)
+  settled Deviations.
 - [Persisted formats and fixtures](docs/design-rules.md#fmt): [FMT-1](docs/design-rules.md#fmt-1) persisted formats
   are frozen until Scarab leaves pre-release: nothing changes without the owner's approval in the chat session doing
   the work, and an approved change is a pull request of its own; [FMT-2](docs/design-rules.md#fmt-2) native snapshot

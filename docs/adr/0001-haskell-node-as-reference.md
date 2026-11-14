@@ -39,8 +39,9 @@ Only after that approval is it implemented, with a written reason that records t
 Existing code, earlier PRs, review notes and design documents are not approval. If exact fidelity
 seems impossible, stop and ask the owner.
 
-Networking is mirrored in structure and behaviour too
-([0008](0008-networking-mirrors-ouroboros-network.md)).
+~~Networking is mirrored in structure and behaviour too
+([0008](0008-networking-mirrors-ouroboros-network.md)).~~
+([amended 2026-11-14](#amendment-2026-11-14-what-mirroring-means))
 
 ## Amendment (2026-11-04): exact diagnostic and refusal parity
 
@@ -92,17 +93,29 @@ is unclear, ask the owner before changing the boundary behavior. The approval re
 <a id="amendment-2026-11-14-what-mirroring-means"></a>
 ## Amendment (2026-11-14): what mirroring means
 
-This refines the struck-through sentence of the decision on internal types and formats. Owner's decision,
-2026-11-14 ([decisions register](../decisions.md#reference-fidelity)).
+This refines the struck-through sentence of the decision on internal types and formats, and replaces the 2026-10-25
+amendment's sentence on networking: networking falls under this general rule, which still mirrors structure by
+default. Owner's decision, 2026-11-14 ([decisions register](../decisions.md#reference-fidelity));
+[REF-6](../design-rules.md#ref-6) states the same rule.
 
-- Keep Scarab's observable behaviour within the four interoperability invariants of
-  [REF-1 to REF-4](../design-rules.md#ref):
+- **Mirror by default.** In the network, consensus, ledger, Plutus and UPLC, and storage code, structure follows the
+  reference at its pin: state machines, decision functions, data types and module boundaries. Each mirrored
+  definition cites its upstream file and line.
+- **Make every difference visible.** Give each mirrored definition an entry in the tracked correspondence map
+  (docs/data/correspondence): its upstream counterpart at a pin, and its class (Mirror, Improvement, Deviation or
+  Gap, as [REF-7](../design-rules.md#ref-7) classes a difference). List Scarab-only code in those areas as glue,
+  with a reason. A change to a mapped definition updates its entry.
+- **Differ internally only with evidence.** A definition whose structure differs from the reference's is allowed only
+  where a differential test against the reference covers that behaviour: an exported reference corpus, an oracle,
+  or a comparison with a running reference node. Its entry names that suite. Without such evidence, mirror the
+  structure.
+- **Do not copy reference defects.** A reference defect is an Improvement under
+  [REF-1 to REF-4](../design-rules.md#ref), recorded in the map.
+- **Keep observable behaviour within the four interoperability invariants** of REF-1 to REF-4:
   - every block, header and transaction gets the reference's validity verdict and the resulting ledger state;
   - everything Scarab sends decodes at the reference with the same meaning;
   - Scarab accepts what honest reference peers, clients and operators send;
   - inputs mean what they mean to the reference, and queries get the reference's answers.
-- Classify every difference from the reference as a Mirror, an Improvement, a Deviation or a Gap, and record it as
-  [REF-7](../design-rules.md#ref-7) says.
-- Use the reference's on-disk and on-wire formats wherever a reference node or tool reads them.
-- Internals (types, names, algorithms, module structure) may differ from the reference wherever every observable
-  result is identical. Each mirrored item still cites the upstream file and line at its pin.
+- **Classify every difference from the reference** as a Mirror, an Improvement, a Deviation or a Gap, and record it as
+  REF-7 says.
+- **Use the reference's on-disk and on-wire formats** wherever a reference node or tool reads them.

@@ -806,19 +806,30 @@ approval. If exact fidelity seems impossible, stop and ask the owner. The Deviat
 <a id="ref-6"></a>
 ### REF-6. Mirror the reference, and cite it at its pin
 
-Mirror the reference's observable behaviour, and use its on-disk and on-wire formats wherever a reference node or
-tool reads them. Internals (types, names, algorithms, module structure) may differ from the reference only where
-every observable result is identical. Each mirrored item cites the upstream file and line at the pinned version, a
-revision registered in `docs/data/reference-pins.json` (owner's decisions, 2026-10-27 and 2026-11-14,
-[decisions register](decisions.md#reference-fidelity);
-[ADR 0001, amendment of 2026-11-14](adr/0001-haskell-node-as-reference.md#amendment-2026-11-14-what-mirroring-means)).
+Mirror by default. In the network, consensus, ledger, Plutus and UPLC, and storage code, structure follows the
+reference at its pin: state machines, decision functions, data types and module boundaries. Each mirrored definition
+cites its upstream file and line at the pinned version, a revision registered in `docs/data/reference-pins.json`.
+
+- Make every difference visible. Each mirrored definition has an entry in the tracked correspondence map
+  (docs/data/correspondence): its upstream counterpart at a pin and its class ([REF-4](#ref-4), as
+  [REF-7](#ref-7) records it). Scarab-only code in those areas is listed as glue, with a reason. A change to a mapped
+  definition updates its entry.
+- Differ internally only with evidence. A definition whose structure differs from the reference's is allowed only
+  where a differential test against the reference covers that behaviour: an exported reference corpus, an oracle,
+  or a comparison with a running reference node. Its entry names that suite. Without such evidence, the structure
+  mirrors.
+- Do not copy reference defects: each is an Improvement ([REF-2](#ref-2), [REF-4](#ref-4)), recorded in the map.
+- Use the reference's on-disk and on-wire formats wherever a reference node or tool reads them, and keep observable
+  behaviour within the invariants of [REF-1](#ref-1).
 
 - **Scope:** main.
 - **Exceptions:** none.
-- **Enforcement:** in the documents `scripts/check_docs.py` reads, it refuses a new citation of an upstream
-  version or revision that no registered pin covers (`UNREGISTERED_PIN`). In code, citations are review
-  only; a guard is planned.
-- **Why:** [ADR 0001](adr/0001-haskell-node-as-reference.md).
+- **Enforcement:** the correspondence guard (being built in a separate PR); review only until it lands. In the
+  documents `scripts/check_docs.py` reads, it refuses a new citation of an upstream version or revision that no
+  registered pin covers (`UNREGISTERED_PIN`).
+- **Why:** owner's decisions, 2026-10-27 and 2026-11-14 ([decisions register](decisions.md#reference-fidelity));
+  [ADR 0001, amendment of 2026-11-14](adr/0001-haskell-node-as-reference.md#amendment-2026-11-14-what-mirroring-means);
+  [ADR 0008](adr/0008-networking-mirrors-ouroboros-network.md).
 
 <a id="ref-7"></a>
 ### REF-7. How a pull request records each class

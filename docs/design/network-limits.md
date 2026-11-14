@@ -6,7 +6,7 @@
   `c45735a56c567fa977969173d18943bac6bb3821` and, for `cardano-diffusion`,
   `c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167` ([ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md#amendment-2026-11-13-the-packages-cardano-node-1113-links)).
 
-Networking mirrors ouroboros-network in structure and behaviour ([ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md)).
+Networking mirrors ouroboros-network as [REF-6](../design-rules.md#ref-6) says.
 Every mini-protocol state's time limit is the pinned reference's (`timeLimits*`, cited per row), except
 the BlockFetch client's cumulative request time (the BlockFetch client rework, #430). The TxSubmission
 byte/item profile (the TxSubmission alignment, #477), the BlockFetch client's aggregate bounds (#430), the
