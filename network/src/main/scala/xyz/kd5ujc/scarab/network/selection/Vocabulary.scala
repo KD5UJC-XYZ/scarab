@@ -192,6 +192,11 @@ enum Trace[A]:
   /** A decision to move peers down a temperature. Ordinary hot demotion retains scores for all
     * available peers (`TraceDemoteHotPeers` of ouroboros-network 2fb69829); absence of a metric
     * differs from a measured zero. Local and warm demotions have no native score payload.
+    *
+    * The scores came with upstream `307f92b98` (PR #5437). In ouroboros-network c45735a5, which
+    * cardano-node 11.1.3 links, `TraceDemoteHotPeers` carries no scores
+    * (`PeerSelection/Governor/Types.hs:1771`); the ranking is the same at both revisions. An
+    * approved deviation (`docs/decisions.md`, #956, 2026-11-14).
     */
   case Demote(
       from: Temperature,
@@ -234,6 +239,13 @@ enum Trace[A]:
   case BigLedgerFailure(backoffs: Int, retryIn: FiniteDuration)
   case ForgetBigLedger(target: Int, known: Int, peers: List[A])
   case PromoteBigLedger(from: Temperature, peers: List[A], target: Int, current: Int)
+
+  /** A decision to move big ledger peers down a temperature. Hot demotion retains scores as
+    * [[Demote]] does (`TraceDemoteHotBigLedgerPeers` of ouroboros-network 2fb69829). In c45735a5,
+    * which cardano-node 11.1.3 links, that trace carries no scores
+    * (`PeerSelection/Governor/Types.hs:1781`): the same approved deviation (`docs/decisions.md`,
+    * #956, 2026-11-14).
+    */
   case DemoteBigLedger(
       from: Temperature,
       peers: List[A],

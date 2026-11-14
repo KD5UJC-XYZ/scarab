@@ -218,6 +218,19 @@ object NodeToNodeServer:
     * (`InboundGovernor.hs` 638-648). A responder that ends in an error or is cancelled stops the
     * counting for good, as the tracer then empties its counters (`SNothing`, 688-696): the
     * connection's mux is ending.
+    *
+    * The counters exist from [[Responders.create]], before the responders start
+    * (`NodeToNodeServer.start`), so a responder that starts before [[remoteActivity]] records the
+    * connection is counted, and what it signals waits for it. In ouroboros-network c45735a5, which
+    * cardano-node 11.1.3 links, the inbound governor starts a new connection's responders before it
+    * records the connection (`InboundGovernor.hs` 321-345 and 385-393), and its mux tracer empties
+    * the counters when it finds no connection for a responder that has started (613-651), so that
+    * connection's responders are no longer restarted nor its remote state updated. A race, fixed
+    * upstream by `e098ed82c` (PR #5440, in 2fb69829), and not reproduced (#474;
+    * `docs/decisions.md`, #956, 2026-11-14). The responders are restarted on demand for the
+    * connection's life: there is no counterpart of the check that change also adds, which stops
+    * restarting them once the connection is no longer recorded (`InboundGovernor.hs` 441-447 at
+    * 2fb69829).
     */
   private[network] final class Responders[F[_]: Async] private (
       count: Ref[F, Option[Running]],

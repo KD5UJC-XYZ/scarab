@@ -815,9 +815,13 @@ object PeerNetwork:
       )
 
   /** Reload must publish configured IP roots and kept DNS answers before new lookups, as in
-    * ouroboros-network 6a49b6f6, RootPeersDNS/LocalRootPeers.hs. Public DNS answers are requested
-    * separately by the governor. Keep their existing attribution only while their configured source
-    * set is unchanged; a removed name must not leave its old answer configured forever.
+    * ouroboros-network 6a49b6f6, RootPeersDNS/LocalRootPeers.hs. At c45735a5, which cardano-node
+    * 11.1.3 links, a reconfiguration publishes nothing until a domain's lookup answers
+    * (`LocalRootPeers.hs` 98, 153-168, 234-246), so its IP roots wait and a topology without DNS
+    * names is not applied: a bug of the linked packages, not reproduced (issue 956, D10;
+    * decisions.md 2026-11-14). Public DNS answers are requested separately by the governor. Keep
+    * their existing attribution only while their configured source set is unchanged; a removed name
+    * must not leave its old answer configured forever.
     */
   private[node] def retainedPublicRoots(
       previous: Roots,

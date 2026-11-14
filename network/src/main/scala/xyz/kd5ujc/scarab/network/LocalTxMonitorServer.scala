@@ -131,6 +131,11 @@ object LocalTxMonitorServer:
         case Message.GetSizes =>
           send(State.Busy(Kind.GetSizes), Message.ReplyGetSizes(snapshot.sizes)) *>
             serving(snapshot, remaining)
+        // Answered on every negotiated version, 16 to 23. On 16 to 19 the codec cardano-node 11.1.3
+        // links calls `error` encoding the reply (cardano-diffusion c5117705,
+        // `LocalTxMonitor/Codec.hs:41-48`; ouroboros-network c45735a5,
+        // `LocalTxMonitor/Codec.hs:102-113`): a reference bug, not reproduced (#474;
+        // `docs/decisions.md`, #956, 2026-11-14).
         case Message.GetMeasures =>
           send(
             State.Busy(Kind.GetMeasures),

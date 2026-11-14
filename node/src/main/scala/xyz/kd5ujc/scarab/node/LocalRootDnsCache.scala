@@ -72,6 +72,13 @@ object LocalRootDnsCache:
     * the new configuration. Unchanged positions keep their own answer when a source occurs more
     * than once; a moved source takes the first previous occurrence deterministically. Lookups
     * become due immediately, as when the reference restarts its domain monitors.
+    *
+    * Keeping the answers follows ouroboros-network `6a49b6f6` (PR #5455), which is in neither
+    * c45735a5 nor 2fb69829. In c45735a5, which cardano-node 11.1.3 links, the provider starts every
+    * domain of a reconfigured topology with no addresses (`RootPeersDNS/LocalRootPeers.hs:124-130`,
+    * restarted at 168; the file is the same at 2fb69829), so a domain has no peers in the groups it
+    * publishes until its own new lookup answers. An approved deviation (`docs/decisions.md`, #956,
+    * 2026-11-14).
     */
   def reconfigure[K, A, S](
       state: State[K, A],

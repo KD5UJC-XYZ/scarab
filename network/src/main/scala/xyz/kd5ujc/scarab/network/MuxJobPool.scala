@@ -11,6 +11,14 @@ import cats.syntax.all.*
   * calling its error handler or publishing a result. Mirrors Control/Concurrent/JobPool.hs:65–173,
   * 192–222 (ouroboros-network 2fb69829); the mini-protocol and transport groups are Mux.hs:184–186
   * at c45735a5. This primitive does not own connection status or interpret a job's result.
+  *
+  * A job removes its entry only once its parent has inserted it, as 2fb69829's `deregister` does
+  * (upstream `5e3dfa18d`, PR #5417). In network-mux c45735a5, which cardano-node 11.1.3 links, a
+  * job removes its entry when it ends, so when one ends before its parent inserts the entry, the
+  * entry stays (`Control/Concurrent/JobPool.hs` 85-95 at c45735a5), and the mux's count of
+  * mini-protocol jobs then decides between `Stopped` and `Failed` on a closed bearer
+  * (`Network/Mux.hs` 477-487 at c45735a5). A race, not reproduced (#474; `docs/decisions.md`, #956,
+  * 2026-11-14).
   */
 private[network] final class MuxJobPool[F[_], A] private (
     state: Ref[F, MuxJobPool.State[F]],
