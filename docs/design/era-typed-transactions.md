@@ -326,15 +326,20 @@ passes `check`.
 - Given a concrete body, the caller names the level (`inputs[TxLevel.Top](body)`), because the level cannot
   be inferred back from the body type. Generic rules carry the evidence instead.
 
-**What it does not show yet:**
-- a representation parameterised by value (Allegra and Mary outputs, arithmetic over `Value[E]` through the
-  reference's `Val` class);
-- a rule reading a stored output through `fromStored`;
-- a complete rule set;
-- a refusal tested from a sibling file in the same package.
+**The representation parameterised by value** (stage 1, done):
+- `AllegraTxOut` and `MaryTxOut` are opaque over one `ShelleyTxOutRep[V]`, with `V = AdaValue` and
+  `MultiAssetValue`.
+- A rule written once (`coinOf`) adds outputs' values up through the reference's `Val` in Allegra, Mary,
+  Babbage and Conway. Read from recorded blocks, its results equal the flat outputs'.
+- The store's read into Allegra (`fromStored`, `private[ledger]`) refuses an output with native assets, and
+  an Allegra output carries into Mary with its bytes and lovelace.
+- The compiler refuses:
+  - an Allegra output given as a Mary one;
+  - an `EraRules` without all its members;
+  - a Mary output made from its representation in a sibling file of the same package.
 
-Its decoded bodies are compared on id, fee, output bytes and one era-only field. Stage 1 extends it to cover
-these before anything else is built on it.
+**What it does not show yet:** a full rule pipeline (LEDGER) on typed transactions, which is stage 2.
+Bodies decoded from recorded blocks are compared on id, fee, output bytes and one era-only field.
 
 Its two findings:
 - An instance written as an anonymous class whose methods take match-type parameters needs explicit

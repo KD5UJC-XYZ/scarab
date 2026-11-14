@@ -24,6 +24,10 @@ object SharedRules:
           case _                  => Vector.empty
       )
 
+  /** The lovelace of a set of outputs, whatever the era's value is (`coin . sumVal`). */
+  def coinOf[E <: EraTag](outs: Vector[TxOut[E]])(using o: EraTxOut[E]): BigInt =
+    o.valueOps.coin(outs.map(o.value).foldLeft(o.valueOps.zero)(o.valueOps.plus))
+
   /** A body's protocol-parameter update: only eras up to Babbage have one ([[ShelleyEraTxBody]]).
     */
   def proposedUpdate[E <: EraTag](body: TxBody[TxLevel.Top, E])(using

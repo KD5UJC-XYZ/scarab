@@ -2,14 +2,16 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Address, Datum, LedgerDecodeError, Script, TxIn, Update, Value}
-import xyz.kd5ujc.scarab.ledger.state.{Babbage, Conway, EraTag}
+import xyz.kd5ujc.scarab.ledger.{Address, Datum, LedgerDecodeError, Script, TxIn, Update}
+import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Conway, EraTag, Mary}
 
 /** The transaction output of era `E`, as the reference's `TxOut era` type family (cardano-ledger
   * f649f975 `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:297-318`): one nominal type per
   * era, an opaque type over the representation the reference shares.
   */
 type TxOut[E <: EraTag] = E match
+  case Allegra => allegra.AllegraTxOut
+  case Mary    => mary.MaryTxOut
   case Babbage => babbage.BabbageTxOut
   case Conway  => conway.ConwayTxOut
 
@@ -45,8 +47,14 @@ type TxBody[L <: TxLevel, E <: EraTag] = E match
 
 /** The fields every era's output has (`EraTxOut`, `Core.hs:297-318`). */
 trait EraTxOut[E <: EraTag]:
+  /** The era's value (`Value era`): [[AdaValue]] up to Allegra, [[MultiAssetValue]] from Mary. */
+  type EraValue
+
+  /** The arithmetic of the era's value. */
+  def valueOps: Val[EraValue]
+
   def address(out: TxOut[E]): Address
-  def value(out: TxOut[E]): Value
+  def value(out: TxOut[E]): EraValue
 
   /** The output's bytes as they arrived. */
   def raw(out: TxOut[E]): Bytes
@@ -95,10 +103,12 @@ enum EraTxError:
   case NotInEra(field: EraField)
 
 enum EraField:
-  case Update, CurrentTreasury
+  case Update, CurrentTreasury, MultiAsset, Datum, ReferenceScript, NegativeValue
 
 /** The instances of each era, one place per class that lists the eras having it. */
 object EraTxOut:
+  given allegra: EraTxOut[Allegra] = xyz.kd5ujc.scarab.ledger.era.allegra.AllegraTxOut.instance
+  given mary: EraTxOut[Mary] = xyz.kd5ujc.scarab.ledger.era.mary.MaryTxOut.instance
   given babbage: BabbageEraTxOut[Babbage] =
     xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxOut.instance
   given conway: BabbageEraTxOut[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxOut.instance

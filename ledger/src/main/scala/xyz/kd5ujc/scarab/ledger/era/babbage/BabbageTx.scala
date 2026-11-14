@@ -3,8 +3,10 @@ package xyz.kd5ujc.scarab.ledger.era.babbage
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Address, Datum, Script, TxIn, Update, Value}
+import xyz.kd5ujc.scarab.ledger.{Address, Datum, Script, TxIn, Update}
 import xyz.kd5ujc.scarab.ledger.era.{
+  MultiAssetValue,
+  Val,
   BabbageEraTxOut,
   BabbageTxOutRep,
   EraTxError,
@@ -26,15 +28,18 @@ object BabbageTxOut:
   /** The stored output read as a Babbage output (`ejectHardForkTxOut` of the current era,
     * ouroboros-consensus 82ecba329 `Cardano/Ledger.hs:137-162`).
     */
-  def fromStored(out: xyz.kd5ujc.scarab.ledger.TxOut): BabbageTxOut = BabbageTxOutRep.of(out)
+  private[ledger] def fromStored(out: xyz.kd5ujc.scarab.ledger.TxOut): BabbageTxOut =
+    BabbageTxOutRep.of(out)
 
   extension (out: BabbageTxOut)
     /** The shared representation, read only: the translation into the next era reads it. */
     def rep: BabbageTxOutRep = out
 
   val instance: BabbageEraTxOut[Babbage] = new BabbageEraTxOut[Babbage]:
+    type EraValue = MultiAssetValue
+    override def valueOps: Val[MultiAssetValue] = summon[Val[MultiAssetValue]]
     override def address(out: BabbageTxOut): Address = out.address
-    override def value(out: BabbageTxOut): Value = out.value
+    override def value(out: BabbageTxOut): MultiAssetValue = MultiAssetValue.of(out.value)
     override def raw(out: BabbageTxOut): Bytes = out.raw
     override def datum(out: BabbageTxOut): Datum = out.datum
     override def referenceScript(out: BabbageTxOut): Option[Script] = out.scriptRef

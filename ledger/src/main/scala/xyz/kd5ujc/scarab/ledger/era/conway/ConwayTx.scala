@@ -3,8 +3,10 @@ package xyz.kd5ujc.scarab.ledger.era.conway
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Address, Datum, Script, TxIn, Value}
+import xyz.kd5ujc.scarab.ledger.{Address, Datum, Script, TxIn}
 import xyz.kd5ujc.scarab.ledger.era.{
+  MultiAssetValue,
+  Val,
   BabbageEraTxOut,
   BabbageTxOutRep,
   ConwayEraTxBody,
@@ -27,7 +29,8 @@ object ConwayTxOut:
   /** The stored output read as a Conway output (`ejectHardForkTxOut`, ouroboros-consensus 82ecba329
     * `Cardano/Ledger.hs:137-162`).
     */
-  def fromStored(out: xyz.kd5ujc.scarab.ledger.TxOut): ConwayTxOut = BabbageTxOutRep.of(out)
+  private[ledger] def fromStored(out: xyz.kd5ujc.scarab.ledger.TxOut): ConwayTxOut =
+    BabbageTxOutRep.of(out)
 
   /** A Babbage output carried into Conway (`upgradeTxOut`, `Conway/TxOut.hs:68-81`): the same
     * address, value, datum and reference script, and the same bytes.
@@ -35,8 +38,10 @@ object ConwayTxOut:
   def translate(out: BabbageTxOut): ConwayTxOut = out.rep
 
   val instance: BabbageEraTxOut[Conway] = new BabbageEraTxOut[Conway]:
+    type EraValue = MultiAssetValue
+    override def valueOps: Val[MultiAssetValue] = summon[Val[MultiAssetValue]]
     override def address(out: ConwayTxOut): Address = out.address
-    override def value(out: ConwayTxOut): Value = out.value
+    override def value(out: ConwayTxOut): MultiAssetValue = MultiAssetValue.of(out.value)
     override def raw(out: ConwayTxOut): Bytes = out.raw
     override def datum(out: ConwayTxOut): Datum = out.datum
     override def referenceScript(out: ConwayTxOut): Option[Script] = out.scriptRef
