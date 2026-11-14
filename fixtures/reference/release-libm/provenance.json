@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "scope": "The cardano-node 11.1.3 release binary's own log, pow and exp (musl, linked statically), called on 4,524 arguments, and the reference likelihood formula (PoolRank.hs:126-172 at the ledger pin) on that libm for 63 stake shares, with the bytes of the binary's three libm tables. Not the node's Haskell code path: the formula is repeated in C with basic IEEE operations.",
+  "referenceGitRevision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+  "ledgerPin": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "measuredAt": "2026-11-14",
+  "image": "sha256:63bb366ad306366653fd9dfb23e16cceadd1ab68de6556c1e761358a5364bb1e",
+  "binarySha256": "ee396604345cc07c7169391ef3f5364886d4b7fe0d539aff6919b470e7a336c3",
+  "crossCheck": {
+    "release": "11.2.1",
+    "image": "sha256:735bd30c5ff97dc03001746691cf103e38dff8ba970f95e2fbb9cdabdb1ab0f0",
+    "binarySha256": "e8e0e37c55b123f0b6a4487da64de60a46158d229dfa1a93f6e20ae04a49ac0b",
+    "result": "identical cases, likelihoods and tables"
+  },
+  "compiler": "gcc:14.2.0@sha256:b99b86a28812b1e6453a231a947dc43d76fe192788a12f344a9b568bf9f5d24c",
+  "probeSha256": "121c4a84dd7db66075d321bac7058759132bf7ad09d4b4fe760b4e68e60f8030",
+  "musl": {
+    "version": "1.2.5",
+    "tarballSha256": "a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4",
+    "signedBy": "836489290BB6B70F99FFDA0556BCDB593020450F",
+    "result": "the binary's __log_data, __pow_log_data and __exp_data equal musl 1.2.5's compiled without FMA; src/math/log.c, pow.c and exp.c, their _data.c and _data.h files and the __math_oflow, __math_uflow, __math_xflow, __math_invalid and __math_divzero helpers are byte-identical in musl 1.1.24, 1.2.3, 1.2.4 and 1.2.5; src/internal/libm.h differs between them only in declarations these files do not use"
+  },
+  "cases": 4587,
+  "casesSha256": "5e64d122e10a3e90f5c9affc02b38391d173539b01f005ed1c4264bd23b29d38",
+  "tablesSha256": "af3a5fbb3d0aaba21812a4e5e2cc63e14bd20f4b501688449ff45497e38401fa",
+  "bulkComparison": {
+    "note": "MuslMathMain raw against the binary on the 26,000,000 arguments run.py --bulk writes (seed 1003); the arguments and results are regenerated, not published",
+    "logArguments": 9000000,
+    "expArguments": 8000000,
+    "powArguments": 9000000,
+    "muslMathDifferences": 0,
+    "jvmMathDifferences": {
+      "log": 3198,
+      "exp": 9019,
+      "pow": 1855
+    }
+  },
+  "replay": "python3 scripts/oracle/release-libm/run.py"
+}
