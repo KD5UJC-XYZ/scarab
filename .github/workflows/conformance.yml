@@ -71,7 +71,7 @@ jobs:
           if [ "$CBOR_DECODING" = true ]; then scenarios+=(cbor-decoding); fi
           if [ "${#scenarios[@]}" -eq 0 ]; then echo "no scenario chosen"; exit 1; fi
           mkdir -p .cache
-          python3 -I scripts/conformance/run.py "${scenarios[@]}" \
+          python3 -I -B scripts/conformance/run.py "${scenarios[@]}" \
             --out "$RUNNER_TEMP/conformance" --inputs "$RUNNER_TEMP/conformance-inputs" \
             --image scarab-jdk:local --build-image --owner "conformance-$GITHUB_RUN_ID"
 
@@ -148,6 +148,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          python3 -I scripts/conformance/publish.py --apply --checkout scarab-conformance \
+          python3 -I -B scripts/conformance/publish.py --apply --checkout scarab-conformance \
             --identity 'github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>' \
             "$RUNNER_TEMP/conformance"

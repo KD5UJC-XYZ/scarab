@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Write Scarab's reports for pragma-org's node-diversity-conformance site, ready for `publish.py`.
 
-    python3 -I scripts/conformance/run.py SCENARIO [SCENARIO ...] --out DIR [options]
+    python3 -I -B scripts/conformance/run.py SCENARIO [SCENARIO ...] --out DIR [options]
 
 For the scenarios given (ledger-rules, uplc-conformance, uplc-turbo, cbor-decoding) it
 
@@ -42,6 +42,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+# No bytecode in the checkout: `-I` ignores PYTHONDONTWRITEBYTECODE.
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from conformance import inputs as fetching  # noqa: E402
