@@ -385,6 +385,20 @@ object TxBody:
     case xyz.kd5ujc.scarab.codec.Value.Null => Right(())
     case other => Left(LedgerDecodeError.Expected(what, LedgerDecodeError.Shape.Null, other))
 
+  /** The network id of key 15, Alonzo onward (`bodyFields 15` reads it with `From`:
+    * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs:484`, `Babbage/TxBody.hs:563`,
+    * `Conway/TxBody.hs:233`, cardano-ledger f649f975): `DecCBOR Network`, a `decodeWord8` that
+    * `word8ToNetwork` takes as `Testnet` (0) or `Mainnet` (1) and fails otherwise
+    * (`libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs:886-907`).
+    */
+  private def networkId(n: Node): Either[LedgerDecodeError, BigInt] =
+    Unsigned
+      .read[Unsigned.Width.W8](n, DecodeField.NetworkId)
+      .map(_.value)
+      .flatMap(v =>
+        Either.cond(v <= 1, v, LedgerDecodeError.NumberOutOfRange(DecodeField.NetworkId, v, 0, 1))
+      )
+
   private def update(n: Node, era: Era): Either[LedgerDecodeError, Update] =
     given ByteStrings = ByteStrings.of(DecoderVersion.of(era))
     for
@@ -504,7 +518,7 @@ object TxBody:
             )
           )
       )
-      network <- f.get(15).traverse(CborRead.uint(_, DecodeField.NetworkId))
+      network <- f.get(15).traverse(networkId)
       collateralReturn <- f.get(16).traverse(TxOut.decode(_, mode, forms, ScriptKind.newest(era)))
       totalCollateral <- f.get(17).traverse(CborRead.uint(_, DecodeField.TotalCollateral))
       refs <- present(DecodeField.ReferenceInputs)(
@@ -616,6 +630,38 @@ object BootstrapWitness:
   * the execution units budget.
   */
 final case class Redeemer(tag: Int, index: BigInt, data: Bytes, exUnits: ExUnits)
+
+object Redeemer:
+  /** The largest purpose tag of the era's `PlutusPurpose`. Alonzo's `AlonzoPlutusPurpose`, which
+    * Babbage reads too (`eras/babbage/impl/src/Cardano/Ledger/Babbage/Scripts.hs:61`), has spend,
+    * mint, cert and reward, 0 to 3
+    * (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:383-397`, cardano-ledger f649f975);
+    * Conway's `ConwayPlutusPurpose` adds vote and propose, 0 to 5
+    * (`eras/conway/impl/src/Cardano/Ledger/Conway/Scripts.hs:280-296`).
+    */
+  def maxTag(era: Era): Int = if era.ordinal >= Era.Conway.ordinal then 5 else 3
+
+  /** A redeemer's purpose, the tag and the index, as `decCBORGroup` of the era's
+    * `PlutusPurpose AsIx` reads them in both forms of the redeemers: the tag a `Word8`
+    * (`decodeWord8`) that names one of the era's purposes ([[maxTag]]), any other failing before
+    * the index is read, and the index an `AsIx Word32` (`decodeWord32`; `Alonzo/Scripts.hs:281-283,
+    * 332-336`, `Conway/Scripts.hs:202-208`; `Decoding/DecCBOR.hs:157-159`). A tag beyond a `Word8`
+    * is refused as one, never read as its low bits.
+    */
+  private[ledger] def purpose(
+      tag: Node,
+      index: Node,
+      era: Era
+  ): Either[LedgerDecodeError, (Int, BigInt)] =
+    for
+      t <- Unsigned.read[Unsigned.Width.W8](tag, DecodeField.RedeemerTag).map(_.value)
+      _ <- Either.cond(
+        t <= maxTag(era),
+        (),
+        LedgerDecodeError.UnknownTag(DecodeField.RedeemerTag, t)
+      )
+      i <- Unsigned.read[Unsigned.Width.W32](index, DecodeField.RedeemerIndex)
+    yield (t.toInt, i.value)
 
 /** Decoded witnesses and original encodings used by [[ScriptIntegrity]] and [[Phase2]].
   *
@@ -742,7 +788,7 @@ object Witnesses:
             )
             .map(_.distinct)
         )
-      redeemers <- f.get(5).traverse(redeemerList(_, version))
+      redeemers <- f.get(5).traverse(redeemerList(_, era, version))
     yield Witnesses(
       vkeys.getOrElse(Vector.empty),
       bootstrap.getOrElse(Vector.empty),
@@ -769,10 +815,16 @@ object Witnesses:
     * version 9 either form must not be empty; below it only the list is read (`RedeemersRaw`,
     * TxWits.hs). From version 9 the map form is chosen by `peekTokenType`, for `TypeMapLenIndef`
     * and `TypeMapLen` alone (`Alonzo/TxWits.hs:548-559`, f649f975): a map whose length is written
-    * in eight bytes ([[CborRead.mapLength64]]) is read as the list and refused (#701).
+    * in eight bytes ([[CborRead.mapLength64]]) is read as the list and refused (#701). The purpose
+    * is read by [[Redeemer.purpose]] in both forms. A listed redeemer is `decodeRecordNamed`
+    * (`decodeElement`, `Alonzo/TxWits.hs:588-597`) and a map key a `CBORGroup`
+    * (`Binary/Group.hs:27-35`), each a definite or an indefinite list; a map value is the tuple
+    * `(annData, exUnits)` (`decodeMapRedeemers`, `Alonzo/TxWits.hs:571-575`), whose
+    * `decodeListLenOf 2` takes a definite list only (`Decoding/DecCBOR.hs:238-243`).
     */
   private def redeemerList(
       n: Node,
+      era: Era,
       version: DecoderVersion
   ): Either[LedgerDecodeError, Vector[Redeemer]] =
     val all: Either[LedgerDecodeError, Vector[Redeemer]] = n.value match
@@ -781,12 +833,12 @@ object Witnesses:
         kvs.traverse { case (k, v) =>
           for
             key <- CborRead.arrayN(k, 2, DecodeField.RedeemerKey)
-            tag <- CborRead.uint(key(0), DecodeField.RedeemerTag)
-            index <- CborRead.uint(key(1), DecodeField.RedeemerIndex)
-            value <- CborRead.arrayN(v, 2, DecodeField.RedeemerValue)
+            purpose <- Redeemer.purpose(key(0), key(1), era)
+            value <- CborRead.definite(v, DecodeField.RedeemerValue) *>
+              CborRead.arrayN(v, 2, DecodeField.RedeemerValue)
             _ <- Data.read(value(0), DecodeField.Redeemer)
             units <- exUnits(value(1))
-          yield Redeemer(tag.toInt, index, value(0).original, units)
+          yield Redeemer(purpose._1, purpose._2, value(0).original, units)
         }
       case _ =>
         CborRead
@@ -794,11 +846,10 @@ object Witnesses:
           .flatMap(_.traverse { r =>
             for
               xs <- CborRead.arrayN(r, 4, DecodeField.Redeemer)
-              tag <- CborRead.uint(xs(0), DecodeField.RedeemerTag)
-              index <- CborRead.uint(xs(1), DecodeField.RedeemerIndex)
+              purpose <- Redeemer.purpose(xs(0), xs(1), era)
               _ <- Data.read(xs(2), DecodeField.Redeemer)
               units <- exUnits(xs(3))
-            yield Redeemer(tag.toInt, index, xs(2).original, units)
+            yield Redeemer(purpose._1, purpose._2, xs(2).original, units)
           })
     all.flatMap(CborRead.nonEmpty(_, DecodeField.Redeemers, version.atLeast(9))).map { rs =>
       val last = rs.zipWithIndex.map((r, i) => (r.tag, r.index) -> i).toMap

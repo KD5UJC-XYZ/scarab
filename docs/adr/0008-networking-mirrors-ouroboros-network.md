@@ -350,3 +350,22 @@ Bugs of the linked packages, not reproduced:
 and the hot-demotion scores of D5, both approved. The mux lifecycle corpus ran the job pool of
 `2fb69829`, whose order Scarab keeps (N2); whether its observations hold at `c45735a5` is still not
 checked.
+
+## Amendment (2026-11-14): requests for transaction bodies
+
+A later approved deviation, indexed in [decisions.md](../decisions.md#networking-and-local-clients):
+
+- **A body asked for again** (owner, 2026-11-14 (session): per-advertisement form). The side that serves
+  transaction bodies refuses a `MsgRequestTxs` that names an id none of whose advertisements in the
+  unacknowledged window is left unasked, and ends the connection
+  (`TxSubmissionPolicy.Violation.AlreadyRequested`), after the specification's rule: "It is an error to ask
+  for transaction identifiers that are not outstanding or that were already asked for" (ouroboros-network
+  `c45735a5`, the network specification `network-spec/miniprotocols.tex` 1392-1393). An id offered more than
+  once in the window is outstanding once per advertisement: a request takes the oldest advertisement not yet
+  asked for, and acknowledgement drops the advertisements with their marks. The reference's serving side
+  checks only that a requested id is in the window
+  (`ouroboros-network/lib/Ouroboros/Network/TxSubmission/Outbound.hs` 177-193). Its receiving sides ask for an
+  id again only after it was advertised again (`Inbound/V1.hs` 365-375 and 417-424; `Inbound/V2/State.hs`
+  432-437, 1040-1043 and 1446-1453), which the rule allows. The approval holds while Scarab stays conformant:
+  no request of an honest peer is refused. Trade-off: the bodies served between acknowledgements are at most
+  the advertisements of the window.

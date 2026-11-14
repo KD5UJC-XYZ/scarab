@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.node.ConfigSettings
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{IO, Ref}
 import cats.mtl.{Handle, Raise, Stateful}
@@ -145,8 +146,11 @@ trait ForgeFixture:
       storageFailure: Option[StorageError] = None,
       clock: Option[IO[Instant]] = None,
       unbounded: Boolean = false,
-      enabled: Boolean = true
+      enabled: Boolean = true,
+      protocolVersion: (BigInt, BigInt) = ConfigSettings().protocolVersion,
+      network: Int = globals.network
   )(using Handle[IO, NodeError]): IO[Harness] =
+    val rulesGlobals = globals.copy(network = network)
     for
       start <- IO.pure(mirrorState(ledger))
       ref <- Ref.of[IO, VolatileChain[MirrorState]](
@@ -155,7 +159,7 @@ trait ForgeFixture:
       given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
       realRules = MirrorRules[IO](
         config.copy(verdicts = verdicts),
-        globals,
+        rulesGlobals,
         None,
         None,
         mirrorEnv.byron,
@@ -184,7 +188,7 @@ trait ForgeFixture:
                 _,
                 Some(BigInt(4999)),
                 MempoolEnv(
-                  globals,
+                  rulesGlobals,
                   geometry,
                   xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
                   xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
@@ -198,7 +202,7 @@ trait ForgeFixture:
         mempoolBase,
         4999,
         MempoolEnv(
-          globals,
+          rulesGlobals,
           geometry,
           xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
           xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
@@ -233,7 +237,7 @@ trait ForgeFixture:
                     c.state,
                     c.tipRef,
                     MempoolEnv(
-                      globals,
+                      rulesGlobals,
                       geometry,
                       xyz.kd5ujc.scarab.plutus.PlutusBackends.evaluator,
                       xyz.kd5ujc.scarab.plutus.PlutusBackends.decoder
@@ -253,8 +257,9 @@ trait ForgeFixture:
       // `live` drives the real loop on the test clock from slot 5000; otherwise steps are manual.
       forger <- Forger.create[IO, MirrorState](
         config,
-        globals,
+        rulesGlobals,
         xyz.kd5ujc.scarab.plutus.PlutusBackends.backend,
+        protocolVersion,
         p.creds,
         follower,
         mempool,

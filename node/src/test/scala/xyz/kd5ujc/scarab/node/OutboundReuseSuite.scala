@@ -462,3 +462,28 @@ class OutboundReuseSuite extends FailsOnUncaught:
       Some((2L, 2L))
     )
   }
+
+  test("the transaction bytes served are the running session's and the peer's, and are listed") {
+    val first = OutboundPeers
+      .SessionReport()
+      .began(connection = 1L, activation = BigInt(1))
+      .served(BigInt(1), 300L)
+      .ended(BigInt(1))
+    val second = first
+      .began(connection = 2L, activation = BigInt(2))
+      .served(BigInt(1), 7L)
+      .served(BigInt(2), 40L)
+    assertEquals(second.active.map(a => (a.connection, a.txBytesServed)), Some((2L, 40L)))
+    assertEquals(second.lifetime.txBytesServed, 347L)
+    val listed = OutboundPeers.json(Vector("peer" -> second))
+    assertEquals(
+      listed.hcursor.downN(0).downField("active").get[Long]("txBytesServed"),
+      Right(40L),
+      listed.spaces2
+    )
+    assertEquals(
+      listed.hcursor.downN(0).downField("lifetime").get[Long]("txBytesServed"),
+      Right(347L),
+      listed.spaces2
+    )
+  }

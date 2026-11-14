@@ -165,6 +165,15 @@ object Proposal:
       p.anchor
     )
 
+  /** The largest major version a hard fork action may name: the action reads its version with
+    * `decodeProtVer @ConwayEra`
+    * (`eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs:886-889`, cardano-ledger
+    * f649f975), whose bound is `succVersion` of `ProtVerHigh ConwayEra`, 11
+    * (`libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs:253-263`,
+    * `libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs:133`).
+    */
+  private val HardForkMaxMajor: BigInt = 12
+
   private def optionalHash(n: Node)(using ByteStrings): Either[LedgerDecodeError, Option[Bytes]] =
     n.value match
       case CborValue.Null => Right(None)
@@ -212,14 +221,7 @@ object Proposal:
           case (Some(1), 3) =>
             (
               GovActionId.optional(xs(1)),
-              CborRead
-                .arrayN(xs(2), 2, DecodeField.ProtocolVersion)
-                .flatMap(v =>
-                  (
-                    CborRead.uint(v(0), DecodeField.Major),
-                    CborRead.uint(v(1), DecodeField.Minor)
-                  ).tupled
-                )
+              ParamUpdate.protocolVersion(xs(2), HardForkMaxMajor)
             ).mapN((p, v) => GovAction.HardFork(p, v._1, v._2))
           case (Some(2), 3) =>
             (

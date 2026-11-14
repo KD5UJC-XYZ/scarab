@@ -675,6 +675,11 @@ final class OutboundPeers[F[_]: Async, A] private (
       )
     )(_ => reports.update(m => m.updatedWith(peer)(_.map(_.ended(activation)))))
 
+  /** The session of `peer` in `activation` sent a TxSubmission2 reply of `bytes` of transactions.
+    */
+  private def served(peer: A, activation: BigInt)(bytes: Long): F[Unit] =
+    reports.update(m => m.updatedWith(peer)(_.map(_.served(activation, bytes))))
+
   /** What the hot sessions saw of each peer, for `GET /connections`. */
   def sessionReports: F[Vector[(A, SessionReport)]] = reports.get.map(_.toVector)
 
@@ -733,7 +738,8 @@ final class OutboundPeers[F[_]: Async, A] private (
                 hot.transactions,
                 Some(retire(key)),
                 trust,
-                Some(result => session.result.complete(result).void)
+                Some(result => session.result.complete(result).void),
+                Some(served(peer, key.activationGeneration))
               )
               .map(_ -> key)
           )
@@ -1120,18 +1126,22 @@ object OutboundPeers:
 
   /** What the hot session of a peer that is running saw of it: the connection it runs over (the
     * manager's [[xyz.kd5ujc.scarab.network.Connection.id]]), its activation (one per hot session),
-    * its intersection, the headers received and the block number of the tip it announced last.
+    * its intersection, the headers received, the block number of the tip it announced last, and the
+    * bytes of the transactions this node served it over TxSubmission2.
     */
   final case class ActiveSession(
       connection: Long,
       activation: BigInt,
       intersection: Option[xyz.kd5ujc.scarab.protocol.ChainSync.Point] = None,
       headers: Long = 0,
-      peerTip: Option[BigInt] = None
+      peerTip: Option[BigInt] = None,
+      txBytesServed: Long = 0
   )
 
-  /** Over every hot session of a peer: how many there were and the headers they received. */
-  final case class SessionTotals(activations: Long = 0, headers: Long = 0)
+  /** Over every hot session of a peer: how many there were, the headers they received and the bytes
+    * of the transactions served over them.
+    */
+  final case class SessionTotals(activations: Long = 0, headers: Long = 0, txBytesServed: Long = 0)
 
   /** What the hot sessions of one peer saw of it: the running one's observations, kept apart from
     * the totals over all of them, so that what one session saw is never read as another's.
@@ -1150,6 +1160,17 @@ object OutboundPeers:
     /** The session of `activation` ended; a later one's report is left as it is. */
     def ended(activation: BigInt): SessionReport =
       copy(active = active.filterNot(_.activation == activation))
+
+    /** The session of `activation` served `bytes` of transactions: the running session's report
+      * takes them only if it is that session's; the totals take every byte.
+      */
+    def served(activation: BigInt, bytes: Long): SessionReport =
+      SessionReport(
+        active.map(a =>
+          if a.activation == activation then a.copy(txBytesServed = a.txBytesServed + bytes) else a
+        ),
+        lifetime.copy(txBytesServed = lifetime.txBytesServed + bytes)
+      )
 
     /** What the session of `activation` observed: the running session's report takes it only if it
       * is that session's; the totals take every header.
@@ -1180,12 +1201,14 @@ object OutboundPeers:
               "activation" -> a.activation.asJson,
               "intersection" -> a.intersection.map(xyz.kd5ujc.scarab.ledger.Points.show).asJson,
               "headers" -> a.headers.asJson,
-              "peerTipBlock" -> a.peerTip.map(_.toString).asJson
+              "peerTipBlock" -> a.peerTip.map(_.toString).asJson,
+              "txBytesServed" -> a.txBytesServed.asJson
             )
           }.asJson,
           "lifetime" -> Json.obj(
             "activations" -> r.lifetime.activations.asJson,
-            "headers" -> r.lifetime.headers.asJson
+            "headers" -> r.lifetime.headers.asJson,
+            "txBytesServed" -> r.lifetime.txBytesServed.asJson
           )
         )
       }

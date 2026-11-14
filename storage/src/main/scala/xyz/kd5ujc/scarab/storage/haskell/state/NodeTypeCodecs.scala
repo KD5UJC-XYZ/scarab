@@ -255,13 +255,20 @@ trait NodeTypeCodecs extends VocabularyCodecs:
 
   private def previous: Codec[Option[GovActionId]] = nullable(govActionId)
 
-  /** `GovAction` (`Procedures.hs:928-946`): `[tag, ...]`, the tag the constructor. */
+  /** `GovAction` (`Procedures.hs:928-946`): `[tag, ...]`, the tag the constructor. A hard fork's
+    * version is read by `decodeProtVer @era` (`Procedures.hs:876-889`, cardano-ledger f649f975):
+    * the `ProtVer` whole, a `Version` major (at most `MaxVersion`, 13) and a `Word32` minor, and
+    * then a major above `succVersion (ProtVerHigh era)` refused (`BaseTypes.hs:243-263`): 12 for a
+    * Conway state, whose version is 9 to 11, and 13 from version 12
+    * (`Internal/Definition/Era.hs:132-141`).
+    */
   given govAction(using v: ProtVer): Codec[GovAction] = new Codec[GovAction]:
     private val policy = nullable(hash28)
     private val withdrawals = sortedMap(rewardAccount, amount)
     private val removed = sortedSet(nodeCredential)
     private val added = sortedMap(nodeCredential, amount)
     private val version = Record.of[(BigInt, BigInt)]((Codec.uintBig(13), word32))
+    private val maxMajor: BigInt = if v.atLeast(12) then 13 else 12
     def decode(n: Node): Decoded[GovAction] =
       variant(n).flatMap {
         case (t, Vector(g, u, p)) if t == 0 =>
@@ -274,6 +281,13 @@ trait NodeTypeCodecs extends VocabularyCodecs:
           for
             prev <- previous.decode(g).at("previous")
             ver <- version.decode(pv).at("protocolVersion")
+            _ <- Either
+              .cond(
+                ver._1 <= maxMajor,
+                (),
+                DecodeError.at(pv, Kind.OutOfRange(s"0..$maxMajor", ver._1))
+              )
+              .at("protocolVersion")
           yield GovAction.HardFork(prev, ver._1, ver._2)
         case (t, Vector(w, p)) if t == 2 =>
           for

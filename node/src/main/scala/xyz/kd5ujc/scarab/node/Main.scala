@@ -1880,6 +1880,7 @@ object Main extends IOApp:
               setup.praos.copy(geometry = geometry),
               globals,
               run.plutus,
+              setup.config.settings.protocolVersion,
               pool,
               follower,
               mempool,
@@ -1983,6 +1984,11 @@ object Main extends IOApp:
           // the governor ends the node only by a fault (an invariant, the bootstrap timeout)
           val sync: IO[Unit] =
             collectors.add(Collectors.peerMetrics(net.metrics)) *>
+              collectors.add(
+                Collectors.txSubmissionServed(
+                  net.outbound.sessionReports.map(_.map(_._2.lifetime))
+                )
+              ) *>
               IO.race(net.run, net.fatal.get).flatMap {
                 case Left(done) => done
                 case Right(fault) =>

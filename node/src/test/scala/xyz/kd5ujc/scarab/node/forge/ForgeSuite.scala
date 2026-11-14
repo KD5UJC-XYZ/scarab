@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.ledger.ForgeError
 import xyz.kd5ujc.scarab.consensus.{BlockRef, VolatileChain}
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.VrfCert
-import xyz.kd5ujc.scarab.node.{Fatal, Follower}
+import xyz.kd5ujc.scarab.node.{ConfigSettings, Fatal, Follower}
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.ledger.state.{NewEpochState, PoolDistr}
 import xyz.kd5ujc.scarab.protocol.Era
@@ -76,6 +76,41 @@ class ForgeSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ForgeFix
         assert(!chain.state.utxo.contains(TestLedger.txIn(1)))
         assert(!chain.state.utxo.contains(TestLedger.txIn(2)))
         assert(chain.state.utxo.contains(TestLedger.txIn(3)))
+    }
+  }
+
+  test("a forged header carries the node's protocol version, not the ledger's (Forge.hs:83)") {
+    val p = pool(kesStart = 50)
+    val ledger = ledgerWith(p, 0)
+    val configured = ConfigSettings().protocolVersion
+    // the node's version is one major above the ledger's: a node ready for the next version
+    assertEquals(ledger.es.ls.utxo.gov.curPParams.protocolMajor, BigInt(10))
+    assertEquals(configured, (BigInt(11), BigInt(2)))
+    assertEquals(
+      ConfigSettings(experimentalHardForksEnabled = true).protocolVersion,
+      (BigInt(12), BigInt(0))
+    )
+    // on a testnet, and on mainnet where `checkHeaderProtVerTooHigh` allows the ledger's major + 1
+    List(0, 1).traverse_ { network =>
+      withHandle {
+        for
+          h <- harness(p, ledger, protocolVersion = configured, network = network)
+          _ <- (5000 until 5020).toList.traverse_(s => h.forger.step(s))
+          forged <- forgedIn(h)
+          raws <- h.raws.get
+          chain <- h.chain
+        yield
+          assert(forged.nonEmpty, s"network $network: some of 20 slots must be won at f = 1/2")
+          forged.foreach { f =>
+            val raw = raws.get(f.hash)
+            assert(raw.isDefined, s"network $network: block ${f.hash} was not adopted")
+            val header = raw.flatMap(Block.decodeShelley(_).toOption).collect {
+              case b: Block.Shelley => b.header.protocolVersion
+            }
+            assertEquals(header, Some(configured), s"network $network: ${f.hash}")
+          }
+          assertEquals(chain.tipRef.map(_.hash), Some(forged.last.hash))
+      }
     }
   }
 

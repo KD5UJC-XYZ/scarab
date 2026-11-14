@@ -212,6 +212,73 @@ class LedgerRulesSuite extends FunSuite:
     )
   }
 
+  private val fee = PredicateFailure.utxo(UtxoFailure.FeeTooSmall(Mismatch(BigInt(1), BigInt(2))))
+  private val noInputs = PredicateFailure.utxo(UtxoFailure.InputSetEmpty)
+
+  private def selected(
+      verdict: LedgerRulesVerdict,
+      expected: ReportName,
+      selection: Selection = Selection.ExpectedInFailures
+  ): LedgerRulesCase =
+    LedgerRulesCase("00001", "a.json", verdict, Some(expected), selection)
+
+  private val twoFailures =
+    LedgerRulesVerdict.Refused(Vector(fee, noInputs), Vector.empty, NoContext)
+
+  test("a refusal names the expected failure when Scarab raised it among others") {
+    val c = selected(twoFailures, ReportName.InputSetEmptyUTxO)
+    assertEquals(c.result, Some("InputSetEmptyUTxO"))
+    assertEquals(c.chosen.map(_._2), Some(Selection.ExpectedInFailures))
+    assertEquals(c.names, Vector(ReportName.FeeTooSmallUTxO, ReportName.InputSetEmptyUTxO))
+    val first = selected(twoFailures, ReportName.InputSetEmptyUTxO, Selection.First)
+    assertEquals(first.result, Some("FeeTooSmallUTxO"))
+    assertEquals(first.chosen.map(_._2), Some(Selection.First))
+  }
+
+  test("a refusal that did not raise the expected name, or raised it first, names its first") {
+    val notRaised = selected(twoFailures, ReportName.MaxTxSizeUTxO)
+    assertEquals(notRaised.result, Some("FeeTooSmallUTxO"))
+    assertEquals(notRaised.chosen.map(_._2), Some(Selection.First))
+    val raisedFirst = selected(twoFailures, ReportName.FeeTooSmallUTxO)
+    assertEquals(raisedFirst.result, Some("FeeTooSmallUTxO"))
+    assertEquals(raisedFirst.chosen.map(_._2), Some(Selection.First))
+  }
+
+  test("a pass expected to fail is a pass") {
+    assertEquals(
+      selected(LedgerRulesVerdict.Accepted, ReportName.FeeTooSmallUTxO).result,
+      Some("pass")
+    )
+    val unelected = PredicateFailure.Mempool(MempoolProblem.UnelectedCommittee(Vector.empty))
+    val admitted = LedgerRulesVerdict.Refused(Vector.empty, Vector(unelected), NoContext)
+    assertEquals(selected(admitted, ReportName.VotersDoNotExist).result, Some("pass"))
+    assertEquals(selected(admitted, ReportName.VotersDoNotExist).chosen, None)
+  }
+
+  test("a fixture's expectation: a pass, a decoding failure or a predicate") {
+    def expectation(expected: Json) =
+      LedgerRulesFixture.expectation(
+        "f.json",
+        SimpleTransfer.mapObject(_.add("expected", expected)).noSpaces
+      )
+    assertEquals(expectation("Pass".asJson), Right(FixtureExpectation.Pass))
+    assertEquals(
+      expectation(Json.obj("decoding_failure" -> true.asJson)),
+      Right(FixtureExpectation.DecodingFailure)
+    )
+    val predicate =
+      Json.obj("predicate" -> "ValidationTagMismatch".asJson, "description" -> "x".asJson)
+    assertEquals(
+      expectation(predicate).map(_.refusal),
+      Right(Some(ReportName.ValidationTagMismatch))
+    )
+    assertEquals(
+      expectation(Json.obj("predicate" -> "PoolMetadataHashTooBig".asJson)).map(_.refusal),
+      Right(None)
+    )
+    assert(expectation(Json.obj()).isLeft)
+  }
+
   test("the report has the schema's fields and leaves out a fixture without a result") {
     val cases = Vector(
       LedgerRulesCase("00001", "a.json", LedgerRulesVerdict.Accepted),
@@ -264,6 +331,18 @@ class LedgerRulesSuite extends FunSuite:
     assertEquals(
       LedgerRulesMain.config(paths ++ List("--plutus-vm", "scarab")).map(_.vm),
       Right(PlutusVm.Scarab)
+    )
+    assertEquals(
+      LedgerRulesMain.config(paths).map(_.selection),
+      Right(Selection.ExpectedInFailures)
+    )
+    assertEquals(
+      LedgerRulesMain.config(paths ++ List("--select", "first")).map(_.selection),
+      Right(Selection.First)
+    )
+    assertEquals(
+      LedgerRulesMain.config(paths ++ List("--select", "last")),
+      Left(LedgerRulesMain.Error.Select("last"))
     )
   }
 

@@ -126,7 +126,7 @@ class UpstreamTxSubmission2BehaviorSuite extends FailsOnUncaught:
 
   private def rules(maxUnacked: Int): TxSubmission2Runtime.Rules[Bytes] =
     new TxSubmission2Runtime.Rules[Bytes]:
-      def acknowledge(unacked: Vector[Bytes], blocking: Boolean, ack: Int, request: Int) =
+      def acknowledge[A](unacked: Vector[A], blocking: Boolean, ack: Int, request: Int) =
         val retained = unacked.drop(ack)
         if ack < 0 || ack > 65535 then Left(ProtocolError.CountOutsideUint16(BigInt(ack)))
         else if request < 0 || request > 65535 then
@@ -140,11 +140,18 @@ class UpstreamTxSubmission2BehaviorSuite extends FailsOnUncaught:
           Left(ProtocolError.InvalidNonblockingInventoryRequest)
         else Right(retained)
 
-      def bodies(unacked: Vector[Bytes], ids: Vector[Bytes]) =
+      def bodies(unacked: Vector[TxSubmission2Runtime.Advertised[Bytes]], ids: Vector[Bytes]) =
         if ids.distinct.size != ids.size then Left(ProtocolError.DuplicateBodyRequest)
-        else if ids.exists(id => !unacked.contains(id)) then
-          Left(ProtocolError.UnadvertisedAcknowledgedOrRepeatedBodyRequest)
-        else Right(())
+        else
+          ids.foldLeft[Either[ProtocolError, Vector[TxSubmission2Runtime.Advertised[Bytes]]]](
+            Right(unacked)
+          ) { (window, id) =>
+            window.flatMap(w =>
+              w.indexWhere(a => a.id == id && !a.requested) match
+                case -1 => Left(ProtocolError.UnadvertisedAcknowledgedOrRepeatedBodyRequest)
+                case at => Right(w.updated(at, w(at).copy(requested = true)))
+            )
+          }
 
       def offers(ids: Vector[Bytes], requested: Int) =
         if ids.size > requested then Left(ProtocolError.BatchLimitExceeded(ids.size, requested))

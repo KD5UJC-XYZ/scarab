@@ -6,7 +6,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Rational}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
-/** An unsigned integer of the width of its reference type: `Word16`, `Word32` (also
+/** An unsigned integer of the width of its reference type: `Word8`, `Word16`, `Word32` (also
   * `EpochInterval`, cardano-slotting) or `Word64` (`CompactForm Coin` and `CoinPerByte`,
   * `Coin.hs:193-194,220-222` at cardano-ledger f649f975). The only ways in are [[Unsigned.from]]
   * and [[Unsigned.read]], which refuse a value outside the width.
@@ -18,6 +18,7 @@ object Unsigned:
   sealed trait Width
 
   object Width:
+    sealed trait W8 extends Width
     sealed trait W16 extends Width
     sealed trait W32 extends Width
     sealed trait W64 extends Width
@@ -26,6 +27,7 @@ object Unsigned:
   final class Bound[W <: Width] private[Unsigned] (val max: BigInt)
 
   object Bound:
+    given w8: Bound[Width.W8] = new Bound(BigInt(0xff))
     given w16: Bound[Width.W16] = new Bound(BigInt(0xffff))
     given w32: Bound[Width.W32] = new Bound((BigInt(1) << 32) - 1)
     given w64: Bound[Width.W64] = new Bound((BigInt(1) << 64) - 1)
@@ -33,8 +35,8 @@ object Unsigned:
   def from[W <: Width](n: BigInt)(using b: Bound[W]): Option[Unsigned[W]] =
     Option.when(n.signum >= 0 && n <= b.max)(n)
 
-  /** `decodeWord16`, `decodeWord32` or `decodeWord64` (cardano-ledger-binary over cborg): an
-    * unsigned integer item of any head width whose value fits the width.
+  /** `decodeWord8`, `decodeWord16`, `decodeWord32` or `decodeWord64` (cardano-ledger-binary over
+    * cborg): an unsigned integer item of any head width whose value fits the width.
     */
   private[ledger] def read[W <: Width](n: Node, site: DecodeSite)(using
       b: Bound[W]

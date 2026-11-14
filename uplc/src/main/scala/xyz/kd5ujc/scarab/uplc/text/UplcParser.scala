@@ -170,7 +170,8 @@ object UplcParser:
       def receive(value: A, names: Names): P0[Step]
 
     // `program` (`UntypedPlutusCore/Parser.hs:133-141`): the version is known to every term in it.
-    val program: P0[Outcome] =
+    // A `def`, so that the machine is complete before the parser that runs it is built.
+    def program: P0[Outcome] =
       (ws.with1 *> openParen *> symbol("program") *> version).flatMap { v =>
         val run = Monad[P0].tailRecM[State, Outcome](
           Expect(TermGoal(v), Top(v), Names(Map.empty, 0))
