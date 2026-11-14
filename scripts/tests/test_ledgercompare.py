@@ -9,7 +9,7 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from devnet import cbor, cborspan, ledgercompare  # noqa: E402
+from devnet import cbor, cborspan, ledgercompare, ntcquery  # noqa: E402
 
 POOL = b"\x01" * 28
 
@@ -243,7 +243,7 @@ class WholeStateAnchorTest(unittest.TestCase):
                     test.tip += 1  # each acquire of a tip finds it a block further on
                 if self.side == "scala" and point is not None and refusals[0] > 0:
                     refusals[0] -= 1
-                    raise RuntimeError("acquire failed: [2, 1]")
+                    raise ntcquery.AcquireRefused(1)
 
             def query_raw(self, query):
                 return [test.tip, b"\x07" * 32]
@@ -256,7 +256,7 @@ class WholeStateAnchorTest(unittest.TestCase):
                 state = scala_answer if self.side == "scala" and scala_answer is not None else answer(nes())
                 self.last_raw = utxo if self.asked else state
                 self.asked += 1
-                return [4]
+                return [4, None]
         return Session
 
     def run_whole(self, **kwargs):
@@ -302,7 +302,8 @@ class WholeStateForkTest(unittest.TestCase):
     """#785: a same-point comparison whose sampled point the other node refuses, under a scripted schedule of the
     two acquisitions: no cluster, and the pauses are recorded instead of waited for."""
 
-    NOT_ON_CHAIN = RuntimeError("acquire failed: [2, 1]")
+    NOT_ON_CHAIN = ntcquery.AcquireRefused(1)
+    TOO_OLD = ntcquery.AcquireRefused(0)
 
     def setUp(self):
         import tempfile
@@ -321,10 +322,11 @@ class WholeStateForkTest(unittest.TestCase):
     def point(self, slot):
         return [slot, bytes([slot]) * 32]
 
-    def run_whole(self, script, scala_answer=None, **kwargs):
+    def run_whole(self, script, scala_answer=None, point=..., query_reply=None, **kwargs):
         """`whole_state` against fake sessions. Each sample of the anchor's tip finds it a block further on (slot 7,
-        8, ...); `script` holds, in order, what each acquisition of a point by the other node does: None acquires,
-        an exception is raised."""
+        8, ...), unless `point` gives the anchor's chain point; `script` holds, in order, what each acquisition of a
+        point by the other node does: None acquires, an exception is raised. `query_reply(side, asked)` replaces the
+        reply to an answer query."""
         test, outcomes = self, iter(script)
         utxo = cbor.enc([4, [{}]])
 
@@ -348,7 +350,7 @@ class WholeStateForkTest(unittest.TestCase):
                     raise outcome
 
             def query_raw(self, query):
-                return test.point(test.tip)
+                return test.point(test.tip) if point is ... else point
 
             def _send(self, protocol, payload):
                 pass
@@ -357,7 +359,7 @@ class WholeStateForkTest(unittest.TestCase):
                 state = scala_answer if self.side == "scala" and scala_answer is not None else answer(nes())
                 self.last_raw = utxo if self.asked else state
                 self.asked += 1
-                return [4]
+                return [4, None] if query_reply is None else query_reply(self.side, self.asked)
         with self.mock.patch.object(self.compare.ntcquery, "LocalStateQuery", Session), \
                 self.mock.patch.object(self.compare.util, "data_root", lambda name: self.root), \
                 self.mock.patch.object(self.compare, "ref", lambda name: "ref-container"), \
@@ -384,7 +386,8 @@ class WholeStateForkTest(unittest.TestCase):
         self.assertEqual([side for side, _ in self.calls].count("reference"), 3, "1 + 2 reselections, no more")
         self.assertIn("acquire failed", result["error"])
         self.assertNotIn("answers", result)
-        self.assertEqual((result["stage"], result["point"]["slot"], result["exhausted"]), ("other", 9, True))
+        self.assertEqual((result["stage"], result["point"]["slot"], result["exhausted"]), ("other-acquire", 9, True))
+        self.assertEqual(result["kind"], "refused")
         self.assertEqual(result["refusal"], {"reply": "[2, 1]", "failure": "PointNotOnChain"})
         self.assertEqual(result["bounds"], {"attempts": 1, "reselections": 2})
         self.assertEqual([o[2] for o in self.outcomes(result)], ["acquired", "refused"] * 3)
@@ -412,27 +415,51 @@ class WholeStateForkTest(unittest.TestCase):
         tallies = self.compare.Comparisons(self.root)
         result = self.run_whole([self.NOT_ON_CHAIN])
         self.assertEqual(self.calls, [("scala", None), ("reference", 7)])
-        self.assertEqual((result["stage"], result["point"]["slot"]), ("other", 7))
+        self.assertEqual((result["stage"], result["point"]["slot"]), ("other-acquire", 7))
         with self.mock.patch("builtins.print"):
             tallies.record_whole("conway", "mid", result)
         failures = [f for f in self.compare.whole_failures(tallies, "conway", 0) if "comparison errors" in f]
         self.assertEqual(len(failures), 2)  # one per query of `WHOLE_QUERIES`
         self.assertIn("1 same-point DebugNewEpochState comparison errors", failures[0])
-        self.assertIn("'stage': 'other'", failures[0])
+        self.assertIn("'stage': 'other-acquire'", failures[0])
         self.assertIn("'failure': 'PointNotOnChain'", failures[0])
         self.assertEqual(tallies.whole["GetUTxOWhole"]["conway"]["errorDetails"][0]["point"]["slot"], 7)
 
     def test_a_point_too_old_for_the_reference_is_not_sampled_again(self):
         # a follower more than k blocks behind the reference stays behind: an error, as before the reselection
-        result = self.run_whole([RuntimeError("acquire failed: [2, 0]"), None], reselections=2)
+        result = self.run_whole([self.TOO_OLD, None], reselections=2)
         self.assertEqual([side for side, _ in self.calls].count("reference"), 1)
         self.assertEqual(result["refusal"], {"reply": "[2, 0]", "failure": "PointTooOld"})
-        self.assertEqual((result["stage"], result["point"]["slot"]), ("other", 7))
+        self.assertEqual((result["stage"], result["point"]["slot"]), ("other-acquire", 7))
         self.assertNotIn("exhausted", result)
         self.assertEqual(self.pauses, [])
 
+    def test_a_point_once_too_old_ends_the_comparison_whatever_follows(self):
+        # too old, then not on the chain, then acquired: the first answer already ends it
+        result = self.run_whole([self.TOO_OLD, self.NOT_ON_CHAIN, None], anchor="reference", attempts=3)
+        self.assertEqual(self.calls, [("reference", None), ("scala", 7)])
+        self.assertEqual(result["refusal"]["failure"], "PointTooOld")
+        self.assertNotIn("answers", result)
+
+    def test_a_sampled_point_that_is_not_a_block_point_ends_the_comparison(self):
+        result = self.run_whole([None], reselections=2, point=None)
+        self.assertEqual(self.calls, [("scala", None)], "the other node is never asked for its own tip")
+        self.assertEqual((result["kind"], result["stage"], result["point"]), ("malformed", "anchor-point", None))
+        self.assertEqual(self.outcomes(result), [("anchor", None, "acquired", None)])
+
+    def test_a_query_that_fails_after_the_point_was_read_keeps_the_point(self):
+        result = self.run_whole([None], query_reply=lambda side, asked: [5] if side == "scala" else [4, None])
+        self.assertEqual((result["kind"], result["stage"], result["point"]["slot"]), ("malformed", "anchor-query", 7))
+        self.assertEqual(self.outcomes(result), [("anchor", 7, "acquired", None)])
+
+    def test_a_defect_of_the_harness_is_an_error_with_its_evidence(self):
+        with self.mock.patch.object(self.compare.ledgercompare, "compare", side_effect=TypeError("a defect")):
+            result = self.run_whole([None])
+        self.assertEqual((result["kind"], result["stage"], result["point"]["slot"]), ("defect", "judge", 7))
+        self.assertEqual([o[2] for o in self.outcomes(result)], ["acquired", "acquired"])
+
     def test_a_reply_that_is_neither_an_acquisition_nor_a_refusal_is_not_retried(self):
-        result = self.run_whole([RuntimeError("acquire failed: [9]"), None], reselections=2)
+        result = self.run_whole([ntcquery.MalformedReply("acquire failed: unexpected reply [9]"), None], reselections=2)
         self.assertEqual([side for side, _ in self.calls].count("reference"), 1)
         self.assertEqual(self.outcomes(result)[-1], ("other", 7, "failed", None))
         self.assertNotIn("exhausted", result)
@@ -443,13 +470,132 @@ class WholeStateForkTest(unittest.TestCase):
         self.assertIn("EOFError", result["error"])
         self.assertIsNone(result["refusal"])
 
-    def test_the_refusal_is_parsed_from_the_reply(self):
-        from devnet import ntcquery
-        refused = ntcquery.AcquireRefused([2, 0])
-        self.assertEqual((str(refused), refused.failure), ("acquire failed: [2, 0]", "PointTooOld"))
-        self.assertEqual(self.compare.acquire_refusal(refused), {"reply": "[2, 0]", "failure": "PointTooOld"})
-        self.assertIsNone(ntcquery.AcquireRefused([3]).failure)
-        self.assertIsNone(self.compare.acquire_refusal(RuntimeError("query failed: [5]")))
+    def test_a_refusal_is_parsed_only_from_a_well_formed_failure(self):
+        self.assertEqual(self.compare.acquire_refusal(self.TOO_OLD), {"reply": "[2, 0]", "failure": "PointTooOld"})
+        self.assertIsNone(self.compare.acquire_refusal(RuntimeError("acquire failed: [2, 1]")))
+        self.assertIsNone(self.compare.acquire_refusal(ntcquery.MalformedReply("acquire failed: unexpected reply [2]")))
+
+
+def frames(*messages):
+    """The bytes a node sends on LocalStateQuery (mini-protocol 7, the responder's direction): one mux frame per
+    message, each message CBOR (given as a value, or as its bytes)."""
+    import struct
+    out = b""
+    for message in messages:
+        payload = message if isinstance(message, bytes) else ntcquery.enc(message)
+        out += struct.pack(">IHH", 0, 0x8000 | 7, len(payload)) + payload
+    return out
+
+
+class TransportRepliesTest(unittest.TestCase):
+    """Acquire and query replies decoded from the bytes a node sends, through `ntcquery`'s own decoder: only the
+    shapes the protocol allows are accepted, by message tag and by type."""
+
+    def session(self, *messages):
+        import io
+        import types
+        session = ntcquery.LocalStateQuery(None, "socket", 1)
+        session.proc = types.SimpleNamespace(stdin=io.BytesIO(), stdout=io.BytesIO(frames(*messages)))
+        session.buffers, session.expires = {}, None
+        return session
+
+    def test_an_acquisition_and_the_two_refusals(self):
+        self.assertIsNone(self.session([1]).acquire([7, bytes(32)]))
+        for code, name in ((0, "PointTooOld"), (1, "PointNotOnChain")):
+            with self.assertRaises(ntcquery.AcquireRefused) as refused:
+                self.session([2, code]).acquire([7, bytes(32)])
+            self.assertEqual((refused.exception.failure, refused.exception.reply), (name, [2, code]))
+
+    def test_any_other_acquire_reply_is_malformed(self):
+        for reply in ([2, True], [1, 999], [2, []], [2, 5], [True], [1, None], [3], 7, [2]):
+            with self.subTest(reply=reply), self.assertRaises(ntcquery.MalformedReply):
+                self.session(reply).acquire([7, bytes(32)])
+
+    def test_only_a_result_answers_a_query(self):
+        self.assertEqual(self.session([4, [7, b"\x01" * 32]]).query_raw([3]), [7, b"\x01" * 32])
+        for reply in ([4], [2, 1], [True, 1], 4):
+            with self.subTest(reply=reply), self.assertRaises(ntcquery.MalformedReply):
+                self.session(reply).query_raw([3])
+
+
+class WholeStateTransportTest(unittest.TestCase):
+    """`whole_state` with each session's bytes scripted and decoded by the real `ntcquery` session code: a reply the
+    protocol does not allow ends the comparison as a failure, never a recovery or a success."""
+
+    POINT7, POINT8 = [7, b"\x07" * 32], [8, b"\x08" * 32]
+
+    def setUp(self):
+        import tempfile
+        from unittest import mock
+        from devnet import compare
+        self.compare, self.mock = compare, mock
+        self.dir = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.dir.name)
+        (self.root / "scala-sock").mkdir()
+        (self.root / "scala-sock" / "node.socket").write_text("")
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def anchor(self, point):
+        """The bytes of the follower's session: its tip acquired, its chain point, then both answers."""
+        return frames([1], [4, point], answer(nes()), cbor.enc([4, [{}]]))
+
+    def other(self, *acquire):
+        """The bytes of the reference's session: its reply to the acquire, and both answers after a success."""
+        return frames(*acquire, answer(nes()), cbor.enc([4, [{}]]))
+
+    def run_whole(self, sessions, **kwargs):
+        """(result, sessions opened) of `whole_state` whose sessions send `sessions`' bytes in order."""
+        import io
+        import types
+        scripts, opened = list(sessions), []
+
+        class Scripted(ntcquery.LocalStateQuery):
+            def __enter__(self):
+                opened.append(self.host)
+                self.proc = types.SimpleNamespace(stdin=io.BytesIO(), stdout=io.BytesIO(scripts.pop(0)))
+                self.buffers, self.expires = {}, None
+                return self
+
+            def __exit__(self, *exc):
+                return False
+        with self.mock.patch.object(self.compare.ntcquery, "LocalStateQuery", Scripted), \
+                self.mock.patch.object(self.compare.util, "data_root", lambda name: self.root), \
+                self.mock.patch.object(self.compare, "ref", lambda name: "ref-container"), \
+                self.mock.patch.object(self.compare.time, "sleep"):
+            return self.compare.whole_state("x", "conway", **kwargs), len(opened)
+
+    def test_a_refusal_and_a_new_sample_decoded_from_the_bytes_recover_at_one_point(self):
+        result, opened = self.run_whole([self.anchor(self.POINT7), frames([2, 1]), self.anchor(self.POINT8),
+                                         self.other([1])], reselections=2)
+        self.assertEqual((opened, result["slot"]), (4, 8))
+        self.assertTrue(all(a["matched"] for a in result["answers"].values()), result)
+
+    def test_a_failure_whose_code_is_true_is_malformed_not_a_point_off_the_chain(self):
+        # `[2, true]` is no refusal: before, `true == 1` made it PointNotOnChain and the next sample a recovery
+        result, opened = self.run_whole([self.anchor(self.POINT7), frames([2, True]), self.anchor(self.POINT8),
+                                         self.other([1])], reselections=2)
+        self.assertEqual(opened, 2)
+        self.assertEqual((result.get("kind"), result.get("stage")), ("malformed", "other-acquire"), result)
+        self.assertEqual(result["point"]["slot"], 7)
+
+    def test_an_acquisition_with_a_payload_is_malformed(self):
+        result, opened = self.run_whole([self.anchor(self.POINT7), self.other([1, 999])])
+        self.assertEqual((result.get("kind"), result.get("stage")), ("malformed", "other-acquire"), result)
+        self.assertNotIn("answers", result)
+
+    def test_a_failure_whose_code_is_a_list_ends_as_a_failure_not_an_exception(self):
+        result, _ = self.run_whole([self.anchor(self.POINT7), frames([2, []]), self.anchor(self.POINT8),
+                                    self.other([1])], reselections=2)
+        self.assertEqual((result.get("kind"), result.get("stage")), ("malformed", "other-acquire"), result)
+
+    def test_an_anchor_without_a_block_point_is_never_compared_with_the_other_nodes_tip(self):
+        # a null point would have the other node acquire its own volatile tip: no same-point comparison at all
+        result, opened = self.run_whole([self.anchor(None), self.other([1])], reselections=2)
+        self.assertEqual(opened, 1)
+        self.assertEqual((result.get("kind"), result.get("stage"), result.get("point")),
+                         ("malformed", "anchor-point", None), result)
 
 
 class UtxoComparisonTest(unittest.TestCase):

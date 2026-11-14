@@ -19,22 +19,44 @@ class Incomplete(Exception):
     pass
 
 
+def _word(value):
+    """Whether `value` is a CBOR unsigned integer as decoded (an `int`, never a `bool`)."""
+    return type(value) is int and value >= 0
+
+
 class AcquireRefused(RuntimeError):
     """The node answered an acquire with `MsgFailure` (`[2, failure]`): `failure` 0 is `AcquireFailurePointTooOld`,
     1 `AcquireFailurePointNotOnChain` (the codes of Scarab's `LocalStateQueryEngine` codec, which mirrors the
-    reference's)."""
+    reference's). Only a reply of exactly that shape is one; any other is a `MalformedReply`."""
 
     NAMES = {0: "PointTooOld", 1: "PointNotOnChain"}
 
-    def __init__(self, reply):
-        super().__init__(f"acquire failed: {reply}")
-        self.reply = reply
+    def __init__(self, code):
+        super().__init__(f"acquire failed: [2, {code}]")
+        self.reply = [2, code]
+        self.failure = self.NAMES[code]
 
-    @property
-    def failure(self):
-        """The refusal's name, or None when the reply is not a `MsgFailure` with a known code."""
-        ok = isinstance(self.reply, list) and len(self.reply) == 2 and self.reply[0] == 2
-        return self.NAMES.get(self.reply[1]) if ok else None
+
+class MalformedReply(RuntimeError):
+    """A LocalStateQuery reply that is not one the protocol allows at that step (by message shape and types)."""
+
+
+def acquire_reply(reply):
+    """Nothing for `MsgAcquired` (`[1]`); raises `AcquireRefused` for a `MsgFailure` with a known code
+    (`[2, 0 | 1]`) and `MalformedReply` for any other reply."""
+    if isinstance(reply, list) and len(reply) == 1 and _word(reply[0]) and reply[0] == 1:
+        return
+    if isinstance(reply, list) and len(reply) == 2 and _word(reply[0]) and reply[0] == 2 and _word(reply[1]) \
+            and reply[1] in AcquireRefused.NAMES:
+        raise AcquireRefused(reply[1])
+    raise MalformedReply(f"acquire failed: unexpected reply {reply!r}"[:300])
+
+
+def query_result(reply):
+    """The result of a `MsgResult` (`[4, result]`); raises `MalformedReply` for any other reply."""
+    if isinstance(reply, list) and len(reply) == 2 and _word(reply[0]) and reply[0] == 4:
+        return reply[1]
+    raise MalformedReply(f"query failed: unexpected reply {reply!r}"[:300])
 
 
 class Deadline(TimeoutError):
@@ -308,19 +330,14 @@ class LocalStateQuery:
     def acquire(self, point=None):
         """Acquire the volatile tip, or the state at `point` (None for the origin is not supported)."""
         self._send(7, enc([8] if point is None else [0, point]))
-        reply = self._recv(7)
-        if reply[0] != 1:
-            raise AcquireRefused(reply)
+        acquire_reply(self._recv(7))
 
     def release(self):
         self._send(7, enc([5]))
 
     def query_raw(self, query):
         self._send(7, enc([3, query]))
-        reply = self._recv(7)
-        if reply[0] != 4:
-            raise RuntimeError(f"query failed: {reply}")
-        return reply[1]
+        return query_result(self._recv(7))
 
     def ledger_query(self, era_index, shelley_query):
         """A Shelley-family block query in the current era; returns the unwrapped result."""
