@@ -94,10 +94,10 @@ class ReferenceBuildSuite extends FunSuite:
   }
 
   test(
-    "stable release lines and an unstable Leios build, and only the unstable one wants the flag"
+    "a stable and a pre-release line and an unstable Leios build; only the unstable one wants the flag"
   ) {
     assertEquals(ReferenceBuild.Release11_1.stability, ReferenceBuild.Stability.Stable)
-    assertEquals(ReferenceBuild.Release11_2.stability, ReferenceBuild.Stability.Stable)
+    assertEquals(ReferenceBuild.Release11_2.stability, ReferenceBuild.Stability.PreRelease)
     assert(!ReferenceBuildFlag.warns(ReferenceBuild.Release11_2, false))
     assertEquals(ReferenceBuild.LeiosB004fe0c.stability, ReferenceBuild.Stability.Unstable)
     assert(!ReferenceBuildFlag.warns(ReferenceBuild.Release11_1, false))
@@ -110,7 +110,7 @@ class ReferenceBuildSuite extends FunSuite:
     )
     assertEquals(
       ReferenceBuild.Release11_2.describe,
-      "11.2 (stable, cardano-node 11.2.1)"
+      "11.2 (pre-release, cardano-node 11.2.1)"
     )
     assertEquals(
       ReferenceBuild.LeiosB004fe0c.describe,

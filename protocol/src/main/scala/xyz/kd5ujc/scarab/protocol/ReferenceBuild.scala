@@ -46,18 +46,18 @@ enum ReferenceBuild(
         )
       )
 
-  /** The cardano-node 11.2 release line, pinned at its release 11.2.1 (a pre-release; the reference
-    * target since the owner's decision of 2026-11-14, ADR 0001): cardano-ledger
-    * 29a7d65663f476909981d2757da2b07f16d21040, where the source of every ledger package 11.2.1
-    * links is the source it was released from, cardano-ledger-binary 1.10.1.0 among them, and
-    * ouroboros-consensus 808e400545729b1246ba4393c69326ec4a04a730 (5.4.0.0). Its `state` layout is
-    * not read or written yet, so every command refuses it at start
+  /** The cardano-node 11.2 release line, pinned at its release 11.2.1, which upstream publishes as
+    * a pre-release (the reference target since the owner's decision of 2026-11-14, ADR 0001):
+    * cardano-ledger 29a7d65663f476909981d2757da2b07f16d21040, where the library source of every
+    * ledger package 11.2.1 links is the one it was released from, cardano-ledger-binary 1.10.1.0's
+    * among them, and ouroboros-consensus 808e400545729b1246ba4393c69326ec4a04a730 (5.4.0.0). Its
+    * `state` layout is not read or written yet, so every command refuses it at start
     * ([[ReferenceBuildNotYet.Layout]]).
     */
   case Release11_2
       extends ReferenceBuild(
         "11.2",
-        ReferenceBuild.Stability.Stable,
+        ReferenceBuild.Stability.PreRelease,
         ReferenceBuild.Pins(
           "11.2.1",
           "29a7d65663f476909981d2757da2b07f16d21040",
@@ -101,12 +101,19 @@ object ReferenceBuild:
     /** A release line of `cardano-node`. */
     case Stable
 
+    /** A release line whose pinned release upstream publishes as a pre-release, not yet recommended
+      * for mainnet. It becomes [[Stable]] when the line's stable release is pinned; the name, which
+      * snapshots record, stays.
+      */
+    case PreRelease
+
     /** A prototype build that can change or go away at any time. */
     case Unstable
 
     def label: String = this match
-      case Stable   => "stable"
-      case Unstable => "unstable"
+      case Stable     => "stable"
+      case PreRelease => "pre-release"
+      case Unstable   => "unstable"
 
   /** The pinned revisions of a build. `node` is a release tag for a stable build and the full
     * commit for an unstable one; `ledger`, `binary` (cardano-ledger-binary, which can come from

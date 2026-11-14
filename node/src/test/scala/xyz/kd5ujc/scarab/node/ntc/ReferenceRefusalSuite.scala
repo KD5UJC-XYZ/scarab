@@ -369,7 +369,8 @@ object ReferenceRefusalSuite:
     */
   def recordedBy(build: ReferenceBuild, node: String, revision: String): Boolean =
     build.stability match
-      case ReferenceBuild.Stability.Stable   => node.startsWith(s"cardano-node ${build.name}.")
+      case ReferenceBuild.Stability.Stable | ReferenceBuild.Stability.PreRelease =>
+        node.startsWith(s"cardano-node ${build.name}.")
       case ReferenceBuild.Stability.Unstable => revision == build.pins.node
 
   /** The codecs of the reference's state in the layout `build` writes, or why there are none. */

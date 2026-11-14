@@ -838,7 +838,7 @@ on property laws.
 
 The [ADR 0001 amendment of 2026-11-14](../adr/0001-haskell-node-as-reference.md#amendment-2026-11-14-the-newest-release-re-pinned-in-stages)
 makes cardano-node 11.2.1 the reference target and keeps both release lines. `ReferenceBuild.Release11_2`
-(`11.2`, stable, pinned at 11.2.1: cardano-ledger 29a7d656, ouroboros-consensus 808e4005) is named,
+(`11.2`, pre-release, pinned at 11.2.1: cardano-ledger 29a7d656, ouroboros-consensus 808e4005) is named,
 parsed, listed in the help and logged with its pins (`referenceBuild`), and V10 would record it as
 `0431312e32`, but its `state` layout is not implemented: it is neither 11.1's nor the Leios
 build's. `StateLayout.of` and `ReferenceLayout.of` refuse it (`ReferenceBuildNotYet.Layout`), so

@@ -58,7 +58,8 @@ as 4.2.1.0 does (`ntc/GenesisConfig.scala`).
 
 1. **The value.** A case of `ReferenceBuild` in
    [`ReferenceBuild.scala`](../../protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala):
-   its name, its stability (`Stable` or `Unstable`) and its pins (node release tag or commit,
+   its name, its stability (`Stable`, `PreRelease` for a line whose pinned release upstream publishes as a
+   pre-release, or `Unstable`) and its pins (node release tag or commit,
    cardano-ledger, cardano-ledger-binary and ouroboros-consensus commits), with a Scaladoc that cites
    them. `ReferenceBuild.Default` moves only with the owner's decision.
 2. **The pins.** Each revision in `docs/data/reference-pins.json`, with `ReferenceBuild.scala` among
