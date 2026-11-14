@@ -205,14 +205,15 @@ decision, indexed in [decisions.md](../decisions.md#networking-and-local-clients
 ## Amendment (2026-11-14): the re-pin's deviations decided
 
 The owner decided on 2026-11-14 the items of [#956](https://github.com/KD5UJC-XYZ/scarab/issues/956) that
-the amendment above left to that issue ([the decision](https://github.com/KD5UJC-XYZ/scarab/issues/956#issuecomment-6874322050)),
+[the amendment on the packages cardano-node 11.1.3 links](#amendment-2026-11-13-the-packages-cardano-node-1113-links)
+left to that issue ([the decision](https://github.com/KD5UJC-XYZ/scarab/issues/956#issuecomment-6874322050)),
 indexed in [decisions.md](../decisions.md#networking-and-local-clients). Five are approved deviations, each
 following an upstream change made after the packages cardano-node 11.1.3 links; they add to those of
 [Approved deviations](#approved-deviations) and of
 [the amendment of 2026-11-13](#amendment-2026-11-13-later-approved-deviations). Five are bugs of the linked
 packages, fixed upstream after them, which Scarab does not reproduce
 ([#474 comment](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849)). Each
-reference citation is at the revision of its package in the table above, `c45735a5`, or `c5117705` for
+reference citation is at the revision of its package in that amendment's table, `c45735a5`, or `c5117705` for
 cardano-diffusion; a short path is in the directory of the path cited before it.
 
 Approved deviations:
