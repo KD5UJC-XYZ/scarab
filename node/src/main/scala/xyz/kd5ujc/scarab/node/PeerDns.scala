@@ -105,7 +105,9 @@ object PeerDns:
     * `resolvCache` is `Nothing` in the `dns-4.2.0` that cardano-node 11.1.3 links
     * (`Network/DNS/Types/Resolver.hs:104-112`). Every lookup asks the resolver, and the clipped TTL
     * only schedules the next one. dnsjava's default session caches answers for their whole TTL,
-    * which would hold an address past the reference's 900 s once a record's TTL is longer.
+    * which would hold an address past the reference's 900 s once a record's TTL is longer. A name
+    * in the hosts file is still answered from it by `defaultBuilder()` 's hosts parser, without
+    * asking the resolver: another difference from the reference, which issue 956 tracks.
     */
   private[node] def uncached(
       builder: LookupSession.LookupSessionBuilder,

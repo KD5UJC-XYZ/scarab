@@ -9,7 +9,18 @@ import com.comcast.ip4s.{Host, SocketAddress, host, ipv4, port}
 import java.net.InetAddress
 import java.util.concurrent.{CompletableFuture, CompletionStage, Executor, Executors}
 import java.util.concurrent.atomic.AtomicInteger
-import org.xbill.DNS.{ARecord, DClass, EDNSOption, Flags, Message, Resolver, Section, TSIG, Type}
+import org.xbill.DNS.{
+  ARecord,
+  Cache,
+  DClass,
+  EDNSOption,
+  Flags,
+  Message,
+  Resolver,
+  Section,
+  TSIG,
+  Type
+}
 import org.xbill.DNS.lookup.LookupSession
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.ledger.{GovernorFault, StorageError}
@@ -760,7 +771,9 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
   // D8 of issue 956: the reference keeps no DNS cache of its own (`resolvCache = Nothing` in the
   // dns-4.2.0 `defaultResolvConf` that ouroboros-network c45735a5 resolves roots with), so a lookup
   // within a record's TTL asks the resolver again, where dnsjava's default session would answer it
-  // from its cache until the TTL ran out
+  // from its cache until the TTL ran out. The builder carries a cache, as `defaultBuilder()` does,
+  // but not its hosts-file parser, so an entry for the name in this machine's hosts file cannot
+  // answer in place of the resolver.
   test("a lookup within a record's TTL asks the resolver again: the session keeps no DNS cache") {
     val executor =
       Resource.make(IO(Executors.newSingleThreadExecutor()))(e => IO(e.shutdownNow()).void)
@@ -771,7 +784,12 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
           InetAddress.getByAddress(Array[Byte](-64, 0, 2, 10)),
           3600L
         )
-        session <- IO(PeerDns.uncached(LookupSession.defaultBuilder().resolver(resolver), lookups))
+        session <- IO(
+          PeerDns.uncached(
+            LookupSession.builder().resolver(resolver).cache(new Cache(DClass.IN)),
+            lookups
+          )
+        )
         dns = PeerDns.fromSession[IO](session)
         first <- dns.addresses(domain)
         second <- dns.addresses(domain)
