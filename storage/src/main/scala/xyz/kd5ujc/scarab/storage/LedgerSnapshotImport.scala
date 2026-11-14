@@ -35,9 +35,13 @@ import xyz.kd5ujc.scarab.storage.haskell.state.*
   * checkpoint, and no existing ledger artifact is replaced.
   *
   * The `state` file is in the layout of the reference build that wrote the input database
-  * ([[Config.layout]], `--reference-build`): it must decode completely in that layout, and its
-  * bytes go into the snapshot unchanged, with that build recorded ([[SnapshotV10]]). Nothing is
-  * converted between builds.
+  * ([[Config.layout]], `--reference-build`): it must decode completely in that layout, and the
+  * state it decodes to goes into the snapshot, written again in that layout, with that build
+  * recorded ([[SnapshotV10]]). The codec writes a reference state again byte for byte, so the
+  * snapshot holds the file's own bytes, but for what the reference itself drops on reading: of two
+  * governance proposals with one id it keeps the first (`decSharePlusCBOR`, cardano-ledger
+  * f649f975, `Conway/Governance/Proposals.hs:401-406`), and the snapshot, read as written
+  * ([[ProposalsReading.AsWritten]]), keeps it alone. Nothing is converted between builds.
   */
 object LedgerSnapshotImport:
   enum Trust:
@@ -55,6 +59,9 @@ object LedgerSnapshotImport:
 
     /** The `state` file does not decode completely in the layout of `build`. */
     case State(build: ReferenceBuild, error: xyz.kd5ujc.scarab.models.runtime.DecodeError)
+
+    /** The state the file decodes to cannot be written again in its layout. */
+    case NotWritable(cause: StateNotWritable)
     case SourceNotRegular(file: String)
     case Tables(error: SnapshotTables.Error)
     case Byron, Origin
@@ -222,6 +229,7 @@ object LedgerSnapshotImport:
           if DecodeFailure.terminal(classified) then Error.Storage(classified)
           else Error.State(config.layout.build, error)
         })
+        published <- lift(config.layout.encode(file).leftMap(Error.NotWritable(_)))
         ext <- lift(file.ext.toRight(Error.Byron))
         _ <- lift(
           Either.cond(
@@ -307,7 +315,7 @@ object LedgerSnapshotImport:
                 Set.empty,
                 SnapshotSidecar.Chain.InShelley(utxo, params, Some(previous), extras)
               )
-              content = SnapshotV10.framed(config.layout.build, binding, sidecar, raw)
+              content = SnapshotV10.framed(config.layout.build, binding, sidecar, published)
               back <- SnapshotV10.format[F](SnapshotCheck.Structure, config.layout).decode(content)
               _ <- lift(back.leftMap(Error.Storage(_)).void)
               snapshots = stage / "artifacts" / "snapshots"

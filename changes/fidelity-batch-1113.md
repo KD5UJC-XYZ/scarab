@@ -13,6 +13,6 @@
 - A Conway ledger state read from a reference node's `state` file, or imported from a canonical
   ledger state (SCLS), has its proposals rebuilt as the reference's `mkProposals` rebuilds them: a
   proposal whose previous action is neither its lineage's root nor an earlier proposal of its
-  lineage is refused, and of two proposals with one id in a state file the first is kept. A native
-  snapshot's proposals are read as the snapshot wrote them, so no existing snapshot is refused or
-  deleted for this rule.
+  lineage is refused, and of two proposals with one id in a state file the first is kept, also in
+  the snapshot an import publishes, which holds the state as read. A native snapshot's proposals
+  are read as the snapshot wrote them, so no existing snapshot is refused or deleted for this rule.

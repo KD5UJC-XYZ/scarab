@@ -20,9 +20,11 @@ written by node 11.1.3 at slot 125,418,230 (`state` sha256
 `538c1e333ecd382f2cde2cae114cf8141e64830c55e34bd4dcb9932b1284522a`), whose 34 proposals include 14 of a
 lineage, each directly under its lineage's root, is still read and written again byte for byte
 (`LedgerFileSuite`, `HASKELL_STATE_FILE`). That state holds no proposal under an earlier proposal,
-so that case rests on the definition. The raw state is not published. The state section of a native
-snapshot is read with its proposals as written (ADR 0006): a snapshot holding a store the rebuild
-refuses is restored as it was written, not deleted (`SnapshotFallbackSuite`).
+so that case rests on the definition. The raw state is not published. An import publishes the state
+as read, written again in the file's layout: the file's own bytes for a state the codec writes
+again byte for byte, and without the second proposal of a repeated id (`LedgerSnapshotImportSuite`). The state
+section of a native snapshot is read with its proposals as written (ADR 0006): a snapshot holding a
+store the rebuild refuses is restored as it was written, not deleted (`SnapshotFallbackSuite`).
 
 ## Explicitly unchecked or unconfirmed
 
