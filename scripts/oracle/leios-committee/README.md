@@ -4,8 +4,10 @@
 `Main.hs` calls the unchanged `DecCBOR (SnapShots era)`, `mkSetSnapShot` and `EncCBOR` APIs of the
 [Leios image](../leios-testnet/README.md) (cardano-ledger 9df9f98c, cardano-base c1e1ed8d). Decoding
 a mark snapshot runs `mkMarkSnapShot`, which selects the committee with `selectLeiosCommittee`;
-the rotation then moves that committee into the set position. The harness implements no ledger
-transition.
+the rotation then moves that committee into the set position. Rotation cases also build SNAP's
+snapshots with `mkMarkSnapShot`, `mkSetSnapShot` and `mkGoSnapShot` as `snapTransition` combines
+them, and key-age cases call `maxKeyAgeEpochs` through a `Globals` with the case's KES parameters.
+The harness runs no ledger rule; its only code is the combination of those calls.
 
 ```sh
 python3 scripts/oracle/leios-committee/run.py --name my-leios-committee

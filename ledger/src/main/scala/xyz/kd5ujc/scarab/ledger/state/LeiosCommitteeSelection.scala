@@ -21,6 +21,11 @@ opaque type EpochInterval = Long
 object EpochInterval:
   val Max: BigInt = (BigInt(1) << 32) - 1
 
+  /** The key age the snapshots of the eras before Dijkstra carry (`Shelley/Rules/Snap.hs:84-86`,
+    * cardano-ledger 9df9f98c).
+    */
+  val zero: EpochInterval = 0L
+
   /** The interval of one epoch, by which a mark snapshot's committee is ahead of it. */
   val one: EpochInterval = 1L
 
@@ -32,6 +37,26 @@ object EpochInterval:
     )
 
   extension (i: EpochInterval) def toLong: Long = i
+
+  /** `kesMaxKeyAgeEpochs` (`Dijkstra/Rules/Snap.hs:169-179`, cardano-ledger 9df9f98c): the longest
+    * a registered voting key is honoured, `ceiling ((maxKESEvo * slotsPerKESPeriod) %
+    * slotsPerEpoch) + 2` epochs. Each step has the reference's word arithmetic: the product is a
+    * `Word64` product, which wraps; `ceiling` narrows the quotient of the `Ratio Word64` to
+    * `Word32` by `fromIntegral` and adds one there when the division leaves a remainder
+    * (`properFraction`); the `+ 2` is a `Word32` sum. Each of these wraps modulo its word as the
+    * reference's does. An epoch length of zero, at which the reference's `%` throws, is not a value
+    * of the epoch size here.
+    */
+  def ofKes(
+      maxKesEvolutions: Word64,
+      slotsPerKesPeriod: Word64,
+      epochSize: NonZero[Word64]
+  ): EpochInterval =
+    val word32 = BigInt(1) << 32
+    val product = Word64.wrappingMultiply(maxKesEvolutions, slotsPerKesPeriod).toBigInt
+    val (quotient, remainder) = product /% epochSize.value.toBigInt
+    val ceiling = (quotient + (if remainder.signum > 0 then 1 else 0)).mod(word32)
+    (ceiling + 2).mod(word32).toLong
 
 extension (e: EpochNo)
   /** `addEpochInterval` (`Slot.hs:156-158`, cardano-base c1e1ed8d): `EpochNo (n + fromIntegral m)`,
@@ -54,6 +79,11 @@ object LeiosCommitteeSize:
       n.toInt,
       LeiosCommitteeError.OutOfRange(LeiosCommitteeError.Parameter.CommitteeSize, n)
     )
+
+  /** The committee size the snapshots of the eras before Dijkstra carry
+    * (`Shelley/Rules/Snap.hs:84-86`, cardano-ledger 9df9f98c).
+    */
+  val zero: LeiosCommitteeSize = 0
 
   extension (s: LeiosCommitteeSize) def toInt: Int = s
 
@@ -124,6 +154,31 @@ object LeiosCommitteeSelection:
       age <- EpochInterval.fromBigInt(layout.markMaxKeyAge)
       committee <- select(layout.markEpoch.addInterval(EpochInterval.one), age, size, mark.pools)
     yield committee
+
+  /** SNAP's rotation in the Leios layout (`snapTransition`, cardano-ledger 9df9f98c
+    * `Shelley/Rules/Snap.hs:75-102` and `Dijkstra/Rules/Snap.hs:105-146`): the new mark snapshot
+    * with the epoch the chain enters and the committee size and key age it is taken with
+    * (`mkMarkSnapShot`), the old mark rotated into the set position with the committee it memoized
+    * ([[ofMark]], `mkSetSnapShot`), the old set into the go position (`mkGoSnapShot`), and the fee.
+    */
+  def rotate(
+      snapshots: SnapShots,
+      layout: SnapShots.Layout.Leios,
+      mark: SnapShot,
+      epoch: EpochNo,
+      size: LeiosCommitteeSize,
+      maxKeyAge: EpochInterval,
+      fee: Coin
+  ): Either[LeiosCommitteeError, SnapShots] =
+    ofMark(snapshots.mark, layout).map(committee =>
+      SnapShots(
+        mark,
+        snapshots.mark,
+        snapshots.set,
+        fee,
+        SnapShots.Layout.Leios(epoch, BigInt(size.toInt), BigInt(maxKeyAge.toLong), committee)
+      )
+    )
 
   /** `higherStake` (`State/LeiosCommittee.hs:82-83`, cardano-ledger 9df9f98c):
     * `compare (Down stake, poolId)`, both unsigned.
