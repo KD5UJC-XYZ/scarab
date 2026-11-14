@@ -75,14 +75,12 @@ services:
     image: scarab-at-scarab:trial
     platform: linux/amd64
     init: true
+    # s1's container starts with the pools, so that its name resolves from their first lookup, and the node waits
+    # inside it until both listen (see ../config-start-together): the canary needs a cluster that is together.
+    environment:
+      WAIT_FOR: "h2:3001 h3:3001"
     labels: *labels
-    depends_on:
-      configurator:
-        condition: service_completed_successfully
-      h2:
-        condition: service_healthy
-      h3:
-        condition: service_healthy
+    depends_on: *after-configurator
     volumes:
       - env:/env:ro
       - ipc-s1:/ipc
