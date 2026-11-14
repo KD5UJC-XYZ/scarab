@@ -39,7 +39,38 @@ python3 scripts/prepare_reference_image.py --download --pull-base
 `--download-dir` sets the location (default `${SCARAB_DATA_DIR:-/tmp/scarab}/release`) and
 `--pull-base` pulls the digest-pinned base image first.
 
-An optional `--tag` changes the image name (default `cardano-reference-11.1.3:local`).
+An optional `--tag` changes the image name (default `cardano-reference-<release>:local`, so
+`cardano-reference-11.1.3:local`).
+
+## cardano-node 11.2.1
+
+`--release 11.2.1` builds `cardano-reference-11.2.1:local` from the release of the `11.2` reference
+build, the reference target the [ADR 0001 amendment of 2026-11-14](adr/0001-haskell-node-as-reference.md#amendment-2026-11-14-the-newest-release-re-pinned-in-stages)
+names. The scenarios still run `cardano-reference-11.1.3:local`, and the nightly workflows build
+only that one.
+
+- [Official archive](https://github.com/IntersectMBO/cardano-node/releases/download/11.2.1/cardano-node-11.2.1-linux-amd64.tar.gz)
+- Size: 249149875 bytes
+- SHA-256: `88276ed753f460ee876c03c305ad68de9e4a16945f7c741e08130bf296791174`, also listed in the
+  [official checksum manifest](https://github.com/IntersectMBO/cardano-node/releases/download/11.2.1/cardano-node-11.2.1-sha256sums.txt)
+- Release source revision: `90bc1cd9380a78a63091ff673f8c5693152c8f60`
+- Component versions: node 11.2.1, CLI 11.7.0.0, testnet 11.2.1 (its version output calls itself
+  `cardano-node` and has a zero git stamp; it links API 11.12.0.0).
+- The pinned base image is the same as 11.1.3's, and the same checks apply.
+
+```sh
+python3 scripts/prepare_reference_image.py --release 11.2.1 /absolute/path/cardano-node-11.2.1-linux-amd64.tar.gz
+python3 scripts/prepare_reference_image.py --release 11.2.1 --download --pull-base
+```
+
+`cardano-testnet create-env` of 11.2.1 writes its `configuration.yaml` in the cardano-config
+envelope (`$schema`, `Configuration`), which cardano-node 11.1.3 and Scarab do not read yet; the flat
+form that 11.1.3's `create-env` writes is still read by cardano-node 11.2.1, as its release notes
+say. So the devnet runs 11.2.1 pools with the 11.1.3 image's tools:
+`python3 scripts/devnet.py --name <yours> up --node-image cardano-reference-11.2.1:local` runs every
+pool on 11.2.1's `cardano-node`, and `--node-image 2=cardano-reference-11.2.1:local` only pool 2,
+beside two 11.1.3 pools. Genesis, configuration, `cardano-cli` and `cardano-testnet` stay 11.1.3's;
+`up` prints and keeps (`nodes.json`) the version of each pool's node.
 
 ## What the script verifies
 

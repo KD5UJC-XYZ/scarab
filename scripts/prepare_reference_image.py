@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Build the reference image from the checksum-pinned official cardano-node 11.1.3 release archive.
+"""Build a reference image from a checksum-pinned official cardano-node release archive.
 
     prepare_reference_image.py /abs/path/cardano-node-11.1.3-linux-amd64.tar.gz
     prepare_reference_image.py --download [--download-dir DIR] [--pull-base]
+    prepare_reference_image.py --release 11.2.1 /abs/path/cardano-node-11.2.1-linux-amd64.tar.gz
 
+--release picks one of the pinned releases (RELEASES): 11.1.3 by default, the release of the default
+reference build, or 11.2.1. The image is `cardano-reference-<release>:local` unless --tag says otherwise.
 Without --download nothing is fetched: the archive must already exist locally. With --download the
 exact release URL is fetched (HTTPS only, to DIR/<file>.part), the size and SHA-256 are verified
 before the file is renamed into place or used, and an already present verified file is reused.
@@ -12,6 +15,7 @@ The archive's three executables are checked against pinned SHA-256 values again 
 copied into an image built FROM the digest-pinned official base image with no network access.
 """
 import argparse
+from dataclasses import dataclass
 import hashlib
 import json
 import os
@@ -37,33 +41,70 @@ ARCHIVE_NAME = "cardano-node-11.1.3-linux-amd64.tar.gz"
 ARCHIVE_URL = "https://github.com/IntersectMBO/cardano-node/releases/download/11.1.3/" + ARCHIVE_NAME
 
 
-def verify_archive(path):
-    """Raise ValueError unless `path` has exactly the pinned size and SHA-256."""
-    if path.stat().st_size != ARCHIVE_SIZE:
+@dataclass(frozen=True)
+class Release:
+    """A pinned official release: the size and SHA-256 of its linux-amd64 archive (as its
+    `cardano-node-<version>-sha256sums.txt` lists them) and of the three executables taken from it."""
+    version: str
+    archive_sha256: str
+    archive_size: int
+    binary_hashes: dict
+
+    @property
+    def archive_name(self):
+        return f"cardano-node-{self.version}-linux-amd64.tar.gz"
+
+    @property
+    def archive_url(self):
+        return f"https://github.com/IntersectMBO/cardano-node/releases/download/{self.version}/{self.archive_name}"
+
+    @property
+    def tag(self):
+        return f"cardano-reference-{self.version}:local"
+
+
+# The constants above are 11.1.3's, the release of the default reference build, which the nightly
+# workflows build and the evidence packet records.
+DEFAULT_RELEASE = "11.1.3"
+RELEASES = {
+    "11.1.3": Release("11.1.3", ARCHIVE_SHA256, ARCHIVE_SIZE, BINARY_HASHES),
+    "11.2.1": Release(
+        "11.2.1", "88276ed753f460ee876c03c305ad68de9e4a16945f7c741e08130bf296791174", 249149875, {
+            "cardano-node": "e8e0e37c55b123f0b6a4487da64de60a46158d229dfa1a93f6e20ae04a49ac0b",
+            "cardano-cli": "834e9f85dc239025e7d6f753ae41e30c032594fda05934d7bdba43ef52b0f253",
+            "cardano-testnet": "929101ff9ba78582646b6d9b36e03a62b454a4ddbcc774ac14e4875d89f60b6f",
+        }),
+}
+
+
+def verify_archive(path, release=RELEASES[DEFAULT_RELEASE]):
+    """Raise ValueError unless `path` has exactly the pinned size and SHA-256 of `release`."""
+    if path.stat().st_size != release.archive_size:
         raise ValueError("official archive size mismatch")
     with path.open("rb") as stream:
-        if hashlib.file_digest(stream, "sha256").hexdigest() != ARCHIVE_SHA256:
+        if hashlib.file_digest(stream, "sha256").hexdigest() != release.archive_sha256:
             raise ValueError("official archive checksum mismatch")
 
 
-def download_archive(directory):
-    """Fetch the pinned URL into `directory` and return the verified archive path (reused when present)."""
-    target = directory / ARCHIVE_NAME
+def download_archive(directory, release=RELEASES[DEFAULT_RELEASE]):
+    """Fetch the pinned URL of `release` into `directory` and return the verified archive path (reused when
+    present)."""
+    target = directory / release.archive_name
     directory.mkdir(parents=True, exist_ok=True)
     if target.exists():
         try:
-            verify_archive(target)
+            verify_archive(target, release)
             return target
         except ValueError:
             target.unlink()
-    partial = directory / (ARCHIVE_NAME + ".part")
-    request = urllib.request.Request(ARCHIVE_URL, headers={"User-Agent": "scarab"})
+    partial = directory / (release.archive_name + ".part")
+    request = urllib.request.Request(release.archive_url, headers={"User-Agent": "scarab"})
     with urllib.request.urlopen(request, timeout=60) as response, partial.open("wb") as out:
         if not response.geturl().startswith("https://"):
             raise ValueError("download left HTTPS: " + response.geturl())
         shutil.copyfileobj(response, out, 1 << 20)
     try:
-        verify_archive(partial)
+        verify_archive(partial, release)
     except ValueError:
         partial.unlink()
         raise
@@ -74,7 +115,9 @@ def download_archive(directory):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("archive", type=Path, nargs="?", help="already downloaded official archive")
-    parser.add_argument("--tag", default="cardano-reference-11.1.3:local")
+    parser.add_argument("--release", choices=sorted(RELEASES), default=DEFAULT_RELEASE,
+                        help=f"the pinned release to build (default {DEFAULT_RELEASE})")
+    parser.add_argument("--tag", help="the image name (default cardano-reference-<release>:local)")
     parser.add_argument("--download", action="store_true",
                         help="fetch the pinned official URL and verify size and SHA-256 before use")
     parser.add_argument("--download-dir", type=Path,
@@ -84,6 +127,8 @@ def main():
     args = parser.parse_args()
     if args.download == (args.archive is not None):
         parser.error("give either an archive path or --download")
+    release = RELEASES[args.release]
+    tag = args.tag or release.tag
     context = json.loads(subprocess.check_output(["docker", "context", "inspect"], text=True))[0]
     if os.environ.get("DOCKER_HOST") or os.environ.get("DOCKER_CONTEXT") or context["Endpoints"]["docker"]["Host"] not in (
             "unix:///var/run/docker.sock", "npipe:////./pipe/dockerDesktopLinuxEngine"):
@@ -93,8 +138,8 @@ def main():
     if args.pull_base:
         subprocess.run(["docker", "pull", BASE], check=True)
     subprocess.run(["docker", "image", "inspect", BASE], check=True, stdout=subprocess.DEVNULL)
-    archive_path = download_archive(args.download_dir) if args.download else args.archive
-    verify_archive(archive_path)
+    archive_path = download_archive(args.download_dir, release) if args.download else args.archive
+    verify_archive(archive_path, release)
     with tempfile.TemporaryDirectory(prefix="cardano-reference-build-") as work:
         root = Path(work)
         (root / "bin").mkdir()
@@ -103,7 +148,7 @@ def main():
             if any(PurePosixPath(m.name).is_absolute() or ".." in PurePosixPath(m.name).parts
                    or "\\" in m.name for m in members):
                 raise ValueError("unsafe archive path")
-            for name, expected in BINARY_HASHES.items():
+            for name, expected in release.binary_hashes.items():
                 selected = [m for m in members if PurePosixPath(m.name).name == name and m.isfile()]
                 if len(selected) != 1:
                     raise ValueError("missing/duplicate binary: " + name)
@@ -115,8 +160,8 @@ def main():
                 target.chmod(0o755)
         (root / "Dockerfile").write_text("FROM " + BASE +
             '\nCOPY bin/ /opt/reference/bin/\nENV PATH="/opt/reference/bin:${PATH}"\nENTRYPOINT []\n')
-        subprocess.run(["docker", "build", "--pull=false", "--network=none", "-t", args.tag, work], check=True)
-    subprocess.run(["docker", "image", "inspect", args.tag, "--format", "{{.Id}}"], check=True)
+        subprocess.run(["docker", "build", "--pull=false", "--network=none", "-t", tag, work], check=True)
+    subprocess.run(["docker", "image", "inspect", tag, "--format", "{{.Id}}"], check=True)
 
 
 if __name__ == "__main__":

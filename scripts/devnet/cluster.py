@@ -13,22 +13,80 @@ from cleanup import container_labels
 from .util import ALL_FOLLOWERS, ENV, cache_dir, jdk_image, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, adapt_reference_config, data_root, docker, in_ref, put_file, query, read_json, ref, without_resource_statistics
 
 
-def start_reference(name):
+# Where `up --node-image` mounts the other images' `cardano-node` binaries and the script that picks one per pool.
+NODE_BIN = "/opt/node-bin"
+OWN_NODE = "/opt/reference/bin/cardano-node"
+POOLS = (1, 2, 3)
+
+
+def start_reference(name, node_bin=None):
+    """The reference container. With `node_bin` (a directory of `install_node_images`), mounted read-only at NODE_BIN,
+    `CARDANO_NODE` is its dispatcher, so the pools it names run another release's node; the tools are the image's."""
+    mount = [] if node_bin is None else ["-v", f"{node_bin}:{NODE_BIN}:ro"]
+    node = OWN_NODE if node_bin is None else f"{NODE_BIN}/cardano-node"
     docker("run", "-d", "--name", ref(name), "--pull=never", *container_labels("devnet", name),
            "--cpus=3", "--memory=6g", "--user", USER,
-           "--tmpfs", f"/work:rw,exec,size=2g,uid={os.getuid()},gid={os.getgid()}",
+           "--tmpfs", f"/work:rw,exec,size=2g,uid={os.getuid()},gid={os.getgid()}", *mount,
            "-e", "PATH=/opt/reference/bin:/usr/local/bin:/usr/bin:/bin",
            "-e", "CARDANO_CLI=/opt/reference/bin/cardano-cli",
-           "-e", "CARDANO_NODE=/opt/reference/bin/cardano-node",
+           "-e", f"CARDANO_NODE={node}",
            "--entrypoint", "/bin/sh", REFERENCE_IMAGE, "-c", "sleep infinity")
+
+
+def node_images(values, pools=POOLS):
+    """`up --node-image` values as {pool: image}: `IMAGE` names every pool, `N=IMAGE` pool N; a later value for a
+    pool replaces an earlier one. Raises ValueError for a pool outside `pools` or an empty image."""
+    chosen = {}
+    for value in values or ():
+        pool, named, image = value.partition("=")
+        if not named:
+            pool, image = "", value
+        if not image or (named and pool not in {str(p) for p in pools}):
+            raise ValueError(f"--node-image {value!r}: expected IMAGE or N=IMAGE with N one of {list(pools)}")
+        chosen.update({p: image for p in pools} if not named else {int(pool): image})
+    return chosen
+
+
+def node_path(pool, images):
+    """The `cardano-node` that pool `pool` runs inside the reference container."""
+    return f"{NODE_BIN}/{pool}/cardano-node" if pool in images else OWN_NODE
+
+
+def node_dispatcher(images):
+    """The `CARDANO_NODE` script of a cluster whose pools in `images` run another image's node. cardano-testnet starts
+    each pool with its directory `node-data/node<N>/` among the arguments; anything else, `--version` among it, runs
+    the image's own node, so cardano-testnet writes the configuration of its own release."""
+    arms = [f'  *node-data/node{pool}/*) exec {node_path(pool, images)} "$@" ;;' for pool in sorted(images)]
+    return "\n".join(["#!/bin/sh", 'case "$*" in', *arms, "esac", f'exec {OWN_NODE} "$@"', ""])
+
+
+def install_node_images(root, images):
+    """Copy the `cardano-node` of each image in `images` ({pool: image}) to `root/node-bin/<pool>/`, beside the
+    dispatcher, and return that directory, to mount at NODE_BIN."""
+    target = root / "node-bin"
+    for pool, image in images.items():
+        (target / str(pool)).mkdir(parents=True)
+        created = docker("create", "--pull=never", image, "/bin/true").stdout.strip()
+        copied = docker("cp", f"{created}:{OWN_NODE}", str(target / str(pool) / "cardano-node"), check=False)
+        docker("rm", created, check=False)
+        if copied.returncode != 0:
+            raise SystemExit(f"no {OWN_NODE} in {image}: {copied.stderr.strip()}")
+    put = target / "cardano-node"
+    put.write_text(node_dispatcher(images))
+    put.chmod(0o755)
+    return target
 
 
 def up(args):
     root = data_root(args.name)
     if root.exists():
         raise SystemExit(f"{root} exists; run `devnet.py down` first")
+    try:
+        images = node_images(getattr(args, "node_image", None))
+    except ValueError as error:
+        raise SystemExit(str(error))
     (root / "genesis").mkdir(parents=True)
-    start_reference(args.name)
+    start_reference(args.name, install_node_images(root, images) if images else None)
     in_ref(args.name, f"cardano-testnet create-env --num-pool-nodes 3 --testnet-magic {MAGIC} "
                       f"--output {ENV} > /work/create-env.log 2>&1")
     adapt_reference_config(args.name, f"{ENV}/configuration.yaml")
@@ -48,7 +106,10 @@ def up(args):
                     raw = subprocess.run(["docker", "exec", ref(args.name), "cat", f"{ENV}/{f}"],
                                          capture_output=True, check=True).stdout
                     (root / "genesis" / f).write_bytes(raw)
-                print(json.dumps({"up": True, "ports": ports, "tip": tip, "root": str(root)}))
+                nodes = {n: in_ref(args.name, f"{node_path(n, images)} --version").stdout.splitlines()[0]
+                         for n in POOLS}
+                (root / "nodes.json").write_text(json.dumps(nodes))
+                print(json.dumps({"up": True, "ports": ports, "tip": tip, "root": str(root), "nodes": nodes}))
                 return
         except (SystemExit, json.JSONDecodeError):
             pass

@@ -883,8 +883,54 @@ class ReferenceImageTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             bad = pathlib.Path(d) / "x.tar.gz"
             bad.write_bytes(b"not the archive")
-            with self.assertRaises(ValueError):
-                pri.verify_archive(bad)
+            for release in pri.RELEASES.values():
+                with self.assertRaises(ValueError, msg=release.version):
+                    pri.verify_archive(bad, release)
+
+    def test_the_default_release_is_the_top_level_pins_and_every_release_is_complete(self):
+        import prepare_reference_image as pri
+        default = pri.RELEASES[pri.DEFAULT_RELEASE]
+        self.assertEqual(pri.DEFAULT_RELEASE, "11.1.3", "the nightly builds the default release")
+        self.assertEqual((default.archive_name, default.archive_url, default.archive_sha256, default.archive_size,
+                          default.binary_hashes),
+                         (pri.ARCHIVE_NAME, pri.ARCHIVE_URL, pri.ARCHIVE_SHA256, pri.ARCHIVE_SIZE, pri.BINARY_HASHES))
+        self.assertEqual(sorted(pri.RELEASES), ["11.1.3", "11.2.1"])
+        for version, release in pri.RELEASES.items():
+            self.assertEqual(release.version, version)
+            self.assertEqual(release.tag, f"cardano-reference-{version}:local")
+            self.assertTrue(release.archive_url.endswith(f"/releases/download/{version}/{release.archive_name}"),
+                            release.archive_url)
+            self.assertRegex(release.archive_sha256, r"^[0-9a-f]{64}$", version)
+            self.assertGreater(release.archive_size, 0, version)
+            self.assertEqual(sorted(release.binary_hashes), ["cardano-cli", "cardano-node", "cardano-testnet"], version)
+            for name, digest in release.binary_hashes.items():
+                self.assertRegex(digest, r"^[0-9a-f]{64}$", f"{version} {name}")
+
+
+class NodeImageTest(unittest.TestCase):
+    def test_an_image_alone_names_every_pool_and_n_equals_one_pool(self):
+        self.assertEqual(cluster.node_images(None), {})
+        self.assertEqual(cluster.node_images(["ref:11"]), {1: "ref:11", 2: "ref:11", 3: "ref:11"})
+        self.assertEqual(cluster.node_images(["2=ref:11"]), {2: "ref:11"})
+        self.assertEqual(cluster.node_images(["ref:a", "3=ref:b"]), {1: "ref:a", 2: "ref:a", 3: "ref:b"},
+                         "a later value for a pool replaces an earlier one")
+
+    def test_a_pool_outside_the_cluster_or_an_empty_image_is_refused(self):
+        for value in ("4=ref:11", "0=ref:11", "x=ref:11", "=ref:11", "2=", ""):
+            with self.assertRaises(ValueError, msg=value):
+                cluster.node_images([value])
+
+    def test_the_dispatcher_runs_each_named_pool_on_its_copy_and_anything_else_on_the_image_node(self):
+        script = cluster.node_dispatcher({2: "ref:11"})
+        lines = script.splitlines()
+        self.assertEqual(lines[0], "#!/bin/sh")
+        self.assertIn('  *node-data/node2/*) exec /opt/node-bin/2/cardano-node "$@" ;;', lines)
+        self.assertFalse(any("node-data/node1/" in line or "node-data/node3/" in line for line in lines),
+                         "pools without an image need no arm")
+        self.assertEqual(lines[-1], 'exec /opt/reference/bin/cardano-node "$@"',
+                         "--version and the pools without an image run the image's own node")
+        self.assertEqual(cluster.node_path(2, {2: "ref:11"}), "/opt/node-bin/2/cardano-node")
+        self.assertEqual(cluster.node_path(1, {2: "ref:11"}), "/opt/reference/bin/cardano-node")
 
 
 class RestartScenarioTest(unittest.TestCase):

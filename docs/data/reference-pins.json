@@ -43,6 +43,8 @@
    "urlPattern": "https://github.com/IntersectMBO/cardano-node/releases/tag/{version}",
    "role": "Reference node release 11.2.1 (a pre-release; tag 11.2.1 at this commit), the reference target since the owner's decision of 2026-11-14 (ADR 0001 amendment); an area keeps its cardano-node 11.1.3 pins until its stage of the re-pin lands: the checksum-pinned release archive behind the image cardano-reference-11.2.1:local, and the release of the 11.2 reference build.",
    "dependents": [
+    "scripts/prepare_reference_image.py",
+    "docs/reference-image.md",
     "docs/adr/0001-haskell-node-as-reference.md"
    ]
   },

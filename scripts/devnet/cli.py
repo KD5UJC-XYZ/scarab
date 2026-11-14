@@ -132,7 +132,12 @@ def main():
                                help="fail when the Scala node logged more cats-effect CPU-starvation warnings than this "
                                     "(default: only report them)")
     sub = p.add_subparsers(dest="command", required=True)
-    sub.add_parser("up", help="create genesis and start the 3-pool reference cluster").set_defaults(run=up)
+    u = sub.add_parser("up", help="create genesis and start the 3-pool reference cluster")
+    u.add_argument("--node-image", action="append", metavar="[N=]IMAGE",
+                   help="pool N (every pool without N=) runs the cardano-node of IMAGE, a reference image of "
+                        "scripts/prepare_reference_image.py; genesis, configuration and the other tools stay the "
+                        "reference image's (repeatable)")
+    u.set_defaults(run=up)
     def eras_options():
         # a fresh parser each time: `set_defaults` of the e2e subparser would otherwise change the shared
         # actions' defaults and turn the plain up-eras defaults into the e2e ones
