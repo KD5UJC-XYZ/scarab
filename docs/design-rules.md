@@ -806,11 +806,12 @@ approval. If exact fidelity seems impossible, stop and ask the owner. The Deviat
 <a id="ref-6"></a>
 ### REF-6. Mirror the reference, and cite it at its pin
 
-Mirror the reference's behaviour, types and formats. Internal types follow the Haskell types (names,
-fields, nesting, era indexing). Each mirrored item cites the upstream file and line at the pinned version,
-a revision registered in `docs/data/reference-pins.json`. An internal algorithm or representation may
-differ only where every observable result is identical
-([decisions register](decisions.md#reference-fidelity), 2026-10-27).
+Mirror the reference's observable behaviour, and use its on-disk and on-wire formats wherever a reference node or
+tool reads them. Internals (types, names, algorithms, module structure) may differ from the reference only where
+every observable result is identical. Each mirrored item cites the upstream file and line at the pinned version, a
+revision registered in `docs/data/reference-pins.json` (owner's decisions, 2026-10-27 and 2026-11-14,
+[decisions register](decisions.md#reference-fidelity);
+[ADR 0001, amendment of 2026-11-14](adr/0001-haskell-node-as-reference.md#amendment-2026-11-14-what-mirroring-means)).
 
 - **Scope:** main.
 - **Exceptions:** none.

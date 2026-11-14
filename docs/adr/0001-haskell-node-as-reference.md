@@ -14,12 +14,11 @@ replay on preprod, and our database could not load a Haskell one.
 ## Decision
 
 The Haskell node (ouroboros-consensus, cardano-ledger) is the reference design, not just the reference
-behaviour. Internal types follow the Haskell types (names, fields, nesting, the era indexing), the
+behaviour. ~~Internal types follow the Haskell types (names, fields, nesting, the era indexing), the
 on-disk and on-wire formats are the Haskell formats, and each mirrored item cites the upstream file and
-line at a pinned version. ~~Where Scala allows a real improvement (a typed gap or residue instead of a
+line at a pinned version.~~ ([amended 2026-11-14](#amendment-2026-11-14-what-mirroring-means)) ~~Where Scala allows a real improvement (a typed gap or residue instead of a
 silent default, derived fields checked on decode, a stricter type), it is taken and the reason is
-written down.~~ ([superseded](#amendment-2026-10-25-no-deviation-without-prior-owner-approval)) In the owner's words: "use haskell as the reference and don't just be compatible with its
-interface".
+written down.~~ ([superseded](#amendment-2026-10-25-no-deviation-without-prior-owner-approval))
 
 ## Consequences
 
@@ -89,3 +88,21 @@ Record the evidence and any applicable owner decision in the compatibility regis
 request's deviations table. If the effect on interoperability or the scope of an existing decision
 is unclear, ask the owner before changing the boundary behavior. The approval requirement in the
 2026-10-25 amendment continues to apply.
+
+<a id="amendment-2026-11-14-what-mirroring-means"></a>
+## Amendment (2026-11-14): what mirroring means
+
+This refines the struck-through sentence of the decision on internal types and formats. Owner's decision,
+2026-11-14 ([decisions register](../decisions.md#reference-fidelity)).
+
+- Keep Scarab's observable behaviour within the four interoperability invariants of
+  [REF-1 to REF-4](../design-rules.md#ref):
+  - every block, header and transaction gets the reference's validity verdict and the resulting ledger state;
+  - everything Scarab sends decodes at the reference with the same meaning;
+  - Scarab accepts what honest reference peers, clients and operators send;
+  - inputs mean what they mean to the reference, and queries get the reference's answers.
+- Classify every difference from the reference as a Mirror, an Improvement, a Deviation or a Gap, and record it as
+  [REF-7](../design-rules.md#ref-7) says.
+- Use the reference's on-disk and on-wire formats wherever a reference node or tool reads them.
+- Internals (types, names, algorithms, module structure) may differ from the reference wherever every observable
+  result is identical. Each mirrored item still cites the upstream file and line at its pin.
