@@ -42,6 +42,14 @@ Scarab is a JAR assembled from a commit (`node/assembly` in `scarab-jdk:local`).
 `/opt/antithesis/catalog/`, and the node starts from the classpath `/opt/scarab/*`, so Antithesis instruments it for
 coverage and thread pausing.
 
+## `pool/config-k200`: the same cluster at k = 200
+
+An experiment of its own, beside `pool`, never instead of it: k = 200 with epochs of 10k/f = 40,000 slots (about
+67 minutes). At create-env's k = 5, a fork deeper than 5 blocks is permanent by protocol, which is about 10 s of
+divergence at 0.5 blocks per second. So `pool` cannot ask whether the forks that faults cause heal, and this config
+can. `pool` stays in every round, because it shows a fork at the start as a permanent split. The configurator takes
+k and the epoch length from `SECURITY_PARAM` and `EPOCH_LENGTH`.
+
 ## `pool/config-canary`: the writeBits canary
 
 A regression check, and on a build with the fix reverted a positive control for the detectors: the `pool` cluster set
@@ -67,6 +75,7 @@ SCARAB_JAR=node/target/scala-3.9.0/scarab-node-<version>-assembly.jar \
 antithesis/pool/scripts/validate.sh                   # snouty validate: setup complete locally, then cleaned up
 antithesis/pool/scripts/launch.sh resilient 15m       # validate, then a basic_test run
 CONFIG=config-canary antithesis/pool/scripts/launch.sh none 15m   # the canary
+CONFIG=config-k200 antithesis/pool/scripts/launch.sh resilient 15m  # k = 200
 python3 -I antithesis/pool/canary/writebits_script.py # regenerate the canary's policies and cost model
 ```
 

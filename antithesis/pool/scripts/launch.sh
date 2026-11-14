@@ -17,6 +17,8 @@ commit=$(docker image inspect scarab-at-scarab:trial --format '{{index .Config.L
 case ${CONFIG:-config} in
   config-canary) name=scarab-canary
     description="writeBits canary (GHSA-vfw2-hhrc-87v5) on Scarab $commit with two cardano-node 11.1.3 pools" ;;
+  config-k200) name=scarab-pool-k200
+    description="Scarab $commit pool with two cardano-node 11.1.3 pools, k = 200, 40000-slot epochs" ;;
   *) name=scarab-pool
     description="Scarab $commit pool with two cardano-node 11.1.3 pools, create-env defaults" ;;
 esac
