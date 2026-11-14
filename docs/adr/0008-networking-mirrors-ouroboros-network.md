@@ -175,8 +175,10 @@ count decides between `Stopped` and `Failed` on a closed bearer (`Network/Mux.hs
 that corpus's observations hold at `c45735a5` is not checked. Code that follows a change made after
 these revisions, or follows neither, differs from the reference, as the first consequence above says;
 the places found when the reference was re-pinned, and two races of the linked packages that Scarab
-does not reproduce, each wait on the owner's decision in
-[#956](https://github.com/KD5UJC-XYZ/scarab/issues/956). The approved deviations above are unchanged.
+does not reproduce, ~~each wait on the owner's decision in
+[#956](https://github.com/KD5UJC-XYZ/scarab/issues/956)~~
+([decided 2026-11-14](#amendment-2026-11-14-the-re-pins-deviations-decided)). The approved deviations
+above are unchanged.
 
 ## Amendment (2026-11-14): path names
 
@@ -199,3 +201,137 @@ decision, indexed in [decisions.md](../decisions.md#networking-and-local-clients
   and the node refuses to start on a name it does not take: under a locale that is not UTF-8, a socket path
   beyond ASCII is refused that way, before the socket's set-up. Standard output and error are UTF-8 whatever
   the locale. The rule and its reasons are in the [decisions register](../decisions.md#networking-and-local-clients).
+
+## Amendment (2026-11-14): the re-pin's deviations decided
+
+The owner decided on 2026-11-14 the items of [#956](https://github.com/KD5UJC-XYZ/scarab/issues/956) that
+the amendment above left to that issue ([the decision](https://github.com/KD5UJC-XYZ/scarab/issues/956#issuecomment-6874322050)),
+indexed in [decisions.md](../decisions.md#networking-and-local-clients). Five are approved deviations, each
+following an upstream change made after the packages cardano-node 11.1.3 links; they add to those of
+[Approved deviations](#approved-deviations) and of
+[the amendment of 2026-11-13](#amendment-2026-11-13-later-approved-deviations). Four are bugs of the linked
+packages, fixed upstream after them, which Scarab does not reproduce
+([#474 comment](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6747536849)). Each
+reference citation is at the revision of its package in the table above, `c45735a5`, or `c5117705` for
+cardano-diffusion; a short path is in the directory of the path cited before it.
+
+Approved deviations:
+
+- **D1. A duplicate transaction id in one `MsgRequestTxs`.**
+  - **What the reference does.** Its outbound side looks each requested id up in its window and sends
+    the transaction once for each time the request names it; only an id outside the window is an error,
+    `ProtocolErrorRequestedUnavailableTx` (`ouroboros-network/lib/Ouroboros/Network/TxSubmission/Outbound.hs`
+    171-193 at `c45735a5`).
+  - **What Scarab does.** `TxSubmissionPolicy.bodies` refuses the request with `Violation.DuplicateBody`,
+    and the connection ends.
+  - **Decision.** Approved. It is the rule upstream added after 11.1.3: `ProtocolErrorDuplicateTxIds`,
+    ouroboros-network pull request [#5435](https://github.com/IntersectMBO/ouroboros-network/pull/5435),
+    in `2fb69829`, and the network specification's `MsgRequestTxs`, whose ids "MUST NOT contain
+    duplicates" ([docs/network-spec/miniprotocols.tex](https://github.com/IntersectMBO/ouroboros-network/blob/2fb69829a19b5c04e4fb212bdd78fb63f9d2d776/docs/network-spec/miniprotocols.tex#L1396-L1398)
+    1396-1398 at `2fb69829`). It ends no connection
+    between Scarab and 11.1.3, checked in the source. The reference's inbound side builds every body
+    request as a `Map` from id to size (`SendMsgRequestTxsPipelined`,
+    `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/TxSubmission2/Server.hs` 81-84, filled in
+    `ouroboros-network/lib/Ouroboros/Network/TxSubmission/Inbound/V1.hs` 417-424 and `Inbound/V2.hs`
+    268-278), so it never names an id twice. Scarab's own requests are drawn from one reply's offers,
+    which must be distinct (`TxSubmissionPolicy.offers`), so a peer with the upstream rule never ends a
+    connection to Scarab for one.
+- **D2. The next peer-share request to a peer whose request failed.**
+  - **What the reference does.** The next request to a peer is due 900 s after the request starts,
+    whatever its result: `policyPeerShareRetryTime` is set as the request starts
+    (`ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/KnownPeers.hs` 193-195 at
+    `c45735a5`; the 900 s, `ouroboros-network/lib/Ouroboros/Network/Diffusion/Policies.hs` 118), and the
+    completions leave it ("TODO: also update with the failures", 318 and 361).
+  - **What Scarab does.** The same after an answer; after a request that fails or times out, the peer
+    is due 3600 s after the completion (`Policy.peerShareFailureRetryTime`, applied in
+    `PeerShare.completed`).
+  - **Decision.** Approved: it follows `policyPeerShareFailureRetryTime`, ouroboros-network pull request
+    [#5439](https://github.com/IntersectMBO/ouroboros-network/pull/5439), in `2fb69829`.
+- **D3. Warm-to-hot promotion.**
+  - **What the reference does.** It draws uniformly: `policyPickWarmPeersToPromote` is
+    `simplePromotionPolicy` (`ouroboros-network/lib/Ouroboros/Network/Diffusion/Policies.hs` 109 and
+    174-182 at `c45735a5`). cardano-diffusion replaces only the hot-demotion pick
+    (`cardano-diffusion/lib/Cardano/Network/Diffusion/Policies.hs` 28-31 at `c5117705`).
+  - **What Scarab does.** `Picks.warmPromotion` quarters the random draw of each peer that is not tepid
+    (`warmPromotionWords`), so it favours peers that were not just demoted.
+  - **Decision.** Approved: it follows `warmPromotionPolicy` and `promoteWeight`, ouroboros-network pull
+    request [#5437](https://github.com/IntersectMBO/ouroboros-network/pull/5437), in `2fb69829`.
+- **D5. Scores in the hot-demotion traces.**
+  - **What the reference does.** `TraceDemoteHotPeers` and `TraceDemoteHotBigLedgerPeers` carry the
+    target, the count and the peers picked, and no scores
+    (`ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/Types.hs` 1771 and 1781 at
+    `c45735a5`).
+  - **What Scarab does.** `Trace.Demote` and `Trace.DemoteBigLedger` also carry the score of each peer
+    that could be demoted, or none where the metrics have none, and the log writes them as `scores`
+    (`PeerSelectionLines`).
+  - **Decision.** Approved: it follows the scores `mkHotDemotionPolicy` returns, ouroboros-network pull
+    request [#5437](https://github.com/IntersectMBO/ouroboros-network/pull/5437), in `2fb69829`. The
+    ranking is the same at both revisions; only the traces differ.
+- **D7. Local-root DNS answers across a reconfiguration.**
+  - **What the reference does.** On a reconfiguration the local-root provider starts every domain with no
+    addresses (`ouroboros-network/lib/Ouroboros/Network/PeerSelection/RootPeersDNS/LocalRootPeers.hs`
+    124-130 at `c45735a5`, and the loop's restart at 168; the file is the same at `2fb69829`). The groups
+    it publishes when a lookup next answers hold no peer of a domain whose own lookup has not answered
+    yet.
+  - **What Scarab does.** `LocalRootDnsCache.reconfigure` keeps the last answer of each name the new
+    configuration still has, also when the name moves to another group, and looks it up again at once.
+  - **Decision.** Approved: it follows ouroboros-network pull request
+    [#5455](https://github.com/IntersectMBO/ouroboros-network/pull/5455), merged after `2fb69829`, so in
+    neither revision.
+
+Bugs of the linked packages, not reproduced:
+
+- **D4. The objective and the salt of a peer-share request.**
+  - **What the reference does.** The governor calls `jobPeerShare actions policy objective salt
+    numPeersToReq`, whose parameters are `salt maxAmount requestAmount`
+    (`ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/KnownPeers.hs` 200-201 and 262-267
+    at `c45735a5`). So the new peers are ordered by a hash salted with the objective, and cut to a random
+    `Int`, not to the objective (`takeNPeers`, 275-278): read from the source, a negative draw keeps none
+    of them and a positive one keeps all.
+  - **What Scarab does.** `PeerShare.Batch` holds the objective as its `remaining` and a fresh random
+    salt, and `PeerShare.completed` orders the new peers by their hash under the salt and keeps at most
+    the objective.
+  - **Decision.** Not reproduced. Fixed upstream by ouroboros-network pull request
+    [#5434](https://github.com/IntersectMBO/ouroboros-network/pull/5434), in `2fb69829`.
+- **D6. LocalTxMonitor `GetMeasures` on node-to-client versions 16 to 19.**
+  - **What the reference does.** cardano-diffusion selects the codec `LocalTxMonitor_V1` below version 20
+    (`cardano-diffusion/protocols/lib/Cardano/Network/Protocol/LocalTxMonitor/Codec.hs` 41-48 at
+    `c5117705`). That codec decodes `MsgGetMeasures`, but calls `error` when it encodes the reply,
+    `MsgReplyGetMeasures` (`ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalTxMonitor/Codec.hs`
+    140-141 and 102-113 at `c45735a5`). That the connection then ends is read from the source, not
+    observed.
+  - **What Scarab does.** `LocalTxMonitorServer` answers `GetMeasures` on every version it negotiates,
+    16 to 23.
+  - **Decision.** Not reproduced. Upstream drops versions 16 to 22 and uses `LocalTxMonitor_V2` for
+    every version left (ouroboros-network pull request
+    [#5426](https://github.com/IntersectMBO/ouroboros-network/pull/5426), in `2fb69829`).
+- **N1. Responders that start before the inbound governor records their connection.**
+  - **What the reference does.** The inbound governor starts a new connection's responders
+    (`ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs` 321-345 at `c45735a5`) before
+    it writes the state that records the connection (385-393, written at 563-564). A responder that
+    starts in between is not found by its mux tracer, which then empties the connection's responder
+    counters (613-651). From then on no start or clean end of that connection's responders reaches the
+    inbound governor, so they are not restarted and its remote state is not updated.
+  - **What Scarab does.** `NodeToNodeServer.Responders.create` makes the counters before the responders
+    start (`NodeToNodeServer.start`), so a responder that starts before `NodeToNodeServer.remoteActivity`
+    records the connection is counted, and what it signals waits for `remoteActivity`.
+  - **Decision.** Not reproduced: a race, fixed upstream by ouroboros-network pull request
+    [#5440](https://github.com/IntersectMBO/ouroboros-network/pull/5440), in `2fb69829`, which starts the
+    responders in the transaction that records the connection. Scarab's responders are restarted on
+    demand for the connection's life; it has no counterpart of the check that pull request also adds,
+    which stops restarting them once the connection is no longer recorded (`InboundGovernor.hs` 441-447
+    at `2fb69829`).
+- **N2. A mux job that ends before its parent records it.**
+  - **What the reference does.** A job of network-mux's job pool removes its entry when it ends, and its
+    parent inserts the entry after forking it (`network-mux/src/Control/Concurrent/JobPool.hs` 85-95 at
+    `c45735a5`), so when a job ends first, the entry its parent then inserts stays. The mux counts the
+    mini-protocol jobs to choose between `Stopped` and `Failed` when the demuxer finds the bearer closed
+    (`network-mux/src/Network/Mux.hs` 477-487).
+  - **What Scarab does.** `MuxJobPool.fork` removes a job's entry only once the parent has inserted it.
+  - **Decision.** Not reproduced: a race, fixed upstream by ouroboros-network pull request
+    [#5417](https://github.com/IntersectMBO/ouroboros-network/pull/5417), in `2fb69829`.
+
+`fixtures/peer-selection/policies` stays as exported at `2fb69829`: it records the warm promotion of D3
+and the hot-demotion scores of D5, both approved. The mux lifecycle corpus ran the job pool of
+`2fb69829`, whose order Scarab keeps (N2); whether its observations hold at `c45735a5` is still not
+checked.
