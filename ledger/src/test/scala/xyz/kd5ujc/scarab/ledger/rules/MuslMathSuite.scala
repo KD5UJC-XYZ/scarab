@@ -58,7 +58,7 @@ class MuslMathSuite extends ScalaCheckSuite:
 
   test("the corpus holds the measured counts") {
     assertEquals(cases.count(_.isInstanceOf[Case.Log]), 2124)
-    assertEquals(cases.count(_.isInstanceOf[Case.Pow]), 1396)
+    assertEquals(cases.count(_.isInstanceOf[Case.Pow]), 1415)
     assertEquals(cases.count(_.isInstanceOf[Case.Exp]), 1004)
     assertEquals(rows.size - cases.size, 63)
   }
@@ -138,12 +138,14 @@ class MuslMathSuite extends ScalaCheckSuite:
     assert(subnormal.size >= 3, subnormal)
   }
 
+  /** `zeroinfnan` (`pow.c:250-253`). */
+  private def zeroinfnan(i: Long) =
+    java.lang.Long.compareUnsigned(2 * i - 1, 2 * 0x7ff0000000000000L - 1) >= 0
+
   /** `pow`'s branch (`pow.c:265-326`), and the table interval of `log_inline` (`pow.c:46-47`). */
   private def powBranch(ix: Long, iy: Long): String =
     val topx = (ix >>> 52).toInt
     val topy = (iy >>> 52).toInt
-    def zeroinfnan(i: Long) =
-      java.lang.Long.compareUnsigned(2 * i - 1, 2 * 0x7ff0000000000000L - 1) >= 0
     val tinyOrHugeY = Integer.compareUnsigned((topy & 0x7ff) - 0x3be, 0x43e - 0x3be) >= 0
     if Integer.compareUnsigned(topx - 1, 0x7ff - 1) >= 0 || tinyOrHugeY then
       if zeroinfnan(iy) then "y zero, inf or nan"
@@ -158,8 +160,9 @@ class MuslMathSuite extends ScalaCheckSuite:
   extension (b: Boolean)
     private def fold[A](ifTrue: A, ifFalse: A): A = if b then ifTrue else ifFalse
 
+  private val pows = cases.collect { case Case.Pow(x, y, r) => (x, y, r) }
+
   test("pow cases reach every branch, every table interval and every kind of result") {
-    val pows = cases.collect { case Case.Pow(x, y, r) => (x, y, r) }
     val branches = pows.map((x, y, _) => powBranch(x, y)).toSet
     assertEquals(
       branches -- (0 until 128).map(i => s"interval $i"),
@@ -186,6 +189,26 @@ class MuslMathSuite extends ScalaCheckSuite:
       results.exists(r => r != 0 && Math.abs(r) < java.lang.Double.MIN_NORMAL && r < 0),
       "a negative subnormal"
     )
+  }
+
+  /** Which return of `checkint` (`pow.c:235-247`) an exponent takes. */
+  private def checkint(iy: Long): String =
+    val e = ((iy >>> 52) & 0x7ff).toInt
+    if e < 0x3ff then "below one"
+    else if e > 0x3ff + 52 then "beyond 2^53"
+    else if (iy & ((1L << (0x3ff + 52 - e)) - 1)) != 0 then "fraction"
+    else if (iy & (1L << (0x3ff + 52 - e))) != 0 then "odd"
+    else "even"
+
+  test("pow cases reach every return of checkint, for finite, zero and infinite negative x") {
+    // `pow` asks `checkint` only of an `x` with the sign bit set and a `y` that is not zero, infinite or NaN.
+    def outcomes(xs: Long => Boolean) = pows.collect {
+      case (x, y, _) if x < 0 && !zeroinfnan(y) && xs(x) => checkint(y)
+    }.toSet
+    val all = Set("below one", "beyond 2^53", "fraction", "odd", "even")
+    assertEquals(outcomes(x => !zeroinfnan(x)), all, "finite x")
+    assertEquals(outcomes(x => x == 0x8000000000000000L), all, "-0.0")
+    assertEquals(outcomes(x => x == 0xfff0000000000000L), all, "-inf")
   }
 
   // ---- the tables

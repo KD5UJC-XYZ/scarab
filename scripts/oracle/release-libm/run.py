@@ -12,8 +12,8 @@ image with no network, and writes `fixtures/reference/release-libm`:
 - `tables.txt`: the bytes of the binary's `__log_data`, `__pow_log_data` and `__exp_data`.
 
 The inputs are generated here with exact rationals and a fixed seed. The binary must have the digest
-`scripts/prepare_reference_image.py` pins. With `--other-image` the same probe runs against a second release
-(11.2.1) and must give identical results. Unless `--skip-musl`, the pinned musl release is downloaded, its
+`scripts/prepare_reference_image.py` pins. With `--other-image` the same probe runs against the 11.2.1 release,
+whose binary must have the digest `RELEASES` records, and must give identical results. Unless `--skip-musl`, the pinned musl release is downloaded, its
 signature-checked digest compared, and its own tables, compiled by `musl_tables.c`, compared with the
 binary's. With `--write` the corpus is replaced; otherwise the run is compared with it.
 
@@ -43,6 +43,10 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 from prepare_reference_image import BINARY_HASHES  # noqa: E402
+
+# The cardano-node binaries the probe may call: 11.1.3, the pinned reference, and 11.2.1, the cross-check.
+RELEASES = {"11.1.3": BINARY_HASHES["cardano-node"],
+            "11.2.1": "e8e0e37c55b123f0b6a4487da64de60a46158d229dfa1a93f6e20ae04a49ac0b"}
 
 CORPUS = ROOT / "fixtures/reference/release-libm"
 COMPILER = "gcc:14.2.0@sha256:b99b86a28812b1e6453a231a947dc43d76fe192788a12f344a9b568bf9f5d24c"
@@ -126,6 +130,11 @@ def pow_cases(rng):
               (-2.0, 1023.0), (-2.0, 1025.0), (-2.0, -1075.0), (-2.0, -1073.0), (-0.5, 1075.0),
               (-0.5, 1073.0), (-3.0, 3.0), (-3.0, 2.0), (-3.0, 0.5), (1.5, 1750.0), (1.5, -1840.0),
               (0.999, 7e5), (0.999, -7e5), (1.0000001, 7.1e9), (1.0000001, -7.45e9)]
+    # Negative x: every outcome of checkint (below 1, a fraction, odd, even, beyond 2^53).
+    pairs += [(-2.0, 1.5), (-2.0, -1.5), (-2.0, 2.5), (-0.5, 3.5), (-3.0, 1e10 + 0.5), (-2.0, 1023.5),
+              (-1.0000000001, 2.0**54), (-0.9999999999, 2.0**54), (-1.0000000001, -(2.0**60)),
+              (-0.0, 1.5), (-0.0, -1.5), (-0.0, 3.0), (-0.0, -3.0), (-0.0, 2.0**54),
+              (-math.inf, 1.5), (-math.inf, -1.5), (-math.inf, 3.0), (-math.inf, -3.0), (-math.inf, 2.0**54)]
     # Tiny and huge y.
     pairs += [(2.0, 1e-20), (0.5, 1e-20), (2.0, -1e-20), (-2.0, 1e-20), (1.0, 1e-20),
               (1.0000001, 1e19), (0.9, 1e19), (1.1, -1e19), (0.9, -1e19), (-1.0, 1e19), (-1.0, 2.0**63),
@@ -236,9 +245,17 @@ def run(command):
     return result.stdout
 
 
-def reference(image, probe_dir, work):
+def release(image, name):
+    """Refuse unless `image` holds the cardano-node binary of release `name`."""
+    digest = run(["docker", "run", "--rm", "--network", "none", "--entrypoint", "sha256sum", image, BINARY]).split()[0]
+    if digest != RELEASES[name]:
+        raise SystemExit(f"{image}: {BINARY} has SHA-256 {digest}, not that of the {name} release binary")
+    return digest
+
+
+def reference(image, name, probe_dir, work):
     """Run the probe in `image` on the case and likelihood inputs; return its outputs and tables."""
-    digest = run(["docker", "run", "--rm", "--network", "none", "--entrypoint", "sha256sum", image, BINARY])
+    digest = release(image, name)
     mount = ["docker", "run", "--rm", "--network", "none", "--cpus", "1", "--user", "%d:%d" % uid(),
              "-v", f"{probe_dir}:/probe:ro", "-v", f"{work}:/work", image, "/probe/probe", BINARY]
     tag = image.replace(":", "_").replace("/", "_").replace("@", "_")
@@ -246,7 +263,7 @@ def reference(image, probe_dir, work):
     run(mount + ["lik", "/work/lik.in", f"/work/lik.{tag}"])
     run(mount + ["tables", f"/work/tables.{tag}"])
     read = lambda name: (work / f"{name}.{tag}").read_text()
-    return digest.split()[0], read("cases"), read("lik"), read("tables")
+    return digest, read("cases"), read("lik"), read("tables")
 
 
 def uid():
@@ -302,12 +319,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--image", default="cardano-reference-11.1.3:local")
     parser.add_argument("--other-image", default="cardano-reference-11.2.1:local",
-                        help="a second release that must agree; empty to skip")
+                        help="the 11.2.1 reference image, which must agree; empty to skip")
     parser.add_argument("--skip-musl", action="store_true", help="do not compare the tables with musl's source")
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--bulk", type=Path, help="write bulk arguments and the binary's results to this directory")
     args = parser.parse_args()
     if args.bulk:
+        release(args.image, "11.1.3")
         args.bulk.mkdir(parents=True, exist_ok=True)
         bulk_inputs(args.bulk)
         with tempfile.TemporaryDirectory(prefix="scarab-release-libm-") as directory:
@@ -329,11 +347,9 @@ def main():
         (work / "lik.in").write_text("".join(
             f"lik {r['s']:016x} {r['d']:016x} {r['asc']:016x} {r['n']} {r['m']} {r['stake'][0]} {r['stake'][1]}\n"
             for r in liks))
-        digest, cases_out, lik_out, tables = reference(args.image, probe_dir, work)
-        if digest != BINARY_HASHES["cardano-node"]:
-            raise SystemExit(f"{args.image}: {BINARY} is not the pinned 11.1.3 release binary")
+        digest, cases_out, lik_out, tables = reference(args.image, "11.1.3", probe_dir, work)
         if args.other_image:
-            _, other_cases, other_lik, other_tables = reference(args.other_image, probe_dir, work)
+            _, other_cases, other_lik, other_tables = reference(args.other_image, "11.2.1", probe_dir, work)
             if (other_cases, other_lik, other_tables) != (cases_out, lik_out, tables):
                 raise SystemExit(f"{args.other_image} differs from {args.image}")
             print(f"{args.other_image} gives identical results and tables")

@@ -11,12 +11,13 @@ this corpus.
 ## Files
 
 - `cases.jsonl`, one JSON object per line:
-  - 4,524 function cases, `{"f": "log"|"exp"|"pow", "x": X, "y": Y, "r": R}` (`y` for `pow` only), every value
+  - 4,543 function cases, `{"f": "log"|"exp"|"pow", "x": X, "y": Y, "r": R}` (`y` for `pow` only), every value
     an IEEE-754 binary64 bit pattern in hex. `R` is what the binary's function returned for `X` (and `Y`). The
     arguments are the 100 sample positions; every table interval of each function at several exponents, at its
     start, middle and end; subnormals, zeros, infinities, NaNs, negatives, 1 and the ulps around it, the bounds
     of `log`'s path near 1; `pow(1 - f, s)` for stake shares from 1 lovelace to the whole circulation and for
-    several `f`; results that overflow, underflow, are subnormal or negative; tiny and huge exponents; and the
+    several `f`; results that overflow, underflow, are subnormal or negative; every return of `checkint` for a
+    negative, a negative zero and a negative infinite `x`; tiny and huge exponents; and the
     `exp` and `log` arguments of the wallet queries' normalisation (Floats at or below 0, areas in [0.01, 1]).
   - 63 likelihood records, `{"f": "lik", "stake": [C, T], "s": S, "d": D, "asc": F, "n": N, "m": M,
     "samples": [...]}`: the 100 `Float` samples, as bit patterns, of
