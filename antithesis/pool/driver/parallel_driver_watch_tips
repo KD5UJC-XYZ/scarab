@@ -5,6 +5,7 @@
 # agree, runs the divergence detectors at every check, and exits 0, so that the command runs to completion.
 set -uo pipefail
 source /opt/at/lib.sh
+exit_zero_on_signal
 
 reached "$STARTS"
 

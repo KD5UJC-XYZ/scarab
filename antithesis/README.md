@@ -57,6 +57,12 @@ Each reads on from where the last pass in the timeline stopped. The properties, 
   need to follow the longest tip. `driver/forktree.py` builds the block tree from the pools' logs: every forged
   block with its parent, and every pool's tip changes.
 - sometimes: a fork is observed (depth 1 or more), so that the fork-depth property cannot pass vacuously.
+- sometimes: the detectors read every pool's log (each log present and not empty), so that the detectors that read
+  logs cannot pass unseen on a broken path.
+
+The test commands append each assertion line under a lock, bound every call to a node with `timeout`, and exit 0
+when a signal stops them, so that the platform's "Commands finish with zero exit code" is about the workload's own
+failures (after cardano-foundation/cardano-node-antithesis, whose commands meet killed nodes).
 
 There is no `always` on tip agreement. A pool that has just forged is ahead by definition, so "all tips agree at
 an instant" is no invariant: cardano-foundation/cardano-node-antithesis removed such probes as false positives
