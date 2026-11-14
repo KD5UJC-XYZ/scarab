@@ -172,10 +172,11 @@ class SnapshotV11Suite extends CatsEffectSuite:
     }
 
   /** ADR 0006: a state written before rationals were bounded as the reference does (`BoundedRatio`,
-    * `BaseTypes.hs:348-374`) can carry a pending update the reference could not have decoded, here
-    * a decentralisation parameter of 3/2. It still loads and is written again byte for byte, with
-    * the update verbatim; the update is no longer adopted (`UpdateChecks.voted` gives none, as it
-    * does for any update that cannot be read), where the same update with d = 1/2 is.
+    * `BaseTypes.hs:348-374`, cardano-ledger f649f975) can carry a pending update the reference
+    * could not have decoded, here a decentralisation parameter of 3/2. It still loads and is
+    * written again byte for byte, with the update verbatim; the update is no longer adopted
+    * (`UpdateChecks.voted` gives none, as it does for any update that cannot be read), where the
+    * same update with d = 1/2 is.
     */
   test("a V11 state with a pending update outside its interval loads verbatim and is not adopted") {
     val Some((_, base)) =

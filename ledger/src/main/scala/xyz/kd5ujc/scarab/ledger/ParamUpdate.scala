@@ -32,7 +32,8 @@ object ParamUpdate:
     * key 14 may propose. That is `succVersion (ProtVerHigh era)` in `decodeProtVer`
     * (`BaseTypes.hs:253-262`), the decoder of `ppProtocolVersion` (`Shelley/PParams.hs:472-479`),
     * where `ProtVerHigh` is the era's `ProtVerLow` unless the era names it
-    * (`Internal/Definition/Era.hs:64, 92-125`): Shelley 2, Allegra 3, Mary 4, Alonzo 6, Babbage 8.
+    * (`Internal/Definition/Era.hs:64, 92-125`, cardano-ledger f649f975): Shelley 2, Allegra 3, Mary
+    * 4, Alonzo 6, Babbage 8.
     */
   final case class Rules(keys: Keys, maxMajor: BigInt)
 
@@ -49,12 +50,13 @@ object ParamUpdate:
 
   /** The update of a transaction or proposal from its map of field index to value, as the shared
     * sparse decoder of `PParamsUpdate` reads it below decoder version 12 (`SparseKeyed`,
-    * `Core/PParams.hs:257-293`; `applyField`, `Coders.hs:562-570`): entries in order, the key a
-    * `Word`, a key read before refused (`duplicateKey`), a key that is not one of the era's update
-    * keys refused (`invalidKey`), and each value read at the type of its field, the first bad one
-    * failing the update. The original bytes of each value are kept ([[CborRead.kept]]): they are
-    * what a proposal is stored by, and [[ProtocolParams.update]] reads them again when the update
-    * is applied. The quorum vote compares the values ([[winners]]).
+    * `Core/PParams.hs:257-293`; `applyField`, `Coders.hs:562-570`, cardano-ledger f649f975):
+    * entries in order, the key a `Word`, a key read before refused (`duplicateKey`), a key that is
+    * not one of the era's update keys refused (`invalidKey`), and each value read at the type of
+    * its field, the first bad one failing the update. The original bytes of each value are kept
+    * ([[CborRead.kept]]): they are what a proposal is stored by, and [[ProtocolParams.update]]
+    * reads them again when the update is applied. The quorum vote compares the values
+    * ([[winners]]).
     */
   def read(
       fields: Vector[(Node, Node)],
@@ -115,15 +117,15 @@ object ParamUpdate:
         .flatMap(_(v))
         .void
 
-  /** `decodeProtVer` (`BaseTypes.hs:253-263`): the `ProtVer` record, `CBORGroup` over a list of two
-    * (`BaseTypes.hs:211-214, 243-244`; `groupRecord`, `Binary/Group.hs:27-35`), read whole before
-    * the era's bound is checked. Its major is read by `decodeVersion`, a `Word32` that
-    * `mkVersion32` takes up to [[DecoderVersion.MaxVersion]] (`Decoder.hs:462-463`,
-    * `Binary/Version.hs:111-124`), then its minor, a `Word32`; only then is a major above the era's
-    * `maxMajor`, `succVersion (ProtVerHigh era)`, refused. So of a major and a minor both out of
-    * range, a major beyond `MaxVersion` is the failure, and a major within it but over the era's
-    * bound fails at the minor. The pre-Conway update's key 14 reads it ([[Rules]]), and so does
-    * Conway's hard fork action ([[Proposal.decode]]).
+  /** `decodeProtVer` (`BaseTypes.hs:253-263`, cardano-ledger f649f975): the `ProtVer` record,
+    * `CBORGroup` over a list of two (`BaseTypes.hs:211-214, 243-244`; `groupRecord`,
+    * `Binary/Group.hs:27-35`), read whole before the era's bound is checked. Its major is read by
+    * `decodeVersion`, a `Word32` that `mkVersion32` takes up to [[DecoderVersion.MaxVersion]]
+    * (`Decoder.hs:462-463`, `Binary/Version.hs:111-124`), then its minor, a `Word32`; only then is
+    * a major above the era's `maxMajor`, `succVersion (ProtVerHigh era)`, refused. So of a major
+    * and a minor both out of range, a major beyond `MaxVersion` is the failure, and a major within
+    * it but over the era's bound fails at the minor. The pre-Conway update's key 14 reads it
+    * ([[Rules]]), and so does Conway's hard fork action ([[Proposal.decode]]).
     */
   private[ledger] def protocolVersion(
       v: Node,
