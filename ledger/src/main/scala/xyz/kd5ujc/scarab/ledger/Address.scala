@@ -233,6 +233,14 @@ object Address:
     case Stored
 
   object Mode:
+    /** `fromCborBothAddr` branches at 7 and 9, independently of the output's era
+      * (`libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs:459-477`, f649f975).
+      */
+    def at(version: DecoderVersion): Mode =
+      if version.atLeast(9) then Strict
+      else if version.atLeast(7) then Rigorous
+      else Backwards
+
     def of(era: Era): Mode =
       if era.ordinal < Era.Mary.ordinal then CoinOnly
       else if era.ordinal < Era.Babbage.ordinal then Backwards
@@ -483,6 +491,21 @@ object Value:
       */
     case Rejecting
 
+    /** From version 12 the outer multi-asset map must also be non-empty (`Mary/Value.hs:319-340`,
+      * cardano-ledger f649f975).
+      */
+    case NonEmpty
+
+  object Decoding:
+    /** The value type belongs to the era; `decodeMultiAsset` branches at versions 9 and 12
+      * (`eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs:319-340`, f649f975).
+      */
+    def of(era: Era, version: DecoderVersion): Decoding =
+      if era.ordinal < Era.Mary.ordinal then CoinOnly
+      else if version.atLeast(12) then NonEmpty
+      else if version.atLeast(9) then Rejecting
+      else Pruning
+
   private val Int64Min = -(BigInt(1) << 63)
   private val Int64Max = (BigInt(1) << 63) - 1
 
@@ -516,7 +539,10 @@ object Value:
     case _ if decoding == Decoding.CoinOnly    => Left(LedgerDecodeError.MultiAssetNotAllowed(what))
     case _ =>
       for
-        xs <- records.record(n, 2, what)
+        // `decodeValuePair` uses decodeRecordNamed from 12 (Mary/Value.hs:298-310, f649f975).
+        xs <-
+          if decoding == Decoding.NonEmpty then CborRead.arrayN(n, 2, what)
+          else records.record(n, 2, what)
         c <- CborRead.uint(xs(0), what)
         assets <- multiasset(xs(1), what, signed = false, decoding)
       yield Value(c, assets)
@@ -557,7 +583,11 @@ object Value:
         case Decoding.Pruning =>
           Right(normal(policies.map((p, qs) => p -> qs.toMap).toMap))
         case Decoding.Rejecting => rejecting(policies, what)
-        case Decoding.CoinOnly  => Left(LedgerDecodeError.MultiAssetNotAllowed(what))
+        case Decoding.NonEmpty =>
+          rejecting(policies, what).flatMap(as =>
+            Either.cond(as.nonEmpty, as, LedgerDecodeError.Empty(what))
+          )
+        case Decoding.CoinOnly => Left(LedgerDecodeError.MultiAssetNotAllowed(what))
       count = assets.valuesIterator.map(_.size).sum
       _ <- Either.cond(
         44 * count + 28 * assets.size <= CompactLimit,
@@ -726,11 +756,21 @@ object TxOut:
       forms: Forms,
       newest: ScriptKind
   )(using ByteStrings): Either[LedgerDecodeError, TxOut] =
+    decode(n, mode, forms, newest, mode.values)
+
+  /** The address policy and the value type are independent when reading at an explicit version. */
+  def decode(
+      n: Node,
+      mode: Address.Mode,
+      forms: Forms,
+      newest: ScriptKind,
+      values: Value.Decoding
+  )(using ByteStrings): Either[LedgerDecodeError, TxOut] =
     n.value match
       case xyz.kd5ujc.scarab.codec.Value.Arr(xs) if forms.arities.contains(xs.size) =>
         for
           a <- CborRead.bytes(xs(0), DecodeField.OutputAddress).flatMap(Address.decode(_, mode))
-          v <- Value.decode(xs(1), DecodeField.OutputValue, mode.values, forms.records)
+          v <- Value.decode(xs(1), DecodeField.OutputValue, values, forms.records)
           d <-
             if xs.size == 3 then
               CborRead.bytesN(xs(2), 32, DecodeField.DatumHash).map(Datum.Hash(_))
@@ -748,7 +788,7 @@ object TxOut:
           vn <- f
             .get(1)
             .toRight(LedgerDecodeError.MissingField(DecodeField.Output, DecodeField.Value))
-          v <- Value.decode(vn, DecodeField.OutputValue, mode.values, forms.records)
+          v <- Value.decode(vn, DecodeField.OutputValue, values, forms.records)
           _ <- Either.cond(
             f.keySet.subsetOf(Set(0, 1, 2, 3)),
             (),

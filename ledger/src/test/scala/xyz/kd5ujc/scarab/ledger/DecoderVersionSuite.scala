@@ -89,6 +89,168 @@ class DecoderVersionSuite extends FunSuite:
   private val at11 = DecoderVersion.high(Era.Conway)
   private val at12 = DecoderVersion.Dijkstra
 
+  test("output addresses follow version 7 while their value type and forms follow the era") {
+    val at6 = DecoderVersion.high(Era.Alonzo)
+    val at7 = DecoderVersion.of(Era.Babbage)
+    val address = "60" + "11" * 28
+    val trailing = "581e" + address + "00"
+    for era <- Shelley do
+      val ttl = if era == Era.Shelley then "0300" else ""
+      val prefix = if era == Era.Shelley then "a4" else "a3"
+      def body(output: String) = hex(prefix + "00800181" + output + "0200" + ttl)
+      val raw = body("82" + trailing + "00")
+      assertEquals(
+        TxBody.decode(raw, era, at6).map(_.outputs.map(_.address.raw)),
+        Right(Vector(hex(address))),
+        s"$era at 6 crops trailing address bytes"
+      )
+      assertEquals(
+        TxBody.decode(raw, era, at7),
+        Left(LedgerDecodeError.AddressLength(DecodeField.EnterpriseAddressLength, 29, 30)),
+        s"$era at 7 requires the whole address"
+      )
+      val multiasset = body("82581d" + address + "8200a0")
+      if era.ordinal < Era.Mary.ordinal then
+        assertEquals(
+          TxBody.decode(multiasset, era, at9),
+          Left(LedgerDecodeError.MultiAssetNotAllowed(DecodeField.OutputValue))
+        )
+      else assert(TxBody.decode(multiasset, era, at9).isRight, s"$era retains MaryValue")
+      val mapOutput = body("a200581d" + address + "0100")
+      assertEquals(TxBody.decode(mapOutput, era, at6).isRight, era.ordinal >= Era.Babbage.ordinal)
+  }
+
+  test("multi-asset quantities and cost models follow version 9 independently of era") {
+    val address = "581d60" + "11" * 28
+    val zeroAsset = "a1581c" + "22" * 28 + "a14000"
+    for era <- Vector(Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway) do
+      val raw = hex("a30080018182" + address + "8200" + zeroAsset + "0200")
+      assertEquals(
+        TxBody.decode(raw, era, at8).map(_.outputs.map(_.value.assets.size)),
+        Right(Vector(0))
+      )
+      assertEquals(
+        TxBody.decode(raw, era, at9),
+        Left(LedgerDecodeError.ZeroQuantity(DecodeField.OutputValue))
+      )
+    // CostModels.hs:311-337 at f649f975: short V1 is refused below 9, retained from 9.
+    val shortModel = "a112a10080"
+    for era <- Vector(Era.Alonzo, Era.Babbage) do
+      val raw = hex("a40080018002000682a1581c" + "00" * 28 + shortModel + "00")
+      assertEquals(TxBody.decode(raw, era, at8), Left(LedgerDecodeError.CostModelLength(0, 166, 0)))
+      assert(TxBody.decode(raw, era, at9).isRight, s"$era at 9 reads an open cost model")
+    val proposal = hex("8400581de0" + "00" * 28 + "8400f6" + shortModel + "f682605820" + "00" * 32)
+    val body = hex("a40080018002001481") ++ proposal
+    assertEquals(
+      TxBody.decode(body, Era.Conway, at8),
+      Left(LedgerDecodeError.CostModelLength(0, 166, 0))
+    )
+    assert(TxBody.decode(body, Era.Conway, at9).isRight)
+  }
+
+  test("pointer normalization and collateral-return addresses follow the supplied version") {
+    val address = "40" + "11" * 28 + "90808080000000"
+    val normalized = hex("40" + "11" * 28 + "000000")
+    val output = "825824" + address + "00"
+    for era <- Vector(Era.Alonzo, Era.Babbage, Era.Conway) do
+      val raw = hex("a300800181" + output + "0200")
+      assertEquals(
+        TxBody.decode(raw, era, at8).map(_.outputs.map(_.address.raw)),
+        Right(Vector(normalized))
+      )
+      assertEquals(
+        TxBody.decode(raw, era, at9),
+        Left(LedgerDecodeError.Pointer(Ptr.Failure.OutOfRange))
+      )
+    val collateral = hex("a40080018002001082581e60" + "11" * 28 + "0000")
+    for era <- Vector(Era.Babbage, Era.Conway) do
+      assert(TxBody.decode(collateral, era, DecoderVersion.high(Era.Alonzo)).isRight)
+      assertEquals(
+        TxBody.decode(collateral, era, at8),
+        Left(LedgerDecodeError.AddressLength(DecodeField.EnterpriseAddressLength, 29, 30))
+      )
+  }
+
+  test("Mary values at version 12 allow indefinite pairs and require a non-empty asset map") {
+    val address = "581d60" + "11" * 28
+    val assets = "a1581c" + "22" * 28 + "a14001"
+    for era <- Vector(Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway) do
+      def body(value: String) = hex("a30080018182" + address + value + "0200")
+      val indefinite = body("9f00" + assets + "ff")
+      assertEquals(
+        TxBody.decode(indefinite, era, at11),
+        Left(LedgerDecodeError.IndefiniteLength(DecodeField.OutputValue))
+      )
+      assertEquals(
+        TxBody.decode(indefinite, era, at12).map(_.outputs.map(_.value)),
+        TxBody.decode(body("8200" + assets), era, at11).map(_.outputs.map(_.value))
+      )
+      assert(TxBody.decode(body("8200" + assets), era, at12).isRight)
+      assert(TxBody.decode(body("8200a0"), era, at11).isRight)
+      assertEquals(
+        TxBody.decode(body("8200a0"), era, at12),
+        Left(LedgerDecodeError.Empty(DecodeField.OutputValue))
+      )
+  }
+
+  test("witness script languages remain tied to the era at explicit versions") {
+    val plutusV2 = hex("a1068140")
+    assertEquals(
+      Witnesses.decode(plutusV2, Era.Alonzo, at12),
+      Left(LedgerDecodeError.UnsupportedLanguage(ScriptKind.PlutusV2, ScriptKind.PlutusV1))
+    )
+    assert(Witnesses.decode(plutusV2, Era.Babbage, DecoderVersion.high(Era.Alonzo)).isRight)
+    val timelock = hex("a10181820400")
+    assert(Witnesses.decode(timelock, Era.Shelley, at12).isLeft)
+    assert(Witnesses.decode(timelock, Era.Allegra, DecoderVersion.of(Era.Shelley)).isRight)
+  }
+
+  test("Alonzo witness sets refuse duplicate vkeys, native scripts and datums from version 12") {
+    val vkey = "825820" + "11" * 32 + "5840" + "22" * 64
+    val script = "8200581c" + "33" * 28
+    val cases = Vector(
+      ("a10082" + vkey + vkey, DecodeField.VkeyWitnesses),
+      ("a10182" + script + script, DecodeField.NativeScripts),
+      ("a104820000", DecodeField.Datums)
+    )
+    for
+      era <- Vector(Era.Alonzo, Era.Babbage, Era.Conway)
+      (raw, field) <- cases
+    do
+      assert(Witnesses.decode(hex(raw), era, at11).isRight, s"$era $field at 11")
+      assertEquals(
+        Witnesses.decode(hex(raw), era, at12),
+        Left(LedgerDecodeError.DuplicateElement(field))
+      )
+    for era <- Vector(Era.Shelley, Era.Allegra, Era.Mary) do
+      assertEquals(
+        Witnesses.decode(hex("a10082" + vkey + vkey), era, at12).map(_.vkeys.size),
+        Right(1)
+      )
+      assert(Witnesses.decode(hex("a10080"), era, at12).isRight)
+      assert(Witnesses.decode(hex("a100d9010280"), era, at12).isLeft)
+  }
+
+  test("redeemers must use the map form from version 12, retaining last-wins map entries") {
+    val listed = hex("a1058184000000820000")
+    assert(Witnesses.decode(listed, Era.Conway, at11).isRight)
+    assertEquals(
+      Witnesses.decode(listed, Era.Conway, at12),
+      Left(
+        LedgerDecodeError.Expected(
+          DecodeField.Redeemers,
+          LedgerDecodeError.Shape.Map,
+          node(hex("8184000000820000")).value
+        )
+      )
+    )
+    val mapped = hex("a105a282000082008200008200008201820000")
+    assertEquals(
+      Witnesses.decode(mapped, Era.Conway, at12).map(_.redeemers.map(_.data)),
+      Right(Vector(hex("01")))
+    )
+  }
+
   test("a body reads its inputs, withdrawals and certificates at the version given (9)") {
     val duplicate = LedgerDecodeError.DuplicateElement(DecodeField.Inputs)
     // `decodeSetEnforceNoDuplicates` from 9 (`Decoder.hs`, f649f975); `Set.fromList` below it
@@ -178,6 +340,37 @@ class DecoderVersionSuite extends FunSuite:
     assert(read.isRight, s"$read")
     assert(Header.fromRaw(Era.Conway, chunked, at11).isLeft)
     assertEquals(Header.fromRaw(Era.Conway, chunked, at12).map(_.signable), read)
+  }
+
+  test("a block passes its explicit version to the header's byte-string decoder") {
+    val chunked = hex("82" + headerBody + "5f" + ("5900e0" + "08" * 224) * 2 + "ff")
+    val raw = hex("820785") ++ chunked ++ hex("8080a080")
+    val header = Header.fromRaw(Era.Conway, chunked, at12).fold(e => fail(s"$e"), identity)
+    assert(Block.decodeShelley(raw).isLeft)
+    assert(Block.decodeShelley(raw, _ => at11).isLeft)
+    assertEquals(
+      Block.decodeShelley(raw, _ => at12).map {
+        case b: Block.Shelley => b.header
+        case other            => fail(s"expected Shelley block, got $other")
+      },
+      Right(header)
+    )
+  }
+
+  test("both transaction entry points pass their explicit version to the witness decoder") {
+    val parts = Block.Transaction(hex("a3008001800200"), chainCode31, None, true)
+    val raw = Tx.envelope(parts)
+    val refused = Left(LedgerDecodeError.ByteLength(DecodeField.ChainCode, 32, 31))
+    assertEquals(
+      Tx.fromBlock(parts, Era.Conway, at11).map(_.witnesses.bootstrap.map(_.chainCode.size)),
+      Right(Vector(31))
+    )
+    assertEquals(
+      Tx.fromEnvelope(raw, Era.Conway, at11).map(_.witnesses.bootstrap.map(_.chainCode.size)),
+      Right(Vector(31))
+    )
+    assertEquals(Tx.fromBlock(parts, Era.Conway, at12), refused)
+    assertEquals(Tx.fromEnvelope(raw, Era.Conway, at12), refused)
   }
 
   test("a block reads its records, header and auxiliary data at the version given (9, 12)") {

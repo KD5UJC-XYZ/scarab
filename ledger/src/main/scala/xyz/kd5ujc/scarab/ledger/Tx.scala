@@ -416,7 +416,7 @@ object TxBody:
         for
           key <- CborRead.bytesN(k, 28, DecodeField.GenesisKeyHash)
           fs <- CborRead.map(v, DecodeField.ParameterUpdate)
-          update <- ParamUpdate.read(fs, era, CostModelDecode.Format.Legacy)
+          update <- ParamUpdate.read(fs, era, CostModelDecode.Format.of(version))
         yield key -> update
       }
       epoch <- CborRead.uint(xs(1), DecodeField.UpdateEpoch)
@@ -445,7 +445,8 @@ object TxBody:
       version: DecoderVersion,
       root: Node
   ): Either[LedgerDecodeError, TxBody] =
-    val mode = Address.Mode.of(era)
+    val mode = Address.Mode.at(version)
+    val values = Value.Decoding.of(era, version)
     given ByteStrings = ByteStrings.of(version)
     val conway = era.ordinal >= Era.Conway.ordinal
     val forms = TxOut.Forms.of(era)
@@ -469,7 +470,7 @@ object TxBody:
         .get(1)
         .toRight(LedgerDecodeError.MissingField(DecodeField.TransactionBody, DecodeField.Outputs))
         .flatMap(CborRead.array(_, DecodeField.Outputs))
-        .flatMap(_.traverse(TxOut.decode(_, mode, forms, ScriptKind.newest(era))))
+        .flatMap(_.traverse(TxOut.decode(_, mode, forms, ScriptKind.newest(era), values)))
       fee <- f
         .get(2)
         .toRight(LedgerDecodeError.MissingField(DecodeField.TransactionBody, DecodeField.Fee))
@@ -517,7 +518,7 @@ object TxBody:
       auxHash <- f.get(7).traverse(CborRead.bytesN(_, 32, DecodeField.AuxiliaryDataHash))
       mint <-
         if era == Era.Allegra then f.get(9).traverse(unit(_, DecodeField.Mint)).as(None)
-        else f.get(9).traverse(Value.multiasset(_, DecodeField.Mint, signed = true, mode.values))
+        else f.get(9).traverse(Value.multiasset(_, DecodeField.Mint, signed = true, values))
       _ <- Either.cond(
         !(conway && mint.exists(_.isEmpty)),
         (),
@@ -536,7 +537,9 @@ object TxBody:
           )
       )
       network <- f.get(15).traverse(networkId)
-      collateralReturn <- f.get(16).traverse(TxOut.decode(_, mode, forms, ScriptKind.newest(era)))
+      collateralReturn <- f
+        .get(16)
+        .traverse(TxOut.decode(_, mode, forms, ScriptKind.newest(era), values))
       totalCollateral <- f.get(17).traverse(CborRead.uint(_, DecodeField.TotalCollateral))
       refs <- present(DecodeField.ReferenceInputs)(
         f.get(18).traverse(CborRead.set(_, DecodeField.ReferenceInputs, version)(TxIn.decode))
@@ -624,6 +627,17 @@ object BootstrapWitness:
     */
   def set(read: Vector[BootstrapWitness]): Vector[BootstrapWitness] =
     read.reverse.distinctBy(_.addressRoot).sortBy(_.addressRoot)
+
+  /** Alonzo's `addrWitsSetDecoder` refuses repeated roots from version 12
+    * (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs:613-641`, f649f975).
+    */
+  def set(
+      read: Vector[BootstrapWitness],
+      version: DecoderVersion
+  ): Either[LedgerDecodeError, Vector[BootstrapWitness]] =
+    if version.atLeast(12) then
+      CborRead.unique(read.map(_.addressRoot), DecodeField.BootstrapWitnesses).as(set(read))
+    else Right(set(read))
 
   /** `DecCBOR ChainCode` (`libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Bootstrap.hs:72-78`,
     * cardano-ledger f649f975): a byte string of any length, which must be 32 bytes from decoder
@@ -731,7 +745,22 @@ object Witnesses:
       root: Node
   ): Either[LedgerDecodeError, Witnesses] =
     given ByteStrings = ByteStrings.of(version)
-    val strict = version.atLeast(9)
+    val alonzo = era.ordinal >= Era.Alonzo.ordinal
+    val strict = alonzo && version.atLeast(9)
+    // ShelleyTxWitsRaw keeps decodeList even at later versions (Shelley/TxWits.hs:234-249);
+    // AlonzoTxWitsRaw uses non-empty sets from 9 and refuses duplicates from 12
+    // (Alonzo/TxWits.hs:613-641, 682-698; TxDatsRaw:334-352), cardano-ledger f649f975.
+    def list(n: Node, what: DecodeSite): Either[LedgerDecodeError, Vector[Node]] =
+      val read =
+        if alonzo then CborRead.list(n, what, version) else CborRead.array(n, what)
+      read.flatMap(CborRead.nonEmpty(_, what, strict))
+    def witnessSet[A, K](n: Node, what: DecodeSite)(
+        elem: Node => Either[LedgerDecodeError, A]
+    )(identity: A => K): Either[LedgerDecodeError, Vector[A]] =
+      list(n, what).flatMap(_.traverse(elem)).flatMap { xs =>
+        if alonzo && version.atLeast(12) then CborRead.unique(xs.map(identity), what).as(xs)
+        else Right(xs.distinct)
+      }
     // Shelley, Allegra and Mary read keys 0 to 2 (`Shelley/TxWits.hs`); the Alonzo witness set of
     // every later era reads 0 to 7, and a Plutus script of a language newer than the era's is
     // refused (`alonzoPlutusScriptDecoder`, `Alonzo/TxWits.hs:725-740`, f649f975)
@@ -747,7 +776,7 @@ object Witnesses:
       vkeys <- f
         .get(0)
         .traverse(
-          CborRead.tolerantSet(_, DecodeField.VkeyWitnesses, version) { w =>
+          witnessSet(_, DecodeField.VkeyWitnesses) { w =>
             CborRead
               .arrayN(w, 2, DecodeField.VkeyWitness)
               .flatMap(xs =>
@@ -756,25 +785,22 @@ object Witnesses:
                   CborRead.bytesN(xs(1), 64, DecodeField.Signature)
                 ).tupled
               )
-          }
+          }(identity)
         )
       native <- f
         .get(1)
         .traverse(
-          CborRead
-            .tolerantSet(_, DecodeField.NativeScripts, version)(
-              Script.native(_, NativeScript.Form.of(era))
-            )
+          witnessSet(_, DecodeField.NativeScripts)(
+            Script.native(_, NativeScript.Form.of(era))
+          )(_.hash)
             .map(_.distinctBy(_.hash))
         )
       bootstrap <- f
         .get(2)
         .traverse(
-          // the list as `tolerantSet` reads it but with every witness kept for `BootstrapWitness.set`:
+          // Keep every witness for `BootstrapWitness.set`:
           // dropping a repeated copy first would change which witness of a root is the last
-          CborRead
-            .list(_, DecodeField.BootstrapWitnesses, version)
-            .flatMap(CborRead.nonEmpty(_, DecodeField.BootstrapWitnesses, strict))
+          list(_, DecodeField.BootstrapWitnesses)
             .flatMap(_.traverse { w =>
               CborRead.arrayN(w, 4, DecodeField.BootstrapWitness).flatMap { xs =>
                 (
@@ -785,7 +811,9 @@ object Witnesses:
                 ).mapN(BootstrapWitness(_, _, _, _))
               }
             })
-            .map(BootstrapWitness.set)
+            .flatMap(ws =>
+              if alonzo then BootstrapWitness.set(ws, version) else Right(BootstrapWitness.set(ws))
+            )
         )
       plutus = (tag: Int, kind: ScriptKind) =>
         f.get(tag)
@@ -809,10 +837,9 @@ object Witnesses:
       datums <- f
         .get(4)
         .traverse(
-          CborRead
-            .tolerantSet(_, DecodeField.Datums, version)(n =>
-              Data.read(n, DecodeField.Datums).as(n.original)
-            )
+          witnessSet(_, DecodeField.Datums)(n => Data.read(n, DecodeField.Datums).as(n.original))(
+            Blake2b.hash256.hash
+          )
             .map(_.distinct)
         )
       redeemers <- f.get(5).traverse(redeemerList(_, era, version))
@@ -839,15 +866,16 @@ object Witnesses:
     * ledger keeps redeemers in a map keyed by purpose, so of several entries for the same
     * `(tag, index)`, in either form, the last one counts (seen on Preview: slot 12924758, six
     * entries for one mint with different data; slot 62567517, one entry twice). From decoder
-    * version 9 either form must not be empty; below it only the list is read (`RedeemersRaw`,
-    * TxWits.hs). From version 9 the map form is chosen by `peekTokenType`, for `TypeMapLenIndef`
-    * and `TypeMapLen` alone (`Alonzo/TxWits.hs:548-559`, f649f975): a map whose length is written
-    * in eight bytes ([[CborRead.mapLength64]]) is read as the list and refused (#701). The purpose
-    * is read by [[Redeemer.purpose]] in both forms. A listed redeemer is `decodeRecordNamed`
-    * (`decodeElement`, `Alonzo/TxWits.hs:588-597`) and a map key a `CBORGroup`
-    * (`Binary/Group.hs:27-35`), each a definite or an indefinite list; a map value is the tuple
-    * `(annData, exUnits)` (`decodeMapRedeemers`, `Alonzo/TxWits.hs:571-575`), whose
-    * `decodeListLenOf 2` takes a definite list only (`Decoding/DecCBOR.hs:238-243`).
+    * version 9 either form must not be empty; below it only the list is read. From version 12 only
+    * the map is read (`RedeemersRaw`, `Alonzo/TxWits.hs:549-565`, f649f975). From version 9 the map
+    * form is chosen by `peekTokenType`, for `TypeMapLenIndef` and `TypeMapLen` alone
+    * (`Alonzo/TxWits.hs:548-559`, f649f975): a map whose length is written in eight bytes
+    * ([[CborRead.mapLength64]]) is read as the list and refused (#701). The purpose is read by
+    * [[Redeemer.purpose]] in both forms. A listed redeemer is `decodeRecordNamed` (`decodeElement`,
+    * `Alonzo/TxWits.hs:588-597`) and a map key a `CBORGroup` (`Binary/Group.hs:27-35`), each a
+    * definite or an indefinite list; a map value is the tuple `(annData, exUnits)`
+    * (`decodeMapRedeemers`, `Alonzo/TxWits.hs:571-575`), whose `decodeListLenOf 2` takes a definite
+    * list only (`Decoding/DecCBOR.hs:238-243`).
     */
   private def redeemerList(
       n: Node,
@@ -867,6 +895,10 @@ object Witnesses:
             units <- exUnits(value(1))
           yield Redeemer(purpose._1, purpose._2, value(0).original, units)
         }
+      case _ if version.atLeast(12) =>
+        Left(
+          LedgerDecodeError.Expected(DecodeField.Redeemers, LedgerDecodeError.Shape.Map, n.value)
+        )
       case _ =>
         CborRead
           .array(n, DecodeField.Redeemers)

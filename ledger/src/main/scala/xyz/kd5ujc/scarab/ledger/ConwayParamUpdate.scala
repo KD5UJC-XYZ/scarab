@@ -289,10 +289,13 @@ object ConwayParam:
 
   /** The decoder of each Conway update key: `decCBOR` of the field's type at the decoder version of
     * Conway (`mkField Nothing`, `Core/PParams.hs:284-293`), the keys every era shares and the keys
-    * Conway alone has. The cost models of key 18 are read by the rule of Conway's decoder version.
+    * Conway alone has. The cost models of key 18 are read by the supplied decoder version's rule.
     */
-  private def conway(records: Records): Map[BigInt, Read] = shared(records) ++ Map[Int, Read](
-    18 -> (n => CostModelDecode.decode(n, CostModelDecode.Format.Open).map(CostModels(_))),
+  private def conway(
+      records: Records,
+      costModels: CostModelDecode.Format = CostModelDecode.Format.Open
+  ): Map[BigInt, Read] = shared(records) ++ Map[Int, Read](
+    18 -> (n => CostModelDecode.decode(n, costModels).map(CostModels(_))),
     25 -> thresholds(DecodeField.PoolVotingThresholds, 5)(PoolVotingThresholds.fromVector)(
       PoolThresholds(_)
     ),
@@ -312,6 +315,9 @@ object ConwayParam:
 
   /** The decoders of a Conway update in a body. */
   private[ledger] val decoders: Map[BigInt, Read] = conway(Records.Body)
+
+  private[ledger] def at(version: DecoderVersion): Map[BigInt, Read] =
+    conway(Records.Body, CostModelDecode.Format.of(version))
 
   /** The decoders of a Conway update in a stored ledger state. */
   private[ledger] val stored: Map[BigInt, Read] = conway(Records.Stored)
@@ -360,6 +366,9 @@ object ConwayParamUpdate:
     */
   def decode(n: Node): Either[LedgerDecodeError, ConwayParamUpdate] =
     read(n, ConwayParam.decoders)
+
+  def decode(n: Node, version: DecoderVersion): Either[LedgerDecodeError, ConwayParamUpdate] =
+    read(n, ConwayParam.at(version))
 
   /** The update of a parameter-change proposal held in a stored ledger state: read as [[decode]]
     * reads it, except that its `Prices` and `ExUnits` may be indefinite lists
