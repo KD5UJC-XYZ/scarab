@@ -100,6 +100,8 @@ class CborDatasetSuite extends FunSuite:
 
   test("a rational is written reduced, as the reference writes it") {
     assertEquals(conway("unit_interval", Kind.Valid, "d81e820204", Some("d81e820102")), Outcome.Met)
+    // the expected bytes are brought to the normal form too, where a rational is reduced
+    assertEquals(conway("unit_interval", Kind.Valid, "d81e820204", Some("d81e820204")), Outcome.Met)
   }
 
   test("an invalid sample is met when refused and fails as a decode when accepted") {

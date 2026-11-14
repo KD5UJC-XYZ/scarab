@@ -7,8 +7,8 @@ import xyz.kd5ujc.scarab.codec.Bytes
 
 /** The verdict on one sample of the cardano-cbor-dataset, as its `VERIFICATION.md` states it: a
   * sample of `valid` or `manual-valid` must decode and its re-encoding must be its `.expected.cbor`
-  * (byte for byte for a byte-exact rule, after [[CborNormalForm]] for the others); any other sample
-  * must be refused.
+  * (byte for byte for a byte-exact rule, for the others after [[CborNormalForm]] of both); any
+  * other sample must be refused.
   */
 object DatasetCheck:
   /** The expectation class of a sample, from the category directory it is in. */
@@ -102,15 +102,19 @@ object DatasetCheck:
             Category.Encode,
             s"re-encoded bytes differ from the expected bytes of this byte-exact rule (${writing.render})"
           )
+      // both sides in the normal form: the expected bytes are the reference's own normal form,
+      // which keeps a rational as its encoder wrote it
       case Some(reference) =>
-        CborNormalForm.of(written) match
-          case Left(error) =>
+        (CborNormalForm.of(written), CborNormalForm.of(reference)) match
+          case (Left(error), _) =>
             Outcome.Failed(
               Category.Encode,
               s"the re-encoding does not read as CBOR: $error (${writing.render})"
             )
-          case Right(normal) if normal == reference => Outcome.Met
-          case Right(_) =>
+          case (_, Left(error)) =>
+            Outcome.Failed(Category.Encode, s"the expected bytes do not read as CBOR: $error")
+          case (Right(normal), Right(expected)) if normal == expected => Outcome.Met
+          case _ =>
             Outcome.Failed(
               Category.Encode,
               s"re-encoded bytes do not match the expected bytes after normalization (${writing.render})"
