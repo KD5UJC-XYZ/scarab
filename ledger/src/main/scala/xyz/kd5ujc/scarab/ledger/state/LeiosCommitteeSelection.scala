@@ -34,8 +34,8 @@ object EpochInterval:
   extension (i: EpochInterval) def toLong: Long = i
 
 extension (e: EpochNo)
-  /** `addEpochInterval` (`Slot.hs:156-158`): `EpochNo (n + fromIntegral m)`, a `Word64` sum, which
-    * wraps past 2^64 - 1 as the reference's does.
+  /** `addEpochInterval` (`Slot.hs:156-158`, cardano-base c1e1ed8d): `EpochNo (n + fromIntegral m)`,
+    * a `Word64` sum, which wraps past 2^64 - 1 as the reference's does.
     */
   def addInterval(i: EpochInterval): EpochNo =
     EpochNo.fromUnsigned(Word64.wrappingAdd(e.word, Word64.fromUnsigned(i.toLong)).bits)
@@ -125,8 +125,8 @@ object LeiosCommitteeSelection:
       committee <- select(layout.markEpoch.addInterval(EpochInterval.one), age, size, mark.pools)
     yield committee
 
-  /** `higherStake` (`State/LeiosCommittee.hs:82-83`): `compare (Down stake, poolId)`, both
-    * unsigned.
+  /** `higherStake` (`State/LeiosCommittee.hs:82-83`, cardano-ledger 9df9f98c):
+    * `compare (Down stake, poolId)`, both unsigned.
     */
   private val seating: Ordering[(KeyHash[StakePool], StakePoolSnapShot)] = (a, b) =>
     val byStake = Order[CompactCoin].compare(b._2.stake, a._2.stake)
@@ -142,7 +142,7 @@ object LeiosCommitteeSelection:
       .flatMap(_.flatTraverse(verified(pool, _)))
       .map(LeiosSeat(p.stakeRatio, _))
 
-  /** `honouredKey` (`State/LeiosCommittee.hs:89-93`). */
+  /** `honouredKey` (`State/LeiosCommittee.hs:89-93`, cardano-ledger 9df9f98c). */
   private def honoured(
       epoch: EpochNo,
       maxKeyAge: EpochInterval,
