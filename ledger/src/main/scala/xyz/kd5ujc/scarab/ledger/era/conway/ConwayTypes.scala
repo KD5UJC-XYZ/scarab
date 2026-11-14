@@ -277,6 +277,8 @@ object ConwayTxBody:
             )
           )
       )
+    // the decoder refused a repeated certificate or proposal (`decodeOSet`) and a repeated voter
+    // or action (`decodeMapByKey`), so the ordered sets and maps below hold what it read
     yield ConwayTxBody(
       b.raw,
       SortedSet.from(b.inputs),
@@ -285,7 +287,6 @@ object ConwayTxBody:
       outputs,
       collateralReturn,
       b.totalCollateral.map(Coin(_)),
-      // the decoder refused a repeated certificate or proposal (`decodeOSet`)
       OSet.decoded(certs),
       b.withdrawals,
       Coin(b.fee),
@@ -295,7 +296,6 @@ object ConwayTxBody:
       b.scriptDataHash,
       b.auxDataHash,
       network,
-      // the decoder refused a repeated voter or action (`decodeMapByKey`)
       SortedMap.from(b.votes.map((voter, votes) => voter -> SortedMap.from(votes))),
       OSet.decoded(b.proposals),
       b.currentTreasury.map(Coin(_)),
