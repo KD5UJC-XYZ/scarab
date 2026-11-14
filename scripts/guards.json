@@ -1,0 +1,21 @@
+{
+ "_comment": "The Python guards, registered once: scripts/preflight runs each as a step and CI's scripts job runs them all, both through scripts/guards.py. A guard is added here and nowhere else. The gitleaks scan, its two Docker-based controls (check_secret_scan.py, check_secret_scan_history.py), actionlint and sbt check stay where they are.",
+ "guards": [
+  {"id": "fixture-identities", "title": "fixture identities and comparison contracts", "argv": ["scripts/check_test_coverage.py"]},
+  {"id": "plutus-reference", "title": "plutus reference views", "argv": ["scripts/plutus_reference.py", "check"]},
+  {"id": "error-channels", "title": "closed error channel guard", "argv": ["scripts/check_error_channels.py"]},
+  {"id": "text-policy", "title": "text policy guard", "argv": ["scripts/check_text_policy.py"]},
+  {"id": "imperative", "title": "no new try/catch/finally in main sources", "argv": ["scripts/check_imperative.py"]},
+  {"id": "test-sleeps", "title": "no new sleeps in tests", "argv": ["scripts/check_test_sleeps.py"]},
+  {"id": "pinned-citations", "title": "no new unpinned upstream citations in comments", "argv": ["scripts/check_pinned_citations.py"]},
+  {"id": "parameter-comments", "title": "no new comments in parameter and argument lists", "argv": ["scripts/check_parameter_comments.py"]},
+  {"id": "local-paths", "title": "no absolute home paths", "argv": ["scripts/check_local_paths.py"]},
+  {"id": "licences", "title": "licence records", "argv": ["scripts/check_notice.py"]},
+  {"id": "compatibility", "title": "compatibility register", "argv": ["scripts/render_compatibility.py", "--check"]},
+  {"id": "roadmap", "title": "roadmap register", "argv": ["scripts/render_roadmap.py", "--check"]},
+  {"id": "performance", "title": "performance register", "argv": ["scripts/render_performance.py"]},
+  {"id": "flags", "title": "documented flags", "argv": ["scripts/check_flags_doc.py"]},
+  {"id": "docs", "title": "documentation drift", "argv": ["scripts/check_docs.py"]},
+  {"id": "codemap", "title": "code map is current", "argv": ["scripts/render_codemap.py", "--check"]}
+ ]
+}
