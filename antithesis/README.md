@@ -46,11 +46,13 @@ Each reads on from where the last pass in the timeline stopped. The properties, 
 - unreachable: Scarab never refuses a block as invalid (`scarab_validation_errors_total` on s1's metrics);
 - unreachable: Scarab never logs a `fatal` event, other than the stop for a clock moved back more than
   `Forger.MaxClockRewind`, which cardano-node makes too and Antithesis's clock skips can cause;
-- unreachable: Scarab never traces the clock moved back on a wake over 1 µs before its slot, time moving
-  forward (#629). The slot loop waits until the next slot's start, floored to the microsecond as the reference's
-  `threadDelay` floors it, so only a wake earlier than that is #629's millisecond floor. A cardano-node pool on the
-  platform also woke a fraction of a microsecond early and traced `SystemClockMovedBack`. A clock moved back for
-  real is told apart: its traces move forward through earlier slots.
+- unreachable: Scarab never traces the clock moved back on a wake 1 µs to 1 ms before its slot, time moving on
+  (#629). The slot loop waits until the next slot's start, floored to the microsecond as the reference's
+  `threadDelay` floors it, so only a wake earlier than that is #629's millisecond floor, which woke less than 1 ms
+  early. A cardano-node pool on the platform also woke a fraction of a microsecond early and traced
+  `SystemClockMovedBack`. A clock moved back for real is told apart: by more than a slot, its traces move forward
+  through earlier slots; by less, during the wait, the wake comes 10 ms or more early with the platform's clock
+  skips, and the cardano-node pools trace `SystemClockMovedBack` for those too.
 
 - sometimes: s1 accepts a payment; a Haskell pool accepts a payment; s1 forges a block with transactions;
 - always (or unreachable): the cluster's fork depth stays below k. The depth is the deepest rollback any pool would
@@ -135,20 +137,30 @@ that `canary/writebits_script.py` writes from the reference fixture.
 SCARAB_JAR=node/target/scala-3.9.0/scarab-node-<version>-assembly.jar \
   antithesis/pool/scripts/build.sh                    # needs cardano-reference-11.1.3:local and the pinned JRE
 antithesis/pool/scripts/validate.sh                   # snouty validate: setup complete locally, then cleaned up
-antithesis/pool/scripts/launch.sh resilient 15m       # validate, then a basic_test run
-CONFIG=config-canary antithesis/pool/scripts/launch.sh none 15m   # the canary
-CONFIG=config-canary-scarab-vm antithesis/pool/scripts/launch.sh none 15m   # the canary, own evaluator
-CONFIG=config-k200 antithesis/pool/scripts/launch.sh resilient 15m  # k = 200
-CONFIG=config-late-start antithesis/pool/scripts/launch.sh resilient 15m  # experiment: the earlier start order
+antithesis/pool/scripts/launch.sh on 15m              # validate, then a run with faults
+CONFIG=config-canary antithesis/pool/scripts/launch.sh off 15m   # the canary
+CONFIG=config-canary-scarab-vm antithesis/pool/scripts/launch.sh off 15m   # the canary, own evaluator
+CONFIG=config-k200 antithesis/pool/scripts/launch.sh on 15m  # k = 200
+CONFIG=config-late-start antithesis/pool/scripts/launch.sh on 15m  # experiment: the earlier start order
 python3 -I antithesis/pool/canary/writebits_script.py # regenerate the canary's policies and cost model
 ```
 
-`launch.sh` takes the fault level and a duration, since the tenant predates `--max-compute-hours`. A 15-minute
-`resilient` run cost 18 to 20 compute hours, about 7 of them setup, so a longer run pays for setup once. Snouty
-pushes the images and the config image to the tenant registry.
+`launch.sh` takes faults `on` or `off` and a duration, since the tenant predates `--max-compute-hours`. A 15-minute
+run cost 18 to 20 compute hours, about 7 of them setup, so a longer run pays for setup once. Snouty pushes the images
+and the config image to the tenant registry.
 
-**The trial's tenant did not apply the fault level or the exclusion (checked 2026-11-14).** Its runs record neither
-`antithesis.fault_tolerance` nor `antithesis.fault_exclusions` among their parameters, although snouty sends both.
+It launches with the tenant's own launcher, `amaru-cardano`, as cardano-foundation/moog does
+(`src/User/Agent/PushTest.hs`, spec 107). That launcher applies node faults (kill, stop, pause), network faults and
+clock skips when `custom.faults_enabled` is true, and leaves out of each class the compose services that
+`custom.network_fault_exclusion` and `custom.container_faults_{kill,pause,stop}_exclusion` list; `launch.sh` lists the
+driver in all four. Its report has two cardano-node properties of its own ("Never: Cardano Node Critical", "Never:
+Cardano Node Errors") and leaves out the instrumentation and thread-pausing properties, although the build
+instruments the Scarab JAR as before. `LAUNCHER=basic_test` launches the platform's generic launcher instead, for
+comparison.
+
+**`basic_test` did not apply the fault level or the exclusion on the trial's tenant (checked 2026-11-14).** Its runs
+record neither `antithesis.fault_tolerance` nor `antithesis.fault_exclusions` among their parameters, although snouty
+sends both.
 Runs launched at `none`, `resilient` and `high_availability` got the same faults: network partitions and clogs,
 `Stopped` included, with clogs naming the driver, and no node pause, throttle or termination and no clock skip.
 Read a result as one under those network faults, not under the level named. Before reading a run as a level's, check
