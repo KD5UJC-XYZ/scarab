@@ -697,8 +697,10 @@ the binding: the binding is what admits the UTxO checkpoint (`CheckpointBinding`
 behind a fingerprint that the V7 to V10 readers share), whereas the build is a property of the
 Haskell bytes and must be read first, because it decides their codec. Recording the flag string
 rather than a numeric tag lets a file say what wrote it to a build that does not know the name. The
-binding, the sidecar and the Haskell section are V9's byte for byte, and so are the sidecar and
-binding fingerprints; `CodecSuite` pins the header bytes. The magic's last character is the format
+binding, the sidecar and the Haskell section were V9's byte for byte, and so were the sidecar and
+binding fingerprints; `CodecSuite` pins the header bytes. (V10's sidecar was later changed in place,
+before any deployment, to hold the follow state instead of the bootstrap state, #988: the step from
+V9 now rewrites the sidecar and keeps the binding and the Haskell section.) The magic's last character is the format
 number as one base-36 digit, so the magic keeps eight bytes and its family and a V9 build reads a V10
 file as an unknown version.
 

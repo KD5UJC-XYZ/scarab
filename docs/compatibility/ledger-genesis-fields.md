@@ -10,7 +10,7 @@ implemented. At start-up the node checks the Shelley, Alonzo and Conway genesis 
 - `FromJSON AlonzoGenesis`, `Alonzo/Genesis.hs:222-242`, with `ExUnits` and `Prices`, `Plutus/ExUnits.hs:118-128,176-181`;
 - `FromJSON ConwayGenesis` and `UpgradeConwayPParams`, `Conway/Genesis.hs:156-165`, `Conway/PParams.hs:1082-1095`.
 
-A required field is required, of the type it is read with: the `Word16`, `Word32` and `Word64` bounds, the bounded ratios as decimals or objects, the nonce tag, the network, hashes, credentials and addresses. A refusal is a typed `ConfigProblem.GenesisField` naming the file and the field's path. The readers that run after the check read the same instances and keep no defaults: `ProtocolParams.fromGenesis`, `GenesisState.globals` and `LiteLedger.fromGenesis`. `minPoolCost` and `minUTxOValue` are optional, as in the reference.
+A required field is required, of the type it is read with: the `Word16`, `Word32` and `Word64` bounds, the bounded ratios as decimals or objects, the nonce tag, the network, hashes, credentials and addresses. A refusal is a typed `ConfigProblem.GenesisField` naming the file and the field's path. The readers that run after the check read the same instances and keep no defaults: `ProtocolParams.fromGenesis`, `GenesisState.globals` and `GenesisState.genDelegs`. `minPoolCost` and `minUTxOValue` are optional, as in the reference.
 
 ## Evidence
 

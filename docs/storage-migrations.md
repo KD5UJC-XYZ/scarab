@@ -27,10 +27,11 @@ the typed sections, and the header golden the V10 header's recorded reference bu
 outside both schemas. Regenerating a golden to make a test pass is not a migration.
 Native snapshots are V10: the V5 body (Haskell ledger CBOR plus a typed binary sidecar) behind a
 checkpoint binding, with framing and checksum, as V7 has it, with a sidecar schema that keeps the
-Byron update state's installer metadata (#726) and names the Dijkstra era (#54), and in front of the
-binding the reference build whose layout the Haskell bytes are in (#826); stored values remain
-CBOR. The binding has its own fingerprint golden in `CodecSuite`, next to the sidecar's and
-the frozen V5/V7 and V8 sidecars'. MemPack is an import/export format, not a replacement stored value.
+Byron update state's installer metadata (#726), names the Dijkstra era (#54) and holds the follow
+state, no longer the bootstrap state (#988), and in front of the binding the reference build whose
+layout the Haskell bytes are in (#826); stored values remain CBOR. The binding has its own
+fingerprint golden in `CodecSuite`, next to the sidecar's and the frozen V5/V7, V8 and V9
+sidecars'. MemPack is an import/export format, not a replacement stored value.
 
 ## Convert typed values without inventing state
 
@@ -48,8 +49,10 @@ the layout of the configured reference build (`ReferenceLayout`), and `SnapshotV
 `SnapshotV7`, `SnapshotV8` and `SnapshotV9` are the previous readers: the body parser is shared and takes the
 sidecar schema (`SnapshotV5.Schema`), V5 and V7 sidecars being read in the frozen
 `SnapshotSidecarV7` schema and V8 sidecars in the frozen `SnapshotSidecarV8` one, both with the
-frozen eras of `FrozenEra` and the frozen parameters of `FrozenProtocolParams`, and V9 and V10
-sidecars in the current one; `SnapshotV7.fromV5`, `SnapshotV8.fromV7`, `SnapshotV9.fromV8` and
+frozen eras of `FrozenEra` and the frozen parameters of `FrozenProtocolParams`, V9 sidecars in the
+frozen `SnapshotSidecarV9` one, all three into the frozen types of `FrozenSidecar` (which keep the
+bootstrap state whole between previous versions), and V10 sidecars in the current one;
+`SnapshotV7.fromV5`, `SnapshotV8.fromV7`, `SnapshotV9.fromV8` and
 `SnapshotV10.fromV9` are the migration steps. The `Full` choice controls encode-time read-back
 checking; decoding itself validates the current file in either mode.
 A converter must carry the source `observed` eras and `gaps` exactly. Missing non-myopic data must
@@ -102,10 +105,16 @@ Global V9 also changes the network identity (#824): it adds the Dijkstra genesis
 `NetworkIdentityFile.migration` steps a V6 file to V9 with the binding of the configured identity once
 its other fields are found equal to it, keeping its provenance; without a configured identity the step
 is refused (`IdentityNeedsDijkstraBinding`). Global V10 changes only the snapshot's header (#826):
-`step(file, V9, V10)` records the `11.1` reference build after the magic and keeps the binding, the
-sidecar and the Haskell bytes byte for byte; every V9 file converts, its Haskell bytes being in the
+`step(file, V9, V10)` records the `11.1` reference build after the magic and keeps the binding and
+the Haskell bytes byte for byte; every V9 file converts, its Haskell bytes being in the
 11.1 layout (every V9 writer encodes with the 11.1 codec or keeps bytes that codec decoded
-completely). `Migrate` then has no work for V10. Unchanged kinds retain their own current versions.
+completely). V10's sidecar no longer holds the bootstrap (ledger-lite) state: it was changed in
+place, before any store of V10 or V9 was deployed, by the owner's decision of 2026-11-14 (#988,
+[decisions](decisions.md#genesis-storage-and-keys)), rather than bumped. The step therefore reads the sidecar in
+the frozen V9 schema and writes it in the current one, the bootstrap state's flag and lite ledger
+dropped and its era and epoch verdicts kept as the follow state (`FrozenSidecar.live`). A store
+written by an earlier build in V10's former shape is not supported; none is deployed. `Migrate`
+then has no work for V10. Unchanged kinds retain their own current versions.
 A future snapshot change appends global `V11`, the magic `SCRBSNPB` (the last character of a
 snapshot magic is its format number as one base-36 digit). Retire the V5
 reader only after the inventory and conversion conditions below hold, then advance the snapshot
@@ -176,7 +185,7 @@ The V9 → V10 change (#826) added no field to a fingerprinted schema: the build
 the `--reference-build` name, ASCII, in the header before the binding, so the sidecar and binding
 goldens did not move and `CodecSuite` pins the header bytes instead. `fixtures/snapshot-v10` is the
 registered conversion of `fixtures/snapshot-v9` (`SnapshotV10FixtureMain`, re-derived by
-`SnapshotGoldenSuite`, which also checks the sections byte for byte), and `SnapshotV10MigrationSuite`
+`SnapshotGoldenSuite`, which also checks the sections), and `SnapshotV10MigrationSuite`
 reads the committed V9 files, migrates them and shows that a file recorded under a build of another
 layout is not decoded. `SnapshotV9FixtureMain` now runs only the V8 → V9 `step`.
 

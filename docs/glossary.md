@@ -41,7 +41,7 @@ place that defines it. The definition there wins over this summary. Where code l
 | Mark, set, go | At each epoch boundary (SNAP) the new stake distribution becomes `mark`, the previous `mark` becomes `set` and the previous `set` becomes `go` | [Snap.scala](../ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Snap.scala) |
 | Pulser | The incremental reward calculation, advanced at the reference's pulse and force points | [ADR 0019](adr/0019-incremental-reward-calculation.md) |
 | Phase 1, phase 2 | Structural ledger validation, then Plutus script execution | [Phase2.scala](../ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Phase2.scala) |
-| Ledger-lite | The part of the pre-Conway ledger that header validation needs, kept without a UTxO set in the bootstrap follow mode | `LiteLedger` |
+| Follow state | What the node reports of the chain beside the ledger: the era of the last block applied and the leader-check verdicts of the current and the last completed epoch | `FollowState` |
 | Header-first | Validating the headers of a ChainSync batch before fetching any of its blocks | `HeaderGate.forNodeChain` |
 
 ## Network
