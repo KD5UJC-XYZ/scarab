@@ -36,10 +36,10 @@ class ReferenceEvaluationTextSuite extends FunSuite:
     )
     assertEquals(document.render, field[String](row, "pretty"))
 
-  private def errorCase(id: String, row: Json): Unit =
+  private def errorCase(id: String, row: Json, input: String = "subject"): Unit =
     test(s"$id: complete native error Show and Pretty") {
       val value = ReferencePresentationCases
-        .evaluation(field[Json](row, "subject"))
+        .evaluation(field[Json](row, input))
         .fold(error => fail(error.toString), identity)
       compare(row, ReferenceEvaluationText.pretty(value))
       assertEquals(ReferenceEvaluationText.show(value), field[String](row, "show"))
@@ -56,7 +56,14 @@ class ReferenceEvaluationTextSuite extends FunSuite:
           compare(row, ReferenceUplc.classic(value))
           assertEquals(ReferenceUplc.readable(value).render, field[String](row, "readable"))
         }
+      case Kind.Universe =>
+        test(s"$id: complete native universe text") {
+          val value = ReferencePresentationCases.universeInput(field[Json](row, "subject"))
+            .fold(error => fail(error.toString), identity)
+          compare(row, ReferenceUplc.universeArgument(value))
+        }
       case Kind.EvaluationError => errorCase(id, row)
+      case Kind.HelperError => errorCase(id, row, "diagnosticInput")
       case Kind.Document =>
         test(s"$id: complete native document layout") {
           val value = ReferencePresentationCases

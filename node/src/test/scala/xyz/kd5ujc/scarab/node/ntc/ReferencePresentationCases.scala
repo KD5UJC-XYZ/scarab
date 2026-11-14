@@ -18,7 +18,7 @@ private[ntc] object ReferencePresentationCases:
   import ReferenceDocument.{Doc, *}
 
   enum Kind:
-    case Term, EvaluationError, Document, Compile, Evaluate
+    case Term, Universe, EvaluationError, HelperError, Document, Compile, Evaluate
 
   enum Outcome:
     case Success, Failure
@@ -34,6 +34,8 @@ private[ntc] object ReferencePresentationCases:
     case EvaluationFailure, CaseBuiltin, OutOfBudget, FreeUnique, FreeIndex
     case CborDeserialiseError, Remainder, LedgerLanguageNotAvailable, PlutusCoreLanguageNotAvailable
     case EndOfInput, ExpectedBytes, OtherReason
+    case NotAConstant, TypeErrorBypassed, TypeMismatch, Unavailable, OutOfBounds
+    case ExpectedNonEmptyList, DataUnsupported, NonConstructorData, UnsupportedType
     case Line, Linebreak, Hardline, Concat, Nest, Group, Align, FlatAlt
 
   enum Error:
@@ -84,6 +86,7 @@ private[ntc] object ReferencePresentationCases:
     }
 
   def term(value: Json): Either[Error, Term] = termValue(value).value.value
+  def universeInput(value: Json): Either[Error, Universe] = universe(value).value.value
   def evaluation(value: Json): Either[Error, EvaluationError] = evaluationValue(value).value.value
   def document(value: Json): Either[Error, Doc] = documentValue(value).value.value
 
@@ -179,8 +182,9 @@ private[ntc] object ReferencePresentationCases:
       case Tag.NonFunctionalApplication    => pure(MachineError.NonFunctionalApplication)
       case Tag.OpenTermEvaluated           => pure(MachineError.OpenTermEvaluated)
       case Tag.Unlifting =>
-        field[String](value, "text")
-          .map(text => MachineError.Unlifting(UnliftingError.NativeMessage(text)))
+        if value.hcursor.downField("reason").succeeded then
+          child(value, "reason")(unlifting).map(MachineError.Unlifting.apply)
+        else field[String](value, "text").map(text => MachineError.Unlifting(UnliftingError.NativeMessage(text)))
       case Tag.BuiltinTermArgumentExpected   => pure(MachineError.BuiltinTermArgumentExpected)
       case Tag.UnexpectedBuiltinTermArgument => pure(MachineError.UnexpectedBuiltinTermArgument)
       case Tag.NonConstrScrutinized          => pure(MachineError.NonConstrScrutinized)
@@ -188,6 +192,29 @@ private[ntc] object ReferencePresentationCases:
         decimal(value, "index").map(MachineError.MissingCaseBranch.apply)
       case Tag.Panic => field[String](value, "text").map(MachineError.Panic.apply)
       case other     => unexpected("machine error", other)
+    }
+  }
+
+  private def unlifting(value: Json): Result[UnliftingError] = defer {
+    tag(value).flatMap {
+      case Tag.NotAConstant => pure(UnliftingError.NotAConstant)
+      case Tag.TypeErrorBypassed => pure(UnliftingError.TypeErrorBypassed)
+      case Tag.TypeMismatch =>
+        (child(value, "expected")(universe), child(value, "actual")(universe)).mapN(UnliftingError.TypeMismatch.apply)
+      case other => unexpected("unlifting error", other)
+    }
+  }
+
+  private def caseBuiltin(value: Json): Result[CaseBuiltinError] = defer {
+    tag(value).flatMap {
+      case Tag.Unavailable => decimal(value, "protocol").map(CaseBuiltinError.Unavailable.apply)
+      case Tag.OutOfBounds =>
+        (child(value, "value")(constant), decimal(value, "branches")).mapN(CaseBuiltinError.OutOfBounds.apply)
+      case Tag.ExpectedNonEmptyList => pure(CaseBuiltinError.ExpectedNonEmptyList)
+      case Tag.DataUnsupported => pure(CaseBuiltinError.DataUnsupported)
+      case Tag.NonConstructorData => pure(CaseBuiltinError.NonConstructorData)
+      case Tag.UnsupportedType => child(value, "universe")(universe).map(CaseBuiltinError.UnsupportedType.apply)
+      case other => unexpected("builtin case error", other)
     }
   }
 
@@ -203,8 +230,9 @@ private[ntc] object ReferencePresentationCases:
     tag(value).flatMap {
       case Tag.EvaluationFailure => pure(CekUserError.EvaluationFailure)
       case Tag.CaseBuiltin =>
-        field[String](value, "text")
-          .map(text => CekUserError.CaseBuiltin(CaseBuiltinError.NativeMessage(text)))
+        if value.hcursor.downField("reason").succeeded then
+          child(value, "reason")(caseBuiltin).map(CekUserError.CaseBuiltin.apply)
+        else field[String](value, "text").map(text => CekUserError.CaseBuiltin(CaseBuiltinError.NativeMessage(text)))
       case Tag.OutOfBudget =>
         child(value, "remaining")(v => (decimal(v, "cpu"), decimal(v, "memory")).mapN(Budget.apply))
           .map(CekUserError.OutOfBudget.apply)

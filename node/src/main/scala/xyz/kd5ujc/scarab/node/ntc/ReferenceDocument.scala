@@ -68,7 +68,7 @@ private[ntc] object ReferenceDocument:
       case _            => join(lineBreak, parts).group ++ right
     ).group
 
-  def list(values: Vector[Doc]): Doc = enclose("[", "]", values).align
+  def list(values: Vector[Doc]): Doc = enclose("[", "]", values)
   def tuple(values: Vector[Doc]): Doc = enclose("(", ")", values)
 
   private final case class Frame(indent: Int, flattened: Boolean, document: Doc)
