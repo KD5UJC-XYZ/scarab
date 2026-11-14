@@ -1180,36 +1180,61 @@ object Targets:
       )
     ) ++ shelleyEras.flatMap { era =>
       val tag = era.toString.toLowerCase
+      // the era's other decoder versions give what its own gives, the same verdict and value, as
+      // no decoder branches inside an era's range; a refusal may name the version it was read at
+      // (`AuxiliaryScriptProtocol`), so only its presence is compared. Each other version is read
+      // in a probe of its own, under the bounds of the era's own reading.
+      val others = DecoderVersion.range(era).versions.filterNot(_ == DecoderVersion.of(era))
+      def alike[A](name: String, in: Input)(read: Option[DecoderVersion] => Option[A]): Unit =
+        if others.nonEmpty then
+          val own = read(None)
+          others.foreach(v =>
+            Probe.run(name, in)(
+              req(
+                read(Some(v)) == own,
+                s"$name at decoder version ${v.value} differs from ${DecoderVersion.of(era).value}"
+              )
+            )
+          )
+      def checked(name: String)(body: Bytes => Unit)(
+          read: (Bytes, Option[DecoderVersion]) => Option[?]
+      ): Input => Unit = in =>
+        probe(name)(body)(in)
+        alike(name, in)(read(raw(in), _))
       Vector(
         Target(
           s"tx-body-$tag",
           eraSeeds(Corpus.txBodies, "transaction_body")(era),
-          probe(s"tx-body-$tag") { b =>
-            seen(s"tx-body-$tag", TxBody.decode(b, era).isRight)
-          }
+          checked(s"tx-body-$tag")(b => seen(s"tx-body-$tag", TxBody.decode(b, era).isRight))(
+            (b, at) => at.fold(TxBody.decode(b, era))(TxBody.decode(b, era, _)).toOption
+          )
         ),
         Target(
           s"tx-witnesses-$tag",
           eraSeeds(Corpus.txWitnesses, "transaction_witness_set")(era),
-          probe(s"tx-witnesses-$tag") { b =>
+          checked(s"tx-witnesses-$tag")(b =>
             seen(s"tx-witnesses-$tag", Witnesses.decode(b, era).isRight)
-          }
+          )((b, at) => at.fold(Witnesses.decode(b, era))(Witnesses.decode(b, era, _)).toOption)
         ),
         Target(
           s"tx-whole-$tag",
           () => Corpus.transactionsOf(era) ++ Corpus.auxiliaryTransactions(era) ++ Corpus.tricky,
-          probe(s"tx-whole-$tag") { b =>
+          checked(s"tx-whole-$tag") { b =>
             Corpus
               .asTransaction(b, era)
               .foreach(t => seen(s"tx-whole-$tag", Tx.fromBlock(t, era).isRight))
-          }
+          }((b, at) =>
+            Corpus
+              .asTransaction(b, era)
+              .flatMap(t => at.fold(Tx.fromBlock(t, era))(Tx.fromBlock(t, era, _)).toOption)
+          )
         ),
         Target(
           s"block-header-$tag",
           () => Corpus.rawHeaders(era) ++ Corpus.sampled(s"$tag:header", 40) ++ Corpus.tricky,
-          probe(s"block-header-$tag") { b =>
+          checked(s"block-header-$tag")(b =>
             seen(s"block-header-$tag", Header.fromRaw(era, b).isRight)
-          }
+          )((b, at) => at.fold(Header.fromRaw(era, b))(Header.fromRaw(era, b, _)).toOption)
         )
       )
     }
