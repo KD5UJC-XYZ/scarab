@@ -23,6 +23,7 @@ final class GenesisRuntime[F[_]: Async] private (
     settings: GenesisSettings,
     selection: F[ChainSelection.Local],
     geometry: F[EpochGeometry],
+    retainedHeaders: Int,
     elapsed: F[BigInt],
     clock: Option[PicosClock[F]],
     readings: Ref[F, Map[Long, (Option[HeaderChain[NodeHeaderState]], Boolean)]],
@@ -69,7 +70,6 @@ final class GenesisRuntime[F[_]: Async] private (
       _ <- Resource.make(readings.update(_.updated(identity, None -> false)))(_ =>
         readings.update(_ - identity)
       )
-      history <- Resource.eval(geometry)
       historicity = NodeGenesisHistory.runtime[F](true, governor.phase, elapsed)
       ready <- work.session
       // what the session last published of its own header state, as the reference's client
@@ -322,16 +322,19 @@ final class GenesisRuntime[F[_]: Async] private (
         received,
         control,
         ready,
-        GenesisRuntime.retainedHeaders(history)
+        retainedHeaders
       )
 
 object GenesisRuntime:
   /** Retain the volatile chain plus the complete forecast span, including Byron EBBs which can
     * share a slot with a regular block. Forecasting, rather than a small fixed journal, bounds it.
+    * Chain-wide k is Byron's; the Shelley forecast still uses Shelley's stability window
+    * (ouroboros-consensus 82ecba32, `Cardano/Node.hs:848-869`, `Byron/Ledger/Ledger.hs:312-320`,
+    * `Shelley/Ledger/SupportsProtocol.hs:67`).
     */
-  def retainedHeaders(geometry: EpochGeometry): Int =
-    (2 * geometry.stabilityWindow.toBigInt.max(BigInt(2) * geometry.k) +
-      BigInt(2) * geometry.k + 1)
+  def retainedHeaders(geometry: EpochGeometry, chainSecurityParam: BigInt): Int =
+    (2 * geometry.stabilityWindow.toBigInt.max(BigInt(2) * chainSecurityParam) +
+      BigInt(2) * chainSecurityParam + 1)
       .max(BlockPool.Retained)
       .min(BigInt(Int.MaxValue))
       .toInt
@@ -396,6 +399,7 @@ object GenesisRuntime:
       settings: GenesisSettings,
       selection: F[ChainSelection.Local],
       geometry: F[EpochGeometry],
+      retainedHeaders: Int,
       elapsed: F[BigInt],
       changed: F[Unit],
       headers: HeaderCheck.Grafting[F],
@@ -412,6 +416,7 @@ object GenesisRuntime:
       settings,
       selection,
       geometry,
+      retainedHeaders,
       elapsed,
       clock,
       readings,

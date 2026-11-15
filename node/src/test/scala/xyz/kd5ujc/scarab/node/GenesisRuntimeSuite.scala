@@ -72,6 +72,7 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
         settings,
         IO.pure(selected),
         IO.pure(geometry),
+        GenesisRuntime.retainedHeaders(geometry, geometry.k),
         IO.pure(BigInt(0)),
         changed,
         TestChains.grafting(None)
@@ -481,6 +482,7 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
             GenesisSettings(enableCSJ = csjEnabled),
             IO.pure(selectedAtOne),
             IO.pure(geometry),
+            GenesisRuntime.retainedHeaders(geometry, geometry.k),
             IO.pure(arrival),
             IO.unit,
             TestChains.grafting(None)

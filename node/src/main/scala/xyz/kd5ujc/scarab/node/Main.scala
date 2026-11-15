@@ -271,6 +271,7 @@ object Main extends IOApp:
           setup.config.settings.genesis,
           follower.fetchSelection,
           geometry,
+          setup.retainedHeaders,
           IO.realTime.map(now =>
             BigInt(now.toNanos) * 1000 -
               (BigInt(setup.geometry.systemStart.getEpochSecond) * 1000000000000L +
@@ -1187,7 +1188,7 @@ object Main extends IOApp:
       )
     ) { dir =>
       val policy = options.snapshotEvery match
-        case None                            => SnapshotPolicy.reference(genesis.geometry.k)
+        case None                            => setup.defaultSnapshotPolicy
         case Some(SnapshotInterval.Slots(n)) => SnapshotPolicy.EverySlots(BigInt(n))
         case Some(SnapshotInterval.Epochs(n)) =>
           SnapshotPolicy.EverySlots(BigInt(n) * genesis.geometry.epochLength)
@@ -1447,7 +1448,7 @@ object Main extends IOApp:
           )
         },
         scheduling.compute,
-        GenesisRuntime.retainedHeaders(genesis.geometry),
+        setup.retainedHeaders,
         warm = Some((headers, state) =>
           state.protocol.traverse_(protocol =>
             rules.praosConfig.get.flatMap(cache.warmHeaders[IO](headers, protocol, _))

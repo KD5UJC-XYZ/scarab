@@ -127,7 +127,7 @@ object HaskellImportCommand:
               }
         }
 
-  /** The network setup and the chunk size (10 * k of the first era). */
+  /** The network setup and the chunk size (10 * Byron's k, even when Byron is skipped). */
   private def setupOf(options: Options): Either[ConfigError, (NodeSetup, ChunkSlots)] =
     for
       setup <- options.config match
@@ -137,11 +137,7 @@ object HaskellImportCommand:
           options.genesisDir
             .toRight(ConfigError(ConfigProblem.MissingGenesis))
             .flatMap(NodeSetup.fromDirectory(ReferenceBuild.Default))
-      // Use 10 * k of the first era, including the Byron genesis when the chain starts there.
-      chunkSlots <- ChunkSlots
-        .fromSecurityParam(
-          setup.byron.fold(BigInt(setup.genesis.geometry.k.toLong))(_.securityParam)
-        )
+      chunkSlots <- setup.immutableChunkSlots
         .toRight(ConfigError(ConfigProblem.MissingChunkSize))
     yield (setup, chunkSlots)
 

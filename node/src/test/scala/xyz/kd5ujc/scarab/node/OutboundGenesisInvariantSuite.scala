@@ -158,6 +158,7 @@ class OutboundGenesisInvariantSuite extends FailsOnUncaught:
               GenesisSettings(),
               IO.pure(local),
               IO.pure(geometry),
+              GenesisRuntime.retainedHeaders(geometry, geometry.k),
               IO.pure(BigInt(0)),
               IO.unit,
               check
