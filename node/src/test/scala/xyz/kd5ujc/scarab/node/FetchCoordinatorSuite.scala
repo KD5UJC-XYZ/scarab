@@ -78,8 +78,9 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
   }
 
   test("a candidate change alone triggers a request: no session offers anything") {
-    // State.hs:395–416: the loop waits for the trigger fingerprint, here with a grace period far
-    // longer than the test, so only the candidate head of the fingerprint can wake it.
+    // State.hs:395–416 (ouroboros-network c45735a5): the loop waits for the trigger fingerprint,
+    // here with a grace period far longer than the test, so only the candidate head of the
+    // fingerprint can wake it.
     TestControl.executeEmbed {
       FetchCoordinator.create[IO](selection = Some(IO.pure(origin))).flatMap { coordinator =>
         coordinator.session(0).use { session =>
@@ -204,7 +205,8 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
           }
         }
       // The first decision runs at once; the next iteration starts after the Genesis interval
-      // (State.hs:100–106) and registers its grace then (150), so it expires at 10.04s.
+      // (State.hs:100–106, ouroboros-network c45735a5) and registers its grace then (150), so it
+      // expires at 10.04s.
       yield assertEquals(times, Vector(Duration.Zero, 10040.millis))
     }
   }
@@ -235,7 +237,8 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
           IO.sleep(5.millis) *> phase.set(Gsm.Phase.CaughtUp) *> coordinator.refreshGenesis *>
             IO.sleep(51.millis) *> times.get
         }
-      // State.hs:100–106: 40ms after the Syncing decision, then 10ms after the caught-up one.
+      // State.hs:100–106 (ouroboros-network c45735a5): 40ms after the Syncing decision, then 10ms
+      // after the caught-up one.
       yield assertEquals(observed, Vector(Duration.Zero, 40.millis, 50.millis))
     }
   }
@@ -360,7 +363,8 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
       val (before, after, decided, requested) = result
       assertEquals(after, before)
       assertEquals(decided, before + 1)
-      // The new GSV gives a 393216-byte window; the first body crosses it (Decision.hs:1180).
+      // The new GSV gives a 393216-byte window; the first body crosses it (Decision.hs:1180,
+      // ouroboros-network c45735a5).
       assertEquals(requested, Vector(header(1).copy(blockSizeHint = FetchTesting.sizeHint(400000))))
   }
 

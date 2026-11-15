@@ -258,13 +258,14 @@ class PredicateFailureCborSuite extends FunSuite:
   }
 
   test("reference scripts over the limit: supplied, then the limit, each an Int") {
-    // [6 ConwayTxRefScriptsSizeTooBig, supplied, expected] (`Conway/Rules/Ledger.hs:237`)
+    // [6 ConwayTxRefScriptsSizeTooBig, supplied, expected] (`Conway/Rules/Ledger.hs:237`,
+    // cardano-ledger f649f975)
     assertEquals(
       reason(PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(300000, 204800))),
       "8182068183061a000493e01a00032000"
     )
-    // `Mismatch RelLTEQ Int` (`Conway/Rules/Ledger.hs:123`): a size past a 32-bit Int, in the
-    // shortest head (four bytes for 2^31, eight for 2^32)
+    // `Mismatch RelLTEQ Int` (`Conway/Rules/Ledger.hs:123`, cardano-ledger f649f975): a size past a
+    // 32-bit Int, in the shortest head (four bytes for 2^31, eight for 2^32)
     assertEquals(
       reason(PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(1L << 31, 204800L))),
       "8182068183061a800000001a00032000"
@@ -392,10 +393,11 @@ class PredicateFailureCborSuite extends FunSuite:
   }
 
   test("Conway: a missing redeemer of a certifying purpose carries its certificate, not null") {
-    // Hand-derived here and byte-equal to the reference node's answer in PlutusFailureReferenceSuite
-    // (recorded by the e2e load at protocol 9): [6 era, [[1 LEDGER UTXOW (Conway/Rules/Ledger.hs:231), [10 MissingRedeemers,
-    // [[[2 Certifying, [1 UnRegCert, [1 script, hash]]], script]]]]]. The certificate is the Conway
-    // one: an unregistration without a refund is [1, credential] (Conway/TxCert.hs).
+    // Hand-derived here and byte-equal to the reference node's answer in
+    // PlutusFailureReferenceSuite (recorded by the e2e load at protocol 9): [6 era, [[1 LEDGER
+    // UTXOW (Conway/Rules/Ledger.hs:231, cardano-ledger f649f975), [10 MissingRedeemers, [[[2
+    // Certifying, [1 UnRegCert, [1 script, hash]]], script]]]]]. The certificate is the Conway one:
+    // an unregistration without a refund is [1, credential] (Conway/TxCert.hs).
     val scriptHash = Bytes(Vector.fill(28)(0xcc.toByte))
     val s = scriptHash.hex
     val failure = PredicateFailure.utxow(

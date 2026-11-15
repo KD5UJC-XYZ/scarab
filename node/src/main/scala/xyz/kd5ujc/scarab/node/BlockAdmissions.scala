@@ -6,9 +6,10 @@ import cats.effect.std.{Mutex, Queue, Semaphore}
 import cats.syntax.all.*
 import scala.concurrent.duration.FiniteDuration
 
-/** The native ChainDB queue has ten waiting messages (Args.hs:122), with a separate running
-  * message. Receipt owns only bounded enqueue; a node-owned worker owns processing (ChainSel.hs:
-  * 270–300). Reserving capacity remains cancelable, while publication and enqueue cannot separate.
+/** The native ChainDB queue has ten waiting messages (Args.hs:122, ouroboros-consensus 82ecba32),
+  * with a separate running message. Receipt owns only bounded enqueue; a node-owned worker owns
+  * processing (ChainSel.hs: 270–300). Reserving capacity remains cancelable, while publication and
+  * enqueue cannot separate.
   */
 private[node] final class BlockAdmissions[F[_]: Async] private (
     queue: Queue[F, BlockAdmissions.Work[F]],
@@ -124,7 +125,7 @@ private[node] final class BlockAdmissions[F[_]: Async] private (
   def next: F[Work[F]] = queue.take.flatTap(_ => capacity.release)
 
 object BlockAdmissions:
-  /** The ChainDB queue's waiting messages (Args.hs:122). */
+  /** The ChainDB queue's waiting messages (Args.hs:122, ouroboros-consensus 82ecba32). */
   private[node] val Capacity = 10
 
   /** `held` of `capacity` permits are taken; `queued` works wait for the worker, which is on

@@ -5,9 +5,9 @@ import xyz.kd5ujc.scarab.ledger as flat
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, NewEpochState}
 
 /** The leader schedule's view of a ledger state: the stake and the VRF key hash of each pool for
-  * the epoch the state is in, `nesPd` (`Shelley/LedgerState/Types.hs:302`, the distribution the
-  * leader check of the epoch uses). What the forger reads when it asks whether the pool leads a
-  * slot.
+  * the epoch the state is in, `nesPd` (`Shelley/LedgerState/Types.hs:302`, cardano-ledger
+  * f649f975: the distribution the leader check of the epoch uses). What the forger reads when it
+  * asks whether the pool leads a slot.
   *
   * The ledger state is a type parameter: the forger crosses the epoch boundary on the
   * `NewEpochState` of the era the chain is in.

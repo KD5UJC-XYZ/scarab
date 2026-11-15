@@ -63,7 +63,7 @@ enum SessionEnd:
   case Returned
 
   /** ChainSync sent MsgDone after finding no intersection. This is a normal return, with the
-    * reference's 120-second repromotion delay (consensus Node/ExitPolicy.hs:30).
+    * reference's 120-second repromotion delay (ouroboros-consensus 82ecba32 Node/ExitPolicy.hs:30).
     */
   case NoMoreIntersection
 

@@ -162,9 +162,10 @@ class DijkstraRulesOracleSuite extends FunSuite:
 
   /** Dijkstra's failure types write a `Mismatch` as a record of its two values (`To mm`:
     * `Dijkstra/Rules/Gov.hs:168-169, 180-181`, `GovCert.hs:81, 83`), where Conway's write them in
-    * line (`ToGroup mm`, `Conway/Rules/Gov.hs:269-270`); Conway's DELEG, which Dijkstra keeps,
-    * writes them in line too. `regroup(at)` makes the record of the two items from position `at` of
-    * the constructor at `path`, the tags of the constructors that hold it from the outermost.
+    * line (`ToGroup mm`, `Conway/Rules/Gov.hs:269-270`, cardano-ledger 9df9f98c); Conway's DELEG,
+    * which Dijkstra keeps, writes them in line too. `regroup(at)` makes the record of the two items
+    * from position `at` of the constructor at `path`, the tags of the constructors that hold it
+    * from the outermost.
     */
   private def regroup(bytes: Bytes, path: List[Int], at: Int): Bytes =
     def go(n: Node, path: List[Int]): Node = (n.value, path) match
@@ -240,11 +241,12 @@ class DijkstraRulesOracleSuite extends FunSuite:
   /** A UTXOW failure as Dijkstra's encoder writes it, for the cases the oracle reaches. A failure
     * without a `Mismatch` is Conway's encoding of the same failure; one with is the constructor's
     * tag and the record of the supplied and the expected value (`To mm`,
-    * `Dijkstra/Rules/Utxo.hs:501-504`), where Conway writes them in line and, for the fee, swapped.
+    * `Dijkstra/Rules/Utxo.hs:501-504`, cardano-ledger 9df9f98c), where Conway writes them in line
+    * and, for the fee, swapped.
     */
   private def utxow(f: DijkstraUtxowFailure): Bytes =
     // Conway's encoding of the payload, under the Dijkstra constructor's tag (Dijkstra numbers its
-    // UTXO failures anew: `Utxo.hs:497-520`)
+    // UTXO failures anew: `Utxo.hs:497-520`, cardano-ledger 9df9f98c)
     def conwayUtxo(tag: Int, u: UtxoFailure): Bytes =
       val conway =
         payload(
@@ -260,7 +262,8 @@ class DijkstraRulesOracleSuite extends FunSuite:
         each(w, m.supplied)
         each(w, m.expected)
       }
-    // the UTXOW failures without a `Mismatch` keep Conway's tags and payloads (`Utxow.hs:381-401`)
+    // the UTXOW failures without a `Mismatch` keep Conway's tags and payloads (`Utxow.hs:381-401`,
+    // cardano-ledger 9df9f98c)
     def conwayUtxow(c: UtxowFailure): Bytes =
       payload(encoded(PredicateFailure.utxow(c)))
     def utxo(u: DijkstraUtxoFailure): Bytes = u match

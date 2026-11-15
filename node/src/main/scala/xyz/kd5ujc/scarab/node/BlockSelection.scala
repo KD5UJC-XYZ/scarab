@@ -97,8 +97,9 @@ private[node] final class BlockSelection[F[_]: Async] private (
       _ <- F.tailRecM(()) { _ =>
         for
           before <- pool.invalidBlocks.snapshot
-          // ChainSel.hs:1145–1186 truncates and reinserts the original candidate pool. An unrelated
-          // branch cannot become attributed to this adding client during an invalid-prefix retry.
+          // ChainSel.hs:1145–1186 (ouroboros-consensus 82ecba32) truncates and reinserts the
+          // original candidate pool. An unrelated branch cannot become attributed to this adding
+          // client during an invalid-prefix retry.
           excluded <- pool.noVerdictBlocks.excluded(released)
           truncated = original.map(candidate =>
             candidate.copy(headers =

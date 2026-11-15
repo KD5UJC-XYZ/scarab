@@ -12,8 +12,9 @@ import UpstreamGenesisCases.NodeState
 import UpstreamGenesisBlocks.{Block, Problem, Universe}
 
 /** The server conditions of PeerSimulator/Handlers.hs, interpreted over unchanged native state
-  * ticks. ScheduledServer.hs:53–61 starts offline, so no handler may answer before the first actual
-  * tick. Silence before AwaitReply and delayed block availability remain separate observations.
+  * ticks. ScheduledServer.hs:53–61 (ouroboros-consensus 82ecba32) starts offline, so no handler may
+  * answer before the first actual tick. Silence before AwaitReply and delayed block availability
+  * remain separate observations.
   */
 final class UpstreamGenesisServer private (
     universe: Universe,

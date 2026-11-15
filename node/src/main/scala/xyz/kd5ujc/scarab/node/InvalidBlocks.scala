@@ -44,8 +44,9 @@ final class InvalidBlocks[F[_]: Async] private (
       }
     }
 
-  /** Background.hs:447 retains invalid blocks at the cutoff. Its fmap updates the map without
-    * changing the fingerprint: garbage collection does not trigger the invalid-block rejector.
+  /** Background.hs:447 (ouroboros-consensus 82ecba32) retains invalid blocks at the cutoff. Its
+    * fmap updates the map without changing the fingerprint: garbage collection does not trigger the
+    * invalid-block rejector.
     */
   def pruneBefore(immutableSlot: BigInt): F[Unit] =
     F.uncancelable { _ =>

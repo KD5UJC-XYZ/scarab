@@ -8,10 +8,11 @@ import xyz.kd5ujc.scarab.consensus.ChainSelection
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 
-/** The processed VolatileDB forest, not the BlockFetch receipt queue. Mirrors consensus82ecba329
-  * ChainSel.hs:358–408,710–777 and Paths.hs:63–130: only maximal contiguous extensions of retained
-  * selected points are candidates. Preference, LoE trimming and global candidate ordering belong to
-  * the caller. Headers, including their original signed bytes, are never reconstructed here.
+/** The processed VolatileDB forest, not the BlockFetch receipt queue. Mirrors ouroboros-consensus
+  * 82ecba32 ChainSel.hs:358–408,710–777 and Paths.hs:63–130: only maximal contiguous extensions of
+  * retained selected points are candidates. Preference, LoE trimming and global candidate ordering
+  * belong to the caller. Headers, including their original signed bytes, are never reconstructed
+  * here.
   */
 private[node] object AvailableBlocks:
   enum Error:
@@ -41,7 +42,8 @@ private[node] object AvailableBlocks:
     val checked = ordered.traverse_ { (key, header) =>
       Either.cond(key == header.hash, (), Error.HashMismatch(key, header.hash))
     }
-    // ChainSel.hs:574–582: an EBB may share the immutable predecessor's block number.
+    // ChainSel.hs:574–582 (ouroboros-consensus 82ecba32): an EBB may share the immutable
+    // predecessor's block number.
     val visible = ordered.filter { (hash, header) =>
       !invalid(
         hash

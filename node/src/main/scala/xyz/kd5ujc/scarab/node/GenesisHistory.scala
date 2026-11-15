@@ -18,9 +18,10 @@ import xyz.kd5ujc.scarab.protocol.Era
 
 /** The immutable ledger's hard-fork history for GDD's slotToGenesisWindow query.
   *
-  * Mirrors State/Infra.hs:194-305 reconstructSummary and History/Qry.hs EGenesisWindow: a known
-  * transition exposes exactly one future era; an unknown transition exposes the current era only up
-  * to the epoch-rounded safe horizon. The synthetic open Byron span is never used.
+  * Mirrors State/Infra.hs:194-305 (ouroboros-consensus 82ecba32) reconstructSummary and
+  * History/Qry.hs EGenesisWindow: a known transition exposes exactly one future era; an unknown
+  * transition exposes the current era only up to the epoch-rounded safe horizon. The synthetic open
+  * Byron span is never used.
   */
 object GenesisHistory:
   final case class Parameters(epochSlots: BigInt, safeZone: BigInt, genesisWindow: BigInt)
@@ -80,8 +81,8 @@ object GenesisHistory:
       current: Era,
       config: PraosConfig
   )(using ShelleyBasedEra[E]): Option[BigInt] =
-    // State/Governance.hs:131: potential parameters do not establish a transition, even if
-    // evaluating them could predict the same version.
+    // State/Governance.hs:131 (cardano-ledger f649f975): potential parameters do not establish a
+    // transition, even if evaluating them could predict the same version.
     config.forks.transition(config.geometry.k)(
       Hfc.Pending(
         current,

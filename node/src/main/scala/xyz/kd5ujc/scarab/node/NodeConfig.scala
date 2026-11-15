@@ -149,7 +149,9 @@ final case class ConfigSettings(
   def protocolVersion: (BigInt, BigInt) =
     if experimentalHardForksEnabled then (BigInt(12), BigInt(0)) else (BigInt(11), BigInt(2))
 
-  /** POM.hs:899-905: relays default on, producers off; an explicit setting wins. */
+  /** POM.hs:899-905 (cardano-node 11.1.3): relays default on, producers off; an explicit setting
+    * wins.
+    */
   def peerSharingEnabled(producer: Boolean): Boolean = peerSharing.getOrElse(!producer)
 
   def syncTargets(defaults: Targets): Either[ConfigError, Targets] = syncPeerTargets(defaults)

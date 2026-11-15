@@ -6,10 +6,11 @@ import scala.concurrent.duration.*
 
 /** Pure per-source cache and refresh deadlines for local-root DNS results.
   *
-  * The reference policy is `RootPeersDNS/LocalRootPeers.hs:195-253, 294-308`: a successful answer
-  * replaces the source value (including an empty answer), with the maximum clipped answer TTL or
-  * the minimum TTL for an empty answer. A failed answer retains the last successful value and uses
-  * the earliest retry among its errors. Each key is independent; `track` prunes removed sources.
+  * The reference policy is `RootPeersDNS/LocalRootPeers.hs:195-253, 294-308` (ouroboros-network
+  * c45735a5): a successful answer replaces the source value (including an empty answer), with the
+  * maximum clipped answer TTL or the minimum TTL for an empty answer. A failed answer retains the
+  * last successful value and uses the earliest retry among its errors. Each key is independent;
+  * `track` prunes removed sources.
   */
 object LocalRootDnsCache:
   private val MinInterval: FiniteDuration = 60.seconds
