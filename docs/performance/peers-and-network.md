@@ -585,11 +585,12 @@ The variants ran alternately. Raw logs and profiles are not published.
 | median, `main` / this change | 189,651 / 756 | 370 / 369 | 0.282 / 0.201 | 0.377 / 0.447 (p50) |
 <!-- /register -->
 
-The polls fell about 250-fold in every run, and s1's CPU by about 30% at the median. The third run of the change met
-a load spike on the host: the two cardano-node pools' CPU rose with it, and its slot lateness tail with them. The slot
-wake lateness is otherwise unchanged: the change rounds no timer. The timers stay, at about 370 a second, but cost
-little once no worker spins on the selector: slowing the two loops above removed 244 a second and saved about 0.013
-cores, inside the noise.
+The polls fell about 250-fold in every run, and s1's CPU by about 30% at the median. The third run of the change
+coincided with more load on the host, by inference from the two cardano-node pools' CPU, which rose in that run too.
+The change leaves every timer as it was; whether slot wake lateness changed is not resolved by these runs: the medians
+are close, and the p99 varies from run to run more than between the builds. The timers stay, at about 370 a second,
+but cost little once no worker spins on the selector: slowing the two loops above removed 244 a second and saved about
+0.013 cores, inside the noise.
 
 On the nodes the project runs, the same day, from the Docker engine's cumulative container CPU at both ends of 902 s:
 a Scarab mainnet relay used 0.367 cores, and a cardano-node 11.1.3 on the same host 0.016 cores; a Scarab preprod pool
