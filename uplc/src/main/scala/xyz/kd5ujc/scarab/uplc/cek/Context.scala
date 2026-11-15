@@ -18,7 +18,7 @@ private[cek] object Context:
   /** `FrameAwaitFunValueN` and `FrameAwaitFunConN`: `[_ V1 .. Vn]`, arguments waiting for the
     * function (the fields of a `constr` for its branch, or the constants the caser gives). The
     * reference keeps the caser's constants unwrapped; they become `VCon` when applied
-    * (`Cek/Internal.hs:906-921`), and here when the frame is made.
+    * (`Cek/Internal.hs:906-921`, plutus 1.70.0.0), and here when the frame is made.
     */
   final case class AwaitFunValues(first: CekValue, rest: List[CekValue], next: Context)
       extends Context

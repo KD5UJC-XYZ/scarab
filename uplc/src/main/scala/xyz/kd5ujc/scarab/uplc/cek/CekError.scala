@@ -20,56 +20,57 @@ import xyz.kd5ujc.scarab.uplc.cost.ExBudget
   */
 enum CekError:
   /** `NonPolymorphicInstantiationMachineError`: `force` of a value that is neither a `delay` nor a
-    * builtin (`Cek/Internal.hs:976-977`).
+    * builtin (`Cek/Internal.hs:976-977`, plutus 1.70.0.0).
     */
   case NonPolymorphicInstantiation
 
   /** `NonFunctionalApplicationMachineError`: an application of a value that is neither a `lam` nor
-    * a builtin (`Cek/Internal.hs:1007-1008`).
+    * a builtin (`Cek/Internal.hs:1007-1008`, plutus 1.70.0.0).
     */
   case NonFunctionalApplication
 
-  /** `OpenTermEvaluatedMachineError`: a variable that no binder binds
-    * (`Cek/Internal.hs:1082-1088`).
+  /** `OpenTermEvaluatedMachineError`: a variable that no binder binds (`Cek/Internal.hs:1082-1088`,
+    * plutus 1.70.0.0).
     */
   case OpenTermEvaluated(index: DeBruijn)
 
   /** `BuiltinTermArgumentExpectedMachineError`: `force` of a builtin that expects a term argument
-    * (`Cek/Internal.hs:974-975`).
+    * (`Cek/Internal.hs:974-975`, plutus 1.70.0.0).
     */
   case BuiltinTermArgumentExpected
 
   /** `UnexpectedBuiltinTermArgumentMachineError`: an argument to a builtin that expects a `force`
-    * (`Cek/Internal.hs:1005-1006`).
+    * (`Cek/Internal.hs:1005-1006`, plutus 1.70.0.0).
     */
   case UnexpectedBuiltinTermArgument
 
   /** `NonConstrScrutinizedMachineError`: `case` of a value that is neither a `constr` nor a
-    * constant (`Cek/Internal.hs:950`).
+    * constant (`Cek/Internal.hs:950`, plutus 1.70.0.0).
     */
   case NonConstrScrutinized
 
   /** `MissingCaseBranchMachineError`: `case` of a `constr` whose tag has no branch
-    * (`Cek/Internal.hs:936-944`).
+    * (`Cek/Internal.hs:936-944`, plutus 1.70.0.0).
     */
   case MissingCaseBranch(tag: Word64)
 
-  /** `CekCaseBuiltinError`: `case` of a constant that the caser refuses
-    * (`Cek/Internal.hs:946-947`).
+  /** `CekCaseBuiltinError`: `case` of a constant that the caser refuses (`Cek/Internal.hs:946-947`,
+    * plutus 1.70.0.0).
     */
   case CaseBuiltin(error: CaseBuiltinError)
 
   /** A saturated builtin application failed (`throwBuiltinErrorWithCause`,
-    * `Cek/Internal.hs:1071-1073`): a structural unlifting failure is `UnliftingMachineError`, an
-    * operational one and a failure of the denotation are `CekEvaluationFailure`
-    * (`builtinErrorToEvaluationError`, `Cek/Internal.hs:519-523`).
+    * `Cek/Internal.hs:1071-1073`, plutus 1.70.0.0): a structural unlifting failure is
+    * `UnliftingMachineError`, an operational one and a failure of the denotation are
+    * `CekEvaluationFailure` (`builtinErrorToEvaluationError`, `Cek/Internal.hs:519-523`).
     */
   case Builtin(function: DefaultFun, failure: BuiltinFailure)
 
-  /** `CekEvaluationFailure` from the term `error` (`Cek/Internal.hs:874-875`). */
+  /** `CekEvaluationFailure` from the term `error` (`Cek/Internal.hs:874-875`, plutus 1.70.0.0). */
   case ErrorTerm
 
-  /** `CekOutOfExError`: a restricting budget overspent (`ExBudgetMode.hs:146-165`).
+  /** `CekOutOfExError`: a restricting budget overspent (`ExBudgetMode.hs:146-165`, plutus
+    * 1.70.0.0).
     *
     * @param remaining
     *   the budget left once the charge that overspent it was spent, negative in at least one
@@ -87,27 +88,32 @@ enum CekError:
     case CaseBuiltin(_) | ErrorTerm | OutOfBudget(_)   => ErrorClass.Operational
 
 /** Why the caser refused a constant (`HeadError`, `PlutusCore/Default/Universe.hs:966-1034`,
-  * `PlutusCore/Builtin/Case.hs:63-67`). The reference renders each as text; these are its cases.
+  * `PlutusCore/Builtin/Case.hs:63-67`, plutus 1.70.0.0). The reference renders each as text; these
+  * are its cases.
   */
 enum CaseBuiltinError:
-  /** `unavailableCaserBuiltin`: casing on constants before protocol 11 (`Case.hs:63-67`). */
+  /** `unavailableCaserBuiltin`: casing on constants before protocol 11 (`Case.hs:63-67`, plutus
+    * 1.70.0.0).
+    */
   case Unavailable(protocol: ProtocolMajor)
 
   /** `outOfBoundsErr`: the constant selects no branch, or the number of branches does not fit its
-    * type (`Universe.hs:928-935`).
+    * type (`Universe.hs:928-935`, plutus 1.70.0.0).
     */
   case OutOfBounds(scrutinee: Constant, branches: Int)
 
-  /** A list cased with one branch is empty (`Universe.hs:993`). */
+  /** A list cased with one branch is empty (`Universe.hs:993`, plutus 1.70.0.0). */
   case EmptyList
 
-  /** `caseBuiltinNoData`: casing on `Data` before protocol 12 (`Universe.hs:1011-1016`). */
+  /** `caseBuiltinNoData`: casing on `Data` before protocol 12 (`Universe.hs:1011-1016`, plutus
+    * 1.70.0.0).
+    */
   case DataUnsupported
 
-  /** A `Data` that is not a `Constr` (`Universe.hs:1031`). */
+  /** A `Data` that is not a `Constr` (`Universe.hs:1031`, plutus 1.70.0.0). */
   case DataNotConstr
 
-  /** A type that has no casing (`Universe.hs:1005`). */
+  /** A type that has no casing (`Universe.hs:1005`, plutus 1.70.0.0). */
   case UnsupportedType(uni: DefaultUni)
 
 /** The term the reference attaches to an error (`ErrorWithCause`), discharged only when it is read:
@@ -122,6 +128,6 @@ object Cause:
   def of(value: CekValue): Cause = new Cause(() => CekValue.discharge(value))
 
 /** A failed evaluation: the error and the term it is about (`ErrorWithCause`, with no cause for an
-  * overspent budget, `ExBudgetMode.hs:162-165`).
+  * overspent budget, `ExBudgetMode.hs:162-165`, plutus 1.70.0.0).
   */
 final case class CekFailure(error: CekError, cause: Option[Cause])
