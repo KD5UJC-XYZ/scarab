@@ -11,6 +11,7 @@ from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from devnet import cbor, ntceras, ntcqueries, ntcquery  # noqa: E402
 from devnet.ntcqueries import Outcome, Row  # noqa: E402
+from devnet.scenarios import ntc  # noqa: E402
 from devnet.util import FollowerSite  # noqa: E402
 
 CRED = [0, b"\xab" * 28]
@@ -58,14 +59,21 @@ class BatteryTest(unittest.TestCase):
         for label in ("GetStakePoolParams", "GetStakeDelegDeposits/some", "GetNonMyopicMemberRewards"):
             self.assertEqual(cbor.enc(first_argument(1, label))[:3], bytes.fromhex("d90102"), label)
 
-    def test_before_conway_the_scala_node_answers_the_ledger_states_the_chain_state_and_the_utxo(self):
-        answered = {label for label, _, implemented in ntcqueries.battery(universe(), 4) if implemented}
+    def test_before_conway_the_scala_node_implements_the_ledger_states_the_utxo_and_the_governance_refusals(self):
+        forms = ntcqueries.battery(universe(), 4)
+        implemented = {label for label, _, mark in forms if mark}
+        answered = {label for label, query, mark in forms
+                    if mark and not ntcqueries.conway_only(ntcqueries.inner_of(query), 4)}
         self.assertEqual(answered, {
             "top:GetSystemStart", "top:GetChainBlockNo", "top:GetChainPoint", "hfc:GetInterpreter",
             "hfc:GetCurrentEra", "GetUTxOWhole", "GetUTxOByAddress", "GetUTxOByAddress/none", "GetUTxOByTxIn",
             "GetCBOR/GetUTxOWhole", "DebugChainDepState", "GetCBOR/DebugChainDepState", "DebugEpochState",
             "DebugNewEpochState", "GetCBOR/DebugEpochState", "GetCBOR/DebugNewEpochState"})
-        self.assertTrue(all(implemented for _, _, implemented in ntcqueries.battery(universe(), 6)))
+        # the queries `requireCG` guards are implemented as the refusal both decoders make before Conway
+        self.assertEqual(implemented - answered,
+                         {label for label, query, _ in forms if ntcqueries.conway_only(ntcqueries.inner_of(query), 4)})
+        self.assertEqual(len(implemented - answered), 18)
+        self.assertTrue(all(mark for _, _, mark in ntcqueries.battery(universe(), 6)))
 
     def test_the_queries_both_decoders_refuse_before_conway(self):
         refused = {label for label, query, _ in ntcqueries.battery(universe(), 3)
@@ -93,20 +101,26 @@ class JudgeTest(unittest.TestCase):
     def test_each_outcome(self):
         a, b = b"\x82\x04\x01", b"\x82\x04\x02"
         self.assertIs(self.outcome(True, False, a, a), Outcome.MATCHED)
-        self.assertIs(self.outcome(False, False, a, a), Outcome.MATCHED)
         self.assertIs(self.outcome(True, False, a, b), Outcome.DIFFERS)
-        self.assertIs(self.outcome(False, False, a, b), Outcome.DIFFERS)
-        self.assertIs(self.outcome(False, False, a, None), Outcome.INCOMPLETE)
         self.assertIs(self.outcome(True, False, a, None), Outcome.SCALA_REFUSED)
-        self.assertIs(self.outcome(False, True, None, None), Outcome.REFUSED_BY_BOTH)
-        self.assertIs(self.outcome(False, True, None, a), Outcome.SCALA_ANSWERED)
-        self.assertIs(self.outcome(True, False, None, None), Outcome.REFERENCE_REFUSED)
-        self.assertIs(self.outcome(True, False, None, a), Outcome.REFERENCE_REFUSED)
-        self.assertIs(self.outcome(False, True, a, None), Outcome.REFERENCE_ANSWERED)
+        self.assertIs(self.outcome(True, True, None, None), Outcome.REFUSED_BY_BOTH)
+        self.assertIs(self.outcome(True, True, None, a), Outcome.SCALA_ANSWERED)
+        # a query not implemented is incomplete whatever the Scala node did: equal, other, no answer, a refusal
+        for scala in (a, b, None):
+            self.assertIs(self.outcome(False, False, a, scala), Outcome.INCOMPLETE)
+        for scala in (a, None):
+            self.assertIs(self.outcome(False, True, None, scala), Outcome.INCOMPLETE)
+        # what the reference does is the battery's own check, whatever the mark
+        for implemented in (True, False):
+            for scala in (a, None):
+                self.assertIs(self.outcome(implemented, False, None, scala), Outcome.REFERENCE_REFUSED)
+                self.assertIs(self.outcome(implemented, True, a, scala), Outcome.REFERENCE_ANSWERED)
 
-    def test_only_a_match_an_incomplete_row_and_a_refusal_by_both_pass(self):
-        self.assertEqual({o for o in Outcome if o.passes},
-                         {Outcome.MATCHED, Outcome.INCOMPLETE, Outcome.REFUSED_BY_BOTH})
+    def test_an_incomplete_row_neither_agrees_nor_fails(self):
+        self.assertEqual({o for o in Outcome if o.agrees}, {Outcome.MATCHED, Outcome.REFUSED_BY_BOTH})
+        self.assertEqual({o for o in Outcome if o.incomplete}, {Outcome.INCOMPLETE})
+        self.assertEqual({o for o in Outcome if o.fails},
+                         set(Outcome) - {Outcome.MATCHED, Outcome.REFUSED_BY_BOTH, Outcome.INCOMPLETE})
 
     def test_a_ledger_state_is_judged_on_its_framing_too(self):
         # equal bytes that are not a ledger-state answer do not match
@@ -218,7 +232,7 @@ class SamePointTest(unittest.TestCase):
         block_eras = {q[1][1][0] for _, q in reference.sent + scala.sent if q[:1] == [0] and q[1][:1] == [0]}
         self.assertEqual(block_eras, {5})
         outcomes = {(row.label, row.version): ntcqueries.judge(row)[0] for row in rnd.rows}
-        self.assertTrue(all(o.passes for o in outcomes.values()), [k for k, o in outcomes.items() if not o.passes])
+        self.assertFalse([k for k, o in outcomes.items() if o.fails])
         self.assertIs(outcomes[("GetUTxOByTxIn", 23)], Outcome.MATCHED)
         self.assertIs(outcomes[("GetEpochNo", 23)], Outcome.INCOMPLETE)
         self.assertIs(outcomes[("GetConstitution", 23)], Outcome.REFUSED_BY_BOTH)
@@ -235,6 +249,7 @@ class SamePointTest(unittest.TestCase):
         # block query was sent to either node
         refused = sum(1 for _, q, _ in ntcqueries.battery(ntcqueries.WIDEST, 5)
                       if ntcqueries.conway_only(ntcqueries.inner_of(q), 5))
+        self.assertEqual(refused, 18)
         self.assertEqual(reference.opened, 1 + refused + 1 + 2)
         events = reference.events
         first_block = next(i for i, e in enumerate(events) if e[0] == "query" and e[2][:1] == [0] and e[2][1][:1] == [0])
@@ -293,6 +308,32 @@ class SamePointTest(unittest.TestCase):
         # the rows asked before it, in the battery's order, and none after it
         self.assertEqual(labels[-2:], ["DebugEpochState", "DebugNewEpochState"])
         self.assertNotIn("GetCBOR/DebugEpochState", labels)
+
+    def test_an_ntc_round_whose_sessions_were_not_acquired_counts_as_not_matched(self):
+        reference, scala = self.nodes(6)
+        reference.lost = True
+        FakeSession.nodes = {"reference": reference, "scala": scala}
+        with mock.patch.object(ntcquery, "LocalStateQuery", FakeSession), mock.patch("builtins.print"):
+            point, results = ntcqueries.compare_round("n", "ref.sock", "scala.sock")
+        self.assertEqual((point, results), (None, [(ntcqueries.LOST_ROUND, True, False, 0, 0)]))
+        # and the scenario counts it: a query that differs, which fails its verdict
+        stats = {}
+        clock = iter([0, 1])
+        args = type("Args", (), {"name": "n"})()
+        with mock.patch.object(ntc, "compare_round", return_value=(point, results)), \
+                mock.patch.object(ntc.time, "monotonic", side_effect=lambda: next(clock)), \
+                mock.patch.object(ntc.time, "sleep"), mock.patch("builtins.print"):
+            rounds = ntc.query_rounds(args, pathlib.Path("."), stats, 0.5, 0)
+        self.assertEqual(rounds, 1)
+        self.assertEqual(stats[ntcqueries.LOST_ROUND]["matched"], 0)
+        self.assertEqual(stats[ntcqueries.LOST_ROUND]["total"], 1)
+
+    def test_the_round_ends_by_its_deadline(self):
+        reference, scala = self.nodes(5)
+        FakeSession.nodes = {"reference": reference, "scala": scala}
+        with mock.patch.object(ntcquery, "LocalStateQuery", FakeSession), mock.patch.object(ntcqueries, "DEADLINE", 0):
+            with self.assertRaises(ntcquery.Deadline):
+                ntcqueries.same_point("n", "ref.sock", "scala.sock")
 
     def test_a_point_lost_while_the_sessions_are_acquired_closes_every_one(self):
         reference, scala = self.nodes(5)
@@ -417,6 +458,19 @@ class AtPointTest(unittest.TestCase):
         self.assertEqual(len(at.live), 8)
         self.assertEqual(Counting.peak, ntcqueries.SCALA_CONNECTIONS)
 
+    def test_no_session_is_asked_or_acquired_past_the_rounds_deadline(self):
+        FakeSession.nodes = {"reference": FakeNode(5, closes={23})}
+        at = ntcqueries.AtPoint(lambda: FakeSession(None, None, None), POINT, spares=3, expires=float("inf"))
+        ntcqueries.acquire_all([at])
+        at.expires = 0
+        with self.assertRaises(ntcquery.Deadline):
+            at.ask(ntcqueries.hfc([1], 5))
+        # nor acquired after it: an acquisition the deadline passes is a lost point
+        late = ntcqueries.AtPoint(lambda: FakeSession(None, None, None), POINT, spares=3, expires=0)
+        with self.assertRaises(ntcqueries.PointLost):
+            ntcqueries.acquire_all([late], expires=0)
+        self.assertEqual(late.live, [])
+
     def test_a_deadline_is_an_error_of_the_round_not_a_refusal(self):
         class Slow(FakeSession):
             def _recv(self, protocol):
@@ -471,19 +525,49 @@ class EraBatteryTest(unittest.TestCase):
     def test_a_round_reports_its_rows_by_class(self):
         rows = [Row("GetUTxOWhole", 23, True, False, self.SAME, self.SAME),
                 Row("GetEpochNo", 23, False, False, self.SAME, None),
-                Row("GetConstitution", 23, False, True, None, None)]
+                Row("GetLedgerTip", 23, False, False, self.SAME, self.SAME),
+                Row("GetConstitution", 23, True, True, None, None)]
         battery = self.battery(self.rounds(self.round_of(4, rows)))
         battery.request("alonzo")
         battery.step(battery.requests.get_nowait())
-        alonzo = battery.report(self.site)["perEra"]["alonzo"]
+        report = battery.report(self.site)
+        alonzo = report["perEra"]["alonzo"]
         self.assertEqual({k: alonzo[k] for k in ("steps", "rounds", "compared", "matched", "incomplete",
                                                  "refusedByBoth")},
-                         {"steps": [5], "rounds": 1, "compared": 1, "matched": 1, "incomplete": 1, "refusedByBoth": 1})
-        self.assertEqual(alonzo["incompleteRows"], ["GetEpochNo@v23"])
+                         {"steps": [5], "rounds": 1, "compared": 1, "matched": 1, "incomplete": 2, "refusedByBoth": 1})
+        self.assertEqual(alonzo["incompleteRows"], ["GetEpochNo@v23", "GetLedgerTip@v23"])
+        # an answer to a query marked not implemented is listed, and stays incomplete even when it is equal
+        self.assertEqual(alonzo["answeredWhileMarked"], ["GetLedgerTip@v23"])
+        self.assertTrue(report["rounds"][0]["rows"]["GetLedgerTip@v23"]["equalToReference"])
         # the other eras have no complete round: each is a failure, and this one's rows are not
         self.assertEqual(battery.failures(self.site),
                          [f"node-to-client battery: no complete round in {era}"
                           for era in ("shelley", "allegra", "mary", "babbage", "conway")])
+
+    def every_era(self, rows_of):
+        """A battery with one complete round in each Shelley-based era, its rows `rows_of(era)`."""
+        battery = self.battery(self.rounds(*[self.round_of(era, rows_of(era)) for era in range(1, 7)]))
+        for era in ntceras.ERA_NAMES.values():
+            battery.request(era)
+            battery.step(era)
+        return battery
+
+    def test_the_verdict_is_incomplete_while_a_query_is_not_implemented_and_never_a_pass(self):
+        matched = Row("GetUTxOWhole", 23, True, False, self.SAME, self.SAME)
+        missing = Row("GetEpochNo", 23, False, False, self.SAME, None)
+        passed = self.every_era(lambda era: [matched])
+        self.assertEqual((passed.report(self.site)["verdict"], passed.failures(self.site),
+                          passed.incomplete(self.site)), ("passed", [], []))
+        incomplete = self.every_era(lambda era: [matched] + ([missing] if era < 6 else []))
+        report = incomplete.report(self.site)
+        self.assertEqual((report["verdict"], incomplete.failures(self.site)), ("incomplete", []))
+        self.assertEqual(incomplete.incomplete(self.site),
+                         ["node-to-client battery: 5 incomplete rows, the queries the Scala node does not implement "
+                          "yet (distinct per era: {'shelley': 1, 'allegra': 1, 'mary': 1, 'alonzo': 1, 'babbage': 1}); "
+                          "they are not compared, and the battery does not pass"])
+        self.assertIn("INCOMPLETE", ntceras.table(report).splitlines()[0])
+        failed = self.every_era(lambda era: [missing, self.differing(era).rows[0]])
+        self.assertEqual(failed.report(self.site)["verdict"], "failed")
 
     def test_answers_that_differ_fail_and_are_kept(self):
         battery = self.battery(self.rounds(self.differing(5)))
@@ -503,16 +587,28 @@ class EraBatteryTest(unittest.TestCase):
         self.assertEqual(battery.report(self.site)["perEra"]["babbage"]["rounds"], 2)
         self.assertIn("babbage (protocol 7) GetUTxOByTxIn@v23: differs", battery.failures(self.site))
 
-    def test_a_round_that_ended_early_keeps_its_failures(self):
+    def test_a_round_that_ended_early_keeps_its_failures_and_the_query_it_ended_on_fails(self):
         partial = self.differing(5)
-        ended = ntcqueries.RoundError(partial, ("DebugNewEpochState", [12], True), ntcquery.Deadline("no answer"))
+        ended = ntcqueries.RoundError(partial, ("DebugNewEpochState", [12], True), 23,
+                                      ntcquery.MalformedReply("query failed: unexpected reply"))
         with mock.patch.object(ntceras, "RETRY_PAUSE", 0):
             battery = self.battery(self.rounds(ended, self.matching(5)))
             battery.request("babbage")
             battery.step("babbage")
         babbage = battery.report(self.site)["perEra"]["babbage"]
         self.assertEqual((babbage["rounds"], babbage["partialRounds"]), (1, 1))
-        self.assertIn("babbage (protocol 5) GetUTxOByTxIn@v23: differs", battery.failures(self.site))
+        failures = battery.failures(self.site)
+        self.assertIn("babbage (protocol 5) GetUTxOByTxIn@v23: differs", failures)
+        self.assertTrue([f for f in failures if f.startswith("babbage (protocol 5) DebugNewEpochState@v23: the round "
+                                                              "ended on it")], failures)
+        # an early end whose rows all matched fails all the same, through the query it ended on
+        battery = self.battery(self.rounds(ntcqueries.RoundError(self.matching(5), ("DebugNewEpochState", [12], True),
+                                                                 23, ntcquery.Deadline("no answer")),
+                                           self.matching(5)))
+        with mock.patch.object(ntceras, "RETRY_PAUSE", 0):
+            battery.request("babbage")
+            battery.step("babbage")
+        self.assertEqual(battery.report(self.site)["verdict"], "failed")
 
     def test_a_request_without_a_complete_round_fails(self):
         lost = [ntcqueries.PointLost("gone")] * ntceras.ATTEMPTS
@@ -547,7 +643,12 @@ class EraBatteryTest(unittest.TestCase):
         battery.request("conway")
         battery.stop.set()
         battery.run()
-        self.assertEqual(battery.cancelled, ["babbage", "conway"])
+        report = battery.report(self.site)
+        self.assertEqual((report["requested"], report["cancelled"], report["unaccounted"]),
+                         (2, ["babbage", "conway"], 0))
+        # once the thread has stopped, a request is not taken, nor counted
+        battery.request("conway")
+        self.assertEqual(battery.report(self.site)["requested"], 2)
 
         def stopping(*a, **k):
             battery.stop.set()
@@ -555,13 +656,37 @@ class EraBatteryTest(unittest.TestCase):
 
         battery = self.battery(stopping)
         battery.request("babbage")
-        battery.step("babbage")
+        battery.step(battery.requests.get_nowait())
         report = battery.report(self.site)
-        self.assertEqual((report["cancelled"], report["notJudged"]), (["babbage"], []))
+        self.assertEqual((report["cancelled"], report["notJudged"], report["unaccounted"]), (["babbage"], [], 0))
         self.assertFalse([f for f in battery.failures(self.site) if "request" in f])
-        # a request after the stop is not taken
+
+    def test_a_request_is_counted_and_queued_under_the_lock_the_thread_closes_with(self):
+        # so the thread's end, which closes and drains the queue under that lock, sees every request it counted
+        battery = self.battery(self.rounds())
+        held = []
+
+        class Watched(type(battery.requests)):
+            def put(self, item, *a, **k):
+                held.append(battery.lock.locked())
+                super().put(item, *a, **k)
+
+        battery.requests = Watched()
+        battery.request("babbage")
+        self.assertEqual(held, [True])
+        battery.stop.set()
+        battery.run()
+        self.assertTrue(battery.closed)
         battery.request("conway")
-        self.assertEqual(battery.requested, 1)
+        report = battery.report(self.site)
+        self.assertEqual((report["requested"], report["cancelled"], report["unaccounted"]), (1, ["babbage"], 0))
+
+    def test_a_request_neither_judged_nor_cancelled_fails(self):
+        battery = self.battery(self.rounds())
+        battery.request("babbage")
+        report = battery.report(self.site)
+        self.assertEqual(report["unaccounted"], 1)
+        self.assertIn("node-to-client battery: 1 requests neither judged nor cancelled", battery.failures(self.site))
 
     def test_nodes_that_cannot_be_compared_are_not_retried(self):
         battery = self.battery(self.rounds(ntcqueries.Incomparable("5 and 4")))
@@ -593,10 +718,13 @@ class EraBatteryTest(unittest.TestCase):
 
         battery = self.battery(judged)
         battery.thread.start()
+        self.addCleanup(battery.thread.join, 10)
+        self.addCleanup(battery.stop.set)
         battery.request("conway")
-        self.assertTrue(done.wait(10))
+        reached = done.wait(10)
         battery.stop.set()
         battery.thread.join(10)
+        self.assertTrue(reached)
         self.assertFalse(battery.thread.is_alive())
         self.assertEqual(battery.report(self.site)["perEra"]["conway"]["steps"], [10])
 

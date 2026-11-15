@@ -59,6 +59,13 @@ def answered(query, era):
     return era == ERA_CONWAY or inner(query)[0] in ANSWERED_BEFORE_CONWAY
 
 
+def implemented(query, era):
+    """Whether the Scala node implements what the reference does with the block query `query` in the era `era`: it
+    answers it (`answered`), or, before Conway, it refuses at decode a query of `CONWAY_ONLY` as the reference does
+    (`NtcQuery.shelleyLeaf`: a query `requireCG` guards is refused before Conway whatever its arguments)."""
+    return answered(query, era) or conway_only(query, era)
+
+
 def conway_only(query, era):
     """Whether both nodes refuse the block query `query` at decode in the era `era` (`CONWAY_ONLY`)."""
     return era < ERA_CONWAY and inner(query)[0] in CONWAY_ONLY
@@ -140,15 +147,15 @@ def universe(session, era=ERA_CONWAY):
 
 def battery(u, era=ERA_CONWAY):
     """(label, query, implemented) for every query, its block queries of the era `era`, their arguments read with the
-    ledger's decoder at its version (`eset`). `implemented` is False for the ones the Scala node does not answer in
-    that era yet (`answered`): it ends the connection on them."""
+    ledger's decoder at its version (`eset`). `implemented` is False for the ones whose reference behaviour the Scala
+    node does not have in that era yet (`implemented`): it ends the connection on them, and they are incomplete."""
     cr = [list(c) for c in u.creds]
     some_creds = cr[:3]
     some_pools = u.pools[:2]
     q = []
 
     def add(label, query):
-        q.append((label, hfc(query, era), answered(query, era)))
+        q.append((label, hfc(query, era), implemented(query, era)))
 
     q.append(("top:GetSystemStart", [1], True))
     q.append(("top:GetChainBlockNo", [2], True))
@@ -231,7 +238,7 @@ def legacy_battery(era):
     """(label, query, implemented) of the forms asked again at `LEGACY_VERSION`: the two whose encoding the version
     changes there, and their `GetCBOR`, which takes the latest encoding at every version (`answerPureBlockQuery`,
     Query.hs 423-429)."""
-    return [(label, hfc(query, era), answered(query, era))
+    return [(label, hfc(query, era), implemented(query, era))
             for label, query in (("GetCurrentPParams", [3]), ("GetGenesisConfig", [11]),
                                  ("GetCBOR/GetCurrentPParams", [9, [3]]), ("GetCBOR/GetGenesisConfig", [9, [11]]))]
 
@@ -301,11 +308,16 @@ class AtPoint:
     end of a connection after a query was sent on an acquired session is the node's refusal (None from `ask`);
     anything else (a deadline, a malformed reply) is an error of the round."""
 
-    def __init__(self, opener, point, spares=0, first=None, gate=None):
-        self.opener, self.point, self.spares = opener, point, spares
+    def __init__(self, opener, point, spares=0, first=None, gate=None, expires=None):
+        self.opener, self.point, self.spares, self.expires = opener, point, spares, expires
         self.live = [] if first is None else [first]
         self.gate = gate or threading.BoundedSemaphore(ACQUIRE_WORKERS)
         self.late = self.refused_connects = 0
+
+    def check(self):
+        """`ntcquery.Deadline` once the round's `expires` (a `time.monotonic()` instant) has passed."""
+        if self.expires is not None and time.monotonic() >= self.expires:
+            raise ntcquery.Deadline("the round's deadline passed")
 
     @property
     def wanted(self):
@@ -314,12 +326,14 @@ class AtPoint:
     def connected(self):
         """A new session of the node, its handshake done."""
         for _ in range(CONNECT_TRIES - 1):
+            self.check()
             session = self.opener()
             try:
                 return session.__enter__()
             except BlockingIOError:
                 self.refused_connects += 1
                 time.sleep(CONNECT_PAUSE)
+        self.check()
         return self.opener().__enter__()
 
     def acquired(self):
@@ -347,6 +361,7 @@ class AtPoint:
         """The raw bytes of the node's `MsgResult` for `query`, or None when it ended the connection on the query.
         A session that had ended before the query was sent is not the query's refusal: the next one is asked."""
         while True:
+            self.check()
             session = self.session()
             try:
                 session._send(7, enc([3, query]))
@@ -369,18 +384,23 @@ class AtPoint:
         self.live = []
 
 
-def acquire_all(sets):
+def acquire_all(sets, expires=None):
     """Acquire the sessions every `AtPoint` of `sets` still wants, all at once, each acquired session going to its
-    set however the acquisitions end (the caller closes the sets); `PointLost` when one could not be acquired."""
+    set however the acquisitions end (the caller closes the sets); `PointLost` when one could not be acquired, or
+    not by `expires` (a `time.monotonic()` instant). An acquisition under way then ends by its session's own
+    deadline, which is the round's; one not started is cancelled."""
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=ACQUIRE_WORKERS)
     pending, errors = [], []
     try:
         for s in sets:
             for _ in range(s.wanted - len(s.live)):
                 pending.append((s, pool.submit(s.acquired)))
-        concurrent.futures.wait([future for _, future in pending])
+        timeout = None if expires is None else max(expires - time.monotonic(), 0)
+        _, late = concurrent.futures.wait([future for _, future in pending], timeout=timeout)
+        if late:
+            errors.append(ntcquery.Deadline(f"{len(late)} sessions not acquired by the round's deadline"))
     finally:
-        pool.shutdown(wait=True)
+        pool.shutdown(wait=True, cancel_futures=True)
         for s, future in pending:
             if future.cancelled():
                 continue
@@ -421,18 +441,19 @@ class Round(NamedTuple):
 
 class RoundError(RuntimeError):
     """A round that ended with an error after its sessions were acquired (a deadline, a malformed reply, sessions
-    run out): `round` holds the rows asked before it, and `form` the (label, query, implemented) it ended on."""
+    run out): `round` holds the rows asked before it, `form` the (label, query, implemented) it ended on and
+    `version` the node-to-client version that form was asked at. The form it ended on fails, as a row would."""
 
-    def __init__(self, partial, form, cause):
-        super().__init__(f"the round ended on {form[0]}: {cause!r}")
-        self.round, self.form = partial, form
+    def __init__(self, partial, form, version, cause):
+        super().__init__(f"the round ended on {form[0]} at V{version}: {cause!r}")
+        self.round, self.form, self.version = partial, form, version
 
 
 class Outcome(enum.Enum):
     """How one row of a round compares."""
     MATCHED = "matched"  # both answered, with the same bytes
     DIFFERS = "differs"  # both answered, with other bytes
-    INCOMPLETE = "incomplete"  # only the reference answered, a query the Scala node does not answer yet
+    INCOMPLETE = "incomplete"  # a query whose reference behaviour the Scala node does not have yet: not compared
     REFUSED_BY_BOTH = "refusedByBoth"  # both ended the connection on a query both refuse in this era
     SCALA_REFUSED = "scalaRefused"  # the Scala node ended the connection on a query it answers
     SCALA_ANSWERED = "scalaAnswered"  # the Scala node answered a query the reference refused
@@ -440,22 +461,35 @@ class Outcome(enum.Enum):
     REFERENCE_ANSWERED = "referenceAnswered"  # the reference answered a query its decoder refuses in this era
 
     @property
-    def passes(self):
-        """A missing implementation passes as incomplete, never as a match; everything but these fails."""
-        return self in (Outcome.MATCHED, Outcome.INCOMPLETE, Outcome.REFUSED_BY_BOTH)
+    def agrees(self):
+        """The Scala node did what the reference did: the same bytes, or the same refusal."""
+        return self in (Outcome.MATCHED, Outcome.REFUSED_BY_BOTH)
+
+    @property
+    def incomplete(self):
+        """A missing implementation: neither an agreement nor a failure, and never a pass (CNF-2)."""
+        return self is Outcome.INCOMPLETE
+
+    @property
+    def fails(self):
+        return not (self.agrees or self.incomplete)
 
 
 def judge(row):
     """(Outcome, ledger-state verdict or None) of one row; the ledger states are compared by `ledgercompare`, which
-    also checks their framing."""
-    if row.reference is None:
-        if not row.refused:
-            return Outcome.REFERENCE_REFUSED, None
-        return (Outcome.REFUSED_BY_BOTH if row.scala is None else Outcome.SCALA_ANSWERED), None
-    if row.refused:
+    also checks their framing. What the reference does is checked first, whatever the mark: refusing a query its
+    decoder takes in the era, or answering one it refuses, means the battery asked the wrong query, and fails. Then
+    a row not `implemented` is incomplete, whatever the Scala node did."""
+    if row.reference is None and not row.refused:
+        return Outcome.REFERENCE_REFUSED, None
+    if row.reference is not None and row.refused:
         return Outcome.REFERENCE_ANSWERED, None
+    if not row.implemented:
+        return Outcome.INCOMPLETE, None
+    if row.reference is None:
+        return (Outcome.REFUSED_BY_BOTH if row.scala is None else Outcome.SCALA_ANSWERED), None
     if row.scala is None:
-        return (Outcome.SCALA_REFUSED if row.implemented else Outcome.INCOMPLETE), None
+        return Outcome.SCALA_REFUSED, None
     if ledgercompare.applies(row.label):
         verdict = ledgercompare.compare(row.label, row.reference, row.scala)
         return (Outcome.MATCHED if verdict.equal else Outcome.DIFFERS), verdict
@@ -486,7 +520,11 @@ def same_point(name, ref_socket, scala_socket, queries_for=battery, universe_of=
     expires = time.monotonic() + DEADLINE
 
     def remaining():
-        return max(expires - time.monotonic(), 0.1)
+        """The seconds left of the round, a session's deadline; `ntcquery.Deadline` once none are."""
+        left = expires - time.monotonic()
+        if left <= 0:
+            raise ntcquery.Deadline("the round's deadline passed")
+        return left
 
     def reference(version=None):
         return ntcquery.LocalStateQuery(f"{name}-ref", ref_socket, MAGIC, version=version, deadline=remaining())
@@ -500,7 +538,7 @@ def same_point(name, ref_socket, scala_socket, queries_for=battery, universe_of=
     try:
         probe = scala()
         probe.__enter__()
-        sets.append(AtPoint(scala, None, first=probe, gate=gate))
+        sets.append(AtPoint(scala, None, first=probe, gate=gate, expires=expires))
         probe.acquire()
         started = time.monotonic()
         probe.query_raw([3])
@@ -509,7 +547,7 @@ def same_point(name, ref_socket, scala_socket, queries_for=battery, universe_of=
             raise PointLost("the Scala node's tip is Origin: no block to compare a state at")
         sets[0].point = point
         try:
-            main = AtPoint(reference, point, first=reference().__enter__())
+            main = AtPoint(reference, point, first=reference().__enter__(), expires=expires)
         except (RuntimeError, EOFError, OSError) as e:
             raise PointLost(f"the reference session did not start: {e!r}") from e
         sets.append(main)
@@ -525,13 +563,14 @@ def same_point(name, ref_socket, scala_socket, queries_for=battery, universe_of=
             raise Incomparable(f"the nodes agreed on node-to-client versions {version} and {probe.agreed_version}")
         groups = [(version, queries_for(WIDEST, era), sets[0], main)]
         if legacy is not None:
-            groups.append((LEGACY_VERSION, legacy(era), AtPoint(lambda: scala(LEGACY_VERSION), point, gate=gate),
-                           AtPoint(lambda: reference(LEGACY_VERSION), point)))
+            groups.append((LEGACY_VERSION, legacy(era),
+                           AtPoint(lambda: scala(LEGACY_VERSION), point, gate=gate, expires=expires),
+                           AtPoint(lambda: reference(LEGACY_VERSION), point, expires=expires)))
         for _, forms, on_scala, on_reference in groups:
-            on_scala.spares = sum(1 for _, q, implemented in forms if not implemented or conway_only(inner_of(q), era))
+            on_scala.spares = sum(1 for _, q, mark in forms if not mark or conway_only(inner_of(q), era))
             on_reference.spares = sum(1 for _, q, _ in forms if conway_only(inner_of(q), era))
             sets.extend(s for s in (on_scala, on_reference) if s not in sets)
-        acquire_all(sets)
+        acquire_all(sets, expires)
         acquired = time.monotonic() - started
         major = protocol_major(main.live[0].query_raw(hfc([3], era))[0], era)
         groups[0] = (version, queries_for(universe_of(main.live[0], era), era), sets[0], main)
@@ -543,7 +582,7 @@ def same_point(name, ref_socket, scala_socket, queries_for=battery, universe_of=
                     rows.append(Row(label, at, implemented, conway_only(inner_of(query), era),
                                     on_reference.ask(query), on_scala.ask(query)))
                 except (Exception, SystemExit) as e:
-                    raise RoundError(Round(point, era, major, version, rows), form, e) from e
+                    raise RoundError(Round(point, era, major, version, rows), form, at, e) from e
         return Round(point, era, major, version, rows,
                      {"acquired": round(acquired, 3), "answered": round(time.monotonic() - started, 3)},
                      sum(s.refused_connects for s in sets))
@@ -573,17 +612,27 @@ def round_results(rnd, dump_dir=None, ledger_states=None):
     return results
 
 
+# The label under which the `ntc` scenario counts a round whose sessions could not be acquired at its point, or whose
+# nodes could not be compared there (`PointLost`, `Incomparable`): a query not matched, as each query of the round was
+# when its acquisition failed.
+LOST_ROUND = "round:notAcquired"
+
+
 def compare_round(name, ref_socket, scala_socket, queries_for=battery, universe_of=universe, dump_dir=None,
                   ledger_states=None):
     """One round of the `ntc` scenario (`same_point`). Returns (point, [(label, implemented, matched,
     reference_length, scala_length)]) (`round_results`). The ledger-state queries (`ledgercompare.LABELS`) require
     complete wire-byte equality. A round that ends with an error after its sessions were acquired keeps the rows
-    asked before it, and the query it ended on counts as not matched."""
+    asked before it, and the query it ended on counts as not matched; a round whose sessions could not be acquired
+    at its point, or whose nodes cannot be compared there, is (None, [(LOST_ROUND, True, False, 0, 0)])."""
     try:
         rnd, ended = same_point(name, ref_socket, scala_socket, queries_for, universe_of), None
     except RoundError as e:
         rnd, ended = e.round, e
         print(json.dumps({"roundError": str(e)[:300], "slot": rnd.point[0]}), flush=True)
+    except (PointLost, Incomparable) as e:
+        print(json.dumps({"roundNotAcquired": repr(e)[:300]}), flush=True)
+        return None, [(LOST_ROUND, True, False, 0, 0)]
     results = round_results(rnd, dump_dir, ledger_states)
     if ended is not None:
         results.append((ended.form[0], ended.form[2], False, 0, 0))

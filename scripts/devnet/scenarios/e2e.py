@@ -195,6 +195,12 @@ def summarize_e2e(events, other, expected, exit_code, plutus_vm=None):
     return summary, failures
 
 
+def run_verdict(failed, incomplete):
+    """The run's verdict: `failed` when anything failed, else `incomplete` when a gate is incomplete (CNF-2: a
+    missing implementation is not a pass), else `passed`."""
+    return "failed" if failed else "incomplete" if incomplete else "passed"
+
+
 def reached(events, target):
     """Whether the follower log `events` applied a block of Conway epoch `target` or later."""
     applied = [e["epoch"] for e in events if e["event"] == "extended" and e["era"] == "Conway"]
@@ -316,6 +322,7 @@ def e2e(args):
     late = []  # load threads that did not end within LOAD_JOIN_SECONDS of the request to stop
     tallies, agreement = {}, None
     summary, failures = {}, []
+    incomplete = []  # the incomplete gates (CNF-2): no failure, and not a pass
     state = {"last_check": 0.0}
 
     def entry(site):
@@ -482,6 +489,7 @@ def e2e(args):
             if battery is not None:
                 for site in sites:
                     failures += tagged(site, battery.failures(site))
+                    incomplete += tagged(site, battery.incomplete(site))
             if agreement is not None:
                 failures += agreement_failures(agreement.per_era)
         if keyed:
@@ -567,7 +575,10 @@ def e2e(args):
         # `passed` beside a kept evidence block and a traceback (#293)
         failed = bool(failures) or sys.exc_info()[0] is not None
         summary["failures"] = failures
-        summary["passed"] = not failed
+        # an incomplete gate is not a pass (CNF-2): the run's verdict says so, and so does `passed`
+        summary["incomplete"] = incomplete
+        summary["verdict"] = run_verdict(failed, incomplete)
+        summary["passed"] = summary["verdict"] == "passed"
         root.mkdir(parents=True, exist_ok=True)
         (root / "e2e-summary.json").write_text(json.dumps(summary, indent=2))
         for site in sites:
@@ -582,4 +593,7 @@ def e2e(args):
         if not args.keep:
             for c in (*(site.container(args.name) for site in sites), ref(args.name)):
                 docker("rm", "-f", c, check=False)
+        if summary["verdict"] == "incomplete":
+            print(f"INCOMPLETE: no failure, and not a pass: {'; '.join(incomplete)}", flush=True)
+    # a run whose only outcome is an incomplete gate exits 0, as a run without failures always has
     sys.exit(0 if not failures else 1)
