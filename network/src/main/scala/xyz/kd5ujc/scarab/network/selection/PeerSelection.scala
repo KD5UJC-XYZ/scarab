@@ -58,18 +58,19 @@ object PeerSelection:
 
   /** The first decision that applies in the reference's order, or when to look again. The peer
     * metrics are the feedback of the chain: the hot peers that were seldom first with a header or a
-    * block are demoted first ([[HotScore]]); without them every peer scores alike and the generator
-    * decides.
+    * block are demoted first, by the score of the churn mode the churn governor last wrote
+    * ([[HotScore.of]]); without metrics every peer scores alike and the generator decides.
     */
   def decide[A](
       input: GovernorState[A],
       now: Time,
       metrics: PeerMetrics[A] = PeerMetrics.empty[A](),
+      churnMode: ChurnMode = ChurnMode.Initial,
       policy: Policy = Policy(),
       inbound: Map[A, Boolean] = Map.empty[A, Boolean]
   ): Step[A] =
     given Ordering[A] = input.peers.ordering
-    val pass = Pass(tick(input, now), now, metrics)
+    val pass = Pass(tick(input, now), now, metrics, churnMode)
     val families: List[() => Guard[A]] = List(
       () => pass.cleanState,
       () => pass.judgement,
@@ -186,14 +187,23 @@ object PeerSelection:
     case Skip(wakeAt: Option[Time])
 
   /** One pass of the decisions: the state, the sets derived from it, the time and the policy. */
-  private final class Pass[A](val st: GovernorState[A], now: Time, metrics: PeerMetrics[A])(using
+  private final class Pass[A](
+      val st: GovernorState[A],
+      now: Time,
+      metrics: PeerMetrics[A],
+      churnMode: ChurnMode
+  )(using
       ord: Ordering[A]
   ):
     val view: GovernorState.View[A] = st.view(now)
     import Guard.*
 
-    /** The score of a hot peer for demotion, computed once and only if a demotion happens. */
-    private lazy val hotScores: Map[A, HotScore] = metrics.hotScores
+    /** The score of a hot peer for demotion in the churn mode, computed once and only if a demotion
+      * happens: the big ledger, local root and other hot demotions all rank by it
+      * (`policyPickHotPeersToDemote`, `Governor/ActivePeers.hs` 725, 833, 927 at ouroboros-network
+      * c45735a56c567fa977969173d18943bac6bb3821).
+      */
+    private lazy val hotScores: Map[A, HotScore] = HotScore.of(churnMode, metrics)
 
     private def hotScore(peer: A): HotScore = hotScores.getOrElse(peer, HotScore.Unknown)
 

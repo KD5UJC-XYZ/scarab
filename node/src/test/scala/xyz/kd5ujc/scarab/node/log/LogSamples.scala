@@ -165,7 +165,7 @@ object LogSamples:
       local = false,
       20,
       21,
-      Map(peerA -> None, peerB -> Some(0))
+      Map(peerA -> None, peerB -> Some(0L))
     ),
     Trace.DemoteDone(Temperature.Warm, peerA, 29),
     Trace.DemoteFailed(Temperature.Hot, peerB, timedOut = true),
@@ -237,7 +237,8 @@ object LogSamples:
     Trace.BigLedgerFailure(-1, 2.seconds),
     Trace.ForgetBigLedger(15, 17, List(peerA)),
     Trace.PromoteBigLedger(Temperature.Cold, List(peerA, peerB), 10, 4),
-    Trace.DemoteBigLedger(Temperature.Hot, List(peerB), 5, 6, Map(peerA -> Some(3), peerB -> None)),
+    Trace
+      .DemoteBigLedger(Temperature.Hot, List(peerB), 5, 6, Map(peerA -> Some(3L), peerB -> None)),
     Trace.PickInbound(List(peerA)),
     Trace.ShareRequests(8, List(peerA)),
     Trace.ShareResults(List(peerA -> PeerShare.Result.Peers(Vector(peerB))), List(peerB))
@@ -302,7 +303,8 @@ object LogSamples:
 
   /** One of each trace of the churn governor. */
   val churnTraces: List[Churn.Trace] = List(
-    Churn.Trace.Mode(FetchMode.Deadline),
+    Churn.Trace.Mode(ChurnMode.Praos(FetchMode.Deadline)),
+    Churn.Trace.Mode(ChurnMode.Genesis),
     Churn.Trace.Action(Churn.Step.DecreaseActive, 1500.millis, -4),
     Churn.Trace.Timeout(Churn.Step.IncreaseKnown, 80.seconds, 0),
     Churn.Trace.Wait(3412.seconds)

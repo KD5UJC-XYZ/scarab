@@ -371,6 +371,8 @@ object MockEnvironment:
 
         given Ask[IO, PeerMetrics[Peer]] =
           Ask.const[IO, PeerMetrics[Peer]](PeerMetrics.empty[Peer]())
+        given Ask[IO, PeerGovernor.ChurnWritten] =
+          Ask.const[IO, PeerGovernor.ChurnWritten](PeerGovernor.ChurnWritten.Initial)
         val governor: IO[Nothing] =
           PeerGovernor.run[IO, Peer](actions, provider, events, supervisor)
         val running = IO.race(governor, environment *> IO.never[Unit])

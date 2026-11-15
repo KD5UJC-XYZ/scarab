@@ -86,6 +86,7 @@
 {"event":"peerSelectionRoots","at":"2026-10-16T12:00:00Z","action":"peerShareResults","added":["relay.example.org:3001"],"results":[{"peer":"10.0.0.1:3001","result":"Peers(Vector(relay.example.org:3001))"}]}
 {"event":"peerSelectionCounters","at":"2026-10-16T12:00:00Z","root":3,"cold":0,"warm":1,"hot":1,"known":2,"established":2,"active":1,"availableToConnect":0,"coldPromotions":0,"warmPromotions":0,"warmDemotions":0,"activeDemotions":0,"localRoots":{"known":1,"established":1,"active":1},"bootstrap":{"known":1,"established":1,"active":0},"bigLedger":{"known":1,"established":1,"active":1},"origins":{"Local":1,"Public":0,"Bootstrap":1,"Ledger":0,"BigLedger":1,"Other":0}}
 {"event":"peerSelectionChurn","at":"2026-10-16T12:00:00Z","action":"round","mode":"Deadline"}
+{"event":"peerSelectionChurn","at":"2026-10-16T12:00:00Z","action":"round","mode":"Genesis"}
 {"event":"peerSelectionChurn","at":"2026-10-16T12:00:00Z","action":"step","step":"DecreaseActive","number":7,"tookSeconds":1.5,"change":-4}
 {"event":"peerSelectionChurn","at":"2026-10-16T12:00:00Z","action":"timeout","step":"IncreaseKnown","number":11,"tookSeconds":80.0,"change":0}
 {"event":"peerSelectionChurn","at":"2026-10-16T12:00:00Z","action":"wait","delaySeconds":3412.0}

@@ -249,7 +249,7 @@ private[log] object PeerSelectionLines:
 
   def churn(t: Churn.Trace): Line = t match
     case Churn.Trace.Mode(mode) =>
-      EventKind.PeerSelectionChurn.line("action" -> "round".asJson, "mode" -> mode.toString.asJson)
+      EventKind.PeerSelectionChurn.line("action" -> "round".asJson, "mode" -> churnMode(mode))
     case Churn.Trace.Action(step, took, change) =>
       EventKind.PeerSelectionChurn.line(
         "action" -> "step".asJson,
@@ -321,6 +321,11 @@ private[log] object PeerSelectionLines:
     EventKind.GsmTransition.line(
       (("transition" -> what.asJson) :: ("state" -> phase.toString.asJson) :: fields)*
     )
+
+  /** A churn mode as the round line shows it: the Praos fetch mode, or `Genesis`. */
+  private def churnMode(mode: ChurnMode): Json = mode match
+    case ChurnMode.Praos(fetch) => fetch.toString.asJson
+    case ChurnMode.Genesis      => "Genesis".asJson
 
   def fetchMode(mode: FetchMode): Line =
     EventKind.FetchModeChanged.line("mode" -> mode.toString.asJson)

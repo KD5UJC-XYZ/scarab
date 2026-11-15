@@ -191,7 +191,8 @@ enum Trace[A]:
 
   /** A decision to move peers down a temperature. Ordinary hot demotion retains scores for all
     * available peers (`TraceDemoteHotPeers` of ouroboros-network 2fb69829); absence of a metric
-    * differs from a measured zero. Local and warm demotions have no native score payload.
+    * differs from a measured zero. A score is the one the pick ranked by, which depends on the
+    * churn mode ([[HotScore.of]]). Local and warm demotions have no native score payload.
     *
     * The scores came with upstream `307f92b98` (PR #5437). In ouroboros-network c45735a5, which
     * cardano-node 11.1.3 links, `TraceDemoteHotPeers` carries no scores
@@ -204,7 +205,7 @@ enum Trace[A]:
       local: Boolean,
       target: Int,
       current: Int,
-      scores: Map[A, Option[Int]] = Map.empty[A, Option[Int]]
+      scores: Map[A, Option[Long]] = Map.empty[A, Option[Long]]
   )
   case DemoteDone(from: Temperature, peer: A, current: Int)
   case DemoteFailed(from: Temperature, peer: A, timedOut: Boolean)
@@ -251,7 +252,7 @@ enum Trace[A]:
       peers: List[A],
       target: Int,
       current: Int,
-      scores: Map[A, Option[Int]] = Map.empty[A, Option[Int]]
+      scores: Map[A, Option[Long]] = Map.empty[A, Option[Long]]
   )
 
   case PickInbound(peers: List[A])

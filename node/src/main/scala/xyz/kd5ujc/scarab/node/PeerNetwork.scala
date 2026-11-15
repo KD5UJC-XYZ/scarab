@@ -163,6 +163,9 @@ object PeerNetwork:
     *
     * @param metrics
     *   The peer metrics the hot sessions report to and the governor ranks demotions by.
+    * @param churnMode
+    *   Reads the churn mode the churn governor last wrote and the governor ranks hot demotions by
+    *   (the reference's `churnModeVar`, [[ChurnMode]]).
     * @param reloadRoots
     *   Replace a fully parsed topology and peer snapshot as one root-provider update.
     * @param run
@@ -175,6 +178,7 @@ object PeerNetwork:
       val fetchMode: Ref[F, FetchMode],
       val judgement: Ref[F, LedgerStateJudgement],
       val metrics: Ref[F, PeerMetrics[A]],
+      val churnMode: F[ChurnMode],
       val reloadRoots: Roots => F[Unit],
       val run: F[Nothing],
       val fatal: Deferred[F, GovernorFault]
@@ -490,6 +494,9 @@ object PeerNetwork:
         def ask[E2 >: GovernorConfig]: F[E2] =
           runtime.get.map(value => GovernorConfig(settings.policy, value.association): E2)
       given Ask[F, PeerMetrics[Addr]] = RefStateful.reader(metrics)
+      given Ask[F, PeerGovernor.ChurnWritten] = new Ask[F, PeerGovernor.ChurnWritten]:
+        def applicative = F
+        def ask[E2 >: PeerGovernor.ChurnWritten]: F[E2] = churnTargets.written.widen
       given Raise[F, GovernorError] = new Raise[F, GovernorError]:
         def functor = F
         def raise[E2 <: GovernorError, B](e: E2): F[B] =
@@ -607,13 +614,15 @@ object PeerNetwork:
           def fetchMode = currentFetchMode(state, chain)
           def judgement = judgementCell.get
           def requested = churnTargets.requested
-          def request(targets: Churn.Proposal) = updateTargets(_ => targets).void
-          def updateTargets(change: Churn.Proposal => Churn.Proposal) =
+          def request(mode: ChurnMode, targets: Churn.Proposal) =
+            updateTargets(mode, _ => targets).void
+          def updateTargets(mode: ChurnMode, change: Churn.Proposal => Churn.Proposal) =
             runtime.get.flatMap(current =>
               churnTargets
-                .change(current.generation)(change)
+                .change(current.generation, mode)(change)
                 .flatTap(_ => events.offer(Event.ChurnTargetsChanged(current.generation)))
-            ))
+            )
+          def setChurnMode(mode: ChurnMode) = churnTargets.setMode(mode))
 
       val gsmLoop: F[Nothing] =
         GsmRunner.run[F](
@@ -644,7 +653,6 @@ object PeerNetwork:
           events,
           supervisor,
           actions,
-          readRequestedTargets = Some(churnTargets.accepted),
           connections = Some(outbound),
           beforeEventApplied = Some {
             case Event.RootsConfigured(_, _, _, Some(generation)) =>
@@ -801,6 +809,7 @@ object PeerNetwork:
         fetchMode,
         judgement,
         metrics,
+        churnTargets.written.map(_.mode),
         reloadRoots,
         supervisor
           .supervise(

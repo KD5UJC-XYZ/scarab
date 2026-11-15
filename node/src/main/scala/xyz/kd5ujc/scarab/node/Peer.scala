@@ -249,7 +249,8 @@ object Peer:
     case HeadersArrived(slots: Vector[Long], at: Time)
 
     /** The blocks of one BlockFetch request reached us, each as `(slot, size in bytes)`, at `at`
-      * (`reportFetch` per block in the reference).
+      * (`reportFetch` per block in the reference). The size is the one the block's header announces
+      * (`estimateBlockSize`, [[FetchCoordinator.estimatedBytes]]).
       */
     case BlocksArrived(blocks: Vector[(Long, Long)], at: Time)
 
@@ -769,13 +770,20 @@ object Peer:
                     supervised(
                       requestRun(run, allocation, sent.complete(()).void)
                         .flatMap { (fetched, arrivedAt) =>
+                          // each block counts the size its header announces, not the bytes
+                          // received: `blockFetchSize header` (`BlockFetch/Client.hs` 274 at
+                          // ouroboros-network c45735a56c567fa977969173d18943bac6bb3821), which is
+                          // `estimateBlockSize` (`Ouroboros/Consensus/Node.hs` 943 at
+                          // ouroboros-consensus 82ecba329d7d054340bf707d44fe6e9ac27cec40)
                           fetched.traverse_(raw =>
                             observe.traverse_(
                               _(
                                 Peer.Observation.BlocksArrived(
                                   run.toVector
                                     .zip(raw)
-                                    .map((h, b) => h.slot.toLong -> b.size.toLong),
+                                    .map((h, _) =>
+                                      h.slot.toLong -> FetchCoordinator.estimatedBytes(h)
+                                    ),
                                   arrivedAt
                                 )
                               )

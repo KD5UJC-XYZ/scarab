@@ -132,8 +132,13 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](../de
   Accepted headers retain their arrival timestamp; invalid headers do not earn usefulness credit.
   Each client session reports the headers and blocks it delivers; two boards of 180 slots keep, per slot, the peer that was *first* (`PeerMetrics`, the reference's
   `PeerMetric`: the earliest arrival wins, the join-time correction `adjustAvg` is zero in the pinned release and is not
-  implemented). When the governor must demote hot peers it drops those with the lowest `upstreamness + fetchynessBlocks`,
-  ties by the slot at which the peer joined, then at random. The churn governor (`ChurnLoop`, the reference's
+  implemented). When the governor must demote hot peers it drops those with the lowest score, ties by the slot at which
+  the peer joined, then at random. The score follows the churn mode: `upstreamness + fetchynessBlocks` in Praos deadline
+  mode, the bytes of the blocks the peer delivered first (`fetchynessBytes`) in Praos bulk sync and in Genesis while the
+  ledger is too old. A block counts the size its header announces (`estimateBlockSize`). The churn governor writes the
+  mode together with each set of targets and alone at the start of each round, not while it sleeps, and the governor
+  takes targets written with a mode, when it accepts them, before it demotes by that mode, as the reference's
+  `simpleChurnModePeerSelectionPolicy` and its governor read them in one transaction. The churn governor (`ChurnLoop`, the reference's
   `peerChurnGovernor`) is the one writer of requested targets. Praos starts with a 3 s head start for local roots;
   Genesis starts with its complete selected targets. It then sleeps 3300 s plus up to 600 s in Genesis or Praos deadline
   mode, or 900 s plus up to 60 s in Praos bulk sync, and runs a

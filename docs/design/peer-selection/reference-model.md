@@ -240,14 +240,17 @@ The Cardano versions add the sensitive-state conditions (section 1.15).
 
 ### 1.8 Pick policies
 
-`PeerSelectionPolicy` (`Types.hs:141-168`) holds seven pick functions and the timing constants. The one the
-node uses is `simplePeerSelectionPolicy` (`ON/Diffusion/Policies.hs:99-124`):
+`PeerSelectionPolicy` (`Types.hs:141-168`) holds seven pick functions and the timing constants. The node installs
+`simpleChurnModePeerSelectionPolicy` (`CD/Diffusion/Policies.hs:19-31`; `daPeerSelectionPolicy` in
+`Ouroboros/Consensus/Node.hs:804-808` of ouroboros-consensus `82ecba329d7d054340bf707d44fe6e9ac27cec40`, which
+cardano-node 11.1.3 runs through `Node.run`, `CN/Run.hs:473`): `simplePeerSelectionPolicy`
+(`ON/Diffusion/Policies.hs:99-124`) with its hot-demotion pick replaced by one that reads the churn mode:
 
 | Pick | Rule |
 |---|---|
 | known peers for peer share, cold to promote, inbound | uniformly random: a random `Word32` per candidate, the smallest first (`simplePromotionPolicy` and `addRand`) |
 | warm to promote | current-pin `warmPromotionPolicy`: quarter the unsigned draw for non-tepid peers; a recently demoted tepid peer retains the full draw and is less likely to return immediately (#149) |
-| hot to demote | the lowest score first, where the score is `upstreamyness + fetchynessBlocks`, ties broken by the slot at which the peer joined the metric board, then by the random number (`hotDemotionPolicy`, 127-147) |
+| hot to demote | the lowest score first, ties broken by the slot at which the peer joined the metric board, then by the random number (`hotDemotionPolicy`, `CD/Diffusion/Policies.hs:33-65`). The score depends on the churn mode the churn governor last wrote (section 1.10): in Praos deadline mode `upstreamyness + fetchynessBlocks`, as in `simplePeerSelectionPolicy` (`ON/Diffusion/Policies.hs:127-147`); in Praos bulk sync and in Genesis `fetchynessBytes` (`CD/Diffusion/Policies.hs:43-51`). A peer that the chosen metric does not have ranks first, as `(0, Nothing)` |
 | warm to demote | random, with a peer that has the tepid flag *twice as likely* to be picked (its random number halved, 151-160, 192-199) |
 | cold to forget | random, a peer with failures more likely to be picked (its random number divided by `failCount + 1`, 164-172, 184-190) |
 
@@ -275,9 +278,12 @@ appeared (`insertPeer`, 262-306; `joinedPeerMetricAt`, 410-422).
 
 How the feedback reaches the governor: only the hot-demotion pick reads the metrics (`hotDemotionPolicy`,
 section 1.8). A churn step lowers the active target (section 1.10); the governor then demotes the peers with the
-lowest `upstreamyness + fetchynessBlocks`. The reporters are handed to consensus as `ReportPeerMetrics`
+lowest score of the churn mode. The reporters are handed to consensus as `ReportPeerMetrics`
 (`PeerMetric/Type.hs:29-37`; `reportHeader` per `(slot, time)` from ChainSync, `reportFetch` per `(size, slot,
-time)` from BlockFetch); the wiring lives in ouroboros-consensus, which was not read.
+time)` from BlockFetch). The size BlockFetch reports is `blockFetchSize` of the block's header
+(`ON/BlockFetch/Client.hs:274`), which the node sets to `estimateBlockSize`, the size the header announces
+(`Ouroboros/Consensus/Node.hs:943` of ouroboros-consensus `82ecba329d7d054340bf707d44fe6e9ac27cec40`), not the
+bytes received.
 
 ### 1.10 The churn governor
 
@@ -326,7 +332,22 @@ target is `min 1 base` in both directions (396-428); established is clamped to `
 `defaultDeadlineChurnInterval = 3300 s` with fuzz 600 s (`longDelay`, 679-680); in bulk sync with Praos it is
 `defaultBulkChurnInterval = 900 s` with fuzz 60 s (`shortDelay`, 682-683; `ON/Diffusion/Configuration.hs:90-94`;
 wired at `CN/Run.hs:926-927`). The fetch mode itself comes from consensus (`readFetchMode`,
-`Churn.hs:219`); the rule that sets it is outside the files read.
+`Churn.hs:219`): `mkReadFetchMode` (`CDA/FetchMode.hs:19-32`) gives `PraosFetchMode` of the Praos rule in Praos
+mode, and in Genesis mode `GenesisFetchMode` while the ledger is `TooOld`, `PraosFetchMode FetchModeDeadline`
+once it is `YoungEnough`.
+
+*The churn mode.* `updateChurnMode` (`Churn.hs:217-221`) reads that fetch mode and writes it to `churnModeVar`
+(`ChurnMode`, 55-63), which the hot-demotion pick reads (section 1.8). It runs in both start-up transactions
+(177, 201), at the start of each round (565) and in each step's transaction that sets its targets (242); the
+fuzzy delay reads the fetch mode without writing it (663). So a change of the fetch mode during the sleep reaches
+the pick only with the next round. The variable starts as `PraosFetchMode FetchModeDeadline`
+(`Ouroboros/Consensus/Node.hs:603` of ouroboros-consensus `82ecba329d7d054340bf707d44fe6e9ac27cec40`). A step writes
+the mode and its targets in one transaction (241-251), and the governor evaluates its decisions as one transaction
+in which the targets monitor comes before the demotions (`ON/PeerSelection/Governor.hs:642-714`; the `Guarded`
+semigroup takes the first that is ready, `G/Types.hs:1602-1606`; cardano-node's monitor is
+`CD/PeerSelection/Governor/Monitor.hs:98-149`). So targets the monitor takes are in force before a demotion ranks by
+the mode written with them. Targets it does not take (null ones, insane ones, or any while the node cannot make
+progress, 117-149) leave the targets in force, and the demotion ranks by the new mode against those.
 
 *Why the order matters.* Active peers are decreased first so that the governor demotes the least useful ones
 (by the metrics) and then increased so that it promotes others; establishing new cold peers happens last, after

@@ -703,6 +703,13 @@ object FetchCoordinator:
     private[node] def finished(allocation: Allocation): F[Unit] =
       owner.finished(id, allocation.token)
 
+  /** The size of a header's block as consensus estimates it (`estimateBlockSize`,
+    * ouroboros-consensus 82ecba329d7d054340bf707d44fe6e9ac27cec40): the header's bytes, the body
+    * size it announces and ten bytes of CBOR-in-CBOR and era wrapping
+    * (`Shelley/Node/Serialisation.hs` 133-144, `Cardano/Node.hs` 242-252), or the Byron size hint
+    * (`Byron/Node/Serialisation.hs` 79). It is also the size BlockFetch reports to the peer metrics
+    * (`blockFetchSize`, `Ouroboros/Consensus/Node.hs` 943).
+    */
   private[node] def estimatedBytes(header: Header): Long = header match
     case h: Header.Shelley =>
       (h.bodySize + h.raw.size + 10).min(BigInt(Long.MaxValue)).max(0).toLong

@@ -145,7 +145,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `peerSelectionForget` | `Net.PeerSelectionForget` | Info | `action`, `bigLedger`, `target`, `known`, `peers` |
 | `peerSelectionSensitive` | `Net.PeerSelectionSensitive` | Notice | `action`, `judgement` |
 | `peerSelectionCounters` | `Net.PeerSelectionCounters` | Info | `root`, `cold`, `warm`, `hot`, `known`, `established`, `active`, `availableToConnect`, `coldPromotions`, `warmPromotions`, `warmDemotions`, `activeDemotions`, `localRoots`, `bootstrap`, `bigLedger`, `origins` |
-| `peerSelectionChurn` | `Net.PeerSelectionChurn` | Info | `action` (`round`, `step`, `timeout`, `wait`), `mode`, `step`, `number`, `tookSeconds`, `change`, `delaySeconds` |
+| `peerSelectionChurn` | `Net.PeerSelectionChurn` | Info | `action` (`round`, `step`, `timeout`, `wait`), `mode` (the churn mode of a round: `Deadline`, `BulkSync` or `Genesis`), `step`, `number`, `tookSeconds`, `change`, `delaySeconds` |
 | `ledgerPeers` | `Net.LedgerPeers` | Info (Warning when `action` is `snapshotIgnored`, `poolSkipped` or `unreadable`; Error when it is `snapshotVerificationFailed`) | `action` (`snapshotLoaded`, `snapshotIgnored`, `snapshotVerified`, `snapshotVerificationFailed`, `refreshed`, `poolSkipped`, `unreadable`), `matchesImmutablePoint`, `slot`, `pools`, `source`, `bigLedgerPools`, `ledgerSlot`, `pool`, `reason` |
 | `localRoots` | `Net.LocalRoots` | Info | `action` (`error`), `domainAddress`, `reason`; a local root's DNS lookup threw. As the reference's `LocalRootError` (Info, ouroboros-network `c45735a5` `RootPeersDNS/LocalRootPeers.hs`), the node goes on and the lookups start again at once |
 | `outboundConnections` | `Net.OutboundConnections` | Info | `state`, `trusted` |

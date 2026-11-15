@@ -59,17 +59,50 @@ final case class Policy(
     maxInboundPeers: Int = 10
 )
 
-/** How the governor ranks hot peers for demotion: the lowest score goes first. The score is
-  * `upstreamyness + fetchynessBlocks` (`hotDemotionPolicy`, `Policies.hs` 127-147), ties broken by
-  * the slot at which the peer joined the board, then by a random number ([[PeerMetrics.hotScores]]
-  * gives the scores; a peer the metrics do not know scores [[HotScore.Unknown]], below all that are
-  * known; without metrics every peer scores alike and the random number decides).
+/** How the governor ranks hot peers for demotion: the lowest score goes first, ties broken by the
+  * slot at which the peer joined the board, then by a random number. Which metric the score is
+  * depends on the churn mode ([[HotScore.of]]); a peer the metrics do not know scores
+  * [[HotScore.Unknown]], below all that are known; without metrics every peer scores alike and the
+  * random number decides.
+  *
+  * `value` is a `Long`: in bytes it sums up to 180 block sizes of 32 bits each, which the reference
+  * adds as a 64-bit `Int` (`fetchynessBytesImpl`, `PeerSelection/PeerMetric.hs` 492-531 at
+  * ouroboros-network c45735a56c567fa977969173d18943bac6bb3821).
   */
-final case class HotScore(value: Int, joinedAt: Option[Long])
+final case class HotScore(value: Long, joinedAt: Option[Long])
 
 object HotScore:
   val Unknown: HotScore = HotScore(0, None)
   given Ordering[HotScore] = Ordering.by(s => (s.value, s.joinedAt))
+
+  /** The scores the hot-demotion pick ranks by in `mode`: the `hotDemotionPolicy` of
+    * `simpleChurnModePeerSelectionPolicy` (`Cardano/Network/Diffusion/Policies.hs` 33-51 at
+    * cardano-diffusion c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167), the policy cardano-node 11.1.3
+    * installs (`daPeerSelectionPolicy`, `Ouroboros/Consensus/Node.hs` 804-808 at
+    * ouroboros-consensus 82ecba329d7d054340bf707d44fe6e9ac27cec40). In deadline mode a peer scores
+    * its `upstreamyness + fetchynessBlocks`, as in `simplePeerSelectionPolicy` (`Policies.hs`
+    * 127-133 at ouroboros-network c45735a56c567fa977969173d18943bac6bb3821); in bulk sync and in
+    * Genesis its `fetchynessBytes`. A peer has a score only if that metric has it (`optionalMerge`,
+    * 88-95 there), with the slot it joined the board at if the registry has it.
+    */
+  def of[A](mode: ChurnMode, metrics: PeerMetrics[A]): Map[A, HotScore] = mode match
+    case ChurnMode.Praos(FetchMode.Deadline) => deadline(metrics)
+    case ChurnMode.Praos(FetchMode.BulkSync) => bytes(metrics)
+    case ChurnMode.Genesis                   => bytes(metrics)
+
+  private def deadline[A](metrics: PeerMetrics[A]): Map[A, HotScore] =
+    val blocks = metrics.fetchynessBlocks.map((p, n) => p -> n.toLong)
+    val total = metrics.upstreamness.foldLeft(blocks) { case (m, (p, n)) =>
+      m.updated(p, m.getOrElse(p, 0L) + n)
+    }
+    joined(total, metrics)
+
+  private def bytes[A](metrics: PeerMetrics[A]): Map[A, HotScore] =
+    joined(metrics.fetchynessBytes, metrics)
+
+  private def joined[A](scores: Map[A, Long], metrics: PeerMetrics[A]): Map[A, HotScore] =
+    val at = metrics.joinedAt
+    scores.map((p, v) => p -> HotScore(v, at.get(p)))
 
 /** The pick policies, pure over an explicit generator. Each draws one random 32-bit number per
   * candidate, in the order of the candidates, scales it, and takes the `n` smallest (`addRand` and
@@ -131,7 +164,7 @@ object Picks:
   private[selection] def hotDemotionScores[A](
       available: Iterable[A],
       score: A => Option[HotScore]
-  ): Map[A, Option[Int]] = available.iterator.map(peer => peer -> score(peer).map(_.value)).toMap
+  ): Map[A, Option[Long]] = available.iterator.map(peer => peer -> score(peer).map(_.value)).toMap
 
   /** Cold to warm and peers to ask: uniformly at random. */
   def promotion[A: Ordering](candidates: SortedSet[A], n: Int, rng: Rng): (List[A], Rng) =

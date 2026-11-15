@@ -42,6 +42,6 @@ class NativeSelectionPolicySuite extends FunSuite:
         Picks.hotDemotionWords(words, n, p => scores.getOrElse(p, HotScore.Unknown))
       )
       val traced = Picks.hotDemotionScores(words.map(_._1), scores.get)
-      assertEquals(traced, get[List[(Int, Option[Int])]]("traced").toMap, s"case $index traced")
+      assertEquals(traced, get[List[(Int, Option[Long])]]("traced").toMap, s"case $index traced")
     }
   }

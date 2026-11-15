@@ -167,11 +167,12 @@ final case class GovernorConfig(
   * arrive on the same queue from the connections, the Genesis State Machine and the regime of
   * targets.
   *
-  * The peer metrics (`Ask`) are read once per pass and given to the decision function, which ranks
-  * the hot peers for demotion by them. Each pass applies the events that are waiting, then asks the
-  * decision function; a decision is committed (state, traces, jobs) and the pass starts again; when
-  * nothing applies the loop waits for an event or for the time the decision function named,
-  * whichever comes first.
+  * The peer metrics and what the churn governor last wrote ([[PeerGovernor.ChurnWritten]]) are read
+  * through `Ask` once per pass: targets written but not yet announced are taken, and the decision
+  * function ranks the hot peers for demotion by the metrics and the churn mode. Each pass applies
+  * the events that are waiting, then asks the decision function; a decision is committed (state,
+  * traces, jobs) and the pass starts again; when nothing applies the loop waits for an event or for
+  * the time the decision function named, whichever comes first.
   */
 object PeerGovernor:
 
@@ -186,6 +187,22 @@ object PeerGovernor:
   /** A validated observation of the churn target TVar, including its topology generation. */
   final case class RequestedTargets(targets: Targets, generation: BigInt)
 
+  /** What the churn governor last wrote, read at once: the churn mode the hot-demotion pick ranks
+    * by and the targets it asked for, if they are sane. The churn governor writes both in one
+    * transaction (`updateTargets`, `Cardano/Network/PeerSelection/Churn.hs` 241-251 at
+    * cardano-diffusion c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167), and the governor reads both in
+    * one, its targets monitor before its demotions (`Governor.hs` 666-714 at ouroboros-network
+    * c45735a56c567fa977969173d18943bac6bb3821): targets the monitor takes are in force before a
+    * demotion ranks by the mode written with them. Targets it does not take (none, insane, or while
+    * the node cannot make progress: `Cardano/Network/PeerSelection/Governor/Monitor.hs` 117-149)
+    * leave the targets in force, and the demotion ranks by the new mode against them.
+    */
+  final case class ChurnWritten(mode: ChurnMode, targets: Option[RequestedTargets])
+
+  object ChurnWritten:
+    /** Before the churn governor wrote anything (`churnModeVar`'s first value). */
+    val Initial: ChurnWritten = ChurnWritten(ChurnMode.Initial, None)
+
   def run[F[_]: Temporal, A](
       actions: PeerStateActions[F, A],
       roots: RootProvider[F, A],
@@ -194,34 +211,35 @@ object PeerGovernor:
       sharing: Option[PeerSharingActions[F, A]] = None,
       beforeEventApplied: Option[Event[A] => F[Unit]] = None,
       onEventApplied: Option[Event[A] => F[Unit]] = None,
-      readRequestedTargets: Option[F[Option[RequestedTargets]]] = None,
       connections: Option[PeerStateActions.Connections[F, A]] = None
   )(using
       state: Stateful[F, GovernorState[A]],
       config: Ask[F, GovernorConfig],
       raise: Raise[F, GovernorError],
       out: Tell[F, Output[A]],
-      metrics: Ask[F, PeerMetrics[A]]
+      metrics: Ask[F, PeerMetrics[A]],
+      churn: Ask[F, ChurnWritten]
   ): F[Nothing] =
-    Ref
-      .of[F, Set[Time]](Set.empty)
-      .flatMap(scheduled =>
+    (Ref.of[F, Set[Time]](Set.empty), Ref.of[F, ChurnMode](ChurnMode.Initial)).tupled
+      .flatMap((scheduled, paired) =>
         loop(
           actions,
           roots,
           events,
           supervisor,
           scheduled,
+          paired,
           sharing,
           beforeEventApplied,
           onEventApplied,
-          readRequestedTargets,
           connections
         )
       )
 
   /** @param scheduled
     *   The times a wake-up is already asked for.
+    * @param paired
+    *   The churn mode written with the targets the governor took last.
     */
   private def loop[F[_]: Temporal, A](
       actions: PeerStateActions[F, A],
@@ -229,17 +247,18 @@ object PeerGovernor:
       events: Queue[F, Event[A]],
       supervisor: Supervisor[F],
       scheduled: Ref[F, Set[Time]],
+      paired: Ref[F, ChurnMode],
       sharing: Option[PeerSharingActions[F, A]],
       beforeEventApplied: Option[Event[A] => F[Unit]],
       onEventApplied: Option[Event[A] => F[Unit]],
-      readRequestedTargets: Option[F[Option[RequestedTargets]]],
       connections: Option[PeerStateActions.Connections[F, A]]
   )(using
       state: Stateful[F, GovernorState[A]],
       config: Ask[F, GovernorConfig],
       raise: Raise[F, GovernorError],
       out: Tell[F, Output[A]],
-      metrics: Ask[F, PeerMetrics[A]]
+      metrics: Ask[F, PeerMetrics[A]],
+      churn: Ask[F, ChurnWritten]
   ): F[Nothing] =
     val F = Temporal[F]
     given Monad[F] = F
@@ -573,14 +592,19 @@ object PeerGovernor:
           }
         }
       case Event.ChurnTargetsChanged(generation) =>
-        readRequestedTargets.traverse_(
-          _.flatMap(
-            _.filter(_.generation == generation).traverse_(current =>
-              applySnapshot(Event.TargetsRequested(current.targets, Some(current.generation)))
-            )
+        churn
+          .ask[ChurnWritten]
+          .flatMap(written =>
+            written.targets.filter(_.generation == generation).traverse_(take(written, _))
           )
-        )
       case _ => applySnapshot(event)
+
+    /** Take targets the churn governor wrote, and remember the mode written with them if they were
+      * taken (a topology generation not yet in force does not take them).
+      */
+    def take(written: ChurnWritten, requested: RequestedTargets): F[Unit] =
+      applySnapshot(Event.TargetsRequested(requested.targets, Some(requested.generation))) *>
+        state.get.flatMap(st => paired.set(written.mode).whenA(st.requested == requested.targets))
 
     /** Apply the events that are waiting. */
     val drain: F[Unit] =
@@ -630,13 +654,30 @@ object PeerGovernor:
     def pass(before: Loop): F[Loop] =
       for
         _ <- drain
+        written <- churn.ask[ChurnWritten]
+        // targets written with the churn mode are taken before a demotion ranks by it, as the
+        // targets monitor comes before the demotions (`Governor.hs` 685-714 at c45735a5); the
+        // event that announces them finds them taken
+        _ <- state.get.flatMap(st =>
+          written.targets
+            .filter(t => t.generation == st.rootsGeneration && t.targets != st.requested)
+            .traverse_(take(written, _))
+        )
         at <- now
         st <- state.get
         _ <- PeerSelection.abort(st, at).traverse_(raise.raise[GovernorError, Unit](_))
         scores <- metrics.ask[PeerMetrics[A]]
+        // the hot-demotion pick reads the churn mode where it reads the metrics (`Policies.hs`
+        // 33-36 at cardano-diffusion c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167); while the targets
+        // written with it are of a topology generation not yet in force, the mode written with
+        // the targets in force stays
+        mode <-
+          if written.targets.forall(_.targets == st.requested) then
+            paired.set(written.mode).as(written.mode)
+          else paired.get
         policy <- config.reader(_.policy)
         inbound <- sharing.fold(F.pure(Map.empty[A, Boolean]))(_.inbound)
-        loop <- PeerSelection.decide(st, at, scores, policy, inbound) match
+        loop <- PeerSelection.decide(st, at, scores, mode, policy, inbound) match
           case Step.Act(decision) => commit(decision) *> publish(before, at)
           case Step.Idle(settled, wakeAt) =>
             for
