@@ -146,6 +146,8 @@ TPraos and Praos parameters and their windows, the ledger's `Globals` (cardano-l
 `Shelley/Genesis.hs:768-789`) and the Shelley era's forecast. `NodeSetup` follows the same split:
 the chain store's k, the default snapshot policy, the header retention's chain term and the
 Haskell and Mithril import chunk size take Byron's k; the Shelley geometry keeps Shelley's. On every
-public network the two values are equal. Evidence: `GenesisSecurityParamSuite` (unequal values with
-Byron and with Shelley as the first era, either one larger, and a Shelley value beyond `Int` no
-longer refused).
+public network the two values are equal. A Byron k of zero, which the reference turns into a
+`NonZero` with `error` and so stops at its start (`Byron/Ledger/Conversions.hs:44-45`), is refused
+at setup (`SecurityParamZero`). Evidence: `GenesisSecurityParamSuite` (unequal values on chains
+whose first era is Byron, Shelley or Conway, either one larger, a zero Byron k refused, and a
+Shelley value beyond `Int` no longer refused).

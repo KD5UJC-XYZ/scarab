@@ -123,15 +123,23 @@ final case class NodeSetup(
   /** The hash the chain's first block must name as its predecessor. */
   def origin: Option[Bytes] = byron.map(_.hash)
 
-/** The security parameter as the chain store and the volatile chain count blocks: an `Int`. A
-  * larger one, which the reference's `NonZero Word64` holds, is refused at setup
+/** The security parameter as the chain store and the volatile chain count blocks: a positive `Int`,
+  * Byron's genesis k. Zero is refused (`SecurityParamZero`), where the reference stops with
+  * `error`. A value beyond `Int`, which the reference's `NonZero Word64` holds, is refused too
   * (`SecurityParamBeyondStorage`): an approved deviation, recorded in #474.
   */
 opaque type ChainStoreK = Int
 
 object ChainStoreK:
   def from(k: BigInt): Either[ConfigError, ChainStoreK] =
-    Either.cond(k.isValidInt, k.toInt, ConfigError(ConfigProblem.SecurityParamBeyondStorage(k)))
+    for
+      _ <- Either.cond(k.signum > 0, (), ConfigError(ConfigProblem.SecurityParamZero))
+      blocks <- Either.cond(
+        k.isValidInt,
+        k.toInt,
+        ConfigError(ConfigProblem.SecurityParamBeyondStorage(k))
+      )
+    yield blocks
 
   extension (k: ChainStoreK) def blocks: Int = k
 

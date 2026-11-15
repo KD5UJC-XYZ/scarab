@@ -70,6 +70,12 @@ enum ConfigProblem:
     */
   case SecurityParamBeyondStorage(k: BigInt)
 
+  /** A Byron security parameter of zero. The reference makes it a `NonZero` with `error`, so the
+    * release node stops at its start (`fromByronBlockCount`, ouroboros-consensus 82ecba32,
+    * `Byron/Ledger/Conversions.hs:44-45`); the node's setup refuses it instead.
+    */
+  case SecurityParamZero
+
   case ExpectedObject(context: String, actual: io.circe.Json)
   case Selection(context: String, value: String, allowed: Set[String])
   case ConflictingFields(fields: Set[String])
@@ -135,6 +141,7 @@ enum ConfigProblem:
       s"${file.label} genesis ${path.mkString(".")}: ${cause.message}"
     case SecurityParamBeyondStorage(k) =>
       s"genesis securityParam $k: the chain store counts at most ${Int.MaxValue} blocks"
+    case SecurityParamZero => "Byron genesis protocolConsts.k 0: the security parameter is not zero"
     case JsonSyntax(context, cause) => s"$context is not JSON: ${cause.message}"
     case CanonicalJsonSyntax(context, cause) =>
       s"$context is not canonical JSON: unexpected input at byte ${cause.offset}"

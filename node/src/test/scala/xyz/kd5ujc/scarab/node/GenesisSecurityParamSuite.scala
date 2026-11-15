@@ -16,7 +16,17 @@ import xyz.kd5ujc.scarab.storage.SnapshotPolicy
 class GenesisSecurityParamSuite extends FunSuite:
   private val directory = Path.of("fixtures/devnet/lsq/genesis")
 
-  private def setup(byronK: BigInt, shelleyK: BigInt, firstShelley: BigInt = 0) =
+  private val laterEras = Vector("Allegra", "Mary", "Alonzo", "Babbage", "Conway")
+
+  /** A genesis pair with the given k, Shelley from `firstShelley` and, with `laterForks`, the later
+    * eras from that epoch (the fixture starts them all at 0).
+    */
+  private def setup(
+      byronK: BigInt,
+      shelleyK: BigInt,
+      firstShelley: BigInt = 0,
+      laterForks: Option[BigInt] = None
+  ) =
     def read(name: String): Option[Array[Byte]] =
       Option.when(Files.exists(directory.resolve(name))) {
         val bytes = Files.readAllBytes(directory.resolve(name))
@@ -29,7 +39,12 @@ class GenesisSecurityParamSuite extends FunSuite:
               "epochLength" -> Json.fromLong(Long.MaxValue)
             )
           case "configuration.yaml" =>
-            Json.obj("TestShelleyHardForkAtEpoch" -> Json.fromBigInt(firstShelley))
+            Json.fromFields(
+              ("TestShelleyHardForkAtEpoch" -> Json.fromBigInt(firstShelley)) +:
+                laterForks.toVector.flatMap(epoch =>
+                  laterEras.map(era => s"Test${era}HardForkAtEpoch" -> Json.fromBigInt(epoch))
+                )
+            )
           case _ => Json.obj()
         if patch.asObject.exists(_.nonEmpty) then
           parser
@@ -43,7 +58,7 @@ class GenesisSecurityParamSuite extends FunSuite:
     NodeSetup.fromFiles(ReferenceBuild.Default)(read)
 
   List(BigInt(0), BigInt(1)).foreach { firstShelley =>
-    test(s"unequal k with Shelley at epoch $firstShelley keeps consensus and storage on Byron") {
+    test(s"unequal k with Shelley at epoch $firstShelley (the later eras at 0) keeps Byron's k") {
       val read = setup(2160, 10, firstShelley).fold(e => fail(e.message), identity)
       assertEquals(read.byron.isDefined, firstShelley != 0)
       assertEquals(read.chainStoreK.blocks, 2160)
@@ -74,6 +89,25 @@ class GenesisSecurityParamSuite extends FunSuite:
       assertEquals(history.get(Era.Byron).map(_.safeZone), Some(BigInt(4320)))
       assertEquals(history.get(Era.Conway).map(_.safeZone), Some(BigInt(600)))
       assertEquals(history.get(Era.Conway).map(_.genesisWindow), Some(BigInt(600)))
+    }
+  }
+
+  test("unequal k on a chain whose first era is Shelley keeps consensus and storage on Byron") {
+    val read = setup(2160, 10, 0, laterForks = Some(10)).fold(e => fail(e.message), identity)
+    assertEquals(read.mirrorStart.ext.ledgerState.era, Era.Shelley)
+    assertEquals(read.byron, None)
+    assertEquals(read.chainStoreK.blocks, 2160)
+    assertEquals(read.immutableChunkSlots.map(_.value), Some(21600L))
+    assertEquals(read.geometry.k, BigInt(10))
+    assertEquals(read.praos.geometry.k, BigInt(10))
+  }
+
+  List(BigInt(0), BigInt(1)).foreach { firstShelley =>
+    test(s"a Byron k of zero is refused at setup with Shelley at epoch $firstShelley") {
+      assertEquals(
+        setup(0, 10, firstShelley).map(_.chainStoreK.blocks),
+        Left(ConfigError(ConfigProblem.SecurityParamZero))
+      )
     }
   }
 
