@@ -9,7 +9,7 @@ implemented: the rule makes, for every transaction whatever its validity tag, ea
 
 ## Evidence
 
-unit: `ConwayLedgerSuite` (a withdrawal of another network and one of the network, under each validity tag, as a transaction (LEDGER) and as a block (LEDGERS), protocol 10 and 11; the collateral taken only where the rules of UTXO hold; collateral inputs that do not exist or are too many without redeemers; bootstrap-address outputs), `PredicateFailureCborSuite` (the reference's reasons as bytes); devnet `ntc`: the withdrawal case under each validity flag refused as the reference refuses it (raw and text), and a transaction with the flag false whose collateral both nodes take (one input stays)
+unit: `ConwayUtxoChecksSuite` (eight of the predicates on the era types, #85: each verdict equals the flat predicate's on every transaction of the recorded Conway refusal corpora and on crafted cases for the three they never refuse; the number of collateral inputs is the size of their set narrowed to a `Word16`, as the reference's `fromIntegral` narrows it, checked at 65,536, 65,539 and 65,540 inputs), `ConwayLedgerSuite` (a withdrawal of another network and one of the network, under each validity tag, as a transaction (LEDGER) and as a block (LEDGERS), protocol 10 and 11; the collateral taken only where the rules of UTXO hold; collateral inputs that do not exist or are too many without redeemers; bootstrap-address outputs), `PredicateFailureCborSuite` (the reference's reasons as bytes); devnet `ntc`: the withdrawal case under each validity flag refused as the reference refuses it (raw and text), and a transaction with the flag false whose collateral both nodes take (one input stays)
 
 ## Explicitly unchecked or unconfirmed
 

@@ -886,7 +886,8 @@
       "evidence": {
         "suites": [
           "ConwayLedgerSuite",
-          "PredicateFailureCborSuite"
+          "PredicateFailureCborSuite",
+          "ConwayUtxoChecksSuite"
         ],
         "issues": [
           163,
