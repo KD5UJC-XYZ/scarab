@@ -18,24 +18,35 @@ import xyz.kd5ujc.scarab.ledger.state.VocabularyGen.{*, given}
   * parts of the snapshots.
   */
 class EpochStateSuite extends DisciplineSuite:
+  import EpochStateSuite.Canonical
+
   given Cogen[SnapShot] = cogenShow
   given Cogen[SnapShots] = cogenShow
   given Cogen[PoolDistr] = cogenShow
-  given Cogen[NonMyopic] = cogenShow
-  given Cogen[RewardUpdate] = cogenShow
-  given Cogen[PulsingRewUpdate] = cogenShow
-  given Cogen[Option[PulsingRewUpdate]] = cogenShow
+  // A value that holds a likelihood is shown with its likelihoods normalised, as `Eq` compares
+  // them: a cogen of the raw weights would let the functions `EqTests` generates tell apart two
+  // values whose likelihoods differ by a constant, which `Eq` counts as equal, and `antiSymmetryEq`
+  // would then fail on them.
+  given Cogen[NonMyopic] = cogenShow[NonMyopic].contramap(Canonical.nonMyopic)
+  given Cogen[RewardUpdate] = cogenShow[RewardUpdate].contramap(Canonical.rewardUpdate)
+  given Cogen[PulsingRewUpdate] = cogenShow[PulsingRewUpdate].contramap(Canonical.pulsing)
+  given Cogen[Option[PulsingRewUpdate]] =
+    cogenShow[Option[PulsingRewUpdate]].contramap(_.map(Canonical.pulsing))
   given Cogen[BlocksMade] = cogenShow
   given Cogen[ChainAccountState] = cogenShow
   given Cogen[EpochNo] = cogenShow
   given Cogen[(Coin, Coin)] = cogenShow
   given blocksCogen: Cogen[SortedMap[KeyHash[StakePool], Word64]] = cogenShow
-  given conwayEsCogen: Cogen[EpochState[Conway]] = cogenShow
-  given conwayNesCogen: Cogen[NewEpochState[Conway]] = cogenShow
-  given babbageNesCogen: Cogen[NewEpochState[Babbage]] = cogenShow
+  given conwayEsCogen: Cogen[EpochState[Conway]] =
+    cogenShow[EpochState[Conway]].contramap(Canonical.epochState)
+  given conwayNesCogen: Cogen[NewEpochState[Conway]] =
+    cogenShow[NewEpochState[Conway]].contramap(Canonical.newEpochState)
+  given babbageNesCogen: Cogen[NewEpochState[Babbage]] =
+    cogenShow[NewEpochState[Babbage]].contramap(Canonical.newEpochState)
   given conwayLsCogen: Cogen[LedgerState[Conway]] = cogenShow
   given babbageLsCogen: Cogen[LedgerState[Babbage]] = cogenShow
-  given babbageEsCogen: Cogen[EpochState[Babbage]] = cogenShow
+  given babbageEsCogen: Cogen[EpochState[Babbage]] =
+    cogenShow[EpochState[Babbage]].contramap(Canonical.epochState)
   given Cogen[ConwayGovState] = cogenShow
   given Cogen[ConwayAccounts] = cogenShow
   given poolsCogen: Cogen[SortedMap[KeyHash[StakePool], StakePoolState]] = cogenShow
@@ -111,6 +122,20 @@ class EpochStateSuite extends DisciplineSuite:
       Word64.fromUnsigned(delegators),
       Credential.KeyHashObj[Staking](key[Staking](1))
     )
+
+  test("the cogen of a non-myopic state sees only what its Eq compares") {
+    val pool = key[StakePool](1)
+    val one = NonMyopic(Sorted.map(List(pool -> Likelihood(Vector(LogWeight(1f))))), coin(5))
+    val shifted = NonMyopic(Sorted.map(List(pool -> Likelihood(Vector(LogWeight(2.5f))))), coin(5))
+    val seed = org.scalacheck.rng.Seed(956L)
+    assert(one === shifted, "the two states differ by a constant likelihood shift")
+    assertNotEquals(one, shifted, "the two states are not the same value")
+    assertEquals(
+      Cogen[NonMyopic].perturb(seed, one),
+      Cogen[NonMyopic].perturb(seed, shifted),
+      "the seed each state perturbs"
+    )
+  }
 
   test("a likelihood equals its normalisation, as Haskell's Eq does") {
     val a = Likelihood(Vector(LogWeight(1f), LogWeight(2f), LogWeight(3f)))
@@ -261,3 +286,36 @@ class EpochStateSuite extends DisciplineSuite:
       ChainAccountState(coin(1), coin(2))
     )
   }
+
+object EpochStateSuite:
+  /** A value with every likelihood normalised, as `Eq[Likelihood]` compares it (`Likelihood` in
+    * `Rewards.scala`): two values that differ only in likelihoods shifted by a constant have the
+    * same canonical form. Nothing else in the value is changed.
+    */
+  object Canonical:
+    def likelihoods(
+        held: SortedMap[KeyHash[StakePool], Likelihood]
+    ): SortedMap[KeyHash[StakePool], Likelihood] =
+      held.transform((_, likelihood) => likelihood.normalised)
+
+    def nonMyopic(state: NonMyopic): NonMyopic = NonMyopic.likelihoods.modify(likelihoods)(state)
+
+    def rewardUpdate(update: RewardUpdate): RewardUpdate =
+      RewardUpdate.nonMyopic.modify(nonMyopic)(update)
+
+    def pulsing(update: PulsingRewUpdate): PulsingRewUpdate = update match
+      case PulsingRewUpdate.Pulsing(snapshot, pulser) =>
+        PulsingRewUpdate.Pulsing(
+          snapshot.copy(
+            nonMyopic = nonMyopic(snapshot.nonMyopic),
+            likelihoods = likelihoods(snapshot.likelihoods)
+          ),
+          pulser
+        )
+      case PulsingRewUpdate.Complete(complete) => PulsingRewUpdate.Complete(rewardUpdate(complete))
+
+    def epochState[E <: EraTag](state: EpochState[E]): EpochState[E] =
+      EpochState.nonMyopic[E].modify(nonMyopic)(state)
+
+    def newEpochState[E <: EraTag](state: NewEpochState[E]): NewEpochState[E] =
+      NewEpochState.es[E].modify(epochState)(NewEpochState.ru[E].modify(_.map(pulsing))(state))
