@@ -4,8 +4,9 @@ package xyz.kd5ujc.scarab.node.metrics
 import cats.effect.{IO, Resource}
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, Port, SocketAddress}
-import java.net.URI
+import java.net.{Socket, URI}
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
+import java.nio.charset.StandardCharsets
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.node.MetricsServer
 import xyz.kd5ujc.scarab.storage.StorageEvent
@@ -53,6 +54,50 @@ class MetricsServerSuite extends CatsEffectSuite:
           )
         )
       }
+    }
+  }
+
+  /** A raw connection to the listener: `sent` is written as is, and reads give up after 10 s. */
+  private def raw(port: Int, sent: String): IO[Socket] =
+    IO.blocking {
+      val socket = new Socket("127.0.0.1", port)
+      socket.setSoTimeout(10000)
+      socket.getOutputStream.write(sent.getBytes(StandardCharsets.US_ASCII))
+      socket.getOutputStream.flush()
+      socket
+    }
+
+  /** Every byte until the server ends the connection, or the failure that ended it. */
+  private def rest(socket: Socket): IO[Either[Throwable, String]] =
+    IO.blocking(
+      new String(socket.getInputStream.readAllBytes(), StandardCharsets.US_ASCII)
+    ).attempt
+
+  test("the server stops with an idle keep-alive connection open, and ends it") {
+    server.allocated.flatMap { (port, release) =>
+      for
+        socket <- raw(port, "GET /metrics HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        first <- IO.blocking(socket.getInputStream.read())
+        _ <- release
+        after <- rest(socket)
+        _ <- IO.blocking(socket.close())
+      yield
+        assert(first > 0, "the request was answered before the server stopped")
+        assert(after.isRight || after.left.exists(_.isInstanceOf[java.net.SocketException]))
+    }
+  }
+
+  test("the server stops with a request half sent, and ends that connection") {
+    server.allocated.flatMap { (port, release) =>
+      for
+        socket <- raw(port, "GET /metrics HTTP/1.1\r\nHost: loc")
+        _ <- release
+        after <- rest(socket)
+        _ <- IO.blocking(socket.close())
+      yield assert(
+        after.isRight || after.left.exists(_.isInstanceOf[java.net.SocketException]),
+        s"the connection ended rather than timing out: $after"
+      )
     }
   }
 
