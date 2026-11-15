@@ -643,11 +643,14 @@ def compare_pre_conway_followers(name, era, sites, attempts=10):
         pending = [site for site in sites if site not in judged]
         if not pending:
             break
+        read = False  # the reference state of this attempt was read, so its era is known
         try:
             before = protocol_parameters(name)
             with lsq(name) as session:
                 session.acquire()
                 tip, reference = eraview.reference_pre_conway(era, session, before)
+            acquired = reference.pop("_era", acquired)  # the era of the state that was compared
+            read = True
             after = protocol_parameters(name)
         except eraview.EraLeft:
             for site in pending:
@@ -656,11 +659,16 @@ def compare_pre_conway_followers(name, era, sites, attempts=10):
         except (RuntimeError, EOFError, json.JSONDecodeError, subprocess.TimeoutExpired):
             time.sleep(0.5)
             continue
+        except (Exception, SystemExit) as e:
+            if not read:
+                raise
+            for site in pending:
+                judged.setdefault(site, failed_sample(e, acquired))
+            break
         if before != after:
             continue  # an epoch boundary passed between the parameter reads and the state read
         # a follower that moved past the retained window (k blocks) while the queries ran is asked again at the next
         # attempt's block; the others are judged at this one
-        acquired = reference.pop("_era", None)  # the era of the state that was compared
         try:
             states = {site: awaited_state(name, tip, site, 8, 0.4) for site in pending}
             if all(scala is None for scala in states.values()):
@@ -671,15 +679,19 @@ def compare_pre_conway_followers(name, era, sites, attempts=10):
                 if scala is not None:
                     judged[site] = pre_conway_sample(tip, reference, reference_encodings, evidence, scala, acquired)
         except (Exception, SystemExit) as e:  # the failure keeps the era of the state it was compared in
-            import traceback
             for site in pending:
-                judged.setdefault(site, Sample({**({} if acquired is None else {"acquiredEra": acquired}),
-                                                "error": repr(e),
-                                                "traceback": traceback.format_exc()[-1500:]}))
+                judged.setdefault(site, failed_sample(e, acquired))
             break
     unjudged = {} if acquired is None else {"acquiredEra": acquired}
     return [judged.get(site) or Sample({**unjudged, "error": "no stable comparison within the attempts"})
             for site in sites]
+
+
+def failed_sample(error, acquired):
+    """The Sample of a comparison that ended on `error` (the one being handled), in the era `acquired` when known."""
+    import traceback
+    return Sample({**({} if acquired is None else {"acquiredEra": acquired}), "error": repr(error),
+                   "traceback": traceback.format_exc()[-1500:]})
 
 
 def pre_conway_sample(tip, reference, reference_encodings, evidence, scala, acquired=None):

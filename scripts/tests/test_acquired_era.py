@@ -97,7 +97,7 @@ class TallyTest(unittest.TestCase):
     STATE = {"epoch": 7, "utxo": {}, "rewardUpdate": None, "params": {}, "ppup": {"current": {}, "future": {}},
              "mir": {"reserves": {}, "treasury": {}, "deltaReserves": 0, "deltaTreasury": 0}}
 
-    def round(self, state_of=lambda site: json.loads(json.dumps(TallyTest.STATE)), whole_error=False):
+    def round(self, state_of=lambda site: json.loads(json.dumps(TallyTest.STATE)), parameters=lambda: {}):
         """`compare_era` for an alonzo round whose acquired state is babbage, with two followers: (tallies, agreement)."""
         import tempfile
         from devnet.util import FollowerSite
@@ -109,9 +109,9 @@ class TallyTest(unittest.TestCase):
         agreement = compare.FollowerAgreement(root, sites)
         view = {**json.loads(json.dumps(self.STATE)), "_era": "babbage"}
         context = unittest.mock.MagicMock()
-        with patch.object(compare, "protocol_parameters", return_value={}), \
+        with patch.object(compare, "protocol_parameters", side_effect=lambda name: parameters()), \
                 patch.object(compare, "lsq", return_value=context), \
-                patch.object(eraview, "reference_pre_conway", return_value=({"slot": 1, "hash": "a"}, view)), \
+                patch.object(eraview, "reference_pre_conway", side_effect=lambda *a: ({"slot": 1, "hash": "a"}, dict(view))), \
                 patch.object(compare, "awaited_state", side_effect=lambda n, t, site, *a: state_of(site)), \
                 patch.object(compare, "whole_state", return_value={"skipped": "none"}), \
                 patch.object(compare.time, "sleep"):
@@ -133,17 +133,61 @@ class TallyTest(unittest.TestCase):
         self.assertEqual((agreement.per_era["babbage"]["notCompared"], agreement.per_era["alonzo"]["notCompared"]),
                          (1, 0))
 
-    def test_a_malformed_reply_is_an_error_not_a_skip(self):
-        class Malformed(FakeSession):
-            def ledger_query(self, era_index, query):
+    def after_the_read(self, failure):
+        """A round whose second read of the parameters, after the reference state was read, raises `failure`."""
+        calls = []
+
+        def parameters():
+            calls.append(1)
+            if len(calls) % 2 == 0:
+                raise failure
+            return {}
+        return self.round(parameters=parameters)
+
+    def test_a_retryable_failure_after_the_reference_read_counts_for_the_acquired_era(self):
+        tallies, agreement = self.after_the_read(RuntimeError("closed"))
+        for tally in tallies:
+            self.assertEqual((tally.per_era["babbage"]["errors"], tally.per_era["alonzo"]["errors"]), (1, 0))
+
+    def test_an_exit_after_the_reference_read_counts_for_the_acquired_era(self):
+        tallies, agreement = self.after_the_read(SystemExit("command failed"))
+        for tally in tallies:
+            self.assertEqual((tally.per_era["babbage"]["errors"], tally.per_era["alonzo"]["errors"]), (1, 0))
+
+    def test_an_exit_before_the_reference_read_is_not_taken_for_an_era(self):
+        with patch.object(compare, "protocol_parameters", side_effect=SystemExit("command failed")), \
+                self.assertRaises(SystemExit):
+            compare.compare_pre_conway_followers("n", "alonzo", (compare.SINGLE_FOLLOWER,))
+
+    def malformed_then(self, replies, attempts=2):
+        view = {**json.loads(json.dumps(self.STATE)), "_era": "babbage"}
+        asked = []
+
+        def read(*args):
+            asked.append(1)
+            reply = replies[len(asked) - 1]
+            if reply is None:
                 raise RuntimeError("era mismatch or unexpected reply: 'x'")
-        context = unittest.mock.MagicMock()
-        context.__enter__.return_value = Malformed(eraview.ERA_INDEX["babbage"])
+            return {"slot": 1, "hash": "a"}, dict(view)
         with patch.object(compare, "protocol_parameters", return_value={}), \
-                patch.object(compare, "lsq", return_value=context), patch.object(compare.time, "sleep"):
-            samples = compare.compare_pre_conway_followers("n", "babbage", (compare.SINGLE_FOLLOWER,), attempts=2)
-        self.assertNotIn("skipped", samples[0].result)
-        self.assertIn("error", samples[0].result)
+                patch.object(compare, "lsq", return_value=unittest.mock.MagicMock()), \
+                patch.object(eraview, "reference_pre_conway", side_effect=read), \
+                patch.object(compare, "awaited_state", return_value=json.loads(json.dumps(self.STATE))), \
+                patch.object(compare.time, "sleep"):
+            samples = compare.compare_pre_conway_followers("n", "babbage", (compare.SINGLE_FOLLOWER,), attempts)
+        return samples[0].result, len(asked)
+
+    def test_a_malformed_reply_is_an_error_not_a_skip_after_every_attempt(self):
+        result, asked = self.malformed_then([None, None])
+        self.assertEqual(asked, 2)
+        self.assertNotIn("skipped", result)
+        self.assertIn("error", result)
+
+    def test_a_malformed_reply_is_retried_and_a_later_read_is_compared(self):
+        result, asked = self.malformed_then([None, "ok"])
+        self.assertEqual(asked, 2)
+        self.assertIs(result["matched"], True)
+        self.assertEqual(result["acquiredEra"], "babbage")
 
 
 if __name__ == "__main__":
