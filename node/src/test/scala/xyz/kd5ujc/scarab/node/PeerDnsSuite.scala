@@ -6,7 +6,7 @@ import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, SocketAddress, host, ipv4, port}
-import java.net.InetAddress
+import java.net.{InetAddress, InetSocketAddress}
 import java.util.concurrent.{CompletableFuture, CompletionStage, Executor, Executors}
 import java.util.concurrent.atomic.AtomicInteger
 import org.xbill.DNS.{
@@ -14,10 +14,12 @@ import org.xbill.DNS.{
   Cache,
   DClass,
   EDNSOption,
+  ExtendedResolver,
   Flags,
   Message,
   Resolver,
   Section,
+  SimpleResolver,
   TSIG,
   Type
 }
@@ -771,9 +773,8 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
   // D8 of issue 956: the reference keeps no DNS cache of its own (`resolvCache = Nothing` in the
   // dns-4.2.0 `defaultResolvConf` that ouroboros-network c45735a5 resolves roots with), so a lookup
   // within a record's TTL asks the resolver again, where dnsjava's default session would answer it
-  // from its cache until the TTL ran out. The builder carries a cache, as `defaultBuilder()` does,
-  // but not its hosts-file parser, so an entry for the name in this machine's hosts file cannot
-  // answer in place of the resolver.
+  // from its cache until the TTL ran out. The production builder is given a cache, as
+  // `defaultBuilder()` gives one, so that `uncached` is what keeps the session from it.
   test("a lookup within a record's TTL asks the resolver again: the session keeps no DNS cache") {
     val executor =
       Resource.make(IO(Executors.newSingleThreadExecutor()))(e => IO(e.shutdownNow()).void)
@@ -785,10 +786,7 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
           3600L
         )
         session <- IO(
-          PeerDns.uncached(
-            LookupSession.builder().resolver(resolver).cache(new Cache(DClass.IN)),
-            lookups
-          )
+          PeerDns.uncached(PeerDns.sessionBuilder(resolver).cache(new Cache(DClass.IN)), lookups)
         )
         dns = PeerDns.fromSession[IO](session)
         first <- dns.addresses(domain)
@@ -802,7 +800,88 @@ class PeerDnsSuite extends munit.CatsEffectSuite:
     }
   }
 
+  // D9 of issue 956: the reference reads no hosts file (dns-4.2.0's `lookupRaw`, which
+  // ouroboros-network c45735a5 resolves roots with, asks the servers of /etc/resolv.conf), where
+  // dnsjava's `defaultBuilder()` installs a parser of this machine's hosts file that answers a name
+  // listed there without asking the resolver. The session's parser field is read directly, so that
+  // check holds whatever this machine's hosts file lists; `localhost`, which a hosts file commonly
+  // lists (the build container's does), then reaches the resolver as well.
+  test("a name a hosts file lists is asked of the resolver: the session reads no hosts file") {
+    val executor =
+      Resource.make(IO(Executors.newSingleThreadExecutor()))(e => IO(e.shutdownNow()).void)
+    executor.use { lookups =>
+      for
+        domain <- name("localhost")
+        resolver = PeerDnsSuite.Answering(
+          InetAddress.getByAddress(Array[Byte](-64, 0, 2, 10)),
+          3600L
+        )
+        session <- IO(PeerDns.uncached(PeerDns.sessionBuilder(resolver), lookups))
+        parser <- IO(PeerDnsSuite.field(session, "hostsFileParser"))
+        answer <- PeerDns.fromSession[IO](session).addresses(domain)
+        asked <- IO(resolver.asked.get)
+        expected = Vector(DnsAddressRecord(ipv4"192.0.2.10", 900.seconds))
+        _ <- IO(
+          assertEquals(
+            parser.map(_.getClass.getName),
+            None,
+            s"the session's hosts parser (localhost. answered $answer, A queries asked: $asked)"
+          )
+        )
+        _ <- IO(assertEquals(answer.records, expected, "the answer for localhost., the resolver's"))
+        _ <- IO(assertEquals(asked, 1, "A queries that reached the resolver"))
+      yield ()
+    }
+  }
+
+  // The resolver `dnsJava` asks is rebuilt as dnsjava v3.6.5's `defaultBuilder()` builds it
+  // (`LookupSession.java:372-376`): the same servers of the system configuration, with the same
+  // timeouts and retries. Neither resolver is asked anything here.
+  test("the production resolver asks the servers defaultBuilder() would, with its timeouts") {
+    for
+      ours <- IO(PeerDnsSuite.servers(PeerDns.systemResolver()))
+      built <- IO(PeerDnsSuite.field(LookupSession.defaultBuilder(), "resolver"))
+      theirs = built.collect { case resolver: Resolver => PeerDnsSuite.servers(resolver) }
+      _ <- IO(assertEquals(Option(ours), theirs, "the servers, timeouts and retries"))
+      _ <- IO(assert(ours.servers.nonEmpty, "the system configuration names a server"))
+    yield ()
+  }
+
 object PeerDnsSuite:
+  /** The value of `owner` 's field `name`, read by reflection: dnsjava's session and its builder
+    * keep their configuration in private fields without accessors.
+    */
+  def field(owner: AnyRef, name: String): Option[AnyRef] =
+    val declared = owner.getClass.getDeclaredField(name)
+    declared.setAccessible(true)
+    Option(declared.get(owner))
+
+  /** What a resolver asks and how long it waits: an `ExtendedResolver` 's timeout, retries and load
+    * balancing, and each of its resolvers' class, address (a `SimpleResolver` 's) and timeout.
+    */
+  final case class Servers(
+      kind: String,
+      timeout: java.time.Duration,
+      retries: Option[Int],
+      loadBalance: Option[Boolean],
+      servers: Vector[(String, Option[InetSocketAddress], java.time.Duration)]
+  )
+
+  def servers(resolver: Resolver): Servers = resolver match
+    case extended: ExtendedResolver =>
+      Servers(
+        extended.getClass.getName,
+        extended.getTimeout,
+        Some(extended.getRetries),
+        Some(extended.getLoadBalance),
+        extended.getResolvers.toVector.map {
+          case simple: SimpleResolver =>
+            (simple.getClass.getName, Some(simple.getAddress), simple.getTimeout)
+          case other => (other.getClass.getName, None, other.getTimeout)
+        }
+      )
+    case other => Servers(other.getClass.getName, other.getTimeout, None, None, Vector.empty)
+
   /** A resolver that answers an A query for any name with `address` at `ttl` seconds, and any other
     * query with no records, and counts the A queries it is asked. dnsjava's `Resolver` is a
     * callback interface that reports by a returned stage, so the count is an atomic held by the

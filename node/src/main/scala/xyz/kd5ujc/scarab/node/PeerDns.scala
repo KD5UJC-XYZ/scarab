@@ -16,7 +16,19 @@ import java.util.concurrent.{
 import java.util.function.BiConsumer
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
-import org.xbill.DNS.{ARecord, AAAARecord, Name, Record, SRVRecord, TextParseException, Type}
+import org.xbill.DNS.{
+  ARecord,
+  AAAARecord,
+  ExtendedResolver,
+  Name,
+  Record,
+  Resolver,
+  ResolverConfig,
+  SRVRecord,
+  SimpleResolver,
+  TextParseException,
+  Type
+}
 import org.xbill.DNS.lookup.{LookupSession, NoSuchDomainException}
 
 /** One fully-qualified DNS name. Names are validated before reaching the DNS implementation. */
@@ -96,18 +108,46 @@ object PeerDns:
       .make(Async[F].delay(Executors.newFixedThreadPool(4)))(executor =>
         Async[F].delay(executor.shutdownNow()).void
       )
-      .evalMap(executor => Async[F].delay(uncached(LookupSession.defaultBuilder(), executor)))
+      .evalMap(executor => Async[F].delay(uncached(sessionBuilder(systemResolver()), executor)))
       .map(fromSession[F])
+
+  /** The resolver of dnsjava's `LookupSession.defaultBuilder()`, built as it builds it (dnsjava
+    * v3.6.5 `LookupSession.java:372-376`): a `SimpleResolver` for each server of the system
+    * configuration, asked through an `ExtendedResolver`. The reference asks, on POSIX systems, the
+    * servers that the `nameserver` lines of `/etc/resolv.conf` name (dns-4.2.0
+    * `internal/Network/DNS/Resolver/Internal.hs:46-50`).
+    */
+  private[node] def systemResolver(): ExtendedResolver =
+    new ExtendedResolver(
+      ResolverConfig.getCurrentConfig.servers.asScala.toVector
+        .map(server => new SimpleResolver(server): Resolver)
+        .asJava
+    )
+
+  /** The session's builder: `resolver`, without the hosts-file parser that `defaultBuilder()` adds
+    * (`LookupSession.java:379`), which answers an A or AAAA query for a name the hosts file lists
+    * without asking the resolver (`LookupSession.java:417-425`, `460-482`). The reference reads no
+    * hosts file: ouroboros-network `c45735a5` looks every root up with dns-4.2.0's `lookupRaw`
+    * (`RootPeersDNS/DNSActions.hs:292-295`), which sends the query to those servers
+    * (`Network/DNS/Transport.hs:81-103`). The only file dns-4.2.0 reads is that configuration file
+    * (`internal/Network/DNS/Resolver/Internal.hs:46`), and it turns each server into an address
+    * with `AI_NUMERICHOST` (`Network/DNS/Resolver.hs:68-76`). The ndots that `defaultBuilder()`
+    * reads from the system configuration is not kept, and it sets no search path: the reference has
+    * neither, as it makes every name absolute (`Transport.hs:89-91`), and a session without a
+    * search path looks a name up once, made absolute, whatever its ndots
+    * (`LookupSession.java:432-449`).
+    */
+  private[node] def sessionBuilder(resolver: Resolver): LookupSession.LookupSessionBuilder =
+    LookupSession.builder().resolver(resolver)
 
   /** The session from `builder` without a record cache, its lookups on `executor`. The reference
     * keeps no DNS cache of its own: ouroboros-network `c45735a5` resolves local and public roots
     * with `DNS.defaultResolvConf` (`PeerSelection/PeerSelectionActions.hs:93-98`, `180`), whose
     * `resolvCache` is `Nothing` in the `dns-4.2.0` that cardano-node 11.1.3 links
-    * (`Network/DNS/Types/Resolver.hs:104-112`). Every lookup asks the resolver, and the clipped TTL
-    * only schedules the next one. dnsjava's default session caches answers for their whole TTL,
-    * which would hold an address past the reference's 900 s once a record's TTL is longer. A name
-    * in the hosts file is still answered from it by `defaultBuilder()` 's hosts parser, without
-    * asking the resolver: another difference from the reference, which issue 956 tracks.
+    * (`internal/Network/DNS/Types/Resolver.hs:104-112`). Every lookup asks the resolver, and the
+    * clipped TTL only schedules the next one. dnsjava's default session caches answers for their
+    * whole TTL, which would hold an address past the reference's 900 s once a record's TTL is
+    * longer.
     */
   private[node] def uncached(
       builder: LookupSession.LookupSessionBuilder,
