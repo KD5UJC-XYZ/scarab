@@ -2,14 +2,15 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import monocle.Lens
-import xyz.kd5ujc.scarab.ledger.state.{Conway, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag}
 
 /** The protocol-parameter record of era `E` over `F` (`type PParamsHKD (f :: Type -> Type) era`,
   * cardano-ledger f649f975 `libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs:376`): one
   * case per era that has its record.
   */
 type PParamsHKD[F[_], E <: EraTag] = E match
-  case Conway => conway.ConwayPParams[F]
+  case Conway   => conway.ConwayPParams[F]
+  case Dijkstra => dijkstra.DijkstraPParams[F]
 
 /** The protocol parameters of era `E` (`newtype PParams era = PParams (PParamsHKD Identity era)`,
   * `Core/PParams.hs:166`, cardano-ledger f649f975).

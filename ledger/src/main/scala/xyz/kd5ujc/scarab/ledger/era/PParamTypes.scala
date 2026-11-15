@@ -62,10 +62,25 @@ opaque type PositiveInterval = Rational
 object PositiveInterval:
   def boundRational(r: Rational): Option[PositiveInterval] = BoundedRatio.Positive.bound(r)
 
+  /** `minBound = positiveIntervalEpsilon`, `1 % 10 ^ 19` (`BaseTypes.hs:505-510`, cardano-ledger
+    * 9df9f98c): the least value.
+    */
+  val minBound: PositiveInterval = BoundedRatio.Positive.lower
+
   /** `boundRational 1.2` (`Conway/PParams.hs:983`, cardano-ledger f649f975), within the bounds. */
   private[era] val oneAndAFifth: PositiveInterval = Rational(6, 5)
 
   extension (p: PositiveInterval) def rational: Rational = p
+
+/** `MaxPledgeLeverage` (`newtype MaxPledgeLeverage = MaxPledgeLeverage {unMaxPledgeLeverage ::
+  * StrictMaybe NonNegativeInterval}`, cardano-ledger 9df9f98c `Core/PParams.hs:369-379`): the most
+  * a pool's stake may be over its pledge, or no limit.
+  */
+final case class MaxPledgeLeverage(unMaxPledgeLeverage: Option[NonNegativeInterval])
+
+object MaxPledgeLeverage:
+  /** `MaxPledgeLeverage SNothing`: no limit. */
+  val none: MaxPledgeLeverage = MaxPledgeLeverage(None)
 
 /** `CoinPerByte` (`newtype CoinPerByte = CoinPerByte {unCoinPerByte :: CompactForm Coin}`,
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs:220-222`, cardano-ledger f649f975).

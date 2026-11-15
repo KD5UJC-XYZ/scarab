@@ -1,0 +1,7 @@
+*
+!scripts/
+scripts/*
+!scripts/oracle/
+scripts/oracle/*
+!scripts/oracle/dijkstra-pparams/
+!scripts/oracle/dijkstra-pparams/Main.hs
