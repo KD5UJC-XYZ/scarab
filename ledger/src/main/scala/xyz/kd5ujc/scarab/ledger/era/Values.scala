@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.state.Coin
 
 /** The arithmetic of an era's value (`Val`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Val.hs`): a rule that adds values up asks for it,
@@ -11,8 +12,8 @@ trait Val[V]:
   def zero: V
   def plus(a: V, b: V): V
 
-  /** The lovelace of the value (`coin`). */
-  def coin(v: V): BigInt
+  /** The lovelace of the value (`coin`, a `Coin`). */
+  def coin(v: V): Coin
 
   /** Whether the value is lovelace only (`isAdaOnly`). */
   def isAdaOnly(v: V): Boolean
@@ -35,7 +36,7 @@ object AdaValue:
   given Val[AdaValue] with
     def zero: AdaValue = BigInt(0)
     def plus(a: AdaValue, b: AdaValue): AdaValue = a + b
-    def coin(v: AdaValue): BigInt = v
+    def coin(v: AdaValue): Coin = Coin(v)
     def isAdaOnly(v: AdaValue): Boolean = true
 
 /** Lovelace and native assets: `MaryValue`, the value from Mary on (`Value MaryEra` to `Value
@@ -59,5 +60,5 @@ object MultiAssetValue:
   given Val[MultiAssetValue] with
     def zero: MultiAssetValue = xyz.kd5ujc.scarab.ledger.Value(0, Map.empty)
     def plus(a: MultiAssetValue, b: MultiAssetValue): MultiAssetValue = a + b
-    def coin(v: MultiAssetValue): BigInt = v.coin
+    def coin(v: MultiAssetValue): Coin = Coin(v.coin)
     def isAdaOnly(v: MultiAssetValue): Boolean = v.assets.isEmpty

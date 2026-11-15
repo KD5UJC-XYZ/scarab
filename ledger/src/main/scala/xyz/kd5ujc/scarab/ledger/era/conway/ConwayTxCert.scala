@@ -2,18 +2,19 @@
 package xyz.kd5ujc.scarab.ledger.era.conway
 
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
-import xyz.kd5ujc.scarab.ledger.{Anchor, Certificate, Credential, PoolParams}
+import xyz.kd5ujc.scarab.ledger.{Anchor, Certificate, Credential}
 import xyz.kd5ujc.scarab.ledger.era.{
   ConwayDelegCert,
   ConwayEraTxCert,
   ShelleyEraTxCert,
   ConwayGovCert,
+  StakePoolParams,
   Delegatee,
   EraField,
   EraTxError,
   PoolCert
 }
-import xyz.kd5ujc.scarab.ledger.state.Conway
+import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** A Conway certificate (`data ConwayTxCert era`, cardano-ledger f649f975
@@ -40,9 +41,9 @@ object ConwayTxCert:
     */
   private[era] def fromFlat(c: Certificate): Either[EraTxError, ConwayTxCert] = c match
     case Certificate.Register(cred, deposit) =>
-      Right(ConwayTxCertDeleg(ConwayDelegCert.ConwayRegCert(cred, deposit)))
+      Right(ConwayTxCertDeleg(ConwayDelegCert.ConwayRegCert(cred, deposit.map(Coin(_)))))
     case Certificate.Unregister(cred, refund) =>
-      Right(ConwayTxCertDeleg(ConwayDelegCert.ConwayUnRegCert(cred, refund)))
+      Right(ConwayTxCertDeleg(ConwayDelegCert.ConwayUnRegCert(cred, refund.map(Coin(_)))))
     case Certificate.Delegate(cred, pool, drep, deposit) =>
       val delegatee = (pool, drep) match
         case (Some(p), Some(d)) => Right(Delegatee.DelegStakeVote(p, d))
@@ -51,16 +52,17 @@ object ConwayTxCert:
         case (None, None)       => Left(EraTxError.NoDelegatee)
       delegatee.map(to =>
         deposit match
-          case Some(d) => ConwayTxCertDeleg(ConwayDelegCert.ConwayRegDelegCert(cred, to, d))
+          case Some(d) => ConwayTxCertDeleg(ConwayDelegCert.ConwayRegDelegCert(cred, to, Coin(d)))
           case None    => ConwayTxCertDeleg(ConwayDelegCert.ConwayDelegCert(cred, to))
       )
-    case Certificate.RegisterPool(params) => Right(ConwayTxCertPool(PoolCert.RegPool(params)))
+    case Certificate.RegisterPool(params) =>
+      Right(ConwayTxCertPool(PoolCert.RegPool(StakePoolParams(params))))
     case Certificate.RetirePool(pool, epoch) =>
       Right(ConwayTxCertPool(PoolCert.RetirePool(pool, epoch)))
     case Certificate.RegisterDRep(cred, deposit, anchor) =>
-      Right(ConwayTxCertGov(ConwayGovCert.ConwayRegDRep(cred, deposit, anchor)))
+      Right(ConwayTxCertGov(ConwayGovCert.ConwayRegDRep(cred, Coin(deposit), anchor)))
     case Certificate.UnregisterDRep(cred, refund) =>
-      Right(ConwayTxCertGov(ConwayGovCert.ConwayUnRegDRep(cred, refund)))
+      Right(ConwayTxCertGov(ConwayGovCert.ConwayUnRegDRep(cred, Coin(refund))))
     case Certificate.UpdateDRep(cred, anchor) =>
       Right(ConwayTxCertGov(ConwayGovCert.ConwayUpdateDRep(cred, anchor)))
     case Certificate.CommitteeAuthorize(cold, hot) =>
@@ -89,6 +91,19 @@ object ConwayTxCert:
     case Credential.Script(h) => Some(h)
     case Credential.Key(_)    => None
 
+  // The certificate of each kind, so that each reader matches every case of its kind.
+  private def deleg(cert: ConwayTxCert): Option[ConwayDelegCert] = cert match
+    case ConwayTxCertDeleg(c)                     => Some(c)
+    case ConwayTxCertPool(_) | ConwayTxCertGov(_) => None
+
+  private def poolCert(cert: ConwayTxCert): Option[PoolCert] = cert match
+    case ConwayTxCertPool(c)                       => Some(c)
+    case ConwayTxCertDeleg(_) | ConwayTxCertGov(_) => None
+
+  private def gov(cert: ConwayTxCert): Option[ConwayGovCert] = cert match
+    case ConwayTxCertGov(c)                         => Some(c)
+    case ConwayTxCertDeleg(_) | ConwayTxCertPool(_) => None
+
   val instance: ConwayEraTxCert[Conway] & ShelleyEraTxCert[Conway] =
     new ConwayEraTxCert[Conway] with ShelleyEraTxCert[Conway]:
       // `getVKeyWitnessConwayTxCert`, `Conway/TxCert.hs:786-795`, cardano-ledger f649f975
@@ -101,67 +116,167 @@ object ConwayTxCert:
         case ConwayTxCertDeleg(c) => delegWitness(c).flatMap(scriptHash)
         case ConwayTxCertPool(_)  => None
         case ConwayTxCertGov(c)   => scriptHash(c.witness)
-      override def getRegPoolTxCert(cert: ConwayTxCert): Option[PoolParams] = cert match
-        case ConwayTxCertPool(PoolCert.RegPool(params)) => Some(params)
-        case _                                          => None
-      override def getRetirePoolTxCert(cert: ConwayTxCert): Option[(Bytes, BigInt)] = cert match
-        case ConwayTxCertPool(PoolCert.RetirePool(pool, epoch)) => Some((pool, epoch))
-        case _                                                  => None
-      override def lookupRegStakeTxCert(cert: ConwayTxCert): Option[Credential] = cert match
-        case ConwayTxCertDeleg(ConwayDelegCert.ConwayRegCert(c, _))         => Some(c)
-        case ConwayTxCertDeleg(ConwayDelegCert.ConwayRegDelegCert(c, _, _)) => Some(c)
-        case _                                                              => None
-      override def lookupUnRegStakeTxCert(cert: ConwayTxCert): Option[Credential] = cert match
-        case ConwayTxCertDeleg(ConwayDelegCert.ConwayUnRegCert(c, _)) => Some(c)
-        case _                                                        => None
-      override def getRegTxCert(cert: ConwayTxCert): Option[Credential] = cert match
-        case ConwayTxCertDeleg(ConwayDelegCert.ConwayRegCert(c, None)) => Some(c)
-        case _                                                         => None
-      override def getUnRegTxCert(cert: ConwayTxCert): Option[Credential] = cert match
-        case ConwayTxCertDeleg(ConwayDelegCert.ConwayUnRegCert(c, None)) => Some(c)
-        case _                                                           => None
-      override def getDelegStakeTxCert(cert: ConwayTxCert): Option[(Credential, Bytes)] = cert match
-        case ConwayTxCertDeleg(ConwayDelegCert.ConwayDelegCert(c, Delegatee.DelegStake(p))) =>
-          Some((c, p))
-        case _ => None
-      override def getRegDepositTxCert(cert: ConwayTxCert): Option[(Credential, BigInt)] =
-        cert match
-          case ConwayTxCertDeleg(ConwayDelegCert.ConwayRegCert(c, Some(d))) => Some((c, d))
-          case _                                                            => None
-      override def getUnRegDepositTxCert(cert: ConwayTxCert): Option[(Credential, BigInt)] =
-        cert match
-          case ConwayTxCertDeleg(ConwayDelegCert.ConwayUnRegCert(c, Some(d))) => Some((c, d))
-          case _                                                              => None
-      override def getDelegTxCert(cert: ConwayTxCert): Option[(Credential, Delegatee)] = cert match
-        case ConwayTxCertDeleg(ConwayDelegCert.ConwayDelegCert(c, to)) => Some((c, to))
-        case _                                                         => None
+
+      override def mkRegPoolTxCert(params: StakePoolParams): ConwayTxCert =
+        ConwayTxCertPool(PoolCert.RegPool(params))
+      override def getRegPoolTxCert(cert: ConwayTxCert): Option[StakePoolParams] =
+        poolCert(cert).flatMap {
+          case PoolCert.RegPool(params)  => Some(params)
+          case PoolCert.RetirePool(_, _) => None
+        }
+      override def mkRetirePoolTxCert(pool: Bytes, epoch: BigInt): ConwayTxCert =
+        ConwayTxCertPool(PoolCert.RetirePool(pool, epoch))
+      override def getRetirePoolTxCert(cert: ConwayTxCert): Option[(Bytes, BigInt)] =
+        poolCert(cert).flatMap {
+          case PoolCert.RetirePool(p, epoch) => Some((p, epoch))
+          case PoolCert.RegPool(_)           => None
+        }
+
+      // `lookupRegStakeTxCert`, `Conway/TxCert.hs:221-226`, cardano-ledger f649f975
+      override def lookupRegStakeTxCert(cert: ConwayTxCert): Option[Credential] =
+        deleg(cert).flatMap {
+          case ConwayDelegCert.ConwayRegCert(c, _)         => Some(c)
+          case ConwayDelegCert.ConwayRegDelegCert(c, _, _) => Some(c)
+          case ConwayDelegCert.ConwayUnRegCert(_, _) | ConwayDelegCert.ConwayDelegCert(_, _) => None
+        }
+      override def lookupUnRegStakeTxCert(cert: ConwayTxCert): Option[Credential] =
+        deleg(cert).flatMap {
+          case ConwayDelegCert.ConwayUnRegCert(c, _) => Some(c)
+          case ConwayDelegCert.ConwayRegCert(_, _) | ConwayDelegCert.ConwayDelegCert(_, _) |
+              ConwayDelegCert.ConwayRegDelegCert(_, _, _) =>
+            None
+        }
+
+      override def mkRegTxCert(credential: Credential): ConwayTxCert =
+        ConwayTxCertDeleg(ConwayDelegCert.ConwayRegCert(credential, None))
+      override def getRegTxCert(cert: ConwayTxCert): Option[Credential] =
+        deleg(cert).flatMap {
+          case ConwayDelegCert.ConwayRegCert(c, None) => Some(c)
+          case ConwayDelegCert.ConwayRegCert(_, Some(_)) | ConwayDelegCert.ConwayUnRegCert(_, _) |
+              ConwayDelegCert.ConwayDelegCert(_, _) | ConwayDelegCert.ConwayRegDelegCert(_, _, _) =>
+            None
+        }
+      override def mkUnRegTxCert(credential: Credential): ConwayTxCert =
+        ConwayTxCertDeleg(ConwayDelegCert.ConwayUnRegCert(credential, None))
+      override def getUnRegTxCert(cert: ConwayTxCert): Option[Credential] =
+        deleg(cert).flatMap {
+          case ConwayDelegCert.ConwayUnRegCert(c, None) => Some(c)
+          case ConwayDelegCert.ConwayUnRegCert(_, Some(_)) | ConwayDelegCert.ConwayRegCert(_, _) |
+              ConwayDelegCert.ConwayDelegCert(_, _) | ConwayDelegCert.ConwayRegDelegCert(_, _, _) =>
+            None
+        }
+      override def mkDelegStakeTxCert(credential: Credential, pool: Bytes): ConwayTxCert =
+        ConwayTxCertDeleg(ConwayDelegCert.ConwayDelegCert(credential, Delegatee.DelegStake(pool)))
+      override def getDelegStakeTxCert(cert: ConwayTxCert): Option[(Credential, Bytes)] =
+        getDelegTxCert(cert).flatMap {
+          case (c, Delegatee.DelegStake(p))                                 => Some((c, p))
+          case (_, Delegatee.DelegVote(_) | Delegatee.DelegStakeVote(_, _)) => None
+        }
+
+      override def mkRegDepositTxCert(credential: Credential, deposit: Coin): ConwayTxCert =
+        ConwayTxCertDeleg(ConwayDelegCert.ConwayRegCert(credential, Some(deposit)))
+      override def getRegDepositTxCert(cert: ConwayTxCert): Option[(Credential, Coin)] =
+        deleg(cert).flatMap {
+          case ConwayDelegCert.ConwayRegCert(c, Some(d)) => Some((c, d))
+          case ConwayDelegCert.ConwayRegCert(_, None) | ConwayDelegCert.ConwayUnRegCert(_, _) |
+              ConwayDelegCert.ConwayDelegCert(_, _) | ConwayDelegCert.ConwayRegDelegCert(_, _, _) =>
+            None
+        }
+      override def mkUnRegDepositTxCert(credential: Credential, refund: Coin): ConwayTxCert =
+        ConwayTxCertDeleg(ConwayDelegCert.ConwayUnRegCert(credential, Some(refund)))
+      override def getUnRegDepositTxCert(cert: ConwayTxCert): Option[(Credential, Coin)] =
+        deleg(cert).flatMap {
+          case ConwayDelegCert.ConwayUnRegCert(c, Some(r)) => Some((c, r))
+          case ConwayDelegCert.ConwayUnRegCert(_, None) | ConwayDelegCert.ConwayRegCert(_, _) |
+              ConwayDelegCert.ConwayDelegCert(_, _) | ConwayDelegCert.ConwayRegDelegCert(_, _, _) =>
+            None
+        }
+      override def mkDelegTxCert(credential: Credential, delegatee: Delegatee): ConwayTxCert =
+        ConwayTxCertDeleg(ConwayDelegCert.ConwayDelegCert(credential, delegatee))
+      override def getDelegTxCert(cert: ConwayTxCert): Option[(Credential, Delegatee)] =
+        deleg(cert).flatMap {
+          case ConwayDelegCert.ConwayDelegCert(c, to) => Some((c, to))
+          case ConwayDelegCert.ConwayRegCert(_, _) | ConwayDelegCert.ConwayUnRegCert(_, _) |
+              ConwayDelegCert.ConwayRegDelegCert(_, _, _) =>
+            None
+        }
+      override def mkRegDepositDelegTxCert(
+          credential: Credential,
+          delegatee: Delegatee,
+          deposit: Coin
+      ): ConwayTxCert =
+        ConwayTxCertDeleg(ConwayDelegCert.ConwayRegDelegCert(credential, delegatee, deposit))
       override def getRegDepositDelegTxCert(
           cert: ConwayTxCert
-      ): Option[(Credential, Delegatee, BigInt)] = cert match
-        case ConwayTxCertDeleg(ConwayDelegCert.ConwayRegDelegCert(c, to, d)) => Some((c, to, d))
-        case _                                                               => None
+      ): Option[(Credential, Delegatee, Coin)] =
+        deleg(cert).flatMap {
+          case ConwayDelegCert.ConwayRegDelegCert(c, to, d) => Some((c, to, d))
+          case ConwayDelegCert.ConwayRegCert(_, _) | ConwayDelegCert.ConwayUnRegCert(_, _) |
+              ConwayDelegCert.ConwayDelegCert(_, _) =>
+            None
+        }
+
+      override def mkRegDRepTxCert(
+          credential: Credential,
+          deposit: Coin,
+          anchor: Option[Anchor]
+      ): ConwayTxCert = ConwayTxCertGov(ConwayGovCert.ConwayRegDRep(credential, deposit, anchor))
       override def getRegDRepTxCert(
           cert: ConwayTxCert
-      ): Option[(Credential, BigInt, Option[Anchor])] =
-        cert match
-          case ConwayTxCertGov(ConwayGovCert.ConwayRegDRep(c, d, a)) => Some((c, d, a))
-          case _                                                     => None
-      override def getUnRegDRepTxCert(cert: ConwayTxCert): Option[(Credential, BigInt)] = cert match
-        case ConwayTxCertGov(ConwayGovCert.ConwayUnRegDRep(c, r)) => Some((c, r))
-        case _                                                    => None
+      ): Option[(Credential, Coin, Option[Anchor])] =
+        gov(cert).flatMap {
+          case ConwayGovCert.ConwayRegDRep(c, d, a) => Some((c, d, a))
+          case ConwayGovCert.ConwayUnRegDRep(_, _) | ConwayGovCert.ConwayUpdateDRep(_, _) |
+              ConwayGovCert.ConwayAuthCommitteeHotKey(_, _) |
+              ConwayGovCert.ConwayResignCommitteeColdKey(_, _) =>
+            None
+        }
+      override def mkUnRegDRepTxCert(credential: Credential, refund: Coin): ConwayTxCert =
+        ConwayTxCertGov(ConwayGovCert.ConwayUnRegDRep(credential, refund))
+      override def getUnRegDRepTxCert(cert: ConwayTxCert): Option[(Credential, Coin)] =
+        gov(cert).flatMap {
+          case ConwayGovCert.ConwayUnRegDRep(c, r) => Some((c, r))
+          case ConwayGovCert.ConwayRegDRep(_, _, _) | ConwayGovCert.ConwayUpdateDRep(_, _) |
+              ConwayGovCert.ConwayAuthCommitteeHotKey(_, _) |
+              ConwayGovCert.ConwayResignCommitteeColdKey(_, _) =>
+            None
+        }
+      override def mkUpdateDRepTxCert(
+          credential: Credential,
+          anchor: Option[Anchor]
+      ): ConwayTxCert =
+        ConwayTxCertGov(ConwayGovCert.ConwayUpdateDRep(credential, anchor))
       override def getUpdateDRepTxCert(cert: ConwayTxCert): Option[(Credential, Option[Anchor])] =
-        cert match
-          case ConwayTxCertGov(ConwayGovCert.ConwayUpdateDRep(c, a)) => Some((c, a))
-          case _                                                     => None
+        gov(cert).flatMap {
+          case ConwayGovCert.ConwayUpdateDRep(c, a) => Some((c, a))
+          case ConwayGovCert.ConwayRegDRep(_, _, _) | ConwayGovCert.ConwayUnRegDRep(_, _) |
+              ConwayGovCert.ConwayAuthCommitteeHotKey(_, _) |
+              ConwayGovCert.ConwayResignCommitteeColdKey(_, _) =>
+            None
+        }
+      override def mkAuthCommitteeHotKeyTxCert(cold: Credential, hot: Credential): ConwayTxCert =
+        ConwayTxCertGov(ConwayGovCert.ConwayAuthCommitteeHotKey(cold, hot))
       override def getAuthCommitteeHotKeyTxCert(
           cert: ConwayTxCert
       ): Option[(Credential, Credential)] =
-        cert match
-          case ConwayTxCertGov(ConwayGovCert.ConwayAuthCommitteeHotKey(cold, hot)) =>
-            Some((cold, hot))
-          case _ => None
+        gov(cert).flatMap {
+          case ConwayGovCert.ConwayAuthCommitteeHotKey(cold, hot) => Some((cold, hot))
+          case ConwayGovCert.ConwayRegDRep(_, _, _) | ConwayGovCert.ConwayUnRegDRep(_, _) |
+              ConwayGovCert.ConwayUpdateDRep(_, _) |
+              ConwayGovCert.ConwayResignCommitteeColdKey(_, _) =>
+            None
+        }
+      override def mkResignCommitteeColdTxCert(
+          cold: Credential,
+          anchor: Option[Anchor]
+      ): ConwayTxCert = ConwayTxCertGov(ConwayGovCert.ConwayResignCommitteeColdKey(cold, anchor))
       override def getResignCommitteeColdTxCert(
           cert: ConwayTxCert
-      ): Option[(Credential, Option[Anchor])] = cert match
-        case ConwayTxCertGov(ConwayGovCert.ConwayResignCommitteeColdKey(cold, a)) => Some((cold, a))
-        case _                                                                    => None
+      ): Option[(Credential, Option[Anchor])] =
+        gov(cert).flatMap {
+          case ConwayGovCert.ConwayResignCommitteeColdKey(cold, a) => Some((cold, a))
+          case ConwayGovCert.ConwayRegDRep(_, _, _) | ConwayGovCert.ConwayUnRegDRep(_, _) |
+              ConwayGovCert.ConwayUpdateDRep(_, _) |
+              ConwayGovCert.ConwayAuthCommitteeHotKey(_, _) =>
+            None
+        }

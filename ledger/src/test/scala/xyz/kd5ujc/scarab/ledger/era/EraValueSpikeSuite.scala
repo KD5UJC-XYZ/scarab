@@ -37,8 +37,8 @@ class EraValueSpikeSuite extends munit.FunSuite:
     assert(allegra.nonEmpty && mary.nonEmpty, (allegra.size, mary.size))
     val a = allegra.map(AllegraTxOut.fromStored(_).toOption.get)
     val m = mary.map(MaryTxOut.fromStored(_).toOption.get)
-    assertEquals(SharedRules.coinOf[Allegra](a), allegra.map(_.value.coin).sum)
-    assertEquals(SharedRules.coinOf[Mary](m), mary.map(_.value.coin).sum)
+    assertEquals(SharedRules.coinOf[Allegra](a).value, allegra.map(_.value.coin).sum)
+    assertEquals(SharedRules.coinOf[Mary](m).value, mary.map(_.value.coin).sum)
     assertEquals(a.map(EraTxOut.allegra.raw), allegra.map(_.raw))
   }
 
@@ -46,7 +46,7 @@ class EraValueSpikeSuite extends munit.FunSuite:
     val a = outputsOf(Era.Allegra).map(AllegraTxOut.fromStored(_).toOption.get)
     val m = a.map(MaryTxOut.translate)
     assertEquals(m.map(EraTxOut.mary.raw), a.map(EraTxOut.allegra.raw))
-    assertEquals(SharedRules.coinOf[Mary](m), SharedRules.coinOf[Allegra](a))
+    assertEquals(SharedRules.coinOf[Mary](m).value, SharedRules.coinOf[Allegra](a).value)
   }
 
   test("the store's read into Allegra refuses what Allegra's outputs cannot hold") {

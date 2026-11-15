@@ -27,6 +27,7 @@ import xyz.kd5ujc.scarab.ledger.era.conway.{
   ConwayTxCert,
   ConwayTxWits
 }
+import xyz.kd5ujc.scarab.ledger.state.Coin
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** Conway's types (stage 2 of `docs/design/era-typed-transactions.md`): every recorded Conway body
@@ -225,9 +226,9 @@ class EraConwaySuite extends munit.FunSuite:
     // cardano-ledger f649f975); the pool registration (tag 3) is checked below
     val cases = Vector(
       (s"8200$script", ConwayTxCertDeleg(ConwayRegCert(cred, None)), None, None),
-      (s"8307${script}00", ConwayTxCertDeleg(ConwayRegCert(cred, Some(0))), Some(sh), None),
+      (s"8307${script}00", ConwayTxCertDeleg(ConwayRegCert(cred, Some(Coin(0)))), Some(sh), None),
       (s"8201$script", ConwayTxCertDeleg(ConwayUnRegCert(cred, None)), Some(sh), None),
-      (s"8308${script}00", ConwayTxCertDeleg(ConwayUnRegCert(cred, Some(0))), Some(sh), None),
+      (s"8308${script}00", ConwayTxCertDeleg(ConwayUnRegCert(cred, Some(Coin(0)))), Some(sh), None),
       (
         s"8302$script$pool",
         ConwayTxCertDeleg(ConwayDelegCert(cred, Delegatee.DelegStake(ph))),
@@ -248,19 +249,19 @@ class EraConwaySuite extends munit.FunSuite:
       ),
       (
         s"840b$script${pool}00",
-        ConwayTxCertDeleg(ConwayRegDelegCert(cred, Delegatee.DelegStake(ph), 0)),
+        ConwayTxCertDeleg(ConwayRegDelegCert(cred, Delegatee.DelegStake(ph), Coin(0))),
         Some(sh),
         None
       ),
       (
         s"840c$script${abstain}00",
-        ConwayTxCertDeleg(ConwayRegDelegCert(cred, Delegatee.DelegVote(drep), 0)),
+        ConwayTxCertDeleg(ConwayRegDelegCert(cred, Delegatee.DelegVote(drep), Coin(0))),
         Some(sh),
         None
       ),
       (
         s"850d$script$pool${abstain}00",
-        ConwayTxCertDeleg(ConwayRegDelegCert(cred, Delegatee.DelegStakeVote(ph, drep), 0)),
+        ConwayTxCertDeleg(ConwayRegDelegCert(cred, Delegatee.DelegStakeVote(ph, drep), Coin(0))),
         Some(sh),
         None
       ),
@@ -287,8 +288,8 @@ class EraConwaySuite extends munit.FunSuite:
         Some(sh),
         None
       ),
-      (s"8410${script}00f6", ConwayTxCertGov(ConwayRegDRep(cred, 0, None)), Some(sh), None),
-      (s"8311${script}00", ConwayTxCertGov(ConwayUnRegDRep(cred, 0)), Some(sh), None),
+      (s"8410${script}00f6", ConwayTxCertGov(ConwayRegDRep(cred, Coin(0), None)), Some(sh), None),
+      (s"8311${script}00", ConwayTxCertGov(ConwayUnRegDRep(cred, Coin(0))), Some(sh), None),
       (s"8312${script}f6", ConwayTxCertGov(ConwayUpdateDRep(cred, None)), Some(sh), None)
     )
     val c = EraTxCert.conway
@@ -298,7 +299,7 @@ class EraConwaySuite extends munit.FunSuite:
     )
     ConwayTxCert.decode(regPool) match
       case Right(cert @ ConwayTxCertPool(PoolCert.RegPool(params))) =>
-        assertEquals(params.operator, ph)
+        assertEquals(params.value.operator, ph)
         assertEquals(c.getVKeyWitnessTxCert(cert), Some(ph))
         assertEquals(c.getScriptWitnessTxCert(cert), None)
         assertEquals(c.getRegPoolTxCert(cert), Some(params))
@@ -317,6 +318,62 @@ class EraConwaySuite extends munit.FunSuite:
         hex
       )
     }
+  }
+
+  test("each Conway certificate builder makes the certificate its bytes read as") {
+    val sh = Bytes.fromHex(s).toOption.get
+    val kh = Bytes.fromHex(k).toOption.get
+    val ph = Bytes.fromHex(p).toOption.get
+    val cred = xyz.kd5ujc.scarab.ledger.Credential.Script(sh)
+    val hot = xyz.kd5ujc.scarab.ledger.Credential.Key(kh)
+    val drep = xyz.kd5ujc.scarab.ledger.DRep.AlwaysAbstain
+    val c = EraTxCert.conway
+    val built = Vector(
+      s"8200$script" -> c.mkRegTxCert(cred),
+      s"8307${script}05" -> c.mkRegDepositTxCert(cred, Coin(5)),
+      s"8201$script" -> c.mkUnRegTxCert(cred),
+      s"8308${script}05" -> c.mkUnRegDepositTxCert(cred, Coin(5)),
+      s"8302$script$pool" -> c.mkDelegStakeTxCert(cred, ph),
+      s"8309$script$abstain" -> c.mkDelegTxCert(cred, Delegatee.DelegVote(drep)),
+      s"840b$script${pool}05" -> c.mkRegDepositDelegTxCert(cred, Delegatee.DelegStake(ph), Coin(5)),
+      s"8304${pool}0a" -> c.mkRetirePoolTxCert(ph, 10),
+      s"830e$script$key" -> c.mkAuthCommitteeHotKeyTxCert(cred, hot),
+      s"830f${script}f6" -> c.mkResignCommitteeColdTxCert(cred, None),
+      s"8410${script}05f6" -> c.mkRegDRepTxCert(cred, Coin(5), None),
+      s"8311${script}05" -> c.mkUnRegDRepTxCert(cred, Coin(5)),
+      s"8312${script}f6" -> c.mkUpdateDRepTxCert(cred, None)
+    )
+    built.foreach((hex, cert) => assertEquals(ConwayTxCert.decode(node(hex)), Right(cert), hex))
+    // and each reader reads back what its builder took, and nothing from another form
+    assertEquals(c.getRegDepositTxCert(c.mkRegDepositTxCert(cred, Coin(5))), Some((cred, Coin(5))))
+    assertEquals(c.getRegDepositTxCert(c.mkRegTxCert(cred)), None)
+    assertEquals(c.getRegTxCert(c.mkRegDepositTxCert(cred, Coin(5))), None)
+    assertEquals(c.getUnRegTxCert(c.mkUnRegDepositTxCert(cred, Coin(5))), None)
+    assertEquals(c.getDelegStakeTxCert(c.mkDelegTxCert(cred, Delegatee.DelegVote(drep))), None)
+    assertEquals(c.getDelegStakeTxCert(c.mkDelegStakeTxCert(cred, ph)), Some((cred, ph)))
+    assertEquals(c.getRetirePoolTxCert(c.mkRetirePoolTxCert(ph, 10)), Some((ph, BigInt(10))))
+    assertEquals(c.getUnRegDRepTxCert(c.mkRegDRepTxCert(cred, Coin(5), None)), None)
+    assertEquals(c.getUpdateDRepTxCert(c.mkUpdateDRepTxCert(cred, None)), Some((cred, None)))
+  }
+
+  test("pool registrations are equal when their relays mean the same, as the reference compares") {
+    // the empty relay list as `80`, and as `98 00`: one `StrictSeq StakePoolRelay`, so one
+    // `StakePoolParams` under the derived `Eq` (`State/StakePool.hs:424-435`, cardano-ledger
+    // f649f975), while the bytes kept for each differ
+    def registration(relays: String) =
+      node(s"8a03$pool${"5820" + "76" * 32}0000d81e820001581de0${"72" * 28}80${relays}f6")
+    val flat = Vector("80", "9800").map(r => Certificate.decode(registration(r), Era.Conway))
+    flat.foreach(f => assert(f.isRight, f))
+    assertNotEquals(flat(0), flat(1), "the flat certificates keep the relay bytes they read")
+    val typed = Vector("80", "9800").map(r => ConwayTxCert.decode(registration(r)))
+    assertEquals(typed(0), typed(1))
+    val params = typed.flatMap(_.toOption).flatMap(EraTxCert.conway.getRegPoolTxCert)
+    assertEquals(params.size, 2)
+    assertEquals(params(0).hashCode, params(1).hashCode)
+    // a registration with another relay is another certificate
+    val other = ConwayTxCert.decode(registration(s"81${"8400" + "f6" * 3}"))
+    assert(other.isRight, other)
+    assertNotEquals(other, typed(0))
   }
 
   test("every recorded Conway auxiliary data reads, keeping the bytes its hash is over") {

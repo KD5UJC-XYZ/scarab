@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.state.{Conway, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, EraTag}
 
 /** Rules written once for every era that has the capability they ask for, as the reference writes a
   * rule once over its class constraints and assigns it to eras (`EraRule`).
@@ -18,7 +18,7 @@ object SharedRules:
     b.outputs(body).flatMap(b.outputsOf.data)
 
   /** The lovelace of a set of outputs, whatever the era's value is (`coin . sumVal`). */
-  def coinOf[E <: EraTag](outs: Vector[TxOut[E]])(using o: EraTxOut[E]): BigInt =
+  def coinOf[E <: EraTag](outs: Vector[TxOut[E]])(using o: EraTxOut[E]): Coin =
     o.valueOps.coin(outs.map(o.value).foldLeft(o.valueOps.zero)(o.valueOps.plus))
 
 /** The complete rule set of era `E`: every rule named, none defaulted, so an era that does not say
