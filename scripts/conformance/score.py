@@ -32,7 +32,11 @@ SITE_COMMIT = "9dc68a750478335755d057288cc8978c117d7ac4"
 SITE = "https://pragma-org.github.io/node-diversity-conformance/"
 # 9dc68a75 scripts/build_common.py:32 and 416-418: the era a node is scored by when it reports several.
 DEFAULT_ERA = "conway"
-# 9dc68a75 scripts/build_common.py:42.
+# 9dc68a75 scripts/build_common.py:37-42.
+CBOR_V1_CLASSES = {
+    "valid": ("generated_decoded_reencoded",),
+    "invalid": ("generated_must_be_rejected", "zap_must_be_rejected"),
+}
 CBOR_REPORT_FIELDS = ("generated_at", "protocol_version", "dataset_commit", "implementation_commit", "results")
 # 9dc68a75 scenarios/uplc-turbo/build.py:15-17: a dimension passes within twice its budget, or within an absolute
 # tolerance of it.
@@ -45,7 +49,7 @@ BUDGET_TEXT = re.compile(r"cpu:\s*(-?\d+).*?mem:\s*(-?\d+)", re.DOTALL)
 
 
 class ScoreError(ValueError):
-    """The site's data or a report cannot be scored as the site scores it: nothing is scored."""
+    """The site's data cannot be read, or a report the site reads makes its build fail: nothing is scored."""
 
 
 class Unreadable(ValueError):
@@ -54,8 +58,9 @@ class Unreadable(ValueError):
 
 @dataclass(frozen=True)
 class Score:
-    met: int
-    total: int
+    """Met of total; a version 1 CBOR report's counts may be fractional, as the site sums what it reads."""
+    met: int | float
+    total: int | float
 
     @property
     def ratio(self) -> float:
@@ -175,20 +180,14 @@ def _cbor_kind(category: str) -> str:
     raise Unreadable(f"unknown sample category {category!r}")
 
 
-def cbor(report: dict, era: str | None) -> Score:
-    """A version 2 CBOR report: every sample counts, and a sample whose outcome is `true` is met (9dc68a75
-    scripts/build_common.py:282-306 and 380-381, scenarios/cbor-decoding/build.py:104-115). The site reads a
-    version 1 report too, which Scarab never writes and this does not score."""
-    if "version" not in report or report["version"] == "1":
-        raise ScoreError("a version 1 CBOR report, which this scoring does not read")
-    if report.get("version") != "2":
-        raise Unreadable("incompatible report: must declare version=1 or 2")
+def _cbor_v2(report: dict) -> tuple[str, Score]:
+    """A version 2 report's era, and its score: every sample counts, and one whose outcome is `true` is met
+    (9dc68a75 scripts/build_common.py:282-322; scenarios/cbor-decoding/build.py:110-114, its `rules` being empty
+    exactly when its results are)."""
     missing = [field for field in CBOR_REPORT_FIELDS if field not in report]
     if missing:
         raise Unreadable(f"CBOR report is missing {', '.join(missing)}")
-    read = _era_of_protocol(report["protocol_version"])
-    if era is not None and read != era:
-        raise Unreadable(f"report is for era {read!r}, expected {era!r}")
+    era = _era_of_protocol(report["protocol_version"])
     results = report["results"]
     if not isinstance(results, dict):
         raise Unreadable("CBOR results are not an object")
@@ -202,14 +201,70 @@ def cbor(report: dict, era: str | None) -> Score:
             met += 1
         elif not isinstance(outcome, str):
             raise Unreadable(f"outcome of {sample!r} must be true or an error message")
-    return Score(met, len(results))
+    # The site names the corpus by `dataset_commit[:7]` (build_common.py:315), which only text or a list can take.
+    if not isinstance(report["dataset_commit"], (str, list)):
+        raise Unreadable(f"dataset_commit {report['dataset_commit']!r} cannot be cut")
+    return era, Score(met, len(results))
+
+
+def _v1_counts(outcome: Any) -> dict[str, Any]:
+    """A version 1 outcome's classes merged into the kinds of a version 2 report (9dc68a75
+    scripts/build_common.py:265-271)."""
+    if not isinstance(outcome, dict):
+        raise Unreadable(f"version 1 counts {outcome!r} are not an object")
+    try:
+        return {f"{kind}_{side}": sum(outcome.get(f"{old}_{side}", 0) for old in classes)
+                for kind, classes in CBOR_V1_CLASSES.items() for side in ("expected", "actual")}
+    except TypeError as error:
+        raise Unreadable(f"version 1 counts are not numbers: {error}") from error
+
+
+def _cbor_v1(report: dict) -> tuple[Any, Score]:
+    """A version 1 report's era, conway when it names none, and its score (9dc68a75 scripts/build_common.py:330-345;
+    scenarios/cbor-decoding/build.py:104-115). Scarab writes only version 2 reports."""
+    if report.get("scenario") != "cbor-decoding":
+        raise Unreadable(f"report belongs to {report.get('scenario')!r}, expected 'cbor-decoding'")
+    if "totals" not in report or "rules" not in report:
+        raise Unreadable("version 1 CBOR report has no totals or rules")
+    if not isinstance(report["rules"], dict):
+        raise Unreadable("version 1 CBOR rules are not an object")
+    totals = _v1_counts(report["totals"])
+    rules = {rule: _v1_counts(outcome) for rule, outcome in report["rules"].items()}
+    era = report.get("era", DEFAULT_ERA)
+    if report.get("scenarios"):
+        # The converted totals have no `passed` or `total`.
+        return era, Score(int(totals.get("passed", 0)), int(totals.get("total", 0)))
+    if rules:
+        return era, Score(sum(value for key, value in totals.items() if key.endswith("_actual")),
+                          sum(value for key, value in totals.items() if key.endswith("_expected")))
+    return era, Score(0, 0)
+
+
+def cbor(report: dict, era: str | None) -> Score:
+    """A CBOR report read as the site reads it, version 2, version 1 or the legacy form without a version, and
+    refused unless it is of `era` (9dc68a75 scripts/build_common.py:325-346 and 380-381)."""
+    if report.get("version") == "2":
+        read, score = _cbor_v2(report)
+    elif "version" not in report:
+        if not all(key in report for key in ("corpus", "totals", "rules")):
+            raise Unreadable("legacy CBOR report is missing corpus, totals or rules")
+        read, score = _cbor_v1({**report, "version": "1", "scenario": "cbor-decoding"})
+    elif report["version"] == "1":
+        read, score = _cbor_v1(report)
+    else:
+        raise Unreadable("incompatible report: must declare version=1 or 2")
+    if era is not None and read != era:
+        raise Unreadable(f"report is for era {read!r}, expected {era!r}")
+    return score
 
 
 def _items(report: dict, key: str) -> list[dict]:
+    """The objects the site's scoring iterates under `key`; it fails on anything but objects, and iterates nothing
+    in an empty text or object."""
     items = report.get(key, [])
-    if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
-        raise ScoreError(f"the report's {key} are not a list of objects")
-    return items
+    if not isinstance(items, (list, str, dict)) or not all(isinstance(item, dict) for item in items):
+        raise ScoreError(f"the report's {key} are not a list of objects, on which the site's build fails")
+    return list(items)
 
 
 def ledger(report: dict, definitions: dict[str, Any]) -> Score:
@@ -246,8 +301,11 @@ def uplc(report: dict, expectations: tuple[dict, ...]) -> Score:
     """Each expectation takes an unused reported vector of its id, one of its Plutus and protocol versions if
     there is one, else the first; it is met when the versions agree, the results agree and, where it expects a
     budget, the budgets agree (9dc68a75 scenarios/uplc-conformance/build.py:37-76)."""
+    items = _items(report, "scenarios")
+    if any(isinstance(item.get("id"), (list, dict)) for item in items):
+        raise ScoreError("a reported vector's id is a list or an object, on which the site's build fails")
     reported = defaultdict(list)
-    for item in _items(report, "scenarios"):
+    for item in items:
         reported[item.get("id")].append(item)
     used = set()
     met = 0
@@ -304,8 +362,8 @@ def turbo(report: dict, benchmarks: tuple[str, ...]) -> Score:
     scenarios/uplc-turbo/build.py:26-34 and 410-423, without the other nodes' budgets)."""
     corpus = set(benchmarks)
     items = report.get("benchmarks", [])
-    if not isinstance(items, list):
-        raise ScoreError("the report's benchmarks are not a list")
+    if not isinstance(items, (list, str, dict)):
+        raise ScoreError("the report's benchmarks cannot be iterated, on which the site's build fails")
     reported = {item["bench"]: item for item in items
                 if isinstance(item, dict) and isinstance(item.get("bench"), str) and item["bench"] in corpus}
     return Score(sum(benchmark_met(reported.get(bench)) for bench in benchmarks), len(benchmarks))
@@ -386,10 +444,17 @@ def results(latest: Path, site: Site) -> Results:
 
 def percent(ratio: float) -> str:
     """A ratio as the site shows it: cut, never rounded, to two decimals, and 100 only when it is whole
-    (9dc68a75 shared/js/percent.js:4-8)."""
+    (9dc68a75 shared/js/percent.js:4-8), with what JavaScript's `toFixed` gives for a value that is not finite or
+    is at least 10^21 in magnitude."""
     if ratio == 1:
         return "100%"
-    return f"{min(math.floor(ratio * 10000) / 100, 99.99):.2f}%"
+    scaled = ratio * 10000
+    if math.isnan(scaled):
+        return "NaN%"
+    value = min(math.floor(scaled) / 100 if math.isfinite(scaled) else scaled, 99.99)
+    if value == -math.inf:
+        return "-Infinity%"
+    return (repr(value) if abs(value) >= 1e21 else f"{value:.2f}") + "%"
 
 
 def _table_row(cells: list[str]) -> str:

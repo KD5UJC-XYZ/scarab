@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """`scripts/conformance/score.py`: the reports of `latest/` scored as the node-diversity-conformance site scores
 them, on a synthetic checkout of the site and synthetic reports (`conformance_site`)."""
+import gzip
 import json
+import math
 import sys
 import tempfile
 import unittest
@@ -10,8 +12,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from conformance import inputs, score  # noqa: E402
-from conformance_site import (ABSENT, benchmark, cbor_report, ledger_report, turbo_report, uplc_report,  # noqa: E402
-                              vector, write_report, write_site)
+from conformance_site import (ABSENT, benchmark, cbor_report, gzipped, ledger_report, turbo_report,  # noqa: E402
+                              uplc_report, vector, write_report, write_site)
 
 # The kinds of a ledger-rules fixture's `expected`, and the result each expects.
 LEDGER_KINDS = ((ABSENT, "pass"), ("Pass", "pass"), ({"decoding_failure": True}, "DecodingFailure"),
@@ -201,29 +203,115 @@ class LedgerTest(unittest.TestCase):
         self.assertEqual(score.ledger(report, site.ledger), score.Score(2, 3), "00003 has no result")
 
 
-class CborTest(unittest.TestCase):
-    """9dc68a75 scripts/build_common.py:256-306 and scenarios/cbor-decoding/build.py:104-115."""
+def v1_counts(valid=(5, 4), rejected=(3, 3), zapped=(2, 1)):
+    """Version 1 counts: (expected, actual) of each class."""
+    return {f"{name}_{side}": pair[index] for name, pair in (("generated_decoded_reencoded", valid),
+                                                              ("generated_must_be_rejected", rejected),
+                                                              ("zap_must_be_rejected", zapped))
+            for index, side in enumerate(("expected", "actual"))}
 
-    def test_every_sample_counts_and_a_true_outcome_is_met(self):
+
+def v1_report(**fields):
+    return {"version": "1", "scenario": "cbor-decoding", "corpus": "conway abcdef0", "totals": v1_counts(),
+            "rules": {"r": v1_counts()}, **fields}
+
+
+def legacy_report(**fields):
+    return {key: value for key, value in v1_report(**fields).items() if key not in ("version", "scenario")}
+
+
+class CborTest(unittest.TestCase):
+    """The site's parser of CBOR reports (9dc68a75 scripts/build_common.py:256-346 and 380-381) and its scoring
+    (scenarios/cbor-decoding/build.py:104-115)."""
+
+    def test_version_2_every_sample_counts_and_a_true_outcome_is_met(self):
         report = cbor_report({"r/valid/1": True, "r/manual-invalid/2": "rejected: no", "r/invalid-zap-3/x/3": True})
         self.assertEqual(score.cbor(report, "conway"), score.Score(2, 3))
-        self.assertEqual(score.cbor(cbor_report({}), "conway"), score.Score(0, 0))
+        self.assertEqual(score.cbor(cbor_report({}), "conway"), score.Score(0, 0), "no sample, no score")
+        self.assertEqual(score.cbor(dict(report, dataset_commit=["d"]), "conway"), score.Score(2, 3),
+                         "a list can be cut as the site names the corpus")
+
+    def test_version_1_and_legacy_reports_are_read_from_their_counts(self):
+        self.assertEqual(score.cbor(v1_report(), "conway"), score.Score(8, 10), "conway when it names no era")
+        self.assertEqual(score.cbor(v1_report(era="dijkstra"), "dijkstra"), score.Score(8, 10))
+        self.assertEqual(score.cbor(legacy_report(), "conway"), score.Score(8, 10), "legacy is version 1")
+        self.assertEqual(score.cbor(legacy_report(scenario="ledger-rules"), "conway"), score.Score(8, 10),
+                         "a legacy report is taken as cbor-decoding's")
+        self.assertEqual(score.cbor(v1_report(totals=v1_counts((2.5, 1.5), (0, 0), (0, 0))), "conway"),
+                         score.Score(1.5, 2.5), "the counts are summed as they are")
+        self.assertEqual(score.cbor(v1_report(scenarios=[{}]), "conway"), score.Score(0, 0),
+                         "with scenarios, the converted totals have no passed or total")
+        self.assertEqual(score.cbor(v1_report(rules={}), "conway"), score.Score(0, 0), "no rule, no score")
 
     def test_what_the_site_cannot_read(self):
+        without = {key: value for key, value in cbor_report({}).items() if key != "dataset_commit"}
         cases = {
+            "{}": {},
+            "a legacy report without rules": {key: value for key, value in legacy_report().items() if key != "rules"},
+            "dataset_commit null": cbor_report({"r/valid/1": True}) | {"dataset_commit": None},
+            "dataset_commit a number": cbor_report({"r/valid/1": True}) | {"dataset_commit": 7},
+            "dataset_commit an object": cbor_report({"r/valid/1": True}) | {"dataset_commit": {}},
+            "a missing field": without,
+            "results not an object": cbor_report({}) | {"results": []},
             "an unknown category": cbor_report({"r/other/1": True}),
             "a short sample path": cbor_report({"r/valid": True}),
             "an outcome neither true nor a message": cbor_report({"r/valid/1": False}),
             "another era": cbor_report({"r/valid/1": True}, "12.0"),
             "no known era": cbor_report({"r/valid/1": True}, "9.0"),
-            "a missing field": {key: value for key, value in cbor_report({}).items() if key != "dataset_commit"},
-            "another version": dict(cbor_report({}), version="3"),
+            "no major protocol version": cbor_report({"r/valid/1": True}, "x.0"),
+            "another version": cbor_report({}) | {"version": "3"},
+            "a null version": cbor_report({}) | {"version": None},
+            "version 1 of another scenario": v1_report(scenario="ledger-rules"),
+            "version 1 without totals": {key: value for key, value in v1_report().items() if key != "totals"},
+            "version 1 totals not an object": v1_report(totals=[]),
+            "version 1 rules not an object": v1_report(rules=[]),
+            "version 1 rule counts not an object": v1_report(rules={"r": 3}),
+            "version 1 counts not numbers": v1_report(totals=v1_counts(("5", 4))),
+            "version 1 of another era": v1_report(era="dijkstra"),
+            "version 1 of a null era": v1_report(era=None),
         }
         for case, report in cases.items():
-            with self.assertRaises(score.Unreadable, msg=case):
+            with self.subTest(case), self.assertRaises(score.Unreadable):
                 score.cbor(report, "conway")
-        with self.assertRaises(score.ScoreError):
-            score.cbor(dict(cbor_report({}), version="1"), "conway")
+
+
+class ReadTest(unittest.TestCase):
+    """What the site cannot read of any scenario (9dc68a75 scripts/build_common.py:179-180 and 325-341)."""
+
+    def test_unreadable_files_and_reports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            site = score.Site.read(write_site(root / "site", {"00001-a": ABSENT}, [], ["a.flat"]))
+            files = {"not gzip": b"{}", "not JSON": gzip.compress(b"{"), "not an object": gzipped([]),
+                     "not UTF-8": gzip.compress(b'"\xff\xfe'),
+                     "version 2": gzipped(dict(ledger_report([]), version="2")),
+                     "no version": gzipped({k: v for k, v in ledger_report([]).items() if k != "version"}),
+                     "another scenario": gzipped(dict(ledger_report([]), scenario="uplc-turbo"))}
+            for case, body in files.items():
+                path = root / f"{len(case)}-{case.replace(' ', '-')}.json.gz"
+                path.write_bytes(body)
+                with self.subTest(case), self.assertRaises(score.Unreadable):
+                    score.read(path, "ledger-rules", None, site)
+            write_report(root / "latest", "cbor-decoding-conway.json.gz", {})
+            write_report(root / "latest", "cbor-decoding-dijkstra.json.gz", cbor_report({"r/valid/1": True}, "12.0"))
+            rows = score.results(root / "latest", site).rows
+        self.assertEqual([(row.era, row.score, row.absence, row.scored) for row in rows[:2]],
+                         [("conway", None, "unreadable", False), ("dijkstra", score.Score(1, 1), None, True)],
+                         "an unreadable Conway report counts as none, and Dijkstra is scored")
+
+    def test_what_the_site_iterates_and_what_its_build_fails_on(self):
+        definitions = {"00001": "pass"}
+        self.assertEqual(score.ledger(dict(ledger_report([]), scenarios=""), definitions), score.Score(0, 1))
+        self.assertEqual(score.turbo(dict(turbo_report([]), benchmarks={}), ("a.flat",)), score.Score(0, 1))
+        for case, call in {
+            "a ledger result that is not an object": lambda: score.ledger(dict(ledger_report([]), scenarios="x"),
+                                                                          definitions),
+            "benchmarks that are null": lambda: score.turbo(dict(turbo_report([]), benchmarks=None), ("a.flat",)),
+            "a vector id that is a list": lambda: score.uplc(uplc_report([vector(["a"], "ok", None)]),
+                                                             (vector("a", "ok", None),)),
+        }.items():
+            with self.subTest(case), self.assertRaises(score.ScoreError):
+                call()
 
 
 class ResultsTest(unittest.TestCase):
@@ -286,8 +374,12 @@ class SiteTest(unittest.TestCase):
 
 class PercentTest(unittest.TestCase):
     def test_ratios_are_cut_to_two_decimals_and_only_one_is_whole(self):
-        self.assertEqual([score.percent(r) for r in (1.0, 0.99999, 0.9777773030669765, 0.5, 0.0)],
-                         ["100%", "99.99%", "97.77%", "50.00%", "0.00%"])
+        self.assertEqual([score.percent(r) for r in (1.0, 0.99999, 0.9777773030669765, 0.5, 0.0, -0.0, -0.00001)],
+                         ["100%", "99.99%", "97.77%", "50.00%", "0.00%", "0.00%", "-0.01%"])
+
+    def test_values_that_are_not_finite_or_huge_read_as_javascript_writes_them(self):
+        self.assertEqual([score.percent(r) for r in (math.nan, math.inf, -math.inf, -1.5e21, 2e300)],
+                         ["NaN%", "99.99%", "-Infinity%", "-1.5e+23%", "99.99%"])
 
 
 if __name__ == "__main__":
