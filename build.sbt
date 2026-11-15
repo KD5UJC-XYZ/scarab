@@ -136,10 +136,10 @@ lazy val disallowedWarts: Seq[wartremover.Wart] = Seq(
 
 // The design rules' own warts, in the `warts` project below, which every module loads through
 // `wartremoverClasspaths` (WartRemover.dependsOnLocalProjectWarts). In main sources, as the warts above:
-// SystemTimeAndUnsafeRun (EFF-5, EFF-6, ERR-4) is an error, whose kept site carries @SuppressWarnings with the
-// wart's full name on its smallest definition.
+// SystemTimeAndUnsafeRun (EFF-5, EFF-6, ERR-4) and FloatingPointInLedger (ARI-1) are errors, whose kept site carries
+// @SuppressWarnings with the wart's full name on its smallest definition.
 def ruleWart(name: String): wartremover.Wart = Wart.custom(s"xyz.kd5ujc.scarab.warts.$name")
-lazy val ruleWartErrors: Seq[wartremover.Wart] = Seq("SystemTimeAndUnsafeRun").map(ruleWart)
+lazy val ruleWartErrors: Seq[wartremover.Wart] = Seq("SystemTimeAndUnsafeRun", "FloatingPointInLedger").map(ruleWart)
 lazy val ruleWartWarnings: Seq[wartremover.Wart] = Nil
 lazy val ruleWarts: Seq[wartremover.Wart] = ruleWartErrors ++ ruleWartWarnings
 

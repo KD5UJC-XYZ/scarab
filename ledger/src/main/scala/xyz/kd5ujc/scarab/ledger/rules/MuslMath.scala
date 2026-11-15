@@ -37,7 +37,10 @@ import java.lang.Long.compareUnsigned as compareUnsigned64
   * `log` of `x` and of `1 - t * x` with `x` in (0, 1) and `t` in [0, 1], and `pow` of `1 - f` in
   * [0, 1) by a stake share in [0, 1]; the performance estimates take `exp` of finite `Float`
   * weights and `log` of their area, which is at least 0.01.
+  *
+  * ARI-1: the reference's own floating point, as stated above.
   */
+@SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
 object MuslMath:
 
   // `asuint64(1.0)` and `asuint64(INFINITY)`.

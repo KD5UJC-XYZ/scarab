@@ -18,10 +18,12 @@ import xyz.kd5ujc.scarab.codec.Rational
   * 32-bit float, and encoded as one (`deriving EncCBOR` of `Float`; only `PerformanceEstimate`,
   * `PoolRank.hs:222-229`, is a `Double`, and it is not part of the state). `Eq` is the IEEE one of
   * `Float`, as in Haskell: `NaN` is not equal to itself and `0.0 == -0.0`, so the generators of the
-  * mirror produce finite values only.
+  * mirror produce finite values only. ARI-1: the reference's own floating point.
   */
+@SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
 opaque type LogWeight = Float
 
+@SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.FloatingPointInLedger"))
 object LogWeight:
   def apply(value: Float): LogWeight = value
 

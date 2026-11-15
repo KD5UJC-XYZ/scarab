@@ -13,7 +13,8 @@ private sealed trait ProbeShape
   * warts of `warts/`, `ruleWarts`, which the build writes into `DisallowedWarts.names`) fires on a
   * probe. WartRemover takes a wart it cannot load, or one that finds nothing on this Scala version,
   * without a message, so a wart that is on is shown to work here. Each probe is typed when this
-  * suite compiles and never runs.
+  * suite compiles and never runs; the probe of `FloatingPointInLedger` is in a ledger package
+  * ([[ledger.FloatingPointProbe]]), as the wart reports only there.
   */
 class DisallowedWartsSuite extends munit.FunSuite:
 
@@ -118,7 +119,8 @@ class DisallowedWartsSuite extends munit.FunSuite:
     Probe(
       SystemTimeAndUnsafeRun,
       WartTestTraverser(SystemTimeAndUnsafeRun)(() => java.time.Instant.now())
-    )
+    ),
+    Probe(ledger.FloatingPointProbe.wart, ledger.FloatingPointProbe.result)
   )
 
   test("every wart build.sbt refuses has a probe here"):
