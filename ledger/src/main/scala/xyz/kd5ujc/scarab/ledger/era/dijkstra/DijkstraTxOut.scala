@@ -86,35 +86,39 @@ object DijkstraTxOut:
 
   /** A Conway output carried into Dijkstra (`upgradeTxOut = upgradeBabbageTxOut`, `TxOut.hs:33`,
     * cardano-ledger 9df9f98c; applied to the UTxO by `Dijkstra/Translation.hs:225-227` and to the
-    * ledger tables by ouroboros-consensus 2416493b `Cardano/CanHardFork.hs:757-765`): the same
-    * address, value and datum, its reference script carried into Dijkstra (`upgradeScript`). A
-    * native reference script is encoded anew ([[DijkstraNativeScript.translate]]), so the output's
-    * bytes are those of the upgraded output, written as the translation of the ledger state writes
-    * them (`Translate.upgradeTxOut`: the script's new encoding,
+    * ledger tables by ouroboros-consensus 2416493b `Cardano/CanHardFork.hs:757-765`): the decoded
+    * address, value and datum carried as they are, and the reference script carried into Dijkstra
+    * (`upgradeScript`, [[DijkstraScript.translate]]), as `upgradeBabbageTxOut` carries each field
+    * of the compact output (`eras/conway/impl/src/Cardano/Ledger/Conway/TxOut.hs:75-81`). Nothing
+    * is read again, so an output an earlier era read leniently (a pointer out of range, normalised
+    * to `Ptr 0 0 0`) is carried as it was read.
+    *
+    * A native reference script is encoded anew, so the output's bytes are those of the upgraded
+    * output, written as the translation of the ledger state writes them (`Translate.upgradeTxOut`:
+    * the script's new encoding,
     * [[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraScript.upgradeTimelock]], in the output's place of
     * it, [[xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack.withNativeReference]]), never the Conway
-    * output's. They are read back at Dijkstra's version; Dijkstra reads every Conway output, so a
-    * refusal is a defect of the encoder.
+    * output's. An output with no native reference script keeps the bytes the store keeps for it, as
+    * the translation of the ledger state does and as
+    * [[xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxOut.translate]] keeps Babbage's: the reference
+    * holds no bytes of an output it has upgraded, and writes it in its own form where it writes one
+    * (#977).
     */
   def translate(out: ConwayTxOut): Either[EraTxError, DijkstraTxOut] =
+    val r = out.rep
     val stored = ConwayTxOut.toStored(out)
-    val upgraded = stored.scriptRef.flatMap(_.native).fold(stored) { script =>
-      xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack.withNativeReference(
-        stored,
-        xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraScript.upgradeTimelock(script),
-        script
-      )
+    val raw = stored.scriptRef.flatMap(_.native).fold(r.raw) { native =>
+      xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack
+        .withNativeReference(
+          stored,
+          xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraScript.upgradeTimelock(native),
+          native
+        )
+        .raw
     }
-    for
-      read <- CborRead
-        .decode(upgraded.raw, V12.nestedLimits)
-        .flatMap(read)
-        .leftMap(EraTxError.TranslationReadBack(_))
-      // the script is `upgradeScript`'s, as `upgradeBabbageTxOut` keeps it (cardano-ledger
-      // 9df9f98c `eras/conway/impl/src/Cardano/Ledger/Conway/TxOut.hs:68-81`): a native one's
-      // sub-scripts memoize their encodings, which a script read from the bytes would not
-      script <- out.rep.scriptRef.traverse(DijkstraScript.translate)
-    yield read.copy(scriptRef = script)
+    r.scriptRef
+      .traverse(DijkstraScript.translate)
+      .map(script => BabbageTxOutRep(raw, r.address, r.value, r.valueSize, r.datum, script))
 
   extension (out: DijkstraTxOut)
     /** The shared representation, read only. */

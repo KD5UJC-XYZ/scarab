@@ -228,6 +228,26 @@ class DijkstraTxOutSuite extends FunSuite:
     assert(out.raw.hex.contains("820182820400820500"), out.raw.hex)
   }
 
+  test("an output Mary read leniently is carried into Dijkstra as it was read") {
+    // output 0 of mainnet transaction 9a47e091: a pointer out of range, which Mary normalises to
+    // `Ptr 0 0 0` and keeps in its bytes as it came (MainnetPointerSuite); Dijkstra's strict
+    // decoder would refuse those bytes, and the translation does not read them again
+    val hexTx = Files.readString(Path.of("fixtures/mainnet/mary-pointer-tx-9a47e091.hex")).trim
+    val body = CborRead
+      .decode(hex(hexTx))
+      .flatMap(CborRead.array(_, xyz.kd5ujc.scarab.ledger.DecodeField.Transaction))
+      .map(_.head.original)
+      .fold(e => fail(e.toString), identity)
+    val mary = xyz.kd5ujc.scarab.ledger.TxBody
+      .decode(body, Era.Mary)
+      .fold(e => fail(e.toString), _.outputs.head)
+    val conway = ConwayTxOut.fromStored(mary).fold(e => fail(e.toString), identity)
+    val out = DijkstraTxOut.translate(conway).fold(e => fail(e.toString), _.rep)
+    assertEquals(out.address, mary.address)
+    assertEquals(out.raw, mary.raw)
+    assertEquals(out.value, conway.rep.value)
+  }
+
   // ---- the families
 
   test("the era's families reduce at Dijkstra to its types") {
