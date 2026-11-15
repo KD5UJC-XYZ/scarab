@@ -5,8 +5,9 @@ import cats.syntax.all.*
 import monocle.Lens
 import munit.ScalaCheckSuite
 import org.scalacheck.{Arbitrary, Gen, Prop}
-import org.scalacheck.Prop.forAll
+import org.scalacheck.Prop.{forAll, propBoolean}
 import xyz.kd5ujc.scarab.ledger.state.EpochStateGen.given
+import xyz.kd5ujc.scarab.ledger.state.VocabularyGen.given
 
 /** `Diff` on populated states: the native generators fill the certificate records (accounts with
   * their delegations, pools, DReps) and the snapshots, so the deep paths are tried on states that
@@ -29,6 +30,22 @@ class DiffDeepSuite extends ScalaCheckSuite:
   property("governance")(edit(ConwayNewEpochState.gov, "es.ls.utxo.gov"))
   property("snapshots")(edit(ConwayNewEpochState.snapshots, "es.snapshots"))
   property("treasury")(edit(ConwayNewEpochState.treasury, "es.chainAccount.treasury"))
+
+  property("a pending reward that differs only in its amount is named down to its account") {
+    forAll(states, Arbitrary.arbitrary[Credential[Staking]], Arbitrary.arbitrary[Reward]) {
+      (nes, account, reward) =>
+        def pending(amount: Coin): NewEpochState[Conway] =
+          val rs = Sorted.map(List(account -> RewardSet(List(reward.copy(rewardAmount = amount)))))
+          NewEpochState
+            .ru[Conway]
+            .replace(Some(PulsingRewUpdate.Complete(RewardUpdate.empty.copy(rs = rs))))(nes)
+        val one = pending(reward.rewardAmount)
+        val other = pending(Coin(reward.rewardAmount.value + 1))
+        val path = one.firstDifference(other).map(_.path.render)
+        (one =!= other) :| "the two states are not equal" &&
+        path.contains(s"ru.update.rs[${account.show}]") :| s"the difference is at $path"
+    }
+  }
 
   property("no difference exactly when equal, on populated states") {
     forAll(states, states)((a, b) => a.firstDifference(b).isEmpty == (a === b))
