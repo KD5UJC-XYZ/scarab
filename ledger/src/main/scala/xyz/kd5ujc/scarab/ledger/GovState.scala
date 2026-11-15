@@ -198,8 +198,8 @@ final case class Proposals(actions: Vector[GovActionState], roots: PrevIds):
 
   def totalDeposits: BigInt = actions.foldLeft(BigInt(0))(_ + _.proposal.deposit)
 
-  /** `proposalsDeposits` (`Conway/Governance/Proposals.hs:566–580`): non-compactible deposits
-    * become zero before grouping; compact sums wrap modulo 2^64.
+  /** `proposalsDeposits` (`Conway/Governance/Proposals.hs:566–580`, cardano-ledger f649f975):
+    * non-compactible deposits become zero before grouping; compact sums wrap modulo 2^64.
     */
   def depositsByCredential: Map[Credential, CompactCoin] =
     actions.groupMapReduce(_.proposal.returnAccount.credential)(g =>
@@ -230,9 +230,10 @@ object Proposals:
       parent == roots.get(purpose) || parent.exists(p => lineageOf(p).contains(purpose))
     }
 
-  /** `mkProposals` (`Proposals.hs:338-354`): the store of `actions`, in their order, over `roots`,
-    * each action added as `proposalsAddAction` adds it, or the first that cannot be. The decoders
-    * of a store run it (`Proposals.hs:390-406`), as does the import of a canonical ledger state
+  /** `mkProposals` (`Proposals.hs:338-354`, cardano-ledger f649f975): the store of `actions`, in
+    * their order, over `roots`, each action added as `proposalsAddAction` adds it, or the first
+    * that cannot be. The decoders of a store run it (`Proposals.hs:390-406`), as does the import of
+    * a canonical ledger state
     * (`libs/cardano-ledger-canonical-state/conway/Cardano/Ledger/CanonicalState/Conway/Import.hs:396-401`).
     * The ids of `actions` are distinct, as those of the reference's `OMap` are; its check that the
     * map is rebuilt unchanged (`Proposals.hs:353`) then always holds.

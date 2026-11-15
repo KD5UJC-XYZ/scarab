@@ -106,8 +106,9 @@ object GenesisState:
         case _                     => Right(address)
     }
 
-  /** `putAddr` serializes a decoded Byron address (`Address.hs:279-281`); the root and attribute
-    * values remain unchanged, while the envelope, payload and attribute map use their encoders.
+  /** `putAddr` serializes a decoded Byron address (`Address.hs:279-281`, cardano-ledger f649f975);
+    * the root and attribute values remain unchanged, while the envelope, payload and attribute map
+    * use their encoders.
     */
   private def canonicalByron(raw: Bytes): Either[ConfigError, Bytes] =
     def n(value: CborValue): Node = Node(value, Bytes.empty)
@@ -207,7 +208,9 @@ object GenesisState:
       .as[Option[JsonObject]]
       .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis injection", name, e)))
 
-  /** `ListMap` decodes ordered JSON keys, each key before its value (`Data/ListMap.hs:109-125`). */
+  /** `ListMap` decodes ordered JSON keys, each key before its value (`Data/ListMap.hs:109-125`,
+    * cardano-ledger f649f975).
+    */
   def entries[K, V](
       cursor: ACursor,
       name: String,

@@ -13,13 +13,15 @@ enum DataSite:
   case InlineDatum
   case Redeemer
 
-/** The output named by a context translation error (`Plutus/TxInfo.hs:90-103`). */
+/** The output named by a context translation error (`Plutus/TxInfo.hs:90-103`, cardano-ledger
+  * f649f975).
+  */
 enum TxOutSource:
   case TxOutFromInput(input: TxIn)
   case TxOutFromOutput(index: Int)
 
 /** A context translation failure, carried by [[CollectError.BadTranslation]]. The reference
-  * `ContextError` belongs to its era ( `Alonzo/Plutus/TxInfo.hs:213-216`,
+  * `ContextError` belongs to its era ( `Alonzo/Plutus/TxInfo.hs:213-216` (cardano-ledger f649f975),
   * `Babbage/TxInfo.hs:253-260`, `Conway/TxInfo.hs:180-189`). It is a phase-1 failure.
   *
   * The cases the reference has no constructor for (it holds the data decoded and the cost models

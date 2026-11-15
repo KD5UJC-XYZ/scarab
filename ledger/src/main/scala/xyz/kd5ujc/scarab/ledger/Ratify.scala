@@ -21,7 +21,8 @@ object Ratify:
   import Threshold.*
 
   /** The DRep groups an update modifies, and whether any of its fields is in the security group
-    * (`modifiedPPGroups`, from the `THKD` groups of each field, `Conway/PParams.hs:643-709`).
+    * (`modifiedPPGroups`, from the `THKD` groups of each field, `Conway/PParams.hs:643-709`,
+    * cardano-ledger f649f975).
     */
   def modifiedGroups(u: ConwayParamUpdate): (Set[DRepGroup], Boolean) =
     val params = u.params

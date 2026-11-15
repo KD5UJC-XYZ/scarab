@@ -79,7 +79,8 @@ object Voter:
   /** `[0, keyhash] / [1, scripthash]` (committee), `[2, ..] / [3, ..]` (DRep), `[4, keyhash]`. */
   def decode(n: Node)(using ByteStrings): Either[LedgerDecodeError, Voter] =
     CborRead.arrayN(n, 2, DecodeField.Voter).flatMap { xs =>
-      // `decodeRecordSum "Voter"` (`Conway/Governance/Procedures.hs:355-363`): a full-width tag
+      // `decodeRecordSum "Voter"` (`Conway/Governance/Procedures.hs:355-363`,
+      // cardano-ledger f649f975): a full-width tag
       (
         CborRead.uint(xs(0), DecodeField.VoterTag),
         CborRead.bytesN(xs(1), 28, DecodeField.VoterHash)
@@ -141,10 +142,10 @@ private[ledger] final case class ProposalIdentity(
     anchor: Anchor
 )
 
-/** A governance action by meaning (`Governance/Procedures.hs:815-848`, `deriving Ord`): a parameter
-  * update by the typed value of each field (`PParamsUpdate`), and treasury withdrawals as the `Map
-  * AccountAddress Coin` they are, whatever the order of the entries; any other action is its
-  * decoded value.
+/** A governance action by meaning (`Governance/Procedures.hs:815-848` (cardano-ledger f649f975),
+  * `deriving Ord`): a parameter update by the typed value of each field (`PParamsUpdate`), and
+  * treasury withdrawals as the `Map AccountAddress Coin` they are, whatever the order of the
+  * entries; any other action is its decoded value.
   */
 private[ledger] enum ActionIdentity:
   case Update(
@@ -215,7 +216,8 @@ object Proposal:
         tag <- xs.headOption
           .toRight(LedgerDecodeError.Empty(DecodeField.GovernanceAction))
           .flatMap(CborRead.uint(_, DecodeField.ActionTag))
-        // `Summands "GovAction"` (`Conway/Governance/Procedures.hs:876-895`): a full-width tag
+        // `Summands "GovAction"` (`Conway/Governance/Procedures.hs:876-895`,
+        // cardano-ledger f649f975): a full-width tag
         a <- (CborRead.small(tag), xs.size) match
           case (Some(0), 4) =>
             (

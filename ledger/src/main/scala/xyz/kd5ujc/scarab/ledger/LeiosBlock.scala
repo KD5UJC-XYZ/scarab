@@ -184,9 +184,9 @@ object LeiosHeader:
       )
 
   /** `DecCBOR (CertifiedVRF v a)` at decoder version 12 (cardano-ledger-binary
-    * `Decoding/DecCBOR.hs:627-652`): `decodeRecordNamed` of the output and the proof, a definite or
-    * an indefinite list; the output must be the 64 bytes of a Praos VRF output (`:630-636`), the
-    * proof is the 80 bytes of `decodeFixedSized`.
+    * `Decoding/DecCBOR.hs:627-652`, cardano-ledger 9df9f98c): `decodeRecordNamed` of the output and
+    * the proof, a definite or an indefinite list; the output must be the 64 bytes of a Praos VRF
+    * output (`:630-636`), the proof is the 80 bytes of `decodeFixedSized`.
     */
   private def vrfCert(n: Node): Either[ChainError, VrfCert] =
     for
@@ -195,7 +195,9 @@ object LeiosHeader:
       proof <- bytes(xs(1), 80)
     yield VrfCert(output, proof)
 
-  /** `BlockHeaderVersionInfo` (`Block.hs:163-166`): two `Word32`, neither validated. */
+  /** `BlockHeaderVersionInfo` (`Block.hs:163-166`, cardano-ledger 9df9f98c): two `Word32`, neither
+    * validated.
+    */
   private def versionInfo(n: Node): Either[ChainError, HeaderVersionInfo] =
     for
       xs <- array(n, 2)
@@ -203,7 +205,9 @@ object LeiosHeader:
       tag <- Header.word32(xs(1), DecodeField.Minor)
     yield HeaderVersionInfo(major, tag)
 
-  /** Null, or `EbReferencesAnnouncement` (`Block.hs:184-189`): the hash and a `Word32` size. */
+  /** Null, or `EbReferencesAnnouncement` (`Block.hs:184-189`, cardano-ledger 9df9f98c): the hash
+    * and a `Word32` size.
+    */
   private def announcement(n: Node): Either[ChainError, Option[EbAnnouncement]] = n.value match
     case Value.Null => Right(None)
     case _ =>
@@ -219,7 +223,7 @@ end LeiosHeader
   * [transactions, leios_certificate / nil, peras_certificate / nil]`. Each transaction is whole,
   * `[body, witnesses, auxiliary_data / nil, is_valid]`, decoded as the build decodes it
   * ([[dijkstra.DijkstraTx]]), and the block body hash is the Blake2b-256 digest of the whole
-  * encoded body (cardano-ledger `Dijkstra/BlockBody/Internal.hs:120`:
+  * encoded body (cardano-ledger 9df9f98c `Dijkstra/BlockBody/Internal.hs:120`:
   * `hashBlockBody = extractHash . getMemoBytesHash`), not a merkle of component hashes (the CDDL
   * comment "merkle triple root" is stale).
   *

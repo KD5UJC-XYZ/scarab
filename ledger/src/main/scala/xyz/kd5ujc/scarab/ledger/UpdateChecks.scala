@@ -43,7 +43,7 @@ object UpdateChecks:
 
   /** The parameters the proposals of the epoch vote for: the one update that at least `quorum`
     * genesis delegates proposed with equal values ([[ParamUpdate.winners]]), applied to `params`
-    * (`votedFuturePParams`, `Rules/Ppup.hs:205-225`).
+    * (`votedFuturePParams`, `Rules/Ppup.hs:205-225`, cardano-ledger f649f975).
     */
   def voted[E <: EraTag](
       params: ProtocolParams,

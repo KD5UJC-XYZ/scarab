@@ -9,13 +9,15 @@ import xyz.kd5ujc.scarab.codec.Bytes
   */
 final case class Mismatch[A](supplied: A, expected: A)
 
-/** The period an update proposal is made for (`VotingPeriod`, `Shelley/Rules/Ppup.hs:67`). */
+/** The period an update proposal is made for (`VotingPeriod`, `Shelley/Rules/Ppup.hs:67`,
+  * cardano-ledger f649f975).
+  */
 enum VotingPeriod:
   case VoteForThisEpoch
   case VoteForNextEpoch
 
-/** PPUP failures (`ShelleyPpupPredFailure`, `Shelley/Rules/Ppup.hs:85-107`): the update proposals
-  * of the eras before Conway, which have no PPUP rule.
+/** PPUP failures (`ShelleyPpupPredFailure`, `Shelley/Rules/Ppup.hs:85-107`, cardano-ledger
+  * f649f975): the update proposals of the eras before Conway, which have no PPUP rule.
   */
 enum PpupFailure:
   /** An update proposed by a key hash that is not a genesis key (`NonGenesisUpdatePPUP`): the
@@ -50,21 +52,22 @@ enum UtxosFailure:
     */
   case ValidationTagMismatch(isValid: Boolean, failures: Option[Vector[PlutusFailure]])
 
-  /** The evaluation of a script could not be set up (`CollectErrors`,
-    * `Alonzo/Rules/Utxos.hs:333`); a phase-1 failure.
+  /** The evaluation of a script could not be set up (`CollectErrors`, `Alonzo/Rules/Utxos.hs:333`,
+    * cardano-ledger f649f975); a phase-1 failure.
     */
   case CollectErrors(errors: cats.data.NonEmptyVector[CollectError])
 
 /** UTXO failures, named and numbered as `ConwayUtxoPredFailure` has them; the cases of the eras
-  * before Conway are those of `ShelleyUtxoPredFailure` (`Shelley/Rules/Utxo.hs:166-189`),
-  * `AllegraUtxoPredFailure`, `AlonzoUtxoPredFailure` and `BabbageUtxoPredFailure` that Conway has
-  * no constructor for.
+  * before Conway are those of `ShelleyUtxoPredFailure` (`Shelley/Rules/Utxo.hs:166-189`,
+  * cardano-ledger f649f975), `AllegraUtxoPredFailure`, `AlonzoUtxoPredFailure` and
+  * `BabbageUtxoPredFailure` that Conway has no constructor for.
   */
 enum UtxoFailure:
   case Utxos(failure: UtxosFailure)
 
   /** The time to live has passed (`ExpiredUTxO`, Shelley only): the time to live is the supplied
-    * side, the slot the expected (`validateTimeToLive`, `Shelley/Rules/Utxo.hs:414-423`).
+    * side, the slot the expected (`validateTimeToLive`, `Shelley/Rules/Utxo.hs:414-423`,
+    * cardano-ledger f649f975).
     */
   case ExpiredUTxO(mismatch: Mismatch[BigInt])
 
@@ -120,8 +123,8 @@ enum UtxowFailure:
   case MalformedReferenceScripts(hashes: Set[Bytes])
 
   /** A MIR certificate without the quorum of the genesis delegates' signatures
-    * (`MIRInsufficientGenesisSigsUTXOW`, `Shelley/Rules/Utxow.hs:121`): the genesis delegates that
-    * did sign.
+    * (`MIRInsufficientGenesisSigsUTXOW`, `Shelley/Rules/Utxow.hs:121`, cardano-ledger f649f975):
+    * the genesis delegates that did sign.
     */
   case MIRInsufficientGenesisSigs(signers: Set[Bytes])
 
@@ -144,8 +147,8 @@ enum PoolFailure:
   case VRFKeyHashAlreadyRegistered(pool: Bytes, vrf: Bytes)
 
 /** Stake credential failures (`ConwayDelegPredFailure`); the cases of the eras before Conway are
-  * those of `ShelleyDelegPredFailure` (`Shelley/Rules/Deleg.hs:89-120`) that Conway has no
-  * constructor for.
+  * those of `ShelleyDelegPredFailure` (`Shelley/Rules/Deleg.hs:89-120`, cardano-ledger f649f975)
+  * that Conway has no constructor for.
   */
 enum DelegFailure:
   case IncorrectDeposit(coin: BigInt)
@@ -183,7 +186,7 @@ enum DelegFailure:
 
   /** A MIR certificate arrives too late in the epoch: the slot is the supplied side, the first slot
     * too late the expected (`MIRCertificateTooLateinEpochDELEG`, `checkSlotNotTooLate`,
-    * `Shelley/Rules/Deleg.hs:387-404`).
+    * `Shelley/Rules/Deleg.hs:387-404`, cardano-ledger f649f975).
     */
   case MIRCertificateTooLateinEpoch(mismatch: Mismatch[BigInt])
 

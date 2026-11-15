@@ -177,8 +177,9 @@ final case class ProtocolParams(
 
   /** `hardforkAlonzoValidatePoolAccountAddressNetID` (`pvMajor pv > 4`, so from Alonzo): only then
     * does a pool registration need the network of its reward account to be the node's. Shelley,
-    * Allegra and Mary accept any network (`Cardano.Ledger.Shelley.Era`, `Shelley/Era.hs:246-251`;
-    * used in `Shelley/Rules/Pool.hs:231`). Mainnet carries such a registration at slot 4,495,760.
+    * Allegra and Mary accept any network (`Cardano.Ledger.Shelley.Era`, `Shelley/Era.hs:246-251`
+    * (cardano-ledger f649f975); used in `Shelley/Rules/Pool.hs:231`). Mainnet carries such a
+    * registration at slot 4,495,760.
     */
   def validatesPoolRewardAccountNetwork: Boolean = protocolMajor > 4
 
@@ -285,7 +286,7 @@ object ProtocolParams:
       rho <- shelleyRatio("rho", BoundedRatio.Unit)
       tau <- shelleyRatio("tau", BoundedRatio.Unit)
       d <- shelleyRatio("decentralisationParam", BoundedRatio.Unit)
-      // `.:? "minPoolCost" .!= mempty` (Shelley/Genesis.hs:424)
+      // `.:? "minPoolCost" .!= mempty` (Shelley/Genesis.hs:424, cardano-ledger f649f975)
       minPoolCost <- opt[BigInt](s, "minPoolCost").map(_.getOrElse(BigInt(0)))
       minUTxO <- opt[BigInt](s, "minUTxOValue").map(_.getOrElse(BigInt(0)))
       major <- get[BigInt](s.downField("protocolVersion"), "major")
