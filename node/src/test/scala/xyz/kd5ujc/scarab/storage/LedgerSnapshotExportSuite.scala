@@ -483,6 +483,32 @@ class LedgerSnapshotExportSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaugh
   }
 
   test(
+    "a slot named under fa-IR or ar-EG selects the snapshot a database written under root holds"
+  ) {
+    tempDir.use { root =>
+      for
+        input <- fixture(root, "conway-4593")
+        (db, sidecar, _) = input
+        slot = SlotNo
+          .fromBigInt(sidecar.anchor.getOrElse(fail("anchor")).slot)
+          .fold(e => fail(e.toString), identity)
+        exported <- List("fa-IR", "ar-EG").traverse { tag =>
+          StorageTestKit
+            .underLocale(java.util.Locale.forLanguageTag(tag))
+            .surround(
+              attempt(
+                LedgerSnapshotExport.run[IO](
+                  LedgerSnapshotExport.Config(db, root / s"out-$tag", Some(slot))
+                )
+              )
+            )
+            .map(tag -> _)
+        }
+      yield exported.foreach((tag, result) => assert(result.isRight, s"under $tag: $result"))
+    }
+  }
+
+  test(
     "cancelling a table export removes staging and releases ownership without changing source"
   ) {
     tempDir.use { root =>

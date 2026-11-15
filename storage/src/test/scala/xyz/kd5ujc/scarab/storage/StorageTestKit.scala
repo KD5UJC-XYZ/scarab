@@ -5,6 +5,7 @@ import cats.effect.{IO, Resource}
 import cats.mtl.Handle
 import cats.syntax.all.*
 import fs2.io.file.{Files, Path}
+import java.util.Locale
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
@@ -27,6 +28,30 @@ object StorageTestKit:
   /** Run a program that must not raise. */
   def ok[A](body: Handle[IO, StorageError] ?=> IO[A]): IO[A] =
     attempt(body).flatMap(_.fold(e => IO.raiseError(new AssertionError(e.message)), IO.pure))
+
+  /** The JVM's default locale, and its display and format locales, set to `locale` while the
+    * resource is in use and given back on release. The build runs one suite at a time (its
+    * `parallelExecution` setting and test tag limit in `build.sbt`), so no other suite runs under
+    * it.
+    */
+  def underLocale(locale: Locale): Resource[IO, Unit] =
+    Resource
+      .make(IO {
+        val saved = (
+          Locale.getDefault,
+          Locale.getDefault(Locale.Category.DISPLAY),
+          Locale.getDefault(Locale.Category.FORMAT)
+        )
+        Locale.setDefault(locale)
+        saved
+      }) { (default, display, format) =>
+        IO {
+          Locale.setDefault(default)
+          Locale.setDefault(Locale.Category.DISPLAY, display)
+          Locale.setDefault(Locale.Category.FORMAT, format)
+        }
+      }
+      .void
 
   def hash(i: Int): Bytes = Blake2b.hash256.hash(Bytes(s"block-$i".getBytes.toVector))
 

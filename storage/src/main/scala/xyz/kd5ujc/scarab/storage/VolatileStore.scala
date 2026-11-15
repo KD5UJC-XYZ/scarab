@@ -253,7 +253,7 @@ object VolatileStore:
     go(0L, z)
 
   private val Suffix = ".log"
-  private def nameOf(seq: Int) = f"$seq%08d$Suffix"
+  private def nameOf(seq: Int) = s"${FileNumber.padded(seq, 8)}$Suffix"
 
   /** Open (or create) the log in `dir`. Files are `<seq>.log`; a new file starts after
     * `blocksPerFile` blocks. Opening validates every file in order, cuts the first damaged one at

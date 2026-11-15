@@ -211,7 +211,7 @@ object FileImmutableStore:
           }
       }
       .flatMap(_.traverse_ { chunk =>
-        val index = dir / f"$chunk%05d.index"
+        val index = dir / s"${FileNumber.padded(chunk, 5)}.index"
         AtomicFile.guard[F, Long](index.toString)(JFiles.size(index.toNioPath)).flatMap { size =>
           if size < HeaderSize || (size - HeaderSize) % EntrySize != 0 then
             StorageError.FirstImmutable(FirstImmutableProblem.InvalidIndexEntry).raise[F, Unit]
@@ -268,7 +268,7 @@ object FileImmutableStore:
         if read <= 0 then false else readFully(channel, buffer, position + read)
 
     def readChunk(root: java.nio.file.Path, chunk: Int): Either[StorageError, Option[Bytes]] =
-      val indexPath = root.resolve(f"$chunk%05d.index")
+      val indexPath = root.resolve(s"${FileNumber.padded(chunk, 5)}.index")
       val invalid = StorageError.FirstImmutable(FirstImmutableProblem.InvalidIndexEntry)
       Using.resource(FileChannel.open(indexPath, StandardOpenOption.READ)) { index =>
         val indexSize = index.size()
@@ -290,7 +290,7 @@ object FileImmutableStore:
                     entry.offset > Long.MaxValue - entry.length.toLong
                   then Left(invalid)
                   else
-                    val dataPath = root.resolve(f"$chunk%05d.chunk")
+                    val dataPath = root.resolve(s"${FileNumber.padded(chunk, 5)}.chunk")
                     if !JFiles.isRegularFile(dataPath) then
                       Left(StorageError.FirstImmutable(FirstImmutableProblem.MissingChunk))
                     else
@@ -373,8 +373,8 @@ object FileImmutableStore:
     def guard[A](what: String)(fa: F[A])(using Raise[F, StorageError]): F[A] =
       fa.attempt.flatMap(_.fold(e => fail(StorageError.Io(what, e)), F.pure))
 
-    def dataPath(c: Int) = dir / f"$c%05d.chunk"
-    def indexPath(c: Int) = dir / f"$c%05d.index"
+    def dataPath(c: Int) = dir / s"${FileNumber.padded(c, 5)}.chunk"
+    def indexPath(c: Int) = dir / s"${FileNumber.padded(c, 5)}.index"
 
     def readAll(path: Path)(using cats.mtl.Raise[F, StorageError]): F[Array[Byte]] =
       guard(path.toString)(files.readAll(path).compile.to(Chunk).map(_.toArray))

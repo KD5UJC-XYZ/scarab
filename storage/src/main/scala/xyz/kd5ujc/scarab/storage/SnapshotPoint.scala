@@ -46,7 +46,7 @@ private[storage] object SnapshotPoint:
           Left(StorageError.VersionMismatch(root.toString, format, expected))
         else
           val chunk = anchor.slot / slots
-          val stem = f"$chunk%05d"
+          val stem = FileNumber.padded(chunk, 5)
           val index = (root / s"$stem.index").toNioPath
           val size = Files.size(index)
           val header = FileImmutableStore.HeaderSize
