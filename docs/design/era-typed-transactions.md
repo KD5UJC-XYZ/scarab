@@ -400,7 +400,9 @@ Conway's rules on the classes follow as the rest of stage 2.
   relays and metadata mean the same, as the reference's derived `Eq StakePoolParams` compares them, though the
   bytes they were read from are kept. Deposits and refunds are `Coin`. The certificate classes are
   `EraTxCert`, `ShelleyEraTxCert` and `ConwayEraTxCert`, each reader with its builder. A pool is a
-  `KeyHash[StakePool]` and a retirement epoch an `EpochNo`, as in the reference's classes.
+  `KeyHash[StakePool]` and a retirement epoch an `EpochNo`, and each credential is of its role
+  (`Credential[Staking]`, `[DRepRole]`, `[ColdCommittee]`, `[HotCommittee]`), as in the reference's classes,
+  so a staking credential given as a DRep's does not compile.
 - Outputs and proposals compare as the reference's derived `Eq` does: an output by its address, value, datum
   and reference script, not the bytes it arrived as; a proposal (`ProposalProcedure`) by what it means, so
   treasury withdrawals compare as the map they are. The reference's genesis-delegation and instantaneous-reward

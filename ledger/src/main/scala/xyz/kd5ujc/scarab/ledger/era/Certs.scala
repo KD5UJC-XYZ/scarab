@@ -2,8 +2,20 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Anchor, Credential, DRep, PoolIdentity, PoolParams}
-import xyz.kd5ujc.scarab.ledger.state.{Coin, EpochNo, KeyHash, StakePool}
+import xyz.kd5ujc.scarab.ledger.{Anchor, PoolIdentity, PoolParams}
+import xyz.kd5ujc.scarab.ledger.state.{
+  ColdCommittee,
+  Coin,
+  Credential,
+  DRep,
+  DRepRole,
+  EpochNo,
+  HotCommittee,
+  KeyHash,
+  KeyRole,
+  StakePool,
+  Staking
+}
 
 /** A pool certificate (`data PoolCert`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxCert.hs:128-133`): the reference shares it
@@ -51,30 +63,31 @@ enum Delegatee:
   */
 enum ConwayDelegCert:
   /** Tag 0 without a deposit, tag 7 with one. */
-  case ConwayRegCert(credential: Credential, deposit: Option[Coin])
+  case ConwayRegCert(credential: Credential[Staking], deposit: Option[Coin])
 
   /** Tag 1 without a refund, tag 8 with one. */
-  case ConwayUnRegCert(credential: Credential, refund: Option[Coin])
-  case ConwayDelegCert(credential: Credential, delegatee: Delegatee)
-  case ConwayRegDelegCert(credential: Credential, delegatee: Delegatee, deposit: Coin)
+  case ConwayUnRegCert(credential: Credential[Staking], refund: Option[Coin])
+  case ConwayDelegCert(credential: Credential[Staking], delegatee: Delegatee)
+  case ConwayRegDelegCert(credential: Credential[Staking], delegatee: Delegatee, deposit: Coin)
 
-  def credential: Credential
+  def credential: Credential[Staking]
 
 /** The governance certificates from Conway (`data ConwayGovCert`, `Conway/TxCert.hs:568-574`,
-  * cardano-ledger f649f975).
+  * cardano-ledger f649f975), each credential of its role: a DRep's, or a committee member's cold or
+  * hot one.
   */
 enum ConwayGovCert:
-  case ConwayRegDRep(credential: Credential, deposit: Coin, anchor: Option[Anchor])
-  case ConwayUnRegDRep(credential: Credential, refund: Coin)
-  case ConwayUpdateDRep(credential: Credential, anchor: Option[Anchor])
-  case ConwayAuthCommitteeHotKey(cold: Credential, hot: Credential)
-  case ConwayResignCommitteeColdKey(cold: Credential, anchor: Option[Anchor])
+  case ConwayRegDRep(credential: Credential[DRepRole], deposit: Coin, anchor: Option[Anchor])
+  case ConwayUnRegDRep(credential: Credential[DRepRole], refund: Coin)
+  case ConwayUpdateDRep(credential: Credential[DRepRole], anchor: Option[Anchor])
+  case ConwayAuthCommitteeHotKey(cold: Credential[ColdCommittee], hot: Credential[HotCommittee])
+  case ConwayResignCommitteeColdKey(cold: Credential[ColdCommittee], anchor: Option[Anchor])
 
   /** The credential that signs or witnesses the certificate (`conwayGovCertVKeyWitness`,
     * `Conway/TxCert.hs:798-804`, cardano-ledger f649f975): the cold credential of a committee
     * certificate.
     */
-  def witness: Credential = this match
+  def witness: Credential[? <: KeyRole] = this match
     case ConwayRegDRep(c, _, _)                => c
     case ConwayUnRegDRep(c, _)                 => c
     case ConwayUpdateDRep(c, _)                => c

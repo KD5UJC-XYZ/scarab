@@ -27,7 +27,18 @@ import xyz.kd5ujc.scarab.ledger.era.conway.{
   ConwayTxCert,
   ConwayTxWits
 }
-import xyz.kd5ujc.scarab.ledger.state.{Coin, EpochNo, KeyHash, StakePool}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Coin,
+  Credential,
+  DRepRole,
+  EpochNo,
+  HotCommittee,
+  KeyHash,
+  KeyRole,
+  ScriptHash,
+  StakePool,
+  Staking
+}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** Conway's types (stage 2 of `docs/design/era-typed-transactions.md`): every recorded Conway body
@@ -208,8 +219,11 @@ class EraConwaySuite extends munit.FunSuite:
     val kh = Bytes.fromHex(k).toOption.get
     val ph = Bytes.fromHex(p).toOption.get
     val pk = KeyHash.fromBytes[StakePool](ph).toOption.get
-    val cred = xyz.kd5ujc.scarab.ledger.Credential.Script(sh)
-    val drep = xyz.kd5ujc.scarab.ledger.DRep.AlwaysAbstain
+    def cred[R <: KeyRole]: Credential[R] =
+      Credential.ScriptHashObj[R](ScriptHash.fromBytes(sh).toOption.get)
+    def keyCred[R <: KeyRole]: Credential[R] =
+      Credential.KeyHashObj[R](KeyHash.fromBytes[R](kh).toOption.get)
+    val drep = xyz.kd5ujc.scarab.ledger.state.DRep.DRepAlwaysAbstain
     import ConwayTxCert.*
     import ConwayDelegCert.*
     import ConwayGovCert.*
@@ -266,7 +280,7 @@ class EraConwaySuite extends munit.FunSuite:
       (
         s"830e$script$key",
         ConwayTxCertGov(
-          ConwayAuthCommitteeHotKey(cred, xyz.kd5ujc.scarab.ledger.Credential.Key(kh))
+          ConwayAuthCommitteeHotKey(cred, keyCred)
         ),
         Some(sh),
         None
@@ -274,7 +288,7 @@ class EraConwaySuite extends munit.FunSuite:
       (
         s"830e$key$script",
         ConwayTxCertGov(
-          ConwayAuthCommitteeHotKey(xyz.kd5ujc.scarab.ledger.Credential.Key(kh), cred)
+          ConwayAuthCommitteeHotKey(keyCred, cred)
         ),
         None,
         Some(kh)
@@ -322,9 +336,12 @@ class EraConwaySuite extends munit.FunSuite:
     val kh = Bytes.fromHex(k).toOption.get
     val ph = Bytes.fromHex(p).toOption.get
     val pk = KeyHash.fromBytes[StakePool](ph).toOption.get
-    val cred = xyz.kd5ujc.scarab.ledger.Credential.Script(sh)
-    val hot = xyz.kd5ujc.scarab.ledger.Credential.Key(kh)
-    val drep = xyz.kd5ujc.scarab.ledger.DRep.AlwaysAbstain
+    def cred[R <: KeyRole]: Credential[R] =
+      Credential.ScriptHashObj[R](ScriptHash.fromBytes(sh).toOption.get)
+    def keyCred[R <: KeyRole]: Credential[R] =
+      Credential.KeyHashObj[R](KeyHash.fromBytes[R](kh).toOption.get)
+    val drep = xyz.kd5ujc.scarab.ledger.state.DRep.DRepAlwaysAbstain
+    val hot = keyCred[HotCommittee]
     val c = EraTxCert.conway
     val built = Vector(
       s"8200$script" -> c.mkRegTxCert(cred),
@@ -343,18 +360,24 @@ class EraConwaySuite extends munit.FunSuite:
     )
     built.foreach((hex, cert) => assertEquals(ConwayTxCert.decode(node(hex)), Right(cert), hex))
     // and each reader reads back what its builder took, and nothing from another form
-    assertEquals(c.getRegDepositTxCert(c.mkRegDepositTxCert(cred, Coin(5))), Some((cred, Coin(5))))
+    assertEquals(
+      c.getRegDepositTxCert(c.mkRegDepositTxCert(cred, Coin(5))),
+      Some((cred[Staking], Coin(5)))
+    )
     assertEquals(c.getRegDepositTxCert(c.mkRegTxCert(cred)), None)
     assertEquals(c.getRegTxCert(c.mkRegDepositTxCert(cred, Coin(5))), None)
     assertEquals(c.getUnRegTxCert(c.mkUnRegDepositTxCert(cred, Coin(5))), None)
     assertEquals(c.getDelegStakeTxCert(c.mkDelegTxCert(cred, Delegatee.DelegVote(drep))), None)
-    assertEquals(c.getDelegStakeTxCert(c.mkDelegStakeTxCert(cred, pk)), Some((cred, pk)))
+    assertEquals(c.getDelegStakeTxCert(c.mkDelegStakeTxCert(cred, pk)), Some((cred[Staking], pk)))
     assertEquals(
       c.getRetirePoolTxCert(c.mkRetirePoolTxCert(pk, EpochNo.fromUnsigned(10))),
       Some((pk, EpochNo.fromUnsigned(10)))
     )
     assertEquals(c.getUnRegDRepTxCert(c.mkRegDRepTxCert(cred, Coin(5), None)), None)
-    assertEquals(c.getUpdateDRepTxCert(c.mkUpdateDRepTxCert(cred, None)), Some((cred, None)))
+    assertEquals(
+      c.getUpdateDRepTxCert(c.mkUpdateDRepTxCert(cred, None)),
+      Some((cred[DRepRole], None))
+    )
   }
 
   test("Conway's voting and proposing purposes build and read back in each form, and only those") {
@@ -616,6 +639,32 @@ class EraConwaySuite extends munit.FunSuite:
     assertEquals(
       compileErrors(
         "summon[scala.deriving.Mirror.ProductOf[xyz.kd5ujc.scarab.ledger.era.ValidityInterval]]"
+      ),
+      ""
+    )
+  }
+
+  test("a certificate's credential is of its role: a staking credential is not a DRep's") {
+    // `Credential Staking`, `DRepRole`, `ColdCommitteeRole` and `HotCommitteeRole`
+    // (`Conway/TxCert.hs:172-214`, cardano-ledger f649f975)
+    val asDRep = compileErrors(
+      "def f(c: xyz.kd5ujc.scarab.ledger.state.Credential[xyz.kd5ujc.scarab.ledger.state.Staking]) = EraTxCert.conway.mkUnRegDRepTxCert(c, xyz.kd5ujc.scarab.ledger.state.Coin(0))"
+    )
+    assert(asDRep.contains("DRepRole"), asDRep)
+    assertEquals(
+      compileErrors(
+        "def f(c: xyz.kd5ujc.scarab.ledger.state.Credential[xyz.kd5ujc.scarab.ledger.state.DRepRole]) = EraTxCert.conway.mkUnRegDRepTxCert(c, xyz.kd5ujc.scarab.ledger.state.Coin(0))"
+      ),
+      ""
+    )
+    // a hot key given as the cold one
+    val swapped = compileErrors(
+      "def f(h: xyz.kd5ujc.scarab.ledger.state.Credential[xyz.kd5ujc.scarab.ledger.state.HotCommittee], c: xyz.kd5ujc.scarab.ledger.state.Credential[xyz.kd5ujc.scarab.ledger.state.ColdCommittee]) = EraTxCert.conway.mkAuthCommitteeHotKeyTxCert(h, c)"
+    )
+    assert(swapped.contains("ColdCommittee"), swapped)
+    assertEquals(
+      compileErrors(
+        "def f(h: xyz.kd5ujc.scarab.ledger.state.Credential[xyz.kd5ujc.scarab.ledger.state.HotCommittee], c: xyz.kd5ujc.scarab.ledger.state.Credential[xyz.kd5ujc.scarab.ledger.state.ColdCommittee]) = EraTxCert.conway.mkAuthCommitteeHotKeyTxCert(c, h)"
       ),
       ""
     )
