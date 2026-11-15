@@ -19,7 +19,9 @@ import xyz.kd5ujc.scarab.ledger.{
   CostModelDecode,
   Credential,
   DRep,
+  DecodeField,
   DecoderVersion,
+  DetachedRecords,
   GovAction,
   GovActionId,
   Ipv4,
@@ -44,7 +46,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Witnesses
 }
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Word64}
-import xyz.kd5ujc.scarab.models.runtime.{Codec, Writer}
+import xyz.kd5ujc.scarab.models.runtime.{Codec, ConstraintViolation, Writer}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -202,25 +204,57 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
   private val countKeys =
     Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 16, 17, 22, 23, 24, 27, 28, 29, 30, 31, 32)
 
-  /** An update read by the ledger from canonical bytes: counts and amounts, and `rho`. */
-  private val update: Gen[ConwayParamUpdate] =
+  // cardano-ledger f649f975, Binary/Encoding/Encoder.hs:287-299: reduced ratio, tag 30.
+  private def ratioBytes(r: Rational): Bytes =
+    hex("d81e82") ++ Codec.int.encodeUnchecked(r.numerator) ++
+      Codec.int.encodeUnchecked(r.denominator)
+
+  private def recordBytes(fields: Seq[Bytes]): Bytes =
+    val out = new Writer
+    out.arrayHead(fields.size)
+    fields.foreach(out.raw)
+    out.result
+
+  /** Reference bytes, independently of the parameter encoders: Core/PParams.hs:244-255;
+    * Alonzo/PParams.hs:667-700; Conway/PParams.hs:357-364,505-517,1266-1281;
+    * Plutus/ExUnits.hs:192-193,219-220; Plutus/CostModels.hs:470-471 and
+    * Binary/Encoding/Encoder.hs:499-508 (all cardano-ledger f649f975).
+    */
+  private val updateBytes: Gen[Bytes] =
     for
       keys <- Gen.atLeastOne(countKeys).map(_.toVector.sorted)
       values <- Gen.listOfN(keys.size, Gen.choose(1, 65535))
       rho <- Gen.option(unit)
+      modelSize <- Gen.oneOf(0, 1, 23, 24, 166)
+      model <- Gen.listOfN(modelSize, Gen.choose(BigInt(-65535), BigInt(65535)))
+      prices <- Gen.listOfN(2, unit)
+      units <- Gen.listOfN(4, Gen.choose(BigInt(0), BigInt(Long.MaxValue)))
+      poolThresholds <- Gen.listOfN(5, unit)
+      drepThresholds <- Gen.listOfN(10, unit)
     yield
+      val modelValues = model.map(Codec.int.encodeUnchecked)
+      val modelBytes =
+        if modelSize <= 23 then recordBytes(modelValues)
+        else hex("9f") ++ modelValues.foldLeft(Bytes.empty)(_ ++ _) ++ hex("ff")
+      val fields = keys.zip(values).map((k, v) => k -> Codec.int.encodeUnchecked(v)) ++
+        rho.toVector.map(r => 10 -> ratioBytes(r)) ++ Vector(
+          18 -> (hex("a100") ++ modelBytes),
+          19 -> recordBytes(prices.map(ratioBytes)),
+          20 -> recordBytes(units.take(2).map(Codec.int.encodeUnchecked)),
+          21 -> recordBytes(units.drop(2).map(Codec.int.encodeUnchecked)),
+          25 -> recordBytes(poolThresholds.map(ratioBytes)),
+          26 -> recordBytes(drepThresholds.map(ratioBytes))
+        )
       val out = new Writer
-      out.mapHead(keys.size + rho.size)
-      keys.zip(values).foreach { (k, v) =>
+      out.mapHead(fields.size)
+      fields.sortBy(_._1).foreach { (k, v) =>
         out.uint(k.toLong)
-        out.uint(v.toLong)
+        out.raw(v)
       }
-      // `rho` (10) last: the update holds its fields by key, in any order they came
-      rho.foreach { r =>
-        out.uint(10L)
-        Wire.unitInterval.encode(r, out)
-      }
-      ConwayParamUpdate.decode(node(out.result)).fold(e => fail(e.message), identity)
+      out.result
+
+  private val update: Gen[ConwayParamUpdate] =
+    updateBytes.map(b => ConwayParamUpdate.decode(node(b)).fold(e => fail(e.message), identity))
 
   private val proposal: Gen[Proposal] =
     val change = Gen
@@ -398,6 +432,16 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
     }
   }
 
+  property("parameter updates round-trip with the reference bytes for keys 18-21 and 25-26") {
+    forAll(updateBytes) { expected =>
+      val update = ConwayParamUpdate.decode(node(expected)).fold(e => fail(e.message), identity)
+      assert(Set(18, 19, 20, 21, 25, 26).subsetOf(update.keys), "all six fields are exercised")
+      val encoded = written(ConwayCodecs.parameterUpdate)(update)
+      assertEquals(encoded, expected, "the reference's field order, framing and values")
+      assertEquals(ConwayParamUpdate.decode(node(encoded)), Right(update), "decoded update")
+    }
+  }
+
   // ---------------------------------------------------------------------- framing, order, tags
 
   private val key = "11" * 28
@@ -493,6 +537,74 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
         .encodeUnchecked(Vector(Certificate.Register(c, None)))
         .hex
         .startsWith("d9010281")
+    )
+  }
+
+  test("an ordered set refuses pool certificates equal after decoding relays and metadata") {
+    // cardano-ledger f649f975: Data/OSet/Strict.hs:109-116,170-174 compares decoded values;
+    // Shelley/TxCert.hs:437-449 and State/StakePool.hs:389-404,516-524,557-572 write them.
+    val prefix = s"8a03 581c$key 5820${"22" * 32} 01 02 d81e820104 581de0$key d9010280"
+    val relay = "818301190bb86161"
+    val metadata = s"8261615820${"33" * 32}"
+    val wideRelay = "9f 8301 1a00000bb8 6161 ff"
+    // Url requires definite text (cardano-ledger f649f975 BaseTypes.hs:659-685); a wider length
+    // head still reads as "a".
+    val wideMetadata = s"82 780161 5820${"33" * 32}"
+    val canonical = hex(prefix + relay + metadata)
+    val variants = Vector(
+      "relays" -> hex(prefix + wideRelay + metadata),
+      "metadata" -> hex(prefix + relay + wideMetadata),
+      "relays and metadata" -> hex(prefix + wideRelay + wideMetadata)
+    )
+    variants.foreach { (label, alternate) =>
+      val raw = Vector(canonical, alternate)
+      val certificates =
+        raw.map(b => Certificate.decode(node(b), Era.Conway).fold(e => fail(e.message), identity))
+      assertNotEquals(certificates(0), certificates(1), s"$label: kept bytes differ")
+      certificates.foreach { c =>
+        val encoded = written(ConwayCodecs.certificate)(c)
+        assertEquals(encoded, canonical, s"$label: reference certificate encoding")
+        assertEquals(Certificate.decode(node(encoded), Era.Conway), Right(certificates(0)))
+        val singleton = written(ConwayCodecs.certificates)(Vector(c))
+        assertEquals(singleton, hex("d9010281") ++ canonical, s"$label: reference OSet encoding")
+        assertEquals(body("04", singleton).map(_.certificates), Right(Vector(certificates(0))))
+      }
+      assertEquals(
+        ConwayCodecs.certificates.write(certificates),
+        Left(ConstraintViolation("certificates", "each element once", "1 repeated")),
+        label
+      )
+      assertEquals(
+        body("04", hex("d9010282") ++ canonical ++ alternate),
+        Left(LedgerDecodeError.DuplicateElement(DecodeField.Certificates)),
+        s"$label: the production decoder also refuses the repeated value"
+      )
+    }
+  }
+
+  test("an ordered set refuses proposals equal after decoding a parameter update") {
+    // cardano-ledger f649f975: Data/OSet/Strict.hs:109-116,170-174;
+    // Conway/Governance/Procedures.hs:537-544,928-946; Core/PParams.hs:244-255.
+    def proposal(update: String): Bytes =
+      hex(s"84 00 581de0$key 84 00 f6 $update f6 82 6161 5820${"44" * 32}")
+    val canonical = proposal("a2 00 01 13 82 d81e820102 d81e820201")
+    val alternate = proposal("bf 13 9802 d81e820204 d81e820603 00 1801 ff")
+    val proposals = Vector(canonical, alternate).map(b =>
+      body("14", hex("d9010281") ++ b).fold(e => fail(e.message), _.proposals.head)
+    )
+    assertNotEquals(proposals(0), proposals(1), "the updates retain different field bytes")
+    proposals.foreach { p =>
+      val encoded = written(ConwayCodecs.proposalProcedures)(Vector(p))
+      assertEquals(encoded, hex("d9010281") ++ canonical, "reference proposal OSet encoding")
+      assertEquals(body("14", encoded).map(_.proposals), Right(Vector(proposals(0))))
+    }
+    assertEquals(
+      ConwayCodecs.proposalProcedures.write(proposals),
+      Left(ConstraintViolation("proposal procedures", "each element once", "1 repeated"))
+    )
+    assertEquals(
+      body("14", hex("d9010282") ++ canonical ++ alternate),
+      Left(LedgerDecodeError.DuplicateElement(DecodeField.ProposalProcedures))
     )
   }
 
@@ -642,14 +754,57 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
     same(s"d9010281 ${proposal.format("a1 00 01")}")(
       written(ConwayCodecs.proposalProcedures)(read("a1 00 18 01"))
     )
-    // 24 fields: the counts, then `a0`, `rho`, `tau` and the reference-script price
+    // cardano-ledger f649f975: Core/PParams.hs:244-255; Conway/PParams.hs:862-894.
+    // All 30 fields, including distinct values in every position of the compound records.
     val half = "d81e820102"
-    val fields = countKeys.map(k => (k, "01")) ++ Vector(9, 10, 11, 33).map(k => (k, half))
-    def map(head: String) =
-      head + fields.sortBy(_._1).map((k, v) => Codec.int.encodeUnchecked(k).hex + v).mkString
-    assertEquals(fields.size, 24)
-    same(s"d9010281 ${proposal.format(map("b818"))}")(
-      written(ConwayCodecs.proposalProcedures)(read(map("bf") + "ff"))
+    val simple = countKeys.map(k => (k, "01", "01")) ++
+      Vector(9, 10, 11, 33).map(k => (k, half, half))
+    // Plutus/CostModels.hs:470-471; Binary/Encoding/Encoder.hs:397-408,499-508 at f649f975:
+    // sort the languages and write the 166 parameters as an indefinite list.
+    val model = (0 until 166).map(i => Codec.int.encodeUnchecked(i).hex).mkString
+    // Plutus/ExUnits.hs:192-193,219-220; Conway/PParams.hs:357-364,505-517 at f649f975.
+    val compound = Vector(
+      (18, s"a2 01 8120 00 98a6 $model", s"a2 00 9f $model ff 01 8120"),
+      (19, "9802 d81e820204 d81e820603", "82 d81e820102 d81e820201"),
+      (20, "9802 1b0000000000000018 1a00010000", "82 1818 1a00010000"),
+      (
+        21,
+        "9802 1b0000000100000000 1b7fffffffffffffff",
+        "82 1b0000000100000000 1b7fffffffffffffff"
+      ),
+      (
+        25,
+        "9f" + (1 to 5).map(i => f"d81e8218$i%02x1807").mkString + "ff",
+        "85" + (1 to 5).map(i => f"d81e82$i%02x07").mkString
+      ),
+      (
+        26,
+        "9f" + (1 to 10).map(i => f"d81e8218$i%02x180b").mkString + "ff",
+        "8a" + (1 to 10).map(i => f"d81e82$i%02x0b").mkString
+      )
+    )
+    val fields = (simple ++ compound).sortBy(_._1)
+    assertEquals(fields.size, 30)
+    val input = "bf" + fields.reverse
+      .map((k, v, _) => Codec.int.encodeUnchecked(k).hex + v)
+      .mkString + "ff"
+    val expected = "b81e" + fields.map((k, _, v) => Codec.int.encodeUnchecked(k).hex + v).mkString
+    val decoded = ConwayParamUpdate.decode(node(hex(input))).fold(e => fail(e.message), identity)
+    val canonical = ConwayParamUpdate
+      .decode(node(hex(expected)))
+      .fold(e => fail(e.message), identity)
+    assertEquals(decoded.byKey, canonical.byKey, "non-minimal bytes have the same field values")
+    assertEquals(written(ConwayCodecs.parameterUpdate)(decoded), hex(expected))
+    assertEquals(
+      ConwayParamUpdate.decode(node(written(ConwayCodecs.parameterUpdate)(decoded))),
+      Right(canonical)
+    )
+    val proposals = written(ConwayCodecs.proposalProcedures)(read(input))
+    same(s"d9010281 ${proposal.format(expected)}")(proposals)
+    assertEquals(
+      body("14", proposals).map(_.proposals),
+      Right(read(expected)),
+      "the body decoder reads the canonical proposal"
     )
   }
 
@@ -744,6 +899,41 @@ class ConwayCodecsSuite extends ScalaCheckSuite:
     assert(block.header.raw.hex.startsWith("9fff"), block.header.raw.hex.take(8))
     // its outer list is definite already: the reference writes the block back as it came
     assertEquals(written(ConwayCodecs.block)(block), raw)
+  }
+
+  test("a block with a detached record in a body segment is written back as it came") {
+    // cardano-ledger f649f975: Alonzo/TxAuxData.hs:215-251 reads the Allegra-style record;
+    // Binary/Decoding/Coders.hs:482,499-502 reads its fields after the empty indefinite list.
+    // Block.hs:83-86 and Alonzo/BlockBody/Internal.hs:181-186,222-258 keep all segment bytes.
+    val (_, source) = blocks("fixtures/preview/conway.hex").head
+    val auxiliary = hex("9fff a1 1902a2 6178 80")
+    val segments = Vector(
+      hex("81 a3 00 80 01 80 02 00"),
+      hex("81 a0"),
+      hex("a1 00") ++ auxiliary,
+      hex("80")
+    )
+    val raw = hex("85") ++ source.header.raw ++ segments.foldLeft(Bytes.empty)(_ ++ _)
+    val enveloped = hex("8207") ++ raw
+    assert(
+      DetachedRecords
+        .detached(source.header.raw, DetachedRecords.Shapes.header(Era.Conway))
+        .exists(_.isEmpty),
+      "the header has no detached record"
+    )
+    assert(
+      DetachedRecords.detached(enveloped, DetachedRecords.Shapes.block).exists(!_.isEmpty),
+      "the body segment requires the detached-record reader"
+    )
+    assert(Cbor.decode(segments(2)).isLeft, "the auxiliary-data segment is not one CBOR item")
+    val block = Block.decodeShelley(enveloped).fold(e => fail(e.message), identity) match
+      case b: Block.Shelley => b
+      case other            => fail(s"not a Shelley-based block: ${other.era}")
+    assertEquals(block.segments, segments, "all four segments retain their received bytes")
+    assertEquals(block.transactions.map(_.auxiliaryData), Vector(Some(auxiliary)))
+    val encoded = written(ConwayCodecs.block)(block)
+    assertEquals(encoded, raw, "the reference emits the received segments verbatim")
+    assertEquals(Block.decodeShelley(hex("8207") ++ encoded), Right(block))
   }
 
   test("a block built by hand, without the segments it was read with, is refused") {
