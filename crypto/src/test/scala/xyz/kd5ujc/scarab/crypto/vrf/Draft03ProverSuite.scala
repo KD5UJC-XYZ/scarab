@@ -17,6 +17,15 @@ class Draft03ProverSuite extends munit.ScalaCheckSuite:
     "b6b4699f87d56126c9117a7da55bd0085246f4c56dbc95d20172612e9d38e8d7ca65e573a126ed88d4e30a46f80a666854d675cf3ba81de0de043c3774f061560f55edc256a787afe701677c0f602900"
   private val beta16 =
     "5b49b554d05c0cd5a5325376b3387de59d924fd1e13ded44648ab33c21349a603f25b84ec5ed887995b33da5e3bfcb87cd2f64521c4c62cf825cffabbe5d31cc"
+  // IETF draft-03 test vector 17 (RFC 8032 test 2 key, alpha 0x72).
+  private val seed17 = "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb"
+  private val beta17 =
+    "94f4487e1b2fec954309ef1289ecb2e15043a2461ecc7b2ae7d4470607ef82eb1cfa97d84991fe4a7bfdfd715606bc27e2967a6c557cfb5875879b671740b7d8"
+
+  private val bytes: Gen[Bytes] =
+    Gen.choose(0, 80).flatMap(n => Gen.listOfN(n, Gen.choose(0, 255))).map { b =>
+      Bytes.fromArray(b.map(_.toByte).toArray)
+    }
 
   test("draft-03 vector 16: public key, proof and output match the reference exactly") {
     val k = key(seed16)
@@ -27,7 +36,7 @@ class Draft03ProverSuite extends munit.ScalaCheckSuite:
   }
 
   test("draft-03 vector 17: one-byte alpha") {
-    val k = key("4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb")
+    val k = key(seed17)
     assertEquals(
       k.publicKey.hex,
       "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c"
@@ -37,10 +46,24 @@ class Draft03ProverSuite extends munit.ScalaCheckSuite:
       proved.proof.hex,
       "ae5b66bdf04b4c010bfe32b2fc126ead2107b697634f6f7337b9bff8785ee111200095ece87dde4dbe87343f6df3b107d91798c8a7eb1245d3bb9c5aafb093358c13e6ae1111a55717e895fd15f99f07"
     )
-    assertEquals(
-      proved.output.hex,
-      "94f4487e1b2fec954309ef1289ecb2e15043a2461ecc7b2ae7d4470607ef82eb1cfa97d84991fe4a7bfdfd715606bc27e2967a6c557cfb5875879b671740b7d8"
-    )
+    assertEquals(proved.output.hex, beta17)
+  }
+
+  test("draft-03 vectors 16 and 17: the output alone is the vectors' output") {
+    assertEquals(key(seed16).output(Bytes(Vector.empty)).map(_.hex), Right(beta16))
+    assertEquals(key(seed17).output(hex("72")).map(_.hex), Right(beta17))
+  }
+
+  property("the output alone is the output the proof certifies") {
+    forAll(Gen.listOfN(32, Gen.choose(0, 255)), bytes) { (s, alpha) =>
+      val k = Draft03Prover.SigningKey
+        .fromSeed(Bytes.fromArray(s.map(_.toByte).toArray))
+        .toOption
+        .get
+      val proved = k.prove(alpha)
+      assert(proved.isRight, s"no proof: $proved")
+      assertEquals(k.output(alpha), proved.map(_.output))
+    }
   }
 
   test("the 64-byte vrf.skey layout is seed || public key and is checked") {
