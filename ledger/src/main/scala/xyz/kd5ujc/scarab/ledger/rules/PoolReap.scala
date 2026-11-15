@@ -70,10 +70,11 @@ object PoolReap:
       ps0.future.toList
         .foldM(ps0.stakePools) { case (pools, (id, params)) =>
           pools.get(id) match
-            case None => Right(pools)
+            case None          => Right(pools)
             case Some(current) =>
+              // the 11.1 layout's pool state: POOLREAP on the Leios layout is #826's
               Convert
-                .poolState(params, current.deposit, current.delegators)
+                .poolState(params, PoolBlsKey.Node11_1, current.deposit, current.delegators)
                 .map(pools.updated(id, _))
         }
     activated.map { pools =>

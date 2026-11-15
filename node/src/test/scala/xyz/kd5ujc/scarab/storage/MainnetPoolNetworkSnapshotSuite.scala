@@ -19,6 +19,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   LedgerState,
   NewEpochState,
   PState,
+  PoolBlsKey,
   Shelley,
   ShelleyBasedEra,
   SnapShot,
@@ -137,7 +138,8 @@ class MainnetPoolNetworkSnapshotSuite extends CatsEffectSuite:
       val deposit = vocab(
         CompactCoin.fromBigInt(nes.es.ls.utxo.gov.curPParams.poolDeposit)
       )
-      val state = vocab(Convert.poolState(registration, deposit, Sorted.emptySet))
+      val state =
+        vocab(Convert.poolState(registration, PoolBlsKey.Node11_1, deposit, Sorted.emptySet))
       val pools = LedgerState.pState[Shelley].get(ls)
       val registered = pools.copy(
         stakePools = pools.stakePools.updated(poolId, state),

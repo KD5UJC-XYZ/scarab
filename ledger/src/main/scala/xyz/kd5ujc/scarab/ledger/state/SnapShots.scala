@@ -74,6 +74,22 @@ enum PoolBlsKey extends LayoutPart derives Eq, Show, Diff:
     case Node11_1 => StateLayout.Node11_1
     case Leios(_) => StateLayout.Leios
 
+/** The voting key of a pool's registration parameters, by layout: the 11.1 build's
+  * `StakePoolParams` has no such field; the Leios build's has `sppBlsKey`, a `StrictMaybe BlsKey`
+  * (9df9f98c `State/StakePool.hs:479`).
+  */
+enum PoolParamsBlsKey derives Eq, Show:
+  case Node11_1
+  case Leios(key: Option[BlsKey])
+
+  /** The pool's voting key when it is registered at `epoch` holding none:
+    * `mkStakePoolState epoch SNothing` (9df9f98c `State/StakePool.hs:299-320`) starts the key's
+    * lifetime at `epoch`.
+    */
+  def registered(epoch: EpochNo): PoolBlsKey = this match
+    case Node11_1   => PoolBlsKey.Node11_1
+    case Leios(key) => PoolBlsKey.Leios(key.map(BlsKeyState(_, epoch)))
+
 /** `StakePoolSnapShot` (`State/SnapShots.hs:156-183`, encoding `239-252`: `array(10)` in this
   * order): what the reward calculation needs of one pool, resolved when the snapshot is taken. The
   * Leios layout has the voting key after the VRF key hash, `array(11)` ([[PoolBlsKey]]).
@@ -253,6 +269,17 @@ object SnapShots:
   /** `emptySnapShots` (`State/SnapShots.hs:393-395`), in the 11.1 layout. */
   val empty: SnapShots =
     SnapShots(SnapShot.empty, SnapShot.empty, SnapShot.empty, Coin.zero, Layout.Node11_1)
+
+  /** `emptySnapShots` in `layout`. In the Leios layout (9df9f98c `State/SnapShots.hs:611-617`) the
+    * mark is taken at epoch zero with a committee size and a key age of zero, so the set snapshot's
+    * committee, selected from no pool, is empty.
+    */
+  def emptyOf(layout: StateLayout): SnapShots = layout match
+    case StateLayout.Node11_1 => empty
+    case StateLayout.Leios =>
+      empty.copy(layout =
+        Layout.Leios(EpochNo.fromUnsigned(0), BigInt(0), BigInt(0), LeiosCommittee.empty)
+      )
 
   val mark: Lens[SnapShots, SnapShot] = Focus[SnapShots](_.mark)
   val set: Lens[SnapShots, SnapShot] = Focus[SnapShots](_.set)

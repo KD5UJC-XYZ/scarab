@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.read.InEra
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.{Era, NtnVersion}
+import xyz.kd5ujc.scarab.protocol.{Era, NtnVersion, StateLayout}
 
 /** The published configuration of the public Leios testnet (`fixtures/leios/testnet/config`: the
   * files of `book.play.dev.cardano.org/environments-pre/leios`, unchanged; hashes in
@@ -99,8 +99,31 @@ class LeiosTestnetConfigSuite extends FunSuite:
         (l.poolCount, l.leaderPools(nextEpoch = false))
       }
     assertEquals(pools, 1)
-    // the pool's `blsKey` is null in the genesis, and PoolParams has no field for one anyway
+    // the pool's `blsKey` is null in the genesis: the pool holds no voting key
     assertEquals(distribution.total, BigInt(900000000))
+  }
+
+  test("the start state is in the Leios layout throughout: it writes as a Leios ledger file only") {
+    val setup =
+      NodeSetup
+        .fromConfigFile(ReferenceBuild.LeiosB004fe0c)(dir.resolve("config.json"))
+        .fold(e => fail(e.message), identity)
+    val file = xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
+      .of(setup.mirrorStart.ext)
+      .fold(e => fail(e.toString), identity)
+    // every part's layout is checked before a byte is written
+    assert(
+      xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
+        .encode(file, StateLayout.Leios)
+        .isRight
+    )
+    assert(xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile.encode(file).isLeft)
+    assertEquals(
+      setup.mirrorStart.ext.layout,
+      xyz.kd5ujc.scarab.consensus.state.ExtLedgerState.Layout.Leios(
+        xyz.kd5ujc.scarab.consensus.state.PerasState.default
+      )
+    )
   }
 
   test(
@@ -135,7 +158,10 @@ class LeiosTestnetConfigSuite extends FunSuite:
     val unhashed = config.copy(hashes = config.hashes.copy(dijkstra = None))
     def withDijkstra(text: String)(name: String) =
       if name == "dijkstra-genesis.json" then Some(text.getBytes("UTF-8")) else read(name)
-    val refused = NodeSetup.assemble(unhashed, withDijkstra("""{"maxRefScriptSizePerBlock": 1}"""))
+    val refused = NodeSetup.assemble(ReferenceBuild.LeiosB004fe0c)(
+      unhashed,
+      withDijkstra("""{"maxRefScriptSizePerBlock": 1}""")
+    )
     assertEquals(
       refused.left.map(_.problem),
       Left(

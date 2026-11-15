@@ -145,7 +145,7 @@ class CheckpointsSuite extends FunSuite:
     val config = setup.config.copy(files =
       setup.config.files.copy(checkpoints = Some("missing-checkpoints.json"))
     )
-    val result = NodeSetup.assemble(
+    val result = NodeSetup.assemble(ReferenceBuild.Default)(
       config,
       file => Option.when(Files.exists(root.resolve(file)))(Files.readAllBytes(root.resolve(file)))
     )

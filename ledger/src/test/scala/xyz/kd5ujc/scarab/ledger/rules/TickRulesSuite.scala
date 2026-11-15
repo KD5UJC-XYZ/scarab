@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.TestLedger
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraFixture
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 /** The tick rules (J2.3: TICK, NEWEPOCH, EPOCH, SNAP, POOLREAP, MIR, RUPD, the translations of the
   * hard-fork combinator) on states built here: what each does at an epoch boundary, that the pots
@@ -378,7 +378,8 @@ class TickRulesSuite extends FunSuite:
       .toShelley(
         context,
         ok(EpochNo.fromBigInt(1)),
-        Map(in(1) -> redeem, in(2) -> ordinary, in(3) -> empty)
+        Map(in(1) -> redeem, in(2) -> ordinary, in(3) -> empty),
+        StateLayout.Node11_1
       )
       .fold(e => fail(s"refused: $e"), identity)
     assertEquals(nes.epoch, ok(EpochNo.fromBigInt(1)))

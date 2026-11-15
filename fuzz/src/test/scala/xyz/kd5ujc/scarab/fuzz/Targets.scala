@@ -2267,7 +2267,7 @@ object Targets:
           conway,
           xyz.kd5ujc.scarab.ledger.json.CanonicalJson.Obj(Vector.empty)
         )
-        files.flatMap(GenesisInjections.read(_).toOption).foreach { parsed =>
+        files.flatMap(GenesisInjections.read(StateLayout.Node11_1)(_).toOption).foreach { parsed =>
           hit("genesis-injections")
           val embedded = parsed.initialFunds.extra match
             case InjectionData.Embedded(entries) => entries

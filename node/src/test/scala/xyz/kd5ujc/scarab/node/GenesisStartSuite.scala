@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, StateLayout}
 import io.circe.{Json, parser}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
@@ -106,7 +106,7 @@ class GenesisStartSuite extends FunSuite:
           xyz.kd5ujc.scarab.ledger.json.CanonicalJson.Obj(Vector.empty)
         )
         val coin = GenesisInjections
-          .read(files)
+          .read(StateLayout.Node11_1)(files)
           .toOption
           .flatMap(_.initialFunds.legacy.headOption)
           .map(_._2)
@@ -147,13 +147,13 @@ class GenesisStartSuite extends FunSuite:
     for extra <- Vector(Json.obj(), Json.Null, Json.obj("data" -> Json.Null, "file" -> Json.Null))
     do
       val parsed = GenesisInjections
-        .read(sourceFiles(fundSources(extra)))
+        .read(StateLayout.Node11_1)(sourceFiles(fundSources(extra)))
         .fold(e => fail(e.message), identity)
       val next =
         GenesisStart.registerInitialFunds(parsed, nes).fold(e => fail(e.toString), identity)
       assertEquals(next.es.chainAccount.reserves.value, nes.es.chainAccount.reserves.value - 1)
     val embedded = GenesisInjections
-      .read(sourceFiles(fundSources(Json.obj("data" -> Json.obj()))))
+      .read(StateLayout.Node11_1)(sourceFiles(fundSources(Json.obj("data" -> Json.obj()))))
       .fold(e => fail(e.message), identity)
     assertEquals(
       GenesisStart.registerInitialFunds(embedded, nes),
@@ -166,7 +166,7 @@ class GenesisStartSuite extends FunSuite:
   ) {
     val extra = Json.obj("data" -> Json.obj(enterpriseFund -> Json.fromInt(2)))
     val parsed = GenesisInjections
-      .read(sourceFiles(fundSources(extra)))
+      .read(StateLayout.Node11_1)(sourceFiles(fundSources(extra)))
       .fold(e => fail(e.message), identity)
     assertEquals(
       GenesisStart.registerInitialFunds(parsed.copy(mainnet = true), nes),
@@ -183,7 +183,7 @@ class GenesisStartSuite extends FunSuite:
     )
     assert(
       GenesisInjections
-        .read(sourceFiles(invalid))
+        .read(StateLayout.Node11_1)(sourceFiles(invalid))
         .left
         .toOption
         .exists(_.problem.isInstanceOf[ConfigProblem.JsonField])
@@ -193,7 +193,7 @@ class GenesisStartSuite extends FunSuite:
     )
     assert(
       GenesisInjections
-        .read(sourceFiles(invalidKey))
+        .read(StateLayout.Node11_1)(sourceFiles(invalidKey))
         .left
         .toOption
         .exists(_.problem.isInstanceOf[ConfigProblem.Hex])
@@ -208,7 +208,7 @@ class GenesisStartSuite extends FunSuite:
       "hash" -> Json.fromString("00" * 32)
     )
     val legacy = GenesisInjections
-      .read(sourceFiles(fundSources(file)))
+      .read(StateLayout.Node11_1)(sourceFiles(fundSources(file)))
       .fold(e => fail(e.message), identity)
     assertEquals(
       GenesisStart.registerInitialFunds(legacy.copy(mainnet = true), nes),
@@ -230,7 +230,8 @@ class GenesisStartSuite extends FunSuite:
         file.mapObject(_.add("file", Json.fromString("funds.json"))),
         file.mapObject(_.add("data", Json.obj()))
       )
-    do assert(GenesisInjections.read(sourceFiles(fundSources(invalid))).isLeft)
+    do
+      assert(GenesisInjections.read(StateLayout.Node11_1)(sourceFiles(fundSources(invalid))).isLeft)
   }
 
   // `injectInitialExtLedgerState` (ouroboros-consensus 82ecba32 `Embed/Nary.hs:259-306`) extends the
@@ -682,7 +683,7 @@ class GenesisStartSuite extends FunSuite:
         state.ledger.getOrElse(fail("a Byron start has no ledger")).utxo
       case other => fail(s"not a Byron start: $other")
     val shelley = Handover
-      .toShelley(context, EpochNo.fromUnsigned(1L), utxo)
+      .toShelley(context, EpochNo.fromUnsigned(1L), utxo, StateLayout.Node11_1)
       .fold(e => fail(e.toString), identity)
     val allegra = Translate.shelleyToAllegra(shelley).fold(e => fail(e.toString), identity)
     val alonzo = Translate.maryToAlonzo(

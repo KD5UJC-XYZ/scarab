@@ -8,11 +8,11 @@ import cats.syntax.all.*
 import io.circe.{Decoder, DecodingFailure, Json}
 import xyz.kd5ujc.scarab.codec.{Bytes, DomainError}
 import xyz.kd5ujc.scarab.ledger as node
-import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem, GenesisState, Ptr}
+import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem, GenesisPoolFields, GenesisState, Ptr}
 import xyz.kd5ujc.scarab.ledger.GenesisState.{FundAddress, InjectionData, InjectionSource}
 import xyz.kd5ujc.scarab.ledger.byron.ByronOut
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 /** Why the ledger state of a chain whose first era is Shelley-based cannot be made from its
   * genesis. Each case is a refusal of the reference's own construction (cardano-ledger f649f975):
@@ -48,10 +48,16 @@ enum GenesisStartError extends DomainError derives Show:
   /** A part of the Dijkstra era this build does not implement yet. */
   case NotYet(part: xyz.kd5ujc.scarab.protocol.DijkstraNotYet)
 
+  /** The set snapshot's Leios committee could not be selected from the seeded mark
+    * ([[LeiosCommitteeSelection.ofMark]]); a state the reference cannot hold.
+    */
+  case LeiosCommittee(cause: LeiosCommitteeError)
+
 object GenesisStartError:
   private given Show[node.TxIn] = Show.fromToString
   private given Show[Era] = Show.fromToString
   private given Show[xyz.kd5ujc.scarab.protocol.DijkstraNotYet] = Show.fromToString
+  private given Show[LeiosCommitteeError] = Show.fromToString
 
 /** What the genesis files inject into the state of the era a chain starts in: the
   * `TransitionConfig` data of the reference that is only for test networks (`tcInitialFundsL`,
@@ -66,7 +72,7 @@ object GenesisStartError:
   * @param initialFunds
   *   the ordered `ListMap Addr Coin`; outputs are constructed only during guarded injection
   * @param stakePools
-  *   `staking.pools` / `stakePools`
+  *   `staking.pools` / `stakePools`, each with the voting key the build reads ([[GenesisPool]])
   * @param stakeCredentials
   *   `staking.stake` / `stakeCredentials`: each staking key with the pool it delegates to
   * @param initialDReps
@@ -77,10 +83,16 @@ object GenesisStartError:
   *   the Alonzo genesis `extraConfig.costModels`, by language index
   *   ([[node.ProtocolParams.injectedCostModels]])
   */
+/** A stake pool of the genesis: its parameters as the 11.1 `StakePoolParams` holds them, and the
+  * voting key the Leios build's `StakePoolParams` adds (`sppBlsKey`, cardano-ledger 9df9f98c
+  * `State/StakePool.hs:479`, read as `.:? "blsKey" .!= SNothing`, `:604-619`).
+  */
+final case class GenesisPool(params: node.PoolParams, blsKey: PoolParamsBlsKey)
+
 final case class GenesisInjections(
     mainnet: Boolean,
     initialFunds: InjectionSource[(FundAddress, Coin)],
-    stakePools: InjectionSource[(KeyHash[StakePool], node.PoolParams)],
+    stakePools: InjectionSource[(KeyHash[StakePool], GenesisPool)],
     stakeCredentials: InjectionSource[(KeyHash[Staking], KeyHash[StakePool])],
     initialDReps: InjectionSource[(Credential[DRepRole], DRepState)],
     delegs: InjectionSource[(Credential[Staking], Delegatee)],
@@ -146,8 +158,9 @@ object GenesisInjections:
   /** Parse every supplied source before era selection, including sources a Byron start ignores.
     * Legacy and extra objects retain the native parse order (`Shelley/Genesis.hs:511-513,526-531`,
     * `Conway/Genesis.hs:156-164`); resolving conflicting sources is a later transition operation.
+    * The pools are read as the build of `layout` reads them ([[GenesisPoolFields.blsKey]]).
     */
-  def read(files: GenesisState.Files): Either[ConfigError, GenesisInjections] =
+  def read(layout: StateLayout)(files: GenesisState.Files): Either[ConfigError, GenesisInjections] =
     def decoded[A: Decoder](name: String)(j: Json): Either[ConfigError, A] =
       j.as[A].leftMap(field("genesis injection", name))
     def poolKey(k: String) =
@@ -155,7 +168,8 @@ object GenesisInjections:
     def stakeKey(k: String) =
       GenesisState.hex28(k).flatMap(b => vocab(KeyHash.fromBytes[Staking](b)))
     def poolValue(key: KeyHash[StakePool], j: Json) =
-      GenesisState.pool(key.bytes.hex, j).map(_._2)
+      (GenesisState.pool(key.bytes.hex, j).map(_._2), GenesisPoolFields.blsKey(layout, j))
+        .mapN(GenesisPool(_, _))
     def fundValue(key: FundAddress, j: Json) =
       val _ = key
       decoded[Coin]("initialFunds")(j)
@@ -273,7 +287,7 @@ object GenesisStart:
     for
       epoch <- EpochNo.fromBigInt(globals.ledger.firstEpoch).leftMap(GenesisStartError.Vocab(_))
       shelley <- Handover
-        .toShelley(context, epoch, byronUtxo)
+        .toShelley(context, epoch, byronUtxo, StateLayout.of(globals.ledger.referenceBuild))
         .leftMap(GenesisStartError.Translation(_))
       translated <- translateTo(globals, era, EraNes.InEra(ShelleyBasedEra.SShelley, shelley))
       injected <- translated match
@@ -338,7 +352,7 @@ object GenesisStart:
         case ShelleyBasedEra.SDijkstra =>
           Left(GenesisStartError.NotYet(xyz.kd5ujc.scarab.protocol.DijkstraNotYet.Genesis))
       ): Either[GenesisStartError, NewEpochState[E]]
-      reset <- resetStakeDistribution(staked).leftMap(GenesisStartError.Vocab(_))
+      reset <- resetStakeDistribution(staked)
     yield reset
 
   /** Source selection is distinct from consumption (`Shelley/Transition.hs:496-517`). */
@@ -436,10 +450,11 @@ object GenesisStart:
 
   /** `injectStakePools` (`Shelley/Transition.hs:526-543`): the pools of the genesis, each with the
     * pool deposit of the parameters and no delegator (`mkStakePoolState deposit mempty`), in place
-    * of any the state had.
+    * of any the state had. In the Leios build a pool's voting key is registered in the state's
+    * epoch (`mkStakePoolState (nes ^. nesELL) SNothing`, 9df9f98c `Shelley/Transition.hs:526-548`).
     */
   private def injectStakePools[E <: EraTag](
-      pools: Vector[(KeyHash[StakePool], node.PoolParams)],
+      pools: Vector[(KeyHash[StakePool], GenesisPool)],
       nes: NewEpochState[E]
   )(using ShelleyBasedEra[E]): Either[GenesisStartError, NewEpochState[E]] =
     val ls = nes.es.ls
@@ -447,7 +462,14 @@ object GenesisStart:
     (for
       deposit <- CompactCoin.fromBigInt(params.poolDeposit)
       states <- pools.traverse((id, p) =>
-        Convert.poolState(p, deposit, Sorted.emptySet[Credential[Staking]]).map(id -> _)
+        Convert
+          .poolState(
+            p.params,
+            p.blsKey.registered(nes.epoch),
+            deposit,
+            Sorted.emptySet[Credential[Staking]]
+          )
+          .map(id -> _)
       )
     yield
       val ps = LedgerState.pState[E].get(ls)
@@ -554,22 +576,46 @@ object GenesisStart:
     }
     withLedger(nes, nes.es.ls.copy[Conway](cert = delegated))
 
-  /** `resetStakeDistribution` (`Shelley/Transition.hs:594-613`): the mark snapshot is taken from
-    * the instant stake and the registrations (`snapShotFromInstantStake`), and the pool
-    * distribution of the epoch is that snapshot's (`calculatePoolDistr`), so that the injected
-    * pools lead from the first epoch.
+  /** `resetStakeDistribution`: the snapshot of the instant stake and the registrations
+    * (`snapShotFromInstantStake`) seeds the stake distribution, so that the injected pools lead
+    * from the first epoch. By the layout of the state's snapshots:
+    *
+    *   - the 11.1 layout (`Shelley/Transition.hs:594-613`) takes it as the mark, and the pool
+    *     distribution of the epoch is its own (`calculatePoolDistr`);
+    *   - the Leios layout (9df9f98c `Shelley/Transition.hs:598-618`) takes it as the mark, keeping
+    *     the mark's epoch and selection parameters (`msSnapShotL`, `State/SnapShots.hs:718-722`),
+    *     and as the set and go snapshots (`mkSetSnapShot`, `mkGoSnapShot`). The set snapshot's
+    *     committee is the one the mark selects ([[LeiosCommitteeSelection.ofMark]]), and the pool
+    *     distribution is the set snapshot's ([[NewEpochState.pd]]).
     */
   def resetStakeDistribution[E <: EraTag](nes: NewEpochState[E])(using
       ShelleyBasedEra[E]
-  ): Either[VocabError, NewEpochState[E]] =
+  ): Either[GenesisStartError, NewEpochState[E]] =
     val ls = nes.es.ls
-    val mark = StakeDistribution.snapshot(
+    val seed = StakeDistribution.snapshot(
       EraLedger.activeStake(ls),
       LedgerState.pState[E].get(ls).stakePools
     )
-    Right(
-      nes.copy(
-        es = nes.es.copy(snapshots = nes.es.snapshots.copy(mark = mark)),
-        layout = NewEpochState.Layout.Node11_1(PoolDistr.of(mark))
-      )
-    )
+    val snapshots = nes.es.snapshots
+    def seeded(s: SnapShots, layout: NewEpochState.Layout): NewEpochState[E] =
+      nes.copy(es = nes.es.copy(snapshots = s), layout = layout)
+    snapshots.layout match
+      case SnapShots.Layout.Node11_1 =>
+        Right(
+          seeded(snapshots.copy(mark = seed), NewEpochState.Layout.Node11_1(PoolDistr.of(seed)))
+        )
+      case leios: SnapShots.Layout.Leios =>
+        LeiosCommitteeSelection
+          .ofMark(seed, leios)
+          .leftMap(GenesisStartError.LeiosCommittee(_))
+          .map(committee =>
+            seeded(
+              snapshots.copy(
+                mark = seed,
+                set = seed,
+                go = seed,
+                layout = leios.copy(setCommittee = committee)
+              ),
+              NewEpochState.Layout.Leios
+            )
+          )

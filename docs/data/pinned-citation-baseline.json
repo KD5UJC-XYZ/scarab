@@ -95,7 +95,7 @@
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/DijkstraUtxo.scala": 6,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Epoch.scala": 2,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/EraLedger.scala": 4,
-  "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/GenesisStart.scala": 14,
+  "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/GenesisStart.scala": 12,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Globals.scala": 1,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Gov.scala": 7,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Handover.scala": 2,

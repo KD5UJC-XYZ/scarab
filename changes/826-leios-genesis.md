@@ -1,0 +1,3 @@
+### Added (ledger, #826)
+
+- The genesis state of the Leios testnet's build is built in that build's layout: the Leios layout's empty snapshots and new-epoch state, each genesis pool's voting key read from its `blsKey` as the build reads it and registered in the state's epoch, the stake distribution seeded into the mark, set and go snapshots, and the consensus parts of the origin in the Leios layout. Conway's genesis injection agrees with the native `injectIntoTestState` on the recorded cases: every refusal of a malformed voting key, and the resulting UTxO, snapshots, pool states and state digest (#826).

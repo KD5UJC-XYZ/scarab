@@ -502,8 +502,14 @@ object Pool extends JudgedSts[CertEnv, PState, PoolCert, PredicateFailure, Ledge
                 // `ppPoolDepositCompactL` (`Shelley/Rules/Pool.hs:275`): a `CompactForm Coin` of the
                 // parameters
                 deposit <- Refuse.state[F, CompactCoin](id, CompactCoin.fromBigInt(pp.poolDeposit))
+                // the 11.1 layout's pool state: POOL on the Leios layout is #826's
                 pool <- Refuse.vocab[F, StakePoolState](
-                  Convert.poolState(params, deposit, Sorted.emptySet[Credential[Staking]])
+                  Convert.poolState(
+                    params,
+                    PoolBlsKey.Node11_1,
+                    deposit,
+                    Sorted.emptySet[Credential[Staking]]
+                  )
                 )
               yield s.copy(
                 stakePools = s.stakePools.updated(operator, pool),

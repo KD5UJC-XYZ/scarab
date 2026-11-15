@@ -37,6 +37,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   KeyHash,
   Mary,
   NewEpochState,
+  PoolBlsKey,
   Shelley,
   ShelleyAccountState,
   ShelleyAccounts,
@@ -926,7 +927,12 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       // each pool registered without a deposit, its owner's account delegating to it
       def registered(op: Key, owner: Key) =
         poolId(op) -> ok(
-          Convert.poolState(pool(op, owner), compact(0), Sorted.set(Seq(staking(owner.credential))))
+          Convert.poolState(
+            pool(op, owner),
+            PoolBlsKey.Node11_1,
+            compact(0),
+            Sorted.set(Seq(staking(owner.credential)))
+          )
         )
       val withPools = s0.copy(es =
         s0.es.copy(ls =
