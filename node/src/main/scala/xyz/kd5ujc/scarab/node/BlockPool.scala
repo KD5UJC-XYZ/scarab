@@ -811,7 +811,18 @@ object BlockPool:
   ): F[BlockPool[F]] =
     fs2.concurrent
       .SignallingRef[F, Slots[F]](Slots(Map.empty, 0L, 0L, Map.empty, 0, None))
-      .flatMap(slots =>
+      .flatMap { slots =>
+        // What BlockFetch reads as fetched, from the pool and the log read once per decision: a
+        // body received, a block processed, or one the log offers.
+        val fetched: F[Fetched] =
+          (slots.get, recovered.traverse(_.holds)).mapN { (current, durable) =>
+            Fetched(hash =>
+              current.entries.get(hash).exists {
+                case Slot.Done(_, _, _) => true
+                case _                  => false
+              } || current.processed.contains(hash) || durable.exists(_(hash))
+            )
+          }
         FetchCoordinator
           .create[F](
             BlockFetchPolicy.Config(
@@ -820,18 +831,7 @@ object BlockPool:
               policy.maxRequestsPerPeer
             ),
             selection,
-            // What BlockFetch reads as fetched, from the pool and the log read once per decision:
-            // a body received, a block processed, or one the log offers.
-            Some(
-              (slots.get, recovered.traverse(_.holds)).mapN { (current, durable) =>
-                Fetched(hash =>
-                  current.entries.get(hash).exists {
-                    case Slot.Done(_, _, _) => true
-                    case _                  => false
-                  } || current.processed.contains(hash) || durable.exists(_(hash))
-                )
-              }
-            ),
+            Some(fetched),
             policy.peerSalt
           )
           .flatMap(coordinator => NoVerdictBlocks.create[F].map(coordinator -> _))
@@ -872,7 +872,7 @@ object BlockPool:
                   )
               )
           )
-      )
+      }
 
   /** The node owns the expiry worker; release removes callbacks and wakes any remaining waiters. */
   def resource[F[_]: Async](policy: FetchPolicy): Resource[F, BlockPool[F]] =
