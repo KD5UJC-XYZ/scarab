@@ -21,6 +21,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Utxo as NodeUtxo
 }
 import xyz.kd5ujc.scarab.ledger.state.*
+import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, StateLayout}
 
 // What the rules of the Conway LEDGER share: the node's counters beside the Haskell state, the
 // environments (Haskell's `LedgerEnv`, `UtxoEnv`, `CertEnv` ...), the transaction annotated with the
@@ -145,3 +146,13 @@ private[rules] object Refuse:
   def state[F[_]: Applicative, A](id: Bytes, result: Either[VocabError, A])(using
       Raise[F, LedgerFailure]
   ): F[A] = Sts.lift[F, LedgerFailure, A](result.leftMap(LedgerFailure.StateOutOfRange(id, _)))
+
+  /** The layout of `build` 's state, or the defect of a build whose layout is not implemented yet
+    * ([[LedgerFailure.LayoutNotYet]]), which the node's setup refuses before any rule runs.
+    */
+  def layout[F[_]: Applicative](build: ReferenceBuild)(using
+      Raise[F, LedgerFailure]
+  ): F[StateLayout] =
+    Sts.lift[F, LedgerFailure, StateLayout](
+      StateLayout.of(build).leftMap(LedgerFailure.LayoutNotYet(_))
+    )

@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.ledger.rules.Test
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
-import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, ReferenceBuildNotYet}
 
 /** What a decoded transaction holds that its era cannot have. The reference ledger refuses all of
   * these in its transaction decoder (a `DecoderError`), before any rule runs, so none is a
@@ -77,6 +77,7 @@ sealed trait LedgerFailure extends DomainError:
     case LedgerFailure.Vocab(e)            => s"transaction outside the state's vocabulary: $e"
     case LedgerFailure.StateOutOfRange(id, e) =>
       s"tx ${id.hex.take(16)}: a quantity of the ledger state is out of range: $e"
+    case LedgerFailure.LayoutNotYet(cause) => cause.message
 
 /** What ends a judgment of the rules without a verdict: the transaction cannot be what its era
   * decodes, a script cannot be evaluated here, a verifier failed, or a value is outside the state's
@@ -134,6 +135,12 @@ object LedgerFailure:
     * ([[BlockFailure.stateOutOfRange]]). A value of the transaction itself is [[Vocab]].
     */
   final case class StateOutOfRange(txId: Bytes, error: VocabError) extends LedgerDefect
+
+  /** A rule that builds a record in the layout of the build the ledger follows, for a build whose
+    * `state` layout is not implemented yet ([[ReferenceBuildNotYet.Layout]]). The node's setup
+    * refuses such a build before any rule runs (`NodeSetup`), so the rules never meet it.
+    */
+  final case class LayoutNotYet(cause: ReferenceBuildNotYet) extends LedgerDefect
 
 /** Block-level context of a transaction.
   *
