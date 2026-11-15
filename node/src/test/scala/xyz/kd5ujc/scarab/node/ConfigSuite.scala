@@ -11,7 +11,13 @@ import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtnVersion}
-import xyz.kd5ujc.scarab.network.selection.{AfterSlot, ConsensusMode, Targets, UseLedgerPeers}
+import xyz.kd5ujc.scarab.network.selection.{
+  AfterSlot,
+  ConsensusMode,
+  DiffusionMode,
+  Targets,
+  UseLedgerPeers
+}
 import xyz.kd5ujc.scarab.network.{AcceptedConnectionsLimit, DiffTime, Word32}
 import munit.FunSuite
 
@@ -707,7 +713,7 @@ class ConfigSuite extends FunSuite:
     assertEquals(topology.localRoots.map(_.behindFirewall), Vector(false, true))
     assertEquals(
       topology.localRoots.map(_.diffusionMode),
-      Vector("InitiatorAndResponder", "InitiatorOnly")
+      Vector(DiffusionMode.InitiatorAndResponder, DiffusionMode.InitiatorOnly)
     )
     assertEquals(topology.useLedgerAfterSlot, UseLedgerPeers.Use(AfterSlot.Always))
   }
@@ -734,6 +740,46 @@ class ConfigSuite extends FunSuite:
       Vector("relay.example.")
     )
     assertEquals(topology.bootstrapSrvPeers.map(_.value), Vector("boot.example."))
+  }
+
+  test("each local root group's diffusion mode reaches its root configs; another mode is refused") {
+    val topology = Topology
+      .parse(
+        """{"localRoots": [
+          |  {"accessPoints": [{"address": "10.0.0.1", "port": 3001}, {"address": "one.example"}], "valency": 1},
+          |  {"accessPoints": [{"address": "10.0.0.2", "port": 3002}, {"address": "two.example"}], "valency": 1,
+          |   "diffusionMode": "InitiatorOnly"},
+          |  {"accessPoints": [{"address": "10.0.0.3", "port": 3003}], "valency": 1,
+          |   "diffusionMode": "InitiatorAndResponder"}],
+          | "publicRoots": []}""".stripMargin
+      )
+      .fold(e => fail(e.message), identity)
+    val roots = PeerNetwork.roots(Nil, Some(topology))
+    assertEquals(
+      roots.local.map(_.members.map(_._2.diffusionMode)),
+      List(
+        List(DiffusionMode.InitiatorAndResponder),
+        List(DiffusionMode.InitiatorOnly),
+        List(DiffusionMode.InitiatorAndResponder)
+      )
+    )
+    assertEquals(
+      roots.localSrv.map(_.map(_._2.diffusionMode)),
+      List(List(DiffusionMode.InitiatorAndResponder), List(DiffusionMode.InitiatorOnly), Nil)
+    )
+    val other = Topology.parse(
+      """{"localRoots": [{"accessPoints": [], "valency": 1, "diffusionMode": "ResponderOnly"}], "publicRoots": []}"""
+    )
+    assertEquals(
+      other.left.map(_.problem),
+      Left(
+        ConfigProblem.Selection(
+          "topology diffusionMode",
+          "ResponderOnly",
+          Set("InitiatorOnly", "InitiatorAndResponder")
+        )
+      )
+    )
   }
 
   test("a negative slot disables ledger peers; the legacy Producers format is unsupported") {

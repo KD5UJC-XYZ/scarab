@@ -77,7 +77,7 @@ object BlstCheckMain extends IOApp:
               case LibraryBuild.OnLibraryPath => "library-path".asJson),
             "plutusCrypto" -> Json.obj(
               "platform" -> crypto.platform.directory.asJson,
-              "sha256" -> crypto.library.digest.asJson
+              "sha256" -> crypto.library.digest.hex.asJson
             ),
             "builtins" -> builtins.toMap.asJson,
             "opsPerSecond" -> rates.map(_.toMap).asJson

@@ -36,7 +36,7 @@ class NativeCryptoSuite extends CatsEffectSuite:
   test("every pin is the sha-256 of the resource the pinned scalus-crypto-jni jar ships") {
     CryptoPlatform.values.foreach { platform =>
       val bytes = resourceBytes(platform.resource).getOrElse(fail(s"no ${platform.resource}"))
-      assertEquals(NativeCrypto.sha256Hex(bytes), platform.sha256, platform.toString)
+      assertEquals(NativeCrypto.sha256Hex(bytes), platform.sha256.hex, platform.toString)
     }
   }
 
@@ -71,8 +71,11 @@ class NativeCryptoSuite extends CatsEffectSuite:
   test("admission: a missing or unpinned library is refused, wherever it comes from") {
     val platform = CryptoPlatform.Linux64
     val pinned = CryptoLibrary.Resource(platform.resource, platform.sha256)
-    val other = CryptoLibrary.Resource(platform.resource, "00" * 32)
-    val onPath = CryptoLibrary.OnLibraryPath(Path.of("/usr/lib/libscalus_crypto.so"), "11" * 32)
+    val other = CryptoLibrary.Resource(platform.resource, LibraryDigest.pinned("00" * 32))
+    val onPath = CryptoLibrary.OnLibraryPath(
+      Path.of("/usr/lib/libscalus_crypto.so"),
+      LibraryDigest.pinned("11" * 32)
+    )
     val copied =
       CryptoLibrary.OnLibraryPath(Path.of("/usr/lib/libscalus_crypto.so"), platform.sha256)
     assertEquals(
