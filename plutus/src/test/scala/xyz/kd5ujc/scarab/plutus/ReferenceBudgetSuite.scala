@@ -34,8 +34,8 @@ class ReferenceBudgetSuite extends FunSuite:
   private val none: CekValEnv = Vector.empty
 
   test("reproducer: Scalus's restricting spender wraps where the reference saturates") {
-    // `restricting` (ExBudgetMode.hs lines 126-172) keeps the remaining budget in SatInt: spending
-    // minBound from 2^60 leaves maxBound, which is not below zero.
+    // `restricting` (ExBudgetMode.hs lines 126-172, plutus 1.70.0.0) keeps the remaining budget in
+    // SatInt: spending minBound from 2^60 leaves maxBound, which is not below zero.
     val scalus = RestrictingBudgetSpender(limit)
     intercept[OutOfExBudgetError](
       scalus.spendBudget(
@@ -64,7 +64,8 @@ class ReferenceBudgetSuite extends FunSuite:
   }
 
   test("reproducer: Scalus's saturating product of -1 and Int64's minimum is the minimum") {
-    // `timesSI` (Data/SatInt.hs lines 175-195): two negative factors saturate at maxBound.
+    // `timesSI` (Data/SatInt.hs lines 175-195, plutus 1.70.0.0): two negative factors saturate at
+    // maxBound.
     assertEquals(CostingInteger.satMul(-1L, Long.MinValue), Long.MinValue, "fixed upstream?")
     assertEquals((SatInt(-1) * SatInt.MinBound).toLong, Long.MaxValue)
     assertEquals((SatInt(Long.MinValue) * SatInt(-1)).toLong, Long.MaxValue)
@@ -80,8 +81,8 @@ class ReferenceBudgetSuite extends FunSuite:
   }
 
   test("reproducer: Scalus halves expModInteger's penalty with Java's division") {
-    // `evaluateExpModCostingFunction` (Core.hs lines 460-479) adds `cost0 dividedBy 2`, Haskell's
-    // `div`, which rounds -3 / 2 down to -2 (Data/SatInt.hs lines 104-108).
+    // `evaluateExpModCostingFunction` (Core.hs lines 460-479, plutus 1.70.0.0) adds `cost0
+    // dividedBy 2`, Haskell's `div`, which rounds -3 / 2 down to -2 (Data/SatInt.hs lines 104-108).
     val scalus = ExpModCostingFunction(
       CostingInteger(-3L),
       CostingInteger(0L),
@@ -98,7 +99,8 @@ class ReferenceBudgetSuite extends FunSuite:
   }
 
   test("reproducer: Scalus adds a two-variable linear cost in another order than the reference") {
-    // `scaleLinearlyTwoVariables` (Core.hs lines 617-625): intercept + (slope1 x + slope2 y).
+    // `scaleLinearlyTwoVariables` (Core.hs lines 617-625, plutus 1.70.0.0): intercept + (slope1 x +
+    // slope2 y).
     val f = TwoVariableLinearFunction(
       CostingInteger(Long.MaxValue),
       CostingInteger(1L),
@@ -117,10 +119,11 @@ class ReferenceBudgetSuite extends FunSuite:
   private def data(d: Data): CekValue = CekValue.VCon(Constant.Data(d))
 
   test("a Data argument is a stream of node costs, and equalsData charges the reference's stream") {
-    // ExMemoryUsage Data (ExMemoryUsage.hs lines 382-397) flattened in pre-order (lines 132-159):
-    // List [I 1, I 2] is 4, 5, 5 and I 7 is 5; `minCostStream` (CostStream.hs lines 110-132) of the
-    // two is 4, 1; `scaleLinearly` (Core.hs lines 318-321) puts the intercept first, and the memory
-    // stream, one constant, is continued with zeros (ExBudgetStream.hs lines 58-77).
+    // ExMemoryUsage Data (ExMemoryUsage.hs lines 382-397, plutus 1.70.0.0) flattened in pre-order
+    // (lines 132-159): List [I 1, I 2] is 4, 5, 5 and I 7 is 5; `minCostStream` (CostStream.hs
+    // lines 110-132) of the two is 4, 1; `scaleLinearly` (Core.hs lines 318-321) puts the intercept
+    // first, and the memory stream, one constant, is continued with zeros (ExBudgetStream.hs lines
+    // 58-77).
     val costing = ReferenceCosting.BuiltinCosting(
       ReferenceCosting.signature(DefaultFun.EqualsData, BuiltinSemanticsVariant.E),
       ReferenceCosting.Model.MinSize(SatInt(1000), SatInt(-7)),
@@ -138,7 +141,8 @@ class ReferenceBudgetSuite extends FunSuite:
   }
 
   test("an argument the reference cannot unlift costs nothing") {
-    // `toMonoF` (Builtin/Meaning.hs lines 245-262): an unlifting failure costs `mempty`.
+    // `toMonoF` (Builtin/Meaning.hs lines 245-262, plutus 1.70.0.0): an unlifting failure costs
+    // `mempty`.
     val costing = ReferenceCosting.BuiltinCosting(
       ReferenceCosting.signature(DefaultFun.IndexByteString, BuiltinSemanticsVariant.E),
       ReferenceCosting.Model.ConstantCost(SatInt(57667)),
@@ -152,7 +156,7 @@ class ReferenceBudgetSuite extends FunSuite:
   }
 
   test("a list measures in batches of 100 and a text in chunks of up to 100 code points") {
-    // ExMemoryUsage.hs lines 221-231 (`dropN @100`) and 326-334 (`T.drop 100`).
+    // ExMemoryUsage.hs lines 221-231 (`dropN @100`, plutus 1.70.0.0) and 326-334 (`T.drop 100`).
     def list(n: Int) = CekValue.VCon(
       Constant.List(scalus.uplc.DefaultUni.Integer, List.fill(n)(Constant.Integer(1)))
     )
@@ -188,7 +192,8 @@ class ReferenceBudgetSuite extends FunSuite:
     def getSpentBudget: ScalusExUnits = ScalusExUnits(0, 0)
 
   test("steps are charged per kind in the reference's order, 200 at a time, builtins at once") {
-    // `stepAndMaybeSpend` and `spendAccumulatedBudget` (Internal.hs lines 1011-1043), slippage 200.
+    // `stepAndMaybeSpend` and `spendAccumulatedBudget` (Internal.hs lines 1011-1043, plutus
+    // 1.70.0.0), slippage 200.
     val recording = Recording()
     val steps = ReferenceBudget.Steps(recording)
     val step = ScalusExUnits(100, 16000)
@@ -219,8 +224,8 @@ class ReferenceBudgetSuite extends FunSuite:
 
   test("a script failure before its steps are charged is the script's, as in the reference") {
     // The reference charges the counted steps only every 200 steps and on return; `error` throws
-    // before that (`computeCek`, Internal.hs lines 878-880), so a budget that the steps exceed
-    // still ends in the script's failure.
+    // before that (`computeCek`, Internal.hs lines 874-875, plutus 1.70.0.0), so a budget that the
+    // steps exceed still ends in the script's failure.
     val program = Program
       .parseUplc("(program 1.1.0 [ (lam x (error)) (con unit ()) ])")
       .fold(e => fail(e.toString), identity)

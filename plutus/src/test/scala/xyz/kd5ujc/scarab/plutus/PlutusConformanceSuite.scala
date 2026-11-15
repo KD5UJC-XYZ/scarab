@@ -284,8 +284,8 @@ abstract class PlutusConformanceCorpus(release: PlutusConformanceSuite.Release) 
         .flatMap(d => d.scan.malformedValue.map(FlatRefusal.MalformedValue(_)).toLeft(d.program))
         .filterOrElse(p => closed(List(p.term -> 0)), FlatRefusal.FreeVariable)
 
-  /** A `.flat.expected` file as `decodeFlatExpected` reads it (`Common.hs:347-354`): a failure's
-    * text, compared byte for byte first, or the Flat-encoded result program.
+  /** A `.flat.expected` file as `decodeFlatExpected` reads it (`Common.hs:347-354`, plutus
+    * 1.70.0.0): a failure's text, compared byte for byte first, or the Flat-encoded result program.
     */
   private def flatGolden(bytes: Bytes): Either[FlatGolden, DeBruijnedProgram] =
     Vector(ParseError, EvaluationFailure)
@@ -296,9 +296,10 @@ abstract class PlutusConformanceCorpus(release: PlutusConformanceSuite.Release) 
 
   /** Runs a case from its `.flat` file as the upstream runner does with `--format flat`: a refused
     * program is `parse/decode error`, a failed evaluation `evaluation failure` (`getTestedValue`,
-    * `Common.hs:403-417`); the result must equal the decoded `.flat.expected` program, version and
-    * de Bruijn term (`compareAlphaEq`, `Common.hs:423-473`), and the budget `.budget.expected`
-    * (`testForBudget`, `Common.hs:257-267`). The mismatches, none when it passes.
+    * `Common.hs:403-417`, plutus 1.70.0.0); the result must equal the decoded `.flat.expected`
+    * program, version and de Bruijn term (`compareAlphaEq`, `Common.hs:423-473`), and the budget
+    * `.budget.expected` (`testForBudget`, `Common.hs:257-267`). The mismatches, none when it
+    * passes.
     */
   protected def checkFlat(c: FlatCase): List[String] =
     val tested: Either[(String, String), (DeBruijnedProgram, ExUnits, Term)] =

@@ -79,8 +79,8 @@ object PraosLeaderThreshold:
   private enum Power:
     case Square, Multiply
 
-  // ipow' (NonIntegral.hs:31-37) for n >= 0: its squarings and multiplications, from the innermost
-  // out, applied to 1, so each rounds as the recursion does.
+  // ipow' (NonIntegral.hs:31-37, cardano-ledger f649f975) for n >= 0: its squarings and
+  // multiplications, from the innermost out, applied to 1, so each rounds as the recursion does.
   private def ipowNatural(x: BigInt, n: BigInt): BigInt =
     @tailrec def steps(m: BigInt, acc: List[Power]): List[Power] =
       if m == 0 then acc
@@ -91,12 +91,12 @@ object PraosLeaderThreshold:
       case (y, Power.Multiply) => mul(x, y)
     }
 
-  // ipow (NonIntegral.hs:39-42)
+  // ipow (NonIntegral.hs:39-42, cardano-ledger f649f975)
   private def ipow(x: BigInt, n: BigInt): BigInt =
     if n < 0 then div(Scale, ipowNatural(x, -n)) else ipowNatural(x, n)
 
-  // findE (NonIntegral.hs:155-158): `bound` squares 1/e and e until they enclose x (117-128), then
-  // `contract` bisects with `ipow` for e^n <= x < e^(n+1) (132-149).
+  // findE (NonIntegral.hs:155-158, cardano-ledger f649f975): `bound` squares 1/e and e until they
+  // enclose x (117-128), then `contract` bisects with `ipow` for e^n <= x < e^(n+1) (132-149).
   private def findE(e: BigInt, x: BigInt): BigInt =
     @tailrec def bound(low: BigInt, high: BigInt, l: BigInt, u: BigInt): (BigInt, BigInt) =
       if low <= x && x <= high then (l, u) else bound(mul(low, low), mul(high, high), 2 * l, 2 * u)
@@ -108,8 +108,9 @@ object PraosLeaderThreshold:
     val (lower, upper) = bound(div(Scale, e), e, -1, 1)
     contract(lower, upper)
 
-  // lncf 1000 (NonIntegral.hs:52-57) through cf (89-111): the convergents A_i / B_i from the two
-  // before them; it stops at the thousandth or when two in a row are within eps.
+  // lncf 1000 (NonIntegral.hs:52-57, cardano-ledger f649f975) through cf (89-111): the convergents
+  // A_i / B_i from the two before them; it stops at the thousandth or when two in a row are within
+  // eps.
   private def lncf(x: BigInt): BigInt =
     @tailrec def go(
         i: Int,
@@ -134,10 +135,10 @@ object PraosLeaderThreshold:
   private val logs =
     new java.util.concurrent.ConcurrentHashMap[(BigInt, BigInt), Either[Error, BigInt]]()
 
-  /** `unActiveSlotLog` of `mkActiveSlotCoeff` (`BaseTypes.hs:735-749`) in E34 units: 0 for f = 1,
-    * else `floor (fpPrecision * ln' (1 - fromRational f))`. Multiplying by `fpPrecision` and taking
-    * the floor gives the E34 units of `ln'` exactly, and `activeSlotLog` divides them back
-    * (`BaseTypes.hs:754-755`).
+  /** `unActiveSlotLog` of `mkActiveSlotCoeff` (`BaseTypes.hs:735-749`, cardano-ledger f649f975) in
+    * E34 units: 0 for f = 1, else `floor (fpPrecision * ln' (1 - fromRational f))`. Multiplying by
+    * `fpPrecision` and taking the floor gives the E34 units of `ln'` exactly, and `activeSlotLog`
+    * divides them back (`BaseTypes.hs:754-755`).
     */
   def activeSlotLog(f: Fraction): Either[Error, BigInt] =
     if f.numerator == 0 then
@@ -145,8 +146,9 @@ object PraosLeaderThreshold:
     else if f.numerator == f.denominator then Right(BigInt(0))
     else logs.computeIfAbsent((f.numerator, f.denominator), _ => computeActiveLog(f))
 
-  // ln' and splitLn (NonIntegral.hs:162-174) of 1 - f, which is positive for f < 1: `lncf` refuses
-  // a negative remainder with `error`, which this returns as a typed cause.
+  // ln' and splitLn (NonIntegral.hs:162-174, cardano-ledger f649f975) of 1 - f, which is positive
+  // for f < 1: `lncf` refuses a negative remainder with `error`, which this returns as a typed
+  // cause.
   private def computeActiveLog(f: Fraction): Either[Error, BigInt] =
     val x = Scale - fixed(f)
     val n = findE(expOne, x)
@@ -196,8 +198,8 @@ object PraosLeaderThreshold:
     else if active.numerator == active.denominator then Right(Decision.Eligible)
     else activeSlotLog(active).map(log => compare(value, stake, log, range))
 
-  // taylorExpCmp 3 recip_q x (NonIntegral.hs:196-209): MaxReached is IterationLimit, which callers
-  // treat as not leader, as checkLeaderNatValue does.
+  // taylorExpCmp 3 recip_q x (NonIntegral.hs:196-209, cardano-ledger f649f975): MaxReached is
+  // IterationLimit, which callers treat as not leader, as checkLeaderNatValue does.
   private def compare(value: BigInt, stake: Fraction, log: BigInt, range: BigInt): Decision =
     val cmp = range * Scale / (range - value)
     // Haskell2010 prefix negation has precedence 6; multiplication (7) happens first.

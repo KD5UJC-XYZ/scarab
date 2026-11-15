@@ -17,7 +17,8 @@ class HardForkSuite extends ScalaCheckSuite:
 
   private val eras = HardForkConfig.Sequence.toVector
 
-  // ---- the era of a chain started from genesis (`injectInitialExtLedgerState`, Nary.hs:259-306)
+  // ---- the era of a chain started from genesis (`injectInitialExtLedgerState`, Nary.hs:259-306,
+  // ouroboros-consensus 82ecba32)
 
   private val genesisK = BigInt(5)
 

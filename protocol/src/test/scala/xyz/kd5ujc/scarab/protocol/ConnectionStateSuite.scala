@@ -59,16 +59,16 @@ class ConnectionStateSuite extends ScalaCheckSuite:
       flows.map(OutboundIdle(_)) ++ flows.map(InboundIdle(_)) ++ flows.map(Inbound(_))
 
   /** The moves that leave a state as it is: `demotedToColdRemote` on a connection the remote side
-    * already left (`ConnectionManager/Core.hs:2286-2305`).
+    * already left (`ConnectionManager/Core.hs:2286-2305`, ouroboros-network c45735a5).
     */
   private def leavesAsIs(s: ConnectionState, e: Event): Boolean = (s, e) match
     case (OutboundDup(_) | OutboundIdle(_) | InboundIdle(_), Event.DemotedToColdRemote) => true
     case _                                                                              => false
 
   /** The moves the reference's runtime makes that `verifyAbstractTransition` has no case for: the
-    * outbound side's negotiation over an accepted self-connection (`Core.hs:1600-1622`),
-    * `releaseInboundConnection` on a connection still in use (1203-1215) and [[Event.SelfConnIdle]]
-    * (936-945).
+    * outbound side's negotiation over an accepted self-connection (`Core.hs:1600-1622`,
+    * ouroboros-network c45735a5), `releaseInboundConnection` on a connection still in use
+    * (1203-1215) and [[Event.SelfConnIdle]] (938-945).
     */
   private def runtimeOnly(s: ConnectionState, e: Event): Boolean = (s, e) match
     case (Unnegotiated(Provenance.Inbound), Event.Negotiated(_, Provenance.Outbound)) => true
@@ -119,8 +119,9 @@ class ConnectionStateSuite extends ScalaCheckSuite:
       if leavesAsIs(s, Event.DemotedToColdRemote) then
         assertEquals(result, Right(s), s.abstractName)
     }
-    // the runtime leaves an idle unidirectional inbound connection as it is (`Core.hs:2302-2305`);
-    // `verifyAbstractTransition` admits that identity for the duplex flow only
+    // the runtime leaves an idle unidirectional inbound connection as it is (`Core.hs:2302-2305`,
+    // ouroboros-network c45735a5); `verifyAbstractTransition` admits that identity for the duplex
+    // flow only
     assert(
       ConnectionState.valid(Some(InboundIdle(DataFlow.Duplex)), Some(InboundIdle(DataFlow.Duplex)))
     )

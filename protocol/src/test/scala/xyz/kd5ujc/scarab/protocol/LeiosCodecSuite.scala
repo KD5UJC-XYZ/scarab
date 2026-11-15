@@ -204,7 +204,8 @@ class LeiosCodecSuite extends ScalaCheckSuite:
   ) {
     import LeiosNotify.*
     val v = vote(1, 1)
-    // the seat written in two bytes: `decodeWord16` takes any width (`LeiosDemoTypes.hs:1379-1390`)
+    // the seat written in two bytes: `decodeWord16` takes any width (`LeiosDemoTypes.hs:1379-1390`,
+    // ouroboros-consensus 2416493b)
     val wide =
       bs(0x83, 0x58, 0x20) ++ v.announcingRbHash.bytes ++ bs(0x19, 0x00, 0x01, 0x58, 0x30) ++
         v.signature.bytes
@@ -269,7 +270,8 @@ class LeiosCodecSuite extends ScalaCheckSuite:
   test("LeiosNotify: a point as `decodeLeiosPoint` reads it, in both messages that carry one") {
     import LeiosNotify.*
     val h = Bytes.wrap(Array.fill[Byte](32)(3))
-    // `enforceSize 2`, a `Word64` slot of any width, a 32-byte hash (`LeiosDemoTypes.hs:208-211`)
+    // `enforceSize 2`, a `Word64` slot of any width, a 32-byte hash (`LeiosDemoTypes.hs:208-211`,
+    // ouroboros-consensus 2416493b)
     val wideSlot = bs(0x82, 0x1b, 0, 0, 0, 0, 0, 0, 0, 5, 0x58, 0x20) ++ h
     assertEquals(
       decodePrefix(State.Busy, bs(0x82, 0x06) ++ wideSlot).map(_._1),
@@ -501,7 +503,8 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       read(None, MaxTxsPerEb + 1),
       Left(LeiosWireError.TooMany(4, LeiosField.Transactions, MaxTxsPerEb, MaxTxsPerEb + 1))
     )
-    // the build writes a definite list (`encodeLeiosFetch`, `LeiosDemoOnlyTestFetch.hs:319-323`)
+    // the build writes a definite list (`encodeLeiosFetch`, `LeiosDemoOnlyTestFetch.hs:319-323`,
+    // ouroboros-consensus 2416493b)
     assertEquals(ok(encode(Message.BlockTxs(Vector(Bytes.empty)))), message(Some(1), 1))
   }
 

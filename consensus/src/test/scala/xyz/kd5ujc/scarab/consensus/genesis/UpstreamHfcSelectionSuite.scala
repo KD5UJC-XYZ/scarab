@@ -68,7 +68,8 @@ class UpstreamHfcSelectionSuite extends FunSuite:
       val candidateCursor = input.downField("candidate")
       val local = view(localCursor)
       val candidate = view(candidateCursor)
-      // Protocol.hs:76–98 selects across-era Ord independently of configured eligibility.
+      // Protocol.hs:76–98 (ouroboros-consensus 82ecba32) selects across-era Ord independently of
+      // configured eligibility.
       val oursBetter =
         ChainSelection.prefers(ChainSelection.Tiebreaker.Unrestricted, candidate, local)
       val theirsBetter =

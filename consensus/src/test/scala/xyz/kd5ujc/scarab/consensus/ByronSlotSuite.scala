@@ -117,7 +117,7 @@ class ByronSlotSuite extends FunSuite:
 
   test("the first block is numbered 0, and a first boundary block's slot is a multiple too") {
     // `expectedFirstBlockNo` and `additionalEnvelopeChecks`, which `validateEnvelope` runs at
-    // Origin too (`Ouroboros/Consensus/HeaderValidation.hs:364-376`)
+    // Origin too (`Ouroboros/Consensus/HeaderValidation.hs:364-376`, ouroboros-consensus 82ecba32)
     def first(block: Block.Byron) =
       ByronRules.update(ByronRules.State(None, initial, PBftState.empty), block, rulesConfig)
     val genesisTag = map(uint(255) -> bytes(Bytes.fromArray("Genesis".getBytes("US-ASCII"))))

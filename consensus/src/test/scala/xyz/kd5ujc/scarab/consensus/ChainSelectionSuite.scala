@@ -87,7 +87,8 @@ class ChainSelectionSuite extends ScalaCheckSuite:
     )
   }
 
-  // Exact cases from upstream `comparePraos` (ouroboros-consensus 4.2.0.x, Praos/Common.hs:125-168).
+  // Exact cases from upstream `comparePraos` (ouroboros-consensus 4.2.0.x, 82ecba32,
+  // Praos/Common.hs:125-168).
 
   test("restricted: the slot distance bound is inclusive (5 apart compares, 6 apart does not)") {
     val ours = view(3, slot = 100, issuer = 1, vrf = 200)

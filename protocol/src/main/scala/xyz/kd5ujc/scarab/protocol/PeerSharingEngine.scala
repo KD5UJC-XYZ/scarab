@@ -232,7 +232,9 @@ object PeerSharingEngine:
   private[protocol] def arity(found: BigInt, expected: Int): Parse[Unit] =
     stopped(if found == BigInt(expected) then Right(()) else fail(Error.Arity(expected, found)))
 
-  /** The peers of a `MsgSharePeers`: a definite or an indefinite list (`Codec.hs:89-93`). */
+  /** The peers of a `MsgSharePeers`: a definite or an indefinite list (`Codec.hs:89-93`,
+    * ouroboros-network c45735a5).
+    */
   private def peers[P](c: Cursor, peer: PeerCodec[P]): Parse[Vector[P]] =
     c.arrayOrIndefinite().flatMap {
       case Some(n) =>

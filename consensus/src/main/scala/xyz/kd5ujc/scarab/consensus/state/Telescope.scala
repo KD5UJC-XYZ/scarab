@@ -14,8 +14,9 @@ import xyz.kd5ujc.scarab.protocol.{Era, LayoutPart, StateLayout}
 // six Shelley-based eras), and the invariant the type-level list gives for free, that a telescope in
 // era `n` has `n` past eras, is the one the smart constructor [[Telescope.make]] enforces.
 
-/** A point on the era history (`Bound`, `HardFork/History/Summary.hs:82-88`): time since the system
-  * start in picoseconds, slot, epoch, and the Peras round, by layout ([[Bound.Layout]]).
+/** A point on the era history (`Bound`, `HardFork/History/Summary.hs:82-88`, ouroboros-consensus
+  * 82ecba32): time since the system start in picoseconds, slot, epoch, and the Peras round, by
+  * layout ([[Bound.Layout]]).
   *
   * A deviation from Haskell, for the node-to-client answer that already uses this type
   * (`EraHistory`): the three numbers are `BigInt` s rather than `RelativeTime` /`SlotNo`/`EpochNo`.
@@ -54,14 +55,18 @@ object Bound:
   val epochLens: Lens[Bound, BigInt] = Focus[Bound](_.epoch)
   val layoutLens: Lens[Bound, Layout] = Focus[Bound](_.layout)
 
-/** A past era (`Past`, `HardFork/Combinator/State/Types.hs:97-101`): where it started and ended. */
+/** A past era (`Past`, `HardFork/Combinator/State/Types.hs:97-101`, ouroboros-consensus 82ecba32):
+  * where it started and ended.
+  */
 final case class Past(start: Bound, end: Bound) derives Eq, Show, Diff
 
 object Past:
   val start: Lens[Past, Bound] = Focus[Past](_.start)
   val end: Lens[Past, Bound] = Focus[Past](_.end)
 
-/** The current era (`Current f blk`, `State/Types.hs:90-93`): where it started and its state. */
+/** The current era (`Current f blk`, `State/Types.hs:90-93`, ouroboros-consensus 82ecba32): where
+  * it started and its state.
+  */
 final case class Current[A](start: Bound, state: A)
 
 object Current:
@@ -101,10 +106,10 @@ trait EraIndexed[A]:
 object EraIndexed:
   def instance[A](f: (Era, A) => Boolean): EraIndexed[A] = f(_, _)
 
-/** The hard-fork combinator's telescope (`HardForkState f xs`, `State/Types.hs:43-87`, a
-  * `Telescope (K Past) (Current f) xs`): the past eras, then the current one with its state. Era
-  * `n` has `n` past eras, and consecutive eras abut; [[Telescope.make]] is the only way in, so
-  * every telescope satisfies both.
+/** The hard-fork combinator's telescope (`HardForkState f xs`, `State/Types.hs:43-87` of
+  * ouroboros-consensus 82ecba32, a `Telescope (K Past) (Current f) xs`): the past eras, then the
+  * current one with its state. Era `n` has `n` past eras, and consecutive eras abut;
+  * [[Telescope.make]] is the only way in, so every telescope satisfies both.
   */
 final case class Telescope[A] private (era: Era, past: Vector[Past], current: Current[A]):
   def state: A = current.state

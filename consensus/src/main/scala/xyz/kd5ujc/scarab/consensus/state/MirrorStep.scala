@@ -50,17 +50,17 @@ final case class Placement(
   * The extension is `Telescope.extend` of the combinator, which `extendToSlot`
   * (`HardFork/Combinator/State.hs:219`) runs when the tick reaches a slot of a later era: the
   * current era ends where the next begins and the next holds the translated state. The ledger state
-  * is translated by `translateLedgerState*Wrapper` (`Cardano/CanHardFork.hs`: Byron to Shelley 344,
-  * Shelley to Allegra 485, Allegra to Mary 563, Mary to Alonzo 595, Alonzo to Babbage 633, Babbage
-  * to Conway 677), each of which runs the era's `TranslateEra NewEpochState`
-  * (`Allegra/Translation.hs:58`, `Mary/Translation.hs:50`, `Alonzo/Translation.hs:51`,
-  * `Babbage/Translation.hs:48`, `Conway/Translation.hs:70`); here that is the ledger's
-  * [[xyz.kd5ujc.scarab.ledger.rules.Translate]] in `Hfc.tick`, so the state given to [[block]] is
-  * already of the new era. The chain-dependent state is translated by `translateChainDepState`
-  * (`CanHardFork.hs:161-169`: Byron to Shelley 381, `AcrossShelley` for the rest), which is the
-  * identity except from TPraos to Praos (`Protocol/Praos.hs:213-229`: the previous epoch nonce is
-  * set to the epoch nonce); the header rules do it ([[ProtocolState.in]]) before the state reaches
-  * [[block]].
+  * is translated by `translateLedgerState*Wrapper` (`Cardano/CanHardFork.hs` at ouroboros-consensus
+  * 82ecba32: Byron to Shelley 343, Shelley to Allegra 485, Allegra to Mary 579, Mary to Alonzo 627,
+  * Alonzo to Babbage 684, Babbage to Conway 766), each of which runs the era's `TranslateEra
+  * NewEpochState` (`Allegra/Translation.hs:58`, `Mary/Translation.hs:50`,
+  * `Alonzo/Translation.hs:51`, `Babbage/Translation.hs:48`, `Conway/Translation.hs:70`,
+  * cardano-ledger f649f975); here that is the ledger's [[xyz.kd5ujc.scarab.ledger.rules.Translate]]
+  * in `Hfc.tick`, so the state given to [[block]] is already of the new era. The chain-dependent
+  * state is translated by `translateChainDepState` (`CanHardFork.hs:157-165`: Byron to Shelley 381,
+  * `AcrossShelley` for the rest), which is the identity except from TPraos to Praos
+  * (`Protocol/Praos.hs:763-773`: the previous epoch nonce is set to the epoch nonce); the header
+  * rules do it ([[ProtocolState.in]]) before the state reaches [[block]].
   *
   * The bound the new era begins at is the configured epoch (`Test<Era>HardForkAtEpoch`), else the
   * epoch of the block that is the first of the era (what the node has always recorded as the epoch
@@ -192,8 +192,8 @@ object MirrorStep:
   /** A state whose after-voting counter was not known (`Gap.ShelleyTransition`, of a snapshot of
     * the retired flat formats) with the counter recounted from the stored chain: the blocks of the
     * tip's epoch at or after its voting deadline, which is what the reference's state holds
-    * (`Ledger.hs:299-322`), and the gap closed. A Byron state has no counter (Shelley starts it at
-    * zero), so only its gap is closed.
+    * (`Ledger.hs:299-322`, ouroboros-consensus 82ecba32), and the gap closed. A Byron state has no
+    * counter (Shelley starts it at zero), so only its gap is closed.
     */
   def recounted(m: MirrorState, afterVoting: Long): Either[StateMirrorError, MirrorState] =
     m.ext.ledgerState.state match

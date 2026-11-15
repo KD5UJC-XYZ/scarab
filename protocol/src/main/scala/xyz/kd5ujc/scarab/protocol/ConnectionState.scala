@@ -45,8 +45,8 @@ enum ConnectionState:
     case Terminating | Terminated => false
     case _                        => true
 
-  /** The reference's `AbstractState` name (`ConnectionManager/Types.hs:674-688`), as its traces
-    * print it.
+  /** The reference's `AbstractState` name (`ConnectionManager/Types.hs:674-688`, ouroboros-network
+    * c45735a5), as its traces print it.
     */
   def abstractName: String = this match
     case ReservedOutbound   => "ReservedOutboundSt"
@@ -82,9 +82,10 @@ object ConnectionState:
 
     /** `Negotiated^{flow}_{Outbound}` or `Negotiated^{flow}_{Inbound}`: the handshake that `side`
       * ran agreed `flow`. The outbound side writes its negotiated state over an unnegotiated
-      * connection of either provenance (`ConnectionManager/Core.hs:1600-1622`): over an inbound
-      * one, the accept of a connection to ourselves, which `verifyAbstractTransition` has no case
-      * for, so [[valid]] refuses the move the reference's runtime makes.
+      * connection of either provenance (`ConnectionManager/Core.hs:1600-1622`, ouroboros-network
+      * c45735a5): over an inbound one, the accept of a connection to ourselves, which
+      * `verifyAbstractTransition` has no case for, so [[valid]] refuses the move the reference's
+      * runtime makes.
       */
     case Negotiated(flow: DataFlow, side: Provenance)
 
@@ -117,7 +118,8 @@ object ConnectionState:
     case TimeoutExpired
 
     /** `SelfConn`: our own outbound connection reached our listener; its inbound side takes the
-      * entry (`includeInboundConnectionImpl`, `ConnectionManager/Core.hs:845-855`).
+      * entry (`includeInboundConnectionImpl`, `ConnectionManager/Core.hs:845-855`,
+      * ouroboros-network c45735a5).
       */
     case SelfConn
 
@@ -127,14 +129,15 @@ object ConnectionState:
     case SelfConnReversed
 
     /** `SelfConnNegotiated^{flow}_{Inbound}`: the inbound side of a self-connection negotiated
-      * `flow` (`Core.hs:924-930`).
+      * `flow` (`Core.hs:924-930`, ouroboros-network c45735a5).
       */
     case SelfConnNegotiated(flow: DataFlow)
 
     /** The inbound side of a self-connection negotiated after the outbound side released it: its
-      * `OutboundIdle` connection becomes `InboundIdle` with the same flow (`Core.hs:938-945`).
-      * `verifyAbstractTransition` has no case for it (`Test/.../ConnectionManager/Utils.hs`), so
-      * [[valid]] refuses the move the reference's runtime makes.
+      * `OutboundIdle` connection becomes `InboundIdle` with the same flow (`Core.hs:938-945`,
+      * ouroboros-network c45735a5). `verifyAbstractTransition` has no case for it
+      * (`Test/.../ConnectionManager/Utils.hs`), so [[valid]] refuses the move the reference's
+      * runtime makes.
       */
     case SelfConnIdle
 
@@ -143,8 +146,9 @@ object ConnectionState:
 
     /** `releaseInboundConnection` on a connection the peer still uses, which the inbound governor
       * should have demoted first: the reference closes it into time-wait at once and reports the
-      * state as unsupported (`Core.hs:1203-1215`). `verifyAbstractTransition` has no case for it,
-      * so [[valid]] refuses the move the reference's runtime makes.
+      * state as unsupported (`Core.hs:1203-1215`, ouroboros-network c45735a5).
+      * `verifyAbstractTransition` has no case for it, so [[valid]] refuses the move the reference's
+      * runtime makes.
       */
     case CommitInUse
 
@@ -193,8 +197,9 @@ object ConnectionState:
       case (OutboundIdle(DuplexFlow), Event.AwakeRemote)    => Right(Inbound(DuplexFlow))
       case (Duplex, Event.DemotedToColdRemote)              => Right(OutboundDup(Ticking))
       case (Inbound(flow), Event.DemotedToColdRemote)       => Right(InboundIdle(flow))
-      // `demotedToColdRemote` leaves these as they are (`Core.hs:2286-2305`); for an idle inbound
-      // connection of either flow, although `verifyAbstractTransition` admits only the duplex one
+      // `demotedToColdRemote` leaves these as they are (`Core.hs:2286-2305`, ouroboros-network
+      // c45735a5); for an idle inbound connection of either flow, although
+      // `verifyAbstractTransition` admits only the duplex one
       case (OutboundDup(_) | OutboundIdle(_) | InboundIdle(_), Event.DemotedToColdRemote) =>
         Right(state)
       case (Unnegotiated(Provenance.Outbound), Event.SelfConn) =>
@@ -267,8 +272,9 @@ object ConnectionState:
       case (Some(Terminating), Some(Unnegotiated(In)))                    => true
       case _                                                              => false
 
-  /** `isInboundConn` (`ConnectionManager/Core.hs:259-269`): the connections pruning chooses from,
-    * in agreement with the inbound counter of [[Counters.ofState]].
+  /** `isInboundConn` (`ConnectionManager/Core.hs:259-269`, ouroboros-network c45735a5): the
+    * connections pruning chooses from, in agreement with the inbound counter of
+    * [[Counters.ofState]].
     */
   def isInboundConn(state: ConnectionState): Boolean = state match
     case Unnegotiated(provenance)             => provenance == Provenance.Inbound
@@ -277,8 +283,9 @@ object ConnectionState:
         Terminated =>
       false
 
-  /** The reference's `ConnectionType` (`ConnectionManager/Types.hs:239-261`), what a prune policy
-    * sees of a connection; its derived order is the constructor order, then the fields.
+  /** The reference's `ConnectionType` (`ConnectionManager/Types.hs:239-261`, ouroboros-network
+    * c45735a5), what a prune policy sees of a connection; its derived order is the constructor
+    * order, then the fields.
     */
   enum ConnectionType:
     case UnnegotiatedConn(provenance: Provenance)
@@ -287,8 +294,9 @@ object ConnectionState:
     case NegotiatedConn(provenance: Provenance, flow: DataFlow)
     case DuplexConn
 
-    /** `isUpstream` of the reference's `prunePolicy` (`Diffusion/Policies.hs:246-254`): the
-      * connections the outbound side opened or uses, which are pruned last.
+    /** `isUpstream` of the reference's `prunePolicy` (`Diffusion/Policies.hs:246-254`,
+      * ouroboros-network c45735a5): the connections the outbound side opened or uses, which are
+      * pruned last.
       */
     def upstream: Boolean = this match
       case UnnegotiatedConn(p)  => p == Provenance.Outbound
@@ -307,7 +315,7 @@ object ConnectionState:
       case DuplexConn           => (4, 0, 0)
     }
 
-    /** `getConnType` (`ConnectionManager/Core.hs:242-253`). */
+    /** `getConnType` (`ConnectionManager/Core.hs:242-253`, ouroboros-network c45735a5). */
     def of(state: ConnectionState): Option[ConnectionType] = state match
       case ReservedOutbound   => None
       case Unnegotiated(p)    => Some(UnnegotiatedConn(p))
@@ -320,10 +328,10 @@ object ConnectionState:
       case Terminating | Terminated => None
 
   /** The reference's `ConnectionManagerCounters` (`ConnectionManager/Types.hs:694-703`), counted
-    * per state as `connectionStateToCounters` does (`ConnectionManager/Core.hs:173-212`): a
-    * connection counts by what it is used for now, so a duplex connection both sides use counts as
-    * inbound and as outbound, a reservation counts nothing and a closing one counts only as
-    * terminating.
+    * per state as `connectionStateToCounters` does (`ConnectionManager/Core.hs:173-212`,
+    * ouroboros-network c45735a5): a connection counts by what it is used for now, so a duplex
+    * connection both sides use counts as inbound and as outbound, a reservation counts nothing and
+    * a closing one counts only as terminating.
     */
   final case class Counters(
       fullDuplex: Int,

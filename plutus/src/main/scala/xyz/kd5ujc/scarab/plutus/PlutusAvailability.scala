@@ -161,7 +161,7 @@ object PlutusAvailability:
   )
 
   /** The protocol major versions the table names: Alonzo, Vasil, Valentine, Chang, Plomin, van
-    * Rossem and Dijkstra (`PlutusLedgerApi/Common/ProtocolVersions.hs:50-91`, 1.71.0.0).
+    * Rossem and Dijkstra (`PlutusLedgerApi/Common/ProtocolVersions.hs:50-91`, plutus 1.71.0.0).
     */
   val Alonzo = 5
   val Vasil = 7
@@ -256,8 +256,8 @@ object PlutusAvailability:
     else Some(Failure.VersionUnavailable(version, language, protocolMajor))
 
   /** Whether the machine may `case` on a `Data` value (`defaultCaserBuiltinFor`,
-    * `PlutusLedgerApi/Common/Eval.hs:144-148`, 1.71.0.0): `caseBuiltin` from Dijkstra for a program
-    * of version 1.2.0 or later, `caseBuiltinNoData` otherwise. The rule ignores the ledger
+    * `PlutusLedgerApi/Common/Eval.hs:144-148`, plutus 1.71.0.0): `caseBuiltin` from Dijkstra for a
+    * program of version 1.2.0 or later, `caseBuiltinNoData` otherwise. The rule ignores the ledger
     * language. Below van Rossem the caser is `unavailableCaserBuiltin`, which `case` on a built-in
     * value never reaches there (`caseOnBuiltins` is off).
     */

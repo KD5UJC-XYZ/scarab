@@ -8,7 +8,9 @@ import xyz.kd5ujc.scarab.codec.Bytes
 
 import Handshake.{WireMessage as Message, WireReason as Reason, State, Term}
 
-/** Original mock domain from upstream Handshake/Test.hs:125–235, not Cardano versions. */
+/** Original mock domain from upstream Handshake/Test.hs:125–235 (ouroboros-network c45735a5), not
+  * Cardano versions.
+  */
 class GenericHandshakeUpstreamSuite extends munit.FunSuite:
   private case class Data(number: Long, conjunction: Boolean, disjunction: Boolean)
   private enum Version(val number: Int):

@@ -58,9 +58,10 @@ import scalus.uplc.eval.{
   */
 private[plutus] object ReferenceCosting:
 
-  /** A `CostStream` (`CostStream.hs` lines 34-45): a non-empty sequence of costs whose meaning is
-    * their sum, kept in the order the reference produces them because the machine spends them in
-    * that order. `Last` is the reference's single-element `CostLast`; `Many` holds two or more.
+  /** A `CostStream` (`CostStream.hs` lines 30-42, plutus 1.70.0.0): a non-empty sequence of costs
+    * whose meaning is their sum, kept in the order the reference produces them because the machine
+    * spends them in that order. `Last` is the reference's single-element `CostLast`; `Many` holds
+    * two or more.
     */
   enum CostStream:
     case Last(cost: SatInt)
@@ -126,12 +127,12 @@ private[plutus] object ReferenceCosting:
     private[ReferenceCosting] def of(costs: NonEmptyVector[SatInt]): CostStream =
       if costs.tail.isEmpty then Last(costs.head) else Many(costs)
 
-  /** `scaleLinearly` (`Core.hs` lines 318-321). */
+  /** `scaleLinearly` (`Core.hs` lines 318-321, plutus 1.70.0.0). */
   private def scaleLinearly(intercept: SatInt, slope: SatInt, xs: CostStream): CostStream =
     CostStream.last(intercept).add(xs.map(slope * _))
 
-  /** `scaleQuadratically` (`Core.hs` lines 332-347): `c + f(x)` element by element, where `f` sees
-    * the running sum `r` of the elements before it.
+  /** `scaleQuadratically` (`Core.hs` lines 332-347, plutus 1.70.0.0): `c + f(x)` element by
+    * element, where `f` sees the running sum `r` of the elements before it.
     */
   private def scaleQuadratically(c: SatInt, b: SatInt, a: SatInt, xs: CostStream): CostStream =
     val two = SatInt(2)
@@ -145,7 +146,8 @@ private[plutus] object ReferenceCosting:
     CostStream.last(c).add(CostStream.of(scaled))
 
   /** A costing function of the reference (`ModelOneArgument` to `ModelSixArguments`, `Core.hs`
-    * lines 232-243, 568-591, 741-759, 844-852, 893-900, 940-947), its arguments named by position.
+    * lines 232-243, 568-591, 741-759, 844-852, 893-900, 940-947; plutus 1.70.0.0), its arguments
+    * named by position.
     */
   enum Model:
     case ConstantCost(cost: SatInt)
@@ -178,7 +180,8 @@ private[plutus] object ReferenceCosting:
     case LinearInMaxYZ(intercept: SatInt, slope: SatInt)
     case ExpMod(c00: SatInt, c11: SatInt, c12: SatInt)
 
-  /** `run<N>ArgumentModel` (`Core.hs` lines 349-359, 627-737, 761-822, 856-868, 904-913, 951-961).
+  /** `run<N>ArgumentModel` (`Core.hs` lines 349-359, 627-737, 761-822, 856-868, 904-913, 951-961;
+    * plutus 1.70.0.0).
     */
   def run(model: Model, xs: Vector[CostStream]): CostStream =
     import Model.*
@@ -240,11 +243,11 @@ private[plutus] object ReferenceCosting:
         CostStream.last(if aa <= mm then cost0 else cost0 + cost0.dividedBy(2))
 
   /** An argument of a builtin's denotation as the reference unlifts and measures it: the Haskell
-    * type in the denotation's signature (`Default/Builtins.hs` lines 1099-2491).
+    * type in the denotation's signature (`Default/Builtins.hs` lines 1099-2491, plutus 1.70.0.0).
     */
   enum Arg:
     /** `Opaque val a`: any value; a non-constant measures 1 (`ExMemoryUsage (CekValue …)`,
-      * `UntypedPlutusCore/Evaluation/Machine/Cek/Internal.hs` lines 751-759).
+      * `UntypedPlutusCore/Evaluation/Machine/Cek/Internal.hs` lines 751-759, plutus 1.70.0.0).
       */
     case Opaque
 
@@ -254,15 +257,15 @@ private[plutus] object ReferenceCosting:
     case AnyConstant, ListOf, PairOf, ArrayOf
 
     /** Monomorphic types. `CInteger` and `CByteString` of the `ensurable` variants measure as
-      * `Integer` and `ByteString` (`Default/Universe/Cardano.hs` lines 21-27); their bounds, which
-      * Scalus's builtins do not check either, are issue 498.
+      * `Integer` and `ByteString` (`Default/Universe/Cardano.hs` lines 21-27, plutus 1.70.0.0);
+      * their bounds, which Scalus's builtins do not check either, are issue 498.
       */
     case Integer, ByteString, Text, Unit, Bool, Data, DataList, DataPairList, IntegerList
     case G1, G2, MlResult, G1List, G2List, Value
 
     /** `Int`, `Word8` and `Word64`: an integer within the type's bounds (`readKnownAsInteger`,
       * `Default/Universe.hs` lines 585-606), measured as 1 (`ExMemoryUsage.hs` lines 267-273,
-      * 343-346).
+      * 343-346; plutus 1.70.0.0).
       */
     case Int, Word8, Word64
 
@@ -282,7 +285,7 @@ private[plutus] object ReferenceCosting:
 
   /** Whether the reference unlifts the value as the argument: if any argument of a saturated
     * application does not, the application costs nothing and fails (`toMonoF`, `Builtin/Meaning.hs`
-    * lines 245-262: `builtinRuntimeFailure` with the cost `mempty`).
+    * lines 245-262, plutus 1.70.0.0: `builtinRuntimeFailure` with the cost `mempty`).
     */
   private def accepts(arg: Arg, value: CekValue): Boolean =
     import Constant as C
@@ -333,7 +336,7 @@ private[plutus] object ReferenceCosting:
 
   private def one(cost: SatInt): CostStream = CostStream.last(cost)
 
-  /** `memoryUsageInteger` (`ExMemoryUsage.hs` lines 247-256): 64-bit words. */
+  /** `memoryUsageInteger` (`ExMemoryUsage.hs` lines 247-256, plutus 1.70.0.0): 64-bit words. */
   private def integerSize(i: BigInt): SatInt =
     if i.signum == 0 then SatInt(1) else SatInt((i.abs.bitLength - 1).toLong / 64 + 1)
 
@@ -423,8 +426,8 @@ private[plutus] object ReferenceCosting:
         elements.reduceLeftTo(_._1)(_ + _._1).toLong
       )
 
-  /** `zipCostStream` (`ExBudgetStream.hs` lines 58-77): CPU and memory element by element, the
-    * shorter one continued with zeros.
+  /** `zipCostStream` (`ExBudgetStream.hs` lines 58-77, plutus 1.70.0.0): CPU and memory element by
+    * element, the shorter one continued with zeros.
     */
   private def zip(cpu: CostStream, memory: CostStream): ScalusExUnits =
     (cpu, memory) match
@@ -534,11 +537,11 @@ private[plutus] object ReferenceCosting:
       case SixArguments.ConstantCost(c)  => Some(ConstantCost(s(c)))
       case _                             => None
 
-  /** The reference's argument types of every builtin (`Default/Builtins.hs` lines 1099-2491). In
-    * the `ensurable` variants D and E (lines 2788-2793) the shift and rotation amounts are `Int`
-    * (lines 2237-2266), `constrData` 's index is a `Word64` (lines 1745-1760) and the string
-    * builtins measure bytes (lines 1507-1590); `consByteString` takes a `Word8` in C and E (lines
-    * 1258-1310).
+  /** The reference's argument types of every builtin (`Default/Builtins.hs` lines 1099-2491, plutus
+    * 1.70.0.0). In the `ensurable` variants D and E (lines 2788-2793) the shift and rotation
+    * amounts are `Int` (lines 2237-2266), `constrData` 's index is a `Word64` (lines 1745-1760) and
+    * the string builtins measure bytes (lines 1507-1590); `consByteString` takes a `Word8` in C and
+    * E (lines 1258-1310).
     */
   def signature(fun: DefaultFun, variant: BuiltinSemanticsVariant): Vector[Arg] =
     import Arg.*

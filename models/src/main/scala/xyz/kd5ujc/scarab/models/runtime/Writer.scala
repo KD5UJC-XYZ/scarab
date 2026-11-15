@@ -140,8 +140,9 @@ final class Writer(initial: Int = 256):
       minimal.foreach(b => put(b & 0xff))
 
   /** An array of `n` items that `body` writes, framed as the ledger frames its lists, sets and
-    * sequences (`variableListLenEncoding`, cardano-ledger-binary `Encoder.hs:458-468`): a definite
-    * head up to [[Writer.LengthThreshold]] items, an indefinite one with its break above.
+    * sequences (`variableListLenEncoding`, cardano-ledger-binary `Encoder.hs:458-468`,
+    * cardano-ledger 048b78d2): a definite head up to [[Writer.LengthThreshold]] items, an
+    * indefinite one with its break above.
     */
   def variableArray(n: Int)(body: => Unit): Unit =
     if n <= Writer.LengthThreshold then
@@ -153,7 +154,7 @@ final class Writer(initial: Int = 256):
       break()
 
   /** A map of `n` entries that `body` writes, framed as the ledger frames its maps
-    * (`variableMapLenEncoding`, `Encoder.hs:430-440`).
+    * (`variableMapLenEncoding`, `Encoder.hs:432-438`, cardano-ledger 048b78d2).
     */
   def variableMap(n: Int)(body: => Unit): Unit =
     if n <= Writer.LengthThreshold then
@@ -165,5 +166,7 @@ final class Writer(initial: Int = 256):
       break()
 
 object Writer:
-  /** The ledger's `lengthThreshold` (`Encoder.hs:442-443`): above it a container is indefinite. */
+  /** The ledger's `lengthThreshold` (`Encoder.hs:442-443`, cardano-ledger 048b78d2): above it a
+    * container is indefinite.
+    */
   val LengthThreshold: Int = 23

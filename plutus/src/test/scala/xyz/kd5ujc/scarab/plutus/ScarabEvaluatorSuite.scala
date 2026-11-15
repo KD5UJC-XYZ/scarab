@@ -78,7 +78,8 @@ class ScarabEvaluatorSuite extends FunSuite:
   }
 
   test("a program version the language lacks at the protocol is a decoding failure, as Scalus's") {
-    // version 1.1.0 is not a PlutusV1 program's before protocol 11 (`Eval.hs:123-127`)
+    // version 1.1.0 is not a PlutusV1 program's before protocol 11
+    // (`PlutusLedgerApi/Common/Eval.hs:123-127`, plutus 1.70.0.0)
     both(request(unit, PlutusLanguage.V1, 7)) match
       case (EvalResult.Failure(EvalFailure.Decode(ScriptProblem.UplcVersion(_)), _, _), _) => ()
       case other => fail(other.toString)

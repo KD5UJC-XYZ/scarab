@@ -94,9 +94,9 @@ object BlockFetchEngine:
       idle.forall(_ > Duration.Zero) && busy > Duration.Zero && streaming > Duration.Zero
 
   /** How many blocks a range may stream: the requested fragment's length, which the reference
-    * enforces by matching each block with the next requested header (BlockFetch/Client.hs:236–250).
-    * Bytes are bounded per message by the codec and per protocol by the multiplexer's ingress
-    * queue, not per range.
+    * enforces by matching each block with the next requested header
+    * (BlockFetch/Client.hs:239–258,291–295, ouroboros-network c45735a5). Bytes are bounded per
+    * message by the codec and per protocol by the multiplexer's ingress queue, not per range.
     */
   final case class RequestLimits(maxBlocks: Int = 4):
     def valid: Boolean = maxBlocks > 0 && maxBlocks <= 1000000
