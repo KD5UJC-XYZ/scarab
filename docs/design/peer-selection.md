@@ -33,8 +33,8 @@ targets and choices (feedback from the chain).
 | D10 | ADR | One ADR at G1.1: "Outbound peer selection is a pure decision function over a status-carrying state" (D2), so the next sessions do not reopen it. |
 
 D1's internal structure "from Scarab's own style", D2's state representation and D10's ADR do not
-stand: [ADR 0008](../adr/0008-networking-mirrors-ouroboros-network.md) requires the reference's structure as well as its behaviour, and each
-structural difference from the reference governor is alignment work under [#477](https://github.com/KD5UJC-XYZ/scarab/issues/477).
+stand ([REF-6](../design-rules.md#ref-6)); the governor's remaining structural differences from the reference are
+alignment work under [#477](https://github.com/KD5UJC-XYZ/scarab/issues/477).
 
 ## Pages
 

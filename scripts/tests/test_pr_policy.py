@@ -72,12 +72,18 @@ class PrPolicyTests(unittest.TestCase):
             self.evaluate(pr)
 
 
-def body_of(level, deviations=None, gaps=None):
+REVIEWED = ("## Independent review\n\nCodex, no P1 or P2; the two P3 findings fixed in a1b2c3d: "
+            "https://github.com/KD5UJC-XYZ/scarab/pull/8#issuecomment-1\n")
+
+
+def body_of(level, deviations=None, gaps=None, review=REVIEWED):
     parts = [f"## Level and gates\n\n- Level: {level}\n"]
     if deviations is not None:
         parts.append(f"## Deviations from the reference\n\n<!-- None, or a table -->\n{deviations}\n")
     if gaps is not None:
         parts.append(f"## Gaps\n\n{gaps}\n")
+    if review is not None:
+        parts.append(review)
     return "\n".join(parts)
 
 
@@ -142,6 +148,63 @@ class PrBodyTests(unittest.TestCase):
             policy.check_body(pr, [policy.PERSISTED_FORMAT])
         pr["body"] = body_of(3, "None", "None")
         self.assertEqual(policy.check_body(pr, [policy.PERSISTED_FORMAT]), 3)
+
+    def test_a_draft_needs_no_review_and_a_pull_request_that_is_not_a_draft_links_its_review(self):
+        pr = pull_request(head="feature")
+        pr["user"], pr["draft"] = {"type": "User"}, True
+        for review in [None, "## Independent review\n\n<!-- the link -->\n", "## Independent review\n\npending\n"]:
+            pr["body"] = body_of(1, "None", "None", review)
+            with self.subTest(review=review, draft=True):
+                self.assertEqual(policy.check_body(pr), 1)
+        pr["draft"] = False
+        for review in [None, "## Independent review\n\n<!-- https://github.com/o/r/pull/8#issuecomment-1 -->\n",
+                       "## Independent review\n\nCodex found nothing; see the comment below.\n",
+                       "## Independent reviews\n\nhttps://github.com/o/r/pull/8#issuecomment-1\n"]:
+            pr["body"] = body_of(1, "None", "None", review)
+            with self.subTest(review=review, draft=False), self.assertRaisesRegex(
+                    policy.PolicyError, 'not a draft needs an "## Independent review" section'):
+                policy.check_body(pr)
+        pr["body"] = body_of(0, review=None)
+        with self.assertRaisesRegex(policy.PolicyError, "Independent review"):
+            policy.check_body(pr)
+        pr["body"] = body_of(0)
+        self.assertEqual(policy.check_body(pr), 0)
+        link = "https://github.com/o/r/pull/8#issuecomment-1"
+        for review in [f"## Independent review\n\n`{link}`\n",
+                       f"## Independent review\n\n` a``b````{link} `\n",
+                       f"## Independent review\n\nThe review:\n\n    {link}\n",
+                       f"## Independent review\n\n[review]: {link}\n",
+                       f"## Independent review\n\n[review]:\n  {link}\n",
+                       f"## Independent review\n    {link}\n",
+                       f"```\n## Independent review\n\n{link}\n```\n",
+                       f"## Independent review\n\n~~~\n{link}\n~~~\n",
+                       f"## Independent review\n\n# Evidence\n\n{link}\n"]:
+            pr["body"] = body_of(1, "None", "None", review)
+            with self.subTest(review=review), self.assertRaisesRegex(policy.PolicyError, "not a draft needs"):
+                policy.check_body(pr)
+        for review in [f"## Independent review\n\nCodex, clean: [the review]({link}).\n",
+                       f"## Independent review\n\n### Findings\n\nnone; <{link}>\n",
+                       f"## Independent review\n\n- verdict: clean\n- comment: {link}\n",
+                       f"## Independent review\n\n\\`[review]({link})\\`\n",
+                       f"## Independent review\n\n`code` and {link}\n",
+                       f"## Independent review\n\nClean: [review].\n\n[review]: {link}\n",
+                       f"## Independent review\n\nClean: [the comment][r].\n\n[R]:\n  {link}\n"]:
+            pr["body"] = body_of(1, "None", "None", review)
+            with self.subTest(review=review):
+                self.assertEqual(policy.check_body(pr), 1)
+        pr.pop("draft")
+        with self.subTest(draft="absent"):
+            pr["body"] = body_of(0, review=None)
+            with self.assertRaisesRegex(policy.PolicyError, "Independent review"):
+                policy.check_body(pr)
+
+    def test_a_bot_and_a_promotion_need_no_review_section(self):
+        pr = pull_request()
+        pr["body"], pr["user"] = "", {"type": "User"}
+        self.assertIsNone(policy.check_body(pr))
+        pr = pull_request(head="feature")
+        pr["body"], pr["user"] = "", {"type": "Bot"}
+        self.assertIsNone(policy.check_body(pr))
 
     def test_the_promotion_controller_path_does_not_read_the_body(self):
         pr = pull_request()

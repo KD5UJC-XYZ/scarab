@@ -15,8 +15,9 @@ reporters instead of one `peerMonitoringLoop`). The alignment plan is #477.
 ## Decision
 
 The networking layer mirrors ~~ouroboros-network `2fb69829`~~
-([amended 2026-11-13](#amendment-2026-11-13-the-packages-cardano-node-1113-links)) in both structure
-and behaviour, as [ADR 0001](0001-haskell-node-as-reference.md) requires everywhere else. Each component cites its
+([amended 2026-11-13](#amendment-2026-11-13-the-packages-cardano-node-1113-links)) ~~in both structure
+and behaviour, as [ADR 0001](0001-haskell-node-as-reference.md) requires everywhere else~~
+([amended 2026-11-14](#amendment-2026-11-14-mirroring-under-the-general-rule)). Each component cites its
 reference module at that pin:
 
 | Component | Reference module |
@@ -52,8 +53,9 @@ as ADR 0001 says.
 
 ## Consequences
 
-- A difference from the reference in the network layer is a defect to align, tracked in #474 and #477,
-  unless it is listed ~~above~~ ([superseded](#amendment-2026-11-13-later-approved-deviations)).
+- ~~A difference from the reference in the network layer is a defect to align, tracked in #474 and #477,
+  unless it is listed~~ ~~above~~ ([superseded](#amendment-2026-11-13-later-approved-deviations))
+  ([amended 2026-11-14](#amendment-2026-11-14-mirroring-under-the-general-rule)).
 - Era indexing does not reach the mini-protocols: they move bytes and points; decoders at the edge
   produce era-tagged values.
 
@@ -369,3 +371,15 @@ A later approved deviation, indexed in [decisions.md](../decisions.md#networking
   432-437, 1040-1043 and 1446-1453), which the rule allows. The approval holds while Scarab stays conformant:
   no request of an honest peer is refused. Trade-off: the bodies served between acknowledgements are at most
   the advertisements of the window.
+
+<a id="amendment-2026-11-14-mirroring-under-the-general-rule"></a>
+## Amendment (2026-11-14): mirroring under the general rule
+
+Networking falls under the general mirroring rule of
+[ADR 0001's amendment of 2026-11-14](0001-haskell-node-as-reference.md#amendment-2026-11-14-what-mirroring-means)
+and [REF-6](../design-rules.md#ref-6): its structure mirrors ouroboros-network at the pin by default, each mirrored
+definition has its entry in the correspondence map, and a definition whose structure differs is allowed only where
+a differential test against the reference covers that behaviour. A difference from the reference in the network
+layer is classified as [REF-4](../design-rules.md#ref-4) says and recorded in the map; a structural difference
+without such a test, and a behavioural one that is not an Improvement or an approved Deviation, is a defect to
+align, tracked in #474 and #477. Owner's decision, 2026-11-14 ([decisions register](../decisions.md#reference-fidelity)).

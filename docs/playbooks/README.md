@@ -15,6 +15,7 @@ JDK image, as [CONTRIBUTING](../../CONTRIBUTING.md#build-docker-only) shows; the
 | Add a devnet scenario | [add-a-devnet-scenario.md](add-a-devnet-scenario.md) | scripts |
 | Add a reference build, or promote a Leios build to stable | [add-a-reference-build.md](add-a-reference-build.md) | storage, ledger, consensus, node |
 | Run the gates and preflight, then mark a pull request ready | [run-the-gates-to-ready.md](run-the-gates-to-ready.md) | any |
+| Get an independent review of a pull request | [review-a-change.md](review-a-change.md) | any |
 | Raise a deviation question or an audit finding | [raise-a-deviation-or-audit-finding.md](raise-a-deviation-or-audit-finding.md) | any |
 | Rebase after a squash merge | [rebase-after-a-squash-merge.md](rebase-after-a-squash-merge.md) | any |
 
