@@ -508,9 +508,8 @@ object MirrorRules:
           )
           placement = Placement(geometry, byronParams, config.forks)
           next <-
-            (if pre.entered then
-               MirrorStep.handover(state, placement, announced, nes, praos, consensus)
-             else MirrorStep.block(state, placement, announced, nes, praos, consensus, plutus))
+            (if pre.entered then MirrorStep.handover(state, placement, block, nes, praos, consensus)
+             else MirrorStep.block(state, placement, block, nes, praos, consensus, plutus))
               .leftMap(mirror)
         yield next
       (program, finish)

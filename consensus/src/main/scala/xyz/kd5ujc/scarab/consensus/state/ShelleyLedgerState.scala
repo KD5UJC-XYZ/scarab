@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.state
 
+import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.state.Diff
 import cats.{Eq, Order, Show}
 import cats.derived.*
@@ -90,6 +91,25 @@ object ShelleyLedgerState:
     def stateLayout: StateLayout = this match
       case Node11_1(_) => StateLayout.Node11_1
       case Leios(_)    => StateLayout.Leios
+
+    /** The field after `block` is applied (`applyHelper`, ouroboros-consensus 2416493b
+      * `Shelley/Ledger/Ledger.hs:708-756`): the Leios layout adds the bytes of the block's
+      * transactions ([[Block.Shelley.addTxBytes]]); the 11.1 layout has no certificate round, Peras
+      * not being on.
+      */
+    def after(block: Block.Shelley): Layout = this match
+      case Node11_1(_) => Node11_1(None)
+      case Leios(b)    => Leios(block.addTxBytes(b))
+
+  object Layout:
+    /** The field as a chain's first Shelley-based state holds it: no certificate round, or no
+      * transaction bytes yet (`shelleyCumulativeTxBytes = 0`, the Byron to Shelley translation's,
+      * ouroboros-consensus 2416493b `Cardano/CanHardFork.hs:377`, which the later translations
+      * carry, `:669`, `:754`).
+      */
+    def atOrigin(layout: StateLayout): Layout = layout match
+      case StateLayout.Node11_1 => Node11_1(None)
+      case StateLayout.Leios    => Leios(Word64.zero)
 
   given [E <: EraTag](using ShelleyBasedEra[E]): Eq[ShelleyLedgerState[E]] = Eq.instance((a, b) =>
     StateEq.withOrigin(a.tip, b.tip) && a.nes === b.nes && a.transition === b.transition &&

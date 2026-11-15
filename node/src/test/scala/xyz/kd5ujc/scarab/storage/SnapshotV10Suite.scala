@@ -588,14 +588,14 @@ class SnapshotV10Suite extends CatsEffectSuite:
 
   test("the mirror projection preserves a same-epoch counter across a Shelley-era translation") {
     import xyz.kd5ujc.scarab.consensus.state.{MirrorStep, Placement, ShelleyTransition, Word32}
-    import xyz.kd5ujc.scarab.ledger.Header
     import xyz.kd5ujc.scarab.ledger.state.{SlotNo, WithOrigin}
     val targetIndex = snapshots.indexWhere(_._1 == Era.Mary)
     val previous = snapshots(targetIndex - 1)._2.state
     val after = snapshots(targetIndex)._2.state
-    val header = blocks(targetIndex).header match
-      case h: Header.Shelley => h.copy(slot = h.slot + 1)
-      case _                 => fail("expected Shelley-based header")
+    val block = blocks(targetIndex) match
+      case b: Block.Shelley => b.copy(header = b.header.copy(slot = b.header.slot + 1))
+      case _                => fail("expected a Shelley-based block")
+    val header = block.header
     val nes = xyz.kd5ujc.scarab.consensus.state.MirrorStep
       .nesOf(after)
       .getOrElse(fail("expected Shelley-based state"))
@@ -618,7 +618,7 @@ class SnapshotV10Suite extends CatsEffectSuite:
       .block(
         before,
         Placement(setup.geometry, setup.byronHistory, setup.praos.forks),
-        header,
+        block,
         nes,
         after.protocol,
         after.consensus,
@@ -643,7 +643,8 @@ class SnapshotV10Suite extends CatsEffectSuite:
           )
         )
       case _ => fail("expected a Shelley-based state")
-    val lastSlot = header.copy(slot = setup.geometry.firstSlot(epoch + 1) - 1)
+    val lastSlot =
+      block.copy(header = header.copy(slot = setup.geometry.firstSlot(epoch + 1) - 1))
     assertEquals(
       MirrorStep.block(
         exhausted,
