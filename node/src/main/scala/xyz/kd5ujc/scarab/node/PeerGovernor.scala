@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.Monad
+import cats.{Applicative, Monad}
 import cats.effect.{Clock, Deferred, Ref, Temporal}
 import cats.effect.std.{Queue, Supervisor}
 import cats.mtl.{Ask, Raise, Stateful, Tell}
@@ -12,6 +12,9 @@ import xyz.kd5ujc.scarab.network.ChainSyncTimeouts.PeerTrust
 import xyz.kd5ujc.scarab.network.{PeerActionError, PeerOperation, PeerStatus}
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 import xyz.kd5ujc.scarab.ledger.PeerError
+import xyz.kd5ujc.scarab.node.assertions.{Assertions, Property}
+import io.circe.{Encoder, JsonObject}
+import io.circe.syntax.*
 
 /** What the governor asks of the world to move a peer between temperatures (the reference's
   * `PeerStateActions`, `PeerSelection/PeerStateActions.hs` 590-: establish, activate, deactivate,
@@ -175,6 +178,54 @@ final case class GovernorConfig(
   * the time the decision function named, whichever comes first.
   */
 object PeerGovernor:
+  /** A demotion, asserted from its trace: one the governor commanded and that took effect
+    * ([[Trace.DemoteDone]]), or one it did not ask for ([[Trace.DemoteAsynchronous]]), whose typed
+    * return reason says whether the peer's chain no longer intersects ours. Every other trace, a
+    * decision to demote and a demotion that failed among them, asserts nothing.
+    */
+  private[node] def demoted[F[_]: Applicative, A](trace: Trace[A])(using
+      assertions: Assertions[F]
+  ): F[Unit] = trace match
+    case Trace.DemoteDone(from, peer, _) =>
+      assertions.sometimes(Property.Sometimes.PeerDemoted, true, Demotion(peer.toString, from))
+    case Trace.DemoteAsynchronous(peer, to, _, _, returned, _) =>
+      def demotion = Demotion(peer.toString, to, returned)
+      assertions.sometimes(Property.Sometimes.PeerDemotedAsynchronously, true, demotion) *>
+        assertions.sometimes(
+          Property.Sometimes.PeerNoLongerIntersects,
+          returned.contains(ReturnReason.NoMoreIntersection),
+          demotion
+        )
+    case Trace.TargetsChanged(_) | Trace.LocalRootsChanged(_, _) | Trace.JudgementChanged(_) |
+        Trace.OnlyBootstrapPeers() | Trace.RootsRequest(_, _) | Trace.RootsResults(_, _, _) |
+        Trace.RootsFailure(_, _) | Trace.Promote(_, _, _, _, _) | Trace.PromoteDone(_, _, _, _) |
+        Trace.PromoteFailed(_, _, _, _, _) | Trace.PromoteAborted(_, _) |
+        Trace.Demote(_, _, _, _, _, _) | Trace.DemoteFailed(_, _, _) |
+        Trace.PeerActionFailed(_, _, _) | Trace.CachedBlockRejected(_, _, _, _) |
+        Trace.ForgetCold(_, _, _) | Trace.Forgotten(_) | Trace.BigLedgerRequest(_, _) |
+        Trace.BigLedgerResults(_, _, _) | Trace.BigLedgerFailure(_, _) |
+        Trace.ForgetBigLedger(_, _, _) | Trace.PromoteBigLedger(_, _, _, _) |
+        Trace.DemoteBigLedger(_, _, _, _, _) | Trace.PickInbound(_) | Trace.ShareRequests(_, _) |
+        Trace.ShareResults(_, _) =>
+      Applicative[F].unit
+
+  /** What the assertion of a demotion reports: the peer, the temperature it left (commanded) or
+    * went to (asynchronous), and the return reason of an asynchronous one.
+    */
+  private final case class Demotion(
+      peer: String,
+      temperature: Temperature,
+      returned: Option[ReturnReason] = None
+  )
+
+  private object Demotion:
+    given Encoder.AsObject[Demotion] = Encoder.AsObject.instance(d =>
+      JsonObject(
+        "peer" -> d.peer.asJson,
+        "temperature" -> d.temperature.toString.asJson,
+        "returned" -> d.returned.map(_.productPrefix).asJson
+      )
+    )
 
   /** What the loop remembers between two passes: what was last published, so that only changes are
     * told.
@@ -218,7 +269,8 @@ object PeerGovernor:
       raise: Raise[F, GovernorError],
       out: Tell[F, Output[A]],
       metrics: Ask[F, PeerMetrics[A]],
-      churn: Ask[F, ChurnWritten]
+      churn: Ask[F, ChurnWritten],
+      assertions: Assertions[F]
   ): F[Nothing] =
     (Ref.of[F, Set[Time]](Set.empty), Ref.of[F, ChurnMode](ChurnMode.Initial)).tupled
       .flatMap((scheduled, paired) =>
@@ -258,7 +310,8 @@ object PeerGovernor:
       raise: Raise[F, GovernorError],
       out: Tell[F, Output[A]],
       metrics: Ask[F, PeerMetrics[A]],
-      churn: Ask[F, ChurnWritten]
+      churn: Ask[F, ChurnWritten],
+      assertions: Assertions[F]
   ): F[Nothing] =
     val F = Temporal[F]
     given Monad[F] = F
@@ -512,7 +565,9 @@ object PeerGovernor:
     def commit(decision: Decision[A]): F[Unit] =
       for
         _ <- state.set(decision.state)
-        _ <- decision.traces.traverse_(trace => out.tell(Output.Traced(trace)))
+        _ <- decision.traces.traverse_(trace =>
+          out.tell(Output.Traced(trace)) *> demoted[F, A](trace)
+        )
         _ <- decision.jobs.traverse_(start)
         violations = GovernorState.invariant(decision.state)
         _ <- raise

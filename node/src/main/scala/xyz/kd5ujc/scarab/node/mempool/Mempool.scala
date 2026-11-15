@@ -8,6 +8,8 @@ import cats.mtl.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{LedgerFailure, StorageError}
 import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
+import io.circe.{Encoder, JsonObject}
+import io.circe.syntax.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.network.{
   NetworkError,
@@ -19,6 +21,7 @@ import xyz.kd5ujc.scarab.network.{
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.{Fatal, StorageBoundary}
+import xyz.kd5ujc.scarab.node.assertions.{Assertions, Property}
 import xyz.kd5ujc.scarab.storage.UtxoStore
 
 import Capacity.fits
@@ -34,8 +37,10 @@ enum MempoolEvent:
     */
   case Waiting(id: Option[Bytes], needed: TxMeasure, free: TxMeasure)
 
-  /** Held transactions that the new tip no longer admits (adopted in a block, or invalidated). */
-  case Dropped(id: Bytes, reason: Rejection)
+  /** A held transaction left the pool with `reason`, for `cause`: the pool was validated again and
+    * no longer admits it, or the forger withdrew it.
+    */
+  case Dropped(id: Bytes, reason: Rejection, cause: DropCause)
 
   /** A held transaction is now in the chain: it was in a block that became part of our chain. */
   case Adopted(id: Bytes)
@@ -45,6 +50,19 @@ enum MempoolEvent:
     */
   case Removed(id: Bytes)
   case Synced(count: Int, bytes: Long, dropped: Int)
+
+/** Why a held transaction left the pool with a reason ([[MempoolEvent.Dropped]], #1032). */
+enum DropCause:
+  /** The pool was validated again, at a new tip ([[Mempool.sync]]) or after transactions were
+    * removed ([[Mempool.removeTxsEvenIfValid]], [[Mempool.withdraw]]), and no longer admits the
+    * transaction: the rules refuse it, or have no verdict on it.
+    */
+  case Revalidation
+
+  /** The forger had no verdict on it while it built a block, and withdrew it ([[Mempool.withdraw]],
+    * issue 584).
+    */
+  case Withdrawal
 
 trait MempoolEvents[F[_]]:
   def emit(event: MempoolEvent): F[Unit]
@@ -134,6 +152,18 @@ trait Mempool[F[_]]:
   def sink(fatal: Fatal => F[Unit]): TxSubmissionServer.Sink[F]
 
 object Mempool:
+  /** What the assertion of a drop reports: the transaction, why it left and for what cause. */
+  private final case class Drop(id: Bytes, reason: Rejection, cause: DropCause)
+
+  private object Drop:
+    given Encoder.AsObject[Drop] = Encoder.AsObject.instance(d =>
+      JsonObject(
+        "tx" -> d.id.hex.asJson,
+        "reason" -> d.reason.message.asJson,
+        "cause" -> d.cause.productPrefix.asJson
+      )
+    )
+
   /** How a peer's transaction ends its TxSubmission2 session, when it does: no verdict on it, so
     * the connection closes and the node goes on. A crypto provider or the evaluator that fails on
     * it closes the connection with the failure; a decoder that threw is the connection's input
@@ -184,7 +214,7 @@ object Mempool:
       utxoStore: Option[UtxoStore[F]] = None,
       environment: Option[Ask[F, MempoolEnv]] = None,
       tipHash: Option[Bytes] = None
-  ): F[Mempool[F]] =
+  )(using assertions: Assertions[F]): F[Mempool[F]] =
     for
       state <- Ref.of[F, MempoolState](
         MempoolState.empty(ledger, tipSlot, capacityOverride, tipHash)
@@ -196,6 +226,17 @@ object Mempool:
     yield new Mempool[F]:
       private val F = Async[F]
       private val readEnv = environment.fold(F.pure(env))(_.ask[MempoolEnv])
+
+      /** A held transaction left the pool: said, and asserted when the pool's revalidation dropped
+        * it.
+        */
+      private def leaves(entry: Entry, reason: Rejection, cause: DropCause): F[Unit] =
+        events.emit(MempoolEvent.Dropped(entry.id, reason, cause)) *>
+          assertions.sometimes(
+            Property.Sometimes.MempoolDropsOnRevalidation,
+            cause == DropCause.Revalidation,
+            Drop(entry.id, reason, cause)
+          )
 
       /** A submission's turn: `remoteFifo` then `allFifo` for a peer, `allFifo` alone for a local
         * client (`implAddTx`'s two FIFOs). A one-permit `Semaphore` is a `Mutex` that also counts
@@ -306,9 +347,7 @@ object Mempool:
           _ <- inBlock.traverse_ { (entry, _) =>
             events.emit(MempoolEvent.Adopted(entry.id))
           }
-          _ <- invalid.traverse_ { (entry, reason) =>
-            events.emit(MempoolEvent.Dropped(entry.id, reason))
-          }
+          _ <- invalid.traverse_((entry, reason) => leaves(entry, reason, DropCause.Revalidation))
           _ <- events.emit(MempoolEvent.Synced(next.entries.size, next.bytes, invalid.size))
         yield invalid
       }
@@ -319,8 +358,7 @@ object Mempool:
       def withdraw(reasons: Map[Bytes, Rejection])(using Raise[F, StorageError]) =
         removing(
           reasons.keySet,
-          entry =>
-            reasons.get(entry.id).traverse_(r => events.emit(MempoolEvent.Dropped(entry.id, r))),
+          entry => reasons.get(entry.id).traverse_(leaves(entry, _, DropCause.Withdrawal)),
           droppedNamed = true
         )
 
@@ -349,9 +387,8 @@ object Mempool:
                   _ <- state.set(next)
                   _ <- version.update(_ + 1)
                   _ <- removed.traverse_(report)
-                  _ <- dependants.traverse_ { (entry, reason) =>
-                    events.emit(MempoolEvent.Dropped(entry.id, reason))
-                  }
+                  _ <- dependants
+                    .traverse_((entry, reason) => leaves(entry, reason, DropCause.Revalidation))
                   _ <- events.emit(
                     MempoolEvent.Synced(
                       next.entries.size,

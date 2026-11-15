@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.ConfigSettings
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{IO, Ref}
@@ -148,8 +149,10 @@ trait ForgeFixture:
       unbounded: Boolean = false,
       enabled: Boolean = true,
       protocolVersion: (BigInt, BigInt) = ConfigSettings().protocolVersion,
-      network: Int = globals.network
+      network: Int = globals.network,
+      assertions: Assertions[IO] = Assertions.noop[IO]
   )(using Handle[IO, NodeError]): IO[Harness] =
+    given Assertions[IO] = assertions
     val rulesGlobals = globals.copy(network = network)
     for
       start <- IO.pure(mirrorState(ledger))

@@ -27,6 +27,14 @@ private[log] object PeerSelectionLines:
   private def failure(f: FailureClass): Json = f.toString.asJson
   private def temperature(t: Temperature): Json = t.toString.toLowerCase.asJson
 
+  /** The text of a return reason, as the line has always given it in `reason`. */
+  private def returnText(r: ReturnReason): String = r match
+    case ReturnReason.Returned           => "initiator returned"
+    case ReturnReason.NoMoreIntersection => "no more intersection"
+    case ReturnReason.RolledBackPastIntersection(point) =>
+      s"rolled back past intersection: ${xyz.kd5ujc.scarab.ledger.Points.show(point)}"
+    case ReturnReason.AskedToTerminate => "asked to terminate"
+
   def trace(t: Trace[Addr]): Line = t match
     case Trace.TargetsChanged(x) =>
       EventKind.PeerSelectionTargets.line(
@@ -134,7 +142,8 @@ private[log] object PeerSelectionLines:
           "to" -> temperature(to),
           "peer" -> peer.toString.asJson,
           "failure" -> f.map(failure).asJson,
-          "reason" -> reason.orElse(returned.map(_.message)).asJson,
+          "reason" -> reason.orElse(returned.map(returnText)).asJson,
+          "returned" -> returned.map(_.productPrefix).asJson,
           "repromoteDelaySeconds" -> delay.map(seconds).asJson
         )
         .at(if f.isDefined then Severity.Warning else Severity.Info)

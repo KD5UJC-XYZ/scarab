@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.{IO, Ref}
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
@@ -13,6 +14,7 @@ import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
 class FollowerDelegatedSuite extends FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   private val headers = Fixtures.chain(4096)
   private val tip = ChainSync.Tip.Origin
   private val candidate = ChainSelection.Candidate(ChainSync.Point.Origin, headers)

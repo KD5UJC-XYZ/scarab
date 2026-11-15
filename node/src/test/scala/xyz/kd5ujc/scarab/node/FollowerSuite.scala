@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import xyz.kd5ujc.scarab.consensus.{
   BlockRules,
@@ -26,6 +27,7 @@ import scala.concurrent.duration.*
   * (issue 578): reconnection, the intersection offered again, and Genesis reselection.
   */
 class FollowerSuite extends FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   private val geometry =
     EpochGeometry(
       java.time.Instant.EPOCH,

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.genesis
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
@@ -30,6 +31,7 @@ import UpstreamGenesisCases.{Component, End, PeerId, Scenario}
   * original units, including the native microsecond bucket timer rounding.
   */
 object UpstreamGenesisReplay extends munit.Assertions:
+  private given Assertions[IO] = Assertions.noop[IO]
   enum Problem extends DomainError:
     case Storage(cause: StorageError)
     case Journal(cause: UpstreamGenesisStorage.Problem)

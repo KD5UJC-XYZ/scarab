@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.governor
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.{Queue, Supervisor}
 import cats.effect.testkit.TestControl
@@ -24,6 +25,7 @@ import xyz.kd5ujc.scarab.protocol.{ConnectionState, PeerSharing}
 
 /** The real effect loop on deterministic virtual time, including both asynchronous phases. */
 class PeerSharingLoopSuite extends FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   private final case class Recording(
       state: GovernorState[Int],
       requests: Vector[(Time, Int)],

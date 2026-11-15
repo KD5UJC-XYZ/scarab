@@ -14,7 +14,6 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerFailure,
   NodeError,
   PeerError,
-  Points,
   StorageError,
   ValidationError,
   VerificationDefect
@@ -252,17 +251,15 @@ object SessionEnd:
     * ForkTooDeep are owned by the ChainSync client alignment (#477), not reconstructed here.
     */
   def returnReason(result: SessionEnd): Option[xyz.kd5ujc.scarab.network.selection.ReturnReason] =
-    import cats.Show
     import xyz.kd5ujc.scarab.network.selection.ReturnReason
-    def reason(render: SessionEnd => String): Option[ReturnReason] =
-      Some(ReturnReason.Typed(result)(using Show.show(render)))
     result match
-      case Returned           => reason(_ => "initiator returned")
-      case NoMoreIntersection => reason(_ => "no more intersection")
-      case RolledBackPastIntersection(point) =>
-        reason(_ => s"rolled back past intersection: ${Points.show(point)}")
-      case Stopped(true) => reason(_ => "asked to terminate")
-      case _             => None
+      case Returned                          => Some(ReturnReason.Returned)
+      case NoMoreIntersection                => Some(ReturnReason.NoMoreIntersection)
+      case RolledBackPastIntersection(point) => Some(ReturnReason.RolledBackPastIntersection(point))
+      case Stopped(true)                     => Some(ReturnReason.AskedToTerminate)
+      case Stopped(false) | Failed(_) | Rejected(_) | Unavailable(_) | Unverifiable(_) |
+          Storage(_) | Internal(_) | Defect(_) | Cancelled =>
+        None
 
   /** The scope of a session's fiber has the outcome as its error. */
   def raiseOf[F[_]](scope: Raise[F, SessionEnd]): Raise[F, PeerError] =

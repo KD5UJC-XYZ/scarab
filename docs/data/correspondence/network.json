@@ -797,6 +797,12 @@
    "definitions": [
     "def protocol.PeerSharing.decoder"
    ]
+  },
+  {
+   "reason": "Scarab's own typed outcome of a hot peer's ChainSync session, which the node places on the governor's asynchronous demotion for its log line and its Antithesis assertions (#1032); the governor decides nothing on it",
+   "definitions": [
+    "enum network.selection.ReturnReason"
+   ]
   }
  ]
 }

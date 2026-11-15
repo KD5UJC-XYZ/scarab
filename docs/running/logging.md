@@ -140,7 +140,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `peerSelectionTargets` | `Net.PeerSelectionTargets` | Notice | `root`, `known`, `established`, `active`, `knownBigLedger`, `establishedBigLedger`, `activeBigLedger` |
 | `peerSelectionRoots` | `Net.PeerSelectionRoots` | Info (Warning when `action` is `failure`) | `action`, `bigLedger`, `before`, `after`, `target`, `current`, `found`, `backoffs`, `retryInSeconds`; sharing actions `pickInbound`, `peerShareRequests`, `peerShareResults` add `peers`, `amount`, `results`, `added` |
 | `peerSelectionPromote` | `Net.PeerSelectionPromote` | Info (Warning when `action` is `failed`) | `action`, `bigLedger`, `from`, `to`, `peers`, `peer`, `local`, `target`, `current`, `failure`, `retryInSeconds`, `forgotten`, `reason`, `operation` |
-| `peerSelectionDemote` | `Net.PeerSelectionDemote` | Info (Warning when `action` is `failed`, or `asynchronous` with a `failure`) | `action`, `bigLedger`, `from`, `to`, `peers`, `peer`, `local`, `target`, `current`, `timedOut`, `failure`, `reason`, `operation`, `repromoteDelaySeconds` |
+| `peerSelectionDemote` | `Net.PeerSelectionDemote` | Info (Warning when `action` is `failed`, or `asynchronous` with a `failure`) | `action`, `bigLedger`, `from`, `to`, `peers`, `peer`, `local`, `target`, `current`, `timedOut`, `failure`, `reason`, `returned` (an `asynchronous` demotion of a hot peer whose ChainSync client returned: `Returned`, `NoMoreIntersection`, `RolledBackPastIntersection` or `AskedToTerminate`, the type of its `reason`; otherwise null), `operation`, `repromoteDelaySeconds` |
 | `peerSelectionSource` | `Net.PeerSelectionSource` | Warning | `action`, `peer`, `reason`, `sourceGeneration`, `sourceLive` |
 | `peerSelectionForget` | `Net.PeerSelectionForget` | Info | `action`, `bigLedger`, `target`, `known`, `peers` |
 | `peerSelectionSensitive` | `Net.PeerSelectionSensitive` | Notice | `action`, `judgement` |
@@ -154,7 +154,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `mempoolAdded` | `Mempool.MempoolAdded` | Info | `tx`, `size`, `count`, `bytes` |
 | `mempoolRejected` | `Mempool.MempoolRejected` | Info | `tx`, `reason` |
 | `mempoolWaiting` | `Mempool.MempoolWaiting` | Info | `tx`, `reason` |
-| `mempoolDropped` | `Mempool.MempoolDropped` | Info | `tx`, `reason` |
+| `mempoolDropped` | `Mempool.MempoolDropped` | Info | `tx`, `reason`, `cause`: `Revalidation` (the pool, validated again at a new tip or after a removal, no longer admits it) or `Withdrawal` (the forger had no verdict on it while it built a block) |
 | `mempoolAdopted` | `Mempool.MempoolAdopted` | Info | `tx` |
 | `mempoolRemoved` | `Mempool.MempoolRemoved` | Info | `tx` |
 | `mempoolSynced` | `Mempool.MempoolSynced` | Info | `count`, `bytes`, `dropped` |

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.network.Settled
 import cats.effect.{IO, Ref}
 import cats.effect.std.Queue
@@ -23,6 +24,7 @@ import TxKit.*
   * ten, so the sizes below are chosen for each test and asserted, not assumed.
   */
 class MempoolBackpressureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   private given cats.mtl.Raise[IO, StorageError] with
     def functor = cats.Functor[IO]
     def raise[E <: StorageError, A](error: E): IO[A] = IO(fail(error.message))

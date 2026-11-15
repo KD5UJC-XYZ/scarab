@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.Queue
 import cats.mtl.{Handle, Raise, Stateful}
@@ -43,6 +44,7 @@ import scala.concurrent.duration.*
   * 131–139).
   */
 class ProviderDefectBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   override def munitIOTimeout: FiniteDuration = 60.seconds
 
   private val boom = new IllegalStateException("provider broke")

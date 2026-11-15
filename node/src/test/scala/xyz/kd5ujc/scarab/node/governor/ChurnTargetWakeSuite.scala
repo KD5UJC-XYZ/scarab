@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.governor
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.{Queue, Supervisor}
 import cats.effect.testkit.TestControl
@@ -24,6 +25,7 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState
   * successive proposals. A target wake observes the TVar, not its old queued snapshot.
   */
 class ChurnTargetWakeSuite extends FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   private def observe(latest: Churn.Proposal, generation: BigInt, events0: List[Event[Int]]) =
     TestControl.executeEmbed(Supervisor[IO](await = false).use { supervisor =>
       for

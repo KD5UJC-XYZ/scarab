@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.node.assertions.{Assertions, Collecting, Property}
 import xyz.kd5ujc.scarab.network.Settled
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission.message
 import xyz.kd5ujc.scarab.ledger.TestGeometry
@@ -172,6 +173,7 @@ object TxKit:
     tx(Vector(txIn(i)), Vector(bob.address() -> (value - fee)), fee, Vector(alice))
 
 class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaCheckSuite:
+  private given Assertions[IO] = Assertions.noop[IO]
   private given cats.mtl.Raise[IO, StorageError] with
     def functor = cats.Functor[IO]
     def raise[E <: StorageError, A](error: E): IO[A] = IO(fail(error.message))
@@ -685,8 +687,40 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
         before.entries.filter(e => Set(id2, id3)(e.id)).map(_.ticket)
       )
       assertEquals(log.collect { case MempoolEvent.Removed(id) => id }, Vector(id1))
-      assertEquals(log.collect { case MempoolEvent.Dropped(id, _) => id }, Vector(idChild))
+      assertEquals(
+        log.collect { case MempoolEvent.Dropped(id, _, cause) => (id, cause) },
+        Vector(idChild -> DropCause.Revalidation)
+      )
       assertEquals(reoffered, Right(id1))
+  }
+
+  // #1032: the pool asserts a drop on revalidation from the drop's typed cause
+  test("a transaction dropped on revalidation is asserted from its typed cause (#1032)") {
+    val (t1, id1) = pay(1)
+    val (child, idChild) =
+      tx(Vector(TxIn(id1, 0)), Vector(alice.address() -> (98 * ada)), ada, Vector(bob))
+    for
+      collected <- Collecting.create
+      (assertions, made) = collected
+      mempool <- {
+        given Assertions[IO] = assertions
+        Mempool.create[IO](Right(ledger(4)), 1000, env, None, MempoolEvents.none[IO])
+      }
+      _ <- mempool.add(t1, Source.Local)
+      _ <- mempool.add(child, Source.Local)
+      _ <- mempool.removeTxsEvenIfValid(Set(id1))
+      asserted <- made
+    yield assertEquals(
+      asserted.map(m => (m.property, m.condition, m.details("tx"), m.details("cause"))),
+      Vector(
+        (
+          Property.Sometimes.MempoolDropsOnRevalidation,
+          true,
+          Some(io.circe.Json.fromString(idChild.hex)),
+          Some(io.circe.Json.fromString("Revalidation"))
+        )
+      )
+    )
   }
 
   test("removeTxsEvenIfValid of ids that are not held changes nothing") {
@@ -761,6 +795,7 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
 
 /** The pool reads inputs from the UTxO store, like the block path does. */
 class MempoolStoreSuite extends CatsEffectSuite:
+  private given Assertions[IO] = Assertions.noop[IO]
   import TxKit.*
   import xyz.kd5ujc.scarab.ledger.StorageError
   import xyz.kd5ujc.scarab.storage.{MemoryUtxoStore, UtxoStore}

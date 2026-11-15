@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.Mutex
@@ -23,6 +24,7 @@ import xyz.kd5ujc.scarab.storage.{MemoryUtxoStore, SnapshotFailure, UtxoPinnedRe
 
 /** Serving callbacks are invoked after their construction scope has ended, in a different fiber. */
 class ServiceStorageScopeSuite extends FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   private val error = StorageError.Io("UTxO read", new IOException("disk unavailable"))
   private val setup = NodeSetup
     .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/devnet/lsq/genesis"))

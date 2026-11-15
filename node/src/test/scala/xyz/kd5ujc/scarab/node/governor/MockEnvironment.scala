@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.governor
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.{Queue, Supervisor}
 import cats.effect.testkit.TestControl
@@ -27,6 +28,7 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
   * connection, and the script of a peer goes on across its connections.
   */
 object MockEnvironment:
+  private given Assertions[IO] = Assertions.noop[IO]
   type Peer = Int
 
   /** What the environment does to a connection by itself. */

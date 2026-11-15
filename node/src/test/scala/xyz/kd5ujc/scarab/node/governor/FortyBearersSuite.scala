@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.governor
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.mempool.RelayedTransactions
 import cats.effect.IO
 import fs2.concurrent.SignallingRef
@@ -25,6 +26,7 @@ import xyz.kd5ujc.scarab.protocol.NtNHeader
   * the chain the peers serve, and repair the hot set when hot peers die.
   */
 class FortyBearersSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   override def munitIOTimeout: FiniteDuration = 120.seconds
 
   private val magic = 42L

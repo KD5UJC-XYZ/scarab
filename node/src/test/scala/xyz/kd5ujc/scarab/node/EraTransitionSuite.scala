@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.consensus
 import xyz.kd5ujc.scarab.ledger
@@ -51,6 +52,7 @@ import scala.jdk.CollectionConverters.*
   * checks nonce carry-over and the epoch-nonce tick at each boundary. It needs no Docker.
   */
 class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   private val fixtures = Path.of("fixtures/eras")
 
   private val setup: NodeSetup =

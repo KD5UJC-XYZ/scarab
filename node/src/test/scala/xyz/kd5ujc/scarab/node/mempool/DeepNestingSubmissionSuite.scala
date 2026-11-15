@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.mempool
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.ledger.TestGeometry
 import cats.effect.{IO, Resource}
 import cats.syntax.all.*
@@ -25,6 +26,7 @@ import Peers.typed
   * spends.
   */
 class DeepNestingSubmissionSuite extends CatsEffectSuite:
+  private given Assertions[IO] = Assertions.noop[IO]
   private given TxSubmission2.TransactionReader = RelayedTransactions
   private val magic = 42L
 

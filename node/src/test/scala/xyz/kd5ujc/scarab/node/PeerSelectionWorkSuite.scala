@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import cats.effect.{Deferred, IO, Ref}
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
@@ -13,6 +14,7 @@ import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import xyz.kd5ujc.scarab.protocol.{ChainSync, NtNHeader}
 
 class PeerSelectionWorkSuite extends FailsOnUncaught:
+  private given Assertions[IO] = Assertions.noop[IO]
   test("actual body publication leaves starvation owned solely by the node add-block runner") {
     for
       forged <- ForgedChain.forge(5000 until 5020)

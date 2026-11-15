@@ -38,16 +38,23 @@ object SourceRefusal:
     type Cause = E
     def message: String = show.show(cause)
 
-/** A successful application result, retained in typed form until the log renders its reason. */
-sealed trait ReturnReason:
-  type Result
-  def result: Result
-  def message: String
+/** Why a hot peer's ChainSync client returned with the connection up, so that the peer is warm
+  * again ([[Observation.HotEnded]]): a closed type, which the asynchronous demotion carries, so
+  * that a peer whose chain no longer intersects ours is told by its type (#1032). The node places
+  * its session's outcome here and renders the text of the log.
+  */
+enum ReturnReason:
+  /** The initiator returned. */
+  case Returned
 
-object ReturnReason:
-  final case class Typed[A](result: A)(using show: Show[A]) extends ReturnReason:
-    type Result = A
-    def message: String = show.show(result)
+  /** ChainSync found no intersection: the peer's chain no longer intersects ours. */
+  case NoMoreIntersection
+
+  /** The peer rolled back before the intersection we captured. */
+  case RolledBackPastIntersection(point: xyz.kd5ujc.scarab.protocol.ChainSync.Point)
+
+  /** The protocols were asked to end. */
+  case AskedToTerminate
 
 /** What the effect layer sees of an established peer's connection when it looks without blocking
   * (`monitorPeerConnection`, `PeerStateActions.hs` 908-950): a change the governor did not ask for
