@@ -223,7 +223,7 @@ final class NodeHeaderRules[S](
               HeaderRules.outcome(
                 ByronRules
                   .validateHeader(header, previous.pbft, ticked.delegation, cfg)
-                  .leftMap {
+                  .leftMap[HeaderError | ProviderDefect] {
                     case defect: ProviderDefect => defect
                     case error: ByronChainError => HeaderError.Byron(error)
                   }

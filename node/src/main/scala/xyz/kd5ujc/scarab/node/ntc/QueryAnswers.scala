@@ -728,7 +728,7 @@ object QueryAnswers:
       dreps: Set[DRep]
   ): Map[DRep, Set[Credential]] =
     val registered = dreps.collect { case DRep.Registered(cred) => cred }
-    if dreps.nonEmpty && registered.size == dreps.size then
+    if dreps.nonEmpty && registered.sizeIs == dreps.size then
       c.vState.dreps.iterator.collect {
         case (cred, d) if registered(EraRead.credential(cred)) =>
           DRep.Registered(EraRead.credential(cred)) -> d.delegators.iterator

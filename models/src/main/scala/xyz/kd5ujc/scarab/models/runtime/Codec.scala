@@ -247,7 +247,7 @@ object Codec:
       private lazy val c = inner
       def decode(n: Node) = n.value match
         case Value.Arr(items) =>
-          if items.size < min || items.size > max then
+          if items.sizeIs < min || items.sizeIs > max then
             Left(
               DecodeError.at(
                 n,
@@ -323,7 +323,7 @@ object Codec:
       private lazy val kc = key
       private lazy val vc = value
       def decode(n: Node) = Maps.pairs(n).flatMap { ps =>
-        if ps.size < min || ps.size > max then
+        if ps.sizeIs < min || ps.sizeIs > max then
           Left(
             DecodeError.at(
               n,
@@ -395,18 +395,18 @@ object Arr:
           error.terminal.fold(next(None, position))(terminal => Left(terminal.error))
 
   def exact(n: Node, size: Int): Decoded[Vector[Node]] = n.value match
-    case Value.Arr(xs) if xs.size == size => Right(xs)
+    case Value.Arr(xs) if xs.sizeIs == size => Right(xs)
     case Value.Arr(xs) => Left(DecodeError.at(n, Kind.BadArity(Arity.Exactly(size), xs.size)))
     case _             => Left(Codec.mismatch("array", n))
   def between(n: Node, min: Int, max: Int): Decoded[Vector[Node]] = n.value match
-    case Value.Arr(xs) if xs.size >= min && xs.size <= max => Right(xs)
+    case Value.Arr(xs) if xs.sizeIs >= min && xs.sizeIs <= max => Right(xs)
     case Value.Arr(xs) =>
       Left(DecodeError.at(n, Kind.BadArity(Arity.Range(min, Some(max)), xs.size)))
     case _ => Left(Codec.mismatch("array", n))
 
   /** [[between]] from one item to `max`, as the non-empty vector that carries the minimum. */
   def nonEmpty(n: Node, max: Int): Decoded[NonEmptyVector[Node]] = n.value match
-    case Value.Arr(xs) if xs.size <= max =>
+    case Value.Arr(xs) if xs.sizeIs <= max =>
       NonEmptyVector
         .fromVector(xs)
         .toRight(DecodeError.at(n, Kind.BadArity(Arity.Range(1, Some(max)), xs.size)))

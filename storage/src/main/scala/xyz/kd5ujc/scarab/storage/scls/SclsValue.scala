@@ -161,8 +161,8 @@ object SclsValue:
 
   private def asArray(value: Node, size: Int, namespace: Namespace): Either[Error, Vector[Node]] =
     value.value match
-      case V.Arr(items) if items.size == size => Right(items)
-      case _                                  => Left(shape(namespace, s"array($size)"))
+      case V.Arr(items) if items.sizeIs == size => Right(items)
+      case _                                    => Left(shape(namespace, s"array($size)"))
 
   private def compactCoin(value: Node, namespace: Namespace): Either[Error, S.CompactCoin] =
     asUInt(value, namespace).flatMap(n => S.CompactCoin.fromBigInt(n).leftMap(Error.Vocabulary(_)))
@@ -190,7 +190,7 @@ object SclsValue:
     case V.Tag(258, wrapped) =>
       asNodes(wrapped, namespace).flatMap(_.traverse(keyHash[R](_, namespace))).flatMap { hashes =>
         Either.cond(
-          hashes.distinct.size == hashes.size,
+          hashes.distinct.sizeIs == hashes.size,
           hashes,
           shape(namespace, "unique tag-258 key-hash set")
         )
@@ -621,7 +621,7 @@ object SclsValue:
         .traverse { case (k, v) => (readKey(k), readValue(v)).tupled }
         .flatMap(entries =>
           Either.cond(
-            entries.map(_._1).distinct.size == entries.size,
+            entries.map(_._1).distinct.sizeIs == entries.size,
             entries.toMap,
             shape(namespace, "unique map keys")
           )
@@ -684,7 +684,7 @@ object SclsValue:
         .traverse { case (key, field) => (credential[R](key, namespace), read(field)).tupled }
         .flatMap { entries =>
           Either.cond(
-            entries.map(_._1).distinct.size == entries.size,
+            entries.map(_._1).distinct.sizeIs == entries.size,
             entries.toMap,
             shape(namespace, "unique credential map")
           )
@@ -700,7 +700,7 @@ object SclsValue:
         asNodes(wrapped, namespace).flatMap { nodes =>
           nodes.traverse(credential[R](_, namespace)).flatMap { values =>
             Either.cond(
-              values.distinct.size == values.size,
+              values.distinct.sizeIs == values.size,
               values,
               shape(namespace, "unique credential set")
             )

@@ -673,7 +673,7 @@ object PeerGovernor:
     def publish(loop: Loop, at: Time): F[Loop] =
       for
         st <- state.get
-        _ <- connections.traverse_(_.retainConnections(st.peers.keySet.toSet))
+        _ <- connections.traverse_(_.retainConnections(Set.from(st.peers.keySet)))
         association <- config.reader(_.association)
         _ <- sharing.traverse_(_.publish(st))
         view = st.view(at)

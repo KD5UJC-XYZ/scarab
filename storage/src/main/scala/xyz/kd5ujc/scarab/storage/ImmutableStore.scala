@@ -267,9 +267,7 @@ object FileImmutableStore:
         val read = channel.read(buffer, position)
         if read <= 0 then false else readFully(channel, buffer, position + read)
 
-    def readChunk(root: java.nio.file.Path, chunk: Int)(using
-        cats.mtl.Raise[F, StorageError]
-    ): Either[StorageError, Option[Bytes]] =
+    def readChunk(root: java.nio.file.Path, chunk: Int): Either[StorageError, Option[Bytes]] =
       val indexPath = root.resolve(f"$chunk%05d.index")
       val invalid = StorageError.FirstImmutable(FirstImmutableProblem.InvalidIndexEntry)
       Using.resource(FileChannel.open(indexPath, StandardOpenOption.READ)) { index =>
@@ -385,9 +383,7 @@ object FileImmutableStore:
       Using.resource(FileChannel.open(dir.toNioPath, StandardOpenOption.READ))(_.force(true))
     })
 
-    def writeFully(h: FileHandle[F], bytes: Array[Byte], offset: Long)(using
-        cats.mtl.Raise[F, StorageError]
-    ): F[Unit] =
+    def writeFully(h: FileHandle[F], bytes: Array[Byte], offset: Long): F[Unit] =
       def go(chunk: Chunk[Byte], at: Long): F[Unit] =
         if chunk.isEmpty then F.unit
         else h.write(chunk, at).flatMap(n => go(chunk.drop(n), at + n))

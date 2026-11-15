@@ -7,7 +7,7 @@ import org.bouncycastle.crypto.digests.Blake2bDigest
 /** A byte-first hash: serialization is an explicit, separate operation. */
 trait Hasher:
   def hash(bytes: Bytes): Bytes
-  final def encoded[A](value: A, encoder: Encoder[A]): Either[encoder.Error, Bytes] =
+  final def encoded[A](value: A, encoder: Encoder[A]): Either[encoder.Cause, Bytes] =
     encoder.encode(value).map(hash)
 
 object Blake2b:
@@ -36,7 +36,7 @@ object TransactionId:
   def bodyBytes(transaction: Bytes): Either[Error, Bytes] =
     Cbor.decode(transaction).left.map(Error.Syntax.apply).flatMap { node =>
       node.value match
-        case Value.Arr(items @ (body +: _)) if items.size == 4 =>
+        case Value.Arr(items @ (body +: _)) if items.sizeIs == 4 =>
           body.value match
             case Value.Map(_) => Right(body.original)
             case actual       => Left(Error.ExpectedBodyMap(actual))

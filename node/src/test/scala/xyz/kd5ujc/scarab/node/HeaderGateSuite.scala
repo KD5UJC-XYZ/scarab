@@ -89,7 +89,7 @@ class HeaderGateSuite extends CatsEffectSuite with ScalaCheckSuite:
       horizon: Int = 1000,
       applied: Vector[Header] = Vector.empty,
       defective: Set[Bytes] = Set.empty
-  )(using Handle[IO, PeerError]): IO[Rig] =
+  ): IO[Rig] =
     Ref
       .of[IO, VolatileChain[BigInt]](VolatileChain.genesis(50, BigInt(-1)))
       .flatMap(chain => rigOn(chain, horizon, bad, applied, defective))
@@ -104,7 +104,7 @@ class HeaderGateSuite extends CatsEffectSuite with ScalaCheckSuite:
       applied: Vector[Header] = Vector.empty,
       defective: Set[Bytes] = Set.empty,
       patience: Option[LimitOnPatience[IO]] = None
-  )(using Handle[IO, PeerError]): IO[Rig] =
+  ): IO[Rig] =
     given Stateful[IO, VolatileChain[BigInt]] = RefStateful(chain)
     for
       seen <- Ref.of[IO, Vector[HeaderGate.Counts]](Vector.empty)

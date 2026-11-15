@@ -175,7 +175,11 @@ class EraConwaySuite extends munit.FunSuite:
     assert(certs > 0, "no recorded Conway body has a certificate")
   }
 
-  private def node(hex: String) = Bytes.fromHex(hex).flatMap(CborRead.decode(_)).toOption.get
+  private def node(hex: String) =
+    (Bytes.fromHex(hex): Either[Bytes.HexError | LedgerDecodeError, Bytes])
+      .flatMap(CborRead.decode(_))
+      .toOption
+      .get
 
   test(
     "Conway's decoder reads no genesis delegation or instantaneous rewards, so neither projects"

@@ -34,7 +34,7 @@ final class PlutusCases(dir: Path, perKind: Int, max: Int):
       "wdrl" -> body.withdrawals.nonEmpty,
       "signers" -> body.requiredSigners.nonEmpty,
       "ttl" -> (body.ttl.isDefined || body.validityStart.isDefined),
-      "multi" -> (o.tx.witnesses.redeemers.size > 1)
+      "multi" -> (o.tx.witnesses.redeemers.sizeIs > 1)
     ).collect { case (n, true) => n }
     val outcome = o.outcome match
       case Right(Phase2.Outcome.Passed(_)) => "passed"

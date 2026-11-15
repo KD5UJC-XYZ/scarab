@@ -201,7 +201,7 @@ object ConwayCodecs:
     poolRelays.encode(p.relays, out)
     p.metadata.fold(out.nul())(poolMetadataBytes.encode(_, out))
 
-  private def poolDetailsRefusal(p: PoolParams)(using ProtVer): Option[ConstraintViolation] =
+  private def poolDetailsRefusal(p: PoolParams): Option[ConstraintViolation] =
     first(
       unitInterval.check(p.margin),
       account(p.rewardAccount),
@@ -210,7 +210,7 @@ object ConwayCodecs:
       p.metadata.flatMap(poolMetadataBytes.check)
     )
 
-  private def poolRefusal(p: PoolParams)(using ProtVer): Option[ConstraintViolation] =
+  private def poolRefusal(p: PoolParams): Option[ConstraintViolation] =
     first(
       hash28.check(p.operator),
       hash32.check(p.vrfKeyHash),
@@ -449,7 +449,7 @@ object ConwayCodecs:
     * size. A `Coin` is an `Integer` (`Coin.hs:93`) and a `Url` a `Text` (`BaseTypes.hs:674-676`),
     * so neither is bounded here. The state writer checks these alone.
     */
-  def govActionBounds(a: GovAction)(using ProtVer): Option[ConstraintViolation] =
+  def govActionBounds(a: GovAction): Option[ConstraintViolation] =
     // `nullable` checks nothing of its own: the value inside it is checked here
     def ids(prev: Option[GovActionId]) = prev.flatMap(state.govActionId.check)
     def script(pol: Option[Bytes]) = pol.flatMap(hash28.check)
@@ -482,7 +482,7 @@ object ConwayCodecs:
       first(
         ws.iterator.flatMap((_, amount) => coin(amount)).nextOption(),
         Codec.refuse(
-          ws.map(_._1).distinct.size != ws.size,
+          ws.map(_._1).distinct.sizeIs != ws.size,
           "TreasuryWithdrawals",
           "each account once",
           ws.size
@@ -694,7 +694,7 @@ object ConwayCodecs:
       // is checked
       first(
         Codec.refuse(
-          b.segments.size != expected,
+          b.segments.sizeIs != expected,
           "Block",
           s"the $expected body segments it was read with",
           s"${b.segments.size} segments"

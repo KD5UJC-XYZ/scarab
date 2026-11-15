@@ -252,7 +252,8 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
   private def uniq(base: String, used: Set[String]): (String, Set[String]) =
     val b0 = if reservedFieldNames(base) then base + "_" else base
     val n =
-      if !used(b0) then b0 else Iterator.from(2).map(i => b0 + i).find(n => !used(n)).getOrElse(b0)
+      if !used(b0) then b0
+      else Iterator.from(2).map(i => b0 + i.toString).find(n => !used(n)).getOrElse(b0)
     (esc(n), used + n)
 
   private object Literal:
@@ -519,7 +520,7 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
     def position(index: Int): String =
       Iterator
         .from(0)
-        .map(n => s"position$index" + (if n == 0 then "" else "_" + n))
+        .map(n => s"position$index" + (if n == 0 then "" else "_" + n.toString))
         .find(name => !fieldNames(name))
         .getOrElse(s"position${index}_")
     val (end, positioned) =
@@ -836,7 +837,7 @@ private final class PreparedEmitter(cfg: Config, schema: Schema, reached: Emitte
       val byModule = decls.flatMap(flatten(_, owners)).groupMap(_.q.module)(identity)
       val clash = byModule.toVector.flatMap { (m, ds) =>
         ds.groupBy(_.name).collect {
-          case (n, same) if same.size > 1 =>
+          case (n, same) if same.sizeIs > 1 =>
             GenError.NameClash(m, n, same.map(_.q.toString))
         }
       }.headOption
@@ -909,7 +910,7 @@ object Emitter:
   /** The other alternative of `x / nil`. */
   private[gen] object Nullable:
     def unapply(alts: Vector[RT]): Option[RT] =
-      if alts.size == 2 && alts.contains(nil) then alts.find(_ != nil) else None
+      if alts.sizeIs == 2 && alts.contains(nil) then alts.find(_ != nil) else None
 
   private[gen] object IntLits:
     def unapply(alts: Vector[RT]): Option[Vector[BigInt]] = intLits(alts)
@@ -925,14 +926,14 @@ object Emitter:
           case RT.Arr(VectorOf(e)) => Some(e)
           case _                   => None
         }
-        .filter(vs => vs.size > 1 && vs.map(_.value).distinct.size == 1)
+        .filter(vs => vs.sizeIs > 1 && vs.map(_.value).distinct.sizeIs == 1)
         .flatMap(NonEmptyVector.fromVector)
 
   private[gen] val nil: RT = RT.Prim(PrimKind.Nil)
 
   private[gen] def intLits(alts: Vector[RT]): Option[Vector[BigInt]] =
     val xs = alts.collect { case RT.LitInt(n) if n.isValidInt => n }
-    Option.when(xs.size == alts.size && alts.nonEmpty)(xs)
+    Option.when(xs.sizeIs == alts.size && alts.nonEmpty)(xs)
 
   /** `#6.n(x) / x`: the tag is optional on input (Conway sets), written on output. */
   private[gen] def maybeTagged(alts: Vector[RT]): Option[(BigInt, RT)] = alts match
@@ -945,7 +946,7 @@ object Emitter:
 
   /** A choice that needs an enum: it has alternatives that are not just a single wrapper type. */
   private[gen] def isPlainChoice(alts: Vector[RT]): Boolean =
-    val nullable = alts.size == 2 && alts.contains(nil)
+    val nullable = alts.sizeIs == 2 && alts.contains(nil)
     !nullable && intLits(alts).isEmpty && !mergeableVectors(alts) && maybeTagged(alts).isEmpty
 
   private val keywords = Set(

@@ -144,8 +144,6 @@ object RecordedReplay extends munit.Assertions:
       raw: Bytes,
       parallel: Option[ParallelPlutus[IO]],
       observe: Boolean
-  )(using
-      cats.mtl.Raise[IO, StorageError]
   ): IO[(MirrorState, Vector[ReplayTrace.Transaction], Long)] =
     IO.defer {
       val observations = new ReplayObservations

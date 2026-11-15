@@ -59,6 +59,6 @@ object PtrMap:
       ptr: Ptr
   ): Map[Credential, Set[Ptr]] =
     index.get(credential) match
-      case Some(ptrs) if ptrs.size > 1 => index.updated(credential, ptrs - ptr)
-      case Some(_)                     => index - credential
-      case None                        => index
+      case Some(ptrs) if ptrs.sizeIs > 1 => index.updated(credential, ptrs - ptr)
+      case Some(_)                       => index - credential
+      case None                          => index

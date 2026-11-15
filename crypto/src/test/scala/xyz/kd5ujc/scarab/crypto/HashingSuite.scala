@@ -59,7 +59,7 @@ class HashingSuite extends munit.FunSuite:
     enum EncodingError extends xyz.kd5ujc.scarab.codec.DomainError:
       case Rejected(value: Int)
     val encoder = new Encoder[Int]:
-      type Error = EncodingError
+      type Cause = EncodingError
       def encode(value: Int): Either[EncodingError, Bytes] = Left(EncodingError.Rejected(value))
     val result: Either[EncodingError, Bytes] = Blake2b.hash256.encoded(7, encoder)
     assertEquals(result, Left(EncodingError.Rejected(7)))

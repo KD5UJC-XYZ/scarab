@@ -15,8 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Header,
   HeaderVrf,
   NodeError,
-  PeerError,
-  ValidationError
+  PeerError
 }
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.Queue
@@ -889,10 +888,7 @@ class EraTransitionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       seen <- eventsRef.get
     yield (seen, chain)
 
-  private def mirrorRules(using
-      cats.mtl.Raise[IO, ValidationError],
-      cats.mtl.Raise[IO, xyz.kd5ujc.scarab.ledger.StorageError]
-  ): MirrorRules[IO] =
+  private def mirrorRules: MirrorRules[IO] =
     MirrorRules[IO](
       setup.praos,
       setup.globals,

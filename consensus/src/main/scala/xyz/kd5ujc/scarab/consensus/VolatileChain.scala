@@ -88,7 +88,7 @@ object VolatileChain:
 
   given [S: Eq]: Eq[VolatileChain[S]] = Eq.instance { (a, b) =>
     a.k == b.k && a.anchor.block === b.anchor.block && a.anchor.state === b.anchor.state &&
-    a.blocks.size == b.blocks.size && a.blocks.zip(b.blocks).forall { case ((r1, s1), (r2, s2)) =>
+    a.blocks.sizeIs == b.blocks.size && a.blocks.zip(b.blocks).forall { case ((r1, s1), (r2, s2)) =>
       r1 === r2 && s1 === s2
     }
   }

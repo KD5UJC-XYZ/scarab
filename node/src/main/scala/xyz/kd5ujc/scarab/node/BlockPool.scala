@@ -249,7 +249,7 @@ final class BlockPool[F[_]: Async] private (
     hashes.foldLeft((s, Vector.empty[Deferred[F, Option[Filled]]])) { case ((acc, open), hash) =>
       acc.entries.get(hash) match
         case Some(Slot.Pending(done, seq, owners)) if owners(owner) =>
-          if owners.size > 1 then
+          if owners.sizeIs > 1 then
             (
               acc.copy(entries =
                 acc.entries.updated(hash, Slot.Pending(done, seq, owners - owner))
@@ -953,7 +953,7 @@ object BlockPool:
     )
 
     def trimmed: Slots[F] =
-      if entries.size <= 2 * Retained then this
+      if entries.sizeIs <= 2 * Retained then this
       else
         val floor = next - Retained
         val retainedEntries = entries.filter {

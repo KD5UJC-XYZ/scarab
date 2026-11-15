@@ -220,7 +220,7 @@ final class Schema(val modules: Map[String, Module]):
                   case None => failure(GenError.UnresolvedName(q.module, q.name))
                   case Some((defs, defScope)) =>
                     val params = defs.head.params
-                    if params.size != args.size then
+                    if params.sizeIs != args.size then
                       failure(GenError.ArityMismatch(q.toString, params.size, args.size))
                     else if params.isEmpty then success(RT.Ref(q))
                     else if expanding(q) then failure(GenError.CyclicExpansion(q))

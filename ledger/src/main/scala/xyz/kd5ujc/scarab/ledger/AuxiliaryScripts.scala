@@ -36,7 +36,7 @@ private[ledger] object AuxiliaryScripts:
         }
         .flatMap(labels =>
           Either.cond(
-            protocol < 9 || labels.distinct.size == labels.size,
+            protocol < 9 || labels.distinct.sizeIs == labels.size,
             (),
             LedgerDecodeError.DuplicateKey(DecodeField.MetadataLabels)
           )
@@ -155,7 +155,7 @@ private[ledger] object AuxiliaryScripts:
               CborRead.uint(key, DecodeField.AuxiliaryField).map(_ -> value)
             }
             .flatMap { keyed =>
-              if keyed.map(_._1).distinct.size != keyed.size then
+              if keyed.map(_._1).distinct.sizeIs != keyed.size then
                 Left(LedgerDecodeError.DuplicateKey(DecodeField.AuxiliaryData))
               else
                 keyed

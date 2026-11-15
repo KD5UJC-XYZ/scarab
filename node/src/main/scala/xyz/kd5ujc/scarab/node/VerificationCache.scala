@@ -328,7 +328,7 @@ final class VerificationCache private (val parallelism: Int, direct: Verdicts) e
     NodeRules.decodeShelley(raw).fold(Vector.empty[Job]) { p =>
       val b = p.block
       val key = HeaderKey(b.header.hash, config.slotsPerKesPeriod, config.maxKesEvolutions)
-      val triples = p.txs.toVector
+      val triples = p.txs
         .flatMap(_.toOption)
         .flatMap { tx =>
           val id = tx.body.id

@@ -136,7 +136,11 @@ object AncillaryManifest:
         .parse(new String(bytes.toArray, UTF_8))
         .leftMap(e => Error.InvalidKey(KeyFailure.JsonSyntax(e)))
       octets <- json.as[Vector[Int]].leftMap(e => Error.InvalidKey(KeyFailure.JsonDecode(e)))
-      _ <- Either.cond(octets.size == 32, (), Error.InvalidKey(KeyFailure.WrongLength(octets.size)))
+      _ <- Either.cond(
+        octets.sizeIs == 32,
+        (),
+        Error.InvalidKey(KeyFailure.WrongLength(octets.size))
+      )
       _ <- octets.zipWithIndex
         .find { (n, _) => n < 0 || n > 255 }
         .map { (n, i) => Error.InvalidKey(KeyFailure.OctetOutOfRange(i, n)) }

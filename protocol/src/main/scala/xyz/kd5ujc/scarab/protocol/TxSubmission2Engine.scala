@@ -224,7 +224,7 @@ private[scarab] object TxSubmission2Engine:
           case None => bad(ProtocolError.TruncatedList)
           case Some(b) if b == 0xff.toByte =>
             r.read(); collected
-          case Some(_) if collected.size >= profile.maxBatch =>
+          case Some(_) if collected.sizeIs >= profile.maxBatch =>
             bad(ProtocolError.BatchLimitExceeded(collected.size, profile.maxBatch))
           case Some(_) => loop(collected :+ f())
       loop(Vector.empty)

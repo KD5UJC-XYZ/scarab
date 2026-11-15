@@ -203,7 +203,7 @@ object CoreUnlifting:
           unlift(expected(i), i, arguments(i)) match
             case Right(argument) => go(i + 1, done :+ argument)
             case Left(failure)   => Left(failure)
-      if arguments.size != expected.size then
+      if arguments.sizeIs != expected.size then
         Left(structural(UnliftingCause.Arity(expected.size, arguments.size)))
       else go(0, Vector.empty)
 

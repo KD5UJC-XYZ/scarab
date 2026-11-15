@@ -500,6 +500,6 @@ object ShelleyUtxow:
     )
     val genesisSigners = genDelegs.values.map(_.delegate).toSet.intersect(signers)
     Test.failureUnless(
-      !hasMir || genesisSigners.size >= env.ctx.updateQuorum,
+      !hasMir || genesisSigners.sizeIs >= env.ctx.updateQuorum,
       PredicateFailure.utxow(UtxowFailure.MIRInsufficientGenesisSigs(genesisSigners))
     )

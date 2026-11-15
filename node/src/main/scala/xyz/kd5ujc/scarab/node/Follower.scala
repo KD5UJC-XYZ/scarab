@@ -44,7 +44,7 @@ import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity.Fragment
   * tip of a candidate with ours, and the volatile chain itself keeps only identities and ledger
   * states, so the views are recorded here as blocks are adopted.
   */
-final class SelectViews[F[_]: cats.effect.Sync] private (ref: Ref[F, Map[Bytes, SelectView]]):
+final class SelectViews[F[_]] private (ref: Ref[F, Map[Bytes, SelectView]]):
   def get: F[Map[Bytes, SelectView]] = ref.get
   def record(hash: Bytes, view: SelectView): F[Unit] = ref.update(_.updated(hash, view))
   def retain(keep: Set[Bytes]): F[Unit] = ref.update(_.filter((h, _) => keep(h)))
@@ -331,7 +331,7 @@ final class Follower[F[_]: Async, S] private (
 
   /** A cheap check that the kept window is the chain's: anchor, length and tip. */
   private def describes(l: ChainSelection.Local, current: VolatileChain[S]): Boolean =
-    l.anchor == current.anchor.point && l.blocks.size == current.blocks.size &&
+    l.anchor == current.anchor.point && l.blocks.sizeIs == current.blocks.size &&
       l.blocks.lastOption.forall(b => current.blocks.lastOption.exists(_._1.point == b.point))
 
   private final case class Applied(

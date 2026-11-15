@@ -207,7 +207,7 @@ object Block:
       bodies <- list(parts(1))
       witnesses <- list(parts(2))
       _ <- Either.cond(
-        bodies.size == witnesses.size,
+        bodies.sizeIs == witnesses.size,
         (),
         fail(LedgerDecodeError.BodyWitnessCount(bodies.size, witnesses.size))
       )
@@ -251,7 +251,7 @@ object Block:
     */
   private def auxiliaryKeys(keys: Vector[Node], version: DecoderVersion): Either[ChainError, Unit] =
     Either.cond(
-      !version.atLeast(9) || keys.map(_.value).distinct.size == keys.size,
+      !version.atLeast(9) || keys.map(_.value).distinct.sizeIs == keys.size,
       (),
       fail(LedgerDecodeError.DuplicateKey(DecodeField.AuxiliaryData))
     )

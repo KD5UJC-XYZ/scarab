@@ -61,9 +61,9 @@ sessions end, and each asks for the work it does.
 
 | Mechanism | Where it is set | Scope | What it refuses |
 |---|---|---|---|
-| Scala compiler | `build.sbt`, `ThisBuild / scalacOptions` | main, tools, tests | every warning, through `-Werror`; the warnings on are `-deprecation`, `-feature`, `-unchecked` and `-Wunused:imports`, `privates`, `locals`, `explicits`, `patvars`, plus Scala 3's own (a match that is not exhaustive among them). Generated sources are silent |
+| Scala compiler | `build.sbt`, `ThisBuild / scalacOptions` | main, tools, tests | every warning, through `-Werror`; the warnings on are `-deprecation`, `-feature`, `-unchecked`, `-Wunused:imports`, `privates`, `locals`, `explicits`, `implicits`, `patvars` and `nowarn`, `-Wshadow:all`, `-Winfer-union` ([ERR-1](#err-1)), `-Wimplausible-patterns`, `-Wrecurse-with-default`, `-Wwrong-arrow` and `-Wenum-comment-discard`, plus Scala 3's own (a match that is not exhaustive among them). Generated sources are silent |
 | `-Wsafe-init` | `build.sbt`, `scarab(...)` | main | a field read before it is initialised |
-| WartRemover | `build.sbt`, `disallowedWarts` | main; not `tools`, not generated code | the 15 warts listed under [FUN-1](#fun-1) |
+| WartRemover | `build.sbt`, `disallowedWarts` | main; not `tools`, not generated code | the 15 warts listed under [FUN-1](#fun-1); `Wart.LeakingSealed` ([ERR-1](#err-1)) and `Wart.Enumeration` ([TYP-6](#typ-6)); and `Wart.ArrayEquals`, `Wart.SynchronizedValueBasedClasses`, `Wart.StringPlusAny`, `Wart.Product`, `Wart.RedundantConversions` and `Wart.SizeIs`, which no rule names. `DisallowedWartsSuite` (tools tests) shows that each fires, except `Wart.ThreadSleep`, whose probe `scripts/check_test_sleeps.py` would count as a sleep |
 | `@tailrec` | at the definition | all | a call to itself that is not in tail position |
 | scalafmt | `.scalafmt.conf`, `scalafmtCheckAll` in `check` | all | a file not formatted |
 | scalafix | `.scalafix.conf`, `scalafixAll --check` in `check` | all | imports not laid out as `OrganizeImports` is configured: one group, the order as written, unused imports not removed. It is the only rule configured |
@@ -167,7 +167,11 @@ lexically scoped `Handle.allow` (`PeerError`, `ChainError`, `ValidationError`, `
 
 - **Scope:** main, pure functions included.
 - **Exceptions:** tests and tools ([TST-1](#tst-1)).
-- **Enforcement:** review only.
+- **Enforcement:** in part. `-Winfer-union` refuses a type argument inferred as a union, such as the error type
+  of an `Either` built from two error types, so that a union of errors is declared where it is meant: an alias
+  such as `Praos2.Failure`, or a union written in a signature or a type argument. `Wart.LeakingSealed` refuses a
+  descendant of a sealed type that is neither final nor sealed, which would open the type. The rest is review
+  only.
 - **Why:** [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md);
   [domain and service errors](design/domain-errors.md).
 
@@ -600,8 +604,9 @@ fails to compile until each match handles it.
 
 - **Scope:** main.
 - **Exceptions:** none.
-- **Enforcement:** the compiler's exhaustivity warning, an error under `-Werror`, refuses a missing case.
-  The wildcard is review only; a guard is planned.
+- **Enforcement:** the compiler's exhaustivity warning, an error under `-Werror`, refuses a missing case, and
+  `Wart.Enumeration` refuses `scala.Enumeration`, whose values a match does not check. The wildcard is review
+  only; a guard is planned.
 - **Why:** owner's decision, 2026-11-14 ([decisions register](decisions.md#code)).
 
 <a id="typ-7"></a>

@@ -126,7 +126,7 @@ object DijkstraTx:
       val size = if flagged then 4 else 3
       for
         _ <- Either.cond(
-          xs.size == size,
+          xs.sizeIs == size,
           (),
           LedgerDecodeError.ArrayLength(DecodeField.Transaction, size, xs.size)
         )

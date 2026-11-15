@@ -270,7 +270,7 @@
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
    "note": "its private parsers refuse a refusal of another declared length and apply depth, term and string caps; the reference reads and ignores the length and bounds only the message, at 5760 bytes",
-   "digest": "cdc8d7bc397b2784"
+   "digest": "d73f9b7236651464"
   },
   "object protocol.KeepAlive.UpstreamTimeLimits": {
    "upstream": [

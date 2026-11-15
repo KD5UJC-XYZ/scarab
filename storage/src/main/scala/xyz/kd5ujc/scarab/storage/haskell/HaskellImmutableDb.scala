@@ -37,7 +37,7 @@ object ChunkSlots:
     def value: Long = s
 
     /** The first slot of chunk `c`. */
-    def firstSlot(c: ChunkNo): Long = c.value.toLong * s
+    def firstSlot(c: ChunkNo): Long = c.value * s
 
 /** A byte offset into a chunk file. */
 opaque type ByteOffset = Long
@@ -333,7 +333,7 @@ object ChunkValidator:
   ): Either[ChunkFault, Validated] =
     val filled = primary.filled
     val listed = math.min(filled.size, secondary.size)
-    if !mostRecent && filled.size != secondary.size then
+    if !mostRecent && filled.sizeIs != secondary.size then
       Left(ChunkFault.IndexCountMismatch(filled.size, secondary.size))
     else
       def position(rel: Int): BlockPosition =

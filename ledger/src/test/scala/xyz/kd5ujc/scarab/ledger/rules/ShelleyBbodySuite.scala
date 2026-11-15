@@ -64,7 +64,7 @@ class ShelleyBbodySuite extends FunSuite:
       from: ShelleyBbodyState[E],
       at: Int = 0,
       declared: BodyCommitment = commitment
-  )(using ShelleyBasedEra[E], PreConway[E]) =
+  )(using PreConway[E]) =
     Sts(ShelleyBbody.sts[E])(
       globals,
       ShelleyBbodyEnv(

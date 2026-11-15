@@ -115,9 +115,9 @@ raise their declared errors through cats-mtl `Raise[F, E]` and handle them at le
 `Handle.allow` sites; `raiseError` is not used for domain errors. Cases retain semantic inputs and
 nested causes; messages are presentation, not control flow.
 
-`Encoder[A]` declares `type Error <: DomainError`; both its `encode` and `Serde[A].decode`
+`Encoder[A]` declares `type Cause <: DomainError`; both its `encode` and `Serde[A].decode`
 return that family. `Encoder.Aux[A, E]`/`Serde.Aux[A, E]` name a particular family, and generic
-consumers such as `Hasher.encoded` preserve `encoder.Error`. The open `DomainError` marker admits
+consumers such as `Hasher.encoded` preserve `encoder.Cause`. The open `DomainError` marker admits
 closed families to generic cross-module bridges such as `StorageError.Corrupt[E]`; it does not
 replace their narrow API types or prove their semantics. See [the error design](../design/domain-errors.md).
 

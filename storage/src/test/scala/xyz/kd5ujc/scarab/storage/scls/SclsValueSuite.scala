@@ -331,7 +331,7 @@ class SclsValueSuite extends FunSuite:
         .sliding(9)
         .exists(
           _.sameElements(
-            Array(0x1b.toByte, 0x80.toByte, 0, 0, 0, 0, 0, 0, 0)
+            Array[Byte](0x1b.toByte, 0x80.toByte, 0, 0, 0, 0, 0, 0, 0)
           )
         )
     )
@@ -340,7 +340,7 @@ class SclsValueSuite extends FunSuite:
         .sliding(11)
         .exists(
           _.sameElements(
-            Array(0xc2.toByte, 0x49.toByte, 1, 0, 0, 0, 0, 0, 0, 0, 0)
+            Array[Byte](0xc2.toByte, 0x49.toByte, 1, 0, 0, 0, 0, 0, 0, 0, 0)
           )
         )
     )

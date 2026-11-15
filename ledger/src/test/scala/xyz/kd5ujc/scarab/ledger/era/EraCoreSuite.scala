@@ -27,7 +27,10 @@ class EraCoreSuite extends munit.FunSuite:
   private given ByteStrings = ByteStrings.Definite
 
   private def node(hex: String): Node =
-    Bytes.fromHex(hex).flatMap(CborRead.decode(_)).toOption.get
+    (Bytes.fromHex(hex): Either[Bytes.HexError | LedgerDecodeError, Bytes])
+      .flatMap(CborRead.decode(_))
+      .toOption
+      .get
 
   private val keyHash = "1c" * 28
 

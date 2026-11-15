@@ -111,7 +111,10 @@ object ApplyBenchMain:
       .iterator
       .filter(_.nonEmpty)
       .take(total)
-      .map(l => Bytes.fromHex(l).flatMap(Block.decodeShelley(_)))
+      .map(l =>
+        (Bytes.fromHex(l): Either[Bytes.HexError | ChainError, Bytes])
+          .flatMap(Block.decodeShelley(_))
+      )
       .map(_.fold(e => sys.error(e.toString), identity))
       .collect { case b: Block.Shelley => b }
       .toVector

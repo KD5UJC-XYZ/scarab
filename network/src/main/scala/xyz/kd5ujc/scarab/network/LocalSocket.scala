@@ -250,7 +250,7 @@ object LocalSockets:
         .flatMap(_.leftMap(SystemCallError.of(SystemCall.GetFileStatus, Some(path))).traverse {
           // the JDK's `unix:mode` is an Integer behind an attribute API typed Object; anything
           // else is a defect, as the cast it replaces was
-          case mode: Integer => F.pure(mode.toInt)
+          case mode: Integer => F.pure(mode.intValue)
           case other =>
             F.raiseError(new ClassCastException(s"unix:mode is a ${other.getClass.getName}"))
         })

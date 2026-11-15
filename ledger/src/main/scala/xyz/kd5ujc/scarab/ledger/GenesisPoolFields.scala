@@ -212,7 +212,7 @@ object GenesisPoolFields:
   private def ipv4(s: String): Option[Ipv4] =
     val parts = s.dropWhile(_ == ' ').reverse.dropWhile(_ == ' ').reverse.split("\\.", -1).toVector
     Option
-      .when(parts.size == 4)(parts)
+      .when(parts.sizeIs == 4)(parts)
       .flatMap(_.traverse { p =>
         Option
           .when(
@@ -258,7 +258,7 @@ object GenesisPoolFields:
     expanded
       .flatMap { value =>
         value.split("::", -1).toVector match
-          case Vector(full) => words(full).filter(_.size == 8)
+          case Vector(full) => words(full).filter(_.sizeIs == 8)
           case Vector(before, after) =>
             (words(before), words(after)).tupled
               .filter((a, b) => a.size + b.size < 8)

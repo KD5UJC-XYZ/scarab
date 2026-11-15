@@ -119,7 +119,7 @@ object Peer:
       candidate: ChainSelection.Candidate,
       retained: Int
   ): Boolean =
-    if candidate.headers.size < retained.max(1) then true
+    if candidate.headers.sizeIs < retained.max(1) then true
     else
       val points = candidate.headers.map(_.point).toSet + candidate.base
       (published.base +: published.headers.map(_.point)).reverseIterator
@@ -725,7 +725,7 @@ object Peer:
             * is requested is the decisions' alone; publishing headers never waits for it. Byte
             * credit returns after each checked original is visible in the shared body pool.
             */
-          def fetchClient(using Raise[F, PeerError]): F[Unit] =
+          def fetchClient: F[Unit] =
             F.tailRecM(()) { _ =>
               fetcher.acquire.flatMap {
                 case None             => F.pure(Right(()))
@@ -832,7 +832,7 @@ object Peer:
                     observeEvent
                   )
                 request.flatMap {
-                  case Some(raw) if raw.size != run.length =>
+                  case Some(raw) if raw.sizeIs != run.length =>
                     protocol(PeerError.ProtocolProblem.BlockCount(run.length, raw.size))
                   case None =>
                     fetcher.rejected(allocation, run.toVector) *> F.monotonic.map(None -> _)
@@ -1019,7 +1019,7 @@ object Peer:
           /** Client.hs:1255–1291 asks CSJ after every handled response. A jump consumes its
             * instruction once, then discards already-submitted replies before FindIntersect.
             */
-          def afterReply(using Raise[F, PeerError]): F[Unit] =
+          def afterReply: F[Unit] =
             genesis.traverse_ { control =>
               F.tailRecM(()) { _ =>
                 F.race(drainRequested.get.flatMap(_.get), control.nextAfterReply).flatMap {
@@ -1305,7 +1305,7 @@ object Peer:
                 candidate: ChainSelection.Candidate
             ): F[Boolean] =
               candidate.headers.headOption
-                .filter(_ => candidate.headers.size >= retainedHeaders.max(1))
+                .filter(_ => candidate.headers.sizeIs >= retainedHeaders.max(1))
                 .traverse(oldest => fetcher.hasBody(oldest.hash))
                 .map(held =>
                   publicationRoom(published, candidate, retainedHeaders) && held.forall(identity)

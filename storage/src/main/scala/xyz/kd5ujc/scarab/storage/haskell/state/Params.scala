@@ -166,7 +166,7 @@ object Params:
     def decode(n: Node): Decoded[Map[Int, Vector[BigInt]]] =
       Codec.pairs(language, values).decode(n).flatMap { pairs =>
         val map = pairs.map((k, v) => k.toInt -> v).toMap
-        if map.size == pairs.size then Right(map)
+        if map.sizeIs == pairs.size then Right(map)
         else Left(DecodeError.at(n, Kind.DuplicateKey("a language")))
       }
     def encode(a: Map[Int, Vector[BigInt]], out: Writer): Unit =
@@ -442,9 +442,9 @@ object Params:
       case Value.Map(pairs) =>
         val parsedKeys = pairs.traverse { case (key, _) => Codec.uint.decode(key) }
         parsedKeys.flatMap { keys =>
-          if pairs.size != conwayMapFields.size then
+          if pairs.sizeIs != conwayMapFields.size then
             Left(DecodeError.at(n, Kind.BadArity(Arity.Exactly(conwayMapFields.size), pairs.size)))
-          else if keys.distinct.size != keys.size then
+          else if keys.distinct.sizeIs != keys.size then
             Left(DecodeError.at(n, Kind.DuplicateKey("a Conway PParams field")))
           else
             keys.find(key => !key.isValidInt || !expectedKeys(key.toInt)) match

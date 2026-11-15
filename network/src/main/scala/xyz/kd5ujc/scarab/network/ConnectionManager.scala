@@ -1127,7 +1127,7 @@ object ConnectionManager:
         poll: Poll[F]
     ): F[Dispatch[F]] =
       F.tailRecM(()) { _ =>
-        changing { (t, _) =>
+        changing[Either[Long, Option[Dispatch[F]]]] { (t, _) =>
           t.locate(waited.id) match
             case None => (t, Effects.none[F], Right(None))
             case Some((_, entry))

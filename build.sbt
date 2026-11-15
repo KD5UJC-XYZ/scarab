@@ -34,9 +34,11 @@ ThisBuild / headerMappings := {
   )
   Map(HeaderFileType.scala -> spdxLine, HeaderFileType.java -> spdxLine, HeaderFileType("sbt") -> spdxLine)
 }
-// Enable the unused-code warnings supported by the maintained source. At Scala 3.3.8, the excluded
-// -Wunused:implicits, -Wvalue-discard and -Wnonunit-statement produced 13, 243 and 308 warnings;
-// the latter two were mostly fluent CborOut calls in node/ntc. Generated models are warning-silent.
+// The warnings on, each an error under -Werror (docs/design-rules.md, "What enforces the rules today").
+// -Winfer-union refuses a type argument inferred as a union, such as the error type of an Either built
+// from two error types: a union of errors is declared where it is meant (ERR-1).
+// -Wvalue-discard and -Wnonunit-statement stay off: at Scala 3.9.0 they found 239 and 257 sites in main
+// sources (2026-11-14), mostly fluent CborOut calls in node/ntc (#201). Generated models are warning-silent.
 ThisBuild / scalacOptions ++= Seq(
   "-deprecation",
   "-feature",
@@ -46,7 +48,15 @@ ThisBuild / scalacOptions ++= Seq(
   "-Wunused:privates",
   "-Wunused:locals",
   "-Wunused:explicits",
+  "-Wunused:implicits",
   "-Wunused:patvars",
+  "-Wunused:nowarn",
+  "-Wimplausible-patterns",
+  "-Wrecurse-with-default",
+  "-Wwrong-arrow",
+  "-Wshadow:all",
+  "-Wenum-comment-discard",
+  "-Winfer-union",
   "-Wconf:src=.*/src_managed/.*:silent"
 )
 // scalafix needs the semantic database of the compiler.
@@ -89,11 +99,15 @@ val testDependencies = Seq(
 // Initialisation safety applies to main sources (-Wsafe-init).
 // Test sources exclude it because munit registers tests in constructors; the initial sweep found
 // 19 warnings for that idiom and none in main sources.
-// WartRemover (issue 650): the imperative and partial patterns the code rules disallow
-// (docs/design-rules.md, FUN-1 to FUN-3, ERR-4 and ERR-5: functional code by default; mutation only on
-// measured performance paths, kept local; no throw for domain errors; no partial accessor on a value not
-// provably present). Main sources only; generated
-// code is excluded. try/catch/finally has no wart and is checked by scripts/check_imperative.py.
+// WartRemover (issue 650): the imperative and partial patterns the code rules disallow (docs/design-rules.md,
+// FUN-1 to FUN-3, ERR-4 and ERR-5: functional code by default; mutation only on measured performance paths,
+// kept local; no throw for domain errors; no partial accessor on a value not provably present), and from
+// ArrayEquals on, mistakes the compiler lets through: reference equality on arrays, scala.Enumeration, a
+// descendant of a sealed type that is neither final nor sealed, a lock on a value-based class, a String built
+// with + from a value that is not one, an inferred Product, a conversion to the type a value already has and
+// a size compared where sizeIs would do. Main sources only; generated code is excluded. try/catch/finally has
+// no wart and is checked by scripts/check_imperative.py. DisallowedWartsSuite (tools tests) shows that each
+// wart but ThreadSleep fires; a ThreadSleep probe would be a sleep to scripts/check_test_sleeps.py.
 lazy val disallowedWarts: Seq[wartremover.Wart] = Seq(
   Wart.Var,
   Wart.While,
@@ -109,7 +123,15 @@ lazy val disallowedWarts: Seq[wartremover.Wart] = Seq(
   Wart.IterableOps,
   Wart.TripleQuestionMark,
   Wart.ThreadSleep,
-  Wart.GlobalExecutionContext
+  Wart.GlobalExecutionContext,
+  Wart.ArrayEquals,
+  Wart.Enumeration,
+  Wart.LeakingSealed,
+  Wart.SynchronizedValueBasedClasses,
+  Wart.StringPlusAny,
+  Wart.Product,
+  Wart.RedundantConversions,
+  Wart.SizeIs
 )
 
 def scarab(id: String, dir: String = null): Project =
@@ -495,7 +517,9 @@ lazy val fuzz = scarab("fuzz")
 
 // Benchmarks, probes and the programs that write fixtures: run by hand (`tools/runMain <class>`), never as
 // tests and never shipped. They use the modules' test kits, so they follow the rules of test code
-// (docs/design-rules.md, TOOL-2): no `-Wsafe-init`, no WartRemover errors.
+// (docs/design-rules.md, TOOL-2): no `-Wsafe-init`, no WartRemover errors. Its tests hold DisallowedWartsSuite,
+// which shows that each wart of `disallowedWarts` but ThreadSleep fires: it reads their names from a source the
+// build writes, and types its probes with WartRemover's own test traverser.
 lazy val tools = scarab("tools")
   .dependsOn(
     codec % "compile->compile;compile->test",
@@ -513,7 +537,21 @@ lazy val tools = scarab("tools")
   .settings(
     Compile / scalacOptions -= "-Wsafe-init",
     Compile / compile / wartremoverErrors := Nil,
-    publish / skip := true
+    publish / skip := true,
+    libraryDependencies += Libraries.wartremoverTest,
+    Test / sourceGenerators += Def.task {
+      val source = (Test / sourceManaged).value / "DisallowedWarts.scala"
+      val names = disallowedWarts.map(wart => "\"" + wart.clazz + "\"").mkString(", ")
+      IO.write(
+        source,
+        s"""package xyz.kd5ujc.scarab
+           |
+           |object DisallowedWarts:
+           |  val names: List[String] = List($names)
+           |""".stripMargin
+      )
+      Seq(source)
+    }.taskValue
   )
 
 // The sources that belong to no module, whose headers the root project checks: the build definition (without

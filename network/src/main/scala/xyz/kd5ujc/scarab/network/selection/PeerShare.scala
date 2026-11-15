@@ -153,7 +153,7 @@ object PeerShare:
     * `Governor/KnownPeers.hs:318,361`). An approved deviation (`docs/decisions.md`, #956,
     * 2026-11-14).
     */
-  private[selection] def completed[A: Ordering](
+  private[selection] def completed[A](
       st: GovernorState[A],
       id: Long,
       results: List[(A, Result[A])],

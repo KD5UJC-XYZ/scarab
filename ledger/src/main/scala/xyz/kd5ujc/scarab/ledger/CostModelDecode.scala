@@ -58,7 +58,7 @@ object CostModelDecode:
       }
       distinct = models.toMap
       _ <- Either.cond(
-        format == Format.Legacy || distinct.size == models.size,
+        format == Format.Legacy || distinct.sizeIs == models.size,
         (),
         LedgerDecodeError.DuplicateKey(DecodeField.CostModels)
       )
@@ -97,7 +97,7 @@ object CostModelDecode:
           case Format.Legacy =>
             val expected = initialCount(language)
             Either.cond(
-              values.size == expected,
+              values.sizeIs == expected,
               values,
               LedgerDecodeError.CostModelLength(language, expected, values.size)
             )

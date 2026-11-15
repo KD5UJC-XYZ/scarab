@@ -124,7 +124,7 @@ object RewardSet:
   // Not the sorted set's own `equals`, which finds members by `Reward.ordering` and so does not see
   // the amount.
   given Eq[RewardSet] =
-    Eq.instance((a, b) => a.size == b.size && a.iterator.corresponds(b)(Eq[Reward].eqv))
+    Eq.instance((a, b) => a.sizeIs == b.size && a.iterator.corresponds(b)(Eq[Reward].eqv))
   given Show[RewardSet] = Show.show(s => s"RewardSet(${s.toList.map(_.show).mkString(", ")})")
 
 /** `RewardUpdate` (`Shelley/RewardUpdate.hs:111-117` (cardano-ledger f649f975), encoding `125-132`:

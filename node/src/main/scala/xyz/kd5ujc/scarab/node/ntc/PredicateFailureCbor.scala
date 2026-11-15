@@ -290,7 +290,7 @@ object PredicateFailureCbor:
       })
     case UtxowFailure.MissingRedeemers(ps) =>
       Right(Prepared { w =>
-        ps.toVector
+        ps
           .traverse((purpose, script) => conwayPurpose(purpose).map(_ -> script))
           .fold(notInConway(w)) { entries =>
             w.array(2).uint(10)
@@ -471,14 +471,10 @@ object PredicateFailureCbor:
         notInConway(w)
       })
 
-  private[ntc] def utxos(f: UtxosFailure)(using
-      ProtVer
-  ): Either[RefusalPresentationError, Bytes] =
+  private[ntc] def utxos(f: UtxosFailure): Either[RefusalPresentationError, Bytes] =
     prepareUtxos(f).map(encoder => CborOut.build(encoder.write))
 
-  private def prepareUtxos(f: UtxosFailure)(using
-      ProtVer
-  ): Either[RefusalPresentationError, Prepared] = f match
+  private def prepareUtxos(f: UtxosFailure): Either[RefusalPresentationError, Prepared] = f match
     case UtxosFailure.ValidationTagMismatch(isValid, failures) =>
       failures
         .traverse(_.traverse { failure =>
@@ -545,7 +541,7 @@ object PredicateFailureCbor:
         DelegFailure.DelegateeNotRegistered(_) =>
       notInConway(w)
 
-  private[ntc] def pool(w: W, f: PoolFailure)(using ProtVer): Unit = f match
+  private[ntc] def pool(w: W, f: PoolFailure): Unit = f match
     case PoolFailure.StakePoolNotRegisteredOnKey(p) => w.array(2).uint(0).bytes(p)
     case PoolFailure.StakePoolRetirementWrongEpoch(current, latest) =>
       w.array(4).uint(1).uint(current.expected).uint(latest.supplied).uint(latest.expected)

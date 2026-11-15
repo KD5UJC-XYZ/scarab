@@ -190,7 +190,7 @@ object SclsStateMapper:
   private def projectProposals(
       actions: Vector[GovActionState]
   ): Either[Error, Vector[(SclsKey.Key, SclsValue.Entry)]] =
-    actions.zipWithIndex.toVector.traverse { case (action, order) =>
+    actions.zipWithIndex.traverse { case (action, order) =>
       for
         canonicalOrder <- Word64
           .fromBigInt(VocabError.Kind.BlockNo, BigInt(order))

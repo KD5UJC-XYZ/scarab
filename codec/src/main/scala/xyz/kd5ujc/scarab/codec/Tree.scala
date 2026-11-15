@@ -40,7 +40,7 @@ object Tree:
       case (a, b) :: rest if a eq b => go(rest)
       case (a, b) :: rest =>
         val (as, bs) = (t.children(a), t.children(b))
-        if as.size != bs.size || !t.sameLabel(a, b) then false
+        if as.sizeIs != bs.size || !t.sameLabel(a, b) then false
         else go(as.iterator.zip(bs.iterator).toList ::: rest)
     go(List((x, y)))
 

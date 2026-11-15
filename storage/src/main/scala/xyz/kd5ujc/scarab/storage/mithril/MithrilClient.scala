@@ -292,7 +292,7 @@ object MithrilClient:
           }
         }.timeoutTo(request.timeout, Error.TimedOut.raise[F, (Vector[Byte], Vector[Byte], Int)])
         (stdout, _, code) = result
-        _ <- F.unlessA(stdout.size <= MaxOutput)(
+        _ <- F.unlessA(stdout.sizeIs <= MaxOutput)(
           Error.OutputLimit.raise[F, Unit]
         )
         _ <- F.unlessA(code == 0)(Error.Exit(code).raise[F, Unit])

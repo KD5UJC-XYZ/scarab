@@ -125,7 +125,7 @@ private[ledger] object CborRead:
 
   def arrayN(n: Node, size: Int, what: DecodeSite): Result[Vector[Node]] =
     array(n, what).flatMap(xs =>
-      Either.cond(xs.size == size, xs, LedgerDecodeError.ArrayLength(what, size, xs.size))
+      Either.cond(xs.sizeIs == size, xs, LedgerDecodeError.ArrayLength(what, size, xs.size))
     )
 
   /** A record the reference reads with `RecD` below decoder version 12: `decodeCount (RecD cn) n`
@@ -141,11 +141,11 @@ private[ledger] object CborRead:
   def record(n: Node, size: Int, what: DecodeSite): Result[Vector[Node]] =
     n.value match
       case Value.Arr(xs) if n.isDetached =>
-        Either.cond(xs.size == size, xs, LedgerDecodeError.ArrayLength(what, size, xs.size))
+        Either.cond(xs.sizeIs == size, xs, LedgerDecodeError.ArrayLength(what, size, xs.size))
       case _ =>
         array(n, what).flatMap(xs =>
           definite(n, what) *>
-            Either.cond(xs.size == size, xs, LedgerDecodeError.ArrayLength(what, size, xs.size))
+            Either.cond(xs.sizeIs == size, xs, LedgerDecodeError.ArrayLength(what, size, xs.size))
         )
 
   /** `RecD` before 12, `decodeRecordNamed` around the fields from 12 (`Plutus/ExUnits.hs:195-203`,
@@ -242,7 +242,7 @@ private[ledger] object CborRead:
 
   /** `xs` unless an element occurs twice (a `Map` or `Set` whose size is below the count read). */
   def unique[A](xs: Vector[A], what: DecodeSite): Result[Vector[A]] =
-    Either.cond(xs.distinct.size == xs.size, xs, LedgerDecodeError.DuplicateElement(what))
+    Either.cond(xs.distinct.sizeIs == xs.size, xs, LedgerDecodeError.DuplicateElement(what))
 
   /** Map with unsigned-integer keys, rejecting duplicate keys, the keys read as `keys` says. */
   def fields(
@@ -263,7 +263,7 @@ private[ledger] object CborRead:
         .flatMap(pairs =>
           Either
             .cond(
-              pairs.map(_._1).distinct.size == pairs.size,
+              pairs.map(_._1).distinct.sizeIs == pairs.size,
               pairs.toMap,
               LedgerDecodeError.DuplicateKey(what)
             )

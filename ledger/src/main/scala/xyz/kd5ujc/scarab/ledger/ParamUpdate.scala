@@ -268,5 +268,5 @@ object ParamUpdate:
     proposals
       .groupBy(typed)
       .valuesIterator
-      .collect { case vs @ (first +: _) if vs.size >= quorum => first }
+      .collect { case vs @ (first +: _) if vs.sizeIs >= quorum => first }
       .toVector

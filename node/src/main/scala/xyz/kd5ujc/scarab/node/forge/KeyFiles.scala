@@ -145,10 +145,10 @@ object KeyFiles:
       raw <- expect(file, text, OpCertType)
       root <- Cbor.decode(raw).leftMap(e => bad(ForgeKeyProblem.Cbor(e)))
       outer <- root.value match
-        case Value.Arr(xs) if xs.size == 2 => Right(xs)
+        case Value.Arr(xs) if xs.sizeIs == 2 => Right(xs)
         case _ => Left(bad(ForgeKeyProblem.CertificateEnvelope(KeyShape.of(root.value))))
       parts <- outer(0).value match
-        case Value.Arr(xs) if xs.size == 4 => Right(xs)
+        case Value.Arr(xs) if xs.sizeIs == 4 => Right(xs)
         case _ => Left(bad(ForgeKeyProblem.CertificateFields(KeyShape.of(outer(0).value))))
       hot <- fixed(parts(0).value, 32, bad)
       sequence <- uint(parts(1).value, bad)

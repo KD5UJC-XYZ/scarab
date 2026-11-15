@@ -142,4 +142,4 @@ object PeerMetrics:
         if at(existing) > at(entry) then current.updated(slot, entry) else current
       case None =>
         val grown = current.updated(slot, entry)
-        if grown.size > limit then grown - grown.firstKey else grown
+        if grown.sizeIs > limit then grown - grown.firstKey else grown

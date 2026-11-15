@@ -135,8 +135,8 @@ object TxSubmissionPolicy:
     sizes.scanLeft(ReplyFraming)(_ + _).drop(1).takeWhile(_ <= ReplyByteLimit).size
 
   def offers(ids: Vector[Bytes], requested: Int): Either[Violation, Unit] =
-    if ids.size > requested then Left(Violation.ExcessOffers(ids.size, requested))
-    else if ids.distinct.size != ids.size then Left(Violation.DuplicateOffer)
+    if ids.sizeIs > requested then Left(Violation.ExcessOffers(ids.size, requested))
+    else if ids.distinct.sizeIs != ids.size then Left(Violation.DuplicateOffer)
     else Right(())
 
   /** The reference's state deadlines, `timeLimitsTxSubmission2` (ouroboros-network c45735a5,

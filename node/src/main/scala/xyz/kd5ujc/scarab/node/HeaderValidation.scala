@@ -103,7 +103,7 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
               TPraos
                 .update(Praos.tick(prev, h.era, epoch, params.extraEntropy), h, view, cfg)
                 .map(_.state)
-                .leftMap {
+                .leftMap[HeaderError | ProviderDefect] {
                   case defect: ProviderDefect => defect
                   case error: TPraosError     => HeaderError.TPraos(error)
                 }
@@ -117,7 +117,7 @@ private[node] final class ShelleyHeaderForecast[S](config: PraosConfig, globals:
                   nonceWindow
                 )
                 .map(_._1)
-                .leftMap {
+                .leftMap[HeaderError | ProviderDefect] {
                   case defect: ProviderDefect => defect
                   case error: PraosError      => HeaderError.Praos(error)
                 }

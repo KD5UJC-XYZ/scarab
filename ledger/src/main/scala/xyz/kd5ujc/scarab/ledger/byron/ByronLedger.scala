@@ -488,7 +488,7 @@ object ByronLedger:
       case _: ByronWitness.Redeem =>
         ByronSig.verifyRedeem(key, signature, message, config.signatures)
     for
-      verified <- verification
+      verified <- verification.leftWiden[ByronError | ProviderDefect]
       _ <- Either.cond(verified, (), ByronError.WrongSignature(input))
       _ <- Either.cond(
         address.addrType == (w match

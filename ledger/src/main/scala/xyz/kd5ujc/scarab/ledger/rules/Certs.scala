@@ -315,7 +315,6 @@ object Deleg
       pools: ConwayCertState => SortedMap[KeyHash[StakePool], StakePoolState],
       cert: DelegCert
   )(using
-      ask: Ask[F, Globals],
       st: Stateful[F, ConwayCertState],
       raise: Raise[F, LedgerFailure],
       judge: Judge[F, PredicateFailure]
@@ -742,7 +741,6 @@ object GovCert
       deposit: BigInt,
       anchor: Option[Anchor]
   )(using
-      ask: Ask[F, Globals],
       st: Stateful[F, ConwayCertState],
       raise: Raise[F, LedgerFailure],
       judge: Judge[F, PredicateFailure]
@@ -780,7 +778,6 @@ object GovCert
       c: Credential[DRepRole],
       anchor: Option[Anchor]
   )(using
-      ask: Ask[F, Globals],
       st: Stateful[F, ConwayCertState],
       raise: Raise[F, LedgerFailure],
       judge: Judge[F, PredicateFailure]
