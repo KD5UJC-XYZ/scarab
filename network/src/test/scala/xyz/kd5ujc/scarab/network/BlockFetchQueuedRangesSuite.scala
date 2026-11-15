@@ -105,7 +105,8 @@ class BlockFetchQueuedRangesSuite extends FailsOnUncaught:
                           case DecodeResult.Failed(error) => DecodeResult.Failed(error)
                       }
                     }
-                    // Client.hs:130–132 permits Done only after all pipelined replies are collected.
+                    // Client.hs:130–132 (ouroboros-network c45735a5) permits Done only after all
+                    // pipelined replies are collected.
                     _ <- c.send(
                       encoded(
                         BlockFetch.State.Idle,

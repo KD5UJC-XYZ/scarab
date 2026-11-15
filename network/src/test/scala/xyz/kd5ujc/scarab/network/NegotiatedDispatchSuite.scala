@@ -11,7 +11,8 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
 import xyz.kd5ujc.scarab.protocol.Mux as WireMux
 
 /** ConnectionHandler.hs:335–381 replaces handshake dispatch with the negotiated application; native
-  * Ingress.hs:110–119 rejects missing protocols and unavailable directions.
+  * Ingress.hs:110–119 (ouroboros-network c45735a5) rejects missing protocols and unavailable
+  * directions.
   */
 class NegotiatedDispatchSuite extends FailsOnUncaught:
   import Peers.*

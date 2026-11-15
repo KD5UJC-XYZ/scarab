@@ -7,13 +7,14 @@ import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity.Fragment
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** ChainSel.hs:768–777,1137–1143 (consensus82ecba329): project every candidate through LoE and
-  * eligibility before sorting. The sorting comparator is Ord, whose Praos implementation is
+/** ChainSel.hs:768–777,1137–1143 (ouroboros-consensus 82ecba32): project every candidate through
+  * LoE and eligibility before sorting. The sorting comparator is Ord, whose Praos implementation is
   * unrestricted (Praos/Common.hs:180–185); the configured restriction governs eligibility only.
   */
 private[node] object CandidateSelection:
-  /** ChainSel.hs:159–211 initialChainSelection ranks from the immutable anchor and caps paths at k
-    * when LoE is enabled. A live nonempty limit must not expand that initial bound.
+  /** ChainSel.hs:159–211 (ouroboros-consensus 82ecba32) initialChainSelection ranks from the
+    * immutable anchor and caps paths at k when LoE is enabled. A live nonempty limit must not
+    * expand that initial bound.
     */
   def startup(
       k: Int,

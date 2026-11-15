@@ -18,8 +18,9 @@ import xyz.kd5ujc.scarab.protocol.Era
 /** `DebugChainDepState` (`GetChainDepState`, `cardano-cli query protocol-state`) as the reference
   * node answers it, at points of an era-walking chain (`fixtures/chain-dep`, issue 90): the TPraos
   * state in the Shelley to Alonzo eras, the Praos state from Babbage, and the first Babbage epoch,
-  * where the Praos state is the translation of the TPraos one (`Praos.hs:763-773`). The chain is
-  * replayed from its blocks and each answer must be the reference's bytes.
+  * where the Praos state is the translation of the TPraos one (`Praos.hs:763-773`,
+  * ouroboros-consensus 82ecba32). The chain is replayed from its blocks and each answer must be the
+  * reference's bytes.
   */
 class ChainDepGoldenSuite extends FunSuite:
   private val fixtures = Path.of("fixtures/chain-dep")

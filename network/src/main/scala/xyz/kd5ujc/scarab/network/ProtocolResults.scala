@@ -129,8 +129,8 @@ final class ProtocolResults[F[_]: Async, A] private (
   )
 
   /** `awaitAllResults`: running protocols block; protocols never started contribute no result.
-    * Close combines Hot, Warm, Established in that order (PeerStateActions.hs:1072–1079), with
-    * protocol-number order inside each bundle (408–420).
+    * Close combines Hot, Warm, Established in that order (PeerStateActions.hs:1072–1079,
+    * ouroboros-network c45735a5), with protocol-number order inside each bundle (408–420).
     */
   def awaitAll(temperatures: Set[Temperature]): F[LastToFinish[A]] =
     F.tailRecM(()) { _ =>

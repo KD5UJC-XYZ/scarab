@@ -83,7 +83,8 @@ class BlockFetchPeerTimeSuite extends FailsOnUncaught:
       }
     }
 
-    // Codec.hs:59–68: each message has its state's limit; silences add up without a budget.
+    // Codec.hs:59–68 (ouroboros-network c45735a5): each message has its state's limit; silences add
+    // up without a budget.
     test(s"peer silences within the per-state limit add up past it, queued=$queued") {
       TestControl.executeEmbed {
         Peers

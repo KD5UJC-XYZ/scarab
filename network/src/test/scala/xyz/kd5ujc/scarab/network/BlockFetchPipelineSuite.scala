@@ -388,8 +388,8 @@ class BlockFetchPipelineSuite extends FailsOnUncaught:
       .fold(e => fail(e.message), identity)
 
   test("a range that keeps progressing within the per-state limit may take far longer than 120 s"):
-    // Codec.hs:59–68: Busy and Streaming each wait longWait (60 s) per message, and a range
-    // has no deadline as a whole; a block every 50 s is compliant.
+    // Codec.hs:59–68 (ouroboros-network c45735a5): Busy and Streaming each wait longWait (60 s) per
+    // message, and a range has no deadline as a whole; a block every 50 s is compliant.
     cats.effect.testkit.TestControl
       .executeEmbed {
         Peers.typed {
@@ -421,8 +421,9 @@ class BlockFetchPipelineSuite extends FailsOnUncaught:
       }
 
   test("a Byron-sized range of more than 10 MB is received whole"):
-    // Bytes are bounded per message (Codec.hs:42–44) and by the protocol's ingress queue
-    // (Cardano/Network/NodeToNode.hs:348–367), not per range.
+    // Bytes are bounded per message (Codec.hs:42–44, ouroboros-network c45735a5) and by the
+    // protocol's ingress queue (Cardano/Network/NodeToNode.hs:348–367, cardano-diffusion c5117705),
+    // not per range.
     Peers
       .typed {
         Peers.linked(protocols = Set(Protocols.BlockFetch)).use { (clientMux, serverMux) =>

@@ -252,8 +252,8 @@ private[ntc] object ContextFailureCbor:
     * (`Shelley/TxCert.hs:577-586`) gives a script requirement for an unregistration and a
     * delegation by a script credential only, so those two are the ones written; the other
     * certificates have no purpose in the reference's collection and are not encoded here. The
-    * `ShelleyTxCert` tags are `Shelley/TxCert.hs:420-435`: the unregistration is `[1, credential]`,
-    * the delegation `[2, credential, pool]`.
+    * `ShelleyTxCert` tags are `Shelley/TxCert.hs:420-435` (cardano-ledger f649f975): the
+    * unregistration is `[1, credential]`, the delegation `[2, credential, pool]`.
     */
   private def shelleyCertificate(cert: Certificate): Option[Bytes] = cert match
     case Certificate.Unregister(c @ Credential.Script(_), None) =>
@@ -283,7 +283,9 @@ private[ntc] object ContextFailureCbor:
       case _ => Some(cert)
     projected.flatMap(encodeCertificate)
 
-  /** Conway transaction certificate tags (`Conway/TxCert.hs:490-534,615-641`). */
+  /** Conway transaction certificate tags (`Conway/TxCert.hs:490-534,615-641`, cardano-ledger
+    * f649f975).
+    */
   private def encodeCertificate(cert: Certificate)(using ProtVer): Option[Bytes] = cert match
     case Certificate.GenesisDelegate(_, _, _) | Certificate.MoveRewards(_, _) |
         Certificate.Delegate(_, None, None, _) =>

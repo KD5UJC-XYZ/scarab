@@ -37,7 +37,8 @@ trait VocabularyCodecs:
       )
     )
 
-  // ---- hashes: byte strings of the size of the hash (`Hashes.hs:166-232`, newtypes over `Hash`)
+  // ---- hashes: byte strings of the size of the hash (`Hashes.hs:166-232` (cardano-ledger
+  // f649f975), newtypes over `Hash`)
 
   given keyHash[R <: KeyRole]: Codec[KeyHash[R]] =
     hash(28).validated(KeyHash.fromBytes[R])(h => KeyHash.bytes(h))
@@ -52,7 +53,9 @@ trait VocabularyCodecs:
 
   // ---- amounts
 
-  /** `Coin` (`Coin.hs:93,106,111`): written as an `Integer`, read as a `Word64`. */
+  /** `Coin` (`Coin.hs:93,106,111`, cardano-ledger f649f975): written as an `Integer`, read as a
+    * `Word64`.
+    */
   given coin: Codec[Coin] = new Codec[Coin]:
     private val under = word(64)
     def decode(n: Node): Decoded[Coin] =
@@ -61,10 +64,10 @@ trait VocabularyCodecs:
         .map(Coin(_))
     def encode(a: Coin, out: Writer): Unit = out.integer(Coin.value(a))
 
-  /** `DeltaCoin` (`Coin.hs:115-119`): an `Integer` both ways. */
+  /** `DeltaCoin` (`Coin.hs:115-119`, cardano-ledger f649f975): an `Integer` both ways. */
   given deltaCoin: Codec[DeltaCoin] = integer.imap(DeltaCoin(_))(d => DeltaCoin.value(d))
 
-  /** `CompactForm Coin` (`Coin.hs:190-195`): a `Word64`. */
+  /** `CompactForm Coin` (`Coin.hs:190-195`, cardano-ledger f649f975): a `Word64`. */
   given compactCoin: Codec[CompactCoin] =
     word64.imap(w => CompactCoin.fromUnsigned(w.bits))(c => c.word)
 
@@ -74,13 +77,17 @@ trait VocabularyCodecs:
 
   given word64Codec: Codec[Word64] = word64
 
-  /** `NonZero a` (`BaseTypes/NonZero.hs:76-78`): the value, refused when it is zero. */
+  /** `NonZero a` (`BaseTypes/NonZero.hs:76-78`, cardano-ledger f649f975): the value, refused when
+    * it is zero.
+    */
   given nonZero[A](using c: Codec[A], z: HasZero[A]): Codec[NonZero[A]] =
     c.validated(NonZero.from(_)(using z))(n => NonZero.value(n))
 
   // ---- credentials
 
-  /** `Credential` (`Credential.hs:322-325`): `[0, key hash]` or `[1, script hash]`. */
+  /** `Credential` (`Credential.hs:322-325`, cardano-ledger f649f975): `[0, key hash]` or `[1,
+    * script hash]`.
+    */
   given credential[R <: KeyRole]: Codec[Credential[R]] = new Codec[Credential[R]]:
     def decode(n: Node): Decoded[Credential[R]] =
       variant(n).flatMap {
@@ -100,7 +107,9 @@ trait VocabularyCodecs:
           out.uint(1L)
           scriptHash.encode(h, out)
 
-  /** `DRep` (`DRep.hs:74-90`): `[0, key hash]`, `[1, script hash]`, `[2]`, `[3]`. */
+  /** `DRep` (`DRep.hs:74-90`, cardano-ledger f649f975): `[0, key hash]`, `[1, script hash]`, `[2]`,
+    * `[3]`.
+    */
   given drep: Codec[DRep] = new Codec[DRep]:
     def decode(n: Node): Decoded[DRep] =
       variant(n).flatMap {
@@ -123,8 +132,8 @@ trait VocabularyCodecs:
 
   /** `Ptr` (`Credential.hs:258-260,353-364`, a `CBORGroup`): `[slot, tx index, cert index]` as a
     * `Word32` and two `Word16` s. From version 9 the decoder is strict; before it a value out of
-    * its range makes the pointer `Ptr 0 0 0` (`mkPtrNormalized`, `Credential.hs:279-285`), which is
-    * what an unreachable pointer was turned into.
+    * its range makes the pointer `Ptr 0 0 0` (`mkPtrNormalized`, `Credential.hs:279-285`,
+    * cardano-ledger f649f975), which is what an unreachable pointer was turned into.
     */
   given ptr(using v: ProtVer): Codec[Ptr] = new Codec[Ptr]:
     private val loose = word(64)
@@ -157,7 +166,7 @@ trait VocabularyCodecs:
       )
 
   /** `ProtVer` (`BaseTypes.hs:211-244`, a `CBORGroup`): `[major, minor]`, the major in the
-    * supported versions 0..13 (`Version.hs:55-110`), the minor a `Word32`.
+    * supported versions 0..13 (`Version.hs:55-110`, cardano-ledger f649f975), the minor a `Word32`.
     */
   given protVer: Codec[ProtVer] = new Codec[ProtVer]:
     private val maxMajor = BigInt(13)
@@ -181,7 +190,7 @@ trait VocabularyCodecs:
       )
 
   /** `Anchor` (`BaseTypes.hs:996-1010`): `[url, data hash]`; the url is at most 128 bytes from
-    * version 9 and 64 before it (`DecCBOR Url`, `BaseTypes.hs:678-684`).
+    * version 9 and 64 before it (`DecCBOR Url`, `BaseTypes.hs:678-684`, cardano-ledger f649f975).
     */
   given anchor(using v: ProtVer): Codec[Anchor] = new Codec[Anchor]:
     private val url = Codec.textSized(0, if v.atLeast(9) then 128 else 64)
@@ -200,5 +209,7 @@ trait VocabularyCodecs:
     override def check(a: Anchor): Option[ConstraintViolation] =
       url.check(a.url).map(_.at("url")).orElse(dataHash.check(a.hash).map(_.at("dataHash")))
 
-  /** `Nonce` (`BaseTypes.hs:574-577`): `[0]` for the neutral nonce, `[1, hash]`. */
+  /** `Nonce` (`BaseTypes.hs:574-577`, cardano-ledger f649f975): `[0]` for the neutral nonce, `[1,
+    * hash]`.
+    */
   given nonce: Codec[Nonce] = Wire.nonce

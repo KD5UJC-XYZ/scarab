@@ -19,7 +19,8 @@ import scala.concurrent.duration.*
   *   The TxSubmission2 client, when this activation runs one and can end it.
   * @param blockFetchEnded
   *   Retire attribution to the adding BlockFetch client after its successful MsgClientDone, before
-  *   another hot protocol can wait while finishing (consensus ClientInterface.hs:193).
+  *   another hot protocol can wait while finishing (ouroboros-consensus 82ecba32
+  *   ClientInterface.hs:193).
   * @param chainSyncPipeline
   *   The owned rolling pipeline supplied by production hot activations. Test connections can retain
   *   their explicitly scripted fixed-batch client.

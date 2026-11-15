@@ -12,7 +12,9 @@ import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import xyz.kd5ujc.scarab.protocol.{ChainSync, NtNHeader}
 
-/** Client.hs:1487–1520 records arrival before validation and reports only accepted headers. */
+/** Client.hs:1487–1520 (ouroboros-consensus 82ecba32) records arrival before validation and reports
+  * only accepted headers.
+  */
 class PeerHeaderMetricsSuite extends FailsOnUncaught:
   private enum Result:
     case Accepted, Refused, Restart, End

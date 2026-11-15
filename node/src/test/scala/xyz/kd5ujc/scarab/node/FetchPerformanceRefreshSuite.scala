@@ -62,7 +62,8 @@ class FetchPerformanceRefreshSuite extends FailsOnUncaught:
                           assertEquals(held, Vector(header(1)))
                           assertEquals(before, None)
                           assertEquals(firstCallbacks, 1)
-                          // State.hs:419–425: GSV is non-trigger state in both fetch modes.
+                          // State.hs:419–425 (ouroboros-network c45735a5): GSV is non-trigger state
+                          // in both fetch modes.
                           assertEquals(sampled, None)
                           assertEquals(count, 2)
                           assertEquals(headers, Vector(header(2), header(3)))
@@ -76,7 +77,8 @@ class FetchPerformanceRefreshSuite extends FailsOnUncaught:
   }
 
   // The first iteration decides at once, then sleeps out the 10ms Praos interval; the second
-  // registers its grace at its start (State.hs:100–107, 150), so a 10s grace expires at 10.01s.
+  // registers its grace at its start (State.hs:100–107, 150, ouroboros-network c45735a5), so a 10s
+  // grace expires at 10.01s.
   Vector(0.seconds -> 10.millis, 10.seconds -> 10010.millis).foreach { (grace, expected) =>
     test(s"Praos decisions use sampled estimates at the native $grace grace/rate boundary") {
       TestControl.executeEmbed {

@@ -139,8 +139,9 @@ class MempoolInterventionSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught
     "a transaction without its flag is held as valid and relayed with it, as the reference does"
   ) {
     // `decodeRecordNamed "AlonzoTx"` reads a third item that is not a boolean as the auxiliary
-    // data of a valid transaction (`Alonzo/Tx.hs:532-553`); the node relays the transaction it
-    // holds, `toCBORForMempoolSubmission`: four items, the flag written (#699)
+    // data of a valid transaction (`Alonzo/Tx.hs:532-553`, cardano-ledger f649f975); the node
+    // relays the transaction it holds, `toCBORForMempoolSubmission`: four items, the flag written
+    // (#699)
     val ok = scenario("raw-dst-pass-valid-true")
     for indefinite <- List(false, true) do
       val received = ok.unflagged(indefinite)

@@ -7,10 +7,10 @@ import xyz.kd5ujc.scarab.ledger.TestLedger
 import xyz.kd5ujc.scarab.ledger.state.*
 
 /** What the mirror's reading says each credential is paid (`MirrorEraRead.rewardsDue`):
-  * `aggregateRewards` (`Rewards.hs:186`), by the parameters of the epoch the update is for. The
-  * devnet found it (J2.8): before Allegra a credential that earns from several sources gets only
-  * the least of its rewards, and the node's flat state held the amounts so, while the mirror holds
-  * every reward.
+  * `aggregateRewards` (`Rewards.hs:186`, cardano-ledger f649f975), by the parameters of the epoch
+  * the update is for. The devnet found it (J2.8): before Allegra a credential that earns from
+  * several sources gets only the least of its rewards, and the node's flat state held the amounts
+  * so, while the mirror holds every reward.
   */
 class RewardsDueSuite extends FunSuite:
   private def bytes(size: Int, n: Int) = Bytes.fromArray(Array.fill(size)(n.toByte))

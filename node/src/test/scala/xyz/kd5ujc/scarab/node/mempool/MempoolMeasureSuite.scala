@@ -144,8 +144,8 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
 
   test("the reference scripts of a transaction are measured in 64 bits, as the reference's Int") {
     // `txMeasureRefScripts` measures `txNonDistinctRefScriptsSize :: ... -> Int`
-    // (`Shelley/Ledger/Mempool.hs:714-726`): 2048 inputs, each naming a script of 1 MiB, hold 2^31
-    // bytes, one more than a 32-bit Int holds
+    // (`Shelley/Ledger/Mempool.hs:714-726`, ouroboros-consensus 82ecba32): 2048 inputs, each naming
+    // a script of 1 MiB, hold 2^31 bytes, one more than a 32-bit Int holds
     val script = refScriptOutput(1 << 20)
     val inputs = Vector.tabulate(2048)(i => TxIn(txIn(60).id, i))
     val base = ledger(1).withParams(_.copy(maxTxSize = 1 << 17))
@@ -171,7 +171,8 @@ class MempoolMeasureSuite extends munit.FunSuite with ScalaCheckSuite:
     "an output that is both spent and a reference input is measured once, as the reference does"
   ) {
     // `txNonDistinctRefScriptsSize` measures the union of the inputs and the reference inputs
-    // (`Conway/UTxO.hs:164-170`); from protocol version 11 an input may also be a reference input.
+    // (`Conway/UTxO.hs:164-170`, cardano-ledger f649f975); from protocol version 11 an input may
+    // also be a reference input.
     // Its script of 150 000 bytes is within the per-transaction maximum once, not twice.
     val size = 150000
     val l = withRefScript(ledger(1), size).withProtocol(11)

@@ -27,16 +27,18 @@ import Wire.*
 trait ConsensusCodecs extends EpochStateCodecs:
   // ---- the ledger state of a Shelley-based era
 
-  /** `ShelleyTip` (`Shelley/Ledger/Ledger.hs:828-840`): `[slot, block number, hash]`. */
+  /** `ShelleyTip` (`Shelley/Ledger/Ledger.hs:828-840`, ouroboros-consensus 82ecba32): `[slot, block
+    * number, hash]`.
+    */
   given shelleyTip: Codec[ShelleyTip] = arrayIn(stateLayout, Record.auto[ShelleyTip])
 
-  /** `ShelleyTransition` (`Ledger.hs:855-864`): a bare `Word32`. */
+  /** `ShelleyTransition` (`Ledger.hs:855-864`, ouroboros-consensus 82ecba32): a bare `Word32`. */
   given shelleyTransition: Codec[ShelleyTransition] =
     word32.imap(v => ShelleyTransition(Word32.fromUnsigned(v.toInt)))(t =>
       BigInt(t.afterVoting.toLong)
     )
 
-  /** `PerasCertRound` (`SupportsPeras.hs:85`, a `Word64`). */
+  /** `PerasRoundNo` (`SupportsPeras.hs:85`, ouroboros-consensus 82ecba32, a `Word64`). */
   given perasRound: Codec[PerasRoundNo] = word64.imap(PerasRoundNo(_))(_.word)
 
   /** The fourth field of the Shelley ledger state in this codec's layout
@@ -57,10 +59,10 @@ trait ConsensusCodecs extends EpochStateCodecs:
       override def check(a: ShelleyLedgerState.Layout): Option[ConstraintViolation] =
         ofThisLayout("ShelleyLedgerState", a)
 
-  /** `LedgerState (ShelleyBlock proto era)` (`Ledger.hs:866-912`): `[2, [tip, new-epoch state,
-    * transition, fourth field]]`, the fourth by layout ([[shelleyLedgerLayout]]). Only version 2 is
-    * read (the decoders of both pins read no other). The state is written at the era's own version
-    * (`toCBOR`, [[Versions]]).
+  /** `LedgerState (ShelleyBlock proto era)` (`Ledger.hs:866-912`, ouroboros-consensus 82ecba32):
+    * `[2, [tip, new-epoch state, transition, fourth field]]`, the fourth by layout
+    * ([[shelleyLedgerLayout]]). Only version 2 is read (the decoders of both pins read no other).
+    * The state is written at the era's own version (`toCBOR`, [[Versions]]).
     */
   def shelleyLedgerState[E <: EraTag](using ShelleyBasedEra[E]): Codec[ShelleyLedgerState[E]] =
     versionedIn(stateLayout)(
@@ -145,7 +147,9 @@ trait ConsensusCodecs extends EpochStateCodecs:
 
   // ---- the protocols' chain-dependent states
 
-  /** `PBftSigner` as the inverted state holds it: the slot alone (`State.hs:300-308`). */
+  /** `PBftSigner` as the inverted state holds it: the slot alone (`State.hs:300-308`,
+    * ouroboros-consensus 82ecba32).
+    */
   private val signerSlots: Codec[Vector[SlotNo]] = new Codec[Vector[SlotNo]]:
     def decode(n: Node): Decoded[Vector[SlotNo]] = seqOf(slotNo).decode(n)
 
@@ -157,10 +161,10 @@ trait ConsensusCodecs extends EpochStateCodecs:
         a.foreach(slotNo.encode(_, out))
         out.break()
 
-  /** `PBftState` (`Protocol/PBFT/State.hs:300-317`): `[1, {genesis key: [slots, newest first]}]`.
-    * The signers in the window are written grouped by key and the counts not at all, so they are
-    * recomputed on reading (`computeCounts`, `uninvert`); a state whose counts are not those of its
-    * window is not writable.
+  /** `PBftState` (`Protocol/PBFT/State.hs:300-317`, ouroboros-consensus 82ecba32): `[1, {genesis
+    * key: [slots, newest first]}]`. The signers in the window are written grouped by key and the
+    * counts not at all, so they are recomputed on reading (`computeCounts`, `uninvert`); a state
+    * whose counts are not those of its window is not writable.
     */
   given pbftState: Codec[PBftState] =
     val keyed = plainMapOf(keyHash[Genesis], signerSlots)
@@ -190,21 +194,26 @@ trait ConsensusCodecs extends EpochStateCodecs:
 
   private val shelleyProtocolVersion: ProtVer = Versions.eraLow(ShelleyBasedEra.SShelley)
 
-  /** `PrtclState` (`TPraos/Rules/Prtcl.hs:77-85`), at the Shelley version: `[counters, evolving,
-    * candidate]`.
+  /** `PrtclState` (`TPraos/Rules/Prtcl.hs:77-85`, cardano-ledger f649f975), at the Shelley version:
+    * `[counters, evolving, candidate]`.
     */
   given prtclState: Codec[PrtclState] =
     given ProtVer = shelleyProtocolVersion
     Record.of[PrtclState]((mapOf(keyHash[BlockIssuer], word64), nonce, nonce))
 
-  /** `TicknState` (`Tickn.hs:44-51`): `[epoch nonce, previous hash nonce]`. */
+  /** `TicknState` (`Tickn.hs:44-51`, cardano-ledger f649f975): `[epoch nonce, previous hash
+    * nonce]`.
+    */
   given ticknState: Codec[TicknState] = Record.auto[TicknState]
 
-  /** The ledger's `ChainDepState` (`TPraos/API.hs:477-490`): `[protocol, tickn, lab nonce]`. */
+  /** The ledger's `ChainDepState` (`TPraos/API.hs:477-490`, cardano-ledger f649f975): `[protocol,
+    * tickn, lab nonce]`.
+    */
   given tpraosLedgerState: Codec[TPraosLedgerState] = Record.auto[TPraosLedgerState]
 
-  /** `TPraosState` (`Protocol/TPraos.hs:281-296`): `[1, [last slot, chain-dependent state]]`. The
-    * last slot is written by `encodeWithOrigin` (`[]` or `[slot]`), unlike Praos's (`toCBOR`).
+  /** `TPraosState` (`Protocol/TPraos.hs:281-296`, ouroboros-consensus 82ecba32): `[1, [last slot,
+    * chain-dependent state]]`. The last slot is written by `encodeWithOrigin` (`[]` or `[slot]`),
+    * unlike Praos's (`toCBOR`).
     */
   given tpraosState: Codec[TPraosState] =
     versionedIn(stateLayout)(
@@ -215,8 +224,8 @@ trait ConsensusCodecs extends EpochStateCodecs:
       )
     )
 
-  /** `PraosState` (`Protocol/Praos.hs:281-308`): `[0, [last slot, counters, six nonces]]`, the
-    * counters in the plain (definite-length) form.
+  /** `PraosState` (`Protocol/Praos.hs:281-308`, ouroboros-consensus 82ecba32): `[0, [last slot,
+    * counters, six nonces]]`, the counters in the plain (definite-length) form.
     */
   given praosState: Codec[PraosState] =
     versionedIn(stateLayout)(

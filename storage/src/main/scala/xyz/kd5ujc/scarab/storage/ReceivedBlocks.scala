@@ -72,7 +72,8 @@ trait ReceivedBlocks[F[_]]:
   def invalidate(hash: Bytes): F[Unit]
 
   /** Only call after the immutable store has made this boundary durable. Keep the cutoff slot:
-    * Byron EBBs and regular blocks may share it (native VolatileDB/Impl/FileInfo.hs:94–97).
+    * Byron EBBs and regular blocks may share it (native VolatileDB/Impl/FileInfo.hs:94–97,
+    * ouroboros-consensus 82ecba32).
     */
   def collect(durableSlot: BigInt)(using Raise[F, StorageError]): F[Unit]
 

@@ -27,8 +27,8 @@ private[state] final case class NewEpochStateLeios[E <: EraTag](
 )
 
 /** The encoding version an era's state is written at: the lowest protocol version of the era
-  * (`eraProtVerLow`, which `toEraCBOR` uses, `Core/Era.hs:233`). A Conway state at protocol 11 is
-  * still written at 9.
+  * (`eraProtVerLow`, which `toEraCBOR` uses, `Core/Era.hs:233`, cardano-ledger f649f975). A Conway
+  * state at protocol 11 is still written at 9.
   */
 object Versions:
   def eraLow[E <: EraTag](era: ShelleyBasedEra[E]): ProtVer =
@@ -86,7 +86,9 @@ trait EpochStateCodecs extends RewardCodecs:
   def instantStake[E <: EraTag](using era: ShelleyBasedEra[E], v: ProtVer): Codec[InstantStake[E]] =
     era.instantStake.instance(shelleyInstantStake, conwayInstantStake)
 
-  /** `StashedAVVMAddresses` (`Types.hs:357-359`): the UTxO in Shelley, `()` (a `null`) after. */
+  /** `StashedAVVMAddresses` (`Types.hs:357-359`, cardano-ledger f649f975): the UTxO in Shelley,
+    * `()` (a `null`) after.
+    */
   def stashedAvvm[E <: EraTag](using era: ShelleyBasedEra[E]): Codec[StashedAVVM[E]] =
     era.stashedAvvm.instance(utxoTables, unit)
 
@@ -98,25 +100,29 @@ trait EpochStateCodecs extends RewardCodecs:
 
   given chainAccountState: Codec[ChainAccountState] = Record.auto[ChainAccountState]
 
-  /** `BlocksMade` (`BaseTypes.hs:910`, a newtype over the map): blocks per pool, a `Natural` each,
-    * read as a `Word64`.
+  /** `BlocksMade` (`BaseTypes.hs:910` (cardano-ledger f649f975), a newtype over the map): blocks
+    * per pool, a `Natural` each, read as a `Word64`.
     */
   given blocksMade(using ProtVer): Codec[BlocksMade] =
     mapOf(keyHash[StakePool], word64Codec).imap(BlocksMade(_))(b => BlocksMade.blocks(b))
 
-  /** `UTxOState` (`Types.hs:253-266`): the UTxO, deposits, fees, governance state, instant stake
-    * and donations.
+  /** `UTxOState` (`Types.hs:253-266`, cardano-ledger f649f975): the UTxO, deposits, fees,
+    * governance state, instant stake and donations.
     */
   def utxoState[E <: EraTag](using era: ShelleyBasedEra[E], v: ProtVer): Codec[UTxOState[E]] =
     Record.of[UTxOState[E]](
       (utxoTables, coin, coin, govState[E], instantStake[E], coin)
     )
 
-  /** `LedgerState` (`Types.hs:504-509`): `[certificate state, UTxO state]`, in that order. */
+  /** `LedgerState` (`Types.hs:504-509`, cardano-ledger f649f975): `[certificate state, UTxO
+    * state]`, in that order.
+    */
   def ledgerState[E <: EraTag](using era: ShelleyBasedEra[E], v: ProtVer): Codec[LedgerState[E]] =
     Record.of[LedgerState[E]]((certState[E], utxoState[E]))
 
-  /** `EpochState` (`Types.hs:136-142`): `[chain account, ledger state, snapshots, non-myopic]`. */
+  /** `EpochState` (`Types.hs:136-142`, cardano-ledger f649f975): `[chain account, ledger state,
+    * snapshots, non-myopic]`.
+    */
   def epochState[E <: EraTag](using era: ShelleyBasedEra[E], v: ProtVer): Codec[EpochState[E]] =
     Record.of[EpochState[E]]((chainAccountState, ledgerState[E], snapShots, nonMyopic))
 

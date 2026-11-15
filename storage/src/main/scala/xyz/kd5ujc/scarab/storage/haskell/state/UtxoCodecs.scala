@@ -51,8 +51,9 @@ object UtxoCodecs:
         assets.encode(a.assets, out)
 
   /** `BabbageTxOut`: `[address, value]`, `[address, value, datum hash]`, or the keyed form with an
-    * inline datum or a reference script (`encodeTxOut`, `Babbage/TxOut.hs:581-595`). The keyed
-    * form's items are written as the reference writes them, not copied as they came:
+    * inline datum or a reference script (`encodeTxOut`, `Babbage/TxOut.hs:581-595`, cardano-ledger
+    * f649f975). The keyed form's items are written as the reference writes them, not copied as they
+    * came:
     *   - the datum as `[1, #6.24(bytes)]` around the bytes of the data (`EncCBOR (Datum era)`,
     *     `BinaryData`, `Plutus/Data.hs:217-218,297-301`);
     *   - the reference script as `#6.24` around the bytes of `[kind, script]` (`encodeNestedCbor`,
@@ -175,21 +176,24 @@ object UtxoCodecs:
     * the same in each.
     */
   enum OutputForm:
-    /** `ShelleyTxOut` over `Coin`: `[address, coin]` (`Shelley/TxOut.hs:150-154`). */
+    /** `ShelleyTxOut` over `Coin`: `[address, coin]` (`Shelley/TxOut.hs:150-154`, cardano-ledger
+      * f649f975).
+      */
     case CoinOnly
 
     /** `ShelleyTxOut` over `MaryValue`: `[address, value]`, the value a bare coin or
-      * `[coin, assets]` (`Shelley/TxOut.hs:150-154`, `Mary/Value.hs:342-350`).
+      * `[coin, assets]` (`Shelley/TxOut.hs:150-154`, `Mary/Value.hs:342-350`, cardano-ledger
+      * f649f975).
       */
     case WithAssets
 
     /** `AlonzoTxOut`: `[address, value]` or `[address, value, datum hash]`
-      * (`Alonzo/TxOut.hs:376-386`).
+      * (`Alonzo/TxOut.hs:376-386`, cardano-ledger f649f975).
       */
     case WithDatumHash
 
     /** `BabbageTxOut`: the arrays of Alonzo, or the keyed form with an inline datum or a reference
-      * script (`Babbage/TxOut.hs:501-506`).
+      * script (`Babbage/TxOut.hs:501-506`, cardano-ledger f649f975).
       */
     case Babbage
 

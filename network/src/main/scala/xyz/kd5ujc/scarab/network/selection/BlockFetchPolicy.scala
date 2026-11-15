@@ -82,10 +82,11 @@ object BlockFetchPolicy:
       .min(BigInt(Long.MaxValue))
       .toLong
 
-  /** `prioritisePeerChains` (Decision.hs:731–833): first the reference's `sortBy` with
-    * `comparePeerGSV'` (783–784, 821–822), then stable sorts on total keys, for which any stable
-    * sort gives the reference's order. Deadline candidates with equal bands/preference are
-    * interleaved across chain heads, as upstream's group/transpose stage specifies.
+  /** `prioritisePeerChains` (Decision.hs:731–833, ouroboros-network c45735a5): first the
+    * reference's `sortBy` with `comparePeerGSV'` (783–784, 821–822), then stable sorts on total
+    * keys, for which any stable sort gives the reference's order. Deadline candidates with equal
+    * bands/preference are interleaved across chain heads, as upstream's group/transpose stage
+    * specifies.
     */
   def rank[P](mode: FetchMode, candidates: Vector[Candidate[P]]): Vector[Candidate[P]] =
     val (declined, tied) = HaskellSort
@@ -121,7 +122,8 @@ object BlockFetchPolicy:
 
   /** Include active peers with no pending fragments so concurrency and preferred admission see all
     * sessions. Preferred peers may temporarily exceed the target while replacing slower peers; they
-    * are the first of the reference's `sortBy` with `comparePeerGSV` (Decision.hs:1028–1035).
+    * are the first of the reference's `sortBy` with `comparePeerGSV` (Decision.hs:1028–1035,
+    * ouroboros-network c45735a5).
     */
   def decide[P](
       config: Config,

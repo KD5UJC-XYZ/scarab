@@ -22,7 +22,8 @@ private[network] object MuxLifecycle:
       case OnDemandAny => ProtocolStatus.StartOnDemandAny
 
   /** The completion action gives an already published result precedence over mux shutdown
-    * (Network/Mux.hs:822–836). The original failure is retained at both boundaries.
+    * (Network/Mux.hs:822–836, ouroboros-network c45735a5). The original failure is retained at both
+    * boundaries.
     */
   enum CompletionError:
     case Application(cause: NetworkError)

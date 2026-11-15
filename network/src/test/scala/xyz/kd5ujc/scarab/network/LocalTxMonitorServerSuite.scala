@@ -151,7 +151,8 @@ class LocalTxMonitorServerSuite extends FailsOnUncaught:
       snapshot(4294967295L, Vector(4294967295L)).sizes,
       LocalTxMonitor.Sizes(4294967295L, 4294967295L, 1)
     )
-    // above it, 2^32 - 1, and the reply encodes (a `Word32` field, `LocalTxMonitor/Codec.hs:95-101`)
+    // above it, 2^32 - 1, and the reply encodes (a `Word32` field,
+    // `LocalTxMonitor/Codec.hs:95-101`, ouroboros-network c45735a5)
     val over = snapshot(1L << 32, Vector.fill(3)(1L << 31))
     assertEquals(over.sizes, LocalTxMonitor.Sizes(4294967295L, 4294967295L, 3))
     assert(

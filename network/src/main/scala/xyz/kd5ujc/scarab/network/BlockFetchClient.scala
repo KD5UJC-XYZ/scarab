@@ -34,7 +34,7 @@ trait BlockFetchClient[F[_]]:
 
   /** As [[requestRangeStreaming]] for a range of `blocks` blocks, a requested fragment: more blocks
     * than it has are refused (the reference matches each block with the next requested header,
-    * BlockFetch/Client.hs:236–250).
+    * BlockFetch/Client.hs:239–258, ouroboros-network c45735a5).
     */
   def requestBlocks(from: Point, to: Point, @scala.annotation.unused blocks: Int)(
       onBlock: Bytes => F[Either[NetworkError, Unit]],

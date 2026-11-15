@@ -14,7 +14,9 @@ object NodeOrders:
   /** `Hash.Hash`: unsigned, lexicographic. */
   given Order[Bytes] = Order.from(_.compareTo(_))
 
-  /** `Credential` (`Credential.hs:98-101`): `ScriptHashObj` before `KeyHashObj`, then by hash. */
+  /** `Credential` (`Credential.hs:98-101`, cardano-ledger f649f975): `ScriptHashObj` before
+    * `KeyHashObj`, then by hash.
+    */
   given Order[Credential] = Order.from { (a, b) =>
     (a, b) match
       case (Credential.Script(x), Credential.Script(y)) => x.compareTo(y)
@@ -23,7 +25,9 @@ object NodeOrders:
       case (Credential.Key(_), Credential.Script(_))    => 1
   }
 
-  /** `DRep` (`DRep.hs:67-72`): key hash, script hash, always-abstain, always-no-confidence. */
+  /** `DRep` (`DRep.hs:67-72`, cardano-ledger f649f975): key hash, script hash, always-abstain,
+    * always-no-confidence.
+    */
   given Order[DRep] = Order.from { (a, b) =>
     def rank(d: DRep): Int = d match
       case DRep.Registered(Credential.Key(_))    => 0
@@ -36,13 +40,17 @@ object NodeOrders:
       case _ => Integer.compare(rank(a), rank(b))
   }
 
-  /** `GovActionId` (`Procedures.hs:170`, derived `Ord`): the transaction id, then the index. */
+  /** `GovActionId` (`Procedures.hs:175-179` (cardano-ledger f649f975), derived `Ord`): the
+    * transaction id, then the index.
+    */
   given Order[GovActionId] = Order.from { (a, b) =>
     val byTx = a.txId.compareTo(b.txId)
     if byTx != 0 then byTx else a.index compare b.index
   }
 
-  /** `AccountAddress` (derived `Ord`, `Address.hs:182-187`): the network, then the credential. */
+  /** `AccountAddress` (derived `Ord`, `Address.hs:182-187`, cardano-ledger f649f975): the network,
+    * then the credential.
+    */
   given Order[RewardAccount] = Order.from { (a, b) =>
     val byNetwork = Integer.compare(a.network, b.network)
     if byNetwork != 0 then byNetwork
