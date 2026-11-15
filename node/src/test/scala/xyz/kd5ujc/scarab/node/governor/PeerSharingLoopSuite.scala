@@ -67,7 +67,8 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
         GovernorConfig(association = AssociationMode.Unrestricted)
       )
       given Ask[IO, PeerMetrics[Int]] = Ask.const[IO, PeerMetrics[Int]](PeerMetrics.empty())
-      given Ask[IO, ChurnMode] = Ask.const[IO, ChurnMode](ChurnMode.Initial)
+      given Ask[IO, PeerGovernor.ChurnWritten] =
+        Ask.const[IO, PeerGovernor.ChurnWritten](PeerGovernor.ChurnWritten.Initial)
       given Tell[IO, Output[Int]] = new Tell[IO, Output[Int]]:
         def functor = cats.Functor[IO]
         def tell(out: Output[Int]) = out match
@@ -128,7 +129,8 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
           GovernorConfig(association = AssociationMode.Unrestricted)
         )
         given Ask[IO, PeerMetrics[Int]] = Ask.const[IO, PeerMetrics[Int]](PeerMetrics.empty())
-        given Ask[IO, ChurnMode] = Ask.const[IO, ChurnMode](ChurnMode.Initial)
+        given Ask[IO, PeerGovernor.ChurnWritten] =
+          Ask.const[IO, PeerGovernor.ChurnWritten](PeerGovernor.ChurnWritten.Initial)
         given Tell[IO, Output[Int]] = new Tell[IO, Output[Int]]:
           def functor = cats.Functor[IO]
           def tell(output: Output[Int]) = IO.unit
@@ -207,7 +209,8 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
           GovernorConfig(association = AssociationMode.Unrestricted)
         )
         given Ask[IO, PeerMetrics[Int]] = Ask.const[IO, PeerMetrics[Int]](PeerMetrics.empty())
-        given Ask[IO, ChurnMode] = Ask.const[IO, ChurnMode](ChurnMode.Initial)
+        given Ask[IO, PeerGovernor.ChurnWritten] =
+          Ask.const[IO, PeerGovernor.ChurnWritten](PeerGovernor.ChurnWritten.Initial)
         given Tell[IO, Output[Int]] = new Tell[IO, Output[Int]]:
           def functor = cats.Functor[IO]
           def tell(output: Output[Int]) = IO.unit
@@ -289,7 +292,8 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
           GovernorConfig(association = AssociationMode.Unrestricted)
         )
         given Ask[IO, PeerMetrics[Int]] = Ask.const[IO, PeerMetrics[Int]](PeerMetrics.empty())
-        given Ask[IO, ChurnMode] = Ask.const[IO, ChurnMode](ChurnMode.Initial)
+        given Ask[IO, PeerGovernor.ChurnWritten] =
+          Ask.const[IO, PeerGovernor.ChurnWritten](PeerGovernor.ChurnWritten.Initial)
         given Tell[IO, Output[Int]] = new Tell[IO, Output[Int]]:
           def functor = cats.Functor[IO]
           def tell(output: Output[Int]) = IO.unit
@@ -412,7 +416,8 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
           GovernorConfig(association = AssociationMode.Unrestricted)
         )
         given Ask[IO, PeerMetrics[Int]] = Ask.const[IO, PeerMetrics[Int]](PeerMetrics.empty())
-        given Ask[IO, ChurnMode] = Ask.const[IO, ChurnMode](ChurnMode.Initial)
+        given Ask[IO, PeerGovernor.ChurnWritten] =
+          Ask.const[IO, PeerGovernor.ChurnWritten](PeerGovernor.ChurnWritten.Initial)
         given Tell[IO, Output[Int]] = new Tell[IO, Output[Int]]:
           def functor = cats.Functor[IO]
           def tell(output: Output[Int]) = IO.unit

@@ -341,7 +341,13 @@ once it is `YoungEnough`.
 (177, 201), at the start of each round (565) and in each step's transaction that sets its targets (242); the
 fuzzy delay reads the fetch mode without writing it (663). So a change of the fetch mode during the sleep reaches
 the pick only with the next round. The variable starts as `PraosFetchMode FetchModeDeadline`
-(`Ouroboros/Consensus/Node.hs:603` of ouroboros-consensus `82ecba329d7d054340bf707d44fe6e9ac27cec40`).
+(`Ouroboros/Consensus/Node.hs:603` of ouroboros-consensus `82ecba329d7d054340bf707d44fe6e9ac27cec40`). A step writes
+the mode and its targets in one transaction (241-251), and the governor evaluates its decisions as one transaction
+in which the targets monitor comes before the demotions (`ON/PeerSelection/Governor.hs:642-714`; the `Guarded`
+semigroup takes the first that is ready, `G/Types.hs:1602-1606`; cardano-node's monitor is
+`CD/PeerSelection/Governor/Monitor.hs:98-149`). So targets the monitor takes are in force before a demotion ranks by
+the mode written with them. Targets it does not take (null ones, insane ones, or any while the node cannot make
+progress, 117-149) leave the targets in force, and the demotion ranks by the new mode against those.
 
 *Why the order matters.* Active peers are decreased first so that the governor demotes the least useful ones
 (by the metrics) and then increased so that it promotes others; establishing new cold peers happens last, after

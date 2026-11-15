@@ -264,7 +264,7 @@ class FortyBearersSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 // Adoption can wake the test before the fetch client reports its completed range.
                 _ <- settle
                 board <- net.metrics.get
-                churn <- net.churnMode.get
+                churn <- net.churnMode
               yield (mode, board, churn)
             }
           }
@@ -275,11 +275,12 @@ class FortyBearersSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         // both boards hold slots, and some peer was first with something
         assert(boards._1 > 0 && boards._2 > 0, s"boards $boards")
         assert(scores.values.exists(_.value > 0), scores.toString)
-        // every block was fetched, and counts the size its header announces (`blockFetchSize`)
+        // every block was fetched, and counts the size its header announces (`blockFetchSize`):
+        // the header's bytes, its body size and ten bytes of wrapping (`estimateBlockSize`)
         assertEquals(boards._2, forged.headers.size)
         assertEquals(
-          board.fetchynessBytes.values.sum,
-          forged.headers.map(FetchCoordinator.estimatedBytes).sum
+          BigInt(board.fetchynessBytes.values.sum),
+          forged.headers.map(h => h.bodySize + h.raw.size + 10).sum
         )
         // the churn governor wrote the mode it read at its head start: far behind, bulk sync
         if !deadline then assertEquals(churn, ChurnMode.Praos(FetchMode.BulkSync))

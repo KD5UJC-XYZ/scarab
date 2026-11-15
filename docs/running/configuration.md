@@ -136,8 +136,9 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](../de
   the peer joined, then at random. The score follows the churn mode: `upstreamness + fetchynessBlocks` in Praos deadline
   mode, the bytes of the blocks the peer delivered first (`fetchynessBytes`) in Praos bulk sync and in Genesis while the
   ledger is too old. A block counts the size its header announces (`estimateBlockSize`). The churn governor writes the
-  mode before each set of targets and at the start of each round, not while it sleeps, as the reference's
-  `simpleChurnModePeerSelectionPolicy` reads it. The churn governor (`ChurnLoop`, the reference's
+  mode together with each set of targets and alone at the start of each round, not while it sleeps, and the governor
+  takes targets written with a mode, when it accepts them, before it demotes by that mode, as the reference's
+  `simpleChurnModePeerSelectionPolicy` and its governor read them in one transaction. The churn governor (`ChurnLoop`, the reference's
   `peerChurnGovernor`) is the one writer of requested targets. Praos starts with a 3 s head start for local roots;
   Genesis starts with its complete selected targets. It then sleeps 3300 s plus up to 600 s in Genesis or Praos deadline
   mode, or 900 s plus up to 60 s in Praos bulk sync, and runs a

@@ -36,14 +36,16 @@ class ChurnTargetWakeSuite extends FailsOnUncaught:
         events <- Queue.unbounded[IO, Event[Int]]
         complete <- Deferred[IO, Targets]
         _ <- events0.traverse_(events.offer)
-        _ <- proposals.change(generation)(_ => latest)
+        _ <- proposals.change(generation, ChurnMode.Initial)(_ => latest)
         _ <- events.offer(Event.Wake(Duration.Zero))
         given Stateful[IO, GovernorState[Int]] = RefStateful(state)
         given Ask[IO, GovernorConfig] = Ask.const[IO, GovernorConfig](
           GovernorConfig(association = AssociationMode.Unrestricted)
         )
         given Ask[IO, PeerMetrics[Int]] = Ask.const[IO, PeerMetrics[Int]](PeerMetrics.empty())
-        given Ask[IO, ChurnMode] = Ask.const[IO, ChurnMode](ChurnMode.Initial)
+        given Ask[IO, PeerGovernor.ChurnWritten] = new Ask[IO, PeerGovernor.ChurnWritten]:
+          def applicative = cats.Applicative[IO]
+          def ask[E2 >: PeerGovernor.ChurnWritten]: IO[E2] = proposals.written
         given Tell[IO, Output[Int]] = new Tell[IO, Output[Int]]:
           def functor = cats.Functor[IO]
           def tell(out: Output[Int]) = IO.unit
@@ -74,7 +76,6 @@ class ChurnTargetWakeSuite extends FailsOnUncaught:
                 roots,
                 events,
                 supervisor,
-                readRequestedTargets = Some(proposals.accepted),
                 onEventApplied = Some {
                   case Event.Wake(_) =>
                     state.get.flatMap(st => complete.complete(st.requested).void)
@@ -126,7 +127,7 @@ class ChurnTargetWakeSuite extends FailsOnUncaught:
       initial <- state.counters
       result <- IO.both(
         state.publish(initial.copy(known = 100)),
-        state.change(BigInt(0))(_.copy(known = 1))
+        state.change(BigInt(0), ChurnMode.Initial)(_.copy(known = 1))
       )
       counters <- state.counters
       requested <- state.requested

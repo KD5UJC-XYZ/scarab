@@ -23,11 +23,13 @@ class ChurnLoopSuite extends CatsEffectSuite:
     .view(Duration.Zero)
     .counters
 
-  /** What the loop did, with the virtual time it did it at. */
+  /** What the loop did, with the virtual time it did it at; `modes` has each write of the churn
+    * mode and whether targets were written with it, in order.
+    */
   private final case class Log(
       requests: Vector[(FiniteDuration, Targets)],
       traces: Vector[(FiniteDuration, Churn.Trace)],
-      modes: Vector[(FiniteDuration, ChurnMode)]
+      modes: Vector[(FiniteDuration, ChurnMode, Boolean)]
   )
 
   /** The counters follow the targets at once, except that the increases stay short when `stuck`. */
@@ -61,7 +63,7 @@ class ChurnLoopSuite extends CatsEffectSuite:
       responses <- Queue.unbounded[IO, Churn.Proposal]
       requests <- Ref.of[IO, Vector[(FiniteDuration, Targets)]](Vector.empty)
       traces <- Ref.of[IO, Vector[(FiniteDuration, Churn.Trace)]](Vector.empty)
-      modes <- Ref.of[IO, Vector[(FiniteDuration, ChurnMode)]](Vector.empty)
+      modes <- Ref.of[IO, Vector[(FiniteDuration, ChurnMode, Boolean)]](Vector.empty)
       world = new ChurnWorld[IO]:
         def counters: IO[GovernorState.Counters] = targetState.counters
         def awaitCounters(
@@ -74,18 +76,20 @@ class ChurnLoopSuite extends CatsEffectSuite:
           changingJudgement.fold(IO.pure(ledgerJudgement))(_.get)
         def requested: IO[Churn.Proposal] = targetState.requested
         def updateTargets(
+            m: ChurnMode,
             change: Churn.Proposal => Churn.Proposal
         ): IO[(GovernorState.Counters, Churn.Proposal)] =
-          targetState.change(BigInt(0))(change).flatTap { (_, next) =>
+          targetState.change(BigInt(0), m)(change).flatTap { (_, next) =>
             for
               now <- IO.monotonic
+              _ <- modes.update(_ :+ (now, m, true))
               _ <- next.validated.traverse_(valid => requests.update(_ :+ (now -> valid)))
               _ <- responses.offer(next)
             yield ()
           }
-        def request(t: Churn.Proposal): IO[Unit] = updateTargets(_ => t).void
+        def request(m: ChurnMode, t: Churn.Proposal): IO[Unit] = updateTargets(m, _ => t).void
         def setChurnMode(m: ChurnMode): IO[Unit] =
-          IO.monotonic.flatMap(now => modes.update(_ :+ (now -> m)))
+          IO.monotonic.flatMap(now => modes.update(_ :+ (now, m, false)))
       given Ask[IO, ChurnLoop.Config] = Ask.const[IO, ChurnLoop.Config](
         ChurnLoop.Config(
           base,
@@ -166,13 +170,13 @@ class ChurnLoopSuite extends CatsEffectSuite:
         // `mkReadFetchMode`: a Genesis node whose ledger is too old churns in the Genesis mode
         assertEquals(
           log.modes,
-          Vector(Duration.Zero -> ChurnMode.Genesis, 3.seconds -> ChurnMode.Genesis)
+          Vector((Duration.Zero, ChurnMode.Genesis, true), (3.seconds, ChurnMode.Genesis, true))
         )
     )
   }
 
   test(
-    "the churn mode is written before each set of targets and at the start of a round (updateChurnMode)"
+    "the churn mode is written with each set of targets and alone at the start of a round (updateChurnMode)"
   ) {
     embed(for
       mode <- Ref.of[IO, FetchMode](FetchMode.Deadline)
@@ -184,11 +188,12 @@ class ChurnLoopSuite extends CatsEffectSuite:
       )
     yield
       val deadline = ChurnMode.Praos(FetchMode.Deadline)
-      // the head start (Churn.hs 177, 201), the round (565), and its twelve steps (242)
+      // the head start (Churn.hs 177, 201) and the twelve steps (242) write the mode with their
+      // targets, in one write; the round (565) writes it alone
       assertEquals(
         log.modes,
-        Vector(Duration.Zero -> deadline, 3.seconds -> deadline) ++
-          Vector.fill(13)(10.seconds -> deadline)
+        Vector((Duration.Zero, deadline, true), (3.seconds, deadline, true)) ++
+          Vector((10.seconds, deadline, false)) ++ Vector.fill(12)((10.seconds, deadline, true))
       )
       assertEquals(
         log.traces.collect { case (at, Churn.Trace.Mode(m)) => at -> m },
@@ -212,11 +217,14 @@ class ChurnLoopSuite extends CatsEffectSuite:
       assertEquals(
         log.modes.takeWhile(_._1 < 10.seconds),
         Vector(
-          Duration.Zero -> ChurnMode.Praos(FetchMode.Deadline),
-          3.seconds -> ChurnMode.Praos(FetchMode.Deadline)
+          (Duration.Zero, ChurnMode.Praos(FetchMode.Deadline), true),
+          (3.seconds, ChurnMode.Praos(FetchMode.Deadline), true)
         )
       )
-      assertEquals(log.modes.dropWhile(_._1 < 10.seconds), Vector.fill(13)(10.seconds -> bulk))
+      assertEquals(
+        log.modes.dropWhile(_._1 < 10.seconds),
+        Vector((10.seconds, bulk, false)) ++ Vector.fill(12)((10.seconds, bulk, true))
+      )
       assertEquals(
         log.traces.collect { case (at, Churn.Trace.Mode(m)) => at -> m },
         Vector(10.seconds -> bulk)
