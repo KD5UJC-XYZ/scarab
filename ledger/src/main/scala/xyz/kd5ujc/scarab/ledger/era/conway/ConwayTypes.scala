@@ -372,9 +372,9 @@ object ConwayTxBody:
           case TopOnly.Top => body.auxDataHash
       override def certs[L <: TxLevel](body: TxBody[L, Conway])(using
           l: TopOnly[L]
-      ): OSet[ConwayTxCert] =
+      ): Vector[ConwayTxCert] =
         l match
-          case TopOnly.Top => body.certs
+          case TopOnly.Top => body.certs.toVector
       override def vldt[L <: TxLevel](body: TxBody[L, Conway])(using
           l: TopOnly[L]
       ): ValidityInterval =
@@ -409,6 +409,12 @@ object ConwayTxBody:
       override def totalCollateral(body: ConwayTxBody): Option[Coin] = body.totalCollateral
       override def sizedCollateralReturn(body: ConwayTxBody): Option[Sized[ConwayTxOut]] =
         body.collateralReturn
+      // `withTopTxLevelOnly`, `Conway/TxBody.hs:453`, cardano-ledger f649f975
+      override def allSizedOutputs[L <: TxLevel](body: TxBody[L, Conway])(using
+          l: TopOnly[L]
+      ): Vector[Sized[ConwayTxOut]] =
+        l match
+          case TopOnly.Top => allSizedOutputsBabbage(body)
       override def currentTreasuryValue[L <: TxLevel](body: TxBody[L, Conway])(using
           l: TopOnly[L]
       ): Option[Coin] =

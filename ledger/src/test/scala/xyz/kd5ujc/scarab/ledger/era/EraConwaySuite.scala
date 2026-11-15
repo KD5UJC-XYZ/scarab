@@ -151,7 +151,7 @@ class EraConwaySuite extends munit.FunSuite:
       )
       // each output with the size of its encoding, the collateral return last
       assertEquals(
-        body.allSizedOutputs(c).map(o => (body.outputsOf.raw(o.value), o.size)),
+        body.allSizedOutputs[TxLevel.Top](c).map(o => (body.outputsOf.raw(o.value), o.size)),
         (flat.outputs ++ flat.collateralReturn).map(o => (o.raw, o.ledgerSize.toLong))
       )
       assertEquals(body.currentTreasuryValue[TxLevel.Top](c).map(_.value), flat.currentTreasury)

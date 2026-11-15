@@ -42,7 +42,12 @@ trait EraTxBody[E <: EraTag]:
   def fee(body: TxBody[TxLevel.Top, E]): Coin
   def withdrawals[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Map[RewardAccount, Coin]
   def auxDataHash[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Option[Bytes]
-  def certs[L <: TxLevel](body: TxBody[L, E])(using Level[L]): OSet[TxCert[E]]
+
+  /** `certsTxBodyL`: the certificates in order, a sequence in the class (`Core.hs:265`,
+    * cardano-ledger f649f975) whatever an era's body keeps them as (Conway's an `OSet`,
+    * `Conway/TxBody.hs:351-353`, cardano-ledger f649f975).
+    */
+  def certs[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Vector[TxCert[E]]
 
 /** The protocol-parameter update of a body, up to Babbage (`ShelleyEraTxBody`, whose instances end
   * at Babbage: `AtMostEra "Babbage"`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxBody.hs:97`,
@@ -110,11 +115,18 @@ trait BabbageEraTxBody[E <: EraTag] extends AlonzoEraTxBody[E]:
   final def collateralReturn(body: TxBody[TxLevel.Top, E]): Option[TxOut[E]] =
     sizedCollateralReturn(body).map(_.value)
 
-  /** `allSizedOutputsTxBodyF` (`allSizedOutputsBabbageTxBodyF`,
-    * `eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs:241-249`, cardano-ledger f649f975):
-    * the outputs and then the collateral return, of a top-level body.
+  /** `allSizedOutputsTxBodyF`, of a body of any level (`Babbage/TxBody.hs:121`, cardano-ledger
+    * f649f975): what each era's instance says for each of its levels.
     */
-  final def allSizedOutputs(body: TxBody[TxLevel.Top, E]): Vector[Sized[TxOut[E]]] =
+  def allSizedOutputs[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Vector[Sized[TxOut[E]]]
+
+  /** `allSizedOutputsBabbageTxBodyF` (`Babbage/TxBody.hs:241-249`, cardano-ledger f649f975): the
+    * outputs and then the collateral return of a top-level body, which an era's instance gives at
+    * the top level.
+    */
+  protected final def allSizedOutputsBabbage(
+      body: TxBody[TxLevel.Top, E]
+  ): Vector[Sized[TxOut[E]]] =
     sizedOutputs(body)(using top) ++ sizedCollateralReturn(body)
 
 /** The governance fields of a body, from Conway (`ConwayEraTxBody`,
