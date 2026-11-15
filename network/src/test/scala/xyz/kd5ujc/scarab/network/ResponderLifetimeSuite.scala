@@ -304,6 +304,79 @@ class ResponderLifetimeSuite extends FailsOnUncaught:
     }
   }
 
+  // A peer may cut its byte stream into SDUs as the mux protocol allows, so the message that ends
+  // one conversation and the first of the next can share one. The reference's mux returns a
+  // finished job's trailing bytes to the ingress queue, whose bytes start the next responder on
+  // demand (network-mux `Mux.hs` 345-351 and 437-450 at c45735a5, 346-352 and 438-451 at
+  // 4646039f)
+  test("a ChainSync conversation that starts in the SDU that ended the last one is served") {
+    Settled { settle =>
+      Probe.create.flatMap { probe =>
+        accepted(probe.handlers(parking = false)) { peer =>
+          def message(m: ChainSync.Message[Bytes]): Bytes =
+            ChainSync
+              .encode(ChainSync.State.Idle, ChainSync.Role.Client, m, codec)
+              .fold(e => fail(e.message), identity)
+          for
+            channel <- peer.mux.channel(Protocols.ChainSync, Mux.Role.Initiator)
+            first <- ChainSyncClient(channel, codec)
+            found <- first.findIntersect(Vector(Point.Origin))
+            _ <- channel.send(
+              message(ChainSync.Message.Done) ++
+                message(ChainSync.Message.FindIntersect(Vector(Point.Origin)))
+            )
+            reply <- IO.race(
+              settle,
+              channel.recv(65535)(
+                ChainSync.decodePrefix(ChainSync.State.Intersect, ChainSync.Role.Server, _, codec)
+              )
+            )
+            seen <- probe.seen
+          yield (found, reply, seen)
+        }
+      }
+    }.map { r =>
+      assertEquals(
+        r,
+        Right(
+          (
+            Some(Point.Origin -> Tip.Origin),
+            Right(ChainSync.Message.IntersectFound(Point.Origin, Tip.Origin)),
+            Vector(Seen.Opened, Seen.Closed, Seen.Opened)
+          )
+        )
+      )
+    }
+  }
+
+  test("a KeepAlive conversation that starts in the SDU that ended the last one is served") {
+    val cookie = KeepAlive.Cookie.from(7).getOrElse(fail("cookie"))
+    def message(m: KeepAlive.Message): Bytes =
+      KeepAlive
+        .encode(KeepAlive.State.Client, KeepAlive.Role.Client, m)
+        .fold(e => fail(e.message), identity)
+    Settled { settle =>
+      Probe.create.flatMap { probe =>
+        accepted(probe.handlers(parking = false)) { peer =>
+          for
+            channel <- peer.mux.channel(Protocols.KeepAlive, Mux.Role.Initiator)
+            first <- KeepAliveClient[IO](channel)
+            _ <- first.ping
+            _ <- channel.send(
+              message(KeepAlive.Message.Done) ++ message(KeepAlive.Message.Request(cookie))
+            )
+            reply <- IO.race(
+              settle,
+              channel.recv(65535)(
+                KeepAlive.decodePrefix(KeepAlive.State.Server, KeepAlive.Role.Server, _)
+              )
+            )
+          yield reply
+        }
+      }
+    }.map(r => assertEquals(r, Right(Right(KeepAlive.Message.Response(cookie)))))
+  }
+
   // ------------------------------------------------------------------ released
 
   /** What releases an accepted connection. */

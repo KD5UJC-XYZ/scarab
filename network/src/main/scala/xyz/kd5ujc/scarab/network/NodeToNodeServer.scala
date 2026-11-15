@@ -92,10 +92,14 @@ object NodeToNodeServer:
 
   /** Run the servers for the life of the resource. A failed server aborts the multiplexer, which
     * ends the connection; a client that finishes its protocol (`Done`) just ends that conversation,
-    * and the server waits for the next one on the same channel: a peer that demotes us from hot to
-    * warm and promotes us again starts each hot protocol afresh on the one bearer (the reference
-    * restarts its responders on demand the same way). With `peerSharing` (the connection agreed to
-    * it) the PeerSharing server runs too, on the established temperature like KeepAlive.
+    * and the server waits for the next one on the same channel, whose first byte starts it, a byte
+    * the finished conversation left in the channel included: a peer that demotes us from hot to
+    * warm and promotes us again starts each hot protocol afresh on the one bearer. The reference
+    * restarts a responder that ended cleanly on demand (ouroboros-network c45735a5
+    * `InboundGovernor.hs` 430-435), and its mux returns a finished job's trailing bytes to the
+    * ingress queue that starts it (network-mux `Mux.hs` 345-351). With `peerSharing` (the
+    * connection agreed to it) the PeerSharing server runs too, on the established temperature like
+    * KeepAlive.
     */
   def start[F[_]: Async, P](
       mux: Mux[F],
