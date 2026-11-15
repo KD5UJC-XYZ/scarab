@@ -5,6 +5,27 @@
   "consensus/src/main/scala"
  ],
  "entries": {
+  "def consensus.ByronRulesConfig#windowThreshold": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Protocol/PBFT.hs",
+     "symbol": "pbftWindowParams",
+     "lines": [
+      403,
+      413
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ByronWindowThresholdSuite"
+   ],
+   "note": "the threshold field of pbftWindowParams, for the configured signature threshold and a window its caller gives (ByronRules.update gives k, as pbftWindowSize does); the reference builds the window size and the threshold together from its configuration, and the floor into a Word64 is ByronRules.windowThreshold's, whose results the suite compares with values measured on GHC 9.10.3",
+   "digest": "c9f223416cf6a663"
+  },
   "def consensus.HardForkConfig#check": {
    "upstream": [
     {

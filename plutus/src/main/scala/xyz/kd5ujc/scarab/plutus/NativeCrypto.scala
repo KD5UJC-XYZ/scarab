@@ -21,36 +21,40 @@ import scalus.crypto.jni.{Blst as JniBlst, CryptoJni, Secp256k1 as JniSecp256k1,
   * @param sha256
   *   the sha-256 of that resource in the pinned jar
   */
-enum CryptoPlatform(val architecture: Architecture, val resource: String, val sha256: String):
+enum CryptoPlatform(
+    val architecture: Architecture,
+    val resource: String,
+    val sha256: LibraryDigest
+):
   case Linux64
       extends CryptoPlatform(
         Architecture.LINUX_64,
         "natives/linux_64/libscalus_crypto.so",
-        "ca17484cefcd8e6ecf5c706d1fa1144a874283516eb78e52a535daa02894934a"
+        LibraryDigest.pinned("ca17484cefcd8e6ecf5c706d1fa1144a874283516eb78e52a535daa02894934a")
       )
   case LinuxArm64
       extends CryptoPlatform(
         Architecture.LINUX_ARM64,
         "natives/linux_arm64/libscalus_crypto.so",
-        "8473caf6b844af4a40e502ffb8d6e210c3ff43867558ef3aeff17359198f293d"
+        LibraryDigest.pinned("8473caf6b844af4a40e502ffb8d6e210c3ff43867558ef3aeff17359198f293d")
       )
   case Osx64
       extends CryptoPlatform(
         Architecture.OSX_64,
         "natives/osx_64/libscalus_crypto.dylib",
-        "d6ed19b01a08a369ed28f46edb4b5ffa7c2c59e1f7c9f5b3539bd4650b8e8acf"
+        LibraryDigest.pinned("d6ed19b01a08a369ed28f46edb4b5ffa7c2c59e1f7c9f5b3539bd4650b8e8acf")
       )
   case OsxArm64
       extends CryptoPlatform(
         Architecture.OSX_ARM64,
         "natives/osx_arm64/libscalus_crypto.dylib",
-        "6897d67fbd5fc8df05093fbe80c244401693afd3baaedc2e9c7977fed31b7ff1"
+        LibraryDigest.pinned("6897d67fbd5fc8df05093fbe80c244401693afd3baaedc2e9c7977fed31b7ff1")
       )
   case Windows64
       extends CryptoPlatform(
         Architecture.WINDOWS_64,
         "natives/windows_64/scalus_crypto.dll",
-        "42325071a91a1bb8072d161832f879338c47ec243b095c4164ec51173eb6bda7"
+        LibraryDigest.pinned("42325071a91a1bb8072d161832f879338c47ec243b095c4164ec51173eb6bda7")
       )
 
   /** The platform directory of the jar (`linux_64`), for the log. */
@@ -60,18 +64,34 @@ object CryptoPlatform:
   def of(architecture: Architecture): Option[CryptoPlatform] =
     values.find(_.architecture == architecture)
 
+/** The sha-256 of a library's bytes, in the lowercase hex that [[CryptoPlatform]] pins and the log
+  * shows.
+  */
+opaque type LibraryDigest = String
+
+object LibraryDigest:
+  /** The digest of `bytes`. */
+  def of(bytes: Array[Byte]): LibraryDigest = NativeCrypto.sha256Hex(bytes)
+
+  /** A digest pinned in the source: a compile-time constant of 64 lowercase hex digits, checked
+    * when it compiles ([[LibraryDigestLiteral]]).
+    */
+  inline def pinned(inline hex: String): LibraryDigest = ${ LibraryDigestLiteral.checked('hex) }
+
+  extension (digest: LibraryDigest) def hex: String = digest
+
 /** The library `CryptoJni` is going to load, found as native-lib-loader will find it. */
 enum CryptoLibrary:
   /** A file on `java.library.path`: `NativeLoader.loadLibrary` tries `System.loadLibrary` first, so
     * this file is loaded instead of any resource.
     */
-  case OnLibraryPath(file: Path, sha256: String)
+  case OnLibraryPath(file: Path, sha256: LibraryDigest)
 
   /** A class path resource, extracted to `java.io.tmpdir` and loaded from there. */
-  case Resource(name: String, sha256: String)
+  case Resource(name: String, sha256: LibraryDigest)
 
   /** The sha-256 of the library's bytes. */
-  def digest: String = this match
+  def digest: LibraryDigest = this match
     case OnLibraryPath(_, sha) => sha
     case Resource(_, sha)      => sha
 
@@ -122,10 +142,10 @@ enum NativeCryptoProblem:
     case Missing(platform) =>
       s"libscalus_crypto for ${platform.directory} is neither on java.library.path nor on the class path"
     case Unpinned(platform, CryptoLibrary.OnLibraryPath(file, sha)) =>
-      s"libscalus_crypto on java.library.path ($file, sha-256 $sha) would be loaded instead of " +
+      s"libscalus_crypto on java.library.path ($file, sha-256 ${sha.hex}) would be loaded instead of " +
         s"the pinned ${platform.directory} build"
     case Unpinned(platform, CryptoLibrary.Resource(name, sha)) =>
-      s"the libscalus_crypto resource $name (sha-256 $sha) is not the pinned ${platform.directory} build"
+      s"the libscalus_crypto resource $name (sha-256 ${sha.hex}) is not the pinned ${platform.directory} build"
     case NotLoaded(platform, cause) =>
       s"libscalus_crypto for ${platform.directory} did not load" + cause.fold(
         "; java.io.tmpdir must be writable and allow execution"
@@ -179,7 +199,7 @@ object NativeCrypto:
       .iterator
       .map(dir => Paths.get(dir).resolve(fileName))
       .find(Files.isRegularFile(_))
-      .map(file => CryptoLibrary.OnLibraryPath(file, sha256Hex(Files.readAllBytes(file))))
+      .map(file => CryptoLibrary.OnLibraryPath(file, LibraryDigest.of(Files.readAllBytes(file))))
     val loader = classOf[NativeLibraryUtil].getClassLoader
     def resource: Option[CryptoLibrary] =
       List("natives/", "", "META-INF/lib").iterator
@@ -190,7 +210,7 @@ object NativeCrypto:
         .flatMap(name =>
           Option(loader.getResourceAsStream(name)).map { in =>
             val bytes = Using.resource(in)(_.readAllBytes())
-            CryptoLibrary.Resource(name, sha256Hex(bytes))
+            CryptoLibrary.Resource(name, LibraryDigest.of(bytes))
           }
         )
         .nextOption()

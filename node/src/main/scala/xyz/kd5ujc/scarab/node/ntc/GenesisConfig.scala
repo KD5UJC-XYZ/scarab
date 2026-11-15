@@ -53,6 +53,14 @@ object GenesisConfig:
     }
   )
 
+  /** `networkId` as the compact genesis writes it: `Mainnet` is 1, and any other name 0. The parser
+    * of the genesis text, where the name becomes the word written (STR-2).
+    */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.StringControlFlow"))
+  private def networkWord(name: String): Int = name match
+    case "Mainnet" => 1
+    case _         => 0
+
   private def get[A: io.circe.Decoder](c: ACursor, name: String): R[A] =
     c.downField(name).as[A].leftMap(e => Error.InvalidField(name, e))
 
@@ -74,7 +82,7 @@ object GenesisConfig:
         Either.catchNonFatal(Instant.parse(s)).leftMap(e => Error.InvalidSystemStart(s, e))
       )
       magic <- get[BigInt](c, "networkMagic")
-      network <- get[String](c, "networkId")
+      network <- get[String](c, "networkId").map(networkWord)
       active <- get[Json](c, "activeSlotsCoeff").flatMap(
         PositiveUnitInterval.fromJson(_).leftMap(Error.InvalidActiveSlotsCoeff(_))
       )
@@ -105,7 +113,7 @@ object GenesisConfig:
       val picos = BigInt(utc.getHour * 3600L + utc.getMinute * 60L + utc.getSecond) *
         BigInt(10).pow(12) + BigInt(utc.getNano) * 1000
       w.array(3).uint(utc.getYear).uint(utc.getDayOfYear).uint(picos)
-      w.uint(magic).uint(if network == "Mainnet" then 1 else 0)
+      w.uint(magic).uint(network)
       w.array(2).uint(active.numerator).uint(active.denominator)
       w.uint(k).uint(epochLength).uint(kesPeriod).uint(kesEvolutions)
       w.uint((slotLength * 1000000).toBigInt)

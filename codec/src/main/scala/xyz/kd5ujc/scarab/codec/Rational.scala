@@ -40,6 +40,9 @@ object Rational:
   val zero: Rational = Rational(0)
   val one: Rational = Rational(1)
 
+  // A kept site of ERR-4 (#1035): a zero denominator is a defect of the caller, as a division of a `BigInt` by
+  // zero is, and `apply` has no error channel; a total `apply` would change every caller.
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
   def apply(n: BigInt, d: BigInt = 1): Rational =
     require(d != 0, "zero denominator")
     val g = n.gcd(d) * d.signum

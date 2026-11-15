@@ -36,8 +36,23 @@ class NativeCryptoSuite extends CatsEffectSuite:
   test("every pin is the sha-256 of the resource the pinned scalus-crypto-jni jar ships") {
     CryptoPlatform.values.foreach { platform =>
       val bytes = resourceBytes(platform.resource).getOrElse(fail(s"no ${platform.resource}"))
-      assertEquals(NativeCrypto.sha256Hex(bytes), platform.sha256, platform.toString)
+      assertEquals(NativeCrypto.sha256Hex(bytes), platform.sha256.hex, platform.toString)
     }
+  }
+
+  test("a pin is a compile-time constant of 64 lowercase hex digits, or the build fails") {
+    val upper = compileErrors(
+      """LibraryDigest.pinned("CA17484CEFCD8E6ECF5C706D1FA1144A874283516EB78E52A535DAA02894934A")"""
+    )
+    val short = compileErrors("""LibraryDigest.pinned("ca17484c")""")
+    val computed = compileErrors("""val hex = "ca17484c"; LibraryDigest.pinned(hex)""")
+    val constant = compileErrors(
+      """object Pins { final val pin = "ca17484cefcd8e6ecf5c706d1fa1144a874283516eb78e52a535daa02894934a" }; LibraryDigest.pinned(Pins.pin)"""
+    )
+    assert(upper.contains("64 lowercase hex digits"), upper)
+    assert(short.contains("64 lowercase hex digits"), short)
+    assert(computed.nonEmpty, "a pin that is not a compile-time constant compiled")
+    assertEquals(constant, "", "a constant of 64 lowercase hex digits is a pin")
   }
 
   test("on Linux/amd64 the loader's resource name is the pinned one") {
@@ -71,8 +86,14 @@ class NativeCryptoSuite extends CatsEffectSuite:
   test("admission: a missing or unpinned library is refused, wherever it comes from") {
     val platform = CryptoPlatform.Linux64
     val pinned = CryptoLibrary.Resource(platform.resource, platform.sha256)
-    val other = CryptoLibrary.Resource(platform.resource, "00" * 32)
-    val onPath = CryptoLibrary.OnLibraryPath(Path.of("/usr/lib/libscalus_crypto.so"), "11" * 32)
+    val other = CryptoLibrary.Resource(
+      platform.resource,
+      LibraryDigest.pinned("0000000000000000000000000000000000000000000000000000000000000000")
+    )
+    val onPath = CryptoLibrary.OnLibraryPath(
+      Path.of("/usr/lib/libscalus_crypto.so"),
+      LibraryDigest.pinned("1111111111111111111111111111111111111111111111111111111111111111")
+    )
     val copied =
       CryptoLibrary.OnLibraryPath(Path.of("/usr/lib/libscalus_crypto.so"), platform.sha256)
     assertEquals(

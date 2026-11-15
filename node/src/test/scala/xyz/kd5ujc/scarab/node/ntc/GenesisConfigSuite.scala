@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node.ntc
 import io.circe.{Json, parser}
 import java.nio.file.{Files, Path}
 import munit.FunSuite
+import xyz.kd5ujc.scarab.codec.{Cbor, Value}
 
 /** `GetGenesisConfig` on the public networks' Shelley genesis files. `cardano-cli query tip` asks
   * for it (it reads the genesis parameters from the node), so a genesis that cannot be encoded
@@ -19,6 +20,19 @@ class GenesisConfigSuite extends FunSuite:
       val encoded = GenesisConfig.encode(genesis(network))
       assert(encoded.isRight, encoded.toString)
     }
+  }
+
+  test("networkId Mainnet is written as 1, and any other name as 0") {
+    def networkId(name: String): Value =
+      val encoded = GenesisConfig
+        .encode(genesis("preview").deepMerge(Json.obj("networkId" -> Json.fromString(name))))
+        .fold(e => fail(e.message), identity)
+      Cbor.decode(encoded).fold(e => fail(e.message), identity).value match
+        case Value.Arr(fields) => fields(2).value
+        case other             => fail(s"not an array: $other")
+    assertEquals(networkId("Mainnet"), Value.UInt(BigInt(1)))
+    assertEquals(networkId("Testnet"), Value.UInt(BigInt(0)))
+    assertEquals(networkId("Other"), Value.UInt(BigInt(0)))
   }
 
   test("a missing field is a typed failure carrying its JSON field") {

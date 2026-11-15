@@ -320,15 +320,20 @@ object ScalusEvaluator:
                 _ => EvalResult.Success(spent, log.getLogs.toVector)
               )
 
-  private val uplcByName: Map[String, UplcFun] =
-    UplcFun.values.iterator.map(fun => fun.toString -> fun).toMap
+  /** Each Scalus builtin's `uplc` builtin: the two enumerations joined once, by name, which is how
+    * the two libraries agree on a builtin. Afterwards a builtin is looked up as itself.
+    */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.StringControlFlow"))
+  private val uplcOf: Map[DefaultFun, UplcFun] =
+    val byName = UplcFun.values.iterator.map(fun => fun.toString -> fun).toMap
+    DefaultFun.values.iterator.flatMap(fun => byName.get(fun.toString).map(fun -> _)).toMap
 
   /** The `uplc` module's builtin of a Scalus builtin, by name: [[BackendFailure]] names builtins so
     * whichever backend reports them (ADR 0027). Every builtin of Scalus 1.4.0 has one, with the
     * same name, so a failure's message is the one it had when it held Scalus's
     * (`BackendFailureSuite`).
     */
-  private[plutus] def builtinOf(fun: DefaultFun): Option[UplcFun] = uplcByName.get(fun.toString)
+  private[plutus] def builtinOf(fun: DefaultFun): Option[UplcFun] = uplcOf.get(fun)
 
   /** [[BackendFailure.BuiltinUnavailable]] of a Scalus builtin; a builtin with no `uplc` name,
     * which `BackendFailureSuite` shows Scalus 1.4.0 does not have, is a defect.
