@@ -23,9 +23,10 @@ Three comparisons on one cluster, the Scala node following it with `--local-sock
      reason than the client finishing.
   5. LocalTxMonitor, byte for byte: bursts of chained transactions are submitted through the Scala
      socket (it forwards them to the reference node); one snapshot of each node is walked (sizes,
-     measures, every transaction, membership) and, when both hold the same slot and transactions,
-     every raw answer must be equal. `cardano-cli conway query tx-mempool info|next-tx|tx-exists`
-     is compared as text on both sockets, and AwaitAcquire must wake on both.
+     measures, every transaction, membership, also under another era's tag) and, when both hold the
+     same slot and transactions, every raw answer must be equal. `cardano-cli conway query
+     tx-mempool info|next-tx|tx-exists` is compared as text on both sockets, AwaitAcquire must wake
+     on both, and each transaction id an era's decoder refuses must end the connection on both.
 """
 import enum
 import itertools
@@ -37,7 +38,8 @@ import time
 
 from cleanup import container_labels
 from .. import cborspan, ledgercompare, ntccli, ntcquery, ntcsafety
-from ..ntclocal import Session, backlog_follow, compare_follow, live_follow, monitor_rounds, await_wakes, tx_id
+from ..ntclocal import (Session, backlog_follow, compare_follow, live_follow, monitor_rounds, await_wakes, tx_id,
+                        has_tx_ids)
 from ..eraload import names_constructor
 from ..cluster import database_mounts, freeze_classes, scala_container, up
 from ..ntccases import CLI, Builder, corpus
@@ -597,6 +599,7 @@ def monitor_comparison(args, root, out):
             print(json.dumps({"monitorBurst": number, "refused": len(refused), "rounds": stats["rounds"],
                               "comparable": stats["comparable"], "nonEmpty": stats["nonEmpty"]}), flush=True)
     out.update({"rounds": stats["rounds"], "comparable": stats["comparable"], "nonEmpty": stats["nonEmpty"],
+                "heldFound": stats.get("heldFound", {}),
                 "maxTxs": stats["maxTxs"], "differences": stats["differences"][:5], "cli": clis})
     # AwaitAcquire: after one acquire, both wait; a transaction through the Scala socket changes both pools
     extra = mempool_chain(builder, 1, 1)
@@ -607,7 +610,15 @@ def monitor_comparison(args, root, out):
                 submitter.submit(extra[0])
         first, answers = await_wakes(h2, s2, trigger)
     out["awaitAcquire"] = {"slotsHeld": list(first), "answers": {k: v for k, v in answers.items()}}
+    # transaction ids each era's decoder refuses, each on a connection of its own (#924)
+    out["hasTxIds"], out["hasTxFailures"] = has_tx_ids(lambda: bounded(open_h(args)), lambda: bounded(open_s(root)))
     print(json.dumps({"monitor": out}, default=str), flush=True)
+
+
+def bounded(session, seconds=30):
+    """`session` with a deadline: a node that neither answers nor closes fails the probe, not the run."""
+    session.deadline = seconds
+    return session
 
 
 def tx_id_of(tx):
@@ -735,6 +746,11 @@ def ntc(args):
             failures.append(f"local ChainSync: {chain_sync['error']}")
         if monitor.get("error") or monitor.get("differences") or monitor.get("nonEmpty", 0) < 3:
             failures.append(f"LocalTxMonitor: {json.dumps(monitor, default=str)[:600]}")
+        missed = {k: v for k, v in monitor.get("heldFound", {}).items() if v["bothTrue"] != v["asked"]}
+        if missed or "in Babbage" not in monitor.get("heldFound", {}):
+            failures.append(f"LocalTxMonitor: a held id not found on both nodes: {monitor.get('heldFound')}")
+        if "hasTxFailures" not in monitor or monitor["hasTxFailures"]:
+            failures.append(f"LocalTxMonitor HasTx ids: {monitor.get('hasTxFailures')}")
         wake = monitor.get("awaitAcquire", {}).get("answers", {})
         if not all(isinstance(wake.get(k), int) for k in ("h", "s")):
             failures.append(f"AwaitAcquire did not wake on both nodes: {wake}")

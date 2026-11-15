@@ -170,5 +170,83 @@ class BacklogRetryTest(unittest.TestCase):
         self.assertEqual(result["compared"], 4)
 
 
+
+class MonitorSession:
+    """A LocalTxMonitor session that answers `HasTx` false, or ends the connection on the ids
+    `closes` names."""
+
+    def __init__(self, closes, answer=b"\x82\x08\xf4", acquires=True):
+        self.closes, self.answer, self.acquires = closes, answer, acquires
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def acquire_snapshot(self):
+        if not self.acquires:
+            raise EOFError("node closed the connection")
+        return 1
+
+    def release_snapshot(self):
+        pass
+
+    def has_item(self, item):
+        if item in self.closes:
+            raise EOFError("node closed the connection")
+        return self.answer
+
+    def has_tx(self, txid, era=6):
+        return self.has_item(b"\x82" + bytes([era]) + cbor.enc(txid))
+
+
+class HasTxIdsTest(unittest.TestCase):
+    refused = set(ntclocal.REFUSED_IDS.values())
+
+    def test_chunked_is_two_definite_chunks_in_an_indefinite_string(self):
+        self.assertEqual(ntclocal.chunked(b"\x01\x02\x03\x04"), bytes.fromhex("5f420102420304ff"))
+
+    def test_every_refused_id_closes_on_both_and_the_accepted_ones_agree(self):
+        report, failures = ntclocal.has_tx_ids(lambda: MonitorSession(self.refused),
+                                               lambda: MonitorSession(self.refused))
+        self.assertEqual(failures, [])
+        self.assertEqual(set(report["refused"]), set(ntclocal.REFUSED_IDS))
+        self.assertTrue(report["healthyAfterRefusals"])
+
+    def test_an_answered_refused_id_fails(self):
+        answered = set(self.refused) - {ntclocal.REFUSED_IDS["era-8"]}
+        _, failures = ntclocal.has_tx_ids(lambda: MonitorSession(self.refused), lambda: MonitorSession(answered))
+        self.assertEqual(len(failures), 1)
+        self.assertIn("era-8", failures[0])
+
+    def test_a_connection_that_ends_before_the_id_is_sent_is_not_a_refusal(self):
+        refusing = iter([MonitorSession(self.refused)] + [MonitorSession(self.refused, acquires=False)] * 9
+                        + [MonitorSession(self.refused)])
+        report, failures = ntclocal.has_tx_ids(lambda: MonitorSession(self.refused), lambda: next(refusing))
+        self.assertEqual(len(failures), len(ntclocal.REFUSED_IDS))
+        self.assertTrue(all("setup" in row["scala"] and not row["scala"]["closed"]
+                            for row in report["refused"].values()))
+
+    def test_a_differing_answer_to_an_accepted_id_fails(self):
+        _, failures = ntclocal.has_tx_ids(lambda: MonitorSession(self.refused),
+                                          lambda: MonitorSession(self.refused, answer=b"\x82\x08\xf5"))
+        self.assertEqual(len(failures), len(ntclocal.ACCEPTED_IDS) + 1)
+
+
+class HeldFoundTest(unittest.TestCase):
+    def test_each_way_of_asking_is_counted_and_true_only_when_both_say_so(self):
+        yes, no = b"\x82\x08\xf5", b"\x82\x08\xf4"
+        h = {"steps": [("sizes", b"x"), ("has-absent", no), ("has 0", yes), ("has 0 in Babbage", yes),
+                       ("has 1", yes), ("has 1 in Babbage", yes), ("has 0 as a Byron transaction id", yes)]}
+        s = {"steps": [("sizes", b"x"), ("has-absent", no), ("has 0", yes), ("has 0 in Babbage", yes),
+                       ("has 1", yes), ("has 1 in Babbage", no), ("has 0 as a Byron transaction id", yes)]}
+        stats = {}
+        ntclocal.count_held_found(stats, h, s)
+        self.assertEqual(stats["heldFound"], {"in its own era": {"asked": 2, "bothTrue": 2},
+                                              "in Babbage": {"asked": 2, "bothTrue": 1},
+                                              "as a Byron transaction id": {"asked": 1, "bothTrue": 1}})
+
+
 if __name__ == "__main__":
     unittest.main()
