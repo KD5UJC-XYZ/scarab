@@ -28,7 +28,7 @@ import xyz.kd5ujc.scarab.ledger.era.conway.{
   ConwayTxCert,
   ConwayTxWits
 }
-import xyz.kd5ujc.scarab.ledger.state.Coin
+import xyz.kd5ujc.scarab.ledger.state.{Coin, EpochNo, KeyHash, StakePool}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** Conway's types (stage 2 of `docs/design/era-typed-transactions.md`): every recorded Conway body
@@ -160,7 +160,7 @@ class EraConwaySuite extends munit.FunSuite:
         body.votingProcedures[TxLevel.Top](c).toVector.map((v, m) => v -> m.toVector),
         flat.votes.map((v, m) => v -> m.sortBy(_._1)).sortBy(_._1)
       )
-      assertEquals(body.proposalProcedures[TxLevel.Top](c).toVector, flat.proposals)
+      assertEquals(body.proposalProcedures[TxLevel.Top](c).toVector.map(_.value), flat.proposals)
       assertEquals(body.treasuryDonation[TxLevel.Top](c).value, flat.donation)
       // a certificate's script witness is the one the flat rules ask for
       val typed = body.certs[TxLevel.Top](c).toVector
@@ -217,6 +217,7 @@ class EraConwaySuite extends munit.FunSuite:
     val sh = Bytes.fromHex(s).toOption.get
     val kh = Bytes.fromHex(k).toOption.get
     val ph = Bytes.fromHex(p).toOption.get
+    val pk = KeyHash.fromBytes[StakePool](ph).toOption.get
     val cred = xyz.kd5ujc.scarab.ledger.Credential.Script(sh)
     val drep = xyz.kd5ujc.scarab.ledger.DRep.AlwaysAbstain
     import ConwayTxCert.*
@@ -232,7 +233,7 @@ class EraConwaySuite extends munit.FunSuite:
       (s"8308${script}00", ConwayTxCertDeleg(ConwayUnRegCert(cred, Some(Coin(0)))), Some(sh), None),
       (
         s"8302$script$pool",
-        ConwayTxCertDeleg(ConwayDelegCert(cred, Delegatee.DelegStake(ph))),
+        ConwayTxCertDeleg(ConwayDelegCert(cred, Delegatee.DelegStake(pk))),
         Some(sh),
         None
       ),
@@ -244,13 +245,13 @@ class EraConwaySuite extends munit.FunSuite:
       ),
       (
         s"840a$script$pool$abstain",
-        ConwayTxCertDeleg(ConwayDelegCert(cred, Delegatee.DelegStakeVote(ph, drep))),
+        ConwayTxCertDeleg(ConwayDelegCert(cred, Delegatee.DelegStakeVote(pk, drep))),
         Some(sh),
         None
       ),
       (
         s"840b$script${pool}00",
-        ConwayTxCertDeleg(ConwayRegDelegCert(cred, Delegatee.DelegStake(ph), Coin(0))),
+        ConwayTxCertDeleg(ConwayRegDelegCert(cred, Delegatee.DelegStake(pk), Coin(0))),
         Some(sh),
         None
       ),
@@ -262,11 +263,16 @@ class EraConwaySuite extends munit.FunSuite:
       ),
       (
         s"850d$script$pool${abstain}00",
-        ConwayTxCertDeleg(ConwayRegDelegCert(cred, Delegatee.DelegStakeVote(ph, drep), Coin(0))),
+        ConwayTxCertDeleg(ConwayRegDelegCert(cred, Delegatee.DelegStakeVote(pk, drep), Coin(0))),
         Some(sh),
         None
       ),
-      (s"8304${pool}0a", ConwayTxCertPool(PoolCert.RetirePool(ph, 10)), None, Some(ph)),
+      (
+        s"8304${pool}0a",
+        ConwayTxCertPool(PoolCert.RetirePool(pk, EpochNo.fromUnsigned(10))),
+        None,
+        Some(ph)
+      ),
       (
         s"830e$script$key",
         ConwayTxCertGov(
@@ -325,6 +331,7 @@ class EraConwaySuite extends munit.FunSuite:
     val sh = Bytes.fromHex(s).toOption.get
     val kh = Bytes.fromHex(k).toOption.get
     val ph = Bytes.fromHex(p).toOption.get
+    val pk = KeyHash.fromBytes[StakePool](ph).toOption.get
     val cred = xyz.kd5ujc.scarab.ledger.Credential.Script(sh)
     val hot = xyz.kd5ujc.scarab.ledger.Credential.Key(kh)
     val drep = xyz.kd5ujc.scarab.ledger.DRep.AlwaysAbstain
@@ -334,10 +341,10 @@ class EraConwaySuite extends munit.FunSuite:
       s"8307${script}05" -> c.mkRegDepositTxCert(cred, Coin(5)),
       s"8201$script" -> c.mkUnRegTxCert(cred),
       s"8308${script}05" -> c.mkUnRegDepositTxCert(cred, Coin(5)),
-      s"8302$script$pool" -> c.mkDelegStakeTxCert(cred, ph),
+      s"8302$script$pool" -> c.mkDelegStakeTxCert(cred, pk),
       s"8309$script$abstain" -> c.mkDelegTxCert(cred, Delegatee.DelegVote(drep)),
-      s"840b$script${pool}05" -> c.mkRegDepositDelegTxCert(cred, Delegatee.DelegStake(ph), Coin(5)),
-      s"8304${pool}0a" -> c.mkRetirePoolTxCert(ph, 10),
+      s"840b$script${pool}05" -> c.mkRegDepositDelegTxCert(cred, Delegatee.DelegStake(pk), Coin(5)),
+      s"8304${pool}0a" -> c.mkRetirePoolTxCert(pk, EpochNo.fromUnsigned(10)),
       s"830e$script$key" -> c.mkAuthCommitteeHotKeyTxCert(cred, hot),
       s"830f${script}f6" -> c.mkResignCommitteeColdTxCert(cred, None),
       s"8410${script}05f6" -> c.mkRegDRepTxCert(cred, Coin(5), None),
@@ -351,8 +358,11 @@ class EraConwaySuite extends munit.FunSuite:
     assertEquals(c.getRegTxCert(c.mkRegDepositTxCert(cred, Coin(5))), None)
     assertEquals(c.getUnRegTxCert(c.mkUnRegDepositTxCert(cred, Coin(5))), None)
     assertEquals(c.getDelegStakeTxCert(c.mkDelegTxCert(cred, Delegatee.DelegVote(drep))), None)
-    assertEquals(c.getDelegStakeTxCert(c.mkDelegStakeTxCert(cred, ph)), Some((cred, ph)))
-    assertEquals(c.getRetirePoolTxCert(c.mkRetirePoolTxCert(ph, 10)), Some((ph, BigInt(10))))
+    assertEquals(c.getDelegStakeTxCert(c.mkDelegStakeTxCert(cred, pk)), Some((cred, pk)))
+    assertEquals(
+      c.getRetirePoolTxCert(c.mkRetirePoolTxCert(pk, EpochNo.fromUnsigned(10))),
+      Some((pk, EpochNo.fromUnsigned(10)))
+    )
     assertEquals(c.getUnRegDRepTxCert(c.mkRegDRepTxCert(cred, Coin(5), None)), None)
     assertEquals(c.getUpdateDRepTxCert(c.mkUpdateDRepTxCert(cred, None)), Some((cred, None)))
   }
@@ -499,6 +509,50 @@ class EraConwaySuite extends munit.FunSuite:
     (outputs ++ withScripts).foreach { out =>
       assertEquals(ConwayTxOut.fromStored(out).map(ConwayTxOut.toStored), Right(out), out.raw.hex)
     }
+  }
+
+  test("outputs are equal when their fields are, whatever the encoding they arrived as") {
+    // coin 1000000 in its shortest form and in eight bytes: one `BabbageTxOut` under the derived
+    // `Eq` (`Babbage/TxOut.hs:318-320`, cardano-ledger f649f975), two encodings kept
+    def stored(coin: String) =
+      xyz.kd5ujc.scarab.ledger.TxOut
+        .decode(
+          node(s"a200581d61${"ab" * 28}01$coin"),
+          xyz.kd5ujc.scarab.ledger.Address.Mode.Rigorous,
+          xyz.kd5ujc.scarab.ledger.TxOut.Forms.PairDatumHashOrMap,
+          ScriptKind.newestKnown
+        )(using ByteStrings.Definite)
+        .toOption
+        .get
+    val short = stored("1a000f4240")
+    val long = stored("1b00000000000f4240")
+    assertNotEquals(short.raw, long.raw)
+    val (a, b) = (ConwayTxOut.fromStored(short), ConwayTxOut.fromStored(long))
+    assertEquals(a, b)
+    assertEquals(a.map(_.hashCode), b.map(_.hashCode))
+    // each keeps the bytes it arrived as
+    assertEquals(a.map(ConwayTxOut.toStored).map(_.raw), Right(short.raw))
+    assertEquals(b.map(ConwayTxOut.toStored).map(_.raw), Right(long.raw))
+    assertNotEquals(ConwayTxOut.fromStored(stored("1a000f4241")), a)
+  }
+
+  test("proposals are equal when they mean the same, whatever the order of their withdrawals") {
+    // `[deposit, return account, [2, withdrawals, null], anchor]`: treasury withdrawals are a
+    // `Map AccountAddress Coin` (`Procedures.hs:826-834`, cardano-ledger f649f975), so one proposal
+    val (r1, r2) = (s"581de0${"a1" * 28}", s"581de0${"a2" * 28}")
+    def proposal(withdrawals: String) =
+      xyz.kd5ujc.scarab.ledger.Proposal
+        .decode(
+          node(s"8400$r1${"8302" + withdrawals + "f6"}${"826161" + "5820" + "cc" * 32}"),
+          xyz.kd5ujc.scarab.ledger.DecoderVersion.of(Era.Conway)
+        )
+        .toOption
+        .get
+    val (sorted, reversed) = (proposal(s"a2${r1}01${r2}02"), proposal(s"a2${r2}02${r1}01"))
+    assertNotEquals(sorted, reversed, "the flat proposals keep the entries in the order read")
+    assertEquals(ProposalProcedure(sorted), ProposalProcedure(reversed))
+    assertEquals(ProposalProcedure(sorted).hashCode, ProposalProcedure(reversed).hashCode)
+    assertNotEquals(ProposalProcedure(proposal(s"a2${r1}01${r2}03")), ProposalProcedure(sorted))
   }
 
   test("a stored output whose kept script is not what its bytes read as is refused") {

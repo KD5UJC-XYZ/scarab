@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Anchor, Credential, DRep, PoolIdentity, PoolParams}
-import xyz.kd5ujc.scarab.ledger.state.Coin
+import xyz.kd5ujc.scarab.ledger.state.{Coin, EpochNo, KeyHash, StakePool}
 
 /** A pool certificate (`data PoolCert`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxCert.hs:128-133`): the reference shares it
@@ -11,12 +11,12 @@ import xyz.kd5ujc.scarab.ledger.state.Coin
   */
 enum PoolCert:
   case RegPool(params: StakePoolParams)
-  case RetirePool(pool: Bytes, epoch: BigInt)
+  case RetirePool(pool: KeyHash[StakePool], epoch: EpochNo)
 
   /** The pool's key, which signs the certificate (`poolCertKeyHashWitness`). */
   def witness: Bytes = this match
     case RegPool(params)     => params.value.operator
-    case RetirePool(pool, _) => pool
+    case RetirePool(pool, _) => pool.bytes
 
 /** A pool's parameters as a certificate registers them (`data StakePoolParams`, cardano-ledger
   * f649f975 `libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:424-435`). The relays
@@ -42,9 +42,9 @@ object StakePoolParams:
   * pool, a DRep, or both. A delegation to neither has no value.
   */
 enum Delegatee:
-  case DelegStake(pool: Bytes)
+  case DelegStake(pool: KeyHash[StakePool])
   case DelegVote(drep: DRep)
-  case DelegStakeVote(pool: Bytes, drep: DRep)
+  case DelegStakeVote(pool: KeyHash[StakePool], drep: DRep)
 
 /** The staking certificates from Conway (`data ConwayDelegCert`, `Conway/TxCert.hs:473-486`,
   * cardano-ledger f649f975).

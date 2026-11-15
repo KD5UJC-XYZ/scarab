@@ -11,7 +11,6 @@ import xyz.kd5ujc.scarab.ledger.{
   DecodeField,
   GovActionId,
   LedgerDecodeError,
-  Proposal,
   RewardAccount,
   ScriptKind,
   TxIn,
@@ -34,6 +33,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   Network,
   OSet,
   Plutus,
+  ProposalProcedure,
   Sized,
   Timelock,
   TimelockScripts,
@@ -178,11 +178,11 @@ object ConwayScript:
           ConwayPlutusPurpose.ConwayProposing(_) =>
         None
     override def mkProposingPurpose[F[_, _]](
-        proposal: F[Unsigned[Unsigned.Width.W32], Proposal]
+        proposal: F[Unsigned[Unsigned.Width.W32], ProposalProcedure]
     ): ConwayPlutusPurpose[F] = ConwayPlutusPurpose.ConwayProposing(proposal)
     override def toProposingPurpose[F[_, _]](
         purpose: ConwayPlutusPurpose[F]
-    ): Option[F[Unsigned[Unsigned.Width.W32], Proposal]] = purpose match
+    ): Option[F[Unsigned[Unsigned.Width.W32], ProposalProcedure]] = purpose match
       case ConwayPlutusPurpose.ConwayProposing(proposal) => Some(proposal)
       case ConwayPlutusPurpose.ConwaySpending(_) | ConwayPlutusPurpose.ConwayMinting(_) |
           ConwayPlutusPurpose.ConwayCertifying(_) | ConwayPlutusPurpose.ConwayWithdrawing(_) |
@@ -297,7 +297,7 @@ final case class ConwayTxBody private (
     auxDataHash: Option[Bytes],
     networkId: Option[Network],
     votingProcedures: SortedMap[Voter, SortedMap[GovActionId, VotingProcedure]],
-    proposalProcedures: OSet[Proposal],
+    proposalProcedures: OSet[ProposalProcedure],
     currentTreasuryValue: Option[Coin],
     treasuryDonation: Coin
 ):
@@ -355,7 +355,7 @@ object ConwayTxBody:
       b.auxDataHash,
       network,
       SortedMap.from(b.votes.map((voter, votes) => voter -> SortedMap.from(votes))),
-      OSet.decoded(b.proposals),
+      OSet.decoded(b.proposals.map(ProposalProcedure(_))),
       b.currentTreasury.map(Coin(_)),
       Coin(b.donation)
     )
@@ -453,7 +453,7 @@ object ConwayTxBody:
           case TopOnly.Top => body.votingProcedures
       override def proposalProcedures[L <: TxLevel](body: TxBody[L, Conway])(using
           l: TopOnly[L]
-      ): OSet[Proposal] =
+      ): OSet[ProposalProcedure] =
         l match
           case TopOnly.Top => body.proposalProcedures
       override def treasuryDonation[L <: TxLevel](body: TxBody[L, Conway])(using

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.conway
 
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.ledger.{Anchor, Certificate, Credential}
 import xyz.kd5ujc.scarab.ledger.era.{
@@ -14,7 +15,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraTxError,
   PoolCert
 }
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway}
+import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, EpochNo, KeyHash, StakePool}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** A Conway certificate (`data ConwayTxCert era`, cardano-ledger f649f975
@@ -45,11 +46,12 @@ object ConwayTxCert:
     case Certificate.Unregister(cred, refund) =>
       Right(ConwayTxCertDeleg(ConwayDelegCert.ConwayUnRegCert(cred, refund.map(Coin(_)))))
     case Certificate.Delegate(cred, pool, drep, deposit) =>
-      val delegatee = (pool, drep) match
-        case (Some(p), Some(d)) => Right(Delegatee.DelegStakeVote(p, d))
-        case (Some(p), None)    => Right(Delegatee.DelegStake(p))
-        case (None, Some(d))    => Right(Delegatee.DelegVote(d))
-        case (None, None)       => Left(EraTxError.NoDelegatee)
+      val delegatee = (pool.traverse(poolKey), drep) match
+        case (Left(e), _)              => Left(e)
+        case (Right(Some(p)), Some(d)) => Right(Delegatee.DelegStakeVote(p, d))
+        case (Right(Some(p)), None)    => Right(Delegatee.DelegStake(p))
+        case (Right(None), Some(d))    => Right(Delegatee.DelegVote(d))
+        case (Right(None), None)       => Left(EraTxError.NoDelegatee)
       delegatee.map(to =>
         deposit match
           case Some(d) => ConwayTxCertDeleg(ConwayDelegCert.ConwayRegDelegCert(cred, to, Coin(d)))
@@ -58,7 +60,8 @@ object ConwayTxCert:
     case Certificate.RegisterPool(params) =>
       Right(ConwayTxCertPool(PoolCert.RegPool(StakePoolParams(params))))
     case Certificate.RetirePool(pool, epoch) =>
-      Right(ConwayTxCertPool(PoolCert.RetirePool(pool, epoch)))
+      (poolKey(pool), EpochNo.fromBigInt(epoch).leftMap(EraTxError.Vocab(_)))
+        .mapN((p, e) => ConwayTxCertPool(PoolCert.RetirePool(p, e)))
     case Certificate.RegisterDRep(cred, deposit, anchor) =>
       Right(ConwayTxCertGov(ConwayGovCert.ConwayRegDRep(cred, Coin(deposit), anchor)))
     case Certificate.UnregisterDRep(cred, refund) =>
@@ -72,6 +75,10 @@ object ConwayTxCert:
     case Certificate.GenesisDelegate(_, _, _) =>
       Left(EraTxError.NotInEra(EraField.GenesisDelegation))
     case Certificate.MoveRewards(_, _) => Left(EraTxError.NotInEra(EraField.InstantaneousRewards))
+
+  // The decoder read a pool's key hash as 28 bytes (`PoolId`), so it is one.
+  private def poolKey(pool: Bytes): Either[EraTxError, KeyHash[StakePool]] =
+    KeyHash.fromBytes[StakePool](pool).leftMap(EraTxError.Vocab(_))
 
   // The credential a staking certificate is witnessed by: none for a registration without a
   // deposit, kept from Shelley through Conway (`Conway/TxCert.hs:756-761`, cardano-ledger
@@ -124,9 +131,9 @@ object ConwayTxCert:
           case PoolCert.RegPool(params)  => Some(params)
           case PoolCert.RetirePool(_, _) => None
         }
-      override def mkRetirePoolTxCert(pool: Bytes, epoch: BigInt): ConwayTxCert =
+      override def mkRetirePoolTxCert(pool: KeyHash[StakePool], epoch: EpochNo): ConwayTxCert =
         ConwayTxCertPool(PoolCert.RetirePool(pool, epoch))
-      override def getRetirePoolTxCert(cert: ConwayTxCert): Option[(Bytes, BigInt)] =
+      override def getRetirePoolTxCert(cert: ConwayTxCert): Option[(KeyHash[StakePool], EpochNo)] =
         poolCert(cert).flatMap {
           case PoolCert.RetirePool(p, epoch) => Some((p, epoch))
           case PoolCert.RegPool(_)           => None
@@ -165,9 +172,14 @@ object ConwayTxCert:
               ConwayDelegCert.ConwayDelegCert(_, _) | ConwayDelegCert.ConwayRegDelegCert(_, _, _) =>
             None
         }
-      override def mkDelegStakeTxCert(credential: Credential, pool: Bytes): ConwayTxCert =
+      override def mkDelegStakeTxCert(
+          credential: Credential,
+          pool: KeyHash[StakePool]
+      ): ConwayTxCert =
         ConwayTxCertDeleg(ConwayDelegCert.ConwayDelegCert(credential, Delegatee.DelegStake(pool)))
-      override def getDelegStakeTxCert(cert: ConwayTxCert): Option[(Credential, Bytes)] =
+      override def getDelegStakeTxCert(
+          cert: ConwayTxCert
+      ): Option[(Credential, KeyHash[StakePool])] =
         getDelegTxCert(cert).flatMap {
           case (c, Delegatee.DelegStake(p))                                 => Some((c, p))
           case (_, Delegatee.DelegVote(_) | Delegatee.DelegStakeVote(_, _)) => None

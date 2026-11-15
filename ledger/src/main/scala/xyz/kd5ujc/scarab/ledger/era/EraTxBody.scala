@@ -6,14 +6,13 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
   GovActionId,
   LedgerDecodeError,
-  Proposal,
   RewardAccount,
   TxIn,
   Update,
   Voter,
   VotingProcedure
 }
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, EraTag, VocabError}
 
 /** The fields every era's body has (`EraTxBody`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:223-295`): the ones of a body of any level
@@ -54,6 +53,9 @@ trait EraTxBody[E <: EraTag]:
   * cardano-ledger f649f975).
   */
 trait ShelleyEraTxBody[E <: EraTag] extends EraTxBody[E]:
+  /** The certificates' class (the superclass `ShelleyEraTxCert era`, `Shelley/TxBody.hs:97`). */
+  override def certsOf: ShelleyEraTxCert[E]
+
   def update(body: TxBody[TxLevel.Top, E]): Option[Update]
 
 /** The slots a transaction is valid in, from Allegra (`data ValidityInterval`,
@@ -145,7 +147,7 @@ trait ConwayEraTxBody[E <: EraTag] extends BabbageEraTxBody[E]:
   def votingProcedures[L <: TxLevel](body: TxBody[L, E])(using
       Level[L]
   ): SortedMap[Voter, SortedMap[GovActionId, VotingProcedure]]
-  def proposalProcedures[L <: TxLevel](body: TxBody[L, E])(using Level[L]): OSet[Proposal]
+  def proposalProcedures[L <: TxLevel](body: TxBody[L, E])(using Level[L]): OSet[ProposalProcedure]
   def treasuryDonation[L <: TxLevel](body: TxBody[L, E])(using Level[L]): Coin
 
 /** Why bytes or a stored value are not a value of an era. */
@@ -157,6 +159,11 @@ enum EraTxError:
 
   /** A delegation to neither a pool nor a DRep, which no decoder reads. */
   case NoDelegatee
+
+  /** A field the decoder read that is not a value of its reference type (a key hash of the wrong
+    * length, an epoch out of `Word64`), which the decoder's own bounds rule out.
+    */
+  case Vocab(cause: VocabError)
 
   /** The scripts of a witness set read again from its bytes are not the ones its decoder read. */
   case ScriptsReadAgain

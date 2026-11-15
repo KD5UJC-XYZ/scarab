@@ -20,6 +20,12 @@ import xyz.kd5ujc.scarab.ledger.{
   * output, [[conway.ConwayScript]] behind Conway's. Each era's output is an opaque type over it, so
   * the representation is shared and the types are not.
   *
+  * Two outputs are equal when their address, value, datum and reference script are, as the
+  * reference's derived `Eq` compares its compact fields (`Babbage/TxOut.hs:318-320`, cardano-ledger
+  * f649f975): the bytes an output arrived as, and its value's size, are kept beside them and are
+  * not compared. An inline datum and a script compare by their own bytes, which the reference keeps
+  * (`BinaryData`, a script's `MemoBytes`).
+  *
   * @param valueSize
   *   the size in bytes of the value as it arrived, as the flat output keeps it
   * @param scriptRef
@@ -32,7 +38,12 @@ final case class BabbageTxOutRep[S](
     valueSize: Int,
     datum: Datum,
     scriptRef: Option[S]
-)
+):
+  override def equals(that: Any): Boolean = that match
+    case o: BabbageTxOutRep[?] =>
+      address == o.address && value == o.value && datum == o.datum && scriptRef == o.scriptRef
+    case _ => false
+  override def hashCode(): Int = (address, value, datum, scriptRef).hashCode
 
 object BabbageTxOutRep:
   // The read below is of `raw`, which this output was already decoded from under the policy of its

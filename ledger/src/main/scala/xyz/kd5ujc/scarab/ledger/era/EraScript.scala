@@ -3,13 +3,7 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.{
-  NativeScript as FlatNativeScript,
-  Proposal,
-  ScriptKind,
-  Unsigned,
-  Voter
-}
+import xyz.kd5ujc.scarab.ledger.{NativeScript as FlatNativeScript, ScriptKind, Unsigned, Voter}
 import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Conway, EraTag, Mary}
 
 /** The scripts of era `E` (`EraScript`, cardano-ledger f649f975
@@ -84,11 +78,11 @@ trait ConwayEraScript[E <: EraTag] extends AlonzoEraScript[E]:
       purpose: PlutusPurpose[F, E]
   ): Option[F[Unsigned[Unsigned.Width.W32], Voter]]
   def mkProposingPurpose[F[_, _]](
-      proposal: F[Unsigned[Unsigned.Width.W32], Proposal]
+      proposal: F[Unsigned[Unsigned.Width.W32], ProposalProcedure]
   ): PlutusPurpose[F, E]
   def toProposingPurpose[F[_, _]](
       purpose: PlutusPurpose[F, E]
-  ): Option[F[Unsigned[Unsigned.Width.W32], Proposal]]
+  ): Option[F[Unsigned[Unsigned.Width.W32], ProposalProcedure]]
 
 /** The native-script readers of every era whose native script is a [[Timelock]], written once over
   * the representation as the reference writes them once over `Timelock era`

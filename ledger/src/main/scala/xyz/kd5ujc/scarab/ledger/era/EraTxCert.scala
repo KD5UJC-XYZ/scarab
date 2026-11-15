@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Anchor, Credential}
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, EpochNo, EraTag, KeyHash, StakePool}
 
 /** The certificates of era `E` (`EraTxCert`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxCert.hs:43-106`). A certificate of the
@@ -21,8 +21,8 @@ trait EraTxCert[E <: EraTag]:
 
   def mkRegPoolTxCert(params: StakePoolParams): TxCert[E]
   def getRegPoolTxCert(cert: TxCert[E]): Option[StakePoolParams]
-  def mkRetirePoolTxCert(pool: Bytes, epoch: BigInt): TxCert[E]
-  def getRetirePoolTxCert(cert: TxCert[E]): Option[(Bytes, BigInt)]
+  def mkRetirePoolTxCert(pool: KeyHash[StakePool], epoch: EpochNo): TxCert[E]
+  def getRetirePoolTxCert(cert: TxCert[E]): Option[(KeyHash[StakePool], EpochNo)]
 
   /** The credential a certificate registers, by any of the era's registrations. */
   def lookupRegStakeTxCert(cert: TxCert[E]): Option[Credential]
@@ -47,8 +47,8 @@ trait ShelleyEraTxCert[E <: EraTag] extends EraTxCert[E]:
   def getUnRegTxCert(cert: TxCert[E]): Option[Credential]
 
   /** A delegation to a pool alone (tag 2). */
-  def mkDelegStakeTxCert(credential: Credential, pool: Bytes): TxCert[E]
-  def getDelegStakeTxCert(cert: TxCert[E]): Option[(Credential, Bytes)]
+  def mkDelegStakeTxCert(credential: Credential, pool: KeyHash[StakePool]): TxCert[E]
+  def getDelegStakeTxCert(cert: TxCert[E]): Option[(Credential, KeyHash[StakePool])]
 
 /** The staking and governance certificates from Conway (`ConwayEraTxCert`,
   * `eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:171-214`, cardano-ledger f649f975).
