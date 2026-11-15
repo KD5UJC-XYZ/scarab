@@ -40,6 +40,15 @@ Then:
 
 ## Build and run: Docker only
 
+- Before setting up an environment, read [CONTRIBUTING.md's build instructions](CONTRIBUTING.md#build-docker-only)
+  and the [reference image instructions](docs/reference-image.md). Reuse [scripts/sbtw](scripts/sbtw),
+  [docker/jdk.Dockerfile](docker/jdk.Dockerfile) and [scripts/prepare_reference_image.py](scripts/prepare_reference_image.py).
+  Run `bash scripts/preflight --doctor` and read its report to identify missing prerequisites; its exit status
+  is always zero, even when it reports warnings. Prepare only what is missing, reuse the documented dependency
+  cache, and verify with the documented build commands. Check reference-image requirements separately: the
+  doctor reports Docker, the JDK and the prepared dependency repository, not the Haskell reference images.
+  Do not create replacement setup scripts or wrappers without identifying a concrete gap in the existing tools.
+  Keep session-specific proxy and certificate adjustments outside the repository, with TLS verification enabled.
 - Never run `java` or `sbt` on the host. Build and test in the JDK image (`scarab-jdk:local`, built
   from `docker/jdk.Dockerfile`), as [CONTRIBUTING.md](CONTRIBUTING.md#build-docker-only) shows.
 - For many small edits use a persistent sbt server container **of your own**, and give it a private
