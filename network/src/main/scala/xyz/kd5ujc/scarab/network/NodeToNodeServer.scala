@@ -120,32 +120,43 @@ object NodeToNodeServer:
     // runs, when the connection counts its responders (for the peer's activity)
     def episode(temperature: Temperature, trigger: F[Unit])(run: F[Unit]): F[Unit] =
       responders.fold(run)(counted => trigger *> counted.running(temperature)(run))
-    def onDemand(protocol: Int): F[Unit] = mux.awaitResponderInput(protocol)
-    // `StartOnDemandAny`: the first byte of any responder starts it
-    val onDemandAny: F[Unit] =
-      application(peerSharing).reduceLeftTo(onDemand)((a, b) => Async[F].race(a, onDemand(b)).void)
+    // `StartOnDemand`: the first byte of its mini-protocol starts a responder; `started` counts
+    // the starts, for `StartOnDemandAny`
+    def onDemand(started: SignallingRef[F, Long])(protocol: Int): F[Unit] =
+      mux.awaitResponderInput(protocol) *> started.update(_ + 1)
+    // `StartOnDemandAny` (KeepAlive): a byte on its own channel starts it, or an on-demand
+    // responder that starts while it waits; a message to a responder that runs starts nothing
+    // (network-mux `Mux.hs` 444-450, 571-577 and 588-591 at ouroboros-network c45735a5; 445-451,
+    // 572-578 and 589-592 at 4646039f)
+    def onDemandAny(started: SignallingRef[F, Long]): F[Unit] =
+      started.get.flatMap(seen =>
+        Async[F]
+          .race(mux.awaitResponderInput(Protocols.KeepAlive), started.waitUntil(_ != seen))
+          .void
+      )
     for
       _ <- Resource.eval(
         mux.installApplication(if initiators then installed else Set.empty, installed)
       )
+      started <- Resource.eval(SignallingRef.of[F, Long](0L))
       chainSync <- channel(Protocols.ChainSync)
       blockFetch <- channel(Protocols.BlockFetch)
       txs <- channel(Protocols.TxSubmission2)
       keepAlive <- channel(Protocols.KeepAlive)
       _ <- guarded("chain-sync")(
-        episode(Temperature.Hot, onDemand(Protocols.ChainSync))(
+        episode(Temperature.Hot, onDemand(started)(Protocols.ChainSync))(
           handlers.chainSync
             .use(ChainSyncServer.run(chainSync, handlers.codec, _, settings.chainSync))
             .void
         ).foreverM[Unit]
       ).background
       _ <- guarded("block-fetch")(
-        episode(Temperature.Hot, onDemand(Protocols.BlockFetch))(
+        episode(Temperature.Hot, onDemand(started)(Protocols.BlockFetch))(
           BlockFetchServer.run(blockFetch, handlers.blocks, settings.blockFetch).void
         ).foreverM[Unit]
       ).background
       _ <- guarded("tx-submission")(
-        episode(Temperature.Hot, onDemand(Protocols.TxSubmission2))(
+        episode(Temperature.Hot, onDemand(started)(Protocols.TxSubmission2))(
           TxSubmissionServer.run(txs, handlers.transactions, settings.transactions).void
         ).foreverM[Unit]
       ).background
@@ -156,7 +167,7 @@ object NodeToNodeServer:
         responders.fold(
           mux.awaitResponderActivity *> KeepAliveServer.run(keepAlive, settings.keepAlive).void
         )(_ =>
-          episode(Temperature.Established, onDemandAny)(
+          episode(Temperature.Established, onDemandAny(started))(
             KeepAliveServer.run(keepAlive, settings.keepAlive).void
           )
             .foreverM[Unit]
@@ -167,7 +178,7 @@ object NodeToNodeServer:
         .traverse_ { source =>
           channel(Protocols.PeerSharing).flatMap { shared =>
             guarded("peer-sharing")(
-              episode(Temperature.Established, onDemand(Protocols.PeerSharing))(
+              episode(Temperature.Established, onDemand(started)(Protocols.PeerSharing))(
                 PeerSharingServer.run(shared, source, settings.peerSharing).void
               ).foreverM[Unit]
             ).background

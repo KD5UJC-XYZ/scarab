@@ -377,6 +377,95 @@ class ResponderLifetimeSuite extends FailsOnUncaught:
     }.map(r => assertEquals(r, Right(Right(KeepAlive.Message.Response(cookie)))))
   }
 
+  // ------------------------------------------------------------------ established ones end
+
+  /** What the peer ends after its KeepAlive conversation, once our KeepAlive responder waits for
+    * the next one. `closePeerConnection` ends every temperature at once (ouroboros-network c45735a5
+    * `PeerStateActions.hs` 1048-1080), so its `MsgDone` s come in any order.
+    */
+  private enum After:
+    /** PeerSharing says `MsgDone`. */
+    case PeerSharingDone
+
+    /** PeerSharing asks once more, then says `MsgDone`. */
+    case PeerSharingAsksThenDone
+
+    /** ChainSync says `MsgDone`, PeerSharing having ended before KeepAlive. */
+    case ChainSyncDone
+
+  // an armed `StartOnDemandAny` responder starts on its own channel's bytes or with an on-demand
+  // responder that starts (network-mux `Mux.hs` 444-450, 571-577, 588-591 at c45735a5; 445-451,
+  // 572-578, 589-592 at 4646039f): a message to a responder that runs starts nothing, so once the
+  // last responder ends the connection is `RemoteIdle` (`InboundGovernor.hs` 677-679) and the idle
+  // timer commits it (506-522)
+  for after <- After.values do
+    test(
+      s"a peer that ends KeepAlive before its other conversations leaves the connection idle, " +
+        s"released at the idle timeout: $after"
+    ) {
+      Settled
+        .timed { settle =>
+          Probe.create.flatMap { probe =>
+            accepted(probe.handlers(parking = false)) { peer =>
+              def remote: IO[List[RemoteSt]] =
+                settle *> peer.manager.remoteStates.map(_.values.toList)
+              for
+                (keepAlive, peerSharing, _) <- establishedRound(peer.mux)
+                chainSync <- chainSyncClient(peer.mux)
+                _ <- chainSync
+                  .findIntersect(Vector(Point.Origin))
+                  .whenA(after == After.ChainSyncDone)
+                _ <- peerSharing.done.whenA(after == After.ChainSyncDone)
+                _ <- keepAlive.done
+                // our KeepAlive responder waits for the next conversation
+                armed <- remote
+                _ <- after match
+                  case After.PeerSharingDone         => peerSharing.done
+                  case After.PeerSharingAsksThenDone => peerSharing.request(one) *> peerSharing.done
+                  case After.ChainSyncDone           => chainSync.done
+                idle <- remote
+                since <- IO.monotonic
+                end <- peer.end
+                now <- IO.monotonic
+              yield (armed, idle, end, now - since)
+            }
+          }
+        }
+        .map {
+          case Right((armed, idle, end, waited)) =>
+            val running = if after == After.ChainSyncDone then RemoteSt.Hot else RemoteSt.Warm
+            assertEquals(armed, List(running))
+            assertEquals(idle, List(RemoteSt.Idle))
+            assertEquals(end, Right(ConnectionEnd.Released))
+            assertEquals(waited, 5.seconds, "released at the protocol idle timeout")
+          case Left(error) => fail(error.message)
+        }
+    }
+
+  test("a peer whose connection went idle starts KeepAlive and PeerSharing again and is served") {
+    Settled { settle =>
+      Probe.create.flatMap { probe =>
+        accepted(probe.handlers(parking = false)) { peer =>
+          def remote: IO[List[RemoteSt]] = settle *> peer.manager.remoteStates.map(_.values.toList)
+          for
+            (keepAlive, peerSharing, first) <- establishedRound(peer.mux)
+            _ <- keepAlive.done
+            _ <- settle
+            _ <- peerSharing.done
+            idle <- remote
+            (_, _, second) <- establishedRound(peer.mux)
+            woken <- remote
+          yield (first, idle, second, woken)
+        }
+      }
+    }.map(r =>
+      assertEquals(
+        r,
+        Right((Vector.empty, List(RemoteSt.Idle), Vector.empty, List(RemoteSt.Warm)))
+      )
+    )
+  }
+
   // ------------------------------------------------------------------ released
 
   /** What releases an accepted connection. */
