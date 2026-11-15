@@ -42,6 +42,9 @@ class TreeTest(unittest.TestCase):
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / path, target)
         cls.baseline = fmt.surface(ROOT)
+        # The committed manifest's approval admits the committed surface, which the pristine copy is; a test that
+        # wants no approval, or another one, passes a whole manifest.
+        cls.approval = json.loads((ROOT / fmt.MANIFEST).read_text(encoding='utf-8')).get('approval')
 
     @classmethod
     def tearDownClass(cls):
@@ -64,9 +67,11 @@ class TreeTest(unittest.TestCase):
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text(text, encoding='utf-8')
 
-    def check(self, manifest=None, approval=None):
-        held = {'surface': self.baseline, 'approval': approval} if manifest is None else manifest
-        return fmt.problems(self.root, held, NOW)
+    def check(self, manifest=None):
+        held = {'surface': self.baseline, 'approval': self.approval} if manifest is None else manifest
+        # The real clock, not NOW: the committed approval was decided after NOW, and an approval is refused only when
+        # it is in the future of the check.
+        return fmt.problems(self.root, held, datetime.now(timezone.utc))
 
     def assertLoud(self, reports, *fragments):
         self.assertTrue(reports, 'the guard was silent')

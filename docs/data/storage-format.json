@@ -4,7 +4,13 @@
   "Persisted formats are frozen until Scarab leaves pre-release. This file changes only in a storage format change of its own, approved by the owner in the chat session doing the work in answer to an explicit question asked there before the change was written.",
   "`approval` records that question and the owner's decision, in neutral words and never as a quotation, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (bc0e4995a, after #994 merged) on 2026-11-14, when the freeze began, which approves nothing."
  ],
- "approval": null,
+ "approval": {
+  "question": "Storage format freeze: #1017 (merged) extended the storage-format tests. CodecSuite now pins the V10 snapshot header bytes of the new `11.2` build name (0431312e32), and SnapshotV10MigrationSuite checks that a V10 file recorded under `11.2` is refused by the 11.1 and Leios codecs. No codec, format version, fingerprint or fixture changed. #1008's freeze guard counts those test files as part of the format surface, so main now fails it. May I record this as approved in docs/data/storage-format.json, with this question and your answer and their UTC times, in a `(storage)!` PR of its own?",
+  "asked_at": "2026-11-15T18:07:08Z",
+  "decision": "Approved: #1017's additions to the storage format tests for the `11.2` build name are admitted under the freeze and recorded here, in a pull request of their own.",
+  "decided_at": "2026-11-15T18:09:10Z",
+  "surface_sha256": "b0e99302a7272cdd786c2cc1bfd7a59db0b6ea20de449b122df159c572bf0a5c"
+ },
  "surface": {
   "registry": {
    "versions": [
@@ -321,6 +327,7 @@
      "03010203",
      "03015180",
      "0431312e31",
+     "0431312e32",
      "06",
      "0e6c65696f732d6230303466653063",
      "20",
@@ -378,7 +385,7 @@
      "the initial state is not Byron",
      "the reader never reads past its limit, wherever a value straddles its buffer"
     ],
-    "code_sha256": "e620ea0a8a7498a905fa8074f365353fd379743061a43f57f3f99cfa2082cd69"
+    "code_sha256": "a9745b050ac6b0d5ed23eb1bd0e11f2b176ae32ca9447a94743e474e37bb8322"
    },
    "storage/src/test/scala/xyz/kd5ujc/scarab/storage/FormatGoldenSuite.scala": {
     "literals": [
@@ -491,7 +498,7 @@
   },
   "previous_version_suites": {
    "node/src/test/scala/xyz/kd5ujc/scarab/storage/NetworkIdentityV9Suite.scala": "49b14bec11130a92faf00540155bf843ca78da7dde004f0154a9075bc6b2afb6",
-   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV10MigrationSuite.scala": "42bc318ca8abbc3f40d69c9f4351101ce5922df2b4add604d128238fc75ab111",
+   "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV10MigrationSuite.scala": "e0c1cdceeca9dcaeeeaad3be2a841832af9821ab417daedcd5ad7752afc86576",
    "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV8MigrationSuite.scala": "fbfdb32f862e52bed704e62e1ab651190087cfafc01814e21e9ab518d0e19323",
    "node/src/test/scala/xyz/kd5ujc/scarab/storage/SnapshotV9MigrationSuite.scala": "077465edba5d29f00efc9371a0ce4bcd44eb3d2016def5a5fc24fb9c0dbf508d",
    "storage/src/test/scala/xyz/kd5ujc/scarab/storage/FormatMigrationSuite.scala": "6f3da29eae04425b0312d9013f0825208b5def3988640e5220b0572ce0a997ec"
