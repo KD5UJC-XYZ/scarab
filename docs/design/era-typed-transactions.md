@@ -445,11 +445,28 @@ Conway's rules on the classes follow as the rest of stage 2.
   what its bytes read as, which only a damaged store holds (`StoredOutputDiffers`). Every recorded Conway
   output, and outputs with native, Plutus V1, V2 and V3 reference scripts, read and are written back
   unchanged.
-- **Next, the protocol parameters.** The flat `ProtocolParams` is one record of every era's fields, and it
-  is stored. Each era's parameters will be an opaque type over that stored form, as the outputs are. The
-  reference's parameter classes (`EraPParams` to `ConwayEraPParams`) expose an era's fields only. The first
-  rule ported is one that needs no parameters, the second one that does, each under a differential
-  against the flat rule on the recorded blocks and the refusal corpus.
+- **The protocol parameters** (decided 2026-11-15, #85) mirror the reference's higher-kinded record
+  (`PParamsHKD f era`, `Core/PParams.hs:376`): Conway's record `ConwayPParams[F[_]]` has the reference's
+  fields at the reference's types, in its order, each tagged with its groups (`THKD`). With `F` the
+  identity it is the parameters, with `F` an option an update, and the protocol version is the one field an
+  update cannot set (`HKDNoUpdate`, a match type on `F`). The classes `EraPParams` to `ConwayEraPParams`
+  have one lens per field generic in `F`, so one lens reads the parameters and an update.
+  - The record is read from the stored `ProtocolParams` and the decoded `ConwayParamUpdate`, and written
+    back over the stored record. No persisted format changes. The recorded Conway state's current and
+    previous parameters come back unchanged; it has no future parameters.
+  - Each field is at the reference's type, so a voting threshold outside `[0, 1]`, negative execution units
+    or a cost model outside its `Word8` tag and `Int64` parameters is refused.
+  - Against the flat rules, on generated updates and on every recorded Preview parameter change: applying an
+    update, `ppuWellFormed` and `modifiedPPGroups` agree.
+  - A member the reference confines to a range of eras (`AtMostEra`, `ExactEra`) is a class of its own per
+    range, with instances at exactly those eras (decided 2026-11-15, #85). None of those eras has its record
+    yet, so `EraPParams` lands without its five ranged members, and `AlonzoEraPParams` without
+    `hkdCoinsPerUTxOWordL`.
+  - Not yet: the upgrade and downgrade of the parameters, which need Babbage's record; `eraPParams`, the
+    parameters' descriptions; the update as Plutus data; and the reference's order of the parameters
+    and of an update. Each is on #85's checklist.
+- **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
+  does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
   delegation, instantaneous rewards) the flat Conway decoder refuses first, with the same error, as tests on
   crafted bytes show.

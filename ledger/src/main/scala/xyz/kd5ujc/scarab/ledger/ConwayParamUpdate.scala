@@ -47,6 +47,21 @@ object Unsigned:
 
   extension [W <: Width](u: Unsigned[W]) def value: BigInt = u
 
+  /** A constant of the width `W`, checked when it is compiled: a literal outside the width does not
+    * compile.
+    */
+  inline def lit[W <: Width](inline n: Long): Unsigned[W] =
+    inline if n < 0 then scala.compiletime.error("a negative word")
+    else
+      inline scala.compiletime.erasedValue[W] match
+        case _: Width.W8 =>
+          inline if n > 0xffL then scala.compiletime.error("beyond Word8") else BigInt(n)
+        case _: Width.W16 =>
+          inline if n > 0xffffL then scala.compiletime.error("beyond Word16") else BigInt(n)
+        case _: Width.W32 =>
+          inline if n > 0xffffffffL then scala.compiletime.error("beyond Word32") else BigInt(n)
+        case _: Width.W64 => BigInt(n)
+
 import Unsigned.Width.{W16, W32, W64}
 
 /** The DRep group of a Conway parameter (`DRepGroup`, `Conway/PParams.hs:538-548`, f649f975). */

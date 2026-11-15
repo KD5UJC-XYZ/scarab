@@ -1,0 +1,3 @@
+### Added (era types, #85)
+
+- Conway's protocol parameters have an era type of their own (`ConwayPParams`), mirroring the reference's higher-kinded record: one record serves as the parameters and as an update, each field at the reference's type and tagged with its governance groups, and the protocol version is a field an update cannot set. The reference's parameter classes (`EraPParams`, `AlonzoEraPParams`, `BabbageEraPParams`, `ConwayEraPParams`) have Conway's instances, with one lens per field for both the parameters and an update. The record is read from the parameters the node keeps and written back unchanged; applying an update, its well-formedness and its groups agree with the existing rules. No rule uses it yet, so behaviour does not change.
