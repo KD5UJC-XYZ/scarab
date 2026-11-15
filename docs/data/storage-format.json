@@ -5,11 +5,11 @@
   "`approval` records that question and the owner's decision, in neutral words and never as a quotation, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (bc0e4995a, after #994 merged) on 2026-11-14, when the freeze began, which approves nothing."
  ],
  "approval": {
-  "question": "Storage format freeze: #1021 (stricter compiler checks) carries two source-only edits in files on the frozen storage-format surface. No bytes, format version, codec output, fingerprint or fixture change. (1) LedgerSnapshots.scala, FileLedgerSnapshots.readFile: removes an unused `(using Raise[F, StorageError])`, flagged by -Wunused:implicits. (2) NetworkIdentity.scala: `Some(None)` becomes `Some[Option[Bytes]](None)` at two sites, flagged by -Winfer-union. The freeze guard digests those whole definitions, so any edit trips it. How should I handle them?",
-  "asked_at": "2026-11-15T19:28:16Z",
-  "decision": "Approved: the two source-only edits, with no change to any persisted byte, are admitted under the freeze in a pull request of their own, and #1021 rebases onto it.",
-  "decided_at": "2026-11-15T19:29:34Z",
-  "surface_sha256": "5d5bfec12e1e15eeea09b5b1dbeec91b6b2a55cfa048cc3cd9d2835530ded820"
+  "question": "Storage format change for #998, confirming your 13:47Z choice of option A in the freeze guard's terms: the persisted script codec (NodeCodecs.script) changes from a derived codec to an explicit one over Script's four current fields, pinned by a shape test and byte goldens. Persisted bytes and every sidecar schema fingerprint stay identical; this was shown against main's derived codec over 20,000 generated scripts. The format-freeze guard sees a codec-definition change. May I record this storage format change as approved in docs/data/storage-format.json, in a `(storage)!` PR of its own?",
+  "asked_at": "2026-11-15T20:33:44Z",
+  "decision": "Approved: the persisted script codec becomes an explicit codec of Script's four current fields, pinned by a shape test and byte goldens, with persisted bytes and schema fingerprints unchanged, in a pull request of its own.",
+  "decided_at": "2026-11-15T20:34:46Z",
+  "surface_sha256": "8cc472555d0fdd4f53747edd2c7c2fcfa0fc56c75705c669c183cf021e59ed16"
  },
  "surface": {
   "registry": {
@@ -253,7 +253,7 @@
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/Codec.scala": "4609832427c5a9a6a51a10af9dc39468c82fcfb2edcf2fe205f4027bf8dbe547",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/Migrate.scala": "df1ac6aa1c643ba755072cb43b0efd1b35d452ec74789a50b0ddc40c5908a150",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/NetworkIdentityFile.scala": "c9a54d01a7d73d4138418b444c1460cd77c144eb338faa6c8cc5ec1165ce5cee",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/NodeCodecs.scala": "be22c711d2e5ac1933f90ea8ef65ce94888bc35840fe49d704f145182555cade",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/NodeCodecs.scala": "e119b5f1c948f554b02d157d2753174d193051e3088f0b289b7f3189c621f329",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ProductFields.scala": "1ed8c65c8fa67d29c4a205cde6f9d259d6dc2fb86d9fab900e743fdc27ad48fc",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala": "25e4606de501019a542cf49c3905897b5dd30185bfb0f0d79ecafe064ee62d90",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecar.scala": "8936c1c5b3ef5ad1ef96e303c142485c3914490cb1625e7f7248250446109860",
@@ -309,10 +309,16 @@
   "goldens": {
    "node/src/test/scala/xyz/kd5ujc/scarab/storage/CodecSuite.scala": {
     "literals": [
+     "",
+     " ",
      "$i%02x",
      "${b & 0xff}%02x",
      "00",
+     "00 1c${hex(scriptHash.toArray)} 01 0103 001c${hex(keyHash.toArray)} 0201 040100",
+     "00 1d61${hex(keyHash.toArray)} 00 01 001c${hex(keyHash.toArray)} 00 00",
      "01",
+     "01 1c$hash 00 00",
+     "01 1c$hash 00 01 0746010000220011",
      "0100",
      "010101",
      "01010102",
@@ -320,12 +326,18 @@
      "0101090105",
      "01ac02",
      "01ff",
+     "02 1c$hash 00 00",
+     "02 1c$hash 00 01 0746010000220011",
      "020020",
      "020100",
      "0210e1",
+     "03 0101 01 05 0900ffffffffffffffff 00",
+     "03 1c$hash 00 00",
+     "03 1c$hash 00 01 0746010000220011",
      "03010001",
      "03010203",
      "03015180",
+     "031e8480 00 00 01",
      "0431312e31",
      "0431312e32",
      "06",
@@ -338,6 +350,7 @@
      "96de6ee331c309c3",
      "Account",
      "Address",
+     "AnyOf(Vector[NativeScript])|NOfK(BigInt,Vector[NativeScript])|InvalidBefore(BigInt)|",
      "BigInt",
      "BlockRef",
      "Byron version snapshot readers reject values outside the reference widths",
@@ -350,6 +363,7 @@
      "Credential",
      "Era",
      "FollowState",
+     "InvalidHereafter(BigInt)}],plutus:Option[Bytes])",
      "Map",
      "NativeScript",
      "Nonce",
@@ -359,6 +373,7 @@
      "Rational",
      "SCRBSNPA",
      "SHA-256",
+     "Script(kind:ScriptKind{Native|PlutusV1|PlutusV2|PlutusV3},hash:Bytes,",
      "TxIn",
      "TxOut",
      "US-ASCII",
@@ -366,6 +381,7 @@
      "a huge collection count is rejected without allocating",
      "a strict prefix of an encoding never decodes",
      "an encoding with trailing bytes does not decode",
+     "an output built with a reference script is stored by the codec, its script as before",
      "bd43aa08b4fae886",
      "decoded $back",
      "decoding arbitrary bytes never throws",
@@ -380,12 +396,14 @@
      "golden: the schema fingerprint and encodings of the V7 checkpoint binding",
      "golden: the schema fingerprint of the sidecar of the V5 body (V10)",
      "golden: the sidecar of the initial state of the eras fixture encodes to a fixed digest",
+     "native:Option[NativeScript{Sig(Bytes)|AllOf(Vector[NativeScript])|",
      "round trip: $name",
+     "scripts keep the layout and schema of their four derived fields",
      "size $size",
      "the initial state is not Byron",
      "the reader never reads past its limit, wherever a value straddles its buffer"
     ],
-    "code_sha256": "a9745b050ac6b0d5ed23eb1bd0e11f2b176ae32ca9447a94743e474e37bb8322"
+    "code_sha256": "9f7651efc9d2ca8595ee45d77f87ec49ba0d11f761098b9dfa9ed08bd871fe07"
    },
    "storage/src/test/scala/xyz/kd5ujc/scarab/storage/FormatGoldenSuite.scala": {
     "literals": [
