@@ -231,7 +231,7 @@ object ChainSelection:
         NonEmptyVector.fromVector(headers.drop(common)) match
           case None       => Decision.Keep
           case Some(take) =>
-            // AnchoredFragment.hs:195–201 (ouroboros-consensus 82ecba32) compares an empty selected
+            // AnchoredFragment.hs:192–196 (ouroboros-consensus 82ecba32) compares an empty selected
             // fragment by point, not its anchor's selection view. In particular a boundary block
             // may repeat blockNo.
             if local.blocks.isEmpty || prefersCandidate(
