@@ -175,6 +175,14 @@ enum ProtocolError extends DomainError:
     */
   case UndecodableTransaction(cause: DomainError)
 
+  /** The transaction id of a LocalTxMonitor `MsgHasTx` that its era's decoder refuses, with the
+    * node's typed reason (kept as the `DomainError` it is, as for [[UndecodableTransaction]]). The
+    * reference reads the id in the codec (`decodeTxId`,
+    * `ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/LocalTxMonitor/Codec.hs:135-137`,
+    * c45735a5), so a refused id fails the codec and ends the connection.
+    */
+  case UndecodableTxId(cause: DomainError)
+
   def incomplete: Boolean = this match
     case TruncatedCbor | IncompleteCbor | TruncatedList => true
     case _                                              => false
@@ -355,6 +363,7 @@ enum ProtocolError extends DomainError:
     case PeerSharing(cause)            => cause.message
     case Leios(cause)                  => cause.toString
     case UndecodableTransaction(cause) => s"undecodable transaction: $cause"
+    case UndecodableTxId(cause)        => s"undecodable transaction id: $cause"
 
 object ProtocolError:
   enum MonitorField:
