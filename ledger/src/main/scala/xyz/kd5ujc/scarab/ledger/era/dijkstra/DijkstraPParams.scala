@@ -1,0 +1,333 @@
+// SPDX-License-Identifier: Apache-2.0
+package xyz.kd5ujc.scarab.ledger.era.dijkstra
+
+import scala.collection.immutable.SortedSet
+import xyz.kd5ujc.scarab.ledger.Unsigned
+import xyz.kd5ujc.scarab.ledger.Unsigned.Width.{W16, W32}
+import xyz.kd5ujc.scarab.ledger.era.*
+import xyz.kd5ujc.scarab.ledger.era.conway.{DRepVotingThresholds, PoolVotingThresholds}
+import xyz.kd5ujc.scarab.ledger.state.{Coin, CompactCoin, EpochInterval, NonZero}
+
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams.{Eco, Gov, Net, NoPool, Sec, Tech}
+
+/** Dijkstra's protocol parameters as higher-kinded data (`data DijkstraPParams f era`,
+  * cardano-ledger 9df9f98c `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:161-300`):
+  * Conway's fields, then the reference scripts' limits and costs, the pledge leverage and pool
+  * margin, Leios's and Peras's parameters, and the reference inputs' costs. With `F` the
+  * [[Identity]] they are the parameters, with `F` [[StrictMaybe]] an update. The fields are the
+  * reference's, in its order, each tagged with its groups ([[THKD]]); the protocol version is the
+  * one field an update cannot set ([[HKDNoUpdate]]). Equal as the reference derives `Eq`.
+  */
+final case class DijkstraPParams[F[_]](
+    txFeePerByte: THKD[Groups[Eco, Sec], F, CoinPerByte],
+    txFeeFixed: THKD[Groups[Eco, Sec], F, CompactCoin],
+    maxBBSize: THKD[Groups[Net, Sec], F, Unsigned[W32]],
+    maxTxSize: THKD[Groups[Net, Sec], F, Unsigned[W32]],
+    maxBHSize: THKD[Groups[Net, Sec], F, Unsigned[W16]],
+    keyDeposit: THKD[Groups[Eco, NoPool], F, CompactCoin],
+    poolDeposit: THKD[Groups[Eco, NoPool], F, CompactCoin],
+    eMax: THKD[Groups[Tech, NoPool], F, EpochInterval],
+    nOpt: THKD[Groups[Tech, NoPool], F, Unsigned[W16]],
+    a0: THKD[Groups[Tech, NoPool], F, NonNegativeInterval],
+    rho: THKD[Groups[Eco, NoPool], F, UnitInterval],
+    tau: THKD[Groups[Eco, NoPool], F, UnitInterval],
+    protocolVersion: HKDNoUpdate[F, ProtVer],
+    minPoolCost: THKD[Groups[Eco, NoPool], F, CompactCoin],
+    coinsPerUTxOByte: THKD[Groups[Eco, Sec], F, CoinPerByte],
+    costModels: THKD[Groups[Tech, NoPool], F, CostModels],
+    prices: THKD[Groups[Eco, NoPool], F, Prices],
+    maxTxExUnits: THKD[Groups[Net, NoPool], F, OrdExUnits],
+    maxBlockExUnits: THKD[Groups[Net, Sec], F, OrdExUnits],
+    maxValSize: THKD[Groups[Net, Sec], F, Unsigned[W32]],
+    collateralPercentage: THKD[Groups[Tech, NoPool], F, Unsigned[W16]],
+    maxCollateralInputs: THKD[Groups[Net, NoPool], F, Unsigned[W16]],
+    poolVotingThresholds: THKD[Groups[Gov, NoPool], F, PoolVotingThresholds],
+    drepVotingThresholds: THKD[Groups[Gov, NoPool], F, DRepVotingThresholds],
+    committeeMinSize: THKD[Groups[Gov, NoPool], F, Unsigned[W16]],
+    committeeMaxTermLength: THKD[Groups[Gov, NoPool], F, EpochInterval],
+    govActionLifetime: THKD[Groups[Gov, NoPool], F, EpochInterval],
+    govActionDeposit: THKD[Groups[Gov, Sec], F, CompactCoin],
+    drepDeposit: THKD[Groups[Gov, NoPool], F, CompactCoin],
+    drepActivity: THKD[Groups[Gov, NoPool], F, EpochInterval],
+    minFeeRefScriptCostPerByte: THKD[Groups[Eco, Sec], F, NonNegativeInterval],
+    maxRefScriptSizePerBlock: THKD[Groups[Net, Sec], F, Unsigned[W32]],
+    maxRefScriptSizePerTx: THKD[Groups[Net, Sec], F, Unsigned[W32]],
+    refScriptCostStride: THKD[Groups[Net, Sec], F, NonZero[Unsigned[W32]]],
+    refScriptCostMultiplier: THKD[Groups[Net, Sec], F, PositiveInterval],
+    maxPledgeLeverage: THKD[Groups[Tech, NoPool], F, MaxPledgeLeverage],
+    minPoolMargin: THKD[Groups[Eco, NoPool], F, UnitInterval],
+    leiosAnnouncementPeriodLength: THKD[Groups[Net, Sec], F, Milliseconds32],
+    leiosVotePeriodLength: THKD[Groups[Net, Sec], F, Milliseconds32],
+    leiosDiffusionPeriodLength: THKD[Groups[Net, Sec], F, Milliseconds32],
+    leiosCommitteeSize: THKD[Groups[Net, Sec], F, Unsigned[W16]],
+    leiosQuorumStakeThreshold: THKD[Groups[Net, Sec], F, UnitInterval],
+    maxEndorserBlockReferencesSize: THKD[Groups[Net, Sec], F, Unsigned[W32]],
+    maxEndorserBlockTxsSize: THKD[Groups[Net, Sec], F, Unsigned[W32]],
+    maxEndorserBlockExUnits: THKD[Groups[Net, Sec], F, OrdExUnits],
+    maxRefScriptSizePerEndorserBlock: THKD[Groups[Net, Sec], F, Unsigned[W32]],
+    perasMinCandidateBlockAge: THKD[Groups[Net, Sec], F, SlotInterval],
+    perasHealingFactor: THKD[Groups[Net, Sec], F, PositiveInterval],
+    perasCertBoost: THKD[Groups[Net, Sec], F, Unsigned[W16]],
+    perasTargetCommitteeSize: THKD[Groups[Net, Sec], F, Unsigned[W16]],
+    perasBootstrapRound: THKD[Groups[Net, Sec], F, Option[Unsigned[W32]]],
+    perasQuorumThresholdSafetyMargin: THKD[Groups[Net, Sec], F, UnitInterval],
+    refInputsCostPerMultiAssetPolicy: THKD[Groups[Eco, Sec], F, Coin],
+    refInputsCostPerDatumByte: THKD[Groups[Eco, Sec], F, CoinPerByte]
+)
+
+object DijkstraPParams:
+
+  /** `emptyDijkstraPParams` (`Dijkstra/PParams.hs:1200-1257`, cardano-ledger 9df9f98c): zero, or
+    * each type's least value, but for a 2048-byte transaction, 100 pools, a 150% collateral of at
+    * most 5 inputs, a reference-script cost stride of 1, no pledge leverage limit, no Peras
+    * bootstrap round, and Dijkstra's lowest version, 12.
+    */
+  val empty: DijkstraPParams[Identity] = DijkstraPParams[Identity](
+    THKD(CoinPerByte(CompactCoin.zero)),
+    THKD(CompactCoin.zero),
+    THKD(Unsigned.lit[W32](0)),
+    THKD(Unsigned.lit[W32](2048)),
+    THKD(Unsigned.lit[W16](0)),
+    THKD(CompactCoin.zero),
+    THKD(CompactCoin.zero),
+    THKD(EpochInterval.zero),
+    THKD(Unsigned.lit[W16](100)),
+    THKD(NonNegativeInterval.zero),
+    THKD(UnitInterval.zero),
+    THKD(UnitInterval.zero),
+    ProtVer(Version.lit(12), Unsigned.lit[W32](0)),
+    THKD(CompactCoin.zero),
+    THKD(CoinPerByte(CompactCoin.zero)),
+    THKD(CostModels.empty),
+    THKD(Prices.zero),
+    THKD(OrdExUnits.zero),
+    THKD(OrdExUnits.zero),
+    THKD(Unsigned.lit[W32](0)),
+    THKD(Unsigned.lit[W16](150)),
+    THKD(Unsigned.lit[W16](5)),
+    THKD(PoolVotingThresholds.zero),
+    THKD(DRepVotingThresholds.zero),
+    THKD(Unsigned.lit[W16](0)),
+    THKD(EpochInterval.zero),
+    THKD(EpochInterval.zero),
+    THKD(CompactCoin.zero),
+    THKD(CompactCoin.zero),
+    THKD(EpochInterval.zero),
+    THKD(NonNegativeInterval.zero),
+    THKD(Unsigned.lit[W32](0)),
+    THKD(Unsigned.lit[W32](0)),
+    // `knownNonZeroBounded @1`
+    THKD(NonZero.unsafe(Unsigned.lit[W32](1))),
+    THKD(PositiveInterval.minBound),
+    THKD(MaxPledgeLeverage.none),
+    THKD(UnitInterval.zero),
+    THKD(Milliseconds32.zero),
+    THKD(Milliseconds32.zero),
+    THKD(Milliseconds32.zero),
+    THKD(Unsigned.lit[W16](0)),
+    THKD(UnitInterval.zero),
+    THKD(Unsigned.lit[W32](0)),
+    THKD(Unsigned.lit[W32](0)),
+    THKD(OrdExUnits.zero),
+    THKD(Unsigned.lit[W32](0)),
+    THKD(SlotInterval.zero),
+    THKD(PositiveInterval.minBound),
+    THKD(Unsigned.lit[W16](0)),
+    THKD(Unsigned.lit[W16](0)),
+    THKD(None),
+    THKD(UnitInterval.zero),
+    THKD(Coin.zero),
+    THKD(CoinPerByte(CompactCoin.zero))
+  )
+
+  /** `emptyDijkstraPParamsUpdate` (`Dijkstra/PParams.hs:1259-1316`, cardano-ledger 9df9f98c): no
+    * field set.
+    */
+  val emptyUpdate: DijkstraPParams[StrictMaybe] = DijkstraPParams[StrictMaybe](
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    NoUpdate(),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None),
+    THKD(None)
+  )
+
+  /** `dijkstraApplyPPUpdates` (`Dijkstra/PParams.hs:317-388`, cardano-ledger 9df9f98c): each field
+    * the update sets replaces the parameter's, the protocol version is kept, and the update's cost
+    * models replace those of their languages (`updateCostModels`).
+    */
+  def applyUpdates(
+      pp: DijkstraPParams[Identity],
+      ppu: DijkstraPParams[StrictMaybe]
+  ): DijkstraPParams[Identity] =
+    def set[G, A](
+        old: THKD[G, Identity, A],
+        update: THKD[G, StrictMaybe, A]
+    ): THKD[G, Identity, A] =
+      THKD(update.unTHKD.getOrElse(old.unTHKD))
+    DijkstraPParams[Identity](
+      set(pp.txFeePerByte, ppu.txFeePerByte),
+      set(pp.txFeeFixed, ppu.txFeeFixed),
+      set(pp.maxBBSize, ppu.maxBBSize),
+      set(pp.maxTxSize, ppu.maxTxSize),
+      set(pp.maxBHSize, ppu.maxBHSize),
+      set(pp.keyDeposit, ppu.keyDeposit),
+      set(pp.poolDeposit, ppu.poolDeposit),
+      set(pp.eMax, ppu.eMax),
+      set(pp.nOpt, ppu.nOpt),
+      set(pp.a0, ppu.a0),
+      set(pp.rho, ppu.rho),
+      set(pp.tau, ppu.tau),
+      pp.protocolVersion,
+      set(pp.minPoolCost, ppu.minPoolCost),
+      set(pp.coinsPerUTxOByte, ppu.coinsPerUTxOByte),
+      THKD(ppu.costModels.unTHKD.fold(pp.costModels.unTHKD)(pp.costModels.unTHKD.updated(_))),
+      set(pp.prices, ppu.prices),
+      set(pp.maxTxExUnits, ppu.maxTxExUnits),
+      set(pp.maxBlockExUnits, ppu.maxBlockExUnits),
+      set(pp.maxValSize, ppu.maxValSize),
+      set(pp.collateralPercentage, ppu.collateralPercentage),
+      set(pp.maxCollateralInputs, ppu.maxCollateralInputs),
+      set(pp.poolVotingThresholds, ppu.poolVotingThresholds),
+      set(pp.drepVotingThresholds, ppu.drepVotingThresholds),
+      set(pp.committeeMinSize, ppu.committeeMinSize),
+      set(pp.committeeMaxTermLength, ppu.committeeMaxTermLength),
+      set(pp.govActionLifetime, ppu.govActionLifetime),
+      set(pp.govActionDeposit, ppu.govActionDeposit),
+      set(pp.drepDeposit, ppu.drepDeposit),
+      set(pp.drepActivity, ppu.drepActivity),
+      set(pp.minFeeRefScriptCostPerByte, ppu.minFeeRefScriptCostPerByte),
+      set(pp.maxRefScriptSizePerBlock, ppu.maxRefScriptSizePerBlock),
+      set(pp.maxRefScriptSizePerTx, ppu.maxRefScriptSizePerTx),
+      set(pp.refScriptCostStride, ppu.refScriptCostStride),
+      set(pp.refScriptCostMultiplier, ppu.refScriptCostMultiplier),
+      set(pp.maxPledgeLeverage, ppu.maxPledgeLeverage),
+      set(pp.minPoolMargin, ppu.minPoolMargin),
+      set(pp.leiosAnnouncementPeriodLength, ppu.leiosAnnouncementPeriodLength),
+      set(pp.leiosVotePeriodLength, ppu.leiosVotePeriodLength),
+      set(pp.leiosDiffusionPeriodLength, ppu.leiosDiffusionPeriodLength),
+      set(pp.leiosCommitteeSize, ppu.leiosCommitteeSize),
+      set(pp.leiosQuorumStakeThreshold, ppu.leiosQuorumStakeThreshold),
+      set(pp.maxEndorserBlockReferencesSize, ppu.maxEndorserBlockReferencesSize),
+      set(pp.maxEndorserBlockTxsSize, ppu.maxEndorserBlockTxsSize),
+      set(pp.maxEndorserBlockExUnits, ppu.maxEndorserBlockExUnits),
+      set(pp.maxRefScriptSizePerEndorserBlock, ppu.maxRefScriptSizePerEndorserBlock),
+      set(pp.perasMinCandidateBlockAge, ppu.perasMinCandidateBlockAge),
+      set(pp.perasHealingFactor, ppu.perasHealingFactor),
+      set(pp.perasCertBoost, ppu.perasCertBoost),
+      set(pp.perasTargetCommitteeSize, ppu.perasTargetCommitteeSize),
+      set(pp.perasBootstrapRound, ppu.perasBootstrapRound),
+      set(pp.perasQuorumThresholdSafetyMargin, ppu.perasQuorumThresholdSafetyMargin),
+      set(pp.refInputsCostPerMultiAssetPolicy, ppu.refInputsCostPerMultiAssetPolicy),
+      set(pp.refInputsCostPerDatumByte, ppu.refInputsCostPerDatumByte)
+    )
+
+  /** The groups of the fields an update sets (`modifiedPPGroups`, the generic default of
+    * `Conway/PParams.hs:174-182`, cardano-ledger 9df9f98c, over `ppGroup`), the protocol version
+    * having none.
+    */
+  def modifiedGroups(ppu: DijkstraPParams[StrictMaybe]): SortedSet[PPGroups] =
+    import THKD.ppGroup
+    Vector(
+      ppGroup(ppu.txFeePerByte),
+      ppGroup(ppu.txFeeFixed),
+      ppGroup(ppu.maxBBSize),
+      ppGroup(ppu.maxTxSize),
+      ppGroup(ppu.maxBHSize),
+      ppGroup(ppu.keyDeposit),
+      ppGroup(ppu.poolDeposit),
+      ppGroup(ppu.eMax),
+      ppGroup(ppu.nOpt),
+      ppGroup(ppu.a0),
+      ppGroup(ppu.rho),
+      ppGroup(ppu.tau),
+      ppGroup(ppu.minPoolCost),
+      ppGroup(ppu.coinsPerUTxOByte),
+      ppGroup(ppu.costModels),
+      ppGroup(ppu.prices),
+      ppGroup(ppu.maxTxExUnits),
+      ppGroup(ppu.maxBlockExUnits),
+      ppGroup(ppu.maxValSize),
+      ppGroup(ppu.collateralPercentage),
+      ppGroup(ppu.maxCollateralInputs),
+      ppGroup(ppu.poolVotingThresholds),
+      ppGroup(ppu.drepVotingThresholds),
+      ppGroup(ppu.committeeMinSize),
+      ppGroup(ppu.committeeMaxTermLength),
+      ppGroup(ppu.govActionLifetime),
+      ppGroup(ppu.govActionDeposit),
+      ppGroup(ppu.drepDeposit),
+      ppGroup(ppu.drepActivity),
+      ppGroup(ppu.minFeeRefScriptCostPerByte),
+      ppGroup(ppu.maxRefScriptSizePerBlock),
+      ppGroup(ppu.maxRefScriptSizePerTx),
+      ppGroup(ppu.refScriptCostStride),
+      ppGroup(ppu.refScriptCostMultiplier),
+      ppGroup(ppu.maxPledgeLeverage),
+      ppGroup(ppu.minPoolMargin),
+      ppGroup(ppu.leiosAnnouncementPeriodLength),
+      ppGroup(ppu.leiosVotePeriodLength),
+      ppGroup(ppu.leiosDiffusionPeriodLength),
+      ppGroup(ppu.leiosCommitteeSize),
+      ppGroup(ppu.leiosQuorumStakeThreshold),
+      ppGroup(ppu.maxEndorserBlockReferencesSize),
+      ppGroup(ppu.maxEndorserBlockTxsSize),
+      ppGroup(ppu.maxEndorserBlockExUnits),
+      ppGroup(ppu.maxRefScriptSizePerEndorserBlock),
+      ppGroup(ppu.perasMinCandidateBlockAge),
+      ppGroup(ppu.perasHealingFactor),
+      ppGroup(ppu.perasCertBoost),
+      ppGroup(ppu.perasTargetCommitteeSize),
+      ppGroup(ppu.perasBootstrapRound),
+      ppGroup(ppu.perasQuorumThresholdSafetyMargin),
+      ppGroup(ppu.refInputsCostPerMultiAssetPolicy),
+      ppGroup(ppu.refInputsCostPerDatumByte)
+    ).foldLeft(SortedSet.empty[PPGroups])(_ ++ _)

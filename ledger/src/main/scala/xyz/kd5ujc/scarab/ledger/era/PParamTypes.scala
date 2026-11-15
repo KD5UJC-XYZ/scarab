@@ -62,6 +62,11 @@ opaque type PositiveInterval = Rational
 object PositiveInterval:
   def boundRational(r: Rational): Option[PositiveInterval] = BoundedRatio.Positive.bound(r)
 
+  /** `minBound = positiveIntervalEpsilon`, `1 % 10 ^ 19` (`BaseTypes.hs:505-510`, cardano-ledger
+    * 9df9f98c): the least value.
+    */
+  val minBound: PositiveInterval = BoundedRatio.Positive.lower
+
   /** `boundRational 1.2` (`Conway/PParams.hs:983`, cardano-ledger f649f975), within the bounds. */
   private[era] val oneAndAFifth: PositiveInterval = Rational(6, 5)
 

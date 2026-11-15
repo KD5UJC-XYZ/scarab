@@ -5,8 +5,16 @@ import monocle.{Getter, Lens}
 import scala.collection.immutable.SortedSet
 import xyz.kd5ujc.scarab.ledger.Unsigned
 import xyz.kd5ujc.scarab.ledger.era.conway.{DRepVotingThresholds, PoolVotingThresholds}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraEraPParams, DijkstraEraPParamsInstance}
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.{W16, W32}
-import xyz.kd5ujc.scarab.ledger.state.{CompactCoin, Conway, EpochInterval, EraTag, NonZero}
+import xyz.kd5ujc.scarab.ledger.state.{
+  CompactCoin,
+  Conway,
+  Dijkstra,
+  EpochInterval,
+  EraTag,
+  NonZero
+}
 
 /** The protocol parameters of an era (`class EraPParams era`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs:360-489`). Each field is a lens
@@ -100,15 +108,19 @@ trait ConwayEraPParams[E <: EraTag] extends BabbageEraPParams[E]:
 
 object EraPParams:
   given conway: ConwayEraPParams[Conway] = ConwayEraPParamsInstance
+  given dijkstra: DijkstraEraPParams[Dijkstra] = DijkstraEraPParamsInstance
 
 object AlonzoEraPParams:
   given conway: AlonzoEraPParams[Conway] = ConwayEraPParamsInstance
+  given dijkstra: AlonzoEraPParams[Dijkstra] = DijkstraEraPParamsInstance
 
 object BabbageEraPParams:
   given conway: BabbageEraPParams[Conway] = ConwayEraPParamsInstance
+  given dijkstra: BabbageEraPParams[Dijkstra] = DijkstraEraPParamsInstance
 
 object ConwayEraPParams:
   given conway: ConwayEraPParams[Conway] = ConwayEraPParamsInstance
+  given dijkstra: ConwayEraPParams[Dijkstra] = DijkstraEraPParamsInstance
 
 /** Conway's instances (`instance EraPParams ConwayEra` to `instance ConwayEraPParams ConwayEra`,
   * `Conway/PParams.hs:825-984`, cardano-ledger f649f975).
