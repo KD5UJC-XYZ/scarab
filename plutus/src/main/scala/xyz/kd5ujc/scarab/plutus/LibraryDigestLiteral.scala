@@ -3,8 +3,9 @@ package xyz.kd5ujc.scarab.plutus
 
 import scala.quoted.*
 
-/** The compile-time check of [[LibraryDigest.pinned]]: its argument is a literal of 64 lowercase
-  * hex digits, as [[LibraryDigest.of]] writes a sha-256, or the build fails.
+/** The compile-time check of [[LibraryDigest.pinned]]: its argument is a compile-time constant (a
+  * literal, or a constant such as a `final val` bound to one) of 64 lowercase hex digits, as
+  * [[LibraryDigest.of]] writes a sha-256, or the build fails.
   */
 object LibraryDigestLiteral:
   def checked(hex: Expr[String])(using Quotes): Expr[String] =

@@ -73,8 +73,8 @@ object LibraryDigest:
   /** The digest of `bytes`. */
   def of(bytes: Array[Byte]): LibraryDigest = NativeCrypto.sha256Hex(bytes)
 
-  /** A digest pinned in the source: a literal of 64 lowercase hex digits, checked when it compiles
-    * ([[LibraryDigestLiteral]]).
+  /** A digest pinned in the source: a compile-time constant of 64 lowercase hex digits, checked
+    * when it compiles ([[LibraryDigestLiteral]]).
     */
   inline def pinned(inline hex: String): LibraryDigest = ${ LibraryDigestLiteral.checked('hex) }
 
