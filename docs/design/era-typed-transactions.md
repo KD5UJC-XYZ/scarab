@@ -419,8 +419,16 @@ passes `check`.
   (`sizeTxForFeeCalculation`) and flag, and reads the same submitted whole (`ConwayTx.fromEnvelope`, the
   form the mempool and the refusal corpus hold) as from a block's parts.
 - A Conway output is written back in the form the store keeps (`toStored`, the inverse of `fromStored`),
-  which the UTXO rule's update and the predicate failures that name outputs need. Every recorded Conway
-  output, and outputs with each kind of reference script, read and are written back unchanged.
+  which the UTXO rule's update and the predicate failures that name outputs need. `fromStored` refuses a
+  stored output that `toStored` would not give back, one whose kept reference-script hash or tree is not
+  what its bytes read as, which only a damaged store holds (`StoredOutputDiffers`). Every recorded Conway
+  output, and outputs with native, Plutus V1, V2 and V3 reference scripts, read and are written back
+  unchanged.
+- **Next, the protocol parameters.** The flat `ProtocolParams` is one record of every era's fields, and it
+  is stored. Each era's parameters will be an opaque type over that stored form, as the outputs are. The
+  reference's parameter classes (`EraPParams` to `ConwayEraPParams`) expose an era's fields only. The first
+  rule ported is one that needs no parameters, the second one that does, each under a differential
+  against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
   delegation, instantaneous rewards) the flat Conway decoder refuses first, with the same error, as tests on
   crafted bytes show.

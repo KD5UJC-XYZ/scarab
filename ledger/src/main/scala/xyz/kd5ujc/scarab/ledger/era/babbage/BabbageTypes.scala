@@ -127,7 +127,33 @@ object BabbageTxOut:
   private[ledger] def fromStored(
       out: xyz.kd5ujc.scarab.ledger.TxOut
   ): Either[EraTxError, BabbageTxOut] =
-    BabbageTxOutRep.fromStored(out)(n => BabbageScript.read(n)).leftMap(EraTxError.Decode(_))
+    BabbageTxOutRep
+      .fromStored(out)(n => BabbageScript.read(n))
+      .leftMap(EraTxError.Decode(_))
+      // the output written back is the one read, so `toStored` is its inverse
+      .flatMap(o => Either.cond(toStored(o) == out, o, EraTxError.StoredOutputDiffers))
+
+  /** The output in the form the store keeps, the inverse of [[fromStored]] (which refuses a stored
+    * output this does not give back): its bytes, fields and the value's size as they arrived, and
+    * its reference script as the flat output keeps one, by its hash, with the tree of a native
+    * script and without a Plutus script's bytes.
+    */
+  private[ledger] def toStored(out: BabbageTxOut): xyz.kd5ujc.scarab.ledger.TxOut =
+    xyz.kd5ujc.scarab.ledger.TxOut(
+      out.raw,
+      out.address,
+      out.value.stored,
+      out.datum,
+      out.scriptRef.map(storedScript),
+      out.valueSize
+    )
+
+  private def storedScript(s: BabbageScript): xyz.kd5ujc.scarab.ledger.Script =
+    val hash = BabbageScript.instance.hashScript(s)
+    s match
+      case AlonzoScriptRep.NativeScript(t) =>
+        xyz.kd5ujc.scarab.ledger.Script(ScriptKind.Native, hash, Some(t.script))
+      case AlonzoScriptRep.PlutusScript(p) => xyz.kd5ujc.scarab.ledger.Script(p.kind, hash, None)
 
   extension (out: BabbageTxOut)
     /** The shared representation, read only: the translation into the next era reads it. */

@@ -144,6 +144,11 @@ enum EraTxError:
   /** The scripts of a witness set read again from its bytes are not the ones its decoder read. */
   case ScriptsReadAgain
 
+  /** A stored output whose kept fields (its reference script's hash and tree) are not what its
+    * bytes read as: the store holds what no decoder wrote.
+    */
+  case StoredOutputDiffers
+
 enum EraField:
   case Update, CurrentTreasury, MultiAsset, Datum, ReferenceScript, NegativeValue,
     GenesisDelegation, InstantaneousRewards

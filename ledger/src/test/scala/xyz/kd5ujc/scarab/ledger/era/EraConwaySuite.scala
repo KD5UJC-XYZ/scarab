@@ -411,6 +411,7 @@ class EraConwaySuite extends munit.FunSuite:
   test("a Conway output written back to the store is the output it was read from") {
     val outputs = bodies.flatMap(FlatTxBody.decode(_, Era.Conway).toOption.get.outputs)
     val withScripts = Vector(
+      storedWith("8201420102"),
       storedWith("8202420102"),
       storedWith(s"82008200581c$k"),
       storedWith("8203420102")
@@ -421,10 +422,31 @@ class EraConwaySuite extends munit.FunSuite:
     }
   }
 
-  test("a submitted Conway transaction reads as its parts do from a block") {
+  test("a stored output whose kept script is not what its bytes read as is refused") {
+    val out = storedWith("8202420102")
+    val other = out.copy(scriptRef = out.scriptRef.map(_.copy(hash = Bytes(Vector.fill(28)(7)))))
+    assertEquals(ConwayTxOut.fromStored(other), Left(EraTxError.StoredOutputDiffers))
+    assertEquals(
+      xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxOut.fromStored(other),
+      Left(EraTxError.StoredOutputDiffers)
+    )
+    assert(ConwayTxOut.fromStored(out).isRight)
+  }
+
+  test("a submitted Conway transaction reads as its parts do from a block, in every form") {
     transactions.foreach { t =>
       val submitted = xyz.kd5ujc.scarab.ledger.Tx.envelope(t)
       assertEquals(ConwayTx.fromEnvelope(submitted), ConwayTx.decode(t))
+      // of three items, a valid transaction (`Alonzo/Tx.hs:541-553`, cardano-ledger f649f975)
+      val aux = t.auxiliaryData.getOrElse(Bytes(Vector(0xf6.toByte)))
+      val three = Bytes(Vector(0x83.toByte)) ++ t.body ++ t.witnesses ++ aux
+      if t.isValid then assertEquals(ConwayTx.fromEnvelope(three), ConwayTx.decode(t))
+      // indefinite, as the flat decoder reads it
+      val indefinite = Bytes(Vector(0x9f.toByte)) ++ submitted.drop(1) ++ Bytes(Vector(0xff.toByte))
+      assertEquals(
+        ConwayTx.fromEnvelope(indefinite).isRight,
+        xyz.kd5ujc.scarab.ledger.Tx.fromEnvelope(indefinite, Era.Conway).isRight
+      )
     }
   }
 
