@@ -36,7 +36,7 @@ object NodeOrders:
       case _ => Integer.compare(rank(a), rank(b))
   }
 
-  /** `GovActionId` (`Procedures.hs:170`, derived `Ord`): the transaction id, then the index. */
+  /** `GovActionId` (`Procedures.hs:175-179`, derived `Ord`): the transaction id, then the index. */
   given Order[GovActionId] = Order.from { (a, b) =>
     val byTx = a.txId.compareTo(b.txId)
     if byTx != 0 then byTx else a.index compare b.index
