@@ -413,7 +413,16 @@ object LogSamples:
     ),
     MempoolEvent
       .Rejected(Some(hash), Rejection.Full(TxMeasure(300, 0, 0, 0), TxMeasure(100, 0, 0, 0))),
-    MempoolEvent.Dropped(hash, Rejection.AlreadyHeld(hash)),
+    MempoolEvent.Dropped(
+      hash,
+      Rejection.AlreadyHeld(hash),
+      xyz.kd5ujc.scarab.node.mempool.DropCause.Revalidation
+    ),
+    MempoolEvent.Dropped(
+      hash,
+      Rejection.AlreadyHeld(hash),
+      xyz.kd5ujc.scarab.node.mempool.DropCause.Withdrawal
+    ),
     MempoolEvent.Waiting(Some(hash), TxMeasure(300, 0, 0, 0), TxMeasure(100, 0, 0, 0)),
     MempoolEvent.Adopted(hash),
     MempoolEvent.Removed(hash),

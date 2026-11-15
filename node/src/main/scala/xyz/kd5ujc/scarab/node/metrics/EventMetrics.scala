@@ -132,7 +132,7 @@ final class EventMetrics[F[_]: Sync] private (
       case MempoolEvent.Rejected(_, reason) =>
         metrics.inc(mempoolRejected, RejectionLabel.of(reason))
       case MempoolEvent.Waiting(_, _, _) => Sync[F].unit
-      case MempoolEvent.Dropped(_, _)    => metrics.inc(mempoolDropped)
+      case MempoolEvent.Dropped(_, _, _) => metrics.inc(mempoolDropped)
       case MempoolEvent.Adopted(_)       => metrics.inc(mempoolAdopted)
       case MempoolEvent.Removed(_)       => metrics.inc(mempoolRemoved)
       case MempoolEvent.Synced(_, _, _)  => Sync[F].unit

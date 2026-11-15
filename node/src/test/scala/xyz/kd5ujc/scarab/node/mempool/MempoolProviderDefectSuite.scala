@@ -145,7 +145,10 @@ class MempoolProviderDefectSuite extends CatsEffectSuite:
     )
     revalidated(m => m.withdraw(Map(id1 -> reason)).void).map { (_, after, events) =>
       assertEquals(after.entries.map(_.id), Vector(id2))
-      assertEquals(dropped(events), Vector(MempoolEvent.Dropped(id1, reason)))
+      assertEquals(
+        dropped(events),
+        Vector(MempoolEvent.Dropped(id1, reason, DropCause.Withdrawal))
+      )
       assert(!events.exists(_.isInstanceOf[MempoolEvent.Removed]), events.toString)
       // the summary counts the withdrawn one among the dropped
       assertEquals(

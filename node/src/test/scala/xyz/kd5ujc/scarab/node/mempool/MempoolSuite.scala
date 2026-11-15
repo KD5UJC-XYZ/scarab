@@ -685,7 +685,10 @@ class MempoolSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaC
         before.entries.filter(e => Set(id2, id3)(e.id)).map(_.ticket)
       )
       assertEquals(log.collect { case MempoolEvent.Removed(id) => id }, Vector(id1))
-      assertEquals(log.collect { case MempoolEvent.Dropped(id, _) => id }, Vector(idChild))
+      assertEquals(
+        log.collect { case MempoolEvent.Dropped(id, _, cause) => (id, cause) },
+        Vector(idChild -> DropCause.Revalidation)
+      )
       assertEquals(reoffered, Right(id1))
   }
 

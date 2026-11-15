@@ -34,8 +34,10 @@ enum MempoolEvent:
     */
   case Waiting(id: Option[Bytes], needed: TxMeasure, free: TxMeasure)
 
-  /** Held transactions that the new tip no longer admits (adopted in a block, or invalidated). */
-  case Dropped(id: Bytes, reason: Rejection)
+  /** A held transaction left the pool with `reason`, for `cause`: the pool was validated again and
+    * no longer admits it, or the forger withdrew it.
+    */
+  case Dropped(id: Bytes, reason: Rejection, cause: DropCause)
 
   /** A held transaction is now in the chain: it was in a block that became part of our chain. */
   case Adopted(id: Bytes)
@@ -45,6 +47,19 @@ enum MempoolEvent:
     */
   case Removed(id: Bytes)
   case Synced(count: Int, bytes: Long, dropped: Int)
+
+/** Why a held transaction left the pool with a reason ([[MempoolEvent.Dropped]], #1032). */
+enum DropCause:
+  /** The pool was validated again, at a new tip ([[Mempool.sync]]) or after transactions were
+    * removed ([[Mempool.removeTxsEvenIfValid]], [[Mempool.withdraw]]), and no longer admits the
+    * transaction: the rules refuse it, or have no verdict on it.
+    */
+  case Revalidation
+
+  /** The forger had no verdict on it while it built a block, and withdrew it ([[Mempool.withdraw]],
+    * issue 584).
+    */
+  case Withdrawal
 
 trait MempoolEvents[F[_]]:
   def emit(event: MempoolEvent): F[Unit]
@@ -197,6 +212,10 @@ object Mempool:
       private val F = Async[F]
       private val readEnv = environment.fold(F.pure(env))(_.ask[MempoolEnv])
 
+      /** A held transaction left the pool, for `cause`. */
+      private def leaves(entry: Entry, reason: Rejection, cause: DropCause): F[Unit] =
+        events.emit(MempoolEvent.Dropped(entry.id, reason, cause))
+
       /** A submission's turn: `remoteFifo` then `allFifo` for a peer, `allFifo` alone for a local
         * client (`implAddTx`'s two FIFOs). A one-permit `Semaphore` is a `Mutex` that also counts
         * its waiters ([[lines]]); it queues in order and its `permit` releases on cancellation, so
@@ -306,9 +325,7 @@ object Mempool:
           _ <- inBlock.traverse_ { (entry, _) =>
             events.emit(MempoolEvent.Adopted(entry.id))
           }
-          _ <- invalid.traverse_ { (entry, reason) =>
-            events.emit(MempoolEvent.Dropped(entry.id, reason))
-          }
+          _ <- invalid.traverse_((entry, reason) => leaves(entry, reason, DropCause.Revalidation))
           _ <- events.emit(MempoolEvent.Synced(next.entries.size, next.bytes, invalid.size))
         yield invalid
       }
@@ -319,8 +336,7 @@ object Mempool:
       def withdraw(reasons: Map[Bytes, Rejection])(using Raise[F, StorageError]) =
         removing(
           reasons.keySet,
-          entry =>
-            reasons.get(entry.id).traverse_(r => events.emit(MempoolEvent.Dropped(entry.id, r))),
+          entry => reasons.get(entry.id).traverse_(leaves(entry, _, DropCause.Withdrawal)),
           droppedNamed = true
         )
 
@@ -349,9 +365,8 @@ object Mempool:
                   _ <- state.set(next)
                   _ <- version.update(_ + 1)
                   _ <- removed.traverse_(report)
-                  _ <- dependants.traverse_ { (entry, reason) =>
-                    events.emit(MempoolEvent.Dropped(entry.id, reason))
-                  }
+                  _ <- dependants
+                    .traverse_((entry, reason) => leaves(entry, reason, DropCause.Revalidation))
                   _ <- events.emit(
                     MempoolEvent.Synced(
                       next.entries.size,
