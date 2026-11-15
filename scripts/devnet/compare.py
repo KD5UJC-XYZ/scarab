@@ -649,8 +649,9 @@ def compare_pre_conway_followers(name, era, sites, attempts=10):
             with lsq(name) as session:
                 session.acquire()
                 tip, reference = eraview.reference_pre_conway(era, session, before)
-            acquired = reference.pop("_era", acquired)  # the era of the state that was compared
-            read = True
+                # Inside the session, so that a failure while it closes still knows the era it compared.
+                acquired = reference.pop("_era", acquired)
+                read = True
             after = protocol_parameters(name)
         except eraview.EraLeft:
             for site in pending:

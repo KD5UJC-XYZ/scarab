@@ -97,7 +97,8 @@ class TallyTest(unittest.TestCase):
     STATE = {"epoch": 7, "utxo": {}, "rewardUpdate": None, "params": {}, "ppup": {"current": {}, "future": {}},
              "mir": {"reserves": {}, "treasury": {}, "deltaReserves": 0, "deltaTreasury": 0}}
 
-    def round(self, state_of=lambda site: json.loads(json.dumps(TallyTest.STATE)), parameters=lambda: {}):
+    def round(self, state_of=lambda site: json.loads(json.dumps(TallyTest.STATE)), parameters=lambda: {},
+              closing=None):
         """`compare_era` for an alonzo round whose acquired state is babbage, with two followers: (tallies, agreement)."""
         import tempfile
         from devnet.util import FollowerSite
@@ -109,6 +110,8 @@ class TallyTest(unittest.TestCase):
         agreement = compare.FollowerAgreement(root, sites)
         view = {**json.loads(json.dumps(self.STATE)), "_era": "babbage"}
         context = unittest.mock.MagicMock()
+        if closing is not None:
+            context.__exit__.side_effect = closing
         with patch.object(compare, "protocol_parameters", side_effect=lambda name: parameters()), \
                 patch.object(compare, "lsq", return_value=context), \
                 patch.object(eraview, "reference_pre_conway", side_effect=lambda *a: ({"slot": 1, "hash": "a"}, dict(view))), \
@@ -151,6 +154,16 @@ class TallyTest(unittest.TestCase):
 
     def test_an_exit_after_the_reference_read_counts_for_the_acquired_era(self):
         tallies, agreement = self.after_the_read(SystemExit("command failed"))
+        for tally in tallies:
+            self.assertEqual((tally.per_era["babbage"]["errors"], tally.per_era["alonzo"]["errors"]), (1, 0))
+
+    def test_a_retryable_failure_while_the_session_closes_counts_for_the_acquired_era(self):
+        tallies, agreement = self.round(closing=RuntimeError("closing"))
+        for tally in tallies:
+            self.assertEqual((tally.per_era["babbage"]["errors"], tally.per_era["alonzo"]["errors"]), (1, 0))
+
+    def test_an_exit_while_the_session_closes_counts_for_the_acquired_era(self):
+        tallies, agreement = self.round(closing=SystemExit("closing"))
         for tally in tallies:
             self.assertEqual((tally.per_era["babbage"]["errors"], tally.per_era["alonzo"]["errors"]), (1, 0))
 
