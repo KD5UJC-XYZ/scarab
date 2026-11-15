@@ -31,7 +31,8 @@ class CiGateTests(unittest.TestCase):
         return textwrap.dedent(match.group(1))
 
     def assert_requires_exactly_success(self, job, variables):
-        script = self.first_script(job)
+        scripts = re.findall(r"^        run: \|\n((?:^          .*\n)+)", self.job(job), re.MULTILINE)
+        script = next(textwrap.dedent(s) for s in scripts if all('$'+v in s for v in variables))
         for states in itertools.product(STATES, repeat=len(variables)):
             with self.subTest(job=job, states=states):
                 result = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
@@ -51,7 +52,8 @@ class CiGateTests(unittest.TestCase):
                               ("SCALA_RESULT", "scala-tests")):
             self.assertIn(f"{variable}: ${{{{ needs.{job}.result }}}}", gate)
         build = self.job("scala-build")
-        self.assertNotRegex(build, r"(?m)^    (?:if|needs):")
+        self.assertNotRegex(build, r"(?m)^    if:")
+        self.assertIn("    needs: [changes]\n", build)
         self.assertNotIn("continue-on-error", build)
         for name in ("scala", "scala-tests", "scala-shards"):
             self.assertNotIn("continue-on-error", self.job(name))
@@ -60,10 +62,20 @@ class CiGateTests(unittest.TestCase):
         self.assert_requires_exactly_success("scala", ("BUILD_RESULT", "SHARDS_RESULT", "SCALA_RESULT"))
         self.assert_requires_exactly_success("scala-tests", ("BUILD_RESULT", "SHARDS_RESULT"))
 
+    def test_classification_guard_requires_success_and_a_boolean_output(self):
+        for job in ("scala-build", "scala-shards", "scala-tests"):
+            script = self.first_script(job)
+            for status, run in itertools.product(STATES, ("true", "false", "", "unknown")):
+                with self.subTest(job=job, status=status, run=run):
+                    result = subprocess.run(["bash", "-eo", "pipefail", "-c", script],
+                                            env=dict(os.environ, CLASSIFY_RESULT=status, RUN_CHECKS=run),
+                                            capture_output=True, text=True)
+                    self.assertEqual(result.returncode == 0, status == "success" and run in ("true", "false"))
+
     def test_summary_keeps_its_name_requires_build_and_shards_and_checks_every_suite_ran(self):
         summary = self.job("scala-tests")
         self.assertIn("    name: Scala tests and native guards\n", summary)
-        self.assertIn("    needs: [scala-build, scala-shards]\n", summary)
+        self.assertIn("    needs: [changes, scala-build, scala-shards]\n", summary)
         self.assertIn("    if: ${{ always() }}\n", summary)
         self.assertIn("BUILD_RESULT: ${{ needs.scala-build.result }}", summary)
         self.assertIn("SHARDS_RESULT: ${{ needs.scala-shards.result }}", summary)
@@ -85,7 +97,7 @@ class CiGateTests(unittest.TestCase):
 
     def test_shards_run_the_plan_on_the_build_output_without_compiling(self):
         shards = self.job("scala-shards")
-        self.assertIn("    needs: [scala-build]\n", shards)
+        self.assertIn("    needs: [changes, scala-build]\n", shards)
         self.assertNotRegex(shards, r"(?m)^    if:")
         self.assertIn("      fail-fast: false\n", shards)
         self.assertIn("uses: actions/cache/restore@", shards, "the shards only read the dependency cache")
