@@ -162,9 +162,14 @@ private[network] object MuxEgress:
         }
       }
 
-  /** @param limit
+  /** A limit that is not positive is refused with an `IllegalArgumentException`: a kept site of
+    * ERR-4 (#82), since `Mux` checks the configured payload size as a typed `MuxSetup` error but
+    * not this budget, and `MuxEgressSuite` pins the exception.
+    *
+    * @param limit
     *   The soft byte budget of each lane, positive.
     */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
   def create[F[_]: Concurrent](limit: Long, payloadLimit: Int): F[Outbox[F]] =
     if limit <= 0 then
       Concurrent[F].raiseError(

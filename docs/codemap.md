@@ -23,7 +23,7 @@ node       -> storage, network
 models-gen -> (none)
 models     -> codec, crypto; test only: models-gen, protocol, ledger
 fuzz       -> codec, protocol, node, models-gen
-tools      -> codec, crypto, protocol, network, uplc, plutus, ledger, consensus, storage, node, models
+tools      -> codec, crypto, protocol, network, uplc, plutus, ledger, consensus, storage, node, models; test only: warts
 ```
 
 ## warts

@@ -13,6 +13,9 @@ final class CborOut private ():
 
   private def byte(b: Int): Unit = out.write(b)
 
+  // A kept site of ERR-4 (#82): an argument outside uint64 is a defect of the caller, which writes the values
+  // of typed results, and the writer has no error channel.
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
   def head(major: Int, n: BigInt): CborOut =
     require(n >= 0 && n.bitLength <= 64, "CBOR argument outside uint64")
     val m = major << 5

@@ -86,6 +86,9 @@ object BlstCheckMain extends IOApp:
       )
     yield if ok then ExitCode.Success else ExitCode(1)
 
+  // A kept site of ERR-4 (#82): the program texts are constants of this command, so a parse failure is a
+  // defect of the command, which ends it.
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
   private def program(body: String): Bytes =
     val parsed = Program.parseUplc(s"(program 1.0.0 (lam ctx $body))")
     Bytes.fromArray(parsed.fold(sys.error, identity).cborEncoded)
@@ -136,7 +139,13 @@ object BlstCheckMain extends IOApp:
   private def hex(s: String): Array[Byte] =
     s.grouped(2).map(java.lang.Integer.parseInt(_, 16).toByte).toArray
 
-  /** Operations per second of each, over about two seconds after a one second warm-up. */
+  /** Operations per second of each, over about two seconds after a one second warm-up.
+    *
+    * The timed region of the command's `bench` (FUN-2 (e), EFF-6): `Clock[F]` would add allocation
+    * to the loop it times. A certificate of the bench's own keys that does not verify is a defect
+    * of the bench (a kept site of ERR-4).
+    */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
   private def benchmark: List[(String, Long)] =
     def rate(name: String)(op: () => Unit): (String, Long) =
       def loop(budgetNanos: Long): Long =

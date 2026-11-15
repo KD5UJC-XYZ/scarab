@@ -35,6 +35,11 @@ object Signals:
     */
   def interrupt[F[_]: Async](onInterrupt: F[Unit]): Resource[F, Unit] = on("INT", onInterrupt)
 
+  /** The handler of signal `name` while the resource is held. A kept site of EFF-5's one bridge:
+    * the JVM calls a `SignalHandler` on its own signal thread, outside `F`, and takes nothing back,
+    * so the handler hands the effect to the dispatcher, which this resource owns.
+    */
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
   private def on[F[_]: Async](name: String, run: F[Unit]): Resource[F, Unit] =
     Dispatcher.sequential[F].flatMap { dispatcher =>
       Resource

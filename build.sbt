@@ -134,6 +134,15 @@ lazy val disallowedWarts: Seq[wartremover.Wart] = Seq(
   Wart.SizeIs
 )
 
+// The design rules' own warts, in the `warts` project below, which every module loads through
+// `wartremoverClasspaths` (WartRemover.dependsOnLocalProjectWarts). In main sources, as the warts above:
+// SystemTimeAndUnsafeRun (EFF-5, EFF-6, ERR-4) is an error, whose kept site carries @SuppressWarnings with the
+// wart's full name on its smallest definition.
+def ruleWart(name: String): wartremover.Wart = Wart.custom(s"xyz.kd5ujc.scarab.warts.$name")
+lazy val ruleWartErrors: Seq[wartremover.Wart] = Seq("SystemTimeAndUnsafeRun").map(ruleWart)
+lazy val ruleWartWarnings: Seq[wartremover.Wart] = Nil
+lazy val ruleWarts: Seq[wartremover.Wart] = ruleWartErrors ++ ruleWartWarnings
+
 def scarab(id: String, dir: String = null): Project =
   Project(id, file(Option(dir).getOrElse(id)))
     // sbt-tpolecat would add its own option set; the options above are the whole set here.
@@ -145,6 +154,11 @@ def scarab(id: String, dir: String = null): Project =
       Compile / compile / wartremoverErrors ++= disallowedWarts,
       wartremoverExcluded += sourceManaged.value,
       libraryDependencies ++= testDependencies
+    )
+    .settings(wartremover.WartRemover.dependsOnLocalProjectWarts(LocalProject("warts")))
+    .settings(
+      Compile / compile / wartremoverErrors ++= ruleWartErrors,
+      Compile / compile / wartremoverWarnings ++= ruleWartWarnings
     )
 
 // The design rules' own warts (above), compiled against the WartRemover artifact of this Scala version, as
@@ -532,9 +546,9 @@ lazy val fuzz = scarab("fuzz")
 
 // Benchmarks, probes and the programs that write fixtures: run by hand (`tools/runMain <class>`), never as
 // tests and never shipped. They use the modules' test kits, so they follow the rules of test code
-// (docs/design-rules.md, TOOL-2): no `-Wsafe-init`, no WartRemover errors. Its tests hold DisallowedWartsSuite,
-// which shows that each wart of `disallowedWarts` but ThreadSleep fires: it reads their names from a source the
-// build writes, and types its probes with WartRemover's own test traverser.
+// (docs/design-rules.md, TOOL-2): no `-Wsafe-init`, no WartRemover errors or warnings. Its tests hold
+// DisallowedWartsSuite, which shows that each wart of `disallowedWarts` and `ruleWarts` but ThreadSleep fires: it
+// reads their names from a source the build writes, and types its probes with WartRemover's own test traverser.
 lazy val tools = scarab("tools")
   .dependsOn(
     codec % "compile->compile;compile->test",
@@ -547,16 +561,18 @@ lazy val tools = scarab("tools")
     consensus % "compile->compile;compile->test",
     storage % "compile->compile;compile->test",
     node % "compile->compile;compile->test",
-    models % "compile->compile;compile->test"
+    models % "compile->compile;compile->test",
+    warts % "test->compile"
   )
   .settings(
     Compile / scalacOptions -= "-Wsafe-init",
     Compile / compile / wartremoverErrors := Nil,
+    Compile / compile / wartremoverWarnings := Nil,
     publish / skip := true,
     libraryDependencies += Libraries.wartremoverTest,
     Test / sourceGenerators += Def.task {
       val source = (Test / sourceManaged).value / "DisallowedWarts.scala"
-      val names = disallowedWarts.map(wart => "\"" + wart.clazz + "\"").mkString(", ")
+      val names = (disallowedWarts ++ ruleWarts).map(wart => "\"" + wart.clazz + "\"").mkString(", ")
       IO.write(
         source,
         s"""package xyz.kd5ujc.scarab

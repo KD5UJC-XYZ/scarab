@@ -105,7 +105,9 @@ object TimingProbeMain:
     val fix = new Array[Double](samples)
     val rnd = new Array[Double](samples)
     val maxAttempts = samples * 2
-    // one timed operation into `into(at)`, then the checksum with its byte, or none when it failed
+    // one timed operation into `into(at)`, then the checksum with its byte, or none when it failed. It is the
+    // probe's timed region (FUN-2 (e), EFF-6): Clock[F] would add allocation to what it times.
+    @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
     def timed(op: Op, idx: Int, into: Array[Double], at: Int, label: String, checksum: Int) =
       val start = System.nanoTime()
       op(idx) match
