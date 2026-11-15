@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
-import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Conway, EraTag, Mary}
+import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Conway, Dijkstra, EraTag, Mary}
 
 // The reference's type families, one match type each with one case per era (cardano-ledger
 // f649f975 `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs`). Each era's cases come with that
@@ -12,20 +12,22 @@ import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Conway, EraTag, Mary}
   * up to Allegra, lovelace and native assets from Mary.
   */
 type Value[E <: EraTag] = E match
-  case Allegra => AdaValue
-  case Mary    => MultiAssetValue
-  case Babbage => MultiAssetValue
-  case Conway  => MultiAssetValue
+  case Allegra  => AdaValue
+  case Mary     => MultiAssetValue
+  case Babbage  => MultiAssetValue
+  case Conway   => MultiAssetValue
+  case Dijkstra => MultiAssetValue
 
 /** The transaction output of era `E` (`type TxOut era`, `Core.hs:297-318`, cardano-ledger
   * f649f975): one nominal type per era, an opaque type over the representation the reference
   * shares.
   */
 type TxOut[E <: EraTag] = E match
-  case Allegra => allegra.AllegraTxOut
-  case Mary    => mary.MaryTxOut
-  case Babbage => babbage.BabbageTxOut
-  case Conway  => conway.ConwayTxOut
+  case Allegra  => allegra.AllegraTxOut
+  case Mary     => mary.MaryTxOut
+  case Babbage  => babbage.BabbageTxOut
+  case Conway   => conway.ConwayTxOut
+  case Dijkstra => dijkstra.DijkstraTxOut
 
 /** The transaction body of era `E` at level `L` (`data TxBody l era`, `Core.hs:223-241`,
   * cardano-ledger f649f975).
@@ -44,10 +46,11 @@ type TxCert[E <: EraTag] = E match
   * `eras/conway/impl/src/Cardano/Ledger/Conway/Scripts.hs:74`).
   */
 type NativeScript[E <: EraTag] = E match
-  case Allegra => allegra.AllegraTimelock
-  case Mary    => mary.MaryTimelock
-  case Babbage => babbage.BabbageTimelock
-  case Conway  => conway.ConwayTimelock
+  case Allegra  => allegra.AllegraTimelock
+  case Mary     => mary.MaryTimelock
+  case Babbage  => babbage.BabbageTimelock
+  case Conway   => conway.ConwayTimelock
+  case Dijkstra => dijkstra.DijkstraNativeScript
 
 /** The script of era `E` (`type Script era`, `Core.hs:583`, cardano-ledger f649f975): the native
   * script up to Mary (`Allegra/Scripts.hs:331`,
@@ -56,18 +59,20 @@ type NativeScript[E <: EraTag] = E match
   * `Conway/Scripts.hs:73`).
   */
 type Script[E <: EraTag] = E match
-  case Allegra => allegra.AllegraTimelock
-  case Mary    => mary.MaryTimelock
-  case Babbage => babbage.BabbageScript
-  case Conway  => conway.ConwayScript
+  case Allegra  => allegra.AllegraTimelock
+  case Mary     => mary.MaryTimelock
+  case Babbage  => babbage.BabbageScript
+  case Conway   => conway.ConwayScript
+  case Dijkstra => dijkstra.DijkstraScript
 
 /** The Plutus script of era `E` (`data PlutusScript era`,
   * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:170`, cardano-ledger f649f975): the
   * languages the era has, and no other (`Babbage/Scripts.hs:57-59`, `Conway/Scripts.hs:90-93`).
   */
 type PlutusScript[E <: EraTag] = E match
-  case Babbage => babbage.BabbagePlutusScript
-  case Conway  => conway.ConwayPlutusScript
+  case Babbage  => babbage.BabbagePlutusScript
+  case Conway   => conway.ConwayPlutusScript
+  case Dijkstra => dijkstra.DijkstraPlutusScript
 
 /** The witness set of era `E` (`type TxWits era`,
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:516`, cardano-ledger f649f975).

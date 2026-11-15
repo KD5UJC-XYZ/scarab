@@ -75,6 +75,10 @@ object ConwayTimelock:
     */
   def translate(t: BabbageTimelock): ConwayTimelock = t.rep
 
+  extension (t: ConwayTimelock)
+    /** The shared representation, read only. */
+    def rep: Timelock = t
+
   given CanEqual[ConwayTimelock, ConwayTimelock] = CanEqual.derived
 
 /** Conway's Plutus script: the languages Conway has, V1 to V3 (`data PlutusScript ConwayEra`,
@@ -141,6 +145,10 @@ object ConwayScript:
       AlonzoScriptRep.NativeScript(ConwayTimelock.translate(t))
     case AlonzoScriptRep.PlutusScript(p) =>
       AlonzoScriptRep.PlutusScript(ConwayPlutusScript.translate(p))
+
+  extension (s: ConwayScript)
+    /** The shared representation, read only: the translation into Dijkstra reads it. */
+    def rep: AlonzoScriptRep[ConwayTimelock, ConwayPlutusScript] = s
 
   given CanEqual[ConwayScript, ConwayScript] = CanEqual.derived
 

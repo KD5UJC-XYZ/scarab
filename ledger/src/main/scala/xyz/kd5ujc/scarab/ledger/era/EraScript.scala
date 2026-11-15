@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger.era
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{NativeScript as FlatNativeScript, Unsigned, Voter}
-import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Conway, EraTag, Mary}
+import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Conway, Dijkstra, EraTag, Mary}
 
 /** The scripts of era `E` (`EraScript`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:557-597`): the native scripts among them,
@@ -136,3 +136,5 @@ object EraScript:
   given babbage: AlonzoEraScript[Babbage] =
     xyz.kd5ujc.scarab.ledger.era.babbage.BabbageScript.instance
   given conway: ConwayEraScript[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayScript.instance
+  given dijkstra: AlonzoEraScript[Dijkstra] =
+    xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraScript.instance
