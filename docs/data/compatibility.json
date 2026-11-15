@@ -1658,7 +1658,8 @@
           "PoolDistributionReferenceSuite",
           "LeiosCommitteeReferenceSuite",
           "LeiosGenesisReferenceSuite",
-          "LeiosEpochReferenceSuite"
+          "LeiosEpochReferenceSuite",
+          "LeiosTxBytesSuite"
         ],
         "issues": [
           826
