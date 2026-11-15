@@ -24,6 +24,26 @@ class MainArgsSuite extends munit.FunSuite:
     assertEquals(options.keepSnapshots, 2)
     assertEquals(options.snapshotEvery, None)
     assertEquals(options.mempoolBytes, None)
+    assertEquals(options.assertionsFile, None)
+  }
+
+  test("--assertions-file names the file of the assertions, once") {
+    val file = java.nio.file.Path.of("/out/sdk.jsonl")
+    assertEquals(
+      Main.parse(base ++ List("--assertions-file", "/out/sdk.jsonl")).map(_.assertionsFile),
+      Right(Some(file))
+    )
+    Main.parse(base ++ List("--assertions-file", "/a", "--assertions-file", "/b")) match
+      case Left(
+            xyz.kd5ujc.scarab.ledger.ConfigError(
+              xyz.kd5ujc.scarab.ledger.ConfigProblem.WithUsage(
+                xyz.kd5ujc.scarab.ledger.ConfigProblem.DuplicateFlag(flag),
+                _
+              )
+            )
+          ) =>
+        assertEquals(flag, "--assertions-file")
+      case other => fail(s"a repeated --assertions-file is refused, got $other")
   }
 
   test(

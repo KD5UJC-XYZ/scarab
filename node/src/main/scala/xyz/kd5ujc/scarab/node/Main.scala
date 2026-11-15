@@ -90,6 +90,7 @@ import xyz.kd5ujc.scarab.node.forge.{
   KeyGuard,
   PoolCredentials
 }
+import xyz.kd5ujc.scarab.node.assertions.Assertions
 import xyz.kd5ujc.scarab.node.log.{LibraryLogs, Log, LogRouter, LogSettings, NodeEvent, Severity}
 import xyz.kd5ujc.scarab.node.metrics.EventSink.alongside
 import xyz.kd5ujc.scarab.node.metrics.{
@@ -376,6 +377,10 @@ object Main extends IOApp:
     * @param plutusVm
     *   `--plutus-vm scalus|scarab`: the Plutus evaluator of the rules, the mempool and the forger
     *   (ADR 0027); `scalus` by default. Either one forges.
+    * @param assertionsFile
+    *   `--assertions-file <path>`: record the node's Antithesis assertions there, in the fallback
+    *   SDK's lines ([[xyz.kd5ujc.scarab.node.assertions.Assertions.recording]], #1032). Off by
+    *   default.
     */
   final case class Options(
       genesisDir: Option[Path],
@@ -416,7 +421,8 @@ object Main extends IOApp:
       keyLock: Boolean = true,
       referenceBuild: ReferenceBuild = ReferenceBuild.Default,
       startAsNonProducingNode: Boolean = false,
-      plutusVm: PlutusVm = PlutusVm.Default
+      plutusVm: PlutusVm = PlutusVm.Default,
+      assertionsFile: Option[Path] = None
   ):
     /** `ncStartAsNonProducingNode` of the reference: the flags give `Just True` or nothing
       * (`Parsers.hs` 70-72), the configuration file's `StartAsNonProducingNode` a value or nothing
@@ -519,13 +525,29 @@ object Main extends IOApp:
       case Right(options) =>
         LogRouter.resource[IO](options.log).use { case given Log[IO] =>
           def logged(event: NodeEvent) = Log[IO].emit(event)
-          Handle
-            .allow[NodeError](follow(options))
-            .rescue { error =>
-              val (event, code) = startupFailure(error)
-              logged(event) *> failedStart(error.message).as(code)
-            }
+          // released once the run is over, the start's failure included, so that what the node
+          // asserted last is written
+          assertions(options.assertionsFile).surround(
+            Handle
+              .allow[NodeError](follow(options))
+              .rescue { error =>
+                val (event, code) = startupFailure(error)
+                logged(event) *> failedStart(error.message).as(code)
+              }
+          )
         }
+
+  /** The node's Antithesis assertions: with `--assertions-file`, recorded to that file, appended
+    * to; without it, none. A file that cannot be written is said once, as an `error` line, and the
+    * node goes on without them.
+    */
+  private def assertions(file: Option[Path])(using Log[IO]): Resource[IO, Assertions[IO]] =
+    file.fold(Resource.pure[IO, Assertions[IO]](Assertions.noop[IO]))(path =>
+      Assertions.recording[IO](
+        Assertions.appending[IO](path),
+        failure => Log[IO].emit[NodeEvent](NodeEvent.AssertionsFailed(path, failure))
+      )
+    )
 
   /** Replay has no verdict when the evaluator is unavailable, just as live adoption has none. A
     * stored block was adopted by an earlier run, so the chain cannot be rebuilt past a block the
@@ -2175,7 +2197,7 @@ object Main extends IOApp:
       values.find(r => argument == s"--${r.flag}")
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--cpu-threads N] [--plutus-workers N] [--plutus-vm scalus|scarab] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--key-lock on|off]] [--start-as-non-producing-node] [--reference-build <build>] " + LogSettings.Usage +
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--cpu-threads N] [--plutus-workers N] [--plutus-vm scalus|scarab] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--key-lock on|off]] [--start-as-non-producing-node] [--reference-build <build>] [--assertions-file <path>] " + LogSettings.Usage +
       "\n" + ReferenceBuildFlag.Help
 
   /** Flags that take a value and may repeat. */
@@ -2219,7 +2241,8 @@ object Main extends IOApp:
     "kes-skey",
     "opcert",
     "key-lock",
-    "reference-build"
+    "reference-build",
+    "assertions-file"
   )
 
   private[node] def parse(args: List[String]): Either[ConfigError, Options] =
@@ -2473,6 +2496,7 @@ object Main extends IOApp:
           referenceBuild = referenceBuild,
           startAsNonProducingNode =
             flags.contains("start-as-non-producing-node") || flags.contains("non-producing-node"),
-          plutusVm = plutusVm
+          plutusVm = plutusVm,
+          assertionsFile = flags.get("assertions-file").map(Path.of(_))
         )
       case _ => Left(usage)
