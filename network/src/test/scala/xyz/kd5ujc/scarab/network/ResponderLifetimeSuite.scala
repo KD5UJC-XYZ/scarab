@@ -478,7 +478,7 @@ class ResponderLifetimeSuite extends FailsOnUncaught:
     case PeerViolates
 
     /** The manager prunes it to admit a duplex connection of ours past the hard limit
-      * (ouroboros-network c45735a5 `Core.hs` 2079-2122, `prunePolicy` `Diffusion/Policies.hs`
+      * (ouroboros-network c45735a5 `Core.hs` 2106-2145, `prunePolicy` `Diffusion/Policies.hs`
       * 234-254).
       */
     case Pruned
@@ -614,7 +614,8 @@ class ResponderLifetimeSuite extends FailsOnUncaught:
                 case _ => IO.unit
               }
             ) { peer =>
-              for
+              // the commit is let go whatever happens, so the manager's transition can finish
+              (for
                 chainSync <- peer.mux.channel(Protocols.ChainSync, Mux.Role.Initiator)
                 first <- ChainSyncClient(chainSync, codec)
                 // ChainSync's first byte starts KeepAlive too (`StartOnDemandAny`, network-mux
@@ -637,28 +638,30 @@ class ResponderLifetimeSuite extends FailsOnUncaught:
                     )
                     .fold(e => fail(e.message), identity)
                 )
-                reply <- typed(
+                observed <- typed(
                   chainSync.recv(65535)(
                     ChainSync
                       .decodePrefix(ChainSync.State.Intersect, ChainSync.Role.Server, _, codec)
                   )
-                ).start
-                _ <- settle
-                held <- probe.seen
-                tracked <- peer.manager.remoteStates.map(_.values.toList)
-                _ <- resume.complete(())
-                end <- peer.end
-                // every fiber has done all it can, and the peer's request has had no answer
-                answered <- IO.race(reply.join, settle)
-                _ <- reply.cancel
-                seen <- probe.seen
-                after <- peer.manager.remoteStates
-              yield (found, held, tracked, end, answered, seen, after)
+                ).background.use { reply =>
+                  for
+                    _ <- settle
+                    held <- probe.seen
+                    tracked <- peer.manager.remoteStates.map(_.values.toList)
+                    _ <- resume.complete(())
+                    end <- peer.end
+                    // every fiber has done all it can, and the peer's request has had no answer
+                    answered <- IO.race(reply, settle)
+                    seen <- probe.seen
+                    after <- peer.manager.remoteStates
+                  yield (held, tracked, end, answered, seen, after)
+                }
+              yield (found, observed)).guarantee(resume.complete(()).void)
             }
         }
       }
       .map {
-        case Right((found, held, tracked, end, answered, seen, after)) =>
+        case Right((found, (held, tracked, end, answered, seen, after))) =>
           assertEquals(found, Some(Point.Origin -> Tip.Origin))
           assertEquals(held, Vector(Seen.Opened, Seen.Closed), "nothing starts while held")
           assertEquals(tracked, List(RemoteSt.Idle), "still registered while the commit is held")
