@@ -128,6 +128,26 @@ Not the reference's and kept: `EpochGeometry.checked` refuses a slot length or e
 not positive (an approved deviation, recorded in #474); slot lengths are whole
 milliseconds (`FractionalSlotMilliseconds`), not `Micro`; `networkMagic`, `epochLength`,
 `slotsPerKESPeriod`, `maxKESEvolutions` and `maxLovelaceSupply` are not read with their `Word32` or
-`Word64` instances; `NodeSetup` refuses a security parameter above 2^31 - 1
+`Word64` instances; `NodeSetup` refuses a Byron security parameter above 2^31 - 1
 (`SecurityParamBeyondStorage`), because the chain store and the volatile chain count blocks in an
 `Int`: an approved deviation, recorded in #474.
+
+## Which genesis's k (#1027)
+
+The release node takes the hard-fork combinator's security parameter from Byron's genesis, whatever
+era the chain starts in, and only asserts that Shelley's is equal: ouroboros-consensus `82ecba32`,
+`Cardano/Node.hs:847-848` (`k = assert (kByron == kShelley) kByron`), a no-op in release builds as
+above. That k configures chain selection, rollback depth, the volatile suffix and the ledger
+snapshots (`hardForkConsensusConfigK`, `Cardano/Node.hs:869`) and the storage of every Shelley-based
+era (`Cardano/Node.hs:920-929`); the ImmutableDB chunk size comes from the first era's
+configuration, Byron's `10k` even when Byron is skipped (`HardFork/Combinator/Node/InitStorage.hs:21-29`,
+`Byron/Node.hs:280-286`). Shelley's `sgSecurityParam` is used where the reference uses it: the
+TPraos and Praos parameters and their windows, the ledger's `Globals` (cardano-ledger `f649f975`,
+`Shelley/Genesis.hs:768-789`) and the Shelley era's forecast. `NodeSetup` follows the same split:
+the chain store's k, the default snapshot policy, the header retention's chain term and the
+Haskell and Mithril import chunk size take Byron's k; the Shelley geometry keeps Shelley's. On every
+public network the two values are equal. A Byron k of zero, which the reference turns into a
+`NonZero` with `error` and so stops at its start (`Byron/Ledger/Conversions.hs:44-45`), is refused
+at setup (`SecurityParamZero`). Evidence: `GenesisSecurityParamSuite` (unequal values on chains
+whose first era is Byron, Shelley or Conway, either one larger, a zero Byron k refused, and a
+Shelley value beyond `Int` no longer refused).

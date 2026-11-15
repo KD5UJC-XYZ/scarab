@@ -381,12 +381,13 @@ object UpstreamGenesisReplay extends munit.Assertions:
                               settings,
                               follower.fetchSelection,
                               IO.pure(geometry),
+                              GenesisRuntime.retainedHeaders(geometry, geometry.k),
                               clock.now,
                               pool.fetchCoordinator.refreshGenesis,
                               HeaderCheck.forGenesisChain(
                                 headerRules,
                                 Compute.inline[IO],
-                                GenesisRuntime.retainedHeaders(geometry),
+                                GenesisRuntime.retainedHeaders(geometry, geometry.k),
                                 poll = 20000000000L.nanos
                               ),
                               Some(clock)

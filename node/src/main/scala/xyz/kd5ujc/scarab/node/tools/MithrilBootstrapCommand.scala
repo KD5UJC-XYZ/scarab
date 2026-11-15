@@ -11,7 +11,7 @@ import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
 import xyz.kd5ujc.scarab.node.NodeSetup
-import xyz.kd5ujc.scarab.storage.haskell.{ChunkSlots, HaskellImport}
+import xyz.kd5ujc.scarab.storage.haskell.HaskellImport
 import xyz.kd5ujc.scarab.storage.mithril.{MithrilBootstrap, MithrilClient}
 
 object MithrilBootstrapCommand:
@@ -153,10 +153,7 @@ object MithrilBootstrapCommand:
         )
         .leftMap(Problem.Setup(_))
       (setup, ledger) = imported
-      slots <- ChunkSlots
-        .fromSecurityParam(
-          setup.byron.fold(BigInt(setup.genesis.geometry.k.toLong))(_.securityParam)
-        )
+      slots <- setup.immutableChunkSlots
         .toRight(Problem.InvalidChunkSize)
       source = options.source.fold[MithrilClient.Source](MithrilClient.Source.Download)(p =>
         MithrilClient.Source.Cached(FsPath.fromNioPath(p))

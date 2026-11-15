@@ -44,6 +44,8 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
 import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraGenesis
 import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold
+import xyz.kd5ujc.scarab.storage.SnapshotPolicy
+import xyz.kd5ujc.scarab.storage.haskell.ChunkSlots
 
 /** Everything the follower derives from a genesis directory before it sees a block: the era
   * history, the rule configuration and the initial node state. Pure given the file contents, so the
@@ -81,6 +83,19 @@ final case class NodeSetup(
   def geometry: EpochGeometry = genesis.geometry
   def byronRules: Option[ByronRules.Config] = byronConfig
 
+  /** Chain-wide defaults use Byron's k even with an empty Byron era (ouroboros-consensus 82ecba32,
+    * `Cardano/Node.hs:847-869`, `Storage/LedgerDB/Snapshots.hs:639-642`).
+    */
+  def defaultSnapshotPolicy: SnapshotPolicy = SnapshotPolicy.reference(BigInt(chainStoreK.blocks))
+
+  /** The HFC takes its chunk size from the first configured era, including when it is skipped
+    * (82ecba32, `HardFork/Combinator/Node/InitStorage.hs:21-29`, `Byron/Node.hs:280-286`).
+    */
+  def immutableChunkSlots: Option[ChunkSlots] =
+    ChunkSlots.fromSecurityParam(BigInt(chainStoreK.blocks))
+
+  def retainedHeaders: Int = GenesisRuntime.retainedHeaders(geometry, BigInt(chainStoreK.blocks))
+
   /** This setup with its ledger following the rules of `build` ([[LedgerGlobals.referenceBuild]]).
     */
   def mirroring(build: ReferenceBuild): NodeSetup =
@@ -108,15 +123,23 @@ final case class NodeSetup(
   /** The hash the chain's first block must name as its predecessor. */
   def origin: Option[Bytes] = byron.map(_.hash)
 
-/** The security parameter as the chain store and the volatile chain count blocks: an `Int`. A
-  * larger one, which the reference's `NonZero Word64` holds, is refused at setup
+/** The security parameter as the chain store and the volatile chain count blocks: a positive `Int`,
+  * Byron's genesis k. Zero is refused (`SecurityParamZero`), where the reference stops with
+  * `error`. A value beyond `Int`, which the reference's `NonZero Word64` holds, is refused too
   * (`SecurityParamBeyondStorage`): an approved deviation, recorded in #474.
   */
 opaque type ChainStoreK = Int
 
 object ChainStoreK:
   def from(k: BigInt): Either[ConfigError, ChainStoreK] =
-    Either.cond(k.isValidInt, k.toInt, ConfigError(ConfigProblem.SecurityParamBeyondStorage(k)))
+    for
+      _ <- Either.cond(k.signum > 0, (), ConfigError(ConfigProblem.SecurityParamZero))
+      blocks <- Either.cond(
+        k.isValidInt,
+        k.toInt,
+        ConfigError(ConfigProblem.SecurityParamBeyondStorage(k))
+      )
+    yield blocks
 
   extension (k: ChainStoreK) def blocks: Int = k
 
@@ -318,21 +341,20 @@ object NodeSetup:
         .map(_.getOrElse(HeaderCheckpoints.empty))
       shelleyBytes <- required("Shelley", names.shelley)
       shelleyBase <- Genesis.shelley(text(shelleyBytes))
-      // Scarab takes k from Shelley and does not reject unequal Byron and Shelley values. The
-      // reference takes Byron's k with `assert (kByron == kShelley)` (ouroboros-consensus 82ecba32
-      // `Cardano/Node.hs:669-670, 718-719, 847-848`). This is a debug assertion, compiled out in
-      // optimized builds unless enabled (`ouroboros-consensus.cabal:34-37, 65-67`); cardano-node
-      // 11.1.3 provides a separate asserted variant (`nix/haskell.nix:415-424`).
-      // The chain store and the volatile chain count blocks in an `Int`: a larger security parameter
-      // is refused, which the reference's `NonZero Word64` would accept. An approved deviation,
-      // recorded in #474.
-      chainStoreK <- ChainStoreK.from(shelleyBase.geometry.k)
       firstShelley = config.firstShelleyEpoch
       byronBytes <- required("Byron", names.byron)
       // The reference reads the whole Byron genesis whichever era the chain starts in
-      // (`readGenesisData`, #734); a chain that starts in Shelley takes only its start time from it.
+      // (cardano-node 11.1.3, `Cardano/Node/Protocol/Cardano.hs:113-124`).
       byronFile <- ByronGenesisFile.read(Bytes.fromArray(byronBytes))
       byronGenesis <- ByronGenesisFile.fromJson(byronFile._1, byronFile._2, config.byronGenesisHash)
+      // Mirror the release node: Byron's k configures the HFC consensus and storage even when
+      // Byron is skipped (ouroboros-consensus 82ecba32, `Cardano/Node.hs:669-670,847-869,920-929`).
+      // Its equality assertion is compiled out unless enabled (`ouroboros-consensus.cabal:34-37,
+      // 65-67`; cardano-node 11.1.3, `nix/haskell.nix:415-424`). Shelley geometry keeps its k:
+      // TPraos/Praos and ledger Globals use sgSecurityParam (`Cardano/Node.hs:674-697, 795-798`;
+      // cardano-ledger f649f975, `Shelley/Genesis.hs:768-789`). The existing Int storage limit
+      // remains the approved deviation recorded in #474.
+      chainStoreK <- ChainStoreK.from(byronGenesis.securityParam)
       byron = Option.unless(firstShelley.contains(BigInt(0)))(byronGenesis)
       alonzoBytes <- required("Alonzo", names.alonzo)
       conwayBytes <- required("Conway", names.conway)
