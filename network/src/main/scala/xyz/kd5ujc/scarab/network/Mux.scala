@@ -70,9 +70,13 @@ trait Mux[F[_]]:
     */
   def awaitResponderActivity(using Raise[F, NetworkError]): F[Unit]
 
-  /** Wait until the responder channel of `protocol` holds bytes not yet read: the reference starts
-    * a responder on demand when its mini-protocol's first byte arrives (`StartOnDemand`). The
-    * default, for multiplexers that track no channel, is the first responder activity.
+  /** Wait until the responder channel of `protocol` holds bytes not yet read, those a finished
+    * conversation left in it included: the reference starts a responder on demand when its
+    * mini-protocol's ingress queue is not empty (`StartOnDemand`, network-mux `Mux.hs` 437-443 at
+    * c45735a5, 438-444 at 4646039f), and a finished job returns its trailing bytes to that queue
+    * (345-351, 346-352). A closed connection raises its reason, as `runMiniProtocol` refuses to
+    * start on a stopped mux (785-791, 770-776). The default, for multiplexers that track no
+    * channel, is the first responder activity.
     */
   def awaitResponderInput(@scala.annotation.unused protocol: Int)(using
       Raise[F, NetworkError]
@@ -660,7 +664,8 @@ object Mux:
                   dispatch,
                   handshakeInput.filter(_ => (protocol, role) == (Protocols.Handshake, config.role))
                 ),
-                buffer
+                buffer,
+                pending
               )
             }
             .map(_.toMap)
@@ -670,11 +675,22 @@ object Mux:
         def awaitResponderActivity(using Raise[F, NetworkError]): F[Unit] =
           F.race(done.get, dispatch.active.get).flatMap(_.fold(_.raise[F, Unit], F.pure))
         override def awaitResponderInput(protocol: Int)(using Raise[F, NetworkError]): F[Unit] =
-          inbound
-            .get(protocol -> Role.Responder)
-            .fold(F.never[Unit])(ingress =>
-              F.race(done.get, ingress.awaitBytes).flatMap(_.fold(_.raise[F, Unit], F.pure))
-            )
+          val key = protocol -> Role.Responder
+          (inbound.get(key), channels.get(key)).tupled.fold(F.never[Unit]) {
+            case (ingress, (_, buffer, pending)) =>
+              // the bytes a finished conversation left in the channel come first: the reference
+              // returns them to the ingress queue, where they start the next responder
+              val unread = (F.delay(buffer.size > 0), pending.get.map(_.isDefined)).mapN(_ || _)
+              done.tryGet.flatMap {
+                case Some(reason) => reason.raise[F, Unit]
+                case None =>
+                  unread.ifM(
+                    ifTrue = F.unit,
+                    ifFalse =
+                      F.race(done.get, ingress.awaitBytes).flatMap(_.fold(_.raise[F, Unit], F.pure))
+                  )
+              }
+          }
         def installApplication(initiators: Set[Int], responders: Set[Int])(using
             Raise[F, NetworkError]
         ): F[Unit] =
@@ -719,7 +735,7 @@ object Mux:
             case Some(error) => error.raise[F, MuxChannel[F]]
             case None =>
               channels.get((protocol, role)) match
-                case Some((c, _)) => F.pure(c)
+                case Some((c, _, _)) => F.pure(c)
                 case None =>
                   NetworkError
                     .IllegalTransition(

@@ -92,10 +92,14 @@ object NodeToNodeServer:
 
   /** Run the servers for the life of the resource. A failed server aborts the multiplexer, which
     * ends the connection; a client that finishes its protocol (`Done`) just ends that conversation,
-    * and the server waits for the next one on the same channel: a peer that demotes us from hot to
-    * warm and promotes us again starts each hot protocol afresh on the one bearer (the reference
-    * restarts its responders on demand the same way). With `peerSharing` (the connection agreed to
-    * it) the PeerSharing server runs too, on the established temperature like KeepAlive.
+    * and the server waits for the next one on the same channel, whose first byte starts it, a byte
+    * the finished conversation left in the channel included: a peer that demotes us from hot to
+    * warm and promotes us again starts each hot protocol afresh on the one bearer. The reference
+    * restarts a responder that ended cleanly on demand (ouroboros-network c45735a5
+    * `InboundGovernor.hs` 430-435), and its mux returns a finished job's trailing bytes to the
+    * ingress queue that starts it (network-mux `Mux.hs` 345-351). With `peerSharing` (the
+    * connection agreed to it) the PeerSharing server runs too, on the established temperature like
+    * KeepAlive.
     */
   def start[F[_]: Async, P](
       mux: Mux[F],
@@ -116,46 +120,64 @@ object NodeToNodeServer:
     // runs, when the connection counts its responders (for the peer's activity)
     def episode(temperature: Temperature, trigger: F[Unit])(run: F[Unit]): F[Unit] =
       responders.fold(run)(counted => trigger *> counted.running(temperature)(run))
-    def onDemand(protocol: Int): F[Unit] = mux.awaitResponderInput(protocol)
-    // `StartOnDemandAny`: the first byte of any responder starts it
-    val onDemandAny: F[Unit] =
-      application(peerSharing).reduceLeftTo(onDemand)((a, b) => Async[F].race(a, onDemand(b)).void)
+    // `StartOnDemand`: the first byte of its mini-protocol starts a responder; `started` counts
+    // the starts, for `StartOnDemandAny`. Both triggers raise in the scope of the responder's fiber
+    def onDemand(started: SignallingRef[F, Long])(protocol: Int)(using
+        Raise[F, NetworkError]
+    ): F[Unit] =
+      mux.awaitResponderInput(protocol) *> started.update(_ + 1)
+    // `StartOnDemandAny` (KeepAlive), armed when `started` was at `seen`: a byte on its own channel
+    // starts it, or an on-demand responder that starts after; a message to a responder that runs
+    // starts nothing (network-mux `Mux.hs` 444-450, 571-577 and 588-591 at ouroboros-network
+    // c45735a5; 445-451, 572-578 and 589-592 at 4646039f)
+    def onDemandAny(started: SignallingRef[F, Long], seen: Long)(using
+        Raise[F, NetworkError]
+    ): F[Unit] =
+      Async[F]
+        .race(mux.awaitResponderInput(Protocols.KeepAlive), started.waitUntil(_ != seen))
+        .void
     for
       _ <- Resource.eval(
         mux.installApplication(if initiators then installed else Set.empty, installed)
       )
+      started <- Resource.eval(SignallingRef.of[F, Long](0L))
       chainSync <- channel(Protocols.ChainSync)
       blockFetch <- channel(Protocols.BlockFetch)
       txs <- channel(Protocols.TxSubmission2)
       keepAlive <- channel(Protocols.KeepAlive)
       _ <- guarded("chain-sync")(
-        episode(Temperature.Hot, onDemand(Protocols.ChainSync))(
+        episode(Temperature.Hot, onDemand(started)(Protocols.ChainSync))(
           handlers.chainSync
             .use(ChainSyncServer.run(chainSync, handlers.codec, _, settings.chainSync))
             .void
         ).foreverM[Unit]
       ).background
       _ <- guarded("block-fetch")(
-        episode(Temperature.Hot, onDemand(Protocols.BlockFetch))(
+        episode(Temperature.Hot, onDemand(started)(Protocols.BlockFetch))(
           BlockFetchServer.run(blockFetch, handlers.blocks, settings.blockFetch).void
         ).foreverM[Unit]
       ).background
       _ <- guarded("tx-submission")(
-        episode(Temperature.Hot, onDemand(Protocols.TxSubmission2))(
+        episode(Temperature.Hot, onDemand(started)(Protocols.TxSubmission2))(
           TxSubmissionServer.run(txs, handlers.transactions, settings.transactions).void
         ).foreverM[Unit]
       ).background
       // cardano-diffusion c5117705 NodeToNode.hs:310: KeepAlive uses StartOnDemandAny.
       // restarted on demand when the client ends it, as the reference's inbound governor restarts
-      // its responders, when the connection counts them
+      // its responders, when the connection counts them: armed from the start of the connection,
+      // before any on-demand responder can start, and again as each run ends (at ouroboros-network
+      // 4646039f the inbound governor starts every responder in one transaction,
+      // `InboundGovernor.hs` 345-388, and the mux takes its commands before ingress, `Mux.hs`
+      // 429-451)
       _ <- guarded("keep-alive")(
         responders.fold(
           mux.awaitResponderActivity *> KeepAliveServer.run(keepAlive, settings.keepAlive).void
         )(_ =>
-          episode(Temperature.Established, onDemandAny)(
-            KeepAliveServer.run(keepAlive, settings.keepAlive).void
+          Async[F].tailRecM(0L)(seen =>
+            episode(Temperature.Established, onDemandAny(started, seen))(
+              KeepAliveServer.run(keepAlive, settings.keepAlive).void
+            ) *> started.get.map(Left(_))
           )
-            .foreverM[Unit]
         )
       ).background
       _ <- Option
@@ -163,7 +185,7 @@ object NodeToNodeServer:
         .traverse_ { source =>
           channel(Protocols.PeerSharing).flatMap { shared =>
             guarded("peer-sharing")(
-              episode(Temperature.Established, onDemand(Protocols.PeerSharing))(
+              episode(Temperature.Established, onDemand(started)(Protocols.PeerSharing))(
                 PeerSharingServer.run(shared, source, settings.peerSharing).void
               ).foreverM[Unit]
             ).background
@@ -227,10 +249,10 @@ object NodeToNodeServer:
     * the counters when it finds no connection for a responder that has started (613-651), so that
     * connection's responders are no longer restarted nor its remote state updated. A race, fixed
     * upstream by `e098ed82c` (PR #5440, in 2fb69829), and not reproduced (#474;
-    * `docs/decisions.md`, #956, 2026-11-14). The responders are restarted on demand for the
-    * connection's life: there is no counterpart of the check that change also adds, which stops
-    * restarting them once the connection is no longer recorded (`InboundGovernor.hs` 441-447 at
-    * 2fb69829).
+    * `docs/decisions.md`, #956, 2026-11-14). The responders are restarted on demand for the life of
+    * the resource that runs them (`NodeToNodeServer.start`), whose release ends every one: there is
+    * no counterpart of the check that change also adds, which stops restarting them once the
+    * connection is no longer recorded (`InboundGovernor.hs` 441-447 at 2fb69829).
     */
   private[network] final class Responders[F[_]: Async] private (
       count: Ref[F, Option[Running]],
