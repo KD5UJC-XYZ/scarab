@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.consensus.{
   ForkTrigger,
   HardForkConfig
 }
-import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Header, PlutusStats, Utxo}
+import xyz.kd5ujc.scarab.ledger.{Block, EpochGeometry, Header, PlutusStats, Utxo}
 import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, EraNes}
 import xyz.kd5ujc.scarab.ledger.state.{
   BlockNo,
@@ -28,7 +28,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   VocabError,
   WithOrigin
 }
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 /** Where the live mirror's telescopes sit on the era history: the epoch geometry (the resolved one
   * once a chain that begins in Byron has learned its first Shelley epoch), the Byron parameters and
@@ -104,15 +104,38 @@ object MirrorStep:
 
   private def telescoped[A](e: Either[TelescopeError, A]) = e.leftMap(StateMirrorError.Telescope(_))
 
-  /** The mirror after a block of a Shelley-based era `header`: the new-epoch state `nes` (the state
-    * after the block, in the era of the block), the chain-dependent state `protocol`, the node's
+  /** The fourth field of the mirror's ledger state before a block whose new-epoch state is of
+    * `layout`: the field of the Shelley-based state, of whichever era, or the origin's for a Byron
+    * one.
+    */
+  private def layoutBefore(
+      m: MirrorState,
+      layout: StateLayout
+  ): Either[StateMirrorError, ShelleyLedgerState.Layout] =
+    m.ext.ledgerState.state match
+      case EraLedgerState.ByronCurrent(_) => Right(ShelleyLedgerState.Layout.atOrigin(layout))
+      case i: EraLedgerState.InShelleyEra[e] =>
+        val held = i.state.layout
+        Either.cond(
+          held.stateLayout == layout,
+          held,
+          StateMirrorError.LayoutMismatch(held.stateLayout, layout)
+        )
+
+  /** The mirror after `block` of a Shelley-based era: the new-epoch state `nes` (the state after
+    * the block, in the era of the block), the chain-dependent state `protocol`, the node's
     * `consensus` bookkeeping and the phase-2 counters. The mirror before the block may be in an
     * earlier Shelley-based era; a Byron mirror is the hand-over's ([[MirrorStep.handover]]).
+    *
+    * The fourth field of the ledger state is the one before the block, whatever its era (the
+    * translations carry it, ouroboros-consensus 2416493b `Cardano/CanHardFork.hs:669,754`), or the
+    * origin's when the mirror leaves Byron, after the block ([[ShelleyLedgerState.Layout.after]]).
+    * It is of the layout of `nes`, or the step refuses ([[StateMirrorError.LayoutMismatch]]).
     */
   def block(
       m: MirrorState,
       placement: Placement,
-      header: Header.Shelley,
+      block: Block.Shelley,
       nes: EraNes,
       protocol: ProtocolState,
       consensus: ConsensusExtras,
@@ -121,6 +144,7 @@ object MirrorStep:
     m.extras match
       case _: MirrorExtras.InByron => Left(StateMirrorError.ExtrasMismatch(m.ext.ledgerState.era))
       case MirrorExtras.InShelley(ledgerExtras, _) =>
+        val header = block.header
         for
           shelley <- (nes match
             case n: EraNes.InEra[e] =>
@@ -128,8 +152,9 @@ object MirrorStep:
                 vocab(SlotNo.fromBigInt(header.slot)),
                 vocab(BlockNo.fromBigInt(header.blockNo)),
                 vocab(Hash32.fromBytes(header.hash)),
-                transition(m, placement.geometry, header.slot)
-              ).tupled.map { (slot, blockNo, hash, counter) =>
+                transition(m, placement.geometry, header.slot),
+                layoutBefore(m, n.nes.layout.stateLayout)
+              ).tupled.map { (slot, blockNo, hash, counter, before) =>
                 (
                   EraNes.eraOf(n.era),
                   EraLedgerState.inEra[e](
@@ -137,7 +162,7 @@ object MirrorStep:
                       WithOrigin.At(ShelleyTip(slot, blockNo, hash)),
                       n.nes,
                       counter,
-                      ShelleyLedgerState.Layout.Node11_1(None)
+                      before.after(block)
                     )
                   )(using n.era),
                   AnnTip(slot, blockNo, TipInfo.ShelleyBasedTip(n.era, hash))
@@ -267,15 +292,15 @@ object MirrorStep:
   def handover(
       byron: MirrorState,
       placement: Placement,
-      header: Header.Shelley,
+      block: Block.Shelley,
       nes: EraNes,
       protocol: ProtocolState,
       consensus: ConsensusExtras
   ): Either[StateMirrorError, MirrorState] =
-    block(
+    MirrorStep.block(
       byron.copy(extras = MirrorExtras.InShelley(NodeExtras.empty, consensus)),
       placement,
-      header,
+      block,
       nes,
       protocol,
       consensus,

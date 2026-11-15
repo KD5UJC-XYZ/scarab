@@ -22,21 +22,16 @@ import xyz.kd5ujc.scarab.protocol.StateLayout
 object GenesisMirror:
 
   /** The parts of the start state that only the Leios layout has (ouroboros-consensus 2416493b),
-    * each as the chain's origin holds it: no transaction bytes yet (`shelleyCumulativeTxBytes = 0`,
-    * the Byron to Shelley translation's, `Cardano/CanHardFork.hs:377`, which the later translations
-    * carry); round zero as every bound's next Peras round (`initBound`,
-    * `HardFork/History/Summary.hs:103-110`, which an era of no Peras rounds keeps, `:139-146`); and
-    * a Peras state of no epoch context and no certificate (`initPerasEpochContextResolver` at the
-    * origin, `Peras/Context.hs:694-698`, and the Byron start's `SNothing`,
-    * `HardFork/Combinator/Embed/Nary.hs:347-357`, `Ledger/Peras.hs:65-74`).
+    * each as the chain's origin holds it: no transaction bytes yet
+    * ([[ShelleyLedgerState.Layout.atOrigin]]); round zero as every bound's next Peras round
+    * (`initBound`, `HardFork/History/Summary.hs:103-110`, which an era of no Peras rounds keeps,
+    * `:139-146`); and a Peras state of no epoch context and no certificate
+    * (`initPerasEpochContextResolver` at the origin, `Peras/Context.hs:694-698`, and the Byron
+    * start's `SNothing`, `HardFork/Combinator/Embed/Nary.hs:347-357`, `Ledger/Peras.hs:65-74`).
     */
   private enum Start:
     case Node11_1
     case Leios
-
-    def shelley: ShelleyLedgerState.Layout = this match
-      case Node11_1 => ShelleyLedgerState.Layout.Node11_1(None)
-      case Leios    => ShelleyLedgerState.Layout.Leios(Word64.zero)
 
     def bound(b: Bound): Bound = this match
       case Node11_1 => b
@@ -92,7 +87,7 @@ object GenesisMirror:
                     WithOrigin.Origin,
                     i.nes,
                     ShelleyTransition(Word32.fromUnsigned(0)),
-                    start.shelley
+                    ShelleyLedgerState.Layout.atOrigin(i.nes.layout.stateLayout)
                   )
                 )
               )

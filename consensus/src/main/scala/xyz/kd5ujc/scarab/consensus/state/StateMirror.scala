@@ -7,7 +7,7 @@ import cats.derived.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.{BlockRef, ConsensusExtras, FollowState, HardForkConfig}
 import xyz.kd5ujc.scarab.ledger.state.{Diff, Gap, MirrorEnv, MirrorError, NodeExtras, WithOrigin}
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 // The consensus side of the mirror: the Haskell `ExtLedgerState` of the Cardano block
 // (`Ledger/Extended.hs:70-73`, ouroboros-consensus 82ecba32) with the node's bookkeeping beside it
@@ -72,8 +72,14 @@ enum StateMirrorError extends DomainError derives Show:
     */
   case TransitionCounterOverflow
 
+  /** The mirror's Shelley-based ledger state is of the layout `mirror`, and the new-epoch state a
+    * block leaves of `ledger`: the reference's state has one layout, its build's.
+    */
+  case LayoutMismatch(mirror: StateLayout, ledger: StateLayout)
+
 object StateMirrorError:
   private given Show[Era] = Show.fromToString
+  private given Show[StateLayout] = Show.fromToString
 
 /** What the node holds that the Haskell state has no place for, on the consensus side. The ledger
   * side's ([[NodeExtras]]) is inside the Shelley-based case.
