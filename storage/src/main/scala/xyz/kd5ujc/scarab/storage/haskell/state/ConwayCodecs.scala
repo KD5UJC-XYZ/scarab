@@ -157,6 +157,31 @@ object ConwayCodecs:
   private val poolMetadata: Codec[(String, Bytes)] =
     Record.of[(String, Bytes)]((Codec.text, Codec.bytes))
 
+  /** Held registration bytes, written from their values by the same encoders as [[poolFields]].
+    * `StakePool.hs:389-404, 516-520`, cardano-ledger f649f975.
+    */
+  private[state] val poolRelays: Codec[Bytes] =
+    writer[Bytes]("pool relays") { (raw, out) =>
+      PoolRelays.decode(raw).foreach(rs => out.raw(PoolRelays.encode(rs)))
+    } { raw =>
+      PoolRelays
+        .decode(raw)
+        .left
+        .toOption
+        .flatMap(e => Codec.refuse(true, "relays", "a relay sequence", e))
+    }
+
+  private[state] val poolMetadataBytes: Codec[Bytes] =
+    writer[Bytes]("pool metadata") { (raw, out) =>
+      poolMetadata.decodeBytes(raw).foreach(poolMetadata.encode(_, out))
+    } { raw =>
+      poolMetadata
+        .decodeBytes(raw)
+        .left
+        .toOption
+        .flatMap(e => Codec.refuse(true, "PoolMetadata", "[url, hash]", e))
+    }
+
   /** The fields of `StakePoolParams` in a flat group (`withStakePoolParamsFlatEncoding`,
     * `State/StakePool.hs:555-572`, cardano-ledger f649f975): the operator, the VRF key hash, the
     * pledge and the cost (a `Coin`, `encodeInteger`, `Coin.hs:93-106`), the margin (a unit
@@ -165,7 +190,7 @@ object ConwayCodecs:
     * and metadata as the bytes it was read with; the reference writes their values, so they are
     * read again here and written as values.
     */
-  private def poolFields(p: PoolParams, out: Writer)(using ProtVer): Unit =
+  private[state] def poolFields(p: PoolParams, out: Writer)(using ProtVer): Unit =
     hash28.encode(p.operator, out)
     hash32.encode(p.vrfKeyHash, out)
     out.integer(p.pledge)
@@ -173,10 +198,16 @@ object ConwayCodecs:
     unitInterval.encode(p.margin, out)
     state.rewardAccount.encode(p.rewardAccount, out)
     sortedSetOf(hash28).encode(p.owners, out)
-    // refused by `check` when the kept bytes do not read; never written then
-    PoolRelays.decode(p.relays).foreach(rs => out.raw(PoolRelays.encode(rs)))
-    p.metadata.fold(out.nul())(raw =>
-      poolMetadata.decodeBytes(raw).foreach(poolMetadata.encode(_, out))
+    poolRelays.encode(p.relays, out)
+    p.metadata.fold(out.nul())(poolMetadataBytes.encode(_, out))
+
+  private def poolDetailsRefusal(p: PoolParams)(using ProtVer): Option[ConstraintViolation] =
+    first(
+      unitInterval.check(p.margin),
+      account(p.rewardAccount),
+      p.owners.iterator.flatMap(hash28.check).nextOption(),
+      poolRelays.check(p.relays),
+      p.metadata.flatMap(poolMetadataBytes.check)
     )
 
   private def poolRefusal(p: PoolParams)(using ProtVer): Option[ConstraintViolation] =
@@ -185,21 +216,7 @@ object ConwayCodecs:
       hash32.check(p.vrfKeyHash),
       coin(p.pledge),
       coin(p.cost),
-      unitInterval.check(p.margin),
-      account(p.rewardAccount),
-      p.owners.iterator.flatMap(hash28.check).nextOption(),
-      PoolRelays
-        .decode(p.relays)
-        .left
-        .toOption
-        .flatMap(e => Codec.refuse(true, "relays", "a relay sequence", e)),
-      p.metadata.flatMap(raw =>
-        poolMetadata
-          .decodeBytes(raw)
-          .left
-          .toOption
-          .flatMap(e => Codec.refuse(true, "PoolMetadata", "[url, hash]", e))
-      )
+      poolDetailsRefusal(p)
     )
 
   /** `EncCBOR (ConwayTxCert era)` (`eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:737-741`,

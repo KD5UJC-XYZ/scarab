@@ -156,11 +156,11 @@ trait CertStateCodecs extends NodeTypeCodecs:
       case PoolBlsKey.Node11_1 =>
         Some(ConstraintViolation("PoolBlsKey", "a part of the Leios layout", "Node11_1"))
 
-  /** `StakePoolState` (`StakePool.hs:192-203`): the pool parameters less its id, with the deposit
-    * and the delegators. Here the relays are a sequence and the metadata a `StrictMaybe` (a list of
-    * zero or one), where `StakePoolParams` writes it `null` able. The 11.1 layout writes ten
-    * fields; the Leios layout eleven, the voting key after the VRF key hash (9df9f98c
-    * `State/StakePool.hs:220-266`).
+  /** `StakePoolState` (`State/StakePool.hs:192-205`, cardano-ledger f649f975): the pool parameters
+    * less its id, with the deposit and the delegators. Here the relays are a sequence and the
+    * metadata a `StrictMaybe` (a list of zero or one), where `StakePoolParams` writes it `null`
+    * able. The 11.1 layout writes ten fields; the Leios layout eleven, the voting key after the VRF
+    * key hash (9df9f98c `State/StakePool.hs:220-266`).
     */
   given stakePoolState(using ProtVer): Codec[StakePoolState] = stateLayout match
     case StateLayout.Node11_1 =>
@@ -173,7 +173,7 @@ trait CertStateCodecs extends NodeTypeCodecs:
           credential[Staking],
           setOf(keyHash[Staking]),
           relays,
-          strictMaybe(rawItem),
+          strictMaybe(poolMetadata),
           compactCoin,
           setOf(credential[Staking])
         )
@@ -223,7 +223,7 @@ trait CertStateCodecs extends NodeTypeCodecs:
           credential[Staking],
           setOf(keyHash[Staking]),
           relays,
-          strictMaybe(rawItem),
+          strictMaybe(poolMetadata),
           compactCoin,
           setOf(credential[Staking])
         )

@@ -344,8 +344,8 @@ object ConwayParam:
   * value and the original encoding of that value. Only [[ConwayParamUpdate.decode]],
   * [[ConwayParamUpdate.decodeStored]] and [[ConwayParamUpdate.fromEncoded]] build one, so every
   * field is a Conway field read at its type and applying the update cannot fail. The original
-  * encodings are what the ledger-state snapshot writes back; the meaning of the update (the
-  * comparison of proposals, the rules) is [[params]].
+  * encodings remain available through [[encodings]]; the state and transaction writers encode
+  * [[params]] as values (`Core/PParams.hs:244-255`, cardano-ledger f649f975).
   */
 final case class ConwayParamUpdate private (entries: SortedMap[Int, ConwayParamUpdate.Entry]):
   /** The fields set, in key order. */
