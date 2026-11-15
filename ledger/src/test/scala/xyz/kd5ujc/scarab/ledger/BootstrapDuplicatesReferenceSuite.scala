@@ -173,7 +173,8 @@ object BootstrapDuplicatesReferenceSuite:
 
   private def bstr(b: Bytes): Bytes = Bytes(bytesHead(b.size)) ++ b
 
-  /** `encCBOR` of a bootstrap witness (`Bootstrap.hs:93-100`): the list of its four byte strings.
+  /** `encCBOR` of a bootstrap witness (`Bootstrap.hs:93-100`, cardano-ledger f649f975): the list of
+    * its four byte strings.
     */
   def encoded(w: BootstrapWitness): Bytes =
     Bytes(Vector(0x84.toByte)) ++ bstr(w.vkey) ++ bstr(w.signature) ++ bstr(w.chainCode) ++

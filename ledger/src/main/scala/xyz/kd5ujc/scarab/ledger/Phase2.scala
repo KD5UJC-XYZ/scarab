@@ -112,10 +112,10 @@ object Phase2:
 
   /** Every required, provided Plutus script in the reference's collection order, reversed on
     * success. Missing redeemers keep accumulating after a setup failure, but later contexts are not
-    * built (`Alonzo/Plutus/Evaluate.hs:141-185`). This is deliberately not an accumulating
-    * traversal of every context error. The scripts needed and their contexts are those of the era
-    * `E` ([[Purpose.collection]], [[ScriptContexts.Environment]]), whatever the protocol version;
-    * the evaluator is given the version.
+    * built (`Alonzo/Plutus/Evaluate.hs:141-185`, cardano-ledger f649f975). This is deliberately not
+    * an accumulating traversal of every context error. The scripts needed and their contexts are
+    * those of the era `E` ([[Purpose.collection]], [[ScriptContexts.Environment]]), whatever the
+    * protocol version; the evaluator is given the version.
     */
   def collect[E <: EraTag](
       tx: Tx,

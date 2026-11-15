@@ -23,9 +23,9 @@ final case class Horizon(eras: NonEmptyVector[Horizon.Era]):
 
   /** The time of the start of `slot` since the system start, in picoseconds, or none where the
     * summary does not cover it. This is the query that `epochInfoSlotToRelativeTime` runs,
-    * `slotToWallclock` (`Qry.hs:628-632`): the slot must lie in an era that has not ended
-    * (`ESlotLength` guards the upper bound as exclusive, so the slot at which the last era ends is
-    * past the horizon).
+    * `slotToWallclock` (`Qry.hs:628-632`, ouroboros-consensus 82ecba32): the slot must lie in an
+    * era that has not ended (`ESlotLength` guards the upper bound as exclusive, so the slot at
+    * which the last era ends is past the horizon).
     */
   def timePs(slot: BigInt): Option[BigInt] =
     eras.toVector.collectFirst {
@@ -52,8 +52,8 @@ final case class Horizon(eras: NonEmptyVector[Horizon.Era]):
 
 object Horizon:
 
-  /** A point on the era history (`Bound`, `Summary.hs:82-88`): the time since the system start in
-    * picoseconds, the slot and the epoch.
+  /** A point on the era history (`Bound`, `Summary.hs:82-88`, ouroboros-consensus 82ecba32): the
+    * time since the system start in picoseconds, the slot and the epoch.
     */
   final case class Edge(timePs: BigInt, slot: BigInt, epoch: BigInt):
     def show: String =
@@ -99,7 +99,9 @@ object Horizon:
         s"eraGenesisWin = GenesisWindow {unGenesisWindow = $genesisWindow}, " +
         "eraPerasRoundLength = MkPerasEnabled Nothing}"
 
-  /** An era of the summary (`EraSummary`, `Summary.hs:198-205`); no end is `EraUnbounded`. */
+  /** An era of the summary (`EraSummary`, `Summary.hs:198-205`, ouroboros-consensus 82ecba32); no
+    * end is `EraUnbounded`.
+    */
   final case class Era(start: Edge, end: Option[Edge], params: Params):
 
     /** Whether the translation of `slot` can be answered in this era. */
@@ -133,8 +135,8 @@ object Horizon:
     */
   final case class History(past: Vector[Era], start: Edge, current: Params, next: Option[Params]):
 
-    /** `reconstructSummary` (`State/Infra.hs:194-262`): the summary at a tip whose era's end is
-      * `transition`.
+    /** `reconstructSummary` (`State/Infra.hs:194-262`, ouroboros-consensus 82ecba32): the summary
+      * at a tip whose era's end is `transition`.
       */
     def at(transition: Transition): Horizon =
       val tail: Vector[Era] = transition match

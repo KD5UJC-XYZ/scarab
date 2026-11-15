@@ -31,13 +31,15 @@ import xyz.kd5ujc.scarab.protocol.DijkstraNotYet
 // (`ToGroup mm`, `Conway/Rules/Gov.hs:269-270`). The arms of the reference that are `error "Impossible"` have no
 // case here.
 
-/** `DijkstraBbodyPredFailure` (`Rules/Bbody.hs:79-88`, encoded at 109-117). */
+/** `DijkstraBbodyPredFailure` (`Rules/Bbody.hs:88-97` (cardano-ledger 9df9f98c), encoded at
+  * 118-129).
+  */
 enum DijkstraBbodyFailure(val tag: Int):
   case WrongBlockBodySize(mismatch: Mismatch[BigInt]) extends DijkstraBbodyFailure(0)
   case InvalidBodyHash(mismatch: Mismatch[Bytes]) extends DijkstraBbodyFailure(1)
 
-  /** `LedgersFailure` of `ShelleyLedgersPredFailure` (`Rules/Ledgers.hs:22`), whose one case is
-    * `LedgerFailure` of the transaction's LEDGER failure.
+  /** `LedgersFailure` of `ShelleyLedgersPredFailure` (`Rules/Ledgers.hs:22`, cardano-ledger
+    * 9df9f98c), whose one case is `LedgerFailure` of the transaction's LEDGER failure.
     */
   case LedgersFailure(failure: DijkstraLedgerFailure) extends DijkstraBbodyFailure(2)
   case TooManyExUnits(mismatch: Mismatch[ExUnits]) extends DijkstraBbodyFailure(3)
@@ -49,11 +51,11 @@ enum DijkstraBbodyFailure(val tag: Int):
   /** The header's highest supported major version against the major of the parameters. */
   case HeaderProtVerTooLow(mismatch: Mismatch[BigInt]) extends DijkstraBbodyFailure(6)
 
-/** `DijkstraLedgerPredFailure` (`Rules/Ledger.hs:98-105`, encoded at 252-259). ENTITIES and
-  * SUBLEDGERS are rules of their own whose failures this build does not produce yet; their cases
-  * carry the rules' failure types when those rules exist. `conwayToDijkstraLedgerPredFailure`
-  * (`Ledger.hs:530-543`) has no counterpart of `ConwayWdrlNotDelegatedToDRep` or
-  * `ConwayMempoolFailure`.
+/** `DijkstraLedgerPredFailure` (`Rules/Ledger.hs:98-105` (cardano-ledger 9df9f98c), encoded at
+  * 252-259). ENTITIES and SUBLEDGERS are rules of their own whose failures this build does not
+  * produce yet; their cases carry the rules' failure types when those rules exist.
+  * `conwayToDijkstraLedgerPredFailure` (`Ledger.hs:530-543`) has no counterpart of
+  * `ConwayWdrlNotDelegatedToDRep` or `ConwayMempoolFailure`.
   */
 enum DijkstraLedgerFailure(val tag: Int):
   case UtxowFailure(failure: DijkstraUtxowFailure) extends DijkstraLedgerFailure(1)
@@ -61,7 +63,7 @@ enum DijkstraLedgerFailure(val tag: Int):
   case TreasuryValueMismatch(mismatch: Mismatch[BigInt]) extends DijkstraLedgerFailure(4)
 
   /** The reference scripts' total of the batch against the limit, both of the reference's 64-bit
-    * `Int` (`Mismatch RelLTEQ Int`, `Rules/Ledger.hs:103`).
+    * `Int` (`Mismatch RelLTEQ Int`, `Rules/Ledger.hs:103`, cardano-ledger 9df9f98c).
     */
   case TxRefScriptsSizeTooBig(mismatch: Mismatch[Long]) extends DijkstraLedgerFailure(5)
 
@@ -73,9 +75,10 @@ object DijkstraLedgerFailure:
   /** `DijkstraSubLedgersFailure`. */
   val SubLedgersTag: Int = 6
 
-/** `DijkstraUtxowPredFailure` (`Rules/Utxow.hs:93-142`, encoded at 381-401). Key and script hashes,
-  * data hashes and auxiliary data hashes are their bytes; a redeemer purpose is [[DijkstraPurpose]]
-  * (`AsItem`, with the script hash) or its tag and index (`AsIx`).
+/** `DijkstraUtxowPredFailure` (`Rules/Utxow.hs:93-142` (cardano-ledger 9df9f98c), encoded at
+  * 381-401). Key and script hashes, data hashes and auxiliary data hashes are their bytes; a
+  * redeemer purpose is [[DijkstraPurpose]] (`AsItem`, with the script hash) or its tag and index
+  * (`AsIx`).
   */
 enum DijkstraUtxowFailure(val tag: Int):
   case UtxoFailure(failure: DijkstraUtxoFailure) extends DijkstraUtxowFailure(0)
@@ -107,9 +110,9 @@ enum DijkstraUtxowFailure(val tag: Int):
   /** Required top-level guards whose datum's presence does not fit the credential's kind. */
   case MalformedGuardDatums(credentials: Set[Credential]) extends DijkstraUtxowFailure(20)
 
-/** `DijkstraUtxoPredFailure` (`Rules/Utxo.hs:110-171`, encoded at 497-520; 8 is unused). Inputs,
-  * outputs and values are the node's ([[TxIn]], [[TxOut]], [[Value]]), the forms the UTxO set
-  * holds.
+/** `DijkstraUtxoPredFailure` (`Rules/Utxo.hs:110-171` (cardano-ledger 9df9f98c), encoded at
+  * 497-520; 8 is unused). Inputs, outputs and values are the node's ([[TxIn]], [[TxOut]],
+  * [[Value]]), the forms the UTxO set holds.
   */
 enum DijkstraUtxoFailure(val tag: Int):
   case UtxosFailure(failure: xyz.kd5ujc.scarab.ledger.UtxosFailure) extends DijkstraUtxoFailure(0)
@@ -144,7 +147,9 @@ enum DijkstraUtxoFailure(val tag: Int):
   /** A legacy-mode top-level transaction that does not balance on its own. */
   case ValueNotConservedInLegacyMode(mismatch: Mismatch[Value]) extends DijkstraUtxoFailure(23)
 
-/** `DijkstraPoolPredFailure` (`Rules/Pool.hs:57-85`, encoded at 87-105; 2 is unused). */
+/** `DijkstraPoolPredFailure` (`Rules/Pool.hs:57-85` (cardano-ledger 9df9f98c), encoded at 87-105; 2
+  * is unused).
+  */
 enum DijkstraPoolFailure(val tag: Int):
   case StakePoolNotRegisteredOnKey(pool: Bytes) extends DijkstraPoolFailure(0)
 
@@ -159,9 +164,9 @@ enum DijkstraPoolFailure(val tag: Int):
       extends DijkstraPoolFailure(7)
 
 /** `ConwayCertPredFailure` (`Conway/Rules/Cert.hs`), the failure of Dijkstra's CERT
-  * (`Dijkstra/Rules/Cert.hs:74`): DELEG's is Conway's (`Rules/Deleg.hs:14`), POOL's and GOVCERT's
-  * Dijkstra's ([[DijkstraPoolFailure]], and `DijkstraGovCertPredFailure`, a copy of Conway's
-  * [[GovCertFailure]]).
+  * (`Dijkstra/Rules/Cert.hs:74`, cardano-ledger 9df9f98c): DELEG's is Conway's
+  * (`Rules/Deleg.hs:14`), POOL's and GOVCERT's Dijkstra's ([[DijkstraPoolFailure]], and
+  * `DijkstraGovCertPredFailure`, a copy of Conway's [[GovCertFailure]]).
   */
 enum DijkstraCertFailure(val tag: Int):
   case Deleg(failure: DelegFailure) extends DijkstraCertFailure(1)

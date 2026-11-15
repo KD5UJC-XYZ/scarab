@@ -73,7 +73,7 @@ object Ledger extends JudgedSts[LedgerEnv, ConwayLedger, Tx, PredicateFailure, L
       )
     yield ()
 
-  /** `validateTreasuryValue` (`Ledger.hs:440-453`). */
+  /** `validateTreasuryValue` (`Ledger.hs:440-453`, cardano-ledger f649f975). */
   private def treasuryValue(tx: Tx, treasury: BigInt): Test[PredicateFailure] =
     tx.body.currentTreasury.fold(Test.pass[PredicateFailure])(submitted =>
       Test.failureUnless(
@@ -82,8 +82,8 @@ object Ledger extends JudgedSts[LedgerEnv, ConwayLedger, Tx, PredicateFailure, L
       )
     )
 
-  /** `validateRefScriptSize` (`Ledger.hs:455-472`): the size and the limit compared as the
-    * reference's 64-bit `Int` (`fromIntegral @Word32 @Int`).
+  /** `validateRefScriptSize` (`Ledger.hs:455-472`, cardano-ledger f649f975): the size and the limit
+    * compared as the reference's 64-bit `Int` (`fromIntegral @Word32 @Int`).
     */
   private def refScriptSize(refSize: Long): Test[PredicateFailure] =
     val limit = RefScripts.MaxRefScriptSizePerTx.toLong
@@ -92,8 +92,9 @@ object Ledger extends JudgedSts[LedgerEnv, ConwayLedger, Tx, PredicateFailure, L
       PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(refSize, limit))
     )
 
-  /** `validateWithdrawalsDelegated` (`Ledger.hs:474-488`): the key-hash reward accounts withdrawn
-    * from that do not delegate to a DRep, read from the state before the certificates.
+  /** `validateWithdrawalsDelegated` (`Ledger.hs:474-488`, cardano-ledger f649f975): the key-hash
+    * reward accounts withdrawn from that do not delegate to a DRep, read from the state before the
+    * certificates.
     */
   private def withdrawalsDelegated(
       accounts: scala.collection.immutable.SortedMap[Credential[Staking], ConwayAccountState],
@@ -114,7 +115,9 @@ object Ledger extends JudgedSts[LedgerEnv, ConwayLedger, Tx, PredicateFailure, L
       )
     Test.failureOnNonEmpty(notDelegated)(_.isEmpty)(PredicateFailure.WdrlNotDelegatedToDRep(_))
 
-  /** The part of LEDGER for a transaction that is phase-2 valid (`Ledger.hs:363-425`). */
+  /** The part of LEDGER for a transaction that is phase-2 valid (`Ledger.hs:363-425`,
+    * cardano-ledger f649f975).
+    */
   private def valid[F[_]: Monad](
       env: LedgerEnv,
       tx: Tx,
@@ -145,15 +148,16 @@ object Ledger extends JudgedSts[LedgerEnv, ConwayLedger, Tx, PredicateFailure, L
       network = globals.networkId
       _ <- Sts.runTest[F, PredicateFailure](treasuryValue(tx, env.treasury.value))
       _ <- Sts.runTest[F, PredicateFailure](refScriptSize(RefScripts.refScriptsSize(utxo, body)))
-      // `unless (hardforkConwayBootstrapPhase pv)` (`Conway/Rules/Ledger.hs:379-380`): only
-      // protocol version 9 skips the check (`pvMajor pv == 9`, `Conway/Era.hs:257-258`)
+      // `unless (hardforkConwayBootstrapPhase pv)` (`Conway/Rules/Ledger.hs:379-380`,
+      // cardano-ledger f649f975): only protocol version 9 skips the check (`pvMajor pv == 9`,
+      // `Conway/Era.hs:257-258`)
       _ <-
         if pp.protocolMajor == 9 then Monad[F].unit
         else Sts.runTest[F, PredicateFailure](withdrawalsDelegated(accounts, tx))
-      // `hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule` (`Conway/Era.hs:283`): from
-      // protocol version 11 the withdrawals are checked and drained here, and the DReps' expiries
-      // updated (`testIncompleteAndMissingWithdrawals`, `Shelley/Rules/Ledger.hs:343-361`); before,
-      // CERTS does so
+      // `hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule` (`Conway/Era.hs:283`,
+      // cardano-ledger f649f975): from protocol version 11 the withdrawals are checked and drained
+      // here, and the DReps' expiries updated (`testIncompleteAndMissingWithdrawals`,
+      // `Shelley/Rules/Ledger.hs:343-361`); before, CERTS does so
       _ <-
         if pp.protocolMajor < 11 then Monad[F].unit
         else

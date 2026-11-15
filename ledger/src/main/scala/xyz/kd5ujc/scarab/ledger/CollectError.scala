@@ -4,9 +4,9 @@ package xyz.kd5ujc.scarab.ledger
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 
-/** `CollectError` (`Alonzo/Plutus/Context.hs:357-383`): a required script cannot be prepared. A
-  * missing redeemer names the required purpose; an invalid pointer inside a context is instead
-  * [[TranslationError.RedeemerPointerPointsToNothing]].
+/** `CollectError` (`Alonzo/Plutus/Context.hs:357-383`, cardano-ledger f649f975): a required script
+  * cannot be prepared. A missing redeemer names the required purpose; an invalid pointer inside a
+  * context is instead [[TranslationError.RedeemerPointerPointsToNothing]].
   */
 enum CollectError:
   case NoRedeemer(purpose: Purpose)

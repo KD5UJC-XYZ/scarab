@@ -6,14 +6,14 @@ import cats.mtl.{Ask, Raise, Stateful}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.state.*
 
-/** `RupdEnv` (`Shelley/Rules/Rupd.hs:65`): the blocks of the previous epoch and the epoch state the
-  * reward calculation starts from.
+/** `RupdEnv` (`Shelley/Rules/Rupd.hs:65`, cardano-ledger f649f975): the blocks of the previous
+  * epoch and the epoch state the reward calculation starts from.
   */
 final case class RupdEnv[E <: EraTag](blocks: BlocksMade, es: EpochState[E])
 
-/** RUPD (`Shelley/Rules/Rupd.hs:107`, `rupdTransition`; `determineRewardTiming` 101): the reward
-  * update of the epoch, as a state of the new epoch state (`nesRu`). Its timing is the "Goldilocks"
-  * one (`determineRewardTiming`):
+/** RUPD (`Shelley/Rules/Rupd.hs:107` (cardano-ledger f649f975), `rupdTransition`;
+  * `determineRewardTiming` 101): the reward update of the epoch, as a state of the new epoch state
+  * (`nesRu`). Its timing is the "Goldilocks" one (`determineRewardTiming`):
   *
   *   - up to and including the slot `randomnessStabilisationWindow` (4k/f) slots into the epoch
   *     there is none yet (`RewardsTooEarly`, the state becomes `SNothing`);

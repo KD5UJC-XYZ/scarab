@@ -20,8 +20,8 @@ import xyz.kd5ujc.scarab.ledger.{
 // updates, Shelley to Babbage) and `ConwayGovState` (proposals, committee, constitution, DRep
 // pulser). The parameters are the node's one flat `ProtocolParams` for every era.
 
-/** `FuturePParams era` (`State/Governance.hs:90-102`): the prediction of a protocol-parameter
-  * change at the next epoch boundary.
+/** `FuturePParams era` (`State/Governance.hs:90-102`, cardano-ledger f649f975): the prediction of a
+  * protocol-parameter change at the next epoch boundary.
   */
 enum FuturePParams derives Eq, Show, Diff:
   /** Definitely no update at the next boundary. */
@@ -46,8 +46,8 @@ object FuturePParams:
 
   /** The parameters the prediction holds, if any. */
   extension (f: FuturePParams)
-    /** `knownFuturePParams` (`State/Governance.hs:105-108`): the parameters, only if it is certain
-      * that they will be adopted.
+    /** `knownFuturePParams` (`State/Governance.hs:111-114`, cardano-ledger f649f975): the
+      * parameters, only if it is certain that they will be adopted.
       */
     def definite: Option[ProtocolParams] = f match
       case DefinitePParamsUpdate(p) => Some(p)
@@ -58,9 +58,9 @@ object FuturePParams:
       case DefinitePParamsUpdate(p)     => Some(p)
       case PotentialPParamsUpdate(next) => next
 
-/** `DRComplete` (`Conway/Governance/DRepPulser.hs:423-431`): the completed DRep pulser, the
-  * snapshot it worked on and the ratification it reached. The mirror holds the pulser only in this
-  * form, as Haskell encodes it (`DRepPulser.hs:455-459`).
+/** `DRComplete` (`Conway/Governance/DRepPulser.hs:423-431`, cardano-ledger f649f975): the completed
+  * DRep pulser, the snapshot it worked on and the ratification it reached. The mirror holds the
+  * pulser only in this form, as Haskell encodes it (`DRepPulser.hs:455-459`).
   */
 final case class DRComplete(snapshot: PulsingSnapshot, ratify: RatifyState) derives Eq, Show, Diff
 
@@ -68,7 +68,7 @@ object DRComplete:
   val snapshot: Lens[DRComplete, PulsingSnapshot] = Focus[DRComplete](_.snapshot)
   val ratify: Lens[DRComplete, RatifyState] = Focus[DRComplete](_.ratify)
 
-/** `ConwayGovState` (`Conway/Governance.hs:243-259`). */
+/** `ConwayGovState` (`Conway/Governance.hs:243-259`, cardano-ledger f649f975). */
 final case class ConwayGovState(
     proposals: Proposals,
     committee: Option[Committee],
@@ -90,8 +90,9 @@ object ConwayGovState:
   val futurePParams: Lens[ConwayGovState, FuturePParams] = Focus[ConwayGovState](_.futurePParams)
   val drepPulsing: Lens[ConwayGovState, DRComplete] = Focus[ConwayGovState](_.drepPulsing)
 
-/** `ShelleyGovState` (`Shelley/Governance.hs:63-70`). The proposals are the genesis delegates'
-  * parameter-update proposals (`ProposedPPUpdates`, a map from genesis key hash).
+/** `ShelleyGovState` (`Shelley/Governance.hs:63-70`, cardano-ledger f649f975). The proposals are
+  * the genesis delegates' parameter-update proposals (`ProposedPPUpdates`, a map from genesis key
+  * hash).
   */
 final case class ShelleyGovState(
     curProposals: SortedMap[KeyHash[Genesis], ParamUpdate],

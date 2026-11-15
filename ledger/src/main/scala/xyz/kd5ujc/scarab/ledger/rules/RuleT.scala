@@ -37,9 +37,9 @@ opaque type RuleT[Rec, Fail, S, A] = Prog[Rec, Fail, S, A]
 
 /** The program: a value, a step of the interpreter's own (reads and writes the state, may raise), a
   * sequence, a recovery from a raised failure, a change of the constants for a sub-program, the
-  * record of predicate failures (`Predicate`, `Extended.hs:704-709`), the read of the failing flag
-  * (`isFailing`, `Extended.hs:690-697`) or the boundary of a sub-rule (`SubTrans`,
-  * `Extended.hs:713-722`).
+  * record of predicate failures (`Predicate`, `Extended.hs:704-709`, cardano-ledger f649f975), the
+  * read of the failing flag (`isFailing`, `Extended.hs:690-697`) or the boundary of a sub-rule
+  * (`SubTrans`, `Extended.hs:713-722`).
   */
 private[rules] enum Prog[Rec, Fail, S, A]:
   case Pure(value: A)
@@ -109,7 +109,8 @@ object RuleT:
   /** How a judgment treats a recorded predicate failure.
     *
     *   - `Accumulate`: as the reference does: recorded and the judgment continues
-    *     (`Extended.hs:708`); the failures are reported together at the end.
+    *     (`Extended.hs:708`, cardano-ledger f649f975); the failures are reported together at the
+    *     end.
     *   - `FirstFailure`: the first recorded failure ends the judgment, as a raise does. A refusal
     *     under one policy is a refusal under the other: a judgment that records nothing is the same
     *     run under both, and the first failure `FirstFailure` reports is the first the reference
@@ -139,10 +140,10 @@ object RuleT:
       // restoring the constants of the scopes it leaves, and resuming there; with no handler left
       // the run ends).
       // `trace` holds what the innermost rule recorded so far, `failing` whether anything was
-      // recorded anywhere in the judgment (the flag of `Extended.hs:690-697`, which a nest
-      // inherits from its parent and passes on). The frames are type-aligned: `go` is called with
-      // the exact type the hole was fed, so every transition is compiler-checked to connect the
-      // result of one step to the continuation of the next.
+      // recorded anywhere in the judgment (the flag of `Extended.hs:690-697`
+      // (cardano-ledger f649f975), which a nest inherits from its parent and passes on). The frames
+      // are type-aligned: `go` is called with the exact type the hole was fed, so every transition
+      // is compiler-checked to connect the result of one step to the continuation of the next.
       @tailrec
       def go[X](
           current: Either[Fail, Prog[Rec, Fail, S, X]],

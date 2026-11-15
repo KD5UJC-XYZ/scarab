@@ -29,8 +29,9 @@ object Epoch:
             ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
           shelley[E].transition[F](env, epoch)
 
-  /** Runs a sub-rule on the part of the state that `lens` names (`trans`, `Extended.hs:475`; all
-    * the rules of the tick fail with the same [[TickFailure]], so the failures need no wrapping).
+  /** Runs a sub-rule on the part of the state that `lens` names (`trans`, `Extended.hs:475`
+    * (cardano-ledger f649f975); all the rules of the tick fail with the same [[TickFailure]], so
+    * the failures need no wrapping).
     */
   private[rules] def within[F[_]: Monad, Env, S, S0, Sig](
       sub: Sts[Env, S, Sig, TickFailure],
@@ -60,8 +61,9 @@ object Epoch:
     EraLedger.keyDeposits(ls) +
       CompactCoin.sum(EraLedger.pState(ls).stakePools.valuesIterator.map(_.deposit)).toBigInt
 
-  /** EPOCH of Shelley to Babbage (`Shelley/Rules/Epoch.hs:142`): SNAP, POOLREAP and UPEC, then the
-    * deposits are counted again and the parameters of the next epoch are in force.
+  /** EPOCH of Shelley to Babbage (`Shelley/Rules/Epoch.hs:142`, cardano-ledger f649f975): SNAP,
+    * POOLREAP and UPEC, then the deposits are counted again and the parameters of the next epoch
+    * are in force.
     */
   private def shelley[E <: EraTag](using
       ShelleyBasedEra[E]

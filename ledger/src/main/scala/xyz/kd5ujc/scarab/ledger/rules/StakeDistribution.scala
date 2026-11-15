@@ -7,13 +7,15 @@ import xyz.kd5ujc.scarab.ledger.Ptr
 import xyz.kd5ujc.scarab.ledger.state.*
 
 /** The stake distribution of the SNAP rule: `snapShotFromInstantStake` and what it is made of
-  * (`State/SnapShots.hs:418`, `mkStakePoolSnapShot` `187`, `calculatePoolDistr` `446`).
+  * (`State/SnapShots.hs:418` (cardano-ledger f649f975), `mkStakePoolSnapShot` `187`,
+  * `calculatePoolDistr` `446`).
   */
 object StakeDistribution:
 
-  /** `resolveActiveInstantStakeCredentials` (`State/Stake.hs:220–245`) followed by
-    * `resolveShelleyInstantStake` (`Shelley/State/Stake.hs:148–172`). An account-only zero is
-    * absent; an instant/pointer entry is retained even when native compact addition wraps to zero.
+  /** `resolveActiveInstantStakeCredentials` (`State/Stake.hs:220–245`, cardano-ledger f649f975)
+    * followed by `resolveShelleyInstantStake` (`Shelley/State/Stake.hs:148–172`). An account-only
+    * zero is absent; an instant/pointer entry is retained even when native compact addition wraps
+    * to zero.
     */
   def resolve(
       instant: SortedMap[Credential[Staking], CompactCoin],
@@ -39,8 +41,9 @@ object StakeDistribution:
     }
     ActiveStake(Sorted.fromAscending(entries.toVector))
 
-  /** `mkStakePoolSnapShot` (`State/SnapShots.hs:187`): what the reward calculation needs of one
-    * pool, resolved when the snapshot is taken from the delegators the pool state holds.
+  /** `mkStakePoolSnapShot` (`State/SnapShots.hs:187`, cardano-ledger f649f975): what the reward
+    * calculation needs of one pool, resolved when the snapshot is taken from the delegators the
+    * pool state holds.
     */
   def poolSnapshot(
       active: ActiveStake,
@@ -68,8 +71,8 @@ object StakeDistribution:
       pool.accountId
     )
 
-  /** `snapShotFromInstantStake` (`State/SnapShots.hs:418`): the active stake, and a snapshot of
-    * every registered pool over it.
+  /** `snapShotFromInstantStake` (`State/SnapShots.hs:418`, cardano-ledger f649f975): the active
+    * stake, and a snapshot of every registered pool over it.
     */
   def snapshot(
       active: ActiveStake,

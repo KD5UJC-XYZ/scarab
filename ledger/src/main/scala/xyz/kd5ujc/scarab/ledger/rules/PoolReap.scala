@@ -8,8 +8,8 @@ import monocle.Lens
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.state.*
 
-/** `ShelleyPoolreapState` (`Shelley/Rules/PoolReap.hs:61`): the three parts of the epoch state that
-  * retiring a pool changes.
+/** `ShelleyPoolreapState` (`Shelley/Rules/PoolReap.hs:61`, cardano-ledger f649f975): the three
+  * parts of the epoch state that retiring a pool changes.
   */
 final case class PoolreapState[E <: EraTag](
     utxo: UTxOState[E],
@@ -24,10 +24,10 @@ object PoolreapState:
       PoolreapState(es.ls.utxo, es.chainAccount, es.ls.cert)
     )(p => es => es.copy(chainAccount = p.chainAccount, ls = LedgerState[E](p.cert, p.utxo)))
 
-/** POOLREAP (`Shelley/Rules/PoolReap.hs:131`, the same rule in Conway): at the epoch boundary the
-  * pools' future parameters take effect, and the pools that retire at the epoch are removed with
-  * their delegators' delegations; their deposits go back to the reward accounts, or, where the
-  * account is no longer registered, to the treasury.
+/** POOLREAP (`Shelley/Rules/PoolReap.hs:131` (cardano-ledger f649f975), the same rule in Conway):
+  * at the epoch boundary the pools' future parameters take effect, and the pools that retire at the
+  * epoch are removed with their delegators' delegations; their deposits go back to the reward
+  * accounts, or, where the account is no longer registered, to the treasury.
   *
   * Haskell also keeps the VRF key hashes of the pools (`psVRFKeyHashes`); the rule removes the hash
   * of a re-registered pool's old key and one occurrence of each retired pool's. Before protocol

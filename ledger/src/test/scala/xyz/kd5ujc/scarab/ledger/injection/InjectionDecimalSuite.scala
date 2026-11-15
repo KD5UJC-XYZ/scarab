@@ -133,9 +133,9 @@ class InjectionDecimalSuite extends FunSuite:
     }
   }
 
-  // `parseNumber` (`CLexer.hs:130-172`) as written: the whole and fraction digits folded one at a
-  // time into an Integer, combined as `num * 10^frdigits + frac` with exponent `texp - frdigits`;
-  // the exponent folds in the 64-bit `Int` and wraps.
+  // `parseNumber` (`CLexer.hs:130-172`, json-stream 0.4.6.1) as written: the whole and fraction
+  // digits folded one at a time into an Integer, combined as `num * 10^frdigits + frac` with
+  // exponent `texp - frdigits`; the exponent folds in the 64-bit `Int` and wraps.
   private def referenceNumber(text: String): Option[(BigInt, Long)] =
     def sign(at: Int): (Int, Int) =
       if at < text.length && text(at) == '+' then (1, at + 1)

@@ -170,7 +170,8 @@ class ConwayRulesSuite extends FunSuite:
       rule(run(s, tx(b, signers, Witnesses(Vector.empty, scripts = scripts))))
     assertEquals(tryMint(Vector(alice), Vector(policy)), "accepted")
     assertEquals(tryMint(Vector(alice), Vector.empty), "MissingScriptWitnessesUTXOW")
-    // the needed native scripts are checked first (`Babbage/Rules/Utxow.hs:345`)
+    // the needed native scripts are checked first (`Babbage/Rules/Utxow.hs:344-349`,
+    // cardano-ledger f649f975)
     assertEquals(tryMint(Vector(bob), Vector(policy)), "ScriptWitnessNotValidatingUTXOW")
     val superfluous = policy.copy(hash = Blake2b.hash224.hash(Bytes(Vector(9))))
     assertEquals(
@@ -259,8 +260,9 @@ class ConwayRulesSuite extends FunSuite:
   }
 
   test("the reference scripts of a transaction are added up in 64 bits, as the reference's Int") {
-    // `txNonDistinctRefScriptsSize :: ... -> Int` (`Conway/UTxO.hs:166-170`): 2048 reference
-    // inputs, each naming a script of 1 MiB, hold 2^31 bytes, one more than a 32-bit Int holds
+    // `txNonDistinctRefScriptsSize :: ... -> Int` (`Conway/UTxO.hs:166-170`,
+    // cardano-ledger f649f975): 2048 reference inputs, each naming a script of 1 MiB, hold 2^31
+    // bytes, one more than a 32-bit Int holds
     val script = outputWithScript(bob.address(), 5 * ada, 1 << 20)
     val refs = Vector.tabulate(2048)(i => TxIn(txIn(2).id, i))
     val spend = txIn(1)
@@ -443,7 +445,8 @@ class ConwayRulesSuite extends FunSuite:
       )
     )
     // a script without collateral: its first failure is the balance below the fee's share, before
-    // the empty collateral (`validateTotalCollateral`, `Babbage/Rules/Utxo.hs:209-240`)
+    // the empty collateral (`validateTotalCollateral`, `Babbage/Rules/Utxo.hs:209-240`,
+    // cardano-ledger f649f975)
     assertEquals(
       rule(attempt(succeeds = true, isValid = true, bodyWith(hash, Vector.empty))),
       "InsufficientCollateral"
@@ -566,8 +569,8 @@ class ConwayRulesSuite extends FunSuite:
     )
     def attempt(s: Nes) = rule(run(s, tx(b, Vector(alice, staker))))
     // only the bootstrap phase skips the check (`hardforkConwayBootstrapPhase`, `pvMajor pv == 9`,
-    // `Conway/Era.hs:257-258`; `Conway/Rules/Ledger.hs:379-380`): Conway at version 8, as a chain
-    // that starts Conway by epoch has it, runs the check
+    // `Conway/Era.hs:257-258` (cardano-ledger f649f975); `Conway/Rules/Ledger.hs:379-380`): Conway
+    // at version 8, as a chain that starts Conway by epoch has it, runs the check
     assertEquals(attempt(world(None, 8)), "ConwayWdrlNotDelegatedToDRep")
     assertEquals(attempt(world(Some(DRep.AlwaysAbstain), 8)), "accepted")
     assertEquals(attempt(world(None, 9)), "accepted")

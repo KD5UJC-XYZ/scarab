@@ -40,7 +40,9 @@ object DijkstraPurposes:
     val kinds = java.lang.Boolean.compare(a.isKey, b.isKey)
     if kinds != 0 then kinds else a.hash.compareTo(b.hash)
 
-  /** `Ord AccountAddress`: the network, then the account's credential (`Address.hs:183-191`). */
+  /** `Ord AccountAddress`: the network, then the account's credential (`Address.hs:183-191`,
+    * cardano-ledger 9df9f98c).
+    */
   val accountOrder: Ordering[RewardAccount] = (a, b) =>
     val networks = Integer.compare(a.network, b.network)
     if networks != 0 then networks else credentialOrder.compare(a.credential, b.credential)
@@ -78,7 +80,7 @@ object DijkstraPurposes:
     case Credential.Script(h) => Some(h)
     case Credential.Key(_)    => None
 
-  /** `getScriptWitnessDijkstraTxCert` (`Dijkstra/TxCert.hs:323-340`). */
+  /** `getScriptWitnessDijkstraTxCert` (`Dijkstra/TxCert.hs:323-340`, cardano-ledger 9df9f98c). */
   def certificateScript(cert: DijkstraCert): Option[Bytes] = cert match
     case DijkstraCert.Register(c, _)                 => scriptHash(c)
     case DijkstraCert.Unregister(c, _)               => scriptHash(c)
@@ -103,10 +105,10 @@ object DijkstraPurposes:
     case DijkstraVoter.StakePool(_) => None
 
   /** The scripts a body needs, with their purposes, in the ledger's order
-    * (`getDijkstraScriptsNeeded`, `Dijkstra/UTxO.hs:188-198`, after `getConwayScriptsNeeded`,
-    * `Conway/UTxO.hs:62-105`): spending (the inputs whose spent output is locked by a script),
-    * withdrawing, certifying, minting, voting, proposing and guarding. An input that `utxo` does
-    * not resolve needs nothing here.
+    * (`getDijkstraScriptsNeeded`, `Dijkstra/UTxO.hs:188-198` (cardano-ledger 9df9f98c), after
+    * `getConwayScriptsNeeded`, `Conway/UTxO.hs:62-105`): spending (the inputs whose spent output is
+    * locked by a script), withdrawing, certifying, minting, voting, proposing and guarding. An
+    * input that `utxo` does not resolve needs nothing here.
     */
   def scriptsNeeded(
       utxo: Map[DijkstraTxIn, DijkstraTxOut],

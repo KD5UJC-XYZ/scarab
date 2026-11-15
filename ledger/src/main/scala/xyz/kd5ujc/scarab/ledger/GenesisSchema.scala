@@ -45,8 +45,9 @@ object GenesisSchema:
       interval.fromJson(json).leftMap(e => fieldError(file, path, GenesisFieldError.Number(e)))
     )
 
-  /** A unit of `FromJSON ExUnits` (`Plutus/ExUnits.hs:118-128`): `o .: first <|> o .: second` as a
-    * `Natural`, then within `Word64` (so a first name out of bounds does not fall back).
+  /** A unit of `FromJSON ExUnits` (`Plutus/ExUnits.hs:118-128`, cardano-ledger f649f975):
+    * `o .: first <|> o .: second` as a `Natural`, then within `Word64` (so a first name out of
+    * bounds does not fall back).
     */
   def unit(file: GenesisFile)(
       cursor: ACursor,
@@ -74,9 +75,9 @@ object GenesisSchema:
         )
       )
 
-  /** `updateQuorum`, a `Word64` (`Shelley/Genesis.hs:507`). A quorum above the number of genesis
-    * delegates is never reached, and that number is within `Int`, so a larger quorum is read as
-    * `Int.MaxValue`: no vote count reaches either.
+  /** `updateQuorum`, a `Word64` (`Shelley/Genesis.hs:507`, cardano-ledger f649f975). A quorum above
+    * the number of genesis delegates is never reached, and that number is within `Int`, so a larger
+    * quorum is read as `Int.MaxValue`: no vote count reaches either.
     */
   def updateQuorum(shelley: Json): Either[ConfigError, Int] =
     val path = Vector("updateQuorum")
@@ -207,8 +208,8 @@ object GenesisSchema:
   private def credential(key: String): Either[GenesisFieldError, Unit] =
     GenesisState.credential(key).bimap(e => GenesisFieldError.Nested(e.problem), _ => ())
 
-  /** `FromJSON Version` (`Binary/Version.hs:86-87`): a `Word32` within `MinVersion .. MaxVersion`
-    * (0 to 13).
+  /** `FromJSON Version` (`Binary/Version.hs:86-87`, cardano-ledger f649f975): a `Word32` within
+    * `MinVersion .. MaxVersion` (0 to 13).
     */
   private val version: Check = number(json =>
     FromJson
@@ -222,7 +223,8 @@ object GenesisSchema:
       )
   )
 
-  /** `parseNonce` of `LegacyJSONPParams` (`Shelley/Genesis.hs:427-437`). */
+  /** `parseNonce` of `LegacyJSONPParams` (`Shelley/Genesis.hs:427-437`, cardano-ledger f649f975).
+    */
   private val nonce: Check = json =>
     obj(req("tag", choice("Nonce", "NeutralNonce")))(json) *>
       json.hcursor
@@ -275,16 +277,17 @@ object GenesisSchema:
     req("protocolParams", shelleyParams),
     req("genDelegs", mapOf(hexHash(28), obj(req("delegate", hash(28)), req("vrf", hash(32))))),
     req("initialFunds", mapOf(address, integer)),
-    // `FromJSON ShelleyGenesisStaking` (`Shelley/Genesis.hs:526-531`); its entries are read by
-    // [[rules.GenesisInjections]]
+    // `FromJSON ShelleyGenesisStaking` (`Shelley/Genesis.hs:526-531`, cardano-ledger f649f975); its
+    // entries are read by [[rules.GenesisInjections]]
     opt("staking", obj(req("pools", anObject), req("stake", anObject))),
-    // `FromJSON ShelleyExtraConfig` (`Shelley/Genesis.hs:255-260`): an object of optional
-    // injections, read by [[rules.GenesisInjections]]
+    // `FromJSON ShelleyExtraConfig` (`Shelley/Genesis.hs:255-260`, cardano-ledger f649f975): an
+    // object of optional injections, read by [[rules.GenesisInjections]]
     opt("extraConfig", anObject)
   )
 
-  /** `FromJSON ExUnits` (`Plutus/ExUnits.hs:118-128`): each unit `o .: "memory" <|> o .:
-    * "exUnitsMem"` (and the steps alike) as a `Natural`, then within `Word64`.
+  /** `FromJSON ExUnits` (`Plutus/ExUnits.hs:118-128`, cardano-ledger f649f975): each unit
+    * `o .: "memory" <|> o .: "exUnitsMem"` (and the steps alike) as a `Natural`, then within
+    * `Word64`.
     */
   private val exUnits: Check = obj(
     either("memory", "exUnitsMem", natural, word64),
@@ -294,7 +297,7 @@ object GenesisSchema:
   private val alonzoFile: Check = obj(
     req("lovelacePerUTxOWord", integer),
     req("costModels", anything),
-    // `FromJSON Prices` (`Plutus/ExUnits.hs:176-181`)
+    // `FromJSON Prices` (`Plutus/ExUnits.hs:176-181`, cardano-ledger f649f975)
     req(
       "executionPrices",
       obj(
@@ -307,8 +310,8 @@ object GenesisSchema:
     req("maxValueSize", word(32)),
     req("collateralPercentage", word(16)),
     req("maxCollateralInputs", word(16)),
-    // `FromJSON AlonzoExtraConfig` (`Alonzo/Genesis.hs:110-114`): an object whose optional cost
-    // models [[GenesisCostModels]] reads
+    // `FromJSON AlonzoExtraConfig` (`Alonzo/Genesis.hs:110-114`, cardano-ledger f649f975): an
+    // object whose optional cost models [[GenesisCostModels]] reads
     opt("extraConfig", anObject)
   )
 
@@ -359,6 +362,7 @@ object GenesisSchema:
     ),
     opt("delegs", anObject),
     opt("initialDReps", anObject),
-    // `FromJSON ConwayExtraConfig` (`Conway/Genesis.hs:99-103`): an object of optional injections
+    // `FromJSON ConwayExtraConfig` (`Conway/Genesis.hs:99-103`, cardano-ledger f649f975): an object
+    // of optional injections
     opt("extraConfig", anObject)
   )

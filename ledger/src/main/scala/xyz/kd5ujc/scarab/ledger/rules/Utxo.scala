@@ -32,11 +32,12 @@ import xyz.kd5ujc.scarab.ledger.state.*
 // take it as the stake of the UTxO). The shared pure predicates live in `TxChecks`; these rules
 // sequence them and maintain the UTxO state, including the instant stake as the set changes.
 
-/** `UtxoEnv` (`Shelley/Rules/Utxo.hs:107`): the block-level context (the slot), the parameters in
-  * force, and the certificate state *before* the transaction's certificates (the refunds of
-  * deregistrations are the deposits its accounts hold, which CERTS has already removed from the
-  * state that follows, `Conway/Rules/Ledger.hs:410-415`). The certificate state is the era's
-  * (`UtxoEnv era` holds `CertState era`): Conway's here, [[ShelleyCertState]] for the eras before.
+/** `UtxoEnv` (`Shelley/Rules/Utxo.hs:107`, cardano-ledger f649f975): the block-level context (the
+  * slot), the parameters in force, and the certificate state *before* the transaction's
+  * certificates (the refunds of deregistrations are the deposits its accounts hold, which CERTS has
+  * already removed from the state that follows, `Conway/Rules/Ledger.hs:429-440`). The certificate
+  * state is the era's (`UtxoEnv era` holds `CertState era`): Conway's here, [[ShelleyCertState]]
+  * for the eras before.
   */
 final case class UtxoEnv[+C](ctx: TxEnv, pp: ProtocolParams, cert: C)
 
@@ -144,10 +145,11 @@ object Utxos:
           judge: Judge[F, PredicateFailure]
       ): F[Unit] = scripts[F, E](env, ann)
 
-  /** `expectScriptsToPass` (`Babbage/Rules/Utxos.hs:132-155`) and `babbageEvalScriptsTxInvalid`
-    * (`Babbage/Rules/Utxos.hs:194-220`): the contexts of the scripts are collected, and the scripts
-    * are evaluated only if nothing failed so far in the judgment (`whenFailureFree`). The scripts
-    * needed and their contexts are the era `E` 's ([[TxChecks.phase2]]).
+  /** `expectScriptsToPass` (`Babbage/Rules/Utxos.hs:132-155`, cardano-ledger f649f975) and
+    * `babbageEvalScriptsTxInvalid` (`Babbage/Rules/Utxos.hs:194-220`): the contexts of the scripts
+    * are collected, and the scripts are evaluated only if nothing failed so far in the judgment
+    * (`whenFailureFree`). The scripts needed and their contexts are the era `E` 's
+    * ([[TxChecks.phase2]]).
     */
   def scripts[F[_]: Monad, E <: EraTag](env: UtxoEnv[Any], ann: StAnnTx)(using
       era: ShelleyBasedEra[E],
@@ -176,11 +178,11 @@ object Utxos:
       _ <- next.traverse_(st.set)
     yield ()
 
-/** UTXO (`Conway/Rules/Utxo.hs:211`, `conwayUtxoTransition`, with `babbageUtxoValidation`,
-  * `Babbage/Rules/Utxo.hs:325`): the validity of the transaction against the parameters and the
-  * UTxO set, UTXOS, and then the change of the state (`updateUTxOState`): the set, the instant
-  * stake, the fees, the deposits and the donation of a valid transaction, the collateral of one
-  * that failed phase 2.
+/** UTXO (`Conway/Rules/Utxo.hs:211` (cardano-ledger f649f975), `conwayUtxoTransition`, with
+  * `babbageUtxoValidation`, `Babbage/Rules/Utxo.hs:325`): the validity of the transaction against
+  * the parameters and the UTxO set, UTXOS, and then the change of the state (`updateUTxOState`):
+  * the set, the instant stake, the fees, the deposits and the donation of a valid transaction, the
+  * collateral of one that failed phase 2.
   */
 object Utxo
     extends JudgedSts[UtxoEnv[ConwayCertState], Counted[
@@ -220,8 +222,8 @@ object Utxo
       Value.coin(body.fee + deposits + body.donation) + Value.burned(body.mint)
     UtxoTests.babbage[Conway](pp, env.ctx, ann, minFee, consumed, produced)
 
-  /** `updateUTxOState` and `updateTreasuryDonation` (`Babbage/Rules/Utxo.hs:449`,
-    * `Conway/Rules/Utxo.hs:201`).
+  /** `updateUTxOState` and `updateTreasuryDonation` (`Babbage/Rules/Utxo.hs:449` (cardano-ledger
+    * f649f975), `Conway/Rules/Utxo.hs:201`).
     */
   def update(
       s: UTxOState[Conway],
@@ -305,9 +307,9 @@ object Utxow
   /** The checks of UTXOW of the era `E`, whatever the protocol version, in the reference's order,
     * each a [[Test]] or the defect that leaves no verdict:
     *
-    *   - Shelley to Mary (`transitionRulesUTXOW`, `Shelley/Rules/Utxow.hs:286-326`): the failing
-    *     native scripts, the missing and the extraneous scripts, the signatures, the needed
-    *     witnesses, the auxiliary data, the MIR quorum;
+    *   - Shelley to Mary (`transitionRulesUTXOW`, `Shelley/Rules/Utxow.hs:286-326`, cardano-ledger
+    *     f649f975): the failing native scripts, the missing and the extraneous scripts, the
+    *     signatures, the needed witnesses, the auxiliary data, the MIR quorum;
     *   - Alonzo (`alonzoStyleWitness`, `Alonzo/Rules/Utxow.hs:309-374`): the same scripts, the
     *     datums and the redeemers, the signatures, the needed witnesses, the MIR quorum, the
     *     auxiliary data, the script integrity hash;
@@ -349,15 +351,16 @@ object Utxow
     def test(t: Test[PredicateFailure]) = Right(t)
     // Under `runTestOnSignal` in every era, and so skipped when a transaction is applied again
     // ([[TxEnv.static]]): the signatures, the auxiliary data, the failing native scripts before
-    // Babbage (`Shelley/Rules/Utxow.hs:301-316`, `Alonzo/Rules/Utxow.hs:326-364`) and the
-    // well-formed scripts from Babbage (`Babbage/Rules/Utxow.hs:366-379`).
+    // Babbage (`Shelley/Rules/Utxow.hs:301-316` (cardano-ledger f649f975),
+    // `Alonzo/Rules/Utxow.hs:326-364`) and the well-formed scripts from Babbage
+    // (`Babbage/Rules/Utxow.hs:366-379`).
     val signatures = env.ctx.staticOrDefect(TxChecks.verifiedWits(tx, env.ctx.verdicts))
     val witnesses =
       test(TxChecks.neededWitnesses(genDelegs, tx, ann.spent, collateral, provided))
     val metadata = env.ctx.staticOrDefect(TxChecks.auxiliaryChecks[E](pp, tx, env.ctx))
     if !era.atLeast(ShelleyBasedEra.SBabbage) then
-      // `validateMissingScripts` (`Shelley/Rules/Utxow.hs:375-388`): the scripts provided are the
-      // witnesses' before Babbage
+      // `validateMissingScripts` (`Shelley/Rules/Utxow.hs:375-388`, cardano-ledger f649f975): the
+      // scripts provided are the witnesses' before Babbage
       val missingScripts = test(
         Test.all(
           Test.failureUnless(
@@ -390,8 +393,9 @@ object Utxow
           )
       )
     else
-      // `babbageMissingScripts` (`Babbage/Rules/Utxow.hs:192-207`): the needed scripts less the
-      // reference scripts of the inputs and reference inputs are the witnesses' scripts
+      // `babbageMissingScripts` (`Babbage/Rules/Utxow.hs:192-207`, cardano-ledger f649f975): the
+      // needed scripts less the reference scripts of the inputs and reference inputs are the
+      // witnesses' scripts
       val references = (ann.spent ++ ann.referenced).flatMap(_.scriptRef).map(_.hash).toSet
       val neededNonRef = needed -- references
       Vector(

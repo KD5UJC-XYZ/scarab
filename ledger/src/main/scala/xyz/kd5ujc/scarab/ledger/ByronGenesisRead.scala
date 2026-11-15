@@ -62,13 +62,16 @@ enum ByronFieldError:
   /** A string `readEither` does not read as the field's `Word64`, `Natural` or `Integer`. */
   case NumberText(text: String)
 
-  /** A `LovelacePortion` above 10^15 (`Cardano/Chain/Common/LovelacePortion.hs:91-100`). */
+  /** A `LovelacePortion` above 10^15 (`Cardano/Chain/Common/LovelacePortion.hs:91-100`,
+    * cardano-ledger f649f975).
+    */
   case Portion(value: BigInt)
 
   /** Not base16 (`B16.decode`): a key hash or a signature. */
   case Hex(text: String, cause: Bytes.HexError)
 
-  /** A key hash of other than 28 bytes (`decodeAbstractHash`, `Cardano/Crypto/Hashing.hs:196-208`).
+  /** A key hash of other than 28 bytes (`decodeAbstractHash`, `Cardano/Crypto/Hashing.hs:196-208`,
+    * cardano-ledger f649f975).
     */
   case HashLength(text: String, actual: Int)
 
@@ -204,7 +207,9 @@ private[ledger] object ByronGenesisRead:
 
   private val LovelacePortionDenominator = BigInt(10).pow(15)
 
-  /** `FromObjectKey KeyHash` (`Cardano/Chain/Common/KeyHash.hs:49-53`): base16 of 28 bytes. */
+  /** `FromObjectKey KeyHash` (`Cardano/Chain/Common/KeyHash.hs:49-53`, cardano-ledger f649f975):
+    * base16 of 28 bytes.
+    */
   private def keyHash(field: ByronGenesisField, key: Bytes): Read[Bytes] =
     val t = CanonicalJson.string(key)
     Bytes
@@ -224,15 +229,15 @@ private[ledger] object ByronGenesisRead:
       .flatMap(_.traverse((k, v) => (keyHash(field, k), entry(v)).tupled))
       .map(_.distinctBy(_._1).sortBy(_._1))
 
-  /** `FromJSON GenesisKeyHashes` (`Cardano/Chain/Genesis/KeyHashes.hs:40-42`): the keys of a
-    * `Map KeyHash Word16`, in ascending order.
+  /** `FromJSON GenesisKeyHashes` (`Cardano/Chain/Genesis/KeyHashes.hs:40-42`, cardano-ledger
+    * f649f975): the keys of a `Map KeyHash Word16`, in ascending order.
     */
   private def stakeholders(value: CanonicalJson): Read[Vector[Bytes]] =
     map(F.BootStakeholders, value)(wrapped(F.BootStakeholders, _, 16)).map(_.map(_._1))
 
-  /** `FromJSON GenesisDelegation` (`Cardano/Chain/Genesis/Delegation.hs:50-58`): a
-    * `Map KeyHash Certificate`, then `recreateGenesisDelegation` (`:114-127`) in the order of the
-    * keys: each key is the hash of its certificate's issuer, and no delegate is a key.
+  /** `FromJSON GenesisDelegation` (`Cardano/Chain/Genesis/Delegation.hs:50-58`, cardano-ledger
+    * f649f975): a `Map KeyHash Certificate`, then `recreateGenesisDelegation` (`:114-127`) in the
+    * order of the keys: each key is the hash of its certificate's issuer, and no delegate is a key.
     */
   private def heavyDelegation(value: CanonicalJson): Read[Vector[ByronDelegation]] =
     for
@@ -247,9 +252,9 @@ private[ledger] object ByronGenesisRead:
       }
     yield certs.map(_._2)
 
-  /** `FromJSON Certificate` (`Cardano/Chain/Delegation/Certificate.hs:257-263`): `omega` an `Int54`
-    * taken as an `EpochNumber` (`Word64`), the two keys, and the signature, which is not checked
-    * here.
+  /** `FromJSON Certificate` (`Cardano/Chain/Delegation/Certificate.hs:257-263`, cardano-ledger
+    * f649f975): `omega` an `Int54` taken as an `EpochNumber` (`Word64`), the two keys, and the
+    * signature, which is not checked here.
     */
   private def certificate(value: CanonicalJson): Read[ByronDelegation] =
     for
@@ -260,8 +265,8 @@ private[ledger] object ByronGenesisRead:
       cert <- field(fields, F.Cert).flatMap(signature)
     yield ByronDelegation(BigInt(omega).mod(Word64Modulus), issuer, delegate, cert)
 
-  /** `FromJSON VerificationKey` (`Cardano/Crypto/Signing/VerificationKey.hs:75-76, 137-140`):
-    * base64 of a 64-byte extended key.
+  /** `FromJSON VerificationKey` (`Cardano/Crypto/Signing/VerificationKey.hs:75-76, 137-140`,
+    * cardano-ledger f649f975): base64 of a 64-byte extended key.
     */
   private def verificationKey(field: ByronGenesisField, value: CanonicalJson): Read[Bytes] =
     text(field, value).flatMap(t =>
@@ -272,8 +277,8 @@ private[ledger] object ByronGenesisRead:
         )
     )
 
-  /** `FromJSON (Signature a)` (`Cardano/Crypto/Signing/Signature.hs:93-94, 120-124`): base16 of a
-    * 64-byte signature.
+  /** `FromJSON (Signature a)` (`Cardano/Crypto/Signing/Signature.hs:93-94, 120-124`, cardano-ledger
+    * f649f975): base16 of a 64-byte signature.
     */
   private def signature(value: CanonicalJson): Read[Bytes] =
     text(F.Cert, value).flatMap(t =>
@@ -285,7 +290,9 @@ private[ledger] object ByronGenesisRead:
         )
     )
 
-  /** `FromJSON ProtocolParameters` (`Cardano/Chain/Update/ProtocolParameters.hs:144-160`). */
+  /** `FromJSON ProtocolParameters` (`Cardano/Chain/Update/ProtocolParameters.hs:144-160`,
+    * cardano-ledger f649f975).
+    */
   private def protocolParameters(value: CanonicalJson): Read[ByronParams] =
     for
       fields <- entries(F.BlockVersionData, value)
@@ -322,7 +329,9 @@ private[ledger] object ByronGenesisRead:
       unlock
     )
 
-  /** `FromJSON SoftforkRule` (`Cardano/Chain/Update/SoftforkRule.hs:90-95`): three portions. */
+  /** `FromJSON SoftforkRule` (`Cardano/Chain/Update/SoftforkRule.hs:90-95`, cardano-ledger
+    * f649f975): three portions.
+    */
   private def softforkRule(value: CanonicalJson): Read[SoftforkRule] =
     for
       fields <- entries(F.SoftforkRule, value)
@@ -331,9 +340,10 @@ private[ledger] object ByronGenesisRead:
       decrement <- field(fields, F.ThdDecrement).flatMap(portion(F.ThdDecrement, _))
     yield SoftforkRule(init, min, decrement)
 
-  /** `FromJSON TxFeePolicy` (`Cardano/Chain/Common/TxFeePolicy.hs:109-128`): `summand` a `Word64`
-    * of nano-lovelace divided by 10^9 into lovelace (which cannot then exceed `maxLovelaceVal`),
-    * `multiplier` an `Integer` of nano-lovelace per byte, kept here in nano-lovelace.
+  /** `FromJSON TxFeePolicy` (`Cardano/Chain/Common/TxFeePolicy.hs:109-128`, cardano-ledger
+    * f649f975): `summand` a `Word64` of nano-lovelace divided by 10^9 into lovelace (which cannot
+    * then exceed `maxLovelaceVal`), `multiplier` an `Integer` of nano-lovelace per byte, kept here
+    * in nano-lovelace.
     */
   private def txFeePolicy(value: CanonicalJson): Read[TxFeePolicy] =
     for

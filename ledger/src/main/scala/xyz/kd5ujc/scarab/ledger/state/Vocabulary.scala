@@ -56,8 +56,8 @@ private def checked(kind: VocabError.Kind, size: Int, bytes: Bytes): Either[Voca
 
 // ---- hashes
 
-/** `KeyHash r` (`Hashes.hs:166-168`, `deriving (Show, Eq, Ord)`): Blake2b-224 of a verification
-  * key.
+/** `KeyHash r` (`Hashes.hs:166-168` (cardano-ledger f649f975), `deriving (Show, Eq, Ord)`):
+  * Blake2b-224 of a verification key.
   */
 opaque type KeyHash[R <: KeyRole] = Bytes
 
@@ -70,8 +70,8 @@ object KeyHash:
   given [R <: KeyRole]: Order[KeyHash[R]] = hashOrder
   given [R <: KeyRole]: Show[KeyHash[R]] = Show.show(h => s"KeyHash(${h.hex})")
 
-/** `ScriptHash` (`Hashes.hs:203-205`, `deriving (Show, Eq, Ord, Generic)`): Blake2b-224 of a
-  * script.
+/** `ScriptHash` (`Hashes.hs:203-205` (cardano-ledger f649f975),
+  * `deriving (Show, Eq, Ord, Generic)`): Blake2b-224 of a script.
   */
 opaque type ScriptHash = Bytes
 
@@ -84,7 +84,9 @@ object ScriptHash:
   given Order[ScriptHash] = hashOrder
   given Show[ScriptHash] = Show.show(h => s"ScriptHash(${h.hex})")
 
-/** `VRFVerKeyHash r` (`Hashes.hs:230-232`): Blake2b-256 of a VRF verification key. */
+/** `VRFVerKeyHash r` (`Hashes.hs:230-232`, cardano-ledger f649f975): Blake2b-256 of a VRF
+  * verification key.
+  */
 opaque type VRFVerKeyHash = Bytes
 
 object VRFVerKeyHash:
@@ -110,8 +112,8 @@ object Hash32:
 
 // ---- amounts
 
-/** `Coin` (`Coin.hs:93`, an `Integer`): every integer; bounds belong to decoders and rule
-  * predicates.
+/** `Coin` (`Coin.hs:93` (cardano-ledger f649f975), an `Integer`): every integer; bounds belong to
+  * decoders and rule predicates.
   */
 opaque type Coin = BigInt
 
@@ -119,7 +121,8 @@ object Coin:
   val zero: Coin = BigInt(0)
 
   /** The one lovelace that stands in for an empty total (`knownNonZeroCoin @1`,
-    * `State/SnapShots.hs:391`, `State/Stake.hs:159`): a total used as a denominator is never zero.
+    * `State/SnapShots.hs:391` (cardano-ledger f649f975), `State/Stake.hs:159`): a total used as a
+    * denominator is never zero.
     */
   val oneNonZero: NonZero[Coin] = BigInt(1)
 
@@ -131,7 +134,9 @@ object Coin:
   given Order[Coin] = bigOrder
   given Show[Coin] = Show.show(c => s"Coin($c)")
 
-/** `DeltaCoin` (`Coin.hs:115`): a signed change of lovelace; every integer is one. */
+/** `DeltaCoin` (`Coin.hs:115`, cardano-ledger f649f975): a signed change of lovelace; every integer
+  * is one.
+  */
 opaque type DeltaCoin = BigInt
 
 object DeltaCoin:
@@ -142,8 +147,9 @@ object DeltaCoin:
   given Order[DeltaCoin] = bigOrder
   given Show[DeltaCoin] = Show.show(d => s"DeltaCoin($d)")
 
-/** `CompactForm Coin` (`Coin.hs:148`, a `Word64`): the coin as accounts and stake keep it. The
-  * whole supply (4.5e16) is far below 2^63, but the type is the full word, as Haskell's.
+/** `CompactForm Coin` (`Coin.hs:148` (cardano-ledger f649f975), a `Word64`): the coin as accounts
+  * and stake keep it. The whole supply (4.5e16) is far below 2^63, but the type is the full word,
+  * as Haskell's.
   */
 opaque type CompactCoin = Word64
 
@@ -162,11 +168,14 @@ object CompactCoin:
     def toBigInt: BigInt = Word64.toBigInt(c)
     def toCoin: Coin = Coin(toBigInt)
 
-    /** `addCompactCoin` and `subtractCompactCoin` (`Coin.hs:202–219`): Word64 arithmetic. */
+    /** `addCompactCoin` and `subtractCompactCoin` (`Coin.hs:202–219`, cardano-ledger f649f975):
+      * Word64 arithmetic.
+      */
     def add(other: CompactCoin): CompactCoin = Word64.wrappingAdd(c, other)
     def subtract(amount: CompactCoin): CompactCoin = Word64.wrappingSubtract(c, amount)
 
-  /** `sumCompactCoin` (`Coin.hs:205–206`): wrap before conversion to Coin. */
+  /** `sumCompactCoin` (`Coin.hs:205–206`, cardano-ledger f649f975): wrap before conversion to Coin.
+    */
   def sum(values: IterableOnce[CompactCoin]): CompactCoin =
     values.iterator.foldLeft(zero)((total, amount) => total.add(amount))
 
@@ -234,16 +243,19 @@ object TxIx:
   /** The number of positions: `[minBound .. maxBound] :: [TxIx]` has 2^16. */
   val count: Int = 1 << 16
 
-  /** `zip [minBound ..] txs` (LEDGERS, `Shelley/Rules/Ledgers.hs:201-211`, the rule of every era):
-    * each element with its position. `[minBound ..]` of a bounded `Enum` ends at `maxBound`
-    * (65,535) and `zip` stops at the shorter list, so an element past the last position has none
-    * and is not in the result: no position wraps and none is past `maxBound`.
+  /** `zip [minBound ..] txs` (LEDGERS, `Shelley/Rules/Ledgers.hs:201-211` (cardano-ledger
+    * f649f975), the rule of every era): each element with its position. `[minBound ..]` of a
+    * bounded `Enum` ends at `maxBound` (65,535) and `zip` stops at the shorter list, so an element
+    * past the last position has none and is not in the result: no position wraps and none is past
+    * `maxBound`.
     */
   def enumerate[A](as: Vector[A]): Vector[(A, TxIx)] = as.take(count).zipWithIndex
 
   extension (ix: TxIx) def index: Int = ix
 
-/** `HasZero a` (`BaseTypes/NonZero.hs:80-91`): the types that have a zero to refuse. */
+/** `HasZero a` (`BaseTypes/NonZero.hs:80-91`, cardano-ledger f649f975): the types that have a zero
+  * to refuse.
+  */
 trait HasZero[A]:
   def isZero(a: A): Boolean
 
@@ -255,14 +267,16 @@ object HasZero:
   given HasZero[BigInt] = instance(_.signum == 0)
   given HasZero[Word64] = instance(Word64.isZero(_))
 
-/** `NonZero a` (`BaseTypes/NonZero.hs:76-78`): checked construction refuses zero. Native rules also
-  * use the reference's unchecked constructor; those call sites preserve its representation.
+/** `NonZero a` (`BaseTypes/NonZero.hs:76-78`, cardano-ledger f649f975): checked construction
+  * refuses zero. Native rules also use the reference's unchecked constructor; those call sites
+  * preserve its representation.
   */
 opaque type NonZero[A] = A
 
 object NonZero:
-  /** `unsafeNonZero` (`BaseTypes/NonZero.hs:140–141`) performs no check, including on wrapped zero.
-    * Only reference-corresponding internal rule construction may use this operation.
+  /** `unsafeNonZero` (`BaseTypes/NonZero.hs:140–141`, cardano-ledger f649f975) performs no check,
+    * including on wrapped zero. Only reference-corresponding internal rule construction may use
+    * this operation.
     */
   private[ledger] def unsafe[A](a: A): NonZero[A] = a
 
@@ -279,8 +293,9 @@ object NonZero:
 
 // ---- credentials
 
-/** `Credential r` (`Credential.hs:98-101`, `deriving Ord`): `ScriptHashObj` is declared first, so
-  * it sorts before `KeyHashObj`; within a constructor, by hash.
+/** `Credential r` (`Credential.hs:98-101` (cardano-ledger f649f975), `deriving Ord`):
+  * `ScriptHashObj` is declared first, so it sorts before `KeyHashObj`; within a constructor, by
+  * hash.
   */
 enum Credential[R <: KeyRole]:
   case ScriptHashObj[R <: KeyRole](hash: ScriptHash) extends Credential[R]
@@ -334,8 +349,8 @@ object Credential:
   given coldCommitteeCredentialOrder: Order[Credential[ColdCommittee]] = coldCommitteeOrder
   given hotCommitteeCredentialOrder: Order[Credential[HotCommittee]] = hotCommitteeOrder
 
-/** `DRep` (`DRep.hs:67-72`, `deriving Ord`): key hash, script hash, always-abstain,
-  * always-no-confidence.
+/** `DRep` (`DRep.hs:67-72` (cardano-ledger f649f975), `deriving Ord`): key hash, script hash,
+  * always-abstain, always-no-confidence.
   */
 enum DRep derives Show:
   case DRepKeyHash(hash: KeyHash[DRepRole])

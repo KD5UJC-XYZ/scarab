@@ -133,8 +133,9 @@ object DijkstraScriptContexts:
   private def data(raw: Bytes): Result[PlutusData] =
     PlutusData.decode(raw).leftMap(_ => DijkstraContextError.Undecodable(raw))
 
-  /** `transTxOutV4` (`TxInfo.hs:650-690`): an `Address` of the payment credential and the staking
-    * account of a base address; a pointer address and a Byron address are refused.
+  /** `transTxOutV4` (`TxInfo.hs:650-690`, cardano-ledger 9df9f98c): an `Address` of the payment
+    * credential and the staking account of a base address; a pointer address and a Byron address
+    * are refused.
     */
   private def output(source: DijkstraTxOutSource, out: DijkstraTxOut): Result[PlutusData] =
     val address: Result[PlutusData] = out.address.kind match
@@ -168,7 +169,7 @@ object DijkstraScriptContexts:
     case DijkstraDelegatee.Vote(r)            => constr(1, drep(r))
     case DijkstraDelegatee.StakeVote(pool, r) => constr(2, B(pool), drep(r))
 
-  /** `transTxCertV4` (`TxInfo.hs:701-730`). */
+  /** `transTxCertV4` (`TxInfo.hs:701-730`, cardano-ledger 9df9f98c). */
   private def txCert(c: DijkstraCert): PlutusData = c match
     case DijkstraCert.Register(cred, deposit)  => constr(0, credential(cred), I(deposit))
     case DijkstraCert.Unregister(cred, refund) => constr(1, credential(cred), I(refund))
@@ -192,9 +193,9 @@ object DijkstraScriptContexts:
   /** `GovernanceActionId` (`ListEncoded`). */
   private def govActionId(id: DijkstraGovActionId): PlutusData = list(B(id.txId), I(id.index))
 
-  /** `ToPlutusData (PParamsUpdate DijkstraEra)` (`Conway/PParams.hs:200-206`): the fields of the
-    * update by tag, in the order of `eraPParams` (`Dijkstra/PParams.hs:741-796`), which is the
-    * order of the tags.
+  /** `ToPlutusData (PParamsUpdate DijkstraEra)` (`Conway/PParams.hs:200-206`, cardano-ledger
+    * 9df9f98c): the fields of the update by tag, in the order of `eraPParams`
+    * (`Dijkstra/PParams.hs:741-796`), which is the order of the tags.
     */
   def changedParameters(update: DijkstraParamUpdate): PlutusData =
     def encoded(v: DijkstraParamValue): PlutusData = v match
@@ -213,7 +214,7 @@ object DijkstraScriptContexts:
       (I(BigInt(tag)): PlutusData) -> encoded(v)
     })
 
-  /** `transGovAction` (`TxInfo.hs:1016-1051`). */
+  /** `transGovAction` (`TxInfo.hs:1016-1051`, cardano-ledger 9df9f98c). */
   private def govAction(a: DijkstraGovAction): PlutusData =
     def previous(id: Option[DijkstraGovActionId]) = maybe(id.map(govActionId))
     def policy(h: Option[Bytes]) = maybe(h.map(B(_)))
@@ -248,8 +249,8 @@ object DijkstraScriptContexts:
         constr(5, previous(prev), list(policy(p)))
       case DijkstraGovAction.InfoAction => constr(6)
 
-  /** `transProposal` (`TxInfo.hs:997-1007`, `ListEncoded`): the deposit, the return account's
-    * credential and the action.
+  /** `transProposal` (`TxInfo.hs:997-1007` (cardano-ledger 9df9f98c), `ListEncoded`): the deposit,
+    * the return account's credential and the action.
     */
   private def proposal(p: DijkstraProposal): PlutusData =
     list(I(p.deposit), credential(p.returnAccount.credential), govAction(p.action))
@@ -282,7 +283,7 @@ object DijkstraScriptContexts:
         .map((a, c) => credential(a.credential) -> (I(c): PlutusData))
     )
 
-  /** `transAccountBalanceIntervals` (`TxInfo.hs:758-768`). */
+  /** `transAccountBalanceIntervals` (`TxInfo.hs:758-768`, cardano-ledger 9df9f98c). */
   private def balanceIntervals(
       entries: Vector[(RewardAccount, DijkstraBalanceInterval)]
   ): PlutusData =
@@ -297,7 +298,9 @@ object DijkstraScriptContexts:
         .map((a, i) => credential(a.credential) -> interval(i))
     )
 
-  /** `transValidityInterval` (`TxInfo.hs:745-756`): the inclusive start and the exclusive end. */
+  /** `transValidityInterval` (`TxInfo.hs:745-756`, cardano-ledger 9df9f98c): the inclusive start
+    * and the exclusive end.
+    */
   private def validRange(
       start: Option[BigInt],
       end: Option[BigInt],
@@ -307,7 +310,7 @@ object DijkstraScriptContexts:
       list(maybe(s.map(I(_))), maybe(e.map(I(_))))
     )
 
-  /** `transPlutusPurposeV4` (`TxInfo.hs:958-990`). */
+  /** `transPlutusPurposeV4` (`TxInfo.hs:958-990`, cardano-ledger 9df9f98c). */
   private def scriptPurpose(p: DijkstraPurpose, hash: Bytes): PlutusData =
     val sh = B(hash)
     p match
@@ -320,8 +323,8 @@ object DijkstraScriptContexts:
       case DijkstraPurpose.Guarding(ix, _)     => constr(6, sh, I(ix))
 
   /** The redeemers of a transaction with their purposes and scripts (`transTxRedeemers`,
-    * `Babbage/TxInfo.hs:215-229`, and `transRedeemerPointerV2V3`, `:195-212`), in the order of the
-    * ledger's redeemer map: by tag, then index.
+    * `Babbage/TxInfo.hs:215-229` (cardano-ledger 9df9f98c), and `transRedeemerPointerV2V3`,
+    * `:195-212`), in the order of the ledger's redeemer map: by tag, then index.
     */
   private def redeemers(
       tx: Transaction,
@@ -363,8 +366,9 @@ object DijkstraScriptContexts:
       currentTreasury: Option[BigInt]
   )
 
-  /** `toPlutusTxInfo` of PlutusV4 (`TxInfo.hs:577-626`). `used` is the script hash of each purpose
-    * the transaction runs a Plutus script for (`ltiScriptHashesUsed`), by redeemer key.
+  /** `toPlutusTxInfo` of PlutusV4 (`TxInfo.hs:577-626`, cardano-ledger 9df9f98c). `used` is the
+    * script hash of each purpose the transaction runs a Plutus script for (`ltiScriptHashesUsed`),
+    * by redeemer key.
     */
   private def info(
       tx: Transaction,
@@ -435,8 +439,9 @@ object DijkstraScriptContexts:
         body.currentTreasuryValue
       )
 
-  /** `transGuardingTopTxInfo` (`TxInfo.hs:819-925`): the sub-transactions' information and an
-    * aggregate of the whole transaction, sub-transactions first and the top level last.
+  /** `transGuardingTopTxInfo` (`TxInfo.hs:819-925`, cardano-ledger 9df9f98c): the sub-transactions'
+    * information and an aggregate of the whole transaction, sub-transactions first and the top
+    * level last.
     */
   private def topTxInfo(
       top: Transaction,
@@ -538,12 +543,12 @@ object DijkstraScriptContexts:
   type Collection = Either[NonEmptyVector[DijkstraCollectError], Vector[Collected]]
 
   /** The scripts of a transaction with their arguments, as `scriptsWithContextFromLedgerTxInfo
-    * WithResult` collects them (`Evaluate.hs:131-176`): for each script in `scripts`, its redeemer,
-    * then its context (`toPlutusV4Args`, `TxInfo.hs:927-956`): the list of the transaction
-    * information, the redeemer, the `ScriptInfo` and the script's hash. The transaction information
-    * is built once, for the first script that needs it. As in the reference, the result lists the
-    * scripts, or every failure, in the reverse of their order in `scripts` (each is consed onto the
-    * list).
+    * WithResult` collects them (`Evaluate.hs:131-176`, cardano-ledger 9df9f98c): for each script in
+    * `scripts`, its redeemer, then its context (`toPlutusV4Args`, `TxInfo.hs:927-956`): the list of
+    * the transaction information, the redeemer, the `ScriptInfo` and the script's hash. The
+    * transaction information is built once, for the first script that needs it. As in the
+    * reference, the result lists the scripts, or every failure, in the reverse of their order in
+    * `scripts` (each is consed onto the list).
     *
     * @param used
     *   the script hash of every purpose the transaction runs a Plutus script for, by redeemer key
@@ -599,9 +604,10 @@ object DijkstraScriptContexts:
       .toLeft(each.collect { case Right(c) => c }.reverse)
 
   /** The Plutus scripts a transaction provides, by hash (`getDijkstraScriptsProvided`,
-    * `Dijkstra/UTxO.hs:167-186`, and `getBabbageScriptsProvided`, `Babbage/UTxO.hs:136-147`): the
-    * reference scripts of the outputs its inputs and reference inputs spend, and its witness
-    * scripts; for a top-level transaction, those of each of its sub-transactions too.
+    * `Dijkstra/UTxO.hs:167-186` (cardano-ledger 9df9f98c), and `getBabbageScriptsProvided`,
+    * `Babbage/UTxO.hs:136-147`): the reference scripts of the outputs its inputs and reference
+    * inputs spend, and its witness scripts; for a top-level transaction, those of each of its
+    * sub-transactions too.
     */
   def plutusScriptsProvided(
       tx: DijkstraTx,
@@ -616,9 +622,10 @@ object DijkstraScriptContexts:
 
   /** The scripts of a top-level transaction and of each of its sub-transactions with their
     * arguments, as `mkDijkstraStAnnTopTx` and `mkDijkstraStAnnSubTx` collect them
-    * (`Dijkstra.hs:113-215`): the purposes each one needs a script for (`getDijkstraScriptsNeeded`)
-    * whose script it provides (`resolveNeededPlutusScriptsWithPurpose`), the sub-transactions
-    * resolved against the scripts the whole transaction provides ([[contexts]]).
+    * (`Dijkstra.hs:113-215`, cardano-ledger 9df9f98c): the purposes each one needs a script for
+    * (`getDijkstraScriptsNeeded`) whose script it provides
+    * (`resolveNeededPlutusScriptsWithPurpose`), the sub-transactions resolved against the scripts
+    * the whole transaction provides ([[contexts]]).
     */
   def transaction(tx: DijkstraTx, env: Environment): (Collection, Vector[Collection]) =
     val provided = plutusScriptsProvided(tx, env.utxo)

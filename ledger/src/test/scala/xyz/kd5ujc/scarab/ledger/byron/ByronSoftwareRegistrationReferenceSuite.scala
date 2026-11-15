@@ -149,7 +149,8 @@ class ByronSoftwareRegistrationReferenceSuite extends FunSuite:
             ByronVersion.zero
           )
         )
-      // `TooLarge` built positionally as (maximum, size) (`Validation/Registration.hs:511-513`)
+      // `TooLarge` built positionally as (maximum, size) (`Validation/Registration.hs:511-513`,
+      // cardano-ledger f649f975)
       case Some("ProposalTooLarge") =>
         Left(
           UpdateError.ProposalTooLarge(

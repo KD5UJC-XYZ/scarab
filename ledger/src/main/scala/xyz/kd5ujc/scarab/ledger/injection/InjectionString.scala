@@ -7,10 +7,10 @@ import java.nio.charset.{CharacterCodingException, CodingErrorAction, StandardCh
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
 
-/** json-stream's text-2 unescape path (`Data/JsonStream/Unescape.hs:99-466`). Raw control
-  * characters are preserved; escapes and UTF-8 scalar/surrogate validity follow that reader. Every
-  * refusal there is the same `DecodeError desc Nothing` (`Unescape.hs:102-105`), so `None` carries
-  * no cause; the parser records whether the string arrived as one token or in parts.
+/** json-stream's text-2 unescape path (`Data/JsonStream/Unescape.hs:99-466`, json-stream 0.4.6.1).
+  * Raw control characters are preserved; escapes and UTF-8 scalar/surrogate validity follow that
+  * reader. Every refusal there is the same `DecodeError desc Nothing` (`Unescape.hs:102-105`), so
+  * `None` carries no cause; the parser records whether the string arrived as one token or in parts.
   *
   * The reference unescapes and validates bytes in one pass. Decoding UTF-8 first and then
   * unescaping the text is an implementation difference with identical results, approved by the

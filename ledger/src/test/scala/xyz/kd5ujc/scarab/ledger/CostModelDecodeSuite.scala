@@ -225,7 +225,8 @@ class CostModelDecodeSuite extends FunSuite:
     assertEquals(inState, decoded, s"${row.name}: the decoder and the applied parameters differ")
     inState
 
-  // Before decoder version 9 (Alonzo, Babbage): CostModels.hs:306-337, replayed from the reference.
+  // Before decoder version 9 (Alonzo, Babbage): CostModels.hs:306-337 (cardano-ledger f649f975),
+  // replayed from the reference.
 
   test(
     "legacy: the corpus has the same cases in both eras, each with a retained reference verdict"
@@ -308,7 +309,7 @@ class CostModelDecodeSuite extends FunSuite:
     )
   }
 
-  // From decoder version 9 (Conway): CostModels.hs:302-304,426-440.
+  // From decoder version 9 (Conway): CostModels.hs:302-304,426-440 (cardano-ledger f649f975).
 
   test("open: any length is accepted for a known language") {
     for (l, n) <- Seq((0, 0), (0, 3), (1, 1), (1, 300), (2, 5), (2, 252), (3, 1)) do

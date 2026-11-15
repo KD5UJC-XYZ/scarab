@@ -6,9 +6,9 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.{Alonzo, Babbage, EraTag, ShelleyBasedEra}
 
 /** Key 17 of a protocol-parameter update is the lovelace per UTxO word before Babbage
-  * (`Alonzo/PParams.hs:664`) and per byte from Babbage; an update that raises the version is
-  * applied by the rules of the era it was proposed in, and the translation to Babbage divides the
-  * per-word value by 8 (`Babbage/PParams.hs:389-391`).
+  * (`Alonzo/PParams.hs:664`, cardano-ledger f649f975) and per byte from Babbage; an update that
+  * raises the version is applied by the rules of the era it was proposed in, and the translation to
+  * Babbage divides the per-word value by 8 (`Babbage/PParams.hs:389-391`).
   */
 class ProtocolParamsUpdateSuite extends FunSuite:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)

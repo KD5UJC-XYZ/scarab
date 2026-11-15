@@ -139,7 +139,9 @@ final case class ByronGenesis(
     protocolMagic: Long,
     avvm: Vector[(Bytes, BigInt)]
 ):
-  /** `kEpochSlots` (`Cardano/Chain/ProtocolConstants.hs:44-45`): 10k slots, a `Word64`. */
+  /** `kEpochSlots` (`Cardano/Chain/ProtocolConstants.hs:44-45`, cardano-ledger f649f975): 10k
+    * slots, a `Word64`.
+    */
   def epochSlots: BigInt = (securityParam * 10).mod(BigInt(1) << 64)
 
   /** `ppSlotDuration`, in milliseconds (`fromByronSlotLength`, ouroboros-consensus 82ecba32

@@ -57,9 +57,10 @@ final case class DijkstraGenesis(
     refInputsCostPerDatumByte: BigInt
 ):
 
-  /** `upgradeDijkstraPParams` (`PParams.hs:593-665`) of Conway's parameters: every Conway field
-    * kept, the PlutusV4 model laid over the cost models (`hkdAlignWith` of both present,
-    * `updateCostModels`), and each field Dijkstra adds the genesis value.
+  /** `upgradeDijkstraPParams` (`PParams.hs:593-665`, cardano-ledger 9df9f98c) of Conway's
+    * parameters: every Conway field kept, the PlutusV4 model laid over the cost models
+    * (`hkdAlignWith` of both present, `updateCostModels`), and each field Dijkstra adds the genesis
+    * value.
     */
   def upgrade(p: ProtocolParams): ProtocolParams =
     p.copy(
@@ -103,7 +104,7 @@ object DijkstraGenesis:
       o <- json.asObject.toRight(kind(Vector.empty, JsonKind.Object, json))
       blockScripts <- req(o, "maxRefScriptSizePerBlock")(FromJson.word(32))
       txScripts <- req(o, "maxRefScriptSizePerTx")(FromJson.word(32))
-      // `NonZero Word32` (`BaseTypes/NonZero.hs:108-109`)
+      // `NonZero Word32` (`BaseTypes/NonZero.hs:108-109`, cardano-ledger 9df9f98c)
       stride <- req(o, "refScriptCostStride")(j =>
         FromJson.word(32)(j).flatMap(v => Either.cond(v != 0, v, NumberError.Zero))
       )
@@ -113,7 +114,7 @@ object DijkstraGenesis:
         .traverse(number("maxPledgeLeverage", _)(BoundedRatio.NonNegative.fromJson))
       margin <- req(o, "minPoolMargin")(BoundedRatio.Unit.fromJson)
       v4 <- costModel(o, "plutusV4CostModel")
-      // `Milliseconds32` is a `Word32` (`BaseTypes.hs:706-708`)
+      // `Milliseconds32` is a `Word32` (`BaseTypes.hs:706-708`, cardano-ledger 9df9f98c)
       announcement <- req(o, "leiosAnnouncementPeriodLength")(FromJson.word(32))
       vote <- req(o, "leiosVotePeriodLength")(FromJson.word(32))
       diffusion <- req(o, "leiosDiffusionPeriodLength")(FromJson.word(32))
@@ -133,8 +134,8 @@ object DijkstraGenesis:
         Option.unless(j.isNull)(j).traverse(number("perasBootstrapRound", _)(FromJson.word(32)))
       )
       margin2 <- req(o, "perasQuorumThresholdSafetyMargin")(BoundedRatio.Unit.fromJson)
-      // `Coin` is an `Integer` (`Coin.hs:93-103`), `CoinPerByte` a compact coin, a `Word64`
-      // (`Coin.hs:147-150, 220-222`)
+      // `Coin` is an `Integer` (`Coin.hs:93-103`, cardano-ledger 9df9f98c), `CoinPerByte` a compact
+      // coin, a `Word64` (`Coin.hs:147-150, 220-222`)
       perPolicy <- req(o, "refInputsCostPerMultiAssetPolicy")(FromJson.integer)
       perDatumByte <- req(o, "refInputsCostPerDatumByte")(j => FromJson.word64(j).map(_.toBigInt))
     yield DijkstraGenesis(
@@ -184,8 +185,8 @@ object DijkstraGenesis:
   ): Either[ConfigError, A] =
     present(o, name).flatMap(number(name, _)(read))
 
-  /** `parseCostModelAsArray False PlutusV4 =<< o .: name` (`CostModels.hs:188-192`): an array of
-    * `Int64` of exactly the language's initial number of parameters.
+  /** `parseCostModelAsArray False PlutusV4 =<< o .: name` (`CostModels.hs:188-192`, cardano-ledger
+    * 9df9f98c): an array of `Int64` of exactly the language's initial number of parameters.
     */
   private def costModel(o: JsonObject, name: String): Either[ConfigError, Vector[Long]] =
     for
@@ -196,8 +197,8 @@ object DijkstraGenesis:
         .leftMap(p => ConfigError(ConfigProblem.GenesisCostModel(p)))
     yield values
 
-  /** `FromJSON OrdExUnits`, a newtype of `FromJSON ExUnits` (`Plutus/ExUnits.hs:120-130, 162-164`):
-    * an object, each unit under either of its names, within `Word64`.
+  /** `FromJSON OrdExUnits`, a newtype of `FromJSON ExUnits` (`Plutus/ExUnits.hs:120-130, 162-164`,
+    * cardano-ledger 9df9f98c): an object, each unit under either of its names, within `Word64`.
     */
   private def exUnits(o: JsonObject, name: String): Either[ConfigError, ExUnits] =
     for

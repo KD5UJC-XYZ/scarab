@@ -412,11 +412,11 @@ object JudgmentSuite:
     /** The model's encoding of the base case is 0. */
     def of(n: Int): Cert = if n == 0 then Base else C(n)
 
-  /** A literal port of the reference's interpreter (`Extended.hs:703-722`) as the oracle: each run
-    * of a rule keeps its own list and prepends to it, a predicate's errors as `reverse errs ++ acc`
-    * (708), a sub-rule's list one element at a time (`traverse_ (\a -> modify (first (a :)))`,
-    * 720-722). The root's list is the reported one (`applySTS`). It recurses on the depth of the
-    * generated tree, which is small.
+  /** A literal port of the reference's interpreter (`Extended.hs:703-722`, cardano-ledger f649f975)
+    * as the oracle: each run of a rule keeps its own list and prepends to it, a predicate's errors
+    * as `reverse errs ++ acc` (708), a sub-rule's list one element at a time (`traverse_ (\a ->
+    * modify (first (a :)))`, 720-722). The root's list is the reported one (`applySTS`). It
+    * recurses on the depth of the generated tree, which is small.
     */
   object Model:
     def applyRule(events: List[Event]): List[Int] =
@@ -436,8 +436,8 @@ object JudgmentSuite:
     }
 
     /** CERTS of `n` certificates as a sub-rule: `gamma :|> c -> trans @CERTS gamma; trans @CERT c`
-      * (Conway `Certs.hs:242-246`, Shelley `Delegs.hs:190-198`), certificate `c` failing with `c`
-      * and the base case with 0 when `base` holds.
+      * (Conway `Certs.hs:242-246` (cardano-ledger f649f975), Shelley `Delegs.hs:190-198`),
+      * certificate `c` failing with `c` and the base case with 0 when `base` holds.
       */
     def certs(n: Int, base: Boolean): Event =
       if n == 0 then Event.Sub(if base then List(Event.Leaf(0)) else Nil)

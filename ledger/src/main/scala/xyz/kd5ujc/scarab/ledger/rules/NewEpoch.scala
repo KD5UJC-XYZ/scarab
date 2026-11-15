@@ -7,14 +7,15 @@ import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.state.*
 
-/** NEWEPOCH (`Shelley/Rules/NewEpoch.hs:148`, `Conway/Rules/NewEpoch.hs:154`): the new-epoch state
-  * moves to epoch `e` when `e` is the epoch after the one it is in.
+/** NEWEPOCH (`Shelley/Rules/NewEpoch.hs:148` (cardano-ledger f649f975),
+  * `Conway/Rules/NewEpoch.hs:154`): the new-epoch state moves to epoch `e` when `e` is the epoch
+  * after the one it is in.
   *
   * At the boundary: the reward update is applied (`updateRewards`), MIR pays the instantaneous
   * rewards (before Conway), EPOCH runs, and the epoch's blocks become the previous epoch's, the
   * reward update is cleared and the pool distribution is the one of the `mark` snapshot the
   * boundary has just made `set` (`ssStakeMarkPoolDistr` of the snapshots before EPOCH). Inside the
-  * epoch Conway predicts the future parameters again (`Conway/Rules/NewEpoch.hs:160-165`) and the
+  * epoch Conway predicts the future parameters again (`Conway/Rules/NewEpoch.hs:161-166`) and the
   * earlier eras change nothing.
   *
   * For an epoch that is not the next one the reference does nothing (`pure src`; Conway also
@@ -108,10 +109,10 @@ object NewEpoch:
   ): (Vector[(Credential[Staking], RewardSet)], Vector[(Credential[Staking], RewardSet)]) =
     rewards.iterator.toVector.partition(entry => registered(entry._1))
 
-  /** `updateRewards` with `applyRUpdFiltered` (`NewEpoch.hs:227`, `LedgerState/
-    * IncrementalStake.hs:95`): the rewards of the registered accounts are added to their balances
-    * and those of the accounts that are no longer registered go to the treasury; the treasury, the
-    * reserves and the fees change by the update's deltas.
+  /** `updateRewards` with `applyRUpdFiltered` (`NewEpoch.hs:227` (cardano-ledger f649f975),
+    * `LedgerState/ IncrementalStake.hs:95`): the rewards of the registered accounts are added to
+    * their balances and those of the accounts that are no longer registered go to the treasury; the
+    * treasury, the reserves and the fees change by the update's deltas.
     */
   def applyRewardUpdate[E <: EraTag](es: EpochState[E], update: RewardUpdate)(using
       ShelleyBasedEra[E]

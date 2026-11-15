@@ -94,7 +94,7 @@ object DijkstraStAnnTx:
     yield DijkstraStAnnTx(tx, ann)
 
 /** The Conway predicate failures of the reused UTXO and UTXOW checks as Dijkstra's, one to one
-  * (`conwayToDijkstraUtxoPredFailure`, `Dijkstra/Rules/Utxo.hs:560-587`;
+  * (`conwayToDijkstraUtxoPredFailure`, `Dijkstra/Rules/Utxo.hs:560-587` (cardano-ledger 9df9f98c);
   * `conwayToDijkstraUtxowPredFailure`, `Utxow.hs:436-459`). The cases the reference maps to `error
   * "Impossible"` (a withdrawal on the wrong network, which is ENTITIES', and Alonzo's
   * `OutputTooSmallUTxO`) have none, and the redeemer failures none in a transaction without
@@ -198,9 +198,9 @@ object DijkstraUtxo
     extends JudgedSts[DijkstraUtxoEnv, Counted[
       UTxOState[Dijkstra]
     ], DijkstraStAnnTx, DijkstraUtxoFailure, DijkstraHalt]:
-  /** `tierRefScriptFee` (`Conway/Tx.hs:126-146`): `base` per byte, the price multiplied by
-    * `multiplier` for every `stride` bytes. The stride is a `NonZero Word32` of the parameters
-    * (`ppRefScriptCostStrideG`), so at least 1.
+  /** `tierRefScriptFee` (`Conway/Tx.hs:126-146`, cardano-ledger 9df9f98c): `base` per byte, the
+    * price multiplied by `multiplier` for every `stride` bytes. The stride is a `NonZero Word32` of
+    * the parameters (`ppRefScriptCostStrideG`), so at least 1.
     */
   def tierRefScriptFee(multiplier: Rational, stride: BigInt, base: Rational, size: Long): BigInt =
     val step = stride.max(1)
@@ -224,10 +224,10 @@ object DijkstraUtxo
         DijkstraTxMeasures.refScriptsSize(DijkstraTxMeasures.inUtxo(utxo), ann.tx.body)
       )
 
-  /** `dijkstraTotalRefundsTxCerts` (`Dijkstra/TxCert.hs:262-271`): the refunds the certificates
-    * declare, which Dijkstra's consumed value and deposit change count (`getTotalRefundsTxCerts _
-    * _`, `TxCert.hs:319`), not the deposits the state holds; DELEG and GOVCERT check them. A
-    * Dijkstra deregistration always declares one (tags 0 and 1 are refused).
+  /** `dijkstraTotalRefundsTxCerts` (`Dijkstra/TxCert.hs:262-271`, cardano-ledger 9df9f98c): the
+    * refunds the certificates declare, which Dijkstra's consumed value and deposit change count
+    * (`getTotalRefundsTxCerts _ _`, `TxCert.hs:319`), not the deposits the state holds; DELEG and
+    * GOVCERT check them. A Dijkstra deregistration always declares one (tags 0 and 1 are refused).
     */
   def declaredRefunds(body: TxBody): BigInt =
     body.certificates.iterator.map {
@@ -240,8 +240,8 @@ object DijkstraUtxo
     case Address.Kind.Shelley(_, _, _, Some(_)) => true
     case _                                      => false
 
-  /** `validateNoPtrInCollateralReturn` (`Utxo.hs:245-256`): a collateral return to a pointer
-    * address.
+  /** `validateNoPtrInCollateralReturn` (`Utxo.hs:245-256`, cardano-ledger 9df9f98c): a collateral
+    * return to a pointer address.
     */
   def pointerInCollateralReturn(tx: Tx): Test[DijkstraUtxoFailure] =
     Test.failureOnJust(tx.body.collateralReturn.filter(pointer))(
@@ -266,8 +266,9 @@ object DijkstraUtxo
     val original = env.originalUtxo
     val outs = body.outputs ++ body.collateralReturn.toVector
     val withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
-    // `dijkstraConsumed` and `dijkstraProducedValue` (`Dijkstra/UTxO.hs:71-146`): the minted
-    // assets consumed, the burned produced (`getConsumedMaryValue`, `burnedMultiAssets`)
+    // `dijkstraConsumed` and `dijkstraProducedValue` (`Dijkstra/UTxO.hs:71-146`,
+    // cardano-ledger 9df9f98c): the minted assets consumed, the burned produced
+    // (`getConsumedMaryValue`, `burnedMultiAssets`)
     val consumed = body.inputs.distinct.flatMap(original.get).foldLeft(Value.zero)(_ + _.value) +
       Value.coin(withdrawn + refunds) + Value.minted(body.mint)
     val produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
@@ -369,14 +370,14 @@ object DijkstraUtxo
       _ <- st.set(s.copy(state = next))
     yield ()
 
-/** UTXOW of Dijkstra (`Dijkstra/Rules/Utxow.hs:235-325`, `dijkstraUtxowTransition`) of a
-  * transaction with its Conway form: Babbage's checks as Conway runs them (`Utxow.checks`), which
-  * are Dijkstra's in its order (the failing native scripts, the missing and extraneous scripts
-  * beside the reference scripts, the datums, the redeemers, the signatures, the needed witnesses,
-  * the auxiliary data, the well-formed scripts, the script integrity hash), every lookup against
-  * the UTxO set before the transaction; the guards' checks (`Utxow.hs:313-321`), which a
-  * transaction without guards passes; then UTXO. A transaction without a Conway form halts
-  * ([[DijkstraStAnnTx.of]]).
+/** UTXOW of Dijkstra (`Dijkstra/Rules/Utxow.hs:235-325` (cardano-ledger 9df9f98c),
+  * `dijkstraUtxowTransition`) of a transaction with its Conway form: Babbage's checks as Conway
+  * runs them (`Utxow.checks`), which are Dijkstra's in its order (the failing native scripts, the
+  * missing and extraneous scripts beside the reference scripts, the datums, the redeemers, the
+  * signatures, the needed witnesses, the auxiliary data, the well-formed scripts, the script
+  * integrity hash), every lookup against the UTxO set before the transaction; the guards' checks
+  * (`Utxow.hs:313-321`), which a transaction without guards passes; then UTXO. A transaction
+  * without a Conway form halts ([[DijkstraStAnnTx.of]]).
   */
 object DijkstraUtxow
     extends JudgedSts[DijkstraUtxoEnv, Counted[

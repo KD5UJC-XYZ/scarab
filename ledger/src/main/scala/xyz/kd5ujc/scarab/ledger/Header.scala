@@ -342,9 +342,9 @@ object Header:
       pv <- protocolVersion(version(0), version(1))
     yield (HeaderVrf.Praos(vrf), size, hash, OpCert(hot, seq, period, sigma), pv)
 
-  /** `ProtVer` (`BaseTypes.hs:211-244`): the major a `Version` (`decodeVersion`, a `Word32` that
-    * `mkVersion32` takes up to [[DecoderVersion.MaxVersion]], `Binary/Version.hs:111-124`), the
-    * minor a `Word32`.
+  /** `ProtVer` (`BaseTypes.hs:211-244`, cardano-ledger f649f975): the major a `Version`
+    * (`decodeVersion`, a `Word32` that `mkVersion32` takes up to [[DecoderVersion.MaxVersion]],
+    * `Binary/Version.hs:111-124`), the minor a `Word32`.
     */
   private[ledger] def protocolVersion(
       major: Node,
@@ -485,7 +485,7 @@ object Header:
       bytes(n, 64, ByteStrings.Definite)
 
   /** `[2, [[epoch, issuer, delegate, cert], sig]]`: heavyweight delegation, the only kind; the kind
-    * is a `Word8` (`Block/Header.hs:691-700`).
+    * is a `Word8` (`Block/Header.hs:691-700`, cardano-ledger f649f975).
     */
   private def byronSignature(n: Node): Either[ChainError, ByronSignature] =
     for
@@ -512,7 +512,9 @@ object Header:
   private def word(n: Node, bits: Int, site: DecodeSite): Either[ChainError, BigInt] =
     ByronTransport.word(n, bits, site).leftMap(fail)
 
-  /** `ChainDifficulty`: a definite list of one `Word64` (`Common/ChainDifficulty.hs:47-50`). */
+  /** `ChainDifficulty`: a definite list of one `Word64` (`Common/ChainDifficulty.hs:47-50`,
+    * cardano-ledger f649f975).
+    */
   private def difficulty(n: Node): Either[ChainError, BigInt] =
     byronList(n, 1, DecodeField.ChainDifficulty).flatMap(d =>
       word(d(0), 64, DecodeField.ChainDifficulty)

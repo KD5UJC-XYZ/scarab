@@ -64,7 +64,7 @@ object CanonicalJson:
   private[json] def bytesOf(text: String): Bytes =
     Bytes.fromArray(text.getBytes(StandardCharsets.UTF_8))
 
-  /** `fromJSString`: one `Char` per byte (`Types.hs:90-91`). */
+  /** `fromJSString`: one `Char` per byte (`Types.hs:90-91`, canonical-json 0.6.0.1). */
   def string(bytes: Bytes): String = String(bytes.toArray, StandardCharsets.ISO_8859_1)
 
   /** An object or array not yet closed, with what it has so far. */
@@ -175,7 +175,8 @@ object CanonicalJson:
 
   /** `renderCanonicalJSON` (`Parse.hs`): no whitespace, a string's bytes with `"` and `\` escaped,
     * an object's pairs sorted by key (`sortBy`, stable: a repeated key keeps its order and is
-    * written each time). The Byron genesis hash is the hash of this (`Data.hs:179`).
+    * written each time). The Byron genesis hash is the hash of this (`Data.hs:179`, cardano-ledger
+    * f649f975).
     */
   def render(value: CanonicalJson): Bytes =
     val quote = Bytes.fromArray(Array(Quote.toByte))

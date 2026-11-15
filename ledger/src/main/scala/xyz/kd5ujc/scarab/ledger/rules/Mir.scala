@@ -6,11 +6,11 @@ import cats.mtl.{Ask, Raise, Stateful}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.state.*
 
-/** MIR (`Shelley/Rules/Mir.hs:93`, `mirTransition`): the instantaneous rewards the certificates of
-  * the epoch collected are paid at the epoch boundary, to the accounts that are still registered,
-  * and only if both pots can pay what was asked of them (the pot-to-pot transfers count in what a
-  * pot has). In either case the collected rewards are cleared. Conway has no MIR rule
-  * (`Conway/Rules/ NewEpoch.hs`).
+/** MIR (`Shelley/Rules/Mir.hs:93` (cardano-ledger f649f975), `mirTransition`): the instantaneous
+  * rewards the certificates of the epoch collected are paid at the epoch boundary, to the accounts
+  * that are still registered, and only if both pots can pay what was asked of them (the pot-to-pot
+  * transfers count in what a pot has). In either case the collected rewards are cleared. Conway has
+  * no MIR rule (`Conway/Rules/ NewEpoch.hs`).
   */
 object Mir:
   def sts[E <: EraTag](using ShelleyBasedEra[E]): Sts[Unit, EpochState[E], Unit, TickFailure] =

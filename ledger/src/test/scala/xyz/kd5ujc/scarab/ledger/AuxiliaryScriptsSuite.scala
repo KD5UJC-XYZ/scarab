@@ -93,8 +93,9 @@ class AuxiliaryScriptsSuite extends FunSuite:
     }
   }
 
-  // `validateMetadata` (`Shelley/Rules/Utxow.hs:427-443`): with the hash and the data, the hash and
-  // the well-formed scripts are both checked and both reported, the hash first
+  // `validateMetadata` (`Shelley/Rules/Utxow.hs:427-443`, cardano-ledger f649f975): with the hash
+  // and the data, the hash and the well-formed scripts are both checked and both reported, the hash
+  // first
   test(
     "structural decoder failures are defects; a wrong hash and a malformed script are both reported"
   ) {

@@ -157,9 +157,10 @@ object EraLedger:
       c => CompactCoin.sum(c.dState.accounts.states.valuesIterator.map(_.deposit)).toBigInt
     )
 
-  /** `addToBalanceAccounts` (`State/Account.hs:131–147`): compact balances add modulo 2^64. Callers
-    * perform their own reference conversion before this operation and supply registered account
-    * keys. A missing account is left absent, as in the reference's non-asserting build.
+  /** `addToBalanceAccounts` (`State/Account.hs:131–147`, cardano-ledger f649f975): compact balances
+    * add modulo 2^64. Callers perform their own reference conversion before this operation and
+    * supply registered account keys. A missing account is left absent, as in the reference's
+    * non-asserting build.
     */
   def credit[E <: EraTag](
       ls: LedgerState[E],
@@ -262,10 +263,11 @@ object EraLedger:
         )
     )
 
-  /** `resolveInstantStake` (`State/Stake.hs:220`, `Shelley/State/Stake.hs:148`, `Conway/State/
-    * Stake.hs:123`): the stake of the registered accounts that delegate to a pool, from the instant
-    * stake of the UTxO and the balance of the account, with (before Conway) the stake of the
-    * pointer addresses added to the account that the pointer names.
+  /** `resolveInstantStake` (`State/Stake.hs:220` (cardano-ledger f649f975),
+    * `Shelley/State/Stake.hs:148`, `Conway/State/ Stake.hs:123`): the stake of the registered
+    * accounts that delegate to a pool, from the instant stake of the UTxO and the balance of the
+    * account, with (before Conway) the stake of the pointer addresses added to the account that the
+    * pointer names.
     */
   def activeStake[E <: EraTag](ls: LedgerState[E])(using
       era: ShelleyBasedEra[E]
@@ -302,9 +304,9 @@ object EraLedger:
   def futurePParams[E <: EraTag](g: GovState[E])(using ShelleyBasedEra[E]): FuturePParams =
     foldGov[E, FuturePParams](g)(_.futurePParams, _.futurePParams)
 
-  /** `predictFuturePParams` (`Conway/Governance.hs:299`) on the governance state of any era:
-    * Conway's, and the identity before it (`Shelley/Rules/NewEpoch.hs`: a tick within an epoch
-    * changes nothing).
+  /** `predictFuturePParams` (`Conway/Governance.hs:299`, cardano-ledger f649f975) on the governance
+    * state of any era: Conway's, and the identity before it (`Shelley/Rules/NewEpoch.hs`: a tick
+    * within an epoch changes nothing).
     */
   def predictFuture[E <: EraTag](g: GovState[E])(using ShelleyBasedEra[E]): GovState[E] =
     mapGov(g)(identity, ConwayEpoch.predictFuturePParams)
@@ -361,7 +363,7 @@ object EraLedger:
       ShelleyBasedEra[E]
   ): GovState[E] = mapGov(g)(_.copy(futurePParams = future), _.copy(futurePParams = future))
 
-  /** `solidifyFuturePParams` (`State/Governance.hs:135`). */
+  /** `solidifyFuturePParams` (`State/Governance.hs:135`, cardano-ledger f649f975). */
   def solidify(f: FuturePParams): FuturePParams = f match
     case FuturePParams.PotentialPParamsUpdate(None)    => FuturePParams.NoPParamsUpdate
     case FuturePParams.PotentialPParamsUpdate(Some(p)) => FuturePParams.DefinitePParamsUpdate(p)

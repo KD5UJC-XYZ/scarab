@@ -47,8 +47,9 @@ object DijkstraSts:
       )
       .map(_.map(_._1))
 
-  /** `trans @sub` (`Extended.hs:475`) of a Dijkstra rule: `sub` on the part of the state `lens`
-    * names, what it records wrapped (`wrapFailed`) as one block of the enclosing rule's failures.
+  /** `trans @sub` (`Extended.hs:475`, cardano-ledger f649f975) of a Dijkstra rule: `sub` on the
+    * part of the state `lens` names, what it records wrapped (`wrapFailed`) as one block of the
+    * enclosing rule's failures.
     */
   private[rules] def trans[F[_]: Monad, Env, S, S0, Sig, Rec, Rec0](
       sub: JudgedSts[Env, S, Sig, Rec, DijkstraHalt],
@@ -90,11 +91,11 @@ object DijkstraSts:
     judge.nest(asConway[F, Env, S, S0, Sig, Rec](sub, env, signal, lens, select))
 
   /** A Dijkstra rule whose transition is Conway's (`transitionRules =
-    * [Conway.conwayGovTransition]`, `Dijkstra/Rules/Gov.hs:220`): the Conway rule's judgment as
-    * this rule's, its predicate failures taken into the Dijkstra failure by `select` (the
-    * reference's `conwayToDijkstra*PredFailure`, one to one). A failure `select` has no case for
-    * halts the judgment ([[DijkstraHalt.NoDijkstraCase]]), as does a defect of the Conway rule
-    * ([[DijkstraHalt.Conway]]).
+    * [Conway.conwayGovTransition]`, `Dijkstra/Rules/Gov.hs:220`, cardano-ledger 9df9f98c): the
+    * Conway rule's judgment as this rule's, its predicate failures taken into the Dijkstra failure
+    * by `select` (the reference's `conwayToDijkstra*PredFailure`, one to one). A failure `select`
+    * has no case for halts the judgment ([[DijkstraHalt.NoDijkstraCase]]), as does a defect of the
+    * Conway rule ([[DijkstraHalt.Conway]]).
     */
   private[rules] def asConway[F[_]: Monad, Env, S, S0, Sig, Rec](
       sub: JudgedSts[Env, S, Sig, PredicateFailure, LedgerFailure],
@@ -373,7 +374,7 @@ object DijkstraCertsRule
     }
 
 /** The votes, proposals and certificates of a Dijkstra transaction (`GovSignal`,
-  * `Conway/Rules/Gov.hs:312-316`).
+  * `Conway/Rules/Gov.hs:312-316`, cardano-ledger 9df9f98c).
   */
 final case class DijkstraGovSignal(
     votes: Vector[(DijkstraVoter, Vector[(DijkstraGovActionId, DijkstraVotingProcedure)])],

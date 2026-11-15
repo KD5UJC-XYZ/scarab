@@ -24,9 +24,9 @@ object HeaderBodyEncoding:
 
   /** A header body's fields, decoded. `vrf` says the layout: TPraos (Shelley to Alonzo) writes the
     * nonce and leader certificates and then the operational certificate and protocol version
-    * inline, 15 items (`TPraos/BlockHeader.hs:175-191`); Praos (Babbage, Conway) one certificate
-    * and the operational certificate and protocol version as lists, 10 items
-    * (`Praos/BlockHeader.hs:176-201`; `CBORGroup`, `Binary/Group.hs:30-31`).
+    * inline, 15 items (`TPraos/BlockHeader.hs:175-191`, cardano-ledger f649f975); Praos (Babbage,
+    * Conway) one certificate and the operational certificate and protocol version as lists, 10
+    * items (`Praos/BlockHeader.hs:176-201`; `CBORGroup`, `Binary/Group.hs:30-31`).
     */
   final case class Fields(
       blockNo: BigInt,

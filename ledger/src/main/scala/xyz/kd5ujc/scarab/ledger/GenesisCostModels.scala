@@ -16,15 +16,15 @@ enum CostModelLanguage(val tag: Int, val key: String, val initialCount: Int):
   case PlutusV3 extends CostModelLanguage(2, "PlutusV3", 251)
   case PlutusV4 extends CostModelLanguage(3, "PlutusV4", 251)
 
-  /** `costModelParamNames` (`CostModels.hs` lines 221-223): the names of the parameters in the
-    * order of the on-chain list, those of the genesis files for PlutusV1.
+  /** `costModelParamNames` (`CostModels.hs` lines 221-223, cardano-ledger f649f975): the names of
+    * the parameters in the order of the on-chain list, those of the genesis files for PlutusV1.
     */
   def parameterNames: Vector[String] = this match
     case PlutusV1            => GenesisCostModels.genesisNamesV1
     case PlutusV2            => ParamNames.v2
     case PlutusV3 | PlutusV4 => ParamNames.v3
 
-  /** `costModelInitParamNames` (`CostModels.hs` lines 227-228). */
+  /** `costModelInitParamNames` (`CostModels.hs` lines 227-228, cardano-ledger f649f975). */
   def initialNames: Vector[String] = parameterNames.take(initialCount)
 
 /** Why a genesis file's cost models are refused. Each case is a failure of the reference's JSON
@@ -78,7 +78,7 @@ enum CostModelProblem extends DomainError:
   *
   *   - The Alonzo genesis' `costModels` go through `parseCostModels False [PlutusV1]`, its
   *     `extraConfig.costModels` through `parseCostModels True []`, and the PlutusV1 model is
-  *     required (`Alonzo/Genesis.hs` lines 110-114 and 222-242).
+  *     required (`Alonzo/Genesis.hs` lines 110-114 and 222-242, cardano-ledger f649f975).
   *   - The Conway genesis' `plutusV3CostModel` goes through `parseCostModelAsArray False PlutusV3`
   *     (`Conway/PParams.hs` line 1095).
   *   - `parseCostModels`, `parseCostModel`, `parseCostModelAsMap`, `parseCostModelAsArray`,
@@ -119,7 +119,8 @@ object GenesisCostModels:
     val empty: Models = Models(Map.empty, Map.empty)
 
   /** The PlutusV1 parameter names of the genesis files: the names of the `ParamName` enum, but six
-    * of them under the older names (`plutusV1ParamNames`, `CostModels.hs` lines 247-260).
+    * of them under the older names (`plutusV1ParamNames`, `CostModels.hs` lines 247-260,
+    * cardano-ledger f649f975).
     */
   private[ledger] val genesisNamesV1: Vector[String] =
     val older = Map(
@@ -141,7 +142,9 @@ object GenesisCostModels:
       Models(Map(CostModelLanguage.PlutusV1 -> plutusV1), Map.empty)
         .updated(extra.getOrElse(Models.empty))
 
-  /** `FromJSON AlonzoGenesis` for the cost models (`Alonzo/Genesis.hs` lines 222-242). */
+  /** `FromJSON AlonzoGenesis` for the cost models (`Alonzo/Genesis.hs` lines 222-242,
+    * cardano-ledger f649f975).
+    */
   def alonzo(genesis: Json): Either[CostModelProblem, Alonzo] =
     for
       o <- genesis.asObject.toRight(CostModelProblem.NotObject(genesis))
@@ -153,8 +156,8 @@ object GenesisCostModels:
         .toRight(CostModelProblem.MissingLanguage(CostModelLanguage.PlutusV1))
     yield Alonzo(v1, extra)
 
-  /** `FromJSON AlonzoExtraConfig` (`Alonzo/Genesis.hs` lines 110-114): an absent or null
-    * `extraConfig` has no models, and `costModels` is optional in it.
+  /** `FromJSON AlonzoExtraConfig` (`Alonzo/Genesis.hs` lines 110-114, cardano-ledger f649f975): an
+    * absent or null `extraConfig` has no models, and `costModels` is optional in it.
     */
   private def extraConfig(genesis: JsonObject): Either[CostModelProblem, Option[Models]] =
     present(genesis, "extraConfig")
@@ -169,7 +172,9 @@ object GenesisCostModels:
   /** `.:?`: a key that is absent or null has no value. */
   private def present(o: JsonObject, key: String): Option[Json] = o(key).filterNot(_.isNull)
 
-  /** The PlutusV3 cost model of a Conway genesis file (`Conway/PParams.hs` line 1095). */
+  /** The PlutusV3 cost model of a Conway genesis file (`Conway/PParams.hs` line 1095,
+    * cardano-ledger f649f975).
+    */
   def conwayPlutusV3(genesis: Json): Either[CostModelProblem, Vector[Long]] =
     for
       o <- genesis.asObject.toRight(CostModelProblem.NotObject(genesis))
@@ -186,7 +191,7 @@ object GenesisCostModels:
       .toRight(CostModelProblem.NotArray(value))
       .flatMap(parseAsArray(lenient = false, CostModelLanguage.PlutusV4, _))
 
-  /** `parseCostModels` (`CostModels.hs` lines 141-165).
+  /** `parseCostModels` (`CostModels.hs` lines 141-165, cardano-ledger f649f975).
     *
     * @param lenient
     *   do not restrict the number of parameters to the initial count, and read the `Unknown` models
@@ -208,7 +213,7 @@ object GenesisCostModels:
     yield Models(parsed.flatMap(_.map((language, values) => language -> values)).toMap, Map.empty)
       .updated(unknown)
 
-  /** `parseCostModel` (`CostModels.hs` lines 173-180). */
+  /** `parseCostModel` (`CostModels.hs` lines 173-180, cardano-ledger f649f975). */
   private def parseCostModel(
       lenient: Boolean,
       o: JsonObject,
@@ -225,8 +230,9 @@ object GenesisCostModels:
       )
     }
 
-  /** `parseCostModelAsMap` (`CostModels.hs` lines 182-186): the parameters by name, in the order of
-    * the names, and the object must have exactly the initial number of keys unless lenient.
+  /** `parseCostModelAsMap` (`CostModels.hs` lines 182-186, cardano-ledger f649f975): the parameters
+    * by name, in the order of the names, and the object must have exactly the initial number of
+    * keys unless lenient.
     */
   private def parseAsMap(
       lenient: Boolean,
@@ -241,7 +247,7 @@ object GenesisCostModels:
       _ <- guardNumberOfParameters(lenient, language, m.size)
     yield language.initialNames.map(byName)
 
-  /** `parseCostModelAsArray` (`CostModels.hs` lines 188-192). */
+  /** `parseCostModelAsArray` (`CostModels.hs` lines 188-192, cardano-ledger f649f975). */
   private def parseAsArray(
       lenient: Boolean,
       language: CostModelLanguage,
@@ -252,7 +258,7 @@ object GenesisCostModels:
       _ <- guardNumberOfParameters(lenient, language, values.size)
     yield values
 
-  /** `guardNumberOfParameters` (`CostModels.hs` lines 194-203). */
+  /** `guardNumberOfParameters` (`CostModels.hs` lines 194-203, cardano-ledger f649f975). */
   private def guardNumberOfParameters(
       lenient: Boolean,
       language: CostModelLanguage,
@@ -265,7 +271,8 @@ object GenesisCostModels:
     )
 
   /** The `Unknown` models of a lenient parse and `mkCostModelsLenient` (`CostModels.hs` lines
-    * 421-436): the models of a language the ledger knows count as valid, the others as unknown.
+    * 421-436, cardano-ledger f649f975): the models of a language the ledger knows count as valid,
+    * the others as unknown.
     */
   private def unknownModels(o: JsonObject): Either[CostModelProblem, Models] =
     present(o, "Unknown").fold(Right(Models.empty)) { raw =>

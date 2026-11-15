@@ -185,7 +185,7 @@ type GovState[E <: EraTag] = E match
   case Dijkstra => ConwayGovState
 
 /** `StashedAVVMAddresses era`: the UTxO (the same opaque handle as the main one) in Shelley, `()`
-  * after (`LedgerState/Types.hs:357-359`).
+  * after (`LedgerState/Types.hs:357-359`, cardano-ledger f649f975).
   */
 type StashedAVVM[E <: EraTag] = E match
   case Shelley  => UtxoTables

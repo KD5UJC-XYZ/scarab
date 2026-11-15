@@ -54,9 +54,9 @@ object ScriptContexts:
       case ShelleyBasedEra.SConway | ShelleyBasedEra.SDijkstra => true
 
     /** An output at a Byron address fails the translation (`ByronTxOutInContext`): Babbage's
-      * `transTxOutV1` and `transTxOutV2` (`Babbage/TxInfo.hs:125,154`), which Conway takes for V2
-      * and V3 beside its own V1 (`Conway/TxInfo.hs:319`). Alonzo's `transTxOut` gives `Nothing` for
-      * one, and its V1 `TxInfo` leaves the input or output out
+      * `transTxOutV1` and `transTxOutV2` (`Babbage/TxInfo.hs:125,154`, cardano-ledger f649f975),
+      * which Conway takes for V2 and V3 beside its own V1 (`Conway/TxInfo.hs:319`). Alonzo's
+      * `transTxOut` gives `Nothing` for one, and its V1 `TxInfo` leaves the input or output out
       * (`Alonzo/Plutus/TxInfo.hs:148-149,277-283`).
       */
     def refusesByron: Boolean = era match
@@ -136,7 +136,7 @@ object ScriptContexts:
     val posInf = constr(2)
     def finite(t: BigInt) = constr(1, I(t))
     // Conway's `transValidityInterval` makes the upper bound of an interval without a lower bound
-    // exclusive (`Conway/TxInfo.hs:790-803`); Alonzo's, which Babbage uses
+    // exclusive (`Conway/TxInfo.hs:790-803`, cardano-ledger f649f975); Alonzo's, which Babbage uses
     // (`Babbage/TxInfo.hs:332,370`), takes the inclusive `to` (`Alonzo/Plutus/TxInfo.hs:252-263`).
     val openUpperInclusive = !env.conway
     def interval(lower: PlutusData, upper: PlutusData) = constr(0, lower, upper)
@@ -158,11 +158,11 @@ object ScriptContexts:
     case Datum.Hash(h) => Some(B(h))
     case _             => None
 
-  /** The Plutus V1 form of an output (`transTxOutV1`): Babbage (`Babbage/TxInfo.hs:119-126`)
-    * refuses a reference script, then an inline datum, then a Byron address; Conway
-    * (`Conway/TxInfo.hs:315-320`) no longer refuses the reference script, which the V1 output has
-    * no field for and so leaves out. The restriction follows the era ([[Environment.conway]]),
-    * whatever the protocol version.
+  /** The Plutus V1 form of an output (`transTxOutV1`): Babbage (`Babbage/TxInfo.hs:119-126`,
+    * cardano-ledger f649f975) refuses a reference script, then an inline datum, then a Byron
+    * address; Conway (`Conway/TxInfo.hs:315-320`) no longer refuses the reference script, which the
+    * V1 output has no field for and so leaves out. The restriction follows the era
+    * ([[Environment.conway]]), whatever the protocol version.
     */
   private def outputV1(
       out: TxOut,
@@ -348,9 +348,10 @@ object ScriptContexts:
   private def policy(h: Option[Bytes]): PlutusData = PlutusData.maybe(h.map(B(_)))
 
   /** `ChangedParameters`: the update as a map from parameter index to the value in Plutus data, in
-    * index order (the ledger's `ToPlutusData PParamsUpdate`, `Conway/PParams.hs:200-206`). A
-    * rational is the list of its numerator and denominator, a pair (prices, execution units) and
-    * the voting thresholds a list, and the cost models a map by language in language order.
+    * index order (the ledger's `ToPlutusData PParamsUpdate`, `Conway/PParams.hs:200-206`,
+    * cardano-ledger f649f975). A rational is the list of its numerator and denominator, a pair
+    * (prices, execution units) and the voting thresholds a list, and the cost models a map by
+    * language in language order.
     */
   def changedParameters(update: ConwayParamUpdate): PlutusData =
     import ConwayParam.*
@@ -478,8 +479,9 @@ object ScriptContexts:
       case PlutusLanguage.V1 =>
         for
           // Babbage refuses a Plutus V1 script in a transaction with reference inputs
-          // (`Babbage/TxInfo.hs:329`). Conway does not show them in the V1 context but still
-          // translates each one as an input to check it can be shown (`Conway/TxInfo.hs:411`).
+          // (`Babbage/TxInfo.hs:329`, cardano-ledger f649f975). Conway does not show them in the V1
+          // context but still translates each one as an input to check it can be shown
+          // (`Conway/TxInfo.hs:411`).
           _ <- Either.cond(
             body.referenceInputs.isEmpty || env.conway,
             (),
@@ -642,7 +644,8 @@ object ScriptContexts:
         case Datum.Hash(h) =>
           tx.witnesses.datums.find(d => Blake2b32.hash(d) == h) match
             // getSpendingDatum returns Nothing for an absent witness; the phase-1 rule checks
-            // MissingRequiredDatums (Alonzo/Plutus/TxInfo.hs:175-194, Alonzo/UTxO.hs).
+            // MissingRequiredDatums (Alonzo/Plutus/TxInfo.hs:175-194 (cardano-ledger f649f975),
+            // Alonzo/UTxO.hs).
             case None => Right(None)
             case Some(d) =>
               PlutusData

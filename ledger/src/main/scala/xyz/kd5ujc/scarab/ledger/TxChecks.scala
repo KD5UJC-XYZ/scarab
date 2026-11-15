@@ -25,11 +25,12 @@ object TxChecks:
   private[ledger] type Pointer = (Int, BigInt)
 
   /** The block's `is_valid` flag must equal the outcome of evaluating every Plutus script
-    * (`expectScriptsToPass`, `babbageEvalScriptsTxInvalid`, `Babbage/Rules/Utxos.hs:132-220`): the
-    * contexts are collected (`CollectErrors`), then the scripts evaluated; a transaction flagged
-    * invalid with no script to fail passes unexpectedly. Reads of the state: the parameters and the
-    * counters it adds to. UTXOS is a rule of the eras from Alonzo, and its callers are those eras'
-    * rules: it runs whatever the protocol version (`Alonzo/Rules/Utxos.hs:159-216`).
+    * (`expectScriptsToPass`, `babbageEvalScriptsTxInvalid`, `Babbage/Rules/Utxos.hs:132-220`,
+    * cardano-ledger f649f975): the contexts are collected (`CollectErrors`), then the scripts
+    * evaluated; a transaction flagged invalid with no script to fail passes unexpectedly. Reads of
+    * the state: the parameters and the counters it adds to. UTXOS is a rule of the eras from
+    * Alonzo, and its callers are those eras' rules: it runs whatever the protocol version
+    * (`Alonzo/Rules/Utxos.hs:159-216`).
     *
     * @param spent
     *   the outputs of the inputs the UTxO set holds, by input
@@ -197,8 +198,8 @@ object TxChecks:
 
   /** The largest serialised value an output of the era `E` may carry, whatever the protocol
     * version: none in Shelley, whose UTXO has no such check; 4000 bytes in Allegra and Mary
-    * (hard-coded in `validateOutputTooBigUTxO`, `Allegra/Rules/Utxo.hs:211,237-254`); `maxValSize`
-    * from Alonzo (`Alonzo/Rules/Utxo.hs:400-424`).
+    * (hard-coded in `validateOutputTooBigUTxO`, `Allegra/Rules/Utxo.hs:211,237-254`, cardano-ledger
+    * f649f975); `maxValSize` from Alonzo (`Alonzo/Rules/Utxo.hs:400-424`).
     */
   private[ledger] def maxOutputValueSize[E <: EraTag](pp: ProtocolParams)(using
       era: ShelleyBasedEra[E]
@@ -228,10 +229,10 @@ object TxChecks:
     body.collateral.toSet.toVector.sorted
 
   /** The collateral a transaction with redeemers of the era `E` pays if it fails phase 2, from
-    * Alonzo whatever the protocol version (`Phase2Invalid`, `Alonzo/Rules/Utxo.hs:775-784`): the
-    * outputs of its collateral inputs the UTxO set holds, and their ada less the collateral return
-    * (`collAdaBalance`, `Babbage/Collateral.hs:30-41`). None before Alonzo, whose UTXO has no
-    * collateral, and for a transaction without redeemers.
+    * Alonzo whatever the protocol version (`Phase2Invalid`, `Alonzo/Rules/Utxo.hs:775-784`,
+    * cardano-ledger f649f975): the outputs of its collateral inputs the UTxO set holds, and their
+    * ada less the collateral return (`collAdaBalance`, `Babbage/Collateral.hs:30-41`). None before
+    * Alonzo, whose UTXO has no collateral, and for a transaction without redeemers.
     */
   private[ledger] def collateral[E <: EraTag](utxo: Utxo, tx: Tx)(using
       era: ShelleyBasedEra[E]
@@ -294,11 +295,11 @@ object TxChecks:
 
   private def utxow(f: UtxowFailure): PredicateFailure = PredicateFailure.utxow(f)
 
-  /** `missingRequiredDatums` (`Alonzo/Rules/Utxow.hs:210-234`), reached from every UTXOW from
-    * Alonzo: a spent Plutus output without a usable datum hash (`UnspendableUTxONoDatumHash`), a
-    * required datum the witnesses lack (`MissingRequiredDatums`), and a witness datum that is
-    * neither required nor allowed as supplemental (`NotAllowedSupplementalDatums`: the unallowed
-    * hashes and the acceptable ones).
+  /** `missingRequiredDatums` (`Alonzo/Rules/Utxow.hs:210-234`, cardano-ledger f649f975), reached
+    * from every UTXOW from Alonzo: a spent Plutus output without a usable datum hash
+    * (`UnspendableUTxONoDatumHash`), a required datum the witnesses lack (`MissingRequiredDatums`),
+    * and a witness datum that is neither required nor allowed as supplemental
+    * (`NotAllowedSupplementalDatums`: the unallowed hashes and the acceptable ones).
     *
     * @param spent
     *   the outputs of the inputs the UTxO set holds, by input
@@ -366,8 +367,9 @@ object TxChecks:
         (wits.redeemers.nonEmpty || wits.datums.nonEmpty || tx.body.scriptDataHash.nonEmpty)
     )(LedgerFailure.Undecodable(tx.body.id, TxDefect.PlutusFieldsBeforeAlonzo))
 
-  /** `hasExactSetOfRedeemers` (`Alonzo/Rules/Utxow.hs:239-262`): the redeemers no Plutus purpose
-    * needs (`ExtraRedeemers`), then the Plutus purposes with no redeemer (`MissingRedeemers`).
+  /** `hasExactSetOfRedeemers` (`Alonzo/Rules/Utxow.hs:239-262`, cardano-ledger f649f975): the
+    * redeemers no Plutus purpose needs (`ExtraRedeemers`), then the Plutus purposes with no
+    * redeemer (`MissingRedeemers`).
     *
     * @param spent
     *   the outputs of the inputs the UTxO set holds, by input
@@ -397,9 +399,10 @@ object TxChecks:
       Test.failureUnless(unredeemed.isEmpty, utxow(UtxowFailure.MissingRedeemers(unredeemed)))
     )
 
-  /** `checkScriptIntegrityHash` (`Alonzo/Rules/Utxow.hs:266-283`): the script integrity hash of the
-    * body is the one of the redeemers, the datums and the language views of the Plutus scripts the
-    * transaction needs (`mkScriptIntegrity`, none when it has none of them).
+  /** `checkScriptIntegrityHash` (`Alonzo/Rules/Utxow.hs:266-283`, cardano-ledger f649f975): the
+    * script integrity hash of the body is the one of the redeemers, the datums and the language
+    * views of the Plutus scripts the transaction needs (`mkScriptIntegrity`, none when it has none
+    * of them).
     *
     * @param spent
     *   the outputs of the inputs the UTxO set holds, by input
@@ -416,12 +419,12 @@ object TxChecks:
       utxow(ScriptIntegrity.mismatch[E](tx, pp, languages))
     )
 
-  /** `validateScriptsWellFormed` (`Babbage/Rules/Utxow.hs:254-276`), from Babbage: every Plutus
-    * script in the witness set (`MalformedScriptWitnesses`) and in the outputs, the collateral
-    * return included (`MalformedReferenceScripts`), must deserialise for its language and the
-    * protocol version in force, which rejects a builtin the pair does not allow. Both are reported.
-    * Alonzo has no such check; there an undecodable script that a transaction needs fails phase 2.
-    * A decoder that cannot decide is a defect.
+  /** `validateScriptsWellFormed` (`Babbage/Rules/Utxow.hs:254-276`, cardano-ledger f649f975), from
+    * Babbage: every Plutus script in the witness set (`MalformedScriptWitnesses`) and in the
+    * outputs, the collateral return included (`MalformedReferenceScripts`), must deserialise for
+    * its language and the protocol version in force, which rejects a builtin the pair does not
+    * allow. Both are reported. Alonzo has no such check; there an undecodable script that a
+    * transaction needs fails phase 2. A decoder that cannot decide is a defect.
     */
   private[ledger] def scriptsWellFormed[E <: EraTag](
       pp: ProtocolParams,
@@ -531,8 +534,8 @@ object TxChecks:
   private[ledger] def providedKeyHashes(tx: Tx, vkeyHashes: Vector[Bytes]): Set[Bytes] =
     vkeyHashes.toSet ++ tx.witnesses.bootstrap.map(_.addressRoot)
 
-  /** `validateVerifiedWits` (`Shelley/Rules/Utxow.hs:380-397`): the vkey and bootstrap witnesses
-    * whose signature of the body does not verify.
+  /** `validateVerifiedWits` (`Shelley/Rules/Utxow.hs:380-397`, cardano-ledger f649f975): the vkey
+    * and bootstrap witnesses whose signature of the body does not verify.
     */
   private[ledger] def verifiedWits(
       tx: Tx,
@@ -554,9 +557,9 @@ object TxChecks:
           Test.failureUnless(keys.isEmpty, utxow(UtxowFailure.InvalidWitnesses(keys)))
       )
 
-  /** `validateNeededWitnesses` (`Shelley/Rules/Utxow.hs:399-412`): the key hashes that must sign
-    * (`witsVKeyNeeded`) and that no witness provides. Reads of the state: the genesis delegations
-    * (empty from Conway, which has no update proposals).
+  /** `validateNeededWitnesses` (`Shelley/Rules/Utxow.hs:399-412`, cardano-ledger f649f975): the key
+    * hashes that must sign (`witsVKeyNeeded`) and that no witness provides. Reads of the state: the
+    * genesis delegations (empty from Conway, which has no update proposals).
     */
   private[ledger] def neededWitnesses(
       genDelegs: Map[Bytes, GenDelegPair],
@@ -641,7 +644,8 @@ object RefScripts:
   private val RefScriptMultiplier = Rational(6, 5)
 
   /** `tierRefScriptFee`: the price per byte starts at `base` and grows by 1.2 for every 25 KiB. The
-    * size is a `Long`, as the reference's is a 64-bit `Int` (`Conway/Tx.hs:122-142`).
+    * size is a `Long`, as the reference's is a 64-bit `Int` (`Conway/Tx.hs:122-142`, cardano-ledger
+    * f649f975).
     */
   def tierRefScriptFee(base: Rational, size: Long): BigInt =
     @annotation.tailrec
@@ -656,8 +660,8 @@ object RefScripts:
     go(Rational.zero, base, size)
 
   /** Total size of the reference scripts of the distinct inputs and reference inputs
-    * (`txNonDistinctRefScriptsSize`, `Conway/UTxO.hs:166-170`), added up in 64 bits as the
-    * reference's `Int`.
+    * (`txNonDistinctRefScriptsSize`, `Conway/UTxO.hs:166-170`, cardano-ledger f649f975), added up
+    * in 64 bits as the reference's `Int`.
     */
   def refScriptsSize(utxo: Utxo, body: TxBody): Long =
     (body.inputs.toSet ++ body.referenceInputs.toSet).iterator

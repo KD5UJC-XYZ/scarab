@@ -34,9 +34,10 @@ enum BlockTransportError extends DomainError:
     case LeiosBody(fault)       => s"fetched Dijkstra body does not match its header: $fault"
 
 /** The pinned BlockFetch client's point/body checks, before storage or ledger selection.
-  * Shelley/Ledger/Block.hs:211 checks the body hash, not its declared size. Byron delegates to
-  * abobMatchesBody (Byron/API/Common.hs:145–161): main-block payload proofs, no EBB body proof.
-  * Original bytes are decoded and hashed; this boundary never re-encodes an announced header.
+  * Shelley/Ledger/Block.hs:214 (ouroboros-consensus 82ecba32) checks the body hash, not its
+  * declared size. Byron delegates to abobMatchesBody (Byron/API/Common.hs:145-159, cardano-ledger
+  * f649f975): main-block payload proofs, no EBB body proof. Original bytes are decoded and hashed;
+  * this boundary never re-encodes an announced header.
   */
 object BlockTransport:
   def check(announced: Header, raw: Bytes): Either[BlockTransportError, Block] =

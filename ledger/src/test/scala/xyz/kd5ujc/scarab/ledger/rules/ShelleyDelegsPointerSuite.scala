@@ -59,7 +59,8 @@ class ShelleyDelegsPointerSuite extends FunSuite:
   private def pointers(slot: BigInt, txIx: Int): Set[Ptr] =
     delegs(slot, txIx).fold(e => fail(s"refused: $e"), _.dState.accounts.ptrs.keySet.toSet)
 
-  // `compactCoinOrError (pp ^. ppKeyDepositL)` (`Shelley/Rules/Deleg.hs:268`, `Coin.hs:184-188`)
+  // `compactCoinOrError (pp ^. ppKeyDepositL)` (`Shelley/Rules/Deleg.hs:268`
+  // (cardano-ledger f649f975), `Coin.hs:184-188`)
   test("a key deposit of the parameters outside a CompactForm Coin is the state's, not a refusal") {
     val deposit = BigInt(1) << 64
     assertEquals(

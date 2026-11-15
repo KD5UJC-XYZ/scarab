@@ -424,18 +424,20 @@ object DetachedRecords:
     }
 
     /** A `RecD` record of two fields that hold no record: `ExUnits` and `Prices`
-      * (`libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs:195-231`), `Anchor`
-      * (`BaseTypes.hs:996-1004`), `GovActionId` (`Conway/Governance/Procedures.hs:182-190`).
+      * (`libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs:195-231`, cardano-ledger
+      * f649f975), `Anchor` (`BaseTypes.hs:996-1004`), `GovActionId`
+      * (`Conway/Governance/Procedures.hs:182-190`).
       */
     private val pair: Shape = Record(List(Item, Item))
 
     /** `GovActionId`, a `RecD` record of a transaction id and an index
-      * (`Conway/Governance/Procedures.hs:182-190`), as a node-to-client query reads it too (#700).
+      * (`Conway/Governance/Procedures.hs:182-190`, cardano-ledger f649f975), as a node-to-client
+      * query reads it too (#700).
       */
     val actionId: Shape = pair
 
-    /** `decodeMaryValue` (`eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs:286-306`): a coin, or
-      * from Mary a `RecD` record of a coin and a multi-asset.
+    /** `decodeMaryValue` (`eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs:286-306`, cardano-ledger
+      * f649f975): a coin, or from Mary a `RecD` record of a coin and a multi-asset.
       */
     private def value(era: Era): Shape =
       if since(era, Era.Mary) then
@@ -446,8 +448,9 @@ object DetachedRecords:
       else Item
 
     /** An output: a list of the address, the value and from Alonzo the datum hash
-      * (`decodeListLenOrIndef`, `Alonzo/TxOut.hs:388-411`, `Babbage/TxOut.hs:549-579`), or from
-      * Babbage a map whose key 1 is the value (`SparseKeyed "TxOut"`, `Babbage/TxOut.hs:605-640`).
+      * (`decodeListLenOrIndef`, `Alonzo/TxOut.hs:388-411` (cardano-ledger f649f975),
+      * `Babbage/TxOut.hs:549-579`), or from Babbage a map whose key 1 is the value (`SparseKeyed
+      * "TxOut"`, `Babbage/TxOut.hs:605-640`).
       */
     def output(era: Era): Shape =
       val list = Fields(List(Item, value(era)), Item)
@@ -461,22 +464,24 @@ object DetachedRecords:
     /** An output the stores keep, of any era: the forms of the latest. */
     val storedOutput: Shape = output(Era.Conway)
 
-    /** A `PParamsUpdate` (`SparseKeyed`, `Core/PParams.hs:257-293`): from Alonzo its prices (19)
-      * and execution units (20, 21) are `RecD` records.
+    /** A `PParamsUpdate` (`SparseKeyed`, `Core/PParams.hs:257-293`, cardano-ledger f649f975): from
+      * Alonzo its prices (19) and execution units (20, 21) are `RecD` records.
       */
     private def parameterUpdate(era: Era): Shape =
       if since(era, Era.Alonzo) then Keyed(key => if key >= 19 && key <= 21 then pair else Item)
       else Item
 
-    /** `Update` (`Shelley/PParams.hs:267`): the proposed updates by genesis key, and the epoch. */
+    /** `Update` (`Shelley/PParams.hs:267`, cardano-ledger f649f975): the proposed updates by
+      * genesis key, and the epoch.
+      */
     private def update(era: Era): Shape =
       Record(List(MapOf(Item, parameterUpdate(era)), Item))
 
     private val votingProcedure: Shape = Record(List(Item, nullable(pair)))
     private val constitution: Shape = Record(List(pair, Item))
 
-    /** `GovAction` (`Summands "GovAction"`, `Procedures.hs:876-896`): the actions that name a
-      * previous action, a parameter change's update, a new constitution.
+    /** `GovAction` (`Summands "GovAction"`, `Procedures.hs:876-896`, cardano-ledger f649f975): the
+      * actions that name a previous action, a parameter change's update, a new constitution.
       */
     private val governanceAction: Shape = Sum {
       case 0         => List(nullable(pair), parameterUpdate(Era.Conway))
@@ -487,7 +492,9 @@ object DetachedRecords:
 
     private val proposal: Shape = Record(List(Item, Item, governanceAction, pair))
 
-    /** Conway's certificates that carry an anchor (`Conway/TxCert.hs:702-718`). */
+    /** Conway's certificates that carry an anchor (`Conway/TxCert.hs:702-718`, cardano-ledger
+      * f649f975).
+      */
     private val certificate: Shape = Sum {
       case 15 | 18 => List(Item, nullable(pair))
       case 16      => List(Item, Item, nullable(pair))
@@ -513,12 +520,12 @@ object DetachedRecords:
         }
 
     /** A redeemer of the list form (`decodeRecordNamed "Redeemer"` over its fields,
-      * `Alonzo/TxWits.hs:588-597`).
+      * `Alonzo/TxWits.hs:588-597`, cardano-ledger f649f975).
       */
     private val redeemer: Shape = Fields(List(Item, Item, Item, pair), Item)
 
     /** A witness set: from Alonzo its redeemers (5), a list, and from Conway (decoder version 9) a
-      * map of purpose to data and units (`Alonzo/TxWits.hs:549-597`).
+      * map of purpose to data and units (`Alonzo/TxWits.hs:549-597`, cardano-ledger f649f975).
       */
     def witnesses(era: Era): Shape = witnesses(era, DecoderVersion.of(era))
 
@@ -538,7 +545,7 @@ object DetachedRecords:
       if since(era, Era.Alonzo) then Keyed(key => if key == 5 then redeemers else Item) else Item
 
     /** Auxiliary data: from Allegra a list of the metadata and the scripts is a `RecD` record
-      * (`Allegra/TxAuxData.hs:185-210`, `Alonzo/TxAuxData.hs:215-262`).
+      * (`Allegra/TxAuxData.hs:185-210` (cardano-ledger f649f975), `Alonzo/TxAuxData.hs:215-262`).
       */
     def auxiliaryData(era: Era): Shape = auxiliaryDataAt(era, DecoderVersion.of(era).value)
 
@@ -552,8 +559,8 @@ object DetachedRecords:
       else Item
 
     /** A whole transaction: from Alonzo `decodeRecordNamed "AlonzoTx"` over the body, the witness
-      * set, an optional validity flag and the auxiliary data or null (`Alonzo/Tx.hs:532-553`);
-      * before, the `RecD` record `ShelleyTx` (`Shelley/Tx.hs:184-192`).
+      * set, an optional validity flag and the auxiliary data or null (`Alonzo/Tx.hs:532-553`,
+      * cardano-ledger f649f975); before, the `RecD` record `ShelleyTx` (`Shelley/Tx.hs:184-192`).
       */
     def transaction(era: Era): Shape = transaction(era, DecoderVersion.of(era))
 
@@ -572,9 +579,10 @@ object DetachedRecords:
       else Record(List(body(era, version), witnesses(era, version), nullable(auxiliary)))
 
     /** A header of a Shelley-based era: from Babbage the Praos `HeaderRaw` and its `HeaderBody` are
-      * `RecD` records (`libs/cardano-protocol/src/Cardano/Protocol/Praos/BlockHeader.hs:203-229`),
-      * the body's operational certificate and protocol version lists read by `decodeRecordNamed`
-      * and so not records; a TPraos header to Alonzo holds none (`TPraos/BlockHeader.hs:193-241`).
+      * `RecD` records (`libs/cardano-protocol/src/Cardano/Protocol/Praos/BlockHeader.hs:203-229`,
+      * cardano-ledger f649f975), the body's operational certificate and protocol version lists read
+      * by `decodeRecordNamed` and so not records; a TPraos header to Alonzo holds none
+      * (`TPraos/BlockHeader.hs:193-241`).
       */
     def header(era: Era): Shape = header(era, DecoderVersion.of(era))
 
@@ -586,7 +594,8 @@ object DetachedRecords:
 
     /** A block as BlockFetch carries it, `[era tag, block]`: a block of a Shelley-based era is its
       * [[header]], then the bodies, the witness sets, the auxiliary data by index and the invalid
-      * transactions (`Block.hs:104-115`, `Alonzo/BlockBody/Internal.hs:215-240`).
+      * transactions (`Block.hs:98-110` (cardano-ledger f649f975),
+      * `Alonzo/BlockBody/Internal.hs:215-240`).
       */
     val block: Shape = blockAt(DecoderVersion.of)
 

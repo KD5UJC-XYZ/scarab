@@ -72,8 +72,9 @@ enum NumberError extends DomainError:
   case OutsideOfBounds(value: Rational)
 
   /** Text for logs, modelled on aeson's messages (`Data/Aeson/Types/FromJSON.hs:194-212, 537-543,
-    * 799-810, 918-921, 1708-1724`) and cardano-ledger's `failWith` (`BaseTypes.hs:464-465`); the
-    * cases, not the wording, are what mirror the reference.
+    * 799-810, 918-921, 1708-1724`, aeson 2.2.5.0) and cardano-ledger's `failWith`
+    * (`BaseTypes.hs:464-465`, cardano-ledger f649f975); the cases, not the wording, are what mirror
+    * the reference.
     */
   def message: String = this match
     case TypeMismatch(found) => s"expected Number, but encountered $found"
@@ -134,7 +135,7 @@ object FromJson:
   def natural(json: Json): Either[NumberError, BigInt] =
     integer(json).flatMap(n => Either.cond(n >= 0, n, NumberError.NotNatural(Scientific(n, 0))))
 
-  /** `FromJSON (NonZero Word64)` (`BaseTypes/NonZero.hs:108-109`). */
+  /** `FromJSON (NonZero Word64)` (`BaseTypes/NonZero.hs:108-109`, cardano-ledger f649f975). */
   def nonZeroWord64(json: Json): Either[NumberError, NonZero[Word64]] =
     word64(json).flatMap(w => NonZero.from(w).left.map(_ => NumberError.Zero))
 
@@ -148,7 +149,7 @@ object FromJson:
       else s.wholeNumber.toRight(NumberError.Floating(s))
     }
 
-  /** The object form of `FromJSON (Ratio Integer)` (`FromJSON.hs:1717-1724`):
+  /** The object form of `FromJSON (Ratio Integer)` (`FromJSON.hs:1717-1724`, aeson 2.2.5.0):
     * `{"numerator": n, "denominator": d}`, reduced, with the sign on the numerator.
     */
   def rational(obj: CirceObject): Either[NumberError, Rational] =
