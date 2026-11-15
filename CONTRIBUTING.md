@@ -149,7 +149,8 @@ claim review described below.
 CI uses `scripts/ci_changes.py` to recognise changes limited to named root documents or Markdown
 under `docs/` and `changes/`. Those changes keep the required check names but skip Scala builds/tests,
 CDDL cross-checks and fuzz runs. Script tests, workflow lint and secret scans still run. Mixed changes,
-unknown paths or unavailable comparison history run the full checks; manual and nightly runs do too.
+unknown paths or unavailable comparison history retain full Scala/CDDL checks. Fuzz keeps its existing
+decoder-path selection and refuses an unreadable diff. Manual and nightly execution is unchanged.
 
 Persisted formats are frozen until Scarab leaves pre-release ([FMT-1](docs/design-rules.md#fmt-1)): a storage
 format change needs the owner's explicit approval first, asked for and given in the chat session doing the work,
