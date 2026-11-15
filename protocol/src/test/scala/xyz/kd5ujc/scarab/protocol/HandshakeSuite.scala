@@ -421,3 +421,34 @@ class HandshakeSuite extends munit.FunSuite:
       assert(outcome.rendered <= Tree.DefaultRenderLimit + 3, s"$name: rendering is truncated")
     }
   }
+
+  // cborg's decodeTerm keeps an indefinite string's chunks, the empty ones dropped (Term.hs:203-216,
+  // cborg 0.2.10.0), and its encodeTerm writes them back between 0x7f or 0x5f and a break
+  // (Term.hs:95-102): an empty indefinite text is 7fff, not 7f60ff.
+  test("indefinite strings are written again as cborg writes them, chunk by chunk (#1029)") {
+    def accepted(hex: String) = bytes("83010e" + hex)
+    def roundTrip(hex: String) =
+      decode(ntn, State.Confirm, accepted(hex)).left.map(_.cause).flatMap(encode(ntn, _))
+    Vector(
+      "7fff" -> "7fff",
+      "7f60ff" -> "7fff",
+      "7f616160626262ff" -> "7f6161626262ff",
+      "5fff" -> "5fff",
+      "5f41004042010240ff" -> "5f4100420102ff",
+      "9f7fff5f4100ff7f6161ffff" -> "9f7fff5f4100ff7f6161ffff"
+    ).foreach { (input, output) =>
+      assertEquals(roundTrip(input), Right(accepted(output)), input)
+    }
+    assertEquals(
+      decode(ntn, State.Confirm, accepted("7f616160626262ff")),
+      Right(Message.Accept(14, Term.TextChunks(Vector("a", "bb"))))
+    )
+    // equal by content, whatever the chunks, as a lazy Text is
+    assertEquals(Term.TextChunks(Vector("ab")), Term.TextChunks(Vector("a", "b")))
+    assertEquals(Term.TextChunks(Vector("ab")).hashCode, Term.TextChunks(Vector("a", "b")).hashCode)
+    // the message of 2876 empty indefinite texts, 5757 bytes, decodes and is written to the same
+    // bytes; with each written 7f60ff it would have passed 5760 bytes
+    val empties = "9f" + "7fff" * 2876 + "ff"
+    assertEquals(accepted(empties).size, 5757)
+    assertEquals(roundTrip(empties), Right(accepted(empties)))
+  }

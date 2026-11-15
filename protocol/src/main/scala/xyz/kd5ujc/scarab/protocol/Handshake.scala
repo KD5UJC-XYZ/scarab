@@ -29,13 +29,25 @@ object Handshake:
     case NodeToNode, NodeToClient
   enum State:
     case Propose, Confirm, Done
+
+  /** A generic CBOR term as cborg's `Term` holds one (`cborg/src/Codec/CBOR/Term.hs:64-82`, cborg
+    * 0.2.10.0): an indefinite string keeps its chunks, as `TStringI` and `TBytesI` do, so that it
+    * is written again as cborg's `encodeTerm` writes it. Its chunks are never empty: they are read
+    * into a lazy `Text` or `ByteString` (`Term.hs:203-216`), whose `chunk` drops an empty one
+    * (`Data/Text/Internal/Lazy.hs:91-94`, text 2.1.3; `Data/ByteString/Lazy/Internal.hs:211-213`,
+    * bytestring 0.12.2.0). `TextChunks` and `ByteChunks` are the indefinite text and byte strings;
+    * two of either are equal when their contents are, whatever their chunks, as two lazy strings
+    * are (`Data/Text/Internal/Lazy.hs:138-149`; `Data/ByteString/Lazy/Internal.hs:261-268`).
+    */
   enum Term:
     case Integer(value: BigInt)
     case Bool(value: Boolean)
     case Arr(values: Vector[Term], definite: Boolean = true)
     case Map(values: Vector[(Term, Term)], definite: Boolean = true)
-    case Text(value: String, definite: Boolean = true)
+    case Text(value: String)
+    case TextChunks(chunks: Vector[String])
     case ByteString(value: Bytes)
+    case ByteChunks(chunks: Vector[Bytes])
     case Tag(number: BigInt, value: Term)
     case Simple(value: Int)
     case FloatBits(width: Int, bits: BigInt)
@@ -46,6 +58,8 @@ object Handshake:
       case _       => false
     override def hashCode(): Int = this.treeHash
     override def toString: String = this.treeString
+
+  private def joined(chunks: Vector[Bytes]): Bytes = chunks.foldLeft(Bytes.empty)(_ ++ _)
 
   private given Tree[Term] with
     def children(t: Term): IndexedSeq[Term] = t match
@@ -58,8 +72,10 @@ object Handshake:
       case (Term.Bool(a), Term.Bool(b))                 => a == b
       case (Term.Arr(_, a), Term.Arr(_, b))             => a == b
       case (Term.Map(_, a), Term.Map(_, b))             => a == b
-      case (Term.Text(a, d), Term.Text(b, e))           => a == b && d == e
+      case (Term.Text(a), Term.Text(b))                 => a == b
+      case (Term.TextChunks(a), Term.TextChunks(b))     => a.mkString == b.mkString
       case (Term.ByteString(a), Term.ByteString(b))     => a == b
+      case (Term.ByteChunks(a), Term.ByteChunks(b))     => joined(a) == joined(b)
       case (Term.Tag(a, _), Term.Tag(b, _))             => a == b
       case (Term.Simple(a), Term.Simple(b))             => a == b
       case (Term.FloatBits(w, a), Term.FloatBits(v, b)) => w == v && a == b
@@ -69,8 +85,10 @@ object Handshake:
       case Term.Bool(a)         => if a then 43 else 47
       case Term.Arr(_, d)       => if d then 53 else 59
       case Term.Map(_, d)       => if d then 61 else 67
-      case Term.Text(a, d)      => 71 + a.hashCode + (if d then 0 else 1)
+      case Term.Text(a)         => 71 + a.hashCode
+      case Term.TextChunks(a)   => 97 + a.mkString.hashCode
       case Term.ByteString(a)   => 73 + a.hashCode
+      case Term.ByteChunks(a)   => 101 + joined(a).hashCode
       case Term.Tag(a, _)       => 79 + a.hashCode
       case Term.Simple(a)       => 83 + a
       case Term.FloatBits(w, a) => 89 + 31 * w + a.hashCode
@@ -81,8 +99,10 @@ object Handshake:
         case Term.Bool(a)         => s"Bool($a)"
         case Term.Arr(_, d)       => s"Arr${form(d)}"
         case Term.Map(_, d)       => s"Map${form(d)}"
-        case Term.Text(a, d)      => s"Text${form(d)}(${Tree.shown(a)})"
+        case Term.Text(a)         => s"Text(${Tree.shown(a)})"
+        case Term.TextChunks(a)   => s"TextChunks(${a.size} chunks, ${Tree.shown(a.mkString)})"
         case Term.ByteString(a)   => s"ByteString(${Tree.shown(a)})"
+        case Term.ByteChunks(a)   => s"ByteChunks(${a.size} chunks, ${Tree.shown(joined(a))})"
         case Term.Tag(a, _)       => s"Tag($a)"
         case Term.Simple(a)       => s"Simple($a)"
         case Term.FloatBits(w, a) => s"FloatBits($w, $a)"
@@ -241,8 +261,8 @@ object Handshake:
     * length within the message.
     */
   private def text(t: Term)(using ProtocolWire.Scope): String = t match
-    case Term.Text(s, true) => s
-    case _                  => bad(ProtocolError.InvalidOrOversizedRefusalText)
+    case Term.Text(s) => s
+    case _            => bad(ProtocolError.InvalidOrOversizedRefusalText)
   private def reason[V: VersionCodec](term: Term)(using ProtocolWire.Scope): WireReason[V] =
     arr(term) match
       case Vector(Term.Integer(tag), versions) if tag == 0 =>
@@ -602,13 +622,17 @@ object Handshake:
         _ <- if major == 3 then utf8(bytes).void else Right(())
       yield (start + length, bytes)
 
+    /** A definite string, or an indefinite one as its chunks, the empty ones dropped as cborg's
+      * `decodeBytesIndefLen` and `decodeStringIndefLen` drop them (`Term.hs:203-216`, cborg
+      * 0.2.10.0).
+      */
     private def string(major: Int, ai: Int, at: Int): Either[ProtocolError, (Int, Term)] =
       // the chunks of an indefinite string up to its break
       @tailrec def chunks(
           position: Int,
-          collected: Vector[Byte]
-      ): Either[ProtocolError, (Int, Bytes)] =
-        if isBreak(position) then byte(position).as((position + 1, Bytes(collected)))
+          collected: Vector[Bytes]
+      ): Either[ProtocolError, (Int, Vector[Bytes])] =
+        if isBreak(position) then byte(position).as((position + 1, collected))
         else
           val next = byte(position).flatMap { head =>
             if head / 32 != major || (head & 31) == 31 then
@@ -616,13 +640,19 @@ object Handshake:
             else chunk(major, head & 31, position + 1)
           }
           next match
-            case Left(error)           => Left(error)
-            case Right((after, bytes)) => chunks(after, collected ++ bytes.value)
-      val read = if ai != 31 then chunk(major, ai, at) else chunks(at, Vector.empty)
-      read.flatMap((end, bytes) =>
-        if major == 2 then Right((end, Term.ByteString(bytes)))
-        else utf8(bytes).map(s => (end, Term.Text(s, ai != 31)))
-      )
+            case Left(error) => Left(error)
+            case Right((after, bytes)) =>
+              chunks(after, if bytes.isEmpty then collected else collected :+ bytes)
+      if ai != 31 then
+        chunk(major, ai, at).flatMap((end, bytes) =>
+          if major == 2 then Right((end, Term.ByteString(bytes)))
+          else utf8(bytes).map(text => (end, Term.Text(text)))
+        )
+      else
+        chunks(at, Vector.empty).flatMap((end, parts) =>
+          if major == 2 then Right((end, Term.ByteChunks(parts)))
+          else parts.traverse(utf8).map(texts => (end, Term.TextChunks(texts)))
+        )
 
     private def simple(ai: Int, at: Int): Either[ProtocolError, (Int, Term)] = ai match
       case 20 => Right((at, Term.Bool(false)))
@@ -797,7 +827,19 @@ object Handshake:
         encoded => Vector.tabulate(encoded.remaining())(i => encoded.get(i))
       )
 
-  /** The bytes of one item's head (all of a string or a leaf), and the items under it, in order. */
+  /** A definite text, as `encodeString` writes it. */
+  private def writtenText(value: String): Either[ProtocolError, Vector[Byte]] =
+    unicode(value).flatMap(bytes => headBytes(3, bytes.size).map(_ ++ bytes))
+
+  /** A definite byte string, as `encodeBytes` writes it. */
+  private def writtenBytes(bytes: Bytes): Either[ProtocolError, Vector[Byte]] =
+    headBytes(2, bytes.size).map(_ ++ bytes.value)
+
+  /** The bytes of one item's head (all of a string or a leaf), and the items under it, in order:
+    * cborg's `encodeTerm` (`cborg/src/Codec/CBOR/Term.hs:90-121`, cborg 0.2.10.0). An indefinite
+    * string is its chunks between `0x7f` or `0x5f` and a break, an empty one is no chunk at all
+    * (`7f ff`), and an indefinite array or map its items between `0x9f` or `0xbf` and a break.
+    */
   private def written(term: Term): Either[ProtocolError, (Vector[Byte], List[Pending])] =
     val break = Pending.Raw(Vector(0xff.toByte))
     term match
@@ -813,15 +855,18 @@ object Handshake:
           values.iterator.flatMap((k, v) => Iterator(Pending.Item(k), Pending.Item(v))).toList
         if definite then headBytes(5, values.size).map(_ -> items)
         else Right(Vector(0xbf.toByte) -> (items :+ break))
-      case Term.Text(value, definite) =>
-        for
-          bytes <- unicode(value)
-          head <- headBytes(3, bytes.size)
-        yield
-          val chunk = head ++ bytes
-          (if definite then chunk else (Vector(0x7f.toByte) ++ chunk) :+ 0xff.toByte) -> Nil
-      case Term.ByteString(bytes) =>
-        headBytes(2, bytes.size).map(head => (head ++ bytes.value) -> Nil)
+      case Term.Text(value) => writtenText(value).map(_ -> Nil)
+      case Term.TextChunks(chunks) =>
+        chunks
+          .filter(_.nonEmpty)
+          .flatTraverse(writtenText)
+          .map(written => ((Vector(0x7f.toByte) ++ written) :+ 0xff.toByte) -> Nil)
+      case Term.ByteString(bytes) => writtenBytes(bytes).map(_ -> Nil)
+      case Term.ByteChunks(chunks) =>
+        chunks
+          .filter(_.nonEmpty)
+          .flatTraverse(writtenBytes)
+          .map(written => ((Vector(0x5f.toByte) ++ written) :+ 0xff.toByte) -> Nil)
       case Term.Tag(number, value) => headBytes(6, number).map(_ -> List(Pending.Item(value)))
       case Term.Simple(n) =>
         if n < 0 || n > 255 || (n >= 20 && n <= 21) || (n >= 24 && n < 32) then

@@ -22,3 +22,7 @@
   sends what the codec encodes and bounds a message on receipt only. They refused one over 5760 bytes
   before. The receive bound is unchanged, and the PeerSharing server still cuts its answer to what fits
   5760 bytes. `PeerSharing.encode` and `PeerSharingEngine.encode` no longer take `Limits`.
+- A handshake term keeps the chunks of an indefinite text or byte string (`Term.TextChunks`,
+  `Term.ByteChunks`), and the encoder writes them back as cborg's does: chunk by chunk, an empty chunk
+  dropped, so an empty indefinite text is `7f ff` and no longer `7f 60 ff`. A message that decodes is
+  not written longer than it was read.
