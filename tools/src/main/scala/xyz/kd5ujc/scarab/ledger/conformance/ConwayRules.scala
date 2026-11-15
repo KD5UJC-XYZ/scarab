@@ -22,6 +22,7 @@ import xyz.kd5ujc.scarab.ledger.{
   GovAction,
   GovActionId,
   Header,
+  Metadatum,
   NativeScript,
   PoolRelay,
   PoolRelays,
@@ -42,13 +43,14 @@ import xyz.kd5ujc.scarab.ledger.state.{Coin, ProtVer, Word64}
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.plutus.PlutusData
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, UtxoCodecs, Wire}
+import xyz.kd5ujc.scarab.storage.haskell.state.{ConwayCodecs, HaskellStateCodecs, UtxoCodecs, Wire}
 
 /** The rules of the Conway corpus, each mapped to the decoder Scarab reads that structure with in a
   * Conway block, at the dataset's decoder version ([[DecoderVersion.high]], 11), and to the
   * production encoder of the decoded value where Scarab has one: the Haskell-format codecs of the
-  * ledger state (`storage.haskell.state`), the header body's
-  * [[xyz.kd5ujc.scarab.ledger.HeaderBodyEncoding]], [[Tx.envelope]] and [[PoolRelays.encode]].
+  * ledger state (`storage.haskell.state`), the reference's encoders of the transaction and block
+  * values ([[ConwayCodecs]]), the header body's [[xyz.kd5ujc.scarab.ledger.HeaderBodyEncoding]],
+  * [[Tx.envelope]] and [[PoolRelays.encode]].
   */
 object ConwayRules:
   private val era = Era.Conway
@@ -230,6 +232,16 @@ object ConwayRules:
 
   private def fromHeader(path: List[Step])(h: Header.Shelley) = Step.at(h.signable, path)
 
+  /** `payload` when it is the bytes the hash of `script` is taken over,
+    * `blake2b-224(tag ‖ payload)` ([[Script]]).
+    */
+  private def hashedOver(script: Script)(payload: Bytes): Either[Unwritten, Bytes] =
+    Either.cond(
+      script.hash == Blake2b.hash224.hash(Bytes(script.kind.tag.toByte +: payload.value)),
+      payload,
+      Unwritten.HashMismatch
+    )
+
   private def leafHash(name: String, size: Int, site: DecodeField) =
     DatasetRule(s"CborRead.bytesN($size, $name)", Reach.Direct, Writing.Leaf(s"Wire.hash($size)"))(
       b => tree(At.item)(b).flatMap(n => ledger(CborRead.bytesN(n, size, site)))
@@ -286,18 +298,57 @@ object ConwayRules:
     headerLeaf(8, List(Index(slot)), sample => opCert(slot, sample))
 
   /** `block`, read as `BlockTransport.check` reads a fetched block: each transaction's body,
-    * witness set and auxiliary data are decoded too (`Tx.fromBlock`).
+    * witness set and auxiliary data are decoded too (`Tx.fromBlock`). It is written by
+    * [[ConwayCodecs.block]] from the header and body segments the block keeps; a block of another
+    * kind than a Shelley-based one has no Conway encoder.
     */
   private def blockRule: DatasetRule =
-    DatasetRule.unwritten(
+    DatasetRule(
       "Block.decodeShelley, then Tx.fromBlock",
-      Reach.Embedded("[7, block]")
+      Reach.Embedded("[7, block]"),
+      Writing.Encoder("ConwayCodecs.block")
     )(b =>
       Block.decodeShelley(hex("8207") ++ b, _ => version).leftMap(Refusal.Chain(_)).flatMap {
         case block: Block.Shelley =>
           block.transactions.traverse_(t => ledger(Tx.fromBlock(t, era, version))).as(block)
         case other => Right(other)
       }
+    ) {
+      case block: Block.Shelley               => written(ConwayCodecs.block)(block)
+      case _: Block.Dijkstra | _: Block.Byron => Left(Unwritten.NoEncoder)
+    }
+
+  /** `script`, written by [[ConwayCodecs.script]] from its language and the bytes its hash is over:
+    * a Plutus script's bytes, which the decoded script keeps, or a native script's own encoding,
+    * the second item of the sample, taken only when [[Script.hash]] is over it.
+    */
+  private def scriptRule: DatasetRule =
+    DatasetRule("Script.decode", Reach.Direct, Writing.Encoder("ConwayCodecs.script"))(b =>
+      tree(At.item)(b).flatMap(n => ledger(Script.decode(n, newest)).tupleLeft(n.original))
+    ) { (original, script) =>
+      val payload = script.kind match
+        case ScriptKind.Native => Step.at(original, List(Index(1)))
+        case ScriptKind.PlutusV1 | ScriptKind.PlutusV2 | ScriptKind.PlutusV3 =>
+          script.plutus.toRight(Unwritten.NotKept)
+      payload
+        .flatMap(hashedOver(script))
+        .flatMap(p => written(ConwayCodecs.script)(ConwayCodecs.ScriptPayload(script.kind, p)))
+    }
+
+  /** `metadatum`, read as the value of label 0 of a transaction's auxiliary data. It is written by
+    * [[ConwayCodecs.metadatum]] from the value that [[Metadatum.decode]] reads at [[version]] from
+    * the auxiliary data the transaction keeps ([[Tx.auxiliary]]).
+    */
+  private def metadatumRule: DatasetRule =
+    DatasetRule(
+      "Tx.fromEnvelope",
+      Reach.Embedded("{0: metadatum}, a transaction's auxiliary data"),
+      Writing.Encoder("ConwayCodecs.metadatum")
+    )(b => auxiliary(None)(hex("a100") ++ b))(aux =>
+      Step
+        .node(aux, List(FirstValue))
+        .flatMap(n => Metadatum.decode(n, version).leftMap(Unwritten.Unread(_)))
+        .flatMap(written(ConwayCodecs.metadatum))
     )
 
   /** `datum_option`, in an output with a reference script, so that the output is written as a map
@@ -405,9 +456,7 @@ object ConwayRules:
     )(
       body("16")
     )(t => written(unsigned)(t.donation)),
-    "script" -> DatasetRule.unwritten("Script.decode", Reach.Direct)(b =>
-      tree(At.item)(b).flatMap(n => ledger(Script.decode(n, newest)))
-    ),
+    "script" -> scriptRule,
     "native_script" -> DatasetRule(
       "Script.native (Timelock)",
       Reach.Direct,
@@ -416,13 +465,7 @@ object ConwayRules:
       tree(At.item)(b).flatMap(n =>
         ledger(Script.native(n, NativeScript.Form.Timelock)).tupleLeft(n.original)
       )
-    )((original, script) =>
-      Either.cond(
-        script.hash == Blake2b.hash224.hash(Bytes(0.toByte +: original.value)),
-        original,
-        Unwritten.HashMismatch
-      )
-    ),
+    )((original, script) => hashedOver(script)(original)),
     "plutus_v1_script" -> plutusScript(DecodeField.PlutusV1),
     "plutus_v2_script" -> plutusScript(DecodeField.PlutusV2),
     "plutus_v3_script" -> plutusScript(DecodeField.PlutusV3),
@@ -434,33 +477,47 @@ object ConwayRules:
     "%constr<plutus_data>" -> dataRule(None),
     "big_int" -> dataRule(Some(Shape.Integer)),
     "bounded_bytes" -> dataRule(Some(Shape.ByteString)),
-    "certificate" -> DatasetRule.unwritten("Certificate.decode", Reach.Direct)(b =>
-      tree(At.certificate)(b).flatMap(n => ledger(Certificate.decode(n, era, version)))
+    "certificate" -> DatasetRule(
+      "Certificate.decode",
+      Reach.Direct,
+      Writing.Encoder("ConwayCodecs.certificate")
+    )(b => tree(At.certificate)(b).flatMap(n => ledger(Certificate.decode(n, era, version))))(
+      written(ConwayCodecs.certificate)
     ),
-    "certificates" -> DatasetRule
-      .unwritten("CborRead.oset of Certificate.decode, non-empty", Reach.Direct)(b =>
-        tree(At.certificates)(b).flatMap(n =>
-          ledger(
-            CborRead
-              .oset(n, DecodeField.Certificates, version)(Certificate.decode(_, era, version))(
-                Certificate.identity
-              )
-              .flatMap(CborRead.nonEmpty(_, DecodeField.Certificates, true))
-          )
+    "certificates" -> DatasetRule(
+      "CborRead.oset of Certificate.decode, non-empty",
+      Reach.Direct,
+      Writing.Encoder("ConwayCodecs.certificates")
+    )(b =>
+      tree(At.certificates)(b).flatMap(n =>
+        ledger(
+          CborRead
+            .oset(n, DecodeField.Certificates, version)(Certificate.decode(_, era, version))(
+              Certificate.identity
+            )
+            .flatMap(CborRead.nonEmpty(_, DecodeField.Certificates, true))
         )
-      ),
-    "redeemer" -> DatasetRule.unwritten("Witnesses.decode", Reach.Embedded("{5: [redeemer]}"))(b =>
-      witnesses("a10581")(b).flatMap(w => present(w.redeemers.headOption))
+      )
+    )(written(ConwayCodecs.certificates)),
+    "redeemer" -> DatasetRule(
+      "Witnesses.decode",
+      Reach.Embedded("{5: [redeemer]}"),
+      Writing.Encoder("ConwayCodecs.redeemer")
+    )(b => witnesses("a10581")(b).flatMap(w => present(w.redeemers.headOption)))(
+      written(ConwayCodecs.redeemer)
     ),
     "redeemers" -> DatasetRule(
       "Witnesses.decode",
       Reach.Embedded("a witness set's key 5"),
       Writing.Kept("Witnesses.redeemersRaw")
     )(witnesses("a105"))(_.redeemersRaw.toRight(Unwritten.NotKept)),
-    "vkeywitness" -> DatasetRule.unwritten(
+    "vkeywitness" -> DatasetRule(
       "Witnesses.decode",
-      Reach.Embedded("{0: [vkeywitness]}")
-    )(b => witnesses("a10081")(b).flatMap(w => present(w.vkeys.headOption))),
+      Reach.Embedded("{0: [vkeywitness]}"),
+      Writing.Encoder("ConwayCodecs.vkeyWitness")
+    )(b => witnesses("a10081")(b).flatMap(w => present(w.vkeys.headOption)))(
+      written(ConwayCodecs.vkeyWitness)
+    ),
     "vkey" -> DatasetRule(
       "Witnesses.decode",
       Reach.Embedded("a vkey witness"),
@@ -475,10 +532,13 @@ object ConwayRules:
     )(
       witnesses("a10081825820" + zeros(32))
     )(w => w.vkeys.headOption.toRight(Unwritten.NotKept).flatMap(v => leafBytes(v._2))),
-    "bootstrap_witness" -> DatasetRule.unwritten(
+    "bootstrap_witness" -> DatasetRule(
       "Witnesses.decode",
-      Reach.Embedded("{2: [bootstrap_witness]}")
-    )(b => witnesses("a10281")(b).flatMap(w => present(w.bootstrap.headOption))),
+      Reach.Embedded("{2: [bootstrap_witness]}"),
+      Writing.Encoder("ConwayCodecs.bootstrapWitness")
+    )(b => witnesses("a10281")(b).flatMap(w => present(w.bootstrap.headOption)))(
+      written(ConwayCodecs.bootstrapWitness)
+    ),
     "auxiliary_data" -> auxiliaryRule(None),
     "metadata" -> auxiliaryRule(Some(Shape.Map)),
     "auxiliary_data_map" -> auxiliaryRule(Some(Shape.Tag259)),
@@ -488,10 +548,7 @@ object ConwayRules:
       Reach.Embedded("[{}, scripts], a transaction's auxiliary data"),
       Writing.Kept("Tx.auxiliary")
     )(b => auxiliary(None)(hex("82a0") ++ b))(Step.at(_, List(Index(1)))),
-    "metadatum" -> DatasetRule.unwritten(
-      "Tx.fromEnvelope",
-      Reach.Embedded("{0: metadatum}, a transaction's auxiliary data")
-    )(b => auxiliary(None)(hex("a100") ++ b)),
+    "metadatum" -> metadatumRule,
     "credential" -> credential(DecodeField.CertificateCredential),
     "stake_credential" -> credential(DecodeField.CertificateCredential),
     "drep_credential" -> credential(DecodeField.CertificateCredential),
@@ -504,21 +561,23 @@ object ConwayRules:
     )(b => tree(At.item)(b).flatMap(n => ledger(DRep.decode(n))))(
       written(HaskellStateCodecs.nodeDRep)
     ),
-    "voter" -> DatasetRule.unwritten("Voter.decode", Reach.Direct)(b =>
+    "voter" -> DatasetRule("Voter.decode", Reach.Direct, Writing.Encoder("ConwayCodecs.voter"))(b =>
       tree(At.item)(b).flatMap(n => ledger(Voter.decode(n)))
-    ),
+    )(written(ConwayCodecs.voter)),
     "vote" -> DatasetRule(
       "VotingProcedures.decode",
       Reach.Embedded("a voting procedure"),
       Writing.Encoder("HaskellStateCodecs.vote")
     )(b => procedure(hex("82") ++ b ++ hex("f6")).map(_.vote))(written(HaskellStateCodecs.vote)),
-    "voting_procedure" -> DatasetRule
-      .unwritten("VotingProcedures.decode", Reach.Embedded("{voter: {id: procedure}}"))(
-        procedure
-      ),
-    "voting_procedures" -> DatasetRule.unwritten(
+    "voting_procedure" -> DatasetRule(
+      "VotingProcedures.decode",
+      Reach.Embedded("{voter: {id: procedure}}"),
+      Writing.Encoder("ConwayCodecs.votingProcedure")
+    )(procedure)(written(ConwayCodecs.votingProcedure)),
+    "voting_procedures" -> DatasetRule(
       "VotingProcedures.decode, requireBodyDecodable, non-empty",
-      Reach.Direct
+      Reach.Direct,
+      Writing.Encoder("ConwayCodecs.votingProcedures")
     )(b =>
       tree(At.votingProcedures)(b).flatMap(n =>
         VotingProcedures
@@ -527,7 +586,7 @@ object ConwayRules:
           .leftMap(Refusal.Voting(_))
           .flatMap(all => ledger(CborRead.nonEmpty(all, DecodeField.VotingProcedures, true)))
       )
-    ),
+    )(written(ConwayCodecs.votingProcedures)),
     "gov_action" -> DatasetRule(
       "Proposal.decode",
       Reach.Embedded("a proposal procedure"),
@@ -549,9 +608,10 @@ object ConwayRules:
     )(b => tree(At.proposal)(b).flatMap(n => ledger(Proposal.decode(n, version))))(
       written(HaskellStateCodecs.proposal)
     ),
-    "proposal_procedures" -> DatasetRule.unwritten(
+    "proposal_procedures" -> DatasetRule(
       "CborRead.oset of Proposal.decode, non-empty",
-      Reach.Direct
+      Reach.Direct,
+      Writing.Encoder("ConwayCodecs.proposalProcedures")
     )(b =>
       tree(At.proposals)(b).flatMap(n =>
         ledger(
@@ -562,7 +622,7 @@ object ConwayRules:
             .flatMap(CborRead.nonEmpty(_, DecodeField.ProposalProcedures, true))
         )
       )
-    ),
+    )(written(ConwayCodecs.proposalProcedures)),
     "constitution" -> DatasetRule(
       "Proposal.decode",
       Reach.Embedded("a NewConstitution action"),
@@ -669,9 +729,13 @@ object ConwayRules:
     "pool_voting_thresholds" -> paramRule("1819", 25),
     "ex_units" -> paramRule("14", 20),
     "ex_unit_prices" -> paramRule("13", 19),
-    "cost_models" -> DatasetRule.unwritten("CostModelDecode.decode (Open)", Reach.Direct)(b =>
+    "cost_models" -> DatasetRule(
+      "CostModelDecode.decode (Open)",
+      Reach.Direct,
+      Writing.Encoder("ConwayCodecs.costModels")
+    )(b =>
       tree(At.item)(b).flatMap(n => ledger(CostModelDecode.decode(n, CostModelDecode.Format.Open)))
-    ),
+    )(written(ConwayCodecs.costModels)),
     "unit_interval" -> DatasetRule(
       "CborRead.rational (Unit)",
       Reach.Direct,

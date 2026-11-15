@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger.conformance
 import cats.syntax.all.*
 import java.util.concurrent.FutureTask
 import munit.FunSuite
+import xyz.kd5ujc.scarab.codec.Bytes
 
 /** The harness of the cardano-cbor-dataset: its normal form, its verdicts, its rule tables and the
   * report it writes. The samples here are written by hand, not taken from the dataset.
@@ -286,8 +287,8 @@ class CborDatasetSuite extends FunSuite:
   test(
     "a decoded value without an encoder, a mismatch and a missing reference are encode failures"
   ) {
-    val voter = "8204581c" + zeros(28)
-    assert(conway("voter", Kind.Valid, voter, Some(voter)) match
+    val unwritten = DatasetRule.unwritten("a decoder", Reach.Direct)(Right(_))
+    assert(DatasetCheck.check("x", Some(unwritten), Kind.Valid, hex("00"), Some(hex("00"))) match
       case Outcome.Failed(Category.Encode, _) => true
       case _                                  => false)
     assert(conway("transaction_input", Kind.Valid, input, Some("8200")) match
@@ -296,6 +297,97 @@ class CborDatasetSuite extends FunSuite:
     assert(conway("transaction_input", Kind.Valid, input, None) match
       case Outcome.Failed(Category.Encode, _) => true
       case _                                  => false)
+  }
+
+  /** The run of a mapped rule on `sample`: its refusal, or what its writer gives. */
+  private def ran(rule: String, sample: String): Either[Refusal, Either[Unwritten, Bytes]] =
+    ConwayRules.rules.get(rule) match
+      case Some(DatasetRule.Mapped(_, _, _, run)) => run(hex(sample))
+      case other                                  => fail(s"$rule is not mapped: $other")
+
+  private val k28 = "11" * 28
+  private val p28 = "22" * 28
+  private val actionId = "825820" + zeros(32) + "00"
+  private val proposal = "8400581de0" + zeros(28) + "8106" + "8260" + "5820" + zeros(32)
+
+  /** For each rule written by a `ConwayCodecs` encoder: a valid sample written by hand, and the
+    * bytes the reference writes it as at version 11. Where the encoder writes another form than the
+    * sample's, the two differ after the normal form too: a set gains tag 258, the voters and the
+    * languages come out in the order of their keys.
+    */
+  private val encoded = Vector(
+    // a pool registration, its owners a set written untagged and out of order
+    (
+      "certificate",
+      "8a03581c" + "01" * 28 + "5820" + "02" * 32 + "011a1443fd00d81e820104581de0" + "03" * 28
+        + "82581c" + "05" * 28 + "581c" + "04" * 28 + "80f6",
+      "8a03581c" + "01" * 28 + "5820" + "02" * 32 + "011a1443fd00d81e820104581de0" + "03" * 28
+        + "d9010282581c" + "04" * 28 + "581c" + "05" * 28 + "80f6"
+    ),
+    (
+      "certificates",
+      "82" + "82008200581c" + k28 + "8304581c" + p28 + "19012c",
+      "d9010282" + "82008200581c" + k28 + "8304581c" + p28 + "19012c"
+    ),
+    ("voter", "8202581c" + k28, "8202581c" + k28),
+    ("voting_procedure", "82028261615820" + "66" * 32, "82028261615820" + "66" * 32),
+    // a pool's vote before a committee member's, which `Ord Voter` puts first
+    (
+      "voting_procedures",
+      "a2" + "8204581c" + p28 + "a1" + actionId + "8201f6" + "8200581c" + k28 + "a1" + actionId
+        + "8200f6",
+      "a2" + "8200581c" + k28 + "a1" + actionId + "8200f6" + "8204581c" + p28 + "a1" + actionId
+        + "8201f6"
+    ),
+    ("proposal_procedures", "81" + proposal, "d9010281" + proposal),
+    ("script", "82008200581c" + k28, "82008200581c" + k28),
+    ("script", "820343010203", "820343010203"),
+    (
+      "redeemer",
+      "84051a000100009f01ff821903e81b0000000100000000",
+      "84051a000100009f01ff821903e81b0000000100000000"
+    ),
+    (
+      "vkeywitness",
+      "825820" + "88" * 32 + "5840" + "99" * 64,
+      "825820" + "88" * 32 + "5840" + "99" * 64
+    ),
+    (
+      "bootstrap_witness",
+      "845820" + "88" * 32 + "5840" + "99" * 64 + "5820" + "aa" * 32 + "41a0",
+      "845820" + "88" * 32 + "5840" + "99" * 64 + "5820" + "aa" * 32 + "41a0"
+    ),
+    ("metadatum", "bf015f41014102ff029f7f6161ffffff", "a20142010202816161"),
+    ("cost_models", "a20181200081" + "00", "a200810001" + "8120")
+  )
+
+  test("each rule written by a ConwayCodecs encoder meets a valid sample written by hand") {
+    for (rule, sample, expected) <- encoded do
+      assertEquals(conway(rule, Kind.Valid, sample, Some(expected)), Outcome.Met, s"$rule $sample")
+  }
+
+  test("the encoder, not the sample's bytes, writes a set, voters and cost models") {
+    val rewritten = Set(
+      "certificate",
+      "certificates",
+      "voting_procedures",
+      "proposal_procedures",
+      "cost_models"
+    )
+    for (rule, sample, expected) <- encoded if rewritten(rule) do
+      assertNotEquals(
+        CborNormalForm.of(hex(sample)),
+        CborNormalForm.of(hex(expected)),
+        s"$rule: the sample's own normal form would meet the expected bytes"
+      )
+      assertEquals(ran(rule, sample).map(_.map(_.hex)), Right(Right(expected)), rule)
+  }
+
+  test("a Conway block is written as the header and body segments it was read with") {
+    val header = Embedding.headerAround(Embedding.headerBody(0, hex("00"))).hex
+    val block = "85" + header + "81a3008001800200" + "81a0" + "a0" + "80"
+    assertEquals(conway("block", Kind.Valid, block, Some(block)), Outcome.Met)
+    assertEquals(ran("block", block).map(_.map(_.hex)), Right(Right(block)))
   }
 
   test("a value the production encoder refuses is a typed refusal, never written") {

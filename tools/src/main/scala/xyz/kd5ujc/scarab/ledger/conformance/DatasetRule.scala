@@ -59,13 +59,16 @@ enum Unwritten:
   /** The item is not where a parent's production encoding puts it. */
   case NotFound(path: List[Step])
 
-  /** The bytes a native script is hashed over are not its encoding. */
+  /** The bytes a script is hashed over are not the bytes taken as its payload. */
   case HashMismatch
 
   /** The production encoder refuses the decoded value (`Codec.check`): it cannot write it as the
     * reference would.
     */
   case Refused(cause: ConstraintViolation)
+
+  /** The value to write does not read again from the bytes that its production parent keeps. */
+  case Unread(cause: LedgerDecodeError)
 
   case Syntax(cause: Cbor.Error)
   case Defect(cause: Throwable)
@@ -76,6 +79,7 @@ enum Unwritten:
     case NotFound(path) => s"the parent's production encoding has no item at ${path.mkString("/")}"
     case HashMismatch   => "the script hash is not over the bytes kept"
     case Refused(cause) => s"the production encoder refuses the decoded value: ${cause.render}"
+    case Unread(cause)  => s"the kept bytes do not read again as the value: ${cause.message}"
     case Syntax(cause)  => s"the production encoding does not read as CBOR: $cause"
     case Defect(failure) =>
       s"the encoder raised ${failure.getClass.getName}: ${failure.getMessage}"
@@ -98,10 +102,12 @@ object Step:
 
   /** The original bytes of the item at `path` in the one item `bytes`. */
   def at(bytes: Bytes, path: List[Step]): Either[Unwritten, Bytes] =
+    node(bytes, path).map(_.original)
+
+  /** The item at `path` in the one item `bytes`. */
+  def node(bytes: Bytes, path: List[Step]): Either[Unwritten, Node] =
     Cbor.decode(bytes, limits).leftMap(Unwritten.Syntax(_)).flatMap { root =>
-      path
-        .foldLeftM(root)((n, step) => into(n, step).toRight(Unwritten.NotFound(path)))
-        .map(_.original)
+      path.foldLeftM(root)((n, step) => into(n, step).toRight(Unwritten.NotFound(path)))
     }
 
   private def into(n: Node, step: Step): Option[Node] = (n.value, step) match
