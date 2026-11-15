@@ -320,10 +320,12 @@ How this is typed:
 Before the era comparison in `HeaderValidation` is deleted, a test checks that every era's given window
 equals what the comparison gives today. A wrong window splits the chain.
 
-## 6. The spike
+## 6. Results
 
-`feat/era-types` has a spike for Babbage and Conway (`ledger/.../ledger/era/`, `EraTxSpikeSuite`), which
-passes `check`.
+Stage 1 and Conway's types, the first part of stage 2, are on `feat/era-types`
+([#990](https://github.com/KD5UJC-XYZ/scarab/pull/990)) in `ledger/.../ledger/era/`, and pass `check`. They
+reach `main` together (decided 2026-11-15, #990): the core with Conway's types, which no rule uses yet.
+Conway's rules on the classes follow as the rest of stage 2.
 
 **What it shows:**
 - opaque per-era outputs over one representation, with a cross-era translation and no casts;
@@ -344,14 +346,16 @@ passes `check`.
 **The representation parameterised by value** (stage 1, done):
 - `AllegraTxOut` and `MaryTxOut` are opaque over one `ShelleyTxOutRep[V]`, with `V = AdaValue` and
   `MultiAssetValue`.
-- A rule written once (`coinOf`) adds outputs' values up through the reference's `Val` in Allegra, Mary,
-  Babbage and Conway. Read from recorded blocks, its results equal the flat outputs'.
+- A function written once (`coinOf`, in `EraValueSuite`) adds outputs' values up through the reference's
+  `Val` in Allegra, Mary, Babbage and Conway. Read from recorded blocks, its results equal the flat outputs'.
 - The store's read into Allegra (`fromStored`, `private[ledger]`) refuses an output with native assets, and
   an Allegra output carries into Mary with its bytes and lovelace.
 - The compiler refuses:
   - an Allegra output given as a Mary one;
-  - an `EraRules` without all its members;
   - a Mary output made from its representation in a sibling file of the same package.
+
+  The complete per-era rule set (`EraRules[E]`, §3.4) comes with Conway's rules; the spike's one-rule set is
+  removed.
 
 **The core** (stage 1, for the spike's eras):
 - The families `Value`, `TxOut`, `TxBody`, `NativeScript`, `Script` and `PlutusScript` are match types, in
@@ -402,7 +406,8 @@ passes `check`.
   treasury withdrawals compare as the map they are. The reference's genesis-delegation and instantaneous-reward
   readers are on `ShelleyEraTxCert`, with `AtMostEra "Babbage"` on each method (`Shelley/TxCert.hs:164-168`).
   A Scala method could take the same bound as evidence, but that evidence would name a range of eras, which
-  the ADR 0007 amendment rules out. So, by design, they come with those eras in a class of their own, whose
+  the ADR 0007 amendment rules out. So they come with those eras in a class of their own (approved
+  2026-11-15, #990; implemented with Babbage's certificates in stage 4), whose
   instances are exactly Shelley's to Babbage's.
 - Conway's script class is `ConwayEraScript`, which builds and reads the voting and proposing purposes, and
   `ConwayEraTxBody` names it. `AlonzoEraScript`'s own purpose builders and readers wait for Babbage's
@@ -445,8 +450,8 @@ passes `check`.
   delegation, instantaneous rewards) the flat Conway decoder refuses first, with the same error, as tests on
   crafted bytes show.
 - The spike's Babbage body is removed, so no partial body remains, and Babbage keeps its output and script
-  types. A rule written once over the body classes runs in Conway alone until Dijkstra's body is typed
-  (stage 3).
+  types. A function written once over the body classes (`EraTxSuite`) runs in Conway alone until Dijkstra's
+  body is typed (stage 3).
 
 **What it does not show yet:** a full rule pipeline (LEDGER) on typed transactions, which is stage 2.
 Bodies decoded from recorded blocks are compared on id, fee, output bytes and one era-only field.
