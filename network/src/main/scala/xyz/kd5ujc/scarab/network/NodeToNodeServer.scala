@@ -249,10 +249,10 @@ object NodeToNodeServer:
     * the counters when it finds no connection for a responder that has started (613-651), so that
     * connection's responders are no longer restarted nor its remote state updated. A race, fixed
     * upstream by `e098ed82c` (PR #5440, in 2fb69829), and not reproduced (#474;
-    * `docs/decisions.md`, #956, 2026-11-14). The responders are restarted on demand for the
-    * connection's life: there is no counterpart of the check that change also adds, which stops
-    * restarting them once the connection is no longer recorded (`InboundGovernor.hs` 441-447 at
-    * 2fb69829).
+    * `docs/decisions.md`, #956, 2026-11-14). The responders are restarted on demand for the life of
+    * the resource that runs them (`NodeToNodeServer.start`), whose release ends every one: there is
+    * no counterpart of the check that change also adds, which stops restarting them once the
+    * connection is no longer recorded (`InboundGovernor.hs` 441-447 at 2fb69829).
     */
   private[network] final class Responders[F[_]: Async] private (
       count: Ref[F, Option[Running]],
