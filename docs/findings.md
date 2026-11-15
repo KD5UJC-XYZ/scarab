@@ -203,7 +203,7 @@ listed (self calls found with a script over `*/src/main`, `foldRight`, `reduceRi
 | `Wire.Elements`, `Record`, `Params`, `Binary` (decoders of the Haskell state and our files) | one element per step | `@tailrec` already |
 | `TxChecks.tierRefScriptFee`, `GovState.withDescendants` | one step per 25 KiB of reference scripts; one per level of proposal lineage | `@tailrec` already |
 | `ByronTx.merkleRoot` | halves the transactions per level | depth is log2 of the count (at most about 17) |
-| `Handshake.term`, `Handshake.go` | depth of a mini-protocol term | bounded: `MaxDepth` 24, `MaxItems` |
+| `Handshake` parser and encoder | depth of a handshake term | iterative since #1029, when the local caps went: a `@tailrec` machine over the open containers and a pre-order writer; a term is bounded only by the message's 5760 bytes (`HandshakeSuite`, 5,000 levels on 256 KiB) |
 | `Sum6KesSigning` (`gen`, `signAt`, `update`, `checkLevel`, `size`) | levels of the KES tree | 6, by the format |
 | `SnapshotV4.differing` (removed in J2.9 with the full check of the old format) | levels of the state for a log line | 7 (a parameter) |
 | `StateDump.canon`, `StateDump.reduce`, `ByronGenesisFile.canonical` | JSON of our own state dump and of the operator's genesis file | depth of our schema and of a file the operator wrote; not chain data |

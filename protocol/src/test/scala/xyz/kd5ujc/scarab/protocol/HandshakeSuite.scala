@@ -138,7 +138,6 @@ class HandshakeSuite extends munit.FunSuite:
       "8100",
       "8204a0",
       "8300a000",
-      "82028100",
       "820283038000",
       "8202830118186178"
     ).foreach { hex => assert(decode(ntn, State.Confirm, bytes(hex)).isLeft) }
@@ -155,8 +154,10 @@ class HandshakeSuite extends munit.FunSuite:
       val m = Message.Refuse(reason)
       assertEquals(read(encoded(m)), m)
     }
-    assert(encode(ntn, Message.Refuse(Reason.Refused(14, "x" * (MaxRefusalBytes + 1)))).isLeft)
-    assert(decode(ntn, State.Confirm, bytes("820283010e7f6161ff")).isLeft)
+    assertEquals(
+      decode(ntn, State.Confirm, bytes("820283010e7f6161ff")),
+      Left(DecodeError(ProtocolError.InvalidOrOversizedRefusalText))
+    )
   }
   test("selected malformed version produces refusal without fallback") {
     val offers = Vector(14 -> Data(2), 16 -> Data(2))
@@ -225,24 +226,21 @@ class HandshakeSuite extends munit.FunSuite:
   test(
     "bounded generic parser rejects resource attacks and invalid UTF8 without incomplete retry"
   ) {
+    // a declared length the message cannot hold is refused at once, not waited for
     val attacks = Vector(
-      "8200a1186361ff",
-      "8200a118639bffffffffffffffff",
-      "8200a118635a00010000",
-      "8200a11863" + "81" * 26 + "00",
-      "8200a11863f818",
-      "8200a11863ff",
-      "8200a118631c"
+      "8200a1186361ff" -> ProtocolError.InvalidUTF8,
+      "8200a118639bffffffffffffffff" -> ProtocolError.HandshakeByteLimitExceeded,
+      "8200a118635a00010000" -> ProtocolError.HandshakeByteLimitExceeded,
+      "8200a11863f818" -> ProtocolError.InvalidExtendedCBORSimpleValue,
+      "8200a11863ff" -> ProtocolError.UnexpectedBreak,
+      "8200a118631c" -> ProtocolError.ReservedCBORArgument
     )
-    attacks.foreach { hex =>
-      val e = decodePrefix(ntn, State.Propose, bytes(hex)).swap.toOption.get
-      assert(!e.incomplete, s"$hex: $e")
+    attacks.foreach { (hex, error) =>
+      assertEquals(decodePrefix(ntn, State.Propose, bytes(hex)), Left(DecodeError(error)), hex)
     }
-    val tooMany = Message.Propose(Vector(14 -> Term.Arr(Vector.fill(MaxItems)(Term.Bool(false)))))
-    assert(encode(ntn, tooMany).isLeft)
     val largeString = Term.ByteString(Bytes(Vector.fill(3000)(0.toByte)))
     val oversized = Message.Propose(Vector(14 -> Term.Arr(Vector.fill(2)(largeString))))
-    assert(encode(ntn, oversized).isLeft)
+    assertEquals(encode(ntn, oversized), Left(ProtocolError.HandshakeByteLimitExceeded))
     val oversizedWire = bytes("8200a10e82590bb8" + "00" * 3000 + "590bb8" + "00" * 3000)
     val capError = decodePrefix(ntn, State.Propose, oversizedWire).swap.toOption.get
     assert(!capError.incomplete)
@@ -264,4 +262,112 @@ class HandshakeSuite extends munit.FunSuite:
           case Message.Propose(Vector((14, t))) => assert(decodeData(ntn, 14, t).isLeft)
           case m                                => fail(s"unexpected $m")
       }
+  }
+
+  /** Run `body` on a thread whose stack (256 KiB) a recursion over a term thousands of levels deep
+    * overflows.
+    */
+  private def onSmallStack[A](body: => A): A =
+    val outcome = new java.util.concurrent.CompletableFuture[A]()
+    val thread = new Thread(
+      null,
+      () =>
+        try outcome.complete(body)
+        catch case cause: Throwable => outcome.completeExceptionally(cause)
+        ()
+      ,
+      "handshake-small-stack",
+      256 * 1024
+    )
+    thread.start()
+    thread.join()
+    outcome.join()
+
+  private def hexOf(n: Int, width: Int): String = s"%0${width * 2}x".format(n)
+
+  /** A refusal of `version` (Refused, tag 2) whose text is `n` bytes of `a`: 8 + n bytes. */
+  private def refusedText(n: Int): String =
+    "8202" + "83" + "02" + "0e" + "79" + hexOf(n, 2) + "61" * n
+
+  // decodeRefuseReason (Codec.hs:264-288, ouroboros-network c45735a5) reads the reason's length and
+  // ignores it (268): it reads the tag, then the list of versions (0) or a version and a text (1,
+  // 2), whatever the length says.
+  test("a refusal's declared length is read and ignored, as decodeRefuseReason reads it (#1029)") {
+    val bad = Message.Refuse(Reason.DecodeError(14, "bad"))
+    Vector("85", "81", "80", "9b7fffffffffffffff").foreach { header =>
+      val wire = bytes("8202" + header + "010e63626164")
+      assertEquals(decodePrefix(ntn, State.Confirm, wire), Right((bad, Bytes.empty)), header)
+    }
+    assertEquals(
+      read("8202" + "80" + "02" + "10" + "6178"),
+      Message.Refuse(Reason.Refused(16, "x"))
+    )
+    assertEquals(
+      read("8202" + "83" + "00" + "820e10"),
+      Message.Refuse(Reason.VersionMismatch(Vector(14, 16)))
+    )
+    // the list of versions is read past a reason declared of one item: the pinned codec waits for it
+    assertEquals(
+      decodePrefix(ntn, State.Confirm, bytes("82028100")),
+      Left(DecodeError(ProtocolError.IncompleteCbor, incomplete = true))
+    )
+    // a length cborg's decodeListLen cannot hold in an Int is refused
+    val huge = decodePrefix(ntn, State.Confirm, bytes("8202" + "9b8000000000000000" + "010e6178"))
+    assert(huge.isLeft && !huge.swap.toOption.exists(_.incomplete), huge)
+    // only a refusal is read so: in StPropose the message is refused as before
+    assert(decode(ntn, State.Propose, bytes("8202" + "85" + "010e63626164")).isLeft)
+  }
+
+  // The reference bounds a handshake message at maxTransmissionUnit, 5760 bytes (Codec.hs:54-68),
+  // and its decodeTerm and decodeString at nothing else (Codec.hs:152-195, 217-243, 264-288,
+  // ouroboros-network c45735a5).
+  test("a message the pinned codec decodes within 5760 bytes is decoded: no local caps (#1029)") {
+    // a version map of three hundred unknown versions (600 terms) and one known
+    val unknown = (0 until 300).map(i => "19" + hexOf(0x4000 + i, 2) + "f6").mkString
+    assertEquals(
+      read("8200" + "b9" + hexOf(301, 2) + unknown + "0e8402f500f4", state = State.Propose),
+      Message.Propose(Vector(14 -> data(14)))
+    )
+    // a refusal text of 2000 bytes and one of 5000, past the former caps of 1024 and 4096
+    Vector(2000, 5000).foreach { n =>
+      assertEquals(read(refusedText(n)), Message.Refuse(Reason.Refused(14, "a" * n)), n)
+    }
+    // one of exactly 5760 bytes is decoded, one of 5761 refused
+    assertEquals(bytes(refusedText(5752)).size, MaxMessageBytes)
+    assertEquals(read(refusedText(5752)), Message.Refuse(Reason.Refused(14, "a" * 5752)))
+    assertEquals(
+      decodePrefix(ntn, State.Confirm, bytes(refusedText(5753))),
+      Left(DecodeError(ProtocolError.HandshakeByteLimitExceeded))
+    )
+    // the encoder writes what the decoder reads: a long text, many terms
+    val long = Message.Refuse(Reason.Refused(14, "a" * 2000))
+    assertEquals(read(encoded(long)), long)
+    val many = Message.Propose(Vector(14 -> Term.Arr(Vector.fill(600)(Term.Bool(false)))))
+    assertEquals(read(encoded(many), state = State.Propose), many)
+  }
+
+  test("a term nested as deep as 5760 bytes allow decodes and encodes on a small stack (#1029)") {
+    def nested(depth: Int): Term =
+      (0 until depth).foldLeft[Term](Term.Integer(0))((inner, _) => Term.Arr(Vector(inner)))
+    val depth = 5000
+    // an unknown version's data, skipped, and a selected version's data, kept
+    val skipped = "8200a11863" + "81" * depth + "00"
+    val accepted = "83010e" + "81" * depth + "00"
+    val (proposal, accept, written) = onSmallStack {
+      val p = decode(ntn, State.Propose, bytes(skipped))
+      val a = decode(ntn, State.Confirm, bytes(accepted))
+      (p, a, a.toOption.map(encode(ntn, _)))
+    }
+    assertEquals(proposal, Right(Message.Propose(Vector.empty)))
+    assertEquals(accept, Right(Message.Accept(14, nested(depth))))
+    assertEquals(written, Some(Right(bytes(accepted))))
+    // past the bound the message is refused when read and when written
+    val (tooDeep, unwritten) = onSmallStack {
+      (
+        decodePrefix(ntn, State.Confirm, bytes("83010e" + "81" * 6000 + "00")),
+        encode(ntn, Message.Accept(14, nested(6000)))
+      )
+    }
+    assertEquals(tooDeep, Left(DecodeError(ProtocolError.HandshakeByteLimitExceeded)))
+    assertEquals(unwritten, Left(ProtocolError.HandshakeByteLimitExceeded))
   }

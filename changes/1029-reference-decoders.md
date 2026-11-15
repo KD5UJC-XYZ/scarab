@@ -5,3 +5,13 @@
   names, and an item declared beyond them is left to the next message. A message or address whose
   declared length is wrong was refused before; a length of 2^63 or more is still refused, as cborg's
   `decodeListLen` refuses it.
+
+### Fixed (Handshake decoding, #1029)
+
+- The Handshake decoder bounds a message only as the reference does, at 5760 bytes: the local caps on
+  nesting depth (24), terms (512), string bytes (4096) and refusal text bytes (1024) are gone, in the
+  decoder and the encoder. A version map of a few hundred versions, a refusal text of 2000 bytes and a
+  term nested thousands deep within 5760 bytes are now decoded; a term is parsed and written on a stack
+  on the heap, so its depth does not reach the thread's stack.
+- A refusal's reason is read as the reference's `decodeRefuseReason` reads it: its declared length is
+  read and ignored, and its tag names the items read (the list of versions, or a version and a text).

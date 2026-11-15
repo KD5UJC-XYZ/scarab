@@ -248,20 +248,30 @@
      "repository": "IntersectMBO/ouroboros-network",
      "revision": "c45735a56c567fa977969173d18943bac6bb3821",
      "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
-     "symbol": "decodeRefuseReason",
+     "symbol": "decodeMsg",
      "lines": [
-      264,
-      289
+      152,
+      195
      ]
     },
     {
      "repository": "IntersectMBO/ouroboros-network",
      "revision": "c45735a56c567fa977969173d18943bac6bb3821",
      "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
-     "symbol": "decodeMsg",
+     "symbol": "decodeRefuseReason",
      "lines": [
-      152,
-      195
+      264,
+      288
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "symbol": "encodeMsg",
+     "lines": [
+      119,
+      150
      ]
     },
     {
@@ -277,9 +287,9 @@
    ],
    "class": "Gap",
    "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
-   "note": "its private parsers refuse a refusal of another declared length and apply depth, term and string caps; the reference reads and ignores the length and bounds only the message, at 5760 bytes",
-   "digest": "d73f9b7236651464"
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/796",
+   "note": "its private parser reads a message as one generic term and checks it afterwards, where decodeMsg reads the list length and key and checks (key, length) before reading on, so a malformed message can be refused at another item and with other text (#796). As the reference since #1029: a refusal's reason is read as decodeRefuseReason reads it, its length read and ignored, and generic terms and strings have no depth, count or size cap, only the message's 5760 bytes. Its encoder also refuses to write a message over 5760 bytes, where encodeMsg writes any and the reference bounds a message on receipt only (runDecoderWithLimit)",
+   "digest": "9e4c61ae95c7b374"
   },
   "object protocol.KeepAlive.UpstreamTimeLimits": {
    "upstream": [
@@ -408,44 +418,6 @@
    "note": "StPropose and StConfirm: shortWait, 10 seconds (node-to-node; node-to-client runs noTimeLimitsHandshake, Codec.hs:91-99)",
    "digest": "a1bd5ee80c0e37d5"
   },
-  "val protocol.Handshake.MaxDepth": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
-     "symbol": "byteLimitsHandshake",
-     "lines": [
-      58,
-      68
-     ]
-    }
-   ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
-   "note": "a local cap; the reference bounds a handshake message only at 5760 bytes",
-   "digest": "94de53e5e8af49b5"
-  },
-  "val protocol.Handshake.MaxItems": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
-     "symbol": "byteLimitsHandshake",
-     "lines": [
-      58,
-      68
-     ]
-    }
-   ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
-   "note": "a local cap; the reference bounds a handshake message only at 5760 bytes",
-   "digest": "1c17b58b1d6ca8d0"
-  },
   "val protocol.Handshake.MaxMessageBytes": {
    "upstream": [
     {
@@ -473,44 +445,6 @@
    "structure": "same",
    "note": "StPropose and StConfirm both take maxTransmissionUnit, 4 * 1440 = 5760 bytes",
    "digest": "0dfd0613c6b3e091"
-  },
-  "val protocol.Handshake.MaxRefusalBytes": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
-     "symbol": "byteLimitsHandshake",
-     "lines": [
-      58,
-      68
-     ]
-    }
-   ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
-   "note": "a local cap; the reference bounds a handshake message only at 5760 bytes",
-   "digest": "18ca90d020934111"
-  },
-  "val protocol.Handshake.MaxStringBytes": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
-     "symbol": "byteLimitsHandshake",
-     "lines": [
-      58,
-      68
-     ]
-    }
-   ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1029",
-   "note": "a local cap; the reference bounds a handshake message only at 5760 bytes",
-   "digest": "487dcf4fb68b772e"
   },
   "val protocol.KeepAlive.CodecVersion": {
    "upstream": [
@@ -820,6 +754,14 @@
    "reason": "Scarab's own typed outcome of a hot peer's ChainSync session, which the node places on the governor's asynchronous demotion for its log line and its Antithesis assertions (#1032); the governor decides nothing on it",
    "definitions": [
     "enum network.selection.ReturnReason"
+   ]
+  },
+  {
+   "reason": "stack-safe structural equality, hashing and rendering of a generic term (codec.Tree), which nests as deep as a 5760-byte message allows; the reference's CBOR.Term derives Eq and Show",
+   "definitions": [
+    "def protocol.Handshake.Term#equals",
+    "def protocol.Handshake.Term#hashCode",
+    "def protocol.Handshake.Term#toString"
    ]
   }
  ]
