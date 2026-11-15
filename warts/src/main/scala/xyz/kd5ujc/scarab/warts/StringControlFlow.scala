@@ -176,14 +176,18 @@ object StringControlFlow extends WartTraverser:
       private def canonical(aliases: Map[Symbol, List[Symbol]], fuel: Int)(
           path: List[Symbol]
       ): List[Symbol] =
-        (path.lastOption.flatMap(aliases.get), path.headOption.flatMap(aliases.get)) match
-          case (Some(named), _) if fuel > 0 => canonical(aliases, fuel - 1)(path.init ++ named)
-          // a member `val` bound to a path from `this` (`val same = this.text`): the same path from the
-          // receiver it is selected on (`r.same` is `r.text`)
-          case (_, Some(named))
-              if fuel > 0 && path.sizeIs > 1 && named.lastOption.exists(_.isClassDef) =>
-            canonical(aliases, fuel - 1)(named.init ++ path.tail)
-          case _ => path
+        val member = path.headOption.flatMap(h => aliases.get(h).map(h -> _))
+        path.lastOption.flatMap(aliases.get) match
+          case Some(named) if fuel > 0 => canonical(aliases, fuel - 1)(path.init ++ named)
+          // a member `val` bound to a path from its own class's `this` (`val same = this.text`): the
+          // same path from the receiver it is selected on (`r.same` is `r.text`); an alias rooted at an
+          // enclosing instance (`Outer.this.text`) is not rebased
+          case _ =>
+            member match
+              case Some((alias, named))
+                  if fuel > 0 && path.sizeIs > 1 && named.lastOption.contains(alias.owner) =>
+                canonical(aliases, fuel - 1)(named.init ++ path.tail)
+              case _ => path
 
       private def textual(t: Term): Boolean = isString(t) || t.tpe.widen <:< stringOps
 

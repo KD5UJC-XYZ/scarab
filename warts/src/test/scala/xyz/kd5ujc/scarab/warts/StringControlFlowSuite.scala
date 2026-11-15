@@ -290,3 +290,13 @@ class StringControlFlowSuite extends munit.FunSuite:
       )
     }
     assertEquals(kinds(r), List("string-equality", "string-predicate"))
+
+  test("a member alias rooted at an enclosing instance is not its receiver's path"):
+    val r = WartTestTraverser(StringControlFlow) {
+      class Outer(val text: String):
+        class Inner extends Outer("1"):
+          val same: String = Outer.this.text
+          def chosen: String = if this.text == "admin" then this.same else this.text
+      Outer("a")
+    }
+    assertEquals(kinds(r), List("string-equality"))
