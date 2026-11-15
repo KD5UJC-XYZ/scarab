@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.storage
 
 import cats.effect.IO
+import cats.mtl.Handle
 import cats.syntax.all.*
 import fs2.Chunk
 import fs2.io.file.{Files, Path}
@@ -10,6 +11,12 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.{GenesisFileHash, NetworkIdentity, StorageError}
 import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.storage.haskell.{
+  ChunkNo,
+  ChunkSlots,
+  HaskellImmutableError,
+  HaskellImmutableReader
+}
 import munit.CatsEffectSuite
 
 import NodeCodecs.blockRef
@@ -352,6 +359,29 @@ class FileNameLocaleSuite extends CatsEffectSuite:
               case other => fail(s"$how: expected a refusal of a locale's digits, got $other")
           }
           assertEquals(after, before, "the files and their bytes")
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- a Haskell database
+
+  test("a Haskell database's chunk files are found under fa-IR and ar-EG, as under root") {
+    // the first three chunks of a cardano-node Preview database: 648 blocks (its README)
+    val dir = Path("fixtures/haskell-immutable/preview/immutable")
+    val slots = ChunkSlots.of(4320).getOrElse(fail("Preview's chunk size"))
+    (Locale.ROOT :: others).traverse_ { locale =>
+      under(locale)(
+        (
+          IO(List(0, 1, 100000).flatMap(ChunkNo.of).map(_.stem)),
+          Handle
+            .allow[HaskellImmutableError](
+              HaskellImmutableReader[IO](dir, slots).blocks().compile.count.map(_.asRight)
+            )
+            .rescue(e => IO.pure(e.asLeft[Long]))
+        ).tupled
+      ).map { (stems, counted) =>
+        assertEquals(counted, Right(648L), s"blocks read under $locale")
+        assertEquals(stems, List("00000", "00001", "100000"), s"chunk names under $locale")
       }
     }
   }

@@ -177,6 +177,22 @@ class StateDumpBoundarySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  test("a digest is named in ASCII digits under fa-IR and ar-EG") {
+    val (_, shelley, _) = slotTarget
+    // the slot in twelve ASCII digits, written without a formatter (`Long.toString` is ASCII)
+    val slot = shelley.slot.toLong.toString
+    val expected = Vector(s"${"0" * (12 - slot.length)}$slot-${shelley.hash.hex}.json")
+    List("fa-IR", "ar-EG").traverse_ { tag =>
+      xyz.kd5ujc.scarab.storage.StorageTestKit
+        .underLocale(java.util.Locale.forLanguageTag(tag))
+        .surround(slotRun(dumper => steps.traverse_(after(dumper, _))))
+        .map { (written, refused) =>
+          assertEquals(refused, Nil, s"no projection refused under $tag")
+          assertEquals(written, expected, s"one digest, named in ASCII digits, under $tag")
+        }
+    }
+  }
+
   test("a slot target met with no rollback gets exactly one digest") {
     val (_, shelley, _) = slotTarget
     slotRun(dumper => steps.traverse_(after(dumper, _))).map { (written, refused) =>

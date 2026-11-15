@@ -6,7 +6,7 @@ import scala.annotation.tailrec
 import scodec.{Attempt, Codec}
 import scodec.bits.BitVector
 import scodec.codecs.{int32, uint16, uint32, vector}
-import xyz.kd5ujc.scarab.storage.Binary
+import xyz.kd5ujc.scarab.storage.{Binary, FileNumber}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 
@@ -21,7 +21,7 @@ object ChunkNo:
   extension (c: ChunkNo)
     def value: Int = c
     def next: ChunkNo = c + 1
-    def stem: String = f"$c%05d"
+    def stem: String = FileNumber.padded(c, 5)
 
 /** Slots per chunk: `10 * k` of the first era (the Byron genesis' `k`; Shelley-start networks use
   * the same `k`). A chunk holds slots `[c * size, (c + 1) * size)`.

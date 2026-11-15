@@ -16,7 +16,7 @@ import java.security.MessageDigest
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.ledger.{Utxo, TxIn, TxOut}
 import xyz.kd5ujc.scarab.ledger.state.WithOrigin
-import xyz.kd5ujc.scarab.storage.UtxoStore
+import xyz.kd5ujc.scarab.storage.{FileNumber, UtxoStore}
 
 /** Ledger-state digests for the db-analyser comparison (`follow --dump-state <dir>`, roadmap K1).
   *
@@ -185,7 +185,7 @@ object StateDump:
     private def write(h: Header.Shelley, s: S)(using
         cats.mtl.Raise[F, xyz.kd5ujc.scarab.ledger.StorageError]
     ): F[Unit] =
-      val file = dir.resolve(f"${h.slot.toLong}%012d-${h.hash.hex}.json")
+      val file = dir.resolve(s"${FileNumber.padded(h.slot.toLong, 12)}-${h.hash.hex}.json")
       Sync[F].blocking(Files.exists(file)).flatMap {
         case true => Sync[F].unit
         case false =>
