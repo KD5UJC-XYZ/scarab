@@ -31,8 +31,10 @@ import xyz.kd5ujc.scarab.ledger.byron.ByronVersion
 /** The codec of everything a snapshot holds, one codec per type, composed. Case classes and enums
   * are derived from their `Mirror` ([[Codec.auto]]); the instances below exist so each shared type
   * is derived once (it keeps compilation fast) and so the composition reads as the state's shape. A
-  * field added to any state type changes the schema fingerprint, so snapshots written before it are
-  * rejected (`VersionMismatch`) rather than misread. Instances are lazy, so order is free.
+  * field added to any derived type changes the schema fingerprint, so snapshots written before it
+  * are rejected (`VersionMismatch`) rather than misread. A few are written field by field instead,
+  * to keep the layout they were written in ([[byronVersion]], [[script]]). Instances are lazy, so
+  * order is free.
   */
 object NodeCodecs:
   // Leaf values shared by many types.
@@ -42,7 +44,33 @@ object NodeCodecs:
   given rewardAccount: Codec[RewardAccount] = Codec.auto
   given value: Codec[Value] = Codec.auto
   given datum: Codec[Datum] = Codec.auto
-  given script: Codec[Script] = Codec.auto
+
+  /** Written field by field, not derived (#998): the four fields of `Script` in their declared
+    * order, through the codecs and with the shape its derivation used, so the stores' scripts keep
+    * the layout they were written in and every fingerprint that holds an output keeps its value. A
+    * field `Script` gains is not persisted unless this codec writes it, which is a format change
+    * (`CodecSuite` pins the shape and the bytes).
+    */
+  given script: Codec[Script] =
+    val kind: Codec[ScriptKind] = Codec.auto
+    val hash = summon[Codec[Bytes]]
+    val native = summon[Codec[Option[NativeScript]]]
+    val plutus = summon[Codec[Option[Bytes]]]
+    Codec.make[Script](
+      s"Script(kind:${kind.shape},hash:${hash.shape},native:${native.shape},plutus:${plutus.shape})"
+    ) { (out, s) =>
+      kind.write(out, s.kind)
+      hash.write(out, s.hash)
+      native.write(out, s.native)
+      plutus.write(out, s.plutus)
+    }(in =>
+      for
+        k <- kind.read(in)
+        h <- hash.read(in)
+        n <- native.read(in)
+        p <- plutus.read(in)
+      yield Script(k, h, n, p)
+    )
   given txIn: Codec[TxIn] = Codec.auto
   given txOut: Codec[TxOut] = Codec.auto
   given utxoChange: Codec[Utxo.Change] = Codec.auto

@@ -17,7 +17,7 @@ composition and `Follower` the consumer, both in `node`):
 | `NetworkIdentityFile` | `NetworkIdentityFile.scala`, `NetworkIdentity.scala` | The network the database was created for (`<db>/network-identity`), checked on every open |
 | `SnapshotPolicy` | `SnapshotPolicy.scala` | When the immutable tip is snapshotted: `Aligned` (the Haskell node's default, a multiple of 40 k slots and at most one per 10 minutes) or `EverySlots` (`--snapshot-every`); the pure `due` |
 | `ChainStorage` | `ChainStorage.scala` | Checks the identity, opens the stores, restores the newest usable snapshot, replays the stored blocks after it, rebuilds the volatile chain (`resume`), hands the follower a `ChainPersistence` hook, and snapshots the immutable tip when it is released |
-| `Codec[A]` | `Codec.scala`, `NodeCodecs.scala` | Binary codecs, one per type, composed. Case classes and enums are derived from their `Mirror`, so a field added to a persisted type is persisted with no codec change |
+| `Codec[A]` | `Codec.scala`, `NodeCodecs.scala` | Binary codecs, one per type, composed. Case classes and enums are derived from their `Mirror`, so a field added to a derived type is persisted with no codec change; `ByronVersion` and `Script` are written field by field in the layout they were written in, and persist only the fields their codecs name |
 | `StorageError` | `NodeError.scala` | `Corrupt`, `Io`, `VersionMismatch`, `Missing`, `OutOfOrder`, `NetworkMismatch`, `ForeignChain`; raised through `Raise[F, StorageError]`, IO exceptions are mapped at the file boundary only |
 | `HaskellImmutableReader[F]` | `storage/haskell/` | Read-only view of a Haskell node's ImmutableDB (see below); `HaskellImport` appends its blocks to our `ImmutableStore` |
 
