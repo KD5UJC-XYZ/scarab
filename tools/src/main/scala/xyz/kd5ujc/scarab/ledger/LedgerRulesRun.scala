@@ -274,10 +274,11 @@ object LedgerRulesRun:
   /** The certificate that refused each credential as unregistered. CERTS recurses on the prefix of
     * the certificates (`Conway/Rules/Certs.hs:242-246`, `gamma :|> c`), so the production rule
     * ([[Certs]]) is judged on each prefix, from the certificate state and in the environment LEDGER
-    * gives it (`Conway/Rules/Ledger.hs:394-398`), and the certificate after which a credential's
-    * refusals grow is the one that refused it. From protocol version 11 LEDGER drains the
-    * withdrawals before CERTS, which changes no registration. A credential refused by certificates
-    * of more than one kind is left out: its failures do not say which is which.
+    * gives it (`Conway/Rules/Ledger.hs:394-398`, cardano-ledger f649f975), and the certificate
+    * after which a credential's refusals grow is the one that refused it. From protocol version 11
+    * LEDGER drains the withdrawals before CERTS, which changes no registration. A credential
+    * refused by certificates of more than one kind is left out: its failures do not say which is
+    * which.
     */
   private def unregistered(tx: Tx, context: LedgerRulesContext): Map[Credential, CertificateKind] =
     val ls = context.ledger.ls
