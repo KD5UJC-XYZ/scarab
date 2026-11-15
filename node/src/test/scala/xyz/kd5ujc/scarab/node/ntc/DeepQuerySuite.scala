@@ -237,7 +237,7 @@ class DeepQuerySuite extends FailsOnUncaught:
     }
   }
 
-  test("an acquired session answers and logs a refusal at 20000 query layers on a small stack") {
+  test("a session answers and returns a refusal diagnostic at 20000 layers on a small stack") {
     onSmallStack {
       val program = for
         // a state before Conway, where GetEpochNo is decoded but not answered
