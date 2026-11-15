@@ -10,6 +10,8 @@ header), the targets of a three-peer network (3 known, 3 established, 2 active) 
     each time, one hot peer demoted by the governor and the hot count back at 2 at the end of the step;
   * demote by the peer metrics: whenever the slow peer is hot when a round demotes, it is the peer demoted; and the hot
     set is replaced by some round;
+  * export the reference's churn duration gauges: each step that met its targets has its gauge, at the duration the
+    log gives for such a step, and a step that only timed out has none;
   * handle a silent peer: the proxy goes silent while its peer is hot, the node keeps extending its chain on the others,
     loses the peer and promotes the spare one, and after the proxy is released the peer comes back after its backoff.
 """
@@ -30,6 +32,16 @@ ORDINARY_STEPS = ["DecreaseActive", "IncreaseActive", "DecreaseEstablished", "De
 BIG_LEDGER_STEPS = ["DecreaseActiveBig", "IncreaseActiveBig", "DecreaseEstablishedBig", "DecreaseKnownBig",
                     "IncreaseKnownBig", "IncreaseEstablishedBig"]
 STEPS = BIG_LEDGER_STEPS + ORDINARY_STEPS
+# The reference's `ChurnAction` constructor of each step: its duration gauge is
+# `peerSelection.churn<constructor>.duration` (`TracePeerSelection.hs` 385-388, ouroboros-network c45735a5).
+CHURN_ACTIONS = {
+    "DecreaseActiveBig": "DecreasedActiveBigLedgerPeers", "IncreaseActiveBig": "IncreasedActiveBigLedgerPeers",
+    "DecreaseEstablishedBig": "DecreasedEstablishedBigLedgerPeers",
+    "DecreaseKnownBig": "DecreasedKnownBigLedgerPeers", "IncreaseKnownBig": "IncreasedKnownBigLedgerPeers",
+    "IncreaseEstablishedBig": "IncreasedEstablishedBigLedgerPeers", "DecreaseActive": "DecreasedActivePeers",
+    "IncreaseActive": "IncreasedActivePeers", "DecreaseEstablished": "DecreasedEstablishedPeers",
+    "DecreaseKnown": "DecreasedKnownPeers", "IncreaseKnown": "IncreasedKnownPeers",
+    "IncreaseEstablished": "IncreasedEstablishedPeers"}
 GAUGES = {"hot": "cardano_node_metrics_peerSelection_Hot_int", "warm": "cardano_node_metrics_peerSelection_Warm_int",
           "established": "cardano_node_metrics_peerSelection_EstablishedPeers_int",
           "known": "cardano_node_metrics_peerSelection_KnownPeers_int",
@@ -169,6 +181,40 @@ def check_rounds(rounds, failures, summary):
     return complete
 
 
+def churn_duration_gauge(step):
+    return f"cardano_node_metrics_peerSelection_churn{CHURN_ACTIONS[step]}_duration_real"
+
+
+def met_durations(events, step):
+    """The `tookSeconds` of the steps `step` that met their targets in the log (the log writes milliseconds)."""
+    return [e["tookSeconds"] for e in events if e.get("event") == "peerSelectionChurn"
+            and e.get("action") == "step" and e.get("step") == step]
+
+
+def check_churn_durations(samples, before, after, failures, summary):
+    """The reference's churn duration gauges against the log read `before` and `after` the scrape: a step that met
+    its targets before the scrape has its gauge, at the duration of one such step of the log (in seconds, to the
+    millisecond the log keeps), and a step that never met them has none (a timeout sets nothing)."""
+    present = {}
+    for step in STEPS:
+        name = churn_duration_gauge(step)
+        got = value(samples, name)
+        logged = met_durations(after, step)
+        if got is None:
+            if met_durations(before, step):
+                failures.append(f"{name} is absent although {step} met its targets before the scrape")
+            continue
+        present[step] = got
+        if not logged:
+            failures.append(f"{name} is {got} but no {step} step met its targets in the log")
+        elif not any(t - 1e-9 <= got < t + 0.001 + 1e-9 for t in logged):
+            failures.append(f"{name} is {got}, the duration of no {step} step of the log: {logged[-3:]}")
+    if not present:
+        failures.append("no churn duration gauge is exported")
+    summary["churnDurationGauges"] = present
+    return present
+
+
 def governor(args):
     root = data_root(args.name)
     up(args)
@@ -246,10 +292,12 @@ def governor(args):
         summary["afterRelease"] = returned
 
         # 5. the exported metrics agree with the log
-        reconnects_before = sum(1 for e in events() if e.get("event") == "reconnecting")
+        logged_before = events()
+        reconnects_before = sum(1 for e in logged_before if e.get("event") == "reconnecting")
         got = scrape(args.name, QUERY_PORT)
         samples = parse(got[1]) if got else {}
-        reconnects_after = sum(1 for e in events() if e.get("event") == "reconnecting")
+        logged_after = events()
+        reconnects_after = sum(1 for e in logged_after if e.get("event") == "reconnecting")
         rounds_logged = sum(1 for e in events() if e.get("event") == "peerSelectionChurn" and e["action"] == "round")
         exported = value(samples, "scarab_peer_selection_churn_rounds_total")
         if exported is None or not (rounds_logged - 1 <= exported <= rounds_logged + 1):
@@ -270,6 +318,7 @@ def governor(args):
             failures.append(f"the peer metrics boards are empty or above 180 slots: {board}")
         if value(samples, "scarab_peer_selection_churn_wait_seconds") is None:
             failures.append("scarab_peer_selection_churn_wait_seconds is absent")
+        check_churn_durations(samples, logged_before, logged_after, failures, summary)
 
         evs = events()
         counts = {}
