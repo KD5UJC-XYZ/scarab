@@ -162,10 +162,10 @@ object ConwayCodecs:
     */
   private[state] val poolRelays: Codec[Bytes] =
     writer[Bytes]("pool relays") { (raw, out) =>
-      PoolRelays.decode(raw).foreach(rs => out.raw(PoolRelays.encode(rs)))
+      PoolRelays.decodeState(raw).foreach(rs => out.raw(PoolRelays.encode(rs)))
     } { raw =>
       PoolRelays
-        .decode(raw)
+        .decodeState(raw)
         .left
         .toOption
         .flatMap(e => Codec.refuse(true, "relays", "a relay sequence", e))
@@ -173,10 +173,10 @@ object ConwayCodecs:
 
   private[state] val poolMetadataBytes: Codec[Bytes] =
     writer[Bytes]("pool metadata") { (raw, out) =>
-      poolMetadata.decodeBytes(raw).foreach(poolMetadata.encode(_, out))
+      poolMetadata.decodeBytes(raw, Cbor.Limits.Unbounded).foreach(poolMetadata.encode(_, out))
     } { raw =>
       poolMetadata
-        .decodeBytes(raw)
+        .decodeBytes(raw, Cbor.Limits.Unbounded)
         .left
         .toOption
         .flatMap(e => Codec.refuse(true, "PoolMetadata", "[url, hash]", e))

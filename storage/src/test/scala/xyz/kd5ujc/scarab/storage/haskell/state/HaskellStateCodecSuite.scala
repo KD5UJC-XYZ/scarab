@@ -647,6 +647,71 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     )
   }
 
+  test("state writers accept a genesis pool with a 1 MiB metadata URL") {
+    // cardano-ledger f649f975, BaseTypes.hs:674-676: Url's JSON reader and encoder are Text's.
+    val url = "a" * (1024 * 1024)
+    val genesis = io.circe.parser
+      .parse(s"""{
+        "poolId": "$key28", "vrf": "${"02" * 32}", "pledge": 0, "cost": 0,
+        "margin": 0.5, "accountAddress": {
+          "network": "Testnet", "credential": {"keyHash": "$key28"}
+        }, "owners": [], "relays": [],
+        "metadata": {"url": "$url", "hash": "${"33" * 32}"}
+      }""")
+      .fold(e => fail(e.message), identity)
+    val (_, params) = xyz.kd5ujc.scarab.ledger.GenesisPoolFields
+      .pool(key28, genesis)
+      .fold(e => fail(e.message), identity)
+    val metadata = bytesOf { out =>
+      out.arrayHead(2)
+      out.text(url)
+      out.bytes(hex("33" * 32))
+    }
+    assertEquals(params.metadata, Some(metadata), "genesis retains the whole URL")
+    val vrf = "5820" + "02" * 32
+    val common = "00 00 d81e820102"
+    val owners = "d9010280"
+    val expectedParams =
+      hex(s"89 581c$key28 $vrf $common 581de0$key28 $owners 80") ++ metadata
+    assertEquals(poolParams.write(params), Right(expectedParams))
+    assertEquals(readOk(poolParams, expectedParams), params)
+    val expectedState =
+      hex(s"8a $vrf $common 8200581c$key28 $owners 80 81") ++ metadata ++ hex(s"00 $owners")
+    val state = readOk(stakePoolState, expectedState)
+    assertEquals(state.metadata, params.metadata)
+    assertEquals(stakePoolState.write(state), Right(expectedState))
+  }
+
+  test("state writers canonicalize chunked relay DNS text without relaxing transaction checks") {
+    val input = hex("8182027f6161ff")
+    val canonical = hex("8182026161")
+    assertEquals(relays.write(readOk(relays, input)), Right(canonical))
+    val vrf = "5820" + "02" * 32
+    val common = "00 00 d81e820102"
+    val owners = "d9010280"
+    val paramsPrefix = hex(s"89 581c$key28 $vrf $common 581de0$key28 $owners")
+    val params = readOk(poolParams, paramsPrefix ++ input ++ hex("f6"))
+    assertEquals(params.relays, input, "the state reader retains the chunked spelling")
+    assertEquals(poolParams.write(params), Right(paramsPrefix ++ canonical ++ hex("f6")))
+    val statePrefix = hex(s"8a $vrf $common 8200581c$key28 $owners")
+    val stateSuffix = hex(s"80 00 $owners")
+    val state = readOk(stakePoolState, statePrefix ++ input ++ stateSuffix)
+    assertEquals(stakePoolState.write(state), Right(statePrefix ++ canonical ++ stateSuffix))
+
+    val node = xyz.kd5ujc.scarab.codec.Cbor.decode(input).fold(e => fail(e.toString), identity)
+    val ledger = xyz.kd5ujc.scarab.ledger.PoolRelays
+    val refused = Left(xyz.kd5ujc.scarab.ledger.PoolRelayError.IndefiniteDnsName(0))
+    assertEquals(ledger.decode(input), refused)
+    Vector(xyz.kd5ujc.scarab.protocol.Era.Conway, xyz.kd5ujc.scarab.protocol.Era.Dijkstra)
+      .foreach { era =>
+        assertEquals(
+          ledger.fromBody(node, xyz.kd5ujc.scarab.ledger.DecoderVersion.of(era)),
+          refused,
+          s"$era transaction DNS text must still be definite"
+        )
+      }
+  }
+
   test("golden: pool parameters and pool state write held relays and metadata from values") {
     // cardano-ledger f649f975, State/StakePool.hs:192-205, 389-404, 516-520, 555-572.
     val relayInput = "9f 9f 1801 1a00000bb8 6161 ff ff"
