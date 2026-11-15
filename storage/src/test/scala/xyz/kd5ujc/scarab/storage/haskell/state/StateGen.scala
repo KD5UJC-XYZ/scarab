@@ -56,7 +56,7 @@ object StateGen:
     )
 
   def rewardAccount: Gen[node.RewardAccount] =
-    Gen.zip(Gen.choose(0, 15), nodeCredential).map(node.RewardAccount(_, _))
+    Gen.zip(Gen.oneOf(0, 1), nodeCredential).map(node.RewardAccount(_, _))
 
   def govActionId: Gen[node.GovActionId] =
     Gen

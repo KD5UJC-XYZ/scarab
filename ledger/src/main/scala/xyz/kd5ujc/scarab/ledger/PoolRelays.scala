@@ -239,11 +239,14 @@ object PoolRelays:
     */
   val MaxDnsNameBytes: Int = 128
 
-  /** How the relays are read: the form of an address and the bound of a DNS name. */
-  private final case class Reading(addresses: ByteStrings, dnsBytes: Int)
+  private enum DnsText:
+    case Definite, Chunked
+
+  /** How the relays are read: the string forms and the bound of a DNS name. */
+  private final case class Reading(addresses: ByteStrings, dnsText: DnsText, dnsBytes: Int)
 
   /** A registration the node holds: any name, and a chunked address as stored before #436. */
-  private val held = Reading(ByteStrings.Chunked, Int.MaxValue)
+  private val held = Reading(ByteStrings.Chunked, DnsText.Definite, Int.MaxValue)
 
   /** The relays of a registration the node holds, in order. */
   def decode(relays: Bytes): Either[PoolRelayError, Vector[PoolRelay]] =
@@ -251,6 +254,12 @@ object PoolRelays:
 
   def decode(relays: Bytes, limits: Cbor.Limits): Either[PoolRelayError, Vector[PoolRelay]] =
     read(relays, limits, held)
+
+  /** State retains chunked DNS text too; write its value as the reference's `EncCBOR DnsName` does
+    * (`BaseTypes.hs:687-689`, cardano-ledger f649f975), without transaction decoding checks.
+    */
+  def decodeState(relays: Bytes): Either[PoolRelayError, Vector[PoolRelay]] =
+    read(relays, Cbor.Limits.Unbounded, held.copy(dnsText = DnsText.Chunked))
 
   /** The relays of a registration from outside the node, a name of at most 128 bytes and a chunked
     * address as [[decode]] takes it.
@@ -278,7 +287,11 @@ object PoolRelays:
   def fromBody(relays: Node, version: DecoderVersion): Either[PoolRelayError, Vector[PoolRelay]] =
     sequence(
       relays,
-      Reading(ByteStrings.of(version), if version.atLeast(9) then MaxDnsNameBytes else 64)
+      Reading(
+        ByteStrings.of(version),
+        DnsText.Definite,
+        if version.atLeast(9) then MaxDnsNameBytes else 64
+      )
     )
 
   private def sequence(node: Node, reading: Reading): Either[PoolRelayError, Vector[PoolRelay]] =
@@ -381,14 +394,15 @@ object PoolRelays:
           case None     => Left(PoolRelayError.BadIpv6(index))
       case _ => Left(PoolRelayError.BadIpv6(index))
 
-  /** A `DnsName`: definite text (`CborRead.indefinite`), so a chunked name is this reader's own
-    * refusal and not a second reading of the head (#435).
+  /** A `DnsName`: definite text except when recovering a held state value. A chunked name is this
+    * reader's own refusal and not a second reading of the head (#435).
     */
   private def dns(n: Node, index: Int, reading: Reading): Either[PoolRelayError, String] =
     CborRead.indefinite(n) match
-      case Some((_, true)) => Left(PoolRelayError.IndefiniteDnsName(index))
-      case None            => Left(PoolRelayError.BadDnsName(index))
-      case Some((s, false)) =>
+      case Some((_, true)) if reading.dnsText == DnsText.Definite =>
+        Left(PoolRelayError.IndefiniteDnsName(index))
+      case None => Left(PoolRelayError.BadDnsName(index))
+      case Some((s, _)) =>
         val size = s.getBytes(StandardCharsets.UTF_8).length
         Either.cond(size <= reading.dnsBytes, s, PoolRelayError.DnsNameTooLong(index, size))
 

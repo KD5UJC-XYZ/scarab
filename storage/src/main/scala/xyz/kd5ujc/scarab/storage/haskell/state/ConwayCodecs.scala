@@ -157,6 +157,31 @@ object ConwayCodecs:
   private val poolMetadata: Codec[(String, Bytes)] =
     Record.of[(String, Bytes)]((Codec.text, Codec.bytes))
 
+  /** Held registration bytes, written from their values by the same encoders as [[poolFields]].
+    * `StakePool.hs:389-404, 516-520`, cardano-ledger f649f975.
+    */
+  private[state] val poolRelays: Codec[Bytes] =
+    writer[Bytes]("pool relays") { (raw, out) =>
+      PoolRelays.decodeState(raw).foreach(rs => out.raw(PoolRelays.encode(rs)))
+    } { raw =>
+      PoolRelays
+        .decodeState(raw)
+        .left
+        .toOption
+        .flatMap(e => Codec.refuse(true, "relays", "a relay sequence", e))
+    }
+
+  private[state] val poolMetadataBytes: Codec[Bytes] =
+    writer[Bytes]("pool metadata") { (raw, out) =>
+      poolMetadata.decodeBytes(raw, Cbor.Limits.Unbounded).foreach(poolMetadata.encode(_, out))
+    } { raw =>
+      poolMetadata
+        .decodeBytes(raw, Cbor.Limits.Unbounded)
+        .left
+        .toOption
+        .flatMap(e => Codec.refuse(true, "PoolMetadata", "[url, hash]", e))
+    }
+
   /** The fields of `StakePoolParams` in a flat group (`withStakePoolParamsFlatEncoding`,
     * `State/StakePool.hs:555-572`, cardano-ledger f649f975): the operator, the VRF key hash, the
     * pledge and the cost (a `Coin`, `encodeInteger`, `Coin.hs:93-106`), the margin (a unit
@@ -165,7 +190,7 @@ object ConwayCodecs:
     * and metadata as the bytes it was read with; the reference writes their values, so they are
     * read again here and written as values.
     */
-  private def poolFields(p: PoolParams, out: Writer)(using ProtVer): Unit =
+  private[state] def poolFields(p: PoolParams, out: Writer)(using ProtVer): Unit =
     hash28.encode(p.operator, out)
     hash32.encode(p.vrfKeyHash, out)
     out.integer(p.pledge)
@@ -173,10 +198,16 @@ object ConwayCodecs:
     unitInterval.encode(p.margin, out)
     state.rewardAccount.encode(p.rewardAccount, out)
     sortedSetOf(hash28).encode(p.owners, out)
-    // refused by `check` when the kept bytes do not read; never written then
-    PoolRelays.decode(p.relays).foreach(rs => out.raw(PoolRelays.encode(rs)))
-    p.metadata.fold(out.nul())(raw =>
-      poolMetadata.decodeBytes(raw).foreach(poolMetadata.encode(_, out))
+    poolRelays.encode(p.relays, out)
+    p.metadata.fold(out.nul())(poolMetadataBytes.encode(_, out))
+
+  private def poolDetailsRefusal(p: PoolParams)(using ProtVer): Option[ConstraintViolation] =
+    first(
+      unitInterval.check(p.margin),
+      account(p.rewardAccount),
+      p.owners.iterator.flatMap(hash28.check).nextOption(),
+      poolRelays.check(p.relays),
+      p.metadata.flatMap(poolMetadataBytes.check)
     )
 
   private def poolRefusal(p: PoolParams)(using ProtVer): Option[ConstraintViolation] =
@@ -185,21 +216,7 @@ object ConwayCodecs:
       hash32.check(p.vrfKeyHash),
       coin(p.pledge),
       coin(p.cost),
-      unitInterval.check(p.margin),
-      account(p.rewardAccount),
-      p.owners.iterator.flatMap(hash28.check).nextOption(),
-      PoolRelays
-        .decode(p.relays)
-        .left
-        .toOption
-        .flatMap(e => Codec.refuse(true, "relays", "a relay sequence", e)),
-      p.metadata.flatMap(raw =>
-        poolMetadata
-          .decodeBytes(raw)
-          .left
-          .toOption
-          .flatMap(e => Codec.refuse(true, "PoolMetadata", "[url, hash]", e))
-      )
+      poolDetailsRefusal(p)
     )
 
   /** `EncCBOR (ConwayTxCert era)` (`eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:737-741`,
@@ -424,40 +441,55 @@ object ConwayCodecs:
         parameterUpdate.encode(update, out)
         policy.encode(pol, out)
       case (other, out) => state.govAction.encode(other, out)
-    } { a =>
-      // `nullable` checks nothing of its own: the value inside it is checked here
-      def ids(prev: Option[GovActionId]) = prev.flatMap(state.govActionId.check)
-      def script(pol: Option[Bytes]) = pol.flatMap(hash28.check)
-      a match
-        case GovAction.ParameterChange(prev, update, pol) =>
-          first(ids(prev), parameterUpdate.check(update), script(pol))
-        case GovAction.HardFork(prev, major, minor) =>
-          first(ids(prev), Codec.uintBig(13).check(major), word(32).check(minor))
-        case GovAction.TreasuryWithdrawals(ws, pol) =>
-          // a `Map AccountAddress Coin` (`Procedures.hs:830-834`, cardano-ledger f649f975): an account once
-          val repeated = Codec.refuse(
-            ws.map(_._1).distinct.size != ws.size,
-            "TreasuryWithdrawals",
-            "each account once",
-            ws.size
-          )
-          first(
-            ws.iterator.flatMap((to, amount) => account(to).orElse(coin(amount))).nextOption(),
-            repeated,
-            script(pol)
-          )
-        case GovAction.NoConfidence(prev) => ids(prev)
-        case GovAction.UpdateCommittee(prev, removed, added, quorum) =>
-          first(
-            ids(prev),
-            removed.iterator.flatMap(credential).nextOption(),
-            added.iterator.flatMap((c, e) => credential(c).orElse(word(64).check(e))).nextOption(),
-            unitInterval.check(quorum)
-          )
-        case GovAction.NewConstitution(prev, guardrails, constitution) =>
-          first(ids(prev), script(guardrails), anchor(Some(constitution)))
-        case GovAction.Info => None
-    }
+    }(a => first(govActionBounds(a), decoderLimits(a)))
+
+  /** What the reference's types of a `GovAction` hold (`Procedures.hs:815-855`, cardano-ledger
+    * f649f975): a `Version` major of at most 13 and a `Word32` minor (`ProtVer`), a `Word16` action
+    * index, accounts of network 0 or 1, epochs of a `Word64`, a quorum in 0..1, hashes of their
+    * size. A `Coin` is an `Integer` (`Coin.hs:93`) and a `Url` a `Text` (`BaseTypes.hs:674-676`),
+    * so neither is bounded here. The state writer checks these alone.
+    */
+  def govActionBounds(a: GovAction)(using ProtVer): Option[ConstraintViolation] =
+    // `nullable` checks nothing of its own: the value inside it is checked here
+    def ids(prev: Option[GovActionId]) = prev.flatMap(state.govActionId.check)
+    def script(pol: Option[Bytes]) = pol.flatMap(hash28.check)
+    a match
+      case GovAction.ParameterChange(prev, update, pol) =>
+        first(ids(prev), parameterUpdate.check(update), script(pol))
+      case GovAction.HardFork(prev, major, minor) =>
+        first(ids(prev), Codec.uintBig(13).check(major), word(32).check(minor))
+      case GovAction.TreasuryWithdrawals(ws, pol) =>
+        first(ws.iterator.flatMap((to, _) => account(to)).nextOption(), script(pol))
+      case GovAction.NoConfidence(prev) => ids(prev)
+      case GovAction.UpdateCommittee(prev, removed, added, quorum) =>
+        first(
+          ids(prev),
+          removed.iterator.flatMap(credential).nextOption(),
+          added.iterator.flatMap((c, e) => credential(c).orElse(word(64).check(e))).nextOption(),
+          unitInterval.check(quorum)
+        )
+      case GovAction.NewConstitution(prev, guardrails, constitution) =>
+        first(ids(prev), script(guardrails), hash32.check(constitution.hash))
+      case GovAction.Info => None
+
+  /** What a transaction's action must also satisfy, the limits of the reference's decoders: a
+    * withdrawal's `Coin` a `Word64` (`Coin.hs:108-109`), each account once in its `Map`
+    * (`Procedures.hs:830-834`), and a constitution's url within its size (`BaseTypes.hs:678-685`),
+    * all at cardano-ledger f649f975.
+    */
+  private def decoderLimits(a: GovAction)(using ProtVer): Option[ConstraintViolation] = a match
+    case GovAction.TreasuryWithdrawals(ws, _) =>
+      first(
+        ws.iterator.flatMap((_, amount) => coin(amount)).nextOption(),
+        Codec.refuse(
+          ws.map(_._1).distinct.size != ws.size,
+          "TreasuryWithdrawals",
+          "each account once",
+          ws.size
+        )
+      )
+    case GovAction.NewConstitution(_, _, constitution) => anchor(Some(constitution))
+    case _                                             => None
 
   /** `EncCBOR (ProposalProcedure era)` (`Procedures.hs:537-544`, cardano-ledger f649f975):
     * `[deposit, return account, action, anchor]`, the action by [[govAction]].

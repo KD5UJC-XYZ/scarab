@@ -11,7 +11,7 @@ import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.state.EpochStateGen.given
 import xyz.kd5ujc.scarab.ledger.state.LedgerStateGen.given
 import xyz.kd5ujc.scarab.ledger.state.VocabularyGen.given
-import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Writer}
+import xyz.kd5ujc.scarab.models.runtime.{Codec, ConstraintViolation, DecodeError, Writer}
 
 import DecodeError.Kind
 import HaskellStateCodecs.{*, given}
@@ -585,9 +585,9 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     assertEquals(readOk(alonzo, alonzo.encodeUnchecked(future)), future)
   }
 
-  test("a stored Conway parameter change reads to its typed update and writes back as it came") {
-    // The writer before the typed update wrote the same map: each key once, in key order, and each
-    // value in its original encoding (here 44 with a 4-byte head and 2/4 not in lowest terms).
+  test("golden: a stored Conway update writes field values, not their original encodings") {
+    // cardano-ledger f649f975, Core/PParams.hs:244-255, Conway/PParams.hs:862-894:
+    // 44 with a 4-byte head and 2/4 are written as 44 with a 1-byte head and 1/2.
     val stored = hex("8400 f6 a2 00 1a0000002c 09 d81e820204 f6")
     val codec = govAction(using version(10))
     val action = readOk(codec, stored)
@@ -599,11 +599,13 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
           Some(Rational(1, 2))
         )
       case other => fail(s"not a parameter change: $other")
-    assertEquals(codec.encodeUnchecked(action), stored)
+    val canonical = hex("8400 f6 a2 00 182c 09 d81e820102 f6")
+    assertEquals(codec.write(action), Right(canonical))
+    assertEquals(codec.write(readOk(codec, canonical)), Right(canonical))
   }
 
   test(
-    "a stored Conway parameter change with indefinite Prices and ExUnits loads and writes back"
+    "golden: a stored Conway update reads indefinite Prices and ExUnits and writes records"
   ) {
     // A body decoder that refuses them (`RecD`, below decoder version 12) came after states that
     // hold them; such a state still loads (ADR 0006): {19: [_ 1/2, 1/3], 20: [_ 1, 2], 21: [_ 3, 4]}.
@@ -614,7 +616,261 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
       case xyz.kd5ujc.scarab.ledger.GovAction.ParameterChange(None, update, None) =>
         assertEquals(update.keys, Set(19, 20, 21))
       case other => fail(s"not a parameter change: $other")
-    assertEquals(codec.encodeUnchecked(action), stored)
+    // cardano-ledger f649f975, Cardano/Ledger/Plutus/ExUnits.hs:192-193, 219-220: definite records.
+    assertEquals(
+      codec.write(action),
+      Right(hex("8400 f6 a3 13 82d81e820102d81e820103 14 820102 15 820304 f6"))
+    )
+  }
+
+  test("golden: a Conway update of 24 fields is a definite map in reference field order") {
+    // cardano-ledger f649f975, Core/PParams.hs:244-255, Conway/PParams.hs:862-894.
+    val counts = Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 16, 17, 22, 23, 24, 27, 28, 29, 30, 31, 32)
+    val fields = counts.map(_ -> "1801") ++ Vector(9, 10, 11, 33).map(_ -> "d81e820204")
+    val input = "bf" + fields.reverse.map { (k, v) =>
+      Codec.int.encodeUnchecked(BigInt(k)).hex + v
+    }.mkString + "ff"
+    val expected = "b818" + fields
+      .sortBy(_._1)
+      .map { (k, _) =>
+        Codec.int.encodeUnchecked(BigInt(k)).hex +
+          (if counts.contains(k) then "01" else "d81e820102")
+      }
+      .mkString
+    val update = readOk(conwayParamUpdate, hex(input))
+    assertEquals(update.keys.size, 24)
+    assertEquals(conwayParamUpdate.check(update), None)
+    assertEquals(conwayParamUpdate.write(update), Right(hex(expected)))
+    assertEquals(
+      conwayParamUpdate.write(readOk(conwayParamUpdate, hex(expected))),
+      Right(hex(expected))
+    )
+  }
+
+  test("state writers accept a genesis pool with a 1 MiB metadata URL") {
+    // cardano-ledger f649f975, BaseTypes.hs:674-676: Url's JSON reader and encoder are Text's.
+    val url = "a" * (1024 * 1024)
+    val genesis = io.circe.parser
+      .parse(s"""{
+        "poolId": "$key28", "vrf": "${"02" * 32}", "pledge": 0, "cost": 0,
+        "margin": 0.5, "accountAddress": {
+          "network": "Testnet", "credential": {"keyHash": "$key28"}
+        }, "owners": [], "relays": [],
+        "metadata": {"url": "$url", "hash": "${"33" * 32}"}
+      }""")
+      .fold(e => fail(e.message), identity)
+    val (_, params) = xyz.kd5ujc.scarab.ledger.GenesisPoolFields
+      .pool(key28, genesis)
+      .fold(e => fail(e.message), identity)
+    val metadata = bytesOf { out =>
+      out.arrayHead(2)
+      out.text(url)
+      out.bytes(hex("33" * 32))
+    }
+    assertEquals(params.metadata, Some(metadata), "genesis retains the whole URL")
+    val vrf = "5820" + "02" * 32
+    val common = "00 00 d81e820102"
+    val owners = "d9010280"
+    val expectedParams =
+      hex(s"89 581c$key28 $vrf $common 581de0$key28 $owners 80") ++ metadata
+    assertEquals(poolParams.write(params), Right(expectedParams))
+    assertEquals(readOk(poolParams, expectedParams), params)
+    val expectedState =
+      hex(s"8a $vrf $common 8200581c$key28 $owners 80 81") ++ metadata ++ hex(s"00 $owners")
+    val state = readOk(stakePoolState, expectedState)
+    assertEquals(state.metadata, params.metadata)
+    assertEquals(stakePoolState.write(state), Right(expectedState))
+  }
+
+  test("state writers canonicalize chunked relay DNS text without relaxing transaction checks") {
+    val input = hex("8182027f6161ff")
+    val canonical = hex("8182026161")
+    assertEquals(relays.write(readOk(relays, input)), Right(canonical))
+    val vrf = "5820" + "02" * 32
+    val common = "00 00 d81e820102"
+    val owners = "d9010280"
+    val paramsPrefix = hex(s"89 581c$key28 $vrf $common 581de0$key28 $owners")
+    val params = readOk(poolParams, paramsPrefix ++ input ++ hex("f6"))
+    assertEquals(params.relays, input, "the state reader retains the chunked spelling")
+    assertEquals(poolParams.write(params), Right(paramsPrefix ++ canonical ++ hex("f6")))
+    val statePrefix = hex(s"8a $vrf $common 8200581c$key28 $owners")
+    val stateSuffix = hex(s"80 00 $owners")
+    val state = readOk(stakePoolState, statePrefix ++ input ++ stateSuffix)
+    assertEquals(stakePoolState.write(state), Right(statePrefix ++ canonical ++ stateSuffix))
+
+    val node = xyz.kd5ujc.scarab.codec.Cbor.decode(input).fold(e => fail(e.toString), identity)
+    val ledger = xyz.kd5ujc.scarab.ledger.PoolRelays
+    val refused = Left(xyz.kd5ujc.scarab.ledger.PoolRelayError.IndefiniteDnsName(0))
+    assertEquals(ledger.decode(input), refused)
+    Vector(xyz.kd5ujc.scarab.protocol.Era.Conway, xyz.kd5ujc.scarab.protocol.Era.Dijkstra)
+      .foreach { era =>
+        assertEquals(
+          ledger.fromBody(node, xyz.kd5ujc.scarab.ledger.DecoderVersion.of(era)),
+          refused,
+          s"$era transaction DNS text must still be definite"
+        )
+      }
+  }
+
+  test("golden: pool parameters and pool state write held relays and metadata from values") {
+    // cardano-ledger f649f975, State/StakePool.hs:192-205, 389-404, 516-520, 555-572.
+    val relayInput = "9f 9f 1801 1a00000bb8 6161 ff ff"
+    val relayOutput = "81 83 01 190bb8 6161"
+    val metadataInput = s"9f 780175 590020${"33" * 32} ff"
+    val metadataOutput = s"82 6175 5820${"33" * 32}"
+    val vrf = "5820" + "02" * 32
+    val common = "00 00 d81e820102"
+    val owners = "d9010280"
+    val prefix = s"89 581c$key28 $vrf $common 581de0$key28 $owners"
+    val params = readOk(poolParams, hex(s"$prefix $relayInput $metadataInput"))
+    assertEquals(params.relays, hex(relayInput), "the reader still retains the registered bytes")
+    val expected = hex(s"$prefix $relayOutput $metadataOutput")
+    assertEquals(poolParams.write(params), Right(expected))
+    assertEquals(poolParams.write(readOk(poolParams, expected)), Right(expected))
+    assertEquals(
+      ConwayCodecs.certificate.write(xyz.kd5ujc.scarab.ledger.Certificate.RegisterPool(params)),
+      Right(hex("8a03") ++ Bytes(expected.value.drop(1))),
+      "the state and transaction paths share the same pool field writers"
+    )
+
+    val statePrefix = s"8a $vrf $common 8200581c$key28 $owners"
+    val state =
+      readOk(stakePoolState, hex(s"$statePrefix $relayInput 81 $metadataInput 00 $owners"))
+    assertEquals(
+      stakePoolState.write(state),
+      Right(hex(s"$statePrefix $relayOutput 81 $metadataOutput 00 $owners"))
+    )
+    // The extra voting-key field: cardano-ledger 9df9f98c, State/StakePool.hs:220-266.
+    val leios = NativeLeiosStateCodecs.stakePoolState(using version(12))
+    val leiosPrefix = s"8b $vrf 80 $common 8200581c$key28 $owners"
+    val leiosState = readOk(leios, hex(s"$leiosPrefix $relayInput 81 $metadataInput 00 $owners"))
+    assertEquals(
+      leios.write(leiosState),
+      Right(hex(s"$leiosPrefix $relayOutput 81 $metadataOutput 00 $owners"))
+    )
+    assertEquals(
+      poolParams.write(params.copy(relays = hex("8100"))).left.toOption.map(_.typeName),
+      Some("relays"),
+      "an invalid relay is refused"
+    )
+    assertEquals(
+      poolParams.write(params.copy(metadata = Some(hex("820040")))).left.toOption.map(_.typeName),
+      Some("PoolMetadata"),
+      "non-text metadata is refused through the nullable field"
+    )
+    assertEquals(
+      stakePoolState
+        .write(state.copy(metadata = Some(hex("820040"))))
+        .left
+        .toOption
+        .map(_.typeName),
+      Some("PoolMetadata"),
+      "non-text metadata is refused through StrictMaybe"
+    )
+    val otherNetwork = params.copy(rewardAccount = params.rewardAccount.copy(network = 2))
+    assertEquals(poolParams.check(otherNetwork), None)
+    assertEquals(
+      ConwayCodecs.certificate.write(
+        xyz.kd5ujc.scarab.ledger.Certificate.RegisterPool(otherNetwork)
+      ),
+      Left(ConstraintViolation("AccountAddress", "network 0 or 1", "2"))
+    )
+  }
+
+  test("golden: hard fork versions are written from values and refused outside ProtVer's types") {
+    // cardano-ledger f649f975, BaseTypes.hs:211-214, 236-243; Procedures.hs:824-829, 936-937;
+    // Binary/Version.hs:63 (`MaxVersion`).
+    val codec = govAction(using version(10))
+    val max = (BigInt(1) << 32) - 1
+    assertEquals(
+      codec.write(xyz.kd5ujc.scarab.ledger.GovAction.HardFork(None, 12, max)),
+      Right(hex("8301 f6 820c1affffffff"))
+    )
+    assertEquals(
+      codec.write(xyz.kd5ujc.scarab.ledger.GovAction.HardFork(None, 13, 0)),
+      Right(hex("8301 f6 820d00")),
+      "the encoder accepts Version's bound even when the era's decoder has a lower bound"
+    )
+    val transaction = ConwayCodecs.govAction(using version(10))
+    Vector(BigInt(-1), max + 1, BigInt(1) << 64).foreach { minor =>
+      val action = xyz.kd5ujc.scarab.ledger.GovAction.HardFork(None, 12, minor)
+      val refusal = ConstraintViolation("unsigned integer", s"0..$max", minor.toString)
+      assertEquals(codec.check(action), Some(refusal), "a Word32 minor cannot hold it")
+      assertEquals(codec.write(action), Left(refusal))
+      assertEquals(transaction.check(action), Some(refusal))
+      assertEquals(transaction.write(action), Left(refusal))
+    }
+    Vector(BigInt(-1), BigInt(14)).foreach { major =>
+      val action = xyz.kd5ujc.scarab.ledger.GovAction.HardFork(None, major, 0)
+      val refusal = ConstraintViolation("unsigned integer", "0..13", major.toString)
+      assertEquals(codec.write(action), Left(refusal), "a Version major is at most MaxVersion")
+      assertEquals(transaction.write(action), Left(refusal))
+    }
+  }
+
+  test("state withdrawals write a Coin as an Integer; only the transaction writer bounds it") {
+    // cardano-ledger f649f975, Coin.hs:93 (an `Integer`), 106 (`EncCBOR` via `Integer`), 108-109
+    // (read as a `Word64`); Procedures.hs:938-939.
+    import xyz.kd5ujc.scarab.ledger.{Credential, GovAction, RewardAccount}
+    val account = RewardAccount(0, Credential.Key(hex(key28)))
+    val codec = govAction(using version(10))
+    val transaction = ConwayCodecs.govAction(using version(10))
+    val accountBytes = "581de0" + key28
+    List(
+      (BigInt(1) << 64) -> "c249010000000000000000",
+      BigInt(-1) -> "20"
+    ).foreach { (amount, coin) =>
+      val action = GovAction.TreasuryWithdrawals(Vector(account -> amount), None)
+      assertEquals(codec.check(action), None, s"a Coin of $amount is an Integer")
+      assertEquals(codec.write(action), Right(hex(s"8302 a1 $accountBytes $coin f6")))
+      assertEquals(
+        transaction.check(action),
+        Some(
+          ConstraintViolation("unsigned integer", s"0..${(BigInt(1) << 64) - 1}", amount.toString)
+        )
+      )
+    }
+  }
+
+  test("a state constitution's url is not bounded; the transaction writer bounds it") {
+    // cardano-ledger f649f975, BaseTypes.hs:674-676 (`Url` over `Text`), 678-685 (`DecCBOR Url`).
+    import xyz.kd5ujc.scarab.ledger.{Anchor, GovAction}
+    val url = "a" * 129
+    val action = GovAction.NewConstitution(None, None, Anchor(url, hex("02" * 32)))
+    val codec = govAction(using version(10))
+    assertEquals(codec.check(action), None)
+    assertEquals(
+      codec.write(action),
+      Right(hex(s"8305 f6 82 8278 81 ${"61" * 129} 5820 ${"02" * 32} f6"))
+    )
+    assert(ConwayCodecs.govAction(using version(10)).check(action).isDefined)
+    assert(
+      codec.check(GovAction.NewConstitution(None, None, Anchor(url, hex("02" * 31)))).isDefined,
+      "the anchor's hash keeps its size"
+    )
+  }
+
+  test("state treasury withdrawals encode their map without transaction validation") {
+    // cardano-ledger f649f975, Conway/Governance/Procedures.hs:938-939.
+    import xyz.kd5ujc.scarab.ledger.{Credential, GovAction, RewardAccount}
+    val account = RewardAccount(0, Credential.Script(hex(key28)))
+    val other = RewardAccount(0, Credential.Key(hex(key28)))
+    val action = GovAction.TreasuryWithdrawals(
+      Vector(account -> BigInt(7), other -> BigInt(11), account -> BigInt(5)),
+      None
+    )
+    val codec = govAction(using version(10))
+    assertEquals(
+      ConwayCodecs.govAction.check(action),
+      Some(ConstraintViolation("TreasuryWithdrawals", "each account once", "3"))
+    )
+    assertEquals(codec.check(action), None)
+    val encoded = codec.write(action).fold(e => fail(e.toString), identity)
+    assertEquals(
+      readOk(codec, encoded),
+      GovAction.TreasuryWithdrawals(Vector(account -> BigInt(12), other -> BigInt(11)), None),
+      "the state writer keeps its existing aggregation of repeated accounts"
+    )
   }
 
   test("a stored Conway hard fork names a major of at most 12, read after the whole version") {

@@ -66,9 +66,7 @@ trait NodeTypeCodecs extends VocabularyCodecs:
   /** `Coin`, `EpochNo`, `CompactForm Coin` held as a number: a `Word64`. */
   private val amount: Codec[BigInt] = word(64)
 
-  /** An item kept as it is on the wire (the node keeps the relays and the metadata of a pool, and
-    * the parameter updates of a proposal, as the transaction gave them).
-    */
+  /** An item kept as it is on the wire, used by pre-Conway parameter updates. */
   val rawItem: Codec[Bytes] = new Codec[Bytes]:
     def decode(n: Node): Decoded[Bytes] = Right(n.original)
     def encode(a: Bytes, out: Writer): Unit = out.raw(a)
@@ -161,43 +159,63 @@ trait NodeTypeCodecs extends VocabularyCodecs:
 
   // ---- pools
 
-  /** The pledge and cost of `StakePoolParams`, a `Coin` (`Coin.hs:93-111`): written as an `Integer`
-    * and read as a `Word64`. A genesis pool may hold a negative one or one past `Word64`, which the
-    * reference's genesis reader accepts; it is written as the reference writes it, in a query
-    * answer and in the state, and refused when the state is read back.
+  /** A `Coin` held as the reference's `Integer` (`Coin.hs:93-111`, cardano-ledger f649f975):
+    * written as an `Integer` and read as a `Word64`. The pledge and cost of `StakePoolParams` and
+    * the amounts of a treasury withdrawal. A genesis pool may hold a negative one or one past
+    * `Word64`, which the reference's genesis reader accepts; it is written as the reference writes
+    * it, in a query answer and in the state, and refused when the state is read back.
     */
-  private val poolCoin: Codec[BigInt] = new Codec[BigInt]:
+  private val heldCoin: Codec[BigInt] = new Codec[BigInt]:
     private val under = word(64)
     def decode(n: Node): Decoded[BigInt] = under.decode(n)
     def encode(a: BigInt, out: Writer): Unit = out.integer(a)
 
-  /** `StakePoolParams` (`StakePool.hs:550-571`): nine fields in a flat array, the owners a set, the
-    * metadata `null` when there is none. The relays and the metadata are the registered items, as
-    * they came; no relays at all is `Bytes.empty`, written as an empty array and read back as it.
+  /** `StakePoolParams` (`State/StakePool.hs:550-572`, cardano-ledger f649f975): nine fields in a
+    * flat array, the owners a set, the metadata `null` when there is none. Held relays and metadata
+    * are written from their values, as by [[ConwayCodecs]]; no relays at all is `Bytes.empty`,
+    * written as an empty array and read back as it.
     */
-  given poolParams(using ProtVer): Codec[PoolParams] =
-    Record.of[PoolParams](
+  given poolParams(using ProtVer): Codec[PoolParams] = new Codec[PoolParams]:
+    private val stored = Record.of[PoolParams](
       (
         hash28,
         hash32Bytes,
-        poolCoin,
-        poolCoin,
+        heldCoin,
+        heldCoin,
         unitInterval,
         rewardAccount,
         sortedSet(hash28),
         relays,
-        nullable(rawItem)
+        nullable(poolMetadata)
       )
     )
+    def decode(n: Node): Decoded[PoolParams] = stored.decode(n)
+    def encode(a: PoolParams, out: Writer): Unit =
+      out.arrayHead(9)
+      ConwayCodecs.poolFields(a, out)
+    override def check(a: PoolParams): Option[ConstraintViolation] =
+      stored.check(a).orElse(a.metadata.flatMap(poolMetadata.check))
 
-  /** The relays of a pool, a sequence: the item as it is, `Bytes.empty` for the empty one. */
+  /** The metadata bytes retained by the ledger, written as `PoolMetadata` 's value
+    * (`State/StakePool.hs:516-520`, cardano-ledger f649f975).
+    */
+  val poolMetadata: Codec[Bytes] = new Codec[Bytes]:
+    def decode(n: Node): Decoded[Bytes] = Right(n.original)
+    def encode(a: Bytes, out: Writer): Unit = ConwayCodecs.poolMetadataBytes.encode(a, out)
+    override def check(a: Bytes): Option[ConstraintViolation] =
+      ConwayCodecs.poolMetadataBytes.check(a)
+
+  /** The relays of a pool, retained as bytes but written as a sequence of relay values
+    * (`State/StakePool.hs:389-404, 570`, cardano-ledger f649f975); `Bytes.empty` for the empty one.
+    */
   val relays: Codec[Bytes] = new Codec[Bytes]:
     private val empty = Bytes(Vector(0x80.toByte))
     def decode(n: Node): Decoded[Bytes] = n.value match
       case Value.Arr(_) => Right(if n.original == empty then Bytes.empty else n.original)
       case _            => Left(Codec.mismatch("array", n))
     def encode(a: Bytes, out: Writer): Unit =
-      if a.size == 0 then out.arrayHead(0) else out.raw(a)
+      ConwayCodecs.poolRelays.encode(a, out)
+    override def check(a: Bytes): Option[ConstraintViolation] = ConwayCodecs.poolRelays.check(a)
 
   // ---- governance
 
@@ -218,19 +236,17 @@ trait NodeTypeCodecs extends VocabularyCodecs:
         out.raw(v)
       })
 
-  /** The Conway `PParamsUpdate` of a parameter-change proposal: written as [[paramUpdate]] writes
-    * an update, each value in its original encoding, and read by the ledger's Conway decoder of a
-    * stored update ([[ConwayParamUpdate.decodeStored]]), so a state holding a key that is not a
-    * Conway field or a value not of its field's type is refused with the ledger's typed error.
+  /** The Conway `PParamsUpdate`: a definite map of field values in reference order
+    * (`Core/PParams.hs:244-255`, `Conway/PParams.hs:862-894`, cardano-ledger f649f975), written by
+    * [[ConwayCodecs.parameterUpdate]]. The stored-update reader keeps accepting earlier encodings.
     */
   given conwayParamUpdate: Codec[ConwayParamUpdate] = new Codec[ConwayParamUpdate]:
     def decode(n: Node): Decoded[ConwayParamUpdate] =
       ConwayParamUpdate.decodeStored(n).left.map(why => DecodeError.at(n, Kind.Domain(why)))
     def encode(a: ConwayParamUpdate, out: Writer): Unit =
-      out.variableMap(a.encodings.size)(a.encodings.foreach { (k, v) =>
-        out.uint(k.toLong)
-        out.raw(v)
-      })
+      ConwayCodecs.parameterUpdate.encode(a, out)
+    override def check(a: ConwayParamUpdate): Option[ConstraintViolation] =
+      ConwayCodecs.parameterUpdate.check(a)
 
   given govActionId: Codec[GovActionId] =
     Record.of[GovActionId]((hash32Bytes, word16))
@@ -260,11 +276,13 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     * the `ProtVer` whole, a `Version` major (at most `MaxVersion`, 13) and a `Word32` minor, and
     * then a major above `succVersion (ProtVerHigh era)` refused (`BaseTypes.hs:243-263`): 12 for a
     * Conway state, whose version is 9 to 11, and 13 from version 12
-    * (`Internal/Definition/Era.hs:132-141`).
+    * (`Internal/Definition/Era.hs:132-141`). `EncCBOR` writes the held value; `check` refuses only
+    * what the reference's types cannot hold ([[ConwayCodecs.govActionBounds]]), not the transaction
+    * writer's rules.
     */
   given govAction(using v: ProtVer): Codec[GovAction] = new Codec[GovAction]:
     private val policy = nullable(hash28)
-    private val withdrawals = sortedMap(rewardAccount, amount)
+    private val withdrawals = sortedMap(rewardAccount, heldCoin)
     private val removed = sortedSet(nodeCredential)
     private val added = sortedMap(nodeCredential, amount)
     private val version = Record.of[(BigInt, BigInt)]((Codec.uintBig(13), word32))
@@ -336,6 +354,7 @@ trait NodeTypeCodecs extends VocabularyCodecs:
         previous.encode(prev, out); constitution.encode(Constitution(anchor, script), out)
       case GovAction.Info =>
         out.arrayHead(1); out.uint(6L)
+    override def check(a: GovAction): Option[ConstraintViolation] = ConwayCodecs.govActionBounds(a)
 
   /** `ProposalProcedure` (`Procedures.hs:537-543`): the deposit, the account the deposit returns
     * to, the action and its anchor.
