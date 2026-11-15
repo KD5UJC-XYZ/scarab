@@ -179,9 +179,9 @@ final class ConwayFacts(val l: EraRead[Conway]):
   * resolves them against the backing store first, see [[UtxoNeeds]]).
   *
   * The Conway era is answered, and in every Shelley-based era the ledger state, the chain-dependent
-  * state and the UTxO: their `IfCurrent` queries get `[result]`, queries naming another era get the
-  * era-mismatch reply, as the reference sends. The ledger state is read through [[ChainRead]]: from
-  * the mirror's records, whichever form the state is in.
+  * state, the UTxO and the reward provenance: their `IfCurrent` queries get `[result]`, queries
+  * naming another era get the era-mismatch reply, as the reference sends. The ledger state is read
+  * through [[ChainRead]]: from the mirror's records, whichever form the state is in.
   */
 object QueryAnswers:
   @unused private val ConwayIndex = Era.Conway.index
@@ -294,15 +294,16 @@ object QueryAnswers:
       else ledgerAnswer(env, view, utxo, inner, version).map(r => CborOut.build(_.array(1).raw(r)))
 
   /** The queries answered in every Shelley-based era: the ledger state as the Haskell node writes
-    * it, the chain-dependent state and the UTxO (the others are Conway's). The reference answers
-    * each of them in every Shelley-based era, at every node-to-client version
+    * it, the chain-dependent state, the UTxO and the reward provenance (the others are Conway's).
+    * The reference answers each of them in every Shelley-based era, at every node-to-client version
     * (`blockQueryIsSupportedOnVersion`, `Ouroboros/Consensus/Shelley/Ledger/Query.hs:541-557`,
     * ouroboros-consensus 82ecba32).
     */
   private def inEveryEra(q: LedgerQuery): Boolean = LedgerQuery.cborLayers(q)._2 match
     case LedgerQuery.DebugEpochState | LedgerQuery.DebugNewEpochState |
         LedgerQuery.DebugChainDepState | LedgerQuery.GetUTxOWhole |
-        LedgerQuery.GetUTxOByAddress(_) | LedgerQuery.GetUTxOByTxIn(_) =>
+        LedgerQuery.GetUTxOByAddress(_) | LedgerQuery.GetUTxOByTxIn(_) |
+        LedgerQuery.GetRewardProvenance =>
       true
     case _ => false
 
@@ -464,6 +465,14 @@ object QueryAnswers:
       case GetGenesisConfig =>
         GenesisConfig.encode(env.shelleyGenesis, version).leftMap(_ => Unanswered.Unwritable)
       case DebugChainDepState => chainDepState(view)
+      // `snd $ getRewardProvenance globals st` (`Shelley/Ledger/Query.hs:438-439`, ouroboros-consensus
+      // 82ecba32), which is `def` whatever the state (`Shelley/API/Wallet.hs:373-384`, cardano-ledger
+      // f649f975), written at the era's lowest version (`toEraCBOR`, `Query.hs:1022`)
+      case GetRewardProvenance =>
+        Versions.shelleyBased(view.era) match
+          case Some(era) =>
+            RewardProvenance.codec(using Versions.eraLow(era)).answer(RewardProvenance.default)
+          case None => Left(Unanswered.Unsupported)
       case DebugEpochState    => MirrorAnswers.epochState(view)
       case DebugNewEpochState => MirrorAnswers.newEpochState(view)
       case GetUTxOWhole       => utxoAnswer(utxo)

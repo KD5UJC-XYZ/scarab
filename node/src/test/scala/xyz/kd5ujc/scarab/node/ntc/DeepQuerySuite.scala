@@ -49,11 +49,34 @@ class DeepQuerySuite extends FailsOnUncaught:
   )
   private val view = QueryView(Point.Origin, None, setup.mirrorStart)
 
-  private def nested(tag: Int, layers: Int = depth): Bytes = CborOut.build { w =>
-    w.array(2).uint(0).array(2).uint(0).array(2).uint(view.era.index)
-    (0 until layers).foreach(_ => w.array(2).uint(9))
-    w.array(1).uint(tag)
+  private def nested(tag: Int, layers: Int = depth, era: Era = view.era): Bytes = CborOut.build {
+    w =>
+      w.array(2).uint(0).array(2).uint(0).array(2).uint(era.index)
+      (0 until layers).foreach(_ => w.array(2).uint(9))
+      w.array(1).uint(tag)
   }
+
+  /** The state after the first Shelley block of the public era capture (50 Byron blocks, then
+    * Shelley's first): a state of an era before Conway, where a query of Conway's is not answered.
+    */
+  private lazy val shelleyState: MirrorState =
+    val beforeConway = NodeSetup
+      .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/eras/genesis"))
+      .fold(e => fail(e.message), identity)
+    Files
+      .readAllLines(Path.of("fixtures/eras/blocks.hex"))
+      .asScala
+      .filter(_.nonEmpty)
+      .take(51)
+      .foldLeft(beforeConway.mirrorStart) { (current, line) =>
+        val raw = Bytes.fromHex(line).fold(e => fail(e.message), identity)
+        val block = Block
+          .decode(raw, beforeConway.geometry.byron.epochSlots)
+          .fold(e => fail(e.message), identity)
+        MirrorSteps
+          .block(beforeConway, current, block.header, raw)
+          .fold(e => fail(e.toString), identity)
+      }
 
   private def decoded(raw: Bytes): NtcQuery =
     NtcQuery.decode(raw).fold(e => fail(e.message), identity)
@@ -154,7 +177,8 @@ class DeepQuerySuite extends FailsOnUncaught:
 
   test("unsupported and malformed deep queries return typed failures on a small stack") {
     onSmallStack {
-      val query = decoded(nested(14))
+      // GetProposedPParamsUpdates, outside the version contract at the latest version
+      val query = decoded(nested(4))
       assertEquals(QueryAnswers.utxoNeeds(view, query), QueryAnswers.UtxoNeeds.Nothing)
       assertEquals(
         QueryAnswers.answerOrWhy(env, view, Map.empty, query),
@@ -168,25 +192,7 @@ class DeepQuerySuite extends FailsOnUncaught:
   }
 
   test("pre-Conway era gate peels wrappers for both accepted and refused query kinds") {
-    val beforeConway = NodeSetup
-      .fromDirectory(ReferenceBuild.Default)(Path.of("fixtures/eras/genesis"))
-      .fold(e => fail(e.message), identity)
-    // The public era capture has 50 Byron blocks, followed by its first Shelley block.
-    val state = Files
-      .readAllLines(Path.of("fixtures/eras/blocks.hex"))
-      .asScala
-      .filter(_.nonEmpty)
-      .take(51)
-      .foldLeft(beforeConway.mirrorStart) { (current, line) =>
-        val raw = Bytes.fromHex(line).fold(e => fail(e.message), identity)
-        val block = Block
-          .decode(raw, beforeConway.geometry.byron.epochSlots)
-          .fold(e => fail(e.message), identity)
-        MirrorSteps
-          .block(beforeConway, current, block.header, raw)
-          .fold(e => fail(e.toString), identity)
-      }
-    val early = QueryView(Point.Origin, None, state)
+    val early = QueryView(Point.Origin, None, shelleyState)
     assertEquals(early.era, Era.Shelley)
     onSmallStack {
       def wrapped(leaf: LedgerQuery): NtcQuery = NtcQuery.IfCurrent(
@@ -231,11 +237,12 @@ class DeepQuerySuite extends FailsOnUncaught:
     }
   }
 
-  test("an acquired session answers and logs a refusal at 20000 query layers on a small stack") {
+  test("a session answers and returns a refusal diagnostic at 20000 layers on a small stack") {
     onSmallStack {
       val program = for
+        // a state before Conway, where GetEpochNo is decoded but not answered
         chain <- Ref.of[IO, VolatileChain[MirrorState]](
-          VolatileChain(5, Anchor(None, setup.mirrorStart), Vector.empty)
+          VolatileChain(5, Anchor(None, shelleyState), Vector.empty)
         )
         store <- MemoryUtxoStore[IO]
         gate <- cats.effect.std.Mutex[IO]
@@ -248,20 +255,20 @@ class DeepQuerySuite extends FailsOnUncaught:
             },
             session =>
               for
-                answered <- session.answer(nested(7))
-                refused <- session.answer(nested(14))
+                answered <- session.answer(nested(7, era = Era.Shelley))
+                refused <- session.answer(nested(1, era = Era.Shelley))
               yield answered -> refused
           )
         }
       yield
         val (answered, refused) = results
-        assert(answered.isRight)
+        assert(answered.exists(_.isRight), answered.toString.take(200))
         assertEquals(
           refused,
           Right(
             Left(
               Refusal.Unsupported(
-                s"IfCurrent(${view.era.index},GetCBOR[$depth](GetRewardProvenance))"
+                s"IfCurrent(${Era.Shelley.index},GetCBOR[$depth](GetEpochNo))"
               )
             )
           )

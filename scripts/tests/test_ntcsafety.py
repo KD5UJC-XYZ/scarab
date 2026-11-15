@@ -13,6 +13,12 @@ class QuerySafetyTest(unittest.TestCase):
         raw = ntcsafety.encoded_query(6, 7, 2)
         self.assertEqual(ntcquery.decode_all(raw), [0, [0, [6, [9, [9, [7]]]]]])
 
+    def test_unknown_tag_probe_is_the_shallow_refusal_form(self):
+        self.assertEqual(ntcsafety.INVALID_RAW["unknown-ledger-query-tag"],
+                         ntcsafety.encoded_query(6, ntcsafety.UNKNOWN_TAG, 0))
+        self.assertEqual(ntcquery.decode_all(ntcsafety.INVALID_RAW["unknown-ledger-query-tag"]),
+                         [0, [0, [6, [40]]]])
+
     def test_query_build_and_answer_unwrap_exceed_python_recursion_limit(self):
         raw = ntcsafety.encoded_query(6, 7, ntcsafety.DEPTH)
         self.assertEqual(len(raw), ntcsafety.DEPTH * 2 + 8)

@@ -148,6 +148,8 @@ def battery(u):
     add("GetCBOR/DebugEpochState", [9, [8]])
     add("GetCBOR/DebugNewEpochState", [9, [12]])
     add("GetRewardInfoPools", [18])
+    add("GetRewardProvenance", [14])
+    add("GetCBOR/GetRewardProvenance", [9, [14]])
     add("GetNonMyopicMemberRewards", [2, sset([[0, 1000000000]])])
     add("GetNonMyopicMemberRewards/empty", [2, sset([])])
     members = [[0, 0], [0, 1], [0, 1000000000]] + [[1, c] for c in some_creds]
