@@ -209,7 +209,7 @@ object FileLedgerSnapshots:
 
     def readFile(
         name: String
-    )(using cats.mtl.Raise[F, StorageError]): F[Either[StorageError, StateSnapshot[S]]] =
+    ): F[Either[StorageError, StateSnapshot[S]]] =
       F.blocking(java.nio.file.Files.readAllBytes((dir / name).toNioPath)).attempt.flatMap {
         case Left(e) => F.pure(Left(StorageError.Io(name, e)))
         case Right(file) =>
