@@ -5,11 +5,11 @@
   "`approval` records that question and the owner's decision, in neutral words and never as a quotation, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (bc0e4995a, after #994 merged) on 2026-11-14, when the freeze began, which approves nothing."
  ],
  "approval": {
-  "question": "Storage format freeze: #1017 (merged) extended the storage-format tests. CodecSuite now pins the V10 snapshot header bytes of the new `11.2` build name (0431312e32), and SnapshotV10MigrationSuite checks that a V10 file recorded under `11.2` is refused by the 11.1 and Leios codecs. No codec, format version, fingerprint or fixture changed. #1008's freeze guard counts those test files as part of the format surface, so main now fails it. May I record this as approved in docs/data/storage-format.json, with this question and your answer and their UTC times, in a `(storage)!` PR of its own?",
-  "asked_at": "2026-11-15T18:07:08Z",
-  "decision": "Approved: #1017's additions to the storage format tests for the `11.2` build name are admitted under the freeze and recorded here, in a pull request of their own.",
-  "decided_at": "2026-11-15T18:09:10Z",
-  "surface_sha256": "b0e99302a7272cdd786c2cc1bfd7a59db0b6ea20de449b122df159c572bf0a5c"
+  "question": "Storage format freeze: #1021 (stricter compiler checks) carries two source-only edits in files on the frozen storage-format surface. No bytes, format version, codec output, fingerprint or fixture change. (1) LedgerSnapshots.scala, FileLedgerSnapshots.readFile: removes an unused `(using Raise[F, StorageError])`, flagged by -Wunused:implicits. (2) NetworkIdentity.scala: `Some(None)` becomes `Some[Option[Bytes]](None)` at two sites, flagged by -Winfer-union. The freeze guard digests those whole definitions, so any edit trips it. How should I handle them?",
+  "asked_at": "2026-11-15T19:28:16Z",
+  "decision": "Approved: the two source-only edits, with no change to any persisted byte, are admitted under the freeze in a pull request of their own, and #1021 rebases onto it.",
+  "decided_at": "2026-11-15T19:29:34Z",
+  "surface_sha256": "5d5bfec12e1e15eeea09b5b1dbeec91b6b2a55cfa048cc3cd9d2835530ded820"
  },
  "surface": {
   "registry": {
@@ -248,7 +248,7 @@
    ]
   },
   "format_sources": {
-   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NetworkIdentity.scala": "e1b498d43e8ba9b46b451bd42807e566df57dcec16cfad9c23fd16a42f80ecf6",
+   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NetworkIdentity.scala": "5f633327263ec029ef8889c0d5c4d93061dcde43e536507433433e9af5b97825",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/CheckpointBinding.scala": "6715cb7b26e20a9a55d6641f1df28cdfd54b58bc359d07eb4cd7c0cd9c143914",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/Codec.scala": "4609832427c5a9a6a51a10af9dc39468c82fcfb2edcf2fe205f4027bf8dbe547",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/Migrate.scala": "df1ac6aa1c643ba755072cb43b0efd1b35d452ec74789a50b0ddc40c5908a150",
@@ -293,7 +293,7 @@
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.Scanned": "ba6d5c2c11c483a172b844043c61667f02bca8af8c03190fd7c986447b5005bc",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.Suffix": "7c5d3843d3f0dbf69b4c1e26c8b50612ab46da3dac3bea1f227735bcced0064e",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/VolatileStore.scala#VolatileStore.nameOf": "391068f4cdaf2e2f52b35aac3fbf3da474c15c7a8fa713e84eaf29676858d8ae",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshots.scala#FileLedgerSnapshots": "2af02b2458e6f5052cca5657d5fe654502d1e249dc75c888e9d660a0620425e5",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshots.scala#FileLedgerSnapshots": "0f3bf7a892af26dfcbcb79eac68de48348a97810df036fbac8218e5451ce1c64",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.stem": "f0d96db9f6078ee0a1fd70da93ab9201a5b789113dc1d78aa00bbc7563a0fd74",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.Stem": "ebc2ae76bf4aab10145b5e249e2eb46ca5bba8540d2f3dd632bc058e335cc82f",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala#StateBacking.isStem": "2ed76a5e221935e901fab245602b37e4014be1b094075a7269b6987416424b8c"

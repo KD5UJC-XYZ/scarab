@@ -178,7 +178,7 @@ object NetworkIdentity:
             (
               m.toLongOption,
               hash(s),
-              if b == "none" then Some(None) else hash(b).map(Some(_))
+              if b == "none" then Some[Option[Bytes]](None) else hash(b).map(Some(_))
             ) match
               case (Some(mm), Some(ss), Some(bb)) => Right(LegacyNetworkIdentity(mm, ss, bb))
               case _ => corrupt(StorageStructureError.InvalidIdentityFields)
@@ -241,7 +241,7 @@ object NetworkIdentity:
             "conway-genesis" :: c :: Nil,
             "provenance" :: p :: Nil
           ) =>
-        val parsedByron = if b == "none" then Some(None) else hash(b).map(Some(_))
+        val parsedByron = if b == "none" then Some[Option[Bytes]](None) else hash(b).map(Some(_))
         (
           m.toLongOption,
           hash(s),
