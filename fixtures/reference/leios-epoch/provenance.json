@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-11-15",
+  "scope": "The state Conway's unchanged genesis injection gives for the Leios testnet's genesis files (its pool with a devnet voting key or none), changed by each case (a keyless re-registration of the genesis pool, its retirement, or both: not a lawful chain's history), then Conway's unchanged TICK to boundaries and past the start of the reward update: each input state, and after each tick the SHA-256 of the state as a ledger snapshot holds it (without its UTxO, which it is also ticked without), its snapshots and its pool states. Not Dijkstra's EPOCH, blocks, or the consensus layer's parts.",
+  "build": "leios-b004fe0c",
+  "image": "scarab-leios-testnet:local",
+  "ledgerSourceCommit": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+  "cardanoBase": "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c",
+  "imageId": "sha256:51057b9d6f1e806b316fb4fc68488ef51c5e1236728647d711aad772bacf733d",
+  "cases": 6,
+  "genesisSha256": {
+    "shelley-genesis.json": "0c7365b3e74a52a09d1ad169438b714919dd36710c9feed8e49be65e73990ab7",
+    "alonzo-genesis.json": "5e5b1f0776c6d84bcd15bc7df4f9368884b7c433296657e54722175ce71f1318",
+    "conway-genesis.json": "9a7bdb6f68c6672a8afa202e8cfc6fdf40b00de9cb9c27cbcec784cdc6deae0e"
+  },
+  "sourceSha256": {
+    "Shelley/Transition.hs": "6886aa7e600f352a3ed7f7822af115a0bdfcf406a6fe4affdfb409e6d9094e05",
+    "Shelley/Genesis.hs": "27faa873822e63d45fa3db8ad660e4a4bfc465d31a2ef0d52824c8a537b831aa",
+    "Conway/Transition.hs": "f71c44727ba75ad5fc900c454c16abfa6008a63638a133f28e66c6934ca56ab1",
+    "StakePool.hs": "459d7de8a2c1bb070476cb0bebb0cd758efeea61ea7e450306af3654f1592e70",
+    "SnapShots.hs": "ae7d5e0db3afe5f97183008047d2f7ecf2974c7d1249752284a600b55557d414",
+    "LeiosCommittee.hs": "2bbdb60617b43aa92a9b7bfaaf2a951767690d581f38f2f8cd9b018e653e11bb",
+    "BLS12381/Internal.hs": "9ac5419c5febe57d72c5673cb1b12802ce3787058dbfebcd83103e5105986025",
+    "Shelley/Rules/Tick.hs": "a482eace1620cc116eb0e60ab3d6740e2829441fe85013940574acba0b168d21",
+    "Conway/Rules/NewEpoch.hs": "0da7018eb4de2a92b0dc5b5547c1d7ea3b7b883997f55be94e540ceaa61f4bf9",
+    "Conway/Rules/Epoch.hs": "619d9553cc57d6d62e46343e90ee2ceb0c85a3f86d7fa16a937f10057a33ca1e",
+    "Shelley/Rules/PoolReap.hs": "4d1e052ada703204f17ae40656afddd2db62116586d0a06dfc7b3212ce1b586c",
+    "Shelley/Rules/Snap.hs": "6fb8fc09a1273056bbdb920f9b6cafa0f45bb0e73db57e9b36a09564a06fc1ea",
+    "Shelley/Rules/Rupd.hs": "14b05f72dd1b1104239813e565a982b8990c033e07d029f9f30da1a3e9ef4bad"
+  },
+  "harnessSha256": "56d683cda79a8eaf9e5dd6a32616929143f6b036af87a5595841e063a9f8a4e1",
+  "casesSha256": "13bc04abdb9a4abd6a41c5e29540f22acf8d6cd1eb4493f54732a1ab1225eb0c"
+}

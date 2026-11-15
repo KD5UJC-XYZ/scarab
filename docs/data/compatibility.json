@@ -1655,7 +1655,8 @@
           "HaskellStateCodecSuite",
           "PoolDistributionReferenceSuite",
           "LeiosCommitteeReferenceSuite",
-          "LeiosGenesisReferenceSuite"
+          "LeiosGenesisReferenceSuite",
+          "LeiosEpochReferenceSuite"
         ],
         "issues": [
           826

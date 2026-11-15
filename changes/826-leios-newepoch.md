@@ -1,0 +1,3 @@
+### Fixed (ledger, #826)
+
+- On the Leios layout, the epoch boundary keeps the state in that layout: NEWEPOCH writes no pool distribution (the Leios build's new-epoch state has none), and a pool that POOL registers or POOLREAP re-registers before Dijkstra holds no voting key, as the Leios build reads none from a certificate before protocol version 12. Before, each wrote a part of the 11.1 layout, which the Leios writer refused. Conway's tick agrees with the native TICK of the Leios build across three epoch boundaries and two reward updates, with and without a voting key, a keyless re-registration and a retirement: the snapshots, pool states and state digest after every tick (#826).

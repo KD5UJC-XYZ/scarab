@@ -74,6 +74,18 @@ enum PoolBlsKey extends LayoutPart derives Eq, Show, Diff:
     case Node11_1 => StateLayout.Node11_1
     case Leios(_) => StateLayout.Leios
 
+object PoolBlsKey:
+  /** The voting key of a pool that a certificate registers or re-registers before Dijkstra, in
+    * `layout`: none in the Leios layout. `mkStakePoolState` keeps the key of the parameters
+    * (9df9f98c `State/StakePool.hs:299-320`), and the parameters read one from protocol version 12
+    * only (`decodeStakePoolParamsFlat`, `:746-762`); an era's blocks and transactions are read at
+    * its lowest version (`eraDecoder`, `Core/Era.hs:259-260`; Conway's is 9,
+    * `Internal/Definition/Era.hs:132`), so up to Conway `sppBlsKey` is `SNothing`.
+    */
+  def certified(layout: StateLayout): PoolBlsKey = layout match
+    case StateLayout.Node11_1 => Node11_1
+    case StateLayout.Leios    => Leios(None)
+
 /** The voting key of a pool's registration parameters, by layout: the 11.1 build's
   * `StakePoolParams` has no such field; the Leios build's has `sppBlsKey`, a `StrictMaybe BlsKey`
   * (9df9f98c `State/StakePool.hs:479`).
